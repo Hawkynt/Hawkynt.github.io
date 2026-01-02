@@ -120,6 +120,695 @@ const IconInfo = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" wid
 const IconX = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>);
 const IconSettings = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>);
 
+// --- CONSTANTS ---
+// Bit/Mapping types
+const TYPE_SRC = 'src';           // Source bit reference
+const TYPE_CONST = 'const';       // Forced constant (0 or 1)
+const TYPE_EMPTY = 'empty';       // Not connected (don't care)
+const TYPE_COLLISION = 'collision'; // Multiple bits landed (undefined)
+const TYPE_UNKNOWN = 'unknown';   // Unknown input value (NC in input register)
+
+// Operation types
+const OP_DELTA = 'delta';         // Shift or rotate
+const OP_MUL_R = 'mul_r';         // Right-shift then multiply: (x >> S) * M
+const OP_MUL_L = 'mul_l';         // Multiply then right-shift: (x * M) >> S
+const OP_RLWINM = 'rlwinm';       // PowerPC rotate left word immediate then AND with mask
+const OP_BFI = 'bfi';             // ARM bit field insert
+const OP_BFX = 'bfx';             // ARM bit field extract
+const OP_ANDC = 'andc';           // AND with complement (PowerPC, some RISC)
+const OP_REV = 'rev';             // Byte reversal (ARM, x86 BSWAP)
+const OP_RBIT = 'rbit';           // Bit reversal (ARM only)
+
+// Building Blocks Library - Centralized registry of all available operations
+// Each block defines: what it does, required capability, cost lookup, and supported platforms
+const BUILDING_BLOCKS = {
+    // === Basic Logic Operations ===
+    and: {
+        id: 'and', name: 'AND', category: 'logic',
+        description: 'Bitwise AND with mask',
+        costKey: 'basic', enableKey: null,  // Always available
+        codeGen: (w, mask) => `x & ${formatHex(mask, w)}`
+    },
+    or: {
+        id: 'or', name: 'OR', category: 'logic',
+        description: 'Bitwise OR to combine results',
+        costKey: 'basic', enableKey: null,
+        codeGen: (w, a, b) => `${a} | ${b}`
+    },
+    xor: {
+        id: 'xor', name: 'XOR', category: 'logic',
+        description: 'Bitwise exclusive OR',
+        costKey: 'basic', enableKey: null,
+        codeGen: (w, a, b) => `${a} ^ ${b}`
+    },
+    not: {
+        id: 'not', name: 'NOT', category: 'logic',
+        description: 'Bitwise complement',
+        costKey: 'basic', enableKey: null,
+        codeGen: (w, x) => `~${x}`
+    },
+
+    // === Shift Operations ===
+    shl: {
+        id: 'shl', name: 'Shift Left', category: 'shift',
+        description: 'Logical shift left by constant',
+        costKey: 'shift', enableKey: 'shift',
+        codeGen: (w, x, n) => `${x} << ${n}`
+    },
+    shr: {
+        id: 'shr', name: 'Shift Right', category: 'shift',
+        description: 'Logical shift right by constant',
+        costKey: 'shift', enableKey: 'shift',
+        codeGen: (w, x, n) => `${x} >> ${n}`
+    },
+    rol: {
+        id: 'rol', name: 'Rotate Left', category: 'shift',
+        description: 'Circular rotate left',
+        costKey: 'rotate', enableKey: 'rotate',
+        codeGen: (w, x, n) => `rol${w}(${x}, ${n})`
+    },
+    ror: {
+        id: 'ror', name: 'Rotate Right', category: 'shift',
+        description: 'Circular rotate right',
+        costKey: 'rotate', enableKey: 'rotate',
+        codeGen: (w, x, n) => `ror${w}(${x}, ${n})`
+    },
+
+    // === Multiply Operations ===
+    mul: {
+        id: 'mul', name: 'Multiply', category: 'arithmetic',
+        description: 'Integer multiplication (scatter bits via multiplier)',
+        costKey: 'mul', enableKey: 'mul',
+        codeGen: (w, x, m) => `${x} * ${formatHex(m, w)}`
+    },
+
+    // === BMI2 Operations (x86 Haswell+, AMD Zen3+) ===
+    pext: {
+        id: 'pext', name: 'PEXT', category: 'bmi2',
+        description: 'Parallel bit extract - gather selected bits to contiguous positions',
+        costKey: 'bmi', enableKey: 'bmi',
+        platforms: [CPU_MODERN, CPU_ZEN3],  // Native fast; Zen1/2 microcoded but functional
+        codeGen: (w, x, mask) => `pext(${x}, ${formatHex(mask, w)})`
+    },
+    pdep: {
+        id: 'pdep', name: 'PDEP', category: 'bmi2',
+        description: 'Parallel bit deposit - scatter contiguous bits to selected positions',
+        costKey: 'bmi', enableKey: 'bmi',
+        platforms: [CPU_MODERN, CPU_ZEN3],
+        codeGen: (w, x, mask) => `pdep(${x}, ${formatHex(mask, w)})`
+    },
+
+    // === SIMD Shuffle Operations ===
+    pshufb: {
+        id: 'pshufb', name: 'PSHUFB', category: 'simd',
+        description: 'Packed shuffle bytes (SSSE3/NEON TBL)',
+        costKey: 'pshufb', enableKey: 'pshufb',
+        platforms: [CPU_MODERN, CPU_ZEN1_2, CPU_ZEN3, CPU_CORE2, CPU_ATOM, CPU_ARM_A64, CPU_APPLE_M1, CPU_XBOX360, CPU_PS3],
+        codeGen: (w, x, indices) => `pshufb(${x}, ${indices})`
+    },
+
+    // === PowerPC-Specific Operations ===
+    rlwinm: {
+        id: 'rlwinm', name: 'RLWINM', category: 'powerpc',
+        description: 'Rotate left word immediate then AND with mask (single instruction)',
+        costKey: 'shift', enableKey: 'shift',  // Uses shift cost (1 cycle on PPC)
+        platforms: [CPU_GAMECUBE, CPU_XBOX360, CPU_PS3],  // PowerPC-based systems
+        // rlwinm rA, rS, SH, MB, ME - rotates rS left by SH, masks bits MB:ME, stores in rA
+        codeGen: (w, x, sh, mb, me) => `rlwinm(${x}, ${sh}, ${mb}, ${me})`
+    },
+    andc: {
+        id: 'andc', name: 'ANDC', category: 'powerpc',
+        description: 'AND with complement - a & ~b in single instruction',
+        costKey: 'basic', enableKey: null,
+        platforms: [CPU_GAMECUBE, CPU_XBOX360, CPU_PS3],
+        codeGen: (w, a, b) => `andc(${a}, ${b})`  // = a & ~b
+    },
+
+    // === ARM-Specific Operations ===
+    bfi: {
+        id: 'bfi', name: 'BFI', category: 'arm',
+        description: 'Bit field insert - insert low bits into destination at position',
+        costKey: 'basic', enableKey: null,
+        platforms: [CPU_ARM_A64, CPU_ARM_M4, CPU_APPLE_M1],
+        codeGen: (w, dst, src, lsb, width) => `bfi(${dst}, ${src}, ${lsb}, ${width})`
+    },
+    bfx: {
+        id: 'bfx', name: 'UBFX', category: 'arm',
+        description: 'Unsigned bit field extract - extract bits to low position',
+        costKey: 'basic', enableKey: null,
+        platforms: [CPU_ARM_A64, CPU_ARM_M4, CPU_APPLE_M1],
+        codeGen: (w, x, lsb, width) => `ubfx(${x}, ${lsb}, ${width})`
+    },
+    rev: {
+        id: 'rev', name: 'REV', category: 'byteswap',
+        description: 'Reverse byte order (ARM REV, x86 BSWAP)',
+        costKey: 'basic', enableKey: null,
+        platforms: [CPU_MODERN, CPU_ZEN1_2, CPU_ZEN3, CPU_CORE2, CPU_ARM_A64, CPU_ARM_M4, CPU_APPLE_M1],
+        codeGen: (w, x) => `bswap${w}(${x})`
+    },
+    rbit: {
+        id: 'rbit', name: 'RBIT', category: 'arm',
+        description: 'Reverse all bits in register (ARM only)',
+        costKey: 'basic', enableKey: null,
+        platforms: [CPU_ARM_A64, CPU_ARM_M4, CPU_APPLE_M1],
+        codeGen: (w, x) => `rbit(${x})`
+    },
+
+    // === Lookup Table ===
+    lut: {
+        id: 'lut', name: 'LUT', category: 'memory',
+        description: 'Lookup table - precomputed permutation for small widths',
+        costKey: 'lut', enableKey: null,  // Always available but may be slow
+        codeGen: (w, x, tableName) => `${tableName}[${x}]`
+    }
+};
+
+// Helper: Check if a building block is available for current config
+const isBlockAvailable = (blockId, config, preset) => {
+    const block = BUILDING_BLOCKS[blockId];
+    if (!block) return false;
+
+    // Check enable key if specified
+    if (block.enableKey && !config.enables[block.enableKey]) return false;
+
+    // Check platform restrictions if specified
+    if (block.platforms && !block.platforms.includes(preset)) return false;
+
+    // Check if cost is reasonable (999 = effectively disabled)
+    if (block.costKey && config.costs[block.costKey] >= 999) return false;
+
+    return true;
+};
+
+// Get cost of a building block for current config
+const getBlockCost = (blockId, config) => {
+    const block = BUILDING_BLOCKS[blockId];
+    if (!block) return Infinity;
+    return block.costKey ? (config.costs[block.costKey] || 1) : 1;
+};
+
+// Get all available blocks for current config/preset
+const getAvailableBlocks = (config, preset) => {
+    return Object.keys(BUILDING_BLOCKS).filter(id => isBlockAvailable(id, config, preset));
+};
+
+// Tool identifiers
+const TOOL_BRUSH = 'brush';
+const TOOL_SET0 = 'set0';
+const TOOL_SET1 = 'set1';
+const TOOL_ERASER = 'eraser';
+
+// Storage keys
+const STORAGE_KEY = 'bitperm_state';
+
+// Fill actions
+const ACTION_FILL_EMPTY_1 = 'fill_empty_1';
+const ACTION_CLEAR_1S = 'clear_1s';
+const ACTION_FILL_EMPTY_0 = 'fill_empty_0';
+const ACTION_CLEAR_0S = 'clear_0s';
+const ACTION_CLEAR_ROUTED = 'clear_routed';
+
+// Preset patterns
+const PATTERN_IDENTITY = 'identity';
+const PATTERN_REVERSE = 'reverse';
+const PATTERN_SWAP_HALVES = 'swap_halves';
+const PATTERN_SET_ALL_0 = 'set_all_0';
+const PATTERN_CLEAR = 'clear';
+
+// Preset CPU identifiers - Modern x86/x64
+const CPU_MODERN = 'modern';
+const CPU_ZEN1_2 = 'zen1_2';
+const CPU_ZEN3 = 'zen3';
+const CPU_CORE2 = 'core2';
+const CPU_ATOM = 'atom';
+// Preset CPU identifiers - Legacy x86
+const CPU_PENTIUM4 = 'pentium4';
+const CPU_PENTIUM = 'pentium';
+const CPU_ATHLON = 'athlon';
+const CPU_I486 = 'i486';
+const CPU_I386 = 'i386';
+const CPU_I8086 = 'i8086';
+// Preset CPU identifiers - ARM
+const CPU_ARM_A64 = 'arm_a64';
+const CPU_ARM_M4 = 'arm_m4';
+const CPU_APPLE_M1 = 'apple_m1';
+// Preset CPU identifiers - RISC
+const CPU_RISCV = 'riscv';
+// Preset CPU identifiers - Classic Home Computers
+const CPU_68000 = 'motorola68k';
+const CPU_Z80 = 'z80';
+const CPU_6502 = '6502';
+// Preset CPU identifiers - Classic Consoles
+const CPU_GAMECUBE = 'gamecube';
+const CPU_DREAMCAST = 'dreamcast';
+const CPU_XBOX360 = 'xbox360';
+// Preset CPU identifiers - Retro Consoles
+const CPU_PS1 = 'ps1';
+const CPU_N64 = 'n64';
+const CPU_PS3 = 'ps3';
+// Custom preset
+const CPU_CUSTOM = 'custom';
+
+// Numeric constants
+const DEFAULT_BIT_WIDTH = 32;
+const STORAGE_EXPIRY_DAYS = 7;
+const MAX_SOLVER_ITERATIONS = 64;
+const HUE_DIVISOR = 360;
+
+// Bit values
+const BIT_ZERO = 0;
+const BIT_ONE = 1;
+
+// Helper to create bit state objects
+const createSrcBit = (bit, inv = false) => ({ type: TYPE_SRC, val: bit, inv });
+const createConstBit = (val) => ({ type: TYPE_CONST, val, inv: false });
+const createEmptyBit = () => ({ type: TYPE_EMPTY, val: BIT_ZERO, inv: false });
+const createCollision = (sources) => ({ type: TYPE_COLLISION, sources });
+
+// --- PRIORITY QUEUE (Min-Heap) ---
+class PriorityQueue {
+    constructor(comparator = (a, b) => a - b) {
+        this.heap = [];
+        this.compare = comparator;
+    }
+
+    push(item) {
+        this.heap.push(item);
+        this._bubbleUp(this.heap.length - 1);
+    }
+
+    pop() {
+        if (this.heap.length === 0) return null;
+        const result = this.heap[0];
+        const last = this.heap.pop();
+        if (this.heap.length > 0) {
+            this.heap[0] = last;
+            this._sinkDown(0);
+        }
+        return result;
+    }
+
+    peek() { return this.heap.length > 0 ? this.heap[0] : null; }
+    isEmpty() { return this.heap.length === 0; }
+    size() { return this.heap.length; }
+
+    _bubbleUp(i) {
+        while (i > 0) {
+            const parent = Math.floor((i - 1) / 2);
+            if (this.compare(this.heap[i], this.heap[parent]) >= 0) break;
+            [this.heap[i], this.heap[parent]] = [this.heap[parent], this.heap[i]];
+            i = parent;
+        }
+    }
+
+    _sinkDown(i) {
+        const len = this.heap.length;
+        while (true) {
+            let smallest = i;
+            const left = 2 * i + 1, right = 2 * i + 2;
+            if (left < len && this.compare(this.heap[left], this.heap[smallest]) < 0) smallest = left;
+            if (right < len && this.compare(this.heap[right], this.heap[smallest]) < 0) smallest = right;
+            if (smallest === i) break;
+            [this.heap[i], this.heap[smallest]] = [this.heap[smallest], this.heap[i]];
+            i = smallest;
+        }
+    }
+}
+
+// --- EXHAUSTIVE SEARCH LIMITS ---
+const SEARCH_MAX_STATES = 10000;
+const SEARCH_TIMEOUT_MS = 5000;
+
+// Helper: count bits set in a BigInt
+const popcount = (n) => {
+    let count = 0;
+    while (n > 0n) {
+        if (n & 1n) ++count;
+        n >>= 1n;
+    }
+    return count;
+};
+
+// --- OPERATION GENERATORS FOR EXHAUSTIVE SEARCH ---
+
+// Generate all valid shift/rotate operations from current state
+const generateShiftOperations = (remainingMask, routeMap, w, costs, enables) => {
+    const operations = [];
+    if (!enables.shift && !enables.rotate) return operations;
+
+    for (let s = 0; s < w; ++s) {
+        let currentMask = 0n;
+        for (let d = 0; d < w; ++d) {
+            if (!((remainingMask >> BigInt(d)) & 1n)) continue;
+            const src = routeMap[d];
+            let delta = (d - src) % w;
+            if (delta < 0) delta += w;
+            if (delta === s) currentMask |= (1n << BigInt(d));
+        }
+
+        let count = 0;
+        let t = currentMask;
+        while (t > 0n) { if (t & 1n) ++count; t >>= 1n; }
+        if (count === 0) continue;
+
+        // Determine if this is a pure shift or needs rotate
+        let allWrap = true, noneWrap = true;
+        for (let d = 0; d < w; ++d) {
+            if ((currentMask >> BigInt(d)) & 1n) {
+                const src = routeMap[d];
+                if (src + s >= w) noneWrap = false;
+                else allWrap = false;
+            }
+        }
+
+        let cost = costs.basic;
+        if (s > 0) {
+            if (noneWrap || allWrap)
+                cost += enables.shift ? costs.shift : Infinity;
+            else
+                cost += enables.rotate ? costs.rotate : (enables.shift ? (costs.shift * 2 + costs.basic) : Infinity);
+        }
+
+        if (cost < Infinity) {
+            operations.push({
+                type: OP_DELTA,
+                shift: s,
+                mask: currentMask,
+                count,
+                cost,
+                allWrap,
+                noneWrap
+            });
+        }
+    }
+    return operations;
+};
+
+// Generate all valid multiplication operations
+const generateMulOperations = (remainingMask, routeMap, w, costs, enables) => {
+    const operations = [];
+    if (w > 64 || !enables.mul) return operations;
+
+    // Helper: compute carry risk from collisions
+    const computeCarryRisk = (landingCounts, maxPos) => {
+        const carryRisk = new Set();
+        for (let pos = 0; pos < maxPos; ++pos) {
+            if ((landingCounts[pos] || 0) > 1) {
+                for (let p = pos + 1; p < maxPos; ++p) {
+                    carryRisk.add(p);
+                    if ((landingCounts[p] || 0) === 0) break;
+                }
+            }
+        }
+        return carryRisk;
+    };
+
+    // Right-shift then multiply: (x >> S) * M
+    for (let S = 0; S < w; ++S) {
+        const candidateK = new Map();
+
+        for (let d = 0; d < w; ++d) {
+            if (!((remainingMask >> BigInt(d)) & 1n)) continue;
+            const s = routeMap[d];
+            const k = d - s + S;
+            if (k >= 0 && k < w && s >= S) {
+                if (!candidateK.has(k)) candidateK.set(k, []);
+                candidateK.get(k).push({ d, s });
+            }
+        }
+
+        if (candidateK.size === 0) continue;
+
+        let M = 0n;
+        candidateK.forEach((list, k) => M |= (1n << BigInt(k)));
+
+        const landingCounts = {};
+        for (let srcBit = S; srcBit < w; ++srcBit) {
+            const basePos = srcBit - S;
+            for (const [mk] of candidateK) {
+                const landPos = basePos + mk;
+                if (landPos < w) landingCounts[landPos] = (landingCounts[landPos] || 0) + 1;
+            }
+        }
+
+        const carryRisk = computeCarryRisk(landingCounts, w);
+
+        let validTargetsMask = 0n;
+        for (const [k, targets] of candidateK) {
+            for (const { d } of targets) {
+                if ((landingCounts[d] || 0) === 1 && !carryRisk.has(d))
+                    validTargetsMask |= (1n << BigInt(d));
+            }
+        }
+
+        if (validTargetsMask > 0n) {
+            let count = 0;
+            let t = validTargetsMask;
+            while (t > 0n) { if (t & 1n) ++count; t >>= 1n; }
+
+            const cost = costs.mul + (S > 0 ? costs.shift : 0) + costs.basic;
+            operations.push({
+                type: OP_MUL_R,
+                shift: S,
+                mul: M,
+                mask: validTargetsMask,
+                count,
+                cost
+            });
+        }
+    }
+
+    // Left-multiply then shift: (x * M) >> S
+    for (let S = 0; S < w; ++S) {
+        const candidateK = new Map();
+
+        for (let d = 0; d < w; ++d) {
+            if (!((remainingMask >> BigInt(d)) & 1n)) continue;
+            const s = routeMap[d];
+            const k = d + S - s;
+            if (k >= 0 && k < w && s + k < 2 * w) {
+                if (!candidateK.has(k)) candidateK.set(k, []);
+                candidateK.get(k).push({ d, s });
+            }
+        }
+
+        if (candidateK.size === 0) continue;
+
+        let M = 0n;
+        candidateK.forEach((list, k) => M |= (1n << BigInt(k)));
+
+        const preLandingCounts = {};
+        for (let srcBit = 0; srcBit < w; ++srcBit) {
+            for (const [mk] of candidateK) {
+                const preShiftPos = srcBit + mk;
+                if (preShiftPos < 2 * w)
+                    preLandingCounts[preShiftPos] = (preLandingCounts[preShiftPos] || 0) + 1;
+            }
+        }
+
+        const preCarryRisk = computeCarryRisk(preLandingCounts, 2 * w);
+
+        let validTargetsMask = 0n;
+        for (const [k, targets] of candidateK) {
+            for (const { d, s } of targets) {
+                const preShiftPos = s + k;
+                const postShiftPos = preShiftPos - S;
+                if (postShiftPos === d && postShiftPos >= 0 && postShiftPos < w) {
+                    if ((preLandingCounts[preShiftPos] || 0) === 1 && !preCarryRisk.has(preShiftPos))
+                        validTargetsMask |= (1n << BigInt(d));
+                }
+            }
+        }
+
+        if (validTargetsMask > 0n) {
+            let count = 0;
+            let t = validTargetsMask;
+            while (t > 0n) { if (t & 1n) ++count; t >>= 1n; }
+
+            const cost = costs.mul + (S > 0 ? costs.shift : 0) + costs.basic;
+            operations.push({
+                type: OP_MUL_L,
+                shift: S,
+                mul: M,
+                mask: validTargetsMask,
+                count,
+                cost
+            });
+        }
+    }
+
+    return operations;
+};
+
+// Generate BMI2 PEXT/PDEP operation if available
+const generateBmiOperation = (remainingMask, routeMap, w, costs, enables) => {
+    if (!enables.bmi || costs.bmi >= 999) return [];
+
+    // Check if remaining bits can use PEXT/PDEP (no duplicate sources)
+    const srcCounts = {};
+    let canUseBmi = true;
+    let srcMask = 0n;
+    let destMask = 0n;
+
+    for (let d = 0; d < w; ++d) {
+        if (!((remainingMask >> BigInt(d)) & 1n)) continue;
+        const src = routeMap[d];
+        if (src === -1) continue;
+
+        srcCounts[src] = (srcCounts[src] || 0) + 1;
+        if (srcCounts[src] > 1) {
+            canUseBmi = false;
+            break;
+        }
+        srcMask |= (1n << BigInt(src));
+        destMask |= (1n << BigInt(d));
+    }
+
+    if (!canUseBmi || destMask === 0n) return [];
+
+    const count = popcount(destMask);
+    const cost = costs.bmi * 2; // PEXT + PDEP
+
+    return [{
+        type: 'bmi',
+        mask: destMask,
+        srcMask,
+        count,
+        cost
+    }];
+};
+
+// Generate PSHUFB operation if available and byte-aligned
+const generatePshufbOperation = (remainingMask, routeMap, w, costs, enables, mapping) => {
+    if (!enables.pshufb || costs.pshufb >= 999 || w < 64 || (w % 8 !== 0)) return [];
+
+    const byteWidth = w / 8;
+    let validBytes = 0n;
+    let totalBits = 0;
+
+    // Check each byte for alignment
+    for (let byte = 0; byte < byteWidth; ++byte) {
+        const destStart = byte * 8;
+        let srcByte = -1;
+        let byteValid = true;
+
+        for (let bit = 0; bit < 8; ++bit) {
+            const d = destStart + bit;
+            if (!((remainingMask >> BigInt(d)) & 1n)) continue;
+
+            const m = mapping[d];
+            if (!m || m.type !== TYPE_SRC || m.inv) { byteValid = false; break; }
+
+            const expectedSrcByte = Math.floor(m.val / 8);
+            const expectedBitInByte = m.val % 8;
+
+            if (expectedBitInByte !== bit) { byteValid = false; break; }
+            if (srcByte === -1) srcByte = expectedSrcByte;
+            else if (srcByte !== expectedSrcByte) { byteValid = false; break; }
+        }
+
+        if (byteValid && srcByte !== -1) {
+            // This byte can be shuffled
+            for (let bit = 0; bit < 8; ++bit) {
+                const d = destStart + bit;
+                if ((remainingMask >> BigInt(d)) & 1n) {
+                    validBytes |= (1n << BigInt(d));
+                    ++totalBits;
+                }
+            }
+        }
+    }
+
+    if (validBytes === 0n) return [];
+
+    return [{
+        type: 'pshufb',
+        mask: validBytes,
+        count: totalBits,
+        cost: costs.pshufb
+    }];
+};
+
+// Generate all valid operations from a given state
+const generateAllOperations = (remainingMask, routeMap, w, costs, enables, mapping) => {
+    return [
+        ...generateShiftOperations(remainingMask, routeMap, w, costs, enables),
+        ...generateMulOperations(remainingMask, routeMap, w, costs, enables),
+        ...generateBmiOperation(remainingMask, routeMap, w, costs, enables),
+        ...generatePshufbOperation(remainingMask, routeMap, w, costs, enables, mapping)
+    ];
+};
+
+// Exhaustive solver using Dijkstra's algorithm
+// Returns { steps: [...], totalCost, statesExplored } or null if limits exceeded
+const solveExhaustive = (routeMap, routedMask, w, costs, enables, mapping) => {
+    if (routedMask === 0n) return { steps: [], totalCost: 0, statesExplored: 0 };
+
+    const startTime = Date.now();
+    let statesExplored = 0;
+
+    // Max depth = number of bits to route (worst case: one op per bit)
+    const maxDepth = popcount(routedMask);
+
+    // State: { remainingMask, totalCost, steps: [{ type, shift, mask, mul?, ... }] }
+    const frontier = new PriorityQueue((a, b) => a.totalCost - b.totalCost);
+    frontier.push({
+        remainingMask: routedMask,
+        totalCost: 0,
+        steps: []
+    });
+
+    // Visited: remainingMask -> best cost seen
+    const visited = new Map();
+
+    while (!frontier.isEmpty()) {
+        // Check limits
+        if (++statesExplored > SEARCH_MAX_STATES) return null;
+        if (Date.now() - startTime > SEARCH_TIMEOUT_MS) return null;
+
+        const current = frontier.pop();
+
+        // Goal check
+        if (current.remainingMask === 0n) {
+            return {
+                steps: current.steps,
+                totalCost: current.totalCost,
+                statesExplored
+            };
+        }
+
+        // Skip if we've seen this state with better cost
+        const hash = current.remainingMask.toString(16);
+        if (visited.has(hash) && visited.get(hash) <= current.totalCost) continue;
+        visited.set(hash, current.totalCost);
+
+        // Check depth limit (can't need more ops than bits to route)
+        if (current.steps.length >= maxDepth) continue;
+
+        // Generate all valid operations (including BMI2, PSHUFB if available)
+        const ops = generateAllOperations(current.remainingMask, routeMap, w, costs, enables, mapping);
+
+        for (const op of ops) {
+            if (op.count === 0) continue;
+
+            const newRemaining = current.remainingMask & ~op.mask;
+            const newCost = current.totalCost + op.cost;
+
+            // Prune: don't explore if we've seen this state with better cost
+            const newHash = newRemaining.toString(16);
+            if (visited.has(newHash) && visited.get(newHash) <= newCost) continue;
+
+            frontier.push({
+                remainingMask: newRemaining,
+                totalCost: newCost,
+                steps: [...current.steps, op]
+            });
+        }
+    }
+
+    return null; // No solution found
+};
+
 // --- FORMATTING HELPERS ---
 const formatHex = (val, width) => {
     const maxVal = (1n << BigInt(width)) - 1n;
@@ -143,49 +832,141 @@ const formatRor = (expr, amount, width) => {
 };
 
 // --- PRESETS DATA ---
+// Sources: Agner Fog instruction tables (agner.org/optimize), uops.info, Intel/AMD/ARM manuals
+// Cycle counts are instruction latencies for register operands (throughput may differ)
 const PRESETS = {
-    'modern': { name: 'Modern x64 (Haswell+)', allowedWidths: [8,16,32,64,128], costs: { shift: 1, rotate: 1, mul: 3, bmi: 3, pshufb: 2, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: true, pshufb: true } },
-    'core2': { name: 'Intel Core 2 / Nehalem', allowedWidths: [8,16,32,64,128], costs: { shift: 1, rotate: 1, mul: 4, bmi: 999, pshufb: 2, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: true } },
-    'pentium4': { name: 'Intel Pentium 4', allowedWidths: [8,16,32,64], costs: { shift: 4, rotate: 4, mul: 10, bmi: 999, pshufb: 999, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
-    'pentium': { name: 'Intel Pentium 1 (P5)', allowedWidths: [8,16,32,64], costs: { shift: 1, rotate: 1, mul: 10, bmi: 999, pshufb: 999, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
-    'i486': { name: 'Intel 486', allowedWidths: [8,16,32], costs: { shift: 3, rotate: 3, mul: 20, bmi: 999, pshufb: 999, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
-    'i386': { name: 'Intel 386', allowedWidths: [8,16,32], costs: { shift: 7, rotate: 7, mul: 40, bmi: 999, pshufb: 999, basic: 2 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
-    'i8086': { name: 'Intel 8086', allowedWidths: [8,16], costs: { shift: 20, rotate: 20, mul: 130, bmi: 999, pshufb: 999, basic: 4 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
-    'athlon': { name: 'AMD Athlon / Duron', allowedWidths: [8,16,32,64], costs: { shift: 1, rotate: 1, mul: 4, bmi: 999, pshufb: 999, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
-    'zen': { name: 'AMD Zen (Ryzen)', allowedWidths: [8,16,32,64,128], costs: { shift: 1, rotate: 1, mul: 3, bmi: 3, pshufb: 1, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: true, pshufb: true } },
-    'atom': { name: 'Intel Atom (In-Order)', allowedWidths: [8,16,32,64], costs: { shift: 1, rotate: 1, mul: 5, bmi: 999, pshufb: 4, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: true } },
-    'arm_m4': { name: 'ARM Cortex M4', allowedWidths: [8,16,32], costs: { shift: 1, rotate: 1, mul: 1, bmi: 999, pshufb: 999, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
-    'arm_a64': { name: 'ARM Cortex A64 (NEON)', allowedWidths: [8,16,32,64,128], costs: { shift: 1, rotate: 1, mul: 3, bmi: 999, pshufb: 1, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: true } },
-    '6502': { name: 'MOS 6502', allowedWidths: [8], costs: { shift: 12, rotate: 12, mul: 500, bmi: 999, pshufb: 999, basic: 4 }, enables: { shift: true, rotate: true, mul: false, bmi: false, pshufb: false } },
-    'custom': { name: 'Custom', allowedWidths: [8,16,32,64,128], costs: { shift: 1, rotate: 1, mul: 4, bmi: 3, pshufb: 2, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: true, pshufb: true } }
+    // Modern x86/x64 - Source: Agner Fog instruction tables, uops.info
+    // SHL/ROR: 1 cycle latency. IMUL r,r: 3 cycles. PEXT/PDEP: 3 cycles. PSHUFB: 1-2 cycles. L1 load: 4-5 cycles
+    [CPU_MODERN]: { name: 'Intel Haswell+ (i5/i7/i9)', allowedWidths: [8,16,32,64,128], costs: { shift: 1, rotate: 1, mul: 3, bmi: 3, pshufb: 2, lut: 4, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: true, pshufb: true } },
+    // AMD Zen1/2: PEXT/PDEP microcoded (~18 cycles) - Source: uops.info, chessprogramming.org/BMI2
+    [CPU_ZEN1_2]: { name: 'AMD Zen1/2 (Ryzen 1000-2000)', allowedWidths: [8,16,32,64,128], costs: { shift: 1, rotate: 1, mul: 3, bmi: 18, pshufb: 1, lut: 4, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: true, pshufb: true } },
+    // AMD Zen3+: Native PEXT/PDEP (3 cycles) - Source: uops.info
+    [CPU_ZEN3]: { name: 'AMD Zen3+ (Ryzen 3000+)', allowedWidths: [8,16,32,64,128], costs: { shift: 1, rotate: 1, mul: 3, bmi: 3, pshufb: 1, lut: 4, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: true, pshufb: true } },
+    // Core 2/Nehalem: IMUL latency 4 cycles. No BMI2. SSSE3 PSHUFB available
+    [CPU_CORE2]: { name: 'Intel Core 2 / Nehalem', allowedWidths: [8,16,32,64,128], costs: { shift: 1, rotate: 1, mul: 4, bmi: 999, pshufb: 2, lut: 4, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: true } },
+    // Intel Atom (Bonnell): In-order. IMUL ~5 cycles. PSHUFB ~4 cycles
+    [CPU_ATOM]: { name: 'Intel Atom (In-Order)', allowedWidths: [8,16,32,64], costs: { shift: 1, rotate: 1, mul: 5, bmi: 999, pshufb: 4, lut: 5, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: true } },
+
+    // Legacy x86 - Source: Intel 80x86 Programmer's Reference, Agner Fog, emulators.com/docs/pentium_1.htm
+    // Pentium 4 NetBurst: NO barrel shifter! SHL/ROR: 4-6 cycles. MUL: 10-16 cycles
+    [CPU_PENTIUM4]: { name: 'Intel Pentium 4', allowedWidths: [8,16,32,64], costs: { shift: 4, rotate: 4, mul: 14, bmi: 999, pshufb: 999, lut: 6, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
+    // Pentium 1 (P5): SHL/ROR: 1 cycle. MUL r32: 10-11 cycles. L1 load: ~3 cycles
+    [CPU_PENTIUM]: { name: 'Intel Pentium 1 (P5)', allowedWidths: [8,16,32,64], costs: { shift: 1, rotate: 1, mul: 11, bmi: 999, pshufb: 999, lut: 5, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
+    // AMD Athlon K7: SHL/ROR: 1 cycle. IMUL r32,r32: 4-5 cycles. Good L1 cache
+    [CPU_ATHLON]: { name: 'AMD Athlon / Duron', allowedWidths: [8,16,32,64], costs: { shift: 1, rotate: 1, mul: 5, bmi: 999, pshufb: 999, lut: 4, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
+    // Intel 486: SHL reg,imm: 2 cycles. SHL reg,CL: 3 cycles. MUL: 13-42 cycles (avg ~18)
+    [CPU_I486]: { name: 'Intel 486', allowedWidths: [8,16,32], costs: { shift: 2, rotate: 2, mul: 18, bmi: 999, pshufb: 999, lut: 4, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
+    // Intel 386: SHL reg,imm: 3 cycles. MUL: 9-38 cycles (avg ~24). No cache on base 386
+    [CPU_I386]: { name: 'Intel 386', allowedWidths: [8,16,32], costs: { shift: 3, rotate: 3, mul: 24, bmi: 999, pshufb: 999, lut: 8, basic: 2 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
+    // Intel 8086: SHL reg,1: 2 cycles. SHL reg,CL: 8+4n cycles. MUL: 70-154 cycles. No cache, slow bus
+    [CPU_I8086]: { name: 'Intel 8086', allowedWidths: [8,16], costs: { shift: 8, rotate: 8, mul: 118, bmi: 999, pshufb: 999, lut: 20, basic: 4 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
+
+    // ARM - Source: ARM Technical Reference Manuals, ARM Architecture Reference Manual
+    // Cortex-A53/A64: SHL/ROR: 1 cycle. MUL: 3-4 cycles. TBL (NEON shuffle): 1-2 cycles. L1: 4 cycles
+    [CPU_ARM_A64]: { name: 'ARM Cortex A64 (NEON)', allowedWidths: [8,16,32,64,128], costs: { shift: 1, rotate: 1, mul: 4, bmi: 999, pshufb: 2, lut: 4, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: true } },
+    // Cortex-M4: Single-cycle multiplier. LSL/ROR: 1 cycle. MUL: 1 cycle. Flash wait states for LUT
+    [CPU_ARM_M4]: { name: 'ARM Cortex M4', allowedWidths: [8,16,32], costs: { shift: 1, rotate: 1, mul: 1, bmi: 999, pshufb: 999, lut: 3, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
+    // Apple M1/M2/M3: ARM64 + NEON. Dual-pipe multiply. TBL: 1 cycle - Source: lemire.me benchmarks
+    [CPU_APPLE_M1]: { name: 'Apple M1/M2/M3', allowedWidths: [8,16,32,64,128], costs: { shift: 1, rotate: 1, mul: 3, bmi: 999, pshufb: 1, lut: 4, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: true } },
+
+    // RISC - Source: RISC-V Bitmanip Extension Specification
+    // RISC-V with B extension: ROL/ROR native. No PDEP/PEXT equivalent
+    [CPU_RISCV]: { name: 'RISC-V (B extension)', allowedWidths: [32,64], costs: { shift: 1, rotate: 1, mul: 3, bmi: 999, pshufb: 999, lut: 4, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
+
+    // Classic Home Computers - Source: MC68000 Programmer's Reference Manual
+    // M68000: ASL/LSL/ROL reg,#imm: 6+2n cycles. MULS/MULU: 70+ cycles
+    [CPU_68000]: { name: 'Motorola 68000 (Amiga/Atari ST)', allowedWidths: [8,16,32], costs: { shift: 6, rotate: 6, mul: 70, bmi: 999, pshufb: 999, lut: 12, basic: 4 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
+    // Z80: RLCA/RRA: 4 T-states. RLC r (CB-prefixed): 8 T-states. No MUL. LD A,(HL): 7 T-states
+    [CPU_Z80]: { name: 'Zilog Z80', allowedWidths: [8,16], costs: { shift: 4, rotate: 4, mul: 999, bmi: 999, pshufb: 999, lut: 11, basic: 4 }, enables: { shift: true, rotate: true, mul: false, bmi: false, pshufb: false } },
+    // 6502: ASL A/ROL A: 2 cycles (shifts only by 1 bit). No MUL. LDA abs,X: 4-5 cycles
+    [CPU_6502]: { name: 'MOS 6502', allowedWidths: [8], costs: { shift: 2, rotate: 2, mul: 999, bmi: 999, pshufb: 999, lut: 5, basic: 2 }, enables: { shift: true, rotate: true, mul: false, bmi: false, pshufb: false } },
+
+    // Classic Consoles - Source: IBM PowerPC 750 User's Manual, Renesas SH-4 Hardware Manual
+    // GameCube/Wii PowerPC 750: rlwinm (rotate+mask in 1 op). MUL: 3 cycles
+    [CPU_GAMECUBE]: { name: 'GameCube/Wii (PowerPC 750)', allowedWidths: [8,16,32], costs: { shift: 1, rotate: 1, mul: 3, bmi: 999, pshufb: 999, lut: 4, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
+    // Dreamcast SH-4: 2-way dual-issue. SHL/ROT: 1 cycle. MUL: 2-4 cycles. 16KB caches
+    [CPU_DREAMCAST]: { name: 'Dreamcast (SH-4)', allowedWidths: [8,16,32], costs: { shift: 1, rotate: 1, mul: 3, bmi: 999, pshufb: 999, lut: 4, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
+    // Xbox 360 Xenon: PowerPC with VMX-128 SIMD. vperm: 1 cycle
+    [CPU_XBOX360]: { name: 'Xbox 360 (Xenon)', allowedWidths: [8,16,32,64,128], costs: { shift: 1, rotate: 1, mul: 3, bmi: 999, pshufb: 1, lut: 4, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: true } },
+
+    // Retro Consoles - Source: n64brew.dev, psxdev.net, psdevwiki.com
+    // PS1 R3000: SLL/SRL: 1 cycle. MULT: ~10-36 cycles (writes HI/LO). 1KB scratchpad D$
+    [CPU_PS1]: { name: 'Sony PlayStation 1 (R3000)', allowedWidths: [8,16,32], costs: { shift: 1, rotate: 1, mul: 20, bmi: 999, pshufb: 999, lut: 5, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
+    // N64 VR4300: SLL/SRL: 1 cycle. MULT: ~8 cycles (improved over R3000). 8KB D$
+    [CPU_N64]: { name: 'Nintendo 64 (VR4300)', allowedWidths: [8,16,32,64], costs: { shift: 1, rotate: 1, mul: 8, bmi: 999, pshufb: 999, lut: 4, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
+    // PS3 Cell SPU: SHL: 2 cycles (even pipe). MPY 16x16: 7 cycles. Local store load: 6 cycles
+    [CPU_PS3]: { name: 'Sony PlayStation 3 (Cell)', allowedWidths: [8,16,32,64,128], costs: { shift: 2, rotate: 2, mul: 7, bmi: 999, pshufb: 2, lut: 6, basic: 2 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: true } },
+
+    // Custom - user-defined values
+    [CPU_CUSTOM]: { name: 'Custom', allowedWidths: [8,16,32,64,128], costs: { shift: 1, rotate: 1, mul: 4, bmi: 3, pshufb: 2, lut: 4, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: true, pshufb: true } }
 };
 
 // --- VISUALIZER ---
-const StepVisualizer = ({ width, state, prevState, sideEffects }) => {
+const StepVisualizer = ({ width, state, prevState, sideEffects, maskedOut }) => {
     return (
         <div className="flex flex-wrap gap-0.5 mt-2 bg-slate-900 p-1.5 rounded border border-slate-900 shadow-inner">
             {Array(width).fill(null).map((_, i) => {
                 const bit = state[i];
                 const oldBit = prevState ? prevState[i] : null;
                 const sideEffect = sideEffects ? sideEffects[i] : null;
+                const masked = maskedOut ? maskedOut[i] : null;
                 let style = {}; let content = "?"; let title = `Bit ${i}: Unsolved`;
-                if (sideEffect) {
-                    // Side-effect: bit was here after operation but masked out
-                    const hue = Math.floor((sideEffect.val * 360) / width);
-                    style = {
-                        backgroundColor: `hsla(${hue}, 85%, 55%, 0.05)`,
-                        borderColor: `hsla(${hue}, 85%, 55%, 0.3)`,
-                        borderStyle: 'dotted',
-                        color: `hsla(${hue}, 85%, 75%, 0.3)`,
-                    };
-                    content = sideEffect.val;
-                    title = `Bit ${i}: Source ${sideEffect.val} (masked out)`;
+                let showCross = false;
+
+                if (masked) {
+                    // Bit was produced by operation but cancelled by mask
+                    if (masked.type === TYPE_COLLISION) {
+                        // Collision: multiple bits landed here - undefined state
+                        style = {
+                            backgroundColor: 'rgba(245, 158, 11, 0.3)',
+                            borderColor: '#f59e0b',
+                            color: '#fbbf24',
+                            fontWeight: 'bold'
+                        };
+                        content = '!';
+                        title = `Bit ${i}: COLLISION from sources ${masked.sources.join(',')} (undefined, cancelled by mask)`;
+                        showCross = true;
+                    } else {
+                        const hue = Math.floor((masked.val * HUE_DIVISOR) / width);
+                        style = {
+                            backgroundColor: `hsla(${hue}, 85%, 55%, 0.3)`,
+                            borderColor: `hsla(${hue}, 85%, 55%, 1.0)`,
+                            color: `hsla(${hue}, 85%, 75%, 1.0)`,
+                            fontWeight: 'bold'
+                        };
+                        content = masked.val;
+                        title = `Bit ${i}: Source ${masked.val} (cancelled by mask)`;
+                        showCross = true;
+                    }
+                } else if (sideEffect) {
+                    // Side-effect: bit would land here but not part of our target
+                    if (sideEffect.type === TYPE_COLLISION) {
+                        // Collision as side effect - undefined and present in output!
+                        style = {
+                            backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                            borderColor: '#ef4444',
+                            borderStyle: 'dotted',
+                            color: '#f87171',
+                        };
+                        content = '!';
+                        title = `Bit ${i}: COLLISION from sources ${sideEffect.sources.join(',')} (undefined state in output!)`;
+                    } else {
+                        const hue = Math.floor((sideEffect.val * HUE_DIVISOR) / width);
+                        style = {
+                            backgroundColor: `hsla(${hue}, 85%, 55%, 0.05)`,
+                            borderColor: `hsla(${hue}, 85%, 55%, 0.3)`,
+                            borderStyle: 'dotted',
+                            color: `hsla(${hue}, 85%, 75%, 0.3)`,
+                        };
+                        content = sideEffect.val;
+                        title = `Bit ${i}: Source ${sideEffect.val} (side effect, not targeted)`;
+                    }
                 } else if (!bit) {
-                    style = { borderColor: '#334155', borderStyle: 'dashed', opacity: 0.2, color: '#475569' };
+                    style = { borderColor: '#475569', borderStyle: 'dashed', backgroundColor: 'rgba(51, 65, 85, 0.3)', color: '#64748b' };
                 } else {
                     const isNew = !oldBit || bit.val !== oldBit.val || bit.type !== oldBit.type;
-                    if (bit.type === 'src') {
-                        const hue = Math.floor((bit.val * 360) / width);
+                    if (bit.type === TYPE_SRC) {
+                        const hue = Math.floor((bit.val * HUE_DIVISOR) / width);
                         const bgAlpha = isNew ? 0.3 : 0.1;
                         const borderAlpha = isNew ? 1.0 : 0.3;
                         const textAlpha = isNew ? 1.0 : 0.4;
@@ -197,8 +978,8 @@ const StepVisualizer = ({ width, state, prevState, sideEffects }) => {
                         };
                         content = bit.val;
                         title = `Bit ${i} <- Source ${bit.val} (${isNew?'New':'Kept'})`;
-                    } else if (bit.type === 'const') {
-                        const isOne = bit.val === 1;
+                    } else if (bit.type === TYPE_CONST) {
+                        const isOne = bit.val === BIT_ONE;
                         style = {
                             backgroundColor: isOne ? (isNew?'#059669':'#064e3b') : (isNew?'#dc2626':'#450a0a'),
                             borderColor: isOne ? '#10b981' : '#f87171',
@@ -209,7 +990,17 @@ const StepVisualizer = ({ width, state, prevState, sideEffects }) => {
                         title = `Bit ${i} = ${bit.val}`;
                     }
                 }
-                return <div key={i} title={title} className="w-3.5 h-4 sm:w-4 sm:h-5 text-[7px] sm:text-[9px] flex items-center justify-center border rounded-[1px] font-mono leading-none select-none transition-all" style={style}>{content}</div>;
+                return (
+                    <div key={i} title={title} className="relative w-3.5 h-4 sm:w-4 sm:h-5 text-[7px] sm:text-[9px] flex items-center justify-center border rounded-[1px] font-mono leading-none select-none transition-all" style={style}>
+                        {content}
+                        {showCross && (
+                            <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 16 16">
+                                <line x1="2" y1="2" x2="14" y2="14" stroke="#ef4444" strokeWidth="2" strokeLinecap="round"/>
+                                <line x1="14" y1="2" x2="2" y2="14" stroke="#ef4444" strokeWidth="2" strokeLinecap="round"/>
+                            </svg>
+                        )}
+                    </div>
+                );
             })}
         </div>
     );
@@ -218,18 +1009,96 @@ const StepVisualizer = ({ width, state, prevState, sideEffects }) => {
 // --- APP ---
 const { useState, useMemo, useEffect, useRef, useCallback } = React;
 
+const loadSavedState = () => {
+    try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (!saved) return null;
+        const data = JSON.parse(saved);
+        // Check expiry
+        const now = Date.now();
+        const expiryMs = STORAGE_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+        if (data.timestamp && (now - data.timestamp) > expiryMs) {
+            localStorage.removeItem(STORAGE_KEY);
+            return null;
+        }
+        return data;
+    } catch (e) {
+        return null;
+    }
+};
+
+const getInitialState = () => {
+    const saved = loadSavedState();
+    const defaultCustom = PRESETS[CPU_CUSTOM];
+    if (saved) {
+        const presetKey = saved.preset || CPU_MODERN;
+        const defaultPreset = PRESETS[presetKey] || PRESETS[CPU_MODERN];
+        // Load saved custom config (always preserved separately)
+        const savedCustomConfig = saved.customConfig ? {
+            ...defaultCustom,
+            costs: { ...defaultCustom.costs, ...saved.customConfig.costs },
+            enables: { ...defaultCustom.enables, ...saved.customConfig.enables }
+        } : defaultCustom;
+        // For custom preset use saved custom config; for others use preset values
+        const activeConfig = presetKey === CPU_CUSTOM ? savedCustomConfig : defaultPreset;
+        return {
+            bitWidth: saved.bitWidth || DEFAULT_BIT_WIDTH,
+            mapping: saved.mapping || Array(saved.bitWidth || DEFAULT_BIT_WIDTH).fill(null).map((_, i) => ({ type: TYPE_SRC, val: i, inv: false })),
+            preset: presetKey,
+            config: activeConfig,
+            customConfig: savedCustomConfig,
+            baseCapabilities: defaultPreset.enables,
+            showHelp: false  // Don't show help if we have saved state
+        };
+    }
+    return {
+        bitWidth: DEFAULT_BIT_WIDTH,
+        mapping: Array(DEFAULT_BIT_WIDTH).fill(null).map((_, i) => ({ type: TYPE_SRC, val: i, inv: false })),
+        preset: CPU_MODERN,
+        config: PRESETS[CPU_MODERN],
+        customConfig: defaultCustom,
+        baseCapabilities: PRESETS[CPU_MODERN].enables,
+        showHelp: true
+    };
+};
+
+const initialState = getInitialState();
+
 const BitPermutationApp = () => {
-  const [bitWidth, setBitWidth] = useState(32);
-  const [mapping, setMapping] = useState(Array(32).fill(null).map((_, i) => ({ type: 'src', val: i, inv: false })));
-  const [activeTool, setActiveTool] = useState('brush');
+  const [bitWidth, setBitWidth] = useState(initialState.bitWidth);
+  const [mapping, setMapping] = useState(initialState.mapping);
+  const [activeTool, setActiveTool] = useState(TOOL_BRUSH);
   const [selectedSource, setSelectedSource] = useState(null);
   const [invertBrush, setInvertBrush] = useState(false);
   const [copied, setCopied] = useState(false);
   const [expandedStrategies, setExpandedStrategies] = useState({});
-  const [showHelp, setShowHelp] = useState(true);
+  const [showHelp, setShowHelp] = useState(initialState.showHelp);
   const [showConfig, setShowConfig] = useState(false);
-  const [preset, setPreset] = useState('modern');
-  const [config, setConfig] = useState(PRESETS['modern']);
+  const [preset, setPreset] = useState(initialState.preset);
+  const [config, setConfig] = useState(initialState.config);
+  const [baseCapabilities, setBaseCapabilities] = useState(initialState.baseCapabilities);
+  const [customConfig, setCustomConfig] = useState(initialState.customConfig);
+
+  // Save state to localStorage
+  useEffect(() => {
+    const saveState = () => {
+        try {
+            const data = {
+                timestamp: Date.now(),
+                bitWidth,
+                mapping,
+                preset,
+                config,
+                baseCapabilities,
+                customConfig
+            };
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        } catch (e) {
+            // Ignore storage errors
+        }
+    };
+    saveState();
+  }, [bitWidth, mapping, preset, config, baseCapabilities, customConfig]);
 
   const containerRef = useRef(null);
   const [lines, setLines] = useState([]);
@@ -243,7 +1112,7 @@ const BitPermutationApp = () => {
       const newLines = [];
 
       mapping.forEach((m, destIdx) => {
-        if (m.type !== 'src') return;
+        if (m.type !== TYPE_SRC) return;
         const srcEl = document.getElementById(`src-btn-${m.val}`);
         const destEl = document.getElementById(`dest-btn-${destIdx}`);
         if (!srcEl || !destEl) return;
@@ -256,7 +1125,7 @@ const BitPermutationApp = () => {
         const x2 = destRect.left + destRect.width / 2 - containerRect.left;
         const y2 = destRect.top - containerRect.top;
 
-        const hue = Math.floor((m.val * 360) / bitWidth);
+        const hue = Math.floor((m.val * HUE_DIVISOR) / bitWidth);
         newLines.push({
           id: `${m.val}-${destIdx}`,
           x1, y1, x2, y2,
@@ -269,9 +1138,15 @@ const BitPermutationApp = () => {
       setLines(newLines);
     };
 
-    updateLines();
+    // Delay initial calculation to ensure DOM is fully laid out
+    const frameId = requestAnimationFrame(() => {
+      requestAnimationFrame(updateLines);
+    });
     window.addEventListener('resize', updateLines);
-    return () => window.removeEventListener('resize', updateLines);
+    return () => {
+      cancelAnimationFrame(frameId);
+      window.removeEventListener('resize', updateLines);
+    };
   }, [mapping, bitWidth]);
 
   const toggleStrategy = (name) => {
@@ -288,54 +1163,64 @@ const BitPermutationApp = () => {
   // --- ACTIONS ---
   const initializeMapping = (width) => {
     const newMap = Array(width).fill(null).map((_, i) => {
-      if (i < mapping.length && mapping[i].type === 'src' && mapping[i].val < width) return mapping[i];
-      return { type: 'src', val: i, inv: false };
+      if (i < mapping.length && mapping[i].type === TYPE_SRC && mapping[i].val < width) return mapping[i];
+      return { type: TYPE_SRC, val: i, inv: false };
     });
-    setMapping(newMap); setBitWidth(width); setSelectedSource(null); setActiveTool('brush'); setExpandedStrategies({});
+    setMapping(newMap); setBitWidth(width); setSelectedSource(null); setActiveTool(TOOL_BRUSH); setExpandedStrategies({});
   };
 
-  const handleSourceClick = (idx) => { setSelectedSource(idx); setActiveTool('brush'); };
+  const handleSourceClick = (idx) => { setSelectedSource(idx); setActiveTool(TOOL_BRUSH); };
 
   const handleDestClick = (destIndex) => {
     const newMapping = [...mapping]; const current = newMapping[destIndex];
-    if (activeTool === 'brush') {
+    if (activeTool === TOOL_BRUSH) {
         if (selectedSource !== null) {
-            if (current.type === 'src' && current.val === selectedSource && current.inv === invertBrush) newMapping[destIndex] = { type: 'empty', val: 0, inv: false };
-            else newMapping[destIndex] = { type: 'src', val: selectedSource, inv: invertBrush };
+            if (current.type === TYPE_SRC && current.val === selectedSource && current.inv === invertBrush) newMapping[destIndex] = { type: TYPE_EMPTY, val: BIT_ZERO, inv: false };
+            else newMapping[destIndex] = { type: TYPE_SRC, val: selectedSource, inv: invertBrush };
         }
     }
-    else if (activeTool === 'set0') newMapping[destIndex] = { type: 'const', val: 0, inv: false };
-    else if (activeTool === 'set1') newMapping[destIndex] = { type: 'const', val: 1, inv: false };
-    else if (activeTool === 'eraser') newMapping[destIndex] = { type: 'empty', val: 0, inv: false };
+    else if (activeTool === TOOL_SET0) {
+        if (current.type === TYPE_CONST && current.val === BIT_ZERO) newMapping[destIndex] = { type: TYPE_EMPTY, val: BIT_ZERO, inv: false };
+        else newMapping[destIndex] = { type: TYPE_CONST, val: BIT_ZERO, inv: false };
+    }
+    else if (activeTool === TOOL_SET1) {
+        if (current.type === TYPE_CONST && current.val === BIT_ONE) newMapping[destIndex] = { type: TYPE_EMPTY, val: BIT_ZERO, inv: false };
+        else newMapping[destIndex] = { type: TYPE_CONST, val: BIT_ONE, inv: false };
+    }
+    else if (activeTool === TOOL_ERASER) newMapping[destIndex] = { type: TYPE_EMPTY, val: BIT_ZERO, inv: false };
     setMapping(newMapping);
   };
 
   const handleBulkAction = (action) => {
       let newMapping = [...mapping];
-      if (action === 'fill_empty_1') newMapping = newMapping.map(m => m.type === 'empty' ? { type: 'const', val: 1, inv: false } : m);
-      else if (action === 'clear_1s') newMapping = newMapping.map(m => (m.type === 'const' && m.val === 1) ? { type: 'empty', val: 0, inv: false } : m);
-      else if (action === 'fill_empty_0') newMapping = newMapping.map(m => m.type === 'empty' ? { type: 'const', val: 0, inv: false } : m);
-      else if (action === 'clear_0s') newMapping = newMapping.map(m => (m.type === 'const' && m.val === 0) ? { type: 'empty', val: 0, inv: false } : m);
-      else if (action === 'clear_routed') newMapping = newMapping.map(m => m.type === 'src' ? { type: 'empty', val: 0, inv: false } : m);
+      if (action === ACTION_FILL_EMPTY_1) newMapping = newMapping.map(m => m.type === TYPE_EMPTY ? { type: TYPE_CONST, val: BIT_ONE, inv: false } : m);
+      else if (action === ACTION_CLEAR_1S) newMapping = newMapping.map(m => (m.type === TYPE_CONST && m.val === BIT_ONE) ? { type: TYPE_EMPTY, val: BIT_ZERO, inv: false } : m);
+      else if (action === ACTION_FILL_EMPTY_0) newMapping = newMapping.map(m => m.type === TYPE_EMPTY ? { type: TYPE_CONST, val: BIT_ZERO, inv: false } : m);
+      else if (action === ACTION_CLEAR_0S) newMapping = newMapping.map(m => (m.type === TYPE_CONST && m.val === BIT_ZERO) ? { type: TYPE_EMPTY, val: BIT_ZERO, inv: false } : m);
+      else if (action === ACTION_CLEAR_ROUTED) newMapping = newMapping.map(m => m.type === TYPE_SRC ? { type: TYPE_EMPTY, val: BIT_ZERO, inv: false } : m);
       setMapping(newMapping);
   };
 
   const handleQuickAction = (type) => {
     let newMap = [...mapping];
     switch (type) {
-      case 'identity': newMap = newMap.map((_, i) => ({ type: 'src', val: i, inv: false })); break;
-      case 'reverse': newMap = newMap.map((_, i) => ({ type: 'src', val: bitWidth - 1 - i, inv: false })); break;
-      case 'swap_halves': newMap = newMap.map((_, i) => ({ type: 'src', val: (i < bitWidth/2 ? i + bitWidth/2 : i - bitWidth/2), inv: false })); break;
-      case 'set_all_0': newMap = newMap.map(() => ({ type: 'const', val: 0, inv: false })); break;
-      case 'clear': newMap = newMap.map(() => ({ type: 'empty', val: 0, inv: false })); break;
+      case PATTERN_IDENTITY: newMap = newMap.map((_, i) => ({ type: TYPE_SRC, val: i, inv: false })); break;
+      case PATTERN_REVERSE: newMap = newMap.map((_, i) => ({ type: TYPE_SRC, val: bitWidth - 1 - i, inv: false })); break;
+      case PATTERN_SWAP_HALVES: newMap = newMap.map((_, i) => ({ type: TYPE_SRC, val: (i < bitWidth/2 ? i + bitWidth/2 : i - bitWidth/2), inv: false })); break;
+      case PATTERN_SET_ALL_0: newMap = newMap.map(() => ({ type: TYPE_CONST, val: BIT_ZERO, inv: false })); break;
+      case PATTERN_CLEAR: newMap = newMap.map(() => ({ type: TYPE_EMPTY, val: BIT_ZERO, inv: false })); break;
     }
     setMapping(newMap);
   };
 
   const handlePresetChange = (newPreset) => {
       setPreset(newPreset);
-      const newConfig = JSON.parse(JSON.stringify(PRESETS[newPreset]));
+      // For custom preset, restore saved custom config; for others use preset values
+      const newConfig = newPreset === CPU_CUSTOM
+          ? customConfig
+          : JSON.parse(JSON.stringify(PRESETS[newPreset]));
       setConfig(newConfig);
+      setBaseCapabilities({ ...PRESETS[newPreset].enables });
       if (!newConfig.allowedWidths.includes(bitWidth)) {
           const valid = newConfig.allowedWidths;
           initializeMapping(valid[valid.length - 1]);
@@ -343,10 +1228,18 @@ const BitPermutationApp = () => {
   };
 
   const handleConfigChange = (key, field, value) => {
-      if (preset !== 'custom') handlePresetChange('custom');
+      if (field === 'cost' && preset !== CPU_CUSTOM) handlePresetChange(CPU_CUSTOM);
       setConfig(prev => {
-          const next = { ...prev };
-          if (field === 'enabled') next.enables[key] = value; else next.costs[key] = parseInt(value) || 0;
+          const next = { ...prev, enables: { ...prev.enables }, costs: { ...prev.costs } };
+          if (field === 'enabled') {
+              // Only allow enabling if base capability supports it
+              if (value && !baseCapabilities[key]) return prev;
+              next.enables[key] = value;
+          } else {
+              next.costs[key] = parseInt(value) || 0;
+          }
+          // Also update customConfig when on custom preset
+          if (preset === CPU_CUSTOM) setCustomConfig(next);
           return next;
       });
   };
@@ -364,18 +1257,40 @@ const BitPermutationApp = () => {
 
     // Build route map: routeMap[dest] = source bit index, or -1 if not routed
     const routeMap = mapping.map((m, destIdx) => {
-      if (m.type === 'const') {
-        if (m.val === 1) logicOr |= (1n << BigInt(destIdx));
+      if (m.type === TYPE_CONST) {
+        if (m.val === BIT_ONE) logicOr |= (1n << BigInt(destIdx));
         else logicAnd &= ~(1n << BigInt(destIdx));
         return -1;
       }
-      if (m.type === 'empty') return -1;
-      if (m.type === 'src') {
+      if (m.type === TYPE_EMPTY) return -1;
+      if (m.type === TYPE_SRC) {
         if (m.inv) logicXor |= (1n << BigInt(destIdx));
         return m.val;
       }
       return -1;
     });
+
+    // Generate input/output comments for code
+    const padNum = (n) => n.toString().padStart(2, '0');
+
+    // Input comment: which source bits are used (from MSB to LSB)
+    const usedSources = new Set();
+    routeMap.forEach(src => { if (src !== -1) usedSources.add(src); });
+    const inputParts = [];
+    for (let i = w - 1; i >= 0; --i)
+      inputParts.push(usedSources.has(i) ? padNum(i) : 'NC');
+    const inputComment = `// Input:  |${inputParts.join('|')}|`;
+
+    // Output comment: what each destination bit receives (from MSB to LSB)
+    const outputParts = [];
+    for (let i = w - 1; i >= 0; --i) {
+      const m = mapping[i];
+      if (m.type === TYPE_EMPTY) outputParts.push('NC');
+      else if (m.type === TYPE_CONST) outputParts.push(m.val === BIT_ONE ? '=1' : '=0');
+      else if (m.type === TYPE_SRC) outputParts.push(padNum(m.val));
+      else outputParts.push('??');
+    }
+    const outputComment = `// Output: |${outputParts.join('|')}|`;
 
     // Calculate masks
     let routedMask = 0n;
@@ -392,15 +1307,25 @@ const BitPermutationApp = () => {
     let allSourcesMask = 0n;
     activeSourceBits.forEach(s => allSourcesMask |= (1n << BigInt(s)));
 
+    // Compute "safe collision" mask - positions where undefined state from collisions is OK
+    // These are: don't care positions AND forced 0/1 positions (which get overwritten at the end)
+    let safeCollisionMask = 0n;
+    mapping.forEach((m, d) => {
+        if (m.type === TYPE_EMPTY || m.type === TYPE_CONST) {
+            safeCollisionMask |= (1n << BigInt(d));
+        }
+    });
+
     // --- GREEDY COMPOSITE SOLVER ---
     let remainingMask = routedMask;
+    let alreadyPlacedMask = 0n;  // Track bits we've already placed
     let compositeParts = [];
     let compositeCycles = 0;
     let steps = [];
     let accumulatedState = new Array(w).fill(null);
     let loopCount = 0;
 
-    while (remainingMask > 0n && loopCount < 64) {
+    while (remainingMask > 0n && loopCount < MAX_SOLVER_ITERATIONS) {
         let prevAccumulatedState = [...accumulatedState];
         ++loopCount;
 
@@ -451,20 +1376,34 @@ const BitPermutationApp = () => {
         // Find best multiplication
         let bestMul = { score: -Infinity, shift: 0, mul: 0n, mask: 0n, count: 0 };
         if (w <= 64 && enables.mul) {
+            // Helper: compute which positions are at risk from collisions and carry propagation
+            // Collisions (multiple bits landing at same position) create undefined state due to addition
+            // Carry from collisions propagates upward until it hits a position with no bits landing
+            const computeCarryRisk = (landingCounts, maxPos) => {
+                let carryRisk = new Set();
+                let collisionPositions = new Set();
+                for (let pos = 0; pos < maxPos; ++pos) {
+                    if ((landingCounts[pos] || 0) > 1) {
+                        collisionPositions.add(pos);
+                        // Collision at pos: carry propagates upward
+                        for (let p = pos + 1; p < maxPos; ++p) {
+                            carryRisk.add(p);
+                            // Carry stops when it hits a position with no bits landing
+                            // (0 + carry = 1, no further carry)
+                            if ((landingCounts[p] || 0) === 0) break;
+                        }
+                    }
+                }
+                return { carryRisk, collisionPositions };
+            };
+
             // Right-shift then multiply: (x >> S) * M
-            // For dest d from source s: bit s shifted right by S, then multiplied
-            // The source bit s ends up at positions s-S+k for each set bit k in M
-            // So if we want bit s at position d: d = s - S + k, so k = d - s + S
             for (let S = 0; S < w; ++S) {
                 let candidateK = new Map(); // k -> list of {d, s}
 
                 for (let d = 0; d < w; ++d) {
                     if (!((remainingMask >> BigInt(d)) & 1n)) continue;
                     const s = routeMap[d];
-                    // For right-shift multiply: (x >> S) * M
-                    // Bit s after >> S is at position s-S (if s >= S)
-                    // Multiplying by M with bit k set: position s-S goes to s-S+k
-                    // We want s-S+k = d, so k = d - (s - S) = d - s + S
                     const k = d - s + S;
                     if (k >= 0 && k < w && s >= S) {
                         if (!candidateK.has(k)) candidateK.set(k, []);
@@ -474,35 +1413,31 @@ const BitPermutationApp = () => {
 
                 if (candidateK.size === 0) continue;
 
-                // Build multiplier from all candidate k values
                 let M = 0n;
                 candidateK.forEach((list, k) => M |= (1n << BigInt(k)));
 
-                // Verify each target: check that other source bits don't interfere
+                // Compute landing counts for all positions
+                // IMPORTANT: ALL input bits from S to w-1 enter the multiplication, not just allSourcesMask!
+                // NC bits in the input register also participate and can cause collisions.
+                const landingCounts = {};
+                for (let srcBit = S; srcBit < w; ++srcBit) {
+                    const basePos = srcBit - S;
+                    for (const [mk, _] of candidateK) {
+                        const landPos = basePos + mk;
+                        if (landPos < w) {
+                            landingCounts[landPos] = (landingCounts[landPos] || 0) + 1;
+                        }
+                    }
+                }
+
+                const { carryRisk, collisionPositions } = computeCarryRisk(landingCounts, w);
+
+                // Valid targets: positions where exactly one bit lands and no carry affects it
+                // Collisions at OTHER positions don't matter - they get masked out by post-mask
                 let validTargetsMask = 0n;
                 for (const [k, targets] of candidateK) {
                     for (const {d, s} of targets) {
-                        // Simulate multiplication without source bit s
-                        const shiftedWithoutS = (allSourcesMask & ~(1n << BigInt(s))) >> BigInt(S);
-                        let interference = false;
-
-                        // Check if any other bit lands at position d
-                        for (let otherS = 0; otherS < w; ++otherS) {
-                            if (otherS === s) continue;
-                            if (!((allSourcesMask >> BigInt(otherS)) & 1n)) continue;
-                            if (otherS < S) continue; // Would be shifted out
-                            const otherPos = otherS - S;
-                            // After multiply by M, this bit goes to otherPos + each k in M
-                            for (const [mk, _] of candidateK) {
-                                if (otherPos + mk === d) {
-                                    interference = true;
-                                    break;
-                                }
-                            }
-                            if (interference) break;
-                        }
-
-                        if (!interference) {
+                        if ((landingCounts[d] || 0) === 1 && !carryRisk.has(d)) {
                             validTargetsMask |= (1n << BigInt(d));
                         }
                     }
@@ -517,14 +1452,12 @@ const BitPermutationApp = () => {
                     const score = count * 10 - cost;
 
                     if (score > bestMul.score) {
-                        bestMul = { score, count, type: 'mul_r', shift: S, mul: M, mask: validTargetsMask, cost };
+                        bestMul = { score, count, type: OP_MUL_R, shift: S, mul: M, mask: validTargetsMask, cost };
                     }
                 }
             }
 
             // Left-multiply then shift: (x * M) >> S
-            // Bit s multiplied by M goes to s+k for each set bit k in M, then shifted right by S
-            // Final position: s + k - S = d, so k = d + S - s
             for (let S = 0; S < w; ++S) {
                 let candidateK = new Map();
 
@@ -532,12 +1465,9 @@ const BitPermutationApp = () => {
                     if (!((remainingMask >> BigInt(d)) & 1n)) continue;
                     const s = routeMap[d];
                     const k = d + S - s;
-                    if (k >= 0 && k < w) {
-                        // Check if s + k < 2*w (doesn't overflow before shift)
-                        if (s + k < 2 * w) {
-                            if (!candidateK.has(k)) candidateK.set(k, []);
-                            candidateK.get(k).push({d, s});
-                        }
+                    if (k >= 0 && k < w && s + k < 2 * w) {
+                        if (!candidateK.has(k)) candidateK.set(k, []);
+                        candidateK.get(k).push({d, s});
                     }
                 }
 
@@ -546,27 +1476,33 @@ const BitPermutationApp = () => {
                 let M = 0n;
                 candidateK.forEach((list, k) => M |= (1n << BigInt(k)));
 
+                // Compute landing counts for positions BEFORE the shift
+                // IMPORTANT: ALL input bits 0 to w-1 enter the multiplication, not just allSourcesMask!
+                // NC bits in the input register also participate and can cause collisions.
+                const preLandingCounts = {};
+                for (let srcBit = 0; srcBit < w; ++srcBit) {
+                    for (const [mk, _] of candidateK) {
+                        const preShiftPos = srcBit + mk;
+                        if (preShiftPos < 2 * w) {
+                            preLandingCounts[preShiftPos] = (preLandingCounts[preShiftPos] || 0) + 1;
+                        }
+                    }
+                }
+
+                // Compute carry risk in pre-shift space
+                const { carryRisk: preCarryRisk, collisionPositions: preCollisionPositions } = computeCarryRisk(preLandingCounts, 2 * w);
+
+                // Valid targets: positions where exactly one bit lands (in pre-shift space) and no carry affects it
+                // Collisions at OTHER positions don't matter - they get masked out by post-mask
                 let validTargetsMask = 0n;
                 for (const [k, targets] of candidateK) {
                     for (const {d, s} of targets) {
-                        let interference = false;
-
-                        for (let otherS = 0; otherS < w; ++otherS) {
-                            if (otherS === s) continue;
-                            if (!((allSourcesMask >> BigInt(otherS)) & 1n)) continue;
-
-                            for (const [mk, _] of candidateK) {
-                                const preShiftPos = otherS + mk;
-                                if (preShiftPos >= S && preShiftPos - S === d && preShiftPos < 2 * w) {
-                                    interference = true;
-                                    break;
-                                }
+                        const preShiftPos = s + k;
+                        const postShiftPos = preShiftPos - S;
+                        if (postShiftPos === d && postShiftPos >= 0 && postShiftPos < w) {
+                            if ((preLandingCounts[preShiftPos] || 0) === 1 && !preCarryRisk.has(preShiftPos)) {
+                                validTargetsMask |= (1n << BigInt(d));
                             }
-                            if (interference) break;
-                        }
-
-                        if (!interference) {
-                            validTargetsMask |= (1n << BigInt(d));
                         }
                     }
                 }
@@ -580,129 +1516,217 @@ const BitPermutationApp = () => {
                     const score = count * 10 - cost;
 
                     if (score > bestMul.score) {
-                        bestMul = { score, count, type: 'mul_l', shift: S, mul: M, mask: validTargetsMask, cost };
+                        bestMul = { score, count, type: OP_MUL_L, shift: S, mul: M, mask: validTargetsMask, cost };
                     }
                 }
+            }
+        }
+
+        // Find best BMI2 operation (PEXT/PDEP)
+        let bestBmi = { score: -Infinity, mask: 0n, srcMask: 0n, count: 0, cost: 0 };
+        if (enables.bmi && costs.bmi < 999) {
+            // Check if remaining bits can use PEXT/PDEP (no duplicate sources)
+            const srcCounts = {};
+            let canUseBmi = true;
+            let srcMask = 0n;
+            let destMask = 0n;
+
+            for (let d = 0; d < w; ++d) {
+                if (!((remainingMask >> BigInt(d)) & 1n)) continue;
+                const src = routeMap[d];
+                if (src === -1) continue;
+
+                srcCounts[src] = (srcCounts[src] || 0) + 1;
+                if (srcCounts[src] > 1) {
+                    canUseBmi = false;
+                    break;
+                }
+                srcMask |= (1n << BigInt(src));
+                destMask |= (1n << BigInt(d));
+            }
+
+            if (canUseBmi && destMask !== 0n) {
+                let count = 0;
+                let t = destMask;
+                while (t > 0n) { if (t & 1n) ++count; t >>= 1n; }
+                const cost = costs.bmi * 2; // PEXT + PDEP
+                const score = count * 10 - cost;
+                bestBmi = { score, count, mask: destMask, srcMask, cost };
+            }
+        }
+
+        // Find best PSHUFB operation
+        let bestPshufb = { score: -Infinity, mask: 0n, count: 0, cost: 0 };
+        if (enables.pshufb && costs.pshufb < 999 && w >= 64 && (w % 8 === 0)) {
+            const byteWidth = w / 8;
+            let validBytes = 0n;
+            let totalBits = 0;
+
+            for (let byte = 0; byte < byteWidth; ++byte) {
+                const destStart = byte * 8;
+                let srcByte = -1;
+                let byteValid = true;
+
+                for (let bit = 0; bit < 8; ++bit) {
+                    const d = destStart + bit;
+                    if (!((remainingMask >> BigInt(d)) & 1n)) continue;
+
+                    const m = mapping[d];
+                    if (!m || m.type !== TYPE_SRC || m.inv) { byteValid = false; break; }
+
+                    const expectedSrcByte = Math.floor(m.val / 8);
+                    const expectedBitInByte = m.val % 8;
+
+                    if (expectedBitInByte !== bit) { byteValid = false; break; }
+                    if (srcByte === -1) srcByte = expectedSrcByte;
+                    else if (srcByte !== expectedSrcByte) { byteValid = false; break; }
+                }
+
+                if (byteValid && srcByte !== -1) {
+                    for (let bit = 0; bit < 8; ++bit) {
+                        const d = destStart + bit;
+                        if ((remainingMask >> BigInt(d)) & 1n) {
+                            validBytes |= (1n << BigInt(d));
+                            ++totalBits;
+                        }
+                    }
+                }
+            }
+
+            if (validBytes !== 0n) {
+                const cost = costs.pshufb;
+                const score = totalBits * 10 - cost;
+                bestPshufb = { score, count: totalBits, mask: validBytes, cost };
             }
         }
 
         // Choose best operation
         let chosen = null;
-        if (bestMul.count > 0 && bestMul.score > bestDelta.score) {
-            chosen = { ...bestMul };
-        } else if (bestDelta.count > 0) {
-            chosen = { type: 'delta', ...bestDelta };
-        } else {
-            break;
-        }
+        const candidates = [
+            { op: bestBmi.count > 0 ? { type: 'bmi', ...bestBmi } : null, score: bestBmi.score },
+            { op: bestPshufb.count > 0 ? { type: 'pshufb', ...bestPshufb } : null, score: bestPshufb.score },
+            { op: bestMul.count > 0 ? { ...bestMul } : null, score: bestMul.score },
+            { op: bestDelta.count > 0 ? { type: OP_DELTA, ...bestDelta } : null, score: bestDelta.score }
+        ].filter(c => c.op !== null);
+
+        if (candidates.length === 0) break;
+        chosen = candidates.reduce((best, c) => c.score > best.score ? c : best).op;
 
         // Generate code for chosen operation
         let blockCode = "";
-        const hexMask = formatHex(chosen.mask, w);
         let desc = "";
         let sideEffects = new Array(w).fill(null);
+
+        // Compute source mask - the input bit positions we need for this operation
+        let sourceMask = 0n;
+        for (let d = 0; d < w; ++d) {
+            if ((chosen.mask >> BigInt(d)) & 1n) {
+                const src = routeMap[d];
+                sourceMask |= (1n << BigInt(src));
+            }
+        }
+        const hexSourceMask = formatHex(sourceMask, w);
+        const hexTargetMask = formatHex(chosen.mask, w);
 
         // Update accumulated state
         for(let d = 0; d < w; ++d) {
             if ((chosen.mask >> BigInt(d)) & 1n) {
-                accumulatedState[d] = { type: 'src', val: routeMap[d] };
-            }
-        }
-
-        // Calculate side effects - bits that would be placed but are masked out
-        if (chosen.type === 'delta') {
-            const s = chosen.shift;
-            // For each source bit, calculate where it would land after shift/rotate
-            for (let srcBit = 0; srcBit < w; ++srcBit) {
-                if (!((allSourcesMask >> BigInt(srcBit)) & 1n)) continue;
-                let destPos;
-                if (chosen.noneWrap) {
-                    destPos = srcBit + s;
-                    if (destPos >= w) continue; // Shifted out
-                } else if (chosen.allWrap) {
-                    destPos = srcBit - (w - s);
-                    if (destPos < 0) continue;
-                } else {
-                    destPos = (srcBit + s) % w;
-                }
-                // If this position is not in our chosen mask and not already solved
-                if (!((chosen.mask >> BigInt(destPos)) & 1n) && !accumulatedState[destPos]) {
-                    sideEffects[destPos] = { type: 'src', val: srcBit };
-                }
-            }
-        } else {
-            // Multiplication side effects
-            for (let srcBit = 0; srcBit < w; ++srcBit) {
-                if (!((allSourcesMask >> BigInt(srcBit)) & 1n)) continue;
-                // Calculate where each source bit lands after multiply
-                for (let k = 0; k < w; ++k) {
-                    if (!((chosen.mul >> BigInt(k)) & 1n)) continue;
-                    let destPos;
-                    if (chosen.type === 'mul_r') {
-                        if (srcBit < chosen.shift) continue;
-                        destPos = (srcBit - chosen.shift + k);
-                    } else {
-                        destPos = (srcBit + k - chosen.shift);
-                    }
-                    if (destPos >= 0 && destPos < w) {
-                        if (!((chosen.mask >> BigInt(destPos)) & 1n) && !accumulatedState[destPos]) {
-                            sideEffects[destPos] = { type: 'src', val: srcBit };
-                        }
-                    }
-                }
+                accumulatedState[d] = { type: TYPE_SRC, val: routeMap[d] };
             }
         }
 
         // Check if mask is needed
-        const otherRouted = routedMask & ~chosen.mask;
+        // We need a mask if the raw operation result would hit:
+        // 1. Other bits we still need to route (otherRouted)
+        // 2. Bits we've already placed (alreadyPlacedMask)
+        const otherRouted = remainingMask & ~chosen.mask;
+        const protectedBits = otherRouted | alreadyPlacedMask;
         let needsMask = true;
 
-        if (chosen.type === 'delta') {
+        if (chosen.type === OP_DELTA) {
             const s = chosen.shift;
             let allWrap = chosen.allWrap;
             let noneWrap = chosen.noneWrap;
 
+            // Compute where ALL input bits would land (not just allSourcesMask!)
+            // The input register x contains ALL bits, including unused ones.
+            // We need to check if ANY input bit (used or not) would land on protected positions.
             let rawRes = 0n;
-            if (noneWrap) {
-                rawRes = (allSourcesMask << BigInt(s)) & fullMask;
-            } else if (allWrap) {
-                rawRes = allSourcesMask >> BigInt(w - s);
-            } else {
-                const l = (allSourcesMask << BigInt(s)) & fullMask;
-                const r = allSourcesMask >> BigInt(w - s);
-                rawRes = l | r;
+            for (let srcBit = 0; srcBit < w; ++srcBit) {
+                // Calculate destination under the actual operation type
+                let destPos;
+                if (noneWrap) {
+                    destPos = srcBit + s;
+                    if (destPos >= w) continue; // Shifted out
+                } else if (allWrap) {
+                    destPos = srcBit - (w - s);
+                    if (destPos < 0) continue; // Shifted out
+                } else {
+                    destPos = (srcBit + s) % w; // Rotate
+                }
+                rawRes |= (1n << BigInt(destPos));
             }
-            if ((rawRes & otherRouted) === 0n) needsMask = false;
+            // Only skip mask if raw result doesn't hit any protected bits
+            if ((rawRes & protectedBits) === 0n) needsMask = false;
 
             if (s === 0) {
-                blockCode = needsMask ? `(x & ${hexMask})` : `x`;
+                blockCode = needsMask ? `(x & ${hexSourceMask})` : `x`;
                 desc = `Pass through ${chosen.count} bits.`;
                 compositeCycles += costs.basic;
             } else {
                 if (noneWrap) {
-                    const core = needsMask ? `(x & ${hexMask})` : `x`;
+                    const core = needsMask ? `(x & ${hexSourceMask})` : `x`;
                     blockCode = `(${core} << ${s})`;
                     desc = `Left shift by ${s}.`;
                     compositeCycles += costs.shift;
                 } else if (allWrap) {
-                    const core = needsMask ? `(x & ${hexMask})` : `x`;
+                    const core = needsMask ? `(x & ${hexSourceMask})` : `x`;
                     blockCode = `(${core} >> ${w - s})`;
                     desc = `Right shift by ${w - s}.`;
                     compositeCycles += costs.shift;
                 } else {
-                    const core = needsMask ? `(x & ${hexMask})` : `x`;
+                    const core = needsMask ? `(x & ${hexSourceMask})` : `x`;
                     blockCode = formatRol(core, s, w);
                     desc = `Rotate left by ${s}.`;
                     compositeCycles += enables.rotate ? costs.rotate : (costs.shift * 2 + costs.basic);
                 }
                 if (needsMask) compositeCycles += costs.basic;
             }
+        } else if (chosen.type === 'bmi') {
+            // BMI2 PEXT/PDEP
+            const hexSrcMask = formatHex(chosen.srcMask, w);
+            blockCode = `pdep(pext(x, ${hexSrcMask}), ${hexTargetMask})`;
+            desc = `PEXT/PDEP. Routes ${chosen.count} bits.`;
+            needsMask = false; // PDEP places bits exactly
+            compositeCycles += chosen.cost;
+        } else if (chosen.type === 'pshufb') {
+            // PSHUFB byte shuffle
+            const byteWidth = w / 8;
+            let shuffleMask = [];
+            for (let byte = 0; byte < byteWidth; ++byte) {
+                const destStart = byte * 8;
+                if ((chosen.mask >> BigInt(destStart)) & 1n) {
+                    const m = mapping[destStart];
+                    if (m && m.type === TYPE_SRC) {
+                        shuffleMask.push(Math.floor(m.val / 8));
+                    } else {
+                        shuffleMask.push(0x80);
+                    }
+                } else {
+                    shuffleMask.push(0x80);
+                }
+            }
+            const shuffleHex = shuffleMask.map(b => b.toString(16).padStart(2, '0')).join('');
+            blockCode = `pshufb(x, 0x${shuffleHex})`;
+            desc = `PSHUFB. Routes ${chosen.count} bits (${chosen.count / 8} bytes).`;
+            needsMask = false; // PSHUFB places bytes exactly
+            compositeCycles += chosen.cost;
         } else {
-            // Multiplication
+            // Multiplication (OP_MUL_L or OP_MUL_R)
             const hexM = formatHex(chosen.mul, w);
             let core;
 
-            if (chosen.type === 'mul_r') {
+            if (chosen.type === OP_MUL_R) {
                 if (chosen.shift === 0) {
                     core = `(x * ${hexM})`;
                 } else {
@@ -717,17 +1741,114 @@ const BitPermutationApp = () => {
             }
 
             // Check if masking is needed
+            // IMPORTANT: ALL input bits enter multiplication, not just allSourcesMask!
             let rawRes = 0n;
-            if (chosen.type === 'mul_r') {
-                rawRes = ((allSourcesMask >> BigInt(chosen.shift)) * chosen.mul) & fullMask;
+            if (chosen.type === OP_MUL_R) {
+                // Bits from shift to w-1 enter: (fullMask >> shift) gives us those bits
+                rawRes = ((fullMask >> BigInt(chosen.shift)) * chosen.mul) & fullMask;
             } else {
-                rawRes = ((allSourcesMask * chosen.mul) >> BigInt(chosen.shift)) & fullMask;
+                // All bits 0 to w-1 enter
+                rawRes = ((fullMask * chosen.mul) >> BigInt(chosen.shift)) & fullMask;
             }
-            if ((rawRes & otherRouted) === 0n) needsMask = false;
+            // Only skip mask if raw result doesn't hit any protected bits
+            if ((rawRes & protectedBits) === 0n) needsMask = false;
 
-            blockCode = needsMask ? `(${core} & ${hexMask})` : core;
+            blockCode = needsMask ? `(${core} & ${hexTargetMask})` : core;
             compositeCycles += chosen.cost;
-            desc = `Multiply ${chosen.type === 'mul_r' ? '(right)' : '(left)'}. Routes ${chosen.count} bits.`;
+            desc = `Multiply ${chosen.type === OP_MUL_R ? '(right)' : '(left)'}. Routes ${chosen.count} bits.`;
+        }
+
+        // Calculate side effects and masked-out bits based on the operation's mental model:
+        // 1. Prefiltering: determines which input bits enter the operation
+        // 2. Operation: moves bits to new positions
+        // 3. Postfiltering: determines which output bits are kept
+        let maskedOut = new Array(w).fill(null);
+
+        if (chosen.type === OP_DELTA) {
+            // For shifts/rotates: visualize bits going through the operation
+            // If needsMask: only sourceMask bits enter (pre-masked input)
+            // If !needsMask: all input bits (0 to w-1) could enter
+            const s = chosen.shift;
+            const bitsEntering = needsMask ? sourceMask : fullMask;
+
+            for (let srcBit = 0; srcBit < w; ++srcBit) {
+                if (!((bitsEntering >> BigInt(srcBit)) & 1n)) continue;
+                let destPos;
+                if (chosen.noneWrap) {
+                    destPos = srcBit + s;
+                    if (destPos >= w) continue; // Shifted out
+                } else if (chosen.allWrap) {
+                    destPos = srcBit - (w - s);
+                    if (destPos < 0) continue; // Shifted out
+                } else {
+                    destPos = (srcBit + s) % w; // Rotate
+                }
+                // If not in our intended targets and not already solved
+                if (!((chosen.mask >> BigInt(destPos)) & 1n) && !accumulatedState[destPos]) {
+                    // When pre-masked, nothing extra lands here (sourceMask is exact)
+                    // When not masked, other input bits are side effects
+                    if (!needsMask) {
+                        sideEffects[destPos] = { type: TYPE_SRC, val: srcBit };
+                    }
+                }
+            }
+        } else if (chosen.type === 'bmi' || chosen.type === 'pshufb') {
+            // BMI2 and PSHUFB place bits exactly where specified - no side effects
+            // Nothing to do here
+        } else {
+            // For multiplication: mask is POST-operation
+            // ALL input bits enter the multiply (not just allSourcesMask!)
+            // For mul_r: bits from shift to w-1 (lower bits shifted out)
+            // For mul_l: all bits 0 to w-1
+            // Track landing counts to detect collisions
+            const landingCounts = {};
+            const landingSources = {};
+            const startBit = (chosen.type === OP_MUL_R) ? chosen.shift : BIT_ZERO;
+
+            for (let srcBit = startBit; srcBit < w; ++srcBit) {
+                // Each set bit in multiplier spreads the source bit
+                for (let k = 0; k < w; ++k) {
+                    if (!((chosen.mul >> BigInt(k)) & 1n)) continue;
+                    let destPos;
+                    if (chosen.type === OP_MUL_R) {
+                        destPos = srcBit - chosen.shift + k;
+                    } else {
+                        destPos = srcBit + k - chosen.shift;
+                    }
+                    if (destPos < 0 || destPos >= w) continue;
+
+                    landingCounts[destPos] = (landingCounts[destPos] || 0) + 1;
+                    if (!landingSources[destPos]) landingSources[destPos] = [];
+                    landingSources[destPos].push(srcBit);
+                }
+            }
+
+            // Classify each landing position
+            for (const [destPos, count] of Object.entries(landingCounts)) {
+                const d = parseInt(destPos);
+                const sources = landingSources[d];
+                const inMask = (chosen.mask >> BigInt(d)) & 1n;
+                const alreadySolved = accumulatedState[d];
+
+                if (count > 1) {
+                    // Collision: multiple bits land here - undefined state
+                    // Show as collision (will be masked out or in safe position)
+                    if (!inMask && !alreadySolved) {
+                        if (needsMask) {
+                            maskedOut[d] = { type: TYPE_COLLISION, sources: sources };
+                        } else {
+                            sideEffects[d] = { type: TYPE_COLLISION, sources: sources };
+                        }
+                    }
+                } else if (!inMask && !alreadySolved) {
+                    // Single bit landing, not our target
+                    if (needsMask) {
+                        maskedOut[d] = { type: TYPE_SRC, val: sources[0] };
+                    } else {
+                        sideEffects[d] = { type: TYPE_SRC, val: sources[0] };
+                    }
+                }
+            }
         }
 
         compositeParts.push(`temp |= ${blockCode};`);
@@ -737,22 +1858,24 @@ const BitPermutationApp = () => {
             code: `temp |= ${blockCode};`,
             state: [...accumulatedState],
             prevState: [...prevAccumulatedState],
-            sideEffects: sideEffects
+            sideEffects: sideEffects,
+            maskedOut: maskedOut
         });
         remainingMask &= ~chosen.mask;
+        alreadyPlacedMask |= chosen.mask;  // Track that these bits are now placed
     }
 
     // Generate final code
     let compositeCode = "";
     if (compositeParts.length > 0) {
-        compositeCode = `uint${w}_t temp = 0;\n` + compositeParts.join("\n") + "\n";
+        compositeCode = `${inputComment}\nuint${w}_t temp = 0;\n` + compositeParts.join("\n") + "\n";
         let resExpr = "temp";
         let logicCycles = 0;
         let prevAccumulatedState = [...accumulatedState];
 
         // Handle forced 0s
         let forceClearMask = 0n;
-        mapping.forEach((m, i) => { if (m.type === 'const' && m.val === 0) forceClearMask |= (1n << BigInt(i)); });
+        mapping.forEach((m, i) => { if (m.type === TYPE_CONST && m.val === BIT_ZERO) forceClearMask |= (1n << BigInt(i)); });
         if (forceClearMask > 0n) {
             const m = fullMask ^ forceClearMask;
             resExpr = `(${resExpr} & ${formatHex(m, w)})`;
@@ -768,13 +1891,13 @@ const BitPermutationApp = () => {
 
         // Handle forced 1s
         let forceSetMask = 0n;
-        mapping.forEach((m, i) => { if (m.type === 'const' && m.val === 1) forceSetMask |= (1n << BigInt(i)); });
+        mapping.forEach((m, i) => { if (m.type === TYPE_CONST && m.val === BIT_ONE) forceSetMask |= (1n << BigInt(i)); });
         if (forceSetMask > 0n) {
             resExpr = `(${resExpr} | ${formatHex(forceSetMask, w)})`;
             logicCycles += costs.basic;
             const nextState = [...accumulatedState];
             for(let d = 0; d < w; ++d) {
-                if((forceSetMask >> BigInt(d)) & 1n) nextState[d] = { type: 'const', val: 1 };
+                if((forceSetMask >> BigInt(d)) & 1n) nextState[d] = { type: TYPE_CONST, val: BIT_ONE };
             }
             steps.push({
                 name: "Logic: Force 1s",
@@ -799,12 +1922,12 @@ const BitPermutationApp = () => {
             });
         }
 
-        compositeCode += `return ${resExpr};`;
+        compositeCode += `${outputComment}\nreturn ${resExpr};`;
         compositeCycles += logicCycles;
     } else {
         let resExpr = "0";
         if (logicOr > 0n) resExpr = formatHex(logicOr, w);
-        compositeCode = `return ${resExpr};`;
+        compositeCode = `${inputComment}\n${outputComment}\nreturn ${resExpr};`;
     }
 
     solutions.push({
@@ -814,6 +1937,195 @@ const BitPermutationApp = () => {
         code: compositeCode,
         steps: steps
     });
+
+    // --- EXHAUSTIVE COMPOSITE SOLVER ---
+    // Try to find an optimal solution using tree search
+    // Only shown if it completes within limits (like LUT or PEXT)
+    const exhaustiveResult = solveExhaustive(routeMap, routedMask, w, costs, enables, mapping);
+    if (exhaustiveResult && exhaustiveResult.steps.length > 0) {
+        // Generate code from exhaustive steps
+        let exhParts = [];
+        let exhCycles = 0;
+        let exhSteps = [];
+        let exhAccumulatedState = new Array(w).fill(null);
+        let exhAlreadyPlacedMask = 0n;
+
+        for (const op of exhaustiveResult.steps) {
+            const prevState = [...exhAccumulatedState];
+
+            // Compute source mask for this operation
+            let sourceMask = 0n;
+            for (let d = 0; d < w; ++d) {
+                if ((op.mask >> BigInt(d)) & 1n) {
+                    const src = routeMap[d];
+                    sourceMask |= (1n << BigInt(src));
+                }
+            }
+            const hexSourceMask = formatHex(sourceMask, w);
+            const hexTargetMask = formatHex(op.mask, w);
+
+            // Update accumulated state
+            for (let d = 0; d < w; ++d) {
+                if ((op.mask >> BigInt(d)) & 1n) {
+                    exhAccumulatedState[d] = { type: TYPE_SRC, val: routeMap[d] };
+                }
+            }
+
+            // Check if mask is needed (same logic as greedy)
+            const exhRemainingMask = routedMask & ~exhAlreadyPlacedMask & ~op.mask;
+            const protectedBits = exhRemainingMask | exhAlreadyPlacedMask;
+            let needsMask = true;
+
+            let blockCode = "";
+            let desc = "";
+
+            if (op.type === OP_DELTA) {
+                const s = op.shift;
+                let rawRes = 0n;
+                for (let srcBit = 0; srcBit < w; ++srcBit) {
+                    let destPos;
+                    if (op.noneWrap) {
+                        destPos = srcBit + s;
+                        if (destPos >= w) continue;
+                    } else if (op.allWrap) {
+                        destPos = srcBit - (w - s);
+                        if (destPos < 0) continue;
+                    } else {
+                        destPos = (srcBit + s) % w;
+                    }
+                    rawRes |= (1n << BigInt(destPos));
+                }
+                if ((rawRes & protectedBits) === 0n) needsMask = false;
+
+                if (s === 0) {
+                    blockCode = needsMask ? `(x & ${hexSourceMask})` : `x`;
+                    desc = `Pass through ${op.count} bits.`;
+                } else {
+                    if (op.noneWrap) {
+                        const core = needsMask ? `(x & ${hexSourceMask})` : `x`;
+                        blockCode = `(${core} << ${s})`;
+                        desc = `Left shift by ${s}.`;
+                    } else if (op.allWrap) {
+                        const core = needsMask ? `(x & ${hexSourceMask})` : `x`;
+                        blockCode = `(${core} >> ${w - s})`;
+                        desc = `Right shift by ${w - s}.`;
+                    } else {
+                        const core = needsMask ? `(x & ${hexSourceMask})` : `x`;
+                        blockCode = formatRol(core, s, w);
+                        desc = `Rotate left by ${s}.`;
+                    }
+                }
+            } else if (op.type === 'bmi') {
+                // BMI2 PEXT/PDEP
+                const hexSrcMask = formatHex(op.srcMask, w);
+                blockCode = `pdep(pext(x, ${hexSrcMask}), ${hexTargetMask})`;
+                desc = `PEXT/PDEP. Routes ${op.count} bits.`;
+                needsMask = false; // PDEP already places bits exactly where needed
+            } else if (op.type === 'pshufb') {
+                // PSHUFB byte shuffle
+                const byteWidth = w / 8;
+                let shuffleMask = [];
+                for (let byte = 0; byte < byteWidth; ++byte) {
+                    const destStart = byte * 8;
+                    if ((op.mask >> BigInt(destStart)) & 1n) {
+                        const m = mapping[destStart];
+                        if (m && m.type === TYPE_SRC) {
+                            shuffleMask.push(Math.floor(m.val / 8));
+                        } else {
+                            shuffleMask.push(0x80); // Zero byte
+                        }
+                    } else {
+                        shuffleMask.push(0x80); // Zero byte for non-routed positions
+                    }
+                }
+                const shuffleHex = shuffleMask.map(b => b.toString(16).padStart(2, '0')).join('');
+                blockCode = `pshufb(x, 0x${shuffleHex})`;
+                desc = `PSHUFB. Routes ${op.count} bits (${op.count / 8} bytes).`;
+                needsMask = false; // PSHUFB places bytes exactly
+            } else {
+                // Multiplication (OP_MUL_L or OP_MUL_R)
+                const hexM = formatHex(op.mul, w);
+                let core;
+
+                if (op.type === OP_MUL_R) {
+                    core = op.shift === 0 ? `(x * ${hexM})` : `((x >> ${op.shift}) * ${hexM})`;
+                } else {
+                    core = op.shift === 0 ? `(x * ${hexM})` : `((x * ${hexM}) >> ${op.shift})`;
+                }
+
+                // Check if masking needed for multiplication
+                const fullMaskLocal = (1n << BigInt(w)) - 1n;
+                let rawRes;
+                if (op.type === OP_MUL_R) {
+                    rawRes = ((fullMaskLocal >> BigInt(op.shift)) * op.mul) & fullMaskLocal;
+                } else {
+                    rawRes = ((fullMaskLocal * op.mul) >> BigInt(op.shift)) & fullMaskLocal;
+                }
+                if ((rawRes & protectedBits) === 0n) needsMask = false;
+
+                blockCode = needsMask ? `(${core} & ${hexTargetMask})` : core;
+                desc = `Multiply ${op.type === OP_MUL_R ? '(right)' : '(left)'}. Routes ${op.count} bits.`;
+            }
+
+            exhParts.push(`temp |= ${blockCode};`);
+            exhSteps.push({
+                name: `Block ${exhParts.length}`,
+                desc: desc,
+                code: `temp |= ${blockCode};`,
+                state: [...exhAccumulatedState],
+                prevState: prevState
+            });
+
+            exhAlreadyPlacedMask |= op.mask;
+            exhCycles += op.cost;
+        }
+
+        // Generate final code with logic operations
+        let exhCode = "";
+        if (exhParts.length > 0) {
+            exhCode = `${inputComment}\nuint${w}_t temp = 0;\n` + exhParts.join("\n") + "\n";
+            let resExpr = "temp";
+            let logicCyclesExh = 0;
+
+            // Handle forced 0s
+            let forceClearMask = 0n;
+            mapping.forEach((m, i) => { if (m.type === TYPE_CONST && m.val === BIT_ZERO) forceClearMask |= (1n << BigInt(i)); });
+            if (forceClearMask > 0n) {
+                const m = fullMask ^ forceClearMask;
+                resExpr = `(${resExpr} & ${formatHex(m, w)})`;
+                logicCyclesExh += costs.basic;
+            }
+
+            // Handle forced 1s
+            let forceSetMask = 0n;
+            mapping.forEach((m, i) => { if (m.type === TYPE_CONST && m.val === BIT_ONE) forceSetMask |= (1n << BigInt(i)); });
+            if (forceSetMask > 0n) {
+                resExpr = `(${resExpr} | ${formatHex(forceSetMask, w)})`;
+                logicCyclesExh += costs.basic;
+            }
+
+            // Handle inversions
+            if (logicXor > 0n) {
+                resExpr = `(${resExpr} ^ ${formatHex(logicXor, w)})`;
+                logicCyclesExh += costs.basic;
+            }
+
+            exhCode += `${outputComment}\nreturn ${resExpr};`;
+            exhCycles += logicCyclesExh;
+        }
+
+        // Only add if different from greedy (shows value of exhaustive search)
+        // or if it has lower cost
+        if (exhCycles <= compositeCycles) {
+            solutions.push({
+                name: "Composite (Dijkstra)",
+                desc: `Optimal tree-search (${exhaustiveResult.statesExplored} states explored).`,
+                cycles: exhCycles,
+                code: exhCode,
+                steps: exhSteps
+            });
+        }
+    }
 
     // --- BMI2 PEXT/PDEP SOLUTION ---
     if (enables.bmi && routedMask > 0n) {
@@ -843,7 +2155,7 @@ const BitPermutationApp = () => {
             let pdepMask = 0n;
             srcBits.forEach(({dest}) => pdepMask |= (1n << BigInt(dest)));
 
-            const bmiCode = `uint${w}_t temp = pext(x, ${formatHex(srcMask, w)});\nreturn pdep(temp, ${formatHex(pdepMask, w)});`;
+            const bmiCode = `${inputComment}\nuint${w}_t temp = pext(x, ${formatHex(srcMask, w)});\n${outputComment}\nreturn pdep(temp, ${formatHex(pdepMask, w)});`;
             solutions.push({
                 name: "BMI2 (PEXT/PDEP)",
                 desc: "Hardware scatter/gather.",
@@ -867,7 +2179,7 @@ const BitPermutationApp = () => {
 
             for (let bit = 0; bit < 8; ++bit) {
                 const m = mapping[destStart + bit];
-                if (m.type !== 'src') { allSame = false; break; }
+                if (m.type !== TYPE_SRC) { allSame = false; break; }
                 if (m.inv) { allSame = false; break; }
 
                 const expectedSrcByte = Math.floor(m.val / 8);
@@ -888,7 +2200,7 @@ const BitPermutationApp = () => {
         if (byteAligned && byteMap.some(b => b !== -1)) {
             const shuffleBytes = byteMap.map(b => b === -1 ? 0x80 : b);
             const shuffleHex = shuffleBytes.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(', 0x');
-            const pshufbCode = `// Shuffle control: { 0x${shuffleHex} }\nreturn pshufb(x, shuffle_mask);`;
+            const pshufbCode = `${inputComment}\n// Shuffle control: { 0x${shuffleHex} }\n${outputComment}\nreturn pshufb(x, shuffle_mask);`;
             solutions.push({
                 name: "PSHUFB (SSSE3)",
                 desc: "Byte-level shuffle.",
@@ -899,17 +2211,53 @@ const BitPermutationApp = () => {
     }
 
     // --- LUT SOLUTION ---
-    if (w <= 16) {
+    // Max 256 entries (8-bit input)
+    if (w <= 8) {
+        const tableSize = 1 << w;
+        const lutEntries = [];
+        for (let x = 0; x < tableSize; ++x) {
+            let result = 0;
+            for (let d = 0; d < w; ++d) {
+                const m = mapping[d];
+                if (m.type === TYPE_SRC) {
+                    let bit = (x >> m.val) & 1;
+                    if (m.inv) bit ^= 1;
+                    result |= (bit << d);
+                } else if (m.type === TYPE_CONST) {
+                    result |= (m.val << d);
+                }
+            }
+            lutEntries.push(result);
+        }
+        const hexWidth = Math.ceil(w / 4);
+        const entriesPerRow = w <= 4 ? 16 : 8;
+        let tableStr = `const uint${w}_t lut[${tableSize}] = {\n`;
+        for (let i = 0; i < tableSize; i += entriesPerRow) {
+            const row = lutEntries.slice(i, i + entriesPerRow);
+            tableStr += '    ' + row.map(v => '0x' + v.toString(16).toUpperCase().padStart(hexWidth, '0')).join(', ');
+            if (i + entriesPerRow < tableSize) tableStr += ',';
+            tableStr += '\n';
+        }
+        tableStr += '};';
+
         solutions.push({
             name: "LUT (Lookup Table)",
-            desc: "Precomputed lookup table.",
-            cycles: 2,
-            code: "return lut[x];"
+            desc: `Precomputed ${tableSize}-entry lookup table (addr calc + mem access).`,
+            cycles: costs.lut,
+            code: `${inputComment}\n${tableStr}\n\n${outputComment}\nreturn lut[x];`
         });
     }
 
     return solutions.sort((a, b) => a.cycles - b.cycles);
   }, [mapping, bitWidth, config]);
+
+  // Auto-expand the best solution (first one after sorting by cycles)
+  useEffect(() => {
+    if (solvePermutation.length > 0) {
+      const bestName = solvePermutation[0].name;
+      setExpandedStrategies({ [bestName]: true });
+    }
+  }, [solvePermutation]);
 
   // --- RENDER ---
   return (
@@ -932,7 +2280,7 @@ const BitPermutationApp = () => {
                                         type="checkbox"
                                         checked={config.allowedWidths.includes(size)}
                                         onChange={(e) => {
-                                            if (preset !== 'custom') handlePresetChange('custom');
+                                            if (preset !== CPU_CUSTOM) handlePresetChange(CPU_CUSTOM);
                                             setConfig(prev => {
                                                 const newWidths = e.target.checked
                                                     ? [...prev.allowedWidths, size].sort((a,b) => a-b)
@@ -950,28 +2298,58 @@ const BitPermutationApp = () => {
                     <div>
                         <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Instruction Costs (Cycles)</label>
                         <div className="grid grid-cols-4 gap-2 text-[10px] uppercase font-bold text-slate-500 border-b border-slate-800 pb-1 mb-2"><span>Instr</span><span>Enabled</span><span>Cost</span><span></span></div>
-                        {['shift', 'rotate', 'mul', 'bmi', 'pshufb'].map(key => (
-                            <div key={key} className="grid grid-cols-4 gap-2 items-center mb-2">
-                                <span className="text-sm font-mono capitalize text-slate-300">
-                                    {key === 'bmi' ? 'PEXT/PDEP' : key === 'pshufb' ? 'PSHUFB' : key}
-                                </span>
-                                <input
-                                    type="checkbox"
-                                    checked={config.enables[key]}
-                                    onChange={(e) => handleConfigChange(key, 'enabled', e.target.checked)}
-                                    disabled={preset !== 'custom'}
-                                    className="accent-cyan-500"
-                                />
-                                <input
-                                    type="number"
-                                    value={config.costs[key]}
-                                    onChange={(e) => handleConfigChange(key, 'cost', e.target.value)}
-                                    disabled={preset !== 'custom'}
-                                    className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white disabled:opacity-50"
-                                />
-                                <span className="text-xs text-slate-600">cyc</span>
-                            </div>
-                        ))}
+                        {['shift', 'rotate', 'mul', 'bmi', 'pshufb'].map(key => {
+                            const isSupported = baseCapabilities[key];
+                            return (
+                                <div key={key} className={`grid grid-cols-4 gap-2 items-center mb-2 ${!isSupported ? 'opacity-40' : ''}`}>
+                                    <span className="text-sm font-mono capitalize text-slate-300">
+                                        {key === 'bmi' ? 'PEXT/PDEP' : key === 'pshufb' ? 'PSHUFB' : key}
+                                    </span>
+                                    <input
+                                        type="checkbox"
+                                        checked={config.enables[key]}
+                                        onChange={(e) => handleConfigChange(key, 'enabled', e.target.checked)}
+                                        disabled={!isSupported}
+                                        className="accent-cyan-500 disabled:cursor-not-allowed"
+                                        title={isSupported ? 'Toggle this instruction' : 'Not supported by this CPU'}
+                                    />
+                                    <input
+                                        type="number"
+                                        value={config.costs[key]}
+                                        onChange={(e) => handleConfigChange(key, 'cost', e.target.value)}
+                                        disabled={preset !== CPU_CUSTOM}
+                                        className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white disabled:opacity-50"
+                                    />
+                                    <span className="text-xs text-slate-600">{isSupported ? 'cyc' : 'N/A'}</span>
+                                </div>
+                            );
+                        })}
+                        {/* Basic (logic) operations - always available */}
+                        <div className="grid grid-cols-4 gap-2 items-center mb-2 border-t border-slate-800 pt-2 mt-2">
+                            <span className="text-sm font-mono text-slate-300" title="Cost for AND, OR, XOR masking operations">logic (|,&,^)</span>
+                            <span className="text-xs text-slate-500 text-center">always</span>
+                            <input
+                                type="number"
+                                value={config.costs.basic}
+                                onChange={(e) => handleConfigChange('basic', 'cost', e.target.value)}
+                                disabled={preset !== CPU_CUSTOM}
+                                className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white disabled:opacity-50"
+                            />
+                            <span className="text-xs text-slate-600">cyc</span>
+                        </div>
+                        {/* LUT - always available for 8-bit */}
+                        <div className="grid grid-cols-4 gap-2 items-center mb-2">
+                            <span className="text-sm font-mono text-slate-300" title="Lookup table access (address calc + memory read)">LUT (≤8-bit)</span>
+                            <span className="text-xs text-slate-500 text-center">always</span>
+                            <input
+                                type="number"
+                                value={config.costs.lut}
+                                onChange={(e) => handleConfigChange('lut', 'cost', e.target.value)}
+                                disabled={preset !== CPU_CUSTOM}
+                                className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white disabled:opacity-50"
+                            />
+                            <span className="text-xs text-slate-600">cyc</span>
+                        </div>
                     </div>
                 </div>
                 <div className="mt-6 flex justify-end"><button onClick={() => setShowConfig(false)} className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-bold rounded">Done</button></div>
@@ -1033,7 +2411,9 @@ const BitPermutationApp = () => {
                       onChange={(e) => handlePresetChange(e.target.value)}
                       className="cpu-select border border-slate-700 text-slate-300 text-xs font-medium px-3 py-1.5 rounded-l focus:outline-none focus:border-cyan-500 cursor-pointer"
                   >
-                      {Object.entries(PRESETS).map(([key, val]) => (
+                      {Object.entries(PRESETS)
+                          .sort((a, b) => a[1].name.localeCompare(b[1].name))
+                          .map(([key, val]) => (
                           <option key={key} value={key}>{val.name}</option>
                       ))}
                   </select>
@@ -1073,34 +2453,34 @@ const BitPermutationApp = () => {
          <div className="flex flex-col gap-2 p-3 bg-slate-900 rounded-xl border border-slate-800">
             <div className="flex flex-wrap gap-2 items-center">
                 <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
-                   <button onClick={() => setActiveTool('brush')} className={`tool-btn ${activeTool === 'brush' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}><IconZap className="w-4 h-4" /> Source</button>
-                   <button onClick={() => setActiveTool('set1')} className={`tool-btn ${activeTool === 'set1' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}><IconPlusCircle className="w-4 h-4" /> Set 1</button>
-                   <button onClick={() => setActiveTool('set0')} className={`tool-btn ${activeTool === 'set0' ? 'bg-red-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}><IconMinusCircle className="w-4 h-4" /> Set 0</button>
-                   <button onClick={() => setActiveTool('eraser')} className={`tool-btn ${activeTool === 'eraser' ? 'bg-slate-700 text-slate-200' : 'text-slate-400 hover:bg-slate-800'}`}><IconTrash className="w-4 h-4" /> Erase</button>
+                   <button onClick={() => setActiveTool(TOOL_BRUSH)} className={`tool-btn ${activeTool === TOOL_BRUSH ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}><IconZap className="w-4 h-4" /> Source</button>
+                   <button onClick={() => setActiveTool(TOOL_SET1)} className={`tool-btn ${activeTool === TOOL_SET1 ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}><IconPlusCircle className="w-4 h-4" /> Set 1</button>
+                   <button onClick={() => setActiveTool(TOOL_SET0)} className={`tool-btn ${activeTool === TOOL_SET0 ? 'bg-red-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}><IconMinusCircle className="w-4 h-4" /> Set 0</button>
+                   <button onClick={() => setActiveTool(TOOL_ERASER)} className={`tool-btn ${activeTool === TOOL_ERASER ? 'bg-slate-700 text-slate-200' : 'text-slate-400 hover:bg-slate-800'}`}><IconTrash className="w-4 h-4" /> Erase</button>
                 </div>
                 <div className="w-px h-6 bg-slate-800 mx-2 hidden sm:block"></div>
                 <div className="flex items-center gap-2">
-                   <button onClick={() => handleQuickAction('identity')} className="p-2 text-slate-400 hover:bg-slate-800 rounded" title="Reset"><IconRotate className="w-4 h-4" /></button>
-                   <button onClick={() => handleQuickAction('clear')} className="p-2 text-red-400 hover:bg-red-900/20 rounded" title="Clear All"><IconTrash className="w-4 h-4" /></button>
+                   <button onClick={() => handleQuickAction(PATTERN_IDENTITY)} className="p-2 text-slate-400 hover:bg-slate-800 rounded" title="Reset"><IconRotate className="w-4 h-4" /></button>
+                   <button onClick={() => handleQuickAction(PATTERN_CLEAR)} className="p-2 text-red-400 hover:bg-red-900/20 rounded" title="Clear All"><IconTrash className="w-4 h-4" /></button>
                 </div>
             </div>
             <div className="flex items-center gap-2 px-1 min-h-[30px]">
-                {activeTool === 'brush' && (
+                {activeTool === TOOL_BRUSH && (
                     <>
                         <button onClick={() => setInvertBrush(!invertBrush)} className={`flex items-center gap-2 px-3 py-1 rounded text-xs font-medium border transition-all ${invertBrush ? 'bg-orange-900/30 border-orange-500 text-orange-400' : 'bg-slate-900 border-slate-700 text-slate-400'}`}><IconToggle className="w-3.5 h-3.5" /> Invert Mode</button>
-                        <button onClick={() => handleBulkAction('clear_routed')} className="flex items-center gap-1 px-3 py-1 rounded text-xs font-medium text-slate-400 border border-slate-700 hover:bg-slate-800 hover:text-white ml-auto transition-all"><IconTrash className="w-3.5 h-3.5" /> Clear Routing</button>
+                        <button onClick={() => handleBulkAction(ACTION_CLEAR_ROUTED)} className="flex items-center gap-1 px-3 py-1 rounded text-xs font-medium text-slate-400 border border-slate-700 hover:bg-slate-800 hover:text-white ml-auto transition-all"><IconTrash className="w-3.5 h-3.5" /> Clear Routing</button>
                     </>
                 )}
-                {activeTool === 'set1' && (
+                {activeTool === TOOL_SET1 && (
                     <div className="flex gap-2 w-full">
-                        <button onClick={() => handleBulkAction('fill_empty_1')} className="flex items-center gap-1 px-3 py-1 rounded text-xs font-medium bg-emerald-900/20 text-emerald-400 border border-emerald-800 hover:bg-emerald-900/40"><IconFill className="w-3.5 h-3.5" /> Fill Empty with 1s</button>
-                        <button onClick={() => handleBulkAction('clear_1s')} className="flex items-center gap-1 px-3 py-1 rounded text-xs font-medium text-slate-400 border border-slate-700 hover:bg-slate-800 ml-auto">Clear all 1s</button>
+                        <button onClick={() => handleBulkAction(ACTION_FILL_EMPTY_1)} className="flex items-center gap-1 px-3 py-1 rounded text-xs font-medium bg-emerald-900/20 text-emerald-400 border border-emerald-800 hover:bg-emerald-900/40"><IconFill className="w-3.5 h-3.5" /> Fill Empty with 1s</button>
+                        <button onClick={() => handleBulkAction(ACTION_CLEAR_1S)} className="flex items-center gap-1 px-3 py-1 rounded text-xs font-medium text-slate-400 border border-slate-700 hover:bg-slate-800 ml-auto">Clear all 1s</button>
                     </div>
                 )}
-                {activeTool === 'set0' && (
+                {activeTool === TOOL_SET0 && (
                     <div className="flex gap-2 w-full">
-                        <button onClick={() => handleBulkAction('fill_empty_0')} className="flex items-center gap-1 px-3 py-1 rounded text-xs font-medium bg-red-900/20 text-red-400 border border-red-800 hover:bg-red-900/40"><IconFill className="w-3.5 h-3.5" /> Fill Empty with 0s</button>
-                        <button onClick={() => handleBulkAction('clear_0s')} className="flex items-center gap-1 px-3 py-1 rounded text-xs font-medium text-slate-400 border border-slate-700 hover:bg-slate-800 ml-auto">Clear all 0s</button>
+                        <button onClick={() => handleBulkAction(ACTION_FILL_EMPTY_0)} className="flex items-center gap-1 px-3 py-1 rounded text-xs font-medium bg-red-900/20 text-red-400 border border-red-800 hover:bg-red-900/40"><IconFill className="w-3.5 h-3.5" /> Fill Empty with 0s</button>
+                        <button onClick={() => handleBulkAction(ACTION_CLEAR_0S)} className="flex items-center gap-1 px-3 py-1 rounded text-xs font-medium text-slate-400 border border-slate-700 hover:bg-slate-800 ml-auto">Clear all 0s</button>
                     </div>
                 )}
             </div>
@@ -1117,7 +2497,7 @@ const BitPermutationApp = () => {
                   <div className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Input (Source)</div>
                   <div className="flex flex-wrap gap-1.5 justify-center sm:justify-start">
                      {Array(bitWidth).fill(null).map((_, i) => (
-                        <div key={i} id={`src-btn-${i}`} onClick={() => handleSourceClick(i)} className={`relative w-8 h-10 flex items-center justify-center font-mono text-xs rounded cursor-pointer transition-all border ${selectedSource === i ? 'bg-cyan-500 text-black border-cyan-400 scale-110 shadow-lg z-20 font-bold' : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700 hover:text-white'}`} style={{ borderBottom: selectedSource !== i ? `2px solid hsl(${Math.floor((i * 360) / bitWidth)}, 70%, 50%)` : '' }}>{i}</div>
+                        <div key={i} id={`src-btn-${i}`} onClick={() => handleSourceClick(i)} className={`relative w-8 h-10 flex items-center justify-center font-mono text-xs rounded cursor-pointer transition-all border ${selectedSource === i ? 'bg-cyan-500 text-black border-cyan-400 scale-110 shadow-lg z-20 font-bold' : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700 hover:text-white'}`} style={{ borderBottom: selectedSource !== i ? `2px solid hsl(${Math.floor((i * HUE_DIVISOR) / bitWidth)}, 70%, 50%)` : '' }}>{i}</div>
                      ))}
                   </div>
                </div>
@@ -1126,14 +2506,14 @@ const BitPermutationApp = () => {
                   <div className="flex flex-wrap gap-1.5 justify-center sm:justify-start">
                      {mapping.map((m, i) => {
                         let bg = "bg-slate-800"; let txt = "text-white"; let border = "border-slate-700"; let content = "";
-                        if (m.type === 'empty') { bg = "bg-slate-800/20"; txt = "text-slate-700"; border = "border-slate-800 border-dashed opacity-40"; content="X"; }
-                        else if (m.type === 'const') {
+                        if (m.type === TYPE_EMPTY) { bg = "bg-slate-800/20"; txt = "text-slate-700"; border = "border-slate-800 border-dashed opacity-40"; content="X"; }
+                        else if (m.type === TYPE_CONST) {
                            content = m.val;
-                           if (m.val === 1) { bg = "bg-emerald-600"; txt = "text-white font-bold high-contrast-text"; border = "border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.5)]"; }
+                           if (m.val === BIT_ONE) { bg = "bg-emerald-600"; txt = "text-white font-bold high-contrast-text"; border = "border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.5)]"; }
                            else { bg = "bg-red-600"; txt = "text-white font-bold high-contrast-text"; border = "border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)]"; }
-                        } else if (m.type === 'src') {
+                        } else if (m.type === TYPE_SRC) {
                            content = m.val;
-                           const hue = Math.floor((m.val * 360) / bitWidth);
+                           const hue = Math.floor((m.val * HUE_DIVISOR) / bitWidth);
                            border = `border-[hsl(${hue},70%,50%)]`;
                            bg = `bg-[hsla(${hue},70%,50%,0.1)]`;
                            if (m.inv) {
@@ -1142,7 +2522,7 @@ const BitPermutationApp = () => {
                         }
                         return (
                            <div key={i} id={`dest-btn-${i}`} onClick={() => handleDestClick(i)} className={`relative w-8 h-10 flex items-center justify-center font-mono text-xs rounded cursor-pointer transition-all border ${bg} ${txt} ${border} hover:scale-105`}>
-                              {m.type === 'src' && m.inv && <span className="absolute -top-2 right-0 text-[10px] text-orange-500 font-bold">~</span>}
+                              {m.type === TYPE_SRC && m.inv && <span className="absolute -top-2 right-0 text-[10px] text-orange-500 font-bold">~</span>}
                               <span className="text-[9px] opacity-70 absolute top-0.5 left-1">{i}</span>
                               <span className="mt-2 text-sm">{content}</span>
                            </div>
@@ -1184,7 +2564,7 @@ const BitPermutationApp = () => {
                                                     <span className="text-[9px] text-slate-600 font-mono">{step.code.split(';')[0]}</span>
                                                 </div>
                                                 <div className="text-[10px] text-slate-400">{step.desc}</div>
-                                                {step.state && <StepVisualizer width={bitWidth} state={step.state} prevState={step.prevState} sideEffects={step.sideEffects} />}
+                                                {step.state && <StepVisualizer width={bitWidth} state={step.state} prevState={step.prevState} sideEffects={step.sideEffects} maskedOut={step.maskedOut} />}
                                             </div>
                                         ))}
                                     </div>
