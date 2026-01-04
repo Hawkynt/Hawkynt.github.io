@@ -671,42 +671,25 @@
 
         const BurnRateChart = ({ segments, currentBurnRate, currency, chartColors, startTime, timerRunning, label }) => {
             const canvasRef = useRef(null);
+            const [tooltip, setTooltip] = useState(null);
 
-            useEffect(() => {
-                const canvas = canvasRef.current;
-                if (!canvas) return;
-                const ctx = canvas.getContext('2d');
-                
-                const parent = canvas.parentElement;
-                if (!parent) return;
-                const dpr = window.devicePixelRatio || 1;
-                
-                const w = parent.clientWidth;
-                const h = parent.clientHeight;
-                canvas.width = w * dpr;
-                canvas.height = h * dpr;
-                canvas.style.width = w + 'px';
-                canvas.style.height = h + 'px';
-                ctx.scale(dpr, dpr);
-
-                const width = w;
-                const height = h;
-                
+            const draw = useCallback((ctx, width, height) => {
                 ctx.clearRect(0, 0, width, height);
 
                 const now = Date.now();
                 if (!startTime) return;
 
-                const totalDuration = Math.max(now - startTime, UI.MIN_DURATION_MS); 
+                const totalDuration = Math.max(now - startTime, UI.MIN_DURATION_MS);
                 const maxRate = Math.max(...segments.map((s) => s.burnRate), currentBurnRate, 100) * 1.2;
 
-                const padding = { left: 45, right: 10, top: 20, bottom: 20 };
+                const padding = { left: 55, right: 20, top: 25, bottom: 30 };
                 const graphWidth = width - padding.left - padding.right;
                 const graphHeight = height - padding.top - padding.bottom;
 
                 const getX = (t) => padding.left + ((t - startTime) / totalDuration) * graphWidth;
                 const getY = (r) => (height - padding.bottom) - (r / maxRate) * graphHeight;
 
+                // Axes
                 ctx.strokeStyle = chartColors.grid;
                 ctx.lineWidth = 1;
                 ctx.beginPath();
@@ -715,14 +698,49 @@
                 ctx.lineTo(width - padding.right, height - padding.bottom);
                 ctx.stroke();
 
-                ctx.strokeStyle = chartColors.burnLine; 
+                // Y-Axis grid lines and labels
+                ctx.fillStyle = chartColors.text;
+                ctx.textAlign = 'right';
+                ctx.textBaseline = 'middle';
+                ctx.font = '10px sans-serif';
+
+                const ySteps = 3;
+                for (let i = 0; i <= ySteps; ++i) {
+                    const val = (maxRate / ySteps) * i;
+                    const yPos = getY(val);
+                    ctx.fillText(formatMoneyRounded(val, currency), padding.left - 8, yPos);
+
+                    if (i > 0) {
+                        ctx.beginPath();
+                        ctx.strokeStyle = chartColors.gridLight;
+                        ctx.moveTo(padding.left, yPos);
+                        ctx.lineTo(width - padding.right, yPos);
+                        ctx.stroke();
+                    }
+                }
+
+                // X-Axis Labels (start time and now)
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'top';
+                ctx.fillStyle = chartColors.text;
+
+                const startX = getX(startTime);
+                ctx.fillText(formatClockTime(new Date(startTime)), startX, height - padding.bottom + 8);
+
+                const nowX = getX(now);
+                if (nowX > startX + 50) {
+                    ctx.fillText(formatClockTime(new Date(now)), nowX, height - padding.bottom + 8);
+                }
+
+                // Draw step line for burn rate
+                ctx.strokeStyle = chartColors.burnLine;
                 ctx.lineWidth = 2;
                 ctx.beginPath();
 
                 segments.forEach((seg, i) => {
                     const nextSeg = segments[i + 1];
                     const segEndTime = nextSeg ? nextSeg.timestamp : now;
-                    
+
                     const xStart = getX(seg.timestamp);
                     const xEnd = getX(segEndTime);
                     const y = getY(seg.burnRate);
@@ -735,31 +753,145 @@
 
                 ctx.stroke();
 
+                // Fill under the line
                 ctx.lineTo(getX(now), height - padding.bottom);
                 ctx.lineTo(padding.left, height - padding.bottom);
                 ctx.closePath();
                 ctx.fillStyle = chartColors.burnFill;
                 ctx.fill();
 
-                ctx.fillStyle = chartColors.text;
-                ctx.font = '10px monospace';
-                ctx.textAlign = 'right';
-                ctx.fillText(formatMoney(maxRate, currency) + "/hr", padding.left - 5, padding.top + 10);
+                // Event markers (vertical lines at segment changes)
+                segments.forEach((seg, i) => {
+                    if (i === 0) return; // Skip first segment
+                    const x = getX(seg.timestamp);
+                    const y = getY(seg.burnRate);
 
+                    // Vertical dashed line
+                    ctx.beginPath();
+                    ctx.setLineDash([3, 3]);
+                    ctx.strokeStyle = chartColors.projectionLight;
+                    ctx.lineWidth = 1;
+                    ctx.moveTo(x, padding.top);
+                    ctx.lineTo(x, height - padding.bottom);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+
+                    // Marker dot
+                    ctx.fillStyle = chartColors.burnLine;
+                    ctx.beginPath();
+                    ctx.arc(x, y, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+
+                // Current position marker
                 if (timerRunning) {
                     const currentY = getY(currentBurnRate);
                     ctx.fillStyle = chartColors.burnLine;
                     ctx.beginPath();
-                    ctx.arc(getX(now), currentY, 3, 0, Math.PI * 2);
+                    ctx.arc(getX(now), currentY, 4, 0, Math.PI * 2);
                     ctx.fill();
                 }
 
             }, [segments, currentBurnRate, currency, chartColors, startTime, timerRunning]);
 
+            useEffect(() => {
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+
+                const parent = canvas.parentElement;
+                const dpr = window.devicePixelRatio || 1;
+
+                const resize = () => {
+                    const w = parent.clientWidth;
+                    const h = parent.clientHeight;
+                    canvas.width = w * dpr;
+                    canvas.height = h * dpr;
+                    canvas.style.width = w + 'px';
+                    canvas.style.height = h + 'px';
+                    ctx.scale(dpr, dpr);
+                    draw(ctx, w, h);
+                };
+
+                resize();
+                window.addEventListener('resize', resize);
+                return () => window.removeEventListener('resize', resize);
+            }, [draw]);
+
+            // Re-draw on data change
+            useEffect(() => {
+                const canvas = canvasRef.current;
+                if (canvas) {
+                    const ctx = canvas.getContext('2d');
+                    const parent = canvas.parentElement;
+                    if (parent) {
+                        const w = parent.clientWidth;
+                        const h = parent.clientHeight;
+                        draw(ctx, w, h);
+                    }
+                }
+            }, [draw, currentBurnRate]);
+
+            const handleMouseMove = (e) => {
+                const canvas = canvasRef.current;
+                if (!canvas || !startTime) return;
+                const rect = canvas.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+
+                const now = Date.now();
+                const totalDuration = Math.max(now - startTime, UI.MIN_DURATION_MS);
+
+                const width = canvas.offsetWidth;
+                const padding = { left: 55, right: 20 };
+                const graphWidth = width - padding.left - padding.right;
+
+                const timeAtCursor = startTime + ((mouseX - padding.left) / graphWidth) * totalDuration;
+
+                let closestSeg = null;
+                let minDist = Infinity;
+
+                segments.forEach(seg => {
+                    const dist = Math.abs(seg.timestamp - timeAtCursor);
+                    if (dist < minDist) {
+                        minDist = dist;
+                        closestSeg = seg;
+                    }
+                });
+
+                const thresholdTime = totalDuration * 0.08;
+
+                if (closestSeg && minDist < thresholdTime) {
+                    const timeStr = formatClockTime(new Date(closestSeg.timestamp));
+                    const status = closestSeg.type === 'paused' ? 'Paused' : `${closestSeg.attendeeCount} Attendees`;
+                    const rate = closestSeg.type === 'paused' ? 'Rate: $0/hr' : `${formatMoney(closestSeg.burnRate, currency)}/hr`;
+
+                    setTooltip({
+                        x: mouseX,
+                        y: 20,
+                        text: [timeStr, status, rate]
+                    });
+                } else {
+                    setTooltip(null);
+                }
+            };
+
             return (
-                <div className="w-full h-full relative">
-                     <div className="absolute top-0 left-2 text-[10px] uppercase font-semibold opacity-50">{label}</div>
-                     <canvas ref={canvasRef} className="w-full h-full" />
+                <div className="w-full h-full relative group">
+                    <div className="absolute top-0 left-2 text-[10px] uppercase font-semibold opacity-50 z-10">{label}</div>
+                    <canvas
+                        ref={canvasRef}
+                        className="w-full h-full cursor-crosshair touch-none"
+                        onMouseMove={handleMouseMove}
+                        onMouseLeave={() => setTooltip(null)}
+                    />
+                    {tooltip && (
+                        <div
+                            className="absolute z-20 p-2 rounded shadow-lg text-xs pointer-events-none bg-slate-800 text-white border border-slate-600 whitespace-nowrap"
+                            style={{ left: Math.min(tooltip.x + 10, 300), top: tooltip.y }}
+                        >
+                            {tooltip.text.map((line, i) => <div key={i}>{line}</div>)}
+                        </div>
+                    )}
                 </div>
             );
         };
@@ -1116,8 +1248,16 @@
                                         </button>
                                     </div>
 
-                                    <div className={`h-32 w-full rounded-lg border overflow-hidden ${cardBg}`}>
-                                        <BurnRateChart segments={segments} currentBurnRate={timerRunning ? calculatedBurnRate : 0} currency={currency} chartColors={chartColors} startTime={startTime} timerRunning={timerRunning} label={t("burnRateHistory")} />
+                                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 w-full">
+                                        <div className={`h-40 rounded-lg border overflow-hidden ${cardBg}`}>
+                                            <div className="h-full w-full relative">
+                                                <div className="absolute top-1 left-2 text-[10px] uppercase font-semibold opacity-50">{t("costHistoryProjection")}</div>
+                                                <CostHistoryChart segments={segments} currentCost={currentCost} currentBurnRate={calculatedBurnRate} currency={currency} chartColors={chartColors} startTime={startTime} timerRunning={timerRunning} />
+                                            </div>
+                                        </div>
+                                        <div className={`h-40 rounded-lg border overflow-hidden ${cardBg}`}>
+                                            <BurnRateChart segments={segments} currentBurnRate={timerRunning ? calculatedBurnRate : 0} currency={currency} chartColors={chartColors} startTime={startTime} timerRunning={timerRunning} label={t("burnRateHistory")} />
+                                        </div>
                                     </div>
                                 </div>
                             )}
@@ -1136,11 +1276,23 @@
 
                             {!presentationMode && (
                                 <div className={`mt-auto p-4 rounded-xl border ${cardBg}`}>
-                                    <h3 className={`text-sm font-semibold uppercase mb-4 flex items-center gap-2 ${mutedText}`}>
-                                        <Icon name="trending-up" size={16}/> {t("costHistoryProjection")}
-                                    </h3>
-                                    <div className="h-48 w-full">
-                                        <CostHistoryChart segments={segments} currentCost={currentCost} currentBurnRate={calculatedBurnRate} currency={currency} chartColors={chartColors} startTime={startTime} timerRunning={timerRunning} />
+                                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                                        <div>
+                                            <h3 className={`text-sm font-semibold uppercase mb-2 flex items-center gap-2 ${mutedText}`}>
+                                                <Icon name="trending-up" size={16}/> {t("costHistoryProjection")}
+                                            </h3>
+                                            <div className="h-48 w-full">
+                                                <CostHistoryChart segments={segments} currentCost={currentCost} currentBurnRate={calculatedBurnRate} currency={currency} chartColors={chartColors} startTime={startTime} timerRunning={timerRunning} />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <h3 className={`text-sm font-semibold uppercase mb-2 flex items-center gap-2 ${mutedText}`}>
+                                                <Icon name="activity" size={16}/> {t("burnRateHistory")}
+                                            </h3>
+                                            <div className="h-48 w-full">
+                                                <BurnRateChart segments={segments} currentBurnRate={timerRunning ? calculatedBurnRate : 0} currency={currency} chartColors={chartColors} startTime={startTime} timerRunning={timerRunning} label={t("burnRateHistory")} />
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             )}
