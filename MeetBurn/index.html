@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+    <!-- Use UTF-8 everywhere to avoid encoding issues; legacy UAs still render text/links. -->
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+    <meta http-equiv="Content-Style-Type" content="text/css" />
+    <meta http-equiv="Content-Script-Type" content="text/JavaScript" />
+    <meta http-equiv="expires" content="0" />
+    <meta http-equiv="Language" content="en" />
+
+    <!-- Modern SEO (harmless to old UAs) -->
+    <meta name="description" content="MeetBurn - Free real-time meeting cost calculator. Track burn rate, visualize expenses, and optimize meeting ROI with live cost projections based on attendee hourly rates." />
+    <meta name="keywords" content="meeting cost calculator, burn rate tracker, meeting ROI, productivity tool, time tracking, meeting timer, cost visualization, team meeting expenses, SynthelicZ, Hawkynt" />
+    <meta name="robots" content="index,follow" />
+
+    <!-- Open Graph / Twitter -->
+    <meta property="og:title" content="MeetBurn - Real-Time Meeting Cost Calculator" />
+    <meta property="og:description" content="Track your meeting costs in real-time. Visualize burn rate, project expenses, and make data-driven decisions about meeting ROI." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://hawkynt.github.io/MeetBurn/" />
+    <meta property="og:image" content="https://hawkynt.github.io/favicon.ico" />
+    <meta name="twitter:card" content="summary" />
+
+    <!-- Legacy site verification kept (harmless) -->
+    <meta name="verify-v1" content="0cvNcn5f2mj21LAsFvUBD7BIdUbn/unV4Toy1yBLWvw=" />
+    <meta name="google-site-verification" content="LkZ6DT0_GlcimQOKrWL20jv4jtUh0DBsh1ZPLXQqk3A" />
+
+    <link rel="shortcut icon" href="../favicon.ico" />
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Meeting Cost Calculator</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        .touch-none { touch-action: none; }
+        
+        /* High Contrast overrides */
+        .high-contrast { filter: contrast(1.5); }
+        
+        /* Disable scroll in presentation mode */
+        body.presentation-active { overflow: hidden; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900 transition-colors duration-200">
+    <div id="root" class="h-screen w-screen flex flex-col overflow-hidden"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+        // --- Icon Wrapper for Lucide ---
+        const Icon = ({ name, size = 24, className }) => {
+            useEffect(() => {
+                if (window.lucide) window.lucide.createIcons();
+            });
+            // Convert camelCase to kebab-case for data-lucide attribute
+            const iconName = name.replace(/([a-z0-9]|(?=[A-Z]))([A-Z])/g, '$1-$2').toLowerCase();
+            return <i data-lucide={iconName} className={className} style={{ width: size, height: size, display: 'inline-block' }}></i>;
+        };
+
+        // --- Utils ---
+        const formatMoney = (amount, currency) => {
+            return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency }).format(amount);
+        };
+
+        const formatMoneyRounded = (amount, currency) => {
+            return new Intl.NumberFormat('en-US', { 
+                style: 'currency', 
+                currency: currency,
+                maximumFractionDigits: 0,
+                minimumFractionDigits: 0
+            }).format(amount);
+        };
+
+        const formatTime = (ms) => {
+            const totalSeconds = Math.floor(ms / 1000);
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+            const pad = (n) => n.toString().padStart(2, '0');
+            return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+        };
+
+        const formatClockTime = (date) => {
+            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        };
+
+        const getBurnRatePerHour = (mode, simpleInputs, detailedRows, overhead) => {
+            let hourlySum = 0;
+            if (mode === 'simple') {
+                hourlySum = simpleInputs.rate * simpleInputs.count;
+            } else {
+                hourlySum = detailedRows.reduce((acc, row) => acc + (row.rate * row.count), 0);
+            }
+            return hourlySum * overhead;
+        };
+
+        const getNextQuarterMarks = (nowTime) => {
+            const d = new Date(nowTime);
+            const m = d.getMinutes();
+            const currentQuarter = Math.floor(m / 15);
+            
+            const marks = [];
+            for (let i = 1; i <= 4; i++) {
+                const nextD = new Date(nowTime);
+                const nextMin = (currentQuarter + i) * 15;
+                nextD.setMinutes(nextMin);
+                nextD.setSeconds(0);
+                nextD.setMilliseconds(0);
+                marks.push(nextD.getTime());
+            }
+            return marks;
+        };
+
+        const copyToClipboard = (text) => {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+            } else {
+                fallbackCopy(text);
+            }
+        };
+
+        const fallbackCopy = (text) => {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            textArea.style.position = "fixed";
+            textArea.style.left = "-9999px";
+            textArea.style.top = "0";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try { document.execCommand('copy'); } catch (err) { console.error('Fallback copy failed', err); }
+            document.body.removeChild(textArea);
+        };
+
+        // --- Session Persistence ---
+        const STORAGE_KEY = 'meetburn_session';
+        const RESTORE_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
+
+        const saveSession = (state) => {
+            try {
+                const data = { ...state, savedAt: Date.now() };
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+            } catch (e) { console.warn('Failed to save session:', e); }
+        };
+
+        const loadSession = () => {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                if (!raw) return null;
+                const data = JSON.parse(raw);
+                const age = Date.now() - (data.savedAt || 0);
+                if (age > RESTORE_TIMEOUT_MS) {
+                    localStorage.removeItem(STORAGE_KEY);
+                    return null;
+                }
+                return data;
+            } catch (e) {
+                console.warn('Failed to load session:', e);
+                return null;
+            }
+        };
+
+        const clearSession = () => {
+            try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+        };
+        // --- Charts ---
+
+        const CostHistoryChart = ({ segments, currentCost, currentBurnRate, currency, isDark, startTime, timerRunning }) => {
+            const canvasRef = useRef(null);
+            const [tooltip, setTooltip] = useState(null);
+
+            const draw = useCallback((ctx, width, height) => {
+                ctx.clearRect(0, 0, width, height);
+
+                const now = Date.now();
+                const effectiveStart = startTime || now;
+                
+                // Future Marks
+                const futureMarks = getNextQuarterMarks(now);
+                const projectionEnd = futureMarks[futureMarks.length - 1]; 
+                
+                // Domain
+                const timeDomainStart = effectiveStart;
+                const timeDomainEnd = projectionEnd;
+                const totalDuration = Math.max(timeDomainEnd - timeDomainStart, 60000);
+
+                // History Points
+                const historyPoints = [];
+
+                // Always add start point (0,0)
+                historyPoints.push({ xTime: effectiveStart, cost: 0, type: 'start' });
+
+                if (segments.length > 0) {
+                    segments.forEach((seg) => {
+                        // Avoid duplicate start point if segment aligns perfectly
+                        if (Math.abs(seg.timestamp - effectiveStart) > 100) {
+                            historyPoints.push({
+                                xTime: seg.timestamp,
+                                cost: seg.costAtStart,
+                                type: 'event'
+                            });
+                        }
+                    });
+                }
+
+                // Now Point
+                historyPoints.push({ xTime: now, cost: currentCost, type: 'now' });
+
+                // Projection Points
+                const projectionPoints = [];
+                const ratePerMs = timerRunning ? (currentBurnRate / 3600000) : 0; 
+
+                futureMarks.forEach(markTime => {
+                    const timeDiff = markTime - now;
+                    const projectedCost = currentCost + (ratePerMs * timeDiff);
+                    projectionPoints.push({
+                        xTime: markTime,
+                        cost: projectedCost,
+                        label: formatClockTime(new Date(markTime))
+                    });
+                });
+
+                // Scales
+                const maxProjectedCost = projectionPoints.length > 0 ? projectionPoints[projectionPoints.length - 1].cost : currentCost;
+                const maxCost = Math.max(currentCost * 1.1, maxProjectedCost * 1.1, 100); 
+
+                const padding = { top: 30, bottom: 30, left: 60, right: 30 };
+                const graphWidth = width - padding.left - padding.right;
+                const graphHeight = height - padding.top - padding.bottom;
+
+                const getX = (t) => padding.left + ((t - timeDomainStart) / totalDuration) * graphWidth;
+                const getY = (c) => (height - padding.bottom) - (c / maxCost) * graphHeight;
+
+                // Axes
+                ctx.strokeStyle = isDark ? '#475569' : '#cbd5e1';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(padding.left, padding.top);
+                ctx.lineTo(padding.left, height - padding.bottom);
+                ctx.lineTo(width - padding.right, height - padding.bottom);
+                ctx.stroke();
+
+                // Y-Axis Labels
+                ctx.fillStyle = isDark ? '#94a3b8' : '#64748b';
+                ctx.textAlign = 'right';
+                ctx.textBaseline = 'middle';
+                ctx.font = '10px sans-serif';
+                
+                const ySteps = 4;
+                for (let i = 0; i <= ySteps; i++) {
+                    const val = (maxCost / ySteps) * i;
+                    const yPos = getY(val);
+                    ctx.fillText(formatMoneyRounded(val, currency), padding.left - 8, yPos);
+                    
+                    if (i > 0) {
+                        ctx.beginPath();
+                        ctx.strokeStyle = isDark ? 'rgba(71, 85, 105, 0.2)' : 'rgba(203, 213, 225, 0.3)';
+                        ctx.moveTo(padding.left, yPos);
+                        ctx.lineTo(width - padding.right, yPos);
+                        ctx.stroke();
+                    }
+                }
+
+                // X-Axis Labels
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'top';
+                
+                // Explicitly draw Start Time
+                const startX = getX(timeDomainStart);
+                ctx.fillStyle = isDark ? '#94a3b8' : '#64748b';
+                ctx.fillText(formatClockTime(new Date(timeDomainStart)), startX, height - padding.bottom + 8);
+
+                // Draw Future Marks labels
+                futureMarks.forEach(t => {
+                    const xPos = getX(t);
+                    if (xPos > startX + 40 && xPos < width) { 
+                        ctx.fillText(formatClockTime(new Date(t)), xPos, height - padding.bottom + 8);
+                    }
+                });
+
+                // History Line
+                ctx.strokeStyle = isDark ? '#60a5fa' : '#2563eb';
+                ctx.lineWidth = 3;
+                ctx.lineJoin = 'round';
+                ctx.beginPath();
+                
+                historyPoints.forEach((p, i) => {
+                    const x = getX(p.xTime);
+                    const y = getY(p.cost);
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                });
+                ctx.stroke();
+
+                // Projection Line
+                ctx.beginPath();
+                ctx.setLineDash([5, 5]);
+                ctx.strokeStyle = isDark ? '#94a3b8' : '#94a3b8';
+                
+                ctx.moveTo(getX(now), getY(currentCost));
+                projectionPoints.forEach(p => {
+                    ctx.lineTo(getX(p.xTime), getY(p.cost));
+                });
+                ctx.stroke();
+                ctx.setLineDash([]); 
+
+                // Event markers
+                historyPoints.forEach((p) => {
+                    if (p.type === 'start') return; 
+                    const x = getX(p.xTime);
+                    const y = getY(p.cost);
+                    ctx.beginPath();
+                    ctx.strokeStyle = isDark ? 'rgba(148, 163, 184, 0.3)' : 'rgba(100, 116, 139, 0.3)';
+                    ctx.lineWidth = 1;
+                    ctx.moveTo(x, y);
+                    ctx.lineTo(x, height - padding.bottom);
+                    ctx.stroke();
+                    ctx.fillStyle = isDark ? '#60a5fa' : '#2563eb';
+                    ctx.beginPath();
+                    ctx.arc(x, y, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+
+                // Projection Dots & Values
+                projectionPoints.forEach(p => {
+                    const x = getX(p.xTime);
+                    const y = getY(p.cost);
+                    ctx.fillStyle = isDark ? '#94a3b8' : '#64748b';
+                    ctx.beginPath();
+                    ctx.arc(x, y, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.font = 'bold 11px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillStyle = isDark ? '#e2e8f0' : '#1e293b'; 
+                    ctx.fillText(formatMoneyRounded(p.cost, currency), x, y - 10);
+                });
+
+            }, [segments, currentCost, currentBurnRate, isDark, startTime, currency, timerRunning]);
+
+            useEffect(() => {
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                
+                const parent = canvas.parentElement;
+                const dpr = window.devicePixelRatio || 1;
+                
+                const resize = () => {
+                    const w = parent.clientWidth;
+                    const h = parent.clientHeight;
+                    canvas.width = w * dpr;
+                    canvas.height = h * dpr;
+                    canvas.style.width = w + 'px';
+                    canvas.style.height = h + 'px';
+                    ctx.scale(dpr, dpr);
+                    draw(ctx, w, h);
+                };
+                
+                resize();
+                window.addEventListener('resize', resize);
+                return () => window.removeEventListener('resize', resize);
+            }, [draw]);
+
+            // Re-draw on data change
+            useEffect(() => {
+                const canvas = canvasRef.current;
+                if(canvas) {
+                    const ctx = canvas.getContext('2d');
+                    const parent = canvas.parentElement;
+                    if (parent) {
+                        const w = parent.clientWidth;
+                        const h = parent.clientHeight;
+                        draw(ctx, w, h);
+                    }
+                }
+            }, [draw, currentCost]);
+
+            const handleMouseMove = (e) => {
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                const rect = canvas.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                
+                const now = Date.now();
+                const effectiveStart = startTime || now;
+                const futureMarks = getNextQuarterMarks(now);
+                const projectionEnd = futureMarks[futureMarks.length - 1];
+                const totalDuration = Math.max(projectionEnd - effectiveStart, 60000);
+                
+                const width = canvas.offsetWidth;
+                const padding = { left: 60, right: 30 };
+                const graphWidth = width - padding.left - padding.right;
+                
+                const timeAtCursor = effectiveStart + ((mouseX - padding.left) / graphWidth) * totalDuration;
+                
+                let closestSeg = null;
+                let minDist = Infinity;
+
+                segments.forEach(seg => {
+                    const dist = Math.abs(seg.timestamp - timeAtCursor);
+                    if (dist < minDist) {
+                        minDist = dist;
+                        closestSeg = seg;
+                    }
+                });
+
+                const thresholdTime = totalDuration * 0.05; 
+                
+                if (closestSeg && minDist < thresholdTime) {
+                    const timeStr = formatClockTime(new Date(closestSeg.timestamp));
+                    const status = closestSeg.type === 'paused' ? 'Paused' : `${closestSeg.attendeeCount} Attendees`;
+                    const rate = closestSeg.type === 'paused' ? 'Rate: $0/hr' : `${formatMoney(closestSeg.burnRate, currency)}/hr`;
+                    
+                    setTooltip({
+                        x: mouseX,
+                        y: 30,
+                        text: [timeStr, status, rate]
+                    });
+                } else {
+                    setTooltip(null);
+                }
+            };
+
+            return (
+                <div className="w-full h-full relative group">
+                    <canvas 
+                        ref={canvasRef} 
+                        className="w-full h-full cursor-crosshair touch-none"
+                        onMouseMove={handleMouseMove}
+                        onMouseLeave={() => setTooltip(null)}
+                    />
+                    {tooltip && (
+                        <div 
+                            className="absolute z-10 p-2 rounded shadow-lg text-xs pointer-events-none bg-slate-800 text-white border border-slate-600 whitespace-nowrap"
+                            style={{ left: Math.min(tooltip.x + 10, 400), top: tooltip.y }}
+                        >
+                            {tooltip.text.map((line, i) => <div key={i}>{line}</div>)}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const BurnRateChart = ({ segments, currentBurnRate, currency, isDark, startTime, timerRunning }) => {
+            const canvasRef = useRef(null);
+
+            useEffect(() => {
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                
+                const parent = canvas.parentElement;
+                if (!parent) return;
+                const dpr = window.devicePixelRatio || 1;
+                
+                const w = parent.clientWidth;
+                const h = parent.clientHeight;
+                canvas.width = w * dpr;
+                canvas.height = h * dpr;
+                canvas.style.width = w + 'px';
+                canvas.style.height = h + 'px';
+                ctx.scale(dpr, dpr);
+
+                const width = w;
+                const height = h;
+                
+                ctx.clearRect(0, 0, width, height);
+
+                const now = Date.now();
+                if (!startTime) return;
+
+                const totalDuration = Math.max(now - startTime, 60000); 
+                const maxRate = Math.max(...segments.map((s) => s.burnRate), currentBurnRate, 100) * 1.2;
+
+                const padding = { left: 45, right: 10, top: 20, bottom: 20 };
+                const graphWidth = width - padding.left - padding.right;
+                const graphHeight = height - padding.top - padding.bottom;
+
+                const getX = (t) => padding.left + ((t - startTime) / totalDuration) * graphWidth;
+                const getY = (r) => (height - padding.bottom) - (r / maxRate) * graphHeight;
+
+                ctx.strokeStyle = isDark ? '#475569' : '#cbd5e1';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(padding.left, padding.top);
+                ctx.lineTo(padding.left, height - padding.bottom);
+                ctx.lineTo(width - padding.right, height - padding.bottom);
+                ctx.stroke();
+
+                ctx.strokeStyle = isDark ? '#f59e0b' : '#d97706'; 
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+
+                segments.forEach((seg, i) => {
+                    const nextSeg = segments[i + 1];
+                    const segEndTime = nextSeg ? nextSeg.timestamp : now;
+                    
+                    const xStart = getX(seg.timestamp);
+                    const xEnd = getX(segEndTime);
+                    const y = getY(seg.burnRate);
+
+                    if (i === 0) ctx.moveTo(xStart, y);
+                    else ctx.lineTo(xStart, y);
+
+                    ctx.lineTo(xEnd, y);
+                });
+
+                ctx.stroke();
+
+                ctx.lineTo(getX(now), height - padding.bottom);
+                ctx.lineTo(padding.left, height - padding.bottom);
+                ctx.closePath();
+                ctx.fillStyle = isDark ? 'rgba(245, 158, 11, 0.1)' : 'rgba(217, 119, 6, 0.1)';
+                ctx.fill();
+
+                ctx.fillStyle = isDark ? '#94a3b8' : '#64748b';
+                ctx.font = '10px monospace';
+                ctx.textAlign = 'right';
+                ctx.fillText(formatMoney(maxRate, currency) + "/hr", padding.left - 5, padding.top + 10);
+
+                if (timerRunning) {
+                    const currentY = getY(currentBurnRate);
+                    ctx.fillStyle = isDark ? '#f59e0b' : '#d97706';
+                    ctx.beginPath();
+                    ctx.arc(getX(now), currentY, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+            }, [segments, currentBurnRate, currency, isDark, startTime, timerRunning]);
+
+            return (
+                <div className="w-full h-full relative">
+                     <div className="absolute top-0 left-2 text-[10px] uppercase font-semibold opacity-50">Burn Rate History</div>
+                     <canvas ref={canvasRef} className="w-full h-full" />
+                </div>
+            );
+        };
+
+        // --- Main App ---
+        const App = () => {
+            const [timerRunning, setTimerRunning] = useState(false);
+            const [startTime, setStartTime] = useState(null);
+            const [segments, setSegments] = useState([]); 
+            
+            const [title, setTitle] = useState("Strategy Meeting");
+            const [currency, setCurrency] = useState("USD");
+            const [presentationMode, setPresentationMode] = useState(false);
+            const [isDark, setIsDark] = useState(false);
+            const [highContrast, setHighContrast] = useState(false);
+            const [editPanelOpen, setEditPanelOpen] = useState(false);
+            const [showAgenda, setShowAgenda] = useState(false);
+            const [copySuccess, setCopySuccess] = useState(false);
+            const [ticker, setTicker] = useState(0); 
+
+            const [inputMode, setInputMode] = useState("simple"); 
+            const [overhead, setOverhead] = useState(1.3);
+            const [simpleInputs, setSimpleInputs] = useState({ count: 6, rate: 100 });
+            const [detailedRows, setDetailedRows] = useState([
+                { id: 1, label: 'Manager', rate: 150, count: 1 },
+                { id: 2, label: 'Engineer', rate: 100, count: 3 },
+            ]);
+
+            // Session restoration ref
+            const sessionRestored = useRef(false);
+
+            // Restore session on mount
+            useEffect(() => {
+                if (sessionRestored.current) return;
+                sessionRestored.current = true;
+                const saved = loadSession();
+                if (saved && saved.startTime) {
+                    setTimerRunning(saved.timerRunning || false);
+                    setStartTime(saved.startTime);
+                    setSegments(saved.segments || []);
+                    setTitle(saved.title || "Strategy Meeting");
+                    setCurrency(saved.currency || "USD");
+                    setInputMode(saved.inputMode || "simple");
+                    setOverhead(saved.overhead || 1.3);
+                    if (saved.simpleInputs) setSimpleInputs(saved.simpleInputs);
+                    if (saved.detailedRows) setDetailedRows(saved.detailedRows);
+                }
+            }, []);
+
+            // Save session when meeting is active
+            useEffect(() => {
+                if (startTime) {
+                    saveSession({
+                        timerRunning, startTime, segments, title, currency,
+                        inputMode, overhead, simpleInputs, detailedRows
+                    });
+                }
+            }, [timerRunning, startTime, segments, title, currency, inputMode, overhead, simpleInputs, detailedRows]);
+
+            const totalAttendees = inputMode === 'simple' ? simpleInputs.count : detailedRows.reduce((a,b)=>a+b.count,0);
+            
+            const calculatedBurnRate = useMemo(() => 
+                getBurnRatePerHour(inputMode, simpleInputs, detailedRows, overhead), 
+            [inputMode, simpleInputs, detailedRows, overhead]);
+
+            const currentCost = useMemo(() => {
+                if (!startTime || segments.length === 0) return 0;
+                const now = Date.now();
+                let total = 0;
+                for (let i = 0; i < segments.length; i++) {
+                    const seg = segments[i];
+                    const nextSeg = segments[i + 1];
+                    const segEndTime = nextSeg ? nextSeg.timestamp : now;
+                    if (seg.type === 'active') {
+                        const durationHrs = (segEndTime - seg.timestamp) / 3600000;
+                        total += durationHrs * seg.burnRate;
+                    }
+                }
+                return total;
+            }, [segments, startTime, ticker]);
+
+            const billableDuration = useMemo(() => {
+                if (!startTime || segments.length === 0) return 0;
+                const now = Date.now();
+                let totalMs = 0;
+                for (let i = 0; i < segments.length; i++) {
+                    const seg = segments[i];
+                    const nextSeg = segments[i + 1];
+                    const segEndTime = nextSeg ? nextSeg.timestamp : now;
+                    if (seg.type === 'active') {
+                        totalMs += (segEndTime - seg.timestamp);
+                    }
+                }
+                return totalMs;
+            }, [segments, startTime, ticker]);
+
+            useEffect(() => {
+                let interval;
+                if (startTime) {
+                    interval = setInterval(() => {
+                        setTicker(Date.now());
+                    }, 100);
+                }
+                return () => clearInterval(interval);
+            }, [startTime]);
+
+            const pushSegment = (type, rate) => {
+                const now = Date.now();
+                let costUpToNow = 0;
+                if (segments.length > 0) {
+                    const lastSeg = segments[segments.length - 1];
+                    costUpToNow = lastSeg.costAtStart; 
+                    if (lastSeg.type === 'active') {
+                        costUpToNow += ((now - lastSeg.timestamp) / 3600000) * lastSeg.burnRate;
+                    }
+                }
+                setSegments(prev => [
+                    ...prev,
+                    { 
+                        timestamp: now, 
+                        burnRate: rate, 
+                        type: type, 
+                        attendeeCount: totalAttendees,
+                        costAtStart: costUpToNow
+                    }
+                ]);
+            };
+
+            const toggleTimer = () => {
+                const now = Date.now();
+                if (timerRunning) {
+                    setTimerRunning(false);
+                    pushSegment('paused', 0);
+                } else {
+                    if (!startTime) setStartTime(now);
+                    setTimerRunning(true);
+                    pushSegment('active', calculatedBurnRate);
+                }
+            };
+
+            const resetMeeting = () => {
+                setTimerRunning(false);
+                setStartTime(null);
+                setSegments([]);
+                clearSession();
+            };
+
+            const lastCommittedRate = useRef(calculatedBurnRate);
+            const lastCommittedCount = useRef(totalAttendees);
+
+            useEffect(() => {
+                if (timerRunning) {
+                    const rateChanged = Math.abs(calculatedBurnRate - lastCommittedRate.current) > 0.01;
+                    const countChanged = totalAttendees !== lastCommittedCount.current;
+                    
+                    if (rateChanged || countChanged) {
+                        const handler = setTimeout(() => {
+                            pushSegment('active', calculatedBurnRate);
+                            lastCommittedRate.current = calculatedBurnRate;
+                            lastCommittedCount.current = totalAttendees;
+                        }, 500);
+                        return () => clearTimeout(handler);
+                    }
+                } else {
+                    lastCommittedRate.current = calculatedBurnRate;
+                    lastCommittedCount.current = totalAttendees;
+                }
+            }, [calculatedBurnRate, totalAttendees, timerRunning]);
+
+            const switchInputMode = (newMode) => {
+                if (newMode === inputMode) return;
+                if (newMode === 'detailed') {
+                    const newRow = { id: Date.now(), label: 'Participants', rate: simpleInputs.rate, count: simpleInputs.count };
+                    setDetailedRows([newRow]);
+                } else {
+                    const totalCount = detailedRows.reduce((sum, r) => sum + r.count, 0);
+                    const totalCostVal = detailedRows.reduce((sum, r) => sum + (r.rate * r.count), 0);
+                    const avgRate = totalCount > 0 ? Math.round(totalCostVal / totalCount) : 100;
+                    setSimpleInputs({ count: totalCount, rate: avgRate });
+                }
+                setInputMode(newMode);
+            };
+
+            const handleKeyDown = (e) => {
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+                switch(e.key.toLowerCase()) {
+                    case ' ': e.preventDefault(); toggleTimer(); break;
+                    case 'r': resetMeeting(); break;
+                    case 'f': setPresentationMode(prev => !prev); break;
+                    case 'e': setEditPanelOpen(prev => !prev); break;
+                }
+            };
+
+            useEffect(() => {
+                window.addEventListener('keydown', handleKeyDown);
+                return () => window.removeEventListener('keydown', handleKeyDown);
+            }, [timerRunning, presentationMode, editPanelOpen]);
+
+            useEffect(() => {
+                if(presentationMode) document.body.classList.add('presentation-active');
+                else document.body.classList.remove('presentation-active');
+            }, [presentationMode]);
+
+            const bgColor = isDark ? 'bg-slate-900' : 'bg-slate-50';
+            const cardBg = isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200';
+            const textColor = isDark ? 'text-slate-100' : 'text-slate-900';
+            const mutedText = isDark ? 'text-slate-400' : 'text-slate-500';
+            const accentText = isDark ? 'text-blue-400' : 'text-blue-600';
+            const buttonClass = `px-4 py-2 rounded font-medium transition-all focus:ring-2 focus:ring-blue-500 focus:outline-none ${isDark ? 'bg-slate-700 hover:bg-slate-600 text-white' : 'bg-white hover:bg-slate-50 border border-slate-300 text-slate-700'}`;
+            
+            const handleCopy = () => {
+                const text = `Meeting: ${title}\nDate: ${new Date().toLocaleDateString()}\nDuration: ${formatTime(billableDuration)}\nCost: ${formatMoney(currentCost, currency)}\nBurn Rate: ${formatMoney(calculatedBurnRate, currency)}/hr\nAttendees: ${totalAttendees}`;
+                copyToClipboard(text);
+                setCopySuccess(true);
+                setTimeout(() => setCopySuccess(false), 2000);
+            };
+
+            const now = Date.now();
+            const marks = getNextQuarterMarks(now);
+            const msToTarget1 = Math.max(0, marks[0] - now);
+            const costAtTarget1 = currentCost + (timerRunning ? (calculatedBurnRate / 3600000) * msToTarget1 : 0);
+            
+            const contrastStyle = highContrast ? { filter: 'contrast(1.5)' } : {};
+
+            return (
+                <div className={`flex flex-col h-full w-full overflow-hidden transition-colors duration-200 ${bgColor} ${textColor} relative`} style={contrastStyle}>
+                    
+                    {presentationMode && (
+                        <div className="absolute top-4 right-4 z-50 flex gap-2">
+                            <button onClick={() => setIsDark(!isDark)} className={`p-3 rounded-full transition-colors border shadow-lg ${isDark ? 'bg-slate-800 text-slate-400 border-slate-700' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`} title="Toggle Theme">
+                                <Icon name="sun" size={20} className={isDark ? "block" : "hidden"} /><Icon name="moon" size={20} className={isDark ? "hidden" : "block"} />
+                            </button>
+                            <button onClick={() => setPresentationMode(false)} className={`p-3 rounded-full transition-colors border shadow-lg ${isDark ? 'bg-slate-800 text-slate-400 border-slate-700 hover:text-red-500' : 'bg-white text-slate-500 border-slate-200 hover:text-red-500'}`} title="Exit Presentation">
+                                <Icon name="log-out" size={20} />
+                            </button>
+                        </div>
+                    )}
+
+                    {!presentationMode && (
+                        <header className={`flex flex-col md:flex-row md:items-center justify-between px-4 md:px-6 py-4 gap-4 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+                            <div className="flex items-center gap-4 w-full md:w-auto">
+                                <div className="p-2 bg-blue-600 rounded-lg shadow-lg shrink-0 text-white">
+                                    <Icon name="calculator" />
+                                </div>
+                                <input value={title} onChange={(e) => setTitle(e.target.value)} className={`text-xl font-bold bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none w-full md:w-64 ${textColor}`} />
+                            </div>
+                            <div className="flex items-center gap-3 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
+                                <select value={currency} onChange={(e) => setCurrency(e.target.value)} className={`p-2 rounded border shrink-0 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'} focus:ring-2 focus:ring-blue-500`}>
+                                    <option value="USD">USD ($)</option>
+                                    <option value="EUR">EUR (€)</option>
+                                    <option value="GBP">GBP (£)</option>
+                                </select>
+                                <button onClick={() => setHighContrast(!highContrast)} title="High Contrast" className="p-2 rounded hover:bg-slate-200 dark:hover:bg-slate-700 shrink-0">
+                                    <Icon name="eye" />
+                                </button>
+                                <button onClick={() => setIsDark(!isDark)} title="Theme Toggle" className="p-2 rounded hover:bg-slate-200 dark:hover:bg-slate-700 shrink-0">
+                                    <Icon name={isDark ? "sun" : "moon"} />
+                                </button>
+                                <button onClick={() => setPresentationMode(true)} className={`flex items-center gap-2 px-4 py-2 text-white rounded shadow-sm shrink-0 ${isDark ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-900 hover:bg-slate-800'}`}>
+                                    <Icon name="presentation" size={16} /> <span className="whitespace-nowrap">Presentation Mode</span>
+                                </button>
+                            </div>
+                        </header>
+                    )}
+
+                    <main className="flex-1 overflow-auto p-4 md:p-6 flex flex-col lg:flex-row gap-6">
+                        <div className={`flex-1 flex flex-col gap-6 transition-all duration-500 ${presentationMode ? 'justify-center items-center scale-100 md:scale-105' : ''}`}>
+                            <div className="text-center space-y-2">
+                                <div className={`uppercase tracking-widest text-sm font-semibold ${mutedText}`}>Current Meeting Cost</div>
+                                <div className={`font-bold tabular-nums leading-none tracking-tight ${presentationMode ? 'text-7xl md:text-9xl' : 'text-6xl md:text-8xl'} ${accentText}`}>
+                                    {formatMoney(currentCost, currency)}
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4 md:gap-8 text-center max-w-2xl w-full mx-auto mt-4">
+                                <div>
+                                    <div className={`text-sm uppercase font-semibold mb-1 ${mutedText}`}>Billable Time</div>
+                                    <div className={`text-2xl md:text-4xl font-mono tabular-nums ${textColor}`}>
+                                        {formatTime(billableDuration)}
+                                    </div>
+                                </div>
+                                <div>
+                                    <div className={`text-sm uppercase font-semibold mb-1 ${mutedText}`}>Burn Rate / Hr</div>
+                                    <div className={`text-2xl md:text-4xl tabular-nums ${textColor} ${timerRunning ? 'text-orange-500' : ''}`}>
+                                        {formatMoney(calculatedBurnRate, currency)}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {presentationMode && (
+                                <div className="mt-8 w-full max-w-4xl flex flex-col gap-6">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
+                                        <div className={`p-4 rounded-lg flex flex-col justify-between items-center ${isDark ? 'bg-slate-800' : 'bg-white shadow-sm border border-slate-200'}`}>
+                                            <div className="text-xs uppercase opacity-70 mb-1">Participants</div>
+                                            <div className="flex items-center gap-4">
+                                                {inputMode === 'simple' && (
+                                                    <button onClick={() => setSimpleInputs(p => ({...p, count: Math.max(1, p.count - 1)}))} className={`w-12 h-12 rounded-lg flex items-center justify-center transition-colors ${isDark ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}><Icon name="minus" size={20}/></button>
+                                                )}
+                                                <div className="text-4xl font-bold tabular-nums">{totalAttendees}</div>
+                                                {inputMode === 'simple' && (
+                                                    <button onClick={() => setSimpleInputs(p => ({...p, count: p.count + 1}))} className={`w-12 h-12 rounded-lg flex items-center justify-center transition-colors ${isDark ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}><Icon name="plus" size={20}/></button>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className={`p-4 rounded-lg ${isDark ? 'bg-slate-800' : 'bg-white shadow-sm border border-slate-200'}`}>
+                                            <div className="text-xs uppercase opacity-70 mb-1">Est. @ {formatClockTime(new Date(marks[0]))}</div>
+                                            <div className={`text-3xl font-bold ${mutedText}`}>
+                                                {formatMoney(costAtTarget1, currency)}
+                                            </div>
+                                        </div>
+                                        
+                                        <button onClick={toggleTimer} className={`p-4 rounded-lg flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors hover:opacity-80 ${timerRunning ? 'bg-green-900/20 text-green-600 hover:bg-green-900/30' : 'bg-red-900/20 text-red-600 hover:bg-red-900/30'}`}>
+                                            <div className={`w-3 h-3 rounded-full ${timerRunning ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+                                            <span className="font-bold uppercase tracking-wider">{timerRunning ? 'Running' : 'Paused'}</span>
+                                            <span className="text-[10px] uppercase opacity-70">(Click to toggle)</span>
+                                        </button>
+                                    </div>
+
+                                    <div className={`h-32 w-full rounded-lg border overflow-hidden ${cardBg}`}>
+                                        <BurnRateChart segments={segments} currentBurnRate={timerRunning ? calculatedBurnRate : 0} currency={currency} isDark={isDark} startTime={startTime} timerRunning={timerRunning} />
+                                    </div>
+                                </div>
+                            )}
+
+                            {!presentationMode && (
+                                <div className="flex flex-col md:flex-row justify-center gap-4 mt-4">
+                                    <button onClick={toggleTimer} className={`px-8 py-4 rounded-xl text-xl font-bold shadow-lg transform transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-3 ${timerRunning ? 'bg-amber-100 text-amber-700 border-2 border-amber-500 hover:bg-amber-200' : 'bg-green-600 text-white hover:bg-green-700'}`}>
+                                        <Icon name={timerRunning ? "pause" : "play"} />
+                                        {timerRunning ? "Pause" : (startTime ? "Resume" : "Start")}
+                                    </button>
+                                    <button onClick={resetMeeting} className="px-6 py-4 rounded-xl text-lg font-semibold bg-white border-2 border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-red-500 transition-colors flex items-center justify-center">
+                                        <Icon name="rotate-ccw" />
+                                    </button>
+                                </div>
+                            )}
+
+                            {!presentationMode && (
+                                <div className={`mt-auto p-4 rounded-xl border ${cardBg}`}>
+                                    <h3 className={`text-sm font-semibold uppercase mb-4 flex items-center gap-2 ${mutedText}`}>
+                                        <Icon name="trending-up" size={16}/> Cost History & Projection
+                                    </h3>
+                                    <div className="h-48 w-full">
+                                        <CostHistoryChart segments={segments} currentCost={currentCost} currentBurnRate={calculatedBurnRate} currency={currency} isDark={isDark} startTime={startTime} timerRunning={timerRunning} />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {(!presentationMode || editPanelOpen) && (
+                            <div className={`w-full lg:w-96 flex-shrink-0 flex flex-col gap-4 ${presentationMode ? 'fixed right-0 top-0 bottom-0 z-40 p-6 shadow-2xl border-l border-slate-700 bg-slate-900 text-slate-100' : ''}`}>
+                                
+                                {presentationMode && (
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h2 className="text-xl font-bold">Quick Edit</h2>
+                                        <button onClick={() => setEditPanelOpen(false)}><Icon name="x"/></button>
+                                    </div>
+                                )}
+
+                                <div className={`rounded-lg border overflow-hidden ${cardBg}`}>
+                                    <button onClick={() => setShowAgenda(!showAgenda)} className={`w-full px-4 py-3 flex justify-between items-center text-sm font-semibold ${mutedText} hover:bg-slate-100 dark:hover:bg-slate-700`}>
+                                        <span>Agenda ROI Check</span>
+                                        <Icon name={showAgenda ? "chevron-up" : "chevron-down"} size={16} />
+                                    </button>
+                                    {showAgenda && (
+                                        <div className="p-4 space-y-3 text-sm">
+                                            <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" className="rounded text-blue-600" /><span>Goal defined?</span></label>
+                                            <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" className="rounded text-blue-600" /><span>Decision required?</span></label>
+                                            <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" className="rounded text-blue-600" /><span>Alternatives considered?</span></label>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className={`flex-1 rounded-xl border flex flex-col ${cardBg} shadow-sm`}>
+                                    <div className="flex border-b border-slate-200 dark:border-slate-700">
+                                        <button onClick={() => switchInputMode('simple')} className={`flex-1 py-3 text-sm font-medium ${inputMode === 'simple' ? 'text-blue-600 border-b-2 border-blue-600' : mutedText}`}>Simple</button>
+                                        <button onClick={() => switchInputMode('detailed')} className={`flex-1 py-3 text-sm font-medium ${inputMode === 'detailed' ? 'text-blue-600 border-b-2 border-blue-600' : mutedText}`}>Detailed</button>
+                                    </div>
+
+                                    <div className="p-5 flex-1 overflow-auto">
+                                        <div className="mb-6">
+                                            <label className={`block text-xs font-bold uppercase mb-1 ${mutedText}`}>Overhead</label>
+                                            <div className="flex gap-2">
+                                                {[1.0, 1.3, 1.5, 2.0].map(v => (
+                                                    <button key={v} onClick={() => setOverhead(v)} className={`flex-1 py-1 text-xs rounded border ${overhead === v ? 'bg-blue-100 border-blue-500 text-blue-700' : 'border-slate-200 text-slate-500'}`}>{v}x</button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {inputMode === 'simple' ? (
+                                            <div className="space-y-6">
+                                                <div>
+                                                    <label className={`block text-sm font-medium mb-1 ${mutedText}`}>Avg Hourly Rate ({currency})</label>
+                                                    <input type="number" value={simpleInputs.rate} onChange={(e) => setSimpleInputs({...simpleInputs, rate: Number(e.target.value)})} className={`w-full p-2 rounded border text-lg font-mono ${isDark || presentationMode ? 'bg-slate-700 border-slate-600' : 'bg-white border-slate-300'}`} />
+                                                </div>
+                                                <div>
+                                                    <label className={`block text-sm font-medium mb-1 ${mutedText}`}>Attendee Count</label>
+                                                    <div className="flex items-center gap-2">
+                                                        <button onClick={() => setSimpleInputs(prev => ({...prev, count: Math.max(1, prev.count - 1)}))} className={`w-12 h-12 flex items-center justify-center rounded text-xl font-bold transition-colors ${isDark ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}><Icon name="minus" size={20}/></button>
+                                                        <input type="number" value={simpleInputs.count} onChange={(e) => setSimpleInputs({...simpleInputs, count: Math.max(1, Number(e.target.value))})} className={`flex-1 min-w-0 p-2 text-center rounded border text-3xl font-bold font-mono ${isDark || presentationMode ? 'bg-slate-700 border-slate-600' : 'bg-white border-slate-300'}`} />
+                                                        <button onClick={() => setSimpleInputs(prev => ({...prev, count: prev.count + 1}))} className={`w-12 h-12 flex items-center justify-center rounded text-xl font-bold transition-colors ${isDark ? 'bg-slate-700 hover:bg-slate-600' : 'bg-blue-100 hover:bg-blue-200 text-blue-600'}`}><Icon name="plus" size={20}/></button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-3">
+                                                {detailedRows.map((row, idx) => (
+                                                    <div key={row.id} className="flex gap-2 items-center bg-slate-50 dark:bg-slate-800 p-2 rounded border border-slate-200 dark:border-slate-700">
+                                                        <div className="flex-1">
+                                                            <input type="text" placeholder="Role" value={row.label} onChange={(e) => { const newRows = [...detailedRows]; newRows[idx].label = e.target.value; setDetailedRows(newRows); }} className="w-full bg-transparent text-sm font-bold outline-none" />
+                                                            <div className="flex items-center gap-1 text-xs text-slate-500">
+                                                                <span>{currency}</span>
+                                                                <input type="number" value={row.rate} onChange={(e) => { const newRows = [...detailedRows]; newRows[idx].rate = Number(e.target.value); setDetailedRows(newRows); }} className="w-16 bg-transparent border-b border-slate-300 outline-none" />
+                                                                <span>/hr</span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-1">
+                                                            <button onClick={() => { const newRows = [...detailedRows]; newRows[idx].count = Math.max(0, newRows[idx].count - 1); setDetailedRows(newRows); }} className="w-8 h-8 rounded bg-slate-200 hover:bg-slate-300 flex items-center justify-center font-bold">-</button>
+                                                            <span className="w-8 text-center font-mono font-bold">{row.count}</span>
+                                                            <button onClick={() => { const newRows = [...detailedRows]; newRows[idx].count = newRows[idx].count + 1; setDetailedRows(newRows); }} className="w-8 h-8 rounded bg-blue-100 hover:bg-blue-200 text-blue-600 flex items-center justify-center font-bold">+</button>
+                                                        </div>
+                                                        <button onClick={() => setDetailedRows(detailedRows.filter(r => r.id !== row.id))} className="text-slate-400 hover:text-red-500 px-1"><Icon name="trash-2" size={14}/></button>
+                                                    </div>
+                                                ))}
+                                                <button onClick={() => setDetailedRows([...detailedRows, { id: Date.now(), label: 'New Role', rate: 100, count: 1 }])} className="w-full py-2 border-2 border-dashed border-slate-300 rounded text-sm font-bold text-slate-400 hover:border-blue-400 hover:text-blue-500">+ Add Role</button>
+                                            </div>
+                                        )}
+                                    </div>
+                                    
+                                    <div className="p-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded-b-xl">
+                                        <div className="flex justify-between items-center text-sm">
+                                            <span className={mutedText}>Active Rate</span>
+                                            <span className={`font-bold tabular-nums ${timerRunning ? 'text-orange-600' : ''}`}>
+                                                {formatMoney(calculatedBurnRate, currency)} / hr
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <button onClick={handleCopy} className={`w-full flex justify-center items-center gap-2 relative overflow-hidden ${buttonClass}`}>
+                                    <Icon name={copySuccess ? "check" : "copy"} size={16} className={copySuccess ? "text-green-500" : ""} /> 
+                                    {copySuccess ? "Copied!" : "Copy Snapshot"}
+                                </button>
+                            </div>
+                        )}
+                    </main>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
