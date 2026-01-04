@@ -42,20 +42,35 @@
     
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    
+
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
         .touch-none { touch-action: none; }
-        
+
         /* High Contrast overrides */
         .high-contrast { filter: contrast(1.5); }
-        
+
         /* Disable scroll in presentation mode */
         body.presentation-active { overflow: hidden; }
+
+        /* Desktop layout - sidebar scrolling */
+        @media (min-width: 1024px) {
+            .settings-sidebar {
+                max-height: 100%;
+                overflow-y: auto;
+            }
+            .main-layout {
+                overflow: hidden !important;
+            }
+            .content-area, .settings-sidebar {
+                min-height: 0;
+                overflow-y: auto;
+            }
+        }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 transition-colors duration-200">
-    <div id="root" class="h-screen w-screen flex flex-col overflow-hidden"></div>
+    <div id="root" class="h-screen w-screen flex flex-col"></div>
 
     <script type="text/babel">
         const { useState, useEffect, useRef, useMemo, useCallback } = React;
@@ -68,6 +83,144 @@
             // Convert camelCase to kebab-case for data-lucide attribute
             const iconName = name.replace(/([a-z0-9]|(?=[A-Z]))([A-Z])/g, '$1-$2').toLowerCase();
             return <i data-lucide={iconName} className={className} style={{ width: size, height: size, display: 'inline-block', pointerEvents: 'none' }}></i>;
+        };
+
+        // --- Color Utility Functions ---
+        const colorUtils = {
+            hexToRgb: (hex) => {
+                const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+                return result ? {
+                    r: parseInt(result[1], 16),
+                    g: parseInt(result[2], 16),
+                    b: parseInt(result[3], 16)
+                } : { r: 0, g: 0, b: 0 };
+            },
+            rgbToHex: (r, g, b) => {
+                const toHex = (c) => {
+                    const hex = Math.max(0, Math.min(255, Math.round(c))).toString(16);
+                    return hex.length === 1 ? '0' + hex : hex;
+                };
+                return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+            },
+            normalizedToRgb: (nr, ng, nb) => ({
+                r: Math.round(nr * 255),
+                g: Math.round(ng * 255),
+                b: Math.round(nb * 255)
+            }),
+            rgbToNormalized: (r, g, b) => ({
+                nr: (r / 255).toFixed(3),
+                ng: (g / 255).toFixed(3),
+                nb: (b / 255).toFixed(3)
+            }),
+            isValidHex: (hex) => /^#?([a-f\d]{6})$/i.test(hex),
+            parseColorInput: (value, mode) => {
+                if (mode === 'hex') {
+                    const hex = value.startsWith('#') ? value : `#${value}`;
+                    return colorUtils.isValidHex(hex) ? hex : null;
+                }
+                if (mode === 'rgb') {
+                    const parts = value.split(/[,\s]+/).map(Number);
+                    if (parts.length === 3 && parts.every(n => !isNaN(n) && n >= 0 && n <= 255))
+                        return colorUtils.rgbToHex(parts[0], parts[1], parts[2]);
+                    return null;
+                }
+                if (mode === 'normalized') {
+                    const parts = value.split(/[,\s]+/).map(Number);
+                    if (parts.length === 3 && parts.every(n => !isNaN(n) && n >= 0 && n <= 1)) {
+                        const rgb = colorUtils.normalizedToRgb(parts[0], parts[1], parts[2]);
+                        return colorUtils.rgbToHex(rgb.r, rgb.g, rgb.b);
+                    }
+                    return null;
+                }
+                return null;
+            }
+        };
+
+        // --- ColorPicker Component ---
+        const ColorPicker = ({ color, onChange, label, isDark, t }) => {
+            const [inputMode, setInputMode] = useState('hex');
+            const [textValue, setTextValue] = useState(color);
+            const [isOpen, setIsOpen] = useState(false);
+            const pickerRef = useRef(null);
+
+            useEffect(() => {
+                const rgb = colorUtils.hexToRgb(color);
+                if (inputMode === 'hex')
+                    setTextValue(color);
+                else if (inputMode === 'rgb')
+                    setTextValue(`${rgb.r}, ${rgb.g}, ${rgb.b}`);
+                else {
+                    const norm = colorUtils.rgbToNormalized(rgb.r, rgb.g, rgb.b);
+                    setTextValue(`${norm.nr}, ${norm.ng}, ${norm.nb}`);
+                }
+            }, [color, inputMode]);
+
+            useEffect(() => {
+                const handleClickOutside = (e) => {
+                    if (pickerRef.current && !pickerRef.current.contains(e.target))
+                        setIsOpen(false);
+                };
+                document.addEventListener('mousedown', handleClickOutside);
+                return () => document.removeEventListener('mousedown', handleClickOutside);
+            }, []);
+
+            const handleTextChange = (value) => {
+                setTextValue(value);
+                const parsed = colorUtils.parseColorInput(value, inputMode);
+                if (parsed) onChange(parsed);
+            };
+
+            const modes = [
+                { key: 'hex', label: t('hexInput') },
+                { key: 'rgb', label: t('rgbInput') },
+                { key: 'normalized', label: t('normalizedInput') }
+            ];
+
+            return (
+                <div className="relative" ref={pickerRef}>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setIsOpen(!isOpen)}
+                            className="w-8 h-8 rounded border-2 shadow-sm cursor-pointer flex-shrink-0"
+                            style={{ backgroundColor: color, borderColor: isDark ? '#475569' : '#cbd5e1' }}
+                            title={label}
+                        />
+                        <span className={`text-xs flex-grow ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>{label}</span>
+                    </div>
+                    {isOpen && (
+                        <div className={`absolute z-50 mt-2 p-3 rounded-lg shadow-xl border ${isDark ? 'bg-slate-800 border-slate-600' : 'bg-white border-slate-200'}`} style={{ left: 0, minWidth: '220px' }}>
+                            <input
+                                type="color"
+                                value={color}
+                                onChange={(e) => onChange(e.target.value)}
+                                className="w-full h-24 cursor-pointer rounded border-0 mb-3"
+                                style={{ padding: 0 }}
+                            />
+                            <div className="flex gap-1 mb-2">
+                                {modes.map(m => (
+                                    <button
+                                        key={m.key}
+                                        onClick={() => setInputMode(m.key)}
+                                        className={`flex-1 px-2 py-1 text-xs rounded transition-colors ${inputMode === m.key
+                                            ? (isDark ? 'bg-blue-600 text-white' : 'bg-blue-500 text-white')
+                                            : (isDark ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200')
+                                        }`}
+                                    >
+                                        {m.label}
+                                    </button>
+                                ))}
+                            </div>
+                            <input
+                                type="text"
+                                value={textValue}
+                                onChange={(e) => handleTextChange(e.target.value)}
+                                className={`w-full px-2 py-1 text-sm rounded border font-mono ${isDark ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-white border-slate-300 text-slate-800'}`}
+                                placeholder={inputMode === 'hex' ? '#ffffff' : inputMode === 'rgb' ? '255, 255, 255' : '1.0, 1.0, 1.0'}
+                            />
+                        </div>
+                    )}
+                </div>
+            );
         };
 
 
@@ -129,6 +282,75 @@
 
         const CURRENCIES = ['USD', 'EUR', 'GBP'];
 
+        // Default color palettes for each mode (light, lightContrast, dark, darkContrast)
+        const DEFAULT_PALETTES = {
+            light: {
+                background: '#f8fafc',
+                surface: '#ffffff',
+                text: '#0f172a',
+                textMuted: '#64748b',
+                accent: '#2563eb',
+                border: '#e2e8f0',
+                success: '#16a34a',
+                warning: '#d97706',
+            },
+            lightContrast: {
+                background: '#ffffff',
+                surface: '#f8fafc',
+                text: '#000000',
+                textMuted: '#374151',
+                accent: '#1d4ed8',
+                border: '#9ca3af',
+                success: '#15803d',
+                warning: '#b45309',
+            },
+            dark: {
+                background: '#0f172a',
+                surface: '#1e293b',
+                text: '#f1f5f9',
+                textMuted: '#94a3b8',
+                accent: '#3b82f6',
+                border: '#334155',
+                success: '#22c55e',
+                warning: '#f59e0b',
+            },
+            darkContrast: {
+                background: '#000000',
+                surface: '#111827',
+                text: '#ffffff',
+                textMuted: '#d1d5db',
+                accent: '#60a5fa',
+                border: '#4b5563',
+                success: '#4ade80',
+                warning: '#fbbf24',
+            },
+        };
+
+        const PALETTE_KEYS = ['background', 'surface', 'text', 'textMuted', 'accent', 'border', 'success', 'warning'];
+        const PALETTE_ORDER = ['light', 'lightContrast', 'dark', 'darkContrast'];
+
+        // Compact palette encoding: [[hex6,...],[hex6,...],[hex6,...],[hex6,...]]
+        const encodePalettes = (palettes) => {
+            const arr = PALETTE_ORDER.map(key =>
+                PALETTE_KEYS.map(ck => palettes[key][ck].replace('#', ''))
+            );
+            return JSON.stringify(arr);
+        };
+
+        const decodePalettes = (str) => {
+            try {
+                const arr = JSON.parse(str);
+                const result = {};
+                PALETTE_ORDER.forEach((key, i) => {
+                    result[key] = {};
+                    PALETTE_KEYS.forEach((ck, j) => {
+                        result[key][ck] = '#' + arr[i][j];
+                    });
+                });
+                return result;
+            } catch (e) { return null; }
+        };
+
         // =========================================================================
         // LOCALIZATION
         // =========================================================================
@@ -152,6 +374,10 @@
                 reset: 'Reset',
                 copySnapshot: 'Copy Snapshot',
                 copied: 'Copied!',
+                shareLink: 'Share Link',
+                shareLinkMinimal: 'Quick (attendees only)',
+                shareLinkReadable: 'Full (readable)',
+                linkCopied: 'Link copied!',
                 addRole: '+ Add Role',
 
                 // Labels
@@ -201,6 +427,28 @@
                 // Roles
                 manager: 'Manager',
                 engineer: 'Engineer',
+
+                // Corporate Design
+                corporateDesign: 'Corporate Design',
+                colorPalettes: 'Color Palettes',
+                logoUrl: 'Logo URL',
+                wordmarkUrl: 'Wordmark URL',
+                paletteLight: 'Light',
+                paletteLightContrast: 'Light (High Contrast)',
+                paletteDark: 'Dark',
+                paletteDarkContrast: 'Dark (High Contrast)',
+                colorBackground: 'Background',
+                colorSurface: 'Surface',
+                colorText: 'Text',
+                colorTextMuted: 'Muted Text',
+                colorAccent: 'Accent',
+                colorBorder: 'Border',
+                colorSuccess: 'Success',
+                colorWarning: 'Warning',
+                resetPalette: 'Reset to Default',
+                hexInput: 'Hex',
+                rgbInput: 'RGB',
+                normalizedInput: 'Normalized',
             },
             de: {
                 // Headers and Titles
@@ -220,6 +468,10 @@
                 reset: 'Zurücksetzen',
                 copySnapshot: 'Kopieren',
                 copied: 'Kopiert!',
+                shareLink: 'Link teilen',
+                shareLinkMinimal: 'Kurz (nur Teilnehmer)',
+                shareLinkReadable: 'Voll (lesbar)',
+                linkCopied: 'Link kopiert!',
                 addRole: '+ Rolle hinzufügen',
 
                 // Labels
@@ -269,6 +521,28 @@
                 // Roles
                 manager: 'Manager',
                 engineer: 'Entwickler',
+
+                // Corporate Design
+                corporateDesign: 'Corporate Design',
+                colorPalettes: 'Farbpaletten',
+                logoUrl: 'Logo URL',
+                wordmarkUrl: 'Schriftzug URL',
+                paletteLight: 'Hell',
+                paletteLightContrast: 'Hell (Hoher Kontrast)',
+                paletteDark: 'Dunkel',
+                paletteDarkContrast: 'Dunkel (Hoher Kontrast)',
+                colorBackground: 'Hintergrund',
+                colorSurface: 'Oberfläche',
+                colorText: 'Text',
+                colorTextMuted: 'Gedämpfter Text',
+                colorAccent: 'Akzent',
+                colorBorder: 'Rahmen',
+                colorSuccess: 'Erfolg',
+                colorWarning: 'Warnung',
+                resetPalette: 'Zurücksetzen',
+                hexInput: 'Hex',
+                rgbInput: 'RGB',
+                normalizedInput: 'Normalisiert',
             }
         };
 
@@ -391,6 +665,90 @@
         const clearSession = () => {
             try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
         };
+
+        // --- URL Parameter Utilities ---
+
+        const parseUrlParams = () => {
+            const params = new URLSearchParams(window.location.search);
+            const config = {};
+
+            // Simple params
+            if (params.has('att')) config.attendees = parseInt(params.get('att'), 10);
+            if (params.has('rate')) config.rate = parseFloat(params.get('rate'));
+            if (params.has('overhead')) config.overhead = parseFloat(params.get('overhead'));
+            if (params.has('currency')) config.currency = params.get('currency').toUpperCase();
+            if (params.has('title')) config.title = params.get('title');
+            if (params.has('mode')) config.inputMode = params.get('mode');
+            if (params.has('dark')) config.isDark = params.get('dark') === '1';
+            if (params.has('contrast')) config.highContrast = params.get('contrast') === '1';
+            if (params.has('logo')) config.logoUri = params.get('logo');
+            if (params.has('wordmark')) config.schriftzugUri = params.get('wordmark');
+            if (params.has('lang')) config.locale = params.get('lang');
+
+            // Roles param: "Manager:150:2,Engineer:100:4"
+            if (params.has('roles')) {
+                config.inputMode = INPUT_MODES.DETAILED;
+                config.detailedRows = params.get('roles').split(',').map((role, idx) => {
+                    const [label, rate, count] = role.split(':');
+                    return { id: idx + 1, label: decodeURIComponent(label), rate: parseFloat(rate), count: parseInt(count, 10) };
+                });
+            }
+
+            // Colors param: compact palette format [[hex6,...],...]
+            if (params.has('colors')) {
+                try {
+                    const decoded = decodePalettes(atob(params.get('colors')));
+                    if (decoded) config.customPalettes = decoded;
+                } catch (e) { console.warn('Invalid colors param'); }
+            }
+
+            return Object.keys(config).length > 0 ? config : null;
+        };
+
+        const generateShareUrl = (state, options = {}) => {
+            const base = window.location.origin + window.location.pathname;
+            const params = new URLSearchParams();
+
+            if (options.minimal) {
+                // Just attendee count for quick share
+                const count = state.inputMode === INPUT_MODES.SIMPLE
+                    ? state.simpleInputs.count
+                    : state.detailedRows.reduce((sum, r) => sum + r.count, 0);
+                params.set('att', count);
+            } else {
+                // Human-readable params
+                if (state.title !== DEFAULTS.TITLE) params.set('title', state.title);
+                if (state.currency !== 'USD') params.set('currency', state.currency);
+                if (state.overhead !== DEFAULTS.OVERHEAD) params.set('overhead', state.overhead);
+                if (state.isDark) params.set('dark', '1');
+                if (state.highContrast) params.set('contrast', '1');
+                if (state.logoUri) params.set('logo', state.logoUri);
+                if (state.schriftzugUri) params.set('wordmark', state.schriftzugUri);
+                if (state.locale !== 'en') params.set('lang', state.locale);
+
+                // Include custom color palettes if modified from defaults (compact format)
+                const palettesModified = JSON.stringify(state.customPalettes) !== JSON.stringify(DEFAULT_PALETTES);
+                if (palettesModified) {
+                    params.set('colors', btoa(encodePalettes(state.customPalettes)));
+                }
+
+                if (state.inputMode === INPUT_MODES.DETAILED) {
+                    const rolesStr = state.detailedRows
+                        .map(r => `${encodeURIComponent(r.label)}:${r.rate}:${r.count}`)
+                        .join(',');
+                    params.set('roles', rolesStr);
+                } else {
+                    params.set('att', state.simpleInputs.count);
+                    if (state.simpleInputs.rate !== DEFAULTS.HOURLY_RATE) {
+                        params.set('rate', state.simpleInputs.rate);
+                    }
+                }
+            }
+
+            const queryStr = params.toString();
+            return queryStr ? `${base}?${queryStr}` : base;
+        };
+
         // --- Charts ---
 
         const CostHistoryChart = ({ segments, currentCost, currentBurnRate, currency, chartColors, startTime, timerRunning }) => {
@@ -907,9 +1265,10 @@
             const [presentationMode, setPresentationMode] = useState(false);
             const [isDark, setIsDark] = useState(false);
             const [highContrast, setHighContrast] = useState(false);
-            const [editPanelOpen, setEditPanelOpen] = useState(false);
-            const [showAgenda, setShowAgenda] = useState(false);
+                        const [showAgenda, setShowAgenda] = useState(false);
             const [copySuccess, setCopySuccess] = useState(false);
+            const [shareMenuOpen, setShareMenuOpen] = useState(false);
+            const [shareSuccess, setShareSuccess] = useState(false);
             const [ticker, setTicker] = useState(0);
 
             // Localization
@@ -924,36 +1283,82 @@
                 { id: 2, label: TRANSLATIONS[detectLocale()].engineer, rate: DEFAULTS.ENGINEER_RATE, count: DEFAULTS.ENGINEER_COUNT },
             ]);
 
+            // Corporate Design
+            const [customPalettes, setCustomPalettes] = useState(() => JSON.parse(JSON.stringify(DEFAULT_PALETTES)));
+            const [logoUri, setLogoUri] = useState('');
+            const [schriftzugUri, setSchriftzugUri] = useState('');
+
+            // Get current palette based on theme mode
+            const getCurrentPaletteKey = () => {
+                if (isDark && highContrast) return 'darkContrast';
+                if (isDark) return 'dark';
+                if (highContrast) return 'lightContrast';
+                return 'light';
+            };
+
+            const updatePaletteColor = (paletteKey, colorKey, value) => {
+                setCustomPalettes(prev => ({
+                    ...prev,
+                    [paletteKey]: { ...prev[paletteKey], [colorKey]: value }
+                }));
+            };
+
+            const resetPalette = (paletteKey) => {
+                setCustomPalettes(prev => ({
+                    ...prev,
+                    [paletteKey]: { ...DEFAULT_PALETTES[paletteKey] }
+                }));
+            };
+
             // Session restoration ref
             const sessionRestored = useRef(false);
 
-            // Restore session on mount
+            // Restore session on mount (URL params override localStorage)
             useEffect(() => {
                 if (sessionRestored.current) return;
                 sessionRestored.current = true;
-                const saved = loadSession();
-                if (saved) {
-                    // Restore meeting state
-                    if (saved.startTime) {
-                        setTimerRunning(saved.timerRunning || false);
-                        setStartTime(saved.startTime);
-                        setSegments(saved.segments || []);
-                    }
-                    // Restore configuration
-                    if (saved.title) setTitle(saved.title);
-                    if (saved.currency) setCurrency(saved.currency);
-                    if (saved.inputMode) setInputMode(saved.inputMode);
-                    if (saved.overhead !== undefined) setOverhead(saved.overhead);
-                    if (saved.simpleInputs) setSimpleInputs(saved.simpleInputs);
-                    if (saved.detailedRows) setDetailedRows(saved.detailedRows);
-                    // Restore UI state
-                    if (saved.presentationMode !== undefined) setPresentationMode(saved.presentationMode);
-                    if (saved.isDark !== undefined) setIsDark(saved.isDark);
-                    if (saved.highContrast !== undefined) setHighContrast(saved.highContrast);
-                    if (saved.editPanelOpen !== undefined) setEditPanelOpen(saved.editPanelOpen);
-                    if (saved.showAgenda !== undefined) setShowAgenda(saved.showAgenda);
-                    if (saved.locale) setLocale(saved.locale);
+
+                const urlConfig = parseUrlParams();
+                const saved = loadSession() || {};
+
+                // Merge: URL params take priority over saved session
+                const config = { ...saved, ...urlConfig };
+
+                // Restore meeting state (only from saved, not URL)
+                if (saved.startTime) {
+                    setTimerRunning(saved.timerRunning || false);
+                    setStartTime(saved.startTime);
+                    setSegments(saved.segments || []);
                 }
+
+                // Restore configuration (merged)
+                if (config.title) setTitle(config.title);
+                if (config.currency) setCurrency(config.currency);
+                if (config.inputMode) setInputMode(config.inputMode);
+                if (config.overhead !== undefined) setOverhead(config.overhead);
+                if (config.simpleInputs) setSimpleInputs(config.simpleInputs);
+                if (config.detailedRows) setDetailedRows(config.detailedRows);
+
+                // Handle URL-specific simple mode overrides
+                if (urlConfig?.attendees !== undefined) {
+                    setSimpleInputs(prev => ({ ...prev, count: urlConfig.attendees }));
+                    if (!urlConfig.inputMode) setInputMode(INPUT_MODES.SIMPLE);
+                }
+                if (urlConfig?.rate !== undefined) {
+                    setSimpleInputs(prev => ({ ...prev, rate: urlConfig.rate }));
+                }
+
+                // Restore UI state (merged)
+                if (config.presentationMode !== undefined) setPresentationMode(config.presentationMode);
+                if (config.isDark !== undefined) setIsDark(config.isDark);
+                if (config.highContrast !== undefined) setHighContrast(config.highContrast);
+                                if (config.showAgenda !== undefined) setShowAgenda(config.showAgenda);
+                if (config.locale) setLocale(config.locale);
+
+                // Restore corporate design (merged)
+                if (config.customPalettes) setCustomPalettes(prev => ({ ...prev, ...config.customPalettes }));
+                if (config.logoUri !== undefined) setLogoUri(config.logoUri);
+                if (config.schriftzugUri !== undefined) setSchriftzugUri(config.schriftzugUri);
             }, []);
 
             // Save session state
@@ -961,9 +1366,10 @@
                 saveSession({
                     timerRunning, startTime, segments, title, currency,
                     inputMode, overhead, simpleInputs, detailedRows,
-                    presentationMode, isDark, highContrast, editPanelOpen, showAgenda, locale
+                    presentationMode, isDark, highContrast, showAgenda, locale,
+                    customPalettes, logoUri, schriftzugUri
                 });
-            }, [timerRunning, startTime, segments, title, currency, inputMode, overhead, simpleInputs, detailedRows, presentationMode, isDark, highContrast, editPanelOpen, showAgenda, locale]);
+            }, [timerRunning, startTime, segments, title, currency, inputMode, overhead, simpleInputs, detailedRows, presentationMode, isDark, highContrast, showAgenda, locale, customPalettes, logoUri, schriftzugUri]);
 
             const totalAttendees = inputMode === 'simple' ? simpleInputs.count : detailedRows.reduce((a,b)=>a+b.count,0);
             
@@ -1095,49 +1501,49 @@
                     case ' ': e.preventDefault(); toggleTimer(); break;
                     case 'r': resetMeeting(); break;
                     case 'f': setPresentationMode(prev => !prev); break;
-                    case 'e': setEditPanelOpen(prev => !prev); break;
                 }
             };
 
             useEffect(() => {
                 window.addEventListener('keydown', handleKeyDown);
                 return () => window.removeEventListener('keydown', handleKeyDown);
-            }, [timerRunning, presentationMode, editPanelOpen]);
+            }, [timerRunning, presentationMode]);
 
             useEffect(() => {
                 if(presentationMode) document.body.classList.add('presentation-active');
                 else document.body.classList.remove('presentation-active');
             }, [presentationMode]);
 
-            // Memoized theme classes for better performance
-            const themeClasses = useMemo(() => ({
-                bgColor: isDark ? 'bg-slate-900' : 'bg-slate-50',
-                cardBg: isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200',
-                textColor: isDark ? 'text-slate-100' : 'text-slate-900',
-                mutedText: isDark ? 'text-slate-400' : 'text-slate-500',
-                accentText: isDark ? 'text-blue-400' : 'text-blue-600',
-                buttonClass: `px-4 py-2 rounded font-medium transition-all focus:ring-2 focus:ring-blue-500 focus:outline-none ${isDark ? 'bg-slate-700 hover:bg-slate-600 text-white' : 'bg-white hover:bg-slate-50 border border-slate-300 text-slate-700'}`,
-            }), [isDark]);
-            
-            const { bgColor, cardBg, textColor, mutedText, accentText, buttonClass } = themeClasses;
-            
-            // Memoized chart colors for canvas rendering
-            const chartColors = useMemo(() => ({
-                text: isDark ? '#94a3b8' : '#64748b',
-                textStrong: isDark ? '#e2e8f0' : '#1e293b',
-                grid: isDark ? '#475569' : '#cbd5e1',
-                gridLight: isDark ? 'rgba(71, 85, 105, 0.2)' : 'rgba(203, 213, 225, 0.3)',
-                line: isDark ? '#22c55e' : '#16a34a',
-                lineFill: isDark ? 'rgba(34, 197, 94, 0.15)' : 'rgba(22, 163, 74, 0.1)',
-                accent: isDark ? '#60a5fa' : '#2563eb',
-                projection: isDark ? '#94a3b8' : '#cbd5e1',
-                projectionFill: isDark ? 'rgba(148, 163, 184, 0.1)' : 'rgba(203, 213, 225, 0.1)',
-                projectionLight: isDark ? 'rgba(148, 163, 184, 0.3)' : 'rgba(100, 116, 139, 0.3)',
-                marker: isDark ? '#22c55e' : '#16a34a',
-                markerHover: isDark ? '#4ade80' : '#22c55e',
-                burnLine: isDark ? '#f59e0b' : '#d97706',
-                burnFill: isDark ? 'rgba(245, 158, 11, 0.1)' : 'rgba(217, 119, 6, 0.1)',
-            }), [isDark]);
+            // Get current palette based on theme mode
+            const currentPalette = useMemo(() => {
+                const key = getCurrentPaletteKey();
+                return customPalettes[key];
+            }, [customPalettes, isDark, highContrast]);
+
+            // Memoized chart colors for canvas rendering using custom palette
+            const chartColors = useMemo(() => {
+                const p = currentPalette;
+                const hexToRgba = (hex, alpha) => {
+                    const rgb = colorUtils.hexToRgb(hex);
+                    return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
+                };
+                return {
+                    text: p.textMuted,
+                    textStrong: p.text,
+                    grid: p.border,
+                    gridLight: hexToRgba(p.border, 0.3),
+                    line: p.success,
+                    lineFill: hexToRgba(p.success, 0.15),
+                    accent: p.accent,
+                    projection: p.textMuted,
+                    projectionFill: hexToRgba(p.textMuted, 0.1),
+                    projectionLight: hexToRgba(p.textMuted, 0.3),
+                    marker: p.success,
+                    markerHover: p.success,
+                    burnLine: p.warning,
+                    burnFill: hexToRgba(p.warning, 0.1),
+                };
+            }, [currentPalette]);
             
             const handleCopy = () => {
                 const text = `${t("meeting")}: ${title}\n${t("date")}: ${new Date().toLocaleDateString()}\n${t("duration")}: ${formatTime(billableDuration)}\n${t("cost")}: ${formatMoney(currentCost, currency)}\n${t("burnRate")}: ${formatMoney(calculatedBurnRate, currency)}${"/hr"}\n${t("attendees")}: ${totalAttendees}`;
@@ -1146,73 +1552,105 @@
                 setTimeout(() => setCopySuccess(false), UI.COPY_SUCCESS_DURATION_MS);
             };
 
+            const handleShare = (type) => {
+                const state = {
+                    title, currency, inputMode, overhead, simpleInputs, detailedRows,
+                    isDark, highContrast, customPalettes, logoUri, schriftzugUri, locale
+                };
+                const url = generateShareUrl(state, {
+                    minimal: type === 'minimal'
+                });
+                copyToClipboard(url);
+                setShareMenuOpen(false);
+                setShareSuccess(true);
+                setTimeout(() => setShareSuccess(false), UI.COPY_SUCCESS_DURATION_MS);
+            };
+
             const now = Date.now();
             const marks = getNextQuarterMarks(now);
             const msToTarget1 = Math.max(0, marks[0] - now);
             const costAtTarget1 = currentCost + (timerRunning ? (calculatedBurnRate / TIME.MS_PER_HOUR) * msToTarget1 : 0);
             
-            const contrastStyle = highContrast ? { filter: 'contrast(1.5)' } : {};
+            const mainStyle = { backgroundColor: currentPalette.background, color: currentPalette.text };
+            const surfaceStyle = { backgroundColor: currentPalette.surface, borderColor: currentPalette.border };
+            const mutedStyle = { color: currentPalette.textMuted };
+            const accentStyle = { backgroundColor: currentPalette.accent, color: '#ffffff' };
 
             return (
-                <div className={`flex flex-col h-full w-full overflow-hidden transition-colors duration-200 ${bgColor} ${textColor} relative`} style={contrastStyle}>
-                    
+                <div className="flex flex-col h-full w-full overflow-hidden transition-colors duration-200 relative" style={mainStyle}>
+
                     {presentationMode && (
-                        <div className="absolute top-4 right-4 z-50 flex gap-2">
-                            <button onClick={() => setIsDark(!isDark)} className={`p-3 rounded-full transition-colors border shadow-lg ${isDark ? 'bg-slate-800 text-slate-400 border-slate-700' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`} title={t("toggleTheme")}>
-                                <Icon name="sun" size={20} className={isDark ? "block" : "hidden"} /><Icon name="moon" size={20} className={isDark ? "hidden" : "block"} />
-                            </button>
-                            <button onClick={() => setPresentationMode(false)} className={`p-3 rounded-full transition-colors border shadow-lg ${isDark ? 'bg-slate-800 text-slate-400 border-slate-700 hover:text-red-500' : 'bg-white text-slate-500 border-slate-200 hover:text-red-500'}`} title={t("exitPresentation")}>
-                                <Icon name="log-out" size={20} />
-                            </button>
-                        </div>
+                        <>
+                            {logoUri && (
+                                <div className="absolute top-4 left-4 z-50">
+                                    <img src={logoUri} alt="Logo" className="h-12 w-auto max-w-[150px] object-contain" />
+                                </div>
+                            )}
+                            <div className="absolute top-4 right-4 z-50 flex gap-2">
+                                <button onClick={() => setIsDark(!isDark)} className="p-3 rounded-full transition-colors border shadow-lg" style={{ ...surfaceStyle, color: currentPalette.textMuted }} title={t("toggleTheme")}>
+                                    <Icon name="sun" size={20} className={isDark ? "block" : "hidden"} /><Icon name="moon" size={20} className={isDark ? "hidden" : "block"} />
+                                </button>
+                                <button onClick={() => setPresentationMode(false)} className="p-3 rounded-full transition-colors border shadow-lg hover:text-red-500" style={{ ...surfaceStyle, color: currentPalette.textMuted }} title={t("exitPresentation")}>
+                                    <Icon name="log-out" size={20} />
+                                </button>
+                            </div>
+                        </>
                     )}
 
                     {!presentationMode && (
-                        <header className={`flex flex-col md:flex-row md:items-center justify-between px-4 md:px-6 py-4 gap-4 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+                        <header className="flex flex-col md:flex-row md:items-center justify-between px-4 md:px-6 py-4 gap-4 border-b" style={{ borderColor: currentPalette.border }}>
                             <div className="flex items-center gap-4 w-full md:w-auto">
-                                <div className="p-2 bg-blue-600 rounded-lg shadow-lg shrink-0 text-white">
-                                    <Icon name="calculator" />
-                                </div>
-                                <input value={title} onChange={(e) => setTitle(e.target.value)} className={`text-xl font-bold bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none w-full md:w-64 ${textColor}`} />
+                                {logoUri ? (
+                                    <img src={logoUri} alt="Logo" className="h-10 w-auto max-w-[120px] object-contain shrink-0" />
+                                ) : (
+                                    <div className="p-2 rounded-lg shadow-lg shrink-0" style={accentStyle}>
+                                        <Icon name="calculator" />
+                                    </div>
+                                )}
+                                {schriftzugUri ? (
+                                    <img src={schriftzugUri} alt="Wordmark" className="h-8 w-auto max-w-[200px] object-contain" />
+                                ) : (
+                                    <input value={title} onChange={(e) => setTitle(e.target.value)} className="text-xl font-bold bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none w-full md:w-64" style={{ color: currentPalette.text }} />
+                                )}
                             </div>
                             <div className="flex items-center gap-3 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
-                                <select value={currency} onChange={(e) => setCurrency(e.target.value)} className={`p-2 rounded border shrink-0 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'} focus:ring-2 focus:ring-blue-500`}>
+                                <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="p-2 rounded border shrink-0 focus:ring-2 focus:ring-blue-500" style={surfaceStyle}>
                                     <option value="USD">{t("currencyUSD")}</option>
                                     <option value="EUR">{t("currencyEUR")}</option>
                                     <option value="GBP">{t("currencyGBP")}</option>
                                 </select>
-                                <button onClick={() => setHighContrast(!highContrast)} title={t("highContrast")} className="p-2 rounded hover:bg-slate-200 dark:hover:bg-slate-700 shrink-0">
+                                <button onClick={() => setHighContrast(!highContrast)} title={t("highContrast")} className="p-2 rounded shrink-0 hover:opacity-70">
                                     <Icon name="eye" />
                                 </button>
-                                <button onClick={() => setIsDark(!isDark)} title={t("themeToggle")} className="p-2 rounded hover:bg-slate-200 dark:hover:bg-slate-700 shrink-0">
+                                <button onClick={() => setIsDark(!isDark)} title={t("themeToggle")} className="p-2 rounded shrink-0 hover:opacity-70">
                                     <Icon name={isDark ? "sun" : "moon"} />
                                 </button>
-                                <button onClick={() => setPresentationMode(true)} className={`flex items-center gap-2 px-4 py-2 text-white rounded shadow-sm shrink-0 ${isDark ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-900 hover:bg-slate-800'}`}>
+                                <button onClick={() => setPresentationMode(true)} className="flex items-center gap-2 px-4 py-2 rounded shadow-sm shrink-0" style={accentStyle}>
                                     <Icon name="presentation" size={16} /> <span className="whitespace-nowrap">{t("presentationMode")}</span>
                                 </button>
                             </div>
                         </header>
                     )}
 
-                    <main className="flex-1 overflow-auto p-4 md:p-6 flex flex-col lg:flex-row gap-6">
-                        <div className={`flex-1 flex flex-col gap-6 transition-all duration-500 ${presentationMode ? 'justify-center items-center scale-100 md:scale-105' : ''}`}>
+                    <main className="main-layout flex-1 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col lg:flex-row relative">
+                        <div className={`content-area shrink-0 lg:shrink lg:flex-1 flex flex-col gap-6 p-4 md:p-6 transition-all duration-500 relative ${presentationMode ? 'justify-center items-center scale-100 md:scale-105' : ''}`}>
                             <div className="text-center space-y-2">
-                                <div className={`uppercase tracking-widest text-sm font-semibold ${mutedText}`}>{t("currentMeetingCost")}</div>
-                                <div className={`font-bold tabular-nums leading-none tracking-tight ${presentationMode ? 'text-7xl md:text-9xl' : 'text-6xl md:text-8xl'} ${accentText}`}>
+                                <div className="uppercase tracking-widest text-sm font-semibold" style={mutedStyle}>{t("currentMeetingCost")}</div>
+                                <div className={`font-bold tabular-nums leading-none tracking-tight ${presentationMode ? 'text-7xl md:text-9xl' : 'text-6xl md:text-8xl'}`} style={{ color: currentPalette.accent }}>
                                     {formatMoney(currentCost, currency)}
                                 </div>
                             </div>
 
                             <div className="grid grid-cols-2 gap-4 md:gap-8 text-center max-w-2xl w-full mx-auto mt-4">
                                 <div>
-                                    <div className={`text-sm uppercase font-semibold mb-1 ${mutedText}`}>{t("billableTime")}</div>
-                                    <div className={`text-2xl md:text-4xl font-mono tabular-nums ${textColor}`}>
+                                    <div className="text-sm uppercase font-semibold mb-1" style={mutedStyle}>{t("billableTime")}</div>
+                                    <div className="text-2xl md:text-4xl font-mono tabular-nums">
                                         {formatTime(billableDuration)}
                                     </div>
                                 </div>
                                 <div>
-                                    <div className={`text-sm uppercase font-semibold mb-1 ${mutedText}`}>{t("burnRatePerHour")}</div>
-                                    <div className={`text-2xl md:text-4xl tabular-nums ${textColor} ${timerRunning ? 'text-orange-500' : ''}`}>
+                                    <div className="text-sm uppercase font-semibold mb-1" style={mutedStyle}>{t("burnRatePerHour")}</div>
+                                    <div className="text-2xl md:text-4xl tabular-nums" style={{ color: timerRunning ? currentPalette.warning : currentPalette.text }}>
                                         {formatMoney(calculatedBurnRate, currency)}
                                     </div>
                                 </div>
@@ -1221,26 +1659,26 @@
                             {presentationMode && (
                                 <div className="mt-8 w-full max-w-4xl flex flex-col gap-6">
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
-                                        <div className={`p-4 rounded-lg flex flex-col justify-between items-center ${isDark ? 'bg-slate-800' : 'bg-white shadow-sm border border-slate-200'}`}>
+                                        <div className="p-4 rounded-lg flex flex-col justify-between items-center border" style={surfaceStyle}>
                                             <div className="text-xs uppercase opacity-70 mb-1">{t("participants")}</div>
                                             <div className="flex items-center gap-4">
                                                 {inputMode === 'simple' && (
-                                                    <button onClick={() => setSimpleInputs(p => ({...p, count: Math.max(1, p.count - 1)}))} className={`w-12 h-12 rounded-lg flex items-center justify-center transition-colors ${isDark ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}><Icon name="minus" size={20}/></button>
+                                                    <button onClick={() => setSimpleInputs(p => ({...p, count: Math.max(1, p.count - 1)}))} className="w-12 h-12 rounded-lg flex items-center justify-center transition-colors hover:opacity-70" style={{ backgroundColor: currentPalette.border, color: currentPalette.textMuted }}><Icon name="minus" size={20}/></button>
                                                 )}
                                                 <div className="text-4xl font-bold tabular-nums">{totalAttendees}</div>
                                                 {inputMode === 'simple' && (
-                                                    <button onClick={() => setSimpleInputs(p => ({...p, count: p.count + 1}))} className={`w-12 h-12 rounded-lg flex items-center justify-center transition-colors ${isDark ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}><Icon name="plus" size={20}/></button>
+                                                    <button onClick={() => setSimpleInputs(p => ({...p, count: p.count + 1}))} className="w-12 h-12 rounded-lg flex items-center justify-center transition-colors hover:opacity-70" style={{ backgroundColor: currentPalette.border, color: currentPalette.textMuted }}><Icon name="plus" size={20}/></button>
                                                 )}
                                             </div>
                                         </div>
 
-                                        <div className={`p-4 rounded-lg ${isDark ? 'bg-slate-800' : 'bg-white shadow-sm border border-slate-200'}`}>
+                                        <div className="p-4 rounded-lg border" style={surfaceStyle}>
                                             <div className="text-xs uppercase opacity-70 mb-1">{t("estimatedAt")} {formatClockTime(new Date(marks[0]))}</div>
-                                            <div className={`text-3xl font-bold ${mutedText}`}>
+                                            <div className="text-3xl font-bold" style={mutedStyle}>
                                                 {formatMoney(costAtTarget1, currency)}
                                             </div>
                                         </div>
-                                        
+
                                         <button onClick={toggleTimer} className={`p-4 rounded-lg flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors hover:opacity-80 ${timerRunning ? 'bg-green-900/20 text-green-600 hover:bg-green-900/30' : 'bg-red-900/20 text-red-600 hover:bg-red-900/30'}`}>
                                             <div className={`w-3 h-3 rounded-full ${timerRunning ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
                                             <span className="font-bold uppercase tracking-wider">{timerRunning ? t("running") : t("paused")}</span>
@@ -1249,13 +1687,13 @@
                                     </div>
 
                                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 w-full">
-                                        <div className={`h-40 rounded-lg border overflow-hidden ${cardBg}`}>
+                                        <div className="h-40 rounded-lg border overflow-hidden" style={surfaceStyle}>
                                             <div className="h-full w-full relative">
                                                 <div className="absolute top-1 left-2 text-[10px] uppercase font-semibold opacity-50">{t("costHistoryProjection")}</div>
                                                 <CostHistoryChart segments={segments} currentCost={currentCost} currentBurnRate={calculatedBurnRate} currency={currency} chartColors={chartColors} startTime={startTime} timerRunning={timerRunning} />
                                             </div>
                                         </div>
-                                        <div className={`h-40 rounded-lg border overflow-hidden ${cardBg}`}>
+                                        <div className="h-40 rounded-lg border overflow-hidden" style={surfaceStyle}>
                                             <BurnRateChart segments={segments} currentBurnRate={timerRunning ? calculatedBurnRate : 0} currency={currency} chartColors={chartColors} startTime={startTime} timerRunning={timerRunning} label={t("burnRateHistory")} />
                                         </div>
                                     </div>
@@ -1264,21 +1702,21 @@
 
                             {!presentationMode && (
                                 <div className="flex flex-col md:flex-row justify-center gap-4 mt-4">
-                                    <button onClick={toggleTimer} className={`px-8 py-4 rounded-xl text-xl font-bold shadow-lg transform transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-3 ${timerRunning ? 'bg-amber-100 text-amber-700 border-2 border-amber-500 hover:bg-amber-200' : 'bg-green-600 text-white hover:bg-green-700'}`}>
+                                    <button onClick={toggleTimer} className={`px-8 py-4 rounded-xl text-xl font-bold shadow-lg transform transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-3 ${timerRunning ? 'bg-amber-100 text-amber-700 border-2 border-amber-500 hover:bg-amber-200' : ''}`} style={timerRunning ? {} : { backgroundColor: currentPalette.success, color: '#ffffff' }}>
                                         <Icon name={timerRunning ? "pause" : "play"} />
                                         {timerRunning ? t("pause") : (startTime ? t("resume") : t("start"))}
                                     </button>
-                                    <button onClick={resetMeeting} className="px-6 py-4 rounded-xl text-lg font-semibold bg-white border-2 border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-red-500 transition-colors flex items-center justify-center">
+                                    <button onClick={resetMeeting} className="px-6 py-4 rounded-xl text-lg font-semibold border-2 hover:text-red-500 transition-colors flex items-center justify-center" style={surfaceStyle}>
                                         <Icon name="rotate-ccw" />
                                     </button>
                                 </div>
                             )}
 
                             {!presentationMode && (
-                                <div className={`mt-auto p-4 rounded-xl border ${cardBg}`}>
+                                <div className="mt-auto p-4 rounded-xl border" style={surfaceStyle}>
                                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                                         <div>
-                                            <h3 className={`text-sm font-semibold uppercase mb-2 flex items-center gap-2 ${mutedText}`}>
+                                            <h3 className="text-sm font-semibold uppercase mb-2 flex items-center gap-2" style={mutedStyle}>
                                                 <Icon name="trending-up" size={16}/> {t("costHistoryProjection")}
                                             </h3>
                                             <div className="h-48 w-full">
@@ -1286,7 +1724,7 @@
                                             </div>
                                         </div>
                                         <div>
-                                            <h3 className={`text-sm font-semibold uppercase mb-2 flex items-center gap-2 ${mutedText}`}>
+                                            <h3 className="text-sm font-semibold uppercase mb-2 flex items-center gap-2" style={mutedStyle}>
                                                 <Icon name="activity" size={16}/> {t("burnRateHistory")}
                                             </h3>
                                             <div className="h-48 w-full">
@@ -1298,39 +1736,31 @@
                             )}
                         </div>
 
-                        {(!presentationMode || editPanelOpen) && (
-                            <div className={`w-full lg:w-96 flex-shrink-0 flex flex-col gap-4 ${presentationMode ? 'fixed right-0 top-0 bottom-0 z-40 p-6 shadow-2xl border-l border-slate-700 bg-slate-900 text-slate-100' : ''}`}>
-                                
-                                {presentationMode && (
-                                    <div className="flex justify-between items-center mb-4">
-                                        <h2 className="text-xl font-bold">{t("quickEdit")}</h2>
-                                        <button onClick={() => setEditPanelOpen(false)}><Icon name="x"/></button>
-                                    </div>
-                                )}
-
-                                <div className={`rounded-lg border overflow-hidden ${cardBg}`}>
-                                    <button onClick={() => setShowAgenda(!showAgenda)} className={`w-full px-4 py-3 flex justify-between items-center text-sm font-semibold ${mutedText} hover:bg-slate-100 dark:hover:bg-slate-700`}>
+                        {!presentationMode && (
+                            <div className="settings-sidebar shrink-0 lg:shrink w-full lg:w-96 flex flex-col gap-4 p-4 md:p-6 lg:pt-6 relative">
+                                <div className="shrink-0 rounded-lg border overflow-hidden" style={surfaceStyle}>
+                                    <button onClick={() => setShowAgenda(!showAgenda)} className="w-full px-4 py-3 flex justify-between items-center text-sm font-semibold hover:opacity-70" style={mutedStyle}>
                                         <span>{t("agendaRoiCheck")}</span>
                                         <Icon name={showAgenda ? "chevron-up" : "chevron-down"} size={16} />
                                     </button>
                                     {showAgenda && (
                                         <div className="p-4 space-y-3 text-sm">
-                                            <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" className="rounded text-blue-600" /><span>{t("goalDefined")}</span></label>
-                                            <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" className="rounded text-blue-600" /><span>{t("decisionRequired")}</span></label>
-                                            <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" className="rounded text-blue-600" /><span>{t("alternativesConsidered")}</span></label>
+                                            <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" className="rounded" style={{ accentColor: currentPalette.accent }} /><span>{t("goalDefined")}</span></label>
+                                            <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" className="rounded" style={{ accentColor: currentPalette.accent }} /><span>{t("decisionRequired")}</span></label>
+                                            <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" className="rounded" style={{ accentColor: currentPalette.accent }} /><span>{t("alternativesConsidered")}</span></label>
                                         </div>
                                     )}
                                 </div>
 
-                                <div className={`flex-1 rounded-xl border flex flex-col ${cardBg} shadow-sm`}>
-                                    <div className="flex border-b border-slate-200 dark:border-slate-700">
-                                        <button onClick={() => switchInputMode('simple')} className={`flex-1 py-3 text-sm font-medium ${inputMode === 'simple' ? 'text-blue-600 border-b-2 border-blue-600' : mutedText}`}>{t("simple")}</button>
-                                        <button onClick={() => switchInputMode('detailed')} className={`flex-1 py-3 text-sm font-medium ${inputMode === 'detailed' ? 'text-blue-600 border-b-2 border-blue-600' : mutedText}`}>{t("detailed")}</button>
+                                <div className="shrink-0 rounded-xl border flex flex-col shadow-sm" style={surfaceStyle}>
+                                    <div className="flex" style={{ borderBottom: `1px solid ${currentPalette.border}` }}>
+                                        <button onClick={() => switchInputMode('simple')} className="flex-1 py-3 text-sm font-medium" style={inputMode === 'simple' ? { color: currentPalette.accent, borderBottom: `2px solid ${currentPalette.accent}` } : mutedStyle}>{t("simple")}</button>
+                                        <button onClick={() => switchInputMode('detailed')} className="flex-1 py-3 text-sm font-medium" style={inputMode === 'detailed' ? { color: currentPalette.accent, borderBottom: `2px solid ${currentPalette.accent}` } : mutedStyle}>{t("detailed")}</button>
                                     </div>
 
                                     <div className="p-5 flex-1 overflow-auto">
                                         <div className="mb-6">
-                                            <label className={`block text-xs font-bold uppercase mb-1 ${mutedText}`}>{t("overhead")}</label>
+                                            <label className="block text-xs font-bold uppercase mb-1" style={mutedStyle}>{t("overhead")}</label>
                                             <div className="flex gap-2">
                                                 {[1.0, 1.3, 1.5, 2.0].map(v => (
                                                     <button key={v} onClick={() => setOverhead(v)} className={`flex-1 py-1 text-xs rounded border ${overhead === v ? 'bg-blue-100 border-blue-500 text-blue-700' : 'border-slate-200 text-slate-500'}`}>{v}x</button>
@@ -1341,57 +1771,157 @@
                                         {inputMode === 'simple' ? (
                                             <div className="space-y-6">
                                                 <div>
-                                                    <label className={`block text-sm font-medium mb-1 ${mutedText}`}>{t("avgHourlyRate")} ({currency})</label>
-                                                    <input type="number" value={simpleInputs.rate} onChange={(e) => setSimpleInputs({...simpleInputs, rate: Number(e.target.value)})} className={`w-full p-2 rounded border text-lg font-mono ${isDark || presentationMode ? 'bg-slate-700 border-slate-600' : 'bg-white border-slate-300'}`} />
+                                                    <label className="block text-sm font-medium mb-1" style={mutedStyle}>{t("avgHourlyRate")} ({currency})</label>
+                                                    <input type="number" value={simpleInputs.rate} onChange={(e) => setSimpleInputs({...simpleInputs, rate: Number(e.target.value)})} className="w-full p-2 rounded border text-lg font-mono" style={surfaceStyle} />
                                                 </div>
                                                 <div>
-                                                    <label className={`block text-sm font-medium mb-1 ${mutedText}`}>{t("attendeeCount")}</label>
+                                                    <label className="block text-sm font-medium mb-1" style={mutedStyle}>{t("attendeeCount")}</label>
                                                     <div className="flex items-center gap-2">
-                                                        <button onClick={() => setSimpleInputs(prev => ({...prev, count: Math.max(1, prev.count - 1)}))} className={`w-12 h-12 flex items-center justify-center rounded text-xl font-bold transition-colors ${isDark ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}><Icon name="minus" size={20}/></button>
-                                                        <input type="number" value={simpleInputs.count} onChange={(e) => setSimpleInputs({...simpleInputs, count: Math.max(1, Number(e.target.value))})} className={`flex-1 min-w-0 p-2 text-center rounded border text-3xl font-bold font-mono ${isDark || presentationMode ? 'bg-slate-700 border-slate-600' : 'bg-white border-slate-300'}`} />
-                                                        <button onClick={() => setSimpleInputs(prev => ({...prev, count: prev.count + 1}))} className={`w-12 h-12 flex items-center justify-center rounded text-xl font-bold transition-colors ${isDark ? 'bg-slate-700 hover:bg-slate-600' : 'bg-blue-100 hover:bg-blue-200 text-blue-600'}`}><Icon name="plus" size={20}/></button>
+                                                        <button onClick={() => setSimpleInputs(prev => ({...prev, count: Math.max(1, prev.count - 1)}))} className="w-12 h-12 flex items-center justify-center rounded text-xl font-bold transition-colors hover:opacity-70" style={{ backgroundColor: currentPalette.border, color: currentPalette.textMuted }}><Icon name="minus" size={20}/></button>
+                                                        <input type="number" value={simpleInputs.count} onChange={(e) => setSimpleInputs({...simpleInputs, count: Math.max(1, Number(e.target.value))})} className="flex-1 min-w-0 p-2 text-center rounded border text-3xl font-bold font-mono" style={surfaceStyle} />
+                                                        <button onClick={() => setSimpleInputs(prev => ({...prev, count: prev.count + 1}))} className="w-12 h-12 flex items-center justify-center rounded text-xl font-bold transition-colors hover:opacity-70" style={{ backgroundColor: currentPalette.accent, color: '#ffffff' }}><Icon name="plus" size={20}/></button>
                                                     </div>
                                                 </div>
                                             </div>
                                         ) : (
                                             <div className="space-y-3">
                                                 {detailedRows.map((row, idx) => (
-                                                    <div key={row.id} className="flex gap-2 items-center bg-slate-50 dark:bg-slate-800 p-2 rounded border border-slate-200 dark:border-slate-700">
+                                                    <div key={row.id} className="flex gap-2 items-center p-2 rounded border" style={{ backgroundColor: currentPalette.background, borderColor: currentPalette.border }}>
                                                         <div className="flex-1">
                                                             <input type="text" placeholder="Role" value={row.label} onChange={(e) => { const newRows = [...detailedRows]; newRows[idx].label = e.target.value; setDetailedRows(newRows); }} className="w-full bg-transparent text-sm font-bold outline-none" />
-                                                            <div className="flex items-center gap-1 text-xs text-slate-500">
+                                                            <div className="flex items-center gap-1 text-xs" style={mutedStyle}>
                                                                 <span>{currency}</span>
-                                                                <input type="number" value={row.rate} onChange={(e) => { const newRows = [...detailedRows]; newRows[idx].rate = Number(e.target.value); setDetailedRows(newRows); }} className="w-16 bg-transparent border-b border-slate-300 outline-none" />
+                                                                <input type="number" value={row.rate} onChange={(e) => { const newRows = [...detailedRows]; newRows[idx].rate = Number(e.target.value); setDetailedRows(newRows); }} className="w-16 bg-transparent border-b outline-none" style={{ borderColor: currentPalette.border }} />
                                                                 <span>/hr</span>
                                                             </div>
                                                         </div>
                                                         <div className="flex items-center gap-1">
-                                                            <button onClick={() => { const newRows = [...detailedRows]; newRows[idx].count = Math.max(0, newRows[idx].count - 1); setDetailedRows(newRows); }} className="w-8 h-8 rounded bg-slate-200 hover:bg-slate-300 flex items-center justify-center font-bold">-</button>
+                                                            <button onClick={() => { const newRows = [...detailedRows]; newRows[idx].count = Math.max(0, newRows[idx].count - 1); setDetailedRows(newRows); }} className="w-8 h-8 rounded flex items-center justify-center font-bold hover:opacity-70" style={{ backgroundColor: currentPalette.border }}>-</button>
                                                             <span className="w-8 text-center font-mono font-bold">{row.count}</span>
-                                                            <button onClick={() => { const newRows = [...detailedRows]; newRows[idx].count = newRows[idx].count + 1; setDetailedRows(newRows); }} className="w-8 h-8 rounded bg-blue-100 hover:bg-blue-200 text-blue-600 flex items-center justify-center font-bold">+</button>
+                                                            <button onClick={() => { const newRows = [...detailedRows]; newRows[idx].count = newRows[idx].count + 1; setDetailedRows(newRows); }} className="w-8 h-8 rounded flex items-center justify-center font-bold hover:opacity-70" style={{ backgroundColor: currentPalette.accent, color: '#ffffff' }}>+</button>
                                                         </div>
-                                                        <button onClick={() => setDetailedRows(detailedRows.filter(r => r.id !== row.id))} className="text-slate-400 hover:text-red-500 px-1"><Icon name="trash-2" size={14}/></button>
+                                                        <button onClick={() => setDetailedRows(detailedRows.filter(r => r.id !== row.id))} className="px-1 hover:text-red-500" style={mutedStyle}><Icon name="trash-2" size={14}/></button>
                                                     </div>
                                                 ))}
-                                                <button onClick={() => setDetailedRows([...detailedRows, { id: Date.now(), label: t("newRole"), rate: 100, count: 1 }])} className="w-full py-2 border-2 border-dashed border-slate-300 rounded text-sm font-bold text-slate-400 hover:border-blue-400 hover:text-blue-500">{t("addRole")}</button>
+                                                <button onClick={() => setDetailedRows([...detailedRows, { id: Date.now(), label: t("newRole"), rate: 100, count: 1 }])} className="w-full py-2 border-2 border-dashed rounded text-sm font-bold hover:opacity-70" style={{ borderColor: currentPalette.border, color: currentPalette.textMuted }}>{t("addRole")}</button>
                                             </div>
                                         )}
                                     </div>
-                                    
-                                    <div className="p-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded-b-xl">
+
+                                    <div className="p-4 rounded-b-xl" style={{ borderTop: `1px solid ${currentPalette.border}`, backgroundColor: currentPalette.background }}>
                                         <div className="flex justify-between items-center text-sm">
-                                            <span className={mutedText}>{t("activeRate")}</span>
-                                            <span className={`font-bold tabular-nums ${timerRunning ? 'text-orange-600' : ''}`}>
+                                            <span style={mutedStyle}>{t("activeRate")}</span>
+                                            <span className="font-bold tabular-nums" style={{ color: timerRunning ? currentPalette.warning : currentPalette.text }}>
                                                 {formatMoney(calculatedBurnRate, currency)} / hr
                                             </span>
                                         </div>
                                     </div>
                                 </div>
                                 
-                                <button onClick={handleCopy} className={`w-full flex justify-center items-center gap-2 relative overflow-hidden ${buttonClass}`}>
-                                    <Icon name={copySuccess ? "check" : "copy"} size={16} className={copySuccess ? "text-green-500" : ""} /> 
+                                {!presentationMode && (
+                                    <div className="shrink-0 rounded-lg border overflow-hidden" style={surfaceStyle}>
+                                        <div className="px-4 py-3 text-sm font-semibold border-b" style={{ color: currentPalette.textMuted, borderColor: currentPalette.border }}>
+                                            <Icon name="palette" size={14} className="inline mr-2" />{t("corporateDesign")}
+                                        </div>
+                                        <div className="p-4 space-y-4">
+                                            <div>
+                                                <label className="block text-xs font-bold uppercase mb-2" style={mutedStyle}>{t("colorPalettes")}</label>
+                                                {[
+                                                    { key: 'light', label: t('paletteLight') },
+                                                    { key: 'lightContrast', label: t('paletteLightContrast') },
+                                                    { key: 'dark', label: t('paletteDark') },
+                                                    { key: 'darkContrast', label: t('paletteDarkContrast') }
+                                                ].map(({ key: paletteKey, label: paletteLabel }) => (
+                                                    <details key={paletteKey} className="mb-2 rounded border" style={{ borderColor: currentPalette.border, backgroundColor: paletteKey === getCurrentPaletteKey() ? currentPalette.background : 'transparent' }}>
+                                                        <summary className="px-3 py-2 cursor-pointer text-sm font-medium flex items-center justify-between" style={{ color: paletteKey === getCurrentPaletteKey() ? currentPalette.accent : currentPalette.text }}>
+                                                            <span>{paletteLabel} {paletteKey === getCurrentPaletteKey() && <span className="text-xs ml-1">({t('activeRate').split(' ')[0]})</span>}</span>
+                                                        </summary>
+                                                        <div className="px-3 pb-3 space-y-2">
+                                                            <div className="grid grid-cols-2 gap-2">
+                                                                {PALETTE_KEYS.map(colorKey => (
+                                                                    <ColorPicker
+                                                                        key={colorKey}
+                                                                        color={customPalettes[paletteKey][colorKey]}
+                                                                        onChange={(v) => updatePaletteColor(paletteKey, colorKey, v)}
+                                                                        label={t(`color${colorKey.charAt(0).toUpperCase() + colorKey.slice(1)}`)}
+                                                                        isDark={isDark}
+                                                                        t={t}
+                                                                    />
+                                                                ))}
+                                                            </div>
+                                                            <button
+                                                                onClick={() => resetPalette(paletteKey)}
+                                                                className="w-full mt-2 px-3 py-1.5 text-xs rounded border hover:opacity-70"
+                                                                style={{ borderColor: currentPalette.border, color: currentPalette.textMuted }}
+                                                            >
+                                                                <Icon name="rotate-ccw" size={12} className="inline mr-1" />{t("resetPalette")}
+                                                            </button>
+                                                        </div>
+                                                    </details>
+                                                ))}
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold uppercase mb-1" style={mutedStyle}>{t("logoUrl")}</label>
+                                                <input
+                                                    type="url"
+                                                    value={logoUri}
+                                                    onChange={(e) => setLogoUri(e.target.value)}
+                                                    placeholder="https://..."
+                                                    className="w-full p-2 text-sm rounded border focus:ring-2 focus:ring-blue-500 outline-none"
+                                                    style={{ backgroundColor: currentPalette.background, borderColor: currentPalette.border, color: currentPalette.text }}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold uppercase mb-1" style={mutedStyle}>{t("wordmarkUrl")}</label>
+                                                <input
+                                                    type="url"
+                                                    value={schriftzugUri}
+                                                    onChange={(e) => setSchriftzugUri(e.target.value)}
+                                                    placeholder="https://..."
+                                                    className="w-full p-2 text-sm rounded border focus:ring-2 focus:ring-blue-500 outline-none"
+                                                    style={{ backgroundColor: currentPalette.background, borderColor: currentPalette.border, color: currentPalette.text }}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <button onClick={handleCopy} className="shrink-0 w-full flex justify-center items-center gap-2 relative overflow-hidden px-4 py-2 rounded font-medium transition-all focus:ring-2 focus:outline-none hover:opacity-80" style={{ backgroundColor: currentPalette.accent, color: '#ffffff' }}>
+                                    <Icon name={copySuccess ? "check" : "copy"} size={16} style={{ color: copySuccess ? currentPalette.success : '#ffffff' }} />
                                     {copySuccess ? t("copied") : t("copySnapshot")}
                                 </button>
+
+                                <div className="shrink-0 relative">
+                                    <button
+                                        onClick={() => setShareMenuOpen(!shareMenuOpen)}
+                                        className="w-full flex justify-center items-center gap-2 px-4 py-2 rounded font-medium transition-all focus:ring-2 focus:outline-none hover:opacity-80 border"
+                                        style={{ borderColor: currentPalette.accent, color: currentPalette.accent, backgroundColor: 'transparent' }}
+                                    >
+                                        <Icon name={shareSuccess ? "check" : "share-2"} size={16} style={{ color: shareSuccess ? currentPalette.success : currentPalette.accent }} />
+                                        {shareSuccess ? t("linkCopied") : t("shareLink")}
+                                        <Icon name="chevron-down" size={14} style={{ marginLeft: 'auto' }} />
+                                    </button>
+                                    {shareMenuOpen && (
+                                        <div className="absolute bottom-full left-0 right-0 mb-1 rounded-lg border shadow-lg overflow-hidden z-50" style={surfaceStyle}>
+                                            <button
+                                                onClick={() => handleShare('minimal')}
+                                                className="w-full px-3 py-2 text-sm text-left hover:opacity-70 flex items-center gap-2"
+                                                style={{ color: currentPalette.text }}
+                                            >
+                                                <Icon name="zap" size={14} style={mutedStyle} />
+                                                {t("shareLinkMinimal")}
+                                            </button>
+                                            <button
+                                                onClick={() => handleShare('readable')}
+                                                className="w-full px-3 py-2 text-sm text-left hover:opacity-70 flex items-center gap-2 border-t"
+                                                style={{ color: currentPalette.text, borderColor: currentPalette.border }}
+                                            >
+                                                <Icon name="file-text" size={14} style={mutedStyle} />
+                                                {t("shareLinkReadable")}
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         )}
                     </main>
