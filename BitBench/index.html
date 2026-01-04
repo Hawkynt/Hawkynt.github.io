@@ -1,0 +1,1297 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+    <meta http-equiv="Content-Style-Type" content="text/css" />
+    <meta http-equiv="Content-Script-Type" content="text/JavaScript" />
+    <meta http-equiv="expires" content="0" />
+    <meta http-equiv="Language" content="en" />
+
+    <meta name="description" content="BitBench - Binary/Bitwise Workbench for base conversions, bitfield editing, bit manipulation operations, and code generation." />
+    <meta name="keywords" content="SynthelicZ, Hawkynt, binary, hex, decimal, bitfield, bit manipulation, endianness, popcount, CLZ, CTZ, float16, bfloat16, IEEE754" />
+    <meta name="robots" content="index,follow" />
+
+    <meta property="og:title" content="BitBench - Binary/Bitwise Workbench" />
+    <meta property="og:description" content="Interactive tool for binary/hex/decimal conversions, bitfield editing, and bit manipulation operations." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://hawkynt.github.io/BitBench/" />
+    <meta property="og:image" content="https://hawkynt.github.io/favicon.ico" />
+    <meta name="twitter:card" content="summary" />
+
+    <meta name="verify-v1" content="0cvNcn5f2mj21LAsFvUBD7BIdUbn/unV4Toy1yBLWvw=" />
+    <meta name="google-site-verification" content="LkZ6DT0_GlcimQOKrWL20jv4jtUh0DBsh1ZPLXQqk3A" />
+
+    <link rel="shortcut icon" href="../favicon.ico" />
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BitBench - Binary/Bitwise Workbench</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        slate: { 750: '#2d3748', 850: '#1a202c', 950: '#020617' },
+                        cyan: { 450: '#15b0d6' },
+                        orange: { 450: '#f97316' }
+                    },
+                    fontFamily: { mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace'] }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #020617; color: #e2e8f0; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+        .no-select { user-select: none; -webkit-user-select: none; }
+        .modal-overlay {
+            position: fixed; inset: 0; z-index: 50;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+            padding: 1rem;
+        }
+        .modal-content { animation: modalIn 0.2s ease-out; }
+        @keyframes modalIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        .bit-cell { transition: all 0.1s ease; }
+        .bit-cell:hover { transform: scale(1.1); }
+        .field-highlight { animation: fieldPulse 0.3s ease-out; }
+        @keyframes fieldPulse {
+            0% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.4); }
+            100% { box-shadow: 0 0 0 4px rgba(34, 211, 238, 0); }
+        }
+        .format-row:hover { background: rgba(30, 41, 59, 0.5); }
+        .category-header { border-left: 3px solid; padding-left: 8px; }
+    </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+// --- ICONS ---
+const IconBinary = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect x="14" y="14" width="4" height="6" rx="2"/><rect x="6" y="4" width="4" height="6" rx="2"/><path d="M6 20h4"/><path d="M14 10h4"/><path d="M6 14h2v6"/><path d="M14 4h2v6"/></svg>);
+const IconCopy = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>);
+const IconCheck = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M20 6 9 17l-5-5"/></svg>);
+const IconRotate = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>);
+const IconTrash = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>);
+const IconInfo = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>);
+const IconX = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>);
+const IconChevronDown = ({ className, rotate=false }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} style={{ transform: rotate ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}><path d="m6 9 6 6 6-6"/></svg>);
+const IconPlus = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M5 12h14"/><path d="M12 5v14"/></svg>);
+const IconArrowLeft = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>);
+const IconArrowRight = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>);
+const IconCode = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>);
+const IconRefresh = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>);
+const IconDice = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/><circle cx="15.5" cy="8.5" r="1.5" fill="currentColor"/><circle cx="8.5" cy="15.5" r="1.5" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/></svg>);
+
+// --- CONSTANTS ---
+const BIT_WIDTHS = [8, 16, 32, 64];
+
+// --- BYTE ORDER UTILITIES ---
+const swapBytes = (val, width) => {
+    const bytes = width / 8;
+    let result = 0n;
+    for (let i = 0; i < bytes; ++i) {
+        const byte = (val >> BigInt(i * 8)) & 0xFFn;
+        result |= byte << BigInt((bytes - 1 - i) * 8);
+    }
+    return result;
+};
+
+// Extract bytes as array (LE order)
+const toBytes = (val, width) => {
+    const bytes = [];
+    for (let i = 0; i < width / 8; ++i)
+        bytes.push(Number((val >> BigInt(i * 8)) & 0xFFn));
+    return bytes;
+};
+
+// Build value from bytes (LE order)
+const fromBytes = (bytes) => {
+    let val = 0n;
+    for (let i = 0; i < bytes.length; ++i)
+        val |= BigInt(bytes[i]) << BigInt(i * 8);
+    return val;
+};
+
+// --- BIT UTILITIES ---
+const popcount = (n) => {
+    let count = 0, val = BigInt(n);
+    while (val > 0n) { if (val & 1n) ++count; val >>= 1n; }
+    return count;
+};
+
+const parity = (n) => popcount(n) % 2;
+
+const clz = (n, width) => {
+    if (n === 0n) return width;
+    let count = 0;
+    for (let i = width - 1; i >= 0; --i) {
+        if ((n >> BigInt(i)) & 1n) break;
+        ++count;
+    }
+    return count;
+};
+
+const ctz = (n, width) => {
+    if (n === 0n) return width;
+    let count = 0;
+    for (let i = 0; i < width; ++i) {
+        if ((n >> BigInt(i)) & 1n) break;
+        ++count;
+    }
+    return count;
+};
+
+const rotateLeft = (val, amount, width) => {
+    const mask = (1n << BigInt(width)) - 1n;
+    amount = amount % width;
+    return ((val << BigInt(amount)) | (val >> BigInt(width - amount))) & mask;
+};
+
+const rotateRight = (val, amount, width) => {
+    const mask = (1n << BigInt(width)) - 1n;
+    amount = amount % width;
+    return ((val >> BigInt(amount)) | (val << BigInt(width - amount))) & mask;
+};
+
+// Arithmetic shift right (preserves sign bit)
+const arithmeticShiftRight = (val, amount, width) => {
+    const mask = (1n << BigInt(width)) - 1n;
+    const signBit = (val >> BigInt(width - 1)) & 1n;
+    const shifted = val >> BigInt(amount);
+    if (signBit === 1n) {
+        // Fill vacated high bits with 1s
+        const fillMask = (((1n << BigInt(amount)) - 1n) << BigInt(width - amount)) & mask;
+        return (shifted | fillMask) & mask;
+    }
+    return shifted & mask;
+};
+
+// Sign-preserving left shift (keeps sign bit, shifts magnitude)
+const signPreservingShiftLeft = (val, amount, width) => {
+    const signBit = (val >> BigInt(width - 1)) & 1n;
+    const magnitudeMask = (1n << BigInt(width - 1)) - 1n;
+    const magnitude = val & magnitudeMask;
+    const shiftedMagnitude = (magnitude << BigInt(amount)) & magnitudeMask;
+    return (signBit << BigInt(width - 1)) | shiftedMagnitude;
+};
+
+// --- INTEGER CONVERSIONS ---
+const toSigned = (val, width) => {
+    const signBit = 1n << BigInt(width - 1);
+    return val >= signBit ? val - (1n << BigInt(width)) : val;
+};
+
+const fromSigned = (val, width) => {
+    return val < 0n ? val + (1n << BigInt(width)) : val;
+};
+
+const formatHex = (val, width) => {
+    const hexDigits = Math.ceil(width / 4);
+    return '0x' + val.toString(16).toUpperCase().padStart(hexDigits, '0');
+};
+
+// Extract array of unsigned values from a larger value (LE order)
+const extractUnsignedArray = (val, elementBits, totalBits) => {
+    const count = totalBits / elementBits;
+    const mask = (1n << BigInt(elementBits)) - 1n;
+    const result = [];
+    for (let i = 0; i < count; ++i)
+        result.push((val >> BigInt(i * elementBits)) & mask);
+    return result;
+};
+
+// Extract array of signed values from a larger value (LE order)
+const extractSignedArray = (val, elementBits, totalBits) => {
+    const count = totalBits / elementBits;
+    const mask = (1n << BigInt(elementBits)) - 1n;
+    const result = [];
+    for (let i = 0; i < count; ++i)
+        result.push(toSigned((val >> BigInt(i * elementBits)) & mask, elementBits));
+    return result;
+};
+
+// Format array for display
+const formatArray = (arr) => '[ ' + arr.join(', ') + ' ]';
+
+const formatBinary = (val, width) => '0b' + val.toString(2).padStart(width, '0');
+
+const formatOctal = (val) => '0o' + val.toString(8);
+
+// --- FLOAT CONVERSION UTILITIES ---
+
+// IEEE 754 Binary16 (Half precision): 1 sign, 5 exp, 10 mantissa, bias=15
+const float16ToNumber = (bits) => {
+    const sign = (bits >> 15) & 1;
+    const exp = (bits >> 10) & 0x1F;
+    const mant = bits & 0x3FF;
+    if (exp === 0) {
+        if (mant === 0) return sign ? -0 : 0;
+        return (sign ? -1 : 1) * mant / 1024 * Math.pow(2, -14); // Subnormal
+    }
+    if (exp === 31) return mant === 0 ? (sign ? -Infinity : Infinity) : NaN;
+    return (sign ? -1 : 1) * (1 + mant / 1024) * Math.pow(2, exp - 15);
+};
+
+const numberToFloat16 = (num) => {
+    if (isNaN(num)) return 0x7E00;
+    if (!isFinite(num)) return num > 0 ? 0x7C00 : 0xFC00;
+    if (num === 0) return Object.is(num, -0) ? 0x8000 : 0;
+    const sign = num < 0 ? 1 : 0;
+    const abs = Math.abs(num);
+    if (abs < Math.pow(2, -24)) return sign << 15; // Too small
+    if (abs >= 65504) return (sign << 15) | 0x7C00; // Overflow to inf
+    let exp = Math.floor(Math.log2(abs));
+    let mant = abs / Math.pow(2, exp) - 1;
+    exp += 15;
+    if (exp <= 0) { mant = abs / Math.pow(2, -14); return (sign << 15) | Math.round(mant * 1024); }
+    return (sign << 15) | (exp << 10) | Math.round(mant * 1024);
+};
+
+// BFloat16 (Brain Float): 1 sign, 8 exp, 7 mantissa (truncated float32)
+const bfloat16ToNumber = (bits) => {
+    // BFloat16 is just top 16 bits of float32, pad with zeros
+    const f32bits = bits << 16;
+    const buffer = new ArrayBuffer(4);
+    const view = new DataView(buffer);
+    view.setUint32(0, f32bits, false);
+    return view.getFloat32(0, false);
+};
+
+const numberToBFloat16 = (num) => {
+    const buffer = new ArrayBuffer(4);
+    const view = new DataView(buffer);
+    view.setFloat32(0, num, false);
+    return view.getUint32(0, false) >>> 16;
+};
+
+// IEEE 754 Binary32 (Single precision) using DataView
+const float32ToNumber = (bits) => {
+    const buffer = new ArrayBuffer(4);
+    const view = new DataView(buffer);
+    view.setUint32(0, Number(bits), false);
+    return view.getFloat32(0, false);
+};
+
+const numberToFloat32 = (num) => {
+    const buffer = new ArrayBuffer(4);
+    const view = new DataView(buffer);
+    view.setFloat32(0, num, false);
+    return BigInt(view.getUint32(0, false));
+};
+
+// IEEE 754 Binary64 (Double precision) using DataView
+const float64ToNumber = (bits) => {
+    const buffer = new ArrayBuffer(8);
+    const view = new DataView(buffer);
+    view.setBigUint64(0, bits, false);
+    return view.getFloat64(0, false);
+};
+
+const numberToFloat64 = (num) => {
+    const buffer = new ArrayBuffer(8);
+    const view = new DataView(buffer);
+    view.setFloat64(0, num, false);
+    return view.getBigUint64(0, false);
+};
+
+// Minifloat 8-bit (1 sign, 4 exp, 3 mantissa, bias=7) - common variant
+const minifloat8ToNumber = (bits) => {
+    const sign = (bits >> 7) & 1;
+    const exp = (bits >> 3) & 0xF;
+    const mant = bits & 0x7;
+    if (exp === 0) {
+        if (mant === 0) return sign ? -0 : 0;
+        return (sign ? -1 : 1) * mant / 8 * Math.pow(2, -6);
+    }
+    if (exp === 15) return mant === 0 ? (sign ? -Infinity : Infinity) : NaN;
+    return (sign ? -1 : 1) * (1 + mant / 8) * Math.pow(2, exp - 7);
+};
+
+// IBM Hexadecimal Floating Point (32-bit): 1 sign, 7 exp (base 16), 24 mantissa
+const ibmFloat32ToNumber = (bits) => {
+    const sign = (bits >> 31) & 1;
+    const exp = (bits >> 24) & 0x7F;
+    const mant = bits & 0xFFFFFF;
+    if (mant === 0 && exp === 0) return sign ? -0 : 0;
+    const value = (mant / 0x1000000) * Math.pow(16, exp - 64);
+    return sign ? -value : value;
+};
+
+// VAX F_floating (32-bit): 1 sign, 8 exp (bias 128), 23 mantissa, hidden bit
+const vaxFToNumber = (bits) => {
+    // VAX has different byte order: swap 16-bit words
+    const swapped = ((bits & 0xFFFF) << 16) | ((bits >> 16) & 0xFFFF);
+    const sign = (swapped >> 15) & 1;
+    const exp = (swapped >> 7) & 0xFF;
+    const mant = ((swapped & 0x7F) << 16) | ((bits >> 16) & 0xFFFF);
+    if (exp === 0) return 0;
+    const value = (0.5 + mant / 0x1000000) * Math.pow(2, exp - 128);
+    return sign ? -value : value;
+};
+
+// Microsoft Binary Format (MBF) 32-bit: 8 exp, 1 sign, 23 mantissa
+const mbf32ToNumber = (bits) => {
+    const exp = (bits >> 24) & 0xFF;
+    if (exp === 0) return 0;
+    const sign = (bits >> 23) & 1;
+    const mant = bits & 0x7FFFFF;
+    const value = (0.5 + mant / 0x1000000) * Math.pow(2, exp - 128);
+    return sign ? -value : value;
+};
+
+// Microsoft Binary Format (MBF) 64-bit
+const mbf64ToNumber = (bits) => {
+    const exp = Number((bits >> 56n) & 0xFFn);
+    if (exp === 0) return 0;
+    const sign = Number((bits >> 55n) & 1n);
+    const mant = bits & 0x7FFFFFFFFFFFFFn;
+    const value = (0.5 + Number(mant) / 0x80000000000000) * Math.pow(2, exp - 128);
+    return sign ? -value : value;
+};
+
+// --- FIXED POINT / DECIMAL CONVERSIONS ---
+
+// Q format fixed point (e.g., Q15.16 for 32-bit)
+const fixedPointToNumber = (bits, intBits, fracBits, signed) => {
+    let val = bits;
+    if (signed) {
+        const signBit = 1n << BigInt(intBits + fracBits - 1);
+        if (val >= signBit) val = val - (1n << BigInt(intBits + fracBits));
+    }
+    return Number(val) / Math.pow(2, fracBits);
+};
+
+// BCD (Binary Coded Decimal) - packed, 2 digits per byte
+// Returns { valid: boolean, value: BigInt }
+const bcdToNumber = (bits, width) => {
+    let result = 0n;
+    let multiplier = 1n;
+    const bytes = width / 8;
+    for (let i = 0; i < bytes; ++i) {
+        const byte = Number((bits >> BigInt(i * 8)) & 0xFFn);
+        const lo = byte & 0xF;
+        const hi = (byte >> 4) & 0xF;
+        if (lo > 9 || hi > 9) return { valid: false, value: 0n };
+        result += BigInt(lo) * multiplier;
+        multiplier *= 10n;
+        result += BigInt(hi) * multiplier;
+        multiplier *= 10n;
+    }
+    return { valid: true, value: result };
+};
+
+const numberToBcd = (num, width) => {
+    if (num < 0n) return 0n;
+    let result = 0n;
+    const bytes = width / 8;
+    for (let i = 0; i < bytes; ++i) {
+        const lo = num % 10n;
+        num = num / 10n;
+        const hi = num % 10n;
+        num = num / 10n;
+        result |= ((hi << 4n) | lo) << BigInt(i * 8);
+    }
+    return result;
+};
+
+// .NET Decimal (128-bit): 96-bit integer + 1 sign bit + 5 scale bits (0-28)
+// Format: [lo32][mid32][hi32][flags] where flags = sign(bit31) + scale(bits16-20)
+const dotnetDecimalToNumber = (bits) => {
+    const lo = bits & 0xFFFFFFFFn;
+    const mid = (bits >> 32n) & 0xFFFFFFFFn;
+    const hi = (bits >> 64n) & 0xFFFFFFFFn;
+    const flags = (bits >> 96n) & 0xFFFFFFFFn;
+    const sign = (flags >> 31n) & 1n;
+    const scale = Number((flags >> 16n) & 0x1Fn);
+    const mantissa = (hi << 64n) | (mid << 32n) | lo;
+    const value = Number(mantissa) / Math.pow(10, scale);
+    return sign ? -value : value;
+};
+
+// OLE Currency (64-bit scaled integer, /10000)
+const currencyToNumber = (bits) => {
+    const signed = toSigned(bits, 64);
+    return Number(signed) / 10000;
+};
+
+// --- FORMAT DEFINITIONS ---
+const FORMAT_CATEGORIES = {
+    integers: { name: 'Integers', color: 'cyan' },
+    floats: { name: 'IEEE 754 Floats', color: 'emerald' },
+    exotic_floats: { name: 'Exotic Floats', color: 'amber' },
+    fixed: { name: 'Fixed Point', color: 'violet' },
+    decimal: { name: 'Decimal/BCD', color: 'pink' },
+    special: { name: 'Special', color: 'orange' }
+};
+
+const FORMATS = [
+    // === INTEGERS ===
+    // Each type automatically displays as array when bit width > type size
+    { id: 'uint8', category: 'integers', bits: 8, names: ['Byte', 'UInt8', 'byte', 'u8', 'unsigned char', 'BYTE'],
+      convert: (v, w) => w > 8 ? extractUnsignedArray(v, 8, w) : v,
+      display: (v, w) => w > 8 ? formatArray(extractUnsignedArray(v, 8, w)) : v.toString() },
+    { id: 'int8', category: 'integers', bits: 8, names: ['SByte', 'Int8', 'sbyte', 'i8', 'signed char', 'char'],
+      convert: (v, w) => w > 8 ? extractSignedArray(v, 8, w) : toSigned(v, 8),
+      display: (v, w) => w > 8 ? formatArray(extractSignedArray(v, 8, w)) : toSigned(v, 8).toString() },
+
+    { id: 'uint16_le', category: 'integers', bits: 16, names: ['Word', 'UInt16', 'ushort', 'u16', 'word', 'WORD', 'unsigned short'],
+      endian: 'LE',
+      convert: (v, w) => w > 16 ? extractUnsignedArray(v, 16, w) : v,
+      display: (v, w) => w > 16 ? formatArray(extractUnsignedArray(v, 16, w)) : v.toString() },
+    { id: 'uint16_be', category: 'integers', bits: 16, names: ['Word BE', 'UInt16 BE', 'u16be'],
+      endian: 'BE',
+      convert: (v, w) => w > 16 ? extractUnsignedArray(v, 16, w).map(x => swapBytes(x, 16)) : swapBytes(v, 16),
+      display: (v, w) => w > 16 ? formatArray(extractUnsignedArray(v, 16, w).map(x => swapBytes(x, 16))) : swapBytes(v, 16).toString() },
+    { id: 'int16_le', category: 'integers', bits: 16, names: ['Short', 'Int16', 'short', 'i16', 'signed short'],
+      endian: 'LE',
+      convert: (v, w) => w > 16 ? extractSignedArray(v, 16, w) : toSigned(v, 16),
+      display: (v, w) => w > 16 ? formatArray(extractSignedArray(v, 16, w)) : toSigned(v, 16).toString() },
+    { id: 'int16_be', category: 'integers', bits: 16, names: ['Short BE', 'Int16 BE', 'i16be'],
+      endian: 'BE',
+      convert: (v, w) => w > 16 ? extractSignedArray(v, 16, w).map(x => toSigned(swapBytes(fromSigned(x, 16), 16), 16)) : toSigned(swapBytes(v, 16), 16),
+      display: (v, w) => w > 16 ? formatArray(extractUnsignedArray(v, 16, w).map(x => toSigned(swapBytes(x, 16), 16))) : toSigned(swapBytes(v, 16), 16).toString() },
+
+    { id: 'uint32_le', category: 'integers', bits: 32, names: ['DWord', 'UInt32', 'uint', 'u32', 'dword', 'DWORD', 'unsigned int', 'unsigned long'],
+      endian: 'LE',
+      convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w) : v,
+      display: (v, w) => w > 32 ? formatArray(extractUnsignedArray(v, 32, w)) : v.toString() },
+    { id: 'uint32_be', category: 'integers', bits: 32, names: ['DWord BE', 'UInt32 BE', 'u32be'],
+      endian: 'BE',
+      convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w).map(x => swapBytes(x, 32)) : swapBytes(v, 32),
+      display: (v, w) => w > 32 ? formatArray(extractUnsignedArray(v, 32, w).map(x => swapBytes(x, 32))) : swapBytes(v, 32).toString() },
+    { id: 'int32_le', category: 'integers', bits: 32, names: ['Int', 'Int32', 'int', 'i32', 'signed int', 'long'],
+      endian: 'LE',
+      convert: (v, w) => w > 32 ? extractSignedArray(v, 32, w) : toSigned(v, 32),
+      display: (v, w) => w > 32 ? formatArray(extractSignedArray(v, 32, w)) : toSigned(v, 32).toString() },
+    { id: 'int32_be', category: 'integers', bits: 32, names: ['Int BE', 'Int32 BE', 'i32be'],
+      endian: 'BE',
+      convert: (v, w) => w > 32 ? extractSignedArray(v, 32, w).map(x => toSigned(swapBytes(fromSigned(x, 32), 32), 32)) : toSigned(swapBytes(v, 32), 32),
+      display: (v, w) => w > 32 ? formatArray(extractUnsignedArray(v, 32, w).map(x => toSigned(swapBytes(x, 32), 32))) : toSigned(swapBytes(v, 32), 32).toString() },
+
+    { id: 'uint64_le', category: 'integers', bits: 64, names: ['QWord', 'UInt64', 'ulong', 'u64', 'qword', 'QWORD', 'unsigned long long'],
+      endian: 'LE', convert: (v) => v, display: (v) => v.toString() },
+    { id: 'uint64_be', category: 'integers', bits: 64, names: ['QWord BE', 'UInt64 BE', 'u64be'],
+      endian: 'BE', convert: (v) => swapBytes(v, 64), display: (v) => swapBytes(v, 64).toString() },
+    { id: 'int64_le', category: 'integers', bits: 64, names: ['Long', 'Int64', 'long long', 'i64', 'signed long long'],
+      endian: 'LE', convert: (v) => toSigned(v, 64), display: (v) => toSigned(v, 64).toString() },
+    { id: 'int64_be', category: 'integers', bits: 64, names: ['Long BE', 'Int64 BE', 'i64be'],
+      endian: 'BE', convert: (v) => toSigned(swapBytes(v, 64), 64), display: (v) => toSigned(swapBytes(v, 64), 64).toString() },
+
+    // === IEEE 754 FLOATS ===
+    { id: 'float16_le', category: 'floats', bits: 16, names: ['Float16', 'half', 'f16', 'binary16', '__fp16'],
+      endian: 'LE', convert: (v) => float16ToNumber(Number(v)), display: (v) => formatFloat(float16ToNumber(Number(v))) },
+    { id: 'float16_be', category: 'floats', bits: 16, names: ['Float16 BE', 'f16be'],
+      endian: 'BE', convert: (v) => float16ToNumber(Number(swapBytes(v, 16))), display: (v) => formatFloat(float16ToNumber(Number(swapBytes(v, 16)))) },
+
+    { id: 'float32_le', category: 'floats', bits: 32, names: ['Float32', 'float', 'f32', 'single', 'binary32', 'Single'],
+      endian: 'LE', convert: (v) => float32ToNumber(v), display: (v) => formatFloat(float32ToNumber(v)) },
+    { id: 'float32_be', category: 'floats', bits: 32, names: ['Float32 BE', 'f32be'],
+      endian: 'BE', convert: (v) => float32ToNumber(swapBytes(v, 32)), display: (v) => formatFloat(float32ToNumber(swapBytes(v, 32))) },
+
+    { id: 'float64_le', category: 'floats', bits: 64, names: ['Float64', 'double', 'f64', 'binary64', 'Double'],
+      endian: 'LE', convert: (v) => float64ToNumber(v), display: (v) => formatFloat(float64ToNumber(v)) },
+    { id: 'float64_be', category: 'floats', bits: 64, names: ['Float64 BE', 'f64be'],
+      endian: 'BE', convert: (v) => float64ToNumber(swapBytes(v, 64)), display: (v) => formatFloat(float64ToNumber(swapBytes(v, 64))) },
+
+    // === EXOTIC FLOATS ===
+    { id: 'bfloat16_le', category: 'exotic_floats', bits: 16, names: ['BFloat16', 'bf16', 'brain float'],
+      endian: 'LE', convert: (v) => bfloat16ToNumber(Number(v)), display: (v) => formatFloat(bfloat16ToNumber(Number(v))) },
+    { id: 'bfloat16_be', category: 'exotic_floats', bits: 16, names: ['BFloat16 BE', 'bf16be'],
+      endian: 'BE', convert: (v) => bfloat16ToNumber(Number(swapBytes(v, 16))), display: (v) => formatFloat(bfloat16ToNumber(Number(swapBytes(v, 16)))) },
+
+    { id: 'minifloat8', category: 'exotic_floats', bits: 8, names: ['Minifloat8', 'fp8', 'float8'],
+      convert: (v) => minifloat8ToNumber(Number(v)), display: (v) => formatFloat(minifloat8ToNumber(Number(v))) },
+
+    { id: 'ibm_float32', category: 'exotic_floats', bits: 32, names: ['IBM Float', 'IBM HFP', 'hex float'],
+      convert: (v) => ibmFloat32ToNumber(Number(v)), display: (v) => formatFloat(ibmFloat32ToNumber(Number(v))) },
+
+    { id: 'vax_f', category: 'exotic_floats', bits: 32, names: ['VAX F', 'F_floating', 'VAX float'],
+      convert: (v) => vaxFToNumber(Number(v)), display: (v) => formatFloat(vaxFToNumber(Number(v))) },
+
+    { id: 'mbf32', category: 'exotic_floats', bits: 32, names: ['MBF32', 'MS Binary', 'BASIC float'],
+      convert: (v) => mbf32ToNumber(Number(v)), display: (v) => formatFloat(mbf32ToNumber(Number(v))) },
+
+    { id: 'mbf64', category: 'exotic_floats', bits: 64, names: ['MBF64', 'MS Binary 64', 'BASIC double'],
+      convert: (v) => mbf64ToNumber(v), display: (v) => formatFloat(mbf64ToNumber(v)) },
+
+    // === FIXED POINT ===
+    { id: 'q7_8', category: 'fixed', bits: 16, names: ['Q7.8', 'fixed8.8'],
+      convert: (v) => fixedPointToNumber(v, 8, 8, true), display: (v) => fixedPointToNumber(v, 8, 8, true).toFixed(4) },
+
+    { id: 'q15_16', category: 'fixed', bits: 32, names: ['Q15.16', 'fixed16.16'],
+      convert: (v) => fixedPointToNumber(v, 16, 16, true), display: (v) => fixedPointToNumber(v, 16, 16, true).toFixed(6) },
+
+    { id: 'q31_32', category: 'fixed', bits: 64, names: ['Q31.32', 'fixed32.32'],
+      convert: (v) => fixedPointToNumber(v, 32, 32, true), display: (v) => fixedPointToNumber(v, 32, 32, true).toFixed(10) },
+
+    { id: 'uq8_8', category: 'fixed', bits: 16, names: ['UQ8.8', 'ufixed8.8'],
+      convert: (v) => fixedPointToNumber(v, 8, 8, false), display: (v) => fixedPointToNumber(v, 8, 8, false).toFixed(4) },
+
+    { id: 'uq16_16', category: 'fixed', bits: 32, names: ['UQ16.16', 'ufixed16.16'],
+      convert: (v) => fixedPointToNumber(v, 16, 16, false), display: (v) => fixedPointToNumber(v, 16, 16, false).toFixed(6) },
+
+    // === DECIMAL / BCD ===
+    { id: 'bcd8', category: 'decimal', bits: 8, names: ['BCD8', 'packed BCD 8'],
+      convert: (v) => bcdToNumber(v, 8).value, display: (v) => { const n = bcdToNumber(v, 8); return n.valid ? n.value.toString() : 'Invalid BCD'; } },
+
+    { id: 'bcd16', category: 'decimal', bits: 16, names: ['BCD16', 'packed BCD 16'],
+      convert: (v) => bcdToNumber(v, 16).value, display: (v) => { const n = bcdToNumber(v, 16); return n.valid ? n.value.toString() : 'Invalid BCD'; } },
+
+    { id: 'bcd32', category: 'decimal', bits: 32, names: ['BCD32', 'packed BCD 32'],
+      convert: (v) => bcdToNumber(v, 32).value, display: (v) => { const n = bcdToNumber(v, 32); return n.valid ? n.value.toString() : 'Invalid BCD'; } },
+
+    { id: 'bcd64', category: 'decimal', bits: 64, names: ['BCD64', 'packed BCD 64'],
+      convert: (v) => bcdToNumber(v, 64).value, display: (v) => { const n = bcdToNumber(v, 64); return n.valid ? n.value.toString() : 'Invalid BCD'; } },
+
+    // === SPECIAL ===
+    { id: 'currency64', category: 'special', bits: 64, names: ['Currency', 'OLE Currency', 'money', 'CY', 'CURRENCY'],
+      convert: (v) => currencyToNumber(v), display: (v) => '$' + currencyToNumber(v).toFixed(4) },
+
+    { id: 'filetime', category: 'special', bits: 64, names: ['FILETIME', 'Windows FILETIME'],
+      convert: (v) => new Date(Number(v / 10000n) - 11644473600000), display: (v) => {
+          const d = new Date(Number(v / 10000n) - 11644473600000);
+          return isNaN(d.getTime()) ? 'Invalid' : d.toISOString();
+      }},
+
+    { id: 'unix32', category: 'special', bits: 32, names: ['Unix32', 'time_t', 'Unix timestamp'],
+      convert: (v) => new Date(Number(v) * 1000), display: (v) => {
+          const d = new Date(Number(v) * 1000);
+          return isNaN(d.getTime()) ? 'Invalid' : d.toISOString();
+      }},
+
+    { id: 'unix64', category: 'special', bits: 64, names: ['Unix64', 'time64_t'],
+      convert: (v) => new Date(Number(v) * 1000), display: (v) => {
+          const d = new Date(Number(v) * 1000);
+          return isNaN(d.getTime()) ? 'Invalid' : d.toISOString();
+      }},
+
+    { id: 'dosdate', category: 'special', bits: 32, names: ['DOS DateTime', 'FAT timestamp'],
+      convert: (v) => {
+          const time = Number(v & 0xFFFFn);
+          const date = Number((v >> 16n) & 0xFFFFn);
+          const sec = (time & 0x1F) * 2;
+          const min = (time >> 5) & 0x3F;
+          const hour = (time >> 11) & 0x1F;
+          const day = date & 0x1F;
+          const month = ((date >> 5) & 0xF) - 1;
+          const year = ((date >> 9) & 0x7F) + 1980;
+          return new Date(year, month, day, hour, min, sec);
+      },
+      display: (v) => {
+          const time = Number(v & 0xFFFFn);
+          const date = Number((v >> 16n) & 0xFFFFn);
+          const sec = (time & 0x1F) * 2;
+          const min = (time >> 5) & 0x3F;
+          const hour = (time >> 11) & 0x1F;
+          const day = date & 0x1F;
+          const month = ((date >> 5) & 0xF);
+          const year = ((date >> 9) & 0x7F) + 1980;
+          return `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')} ${String(hour).padStart(2,'0')}:${String(min).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+      }},
+
+    { id: 'rgb24', category: 'special', bits: 32, names: ['RGB', 'RGB24', 'color'],
+      convert: (v) => ({ r: Number((v >> 16n) & 0xFFn), g: Number((v >> 8n) & 0xFFn), b: Number(v & 0xFFn) }),
+      display: (v) => {
+          const r = Number((v >> 16n) & 0xFFn);
+          const g = Number((v >> 8n) & 0xFFn);
+          const b = Number(v & 0xFFn);
+          return `rgb(${r}, ${g}, ${b})`;
+      }},
+
+    { id: 'rgba32', category: 'special', bits: 32, names: ['RGBA', 'RGBA32', 'ARGB'],
+      convert: (v) => ({ a: Number((v >> 24n) & 0xFFn), r: Number((v >> 16n) & 0xFFn), g: Number((v >> 8n) & 0xFFn), b: Number(v & 0xFFn) }),
+      display: (v) => {
+          const a = Number((v >> 24n) & 0xFFn);
+          const r = Number((v >> 16n) & 0xFFn);
+          const g = Number((v >> 8n) & 0xFFn);
+          const b = Number(v & 0xFFn);
+          return `rgba(${r}, ${g}, ${b}, ${(a/255).toFixed(2)})`;
+      }},
+
+    { id: 'fourcc', category: 'special', bits: 32, names: ['FourCC', 'FOURCC', 'magic'],
+      convert: (v) => String.fromCharCode(Number(v & 0xFFn), Number((v >> 8n) & 0xFFn), Number((v >> 16n) & 0xFFn), Number((v >> 24n) & 0xFFn)),
+      display: (v) => {
+          const chars = [v & 0xFFn, (v >> 8n) & 0xFFn, (v >> 16n) & 0xFFn, (v >> 24n) & 0xFFn];
+          return '"' + chars.map(c => {
+              const n = Number(c);
+              return (n >= 32 && n < 127) ? String.fromCharCode(n) : '.';
+          }).join('') + '"';
+      }},
+];
+
+// Helper to format float values
+const formatFloat = (v) => {
+    if (isNaN(v)) return 'NaN';
+    if (!isFinite(v)) return v > 0 ? '+Inf' : '-Inf';
+    if (Object.is(v, -0)) return '-0';
+    // Use exponential for very large/small values
+    const abs = Math.abs(v);
+    if (abs !== 0 && (abs >= 1e10 || abs < 1e-6)) return v.toExponential(6);
+    // Otherwise use fixed precision
+    const str = v.toPrecision(10);
+    // Remove trailing zeros after decimal point
+    return str.replace(/\.?0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+};
+
+// Get formats applicable to current bit width
+// For array formats, minBits specifies the minimum width needed (e.g., Byte[] needs at least 16 bits for 2 elements)
+const getFormatsForWidth = (width) => FORMATS.filter(f => f.bits <= width && (!f.minBits || width >= f.minBits));
+
+// --- CODE GENERATION ---
+const generateCCode = (fields, width) => {
+    if (fields.length === 0) return '// No fields defined';
+    const typeName = width <= 8 ? 'uint8_t' : width <= 16 ? 'uint16_t' : width <= 32 ? 'uint32_t' : 'uint64_t';
+    const suffix = width <= 32 ? 'U' : 'ULL';
+    let code = `// Bit field definitions for ${width}-bit value\n\n`;
+    code += '// Field masks\n';
+    fields.forEach(f => {
+        const mask = ((1n << BigInt(f.width)) - 1n) << BigInt(f.start);
+        code += `#define ${f.name.toUpperCase()}_MASK ${formatHex(mask, width)}${suffix}\n`;
+    });
+    code += '\n// Field positions\n';
+    fields.forEach(f => code += `#define ${f.name.toUpperCase()}_POS  ${f.start}\n`);
+    code += '\n// Field widths\n';
+    fields.forEach(f => code += `#define ${f.name.toUpperCase()}_BITS ${f.width}\n`);
+    code += '\n// Accessor macros\n';
+    fields.forEach(f => {
+        const mask = ((1n << BigInt(f.width)) - 1n);
+        code += `#define GET_${f.name.toUpperCase()}(v) (((v) >> ${f.name.toUpperCase()}_POS) & ${formatHex(mask, f.width)}${suffix})\n`;
+        code += `#define SET_${f.name.toUpperCase()}(v, x) (((v) & ~${f.name.toUpperCase()}_MASK) | (((x) & ${formatHex(mask, f.width)}${suffix}) << ${f.name.toUpperCase()}_POS))\n`;
+    });
+    return code;
+};
+
+const generateCSharpCode = (fields, width) => {
+    if (fields.length === 0) return '// No fields defined';
+    const typeName = width <= 8 ? 'byte' : width <= 16 ? 'ushort' : width <= 32 ? 'uint' : 'ulong';
+    let code = `// Bit field definitions for ${width}-bit value\n\npublic static class BitFields\n{\n`;
+    code += '    // Field masks\n';
+    fields.forEach(f => {
+        const mask = ((1n << BigInt(f.width)) - 1n) << BigInt(f.start);
+        code += `    public const ${typeName} ${f.name}Mask = ${formatHex(mask, width)};\n`;
+    });
+    code += '\n    // Field positions\n';
+    fields.forEach(f => code += `    public const int ${f.name}Pos = ${f.start};\n`);
+    code += '\n    // Accessor methods\n';
+    fields.forEach(f => {
+        const mask = ((1n << BigInt(f.width)) - 1n);
+        code += `    public static ${typeName} Get${f.name}(${typeName} v) => (${typeName})((v >> ${f.name}Pos) & ${formatHex(mask, f.width)});\n`;
+        code += `    public static ${typeName} Set${f.name}(${typeName} v, ${typeName} x) => (${typeName})((v & ~${f.name}Mask) | ((x & ${formatHex(mask, f.width)}) << ${f.name}Pos));\n`;
+    });
+    code += '}\n';
+    return code;
+};
+
+const generateCppCode = (fields, width) => {
+    if (fields.length === 0) return '// No fields defined';
+    const typeName = width <= 8 ? 'uint8_t' : width <= 16 ? 'uint16_t' : width <= 32 ? 'uint32_t' : 'uint64_t';
+    const suffix = width <= 32 ? 'U' : 'ULL';
+    let code = `// Bit field definitions for ${width}-bit value\n\n#include <cstdint>\n\nnamespace BitFields {\n\n`;
+    code += '// Field masks\n';
+    fields.forEach(f => {
+        const mask = ((1n << BigInt(f.width)) - 1n) << BigInt(f.start);
+        code += `constexpr ${typeName} ${f.name}_mask = ${formatHex(mask, width)}${suffix};\n`;
+    });
+    code += '\n// Field positions\n';
+    fields.forEach(f => code += `constexpr int ${f.name}_pos = ${f.start};\n`);
+    code += '\n// Accessor functions\n';
+    fields.forEach(f => {
+        const mask = ((1n << BigInt(f.width)) - 1n);
+        code += `constexpr ${typeName} get_${f.name}(${typeName} v) { return (v >> ${f.name}_pos) & ${formatHex(mask, f.width)}${suffix}; }\n`;
+        code += `constexpr ${typeName} set_${f.name}(${typeName} v, ${typeName} x) { return (v & ~${f.name}_mask) | ((x & ${formatHex(mask, f.width)}${suffix}) << ${f.name}_pos); }\n`;
+    });
+    code += '\n} // namespace BitFields\n';
+    return code;
+};
+
+// --- COMPONENTS ---
+
+// Bit Grid Component - always uses 8 bits per row for consistent layout
+const BitGrid = ({ value, width, onToggleBit, fields, highlightField }) => {
+    const bitsPerRow = 8; // Fixed 8 bits per row (one byte)
+    const rows = width / bitsPerRow;
+
+    const getFieldForBit = (bitIndex) => fields.find(f => bitIndex >= f.start && bitIndex < f.start + f.width);
+    const getFieldColor = (field) => {
+        if (!field) return null;
+        const hue = (field.colorIndex * 60) % 360;
+        return { bg: `hsla(${hue}, 70%, 50%, 0.15)`, border: `hsl(${hue}, 70%, 50%)` };
+    };
+
+    return (
+        <div className="space-y-1">
+            {Array.from({ length: rows }).map((_, rowIdx) => {
+                const startBit = (rows - 1 - rowIdx) * bitsPerRow;
+                return (
+                    <div key={rowIdx} className="flex gap-0.5 justify-center">
+                        {Array.from({ length: bitsPerRow }).map((_, colIdx) => {
+                            const bitIndex = startBit + (bitsPerRow - 1 - colIdx);
+                            const bitVal = (value >> BigInt(bitIndex)) & 1n;
+                            const field = getFieldForBit(bitIndex);
+                            const fieldColor = getFieldColor(field);
+                            const isHighlighted = highlightField && field && field.name === highlightField;
+                            // Add visual separator every 4 bits (nibble boundary)
+                            const isNibbleBoundary = colIdx === 4;
+                            return (
+                                <React.Fragment key={bitIndex}>
+                                    {isNibbleBoundary && <div className="w-1" />}
+                                    <div onClick={() => onToggleBit(bitIndex)}
+                                        className={`bit-cell w-7 h-9 flex flex-col items-center justify-center font-mono text-xs rounded cursor-pointer transition-all border ${isHighlighted ? 'field-highlight' : ''}`}
+                                        style={{
+                                            backgroundColor: fieldColor?.bg || (bitVal ? 'rgba(34, 211, 238, 0.2)' : 'rgba(30, 41, 59, 0.5)'),
+                                            borderColor: fieldColor?.border || (bitVal ? 'rgb(34, 211, 238)' : 'rgb(51, 65, 85)'),
+                                            borderWidth: field ? '2px' : '1px'
+                                        }}>
+                                        <span className="text-[8px] text-slate-500">{bitIndex}</span>
+                                        <span className={`text-sm font-bold ${bitVal ? 'text-cyan-400' : 'text-slate-500'}`}>{bitVal.toString()}</span>
+                                    </div>
+                                </React.Fragment>
+                            );
+                        })}
+                    </div>
+                );
+            })}
+        </div>
+    );
+};
+
+// Format Value Row Component
+const FormatRow = ({ format, value, width, onCopy }) => {
+    const displayValue = format.display(value, width);
+    const endianLabel = format.endian ? ` (${format.endian})` : '';
+    const isColor = format.id.includes('rgb');
+
+    return (
+        <div className="format-row flex items-center gap-2 py-1 px-2 rounded transition-colors">
+            <span className="text-[10px] text-slate-500 w-24 truncate" title={format.names.join(', ')}>
+                {format.names[0]}{endianLabel}
+            </span>
+            {isColor && (
+                <div className="w-4 h-4 rounded border border-slate-600"
+                     style={{ backgroundColor: displayValue.startsWith('rgb') ? displayValue : '#000' }} />
+            )}
+            <code className="flex-1 font-mono text-xs text-slate-200 truncate" title={displayValue}>
+                {displayValue}
+            </code>
+            <button onClick={() => onCopy(displayValue)} className="text-slate-600 hover:text-cyan-400 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                <IconCopy className="w-3 h-3" />
+            </button>
+        </div>
+    );
+};
+
+// Format Category Component
+const FormatCategory = ({ category, formats, value, width, onCopy, expanded, onToggle }) => {
+    const catInfo = FORMAT_CATEGORIES[category];
+    const applicableFormats = formats.filter(f => f.bits <= width);
+
+    if (applicableFormats.length === 0) return null;
+
+    return (
+        <div className="mb-2">
+            <button onClick={onToggle}
+                className={`category-header w-full flex items-center gap-2 py-1 text-left hover:bg-slate-800/30 rounded transition-colors`}
+                style={{ borderColor: `var(--tw-${catInfo.color}-500, #06b6d4)` }}>
+                <IconChevronDown className="w-3 h-3 text-slate-500" rotate={expanded} />
+                <span className={`text-xs font-bold uppercase tracking-wider text-${catInfo.color}-400`}>{catInfo.name}</span>
+                <span className="text-[10px] text-slate-600">({applicableFormats.length})</span>
+            </button>
+            {expanded && (
+                <div className="mt-1 ml-2 space-y-0.5 group">
+                    {applicableFormats.map(f => (
+                        <FormatRow key={f.id} format={f} value={value} width={width} onCopy={onCopy} />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
+// Conversions Panel Component
+const ConversionsPanel = ({ value, width, onCopy }) => {
+    const [expandedCategories, setExpandedCategories] = React.useState({
+        integers: true, floats: true, exotic_floats: false, fixed: false, decimal: false, special: false
+    });
+
+    const toggleCategory = (cat) => setExpandedCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
+
+    const formatsByCategory = {};
+    FORMATS.forEach(f => {
+        if (!formatsByCategory[f.category]) formatsByCategory[f.category] = [];
+        formatsByCategory[f.category].push(f);
+    });
+
+    return (
+        <div className="space-y-1">
+            <div className="flex items-center justify-between mb-2">
+                <div className="text-xs font-bold text-slate-500 uppercase tracking-widest">Type Interpretations</div>
+                <div className="flex gap-1">
+                    <button onClick={() => setExpandedCategories(Object.fromEntries(Object.keys(FORMAT_CATEGORIES).map(k => [k, true])))}
+                        className="text-[10px] text-slate-600 hover:text-white">All</button>
+                    <button onClick={() => setExpandedCategories(Object.fromEntries(Object.keys(FORMAT_CATEGORIES).map(k => [k, false])))}
+                        className="text-[10px] text-slate-600 hover:text-white">None</button>
+                </div>
+            </div>
+            {Object.keys(FORMAT_CATEGORIES).map(cat => (
+                <FormatCategory key={cat} category={cat} formats={formatsByCategory[cat] || []}
+                    value={value} width={width} onCopy={onCopy}
+                    expanded={expandedCategories[cat]} onToggle={() => toggleCategory(cat)} />
+            ))}
+        </div>
+    );
+};
+
+// Input Panel Component
+const InputPanel = ({ value, width, onValueChange, onCopy }) => {
+    const [inputMode, setInputMode] = React.useState('hex');
+    const [textInput, setTextInput] = React.useState('0');
+
+    const mask = (1n << BigInt(width)) - 1n;
+
+    React.useEffect(() => {
+        if (inputMode === 'hex') setTextInput(formatHex(value, width));
+        else if (inputMode === 'dec') setTextInput(value.toString());
+        else if (inputMode === 'sdec') setTextInput(toSigned(value, width).toString());
+        else if (inputMode === 'bin') setTextInput(formatBinary(value, width));
+        else if (inputMode === 'oct') setTextInput(formatOctal(value));
+    }, [value, width, inputMode]);
+
+    const handleTextInputChange = (newText) => {
+        setTextInput(newText);
+        try {
+            let newVal = 0n;
+            if (inputMode === 'hex') {
+                const cleaned = newText.replace(/^0x/i, '').replace(/[^0-9a-fA-F]/g, '');
+                if (cleaned) newVal = BigInt('0x' + cleaned);
+            } else if (inputMode === 'dec') {
+                const cleaned = newText.replace(/[^0-9]/g, '');
+                if (cleaned) newVal = BigInt(cleaned);
+            } else if (inputMode === 'sdec') {
+                const cleaned = newText.replace(/[^0-9-]/g, '');
+                if (cleaned && cleaned !== '-') newVal = fromSigned(BigInt(cleaned), width);
+            } else if (inputMode === 'bin') {
+                const cleaned = newText.replace(/^0b/i, '').replace(/[^01]/g, '');
+                if (cleaned) newVal = BigInt('0b' + cleaned);
+            } else if (inputMode === 'oct') {
+                const cleaned = newText.replace(/^0o/i, '').replace(/[^0-7]/g, '');
+                if (cleaned) newVal = BigInt('0o' + cleaned);
+            }
+            onValueChange(newVal & mask);
+        } catch (e) { /* Invalid input, ignore */ }
+    };
+
+    const modes = [
+        { id: 'hex', label: 'Hex' },
+        { id: 'dec', label: 'Dec' },
+        { id: 'sdec', label: 'Signed' },
+        { id: 'bin', label: 'Bin' },
+        { id: 'oct', label: 'Oct' }
+    ];
+
+    return (
+        <div className="space-y-3">
+            <div className="text-xs font-bold text-slate-500 uppercase tracking-widest">Input</div>
+            <div className="flex gap-1 flex-wrap">
+                {modes.map((mode) => (
+                    <button key={mode.id} onClick={() => setInputMode(mode.id)}
+                        className={`px-2 py-1 rounded text-xs font-bold transition-all ${inputMode === mode.id ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}>
+                        {mode.label}
+                    </button>
+                ))}
+            </div>
+            <div className="flex gap-2">
+                <input type="text" value={textInput} onChange={(e) => handleTextInputChange(e.target.value)}
+                    className="flex-1 bg-slate-950 border border-slate-700 rounded px-3 py-2 font-mono text-sm text-white focus:outline-none focus:border-emerald-500" />
+                <button onClick={() => {
+                    // Generate random value using crypto API for better randomness
+                    const bytes = new Uint8Array(width / 8);
+                    crypto.getRandomValues(bytes);
+                    let rnd = 0n;
+                    for (let i = 0; i < bytes.length; ++i) rnd |= BigInt(bytes[i]) << BigInt(i * 8);
+                    onValueChange(rnd);
+                }} className="text-slate-500 hover:text-amber-400 p-2" title="Random value">
+                    <IconDice className="w-4 h-4" />
+                </button>
+                <button onClick={() => onCopy(textInput)} className="text-slate-500 hover:text-cyan-400 p-2" title="Copy">
+                    <IconCopy className="w-4 h-4" />
+                </button>
+            </div>
+
+            {/* Quick reference displays */}
+            <div className="grid grid-cols-2 gap-2 text-[10px]">
+                <div className="bg-slate-900/50 rounded p-2">
+                    <span className="text-slate-500">Hex:</span>
+                    <code className="ml-1 text-emerald-400">{formatHex(value, width)}</code>
+                </div>
+                <div className="bg-slate-900/50 rounded p-2">
+                    <span className="text-slate-500">Dec:</span>
+                    <code className="ml-1 text-emerald-400">{value.toString()}</code>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// Field Editor Component
+const FieldEditor = ({ fields, onAddField, onRemoveField, width }) => {
+    const [newField, setNewField] = React.useState({ name: '', start: 0, width: 1 });
+
+    const handleAdd = () => {
+        if (newField.name && newField.width > 0 && newField.start + newField.width <= width) {
+            onAddField({ ...newField, colorIndex: fields.length });
+            setNewField({ name: '', start: 0, width: 1 });
+        }
+    };
+
+    return (
+        <div className="space-y-3">
+            <div className="text-xs font-bold text-slate-500 uppercase tracking-widest">Named Fields</div>
+            {fields.map((field, idx) => (
+                <div key={idx} className="flex items-center gap-2 bg-slate-900/50 p-2 rounded border border-slate-800">
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: `hsl(${(field.colorIndex * 60) % 360}, 70%, 50%)` }} />
+                    <span className="text-sm font-mono text-slate-300 flex-1">{field.name}</span>
+                    <span className="text-xs text-slate-500">[{field.start}:{field.start + field.width - 1}]</span>
+                    <button onClick={() => onRemoveField(idx)} className="text-slate-500 hover:text-red-400">
+                        <IconTrash className="w-4 h-4" />
+                    </button>
+                </div>
+            ))}
+            <div className="flex flex-wrap items-center gap-2">
+                <input type="text" placeholder="Name" value={newField.name}
+                    onChange={(e) => setNewField({ ...newField, name: e.target.value })}
+                    className="flex-1 min-w-[80px] bg-slate-950 border border-slate-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-cyan-500" />
+                <div className="flex items-center gap-1">
+                    <input type="number" min="0" max={width - 1} value={newField.start}
+                        onChange={(e) => setNewField({ ...newField, start: parseInt(e.target.value) || 0 })}
+                        className="w-12 bg-slate-950 border border-slate-700 rounded px-1 py-1 text-sm text-white text-center focus:outline-none focus:border-cyan-500" title="Start bit" />
+                    <span className="text-slate-600 text-xs">:</span>
+                    <input type="number" min="1" max={width} value={newField.width}
+                        onChange={(e) => setNewField({ ...newField, width: parseInt(e.target.value) || 1 })}
+                        className="w-12 bg-slate-950 border border-slate-700 rounded px-1 py-1 text-sm text-white text-center focus:outline-none focus:border-cyan-500" title="Width in bits" />
+                    <button onClick={handleAdd} className="bg-cyan-600 hover:bg-cyan-500 text-white px-2 py-1 rounded text-sm font-bold flex-shrink-0">
+                        <IconPlus className="w-4 h-4" />
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// Operations Panel Component
+const OperationsPanel = ({ value, width, onChange }) => {
+    const [shiftAmount, setShiftAmount] = React.useState(1);
+    const mask = (1n << BigInt(width)) - 1n;
+
+    const ops = [
+        { label: 'SHL', icon: <IconArrowLeft className="w-4 h-4" />, title: 'Shift Left (logical, zero-fill)', action: () => onChange((value << BigInt(shiftAmount)) & mask) },
+        { label: 'SAL', icon: <IconArrowLeft className="w-4 h-4" />, title: 'Shift Arithmetic Left (preserves sign bit)', action: () => onChange(signPreservingShiftLeft(value, shiftAmount, width)) },
+        { label: 'SAR', icon: <IconArrowRight className="w-4 h-4" />, title: 'Shift Arithmetic Right (sign-extend)', action: () => onChange(arithmeticShiftRight(value, shiftAmount, width)) },
+        { label: 'SHR', icon: <IconArrowRight className="w-4 h-4" />, title: 'Shift Right (logical, zero-fill)', action: () => onChange(value >> BigInt(shiftAmount)) },
+        { label: 'ROL', icon: <IconRotate className="w-4 h-4" />, title: 'Rotate Left', action: () => onChange(rotateLeft(value, shiftAmount, width)) },
+        { label: 'ROR', icon: <IconRotate className="w-4 h-4 transform scale-x-[-1]" />, title: 'Rotate Right', action: () => onChange(rotateRight(value, shiftAmount, width)) },
+        { label: 'NOT', icon: '~', title: 'Bitwise NOT (complement)', action: () => onChange(mask ^ value) },
+        { label: 'BSWAP', icon: <IconRefresh className="w-4 h-4" />, title: 'Byte Swap (reverse endianness)', action: () => onChange(swapBytes(value, width)) },
+    ];
+
+    return (
+        <div className="space-y-3">
+            <div className="text-xs font-bold text-slate-500 uppercase tracking-widest">Operations</div>
+            <div className="flex items-center gap-2 mb-3">
+                <span className="text-xs text-slate-500">Amount:</span>
+                <input type="number" min="1" max={width - 1} value={shiftAmount}
+                    onChange={(e) => setShiftAmount(parseInt(e.target.value) || 1)}
+                    className="w-14 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-sm text-white text-center focus:outline-none focus:border-cyan-500" />
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+                {ops.map((op, idx) => (
+                    <button key={idx} onClick={op.action} title={op.title}
+                        className="flex items-center justify-center gap-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-cyan-500 text-slate-300 hover:text-white px-2 py-2 rounded text-xs font-bold transition-all">
+                        {typeof op.icon === 'string' ? <span className="text-base">{op.icon}</span> : op.icon}
+                        <span>{op.label}</span>
+                    </button>
+                ))}
+            </div>
+            <div className="flex gap-2">
+                <button onClick={() => onChange(0n)} className="flex-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white px-3 py-2 rounded text-xs font-bold transition-all">Clear</button>
+                <button onClick={() => onChange(mask)} className="flex-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white px-3 py-2 rounded text-xs font-bold transition-all">Set All</button>
+            </div>
+        </div>
+    );
+};
+
+// Statistics Panel Component
+const StatsPanel = ({ value, width }) => {
+    const stats = [
+        { label: 'Popcount', value: popcount(value) },
+        { label: 'Parity', value: parity(value) === 0 ? 'Even' : 'Odd' },
+        { label: 'CLZ', value: clz(value, width) },
+        { label: 'CTZ', value: ctz(value, width) },
+        { label: 'MSB', value: value === 0n ? '-' : (width - 1 - clz(value, width)) },
+        { label: 'LSB', value: value === 0n ? '-' : ctz(value, width) },
+    ];
+
+    return (
+        <div className="space-y-3">
+            <div className="text-xs font-bold text-slate-500 uppercase tracking-widest">Statistics</div>
+            <div className="grid grid-cols-3 gap-2">
+                {stats.map((stat, idx) => (
+                    <div key={idx} className="bg-slate-900/50 border border-slate-800 rounded p-2 text-center">
+                        <div className="text-[10px] text-slate-500 uppercase">{stat.label}</div>
+                        <div className="text-lg font-mono text-cyan-400">{stat.value}</div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+// Code Export Component
+const CodeExport = ({ fields, width, onCopy }) => {
+    const [lang, setLang] = React.useState('c');
+    const [expanded, setExpanded] = React.useState(false);
+    const codeGenerators = { c: generateCCode, csharp: generateCSharpCode, cpp: generateCppCode };
+    const code = codeGenerators[lang](fields, width);
+
+    return (
+        <div className="space-y-3">
+            <div className="flex items-center justify-between">
+                <div className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                    <IconCode className="w-4 h-4" />Code Export
+                </div>
+                <button onClick={() => setExpanded(!expanded)} className="text-slate-500 hover:text-white">
+                    <IconChevronDown className="w-4 h-4" rotate={expanded} />
+                </button>
+            </div>
+            {expanded && (
+                <div className="space-y-2">
+                    <div className="flex gap-2">
+                        {['c', 'cpp', 'csharp'].map((l) => (
+                            <button key={l} onClick={() => setLang(l)}
+                                className={`px-3 py-1 rounded text-xs font-bold transition-all ${lang === l ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}>
+                                {l === 'csharp' ? 'C#' : l.toUpperCase()}
+                            </button>
+                        ))}
+                    </div>
+                    <div className="relative">
+                        <button onClick={() => onCopy(code)}
+                            className="absolute top-2 right-2 text-slate-500 hover:text-white p-1.5 rounded hover:bg-slate-700 bg-slate-800 border border-slate-700">
+                            <IconCopy className="w-3 h-3" />
+                        </button>
+                        <pre className="text-[10px] font-mono text-slate-300 bg-slate-950 p-3 rounded border border-slate-800 overflow-x-auto whitespace-pre-wrap leading-relaxed max-h-64 overflow-y-auto">
+                            {code}
+                        </pre>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+// --- MAIN APP ---
+const BitBenchApp = () => {
+    const [bitWidth, setBitWidth] = React.useState(32);
+    const [value, setValue] = React.useState(0n);
+    const [fields, setFields] = React.useState([]);
+    const [highlightField, setHighlightField] = React.useState(null);
+    const [showHelp, setShowHelp] = React.useState(false);
+    const [copied, setCopied] = React.useState(false);
+
+    const mask = (1n << BigInt(bitWidth)) - 1n;
+
+    const handleToggleBit = (bitIndex) => setValue(prev => prev ^ (1n << BigInt(bitIndex)));
+
+    const handleWidthChange = (newWidth) => {
+        setBitWidth(newWidth);
+        const newMask = (1n << BigInt(newWidth)) - 1n;
+        setValue(prev => prev & newMask);
+        setFields(prev => prev.filter(f => f.start + f.width <= newWidth));
+    };
+
+    const copyToClipboard = (text) => {
+        navigator.clipboard.writeText(String(text));
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+    };
+
+    return (
+        <div className="min-h-screen bg-slate-950 text-slate-200 font-sans flex flex-col">
+            {/* HELP MODAL */}
+            {showHelp && (
+                <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowHelp(false); }}>
+                    <div className="modal-content bg-slate-900 border border-slate-700 rounded-xl max-w-2xl w-full p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+                        <button onClick={() => setShowHelp(false)} className="absolute top-4 right-4 text-slate-500 hover:text-white">
+                            <IconX className="w-6 h-6" />
+                        </button>
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-12 h-12 bg-gradient-to-br from-emerald-600 to-cyan-700 rounded-lg shadow-lg flex items-center justify-center text-white">
+                                <IconBinary className="w-7 h-7" />
+                            </div>
+                            <div>
+                                <h2 className="text-2xl font-bold text-white">BitBench</h2>
+                                <p className="text-sm text-emerald-400">Binary/Bitwise Workbench</p>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-slate-300">
+                            <div className="bg-slate-950 p-3 rounded border border-slate-800">
+                                <h3 className="font-bold text-white mb-2">Type Interpretations</h3>
+                                <ul className="list-disc list-inside space-y-1 text-slate-400 text-xs">
+                                    <li>Integers: UInt8/16/32/64, Int8/16/32/64</li>
+                                    <li>IEEE 754: Float16, Float32, Float64</li>
+                                    <li>Exotic: BFloat16, MBF, IBM HFP, VAX</li>
+                                    <li>Fixed: Q7.8, Q15.16, Q31.32</li>
+                                    <li>BCD, Currency, Timestamps, Colors</li>
+                                    <li>Both LE and BE byte orders</li>
+                                </ul>
+                            </div>
+                            <div className="bg-slate-950 p-3 rounded border border-slate-800">
+                                <h3 className="font-bold text-white mb-2">Type Aliases</h3>
+                                <ul className="list-disc list-inside space-y-1 text-slate-400 text-xs">
+                                    <li>UInt32 = uint = u32 = dword = DWORD</li>
+                                    <li>Float32 = float = single = f32</li>
+                                    <li>Int64 = long long = i64 = qword</li>
+                                    <li>Currency = OLE Currency = money</li>
+                                </ul>
+                            </div>
+                            <div className="bg-slate-950 p-3 rounded border border-slate-800">
+                                <h3 className="font-bold text-white mb-2">Bit Operations</h3>
+                                <ul className="list-disc list-inside space-y-1 text-slate-400 text-xs">
+                                    <li>SHL: Shift left logical (zero-fill)</li>
+                                    <li>SAL: Shift left arithmetic (preserves sign)</li>
+                                    <li>SHR: Shift right logical (zero-fill)</li>
+                                    <li>SAR: Shift right arithmetic (sign-extend)</li>
+                                    <li>ROL/ROR: Rotate left/right (bits wrap)</li>
+                                    <li>NOT: Bitwise complement</li>
+                                    <li>BSWAP: Byte-swap (endianness)</li>
+                                </ul>
+                            </div>
+                            <div className="bg-slate-950 p-3 rounded border border-slate-800">
+                                <h3 className="font-bold text-white mb-2">Code Export</h3>
+                                <ul className="list-disc list-inside space-y-1 text-slate-400 text-xs">
+                                    <li>Define named bit fields</li>
+                                    <li>Generate C/C++/C# code</li>
+                                    <li>Masks, positions, accessors</li>
+                                </ul>
+                            </div>
+                        </div>
+                        <button onClick={() => setShowHelp(false)} className="mt-6 w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg transition-all">
+                            Get Started
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* HEADER */}
+            <header className="border-b border-slate-800 bg-slate-900/90 backdrop-blur-md sticky top-0 z-40">
+                <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
+                    <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setShowHelp(true)}>
+                        <div className="w-9 h-9 bg-gradient-to-br from-emerald-600 to-cyan-700 rounded-lg shadow-lg shadow-emerald-900/20 flex items-center justify-center text-white group-hover:scale-105 transition-transform">
+                            <IconBinary className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <h1 className="text-lg font-bold tracking-tight text-white group-hover:text-emerald-400 transition-colors">
+                                Bit<span className="text-emerald-400 group-hover:text-white transition-colors">Bench</span>
+                            </h1>
+                            <span className="text-[9px] text-slate-500 flex items-center gap-1"><IconInfo className="w-2.5 h-2.5" /> Help</span>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                        <div className="flex bg-slate-800/50 p-1 rounded-lg">
+                            {BIT_WIDTHS.map(size => (
+                                <button key={size} onClick={() => handleWidthChange(size)}
+                                    className={`px-3 py-1 rounded text-xs font-bold transition-all ${bitWidth === size ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}>
+                                    {size}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            {/* MAIN CONTENT */}
+            <main className="flex-1 max-w-7xl mx-auto px-4 py-4 w-full">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                    {/* LEFT PANEL - Input & Conversions */}
+                    <div className="lg:col-span-4 space-y-4">
+                        <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
+                            <InputPanel value={value} width={bitWidth} onValueChange={setValue} onCopy={copyToClipboard} />
+                        </div>
+                        <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 max-h-[60vh] overflow-y-auto">
+                            <ConversionsPanel value={value} width={bitWidth} onCopy={copyToClipboard} />
+                        </div>
+                    </div>
+
+                    {/* CENTER PANEL - Bit Grid & Operations */}
+                    <div className="lg:col-span-5 space-y-4">
+                        <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
+                            <div className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Bit Editor</div>
+                            <BitGrid value={value} width={bitWidth} onToggleBit={handleToggleBit} fields={fields} highlightField={highlightField} />
+                        </div>
+                        <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
+                            <OperationsPanel value={value} width={bitWidth} onChange={setValue} />
+                        </div>
+                        <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
+                            <StatsPanel value={value} width={bitWidth} />
+                        </div>
+                    </div>
+
+                    {/* RIGHT PANEL - Fields & Export */}
+                    <div className="lg:col-span-3 space-y-4">
+                        <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
+                            <FieldEditor fields={fields} width={bitWidth}
+                                onAddField={(f) => setFields([...fields, f])}
+                                onRemoveField={(idx) => setFields(fields.filter((_, i) => i !== idx))} />
+                        </div>
+                        {fields.length > 0 && (
+                            <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 space-y-2">
+                                <div className="text-xs font-bold text-slate-500 uppercase tracking-widest">Field Values</div>
+                                {fields.map((field, idx) => {
+                                    const fieldMask = ((1n << BigInt(field.width)) - 1n);
+                                    const fieldValue = (value >> BigInt(field.start)) & fieldMask;
+                                    return (
+                                        <div key={idx}
+                                            className="flex items-center gap-2 p-2 rounded border border-slate-700 hover:border-slate-600 cursor-pointer transition-all"
+                                            onMouseEnter={() => setHighlightField(field.name)}
+                                            onMouseLeave={() => setHighlightField(null)}>
+                                            <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: `hsl(${(field.colorIndex * 60) % 360}, 70%, 50%)` }} />
+                                            <span className="text-sm font-mono text-slate-300 flex-1 truncate">{field.name}</span>
+                                            <span className="text-xs font-mono text-slate-500">{fieldValue.toString()}</span>
+                                            <span className="text-sm font-mono text-emerald-400">{formatHex(fieldValue, field.width)}</span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                        <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
+                            <CodeExport fields={fields} width={bitWidth} onCopy={copyToClipboard} />
+                        </div>
+                    </div>
+                </div>
+            </main>
+
+            {/* COPY NOTIFICATION */}
+            {copied && (
+                <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-emerald-500 text-black px-4 py-2 rounded-full font-bold shadow-lg flex items-center gap-2 animate-bounce z-50 text-xs">
+                    <IconCheck className="w-4 h-4" /> Copied!
+                </div>
+            )}
+        </div>
+    );
+};
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<BitBenchApp />);
+
+</script>
+</body>
+</html>
