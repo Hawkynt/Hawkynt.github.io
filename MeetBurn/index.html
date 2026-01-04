@@ -67,7 +67,219 @@
             });
             // Convert camelCase to kebab-case for data-lucide attribute
             const iconName = name.replace(/([a-z0-9]|(?=[A-Z]))([A-Z])/g, '$1-$2').toLowerCase();
-            return <i data-lucide={iconName} className={className} style={{ width: size, height: size, display: 'inline-block' }}></i>;
+            return <i data-lucide={iconName} className={className} style={{ width: size, height: size, display: 'inline-block', pointerEvents: 'none' }}></i>;
+        };
+
+
+        // =========================================================================
+        // CONSTANTS
+        // =========================================================================
+
+        const TIME = {
+            MS_PER_SECOND: 1000,
+            MS_PER_MINUTE: 60000,
+            MS_PER_HOUR: 3600000,
+            SECONDS_PER_MINUTE: 60,
+            SECONDS_PER_HOUR: 3600,
+            QUARTER_HOUR_MINUTES: 15,
+            FUTURE_MARKS_COUNT: 4,
+        };
+
+        const UI = {
+            ICON_SIZE_DEFAULT: 24,
+            TICKER_INTERVAL_MS: 100,
+            COPY_SUCCESS_DURATION_MS: 2000,
+            RATE_CHANGE_DEBOUNCE_MS: 500,
+            SESSION_RESTORE_MINUTES: 15,
+            CHART_PADDING: { top: 30, bottom: 30, left: 50, right: 30 },
+            BURN_CHART_PADDING: { top: 10, bottom: 10, left: 20, right: 20 },
+            TOOLTIP_PROXIMITY: 0.05,
+            CHART_SCALE_PADDING: 1.1,
+            BURN_CHART_SCALE_PADDING: 1.2,
+            Y_AXIS_STEPS: 4,
+            MIN_LABEL_SPACING: 40,
+            MARKER_RADIUS: 3,
+            LINE_DASH_PATTERN: [5, 5],
+            MIN_DURATION_MS: 60000,
+        };
+
+        const DEFAULTS = {
+            TITLE: 'Strategy Meeting',
+            CURRENCY: 'USD',
+            LOCALE: 'en',
+            OVERHEAD: 1.3,
+            ATTENDEE_COUNT: 6,
+            HOURLY_RATE: 100,
+            MANAGER_RATE: 150,
+            ENGINEER_RATE: 100,
+            MANAGER_COUNT: 1,
+            ENGINEER_COUNT: 3,
+            OVERHEAD_OPTIONS: [1.0, 1.3, 1.5, 2.0],
+        };
+
+        const INPUT_MODES = {
+            SIMPLE: 'simple',
+            DETAILED: 'detailed',
+        };
+
+        const SEGMENT_TYPES = {
+            ACTIVE: 'active',
+            PAUSED: 'paused',
+        };
+
+        const CURRENCIES = ['USD', 'EUR', 'GBP'];
+
+        // =========================================================================
+        // LOCALIZATION
+        // =========================================================================
+
+        const TRANSLATIONS = {
+            en: {
+                // Headers and Titles
+                currentMeetingCost: 'Current Meeting Cost',
+                billableTime: 'Billable Time',
+                burnRatePerHour: 'Burn Rate / Hr',
+                costHistoryProjection: 'Cost History & Projection',
+                burnRateHistory: 'Burn Rate History',
+                agendaRoiCheck: 'Agenda ROI Check',
+                quickEdit: 'Quick Edit',
+                presentationMode: 'Presentation Mode',
+
+                // Buttons
+                start: 'Start',
+                pause: 'Pause',
+                resume: 'Resume',
+                reset: 'Reset',
+                copySnapshot: 'Copy Snapshot',
+                copied: 'Copied!',
+                addRole: '+ Add Role',
+
+                // Labels
+                participants: 'Participants',
+                running: 'Running',
+                paused: 'Paused',
+                clickToToggle: '(Click to toggle)',
+                simple: 'Simple',
+                detailed: 'Detailed',
+                overhead: 'Overhead',
+                avgHourlyRate: 'Avg Hourly Rate',
+                attendeeCount: 'Attendee Count',
+                role: 'Role',
+                perHour: '/hr',
+                activeRate: 'Active Rate',
+                estimatedAt: 'Est. @',
+                newRole: 'New Role',
+
+                // Agenda items
+                goalDefined: 'Goal defined?',
+                decisionRequired: 'Decision required?',
+                alternativesConsidered: 'Alternatives considered?',
+
+                // Tooltips
+                toggleTheme: 'Toggle Theme',
+                exitPresentation: 'Exit Presentation',
+                highContrast: 'High Contrast',
+                themeToggle: 'Theme Toggle',
+
+                // Copy snapshot template
+                meeting: 'Meeting',
+                date: 'Date',
+                duration: 'Duration',
+                cost: 'Cost',
+                burnRate: 'Burn Rate',
+                attendees: 'Attendees',
+
+                // Chart tooltips
+                attendeesLabel: 'Attendees',
+                rateLabel: 'Rate',
+
+                // Currencies
+                currencyUSD: 'USD ($)',
+                currencyEUR: 'EUR (€)',
+                currencyGBP: 'GBP (£)',
+
+                // Roles
+                manager: 'Manager',
+                engineer: 'Engineer',
+            },
+            de: {
+                // Headers and Titles
+                currentMeetingCost: 'Aktuelle Meeting-Kosten',
+                billableTime: 'Abrechenbare Zeit',
+                burnRatePerHour: 'Kosten / Std',
+                costHistoryProjection: 'Kostenverlauf & Prognose',
+                burnRateHistory: 'Kostenrate-Verlauf',
+                agendaRoiCheck: 'Agenda ROI-Check',
+                quickEdit: 'Schnellbearbeitung',
+                presentationMode: 'Präsentationsmodus',
+
+                // Buttons
+                start: 'Starten',
+                pause: 'Pause',
+                resume: 'Fortsetzen',
+                reset: 'Zurücksetzen',
+                copySnapshot: 'Kopieren',
+                copied: 'Kopiert!',
+                addRole: '+ Rolle hinzufügen',
+
+                // Labels
+                participants: 'Teilnehmer',
+                running: 'Läuft',
+                paused: 'Pausiert',
+                clickToToggle: '(Klicken zum Umschalten)',
+                simple: 'Einfach',
+                detailed: 'Detailliert',
+                overhead: 'Gemeinkosten',
+                avgHourlyRate: 'Durchschn. Stundensatz',
+                attendeeCount: 'Teilnehmeranzahl',
+                role: 'Rolle',
+                perHour: '/Std',
+                activeRate: 'Aktive Rate',
+                estimatedAt: 'Prognose @',
+                newRole: 'Neue Rolle',
+
+                // Agenda items
+                goalDefined: 'Ziel definiert?',
+                decisionRequired: 'Entscheidung nötig?',
+                alternativesConsidered: 'Alternativen erwogen?',
+
+                // Tooltips
+                toggleTheme: 'Design wechseln',
+                exitPresentation: 'Präsentation beenden',
+                highContrast: 'Hoher Kontrast',
+                themeToggle: 'Design wechseln',
+
+                // Copy snapshot template
+                meeting: 'Meeting',
+                date: 'Datum',
+                duration: 'Dauer',
+                cost: 'Kosten',
+                burnRate: 'Kosten/Std',
+                attendees: 'Teilnehmer',
+
+                // Chart tooltips
+                attendeesLabel: 'Teilnehmer',
+                rateLabel: 'Rate',
+
+                // Currencies
+                currencyUSD: 'USD ($)',
+                currencyEUR: 'EUR (€)',
+                currencyGBP: 'GBP (£)',
+
+                // Roles
+                manager: 'Manager',
+                engineer: 'Entwickler',
+            }
+        };
+
+        const detectLocale = () => {
+            const lang = (navigator.language || navigator.userLanguage || 'en').slice(0, 2).toLowerCase();
+            return TRANSLATIONS[lang] ? lang : DEFAULTS.LOCALE;
+        };
+
+        const getDefaultCurrency = (locale) => {
+            const currencyMap = { de: 'EUR', en: 'USD' };
+            return currencyMap[locale] || DEFAULTS.CURRENCY;
         };
 
         // --- Utils ---
@@ -85,9 +297,9 @@
         };
 
         const formatTime = (ms) => {
-            const totalSeconds = Math.floor(ms / 1000);
-            const hours = Math.floor(totalSeconds / 3600);
-            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const totalSeconds = Math.floor(ms / TIME.MS_PER_SECOND);
+            const hours = Math.floor(totalSeconds / TIME.SECONDS_PER_HOUR);
+            const minutes = Math.floor((totalSeconds % TIME.SECONDS_PER_HOUR) / TIME.SECONDS_PER_MINUTE);
             const seconds = totalSeconds % 60;
             const pad = (n) => n.toString().padStart(2, '0');
             return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
@@ -110,12 +322,12 @@
         const getNextQuarterMarks = (nowTime) => {
             const d = new Date(nowTime);
             const m = d.getMinutes();
-            const currentQuarter = Math.floor(m / 15);
+            const currentQuarter = Math.floor(m / TIME.QUARTER_HOUR_MINUTES);
             
             const marks = [];
-            for (let i = 1; i <= 4; i++) {
+            for (let i = 1; i <= TIME.FUTURE_MARKS_COUNT; i++) {
                 const nextD = new Date(nowTime);
-                const nextMin = (currentQuarter + i) * 15;
+                const nextMin = (currentQuarter + i) * TIME.QUARTER_HOUR_MINUTES;
                 nextD.setMinutes(nextMin);
                 nextD.setSeconds(0);
                 nextD.setMilliseconds(0);
@@ -147,7 +359,7 @@
 
         // --- Session Persistence ---
         const STORAGE_KEY = 'meetburn_session';
-        const RESTORE_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
+        const RESTORE_TIMEOUT_MS = UI.SESSION_RESTORE_MINUTES * TIME.MS_PER_MINUTE;
 
         const saveSession = (state) => {
             try {
@@ -162,9 +374,12 @@
                 if (!raw) return null;
                 const data = JSON.parse(raw);
                 const age = Date.now() - (data.savedAt || 0);
+                // Meeting state expires after timeout, but UI preferences persist
                 if (age > RESTORE_TIMEOUT_MS) {
-                    localStorage.removeItem(STORAGE_KEY);
-                    return null;
+                    // Clear meeting-specific state but keep UI preferences
+                    delete data.startTime;
+                    delete data.segments;
+                    delete data.timerRunning;
                 }
                 return data;
             } catch (e) {
@@ -178,7 +393,7 @@
         };
         // --- Charts ---
 
-        const CostHistoryChart = ({ segments, currentCost, currentBurnRate, currency, isDark, startTime, timerRunning }) => {
+        const CostHistoryChart = ({ segments, currentCost, currentBurnRate, currency, chartColors, startTime, timerRunning }) => {
             const canvasRef = useRef(null);
             const [tooltip, setTooltip] = useState(null);
 
@@ -195,7 +410,7 @@
                 // Domain
                 const timeDomainStart = effectiveStart;
                 const timeDomainEnd = projectionEnd;
-                const totalDuration = Math.max(timeDomainEnd - timeDomainStart, 60000);
+                const totalDuration = Math.max(timeDomainEnd - timeDomainStart, UI.MIN_DURATION_MS);
 
                 // History Points
                 const historyPoints = [];
@@ -221,7 +436,7 @@
 
                 // Projection Points
                 const projectionPoints = [];
-                const ratePerMs = timerRunning ? (currentBurnRate / 3600000) : 0; 
+                const ratePerMs = timerRunning ? (currentBurnRate / TIME.MS_PER_HOUR) : 0; 
 
                 futureMarks.forEach(markTime => {
                     const timeDiff = markTime - now;
@@ -245,7 +460,7 @@
                 const getY = (c) => (height - padding.bottom) - (c / maxCost) * graphHeight;
 
                 // Axes
-                ctx.strokeStyle = isDark ? '#475569' : '#cbd5e1';
+                ctx.strokeStyle = chartColors.grid;
                 ctx.lineWidth = 1;
                 ctx.beginPath();
                 ctx.moveTo(padding.left, padding.top);
@@ -254,7 +469,7 @@
                 ctx.stroke();
 
                 // Y-Axis Labels
-                ctx.fillStyle = isDark ? '#94a3b8' : '#64748b';
+                ctx.fillStyle = chartColors.text;
                 ctx.textAlign = 'right';
                 ctx.textBaseline = 'middle';
                 ctx.font = '10px sans-serif';
@@ -267,7 +482,7 @@
                     
                     if (i > 0) {
                         ctx.beginPath();
-                        ctx.strokeStyle = isDark ? 'rgba(71, 85, 105, 0.2)' : 'rgba(203, 213, 225, 0.3)';
+                        ctx.strokeStyle = chartColors.gridLight;
                         ctx.moveTo(padding.left, yPos);
                         ctx.lineTo(width - padding.right, yPos);
                         ctx.stroke();
@@ -280,7 +495,7 @@
                 
                 // Explicitly draw Start Time
                 const startX = getX(timeDomainStart);
-                ctx.fillStyle = isDark ? '#94a3b8' : '#64748b';
+                ctx.fillStyle = chartColors.text;
                 ctx.fillText(formatClockTime(new Date(timeDomainStart)), startX, height - padding.bottom + 8);
 
                 // Draw Future Marks labels
@@ -292,7 +507,7 @@
                 });
 
                 // History Line
-                ctx.strokeStyle = isDark ? '#60a5fa' : '#2563eb';
+                ctx.strokeStyle = chartColors.accent;
                 ctx.lineWidth = 3;
                 ctx.lineJoin = 'round';
                 ctx.beginPath();
@@ -308,7 +523,7 @@
                 // Projection Line
                 ctx.beginPath();
                 ctx.setLineDash([5, 5]);
-                ctx.strokeStyle = isDark ? '#94a3b8' : '#94a3b8';
+                ctx.strokeStyle = chartColors.projection;
                 
                 ctx.moveTo(getX(now), getY(currentCost));
                 projectionPoints.forEach(p => {
@@ -323,12 +538,12 @@
                     const x = getX(p.xTime);
                     const y = getY(p.cost);
                     ctx.beginPath();
-                    ctx.strokeStyle = isDark ? 'rgba(148, 163, 184, 0.3)' : 'rgba(100, 116, 139, 0.3)';
+                    ctx.strokeStyle = chartColors.projectionLight;
                     ctx.lineWidth = 1;
                     ctx.moveTo(x, y);
                     ctx.lineTo(x, height - padding.bottom);
                     ctx.stroke();
-                    ctx.fillStyle = isDark ? '#60a5fa' : '#2563eb';
+                    ctx.fillStyle = chartColors.accent;
                     ctx.beginPath();
                     ctx.arc(x, y, 3, 0, Math.PI * 2);
                     ctx.fill();
@@ -338,17 +553,17 @@
                 projectionPoints.forEach(p => {
                     const x = getX(p.xTime);
                     const y = getY(p.cost);
-                    ctx.fillStyle = isDark ? '#94a3b8' : '#64748b';
+                    ctx.fillStyle = chartColors.text;
                     ctx.beginPath();
                     ctx.arc(x, y, 3, 0, Math.PI * 2);
                     ctx.fill();
                     ctx.font = 'bold 11px sans-serif';
                     ctx.textAlign = 'center';
-                    ctx.fillStyle = isDark ? '#e2e8f0' : '#1e293b'; 
+                    ctx.fillStyle = chartColors.textStrong; 
                     ctx.fillText(formatMoneyRounded(p.cost, currency), x, y - 10);
                 });
 
-            }, [segments, currentCost, currentBurnRate, isDark, startTime, currency, timerRunning]);
+            }, [segments, currentCost, currentBurnRate, chartColors, startTime, currency, timerRunning]);
 
             useEffect(() => {
                 const canvas = canvasRef.current;
@@ -398,7 +613,7 @@
                 const effectiveStart = startTime || now;
                 const futureMarks = getNextQuarterMarks(now);
                 const projectionEnd = futureMarks[futureMarks.length - 1];
-                const totalDuration = Math.max(projectionEnd - effectiveStart, 60000);
+                const totalDuration = Math.max(projectionEnd - effectiveStart, UI.MIN_DURATION_MS);
                 
                 const width = canvas.offsetWidth;
                 const padding = { left: 60, right: 30 };
@@ -454,7 +669,7 @@
             );
         };
 
-        const BurnRateChart = ({ segments, currentBurnRate, currency, isDark, startTime, timerRunning }) => {
+        const BurnRateChart = ({ segments, currentBurnRate, currency, chartColors, startTime, timerRunning, label }) => {
             const canvasRef = useRef(null);
 
             useEffect(() => {
@@ -482,7 +697,7 @@
                 const now = Date.now();
                 if (!startTime) return;
 
-                const totalDuration = Math.max(now - startTime, 60000); 
+                const totalDuration = Math.max(now - startTime, UI.MIN_DURATION_MS); 
                 const maxRate = Math.max(...segments.map((s) => s.burnRate), currentBurnRate, 100) * 1.2;
 
                 const padding = { left: 45, right: 10, top: 20, bottom: 20 };
@@ -492,7 +707,7 @@
                 const getX = (t) => padding.left + ((t - startTime) / totalDuration) * graphWidth;
                 const getY = (r) => (height - padding.bottom) - (r / maxRate) * graphHeight;
 
-                ctx.strokeStyle = isDark ? '#475569' : '#cbd5e1';
+                ctx.strokeStyle = chartColors.grid;
                 ctx.lineWidth = 1;
                 ctx.beginPath();
                 ctx.moveTo(padding.left, padding.top);
@@ -500,7 +715,7 @@
                 ctx.lineTo(width - padding.right, height - padding.bottom);
                 ctx.stroke();
 
-                ctx.strokeStyle = isDark ? '#f59e0b' : '#d97706'; 
+                ctx.strokeStyle = chartColors.burnLine; 
                 ctx.lineWidth = 2;
                 ctx.beginPath();
 
@@ -523,27 +738,27 @@
                 ctx.lineTo(getX(now), height - padding.bottom);
                 ctx.lineTo(padding.left, height - padding.bottom);
                 ctx.closePath();
-                ctx.fillStyle = isDark ? 'rgba(245, 158, 11, 0.1)' : 'rgba(217, 119, 6, 0.1)';
+                ctx.fillStyle = chartColors.burnFill;
                 ctx.fill();
 
-                ctx.fillStyle = isDark ? '#94a3b8' : '#64748b';
+                ctx.fillStyle = chartColors.text;
                 ctx.font = '10px monospace';
                 ctx.textAlign = 'right';
                 ctx.fillText(formatMoney(maxRate, currency) + "/hr", padding.left - 5, padding.top + 10);
 
                 if (timerRunning) {
                     const currentY = getY(currentBurnRate);
-                    ctx.fillStyle = isDark ? '#f59e0b' : '#d97706';
+                    ctx.fillStyle = chartColors.burnLine;
                     ctx.beginPath();
                     ctx.arc(getX(now), currentY, 3, 0, Math.PI * 2);
                     ctx.fill();
                 }
 
-            }, [segments, currentBurnRate, currency, isDark, startTime, timerRunning]);
+            }, [segments, currentBurnRate, currency, chartColors, startTime, timerRunning]);
 
             return (
                 <div className="w-full h-full relative">
-                     <div className="absolute top-0 left-2 text-[10px] uppercase font-semibold opacity-50">Burn Rate History</div>
+                     <div className="absolute top-0 left-2 text-[10px] uppercase font-semibold opacity-50">{label}</div>
                      <canvas ref={canvasRef} className="w-full h-full" />
                 </div>
             );
@@ -555,22 +770,26 @@
             const [startTime, setStartTime] = useState(null);
             const [segments, setSegments] = useState([]); 
             
-            const [title, setTitle] = useState("Strategy Meeting");
-            const [currency, setCurrency] = useState("USD");
+            const [title, setTitle] = useState(DEFAULTS.TITLE);
+            const [currency, setCurrency] = useState(() => getDefaultCurrency(detectLocale()));
             const [presentationMode, setPresentationMode] = useState(false);
             const [isDark, setIsDark] = useState(false);
             const [highContrast, setHighContrast] = useState(false);
             const [editPanelOpen, setEditPanelOpen] = useState(false);
             const [showAgenda, setShowAgenda] = useState(false);
             const [copySuccess, setCopySuccess] = useState(false);
-            const [ticker, setTicker] = useState(0); 
+            const [ticker, setTicker] = useState(0);
 
-            const [inputMode, setInputMode] = useState("simple"); 
-            const [overhead, setOverhead] = useState(1.3);
-            const [simpleInputs, setSimpleInputs] = useState({ count: 6, rate: 100 });
+            // Localization
+            const [locale, setLocale] = useState(detectLocale);
+            const t = (key) => TRANSLATIONS[locale]?.[key] || TRANSLATIONS.en[key] || key; 
+
+            const [inputMode, setInputMode] = useState(INPUT_MODES.SIMPLE); 
+            const [overhead, setOverhead] = useState(DEFAULTS.OVERHEAD);
+            const [simpleInputs, setSimpleInputs] = useState({ count: DEFAULTS.ATTENDEE_COUNT, rate: DEFAULTS.HOURLY_RATE });
             const [detailedRows, setDetailedRows] = useState([
-                { id: 1, label: 'Manager', rate: 150, count: 1 },
-                { id: 2, label: 'Engineer', rate: 100, count: 3 },
+                { id: 1, label: TRANSLATIONS[detectLocale()].manager, rate: DEFAULTS.MANAGER_RATE, count: DEFAULTS.MANAGER_COUNT },
+                { id: 2, label: TRANSLATIONS[detectLocale()].engineer, rate: DEFAULTS.ENGINEER_RATE, count: DEFAULTS.ENGINEER_COUNT },
             ]);
 
             // Session restoration ref
@@ -581,28 +800,38 @@
                 if (sessionRestored.current) return;
                 sessionRestored.current = true;
                 const saved = loadSession();
-                if (saved && saved.startTime) {
-                    setTimerRunning(saved.timerRunning || false);
-                    setStartTime(saved.startTime);
-                    setSegments(saved.segments || []);
-                    setTitle(saved.title || "Strategy Meeting");
-                    setCurrency(saved.currency || "USD");
-                    setInputMode(saved.inputMode || "simple");
-                    setOverhead(saved.overhead || 1.3);
+                if (saved) {
+                    // Restore meeting state
+                    if (saved.startTime) {
+                        setTimerRunning(saved.timerRunning || false);
+                        setStartTime(saved.startTime);
+                        setSegments(saved.segments || []);
+                    }
+                    // Restore configuration
+                    if (saved.title) setTitle(saved.title);
+                    if (saved.currency) setCurrency(saved.currency);
+                    if (saved.inputMode) setInputMode(saved.inputMode);
+                    if (saved.overhead !== undefined) setOverhead(saved.overhead);
                     if (saved.simpleInputs) setSimpleInputs(saved.simpleInputs);
                     if (saved.detailedRows) setDetailedRows(saved.detailedRows);
+                    // Restore UI state
+                    if (saved.presentationMode !== undefined) setPresentationMode(saved.presentationMode);
+                    if (saved.isDark !== undefined) setIsDark(saved.isDark);
+                    if (saved.highContrast !== undefined) setHighContrast(saved.highContrast);
+                    if (saved.editPanelOpen !== undefined) setEditPanelOpen(saved.editPanelOpen);
+                    if (saved.showAgenda !== undefined) setShowAgenda(saved.showAgenda);
+                    if (saved.locale) setLocale(saved.locale);
                 }
             }, []);
 
-            // Save session when meeting is active
+            // Save session state
             useEffect(() => {
-                if (startTime) {
-                    saveSession({
-                        timerRunning, startTime, segments, title, currency,
-                        inputMode, overhead, simpleInputs, detailedRows
-                    });
-                }
-            }, [timerRunning, startTime, segments, title, currency, inputMode, overhead, simpleInputs, detailedRows]);
+                saveSession({
+                    timerRunning, startTime, segments, title, currency,
+                    inputMode, overhead, simpleInputs, detailedRows,
+                    presentationMode, isDark, highContrast, editPanelOpen, showAgenda, locale
+                });
+            }, [timerRunning, startTime, segments, title, currency, inputMode, overhead, simpleInputs, detailedRows, presentationMode, isDark, highContrast, editPanelOpen, showAgenda, locale]);
 
             const totalAttendees = inputMode === 'simple' ? simpleInputs.count : detailedRows.reduce((a,b)=>a+b.count,0);
             
@@ -619,7 +848,7 @@
                     const nextSeg = segments[i + 1];
                     const segEndTime = nextSeg ? nextSeg.timestamp : now;
                     if (seg.type === 'active') {
-                        const durationHrs = (segEndTime - seg.timestamp) / 3600000;
+                        const durationHrs = (segEndTime - seg.timestamp) / TIME.MS_PER_HOUR;
                         total += durationHrs * seg.burnRate;
                     }
                 }
@@ -646,7 +875,7 @@
                 if (startTime) {
                     interval = setInterval(() => {
                         setTicker(Date.now());
-                    }, 100);
+                    }, UI.TICKER_INTERVAL_MS);
                 }
                 return () => clearInterval(interval);
             }, [startTime]);
@@ -658,7 +887,7 @@
                     const lastSeg = segments[segments.length - 1];
                     costUpToNow = lastSeg.costAtStart; 
                     if (lastSeg.type === 'active') {
-                        costUpToNow += ((now - lastSeg.timestamp) / 3600000) * lastSeg.burnRate;
+                        costUpToNow += ((now - lastSeg.timestamp) / TIME.MS_PER_HOUR) * lastSeg.burnRate;
                     }
                 }
                 setSegments(prev => [
@@ -705,7 +934,7 @@
                             pushSegment('active', calculatedBurnRate);
                             lastCommittedRate.current = calculatedBurnRate;
                             lastCommittedCount.current = totalAttendees;
-                        }, 500);
+                        }, UI.RATE_CHANGE_DEBOUNCE_MS);
                         return () => clearTimeout(handler);
                     }
                 } else {
@@ -748,24 +977,47 @@
                 else document.body.classList.remove('presentation-active');
             }, [presentationMode]);
 
-            const bgColor = isDark ? 'bg-slate-900' : 'bg-slate-50';
-            const cardBg = isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200';
-            const textColor = isDark ? 'text-slate-100' : 'text-slate-900';
-            const mutedText = isDark ? 'text-slate-400' : 'text-slate-500';
-            const accentText = isDark ? 'text-blue-400' : 'text-blue-600';
-            const buttonClass = `px-4 py-2 rounded font-medium transition-all focus:ring-2 focus:ring-blue-500 focus:outline-none ${isDark ? 'bg-slate-700 hover:bg-slate-600 text-white' : 'bg-white hover:bg-slate-50 border border-slate-300 text-slate-700'}`;
+            // Memoized theme classes for better performance
+            const themeClasses = useMemo(() => ({
+                bgColor: isDark ? 'bg-slate-900' : 'bg-slate-50',
+                cardBg: isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200',
+                textColor: isDark ? 'text-slate-100' : 'text-slate-900',
+                mutedText: isDark ? 'text-slate-400' : 'text-slate-500',
+                accentText: isDark ? 'text-blue-400' : 'text-blue-600',
+                buttonClass: `px-4 py-2 rounded font-medium transition-all focus:ring-2 focus:ring-blue-500 focus:outline-none ${isDark ? 'bg-slate-700 hover:bg-slate-600 text-white' : 'bg-white hover:bg-slate-50 border border-slate-300 text-slate-700'}`,
+            }), [isDark]);
+            
+            const { bgColor, cardBg, textColor, mutedText, accentText, buttonClass } = themeClasses;
+            
+            // Memoized chart colors for canvas rendering
+            const chartColors = useMemo(() => ({
+                text: isDark ? '#94a3b8' : '#64748b',
+                textStrong: isDark ? '#e2e8f0' : '#1e293b',
+                grid: isDark ? '#475569' : '#cbd5e1',
+                gridLight: isDark ? 'rgba(71, 85, 105, 0.2)' : 'rgba(203, 213, 225, 0.3)',
+                line: isDark ? '#22c55e' : '#16a34a',
+                lineFill: isDark ? 'rgba(34, 197, 94, 0.15)' : 'rgba(22, 163, 74, 0.1)',
+                accent: isDark ? '#60a5fa' : '#2563eb',
+                projection: isDark ? '#94a3b8' : '#cbd5e1',
+                projectionFill: isDark ? 'rgba(148, 163, 184, 0.1)' : 'rgba(203, 213, 225, 0.1)',
+                projectionLight: isDark ? 'rgba(148, 163, 184, 0.3)' : 'rgba(100, 116, 139, 0.3)',
+                marker: isDark ? '#22c55e' : '#16a34a',
+                markerHover: isDark ? '#4ade80' : '#22c55e',
+                burnLine: isDark ? '#f59e0b' : '#d97706',
+                burnFill: isDark ? 'rgba(245, 158, 11, 0.1)' : 'rgba(217, 119, 6, 0.1)',
+            }), [isDark]);
             
             const handleCopy = () => {
-                const text = `Meeting: ${title}\nDate: ${new Date().toLocaleDateString()}\nDuration: ${formatTime(billableDuration)}\nCost: ${formatMoney(currentCost, currency)}\nBurn Rate: ${formatMoney(calculatedBurnRate, currency)}/hr\nAttendees: ${totalAttendees}`;
+                const text = `${t("meeting")}: ${title}\n${t("date")}: ${new Date().toLocaleDateString()}\n${t("duration")}: ${formatTime(billableDuration)}\n${t("cost")}: ${formatMoney(currentCost, currency)}\n${t("burnRate")}: ${formatMoney(calculatedBurnRate, currency)}${"/hr"}\n${t("attendees")}: ${totalAttendees}`;
                 copyToClipboard(text);
                 setCopySuccess(true);
-                setTimeout(() => setCopySuccess(false), 2000);
+                setTimeout(() => setCopySuccess(false), UI.COPY_SUCCESS_DURATION_MS);
             };
 
             const now = Date.now();
             const marks = getNextQuarterMarks(now);
             const msToTarget1 = Math.max(0, marks[0] - now);
-            const costAtTarget1 = currentCost + (timerRunning ? (calculatedBurnRate / 3600000) * msToTarget1 : 0);
+            const costAtTarget1 = currentCost + (timerRunning ? (calculatedBurnRate / TIME.MS_PER_HOUR) * msToTarget1 : 0);
             
             const contrastStyle = highContrast ? { filter: 'contrast(1.5)' } : {};
 
@@ -774,10 +1026,10 @@
                     
                     {presentationMode && (
                         <div className="absolute top-4 right-4 z-50 flex gap-2">
-                            <button onClick={() => setIsDark(!isDark)} className={`p-3 rounded-full transition-colors border shadow-lg ${isDark ? 'bg-slate-800 text-slate-400 border-slate-700' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`} title="Toggle Theme">
+                            <button onClick={() => setIsDark(!isDark)} className={`p-3 rounded-full transition-colors border shadow-lg ${isDark ? 'bg-slate-800 text-slate-400 border-slate-700' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`} title={t("toggleTheme")}>
                                 <Icon name="sun" size={20} className={isDark ? "block" : "hidden"} /><Icon name="moon" size={20} className={isDark ? "hidden" : "block"} />
                             </button>
-                            <button onClick={() => setPresentationMode(false)} className={`p-3 rounded-full transition-colors border shadow-lg ${isDark ? 'bg-slate-800 text-slate-400 border-slate-700 hover:text-red-500' : 'bg-white text-slate-500 border-slate-200 hover:text-red-500'}`} title="Exit Presentation">
+                            <button onClick={() => setPresentationMode(false)} className={`p-3 rounded-full transition-colors border shadow-lg ${isDark ? 'bg-slate-800 text-slate-400 border-slate-700 hover:text-red-500' : 'bg-white text-slate-500 border-slate-200 hover:text-red-500'}`} title={t("exitPresentation")}>
                                 <Icon name="log-out" size={20} />
                             </button>
                         </div>
@@ -793,18 +1045,18 @@
                             </div>
                             <div className="flex items-center gap-3 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
                                 <select value={currency} onChange={(e) => setCurrency(e.target.value)} className={`p-2 rounded border shrink-0 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'} focus:ring-2 focus:ring-blue-500`}>
-                                    <option value="USD">USD ($)</option>
-                                    <option value="EUR">EUR (€)</option>
-                                    <option value="GBP">GBP (£)</option>
+                                    <option value="USD">{t("currencyUSD")}</option>
+                                    <option value="EUR">{t("currencyEUR")}</option>
+                                    <option value="GBP">{t("currencyGBP")}</option>
                                 </select>
-                                <button onClick={() => setHighContrast(!highContrast)} title="High Contrast" className="p-2 rounded hover:bg-slate-200 dark:hover:bg-slate-700 shrink-0">
+                                <button onClick={() => setHighContrast(!highContrast)} title={t("highContrast")} className="p-2 rounded hover:bg-slate-200 dark:hover:bg-slate-700 shrink-0">
                                     <Icon name="eye" />
                                 </button>
-                                <button onClick={() => setIsDark(!isDark)} title="Theme Toggle" className="p-2 rounded hover:bg-slate-200 dark:hover:bg-slate-700 shrink-0">
+                                <button onClick={() => setIsDark(!isDark)} title={t("themeToggle")} className="p-2 rounded hover:bg-slate-200 dark:hover:bg-slate-700 shrink-0">
                                     <Icon name={isDark ? "sun" : "moon"} />
                                 </button>
                                 <button onClick={() => setPresentationMode(true)} className={`flex items-center gap-2 px-4 py-2 text-white rounded shadow-sm shrink-0 ${isDark ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-900 hover:bg-slate-800'}`}>
-                                    <Icon name="presentation" size={16} /> <span className="whitespace-nowrap">Presentation Mode</span>
+                                    <Icon name="presentation" size={16} /> <span className="whitespace-nowrap">{t("presentationMode")}</span>
                                 </button>
                             </div>
                         </header>
@@ -813,7 +1065,7 @@
                     <main className="flex-1 overflow-auto p-4 md:p-6 flex flex-col lg:flex-row gap-6">
                         <div className={`flex-1 flex flex-col gap-6 transition-all duration-500 ${presentationMode ? 'justify-center items-center scale-100 md:scale-105' : ''}`}>
                             <div className="text-center space-y-2">
-                                <div className={`uppercase tracking-widest text-sm font-semibold ${mutedText}`}>Current Meeting Cost</div>
+                                <div className={`uppercase tracking-widest text-sm font-semibold ${mutedText}`}>{t("currentMeetingCost")}</div>
                                 <div className={`font-bold tabular-nums leading-none tracking-tight ${presentationMode ? 'text-7xl md:text-9xl' : 'text-6xl md:text-8xl'} ${accentText}`}>
                                     {formatMoney(currentCost, currency)}
                                 </div>
@@ -821,13 +1073,13 @@
 
                             <div className="grid grid-cols-2 gap-4 md:gap-8 text-center max-w-2xl w-full mx-auto mt-4">
                                 <div>
-                                    <div className={`text-sm uppercase font-semibold mb-1 ${mutedText}`}>Billable Time</div>
+                                    <div className={`text-sm uppercase font-semibold mb-1 ${mutedText}`}>{t("billableTime")}</div>
                                     <div className={`text-2xl md:text-4xl font-mono tabular-nums ${textColor}`}>
                                         {formatTime(billableDuration)}
                                     </div>
                                 </div>
                                 <div>
-                                    <div className={`text-sm uppercase font-semibold mb-1 ${mutedText}`}>Burn Rate / Hr</div>
+                                    <div className={`text-sm uppercase font-semibold mb-1 ${mutedText}`}>{t("burnRatePerHour")}</div>
                                     <div className={`text-2xl md:text-4xl tabular-nums ${textColor} ${timerRunning ? 'text-orange-500' : ''}`}>
                                         {formatMoney(calculatedBurnRate, currency)}
                                     </div>
@@ -838,7 +1090,7 @@
                                 <div className="mt-8 w-full max-w-4xl flex flex-col gap-6">
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
                                         <div className={`p-4 rounded-lg flex flex-col justify-between items-center ${isDark ? 'bg-slate-800' : 'bg-white shadow-sm border border-slate-200'}`}>
-                                            <div className="text-xs uppercase opacity-70 mb-1">Participants</div>
+                                            <div className="text-xs uppercase opacity-70 mb-1">{t("participants")}</div>
                                             <div className="flex items-center gap-4">
                                                 {inputMode === 'simple' && (
                                                     <button onClick={() => setSimpleInputs(p => ({...p, count: Math.max(1, p.count - 1)}))} className={`w-12 h-12 rounded-lg flex items-center justify-center transition-colors ${isDark ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}><Icon name="minus" size={20}/></button>
@@ -851,7 +1103,7 @@
                                         </div>
 
                                         <div className={`p-4 rounded-lg ${isDark ? 'bg-slate-800' : 'bg-white shadow-sm border border-slate-200'}`}>
-                                            <div className="text-xs uppercase opacity-70 mb-1">Est. @ {formatClockTime(new Date(marks[0]))}</div>
+                                            <div className="text-xs uppercase opacity-70 mb-1">{t("estimatedAt")} {formatClockTime(new Date(marks[0]))}</div>
                                             <div className={`text-3xl font-bold ${mutedText}`}>
                                                 {formatMoney(costAtTarget1, currency)}
                                             </div>
@@ -859,13 +1111,13 @@
                                         
                                         <button onClick={toggleTimer} className={`p-4 rounded-lg flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors hover:opacity-80 ${timerRunning ? 'bg-green-900/20 text-green-600 hover:bg-green-900/30' : 'bg-red-900/20 text-red-600 hover:bg-red-900/30'}`}>
                                             <div className={`w-3 h-3 rounded-full ${timerRunning ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
-                                            <span className="font-bold uppercase tracking-wider">{timerRunning ? 'Running' : 'Paused'}</span>
-                                            <span className="text-[10px] uppercase opacity-70">(Click to toggle)</span>
+                                            <span className="font-bold uppercase tracking-wider">{timerRunning ? t("running") : t("paused")}</span>
+                                            <span className="text-[10px] uppercase opacity-70">{t("clickToToggle")}</span>
                                         </button>
                                     </div>
 
                                     <div className={`h-32 w-full rounded-lg border overflow-hidden ${cardBg}`}>
-                                        <BurnRateChart segments={segments} currentBurnRate={timerRunning ? calculatedBurnRate : 0} currency={currency} isDark={isDark} startTime={startTime} timerRunning={timerRunning} />
+                                        <BurnRateChart segments={segments} currentBurnRate={timerRunning ? calculatedBurnRate : 0} currency={currency} chartColors={chartColors} startTime={startTime} timerRunning={timerRunning} label={t("burnRateHistory")} />
                                     </div>
                                 </div>
                             )}
@@ -874,7 +1126,7 @@
                                 <div className="flex flex-col md:flex-row justify-center gap-4 mt-4">
                                     <button onClick={toggleTimer} className={`px-8 py-4 rounded-xl text-xl font-bold shadow-lg transform transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-3 ${timerRunning ? 'bg-amber-100 text-amber-700 border-2 border-amber-500 hover:bg-amber-200' : 'bg-green-600 text-white hover:bg-green-700'}`}>
                                         <Icon name={timerRunning ? "pause" : "play"} />
-                                        {timerRunning ? "Pause" : (startTime ? "Resume" : "Start")}
+                                        {timerRunning ? t("pause") : (startTime ? t("resume") : t("start"))}
                                     </button>
                                     <button onClick={resetMeeting} className="px-6 py-4 rounded-xl text-lg font-semibold bg-white border-2 border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-red-500 transition-colors flex items-center justify-center">
                                         <Icon name="rotate-ccw" />
@@ -885,10 +1137,10 @@
                             {!presentationMode && (
                                 <div className={`mt-auto p-4 rounded-xl border ${cardBg}`}>
                                     <h3 className={`text-sm font-semibold uppercase mb-4 flex items-center gap-2 ${mutedText}`}>
-                                        <Icon name="trending-up" size={16}/> Cost History & Projection
+                                        <Icon name="trending-up" size={16}/> {t("costHistoryProjection")}
                                     </h3>
                                     <div className="h-48 w-full">
-                                        <CostHistoryChart segments={segments} currentCost={currentCost} currentBurnRate={calculatedBurnRate} currency={currency} isDark={isDark} startTime={startTime} timerRunning={timerRunning} />
+                                        <CostHistoryChart segments={segments} currentCost={currentCost} currentBurnRate={calculatedBurnRate} currency={currency} chartColors={chartColors} startTime={startTime} timerRunning={timerRunning} />
                                     </div>
                                 </div>
                             )}
@@ -899,34 +1151,34 @@
                                 
                                 {presentationMode && (
                                     <div className="flex justify-between items-center mb-4">
-                                        <h2 className="text-xl font-bold">Quick Edit</h2>
+                                        <h2 className="text-xl font-bold">{t("quickEdit")}</h2>
                                         <button onClick={() => setEditPanelOpen(false)}><Icon name="x"/></button>
                                     </div>
                                 )}
 
                                 <div className={`rounded-lg border overflow-hidden ${cardBg}`}>
                                     <button onClick={() => setShowAgenda(!showAgenda)} className={`w-full px-4 py-3 flex justify-between items-center text-sm font-semibold ${mutedText} hover:bg-slate-100 dark:hover:bg-slate-700`}>
-                                        <span>Agenda ROI Check</span>
+                                        <span>{t("agendaRoiCheck")}</span>
                                         <Icon name={showAgenda ? "chevron-up" : "chevron-down"} size={16} />
                                     </button>
                                     {showAgenda && (
                                         <div className="p-4 space-y-3 text-sm">
-                                            <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" className="rounded text-blue-600" /><span>Goal defined?</span></label>
-                                            <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" className="rounded text-blue-600" /><span>Decision required?</span></label>
-                                            <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" className="rounded text-blue-600" /><span>Alternatives considered?</span></label>
+                                            <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" className="rounded text-blue-600" /><span>{t("goalDefined")}</span></label>
+                                            <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" className="rounded text-blue-600" /><span>{t("decisionRequired")}</span></label>
+                                            <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" className="rounded text-blue-600" /><span>{t("alternativesConsidered")}</span></label>
                                         </div>
                                     )}
                                 </div>
 
                                 <div className={`flex-1 rounded-xl border flex flex-col ${cardBg} shadow-sm`}>
                                     <div className="flex border-b border-slate-200 dark:border-slate-700">
-                                        <button onClick={() => switchInputMode('simple')} className={`flex-1 py-3 text-sm font-medium ${inputMode === 'simple' ? 'text-blue-600 border-b-2 border-blue-600' : mutedText}`}>Simple</button>
-                                        <button onClick={() => switchInputMode('detailed')} className={`flex-1 py-3 text-sm font-medium ${inputMode === 'detailed' ? 'text-blue-600 border-b-2 border-blue-600' : mutedText}`}>Detailed</button>
+                                        <button onClick={() => switchInputMode('simple')} className={`flex-1 py-3 text-sm font-medium ${inputMode === 'simple' ? 'text-blue-600 border-b-2 border-blue-600' : mutedText}`}>{t("simple")}</button>
+                                        <button onClick={() => switchInputMode('detailed')} className={`flex-1 py-3 text-sm font-medium ${inputMode === 'detailed' ? 'text-blue-600 border-b-2 border-blue-600' : mutedText}`}>{t("detailed")}</button>
                                     </div>
 
                                     <div className="p-5 flex-1 overflow-auto">
                                         <div className="mb-6">
-                                            <label className={`block text-xs font-bold uppercase mb-1 ${mutedText}`}>Overhead</label>
+                                            <label className={`block text-xs font-bold uppercase mb-1 ${mutedText}`}>{t("overhead")}</label>
                                             <div className="flex gap-2">
                                                 {[1.0, 1.3, 1.5, 2.0].map(v => (
                                                     <button key={v} onClick={() => setOverhead(v)} className={`flex-1 py-1 text-xs rounded border ${overhead === v ? 'bg-blue-100 border-blue-500 text-blue-700' : 'border-slate-200 text-slate-500'}`}>{v}x</button>
@@ -937,11 +1189,11 @@
                                         {inputMode === 'simple' ? (
                                             <div className="space-y-6">
                                                 <div>
-                                                    <label className={`block text-sm font-medium mb-1 ${mutedText}`}>Avg Hourly Rate ({currency})</label>
+                                                    <label className={`block text-sm font-medium mb-1 ${mutedText}`}>{t("avgHourlyRate")} ({currency})</label>
                                                     <input type="number" value={simpleInputs.rate} onChange={(e) => setSimpleInputs({...simpleInputs, rate: Number(e.target.value)})} className={`w-full p-2 rounded border text-lg font-mono ${isDark || presentationMode ? 'bg-slate-700 border-slate-600' : 'bg-white border-slate-300'}`} />
                                                 </div>
                                                 <div>
-                                                    <label className={`block text-sm font-medium mb-1 ${mutedText}`}>Attendee Count</label>
+                                                    <label className={`block text-sm font-medium mb-1 ${mutedText}`}>{t("attendeeCount")}</label>
                                                     <div className="flex items-center gap-2">
                                                         <button onClick={() => setSimpleInputs(prev => ({...prev, count: Math.max(1, prev.count - 1)}))} className={`w-12 h-12 flex items-center justify-center rounded text-xl font-bold transition-colors ${isDark ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}><Icon name="minus" size={20}/></button>
                                                         <input type="number" value={simpleInputs.count} onChange={(e) => setSimpleInputs({...simpleInputs, count: Math.max(1, Number(e.target.value))})} className={`flex-1 min-w-0 p-2 text-center rounded border text-3xl font-bold font-mono ${isDark || presentationMode ? 'bg-slate-700 border-slate-600' : 'bg-white border-slate-300'}`} />
@@ -969,14 +1221,14 @@
                                                         <button onClick={() => setDetailedRows(detailedRows.filter(r => r.id !== row.id))} className="text-slate-400 hover:text-red-500 px-1"><Icon name="trash-2" size={14}/></button>
                                                     </div>
                                                 ))}
-                                                <button onClick={() => setDetailedRows([...detailedRows, { id: Date.now(), label: 'New Role', rate: 100, count: 1 }])} className="w-full py-2 border-2 border-dashed border-slate-300 rounded text-sm font-bold text-slate-400 hover:border-blue-400 hover:text-blue-500">+ Add Role</button>
+                                                <button onClick={() => setDetailedRows([...detailedRows, { id: Date.now(), label: t("newRole"), rate: 100, count: 1 }])} className="w-full py-2 border-2 border-dashed border-slate-300 rounded text-sm font-bold text-slate-400 hover:border-blue-400 hover:text-blue-500">{t("addRole")}</button>
                                             </div>
                                         )}
                                     </div>
                                     
                                     <div className="p-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded-b-xl">
                                         <div className="flex justify-between items-center text-sm">
-                                            <span className={mutedText}>Active Rate</span>
+                                            <span className={mutedText}>{t("activeRate")}</span>
                                             <span className={`font-bold tabular-nums ${timerRunning ? 'text-orange-600' : ''}`}>
                                                 {formatMoney(calculatedBurnRate, currency)} / hr
                                             </span>
@@ -986,7 +1238,7 @@
                                 
                                 <button onClick={handleCopy} className={`w-full flex justify-center items-center gap-2 relative overflow-hidden ${buttonClass}`}>
                                     <Icon name={copySuccess ? "check" : "copy"} size={16} className={copySuccess ? "text-green-500" : ""} /> 
-                                    {copySuccess ? "Copied!" : "Copy Snapshot"}
+                                    {copySuccess ? t("copied") : t("copySnapshot")}
                                 </button>
                             </div>
                         )}
