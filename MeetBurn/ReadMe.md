@@ -19,7 +19,7 @@ MeetBurn displays the running cost of your meeting as it happens. Configure atte
 
 ## 🤔 Why It Exists
 
-Meetings are expensive. A 1-hour meeting with 6 engineers at $100/hr costs $600 in direct salary alone - often $780+ with overhead. Yet meetings frequently:
+Meetings are expensive. A 1-hour meeting with 6 engineers at \$100/hr costs \$600 in direct salary alone - often \$780+ with overhead. Yet meetings frequently:
 
 - 🕐 Run over time without consequence
 - 👥 Include people who don't need to be there
@@ -98,6 +98,7 @@ Click **Presentation Mode** for a full-screen display optimized for sharing:
 ### 🛡️ Quality of Life
 
 - 💱 Multi-currency (USD, EUR, GBP)
+- 🌍 **Localization** - Auto-detected language (English, German)
 - 📋 Copy meeting summary to clipboard
 - ✅ Agenda ROI checklist
 - 🔢 +/- buttons for quick attendee changes
@@ -118,6 +119,7 @@ Click **Presentation Mode** for a full-screen display optimized for sharing:
   // Configuration
   title: string,
   currency: 'USD' | 'EUR' | 'GBP',
+  locale: 'en' | 'de',            // Auto-detected UI language
   inputMode: 'simple' | 'detailed',
   overhead: number,
   simpleInputs: { count: number, rate: number },
@@ -150,6 +152,7 @@ Single-page React application:
 ## 🚀 Planned Features
 
 - 💱 Additional currency support
+- 🌍 Additional language support
 - 📤 Export to CSV/JSON
 - 📅 Meeting templates
 - 🔗 Calendar integration
