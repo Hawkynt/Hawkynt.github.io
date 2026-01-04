@@ -64,6 +64,7 @@ Start the timer and watch:
 Click **Presentation Mode** for a full-screen display optimized for sharing:
 
 - 📺 Simplified, high-visibility layout
+- 🏢 Corporate logo displayed (when configured)
 - ➕/➖ Quick attendee adjustments
 - 🎨 Dark/light theme toggle
 - ⏯️ One-click pause/resume
@@ -90,18 +91,72 @@ Click **Presentation Mode** for a full-screen display optimized for sharing:
 
 ### 📈 Visualizations
 
-- 📉 **Cost History Chart** - Line chart with event markers
+- 📉 **Cost History Chart** - Line chart with event markers, timestamps, and tooltips
 - 🔮 **Projections** - Dotted line to next 4 quarter-hours
-- 📊 **Burn Rate Chart** - Step chart showing rate changes
-- 🎯 **Tooltips** - Hover for segment details
+- 📊 **Burn Rate Chart** - Step chart with event lines, timestamps, and tooltips
+- 🎯 **Tooltips** - Hover for segment details on both charts
+- 📐 **Responsive Layout** - Charts display side-by-side on wide screens, stacked on narrow
+
+### 🏢 Corporate Design
+
+- 🎨 **Custom Color Palettes** - Fully customizable colors for 4 modes (Light, Light High Contrast, Dark, Dark High Contrast)
+- 🖌️ **Color Picker** - Interactive picker with hex, RGB (0-255), and normalized RGB (0-1) input support
+- 🔧 **8 Customizable Colors** - Background, Surface, Text, Muted Text, Accent, Border, Success, Warning
+- 🔄 **Reset to Defaults** - One-click reset for each palette
+- 🖼️ **Logo URL** - Configure your company logo (aspect ratio preserved)
+- ✒️ **Wordmark URL** - Display your corporate wordmark/Schriftzug
+- 💾 Settings persist locally across sessions
 
 ### 🛡️ Quality of Life
 
-- 💱 Multi-currency (USD, EUR, GBP)
+- 💱 Multi-currency (USD, EUR, GBP) - auto-defaults based on locale
 - 🌍 **Localization** - Auto-detected language (English, German)
 - 📋 Copy meeting summary to clipboard
 - ✅ Agenda ROI checklist
 - 🔢 +/- buttons for quick attendee changes
+- 💾 **Full State Persistence** - Presentation mode, theme, all settings restored on reload
+
+### 🔗 URL Parameter Sharing
+
+Share pre-configured meeting links via email or messenger. URL parameters override local settings.
+
+**Simple Parameters:**
+
+| Parameter | Example | Description |
+|-----------|---------|-------------|
+| `att` | `?att=5` | Attendee count |
+| `rate` | `?rate=120` | Hourly rate |
+| `overhead` | `?overhead=1.5` | Overhead multiplier |
+| `currency` | `?currency=EUR` | Currency (USD/EUR/GBP) |
+| `title` | `?title=Sprint%20Review` | Meeting title |
+| `dark` | `?dark=1` | Dark theme (1/0) |
+| `contrast` | `?contrast=1` | High contrast (1/0) |
+| `logo` | `?logo=https://...` | Logo URL |
+| `lang` | `?lang=de` | Language (en/de) |
+
+**Complex Parameters:**
+
+| Parameter | Format | Description |
+|-----------|--------|-------------|
+| `roles` | `Manager:150:2,Engineer:100:4` | Detailed roles (label:rate:count) |
+| `colors` | Base64 compact array | Custom palettes as `[[hex6,...],...]` |
+
+**Example URLs:**
+
+```
+# Quick: 5 attendees
+index.html?att=5
+
+# Team meeting: 8 people at 100 EUR/hr
+index.html?att=8&rate=100&currency=EUR&overhead=1.5
+
+# Detailed roles
+index.html?roles=Manager:150:1,Developer:100:5,Designer:90:2
+```
+
+**Share Button** - Copy shareable links directly from the sidebar:
+- Quick (attendees only)
+- Full (human-readable with colors)
 
 ## 📐 State Structure
 
@@ -123,7 +178,20 @@ Click **Presentation Mode** for a full-screen display optimized for sharing:
   inputMode: 'simple' | 'detailed',
   overhead: number,
   simpleInputs: { count: number, rate: number },
-  detailedRows: [{ id, label, rate, count }]
+  detailedRows: [{ id, label, rate, count }],
+  // UI State (persisted)
+  presentationMode: boolean,
+  isDark: boolean,
+  highContrast: boolean,
+  // Corporate Design
+  customPalettes: {           // Color palettes for each theme mode
+    light: { background, surface, text, textMuted, accent, border, success, warning },
+    lightContrast: { ... },
+    dark: { ... },
+    darkContrast: { ... }
+  },
+  logoUri: string,            // Company logo URL
+  schriftzugUri: string       // Wordmark/Schriftzug URL
 }
 ```
 
@@ -140,6 +208,7 @@ Single-page React application:
 | 🎯 \`App\` | Main component, all state management |
 | 📈 \`CostHistoryChart\` | Canvas line chart with projections |
 | 📊 \`BurnRateChart\` | Canvas step chart for rate history |
+| 🖌️ \`ColorPicker\` | Color picker with hex/RGB/normalized input |
 | 🎨 \`Icon\` | Lucide icon wrapper |
 
 ### 📦 Dependencies (CDN)
@@ -151,8 +220,8 @@ Single-page React application:
 
 ## 🚀 Planned Features
 
-- 💱 Additional currency support
-- 🌍 Additional language support
+- 💱 More currencies (currently: USD, EUR, GBP)
+- 🌍 More languages (currently: English, German)
 - 📤 Export to CSV/JSON
 - 📅 Meeting templates
 - 🔗 Calendar integration
