@@ -152,6 +152,26 @@ const ctz = (n, width) => {
     return count;
 };
 
+// Count Leading Ones
+const clo = (n, width) => {
+    const mask = (1n << BigInt(width)) - 1n;
+    return clz(~n & mask, width);
+};
+
+// Count Trailing Ones
+const cto = (n, width) => {
+    const mask = (1n << BigInt(width)) - 1n;
+    return ctz(~n & mask, width);
+};
+
+// Bit width needed to represent value (log2 + 1, or 0 for zero)
+const bitWidth = (n) => {
+    if (n === 0n) return 0;
+    let width = 0;
+    while (n > 0n) { ++width; n >>= 1n; }
+    return width;
+};
+
 const rotateLeft = (val, amount, width) => {
     const mask = (1n << BigInt(width)) - 1n;
     amount = amount % width;
@@ -223,6 +243,28 @@ const extractSignedArray = (val, elementBits, totalBits) => {
 
 // Format array for display
 const formatArray = (arr) => '[ ' + arr.join(', ') + ' ]';
+
+// Generic array extractor and formatter for any type
+const extractAndFormat = (val, typeBits, totalBits, convertFn, formatFn) => {
+    if (totalBits > typeBits) {
+        const arr = extractUnsignedArray(val, typeBits, totalBits);
+        return formatArray(arr.map(x => formatFn(convertFn(x))));
+    }
+    return formatFn(convertFn(val));
+};
+
+// Extract BCD array
+const extractBcdArray = (val, typeBits, totalBits) => {
+    if (totalBits > typeBits) {
+        const arr = extractUnsignedArray(val, typeBits, totalBits);
+        return formatArray(arr.map(x => {
+            const n = bcdToNumber(x, typeBits);
+            return n.valid ? n.value.toString() : '?';
+        }));
+    }
+    const n = bcdToNumber(val, typeBits);
+    return n.valid ? n.value.toString() : 'Invalid BCD';
+};
 
 const formatBinary = (val, width) => '0b' + val.toString(2).padStart(width, '0');
 
@@ -439,144 +481,396 @@ const FORMATS = [
     // === INTEGERS ===
     // Each type automatically displays as array when bit width > type size
     { id: 'uint8', category: 'integers', bits: 8, names: ['Byte', 'UInt8', 'byte', 'u8', 'unsigned char', 'BYTE'],
+      components: [
+        { name: 'High Nibble', start: 4, width: 4 },
+        { name: 'Low Nibble', start: 0, width: 4 }
+      ],
       convert: (v, w) => w > 8 ? extractUnsignedArray(v, 8, w) : v,
       display: (v, w) => w > 8 ? formatArray(extractUnsignedArray(v, 8, w)) : v.toString() },
     { id: 'int8', category: 'integers', bits: 8, names: ['SByte', 'Int8', 'sbyte', 'i8', 'signed char', 'char'],
+      components: [
+        { name: 'Sign', start: 7, width: 1 },
+        { name: 'Magnitude', start: 0, width: 7 }
+      ],
       convert: (v, w) => w > 8 ? extractSignedArray(v, 8, w) : toSigned(v, 8),
       display: (v, w) => w > 8 ? formatArray(extractSignedArray(v, 8, w)) : toSigned(v, 8).toString() },
 
     { id: 'uint16_le', category: 'integers', bits: 16, names: ['Word', 'UInt16', 'ushort', 'u16', 'word', 'WORD', 'unsigned short'],
       endian: 'LE',
+      components: [
+        { name: 'Byte 1', start: 8, width: 8 },
+        { name: 'Byte 0', start: 0, width: 8 }
+      ],
       convert: (v, w) => w > 16 ? extractUnsignedArray(v, 16, w) : v,
       display: (v, w) => w > 16 ? formatArray(extractUnsignedArray(v, 16, w)) : v.toString() },
     { id: 'uint16_be', category: 'integers', bits: 16, names: ['Word BE', 'UInt16 BE', 'u16be'],
       endian: 'BE',
+      components: [
+        { name: 'Byte 0', start: 8, width: 8 },
+        { name: 'Byte 1', start: 0, width: 8 }
+      ],
       convert: (v, w) => w > 16 ? extractUnsignedArray(v, 16, w).map(x => swapBytes(x, 16)) : swapBytes(v, 16),
       display: (v, w) => w > 16 ? formatArray(extractUnsignedArray(v, 16, w).map(x => swapBytes(x, 16))) : swapBytes(v, 16).toString() },
     { id: 'int16_le', category: 'integers', bits: 16, names: ['Short', 'Int16', 'short', 'i16', 'signed short'],
       endian: 'LE',
+      components: [
+        { name: 'Sign', start: 15, width: 1 },
+        { name: 'Magnitude', start: 0, width: 15 }
+      ],
       convert: (v, w) => w > 16 ? extractSignedArray(v, 16, w) : toSigned(v, 16),
       display: (v, w) => w > 16 ? formatArray(extractSignedArray(v, 16, w)) : toSigned(v, 16).toString() },
     { id: 'int16_be', category: 'integers', bits: 16, names: ['Short BE', 'Int16 BE', 'i16be'],
       endian: 'BE',
+      components: [
+        { name: 'Sign', start: 15, width: 1 },
+        { name: 'Magnitude', start: 0, width: 15 }
+      ],
       convert: (v, w) => w > 16 ? extractSignedArray(v, 16, w).map(x => toSigned(swapBytes(fromSigned(x, 16), 16), 16)) : toSigned(swapBytes(v, 16), 16),
       display: (v, w) => w > 16 ? formatArray(extractUnsignedArray(v, 16, w).map(x => toSigned(swapBytes(x, 16), 16))) : toSigned(swapBytes(v, 16), 16).toString() },
 
     { id: 'uint32_le', category: 'integers', bits: 32, names: ['DWord', 'UInt32', 'uint', 'u32', 'dword', 'DWORD', 'unsigned int', 'unsigned long'],
       endian: 'LE',
+      components: [
+        { name: 'Byte 3', start: 24, width: 8 },
+        { name: 'Byte 2', start: 16, width: 8 },
+        { name: 'Byte 1', start: 8, width: 8 },
+        { name: 'Byte 0', start: 0, width: 8 }
+      ],
       convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w) : v,
       display: (v, w) => w > 32 ? formatArray(extractUnsignedArray(v, 32, w)) : v.toString() },
     { id: 'uint32_be', category: 'integers', bits: 32, names: ['DWord BE', 'UInt32 BE', 'u32be'],
       endian: 'BE',
+      components: [
+        { name: 'Byte 0', start: 24, width: 8 },
+        { name: 'Byte 1', start: 16, width: 8 },
+        { name: 'Byte 2', start: 8, width: 8 },
+        { name: 'Byte 3', start: 0, width: 8 }
+      ],
       convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w).map(x => swapBytes(x, 32)) : swapBytes(v, 32),
       display: (v, w) => w > 32 ? formatArray(extractUnsignedArray(v, 32, w).map(x => swapBytes(x, 32))) : swapBytes(v, 32).toString() },
     { id: 'int32_le', category: 'integers', bits: 32, names: ['Int', 'Int32', 'int', 'i32', 'signed int', 'long'],
       endian: 'LE',
+      components: [
+        { name: 'Sign', start: 31, width: 1 },
+        { name: 'Magnitude', start: 0, width: 31 }
+      ],
       convert: (v, w) => w > 32 ? extractSignedArray(v, 32, w) : toSigned(v, 32),
       display: (v, w) => w > 32 ? formatArray(extractSignedArray(v, 32, w)) : toSigned(v, 32).toString() },
     { id: 'int32_be', category: 'integers', bits: 32, names: ['Int BE', 'Int32 BE', 'i32be'],
       endian: 'BE',
+      components: [
+        { name: 'Sign', start: 31, width: 1 },
+        { name: 'Magnitude', start: 0, width: 31 }
+      ],
       convert: (v, w) => w > 32 ? extractSignedArray(v, 32, w).map(x => toSigned(swapBytes(fromSigned(x, 32), 32), 32)) : toSigned(swapBytes(v, 32), 32),
       display: (v, w) => w > 32 ? formatArray(extractUnsignedArray(v, 32, w).map(x => toSigned(swapBytes(x, 32), 32))) : toSigned(swapBytes(v, 32), 32).toString() },
 
     { id: 'uint64_le', category: 'integers', bits: 64, names: ['QWord', 'UInt64', 'ulong', 'u64', 'qword', 'QWORD', 'unsigned long long'],
-      endian: 'LE', convert: (v) => v, display: (v) => v.toString() },
+      endian: 'LE',
+      components: [
+        { name: 'Byte 7', start: 56, width: 8 },
+        { name: 'Byte 6', start: 48, width: 8 },
+        { name: 'Byte 5', start: 40, width: 8 },
+        { name: 'Byte 4', start: 32, width: 8 },
+        { name: 'Byte 3', start: 24, width: 8 },
+        { name: 'Byte 2', start: 16, width: 8 },
+        { name: 'Byte 1', start: 8, width: 8 },
+        { name: 'Byte 0', start: 0, width: 8 }
+      ],
+      convert: (v) => v, display: (v) => v.toString() },
     { id: 'uint64_be', category: 'integers', bits: 64, names: ['QWord BE', 'UInt64 BE', 'u64be'],
-      endian: 'BE', convert: (v) => swapBytes(v, 64), display: (v) => swapBytes(v, 64).toString() },
+      endian: 'BE',
+      components: [
+        { name: 'Byte 0', start: 56, width: 8 },
+        { name: 'Byte 1', start: 48, width: 8 },
+        { name: 'Byte 2', start: 40, width: 8 },
+        { name: 'Byte 3', start: 32, width: 8 },
+        { name: 'Byte 4', start: 24, width: 8 },
+        { name: 'Byte 5', start: 16, width: 8 },
+        { name: 'Byte 6', start: 8, width: 8 },
+        { name: 'Byte 7', start: 0, width: 8 }
+      ],
+      convert: (v) => swapBytes(v, 64), display: (v) => swapBytes(v, 64).toString() },
     { id: 'int64_le', category: 'integers', bits: 64, names: ['Long', 'Int64', 'long long', 'i64', 'signed long long'],
-      endian: 'LE', convert: (v) => toSigned(v, 64), display: (v) => toSigned(v, 64).toString() },
+      endian: 'LE',
+      components: [
+        { name: 'Sign', start: 63, width: 1 },
+        { name: 'Magnitude', start: 0, width: 63 }
+      ],
+      convert: (v) => toSigned(v, 64), display: (v) => toSigned(v, 64).toString() },
     { id: 'int64_be', category: 'integers', bits: 64, names: ['Long BE', 'Int64 BE', 'i64be'],
-      endian: 'BE', convert: (v) => toSigned(swapBytes(v, 64), 64), display: (v) => toSigned(swapBytes(v, 64), 64).toString() },
+      endian: 'BE',
+      components: [
+        { name: 'Sign', start: 63, width: 1 },
+        { name: 'Magnitude', start: 0, width: 63 }
+      ],
+      convert: (v) => toSigned(swapBytes(v, 64), 64), display: (v) => toSigned(swapBytes(v, 64), 64).toString() },
 
     // === IEEE 754 FLOATS ===
     { id: 'float16_le', category: 'floats', bits: 16, names: ['Float16', 'half', 'f16', 'binary16', '__fp16'],
-      endian: 'LE', convert: (v) => float16ToNumber(Number(v)), display: (v) => formatFloat(float16ToNumber(Number(v))) },
+      endian: 'LE',
+      components: [
+        { name: 'Sign', start: 15, width: 1 },
+        { name: 'Exponent', start: 10, width: 5 },
+        { name: 'Mantissa', start: 0, width: 10 }
+      ],
+      convert: (v, w) => w > 16 ? extractUnsignedArray(v, 16, w).map(x => float16ToNumber(Number(x))) : float16ToNumber(Number(v)),
+      display: (v, w) => extractAndFormat(v, 16, w, x => float16ToNumber(Number(x)), formatFloat) },
     { id: 'float16_be', category: 'floats', bits: 16, names: ['Float16 BE', 'f16be'],
-      endian: 'BE', convert: (v) => float16ToNumber(Number(swapBytes(v, 16))), display: (v) => formatFloat(float16ToNumber(Number(swapBytes(v, 16)))) },
+      endian: 'BE',
+      components: [
+        { name: 'Sign', start: 15, width: 1 },
+        { name: 'Exponent', start: 10, width: 5 },
+        { name: 'Mantissa', start: 0, width: 10 }
+      ],
+      convert: (v, w) => w > 16 ? extractUnsignedArray(v, 16, w).map(x => float16ToNumber(Number(swapBytes(x, 16)))) : float16ToNumber(Number(swapBytes(v, 16))),
+      display: (v, w) => extractAndFormat(v, 16, w, x => float16ToNumber(Number(swapBytes(x, 16))), formatFloat) },
 
     { id: 'float32_le', category: 'floats', bits: 32, names: ['Float32', 'float', 'f32', 'single', 'binary32', 'Single'],
-      endian: 'LE', convert: (v) => float32ToNumber(v), display: (v) => formatFloat(float32ToNumber(v)) },
+      endian: 'LE',
+      components: [
+        { name: 'Sign', start: 31, width: 1 },
+        { name: 'Exponent', start: 23, width: 8 },
+        { name: 'Mantissa', start: 0, width: 23 }
+      ],
+      convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w).map(x => float32ToNumber(x)) : float32ToNumber(v),
+      display: (v, w) => extractAndFormat(v, 32, w, float32ToNumber, formatFloat) },
     { id: 'float32_be', category: 'floats', bits: 32, names: ['Float32 BE', 'f32be'],
-      endian: 'BE', convert: (v) => float32ToNumber(swapBytes(v, 32)), display: (v) => formatFloat(float32ToNumber(swapBytes(v, 32))) },
+      endian: 'BE',
+      components: [
+        { name: 'Sign', start: 31, width: 1 },
+        { name: 'Exponent', start: 23, width: 8 },
+        { name: 'Mantissa', start: 0, width: 23 }
+      ],
+      convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w).map(x => float32ToNumber(swapBytes(x, 32))) : float32ToNumber(swapBytes(v, 32)),
+      display: (v, w) => extractAndFormat(v, 32, w, x => float32ToNumber(swapBytes(x, 32)), formatFloat) },
 
     { id: 'float64_le', category: 'floats', bits: 64, names: ['Float64', 'double', 'f64', 'binary64', 'Double'],
-      endian: 'LE', convert: (v) => float64ToNumber(v), display: (v) => formatFloat(float64ToNumber(v)) },
+      endian: 'LE',
+      components: [
+        { name: 'Sign', start: 63, width: 1 },
+        { name: 'Exponent', start: 52, width: 11 },
+        { name: 'Mantissa', start: 0, width: 52 }
+      ],
+      convert: (v) => float64ToNumber(v), display: (v) => formatFloat(float64ToNumber(v)) },
     { id: 'float64_be', category: 'floats', bits: 64, names: ['Float64 BE', 'f64be'],
-      endian: 'BE', convert: (v) => float64ToNumber(swapBytes(v, 64)), display: (v) => formatFloat(float64ToNumber(swapBytes(v, 64))) },
+      endian: 'BE',
+      components: [
+        { name: 'Sign', start: 63, width: 1 },
+        { name: 'Exponent', start: 52, width: 11 },
+        { name: 'Mantissa', start: 0, width: 52 }
+      ],
+      convert: (v) => float64ToNumber(swapBytes(v, 64)), display: (v) => formatFloat(float64ToNumber(swapBytes(v, 64))) },
 
     // === EXOTIC FLOATS ===
     { id: 'bfloat16_le', category: 'exotic_floats', bits: 16, names: ['BFloat16', 'bf16', 'brain float'],
-      endian: 'LE', convert: (v) => bfloat16ToNumber(Number(v)), display: (v) => formatFloat(bfloat16ToNumber(Number(v))) },
+      endian: 'LE',
+      components: [
+        { name: 'Sign', start: 15, width: 1 },
+        { name: 'Exponent', start: 7, width: 8 },
+        { name: 'Mantissa', start: 0, width: 7 }
+      ],
+      convert: (v, w) => w > 16 ? extractUnsignedArray(v, 16, w).map(x => bfloat16ToNumber(Number(x))) : bfloat16ToNumber(Number(v)),
+      display: (v, w) => extractAndFormat(v, 16, w, x => bfloat16ToNumber(Number(x)), formatFloat) },
     { id: 'bfloat16_be', category: 'exotic_floats', bits: 16, names: ['BFloat16 BE', 'bf16be'],
-      endian: 'BE', convert: (v) => bfloat16ToNumber(Number(swapBytes(v, 16))), display: (v) => formatFloat(bfloat16ToNumber(Number(swapBytes(v, 16)))) },
+      endian: 'BE',
+      components: [
+        { name: 'Sign', start: 15, width: 1 },
+        { name: 'Exponent', start: 7, width: 8 },
+        { name: 'Mantissa', start: 0, width: 7 }
+      ],
+      convert: (v, w) => w > 16 ? extractUnsignedArray(v, 16, w).map(x => bfloat16ToNumber(Number(swapBytes(x, 16)))) : bfloat16ToNumber(Number(swapBytes(v, 16))),
+      display: (v, w) => extractAndFormat(v, 16, w, x => bfloat16ToNumber(Number(swapBytes(x, 16))), formatFloat) },
 
     { id: 'minifloat8', category: 'exotic_floats', bits: 8, names: ['Minifloat8', 'fp8', 'float8'],
-      convert: (v) => minifloat8ToNumber(Number(v)), display: (v) => formatFloat(minifloat8ToNumber(Number(v))) },
+      components: [
+        { name: 'Sign', start: 7, width: 1 },
+        { name: 'Exponent', start: 3, width: 4 },
+        { name: 'Mantissa', start: 0, width: 3 }
+      ],
+      convert: (v, w) => w > 8 ? extractUnsignedArray(v, 8, w).map(x => minifloat8ToNumber(Number(x))) : minifloat8ToNumber(Number(v)),
+      display: (v, w) => extractAndFormat(v, 8, w, x => minifloat8ToNumber(Number(x)), formatFloat) },
 
     { id: 'ibm_float32', category: 'exotic_floats', bits: 32, names: ['IBM Float', 'IBM HFP', 'hex float'],
-      convert: (v) => ibmFloat32ToNumber(Number(v)), display: (v) => formatFloat(ibmFloat32ToNumber(Number(v))) },
+      components: [
+        { name: 'Sign', start: 31, width: 1 },
+        { name: 'Exponent', start: 24, width: 7 },
+        { name: 'Mantissa', start: 0, width: 24 }
+      ],
+      convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w).map(x => ibmFloat32ToNumber(Number(x))) : ibmFloat32ToNumber(Number(v)),
+      display: (v, w) => extractAndFormat(v, 32, w, x => ibmFloat32ToNumber(Number(x)), formatFloat) },
 
     { id: 'vax_f', category: 'exotic_floats', bits: 32, names: ['VAX F', 'F_floating', 'VAX float'],
-      convert: (v) => vaxFToNumber(Number(v)), display: (v) => formatFloat(vaxFToNumber(Number(v))) },
+      components: [
+        { name: 'Sign', start: 15, width: 1 },
+        { name: 'Exponent', start: 7, width: 8 },
+        { name: 'Mantissa Hi', start: 0, width: 7 },
+        { name: 'Mantissa Lo', start: 16, width: 16 }
+      ],
+      convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w).map(x => vaxFToNumber(Number(x))) : vaxFToNumber(Number(v)),
+      display: (v, w) => extractAndFormat(v, 32, w, x => vaxFToNumber(Number(x)), formatFloat) },
 
     { id: 'mbf32', category: 'exotic_floats', bits: 32, names: ['MBF32', 'MS Binary', 'BASIC float'],
-      convert: (v) => mbf32ToNumber(Number(v)), display: (v) => formatFloat(mbf32ToNumber(Number(v))) },
+      components: [
+        { name: 'Exponent', start: 24, width: 8 },
+        { name: 'Sign', start: 23, width: 1 },
+        { name: 'Mantissa', start: 0, width: 23 }
+      ],
+      convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w).map(x => mbf32ToNumber(Number(x))) : mbf32ToNumber(Number(v)),
+      display: (v, w) => extractAndFormat(v, 32, w, x => mbf32ToNumber(Number(x)), formatFloat) },
 
     { id: 'mbf64', category: 'exotic_floats', bits: 64, names: ['MBF64', 'MS Binary 64', 'BASIC double'],
+      components: [
+        { name: 'Exponent', start: 56, width: 8 },
+        { name: 'Sign', start: 55, width: 1 },
+        { name: 'Mantissa', start: 0, width: 55 }
+      ],
       convert: (v) => mbf64ToNumber(v), display: (v) => formatFloat(mbf64ToNumber(v)) },
 
     // === FIXED POINT ===
     { id: 'q7_8', category: 'fixed', bits: 16, names: ['Q7.8', 'fixed8.8'],
-      convert: (v) => fixedPointToNumber(v, 8, 8, true), display: (v) => fixedPointToNumber(v, 8, 8, true).toFixed(4) },
+      components: [
+        { name: 'Integer', start: 8, width: 8 },
+        { name: 'Fraction', start: 0, width: 8 }
+      ],
+      convert: (v, w) => w > 16 ? extractUnsignedArray(v, 16, w).map(x => fixedPointToNumber(x, 8, 8, true)) : fixedPointToNumber(v, 8, 8, true),
+      display: (v, w) => extractAndFormat(v, 16, w, x => fixedPointToNumber(x, 8, 8, true), x => x.toFixed(4)) },
 
     { id: 'q15_16', category: 'fixed', bits: 32, names: ['Q15.16', 'fixed16.16'],
-      convert: (v) => fixedPointToNumber(v, 16, 16, true), display: (v) => fixedPointToNumber(v, 16, 16, true).toFixed(6) },
+      components: [
+        { name: 'Integer', start: 16, width: 16 },
+        { name: 'Fraction', start: 0, width: 16 }
+      ],
+      convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w).map(x => fixedPointToNumber(x, 16, 16, true)) : fixedPointToNumber(v, 16, 16, true),
+      display: (v, w) => extractAndFormat(v, 32, w, x => fixedPointToNumber(x, 16, 16, true), x => x.toFixed(6)) },
 
     { id: 'q31_32', category: 'fixed', bits: 64, names: ['Q31.32', 'fixed32.32'],
+      components: [
+        { name: 'Integer', start: 32, width: 32 },
+        { name: 'Fraction', start: 0, width: 32 }
+      ],
       convert: (v) => fixedPointToNumber(v, 32, 32, true), display: (v) => fixedPointToNumber(v, 32, 32, true).toFixed(10) },
 
     { id: 'uq8_8', category: 'fixed', bits: 16, names: ['UQ8.8', 'ufixed8.8'],
-      convert: (v) => fixedPointToNumber(v, 8, 8, false), display: (v) => fixedPointToNumber(v, 8, 8, false).toFixed(4) },
+      components: [
+        { name: 'Integer', start: 8, width: 8 },
+        { name: 'Fraction', start: 0, width: 8 }
+      ],
+      convert: (v, w) => w > 16 ? extractUnsignedArray(v, 16, w).map(x => fixedPointToNumber(x, 8, 8, false)) : fixedPointToNumber(v, 8, 8, false),
+      display: (v, w) => extractAndFormat(v, 16, w, x => fixedPointToNumber(x, 8, 8, false), x => x.toFixed(4)) },
 
     { id: 'uq16_16', category: 'fixed', bits: 32, names: ['UQ16.16', 'ufixed16.16'],
-      convert: (v) => fixedPointToNumber(v, 16, 16, false), display: (v) => fixedPointToNumber(v, 16, 16, false).toFixed(6) },
+      components: [
+        { name: 'Integer', start: 16, width: 16 },
+        { name: 'Fraction', start: 0, width: 16 }
+      ],
+      convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w).map(x => fixedPointToNumber(x, 16, 16, false)) : fixedPointToNumber(v, 16, 16, false),
+      display: (v, w) => extractAndFormat(v, 32, w, x => fixedPointToNumber(x, 16, 16, false), x => x.toFixed(6)) },
 
     // === DECIMAL / BCD ===
     { id: 'bcd8', category: 'decimal', bits: 8, names: ['BCD8', 'packed BCD 8'],
-      convert: (v) => bcdToNumber(v, 8).value, display: (v) => { const n = bcdToNumber(v, 8); return n.valid ? n.value.toString() : 'Invalid BCD'; } },
+      components: [
+        { name: 'Digit 1', start: 4, width: 4 },
+        { name: 'Digit 0', start: 0, width: 4 }
+      ],
+      convert: (v) => bcdToNumber(v, 8).value,
+      display: (v, w) => extractBcdArray(v, 8, w) },
 
     { id: 'bcd16', category: 'decimal', bits: 16, names: ['BCD16', 'packed BCD 16'],
-      convert: (v) => bcdToNumber(v, 16).value, display: (v) => { const n = bcdToNumber(v, 16); return n.valid ? n.value.toString() : 'Invalid BCD'; } },
+      components: [
+        { name: 'Digit 3', start: 12, width: 4 },
+        { name: 'Digit 2', start: 8, width: 4 },
+        { name: 'Digit 1', start: 4, width: 4 },
+        { name: 'Digit 0', start: 0, width: 4 }
+      ],
+      convert: (v) => bcdToNumber(v, 16).value,
+      display: (v, w) => extractBcdArray(v, 16, w) },
 
     { id: 'bcd32', category: 'decimal', bits: 32, names: ['BCD32', 'packed BCD 32'],
-      convert: (v) => bcdToNumber(v, 32).value, display: (v) => { const n = bcdToNumber(v, 32); return n.valid ? n.value.toString() : 'Invalid BCD'; } },
+      components: [
+        { name: 'Digit 7', start: 28, width: 4 },
+        { name: 'Digit 6', start: 24, width: 4 },
+        { name: 'Digit 5', start: 20, width: 4 },
+        { name: 'Digit 4', start: 16, width: 4 },
+        { name: 'Digit 3', start: 12, width: 4 },
+        { name: 'Digit 2', start: 8, width: 4 },
+        { name: 'Digit 1', start: 4, width: 4 },
+        { name: 'Digit 0', start: 0, width: 4 }
+      ],
+      convert: (v) => bcdToNumber(v, 32).value,
+      display: (v, w) => extractBcdArray(v, 32, w) },
 
     { id: 'bcd64', category: 'decimal', bits: 64, names: ['BCD64', 'packed BCD 64'],
+      components: [
+        { name: 'Digit 15', start: 60, width: 4 },
+        { name: 'Digit 14', start: 56, width: 4 },
+        { name: 'Digit 13', start: 52, width: 4 },
+        { name: 'Digit 12', start: 48, width: 4 },
+        { name: 'Digit 11', start: 44, width: 4 },
+        { name: 'Digit 10', start: 40, width: 4 },
+        { name: 'Digit 9', start: 36, width: 4 },
+        { name: 'Digit 8', start: 32, width: 4 },
+        { name: 'Digit 7', start: 28, width: 4 },
+        { name: 'Digit 6', start: 24, width: 4 },
+        { name: 'Digit 5', start: 20, width: 4 },
+        { name: 'Digit 4', start: 16, width: 4 },
+        { name: 'Digit 3', start: 12, width: 4 },
+        { name: 'Digit 2', start: 8, width: 4 },
+        { name: 'Digit 1', start: 4, width: 4 },
+        { name: 'Digit 0', start: 0, width: 4 }
+      ],
       convert: (v) => bcdToNumber(v, 64).value, display: (v) => { const n = bcdToNumber(v, 64); return n.valid ? n.value.toString() : 'Invalid BCD'; } },
 
     // === SPECIAL ===
     { id: 'currency64', category: 'special', bits: 64, names: ['Currency', 'OLE Currency', 'money', 'CY', 'CURRENCY'],
+      components: [
+        { name: 'Value', start: 0, width: 64 }
+      ],
       convert: (v) => currencyToNumber(v), display: (v) => '$' + currencyToNumber(v).toFixed(4) },
 
     { id: 'filetime', category: 'special', bits: 64, names: ['FILETIME', 'Windows FILETIME'],
+      components: [
+        { name: '100ns Ticks', start: 0, width: 64 }
+      ],
       convert: (v) => new Date(Number(v / 10000n) - 11644473600000), display: (v) => {
           const d = new Date(Number(v / 10000n) - 11644473600000);
           return isNaN(d.getTime()) ? 'Invalid' : d.toISOString();
       }},
 
     { id: 'unix32', category: 'special', bits: 32, names: ['Unix32', 'time_t', 'Unix timestamp'],
-      convert: (v) => new Date(Number(v) * 1000), display: (v) => {
+      components: [
+        { name: 'Seconds', start: 0, width: 32 }
+      ],
+      convert: (v) => new Date(Number(v) * 1000), display: (v, w) => {
+          if (w > 32) {
+              const arr = extractUnsignedArray(v, 32, w);
+              return formatArray(arr.map(x => {
+                  const d = new Date(Number(x) * 1000);
+                  return isNaN(d.getTime()) ? 'Invalid' : d.toISOString();
+              }));
+          }
           const d = new Date(Number(v) * 1000);
           return isNaN(d.getTime()) ? 'Invalid' : d.toISOString();
       }},
 
     { id: 'unix64', category: 'special', bits: 64, names: ['Unix64', 'time64_t'],
+      components: [
+        { name: 'Seconds', start: 0, width: 64 }
+      ],
       convert: (v) => new Date(Number(v) * 1000), display: (v) => {
           const d = new Date(Number(v) * 1000);
           return isNaN(d.getTime()) ? 'Invalid' : d.toISOString();
       }},
 
     { id: 'dosdate', category: 'special', bits: 32, names: ['DOS DateTime', 'FAT timestamp'],
+      components: [
+        { name: 'Year-1980', start: 25, width: 7 },
+        { name: 'Month', start: 21, width: 4 },
+        { name: 'Day', start: 16, width: 5 },
+        { name: 'Hour', start: 11, width: 5 },
+        { name: 'Minute', start: 5, width: 6 },
+        { name: 'Second/2', start: 0, width: 5 }
+      ],
       convert: (v) => {
           const time = Number(v & 0xFFFFn);
           const date = Number((v >> 16n) & 0xFFFFn);
@@ -588,45 +882,79 @@ const FORMATS = [
           const year = ((date >> 9) & 0x7F) + 1980;
           return new Date(year, month, day, hour, min, sec);
       },
-      display: (v) => {
-          const time = Number(v & 0xFFFFn);
-          const date = Number((v >> 16n) & 0xFFFFn);
-          const sec = (time & 0x1F) * 2;
-          const min = (time >> 5) & 0x3F;
-          const hour = (time >> 11) & 0x1F;
-          const day = date & 0x1F;
-          const month = ((date >> 5) & 0xF);
-          const year = ((date >> 9) & 0x7F) + 1980;
-          return `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')} ${String(hour).padStart(2,'0')}:${String(min).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+      display: (v, w) => {
+          const formatDos = (x) => {
+              const time = Number(x & 0xFFFFn);
+              const date = Number((x >> 16n) & 0xFFFFn);
+              const sec = (time & 0x1F) * 2;
+              const min = (time >> 5) & 0x3F;
+              const hour = (time >> 11) & 0x1F;
+              const day = date & 0x1F;
+              const month = ((date >> 5) & 0xF);
+              const year = ((date >> 9) & 0x7F) + 1980;
+              return `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')} ${String(hour).padStart(2,'0')}:${String(min).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+          };
+          if (w > 32) return formatArray(extractUnsignedArray(v, 32, w).map(formatDos));
+          return formatDos(v);
       }},
 
     { id: 'rgb24', category: 'special', bits: 32, names: ['RGB', 'RGB24', 'color'],
+      components: [
+        { name: 'Unused', start: 24, width: 8, color: '#64748b' },
+        { name: 'Red', start: 16, width: 8, color: '#ef4444' },
+        { name: 'Green', start: 8, width: 8, color: '#22c55e' },
+        { name: 'Blue', start: 0, width: 8, color: '#3b82f6' }
+      ],
       convert: (v) => ({ r: Number((v >> 16n) & 0xFFn), g: Number((v >> 8n) & 0xFFn), b: Number(v & 0xFFn) }),
-      display: (v) => {
-          const r = Number((v >> 16n) & 0xFFn);
-          const g = Number((v >> 8n) & 0xFFn);
-          const b = Number(v & 0xFFn);
-          return `rgb(${r}, ${g}, ${b})`;
+      display: (v, w) => {
+          const formatRgb = (x) => {
+              const r = Number((x >> 16n) & 0xFFn);
+              const g = Number((x >> 8n) & 0xFFn);
+              const b = Number(x & 0xFFn);
+              return `rgb(${r},${g},${b})`;
+          };
+          if (w > 32) return formatArray(extractUnsignedArray(v, 32, w).map(formatRgb));
+          return formatRgb(v);
       }},
 
     { id: 'rgba32', category: 'special', bits: 32, names: ['RGBA', 'RGBA32', 'ARGB'],
+      components: [
+        { name: 'Alpha', start: 24, width: 8, color: '#94a3b8' },
+        { name: 'Red', start: 16, width: 8, color: '#ef4444' },
+        { name: 'Green', start: 8, width: 8, color: '#22c55e' },
+        { name: 'Blue', start: 0, width: 8, color: '#3b82f6' }
+      ],
       convert: (v) => ({ a: Number((v >> 24n) & 0xFFn), r: Number((v >> 16n) & 0xFFn), g: Number((v >> 8n) & 0xFFn), b: Number(v & 0xFFn) }),
-      display: (v) => {
-          const a = Number((v >> 24n) & 0xFFn);
-          const r = Number((v >> 16n) & 0xFFn);
-          const g = Number((v >> 8n) & 0xFFn);
-          const b = Number(v & 0xFFn);
-          return `rgba(${r}, ${g}, ${b}, ${(a/255).toFixed(2)})`;
+      display: (v, w) => {
+          const formatRgba = (x) => {
+              const a = Number((x >> 24n) & 0xFFn);
+              const r = Number((x >> 16n) & 0xFFn);
+              const g = Number((x >> 8n) & 0xFFn);
+              const b = Number(x & 0xFFn);
+              return `rgba(${r},${g},${b},${(a/255).toFixed(2)})`;
+          };
+          if (w > 32) return formatArray(extractUnsignedArray(v, 32, w).map(formatRgba));
+          return formatRgba(v);
       }},
 
     { id: 'fourcc', category: 'special', bits: 32, names: ['FourCC', 'FOURCC', 'magic'],
+      components: [
+        { name: 'Char 4', start: 24, width: 8 },
+        { name: 'Char 3', start: 16, width: 8 },
+        { name: 'Char 2', start: 8, width: 8 },
+        { name: 'Char 1', start: 0, width: 8 }
+      ],
       convert: (v) => String.fromCharCode(Number(v & 0xFFn), Number((v >> 8n) & 0xFFn), Number((v >> 16n) & 0xFFn), Number((v >> 24n) & 0xFFn)),
-      display: (v) => {
-          const chars = [v & 0xFFn, (v >> 8n) & 0xFFn, (v >> 16n) & 0xFFn, (v >> 24n) & 0xFFn];
-          return '"' + chars.map(c => {
-              const n = Number(c);
-              return (n >= 32 && n < 127) ? String.fromCharCode(n) : '.';
-          }).join('') + '"';
+      display: (v, w) => {
+          const formatFcc = (x) => {
+              const chars = [x & 0xFFn, (x >> 8n) & 0xFFn, (x >> 16n) & 0xFFn, (x >> 24n) & 0xFFn];
+              return '"' + chars.map(c => {
+                  const n = Number(c);
+                  return (n >= 32 && n < 127) ? String.fromCharCode(n) : '.';
+              }).join('') + '"';
+          };
+          if (w > 32) return formatArray(extractUnsignedArray(v, 32, w).map(formatFcc));
+          return formatFcc(v);
       }},
 ];
 
@@ -717,21 +1045,56 @@ const generateCppCode = (fields, width) => {
 
 // --- COMPONENTS ---
 
-// Bit Grid Component - always uses 8 bits per row for consistent layout
+// Bit Grid Component - responsive layout, prefers 16 bits per row when space allows
 const BitGrid = ({ value, width, onToggleBit, fields, highlightField }) => {
-    const bitsPerRow = 8; // Fixed 8 bits per row (one byte)
+    const containerRef = React.useRef(null);
+    const [bitsPerRow, setBitsPerRow] = React.useState(8);
+    const [isReady, setIsReady] = React.useState(false);
+
+    // Use ResizeObserver for reliable dimension detection on initial render and resize
+    React.useEffect(() => {
+        if (!containerRef.current) return;
+
+        const updateBitsPerRow = (containerWidth) => {
+            if (containerWidth < 10) return; // Skip if container not yet sized
+            const bitCellWidth = 32; // ~28px cell + gap + nibble spacer averaged
+            const availableBits = Math.floor(containerWidth / bitCellWidth);
+            // Prefer 32, then 16, then 8
+            if (availableBits >= 32 && width >= 32) setBitsPerRow(32);
+            else if (availableBits >= 16 && width >= 16) setBitsPerRow(16);
+            else setBitsPerRow(8);
+            setIsReady(true);
+        };
+
+        const resizeObserver = new ResizeObserver((entries) => {
+            for (const entry of entries) {
+                const containerWidth = entry.contentRect.width;
+                updateBitsPerRow(containerWidth);
+            }
+        });
+
+        resizeObserver.observe(containerRef.current);
+        return () => resizeObserver.disconnect();
+    }, [width]);
+
     const rows = width / bitsPerRow;
 
     const getFieldForBit = (bitIndex) => fields.find(f => bitIndex >= f.start && bitIndex < f.start + f.width);
     const getFieldColor = (field) => {
         if (!field) return null;
+        // Use custom color if specified, otherwise generate from colorIndex
+        if (field.color) {
+            // Parse hex color and create background/border variants
+            const hex = field.color;
+            return { bg: `${hex}26`, border: hex }; // 26 = ~15% alpha in hex
+        }
         const hue = (field.colorIndex * 60) % 360;
         return { bg: `hsla(${hue}, 70%, 50%, 0.15)`, border: `hsl(${hue}, 70%, 50%)` };
     };
 
     return (
-        <div className="space-y-1">
-            {Array.from({ length: rows }).map((_, rowIdx) => {
+        <div ref={containerRef} className="space-y-1" style={{ minHeight: isReady ? 'auto' : `${Math.ceil(width / 8) * 40}px` }}>
+            {isReady && Array.from({ length: rows }).map((_, rowIdx) => {
                 const startBit = (rows - 1 - rowIdx) * bitsPerRow;
                 return (
                     <div key={rowIdx} className="flex gap-0.5 justify-center">
@@ -741,13 +1104,13 @@ const BitGrid = ({ value, width, onToggleBit, fields, highlightField }) => {
                             const field = getFieldForBit(bitIndex);
                             const fieldColor = getFieldColor(field);
                             const isHighlighted = highlightField && field && field.name === highlightField;
-                            // Add visual separator every 4 bits (nibble boundary)
-                            const isNibbleBoundary = colIdx === 4;
+                            // Add visual separator every 8 bits (byte boundary)
+                            const isByteBoundary = colIdx > 0 && colIdx % 8 === 0;
                             return (
                                 <React.Fragment key={bitIndex}>
-                                    {isNibbleBoundary && <div className="w-1" />}
+                                    {isByteBoundary && <div className="w-2 border-l border-slate-700" />}
                                     <div onClick={() => onToggleBit(bitIndex)}
-                                        className={`bit-cell w-7 h-9 flex flex-col items-center justify-center font-mono text-xs rounded cursor-pointer transition-all border ${isHighlighted ? 'field-highlight' : ''}`}
+                                        className={`bit-cell flex-1 min-w-[28px] h-9 flex flex-col items-center justify-center font-mono text-xs rounded cursor-pointer transition-all border ${isHighlighted ? 'field-highlight' : ''}`}
                                         style={{
                                             backgroundColor: fieldColor?.bg || (bitVal ? 'rgba(34, 211, 238, 0.2)' : 'rgba(30, 41, 59, 0.5)'),
                                             borderColor: fieldColor?.border || (bitVal ? 'rgb(34, 211, 238)' : 'rgb(51, 65, 85)'),
@@ -767,19 +1130,35 @@ const BitGrid = ({ value, width, onToggleBit, fields, highlightField }) => {
 };
 
 // Format Value Row Component
-const FormatRow = ({ format, value, width, onCopy }) => {
+const FormatRow = ({ format, value, width, onCopy, onLoadComponents }) => {
     const displayValue = format.display(value, width);
     const endianLabel = format.endian ? ` (${format.endian})` : '';
     const isColor = format.id.includes('rgb');
+    const hasComponents = format.components && format.components.length > 0;
+
+    // Extract color values for swatches (handles both single and array formats)
+    const colorSwatches = isColor ? displayValue.match(/rgba?\([^)]+\)/g) || [] : [];
+
+    const handleDoubleClick = () => {
+        if (hasComponents && onLoadComponents)
+            onLoadComponents(format);
+    };
 
     return (
         <div className="format-row flex items-center gap-2 py-1 px-2 rounded transition-colors">
-            <span className="text-[10px] text-slate-500 w-24 truncate" title={format.names.join(', ')}>
+            <span
+                className={`text-[10px] text-slate-500 w-24 truncate ${hasComponents ? 'cursor-pointer hover:text-cyan-400' : ''}`}
+                title={hasComponents ? `${format.names.join(', ')} - Double-click to load components` : format.names.join(', ')}
+                onDoubleClick={handleDoubleClick}>
                 {format.names[0]}{endianLabel}
             </span>
-            {isColor && (
-                <div className="w-4 h-4 rounded border border-slate-600"
-                     style={{ backgroundColor: displayValue.startsWith('rgb') ? displayValue : '#000' }} />
+            {colorSwatches.length > 0 && (
+                <div className="flex gap-0.5">
+                    {colorSwatches.map((color, i) => (
+                        <div key={i} className="w-4 h-4 rounded border border-slate-600"
+                             style={{ backgroundColor: color }} title={color} />
+                    ))}
+                </div>
             )}
             <code className="flex-1 font-mono text-xs text-slate-200 truncate" title={displayValue}>
                 {displayValue}
@@ -792,7 +1171,7 @@ const FormatRow = ({ format, value, width, onCopy }) => {
 };
 
 // Format Category Component
-const FormatCategory = ({ category, formats, value, width, onCopy, expanded, onToggle }) => {
+const FormatCategory = ({ category, formats, value, width, onCopy, onLoadComponents, expanded, onToggle }) => {
     const catInfo = FORMAT_CATEGORIES[category];
     const applicableFormats = formats.filter(f => f.bits <= width);
 
@@ -810,7 +1189,7 @@ const FormatCategory = ({ category, formats, value, width, onCopy, expanded, onT
             {expanded && (
                 <div className="mt-1 ml-2 space-y-0.5 group">
                     {applicableFormats.map(f => (
-                        <FormatRow key={f.id} format={f} value={value} width={width} onCopy={onCopy} />
+                        <FormatRow key={f.id} format={f} value={value} width={width} onCopy={onCopy} onLoadComponents={onLoadComponents} />
                     ))}
                 </div>
             )}
@@ -819,7 +1198,7 @@ const FormatCategory = ({ category, formats, value, width, onCopy, expanded, onT
 };
 
 // Conversions Panel Component
-const ConversionsPanel = ({ value, width, onCopy }) => {
+const ConversionsPanel = ({ value, width, onCopy, onLoadComponents }) => {
     const [expandedCategories, setExpandedCategories] = React.useState({
         integers: true, floats: true, exotic_floats: false, fixed: false, decimal: false, special: false
     });
@@ -845,7 +1224,7 @@ const ConversionsPanel = ({ value, width, onCopy }) => {
             </div>
             {Object.keys(FORMAT_CATEGORIES).map(cat => (
                 <FormatCategory key={cat} category={cat} formats={formatsByCategory[cat] || []}
-                    value={value} width={width} onCopy={onCopy}
+                    value={value} width={width} onCopy={onCopy} onLoadComponents={onLoadComponents}
                     expanded={expandedCategories[cat]} onToggle={() => toggleCategory(cat)} />
             ))}
         </div>
@@ -959,7 +1338,7 @@ const FieldEditor = ({ fields, onAddField, onRemoveField, width }) => {
             <div className="text-xs font-bold text-slate-500 uppercase tracking-widest">Named Fields</div>
             {fields.map((field, idx) => (
                 <div key={idx} className="flex items-center gap-2 bg-slate-900/50 p-2 rounded border border-slate-800">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: `hsl(${(field.colorIndex * 60) % 360}, 70%, 50%)` }} />
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: field.color || `hsl(${(field.colorIndex * 60) % 360}, 70%, 50%)` }} />
                     <span className="text-sm font-mono text-slate-300 flex-1">{field.name}</span>
                     <span className="text-xs text-slate-500">[{field.start}:{field.start + field.width - 1}]</span>
                     <button onClick={() => onRemoveField(idx)} className="text-slate-500 hover:text-red-400">
@@ -1032,23 +1411,28 @@ const OperationsPanel = ({ value, width, onChange }) => {
 
 // Statistics Panel Component
 const StatsPanel = ({ value, width }) => {
+    const pc = popcount(value);
     const stats = [
-        { label: 'Popcount', value: popcount(value) },
-        { label: 'Parity', value: parity(value) === 0 ? 'Even' : 'Odd' },
-        { label: 'CLZ', value: clz(value, width) },
-        { label: 'CTZ', value: ctz(value, width) },
-        { label: 'MSB', value: value === 0n ? '-' : (width - 1 - clz(value, width)) },
-        { label: 'LSB', value: value === 0n ? '-' : ctz(value, width) },
+        { label: 'Popcount', value: pc, tooltip: 'Population Count: Number of bits set to 1' },
+        { label: 'Zerocount', value: width - pc, tooltip: 'Zero Count: Number of bits set to 0' },
+        { label: 'Parity', value: parity(value) === 0 ? 'Even' : 'Odd', tooltip: 'Parity: Even if popcount is even, Odd if popcount is odd (used for error detection)' },
+        { label: 'Bit Width', value: bitWidth(value), tooltip: 'Minimum bits needed to represent this value (floor(log2(n))+1)' },
+        { label: 'CLZ', value: clz(value, width), tooltip: 'Count Leading Zeros: Consecutive 0 bits from MSB' },
+        { label: 'CLO', value: clo(value, width), tooltip: 'Count Leading Ones: Consecutive 1 bits from MSB' },
+        { label: 'CTZ', value: ctz(value, width), tooltip: 'Count Trailing Zeros: Consecutive 0 bits from LSB' },
+        { label: 'CTO', value: cto(value, width), tooltip: 'Count Trailing Ones: Consecutive 1 bits from LSB' },
+        { label: 'MSB', value: value === 0n ? '-' : (width - 1 - clz(value, width)), tooltip: 'Most Significant Bit: Position of highest set bit (0-indexed)' },
+        { label: 'LSB', value: value === 0n ? '-' : ctz(value, width), tooltip: 'Least Significant Bit: Position of lowest set bit (0-indexed)' },
     ];
 
     return (
         <div className="space-y-3">
             <div className="text-xs font-bold text-slate-500 uppercase tracking-widest">Statistics</div>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-5 gap-1">
                 {stats.map((stat, idx) => (
-                    <div key={idx} className="bg-slate-900/50 border border-slate-800 rounded p-2 text-center">
-                        <div className="text-[10px] text-slate-500 uppercase">{stat.label}</div>
-                        <div className="text-lg font-mono text-cyan-400">{stat.value}</div>
+                    <div key={idx} className="bg-slate-900/50 border border-slate-800 rounded p-1.5 text-center cursor-help" title={stat.tooltip}>
+                        <div className="text-[9px] text-slate-500 uppercase truncate">{stat.label}</div>
+                        <div className="text-sm font-mono text-cyan-400">{stat.value}</div>
                     </div>
                 ))}
             </div>
@@ -1124,6 +1508,20 @@ const BitBenchApp = () => {
         setTimeout(() => setCopied(false), 1500);
     };
 
+    // Load format components as named fields (double-click on format name)
+    const handleLoadComponents = (format) => {
+        if (!format.components || format.components.length === 0) return;
+        // Clear existing fields and replace with format components
+        const newFields = format.components.map((comp, idx) => ({
+            name: comp.name,
+            start: comp.start,
+            width: comp.width,
+            color: comp.color || null,  // Preserve custom color if specified
+            colorIndex: idx             // Fallback for auto-generated colors
+        }));
+        setFields(newFields);
+    };
+
     return (
         <div className="min-h-screen bg-slate-950 text-slate-200 font-sans flex flex-col">
             {/* HELP MODAL */}
@@ -1193,7 +1591,7 @@ const BitBenchApp = () => {
 
             {/* HEADER */}
             <header className="border-b border-slate-800 bg-slate-900/90 backdrop-blur-md sticky top-0 z-40">
-                <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
+                <div className="mx-auto px-6 h-14 flex items-center justify-between">
                     <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setShowHelp(true)}>
                         <div className="w-9 h-9 bg-gradient-to-br from-emerald-600 to-cyan-700 rounded-lg shadow-lg shadow-emerald-900/20 flex items-center justify-center text-white group-hover:scale-105 transition-transform">
                             <IconBinary className="w-5 h-5" />
@@ -1219,7 +1617,7 @@ const BitBenchApp = () => {
             </header>
 
             {/* MAIN CONTENT */}
-            <main className="flex-1 max-w-7xl mx-auto px-4 py-4 w-full">
+            <main className="flex-1 mx-auto px-6 py-4 w-full">
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
                     {/* LEFT PANEL - Input & Conversions */}
                     <div className="lg:col-span-4 space-y-4">
@@ -1227,7 +1625,7 @@ const BitBenchApp = () => {
                             <InputPanel value={value} width={bitWidth} onValueChange={setValue} onCopy={copyToClipboard} />
                         </div>
                         <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 max-h-[60vh] overflow-y-auto">
-                            <ConversionsPanel value={value} width={bitWidth} onCopy={copyToClipboard} />
+                            <ConversionsPanel value={value} width={bitWidth} onCopy={copyToClipboard} onLoadComponents={handleLoadComponents} />
                         </div>
                     </div>
 

@@ -38,6 +38,7 @@ BitBench is a comprehensive tool for working with binary data at the bit level. 
 All multi-byte integers available in both LE and BE variants.
 
 **Automatic Array Display**: When the bit width exceeds the type size, values are displayed as arrays. For example, at 32-bit width:
+
 - `Byte` shows `[ 175, 219, 131, 238 ]` (4 bytes)
 - `Word` shows `[ 56239, 61059 ]` (2 words)
 - `DWord` shows `4001618863` (single value)
@@ -125,6 +126,11 @@ Click any bit to toggle it. Define named fields for structured data:
 3. Set field width
 4. Fields are color-coded on the grid
 
+**Quick Field Loading**: Double-click any format name in the Type Interpretations panel to instantly load its bit field components. For example:
+- Double-click "Float32" to see Sign, Exponent, and Mantissa fields
+- Double-click "RGBA" to see color components with actual colors (Red=red, Green=green, Blue=blue, Alpha=gray)
+- Double-click "DOS DateTime" to see Year, Month, Day, Hour, Minute, Second fields
+
 ### Operations
 
 | Operation | Description                                    |
@@ -167,17 +173,19 @@ Select width from header buttons. Formats filter based on available bits.
 
 ## Live Demo
 
-Open [`index.html`](index.html) in any modern browser - no build required.
+Open [index.html](index.html) in any modern browser - no build required.
 
 ## Technical Details
 
 **Stack:**
+
 - React 18 (CDN)
 - Tailwind CSS (CDN)
 - Babel (JSX transformation)
 - Pure JavaScript with BigInt
 
 **Browser Requirements:**
+
 - BigInt support (ES2020+)
 - DataView API
 - Clipboard API
@@ -204,10 +212,12 @@ Open [`index.html`](index.html) in any modern browser - no build required.
 - [x] Type name aliases
 - [x] Interactive bit grid
 - [x] Named field definitions
+- [x] Quick field loading via double-click (loads format bit components)
+- [x] Color-coded fields for RGB/RGBA (red, green, blue, alpha bits)
 - [x] Shift (SHL/SAL/SHR/SAR), rotate (ROL/ROR), NOT, BSWAP operations
 - [x] Random value generator (dice button)
 - [x] Automatic array display when width exceeds type size
-- [x] Popcount, parity, CLZ, CTZ
+- [x] Popcount, parity, CLZ, CTZ, CLO, CTO
 - [x] C/C++/C# code generation
 
 ### Planned Features
@@ -233,4 +243,4 @@ Open [`index.html`](index.html) in any modern browser - no build required.
 
 ## License
 
-Part of the SynthelicZ project collection. See repository root for license.
+Part of the »SynthelicZ« project collection. See repository root for license.
