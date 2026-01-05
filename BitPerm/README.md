@@ -50,6 +50,7 @@ Click a source bit, then click target positions to route it. You can also:
 Choose from presets organized by category:
 
 **🖥️ Modern x86/x64:**
+
 - Intel Haswell+ (i5/i7/i9) - full BMI2, SIMD support
 - AMD Zen1/2 (Ryzen 1000-2000) - microcoded PEXT/PDEP (~18 cycles)
 - AMD Zen3+ (Ryzen 3000+) - native BMI2 (3 cycles)
@@ -57,30 +58,36 @@ Choose from presets organized by category:
 - Intel Atom - in-order execution
 
 **🏛️ Legacy x86:**
+
 - Intel Pentium 4 - slow shifts (no barrel shifter)
 - Intel Pentium 1 (P5)
 - AMD Athlon / Duron
 - Intel 486/386/8086
 
 **📱 ARM & Apple Silicon:**
+
 - ARM Cortex A64 (NEON) - with TBL shuffle, BFI/UBFX, RBIT
 - ARM Cortex M4 - embedded, single-cycle multiply
 - Apple M1/M2/M3 - ARM64 with NEON
 
 **⚙️ RISC:**
+
 - RISC-V (B extension) - emerging standard with bit manipulation
 
 **🏠 Classic Home Computers:**
+
 - Motorola 68000 (Amiga/Atari ST) - variable shift cost, 70-cycle MUL
 - Zilog Z80 - no hardware multiply
 - MOS 6502 - 8-bit only
 
 **🎮 Classic Consoles:**
+
 - GameCube/Wii (PowerPC 750) - RLWINM rotate+mask
 - Dreamcast (SH-4) - 2-way dual-issue
 - Xbox 360 (Xenon) - VMX-128 SIMD
 
 **👾 Retro Consoles:**
+
 - Sony PlayStation 1 (R3000)
 - Nintendo 64 (VR4300)
 - Sony PlayStation 3 (Cell) - with SIMD
@@ -124,6 +131,7 @@ The exhaustive solver uses Dijkstra's algorithm to explore all possible operatio
 4. **Optimal Path**: Finds the truly optimal solution with minimum total cycles.
 
 **⚠️ Limits**: To prevent exponential blowup, the exhaustive search has hard limits:
+
 - Maximum 10,000 states explored
 - Maximum operations = number of bits to route (any more would be suboptimal)
 - 5-second timeout
@@ -141,18 +149,18 @@ The solver is built on a modular **Building Blocks Library** - a self-contained 
 
 Available building blocks:
 
-| Block | Description | Platforms |
-|-------|-------------|-----------|
-| `shl` | ⬅️ Logical shift left | All |
-| `shr` | ➡️ Logical shift right | All |
-| `rol` | 🔄 Rotate left | All with rotate |
-| `ror` | 🔃 Rotate right | All with rotate |
-| `mul` | ✖️ Integer multiply (bit spreading) | All with multiply |
-| `bmi2` | 🎯 PEXT+PDEP combination | Intel Haswell+, AMD Zen+ |
-| `pshufb` | 📦 Byte shuffle (SIMD) | SSSE3, AVX, NEON |
-| `rlwinm` | 🔁 Rotate + mask (PowerPC) | GameCube, Xbox 360, PS3 |
-| `rev` | 🔀 Byte reversal (BSWAP) | 486+, ARM |
-| `rbit` | 🪞 Bit reversal | ARM |
+| Block    | Description                         | Platforms                |
+|----------|-------------------------------------|--------------------------|
+| `shl`    | ⬅️ Logical shift left               | All                      |
+| `shr`    | ➡️ Logical shift right              | All                      |
+| `rol`    | 🔄 Rotate left                      | All with rotate          |
+| `ror`    | 🔃 Rotate right                     | All with rotate          |
+| `mul`    | ✖️ Integer multiply (bit spreading) | All with multiply        |
+| `bmi2`   | 🎯 PEXT+PDEP combination            | Intel Haswell+, AMD Zen+ |
+| `pshufb` | 📦 Byte shuffle (SIMD)              | SSSE3, AVX, NEON         |
+| `rlwinm` | 🔁 Rotate + mask (PowerPC)          | GameCube, Xbox 360, PS3  |
+| `rev`    | 🔀 Byte reversal (BSWAP)            | 486+, ARM                |
+| `rbit`   | 🪞 Bit reversal                     | ARM                      |
 
 Each block includes collision detection, carry-risk analysis, and side-effect tracking for multiply operations.
 
@@ -201,18 +209,18 @@ runBuildingBlockTests()
 
 The test suite includes 51 tests across 10 sections:
 
-| Section | Tests | Description |
-|---------|-------|-------------|
-| ⚙️ Basic Operations | 6 | `shl`, `shr`, `rol`, `ror` apply functions |
-| 🎯 Bit Movement Tracking | 4 | Verifies bits land at expected positions |
-| 💥 Collision Detection | 4 | Detects multiple sources landing on same destination |
-| 🔍 Side Effect Detection | 2 | Identifies unintended bit movements |
-| ✅ findRoutings Verification | 5 | Confirms routing reports match actual behavior |
-| 📦 Byte-Level Operations | 5 | `pshufb`, `rev`, `rbit` |
-| 🔗 Integration | 2 | `generateAllOperations` uses building blocks |
-| 🧠 Solver Tests | 5 | `solveExhaustive` for shifts, rotations, swaps |
-| 🔀 Complex Permutations | 6 | Swap, identity, duplicate, mixed operations |
-| ✖️ Multiply Patterns | 12 | Sparse masks, collision/carry detection |
+| Section                     | Tests | Description                                          |
+|-----------------------------|-------|------------------------------------------------------|
+| ⚙️ Basic Operations         | 6     | `shl`, `shr`, `rol`, `ror` apply functions           |
+| 🎯 Bit Movement Tracking    | 4     | Verifies bits land at expected positions             |
+| 💥 Collision Detection      | 4     | Detects multiple sources landing on same destination |
+| 🔍 Side Effect Detection    | 2     | Identifies unintended bit movements                  |
+| ✅ findRoutings Verification| 5     | Confirms routing reports match actual behavior       |
+| 📦 Byte-Level Operations    | 5     | `pshufb`, `rev`, `rbit`                              |
+| 🔗 Integration              | 2     | `generateAllOperations` uses building blocks         |
+| 🧠 Solver Tests             | 5     | `solveExhaustive` for shifts, rotations, swaps       |
+| 🔀 Complex Permutations     | 6     | Swap, identity, duplicate, mixed operations          |
+| ✖️ Multiply Patterns        | 12    | Sparse masks, collision/carry detection              |
 
 ### 🔧 Helper Functions
 
