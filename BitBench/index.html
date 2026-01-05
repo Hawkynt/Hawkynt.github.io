@@ -1661,7 +1661,7 @@ const BitBenchApp = () => {
                                             className="flex items-center gap-2 p-2 rounded border border-slate-700 hover:border-slate-600 cursor-pointer transition-all"
                                             onMouseEnter={() => setHighlightField(field.name)}
                                             onMouseLeave={() => setHighlightField(null)}>
-                                            <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: `hsl(${(field.colorIndex * 60) % 360}, 70%, 50%)` }} />
+                                            <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: field.color || `hsl(${(field.colorIndex * 60) % 360}, 70%, 50%)` }} />
                                             <span className="text-sm font-mono text-slate-300 flex-1 truncate">{field.name}</span>
                                             <span className="text-xs font-mono text-slate-500">{fieldValue.toString()}</span>
                                             <span className="text-sm font-mono text-emerald-400">{formatHex(fieldValue, field.width)}</span>
