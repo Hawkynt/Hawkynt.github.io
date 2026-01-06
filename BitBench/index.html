@@ -489,8 +489,8 @@ const FORMATS = [
       display: (v, w) => w > 8 ? formatArray(extractUnsignedArray(v, 8, w)) : v.toString() },
     { id: 'int8', category: 'integers', bits: 8, names: ['SByte', 'Int8', 'sbyte', 'i8', 'signed char', 'char'],
       components: [
-        { name: 'Sign', start: 7, width: 1 },
-        { name: 'Magnitude', start: 0, width: 7 }
+        { name: 'Sign [B0]', start: 7, width: 1, color: '#ef4444' },
+        { name: 'Mag [B0]', start: 0, width: 7, color: '#22c55e' }
       ],
       convert: (v, w) => w > 8 ? extractSignedArray(v, 8, w) : toSigned(v, 8),
       display: (v, w) => w > 8 ? formatArray(extractSignedArray(v, 8, w)) : toSigned(v, 8).toString() },
@@ -498,32 +498,34 @@ const FORMATS = [
     { id: 'uint16_le', category: 'integers', bits: 16, names: ['Word', 'UInt16', 'ushort', 'u16', 'word', 'WORD', 'unsigned short'],
       endian: 'LE',
       components: [
-        { name: 'Byte 1', start: 8, width: 8 },
-        { name: 'Byte 0', start: 0, width: 8 }
+        { name: 'Byte 1', start: 8, width: 8, color: '#22c55e' },
+        { name: 'Byte 0', start: 0, width: 8, color: '#3b82f6' }
       ],
       convert: (v, w) => w > 16 ? extractUnsignedArray(v, 16, w) : v,
       display: (v, w) => w > 16 ? formatArray(extractUnsignedArray(v, 16, w)) : v.toString() },
     { id: 'uint16_be', category: 'integers', bits: 16, names: ['Word BE', 'UInt16 BE', 'u16be'],
       endian: 'BE',
       components: [
-        { name: 'Byte 0', start: 8, width: 8 },
-        { name: 'Byte 1', start: 0, width: 8 }
+        { name: 'Byte 0', start: 8, width: 8, color: '#3b82f6' },
+        { name: 'Byte 1', start: 0, width: 8, color: '#22c55e' }
       ],
       convert: (v, w) => w > 16 ? extractUnsignedArray(v, 16, w).map(x => swapBytes(x, 16)) : swapBytes(v, 16),
       display: (v, w) => w > 16 ? formatArray(extractUnsignedArray(v, 16, w).map(x => swapBytes(x, 16))) : swapBytes(v, 16).toString() },
     { id: 'int16_le', category: 'integers', bits: 16, names: ['Short', 'Int16', 'short', 'i16', 'signed short'],
       endian: 'LE',
       components: [
-        { name: 'Sign', start: 15, width: 1 },
-        { name: 'Magnitude', start: 0, width: 15 }
+        { name: 'Sign [B1]', start: 15, width: 1, color: '#ef4444' },
+        { name: 'Mag Hi [B1]', start: 8, width: 7, color: '#15803d' },
+        { name: 'Mag Lo [B0]', start: 0, width: 8, color: '#86efac' }
       ],
       convert: (v, w) => w > 16 ? extractSignedArray(v, 16, w) : toSigned(v, 16),
       display: (v, w) => w > 16 ? formatArray(extractSignedArray(v, 16, w)) : toSigned(v, 16).toString() },
     { id: 'int16_be', category: 'integers', bits: 16, names: ['Short BE', 'Int16 BE', 'i16be'],
       endian: 'BE',
       components: [
-        { name: 'Sign', start: 15, width: 1 },
-        { name: 'Magnitude', start: 0, width: 15 }
+        { name: 'Mag Lo [B0]', start: 8, width: 8, color: '#86efac' },
+        { name: 'Sign [B1]', start: 7, width: 1, color: '#ef4444' },
+        { name: 'Mag Hi [B1]', start: 0, width: 7, color: '#15803d' }
       ],
       convert: (v, w) => w > 16 ? extractSignedArray(v, 16, w).map(x => toSigned(swapBytes(fromSigned(x, 16), 16), 16)) : toSigned(swapBytes(v, 16), 16),
       display: (v, w) => w > 16 ? formatArray(extractUnsignedArray(v, 16, w).map(x => toSigned(swapBytes(x, 16), 16))) : toSigned(swapBytes(v, 16), 16).toString() },
@@ -531,36 +533,42 @@ const FORMATS = [
     { id: 'uint32_le', category: 'integers', bits: 32, names: ['DWord', 'UInt32', 'uint', 'u32', 'dword', 'DWORD', 'unsigned int', 'unsigned long'],
       endian: 'LE',
       components: [
-        { name: 'Byte 3', start: 24, width: 8 },
-        { name: 'Byte 2', start: 16, width: 8 },
-        { name: 'Byte 1', start: 8, width: 8 },
-        { name: 'Byte 0', start: 0, width: 8 }
+        { name: 'Byte 3', start: 24, width: 8, color: '#ef4444' },
+        { name: 'Byte 2', start: 16, width: 8, color: '#eab308' },
+        { name: 'Byte 1', start: 8, width: 8, color: '#22c55e' },
+        { name: 'Byte 0', start: 0, width: 8, color: '#3b82f6' }
       ],
       convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w) : v,
       display: (v, w) => w > 32 ? formatArray(extractUnsignedArray(v, 32, w)) : v.toString() },
     { id: 'uint32_be', category: 'integers', bits: 32, names: ['DWord BE', 'UInt32 BE', 'u32be'],
       endian: 'BE',
       components: [
-        { name: 'Byte 0', start: 24, width: 8 },
-        { name: 'Byte 1', start: 16, width: 8 },
-        { name: 'Byte 2', start: 8, width: 8 },
-        { name: 'Byte 3', start: 0, width: 8 }
+        { name: 'Byte 0', start: 24, width: 8, color: '#3b82f6' },
+        { name: 'Byte 1', start: 16, width: 8, color: '#22c55e' },
+        { name: 'Byte 2', start: 8, width: 8, color: '#eab308' },
+        { name: 'Byte 3', start: 0, width: 8, color: '#ef4444' }
       ],
       convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w).map(x => swapBytes(x, 32)) : swapBytes(v, 32),
       display: (v, w) => w > 32 ? formatArray(extractUnsignedArray(v, 32, w).map(x => swapBytes(x, 32))) : swapBytes(v, 32).toString() },
     { id: 'int32_le', category: 'integers', bits: 32, names: ['Int', 'Int32', 'int', 'i32', 'signed int', 'long'],
       endian: 'LE',
       components: [
-        { name: 'Sign', start: 31, width: 1 },
-        { name: 'Magnitude', start: 0, width: 31 }
+        { name: 'Sign [B3]', start: 31, width: 1, color: '#ef4444' },
+        { name: 'Mag Hi [B3]', start: 24, width: 7, color: '#15803d' },
+        { name: 'Mag [B2]', start: 16, width: 8, color: '#22c55e' },
+        { name: 'Mag [B1]', start: 8, width: 8, color: '#4ade80' },
+        { name: 'Mag Lo [B0]', start: 0, width: 8, color: '#86efac' }
       ],
       convert: (v, w) => w > 32 ? extractSignedArray(v, 32, w) : toSigned(v, 32),
       display: (v, w) => w > 32 ? formatArray(extractSignedArray(v, 32, w)) : toSigned(v, 32).toString() },
     { id: 'int32_be', category: 'integers', bits: 32, names: ['Int BE', 'Int32 BE', 'i32be'],
       endian: 'BE',
       components: [
-        { name: 'Sign', start: 31, width: 1 },
-        { name: 'Magnitude', start: 0, width: 31 }
+        { name: 'Mag Lo [B0]', start: 24, width: 8, color: '#86efac' },
+        { name: 'Mag [B1]', start: 16, width: 8, color: '#4ade80' },
+        { name: 'Mag [B2]', start: 8, width: 8, color: '#22c55e' },
+        { name: 'Sign [B3]', start: 7, width: 1, color: '#ef4444' },
+        { name: 'Mag Hi [B3]', start: 0, width: 7, color: '#15803d' }
       ],
       convert: (v, w) => w > 32 ? extractSignedArray(v, 32, w).map(x => toSigned(swapBytes(fromSigned(x, 32), 32), 32)) : toSigned(swapBytes(v, 32), 32),
       display: (v, w) => w > 32 ? formatArray(extractUnsignedArray(v, 32, w).map(x => toSigned(swapBytes(x, 32), 32))) : toSigned(swapBytes(v, 32), 32).toString() },
@@ -568,41 +576,55 @@ const FORMATS = [
     { id: 'uint64_le', category: 'integers', bits: 64, names: ['QWord', 'UInt64', 'ulong', 'u64', 'qword', 'QWORD', 'unsigned long long'],
       endian: 'LE',
       components: [
-        { name: 'Byte 7', start: 56, width: 8 },
-        { name: 'Byte 6', start: 48, width: 8 },
-        { name: 'Byte 5', start: 40, width: 8 },
-        { name: 'Byte 4', start: 32, width: 8 },
-        { name: 'Byte 3', start: 24, width: 8 },
-        { name: 'Byte 2', start: 16, width: 8 },
-        { name: 'Byte 1', start: 8, width: 8 },
-        { name: 'Byte 0', start: 0, width: 8 }
+        { name: 'Byte 7', start: 56, width: 8, color: '#f97316' },
+        { name: 'Byte 6', start: 48, width: 8, color: '#06b6d4' },
+        { name: 'Byte 5', start: 40, width: 8, color: '#ec4899' },
+        { name: 'Byte 4', start: 32, width: 8, color: '#a855f7' },
+        { name: 'Byte 3', start: 24, width: 8, color: '#ef4444' },
+        { name: 'Byte 2', start: 16, width: 8, color: '#eab308' },
+        { name: 'Byte 1', start: 8, width: 8, color: '#22c55e' },
+        { name: 'Byte 0', start: 0, width: 8, color: '#3b82f6' }
       ],
       convert: (v) => v, display: (v) => v.toString() },
     { id: 'uint64_be', category: 'integers', bits: 64, names: ['QWord BE', 'UInt64 BE', 'u64be'],
       endian: 'BE',
       components: [
-        { name: 'Byte 0', start: 56, width: 8 },
-        { name: 'Byte 1', start: 48, width: 8 },
-        { name: 'Byte 2', start: 40, width: 8 },
-        { name: 'Byte 3', start: 32, width: 8 },
-        { name: 'Byte 4', start: 24, width: 8 },
-        { name: 'Byte 5', start: 16, width: 8 },
-        { name: 'Byte 6', start: 8, width: 8 },
-        { name: 'Byte 7', start: 0, width: 8 }
+        { name: 'Byte 0', start: 56, width: 8, color: '#3b82f6' },
+        { name: 'Byte 1', start: 48, width: 8, color: '#22c55e' },
+        { name: 'Byte 2', start: 40, width: 8, color: '#eab308' },
+        { name: 'Byte 3', start: 32, width: 8, color: '#ef4444' },
+        { name: 'Byte 4', start: 24, width: 8, color: '#a855f7' },
+        { name: 'Byte 5', start: 16, width: 8, color: '#ec4899' },
+        { name: 'Byte 6', start: 8, width: 8, color: '#06b6d4' },
+        { name: 'Byte 7', start: 0, width: 8, color: '#f97316' }
       ],
       convert: (v) => swapBytes(v, 64), display: (v) => swapBytes(v, 64).toString() },
     { id: 'int64_le', category: 'integers', bits: 64, names: ['Long', 'Int64', 'long long', 'i64', 'signed long long'],
       endian: 'LE',
       components: [
-        { name: 'Sign', start: 63, width: 1 },
-        { name: 'Magnitude', start: 0, width: 63 }
+        { name: 'Sign [B7]', start: 63, width: 1, color: '#ef4444' },
+        { name: 'Mag Hi [B7]', start: 56, width: 7, color: '#14532d' },
+        { name: 'Mag [B6]', start: 48, width: 8, color: '#15803d' },
+        { name: 'Mag [B5]', start: 40, width: 8, color: '#16a34a' },
+        { name: 'Mag [B4]', start: 32, width: 8, color: '#22c55e' },
+        { name: 'Mag [B3]', start: 24, width: 8, color: '#4ade80' },
+        { name: 'Mag [B2]', start: 16, width: 8, color: '#86efac' },
+        { name: 'Mag [B1]', start: 8, width: 8, color: '#bbf7d0' },
+        { name: 'Mag Lo [B0]', start: 0, width: 8, color: '#dcfce7' }
       ],
       convert: (v) => toSigned(v, 64), display: (v) => toSigned(v, 64).toString() },
     { id: 'int64_be', category: 'integers', bits: 64, names: ['Long BE', 'Int64 BE', 'i64be'],
       endian: 'BE',
       components: [
-        { name: 'Sign', start: 63, width: 1 },
-        { name: 'Magnitude', start: 0, width: 63 }
+        { name: 'Mag Lo [B0]', start: 56, width: 8, color: '#dcfce7' },
+        { name: 'Mag [B1]', start: 48, width: 8, color: '#bbf7d0' },
+        { name: 'Mag [B2]', start: 40, width: 8, color: '#86efac' },
+        { name: 'Mag [B3]', start: 32, width: 8, color: '#4ade80' },
+        { name: 'Mag [B4]', start: 24, width: 8, color: '#22c55e' },
+        { name: 'Mag [B5]', start: 16, width: 8, color: '#16a34a' },
+        { name: 'Mag [B6]', start: 8, width: 8, color: '#15803d' },
+        { name: 'Sign [B7]', start: 7, width: 1, color: '#ef4444' },
+        { name: 'Mag Hi [B7]', start: 0, width: 7, color: '#14532d' }
       ],
       convert: (v) => toSigned(swapBytes(v, 64), 64), display: (v) => toSigned(swapBytes(v, 64), 64).toString() },
 
@@ -610,18 +632,20 @@ const FORMATS = [
     { id: 'float16_le', category: 'floats', bits: 16, names: ['Float16', 'half', 'f16', 'binary16', '__fp16'],
       endian: 'LE',
       components: [
-        { name: 'Sign', start: 15, width: 1 },
-        { name: 'Exponent', start: 10, width: 5 },
-        { name: 'Mantissa', start: 0, width: 10 }
+        { name: 'Sign [B1]', start: 15, width: 1, color: '#ef4444' },
+        { name: 'Exp [B1]', start: 10, width: 5, color: '#f97316' },
+        { name: 'Mant Hi [B1]', start: 8, width: 2, color: '#1d4ed8' },
+        { name: 'Mant Lo [B0]', start: 0, width: 8, color: '#93c5fd' }
       ],
       convert: (v, w) => w > 16 ? extractUnsignedArray(v, 16, w).map(x => float16ToNumber(Number(x))) : float16ToNumber(Number(v)),
       display: (v, w) => extractAndFormat(v, 16, w, x => float16ToNumber(Number(x)), formatFloat) },
     { id: 'float16_be', category: 'floats', bits: 16, names: ['Float16 BE', 'f16be'],
       endian: 'BE',
       components: [
-        { name: 'Sign', start: 15, width: 1 },
-        { name: 'Exponent', start: 10, width: 5 },
-        { name: 'Mantissa', start: 0, width: 10 }
+        { name: 'Mant Lo [B0]', start: 8, width: 8, color: '#93c5fd' },
+        { name: 'Sign [B1]', start: 7, width: 1, color: '#ef4444' },
+        { name: 'Exp [B1]', start: 2, width: 5, color: '#f97316' },
+        { name: 'Mant Hi [B1]', start: 0, width: 2, color: '#1d4ed8' }
       ],
       convert: (v, w) => w > 16 ? extractUnsignedArray(v, 16, w).map(x => float16ToNumber(Number(swapBytes(x, 16)))) : float16ToNumber(Number(swapBytes(v, 16))),
       display: (v, w) => extractAndFormat(v, 16, w, x => float16ToNumber(Number(swapBytes(x, 16))), formatFloat) },
@@ -629,18 +653,24 @@ const FORMATS = [
     { id: 'float32_le', category: 'floats', bits: 32, names: ['Float32', 'float', 'f32', 'single', 'binary32', 'Single'],
       endian: 'LE',
       components: [
-        { name: 'Sign', start: 31, width: 1 },
-        { name: 'Exponent', start: 23, width: 8 },
-        { name: 'Mantissa', start: 0, width: 23 }
+        { name: 'Sign [B3]', start: 31, width: 1, color: '#ef4444' },
+        { name: 'Exp Hi [B3]', start: 24, width: 7, color: '#f97316' },
+        { name: 'Exp Lo [B2]', start: 23, width: 1, color: '#fdba74' },
+        { name: 'Mant Hi [B2]', start: 16, width: 7, color: '#1d4ed8' },
+        { name: 'Mant Mid [B1]', start: 8, width: 8, color: '#3b82f6' },
+        { name: 'Mant Lo [B0]', start: 0, width: 8, color: '#93c5fd' }
       ],
       convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w).map(x => float32ToNumber(x)) : float32ToNumber(v),
       display: (v, w) => extractAndFormat(v, 32, w, float32ToNumber, formatFloat) },
     { id: 'float32_be', category: 'floats', bits: 32, names: ['Float32 BE', 'f32be'],
       endian: 'BE',
       components: [
-        { name: 'Sign', start: 31, width: 1 },
-        { name: 'Exponent', start: 23, width: 8 },
-        { name: 'Mantissa', start: 0, width: 23 }
+        { name: 'Mant Lo [B0]', start: 24, width: 8, color: '#93c5fd' },
+        { name: 'Mant Mid [B1]', start: 16, width: 8, color: '#3b82f6' },
+        { name: 'Exp Lo [B2]', start: 15, width: 1, color: '#fdba74' },
+        { name: 'Mant Hi [B2]', start: 8, width: 7, color: '#1d4ed8' },
+        { name: 'Sign [B3]', start: 7, width: 1, color: '#ef4444' },
+        { name: 'Exp Hi [B3]', start: 0, width: 7, color: '#f97316' }
       ],
       convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w).map(x => float32ToNumber(swapBytes(x, 32))) : float32ToNumber(swapBytes(v, 32)),
       display: (v, w) => extractAndFormat(v, 32, w, x => float32ToNumber(swapBytes(x, 32)), formatFloat) },
@@ -648,17 +678,31 @@ const FORMATS = [
     { id: 'float64_le', category: 'floats', bits: 64, names: ['Float64', 'double', 'f64', 'binary64', 'Double'],
       endian: 'LE',
       components: [
-        { name: 'Sign', start: 63, width: 1 },
-        { name: 'Exponent', start: 52, width: 11 },
-        { name: 'Mantissa', start: 0, width: 52 }
+        { name: 'Sign [B7]', start: 63, width: 1, color: '#ef4444' },
+        { name: 'Exp Hi [B7]', start: 56, width: 7, color: '#f97316' },
+        { name: 'Exp Lo [B6]', start: 52, width: 4, color: '#fdba74' },
+        { name: 'Mant Hi [B6]', start: 48, width: 4, color: '#1d4ed8' },
+        { name: 'Mant [B5]', start: 40, width: 8, color: '#2563eb' },
+        { name: 'Mant [B4]', start: 32, width: 8, color: '#3b82f6' },
+        { name: 'Mant [B3]', start: 24, width: 8, color: '#60a5fa' },
+        { name: 'Mant [B2]', start: 16, width: 8, color: '#7dd3fc' },
+        { name: 'Mant [B1]', start: 8, width: 8, color: '#93c5fd' },
+        { name: 'Mant Lo [B0]', start: 0, width: 8, color: '#bfdbfe' }
       ],
       convert: (v) => float64ToNumber(v), display: (v) => formatFloat(float64ToNumber(v)) },
     { id: 'float64_be', category: 'floats', bits: 64, names: ['Float64 BE', 'f64be'],
       endian: 'BE',
       components: [
-        { name: 'Sign', start: 63, width: 1 },
-        { name: 'Exponent', start: 52, width: 11 },
-        { name: 'Mantissa', start: 0, width: 52 }
+        { name: 'Mant Lo [B0]', start: 56, width: 8, color: '#bfdbfe' },
+        { name: 'Mant [B1]', start: 48, width: 8, color: '#93c5fd' },
+        { name: 'Mant [B2]', start: 40, width: 8, color: '#7dd3fc' },
+        { name: 'Mant [B3]', start: 32, width: 8, color: '#60a5fa' },
+        { name: 'Mant [B4]', start: 24, width: 8, color: '#3b82f6' },
+        { name: 'Mant [B5]', start: 16, width: 8, color: '#2563eb' },
+        { name: 'Exp Lo [B6]', start: 12, width: 4, color: '#fdba74' },
+        { name: 'Mant Hi [B6]', start: 8, width: 4, color: '#1d4ed8' },
+        { name: 'Sign [B7]', start: 7, width: 1, color: '#ef4444' },
+        { name: 'Exp Hi [B7]', start: 0, width: 7, color: '#f97316' }
       ],
       convert: (v) => float64ToNumber(swapBytes(v, 64)), display: (v) => formatFloat(float64ToNumber(swapBytes(v, 64))) },
 
@@ -666,103 +710,105 @@ const FORMATS = [
     { id: 'bfloat16_le', category: 'exotic_floats', bits: 16, names: ['BFloat16', 'bf16', 'brain float'],
       endian: 'LE',
       components: [
-        { name: 'Sign', start: 15, width: 1 },
-        { name: 'Exponent', start: 7, width: 8 },
-        { name: 'Mantissa', start: 0, width: 7 }
+        { name: 'Sign [B1]', start: 15, width: 1, color: '#ef4444' },
+        { name: 'Exp Hi [B1]', start: 8, width: 7, color: '#f97316' },
+        { name: 'Exp Lo [B0]', start: 7, width: 1, color: '#fdba74' },
+        { name: 'Mant [B0]', start: 0, width: 7, color: '#3b82f6' }
       ],
       convert: (v, w) => w > 16 ? extractUnsignedArray(v, 16, w).map(x => bfloat16ToNumber(Number(x))) : bfloat16ToNumber(Number(v)),
       display: (v, w) => extractAndFormat(v, 16, w, x => bfloat16ToNumber(Number(x)), formatFloat) },
     { id: 'bfloat16_be', category: 'exotic_floats', bits: 16, names: ['BFloat16 BE', 'bf16be'],
       endian: 'BE',
       components: [
-        { name: 'Sign', start: 15, width: 1 },
-        { name: 'Exponent', start: 7, width: 8 },
-        { name: 'Mantissa', start: 0, width: 7 }
+        { name: 'Exp Lo [B0]', start: 15, width: 1, color: '#fdba74' },
+        { name: 'Mant [B0]', start: 8, width: 7, color: '#3b82f6' },
+        { name: 'Sign [B1]', start: 7, width: 1, color: '#ef4444' },
+        { name: 'Exp Hi [B1]', start: 0, width: 7, color: '#f97316' }
       ],
       convert: (v, w) => w > 16 ? extractUnsignedArray(v, 16, w).map(x => bfloat16ToNumber(Number(swapBytes(x, 16)))) : bfloat16ToNumber(Number(swapBytes(v, 16))),
       display: (v, w) => extractAndFormat(v, 16, w, x => bfloat16ToNumber(Number(swapBytes(x, 16))), formatFloat) },
 
     { id: 'minifloat8', category: 'exotic_floats', bits: 8, names: ['Minifloat8', 'fp8', 'float8'],
       components: [
-        { name: 'Sign', start: 7, width: 1 },
-        { name: 'Exponent', start: 3, width: 4 },
-        { name: 'Mantissa', start: 0, width: 3 }
+        { name: 'Sign', start: 7, width: 1, color: '#ef4444' },
+        { name: 'Exponent', start: 3, width: 4, color: '#f97316' },
+        { name: 'Mantissa', start: 0, width: 3, color: '#3b82f6' }
       ],
       convert: (v, w) => w > 8 ? extractUnsignedArray(v, 8, w).map(x => minifloat8ToNumber(Number(x))) : minifloat8ToNumber(Number(v)),
       display: (v, w) => extractAndFormat(v, 8, w, x => minifloat8ToNumber(Number(x)), formatFloat) },
 
     { id: 'ibm_float32', category: 'exotic_floats', bits: 32, names: ['IBM Float', 'IBM HFP', 'hex float'],
       components: [
-        { name: 'Sign', start: 31, width: 1 },
-        { name: 'Exponent', start: 24, width: 7 },
-        { name: 'Mantissa', start: 0, width: 24 }
+        { name: 'Sign', start: 31, width: 1, color: '#ef4444' },
+        { name: 'Exponent', start: 24, width: 7, color: '#f97316' },
+        { name: 'Mantissa', start: 0, width: 24, color: '#3b82f6' }
       ],
       convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w).map(x => ibmFloat32ToNumber(Number(x))) : ibmFloat32ToNumber(Number(v)),
       display: (v, w) => extractAndFormat(v, 32, w, x => ibmFloat32ToNumber(Number(x)), formatFloat) },
 
     { id: 'vax_f', category: 'exotic_floats', bits: 32, names: ['VAX F', 'F_floating', 'VAX float'],
       components: [
-        { name: 'Sign', start: 15, width: 1 },
-        { name: 'Exponent', start: 7, width: 8 },
-        { name: 'Mantissa Hi', start: 0, width: 7 },
-        { name: 'Mantissa Lo', start: 16, width: 16 }
+        { name: 'Sign', start: 15, width: 1, color: '#ef4444' },
+        { name: 'Exponent', start: 7, width: 8, color: '#f97316' },
+        { name: 'Mantissa Hi', start: 0, width: 7, color: '#3b82f6' },
+        { name: 'Mantissa Lo', start: 16, width: 16, color: '#60a5fa' }
       ],
       convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w).map(x => vaxFToNumber(Number(x))) : vaxFToNumber(Number(v)),
       display: (v, w) => extractAndFormat(v, 32, w, x => vaxFToNumber(Number(x)), formatFloat) },
 
     { id: 'mbf32', category: 'exotic_floats', bits: 32, names: ['MBF32', 'MS Binary', 'BASIC float'],
       components: [
-        { name: 'Exponent', start: 24, width: 8 },
-        { name: 'Sign', start: 23, width: 1 },
-        { name: 'Mantissa', start: 0, width: 23 }
+        { name: 'Exponent', start: 24, width: 8, color: '#f97316' },
+        { name: 'Sign', start: 23, width: 1, color: '#ef4444' },
+        { name: 'Mantissa', start: 0, width: 23, color: '#3b82f6' }
       ],
       convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w).map(x => mbf32ToNumber(Number(x))) : mbf32ToNumber(Number(v)),
       display: (v, w) => extractAndFormat(v, 32, w, x => mbf32ToNumber(Number(x)), formatFloat) },
 
     { id: 'mbf64', category: 'exotic_floats', bits: 64, names: ['MBF64', 'MS Binary 64', 'BASIC double'],
       components: [
-        { name: 'Exponent', start: 56, width: 8 },
-        { name: 'Sign', start: 55, width: 1 },
-        { name: 'Mantissa', start: 0, width: 55 }
+        { name: 'Exponent', start: 56, width: 8, color: '#f97316' },
+        { name: 'Sign', start: 55, width: 1, color: '#ef4444' },
+        { name: 'Mantissa', start: 0, width: 55, color: '#3b82f6' }
       ],
       convert: (v) => mbf64ToNumber(v), display: (v) => formatFloat(mbf64ToNumber(v)) },
 
     // === FIXED POINT ===
     { id: 'q7_8', category: 'fixed', bits: 16, names: ['Q7.8', 'fixed8.8'],
       components: [
-        { name: 'Integer', start: 8, width: 8 },
-        { name: 'Fraction', start: 0, width: 8 }
+        { name: 'Integer', start: 8, width: 8, color: '#22c55e' },
+        { name: 'Fraction', start: 0, width: 8, color: '#a855f7' }
       ],
       convert: (v, w) => w > 16 ? extractUnsignedArray(v, 16, w).map(x => fixedPointToNumber(x, 8, 8, true)) : fixedPointToNumber(v, 8, 8, true),
       display: (v, w) => extractAndFormat(v, 16, w, x => fixedPointToNumber(x, 8, 8, true), x => x.toFixed(4)) },
 
     { id: 'q15_16', category: 'fixed', bits: 32, names: ['Q15.16', 'fixed16.16'],
       components: [
-        { name: 'Integer', start: 16, width: 16 },
-        { name: 'Fraction', start: 0, width: 16 }
+        { name: 'Integer', start: 16, width: 16, color: '#22c55e' },
+        { name: 'Fraction', start: 0, width: 16, color: '#a855f7' }
       ],
       convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w).map(x => fixedPointToNumber(x, 16, 16, true)) : fixedPointToNumber(v, 16, 16, true),
       display: (v, w) => extractAndFormat(v, 32, w, x => fixedPointToNumber(x, 16, 16, true), x => x.toFixed(6)) },
 
     { id: 'q31_32', category: 'fixed', bits: 64, names: ['Q31.32', 'fixed32.32'],
       components: [
-        { name: 'Integer', start: 32, width: 32 },
-        { name: 'Fraction', start: 0, width: 32 }
+        { name: 'Integer', start: 32, width: 32, color: '#22c55e' },
+        { name: 'Fraction', start: 0, width: 32, color: '#a855f7' }
       ],
       convert: (v) => fixedPointToNumber(v, 32, 32, true), display: (v) => fixedPointToNumber(v, 32, 32, true).toFixed(10) },
 
     { id: 'uq8_8', category: 'fixed', bits: 16, names: ['UQ8.8', 'ufixed8.8'],
       components: [
-        { name: 'Integer', start: 8, width: 8 },
-        { name: 'Fraction', start: 0, width: 8 }
+        { name: 'Integer', start: 8, width: 8, color: '#22c55e' },
+        { name: 'Fraction', start: 0, width: 8, color: '#a855f7' }
       ],
       convert: (v, w) => w > 16 ? extractUnsignedArray(v, 16, w).map(x => fixedPointToNumber(x, 8, 8, false)) : fixedPointToNumber(v, 8, 8, false),
       display: (v, w) => extractAndFormat(v, 16, w, x => fixedPointToNumber(x, 8, 8, false), x => x.toFixed(4)) },
 
     { id: 'uq16_16', category: 'fixed', bits: 32, names: ['UQ16.16', 'ufixed16.16'],
       components: [
-        { name: 'Integer', start: 16, width: 16 },
-        { name: 'Fraction', start: 0, width: 16 }
+        { name: 'Integer', start: 16, width: 16, color: '#22c55e' },
+        { name: 'Fraction', start: 0, width: 16, color: '#a855f7' }
       ],
       convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w).map(x => fixedPointToNumber(x, 16, 16, false)) : fixedPointToNumber(v, 16, 16, false),
       display: (v, w) => extractAndFormat(v, 32, w, x => fixedPointToNumber(x, 16, 16, false), x => x.toFixed(6)) },
@@ -824,13 +870,13 @@ const FORMATS = [
     // === SPECIAL ===
     { id: 'currency64', category: 'special', bits: 64, names: ['Currency', 'OLE Currency', 'money', 'CY', 'CURRENCY'],
       components: [
-        { name: 'Value', start: 0, width: 64 }
+        { name: 'Value', start: 0, width: 64, color: '#22c55e' }
       ],
       convert: (v) => currencyToNumber(v), display: (v) => '$' + currencyToNumber(v).toFixed(4) },
 
     { id: 'filetime', category: 'special', bits: 64, names: ['FILETIME', 'Windows FILETIME'],
       components: [
-        { name: '100ns Ticks', start: 0, width: 64 }
+        { name: '100ns Ticks', start: 0, width: 64, color: '#a855f7' }
       ],
       convert: (v) => new Date(Number(v / 10000n) - 11644473600000), display: (v) => {
           const d = new Date(Number(v / 10000n) - 11644473600000);
@@ -839,7 +885,7 @@ const FORMATS = [
 
     { id: 'unix32', category: 'special', bits: 32, names: ['Unix32', 'time_t', 'Unix timestamp'],
       components: [
-        { name: 'Seconds', start: 0, width: 32 }
+        { name: 'Seconds', start: 0, width: 32, color: '#a855f7' }
       ],
       convert: (v) => new Date(Number(v) * 1000), display: (v, w) => {
           if (w > 32) {
@@ -855,7 +901,7 @@ const FORMATS = [
 
     { id: 'unix64', category: 'special', bits: 64, names: ['Unix64', 'time64_t'],
       components: [
-        { name: 'Seconds', start: 0, width: 64 }
+        { name: 'Seconds', start: 0, width: 64, color: '#a855f7' }
       ],
       convert: (v) => new Date(Number(v) * 1000), display: (v) => {
           const d = new Date(Number(v) * 1000);
@@ -864,12 +910,12 @@ const FORMATS = [
 
     { id: 'dosdate', category: 'special', bits: 32, names: ['DOS DateTime', 'FAT timestamp'],
       components: [
-        { name: 'Year-1980', start: 25, width: 7 },
-        { name: 'Month', start: 21, width: 4 },
-        { name: 'Day', start: 16, width: 5 },
-        { name: 'Hour', start: 11, width: 5 },
-        { name: 'Minute', start: 5, width: 6 },
-        { name: 'Second/2', start: 0, width: 5 }
+        { name: 'Year-1980', start: 25, width: 7, color: '#ef4444' },
+        { name: 'Month', start: 21, width: 4, color: '#f97316' },
+        { name: 'Day', start: 16, width: 5, color: '#eab308' },
+        { name: 'Hour', start: 11, width: 5, color: '#22c55e' },
+        { name: 'Minute', start: 5, width: 6, color: '#3b82f6' },
+        { name: 'Second/2', start: 0, width: 5, color: '#a855f7' }
       ],
       convert: (v) => {
           const time = Number(v & 0xFFFFn);
@@ -939,10 +985,10 @@ const FORMATS = [
 
     { id: 'fourcc', category: 'special', bits: 32, names: ['FourCC', 'FOURCC', 'magic'],
       components: [
-        { name: 'Char 4', start: 24, width: 8 },
-        { name: 'Char 3', start: 16, width: 8 },
-        { name: 'Char 2', start: 8, width: 8 },
-        { name: 'Char 1', start: 0, width: 8 }
+        { name: 'Char 4', start: 24, width: 8, color: '#ef4444' },
+        { name: 'Char 3', start: 16, width: 8, color: '#eab308' },
+        { name: 'Char 2', start: 8, width: 8, color: '#22c55e' },
+        { name: 'Char 1', start: 0, width: 8, color: '#3b82f6' }
       ],
       convert: (v) => String.fromCharCode(Number(v & 0xFFn), Number((v >> 8n) & 0xFFn), Number((v >> 16n) & 0xFFn), Number((v >> 24n) & 0xFFn)),
       display: (v, w) => {
@@ -1059,8 +1105,9 @@ const BitGrid = ({ value, width, onToggleBit, fields, highlightField }) => {
             if (containerWidth < 10) return; // Skip if container not yet sized
             const bitCellWidth = 32; // ~28px cell + gap + nibble spacer averaged
             const availableBits = Math.floor(containerWidth / bitCellWidth);
-            // Prefer 32, then 16, then 8
-            if (availableBits >= 32 && width >= 32) setBitsPerRow(32);
+            // Prefer 64, then 32, then 16, then 8
+            if (availableBits >= 64 && width >= 64) setBitsPerRow(64);
+            else if (availableBits >= 32 && width >= 32) setBitsPerRow(32);
             else if (availableBits >= 16 && width >= 16) setBitsPerRow(16);
             else setBitsPerRow(8);
             setIsReady(true);
@@ -1139,7 +1186,7 @@ const FormatRow = ({ format, value, width, onCopy, onLoadComponents }) => {
     // Extract color values for swatches (handles both single and array formats)
     const colorSwatches = isColor ? displayValue.match(/rgba?\([^)]+\)/g) || [] : [];
 
-    const handleDoubleClick = () => {
+    const handleClick = () => {
         if (hasComponents && onLoadComponents)
             onLoadComponents(format);
     };
@@ -1148,8 +1195,8 @@ const FormatRow = ({ format, value, width, onCopy, onLoadComponents }) => {
         <div className="format-row flex items-center gap-2 py-1 px-2 rounded transition-colors">
             <span
                 className={`text-[10px] text-slate-500 w-24 truncate ${hasComponents ? 'cursor-pointer hover:text-cyan-400' : ''}`}
-                title={hasComponents ? `${format.names.join(', ')} - Double-click to load components` : format.names.join(', ')}
-                onDoubleClick={handleDoubleClick}>
+                title={hasComponents ? `${format.names.join(', ')} - Click to load components` : format.names.join(', ')}
+                onClick={handleClick}>
                 {format.names[0]}{endianLabel}
             </span>
             {colorSwatches.length > 0 && (
