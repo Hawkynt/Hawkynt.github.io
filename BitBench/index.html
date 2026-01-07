@@ -402,6 +402,130 @@ const mbf64ToNumber = (bits) => {
     return sign ? -value : value;
 };
 
+// IEEE 754 Decimal32 (BID encoding - Binary Integer Decimal)
+const decimal32ToNumber = (bits) => {
+    const sign = (bits >> 31) & 1;
+    const combo = (bits >> 23) & 0xFF;
+    const trailing = bits & 0x7FFFFF;
+
+    // Check for special values (combo field starts with 11)
+    if ((combo >> 6) === 3) {
+        if ((combo >> 5) === 0x1E) return sign ? -Infinity : Infinity;
+        if ((combo >> 5) === 0x1F) return NaN;
+        // Large coefficient encoding
+        const exp = ((combo & 0x3) << 6) | ((bits >> 21) & 0x3F);
+        const coeff = (8 + ((combo >> 2) & 1)) * 1000000 + (trailing & 0x1FFFFF);
+        const value = coeff * Math.pow(10, exp - 101);
+        return sign ? -value : value;
+    }
+
+    // Standard encoding
+    const exp = (combo >> 1) & 0x7F;
+    const leadDigit = (combo >> 3) & 0x7;
+    const coeff = leadDigit * 10000000 + trailing;
+    if (coeff === 0) return sign ? -0 : 0;
+    const value = coeff * Math.pow(10, exp - 101);
+    return sign ? -value : value;
+};
+
+// IEEE 754 Decimal64 (BID encoding)
+const decimal64ToNumber = (bits) => {
+    const sign = Number((bits >> 63n) & 1n);
+    const combo = Number((bits >> 53n) & 0x3FFn);
+    const trailing = bits & 0x1FFFFFFFFFFFFFn;
+
+    // Check for special values
+    if ((combo >> 8) === 3) {
+        if ((combo >> 7) === 0x1E) return sign ? -Infinity : Infinity;
+        if ((combo >> 7) === 0x1F) return NaN;
+        // Large coefficient encoding
+        const exp = ((combo & 0x3) << 8) | Number((bits >> 51n) & 0xFFn);
+        const leadDigit = 8 + ((combo >> 2) & 1);
+        const coeff = BigInt(leadDigit) * 10000000000000000n + (trailing & 0x7FFFFFFFFFFFFn);
+        const value = Number(coeff) * Math.pow(10, exp - 398);
+        return sign ? -value : value;
+    }
+
+    // Standard encoding
+    const exp = (combo >> 2) & 0xFF;
+    const leadDigit = combo & 0x7;
+    const coeff = BigInt(leadDigit) * 10000000000000000n + trailing;
+    if (coeff === 0n) return sign ? -0 : 0;
+    const value = Number(coeff) * Math.pow(10, exp - 398);
+    return sign ? -value : value;
+};
+
+// Posit format decoder (parameterized by nbits and es)
+const positToNumber = (bits, nbits, es) => {
+    const mask = (1n << BigInt(nbits)) - 1n;
+    bits = bits & mask;
+
+    // Special cases
+    if (bits === 0n) return 0;
+    if (bits === (1n << BigInt(nbits - 1))) return NaN; // NaR (Not a Real)
+
+    const sign = Number((bits >> BigInt(nbits - 1)) & 1n);
+    let p = sign ? ((1n << BigInt(nbits)) - bits) : bits;
+
+    // Count regime bits (leading 0s or 1s after sign)
+    let regimeBit = Number((p >> BigInt(nbits - 2)) & 1n);
+    let regimeLen = 1;
+    for (let i = nbits - 3; i >= 0; --i) {
+        if (Number((p >> BigInt(i)) & 1n) === regimeBit)
+            ++regimeLen;
+        else
+            break;
+    }
+
+    // Regime value
+    const k = regimeBit ? regimeLen - 1 : -regimeLen;
+
+    // Extract exponent (es bits after regime terminator)
+    let expBits = 0;
+    let bitsRemaining = nbits - 1 - regimeLen - 1; // -1 for sign, -1 for terminator
+    if (bitsRemaining > 0) {
+        const expWidth = Math.min(es, bitsRemaining);
+        expBits = Number((p >> BigInt(bitsRemaining - expWidth)) & ((1n << BigInt(expWidth)) - 1n));
+        expBits <<= (es - expWidth); // Left-align if truncated
+        bitsRemaining -= expWidth;
+    }
+
+    // Remaining bits are fraction
+    let frac = 1.0;
+    if (bitsRemaining > 0) {
+        const fracBits = Number(p & ((1n << BigInt(bitsRemaining)) - 1n));
+        frac = 1 + fracBits / Math.pow(2, bitsRemaining);
+    }
+
+    // useed = 2^(2^es)
+    const useed = Math.pow(2, Math.pow(2, es));
+    const value = Math.pow(useed, k) * Math.pow(2, expBits) * frac;
+    return sign ? -value : value;
+};
+
+// TensorFloat-32 (TF32): 1 sign, 8 exponent, 10 mantissa (19 bits used, stored in 32)
+const tf32ToNumber = (bits) => {
+    // TF32 uses upper 19 bits of a 32-bit container
+    const sign = (bits >> 31) & 1;
+    const exp = (bits >> 23) & 0xFF;
+    const mant = (bits >> 13) & 0x3FF; // 10-bit mantissa
+
+    if (exp === 0) {
+        // Denormalized
+        if (mant === 0) return sign ? -0 : 0;
+        const value = mant / 1024 * Math.pow(2, -126);
+        return sign ? -value : value;
+    }
+    if (exp === 255) {
+        if (mant !== 0) return NaN;
+        return sign ? -Infinity : Infinity;
+    }
+
+    // Normalized
+    const value = (1 + mant / 1024) * Math.pow(2, exp - 127);
+    return sign ? -value : value;
+};
+
 // --- FIXED POINT / DECIMAL CONVERSIONS ---
 
 // Q format fixed point (e.g., Q15.16 for 32-bit)
@@ -467,6 +591,151 @@ const currencyToNumber = (bits) => {
     return Number(signed) / 10000;
 };
 
+// --- GRAY CODE CONVERSION ---
+const grayToBinary = (gray) => {
+    let binary = gray;
+    let mask = gray >> 1n;
+    while (mask > 0n) {
+        binary ^= mask;
+        mask >>= 1n;
+    }
+    return binary;
+};
+
+// --- ASCII CONTROL CHARACTER NAMES ---
+const ASCII_CONTROL = [
+    'NUL', 'SOH', 'STX', 'ETX', 'EOT', 'ENQ', 'ACK', 'BEL',
+    'BS', 'HT', 'LF', 'VT', 'FF', 'CR', 'SO', 'SI',
+    'DLE', 'DC1', 'DC2', 'DC3', 'DC4', 'NAK', 'SYN', 'ETB',
+    'CAN', 'EM', 'SUB', 'ESC', 'FS', 'GS', 'RS', 'US'
+];
+
+const formatAsciiChar = (c) => {
+    if (c < 32) return ASCII_CONTROL[c];
+    if (c === 32) return 'SP';
+    if (c === 127) return 'DEL';
+    if (c > 127) return `\\x${c.toString(16).padStart(2, '0')}`;
+    return String.fromCharCode(c);
+};
+
+// --- EBCDIC TO ASCII CONVERSION TABLE ---
+const EBCDIC_TO_ASCII = [
+    0x00,0x01,0x02,0x03,0x9C,0x09,0x86,0x7F,0x97,0x8D,0x8E,0x0B,0x0C,0x0D,0x0E,0x0F,
+    0x10,0x11,0x12,0x13,0x9D,0x85,0x08,0x87,0x18,0x19,0x92,0x8F,0x1C,0x1D,0x1E,0x1F,
+    0x80,0x81,0x82,0x83,0x84,0x0A,0x17,0x1B,0x88,0x89,0x8A,0x8B,0x8C,0x05,0x06,0x07,
+    0x90,0x91,0x16,0x93,0x94,0x95,0x96,0x04,0x98,0x99,0x9A,0x9B,0x14,0x15,0x9E,0x1A,
+    0x20,0xA0,0xE2,0xE4,0xE0,0xE1,0xE3,0xE5,0xE7,0xF1,0xA2,0x2E,0x3C,0x28,0x2B,0x7C,
+    0x26,0xE9,0xEA,0xEB,0xE8,0xED,0xEE,0xEF,0xEC,0xDF,0x21,0x24,0x2A,0x29,0x3B,0xAC,
+    0x2D,0x2F,0xC2,0xC4,0xC0,0xC1,0xC3,0xC5,0xC7,0xD1,0xA6,0x2C,0x25,0x5F,0x3E,0x3F,
+    0xF8,0xC9,0xCA,0xCB,0xC8,0xCD,0xCE,0xCF,0xCC,0x60,0x3A,0x23,0x40,0x27,0x3D,0x22,
+    0xD8,0x61,0x62,0x63,0x64,0x65,0x66,0x67,0x68,0x69,0xAB,0xBB,0xF0,0xFD,0xFE,0xB1,
+    0xB0,0x6A,0x6B,0x6C,0x6D,0x6E,0x6F,0x70,0x71,0x72,0xAA,0xBA,0xE6,0xB8,0xC6,0xA4,
+    0xB5,0x7E,0x73,0x74,0x75,0x76,0x77,0x78,0x79,0x7A,0xA1,0xBF,0xD0,0xDD,0xDE,0xAE,
+    0x5E,0xA3,0xA5,0xB7,0xA9,0xA7,0xB6,0xBC,0xBD,0xBE,0x5B,0x5D,0xAF,0xA8,0xB4,0xD7,
+    0x7B,0x41,0x42,0x43,0x44,0x45,0x46,0x47,0x48,0x49,0xAD,0xF4,0xF6,0xF2,0xF3,0xF5,
+    0x7D,0x4A,0x4B,0x4C,0x4D,0x4E,0x4F,0x50,0x51,0x52,0xB9,0xFB,0xFC,0xF9,0xFA,0xFF,
+    0x5C,0xF7,0x53,0x54,0x55,0x56,0x57,0x58,0x59,0x5A,0xB2,0xD4,0xD6,0xD2,0xD3,0xD5,
+    0x30,0x31,0x32,0x33,0x34,0x35,0x36,0x37,0x38,0x39,0xB3,0xDB,0xDC,0xD9,0xDA,0x9F
+];
+
+const ebcdicToAscii = (ebcdic) => EBCDIC_TO_ASCII[ebcdic & 0xFF];
+
+// --- FP8 CONVERSION FUNCTIONS ---
+// FP8 E4M3 (1 sign, 4 exp, 3 mant, bias=7) - ML inference format
+const fp8E4M3ToNumber = (bits) => {
+    const sign = (bits >> 7) & 1;
+    const exp = (bits >> 3) & 0xF;
+    const mant = bits & 0x7;
+    if (exp === 0) {
+        if (mant === 0) return sign ? -0 : 0;
+        return (sign ? -1 : 1) * mant / 8 * Math.pow(2, -6); // Subnormal
+    }
+    if (exp === 15) return NaN; // E4M3 uses all-ones exp for NaN (no infinity)
+    return (sign ? -1 : 1) * (1 + mant / 8) * Math.pow(2, exp - 7);
+};
+
+// FP8 E5M2 (1 sign, 5 exp, 2 mant, bias=15) - ML training format
+const fp8E5M2ToNumber = (bits) => {
+    const sign = (bits >> 7) & 1;
+    const exp = (bits >> 2) & 0x1F;
+    const mant = bits & 0x3;
+    if (exp === 0) {
+        if (mant === 0) return sign ? -0 : 0;
+        return (sign ? -1 : 1) * mant / 4 * Math.pow(2, -14); // Subnormal
+    }
+    if (exp === 31) return mant === 0 ? (sign ? -Infinity : Infinity) : NaN;
+    return (sign ? -1 : 1) * (1 + mant / 4) * Math.pow(2, exp - 15);
+};
+
+// --- ZIGZAG ENCODING (Protocol Buffers) ---
+const zigzagDecode = (val, width) => {
+    const n = val;
+    return (n >> 1n) ^ -(n & 1n);
+};
+
+// --- HSV COLOR CONVERSION ---
+const rgbToHsv = (r, g, b) => {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const d = max - min;
+    let h = 0, s = max === 0 ? 0 : d / max, v = max;
+    if (d !== 0) {
+        if (max === r) h = ((g - b) / d + 6) % 6;
+        else if (max === g) h = (b - r) / d + 2;
+        else h = (r - g) / d + 4;
+        h /= 6;
+    }
+    return { h: Math.round(h * 360), s: Math.round(s * 100), v: Math.round(v * 100) };
+};
+
+const hsvToRgb = (h, s, v) => {
+    h /= 360; s /= 100; v /= 100;
+    const i = Math.floor(h * 6);
+    const f = h * 6 - i;
+    const p = v * (1 - s);
+    const q = v * (1 - f * s);
+    const t = v * (1 - (1 - f) * s);
+    let r, g, b;
+    switch (i % 6) {
+        case 0: r = v; g = t; b = p; break;
+        case 1: r = q; g = v; b = p; break;
+        case 2: r = p; g = v; b = t; break;
+        case 3: r = p; g = q; b = v; break;
+        case 4: r = t; g = p; b = v; break;
+        case 5: r = v; g = p; b = q; break;
+    }
+    return { r: Math.round(r * 255), g: Math.round(g * 255), b: Math.round(b * 255) };
+};
+
+// μ-law to linear PCM (ITU-T G.711)
+const mulawToLinear = (mulaw) => {
+    mulaw = ~mulaw & 0xFF;
+    const sign = mulaw & 0x80;
+    const exponent = (mulaw >> 4) & 0x07;
+    const mantissa = mulaw & 0x0F;
+    let sample = ((mantissa << 3) + 0x84) << exponent;
+    sample -= 0x84;
+    return sign ? -sample : sample;
+};
+
+// A-law to linear PCM (ITU-T G.711)
+const alawToLinear = (alaw) => {
+    alaw ^= 0x55;
+    const sign = alaw & 0x80;
+    const exponent = (alaw >> 4) & 0x07;
+    const mantissa = alaw & 0x0F;
+    let sample = exponent === 0 ? (mantissa << 4) + 8 : ((mantissa << 4) + 0x108) << (exponent - 1);
+    return sign ? -sample : sample;
+};
+
+// MIDI note names
+const MIDI_NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const midiToNoteName = (note) => {
+    if (note < 0 || note > 127) return 'Invalid';
+    const octave = Math.floor(note / 12) - 1;
+    return `${MIDI_NOTES[note % 12]}${octave}`;
+};
+
 // --- FORMAT DEFINITIONS ---
 const FORMAT_CATEGORIES = {
     integers: { name: 'Integers', color: 'cyan' },
@@ -474,7 +743,11 @@ const FORMAT_CATEGORIES = {
     exotic_floats: { name: 'Exotic Floats', color: 'amber' },
     fixed: { name: 'Fixed Point', color: 'violet' },
     decimal: { name: 'Decimal/BCD', color: 'pink' },
-    special: { name: 'Special', color: 'orange' }
+    colors: { name: 'Colors', color: 'rose' },
+    datetime: { name: 'Date/Time', color: 'sky' },
+    audio: { name: 'Audio', color: 'fuchsia' },
+    special: { name: 'Special', color: 'orange' },
+    characters: { name: 'Characters', color: 'lime' }
 };
 
 const FORMATS = [
@@ -773,6 +1046,69 @@ const FORMATS = [
       ],
       convert: (v) => mbf64ToNumber(v), display: (v) => formatFloat(mbf64ToNumber(v)) },
 
+    // IEEE 754 Decimal Floating Point (BID encoding)
+    { id: 'decimal32', category: 'exotic_floats', bits: 32, names: ['Decimal32', 'decimal32', '_Decimal32'],
+      components: [
+        { name: 'Sign', start: 31, width: 1, color: '#ef4444' },
+        { name: 'Combination', start: 23, width: 8, color: '#f97316' },
+        { name: 'Trailing Sig.', start: 0, width: 23, color: '#3b82f6' }
+      ],
+      convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w).map(x => decimal32ToNumber(Number(x))) : decimal32ToNumber(Number(v)),
+      display: (v, w) => extractAndFormat(v, 32, w, x => decimal32ToNumber(Number(x)), formatFloat) },
+
+    { id: 'decimal64', category: 'exotic_floats', bits: 64, names: ['Decimal64', 'decimal64', '_Decimal64'],
+      components: [
+        { name: 'Sign', start: 63, width: 1, color: '#ef4444' },
+        { name: 'Combination', start: 53, width: 10, color: '#f97316' },
+        { name: 'Trailing Sig.', start: 0, width: 53, color: '#3b82f6' }
+      ],
+      convert: (v) => decimal64ToNumber(v), display: (v) => formatFloat(decimal64ToNumber(v)) },
+
+    // Posit format (unum type III)
+    { id: 'posit8', category: 'exotic_floats', bits: 8, names: ['Posit8', 'posit<8,0>'],
+      components: [
+        { name: 'Sign', start: 7, width: 1, color: '#ef4444' },
+        { name: 'Regime+Exp+Frac', start: 0, width: 7, color: '#3b82f6' }
+      ],
+      convert: (v, w) => {
+          if (w > 8) return extractUnsignedArray(v, 8, w).map(x => positToNumber(x, 8, 0));
+          return positToNumber(v, 8, 0);
+      },
+      display: (v, w) => extractAndFormat(v, 8, w, x => positToNumber(x, 8, 0), formatFloat) },
+
+    { id: 'posit16', category: 'exotic_floats', bits: 16, names: ['Posit16', 'posit<16,1>'],
+      components: [
+        { name: 'Sign', start: 15, width: 1, color: '#ef4444' },
+        { name: 'Regime+Exp+Frac', start: 0, width: 15, color: '#3b82f6' }
+      ],
+      convert: (v, w) => {
+          if (w > 16) return extractUnsignedArray(v, 16, w).map(x => positToNumber(x, 16, 1));
+          return positToNumber(v, 16, 1);
+      },
+      display: (v, w) => extractAndFormat(v, 16, w, x => positToNumber(x, 16, 1), formatFloat) },
+
+    { id: 'posit32', category: 'exotic_floats', bits: 32, names: ['Posit32', 'posit<32,2>'],
+      components: [
+        { name: 'Sign', start: 31, width: 1, color: '#ef4444' },
+        { name: 'Regime+Exp+Frac', start: 0, width: 31, color: '#3b82f6' }
+      ],
+      convert: (v, w) => {
+          if (w > 32) return extractUnsignedArray(v, 32, w).map(x => positToNumber(x, 32, 2));
+          return positToNumber(v, 32, 2);
+      },
+      display: (v, w) => extractAndFormat(v, 32, w, x => positToNumber(x, 32, 2), formatFloat) },
+
+    // TensorFloat-32 (NVIDIA tensor core format)
+    { id: 'tf32', category: 'exotic_floats', bits: 32, names: ['TF32', 'TensorFloat-32', 'TensorFloat32'],
+      components: [
+        { name: 'Sign', start: 31, width: 1, color: '#ef4444' },
+        { name: 'Exponent', start: 23, width: 8, color: '#f97316' },
+        { name: 'Mantissa', start: 13, width: 10, color: '#3b82f6' },
+        { name: 'Unused', start: 0, width: 13, color: '#6b7280' }
+      ],
+      convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w).map(x => tf32ToNumber(Number(x))) : tf32ToNumber(Number(v)),
+      display: (v, w) => extractAndFormat(v, 32, w, x => tf32ToNumber(Number(x)), formatFloat) },
+
     // === FIXED POINT ===
     { id: 'q7_8', category: 'fixed', bits: 16, names: ['Q7.8', 'fixed8.8'],
       components: [
@@ -874,7 +1210,7 @@ const FORMATS = [
       ],
       convert: (v) => currencyToNumber(v), display: (v) => '$' + currencyToNumber(v).toFixed(4) },
 
-    { id: 'filetime', category: 'special', bits: 64, names: ['FILETIME', 'Windows FILETIME'],
+    { id: 'filetime', category: 'datetime', bits: 64, names: ['FILETIME', 'Windows FILETIME'],
       components: [
         { name: '100ns Ticks', start: 0, width: 64, color: '#a855f7' }
       ],
@@ -883,7 +1219,7 @@ const FORMATS = [
           return isNaN(d.getTime()) ? 'Invalid' : d.toISOString();
       }},
 
-    { id: 'unix32', category: 'special', bits: 32, names: ['Unix32', 'time_t', 'Unix timestamp'],
+    { id: 'unix32', category: 'datetime', bits: 32, names: ['Unix32', 'time_t', 'Unix timestamp'],
       components: [
         { name: 'Seconds', start: 0, width: 32, color: '#a855f7' }
       ],
@@ -899,7 +1235,7 @@ const FORMATS = [
           return isNaN(d.getTime()) ? 'Invalid' : d.toISOString();
       }},
 
-    { id: 'unix64', category: 'special', bits: 64, names: ['Unix64', 'time64_t'],
+    { id: 'unix64', category: 'datetime', bits: 64, names: ['Unix64', 'time64_t'],
       components: [
         { name: 'Seconds', start: 0, width: 64, color: '#a855f7' }
       ],
@@ -908,7 +1244,7 @@ const FORMATS = [
           return isNaN(d.getTime()) ? 'Invalid' : d.toISOString();
       }},
 
-    { id: 'dosdate', category: 'special', bits: 32, names: ['DOS DateTime', 'FAT timestamp'],
+    { id: 'dosdate', category: 'datetime', bits: 32, names: ['DOS DateTime', 'FAT timestamp'],
       components: [
         { name: 'Year-1980', start: 25, width: 7, color: '#ef4444' },
         { name: 'Month', start: 21, width: 4, color: '#f97316' },
@@ -944,7 +1280,7 @@ const FORMATS = [
           return formatDos(v);
       }},
 
-    { id: 'rgb24', category: 'special', bits: 32, names: ['RGB', 'RGB24', 'color'],
+    { id: 'rgb24', category: 'colors', bits: 32, names: ['RGB', 'RGB24', 'color'],
       components: [
         { name: 'Unused', start: 24, width: 8, color: '#64748b' },
         { name: 'Red', start: 16, width: 8, color: '#ef4444' },
@@ -963,7 +1299,7 @@ const FORMATS = [
           return formatRgb(v);
       }},
 
-    { id: 'rgba32', category: 'special', bits: 32, names: ['RGBA', 'RGBA32', 'ARGB'],
+    { id: 'rgba32', category: 'colors', bits: 32, names: ['RGBA', 'RGBA32', 'ARGB'],
       components: [
         { name: 'Alpha', start: 24, width: 8, color: '#94a3b8' },
         { name: 'Red', start: 16, width: 8, color: '#ef4444' },
@@ -1001,6 +1337,556 @@ const FORMATS = [
           };
           if (w > 32) return formatArray(extractUnsignedArray(v, 32, w).map(formatFcc));
           return formatFcc(v);
+      }},
+
+    // === CHARACTERS ===
+    { id: 'ascii8', category: 'characters', bits: 8, names: ['ASCII', 'Char', 'char'],
+      convert: (v, w) => w > 8 ? extractUnsignedArray(v, 8, w).map(x => Number(x)) : Number(v & 0xFFn),
+      display: (v, w) => {
+          const fmt = (c) => {
+              const n = Number(c);
+              if (n < 32) return `'${ASCII_CONTROL[n]}'`;
+              if (n === 32) return "'SP'";
+              if (n === 127) return "'DEL'";
+              if (n > 127) return `'\\x${n.toString(16).padStart(2, '0')}'`;
+              return `'${String.fromCharCode(n)}'`;
+          };
+          if (w > 8) return formatArray(extractUnsignedArray(v, 8, w).map(fmt));
+          return fmt(v);
+      }},
+    { id: 'ascii16', category: 'characters', bits: 16, names: ['ASCII16', 'Chars16'],
+      convert: (v) => {
+          const chars = [v & 0xFFn, (v >> 8n) & 0xFFn].map(c => Number(c));
+          return chars.map(c => c >= 32 && c < 127 ? String.fromCharCode(c) : '.').join('');
+      },
+      display: (v, w) => {
+          const fmt = (x) => {
+              const chars = [x & 0xFFn, (x >> 8n) & 0xFFn].map(c => Number(c));
+              return '"' + chars.map(c => c >= 32 && c < 127 ? String.fromCharCode(c) : '.').join('') + '"';
+          };
+          if (w > 16) return formatArray(extractUnsignedArray(v, 16, w).map(fmt));
+          return fmt(v);
+      }},
+    { id: 'ascii32', category: 'characters', bits: 32, names: ['ASCII32', 'Chars32'],
+      convert: (v) => {
+          const chars = [v & 0xFFn, (v >> 8n) & 0xFFn, (v >> 16n) & 0xFFn, (v >> 24n) & 0xFFn].map(c => Number(c));
+          return chars.map(c => c >= 32 && c < 127 ? String.fromCharCode(c) : '.').join('');
+      },
+      display: (v, w) => {
+          const fmt = (x) => {
+              const chars = [x & 0xFFn, (x >> 8n) & 0xFFn, (x >> 16n) & 0xFFn, (x >> 24n) & 0xFFn].map(c => Number(c));
+              return '"' + chars.map(c => c >= 32 && c < 127 ? String.fromCharCode(c) : '.').join('') + '"';
+          };
+          if (w > 32) return formatArray(extractUnsignedArray(v, 32, w).map(fmt));
+          return fmt(v);
+      }},
+    { id: 'ascii64', category: 'characters', bits: 64, names: ['ASCII64', 'Chars64'],
+      convert: (v) => {
+          const chars = [];
+          for (let i = 0; i < 8; ++i) chars.push(Number((v >> BigInt(i * 8)) & 0xFFn));
+          return chars.map(c => c >= 32 && c < 127 ? String.fromCharCode(c) : '.').join('');
+      },
+      display: (v) => {
+          const chars = [];
+          for (let i = 0; i < 8; ++i) chars.push(Number((v >> BigInt(i * 8)) & 0xFFn));
+          return '"' + chars.map(c => c >= 32 && c < 127 ? String.fromCharCode(c) : '.').join('') + '"';
+      }},
+    { id: 'ebcdic8', category: 'characters', bits: 8, names: ['EBCDIC'],
+      convert: (v, w) => w > 8 ? extractUnsignedArray(v, 8, w).map(x => ebcdicToAscii(Number(x))) : ebcdicToAscii(Number(v)),
+      display: (v, w) => {
+          const fmt = (c) => {
+              const ascii = ebcdicToAscii(Number(c));
+              if (ascii >= 32 && ascii < 127) return `'${String.fromCharCode(ascii)}'`;
+              return `'\\x${Number(c).toString(16).padStart(2, '0')}'`;
+          };
+          if (w > 8) return formatArray(extractUnsignedArray(v, 8, w).map(fmt));
+          return fmt(v);
+      }},
+    { id: 'utf32', category: 'characters', bits: 32, names: ['UTF-32', 'Unicode', 'UCS-4'],
+      components: [
+        { name: 'Plane', start: 16, width: 5, color: '#ef4444' },
+        { name: 'Code Point', start: 0, width: 16, color: '#3b82f6' }
+      ],
+      convert: (v) => {
+          const cp = Number(v & 0x1FFFFFn);
+          try { return String.fromCodePoint(cp); } catch { return '?'; }
+      },
+      display: (v, w) => {
+          const fmt = (x) => {
+              const cp = Number(x & 0x1FFFFFn);
+              try {
+                  const ch = String.fromCodePoint(cp);
+                  return `U+${cp.toString(16).toUpperCase().padStart(4, '0')} '${ch}'`;
+              } catch { return `U+${cp.toString(16).toUpperCase().padStart(4, '0')} (invalid)`; }
+          };
+          if (w > 32) return formatArray(extractUnsignedArray(v, 32, w).map(fmt));
+          return fmt(v);
+      }},
+
+    // === NETWORK ===
+    { id: 'ipv4', category: 'special', bits: 32, names: ['IPv4', 'IP Address', 'ipaddr', 'in_addr'],
+      components: [
+        { name: 'Octet 1', start: 24, width: 8, color: '#ef4444' },
+        { name: 'Octet 2', start: 16, width: 8, color: '#f97316' },
+        { name: 'Octet 3', start: 8, width: 8, color: '#22c55e' },
+        { name: 'Octet 4', start: 0, width: 8, color: '#3b82f6' }
+      ],
+      convert: (v) => Number(v & 0xFFFFFFFFn),
+      display: (v, w) => {
+          const fmt = (x) => {
+              const n = Number(x & 0xFFFFFFFFn);
+              return `${(n >>> 24) & 0xFF}.${(n >>> 16) & 0xFF}.${(n >>> 8) & 0xFF}.${n & 0xFF}`;
+          };
+          if (w > 32) return formatArray(extractUnsignedArray(v, 32, w).map(fmt));
+          return fmt(v);
+      }},
+    { id: 'mac48', category: 'special', bits: 64, names: ['MAC', 'MAC-48', 'EUI-48'],
+      components: [
+        { name: 'Unused', start: 48, width: 16, color: '#6b7280' },
+        { name: 'OUI-1', start: 40, width: 8, color: '#ef4444' },
+        { name: 'OUI-2', start: 32, width: 8, color: '#f97316' },
+        { name: 'OUI-3', start: 24, width: 8, color: '#eab308' },
+        { name: 'NIC-1', start: 16, width: 8, color: '#22c55e' },
+        { name: 'NIC-2', start: 8, width: 8, color: '#06b6d4' },
+        { name: 'NIC-3', start: 0, width: 8, color: '#3b82f6' }
+      ],
+      convert: (v) => v & 0xFFFFFFFFFFFFn,
+      display: (v) => {
+          const bytes = [];
+          for (let i = 5; i >= 0; --i) bytes.push(Number((v >> BigInt(i * 8)) & 0xFFn).toString(16).padStart(2, '0').toUpperCase());
+          return bytes.join(':');
+      }},
+    { id: 'ipv6low', category: 'special', bits: 64, names: ['IPv6 (low)', 'IPv6-L'],
+      components: [
+        { name: 'Group 4', start: 48, width: 16, color: '#3b82f6' },
+        { name: 'Group 5', start: 32, width: 16, color: '#22c55e' },
+        { name: 'Group 6', start: 16, width: 16, color: '#eab308' },
+        { name: 'Group 7', start: 0, width: 16, color: '#ef4444' }
+      ],
+      convert: (v) => v,
+      display: (v) => {
+          const g4 = ((v >> 48n) & 0xFFFFn).toString(16);
+          const g5 = ((v >> 32n) & 0xFFFFn).toString(16);
+          const g6 = ((v >> 16n) & 0xFFFFn).toString(16);
+          const g7 = (v & 0xFFFFn).toString(16);
+          return `::${g4}:${g5}:${g6}:${g7}`;
+      }},
+    { id: 'port16', category: 'special', bits: 16, names: ['Port', 'TCP Port', 'UDP Port'],
+      components: [
+        { name: 'Port', start: 0, width: 16, color: '#3b82f6' }
+      ],
+      convert: (v, w) => w > 16 ? extractUnsignedArray(v, 16, w).map(x => Number(x & 0xFFFFn)) : Number(v & 0xFFFFn),
+      display: (v, w) => {
+          const wellKnown = { 20: 'FTP-data', 21: 'FTP', 22: 'SSH', 23: 'Telnet', 25: 'SMTP', 53: 'DNS',
+              80: 'HTTP', 110: 'POP3', 143: 'IMAP', 443: 'HTTPS', 993: 'IMAPS', 995: 'POP3S',
+              3306: 'MySQL', 5432: 'PostgreSQL', 6379: 'Redis', 8080: 'HTTP-alt', 3389: 'RDP',
+              27017: 'MongoDB', 11211: 'Memcached', 6443: 'K8s API' };
+          const fmt = (x) => {
+              const port = Number(x & 0xFFFFn);
+              return wellKnown[port] ? `${port} (${wellKnown[port]})` : `${port}`;
+          };
+          if (w > 16) return formatArray(extractUnsignedArray(v, 16, w).map(fmt));
+          return fmt(v);
+      }},
+
+    // === ADDITIONAL COLORS ===
+    { id: 'rgb565', category: 'colors', bits: 16, names: ['RGB565', '16-bit Color', 'rgb16'],
+      components: [
+        { name: 'Red', start: 11, width: 5, color: '#ef4444' },
+        { name: 'Green', start: 5, width: 6, color: '#22c55e' },
+        { name: 'Blue', start: 0, width: 5, color: '#3b82f6' }
+      ],
+      convert: (v) => {
+          const n = Number(v & 0xFFFFn);
+          return {
+              r: ((n >> 11) & 0x1F) * 255 / 31 | 0,
+              g: ((n >> 5) & 0x3F) * 255 / 63 | 0,
+              b: (n & 0x1F) * 255 / 31 | 0
+          };
+      },
+      display: (v, w) => {
+          const fmt = (x) => {
+              const n = Number(x & 0xFFFFn);
+              const r = ((n >> 11) & 0x1F) * 255 / 31 | 0;
+              const g = ((n >> 5) & 0x3F) * 255 / 63 | 0;
+              const b = (n & 0x1F) * 255 / 31 | 0;
+              return `rgb(${r},${g},${b})`;
+          };
+          if (w > 16) return formatArray(extractUnsignedArray(v, 16, w).map(fmt));
+          return fmt(v);
+      }},
+    { id: 'rgb555', category: 'colors', bits: 16, names: ['RGB555', '15-bit Color', 'rgb15'],
+      components: [
+        { name: 'X', start: 15, width: 1, color: '#6b7280' },
+        { name: 'Red', start: 10, width: 5, color: '#ef4444' },
+        { name: 'Green', start: 5, width: 5, color: '#22c55e' },
+        { name: 'Blue', start: 0, width: 5, color: '#3b82f6' }
+      ],
+      convert: (v) => {
+          const n = Number(v & 0x7FFFn);
+          return {
+              r: ((n >> 10) & 0x1F) * 255 / 31 | 0,
+              g: ((n >> 5) & 0x1F) * 255 / 31 | 0,
+              b: (n & 0x1F) * 255 / 31 | 0
+          };
+      },
+      display: (v, w) => {
+          const fmt = (x) => {
+              const n = Number(x & 0x7FFFn);
+              const r = ((n >> 10) & 0x1F) * 255 / 31 | 0;
+              const g = ((n >> 5) & 0x1F) * 255 / 31 | 0;
+              const b = (n & 0x1F) * 255 / 31 | 0;
+              return `rgb(${r},${g},${b})`;
+          };
+          if (w > 16) return formatArray(extractUnsignedArray(v, 16, w).map(fmt));
+          return fmt(v);
+      }},
+    { id: 'argb1555', category: 'colors', bits: 16, names: ['ARGB1555', '16-bit ARGB'],
+      components: [
+        { name: 'Alpha', start: 15, width: 1, color: '#a855f7' },
+        { name: 'Red', start: 10, width: 5, color: '#ef4444' },
+        { name: 'Green', start: 5, width: 5, color: '#22c55e' },
+        { name: 'Blue', start: 0, width: 5, color: '#3b82f6' }
+      ],
+      convert: (v) => {
+          const n = Number(v & 0xFFFFn);
+          return {
+              a: (n >> 15) & 1 ? 255 : 0,
+              r: ((n >> 10) & 0x1F) * 255 / 31 | 0,
+              g: ((n >> 5) & 0x1F) * 255 / 31 | 0,
+              b: (n & 0x1F) * 255 / 31 | 0
+          };
+      },
+      display: (v, w) => {
+          const fmt = (x) => {
+              const n = Number(x & 0xFFFFn);
+              const a = (n >> 15) & 1 ? 1 : 0;
+              const r = ((n >> 10) & 0x1F) * 255 / 31 | 0;
+              const g = ((n >> 5) & 0x1F) * 255 / 31 | 0;
+              const b = (n & 0x1F) * 255 / 31 | 0;
+              return `rgba(${r},${g},${b},${a})`;
+          };
+          if (w > 16) return formatArray(extractUnsignedArray(v, 16, w).map(fmt));
+          return fmt(v);
+      }},
+    { id: 'argb4444', category: 'colors', bits: 16, names: ['ARGB4444', '16-bit ARGB4444', '4444'],
+      components: [
+        { name: 'Alpha', start: 12, width: 4, color: '#a855f7' },
+        { name: 'Red', start: 8, width: 4, color: '#ef4444' },
+        { name: 'Green', start: 4, width: 4, color: '#22c55e' },
+        { name: 'Blue', start: 0, width: 4, color: '#3b82f6' }
+      ],
+      convert: (v) => {
+          const n = Number(v & 0xFFFFn);
+          return {
+              a: ((n >> 12) & 0xF) * 17,
+              r: ((n >> 8) & 0xF) * 17,
+              g: ((n >> 4) & 0xF) * 17,
+              b: (n & 0xF) * 17
+          };
+      },
+      display: (v, w) => {
+          const fmt = (x) => {
+              const n = Number(x & 0xFFFFn);
+              const a = ((n >> 12) & 0xF) / 15;
+              const r = ((n >> 8) & 0xF) * 17;
+              const g = ((n >> 4) & 0xF) * 17;
+              const b = (n & 0xF) * 17;
+              return `rgba(${r},${g},${b},${a.toFixed(2)})`;
+          };
+          if (w > 16) return formatArray(extractUnsignedArray(v, 16, w).map(fmt));
+          return fmt(v);
+      }},
+    { id: 'bgr24', category: 'colors', bits: 32, names: ['BGR24', 'BGR', 'COLORREF'],
+      components: [
+        { name: 'Unused', start: 24, width: 8, color: '#6b7280' },
+        { name: 'Blue', start: 16, width: 8, color: '#3b82f6' },
+        { name: 'Green', start: 8, width: 8, color: '#22c55e' },
+        { name: 'Red', start: 0, width: 8, color: '#ef4444' }
+      ],
+      convert: (v) => {
+          const n = Number(v & 0xFFFFFFn);
+          return { b: (n >> 16) & 0xFF, g: (n >> 8) & 0xFF, r: n & 0xFF };
+      },
+      display: (v, w) => {
+          const fmt = (x) => {
+              const n = Number(x & 0xFFFFFFn);
+              const b = (n >> 16) & 0xFF, g = (n >> 8) & 0xFF, r = n & 0xFF;
+              return `rgb(${r},${g},${b})`;
+          };
+          if (w > 32) return formatArray(extractUnsignedArray(v, 32, w).map(fmt));
+          return fmt(v);
+      }},
+    { id: 'bgra32', category: 'colors', bits: 32, names: ['BGRA32', 'BGRA'],
+      components: [
+        { name: 'Alpha', start: 24, width: 8, color: '#a855f7' },
+        { name: 'Blue', start: 16, width: 8, color: '#3b82f6' },
+        { name: 'Green', start: 8, width: 8, color: '#22c55e' },
+        { name: 'Red', start: 0, width: 8, color: '#ef4444' }
+      ],
+      convert: (v) => {
+          const n = Number(v & 0xFFFFFFFFn);
+          return { a: (n >> 24) & 0xFF, b: (n >> 16) & 0xFF, g: (n >> 8) & 0xFF, r: n & 0xFF };
+      },
+      display: (v, w) => {
+          const fmt = (x) => {
+              const n = Number(x & 0xFFFFFFFFn);
+              const a = (n >> 24) & 0xFF, b = (n >> 16) & 0xFF, g = (n >> 8) & 0xFF, r = n & 0xFF;
+              return `rgba(${r},${g},${b},${(a/255).toFixed(2)})`;
+          };
+          if (w > 32) return formatArray(extractUnsignedArray(v, 32, w).map(fmt));
+          return fmt(v);
+      }},
+    { id: 'abgr32', category: 'colors', bits: 32, names: ['ABGR32', 'ABGR'],
+      components: [
+        { name: 'Alpha', start: 24, width: 8, color: '#a855f7' },
+        { name: 'Blue', start: 16, width: 8, color: '#3b82f6' },
+        { name: 'Green', start: 8, width: 8, color: '#22c55e' },
+        { name: 'Red', start: 0, width: 8, color: '#ef4444' }
+      ],
+      convert: (v) => {
+          const n = Number(v & 0xFFFFFFFFn);
+          return { a: (n >> 24) & 0xFF, b: (n >> 16) & 0xFF, g: (n >> 8) & 0xFF, r: n & 0xFF };
+      },
+      display: (v, w) => {
+          const fmt = (x) => {
+              const n = Number(x & 0xFFFFFFFFn);
+              const a = (n >> 24) & 0xFF, b = (n >> 16) & 0xFF, g = (n >> 8) & 0xFF, r = n & 0xFF;
+              return `rgba(${r},${g},${b},${(a/255).toFixed(2)})`;
+          };
+          if (w > 32) return formatArray(extractUnsignedArray(v, 32, w).map(fmt));
+          return fmt(v);
+      }},
+    { id: 'hsv24', category: 'colors', bits: 32, names: ['HSV', 'HSB'],
+      components: [
+        { name: 'Unused', start: 24, width: 8, color: '#6b7280' },
+        { name: 'Hue', start: 16, width: 8, color: '#ef4444' },
+        { name: 'Saturation', start: 8, width: 8, color: '#22c55e' },
+        { name: 'Value', start: 0, width: 8, color: '#3b82f6' }
+      ],
+      convert: (v) => {
+          const n = Number(v & 0xFFFFFFn);
+          const h = ((n >> 16) & 0xFF) * 360 / 255 | 0;
+          const s = ((n >> 8) & 0xFF) * 100 / 255 | 0;
+          const vv = (n & 0xFF) * 100 / 255 | 0;
+          return { h, s, v: vv };
+      },
+      display: (v, w) => {
+          const fmt = (x) => {
+              const n = Number(x & 0xFFFFFFn);
+              const h = ((n >> 16) & 0xFF) * 360 / 255 | 0;
+              const s = ((n >> 8) & 0xFF) * 100 / 255 | 0;
+              const vv = (n & 0xFF) * 100 / 255 | 0;
+              const rgb = hsvToRgb(h, s, vv);
+              return `rgb(${rgb.r},${rgb.g},${rgb.b})`;
+          };
+          if (w > 32) return formatArray(extractUnsignedArray(v, 32, w).map(fmt));
+          return fmt(v);
+      }},
+
+    // === AI/ML FLOATS ===
+    { id: 'fp8e4m3', category: 'exotic_floats', bits: 8, names: ['FP8-E4M3', 'E4M3', 'fp8'],
+      components: [
+        { name: 'Sign', start: 7, width: 1, color: '#ef4444' },
+        { name: 'Exponent', start: 3, width: 4, color: '#f97316' },
+        { name: 'Mantissa', start: 0, width: 3, color: '#3b82f6' }
+      ],
+      convert: (v, w) => w > 8 ? extractUnsignedArray(v, 8, w).map(x => fp8E4M3ToNumber(Number(x))) : fp8E4M3ToNumber(Number(v)),
+      display: (v, w) => extractAndFormat(v, 8, w, x => fp8E4M3ToNumber(Number(x)), formatFloat) },
+    { id: 'fp8e5m2', category: 'exotic_floats', bits: 8, names: ['FP8-E5M2', 'E5M2'],
+      components: [
+        { name: 'Sign', start: 7, width: 1, color: '#ef4444' },
+        { name: 'Exponent', start: 2, width: 5, color: '#f97316' },
+        { name: 'Mantissa', start: 0, width: 2, color: '#3b82f6' }
+      ],
+      convert: (v, w) => w > 8 ? extractUnsignedArray(v, 8, w).map(x => fp8E5M2ToNumber(Number(x))) : fp8E5M2ToNumber(Number(v)),
+      display: (v, w) => extractAndFormat(v, 8, w, x => fp8E5M2ToNumber(Number(x)), formatFloat) },
+
+    // === ADDITIONAL DATE/TIME ===
+    { id: 'ntp64', category: 'datetime', bits: 64, names: ['NTP', 'NTP Timestamp'],
+      components: [
+        { name: 'Seconds', start: 32, width: 32, color: '#3b82f6' },
+        { name: 'Fraction', start: 0, width: 32, color: '#22c55e' }
+      ],
+      convert: (v) => {
+          const secs = Number(v >> 32n);
+          const frac = Number(v & 0xFFFFFFFFn) / 0x100000000;
+          return new Date((secs - 2208988800 + frac) * 1000);
+      },
+      display: (v) => {
+          const secs = Number(v >> 32n);
+          const frac = Number(v & 0xFFFFFFFFn) / 0x100000000;
+          const ms = (secs - 2208988800 + frac) * 1000;
+          if (secs === 0 && frac === 0) return 'Era 0 start';
+          try { return new Date(ms).toISOString(); } catch { return 'Invalid'; }
+      }},
+    { id: 'oledate', category: 'datetime', bits: 64, names: ['OLE Date', 'Automation Date', 'DATE'],
+      components: [
+        { name: 'Days (double)', start: 0, width: 64, color: '#3b82f6' }
+      ],
+      convert: (v) => {
+          const buf = new ArrayBuffer(8);
+          new DataView(buf).setBigUint64(0, v, true);
+          const days = new DataView(buf).getFloat64(0, true);
+          return new Date((days - 25569) * 86400000);
+      },
+      display: (v) => {
+          const buf = new ArrayBuffer(8);
+          new DataView(buf).setBigUint64(0, v, true);
+          const days = new DataView(buf).getFloat64(0, true);
+          if (!isFinite(days)) return 'Invalid';
+          try { return new Date((days - 25569) * 86400000).toISOString(); } catch { return 'Invalid'; }
+      }},
+    { id: 'hfsplus', category: 'datetime', bits: 32, names: ['HFS+', 'Mac Time', 'HFSPlusDate'],
+      components: [
+        { name: 'Seconds', start: 0, width: 32, color: '#3b82f6' }
+      ],
+      convert: (v, w) => {
+          const secs = Number(v & 0xFFFFFFFFn);
+          return new Date((secs - 2082844800) * 1000);
+      },
+      display: (v, w) => {
+          const fmt = (x) => {
+              const secs = Number(x & 0xFFFFFFFFn);
+              if (secs === 0) return '1904-01-01 (epoch)';
+              try { return new Date((secs - 2082844800) * 1000).toISOString(); } catch { return 'Invalid'; }
+          };
+          if (w > 32) return formatArray(extractUnsignedArray(v, 32, w).map(fmt));
+          return fmt(v);
+      }},
+    { id: 'gpstime', category: 'datetime', bits: 32, names: ['GPS Time', 'GPS'],
+      components: [
+        { name: 'Seconds', start: 0, width: 32, color: '#3b82f6' }
+      ],
+      convert: (v) => {
+          const secs = Number(v & 0xFFFFFFFFn);
+          return new Date((secs + 315964800) * 1000);
+      },
+      display: (v, w) => {
+          const fmt = (x) => {
+              const secs = Number(x & 0xFFFFFFFFn);
+              if (secs === 0) return '1980-01-06 (epoch)';
+              try { return new Date((secs + 315964800) * 1000).toISOString(); } catch { return 'Invalid'; }
+          };
+          if (w > 32) return formatArray(extractUnsignedArray(v, 32, w).map(fmt));
+          return fmt(v);
+      }},
+    { id: 'webkit', category: 'datetime', bits: 64, names: ['WebKit', 'Chrome Time'],
+      components: [
+        { name: 'Microseconds', start: 0, width: 64, color: '#3b82f6' }
+      ],
+      convert: (v) => {
+          const us = v - 11644473600000000n;
+          return new Date(Number(us / 1000n));
+      },
+      display: (v) => {
+          const us = v - 11644473600000000n;
+          if (v === 0n) return '1601-01-01 (epoch)';
+          try { return new Date(Number(us / 1000n)).toISOString(); } catch { return 'Invalid'; }
+      }},
+    { id: 'dotnet', category: 'datetime', bits: 64, names: ['.NET Ticks', 'DateTime.Ticks'],
+      components: [
+        { name: 'Kind', start: 62, width: 2, color: '#ef4444' },
+        { name: 'Ticks', start: 0, width: 62, color: '#3b82f6' }
+      ],
+      convert: (v) => {
+          const ticks = v & 0x3FFFFFFFFFFFFFFFn;
+          const ms = Number(ticks / 10000n) - 62135596800000;
+          return new Date(ms);
+      },
+      display: (v) => {
+          const ticks = v & 0x3FFFFFFFFFFFFFFFn;
+          const ms = Number(ticks / 10000n) - 62135596800000;
+          if (ticks === 0n) return '0001-01-01 (epoch)';
+          try { return new Date(ms).toISOString(); } catch { return 'Invalid'; }
+      }},
+
+    // === ALTERNATIVE INTEGERS ===
+    { id: 'gray8', category: 'integers', bits: 8, names: ['Gray8', 'Gray Code 8'],
+      components: [
+        { name: 'Gray Code', start: 0, width: 8, color: '#6b7280' }
+      ],
+      convert: (v, w) => w > 8 ? extractUnsignedArray(v, 8, w).map(x => grayToBinary(x)) : grayToBinary(v),
+      display: (v, w) => {
+          if (w > 8) return formatArray(extractUnsignedArray(v, 8, w).map(x => grayToBinary(x).toString()));
+          return `${grayToBinary(v)} (from Gray ${v})`;
+      }},
+    { id: 'gray16', category: 'integers', bits: 16, names: ['Gray16', 'Gray Code 16'],
+      components: [
+        { name: 'Gray Code', start: 0, width: 16, color: '#6b7280' }
+      ],
+      convert: (v, w) => w > 16 ? extractUnsignedArray(v, 16, w).map(x => grayToBinary(x)) : grayToBinary(v),
+      display: (v, w) => {
+          if (w > 16) return formatArray(extractUnsignedArray(v, 16, w).map(x => grayToBinary(x).toString()));
+          return `${grayToBinary(v)} (from Gray ${v})`;
+      }},
+    { id: 'gray32', category: 'integers', bits: 32, names: ['Gray32', 'Gray Code 32'],
+      components: [
+        { name: 'Gray Code', start: 0, width: 32, color: '#6b7280' }
+      ],
+      convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w).map(x => grayToBinary(x)) : grayToBinary(v),
+      display: (v, w) => {
+          if (w > 32) return formatArray(extractUnsignedArray(v, 32, w).map(x => grayToBinary(x).toString()));
+          return `${grayToBinary(v)} (from Gray ${v})`;
+      }},
+    { id: 'gray64', category: 'integers', bits: 64, names: ['Gray64', 'Gray Code 64'],
+      components: [
+        { name: 'Gray Code', start: 0, width: 64, color: '#6b7280' }
+      ],
+      convert: (v) => grayToBinary(v),
+      display: (v) => `${grayToBinary(v)} (from Gray ${v})` },
+    { id: 'zigzag32', category: 'integers', bits: 32, names: ['Zigzag32', 'Varint32', 'sint32'],
+      components: [
+        { name: 'Zigzag Encoded', start: 0, width: 32, color: '#a855f7' }
+      ],
+      convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w).map(x => zigzagDecode(x)) : zigzagDecode(v),
+      display: (v, w) => {
+          if (w > 32) return formatArray(extractUnsignedArray(v, 32, w).map(x => zigzagDecode(x).toString()));
+          return zigzagDecode(v).toString();
+      }},
+    { id: 'zigzag64', category: 'integers', bits: 64, names: ['Zigzag64', 'Varint64', 'sint64'],
+      components: [
+        { name: 'Zigzag Encoded', start: 0, width: 64, color: '#a855f7' }
+      ],
+      convert: (v) => zigzagDecode(v),
+      display: (v) => zigzagDecode(v).toString() },
+
+    // === AUDIO ===
+    { id: 'mulaw8', category: 'audio', bits: 8, names: ['μ-law', 'mu-law', 'ulaw', 'G.711μ'],
+      components: [
+        { name: 'Sign', start: 7, width: 1, color: '#ef4444' },
+        { name: 'Chord', start: 4, width: 3, color: '#3b82f6' },
+        { name: 'Step', start: 0, width: 4, color: '#22c55e' }
+      ],
+      convert: (v, w) => w > 8 ? extractUnsignedArray(v, 8, w).map(x => mulawToLinear(Number(x))) : mulawToLinear(Number(v)),
+      display: (v, w) => {
+          if (w > 8) return formatArray(extractUnsignedArray(v, 8, w).map(x => `PCM: ${mulawToLinear(Number(x))}`));
+          return `PCM: ${mulawToLinear(Number(v))}`;
+      }},
+    { id: 'alaw8', category: 'audio', bits: 8, names: ['A-law', 'alaw', 'G.711A'],
+      components: [
+        { name: 'Sign', start: 7, width: 1, color: '#ef4444' },
+        { name: 'Chord', start: 4, width: 3, color: '#3b82f6' },
+        { name: 'Step', start: 0, width: 4, color: '#22c55e' }
+      ],
+      convert: (v, w) => w > 8 ? extractUnsignedArray(v, 8, w).map(x => alawToLinear(Number(x))) : alawToLinear(Number(v)),
+      display: (v, w) => {
+          if (w > 8) return formatArray(extractUnsignedArray(v, 8, w).map(x => `PCM: ${alawToLinear(Number(x))}`));
+          return `PCM: ${alawToLinear(Number(v))}`;
+      }},
+    { id: 'midi8', category: 'audio', bits: 8, names: ['MIDI Note', 'MIDI', 'note'],
+      components: [
+        { name: 'Note', start: 0, width: 7, color: '#a855f7' },
+        { name: 'Unused', start: 7, width: 1, color: '#6b7280' }
+      ],
+      convert: (v, w) => w > 8 ? extractUnsignedArray(v, 8, w).map(x => Number(x & 0x7Fn)) : Number(v & 0x7Fn),
+      display: (v, w) => {
+          if (w > 8) return formatArray(extractUnsignedArray(v, 8, w).map(x => {
+              const note = Number(x & 0x7Fn);
+              return `${midiToNoteName(note)} (${note})`;
+          }));
+          const note = Number(v & 0x7Fn);
+          return `${midiToNoteName(note)} (${note})`;
       }},
 ];
 
@@ -1180,7 +2066,7 @@ const BitGrid = ({ value, width, onToggleBit, fields, highlightField }) => {
 const FormatRow = ({ format, value, width, onCopy, onLoadComponents }) => {
     const displayValue = format.display(value, width);
     const endianLabel = format.endian ? ` (${format.endian})` : '';
-    const isColor = format.id.includes('rgb');
+    const isColor = format.category === 'colors';
     const hasComponents = format.components && format.components.length > 0;
 
     // Extract color values for swatches (handles both single and array formats)
@@ -1247,7 +2133,8 @@ const FormatCategory = ({ category, formats, value, width, onCopy, onLoadCompone
 // Conversions Panel Component
 const ConversionsPanel = ({ value, width, onCopy, onLoadComponents }) => {
     const [expandedCategories, setExpandedCategories] = React.useState({
-        integers: true, floats: true, exotic_floats: false, fixed: false, decimal: false, special: false
+        integers: true, floats: true, exotic_floats: false, fixed: false, decimal: false,
+        colors: false, datetime: false, audio: false, special: false, characters: false
     });
 
     const toggleCategory = (cat) => setExpandedCategories(prev => ({ ...prev, [cat]: !prev[cat] }));

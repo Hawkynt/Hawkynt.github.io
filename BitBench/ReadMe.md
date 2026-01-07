@@ -34,6 +34,8 @@ BitBench is a comprehensive tool for working with binary data at the bit level. 
 | Unsigned | `Word`, `UInt16`, `ushort`, `u16`, `word`, `WORD`     | 16-bit |
 | Unsigned | `DWord`, `UInt32`, `uint`, `u32`, `dword`, `DWORD`    | 32-bit |
 | Unsigned | `QWord`, `UInt64`, `ulong`, `u64`, `qword`, `QWORD`   | 64-bit |
+| Gray Code| `Gray8`, `Gray16`, `Gray32`, `Gray64`                 | 8-64   |
+| Zigzag   | `Zigzag32`, `Zigzag64`, `sint32`, `sint64`            | 32/64  |
 
 All multi-byte integers available in both LE and BE variants.
 
@@ -56,10 +58,18 @@ All multi-byte integers available in both LE and BE variants.
 | Format    | Aliases                        | Size   | Description                    |
 | --------- | ------------------------------ | ------ | ------------------------------ |
 | BFloat16  | `bf16`, `brain float`          | 16-bit | Google Brain format (1s/8e/7m) |
+| Decimal32 | `_Decimal32`                   | 32-bit | IEEE 754 decimal float (BID)   |
+| Decimal64 | `_Decimal64`                   | 64-bit | IEEE 754 decimal float (BID)   |
+| FP8-E4M3  | `E4M3`, `fp8`                  | 8-bit  | ML inference (1s/4e/3m)        |
+| FP8-E5M2  | `E5M2`                         | 8-bit  | ML training (1s/5e/2m)         |
 | IBM HFP   | `IBM Float`, `hex float`       | 32-bit | IBM Hexadecimal Floating Point |
 | MBF32     | `MS Binary`, `BASIC float`     | 32-bit | Microsoft Binary Format        |
 | MBF64     | `MS Binary 64`, `BASIC double` | 64-bit | Microsoft Binary Format        |
-| Minifloat | `fp8`, `float8`                | 8-bit  | 1s/4e/3m, bias=7               |
+| Minifloat | `float8`                       | 8-bit  | 1s/4e/3m, bias=7               |
+| Posit8    | `posit<8,0>`                   | 8-bit  | Posit unum type III (es=0)     |
+| Posit16   | `posit<16,1>`                  | 16-bit | Posit unum type III (es=1)     |
+| Posit32   | `posit<32,2>`                  | 32-bit | Posit unum type III (es=2)     |
+| TF32      | `TensorFloat-32`               | 32-bit | NVIDIA tensor core (1s/8e/10m) |
 | VAX F     | `F_floating`, `VAX float`      | 32-bit | DEC VAX F_floating format      |
 
 ### Fixed Point
@@ -81,18 +91,65 @@ All multi-byte integers available in both LE and BE variants.
 | BCD32  | 32-bit | Packed BCD (8 digits)  |
 | BCD64  | 64-bit | Packed BCD (16 digits) |
 
+### Characters
+
+| Format  | Aliases                     | Size   | Description                       |
+| ------- | --------------------------- | ------ | --------------------------------- |
+| ASCII   | `Char`, `char`              | 8-bit  | ASCII character with ctrl names   |
+| ASCII16 | `Chars16`                   | 16-bit | 2 ASCII characters                |
+| ASCII32 | `Chars32`                   | 32-bit | 4 ASCII characters                |
+| ASCII64 | `Chars64`                   | 64-bit | 8 ASCII characters                |
+| EBCDIC  |                             | 8-bit  | IBM mainframe character encoding  |
+| UTF-32  | `Unicode`, `UCS-4`          | 32-bit | Full Unicode code point           |
+
+### Colors
+
+| Format   | Aliases              | Size   | Description                |
+| -------- | -------------------- | ------ | -------------------------- |
+| ABGR32   | `ABGR`               | 32-bit | Alpha-Blue-Green-Red       |
+| ARGB1555 | `16-bit ARGB`        | 16-bit | 15-bit color + 1-bit alpha |
+| ARGB4444 | `4444`               | 16-bit | 16-bit color (4/4/4/4)     |
+| BGR24    | `BGR`, `COLORREF`    | 32-bit | Windows bitmap color order |
+| BGRA32   | `BGRA`               | 32-bit | Windows bitmap with alpha  |
+| HSV      | `HSB`                | 32-bit | Hue/Saturation/Value color |
+| RGB      | `RGB24`, `color`     | 32-bit | RGB color (0x00RRGGBB)     |
+| RGB555   | `15-bit Color`       | 16-bit | 15-bit color (5/5/5)       |
+| RGB565   | `16-bit Color`       | 16-bit | 16-bit color (5/6/5)       |
+| RGBA     | `RGBA32`, `ARGB`     | 32-bit | RGBA color (0xAARRGGBB)    |
+
+### Date/Time
+
+| Format       | Aliases                  | Size   | Description            |
+| ------------ | ------------------------ | ------ | ---------------------- |
+| .NET Ticks   | `DateTime.Ticks`         | 64-bit | 100ns since 0001-01-01 |
+| DOS DateTime | `FAT timestamp`          | 32-bit | DOS/FAT date+time      |
+| FILETIME     | `Windows FILETIME`       | 64-bit | 100ns since 1601-01-01 |
+| GPS Time     | `GPS`                    | 32-bit | Seconds since 1980-01-06 |
+| HFS+         | `Mac Time`, `HFSPlusDate`| 32-bit | Seconds since 1904-01-01 |
+| NTP          | `NTP Timestamp`          | 64-bit | 32.32 fixed since 1900 |
+| OLE Date     | `Automation Date`, `DATE`| 64-bit | Days since 1899-12-30  |
+| Unix32       | `time_t`, `Unix timestamp`| 32-bit | Seconds since 1970-01-01 |
+| Unix64       | `time64_t`               | 64-bit | Seconds since 1970-01-01 |
+| WebKit       | `Chrome Time`            | 64-bit | Microseconds since 1601 |
+
+### Audio
+
+| Format   | Aliases              | Size  | Description               |
+| -------- | -------------------- | ----- | ------------------------- |
+| A-law    | `alaw`, `G.711A`     | 8-bit | ITU-T G.711 A-law codec   |
+| MIDI Note| `MIDI`, `note`       | 8-bit | MIDI note number (0-127)  |
+| μ-law    | `mu-law`, `G.711μ`   | 8-bit | ITU-T G.711 μ-law codec   |
+
 ### Special Formats
 
-| Format       | Aliases                       | Size   | Description              |
-| ------------ | ----------------------------- | ------ | ------------------------ |
-| Currency     | `OLE Currency`, `money`, `CY` | 64-bit | Scaled integer /10000    |
-| DOS DateTime | `FAT timestamp`               | 32-bit | DOS/FAT date+time format |
-| FILETIME     | `Windows FILETIME`            | 64-bit | 100ns since 1601-01-01   |
-| FourCC       | `FOURCC`, `magic`             | 32-bit | Four-character code      |
-| RGB          | `RGB24`, `color`              | 32-bit | RGB color (0x00RRGGBB)   |
-| RGBA         | `RGBA32`, `ARGB`              | 32-bit | RGBA color (0xAARRGGBB)  |
-| Unix32       | `time_t`, `Unix timestamp`    | 32-bit | Seconds since 1970-01-01 |
-| Unix64       | `time64_t`                    | 64-bit | Seconds since 1970-01-01 |
+| Format   | Aliases                       | Size   | Description              |
+| -------- | ----------------------------- | ------ | ------------------------ |
+| Currency | `OLE Currency`, `money`, `CY` | 64-bit | Scaled integer /10000    |
+| FourCC   | `FOURCC`, `magic`             | 32-bit | Four-character code      |
+| IPv4     | `IP Address`, `in_addr`       | 32-bit | Dotted decimal format    |
+| IPv6 (low)| `IPv6-L`                     | 64-bit | Lower 64 bits of IPv6    |
+| MAC      | `MAC-48`, `EUI-48`            | 64-bit | Colon-separated MAC addr |
+| Port     | `TCP Port`, `UDP Port`        | 16-bit | Well-known port numbers  |
 
 ## How It Works
 
@@ -110,12 +167,16 @@ Enter values in multiple formats:
 
 The left panel shows the current bit pattern interpreted as every applicable format. Categories can be expanded/collapsed:
 
-- **Integers**: Signed and unsigned in LE/BE
+- **Integers**: Signed and unsigned in LE/BE, Gray code, Zigzag encoding
 - **IEEE 754 Floats**: Half, single, double precision
-- **Exotic Floats**: BFloat16, IBM, VAX, MBF formats
+- **Exotic Floats**: BFloat16, IBM, VAX, MBF, FP8 (ML) formats
 - **Fixed Point**: Q-format fixed point numbers
 - **Decimal/BCD**: Binary Coded Decimal
-- **Special**: Timestamps, colors, FourCC codes
+- **Colors**: RGB, RGBA, BGR, HSV, and 16-bit color formats
+- **Date/Time**: Unix, DOS, FILETIME, NTP, and other timestamps
+- **Audio**: μ-law, A-law, MIDI note numbers
+- **Special**: Network addresses, FourCC codes, currency
+- **Characters**: ASCII, EBCDIC, UTF-32
 
 ### Bit Editor
 
@@ -200,6 +261,10 @@ Open [index.html](index.html) in any modern browser - no build required.
 - [x] IEEE 754 Float16/32/64
 - [x] BFloat16 (Brain Float)
 - [x] Minifloat (8-bit)
+- [x] FP8 E4M3/E5M2 (ML inference/training formats)
+- [x] IEEE 754 Decimal32/64 (BID encoding)
+- [x] Posit format (8/16/32-bit)
+- [x] TensorFloat-32 (NVIDIA tensor core)
 - [x] IBM Hexadecimal Floating Point
 - [x] VAX F_floating
 - [x] Microsoft Binary Format (MBF)
@@ -207,8 +272,22 @@ Open [index.html](index.html) in any modern browser - no build required.
 - [x] Packed BCD
 - [x] OLE Currency
 - [x] Unix/DOS/FILETIME timestamps
+- [x] NTP, OLE Date, HFS+, GPS, WebKit, .NET Ticks timestamps
 - [x] RGB/RGBA colors
+- [x] RGB565, RGB555, ARGB1555 (16-bit colors)
+- [x] BGR24, BGRA32, ABGR32 (Windows color formats)
+- [x] HSV color representation
+- [x] IPv4 address format
+- [x] IPv6 address (lower 64 bits)
+- [x] TCP/UDP port numbers with well-known names
+- [x] MAC-48 address format
 - [x] FourCC codes
+- [x] μ-law/A-law audio codecs (G.711)
+- [x] MIDI note numbers
+- [x] ASCII/EBCDIC/UTF-32 character display
+- [x] Gray code (reflected binary)
+- [x] Zigzag encoding (Protocol Buffers)
+- [x] Separate Colors/DateTime/Audio categories
 - [x] Type name aliases
 - [x] Interactive bit grid
 - [x] Named field definitions
@@ -222,22 +301,20 @@ Open [index.html](index.html) in any modern browser - no build required.
 
 ### Planned Features
 
-- [ ] IEEE 754 Decimal32/64/128
+- [ ] IEEE 754 Decimal128 (requires 128-bit support)
 - [ ] .NET Decimal (128-bit)
-- [ ] Posit format
-- [ ] TensorFloat-32
 - [ ] AND/OR/XOR with second operand
 - [ ] Bit range selection
 - [ ] Import/export field definitions
 - [ ] URL state persistence
 - [ ] Keyboard shortcuts
-- [ ] GUID/UUID interpretation
-- [ ] IPv4/IPv6 address view
+- [ ] GUID/UUID interpretation (requires 128-bit support)
+- [ ] Full IPv6 address view (requires 128-bit support)
 
 ## Known Limitations
 
 - Float16 and exotic floats use JavaScript approximation
-- No 128-bit width support
+- No 128-bit width support (limits GUID/UUID, full IPv6)
 - Field overlap detection not implemented
 - Some exotic formats (VAX, IBM) may have edge-case inaccuracies
 
