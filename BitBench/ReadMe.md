@@ -119,16 +119,16 @@ Use array syntax (e.g., `Unpacked BCD[4]`) for multi-digit values.
 
 ### Character Encodings
 
-| Type    | Bits | Range           | Encoding | C/C++               | C#       | Java   | Description                    |
-| ------- | ---- | --------------- | -------- | ------------------- | -------- | ------ | ------------------------------ |
-| ASCII   | 8    | 0-127           | ASCII    | `char`              | -        | -      | 7-bit ASCII character          |
-| ASCII16 | 16   | 2 chars         | ASCII    | -                   | -        | -      | Two ASCII characters           |
-| ASCII32 | 32   | 4 chars         | ASCII    | -                   | -        | -      | Four ASCII characters          |
-| ASCII64 | 64   | 8 chars         | ASCII    | -                   | -        | -      | Eight ASCII characters         |
-| EBCDIC  | 8    | 0-255           | EBCDIC   | -                   | -        | -      | IBM mainframe encoding         |
-| UTF-8   | 8    | 0-255           | UTF-8    | `char8_t`           | -        | -      | UTF-8 code unit (variable len) |
+| Type    | Bits | Range           | Encoding | C/C++                 | C#     | Java   | Description                      |
+| ------- | ---- | --------------- | -------- | --------------------- | ------ | ------ | -------------------------------- |
+| ASCII   | 8    | 0-127           | ASCII    | `char`                | -      | -      | 7-bit ASCII character            |
+| ASCII16 | 16   | 2 chars         | ASCII    | -                     | -      | -      | Two ASCII characters             |
+| ASCII32 | 32   | 4 chars         | ASCII    | -                     | -      | -      | Four ASCII characters            |
+| ASCII64 | 64   | 8 chars         | ASCII    | -                     | -      | -      | Eight ASCII characters           |
+| EBCDIC  | 8    | 0-255           | EBCDIC   | -                     | -      | -      | IBM mainframe encoding           |
+| UTF-8   | 8    | 0-255           | UTF-8    | `char8_t`             | -      | -      | UTF-8 code unit (variable len)   |
 | UTF-16  | 16   | U+0000-U+FFFF   | UTF-16   | `wchar_t`, `char16_t` | `char` | `char` | UTF-16 code unit (BMP/surrogate) |
-| UTF-32  | 32   | U+0000-U+10FFFF | UTF-32   | `char32_t`          | -        | -      | Full Unicode code point        |
+| UTF-32  | 32   | U+0000-U+10FFFF | UTF-32   | `char32_t`            | -      | -      | Full Unicode code point          |
 
 ### Color Formats
 
@@ -331,8 +331,51 @@ Enter values in multiple formats:
 - **Hex**: `0xDEADBEEF` or `DEADBEEF`
 - **Decimal**: `3735928559`
 - **Signed**: `-559038737`
+- **Float**: Decimal numbers or math expressions (see below)
 - **Binary**: `0b1101...`
 - **Octal**: `0o33653337357`
+
+### Float Mode - Math Expressions
+
+Float mode supports mathematical expressions in addition to plain decimal numbers. Type formulas like:
+
+- `1/3` → 0.333...
+- `sin(pi/4)` → 0.707...
+- `2**10` or `2^10` → 1024
+- `sqrt(2)` → 1.414...
+- `25*cos(1/tan(15))`
+
+#### Supported Functions
+
+| Category            | Functions                                               |
+| ------------------- | ------------------------------------------------------- |
+| **Trigonometric**   | `sin`, `cos`, `tan`, `cot`, `sec`, `csc`                |
+| **Inverse Trig**    | `asin`, `acos`, `atan`, `acot`, `asec`, `acsc`, `atan2` |
+| **Hyperbolic**      | `sinh`, `cosh`, `tanh`, `coth`, `sech`, `csch`          |
+| **Inv. Hyperbolic** | `asinh`, `acosh`, `atanh`, `acoth`, `asech`, `acsch`    |
+| **Area (aliases)**  | `arsinh`, `arcosh`, `artanh`                            |
+| **Logarithmic**     | `log` (natural), `ln`, `log10`, `log2`                  |
+| **Exponential**     | `exp`, `pow`, `sqrt`, `cbrt`                            |
+| **Rounding**        | `abs`, `ceil`, `floor`, `round`, `trunc`, `sign`        |
+| **Other**           | `min`, `max`, `hypot`, `frac`, `deg`, `rad`             |
+
+#### Constants
+
+`pi`, `e`, `tau` (2π), `phi` (golden ratio), `inf`, `nan`
+
+#### Operators
+
+`+`, `-`, `*`, `/`, `^` or `**` (power), `()` (parentheses)
+
+#### Autocomplete
+
+When typing function names, an autocomplete dropdown appears:
+
+- **Tab** or **Enter**: Complete the selected function
+- **Up/Down arrows**: Navigate suggestions (circular)
+- **Escape**: Close dropdown
+
+Each suggestion shows the function name and a brief description.
 
 ### Type Interpretations
 
@@ -427,7 +470,9 @@ Open [index.html](index.html) in any modern browser - no build required.
 
 ### Implemented
 
-- [x] Hex/Dec/Oct/Bin input modes
+- [x] Hex/Dec/Oct/Bin/Float input modes
+- [x] Float mode math expression evaluator (formulas, functions, constants)
+- [x] Function autocomplete with descriptions
 - [x] Signed/Unsigned integer views (8/16/32/64-bit)
 - [x] Little Endian and Big Endian support
 - [x] IEEE 754 Float16/32/64
