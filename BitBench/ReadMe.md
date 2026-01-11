@@ -20,136 +20,307 @@ BitBench is a comprehensive tool for working with binary data at the bit level. 
 - **Statistics**: Popcount, parity, CLZ, CTZ
 - **Code Export**: Generate C/C++/C# code for masks and accessor macros
 
-## Supported Formats
+---
 
-### Integers
+## Complete Type Reference
 
-| Type     | Aliases                                               | Sizes  |
-| -------- | ----------------------------------------------------- | ------ |
-| Signed   | `SByte`, `Int8`, `sbyte`, `i8`, `char`, `signed char` | 8-bit  |
-| Signed   | `Short`, `Int16`, `short`, `i16`                      | 16-bit |
-| Signed   | `Int`, `Int32`, `int`, `i32`, `long`                  | 32-bit |
-| Signed   | `Long`, `Int64`, `long long`, `i64`                   | 64-bit |
-| Unsigned | `Byte`, `UInt8`, `byte`, `u8`, `BYTE`, `unsigned char`| 8-bit  |
-| Unsigned | `Word`, `UInt16`, `ushort`, `u16`, `word`, `WORD`     | 16-bit |
-| Unsigned | `DWord`, `UInt32`, `uint`, `u32`, `dword`, `DWORD`    | 32-bit |
-| Unsigned | `QWord`, `UInt64`, `ulong`, `u64`, `qword`, `QWORD`   | 64-bit |
-| Gray Code| `Gray8`, `Gray16`, `Gray32`, `Gray64`                 | 8-64   |
-| Zigzag   | `Zigzag32`, `Zigzag64`, `sint32`, `sint64`            | 32/64  |
+### Integer Types
 
-All multi-byte integers available in both LE and BE variants.
+| Type     | Bits | Signed | Range             | Format         | C/C++                            | C#       | Java    | Rust  | Go              | Pascal     | Description                           |
+| -------- | ---- | ------ | ----------------- | -------------- | -------------------------------- | -------- | ------- | ----- | --------------- | ---------- | ------------------------------------- |
+| Tiny     | 8    | Yes    | -128 to 127       | 2's complement | `int8_t`, `signed char`          | `sbyte`  | `byte`  | `i8`  | `int8`          | `ShortInt` | Signed 8-bit integer                  |
+| Byte     | 8    | No     | 0 to 255          | Unsigned       | `uint8_t`, `unsigned char`       | `byte`   | -       | `u8`  | `uint8`, `byte` | `Byte`     | Unsigned 8-bit integer                |
+| Short    | 16   | Yes    | -32,768 to 32,767 | 2's complement | `int16_t`, `short`               | `short`  | `short` | `i16` | `int16`         | `SmallInt` | Signed 16-bit integer                 |
+| Word     | 16   | No     | 0 to 65,535       | Unsigned       | `uint16_t`, `unsigned short`     | `ushort` | `char`  | `u16` | `uint16`        | `Word`     | Unsigned 16-bit integer               |
+| Int      | 32   | Yes    | -2.1B to 2.1B     | 2's complement | `int32_t`, `int`                 | `int`    | `int`   | `i32` | `int32`         | `Integer`  | Signed 32-bit integer                 |
+| DWord    | 32   | No     | 0 to 4.3B         | Unsigned       | `uint32_t`, `unsigned int`       | `uint`   | -       | `u32` | `uint32`        | `Cardinal` | Unsigned 32-bit integer (Double Word) |
+| Long     | 64   | Yes    | -9.2E18 to 9.2E18 | 2's complement | `int64_t`, `long long`           | `long`   | `long`  | `i64` | `int64`         | `Int64`    | Signed 64-bit integer                 |
+| QWord    | 64   | No     | 0 to 1.8E19       | Unsigned       | `uint64_t`, `unsigned long long` | `ulong`  | -       | `u64` | `uint64`        | `QWord`    | Unsigned 64-bit integer (Quad Word)   |
+| Gray8    | 8    | No     | 0 to 255          | Gray code      | -                                | -        | -       | -     | -               | -          | 8-bit reflected binary code           |
+| Gray16   | 16   | No     | 0 to 65,535       | Gray code      | -                                | -        | -       | -     | -               | -          | 16-bit reflected binary code          |
+| Gray32   | 32   | No     | 0 to 4.3B         | Gray code      | -                                | -        | -       | -     | -               | -          | 32-bit reflected binary code          |
+| Gray64   | 64   | No     | 0 to 1.8E19       | Gray code      | -                                | -        | -       | -     | -               | -          | 64-bit reflected binary code          |
+| Zigzag8  | 8    | Yes    | -128 to 127       | Zigzag         | -                                | -        | -       | -     | -               | -          | 8-bit zigzag encoded signed           |
+| Zigzag16 | 16   | Yes    | -32,768 to 32,767 | Zigzag         | -                                | -        | -       | -     | -               | -          | 16-bit zigzag encoded signed          |
+| Zigzag32 | 32   | Yes    | -2.1B to 2.1B     | Zigzag         | `sint32` (protobuf)              | -        | -       | -     | -               | -          | 32-bit zigzag encoded signed          |
+| Zigzag64 | 64   | Yes    | -9.2E18 to 9.2E18 | Zigzag         | `sint64` (protobuf)              | -        | -       | -     | -               | -          | 64-bit zigzag encoded signed          |
 
-**Automatic Array Display**: When the bit width exceeds the type size, values are displayed as arrays. For example, at 32-bit width:
+### IEEE 754 Floating Point
 
-- `Byte` shows `[ 175, 219, 131, 238 ]` (4 bytes)
-- `Word` shows `[ 56239, 61059 ]` (2 words)
-- `DWord` shows `4001618863` (single value)
+| Type       | Bits | Range    | Format (s/e/m) | Bias | C/C++                | C#       | Java     | Rust  | Go        | Pascal   | Description               |
+| ---------- | ---- | -------- | -------------- | ---- | -------------------- | -------- | -------- | ----- | --------- | -------- | ------------------------- |
+| Minifloat8 | 8    | ±1.9E2   | 1/4/3          | 7    | -                    | -        | -        | -     | -         | -        | 8-bit IEEE 754-style      |
+| Float16    | 16   | ±6.55E4  | 1/5/10         | 15   | `_Float16`, `__fp16` | `Half`   | -        | -     | -         | -        | IEEE 754 half precision   |
+| Float32    | 32   | ±3.4E38  | 1/8/23         | 127  | `float`              | `float`  | `float`  | `f32` | `float32` | `Single` | IEEE 754 single precision |
+| Float64    | 64   | ±1.8E308 | 1/11/52        | 1023 | `double`             | `double` | `double` | `f64` | `float64` | `Double` | IEEE 754 double precision |
 
-### IEEE 754 Floats
+### AI/ML Floating Point
 
-| Format | Aliases                                        | Size   | Structure  |
-| ------ | ---------------------------------------------- | ------ | ---------- |
-| Double | `Float64`, `double`, `f64`, `Double`           | 64-bit | 1s/11e/52m |
-| Half   | `Float16`, `half`, `f16`, `binary16`, `__fp16` | 16-bit | 1s/5e/10m  |
-| Single | `Float32`, `float`, `f32`, `single`, `Single`  | 32-bit | 1s/8e/23m  |
+| Type     | Bits | Range   | Format (s/e/m) | Bias | Origin     | Aliases          | Description                    |
+| -------- | ---- | ------- | -------------- | ---- | ---------- | ---------------- | ------------------------------ |
+| BFloat8  | 8    | ±1.9E2  | 1/4/3          | 7    | Custom     | `bf8`            | 8-bit truncated brain float    |
+| BFloat16 | 16   | ±3.4E38 | 1/8/7          | 127  | Google     | `bf16`           | Google Brain truncated float32 |
+| BFloat32 | 32   | ±3.4E38 | 1/8/23         | 127  | Custom     | `bf32`           | Brain float family (= Float32) |
+| BFloat64 | 64   | ±3.4E38 | 1/8/55         | 127  | Custom     | `bf64`           | Extended brain float           |
+| FP8-E4M3 | 8    | ±448    | 1/4/3          | 7    | NVIDIA/ARM | `E4M3`           | ML inference format (no inf)   |
+| FP8-E5M2 | 8    | ±5.7E4  | 1/5/2          | 15   | NVIDIA/ARM | `E5M2`           | ML training format             |
+| TF32     | 32   | ±3.4E38 | 1/8/10         | 127  | NVIDIA     | `TensorFloat-32` | Tensor core format (19-bit)    |
 
-### Exotic Float Formats
+### Exotic Floating Point
 
-| Format    | Aliases                        | Size   | Description                    |
-| --------- | ------------------------------ | ------ | ------------------------------ |
-| BFloat16  | `bf16`, `brain float`          | 16-bit | Google Brain format (1s/8e/7m) |
-| Decimal32 | `_Decimal32`                   | 32-bit | IEEE 754 decimal float (BID)   |
-| Decimal64 | `_Decimal64`                   | 64-bit | IEEE 754 decimal float (BID)   |
-| FP8-E4M3  | `E4M3`, `fp8`                  | 8-bit  | ML inference (1s/4e/3m)        |
-| FP8-E5M2  | `E5M2`                         | 8-bit  | ML training (1s/5e/2m)         |
-| IBM HFP   | `IBM Float`, `hex float`       | 32-bit | IBM Hexadecimal Floating Point |
-| MBF32     | `MS Binary`, `BASIC float`     | 32-bit | Microsoft Binary Format        |
-| MBF64     | `MS Binary 64`, `BASIC double` | 64-bit | Microsoft Binary Format        |
-| Minifloat | `float8`                       | 8-bit  | 1s/4e/3m, bias=7               |
-| Posit8    | `posit<8,0>`                   | 8-bit  | Posit unum type III (es=0)     |
-| Posit16   | `posit<16,1>`                  | 16-bit | Posit unum type III (es=1)     |
-| Posit32   | `posit<32,2>`                  | 32-bit | Posit unum type III (es=2)     |
-| TF32      | `TensorFloat-32`               | 32-bit | NVIDIA tensor core (1s/8e/10m) |
-| VAX F     | `F_floating`, `VAX float`      | 32-bit | DEC VAX F_floating format      |
+| Type    | Bits | Range    | Format (s/e/m) | Bias | Origin    | Aliases        | Description                |
+| ------- | ---- | -------- | -------------- | ---- | --------- | -------------- | -------------------------- |
+| IBM HFP | 32   | ±7.2E75  | 1/7/24         | 64   | IBM       | `hex float`    | Hexadecimal floating point |
+| VAX F   | 32   | ±1.7E38  | 1/8/23         | 128  | DEC       | `F_floating`   | VAX F_floating format      |
+| MBF32   | 32   | ±1.7E38  | 8e/1s/23m      | 128  | Microsoft | `MS Binary`    | Microsoft Binary Format    |
+| MBF64   | 64   | ±1.7E308 | 8e/1s/55m      | 128  | Microsoft | `MS Binary 64` | Microsoft Binary Format 64 |
+| Posit8  | 8    | ±64      | Variable       | -    | Gustafson | `posit<8,0>`   | Unum Type III (es=0)       |
+| Posit16 | 16   | ±1.7E8   | Variable       | -    | Gustafson | `posit<16,1>`  | Unum Type III (es=1)       |
+| Posit32 | 32   | ±1.3E17  | Variable       | -    | Gustafson | `posit<32,2>`  | Unum Type III (es=2)       |
 
-### Fixed Point
+### Decimal Floating Point
 
-| Format  | Size   | Description                |
-| ------- | ------ | -------------------------- |
-| Q7.8    | 16-bit | Signed 8.8 fixed point     |
-| Q15.16  | 32-bit | Signed 16.16 fixed point   |
-| Q31.32  | 64-bit | Signed 32.32 fixed point   |
-| UQ8.8   | 16-bit | Unsigned 8.8 fixed point   |
-| UQ16.16 | 32-bit | Unsigned 16.16 fixed point |
+| Type      | Bits | Digits | Exponent Range    | Encoding   | Standard      | Description          |
+| --------- | ---- | ------ | ----------------- | ---------- | ------------- | -------------------- |
+| Decimal8  | 8    | 1      | 10^-4 to 10^2     | Custom BID | Custom        | 8-bit decimal float  |
+| Decimal16 | 16   | 3      | 10^-16 to 10^14   | Custom BID | Custom        | 16-bit decimal float |
+| Decimal32 | 32   | 7      | 10^-101 to 10^90  | BID        | IEEE 754-2008 | 32-bit decimal float |
+| Decimal64 | 64   | 16     | 10^-398 to 10^369 | BID        | IEEE 754-2008 | 64-bit decimal float |
 
-### Decimal / BCD
+### Fixed Point (Q Format)
 
-| Format | Size   | Description            |
-| ------ | ------ | ---------------------- |
-| BCD8   | 8-bit  | Packed BCD (2 digits)  |
-| BCD16  | 16-bit | Packed BCD (4 digits)  |
-| BCD32  | 32-bit | Packed BCD (8 digits)  |
-| BCD64  | 64-bit | Packed BCD (16 digits) |
+| Type    | Bits | Signed | Integer Bits | Fraction Bits | Range                          | Description                |
+| ------- | ---- | ------ | ------------ | ------------- | ------------------------------ | -------------------------- |
+| Q7.8    | 16   | Yes    | 8            | 8             | -128.0 to 127.996              | Signed 8.8 fixed point     |
+| Q15.16  | 32   | Yes    | 16           | 16            | -32768.0 to 32767.999985       | Signed 16.16 fixed point   |
+| Q31.32  | 64   | Yes    | 32           | 32            | -2.1B to 2.1B (with fractions) | Signed 32.32 fixed point   |
+| UQ8.8   | 16   | No     | 8            | 8             | 0 to 255.996                   | Unsigned 8.8 fixed point   |
+| UQ16.16 | 32   | No     | 16           | 16            | 0 to 65535.999985              | Unsigned 16.16 fixed point |
+| UQ32.32 | 64   | No     | 32           | 32            | 0 to 4.3B (with fractions)     | Unsigned 32.32 fixed point |
 
-### Characters
+### Binary Coded Decimals (BCD)
 
-| Format  | Aliases                     | Size   | Description                       |
-| ------- | --------------------------- | ------ | --------------------------------- |
-| ASCII   | `Char`, `char`              | 8-bit  | ASCII character with ctrl names   |
-| ASCII16 | `Chars16`                   | 16-bit | 2 ASCII characters                |
-| ASCII32 | `Chars32`                   | 32-bit | 4 ASCII characters                |
-| ASCII64 | `Chars64`                   | 64-bit | 8 ASCII characters                |
-| EBCDIC  |                             | 8-bit  | IBM mainframe character encoding  |
-| UTF-32  | `Unicode`, `UCS-4`          | 32-bit | Full Unicode code point           |
+#### Packed BCD (2 digits per byte)
 
-### Colors
+| Type  | Bits | Digits | Range             | Description               |
+| ----- | ---- | ------ | ----------------- | ------------------------- |
+| BCD8  | 8    | 2      | 00-99             | 2 decimal digits per byte |
+| BCD16 | 16   | 4      | 0000-9999         | 4 decimal digits          |
+| BCD32 | 32   | 8      | 00000000-99999999 | 8 decimal digits          |
+| BCD64 | 64   | 16     | 16 decimal digits | 16 decimal digits         |
 
-| Format   | Aliases              | Size   | Description                |
-| -------- | -------------------- | ------ | -------------------------- |
-| ABGR32   | `ABGR`               | 32-bit | Alpha-Blue-Green-Red       |
-| ARGB1555 | `16-bit ARGB`        | 16-bit | 15-bit color + 1-bit alpha |
-| ARGB4444 | `4444`               | 16-bit | 16-bit color (4/4/4/4)     |
-| BGR24    | `BGR`, `COLORREF`    | 32-bit | Windows bitmap color order |
-| BGRA32   | `BGRA`               | 32-bit | Windows bitmap with alpha  |
-| HSV      | `HSB`                | 32-bit | Hue/Saturation/Value color |
-| RGB      | `RGB24`, `color`     | 32-bit | RGB color (0x00RRGGBB)     |
-| RGB555   | `15-bit Color`       | 16-bit | 15-bit color (5/5/5)       |
-| RGB565   | `16-bit Color`       | 16-bit | 16-bit color (5/6/5)       |
-| RGBA     | `RGBA32`, `ARGB`     | 32-bit | RGBA color (0xAARRGGBB)    |
+#### Unpacked BCD (1 digit per byte)
 
-### Date/Time
+| Type         | Bits | Aliases             | Range | Description                                   |
+| ------------ | ---- | ------------------- | ----- | --------------------------------------------- |
+| Unpacked BCD | 8    | UBCD, zoned decimal | 0-9   | 1 digit per byte (lower nibble, zone ignored) |
 
-| Format       | Aliases                  | Size   | Description            |
-| ------------ | ------------------------ | ------ | ---------------------- |
-| .NET Ticks   | `DateTime.Ticks`         | 64-bit | 100ns since 0001-01-01 |
-| DOS DateTime | `FAT timestamp`          | 32-bit | DOS/FAT date+time      |
-| FILETIME     | `Windows FILETIME`       | 64-bit | 100ns since 1601-01-01 |
-| GPS Time     | `GPS`                    | 32-bit | Seconds since 1980-01-06 |
-| HFS+         | `Mac Time`, `HFSPlusDate`| 32-bit | Seconds since 1904-01-01 |
-| NTP          | `NTP Timestamp`          | 64-bit | 32.32 fixed since 1900 |
-| OLE Date     | `Automation Date`, `DATE`| 64-bit | Days since 1899-12-30  |
-| Unix32       | `time_t`, `Unix timestamp`| 32-bit | Seconds since 1970-01-01 |
-| Unix64       | `time64_t`               | 64-bit | Seconds since 1970-01-01 |
-| WebKit       | `Chrome Time`            | 64-bit | Microseconds since 1601 |
+Use array syntax (e.g., `Unpacked BCD[4]`) for multi-digit values.
 
-### Audio
+### Character Encodings
 
-| Format   | Aliases              | Size  | Description               |
-| -------- | -------------------- | ----- | ------------------------- |
-| A-law    | `alaw`, `G.711A`     | 8-bit | ITU-T G.711 A-law codec   |
-| MIDI Note| `MIDI`, `note`       | 8-bit | MIDI note number (0-127)  |
-| μ-law    | `mu-law`, `G.711μ`   | 8-bit | ITU-T G.711 μ-law codec   |
+| Type    | Bits | Range           | Encoding | C/C++               | C#       | Java   | Description                    |
+| ------- | ---- | --------------- | -------- | ------------------- | -------- | ------ | ------------------------------ |
+| ASCII   | 8    | 0-127           | ASCII    | `char`              | -        | -      | 7-bit ASCII character          |
+| ASCII16 | 16   | 2 chars         | ASCII    | -                   | -        | -      | Two ASCII characters           |
+| ASCII32 | 32   | 4 chars         | ASCII    | -                   | -        | -      | Four ASCII characters          |
+| ASCII64 | 64   | 8 chars         | ASCII    | -                   | -        | -      | Eight ASCII characters         |
+| EBCDIC  | 8    | 0-255           | EBCDIC   | -                   | -        | -      | IBM mainframe encoding         |
+| UTF-8   | 8    | 0-255           | UTF-8    | `char8_t`           | -        | -      | UTF-8 code unit (variable len) |
+| UTF-16  | 16   | U+0000-U+FFFF   | UTF-16   | `wchar_t`, `char16_t` | `char` | `char` | UTF-16 code unit (BMP/surrogate) |
+| UTF-32  | 32   | U+0000-U+10FFFF | UTF-32   | `char32_t`          | -        | -      | Full Unicode code point        |
 
-### Special Formats
+### Color Formats
 
-| Format   | Aliases                       | Size   | Description              |
-| -------- | ----------------------------- | ------ | ------------------------ |
-| Currency | `OLE Currency`, `money`, `CY` | 64-bit | Scaled integer /10000    |
-| FourCC   | `FOURCC`, `magic`             | 32-bit | Four-character code      |
-| IPv4     | `IP Address`, `in_addr`       | 32-bit | Dotted decimal format    |
-| IPv6 (low)| `IPv6-L`                     | 64-bit | Lower 64 bits of IPv6    |
-| MAC      | `MAC-48`, `EUI-48`            | 64-bit | Colon-separated MAC addr |
-| Port     | `TCP Port`, `UDP Port`        | 16-bit | Well-known port numbers  |
+| Type     | Bits | Components | Order                            | C/C++      | Description                  |
+| -------- | ---- | ---------- | -------------------------------- | ---------- | ---------------------------- |
+| RGB      | 32   | 8/8/8      | 0x00RRGGBB                       | -          | Standard RGB (8 bits unused) |
+| RGBA     | 32   | 8/8/8/8    | 0xAARRGGBB                       | -          | RGB with alpha channel       |
+| BGR24    | 32   | 8/8/8      | 0x00BBGGRR                       | `COLORREF` | Windows GDI color            |
+| BGRA32   | 32   | 8/8/8/8    | 0xAABBGGRR                       | -          | Windows DIB with alpha       |
+| ABGR32   | 32   | 8/8/8/8    | 0xRRGGBBAA                       | -          | Alpha-Blue-Green-Red         |
+| RGB565   | 16   | 5/6/5      | RRRRRGGGGGGBBBBB                 | -          | 16-bit color (65K colors)    |
+| RGB555   | 16   | 5/5/5      | 0RRRRRGGGGGBBBBB                 | -          | 15-bit color (32K colors)    |
+| ARGB1555 | 16   | 1/5/5/5    | ARRRRRGGGGGBBBBB                 | -          | 15-bit color + 1-bit alpha   |
+| ARGB4444 | 16   | 4/4/4/4    | AAARRRRGGGGBBBB                  | -          | 12-bit color + 4-bit alpha   |
+| HSV      | 32   | H/S/V      | Hue(0-359)/Sat(0-100)/Val(0-100) | -          | Hue-Saturation-Value         |
+
+### Date/Time Formats
+
+| Type         | Bits | Epoch      | Resolution | Range                     | Platform | Description                           |
+| ------------ | ---- | ---------- | ---------- | ------------------------- | -------- | ------------------------------------- |
+| Unix32       | 32   | 1970-01-01 | 1 second   | 1901-12-13 to 2038-01-19  | POSIX    | Standard Unix timestamp (Y2038 issue) |
+| Unix64       | 64   | 1970-01-01 | 1 second   | ±292 billion years        | POSIX    | Extended Unix timestamp               |
+| DOS DateTime | 32   | 1980-01-01 | 2 seconds  | 1980-01-01 to 2107-12-31  | DOS/FAT  | FAT filesystem timestamp              |
+| FILETIME     | 64   | 1601-01-01 | 100 ns     | 1601-01-01 to 30828-09-14 | Windows  | Windows file timestamp                |
+| OLE Date     | 64   | 1899-12-30 | ~1 ms      | 0100-01-01 to 9999-12-31  | COM/OLE  | As double (days.fraction)             |
+| NTP          | 64   | 1900-01-01 | ~232 ps    | 1900-01-01 to 2036-02-07  | Network  | Q32.32 fixed-point seconds (era 0)    |
+| HFS+         | 32   | 1904-01-01 | 1 second   | 1904-01-01 to 2040-02-06  | macOS    | HFS+ filesystem timestamp             |
+| GPS Time     | 32   | 1980-01-06 | 1 second   | 1980-01-06 to 2137~       | GPS      | GPS week/seconds                      |
+| WebKit       | 64   | 1601-01-01 | 1 us       | 1601-01-01 to ~294247 AD  | Chrome   | Chrome/WebKit timestamp               |
+| .NET Ticks   | 64   | 0001-01-01 | 100 ns     | 0001-01-01 to 9999-12-31  | .NET     | DateTime.Ticks value                  |
+
+### Audio Formats
+
+| Type      | Bits | Range         | Standard    | Description                            |
+| --------- | ---- | ------------- | ----------- | -------------------------------------- |
+| mu-law    | 8    | -8159 to 8159 | ITU-T G.711 | Companded audio (North America/Japan)  |
+| A-law     | 8    | -4032 to 4032 | ITU-T G.711 | Companded audio (Europe/International) |
+| MIDI Note | 8    | 0-127         | MIDI 1.0    | Note number (C-1=0, A4=69)             |
+
+### Network & Special Formats
+
+| Type     | Bits | Format            | Standard | Description                           |
+| -------- | ---- | ----------------- | -------- | ------------------------------------- |
+| IPv4     | 32   | a.b.c.d           | RFC 791  | Internet Protocol v4 address          |
+| IPv6-L   | 64   | lower 64 bits     | RFC 4291 | IPv6 interface identifier portion     |
+| MAC-48   | 48   | aa:bb:cc:dd:ee:ff | IEEE 802 | Ethernet MAC address                  |
+| Port     | 16   | 0-65535           | TCP/UDP  | Network port number                   |
+| FourCC   | 32   | 4 ASCII chars     | Various  | Four-Character Code (codecs, formats) |
+| Currency | 64   | scaled /10000     | OLE      | OLE Currency (CY) type                |
+
+---
+
+## Format Origins & References
+
+### Two's Complement Integers
+
+Two's complement is the most common method for representing signed integers in binary. Invented to simplify binary arithmetic circuits, it allows addition and subtraction using the same hardware. The format naturally handles overflow and underflow in a predictable way.
+
+- [Two's complement - Wikipedia](https://en.wikipedia.org/wiki/Two%27s_complement)
+
+### Gray Code
+
+Gray code (reflected binary code) was invented by Frank Gray at Bell Labs in 1947 for preventing spurious output from electromechanical switches. In Gray code, two successive values differ in only one bit, eliminating transition errors. It's widely used in rotary encoders, analog-to-digital converters, and error correction.
+
+- Patent: US Patent 2,632,058 (1953)
+- [Gray code - Wikipedia](https://en.wikipedia.org/wiki/Gray_code)
+
+### Zigzag Encoding
+
+Zigzag encoding maps signed integers to unsigned integers so that numbers with small absolute values have small encoded values. It encodes negative numbers as positive numbers by interleaving: 0 -> 0, -1 -> 1, 1 -> 2, -2 -> 3, etc. Developed by Google for Protocol Buffers to enable efficient variable-length encoding of signed integers.
+
+- [Protocol Buffers Encoding](https://developers.google.com/protocol-buffers/docs/encoding#signed-ints)
+
+### IEEE 754 Binary Floating Point
+
+IEEE 754 is the technical standard for floating-point arithmetic established in 1985 and revised in 2008 and 2019. It defines formats (binary16, binary32, binary64, binary128), rounding modes, and operations. The format uses a sign bit, biased exponent, and normalized mantissa with an implicit leading 1.
+
+- IEEE 754-2019: IEEE Standard for Floating-Point Arithmetic
+- [IEEE 754 - Wikipedia](https://en.wikipedia.org/wiki/IEEE_754)
+- [What Every Computer Scientist Should Know About Floating-Point Arithmetic](https://docs.oracle.com/cd/E19957-01/806-3568/ncg_goldberg.html)
+
+### BFloat16 (Brain Floating Point)
+
+BFloat16 was developed by Google Brain for machine learning applications. It uses the same exponent range as float32 (8-bit exponent) but with reduced precision (7-bit mantissa instead of 23). This makes conversion to/from float32 trivial (just truncate/pad the mantissa) while maintaining dynamic range suitable for neural network training.
+
+- [BFloat16 - Wikipedia](https://en.wikipedia.org/wiki/Bfloat16_floating-point_format)
+- [Google Cloud TPU BFloat16](https://cloud.google.com/tpu/docs/bfloat16)
+
+### FP8 (8-bit Floating Point)
+
+FP8 formats were standardized jointly by NVIDIA, ARM, and Intel for machine learning inference (E4M3: 1-4-3) and training (E5M2: 1-5-2). E4M3 has more precision for inference weights, while E5M2 has greater range for training gradients.
+
+- [FP8 Formats for Deep Learning](https://arxiv.org/abs/2209.05433)
+- [NVIDIA FP8 Training](https://developer.nvidia.com/blog/nvidia-ampere-architecture-fp8-training/)
+
+### TensorFloat-32 (TF32)
+
+TF32 is a 19-bit format (stored in 32 bits) introduced with NVIDIA Ampere GPUs. It combines float32's 8-bit exponent with a 10-bit mantissa, offering a balance between speed and precision for tensor core operations in deep learning.
+
+- [NVIDIA TensorFloat-32](https://blogs.nvidia.com/blog/2020/05/14/tensorfloat-32-precision-format/)
+
+### Posit (Unum Type III)
+
+Posits were proposed by John Gustafson as a replacement for IEEE 754 floats. They use a variable-length "regime" field that provides tapered precision - very high precision near 1.0 and gracefully decreasing precision toward extremes. This eliminates NaN/Infinity overhead and provides better accuracy per bit.
+
+- Gustafson, J.L. "Posit Arithmetic" (2017)
+- [Posit - Wikipedia](https://en.wikipedia.org/wiki/Unum_(number_format)#Posit)
+- [Posit Standard](https://posithub.org/docs/posit_standard.pdf)
+
+### IBM Hexadecimal Floating Point
+
+IBM HFP was used on IBM System/360 and successors since 1964. It uses a base-16 (hexadecimal) exponent rather than base-2, providing a different precision/range tradeoff. The mantissa is not normalized to have a leading 1, so the format can have up to 3 leading zero bits.
+
+- [IBM hexadecimal floating-point - Wikipedia](https://en.wikipedia.org/wiki/IBM_hexadecimal_floating-point)
+
+### VAX Floating Point
+
+VAX F_floating was used on DEC VAX computers (1977-1990s). It has similar precision to IEEE binary32 but with different encoding, byte order, and handling of special values (no infinities or NaN, reserved operand instead).
+
+- [VAX Floating Point - Wikipedia](https://en.wikipedia.org/wiki/VAX_floating_point)
+
+### Microsoft Binary Format (MBF)
+
+MBF was used in Microsoft BASIC interpreters and early MS-DOS software (1975-1991). It predates IEEE 754 and stores the exponent in the most significant byte. The format was superseded by IEEE 754 starting with QuickBASIC 4.0.
+
+- [Microsoft Binary Format - Wikipedia](https://en.wikipedia.org/wiki/Microsoft_Binary_Format)
+
+### IEEE 754 Decimal Floating Point
+
+IEEE 754-2008 added decimal floating-point formats (decimal32, decimal64, decimal128) for financial and scientific applications requiring exact decimal arithmetic. BitBench uses BID (Binary Integer Decimal) encoding where the significand is stored as a binary integer.
+
+- IEEE 754-2008 Standard
+- [Decimal floating point - Wikipedia](https://en.wikipedia.org/wiki/Decimal_floating_point)
+
+### Fixed-Point (Q Format)
+
+Q format notation (Q m.n) specifies fixed-point numbers with m integer bits and n fractional bits. Widely used in DSP, embedded systems, and game development where floating-point hardware is unavailable or too slow. The ARM and TI DSP processors use this extensively.
+
+- [Q (number format) - Wikipedia](https://en.wikipedia.org/wiki/Q_(number_format))
+
+### Binary Coded Decimal (BCD)
+
+BCD represents decimal digits as 4-bit binary groups. Packed BCD stores two digits per byte. Used in financial applications (exact decimal representation), older hardware (4004/8080 had BCD instructions), and displays (7-segment LEDs). The x86 AAA/AAS/DAA/DAS instructions support BCD arithmetic.
+
+- [Binary-coded decimal - Wikipedia](https://en.wikipedia.org/wiki/Binary-coded_decimal)
+
+### Color Formats
+
+- **RGB/RGBA**: Standard color model based on additive primary colors
+- **BGR**: Used by Windows GDI for historical reasons (memory layout optimization)
+- **RGB565/555**: Optimized 16-bit color for low-memory graphics (early GPUs, embedded systems)
+- **HSV**: Hue-Saturation-Value, more intuitive for color selection
+
+References:
+
+- [RGB color model - Wikipedia](https://en.wikipedia.org/wiki/RGB_color_model)
+- [COLORREF - Windows](https://docs.microsoft.com/en-us/windows/win32/gdi/colorref)
+
+### Timestamp Formats
+
+| Format           | Rationale                                               |
+| ---------------- | ------------------------------------------------------- |
+| **Unix**         | Simple seconds count; ubiquitous in POSIX systems       |
+| **FILETIME**     | 100ns precision; covers 1601-30828 AD                   |
+| **NTP**          | Fixed-point for precise network synchronization         |
+| **DOS DateTime** | Space-efficient for FAT filesystem; 2-second resolution |
+| **HFS+**         | Apple's Unix-like timestamp with 1904 epoch             |
+| **OLE Date**     | Double precision for COM automation; Excel dates        |
+| **.NET Ticks**   | Maximum precision (100ns) since year 1                  |
+
+- [Unix time - Wikipedia](https://en.wikipedia.org/wiki/Unix_time)
+- [FILETIME structure - Microsoft](https://docs.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-filetime)
+
+### Audio Codecs (G.711)
+
+ITU-T G.711 defines companding algorithms for voice-frequency audio encoding:
+
+- **mu-law (μ-law)**: Used in North America and Japan telephone networks
+- **A-law**: Used in Europe and international telephone networks
+
+Both compress 14-bit linear PCM to 8-bit companded representation, providing ~13-bit dynamic range.
+
+- ITU-T G.711: Pulse Code Modulation (PCM)
+- [G.711 - Wikipedia](https://en.wikipedia.org/wiki/G.711)
+
+### MIDI
+
+Musical Instrument Digital Interface defines note numbers 0-127, where Middle C (C4) is note 60 and A440 is note 69. Each semitone is one note number.
+
+- [MIDI - Wikipedia](https://en.wikipedia.org/wiki/MIDI)
+
+---
 
 ## How It Works
 
@@ -169,12 +340,12 @@ The left panel shows the current bit pattern interpreted as every applicable for
 
 - **Integers**: Signed and unsigned in LE/BE, Gray code, Zigzag encoding
 - **IEEE 754 Floats**: Half, single, double precision
-- **Exotic Floats**: BFloat16, IBM, VAX, MBF, FP8 (ML) formats
+- **Exotic Floats**: BFloat8/16/32/64, IBM, VAX, MBF, FP8 (ML), Posit, TF32
 - **Fixed Point**: Q-format fixed point numbers
-- **Decimal/BCD**: Binary Coded Decimal
+- **Decimal/BCD**: Binary Coded Decimal, IEEE Decimal floats
 - **Colors**: RGB, RGBA, BGR, HSV, and 16-bit color formats
 - **Date/Time**: Unix, DOS, FILETIME, NTP, and other timestamps
-- **Audio**: μ-law, A-law, MIDI note numbers
+- **Audio**: mu-law, A-law, MIDI note numbers
 - **Special**: Network addresses, FourCC codes, currency
 - **Characters**: ASCII, EBCDIC, UTF-32
 
@@ -188,22 +359,23 @@ Click any bit to toggle it. Define named fields for structured data:
 4. Fields are color-coded on the grid
 
 **Quick Field Loading**: Double-click any format name in the Type Interpretations panel to instantly load its bit field components. For example:
+
 - Double-click "Float32" to see Sign, Exponent, and Mantissa fields
 - Double-click "RGBA" to see color components with actual colors (Red=red, Green=green, Blue=blue, Alpha=gray)
 - Double-click "DOS DateTime" to see Year, Month, Day, Hour, Minute, Second fields
 
 ### Operations
 
-| Operation | Description                                    |
-| --------- | ---------------------------------------------- |
-| BSWAP     | Byte-swap (reverse endianness)                 |
-| NOT       | Bitwise complement                             |
-| ROL       | Rotate left (bits wrap around)                 |
-| ROR       | Rotate right (bits wrap around)                |
-| SAL       | Shift arithmetic left (preserves sign bit)     |
-| SAR       | Shift arithmetic right (sign-extending)        |
-| SHL       | Shift logical left (zero-fill, multiply by 2^n)|
-| SHR       | Shift logical right (zero-fill, divide by 2^n) |
+| Operation | Description                                     |
+| --------- | ----------------------------------------------- |
+| BSWAP     | Byte-swap (reverse endianness)                  |
+| NOT       | Bitwise complement                              |
+| ROL       | Rotate left (bits wrap around)                  |
+| ROR       | Rotate right (bits wrap around)                 |
+| SAL       | Shift arithmetic left (preserves sign bit)      |
+| SAR       | Shift arithmetic right (sign-extending)         |
+| SHL       | Shift logical left (zero-fill, multiply by 2^n) |
+| SHR       | Shift logical right (zero-fill, divide by 2^n)  |
 
 ### Code Export
 
@@ -259,16 +431,16 @@ Open [index.html](index.html) in any modern browser - no build required.
 - [x] Signed/Unsigned integer views (8/16/32/64-bit)
 - [x] Little Endian and Big Endian support
 - [x] IEEE 754 Float16/32/64
-- [x] BFloat16 (Brain Float)
+- [x] BFloat8/16/32/64 (Brain Float family)
 - [x] Minifloat (8-bit)
 - [x] FP8 E4M3/E5M2 (ML inference/training formats)
-- [x] IEEE 754 Decimal32/64 (BID encoding)
+- [x] Decimal8/16/32/64 (custom and IEEE 754 BID)
 - [x] Posit format (8/16/32-bit)
 - [x] TensorFloat-32 (NVIDIA tensor core)
 - [x] IBM Hexadecimal Floating Point
 - [x] VAX F_floating
 - [x] Microsoft Binary Format (MBF)
-- [x] Fixed-point Q formats
+- [x] Fixed-point Q formats (Q7.8, Q15.16, Q31.32, UQ8.8, UQ16.16, UQ32.32)
 - [x] Packed BCD
 - [x] OLE Currency
 - [x] Unix/DOS/FILETIME timestamps
@@ -282,11 +454,11 @@ Open [index.html](index.html) in any modern browser - no build required.
 - [x] TCP/UDP port numbers with well-known names
 - [x] MAC-48 address format
 - [x] FourCC codes
-- [x] μ-law/A-law audio codecs (G.711)
+- [x] mu-law/A-law audio codecs (G.711)
 - [x] MIDI note numbers
 - [x] ASCII/EBCDIC/UTF-32 character display
 - [x] Gray code (reflected binary)
-- [x] Zigzag encoding (Protocol Buffers)
+- [x] Zigzag encoding (Protocol Buffers) - 8/16/32/64-bit
 - [x] Separate Colors/DateTime/Audio categories
 - [x] Type name aliases
 - [x] Interactive bit grid
@@ -317,6 +489,8 @@ Open [index.html](index.html) in any modern browser - no build required.
 - No 128-bit width support (limits GUID/UUID, full IPv6)
 - Field overlap detection not implemented
 - Some exotic formats (VAX, IBM) may have edge-case inaccuracies
+- Custom Decimal8/16 formats are non-standard (IEEE only defines 32/64/128)
+- BFloat8/32/64 are custom extensions (only BFloat16 is standard)
 
 ## License
 
