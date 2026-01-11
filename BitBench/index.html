@@ -96,6 +96,470 @@ const IconDice = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" wid
 // --- CONSTANTS ---
 const BIT_WIDTHS = [8, 16, 32, 64];
 
+// BigInt-safe power function (Babel converts ** to Math.pow which fails with BigInt)
+const bigPow = (base, exp) => {
+    let result = 1n;
+    base = BigInt(base);
+    exp = Number(exp);
+    for (let i = 0; i < exp; ++i) result *= base;
+    return result;
+};
+
+// --- DECIMAL STRING PARSING (BigInt-based for precision) ---
+// Parses decimal strings with comma/period, signs, and exponent notation
+// Returns { mantissa: BigInt, exponent: number, sign: 1|-1 } or null on error
+// Also handles special values: inf, -inf, nan, infinity
+const parseDecimalString = (str) => {
+    str = str.trim().replace(/,/g, '.').replace(/_/g, '');
+    if (!str || str === '-' || str === '+' || str === '.') return null;
+
+    // Handle special float values
+    const lower = str.toLowerCase();
+    if (lower === 'nan') return { special: NaN };
+    if (lower === 'inf' || lower === '+inf' || lower === 'infinity' || lower === '+infinity') return { special: Infinity };
+    if (lower === '-inf' || lower === '-infinity') return { special: -Infinity };
+
+    // Match: optional sign, integer part, optional decimal part, optional exponent
+    const match = str.match(/^([+-])?(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/);
+    if (!match) return null;
+
+    const sign = match[1] === '-' ? -1 : 1;
+    const intPart = match[2] || '0';
+    const fracPart = match[3] || '';
+    const expPart = match[4] ? parseInt(match[4], 10) : 0;
+
+    // Combine integer and fractional parts into a single BigInt mantissa
+    const combined = intPart + fracPart;
+    if (!/^\d+$/.test(combined) || combined.length === 0) return null;
+
+    const mantissa = BigInt(combined.replace(/^0+/, '') || '0');
+    const exponent = expPart - fracPart.length;
+
+    return { mantissa, exponent, sign };
+};
+
+// Convert parsed decimal to JavaScript Number (IEEE 754 double)
+const parsedDecimalToNumber = (parsed) => {
+    if (!parsed) return NaN;
+    if ('special' in parsed) return parsed.special;
+    const { mantissa, exponent, sign } = parsed;
+    if (mantissa === 0n) return sign === -1 ? -0 : 0;
+
+    // For reasonable exponents, compute directly
+    if (exponent >= 0 && exponent <= 308) {
+        return sign * Number(mantissa) * Math.pow(10, exponent);
+    } else if (exponent < 0 && exponent >= -308) {
+        return sign * Number(mantissa) / Math.pow(10, -exponent);
+    }
+
+    // Fallback for extreme exponents
+    return sign * Number(mantissa + 'e' + exponent);
+};
+
+// Parse decimal string directly to Number
+const parseDecimalToNumber = (str) => parsedDecimalToNumber(parseDecimalString(str));
+
+// Convert Number to bits for the given width (assumes IEEE 754 floats)
+const numberToFloatBits = (num, width) => {
+    if (width === 64) return numberToFloat64(num);
+    if (width === 32) return numberToFloat32(num);
+    if (width === 16) return BigInt(numberToFloat16(num));
+    if (width === 8) return BigInt(numberToMinifloat8(num));
+    // For other widths, just use the 64-bit representation masked
+    return numberToFloat64(num) & ((1n << BigInt(width)) - 1n);
+};
+
+// Convert bits to Number for display
+const floatBitsToNumber = (bits, width) => {
+    if (width === 64) return float64ToNumber(bits);
+    if (width === 32) return float32ToNumber(Number(bits));
+    if (width === 16) return float16ToNumber(Number(bits));
+    if (width === 8) return minifloat8ToNumber(Number(bits));
+    return float64ToNumber(bits);
+};
+
+// BigInt-based precise decimal string conversion for IEEE 754 floats
+// Avoids JavaScript Number rounding artifacts by computing decimal representation directly
+const floatBitsToDecimalString = (bits, signBits, expBits, mantBits, expBias) => {
+    bits = BigInt(bits);
+    const totalBits = signBits + expBits + mantBits;
+    const mantMask = (1n << BigInt(mantBits)) - 1n;
+    const expMask = (1n << BigInt(expBits)) - 1n;
+
+    const sign = Number((bits >> BigInt(totalBits - 1)) & 1n);
+    const exp = Number((bits >> BigInt(mantBits)) & expMask);
+    const mant = bits & mantMask;
+
+    // Handle special cases
+    const expMax = (1 << expBits) - 1;
+    if (exp === expMax) {
+        if (mant === 0n) return sign ? '-Infinity' : 'Infinity';
+        return 'NaN';
+    }
+    if (exp === 0 && mant === 0n) return sign ? '-0' : '0';
+
+    // Calculate actual value using BigInt arithmetic
+    // value = (-1)^sign * mantissa * 2^(exp - bias - mantBits)
+    // For normalized: mantissa = (1 << mantBits) + mant
+    // For denormalized: mantissa = mant, exp = 1
+    let mantissa, exponent;
+    if (exp === 0) {
+        // Denormalized
+        mantissa = mant;
+        exponent = 1 - expBias - mantBits;
+    } else {
+        // Normalized
+        mantissa = (1n << BigInt(mantBits)) + mant;
+        exponent = exp - expBias - mantBits;
+    }
+
+    if (mantissa === 0n) return sign ? '-0' : '0';
+
+    // Convert to decimal: multiply by appropriate power of 10 for precision
+    // then divide and format
+    const precision = Math.max(20, mantBits + 10); // Extra precision for accurate rounding
+    const scale = bigPow(10n, precision);
+
+    let numerator, denominator;
+    if (exponent >= 0) {
+        numerator = mantissa * (1n << BigInt(exponent)) * scale;
+        denominator = 1n;
+    } else {
+        numerator = mantissa * scale;
+        denominator = 1n << BigInt(-exponent);
+    }
+
+    // Perform the division
+    let integerPart = numerator / denominator;
+
+    // Convert to string and insert decimal point
+    let str = integerPart.toString();
+
+    // Insert decimal point at the right position
+    if (str.length <= precision) {
+        str = '0'.repeat(precision - str.length + 1) + str;
+    }
+    const decimalPos = str.length - precision;
+    let intPart = str.slice(0, decimalPos);
+    let fracPart = str.slice(decimalPos);
+
+    // Trim trailing zeros from fraction
+    fracPart = fracPart.replace(/0+$/, '');
+
+    // Format result
+    let result;
+    if (fracPart.length === 0) {
+        result = intPart;
+    } else {
+        result = intPart + '.' + fracPart;
+    }
+
+    // Use scientific notation for very large or very small numbers
+    if (intPart.length > 15 || (intPart === '0' && fracPart.match(/^0{6,}/))) {
+        // Generate scientific notation from BigInt computation
+        const fullStr = intPart + fracPart;
+        const firstNonZero = fullStr.search(/[1-9]/);
+        if (firstNonZero >= 0) {
+            const significand = fullStr.slice(firstNonZero, firstNonZero + 15).replace(/0+$/, '');
+            let expVal;
+            if (intPart !== '0' && intPart !== '') {
+                expVal = intPart.length - 1;
+            } else {
+                expVal = -(fracPart.search(/[1-9]/) + 1);
+            }
+            result = significand[0] + (significand.length > 1 ? '.' + significand.slice(1) : '') + 'e' + (expVal >= 0 ? '+' : '') + expVal;
+        }
+    }
+
+    return sign ? '-' + result : result;
+};
+
+// Format float for display, avoiding unnecessary precision loss display
+const formatFloatInput = (bits, width) => {
+    // Use precise BigInt-based conversion for standard IEEE 754 formats
+    if (width === 64) return floatBitsToDecimalString(bits, 1, 11, 52, 1023);
+    if (width === 32) return floatBitsToDecimalString(bits, 1, 8, 23, 127);
+    if (width === 16) return floatBitsToDecimalString(bits, 1, 5, 10, 15);
+    if (width === 8) return floatBitsToDecimalString(bits, 1, 4, 3, 7);
+    // Fallback for non-standard widths
+    const num = floatBitsToNumber(bits, width);
+    if (!isFinite(num)) return num.toString();
+    if (Object.is(num, -0)) return '-0';
+    return num.toPrecision(15).replace(/\.?0+$/, '');
+};
+
+// Precise BigInt-based formatters for common float formats (for use in display functions)
+const formatFloat64Bits = (bits) => floatBitsToDecimalString(bits, 1, 11, 52, 1023);
+const formatFloat32Bits = (bits) => floatBitsToDecimalString(bits, 1, 8, 23, 127);
+const formatFloat16Bits = (bits) => floatBitsToDecimalString(bits, 1, 5, 10, 15);
+const formatMinifloat8Bits = (bits) => floatBitsToDecimalString(bits, 1, 4, 3, 7);
+const formatBFloat16Bits = (bits) => floatBitsToDecimalString(bits, 1, 8, 7, 127);
+const formatBFloat8Bits = (bits) => floatBitsToDecimalString(bits, 1, 4, 3, 7);
+const formatTF32Bits = (bits) => floatBitsToDecimalString(bits, 1, 8, 10, 127);
+const formatFP8E4M3Bits = (bits) => {
+    // FP8-E4M3 has no infinity, all-ones exp means NaN
+    const b = BigInt(bits);
+    const sign = Number((b >> 7n) & 1n);
+    const exp = Number((b >> 3n) & 0xFn);
+    const mant = b & 0x7n;
+    if (exp === 15) return 'NaN';
+    if (exp === 0 && mant === 0n) return sign ? '-0' : '0';
+    return floatBitsToDecimalString(bits, 1, 4, 3, 7);
+};
+const formatFP8E5M2Bits = (bits) => floatBitsToDecimalString(bits, 1, 5, 2, 15);
+const formatBFloat64Bits = (bits) => floatBitsToDecimalString(bits, 1, 8, 55, 127);
+
+// --- FIXED POINT PRECISE FORMATTING ---
+const formatFixedPointBits = (bits, intBits, fracBits, signed) => {
+    bits = BigInt(bits);
+    const totalBits = intBits + fracBits;
+    if (fracBits === 0) return bits.toString(); // No fractional part
+
+    const signBit = 1n << BigInt(totalBits - 1);
+    let isNeg = false;
+    if (signed && bits >= signBit) {
+        isNeg = true;
+        bits = (1n << BigInt(totalBits)) - bits;
+    }
+    if (bits === 0n) return isNeg ? '-0' : '0';
+
+    // Split into integer and fractional parts
+    const fracMask = (1n << BigInt(fracBits)) - 1n;
+    const intPart = bits >> BigInt(fracBits);
+    const fracPart = bits & fracMask;
+
+    if (fracPart === 0n) return (isNeg ? '-' : '') + intPart.toString();
+
+    // Convert fractional part exactly: fracPart / 2^fracBits
+    // Use enough decimal digits to represent any binary fraction exactly
+    // For n binary digits, need ceil(n * log10(2)) + 1 decimal digits
+    const precision = Math.ceil(fracBits * 0.30103) + 3;
+    const divisor = 1n << BigInt(fracBits);
+    const scale = bigPow(10n, precision);
+
+    // Compute with rounding: (fracPart * scale + divisor/2) / divisor
+    const fracValue = (fracPart * scale * 2n + divisor) / (divisor * 2n);
+    let fracStr = fracValue.toString().padStart(precision, '0');
+
+    // Trim trailing zeros but keep at least one decimal place for clarity
+    fracStr = fracStr.replace(/0+$/, '');
+    if (fracStr === '') return (isNeg ? '-' : '') + intPart.toString();
+
+    return (isNeg ? '-' : '') + intPart.toString() + '.' + fracStr;
+};
+
+// --- DECIMAL FLOAT PRECISE FORMATTING ---
+const formatDecimal8Bits = (bits) => {
+    bits = Number(bits);
+    const sign = (bits >> 7) & 1;
+    const exp = (bits >> 4) & 0x7;
+    const coeff = bits & 0xF;
+    if (exp === 7 && coeff >= 14) return coeff === 14 ? (sign ? '-Infinity' : 'Infinity') : 'NaN';
+    if (coeff === 0) return sign ? '-0' : '0';
+    const expVal = exp - 4;
+    return formatDecimalCoeff(BigInt(coeff), expVal, sign);
+};
+
+const formatDecimal16Bits = (bits) => {
+    bits = Number(bits);
+    const sign = (bits >> 15) & 1;
+    const exp = (bits >> 10) & 0x1F;
+    const coeff = bits & 0x3FF;
+    if (exp === 31 && coeff >= 1022) return coeff === 1022 ? (sign ? '-Infinity' : 'Infinity') : 'NaN';
+    if (coeff === 0) return sign ? '-0' : '0';
+    const expVal = exp - 16;
+    return formatDecimalCoeff(BigInt(coeff), expVal, sign);
+};
+
+const formatDecimal32Bits = (bits) => {
+    bits = Number(bits);
+    const sign = (bits >> 31) & 1;
+    const combo = (bits >> 23) & 0xFF;
+    const trailing = bits & 0x7FFFFF;
+
+    if ((combo >> 6) === 3) {
+        if ((combo >> 5) === 0x1E) return sign ? '-Infinity' : 'Infinity';
+        if ((combo >> 5) === 0x1F) return 'NaN';
+        const exp = ((combo & 0x3) << 6) | ((bits >> 21) & 0x3F);
+        const coeff = (8 + ((combo >> 2) & 1)) * 1000000 + (trailing & 0x1FFFFF);
+        return formatDecimalCoeff(BigInt(coeff), exp - 101, sign);
+    }
+
+    const exp = ((combo >> 1) & 0x3F) | ((combo & 0x80) >> 1);
+    const coeff = ((combo & 1) << 23) | trailing;
+    if (coeff === 0) return sign ? '-0' : '0';
+    return formatDecimalCoeff(BigInt(coeff), exp - 101, sign);
+};
+
+const formatDecimal64Bits = (bits) => {
+    bits = BigInt(bits);
+    const sign = Number((bits >> 63n) & 1n);
+    const combo = Number((bits >> 53n) & 0x3FFn);
+    const trailing = bits & 0x1FFFFFFFFFFFFFn;
+
+    if ((combo >> 8) === 3) {
+        if ((combo >> 7) === 0x1E) return sign ? '-Infinity' : 'Infinity';
+        if ((combo >> 7) === 0x1F) return 'NaN';
+        const exp = ((combo & 0x3) << 8) | Number((bits >> 51n) & 0xFFn);
+        const leadDigit = 8 + ((combo >> 2) & 1);
+        const coeff = BigInt(leadDigit) * 10000000000000000n + (trailing & 0x7FFFFFFFFFFFFn);
+        return formatDecimalCoeff(coeff, exp - 398, sign);
+    }
+
+    const exp = ((combo >> 2) & 0xFF) | ((combo & 0x300) >> 1);
+    const coeff = (BigInt(combo & 3) << 53n) | trailing;
+    if (coeff === 0n) return sign ? '-0' : '0';
+    return formatDecimalCoeff(coeff, exp - 398, sign);
+};
+
+const formatDecimalCoeff = (coeff, exp, sign) => {
+    if (coeff === 0n) return sign ? '-0' : '0';
+    let str = coeff.toString();
+    const decPos = str.length + exp;
+
+    if (exp >= 0) {
+        str = str + '0'.repeat(exp);
+    } else if (decPos <= 0) {
+        str = '0.' + '0'.repeat(-decPos) + str;
+    } else {
+        str = str.slice(0, decPos) + '.' + str.slice(decPos);
+    }
+    str = str.replace(/\.?0+$/, '').replace(/^0+(?=\d)/, '');
+    if (str === '' || str === '.') str = '0';
+    return (sign ? '-' : '') + str;
+};
+
+// --- EXOTIC FLOAT PRECISE FORMATTING ---
+const formatIBMFloat32Bits = (bits) => {
+    bits = BigInt(bits);
+    const sign = Number((bits >> 31n) & 1n);
+    const exp = Number((bits >> 24n) & 0x7Fn);
+    const mant = bits & 0xFFFFFFn;
+    if (mant === 0n && exp === 0) return sign ? '-0' : '0';
+
+    // IBM HFP: value = mant/2^24 * 16^(exp-64) = mant * 16^(exp-64) / 2^24
+    // = mant * 2^(4*(exp-64)) / 2^24 = mant * 2^(4*exp - 256 - 24) = mant * 2^(4*exp - 280)
+    const binExp = 4 * exp - 280;
+    return formatMantissaWithBinExp(mant, binExp, sign);
+};
+
+const formatVAXFBits = (bits) => {
+    bits = BigInt(bits);
+    // VAX byte order swap
+    const swapped = ((bits & 0xFFFFn) << 16n) | ((bits >> 16n) & 0xFFFFn);
+    const sign = Number((swapped >> 15n) & 1n);
+    const exp = Number((swapped >> 7n) & 0xFFn);
+    const mant = ((swapped & 0x7Fn) << 16n) | ((bits >> 16n) & 0xFFFFn);
+    if (exp === 0) return '0';
+
+    // VAX F: value = (0.5 + mant/2^24) * 2^(exp-128) with hidden bit
+    // = (2^23 + mant) / 2^24 * 2^(exp-128) = (2^23 + mant) * 2^(exp-152)
+    const fullMant = (1n << 23n) + mant;
+    return formatMantissaWithBinExp(fullMant, exp - 152, sign);
+};
+
+const formatMBF32Bits = (bits) => {
+    bits = BigInt(bits);
+    const exp = Number((bits >> 24n) & 0xFFn);
+    if (exp === 0) return '0';
+    const sign = Number((bits >> 23n) & 1n);
+    const mant = bits & 0x7FFFFFn;
+
+    // MBF32: value = (0.5 + mant/2^24) * 2^(exp-128) = (2^23 + mant) * 2^(exp-152)
+    const fullMant = (1n << 23n) + mant;
+    return formatMantissaWithBinExp(fullMant, exp - 152, sign);
+};
+
+const formatMBF64Bits = (bits) => {
+    bits = BigInt(bits);
+    const exp = Number((bits >> 56n) & 0xFFn);
+    if (exp === 0) return '0';
+    const sign = Number((bits >> 55n) & 1n);
+    const mant = bits & 0x7FFFFFFFFFFFFFn;
+
+    // MBF64: value = (0.5 + mant/2^56) * 2^(exp-128) = (2^55 + mant) * 2^(exp-184)
+    const fullMant = (1n << 55n) + mant;
+    return formatMantissaWithBinExp(fullMant, exp - 184, sign);
+};
+
+const formatMantissaWithBinExp = (mant, binExp, sign) => {
+    if (mant === 0n) return sign ? '-0' : '0';
+
+    // Convert mant * 2^binExp to decimal string
+    let value;
+    if (binExp >= 0) {
+        value = mant << BigInt(binExp);
+        return (sign ? '-' : '') + value.toString();
+    } else {
+        const negExp = -binExp;
+        const divisor = 1n << BigInt(negExp);
+        const intPart = mant / divisor;
+        const fracPart = mant % divisor;
+
+        if (fracPart === 0n) return (sign ? '-' : '') + intPart.toString();
+
+        // Calculate decimal digits for fractional part
+        const precision = Math.ceil(negExp * 0.30103) + 2;
+        const scale = bigPow(10n, precision);
+        const fracValue = (fracPart * scale) / divisor;
+        let fracStr = fracValue.toString().padStart(precision, '0').replace(/0+$/, '');
+
+        if (fracStr === '') return (sign ? '-' : '') + intPart.toString();
+        return (sign ? '-' : '') + intPart.toString() + '.' + fracStr;
+    }
+};
+
+// --- POSIT PRECISE FORMATTING ---
+const formatPositBits = (bits, nbits, es) => {
+    bits = BigInt(bits);
+    const mask = (1n << BigInt(nbits)) - 1n;
+    bits = bits & mask;
+
+    if (bits === 0n) return '0';
+    if (bits === (1n << BigInt(nbits - 1))) return 'NaR';
+
+    const sign = Number((bits >> BigInt(nbits - 1)) & 1n);
+    let p = sign ? ((1n << BigInt(nbits)) - bits) : bits;
+
+    // Count regime bits
+    let regimeBit = Number((p >> BigInt(nbits - 2)) & 1n);
+    let regimeLen = 1;
+    for (let i = nbits - 3; i >= 0; --i) {
+        if (Number((p >> BigInt(i)) & 1n) === regimeBit) ++regimeLen;
+        else break;
+    }
+
+    const k = regimeBit ? regimeLen - 1 : -regimeLen;
+    const remainingBits = nbits - 1 - regimeLen - 1;
+
+    let exp = 0;
+    let fracBits = 0;
+    let frac = 0n;
+
+    if (remainingBits > 0) {
+        if (es > 0 && remainingBits >= es) {
+            exp = Number((p >> BigInt(remainingBits - es)) & ((1n << BigInt(es)) - 1n));
+            fracBits = remainingBits - es;
+        } else if (es > 0) {
+            exp = Number((p & ((1n << BigInt(remainingBits)) - 1n)) << BigInt(es - remainingBits));
+            fracBits = 0;
+        } else {
+            fracBits = remainingBits;
+        }
+        if (fracBits > 0) frac = p & ((1n << BigInt(fracBits)) - 1n);
+    }
+
+    // useed = 2^(2^es), scale = useed^k * 2^exp = 2^(k*2^es + exp)
+    const useedExp = 1 << es;
+    const totalExp = k * useedExp + exp;
+
+    // value = (1 + frac/2^fracBits) * 2^totalExp
+    const fullMant = fracBits > 0 ? (1n << BigInt(fracBits)) + frac : 1n;
+    const effectiveExp = totalExp - fracBits;
+
+    return formatMantissaWithBinExp(fullMant, effectiveExp, sign);
+};
+
 // --- BYTE ORDER UTILITIES ---
 const swapBytes = (val, width) => {
     const bytes = width / 8;
@@ -253,6 +717,15 @@ const extractAndFormat = (val, typeBits, totalBits, convertFn, formatFn) => {
     return formatFn(convertFn(val));
 };
 
+// Bits-based extractor and formatter (for precise BigInt-based float formatting)
+const extractAndFormatBits = (val, typeBits, totalBits, formatBitsFn) => {
+    if (totalBits > typeBits) {
+        const arr = extractUnsignedArray(val, typeBits, totalBits);
+        return formatArray(arr.map(x => formatBitsFn(x)));
+    }
+    return formatBitsFn(val);
+};
+
 // Extract BCD array
 const extractBcdArray = (val, typeBits, totalBits) => {
     if (totalBits > typeBits) {
@@ -317,6 +790,32 @@ const numberToBFloat16 = (num) => {
     return view.getUint32(0, false) >>> 16;
 };
 
+// BFloat8 (custom): 1 sign, 4 exp, 3 mantissa (truncated bfloat16, bias=7)
+const bfloat8ToNumber = (bits) => {
+    const sign = (bits >> 7) & 1;
+    const exp = (bits >> 3) & 0xF;
+    const mant = bits & 0x7;
+    if (exp === 0) {
+        if (mant === 0) return sign ? -0 : 0;
+        return (sign ? -1 : 1) * mant / 8 * Math.pow(2, -6); // Subnormal
+    }
+    if (exp === 15) return mant === 0 ? (sign ? -Infinity : Infinity) : NaN;
+    return (sign ? -1 : 1) * (1 + mant / 8) * Math.pow(2, exp - 7);
+};
+
+// BFloat64 (custom): 1 sign, 8 exp, 55 mantissa (extended bfloat with float32 exponent range)
+const bfloat64ToNumber = (bits) => {
+    const sign = Number((bits >> 63n) & 1n);
+    const exp = Number((bits >> 55n) & 0xFFn);
+    const mant = bits & 0x7FFFFFFFFFFFFFn;
+    if (exp === 0) {
+        if (mant === 0n) return sign ? -0 : 0;
+        return (sign ? -1 : 1) * Number(mant) / 0x80000000000000 * Math.pow(2, -126); // Subnormal
+    }
+    if (exp === 255) return mant === 0n ? (sign ? -Infinity : Infinity) : NaN;
+    return (sign ? -1 : 1) * (1 + Number(mant) / 0x80000000000000) * Math.pow(2, exp - 127);
+};
+
 // IEEE 754 Binary32 (Single precision) using DataView
 const float32ToNumber = (bits) => {
     const buffer = new ArrayBuffer(4);
@@ -360,6 +859,28 @@ const minifloat8ToNumber = (bits) => {
     return (sign ? -1 : 1) * (1 + mant / 8) * Math.pow(2, exp - 7);
 };
 
+const numberToMinifloat8 = (num) => {
+    if (isNaN(num)) return 0x7C; // NaN: exp=15, mant!=0
+    if (!isFinite(num)) return num > 0 ? 0x78 : 0xF8; // ±Inf: exp=15, mant=0
+    if (num === 0) return Object.is(num, -0) ? 0x80 : 0;
+    const sign = num < 0 ? 1 : 0;
+    const abs = Math.abs(num);
+    if (abs < Math.pow(2, -9)) return sign << 7; // Too small, underflow to zero
+    if (abs >= 240) return (sign << 7) | 0x78; // Overflow to infinity
+    // Subnormal range
+    if (abs < Math.pow(2, -6)) {
+        const mant = Math.round(abs / Math.pow(2, -6) * 8);
+        return (sign << 7) | (mant & 0x7);
+    }
+    // Normal range
+    let exp = Math.floor(Math.log2(abs));
+    let mant = abs / Math.pow(2, exp) - 1;
+    exp += 7;
+    if (exp <= 0) { exp = 0; mant = abs / Math.pow(2, -6); }
+    if (exp >= 15) return (sign << 7) | 0x78; // Overflow
+    return (sign << 7) | ((exp & 0xF) << 3) | (Math.round(mant * 8) & 0x7);
+};
+
 // IBM Hexadecimal Floating Point (32-bit): 1 sign, 7 exp (base 16), 24 mantissa
 const ibmFloat32ToNumber = (bits) => {
     const sign = (bits >> 31) & 1;
@@ -399,6 +920,28 @@ const mbf64ToNumber = (bits) => {
     const sign = Number((bits >> 55n) & 1n);
     const mant = bits & 0x7FFFFFFFFFFFFFn;
     const value = (0.5 + Number(mant) / 0x80000000000000) * Math.pow(2, exp - 128);
+    return sign ? -value : value;
+};
+
+// Custom Decimal8 (custom BID-like): 1 sign, 3 exp (bias=4), 4 coefficient
+const decimal8ToNumber = (bits) => {
+    const sign = (bits >> 7) & 1;
+    const exp = (bits >> 4) & 0x7;
+    const coeff = bits & 0xF;
+    if (exp === 7 && coeff >= 14) return coeff === 14 ? (sign ? -Infinity : Infinity) : NaN;
+    if (coeff === 0 && exp === 0) return sign ? -0 : 0;
+    const value = coeff * Math.pow(10, exp - 4);
+    return sign ? -value : value;
+};
+
+// Custom Decimal16 (custom BID-like): 1 sign, 5 exp (bias=16), 10 coefficient
+const decimal16ToNumber = (bits) => {
+    const sign = (bits >> 15) & 1;
+    const exp = (bits >> 10) & 0x1F;
+    const coeff = bits & 0x3FF;
+    if (exp === 31 && coeff >= 1022) return coeff === 1022 ? (sign ? -Infinity : Infinity) : NaN;
+    if (coeff === 0 && exp === 0) return sign ? -0 : 0;
+    const value = coeff * Math.pow(10, exp - 16);
     return sign ? -value : value;
 };
 
@@ -571,6 +1114,32 @@ const numberToBcd = (num, width) => {
     return result;
 };
 
+// Unpacked BCD: one digit per byte (in lower nibble, upper nibble typically 0 or 0x3 for ASCII)
+const unpackedBcdToNumber = (bits, width) => {
+    let result = 0n;
+    let multiplier = 1n;
+    const bytes = width / 8;
+    for (let i = 0; i < bytes; ++i) {
+        const byte = Number((bits >> BigInt(i * 8)) & 0xFFn);
+        const digit = byte & 0xF;
+        if (digit > 9) return { valid: false, value: 0n };
+        result += BigInt(digit) * multiplier;
+        multiplier *= 10n;
+    }
+    return { valid: true, value: result };
+};
+
+const extractUnpackedBcdArray = (val, typeBits, totalBits) => {
+    if (totalBits <= typeBits) {
+        const n = unpackedBcdToNumber(val, typeBits);
+        return n.valid ? n.value.toString() : 'Invalid BCD';
+    }
+    return formatArray(extractUnsignedArray(val, typeBits, totalBits).map(x => {
+        const n = unpackedBcdToNumber(x, typeBits);
+        return n.valid ? n.value.toString() : '?';
+    }));
+};
+
 // .NET Decimal (128-bit): 96-bit integer + 1 sign bit + 5 scale bits (0-28)
 // Format: [lo32][mid32][hi32][flags] where flags = sign(bit31) + scale(bits16-20)
 const dotnetDecimalToNumber = (bits) => {
@@ -589,6 +1158,16 @@ const dotnetDecimalToNumber = (bits) => {
 const currencyToNumber = (bits) => {
     const signed = toSigned(bits, 64);
     return Number(signed) / 10000;
+};
+
+const formatCurrencyBits = (bits) => {
+    const signed = toSigned(bits, 64);
+    const isNeg = signed < 0n;
+    const abs = isNeg ? -signed : signed;
+    const intPart = abs / 10000n;
+    const fracPart = abs % 10000n;
+    const fracStr = fracPart.toString().padStart(4, '0').replace(/0+$/, '') || '0';
+    return '$' + (isNeg ? '-' : '') + intPart.toString() + '.' + fracStr;
 };
 
 // --- GRAY CODE CONVERSION ---
@@ -740,6 +1319,7 @@ const midiToNoteName = (note) => {
 const FORMAT_CATEGORIES = {
     integers: { name: 'Integers', color: 'cyan' },
     floats: { name: 'IEEE 754 Floats', color: 'emerald' },
+    ai_floats: { name: 'AI/ML Floats', color: 'purple' },
     exotic_floats: { name: 'Exotic Floats', color: 'amber' },
     fixed: { name: 'Fixed Point', color: 'violet' },
     decimal: { name: 'Decimal/BCD', color: 'pink' },
@@ -911,7 +1491,7 @@ const FORMATS = [
         { name: 'Mant Lo [B0]', start: 0, width: 8, color: '#93c5fd' }
       ],
       convert: (v, w) => w > 16 ? extractUnsignedArray(v, 16, w).map(x => float16ToNumber(Number(x))) : float16ToNumber(Number(v)),
-      display: (v, w) => extractAndFormat(v, 16, w, x => float16ToNumber(Number(x)), formatFloat) },
+      display: (v, w) => extractAndFormatBits(v, 16, w, formatFloat16Bits) },
     { id: 'float16_be', category: 'floats', bits: 16, names: ['Float16 BE', 'f16be'],
       endian: 'BE',
       components: [
@@ -921,7 +1501,7 @@ const FORMATS = [
         { name: 'Mant Hi [B1]', start: 0, width: 2, color: '#1d4ed8' }
       ],
       convert: (v, w) => w > 16 ? extractUnsignedArray(v, 16, w).map(x => float16ToNumber(Number(swapBytes(x, 16)))) : float16ToNumber(Number(swapBytes(v, 16))),
-      display: (v, w) => extractAndFormat(v, 16, w, x => float16ToNumber(Number(swapBytes(x, 16))), formatFloat) },
+      display: (v, w) => extractAndFormatBits(v, 16, w, x => formatFloat16Bits(swapBytes(x, 16))) },
 
     { id: 'float32_le', category: 'floats', bits: 32, names: ['Float32', 'float', 'f32', 'single', 'binary32', 'Single'],
       endian: 'LE',
@@ -934,7 +1514,7 @@ const FORMATS = [
         { name: 'Mant Lo [B0]', start: 0, width: 8, color: '#93c5fd' }
       ],
       convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w).map(x => float32ToNumber(x)) : float32ToNumber(v),
-      display: (v, w) => extractAndFormat(v, 32, w, float32ToNumber, formatFloat) },
+      display: (v, w) => extractAndFormatBits(v, 32, w, formatFloat32Bits) },
     { id: 'float32_be', category: 'floats', bits: 32, names: ['Float32 BE', 'f32be'],
       endian: 'BE',
       components: [
@@ -946,7 +1526,7 @@ const FORMATS = [
         { name: 'Exp Hi [B3]', start: 0, width: 7, color: '#f97316' }
       ],
       convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w).map(x => float32ToNumber(swapBytes(x, 32))) : float32ToNumber(swapBytes(v, 32)),
-      display: (v, w) => extractAndFormat(v, 32, w, x => float32ToNumber(swapBytes(x, 32)), formatFloat) },
+      display: (v, w) => extractAndFormatBits(v, 32, w, x => formatFloat32Bits(swapBytes(x, 32))) },
 
     { id: 'float64_le', category: 'floats', bits: 64, names: ['Float64', 'double', 'f64', 'binary64', 'Double'],
       endian: 'LE',
@@ -962,7 +1542,7 @@ const FORMATS = [
         { name: 'Mant [B1]', start: 8, width: 8, color: '#93c5fd' },
         { name: 'Mant Lo [B0]', start: 0, width: 8, color: '#bfdbfe' }
       ],
-      convert: (v) => float64ToNumber(v), display: (v) => formatFloat(float64ToNumber(v)) },
+      convert: (v) => float64ToNumber(v), display: (v) => formatFloat64Bits(v) },
     { id: 'float64_be', category: 'floats', bits: 64, names: ['Float64 BE', 'f64be'],
       endian: 'BE',
       components: [
@@ -977,10 +1557,19 @@ const FORMATS = [
         { name: 'Sign [B7]', start: 7, width: 1, color: '#ef4444' },
         { name: 'Exp Hi [B7]', start: 0, width: 7, color: '#f97316' }
       ],
-      convert: (v) => float64ToNumber(swapBytes(v, 64)), display: (v) => formatFloat(float64ToNumber(swapBytes(v, 64))) },
+      convert: (v) => float64ToNumber(swapBytes(v, 64)), display: (v) => formatFloat64Bits(swapBytes(v, 64)) },
 
     // === EXOTIC FLOATS ===
-    { id: 'bfloat16_le', category: 'exotic_floats', bits: 16, names: ['BFloat16', 'bf16', 'brain float'],
+    { id: 'bfloat8', category: 'ai_floats', bits: 8, names: ['BFloat8', 'bf8', 'brain float 8'],
+      components: [
+        { name: 'Sign', start: 7, width: 1, color: '#ef4444' },
+        { name: 'Exponent', start: 3, width: 4, color: '#f97316' },
+        { name: 'Mantissa', start: 0, width: 3, color: '#3b82f6' }
+      ],
+      convert: (v, w) => w > 8 ? extractUnsignedArray(v, 8, w).map(x => bfloat8ToNumber(Number(x))) : bfloat8ToNumber(Number(v)),
+      display: (v, w) => extractAndFormatBits(v, 8, w, formatBFloat8Bits) },
+
+    { id: 'bfloat16_le', category: 'ai_floats', bits: 16, names: ['BFloat16', 'bf16', 'brain float'],
       endian: 'LE',
       components: [
         { name: 'Sign [B1]', start: 15, width: 1, color: '#ef4444' },
@@ -989,8 +1578,8 @@ const FORMATS = [
         { name: 'Mant [B0]', start: 0, width: 7, color: '#3b82f6' }
       ],
       convert: (v, w) => w > 16 ? extractUnsignedArray(v, 16, w).map(x => bfloat16ToNumber(Number(x))) : bfloat16ToNumber(Number(v)),
-      display: (v, w) => extractAndFormat(v, 16, w, x => bfloat16ToNumber(Number(x)), formatFloat) },
-    { id: 'bfloat16_be', category: 'exotic_floats', bits: 16, names: ['BFloat16 BE', 'bf16be'],
+      display: (v, w) => extractAndFormatBits(v, 16, w, formatBFloat16Bits) },
+    { id: 'bfloat16_be', category: 'ai_floats', bits: 16, names: ['BFloat16 BE', 'bf16be'],
       endian: 'BE',
       components: [
         { name: 'Exp Lo [B0]', start: 15, width: 1, color: '#fdba74' },
@@ -999,16 +1588,59 @@ const FORMATS = [
         { name: 'Exp Hi [B1]', start: 0, width: 7, color: '#f97316' }
       ],
       convert: (v, w) => w > 16 ? extractUnsignedArray(v, 16, w).map(x => bfloat16ToNumber(Number(swapBytes(x, 16)))) : bfloat16ToNumber(Number(swapBytes(v, 16))),
-      display: (v, w) => extractAndFormat(v, 16, w, x => bfloat16ToNumber(Number(swapBytes(x, 16))), formatFloat) },
+      display: (v, w) => extractAndFormatBits(v, 16, w, x => formatBFloat16Bits(swapBytes(x, 16))) },
 
-    { id: 'minifloat8', category: 'exotic_floats', bits: 8, names: ['Minifloat8', 'fp8', 'float8'],
+    { id: 'bfloat32_le', category: 'ai_floats', bits: 32, names: ['BFloat32', 'bf32', 'brain float 32'],
+      endian: 'LE',
+      components: [
+        { name: 'Sign [B3]', start: 31, width: 1, color: '#ef4444' },
+        { name: 'Exponent [B2-3]', start: 23, width: 8, color: '#f97316' },
+        { name: 'Mantissa [B0-2]', start: 0, width: 23, color: '#3b82f6' }
+      ],
+      convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w).map(x => float32ToNumber(Number(x))) : float32ToNumber(Number(v)),
+      display: (v, w) => extractAndFormatBits(v, 32, w, formatFloat32Bits) },
+    { id: 'bfloat32_be', category: 'ai_floats', bits: 32, names: ['BFloat32 BE', 'bf32be'],
+      endian: 'BE',
+      components: [
+        { name: 'Mantissa Lo [B0]', start: 24, width: 8, color: '#2563eb' },
+        { name: 'Mantissa Mid [B1]', start: 16, width: 8, color: '#3b82f6' },
+        { name: 'Mantissa Hi [B2]', start: 8, width: 7, color: '#60a5fa' },
+        { name: 'Exp Lo [B2]', start: 15, width: 1, color: '#fdba74' },
+        { name: 'Sign [B3]', start: 7, width: 1, color: '#ef4444' },
+        { name: 'Exp Hi [B3]', start: 0, width: 7, color: '#f97316' }
+      ],
+      convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w).map(x => float32ToNumber(Number(swapBytes(x, 32)))) : float32ToNumber(Number(swapBytes(v, 32))),
+      display: (v, w) => extractAndFormatBits(v, 32, w, x => formatFloat32Bits(swapBytes(x, 32))) },
+
+    { id: 'bfloat64_le', category: 'ai_floats', bits: 64, names: ['BFloat64', 'bf64', 'brain float 64'],
+      endian: 'LE',
+      components: [
+        { name: 'Sign [B7]', start: 63, width: 1, color: '#ef4444' },
+        { name: 'Exponent [B6-7]', start: 55, width: 8, color: '#f97316' },
+        { name: 'Mantissa [B0-6]', start: 0, width: 55, color: '#3b82f6' }
+      ],
+      convert: (v) => bfloat64ToNumber(v),
+      display: (v) => formatBFloat64Bits(v) },
+    { id: 'bfloat64_be', category: 'ai_floats', bits: 64, names: ['BFloat64 BE', 'bf64be'],
+      endian: 'BE',
+      components: [
+        { name: 'Mantissa Lo [B0-5]', start: 8, width: 48, color: '#3b82f6' },
+        { name: 'Mantissa Hi [B6]', start: 56, width: 7, color: '#60a5fa' },
+        { name: 'Exp Lo [B6]', start: 63, width: 1, color: '#fdba74' },
+        { name: 'Sign [B7]', start: 7, width: 1, color: '#ef4444' },
+        { name: 'Exp Hi [B7]', start: 0, width: 7, color: '#f97316' }
+      ],
+      convert: (v) => bfloat64ToNumber(swapBytes(v, 64)),
+      display: (v) => formatBFloat64Bits(swapBytes(v, 64)) },
+
+    { id: 'minifloat8', category: 'floats', bits: 8, names: ['Minifloat8', 'fp8', 'float8'],
       components: [
         { name: 'Sign', start: 7, width: 1, color: '#ef4444' },
         { name: 'Exponent', start: 3, width: 4, color: '#f97316' },
         { name: 'Mantissa', start: 0, width: 3, color: '#3b82f6' }
       ],
       convert: (v, w) => w > 8 ? extractUnsignedArray(v, 8, w).map(x => minifloat8ToNumber(Number(x))) : minifloat8ToNumber(Number(v)),
-      display: (v, w) => extractAndFormat(v, 8, w, x => minifloat8ToNumber(Number(x)), formatFloat) },
+      display: (v, w) => extractAndFormatBits(v, 8, w, formatMinifloat8Bits) },
 
     { id: 'ibm_float32', category: 'exotic_floats', bits: 32, names: ['IBM Float', 'IBM HFP', 'hex float'],
       components: [
@@ -1017,7 +1649,7 @@ const FORMATS = [
         { name: 'Mantissa', start: 0, width: 24, color: '#3b82f6' }
       ],
       convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w).map(x => ibmFloat32ToNumber(Number(x))) : ibmFloat32ToNumber(Number(v)),
-      display: (v, w) => extractAndFormat(v, 32, w, x => ibmFloat32ToNumber(Number(x)), formatFloat) },
+      display: (v, w) => extractAndFormatBits(v, 32, w, formatIBMFloat32Bits) },
 
     { id: 'vax_f', category: 'exotic_floats', bits: 32, names: ['VAX F', 'F_floating', 'VAX float'],
       components: [
@@ -1027,7 +1659,7 @@ const FORMATS = [
         { name: 'Mantissa Lo', start: 16, width: 16, color: '#60a5fa' }
       ],
       convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w).map(x => vaxFToNumber(Number(x))) : vaxFToNumber(Number(v)),
-      display: (v, w) => extractAndFormat(v, 32, w, x => vaxFToNumber(Number(x)), formatFloat) },
+      display: (v, w) => extractAndFormatBits(v, 32, w, formatVAXFBits) },
 
     { id: 'mbf32', category: 'exotic_floats', bits: 32, names: ['MBF32', 'MS Binary', 'BASIC float'],
       components: [
@@ -1036,7 +1668,7 @@ const FORMATS = [
         { name: 'Mantissa', start: 0, width: 23, color: '#3b82f6' }
       ],
       convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w).map(x => mbf32ToNumber(Number(x))) : mbf32ToNumber(Number(v)),
-      display: (v, w) => extractAndFormat(v, 32, w, x => mbf32ToNumber(Number(x)), formatFloat) },
+      display: (v, w) => extractAndFormatBits(v, 32, w, formatMBF32Bits) },
 
     { id: 'mbf64', category: 'exotic_floats', bits: 64, names: ['MBF64', 'MS Binary 64', 'BASIC double'],
       components: [
@@ -1044,9 +1676,39 @@ const FORMATS = [
         { name: 'Sign', start: 55, width: 1, color: '#ef4444' },
         { name: 'Mantissa', start: 0, width: 55, color: '#3b82f6' }
       ],
-      convert: (v) => mbf64ToNumber(v), display: (v) => formatFloat(mbf64ToNumber(v)) },
+      convert: (v) => mbf64ToNumber(v), display: (v) => formatMBF64Bits(v) },
 
-    // IEEE 754 Decimal Floating Point (BID encoding)
+    // Decimal Floating Point (custom BID-like for 8/16-bit, IEEE 754 BID for 32/64-bit)
+    { id: 'decimal8', category: 'exotic_floats', bits: 8, names: ['Decimal8', 'decimal8'],
+      components: [
+        { name: 'Sign', start: 7, width: 1, color: '#ef4444' },
+        { name: 'Exponent', start: 4, width: 3, color: '#f97316' },
+        { name: 'Coefficient', start: 0, width: 4, color: '#3b82f6' }
+      ],
+      convert: (v, w) => w > 8 ? extractUnsignedArray(v, 8, w).map(x => decimal8ToNumber(Number(x))) : decimal8ToNumber(Number(v)),
+      display: (v, w) => extractAndFormatBits(v, 8, w, formatDecimal8Bits) },
+
+    { id: 'decimal16_le', category: 'exotic_floats', bits: 16, names: ['Decimal16', 'decimal16'],
+      endian: 'LE',
+      components: [
+        { name: 'Sign [B1]', start: 15, width: 1, color: '#ef4444' },
+        { name: 'Exponent [B1]', start: 10, width: 5, color: '#f97316' },
+        { name: 'Coeff Hi [B1]', start: 8, width: 2, color: '#60a5fa' },
+        { name: 'Coeff Lo [B0]', start: 0, width: 8, color: '#3b82f6' }
+      ],
+      convert: (v, w) => w > 16 ? extractUnsignedArray(v, 16, w).map(x => decimal16ToNumber(Number(x))) : decimal16ToNumber(Number(v)),
+      display: (v, w) => extractAndFormatBits(v, 16, w, formatDecimal16Bits) },
+    { id: 'decimal16_be', category: 'exotic_floats', bits: 16, names: ['Decimal16 BE', 'decimal16be'],
+      endian: 'BE',
+      components: [
+        { name: 'Coeff Lo [B0]', start: 8, width: 8, color: '#3b82f6' },
+        { name: 'Sign [B1]', start: 7, width: 1, color: '#ef4444' },
+        { name: 'Exponent [B1]', start: 2, width: 5, color: '#f97316' },
+        { name: 'Coeff Hi [B1]', start: 0, width: 2, color: '#60a5fa' }
+      ],
+      convert: (v, w) => w > 16 ? extractUnsignedArray(v, 16, w).map(x => decimal16ToNumber(Number(swapBytes(x, 16)))) : decimal16ToNumber(Number(swapBytes(v, 16))),
+      display: (v, w) => extractAndFormatBits(v, 16, w, x => formatDecimal16Bits(swapBytes(x, 16))) },
+
     { id: 'decimal32', category: 'exotic_floats', bits: 32, names: ['Decimal32', 'decimal32', '_Decimal32'],
       components: [
         { name: 'Sign', start: 31, width: 1, color: '#ef4444' },
@@ -1054,7 +1716,7 @@ const FORMATS = [
         { name: 'Trailing Sig.', start: 0, width: 23, color: '#3b82f6' }
       ],
       convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w).map(x => decimal32ToNumber(Number(x))) : decimal32ToNumber(Number(v)),
-      display: (v, w) => extractAndFormat(v, 32, w, x => decimal32ToNumber(Number(x)), formatFloat) },
+      display: (v, w) => extractAndFormatBits(v, 32, w, formatDecimal32Bits) },
 
     { id: 'decimal64', category: 'exotic_floats', bits: 64, names: ['Decimal64', 'decimal64', '_Decimal64'],
       components: [
@@ -1062,7 +1724,7 @@ const FORMATS = [
         { name: 'Combination', start: 53, width: 10, color: '#f97316' },
         { name: 'Trailing Sig.', start: 0, width: 53, color: '#3b82f6' }
       ],
-      convert: (v) => decimal64ToNumber(v), display: (v) => formatFloat(decimal64ToNumber(v)) },
+      convert: (v) => decimal64ToNumber(v), display: (v) => formatDecimal64Bits(v) },
 
     // Posit format (unum type III)
     { id: 'posit8', category: 'exotic_floats', bits: 8, names: ['Posit8', 'posit<8,0>'],
@@ -1074,7 +1736,7 @@ const FORMATS = [
           if (w > 8) return extractUnsignedArray(v, 8, w).map(x => positToNumber(x, 8, 0));
           return positToNumber(v, 8, 0);
       },
-      display: (v, w) => extractAndFormat(v, 8, w, x => positToNumber(x, 8, 0), formatFloat) },
+      display: (v, w) => extractAndFormatBits(v, 8, w, x => formatPositBits(x, 8, 0)) },
 
     { id: 'posit16', category: 'exotic_floats', bits: 16, names: ['Posit16', 'posit<16,1>'],
       components: [
@@ -1085,7 +1747,7 @@ const FORMATS = [
           if (w > 16) return extractUnsignedArray(v, 16, w).map(x => positToNumber(x, 16, 1));
           return positToNumber(v, 16, 1);
       },
-      display: (v, w) => extractAndFormat(v, 16, w, x => positToNumber(x, 16, 1), formatFloat) },
+      display: (v, w) => extractAndFormatBits(v, 16, w, x => formatPositBits(x, 16, 1)) },
 
     { id: 'posit32', category: 'exotic_floats', bits: 32, names: ['Posit32', 'posit<32,2>'],
       components: [
@@ -1096,10 +1758,10 @@ const FORMATS = [
           if (w > 32) return extractUnsignedArray(v, 32, w).map(x => positToNumber(x, 32, 2));
           return positToNumber(v, 32, 2);
       },
-      display: (v, w) => extractAndFormat(v, 32, w, x => positToNumber(x, 32, 2), formatFloat) },
+      display: (v, w) => extractAndFormatBits(v, 32, w, x => formatPositBits(x, 32, 2)) },
 
     // TensorFloat-32 (NVIDIA tensor core format)
-    { id: 'tf32', category: 'exotic_floats', bits: 32, names: ['TF32', 'TensorFloat-32', 'TensorFloat32'],
+    { id: 'tf32', category: 'ai_floats', bits: 32, names: ['TF32', 'TensorFloat-32', 'TensorFloat32'],
       components: [
         { name: 'Sign', start: 31, width: 1, color: '#ef4444' },
         { name: 'Exponent', start: 23, width: 8, color: '#f97316' },
@@ -1107,7 +1769,7 @@ const FORMATS = [
         { name: 'Unused', start: 0, width: 13, color: '#6b7280' }
       ],
       convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w).map(x => tf32ToNumber(Number(x))) : tf32ToNumber(Number(v)),
-      display: (v, w) => extractAndFormat(v, 32, w, x => tf32ToNumber(Number(x)), formatFloat) },
+      display: (v, w) => extractAndFormatBits(v, 32, w, formatTF32Bits) },
 
     // === FIXED POINT ===
     { id: 'q7_8', category: 'fixed', bits: 16, names: ['Q7.8', 'fixed8.8'],
@@ -1116,7 +1778,7 @@ const FORMATS = [
         { name: 'Fraction', start: 0, width: 8, color: '#a855f7' }
       ],
       convert: (v, w) => w > 16 ? extractUnsignedArray(v, 16, w).map(x => fixedPointToNumber(x, 8, 8, true)) : fixedPointToNumber(v, 8, 8, true),
-      display: (v, w) => extractAndFormat(v, 16, w, x => fixedPointToNumber(x, 8, 8, true), x => x.toFixed(4)) },
+      display: (v, w) => extractAndFormatBits(v, 16, w, x => formatFixedPointBits(x, 8, 8, true)) },
 
     { id: 'q15_16', category: 'fixed', bits: 32, names: ['Q15.16', 'fixed16.16'],
       components: [
@@ -1124,14 +1786,14 @@ const FORMATS = [
         { name: 'Fraction', start: 0, width: 16, color: '#a855f7' }
       ],
       convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w).map(x => fixedPointToNumber(x, 16, 16, true)) : fixedPointToNumber(v, 16, 16, true),
-      display: (v, w) => extractAndFormat(v, 32, w, x => fixedPointToNumber(x, 16, 16, true), x => x.toFixed(6)) },
+      display: (v, w) => extractAndFormatBits(v, 32, w, x => formatFixedPointBits(x, 16, 16, true)) },
 
     { id: 'q31_32', category: 'fixed', bits: 64, names: ['Q31.32', 'fixed32.32'],
       components: [
         { name: 'Integer', start: 32, width: 32, color: '#22c55e' },
         { name: 'Fraction', start: 0, width: 32, color: '#a855f7' }
       ],
-      convert: (v) => fixedPointToNumber(v, 32, 32, true), display: (v) => fixedPointToNumber(v, 32, 32, true).toFixed(10) },
+      convert: (v) => fixedPointToNumber(v, 32, 32, true), display: (v) => formatFixedPointBits(v, 32, 32, true) },
 
     { id: 'uq8_8', category: 'fixed', bits: 16, names: ['UQ8.8', 'ufixed8.8'],
       components: [
@@ -1139,7 +1801,7 @@ const FORMATS = [
         { name: 'Fraction', start: 0, width: 8, color: '#a855f7' }
       ],
       convert: (v, w) => w > 16 ? extractUnsignedArray(v, 16, w).map(x => fixedPointToNumber(x, 8, 8, false)) : fixedPointToNumber(v, 8, 8, false),
-      display: (v, w) => extractAndFormat(v, 16, w, x => fixedPointToNumber(x, 8, 8, false), x => x.toFixed(4)) },
+      display: (v, w) => extractAndFormatBits(v, 16, w, x => formatFixedPointBits(x, 8, 8, false)) },
 
     { id: 'uq16_16', category: 'fixed', bits: 32, names: ['UQ16.16', 'ufixed16.16'],
       components: [
@@ -1147,7 +1809,15 @@ const FORMATS = [
         { name: 'Fraction', start: 0, width: 16, color: '#a855f7' }
       ],
       convert: (v, w) => w > 32 ? extractUnsignedArray(v, 32, w).map(x => fixedPointToNumber(x, 16, 16, false)) : fixedPointToNumber(v, 16, 16, false),
-      display: (v, w) => extractAndFormat(v, 32, w, x => fixedPointToNumber(x, 16, 16, false), x => x.toFixed(6)) },
+      display: (v, w) => extractAndFormatBits(v, 32, w, x => formatFixedPointBits(x, 16, 16, false)) },
+
+    { id: 'uq32_32', category: 'fixed', bits: 64, names: ['UQ32.32', 'ufixed32.32'],
+      components: [
+        { name: 'Integer', start: 32, width: 32, color: '#22c55e' },
+        { name: 'Fraction', start: 0, width: 32, color: '#a855f7' }
+      ],
+      convert: (v) => fixedPointToNumber(v, 32, 32, false),
+      display: (v) => formatFixedPointBits(v, 32, 32, false) },
 
     // === DECIMAL / BCD ===
     { id: 'bcd8', category: 'decimal', bits: 8, names: ['BCD8', 'packed BCD 8'],
@@ -1203,12 +1873,21 @@ const FORMATS = [
       ],
       convert: (v) => bcdToNumber(v, 64).value, display: (v) => { const n = bcdToNumber(v, 64); return n.valid ? n.value.toString() : 'Invalid BCD'; } },
 
+    // Unpacked BCD (one digit per byte, lower nibble only - use array syntax for multiple digits)
+    { id: 'ubcd', category: 'decimal', bits: 8, names: ['Unpacked BCD', 'UBCD', 'zoned decimal'],
+      components: [
+        { name: 'Zone', start: 4, width: 4, color: '#6b7280' },
+        { name: 'Digit', start: 0, width: 4, color: '#3b82f6' }
+      ],
+      convert: (v) => unpackedBcdToNumber(v, 8).value,
+      display: (v, w) => extractUnpackedBcdArray(v, 8, w) },
+
     // === SPECIAL ===
     { id: 'currency64', category: 'special', bits: 64, names: ['Currency', 'OLE Currency', 'money', 'CY', 'CURRENCY'],
       components: [
         { name: 'Value', start: 0, width: 64, color: '#22c55e' }
       ],
-      convert: (v) => currencyToNumber(v), display: (v) => '$' + currencyToNumber(v).toFixed(4) },
+      convert: (v) => currencyToNumber(v), display: (v) => formatCurrencyBits(v) },
 
     { id: 'filetime', category: 'datetime', bits: 64, names: ['FILETIME', 'Windows FILETIME'],
       components: [
@@ -1400,6 +2079,46 @@ const FORMATS = [
               return `'\\x${Number(c).toString(16).padStart(2, '0')}'`;
           };
           if (w > 8) return formatArray(extractUnsignedArray(v, 8, w).map(fmt));
+          return fmt(v);
+      }},
+    { id: 'utf8', category: 'characters', bits: 8, names: ['UTF-8'],
+      convert: (v, w) => w > 8 ? extractUnsignedArray(v, 8, w).map(x => Number(x)) : Number(v & 0xFFn),
+      display: (v, w) => {
+          const fmt = (c) => {
+              const n = Number(c);
+              if (n < 0x80) {
+                  if (n < 32) return `'${ASCII_CONTROL[n]}'`;
+                  if (n === 127) return "'DEL'";
+                  return `'${String.fromCharCode(n)}'`;
+              }
+              if (n < 0xC0) return `(cont)`;
+              if (n < 0xE0) return `(2-byte lead)`;
+              if (n < 0xF0) return `(3-byte lead)`;
+              if (n < 0xF8) return `(4-byte lead)`;
+              return `(invalid)`;
+          };
+          if (w > 8) return formatArray(extractUnsignedArray(v, 8, w).map(fmt));
+          return fmt(v);
+      }},
+    { id: 'utf16', category: 'characters', bits: 16, names: ['UTF-16', 'wchar_t', 'WCHAR'],
+      convert: (v, w) => {
+          if (w > 16) return extractUnsignedArray(v, 16, w).map(x => Number(x));
+          const n = Number(v & 0xFFFFn);
+          if (n >= 0xD800 && n <= 0xDFFF) return n;
+          try { return String.fromCharCode(n); } catch { return n; }
+      },
+      display: (v, w) => {
+          const fmt = (x) => {
+              const n = Number(x & 0xFFFFn);
+              if (n >= 0xD800 && n <= 0xDBFF) return `U+${n.toString(16).toUpperCase()} (high surrogate)`;
+              if (n >= 0xDC00 && n <= 0xDFFF) return `U+${n.toString(16).toUpperCase()} (low surrogate)`;
+              try {
+                  const ch = String.fromCharCode(n);
+                  if (n < 32) return `U+${n.toString(16).toUpperCase().padStart(4, '0')} '${ASCII_CONTROL[n]}'`;
+                  return `U+${n.toString(16).toUpperCase().padStart(4, '0')} '${ch}'`;
+              } catch { return `U+${n.toString(16).toUpperCase().padStart(4, '0')} (invalid)`; }
+          };
+          if (w > 16) return formatArray(extractUnsignedArray(v, 16, w).map(fmt));
           return fmt(v);
       }},
     { id: 'utf32', category: 'characters', bits: 32, names: ['UTF-32', 'Unicode', 'UCS-4'],
@@ -1685,22 +2404,22 @@ const FORMATS = [
       }},
 
     // === AI/ML FLOATS ===
-    { id: 'fp8e4m3', category: 'exotic_floats', bits: 8, names: ['FP8-E4M3', 'E4M3', 'fp8'],
+    { id: 'fp8e4m3', category: 'ai_floats', bits: 8, names: ['FP8-E4M3', 'E4M3'],
       components: [
         { name: 'Sign', start: 7, width: 1, color: '#ef4444' },
         { name: 'Exponent', start: 3, width: 4, color: '#f97316' },
         { name: 'Mantissa', start: 0, width: 3, color: '#3b82f6' }
       ],
       convert: (v, w) => w > 8 ? extractUnsignedArray(v, 8, w).map(x => fp8E4M3ToNumber(Number(x))) : fp8E4M3ToNumber(Number(v)),
-      display: (v, w) => extractAndFormat(v, 8, w, x => fp8E4M3ToNumber(Number(x)), formatFloat) },
-    { id: 'fp8e5m2', category: 'exotic_floats', bits: 8, names: ['FP8-E5M2', 'E5M2'],
+      display: (v, w) => extractAndFormatBits(v, 8, w, formatFP8E4M3Bits) },
+    { id: 'fp8e5m2', category: 'ai_floats', bits: 8, names: ['FP8-E5M2', 'E5M2'],
       components: [
         { name: 'Sign', start: 7, width: 1, color: '#ef4444' },
         { name: 'Exponent', start: 2, width: 5, color: '#f97316' },
         { name: 'Mantissa', start: 0, width: 2, color: '#3b82f6' }
       ],
       convert: (v, w) => w > 8 ? extractUnsignedArray(v, 8, w).map(x => fp8E5M2ToNumber(Number(x))) : fp8E5M2ToNumber(Number(v)),
-      display: (v, w) => extractAndFormat(v, 8, w, x => fp8E5M2ToNumber(Number(x)), formatFloat) },
+      display: (v, w) => extractAndFormatBits(v, 8, w, formatFP8E5M2Bits) },
 
     // === ADDITIONAL DATE/TIME ===
     { id: 'ntp64', category: 'datetime', bits: 64, names: ['NTP', 'NTP Timestamp'],
@@ -1835,6 +2554,24 @@ const FORMATS = [
       ],
       convert: (v) => grayToBinary(v),
       display: (v) => `${grayToBinary(v)} (from Gray ${v})` },
+    { id: 'zigzag8', category: 'integers', bits: 8, names: ['Zigzag8', 'sint8'],
+      components: [
+        { name: 'Zigzag Encoded', start: 0, width: 8, color: '#a855f7' }
+      ],
+      convert: (v, w) => w > 8 ? extractUnsignedArray(v, 8, w).map(x => zigzagDecode(x)) : zigzagDecode(v),
+      display: (v, w) => {
+          if (w > 8) return formatArray(extractUnsignedArray(v, 8, w).map(x => zigzagDecode(x).toString()));
+          return zigzagDecode(v).toString();
+      }},
+    { id: 'zigzag16', category: 'integers', bits: 16, names: ['Zigzag16', 'sint16'],
+      components: [
+        { name: 'Zigzag Encoded', start: 0, width: 16, color: '#a855f7' }
+      ],
+      convert: (v, w) => w > 16 ? extractUnsignedArray(v, 16, w).map(x => zigzagDecode(x)) : zigzagDecode(v),
+      display: (v, w) => {
+          if (w > 16) return formatArray(extractUnsignedArray(v, 16, w).map(x => zigzagDecode(x).toString()));
+          return zigzagDecode(v).toString();
+      }},
     { id: 'zigzag32', category: 'integers', bits: 32, names: ['Zigzag32', 'Varint32', 'sint32'],
       components: [
         { name: 'Zigzag Encoded', start: 0, width: 32, color: '#a855f7' }
@@ -2133,7 +2870,7 @@ const FormatCategory = ({ category, formats, value, width, onCopy, onLoadCompone
 // Conversions Panel Component
 const ConversionsPanel = ({ value, width, onCopy, onLoadComponents }) => {
     const [expandedCategories, setExpandedCategories] = React.useState({
-        integers: true, floats: true, exotic_floats: false, fixed: false, decimal: false,
+        integers: true, floats: true, ai_floats: false, exotic_floats: false, fixed: false, decimal: false,
         colors: false, datetime: false, audio: false, special: false, characters: false
     });
 
@@ -2178,6 +2915,7 @@ const InputPanel = ({ value, width, onValueChange, onCopy }) => {
         else if (inputMode === 'sdec') setTextInput(toSigned(value, width).toString());
         else if (inputMode === 'bin') setTextInput(formatBinary(value, width));
         else if (inputMode === 'oct') setTextInput(formatOctal(value));
+        else if (inputMode === 'float') setTextInput(formatFloatInput(value, width));
     }, [value, width, inputMode]);
 
     const handleTextInputChange = (newText) => {
@@ -2199,6 +2937,10 @@ const InputPanel = ({ value, width, onValueChange, onCopy }) => {
             } else if (inputMode === 'oct') {
                 const cleaned = newText.replace(/^0o/i, '').replace(/[^0-7]/g, '');
                 if (cleaned) newVal = BigInt('0o' + cleaned);
+            } else if (inputMode === 'float') {
+                // Parse decimal with comma/period, signs, exponents
+                const num = parseDecimalToNumber(newText);
+                if (!isNaN(num)) newVal = numberToFloatBits(num, width);
             }
             onValueChange(newVal & mask);
         } catch (e) { /* Invalid input, ignore */ }
@@ -2208,6 +2950,7 @@ const InputPanel = ({ value, width, onValueChange, onCopy }) => {
         { id: 'hex', label: 'Hex' },
         { id: 'dec', label: 'Dec' },
         { id: 'sdec', label: 'Signed' },
+        { id: 'float', label: 'Float' },
         { id: 'bin', label: 'Bin' },
         { id: 'oct', label: 'Oct' }
     ];
