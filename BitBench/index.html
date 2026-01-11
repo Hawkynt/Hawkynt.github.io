@@ -178,6 +178,360 @@ const floatBitsToNumber = (bits, width) => {
     return float64ToNumber(bits);
 };
 
+// --- MATH EXPRESSION EVALUATOR ---
+// Function dictionary with descriptions for autocomplete
+const MATH_FUNCTIONS = {
+    // Trigonometric (radians)
+    sin:   { fn: Math.sin,   desc: 'sin(x) - Sine of x (radians)' },
+    cos:   { fn: Math.cos,   desc: 'cos(x) - Cosine of x (radians)' },
+    tan:   { fn: Math.tan,   desc: 'tan(x) - Tangent of x (radians)' },
+    cot:   { fn: x => 1/Math.tan(x), desc: 'cot(x) - Cotangent of x (radians)' },
+    sec:   { fn: x => 1/Math.cos(x), desc: 'sec(x) - Secant of x (radians)' },
+    csc:   { fn: x => 1/Math.sin(x), desc: 'csc(x) - Cosecant of x (radians)' },
+    // Inverse trigonometric
+    asin:  { fn: Math.asin,  desc: 'asin(x) - Arc sine, returns radians' },
+    acos:  { fn: Math.acos,  desc: 'acos(x) - Arc cosine, returns radians' },
+    atan:  { fn: Math.atan,  desc: 'atan(x) - Arc tangent, returns radians' },
+    acot:  { fn: x => Math.atan(1/x), desc: 'acot(x) - Arc cotangent, returns radians' },
+    asec:  { fn: x => Math.acos(1/x), desc: 'asec(x) - Arc secant, returns radians' },
+    acsc:  { fn: x => Math.asin(1/x), desc: 'acsc(x) - Arc cosecant, returns radians' },
+    atan2: { fn: Math.atan2, desc: 'atan2(y,x) - Arc tangent of y/x, returns radians', args: 2 },
+    // Hyperbolic
+    sinh:  { fn: Math.sinh,  desc: 'sinh(x) - Hyperbolic sine' },
+    cosh:  { fn: Math.cosh,  desc: 'cosh(x) - Hyperbolic cosine' },
+    tanh:  { fn: Math.tanh,  desc: 'tanh(x) - Hyperbolic tangent' },
+    coth:  { fn: x => 1/Math.tanh(x), desc: 'coth(x) - Hyperbolic cotangent' },
+    sech:  { fn: x => 1/Math.cosh(x), desc: 'sech(x) - Hyperbolic secant' },
+    csch:  { fn: x => 1/Math.sinh(x), desc: 'csch(x) - Hyperbolic cosecant' },
+    // Inverse hyperbolic (area functions)
+    asinh: { fn: Math.asinh, desc: 'asinh(x) - Inverse hyperbolic sine' },
+    acosh: { fn: Math.acosh, desc: 'acosh(x) - Inverse hyperbolic cosine' },
+    atanh: { fn: Math.atanh, desc: 'atanh(x) - Inverse hyperbolic tangent' },
+    acoth: { fn: x => Math.atanh(1/x), desc: 'acoth(x) - Inverse hyperbolic cotangent' },
+    asech: { fn: x => Math.acosh(1/x), desc: 'asech(x) - Inverse hyperbolic secant' },
+    acsch: { fn: x => Math.asinh(1/x), desc: 'acsch(x) - Inverse hyperbolic cosecant' },
+    // Area function aliases
+    arsinh: { fn: Math.asinh, desc: 'arsinh(x) - Area hyperbolic sine' },
+    arcosh: { fn: Math.acosh, desc: 'arcosh(x) - Area hyperbolic cosine' },
+    artanh: { fn: Math.atanh, desc: 'artanh(x) - Area hyperbolic tangent' },
+    // Logarithmic
+    log:   { fn: Math.log,   desc: 'log(x) - Natural logarithm (base e)' },
+    ln:    { fn: Math.log,   desc: 'ln(x) - Natural logarithm (base e)' },
+    log10: { fn: Math.log10, desc: 'log10(x) - Base 10 logarithm' },
+    log2:  { fn: Math.log2,  desc: 'log2(x) - Base 2 logarithm' },
+    // Exponential
+    exp:   { fn: Math.exp,   desc: 'exp(x) - e raised to power x' },
+    pow:   { fn: Math.pow,   desc: 'pow(x,y) - x raised to power y', args: 2 },
+    sqrt:  { fn: Math.sqrt,  desc: 'sqrt(x) - Square root' },
+    cbrt:  { fn: Math.cbrt,  desc: 'cbrt(x) - Cube root' },
+    // Rounding
+    abs:   { fn: Math.abs,   desc: 'abs(x) - Absolute value' },
+    ceil:  { fn: Math.ceil,  desc: 'ceil(x) - Round up to integer' },
+    floor: { fn: Math.floor, desc: 'floor(x) - Round down to integer' },
+    round: { fn: Math.round, desc: 'round(x) - Round to nearest integer' },
+    trunc: { fn: Math.trunc, desc: 'trunc(x) - Truncate to integer' },
+    sign:  { fn: Math.sign,  desc: 'sign(x) - Sign of x (-1, 0, or 1)' },
+    // Other
+    min:   { fn: Math.min,   desc: 'min(a,b,...) - Minimum of values', args: -1 },
+    max:   { fn: Math.max,   desc: 'max(a,b,...) - Maximum of values', args: -1 },
+    hypot: { fn: Math.hypot, desc: 'hypot(a,b,...) - Euclidean distance', args: -1 },
+    frac:  { fn: x => x - Math.floor(x), desc: 'frac(x) - Fractional part' },
+    deg:   { fn: x => x * 180 / Math.PI, desc: 'deg(x) - Radians to degrees' },
+    rad:   { fn: x => x * Math.PI / 180, desc: 'rad(x) - Degrees to radians' },
+};
+
+// Constants for math expressions
+const MATH_CONSTANTS = {
+    pi: Math.PI,
+    e: Math.E,
+    tau: Math.PI * 2,
+    phi: (1 + Math.sqrt(5)) / 2,
+    inf: Infinity,
+    nan: NaN,
+};
+
+// Tokenize math expression
+const tokenizeMathExpr = (expr) => {
+    const tokens = [];
+    let i = 0;
+    while (i < expr.length) {
+        const ch = expr[i];
+        if (/\s/.test(ch)) { ++i; continue; }
+        if (/[0-9.]/.test(ch)) {
+            let num = '';
+            while (i < expr.length && /[0-9.eE+-]/.test(expr[i])) {
+                if ((expr[i] === 'e' || expr[i] === 'E') && num.length > 0) {
+                    num += expr[i++];
+                    if (i < expr.length && /[+-]/.test(expr[i])) num += expr[i++];
+                } else if ((expr[i] === '+' || expr[i] === '-') && !/[eE]/.test(num.slice(-1))) break;
+                else num += expr[i++];
+            }
+            tokens.push({ type: 'number', value: parseFloat(num) });
+        } else if (/[a-zA-Z_]/.test(ch)) {
+            let name = '';
+            while (i < expr.length && /[a-zA-Z0-9_]/.test(expr[i])) name += expr[i++];
+            tokens.push({ type: 'name', value: name.toLowerCase() });
+        } else if (ch === '*' && expr[i + 1] === '*') {
+            // Handle ** as power operator (convert to ^)
+            tokens.push({ type: 'op', value: '^' });
+            i += 2;
+        } else if ('+-*/^(),'.includes(ch)) {
+            tokens.push({ type: 'op', value: ch });
+            ++i;
+        } else ++i;
+    }
+    return tokens;
+};
+
+// Parse and evaluate math expression
+const evalMathExpr = (expr) => {
+    const tokens = tokenizeMathExpr(expr);
+    let pos = 0;
+
+    const peek = () => tokens[pos];
+    const consume = () => tokens[pos++];
+
+    const parseExpr = () => parseAddSub();
+
+    const parseAddSub = () => {
+        let left = parseMulDiv();
+        while (peek() && peek().type === 'op' && (peek().value === '+' || peek().value === '-')) {
+            const op = consume().value;
+            const right = parseMulDiv();
+            left = op === '+' ? left + right : left - right;
+        }
+        return left;
+    };
+
+    const parseMulDiv = () => {
+        let left = parsePower();
+        while (peek() && peek().type === 'op' && (peek().value === '*' || peek().value === '/')) {
+            const op = consume().value;
+            const right = parsePower();
+            left = op === '*' ? left * right : left / right;
+        }
+        return left;
+    };
+
+    const parsePower = () => {
+        let left = parseUnary();
+        while (peek() && peek().type === 'op' && peek().value === '^') {
+            consume();
+            const right = parseUnary();
+            left = Math.pow(left, right);
+        }
+        return left;
+    };
+
+    const parseUnary = () => {
+        if (peek() && peek().type === 'op' && (peek().value === '+' || peek().value === '-')) {
+            const op = consume().value;
+            return op === '-' ? -parseUnary() : parseUnary();
+        }
+        return parseAtom();
+    };
+
+    const parseAtom = () => {
+        const tok = peek();
+        if (!tok) return 0;
+
+        if (tok.type === 'number') {
+            consume();
+            return tok.value;
+        }
+
+        if (tok.type === 'name') {
+            consume();
+            const name = tok.value;
+            // Check for function call
+            if (peek() && peek().type === 'op' && peek().value === '(') {
+                consume(); // consume '('
+                const args = [];
+                if (!(peek() && peek().type === 'op' && peek().value === ')')) {
+                    args.push(parseExpr());
+                    while (peek() && peek().type === 'op' && peek().value === ',') {
+                        consume();
+                        args.push(parseExpr());
+                    }
+                }
+                if (peek() && peek().type === 'op' && peek().value === ')') consume();
+                const func = MATH_FUNCTIONS[name];
+                if (func) return func.fn(...args);
+                return NaN;
+            }
+            // Check for constant
+            if (MATH_CONSTANTS.hasOwnProperty(name)) return MATH_CONSTANTS[name];
+            return NaN;
+        }
+
+        if (tok.type === 'op' && tok.value === '(') {
+            consume();
+            const val = parseExpr();
+            if (peek() && peek().type === 'op' && peek().value === ')') consume();
+            return val;
+        }
+
+        return 0;
+    };
+
+    try {
+        return parseExpr();
+    } catch (e) {
+        return NaN;
+    }
+};
+
+// Get function name at cursor for autocomplete
+const getFunctionPrefixAtCursor = (text, cursorPos) => {
+    let start = cursorPos;
+    while (start > 0 && /[a-zA-Z0-9_]/.test(text[start - 1])) --start;
+    const prefix = text.slice(start, cursorPos).toLowerCase();
+    return { prefix, start, end: cursorPos };
+};
+
+// Get autocomplete suggestions (sorted alphabetically)
+const getMathSuggestions = (prefix) => {
+    if (!prefix) return [];
+    const names = Object.keys(MATH_FUNCTIONS);
+    const matches = names.filter(n => n.startsWith(prefix) && n !== prefix).sort();
+    return matches.map(name => ({ name, desc: MATH_FUNCTIONS[name].desc }));
+};
+
+// Math Autocomplete Input Component
+const MathAutocompleteInput = ({ value, onChange, onEvaluate, onFocusChange, className }) => {
+    const [suggestions, setSuggestions] = React.useState([]);
+    const [selectedIndex, setSelectedIndex] = React.useState(0);
+    const [showDropdown, setShowDropdown] = React.useState(false);
+    const [cursorInfo, setCursorInfo] = React.useState(null);
+    const inputRef = React.useRef(null);
+    const dropdownRef = React.useRef(null);
+
+    // Scroll selected item into view when selection changes
+    React.useEffect(() => {
+        if (showDropdown && dropdownRef.current) {
+            const selectedItem = dropdownRef.current.querySelector(`[data-index="${selectedIndex}"]`);
+            if (selectedItem) {
+                selectedItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }
+        }
+    }, [selectedIndex, showDropdown]);
+
+    const updateSuggestions = (text, cursorPos) => {
+        const info = getFunctionPrefixAtCursor(text, cursorPos);
+        setCursorInfo(info);
+        const matches = getMathSuggestions(info.prefix);
+        setSuggestions(matches);
+        setSelectedIndex(0);
+        setShowDropdown(matches.length > 0);
+    };
+
+    const handleChange = (e) => {
+        const newText = e.target.value;
+        const cursorPos = e.target.selectionStart;
+        onChange(newText);
+        updateSuggestions(newText, cursorPos);
+    };
+
+    const handleSelect = (cursorPos) => {
+        if (inputRef.current) {
+            updateSuggestions(value, cursorPos);
+        }
+    };
+
+    const completeSuggestion = (suggestion) => {
+        if (!cursorInfo || !suggestion) return;
+        const before = value.slice(0, cursorInfo.start);
+        const after = value.slice(cursorInfo.end);
+        const newText = before + suggestion.name + '(' + after;
+        onChange(newText);
+        setShowDropdown(false);
+        // Set cursor after the opening paren
+        setTimeout(() => {
+            if (inputRef.current) {
+                const newPos = cursorInfo.start + suggestion.name.length + 1;
+                inputRef.current.setSelectionRange(newPos, newPos);
+                inputRef.current.focus();
+            }
+        }, 0);
+    };
+
+    const handleKeyDown = (e) => {
+        if (showDropdown && suggestions.length > 0) {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setSelectedIndex(prev => (prev + 1) % suggestions.length);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setSelectedIndex(prev => (prev - 1 + suggestions.length) % suggestions.length);
+            } else if (e.key === 'Tab' || e.key === 'Enter') {
+                if (suggestions[selectedIndex]) {
+                    e.preventDefault();
+                    completeSuggestion(suggestions[selectedIndex]);
+                }
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                setShowDropdown(false);
+            }
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            onEvaluate(value);
+        }
+    };
+
+    const handleFocus = () => {
+        onFocusChange?.(true);
+    };
+
+    const handleBlur = (e) => {
+        // Delay hiding to allow click on dropdown item
+        setTimeout(() => {
+            if (!dropdownRef.current?.contains(document.activeElement)) {
+                setShowDropdown(false);
+                onFocusChange?.(false);
+            }
+        }, 150);
+    };
+
+    return (
+        <div className="relative flex-1">
+            <input
+                ref={inputRef}
+                type="text"
+                value={value}
+                onChange={handleChange}
+                onKeyDown={handleKeyDown}
+                onSelect={(e) => handleSelect(e.target.selectionStart)}
+                onFocus={handleFocus}
+                onBlur={handleBlur}
+                className={className}
+                spellCheck={false}
+            />
+            {showDropdown && suggestions.length > 0 && (
+                <div
+                    ref={dropdownRef}
+                    className="absolute left-0 right-0 top-full mt-1 bg-slate-900 border border-slate-700 rounded shadow-lg z-50 max-h-48 overflow-y-auto"
+                >
+                    {suggestions.map((s, idx) => (
+                        <div
+                            key={s.name}
+                            data-index={idx}
+                            onClick={() => completeSuggestion(s)}
+                            className={`px-3 py-2 cursor-pointer text-sm font-mono border-b border-slate-800 last:border-b-0 ${
+                                idx === selectedIndex
+                                    ? 'bg-emerald-700 text-white'
+                                    : 'text-slate-300 hover:bg-slate-800'
+                            }`}
+                        >
+                            <span className="font-bold text-cyan-400">{s.name}</span>
+                            <span className="text-slate-400 ml-2 text-xs">{s.desc.split(' - ')[1] || s.desc}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
 // BigInt-based precise decimal string conversion for IEEE 754 floats
 // Avoids JavaScript Number rounding artifacts by computing decimal representation directly
 const floatBitsToDecimalString = (bits, signBits, expBits, mantBits, expBias) => {
@@ -2906,17 +3260,21 @@ const ConversionsPanel = ({ value, width, onCopy, onLoadComponents }) => {
 const InputPanel = ({ value, width, onValueChange, onCopy }) => {
     const [inputMode, setInputMode] = React.useState('hex');
     const [textInput, setTextInput] = React.useState('0');
+    const [isFloatFocused, setIsFloatFocused] = React.useState(false);
 
     const mask = (1n << BigInt(width)) - 1n;
 
     React.useEffect(() => {
+        // Don't overwrite float input while user is typing a formula
+        if (inputMode === 'float' && isFloatFocused) return;
+
         if (inputMode === 'hex') setTextInput(formatHex(value, width));
         else if (inputMode === 'dec') setTextInput(value.toString());
         else if (inputMode === 'sdec') setTextInput(toSigned(value, width).toString());
         else if (inputMode === 'bin') setTextInput(formatBinary(value, width));
         else if (inputMode === 'oct') setTextInput(formatOctal(value));
         else if (inputMode === 'float') setTextInput(formatFloatInput(value, width));
-    }, [value, width, inputMode]);
+    }, [value, width, inputMode, isFloatFocused]);
 
     const handleTextInputChange = (newText) => {
         setTextInput(newText);
@@ -2938,8 +3296,10 @@ const InputPanel = ({ value, width, onValueChange, onCopy }) => {
                 const cleaned = newText.replace(/^0o/i, '').replace(/[^0-7]/g, '');
                 if (cleaned) newVal = BigInt('0o' + cleaned);
             } else if (inputMode === 'float') {
-                // Parse decimal with comma/period, signs, exponents
-                const num = parseDecimalToNumber(newText);
+                // Parse math expressions (e.g., "1/3", "sin(pi)", "2^10")
+                // Falls back to simple decimal parsing if no operators
+                let num = evalMathExpr(newText);
+                if (isNaN(num)) num = parseDecimalToNumber(newText);
                 if (!isNaN(num)) newVal = numberToFloatBits(num, width);
             }
             onValueChange(newVal & mask);
@@ -2967,8 +3327,18 @@ const InputPanel = ({ value, width, onValueChange, onCopy }) => {
                 ))}
             </div>
             <div className="flex gap-2">
-                <input type="text" value={textInput} onChange={(e) => handleTextInputChange(e.target.value)}
-                    className="flex-1 bg-slate-950 border border-slate-700 rounded px-3 py-2 font-mono text-sm text-white focus:outline-none focus:border-emerald-500" />
+                {inputMode === 'float' ? (
+                    <MathAutocompleteInput
+                        value={textInput}
+                        onChange={handleTextInputChange}
+                        onEvaluate={handleTextInputChange}
+                        onFocusChange={setIsFloatFocused}
+                        className="flex-1 bg-slate-950 border border-slate-700 rounded px-3 py-2 font-mono text-sm text-white focus:outline-none focus:border-emerald-500"
+                    />
+                ) : (
+                    <input type="text" value={textInput} onChange={(e) => handleTextInputChange(e.target.value)}
+                        className="flex-1 bg-slate-950 border border-slate-700 rounded px-3 py-2 font-mono text-sm text-white focus:outline-none focus:border-emerald-500" />
+                )}
                 <button onClick={() => {
                     // Generate random value using crypto API for better randomness
                     const bytes = new Uint8Array(width / 8);
