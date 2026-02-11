@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Data Encryption</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <div class="field-group">
+    <label for="key">Key</label>
+    <input type="password" id="key" placeholder="Enter encryption key">
+  </div>
+
+  <div class="textarea-group">
+    <label for="input">Input</label>
+    <textarea id="input" placeholder="Text to encrypt or hex to decrypt"></textarea>
+  </div>
+
+  <div class="button-row">
+    <button class="btn" id="btn-encrypt">Encrypt</button>
+    <button class="btn" id="btn-decrypt">Decrypt</button>
+    <button class="btn" id="btn-clear">Clear</button>
+  </div>
+
+  <div class="swap-row">
+    <button class="btn btn-small" id="btn-swap" title="Swap input and output">&darr;&uarr; Swap</button>
+  </div>
+
+  <div class="textarea-group">
+    <div class="textarea-header">
+      <label for="output">Output</label>
+      <button class="btn btn-small" id="btn-copy" title="Copy output to clipboard">Copy</button>
+    </div>
+    <textarea id="output" readonly placeholder="Result will appear here"></textarea>
+  </div>
+
+  <div class="disclaimer">XOR encryption is for demonstration purposes only and is not cryptographically secure.</div>
+
+<script src="controller.js"></script>
+</body>
+</html>

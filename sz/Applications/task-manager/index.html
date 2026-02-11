@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Task Manager</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="tabs">
+    <div class="tab active" data-tab="applications">Applications</div>
+    <div class="tab" data-tab="performance">Performance</div>
+  </div>
+
+  <!-- Applications tab -->
+  <div class="tab-panel active" id="panel-applications">
+    <div class="table-scroll">
+      <table class="task-table">
+        <thead><tr><th style="width:50%">Task</th><th style="width:30%">Status</th><th style="width:20%">Window ID</th></tr></thead>
+        <tbody id="task-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Performance tab -->
+  <div class="tab-panel" id="panel-performance">
+    <div class="perf-container">
+      <div class="perf-panel">
+        <div class="perf-title">Event Loop</div>
+        <canvas class="perf-canvas" id="canvas-cpu"></canvas>
+      </div>
+      <div class="perf-panel">
+        <div class="perf-title">Event Loop History</div>
+        <canvas class="perf-canvas" id="canvas-cpu-history"></canvas>
+      </div>
+      <div class="perf-panel">
+        <div class="perf-title">Memory Usage</div>
+        <canvas class="perf-canvas" id="canvas-mem"></canvas>
+      </div>
+      <div class="perf-panel">
+        <div class="perf-title">Memory Usage History</div>
+        <canvas class="perf-canvas" id="canvas-mem-history"></canvas>
+      </div>
+    </div>
+    <div class="stats-bar">
+      <div class="stat-box"><div class="stat-value" id="stat-windows">0</div><div class="stat-label">Windows</div></div>
+      <div class="stat-box"><div class="stat-value" id="stat-dom">0</div><div class="stat-label">DOM Nodes</div></div>
+      <div class="stat-box"><div class="stat-value" id="stat-heap">0</div><div class="stat-label">JS Heap (MB)</div></div>
+      <div class="stat-box"><div class="stat-value" id="stat-fps">0</div><div class="stat-label">FPS</div></div>
+    </div>
+  </div>
+
+  <div class="bottom-bar">
+    <span class="status-text" id="status-text">Windows: 0</span>
+    <div>
+      <button id="btn-end" disabled>End Task</button>
+    </div>
+  </div>
+
+<script src="controller.js"></script>
+</body>
+</html>

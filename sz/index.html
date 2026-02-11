@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>»SynthelicZ« Desktop</title>
+  <link rel="icon" href="../favicon.ico">
+  <link rel="icon" href="assets/icons/sz-logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/boot.css">
+  <link rel="stylesheet" href="css/desktop.css">
+  <link rel="stylesheet" href="css/window.css">
+  <link rel="stylesheet" href="css/taskbar.css">
+  <link rel="stylesheet" href="css/animations.css">
+  <link rel="stylesheet" href="css/context-menu.css">
+  <link rel="stylesheet" href="css/common-dialogs.css">
+</head>
+<body>
+  <!-- Boot screen overlay (shown while assets load) -->
+  <div id="sz-boot-screen"></div>
+
+  <!-- Desktop surface (hidden until boot completes) -->
+  <div id="sz-desktop" style="visibility: hidden;">
+    <img id="sz-background" src="assets/backgrounds/bliss.svg" alt="" draggable="false">
+    <div id="sz-icon-area"></div>
+    <div id="sz-window-area"></div>
+  </div>
+
+  <!-- Taskbar (hidden until boot completes) -->
+  <div id="sz-taskbar" style="visibility: hidden;">
+    <button id="sz-start-button">SZ</button>
+    <div id="sz-window-list"></div>
+    <div id="sz-system-tray">
+      <span id="sz-clock"></span>
+    </div>
+  </div>
+
+  <!-- Skin data (self-register on SZ.skins, loaded before engine scripts) -->
+  <script defer src="skins/LUNAX/skin.js"></script>
+  <script defer src="skins/AQUARIUM/skin.js"></script>
+  <script defer src="skins/APOLLO/skin.js"></script>
+  <script defer src="skins/BLUECURVE/skin.js"></script>
+  <script defer src="skins/DINKSDX_BLUE/skin.js"></script>
+  <script defer src="skins/IRIXOS/skin.js"></script>
+  <script defer src="skins/LCARS/skin.js"></script>
+  <script defer src="skins/LCARS TERMINAL COMPANION/skin.js"></script>
+  <script defer src="skins/LINUX/skin.js"></script>
+  <script defer src="skins/MACOSXDP2/skin.js"></script>
+  <script defer src="skins/MACOSXSERVER/skin.js"></script>
+  <script defer src="skins/MDNATURE/skin.js"></script>
+  <script defer src="skins/MOREWINDOWS/skin.js"></script>
+  <script defer src="skins/WIN10/skin.js"></script>
+  <script defer src="skins/WIN98/skin.js"></script>
+  <script defer src="skins/WINDOWSXL/skin.js"></script>
+  <script defer src="skins/XPNATURE/skin.js"></script>
+
+  <!-- Scripts loaded in dependency order (defer = execute in order after parse) -->
+  <script defer src="js/skin-loader.js"></script>
+  <script defer src="js/settings.js"></script>
+  <script defer src="js/boot-screen.js"></script>
+  <script defer src="js/icon.js"></script>
+  <script defer src="js/desktop.js"></script>
+  <script defer src="js/skin-css-generator.js"></script>
+  <script defer src="js/window.js"></script>
+  <script defer src="js/window-manager.js"></script>
+  <script defer src="js/pointer-handler.js"></script>
+  <script defer src="js/theme-engine.js"></script>
+  <script defer src="js/taskbar.js"></script>
+  <script defer src="js/filesystem.js"></script>
+  <script defer src="js/app-launcher.js"></script>
+  <script defer src="js/vfs.js"></script>
+  <script defer src="js/common-dialogs.js"></script>
+  <script defer src="js/context-menu.js"></script>
+  <script defer src="Applications/manifest.js"></script>
+  <script defer src="js/main.js"></script>
+</body>
+</html>

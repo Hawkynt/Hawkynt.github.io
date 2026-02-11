@@ -1,0 +1,175 @@
+System 0.4a:Windows 0.72b:Main 5.80a:Icons 0.68e:Site 0.1a
+by Hawkynt 27.01.2005-19:01
+- CHANGED Icons to use document.getElementById instead of document.all
+- CHANGED Speed optimizations Window(especially move speed)
+- FIXED some Skins not working when they are variations of others
+- REMOVED noAlpha flag not needed
+- REMOVED Body selection is allowed again
+- ADDED window title and icon text selection is disallowed in the objects itself
+- FIXED Windows should now been fully compatible with mozilla browsers
+- FIXED Icons should now been fully compatible with mozilla browsers
+
+System 0.4a:Windows 0.72a:Main 5.80a:Icons 0.68d:Site 0.1a
+by Hawkynt 27.01.2005-19:01
+- CHANGED UIS2JS now supports WBA files and saves much more space - renamed to WBA2JS
+- ADDED Grey Layer for Loading Skins
+- CHANGED Main now only loads needed Graphics
+- CHANGED PreLoader to load GFX instead of Skins
+
+System 0.3a:Windows 0.71a:Main 5.70a:Icons 0.68d:Site 0.1a
+by Hawkynt 26.01.2005-08:08
+- ADDED Site Class
+- ADDED Site to Main
+- ADDED Background Menu and several Backgrounds
+- ADDED faster MaximizeZ by Checking isontop first
+
+System 0.3a:Windows 0.71a:Main 5.69a:Icons 0.68d
+by Hawkynt 25.01.2005-08:02
+- ADDED Image Preloader
+- FIXED wrong Classes in Icons
+- ADDED Different Classes for each Icon
+- ADDED disabled state for Windows
+- ADDED BringToFront and BringToBack function
+
+System 0.3a:Windows 0.70c:Main 5.68i:Icons 0.68c
+by Hawkynt 24.01.2005-17:06
+- ADDED Minimize,Maximize Buttons
+- ADDED Button Hover Effect
+- ADDED two more Skins Linux like
+
+System 0.3a:Windows 0.70b:Main 5.68i:Icons 0.68c
+by Hawkynt 21.01.2005-09:42
+- CHANGED Version Number up to 5 to match SynthelicZ Site Standard
+- ADDED the Flirt Section Icon
+- ADDED Special thanks to Main HTML
+- ADDED Site Version Number to Version Info
+
+System 0.3a:Windows 0.70b:Main 0.68i:Icons 0.68c
+by Hawkynt 21.01.2005-09:42
+- ADDED MaximizeZ for Windows to bring them to foreground
+- ADDED System can now handle resize events
+- ADDED Resize finally works (very hard work...)
+
+System 0.2a:Windows 0.68i:Main 0.68i:Icons 0.68c
+by Hawkynt 21.01.2005-09:42
+- FIXED Move Cursor was not shown when Mouse over Window titles
+- ADDED Abilitiy to automatically increase window positions when creating them
+- CHANGED everything that works with objects in Main into functions
+- CHANGED Images are now checked when used instead of only checking them when loading page
+- CHANGED Icons are created dynamically in Main
+- CHANGED Default window size to 256x256
+- CHANGED Window sizes and transparencies in Main
+
+System 0.2a:Windows 0.68g:Main 0.68h:Icons 0.68c
+by Hawkynt 20.01.2005-12:36
+- ADDED first Sections to Main
+- FIXED Icons not showing on top when positions set to 0
+- CHANGED email adresses now hidden in source and in browser
+
+System 0.2a:Windows 0.68g:Main 0.68g:Icons 0.68a
+by Hawkynt 19.01.2005-12:46
+- ADDED Win_ChangeSkin function to change skins of all open windows not forced to keep it
+- ADDED Widget_kill function to delete self. Missing corporate function in Icons !!!
+- DELETED alert box in Main, now done with window.timeout
+
+System 0.2a:Windows 0.68f:Main 0.68f:Icons 0.68a
+by Xerxekyran 14.01.2005-18:01
+- ADDED wordWrap function to Icons (only one Line supported)
+- CHANGED Text / Name of testing Icon for testing purpose (wordWrap)
+
+System 0.2a:Windows 0.68f:Main 0.68f:Icons 0.67g
+by Hawkynt 14.01.2005-06:52
+- FIXED Images are now shown correctly when starting the first time
+- FIXED rebuilding the closed window accessible through the icons
+
+System 0.2a:Windows 0.68f:Main 0.68e:Icons 0.67g
+by Hawkynt 13.01.2005-18:31
+- ADDED close Button to close windows now
+- ADDED more Icons to test scrollbars
+- FIXED saved Space by reducing one table in windows
+- ADDED Window show and hide functions
+- CHANGED window update function to avoid showing invisible windows
+
+System 0.2a:Windows 0.68e:Main 0.68d:Icons 0.67g
+by Hawkynt 06.01.2005-11:43
+- ADDED 2 Icons to demonstrate different Objects and different Alphas
+- FIXED some bad display behavior in ICONS.JS but not finished yet
+- FIXED some Designs had negative Title Position though not showing any titles
+- FIXED allowing to insert Objects into Objects
+
+System 0.2a:Windows 0.68d:Main 0.68c:Icons 0.67d
+by Hawkynt 21.12.2004-11:41
+- FIXED window content is restored when using windows with objects inside
+
+System 0.2a:Windows 0.68c:Main 0.68c:Icons 0.67d
+by Hawkynt 21.12.2004-11:41
+- FIXED window.create to allow instances of windows in string before appearing in DOM
+
+System 0.2a:Windows 0.68b:Main 0.68c:Icons 0.67d
+by Hawkynt 21.12.2004-11:24
+- ADDED CPU/RAM waste routine again to work around DOM bugs 
+- ADDED icons in windows but not working
+- ADDED ability to show empty windows
+- FIXED red boxes appear in the upper left of all windows
+by Hawkynt 21.12.2004-09:52
+- FIXED weird CPU/RAM waste when accessing Widgets
+- ADDED Ability for updating Icons with transparencies (not fully implemented)
+by Xerxekyran 21.12.2004-9:40
+- FIXED width and height behaviour of icons
+
+System 0.2a:Windows 0.68b:Main 0.68c:Icons 0.67c 
+by Hawkynt 20.12.2004-13:36
+- ADDED support for Titles in Windows but some Skins appear to use it incorrect
+
+System 0.2a:Windows 0.68a:Main 0.68c:Icons 0.67c 
+by Hawkynt 20.12.2004-10:51
+- ADDED Move for Windows
+- ADDED Transparencies for Windows
+- ADDED Different Alpha when Moving Windows
+- ADDED Flag to move fullWindow or Frame only
+- CHANGED Events capturing in System to support Move event
+- BUG When moving Frame only, the IE does not move until mouse key is release(very weird behavior)
+
+System 0.1a:Windows 0.67c:Main 0.68b:Icons 0.67c 
+by Hawkynt 19.12.2004-12:44
+- ADDED Widget Classes support for Alpha blending(transparency)
+- ADDED Icon Subsystem
+- CHANGED Icon Class to match Widget Specifications exactly
+- MISSING Icon Class some additional adjustments are needed for Widget System
+
+System 0.1a:Windows 0.67c:Main 0.68b
+by Hawkynt 19.12.2004-11:58
+- ADDED System Widget to handle Mouse and Resize events of Document
+- CHANGED Test Window Content to show Versions of Widgets
+- ADDED All Classes can now self identification and have own Version Numbers
+
+Main 0.68
+by Hawkynt 17.12.2004-20:54
+- ADDED Specific Registry Keys for every Widget
+- CHANGED Structure of JS-Files for Widgets see SZ-GUI.JS for example
+- CHANGED Name of Window Widget to Win to avoid Netscape Errors
+- ADDED Internal Widget Identification Information
+
+Main 0.67
+by Hawkynt 16.12.2004-14:42
+- ADDED Registry Key for Window Instances
+- ADDED Cursor management for Window Events
+- ADDED ability to get Instances back from window names
+
+Main 0.666a
+by Hawkynt 16.12.2004-06:51
+- ADDED Size-Span to uis2-design-test.htm
+- ADDED Registry Key HTML\Size-Span to get ID
+
+Main 0.666
+by Xerxekyran on 15.12.2004
+- Added SYS_REG entrys for Toolbar Icon
+- Added Toolbar Icon to ICONS.js
+- Added ICONS.js
+- Added SYS_REG entrys in 'uis2-design-test.htm' (Icons)
+- Added use of ICONS.js in 'uis2-design-test.htm' and 'CLASS-WINDOW.htm'
+- Added SYS_REG in 'CLASS-WINDOW.htm' for testing purpose
+
+Main 0.6
+by Hawkynt 14.12.2004
+- first released Version that has a Version Number

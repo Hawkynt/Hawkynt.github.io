@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <!-- Document body -->
+  <rect x="6" y="2" width="36" height="44" rx="2" fill="#f0f0f0" stroke="#555" stroke-width="1.5"/>
+  <!-- Header bar -->
+  <rect x="6" y="2" width="36" height="8" rx="2" fill="#336699"/>
+  <rect x="6" y="6" width="36" height="4" fill="#336699"/>
+  <!-- Header text "HEX" -->
+  <text x="24" y="8.5" font-family="Consolas,monospace" font-size="6" fill="#fff" text-anchor="middle" font-weight="bold">HEX</text>
+  <!-- Hex content rows -->
+  <text x="9" y="17" font-family="Consolas,monospace" font-size="4" fill="#888">00</text>
+  <text x="17" y="17" font-family="Consolas,monospace" font-size="4" fill="#333">4F 6E</text>
+  <text x="34" y="17" font-family="Consolas,monospace" font-size="4" fill="#669">On</text>
+  <text x="9" y="22" font-family="Consolas,monospace" font-size="4" fill="#888">10</text>
+  <text x="17" y="22" font-family="Consolas,monospace" font-size="4" fill="#333">48 65</text>
+  <text x="34" y="22" font-family="Consolas,monospace" font-size="4" fill="#669">He</text>
+  <text x="9" y="27" font-family="Consolas,monospace" font-size="4" fill="#888">20</text>
+  <text x="17" y="27" font-family="Consolas,monospace" font-size="4" fill="#c33">FF A0</text>
+  <text x="34" y="27" font-family="Consolas,monospace" font-size="4" fill="#669">..</text>
+  <text x="9" y="32" font-family="Consolas,monospace" font-size="4" fill="#888">30</text>
+  <text x="17" y="32" font-family="Consolas,monospace" font-size="4" fill="#333">2E 64</text>
+  <text x="34" y="32" font-family="Consolas,monospace" font-size="4" fill="#669">.d</text>
+  <!-- Cursor highlight -->
+  <rect x="16" y="23.5" width="8" height="5" rx="0.5" fill="#316ac5" opacity="0.25"/>
+  <!-- Binary decoration at bottom -->
+  <text x="24" y="40" font-family="Consolas,monospace" font-size="3.5" fill="#999" text-anchor="middle">01101000 01100101</text>
+  <text x="24" y="44" font-family="Consolas,monospace" font-size="3.5" fill="#999" text-anchor="middle">01111000 00100001</text>
+</svg>

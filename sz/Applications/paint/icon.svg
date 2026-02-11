@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Paint palette body -->
+  <ellipse cx="15" cy="17" rx="13" ry="12" fill="#e8d4a0" stroke="#8b7355" stroke-width="1"/>
+  <!-- Thumb hole -->
+  <ellipse cx="10" cy="20" rx="2.5" ry="2" fill="#c4a76c" stroke="#8b7355" stroke-width="0.5"/>
+  <!-- Color dots on palette -->
+  <circle cx="9" cy="12" r="2.2" fill="#e03030"/>
+  <circle cx="14" cy="9" r="2.2" fill="#3070d0"/>
+  <circle cx="20" cy="9" r="2.2" fill="#30a030"/>
+  <circle cx="24" cy="12" r="2.2" fill="#e0d020"/>
+  <circle cx="25" cy="17" r="2.2" fill="#e07020"/>
+  <circle cx="22" cy="22" r="2" fill="#9030c0"/>
+  <!-- Brush handle -->
+  <rect x="20" y="1" width="3" height="12" rx="1" fill="#c08040" stroke="#806030" stroke-width="0.5" transform="rotate(30 21.5 7)"/>
+  <!-- Brush tip -->
+  <ellipse cx="18.5" cy="4" rx="2" ry="3" fill="#404040" transform="rotate(30 18.5 4)"/>
+</svg>

@@ -1,0 +1,17 @@
+body {
+  padding: 20px;
+  text-align: center;
+}
+
+.spacer {
+  margin: 16px 0;
+}
+
+.divider {
+  margin: 16px 0;
+}
+
+.version {
+  font-size: 11px;
+  opacity: 0.7;
+}

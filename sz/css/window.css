@@ -1,0 +1,273 @@
+/* ==========================================================================
+   Window Chrome — 9-cell CSS grid (5-column layout)
+   The window uses a 5×3 grid.  The extra columns (nw-ext, ne-ext) allow
+   top/bottom border corner zones to extend beyond the side border width.
+   Corners (nw/ne) span the border + extension columns in row 1.
+   Edges w/e are only as wide as the side border.  The content area spans
+   the extension + flexible + extension columns.
+   Frame images are set entirely via CSS from skin-css-generator.js.
+   ========================================================================== */
+
+.sz-window {
+  position: absolute;
+  display: grid;
+  grid-template-columns:
+    var(--sz-frame-left-w, 4px)
+    var(--sz-frame-nw-ext, 0px)
+    1fr
+    var(--sz-frame-ne-ext, 0px)
+    var(--sz-frame-right-w, 4px);
+  grid-template-rows: var(--sz-frame-top-h, 30px) 1fr var(--sz-frame-bottom-h, 4px);
+  grid-template-areas:
+    "nw nw n  ne ne"
+    "w  c  c  c  e"
+    "sw sw s  se se";
+  min-width: 200px;
+  min-height: 100px;
+  will-change: transform;
+}
+
+/* --------------------------------------------------------------------------
+   Window States
+   -------------------------------------------------------------------------- */
+
+.sz-window[data-state="minimized"] {
+  display: none;
+}
+
+.sz-window[data-state="maximized"] {
+  transform: none !important;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* --------------------------------------------------------------------------
+   Frame Cells (skinned via background-image from injected <style>)
+   -------------------------------------------------------------------------- */
+
+.sz-frame-nw { grid-area: nw; overflow: hidden; position: relative; }
+.sz-frame-n  { grid-area: n; position: relative; overflow: hidden; }
+.sz-frame-ne { grid-area: ne; overflow: hidden; position: relative; }
+.sz-frame-w  { grid-area: w; overflow: hidden; position: relative; }
+.sz-frame-e  { grid-area: e; overflow: hidden; position: relative; }
+.sz-frame-sw { grid-area: sw; overflow: hidden; position: relative; }
+.sz-frame-s  { grid-area: s; overflow: hidden; position: relative; }
+.sz-frame-se { grid-area: se; overflow: hidden; position: relative; }
+
+/* --------------------------------------------------------------------------
+   Sub-skin color overlay — recolors frame BMP images via mix-blend-mode.
+   The ::after pseudo-element is enabled by the skin-css-generator when
+   the skin has sub-skin color schemes.  Colors come from CSS custom
+   properties that applyRootTheme() updates on sub-skin change.
+   -------------------------------------------------------------------------- */
+
+.sz-window.sz-subskin-tint .sz-frame-nw::after,
+.sz-window.sz-subskin-tint .sz-frame-n::after,
+.sz-window.sz-subskin-tint .sz-frame-ne::after,
+.sz-window.sz-subskin-tint .sz-frame-w::after,
+.sz-window.sz-subskin-tint .sz-frame-e::after,
+.sz-window.sz-subskin-tint .sz-frame-sw::after,
+.sz-window.sz-subskin-tint .sz-frame-s::after,
+.sz-window.sz-subskin-tint .sz-frame-se::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  mix-blend-mode: color;
+  pointer-events: none;
+}
+
+/* Title row (nw, n, ne) — gradient from activeTitle to gradientActiveTitle */
+.sz-window-active.sz-subskin-tint .sz-frame-nw::after,
+.sz-window-active.sz-subskin-tint .sz-frame-n::after,
+.sz-window-active.sz-subskin-tint .sz-frame-ne::after {
+  background: linear-gradient(to right,
+    var(--sz-color-active-title, transparent),
+    var(--sz-color-gradient-active-title, transparent));
+}
+
+.sz-window:not(.sz-window-active).sz-subskin-tint .sz-frame-nw::after,
+.sz-window:not(.sz-window-active).sz-subskin-tint .sz-frame-n::after,
+.sz-window:not(.sz-window-active).sz-subskin-tint .sz-frame-ne::after {
+  background: linear-gradient(to right,
+    var(--sz-color-inactive-title, transparent),
+    var(--sz-color-gradient-inactive-title, transparent));
+}
+
+/* Side borders (w, e) — active/inactive border colors */
+.sz-window-active.sz-subskin-tint .sz-frame-w::after,
+.sz-window-active.sz-subskin-tint .sz-frame-e::after {
+  background: var(--sz-color-active-border, transparent);
+}
+
+.sz-window:not(.sz-window-active).sz-subskin-tint .sz-frame-w::after,
+.sz-window:not(.sz-window-active).sz-subskin-tint .sz-frame-e::after {
+  background: var(--sz-color-inactive-border, transparent);
+}
+
+/* Bottom row (sw, s, se) — active/inactive border colors */
+.sz-window-active.sz-subskin-tint .sz-frame-sw::after,
+.sz-window-active.sz-subskin-tint .sz-frame-s::after,
+.sz-window-active.sz-subskin-tint .sz-frame-se::after {
+  background: var(--sz-color-active-border, transparent);
+}
+
+.sz-window:not(.sz-window-active).sz-subskin-tint .sz-frame-sw::after,
+.sz-window:not(.sz-window-active).sz-subskin-tint .sz-frame-s::after,
+.sz-window:not(.sz-window-active).sz-subskin-tint .sz-frame-se::after {
+  background: var(--sz-color-inactive-border, transparent);
+}
+
+/* --------------------------------------------------------------------------
+   Title Bar (absolutely positioned inside the north edge cell)
+   -------------------------------------------------------------------------- */
+
+.sz-title-bar {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+  pointer-events: auto;
+  cursor: default;
+  z-index: 1;
+}
+
+.sz-title-icon {
+  width: 16px;
+  height: 16px;
+  margin-right: 4px;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.sz-title-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  user-select: none;
+  color: var(--sz-color-title-text, white);
+  text-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
+  padding-left: 16px;
+}
+
+.sz-window:not(.sz-window-active) .sz-title-text {
+  color: var(--sz-color-inactive-title-text, #bdc8e4);
+}
+
+/* --------------------------------------------------------------------------
+   Title Buttons (minimize / maximize-restore / close)
+   Button BMPs are 126x21 = 6 frames of 21x21:
+     [active-normal, active-pressed, active-disabled,
+      inactive-normal, inactive-pressed, inactive-disabled]
+   -------------------------------------------------------------------------- */
+
+.sz-title-buttons {
+  display: flex;
+  gap: 0;
+  margin-left: auto;
+}
+
+.sz-title-buttons button {
+  width: 21px;
+  height: 21px;
+  border: none;
+  padding: 0;
+  background-color: transparent;
+  background-repeat: no-repeat;
+  background-size: 600% 100%;
+  background-position: 0% 0%;
+  cursor: default;
+  flex-shrink: 0;
+}
+
+.sz-title-buttons button:hover {
+  filter: brightness(1.2);
+}
+
+.sz-title-buttons button:active {
+  background-position: 20% 0%;
+  filter: none;
+}
+
+/* Inactive window: show inactive-normal frame (frame 3 of 6) */
+.sz-window:not(.sz-window-active) .sz-title-buttons button {
+  background-position: 60% 0%;
+}
+
+.sz-window:not(.sz-window-active) .sz-title-buttons button:hover {
+  filter: brightness(1.2);
+}
+
+.sz-window:not(.sz-window-active) .sz-title-buttons button:active {
+  background-position: 80% 0%;
+  filter: none;
+}
+
+/* --------------------------------------------------------------------------
+   Content Area
+   -------------------------------------------------------------------------- */
+
+.sz-window-content {
+  grid-area: c;
+  position: relative;
+  overflow: hidden;
+  background: var(--sz-color-window, white);
+}
+
+.sz-app-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+/* --------------------------------------------------------------------------
+   Resize Handles (invisible grab zones around the window edges)
+   -------------------------------------------------------------------------- */
+
+.sz-resize-handle {
+  position: absolute;
+  z-index: 100;
+}
+
+.sz-resize-n  { top: -3px;    left: 8px;   right: 8px;  height: 6px; cursor: ns-resize; }
+.sz-resize-s  { bottom: -3px; left: 8px;   right: 8px;  height: 6px; cursor: ns-resize; }
+.sz-resize-e  { right: -3px;  top: 8px;    bottom: 8px; width: 6px;  cursor: ew-resize; }
+.sz-resize-w  { left: -3px;   top: 8px;    bottom: 8px; width: 6px;  cursor: ew-resize; }
+
+.sz-resize-ne { top: -3px;    right: -3px;  width: 12px; height: 12px; cursor: nesw-resize; }
+.sz-resize-nw { top: -3px;    left: -3px;   width: 12px; height: 12px; cursor: nwse-resize; }
+.sz-resize-se { bottom: -3px; right: -3px;  width: 12px; height: 12px; cursor: nwse-resize; }
+.sz-resize-sw { bottom: -3px; left: -3px;   width: 12px; height: 12px; cursor: nesw-resize; }
+
+.sz-window[data-state="maximized"] .sz-resize-handle {
+  display: none;
+}
+
+/* --------------------------------------------------------------------------
+   Window Shadow
+   -------------------------------------------------------------------------- */
+
+.sz-window.sz-window-active {
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.35));
+}
+
+.sz-window:not(.sz-window-active) {
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.2));
+}
+
+/* --------------------------------------------------------------------------
+   Dialog overlay (modal mask behind a dialog window)
+   -------------------------------------------------------------------------- */
+
+.sz-dialog-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.25);
+  z-index: 9999;
+  pointer-events: auto;
+}

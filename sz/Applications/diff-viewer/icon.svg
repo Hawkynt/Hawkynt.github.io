@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <!-- Back document -->
+  <rect x="12" y="4" width="28" height="36" rx="2" fill="#e8e8e8" stroke="#666" stroke-width="1.5"/>
+  <!-- Front document -->
+  <rect x="8" y="8" width="28" height="36" rx="2" fill="#fff" stroke="#444" stroke-width="1.5"/>
+  <!-- Red deletion line -->
+  <rect x="12" y="14" width="20" height="3" rx="1" fill="#dc3545"/>
+  <!-- Minus sign -->
+  <rect x="33" y="15" width="6" height="1.5" rx="0.5" fill="#dc3545"/>
+  <!-- Green addition line -->
+  <rect x="12" y="21" width="20" height="3" rx="1" fill="#28a745"/>
+  <!-- Plus sign (horizontal) -->
+  <rect x="33" y="21.75" width="6" height="1.5" rx="0.5" fill="#28a745"/>
+  <!-- Plus sign (vertical) -->
+  <rect x="35.25" y="19.5" width="1.5" height="6" rx="0.5" fill="#28a745"/>
+  <!-- Yellow modified line -->
+  <rect x="12" y="28" width="20" height="3" rx="1" fill="#ffc107"/>
+  <!-- Tilde sign -->
+  <text x="36" y="31" font-size="7" font-family="monospace" fill="#b8860b" text-anchor="middle">~</text>
+  <!-- Gray unchanged line -->
+  <rect x="12" y="35" width="16" height="2" rx="1" fill="#ccc"/>
+  <rect x="12" y="39" width="12" height="2" rx="1" fill="#ccc"/>
+</svg>

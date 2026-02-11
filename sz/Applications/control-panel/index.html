@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Display Properties</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="tabs">
+    <div class="tab" data-tab="themes">Themes</div>
+    <div class="tab active" data-tab="appearance">Appearance</div>
+    <div class="tab" data-tab="background">Desktop</div>
+    <div class="tab" data-tab="taskbar">Taskbar</div>
+  </div>
+
+  <!-- Themes tab -->
+  <div class="tab-body" id="panel-themes">
+    <div class="group-box" style="flex: 0 0 auto;">
+      <legend>Preview</legend>
+      <div class="preview-monitor">
+        <div class="preview-screen" id="pv-theme-screen">
+          <div class="preview-window" id="pv-theme-window">
+            <div class="preview-titlebar" id="pv-theme-titlebar">
+              <span>Window Title</span>
+              <div class="preview-titlebar-btns">
+                <span>_</span><span>&#x25A1;</span><span>X</span>
+              </div>
+            </div>
+            <div class="preview-content">
+              <div class="preview-menubar" id="pv-theme-menubar">File&nbsp;&nbsp;Edit&nbsp;&nbsp;View</div>
+              <div class="preview-body" id="pv-theme-body">Preview Area</div>
+            </div>
+          </div>
+          <div class="preview-taskbar" id="pv-theme-taskbar">
+            <div class="preview-start-btn" id="pv-theme-start">Start</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <label style="font-weight:bold; margin-bottom:4px;">Theme:</label>
+    <ul class="theme-list" id="theme-list"></ul>
+  </div>
+
+  <!-- Appearance tab -->
+  <div class="tab-body active" id="panel-appearance">
+    <div class="group-box" style="flex: 0 0 auto;">
+      <legend>Preview</legend>
+      <div class="preview-monitor">
+        <div class="preview-screen" id="pv-screen">
+          <div class="preview-inactive-bar" id="pv-inactive-bar"></div>
+          <div class="preview-window" id="pv-window">
+            <div class="preview-titlebar" id="pv-titlebar">
+              <span>Window Title</span>
+              <div class="preview-titlebar-btns">
+                <span>_</span><span>&#x25A1;</span><span>X</span>
+              </div>
+            </div>
+            <div class="preview-content" id="pv-content">
+              <div class="preview-menubar">File&nbsp;&nbsp;Edit&nbsp;&nbsp;View</div>
+              <div class="preview-body">Preview Area</div>
+            </div>
+          </div>
+          <div class="preview-taskbar" id="pv-taskbar">
+            <div class="preview-start-btn" id="pv-start">Start</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="col-left">
+        <label style="font-weight:bold; margin-bottom:4px;">Skin:</label>
+        <ul class="skin-list" id="skin-list"><li>Loading...</li></ul>
+        <div class="subskin-row" id="subskin-row">
+          <label>Color scheme:</label>
+          <select id="subskin-select"></select>
+        </div>
+      </div>
+      <div class="col-right">
+        <label style="font-weight:bold; margin-bottom:4px;">Font:</label>
+        <div id="skin-font-info" style="font-size:10px; color:var(--sz-color-gray-text);">--</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Desktop / Background tab -->
+  <div class="tab-body" id="panel-background">
+    <div class="group-box" style="flex: 0 0 auto;">
+      <legend>Preview</legend>
+      <div class="preview-monitor">
+        <div class="preview-bg-screen" id="pv-bg-screen">
+          <img id="pv-bg-img" src="" alt="" style="display:none;">
+        </div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="col-left">
+        <label style="font-weight:bold; margin-bottom:4px;">Background:</label>
+        <ul class="bg-list" id="bg-list"><li>(None)</li></ul>
+      </div>
+      <div class="col-right">
+        <div class="bg-controls" style="flex-direction:column; align-items:flex-start; gap:6px;">
+          <div>
+            <label>Position:</label><br>
+            <select id="bg-mode">
+              <option value="cover">Stretch</option>
+              <option value="contain">Fit</option>
+              <option value="fill">Fill</option>
+              <option value="center">Center</option>
+              <option value="tile">Tile</option>
+            </select>
+          </div>
+          <div>
+            <button id="btn-bg-browse">Browse...</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Taskbar tab -->
+  <div class="tab-body" id="panel-taskbar">
+    <div class="group-box">
+      <legend>Taskbar appearance</legend>
+      <label class="chk-row"><input type="checkbox" id="chk-lock-taskbar"> Lock the taskbar</label>
+      <label class="chk-row"><input type="checkbox" id="chk-auto-hide"> Auto-hide the taskbar</label>
+      <label class="chk-row"><input type="checkbox" id="chk-group-buttons" checked> Group similar taskbar buttons</label>
+      <label class="chk-row"><input type="checkbox" id="chk-show-clock" checked> Show the clock</label>
+    </div>
+    <div class="group-box">
+      <legend>Start Menu</legend>
+      <label class="chk-row"><input type="checkbox" id="chk-small-icons"> Use small icons in Start menu</label>
+      <label class="chk-row"><input type="checkbox" id="chk-show-run" checked> Show Run command</label>
+      <div style="margin-top:8px;">
+        <button id="btn-clear-mru">Clear Recently Used Programs</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="button-bar">
+    <button id="btn-ok">OK</button>
+    <button id="btn-cancel">Cancel</button>
+    <button id="btn-apply">Apply</button>
+  </div>
+
+<script src="controller.js"></script>
+</body>
+</html>

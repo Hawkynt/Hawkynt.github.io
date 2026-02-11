@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+  <!-- Fanned back cards -->
+  <rect x="0.5" y="2" width="9" height="12" rx="1" fill="#1a3a7a" stroke="#0a1a4a" stroke-width="0.5" transform="rotate(-12 5 8)"/>
+  <rect x="3.5" y="2" width="9" height="12" rx="1" fill="#1a3a7a" stroke="#0a1a4a" stroke-width="0.5"/>
+  <rect x="6.5" y="2" width="9" height="12" rx="1" fill="#1a3a7a" stroke="#0a1a4a" stroke-width="0.5" transform="rotate(12 11 8)"/>
+  <!-- Front card -->
+  <rect x="3.5" y="2" width="9" height="12" rx="1" fill="#fff" stroke="#333" stroke-width="0.5"/>
+  <!-- Spider symbol (spade) -->
+  <text x="5" y="7.5" font-size="4" font-family="serif" font-weight="bold" fill="#000">K</text>
+  <text x="7" y="12.5" font-size="5" fill="#000" font-family="serif">&#x2660;</text>
+</svg>
