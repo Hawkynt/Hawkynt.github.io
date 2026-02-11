@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Terminal body -->
+  <rect x="2" y="3" width="28" height="26" rx="2" fill="#1e1e1e" stroke="#555" stroke-width="1"/>
+  <!-- Title bar -->
+  <rect x="2" y="3" width="28" height="5" rx="2" fill="#3c3c3c"/>
+  <rect x="2" y="6" width="28" height="2" fill="#3c3c3c"/>
+  <!-- Title bar dots -->
+  <circle cx="6" cy="5.5" r="1" fill="#ff5f56"/>
+  <circle cx="10" cy="5.5" r="1" fill="#ffbd2e"/>
+  <circle cx="14" cy="5.5" r="1" fill="#27c93f"/>
+  <!-- Prompt character > -->
+  <text x="7" y="19" font-family="Consolas, monospace" font-size="12" font-weight="bold" fill="#c0c0c0">C:\&gt;</text>
+  <!-- Blinking cursor underscore -->
+  <rect x="24" y="18" width="4" height="1.5" fill="#c0c0c0"/>
+</svg>

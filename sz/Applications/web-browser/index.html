@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Web Browser</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Menu Bar -->
+<div class="menu-bar" id="menu-bar">
+  <div class="menu-item" data-menu="file">
+    File
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="new-tab">New Tab<span class="shortcut">Ctrl+T</span></div>
+      <div class="menu-entry" data-action="open-location">Open Location...<span class="shortcut">Ctrl+L</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="exit">Exit</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="view">
+    View
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="refresh">Refresh<span class="shortcut">F5</span></div>
+      <div class="menu-entry" data-action="stop">Stop<span class="shortcut">Esc</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="page-source">Page Source</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="bookmarks">
+    Bookmarks
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="add-bookmark">Add Bookmark...<span class="shortcut">Ctrl+D</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="manage-bookmarks">Manage Bookmarks...</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="help">
+    Help
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="about">About Web Browser</div>
+    </div>
+  </div>
+</div>
+
+<!-- Navigation toolbar -->
+<div class="nav-toolbar" id="nav-toolbar">
+  <button class="nav-btn disabled" id="btn-back" title="Back">&#x2190;</button>
+  <button class="nav-btn disabled" id="btn-forward" title="Forward">&#x2192;</button>
+  <button class="nav-btn" id="btn-refresh" title="Refresh">&#x21BB;</button>
+  <button class="nav-btn" id="btn-home" title="Home">&#x1F3E0;</button>
+  <button class="nav-btn" id="btn-stop" title="Stop">&#x2715;</button>
+</div>
+
+<!-- Address bar -->
+<div class="address-bar" id="address-bar">
+  <label for="url-input">Address:</label>
+  <input type="text" id="url-input" placeholder="Enter a URL..." autocomplete="off" spellcheck="false">
+  <button id="btn-go">Go</button>
+</div>
+
+<!-- Bookmarks bar -->
+<div class="bookmarks-bar" id="bookmarks-bar">
+  <span class="bm-label">Bookmarks:</span>
+</div>
+
+<!-- Proxy info bar -->
+<div class="proxy-info-bar" id="proxy-info-bar">
+  <span class="proxy-icon">&#x26A0;</span>
+  <span class="proxy-message">Content loaded via web proxy. Interactive features may be limited.</span>
+  <button class="proxy-dismiss" id="proxy-dismiss-btn" title="Dismiss">X</button>
+</div>
+
+<!-- Content area -->
+<div class="browser-content" id="browser-content">
+  <div class="newtab-page" id="newtab-page">
+    <div class="newtab-logo">SZ Web Browser</div>
+    <div class="newtab-subtitle">Your gateway to the web</div>
+    <div class="newtab-search">
+      <input type="text" id="newtab-url-input" placeholder="Type a URL and press Enter..." autocomplete="off" spellcheck="false">
+      <button id="newtab-go-btn">Go</button>
+    </div>
+    <div class="newtab-tiles" id="newtab-tiles">
+      <div class="newtab-tile" data-url="https://en.wikipedia.org">
+        <span class="tile-icon">&#x1F4DA;</span>
+        <span class="tile-label">Wikipedia</span>
+      </div>
+      <div class="newtab-tile" data-url="https://developer.mozilla.org">
+        <span class="tile-icon">&#x1F4BB;</span>
+        <span class="tile-label">MDN</span>
+      </div>
+      <div class="newtab-tile" data-url="https://github.com">
+        <span class="tile-icon">&#x1F431;</span>
+        <span class="tile-label">GitHub</span>
+      </div>
+    </div>
+    <div class="newtab-note">
+      Pages are loaded directly when possible. If a site blocks iframe embedding,<br>
+      a web proxy is used to fetch and display the content (some interactive features may be limited).
+    </div>
+  </div>
+  <iframe id="browser-iframe" style="display:none;"></iframe>
+</div>
+
+<!-- Status bar -->
+<div class="status-bar" id="status-bar">
+  <span class="status-section flex" id="status-text">Ready</span>
+  <span class="status-section" id="status-url"></span>
+</div>
+
+<!-- Open Location dialog -->
+<div class="dialog-overlay" id="dlg-open-location">
+  <div class="dialog">
+    <div class="dialog-title">Open Location</div>
+    <div class="dialog-body">
+      <p>Enter the URL you want to navigate to:</p>
+      <input type="text" id="dlg-url-input" placeholder="https://..." autocomplete="off">
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Open</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Bookmark dialog -->
+<div class="dialog-overlay" id="dlg-add-bookmark">
+  <div class="dialog">
+    <div class="dialog-title">Add Bookmark</div>
+    <div class="dialog-body">
+      <p>Name:</p>
+      <input type="text" id="dlg-bm-name" autocomplete="off">
+      <p style="margin-top: 8px;">URL:</p>
+      <input type="text" id="dlg-bm-url" autocomplete="off">
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Add</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Manage Bookmarks dialog -->
+<div class="dialog-overlay" id="dlg-manage-bookmarks">
+  <div class="dialog" style="min-width: 400px;">
+    <div class="dialog-title">Manage Bookmarks</div>
+    <div class="dialog-body">
+      <div class="bm-list" id="bm-manage-list"></div>
+      <p style="font-size: 10px; color: var(--sz-color-gray-text);">Click the X button to remove a bookmark.</p>
+    </div>
+    <div class="dialog-buttons" style="justify-content: center;">
+      <button data-result="ok">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Page Source dialog -->
+<div class="dialog-overlay" id="dlg-page-source">
+  <div class="dialog" style="min-width: 450px; max-width: 600px;">
+    <div class="dialog-title">Page Source</div>
+    <div class="dialog-body">
+      <textarea id="page-source-text" readonly style="width: 100%; height: 200px; font-family: 'Lucida Console', 'Courier New', monospace; font-size: 11px; resize: vertical; background: var(--sz-color-window); color: var(--sz-color-window-text);"></textarea>
+    </div>
+    <div class="dialog-buttons" style="justify-content: center;">
+      <button data-result="ok">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- About dialog -->
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Web Browser</div>
+    <div class="dialog-body" style="text-align: center; padding: 20px;">
+      <p style="font-weight: bold; font-size: 13px; margin-bottom: 12px;">SZ Web Browser</p>
+      <p>A web browser for &raquo;SynthelicZ&laquo;</p>
+      <p style="margin-top: 8px; font-size: 10px; opacity: 0.7;">
+        Pages are loaded directly when possible.<br>
+        When a site blocks iframe embedding, a web proxy is used as fallback.
+      </p>
+      <p style="margin-top: 12px; font-size: 10px; opacity: 0.7;">&copy; 1995-2026 &raquo;SynthelicZ&laquo;</p>
+    </div>
+    <div class="dialog-buttons" style="justify-content: center;">
+      <button data-result="ok">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Context menu for bookmarks -->
+<div class="context-menu" id="bookmark-context-menu">
+  <div class="ctx-entry" data-ctx-action="open-bookmark">Open</div>
+  <div class="ctx-entry" data-ctx-action="delete-bookmark">Delete</div>
+</div>
+
+<script src="controller.js"></script>
+</body>
+</html>

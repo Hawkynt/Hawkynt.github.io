@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Minesweeper</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Menu Bar -->
+<div class="menu-bar" id="menuBar">
+  <div class="menu-item" data-menu="game">Game
+    <div class="menu-dropdown" id="menuGame">
+      <div class="menu-dropdown-item" data-action="new">New<span class="shortcut">F2</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-dropdown-item checked" data-action="beginner">Beginner</div>
+      <div class="menu-dropdown-item" data-action="intermediate">Intermediate</div>
+      <div class="menu-dropdown-item" data-action="expert">Expert</div>
+      <div class="menu-dropdown-item" data-action="custom">Custom...</div>
+      <div class="menu-separator"></div>
+      <div class="menu-dropdown-item checked" data-action="marks">Marks (?)</div>
+      <div class="menu-separator"></div>
+      <div class="menu-dropdown-item" data-action="best-times">Best Times...</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="help">Help
+    <div class="menu-dropdown" id="menuHelp">
+      <div class="menu-dropdown-item" data-action="about">About Minesweeper</div>
+    </div>
+  </div>
+</div>
+
+<!-- Game Area -->
+<div class="game-frame">
+  <div class="status-panel">
+    <div class="led-counter" id="mineCounter">010</div>
+    <button class="smiley-btn" id="smileyBtn" type="button"></button>
+    <div class="led-counter" id="timer">000</div>
+  </div>
+  <div class="field-border">
+    <div class="minefield" id="minefield"></div>
+  </div>
+</div>
+
+<!-- Best Times Dialog -->
+<div class="xp-dialog-backdrop" id="bestTimesBackdrop">
+  <div class="xp-dialog">
+    <div class="xp-dialog-titlebar">
+      <span>Fastest Mine Sweepers</span>
+      <button class="xp-dialog-close" id="bestTimesClose" type="button">x</button>
+    </div>
+    <div class="xp-dialog-body">
+      <table class="best-times-table">
+        <tr><td>Beginner:</td><td id="btBegTime">999 seconds</td><td id="btBegName">Anonymous</td></tr>
+        <tr><td>Intermediate:</td><td id="btIntTime">999 seconds</td><td id="btIntName">Anonymous</td></tr>
+        <tr><td>Expert:</td><td id="btExpTime">999 seconds</td><td id="btExpName">Anonymous</td></tr>
+      </table>
+    </div>
+    <div class="xp-dialog-buttons">
+      <button class="xp-btn" id="bestTimesReset" type="button">Reset Scores</button>
+      <button class="xp-btn" id="bestTimesOk" type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Custom Field Dialog -->
+<div class="xp-dialog-backdrop" id="customBackdrop">
+  <div class="xp-dialog">
+    <div class="xp-dialog-titlebar">
+      <span>Custom Field</span>
+      <button class="xp-dialog-close" id="customClose" type="button">x</button>
+    </div>
+    <div class="xp-dialog-body">
+      <div class="custom-field-row">
+        <label for="customRows">Height:</label>
+        <input type="number" id="customRows" min="9" max="24" value="9">
+        <span class="field-range">(9-24)</span>
+      </div>
+      <div class="custom-field-row">
+        <label for="customCols">Width:</label>
+        <input type="number" id="customCols" min="9" max="30" value="9">
+        <span class="field-range">(9-30)</span>
+      </div>
+      <div class="custom-field-row">
+        <label for="customMines">Mines:</label>
+        <input type="number" id="customMines" min="10" max="667" value="10">
+        <span class="field-range">(10-667)</span>
+      </div>
+      <div class="custom-error" id="customError"></div>
+    </div>
+    <div class="xp-dialog-buttons">
+      <button class="xp-btn" id="customOk" type="button">OK</button>
+      <button class="xp-btn" id="customCancel" type="button">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- About Dialog -->
+<div class="xp-dialog-backdrop" id="aboutBackdrop">
+  <div class="xp-dialog" style="min-width:260px;max-width:320px;">
+    <div class="xp-dialog-titlebar">
+      <span>About Minesweeper</span>
+      <button class="xp-dialog-close" id="aboutClose" type="button">x</button>
+    </div>
+    <div class="xp-dialog-body" style="text-align:center;">
+      <div style="font-size:24px;margin-bottom:8px;">\u{1F4A3}</div>
+      <div style="font-weight:bold;font-size:12px;margin-bottom:4px;">Minesweeper</div>
+      <div style="margin-bottom:8px;">Classic mine-clearing puzzle game.</div>
+      <div style="font-size:10px;color:var(--sz-color-button-shadow,#808080);">Part of the SynthelicZ Desktop</div>
+    </div>
+    <div class="xp-dialog-buttons">
+      <button class="xp-btn" id="aboutOk" type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<script src="controller.js"></script>
+</body>
+</html>

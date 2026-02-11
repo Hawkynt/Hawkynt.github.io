@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Sheet background -->
+  <rect x="3" y="2" width="26" height="28" rx="1" fill="#fff" stroke="#666" stroke-width="1"/>
+  <!-- Green header bar -->
+  <rect x="3" y="2" width="26" height="6" rx="1" fill="#217346"/>
+  <rect x="3" y="5" width="26" height="3" fill="#217346"/>
+  <!-- Grid lines - horizontal -->
+  <line x1="3" y1="12" x2="29" y2="12" stroke="#c0c0c0" stroke-width="0.5"/>
+  <line x1="3" y1="16" x2="29" y2="16" stroke="#c0c0c0" stroke-width="0.5"/>
+  <line x1="3" y1="20" x2="29" y2="20" stroke="#c0c0c0" stroke-width="0.5"/>
+  <line x1="3" y1="24" x2="29" y2="24" stroke="#c0c0c0" stroke-width="0.5"/>
+  <line x1="3" y1="28" x2="29" y2="28" stroke="#c0c0c0" stroke-width="0.5"/>
+  <!-- Grid lines - vertical -->
+  <line x1="10" y1="8" x2="10" y2="30" stroke="#c0c0c0" stroke-width="0.5"/>
+  <line x1="17" y1="8" x2="17" y2="30" stroke="#c0c0c0" stroke-width="0.5"/>
+  <line x1="23" y1="8" x2="23" y2="30" stroke="#c0c0c0" stroke-width="0.5"/>
+  <!-- Row headers background -->
+  <rect x="3" y="8" width="7" height="22" fill="#e8f0e8"/>
+  <!-- Column header text -->
+  <text x="13" y="7" font-family="Arial" font-size="4" fill="#fff" font-weight="bold" text-anchor="middle">A</text>
+  <text x="20" y="7" font-family="Arial" font-size="4" fill="#fff" font-weight="bold" text-anchor="middle">B</text>
+  <text x="26" y="7" font-family="Arial" font-size="4" fill="#fff" font-weight="bold" text-anchor="middle">C</text>
+  <!-- Row numbers -->
+  <text x="6.5" y="11" font-family="Arial" font-size="3" fill="#555" text-anchor="middle">1</text>
+  <text x="6.5" y="15" font-family="Arial" font-size="3" fill="#555" text-anchor="middle">2</text>
+  <text x="6.5" y="19" font-family="Arial" font-size="3" fill="#555" text-anchor="middle">3</text>
+  <!-- Sample data -->
+  <text x="13" y="11" font-family="Arial" font-size="3" fill="#333" text-anchor="middle">42</text>
+  <text x="20" y="15" font-family="Arial" font-size="3" fill="#333" text-anchor="middle">17</text>
+  <!-- Green accent cell (selected) -->
+  <rect x="10" y="8" width="7" height="4" fill="none" stroke="#217346" stroke-width="1.5"/>
+</svg>

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Skin Tester</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="app">
+  <div id="toolbar">
+    <button id="open-btn" title="Open WBA, ZIP, UIS, or skin folder">Open...</button>
+    <input type="file" id="file-input" accept=".wba,.zip,.rar,.uis" style="display:none" multiple>
+    <label for="skin-select">Skin</label>
+    <select id="skin-select"></select>
+    <label for="subskin-select">Style</label>
+    <select id="subskin-select"><option value="">--</option></select>
+    <button id="active-toggle" title="Toggle active/inactive state">Active</button>
+    <button id="anim-toggle" title="Toggle animation playback">Anim</button>
+    <span id="drop-hint">Drop .wba / .zip / folder here</span>
+  </div>
+
+  <div id="main-area">
+    <div id="drop-overlay">Drop skin folder here</div>
+
+    <div id="frame-grid">
+      <div class="frame-cell" id="cell-nw"><span class="cell-label">NW</span></div>
+      <div class="frame-cell" id="cell-n"><span class="cell-label">N</span></div>
+      <div class="frame-cell" id="cell-ne"><span class="cell-label">NE</span></div>
+      <div class="frame-cell" id="cell-w"><span class="cell-label">W</span></div>
+      <div class="frame-cell" id="cell-content">
+        <div id="controls-area">
+          <fieldset>
+            <legend>Form Controls</legend>
+            <div class="ctrl-row">
+              <button>Button</button>
+              <button disabled>Disabled</button>
+            </div>
+            <div class="ctrl-row">
+              <input type="text" value="Text input" size="14">
+              <input type="text" value="Disabled" size="10" disabled>
+            </div>
+            <div class="ctrl-row">
+              <select><option>Select box</option><option>Option 2</option><option>Option 3</option></select>
+            </div>
+            <div class="ctrl-row">
+              <label><input type="checkbox" checked> Checked</label>
+              <label><input type="checkbox"> Unchecked</label>
+              <label><input type="checkbox" disabled> Disabled</label>
+            </div>
+            <div class="ctrl-row">
+              <label><input type="radio" name="r" checked> Radio A</label>
+              <label><input type="radio" name="r"> Radio B</label>
+            </div>
+            <div class="ctrl-row">
+              <textarea rows="2" cols="30">Textarea content</textarea>
+            </div>
+            <div class="ctrl-row">
+              <input type="range" min="0" max="100" value="50">
+              <progress value="70" max="100"></progress>
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend>Scrollbar</legend>
+            <div id="scroll-test">
+              <div id="scroll-content">Line 1<br>Line 2<br>Line 3<br>Line 4<br>Line 5<br>Line 6<br>Line 7<br>Line 8<br>Line 9<br>Line 10<br>Line 11<br>Line 12</div>
+            </div>
+          </fieldset>
+        </div>
+      </div>
+      <div class="frame-cell" id="cell-e"><span class="cell-label">E</span></div>
+      <div class="frame-cell" id="cell-sw"><span class="cell-label">SW</span></div>
+      <div class="frame-cell" id="cell-s"><span class="cell-label">S</span></div>
+      <div class="frame-cell" id="cell-se"><span class="cell-label">SE</span></div>
+    </div>
+  </div>
+
+  <div id="info-panel">
+    <div id="info-content">Select a skin to inspect.</div>
+  </div>
+</div>
+<script src="controller.js"></script>
+</body>
+</html>

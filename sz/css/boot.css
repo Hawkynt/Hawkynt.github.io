@@ -1,0 +1,185 @@
+/* =====================================================================
+ *  boot.css - SynthelicZ Boot Screen
+ *
+ *  Full-viewport overlay displayed while assets are being loaded and
+ *  skin images pre-composed.  Three visual modes are possible (GIF,
+ *  frame sequence, CSS fallback) but the CSS here covers all of them.
+ * ===================================================================== */
+
+/* --------------------------------------------------------------------- *
+ *  Overlay container                                                     *
+ * --------------------------------------------------------------------- */
+
+#sz-boot-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  background: linear-gradient(135deg, #0a1628 0%, #1a2a4a 50%, #0d1f3c 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  transition: opacity 0.5s ease;
+}
+
+/* Hidden state - faded out with pointer events disabled so the user
+   can interact with the desktop underneath while the overlay is still
+   technically in the DOM during the transition. */
+#sz-boot-screen.sz-boot-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* --------------------------------------------------------------------- *
+ *  Content wrapper                                                       *
+ * --------------------------------------------------------------------- */
+
+.sz-boot-content {
+  text-align: center;
+  color: #fff;
+}
+
+/* --------------------------------------------------------------------- *
+ *  Logo                                                                  *
+ * --------------------------------------------------------------------- */
+
+.sz-boot-logo {
+  font-size: 72px;
+  font-weight: bold;
+  margin-bottom: 16px;
+  letter-spacing: -2px;
+  user-select: none;
+}
+
+/* "S" letter - pulses with a soft blue glow */
+.sz-boot-logo-s {
+  display: inline-block;
+  color: #4a9eff;
+  animation: sz-boot-pulse 2s ease-in-out infinite;
+}
+
+/* "Z" letter - same pulse, offset by 0.3 s for a wave effect */
+.sz-boot-logo-z {
+  display: inline-block;
+  color: #7eb8ff;
+  animation: sz-boot-pulse 2s ease-in-out infinite 0.3s;
+}
+
+/* Pulse keyframes - subtle scale + expanding glow shadow */
+@keyframes sz-boot-pulse {
+  0%, 100% {
+    transform: scale(1);
+    text-shadow: 0 0 8px rgba(74, 158, 255, 0.3);
+  }
+  50% {
+    transform: scale(1.1);
+    text-shadow:
+      0 0 20px rgba(74, 158, 255, 0.6),
+      0 0 40px rgba(74, 158, 255, 0.2);
+  }
+}
+
+/* --------------------------------------------------------------------- *
+ *  Subtitle                                                              *
+ * --------------------------------------------------------------------- */
+
+.sz-boot-subtitle {
+  font-size: 14px;
+  opacity: 0.6;
+  margin-bottom: 32px;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+}
+
+/* --------------------------------------------------------------------- *
+ *  Bouncing dots spinner                                                 *
+ * --------------------------------------------------------------------- */
+
+.sz-boot-spinner {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
+/* Each dot is a small circle that bounces vertically */
+.sz-boot-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4a9eff;
+  animation: sz-boot-bounce 1.4s ease-in-out infinite;
+}
+
+/* Stagger each dot so they form a travelling wave */
+.sz-boot-dot:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.sz-boot-dot:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+/* Bounce keyframes - vertical hop with brief pause at rest */
+@keyframes sz-boot-bounce {
+  0%, 80%, 100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-12px);
+  }
+}
+
+/* --------------------------------------------------------------------- *
+ *  Progress bar                                                          *
+ * --------------------------------------------------------------------- */
+
+.sz-boot-progress {
+  width: 200px;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  margin: 0 auto 12px;
+  overflow: hidden;
+}
+
+/* Filled portion - animated width controlled by JS */
+.sz-boot-progress-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #4a9eff, #7eb8ff);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* --------------------------------------------------------------------- *
+ *  Status text                                                           *
+ * --------------------------------------------------------------------- */
+
+.sz-boot-status {
+  font-size: 11px;
+  opacity: 0.4;
+  letter-spacing: 1px;
+}
+
+/* --------------------------------------------------------------------- *
+ *  GIF mode image                                                        *
+ * --------------------------------------------------------------------- */
+
+.sz-boot-gif {
+  max-width: 300px;
+  max-height: 200px;
+  display: block;
+  margin: 0 auto 24px;
+}
+
+/* --------------------------------------------------------------------- *
+ *  Frame sequence canvas                                                 *
+ * --------------------------------------------------------------------- */
+
+.sz-boot-canvas {
+  max-width: 300px;
+  max-height: 200px;
+  display: block;
+  margin: 0 auto 24px;
+}

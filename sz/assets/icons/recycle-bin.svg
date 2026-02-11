@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <defs>
+    <linearGradient id="lid" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#8899aa"/>
+      <stop offset="100%" stop-color="#667788"/>
+    </linearGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#778899"/>
+      <stop offset="100%" stop-color="#556677"/>
+    </linearGradient>
+  </defs>
+  <!-- Lid handle -->
+  <rect x="12" y="3" width="8" height="3" rx="1" fill="url(#lid)" stroke="#445566" stroke-width="0.5"/>
+  <!-- Lid -->
+  <rect x="6" y="6" width="20" height="3" rx="1" fill="url(#lid)" stroke="#445566" stroke-width="0.5"/>
+  <!-- Body -->
+  <path d="M8 10 L7 28 Q7 29 8 29 L24 29 Q25 29 25 28 L24 10 Z" fill="url(#body)" stroke="#445566" stroke-width="0.5"/>
+  <!-- Vertical lines on body -->
+  <line x1="12" y1="13" x2="12" y2="26" stroke="#445566" stroke-width="0.7" stroke-linecap="round"/>
+  <line x1="16" y1="13" x2="16" y2="26" stroke="#445566" stroke-width="0.7" stroke-linecap="round"/>
+  <line x1="20" y1="13" x2="20" y2="26" stroke="#445566" stroke-width="0.7" stroke-linecap="round"/>
+</svg>

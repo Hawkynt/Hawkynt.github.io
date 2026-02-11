@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Image Viewer</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Menu Bar -->
+<div class="menu-bar" id="menu-bar">
+  <div class="menu-item" data-menu="file">
+    File
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="open">Open...<span class="shortcut">Ctrl+O</span></div>
+      <div class="menu-entry disabled" data-action="close-image" id="mi-close">Close</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="exit">Exit</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="view">
+    View
+    <div class="menu-dropdown">
+      <div class="menu-entry disabled" data-action="zoom-in" id="mi-zoom-in">Zoom In<span class="shortcut">Ctrl++</span></div>
+      <div class="menu-entry disabled" data-action="zoom-out" id="mi-zoom-out">Zoom Out<span class="shortcut">Ctrl+-</span></div>
+      <div class="menu-entry disabled" data-action="fit-window" id="mi-fit">Fit to Window<span class="shortcut">Ctrl+0</span></div>
+      <div class="menu-entry disabled" data-action="actual-size" id="mi-actual">Actual Size (1:1)<span class="shortcut">Ctrl+1</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry disabled" data-action="rotate-cw" id="mi-rot-cw">Rotate CW<span class="shortcut">Ctrl+R</span></div>
+      <div class="menu-entry disabled" data-action="rotate-ccw" id="mi-rot-ccw">Rotate CCW<span class="shortcut">Ctrl+Shift+R</span></div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="help">
+    Help
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="about">About Image Viewer</div>
+    </div>
+  </div>
+</div>
+
+<!-- Toolbar -->
+<div class="toolbar" id="toolbar">
+  <div class="tb-btn" data-action="open" title="Open (Ctrl+O)">&#128194;</div>
+  <div class="tb-sep"></div>
+  <div class="tb-btn disabled" data-action="prev" id="tb-prev" title="Previous Image">&#9664;</div>
+  <div class="tb-btn disabled" data-action="next" id="tb-next" title="Next Image">&#9654;</div>
+  <div class="tb-sep"></div>
+  <div class="tb-btn disabled" data-action="zoom-in" id="tb-zoom-in" title="Zoom In (+)">&#43;</div>
+  <div class="tb-btn disabled" data-action="zoom-out" id="tb-zoom-out" title="Zoom Out (-)">&#8722;</div>
+  <div class="tb-btn disabled" data-action="fit-window" id="tb-fit" title="Fit to Window">&#11036;</div>
+  <div class="tb-btn disabled" data-action="actual-size" id="tb-actual" title="Actual Size (1:1)">1:1</div>
+  <div class="tb-sep"></div>
+  <div class="tb-btn disabled" data-action="rotate-cw" id="tb-rot-cw" title="Rotate Clockwise">&#8635;</div>
+  <div class="tb-btn disabled" data-action="rotate-ccw" id="tb-rot-ccw" title="Rotate Counter-Clockwise">&#8634;</div>
+</div>
+
+<!-- Image viewport -->
+<div class="viewport" id="viewport">
+  <div class="empty-message" id="empty-msg">No image loaded. Use File &gt; Open or drag an image here.</div>
+  <div class="image-container fit" id="img-container" style="display:none;">
+    <img id="viewer-img" alt="">
+  </div>
+</div>
+
+<!-- Status bar -->
+<div class="status-bar" id="status-bar">
+  <span class="status-section inset" id="status-file">No file</span>
+  <span class="status-section inset" id="status-dims"></span>
+  <span class="status-section inset" id="status-zoom"></span>
+  <span class="status-section inset" id="status-size"></span>
+</div>
+
+<!-- About dialog -->
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Image Viewer</div>
+    <div class="dialog-body" style="text-align: center; padding: 20px;">
+      <p style="font-weight: bold; font-size: 13px; margin-bottom: 12px;">Image Viewer</p>
+      <p>An image viewer for &raquo;SynthelicZ&laquo;</p>
+      <p style="margin-top: 8px; font-size: 10px;">Supports PNG, BMP, JPG, and GIF files.</p>
+      <p style="margin-top: 12px; font-size: 10px; opacity: 0.7;">&copy; 1995-2026 &raquo;SynthelicZ&laquo;</p>
+    </div>
+    <div class="dialog-buttons" style="justify-content: center;">
+      <button data-result="ok">OK</button>
+    </div>
+  </div>
+</div>
+
+<script src="controller.js"></script>
+</body>
+</html>

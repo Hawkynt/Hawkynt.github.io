@@ -1,0 +1,388 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ---- Menu Bar ---- */
+.menu-bar {
+  display: flex;
+  align-items: center;
+  height: 20px;
+  background: var(--sz-color-menu);
+  border-bottom: 1px solid var(--sz-color-button-shadow);
+  padding: 0 2px;
+  position: relative;
+}
+
+.menu-item {
+  padding: 2px 8px;
+  cursor: default;
+  color: var(--sz-color-menu-text);
+  position: relative;
+}
+
+.menu-item:hover, .menu-item.open {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+}
+
+.menu-dropdown {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: var(--sz-color-menu);
+  border: 2px outset var(--sz-color-button-face);
+  box-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+  z-index: 1000;
+  min-width: 180px;
+  padding: 2px 0;
+}
+
+.menu-dropdown.visible { display: block; }
+
+.menu-dropdown-item {
+  padding: 3px 24px 3px 24px;
+  cursor: default;
+  white-space: nowrap;
+  color: var(--sz-color-menu-text);
+  position: relative;
+}
+
+.menu-dropdown-item:hover {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+}
+
+.menu-dropdown-item .shortcut {
+  float: right;
+  margin-left: 24px;
+  opacity: 0.7;
+}
+
+.menu-dropdown-item.disabled {
+  color: var(--sz-color-button-shadow);
+  pointer-events: none;
+}
+
+.menu-separator {
+  height: 1px;
+  background: var(--sz-color-button-shadow);
+  margin: 3px 4px;
+}
+
+/* ---- Game Frame ---- */
+.game-frame {
+  border: 3px solid;
+  border-color: var(--sz-color-button-highlight) var(--sz-color-button-shadow) var(--sz-color-button-shadow) var(--sz-color-button-highlight);
+  margin: 4px;
+  padding: 5px;
+  background: var(--sz-color-button-face);
+}
+
+.game-layout {
+  display: flex;
+  gap: 8px;
+}
+
+/* ---- Board ---- */
+.board-border {
+  border: 3px solid;
+  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
+}
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(10, 20px);
+  grid-template-rows: repeat(20, 20px);
+  background: #000;
+  line-height: 0;
+}
+
+.board-cell {
+  width: 20px;
+  height: 20px;
+  border: 1px solid #111;
+  background: #000;
+}
+
+.board-cell.filled {
+  border: 2px outset;
+}
+
+.board-cell.ghost {
+  border: 1px solid;
+  background: transparent !important;
+  opacity: 0.3;
+}
+
+.board-cell.clearing {
+  animation: flash-row 0.3s ease-in-out;
+}
+
+@keyframes flash-row {
+  0% { background: #fff; }
+  50% { background: #fff; }
+  100% { background: #000; }
+}
+
+/* Piece colors with 3D borders */
+.piece-I { background: #00f0f0; border-color: #60ffff #009090 #009090 #60ffff; }
+.piece-O { background: #f0f000; border-color: #ffff60 #909000 #909000 #ffff60; }
+.piece-T { background: #a000f0; border-color: #d060ff #600090 #600090 #d060ff; }
+.piece-S { background: #00f000; border-color: #60ff60 #009000 #009000 #60ff60; }
+.piece-Z { background: #f00000; border-color: #ff6060 #900000 #900000 #ff6060; }
+.piece-J { background: #0000f0; border-color: #6060ff #000090 #000090 #6060ff; }
+.piece-L { background: #f0a000; border-color: #ffd060 #906000 #906000 #ffd060; }
+
+/* ---- Side Panel ---- */
+.side-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 100px;
+}
+
+.panel-box {
+  border: 2px solid;
+  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
+  padding: 4px;
+  background: var(--sz-color-button-face);
+}
+
+.panel-label {
+  font-size: 10px;
+  font-weight: bold;
+  color: var(--sz-color-menu-text);
+  margin-bottom: 3px;
+  text-align: center;
+}
+
+/* LED-style display */
+.led-display {
+  background: #000;
+  color: #f00;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 18px;
+  font-weight: bold;
+  letter-spacing: 1px;
+  padding: 2px 4px;
+  border: 1px solid;
+  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
+  text-align: right;
+  line-height: 1.2;
+  min-width: 80px;
+}
+
+/* Next piece preview */
+.preview-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 16px);
+  grid-template-rows: repeat(4, 16px);
+  background: #000;
+  border: 1px solid;
+  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
+  margin: 0 auto;
+}
+
+.preview-cell {
+  width: 16px;
+  height: 16px;
+  background: #000;
+}
+
+.preview-cell.filled {
+  border: 2px outset;
+}
+
+/* ---- Overlays ---- */
+.game-overlay {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 100;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+}
+
+.game-overlay.visible {
+  display: flex;
+}
+
+.overlay-text {
+  color: #fff;
+  font-size: 24px;
+  font-weight: bold;
+  text-shadow: 2px 2px 4px #000;
+  text-align: center;
+  line-height: 1.6;
+}
+
+.overlay-subtext {
+  color: #ccc;
+  font-size: 12px;
+  margin-top: 8px;
+  text-align: center;
+}
+
+.overlay-score {
+  color: #ff0;
+  font-size: 16px;
+  font-weight: bold;
+  margin-top: 4px;
+}
+
+.board-wrapper {
+  position: relative;
+}
+
+/* ---- XP-style Dialog ---- */
+.xp-dialog-backdrop {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.25);
+  z-index: 2000;
+  align-items: center;
+  justify-content: center;
+}
+
+.xp-dialog-backdrop.visible {
+  display: flex;
+}
+
+.xp-dialog {
+  background: var(--sz-color-button-face);
+  border: 2px outset var(--sz-color-button-face);
+  box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.4);
+  min-width: 280px;
+  max-width: 400px;
+}
+
+.xp-dialog-titlebar {
+  background: linear-gradient(180deg, #0a246a 0%, #3a6ea5 100%);
+  background-color: var(--sz-color-active-title);
+  color: var(--sz-color-title-text);
+  font-size: 11px;
+  font-weight: bold;
+  padding: 3px 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.xp-dialog-close {
+  width: 16px;
+  height: 14px;
+  background: var(--sz-color-button-face);
+  border: 1px outset var(--sz-color-button-face);
+  font-size: 9px;
+  line-height: 12px;
+  text-align: center;
+  cursor: pointer;
+  color: var(--sz-color-menu-text);
+  padding: 0;
+}
+
+.xp-dialog-close:active {
+  border-style: inset;
+}
+
+.xp-dialog-body {
+  padding: 12px 16px;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.xp-dialog-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 16px 12px;
+}
+
+.xp-btn {
+  min-width: 75px;
+  height: 23px;
+  border: 2px outset var(--sz-color-button-face);
+  background: var(--sz-color-button-face);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0 8px;
+  color: var(--sz-color-menu-text);
+}
+
+.xp-btn:active {
+  border-style: inset;
+}
+
+.xp-btn:focus {
+  outline: 1px dotted var(--sz-color-menu-text);
+  outline-offset: -4px;
+}
+
+/* ---- High Scores Table ---- */
+.high-scores-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 4px;
+  font-size: 11px;
+}
+
+.high-scores-table th {
+  text-align: left;
+  padding: 2px 6px;
+  font-weight: bold;
+  border-bottom: 1px solid var(--sz-color-button-shadow);
+}
+
+.high-scores-table td {
+  padding: 2px 6px;
+}
+
+.high-scores-table td:nth-child(1) {
+  text-align: center;
+  width: 24px;
+}
+
+.high-scores-table td:nth-child(2) {
+  text-align: right;
+  font-family: 'Consolas', 'Courier New', monospace;
+}
+
+.high-scores-table td:nth-child(3) {
+  text-align: right;
+  font-size: 10px;
+  color: var(--sz-color-button-shadow);
+}
+
+/* ---- Controls Info ---- */
+.controls-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.controls-table td {
+  padding: 2px 6px;
+}
+
+.controls-table td:first-child {
+  font-weight: bold;
+  white-space: nowrap;
+  width: 90px;
+}

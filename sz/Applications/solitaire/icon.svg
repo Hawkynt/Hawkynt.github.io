@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+  <!-- Back card (offset) -->
+  <rect x="1" y="1" width="9" height="12" rx="1" fill="#1a3a7a" stroke="#0a1a4a" stroke-width="0.5"/>
+  <line x1="3" y1="3" x2="8" y2="11" stroke="#2a5aba" stroke-width="0.3"/>
+  <line x1="8" y1="3" x2="3" y2="11" stroke="#2a5aba" stroke-width="0.3"/>
+  <line x1="5.5" y1="2" x2="5.5" y2="12" stroke="#2a5aba" stroke-width="0.3"/>
+  <line x1="2" y1="7" x2="9" y2="7" stroke="#2a5aba" stroke-width="0.3"/>
+  <!-- Front card -->
+  <rect x="5" y="3" width="10" height="12" rx="1" fill="#fff" stroke="#333" stroke-width="0.5"/>
+  <!-- Ace of hearts symbol -->
+  <text x="7" y="8" font-size="4" font-family="serif" font-weight="bold" fill="#000">A</text>
+  <text x="9" y="13" font-size="5" fill="#c00000" font-family="serif">&#x2665;</text>
+</svg>

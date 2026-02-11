@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>QR Code Generator</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="app">
+  <!-- Left panel: Input -->
+  <div id="input-panel">
+    <div class="field-group">
+      <label for="input-type">Input Type</label>
+      <select id="input-type">
+        <option value="text">Text</option>
+        <option value="url">URL</option>
+        <option value="wifi">WiFi</option>
+        <option value="vcard">vCard</option>
+        <option value="email">Email</option>
+        <option value="phone">Phone</option>
+      </select>
+    </div>
+
+    <div id="type-fields">
+      <!-- Text / URL -->
+      <div class="type-section active" id="sec-text">
+        <label for="data-input">Content</label>
+        <textarea id="data-input" rows="4" placeholder="Enter text or URL..."></textarea>
+      </div>
+
+      <!-- WiFi -->
+      <div class="type-section" id="sec-wifi">
+        <fieldset>
+          <legend>WiFi Network</legend>
+          <div class="field-group">
+            <label for="wifi-ssid">SSID</label>
+            <input type="text" id="wifi-ssid" placeholder="Network name">
+          </div>
+          <div class="field-group" style="margin-top:4px">
+            <label for="wifi-pass">Password</label>
+            <input type="text" id="wifi-pass" placeholder="Password">
+          </div>
+          <div class="field-group" style="margin-top:4px">
+            <label for="wifi-enc">Encryption</label>
+            <select id="wifi-enc">
+              <option value="WPA">WPA/WPA2</option>
+              <option value="WEP">WEP</option>
+              <option value="nopass">None</option>
+            </select>
+          </div>
+        </fieldset>
+      </div>
+
+      <!-- vCard -->
+      <div class="type-section" id="sec-vcard">
+        <fieldset>
+          <legend>Contact</legend>
+          <div class="field-group">
+            <label for="vc-name">Full Name</label>
+            <input type="text" id="vc-name" placeholder="John Doe">
+          </div>
+          <div class="field-group" style="margin-top:4px">
+            <label for="vc-phone">Phone</label>
+            <input type="text" id="vc-phone" placeholder="+1234567890">
+          </div>
+          <div class="field-group" style="margin-top:4px">
+            <label for="vc-email">Email</label>
+            <input type="text" id="vc-email" placeholder="john@example.com">
+          </div>
+          <div class="field-group" style="margin-top:4px">
+            <label for="vc-addr">Address</label>
+            <input type="text" id="vc-addr" placeholder="123 Main St">
+          </div>
+        </fieldset>
+      </div>
+
+      <!-- Email -->
+      <div class="type-section" id="sec-email">
+        <fieldset>
+          <legend>Email</legend>
+          <div class="field-group">
+            <label for="em-addr">Address</label>
+            <input type="text" id="em-addr" placeholder="user@example.com">
+          </div>
+          <div class="field-group" style="margin-top:4px">
+            <label for="em-subj">Subject</label>
+            <input type="text" id="em-subj" placeholder="Subject line">
+          </div>
+          <div class="field-group" style="margin-top:4px">
+            <label for="em-body">Body</label>
+            <textarea id="em-body" rows="2" placeholder="Message body"></textarea>
+          </div>
+        </fieldset>
+      </div>
+
+      <!-- Phone -->
+      <div class="type-section" id="sec-phone">
+        <fieldset>
+          <legend>Phone</legend>
+          <div class="field-group">
+            <label for="ph-num">Number</label>
+            <input type="text" id="ph-num" placeholder="+1234567890">
+          </div>
+        </fieldset>
+      </div>
+    </div>
+
+    <div class="field-group">
+      <label for="encoding-mode">Encoding</label>
+      <select id="encoding-mode">
+        <option value="auto">Auto</option>
+        <option value="upper">Uppercase</option>
+        <option value="byte">Byte</option>
+      </select>
+    </div>
+
+    <div class="field-group">
+      <label for="ec-level">Error Correction</label>
+      <select id="ec-level">
+        <option value="L">L - Low (7%)</option>
+        <option value="M" selected>M - Medium (15%)</option>
+        <option value="Q">Q - Quartile (25%)</option>
+        <option value="H">H - High (30%)</option>
+      </select>
+    </div>
+
+    <div class="field-group">
+      <label for="qr-version">Version</label>
+      <select id="qr-version">
+        <option value="0">Auto</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Right panel: Preview + Options -->
+  <div id="preview-panel">
+    <div id="qr-container">
+      <canvas id="qr-canvas" width="200" height="200"></canvas>
+    </div>
+
+    <div id="preview-options">
+      <label for="fg-color">Foreground</label>
+      <input type="color" id="fg-color" value="#000000">
+
+      <label for="bg-color">Background</label>
+      <input type="color" id="bg-color" value="#ffffff">
+
+      <label for="mod-style">Style</label>
+      <select id="mod-style">
+        <option value="square">Square</option>
+        <option value="rounded">Rounded</option>
+        <option value="dots">Dots</option>
+        <option value="diamond">Diamond</option>
+      </select>
+
+      <label for="mod-size">Module px</label>
+      <input type="number" id="mod-size" min="1" max="20" value="8">
+
+      <label for="quiet-zone">Quiet zone</label>
+      <input type="number" id="quiet-zone" min="0" max="10" value="4">
+
+      <label>Logo</label>
+      <div id="logo-row">
+        <button id="btn-logo">Upload</button>
+        <button id="btn-logo-clear" disabled>Clear</button>
+        <input type="file" id="logo-file" accept="image/*" style="display:none">
+      </div>
+    </div>
+
+    <div id="qr-info"></div>
+  </div>
+
+  <!-- Bottom toolbar -->
+  <div id="toolbar">
+    <div class="dropdown-wrap" id="png-wrap">
+      <button id="btn-png">Save PNG</button>
+      <div class="dropdown-menu" id="png-menu">
+        <div class="dropdown-item" data-size="256">256 x 256</div>
+        <div class="dropdown-item" data-size="512">512 x 512</div>
+        <div class="dropdown-item" data-size="1024">1024 x 1024</div>
+        <div class="dropdown-item" data-size="2048">2048 x 2048</div>
+      </div>
+    </div>
+    <button id="btn-svg">Save SVG</button>
+    <button id="btn-copy">Copy</button>
+  </div>
+</div>
+<script src="controller.js"></script>
+</body>
+</html>

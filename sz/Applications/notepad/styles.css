@@ -1,0 +1,340 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* ---- Menu bar ---- */
+.menu-bar {
+  display: flex;
+  align-items: center;
+  padding: 0;
+  background: var(--sz-color-menu);
+  border-bottom: 1px solid var(--sz-color-button-shadow);
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.menu-item {
+  position: relative;
+  padding: 3px 8px;
+  cursor: default;
+  color: var(--sz-color-menu-text);
+}
+
+.menu-item:hover,
+.menu-item.open {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+}
+
+.menu-dropdown {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 200px;
+  background: var(--sz-color-menu);
+  border: 1px solid var(--sz-color-button-shadow);
+  box-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+  z-index: 1000;
+  padding: 2px 0;
+}
+
+.menu-item.open > .menu-dropdown {
+  display: block;
+}
+
+.menu-entry {
+  padding: 4px 24px 4px 8px;
+  cursor: default;
+  color: var(--sz-color-menu-text);
+  white-space: nowrap;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.menu-entry:hover {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+}
+
+.menu-entry.disabled {
+  color: var(--sz-color-gray-text);
+  pointer-events: none;
+}
+
+.menu-entry .shortcut {
+  margin-left: 24px;
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.menu-entry.checkbox::before {
+  content: '';
+  display: inline-block;
+  width: 12px;
+  margin-right: 4px;
+}
+
+.menu-entry.checkbox.checked::before {
+  content: '\2713';
+}
+
+.menu-separator {
+  height: 1px;
+  background: var(--sz-color-button-shadow);
+  margin: 2px 4px;
+}
+
+/* ---- Text area ---- */
+.editor {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.editor textarea {
+  flex: 1;
+  border: none;
+  outline: none;
+  resize: none;
+  padding: 4px;
+  font-family: 'Lucida Console', 'Courier New', Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.4;
+  tab-size: 4;
+}
+
+.editor textarea.word-wrap {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.editor textarea.no-wrap {
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* ---- Dialogs ---- */
+.dialog-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.3);
+  z-index: 2000;
+  justify-content: center;
+  align-items: center;
+}
+
+.dialog-overlay.visible {
+  display: flex;
+}
+
+.dialog {
+  background: var(--sz-color-button-face);
+  border: 2px outset var(--sz-color-button-shadow);
+  min-width: 300px;
+  max-width: 450px;
+  box-shadow: 3px 3px 8px rgba(0,0,0,0.3);
+}
+
+.dialog-title {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+  padding: 4px 8px;
+  font-weight: bold;
+  font-size: 11px;
+  user-select: none;
+}
+
+.dialog-body {
+  padding: 12px;
+  font-size: 11px;
+}
+
+.dialog-body p {
+  margin-bottom: 8px;
+}
+
+.dialog-body input[type="text"] {
+  width: 100%;
+  padding: 2px 4px;
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+.dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 8px 12px;
+}
+
+.dialog-buttons button {
+  min-width: 72px;
+  padding: 3px 12px;
+  font-size: 11px;
+  cursor: default;
+}
+
+/* ---- Status bar ---- */
+.status-bar {
+  display: flex;
+  align-items: center;
+  padding: 2px 8px;
+  background: var(--sz-color-button-face);
+  border-top: 1px solid var(--sz-color-button-shadow);
+  font-size: 11px;
+  color: var(--sz-color-button-text);
+  flex-shrink: 0;
+  user-select: none;
+  gap: 16px;
+}
+
+.status-bar .status-section {
+  white-space: nowrap;
+}
+
+/* ---- Font dialog extras ---- */
+.font-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.font-row label {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 11px;
+}
+
+.font-row select,
+.font-row input[type="number"] {
+  padding: 2px 4px;
+  font-size: 11px;
+}
+
+.font-row select {
+  width: 180px;
+}
+
+.font-row input[type="number"] {
+  width: 60px;
+}
+
+.font-style-checks {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 11px;
+}
+
+.font-style-checks label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: default;
+}
+
+.font-preview {
+  border: 1px inset var(--sz-color-button-shadow);
+  background: var(--sz-color-window);
+  color: var(--sz-color-window-text);
+  padding: 8px;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 4px;
+  overflow: hidden;
+}
+
+/* ---- Find/Replace panel (non-modal) ---- */
+.find-replace-panel {
+  display: none;
+  position: fixed;
+  top: 28px;
+  right: 4px;
+  z-index: 1500;
+  background: var(--sz-color-button-face);
+  border: 2px outset var(--sz-color-button-shadow);
+  box-shadow: 2px 2px 6px rgba(0,0,0,0.25);
+  min-width: 320px;
+  font-size: 11px;
+}
+
+.find-replace-panel.visible {
+  display: block;
+}
+
+.find-replace-title {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+  padding: 3px 8px;
+  font-weight: bold;
+  font-size: 11px;
+  user-select: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.find-replace-title .fr-close {
+  cursor: default;
+  padding: 0 4px;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.find-replace-title .fr-close:hover {
+  background: rgba(255,255,255,0.2);
+}
+
+.find-replace-body {
+  padding: 8px;
+}
+
+.fr-field {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+  gap: 6px;
+}
+
+.fr-field label {
+  min-width: 60px;
+  text-align: right;
+}
+
+.fr-field input[type="text"] {
+  flex: 1;
+  padding: 2px 4px;
+  font-size: 11px;
+}
+
+.fr-buttons {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.fr-buttons button {
+  min-width: 72px;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: default;
+}
+
+.fr-status {
+  font-size: 10px;
+  color: var(--sz-color-gray-text);
+  margin-top: 4px;
+  min-height: 14px;
+}
