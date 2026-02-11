@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>WordPad</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Menu Bar -->
+<div class="menu-bar" id="menu-bar">
+  <div class="menu-item" data-menu="file">
+    File
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="new">New<span class="shortcut">Ctrl+N</span></div>
+      <div class="menu-entry" data-action="open">Open...<span class="shortcut">Ctrl+O</span></div>
+      <div class="menu-entry" data-action="save">Save<span class="shortcut">Ctrl+S</span></div>
+      <div class="menu-entry" data-action="save-as">Save As...</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="exit">Exit</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="edit">
+    Edit
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="undo">Undo<span class="shortcut">Ctrl+Z</span></div>
+      <div class="menu-entry" data-action="redo">Redo<span class="shortcut">Ctrl+Y</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="cut">Cut<span class="shortcut">Ctrl+X</span></div>
+      <div class="menu-entry" data-action="copy">Copy<span class="shortcut">Ctrl+C</span></div>
+      <div class="menu-entry" data-action="paste">Paste<span class="shortcut">Ctrl+V</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="find">Find...<span class="shortcut">Ctrl+F</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="select-all">Select All<span class="shortcut">Ctrl+A</span></div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="format">
+    Format
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="font-dialog">Font...</div>
+      <div class="menu-entry" data-action="paragraph-dialog">Paragraph...</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="help">
+    Help
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="about">About WordPad</div>
+    </div>
+  </div>
+</div>
+
+<!-- Formatting Toolbar -->
+<div class="format-toolbar" id="format-toolbar">
+  <button class="tb-btn" data-cmd="bold" title="Bold (Ctrl+B)"><b>B</b></button>
+  <button class="tb-btn" data-cmd="italic" title="Italic (Ctrl+I)"><i>I</i></button>
+  <button class="tb-btn" data-cmd="underline" title="Underline (Ctrl+U)"><u>U</u></button>
+  <button class="tb-btn" data-cmd="strikeThrough" title="Strikethrough"><s>S</s></button>
+  <div class="tb-sep"></div>
+  <select class="tb-select font-family" id="tb-font-family" title="Font Family">
+    <option value="Arial">Arial</option>
+    <option value="Times New Roman">Times New Roman</option>
+    <option value="Courier New">Courier New</option>
+    <option value="Tahoma">Tahoma</option>
+    <option value="Verdana">Verdana</option>
+    <option value="Georgia">Georgia</option>
+    <option value="Comic Sans MS">Comic Sans MS</option>
+  </select>
+  <select class="tb-select font-size" id="tb-font-size" title="Font Size">
+    <option value="1">8</option>
+    <option value="2">10</option>
+    <option value="3" selected>12</option>
+    <option value="4">14</option>
+    <option value="5">18</option>
+    <option value="6">24</option>
+    <option value="7">36</option>
+  </select>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" data-cmd="justifyLeft" title="Align Left">&#8676;</button>
+  <button class="tb-btn" data-cmd="justifyCenter" title="Align Center">&#8697;</button>
+  <button class="tb-btn" data-cmd="justifyRight" title="Align Right">&#8677;</button>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" data-cmd="insertUnorderedList" title="Bullets">&#8226;</button>
+  <button class="tb-btn" data-cmd="insertOrderedList" title="Numbered List">1.</button>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" data-cmd="indent" title="Indent">&#8680;</button>
+  <button class="tb-btn" data-cmd="outdent" title="Outdent">&#8678;</button>
+  <div class="tb-sep"></div>
+  <input type="color" class="tb-color" id="tb-text-color" value="#000000" title="Text Color">
+</div>
+
+<!-- Editor -->
+<div class="editor-wrapper">
+  <div class="editor" id="editor" contenteditable="true" spellcheck="true"></div>
+</div>
+
+<!-- Status bar -->
+<div class="status-bar" id="status-bar">
+  <span class="status-section" id="status-words">Words: 0</span>
+  <span class="status-section" id="status-chars">Characters: 0</span>
+</div>
+
+<!-- Find panel -->
+<div class="find-panel" id="find-panel">
+  <div class="find-panel-title">
+    <span>Find</span>
+    <span class="fp-close" id="fp-close">&times;</span>
+  </div>
+  <div class="find-panel-body">
+    <div class="fp-field">
+      <label for="fp-find-input">Find:</label>
+      <input type="text" id="fp-find-input" autocomplete="off">
+    </div>
+    <div class="fp-buttons">
+      <button id="fp-find-next">Find Next</button>
+    </div>
+    <div class="fp-status" id="fp-status"></div>
+  </div>
+</div>
+
+<!-- Save-changes dialog -->
+<div class="dialog-overlay" id="dlg-save-changes">
+  <div class="dialog">
+    <div class="dialog-title">WordPad</div>
+    <div class="dialog-body">
+      <p>The document has been changed.</p>
+      <p>Do you want to save the changes?</p>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="yes">Yes</button>
+      <button data-result="no">No</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Font dialog -->
+<div class="dialog-overlay" id="dlg-font">
+  <div class="dialog" style="min-width: 380px;">
+    <div class="dialog-title">Font</div>
+    <div class="dialog-body">
+      <div class="font-row">
+        <div style="flex: 1;">
+          <label for="dlg-font-family">Font:</label>
+          <select id="dlg-font-family">
+            <option value="Arial">Arial</option>
+            <option value="Times New Roman">Times New Roman</option>
+            <option value="Courier New">Courier New</option>
+            <option value="Tahoma">Tahoma</option>
+            <option value="Verdana">Verdana</option>
+            <option value="Georgia">Georgia</option>
+            <option value="Comic Sans MS">Comic Sans MS</option>
+          </select>
+        </div>
+        <div>
+          <label for="dlg-font-size">Size:</label>
+          <input type="number" id="dlg-font-size" min="8" max="72" value="12">
+        </div>
+      </div>
+      <div class="font-style-checks">
+        <label><input type="checkbox" id="dlg-font-bold"> Bold</label>
+        <label><input type="checkbox" id="dlg-font-italic"> Italic</label>
+        <label><input type="checkbox" id="dlg-font-underline"> Underline</label>
+        <label><input type="checkbox" id="dlg-font-strike"> Strikethrough</label>
+      </div>
+      <div style="margin-bottom: 8px;">
+        <label for="dlg-font-color" style="font-size: 11px;">Color:</label>
+        <input type="color" id="dlg-font-color" value="#000000" style="vertical-align: middle;">
+      </div>
+      <label style="font-size: 11px;">Preview:</label>
+      <div class="font-preview" id="dlg-font-preview">AaBbYyZz 0123</div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">OK</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Paragraph dialog -->
+<div class="dialog-overlay" id="dlg-paragraph">
+  <div class="dialog" style="min-width: 320px;">
+    <div class="dialog-title">Paragraph</div>
+    <div class="dialog-body">
+      <div class="para-row">
+        <label for="dlg-para-align">Alignment:</label>
+        <select id="dlg-para-align">
+          <option value="justifyLeft">Left</option>
+          <option value="justifyCenter">Center</option>
+          <option value="justifyRight">Right</option>
+          <option value="justifyFull">Justify</option>
+        </select>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">OK</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- About dialog -->
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About WordPad</div>
+    <div class="dialog-body" style="text-align: center; padding: 20px;">
+      <p style="font-weight: bold; font-size: 13px; margin-bottom: 12px;">WordPad</p>
+      <p>A rich text editor for &raquo;SynthelicZ&laquo;</p>
+      <p style="margin-top: 12px; font-size: 10px; opacity: 0.7;">&copy; 1995-2026 &raquo;SynthelicZ&laquo;</p>
+    </div>
+    <div class="dialog-buttons" style="justify-content: center;">
+      <button data-result="ok">OK</button>
+    </div>
+  </div>
+</div>
+
+<script src="controller.js"></script>
+</body>
+</html>

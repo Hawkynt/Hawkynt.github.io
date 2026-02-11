@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Font Viewer</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- Left sidebar -->
+  <div id="sidebar">
+    <div id="search-box">
+      <input type="text" id="search-input" placeholder="Filter fonts..." spellcheck="false">
+    </div>
+    <div id="category-bar">
+      <button class="cat-btn active" data-cat="all">All</button>
+      <button class="cat-btn" data-cat="serif">Serif</button>
+      <button class="cat-btn" data-cat="sans-serif">Sans</button>
+      <button class="cat-btn" data-cat="monospace">Mono</button>
+      <button class="cat-btn" data-cat="cursive">Cursive</button>
+      <button class="cat-btn" data-cat="fantasy">Fantasy</button>
+      <button class="cat-btn" data-cat="system">System</button>
+    </div>
+    <div id="font-list"></div>
+    <div id="font-count">0 fonts</div>
+  </div>
+
+  <!-- Main area -->
+  <div id="main-area">
+
+    <!-- Toolbar -->
+    <div id="toolbar">
+      <div class="toolbar-group">
+        <label>Size:</label>
+        <input type="range" id="size-slider" min="8" max="120" value="32">
+        <input type="number" id="size-num" min="8" max="120" value="32" style="width:40px;">
+        <label>px</label>
+      </div>
+      <div class="toolbar-group">
+        <label>Weight:</label>
+        <select id="weight-select">
+          <option value="100">100 Thin</option>
+          <option value="200">200 Extra Light</option>
+          <option value="300">300 Light</option>
+          <option value="400" selected>400 Normal</option>
+          <option value="500">500 Medium</option>
+          <option value="600">600 Semi Bold</option>
+          <option value="700">700 Bold</option>
+          <option value="800">800 Extra Bold</option>
+          <option value="900">900 Black</option>
+        </select>
+      </div>
+      <div class="toolbar-group">
+        <button class="style-btn" id="btn-bold" title="Bold"><b>B</b></button>
+        <button class="style-btn" id="btn-italic" title="Italic"><i>I</i></button>
+      </div>
+      <div class="toolbar-group">
+        <label>Color:</label>
+        <input type="color" id="text-color" value="#000000">
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div id="tab-bar">
+      <button class="tab-btn active" data-tab="sample">Sample</button>
+      <button class="tab-btn" data-tab="characters">Characters</button>
+    </div>
+
+    <!-- Tab content -->
+    <div id="tab-content">
+
+      <!-- Sample text panel -->
+      <div class="tab-panel active" id="panel-sample">
+        <div id="sample-presets">
+          <button class="preset-btn active" data-preset="pangram">Pangram</button>
+          <button class="preset-btn" data-preset="alphabet">Alphabet</button>
+          <button class="preset-btn" data-preset="numbers">Numbers</button>
+          <button class="preset-btn" data-preset="lorem">Lorem Ipsum</button>
+          <button class="preset-btn" data-preset="custom">Custom</button>
+        </div>
+        <div id="sample-text" contenteditable="true">The quick brown fox jumps over the lazy dog. 0123456789</div>
+      </div>
+
+      <!-- Characters panel -->
+      <div class="tab-panel" id="panel-characters">
+        <div id="char-grid"></div>
+        <div id="glyph-inspector">
+          <div id="glyph-char">A</div>
+          <span class="glyph-label">Character:</span>
+          <span class="glyph-value" id="glyph-name">LATIN CAPITAL LETTER A</span>
+          <span class="glyph-label">Unicode:</span>
+          <span class="glyph-value" id="glyph-unicode">U+0041</span>
+          <span class="glyph-label">HTML Entity:</span>
+          <span class="glyph-value" id="glyph-html">&amp;#65;</span>
+          <span class="glyph-label">CSS Content:</span>
+          <span class="glyph-value" id="glyph-css">'\0041'</span>
+          <span class="glyph-label">Decimal:</span>
+          <span class="glyph-value" id="glyph-decimal">65</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Bottom info panel -->
+  <div id="info-panel">
+    <span class="info-label">Font Family:</span>
+    <span class="info-value" id="info-family">--</span>
+    <span class="info-label">Classification:</span>
+    <span class="info-value" id="info-class">--</span>
+    <span class="info-label">Available Weights:</span>
+    <span class="info-value" id="info-weights">--</span>
+    <span class="info-label">CSS:</span>
+    <span class="info-value mono" id="info-css">--</span>
+  </div>
+
+</div>
+<script src="controller.js"></script>
+</body>
+</html>

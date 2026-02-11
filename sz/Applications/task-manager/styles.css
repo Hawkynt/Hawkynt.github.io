@@ -1,0 +1,33 @@
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
+  .tabs { display: flex; border-bottom: 1px solid var(--sz-color-button-shadow); background: var(--sz-color-button-face); padding-top: 2px; }
+  .tab { padding: 3px 12px; cursor: default; border: 1px solid transparent; border-bottom: none; user-select: none; margin-bottom: -1px; background: var(--sz-color-button-face); }
+  .tab.active { background: var(--sz-color-window); border-color: var(--sz-color-button-shadow); font-weight: bold; position: relative; z-index: 1; }
+  .tab:hover:not(.active) { background: var(--sz-color-button-light); }
+  .tab-panel { flex: 1; overflow: hidden; display: none; flex-direction: column; background: var(--sz-color-window); }
+  .tab-panel.active { display: flex; }
+
+  /* Applications tab */
+  .task-table { width: 100%; border-collapse: collapse; }
+  .task-table th { position: sticky; top: 0; background: var(--sz-color-button-face); border: 1px solid var(--sz-color-button-shadow); padding: 2px 6px; text-align: left; font-weight: bold; cursor: default; user-select: none; font-size: 11px; }
+  .task-table td { padding: 2px 6px; border-bottom: 1px solid var(--sz-color-button-light); font-size: 11px; }
+  .task-table tr:hover td { background: #efe; }
+  .task-table tr.selected td { background: var(--sz-color-highlight); color: var(--sz-color-highlight-text); }
+  .table-scroll { flex: 1; overflow: auto; }
+
+  /* Performance tab */
+  .perf-container { flex: 1; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 8px; padding: 8px; }
+  .perf-panel { border: 1px solid var(--sz-color-button-shadow); background: #000; border-radius: 2px; display: flex; flex-direction: column; overflow: hidden; position: relative; min-height: 0; }
+  .perf-title { background: var(--sz-color-button-face); padding: 2px 6px; font-weight: bold; font-size: 10px; border-bottom: 1px solid var(--sz-color-button-shadow); color: var(--sz-color-window-text); flex-shrink: 0; }
+  .perf-canvas { flex: 1; width: 100%; min-height: 0; display: block; }
+
+  /* Stats bar */
+  .stats-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 6px 8px; background: var(--sz-color-button-face); border-top: 1px solid var(--sz-color-button-shadow); }
+  .stat-box { text-align: center; }
+  .stat-value { font-size: 14px; font-weight: bold; color: var(--sz-color-highlight); }
+  .stat-label { font-size: 9px; color: var(--sz-color-gray-text); }
+
+  /* Bottom bar */
+  .bottom-bar { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px; border-top: 1px solid var(--sz-color-button-shadow); background: var(--sz-color-button-face); }
+  .bottom-bar button { font-size: 11px; padding: 2px 16px; cursor: default; }
+  .status-text { font-size: 10px; color: var(--sz-color-gray-text); }

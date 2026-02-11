@@ -1,0 +1,125 @@
+/* ==========================================================================
+   Desktop Surface
+   Covers the full viewport minus the taskbar. Holds the background image,
+   icon grid, and window container layers.
+   ========================================================================== */
+
+/* Full viewport, no scroll */
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: Tahoma, Verdana, sans-serif;
+  font-size: 12px;
+}
+
+/* Desktop fills full viewport; taskbar overlays the bottom edge */
+#sz-desktop {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+/* Background image fills desktop */
+#sz-background {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* --------------------------------------------------------------------------
+   Icon Grid
+   Auto-flows columns first so icons fill top-to-bottom, then left-to-right.
+   -------------------------------------------------------------------------- */
+
+#sz-icon-area {
+  position: absolute;
+  inset: 0 0 35px 0;
+  z-index: 1;
+  padding: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Window Container
+   Sits above icons. pointer-events are disabled on the container itself so
+   clicks fall through to icons; each child window re-enables them.
+   -------------------------------------------------------------------------- */
+
+#sz-window-area {
+  position: absolute;
+  inset: 0 0 35px 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+#sz-window-area > * {
+  pointer-events: auto;
+}
+
+/* --------------------------------------------------------------------------
+   Desktop Icons
+   -------------------------------------------------------------------------- */
+
+.sz-icon {
+  position: absolute;
+  width: 72px;
+  text-align: center;
+  padding: 4px;
+  cursor: default;
+  user-select: none;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  touch-action: none;
+}
+
+.sz-icon.dragging {
+  opacity: 0.7;
+  z-index: 100;
+  cursor: grabbing;
+  pointer-events: none;
+}
+
+.sz-icon:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.sz-icon.selected {
+  background: rgba(49, 106, 197, 0.4);
+  border-color: rgba(49, 106, 197, 0.7);
+}
+
+.sz-icon img {
+  width: 48px;
+  height: 48px;
+  display: block;
+  margin: 0 auto 4px;
+  pointer-events: none;
+}
+
+.sz-icon .sz-icon-label {
+  font-size: 11px;
+  color: white;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+  word-wrap: break-word;
+  line-height: 1.2;
+}
+
+/* --------------------------------------------------------------------------
+   Rubber-band selection rectangle (drawn by JS on the desktop surface)
+   -------------------------------------------------------------------------- */
+
+.sz-selection-rect {
+  position: absolute;
+  border: 1px solid rgba(49, 106, 197, 0.8);
+  background: rgba(49, 106, 197, 0.15);
+  pointer-events: none;
+  z-index: 5;
+}

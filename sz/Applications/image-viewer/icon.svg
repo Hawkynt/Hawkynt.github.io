@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+  <!-- Photo frame -->
+  <rect x="1" y="2" width="14" height="12" rx="0.5" fill="#fff" stroke="#5577aa" stroke-width="1"/>
+  <!-- Sky gradient area -->
+  <rect x="2" y="3" width="12" height="8" fill="#87ceeb"/>
+  <!-- Sun -->
+  <circle cx="11" cy="5" r="1.8" fill="#ffd700"/>
+  <!-- Mountain back -->
+  <polygon points="2,11 6,5.5 10,11" fill="#6b8e5a"/>
+  <!-- Mountain front -->
+  <polygon points="7,11 11,6.5 14,11" fill="#4a7a3a"/>
+  <!-- Ground -->
+  <rect x="2" y="10.5" width="12" height="0.5" fill="#3a6a2a"/>
+</svg>

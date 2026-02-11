@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Spreadsheet</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Menu Bar -->
+<div class="menu-bar" id="menu-bar">
+  <div class="menu-item" data-menu="file">
+    File
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="new">New<span class="shortcut">Ctrl+N</span></div>
+      <div class="menu-entry" data-action="open">Open...<span class="shortcut">Ctrl+O</span></div>
+      <div class="menu-entry" data-action="save">Save<span class="shortcut">Ctrl+S</span></div>
+      <div class="menu-entry" data-action="save-as">Save As...</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="exit">Exit</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="edit">
+    Edit
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="undo">Undo<span class="shortcut">Ctrl+Z</span></div>
+      <div class="menu-entry" data-action="redo">Redo<span class="shortcut">Ctrl+Y</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="cut">Cut<span class="shortcut">Ctrl+X</span></div>
+      <div class="menu-entry" data-action="copy">Copy<span class="shortcut">Ctrl+C</span></div>
+      <div class="menu-entry" data-action="paste">Paste<span class="shortcut">Ctrl+V</span></div>
+      <div class="menu-entry" data-action="delete">Delete<span class="shortcut">Del</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="select-all">Select All<span class="shortcut">Ctrl+A</span></div>
+      <div class="menu-entry" data-action="find">Find...<span class="shortcut">Ctrl+F</span></div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="format">
+    Format
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="bold">Bold<span class="shortcut">Ctrl+B</span></div>
+      <div class="menu-entry" data-action="italic">Italic<span class="shortcut">Ctrl+I</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="fmt-general">Number Format: General</div>
+      <div class="menu-entry" data-action="fmt-number">Number Format: Number</div>
+      <div class="menu-entry" data-action="fmt-currency">Number Format: Currency</div>
+      <div class="menu-entry" data-action="fmt-percent">Number Format: Percentage</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="cell-color-menu">Cell Background Color...</div>
+      <div class="menu-entry" data-action="text-color-menu">Text Color...</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="help">
+    Help
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="about">About Spreadsheet</div>
+    </div>
+  </div>
+</div>
+
+<!-- Toolbar -->
+<div class="toolbar" id="toolbar">
+  <button id="btn-bold" title="Bold (Ctrl+B)"><b>B</b></button>
+  <button id="btn-italic" title="Italic (Ctrl+I)"><i>I</i></button>
+  <button id="btn-underline" title="Underline (Ctrl+U)"><u>U</u></button>
+  <div class="toolbar-separator"></div>
+  <button id="btn-align-left" title="Align Left">&#9776;</button>
+  <button id="btn-align-center" title="Align Center">=</button>
+  <button id="btn-align-right" title="Align Right">&#8801;</button>
+  <div class="toolbar-separator"></div>
+  <select id="sel-font-size" title="Font Size">
+    <option value="8">8</option>
+    <option value="9">9</option>
+    <option value="10">10</option>
+    <option value="11" selected>11</option>
+    <option value="12">12</option>
+    <option value="14">14</option>
+    <option value="16">16</option>
+    <option value="18">18</option>
+    <option value="20">20</option>
+    <option value="24">24</option>
+  </select>
+  <div class="toolbar-separator"></div>
+  <select id="sel-number-format" title="Number Format">
+    <option value="general">General</option>
+    <option value="number">Number</option>
+    <option value="currency">Currency</option>
+    <option value="percent">Percentage</option>
+  </select>
+  <div class="toolbar-separator"></div>
+  <button id="btn-bg-color" class="color-btn" title="Background Color">
+    <span style="font-size:13px;">&#9608;</span>
+    <span class="color-indicator" style="background:#ffff00;"></span>
+  </button>
+  <button id="btn-text-color" class="color-btn" title="Text Color">
+    <b>A</b>
+    <span class="color-indicator" style="background:#c00000;"></span>
+  </button>
+</div>
+
+<!-- Formula bar -->
+<div class="formula-bar">
+  <input type="text" class="cell-ref" id="cell-ref" readonly>
+  <div class="formula-separator"></div>
+  <input type="text" class="formula-input" id="formula-input" spellcheck="false">
+</div>
+
+<!-- Grid -->
+<div class="grid-container" id="grid-container">
+  <div class="grid-scroll" id="grid-scroll">
+    <table class="grid-table" id="grid-table">
+      <thead id="grid-head"></thead>
+      <tbody id="grid-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Status bar -->
+<div class="status-bar">
+  <span class="status-section" id="status-cell">Ready</span>
+  <span class="status-section" id="status-summary"></span>
+</div>
+
+<!-- Color palette popup -->
+<div class="color-palette" id="color-palette"></div>
+
+<!-- Find panel -->
+<div class="find-panel" id="find-panel">
+  <div class="find-panel-title">
+    <span>Find</span>
+    <span class="fp-close" id="fp-close">&times;</span>
+  </div>
+  <div class="find-panel-body">
+    <div class="fp-field">
+      <label for="fp-input">Find:</label>
+      <input type="text" id="fp-input" autocomplete="off">
+    </div>
+    <div class="fp-buttons">
+      <button id="fp-find-next">Find Next</button>
+    </div>
+    <div class="fp-status" id="fp-status"></div>
+  </div>
+</div>
+
+<!-- About dialog -->
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Spreadsheet</div>
+    <div class="dialog-body" style="text-align: center; padding: 20px;">
+      <p style="font-weight: bold; font-size: 13px; margin-bottom: 12px;">Spreadsheet</p>
+      <p>A spreadsheet application for &raquo;SynthelicZ&laquo;</p>
+      <p style="margin-top: 12px; font-size: 10px; opacity: 0.7;">&copy; 1995-2026 &raquo;SynthelicZ&laquo;</p>
+    </div>
+    <div class="dialog-buttons" style="justify-content: center;">
+      <button data-result="ok">OK</button>
+    </div>
+  </div>
+</div>
+
+<script src="controller.js"></script>
+</body>
+</html>

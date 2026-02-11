@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+  <!-- Page body -->
+  <rect x="2" y="1" width="12" height="14" rx="0.5" fill="#fff" stroke="#5577aa" stroke-width="0.7"/>
+  <!-- Folded corner -->
+  <polygon points="11,1 14,4 11,4" fill="#c0d4ef" stroke="#5577aa" stroke-width="0.4"/>
+  <!-- Text lines (rich text style: mixed weights/sizes) -->
+  <rect x="3.5" y="5.5" width="7" height="1.2" rx="0.2" fill="#2255aa"/>
+  <rect x="3.5" y="7.5" width="9" height="0.8" rx="0.2" fill="#335588"/>
+  <rect x="3.5" y="9.2" width="6" height="0.8" rx="0.2" fill="#335588"/>
+  <rect x="3.5" y="10.9" width="8" height="0.8" rx="0.2" fill="#335588"/>
+  <rect x="3.5" y="12.6" width="5" height="0.8" rx="0.2" fill="#335588"/>
+</svg>

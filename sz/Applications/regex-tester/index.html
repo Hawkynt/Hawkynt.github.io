@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Regex Tester</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- Pattern input section -->
+  <div id="pattern-section">
+    <div class="pattern-row">
+      <span class="pattern-delim">/</span>
+      <input type="text" id="regex-input" placeholder="Enter regex pattern..." spellcheck="false" autocomplete="off">
+      <span class="pattern-delim">/</span>
+      <span id="flags-display" style="font-family:'Lucida Console',Consolas,monospace;font-size:12px;color:#cc3333;min-width:30px;"></span>
+    </div>
+    <div class="flags-row">
+      <label><input type="checkbox" id="flag-g" checked> <code>g</code> global</label>
+      <label><input type="checkbox" id="flag-i"> <code>i</code> ignore case</label>
+      <label><input type="checkbox" id="flag-m"> <code>m</code> multiline</label>
+      <label><input type="checkbox" id="flag-s"> <code>s</code> dotAll</label>
+      <label><input type="checkbox" id="flag-u"> <code>u</code> unicode</label>
+    </div>
+    <div class="subst-row">
+      <label>Replace:</label>
+      <input type="text" id="subst-input" placeholder="Substitution pattern (optional)" spellcheck="false" autocomplete="off">
+    </div>
+    <div class="error-bar" id="error-bar"></div>
+  </div>
+
+  <!-- Middle: test textarea + match details -->
+  <div id="middle-section">
+    <div id="test-area">
+      <div id="test-area-label">Test String</div>
+      <div id="test-wrap">
+        <div id="test-highlight"></div>
+        <textarea id="test-input" spellcheck="false" placeholder="Enter test string here..."></textarea>
+        <div id="line-numbers">1</div>
+      </div>
+    </div>
+    <div id="match-panel">
+      <div id="match-panel-header">
+        <span>Matches</span>
+        <span id="match-count">0</span>
+      </div>
+      <div id="match-list"></div>
+      <div id="replace-section">
+        <div id="replace-label">Replace Result:</div>
+        <div id="replace-result"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Explanation section -->
+  <div id="explain-section"></div>
+
+  <!-- Sidebar -->
+  <div id="sidebar">
+
+    <!-- Quick Reference -->
+    <div class="sidebar-group open">
+      <div class="sidebar-group-header">Characters <span class="toggle"></span></div>
+      <div class="sidebar-group-body">
+        <div class="ref-row"><code>.</code> <span>any character</span></div>
+        <div class="ref-row"><code>\d</code> <span>digit [0-9]</span></div>
+        <div class="ref-row"><code>\D</code> <span>non-digit</span></div>
+        <div class="ref-row"><code>\w</code> <span>word [a-zA-Z0-9_]</span></div>
+        <div class="ref-row"><code>\W</code> <span>non-word</span></div>
+        <div class="ref-row"><code>\s</code> <span>whitespace</span></div>
+        <div class="ref-row"><code>\S</code> <span>non-whitespace</span></div>
+        <div class="ref-row"><code>\t</code> <span>tab</span></div>
+        <div class="ref-row"><code>\n</code> <span>newline</span></div>
+        <div class="ref-row"><code>[abc]</code> <span>character set</span></div>
+        <div class="ref-row"><code>[^abc]</code> <span>negated set</span></div>
+        <div class="ref-row"><code>[a-z]</code> <span>range</span></div>
+      </div>
+    </div>
+
+    <div class="sidebar-group">
+      <div class="sidebar-group-header">Quantifiers <span class="toggle"></span></div>
+      <div class="sidebar-group-body">
+        <div class="ref-row"><code>*</code> <span>0 or more</span></div>
+        <div class="ref-row"><code>+</code> <span>1 or more</span></div>
+        <div class="ref-row"><code>?</code> <span>0 or 1</span></div>
+        <div class="ref-row"><code>{n}</code> <span>exactly n</span></div>
+        <div class="ref-row"><code>{n,}</code> <span>n or more</span></div>
+        <div class="ref-row"><code>{n,m}</code> <span>between n and m</span></div>
+        <div class="ref-row"><code>*?</code> <span>lazy (0+ fewest)</span></div>
+        <div class="ref-row"><code>+?</code> <span>lazy (1+ fewest)</span></div>
+      </div>
+    </div>
+
+    <div class="sidebar-group">
+      <div class="sidebar-group-header">Groups <span class="toggle"></span></div>
+      <div class="sidebar-group-body">
+        <div class="ref-row"><code>(abc)</code> <span>capture group</span></div>
+        <div class="ref-row"><code>(?:abc)</code> <span>non-capturing</span></div>
+        <div class="ref-row"><code>(?&lt;name&gt;)</code> <span>named group</span></div>
+        <div class="ref-row"><code>\1</code> <span>backreference</span></div>
+        <div class="ref-row"><code>a|b</code> <span>alternation</span></div>
+      </div>
+    </div>
+
+    <div class="sidebar-group">
+      <div class="sidebar-group-header">Anchors <span class="toggle"></span></div>
+      <div class="sidebar-group-body">
+        <div class="ref-row"><code>^</code> <span>start of string</span></div>
+        <div class="ref-row"><code>$</code> <span>end of string</span></div>
+        <div class="ref-row"><code>\b</code> <span>word boundary</span></div>
+        <div class="ref-row"><code>\B</code> <span>non-word boundary</span></div>
+        <div class="ref-row"><code>(?=...)</code> <span>lookahead</span></div>
+        <div class="ref-row"><code>(?!...)</code> <span>neg. lookahead</span></div>
+        <div class="ref-row"><code>(?&lt;=...)</code> <span>lookbehind</span></div>
+        <div class="ref-row"><code>(?&lt;!...)</code> <span>neg. lookbehind</span></div>
+      </div>
+    </div>
+
+    <div class="sidebar-group">
+      <div class="sidebar-group-header">Flags <span class="toggle"></span></div>
+      <div class="sidebar-group-body">
+        <div class="ref-row"><code>g</code> <span>global</span></div>
+        <div class="ref-row"><code>i</code> <span>case-insensitive</span></div>
+        <div class="ref-row"><code>m</code> <span>multiline ^ $</span></div>
+        <div class="ref-row"><code>s</code> <span>dotAll (. = \n)</span></div>
+        <div class="ref-row"><code>u</code> <span>unicode</span></div>
+      </div>
+    </div>
+
+    <div class="sidebar-group">
+      <div class="sidebar-group-header">Common Patterns <span class="toggle"></span></div>
+      <div class="sidebar-group-body" id="common-patterns"></div>
+    </div>
+
+    <div class="sidebar-group">
+      <div class="sidebar-group-header">Copy As <span class="toggle"></span></div>
+      <div class="sidebar-group-body copy-section">
+        <button class="copy-btn" id="copy-js">JavaScript: /pattern/flags</button>
+        <button class="copy-btn" id="copy-python">Python: r"pattern"</button>
+        <button class="copy-btn" id="copy-java">Java: "pattern"</button>
+      </div>
+    </div>
+
+    <div class="sidebar-group">
+      <div class="sidebar-group-header">History <span class="toggle"></span></div>
+      <div class="sidebar-group-body" id="history-list"></div>
+    </div>
+
+  </div>
+
+</div>
+<script src="controller.js"></script>
+</body>
+</html>

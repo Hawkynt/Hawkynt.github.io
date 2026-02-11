@@ -1,0 +1,222 @@
+body {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ---- Layout ---- */
+#app {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  grid-template-rows: 1fr auto;
+  grid-template-areas:
+    "input preview"
+    "toolbar toolbar";
+  flex: 1;
+  min-height: 0;
+  gap: 0;
+}
+
+/* ---- Left panel: Input ---- */
+#input-panel {
+  grid-area: input;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  overflow-y: auto;
+  border-right: 1px solid var(--sz-color-button-shadow);
+}
+
+label {
+  display: block;
+  margin-bottom: 2px;
+  font-weight: bold;
+  font-size: 11px;
+}
+
+select, input[type="text"], input[type="number"], input[type="color"], textarea {
+  width: 100%;
+  padding: 2px 4px;
+  font-family: inherit;
+  font-size: 11px;
+  outline: none;
+  resize: none;
+}
+
+textarea#data-input {
+  min-height: 48px;
+  flex-shrink: 0;
+  font-family: 'Lucida Console', 'Consolas', monospace;
+  font-size: 11px;
+}
+
+.field-group {
+  flex-shrink: 0;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.field-inline {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.field-inline label {
+  flex-shrink: 0;
+  margin-bottom: 0;
+  min-width: 30px;
+}
+
+.field-inline input, .field-inline select {
+  flex: 1;
+  min-width: 0;
+}
+
+/* input type fields */
+#type-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.type-section { display: none; }
+.type-section.active { display: flex; flex-direction: column; gap: 4px; }
+
+fieldset {
+  border: 1px solid var(--sz-color-button-shadow);
+  padding: 4px 6px;
+  margin: 0;
+}
+
+legend {
+  font-size: 10px;
+  font-weight: bold;
+  padding: 0 3px;
+}
+
+/* ---- Right panel: Preview ---- */
+#preview-panel {
+  grid-area: preview;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  overflow-y: auto;
+  align-items: center;
+}
+
+#qr-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 120px;
+}
+
+#qr-canvas {
+  image-rendering: pixelated;
+  border: 1px solid var(--sz-color-button-shadow);
+}
+
+#preview-options {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 8px;
+  align-items: center;
+  width: 100%;
+  max-width: 280px;
+}
+
+#preview-options label {
+  font-weight: normal;
+  font-size: 10px;
+  text-align: right;
+  margin-bottom: 0;
+}
+
+#preview-options input[type="color"] {
+  width: 40px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--sz-color-button-shadow);
+  cursor: pointer;
+}
+
+#preview-options select, #preview-options input[type="number"] {
+  font-size: 10px;
+  padding: 1px 3px;
+}
+
+#logo-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+#logo-row label { margin-bottom: 0; font-size: 10px; }
+
+#qr-info {
+  font-size: 10px;
+  color: var(--sz-color-gray-text);
+  text-align: center;
+}
+
+/* ---- Bottom toolbar ---- */
+#toolbar {
+  grid-area: toolbar;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--sz-color-button-shadow);
+  flex-shrink: 0;
+}
+
+#toolbar button {
+  min-width: 60px;
+}
+
+#logo-row button {
+  font-size: 10px;
+}
+
+/* dropdown for PNG sizes */
+.dropdown-wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.dropdown-menu {
+  display: none;
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  background: var(--sz-color-window);
+  border: 1px solid var(--sz-color-button-shadow);
+  z-index: 100;
+  min-width: 100%;
+}
+
+.dropdown-menu.open { display: block; }
+
+.dropdown-item {
+  padding: 3px 10px;
+  cursor: default;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.dropdown-item:hover {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+}

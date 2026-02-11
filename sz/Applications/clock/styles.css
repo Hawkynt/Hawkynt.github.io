@@ -1,0 +1,334 @@
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    padding: 8px;
+    overflow: hidden;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* -- Tabs -- */
+  .tab-bar {
+    display: flex;
+    gap: 0;
+    margin-bottom: -1px;
+    position: relative;
+    z-index: 1;
+    flex-shrink: 0;
+  }
+  .tab-btn {
+    padding: 4px 12px;
+    background: var(--sz-color-button-face);
+    border: 1px solid var(--sz-color-button-shadow);
+    border-bottom: none;
+    border-radius: 3px 3px 0 0;
+    cursor: default;
+    font: inherit;
+    color: var(--sz-color-button-text);
+    outline: none;
+    margin-right: 2px;
+    position: relative;
+  }
+  .tab-btn.active {
+    background: var(--sz-color-button-face);
+    border-bottom: 1px solid var(--sz-color-button-face);
+    font-weight: bold;
+    z-index: 2;
+  }
+  .tab-btn:not(.active):hover {
+    background: var(--sz-color-button-light);
+  }
+  .tab-body {
+    border: 1px solid var(--sz-color-button-shadow);
+    background: var(--sz-color-button-face);
+    padding: 10px;
+    flex: 1;
+    overflow: auto;
+    position: relative;
+  }
+  .tab-panel { display: none; height: 100%; }
+  .tab-panel.active { display: block; }
+
+  /* -- Common controls -- */
+  .xp-btn {
+    background: var(--sz-color-button-face);
+    color: var(--sz-color-button-text);
+    border: 2px outset;
+    border-color: var(--sz-color-button-highlight) var(--sz-color-button-dark-shadow) var(--sz-color-button-dark-shadow) var(--sz-color-button-highlight);
+    font: inherit;
+    padding: 2px 12px;
+    min-height: 22px;
+    cursor: default;
+    outline: none;
+  }
+  .xp-btn:hover { background: var(--sz-color-button-light); }
+  .xp-btn:active {
+    border-style: inset;
+    border-color: var(--sz-color-button-dark-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-dark-shadow);
+  }
+  .xp-input, .xp-select {
+    background: var(--sz-color-window);
+    color: var(--sz-color-window-text);
+    border: 2px inset;
+    border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
+    font: inherit;
+    padding: 1px 4px;
+    outline: none;
+  }
+  .xp-select { padding: 1px 2px; }
+  .group-box {
+    border: 1px solid var(--sz-color-button-shadow);
+    padding: 10px 8px 8px;
+    margin-bottom: 8px;
+    position: relative;
+  }
+  .group-box > legend {
+    padding: 0 4px;
+    font-size: 11px;
+    color: var(--sz-color-button-text);
+  }
+
+  /* -- Tab 1: Date & Time -- */
+  .datetime-layout {
+    display: flex;
+    gap: 12px;
+    height: 100%;
+  }
+  .datetime-left { flex: 1; min-width: 0; }
+  .datetime-right { width: 180px; display: flex; flex-direction: column; align-items: center; }
+
+  /* Calendar */
+  .cal-nav {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 4px;
+  }
+  .cal-nav .xp-btn { padding: 0 6px; min-width: 20px; min-height: 20px; font-weight: bold; }
+  .cal-nav .xp-select { flex: 1; }
+  .cal-year-wrap { display: flex; align-items: center; gap: 2px; }
+  .cal-year-wrap .xp-input { width: 54px; text-align: center; }
+  .cal-year-wrap .xp-btn { padding: 0; width: 16px; min-height: 10px; font-size: 8px; line-height: 1; }
+  .cal-year-spinners { display: flex; flex-direction: column; gap: 1px; }
+  .cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 1px;
+    text-align: center;
+    font-size: 11px;
+  }
+  .cal-header {
+    font-weight: bold;
+    padding: 2px 0;
+    color: var(--sz-color-button-text);
+  }
+  .cal-day {
+    padding: 2px 0;
+    cursor: default;
+    border: 1px solid transparent;
+    border-radius: 2px;
+  }
+  .cal-day:hover { background: var(--sz-color-highlight); color: var(--sz-color-highlight-text); }
+  .cal-day.today {
+    border-color: var(--sz-color-highlight);
+    font-weight: bold;
+  }
+  .cal-day.selected {
+    background: var(--sz-color-highlight);
+    color: var(--sz-color-highlight-text);
+  }
+  .cal-day.other-month { color: var(--sz-color-gray-text); }
+  .cal-week-info {
+    margin-top: 6px;
+    text-align: center;
+    font-size: 11px;
+    color: var(--sz-color-button-text);
+    padding: 3px 0;
+    border-top: 1px solid var(--sz-color-button-shadow);
+  }
+  .cal-week-info .cw-number { font-weight: bold; }
+
+  /* Analog clock */
+  .clock-face {
+    width: 150px;
+    height: 150px;
+    border-radius: 50%;
+    border: 2px solid var(--sz-color-button-shadow);
+    background: var(--sz-color-window);
+    position: relative;
+    margin: 8px 0;
+    flex-shrink: 0;
+  }
+  .clock-marker {
+    position: absolute;
+    width: 2px;
+    background: var(--sz-color-button-text);
+    left: 50%;
+    top: 4px;
+    transform-origin: 50% calc(75px - 4px);
+  }
+  .clock-marker.major { height: 10px; }
+  .clock-marker.minor { height: 5px; width: 1px; }
+  .clock-hand {
+    position: absolute;
+    left: 50%;
+    bottom: 50%;
+    transform-origin: 50% 100%;
+    border-radius: 2px;
+  }
+  /* Intentional clock hand colors */
+  .clock-hand.hour { width: 4px; height: 38px; background: var(--sz-color-button-text); margin-left: -2px; }
+  .clock-hand.minute { width: 3px; height: 50px; background: var(--sz-color-button-text); margin-left: -1.5px; }
+  .clock-hand.second { width: 1px; height: 55px; background: #c00; margin-left: -0.5px; }
+  .clock-center { position: absolute; width: 6px; height: 6px; background: var(--sz-color-button-text); border-radius: 50%; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+  .digital-time {
+    font-family: 'Lucida Console', 'Consolas', monospace;
+    font-size: 16px;
+    text-align: center;
+    margin: 4px 0;
+    color: var(--sz-color-window-text);
+  }
+  .timezone-display {
+    font-size: 10px;
+    text-align: center;
+    color: var(--sz-color-gray-text);
+  }
+
+  /* -- Tab 2: Alarms -- */
+  .alarm-list {
+    max-height: 150px;
+    overflow-y: auto;
+    border: 2px inset;
+    border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
+    background: var(--sz-color-window);
+    margin-bottom: 8px;
+  }
+  .alarm-item {
+    display: flex;
+    align-items: center;
+    padding: 3px 6px;
+    gap: 8px;
+    border-bottom: 1px solid var(--sz-color-button-light);
+    font-size: 11px;
+  }
+  .alarm-item:hover { background: var(--sz-color-highlight); color: var(--sz-color-highlight-text); }
+  .alarm-item .alarm-time { font-family: 'Lucida Console', monospace; font-weight: bold; min-width: 50px; }
+  .alarm-item .alarm-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .alarm-item .alarm-repeat { color: var(--sz-color-gray-text); font-size: 10px; min-width: 60px; }
+  .alarm-item:hover .alarm-repeat { color: var(--sz-color-highlight-text); }
+  .alarm-form { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .alarm-form label { font-size: 11px; }
+  .alarm-notification {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--sz-color-info-window);
+    border: 2px solid var(--sz-color-button-shadow);
+    padding: 12px 16px;
+    text-align: center;
+    z-index: 100;
+    box-shadow: 2px 2px 6px rgba(0,0,0,0.3);
+    display: none;
+    min-width: 200px;
+  }
+  .alarm-notification.visible { display: block; }
+  .alarm-notification .alarm-notif-label { font-weight: bold; font-size: 13px; margin-bottom: 8px; }
+
+  /* -- Tab 3: Stopwatch -- */
+  .sw-display {
+    font-family: 'Lucida Console', 'Consolas', monospace;
+    font-size: 36px;
+    text-align: center;
+    padding: 16px 0;
+    color: var(--sz-color-window-text);
+    background: var(--sz-color-window);
+    border: 2px inset;
+    border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
+    margin-bottom: 8px;
+  }
+  .sw-buttons { display: flex; gap: 6px; justify-content: center; margin-bottom: 8px; }
+  .lap-list {
+    max-height: 120px;
+    overflow-y: auto;
+    border: 2px inset;
+    border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
+    background: var(--sz-color-window);
+    font-family: 'Lucida Console', monospace;
+    font-size: 11px;
+    padding: 2px 6px;
+  }
+  .lap-item { padding: 2px 0; display: flex; justify-content: space-between; border-bottom: 1px dotted var(--sz-color-button-light); }
+
+  /* -- Tab 4: Timer -- */
+  .timer-inputs { display: flex; gap: 4px; align-items: center; justify-content: center; margin-bottom: 8px; }
+  .timer-inputs .xp-input { width: 42px; text-align: center; font-size: 14px; }
+  .timer-inputs span { font-size: 14px; font-weight: bold; }
+  .timer-display {
+    font-family: 'Lucida Console', 'Consolas', monospace;
+    font-size: 36px;
+    text-align: center;
+    padding: 12px 0;
+    color: var(--sz-color-window-text);
+  }
+  .timer-progress-wrap {
+    width: 100%;
+    height: 18px;
+    border: 2px inset;
+    border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
+    background: var(--sz-color-window);
+    margin-bottom: 8px;
+  }
+  .timer-progress-bar {
+    height: 100%;
+    background: var(--sz-color-highlight);
+    transition: width 0.25s linear;
+    width: 0;
+  }
+  .timer-buttons { display: flex; gap: 6px; justify-content: center; }
+
+  /* -- Tab 5: World Clock -- */
+  .wc-add { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+  .wc-add .xp-select { flex: 1; }
+  .wc-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 8px;
+    max-height: 220px;
+    overflow-y: auto;
+  }
+  .wc-card {
+    border: 1px solid var(--sz-color-button-shadow);
+    background: var(--sz-color-window);
+    padding: 6px;
+    text-align: center;
+    position: relative;
+  }
+  .wc-card .wc-name { font-weight: bold; font-size: 11px; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wc-card .wc-remove {
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    cursor: default;
+    font-size: 10px;
+    color: var(--sz-color-gray-text);
+    border: none;
+    background: none;
+    font: inherit;
+    padding: 0;
+  }
+  .wc-card .wc-remove:hover { color: #c00; }
+  .wc-mini-clock {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    border: 1px solid var(--sz-color-button-shadow);
+    background: var(--sz-color-window);
+    position: relative;
+    margin: 4px auto;
+  }
+  .wc-mini-clock .clock-hand.hour { width: 2px; height: 16px; margin-left: -1px; }
+  .wc-mini-clock .clock-hand.minute { width: 1.5px; height: 22px; margin-left: -0.75px; }
+  .wc-mini-clock .clock-center { width: 3px; height: 3px; }
+  .wc-card .wc-time { font-family: 'Lucida Console', monospace; font-size: 13px; margin: 2px 0; }
+  .wc-card .wc-offset { font-size: 10px; color: var(--sz-color-gray-text); }

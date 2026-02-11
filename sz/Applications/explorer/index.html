@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Explorer</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="toolbar-wrapper">
+  <div class="toolbar" id="toolbar">
+    <button id="btn-back" disabled title="Back">&#x25C0; Back</button>
+    <button id="btn-forward" disabled title="Forward">Forward &#x25B6;</button>
+    <button id="btn-up" disabled title="Up">&#x2191; Up</button>
+    <button id="btn-refresh" title="Refresh">&#x21BB; Refresh</button>
+    <div class="sep"></div>
+    <button id="btn-newfolder" disabled title="New folder">&#x1F4C1; New</button>
+    <button id="btn-delete" disabled title="Delete">&#x1F5D1; Delete</button>
+    <button id="btn-rename" disabled title="Rename">&#x270E; Rename</button>
+    <div class="sep"></div>
+    <button id="btn-copy" disabled title="Copy">&#x1F4CB; Copy</button>
+    <button id="btn-cut" disabled title="Cut">&#x2702; Cut</button>
+    <button id="btn-paste" disabled title="Paste">&#x1F4CB; Paste</button>
+    <div class="sep"></div>
+    <button id="btn-upload" disabled title="Upload files">&#x1F4E4; Upload</button>
+    <button id="btn-download" disabled title="Download file">&#x1F4E5; Download</button>
+    <div class="sep"></div>
+    <button id="btn-view" title="View mode">Icons &#x25BC;</button>
+    <button class="toolbar-overflow-btn" id="btn-overflow" title="More buttons">&#x25B8;</button>
+  </div>
+  <div class="toolbar-overflow-menu" id="overflow-menu"></div>
+</div>
+<input type="file" id="upload-input" multiple style="display:none">
+<div class="address-bar">
+  <label>Address:</label>
+  <div class="breadcrumb-wrapper">
+    <div class="breadcrumb-container" id="breadcrumb-container">
+      <div class="breadcrumb" id="breadcrumb"></div>
+      <input class="address-input" id="address-input" type="text" spellcheck="false" autocomplete="off">
+    </div>
+    <div class="autocomplete-dropdown" id="autocomplete-dropdown"></div>
+  </div>
+  <div class="search-box">
+    <span class="search-icon">&#x1F50D;</span>
+    <input type="text" id="search-input" placeholder="Search..." spellcheck="false">
+    <span class="search-clear" id="search-clear">&times;</span>
+  </div>
+</div>
+<div class="content">
+  <div class="sidebar" id="sidebar"></div>
+  <div class="main-view" id="main-view"></div>
+</div>
+<div class="status-bar">
+  <span class="status-count" id="status-count"></span>
+  <span class="status-info" id="status-info">&raquo;SynthelicZ&laquo; Explorer</span>
+</div>
+
+<script src="controller.js"></script>
+</body>
+</html>

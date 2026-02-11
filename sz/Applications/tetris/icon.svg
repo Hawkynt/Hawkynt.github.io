@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- T-piece (purple) at top-left -->
+  <rect x="2" y="2" width="7" height="7" rx="1" fill="#a000a0" stroke="#600060" stroke-width="0.5"/>
+  <rect x="9" y="2" width="7" height="7" rx="1" fill="#a000a0" stroke="#600060" stroke-width="0.5"/>
+  <rect x="16" y="2" width="7" height="7" rx="1" fill="#a000a0" stroke="#600060" stroke-width="0.5"/>
+  <rect x="9" y="9" width="7" height="7" rx="1" fill="#a000a0" stroke="#600060" stroke-width="0.5"/>
+  <!-- I-piece (cyan) right column -->
+  <rect x="23" y="2" width="7" height="7" rx="1" fill="#00b0b0" stroke="#007070" stroke-width="0.5"/>
+  <rect x="23" y="9" width="7" height="7" rx="1" fill="#00b0b0" stroke="#007070" stroke-width="0.5"/>
+  <rect x="23" y="16" width="7" height="7" rx="1" fill="#00b0b0" stroke="#007070" stroke-width="0.5"/>
+  <rect x="23" y="23" width="7" height="7" rx="1" fill="#00b0b0" stroke="#007070" stroke-width="0.5"/>
+  <!-- S-piece (green) middle-left -->
+  <rect x="9" y="16" width="7" height="7" rx="1" fill="#00a000" stroke="#006000" stroke-width="0.5"/>
+  <rect x="16" y="16" width="7" height="7" rx="1" fill="#00a000" stroke="#006000" stroke-width="0.5"/>
+  <rect x="2" y="23" width="7" height="7" rx="1" fill="#00a000" stroke="#006000" stroke-width="0.5"/>
+  <rect x="9" y="23" width="7" height="7" rx="1" fill="#00a000" stroke="#006000" stroke-width="0.5"/>
+  <!-- O-piece (yellow) bottom-right area -->
+  <rect x="16" y="23" width="7" height="7" rx="1" fill="#b0b000" stroke="#707000" stroke-width="0.5"/>
+  <!-- Z-piece (red) single block accent -->
+  <rect x="2" y="9" width="7" height="7" rx="1" fill="#d00000" stroke="#800000" stroke-width="0.5"/>
+  <rect x="2" y="16" width="7" height="7" rx="1" fill="#d00000" stroke="#800000" stroke-width="0.5"/>
+  <!-- Highlights for 3D effect -->
+  <rect x="3" y="3" width="2" height="1" rx="0.5" fill="rgba(255,255,255,0.4)"/>
+  <rect x="10" y="3" width="2" height="1" rx="0.5" fill="rgba(255,255,255,0.4)"/>
+  <rect x="17" y="3" width="2" height="1" rx="0.5" fill="rgba(255,255,255,0.4)"/>
+  <rect x="24" y="3" width="2" height="1" rx="0.5" fill="rgba(255,255,255,0.4)"/>
+</svg>

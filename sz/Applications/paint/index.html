@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Paint</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Menu Bar -->
+<div class="menu-bar" id="menu-bar">
+  <div class="menu-item" data-menu="file">
+    File
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="new">New<span class="shortcut">Ctrl+N</span></div>
+      <div class="menu-entry" data-action="open">Open...<span class="shortcut">Ctrl+O</span></div>
+      <div class="menu-entry" data-action="save">Save<span class="shortcut">Ctrl+S</span></div>
+      <div class="menu-entry" data-action="save-as">Save As...</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="exit">Exit</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="edit">
+    Edit
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="undo">Undo<span class="shortcut">Ctrl+Z</span></div>
+      <div class="menu-entry" data-action="redo">Redo<span class="shortcut">Ctrl+Y</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="clear">Clear Canvas</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="view">
+    View
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="zoom-1">Zoom 1x<span class="shortcut">Ctrl+1</span></div>
+      <div class="menu-entry" data-action="zoom-2">Zoom 2x<span class="shortcut">Ctrl+2</span></div>
+      <div class="menu-entry" data-action="zoom-4">Zoom 4x<span class="shortcut">Ctrl+3</span></div>
+      <div class="menu-entry" data-action="zoom-8">Zoom 8x<span class="shortcut">Ctrl+4</span></div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="image">
+    Image
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="flip-h">Flip Horizontal</div>
+      <div class="menu-entry" data-action="flip-v">Flip Vertical</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="rotate-cw">Rotate 90\u00b0 CW</div>
+      <div class="menu-entry" data-action="rotate-ccw">Rotate 90\u00b0 CCW</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="resize">Resize / Stretch...</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="help">
+    Help
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="about">About Paint</div>
+    </div>
+  </div>
+</div>
+
+<!-- Main content -->
+<div class="main-area">
+  <!-- Toolbar -->
+  <div class="toolbar" id="toolbar">
+    <div class="tool-grid">
+      <div class="tool-btn active" data-tool="pencil" title="Pencil">&#9998;</div>
+      <div class="tool-btn" data-tool="line" title="Line">&#9585;</div>
+      <div class="tool-btn" data-tool="rect" title="Rectangle">&#9645;</div>
+      <div class="tool-btn" data-tool="ellipse" title="Ellipse">&#9711;</div>
+      <div class="tool-btn" data-tool="eraser" title="Eraser">&#9634;</div>
+      <div class="tool-btn" data-tool="fill" title="Fill / Bucket">&#9783;</div>
+      <div class="tool-btn" data-tool="text" title="Text">A</div>
+      <div class="tool-btn" data-tool="picker" title="Color Picker">&#9738;</div>
+      <div class="tool-btn" data-tool="select" title="Select">&#11034;</div>
+    </div>
+    <div class="tool-section"></div>
+    <!-- Line widths -->
+    <div class="line-widths" id="line-widths">
+      <div class="line-width-btn active" data-width="1"><span class="lw-line" style="height:1px;"></span></div>
+      <div class="line-width-btn" data-width="2"><span class="lw-line" style="height:2px;"></span></div>
+      <div class="line-width-btn" data-width="3"><span class="lw-line" style="height:3px;"></span></div>
+      <div class="line-width-btn" data-width="5"><span class="lw-line" style="height:5px;"></span></div>
+    </div>
+    <div class="tool-section"></div>
+    <!-- Fill mode -->
+    <div class="fill-toggle" id="fill-toggle">
+      <div class="fill-btn active" data-fill="outline" title="Outline">
+        <svg viewBox="0 0 18 16"><rect x="1" y="1" width="16" height="14" fill="none" stroke="#333" stroke-width="1.5"/></svg>
+      </div>
+      <div class="fill-btn" data-fill="filled" title="Filled">
+        <svg viewBox="0 0 18 16"><rect x="1" y="1" width="16" height="14" fill="#333" stroke="#333" stroke-width="1.5"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- Canvas area -->
+  <div class="canvas-area" id="canvas-area">
+    <div class="canvas-wrapper">
+      <div class="canvas-container" id="canvas-container">
+        <canvas id="main-canvas" width="640" height="480"></canvas>
+        <canvas id="overlay-canvas" width="640" height="480"></canvas>
+        <canvas id="selection-canvas"></canvas>
+        <div class="text-input-overlay" id="text-overlay">
+          <textarea id="text-input" rows="1" cols="10"></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Color palette -->
+<div class="palette-bar" id="palette-bar">
+  <div class="active-colors" id="active-colors" title="Left: foreground, Right: background">
+    <div class="active-fg" id="active-fg"></div>
+    <div class="active-bg" id="active-bg"></div>
+  </div>
+  <div class="color-grid" id="color-grid"></div>
+</div>
+
+<!-- Status bar -->
+<div class="status-bar" id="status-bar">
+  <span class="status-section inset" id="status-pos">0, 0 px</span>
+  <span class="status-section inset" id="status-size">640 x 480</span>
+</div>
+
+<!-- Resize dialog -->
+<div class="dialog-overlay" id="dlg-resize">
+  <div class="dialog">
+    <div class="dialog-title">Resize / Stretch</div>
+    <div class="dialog-body">
+      <div class="resize-row">
+        <label for="resize-w">Width:</label>
+        <input type="number" id="resize-w" min="1" max="4096" value="640">
+        <span>px</span>
+      </div>
+      <div class="resize-row">
+        <label for="resize-h">Height:</label>
+        <input type="number" id="resize-h" min="1" max="4096" value="480">
+        <span>px</span>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">OK</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- About dialog -->
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Paint</div>
+    <div class="dialog-body" style="text-align: center; padding: 20px;">
+      <p style="font-weight: bold; font-size: 13px; margin-bottom: 12px;">Paint</p>
+      <p>A bitmap drawing tool for &raquo;SynthelicZ&laquo;</p>
+      <p style="margin-top: 12px; font-size: 10px; opacity: 0.7;">&copy; 1995-2026 &raquo;SynthelicZ&laquo;</p>
+    </div>
+    <div class="dialog-buttons" style="justify-content: center;">
+      <button data-result="ok">OK</button>
+    </div>
+  </div>
+</div>
+
+<script src="controller.js"></script>
+</body>
+</html>

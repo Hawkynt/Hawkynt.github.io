@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Diff Viewer</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Toolbar -->
+<div class="toolbar" id="toolbar">
+  <button id="btn-open-left" title="Open left (original) file">Open Left</button>
+  <button id="btn-open-right" title="Open right (modified) file">Open Right</button>
+  <button id="btn-swap" title="Swap left and right sides">Swap</button>
+  <div class="toolbar-sep"></div>
+  <button id="btn-side" class="active" title="Side-by-side view">Side-by-Side</button>
+  <button id="btn-unified" title="Unified diff view">Unified</button>
+  <button id="btn-inline" title="Inline diff view">Inline</button>
+  <div class="toolbar-sep"></div>
+  <button id="btn-prev-diff" title="Previous difference (Ctrl+Up)" disabled>&#9650; Prev</button>
+  <button id="btn-next-diff" title="Next difference (Ctrl+Down)" disabled>&#9660; Next</button>
+  <span class="stats" id="stats"></span>
+</div>
+
+<!-- Options bar -->
+<div class="options-bar" id="options-bar">
+  <label><input type="checkbox" id="opt-ignore-ws"> Ignore whitespace</label>
+  <label><input type="checkbox" id="opt-ignore-case"> Ignore case</label>
+  <label><input type="checkbox" id="opt-word-diff"> Word-level diff</label>
+</div>
+
+<!-- Main content -->
+<div class="main-area" id="main-area">
+  <!-- Side-by-side view (default) -->
+  <div class="panel" id="panel-left">
+    <div class="panel-header" id="header-left">Original</div>
+    <div class="panel-content" id="content-left">
+      <textarea class="panel-textarea" id="textarea-left" placeholder="Paste or open the original text here..."></textarea>
+    </div>
+  </div>
+  <div class="panel-splitter" id="splitter"></div>
+  <div class="panel" id="panel-right">
+    <div class="panel-header" id="header-right">Modified</div>
+    <div class="panel-content" id="content-right">
+      <textarea class="panel-textarea" id="textarea-right" placeholder="Paste or open the modified text here..."></textarea>
+    </div>
+  </div>
+</div>
+
+<!-- Status bar -->
+<div class="status-bar" id="status-bar">
+  <span class="status-section" id="status-left-lines">Left: 0 lines</span>
+  <span class="status-section" id="status-right-lines">Right: 0 lines</span>
+  <span class="status-section" id="status-diff-pos"></span>
+</div>
+
+<script src="controller.js"></script>
+</body>
+</html>

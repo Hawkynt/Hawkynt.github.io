@@ -1,0 +1,190 @@
+/* ==========================================================================
+   Animations & Transitions
+   Lightweight, GPU-accelerated animations for the SZ desktop environment.
+   All durations are kept short (<=200ms) to feel snappy.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Window Open
+   Scales up from 95% with a fade-in.
+   -------------------------------------------------------------------------- */
+
+.sz-window {
+  animation: sz-window-open 0.15s ease-out;
+}
+
+@keyframes sz-window-open {
+  from {
+    opacity: 0;
+    transform: translate3d(var(--sz-x, 0), var(--sz-y, 0), 0) scale(0.95);
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Window Close
+   Scales down with a fade-out, then the element is removed by JS.
+   pointer-events disabled so the dying window cannot be interacted with.
+   -------------------------------------------------------------------------- */
+
+.sz-window.sz-closing {
+  animation: sz-window-close 0.15s ease-in forwards;
+  pointer-events: none;
+}
+
+@keyframes sz-window-close {
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Minimize (shrink toward taskbar)
+   -------------------------------------------------------------------------- */
+
+.sz-window.sz-minimizing {
+  animation: sz-window-minimize 0.2s ease-in forwards;
+  pointer-events: none;
+}
+
+@keyframes sz-window-minimize {
+  to {
+    opacity: 0;
+    transform: translate3d(var(--sz-taskbar-x, 0), var(--sz-taskbar-y, 100vh), 0) scale(0.3, 0.1);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Restore from Minimize (expand from taskbar)
+   -------------------------------------------------------------------------- */
+
+.sz-window.sz-restoring {
+  animation: sz-window-restore 0.2s ease-out;
+}
+
+@keyframes sz-window-restore {
+  from {
+    opacity: 0;
+    transform: translate3d(var(--sz-taskbar-x, 0), var(--sz-taskbar-y, 100vh), 0) scale(0.3, 0.1);
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Maximize / Unmaximize
+   Quick snap with no opacity change -- just a brief scale pulse.
+   -------------------------------------------------------------------------- */
+
+.sz-window.sz-maximizing {
+  animation: sz-window-maximize 0.12s ease-out;
+}
+
+@keyframes sz-window-maximize {
+  from {
+    opacity: 0.9;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Focus Pulse
+   Brief highlight when a window receives focus (e.g. clicked in taskbar).
+   -------------------------------------------------------------------------- */
+
+.sz-window.sz-focus-pulse {
+  animation: sz-focus-pulse 0.2s ease-out;
+}
+
+@keyframes sz-focus-pulse {
+  0%   { filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.35)) brightness(1.08); }
+  100% { filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.35)) brightness(1); }
+}
+
+/* --------------------------------------------------------------------------
+   Start Menu
+   Slides up from the taskbar edge.
+   -------------------------------------------------------------------------- */
+
+#sz-start-menu.open {
+  animation: sz-start-menu-open 0.12s ease-out;
+}
+
+@keyframes sz-start-menu-open {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+#sz-start-menu.closing {
+  animation: sz-start-menu-close 0.1s ease-in forwards;
+}
+
+@keyframes sz-start-menu-close {
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Desktop Icon Selection
+   Smooth background fade on hover / select.
+   -------------------------------------------------------------------------- */
+
+.sz-icon {
+  transition: background-color 0.1s ease, border-color 0.1s ease;
+}
+
+/* --------------------------------------------------------------------------
+   Taskbar Button Press
+   -------------------------------------------------------------------------- */
+
+.sz-taskbar-button {
+  transition: background-color 0.08s ease;
+}
+
+/* --------------------------------------------------------------------------
+   Utility: prevent animations during initial page load to avoid a flash of
+   all windows animating in at once. JS removes this class after DOMReady.
+   -------------------------------------------------------------------------- */
+
+.sz-no-animate,
+.sz-no-animate * {
+  animation-duration: 0s !important;
+  transition-duration: 0s !important;
+}
+
+/* --------------------------------------------------------------------------
+   Reduced Motion
+   Respect the user's OS-level preference for reduced motion.
+   -------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .sz-window,
+  .sz-window.sz-closing,
+  .sz-window.sz-minimizing,
+  .sz-window.sz-restoring,
+  .sz-window.sz-maximizing,
+  .sz-window.sz-focus-pulse,
+  #sz-start-menu.open,
+  #sz-start-menu.closing {
+    animation-duration: 0.01ms !important;
+  }
+
+  .sz-icon,
+  .sz-taskbar-button {
+    transition-duration: 0.01ms !important;
+  }
+}

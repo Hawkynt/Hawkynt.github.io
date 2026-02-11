@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Tetris</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Menu Bar -->
+<div class="menu-bar" id="menuBar">
+  <div class="menu-item" data-menu="game">Game
+    <div class="menu-dropdown" id="menuGame">
+      <div class="menu-dropdown-item" data-action="new">New Game<span class="shortcut">F2</span></div>
+      <div class="menu-dropdown-item" data-action="pause">Pause<span class="shortcut">P</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-dropdown-item" data-action="high-scores">High Scores...</div>
+      <div class="menu-separator"></div>
+      <div class="menu-dropdown-item" data-action="exit">Exit</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="help">Help
+    <div class="menu-dropdown" id="menuHelp">
+      <div class="menu-dropdown-item" data-action="controls">Controls...</div>
+      <div class="menu-dropdown-item" data-action="about">About Tetris</div>
+    </div>
+  </div>
+</div>
+
+<!-- Game Area -->
+<div class="game-frame">
+  <div class="game-layout">
+    <!-- Board -->
+    <div class="board-border">
+      <div class="board-wrapper">
+        <div class="board" id="board"></div>
+        <!-- Pause overlay -->
+        <div class="game-overlay" id="pauseOverlay">
+          <div class="overlay-text">PAUSED</div>
+          <div class="overlay-subtext">Press P to resume</div>
+        </div>
+        <!-- Game Over overlay -->
+        <div class="game-overlay" id="gameOverOverlay">
+          <div class="overlay-text">GAME OVER</div>
+          <div class="overlay-score" id="finalScore"></div>
+          <div class="overlay-subtext">Press Enter to restart</div>
+        </div>
+      </div>
+    </div>
+    <!-- Side Panel -->
+    <div class="side-panel">
+      <div class="panel-box">
+        <div class="panel-label">NEXT</div>
+        <div class="preview-grid" id="previewGrid"></div>
+      </div>
+      <div class="panel-box">
+        <div class="panel-label">SCORE</div>
+        <div class="led-display" id="scoreDisplay">0</div>
+      </div>
+      <div class="panel-box">
+        <div class="panel-label">LEVEL</div>
+        <div class="led-display" id="levelDisplay">0</div>
+      </div>
+      <div class="panel-box">
+        <div class="panel-label">LINES</div>
+        <div class="led-display" id="linesDisplay">0</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- High Scores Dialog -->
+<div class="xp-dialog-backdrop" id="highScoresBackdrop">
+  <div class="xp-dialog">
+    <div class="xp-dialog-titlebar">
+      <span>High Scores</span>
+      <button class="xp-dialog-close" id="highScoresClose" type="button">x</button>
+    </div>
+    <div class="xp-dialog-body">
+      <table class="high-scores-table">
+        <thead>
+          <tr><th>#</th><th>Score</th><th>Lines</th><th>Level</th></tr>
+        </thead>
+        <tbody id="highScoresBody"></tbody>
+      </table>
+    </div>
+    <div class="xp-dialog-buttons">
+      <button class="xp-btn" id="highScoresReset" type="button">Reset</button>
+      <button class="xp-btn" id="highScoresOk" type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Controls Dialog -->
+<div class="xp-dialog-backdrop" id="controlsBackdrop">
+  <div class="xp-dialog">
+    <div class="xp-dialog-titlebar">
+      <span>Controls</span>
+      <button class="xp-dialog-close" id="controlsClose" type="button">x</button>
+    </div>
+    <div class="xp-dialog-body">
+      <table class="controls-table">
+        <tr><td>Left / Right</td><td>Move piece</td></tr>
+        <tr><td>Down</td><td>Soft drop</td></tr>
+        <tr><td>Space</td><td>Hard drop</td></tr>
+        <tr><td>Up / Z</td><td>Rotate clockwise</td></tr>
+        <tr><td>X</td><td>Rotate counter-CW</td></tr>
+        <tr><td>P</td><td>Pause / Resume</td></tr>
+        <tr><td>F2</td><td>New Game</td></tr>
+      </table>
+    </div>
+    <div class="xp-dialog-buttons">
+      <button class="xp-btn" id="controlsOk" type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- About Dialog -->
+<div class="xp-dialog-backdrop" id="aboutBackdrop">
+  <div class="xp-dialog">
+    <div class="xp-dialog-titlebar">
+      <span>About Tetris</span>
+      <button class="xp-dialog-close" id="aboutClose" type="button">x</button>
+    </div>
+    <div class="xp-dialog-body">
+      <strong>Tetris</strong><br><br>
+      Classic block-stacking puzzle game.<br><br>
+      Stack falling tetrominoes to complete horizontal lines. Completed lines are cleared for points. The game speeds up as you level up.<br><br>
+      Part of the SynthelicZ Desktop.
+    </div>
+    <div class="xp-dialog-buttons">
+      <button class="xp-btn" id="aboutOk" type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<script src="controller.js"></script>
+</body>
+</html>

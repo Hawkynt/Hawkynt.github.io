@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1200" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <!-- Sky gradient -->
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1e5799"/>
+      <stop offset="35%" stop-color="#4a90d9"/>
+      <stop offset="60%" stop-color="#7ec8e3"/>
+      <stop offset="100%" stop-color="#c6e8f5"/>
+    </linearGradient>
+    <!-- Ground gradient -->
+    <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#5cb85c"/>
+      <stop offset="40%" stop-color="#4cae4c"/>
+      <stop offset="100%" stop-color="#398439"/>
+    </linearGradient>
+    <!-- Cloud blur -->
+    <filter id="cloudBlur">
+      <feGaussianBlur stdDeviation="8"/>
+    </filter>
+    <!-- Subtle cloud blur -->
+    <filter id="cloudSoft">
+      <feGaussianBlur stdDeviation="4"/>
+    </filter>
+    <!-- Hill shadow -->
+    <linearGradient id="hillShadow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#6abf6a"/>
+      <stop offset="100%" stop-color="#3a8c3a"/>
+    </linearGradient>
+    <linearGradient id="hillLight" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#7dd87d"/>
+      <stop offset="100%" stop-color="#4cae4c"/>
+    </linearGradient>
+    <linearGradient id="hillFar" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#6aad6a"/>
+      <stop offset="100%" stop-color="#4a9a4a"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Sky -->
+  <rect width="1920" height="1200" fill="url(#sky)"/>
+
+  <!-- Distant hills (background layer) -->
+  <path d="M0,750 Q200,680 480,720 Q700,650 960,690 Q1200,640 1440,680 Q1650,650 1920,700 L1920,1200 L0,1200 Z"
+        fill="url(#hillFar)" opacity="0.5"/>
+
+  <!-- Main rolling hills -->
+  <path d="M0,800 Q240,700 500,760 Q750,680 1000,740 Q1250,690 1500,730 Q1700,700 1920,750 L1920,1200 L0,1200 Z"
+        fill="url(#hillLight)"/>
+
+  <!-- Foreground hill (left) -->
+  <path d="M-100,850 Q200,740 550,800 Q800,770 1000,820 L1000,1200 L-100,1200 Z"
+        fill="url(#hillShadow)" opacity="0.7"/>
+
+  <!-- Foreground hill (right) -->
+  <path d="M900,830 Q1150,760 1400,800 Q1650,750 1920,790 L1920,1200 L900,1200 Z"
+        fill="url(#ground)"/>
+
+  <!-- Ground base -->
+  <path d="M0,900 Q480,850 960,870 Q1440,840 1920,860 L1920,1200 L0,1200 Z"
+        fill="#398439"/>
+
+  <!-- Clouds -->
+  <!-- Large cloud left -->
+  <g filter="url(#cloudBlur)" opacity="0.9">
+    <ellipse cx="350" cy="200" rx="160" ry="55" fill="white"/>
+    <ellipse cx="280" cy="210" rx="100" ry="40" fill="white"/>
+    <ellipse cx="430" cy="215" rx="90" ry="35" fill="white"/>
+    <ellipse cx="350" cy="185" rx="120" ry="45" fill="white"/>
+  </g>
+
+  <!-- Small cloud center-top -->
+  <g filter="url(#cloudSoft)" opacity="0.7">
+    <ellipse cx="900" cy="140" rx="100" ry="35" fill="white"/>
+    <ellipse cx="860" cy="150" rx="60" ry="25" fill="white"/>
+    <ellipse cx="950" cy="148" rx="70" ry="28" fill="white"/>
+  </g>
+
+  <!-- Large cloud right -->
+  <g filter="url(#cloudBlur)" opacity="0.85">
+    <ellipse cx="1500" cy="250" rx="180" ry="60" fill="white"/>
+    <ellipse cx="1420" cy="260" rx="110" ry="45" fill="white"/>
+    <ellipse cx="1590" cy="265" rx="100" ry="38" fill="white"/>
+    <ellipse cx="1500" cy="235" rx="130" ry="48" fill="white"/>
+  </g>
+
+  <!-- Wispy cloud far right -->
+  <g filter="url(#cloudSoft)" opacity="0.5">
+    <ellipse cx="1750" cy="170" rx="80" ry="22" fill="white"/>
+    <ellipse cx="1720" cy="178" rx="50" ry="18" fill="white"/>
+  </g>
+
+  <!-- Small cloud left-center -->
+  <g filter="url(#cloudSoft)" opacity="0.6">
+    <ellipse cx="650" cy="300" rx="90" ry="28" fill="white"/>
+    <ellipse cx="610" cy="308" rx="55" ry="20" fill="white"/>
+    <ellipse cx="700" cy="305" rx="60" ry="22" fill="white"/>
+  </g>
+</svg>

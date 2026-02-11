@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Media Player</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Menu Bar -->
+<div class="menu-bar" id="menu-bar">
+  <div class="menu-item" data-menu="file">
+    File
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="open-file">Open File(s)...<span class="shortcut">Ctrl+O</span></div>
+      <div class="menu-entry" data-action="open-url">Open URL...</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="exit">Exit</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="play">
+    Play
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="play-pause">Play / Pause<span class="shortcut">Space</span></div>
+      <div class="menu-entry" data-action="stop">Stop</div>
+      <div class="menu-entry" data-action="prev">Previous<span class="shortcut">P</span></div>
+      <div class="menu-entry" data-action="next">Next<span class="shortcut">N</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry checkbox" data-action="shuffle" id="menu-shuffle">Shuffle</div>
+      <div class="menu-entry radio checked" data-action="repeat" id="menu-repeat">Repeat: Off</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="view">
+    View
+    <div class="menu-dropdown">
+      <div class="menu-entry checkbox checked" data-action="toggle-playlist" id="menu-playlist">Show Playlist</div>
+      <div class="menu-entry checkbox" data-action="compact-mode" id="menu-compact">Compact Mode</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="help">
+    Help
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="about">About Media Player</div>
+    </div>
+  </div>
+</div>
+
+<!-- Main Content -->
+<div class="main-content">
+  <!-- Player Area -->
+  <div class="player-area">
+    <div class="display-area" id="display-area">
+      <canvas id="visualizer"></canvas>
+      <video id="video-player"></video>
+      <div class="placeholder-art" id="placeholder-art">
+        <div class="icon">&#9835;</div>
+        <div>No media loaded</div>
+      </div>
+    </div>
+
+    <!-- Transport Controls -->
+    <div class="transport">
+      <div class="seek-row">
+        <div class="time-display" id="time-current">0:00</div>
+        <div class="seek-bar-container" id="seek-bar">
+          <div class="seek-bar-fill" id="seek-fill"></div>
+        </div>
+        <div class="time-display" id="time-total">0:00</div>
+      </div>
+      <div class="controls-row">
+        <div class="transport-buttons">
+          <button class="transport-btn" id="btn-prev" title="Previous (P)">&#9198;</button>
+          <button class="transport-btn play-btn" id="btn-play" title="Play (Space)">&#9654;</button>
+          <button class="transport-btn" id="btn-stop" title="Stop">&#9209;</button>
+          <button class="transport-btn" id="btn-next" title="Next (N)">&#9197;</button>
+        </div>
+        <div class="volume-section">
+          <button class="volume-btn" id="btn-mute" title="Mute (M)">&#128266;</button>
+          <div class="volume-slider-container" id="volume-bar">
+            <div class="volume-slider-fill" id="volume-fill"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Playlist Panel -->
+  <div class="playlist-panel" id="playlist-panel">
+    <div class="playlist-header">
+      <span>Playlist</span>
+      <div class="playlist-actions">
+        <button class="playlist-action-btn" id="btn-add-files" title="Add Files">+ Add</button>
+        <button class="playlist-action-btn" id="btn-remove-selected" title="Remove Selected">- Rem</button>
+        <button class="playlist-action-btn" id="btn-clear-all" title="Clear All">Clear</button>
+      </div>
+    </div>
+    <div class="playlist-list" id="playlist-list"></div>
+  </div>
+</div>
+
+<!-- Status Bar -->
+<div class="status-bar" id="status-bar">
+  <span class="status-section" id="status-track">No media loaded</span>
+  <span class="status-section" id="status-state">Stopped</span>
+  <span class="status-section" id="status-info"></span>
+</div>
+
+<!-- Hidden file input -->
+<input type="file" class="hidden-input" id="file-input" accept="audio/*,video/*,.mp3,.wav,.ogg,.flac,.m4a,.mp4,.webm" multiple>
+
+<!-- Hidden audio element -->
+<audio id="audio-player" preload="auto"></audio>
+
+<!-- Open URL Dialog -->
+<div class="dialog-overlay" id="dlg-open-url">
+  <div class="dialog">
+    <div class="dialog-title">Open URL</div>
+    <div class="dialog-body">
+      <p>Enter a streaming media URL:</p>
+      <input type="text" id="url-input" placeholder="https://example.com/stream.mp3">
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Open</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- About Dialog -->
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Media Player</div>
+    <div class="dialog-body" style="text-align: center; padding: 20px;">
+      <p style="font-weight: bold; font-size: 13px; margin-bottom: 12px;">Media Player</p>
+      <p>Audio and video player for &raquo;SynthelicZ&laquo;</p>
+      <p style="margin-top: 8px; font-size: 10px; opacity: 0.5;">Supports MP3, WAV, OGG, FLAC, M4A, MP4, WebM</p>
+      <p style="margin-top: 12px; font-size: 10px; opacity: 0.7;">&copy; 1995-2026 &raquo;SynthelicZ&laquo;</p>
+    </div>
+    <div class="dialog-buttons" style="justify-content: center;">
+      <button data-result="ok">OK</button>
+    </div>
+  </div>
+</div>
+
+<script src="controller.js"></script>
+</body>
+</html>

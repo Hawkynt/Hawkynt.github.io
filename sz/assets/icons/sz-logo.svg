@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <defs>
+    <linearGradient id="sg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3333FF"/>
+      <stop offset="100%" stop-color="#0000BB"/>
+    </linearGradient>
+    <linearGradient id="zg" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#A0A0A0"/>
+      <stop offset="100%" stop-color="#606060"/>
+    </linearGradient>
+  </defs>
+  <!-- S letter (blue) — top bar, diagonal lower-right, bottom bar -->
+  <path d="M0 0H21V9H6L21 36V48H0V36H15L0 9Z" fill="url(#sg)" stroke="#000066" stroke-width="0.5" stroke-linejoin="round"/>
+  <!-- S cyan highlight (top-left lit face) -->
+  <path d="M1 1L20 1V8H6L1 8Z" fill="#00FFFF" opacity="0.3"/>
+  <path d="M1 37H14L1 12Z" fill="#00FFFF" opacity="0.2"/>
+  <!-- Z letter (gray) — top bar, diagonal lower-left, bottom bar -->
+  <path d="M27 0H48V9L33 36H48V48H27V36L42 9H27Z" fill="url(#zg)" stroke="#404040" stroke-width="0.5" stroke-linejoin="round"/>
+  <!-- Z white highlight (top-right lit face) -->
+  <path d="M28 1H47V8H42L28 8Z" fill="#FFF" opacity="0.3"/>
+  <path d="M34 37H47V12Z" fill="#FFF" opacity="0.2"/>
+  <!-- Yellow lightning bolt accent (center gap) -->
+  <path d="M24 8L22 24H26L24 40" fill="none" stroke="#FFD700" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Green glow (S convergence) -->
+  <circle cx="5" cy="32" r="2" fill="#00AA00" opacity="0.6"/>
+  <!-- Red glow (Z convergence) -->
+  <circle cx="43" cy="32" r="2" fill="#FF0000" opacity="0.6"/>
+</svg>

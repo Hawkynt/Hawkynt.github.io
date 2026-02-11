@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Hex Editor</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Menu Bar -->
+<div class="menu-bar" id="menu-bar">
+  <div class="menu-item" data-menu="file">
+    File
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="new">New<span class="shortcut">Ctrl+N</span></div>
+      <div class="menu-entry" data-action="open">Open...<span class="shortcut">Ctrl+O</span></div>
+      <div class="menu-entry" data-action="save">Save<span class="shortcut">Ctrl+S</span></div>
+      <div class="menu-entry" data-action="save-as">Save As...</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="exit">Exit</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="edit">
+    Edit
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="undo">Undo<span class="shortcut">Ctrl+Z</span></div>
+      <div class="menu-entry" data-action="redo">Redo<span class="shortcut">Ctrl+Y</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="cut">Cut<span class="shortcut">Ctrl+X</span></div>
+      <div class="menu-entry" data-action="copy">Copy (Hex)<span class="shortcut">Ctrl+C</span></div>
+      <div class="menu-entry" data-action="paste">Paste<span class="shortcut">Ctrl+V</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="select-all">Select All<span class="shortcut">Ctrl+A</span></div>
+      <div class="menu-entry" data-action="goto">Go to Address...<span class="shortcut">Ctrl+G</span></div>
+      <div class="menu-entry" data-action="find">Find...<span class="shortcut">Ctrl+F</span></div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="view">
+    View
+    <div class="menu-dropdown">
+      <div class="menu-entry radio checked" data-action="bpr-8" data-bpr="8">8 Bytes per Row</div>
+      <div class="menu-entry radio checked" data-action="bpr-16" data-bpr="16">16 Bytes per Row</div>
+      <div class="menu-entry radio" data-action="bpr-32" data-bpr="32">32 Bytes per Row</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="help">
+    Help
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="about">About Hex Editor</div>
+    </div>
+  </div>
+</div>
+
+<!-- Hex view -->
+<div class="hex-container" id="hex-container">
+  <div class="hex-header" id="hex-header"></div>
+  <div class="hex-viewport" id="hex-viewport" tabindex="0">
+    <div class="hex-scroll-content" id="hex-scroll-content">
+      <div class="hex-rows" id="hex-rows"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Status bar -->
+<div class="status-bar" id="status-bar">
+  <span class="status-section" id="status-size">Size: 0 bytes</span>
+  <span class="status-section" id="status-offset">Offset: 00000000</span>
+  <span class="status-section" id="status-selection"></span>
+  <span class="status-section mode" id="status-mode">OVR</span>
+</div>
+
+<!-- Goto Address dialog -->
+<div class="dialog-overlay" id="dlg-goto">
+  <div class="dialog">
+    <div class="dialog-title">Go to Address</div>
+    <div class="dialog-body">
+      <label for="goto-input">Enter hex address:</label>
+      <input type="text" id="goto-input" placeholder="e.g. 00000100" autocomplete="off">
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Go</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Find dialog -->
+<div class="dialog-overlay" id="dlg-find">
+  <div class="dialog" style="min-width: 340px;">
+    <div class="dialog-title">Find</div>
+    <div class="dialog-body">
+      <div class="radio-group">
+        <label><input type="radio" name="find-type" value="hex" checked> Hex value</label>
+        <label><input type="radio" name="find-type" value="text"> Text (ASCII)</label>
+      </div>
+      <label for="find-input">Search for:</label>
+      <input type="text" id="find-input" placeholder="e.g. FF A0 48 65 or Hello" autocomplete="off">
+      <p id="find-status" style="margin-top: 8px; color: var(--sz-color-gray-text); min-height: 14px;"></p>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="prev">Find Prev</button>
+      <button data-result="next">Find Next</button>
+      <button data-result="cancel">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- About dialog -->
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Hex Editor</div>
+    <div class="dialog-body" style="text-align: center; padding: 20px;">
+      <p style="font-weight: bold; font-size: 13px; margin-bottom: 12px;">Hex Editor</p>
+      <p>A binary file editor for &raquo;SynthelicZ&laquo;</p>
+      <p style="margin-top: 8px; font-size: 10px;">View and edit files at the byte level.</p>
+      <p style="margin-top: 12px; font-size: 10px; opacity: 0.7;">&copy; 1995-2026 &raquo;SynthelicZ&laquo;</p>
+    </div>
+    <div class="dialog-buttons" style="justify-content: center;">
+      <button data-result="ok">OK</button>
+    </div>
+  </div>
+</div>
+
+<script src="controller.js"></script>
+</body>
+</html>

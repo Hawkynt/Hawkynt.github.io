@@ -1,0 +1,334 @@
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+
+  /* ---- Toolbar ---- */
+  .toolbar {
+    display: flex;
+    align-items: center;
+    padding: 3px 4px;
+    gap: 3px;
+    background: var(--sz-color-button-face);
+    border-bottom: 1px solid var(--sz-color-button-shadow);
+    flex-shrink: 0;
+    user-select: none;
+    flex-wrap: wrap;
+  }
+
+  .toolbar button {
+    padding: 2px 8px;
+    font-size: 11px;
+    font-family: Tahoma, Verdana, sans-serif;
+    cursor: default;
+    white-space: nowrap;
+  }
+
+  .toolbar button.active {
+    border-style: inset;
+    background: var(--sz-color-highlight);
+    color: var(--sz-color-highlight-text);
+  }
+
+  .toolbar button:disabled {
+    color: var(--sz-color-gray-text);
+    pointer-events: none;
+  }
+
+  .toolbar-sep {
+    width: 1px;
+    height: 20px;
+    background: var(--sz-color-button-shadow);
+    margin: 0 3px;
+    flex-shrink: 0;
+  }
+
+  .toolbar .stats {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--sz-color-button-text);
+    white-space: nowrap;
+    padding: 0 4px;
+  }
+
+  /* Intentional diff stat colors */
+  .stats .stat-add { color: #1a7f37; font-weight: bold; }
+  .stats .stat-del { color: #cf222e; font-weight: bold; }
+  .stats .stat-mod { color: #9a6700; font-weight: bold; }
+  .stats .stat-eq  { color: var(--sz-color-gray-text); }
+
+  /* ---- Options bar ---- */
+  .options-bar {
+    display: flex;
+    align-items: center;
+    padding: 2px 6px;
+    gap: 12px;
+    background: var(--sz-color-button-face);
+    border-bottom: 1px solid var(--sz-color-button-shadow);
+    flex-shrink: 0;
+    user-select: none;
+    font-size: 11px;
+  }
+
+  .options-bar label {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    cursor: default;
+    color: var(--sz-color-button-text);
+  }
+
+  /* ---- Main content area ---- */
+  .main-area {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* ---- Side-by-side panels ---- */
+  .panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 0;
+  }
+
+  .panel-header {
+    padding: 3px 8px;
+    background: var(--sz-color-button-face);
+    border-bottom: 1px solid var(--sz-color-button-shadow);
+    font-weight: bold;
+    font-size: 11px;
+    color: var(--sz-color-button-text);
+    user-select: none;
+    flex-shrink: 0;
+  }
+
+  .panel-splitter {
+    width: 4px;
+    background: var(--sz-color-button-face);
+    border-left: 1px solid var(--sz-color-button-shadow);
+    border-right: 1px solid var(--sz-color-button-shadow);
+    cursor: col-resize;
+    flex-shrink: 0;
+  }
+
+  .panel-content {
+    flex: 1;
+    overflow: auto;
+    background: var(--sz-color-window);
+    font-family: 'Consolas', 'Lucida Console', 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 18px;
+    position: relative;
+  }
+
+  /* ---- Text input areas (when editable) ---- */
+  .panel-textarea {
+    width: 100%;
+    height: 100%;
+    border: none;
+    outline: none;
+    resize: none;
+    font-family: 'Consolas', 'Lucida Console', 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 18px;
+    padding: 4px 8px;
+    background: var(--sz-color-window);
+    color: var(--sz-color-window-text);
+    tab-size: 4;
+  }
+
+  /* ---- Diff lines ---- */
+  .diff-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .diff-line {
+    display: flex;
+    min-height: 18px;
+  }
+
+  .line-gutter {
+    flex-shrink: 0;
+    width: 16px;
+    text-align: center;
+    font-size: 11px;
+    color: var(--sz-color-gray-text);
+    user-select: none;
+    border-right: 1px solid var(--sz-color-button-shadow);
+  }
+
+  .line-number {
+    flex-shrink: 0;
+    width: 48px;
+    text-align: right;
+    padding-right: 6px;
+    font-size: 11px;
+    color: var(--sz-color-gray-text);
+    user-select: none;
+    border-right: 1px solid var(--sz-color-button-shadow);
+  }
+
+  .line-text {
+    flex: 1;
+    padding: 0 6px;
+    white-space: pre;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--sz-color-window-text);
+  }
+
+  /* Side-by-side diff colors -- intentional diff semantic colors */
+  .diff-line.added {
+    background: #e6ffec;
+  }
+
+  .diff-line.added .line-gutter {
+    background: #ccffd8;
+    color: #1a7f37;
+  }
+
+  .diff-line.deleted {
+    background: #ffebe9;
+  }
+
+  .diff-line.deleted .line-gutter {
+    background: #ffd7d5;
+    color: #cf222e;
+  }
+
+  .diff-line.modified {
+    background: #fff8c5;
+  }
+
+  .diff-line.modified .line-gutter {
+    background: #fff2a8;
+    color: #9a6700;
+  }
+
+  .diff-line.empty-placeholder {
+    background: #f6f8fa;
+  }
+
+  .diff-line.empty-placeholder .line-text {
+    color: transparent;
+  }
+
+  /* Character-level highlights -- intentional diff colors */
+  .char-add {
+    background: #abf2bc;
+    border-radius: 2px;
+  }
+
+  .char-del {
+    background: #ffc1ba;
+    border-radius: 2px;
+  }
+
+  .char-mod {
+    background: #ffe17e;
+    border-radius: 2px;
+  }
+
+  /* Unified view colors -- intentional diff colors */
+  .diff-line.unified-add {
+    background: #e6ffec;
+  }
+
+  .diff-line.unified-add .line-gutter {
+    background: #ccffd8;
+    color: #1a7f37;
+  }
+
+  .diff-line.unified-del {
+    background: #ffebe9;
+  }
+
+  .diff-line.unified-del .line-gutter {
+    background: #ffd7d5;
+    color: #cf222e;
+  }
+
+  .diff-line.unified-ctx {
+    background: var(--sz-color-window);
+  }
+
+  .diff-line.hunk-header {
+    background: #ddf4ff;
+    color: #0969da;
+    font-style: italic;
+  }
+
+  .diff-line.hunk-header .line-text {
+    color: #0969da;
+  }
+
+  /* Inline view -- intentional diff colors */
+  .inline-del {
+    background: #ffc1ba;
+    text-decoration: line-through;
+    color: #cf222e;
+  }
+
+  .inline-add {
+    background: #abf2bc;
+    color: #1a7f37;
+  }
+
+  /* ---- Current diff highlight ---- */
+  .diff-line.current-diff {
+    outline: 2px solid var(--sz-color-highlight);
+    outline-offset: -2px;
+  }
+
+  /* ---- Unified panel (single) ---- */
+  .unified-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .unified-panel .panel-content {
+    flex: 1;
+  }
+
+  /* ---- Status bar ---- */
+  .status-bar {
+    display: flex;
+    align-items: center;
+    padding: 2px 8px;
+    background: var(--sz-color-button-face);
+    border-top: 1px solid var(--sz-color-button-shadow);
+    font-size: 11px;
+    color: var(--sz-color-button-text);
+    flex-shrink: 0;
+    user-select: none;
+    gap: 16px;
+  }
+
+  .status-bar .status-section {
+    white-space: nowrap;
+  }
+
+  /* ---- Empty / placeholder ---- */
+  .empty-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--sz-color-gray-text);
+    font-size: 12px;
+    font-style: italic;
+    font-family: Tahoma, Verdana, sans-serif;
+    text-align: center;
+    padding: 20px;
+  }

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <!-- Document body -->
+  <rect x="6" y="2" width="36" height="44" rx="2" fill="#f8f8f0" stroke="#555" stroke-width="1.5"/>
+  <!-- Folded corner -->
+  <polygon points="32,2 42,12 32,12" fill="#ddd" stroke="#555" stroke-width="0.75"/>
+  <!-- JSON curly braces -->
+  <text x="24" y="28" font-family="Consolas,monospace" font-size="22" fill="#336699" text-anchor="middle" font-weight="bold">{}</text>
+  <!-- Colored content hints -->
+  <text x="16" y="37" font-family="Consolas,monospace" font-size="4" fill="#2e7d32">"k"</text>
+  <text x="23" y="37" font-family="Consolas,monospace" font-size="4" fill="#555">:</text>
+  <text x="27" y="37" font-family="Consolas,monospace" font-size="4" fill="#1565c0">42</text>
+  <!-- Small tree dots on left -->
+  <circle cx="11" y="20" cy="20" r="1" fill="#f9a825"/>
+  <circle cx="11" y="24" cy="24" r="1" fill="#2e7d32"/>
+  <circle cx="11" y="28" cy="28" r="1" fill="#1565c0"/>
+  <line x1="11" y1="21" x2="11" y2="23" stroke="#999" stroke-width="0.5"/>
+  <line x1="11" y1="25" x2="11" y2="27" stroke="#999" stroke-width="0.5"/>
+</svg>

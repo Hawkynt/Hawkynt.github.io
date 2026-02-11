@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Color Picker</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- Visual color selection area -->
+  <div id="visual-area">
+    <div id="sv-wrap">
+      <canvas id="sv-canvas"></canvas>
+      <div id="sv-cursor"></div>
+    </div>
+    <div id="hue-wrap">
+      <canvas id="hue-canvas"></canvas>
+      <div id="hue-slider"></div>
+    </div>
+    <div id="alpha-wrap">
+      <canvas id="alpha-canvas"></canvas>
+      <div id="alpha-slider"></div>
+    </div>
+  </div>
+
+  <!-- Right panel: preview + tabs + values -->
+  <div id="right-panel">
+
+    <!-- Preview boxes -->
+    <div>
+      <div id="preview-area">
+        <div>
+          <div class="preview-box" id="preview-new"><div class="checker"></div><div class="swatch" id="swatch-new"></div></div>
+          <div class="preview-label">New</div>
+        </div>
+        <div>
+          <div class="preview-box" id="preview-old"><div class="checker"></div><div class="swatch" id="swatch-old"></div></div>
+          <div class="preview-label">Current</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hex / CSS inputs -->
+    <div>
+      <div class="hex-row">
+        <label>Hex</label>
+        <input type="text" id="hex-input" maxlength="9" spellcheck="false">
+        <button id="btn-copy-hex" title="Copy hex to clipboard">Copy</button>
+      </div>
+      <div class="hex-row">
+        <label>CSS</label>
+        <input type="text" id="css-input" readonly spellcheck="false">
+        <button id="btn-copy-css" title="Copy CSS to clipboard">Copy</button>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div id="tab-bar">
+      <button class="tab-btn active" data-tab="rgb">RGB</button>
+      <button class="tab-btn" data-tab="hsl">HSL</button>
+      <button class="tab-btn" data-tab="hsv">HSV</button>
+      <button class="tab-btn" data-tab="cmyk">CMYK</button>
+    </div>
+    <div id="tab-content">
+
+      <!-- RGB panel -->
+      <div class="tab-panel active" id="panel-rgb">
+        <div class="slider-row">
+          <label>R</label>
+          <input type="range" id="sl-r" min="0" max="255" value="255">
+          <input type="number" id="num-r" min="0" max="255" value="255">
+        </div>
+        <div class="slider-row">
+          <label>G</label>
+          <input type="range" id="sl-g" min="0" max="255" value="0">
+          <input type="number" id="num-g" min="0" max="255" value="0">
+        </div>
+        <div class="slider-row">
+          <label>B</label>
+          <input type="range" id="sl-b" min="0" max="255" value="0">
+          <input type="number" id="num-b" min="0" max="255" value="0">
+        </div>
+        <div class="section-label">Float (0.0 - 1.0)</div>
+        <div class="float-grid">
+          <label>R</label><input type="text" id="float-r" readonly>
+          <label>G</label><input type="text" id="float-g" readonly>
+          <label>B</label><input type="text" id="float-b" readonly>
+          <label>A</label><input type="text" id="float-a" readonly>
+        </div>
+      </div>
+
+      <!-- HSL panel -->
+      <div class="tab-panel" id="panel-hsl">
+        <div class="slider-row">
+          <label>H</label>
+          <input type="range" id="sl-hsl-h" min="0" max="360" value="0">
+          <input type="number" id="num-hsl-h" min="0" max="360" value="0">
+        </div>
+        <div class="slider-row">
+          <label>S</label>
+          <input type="range" id="sl-hsl-s" min="0" max="100" value="100">
+          <input type="number" id="num-hsl-s" min="0" max="100" value="100">
+        </div>
+        <div class="slider-row">
+          <label>L</label>
+          <input type="range" id="sl-hsl-l" min="0" max="100" value="50">
+          <input type="number" id="num-hsl-l" min="0" max="100" value="50">
+        </div>
+      </div>
+
+      <!-- HSV panel -->
+      <div class="tab-panel" id="panel-hsv">
+        <div class="slider-row">
+          <label>H</label>
+          <input type="range" id="sl-hsv-h" min="0" max="360" value="0">
+          <input type="number" id="num-hsv-h" min="0" max="360" value="0">
+        </div>
+        <div class="slider-row">
+          <label>S</label>
+          <input type="range" id="sl-hsv-s" min="0" max="100" value="100">
+          <input type="number" id="num-hsv-s" min="0" max="100" value="100">
+        </div>
+        <div class="slider-row">
+          <label>V</label>
+          <input type="range" id="sl-hsv-v" min="0" max="100" value="100">
+          <input type="number" id="num-hsv-v" min="0" max="100" value="100">
+        </div>
+      </div>
+
+      <!-- CMYK panel -->
+      <div class="tab-panel" id="panel-cmyk">
+        <div class="slider-row">
+          <label>C</label>
+          <input type="range" id="sl-c" min="0" max="100" value="0">
+          <input type="number" id="num-c" min="0" max="100" value="0">
+        </div>
+        <div class="slider-row">
+          <label>M</label>
+          <input type="range" id="sl-m" min="0" max="100" value="100">
+          <input type="number" id="num-m" min="0" max="100" value="100">
+        </div>
+        <div class="slider-row">
+          <label>Y</label>
+          <input type="range" id="sl-y" min="0" max="100" value="100">
+          <input type="number" id="num-y" min="0" max="100" value="100">
+        </div>
+        <div class="slider-row">
+          <label>K</label>
+          <input type="range" id="sl-k" min="0" max="100" value="0">
+          <input type="number" id="num-k" min="0" max="100" value="0">
+        </div>
+      </div>
+    </div>
+
+    <!-- Alpha slider -->
+    <div>
+      <div class="slider-row">
+        <label>A</label>
+        <input type="range" id="sl-alpha" min="0" max="100" value="100">
+        <input type="number" id="num-alpha" min="0" max="100" value="100">
+      </div>
+    </div>
+
+    <!-- Eyedropper -->
+    <div>
+      <button id="btn-eyedropper" title="Pick color from screen (if supported)">Eyedropper</button>
+    </div>
+
+  </div>
+
+  <!-- Bottom palette area -->
+  <div id="palette-area">
+    <div class="palette-section-label">Basic Colors</div>
+    <div class="palette-grid" id="basic-palette"></div>
+    <div class="palette-section-label">Custom Colors</div>
+    <div class="palette-grid" id="custom-palette"></div>
+    <div id="palette-buttons">
+      <button id="btn-add-custom">Add to Custom Colors</button>
+      <button id="btn-set-old">Set as Current</button>
+    </div>
+  </div>
+
+</div>
+<script src="controller.js"></script>
+</body>
+</html>

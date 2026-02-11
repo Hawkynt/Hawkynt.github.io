@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Markdown Editor</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Menu Bar -->
+<div class="menu-bar" id="menu-bar">
+  <div class="menu-item" data-menu="file">
+    File
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="new">New<span class="shortcut">Ctrl+N</span></div>
+      <div class="menu-entry" data-action="open">Open...<span class="shortcut">Ctrl+O</span></div>
+      <div class="menu-entry" data-action="save">Save<span class="shortcut">Ctrl+S</span></div>
+      <div class="menu-entry" data-action="save-as">Save As...</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="exit">Exit</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="edit">
+    Edit
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="undo">Undo<span class="shortcut">Ctrl+Z</span></div>
+      <div class="menu-entry" data-action="redo">Redo<span class="shortcut">Ctrl+Y</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="cut">Cut<span class="shortcut">Ctrl+X</span></div>
+      <div class="menu-entry" data-action="copy">Copy<span class="shortcut">Ctrl+C</span></div>
+      <div class="menu-entry" data-action="paste">Paste<span class="shortcut">Ctrl+V</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="select-all">Select All<span class="shortcut">Ctrl+A</span></div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="insert">
+    Insert
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="insert-heading">Heading</div>
+      <div class="menu-entry" data-action="insert-bold">Bold<span class="shortcut">Ctrl+B</span></div>
+      <div class="menu-entry" data-action="insert-italic">Italic<span class="shortcut">Ctrl+I</span></div>
+      <div class="menu-entry" data-action="insert-code">Inline Code</div>
+      <div class="menu-entry" data-action="insert-code-block">Code Block</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="insert-link">Link<span class="shortcut">Ctrl+K</span></div>
+      <div class="menu-entry" data-action="insert-image">Image</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="insert-list">Bullet List</div>
+      <div class="menu-entry" data-action="insert-olist">Numbered List</div>
+      <div class="menu-entry" data-action="insert-blockquote">Blockquote</div>
+      <div class="menu-entry" data-action="insert-hr">Horizontal Rule</div>
+      <div class="menu-entry" data-action="insert-table">Table</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="view">
+    View
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="view-split">Split View</div>
+      <div class="menu-entry" data-action="view-source">Source Only</div>
+      <div class="menu-entry" data-action="view-preview">Preview Only</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="help">
+    Help
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="about">About Markdown Editor</div>
+    </div>
+  </div>
+</div>
+
+<!-- Toolbar -->
+<div class="toolbar" id="toolbar">
+  <button data-action="insert-heading" title="Heading">H</button>
+  <button data-action="insert-bold" title="Bold (Ctrl+B)"><b>B</b></button>
+  <button data-action="insert-italic" title="Italic (Ctrl+I)"><i>I</i></button>
+  <button data-action="insert-code" title="Inline Code">&lt;/&gt;</button>
+  <div class="tb-sep"></div>
+  <button data-action="insert-link" title="Link (Ctrl+K)">&#128279;</button>
+  <button data-action="insert-image" title="Image">&#128247;</button>
+  <div class="tb-sep"></div>
+  <button data-action="insert-list" title="Bullet List">&#8226;</button>
+  <button data-action="insert-olist" title="Numbered List">1.</button>
+  <button data-action="insert-blockquote" title="Blockquote">&gt;</button>
+  <div class="tb-sep"></div>
+  <button data-action="insert-table" title="Table">&#9638;</button>
+  <button data-action="insert-hr" title="Horizontal Rule">&#8213;</button>
+  <div class="tb-sep"></div>
+  <button data-action="view-split" class="active" title="Split View">&#9635;</button>
+  <button data-action="view-source" title="Source Only">&#9776;</button>
+  <button data-action="view-preview" title="Preview Only">&#9673;</button>
+</div>
+
+<!-- Split panes -->
+<div class="split-container" id="split-container">
+  <div class="source-pane">
+    <textarea id="source" spellcheck="false" placeholder="Type Markdown here..."></textarea>
+  </div>
+  <div class="splitter" id="splitter"></div>
+  <div class="preview-pane" id="preview"></div>
+</div>
+
+<!-- Status bar -->
+<div class="status-bar" id="status-bar">
+  <span class="status-section" id="status-pos">Ln 1, Col 1</span>
+  <span class="status-section" id="status-words">Words: 0</span>
+</div>
+
+<!-- Save-changes dialog -->
+<div class="dialog-overlay" id="dlg-save-changes">
+  <div class="dialog">
+    <div class="dialog-title">Markdown Editor</div>
+    <div class="dialog-body">
+      <p>The document has been changed.</p>
+      <p>Do you want to save the changes?</p>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="yes">Yes</button>
+      <button data-result="no">No</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- About dialog -->
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Markdown Editor</div>
+    <div class="dialog-body" style="text-align: center; padding: 20px;">
+      <p style="font-weight: bold; font-size: 13px; margin-bottom: 12px;">Markdown Editor</p>
+      <p>A Markdown editor with live preview for &raquo;SynthelicZ&laquo;</p>
+      <p style="margin-top: 12px; font-size: 10px; opacity: 0.7;">&copy; 1995-2026 &raquo;SynthelicZ&laquo;</p>
+    </div>
+    <div class="dialog-buttons" style="justify-content: center;">
+      <button data-result="ok">OK</button>
+    </div>
+  </div>
+</div>
+
+<script src="controller.js"></script>
+</body>
+</html>
