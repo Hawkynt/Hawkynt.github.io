@@ -143,14 +143,9 @@
       el.style.width = `${this.#config.width}px`;
       el.style.height = `${this.#config.height}px`;
 
-      // Row 1: nw, n (with title bar), ne
+      // Row 1: nw, n, ne
       el.appendChild(this.#createCell('nw'));
-
-      const nCell = this.#createCell('n');
-      this.#titleBarEl = this.#buildTitleBar();
-      nCell.appendChild(this.#titleBarEl);
-      el.appendChild(nCell);
-
+      el.appendChild(this.#createCell('n'));
       el.appendChild(this.#createCell('ne'));
 
       // Row 2: w, content, e
@@ -167,6 +162,10 @@
       el.appendChild(this.#createCell('sw'));
       el.appendChild(this.#createCell('s'));
       el.appendChild(this.#createCell('se'));
+
+      // Title bar overlays the full top row (grid placement via CSS)
+      this.#titleBarEl = this.#buildTitleBar();
+      el.appendChild(this.#titleBarEl);
 
       // Resize handles
       if (this.#config.resizable)
@@ -244,17 +243,45 @@
         btn.style.backgroundSize = '';
         btn.style.backgroundRepeat = '';
         btn.style.backgroundPosition = '';
+        btn.style.position = '';
+        btn.style.left = '';
+        btn.style.right = '';
+        btn.style.top = '';
+        btn.style.width = '';
+        btn.style.height = '';
 
         if (!titleButtons?.length)
           continue;
 
         const action = btn.dataset.action;
         const entry = this.#findSkinButton(titleButtons, action);
-        if (entry?.image) {
-          btn.style.backgroundImage = `url('${entry.image}')`;
-          btn.style.backgroundSize = '600% 100%';
-          btn.style.backgroundRepeat = 'no-repeat';
+        if (!entry?.image)
+          continue;
+
+        btn.style.backgroundImage = `url('${entry.image}')`;
+        btn.style.backgroundSize = '600% 100%';
+        btn.style.backgroundRepeat = 'no-repeat';
+
+        // Position button using skin coordinates (absolute within window border)
+        // xcoord is the distance from the alignment edge to the button's left edge
+        btn.style.position = 'absolute';
+        btn.style.top = `${entry.ycoord || 0}px`;
+        if (entry.align === 1) {
+          btn.style.left = `calc(100% - ${entry.xcoord || 0}px)`;
+          btn.style.right = 'auto';
+        } else {
+          btn.style.left = `${entry.xcoord || 0}px`;
+          btn.style.right = 'auto';
         }
+
+        // Load image to determine button dimensions from sprite
+        const b = btn;
+        const img = new Image();
+        img.onload = function() {
+          b.style.width = `${Math.floor(this.naturalWidth / 6)}px`;
+          b.style.height = `${this.naturalHeight}px`;
+        };
+        img.src = entry.image;
       }
     }
 

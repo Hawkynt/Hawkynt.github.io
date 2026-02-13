@@ -125,7 +125,7 @@
   }
 
   function _parseControlButtons(b, key, val, base) {
-    const intKeys = new Set(['topheight', 'bottomheight', 'leftwidth', 'rightwidth', 'mouseover']);
+    const intKeys = new Set(['topheight', 'bottomheight', 'leftwidth', 'rightwidth', 'mouseover', 'framecount', 'mouseenterstartframe', 'mouseoverstartframe', 'mouseoverstopframe', 'animtimerrate', 'mouseleavemode', 'trans', 'alpha']);
     const pathKeys = new Set(['checkbutton', 'checkbuttonmask', 'radiobutton', 'bitmap', 'bitmapmask']);
     if (intKeys.has(key))
       b[key] = parseInt(val, 10);

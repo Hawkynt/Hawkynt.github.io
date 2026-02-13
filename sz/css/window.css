@@ -119,18 +119,20 @@
 }
 
 /* --------------------------------------------------------------------------
-   Title Bar (absolutely positioned inside the north edge cell)
+   Title Bar — spans the full top row of the window grid (all 5 columns)
+   so that button coordinates from the skin are relative to the full width.
    -------------------------------------------------------------------------- */
 
 .sz-title-bar {
-  position: absolute;
-  inset: 0;
+  grid-column: 1 / -1;
+  grid-row: 1;
+  position: relative;
   display: flex;
   align-items: center;
   padding: 0 4px;
   pointer-events: auto;
   cursor: default;
-  z-index: 1;
+  z-index: 2;
 }
 
 .sz-title-icon {
@@ -159,15 +161,15 @@
 
 /* --------------------------------------------------------------------------
    Title Buttons (minimize / maximize-restore / close)
-   Button BMPs are 126x21 = 6 frames of 21x21:
+   Button BMPs contain 6 horizontal frames:
      [active-normal, active-pressed, active-disabled,
       inactive-normal, inactive-pressed, inactive-disabled]
+   Width/height and position are applied per-button by window.js from skin
+   data.  The flex layout here is a fallback for unskinned windows.
    -------------------------------------------------------------------------- */
 
 .sz-title-buttons {
-  display: flex;
-  gap: 0;
-  margin-left: auto;
+  display: contents;
 }
 
 .sz-title-buttons button {

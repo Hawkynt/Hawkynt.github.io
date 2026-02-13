@@ -535,8 +535,16 @@
   }
 
   /**
-   * Raw fallback for corner cells (NW, NE, SW, SE) — composite the horizontal
-   * border image on top of the vertical border image using CSS multi-background.
+   * Raw fallback for corner cells (NW, NE, SW, SE).
+   *
+   * Without canvas we cannot apply magenta transparency, so multi-background
+   * compositing fails — the top layer completely covers the bottom one.
+   * Instead we use:
+   *   - main background:  horizontal border image (top/bottom)
+   *   - ::before pseudo:  vertical border strip (left/right) on the side edge
+   *
+   * The ::before is painted above the parent's background but below the
+   * ::after sub-skin tinting overlay, giving correct layer order.
    */
   function _buildRawCornerCSS(rules, cellName, cell, anirate) {
     const { horiz, vert } = cell;
@@ -546,69 +554,88 @@
     const isLeft = cellName === 'nw' || cellName === 'sw';
     const isTop  = cellName === 'nw' || cellName === 'ne';
 
-    // Position for horizontal border image (top/bottom) at given frame index
-    const horizPos = (fi) => {
-      if (!horiz) return null;
-      const x = isLeft ? '0' : 'right';
-      const y = horiz.frameCount > 1 ? `-${fi * horiz.frameHeight}px` : '0';
-      return `${x} ${y}`;
-    };
-
-    // Position for vertical border image (left/right) at given frame index
-    const vertPos = (fi) => {
-      if (!vert) return null;
-      const x = vert.frameCount > 1 ? `-${fi * vert.frameWidth}px` : '0';
-      const y = isTop ? '0' : 'bottom';
-      return `${x} ${y}`;
-    };
-
-    // Build multi-background property set for given frame indices
-    const bgFull = (hfi, vfi) => {
-      const imgs = [], positions = [], sizes = [], repeats = [];
-      if (horiz) {
-        imgs.push(`url('${horiz.rawPath}')`);
-        positions.push(horizPos(hfi));
-        sizes.push('auto');
-        repeats.push('no-repeat');
-      }
-      if (vert) {
-        imgs.push(`url('${vert.rawPath}')`);
-        positions.push(vertPos(vfi));
-        sizes.push('auto');
-        repeats.push('no-repeat');
-      }
-      return { img: imgs.join(', '), pos: positions.join(', '), size: sizes.join(', '), rep: repeats.join(', ') };
-    };
-
     const primary = horiz || vert;
     const fc = primary.frameCount;
     const activeIdx = 0;
     const inactiveIdx = fc - 1;
 
+    // --- Horizontal border as main cell background ---
+    if (horiz) {
+      const horizPos = (fi) => {
+        const x = isLeft ? '0' : 'right';
+        const y = fc > 1 ? `-${fi * horiz.frameHeight}px` : '0';
+        return `${x} ${y}`;
+      };
+
+      if (fc <= 2) {
+        rules.push(`.sz-window-active .sz-frame-${cellName} { background-image: url('${horiz.rawPath}'); background-position: ${horizPos(activeIdx)}; background-size: auto; background-repeat: no-repeat; }`);
+        rules.push(`.sz-window:not(.sz-window-active) .sz-frame-${cellName} { background-image: url('${horiz.rawPath}'); background-position: ${horizPos(inactiveIdx)}; background-size: auto; background-repeat: no-repeat; }`);
+      } else {
+        const activeFrameCount = fc - 1;
+        const duration = anirate * activeFrameCount;
+        const animName = `sz-frame-${cellName}-active`;
+        let kf = `@keyframes ${animName} {\n`;
+        for (let i = 0; i < activeFrameCount; ++i)
+          kf += `  ${((i / activeFrameCount) * 100).toFixed(2)}% { background-position: ${horizPos(i)}; }\n`;
+        kf += '}';
+        rules.push(kf);
+        rules.push(`.sz-window-active .sz-frame-${cellName} { background-image: url('${horiz.rawPath}'); background-size: auto; background-repeat: no-repeat; animation: ${animName} ${duration}ms steps(1) infinite; }`);
+        rules.push(`.sz-window:not(.sz-window-active) .sz-frame-${cellName} { background-image: url('${horiz.rawPath}'); background-position: ${horizPos(inactiveIdx)}; background-size: auto; background-repeat: no-repeat; animation: none; }`);
+      }
+    } else {
+      // Only vertical border — use it as the main background directly
+      const vertBgPos = (fi) => {
+        const x = vert.frameCount > 1 ? `-${fi * vert.frameWidth}px` : '0';
+        const y = isTop ? '0' : 'bottom';
+        return `${x} ${y}`;
+      };
+
+      if (fc <= 2) {
+        rules.push(`.sz-window-active .sz-frame-${cellName} { background-image: url('${vert.rawPath}'); background-position: ${vertBgPos(activeIdx)}; background-size: auto; background-repeat: no-repeat; }`);
+        rules.push(`.sz-window:not(.sz-window-active) .sz-frame-${cellName} { background-image: url('${vert.rawPath}'); background-position: ${vertBgPos(inactiveIdx)}; background-size: auto; background-repeat: no-repeat; }`);
+      } else {
+        const activeFrameCount = fc - 1;
+        const duration = anirate * activeFrameCount;
+        const animName = `sz-frame-${cellName}-active`;
+        let kf = `@keyframes ${animName} {\n`;
+        for (let i = 0; i < activeFrameCount; ++i)
+          kf += `  ${((i / activeFrameCount) * 100).toFixed(2)}% { background-position: ${vertBgPos(i)}; }\n`;
+        kf += '}';
+        rules.push(kf);
+        rules.push(`.sz-window-active .sz-frame-${cellName} { background-image: url('${vert.rawPath}'); background-size: auto; background-repeat: no-repeat; animation: ${animName} ${duration}ms steps(1) infinite; }`);
+        rules.push(`.sz-window:not(.sz-window-active) .sz-frame-${cellName} { background-image: url('${vert.rawPath}'); background-position: ${vertBgPos(inactiveIdx)}; background-size: auto; background-repeat: no-repeat; animation: none; }`);
+      }
+      return; // No ::before needed when only vertical border
+    }
+
+    // --- Vertical border as ::before strip on the side edge ---
+    if (!vert)
+      return;
+
+    const vertFW = vert.frameWidth;
+    const side = isLeft ? 'left: 0;' : 'right: 0;';
+    const beforeBase = `content: ''; position: absolute; top: 0; ${side} width: ${vertFW}px; height: 100%; background-repeat: no-repeat; background-size: auto; pointer-events: none;`;
+
+    const vertBeforePos = (fi) => {
+      const x = vert.frameCount > 1 ? `-${fi * vertFW}px` : '0';
+      const y = isTop ? '0' : 'bottom';
+      return `${x} ${y}`;
+    };
+
     if (fc <= 2) {
-      const active = bgFull(activeIdx, activeIdx);
-      const inactive = bgFull(inactiveIdx, inactiveIdx);
-      rules.push(`.sz-window-active .sz-frame-${cellName} { background-image: ${active.img}; background-position: ${active.pos}; background-size: ${active.size}; background-repeat: ${active.rep}; }`);
-      rules.push(`.sz-window:not(.sz-window-active) .sz-frame-${cellName} { background-image: ${inactive.img}; background-position: ${inactive.pos}; background-size: ${inactive.size}; background-repeat: ${inactive.rep}; }`);
+      rules.push(`.sz-window-active .sz-frame-${cellName}::before { ${beforeBase} background-image: url('${vert.rawPath}'); background-position: ${vertBeforePos(activeIdx)}; }`);
+      rules.push(`.sz-window:not(.sz-window-active) .sz-frame-${cellName}::before { ${beforeBase} background-image: url('${vert.rawPath}'); background-position: ${vertBeforePos(inactiveIdx)}; }`);
     } else {
       const activeFrameCount = fc - 1;
       const duration = anirate * activeFrameCount;
-      const animName = `sz-frame-${cellName}-active`;
-
-      let keyframes = `@keyframes ${animName} {\n`;
-      for (let i = 0; i < activeFrameCount; ++i) {
-        const pct = ((i / activeFrameCount) * 100).toFixed(2);
-        const frame = bgFull(i, i);
-        keyframes += `  ${pct}% { background-position: ${frame.pos}; }\n`;
-      }
-      keyframes += '}';
-      rules.push(keyframes);
-
-      const frame0 = bgFull(0, 0);
-      rules.push(`.sz-window-active .sz-frame-${cellName} { background-image: ${frame0.img}; background-size: ${frame0.size}; background-repeat: ${frame0.rep}; animation: ${animName} ${duration}ms steps(1) infinite; }`);
-
-      const inactive = bgFull(inactiveIdx, inactiveIdx);
-      rules.push(`.sz-window:not(.sz-window-active) .sz-frame-${cellName} { background-image: ${inactive.img}; background-position: ${inactive.pos}; background-size: ${inactive.size}; background-repeat: ${inactive.rep}; animation: none; }`);
+      const animName = `sz-frame-${cellName}-before-active`;
+      let kf = `@keyframes ${animName} {\n`;
+      for (let i = 0; i < activeFrameCount; ++i)
+        kf += `  ${((i / activeFrameCount) * 100).toFixed(2)}% { background-position: ${vertBeforePos(i)}; }\n`;
+      kf += '}';
+      rules.push(kf);
+      rules.push(`.sz-window-active .sz-frame-${cellName}::before { ${beforeBase} background-image: url('${vert.rawPath}'); animation: ${animName} ${duration}ms steps(1) infinite; }`);
+      rules.push(`.sz-window:not(.sz-window-active) .sz-frame-${cellName}::before { ${beforeBase} background-image: url('${vert.rawPath}'); background-position: ${vertBeforePos(inactiveIdx)}; animation: none; }`);
     }
   }
 
