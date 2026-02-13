@@ -261,9 +261,14 @@ button:hover {
     color: #06221c; 
   }
   
-  .b6 { 
-    background: linear-gradient(90deg, #ffd36a, #ff7a7a); 
-    color: #2b1a00; 
+  .b6 {
+    background: linear-gradient(90deg, #ffd36a, #ff7a7a);
+    color: #2b1a00;
+  }
+
+  .b7 {
+    background: linear-gradient(90deg, #6ac5ff, #b06aff);
+    color: #0a0a2e;
   }
 
   .sparkle { 
