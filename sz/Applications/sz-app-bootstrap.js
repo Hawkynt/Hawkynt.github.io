@@ -540,6 +540,41 @@
         content: options?.content,
       });
     },
+
+    ImportFile(options) {
+      return new Promise(resolve => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        if (options?.accept) input.accept = options.accept;
+        input.style.display = 'none';
+        document.body.appendChild(input);
+        const cleanup = () => document.body.removeChild(input);
+        input.addEventListener('change', () => {
+          const file = input.files[0];
+          if (!file) { cleanup(); resolve({ cancelled: true }); return; }
+          const reader = new FileReader();
+          reader.onload = () => { cleanup(); resolve({ cancelled: false, data: reader.result, name: file.name, size: file.size }); };
+          reader.onerror = () => { cleanup(); resolve({ cancelled: true }); };
+          const readAs = options?.readAs || 'arrayBuffer';
+          if (readAs === 'text') reader.readAsText(file);
+          else if (readAs === 'dataURL') reader.readAsDataURL(file);
+          else reader.readAsArrayBuffer(file);
+        });
+        input.click();
+      });
+    },
+
+    ExportFile(data, filename, mimeType) {
+      const blob = data instanceof Blob ? data : new Blob([data], { type: mimeType || 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    },
   };
 
   // ── SZ.Dlls.Advapi32 ───────────────────────────────────────────

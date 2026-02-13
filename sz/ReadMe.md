@@ -131,6 +131,10 @@ sz/
   Applications/
     manifest.js                 Inline app registry with file type associations (sets SZ.manifest)
     sz-app-bootstrap.js         DLL-like API library: SZ.Dlls.User32/Kernel32/GDI32/Shell32/ComDlg32/Advapi32, theme injection, WindowProc dispatch, standalone redirect
+    libs/                       Vendored third-party libraries (offline-capable)
+      mammoth.browser.min.js    DOCX→HTML converter (BSD-2)
+      jszip.min.js              ZIP creation for DOCX export (MIT)
+      xlsx.full.min.js          XLSX read/write — SheetJS Community Edition (Apache 2.0)
     about/                      About »SynthelicZ« (Accessories)
     calculator/                 Classic calculator (Accessories)
     control-panel/              System configuration (hidden, launched via start menu)
@@ -637,6 +641,7 @@ On load, the control panel sends `{ type: 'sz:getSettings' }` and the desktop re
   ],
   background: { src: 'assets/backgrounds/default.jpg', mode: 'cover' },
   availableBackgrounds: [{ name: 'Bliss', src: 'assets/backgrounds/default.jpg' }],
+  cursor: { shadow: false, trail: false, trailLen: 5 },
 }
 ```
 
@@ -737,6 +742,9 @@ window.parent.postMessage({ type: 'sz:setBackgroundColor', color: '#003366' }, '
 window.parent.postMessage({ type: 'sz:setIconPack', packName: 'default' }, '*');
 window.parent.postMessage({ type: 'sz:setCursorTheme', themeName: 'default' }, '*');
 window.parent.postMessage({ type: 'sz:setSetting', key: 'animations', value: true }, '*');
+window.parent.postMessage({ type: 'sz:cursorSetting', key: 'shadow', value: true }, '*');
+window.parent.postMessage({ type: 'sz:cursorSetting', key: 'trail', value: true }, '*');
+window.parent.postMessage({ type: 'sz:cursorSetting', key: 'trailLen', value: 7 }, '*');
 
 // Common file dialogs (Open/Save):
 window.parent.postMessage({ type: 'sz:fileOpen', filters: [{name:'Text Files', ext:['txt','md']}, {name:'All Files', ext:['*']}], initialDir: '/user/documents', requestId: 'r1' }, '*');
@@ -800,7 +808,7 @@ const result = await commonDialogs.showSave({
 
 **Dialog features**: XP-style sidebar (Documents, Desktop, Computer, Temp), directory navigation with history (back/up), editable path bar, file type filter dropdown, keyboard shortcuts (Escape/Enter/Backspace), skinned with CSS custom properties.
 
-**Apps using common dialogs**: Notepad (text files), Paint (image files), WordPad (HTML files), Image Viewer (image files), Markdown Editor (markdown files), Hex Editor (binary files), Spreadsheet (CSV files).
+**Apps using common dialogs**: Notepad (text files), Paint (image files), WordPad (HTML/RTF files), Image Viewer (image files), Markdown Editor (markdown files), Hex Editor (binary files), Spreadsheet (CSV/TSV files). WordPad and Spreadsheet also support browser-native Import/Export for binary formats (DOCX, XLSX) via `ComDlg32.ImportFile()`/`ComDlg32.ExportFile()`.
 
 ### FileSystem (`js/filesystem.js`)
 
@@ -898,6 +906,22 @@ Unified input handling using `pointerdown` / `pointermove` / `pointerup`:
 - **Icon selection**: Single-click selects, double-click launches.
 - **Desktop rubber-band selection**: Click-drag on desktop draws selection rectangle, selects enclosed icons.
 
+### Cursor Effects (`js/cursor-effects.js`)
+
+Mouse cursor enhancements managed by the `CursorEffects` class:
+
+- **Mouse shadow**: A semi-transparent dark silhouette of the cursor that follows with a slight offset (3px X/Y). Implemented as an absolutely-positioned div with a blurred, darkened cursor image. Toggled via settings.
+- **Mouse trail**: A series of fading cursor images trailing behind the pointer as it moves. Each trail element is an absolutely-positioned div that fades from 0.4 opacity to near-zero. The number of trail elements is configurable (3-10). Positions are captured at 50ms intervals on `pointermove`.
+- **Custom cursors**: Supports setting custom cursor images (PNG, CUR). When no custom image is set, a built-in SVG arrow is used for shadow/trail rendering.
+- **Overlay container**: All effect elements live in a fixed, pointer-events-transparent `#sz-cursor-effects` div at z-index 99999.
+
+Settings are stored in localStorage via `SZ.Settings`:
+- `cursor.shadow` (boolean) -- enable/disable mouse shadow
+- `cursor.trail` (boolean) -- enable/disable mouse trail
+- `cursor.trailLen` (number) -- trail length (3-10 elements)
+
+The Control Panel's Pointers tab provides checkboxes for shadow/trail and a slider for trail length, with a live preview area.
+
 ### Settings Persistence (`js/settings.js`)
 
 User preferences stored in `localStorage`:
@@ -907,6 +931,9 @@ User preferences stored in `localStorage`:
 - `sz-background` -- JSON: `{ src, mode }` (image path + stretch mode)
 - `sz-icon-pack` -- name of active icon pack
 - `sz-cursor-theme` -- name of active cursor theme
+- `sz-cursor.shadow` -- boolean: enable/disable mouse shadow effect
+- `sz-cursor.trail` -- boolean: enable/disable mouse trail effect
+- `sz-cursor.trailLen` -- number (3-10): mouse trail length
 - `sz-behavior` -- JSON: `{ animations, edgeSnapping, taskbarPosition, taskbarAutoHide, doubleClickSpeed }`
 - `sz-icon-layout` -- serialized icon positions (if user rearranged)
 - `sz-window-prefs` -- per-application last-used size/position
@@ -1164,7 +1191,12 @@ State width = image width / 3. State height = image height / (tripleImages ? 2 :
 - [x] Window state: minimized (with taskbar button to restore)
 - [x] Window state: maximized (fills desktop area above taskbar)
 - [x] Window state: closed (removed from DOM and registry)
-- [x] Minimize/maximize/restore animations (CSS transitions)
+- [x] Window close: instant removal (no animation, Windows XP style)
+- [x] Window minimize: shrink/fade animation toward taskbar button
+- [x] Window restore from minimize: expand from taskbar button position
+- [x] Window maximize: grow animation with opacity flash
+- [x] Window restore from maximize: shrink animation with opacity flash
+- [x] Animations toggle in Control Panel (Taskbar > Effects) stored in localStorage
 - [ ] Edge snapping (drag to left/right/top edge)
 - [x] Minimum window size enforcement (200x100)
 
@@ -1254,6 +1286,7 @@ State width = image width / 3. State height = image height / (tripleImages ? 2 :
 - [x] Theme CSS injected into app iframes automatically
 - [x] Windows DLL-like API (`SZ.Dlls.User32`, `Kernel32`, `GDI32`, `Shell32`, `ComDlg32`, `Advapi32`) — familiar Win32 naming for all OS operations
 - [x] WindowProc dispatch (`RegisterWindowProc`) — apps receive `WM_THEMECHANGED`, `WM_SETTINGCHANGE`, etc.
+- [x] Browser-native file import/export API (`ComDlg32.ImportFile()`/`ComDlg32.ExportFile()`) for binary formats
 - [x] Centralized `SendMessage` with requestId + timeout — replaces per-app `vfsSend()` wrappers
 - [x] Win32 constants exposed on window scope (`WM_CLOSE`, `MB_YESNO`, `IDOK`, `COLOR_WINDOW`, etc.)
 - [x] `GetCommandLine()` for reading URL parameters on startup (file associations, deep linking)
@@ -1270,14 +1303,14 @@ State width = image width / 3. State height = image height / (tripleImages ? 2 :
 System apps (hosted / app.js -- require OS runtime):
 - [x] Explorer: Full file manager with VFS operations (new folder, delete, rename, copy, move, cut/paste), breadcrumb path bar with autocomplete dropdown, recursive search, forward/back history, multi-select (Ctrl/Shift+Click), context menus, toolbar with file operation buttons and overflow chevron, upload files from PC, download files to PC, double-click to run apps. Also browses SZ runtime object tree (read-only mode)
 - [x] Task Manager: Applications tab + Performance tab with real event-loop lag, NT-style canvas graphs
-- [x] Control Panel: Display Properties dialog with Themes (preset theme combos), Appearance (skin switching, color swatch previews, auto-scroll to current, sub-skin dropdown), Desktop (background selection, position mode), and Taskbar (auto-hide, show clock, clear MRU) tabs
+- [x] Control Panel: Display Properties dialog with Themes (preset theme combos), Appearance (skin switching, color swatch previews, auto-scroll to current, sub-skin dropdown), Desktop (background selection, position mode), Pointers (mouse shadow, mouse trail, trail length slider with live preview), and Taskbar (auto-hide, show clock, clear MRU) tabs
 - [x] About: Version info, credits, system details
 - [ ] Convert Explorer, Task Manager, About from iframe to hosted app.js format
 
 User apps (iframe / index.html -- can run standalone):
 - [x] Data Encryption: XOR cipher with hex encoding, key validation, swap/copy/clear buttons, error handling for malformed hex input, themed with skin colors
-- [x] Calculator: Classic calc.exe look, standard and scientific modes, keyboard support, themed
-- [x] Notepad: Plain text editor with VFS integration (open/save via common file dialog), dirty tracking, Font dialog (family/size/style picker with preview), Find/Replace panel (non-modal, Ctrl+F/Ctrl+H), status bar (line/column/character count), keyboard shortcuts
+- [x] Calculator: Classic calc.exe look with Standard, Scientific (sin/cos/tan/log/exp/pow/factorial/constants), and Programmer (hex/dec/oct/bin, bitwise ops, bit-length selector) modes, memory functions, keyboard support, themed
+- [x] Notepad: Notepad2-style text editor with syntax highlighting (JS, HTML, CSS, JSON, XML, Markdown, Python, SQL, C/C++, Java, Rust, Go, Ruby, PHP, Perl, YAML, TOML, INI, batch/shell), line numbers, current-line highlight, long line marker, bracket matching, auto-indent, zoom (Ctrl+scroll), configurable tab width/spaces, word wrap toggle, whitespace/line-ending visualization, Find/Replace panel with regex/case/whole-word, Go To Line, multiple encoding support (UTF-8/ASCII/Latin-1), line ending detection (CRLF/LF/CR), Font dialog, VFS integration, undo/redo, dirty tracking, print support, status bar (Ln/Col/selection/encoding/EOL/INS mode/language)
 - [x] Minesweeper: Classic game with beginner/intermediate/expert/custom difficulty, flood fill, chording, LED counters, timer, Marks (?) toggle, best times persisted to localStorage, proper dialogs for custom field and best times
 - [x] Paint: Bitmap drawing tool (pencil, line, rectangle, ellipse, eraser, flood fill, text, eyedropper, selection), 28-color palette with FG/BG, line width selector, outline/filled mode, 20-step undo/redo, image operations (flip, rotate, resize), zoom (1x-8x via Ctrl+scroll or menu), VFS integration via common file dialog (open/save as PNG data URL)
 - [x] Terminal: Multi-shell terminal with shell selector dropdown. **cmd.exe** mode: full batch interpreter with IF/FOR/GOTO, variables, pipes, redirection, 40+ commands. **bash** mode: 50+ built-in commands (ls/grep/sed/awk/sort/cut/tr/wc/etc.), variable expansion ($VAR, ${VAR:-default}, ${#VAR}), command substitution ($(...) and backticks), pipes/redirects/logic chains, globbing, control flow (if/for/while/case), functions, aliases, tab completion, colored prompt, .sh script execution. Both shells share VFS integration, command history (up/down arrows), themed output
@@ -1285,20 +1318,21 @@ User apps (iframe / index.html -- can run standalone):
 - [x] Media Player: Audio/video player with playlist, visualization (bars/wave/circular), transport controls, volume/seek, shuffle/repeat modes, skin-themed chrome
 - [x] Solitaire: Klondike solitaire with canvas-rendered cards (suit symbols, no external assets), 7 tableau columns, 4 foundations, stock/waste, drag-and-drop, auto-complete with bouncing animation, draw-1/draw-3 modes, undo, timer/move counter
 - [x] Image Viewer: Image viewer/browser with zoom (Ctrl+scroll), rotate CW/CCW, fit-to-window, previous/next navigation through VFS directory, toolbar and status bar, opens images via common file dialog
-- [x] WordPad: Rich text editor with contentEditable, formatting toolbar (bold/italic/underline/strikethrough, font family/size, alignment, lists, indent, text color), VFS integration via common file dialog (saves as HTML), dirty tracking
+- [x] WordPad: Rich text editor with contentEditable, formatting toolbar (bold/italic/underline/strikethrough, font family/size, alignment, lists, indent, text color), VFS integration via common file dialog (saves as HTML), DOCX import (via mammoth.js) and export (via JSZip), RTF import/export (custom parser/generator), PDF export (via browser print dialog), dirty tracking
 - [x] Web Browser: Iframe-based web browser with address bar, back/forward/refresh/home/stop navigation, bookmarks bar (persisted to localStorage), built-in home page with bookmarks grid, status bar with loading indicator
 - [x] FreeCell: FreeCell solitaire with 4 free cells, 4 foundations, 8 tableau columns, canvas-rendered cards, drag-and-drop, auto-complete, undo, move counter
 - [x] Spider Solitaire: Spider solitaire with 1-suit/2-suit/4-suit difficulty modes, 10 tableau columns, 5 stock deals, canvas-rendered cards, drag-and-drop, undo, scoring
 - [x] Color Picker: Advanced color picker with multiple colorspaces (RGB, HSL, HSV, CMYK), hex/float/byte input modes, visual hue/saturation/lightness sliders, color preview, copy values
 - [x] Markdown Editor: Markdown editor with side-by-side live preview, syntax highlighting, VFS integration via common file dialog, toolbar for common formatting (headings, bold, italic, links, images, lists, code blocks)
 - [x] Hex Editor: Binary file editor with hex and ASCII views, offset column, byte-level editing, VFS integration via common file dialog, go-to-offset, search
-- [x] Spreadsheet: Excel-like spreadsheet with formula support (SUM, AVG, MIN, MAX, COUNT, IF, and arithmetic), cell references (A1 notation), multi-cell selection, column/row resize, VFS integration via common file dialog, CSV import/export
+- [x] Spreadsheet: Excel-like spreadsheet with formula support (SUM, AVG, MIN, MAX, COUNT, IF, and arithmetic), cell references (A1 notation), multi-cell selection, column/row resize, VFS integration via common file dialog, CSV import/export, XLSX import/export (via SheetJS, multi-sheet support), TSV import/export
 - [x] Font Viewer: Browse and preview all available fonts with customizable sample text, font size, and style (bold/italic/underline)
 - [x] JSON Viewer: Tree-based JSON viewer with collapsible nodes, syntax highlighting, VFS integration via common file dialog
 - [x] Regex Tester: Regular expression tester with flags (g/i/m/s/u), match highlighting, match list, replacement preview
 - [x] Diff Viewer: Side-by-side text diff viewer with added/removed/changed line highlighting, merge controls
 - [x] Date and Time: Clock with analog/digital display, calendar date picker, timezone selector
 - [x] QR Code Generator: QR code generator with customizable size, error correction level, foreground/background colors, download as PNG
+- [x] Icon Editor: Multi-image ICO/CUR editor with pixel-level editing, 32-bit RGBA with per-pixel alpha, checkerboard transparency, 7 drawing tools (pencil, eraser, eyedropper, flood fill, line, rectangle, ellipse), image list sidebar (add/remove/duplicate entries), ICO format parser and writer (BMP + PNG entries), PE (EXE/DLL) icon extraction, image import from PNG/BMP/SVG with multi-size generation, favicon export, image operations (flip, rotate, resize, grayscale, invert, HSL adjust, color replace), 30-step undo/redo, VFS integration via common file dialog
 
 See [docs/appideas.md](docs/appideas.md) for the full application roadmap.
 
@@ -1309,7 +1343,7 @@ See [docs/appideas.md](docs/appideas.md) for the full application roadmap.
 - [x] Dual-layer items: system (code-defined) + local (localStorage-persisted)
 - [x] Desktop shows only curated icons (My Computer, Recycle Bin) not all apps
 - [x] Start menu shows MRU apps + All Programs with categories via FileSystem
-- [x] Programs categories: Accessories, Entertainment, Games, Internet, System Tools
+- [x] Programs categories: Accessories, Development, Entertainment, Games, Graphics, Internet, Office, System Tools
 - [x] FileSystem exposed on `SZ.system.fileSystem` for hosted apps
 
 ### Virtual File System
@@ -1337,6 +1371,17 @@ See [docs/appideas.md](docs/appideas.md) for the full application roadmap.
 - [ ] CSS cursor custom properties applied globally and into iframes
 - [ ] Switch cursor theme at runtime
 - [ ] Bundled default cursor set
+
+### Cursor Effects
+
+- [x] Mouse shadow effect (semi-transparent cursor silhouette with offset, toggled via settings)
+- [x] Mouse trail effect (fading cursor images behind pointer, configurable length 3-10)
+- [x] Custom cursor image support for shadow/trail rendering (PNG, CUR, or built-in SVG)
+- [x] Pointer-events-transparent overlay container at z-index 99999
+- [x] Control Panel Pointers tab with enable/disable checkboxes and trail length slider
+- [x] Live preview area in Control Panel to test effects before applying
+- [x] Settings persisted to localStorage (cursor.shadow, cursor.trail, cursor.trailLen)
+- [x] postMessage API for cursor settings (sz:cursorSetting with key/value)
 
 ### Settings and Persistence
 
@@ -1389,7 +1434,7 @@ ESLint configured for ES2022 modules, browser globals.
 
 ### Planned Applications
 
-28 applications are currently implemented (4 system + 24 user apps). See [docs/appideas.md](docs/appideas.md) for the full application idea list with hosting format (iframe vs hosted) and status tracking.
+29 applications are currently implemented (4 system + 25 user apps). See [docs/appideas.md](docs/appideas.md) for the full application idea list with hosting format (iframe vs hosted) and status tracking.
 
 ### Virtual File System (VFS) — Implemented
 
@@ -1450,12 +1495,17 @@ The VFS enables:
 - VFS operations: rename, copy, move
 - Transparency mask support (alpha channel from mask BMPs)
 - FreeCell, Spider Solitaire, Color Picker, Markdown Editor, Hex Editor, Spreadsheet apps
+- Icon Editor: multi-image ICO/CUR editor with pixel-level alpha, ICO parse/write, PE icon extraction, image import, favicon export
+- WordPad: DOCX import (mammoth.js), DOCX export (JSZip OOXML), RTF import/export (custom parser/generator), PDF export (browser print dialog)
+- Spreadsheet: XLSX import/export (SheetJS, multi-sheet), TSV import/export
+- ComDlg32: browser-native ImportFile/ExportFile API for binary formats (File API + Blob download)
+- Vendored offline-capable libraries (mammoth.js, JSZip, SheetJS) in Applications/libs/
 
 ### Future
 
 - Drag-and-drop skin installation (drop .wba onto desktop)
 - Common Font and Color picker dialogs (user32-style, for use across apps)
-- Window minimize-to-taskbar animation with thumbnail
+- Window minimize-to-taskbar animation with thumbnail preview
 - Multi-monitor awareness (detect viewport size changes)
 - Sound events (open, close, minimize) with skin-provided WAV files
 - Touch and mobile gesture support
