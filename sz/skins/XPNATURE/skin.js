@@ -107,7 +107,31 @@
       bottomheight: 3,
     },
 
-    startButton: {},
+    taskButton: {
+      image: `${BASE}/TASKBUTTON.BMP`,
+      topheight: 4,
+      bottomheight: 4,
+      leftwidth: 4,
+      rightwidth: 4,
+    },
+
+    progressBar: {
+      image: `${BASE}/PROGRESS.BMP`,
+      topheight: 2,
+      bottomheight: 2,
+      leftwidth: 2,
+      rightwidth: 2,
+    },
+
+    tabControl: {
+      image: `${BASE}/TABS.BMP`,
+      topheight: 3,
+      bottomheight: 3,
+      leftwidth: 3,
+      rightwidth: 3,
+    },
+
+    startButton: { image: `${BASE}/START.BMP` },
 
     colors: {
       scrollbar: [180, 208, 209],

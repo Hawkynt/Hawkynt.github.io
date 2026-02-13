@@ -78,6 +78,8 @@
       };
     }
 
+    get savedRect() { return this.#savedRect; }
+
     minimize() {
       if (this.#state === 'minimized' || this.#state === 'closed')
         return;
@@ -98,6 +100,7 @@
     restore() {
       if (this.#state === 'closed')
         return;
+      const prevState = this.#state;
       this.#state = 'normal';
       this.#element.dataset.state = 'normal';
       if (this.#savedRect) {
@@ -105,6 +108,7 @@
         this.resizeTo(this.#savedRect.width, this.#savedRect.height);
         this.#savedRect = null;
       }
+      return prevState;
     }
 
     close() {
@@ -112,6 +116,37 @@
         return;
       this.#state = 'closed';
       this.#element.classList.add('sz-closing');
+    }
+
+    // -----------------------------------------------------------------
+    // Animation helpers
+    // -----------------------------------------------------------------
+
+    /** Set CSS custom properties for the minimize/restore animation target. */
+    setAnimationTarget(tx, ty) {
+      this.#element.style.setProperty('--sz-anim-tx', `${tx}px`);
+      this.#element.style.setProperty('--sz-anim-ty', `${ty}px`);
+    }
+
+    /** Add an animation class; returns a Promise that resolves when animation ends. */
+    playAnimation(className) {
+      return new Promise((resolve) => {
+        const el = this.#element;
+        el.classList.add(className);
+        const cleanup = () => {
+          el.classList.remove(className);
+          resolve();
+        };
+        el.addEventListener('animationend', cleanup, { once: true });
+        // Fallback in case no CSS animation fires (e.g. animations disabled)
+        setTimeout(cleanup, 300);
+      });
+    }
+
+    /** Remove any lingering animation classes. */
+    clearAnimations() {
+      const el = this.#element;
+      el.classList.remove('sz-minimizing', 'sz-restoring-from-min', 'sz-restoring-from-max', 'sz-maximizing');
     }
 
     // -----------------------------------------------------------------
