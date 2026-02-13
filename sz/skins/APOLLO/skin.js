@@ -94,9 +94,9 @@
     },
 
     buttons: {
-      checkbutton: `${BASE}/CHECKBOX_OLD.TGA`,
-      radiobutton: `${BASE}/RADIO_OLD.TGA`,
-      bitmap: `${BASE}/BUTTONS.TGA`,
+      checkbutton: `${BASE}/CHECKBOX.BMP`,
+      radiobutton: `${BASE}/RADIO.BMP`,
+      bitmap: `${BASE}/BUTTONS.BMP`,
       topheight: 11,
       bottomheight: 7,
       leftwidth: 10,
@@ -147,7 +147,31 @@
       mouseover: 1,
     },
 
-    startButton: {},
+    taskButton: {
+      image: `${BASE}/TASKBUTTON.BMP`,
+      topheight: 4,
+      bottomheight: 4,
+      leftwidth: 4,
+      rightwidth: 4,
+    },
+
+    progressBar: {
+      image: `${BASE}/PROGRESSBAR.BMP`,
+      topheight: 2,
+      bottomheight: 2,
+      leftwidth: 2,
+      rightwidth: 2,
+    },
+
+    tabControl: {
+      image: `${BASE}/TABS.BMP`,
+      topheight: 3,
+      bottomheight: 3,
+      leftwidth: 3,
+      rightwidth: 3,
+    },
+
+    startButton: { image: `${BASE}/STARTBUTTONXP.BMP` },
 
     colors: {
       scrollbar: [178, 178, 178],
@@ -175,12 +199,12 @@
       buttonDarkShadow: [79, 79, 79],
       buttonShadow: [101, 101, 101],
       buttonLight: [195, 195, 195],
-      infoText: [NaN, NaN, 0],
-      infoWindow: [NaN, NaN, 178],
+      infoText: [0, 0, 0],
+      infoWindow: [178, 178, 178],
       buttonAlternateFace: [148, 148, 148],
       hotTrackingColor: [233, 36, 36],
       menuBar: [178, 178, 178],
-      menuHighlight: [NaN, NaN, 158],
+      menuHighlight: [158, 158, 158],
     },
 
     customFonts: [

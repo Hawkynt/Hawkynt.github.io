@@ -109,6 +109,30 @@
       mouseover: 1,
     },
 
+    taskButton: {
+      image: `${BASE}/TASKBAR_BUTTONSXP.BMP`,
+      topheight: 3,
+      bottomheight: 3,
+      leftwidth: 3,
+      rightwidth: 3,
+    },
+
+    progressBar: {
+      image: `${BASE}/PROGRESS.BMP`,
+      topheight: 3,
+      bottomheight: 3,
+      leftwidth: 3,
+      rightwidth: 3,
+    },
+
+    tabControl: {
+      image: `${BASE}/TABS.BMP`,
+      topheight: 3,
+      bottomheight: 3,
+      leftwidth: 3,
+      rightwidth: 3,
+    },
+
     startButton: { image: `${BASE}/START-BUTTON-NO-XP.BMP` },
 
     colors: {
@@ -184,6 +208,9 @@
     ],
 
     fonts: {
+      family: 'Arial',
+      height: 11,
+      weight: 400,
     },
   };
 })();

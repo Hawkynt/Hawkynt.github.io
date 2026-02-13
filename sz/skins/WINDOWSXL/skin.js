@@ -135,38 +135,64 @@
       tile: 0,
     },
 
-    startButton: { image: `${BASE}/PUSHBUTTON.BMP` },
+    taskButton: {
+      image: `${BASE}/DRTASKBANDTOOLBARBTN.BMP`,
+      topheight: 4,
+      bottomheight: 4,
+      leftwidth: 4,
+      rightwidth: 4,
+    },
+
+    progressBar: {
+      image: `${BASE}/DRPROGRESSBAR.BMP`,
+      topheight: 2,
+      bottomheight: 2,
+      leftwidth: 2,
+      rightwidth: 2,
+    },
+
+    tabControl: {
+      image: `${BASE}/DRTABITEM.BMP`,
+      topheight: 2,
+      bottomheight: 2,
+      leftwidth: 2,
+      rightwidth: 2,
+    },
+
+    startButton: { image: `${BASE}/DRTASKBARSTARTBUTTON.BMP` },
 
     colors: {
       window: [255, 255, 255],
-      menu: [NaN, NaN, 192],
-      background: [NaN, NaN, 192],
+      menu: [192, 192, 192],
+      background: [192, 192, 192],
       buttonFace: [222, 222, 222],
-      buttonHighlight: [NaN, NaN, 255],
+      buttonHighlight: [255, 255, 255],
       buttonShadow: [168, 168, 168],
       buttonDarkShadow: [111, 111, 111],
       buttonLight: [232, 232, 232],
-      highlight: [NaN, NaN, 192],
-      highlightText: [NaN, NaN, 255],
+      highlight: [192, 192, 192],
+      highlightText: [255, 255, 255],
       grayText: [110, 110, 110],
-      gradientActiveTitle: [NaN, NaN, 255],
+      gradientActiveTitle: [255, 255, 255],
       gradientInactiveTitle: [185, 185, 185],
-      activeTitle: [NaN, NaN, 85],
+      activeTitle: [85, 85, 85],
       inactiveTitle: [192, 192, 192],
-      titleText: [NaN, NaN, 255],
+      titleText: [255, 255, 255],
       inactiveTitleText: [216, 216, 216],
-      buttonText: [NaN, NaN, 0],
+      buttonText: [0, 0, 0],
       menuText: [0, 0, 0],
       scrollbar: [213, 213, 213],
       menuBar: [192, 192, 192],
       menuHighlight: [192, 192, 192],
-      infoWindow: [NaN, NaN, 192],
-      infoText: [NaN, NaN, 255],
+      infoWindow: [192, 192, 192],
+      infoText: [255, 255, 255],
       appWorkspace: [221, 221, 221],
       activeBorder: [128, 128, 128],
       inactiveBorder: [128, 128, 128],
-      windowFrame: [NaN, NaN, 222],
-      windowText: [NaN, NaN, 0],
+      windowFrame: [222, 222, 222],
+      windowText: [0, 0, 0],
+      buttonAlternateFace: [222, 222, 222],
+      hotTrackingColor: [85, 85, 85],
     },
 
     customFonts: [
@@ -191,6 +217,9 @@
     ],
 
     fonts: {
+      family: 'Arial',
+      height: 11,
+      weight: 400,
     },
   };
 })();

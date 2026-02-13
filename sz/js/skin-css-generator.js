@@ -29,14 +29,15 @@
       { name: 'bottom', path: p.bottom, mask: p.bottommask, frameCount: p.bottomframe || 1, zoneA: p.bottomtopheight || 0, zoneC: p.bottombotheight || 0, stretch: !!p.bottomstretch, horizontal: true },
     ];
 
-    // Load and process all borders in parallel
-    const processed = await Promise.all(borders.map(b => _processBorder(b, useTrans)));
-
-    // Process start button
-    const startButtonImage = await _processStartButton(skin, useTrans);
+    // Load and process all borders + taskbar buttons in parallel
+    const [processed, startButtonImage, taskbarCSS] = await Promise.all([
+      Promise.all(borders.map(b => _processBorder(b, useTrans))),
+      _processStartButton(skin, useTrans),
+      _processTaskbarButtons(skin, useTrans),
+    ]);
 
     // Build and inject CSS
-    const css = _buildCSS(processed, p.anirate || 300);
+    const css = _buildCSS(processed, p.anirate || 300) + taskbarCSS;
     _injectStyle(css);
 
     return { startButtonImage };
@@ -667,6 +668,164 @@
       // Canvas tainted — return raw path
       return sb.image;
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Taskbar button processing (TASK.BMP)
+  // -------------------------------------------------------------------------
+  //
+  // Taskbar buttons are a horizontal strip of frames, similar to BUTTONS.BMP.
+  // Typical frame mapping (3 frames): Normal(0), Active(1), Hover(2)
+  // The image uses 9-slice rendering via border-image.
+
+  async function _processTaskbarButtons(skin, useTrans) {
+    const tb = skin.taskButton;
+    if (!tb?.image)
+      return '';
+
+    const [img, maskImg] = await Promise.all([_loadImage(tb.image), _loadImage(tb.mask || null)]);
+    if (!img)
+      return '';
+
+    // Per-section trans flag overrides global useTrans
+    const applyTrans = tb.trans != null ? !!tb.trans : useTrans;
+
+    const w = img.width;
+    const h = img.height;
+
+    // Detect orientation: if height > width * 2, frames are stacked vertically
+    const isVertical = h > w * 2;
+    const numFrames = tb.framecount || (isVertical
+      ? _detectVerticalFrameCount(w, h)
+      : _detectFrameCount(w, h));
+    const frameW = isVertical ? w : Math.floor(w / numFrames);
+    const frameH = isVertical ? Math.floor(h / numFrames) : h;
+    const top = tb.topheight || 3;
+    const bottom = tb.bottomheight || 3;
+    const left = tb.leftwidth || 3;
+    const right = tb.rightwidth || 3;
+
+    // Frame indices: Normal(0), Active/Pressed(1), Hover(2 if exists)
+    const normalIdx = 0;
+    const activeIdx = numFrames >= 2 ? 1 : 0;
+    const hoverIdx = numFrames >= 3 ? 2 : -1;
+
+    // Try canvas extraction
+    const dataUrls = [];
+    try {
+      for (let i = 0; i < numFrames; ++i) {
+        const sx = isVertical ? 0 : i * frameW;
+        const sy = isVertical ? i * frameH : 0;
+        const canvas = document.createElement('canvas');
+        canvas.width = frameW;
+        canvas.height = frameH;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, sx, sy, frameW, frameH, 0, 0, frameW, frameH);
+        if (applyTrans)
+          _applyMagentaTransparency(ctx, frameW, frameH);
+        if (maskImg) {
+          const mc = document.createElement('canvas');
+          mc.width = frameW;
+          mc.height = frameH;
+          const mctx = mc.getContext('2d');
+          mctx.drawImage(maskImg, sx, sy, frameW, frameH, 0, 0, frameW, frameH);
+          const md = mctx.getImageData(0, 0, frameW, frameH);
+          const mp = md.data;
+          for (let j = 0; j < mp.length; j += 4) {
+            const grey = Math.round(mp[j] * 0.299 + mp[j + 1] * 0.587 + mp[j + 2] * 0.114);
+            mp[j] = mp[j + 1] = mp[j + 2] = 255;
+            mp[j + 3] = grey;
+          }
+          mctx.putImageData(md, 0, 0);
+          ctx.globalCompositeOperation = 'destination-in';
+          ctx.drawImage(mc, 0, 0);
+          ctx.globalCompositeOperation = 'source-over';
+        }
+        dataUrls.push(canvas.toDataURL());
+      }
+    } catch (_) {
+      dataUrls.length = 0;
+    }
+
+    const sel = '.sz-taskbar-button';
+
+    if (dataUrls.length === numFrames) {
+      const bi = (idx) => `url("${dataUrls[idx]}") ${top} ${right} ${bottom} ${left} fill stretch`;
+      let css = `
+/* ── Skinned taskbar buttons (9-slice) ──────────────────────── */
+${sel} {
+  border-style: solid;
+  border-width: ${top}px ${right}px ${bottom}px ${left}px;
+  border-image: ${bi(normalIdx)};
+  background: none;
+  border-radius: 0;
+}
+${sel}.active {
+  border-image: ${bi(activeIdx)};
+  background: none;
+}`;
+      if (hoverIdx >= 0)
+        css += `
+${sel}:hover:not(.active) {
+  border-image: ${bi(hoverIdx)};
+  background: none;
+}`;
+      return css + '\n';
+    }
+
+    // Raw fallback: stretch entire frame
+    const absUrl = (() => {
+      try { return new URL(tb.image, document.baseURI).href; }
+      catch { return tb.image; }
+    })();
+
+    let pos, bgSize;
+    if (isVertical) {
+      pos = (idx) => numFrames > 1
+        ? `0% ${(idx * 100 / (numFrames - 1)).toFixed(4)}%`
+        : '0% 0%';
+      bgSize = `100% ${numFrames * 100}%`;
+    } else {
+      pos = (idx) => numFrames > 1
+        ? `${(idx * 100 / (numFrames - 1)).toFixed(4)}% 0%`
+        : '0% 0%';
+      bgSize = `${numFrames * 100}% 100%`;
+    }
+
+    let css = `
+/* ── Skinned taskbar buttons (raw fallback) ─────────────────── */
+${sel} {
+  background: url("${absUrl}") no-repeat ${pos(normalIdx)} / ${bgSize};
+  border: none;
+  border-radius: 0;
+}
+${sel}.active {
+  background: url("${absUrl}") no-repeat ${pos(activeIdx)} / ${bgSize};
+}`;
+    if (hoverIdx >= 0)
+      css += `
+${sel}:hover:not(.active) {
+  background: url("${absUrl}") no-repeat ${pos(hoverIdx)} / ${bgSize};
+}`;
+    return css + '\n';
+  }
+
+  function _detectFrameCount(w, h) {
+    const fits = (n) => n > 0 && w % n === 0 && w / n >= h * 0.5;
+    if (fits(3)) return 3;
+    if (fits(2)) return 2;
+    if (fits(4)) return 4;
+    if (fits(5)) return 5;
+    return Math.max(1, Math.round(w / h));
+  }
+
+  function _detectVerticalFrameCount(w, h) {
+    const fits = (n) => n > 0 && h % n === 0 && h / n >= w * 0.5;
+    if (fits(3)) return 3;
+    if (fits(2)) return 2;
+    if (fits(4)) return 4;
+    if (fits(5)) return 5;
+    return Math.max(1, Math.round(h / w));
   }
 
   // -------------------------------------------------------------------------

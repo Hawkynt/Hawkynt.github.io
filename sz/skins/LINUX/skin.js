@@ -91,10 +91,58 @@
 
     startButton: { image: `${BASE}/START.BMP` },
 
+    progressBar: {
+      image: `${BASE}/PROGRESS.BMP`,
+      topheight: 1,
+      bottomheight: 1,
+      leftwidth: 1,
+      rightwidth: 1,
+    },
+
+    tabControl: {
+      image: `${BASE}/TABTOP.BMP`,
+      topheight: 2,
+      bottomheight: 2,
+      leftwidth: 2,
+      rightwidth: 2,
+    },
+
     colors: {
+      scrollbar: [192, 192, 192],
+      background: [58, 110, 165],
+      activeTitle: [0, 0, 128],
+      inactiveTitle: [128, 128, 128],
+      menu: [192, 192, 192],
+      window: [255, 255, 255],
+      windowFrame: [0, 0, 0],
+      menuText: [0, 0, 0],
+      windowText: [0, 0, 0],
+      titleText: [255, 255, 255],
+      activeBorder: [192, 192, 192],
+      inactiveBorder: [192, 192, 192],
+      appWorkspace: [128, 128, 128],
+      highlight: [0, 0, 128],
+      highlightText: [255, 255, 255],
+      buttonFace: [192, 192, 192],
+      buttonShadow: [128, 128, 128],
+      grayText: [128, 128, 128],
+      buttonText: [0, 0, 0],
+      inactiveTitleText: [192, 192, 192],
+      buttonHighlight: [255, 255, 255],
+      buttonDarkShadow: [0, 0, 0],
+      buttonLight: [223, 223, 223],
+      infoText: [0, 0, 0],
+      infoWindow: [255, 255, 225],
+      buttonAlternateFace: [192, 192, 192],
+      hotTrackingColor: [0, 0, 255],
+      gradientActiveTitle: [16, 132, 208],
+      gradientInactiveTitle: [181, 181, 181],
     },
 
     fonts: {
+      family: 'Helvetica',
+      height: 12,
+      weight: 400,
     },
   };
 })();

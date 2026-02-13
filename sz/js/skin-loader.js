@@ -34,7 +34,8 @@
     const skin = {
       name: '', author: '', email: '', url: '', wbVersion: 0,
       personality: {}, buttons: {}, titleButtons: [], comboButton: {},
-      startButton: {}, colors: {}, fonts: {}, basePath,
+      startButton: {}, taskButton: {}, progressBar: {}, tabControl: {},
+      colors: {}, fonts: {}, basePath,
     };
 
     let currentSection = null;
@@ -79,6 +80,12 @@
         _parseComboButton(skin.comboButton, key, val, basePath);
       else if (currentSection === 'startbutton')
         _parseStartButton(skin.startButton, key, val, basePath);
+      else if (currentSection === 'taskbar' || currentSection === 'taskbutton')
+        _parseSlicedControl(skin.taskButton, key, val, basePath);
+      else if (currentSection === 'progress')
+        _parseSlicedControl(skin.progressBar, key, val, basePath);
+      else if (currentSection === 'tabs' || currentSection === 'tabcontrol')
+        _parseSlicedControl(skin.tabControl, key, val, basePath);
       else if (currentSection === 'colours')
         _parseColour(skin.colors, key, val);
       else if (currentSection && currentSection.startsWith('font'))
@@ -161,6 +168,17 @@
   function _parseStartButton(sb, key, val, base) {
     if (key === 'image')
       sb.image = _resolvePath(val, base);
+  }
+
+  function _parseSlicedControl(obj, key, val, base) {
+    const intKeys = new Set(['topheight', 'bottomheight', 'leftwidth', 'rightwidth', 'framecount', 'mouseover', 'trans', 'tile', 'tilemode', 'alpha']);
+    const pathKeys = new Set(['image', 'bitmap', 'mask', 'border']);
+    if (intKeys.has(key))
+      obj[key] = parseInt(val, 10);
+    else if (pathKeys.has(key))
+      obj[key] = _resolvePath(val, base);
+    else
+      obj[key] = val;
   }
 
   const _COLOUR_MAP = {

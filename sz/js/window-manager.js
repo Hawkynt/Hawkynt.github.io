@@ -70,14 +70,13 @@
       if (!win)
         return;
 
+      // Close is always instant (Windows XP style) -- no animation
       win.close();
 
       const el = win.element;
-      let cleaned = false;
-
-      const cleanup = () => {
-        if (cleaned) return;
-        cleaned = true;
+      // Remove immediately on the next microtask so any current event
+      // handlers finish first.
+      queueMicrotask(() => {
         el.remove();
         this.#windows.delete(id);
         this.#zStack = this.#zStack.filter(wid => wid !== id);
@@ -91,12 +90,7 @@
           this.focusWindow(topId);
         else if (this.onWindowFocused)
           this.onWindowFocused(null);
-      };
-
-      el.addEventListener('animationend', cleanup, { once: true });
-
-      // Fallback timeout in case no CSS animation is defined
-      setTimeout(cleanup, 200);
+      });
     }
 
     focusWindow(id) {
@@ -105,7 +99,7 @@
         return;
 
       if (win.state === 'minimized')
-        win.restore();
+        this.#restoreFromMinimize(id, win);
 
       for (const w of this.#windows.values())
         w.setActive(false);
@@ -122,29 +116,55 @@
 
     minimizeWindow(id) {
       const win = this.#windows.get(id);
-      if (!win) return;
+      if (!win || win.state === 'minimized' || win.state === 'closed')
+        return;
 
-      win.minimize();
+      if (this.#animationsEnabled()) {
+        // Calculate target position: the center of the corresponding taskbar button
+        this.#setTaskbarTarget(win, id);
 
-      const nextId = this.#findTopmostVisible();
-      if (nextId) {
-        this.focusWindow(nextId);
+        // Deactivate this window and focus the next one immediately
+        // so the user sees the next window while the minimize animation plays.
+        win.setActive(false);
+        this.#focusNextVisibleExcluding(id);
+
+        // Play the minimize animation, then actually hide the window
+        win.playAnimation('sz-minimizing').then(() => {
+          win.clearAnimations();
+          win.minimize();
+        });
       } else {
-        for (const w of this.#windows.values())
-          w.setActive(false);
-        if (this.onWindowFocused)
-          this.onWindowFocused(null);
+        win.minimize();
+        this.#focusNextAfterMinimize();
       }
     }
 
     maximizeWindow(id) {
       const win = this.#windows.get(id);
-      if (!win) return;
+      if (!win)
+        return;
 
-      if (win.state === 'maximized')
-        win.restore();
-      else
-        win.maximize();
+      if (win.state === 'maximized') {
+        // Restore from maximized
+        if (this.#animationsEnabled()) {
+          win.restore();
+          win.playAnimation('sz-restoring-from-max').then(() => {
+            win.clearAnimations();
+          });
+        } else {
+          win.restore();
+        }
+      } else {
+        // Maximize
+        if (this.#animationsEnabled()) {
+          win.maximize();
+          win.playAnimation('sz-maximizing').then(() => {
+            win.clearAnimations();
+          });
+        } else {
+          win.maximize();
+        }
+      }
 
       this.focusWindow(id);
     }
@@ -232,6 +252,84 @@
         case 'minimize': this.minimizeWindow(windowId); break;
         case 'maximize': this.maximizeWindow(windowId); break;
       }
+    }
+
+    // -----------------------------------------------------------------
+    // Animation helpers
+    // -----------------------------------------------------------------
+
+    /** Check if window animations are enabled (default true). */
+    #animationsEnabled() {
+      return !document.documentElement.classList.contains('sz-animations-off');
+    }
+
+    /**
+     * Calculate the taskbar button center position and set it as the
+     * animation target on the window so the CSS animation can use it.
+     */
+    #setTaskbarTarget(win, id) {
+      const btn = document.querySelector(`.sz-taskbar-button[data-window-id="${id}"]`);
+      if (!btn) {
+        // Fallback: aim at center-bottom of the screen (taskbar area)
+        const pos = win.getPosition();
+        const size = win.getSize();
+        const cx = pos.x + size.width / 2;
+        win.setAnimationTarget(cx, window.innerHeight);
+        return;
+      }
+
+      const btnRect = btn.getBoundingClientRect();
+      const containerRect = this.#container.getBoundingClientRect();
+
+      // Target = center of the taskbar button, relative to the window-area container
+      const targetX = btnRect.left + btnRect.width / 2 - containerRect.left;
+      const targetY = btnRect.top + btnRect.height / 2 - containerRect.top;
+
+      win.setAnimationTarget(targetX, targetY);
+    }
+
+    /** Restore a window from minimized state with animation. */
+    #restoreFromMinimize(id, win) {
+      if (this.#animationsEnabled()) {
+        // Set taskbar target so the "from" position in the animation matches
+        this.#setTaskbarTarget(win, id);
+        win.restore();
+        win.playAnimation('sz-restoring-from-min').then(() => {
+          win.clearAnimations();
+        });
+      } else {
+        win.restore();
+      }
+    }
+
+    /** Focus the next visible window after a minimize, or deactivate all. */
+    #focusNextAfterMinimize() {
+      const nextId = this.#findTopmostVisible();
+      if (nextId) {
+        this.focusWindow(nextId);
+      } else {
+        for (const w of this.#windows.values())
+          w.setActive(false);
+        if (this.onWindowFocused)
+          this.onWindowFocused(null);
+      }
+    }
+
+    /** Focus the next visible window excluding a specific id (used during animation). */
+    #focusNextVisibleExcluding(excludeId) {
+      for (let i = this.#zStack.length - 1; i >= 0; --i) {
+        const wid = this.#zStack[i];
+        if (wid === excludeId)
+          continue;
+        const w = this.#windows.get(wid);
+        if (w && w.state !== 'minimized') {
+          this.focusWindow(wid);
+          return;
+        }
+      }
+      // No other visible window found
+      if (this.onWindowFocused)
+        this.onWindowFocused(null);
     }
 
     #updateZIndices() {
