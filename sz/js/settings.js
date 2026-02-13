@@ -4,7 +4,7 @@
 
   const DEFAULTS = {
     skin: 'LUNAX',
-    background: { src: 'assets/backgrounds/default.jpg', mode: 'cover' },
+    background: { src: '/system/wallpapers/default.jpg', mode: 'cover' },
     animations: true,
     taskbarPosition: 'bottom',
     'cursor.shadow': false,

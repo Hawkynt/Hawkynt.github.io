@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Icon Editor</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Menu Bar -->
+<div class="menu-bar" id="menu-bar">
+  <div class="menu-item" data-menu="file">
+    File
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="new">New<span class="shortcut">Ctrl+N</span></div>
+      <div class="menu-entry" data-action="open">Open...<span class="shortcut">Ctrl+O</span></div>
+      <div class="menu-entry" data-action="open-exe">Extract from EXE/DLL...</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="save">Save<span class="shortcut">Ctrl+S</span></div>
+      <div class="menu-entry" data-action="save-as">Save As...<span class="shortcut">Ctrl+Shift+S</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="import-image">Import Image (PNG/BMP/SVG)...</div>
+      <div class="menu-entry" data-action="export-favicon">Export Favicon...</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="exit">Exit</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="edit">
+    Edit
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="undo">Undo<span class="shortcut">Ctrl+Z</span></div>
+      <div class="menu-entry" data-action="redo">Redo<span class="shortcut">Ctrl+Y</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="cut-image">Cut<span class="shortcut">Ctrl+X</span></div>
+      <div class="menu-entry" data-action="copy-image">Copy<span class="shortcut">Ctrl+C</span></div>
+      <div class="menu-entry" data-action="paste-image">Paste<span class="shortcut">Ctrl+V</span></div>
+      <div class="menu-entry" data-action="paste-as-new">Paste as New Image</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="select-all">Select All<span class="shortcut">Ctrl+A</span></div>
+      <div class="menu-entry" data-action="deselect">Deselect<span class="shortcut">Ctrl+D</span></div>
+      <div class="menu-entry" data-action="delete-selection">Delete<span class="shortcut">Del</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="clear-image">Clear Image</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="view">
+    View
+    <div class="menu-dropdown">
+      <div class="menu-entry checkbox checked" data-action="toggle-grid">Show Grid</div>
+      <div class="menu-entry checkbox checked" data-action="toggle-checkerboard">Show Transparency</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry radio" data-action="zoom-1">Zoom 1x<span class="shortcut">Ctrl+1</span></div>
+      <div class="menu-entry radio" data-action="zoom-4">Zoom 4x<span class="shortcut">Ctrl+2</span></div>
+      <div class="menu-entry radio checked" data-action="zoom-8">Zoom 8x<span class="shortcut">Ctrl+3</span></div>
+      <div class="menu-entry radio" data-action="zoom-16">Zoom 16x<span class="shortcut">Ctrl+4</span></div>
+      <div class="menu-entry" data-action="zoom-fit">Fit to View</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="image">
+    Image
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="flip-h">Flip Horizontal</div>
+      <div class="menu-entry" data-action="flip-v">Flip Vertical</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="rotate-cw">Rotate 90&deg; CW</div>
+      <div class="menu-entry" data-action="rotate-ccw">Rotate 90&deg; CCW</div>
+      <div class="menu-entry" data-action="rotate-180">Rotate 180&deg;</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="crop-to-selection">Crop to Selection</div>
+      <div class="menu-entry" data-action="resize-image">Resize...</div>
+      <div class="menu-entry" data-action="shift-image">Shift/Offset...</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="grayscale">Grayscale</div>
+      <div class="menu-entry" data-action="invert">Invert Colors</div>
+      <div class="menu-entry" data-action="hsl-adjust">Hue/Saturation...</div>
+      <div class="menu-entry" data-action="replace-color">Replace Color...</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="tools">
+    Tools
+    <div class="menu-dropdown">
+      <div class="menu-entry radio checked" data-action="tool" data-tool="pencil">Pencil<span class="shortcut">P</span></div>
+      <div class="menu-entry radio" data-action="tool" data-tool="eraser">Eraser<span class="shortcut">E</span></div>
+      <div class="menu-entry radio" data-action="tool" data-tool="eyedropper">Eyedropper<span class="shortcut">I</span></div>
+      <div class="menu-entry radio" data-action="tool" data-tool="fill">Flood Fill<span class="shortcut">G</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry radio" data-action="tool" data-tool="line">Line<span class="shortcut">L</span></div>
+      <div class="menu-entry radio" data-action="tool" data-tool="rect">Rectangle<span class="shortcut">R</span></div>
+      <div class="menu-entry radio" data-action="tool" data-tool="ellipse">Ellipse<span class="shortcut">O</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry radio" data-action="tool" data-tool="select">Selection<span class="shortcut">S</span></div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="help">
+    Help
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="about">About Icon Editor</div>
+    </div>
+  </div>
+</div>
+
+<!-- Main 3-column layout -->
+<div class="main-area">
+  <!-- Left sidebar: Image list -->
+  <div class="sidebar-left" id="sidebar-left">
+    <div class="sidebar-title">Images</div>
+    <div class="image-list" id="image-list"></div>
+    <div class="image-list-buttons">
+      <button id="btn-add-image" title="Add new image size">+</button>
+      <button id="btn-remove-image" title="Remove selected image">&minus;</button>
+      <button id="btn-duplicate-image" title="Duplicate selected image">&#9851;</button>
+    </div>
+  </div>
+
+  <!-- Center: Canvas area -->
+  <div class="canvas-area" id="canvas-area">
+    <div class="canvas-wrapper" id="canvas-wrapper">
+      <div class="canvas-container" id="canvas-container">
+        <canvas id="checker-canvas"></canvas>
+        <canvas id="main-canvas"></canvas>
+        <canvas id="overlay-canvas"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right sidebar: Tools + Color -->
+  <div class="sidebar-right" id="sidebar-right">
+    <div class="sidebar-title">Tools</div>
+    <div class="tool-grid" id="tool-grid">
+      <div class="tool-btn active" data-tool="pencil" title="Pencil (P)">&#9998;</div>
+      <div class="tool-btn" data-tool="eraser" title="Eraser (E)">&#9634;</div>
+      <div class="tool-btn" data-tool="eyedropper" title="Eyedropper (I)">&#9738;</div>
+      <div class="tool-btn" data-tool="fill" title="Flood Fill (G)">&#9783;</div>
+      <div class="tool-btn" data-tool="line" title="Line (L)">&#9585;</div>
+      <div class="tool-btn" data-tool="rect" title="Rectangle (R)">&#9645;</div>
+      <div class="tool-btn" data-tool="ellipse" title="Ellipse (O)">&#9711;</div>
+      <div class="tool-btn" data-tool="select" title="Selection (S)">&#9633;</div>
+    </div>
+
+    <div class="tool-options" id="tool-options">
+      <div class="sidebar-title">Shape Fill</div>
+      <div class="shape-fill-options" id="shape-fill-options">
+        <label><input type="radio" name="shape-fill" value="outline" checked> Outline</label>
+        <label><input type="radio" name="shape-fill" value="filled"> Filled</label>
+        <label><input type="radio" name="shape-fill" value="both"> Both</label>
+      </div>
+    </div>
+
+    <div class="tool-options" id="brush-size-options">
+      <div class="sidebar-title">Brush</div>
+      <div class="brush-size-section" id="brush-size-section">
+        <input type="range" id="brush-size-slider" min="1" max="8" value="1">
+        <span id="brush-size-label">1px</span>
+        <div class="brush-preview" id="brush-preview"></div>
+      </div>
+    </div>
+
+    <div class="sidebar-title">Color</div>
+    <div class="color-section">
+      <div class="color-preview-row">
+        <div class="color-preview" id="color-preview" title="Current color"></div>
+        <div class="alpha-label" id="alpha-label">A: 255</div>
+      </div>
+      <div class="color-input-row">
+        <label>R</label><input type="number" id="color-r" min="0" max="255" value="0">
+        <label>G</label><input type="number" id="color-g" min="0" max="255" value="0">
+      </div>
+      <div class="color-input-row">
+        <label>B</label><input type="number" id="color-b" min="0" max="255" value="0">
+        <label>A</label><input type="number" id="color-a" min="0" max="255" value="255">
+      </div>
+      <div class="color-input-row">
+        <label>Hex</label><input type="text" id="color-hex" value="#000000" maxlength="9">
+      </div>
+      <div class="alpha-slider-row">
+        <label>Alpha</label>
+        <input type="range" id="alpha-slider" min="0" max="255" value="255">
+      </div>
+    </div>
+
+    <div class="sidebar-title">Palette</div>
+    <div class="palette-grid" id="palette-grid"></div>
+
+    <div class="sidebar-title">Image Info</div>
+    <div class="image-info" id="image-info">
+      <div class="info-row"><span>Size:</span><span id="info-size">32 x 32</span></div>
+      <div class="info-row"><span>Depth:</span><span id="info-depth">32-bit</span></div>
+    </div>
+    <div class="depth-select-row">
+      <label for="depth-select">Target:</label>
+      <select id="depth-select">
+        <option value="32">32-bit (RGBA)</option>
+        <option value="24">24-bit (RGB)</option>
+        <option value="8">8-bit (256 colors)</option>
+        <option value="4">4-bit (16 colors)</option>
+        <option value="1">1-bit (monochrome)</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<!-- Status Bar -->
+<div class="status-bar" id="status-bar">
+  <span class="status-section" id="status-pos">0, 0</span>
+  <span class="status-section" id="status-zoom">Zoom: 8x</span>
+  <span class="status-section" id="status-image-info">32 x 32, 32bpp</span>
+  <span class="status-section" id="status-filename">Untitled</span>
+</div>
+
+<!-- Add Image dialog -->
+<div class="dialog-overlay" id="dlg-add-image">
+  <div class="dialog">
+    <div class="dialog-title">Add Image</div>
+    <div class="dialog-body">
+      <div class="settings-row">
+        <label for="add-width">Width:</label>
+        <input type="number" id="add-width" min="1" max="256" value="32">
+      </div>
+      <div class="settings-row">
+        <label for="add-height">Height:</label>
+        <input type="number" id="add-height" min="1" max="256" value="32">
+      </div>
+      <div class="settings-row">
+        <label for="add-depth">Bit Depth:</label>
+        <select id="add-depth">
+          <option value="32" selected>32-bit (RGBA)</option>
+          <option value="24">24-bit (RGB)</option>
+          <option value="8">8-bit (256 colors)</option>
+          <option value="4">4-bit (16 colors)</option>
+          <option value="1">1-bit (monochrome)</option>
+        </select>
+      </div>
+      <div class="preset-sizes">
+        <button data-size="16">16x16</button>
+        <button data-size="24">24x24</button>
+        <button data-size="32">32x32</button>
+        <button data-size="48">48x48</button>
+        <button data-size="64">64x64</button>
+        <button data-size="128">128x128</button>
+        <button data-size="256">256x256</button>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">OK</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Resize dialog -->
+<div class="dialog-overlay" id="dlg-resize">
+  <div class="dialog">
+    <div class="dialog-title">Resize Image</div>
+    <div class="dialog-body">
+      <div class="settings-row">
+        <label for="resize-w">Width:</label>
+        <input type="number" id="resize-w" min="1" max="256" value="32">
+      </div>
+      <div class="settings-row">
+        <label for="resize-h">Height:</label>
+        <input type="number" id="resize-h" min="1" max="256" value="32">
+      </div>
+      <div class="settings-row">
+        <label for="resize-mode">Method:</label>
+        <select id="resize-mode">
+          <option value="nearest">Nearest Neighbor (Pixel Art)</option>
+          <option value="bilinear">Bilinear (Smooth)</option>
+        </select>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">OK</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- HSL Adjust dialog -->
+<div class="dialog-overlay" id="dlg-hsl">
+  <div class="dialog" style="min-width:320px;">
+    <div class="dialog-title">Hue / Saturation / Brightness</div>
+    <div class="dialog-body">
+      <div class="slider-row">
+        <label>Hue:</label>
+        <input type="range" id="hsl-hue" min="-180" max="180" value="0">
+        <span id="hsl-hue-val">0</span>
+      </div>
+      <div class="slider-row">
+        <label>Saturation:</label>
+        <input type="range" id="hsl-sat" min="-100" max="100" value="0">
+        <span id="hsl-sat-val">0</span>
+      </div>
+      <div class="slider-row">
+        <label>Brightness:</label>
+        <input type="range" id="hsl-bri" min="-100" max="100" value="0">
+        <span id="hsl-bri-val">0</span>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">OK</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Replace Color dialog -->
+<div class="dialog-overlay" id="dlg-replace-color">
+  <div class="dialog" style="min-width:300px;">
+    <div class="dialog-title">Replace Color</div>
+    <div class="dialog-body">
+      <div class="settings-row">
+        <label>From:</label>
+        <input type="color" id="replace-from" value="#000000">
+        <label>A:</label>
+        <input type="number" id="replace-from-a" min="0" max="255" value="255" style="width:48px;">
+      </div>
+      <div class="settings-row">
+        <label>To:</label>
+        <input type="color" id="replace-to" value="#ffffff">
+        <label>A:</label>
+        <input type="number" id="replace-to-a" min="0" max="255" value="255" style="width:48px;">
+      </div>
+      <div class="settings-row">
+        <label>Tolerance:</label>
+        <input type="number" id="replace-tolerance" min="0" max="255" value="0" style="width:48px;">
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">OK</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Export Favicon dialog -->
+<div class="dialog-overlay" id="dlg-favicon">
+  <div class="dialog" style="min-width:280px;">
+    <div class="dialog-title">Export Favicon</div>
+    <div class="dialog-body">
+      <p>Select sizes to include:</p>
+      <div class="favicon-sizes" id="favicon-sizes">
+        <label><input type="checkbox" value="16" checked> 16x16</label>
+        <label><input type="checkbox" value="32" checked> 32x32</label>
+        <label><input type="checkbox" value="48" checked> 48x48</label>
+      </div>
+      <p style="margin-top:8px;font-size:10px;opacity:0.7;">Missing sizes will be generated by scaling the nearest available image.</p>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Export</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Import Image dialog -->
+<div class="dialog-overlay" id="dlg-import">
+  <div class="dialog" style="min-width:300px;">
+    <div class="dialog-title">Import Image</div>
+    <div class="dialog-body">
+      <p>Generate icon entries from imported image:</p>
+      <div class="import-sizes" id="import-sizes">
+        <label><input type="checkbox" value="16" checked> 16x16</label>
+        <label><input type="checkbox" value="24" checked> 24x24</label>
+        <label><input type="checkbox" value="32" checked> 32x32</label>
+        <label><input type="checkbox" value="48" checked> 48x48</label>
+        <label><input type="checkbox" value="64"> 64x64</label>
+        <label><input type="checkbox" value="128"> 128x128</label>
+        <label><input type="checkbox" value="256"> 256x256</label>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Import</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Save Changes dialog -->
+<div class="dialog-overlay" id="dlg-save-changes">
+  <div class="dialog">
+    <div class="dialog-title">Icon Editor</div>
+    <div class="dialog-body">
+      <p>The icon has been changed.</p>
+      <p>Do you want to save the changes?</p>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="yes">Yes</button>
+      <button data-result="no">No</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- About dialog -->
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Icon Editor</div>
+    <div class="dialog-body" style="text-align: center; padding: 20px;">
+      <p style="font-weight: bold; font-size: 13px; margin-bottom: 4px;">Icon Editor</p>
+      <p style="font-size: 10px; opacity: 0.6; margin-bottom: 12px;">ICO / CUR Editor &amp; Extractor</p>
+      <p>A multi-image icon editor for &raquo;SynthelicZ&laquo;</p>
+      <p style="margin-top: 4px; font-size: 10px; opacity: 0.5;">Create, edit, and extract ICO/CUR files with full alpha channel support.</p>
+      <p style="margin-top: 12px; font-size: 10px; opacity: 0.7;">&copy; 1995-2026 &raquo;SynthelicZ&laquo;</p>
+    </div>
+    <div class="dialog-buttons" style="justify-content: center;">
+      <button data-result="ok">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Shift/Offset dialog -->
+<div class="dialog-overlay" id="dlg-shift">
+  <div class="dialog">
+    <div class="dialog-title">Shift / Offset Image</div>
+    <div class="dialog-body">
+      <div class="settings-row">
+        <label for="shift-dx">Horizontal:</label>
+        <input type="number" id="shift-dx" value="0" style="width:60px;">
+        <span style="font-size:10px;opacity:0.7;">px</span>
+      </div>
+      <div class="settings-row">
+        <label for="shift-dy">Vertical:</label>
+        <input type="number" id="shift-dy" value="0" style="width:60px;">
+        <span style="font-size:10px;opacity:0.7;">px</span>
+      </div>
+      <div class="settings-row">
+        <label><input type="checkbox" id="shift-wrap" checked> Wrap around</label>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">OK</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- PE Resource Browser dialog -->
+<div class="dialog-overlay" id="dlg-pe-browser">
+  <div class="dialog pe-browser-dialog">
+    <div class="dialog-title">Select Icon Group</div>
+    <div class="dialog-body pe-browser-body">
+      <div class="pe-browser-info">
+        Found <span id="pe-group-count">0</span> icon groups
+      </div>
+      <div class="pe-browser-grid" id="pe-browser-grid"></div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="open" id="pe-btn-open" disabled>Open</button>
+      <button data-result="export-all">Export All...</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script src="controller.js"></script>
+</body>
+</html>

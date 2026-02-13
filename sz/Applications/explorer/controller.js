@@ -152,7 +152,7 @@
 
   async function vfsRead(path) {
     try {
-      const content = await Kernel32.ReadFile(path);
+      const content = await Kernel32.ReadAllBytes(path);
       return { data: content };
     } catch (e) {
       return { error: e.message };
@@ -161,7 +161,14 @@
 
   async function vfsWrite(path, data) {
     try {
-      await Kernel32.WriteFile(path, data);
+      const tag = data != null && typeof data === 'object'
+        ? Object.prototype.toString.call(data)
+        : '';
+      const isBinary = tag === '[object ArrayBuffer]' || ArrayBuffer.isView(data);
+      if (isBinary)
+        await Kernel32.WriteAllBytes(path, data);
+      else
+        await Kernel32.WriteFile(path, data);
       return {};
     } catch (e) {
       return { error: e.message };
@@ -1530,9 +1537,10 @@
     for (let i = 0; i < files.length; ++i) {
       const file = files[i];
       try {
-        const content = await readFileAsText(file);
+        const arrayBuffer = await readFileAsArrayBuffer(file);
+
         const filePath = (vfsDir === '/' ? '/' : vfsDir + '/') + file.name;
-        const result = await vfsWrite(filePath, content);
+        const result = await vfsWrite(filePath, arrayBuffer);
         if (result.error)
           showAlert('Could not upload "' + file.name + '": ' + result.error);
       } catch (err) {
@@ -1544,13 +1552,66 @@
     await doRefresh();
   });
 
-  function readFileAsText(file) {
+  function readFileAsArrayBuffer(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result);
       reader.onerror = () => reject(reader.error);
-      reader.readAsText(file);
+      reader.readAsArrayBuffer(file);
     });
+  }
+
+  function contentToDownloadBlob(content) {
+    if (content instanceof Blob)
+      return content;
+    if (content instanceof ArrayBuffer)
+      return new Blob([content], { type: 'application/octet-stream' });
+    if (ArrayBuffer.isView(content))
+      return new Blob([content], { type: 'application/octet-stream' });
+
+    if (typeof content === 'string') {
+      const m = content.match(/^data:([^,]*),(.*)$/i);
+      if (m) {
+        const meta = m[1] || '';
+        const payload = m[2] || '';
+        const mime = (meta.split(';')[0] || 'application/octet-stream').trim();
+        if (/;\s*base64/i.test(meta)) {
+          try {
+            const binary = atob(payload.replace(/\s+/g, ''));
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; ++i)
+              bytes[i] = binary.charCodeAt(i) & 0xff;
+            return new Blob([bytes], { type: mime });
+          } catch (_) {}
+        } else {
+          try {
+            const decoded = decodeURIComponent(payload);
+            const bytes = new Uint8Array(decoded.length);
+            for (let i = 0; i < decoded.length; ++i)
+              bytes[i] = decoded.charCodeAt(i) & 0xff;
+            return new Blob([bytes], { type: mime });
+          } catch (_) {}
+        }
+      }
+
+      // Legacy Explorer wrapper
+      if (content.startsWith('{') && content.includes('"type"')) {
+        try {
+          const obj = JSON.parse(content);
+          if (obj && obj.type === 'base64' && typeof obj.data === 'string') {
+            const binary = atob(obj.data.replace(/\s+/g, ''));
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; ++i)
+              bytes[i] = binary.charCodeAt(i) & 0xff;
+            return new Blob([bytes], { type: obj.mime || 'application/octet-stream' });
+          }
+          if (obj && obj.type === 'text' && typeof obj.data === 'string')
+            return new Blob([obj.data], { type: 'text/plain;charset=utf-8' });
+        } catch (_) {}
+      }
+    }
+
+    return new Blob([content ?? ''], { type: 'application/octet-stream' });
   }
 
   // -- Download files --
@@ -1565,7 +1626,7 @@
         continue;
       }
       const content = result.data != null ? result.data : '';
-      const blob = new Blob([content], { type: 'application/octet-stream' });
+      const blob = contentToDownloadBlob(content);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -2023,7 +2084,7 @@
     for (let i = 0; i < files.length; ++i) {
       const file = files[i];
       try {
-        const content = await readFileAsText(file);
+        const content = await readFileAsArrayBuffer(file);
         const filePath = (vfsDir === '/' ? '/' : vfsDir + '/') + file.name;
         const result = await vfsWrite(filePath, content);
         if (result.error)
