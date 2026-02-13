@@ -4,116 +4,499 @@
 <meta charset="UTF-8">
 <title>WordPad</title>
 <script src="../sz-app-bootstrap.js"></script>
+<script src="../libs/mammoth.browser.min.js"></script>
+<script src="../libs/jszip.min.js"></script>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
-<!-- Menu Bar -->
-<div class="menu-bar" id="menu-bar">
-  <div class="menu-item" data-menu="file">
-    File
-    <div class="menu-dropdown">
-      <div class="menu-entry" data-action="new">New<span class="shortcut">Ctrl+N</span></div>
-      <div class="menu-entry" data-action="open">Open...<span class="shortcut">Ctrl+O</span></div>
-      <div class="menu-entry" data-action="save">Save<span class="shortcut">Ctrl+S</span></div>
-      <div class="menu-entry" data-action="save-as">Save As...</div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="exit">Exit</div>
-    </div>
-  </div>
-  <div class="menu-item" data-menu="edit">
-    Edit
-    <div class="menu-dropdown">
-      <div class="menu-entry" data-action="undo">Undo<span class="shortcut">Ctrl+Z</span></div>
-      <div class="menu-entry" data-action="redo">Redo<span class="shortcut">Ctrl+Y</span></div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="cut">Cut<span class="shortcut">Ctrl+X</span></div>
-      <div class="menu-entry" data-action="copy">Copy<span class="shortcut">Ctrl+C</span></div>
-      <div class="menu-entry" data-action="paste">Paste<span class="shortcut">Ctrl+V</span></div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="find">Find...<span class="shortcut">Ctrl+F</span></div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="select-all">Select All<span class="shortcut">Ctrl+A</span></div>
-    </div>
-  </div>
-  <div class="menu-item" data-menu="format">
-    Format
-    <div class="menu-dropdown">
-      <div class="menu-entry" data-action="font-dialog">Font...</div>
-      <div class="menu-entry" data-action="paragraph-dialog">Paragraph...</div>
-    </div>
-  </div>
-  <div class="menu-item" data-menu="help">
-    Help
-    <div class="menu-dropdown">
-      <div class="menu-entry" data-action="about">About WordPad</div>
-    </div>
+<!-- Quick Access Toolbar -->
+<div class="qat" id="qat">
+  <button class="qat-btn" data-action="save" title="Save (Ctrl+S)">&#128190;</button>
+  <button class="qat-btn" data-action="undo" title="Undo (Ctrl+Z)">&#8630;</button>
+  <button class="qat-btn" data-action="redo" title="Redo (Ctrl+Y)">&#8631;</button>
+  <button class="qat-btn" data-action="print" title="Print (Ctrl+P)">&#128424;</button>
+</div>
+
+<!-- Ribbon Tab Bar -->
+<div class="ribbon-tabs" id="ribbon-tabs">
+  <div class="ribbon-tab-bar">
+    <button class="ribbon-file-btn" id="ribbon-file-btn">File</button>
+    <button class="ribbon-tab active" data-tab="home">Home</button>
+    <button class="ribbon-tab" data-tab="insert">Insert</button>
+    <button class="ribbon-tab" data-tab="page-layout">Page Layout</button>
+    <button class="ribbon-tab" data-tab="view">View</button>
   </div>
 </div>
 
-<!-- Formatting Toolbar -->
-<div class="format-toolbar" id="format-toolbar">
-  <button class="tb-btn" data-cmd="bold" title="Bold (Ctrl+B)"><b>B</b></button>
-  <button class="tb-btn" data-cmd="italic" title="Italic (Ctrl+I)"><i>I</i></button>
-  <button class="tb-btn" data-cmd="underline" title="Underline (Ctrl+U)"><u>U</u></button>
-  <button class="tb-btn" data-cmd="strikeThrough" title="Strikethrough"><s>S</s></button>
-  <div class="tb-sep"></div>
-  <select class="tb-select font-family" id="tb-font-family" title="Font Family">
-    <option value="Arial">Arial</option>
-    <option value="Times New Roman">Times New Roman</option>
-    <option value="Courier New">Courier New</option>
-    <option value="Tahoma">Tahoma</option>
-    <option value="Verdana">Verdana</option>
-    <option value="Georgia">Georgia</option>
-    <option value="Comic Sans MS">Comic Sans MS</option>
-  </select>
-  <select class="tb-select font-size" id="tb-font-size" title="Font Size">
-    <option value="1">8</option>
-    <option value="2">10</option>
-    <option value="3" selected>12</option>
-    <option value="4">14</option>
-    <option value="5">18</option>
-    <option value="6">24</option>
-    <option value="7">36</option>
-  </select>
-  <div class="tb-sep"></div>
-  <button class="tb-btn" data-cmd="justifyLeft" title="Align Left">&#8676;</button>
-  <button class="tb-btn" data-cmd="justifyCenter" title="Align Center">&#8697;</button>
-  <button class="tb-btn" data-cmd="justifyRight" title="Align Right">&#8677;</button>
-  <div class="tb-sep"></div>
-  <button class="tb-btn" data-cmd="insertUnorderedList" title="Bullets">&#8226;</button>
-  <button class="tb-btn" data-cmd="insertOrderedList" title="Numbered List">1.</button>
-  <div class="tb-sep"></div>
-  <button class="tb-btn" data-cmd="indent" title="Indent">&#8680;</button>
-  <button class="tb-btn" data-cmd="outdent" title="Outdent">&#8678;</button>
-  <div class="tb-sep"></div>
-  <input type="color" class="tb-color" id="tb-text-color" value="#000000" title="Text Color">
+<!-- File Backstage -->
+<div class="backstage" id="backstage">
+  <div class="backstage-sidebar">
+    <button class="backstage-back" id="backstage-back">&#8592;</button>
+    <button class="backstage-item" data-action="new">New</button>
+    <button class="backstage-item" data-action="open">Open</button>
+    <button class="backstage-item" data-action="save">Save</button>
+    <button class="backstage-item" data-action="save-as">Save As</button>
+    <div class="backstage-sep"></div>
+    <button class="backstage-item" data-action="import-docx">Import DOCX...</button>
+    <button class="backstage-item" data-action="import-rtf">Import RTF...</button>
+    <div class="backstage-sep"></div>
+    <button class="backstage-item" data-action="print">Print</button>
+    <button class="backstage-item" data-action="export-txt">Export as .txt</button>
+    <button class="backstage-item" data-action="export-html">Export as .html</button>
+    <button class="backstage-item" data-action="export-docx">Export as .docx</button>
+    <button class="backstage-item" data-action="export-rtf">Export as .rtf</button>
+    <button class="backstage-item" data-action="export-pdf">Export as PDF (Print)</button>
+    <div class="backstage-sep"></div>
+    <button class="backstage-item" data-action="about">About</button>
+    <div class="backstage-spacer"></div>
+    <button class="backstage-item backstage-exit" data-action="exit">Exit</button>
+  </div>
 </div>
 
-<!-- Editor -->
-<div class="editor-wrapper">
-  <div class="editor" id="editor" contenteditable="true" spellcheck="true"></div>
+<!-- ═══ Ribbon Panels ═══ -->
+
+<!-- Home Tab -->
+<div class="ribbon-panel active" data-panel="home" id="ribbon-home">
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="paste" title="Paste (Ctrl+V)">
+        <span class="rb-icon rb-icon-lg">&#128203;</span>
+        <span class="rb-label">Paste</span>
+      </button>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="cut" title="Cut (Ctrl+X)">
+          <span class="rb-icon">&#9986;</span><span class="rb-label">Cut</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="copy" title="Copy (Ctrl+C)">
+          <span class="rb-icon">&#128464;</span><span class="rb-label">Copy</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="paste-special" title="Paste Special">
+          <span class="rb-icon">&#128466;</span><span class="rb-label">Paste Special</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Clipboard</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group ribbon-group-font">
+    <div class="ribbon-group-content">
+      <div class="rb-row">
+        <select class="rb-select rb-font-family" id="rb-font-family" title="Font Family"></select>
+        <select class="rb-select rb-font-size" id="rb-font-size" title="Font Size"></select>
+      </div>
+      <div class="rb-row">
+        <button class="rb-btn rb-fmt" data-cmd="bold" title="Bold (Ctrl+B)"><b>B</b></button>
+        <button class="rb-btn rb-fmt" data-cmd="italic" title="Italic (Ctrl+I)"><i>I</i></button>
+        <button class="rb-btn rb-fmt" data-cmd="underline" title="Underline (Ctrl+U)"><u>U</u></button>
+        <button class="rb-btn rb-fmt" data-cmd="strikeThrough" title="Strikethrough"><s>S</s></button>
+        <button class="rb-btn rb-fmt" data-cmd="subscript" title="Subscript">X<sub>2</sub></button>
+        <button class="rb-btn rb-fmt" data-cmd="superscript" title="Superscript">X<sup>2</sup></button>
+        <div class="rb-sep-v"></div>
+        <span class="rb-color-wrap" title="Font Color">
+          <input type="color" class="rb-color" id="rb-font-color" value="#000000">
+          <span class="rb-color-label" id="rb-font-color-swatch" style="background:#000000;">A</span>
+        </span>
+        <span class="rb-color-wrap" title="Highlight Color">
+          <input type="color" class="rb-color" id="rb-highlight-color" value="#ffff00">
+          <span class="rb-color-label rb-highlight-swatch" id="rb-highlight-swatch" style="background:#ffff00;"></span>
+        </span>
+        <div class="rb-sep-v"></div>
+        <button class="rb-btn rb-fmt" data-action="clear-formatting" title="Clear Formatting">&#8709;</button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Font</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-row">
+        <button class="rb-btn rb-fmt" data-cmd="justifyLeft" title="Align Left">&#9776;</button>
+        <button class="rb-btn rb-fmt" data-cmd="justifyCenter" title="Center">&#9776;</button>
+        <button class="rb-btn rb-fmt" data-cmd="justifyRight" title="Align Right">&#9776;</button>
+        <button class="rb-btn rb-fmt" data-cmd="justifyFull" title="Justify">&#9776;</button>
+        <div class="rb-sep-v"></div>
+        <button class="rb-btn rb-fmt" data-action="line-spacing" title="Line Spacing">
+          <span class="rb-icon">&#8691;</span>
+        </button>
+      </div>
+      <div class="rb-row">
+        <button class="rb-btn rb-fmt" data-cmd="insertUnorderedList" title="Bullets">&#8226;</button>
+        <button class="rb-btn rb-fmt" data-cmd="insertOrderedList" title="Numbering">1.</button>
+        <div class="rb-sep-v"></div>
+        <button class="rb-btn rb-fmt" data-cmd="outdent" title="Decrease Indent">&#8676;</button>
+        <button class="rb-btn rb-fmt" data-cmd="indent" title="Increase Indent">&#8677;</button>
+        <div class="rb-sep-v"></div>
+        <button class="rb-btn rb-fmt" data-action="borders" title="Borders">&#9638;</button>
+        <button class="rb-btn rb-fmt" data-action="shading" title="Shading">&#9639;</button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Paragraph</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-row">
+        <select class="rb-select rb-style-select" id="rb-styles" title="Styles">
+          <option value="p">Normal</option>
+          <option value="h1">Heading 1</option>
+          <option value="h2">Heading 2</option>
+          <option value="h3">Heading 3</option>
+          <option value="h4">Heading 4</option>
+          <option value="h5">Heading 5</option>
+          <option value="h6">Heading 6</option>
+          <option value="blockquote">Quote</option>
+          <option value="pre">Code</option>
+        </select>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Styles</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="find" title="Find (Ctrl+F)">
+          <span class="rb-icon">&#128269;</span><span class="rb-label">Find</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="replace" title="Replace (Ctrl+H)">
+          <span class="rb-icon">&#8644;</span><span class="rb-label">Replace</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="select-all" title="Select All (Ctrl+A)">
+          <span class="rb-icon">&#9634;</span><span class="rb-label">Select All</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Editing</div>
+  </div>
+
+</div>
+
+<!-- Insert Tab -->
+<div class="ribbon-panel" data-panel="insert" id="ribbon-insert">
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="insert-table" title="Insert Table">
+        <span class="rb-icon rb-icon-lg">&#9638;</span>
+        <span class="rb-label">Table</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Tables</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="insert-image-url" title="Image from URL">
+          <span class="rb-icon">&#128247;</span><span class="rb-label">Image (URL)</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-image-file" title="Image from File">
+          <span class="rb-icon">&#128444;</span><span class="rb-label">Image (File)</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-textbox" title="Text Box">
+          <span class="rb-icon">&#128196;</span><span class="rb-label">Text Box</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="insert-shape-rect" title="Rectangle">
+          <span class="rb-icon">&#9645;</span><span class="rb-label">Rectangle</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-shape-circle" title="Circle">
+          <span class="rb-icon">&#9711;</span><span class="rb-label">Circle</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-shape-line" title="Line">
+          <span class="rb-icon">&#9473;</span><span class="rb-label">Line</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Illustrations</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="insert-link" title="Hyperlink (Ctrl+K)">
+          <span class="rb-icon">&#128279;</span><span class="rb-label">Hyperlink</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-bookmark" title="Bookmark">
+          <span class="rb-icon">&#128278;</span><span class="rb-label">Bookmark</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Links</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="insert-header" title="Page Header">
+          <span class="rb-icon">&#9650;</span><span class="rb-label">Header</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-footer" title="Page Footer">
+          <span class="rb-icon">&#9660;</span><span class="rb-label">Footer</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-page-number" title="Page Number">
+          <span class="rb-icon">#</span><span class="rb-label">Page No.</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Header &amp; Footer</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="insert-symbol" title="Special Characters">
+          <span class="rb-icon">&#937;</span><span class="rb-label">Symbol</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-hr" title="Horizontal Rule">
+          <span class="rb-icon">&#8213;</span><span class="rb-label">Horiz. Rule</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-page-break" title="Page Break">
+          <span class="rb-icon">&#8629;</span><span class="rb-label">Page Break</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="insert-datetime" title="Date &amp; Time">
+          <span class="rb-icon">&#128197;</span><span class="rb-label">Date/Time</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Symbols</div>
+  </div>
+
+</div>
+
+<!-- Page Layout Tab -->
+<div class="ribbon-panel" data-panel="page-layout" id="ribbon-page-layout">
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <div class="rb-field">
+          <label>Size:</label>
+          <select class="rb-select rb-narrow" id="rb-page-size">
+            <option value="a4">A4</option>
+            <option value="letter" selected>Letter</option>
+            <option value="legal">Legal</option>
+            <option value="custom">Custom</option>
+          </select>
+        </div>
+        <div class="rb-field">
+          <label>Orientation:</label>
+          <select class="rb-select rb-narrow" id="rb-page-orient">
+            <option value="portrait" selected>Portrait</option>
+            <option value="landscape">Landscape</option>
+          </select>
+        </div>
+        <div class="rb-field">
+          <label>Margins:</label>
+          <select class="rb-select rb-narrow" id="rb-page-margins">
+            <option value="normal" selected>Normal</option>
+            <option value="narrow">Narrow</option>
+            <option value="wide">Wide</option>
+            <option value="custom">Custom...</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Page Setup</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <div class="rb-field">
+          <label>Before:</label>
+          <select class="rb-select rb-narrow" id="rb-spacing-before">
+            <option value="0" selected>0 pt</option>
+            <option value="6">6 pt</option>
+            <option value="12">12 pt</option>
+            <option value="18">18 pt</option>
+            <option value="24">24 pt</option>
+          </select>
+        </div>
+        <div class="rb-field">
+          <label>After:</label>
+          <select class="rb-select rb-narrow" id="rb-spacing-after">
+            <option value="0">0 pt</option>
+            <option value="6">6 pt</option>
+            <option value="8" selected>8 pt</option>
+            <option value="12">12 pt</option>
+            <option value="24">24 pt</option>
+          </select>
+        </div>
+        <div class="rb-field">
+          <label>Indent:</label>
+          <select class="rb-select rb-narrow" id="rb-para-indent">
+            <option value="0" selected>None</option>
+            <option value="1">0.5 in</option>
+            <option value="2">1.0 in</option>
+            <option value="3">1.5 in</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Paragraph</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <div class="rb-field">
+          <label>Color:</label>
+          <input type="color" class="rb-color" id="rb-page-color" value="#ffffff" title="Page Color">
+        </div>
+        <button class="rb-btn rb-btn-sm" data-action="watermark" title="Watermark">
+          <span class="rb-icon">&#128167;</span><span class="rb-label">Watermark</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Background</div>
+  </div>
+
+</div>
+
+<!-- View Tab -->
+<div class="ribbon-panel" data-panel="view" id="ribbon-view">
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <label class="rb-radio-label"><input type="radio" name="view-mode" value="print" checked> Print Layout</label>
+        <label class="rb-radio-label"><input type="radio" name="view-mode" value="web"> Web Layout</label>
+        <label class="rb-radio-label"><input type="radio" name="view-mode" value="outline"> Outline</label>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Document Views</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <label class="rb-check-label"><input type="checkbox" id="view-ruler"> Ruler</label>
+        <label class="rb-check-label"><input type="checkbox" id="view-gridlines"> Gridlines</label>
+        <label class="rb-check-label"><input type="checkbox" id="view-nav-pane"> Navigation Pane</label>
+      </div>
+      <div class="rb-stack">
+        <label class="rb-check-label"><input type="checkbox" id="view-formatting-marks"> Formatting Marks</label>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Show</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-row rb-zoom-row">
+        <button class="rb-btn rb-fmt" data-action="zoom-out" title="Zoom Out">&#8722;</button>
+        <input type="range" class="rb-zoom-slider" id="rb-zoom-slider" min="25" max="500" value="100">
+        <button class="rb-btn rb-fmt" data-action="zoom-in" title="Zoom In">+</button>
+        <span class="rb-zoom-value" id="rb-zoom-value">100%</span>
+      </div>
+      <div class="rb-row">
+        <button class="rb-btn rb-btn-sm" data-action="zoom-100" title="100%">
+          <span class="rb-label">100%</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="zoom-page-width" title="Page Width">
+          <span class="rb-label">Page Width</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="zoom-full-page" title="Full Page">
+          <span class="rb-label">Full Page</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Zoom</div>
+  </div>
+
+</div>
+
+<!-- Ruler -->
+<div class="ruler" id="ruler" style="display:none;">
+  <div class="ruler-inner"></div>
+</div>
+
+<!-- Navigation Pane -->
+<div class="nav-pane" id="nav-pane" style="display:none;">
+  <div class="nav-pane-title">
+    <span>Navigation</span>
+    <span class="nav-pane-close" id="nav-pane-close">&times;</span>
+  </div>
+  <div class="nav-pane-body" id="nav-pane-body"></div>
+</div>
+
+<!-- Editor Area -->
+<div class="editor-area" id="editor-area">
+  <div class="editor-wrapper" id="editor-wrapper">
+    <div class="editor" id="editor" contenteditable="true" spellcheck="true"></div>
+  </div>
 </div>
 
 <!-- Status bar -->
 <div class="status-bar" id="status-bar">
   <span class="status-section" id="status-words">Words: 0</span>
   <span class="status-section" id="status-chars">Characters: 0</span>
+  <span class="status-section" id="status-lines">Lines: 0</span>
+  <span class="status-spacer"></span>
+  <span class="status-section" id="status-zoom">100%</span>
+  <input type="range" class="status-zoom-slider" id="status-zoom-slider" min="25" max="500" value="100">
 </div>
 
-<!-- Find panel -->
+<!-- ═══ Dialogs ═══ -->
+
+<!-- Find & Replace Panel -->
 <div class="find-panel" id="find-panel">
   <div class="find-panel-title">
-    <span>Find</span>
+    <span id="fp-title-text">Find and Replace</span>
     <span class="fp-close" id="fp-close">&times;</span>
   </div>
   <div class="find-panel-body">
+    <div class="fp-tabs">
+      <button class="fp-tab active" data-fp-tab="find">Find</button>
+      <button class="fp-tab" data-fp-tab="replace">Replace</button>
+    </div>
     <div class="fp-field">
       <label for="fp-find-input">Find:</label>
       <input type="text" id="fp-find-input" autocomplete="off">
     </div>
+    <div class="fp-field fp-replace-row" id="fp-replace-row" style="display:none;">
+      <label for="fp-replace-input">Replace:</label>
+      <input type="text" id="fp-replace-input" autocomplete="off">
+    </div>
+    <div class="fp-options">
+      <label><input type="checkbox" id="fp-case-sensitive"> Match case</label>
+      <label><input type="checkbox" id="fp-regex"> Use regex</label>
+    </div>
     <div class="fp-buttons">
       <button id="fp-find-next">Find Next</button>
+      <button id="fp-find-prev">Find Prev</button>
+      <button id="fp-replace-one" style="display:none;">Replace</button>
+      <button id="fp-replace-all" style="display:none;">Replace All</button>
     </div>
     <div class="fp-status" id="fp-status"></div>
   </div>
@@ -135,71 +518,6 @@
   </div>
 </div>
 
-<!-- Font dialog -->
-<div class="dialog-overlay" id="dlg-font">
-  <div class="dialog" style="min-width: 380px;">
-    <div class="dialog-title">Font</div>
-    <div class="dialog-body">
-      <div class="font-row">
-        <div style="flex: 1;">
-          <label for="dlg-font-family">Font:</label>
-          <select id="dlg-font-family">
-            <option value="Arial">Arial</option>
-            <option value="Times New Roman">Times New Roman</option>
-            <option value="Courier New">Courier New</option>
-            <option value="Tahoma">Tahoma</option>
-            <option value="Verdana">Verdana</option>
-            <option value="Georgia">Georgia</option>
-            <option value="Comic Sans MS">Comic Sans MS</option>
-          </select>
-        </div>
-        <div>
-          <label for="dlg-font-size">Size:</label>
-          <input type="number" id="dlg-font-size" min="8" max="72" value="12">
-        </div>
-      </div>
-      <div class="font-style-checks">
-        <label><input type="checkbox" id="dlg-font-bold"> Bold</label>
-        <label><input type="checkbox" id="dlg-font-italic"> Italic</label>
-        <label><input type="checkbox" id="dlg-font-underline"> Underline</label>
-        <label><input type="checkbox" id="dlg-font-strike"> Strikethrough</label>
-      </div>
-      <div style="margin-bottom: 8px;">
-        <label for="dlg-font-color" style="font-size: 11px;">Color:</label>
-        <input type="color" id="dlg-font-color" value="#000000" style="vertical-align: middle;">
-      </div>
-      <label style="font-size: 11px;">Preview:</label>
-      <div class="font-preview" id="dlg-font-preview">AaBbYyZz 0123</div>
-    </div>
-    <div class="dialog-buttons">
-      <button data-result="ok">OK</button>
-      <button data-result="cancel">Cancel</button>
-    </div>
-  </div>
-</div>
-
-<!-- Paragraph dialog -->
-<div class="dialog-overlay" id="dlg-paragraph">
-  <div class="dialog" style="min-width: 320px;">
-    <div class="dialog-title">Paragraph</div>
-    <div class="dialog-body">
-      <div class="para-row">
-        <label for="dlg-para-align">Alignment:</label>
-        <select id="dlg-para-align">
-          <option value="justifyLeft">Left</option>
-          <option value="justifyCenter">Center</option>
-          <option value="justifyRight">Right</option>
-          <option value="justifyFull">Justify</option>
-        </select>
-      </div>
-    </div>
-    <div class="dialog-buttons">
-      <button data-result="ok">OK</button>
-      <button data-result="cancel">Cancel</button>
-    </div>
-  </div>
-</div>
-
 <!-- About dialog -->
 <div class="dialog-overlay" id="dlg-about">
   <div class="dialog">
@@ -213,6 +531,151 @@
       <button data-result="ok">OK</button>
     </div>
   </div>
+</div>
+
+<!-- Insert Table dialog -->
+<div class="dialog-overlay" id="dlg-insert-table">
+  <div class="dialog" style="min-width:300px;">
+    <div class="dialog-title">Insert Table</div>
+    <div class="dialog-body">
+      <div class="table-grid-picker" id="table-grid-picker"></div>
+      <div class="table-grid-label" id="table-grid-label">0 x 0</div>
+      <div class="fp-field" style="margin-top:8px;">
+        <label for="tbl-rows">Rows:</label>
+        <input type="number" id="tbl-rows" min="1" max="50" value="3" style="width:50px;">
+        <label for="tbl-cols" style="margin-left:12px;">Cols:</label>
+        <input type="number" id="tbl-cols" min="1" max="20" value="3" style="width:50px;">
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Insert</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Insert Hyperlink dialog -->
+<div class="dialog-overlay" id="dlg-insert-link">
+  <div class="dialog" style="min-width:360px;">
+    <div class="dialog-title">Insert Hyperlink</div>
+    <div class="dialog-body">
+      <div class="fp-field">
+        <label for="link-text">Text:</label>
+        <input type="text" id="link-text" autocomplete="off">
+      </div>
+      <div class="fp-field">
+        <label for="link-url">URL:</label>
+        <input type="text" id="link-url" autocomplete="off" value="https://">
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Insert</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Insert Image from URL dialog -->
+<div class="dialog-overlay" id="dlg-insert-image">
+  <div class="dialog" style="min-width:360px;">
+    <div class="dialog-title">Insert Image</div>
+    <div class="dialog-body">
+      <div class="fp-field">
+        <label for="img-url">URL:</label>
+        <input type="text" id="img-url" autocomplete="off" placeholder="https://example.com/image.png">
+      </div>
+      <div class="fp-field">
+        <label for="img-alt">Alt text:</label>
+        <input type="text" id="img-alt" autocomplete="off">
+      </div>
+      <div class="fp-field">
+        <label for="img-width">Width:</label>
+        <input type="number" id="img-width" min="1" placeholder="auto" style="width:70px;">
+        <label for="img-height" style="margin-left:8px;">Height:</label>
+        <input type="number" id="img-height" min="1" placeholder="auto" style="width:70px;">
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Insert</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Insert Bookmark dialog -->
+<div class="dialog-overlay" id="dlg-insert-bookmark">
+  <div class="dialog" style="min-width:300px;">
+    <div class="dialog-title">Insert Bookmark</div>
+    <div class="dialog-body">
+      <div class="fp-field">
+        <label for="bm-name">Name:</label>
+        <input type="text" id="bm-name" autocomplete="off" placeholder="bookmark-name">
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Insert</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Symbol picker dialog -->
+<div class="dialog-overlay" id="dlg-symbol">
+  <div class="dialog" style="min-width:380px;">
+    <div class="dialog-title">Insert Symbol</div>
+    <div class="dialog-body">
+      <div class="symbol-grid" id="symbol-grid"></div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="cancel">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Watermark dialog -->
+<div class="dialog-overlay" id="dlg-watermark">
+  <div class="dialog" style="min-width:300px;">
+    <div class="dialog-title">Watermark</div>
+    <div class="dialog-body">
+      <div class="fp-field">
+        <label for="wm-text">Text:</label>
+        <input type="text" id="wm-text" autocomplete="off" value="DRAFT" placeholder="Watermark text">
+      </div>
+      <div class="fp-options" style="margin-top:8px;">
+        <label><input type="checkbox" id="wm-remove"> Remove watermark</label>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Apply</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Line Spacing popup -->
+<div class="popup-menu" id="popup-line-spacing">
+  <div class="popup-entry" data-spacing="1.0">1.0</div>
+  <div class="popup-entry" data-spacing="1.15">1.15</div>
+  <div class="popup-entry" data-spacing="1.5">1.5</div>
+  <div class="popup-entry" data-spacing="2.0">2.0</div>
+  <div class="popup-entry" data-spacing="2.5">2.5</div>
+  <div class="popup-entry" data-spacing="3.0">3.0</div>
+  <div class="popup-separator"></div>
+  <div class="popup-entry" data-spacing="custom">Custom...</div>
+</div>
+
+<!-- Paste Special popup -->
+<div class="popup-menu" id="popup-paste-special">
+  <div class="popup-entry" data-paste="html">Paste (keep formatting)</div>
+  <div class="popup-entry" data-paste="plain">Paste as Plain Text</div>
+</div>
+
+<!-- Border popup -->
+<div class="popup-menu" id="popup-borders">
+  <div class="popup-entry" data-border="all">All Borders</div>
+  <div class="popup-entry" data-border="none">No Borders</div>
+  <div class="popup-entry" data-border="outside">Outside Borders</div>
+  <div class="popup-entry" data-border="bottom">Bottom Border</div>
 </div>
 
 <script src="controller.js"></script>
