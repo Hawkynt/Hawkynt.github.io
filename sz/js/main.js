@@ -38,7 +38,7 @@
     // -- Theme engine -------------------------------------------------------
     bootScreen.setProgress(65, 'Building theme...');
     const themeEngine = new SZ.ThemeEngine();
-    themeEngine.generateFromSkin(currentSkin);
+    await themeEngine.generateFromSkin(currentSkin);
     applyRootTheme(currentSkin);
 
     // -- Virtual File System ------------------------------------------------
@@ -236,7 +236,7 @@
             await preloadSkinImages(resolvedSkin);
             skinCSSResult = await SZ.generateSkinCSS(resolvedSkin);
             applyRootTheme(resolvedSkin);
-            themeEngine.generateFromSkin(resolvedSkin);
+            await themeEngine.generateFromSkin(resolvedSkin);
             windowManager.updateSkinReference(resolvedSkin);
             themeEngine.updateAll(windowManager.allWindows);
             taskbar.applySkin(resolvedSkin);
@@ -755,6 +755,24 @@
     return '{' + keys.slice(0, 3).join(', ') + ', \u2026}';
   }
 
+  function _getDetail(value, type) {
+    try {
+      if (type === 'function' || type === 'class')
+        return value.toString();
+      if (type === 'string')
+        return value;
+      if (type === 'regexp')
+        return value.toString();
+      if (type === 'date')
+        return value.toString() + '\n\nISO: ' + value.toISOString() + '\nTimestamp: ' + value.getTime();
+      if (value === null) return 'null';
+      if (value === undefined) return 'undefined';
+      return String(value);
+    } catch (e) {
+      return '[Error: ' + e.message + ']';
+    }
+  }
+
   function _describeEntry(name, value) {
     const type = _classifyType(value);
     const isContainer = _CONTAINER_TYPES.has(type);
@@ -767,7 +785,10 @@
         else childCount = Object.getOwnPropertyNames(value).length;
       } catch (_) {}
     }
-    return { name, type, isContainer, childCount, preview: _previewValue(value) };
+    const entry = { name, type, isContainer, childCount, preview: _previewValue(value) };
+    if (!isContainer)
+      entry.detail = _getDetail(value, type);
+    return entry;
   }
 
   function _getEntries(obj) {
