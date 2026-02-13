@@ -2100,6 +2100,92 @@
   // -- clear --
   defBash('clear', async () => { clearScreen(); });
 
+  // -- help --
+  defBash('help', async (args, ctx) => {
+    const descriptions = {
+      echo: 'Display a line of text',
+      printf: 'Format and print data',
+      cd: 'Change the working directory',
+      pwd: 'Print the current working directory',
+      ls: 'List directory contents',
+      cat: 'Concatenate and display files',
+      mkdir: 'Create directories',
+      rmdir: 'Remove empty directories',
+      rm: 'Remove files or directories',
+      cp: 'Copy files and directories',
+      mv: 'Move or rename files',
+      touch: 'Create empty files or update timestamps',
+      head: 'Output the first part of files',
+      tail: 'Output the last part of files',
+      wc: 'Print line, word, and byte counts',
+      grep: 'Search for patterns in text',
+      sed: 'Stream editor for text transformation',
+      sort: 'Sort lines of text',
+      uniq: 'Remove duplicate adjacent lines',
+      tr: 'Translate or delete characters',
+      cut: 'Remove sections from each line',
+      rev: 'Reverse lines character-wise',
+      tee: 'Read stdin and write to files and stdout',
+      date: 'Display the current date and time',
+      cal: 'Display a calendar',
+      whoami: 'Print the current user name',
+      hostname: 'Show the system hostname',
+      uname: 'Print system information',
+      env: 'Display environment variables',
+      export: 'Set environment variables',
+      unset: 'Remove environment variables',
+      alias: 'Define or display command aliases',
+      unalias: 'Remove alias definitions',
+      type: 'Describe a command type',
+      which: 'Locate a command',
+      read: 'Read a line of input into a variable',
+      test: 'Evaluate conditional expression',
+      '[': 'Evaluate conditional expression',
+      true: 'Return successful exit status',
+      false: 'Return unsuccessful exit status',
+      seq: 'Print a sequence of numbers',
+      basename: 'Strip directory and suffix from filename',
+      dirname: 'Strip last component from path',
+      realpath: 'Print resolved absolute path',
+      file: 'Determine file type',
+      du: 'Estimate file space usage',
+      df: 'Report file system disk space usage',
+      free: 'Display amount of free and used memory',
+      uptime: 'Show how long the system has been running',
+      ps: 'Report running processes',
+      kill: 'Terminate processes by PID',
+      history: 'Display command history',
+      source: 'Execute commands from a file in the current shell',
+      '.': 'Execute commands from a file in the current shell',
+      exec: 'Replace the shell with a command',
+      eval: 'Evaluate arguments as a shell command',
+      exit: 'Exit the shell',
+      clear: 'Clear the terminal screen',
+      help: 'Display information about built-in commands',
+    };
+
+    if (args.length > 0) {
+      const cmd = args[0];
+      if (BASH_COMMANDS[cmd]) {
+        const desc = descriptions[cmd] || 'shell built-in command';
+        ctx.println(cmd + ': ' + cmd + ' - ' + desc);
+      } else
+        ctx.println('bash: help: no help topics match `' + cmd + '\'');
+      return;
+    }
+
+    ctx.println('GNU bash, version 5.1.0(1)-release (sz-pc)');
+    ctx.println('These shell commands are defined internally. Type `help name\' to find out more about the function `name\'.');
+    ctx.println('');
+
+    const cmds = [...new Set(Object.keys(BASH_COMMANDS))].sort();
+    const maxLen = cmds.reduce((m, c) => Math.max(m, c.length), 0);
+    for (const cmd of cmds) {
+      const desc = descriptions[cmd] || '';
+      ctx.println(' ' + cmd.padEnd(maxLen + 2) + desc);
+    }
+  });
+
   // =========================================================================
   // Bash command execution
   // =========================================================================
