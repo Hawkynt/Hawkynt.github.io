@@ -97,10 +97,18 @@
     comboButton: {
     },
 
+    taskButton: {
+      image: `${BASE}/BUTTONS.BMP`,
+      topheight: 7,
+      bottomheight: 7,
+      leftwidth: 7,
+      rightwidth: 7,
+    },
+
     tabControl: {
       image: `${BASE}/TABS.BMP`,
-      topheight: 2,
-      bottomheight: 2,
+      topheight: 1,
+      bottomheight: 1,
       leftwidth: 2,
       rightwidth: 2,
     },
