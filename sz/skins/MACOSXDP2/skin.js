@@ -116,18 +116,18 @@
 
     taskButton: {
       image: `${BASE}/TASKBAR.BMP`,
-      topheight: 3,
-      bottomheight: 3,
-      leftwidth: 3,
-      rightwidth: 3,
+      topheight: 2,
+      bottomheight: 2,
+      leftwidth: 2,
+      rightwidth: 2,
     },
 
     tabControl: {
       image: `${BASE}/TABS.BMP`,
-      topheight: 3,
-      bottomheight: 3,
-      leftwidth: 3,
-      rightwidth: 3,
+      topheight: 1,
+      bottomheight: 1,
+      leftwidth: 11,
+      rightwidth: 11,
     },
 
     startButton: { image: `${BASE}/START.BMP` },
