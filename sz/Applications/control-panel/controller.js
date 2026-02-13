@@ -519,6 +519,20 @@
     renderBackgroundList();
     updateBgPreview();
 
+    // Animations checkbox
+    const chkAnim = document.getElementById('chk-animations');
+    if (chkAnim)
+      chkAnim.checked = data.animations !== false;
+
+    // Cursor settings
+    if (data.cursor) {
+      chkCursorShadow.checked = !!data.cursor.shadow;
+      chkCursorTrail.checked = !!data.cursor.trail;
+      cursorTrailLenEl.value = data.cursor.trailLen || 5;
+      cursorTrailLenValueEl.textContent = data.cursor.trailLen || 5;
+      _updateTrailOptionsVisibility();
+    }
+
     dirty = false;
   }
 
@@ -545,6 +559,139 @@
     SZ.Dlls.User32.PostMessage('sz:taskbarSetting', { key: 'smallIcons', value: e.target.checked });
     dirty = true;
   });
+
+  // Window animations checkbox
+  document.getElementById('chk-animations').addEventListener('change', (e) => {
+    SZ.Dlls.User32.PostMessage('sz:animationSetting', { value: e.target.checked });
+    dirty = true;
+  });
+
+  // -- Pointers tab ---------------------------------------------------------
+
+  const chkCursorShadow = document.getElementById('chk-cursor-shadow');
+  const chkCursorTrail = document.getElementById('chk-cursor-trail');
+  const cursorTrailLenEl = document.getElementById('cursor-trail-len');
+  const cursorTrailLenValueEl = document.getElementById('cursor-trail-len-value');
+  const trailOptionsGroup = document.getElementById('trail-options-group');
+  const cursorPreviewArea = document.getElementById('cursor-preview-area');
+
+  // Inline cursor preview state
+  let pvShadowEl = null;
+  const pvTrailEls = [];
+  const pvTrailPositions = [];
+  let pvLastTrailTime = 0;
+
+  const _cursorSvg = `data:image/svg+xml,${encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 32 32">' +
+    '<path d="M4 1 L4 27 L10 21 L16 31 L20 29 L14 19 L22 19 Z" ' +
+    'fill="white" stroke="black" stroke-width="1.5" stroke-linejoin="round"/>' +
+    '</svg>'
+  )}`;
+
+  function _initCursorPreview() {
+    // Create shadow element inside preview
+    pvShadowEl = document.createElement('div');
+    pvShadowEl.className = 'cursor-preview-shadow';
+    pvShadowEl.style.backgroundImage = `url("${_cursorSvg}")`;
+    pvShadowEl.style.display = 'none';
+    cursorPreviewArea.appendChild(pvShadowEl);
+
+    cursorPreviewArea.addEventListener('pointermove', (e) => {
+      const rect = cursorPreviewArea.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      // Update shadow
+      if (chkCursorShadow.checked && pvShadowEl) {
+        pvShadowEl.style.display = '';
+        pvShadowEl.style.left = (x + 3) + 'px';
+        pvShadowEl.style.top = (y + 3) + 'px';
+      }
+
+      // Update trail
+      if (chkCursorTrail.checked) {
+        const now = performance.now();
+        if (now - pvLastTrailTime >= 50) {
+          pvLastTrailTime = now;
+          pvTrailPositions.push({ x, y });
+          const maxLen = parseInt(cursorTrailLenEl.value, 10) || 5;
+          while (pvTrailPositions.length > maxLen)
+            pvTrailPositions.shift();
+          _updatePreviewTrail();
+        }
+      }
+    });
+
+    cursorPreviewArea.addEventListener('pointerleave', () => {
+      if (pvShadowEl)
+        pvShadowEl.style.display = 'none';
+      for (const el of pvTrailEls)
+        el.style.opacity = '0';
+    });
+  }
+
+  function _updatePreviewTrail() {
+    const maxLen = parseInt(cursorTrailLenEl.value, 10) || 5;
+
+    // Ensure correct number of trail elements
+    while (pvTrailEls.length < maxLen) {
+      const el = document.createElement('div');
+      el.className = 'cursor-preview-trail';
+      el.style.backgroundImage = `url("${_cursorSvg}")`;
+      el.style.opacity = '0';
+      cursorPreviewArea.appendChild(el);
+      pvTrailEls.push(el);
+    }
+    while (pvTrailEls.length > maxLen) {
+      const el = pvTrailEls.pop();
+      el.remove();
+    }
+
+    const positions = pvTrailPositions;
+    const len = positions.length;
+    for (let i = 0; i < pvTrailEls.length; ++i) {
+      const el = pvTrailEls[i];
+      if (i < len) {
+        const pos = positions[len - 1 - i];
+        const ratio = 1 - (i / pvTrailEls.length);
+        el.style.left = pos.x + 'px';
+        el.style.top = pos.y + 'px';
+        el.style.opacity = Math.max(0.05, ratio * 0.4);
+      } else {
+        el.style.opacity = '0';
+      }
+    }
+  }
+
+  function _updateTrailOptionsVisibility() {
+    trailOptionsGroup.style.opacity = chkCursorTrail.checked ? '1' : '0.5';
+    cursorTrailLenEl.disabled = !chkCursorTrail.checked;
+  }
+
+  chkCursorShadow.addEventListener('change', () => {
+    SZ.Dlls.User32.PostMessage('sz:cursorSetting', { key: 'shadow', value: chkCursorShadow.checked });
+    if (!chkCursorShadow.checked && pvShadowEl)
+      pvShadowEl.style.display = 'none';
+    dirty = true;
+  });
+
+  chkCursorTrail.addEventListener('change', () => {
+    SZ.Dlls.User32.PostMessage('sz:cursorSetting', { key: 'trail', value: chkCursorTrail.checked });
+    _updateTrailOptionsVisibility();
+    if (!chkCursorTrail.checked)
+      for (const el of pvTrailEls)
+        el.style.opacity = '0';
+    dirty = true;
+  });
+
+  cursorTrailLenEl.addEventListener('input', () => {
+    const val = parseInt(cursorTrailLenEl.value, 10);
+    cursorTrailLenValueEl.textContent = val;
+    SZ.Dlls.User32.PostMessage('sz:cursorSetting', { key: 'trailLen', value: val });
+    dirty = true;
+  });
+
+  _initCursorPreview();
 
   // Switch to requested tab from URL parameter
   function init() {
