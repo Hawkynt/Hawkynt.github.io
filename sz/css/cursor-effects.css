@@ -1,0 +1,50 @@
+/* ==========================================================================
+   Cursor Effects
+   Mouse shadow and mouse trail overlay elements. These divs are positioned
+   absolutely on top of the desktop and follow pointer movement.
+   ========================================================================== */
+
+/* Container for all cursor effect elements — covers the full viewport,
+   sits above everything, but passes all pointer events through. */
+#sz-cursor-effects {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* --------------------------------------------------------------------------
+   Mouse Shadow
+   A single translucent element offset slightly from the real cursor.
+   -------------------------------------------------------------------------- */
+
+.sz-cursor-shadow {
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  will-change: transform, opacity;
+  filter: blur(1px) brightness(0) opacity(0.3);
+}
+
+.sz-cursor-shadow.active {
+  opacity: 1;
+}
+
+/* --------------------------------------------------------------------------
+   Mouse Trail
+   A series of divs that fade out behind the cursor.
+   -------------------------------------------------------------------------- */
+
+.sz-cursor-trail {
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  pointer-events: none;
+  opacity: 0;
+  will-change: transform, opacity;
+  transition: opacity 0.08s linear;
+}
