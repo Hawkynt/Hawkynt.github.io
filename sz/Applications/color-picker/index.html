@@ -10,7 +10,7 @@
 
 <div id="app">
 
-  <!-- Visual color selection area -->
+  <!-- Visual color selection area (SV + Hue mode) -->
   <div id="visual-area">
     <div id="sv-wrap">
       <canvas id="sv-canvas"></canvas>
@@ -23,6 +23,22 @@
     <div id="alpha-wrap">
       <canvas id="alpha-canvas"></canvas>
       <div id="alpha-slider"></div>
+    </div>
+  </div>
+
+  <!-- Visual color selection area (Color Wheel mode for HSL/HSV) -->
+  <div id="wheel-area" class="hidden">
+    <div id="wheel-wrap">
+      <canvas id="wheel-canvas"></canvas>
+      <div id="wheel-cursor"></div>
+    </div>
+    <div id="lv-wrap">
+      <canvas id="lv-canvas"></canvas>
+      <div id="lv-slider"></div>
+    </div>
+    <div id="wheel-alpha-wrap">
+      <canvas id="wheel-alpha-canvas"></canvas>
+      <div id="wheel-alpha-slider"></div>
     </div>
   </div>
 

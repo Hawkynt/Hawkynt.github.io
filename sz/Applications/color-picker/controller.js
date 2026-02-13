@@ -162,11 +162,27 @@
   const alphaCanvas = document.getElementById('alpha-canvas');
   const alphaSlider = document.getElementById('alpha-slider');
 
+  const visualArea = document.getElementById('visual-area');
+  const wheelArea = document.getElementById('wheel-area');
+  const wheelWrap = document.getElementById('wheel-wrap');
+  const wheelCanvas = document.getElementById('wheel-canvas');
+  const wheelCursor = document.getElementById('wheel-cursor');
+  const lvWrap = document.getElementById('lv-wrap');
+  const lvCanvas = document.getElementById('lv-canvas');
+  const lvSliderEl = document.getElementById('lv-slider');
+  const wheelAlphaWrap = document.getElementById('wheel-alpha-wrap');
+  const wheelAlphaCanvas = document.getElementById('wheel-alpha-canvas');
+  const wheelAlphaSlider = document.getElementById('wheel-alpha-slider');
+
   const swatchNew = document.getElementById('swatch-new');
   const swatchOld = document.getElementById('swatch-old');
 
   const hexInput = document.getElementById('hex-input');
   const cssInput = document.getElementById('css-input');
+
+  // ===== Wheel mode tracking =====
+
+  let activeMode = 'rgb'; // 'rgb', 'hsl', 'hsv', 'cmyk'
 
   // ===== Canvas rendering =====
 
@@ -230,6 +246,179 @@
     grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, w, h);
+  }
+
+  // ===== Color wheel rendering =====
+
+  let wheelImageData = null;
+  let wheelLastLV = -1;
+  let wheelLastMode = null;
+
+  function drawWheelCanvas() {
+    const size = 200;
+    wheelCanvas.width = size;
+    wheelCanvas.height = size;
+    const ctx = wheelCanvas.getContext('2d', { willReadFrequently: false });
+    const centerX = size / 2;
+    const centerY = size / 2;
+    const radius = size / 2;
+
+    // Determine current L or V value
+    const isHSL = activeMode === 'hsl';
+    let lvValue;
+    if (isHSL) {
+      const [, , l] = rgbToHsl(...getRgb());
+      lvValue = l;
+    } else
+      lvValue = state.v;
+
+    // Cache: only redraw if L/V or mode changed
+    if (wheelImageData && wheelLastLV === lvValue && wheelLastMode === activeMode) {
+      ctx.putImageData(wheelImageData, 0, 0);
+      return;
+    }
+
+    const imgData = ctx.createImageData(size, size);
+    const data = imgData.data;
+
+    for (let y = 0; y < size; ++y) {
+      for (let x = 0; x < size; ++x) {
+        const dx = x - centerX;
+        const dy = y - centerY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const idx = (y * size + x) * 4;
+
+        if (dist <= radius) {
+          const hue = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+          const sat = (dist / radius) * 100;
+          let r, g, b;
+          if (isHSL)
+            [r, g, b] = hslToRgb(hue, sat, lvValue);
+          else
+            [r, g, b] = hsvToRgb(hue, sat, lvValue);
+
+          data[idx] = r;
+          data[idx + 1] = g;
+          data[idx + 2] = b;
+          data[idx + 3] = 255;
+        } else {
+          data[idx + 3] = 0;
+        }
+      }
+    }
+
+    ctx.putImageData(imgData, 0, 0);
+    wheelImageData = imgData;
+    wheelLastLV = lvValue;
+    wheelLastMode = activeMode;
+  }
+
+  function drawLvCanvas() {
+    const w = lvCanvas.width = lvWrap.clientWidth;
+    const h = lvCanvas.height = lvWrap.clientHeight;
+    if (w === 0 || h === 0)
+      return;
+
+    const ctx = lvCanvas.getContext('2d', { willReadFrequently: false });
+    const isHSL = activeMode === 'hsl';
+    const imgData = ctx.createImageData(w, h);
+    const data = imgData.data;
+
+    // For HSL mode, use the HSL saturation derived from current color
+    let sat;
+    if (isHSL) {
+      const [, hslS] = rgbToHsl(...getRgb());
+      sat = hslS;
+    } else
+      sat = state.s;
+
+    for (let y = 0; y < h; ++y) {
+      // top = 100%, bottom = 0%
+      const lvVal = (1 - y / (h - 1)) * 100;
+      let r, g, b;
+      if (isHSL)
+        [r, g, b] = hslToRgb(state.h, sat, lvVal);
+      else
+        [r, g, b] = hsvToRgb(state.h, sat, lvVal);
+
+      for (let x = 0; x < w; ++x) {
+        const idx = (y * w + x) * 4;
+        data[idx] = r;
+        data[idx + 1] = g;
+        data[idx + 2] = b;
+        data[idx + 3] = 255;
+      }
+    }
+
+    ctx.putImageData(imgData, 0, 0);
+  }
+
+  function drawWheelAlphaCanvas() {
+    const w = wheelAlphaCanvas.width = wheelAlphaWrap.clientWidth;
+    const h = wheelAlphaCanvas.height = wheelAlphaWrap.clientHeight;
+    if (w === 0 || h === 0)
+      return;
+
+    const ctx = wheelAlphaCanvas.getContext('2d', { willReadFrequently: false });
+    const [r, g, b] = getRgb();
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, `rgba(${r},${g},${b},1)`);
+    grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  function updateWheelCursor() {
+    const size = 200;
+    const centerX = size / 2;
+    const centerY = size / 2;
+    const radius = size / 2;
+
+    // Convert hue+saturation to x,y on wheel
+    // For HSL mode, we need to derive saturation from HSL saturation
+    let sat;
+    if (activeMode === 'hsl') {
+      const [, hslS] = rgbToHsl(...getRgb());
+      sat = hslS;
+    } else
+      sat = state.s;
+
+    const hueRad = state.h * Math.PI / 180;
+    const dist = (sat / 100) * radius;
+    const x = centerX + dist * Math.cos(hueRad);
+    const y = centerY + dist * Math.sin(hueRad);
+    wheelCursor.style.left = x + 'px';
+    wheelCursor.style.top = y + 'px';
+  }
+
+  function updateLvSlider() {
+    const h = lvWrap.clientHeight;
+    const isHSL = activeMode === 'hsl';
+    let lvVal;
+    if (isHSL) {
+      const [, , l] = rgbToHsl(...getRgb());
+      lvVal = l;
+    } else
+      lvVal = state.v;
+
+    const y = (1 - lvVal / 100) * h;
+    lvSliderEl.style.top = y + 'px';
+  }
+
+  function updateWheelAlphaSlider() {
+    const h = wheelAlphaWrap.clientHeight;
+    const y = (1 - state.alpha) * h;
+    wheelAlphaSlider.style.top = y + 'px';
+  }
+
+  function isWheelMode() {
+    return activeMode === 'hsl' || activeMode === 'hsv';
+  }
+
+  function invalidateWheelCache() {
+    wheelImageData = null;
+    wheelLastLV = -1;
+    wheelLastMode = null;
   }
 
   function updateSvCursor() {
@@ -316,11 +505,20 @@
     document.getElementById('float-a').value = a.toFixed(4);
 
     // Canvas + cursors
-    drawSvCanvas();
-    drawAlphaCanvas();
-    updateSvCursor();
-    updateHueSlider();
-    updateAlphaSlider();
+    if (isWheelMode()) {
+      drawWheelCanvas();
+      drawLvCanvas();
+      drawWheelAlphaCanvas();
+      updateWheelCursor();
+      updateLvSlider();
+      updateWheelAlphaSlider();
+    } else {
+      drawSvCanvas();
+      drawAlphaCanvas();
+      updateSvCursor();
+      updateHueSlider();
+      updateAlphaSlider();
+    }
   }
 
   function setSlider(name, value) {
@@ -415,6 +613,117 @@
     alphaWrap.releasePointerCapture(e.pointerId);
   });
 
+  // ===== Pointer interaction: Color wheel =====
+
+  function pickWheel(e) {
+    const rect = wheelWrap.getBoundingClientRect();
+    const size = rect.width;
+    const centerX = size / 2;
+    const centerY = size / 2;
+    const radius = size / 2;
+
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+    const dx = px - centerX;
+    const dy = py - centerY;
+    let dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > radius)
+      dist = radius;
+
+    const hue = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+    const sat = (dist / radius) * 100;
+
+    if (activeMode === 'hsl') {
+      // Get current L
+      const [, , curL] = rgbToHsl(...getRgb());
+      const [r, g, b] = hslToRgb(hue, sat, curL);
+      setFromRgb(r, g, b, true);
+      state.h = round(hue);
+    } else {
+      state.h = round(hue);
+      state.s = round(sat);
+    }
+
+    updateAllUI();
+  }
+
+  let wheelDragging = false;
+  wheelWrap.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    wheelDragging = true;
+    wheelWrap.setPointerCapture(e.pointerId);
+    pickWheel(e);
+  });
+  wheelWrap.addEventListener('pointermove', (e) => {
+    if (wheelDragging) pickWheel(e);
+  });
+  wheelWrap.addEventListener('pointerup', (e) => {
+    wheelDragging = false;
+    wheelWrap.releasePointerCapture(e.pointerId);
+  });
+
+  // ===== Pointer interaction: L/V slider =====
+
+  function pickLV(e) {
+    const rect = lvWrap.getBoundingClientRect();
+    const y = clamp(e.clientY - rect.top, 0, rect.height);
+    const lvVal = round((1 - y / rect.height) * 100);
+
+    if (activeMode === 'hsl') {
+      // Get current H and HSL-S
+      const curH = state.h;
+      const [, hslS] = rgbToHsl(...getRgb());
+      const [r, g, b] = hslToRgb(curH, hslS, lvVal);
+      setFromRgb(r, g, b, true);
+      state.h = curH;
+    } else {
+      state.v = lvVal;
+    }
+
+    invalidateWheelCache();
+    updateAllUI();
+  }
+
+  let lvDragging = false;
+  lvWrap.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    lvDragging = true;
+    lvWrap.setPointerCapture(e.pointerId);
+    pickLV(e);
+  });
+  lvWrap.addEventListener('pointermove', (e) => {
+    if (lvDragging) pickLV(e);
+  });
+  lvWrap.addEventListener('pointerup', (e) => {
+    lvDragging = false;
+    lvWrap.releasePointerCapture(e.pointerId);
+  });
+
+  // ===== Pointer interaction: Wheel alpha bar =====
+
+  function pickWheelAlpha(e) {
+    const rect = wheelAlphaWrap.getBoundingClientRect();
+    const y = clamp(e.clientY - rect.top, 0, rect.height);
+    state.alpha = +(1 - y / rect.height).toFixed(2);
+    state.alpha = clamp(state.alpha, 0, 1);
+    updateAllUI();
+  }
+
+  let wheelAlphaDragging = false;
+  wheelAlphaWrap.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    wheelAlphaDragging = true;
+    wheelAlphaWrap.setPointerCapture(e.pointerId);
+    pickWheelAlpha(e);
+  });
+  wheelAlphaWrap.addEventListener('pointermove', (e) => {
+    if (wheelAlphaDragging) pickWheelAlpha(e);
+  });
+  wheelAlphaWrap.addEventListener('pointerup', (e) => {
+    wheelAlphaDragging = false;
+    wheelAlphaWrap.releasePointerCapture(e.pointerId);
+  });
+
   // ===== Tab switching =====
 
   const tabBar = document.getElementById('tab-bar');
@@ -430,6 +739,25 @@
     for (const p of document.querySelectorAll('.tab-panel'))
       p.classList.remove('active');
     document.getElementById('panel-' + btn.dataset.tab).classList.add('active');
+
+    const newMode = btn.dataset.tab;
+    const wasWheel = isWheelMode();
+    activeMode = newMode;
+    const nowWheel = isWheelMode();
+
+    if (wasWheel !== nowWheel) {
+      invalidateWheelCache();
+      if (nowWheel) {
+        visualArea.classList.add('hidden');
+        wheelArea.classList.remove('hidden');
+      } else {
+        wheelArea.classList.add('hidden');
+        visualArea.classList.remove('hidden');
+      }
+    } else if (nowWheel)
+      invalidateWheelCache();
+
+    updateAllUI();
   });
 
   // ===== Slider / numeric input wiring =====
@@ -459,18 +787,19 @@
   }
 
   // RGB sliders
-  wireSlider('r', (v) => { const [, g, b] = getRgb(); setFromRgb(v, g, b, true); updateAllUI(); });
-  wireSlider('g', (v) => { const [r, , b] = getRgb(); setFromRgb(r, v, b, true); updateAllUI(); });
-  wireSlider('b', (v) => { const [r, g] = getRgb(); setFromRgb(r, g, v, true); updateAllUI(); });
+  wireSlider('r', (v) => { const [, g, b] = getRgb(); setFromRgb(v, g, b, true); invalidateWheelCache(); updateAllUI(); });
+  wireSlider('g', (v) => { const [r, , b] = getRgb(); setFromRgb(r, v, b, true); invalidateWheelCache(); updateAllUI(); });
+  wireSlider('b', (v) => { const [r, g] = getRgb(); setFromRgb(r, g, v, true); invalidateWheelCache(); updateAllUI(); });
 
   // HSL sliders
-  wireSlider('hsl-h', (v) => { state.h = v; updateAllUI(); });
+  wireSlider('hsl-h', (v) => { state.h = v; invalidateWheelCache(); updateAllUI(); });
   wireSlider('hsl-s', (v) => {
     const hslH = state.h;
     const hslL = parseInt(document.getElementById('sl-hsl-l').value, 10);
     const [r, g, b] = hslToRgb(hslH, v, hslL);
     setFromRgb(r, g, b, true);
     state.h = hslH;
+    invalidateWheelCache();
     updateAllUI();
   });
   wireSlider('hsl-l', (v) => {
@@ -479,13 +808,14 @@
     const [r, g, b] = hslToRgb(hslH, hslS, v);
     setFromRgb(r, g, b, true);
     state.h = hslH;
+    invalidateWheelCache();
     updateAllUI();
   });
 
   // HSV sliders
-  wireSlider('hsv-h', (v) => { state.h = v; updateAllUI(); });
-  wireSlider('hsv-s', (v) => { state.s = v; updateAllUI(); });
-  wireSlider('hsv-v', (v) => { state.v = v; updateAllUI(); });
+  wireSlider('hsv-h', (v) => { state.h = v; invalidateWheelCache(); updateAllUI(); });
+  wireSlider('hsv-s', (v) => { state.s = v; invalidateWheelCache(); updateAllUI(); });
+  wireSlider('hsv-v', (v) => { state.v = v; invalidateWheelCache(); updateAllUI(); });
 
   // CMYK sliders
   wireSlider('c', (v) => {
@@ -494,6 +824,7 @@
     const k = parseInt(document.getElementById('sl-k').value, 10);
     const [r, g, b] = cmykToRgb(v, m, y, k);
     setFromRgb(r, g, b, true);
+    invalidateWheelCache();
     updateAllUI();
   });
   wireSlider('m', (v) => {
@@ -502,6 +833,7 @@
     const k = parseInt(document.getElementById('sl-k').value, 10);
     const [r, g, b] = cmykToRgb(c, v, y, k);
     setFromRgb(r, g, b, true);
+    invalidateWheelCache();
     updateAllUI();
   });
   wireSlider('y', (v) => {
@@ -510,6 +842,7 @@
     const k = parseInt(document.getElementById('sl-k').value, 10);
     const [r, g, b] = cmykToRgb(c, m, v, k);
     setFromRgb(r, g, b, true);
+    invalidateWheelCache();
     updateAllUI();
   });
   wireSlider('k', (v) => {
@@ -518,6 +851,7 @@
     const y = parseInt(document.getElementById('sl-y').value, 10);
     const [r, g, b] = cmykToRgb(c, m, y, v);
     setFromRgb(r, g, b, true);
+    invalidateWheelCache();
     updateAllUI();
   });
 
@@ -539,6 +873,7 @@
       const [r, g, b, a] = result;
       setFromRgb(r, g, b, false);
       state.alpha = a;
+      invalidateWheelCache();
       updateAllUI();
     } else
       updateAllUI(); // revert display
@@ -662,6 +997,7 @@
       const [r, g, b, a] = result;
       setFromRgb(r, g, b, false);
       state.alpha = a;
+      invalidateWheelCache();
       updateAllUI();
     }
   }
@@ -710,12 +1046,22 @@
     if (resizeTimer)
       clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
-      drawSvCanvas();
-      drawHueCanvas();
-      drawAlphaCanvas();
-      updateSvCursor();
-      updateHueSlider();
-      updateAlphaSlider();
+      if (isWheelMode()) {
+        invalidateWheelCache();
+        drawWheelCanvas();
+        drawLvCanvas();
+        drawWheelAlphaCanvas();
+        updateWheelCursor();
+        updateLvSlider();
+        updateWheelAlphaSlider();
+      } else {
+        drawSvCanvas();
+        drawHueCanvas();
+        drawAlphaCanvas();
+        updateSvCursor();
+        updateHueSlider();
+        updateAlphaSlider();
+      }
     }, 30);
   });
 
