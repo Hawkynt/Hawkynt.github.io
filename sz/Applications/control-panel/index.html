@@ -11,6 +11,7 @@
     <div class="tab" data-tab="themes">Themes</div>
     <div class="tab active" data-tab="appearance">Appearance</div>
     <div class="tab" data-tab="background">Desktop</div>
+    <div class="tab" data-tab="pointers">Pointers</div>
     <div class="tab" data-tab="taskbar">Taskbar</div>
   </div>
 
@@ -121,6 +122,32 @@
     </div>
   </div>
 
+  <!-- Pointers tab -->
+  <div class="tab-body" id="panel-pointers">
+    <div class="group-box">
+      <legend>Cursor effects</legend>
+      <label class="chk-row"><input type="checkbox" id="chk-cursor-shadow"> Enable mouse shadow</label>
+      <label class="chk-row"><input type="checkbox" id="chk-cursor-trail"> Enable mouse trails</label>
+    </div>
+    <div class="group-box" id="trail-options-group">
+      <legend>Trail length</legend>
+      <div class="slider-row">
+        <label>Short</label>
+        <input type="range" id="cursor-trail-len" min="3" max="10" value="5" step="1">
+        <label>Long</label>
+        <span id="cursor-trail-len-value" class="slider-value">5</span>
+      </div>
+    </div>
+    <div class="group-box" style="flex: 0 0 auto;">
+      <legend>Preview</legend>
+      <div class="cursor-preview" id="cursor-preview">
+        <div class="cursor-preview-area" id="cursor-preview-area">
+          <span class="cursor-preview-hint">Move pointer here to preview effects</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Taskbar tab -->
   <div class="tab-body" id="panel-taskbar">
     <div class="group-box">
@@ -129,6 +156,10 @@
       <label class="chk-row"><input type="checkbox" id="chk-auto-hide"> Auto-hide the taskbar</label>
       <label class="chk-row"><input type="checkbox" id="chk-group-buttons" checked> Group similar taskbar buttons</label>
       <label class="chk-row"><input type="checkbox" id="chk-show-clock" checked> Show the clock</label>
+    </div>
+    <div class="group-box">
+      <legend>Effects</legend>
+      <label class="chk-row"><input type="checkbox" id="chk-animations" checked> Use transition effects for windows when minimizing and maximizing</label>
     </div>
     <div class="group-box">
       <legend>Start Menu</legend>
