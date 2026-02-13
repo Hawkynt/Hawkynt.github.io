@@ -107,6 +107,27 @@
     ],
 
     comboButton: {
+      image: `${BASE}/COMBOBUT.BMP`,
+      topheight: 4,
+      bottomheight: 4,
+      leftwidth: 4,
+      rightwidth: 4,
+    },
+
+    taskButton: {
+      image: `${BASE}/TASKBAR.BMP`,
+      topheight: 3,
+      bottomheight: 3,
+      leftwidth: 3,
+      rightwidth: 3,
+    },
+
+    tabControl: {
+      image: `${BASE}/TABS.BMP`,
+      topheight: 3,
+      bottomheight: 3,
+      leftwidth: 3,
+      rightwidth: 3,
     },
 
     startButton: { image: `${BASE}/START.BMP` },
@@ -137,6 +158,10 @@
       infoWindow: [255, 255, 225],
       buttonLight: [222, 222, 222],
       buttonDarkShadow: [0, 0, 0],
+      buttonAlternateFace: [222, 222, 222],
+      hotTrackingColor: [0, 0, 255],
+      gradientActiveTitle: [175, 175, 175],
+      gradientInactiveTitle: [222, 222, 222],
     },
 
     customFonts: [

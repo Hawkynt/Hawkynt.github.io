@@ -117,6 +117,31 @@
       topheight: 4,
     },
 
+    taskButton: {
+      image: `${BASE}/TASKS.BMP`,
+      topheight: 5,
+      bottomheight: 5,
+      leftwidth: 5,
+      rightwidth: 5,
+      trans: 0,
+    },
+
+    progressBar: {
+      image: `${BASE}/PROGRESS.BMP`,
+      topheight: 2,
+      bottomheight: 2,
+      leftwidth: 3,
+      rightwidth: 3,
+    },
+
+    tabControl: {
+      image: `${BASE}/TABS.BMP`,
+      topheight: 4,
+      bottomheight: 3,
+      leftwidth: 4,
+      rightwidth: 4,
+    },
+
     startButton: {},
 
     colors: {

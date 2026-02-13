@@ -101,6 +101,30 @@
     comboButton: {
     },
 
+    taskButton: {
+      image: `${BASE}/TASK.BMP`,
+      topheight: 2,
+      bottomheight: 2,
+      leftwidth: 2,
+      rightwidth: 2,
+    },
+
+    progressBar: {
+      image: `${BASE}/PROGRESSBAR.BMP`,
+      topheight: 1,
+      bottomheight: 1,
+      leftwidth: 1,
+      rightwidth: 1,
+    },
+
+    tabControl: {
+      image: `${BASE}/TABS.BMP`,
+      topheight: 2,
+      bottomheight: 2,
+      leftwidth: 2,
+      rightwidth: 2,
+    },
+
     startButton: { image: `${BASE}/START.BMP` },
 
     colors: {
@@ -129,6 +153,10 @@
       buttonDarkShadow: [0, 0, 0],
       infoText: [0, 0, 0],
       infoWindow: [184, 182, 133],
+      buttonAlternateFace: [129, 142, 109],
+      hotTrackingColor: [0, 0, 255],
+      gradientActiveTitle: [184, 182, 133],
+      gradientInactiveTitle: [85, 94, 72],
     },
 
     fonts: {

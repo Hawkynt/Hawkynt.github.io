@@ -119,16 +119,25 @@
 
     async #buildControlCSS(skin) {
       const b = skin.buttons;
-      if (!b)
-        return '';
+      const pb = skin.progressBar;
+      const tc = skin.tabControl;
 
-      const [btnImg, btnMask, checkImg, checkMask, radioImg] = await Promise.all([
-        this.#loadImage(b.bitmap),
-        this.#loadImage(b.bitmapmask),
-        this.#loadImage(b.checkbutton),
-        this.#loadImage(b.checkbuttonmask),
-        this.#loadImage(b.radiobutton),
-      ]);
+      const loads = [];
+      if (b) {
+        loads.push(
+          this.#loadImage(b.bitmap),
+          this.#loadImage(b.bitmapmask),
+          this.#loadImage(b.checkbutton),
+          this.#loadImage(b.checkbuttonmask),
+          this.#loadImage(b.radiobutton),
+        );
+      } else {
+        loads.push(null, null, null, null, null);
+      }
+      loads.push((pb?.image || pb?.bitmap) ? this.#loadImage(pb.image || pb.bitmap) : Promise.resolve(null));
+      loads.push((tc?.image || tc?.bitmap) ? this.#loadImage(tc.image || tc.bitmap) : Promise.resolve(null));
+
+      const [btnImg, btnMask, checkImg, checkMask, radioImg, progressImg, tabImg] = await Promise.all(loads);
 
       let css = '';
 
@@ -146,6 +155,12 @@
         const nf = b.framecount || this.#detectButtonFrameCount(btnImg, !!b.mouseover);
         css += this.#buildPushButtonCSS(b, btnImg, btnMask, nf);
       }
+
+      if (progressImg && pb)
+        css += this.#buildProgressBarCSS(pb, progressImg);
+
+      if (tabImg && tc)
+        css += this.#buildTabControlCSS(tc, tabImg);
 
       return css;
     }
@@ -299,21 +314,23 @@
       return this.#buildPushButtonRaw(sel, this.#absUrl(buttons.bitmap), numFrames, top, right, bottom, left, normalIdx, hoverIdx, pressedIdx, disabledIdx);
     }
 
-    // Canvas-extracted per-frame data URLs — background-image per state.
-    // The whole frame is stretched to fill the button; padding acts as the
-    // visual border width so text stays inset.
+    // Canvas-extracted per-frame data URLs — border-image 9-slice per state.
+    // border-image-slice cuts the frame into 9 cells: fixed corners, stretched
+    // edges, and a filled center (the `fill` keyword).  This preserves the
+    // skin artist's rounded corners and decorative borders at any button size.
     #buildPushButtonData(sel, dataUrls, top, right, bottom, left, normalIdx, hoverIdx, pressedIdx, disabledIdx) {
-      const bg = (idx) => `url("${dataUrls[idx]}") no-repeat 0 0 / 100% 100%`;
+      const bi = (idx) => `url("${dataUrls[idx]}") ${top} ${right} ${bottom} ${left} fill stretch`;
       let css = `
-/* ── Skinned push buttons (data) ─────────────────────────────── */
+/* ── Skinned push buttons (data, 9-slice) ──────────────────── */
 :where(${sel}) {
   appearance: none;
   -webkit-appearance: none;
-  border: none;
-  border-image: none;
-  background: ${bg(normalIdx)};
+  border-style: solid;
+  border-width: ${top}px ${right}px ${bottom}px ${left}px;
+  border-image: ${bi(normalIdx)};
+  background: none;
   color: var(--sz-color-button-text);
-  padding: ${top}px ${right}px ${bottom}px ${left}px;
+  padding: 1px 4px;
   font-family: var(--sz-font-family);
   font-size: var(--sz-font-size);
   cursor: default;
@@ -322,12 +339,12 @@
 }`;
       if (hoverIdx >= 0)
         css += `
-:where(${sel}):where(:hover:not(:disabled):not(:active)) { background: ${bg(hoverIdx)}; }`;
+:where(${sel}):where(:hover:not(:disabled):not(:active)) { border-image: ${bi(hoverIdx)}; }`;
       css += `
-:where(${sel}):where(:active) { background: ${bg(pressedIdx)}; }`;
+:where(${sel}):where(:active) { border-image: ${bi(pressedIdx)}; }`;
       if (disabledIdx >= 0 && disabledIdx < dataUrls.length)
         css += `
-:where(${sel}):where(:disabled) { background: ${bg(disabledIdx)}; color: var(--sz-color-gray-text); }`;
+:where(${sel}):where(:disabled) { border-image: ${bi(disabledIdx)}; color: var(--sz-color-gray-text); }`;
       else
         css += `
 :where(${sel}):where(:disabled) { color: var(--sz-color-gray-text); }`;
@@ -335,7 +352,9 @@
     }
 
     // Raw sprite fallback — background-position selects the frame from
-    // the horizontal strip.  Same visual approach as the legacy renderer.
+    // the horizontal strip.  Used only when canvas is tainted (file://
+    // protocol).  Cannot do proper 9-slice with a sprite strip, so the
+    // entire frame stretches to fill the button (degraded visual).
     #buildPushButtonRaw(sel, url, numFrames, top, right, bottom, left, normalIdx, hoverIdx, pressedIdx, disabledIdx) {
       const pos = (idx) => numFrames > 1
         ? `${(idx * 100 / (numFrames - 1)).toFixed(4)}% 0%`
@@ -370,6 +389,171 @@
       else
         css += `
 :where(${sel}):where(:disabled) { color: var(--sz-color-gray-text); }`;
+      return css + '\n';
+    }
+
+    // -------------------------------------------------------------------
+    // Progress bar — PROGRESS.BMP
+    //
+    // The image is typically a small chunk tile.  We use it as the
+    // progress value fill via border-image 9-slice, falling back to
+    // a tiled background if canvas fails.
+    // -------------------------------------------------------------------
+
+    #buildProgressBarCSS(pb, img) {
+      const w = img.naturalWidth;
+      const h = img.naturalHeight;
+      const top = pb.topheight || 1;
+      const bottom = pb.bottomheight || 1;
+      const left = pb.leftwidth || 1;
+      const right = pb.rightwidth || 1;
+
+      // Progress BMP may contain 2-3 horizontal frames:
+      //   2 frames: track(0), fill(1)
+      //   3 frames: track(0), fill(1), chunk/segment(2)
+      //   1 frame:  fill only (track = solid color)
+      const fits = (n) => n > 0 && w % n === 0 && w / n >= h * 0.5;
+      const numFrames = pb.framecount || (fits(2) ? 2 : fits(3) ? 3 : 1);
+      const frameW = Math.floor(w / numFrames);
+      const trackIdx = numFrames >= 2 ? 0 : -1;
+      const fillIdx = numFrames >= 2 ? 1 : 0;
+
+      const extractFrame = (idx) => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = frameW;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, idx * frameW, 0, frameW, h, 0, 0, frameW, h);
+          const id = ctx.getImageData(0, 0, frameW, h);
+          const px = id.data;
+          for (let i = 0; i < px.length; i += 4)
+            if (px[i] === 255 && px[i + 1] === 0 && px[i + 2] === 255)
+              px[i + 3] = 0;
+          ctx.putImageData(id, 0, 0);
+          return canvas.toDataURL();
+        } catch { return null; }
+      };
+
+      const fillUrl = extractFrame(fillIdx);
+      const trackUrl = trackIdx >= 0 ? extractFrame(trackIdx) : null;
+      const rawUrl = this.#absUrl(pb.image || pb.bitmap);
+      const fillSrc = fillUrl || rawUrl;
+      const bi = `url("${fillSrc}") ${top} ${right} ${bottom} ${left} fill round`;
+      const trackBg = trackUrl
+        ? `url("${trackUrl}") no-repeat 0 0 / 100% 100%`
+        : 'var(--sz-color-button-face)';
+
+      return `
+/* ── Skinned progress bar ──────────────────────────────────── */
+:where(progress) {
+  appearance: none;
+  -webkit-appearance: none;
+  height: ${h}px;
+  border: none;
+  background: ${trackBg};
+  border-radius: 0;
+  overflow: hidden;
+}
+:where(progress)::-webkit-progress-bar {
+  background: ${trackBg};
+  border-radius: 0;
+}
+:where(progress)::-webkit-progress-value {
+  border-style: solid;
+  border-width: ${top}px ${right}px ${bottom}px ${left}px;
+  border-image: ${bi};
+  background: none;
+  border-radius: 0;
+}
+:where(progress)::-moz-progress-bar {
+  border-style: solid;
+  border-width: ${top}px ${right}px ${bottom}px ${left}px;
+  border-image: ${bi};
+  background: none;
+  border-radius: 0;
+}
+`;
+    }
+
+    // -------------------------------------------------------------------
+    // Tab control — TAB.BMP
+    //
+    // Horizontal strip: Normal(0), Active(1), Hover(2 if exists).
+    // Applied to elements with .sz-tab / [role="tab"] via border-image.
+    // -------------------------------------------------------------------
+
+    #buildTabControlCSS(tc, img) {
+      const w = img.naturalWidth;
+      const h = img.naturalHeight;
+      const fits = (n) => n > 0 && w % n === 0 && w / n >= h * 0.5;
+      const numFrames = tc.framecount || (fits(3) ? 3 : fits(2) ? 2 : Math.max(1, Math.round(w / h)));
+      const frameW = Math.floor(w / numFrames);
+      const top = tc.topheight || 3;
+      const bottom = tc.bottomheight || 3;
+      const left = tc.leftwidth || 3;
+      const right = tc.rightwidth || 3;
+
+      const normalIdx = 0;
+      const activeIdx = numFrames >= 2 ? 1 : 0;
+      const hoverIdx = numFrames >= 3 ? 2 : -1;
+
+      const dataUrls = [];
+      for (let i = 0; i < numFrames; ++i) {
+        const url = this.#processImageRegion(img, i * frameW, 0, frameW, h, null);
+        if (!url) { dataUrls.length = 0; break; }
+        dataUrls.push(url);
+      }
+
+      const sel = ':where(.sz-tab, [role="tab"])';
+      if (dataUrls.length === numFrames) {
+        const bi = (idx) => `url("${dataUrls[idx]}") ${top} ${right} ${bottom} ${left} fill stretch`;
+        let css = `
+/* ── Skinned tabs (9-slice) ────────────────────────────────── */
+${sel} {
+  appearance: none;
+  -webkit-appearance: none;
+  border-style: solid;
+  border-width: ${top}px ${right}px ${bottom}px ${left}px;
+  border-image: ${bi(normalIdx)};
+  background: none;
+  padding: 2px 8px;
+  cursor: default;
+  border-radius: 0;
+}
+${sel}:where(.active, [aria-selected="true"], .sz-tab-active) {
+  border-image: ${bi(activeIdx)};
+}`;
+        if (hoverIdx >= 0)
+          css += `
+${sel}:where(:hover:not(.active):not([aria-selected="true"]):not(.sz-tab-active)) {
+  border-image: ${bi(hoverIdx)};
+}`;
+        return css + '\n';
+      }
+
+      // Raw fallback
+      const absUrl = this.#absUrl(tc.image || tc.bitmap);
+      const pos = (idx) => numFrames > 1 ? `${(idx * 100 / (numFrames - 1)).toFixed(4)}% 0%` : '0% 0%';
+      const bgSize = `${numFrames * 100}% 100%`;
+      let css = `
+/* ── Skinned tabs (raw fallback) ───────────────────────────── */
+${sel} {
+  appearance: none;
+  background: url("${absUrl}") no-repeat ${pos(normalIdx)} / ${bgSize};
+  border: none;
+  padding: ${top}px ${right}px ${bottom}px ${left}px;
+  cursor: default;
+  border-radius: 0;
+}
+${sel}:where(.active, [aria-selected="true"], .sz-tab-active) {
+  background-position: ${pos(activeIdx)};
+}`;
+      if (hoverIdx >= 0)
+        css += `
+${sel}:where(:hover:not(.active):not([aria-selected="true"]):not(.sz-tab-active)) {
+  background-position: ${pos(hoverIdx)};
+}`;
       return css + '\n';
     }
 

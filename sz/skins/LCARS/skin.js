@@ -100,6 +100,40 @@
 
     comboButton: {},
 
+    subSkins: [
+      { id: 'default', name: 'Red (Default)' },
+      {
+        id: 'blue',
+        name: 'Blue',
+        colors: {
+          windowFrame: [0, 0, 255],
+          activeBorder: [0, 0, 255],
+          inactiveBorder: [192, 192, 255],
+          highlight: [32, 32, 255],
+          buttonShadow: [0, 0, 192],
+          buttonHighlight: [64, 64, 255],
+          buttonDarkShadow: [0, 0, 172],
+          buttonLight: [0, 0, 255],
+          hotTrackingColor: [0, 0, 255],
+        },
+      },
+      {
+        id: 'green',
+        name: 'Green',
+        colors: {
+          windowFrame: [0, 255, 0],
+          activeBorder: [0, 255, 0],
+          inactiveBorder: [192, 255, 192],
+          highlight: [32, 255, 32],
+          buttonShadow: [0, 192, 0],
+          buttonHighlight: [64, 255, 64],
+          buttonDarkShadow: [0, 172, 0],
+          buttonLight: [0, 255, 0],
+          hotTrackingColor: [0, 255, 0],
+        },
+      },
+    ],
+
     startButton: { image: `${BASE}/START.BMP` },
 
     colors: {

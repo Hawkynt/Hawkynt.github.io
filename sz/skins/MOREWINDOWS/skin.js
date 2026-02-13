@@ -97,6 +97,14 @@
     comboButton: {
     },
 
+    tabControl: {
+      image: `${BASE}/TABS.BMP`,
+      topheight: 2,
+      bottomheight: 2,
+      leftwidth: 2,
+      rightwidth: 2,
+    },
+
     startButton: { image: `${BASE}/STARTBUTTON.BMP` },
 
     colors: {
@@ -125,6 +133,10 @@
       buttonLight: [255, 255, 255],
       buttonDarkShadow: [119, 119, 119],
       infoText: [1, 0, 0],
+      buttonAlternateFace: [235, 235, 235],
+      hotTrackingColor: [55, 100, 175],
+      gradientActiveTitle: [255, 255, 255],
+      gradientInactiveTitle: [156, 156, 156],
     },
 
     fonts: {

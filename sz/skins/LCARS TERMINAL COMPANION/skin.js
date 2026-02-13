@@ -124,6 +124,9 @@
     },
 
     fonts: {
+      family: 'Arial',
+      height: 11,
+      weight: 400,
     },
   };
 })();

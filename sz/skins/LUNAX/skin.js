@@ -100,6 +100,31 @@
       mouseover: 1,
     },
 
+    taskButton: {
+      image: `${BASE}/TASK.BMP`,
+      mask: `${BASE}/TASKM.BMP`,
+      topheight: 3,
+      bottomheight: 3,
+      leftwidth: 3,
+      rightwidth: 3,
+    },
+
+    progressBar: {
+      image: `${BASE}/PROGRESS.BMP`,
+      topheight: 1,
+      bottomheight: 1,
+      leftwidth: 1,
+      rightwidth: 1,
+    },
+
+    tabControl: {
+      image: `${BASE}/TAB.BMP`,
+      topheight: 3,
+      bottomheight: 3,
+      leftwidth: 3,
+      rightwidth: 3,
+    },
+
     startButton: { image: `${BASE}/START.BMP` },
 
     colors: {

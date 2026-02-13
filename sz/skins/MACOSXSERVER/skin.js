@@ -109,9 +109,16 @@
       infoWindow: [255, 255, 225],
       buttonLight: [221, 221, 221],
       buttonDarkShadow: [119, 119, 119],
+      buttonAlternateFace: [221, 221, 221],
+      hotTrackingColor: [0, 0, 255],
+      gradientActiveTitle: [0, 0, 128],
+      gradientInactiveTitle: [137, 137, 137],
     },
 
     fonts: {
+      family: 'Lucida Grande',
+      height: 12,
+      weight: 400,
     },
   };
 })();

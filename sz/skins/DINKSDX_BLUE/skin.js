@@ -88,7 +88,9 @@
 
     buttons: {
       trans: 1,
-      bitmap: `${BASE}/BUTTONS.TGA`,
+      checkbutton: `${BASE}/CHECKBOX.BMP`,
+      radiobutton: `${BASE}/RADIOBUTTON.BMP`,
+      bitmap: `${BASE}/BUTTONS.BMP`,
       topheight: 8,
       bottomheight: 9,
       leftwidth: 8,
@@ -160,7 +162,7 @@
       { image: `${BASE}/TITLEBAR-HELP.BMP`, align: 1, xcoord: 56, ycoord: 1, action: 3, visibility: 13, visibility1: 22, visibility2: 21, insound: 'dinksDX_Blue\\titlebar-press.wav' },
       { image: `${BASE}/TITLEBAR-HELP.BMP`, align: 1, xcoord: 38, ycoord: 1, action: 3, visibility: 13, visibility1: 23, visibility2: 21, insound: 'dinksDX_Blue\\titlebar-press.wav' },
       { image: `${BASE}/TITLEBAR-HELP.BMP`, align: 1, xcoord: 56, ycoord: 1, action: 3, visibility: 13, visibility1: 20, visibility2: 23, insound: 'dinksDX_Blue\\titlebar-press.wav' },
-      { image: `${BASE}/TITLEBAR-AOTON.BMP`, align: 0, xcoord: 2, ycoord: 1, action: 6, width: NaN, height: NaN, visibility: 8, visibility1: 19, insound: 'dinksDX_Blue\\titlebar-press.wav' },
+      { image: `${BASE}/TITLEBAR-AOTON.BMP`, align: 0, xcoord: 2, ycoord: 1, action: 6, visibility: 8, visibility1: 19, insound: 'dinksDX_Blue\\titlebar-press.wav' },
       { image: `${BASE}/TITLEBAR-AOTOFF.BMP`, xcoord: 2, ycoord: 1, action: 6, visibility: 7, visibility1: 19, insound: 'dinksDX_Blue\\titlebar-press.wav' },
       { image: `${BASE}/TITLEBAR-ROLLUP.BMP`, align: 0, xcoord: 20, ycoord: 1, action: 4, visibility: 6, visibility1: 19, insound: 'dinksDX_Blue\\titlebar-press.wav' },
       { image: `${BASE}/TITLEBAR-UNROLL.BMP`, align: 0, xcoord: 20, ycoord: 1, action: 4, visibility: 5, visibility1: 19, insound: 'dinksDX_Blue\\titlebar-press.wav' },
@@ -193,6 +195,22 @@
       topheight: 6,
       tile: 1,
       mouseover: 1,
+    },
+
+    taskButton: {
+      image: `${BASE}/TASKBAR-BUTTONS.BMP`,
+      topheight: 3,
+      bottomheight: 3,
+      leftwidth: 3,
+      rightwidth: 3,
+    },
+
+    progressBar: {
+      image: `${BASE}/PROGRESSBAR.BMP`,
+      topheight: 1,
+      bottomheight: 1,
+      leftwidth: 1,
+      rightwidth: 1,
     },
 
     startButton: { image: `${BASE}/STARTBUTTON.BMP` },
