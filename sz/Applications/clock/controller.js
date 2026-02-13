@@ -169,8 +169,14 @@
       monthSelect.value = viewMonth;
       yearInput.value = viewYear;
       calGrid.innerHTML = '';
-      for (const d of DAY_HEADERS)
-        calGrid.appendChild(el('div', { className: 'cal-header', textContent: d }));
+
+      // Header row: empty CW corner + day names
+      calGrid.appendChild(el('div', { className: 'cal-cw-header', textContent: 'CW' }));
+      for (let i = 0; i < DAY_HEADERS.length; ++i) {
+        let cls = 'cal-header';
+        if (i === 6) cls += ' sunday';
+        calGrid.appendChild(el('div', { className: cls, textContent: DAY_HEADERS[i] }));
+      }
 
       const firstDay = new Date(viewYear, viewMonth, 1);
       let startDow = firstDay.getDay();
@@ -183,35 +189,62 @@
       const todayM = today.getMonth();
       const todayY = today.getFullYear();
 
+      // Collect all day cells for the grid (flat array)
+      const dayCells = [];
+
       // Previous month's trailing days
       for (let i = startDow - 1; i >= 1; --i) {
         const day = prevMonthDays - i + 1;
-        calGrid.appendChild(el('div', { className: 'cal-day other-month', textContent: day }));
+        const prevM = viewMonth === 0 ? 11 : viewMonth - 1;
+        const prevY = viewMonth === 0 ? viewYear - 1 : viewYear;
+        dayCells.push({ day, month: prevM, year: prevY, otherMonth: true });
       }
       // Current month days
-      for (let d = 1; d <= daysInMonth; ++d) {
-        let cls = 'cal-day';
-        if (d === todayD && viewMonth === todayM && viewYear === todayY)
-          cls += ' today';
-        if (d === selectedDay && viewMonth === selectedMonth && viewYear === selectedYear)
-          cls += ' selected';
-        const dayEl = el('div', { className: cls, textContent: d });
-        const dd = d;
-        dayEl.addEventListener('pointerdown', () => {
-          selectedDay = dd;
-          selectedMonth = viewMonth;
-          selectedYear = viewYear;
-          renderCalendar();
-        });
-        calGrid.appendChild(dayEl);
-      }
+      for (let d = 1; d <= daysInMonth; ++d)
+        dayCells.push({ day: d, month: viewMonth, year: viewYear, otherMonth: false });
       // Next month leading days
-      const totalCells = calGrid.children.length;
-      const remaining = (totalCells % 7 === 0) ? 0 : 7 - (totalCells % 7);
+      const remaining = (dayCells.length % 7 === 0) ? 0 : 7 - (dayCells.length % 7);
+      const nextM = viewMonth === 11 ? 0 : viewMonth + 1;
+      const nextY = viewMonth === 11 ? viewYear + 1 : viewYear;
       for (let d = 1; d <= remaining; ++d)
-        calGrid.appendChild(el('div', { className: 'cal-day other-month', textContent: d }));
+        dayCells.push({ day: d, month: nextM, year: nextY, otherMonth: true });
 
-      // Calendar week display
+      // Render rows: CW label + 7 day cells per row
+      for (let row = 0; row < dayCells.length; row += 7) {
+        // Calculate CW from the Thursday of this week row
+        const thuCell = dayCells[row + 3];
+        const thuDate = new Date(thuCell.year, thuCell.month, thuCell.day);
+        const cw = getCalendarWeek(thuDate);
+        calGrid.appendChild(el('div', { className: 'cal-cw', textContent: cw }));
+
+        for (let col = 0; col < 7; ++col) {
+          const cell = dayCells[row + col];
+          const isSunday = col === 6;
+          let cls = 'cal-day';
+          if (isSunday) cls += ' sunday';
+          if (cell.otherMonth) {
+            cls += ' other-month';
+          } else {
+            if (cell.day === todayD && cell.month === todayM && cell.year === todayY)
+              cls += ' today';
+            if (cell.day === selectedDay && cell.month === selectedMonth && cell.year === selectedYear)
+              cls += ' selected';
+          }
+          const dayEl = el('div', { className: cls, textContent: cell.day });
+          if (!cell.otherMonth) {
+            const dd = cell.day;
+            dayEl.addEventListener('pointerdown', () => {
+              selectedDay = dd;
+              selectedMonth = viewMonth;
+              selectedYear = viewYear;
+              renderCalendar();
+            });
+          }
+          calGrid.appendChild(dayEl);
+        }
+      }
+
+      // Calendar week display for selected date
       const selDate = new Date(selectedYear, selectedMonth, selectedDay);
       const cw = getCalendarWeek(selDate);
       cwInfo.innerHTML = 'Calendar Week: <span class="cw-number">CW' + cw + '</span>';
@@ -689,9 +722,9 @@
       const now = new Date();
       const localOffset = now.getTimezoneOffset();
       const tzTime = new Date(now.toLocaleString('en-US', { timeZone: tz }));
-      const diff = (tzTime - now) / 60000 + localOffset;
+      const diff = Math.round(((tzTime - now) / 60000 + localOffset));
       const hours = Math.floor(Math.abs(diff) / 60);
-      const mins = Math.abs(diff) % 60;
+      const mins = Math.round(Math.abs(diff) % 60);
       const sign = diff >= 0 ? '+' : '-';
       return sign + hours + (mins > 0 ? ':' + pad2(mins) : '') + 'h';
     } catch {

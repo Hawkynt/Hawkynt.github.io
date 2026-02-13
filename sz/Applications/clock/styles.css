@@ -94,8 +94,8 @@
     gap: 12px;
     height: 100%;
   }
-  .datetime-left { flex: 1; min-width: 0; }
-  .datetime-right { width: 180px; display: flex; flex-direction: column; align-items: center; }
+  .datetime-left { flex: 1; min-width: 0; overflow: hidden; }
+  .datetime-right { width: 180px; display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
 
   /* Calendar */
   .cal-nav {
@@ -103,19 +103,35 @@
     align-items: center;
     gap: 4px;
     margin-bottom: 4px;
+    flex-wrap: wrap;
   }
-  .cal-nav .xp-btn { padding: 0 6px; min-width: 20px; min-height: 20px; font-weight: bold; }
-  .cal-nav .xp-select { flex: 1; }
-  .cal-year-wrap { display: flex; align-items: center; gap: 2px; }
+  .cal-nav .xp-btn { padding: 0 6px; min-width: 20px; min-height: 20px; font-weight: bold; flex-shrink: 0; }
+  .cal-nav .xp-select { flex: 1; min-width: 60px; }
+  .cal-year-wrap { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
   .cal-year-wrap .xp-input { width: 54px; text-align: center; }
   .cal-year-wrap .xp-btn { padding: 0; width: 16px; min-height: 10px; font-size: 8px; line-height: 1; }
   .cal-year-spinners { display: flex; flex-direction: column; gap: 1px; }
   .cal-grid {
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
+    grid-template-columns: auto repeat(7, 1fr);
     gap: 1px;
     text-align: center;
     font-size: 11px;
+  }
+  .cal-cw {
+    font-size: 9px;
+    color: var(--sz-color-gray-text);
+    padding: 2px 3px 2px 0;
+    text-align: right;
+    white-space: nowrap;
+    align-self: center;
+  }
+  .cal-cw-header {
+    font-size: 9px;
+    font-weight: bold;
+    color: var(--sz-color-gray-text);
+    padding: 2px 3px 2px 0;
+    text-align: right;
   }
   .cal-header {
     font-weight: bold;
@@ -138,6 +154,9 @@
     color: var(--sz-color-highlight-text);
   }
   .cal-day.other-month { color: var(--sz-color-gray-text); }
+  .cal-header.sunday, .cal-day.sunday { color: #c00; }
+  .cal-day.other-month.sunday { color: #c99; }
+  .cal-day.sunday:hover, .cal-day.selected.sunday { color: var(--sz-color-highlight-text); }
   .cal-week-info {
     margin-top: 6px;
     text-align: center;
