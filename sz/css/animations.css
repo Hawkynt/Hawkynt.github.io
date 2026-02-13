@@ -1,7 +1,8 @@
 /* ==========================================================================
    Animations & Transitions
    Lightweight, GPU-accelerated animations for the SZ desktop environment.
-   All durations are kept short (<=200ms) to feel snappy.
+   All durations are kept short (<=250ms) to feel snappy.
+   Animations can be globally disabled by adding .sz-animations-off to <html>.
    ========================================================================== */
 
 /* --------------------------------------------------------------------------
@@ -25,50 +26,65 @@
 
 /* --------------------------------------------------------------------------
    Window Close
-   Scales down with a fade-out, then the element is removed by JS.
-   pointer-events disabled so the dying window cannot be interacted with.
+   Instant removal -- no animation (Windows XP style).
+   The sz-closing class is set by JS; pointer-events disabled so the dying
+   window cannot be interacted with during the brief cleanup frame.
    -------------------------------------------------------------------------- */
 
 .sz-window.sz-closing {
-  animation: sz-window-close 0.15s ease-in forwards;
   pointer-events: none;
 }
 
-@keyframes sz-window-close {
-  to {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-}
-
 /* --------------------------------------------------------------------------
-   Minimize (shrink toward taskbar)
+   Minimize (shrink + fade toward the corresponding taskbar button)
+   --sz-anim-tx / --sz-anim-ty are set by JS to the offset from the
+   window's current translate3d position to the taskbar button center.
    -------------------------------------------------------------------------- */
 
 .sz-window.sz-minimizing {
-  animation: sz-window-minimize 0.2s ease-in forwards;
+  animation: sz-window-minimize 0.2s cubic-bezier(0.4, 0, 1, 1) forwards;
   pointer-events: none;
 }
 
 @keyframes sz-window-minimize {
   to {
     opacity: 0;
-    transform: translate3d(var(--sz-taskbar-x, 0), var(--sz-taskbar-y, 100vh), 0) scale(0.3, 0.1);
+    transform: translate3d(var(--sz-anim-tx, 0px), var(--sz-anim-ty, 100vh), 0) scale(0.2, 0.1);
   }
 }
 
 /* --------------------------------------------------------------------------
-   Restore from Minimize (expand from taskbar)
+   Restore from Minimize (expand from taskbar button to window position)
+   The "from" values match where minimize ended so the reverse feels natural.
    -------------------------------------------------------------------------- */
 
-.sz-window.sz-restoring {
-  animation: sz-window-restore 0.2s ease-out;
+.sz-window.sz-restoring-from-min {
+  animation: sz-window-restore-min 0.2s cubic-bezier(0, 0, 0.2, 1);
 }
 
-@keyframes sz-window-restore {
+@keyframes sz-window-restore-min {
   from {
     opacity: 0;
-    transform: translate3d(var(--sz-taskbar-x, 0), var(--sz-taskbar-y, 100vh), 0) scale(0.3, 0.1);
+    transform: translate3d(var(--sz-anim-tx, 0px), var(--sz-anim-ty, 100vh), 0) scale(0.2, 0.1);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(var(--sz-x, 0), var(--sz-y, 0), 0) scale(1);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Maximize (grow from current rect to fullscreen)
+   Uses a quick scale-up with slight opacity punch.
+   -------------------------------------------------------------------------- */
+
+.sz-window.sz-maximizing {
+  animation: sz-window-maximize 0.15s cubic-bezier(0, 0, 0.2, 1);
+}
+
+@keyframes sz-window-maximize {
+  from {
+    opacity: 0.85;
   }
   to {
     opacity: 1;
@@ -76,17 +92,16 @@
 }
 
 /* --------------------------------------------------------------------------
-   Maximize / Unmaximize
-   Quick snap with no opacity change -- just a brief scale pulse.
+   Restore from Maximize (shrink from fullscreen to windowed rect)
    -------------------------------------------------------------------------- */
 
-.sz-window.sz-maximizing {
-  animation: sz-window-maximize 0.12s ease-out;
+.sz-window.sz-restoring-from-max {
+  animation: sz-window-restore-max 0.15s cubic-bezier(0, 0, 0.2, 1);
 }
 
-@keyframes sz-window-maximize {
+@keyframes sz-window-restore-max {
   from {
-    opacity: 0.9;
+    opacity: 0.85;
   }
   to {
     opacity: 1;
@@ -167,15 +182,38 @@
 }
 
 /* --------------------------------------------------------------------------
+   Animations disabled (user toggle in Control Panel)
+   When .sz-animations-off is on <html>, all window and UI animations are
+   suppressed.  JS still adds/removes animation classes, but the durations
+   are zero so animationend fires immediately.
+   -------------------------------------------------------------------------- */
+
+.sz-animations-off .sz-window,
+.sz-animations-off .sz-window.sz-minimizing,
+.sz-animations-off .sz-window.sz-restoring-from-min,
+.sz-animations-off .sz-window.sz-restoring-from-max,
+.sz-animations-off .sz-window.sz-maximizing,
+.sz-animations-off .sz-window.sz-focus-pulse,
+.sz-animations-off #sz-start-menu.open,
+.sz-animations-off #sz-start-menu.closing {
+  animation-duration: 0s !important;
+}
+
+.sz-animations-off .sz-icon,
+.sz-animations-off .sz-taskbar-button {
+  transition-duration: 0s !important;
+}
+
+/* --------------------------------------------------------------------------
    Reduced Motion
    Respect the user's OS-level preference for reduced motion.
    -------------------------------------------------------------------------- */
 
 @media (prefers-reduced-motion: reduce) {
   .sz-window,
-  .sz-window.sz-closing,
   .sz-window.sz-minimizing,
-  .sz-window.sz-restoring,
+  .sz-window.sz-restoring-from-min,
+  .sz-window.sz-restoring-from-max,
   .sz-window.sz-maximizing,
   .sz-window.sz-focus-pulse,
   #sz-start-menu.open,
