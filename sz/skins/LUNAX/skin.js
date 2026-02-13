@@ -103,26 +103,31 @@
     taskButton: {
       image: `${BASE}/TASK.BMP`,
       mask: `${BASE}/TASKM.BMP`,
-      topheight: 3,
-      bottomheight: 3,
-      leftwidth: 3,
-      rightwidth: 3,
-    },
-
-    progressBar: {
-      image: `${BASE}/PROGRESS.BMP`,
       topheight: 1,
       bottomheight: 1,
       leftwidth: 1,
       rightwidth: 1,
+      tile: 0,
+      mouseover: 1,
+    },
+
+    progressBar: {
+      image: `${BASE}/PROGRESS.BMP`,
+      topheight: 2,
+      bottomheight: 2,
+      leftwidth: 2,
+      rightwidth: 2,
+      tile: 1,
     },
 
     tabControl: {
       image: `${BASE}/TAB.BMP`,
-      topheight: 3,
-      bottomheight: 3,
-      leftwidth: 3,
-      rightwidth: 3,
+      topheight: 5,
+      bottomheight: 5,
+      leftwidth: 5,
+      rightwidth: 5,
+      tile: 1,
+      mouseover: 1,
     },
 
     startButton: { image: `${BASE}/START.BMP` },

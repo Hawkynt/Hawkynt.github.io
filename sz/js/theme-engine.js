@@ -169,18 +169,13 @@
       const w = img.naturalWidth;
       const h = img.naturalHeight;
       const fits = (n) => n > 0 && w % n === 0 && w / n >= h * 0.5;
-      // mouseover=1: Normal, Hover, Pressed, Disabled, [Default] → prefer 5, then 4, then 3
-      // mouseover=0: Normal, Pressed, Disabled, [Default] → prefer 4, then 3, then 5
-      if (mouseover) {
-        if (fits(5)) return 5;
-        if (fits(4)) return 4;
-        if (fits(6)) return 6;
-        if (fits(3)) return 3;
-      } else {
-        if (fits(4)) return 4;
-        if (fits(3)) return 3;
-        if (fits(5)) return 5;
-      }
+      // UIS spec: 5 states (Normal, Pressed, Disabled, Focus, Default)
+      // Animated skins may have 6+ frames; 6 checked before 3 for mouseover skins
+      if (fits(5)) return 5;
+      if (mouseover && fits(6)) return 6;
+      if (fits(4)) return 4;
+      if (fits(3)) return 3;
+      if (fits(2)) return 2;
       return Math.max(1, Math.round(w / h));
     }
 
@@ -278,25 +273,21 @@
       const right = buttons.rightwidth || 3;
       const sel = 'button, input[type="button"], input[type="submit"], input[type="reset"]';
 
-      // Frame mapping depends on mouseover flag:
-      //   mouseover=1: Normal(0), Hover(1), Pressed(2), Disabled(3), [Default(4), ...]
-      //   mouseover=0: Normal(0), Pressed(1), Disabled(2), [Default(3)]
+      // UIS spec button states: 1=Normal, 2=Pressed, 3=Disabled, 4=Focus, 5=Default
+      // When MouseOver=1, Focus frame (3) doubles as hover visual.
       // Animated skins with framecount > 5 may specify mouseoverstartframe /
-      // mouseenterstartframe — use those as the hover visual instead of frame 1.
+      // mouseenterstartframe — use those as the hover visual explicitly.
       const mouseover = !!buttons.mouseover;
       const normalIdx = 0;
-      let hoverIdx, pressedIdx, disabledIdx;
+      const pressedIdx = numFrames >= 2 ? 1 : 0;
+      const disabledIdx = numFrames >= 3 ? 2 : -1;
+      let hoverIdx;
       if (mouseover) {
-        // For animated skins, use the animation start frame as hover visual
         hoverIdx = buttons.mouseoverstartframe != null ? buttons.mouseoverstartframe
                  : buttons.mouseenterstartframe != null ? buttons.mouseenterstartframe
-                 : numFrames >= 2 ? 1 : -1;
-        pressedIdx = numFrames >= 3 ? 2 : 0;
-        disabledIdx = numFrames >= 4 ? 3 : -1;
+                 : numFrames >= 4 ? 3 : -1;
       } else {
         hoverIdx = -1;
-        pressedIdx = numFrames >= 2 ? 1 : 0;
-        disabledIdx = numFrames >= 3 ? 2 : -1;
       }
 
       // Try canvas extraction for each frame
@@ -439,10 +430,20 @@
       const trackUrl = trackIdx >= 0 ? extractFrame(trackIdx) : null;
       const rawUrl = this.#absUrl(pb.image || pb.bitmap);
       const fillSrc = fillUrl || rawUrl;
-      const bi = `url("${fillSrc}") ${top} ${right} ${bottom} ${left} fill round`;
-      const trackBg = trackUrl
-        ? `url("${trackUrl}") no-repeat 0 0 / 100% 100%`
-        : 'var(--sz-color-button-face)';
+
+      // UIS [Progress] tiling: Tile=0 → both stretch; Tile≥1 → tiling enabled
+      // TileMode refines: 0=both tile, 1=back stretch + bar tile, 2=back tile + bar stretch
+      const tile = pb.tile || 0;
+      const tileMode = pb.tilemode || 0;
+      const trackTileKeyword = (tile && (tileMode === 0 || tileMode === 2)) ? 'round' : 'stretch';
+      const fillTileKeyword = (tile && (tileMode === 0 || tileMode === 1)) ? 'round' : 'stretch';
+
+      const fillBi = `url("${fillSrc}") ${top} ${right} ${bottom} ${left} fill ${fillTileKeyword}`;
+      // Track frame: also 9-sliced to preserve border detail at any width
+      const trackBi = trackUrl
+        ? `url("${trackUrl}") ${top} ${right} ${bottom} ${left} fill ${trackTileKeyword}`
+        : null;
+      const trackBg = trackBi ? 'none' : 'var(--sz-color-button-face)';
 
       return `
 /* ── Skinned progress bar ──────────────────────────────────── */
@@ -450,7 +451,9 @@
   appearance: none;
   -webkit-appearance: none;
   height: ${h}px;
-  border: none;
+  border-style: solid;
+  border-width: ${trackBi ? top : 0}px ${trackBi ? right : 0}px ${trackBi ? bottom : 0}px ${trackBi ? left : 0}px;
+  ${trackBi ? `border-image: ${trackBi};` : `border: none;`}
   background: ${trackBg};
   border-radius: 0;
   overflow: hidden;
@@ -462,14 +465,14 @@
 :where(progress)::-webkit-progress-value {
   border-style: solid;
   border-width: ${top}px ${right}px ${bottom}px ${left}px;
-  border-image: ${bi};
+  border-image: ${fillBi};
   background: none;
   border-radius: 0;
 }
 :where(progress)::-moz-progress-bar {
   border-style: solid;
   border-width: ${top}px ${right}px ${bottom}px ${left}px;
-  border-image: ${bi};
+  border-image: ${fillBi};
   background: none;
   border-radius: 0;
 }
@@ -486,17 +489,19 @@
     #buildTabControlCSS(tc, img) {
       const w = img.naturalWidth;
       const h = img.naturalHeight;
+      // WindowBlinds button format: 5 states (Normal, Pressed, Disabled, Focus, Default)
       const fits = (n) => n > 0 && w % n === 0 && w / n >= h * 0.5;
-      const numFrames = tc.framecount || (fits(3) ? 3 : fits(2) ? 2 : Math.max(1, Math.round(w / h)));
+      const numFrames = tc.framecount || (fits(5) ? 5 : fits(4) ? 4 : fits(3) ? 3 : fits(2) ? 2 : Math.max(1, Math.round(w / h)));
       const frameW = Math.floor(w / numFrames);
       const top = tc.topheight || 3;
       const bottom = tc.bottomheight || 3;
       const left = tc.leftwidth || 3;
       const right = tc.rightwidth || 3;
 
+      // Normal(0), Active/Selected(1=Pressed), Hover(3=Focus)
       const normalIdx = 0;
       const activeIdx = numFrames >= 2 ? 1 : 0;
-      const hoverIdx = numFrames >= 3 ? 2 : -1;
+      const hoverIdx = numFrames >= 4 ? 3 : -1;
 
       const dataUrls = [];
       for (let i = 0; i < numFrames; ++i) {
@@ -505,9 +510,10 @@
         dataUrls.push(url);
       }
 
+      const tileKeyword = tc.tile ? 'round' : 'stretch';
       const sel = ':where(.sz-tab, [role="tab"])';
       if (dataUrls.length === numFrames) {
-        const bi = (idx) => `url("${dataUrls[idx]}") ${top} ${right} ${bottom} ${left} fill stretch`;
+        const bi = (idx) => `url("${dataUrls[idx]}") ${top} ${right} ${bottom} ${left} fill ${tileKeyword}`;
         let css = `
 /* ── Skinned tabs (9-slice) ────────────────────────────────── */
 ${sel} {

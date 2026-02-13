@@ -109,18 +109,23 @@
 
     taskButton: {
       image: `${BASE}/TASKBUTTON.BMP`,
-      topheight: 4,
-      bottomheight: 4,
-      leftwidth: 4,
-      rightwidth: 4,
+      topheight: 5,
+      bottomheight: 5,
+      leftwidth: 5,
+      rightwidth: 5,
+      mouseover: 1,
+      trans: 1,
+      flatbar: 1,
     },
 
     progressBar: {
       image: `${BASE}/PROGRESS.BMP`,
-      topheight: 2,
-      bottomheight: 2,
-      leftwidth: 2,
+      topheight: 5,
+      bottomheight: 5,
+      leftwidth: 4,
       rightwidth: 2,
+      tile: 1,
+      trans: 1,
     },
 
     tabControl: {

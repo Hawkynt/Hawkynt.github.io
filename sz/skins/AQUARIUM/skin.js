@@ -132,6 +132,8 @@
       bottomheight: 2,
       leftwidth: 3,
       rightwidth: 3,
+      tile: 0,
+      tilemode: 2,
     },
 
     tabControl: {

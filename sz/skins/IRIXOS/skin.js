@@ -99,22 +99,24 @@
       bottomheight: 3,
       leftwidth: 3,
       rightwidth: 3,
+      tile: 3,
+      trans: 1,
     },
 
     progressBar: {
       image: `${BASE}/PROGRESSBAR.BMP`,
-      topheight: 1,
-      bottomheight: 1,
-      leftwidth: 1,
-      rightwidth: 1,
+      topheight: 2,
+      bottomheight: 2,
+      leftwidth: 3,
+      rightwidth: 3,
     },
 
     tabControl: {
       image: `${BASE}/TABS2.BMP`,
-      topheight: 3,
-      bottomheight: 3,
-      leftwidth: 3,
-      rightwidth: 3,
+      topheight: 5,
+      bottomheight: 1,
+      leftwidth: 5,
+      rightwidth: 5,
     },
 
     startButton: { image: `${BASE}/STARTBUTTON.BMP` },

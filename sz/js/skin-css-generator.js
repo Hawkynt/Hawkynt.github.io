@@ -705,10 +705,11 @@
     const left = tb.leftwidth || 3;
     const right = tb.rightwidth || 3;
 
-    // Frame indices: Normal(0), Active/Pressed(1), Hover(2 if exists)
+    // WindowBlinds button format: Normal(0), Pressed(1), Disabled(2), Focus(3), Default(4)
+    // Taskbar uses: Normal→0, Active→1 (Pressed), Hover→3 (Focus)
     const normalIdx = 0;
     const activeIdx = numFrames >= 2 ? 1 : 0;
-    const hoverIdx = numFrames >= 3 ? 2 : -1;
+    const hoverIdx = numFrames >= 4 ? 3 : -1;
 
     // Try canvas extraction
     const dataUrls = [];
@@ -747,10 +748,11 @@
       dataUrls.length = 0;
     }
 
+    const tileKeyword = tb.tile ? 'round' : 'stretch';
     const sel = '.sz-taskbar-button';
 
     if (dataUrls.length === numFrames) {
-      const bi = (idx) => `url("${dataUrls[idx]}") ${top} ${right} ${bottom} ${left} fill stretch`;
+      const bi = (idx) => `url("${dataUrls[idx]}") ${top} ${right} ${bottom} ${left} fill ${tileKeyword}`;
       let css = `
 /* ── Skinned taskbar buttons (9-slice) ──────────────────────── */
 ${sel} {
@@ -810,21 +812,24 @@ ${sel}:hover:not(.active) {
     return css + '\n';
   }
 
+  // WindowBlinds button-format controls use 5 states:
+  // 1=Normal, 2=Pressed, 3=Disabled, 4=Focus, 5=Default
+  // Prefer 5 frames first, matching the UIS spec convention.
   function _detectFrameCount(w, h) {
     const fits = (n) => n > 0 && w % n === 0 && w / n >= h * 0.5;
+    if (fits(5)) return 5;
+    if (fits(4)) return 4;
     if (fits(3)) return 3;
     if (fits(2)) return 2;
-    if (fits(4)) return 4;
-    if (fits(5)) return 5;
     return Math.max(1, Math.round(w / h));
   }
 
   function _detectVerticalFrameCount(w, h) {
     const fits = (n) => n > 0 && h % n === 0 && h / n >= w * 0.5;
+    if (fits(5)) return 5;
+    if (fits(4)) return 4;
     if (fits(3)) return 3;
     if (fits(2)) return 2;
-    if (fits(4)) return 4;
-    if (fits(5)) return 5;
     return Math.max(1, Math.round(h / w));
   }
 

@@ -89,6 +89,14 @@
     comboButton: {
     },
 
+    taskButton: {
+      image: `${BASE}/BUTTON.BMP`,
+      topheight: 7,
+      bottomheight: 7,
+      leftwidth: 7,
+      rightwidth: 7,
+    },
+
     startButton: { image: `${BASE}/START.BMP` },
 
     progressBar: {
@@ -101,10 +109,10 @@
 
     tabControl: {
       image: `${BASE}/TABTOP.BMP`,
-      topheight: 2,
-      bottomheight: 2,
-      leftwidth: 2,
-      rightwidth: 2,
+      topheight: 1,
+      bottomheight: 1,
+      leftwidth: 1,
+      rightwidth: 1,
     },
 
     colors: {
