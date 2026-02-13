@@ -33,6 +33,122 @@
     return mp.endsWith('/') ? mp : mp + '/';
   }
 
+  function _bytesToBase64(bytes) {
+    let binary = '';
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      const part = bytes.subarray(i, i + chunk);
+      for (let j = 0; j < part.length; ++j)
+        binary += String.fromCharCode(part[j]);
+    }
+    return btoa(binary);
+  }
+
+  function _isArrayBufferLike(value) {
+    if (value == null)
+      return false;
+    return value instanceof ArrayBuffer || Object.prototype.toString.call(value) === '[object ArrayBuffer]';
+  }
+
+  function _isTypedArrayLike(value) {
+    if (value == null)
+      return false;
+    if (ArrayBuffer.isView(value))
+      return true;
+    const tag = Object.prototype.toString.call(value);
+    return /\[object (?:Uint8|Uint8Clamped|Int8|Uint16|Int16|Uint32|Int32|Float32|Float64|BigInt64|BigUint64)Array\]/.test(tag);
+  }
+
+  function _toStorableValue(data) {
+    if (typeof data === 'string')
+      return data;
+
+    if (_isArrayBufferLike(data)) {
+      const bytes = new Uint8Array(data);
+      return 'data:application/octet-stream;base64,' + _bytesToBase64(bytes);
+    }
+
+    if (_isTypedArrayLike(data)) {
+      const bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+      return 'data:application/octet-stream;base64,' + _bytesToBase64(bytes);
+    }
+
+    // Cross-context fallback: objects that expose ArrayBuffer-like shape.
+    if (data && typeof data === 'object' && typeof data.byteLength === 'number') {
+      try {
+        const bytes = new Uint8Array(data);
+        return 'data:application/octet-stream;base64,' + _bytesToBase64(bytes);
+      } catch (_) {
+        try {
+          if (typeof data.slice === 'function') {
+            const sliced = data.slice(0);
+            const bytes = new Uint8Array(sliced);
+            return 'data:application/octet-stream;base64,' + _bytesToBase64(bytes);
+          }
+        } catch (_) {}
+      }
+    }
+
+    return String(data ?? '');
+  }
+
+  function _estimateStoredSize(value) {
+    if (value == null)
+      return 0;
+
+    if (typeof value === 'string') {
+      const m = value.match(/^data:([^,]*),(.*)$/i);
+      if (m) {
+        const meta = m[1] || '';
+        const payload = (m[2] || '').replace(/\s+/g, '');
+        if (/;\s*base64/i.test(meta)) {
+          const padding = payload.endsWith('==') ? 2 : payload.endsWith('=') ? 1 : 0;
+          return Math.max(0, Math.floor(payload.length * 3 / 4) - padding);
+        }
+        try {
+          return decodeURIComponent(m[2] || '').length;
+        } catch (_) {
+          return (m[2] || '').length;
+        }
+      }
+
+      // Legacy Explorer wrapper: {"type":"base64","data":"...","mime":"..."}
+      if (value.startsWith('{') && value.includes('"type":"base64"') && value.includes('"data"')) {
+        try {
+          const obj = JSON.parse(value);
+          if (obj && obj.type === 'base64' && typeof obj.data === 'string') {
+            const payload = obj.data.replace(/\s+/g, '');
+            const padding = payload.endsWith('==') ? 2 : payload.endsWith('=') ? 1 : 0;
+            return Math.max(0, Math.floor(payload.length * 3 / 4) - padding);
+          }
+        } catch (_) {}
+      }
+
+      // Plain base64 payload (legacy app writes without data: prefix)
+      const compact = value.replace(/\s+/g, '');
+      if (/^[A-Za-z0-9+/=]+$/.test(compact) && compact.length >= 32 && compact.length % 4 === 0) {
+        try {
+          const bin = atob(compact);
+          // Validate canonical base64 to avoid misclassifying normal text.
+          if (btoa(bin) === compact) {
+            const padding = compact.endsWith('==') ? 2 : compact.endsWith('=') ? 1 : 0;
+            return Math.max(0, Math.floor(compact.length * 3 / 4) - padding);
+          }
+        } catch (_) {}
+      }
+
+      return value.length;
+    }
+
+    if (_isArrayBufferLike(value))
+      return value.byteLength;
+
+    if (_isTypedArrayLike(value))
+      return value.byteLength;
+
+    return String(value).length;
+  }
+
   // ── LocalStorageMount ──────────────────────────────────────────────
 
   class LocalStorageMount {
@@ -70,7 +186,7 @@
           seen.set(remainder, {
             name: remainder,
             type: 'file',
-            size: value ? value.length : 0,
+            size: _estimateStoredSize(value),
             modified: null,
           });
         } else {
@@ -96,7 +212,7 @@
     async write(relativePath, data) {
       const key = this.#prefix + relativePath;
       try {
-        localStorage.setItem(key, data);
+        localStorage.setItem(key, _toStorableValue(data));
       } catch (e) {
         if (e.name === 'QuotaExceededError' || e.code === 22)
           throw new Error('Storage quota exceeded. Free up space or delete files before saving.');
@@ -167,7 +283,7 @@
           seen.set(remainder, {
             name: remainder,
             type: 'file',
-            size: typeof value === 'string' ? value.length : 0,
+            size: _estimateStoredSize(value),
             modified: null,
           });
         } else {
@@ -442,6 +558,32 @@
     }
 
     /**
+     * Reads a file from VFS and returns a usable URI (e.g., a data: URL).
+     * This method is responsible for interpreting the stored VFS content.
+     */
+    async getUri(path) {
+      const content = await this.read(path);
+      if (!content) return '';
+
+      try {
+        const vfsObject = JSON.parse(content);
+        if (vfsObject.type === 'uri') {
+          return vfsObject.data || '';
+        }
+        if (vfsObject.type === 'base64') {
+          return `data:${vfsObject.mime};base64,${vfsObject.data}`;
+        }
+        return ''; // Unknown type
+      } catch (e) {
+        // Not a JSON object, assume it's a raw data URI from a legacy version or direct injection.
+        if (typeof content === 'string' && content.startsWith('data:')) {
+          return content;
+        }
+      }
+      return ''; // Could not be resolved to a URI
+    }
+
+    /**
      * Populate initial user files if they do not already exist.
      */
     static async createDefaultUserFiles(vfs) {
@@ -455,13 +597,20 @@
           + 'Files are stored in your browser\'s localStorage.'
         );
 
-      // Ensure the desktop directory exists by writing and removing a placeholder
-      // only if no files are present yet.
-      const desktopPath = '/user/desktop';
-      if (!await vfs.exists(desktopPath)) {
-        const placeholder = desktopPath + '/.keep';
-        await vfs.write(placeholder, '');
-      }
+      // Ensure standard user directories exist
+      const ensureDir = async (path) => {
+        if (!await vfs.exists(path)) {
+          // Write and remove a placeholder to ensure the path is created
+          // by mounts that don't have an explicit mkdir (like LocalStorage).
+          const placeholder = path + '/.keep';
+          await vfs.write(placeholder, '');
+          await vfs.delete(placeholder);
+        }
+      };
+
+      await ensureDir('/user/desktop');
+      await ensureDir('/user/documents');
+      await ensureDir('/user/pictures');
     }
   }
 

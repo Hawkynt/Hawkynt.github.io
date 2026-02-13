@@ -366,6 +366,187 @@
     return [0, 0, 0];
   }
 
+  function _base64ToBytes(base64) {
+    const compact = String(base64 || '').replace(/\s+/g, '');
+    if (!compact)
+      return new Uint8Array(0);
+    const binary = atob(compact);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; ++i)
+      bytes[i] = binary.charCodeAt(i) & 0xff;
+    return bytes;
+  }
+
+  function _isArrayBufferLike(value) {
+    if (value == null)
+      return false;
+    return value instanceof ArrayBuffer || Object.prototype.toString.call(value) === '[object ArrayBuffer]';
+  }
+
+  function _isTypedArrayLike(value) {
+    if (value == null)
+      return false;
+    if (ArrayBuffer.isView(value))
+      return true;
+    const tag = Object.prototype.toString.call(value);
+    return /\[object (?:Uint8|Uint8Clamped|Int8|Uint16|Int16|Uint32|Int32|Float32|Float64|BigInt64|BigUint64)Array\]/.test(tag);
+  }
+
+  function _bytesToBase64(bytes) {
+    const chunk = 0x8000;
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += chunk) {
+      const slice = bytes.subarray(i, i + chunk);
+      let part = '';
+      for (let j = 0; j < slice.length; ++j)
+        part += String.fromCharCode(slice[j]);
+      binary += part;
+    }
+    return btoa(binary);
+  }
+
+  function _toUint8Array(value) {
+    if (value == null)
+      return new Uint8Array(0);
+
+    if (value instanceof Uint8Array)
+      return new Uint8Array(value);
+
+    if (_isArrayBufferLike(value))
+      return new Uint8Array(value.slice(0));
+
+    if (_isTypedArrayLike(value))
+      return new Uint8Array(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength));
+
+    if (Array.isArray(value))
+      return Uint8Array.from(value.map(v => (Number(v) || 0) & 0xff));
+
+    if (typeof value === 'object' && Array.isArray(value.data))
+      return Uint8Array.from(value.data.map(v => (Number(v) || 0) & 0xff));
+
+    if (typeof value === 'string') {
+      const str = value;
+      const dataUrlMatch = str.match(/^data:([^,]*),(.*)$/i);
+      if (dataUrlMatch) {
+        const meta = dataUrlMatch[1] || '';
+        const payload = dataUrlMatch[2] || '';
+        if (/;\s*base64/i.test(meta))
+          return _base64ToBytes(payload);
+        try {
+          const decoded = decodeURIComponent(payload);
+          const bytes = new Uint8Array(decoded.length);
+          for (let i = 0; i < decoded.length; ++i)
+            bytes[i] = decoded.charCodeAt(i) & 0xff;
+          return bytes;
+        } catch (_) {
+          const bytes = new Uint8Array(payload.length);
+          for (let i = 0; i < payload.length; ++i)
+            bytes[i] = payload.charCodeAt(i) & 0xff;
+          return bytes;
+        }
+      }
+
+      const trimmed = str.trim();
+      if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+        try {
+          const arr = JSON.parse(trimmed);
+          if (Array.isArray(arr))
+            return Uint8Array.from(arr.map(v => (Number(v) || 0) & 0xff));
+        } catch (_) {}
+      }
+
+      const rawBytes = (() => {
+        const bytes = new Uint8Array(str.length);
+        for (let i = 0; i < str.length; ++i)
+          bytes[i] = str.charCodeAt(i) & 0xff;
+        return bytes;
+      })();
+
+      const score = (bytes) => {
+        if (!bytes || bytes.length < 2)
+          return 0;
+        if (bytes.length >= 6 && bytes[0] === 0x00 && bytes[1] === 0x00 && (bytes[2] === 0x01 || bytes[2] === 0x02) && bytes[3] === 0x00)
+          return 100;
+        if (bytes[0] === 0x4D && bytes[1] === 0x5A)
+          return 90;
+        if (bytes.length >= 4 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47)
+          return 80;
+        if (bytes.length >= 3 && bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF)
+          return 70;
+        if (bytes.length >= 6 && bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38 && (bytes[4] === 0x37 || bytes[4] === 0x39) && bytes[5] === 0x61)
+          return 70;
+        if (bytes.length >= 2 && bytes[0] === 0x42 && bytes[1] === 0x4D)
+          return 70;
+        if (bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4B && (bytes[2] === 0x03 || bytes[2] === 0x05 || bytes[2] === 0x07) && (bytes[3] === 0x04 || bytes[3] === 0x06 || bytes[3] === 0x08))
+          return 60;
+        return 0;
+      };
+
+      const base64ish = /^[A-Za-z0-9+/=\r\n\s]+$/.test(trimmed) && (trimmed.length % 4 === 0 || trimmed.replace(/\s+/g, '').length % 4 === 0);
+      if (base64ish) {
+        let b64Bytes = null;
+        try { b64Bytes = _base64ToBytes(trimmed); } catch (_) {}
+        if (b64Bytes) {
+          const b64Score = score(b64Bytes);
+          const rawScore = score(rawBytes);
+          if (b64Score > rawScore)
+            return b64Bytes;
+          if (rawScore > b64Score)
+            return rawBytes;
+          // Equal confidence: prefer base64 for base64-ish payloads.
+          return b64Bytes;
+        }
+      }
+
+      return rawBytes;
+    }
+
+    return new Uint8Array(0);
+  }
+
+  function _decodeToText(value) {
+    if (value == null)
+      return '';
+
+    if (typeof value === 'string') {
+      const dataUrlMatch = value.match(/^data:([^,]*),(.*)$/i);
+      if (dataUrlMatch) {
+        const meta = dataUrlMatch[1] || '';
+        const payload = dataUrlMatch[2] || '';
+        if (/;\s*base64/i.test(meta)) {
+          try {
+            const bytes = _base64ToBytes(payload);
+            return new TextDecoder('utf-8').decode(bytes);
+          } catch (_) {
+            return '';
+          }
+        }
+        try {
+          return decodeURIComponent(payload);
+        } catch (_) {
+          return payload;
+        }
+      }
+
+      // Legacy wrapper format from older Explorer uploads.
+      if (value.startsWith('{') && value.includes('"type"') && value.includes('"data"')) {
+        try {
+          const obj = JSON.parse(value);
+          if (obj && obj.type === 'text' && typeof obj.data === 'string')
+            return obj.data;
+          if (obj && obj.type === 'base64' && typeof obj.data === 'string') {
+            const bytes = _base64ToBytes(obj.data);
+            return new TextDecoder('utf-8').decode(bytes);
+          }
+        } catch (_) {}
+      }
+
+      return value;
+    }
+
+    return new TextDecoder('utf-8').decode(_toUint8Array(value));
+  }
+
   Dlls.GDI32 = {
 
     GetSysColor(index) {
@@ -415,7 +596,19 @@
       return _sendMessage('sz:vfs:read', { path }).then(r => {
         if (r.error)
           throw new Error(r.error);
-        return r.content;
+        return _decodeToText(r.content);
+      });
+    },
+
+    ReadAllText(path) {
+      return this.ReadFile(path);
+    },
+
+    ReadAllBytes(path) {
+      return _sendMessage('sz:vfs:read', { path }).then(r => {
+        if (r.error)
+          throw new Error(r.error);
+        return _toUint8Array(r.content);
       });
     },
 
@@ -425,6 +618,12 @@
           throw new Error(r.error);
         return { success: r.success };
       });
+    },
+
+    WriteAllBytes(path, bytes) {
+      const payload = _toUint8Array(bytes);
+      const dataUrl = 'data:application/octet-stream;base64,' + _bytesToBase64(payload);
+      return this.WriteFile(path, dataUrl);
     },
 
     DeleteFile(path) {
