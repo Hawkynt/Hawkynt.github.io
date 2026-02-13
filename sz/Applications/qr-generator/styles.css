@@ -119,12 +119,16 @@ legend {
   align-items: center;
   justify-content: center;
   flex: 1;
-  min-height: 120px;
+  min-height: 80px;
+  overflow: hidden;
 }
 
 #qr-canvas {
   image-rendering: pixelated;
   border: 1px solid var(--sz-color-button-shadow);
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
 }
 
 #preview-options {
@@ -134,6 +138,7 @@ legend {
   align-items: center;
   width: 100%;
   max-width: 280px;
+  flex-shrink: 0;
 }
 
 #preview-options label {
@@ -164,10 +169,28 @@ legend {
 
 #logo-row label { margin-bottom: 0; font-size: 10px; }
 
+#logo-preview {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  border: 1px solid var(--sz-color-button-shadow);
+  display: none;
+}
+
+#logo-preview.has-logo {
+  display: block;
+}
+
+#preview-options input[type="range"] {
+  width: 100%;
+  cursor: pointer;
+}
+
 #qr-info {
   font-size: 10px;
   color: var(--sz-color-gray-text);
   text-align: center;
+  flex-shrink: 0;
 }
 
 /* ---- Bottom toolbar ---- */
