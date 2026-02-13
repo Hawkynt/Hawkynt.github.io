@@ -902,6 +902,8 @@
       const entry = entries[i];
       const item = document.createElement('div');
       item.className = 'file-item';
+      item.dataset.name = entry.name;
+      item.dataset.index = String(i);
       item.title = entry.name + ' (' + entry.type + ')\n' + entry.preview;
 
       item.addEventListener('click', (e) => {
