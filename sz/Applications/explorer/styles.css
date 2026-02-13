@@ -523,3 +523,89 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Drag-and-drop upload overlay */
+.main-view.drop-target {
+  outline: 2px dashed var(--sz-color-highlight, #3399ff);
+  outline-offset: -4px;
+  background-color: rgba(51, 153, 255, 0.08);
+}
+
+/* -- Detail panel for viewing function code / values -------------------- */
+.detail-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.detail-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--sz-color-button-shadow, #808080);
+  background: var(--sz-color-button-face, #ece9d8);
+  flex-shrink: 0;
+}
+
+.detail-back {
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.detail-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.detail-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.detail-icon svg { width: 100%; height: 100%; }
+
+.detail-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.detail-type {
+  color: var(--sz-color-gray-text, #808080);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.detail-content {
+  flex: 1;
+  margin: 0;
+  padding: 8px 12px;
+  overflow: auto;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: var(--sz-color-window, #fff);
+  color: var(--sz-color-window-text, #000);
+  tab-size: 2;
+}
+
+.detail-content.detail-code {
+  color: var(--sz-color-window-text, #1a1a2e);
+}
+
+/* Syntax highlighting tokens */
+.hl-keyword { color: #0000ff; font-weight: 600; }
+.hl-string  { color: #a31515; }
+.hl-number  { color: #098658; }
+.hl-comment { color: #008000; font-style: italic; }
+.hl-func    { color: #795e26; }
+.hl-regex   { color: #811f3f; }
