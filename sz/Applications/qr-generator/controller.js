@@ -792,6 +792,8 @@
   const logoFile = document.getElementById('logo-file');
   const btnLogo = document.getElementById('btn-logo');
   const btnLogoClear = document.getElementById('btn-logo-clear');
+  const logoPreview = document.getElementById('logo-preview');
+  const logoSizeSlider = document.getElementById('logo-size');
 
   let logoImage = null;
   let currentQR = null;
@@ -888,6 +890,8 @@
       img.onload = () => {
         logoImage = img;
         btnLogoClear.disabled = false;
+        logoPreview.src = e.target.result;
+        logoPreview.classList.add('has-logo');
         // Auto-switch to H error correction when logo is added
         if (ecLevelSel.value !== 'H')
           ecLevelSel.value = 'H';
@@ -902,6 +906,8 @@
     logoImage = null;
     logoFile.value = '';
     btnLogoClear.disabled = true;
+    logoPreview.src = '';
+    logoPreview.classList.remove('has-logo');
     scheduleGenerate();
   });
 
@@ -923,7 +929,8 @@
       return;
     }
 
-    const ecLevel = ecLevelSel.value;
+    // Force highest EC level when a logo is present so overlay stays scannable
+    const ecLevel = logoImage ? 'H' : ecLevelSel.value;
     const reqVersion = parseInt(versionSel.value, 10);
     const encMode = encodingMode.value;
 
@@ -936,8 +943,9 @@
     }
 
     currentQR = qr;
+    const ecNote = logoImage && ecLevelSel.value !== 'H' ? ' (forced H for logo)' : '';
     qrInfo.textContent = 'Version ' + qr.version + ' | ' + qr.size + 'x' + qr.size +
-      ' | EC: ' + qr.ecLevel + ' | Mode: ' + qr.mode + ' | Mask: ' + qr.mask;
+      ' | EC: ' + qr.ecLevel + ecNote + ' | Mode: ' + qr.mode + ' | Mask: ' + qr.mask;
 
     renderQR(qr);
   }
@@ -981,15 +989,25 @@
         drawModule(ctx, x, y, mSize, style, fg);
       }
 
-    // Draw logo in center
+    // Draw logo centered with white border; capped at ~20% of module area
     if (logoImage) {
-      const logoSize = Math.floor(totalSize * 0.2);
-      const lx = Math.floor((totalSize - logoSize) / 2);
-      const ly = Math.floor((totalSize - logoSize) / 2);
+      const MAX_LOGO_FRACTION = 0.20; // max 20% of QR code dimension
+      const sliderPct = (parseInt(logoSizeSlider.value, 10) || 20) / 100;
+      const logoPct = Math.min(sliderPct, MAX_LOGO_FRACTION);
+      const logoW = Math.floor(totalSize * logoPct);
+      const aspect = logoImage.naturalHeight / logoImage.naturalWidth;
+      let logoH = Math.floor(logoW * aspect);
+      // Also cap height to the same fraction
+      if (logoH > totalSize * MAX_LOGO_FRACTION) {
+        logoH = Math.floor(totalSize * MAX_LOGO_FRACTION);
+      }
+      const lx = Math.floor((totalSize - logoW) / 2);
+      const ly = Math.floor((totalSize - logoH) / 2);
+      const pad = Math.max(Math.floor(mSize * 1), 2);
+      // White border behind the logo
       ctx.fillStyle = bg;
-      const pad = Math.floor(mSize * 0.5);
-      ctx.fillRect(lx - pad, ly - pad, logoSize + pad * 2, logoSize + pad * 2);
-      ctx.drawImage(logoImage, lx, ly, logoSize, logoSize);
+      ctx.fillRect(lx - pad, ly - pad, logoW + pad * 2, logoH + pad * 2);
+      ctx.drawImage(logoImage, lx, ly, logoW, logoH);
     }
   }
 
@@ -1058,6 +1076,30 @@
         const y = (r + quiet) * mSize;
         svg += svgModule(x, y, mSize, style, fg);
       }
+
+    // Embed logo into SVG if present
+    if (logoImage) {
+      const MAX_LOGO_FRACTION = 0.20;
+      const sliderPct = (parseInt(logoSizeSlider.value, 10) || 20) / 100;
+      const logoPct = Math.min(sliderPct, MAX_LOGO_FRACTION);
+      const logoW = Math.floor(totalSize * logoPct);
+      const aspect = logoImage.naturalHeight / logoImage.naturalWidth;
+      let logoH = Math.floor(logoW * aspect);
+      if (logoH > totalSize * MAX_LOGO_FRACTION)
+        logoH = Math.floor(totalSize * MAX_LOGO_FRACTION);
+      const lx = Math.floor((totalSize - logoW) / 2);
+      const ly = Math.floor((totalSize - logoH) / 2);
+      const pad = Math.max(Math.floor(mSize * 1), 2);
+      // White border
+      svg += '  <rect x="' + (lx - pad) + '" y="' + (ly - pad) + '" width="' + (logoW + pad * 2) + '" height="' + (logoH + pad * 2) + '" fill="' + bg + '"/>\n';
+      // Encode logo as data-URI via a temp canvas
+      const tmpC = document.createElement('canvas');
+      tmpC.width = logoImage.naturalWidth;
+      tmpC.height = logoImage.naturalHeight;
+      tmpC.getContext('2d').drawImage(logoImage, 0, 0);
+      const dataUri = tmpC.toDataURL('image/png');
+      svg += '  <image x="' + lx + '" y="' + ly + '" width="' + logoW + '" height="' + logoH + '" href="' + dataUri + '"/>\n';
+    }
 
     svg += '</svg>';
     return svg;
@@ -1155,7 +1197,7 @@
   // ----- Wire up all inputs to regenerate -----
 
   const allInputs = [
-    dataInput, encodingMode, ecLevelSel, versionSel, fgColor, bgColor, modStyle, modSize, quietZone,
+    dataInput, encodingMode, ecLevelSel, versionSel, fgColor, bgColor, modStyle, modSize, quietZone, logoSizeSlider,
     document.getElementById('wifi-ssid'), document.getElementById('wifi-pass'), document.getElementById('wifi-enc'),
     document.getElementById('vc-name'), document.getElementById('vc-phone'), document.getElementById('vc-email'), document.getElementById('vc-addr'),
     document.getElementById('em-addr'), document.getElementById('em-subj'), document.getElementById('em-body'),
