@@ -5,9 +5,11 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  font-family: Tahoma, Verdana, sans-serif;
+  font-size: 11px;
 }
 
-/* ---- Menu bar ---- */
+/* ==== Menu bar ==== */
 .menu-bar {
   display: flex;
   align-items: center;
@@ -16,6 +18,7 @@ body {
   border-bottom: 1px solid var(--sz-color-button-shadow);
   user-select: none;
   flex-shrink: 0;
+  z-index: 100;
 }
 
 .menu-item {
@@ -36,10 +39,10 @@ body {
   position: absolute;
   top: 100%;
   left: 0;
-  min-width: 200px;
+  min-width: 220px;
   background: var(--sz-color-menu);
   border: 1px solid var(--sz-color-button-shadow);
-  box-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+  box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
   z-index: 1000;
   padding: 2px 0;
 }
@@ -49,13 +52,14 @@ body {
 }
 
 .menu-entry {
-  padding: 4px 24px 4px 8px;
+  padding: 4px 24px 4px 24px;
   cursor: default;
   color: var(--sz-color-menu-text);
   white-space: nowrap;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  position: relative;
 }
 
 .menu-entry:hover {
@@ -74,15 +78,21 @@ body {
   opacity: 0.7;
 }
 
-.menu-entry.checkbox::before {
+.menu-entry.checkbox::before,
+.menu-entry.radio::before {
   content: '';
   display: inline-block;
-  width: 12px;
-  margin-right: 4px;
+  width: 16px;
+  margin-left: -16px;
+  text-align: center;
 }
 
 .menu-entry.checkbox.checked::before {
   content: '\2713';
+}
+
+.menu-entry.radio.checked::before {
+  content: '\2022';
 }
 
 .menu-separator {
@@ -91,15 +101,88 @@ body {
   margin: 2px 4px;
 }
 
-/* ---- Text area ---- */
-.editor {
+/* Submenu */
+.menu-entry.has-submenu {
+  padding-right: 8px;
+}
+
+.submenu-arrow {
+  margin-left: auto;
+  padding-left: 16px;
+  font-size: 8px;
+}
+
+.menu-submenu {
+  display: none;
+  position: absolute;
+  left: 100%;
+  top: -2px;
+  min-width: 180px;
+  background: var(--sz-color-menu);
+  border: 1px solid var(--sz-color-button-shadow);
+  box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+  padding: 2px 0;
+  z-index: 1001;
+}
+
+.menu-entry.has-submenu:hover > .menu-submenu {
+  display: block;
+}
+
+/* ==== Editor container ==== */
+.editor-container {
   flex: 1;
   display: flex;
   overflow: hidden;
+  position: relative;
+  background: var(--sz-color-window, #fff);
 }
 
-.editor textarea {
+/* ==== Line numbers ==== */
+.line-numbers {
+  flex-shrink: 0;
+  padding: 4px 0;
+  background: var(--sz-color-button-face, #f0f0f0);
+  border-right: 1px solid var(--sz-color-button-shadow, #a0a0a0);
+  color: var(--sz-color-gray-text, #888);
+  font-family: 'Lucida Console', 'Courier New', Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: right;
+  user-select: none;
+  overflow: hidden;
+  min-width: 40px;
+  cursor: default;
+}
+
+.line-numbers.hidden {
+  display: none;
+}
+
+.line-number {
+  padding: 0 8px 0 8px;
+  white-space: nowrap;
+}
+
+.line-number.current {
+  color: var(--sz-color-window-text, #000);
+  font-weight: bold;
+  background: rgba(0, 0, 0, 0.04);
+}
+
+/* ==== Editor wrapper (textarea + highlight overlay) ==== */
+.editor-wrapper {
   flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+.editor-input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
   border: none;
   outline: none;
   resize: none;
@@ -108,25 +191,218 @@ body {
   font-size: 13px;
   line-height: 1.4;
   tab-size: 4;
+  -moz-tab-size: 4;
+  color: transparent;
+  caret-color: var(--sz-color-window-text, #000);
+  background: transparent;
+  z-index: 2;
+  overflow: auto;
+  white-space: pre;
 }
 
-.editor textarea.word-wrap {
+.editor-input::selection {
+  background: var(--sz-color-highlight, #0078d7);
+  color: transparent;
+}
+
+.editor-input::-moz-selection {
+  background: var(--sz-color-highlight, #0078d7);
+  color: transparent;
+}
+
+.editor-input.word-wrap {
   white-space: pre-wrap;
   word-wrap: break-word;
   overflow-wrap: break-word;
 }
 
-.editor textarea.no-wrap {
+.editor-input.no-wrap {
   white-space: pre;
   overflow-x: auto;
 }
 
-/* ---- Dialogs ---- */
+/* Syntax highlight overlay */
+.editor-highlight {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 4px;
+  border: none;
+  font-family: 'Lucida Console', 'Courier New', Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.4;
+  tab-size: 4;
+  -moz-tab-size: 4;
+  color: var(--sz-color-window-text, #000);
+  background: var(--sz-color-window, #fff);
+  pointer-events: none;
+  z-index: 1;
+  overflow: hidden;
+  white-space: pre;
+  word-wrap: normal;
+}
+
+.editor-highlight.word-wrap {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.editor-highlight code {
+  display: block;
+  font: inherit;
+  color: inherit;
+}
+
+/* Current line highlight */
+.current-line-highlight {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1.4em;
+  background: rgba(0, 0, 0, 0.04);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Long line marker */
+.long-line-marker {
+  display: none;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  border-right: 1px solid rgba(128, 128, 128, 0.4);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.long-line-marker.visible {
+  display: block;
+}
+
+/* ==== Whitespace rendering ==== */
+.ws-space,
+.ws-tab {
+  position: relative;
+}
+
+.ws-space::before {
+  content: '\00B7';
+  position: absolute;
+  left: 0;
+  color: rgba(128, 128, 128, 0.5);
+  pointer-events: none;
+  width: 100%;
+  text-align: center;
+}
+
+.ws-tab::before {
+  content: '\2192';
+  position: absolute;
+  left: 0;
+  color: rgba(128, 128, 128, 0.5);
+  pointer-events: none;
+}
+
+.ws-cr,
+.ws-lf,
+.ws-crlf {
+  position: relative;
+  display: inline;
+}
+
+.ws-cr::before {
+  content: '\21A9';
+  color: rgba(128, 128, 128, 0.4);
+  font-size: 0.85em;
+}
+
+.ws-lf::before {
+  content: '\21B5';
+  color: rgba(128, 128, 128, 0.4);
+  font-size: 0.85em;
+}
+
+.ws-crlf::before {
+  content: '\21B5';
+  color: rgba(128, 128, 128, 0.4);
+  font-size: 0.85em;
+}
+
+/* ==== Syntax highlighting tokens ==== */
+.sh-keyword { color: #0000ff; }
+.sh-string { color: #a31515; }
+.sh-comment { color: #008000; font-style: italic; }
+.sh-number { color: #098658; }
+.sh-operator { color: #000000; }
+.sh-punctuation { color: #000000; }
+.sh-function { color: #795e26; }
+.sh-type { color: #267f99; }
+.sh-constant { color: #0070c1; }
+.sh-tag { color: #800000; }
+.sh-attr-name { color: #ff0000; }
+.sh-attr-value { color: #0000ff; }
+.sh-entity { color: #267f99; }
+.sh-selector { color: #800000; }
+.sh-property { color: #ff0000; }
+.sh-value { color: #0000ff; }
+.sh-variable { color: #001080; }
+.sh-regex { color: #811f3f; }
+.sh-heading { color: #0000ff; font-weight: bold; }
+.sh-bold { font-weight: bold; }
+.sh-italic { font-style: italic; }
+.sh-link { color: #0070c1; text-decoration: underline; }
+.sh-decorator { color: #795e26; }
+.sh-preprocessor { color: #808080; }
+.sh-bracket-match { background: rgba(0, 120, 215, 0.2); outline: 1px solid rgba(0, 120, 215, 0.5); }
+.sh-selection-match { background: rgba(255, 200, 0, 0.3); }
+
+/* ==== Status bar ==== */
+.status-bar {
+  display: flex;
+  align-items: center;
+  padding: 2px 8px;
+  background: var(--sz-color-button-face);
+  border-top: 1px solid var(--sz-color-button-shadow);
+  font-size: 11px;
+  color: var(--sz-color-button-text);
+  flex-shrink: 0;
+  user-select: none;
+  gap: 4px;
+}
+
+.status-section {
+  white-space: nowrap;
+  padding: 0 6px;
+}
+
+.status-section:not(:last-child) {
+  border-right: 1px solid var(--sz-color-button-shadow);
+}
+
+.status-section.clickable {
+  cursor: default;
+}
+
+.status-section.clickable:hover {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+}
+
+.status-pos { min-width: 100px; }
+.status-sel { min-width: 60px; }
+.status-modified { color: var(--sz-color-highlight, #c00); font-weight: bold; }
+
+/* ==== Dialogs ==== */
 .dialog-overlay {
   display: none;
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.3);
+  background: rgba(0, 0, 0, 0.3);
   z-index: 2000;
   justify-content: center;
   align-items: center;
@@ -141,7 +417,7 @@ body {
   border: 2px outset var(--sz-color-button-shadow);
   min-width: 300px;
   max-width: 450px;
-  box-shadow: 3px 3px 8px rgba(0,0,0,0.3);
+  box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.3);
 }
 
 .dialog-title {
@@ -162,7 +438,8 @@ body {
   margin-bottom: 8px;
 }
 
-.dialog-body input[type="text"] {
+.dialog-body input[type="text"],
+.dialog-body input[type="number"] {
   width: 100%;
   padding: 2px 4px;
   font-size: 11px;
@@ -183,25 +460,28 @@ body {
   cursor: default;
 }
 
-/* ---- Status bar ---- */
-.status-bar {
+/* ==== Settings rows ==== */
+.settings-row {
   display: flex;
   align-items: center;
-  padding: 2px 8px;
-  background: var(--sz-color-button-face);
-  border-top: 1px solid var(--sz-color-button-shadow);
+  gap: 8px;
+  margin-bottom: 8px;
   font-size: 11px;
-  color: var(--sz-color-button-text);
-  flex-shrink: 0;
-  user-select: none;
-  gap: 16px;
 }
 
-.status-bar .status-section {
-  white-space: nowrap;
+.settings-row select {
+  padding: 2px 4px;
+  font-size: 11px;
 }
 
-/* ---- Font dialog extras ---- */
+.settings-row label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: default;
+}
+
+/* ==== Font dialog extras ==== */
 .font-row {
   display: flex;
   gap: 8px;
@@ -253,9 +533,10 @@ body {
   justify-content: center;
   margin-top: 4px;
   overflow: hidden;
+  font-family: 'Lucida Console', 'Courier New', Consolas, monospace;
 }
 
-/* ---- Find/Replace panel (non-modal) ---- */
+/* ==== Find/Replace panel (non-modal) ==== */
 .find-replace-panel {
   display: none;
   position: fixed;
@@ -264,8 +545,8 @@ body {
   z-index: 1500;
   background: var(--sz-color-button-face);
   border: 2px outset var(--sz-color-button-shadow);
-  box-shadow: 2px 2px 6px rgba(0,0,0,0.25);
-  min-width: 320px;
+  box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.25);
+  min-width: 380px;
   font-size: 11px;
 }
 
@@ -293,7 +574,7 @@ body {
 }
 
 .find-replace-title .fr-close:hover {
-  background: rgba(255,255,255,0.2);
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .find-replace-body {
@@ -312,10 +593,25 @@ body {
   text-align: right;
 }
 
-.fr-field input[type="text"] {
+.fr-field input[type="text"],
+.fr-field input[type="number"] {
   flex: 1;
   padding: 2px 4px;
   font-size: 11px;
+}
+
+.fr-options {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 6px;
+  font-size: 10px;
+}
+
+.fr-options label {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  cursor: default;
 }
 
 .fr-buttons {
@@ -337,4 +633,36 @@ body {
   color: var(--sz-color-gray-text);
   margin-top: 4px;
   min-height: 14px;
+}
+
+/* ==== Print styles ==== */
+@media print {
+  .menu-bar,
+  .status-bar,
+  .find-replace-panel,
+  .dialog-overlay,
+  .long-line-marker {
+    display: none !important;
+  }
+
+  .editor-container {
+    overflow: visible !important;
+  }
+
+  .editor-input {
+    display: none !important;
+  }
+
+  .editor-highlight {
+    position: static !important;
+    overflow: visible !important;
+    color: #000 !important;
+    background: #fff !important;
+  }
+
+  .line-numbers {
+    color: #888 !important;
+    background: #f8f8f8 !important;
+    border-right: 1px solid #ccc !important;
+  }
 }

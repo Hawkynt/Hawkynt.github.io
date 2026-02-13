@@ -18,6 +18,8 @@
       <div class="menu-entry" data-action="save">Save<span class="shortcut">Ctrl+S</span></div>
       <div class="menu-entry" data-action="save-as">Save As...</div>
       <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="print">Print...<span class="shortcut">Ctrl+P</span></div>
+      <div class="menu-separator"></div>
       <div class="menu-entry" data-action="exit">Exit</div>
     </div>
   </div>
@@ -25,24 +27,84 @@
     Edit
     <div class="menu-dropdown">
       <div class="menu-entry" data-action="undo">Undo<span class="shortcut">Ctrl+Z</span></div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="find">Find...<span class="shortcut">Ctrl+F</span></div>
-      <div class="menu-entry" data-action="replace">Replace...<span class="shortcut">Ctrl+H</span></div>
+      <div class="menu-entry" data-action="redo">Redo<span class="shortcut">Ctrl+Y</span></div>
       <div class="menu-separator"></div>
       <div class="menu-entry" data-action="cut">Cut<span class="shortcut">Ctrl+X</span></div>
       <div class="menu-entry" data-action="copy">Copy<span class="shortcut">Ctrl+C</span></div>
       <div class="menu-entry" data-action="paste">Paste<span class="shortcut">Ctrl+V</span></div>
       <div class="menu-entry" data-action="delete">Delete<span class="shortcut">Del</span></div>
       <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="find">Find...<span class="shortcut">Ctrl+F</span></div>
+      <div class="menu-entry" data-action="replace">Replace...<span class="shortcut">Ctrl+H</span></div>
+      <div class="menu-entry" data-action="goto-line">Go to Line...<span class="shortcut">Ctrl+G</span></div>
+      <div class="menu-separator"></div>
       <div class="menu-entry" data-action="select-all">Select All<span class="shortcut">Ctrl+A</span></div>
       <div class="menu-entry" data-action="time-date">Time/Date<span class="shortcut">F5</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="duplicate-line">Duplicate Line<span class="shortcut">Ctrl+D</span></div>
+      <div class="menu-entry" data-action="comment-toggle">Toggle Comment<span class="shortcut">Ctrl+/</span></div>
     </div>
   </div>
-  <div class="menu-item" data-menu="format">
-    Format
+  <div class="menu-item" data-menu="view">
+    View
     <div class="menu-dropdown">
       <div class="menu-entry checkbox checked" data-action="word-wrap">Word Wrap</div>
-      <div class="menu-entry" data-action="font">Font...</div>
+      <div class="menu-entry checkbox checked" data-action="line-numbers">Line Numbers</div>
+      <div class="menu-entry checkbox" data-action="show-whitespace">Show Whitespace</div>
+      <div class="menu-entry checkbox" data-action="show-line-endings">Show Line Endings</div>
+      <div class="menu-entry checkbox" data-action="long-line-marker">Long Line Marker</div>
+      <div class="menu-entry checkbox checked" data-action="highlight-current-line">Highlight Current Line</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry has-submenu" data-action="syntax-menu">
+        Syntax Highlighting
+        <span class="submenu-arrow">&#9656;</span>
+        <div class="menu-submenu" id="syntax-submenu">
+          <div class="menu-entry radio checked" data-action="syntax" data-lang="none">None (Plain Text)</div>
+          <div class="menu-separator"></div>
+          <div class="menu-entry radio" data-action="syntax" data-lang="javascript">JavaScript</div>
+          <div class="menu-entry radio" data-action="syntax" data-lang="typescript">TypeScript</div>
+          <div class="menu-entry radio" data-action="syntax" data-lang="html">HTML</div>
+          <div class="menu-entry radio" data-action="syntax" data-lang="css">CSS</div>
+          <div class="menu-entry radio" data-action="syntax" data-lang="json">JSON</div>
+          <div class="menu-entry radio" data-action="syntax" data-lang="xml">XML</div>
+          <div class="menu-entry radio" data-action="syntax" data-lang="python">Python</div>
+          <div class="menu-entry radio" data-action="syntax" data-lang="c">C / C++</div>
+          <div class="menu-entry radio" data-action="syntax" data-lang="java">Java</div>
+          <div class="menu-entry radio" data-action="syntax" data-lang="sql">SQL</div>
+          <div class="menu-entry radio" data-action="syntax" data-lang="markdown">Markdown</div>
+          <div class="menu-entry radio" data-action="syntax" data-lang="shell">Shell / Bash</div>
+          <div class="menu-entry radio" data-action="syntax" data-lang="php">PHP</div>
+          <div class="menu-entry radio" data-action="syntax" data-lang="ruby">Ruby</div>
+          <div class="menu-entry radio" data-action="syntax" data-lang="perl">Perl</div>
+          <div class="menu-entry radio" data-action="syntax" data-lang="go">Go</div>
+          <div class="menu-entry radio" data-action="syntax" data-lang="rust">Rust</div>
+          <div class="menu-entry radio" data-action="syntax" data-lang="csharp">C#</div>
+        </div>
+      </div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="zoom-in">Zoom In<span class="shortcut">Ctrl++</span></div>
+      <div class="menu-entry" data-action="zoom-out">Zoom Out<span class="shortcut">Ctrl+-</span></div>
+      <div class="menu-entry" data-action="zoom-reset">Reset Zoom<span class="shortcut">Ctrl+0</span></div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="settings">
+    Settings
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="tab-settings">Tab Settings...</div>
+      <div class="menu-entry" data-action="font">Editor Font...</div>
+      <div class="menu-entry checkbox checked" data-action="auto-indent">Auto-Indent</div>
+      <div class="menu-entry checkbox" data-action="auto-close-brackets">Auto-Close Brackets</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="encoding">
+    Encoding
+    <div class="menu-dropdown">
+      <div class="menu-entry radio checked" data-action="encoding" data-enc="utf-8">UTF-8</div>
+      <div class="menu-entry radio" data-action="encoding" data-enc="ascii">ASCII</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="convert-crlf">Convert to CRLF (Windows)</div>
+      <div class="menu-entry" data-action="convert-lf">Convert to LF (Unix)</div>
+      <div class="menu-entry" data-action="convert-cr">Convert to CR (Mac Classic)</div>
     </div>
   </div>
   <div class="menu-item" data-menu="help">
@@ -53,21 +115,31 @@
   </div>
 </div>
 
-<!-- Editor -->
-<div class="editor">
-  <textarea id="editor" class="word-wrap" spellcheck="false"></textarea>
+<!-- Editor Area -->
+<div class="editor-container" id="editor-container">
+  <div class="line-numbers" id="line-numbers"></div>
+  <div class="editor-wrapper">
+    <pre class="editor-highlight" id="editor-highlight" aria-hidden="true"><code id="highlight-code"></code></pre>
+    <textarea id="editor" class="editor-input" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
+    <div class="long-line-marker" id="long-line-marker"></div>
+  </div>
 </div>
 
 <!-- Status bar -->
 <div class="status-bar" id="status-bar">
-  <span class="status-section" id="status-pos">Ln 1, Col 1</span>
-  <span class="status-section" id="status-chars">0 characters</span>
+  <span class="status-section status-pos" id="status-pos">Ln 1, Col 1</span>
+  <span class="status-section status-sel" id="status-sel"></span>
+  <span class="status-section status-eol clickable" id="status-eol" title="Click to change line endings">CRLF</span>
+  <span class="status-section status-enc clickable" id="status-enc" title="Click to change encoding">UTF-8</span>
+  <span class="status-section status-mode clickable" id="status-mode" title="Click to toggle Insert/Overwrite">INS</span>
+  <span class="status-section status-lang clickable" id="status-lang" title="Click to change syntax">Plain Text</span>
+  <span class="status-section status-modified" id="status-modified"></span>
 </div>
 
 <!-- Find/Replace panel (non-modal) -->
 <div class="find-replace-panel" id="find-replace-panel">
   <div class="find-replace-title">
-    <span>Find and Replace</span>
+    <span id="fr-title-text">Find and Replace</span>
     <span class="fr-close" id="fr-close">&times;</span>
   </div>
   <div class="find-replace-body">
@@ -75,16 +147,71 @@
       <label for="fr-find-input">Find:</label>
       <input type="text" id="fr-find-input" autocomplete="off">
     </div>
-    <div class="fr-field">
+    <div class="fr-field" id="fr-replace-row">
       <label for="fr-replace-input">Replace:</label>
       <input type="text" id="fr-replace-input" autocomplete="off">
     </div>
+    <div class="fr-options">
+      <label><input type="checkbox" id="fr-match-case"> Match case</label>
+      <label><input type="checkbox" id="fr-whole-word"> Whole word</label>
+      <label><input type="checkbox" id="fr-regex"> Regex</label>
+    </div>
     <div class="fr-buttons">
+      <button id="fr-find-prev">Find Prev</button>
       <button id="fr-find-next">Find Next</button>
       <button id="fr-replace-btn">Replace</button>
       <button id="fr-replace-all">Replace All</button>
     </div>
     <div class="fr-status" id="fr-status"></div>
+  </div>
+</div>
+
+<!-- Go to Line dialog -->
+<div class="dialog-overlay" id="dlg-goto">
+  <div class="dialog">
+    <div class="dialog-title">Go to Line</div>
+    <div class="dialog-body">
+      <div class="fr-field">
+        <label for="goto-line-input">Line number:</label>
+        <input type="number" id="goto-line-input" min="1" autocomplete="off">
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Go</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Tab Settings dialog -->
+<div class="dialog-overlay" id="dlg-tab-settings">
+  <div class="dialog" style="min-width: 300px;">
+    <div class="dialog-title">Tab Settings</div>
+    <div class="dialog-body">
+      <div class="settings-row">
+        <label for="tab-width-select">Tab width:</label>
+        <select id="tab-width-select">
+          <option value="2">2</option>
+          <option value="4" selected>4</option>
+          <option value="8">8</option>
+        </select>
+      </div>
+      <div class="settings-row">
+        <label><input type="checkbox" id="tabs-as-spaces"> Insert tabs as spaces</label>
+      </div>
+      <div class="settings-row">
+        <label for="long-line-col">Long line marker column:</label>
+        <select id="long-line-col">
+          <option value="80">80</option>
+          <option value="100">100</option>
+          <option value="120">120</option>
+        </select>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">OK</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
   </div>
 </div>
 
@@ -107,22 +234,22 @@
 <!-- Font dialog -->
 <div class="dialog-overlay" id="dlg-font">
   <div class="dialog" style="min-width: 340px;">
-    <div class="dialog-title">Font</div>
+    <div class="dialog-title">Editor Font</div>
     <div class="dialog-body">
       <div class="font-row">
         <div style="flex: 1;">
           <label for="font-family">Font:</label>
           <select id="font-family">
+            <option value="'Cascadia Code', 'Fira Code', monospace">Cascadia Code</option>
+            <option value="'Fira Code', monospace">Fira Code</option>
+            <option value="Consolas, monospace">Consolas</option>
             <option value="'Lucida Console', monospace">Lucida Console</option>
             <option value="'Courier New', monospace">Courier New</option>
-            <option value="Consolas, monospace">Consolas</option>
-            <option value="Arial, sans-serif">Arial</option>
-            <option value="Tahoma, sans-serif">Tahoma</option>
-            <option value="'Times New Roman', serif">Times New Roman</option>
-            <option value="Verdana, sans-serif">Verdana</option>
-            <option value="'Comic Sans MS', cursive">Comic Sans MS</option>
-            <option value="Georgia, serif">Georgia</option>
-            <option value="'Trebuchet MS', sans-serif">Trebuchet MS</option>
+            <option value="'Source Code Pro', monospace">Source Code Pro</option>
+            <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
+            <option value="'DejaVu Sans Mono', monospace">DejaVu Sans Mono</option>
+            <option value="'Ubuntu Mono', monospace">Ubuntu Mono</option>
+            <option value="monospace">System Monospace</option>
           </select>
         </div>
         <div>
@@ -135,7 +262,7 @@
         <label><input type="checkbox" id="font-italic"> Italic</label>
       </div>
       <label>Preview:</label>
-      <div class="font-preview" id="font-preview">AaBbYyZz 0123</div>
+      <div class="font-preview" id="font-preview">AaBbYyZz 0123 {}[]();</div>
     </div>
     <div class="dialog-buttons">
       <button data-result="ok">OK</button>
@@ -149,8 +276,10 @@
   <div class="dialog">
     <div class="dialog-title">About Notepad</div>
     <div class="dialog-body" style="text-align: center; padding: 20px;">
-      <p style="font-weight: bold; font-size: 13px; margin-bottom: 12px;">Notepad</p>
-      <p>A simple text editor for &raquo;SynthelicZ&laquo;</p>
+      <p style="font-weight: bold; font-size: 13px; margin-bottom: 4px;">Notepad</p>
+      <p style="font-size: 10px; opacity: 0.6; margin-bottom: 12px;">Advanced Text Editor</p>
+      <p>A full-featured text editor for &raquo;SynthelicZ&laquo;</p>
+      <p style="margin-top: 4px; font-size: 10px; opacity: 0.5;">Syntax highlighting, find &amp; replace, line numbers, and more.</p>
       <p style="margin-top: 12px; font-size: 10px; opacity: 0.7;">&copy; 1995-2026 &raquo;SynthelicZ&laquo;</p>
     </div>
     <div class="dialog-buttons" style="justify-content: center;">
