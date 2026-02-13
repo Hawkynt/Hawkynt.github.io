@@ -2,6 +2,15 @@
   'use strict';
   const SZ = window.SZ || (window.SZ = {});
 
+  /** Viewport-edge padding in px. */
+  const EDGE_PAD = 4;
+
+  /** Scroll-arrow repeat interval in ms. */
+  const SCROLL_INTERVAL = 50;
+
+  /** Pixels scrolled per tick. */
+  const SCROLL_STEP = 24;
+
   class ContextMenu {
     #desktopEl;
     #windowManager;
@@ -155,14 +164,57 @@
       this.#renderMenu(this.#menuEl, items, x, y, true);
     }
 
-    #renderMenu(menuEl, items, x, y, fromBottom = false) {
+    /**
+     * Build the DOM for a menu, position it within the viewport, and add
+     * scroll arrows when the item list exceeds the available space.
+     *
+     * @param {HTMLElement} menuEl   The menu container element.
+     * @param {Array}       items    Menu-item descriptors.
+     * @param {number}      x        Desired left position (CSS px).
+     * @param {number}      y        Desired top position (CSS px).
+     * @param {boolean}     fromBottom  When true the menu opens upward from y.
+     * @param {string}      preferSide  'right' (default) or 'left' for submenus.
+     */
+    #renderMenu(menuEl, items, x, y, fromBottom = false, preferSide = 'right') {
       menuEl.innerHTML = '';
+
+      // -- Scroll-arrow helpers (added only when needed) ----------------------
+      let scrollContainer = null;
+      let upArrow = null;
+      let downArrow = null;
+      let scrollTimer = null;
+
+      const stopScrollTimer = () => {
+        if (scrollTimer != null) {
+          clearInterval(scrollTimer);
+          scrollTimer = null;
+        }
+      };
+
+      const updateArrowVisibility = () => {
+        if (!scrollContainer)
+          return;
+        const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
+        upArrow.classList.toggle('sz-ctx-arrow-hidden', scrollTop <= 0);
+        downArrow.classList.toggle('sz-ctx-arrow-hidden', scrollTop + clientHeight >= scrollHeight - 1);
+      };
+
+      const startScroll = (direction) => {
+        stopScrollTimer();
+        scrollTimer = setInterval(() => {
+          scrollContainer.scrollTop += direction * SCROLL_STEP;
+          updateArrowVisibility();
+        }, SCROLL_INTERVAL);
+      };
+
+      // -- Build item elements ------------------------------------------------
+      const fragment = document.createDocumentFragment();
 
       for (const item of items) {
         if (item.separator) {
           const sep = document.createElement('div');
           sep.className = 'sz-ctx-separator';
-          menuEl.appendChild(sep);
+          fragment.appendChild(sep);
           continue;
         }
 
@@ -191,11 +243,24 @@
 
           el.addEventListener('pointerenter', () => {
             const rect = el.getBoundingClientRect();
+            const menuRect = menuEl.getBoundingClientRect();
+            // Decide which side: if parent opened to the left, prefer left again
+            let subX, subSide;
+            if (preferSide === 'left' || rect.right + 2 > window.innerWidth - EDGE_PAD) {
+              // Open to the left of the parent menu
+              subX = menuRect.left + 2;
+              subSide = 'left';
+            } else {
+              subX = rect.right - 2;
+              subSide = 'right';
+            }
             this.#renderMenu(
               this.#subMenuEl,
               item.submenu,
-              rect.right - 2,
+              subX,
               rect.top,
+              false,
+              subSide,
             );
           });
         } else {
@@ -214,20 +279,98 @@
           }
         });
 
-        menuEl.appendChild(el);
+        fragment.appendChild(el);
       }
 
-      menuEl.style.display = 'block';
-      const menuRect = menuEl.getBoundingClientRect();
-      const finalX = Math.min(x, window.innerWidth - menuRect.width - 4);
-      let finalY;
-      if (fromBottom)
-        finalY = Math.max(0, y - menuRect.height);
-      else
-        finalY = Math.min(y, window.innerHeight - menuRect.height - 4);
+      menuEl.appendChild(fragment);
 
-      menuEl.style.left = `${Math.max(0, finalX)}px`;
-      menuEl.style.top = `${Math.max(0, finalY)}px`;
+      // -- Measure natural size (visible but off-screen) ----------------------
+      menuEl.style.left = '0px';
+      menuEl.style.top = '0px';
+      menuEl.style.maxHeight = 'none';
+      menuEl.style.display = 'block';
+
+      const naturalWidth = menuEl.offsetWidth;
+      const naturalHeight = menuEl.offsetHeight;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+
+      // -- Horizontal placement -----------------------------------------------
+      let finalX;
+      if (preferSide === 'left')
+        // Submenu opening to the left: place right edge at x
+        finalX = x - naturalWidth;
+      else
+        finalX = x;
+
+      // Clamp: keep fully inside viewport
+      if (finalX + naturalWidth > vw - EDGE_PAD)
+        finalX = vw - naturalWidth - EDGE_PAD;
+      if (finalX < EDGE_PAD)
+        finalX = EDGE_PAD;
+
+      // -- Vertical placement -------------------------------------------------
+      let finalY;
+      const availDown = vh - y - EDGE_PAD;
+      const availUp = y - EDGE_PAD;
+
+      if (fromBottom) {
+        // Taskbar menu: prefer opening upward from the click point
+        finalY = y - naturalHeight;
+        if (finalY < EDGE_PAD)
+          finalY = EDGE_PAD;
+      } else if (naturalHeight <= availDown) {
+        // Fits below the cursor
+        finalY = y;
+      } else if (naturalHeight <= availUp) {
+        // Flip upward
+        finalY = y - naturalHeight;
+      } else {
+        // Doesn't fit either way -- anchor to whichever side has more room
+        finalY = availDown >= availUp ? EDGE_PAD : vh - naturalHeight - EDGE_PAD;
+        if (finalY < EDGE_PAD)
+          finalY = EDGE_PAD;
+      }
+
+      // -- Max-height and scroll arrows if needed -----------------------------
+      const maxAvail = vh - EDGE_PAD * 2;
+      if (naturalHeight > maxAvail) {
+        // Wrap existing children in a scrollable container
+        scrollContainer = document.createElement('div');
+        scrollContainer.className = 'sz-ctx-scroll-container';
+        while (menuEl.firstChild)
+          scrollContainer.appendChild(menuEl.firstChild);
+
+        upArrow = document.createElement('div');
+        upArrow.className = 'sz-ctx-scroll-arrow sz-ctx-scroll-up sz-ctx-arrow-hidden';
+        upArrow.textContent = '\u25B2';
+
+        downArrow = document.createElement('div');
+        downArrow.className = 'sz-ctx-scroll-arrow sz-ctx-scroll-down';
+        downArrow.textContent = '\u25BC';
+
+        menuEl.appendChild(upArrow);
+        menuEl.appendChild(scrollContainer);
+        menuEl.appendChild(downArrow);
+
+        // Height budget for the scroll container: total available minus arrows
+        const arrowH = 20; // matches CSS .sz-ctx-scroll-arrow min-height
+        scrollContainer.style.maxHeight = `${maxAvail - arrowH * 2}px`;
+
+        // Pointer-driven auto-scroll on hover
+        upArrow.addEventListener('pointerenter', () => startScroll(-1));
+        upArrow.addEventListener('pointerleave', stopScrollTimer);
+        downArrow.addEventListener('pointerenter', () => startScroll(1));
+        downArrow.addEventListener('pointerleave', stopScrollTimer);
+
+        scrollContainer.addEventListener('scroll', updateArrowVisibility);
+        updateArrowVisibility();
+
+        finalY = EDGE_PAD;
+      }
+
+      menuEl.style.left = `${finalX}px`;
+      menuEl.style.top = `${finalY}px`;
     }
 
     #close() {

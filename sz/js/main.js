@@ -63,6 +63,10 @@
     bootScreen.setProgress(69, 'Setting up file dialogs...');
     const commonDialogs = new SZ.CommonDialogs(vfs);
 
+    // -- Animations setting ---------------------------------------------------
+    const animationsEnabled = settings.get('animations') !== false;
+    document.documentElement.classList.toggle('sz-animations-off', !animationsEnabled);
+
     // -- Desktop ------------------------------------------------------------
     bootScreen.setProgress(70, 'Setting up desktop...');
     const desktopEl = document.getElementById('sz-desktop');
@@ -189,8 +193,13 @@
       { mru, categories: fileSystem.programs, appLauncher }
     );
 
+    // -- Cursor effects -----------------------------------------------------
+    bootScreen.setProgress(88, 'Setting up cursor effects...');
+    const cursorEffects = new SZ.CursorEffects(desktopEl);
+    cursorEffects.applySettings(settings);
+
     // -- Context menu -------------------------------------------------------
-    bootScreen.setProgress(88, 'Setting up context menus...');
+    bootScreen.setProgress(89, 'Setting up context menus...');
     if (SZ.ContextMenu)
       SZ.contextMenu = new SZ.ContextMenu(desktopEl, windowManager, appLauncher);
 
@@ -280,6 +289,12 @@
               }),
               background: settings.get('background'),
               availableBackgrounds: _builtinBackgrounds,
+              animations: settings.get('animations') !== false,
+              cursor: {
+                shadow: !!settings.get('cursor.shadow'),
+                trail: !!settings.get('cursor.trail'),
+                trailLen: settings.get('cursor.trailLen') || 5,
+              },
             }, '*');
           }
           break;
@@ -321,6 +336,27 @@
             settings.set('taskbar.smallIcons', data.value);
           }
           broadcastToAllApps(0x001A, data.key, 0); // WM_SETTINGCHANGE
+          break;
+        case 'sz:animationSetting': {
+          const enabled = !!data.value;
+          settings.set('animations', enabled);
+          document.documentElement.classList.toggle('sz-animations-off', !enabled);
+          broadcastToAllApps(0x001A, 'animations', 0); // WM_SETTINGCHANGE
+          break;
+        }
+        case 'sz:cursorSetting':
+          if (data.key === 'shadow') {
+            settings.set('cursor.shadow', !!data.value);
+            cursorEffects.setShadowEnabled(!!data.value);
+          } else if (data.key === 'trail') {
+            settings.set('cursor.trail', !!data.value);
+            cursorEffects.setTrailEnabled(!!data.value);
+          } else if (data.key === 'trailLen') {
+            const cLen = Math.max(3, Math.min(10, data.value | 0));
+            settings.set('cursor.trailLen', cLen);
+            cursorEffects.setTrailLength(cLen);
+          }
+          broadcastToAllApps(0x001A, 'cursor.' + data.key, 0); // WM_SETTINGCHANGE
           break;
         case 'sz:browse':
           if (e.source) {
@@ -586,6 +622,7 @@
       vfs,
       fileSystem,
       commonDialogs,
+      cursorEffects,
       get skin() { return currentSkin; },
     });
 

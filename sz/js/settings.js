@@ -7,6 +7,10 @@
     background: { src: 'assets/backgrounds/default.jpg', mode: 'cover' },
     animations: true,
     taskbarPosition: 'bottom',
+    'cursor.shadow': false,
+    'cursor.trail': false,
+    'cursor.trailLen': 5,
+    'cursor.theme': 'default',
   };
 
   class Settings {
