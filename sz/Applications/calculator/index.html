@@ -7,46 +7,71 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+
+<!-- Menu Bar -->
+<div class="menu-bar" id="menu-bar">
+  <div class="menu-item" data-menu="view">
+    View
+    <div class="menu-dropdown">
+      <div class="menu-entry radio checked" data-action="mode-standard" data-mode="standard">Standard</div>
+      <div class="menu-entry radio" data-action="mode-scientific" data-mode="scientific">Scientific</div>
+      <div class="menu-entry radio" data-action="mode-programmer" data-mode="programmer">Programmer</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="help">
+    Help
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="about">About Calculator</div>
+    </div>
+  </div>
+</div>
+
+<!-- Calculator body (rebuilt dynamically by controller.js) -->
+<div id="calc-body">
+  <!-- Programmer base display (hidden unless programmer mode) -->
+  <div id="base-display" class="base-display hidden">
+    <div class="base-row"><span class="base-label">HEX</span><span class="base-value" id="base-hex">0</span></div>
+    <div class="base-row"><span class="base-label">DEC</span><span class="base-value" id="base-dec">0</span></div>
+    <div class="base-row"><span class="base-label">OCT</span><span class="base-value" id="base-oct">0</span></div>
+    <div class="base-row"><span class="base-label">BIN</span><span class="base-value" id="base-bin">0</span></div>
+  </div>
+
+  <!-- Main display -->
   <div id="display-container">
     <div id="display">0</div>
   </div>
-  <div class="btn-row-top">
-    <button class="btn special" data-action="memory-clear" title="Memory Clear">MC</button>
-    <button class="btn special" data-action="memory-recall" title="Memory Recall">MR</button>
-    <button class="btn special" data-action="memory-store" title="Memory Store">MS</button>
-    <button class="btn special" data-action="memory-add" title="Memory Add">M+</button>
+
+  <!-- Programmer: word size + base selectors -->
+  <div id="programmer-selectors" class="hidden">
+    <div class="selector-group">
+      <label class="selector-label">Size:</label>
+      <label class="radio-label"><input type="radio" name="wordsize" value="8">BYTE</label>
+      <label class="radio-label"><input type="radio" name="wordsize" value="16">WORD</label>
+      <label class="radio-label"><input type="radio" name="wordsize" value="32" checked>DWORD</label>
+      <label class="radio-label"><input type="radio" name="wordsize" value="64">QWORD</label>
+    </div>
+    <div class="selector-group">
+      <label class="selector-label">Base:</label>
+      <label class="radio-label"><input type="radio" name="base" value="16">HEX</label>
+      <label class="radio-label"><input type="radio" name="base" value="10" checked>DEC</label>
+      <label class="radio-label"><input type="radio" name="base" value="8">OCT</label>
+      <label class="radio-label"><input type="radio" name="base" value="2">BIN</label>
+    </div>
   </div>
-  <div class="btn-row-top">
-    <button class="btn op" data-action="backspace" title="Backspace">&larr;</button>
-    <button class="btn op" data-action="clear-entry" title="Clear Entry">CE</button>
-    <button class="btn op" data-action="clear" title="Clear">C</button>
-    <button class="btn op" data-action="negate" title="Negate">&plusmn;</button>
+
+  <!-- Scientific: deg/rad toggle -->
+  <div id="angle-toggle" class="hidden">
+    <label class="radio-label"><input type="radio" name="angle" value="deg" checked>DEG</label>
+    <label class="radio-label"><input type="radio" name="angle" value="rad">RAD</label>
   </div>
-  <div class="btn-grid">
-    <button class="btn" data-action="digit" data-value="7">7</button>
-    <button class="btn" data-action="digit" data-value="8">8</button>
-    <button class="btn" data-action="digit" data-value="9">9</button>
-    <button class="btn op" data-action="operator" data-value="/">&divide;</button>
 
-    <button class="btn" data-action="digit" data-value="4">4</button>
-    <button class="btn" data-action="digit" data-value="5">5</button>
-    <button class="btn" data-action="digit" data-value="6">6</button>
-    <button class="btn op" data-action="operator" data-value="*">&times;</button>
+  <!-- Button area -->
+  <div id="button-area"></div>
 
-    <button class="btn" data-action="digit" data-value="1">1</button>
-    <button class="btn" data-action="digit" data-value="2">2</button>
-    <button class="btn" data-action="digit" data-value="3">3</button>
-    <button class="btn op" data-action="operator" data-value="-">&minus;</button>
+  <!-- Programmer: bit toggle display -->
+  <div id="bit-display" class="hidden"></div>
+</div>
 
-    <button class="btn" data-action="digit" data-value="0">0</button>
-    <button class="btn" data-action="decimal">.</button>
-    <button class="btn op" data-action="percent" title="Percent">%</button>
-    <button class="btn op" data-action="operator" data-value="+">+</button>
-
-    <button class="btn op" data-action="sqrt" title="Square Root">&radic;</button>
-    <button class="btn op" data-action="reciprocal" title="1/x">1/x</button>
-    <button class="btn equals" data-action="equals" style="grid-column: span 2;">=</button>
-  </div>
 <script src="controller.js"></script>
 </body>
 </html>
