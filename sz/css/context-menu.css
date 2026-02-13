@@ -1,6 +1,7 @@
 /* ==========================================================================
    Context Menu — Windows XP-style right-click menus
-   Supports nested submenus, checkmarks, and keyboard arrows.
+   Supports nested submenus, checkmarks, keyboard arrows, and scroll arrows
+   for oversized menus.
    ========================================================================== */
 
 .sz-context-menu {
@@ -15,6 +16,7 @@
   font-family: Tahoma, Verdana, sans-serif;
   font-size: 11px;
   user-select: none;
+  box-sizing: border-box;
 }
 
 .sz-context-submenu {
@@ -57,4 +59,31 @@
   height: 1px;
   margin: 3px 4px;
   background: var(--sz-color-button-shadow, #ccc);
+}
+
+/* -- Scroll arrows for oversized menus ----------------------------------- */
+
+.sz-ctx-scroll-container {
+  overflow: hidden;
+}
+
+.sz-ctx-scroll-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 20px;
+  font-size: 8px;
+  color: var(--sz-color-menu-text, #000);
+  cursor: default;
+  opacity: 0.7;
+}
+
+.sz-ctx-scroll-arrow:hover {
+  background: var(--sz-color-highlight, #316ac5);
+  color: var(--sz-color-highlight-text, #fff);
+  opacity: 1;
+}
+
+.sz-ctx-arrow-hidden {
+  visibility: hidden;
 }
