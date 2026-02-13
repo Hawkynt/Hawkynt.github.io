@@ -85,7 +85,7 @@
         minimizable: true,
         maximizable: false,
         singleton: true,
-        category: 'Accessories'
+        category: 'Office'
       },
       {
         id: 'minesweeper',
@@ -113,7 +113,7 @@
         minimizable: true,
         maximizable: true,
         singleton: false,
-        category: 'Accessories',
+        category: 'Office',
         fileTypes: ['txt', 'log', 'cfg', 'ini', 'bat', 'cmd', 'sh', 'js', 'css', 'xml', 'py', 'rb', 'pl', 'java', 'cs', 'cpp', 'c', 'h', 'ts', 'tsx', 'jsx', 'yml', 'yaml', 'toml', 'conf', 'env', 'gitignore', 'sql', 'json', 'md', 'markdown', 'csv', 'tsv', 'html', 'htm']
       },
       {
@@ -128,7 +128,7 @@
         minimizable: true,
         maximizable: true,
         singleton: false,
-        category: 'Accessories',
+        category: 'Graphics',
         fileTypes: ['bmp']
       },
       {
@@ -228,7 +228,7 @@
         minimizable: true,
         maximizable: true,
         singleton: false,
-        category: 'Accessories',
+        category: 'Graphics',
         fileTypes: ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'ico']
       },
       {
@@ -243,7 +243,7 @@
         minimizable: true,
         maximizable: true,
         singleton: false,
-        category: 'Accessories',
+        category: 'Office',
         fileTypes: ['rtf', 'doc']
       },
       {
@@ -273,7 +273,7 @@
         minimizable: true,
         maximizable: true,
         singleton: true,
-        category: 'Accessories'
+        category: 'Graphics'
       },
       {
         id: 'markdown-editor',
@@ -287,7 +287,7 @@
         minimizable: true,
         maximizable: true,
         singleton: false,
-        category: 'Accessories',
+        category: 'Office',
         fileTypes: ['md', 'markdown']
       },
       {
@@ -302,7 +302,7 @@
         minimizable: true,
         maximizable: true,
         singleton: false,
-        category: 'Accessories',
+        category: 'Development',
         fileTypes: ['bin', 'dat', 'exe', 'dll', 'rom']
       },
       {
@@ -317,7 +317,7 @@
         minimizable: true,
         maximizable: true,
         singleton: false,
-        category: 'Accessories',
+        category: 'Office',
         fileTypes: ['csv', 'tsv']
       },
       {
@@ -332,7 +332,7 @@
         minimizable: true,
         maximizable: true,
         singleton: true,
-        category: 'Accessories'
+        category: 'Graphics'
       },
       {
         id: 'json-viewer',
@@ -346,7 +346,7 @@
         minimizable: true,
         maximizable: true,
         singleton: false,
-        category: 'Accessories',
+        category: 'Development',
         fileTypes: ['json']
       },
       {
@@ -361,7 +361,7 @@
         minimizable: true,
         maximizable: true,
         singleton: true,
-        category: 'Accessories'
+        category: 'Development'
       },
       {
         id: 'diff-viewer',
@@ -375,7 +375,7 @@
         minimizable: true,
         maximizable: true,
         singleton: false,
-        category: 'Accessories'
+        category: 'Development'
       },
       {
         id: 'clock',
@@ -419,6 +419,21 @@
         maximizable: true,
         singleton: true,
         category: 'System Tools'
+      },
+      {
+        id: 'icon-editor',
+        title: 'Icon Editor',
+        icon: 'icon-editor/icon.svg',
+        type: 'iframe',
+        entry: 'icon-editor/index.html',
+        width: 800,
+        height: 550,
+        resizable: true,
+        minimizable: true,
+        maximizable: true,
+        singleton: false,
+        category: 'Graphics',
+        fileTypes: ['ico', 'cur']
       }
     ]
   };
