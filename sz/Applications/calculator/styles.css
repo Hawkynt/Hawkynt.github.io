@@ -1,13 +1,140 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  padding: 4px;
   overflow: hidden;
-  margin: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
   user-select: none;
   -webkit-user-select: none;
 }
 
+/* ---- Menu bar ---- */
+.menu-bar {
+  display: flex;
+  align-items: center;
+  padding: 0;
+  background: var(--sz-color-menu);
+  border-bottom: 1px solid var(--sz-color-button-shadow);
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.menu-item {
+  position: relative;
+  padding: 3px 8px;
+  cursor: default;
+  color: var(--sz-color-menu-text);
+  font-size: 12px;
+}
+
+.menu-item:hover,
+.menu-item.open {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+}
+
+.menu-dropdown {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 160px;
+  background: var(--sz-color-menu);
+  border: 1px solid var(--sz-color-button-shadow);
+  box-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+  z-index: 1000;
+  padding: 2px 0;
+}
+
+.menu-item.open > .menu-dropdown {
+  display: block;
+}
+
+.menu-entry {
+  padding: 4px 24px 4px 24px;
+  cursor: default;
+  color: var(--sz-color-menu-text);
+  white-space: nowrap;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+}
+
+.menu-entry:hover {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+}
+
+.menu-entry.radio::before {
+  content: '';
+  display: inline-block;
+  width: 16px;
+  margin-left: -16px;
+}
+
+.menu-entry.radio.checked::before {
+  content: '\2022';
+  font-size: 16px;
+  line-height: 12px;
+}
+
+.menu-separator {
+  height: 1px;
+  background: var(--sz-color-button-shadow);
+  margin: 2px 4px;
+}
+
+/* ---- Calculator body ---- */
+#calc-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  overflow: hidden;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ---- Base display (programmer) ---- */
+.base-display {
+  margin-bottom: 4px;
+  background: var(--sz-color-window);
+  border: 2px inset;
+  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
+  padding: 2px 4px;
+  font-family: 'Lucida Console', 'Consolas', 'Courier New', monospace;
+  font-size: 10px;
+  color: var(--sz-color-window-text);
+}
+
+.base-row {
+  display: flex;
+  align-items: center;
+  padding: 1px 0;
+}
+
+.base-label {
+  width: 28px;
+  font-weight: bold;
+  flex-shrink: 0;
+  font-size: 9px;
+  opacity: 0.7;
+}
+
+.base-value {
+  flex: 1;
+  text-align: right;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  word-break: break-all;
+}
+
+/* ---- Main display ---- */
 #display-container {
   margin-bottom: 4px;
   background: var(--sz-color-window);
@@ -18,6 +145,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  flex-shrink: 0;
 }
 
 #display {
@@ -32,28 +160,83 @@ body {
   text-overflow: clip;
 }
 
-.btn-row-top {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 2px;
-  margin-bottom: 2px;
+/* ---- Selector rows (programmer + scientific) ---- */
+#programmer-selectors {
+  margin-bottom: 4px;
+  flex-shrink: 0;
 }
 
-.btn-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  grid-template-rows: repeat(5, 1fr);
+.selector-group {
+  display: flex;
+  align-items: center;
   gap: 2px;
+  margin-bottom: 2px;
+  flex-wrap: wrap;
+}
+
+.selector-label {
+  font-size: 10px;
+  font-weight: bold;
+  width: 30px;
+  flex-shrink: 0;
+}
+
+.radio-label {
+  font-size: 10px;
+  cursor: default;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 1px 3px;
+}
+
+.radio-label input[type="radio"] {
+  margin: 0;
+  cursor: default;
+}
+
+#angle-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  flex-shrink: 0;
+}
+
+/* ---- Button area ---- */
+#button-area {
+  flex: 1;
+  display: grid;
+  gap: 2px;
+  min-height: 0;
+}
+
+/* Standard: 4 columns */
+body.mode-standard #button-area {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+/* Scientific: 8 columns (4 sci + 4 standard) */
+body.mode-scientific #button-area {
+  grid-template-columns: repeat(8, 1fr);
+}
+
+/* Programmer: 8 columns (4 bitwise + 4 standard) */
+body.mode-programmer #button-area {
+  grid-template-columns: repeat(8, 1fr);
 }
 
 .btn {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: bold;
   cursor: default;
-  padding: 4px 2px;
-  min-height: 28px;
+  padding: 2px 1px;
+  min-height: 24px;
   text-align: center;
   outline: none;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .btn.op {
@@ -64,10 +247,81 @@ body {
   color: #009;
 }
 
-.btn.zero {
+.btn.equals {
+  color: #c00;
+}
+
+.btn.sci {
+  color: #630;
+  font-size: 11px;
+}
+
+.btn.prog {
+  color: #063;
+  font-size: 11px;
+}
+
+.btn.hex-digit {
+  color: #306;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.btn.span2 {
   grid-column: span 2;
 }
 
-.btn.equals {
-  color: #c00;
+/* ---- Bit toggle display ---- */
+#bit-display {
+  margin-top: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.bit-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 0 2px;
+}
+
+.bit-group-label {
+  font-size: 8px;
+  color: var(--sz-color-gray-text);
+  margin-bottom: 1px;
+}
+
+.bit-group-bits {
+  display: flex;
+  gap: 1px;
+}
+
+.bit-cell {
+  width: 10px;
+  height: 12px;
+  font-size: 8px;
+  font-family: 'Lucida Console', 'Consolas', monospace;
+  text-align: center;
+  line-height: 12px;
+  cursor: pointer;
+  border: 1px solid var(--sz-color-button-shadow);
+  background: var(--sz-color-window);
+  color: var(--sz-color-window-text);
+}
+
+.bit-cell:hover {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+}
+
+.bit-cell.on {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+  font-weight: bold;
 }
