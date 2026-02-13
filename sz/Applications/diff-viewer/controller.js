@@ -14,6 +14,7 @@
   let currentDiffIndex = -1;
   let ignoreWhitespace = false;
   let ignoreCase = false;
+  let ignoreLineEndings = false;
   let wordDiff = false;
   let editMode = true;
   let pendingFileTarget = null;
@@ -24,6 +25,7 @@
   const btnOpenLeft = document.getElementById('btn-open-left');
   const btnOpenRight = document.getElementById('btn-open-right');
   const btnSwap = document.getElementById('btn-swap');
+  const btnRefresh = document.getElementById('btn-refresh');
   const btnSide = document.getElementById('btn-side');
   const btnUnified = document.getElementById('btn-unified');
   const btnInline = document.getElementById('btn-inline');
@@ -32,6 +34,7 @@
   const statsEl = document.getElementById('stats');
   const optIgnoreWs = document.getElementById('opt-ignore-ws');
   const optIgnoreCase = document.getElementById('opt-ignore-case');
+  const optIgnoreEol = document.getElementById('opt-ignore-eol');
   const optWordDiff = document.getElementById('opt-word-diff');
   const mainArea = document.getElementById('main-area');
   const panelLeft = document.getElementById('panel-left');
@@ -208,6 +211,8 @@
 
   function normalizeForCompare(line) {
     let s = line;
+    if (ignoreLineEndings)
+      s = s.replace(/\r$/g, '');
     if (ignoreCase)
       s = s.toLowerCase();
     if (ignoreWhitespace)
@@ -424,8 +429,14 @@
   // Compute diff
   // -----------------------------------------------------------------------
   function computeDiff() {
-    const oldLines = leftText.split('\n');
-    const newLines = rightText.split('\n');
+    let leftSrc = leftText;
+    let rightSrc = rightText;
+    if (ignoreLineEndings) {
+      leftSrc = leftSrc.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+      rightSrc = rightSrc.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    }
+    const oldLines = leftSrc.split('\n');
+    const newLines = rightSrc.split('\n');
 
     const edits = myersDiff(oldLines, newLines);
     diffHunks = buildDiffHunks(edits, oldLines, newLines);
@@ -884,6 +895,16 @@
     computeDiff();
   }
 
+  function refreshDiff() {
+    if (editMode) {
+      leftText = textareaLeft.value;
+      rightText = textareaRight.value;
+      if (leftText || rightText)
+        enterDiffMode();
+    } else
+      computeDiff();
+  }
+
   function enterEditMode() {
     editMode = true;
     diffHunks = [];
@@ -940,6 +961,7 @@
   btnOpenLeft.addEventListener('click', () => openFile('left'));
   btnOpenRight.addEventListener('click', () => openFile('right'));
   btnSwap.addEventListener('click', swapSides);
+  btnRefresh.addEventListener('click', refreshDiff);
   btnSide.addEventListener('click', () => setViewMode('side'));
   btnUnified.addEventListener('click', () => setViewMode('unified'));
   btnInline.addEventListener('click', () => setViewMode('inline'));
@@ -954,6 +976,12 @@
 
   optIgnoreCase.addEventListener('change', () => {
     ignoreCase = optIgnoreCase.checked;
+    if (!editMode)
+      computeDiff();
+  });
+
+  optIgnoreEol.addEventListener('change', () => {
+    ignoreLineEndings = optIgnoreEol.checked;
     if (!editMode)
       computeDiff();
   });
