@@ -910,12 +910,13 @@
         statusInfo.textContent = entry.type + ': ' + entry.preview;
       });
 
-      if (entry.isContainer) {
-        item.addEventListener('dblclick', (e) => {
-          e.stopPropagation();
+      item.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        if (entry.isContainer)
           navigate(childPath(currentPath, entry.name));
-        });
-      }
+        else
+          showDetailPanel(entry);
+      });
 
       item.addEventListener('contextmenu', (e) => {
         e.preventDefault();
@@ -959,6 +960,171 @@
     mainView.appendChild(grid);
     statusCount.textContent = entries.length + ' item(s)';
     statusInfo.textContent = result.nodeType + ': ' + (result.preview || '');
+  }
+
+  // =========================================================================
+  // JS syntax highlighting (simple tokenizer)
+  // =========================================================================
+
+  const _JS_KEYWORDS = new Set([
+    'async','await','break','case','catch','class','const','continue',
+    'debugger','default','delete','do','else','enum','export','extends',
+    'false','finally','for','function','if','import','in','instanceof',
+    'let','new','null','of','return','static','super','switch','this',
+    'throw','true','try','typeof','undefined','var','void','while',
+    'with','yield','get','set',
+  ]);
+
+  function highlightJS(code) {
+    const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const out = [];
+    let i = 0;
+    const len = code.length;
+
+    while (i < len) {
+      const ch = code[i];
+
+      // Line / block comments
+      if (ch === '/' && code[i + 1] === '/') {
+        const end = code.indexOf('\n', i);
+        const slice = end === -1 ? code.slice(i) : code.slice(i, end);
+        out.push('<span class="hl-comment">' + esc(slice) + '</span>');
+        i += slice.length;
+        continue;
+      }
+      if (ch === '/' && code[i + 1] === '*') {
+        const end = code.indexOf('*/', i + 2);
+        const slice = end === -1 ? code.slice(i) : code.slice(i, end + 2);
+        out.push('<span class="hl-comment">' + esc(slice) + '</span>');
+        i += slice.length;
+        continue;
+      }
+
+      // Strings
+      if (ch === '"' || ch === "'" || ch === '`') {
+        let j = i + 1;
+        while (j < len && code[j] !== ch) {
+          if (code[j] === '\\') ++j;
+          ++j;
+        }
+        if (j < len) ++j;
+        out.push('<span class="hl-string">' + esc(code.slice(i, j)) + '</span>');
+        i = j;
+        continue;
+      }
+
+      // Numbers
+      if (/\d/.test(ch) || (ch === '.' && i + 1 < len && /\d/.test(code[i + 1]))) {
+        let j = i;
+        if (ch === '0' && (code[j + 1] === 'x' || code[j + 1] === 'X')) {
+          j += 2;
+          while (j < len && /[0-9a-fA-F_]/.test(code[j])) ++j;
+        } else if (ch === '0' && (code[j + 1] === 'b' || code[j + 1] === 'B')) {
+          j += 2;
+          while (j < len && /[01_]/.test(code[j])) ++j;
+        } else {
+          while (j < len && /[\d._eE+\-]/.test(code[j])) ++j;
+        }
+        if (j < len && code[j] === 'n') ++j; // BigInt
+        out.push('<span class="hl-number">' + esc(code.slice(i, j)) + '</span>');
+        i = j;
+        continue;
+      }
+
+      // Identifiers / keywords
+      if (/[a-zA-Z_$]/.test(ch)) {
+        let j = i + 1;
+        while (j < len && /[\w$]/.test(code[j])) ++j;
+        const word = code.slice(i, j);
+        if (_JS_KEYWORDS.has(word))
+          out.push('<span class="hl-keyword">' + esc(word) + '</span>');
+        else if (j < len && code[j] === '(')
+          out.push('<span class="hl-func">' + esc(word) + '</span>');
+        else
+          out.push(esc(word));
+        i = j;
+        continue;
+      }
+
+      // Regex (simple heuristic: after = ( , ; ! & | ? : [ { ~)
+      if (ch === '/' && i > 0) {
+        const prev = code.slice(0, i).replace(/\s+$/, '');
+        const last = prev[prev.length - 1];
+        if (last && '=(!&|?:;,[{~+-*%^'.includes(last)) {
+          let j = i + 1;
+          while (j < len && code[j] !== '/' && code[j] !== '\n') {
+            if (code[j] === '\\') ++j;
+            ++j;
+          }
+          if (j < len && code[j] === '/') {
+            ++j;
+            while (j < len && /[gimsuy]/.test(code[j])) ++j;
+            out.push('<span class="hl-regex">' + esc(code.slice(i, j)) + '</span>');
+            i = j;
+            continue;
+          }
+        }
+      }
+
+      // Operators / punctuation
+      out.push(esc(ch));
+      ++i;
+    }
+
+    return out.join('');
+  }
+
+  function showDetailPanel(entry) {
+    mainView.innerHTML = '';
+
+    const panel = document.createElement('div');
+    panel.className = 'detail-panel';
+
+    // Header with back button and info
+    const header = document.createElement('div');
+    header.className = 'detail-header';
+
+    const backBtn = document.createElement('button');
+    backBtn.className = 'detail-back';
+    backBtn.textContent = '\u25C0 Back';
+    backBtn.addEventListener('click', () => render());
+    header.appendChild(backBtn);
+
+    const info = document.createElement('div');
+    info.className = 'detail-info';
+
+    const iconEl = document.createElement('span');
+    iconEl.className = 'detail-icon';
+    iconEl.innerHTML = iconFor(entry.type);
+    info.appendChild(iconEl);
+
+    const nameEl = document.createElement('span');
+    nameEl.className = 'detail-name';
+    nameEl.textContent = entry.name;
+    info.appendChild(nameEl);
+
+    const typeEl = document.createElement('span');
+    typeEl.className = 'detail-type';
+    typeEl.textContent = entry.type;
+    info.appendChild(typeEl);
+
+    header.appendChild(info);
+    panel.appendChild(header);
+
+    // Content area with the full detail
+    const content = document.createElement('pre');
+    content.className = 'detail-content';
+    const rawText = entry.detail || entry.preview || '';
+    if (entry.type === 'function' || entry.type === 'class') {
+      content.classList.add('detail-code');
+      content.innerHTML = highlightJS(rawText);
+    } else
+      content.textContent = rawText;
+    panel.appendChild(content);
+
+    mainView.appendChild(panel);
+    statusCount.textContent = entry.type;
+    statusInfo.textContent = entry.name;
   }
 
   function renderError(message) {
@@ -1820,6 +1986,52 @@
       if (currentPath !== '/')
         navigate(parentPath(currentPath));
     }
+  });
+
+  // =========================================================================
+  // Drag-and-drop file upload
+  // =========================================================================
+  mainView.addEventListener('dragover', (e) => {
+    if (!isVfsMode) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    mainView.classList.add('drop-target');
+  });
+
+  mainView.addEventListener('dragenter', (e) => {
+    if (!isVfsMode) return;
+    e.preventDefault();
+    mainView.classList.add('drop-target');
+  });
+
+  mainView.addEventListener('dragleave', (e) => {
+    if (e.relatedTarget && mainView.contains(e.relatedTarget)) return;
+    mainView.classList.remove('drop-target');
+  });
+
+  mainView.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    mainView.classList.remove('drop-target');
+    if (!isVfsMode) return;
+
+    const files = e.dataTransfer.files;
+    if (!files || files.length === 0) return;
+
+    const vfsDir = toVfsRelative(currentPath);
+    for (let i = 0; i < files.length; ++i) {
+      const file = files[i];
+      try {
+        const content = await readFileAsText(file);
+        const filePath = (vfsDir === '/' ? '/' : vfsDir + '/') + file.name;
+        const result = await vfsWrite(filePath, content);
+        if (result.error)
+          showAlert('Could not upload "' + file.name + '": ' + result.error);
+      } catch (err) {
+        showAlert('Failed to read "' + file.name + '": ' + err.message);
+      }
+    }
+    clearSelection();
+    await doRefresh();
   });
 
   // =========================================================================
