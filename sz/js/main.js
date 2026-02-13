@@ -46,9 +46,11 @@
     const vfs = new SZ.VFS();
     vfs.mount('/user/', new SZ.LocalStorageMount());
     vfs.mount('/tmp/', new SZ.MemoryMount());
+    const wallpaperMount = await createWallpaperMount();
     vfs.mount('/system/', new SZ.ReadOnlyObjectMount(() => ({
       skins: Object.fromEntries(SZ.getAvailableSkins().map(n => [n, SZ.getSkin(n)?.name || n])),
       version: '2.0',
+      wallpapers: wallpaperMount,
     })));
     vfs.mount('/apps/', new SZ.ReadOnlyObjectMount(() => {
       const apps = {};
@@ -74,7 +76,7 @@
 
     const bgPref = settings.get('background');
     if (bgPref)
-      desktop.setBackground(bgPref.src || bgPref, bgPref.mode || 'cover');
+      await desktop.setBackground(bgPref.src || bgPref, bgPref.mode || 'cover');
 
     // -- Window manager -----------------------------------------------------
     bootScreen.setProgress(75, 'Initializing window manager...');
@@ -272,30 +274,37 @@
           break;
         case 'sz:getSettings':
           if (e.source) {
-            e.source.postMessage({
-              type: 'sz:settings',
-              requestId: data.requestId,
-              skin: currentSkinName,
-              subSkin: currentSubSkinId,
-              availableSkins: SZ.getAvailableSkins().map(name => {
-                const s = SZ.getSkin(name);
-                return {
-                  id: name,
-                  displayName: s?.name || name,
-                  colors: s?.colors || null,
-                  fonts: s?.fonts || null,
-                  subSkins: s?.subSkins || null,
-                };
-              }),
-              background: settings.get('background'),
-              availableBackgrounds: _builtinBackgrounds,
-              animations: settings.get('animations') !== false,
-              cursor: {
-                shadow: !!settings.get('cursor.shadow'),
-                trail: !!settings.get('cursor.trail'),
-                trailLen: settings.get('cursor.trailLen') || 5,
-              },
-            }, '*');
+            (async () => {
+              const availableBackgrounds = (await vfs.list('/system/wallpapers')).map(entry => ({
+                name: entry.name.split('.')[0],
+                src: `/system/wallpapers/${entry.name}`,
+              }));
+
+              e.source.postMessage({
+                type: 'sz:settings',
+                requestId: data.requestId,
+                skin: currentSkinName,
+                subSkin: currentSubSkinId,
+                availableSkins: SZ.getAvailableSkins().map(name => {
+                  const s = SZ.getSkin(name);
+                  return {
+                    id: name,
+                    displayName: s?.name || name,
+                    colors: s?.colors || null,
+                    fonts: s?.fonts || null,
+                    subSkins: s?.subSkins || null,
+                  };
+                }),
+                background: settings.get('background'),
+                availableBackgrounds,
+                animations: settings.get('animations') !== false,
+                cursor: {
+                  shadow: !!settings.get('cursor.shadow'),
+                  trail: !!settings.get('cursor.trail'),
+                  trailLen: settings.get('cursor.trailLen') || 5,
+                },
+              }, '*');
+            })();
           }
           break;
         case 'sz:getWindows':
@@ -548,6 +557,14 @@
               e.source.postMessage({ type: 'sz:vfs:mkdirResult', success: false, error: err.message, path: data.path, requestId: data.requestId }, '*');
             });
           break;
+        case 'sz:vfs:getUri':
+          if (e.source)
+            vfs.getUri(data.path).then(uri => {
+              e.source.postMessage({ type: 'sz:vfs:getUriResult', uri, path: data.path, requestId: data.requestId }, '*');
+            }).catch(err => {
+              e.source.postMessage({ type: 'sz:vfs:getUriResult', uri: '', error: err.message, path: data.path, requestId: data.requestId }, '*');
+            });
+          break;
         case 'sz:vfs:rename':
           if (e.source)
             (async () => {
@@ -647,14 +664,28 @@
     console.log('[SZ] Desktop ready');
   }
 
-  // -------------------------------------------------------------------------
-  // Built-in backgrounds (static list — can't enumerate files on file://)
-  // -------------------------------------------------------------------------
-
-  const _builtinBackgrounds = [
-    { name: 'Bliss', src: 'assets/backgrounds/bliss.svg' },
-    { name: 'SynthelicZ', src: 'assets/backgrounds/default.jpg' },
-  ];
+  async function createWallpaperMount() {
+    const wallpapers = {
+      'bliss.svg': 'assets/backgrounds/bliss.svg',
+      'default.jpg': 'assets/backgrounds/default.jpg',
+    };
+    const promises = Object.entries(wallpapers).map(async ([name, path]) => {
+      try {
+        const resp = await fetch(path);
+        if (!resp.ok) return [name, JSON.stringify({ type: 'uri', data: path })];
+        const blob = await resp.blob();
+        const dataUrl = await new Promise(resolve => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.readAsDataURL(blob);
+        });
+        return [name, JSON.stringify({ type: 'uri', data: dataUrl })];
+      } catch {
+        return [name, JSON.stringify({ type: 'uri', data: path })];
+      }
+    });
+    return Object.fromEntries(await Promise.all(promises));
+  }
 
   // -------------------------------------------------------------------------
   // Helpers

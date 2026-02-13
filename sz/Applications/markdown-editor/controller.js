@@ -404,13 +404,13 @@
       title: 'Open',
     });
     if (!result.cancelled && result.path)
-      loadFile(result.path, result.content);
+      loadFile(result.path);
   }
 
   async function loadFile(path, content) {
     if (content == null) {
       try {
-        content = await Kernel32.ReadFile(path);
+        content = await Kernel32.ReadAllText(path);
       } catch (err) {
         await User32.MessageBox('Could not open file: ' + err.message, 'Markdown Editor', MB_OK);
         return;

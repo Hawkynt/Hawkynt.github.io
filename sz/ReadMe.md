@@ -1233,6 +1233,7 @@ State width = image width / 3. State height = image height / (tripleImages ? 2 :
 - [ ] Load WBA archive via file picker (WASM unrar, extract UIS + images to blob URLs)
 - [x] 21 bundled skins extracted from original WindowBlinds archives (LUNAX, AQUARIUM, APOLLO, APPLIED SCIENCE, BLUECURVE, CYRIX, DINKSDX_BLUE, G-POD, IRIXOS, LCARS, LCARS TERMINAL COMPANION, LINUX, MACOSXDP2, MACOSXSERVER, MDNATURE, MOREWINDOWS, NEWTECH, WIN10, WIN98, WINDOWSXL, XPNATURE)
 - [x] Self-registering skin.js files (skins register on SZ.skins namespace, carry full UIS INI data)
+- [x] Complete skin data for all 17 skins: full 29-color palettes, fonts, taskButton/progressBar/tabControl sections, fixed TGA→BMP references, sub-skin color variants (LCARS Red/Blue/Green, LUNAX Blue/Olive/Silver/Royale, BLUECURVE Blue/Green/Red, DINKSDX_BLUE Blue/Graphite/Green, XPNATURE Forest/Autumn/Ocean)
 - [x] Skin registry with getSkin/getAvailableSkins API
 - [x] Animated window frames (CSS @keyframes-driven, no setInterval)
 - [x] 9-cell window frame grid (nw/n/ne/w/c/e/sw/s/se) with 5-column CSS grid and extension columns for wide corner zones
@@ -1332,7 +1333,7 @@ User apps (iframe / index.html -- can run standalone):
 - [x] Diff Viewer: Side-by-side text diff viewer with added/removed/changed line highlighting, merge controls
 - [x] Date and Time: Clock with analog/digital display, calendar date picker, timezone selector
 - [x] QR Code Generator: QR code generator with customizable size, error correction level, foreground/background colors, download as PNG
-- [x] Icon Editor: Multi-image ICO/CUR editor with pixel-level editing, 32-bit RGBA with per-pixel alpha, checkerboard transparency, 7 drawing tools (pencil, eraser, eyedropper, flood fill, line, rectangle, ellipse), image list sidebar (add/remove/duplicate entries), ICO format parser and writer (BMP + PNG entries), PE (EXE/DLL) icon extraction, image import from PNG/BMP/SVG with multi-size generation, favicon export, image operations (flip, rotate, resize, grayscale, invert, HSL adjust, color replace), 30-step undo/redo, VFS integration via common file dialog
+- [x] Icon Editor: Multi-image ICO/CUR editor with pixel-level editing, 32-bit RGBA with per-pixel alpha, checkerboard transparency, 8 drawing tools (pencil, eraser, eyedropper, flood fill, line, rectangle, ellipse, selection), configurable brush size (1-8px for pencil/eraser), filled shapes (outline/filled/both modes for rectangle and ellipse), rectangular selection tool (select, move, cut/copy/paste regions, marching ants, crop to selection), clipboard operations (cut/copy/paste/paste as new image), image list sidebar (add/remove/duplicate entries), ICO format parser and writer (BMP + PNG entries), PE (EXE/DLL) multi-icon resource browser (browse/select/export-all icon groups from DLL/EXE), image import from PNG/BMP/SVG with multi-size generation, favicon export, image operations (flip, rotate 90°/180°, resize, shift/offset with wrapping, grayscale, invert, HSL adjust, color replace), context-sensitive menu enable/disable, Escape key support (cancel drawing/deselect/close dialogs), zoom radio state in View menu, 30-step undo/redo with dimension restore, unsaved-changes guard on exit/open/import, VFS integration via common file dialog
 
 See [docs/appideas.md](docs/appideas.md) for the full application roadmap.
 
@@ -1495,7 +1496,7 @@ The VFS enables:
 - VFS operations: rename, copy, move
 - Transparency mask support (alpha channel from mask BMPs)
 - FreeCell, Spider Solitaire, Color Picker, Markdown Editor, Hex Editor, Spreadsheet apps
-- Icon Editor: multi-image ICO/CUR editor with pixel-level alpha, ICO parse/write, PE icon extraction, image import, favicon export
+- Icon Editor: multi-image ICO/CUR editor with pixel-level alpha, ICO parse/write, PE multi-icon resource browser, selection tool (select/move/crop), clipboard (cut/copy/paste/paste-as-new), filled shapes, configurable brush size, rotate 180°, shift/offset, context-sensitive menus, Escape key (cancel/deselect/close), zoom radio states, undo/redo dimension restore, unsaved-changes guard on exit/open/import, image import, favicon export
 - WordPad: DOCX import (mammoth.js), DOCX export (JSZip OOXML), RTF import/export (custom parser/generator), PDF export (browser print dialog)
 - Spreadsheet: XLSX import/export (SheetJS, multi-sheet), TSV import/export
 - ComDlg32: browser-native ImportFile/ExportFile API for binary formats (File API + Blob download)

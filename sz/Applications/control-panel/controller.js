@@ -22,7 +22,8 @@
   let dirty = false;
 
   // Resolve asset paths relative to the OS root (2 levels up from this iframe)
-  const _resolveAssetPath = (src) => src && !src.startsWith('data:') && !src.startsWith('http') && !src.startsWith('blob:') ? '../../' + src : src;
+  // DEPRECATED: VFS paths are absolute, data URLs are self-contained.
+  // const _resolveAssetPath = (src) => src && !src.startsWith('data:') && !src.startsWith('http') && !src.startsWith('blob:') ? '../../' + src : src;
 
   // Theme presets
   const THEME_PRESETS = [
@@ -342,57 +343,67 @@
     }
   }
 
-  function selectBackground(src, name) {
+  async function selectBackground(src, name) {
     selectedBg.src = src;
     for (const li of bgListEl.querySelectorAll('li'))
       li.classList.toggle('selected', li.dataset.src === src);
-    updateBgPreview();
+    await updateBgPreview();
     dirty = true;
   }
 
-  function updateBgPreview() {
+  async function updateBgPreview() {
+    let resolvedSrc = '';
     if (selectedBg.src) {
-      const resolvedSrc = _resolveAssetPath(selectedBg.src);
-      pvBgImg.src = resolvedSrc;
-      pvBgImg.style.display = '';
-      const mode = bgModeEl.value;
-      if (mode === 'tile') {
-        pvBgImg.style.display = 'none';
-        const screen = document.getElementById('pv-bg-screen');
-        screen.style.backgroundImage = `url('${resolvedSrc}')`;
-        screen.style.backgroundRepeat = 'repeat';
-        screen.style.backgroundSize = 'auto';
-        screen.style.backgroundPosition = 'top left';
-      } else {
-        const screen = document.getElementById('pv-bg-screen');
-        screen.style.backgroundImage = '';
-        pvBgImg.style.objectFit = mode === 'fill' ? 'fill'
-          : mode === 'center' ? 'none'
-          : mode; // cover, contain
-        if (mode === 'center') {
-          pvBgImg.style.width = 'auto';
-          pvBgImg.style.height = 'auto';
-          pvBgImg.style.top = '50%';
-          pvBgImg.style.left = '50%';
-          pvBgImg.style.transform = 'translate(-50%, -50%)';
-        } else {
-          pvBgImg.style.width = '100%';
-          pvBgImg.style.height = '100%';
-          pvBgImg.style.top = '0';
-          pvBgImg.style.left = '0';
-          pvBgImg.style.transform = '';
+      if (selectedBg.src.startsWith('/')) {
+        // It's a VFS path, resolve it to a URI via the new bridge
+        try {
+          const result = await SZ.Dlls.User32.SendMessage('sz:vfs:getUri', { path: selectedBg.src });
+          resolvedSrc = result.uri;
+        } catch (e) {
+          console.error('VFS getUri error for preview:', e);
         }
+      } else {
+        // It's already a data URI from the file picker
+        resolvedSrc = selectedBg.src;
       }
-    } else {
+    }
+
+    pvBgImg.src = resolvedSrc;
+    pvBgImg.style.display = resolvedSrc ? '' : 'none';
+    const screen = document.getElementById('pv-bg-screen');
+    const mode = bgModeEl.value;
+
+    if (mode === 'tile') {
       pvBgImg.style.display = 'none';
-      const screen = document.getElementById('pv-bg-screen');
+      screen.style.backgroundImage = resolvedSrc ? `url('${resolvedSrc}')` : '';
+      screen.style.backgroundRepeat = 'repeat';
+      screen.style.backgroundSize = 'auto';
+      screen.style.backgroundPosition = 'top left';
+    } else {
       screen.style.backgroundImage = '';
+      pvBgImg.style.objectFit = mode === 'fill' ? 'fill'
+        : mode === 'center' ? 'none'
+        : mode; // 'cover' or 'contain'
+      
+      if (mode === 'center') {
+        pvBgImg.style.width = 'auto';
+        pvBgImg.style.height = 'auto';
+        pvBgImg.style.top = '50%';
+        pvBgImg.style.left = '50%';
+        pvBgImg.style.transform = 'translate(-50%, -50%)';
+      } else {
+        pvBgImg.style.width = '100%';
+        pvBgImg.style.height = '100%';
+        pvBgImg.style.top = '0';
+        pvBgImg.style.left = '0';
+        pvBgImg.style.transform = '';
+      }
     }
   }
 
-  bgModeEl.addEventListener('change', () => {
+  bgModeEl.addEventListener('change', async () => {
     selectedBg.mode = bgModeEl.value;
-    updateBgPreview();
+    await updateBgPreview();
     dirty = true;
   });
 
@@ -405,7 +416,7 @@
       const file = input.files[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = () => {
+      reader.onload = async () => {
         const dataUrl = reader.result;
         // Add to list as a custom entry
         const name = file.name;
@@ -414,7 +425,7 @@
           availableBackgrounds.push({ name, src: dataUrl });
         selectedBg.src = dataUrl;
         renderBackgroundList();
-        updateBgPreview();
+        await updateBgPreview();
         dirty = true;
       };
       reader.readAsDataURL(file);
@@ -473,7 +484,7 @@
     }
   }
 
-  function handleSettings(data) {
+  async function handleSettings(data) {
     if (!data) return;
 
     allSkins = data.availableSkins || [];
@@ -512,12 +523,22 @@
       bgModeEl.value = mode;
     }
 
-    // Available backgrounds
-    availableBackgrounds = data.availableBackgrounds || [
-      { name: 'Bliss', src: 'assets/backgrounds/bliss.svg' },
-    ];
+    // Available backgrounds (system + user)
+    const systemBgs = data.availableBackgrounds || [];
+    const userBgs = (await SZ.Dlls.User32.SendMessage('sz:vfs:list', { path: '/user/pictures' })).entries
+      .map(entry => ({
+        name: entry.name,
+        src: `/user/pictures/${entry.name}`,
+      }));
+    
+    const merged = new Map();
+    for (const bg of systemBgs) merged.set(bg.name, bg);
+    for (const bg of userBgs) merged.set(bg.name, bg);
+
+    availableBackgrounds = [...merged.values()];
+    
     renderBackgroundList();
-    updateBgPreview();
+    await updateBgPreview();
 
     // Animations checkbox
     const chkAnim = document.getElementById('chk-animations');

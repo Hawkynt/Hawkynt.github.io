@@ -895,8 +895,14 @@
       initialDir: '/user/documents',
       title: 'Open',
     });
-    if (!result.cancelled && result.path)
-      loadFile(result.path, result.content);
+    if (!result.cancelled && result.path) {
+      try {
+        const bytes = await Kernel32.ReadAllBytes(result.path);
+        loadFile(result.path, bytes);
+      } catch (err) {
+        alert('Could not open file: ' + err.message);
+      }
+    }
   }
 
   function loadFile(path, content) {
@@ -952,6 +958,7 @@
 
   async function doSaveAs(callback) {
     const base64 = uint8ArrayToBase64(data);
+    const dataUrl = 'data:application/octet-stream;base64,' + base64;
     const result = await ComDlg32.GetSaveFileName({
       filters: [
         { name: 'All Files', ext: ['*'] },
@@ -960,7 +967,7 @@
       initialDir: '/user/documents',
       defaultName: currentFileName || 'Untitled.bin',
       title: 'Save As',
-      content: base64,
+      content: dataUrl,
     });
     if (!result.cancelled && result.path) {
       originalData = new Uint8Array(data);
@@ -977,9 +984,8 @@
   }
 
   async function saveToPath(path, callback) {
-    const base64 = uint8ArrayToBase64(data);
     try {
-      await Kernel32.WriteFile(path, base64);
+      await Kernel32.WriteAllBytes(path, data);
     } catch (err) {
       alert('Could not save file: ' + err.message);
       return;
@@ -1356,7 +1362,7 @@
   // Check command line for file path
   const cmdLine = Kernel32.GetCommandLine();
   if (cmdLine.path) {
-    Kernel32.ReadFile(cmdLine.path).then(content => {
+    Kernel32.ReadAllBytes(cmdLine.path).then(content => {
       loadFile(cmdLine.path, content);
     }).catch(() => {});
   } else

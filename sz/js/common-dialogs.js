@@ -541,9 +541,7 @@
       await new Promise(r => setTimeout(r, 100));
       try {
         const content = await this.#vfs.read(path);
-        const blob = content instanceof ArrayBuffer
-          ? new Blob([content])
-          : new Blob([content], { type: 'text/plain;charset=utf-8' });
+        const blob = this.#contentToDownloadBlob(content);
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -557,6 +555,54 @@
         // If the file hasn't been written yet, silently skip -- the caller
         // received the path and can still save normally.
       }
+    }
+
+    #base64ToBytes(base64) {
+      const compact = String(base64 || '').replace(/\s+/g, '');
+      const binary = atob(compact);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; ++i)
+        bytes[i] = binary.charCodeAt(i) & 0xff;
+      return bytes;
+    }
+
+    #contentToDownloadBlob(content) {
+      if (content instanceof Blob)
+        return content;
+
+      if (content instanceof ArrayBuffer)
+        return new Blob([content], { type: 'application/octet-stream' });
+
+      if (ArrayBuffer.isView(content))
+        return new Blob([content], { type: 'application/octet-stream' });
+
+      if (typeof content === 'string') {
+        const m = content.match(/^data:([^,]*),(.*)$/i);
+        if (m) {
+          const meta = m[1] || 'application/octet-stream';
+          const payload = m[2] || '';
+          const mime = (meta.split(';')[0] || 'application/octet-stream').trim();
+          if (/;\s*base64/i.test(meta)) {
+            try {
+              return new Blob([this.#base64ToBytes(payload)], { type: mime });
+            } catch (_) {
+              // fall through to plain text fallback
+            }
+          } else {
+            try {
+              const decoded = decodeURIComponent(payload);
+              const bytes = new Uint8Array(decoded.length);
+              for (let i = 0; i < decoded.length; ++i)
+                bytes[i] = decoded.charCodeAt(i) & 0xff;
+              return new Blob([bytes], { type: mime });
+            } catch (_) {
+              // fall through to plain text fallback
+            }
+          }
+        }
+      }
+
+      return new Blob([content ?? ''], { type: 'text/plain;charset=utf-8' });
     }
 
     #editPath() {

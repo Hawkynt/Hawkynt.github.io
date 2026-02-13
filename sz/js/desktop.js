@@ -26,18 +26,35 @@
       this.#loadPositions();
     }
 
-    setBackground(src, mode = 'cover') {
-      const fallback = this.#bgElement.getAttribute('src') || 'assets/backgrounds/bliss.svg';
-      this.#bgElement.onerror = () => {
+    async setBackground(src, mode = 'cover') {
+      const fallback = '/system/wallpapers/bliss.svg';
+      let finalSrc = src;
+
+      if (src.startsWith('/')) {
+        try {
+          const content = await SZ.system.vfs.read(src);
+          if (content) {
+            finalSrc = content;
+          } else {
+            finalSrc = await SZ.system.vfs.read(fallback);
+          }
+        } catch (e) {
+          console.error(`VFS read error for ${src}:`, e);
+          finalSrc = await SZ.system.vfs.read(fallback);
+        }
+      }
+
+      this.#bgElement.onerror = async () => {
         this.#bgElement.onerror = null;
-        if (this.#bgElement.src !== fallback)
-          this.#bgElement.src = fallback;
+        const fallbackContent = await SZ.system.vfs.read(fallback);
+        if (this.#bgElement.src !== fallbackContent)
+          this.#bgElement.src = fallbackContent;
       };
 
       if (mode === 'tile') {
         // Tile mode: hide <img>, use CSS background on parent
         this.#bgElement.style.display = 'none';
-        this.#element.style.backgroundImage = `url('${src}')`;
+        this.#element.style.backgroundImage = `url('${finalSrc}')`;
         this.#element.style.backgroundRepeat = 'repeat';
         this.#element.style.backgroundSize = 'auto';
         this.#element.style.backgroundPosition = 'top left';
@@ -45,7 +62,7 @@
         // Standard mode: use <img> with object-fit
         this.#bgElement.style.display = '';
         this.#element.style.backgroundImage = '';
-        this.#bgElement.src = src;
+        this.#bgElement.src = finalSrc;
         this.#bgElement.style.objectFit = mode === 'center' ? 'none' : mode;
         if (mode === 'center' || mode === 'none') {
           // Center mode: natural size, centered
