@@ -1803,7 +1803,11 @@
   async function doOpen() {
     if (isEditing) finishEditing();
     const result = await ComDlg32.GetOpenFileName({ filters: FILE_FILTERS, initialDir: '/user/documents', title: 'Open' });
-    if (!result.cancelled && result.path) loadDelimited(result.path, result.content);
+    if (!result.cancelled && result.path) {
+      let content = '';
+      try { content = await Kernel32.ReadFile(result.path); } catch (err) { await User32.MessageBox('Could not open file: ' + err.message, 'Spreadsheet', MB_OK); return; }
+      loadDelimited(result.path, content);
+    }
   }
 
   function loadDelimited(path, content) {
@@ -1865,11 +1869,12 @@
   }
 
   async function doSaveAs() {
-    const result = await ComDlg32.GetSaveFileName({ filters: FILE_FILTERS, initialDir: '/user/documents', defaultName: currentFileName || 'Untitled.csv', title: 'Save As', content: toCSV() });
+    const result = await ComDlg32.GetSaveFileName({ filters: FILE_FILTERS, initialDir: '/user/documents', defaultName: currentFileName || 'Untitled.csv', title: 'Save As' });
     if (!result.cancelled && result.path) {
       currentFilePath = result.path;
       const parts = result.path.split('/');
       currentFileName = parts[parts.length - 1] || 'Untitled';
+      try { await Kernel32.WriteFile(currentFilePath, toCSV()); } catch (err) { await User32.MessageBox('Could not save: ' + err.message, 'Spreadsheet', MB_OK); return; }
       setDirty(false);
     }
   }
