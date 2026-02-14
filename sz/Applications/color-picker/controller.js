@@ -145,9 +145,29 @@
     alpha: 1,  // 0-1
     oldR: 255, oldG: 0, oldB: 0, oldA: 1
   };
+  const cmdLine = SZ.Dlls.Kernel32.GetCommandLine();
 
   function getRgb() {
     return hsvToRgb(state.h, state.s, state.v);
+  }
+
+  function emitColorToRequester() {
+    if (!cmdLine || !cmdLine.returnKey)
+      return false;
+    const [r, g, b] = getRgb();
+    const a = clamp(state.alpha, 0, 1);
+    const payload = {
+      type: 'color-picker-result',
+      r, g, b, a: round(a * 255),
+      hex: rgbaToHex(r, g, b, a),
+      ts: Date.now()
+    };
+    try {
+      localStorage.setItem(String(cmdLine.returnKey), JSON.stringify(payload));
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   // ===== DOM references =====
@@ -1031,6 +1051,10 @@
 
   document.getElementById('btn-set-old').addEventListener('pointerdown', (e) => {
     e.preventDefault();
+    if (emitColorToRequester()) {
+      SZ.Dlls.User32.DestroyWindow();
+      return;
+    }
     const [r, g, b] = getRgb();
     state.oldR = r;
     state.oldG = g;
@@ -1069,6 +1093,15 @@
 
   function init() {
     SZ.Dlls.User32.EnableVisualStyles();
+
+    if (cmdLine && cmdLine.hex) {
+      const parsed = hexToRgb(String(cmdLine.hex));
+      if (parsed) {
+        const [r, g, b, a] = parsed;
+        setFromRgb(r, g, b, false);
+        state.alpha = a;
+      }
+    }
 
     buildBasicPalette();
     buildCustomPalette();
