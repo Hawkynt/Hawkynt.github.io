@@ -679,8 +679,7 @@
       currentFilePath = result.path;
       const parts = result.path.split('/');
       currentFileName = parts[parts.length - 1] || 'Untitled.json';
-      dirty = false;
-      updateTitle();
+      await saveToPath(result.path);
     }
   }
 
