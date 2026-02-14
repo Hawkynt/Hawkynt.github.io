@@ -1545,14 +1545,10 @@
       content: content,
     });
     if (!result.cancelled && result.path) {
-      savedContent = editor.innerHTML;
       currentFilePath = result.path;
       const parts = result.path.split('/');
       currentFileName = parts[parts.length - 1] || 'Untitled';
-      dirty = false;
-      updateTitle();
-      if (typeof callback === 'function')
-        callback();
+      await saveToPath(result.path, callback);
     }
   }
 
