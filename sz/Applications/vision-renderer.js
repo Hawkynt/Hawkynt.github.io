@@ -62,7 +62,7 @@
       .replace(/`(.+?)`/g, '<code>$1</code>');
   }
 
-  // ---- Parse vision.md structure ----
+  // ---- Parse vision markdown structure ----
 
   function parseVision(md) {
     const lines = md.split('\n');
@@ -246,14 +246,9 @@
   function init() {
     ensureDialogCSS();
 
-    // Prefer embedded data (works on file://), fall back to fetch
+    // vision-data.js sets window.__visionMd before this script runs
     if (window.__visionMd)
       applyMarkdown(window.__visionMd);
-    else
-      fetch('vision.md')
-        .then(function(r) { return r.ok ? r.text() : Promise.reject(); })
-        .then(applyMarkdown)
-        .catch(function() {});
 
     // F1 opens about/vision dialog in any app
     document.addEventListener('keydown', function(e) {
