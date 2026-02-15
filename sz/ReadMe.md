@@ -157,6 +157,7 @@ sz/
     spreadsheet/                Excel-like spreadsheet with formulas (Accessories)
     freecell/                   FreeCell card game (Games)
     spider-solitaire/           Spider solitaire card game (Games)
+    function-plotter/           Mathematical function plotter with analysis (Office)
   assets/
     icons/
       recycle-bin.svg           Recycle Bin desktop icon
@@ -750,14 +751,26 @@ window.parent.postMessage({ type: 'sz:cursorSetting', key: 'trailLen', value: 7 
 window.parent.postMessage({ type: 'sz:fileOpen', filters: [{name:'Text Files', ext:['txt','md']}, {name:'All Files', ext:['*']}], initialDir: '/user/documents', requestId: 'r1' }, '*');
 window.parent.postMessage({ type: 'sz:fileSave', filters: [...], defaultName: 'untitled.txt', content: '...', requestId: 'r1' }, '*');
 
-// VFS operations:
-window.parent.postMessage({ type: 'sz:vfs:list', path: '/user/documents' }, '*');
-window.parent.postMessage({ type: 'sz:vfs:read', path: '/user/documents/file.txt' }, '*');
-window.parent.postMessage({ type: 'sz:vfs:write', path: '/user/documents/file.txt', content: '...' }, '*');
-window.parent.postMessage({ type: 'sz:vfs:delete', path: '/user/documents/file.txt' }, '*');
-window.parent.postMessage({ type: 'sz:vfs:rename', oldPath: '...', newPath: '...' }, '*');
-window.parent.postMessage({ type: 'sz:vfs:copy', src: '...', dest: '...' }, '*');
-window.parent.postMessage({ type: 'sz:vfs:move', src: '...', dest: '...' }, '*');
+// VFS operations (typed API — see docs/vfs.md):
+window.parent.postMessage({ type: 'sz:vfs:List', path: '/user/documents' }, '*');
+window.parent.postMessage({ type: 'sz:vfs:Stat', path: '/user/documents/file.txt' }, '*');
+window.parent.postMessage({ type: 'sz:vfs:ReadAllText', path: '/user/documents/file.txt' }, '*');
+window.parent.postMessage({ type: 'sz:vfs:ReadAllBytes', path: '/user/documents/file.txt' }, '*');
+window.parent.postMessage({ type: 'sz:vfs:ReadUri', path: '/user/pictures/photo.png' }, '*');
+window.parent.postMessage({ type: 'sz:vfs:ReadValue', path: '/user/desktop/My Computer.lnk' }, '*');
+window.parent.postMessage({ type: 'sz:vfs:WriteAllBytes', path: '/user/documents/file.txt', bytes: [...] }, '*');
+window.parent.postMessage({ type: 'sz:vfs:WriteValue', path: '/user/desktop/shortcut.lnk', value: { appId: 'notepad' } }, '*');
+window.parent.postMessage({ type: 'sz:vfs:WriteUri', path: '/system/wallpapers/bg.jpg', uri: 'assets/bg.jpg' }, '*');
+window.parent.postMessage({ type: 'sz:vfs:Delete', path: '/user/documents/file.txt' }, '*');
+window.parent.postMessage({ type: 'sz:vfs:Mkdir', path: '/user/documents/subfolder' }, '*');
+window.parent.postMessage({ type: 'sz:vfs:Move', from: '/user/documents/old.txt', to: '/user/documents/new.txt' }, '*');
+window.parent.postMessage({ type: 'sz:vfs:Copy', from: '/user/documents/a.txt', to: '/user/documents/b.txt' }, '*');
+
+// OS services:
+window.parent.postMessage({ type: 'sz:messageBox', text: 'Hello', caption: 'Title', flags: 0 }, '*');
+window.parent.postMessage({ type: 'sz:getSystemMetrics' }, '*');
+window.parent.postMessage({ type: 'sz:regRead', key: 'myapp.setting' }, '*');
+window.parent.postMessage({ type: 'sz:regWrite', key: 'myapp.setting', value: 42 }, '*');
 
 // Desktop listens and routes to the correct window instance
 ```
@@ -887,15 +900,14 @@ Shared library included by each application. When an app's `index.html` is opene
 3. Redirects to the OS `index.html?app={appId}&maximized=1`
 4. The OS auto-launches the app maximized after boot
 
-Also provides `SZApp` helper object for iframe-hosted apps:
+Provides Windows DLL-like API namespaces for all OS communication:
 
-- `SZApp.setTitle(title)` -- change window title
-- `SZApp.close()` -- close the window
-- `SZApp.resize(w, h)` -- resize the window
-- `SZApp.launchApp(appId)` -- launch another app
-- `SZApp.setBackground(src, mode)` -- change desktop background
-- `SZApp.getSettings()` -- request current settings
-- `SZApp.getWindows()` -- request window list
+- `SZ.Dlls.User32` -- window management (SetWindowText, DestroyWindow, MoveWindow, MessageBox, GetSystemMetrics, RegisterWindowProc)
+- `SZ.Dlls.Kernel32` -- VFS file operations (ReadFile, ReadAllText, ReadAllBytes, ReadUri, ReadValue, WriteFile, WriteAllBytes, WriteValue, WriteUri, FindFirstFile, DeleteFile, CreateDirectory, MoveFile, CopyFile, GetFileAttributes, GetCommandLine)
+- `SZ.Dlls.GDI32` -- system colors and fonts (GetSysColor, GetSysColorBrush, GetSystemFont)
+- `SZ.Dlls.Shell32` -- app launching and special folders (ShellExecute, SHGetFolderPath, SHFileOperation)
+- `SZ.Dlls.ComDlg32` -- file open/save dialogs (GetOpenFileName, GetSaveFileName, ImportFile, ExportFile)
+- `SZ.Dlls.Advapi32` -- settings/registry (RegQueryValue, RegSetValue)
 
 ### Pointer Handler (`js/pointer-handler.js`)
 
@@ -1334,6 +1346,7 @@ User apps (iframe / index.html -- can run standalone):
 - [x] Date and Time: Clock with analog/digital display, calendar date picker, timezone selector
 - [x] QR Code Generator: QR code generator with customizable size, error correction level, foreground/background colors, download as PNG
 - [x] Icon Editor: Multi-image ICO/CUR editor with pixel-level editing, 32-bit RGBA with per-pixel alpha, checkerboard transparency, 8 drawing tools (pencil, eraser, eyedropper, flood fill, line, rectangle, ellipse, selection), configurable brush size (1-8px for pencil/eraser), filled shapes (outline/filled/both modes for rectangle and ellipse), rectangular selection tool (select, move, cut/copy/paste regions, marching ants, crop to selection), clipboard operations (cut/copy/paste/paste as new image), image list sidebar (add/remove/duplicate entries), ICO format parser and writer (BMP + PNG entries), PE (EXE/DLL) multi-icon resource browser (browse/select/export-all icon groups from DLL/EXE), image import from PNG/BMP/SVG with multi-size generation, favicon export, image operations (flip, rotate 90°/180°, resize, shift/offset with wrapping, grayscale, invert, HSL adjust, color replace), context-sensitive menu enable/disable, Escape key support (cancel drawing/deselect/close dialogs), zoom radio state in View menu, 30-step undo/redo with dimension restore, unsaved-changes guard on exit/open/import, VFS integration via common file dialog
+- [x] Function Plotter: Mathematical function plotter with expression parser (42+ functions including trig, hyperbolic, logarithmic, rounding), syntax highlighting, autocomplete, function families (parameter t with range/list modes), Kurvendiskussion analysis (roots, extrema, inflection points, monotonicity, poles, limits), symbolic polynomial analysis, dark mode, PNG export at 2x resolution, menu bar, status bar with coordinates and zoom level (Office)
 
 See [docs/appideas.md](docs/appideas.md) for the full application roadmap.
 
@@ -1355,7 +1368,8 @@ See [docs/appideas.md](docs/appideas.md) for the full application roadmap.
 - [x] ReadOnlyObjectMount: expose JS object trees as read-only filesystem
 - [x] Default mounts: /user/ (localStorage), /tmp/ (memory), /system/ (read-only), /apps/ (read-only)
 - [x] Default user files created on first boot (Welcome.txt, desktop/.keep)
-- [x] postMessage bridge for apps (sz:vfs:list, sz:vfs:read, sz:vfs:write, sz:vfs:delete, sz:vfs:exists, sz:vfs:rename, sz:vfs:copy, sz:vfs:move)
+- [x] postMessage bridge for apps (typed VFS API: sz:vfs:Stat, sz:vfs:List, sz:vfs:Mkdir, sz:vfs:Delete, sz:vfs:Move, sz:vfs:Copy, sz:vfs:ReadAllText, sz:vfs:ReadAllBytes, sz:vfs:ReadUri, sz:vfs:ReadValue, sz:vfs:WriteAllBytes, sz:vfs:WriteValue, sz:vfs:WriteUri)
+- [x] OS service bridge (sz:messageBox, sz:getSystemMetrics, sz:regRead, sz:regWrite)
 - [x] VFS exposed on SZ.system for hosted apps
 - [x] VFS browsable in Explorer via SZ:\vfs\ path (navigate to vfs/user/documents to find saved files)
 
@@ -1439,7 +1453,7 @@ ESLint configured for ES2022 modules, browser globals.
 
 ### Virtual File System (VFS) — Implemented
 
-A central filesystem with a Linux-like mounting mechanism (`js/vfs.js`). Storage is composed from multiple sources, each mounted at a path. Apps access the VFS via `postMessage` (`sz:vfs:list`, `sz:vfs:read`, `sz:vfs:write`, `sz:vfs:delete`, `sz:vfs:exists`). The `/user/documents/` mount serves as **"Eigene Dateien" (My Documents)** — user personal files backed by `localStorage`.
+A central filesystem with a Linux-like mounting mechanism (`js/vfs.js`). Storage is composed from multiple sources, each mounted at a path. The VFS stores typed nodes: `dir` (directories), `bytes` (binary blobs), `value` (JSON-serializable data), and `uri` (URI references). Apps access the VFS via `postMessage` using the typed API (see `docs/vfs.md`): `sz:vfs:Stat`, `sz:vfs:List`, `sz:vfs:Mkdir`, `sz:vfs:Delete`, `sz:vfs:Move`, `sz:vfs:Copy`, `sz:vfs:ReadAllText`, `sz:vfs:ReadAllBytes`, `sz:vfs:ReadUri`, `sz:vfs:ReadValue`, `sz:vfs:WriteAllBytes`, `sz:vfs:WriteValue`, `sz:vfs:WriteUri`. The bootstrap's `SZ.Dlls.Kernel32` wraps these into familiar Win32-like methods. The `/user/documents/` mount serves as **"Eigene Dateien" (My Documents)** — user personal files backed by `localStorage`.
 
 Currently mounted:
 
@@ -1501,6 +1515,11 @@ The VFS enables:
 - Spreadsheet: XLSX import/export (SheetJS, multi-sheet), TSV import/export
 - ComDlg32: browser-native ImportFile/ExportFile API for binary formats (File API + Blob download)
 - Vendored offline-capable libraries (mammoth.js, JSZip, SheetJS) in Applications/libs/
+- Taskbar window integration — taskbar buttons appear/disappear/highlight as windows are created/closed/focused, title changes propagate to taskbar buttons, singleton tracking on close
+- Control Panel appearance tab — full skin/sub-skin selection, animation toggle, cursor effects, MRU clearing, taskbar settings
+- File loading from Explorer — icon-editor, diff-viewer, paint, and font-viewer properly handle `GetCommandLine()` to load files on launch
+- Task manager postMessage bridge — `sz:getWindows` and `sz:closeWindow` handlers for cross-origin (file://) compatibility
+- Desktop icon launch scoping fix — MRU recording and taskbar refresh work correctly from desktop icon double-click
 
 ### Future
 
