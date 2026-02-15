@@ -918,27 +918,43 @@
 
   // ===== Eyedropper =====
 
-  document.getElementById('btn-eyedropper').addEventListener('pointerdown', async (e) => {
+  const eyedropperNative = document.getElementById('eyedropper-native');
+  const sampleSizeSelect = document.getElementById('sample-size');
+
+  function applyEyeDropperHex(hex) {
+    if (hex) {
+      hexInput.value = hex;
+      hexInput.dispatchEvent(new Event('change'));
+    }
+  }
+
+  // Native color picker returns #rrggbb
+  eyedropperNative.addEventListener('input', () => {
+    applyEyeDropperHex(eyedropperNative.value);
+  });
+
+  document.getElementById('btn-eyedropper').addEventListener('pointerdown', (e) => {
     e.preventDefault();
-    if (!window.EyeDropper) {
-      // Fallback: prompt user
-      const val = prompt('EyeDropper API not supported.\nEnter a hex color:', hexInput.value);
-      if (val) {
-        hexInput.value = val;
-        hexInput.dispatchEvent(new Event('change'));
-      }
+    const diameter = parseInt(sampleSizeSelect.value, 10) || 1;
+
+    if (diameter <= 1) {
+      // 1px mode: open the native color picker (has built-in eyedropper in Chrome/Edge)
+      eyedropperNative.click();
       return;
     }
 
-    try {
-      const dropper = new EyeDropper();
-      const result = await dropper.open();
-      if (result && result.sRGBHex) {
-        hexInput.value = result.sRGBHex;
-        hexInput.dispatchEvent(new Event('change'));
-      }
-    } catch {
-      // User cancelled
+    // Circle sampling mode: ask parent to capture tab and show overlay
+    if (window.parent !== window) {
+      const requestId = 'eyedrop-circle-' + Date.now();
+      const handler = (ev) => {
+        if (ev.data?.type !== 'sz:eyeDropperCircleResult' || ev.data?.requestId !== requestId)
+          return;
+        window.removeEventListener('message', handler);
+        if (ev.data.hex)
+          applyEyeDropperHex(ev.data.hex);
+      };
+      window.addEventListener('message', handler);
+      window.parent.postMessage({ type: 'sz:eyeDropperCircle', diameter, requestId }, '*');
     }
   });
 
@@ -1047,20 +1063,17 @@
     }
   });
 
-  // ===== Set as Current =====
+  // ===== OK / Cancel =====
 
-  document.getElementById('btn-set-old').addEventListener('pointerdown', (e) => {
+  document.getElementById('btn-ok').addEventListener('pointerdown', (e) => {
     e.preventDefault();
-    if (emitColorToRequester()) {
-      SZ.Dlls.User32.DestroyWindow();
-      return;
-    }
-    const [r, g, b] = getRgb();
-    state.oldR = r;
-    state.oldG = g;
-    state.oldB = b;
-    state.oldA = state.alpha;
-    swatchOld.style.background = `rgba(${r},${g},${b},${state.alpha})`;
+    emitColorToRequester();
+    SZ.Dlls.User32.DestroyWindow();
+  });
+
+  document.getElementById('btn-cancel').addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    SZ.Dlls.User32.DestroyWindow();
   });
 
   // ===== Resize handling =====

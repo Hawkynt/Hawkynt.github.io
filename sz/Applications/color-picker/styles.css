@@ -11,10 +11,11 @@ body {
 #app {
   display: grid;
   grid-template-columns: 1fr 200px;
-  grid-template-rows: 1fr auto;
+  grid-template-rows: 1fr auto auto;
   grid-template-areas:
     "visual  panel"
-    "palette palette";
+    "palette palette"
+    "footer  footer";
   gap: 8px;
   height: calc(100vh - 16px);
 }
@@ -241,7 +242,53 @@ body {
   display: flex;
   gap: 4px;
   align-items: stretch;
-  height: 40px;
+  height: 44px;
+}
+
+#preview-area > div {
+  flex: 1;
+  min-width: 0;
+}
+
+#eyedropper-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+#btn-eyedropper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  flex: 1;
+  padding: 0;
+  cursor: pointer;
+}
+
+#btn-eyedropper svg {
+  display: block;
+}
+
+#sample-size {
+  width: 28px;
+  font-size: 7px;
+  padding: 0;
+  text-align: center;
+  cursor: default;
+  flex-shrink: 0;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
 }
 
 .preview-box {
@@ -485,4 +532,22 @@ body {
   font-family: 'Lucida Console', 'Consolas', monospace;
   font-size: 10px;
   padding: 1px 3px;
+}
+
+/* ---- Dialog footer (OK / Cancel) ---- */
+#dialog-footer {
+  grid-area: footer;
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 6px 0 2px;
+  border-top: 1px solid var(--sz-color-button-shadow);
+}
+
+#dialog-footer button {
+  min-width: 72px;
+  padding: 4px 14px;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: default;
 }
