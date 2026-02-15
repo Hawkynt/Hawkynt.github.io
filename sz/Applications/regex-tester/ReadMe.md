@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# Regex Tester
+# Regex Tester
 
 A real-time regular expression development environment within the »SynthelicZ« desktop, with match highlighting, capture group inspection, pattern explanation, substitution preview, and a comprehensive quick-reference sidebar for crafting and testing regex patterns.
 
@@ -15,7 +15,7 @@ The Regex Tester provides an interactive regular expression workbench within the
 - Collapsible quick-reference sidebar covering characters, quantifiers, groups, anchors, and flags
 - Common patterns library with one-click loading of pre-built regex for emails, URLs, IPs, etc.
 - Pattern history persisted to localStorage and URL-based state sharing
-- Multi-format export (JavaScript, Python, Java regex literals)
+- Multi-format export (JavaScript, Python, Java, C#, Perl regex literals) and CSV/TSV match table export
 
 ### Design Reference
 Inspired by online regex testers like regex101.com and RegExr, combining a pattern input, test string area with match overlay, and a reference/history sidebar in a single-page layout.
@@ -50,6 +50,9 @@ Inspired by online regex testers like regex101.com and RegExr, combining a patte
 - [x] As a user, I can see named capture groups identified by name and index
 - [x] As a user, I can see capture groups color-coded for easy identification
 - [x] As a user, I can see "No matches found" when the pattern produces no results
+- [x] As a user, I can see matches displayed in a tabular view with one row per match and one column per capture group
+- [x] As a user, I can see the match table with columns for Match number, Position, Full Match, and each capture group
+- [x] As a user, I can see group column headers color-coded to match the capture group colors
 - [ ] As a user, I can click on a match in the detail panel to highlight and scroll to it in the test string
 
 ### Substitution / Replace Preview
@@ -79,7 +82,11 @@ Inspired by online regex testers like regex101.com and RegExr, combining a patte
 - [x] As a user, I can copy the pattern as a JavaScript regex literal (/pattern/flags)
 - [x] As a user, I can copy the pattern as a Python raw string (r"pattern")
 - [x] As a user, I can copy the pattern as a Java string with escaped backslashes
-- [ ] As a user, I can copy the pattern in additional language formats (C#, Go, Ruby, PHP)
+- [x] As a user, I can copy the pattern as a C# verbatim string with RegexOptions
+- [x] As a user, I can copy the pattern as a Perl qr// literal with flags
+- [x] As a user, I can export the match table as CSV to the clipboard
+- [x] As a user, I can export the match table as TSV to the clipboard
+- [ ] As a user, I can copy the pattern in additional language formats (Go, Ruby, PHP)
 
 ### Pattern History
 - [x] As a user, I can see a history of previously used patterns saved to localStorage
@@ -107,4 +114,3 @@ Inspired by online regex testers like regex101.com and RegExr, combining a patte
 - [x] As a user, I can see that infinite-match patterns (empty matches) are handled safely with a 10,000-match limit
 - [x] As a user, I can see input changes debounced to avoid excessive re-evaluation
 - [ ] As a user, I can see a warning if a pattern has catastrophic backtracking potential
-`})();

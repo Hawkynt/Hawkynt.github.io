@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# SVG Editor
+# SVG Editor
 
 A vector graphics editor for the »SynthelicZ« desktop that provides shape drawing tools, layer management, SVG source editing, and PNG export. It supports creating and editing SVG documents with standard shapes, freehand paths, and text elements.
 
@@ -134,4 +134,3 @@ Inspired by simplified vector editors such as SVG-edit and the basic shape tools
 - [ ] As a user, I want to import SVG clip art or symbols from a library
 - [ ] As a user, I want to align and distribute multiple selected elements
 - [ ] As a user, I want to see a ruler along the edges of the workspace
-`})();

@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# Notepad
+# Notepad
 
 A full-featured text editor with syntax highlighting, find and replace, encoding support, and developer-friendly editing tools -- the go-to editor for quick edits and serious coding alike inside »SynthelicZ«.
 
@@ -113,4 +113,3 @@ Modeled after the classic Windows Notepad for simplicity and file handling, comb
 - [x] As a user, I can see the selection length when text is selected
 - [x] As a user, I can see the current encoding, line endings, insert mode, and language at a glance
 - [x] As a user, I can click status bar items to quickly change settings
-`})();

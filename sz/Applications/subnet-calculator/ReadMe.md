@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# Subnet Calculator
+# Subnet Calculator
 
 An IPv4 subnet calculator for the »SynthelicZ« desktop that computes network properties, displays binary representations with interactive bit toggling, and generates subnet division tables. It provides instant feedback as you type, with CIDR notation, subnet mask, and quick-select shortcuts.
 
@@ -83,4 +83,3 @@ Modeled after classic network administrator utilities such as SolarWinds Subnet 
 - [ ] As a user, I want to save and load subnet configurations to/from files
 - [ ] As a user, I want to see a visual subnet map showing all subnets in a network as colored blocks
 - [ ] As a user, I want to convert between IP address formats (decimal, hex, binary, octal)
-`})();

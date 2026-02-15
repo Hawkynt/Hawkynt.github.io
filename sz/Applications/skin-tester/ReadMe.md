@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# Skin Tester
+# Skin Tester
 
 A diagnostic tool for inspecting, previewing, and validating WindowBlinds UIS skins within the »SynthelicZ« desktop. It parses skin archives and files, renders the 9-slice window frame grid with active/inactive states, and provides detailed metadata comparison to help skin authors verify their work.
 
@@ -84,4 +84,3 @@ Modeled after the diagnostic and inspection panels found in WindowBlinds SkinStu
 - [ ] As a user, I want to compare two skins side by side
 - [ ] As a user, I want to see a live preview of the full window chrome assembled from all border pieces
 - [ ] As a user, I want to resize the content area to test how the 9-slice frame adapts to different window sizes
-`})();

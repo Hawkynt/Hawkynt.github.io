@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# Markdown Editor
+# Markdown Editor
 
 A Markdown editor with live preview for »SynthelicZ«, featuring split-pane editing, syntax formatting shortcuts, a built-in Markdown parser, and full file management with dirty-state tracking.
 
@@ -123,4 +123,3 @@ Inspired by popular Markdown editors such as Typora, MarkdownPad, and the VS Cod
 - [ ] As a user, I want support for task list checkboxes (- [ ] / - [x])
 - [ ] As a user, I want support for footnotes in Markdown
 - [ ] As a user, I want a word wrap toggle for long lines in the editor
-`})();
