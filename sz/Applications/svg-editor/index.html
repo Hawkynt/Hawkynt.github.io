@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SVG Editor</title>
+  <script src="../sz-app-bootstrap.js"></script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Menu Bar -->
+  <div class="menu-bar" id="menu-bar">
+    <div class="menu-item" data-menu="file">
+      File
+      <div class="menu-dropdown">
+        <div class="menu-entry" data-action="new">New<span class="shortcut">Ctrl+N</span></div>
+        <div class="menu-entry" data-action="open">Open...<span class="shortcut">Ctrl+O</span></div>
+        <div class="menu-entry" data-action="save">Save<span class="shortcut">Ctrl+S</span></div>
+        <div class="menu-entry" data-action="save-as">Save As...</div>
+        <div class="menu-separator"></div>
+        <div class="menu-entry" data-action="export-png">Export PNG...</div>
+        <div class="menu-separator"></div>
+        <div class="menu-entry" data-action="exit">Exit</div>
+      </div>
+    </div>
+    <div class="menu-item" data-menu="edit">
+      Edit
+      <div class="menu-dropdown">
+        <div class="menu-entry" data-action="undo">Undo<span class="shortcut">Ctrl+Z</span></div>
+        <div class="menu-entry" data-action="redo">Redo<span class="shortcut">Ctrl+Y</span></div>
+        <div class="menu-separator"></div>
+        <div class="menu-entry" data-action="cut">Cut<span class="shortcut">Ctrl+X</span></div>
+        <div class="menu-entry" data-action="copy">Copy<span class="shortcut">Ctrl+C</span></div>
+        <div class="menu-entry" data-action="paste">Paste<span class="shortcut">Ctrl+V</span></div>
+        <div class="menu-entry" data-action="delete">Delete<span class="shortcut">Del</span></div>
+        <div class="menu-separator"></div>
+        <div class="menu-entry" data-action="select-all">Select All<span class="shortcut">Ctrl+A</span></div>
+        <div class="menu-entry" data-action="deselect">Deselect<span class="shortcut">Esc</span></div>
+        <div class="menu-separator"></div>
+        <div class="menu-entry" data-action="duplicate">Duplicate<span class="shortcut">Ctrl+D</span></div>
+      </div>
+    </div>
+    <div class="menu-item" data-menu="view">
+      View
+      <div class="menu-dropdown">
+        <div class="menu-entry" data-action="zoom-in">Zoom In<span class="shortcut">Ctrl++</span></div>
+        <div class="menu-entry" data-action="zoom-out">Zoom Out<span class="shortcut">Ctrl+&minus;</span></div>
+        <div class="menu-entry" data-action="zoom-100">Zoom 100%<span class="shortcut">Ctrl+0</span></div>
+        <div class="menu-entry" data-action="zoom-fit">Fit to Window</div>
+        <div class="menu-separator"></div>
+        <div class="menu-entry checkable" data-action="toggle-grid">Grid<span class="shortcut">Ctrl+G</span></div>
+        <div class="menu-entry checkable" data-action="toggle-snap">Snap to Grid</div>
+        <div class="menu-separator"></div>
+        <div class="menu-entry checkable" data-action="toggle-dark">Dark Mode</div>
+      </div>
+    </div>
+    <div class="menu-item" data-menu="tools">
+      Tools
+      <div class="menu-dropdown">
+        <div class="menu-entry" data-action="tool-select">Select<span class="shortcut">V</span></div>
+        <div class="menu-entry" data-action="tool-rect">Rectangle<span class="shortcut">R</span></div>
+        <div class="menu-entry" data-action="tool-ellipse">Ellipse<span class="shortcut">E</span></div>
+        <div class="menu-entry" data-action="tool-circle">Circle<span class="shortcut">C</span></div>
+        <div class="menu-entry" data-action="tool-line">Line<span class="shortcut">L</span></div>
+        <div class="menu-entry" data-action="tool-path">Freehand<span class="shortcut">P</span></div>
+        <div class="menu-entry" data-action="tool-text">Text<span class="shortcut">T</span></div>
+        <div class="menu-entry" data-action="tool-pan">Pan<span class="shortcut">H</span></div>
+      </div>
+    </div>
+    <div class="menu-item" data-menu="help">
+      Help
+      <div class="menu-dropdown">
+        <div class="menu-entry" data-action="shortcuts">Keyboard Shortcuts</div>
+        <div class="menu-separator"></div>
+        <div class="menu-entry" data-action="about">About SVG Editor</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Area -->
+  <div class="main-area">
+
+    <!-- Vertical Toolbar (left) -->
+    <div class="toolbar" id="toolbar">
+      <div class="tool-grid" id="tool-grid">
+        <div class="tool-btn active" data-tool="select" title="Select (V)">&#9095;</div>
+        <div class="tool-btn" data-tool="rect" title="Rectangle (R)">&#9645;</div>
+        <div class="tool-btn" data-tool="ellipse" title="Ellipse (E)">&#9711;</div>
+        <div class="tool-btn" data-tool="circle" title="Circle (C)">&#9679;</div>
+        <div class="tool-btn" data-tool="line" title="Line (L)">&#9585;</div>
+        <div class="tool-btn" data-tool="path" title="Freehand (P)">&#9998;</div>
+        <div class="tool-btn" data-tool="text" title="Text (T)">T</div>
+        <div class="tool-btn" data-tool="pan" title="Pan (H)">&#9995;</div>
+      </div>
+    </div>
+
+    <!-- Canvas Workspace -->
+    <main class="workspace" id="workspace">
+      <div class="svg-host" id="svgHost">
+        <svg id="svgCanvas" xmlns="http://www.w3.org/2000/svg" width="1024" height="768" viewBox="0 0 1024 768">
+          <defs>
+            <pattern id="gridPattern" width="20" height="20" patternUnits="userSpaceOnUse">
+              <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#ccc" stroke-width="0.5" />
+            </pattern>
+          </defs>
+          <rect id="gridOverlay" width="100%" height="100%" fill="url(#gridPattern)" style="display:none" pointer-events="none" />
+          <g id="sceneRoot"></g>
+        </svg>
+      </div>
+    </main>
+
+    <!-- Sidebar (right) -->
+    <aside class="sidebar" id="sidebar">
+
+      <details class="panel" open>
+        <summary class="panel-toggle"><h2>Style</h2></summary>
+        <label>Fill <input id="inpFill" type="color" value="#44aaff"></label>
+        <label>Stroke <input id="inpStroke" type="color" value="#1a1a1a"></label>
+        <label>Stroke Width <input id="inpStrokeWidth" type="number" value="2" min="0" max="64" step="0.5"></label>
+        <label>Opacity <input id="inpOpacity" type="number" value="1" min="0" max="1" step="0.05"></label>
+      </details>
+
+      <details class="panel">
+        <summary class="panel-toggle"><h2>Document</h2></summary>
+        <label>Width <input id="inpDocW" type="number" value="1024" min="1" max="8192"></label>
+        <label>Height <input id="inpDocH" type="number" value="768" min="1" max="8192"></label>
+        <div class="row">
+          <button id="btnResizeDoc">Apply Size</button>
+        </div>
+      </details>
+
+      <details class="panel" open>
+        <summary class="panel-toggle"><h2>Layers</h2></summary>
+        <div id="layerList" class="layer-list"></div>
+        <div class="row">
+          <button id="btnBringFront" title="Bring to front">&#9650;</button>
+          <button id="btnBringForward" title="Bring forward">&#9651;</button>
+          <button id="btnSendBackward" title="Send backward">&#9661;</button>
+          <button id="btnSendBack" title="Send to back">&#9660;</button>
+        </div>
+      </details>
+
+      <details class="panel">
+        <summary class="panel-toggle"><h2>Source</h2></summary>
+        <textarea id="sourceBox" spellcheck="false"></textarea>
+        <div class="row">
+          <button id="btnApplySource">Apply</button>
+          <button id="btnReloadSource">Reload</button>
+        </div>
+      </details>
+
+    </aside>
+  </div>
+
+  <!-- Status Bar -->
+  <div class="status-bar" id="status-bar">
+    <span class="status-section inset" id="statusCoords">x=0 y=0</span>
+    <span class="status-section inset" id="statusTool">Tool: Select</span>
+    <span class="status-section inset" id="statusZoom">100%</span>
+    <span class="status-section inset" id="statusDoc">1024 &times; 768</span>
+    <span class="status-section inset" id="statusElements">0 elements</span>
+  </div>
+
+  <!-- Dialog: About -->
+  <div class="dialog-overlay" id="dlg-about">
+    <div class="dialog">
+      <div class="dialog-title">About SVG Editor</div>
+      <div class="dialog-body">
+        <p><strong>SVG Editor</strong></p>
+        <p>Vector graphics editor for the SZ Desktop.</p>
+        <p>Draw and edit SVG shapes, export to PNG, manage layers, and more.</p>
+      </div>
+      <div class="dialog-buttons">
+        <button data-result="ok">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dialog: Keyboard Shortcuts -->
+  <div class="dialog-overlay" id="dlg-shortcuts">
+    <div class="dialog dialog-wide">
+      <div class="dialog-title">Keyboard Shortcuts</div>
+      <div class="dialog-body">
+        <table class="shortcut-table">
+          <tr><th>Shortcut</th><th>Action</th></tr>
+          <tr><td>Ctrl+N</td><td>New document</td></tr>
+          <tr><td>Ctrl+O</td><td>Open file</td></tr>
+          <tr><td>Ctrl+S</td><td>Save</td></tr>
+          <tr><td>Ctrl+Z</td><td>Undo</td></tr>
+          <tr><td>Ctrl+Y</td><td>Redo</td></tr>
+          <tr><td>Ctrl+C</td><td>Copy</td></tr>
+          <tr><td>Ctrl+X</td><td>Cut</td></tr>
+          <tr><td>Ctrl+V</td><td>Paste</td></tr>
+          <tr><td>Ctrl+D</td><td>Duplicate</td></tr>
+          <tr><td>Ctrl+A</td><td>Select all</td></tr>
+          <tr><td>Del</td><td>Delete selected</td></tr>
+          <tr><td>Ctrl++</td><td>Zoom in</td></tr>
+          <tr><td>Ctrl+&minus;</td><td>Zoom out</td></tr>
+          <tr><td>Ctrl+0</td><td>Zoom 100%</td></tr>
+          <tr><td>Ctrl+G</td><td>Toggle grid</td></tr>
+          <tr><td>V</td><td>Select tool</td></tr>
+          <tr><td>R</td><td>Rectangle tool</td></tr>
+          <tr><td>E</td><td>Ellipse tool</td></tr>
+          <tr><td>C</td><td>Circle tool</td></tr>
+          <tr><td>L</td><td>Line tool</td></tr>
+          <tr><td>P</td><td>Freehand tool</td></tr>
+          <tr><td>T</td><td>Text tool</td></tr>
+          <tr><td>H</td><td>Pan tool</td></tr>
+          <tr><td>Arrow keys</td><td>Nudge &plusmn;1px</td></tr>
+          <tr><td>Shift+Arrow</td><td>Nudge &plusmn;10px</td></tr>
+          <tr><td>Esc</td><td>Deselect</td></tr>
+        </table>
+      </div>
+      <div class="dialog-buttons">
+        <button data-result="ok">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="controller.js"></script>
+</body>
+</html>
