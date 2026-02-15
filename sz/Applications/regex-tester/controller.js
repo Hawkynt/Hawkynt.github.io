@@ -30,6 +30,8 @@
   const flagsDisplay = document.getElementById('flags-display');
   const replaceSection = document.getElementById('replace-section');
   const replaceResult = document.getElementById('replace-result');
+  const matchTableSection = document.getElementById('match-table-section');
+  const matchTable = document.getElementById('match-table');
 
   const flagCheckboxes = {
     g: document.getElementById('flag-g'),
@@ -42,6 +44,7 @@
   // ===== State =====
 
   let debounceTimer = null;
+  let lastMatches = [];
   const DEBOUNCE_MS = 150;
   const HISTORY_KEY = 'sz-regex-tester-history';
   const MAX_HISTORY = 20;
@@ -169,6 +172,109 @@
 
     matchList.innerHTML = frags.join('');
   }
+
+  // ===== Match table =====
+
+  function renderMatchTable(matches) {
+    if (matches.length === 0) {
+      matchTableSection.classList.remove('visible');
+      return;
+    }
+
+    // Determine max group count across all matches
+    let maxGroups = 0;
+    for (const m of matches)
+      if (m.length - 1 > maxGroups)
+        maxGroups = m.length - 1;
+
+    // Build group column headers using named groups when available
+    const groupHeaders = [];
+    const sampleWithNames = matches.find(m => m.groups);
+    const namedKeys = sampleWithNames ? Object.keys(sampleWithNames.groups) : [];
+    for (let g = 1; g <= maxGroups; ++g) {
+      const named = namedKeys.length >= g ? namedKeys[g - 1] : null;
+      groupHeaders.push(named ? named + ' (#' + g + ')' : '#' + g);
+    }
+
+    const frags = ['<thead><tr>'];
+    frags.push('<th>Match</th><th>Position</th><th>Full Match</th>');
+    for (let g = 0; g < groupHeaders.length; ++g) {
+      const cls = GROUP_COLORS[g + 1] || GROUP_COLORS[0];
+      frags.push('<th class="' + cls + '">' + escapeHtml(groupHeaders[g]) + '</th>');
+    }
+    frags.push('</tr></thead><tbody>');
+
+    for (let i = 0; i < matches.length; ++i) {
+      const m = matches[i];
+      frags.push('<tr>');
+      frags.push('<td>' + (i + 1) + '</td>');
+      frags.push('<td>' + m.index + '-' + (m.index + m[0].length) + '</td>');
+      frags.push('<td>' + escapeHtml(m[0]) + '</td>');
+      for (let g = 1; g <= maxGroups; ++g)
+        frags.push('<td>' + (m[g] !== undefined ? escapeHtml(m[g]) : '') + '</td>');
+      frags.push('</tr>');
+    }
+
+    frags.push('</tbody>');
+    matchTable.innerHTML = frags.join('');
+    matchTableSection.classList.add('visible');
+  }
+
+  // ===== CSV / TSV export =====
+
+  function exportTable(separator) {
+    const matches = lastMatches;
+    if (matches.length === 0)
+      return;
+
+    let maxGroups = 0;
+    for (const m of matches)
+      if (m.length - 1 > maxGroups)
+        maxGroups = m.length - 1;
+
+    const groupHeaders = [];
+    const sampleWithNames = matches.find(m => m.groups);
+    const namedKeys = sampleWithNames ? Object.keys(sampleWithNames.groups) : [];
+    for (let g = 1; g <= maxGroups; ++g) {
+      const named = namedKeys.length >= g ? namedKeys[g - 1] : null;
+      groupHeaders.push(named ? named + ' (#' + g + ')' : '#' + g);
+    }
+
+    function quoteField(val) {
+      const s = String(val);
+      if (s.includes(separator) || s.includes('"') || s.includes('\n') || s.includes('\r'))
+        return '"' + s.replace(/"/g, '""') + '"';
+      return s;
+    }
+
+    const rows = [];
+    const header = ['Match', 'Position', 'Full Match'].concat(groupHeaders);
+    rows.push(header.map(quoteField).join(separator));
+
+    for (let i = 0; i < matches.length; ++i) {
+      const m = matches[i];
+      const cells = [
+        i + 1,
+        m.index + '-' + (m.index + m[0].length),
+        m[0],
+      ];
+      for (let g = 1; g <= maxGroups; ++g)
+        cells.push(m[g] !== undefined ? m[g] : '');
+      rows.push(cells.map(quoteField).join(separator));
+    }
+
+    navigator.clipboard.writeText(rows.join('\n')).catch(() => {});
+  }
+
+  document.getElementById('export-csv').addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    exportTable(',');
+  });
+
+  document.getElementById('export-tsv').addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    exportTable('\t');
+  });
 
   // ===== Replace preview =====
 
@@ -440,7 +546,9 @@
 
     const regex = buildRegex(pattern, flags);
     const matches = highlightMatches(text, regex);
+    lastMatches = matches;
     renderMatchDetails(matches);
+    renderMatchTable(matches);
     renderReplacePreview(text, regex, subst || null);
     explainRegex(pattern);
   }
@@ -524,6 +632,34 @@
     e.preventDefault();
     const pattern = regexInput.value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
     const text = '"' + pattern + '"';
+    navigator.clipboard.writeText(text).catch(() => {});
+  });
+
+  document.getElementById('copy-csharp').addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    const pattern = regexInput.value.replace(/"/g, '""');
+    const flags = getFlags();
+    const opts = [];
+    if (flags.includes('i')) opts.push('RegexOptions.IgnoreCase');
+    if (flags.includes('m')) opts.push('RegexOptions.Multiline');
+    if (flags.includes('s')) opts.push('RegexOptions.Singleline');
+    const text = opts.length
+      ? 'new Regex(@"' + pattern + '", ' + opts.join(' | ') + ')'
+      : '@"' + pattern + '"';
+    navigator.clipboard.writeText(text).catch(() => {});
+  });
+
+  document.getElementById('copy-perl').addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    const pattern = regexInput.value;
+    const flags = getFlags();
+    let perlFlags = '';
+    if (flags.includes('i')) perlFlags += 'i';
+    if (flags.includes('m')) perlFlags += 'm';
+    if (flags.includes('s')) perlFlags += 's';
+    if (flags.includes('g')) perlFlags += 'g';
+    if (flags.includes('u')) perlFlags += 'u';
+    const text = 'qr/' + pattern.replace(/\//g, '\\/') + '/' + perlFlags;
     navigator.clipboard.writeText(text).catch(() => {});
   });
 

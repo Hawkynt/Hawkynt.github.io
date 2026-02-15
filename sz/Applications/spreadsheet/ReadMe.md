@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# Spreadsheet
+# Spreadsheet
 
 A full-featured, browser-based spreadsheet application that aims to provide a familiar Excel-like editing experience inside the »SynthelicZ« desktop environment, supporting formulas, formatting, charting, and file import/export.
 
@@ -182,4 +182,3 @@ Modeled after Microsoft Excel and Google Sheets, with a ribbon-style toolbar org
 - [x] As a user, I can use arrow keys and Tab/Enter for cell navigation
 - [ ] As a user, I can use Ctrl+; to insert the current date
 - [ ] As a user, I can use Ctrl+Shift+; to insert the current time
-`})();

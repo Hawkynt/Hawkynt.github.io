@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# Paint
+# Paint
 
 A bitmap drawing and image editing tool with essential drawing tools, color management, image transformations, and zoom -- the classic desktop paint application inside »SynthelicZ«.
 
@@ -100,4 +100,3 @@ Modeled after the classic Microsoft Paint (mspaint.exe) found in Windows 95 thro
 - [ ] As a user, I can toggle a pixel grid overlay at high zoom levels
 - [ ] As a user, I can pan the canvas when zoomed in by holding the middle mouse button
 - [ ] As a user, I can use rulers along the top and left edges
-`})();

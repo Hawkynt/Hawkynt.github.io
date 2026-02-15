@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# Terminal
+# Terminal
 
 A dual-shell command-line terminal emulator supporting both cmd.exe and bash shells with piping, redirection, variable expansion, tab completion, and a comprehensive set of built-in commands -- the power-user gateway to the »SynthelicZ« virtual file system.
 
@@ -116,4 +116,3 @@ Modeled after the Windows Command Prompt (cmd.exe) and Unix bash terminal, provi
 - [ ] As a user, I can change the terminal font and font size
 - [ ] As a user, I can choose from preset color schemes (Solarized, Monokai, etc.)
 - [ ] As a user, I can set the terminal opacity/transparency
-`})();

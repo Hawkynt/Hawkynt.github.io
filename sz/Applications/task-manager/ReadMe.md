@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# Task Manager
+# Task Manager
 
 A system monitoring utility for the »SynthelicZ« desktop that provides real-time visibility into running windows and performance metrics -- modeled after the classic Windows Task Manager with Applications and Performance tabs.
 
@@ -76,4 +76,3 @@ Modeled after the classic Windows Task Manager (Windows XP/2000 era), with its A
 - [ ] As a user, I can double-click a task entry to switch to that window
 - [ ] As a user, I can see a "New Task" or "Run" button to launch applications
 - [ ] As a user, I can see update frequency options (High, Normal, Low, Paused) in a menu
-`})();

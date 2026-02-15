@@ -297,6 +297,66 @@ body {
   -webkit-user-select: text;
 }
 
+/* Match table */
+#match-table-section {
+  display: none;
+  border-top: 1px solid var(--sz-color-button-shadow);
+}
+
+#match-table-section.visible { display: block; }
+
+#match-table-header {
+  padding: 2px 6px;
+  font-weight: bold;
+  font-size: 10px;
+  background: var(--sz-color-button-face);
+  border-bottom: 1px solid var(--sz-color-button-shadow);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.match-table-export {
+  display: flex;
+  gap: 2px;
+}
+
+.match-table-export .copy-btn {
+  display: inline;
+  width: auto;
+  padding: 0 4px;
+}
+
+#match-table-wrap {
+  max-height: 120px;
+  overflow: auto;
+  background: var(--sz-color-window);
+}
+
+#match-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9px;
+  font-family: 'Lucida Console', Consolas, monospace;
+}
+
+#match-table th {
+  position: sticky;
+  top: 0;
+  background: var(--sz-color-button-face);
+  border: 1px solid var(--sz-color-button-shadow);
+  padding: 1px 3px;
+  font-size: 9px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+#match-table td {
+  border: 1px solid var(--sz-color-button-shadow);
+  padding: 1px 3px;
+  word-break: break-all;
+}
+
 /* ---- Explanation section ---- */
 #explain-section {
   grid-area: explain;
