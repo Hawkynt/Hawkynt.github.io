@@ -262,8 +262,7 @@
   <span class="status-section status-lang clickable" id="status-lang" title="Click to change syntax">Plain Text</span>
   <span class="status-section status-modified" id="status-modified"></span>
   <span class="status-spacer"></span>
-  <input type="text" class="status-zoom-input" id="status-zoom" value="100%">
-  <input type="range" class="status-zoom-slider" id="status-zoom-slider" min="-5" max="10" value="0">
+  <span id="status-zoom-ctrl"></span>
 </div>
 
 <!-- Find/Replace panel (non-modal) -->
@@ -418,6 +417,7 @@
   </div>
 </div>
 
+<script src="../zoom-control.js"></script>
 <script src="controller.js"></script>
 </body>
 </html>

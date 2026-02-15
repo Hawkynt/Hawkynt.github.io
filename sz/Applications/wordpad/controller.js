@@ -743,9 +743,13 @@
 
   const zoomSlider = document.getElementById('rb-zoom-slider');
   const zoomValue = document.getElementById('rb-zoom-value');
-  const statusZoom = document.getElementById('status-zoom');
-  const statusZoomSlider = document.getElementById('status-zoom-slider');
   const editorArea = document.getElementById('editor-area');
+  const statusZoomCtrl = new SZ.ZoomControl(document.getElementById('status-zoom-ctrl'), {
+    min: 25, max: 500, step: 1, value: 100,
+    onChange: v => setZoom(v),
+    onZoomIn: () => setZoom(Math.min(500, currentZoom + 10)),
+    onZoomOut: () => setZoom(Math.max(25, currentZoom - 10)),
+  });
 
   function getPageDimensionsPx() {
     const sizes = {
@@ -785,23 +789,11 @@
     editor.style.transform = 'scale(' + (currentZoom / 100) + ')';
     editor.style.transformOrigin = 'top center';
     zoomSlider.value = currentZoom;
-    statusZoomSlider.value = currentZoom;
     zoomValue.textContent = currentZoom + '%';
-    statusZoom.value = currentZoom + '%';
+    statusZoomCtrl.value = currentZoom;
   }
 
   zoomSlider.addEventListener('input', () => setZoom(parseInt(zoomSlider.value, 10)));
-  statusZoomSlider.addEventListener('input', () => setZoom(parseInt(statusZoomSlider.value, 10)));
-
-  function commitStatusZoom() {
-    const raw = parseInt(statusZoom.value, 10);
-    if (!isNaN(raw))
-      setZoom(raw);
-    else
-      statusZoom.value = currentZoom + '%';
-  }
-  statusZoom.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); commitStatusZoom(); statusZoom.blur(); } });
-  statusZoom.addEventListener('blur', commitStatusZoom);
 
   // ═══════════════════════════════════════════════════════════════
   // Insert Table

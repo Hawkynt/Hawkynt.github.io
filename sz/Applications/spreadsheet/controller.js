@@ -1600,29 +1600,21 @@
     btn.addEventListener('click', () => handleAction(btn.dataset.action));
 
   // ── Zoom slider (status bar) ──────────────────────────────────────
-  const statusZoom = document.getElementById('status-zoom');
-  const statusZoomSlider = document.getElementById('status-zoom-slider');
   const gridContainer = document.getElementById('grid-container');
 
   let currentZoomPct = 100;
+  const statusZoomCtrl = new SZ.ZoomControl(document.getElementById('status-zoom-ctrl'), {
+    min: 25, max: 500, step: 1, value: 100,
+    onChange: v => setSpreadsheetZoom(v),
+  });
+
   function setSpreadsheetZoom(pct) {
     currentZoomPct = Math.max(25, Math.min(500, pct));
-    statusZoom.value = currentZoomPct + '%';
-    statusZoomSlider.value = currentZoomPct;
+    statusZoomCtrl.value = currentZoomPct;
     gridContainer.style.zoom = currentZoomPct === 100 ? '' : (currentZoomPct / 100);
     visibleRowStart = -1; visibleRowEnd = -1;
     renderVisibleRows();
   }
-  statusZoomSlider.addEventListener('input', () => setSpreadsheetZoom(parseInt(statusZoomSlider.value, 10)));
-  function commitStatusZoom() {
-    const raw = parseInt(statusZoom.value, 10);
-    if (!isNaN(raw))
-      setSpreadsheetZoom(raw);
-    else
-      statusZoom.value = currentZoomPct + '%';
-  }
-  statusZoom.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); commitStatusZoom(); statusZoom.blur(); } });
-  statusZoom.addEventListener('blur', commitStatusZoom);
 
   // All ribbon buttons with data-action
   document.addEventListener('click', (e) => {
