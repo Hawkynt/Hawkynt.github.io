@@ -29,11 +29,85 @@
 </head>
 <body>
 <noscript><p>About SynthelicZ -- a browser-based desktop operating system. <a href="../../index.html">Open »SynthelicZ« Desktop</a> to use this app.</p></noscript>
-  <h2>&raquo;SynthelicZ&laquo; Desktop</h2>
-  <p class="spacer">A browser-based desktop environment simulator.</p>
-  <p>Originally created 2004-2006 by Hawkynt.<br>Rewritten with modern web technologies.</p>
-  <hr class="divider">
-  <p class="version">Version 6.0 | &copy; 1995-2026 &raquo;SynthelicZ&laquo;</p>
+
+  <!-- Tab bar -->
+  <div class="tab-bar">
+    <button class="tab active" data-tab="general">General</button>
+    <button class="tab" data-tab="system">System</button>
+    <button class="tab" data-tab="credits">Credits</button>
+  </div>
+
+  <!-- General tab -->
+  <div class="tab-panel active" id="tab-general">
+    <div class="header-row">
+      <img class="logo" src="icon.svg" alt="SynthelicZ" width="48" height="48">
+      <div class="header-text">
+        <h2>&raquo;SynthelicZ&laquo; Desktop</h2>
+        <p class="tagline">A browser-based desktop environment simulator.</p>
+      </div>
+    </div>
+    <p>Originally created 2004&ndash;2006 by Hawkynt.<br>Rewritten with modern web technologies.</p>
+    <p>Visit <a id="link-website" href="https://hawkynt.github.io/sz/" target="_blank" rel="noopener">hawkynt.github.io/sz</a> for the latest version.</p>
+
+    <div class="data-notice">
+      <strong>&#x1F512; Your data stays local.</strong>
+      All files, settings, and application data are stored in your browser&rsquo;s local storage and persist between sessions&nbsp;&mdash; nothing is uploaded to any server.
+      Your saved content will be available every time you return with the same browser on the same device.
+      <em>However</em>, this data is tied to this specific browser and domain.
+      Clearing your browser data, using private/incognito mode, or switching browsers will erase all saved content permanently.
+    </div>
+
+    <hr class="divider">
+    <p class="version">Version 6.0 | &copy; 1995&ndash;2026 &raquo;SynthelicZ&laquo;</p>
+  </div>
+
+  <!-- System tab -->
+  <div class="tab-panel" id="tab-system">
+    <table class="sys-info">
+      <tr><th>Desktop resolution</th><td id="info-resolution">&hellip;</td></tr>
+      <tr><th>Device memory</th><td id="info-memory">&hellip;</td></tr>
+      <tr><th>Browser</th><td id="info-browser">&hellip;</td></tr>
+      <tr><th>Platform</th><td id="info-platform">&hellip;</td></tr>
+      <tr><th>Active skin</th><td id="info-skin">&hellip;</td></tr>
+      <tr><th>Color depth</th><td id="info-colors">&hellip;</td></tr>
+      <tr><th>Language</th><td id="info-language">&hellip;</td></tr>
+      <tr><th>Storage used</th><td id="info-storage">&hellip;</td></tr>
+    </table>
+    <button class="copy-btn" id="btn-copy" title="Copy system information to clipboard">&#x1F4CB; Copy to clipboard</button>
+  </div>
+
+  <!-- Credits tab -->
+  <div class="tab-panel" id="tab-credits">
+    <div class="credits-scroll">
+      <h3>Credits</h3>
+      <p><strong>Hawkynt</strong> &mdash; original author &amp; developer</p>
+      <p>Skin format based on Stardock WindowBlinds / Object Desktop skin assets.</p>
+      <p>Icons adapted from various open-source icon sets.</p>
+
+      <h3>Acknowledgments</h3>
+      <p>Inspired by the desktop environments of Windows&nbsp;XP, Mac&nbsp;OS&nbsp;X, and various Linux window managers. Special thanks to the Stardock community for the wealth of creative skins.</p>
+      <p>Window tab grouping inspired by <strong>TidyTabs</strong>. Window snapping &amp; tiling inspired by <strong>AquaSnap</strong>. Media player UI and skin support inspired by <strong>Winamp</strong>.</p>
+
+      <h3>License</h3>
+      <p>This project is provided as-is for <strong>educational and nostalgic purposes</strong>. It is <strong>free for personal and non-commercial use</strong>.</p>
+      <p>Skin assets remain the property of their respective authors. The &raquo;SynthelicZ&laquo; engine code is &copy; 1995&ndash;2026 Hawkynt.</p>
+
+      <div class="license-notice">
+        <strong>&#x1F3E2; Corporate &amp; commercial use</strong>
+        If you would like to use &raquo;SynthelicZ&laquo; in a commercial or corporate environment, please contact the author for licensing options and a product&nbsp;ID&nbsp;(PID).
+      </div>
+      <div class="donate-notice">
+        <strong>&#x2764;&#xFE0F; Support this project</strong>
+        If you enjoy &raquo;SynthelicZ&laquo;, please consider making a donation. Your support helps keep the project alive and motivates further development. Thank&nbsp;you!
+      </div>
+    </div>
+  </div>
+
+  <!-- OK button (always visible) -->
+  <div class="button-bar">
+    <button class="ok-btn" id="btn-ok">OK</button>
+  </div>
+
 <script src="controller.js"></script>
 </body>
 </html>
