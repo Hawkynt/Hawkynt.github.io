@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Display testing utility with dead pixel, color, uniformity, FPS, motion, HDR, geometry, and calibration tests">
+<meta name="robots" content="index,follow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Display Tester -- &raquo;SynthelicZ&laquo; Desktop">
+<meta property="og:description" content="Display testing utility with dead pixel, color, uniformity, FPS, motion, HDR, geometry, and calibration tests">
+<meta property="og:url" content="https://hawkynt.github.io/sz/Applications/display-tester/index.html">
+<link rel="canonical" href="https://hawkynt.github.io/sz/Applications/display-tester/index.html">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Display Tester",
+  "url": "https://hawkynt.github.io/sz/Applications/display-tester/index.html",
+  "description": "Display testing utility with dead pixel, color, uniformity, FPS, motion, HDR, geometry, and calibration tests",
+  "applicationCategory": "UtilitiesApplication",
+  "operatingSystem": "Web Browser",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<title>Display Tester</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<noscript><p>Display testing utility with dead pixel, color, uniformity, FPS, motion, HDR, geometry, and calibration tests. <a href="../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a> to use this app.</p></noscript>
+
+<div class="menu-bar">
+  <div class="menu-item" data-menu="file">
+    File
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="fullscreen">Fullscreen<span class="shortcut">F11</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="exit">Exit</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="tests">
+    Tests
+    <div class="menu-dropdown">
+      <div class="menu-entry has-submenu" data-submenu="dead-pixel">Dead Pixel
+        <div class="menu-submenu">
+          <div class="menu-entry" data-action="run-test" data-test="solid-red">Solid Red</div>
+          <div class="menu-entry" data-action="run-test" data-test="solid-green">Solid Green</div>
+          <div class="menu-entry" data-action="run-test" data-test="solid-blue">Solid Blue</div>
+          <div class="menu-entry" data-action="run-test" data-test="solid-white">Solid White</div>
+          <div class="menu-entry" data-action="run-test" data-test="solid-black">Solid Black</div>
+          <div class="menu-entry" data-action="run-test" data-test="solid-gray">Solid Gray</div>
+        </div>
+      </div>
+      <div class="menu-entry has-submenu" data-submenu="color">Color
+        <div class="menu-submenu">
+          <div class="menu-entry" data-action="run-test" data-test="rgb-gradient">RGB Gradient Bars</div>
+          <div class="menu-entry" data-action="run-test" data-test="grayscale-gradient">Grayscale Gradient</div>
+          <div class="menu-entry" data-action="run-test" data-test="color-checker">Color Checker</div>
+          <div class="menu-entry" data-action="run-test" data-test="gamma-test">Gamma Test</div>
+          <div class="menu-entry" data-action="run-test" data-test="color-bleed">Color Bleed</div>
+          <div class="menu-entry" data-action="run-test" data-test="color-banding">Color Banding</div>
+          <div class="menu-entry" data-action="run-test" data-test="dithering-detect">Dithering Detection</div>
+        </div>
+      </div>
+      <div class="menu-entry has-submenu" data-submenu="uniformity">Uniformity
+        <div class="menu-submenu">
+          <div class="menu-entry" data-action="run-test" data-test="white-uniformity">White Uniformity</div>
+          <div class="menu-entry" data-action="run-test" data-test="low-gray-uniformity">Low Gray Uniformity</div>
+          <div class="menu-entry" data-action="run-test" data-test="five-point">5-Point Brightness</div>
+          <div class="menu-entry" data-action="run-test" data-test="uniformity-sweep">Uniformity Sweep</div>
+          <div class="menu-entry" data-action="run-test" data-test="viewing-angle">Viewing Angle</div>
+          <div class="menu-entry" data-action="run-test" data-test="burn-in-check">Burn-in / Retention</div>
+        </div>
+      </div>
+      <div class="menu-entry has-submenu" data-submenu="fps">FPS / Refresh Rate
+        <div class="menu-submenu">
+          <div class="menu-entry" data-action="run-test" data-test="fps-counter">Frame Counter</div>
+          <div class="menu-entry" data-action="run-test" data-test="ufo-test">UFO Test</div>
+          <div class="menu-entry" data-action="run-test" data-test="vsync-tear">Vsync Tear Test</div>
+        </div>
+      </div>
+      <div class="menu-entry has-submenu" data-submenu="motion">Motion / Response
+        <div class="menu-submenu">
+          <div class="menu-entry" data-action="run-test" data-test="moving-crosshair">Moving Crosshair</div>
+          <div class="menu-entry" data-action="run-test" data-test="bw-flash">Black-to-White Flash</div>
+          <div class="menu-entry" data-action="run-test" data-test="pursuit-camera">Pursuit Camera Test</div>
+          <div class="menu-entry" data-action="run-test" data-test="input-lag">Input Lag Flasher</div>
+          <div class="menu-entry" data-action="run-test" data-test="gray-to-gray">Gray-to-Gray</div>
+          <div class="menu-entry" data-action="run-test" data-test="scrolling-text">Scrolling Text</div>
+        </div>
+      </div>
+      <div class="menu-entry has-submenu" data-submenu="hdr">HDR / Dynamic Range
+        <div class="menu-submenu">
+          <div class="menu-entry" data-action="run-test" data-test="hdr-gradient">HDR Gradient</div>
+          <div class="menu-entry" data-action="run-test" data-test="hdr-clipping">HDR Highlight Clipping</div>
+          <div class="menu-entry" data-action="run-test" data-test="contrast-ratio">Contrast Ratio</div>
+          <div class="menu-entry" data-action="run-test" data-test="shadow-detail">Shadow Detail</div>
+        </div>
+      </div>
+      <div class="menu-entry has-submenu" data-submenu="geometry">Geometry / Sharpness
+        <div class="menu-submenu">
+          <div class="menu-entry" data-action="run-test" data-test="pixel-grid">1px Grid</div>
+          <div class="menu-entry" data-action="run-test" data-test="checkerboard">Checkerboard</div>
+          <div class="menu-entry" data-action="run-test" data-test="circle-line">Circle / Line Test</div>
+          <div class="menu-entry" data-action="run-test" data-test="text-sharpness">Text Sharpness</div>
+          <div class="menu-entry" data-action="run-test" data-test="aspect-ratio">Aspect Ratio</div>
+          <div class="menu-entry" data-action="run-test" data-test="subpixel-layout">Subpixel Layout</div>
+          <div class="menu-entry" data-action="run-test" data-test="moire-pattern">Moir&#233; Pattern</div>
+        </div>
+      </div>
+      <div class="menu-entry has-submenu" data-submenu="calibration">Calibration
+        <div class="menu-submenu">
+          <div class="menu-entry" data-action="run-test" data-test="gamma-calib">Gamma Calibration</div>
+          <div class="menu-entry" data-action="run-test" data-test="rgb-balance">RGB Balance</div>
+          <div class="menu-entry" data-action="run-test" data-test="sharpness-pattern">Sharpness Pattern</div>
+          <div class="menu-entry" data-action="run-test" data-test="contrast-calib">Contrast Calibration</div>
+          <div class="menu-entry" data-action="run-test" data-test="brightness-calib">Brightness Calibration</div>
+          <div class="menu-entry" data-action="run-test" data-test="keystone-grid">Keystone Grid</div>
+          <div class="menu-entry" data-action="run-test" data-test="overscan-detect">Overscan Detection</div>
+          <div class="menu-entry" data-action="run-test" data-test="color-temp">Color Temperature</div>
+          <div class="menu-entry" data-action="run-test" data-test="convergence-test">Convergence Test</div>
+          <div class="menu-entry" data-action="run-test" data-test="backlight-bleed">Backlight Bleed</div>
+          <div class="menu-entry" data-action="run-test" data-test="screen-ruler">Screen Ruler</div>
+          <div class="menu-entry" data-action="run-test" data-test="pixel-clock">Pixel Clock / Phase</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="view">
+    View
+    <div class="menu-dropdown">
+      <div class="menu-entry checkable checked" data-action="toggle-toolbar">Show Toolbar</div>
+      <div class="menu-entry checkable checked" data-action="toggle-statusbar">Show Status Bar</div>
+      <div class="menu-entry checkable checked" data-action="toggle-descriptions">Show Test Descriptions</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="help">
+    Help
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="shortcuts">Keyboard Shortcuts</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="about">About Display Tester</div>
+    </div>
+  </div>
+</div>
+
+<div class="toolbar" id="toolbar">
+  <button class="tb-btn" id="btn-back" title="Back to test selector (Esc)" disabled>&#9664; Back</button>
+  <span class="tb-sep"></span>
+  <span class="tb-label" id="test-name-label"></span>
+  <span class="tb-controls" id="test-controls"></span>
+  <span class="tb-spacer"></span>
+  <button class="tb-btn" id="btn-fullscreen" title="Toggle fullscreen (F11)">&#9974; Fullscreen</button>
+</div>
+
+<div id="app">
+  <div id="test-selector"></div>
+  <div id="test-area" style="display:none">
+    <canvas id="test-canvas"></canvas>
+    <canvas id="gl-canvas" style="display:none"></canvas>
+    <div id="test-overlay"></div>
+  </div>
+</div>
+
+<div class="status-bar" id="status-bar">
+  <span id="sb-test">Ready</span>
+  <span class="sb-sep"></span>
+  <span id="sb-resolution"></span>
+  <span class="sb-sep"></span>
+  <span id="sb-dpr"></span>
+  <span class="sb-sep"></span>
+  <span id="sb-fps"></span>
+</div>
+
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Display Tester</div>
+    <div class="dialog-body">
+      <p><strong>Display Tester</strong></p>
+      <p>Comprehensive display quality testing utility with 51 tests across 8 categories: dead pixel detection, color accuracy (banding, dithering), uniformity (sweep, viewing angle, burn-in), FPS/refresh rate, motion/response time (input lag, gray-to-gray, scrolling text), HDR/dynamic range (WebGL2), geometry/sharpness (subpixel layout, moir&#233;), and interactive calibration tools (ruler, pixel clock).</p>
+      <p>Part of the <em>&raquo;SynthelicZ&laquo;</em> Desktop Environment.</p>
+    </div>
+    <div class="dialog-buttons"><button data-result="ok">OK</button></div>
+  </div>
+</div>
+
+<div class="dialog-overlay" id="dlg-shortcuts">
+  <div class="dialog">
+    <div class="dialog-title">Keyboard Shortcuts</div>
+    <div class="dialog-body">
+      <table class="shortcut-table">
+        <tr><td><kbd>Esc</kbd></td><td>Exit test / exit fullscreen</td></tr>
+        <tr><td><kbd>F11</kbd></td><td>Toggle fullscreen</td></tr>
+        <tr><td><kbd>&#8594;</kbd> / <kbd>&#8595;</kbd></td><td>Next test in category</td></tr>
+        <tr><td><kbd>&#8592;</kbd> / <kbd>&#8593;</kbd></td><td>Previous test in category</td></tr>
+        <tr><td><kbd>Space</kbd></td><td>Pause / resume animated tests</td></tr>
+        <tr><td><kbd>1</kbd>-<kbd>8</kbd></td><td>Jump to category (in selector)</td></tr>
+      </table>
+    </div>
+    <div class="dialog-buttons"><button data-result="ok">OK</button></div>
+  </div>
+</div>
+
+<script src="controller.js"></script>
+</body>
+</html>
