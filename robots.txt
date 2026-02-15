@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://hawkynt.github.io/sitemap.xml
