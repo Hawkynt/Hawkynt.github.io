@@ -398,8 +398,20 @@
 
   /* ---- Lock and Advance ---- */
   function lockAndAdvance() {
+    const lockedRow = currentPiece.row;
+    const lockedShape = getShape(currentPiece.type, currentPiece.rotation);
+
     lockPieceToBoard();
     currentPiece = null;
+
+    /* Lock out: any filled cell above the visible playfield = game over */
+    const lockedSize = lockedShape.length;
+    for (let r = 0; r < lockedSize; ++r)
+      for (let c = 0; c < lockedSize; ++c)
+        if (lockedShape[r][c] && lockedRow + r < 0) {
+          doGameOver();
+          return;
+        }
 
     const fullRows = findFullRows();
     if (fullRows.length > 0) {
@@ -677,9 +689,11 @@
       case 'controls':
         showDialog('controlsBackdrop');
         break;
-      case 'about':
-        showDialog('aboutBackdrop');
+      case 'about': {
+        const dlg = document.getElementById('dlg-about');
+        if (dlg) dlg.classList.add('visible');
         break;
+      }
     }
   }
 
@@ -711,19 +725,16 @@
       closeDialog('controlsBackdrop');
   });
 
-  document.getElementById('aboutClose').addEventListener('click', () => closeDialog('aboutBackdrop'));
-  document.getElementById('aboutOk').addEventListener('click', () => closeDialog('aboutBackdrop'));
-  document.getElementById('aboutBackdrop').addEventListener('pointerdown', e => {
-    if (e.target === e.currentTarget)
-      closeDialog('aboutBackdrop');
-  });
 
   /* ---- Keyboard Input ---- */
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
       closeHighScores();
       closeDialog('controlsBackdrop');
-      closeDialog('aboutBackdrop');
+      {
+        const dlg = document.getElementById('dlg-about');
+        if (dlg) dlg.classList.remove('visible');
+      }
       return;
     }
 
