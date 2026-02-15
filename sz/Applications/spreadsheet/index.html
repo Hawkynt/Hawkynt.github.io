@@ -31,417 +31,569 @@
 <body>
 <noscript><p>Online spreadsheet editor with formulas and CSV/TSV support. <a href="../../index.html">Open »SynthelicZ« Desktop</a> to use this app.</p></noscript>
 
-<!-- File menu bar (minimal, above ribbon) -->
-<div class="file-menu-bar" id="file-menu-bar">
-  <div class="file-menu-item" data-menu="file">
-    File
-    <div class="file-menu-dropdown">
-      <div class="menu-entry" data-action="new">New<span class="shortcut">Ctrl+N</span></div>
-      <div class="menu-entry" data-action="open">Open...<span class="shortcut">Ctrl+O</span></div>
-      <div class="menu-entry" data-action="save">Save<span class="shortcut">Ctrl+S</span></div>
-      <div class="menu-entry" data-action="save-as">Save As...</div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="import-csv">Import CSV...</div>
-      <div class="menu-entry" data-action="export-csv">Export CSV...</div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="import-xlsx">Import XLSX...</div>
-      <div class="menu-entry" data-action="export-xlsx">Export as XLSX...</div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="import-tsv">Import TSV...</div>
-      <div class="menu-entry" data-action="export-tsv">Export as TSV...</div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="exit">Exit</div>
-    </div>
-  </div>
-  <div class="file-menu-item" data-menu="help">
-    Help
-    <div class="file-menu-dropdown">
-      <div class="menu-entry" data-action="about">About Spreadsheet</div>
-    </div>
+<!-- Quick Access Toolbar -->
+<div class="qat" id="qat">
+  <button class="qat-btn" data-action="save" title="Save (Ctrl+S)">&#128190;</button>
+  <button class="qat-btn" data-action="undo" title="Undo (Ctrl+Z)">&#8630;</button>
+  <button class="qat-btn" data-action="redo" title="Redo (Ctrl+Y)">&#8631;</button>
+  <button class="qat-btn" data-action="print" title="Print (Ctrl+P)">&#128424;</button>
+</div>
+
+<!-- Ribbon Tab Bar -->
+<div class="ribbon-tabs" id="ribbon-tabs">
+  <div class="ribbon-tab-bar">
+    <button class="ribbon-file-btn" id="ribbon-file-btn">File</button>
+    <button class="ribbon-tab active" data-tab="home">Home</button>
+    <button class="ribbon-tab" data-tab="insert">Insert</button>
+    <button class="ribbon-tab" data-tab="formulas">Formulas</button>
+    <button class="ribbon-tab" data-tab="data">Data</button>
+    <button class="ribbon-tab" data-tab="format">Format</button>
   </div>
 </div>
 
-<!-- Ribbon -->
-<div class="ribbon" id="ribbon">
-  <div class="ribbon-tabs" id="ribbon-tabs">
-    <div class="ribbon-tab active" data-tab="home">Home</div>
-    <div class="ribbon-tab" data-tab="insert">Insert</div>
-    <div class="ribbon-tab" data-tab="formulas">Formulas</div>
-    <div class="ribbon-tab" data-tab="data">Data</div>
-    <div class="ribbon-tab" data-tab="format">Format</div>
+<!-- Home Tab -->
+<div class="ribbon-panel active" data-panel="home" id="ribbon-home">
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="paste" title="Paste (Ctrl+V)">
+        <span class="rb-icon rb-icon-lg">&#128203;</span>
+        <span class="rb-label">Paste</span>
+      </button>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="cut" title="Cut (Ctrl+X)">
+          <span class="rb-icon">&#9986;</span><span class="rb-label">Cut</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="copy" title="Copy (Ctrl+C)">
+          <span class="rb-icon">&#128464;</span><span class="rb-label">Copy</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="paste-special" title="Paste Special">
+          <span class="rb-icon">&#128203;</span><span class="rb-label">Paste Special</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Clipboard</div>
   </div>
 
-  <!-- Home Tab -->
-  <div class="ribbon-panel active" id="tab-home">
+  <div class="ribbon-sep"></div>
 
-    <div class="ribbon-group">
-      <div class="ribbon-group-content">
-        <button class="ribbon-btn ribbon-btn-large" data-action="paste" title="Paste (Ctrl+V)">
-          <span class="ribbon-icon ribbon-icon-lg">&#128203;</span>
-          <span class="ribbon-label">Paste</span>
+  <div class="ribbon-group">
+    <div class="ribbon-group-content rb-font-group">
+      <div class="rb-row">
+        <select id="sel-font-family" class="rb-select rb-font-family" title="Font Family">
+          <option value="Tahoma, Verdana, sans-serif">Tahoma</option>
+          <option value="Arial, sans-serif">Arial</option>
+          <option value="Calibri, sans-serif">Calibri</option>
+          <option value="Cambria, serif">Cambria</option>
+          <option value="Consolas, monospace">Consolas</option>
+          <option value="Courier New, monospace">Courier New</option>
+          <option value="Georgia, serif">Georgia</option>
+          <option value="Helvetica, sans-serif">Helvetica</option>
+          <option value="Impact, sans-serif">Impact</option>
+          <option value="Times New Roman, serif">Times New Roman</option>
+          <option value="Trebuchet MS, sans-serif">Trebuchet MS</option>
+          <option value="Verdana, sans-serif">Verdana</option>
+        </select>
+        <select id="sel-font-size" class="rb-select rb-font-size" title="Font Size">
+          <option value="8">8</option>
+          <option value="9">9</option>
+          <option value="10">10</option>
+          <option value="11" selected>11</option>
+          <option value="12">12</option>
+          <option value="14">14</option>
+          <option value="16">16</option>
+          <option value="18">18</option>
+          <option value="20">20</option>
+          <option value="24">24</option>
+          <option value="28">28</option>
+          <option value="36">36</option>
+          <option value="48">48</option>
+          <option value="72">72</option>
+        </select>
+      </div>
+      <div class="rb-row">
+        <button id="btn-bold" class="rb-btn rb-fmt" data-action="bold" title="Bold (Ctrl+B)"><b>B</b></button>
+        <button id="btn-italic" class="rb-btn rb-fmt" data-action="italic" title="Italic (Ctrl+I)"><i>I</i></button>
+        <button id="btn-underline" class="rb-btn rb-fmt" data-action="underline" title="Underline (Ctrl+U)"><u>U</u></button>
+        <button id="btn-strikethrough" class="rb-btn rb-fmt" data-action="strikethrough" title="Strikethrough"><s>S</s></button>
+        <span class="rb-sep-v"></span>
+        <button id="btn-font-color" class="rb-btn rb-fmt rb-color-btn" data-action="font-color" title="Font Color">
+          <b>A</b><span class="rb-color-ind" id="font-color-ind" style="background:#c00000;"></span>
         </button>
-        <div class="ribbon-btn-stack">
-          <button class="ribbon-btn ribbon-btn-small" data-action="cut" title="Cut (Ctrl+X)">
-            <span class="ribbon-icon">&#9986;</span> Cut
-          </button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="copy" title="Copy (Ctrl+C)">
-            <span class="ribbon-icon">&#128464;</span> Copy
-          </button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="paste-special" title="Paste Special">
-            <span class="ribbon-icon">&#128203;</span> Paste Special
-          </button>
-        </div>
+        <button id="btn-bg-color" class="rb-btn rb-fmt rb-color-btn" data-action="bg-color" title="Fill Color">
+          <span style="font-size:12px;">&#9608;</span><span class="rb-color-ind" id="bg-color-ind" style="background:#ffff00;"></span>
+        </button>
       </div>
-      <div class="ribbon-group-label">Clipboard</div>
     </div>
-
-    <div class="ribbon-group">
-      <div class="ribbon-group-content ribbon-font-group">
-        <div class="ribbon-row">
-          <select id="sel-font-family" class="ribbon-select ribbon-font-select" title="Font Family">
-            <option value="Tahoma, Verdana, sans-serif">Tahoma</option>
-            <option value="Arial, sans-serif">Arial</option>
-            <option value="Calibri, sans-serif">Calibri</option>
-            <option value="Cambria, serif">Cambria</option>
-            <option value="Consolas, monospace">Consolas</option>
-            <option value="Courier New, monospace">Courier New</option>
-            <option value="Georgia, serif">Georgia</option>
-            <option value="Helvetica, sans-serif">Helvetica</option>
-            <option value="Impact, sans-serif">Impact</option>
-            <option value="Times New Roman, serif">Times New Roman</option>
-            <option value="Trebuchet MS, sans-serif">Trebuchet MS</option>
-            <option value="Verdana, sans-serif">Verdana</option>
-          </select>
-          <select id="sel-font-size" class="ribbon-select ribbon-size-select" title="Font Size">
-            <option value="8">8</option>
-            <option value="9">9</option>
-            <option value="10">10</option>
-            <option value="11" selected>11</option>
-            <option value="12">12</option>
-            <option value="14">14</option>
-            <option value="16">16</option>
-            <option value="18">18</option>
-            <option value="20">20</option>
-            <option value="24">24</option>
-            <option value="28">28</option>
-            <option value="36">36</option>
-            <option value="48">48</option>
-            <option value="72">72</option>
-          </select>
-        </div>
-        <div class="ribbon-row">
-          <button id="btn-bold" class="ribbon-btn ribbon-btn-icon" data-action="bold" title="Bold (Ctrl+B)"><b>B</b></button>
-          <button id="btn-italic" class="ribbon-btn ribbon-btn-icon" data-action="italic" title="Italic (Ctrl+I)"><i>I</i></button>
-          <button id="btn-underline" class="ribbon-btn ribbon-btn-icon" data-action="underline" title="Underline (Ctrl+U)"><u>U</u></button>
-          <button id="btn-strikethrough" class="ribbon-btn ribbon-btn-icon" data-action="strikethrough" title="Strikethrough"><s>S</s></button>
-          <span class="ribbon-vsep"></span>
-          <button id="btn-font-color" class="ribbon-btn ribbon-btn-icon ribbon-color-btn" data-action="font-color" title="Font Color">
-            <b>A</b><span class="color-indicator" id="font-color-ind" style="background:#c00000;"></span>
-          </button>
-          <button id="btn-bg-color" class="ribbon-btn ribbon-btn-icon ribbon-color-btn" data-action="bg-color" title="Fill Color">
-            <span style="font-size:12px;">&#9608;</span><span class="color-indicator" id="bg-color-ind" style="background:#ffff00;"></span>
-          </button>
-        </div>
-      </div>
-      <div class="ribbon-group-label">Font</div>
-    </div>
-
-    <div class="ribbon-group">
-      <div class="ribbon-group-content">
-        <div class="ribbon-row">
-          <button id="btn-align-left" class="ribbon-btn ribbon-btn-icon" data-action="align-left" title="Align Left">&#9776;</button>
-          <button id="btn-align-center" class="ribbon-btn ribbon-btn-icon" data-action="align-center" title="Center">&#8801;</button>
-          <button id="btn-align-right" class="ribbon-btn ribbon-btn-icon" data-action="align-right" title="Align Right">&#8594;</button>
-        </div>
-        <div class="ribbon-row">
-          <button id="btn-valign-top" class="ribbon-btn ribbon-btn-icon" data-action="valign-top" title="Top Align">&#8593;</button>
-          <button id="btn-valign-middle" class="ribbon-btn ribbon-btn-icon" data-action="valign-middle" title="Middle Align">&#8597;</button>
-          <button id="btn-valign-bottom" class="ribbon-btn ribbon-btn-icon" data-action="valign-bottom" title="Bottom Align">&#8595;</button>
-        </div>
-        <div class="ribbon-row">
-          <button id="btn-wrap-text" class="ribbon-btn ribbon-btn-icon" data-action="wrap-text" title="Wrap Text">&#8629;</button>
-          <button id="btn-merge-cells" class="ribbon-btn ribbon-btn-icon" data-action="merge-cells" title="Merge Cells">&#9638;</button>
-        </div>
-      </div>
-      <div class="ribbon-group-label">Alignment</div>
-    </div>
-
-    <div class="ribbon-group">
-      <div class="ribbon-group-content">
-        <div class="ribbon-row" style="width:100%;">
-          <select id="sel-number-format" class="ribbon-select ribbon-numfmt-select" title="Number Format">
-            <option value="general">General</option>
-            <option value="number">Number</option>
-            <option value="currency">Currency</option>
-            <option value="percent">Percentage</option>
-            <option value="date">Date</option>
-            <option value="time">Time</option>
-            <option value="text">Text</option>
-            <option value="scientific">Scientific</option>
-            <option value="fraction">Fraction</option>
-          </select>
-        </div>
-        <div class="ribbon-row">
-          <button class="ribbon-btn ribbon-btn-icon" data-action="decimal-increase" title="Increase Decimal">+.0</button>
-          <button class="ribbon-btn ribbon-btn-icon" data-action="decimal-decrease" title="Decrease Decimal">-.0</button>
-          <button id="btn-thousands" class="ribbon-btn ribbon-btn-icon" data-action="thousands-sep" title="Thousands Separator">,</button>
-        </div>
-      </div>
-      <div class="ribbon-group-label">Number</div>
-    </div>
-
-    <div class="ribbon-group">
-      <div class="ribbon-group-content">
-        <div class="ribbon-btn-stack">
-          <button class="ribbon-btn ribbon-btn-small" data-action="cond-format" title="Conditional Formatting">
-            <span class="ribbon-icon">&#9733;</span> Conditional Format...
-          </button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="cell-styles" title="Cell Styles">
-            <span class="ribbon-icon">&#9998;</span> Cell Styles...
-          </button>
-        </div>
-      </div>
-      <div class="ribbon-group-label">Styles</div>
-    </div>
-
-    <div class="ribbon-group">
-      <div class="ribbon-group-content">
-        <div class="ribbon-btn-stack">
-          <button class="ribbon-btn ribbon-btn-small" data-action="insert-row" title="Insert Row">&#x2795; Insert Row</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="insert-col" title="Insert Column">&#x2795; Insert Column</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="delete-row" title="Delete Row">&#x2796; Delete Row</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="delete-col" title="Delete Column">&#x2796; Delete Column</button>
-        </div>
-      </div>
-      <div class="ribbon-group-label">Cells</div>
-    </div>
-
-    <div class="ribbon-group">
-      <div class="ribbon-group-content">
-        <div class="ribbon-btn-stack">
-          <button class="ribbon-btn ribbon-btn-small" data-action="autosum" title="AutoSum">&#931; AutoSum</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="fill-down" title="Fill Down">&#8595; Fill Down</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="fill-right" title="Fill Right">&#8594; Fill Right</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="sort-asc" title="Sort A-Z">&#8593; Sort A-Z</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="sort-desc" title="Sort Z-A">&#8595; Sort Z-A</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="find-replace" title="Find &amp; Replace (Ctrl+F)">&#128269; Find &amp; Replace</button>
-        </div>
-      </div>
-      <div class="ribbon-group-label">Editing</div>
-    </div>
-
+    <div class="ribbon-group-label">Font</div>
   </div>
 
-  <!-- Insert Tab -->
-  <div class="ribbon-panel" id="tab-insert">
+  <div class="ribbon-sep"></div>
 
-    <div class="ribbon-group">
-      <div class="ribbon-group-content">
-        <button class="ribbon-btn ribbon-btn-large" data-action="insert-chart-bar" title="Bar Chart">
-          <span class="ribbon-icon ribbon-icon-lg">&#128202;</span>
-          <span class="ribbon-label">Bar</span>
-        </button>
-        <button class="ribbon-btn ribbon-btn-large" data-action="insert-chart-line" title="Line Chart">
-          <span class="ribbon-icon ribbon-icon-lg">&#128200;</span>
-          <span class="ribbon-label">Line</span>
-        </button>
-        <button class="ribbon-btn ribbon-btn-large" data-action="insert-chart-pie" title="Pie Chart">
-          <span class="ribbon-icon ribbon-icon-lg">&#9899;</span>
-          <span class="ribbon-label">Pie</span>
-        </button>
-        <div class="ribbon-btn-stack">
-          <button class="ribbon-btn ribbon-btn-small" data-action="insert-chart-scatter" title="Scatter Chart">&#8226; Scatter</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="insert-chart-area" title="Area Chart">&#9650; Area</button>
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <div class="rb-row">
+          <button id="btn-align-left" class="rb-btn rb-fmt" data-action="align-left" title="Align Left">&#9776;</button>
+          <button id="btn-align-center" class="rb-btn rb-fmt" data-action="align-center" title="Center">&#8801;</button>
+          <button id="btn-align-right" class="rb-btn rb-fmt" data-action="align-right" title="Align Right">&#8594;</button>
+        </div>
+        <div class="rb-row">
+          <button id="btn-valign-top" class="rb-btn rb-fmt" data-action="valign-top" title="Top Align">&#8593;</button>
+          <button id="btn-valign-middle" class="rb-btn rb-fmt" data-action="valign-middle" title="Middle Align">&#8597;</button>
+          <button id="btn-valign-bottom" class="rb-btn rb-fmt" data-action="valign-bottom" title="Bottom Align">&#8595;</button>
+        </div>
+        <div class="rb-row">
+          <button id="btn-wrap-text" class="rb-btn rb-fmt" data-action="wrap-text" title="Wrap Text">&#8629;</button>
+          <button id="btn-merge-cells" class="rb-btn rb-fmt" data-action="merge-cells" title="Merge Cells">&#9638;</button>
         </div>
       </div>
-      <div class="ribbon-group-label">Charts</div>
     </div>
-
-    <div class="ribbon-group">
-      <div class="ribbon-group-content">
-        <button class="ribbon-btn ribbon-btn-large" data-action="insert-function" title="Insert Function">
-          <span class="ribbon-icon ribbon-icon-lg"><i>f</i><sub>x</sub></span>
-          <span class="ribbon-label">Function</span>
-        </button>
-      </div>
-      <div class="ribbon-group-label">Functions</div>
-    </div>
-
-    <div class="ribbon-group">
-      <div class="ribbon-group-content">
-        <div class="ribbon-btn-stack">
-          <button class="ribbon-btn ribbon-btn-small" data-action="insert-hyperlink" title="Hyperlink">&#128279; Hyperlink</button>
-        </div>
-      </div>
-      <div class="ribbon-group-label">Links</div>
-    </div>
-
-    <div class="ribbon-group">
-      <div class="ribbon-group-content">
-        <div class="ribbon-btn-stack">
-          <button class="ribbon-btn ribbon-btn-small" data-action="insert-comment" title="Comment/Note">&#128172; Comment</button>
-        </div>
-      </div>
-      <div class="ribbon-group-label">Text</div>
-    </div>
-
+    <div class="ribbon-group-label">Alignment</div>
   </div>
 
-  <!-- Formulas Tab -->
-  <div class="ribbon-panel" id="tab-formulas">
+  <div class="ribbon-sep"></div>
 
-    <div class="ribbon-group">
-      <div class="ribbon-group-content">
-        <button class="ribbon-btn ribbon-btn-large" data-action="insert-function" title="Insert Function">
-          <span class="ribbon-icon ribbon-icon-lg"><i>f</i><sub>x</sub></span>
-          <span class="ribbon-label">Insert Function</span>
-        </button>
-        <div class="ribbon-btn-stack">
-          <button class="ribbon-btn ribbon-btn-small" data-action="fn-cat-math" title="Math &amp; Trig">&#931; Math &amp; Trig</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="fn-cat-stat" title="Statistical">&#128200; Statistical</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="fn-cat-text" title="Text">&#128172; Text</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="fn-cat-date" title="Date/Time">&#128197; Date/Time</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="fn-cat-logical" title="Logical">&#10004; Logical</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="fn-cat-lookup" title="Lookup">&#128270; Lookup</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="fn-cat-financial" title="Financial">&#128176; Financial</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="fn-cat-info" title="Info">&#8505; Info</button>
-        </div>
+  <div class="ribbon-group">
+    <div class="ribbon-group-content rb-font-group">
+      <div class="rb-row">
+        <select id="sel-number-format" class="rb-select rb-numfmt-select" title="Number Format">
+          <option value="general">General</option>
+          <option value="number">Number</option>
+          <option value="currency">Currency</option>
+          <option value="percent">Percentage</option>
+          <option value="date">Date</option>
+          <option value="time">Time</option>
+          <option value="text">Text</option>
+          <option value="scientific">Scientific</option>
+          <option value="fraction">Fraction</option>
+        </select>
       </div>
-      <div class="ribbon-group-label">Function Library</div>
-    </div>
-
-    <div class="ribbon-group">
-      <div class="ribbon-group-content">
-        <div class="ribbon-btn-stack">
-          <button class="ribbon-btn ribbon-btn-small" data-action="name-manager" title="Name Manager">&#128203; Name Manager</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="define-name" title="Define Name">&#128204; Define Name</button>
-        </div>
+      <div class="rb-row">
+        <button class="rb-btn rb-fmt" data-action="decimal-increase" title="Increase Decimal">+.0</button>
+        <button class="rb-btn rb-fmt" data-action="decimal-decrease" title="Decrease Decimal">-.0</button>
+        <button id="btn-thousands" class="rb-btn rb-fmt" data-action="thousands-sep" title="Thousands Separator">,</button>
       </div>
-      <div class="ribbon-group-label">Defined Names</div>
     </div>
-
-    <div class="ribbon-group">
-      <div class="ribbon-group-content">
-        <div class="ribbon-btn-stack">
-          <button class="ribbon-btn ribbon-btn-small" data-action="trace-precedents" title="Trace Precedents">&#8592; Precedents</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="trace-dependents" title="Trace Dependents">&#8594; Dependents</button>
-          <button id="btn-show-formulas" class="ribbon-btn ribbon-btn-small" data-action="show-formulas" title="Show Formulas">&#123;&#125; Show Formulas</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="error-checking" title="Error Checking">&#9888; Error Checking</button>
-        </div>
-      </div>
-      <div class="ribbon-group-label">Formula Auditing</div>
-    </div>
-
+    <div class="ribbon-group-label">Number</div>
   </div>
 
-  <!-- Data Tab -->
-  <div class="ribbon-panel" id="tab-data">
+  <div class="ribbon-sep"></div>
 
-    <div class="ribbon-group">
-      <div class="ribbon-group-content">
-        <button class="ribbon-btn ribbon-btn-large" data-action="sort-asc" title="Sort Ascending">
-          <span class="ribbon-icon ribbon-icon-lg">&#8593;</span>
-          <span class="ribbon-label">Sort A-Z</span>
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="cond-format" title="Conditional Formatting">
+          <span class="rb-icon">&#9733;</span><span class="rb-label">Conditional Format...</span>
         </button>
-        <button class="ribbon-btn ribbon-btn-large" data-action="sort-desc" title="Sort Descending">
-          <span class="ribbon-icon ribbon-icon-lg">&#8595;</span>
-          <span class="ribbon-label">Sort Z-A</span>
+        <button class="rb-btn rb-btn-sm" data-action="format-table" title="Format as Table">
+          <span class="rb-icon">&#9638;</span><span class="rb-label">Format as Table...</span>
         </button>
-        <div class="ribbon-btn-stack">
-          <button class="ribbon-btn ribbon-btn-small" data-action="custom-sort" title="Custom Sort">&#128203; Custom Sort...</button>
-          <button id="btn-auto-filter" class="ribbon-btn ribbon-btn-small" data-action="auto-filter" title="Auto Filter">&#9660; Auto Filter</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="clear-filter" title="Clear Filter">&#10006; Clear Filter</button>
-        </div>
+        <button class="rb-btn rb-btn-sm" data-action="cell-styles" title="Cell Styles">
+          <span class="rb-icon">&#9998;</span><span class="rb-label">Cell Styles...</span>
+        </button>
       </div>
-      <div class="ribbon-group-label">Sort &amp; Filter</div>
     </div>
-
-    <div class="ribbon-group">
-      <div class="ribbon-group-content">
-        <div class="ribbon-btn-stack">
-          <button class="ribbon-btn ribbon-btn-small" data-action="text-to-columns" title="Text to Columns">&#9474; Text to Columns</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="remove-duplicates" title="Remove Duplicates">&#10006; Remove Duplicates</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="data-validation" title="Data Validation">&#10004; Data Validation</button>
-        </div>
-      </div>
-      <div class="ribbon-group-label">Data Tools</div>
-    </div>
-
-    <div class="ribbon-group">
-      <div class="ribbon-group-content">
-        <div class="ribbon-btn-stack">
-          <button class="ribbon-btn ribbon-btn-small" data-action="group-rows" title="Group Rows">&#9654; Group Rows</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="ungroup-rows" title="Ungroup Rows">&#9664; Ungroup Rows</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="group-cols" title="Group Columns">&#9654; Group Columns</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="ungroup-cols" title="Ungroup Columns">&#9664; Ungroup Columns</button>
-        </div>
-      </div>
-      <div class="ribbon-group-label">Outline</div>
-    </div>
-
+    <div class="ribbon-group-label">Styles</div>
   </div>
 
-  <!-- Format Tab -->
-  <div class="ribbon-panel" id="tab-format">
+  <div class="ribbon-sep"></div>
 
-    <div class="ribbon-group">
-      <div class="ribbon-group-content">
-        <button class="ribbon-btn ribbon-btn-large" data-action="format-cells" title="Format Cells">
-          <span class="ribbon-icon ribbon-icon-lg">&#9998;</span>
-          <span class="ribbon-label">Format Cells</span>
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="insert-row" title="Insert Row">
+          <span class="rb-icon">&#x2795;</span><span class="rb-label">Insert Row</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-col" title="Insert Column">
+          <span class="rb-icon">&#x2795;</span><span class="rb-label">Insert Column</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="delete-row" title="Delete Row">
+          <span class="rb-icon">&#x2796;</span><span class="rb-label">Delete Row</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="delete-col" title="Delete Column">
+          <span class="rb-icon">&#x2796;</span><span class="rb-label">Delete Column</span>
         </button>
       </div>
-      <div class="ribbon-group-label">Cells</div>
     </div>
+    <div class="ribbon-group-label">Cells</div>
+  </div>
 
-    <div class="ribbon-group">
-      <div class="ribbon-group-content">
-        <div class="ribbon-btn-stack">
-          <button class="ribbon-btn ribbon-btn-small" data-action="col-width" title="Column Width">&#8596; Column Width...</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="col-autofit" title="Auto-fit Column Width">&#8596; Auto-fit Width</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="col-hide" title="Hide Column">&#8212; Hide Column</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="col-unhide" title="Unhide Column">&#8212; Unhide Column</button>
-        </div>
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="autosum" title="AutoSum">
+          <span class="rb-icon">&#931;</span><span class="rb-label">AutoSum</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="fill-down" title="Fill Down">
+          <span class="rb-icon">&#8595;</span><span class="rb-label">Fill Down</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="fill-right" title="Fill Right">
+          <span class="rb-icon">&#8594;</span><span class="rb-label">Fill Right</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="sort-asc" title="Sort A-Z">
+          <span class="rb-icon">&#8593;</span><span class="rb-label">Sort A-Z</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="sort-desc" title="Sort Z-A">
+          <span class="rb-icon">&#8595;</span><span class="rb-label">Sort Z-A</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="find-replace" title="Find &amp; Replace (Ctrl+F)">
+          <span class="rb-icon">&#128269;</span><span class="rb-label">Find &amp; Replace</span>
+        </button>
       </div>
-      <div class="ribbon-group-label">Column</div>
     </div>
+    <div class="ribbon-group-label">Editing</div>
+  </div>
 
-    <div class="ribbon-group">
-      <div class="ribbon-group-content">
-        <div class="ribbon-btn-stack">
-          <button class="ribbon-btn ribbon-btn-small" data-action="row-height" title="Row Height">&#8597; Row Height...</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="row-autofit" title="Auto-fit Row Height">&#8597; Auto-fit Height</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="row-hide" title="Hide Row">&#8212; Hide Row</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="row-unhide" title="Unhide Row">&#8212; Unhide Row</button>
-        </div>
+</div>
+
+<!-- Insert Tab -->
+<div class="ribbon-panel" data-panel="insert" id="ribbon-insert">
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="insert-chart-bar" title="Bar Chart">
+        <span class="rb-icon rb-icon-lg">&#128202;</span>
+        <span class="rb-label">Bar</span>
+      </button>
+      <button class="rb-btn rb-btn-lg" data-action="insert-chart-line" title="Line Chart">
+        <span class="rb-icon rb-icon-lg">&#128200;</span>
+        <span class="rb-label">Line</span>
+      </button>
+      <button class="rb-btn rb-btn-lg" data-action="insert-chart-pie" title="Pie Chart">
+        <span class="rb-icon rb-icon-lg">&#9899;</span>
+        <span class="rb-label">Pie</span>
+      </button>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="insert-chart-scatter" title="Scatter Chart">
+          <span class="rb-icon">&#8226;</span><span class="rb-label">Scatter</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-chart-area" title="Area Chart">
+          <span class="rb-icon">&#9650;</span><span class="rb-label">Area</span>
+        </button>
       </div>
-      <div class="ribbon-group-label">Row</div>
     </div>
+    <div class="ribbon-group-label">Charts</div>
+  </div>
 
-    <div class="ribbon-group">
-      <div class="ribbon-group-content">
-        <div class="ribbon-btn-stack">
-          <button class="ribbon-btn ribbon-btn-small" data-action="sheet-rename" title="Rename Sheet">&#128196; Rename Sheet</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="sheet-tab-color" title="Tab Color">&#127912; Tab Color</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="freeze-panes" title="Freeze Panes">&#10052; Freeze Panes</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="unfreeze-panes" title="Unfreeze Panes">&#10052; Unfreeze Panes</button>
-        </div>
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="insert-function" title="Insert Function">
+        <span class="rb-icon rb-icon-lg"><i>f</i><sub>x</sub></span>
+        <span class="rb-label">Function</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Functions</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="insert-hyperlink" title="Hyperlink">
+          <span class="rb-icon">&#128279;</span><span class="rb-label">Hyperlink</span>
+        </button>
       </div>
-      <div class="ribbon-group-label">Sheet</div>
     </div>
+    <div class="ribbon-group-label">Links</div>
+  </div>
 
-    <div class="ribbon-group">
-      <div class="ribbon-group-content">
-        <div class="ribbon-btn-stack">
-          <button class="ribbon-btn ribbon-btn-small" data-action="borders-all" title="All Borders">&#9633; All Borders</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="borders-outer" title="Outline Borders">&#9634; Outline</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="borders-none" title="No Borders">&#9633; No Borders</button>
-          <button class="ribbon-btn ribbon-btn-small" data-action="borders-bottom" title="Bottom Border">&#9601; Bottom</button>
-        </div>
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="insert-comment" title="Comment/Note">
+          <span class="rb-icon">&#128172;</span><span class="rb-label">Comment</span>
+        </button>
       </div>
-      <div class="ribbon-group-label">Borders</div>
     </div>
+    <div class="ribbon-group-label">Text</div>
+  </div>
 
+</div>
+
+<!-- Formulas Tab -->
+<div class="ribbon-panel" data-panel="formulas" id="ribbon-formulas">
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="insert-function" title="Insert Function">
+        <span class="rb-icon rb-icon-lg"><i>f</i><sub>x</sub></span>
+        <span class="rb-label">Insert Function</span>
+      </button>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="fn-cat-math" title="Math &amp; Trig">
+          <span class="rb-icon">&#931;</span><span class="rb-label">Math &amp; Trig</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="fn-cat-stat" title="Statistical">
+          <span class="rb-icon">&#128200;</span><span class="rb-label">Statistical</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="fn-cat-text" title="Text">
+          <span class="rb-icon">&#128172;</span><span class="rb-label">Text</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="fn-cat-date" title="Date/Time">
+          <span class="rb-icon">&#128197;</span><span class="rb-label">Date/Time</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="fn-cat-logical" title="Logical">
+          <span class="rb-icon">&#10004;</span><span class="rb-label">Logical</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="fn-cat-lookup" title="Lookup">
+          <span class="rb-icon">&#128270;</span><span class="rb-label">Lookup</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="fn-cat-financial" title="Financial">
+          <span class="rb-icon">&#128176;</span><span class="rb-label">Financial</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="fn-cat-info" title="Info">
+          <span class="rb-icon">&#8505;</span><span class="rb-label">Info</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Function Library</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="name-manager" title="Name Manager">
+          <span class="rb-icon">&#128203;</span><span class="rb-label">Name Manager</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="define-name" title="Define Name">
+          <span class="rb-icon">&#128204;</span><span class="rb-label">Define Name</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Defined Names</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="trace-precedents" title="Trace Precedents">
+          <span class="rb-icon">&#8592;</span><span class="rb-label">Precedents</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="trace-dependents" title="Trace Dependents">
+          <span class="rb-icon">&#8594;</span><span class="rb-label">Dependents</span>
+        </button>
+        <button id="btn-show-formulas" class="rb-btn rb-btn-sm" data-action="show-formulas" title="Show Formulas">
+          <span class="rb-icon">&#123;&#125;</span><span class="rb-label">Show Formulas</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="error-checking" title="Error Checking">
+          <span class="rb-icon">&#9888;</span><span class="rb-label">Error Checking</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Formula Auditing</div>
+  </div>
+
+</div>
+
+<!-- Data Tab -->
+<div class="ribbon-panel" data-panel="data" id="ribbon-data">
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="sort-asc" title="Sort Ascending">
+        <span class="rb-icon rb-icon-lg">&#8593;</span>
+        <span class="rb-label">Sort A-Z</span>
+      </button>
+      <button class="rb-btn rb-btn-lg" data-action="sort-desc" title="Sort Descending">
+        <span class="rb-icon rb-icon-lg">&#8595;</span>
+        <span class="rb-label">Sort Z-A</span>
+      </button>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="custom-sort" title="Custom Sort">
+          <span class="rb-icon">&#128203;</span><span class="rb-label">Custom Sort...</span>
+        </button>
+        <button id="btn-auto-filter" class="rb-btn rb-btn-sm" data-action="auto-filter" title="Auto Filter">
+          <span class="rb-icon">&#9660;</span><span class="rb-label">Auto Filter</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="clear-filter" title="Clear Filter">
+          <span class="rb-icon">&#10006;</span><span class="rb-label">Clear Filter</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Sort &amp; Filter</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="text-to-columns" title="Text to Columns">
+          <span class="rb-icon">&#9474;</span><span class="rb-label">Text to Columns</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="remove-duplicates" title="Remove Duplicates">
+          <span class="rb-icon">&#10006;</span><span class="rb-label">Remove Duplicates</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="data-validation" title="Data Validation">
+          <span class="rb-icon">&#10004;</span><span class="rb-label">Data Validation</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Data Tools</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="group-rows" title="Group Rows">
+          <span class="rb-icon">&#9654;</span><span class="rb-label">Group Rows</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="ungroup-rows" title="Ungroup Rows">
+          <span class="rb-icon">&#9664;</span><span class="rb-label">Ungroup Rows</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="group-cols" title="Group Columns">
+          <span class="rb-icon">&#9654;</span><span class="rb-label">Group Columns</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="ungroup-cols" title="Ungroup Columns">
+          <span class="rb-icon">&#9664;</span><span class="rb-label">Ungroup Columns</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Outline</div>
+  </div>
+
+</div>
+
+<!-- Format Tab -->
+<div class="ribbon-panel" data-panel="format" id="ribbon-format">
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="format-cells" title="Format Cells">
+        <span class="rb-icon rb-icon-lg">&#9998;</span>
+        <span class="rb-label">Format Cells</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Cells</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="col-width" title="Column Width">
+          <span class="rb-icon">&#8596;</span><span class="rb-label">Column Width...</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="col-autofit" title="Auto-fit Column Width">
+          <span class="rb-icon">&#8596;</span><span class="rb-label">Auto-fit Width</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="col-hide" title="Hide Column">
+          <span class="rb-icon">&#8212;</span><span class="rb-label">Hide Column</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="col-unhide" title="Unhide Column">
+          <span class="rb-icon">&#8212;</span><span class="rb-label">Unhide Column</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Column</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="row-height" title="Row Height">
+          <span class="rb-icon">&#8597;</span><span class="rb-label">Row Height...</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="row-autofit" title="Auto-fit Row Height">
+          <span class="rb-icon">&#8597;</span><span class="rb-label">Auto-fit Height</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="row-hide" title="Hide Row">
+          <span class="rb-icon">&#8212;</span><span class="rb-label">Hide Row</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="row-unhide" title="Unhide Row">
+          <span class="rb-icon">&#8212;</span><span class="rb-label">Unhide Row</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Row</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="sheet-rename" title="Rename Sheet">
+          <span class="rb-icon">&#128196;</span><span class="rb-label">Rename Sheet</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="sheet-tab-color" title="Tab Color">
+          <span class="rb-icon">&#127912;</span><span class="rb-label">Tab Color</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="freeze-panes" title="Freeze Panes">
+          <span class="rb-icon">&#10052;</span><span class="rb-label">Freeze Panes</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="unfreeze-panes" title="Unfreeze Panes">
+          <span class="rb-icon">&#10052;</span><span class="rb-label">Unfreeze Panes</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Sheet</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="borders-all" title="All Borders">
+          <span class="rb-icon">&#9633;</span><span class="rb-label">All Borders</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="borders-outer" title="Outline Borders">
+          <span class="rb-icon">&#9634;</span><span class="rb-label">Outline</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="borders-none" title="No Borders">
+          <span class="rb-icon">&#9633;</span><span class="rb-label">No Borders</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="borders-bottom" title="Bottom Border">
+          <span class="rb-icon">&#9601;</span><span class="rb-label">Bottom</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Borders</div>
+  </div>
+
+</div>
+
+<!-- File Backstage -->
+<div class="backstage" id="backstage">
+  <div class="backstage-sidebar">
+    <button class="backstage-back" id="backstage-back">&#8592;</button>
+    <button class="backstage-item" data-action="new">New</button>
+    <button class="backstage-item" data-action="open">Open</button>
+    <button class="backstage-item" data-action="save">Save</button>
+    <button class="backstage-item" data-action="save-as">Save As</button>
+    <div class="backstage-sep"></div>
+    <button class="backstage-item" data-action="import-csv">Import CSV...</button>
+    <button class="backstage-item" data-action="export-csv">Export CSV...</button>
+    <div class="backstage-sep"></div>
+    <button class="backstage-item" data-action="import-xlsx">Import XLSX...</button>
+    <button class="backstage-item" data-action="export-xlsx">Export as XLSX...</button>
+    <div class="backstage-sep"></div>
+    <button class="backstage-item" data-action="import-tsv">Import TSV...</button>
+    <button class="backstage-item" data-action="export-tsv">Export as TSV...</button>
+    <div class="backstage-sep"></div>
+    <button class="backstage-item" data-action="print">Print</button>
+    <div class="backstage-sep"></div>
+    <button class="backstage-item" data-action="about">About</button>
+    <div class="backstage-spacer"></div>
+    <button class="backstage-item backstage-exit" data-action="exit">Exit</button>
   </div>
 </div>
 
@@ -472,6 +624,9 @@
   <div class="status-bar">
     <span class="status-section" id="status-cell">Ready</span>
     <span class="status-section" id="status-summary"></span>
+    <span class="status-spacer"></span>
+    <input type="text" class="status-zoom-input" id="status-zoom" value="100%">
+    <input type="range" class="status-zoom-slider" id="status-zoom-slider" min="25" max="500" value="100">
   </div>
 </div>
 
@@ -575,17 +730,30 @@
       <div class="fp-field">
         <label>Rule:</label>
         <select id="cf-rule">
-          <option value="greater">Greater Than</option>
-          <option value="less">Less Than</option>
-          <option value="equal">Equal To</option>
-          <option value="between">Between</option>
-          <option value="text-contains">Text Contains</option>
-          <option value="top10">Top 10</option>
-          <option value="bottom10">Bottom 10</option>
-          <option value="duplicate">Duplicate Values</option>
+          <optgroup label="Cell Value">
+            <option value="greater">Greater Than</option>
+            <option value="less">Less Than</option>
+            <option value="equal">Equal To</option>
+            <option value="between">Between</option>
+            <option value="text-contains">Text Contains</option>
+            <option value="top10">Top N</option>
+            <option value="bottom10">Bottom N</option>
+            <option value="duplicate">Duplicate Values</option>
+          </optgroup>
+          <optgroup label="Data Visualization">
+            <option value="data-bar">Data Bars</option>
+            <option value="color-scale-2">Color Scale (2-Color)</option>
+            <option value="color-scale-3">Color Scale (3-Color)</option>
+          </optgroup>
+          <optgroup label="Icon Sets">
+            <option value="icon-3-arrows">3 Arrows</option>
+            <option value="icon-3-traffic">3 Traffic Lights</option>
+            <option value="icon-3-flags">3 Flags</option>
+            <option value="icon-5-rating">5 Ratings</option>
+          </optgroup>
         </select>
       </div>
-      <div class="fp-field">
+      <div class="fp-field" id="cf-value1-row">
         <label>Value:</label>
         <input type="text" id="cf-value1">
       </div>
@@ -593,7 +761,7 @@
         <label>And:</label>
         <input type="text" id="cf-value2">
       </div>
-      <div class="fp-field">
+      <div class="fp-field" id="cf-color-row">
         <label>Color:</label>
         <select id="cf-color">
           <option value="#ffcccc">Red</option>
@@ -601,7 +769,13 @@
           <option value="#ccccff">Blue</option>
           <option value="#ffffcc">Yellow</option>
           <option value="#ffccff">Pink</option>
+          <option value="#638ec6">Steel Blue</option>
         </select>
+      </div>
+      <div id="cf-color-scale-row" style="display:none;">
+        <div class="fp-field"><label>Min color:</label><input type="color" id="cf-color-min" value="#f8696b"></div>
+        <div class="fp-field" id="cf-color-mid-row"><label>Mid color:</label><input type="color" id="cf-color-mid" value="#ffeb84"></div>
+        <div class="fp-field"><label>Max color:</label><input type="color" id="cf-color-max" value="#63be7b"></div>
       </div>
     </div>
     <div class="dialog-buttons">
@@ -614,13 +788,27 @@
 
 <!-- Cell Styles dialog -->
 <div class="dialog-overlay" id="dlg-cell-styles">
-  <div class="dialog" style="min-width:340px;">
+  <div class="dialog" style="min-width:440px;">
     <div class="dialog-title">Cell Styles</div>
     <div class="dialog-body">
       <div class="cell-styles-grid" id="cell-styles-grid"></div>
     </div>
     <div class="dialog-buttons">
       <button data-result="cancel">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Table Styles dialog -->
+<div class="dialog-overlay" id="dlg-table-styles">
+  <div class="dialog" style="min-width:380px;">
+    <div class="dialog-title">Format as Table</div>
+    <div class="dialog-body">
+      <p style="margin-bottom:8px;">Select a table style:</p>
+      <div class="table-styles-grid" id="table-styles-grid"></div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="cancel">Cancel</button>
     </div>
   </div>
 </div>
@@ -747,10 +935,15 @@
 
 <!-- Name Manager dialog -->
 <div class="dialog-overlay" id="dlg-name-manager">
-  <div class="dialog" style="min-width:400px;">
+  <div class="dialog" style="min-width:460px;">
     <div class="dialog-title">Name Manager</div>
     <div class="dialog-body">
-      <div id="nm-list" style="max-height:160px;overflow:auto;border:1px solid var(--sz-color-button-shadow);margin-bottom:8px;font-size:11px;"></div>
+      <div style="max-height:180px;overflow:auto;border:1px solid var(--sz-color-button-shadow);margin-bottom:8px;">
+        <table class="nm-table">
+          <thead><tr><th>Name</th><th>Refers To</th><th>Scope</th><th>Used By</th></tr></thead>
+          <tbody id="nm-list-body"></tbody>
+        </table>
+      </div>
       <div class="fp-field"><label>Name:</label><input type="text" id="nm-name"></div>
       <div class="fp-field"><label>Refers to:</label><input type="text" id="nm-range" placeholder="e.g. A1:B10"></div>
     </div>

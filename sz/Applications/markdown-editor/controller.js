@@ -15,10 +15,8 @@
 
   const source = document.getElementById('source');
   const preview = document.getElementById('preview');
-  const menuBar = document.getElementById('menu-bar');
   const splitContainer = document.getElementById('split-container');
   const splitter = document.getElementById('splitter');
-  let openMenu = null;
 
   const FILE_FILTERS = [
     { name: 'Markdown Files', ext: ['md', 'markdown', 'mkd'] },
@@ -169,51 +167,51 @@
   }
 
   // -----------------------------------------------------------------------
-  // Menu system
+  // Ribbon tab switching
   // -----------------------------------------------------------------------
-  function closeMenus() {
-    for (const item of menuBar.querySelectorAll('.menu-item'))
-      item.classList.remove('open');
-    openMenu = null;
-  }
-
-  for (const menuItem of menuBar.querySelectorAll('.menu-item')) {
-    menuItem.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('.menu-entry') || e.target.closest('.menu-separator'))
-        return;
-      if (openMenu === menuItem) {
-        closeMenus();
-        return;
-      }
-      closeMenus();
-      menuItem.classList.add('open');
-      openMenu = menuItem;
-    });
-
-    menuItem.addEventListener('pointerenter', () => {
-      if (openMenu && openMenu !== menuItem) {
-        closeMenus();
-        menuItem.classList.add('open');
-        openMenu = menuItem;
-      }
+  const ribbonTabs = document.getElementById('ribbon-tabs');
+  for (const tab of ribbonTabs.querySelectorAll('.ribbon-tab')) {
+    tab.addEventListener('click', () => {
+      ribbonTabs.querySelectorAll('.ribbon-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      document.querySelectorAll('.ribbon-panel').forEach(p => p.classList.remove('active'));
+      const panel = document.getElementById('ribbon-' + tab.dataset.tab);
+      if (panel)
+        panel.classList.add('active');
     });
   }
 
-  document.addEventListener('pointerdown', (e) => {
-    if (openMenu && !menuBar.contains(e.target))
-      closeMenus();
+  // -----------------------------------------------------------------------
+  // Backstage (File menu)
+  // -----------------------------------------------------------------------
+  const backstage = document.getElementById('backstage');
+  const ribbonFileBtn = document.getElementById('ribbon-file-btn');
+  const backstageBack = document.getElementById('backstage-back');
+
+  ribbonFileBtn.addEventListener('click', () => backstage.classList.add('visible'));
+  backstageBack.addEventListener('click', () => backstage.classList.remove('visible'));
+  backstage.addEventListener('pointerdown', (e) => {
+    if (e.target === backstage)
+      backstage.classList.remove('visible');
   });
-
-  // -----------------------------------------------------------------------
-  // Menu actions
-  // -----------------------------------------------------------------------
-  for (const entry of document.querySelectorAll('.menu-entry')) {
-    entry.addEventListener('click', () => {
-      const action = entry.dataset.action;
-      closeMenus();
-      handleAction(action);
+  for (const item of backstage.querySelectorAll('.backstage-item')) {
+    item.addEventListener('click', () => {
+      backstage.classList.remove('visible');
+      handleAction(item.dataset.action);
     });
   }
+
+  // -----------------------------------------------------------------------
+  // QAT buttons
+  // -----------------------------------------------------------------------
+  for (const btn of document.querySelectorAll('.qat-btn[data-action]'))
+    btn.addEventListener('click', () => handleAction(btn.dataset.action));
+
+  // -----------------------------------------------------------------------
+  // Ribbon action buttons
+  // -----------------------------------------------------------------------
+  for (const btn of document.querySelectorAll('.rb-btn[data-action]'))
+    btn.addEventListener('click', () => handleAction(btn.dataset.action));
 
   function handleAction(action) {
     switch (action) {
@@ -256,9 +254,62 @@
       case 'insert-table':
         insertAtCursor('\n| Header 1 | Header 2 | Header 3 |\n| --- | --- | --- |\n| Cell 1 | Cell 2 | Cell 3 |\n');
         break;
+      case 'print': window.print(); break;
+      case 'export-html': doExportHtml(); break;
+      case 'zoom-in': doZoom(10); break;
+      case 'zoom-out': doZoom(-10); break;
       case 'about': showDialog('dlg-about'); break;
     }
   }
+
+  // -----------------------------------------------------------------------
+  // Export as HTML
+  // -----------------------------------------------------------------------
+  function doExportHtml() {
+    const html = '<!DOCTYPE html>\n<html>\n<head><meta charset="UTF-8"><title>' +
+      currentFileName.replace(/\.[^.]+$/, '') +
+      '</title></head>\n<body>\n' + markdownToHtml(source.value) + '\n</body>\n</html>';
+    const blob = new Blob([html], { type: 'text/html' });
+    const name = (currentFileName.replace(/\.[^.]+$/, '') || 'Untitled') + '.html';
+    ComDlg32.ExportFile(blob, name);
+  }
+
+  // -----------------------------------------------------------------------
+  // Zoom
+  // -----------------------------------------------------------------------
+  let mdZoomLevel = 100;
+  const rbZoomSlider = document.getElementById('rb-zoom-slider');
+  const rbZoomValue = document.getElementById('rb-zoom-value');
+  const statusZoom = document.getElementById('status-zoom');
+  const statusZoomSlider = document.getElementById('status-zoom-slider');
+
+  function applyMdZoom(pct) {
+    mdZoomLevel = Math.max(25, Math.min(300, pct));
+    const scale = mdZoomLevel / 100;
+    source.style.fontSize = (13 * scale) + 'px';
+    preview.style.fontSize = (12 * scale) + 'px';
+    rbZoomValue.textContent = mdZoomLevel + '%';
+    statusZoom.value = mdZoomLevel + '%';
+    rbZoomSlider.value = mdZoomLevel;
+    statusZoomSlider.value = mdZoomLevel;
+  }
+
+  function doZoom(delta) {
+    applyMdZoom(mdZoomLevel + delta);
+  }
+
+  rbZoomSlider.addEventListener('input', () => applyMdZoom(parseInt(rbZoomSlider.value, 10)));
+  statusZoomSlider.addEventListener('input', () => applyMdZoom(parseInt(statusZoomSlider.value, 10)));
+
+  function commitStatusZoom() {
+    const raw = parseInt(statusZoom.value, 10);
+    if (!isNaN(raw))
+      applyMdZoom(raw);
+    else
+      statusZoom.value = mdZoomLevel + '%';
+  }
+  statusZoom.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); commitStatusZoom(); statusZoom.blur(); } });
+  statusZoom.addEventListener('blur', commitStatusZoom);
 
   // -----------------------------------------------------------------------
   // Text insertion helpers
@@ -315,9 +366,9 @@
     currentViewMode = mode;
     if (mode === 'preview-only')
       renderPreview();
-    for (const btn of document.querySelectorAll('.toolbar button[data-action^="view-"]')) {
-      btn.classList.toggle('active', btn.dataset.action === 'view-' + mode.replace('-only', ''));
-    }
+    const actionMap = { 'split': 'view-split', 'source-only': 'view-source', 'preview-only': 'view-preview' };
+    for (const btn of document.querySelectorAll('.rb-btn[data-action^="view-"]'))
+      btn.classList.toggle('active', btn.dataset.action === actionMap[mode]);
   }
 
   // -----------------------------------------------------------------------
@@ -346,15 +397,6 @@
     splitter.addEventListener('pointermove', onMove);
     splitter.addEventListener('pointerup', onUp);
   });
-
-  // -----------------------------------------------------------------------
-  // Toolbar buttons
-  // -----------------------------------------------------------------------
-  for (const btn of document.querySelectorAll('.toolbar button[data-action]')) {
-    btn.addEventListener('click', () => {
-      handleAction(btn.dataset.action);
-    });
-  }
 
   // -----------------------------------------------------------------------
   // File operations
@@ -564,6 +606,10 @@
       case 'k':
         e.preventDefault();
         handleAction('insert-link');
+        break;
+      case 'p':
+        e.preventDefault();
+        handleAction('print');
         break;
     }
   });

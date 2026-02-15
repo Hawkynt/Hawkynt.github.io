@@ -9,280 +9,358 @@ body {
   font-size: 11px;
 }
 
-/* ==== File menu bar ==== */
-.file-menu-bar {
+/* ==== Quick Access Toolbar ==== */
+.qat {
   display: flex;
   align-items: center;
-  background: var(--sz-color-highlight);
+  padding: 1px 4px;
+  background: var(--sz-color-active-title);
+  gap: 1px;
   flex-shrink: 0;
-  user-select: none;
-  height: 22px;
+  min-height: 20px;
 }
 
-.file-menu-item {
-  position: relative;
-  padding: 3px 12px;
+.qat-btn {
+  width: 20px;
+  height: 18px;
+  border: none;
+  background: transparent;
   cursor: default;
-  color: var(--sz-color-highlight-text);
-  font-weight: bold;
   font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+  color: var(--sz-color-title-text);
+  border-radius: 2px;
+  padding: 0;
 }
 
-.file-menu-item:hover {
-  background: rgba(255,255,255,0.15);
+.qat-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
 }
 
-.file-menu-dropdown {
+.qat-btn:active {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+/* ==== Backstage (File menu) ==== */
+.backstage {
   display: none;
-  position: absolute;
-  top: 100%;
+  position: fixed;
+  top: 0;
   left: 0;
-  min-width: 200px;
-  background: var(--sz-color-menu);
-  border: 1px solid var(--sz-color-button-shadow);
-  box-shadow: 2px 2px 6px rgba(0,0,0,0.25);
-  z-index: 3000;
-  padding: 2px 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5000;
+  background: rgba(0, 0, 0, 0.3);
 }
 
-.file-menu-item.open > .file-menu-dropdown {
-  display: block;
-}
-
-.menu-entry {
-  padding: 4px 24px 4px 8px;
-  cursor: default;
-  color: var(--sz-color-menu-text);
-  white-space: nowrap;
+.backstage.visible {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 11px;
 }
 
-.menu-entry:hover {
+.backstage-sidebar {
+  width: 220px;
   background: var(--sz-color-highlight);
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.3);
+}
+
+.backstage-back {
+  border: none;
+  background: transparent;
   color: var(--sz-color-highlight-text);
+  font-size: 18px;
+  padding: 8px 16px;
+  text-align: left;
+  cursor: default;
 }
 
-.menu-entry .shortcut {
-  margin-left: 24px;
-  font-size: 10px;
-  opacity: 0.7;
+.backstage-back:hover {
+  background: rgba(255, 255, 255, 0.15);
 }
 
-.menu-separator {
+.backstage-item {
+  border: none;
+  background: transparent;
+  color: var(--sz-color-highlight-text);
+  font-size: 12px;
+  padding: 8px 24px;
+  text-align: left;
+  cursor: default;
+  width: 100%;
+}
+
+.backstage-item:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.backstage-sep {
   height: 1px;
-  background: var(--sz-color-button-shadow);
-  margin: 2px 4px;
+  background: rgba(255, 255, 255, 0.2);
+  margin: 4px 12px;
 }
 
-/* ==== Ribbon ==== */
-.ribbon {
+.backstage-spacer {
+  flex: 1;
+}
+
+.backstage-exit {
+  margin-top: auto;
+}
+
+/* ==== Ribbon Tab Bar ==== */
+.ribbon-tabs {
   flex-shrink: 0;
   background: var(--sz-color-button-face);
   border-bottom: 1px solid var(--sz-color-button-shadow);
-  user-select: none;
 }
 
-.ribbon-tabs {
+.ribbon-tab-bar {
   display: flex;
+  align-items: flex-end;
+  padding: 0 2px;
   gap: 0;
-  padding: 0 4px;
-  background: var(--sz-color-button-face);
-  border-bottom: 1px solid var(--sz-color-button-shadow);
+}
+
+.ribbon-file-btn {
+  padding: 4px 14px;
+  font-size: 11px;
+  font-weight: bold;
+  border: none;
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+  cursor: default;
+  border-radius: 3px 3px 0 0;
+  margin-right: 2px;
+}
+
+.ribbon-file-btn:hover {
+  filter: brightness(1.1);
 }
 
 .ribbon-tab {
-  padding: 4px 14px;
-  cursor: default;
+  padding: 4px 12px;
   font-size: 11px;
-  color: var(--sz-color-button-text);
   border: 1px solid transparent;
   border-bottom: none;
-  margin-bottom: -1px;
+  background: transparent;
+  color: var(--sz-color-button-text);
+  cursor: default;
+  border-radius: 3px 3px 0 0;
   position: relative;
+  top: 1px;
 }
 
 .ribbon-tab:hover {
-  background: var(--sz-color-button-light);
+  background: var(--sz-color-button-highlight);
+  border-color: var(--sz-color-button-shadow);
 }
 
 .ribbon-tab.active {
-  background: var(--sz-color-button-face);
+  background: var(--sz-color-window);
   border-color: var(--sz-color-button-shadow);
-  border-bottom: 1px solid var(--sz-color-button-face);
+  color: var(--sz-color-window-text);
   font-weight: bold;
 }
 
+/* ==== Ribbon Panels ==== */
 .ribbon-panel {
   display: none;
   flex-direction: row;
   align-items: stretch;
-  padding: 3px 4px;
-  min-height: 80px;
-  gap: 2px;
+  padding: 2px 4px 0;
+  background: var(--sz-color-window);
+  border-bottom: 1px solid var(--sz-color-button-shadow);
+  flex-shrink: 0;
+  min-height: 82px;
   overflow-x: auto;
   overflow-y: hidden;
+  user-select: none;
 }
 
 .ribbon-panel.active {
   display: flex;
 }
 
-/* ==== Ribbon groups ==== */
+.ribbon-panel::-webkit-scrollbar {
+  height: 4px;
+}
+
+.ribbon-panel::-webkit-scrollbar-thumb {
+  background: var(--sz-color-button-shadow);
+  border-radius: 2px;
+}
+
+/* ==== Ribbon Groups ==== */
 .ribbon-group {
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--sz-color-button-shadow);
-  padding: 2px 6px;
+  padding: 2px 4px 0;
   min-width: 0;
-}
-
-.ribbon-group:last-child {
-  border-right: none;
+  flex-shrink: 0;
 }
 
 .ribbon-group-content {
-  flex: 1;
   display: flex;
-  align-items: center;
-  gap: 3px;
+  align-items: flex-start;
+  gap: 2px;
+  flex: 1;
+  min-height: 0;
 }
 
 .ribbon-group-label {
   text-align: center;
   font-size: 9px;
   color: var(--sz-color-gray-text);
-  padding-top: 1px;
+  padding: 1px 4px 2px;
   white-space: nowrap;
+  border-top: 1px solid var(--sz-color-button-light, transparent);
 }
 
-/* ==== Ribbon buttons ==== */
-.ribbon-btn {
+.ribbon-sep {
+  width: 1px;
+  background: var(--sz-color-button-shadow);
+  margin: 2px 3px;
+  align-self: stretch;
+  flex-shrink: 0;
+  opacity: 0.4;
+}
+
+/* ==== Ribbon Buttons ==== */
+.rb-btn {
   border: 1px solid transparent;
   background: transparent;
   cursor: default;
-  font-size: 11px;
-  font-family: inherit;
   color: var(--sz-color-button-text);
-  white-space: nowrap;
-  padding: 1px 3px;
-}
-
-.ribbon-btn:hover {
-  border-color: var(--sz-color-button-shadow);
-  background: var(--sz-color-button-light);
-}
-
-.ribbon-btn:active,
-.ribbon-btn.active {
-  border-color: var(--sz-color-button-shadow);
-  background: var(--sz-color-button-face);
-  border-style: inset;
-}
-
-.ribbon-btn-large {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 4px 8px;
-  min-width: 48px;
-  min-height: 60px;
-}
-
-.ribbon-btn-large .ribbon-icon-lg {
-  font-size: 22px;
-  line-height: 1;
-  display: block;
-}
-
-.ribbon-btn-large .ribbon-label {
-  font-size: 9px;
-  margin-top: 2px;
-}
-
-.ribbon-btn-small {
-  padding: 1px 6px;
   font-size: 11px;
-  text-align: left;
-  display: flex;
-  align-items: center;
-  gap: 3px;
-}
-
-.ribbon-btn-icon {
-  min-width: 22px;
-  height: 22px;
-  padding: 2px 4px;
-  text-align: center;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  padding: 1px 3px;
+  border-radius: 2px;
+  white-space: nowrap;
 }
 
-.ribbon-btn-stack {
+.rb-btn:hover {
+  background: var(--sz-color-button-highlight);
+  border-color: var(--sz-color-button-shadow);
+}
+
+.rb-btn:active {
+  background: var(--sz-color-button-shadow);
+}
+
+.rb-btn.active {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+  border-color: var(--sz-color-button-shadow);
+}
+
+.rb-btn-lg {
+  flex-direction: column;
+  padding: 4px 8px;
+  min-width: 44px;
+  height: 100%;
+  gap: 2px;
+}
+
+.rb-btn-lg .rb-icon-lg {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.rb-btn-lg .rb-label {
+  font-size: 9px;
+}
+
+.rb-btn-sm {
+  gap: 4px;
+  padding: 1px 4px;
+  min-height: 20px;
+  justify-content: flex-start;
+}
+
+.rb-btn-sm .rb-icon {
+  font-size: 12px;
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.rb-btn-sm .rb-label {
+  font-size: 10px;
+}
+
+.rb-fmt {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 3px;
+  font-size: 12px;
+  line-height: 22px;
+}
+
+.rb-stack {
   display: flex;
   flex-direction: column;
   gap: 1px;
   justify-content: flex-start;
 }
 
-.ribbon-row {
+.rb-row {
   display: flex;
   align-items: center;
   gap: 2px;
+  flex-wrap: nowrap;
 }
 
-.ribbon-vsep {
-  display: inline-block;
+.rb-sep-v {
   width: 1px;
   height: 18px;
   background: var(--sz-color-button-shadow);
   margin: 0 2px;
+  opacity: 0.3;
   flex-shrink: 0;
 }
 
-.ribbon-icon {
+/* ==== Ribbon Selects ==== */
+.rb-select {
+  height: 22px;
+  padding: 1px 4px;
   font-size: 11px;
-}
-
-/* ==== Ribbon selects ==== */
-.ribbon-select {
-  height: 20px;
-  font-size: 11px;
-  font-family: inherit;
-  padding: 0 2px;
   border: 1px solid var(--sz-color-button-shadow);
   background: var(--sz-color-window);
+  color: var(--sz-color-window-text);
+  cursor: default;
+  border-radius: 2px;
 }
 
-.ribbon-font-select {
+.rb-font-family {
   width: 120px;
 }
 
-.ribbon-size-select {
-  width: 48px;
+.rb-font-size {
+  width: 52px;
 }
 
-.ribbon-numfmt-select {
+.rb-numfmt-select {
   width: 120px;
 }
 
-.ribbon-font-group {
+.rb-font-group {
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
 }
 
 /* ==== Color button ==== */
-.ribbon-color-btn {
+.rb-color-btn {
   position: relative;
   padding-bottom: 5px !important;
 }
 
-.ribbon-color-btn .color-indicator {
+.rb-color-btn .rb-color-ind {
   position: absolute;
   bottom: 1px;
   left: 3px;
@@ -680,6 +758,39 @@ body {
   white-space: nowrap;
 }
 
+.status-spacer {
+  flex: 1;
+}
+
+.status-zoom-input {
+  width: 40px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: center;
+  padding: 0 2px;
+  border-radius: 2px;
+  cursor: default;
+}
+
+.status-zoom-input:hover {
+  border-color: var(--sz-color-button-shadow);
+}
+
+.status-zoom-input:focus {
+  border-color: var(--sz-color-highlight);
+  background: var(--sz-color-window);
+  outline: none;
+  cursor: text;
+}
+
+.status-zoom-slider {
+  width: 80px;
+  height: 12px;
+  cursor: default;
+}
+
 /* ==== Dialogs ==== */
 .dialog-overlay {
   display: none;
@@ -909,7 +1020,7 @@ body {
 /* ==== Cell styles grid ==== */
 .cell-styles-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 6px;
 }
 
@@ -924,4 +1035,108 @@ body {
 .cell-style-item:hover {
   border-color: var(--sz-color-highlight);
   background: var(--sz-color-button-light);
+}
+
+/* ==== Data bars (conditional formatting) ==== */
+.cf-data-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  opacity: 0.3;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* ==== Icon sets (conditional formatting) ==== */
+.grid-table tbody td.cell[data-cf-icon]::before {
+  content: attr(data-cf-icon);
+  margin-right: 4px;
+}
+
+/* ==== Table styles grid ==== */
+.table-styles-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.table-style-item {
+  border: 1px solid var(--sz-color-button-shadow);
+  cursor: default;
+  font-size: 10px;
+  overflow: hidden;
+}
+
+.table-style-item:hover {
+  border-color: var(--sz-color-highlight);
+  box-shadow: 0 0 3px rgba(0,0,0,0.2);
+}
+
+.table-style-item .ts-header,
+.table-style-item .ts-band {
+  padding: 2px 6px;
+  border-bottom: 1px solid rgba(0,0,0,0.1);
+}
+
+.table-style-item .ts-name {
+  padding: 3px 6px;
+  text-align: center;
+  background: var(--sz-color-button-face);
+  font-size: 9px;
+}
+
+/* ==== Name Manager table ==== */
+.nm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.nm-table th {
+  background: var(--sz-color-button-face);
+  border: 1px solid var(--sz-color-button-shadow);
+  padding: 3px 6px;
+  font-weight: bold;
+  text-align: left;
+  font-size: 10px;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+}
+
+.nm-table td {
+  border: 1px solid var(--sz-color-button-shadow);
+  padding: 2px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+
+.nm-table tr:hover td {
+  background: var(--sz-color-button-light);
+}
+
+/* ==== Print styles ==== */
+@media print {
+  .qat,
+  .ribbon-tabs,
+  .ribbon-panel,
+  .backstage,
+  .formula-bar,
+  .bottom-bar,
+  .find-panel,
+  .color-palette,
+  .dialog-overlay {
+    display: none !important;
+  }
+
+  .grid-container {
+    overflow: visible;
+  }
+
+  .grid-scroll {
+    overflow: visible;
+  }
 }

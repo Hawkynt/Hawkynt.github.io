@@ -190,8 +190,9 @@
       case 'zoom-in': setZoom(Math.min(500, currentZoom + 10)); break;
       case 'zoom-out': setZoom(Math.max(25, currentZoom - 10)); break;
       case 'zoom-100': setZoom(100); break;
-      case 'zoom-page-width': setZoom(100); break;
-      case 'zoom-full-page': setZoom(75); break;
+      case 'zoom-page-width': setZoom(calcPageWidthZoom()); break;
+      case 'zoom-full-page': setZoom(calcFullPageZoom(1)); break;
+      case 'zoom-two-pages': setZoom(calcFullPageZoom(2)); break;
     }
     updateRibbonState();
   }
@@ -744,6 +745,40 @@
   const zoomValue = document.getElementById('rb-zoom-value');
   const statusZoom = document.getElementById('status-zoom');
   const statusZoomSlider = document.getElementById('status-zoom-slider');
+  const editorArea = document.getElementById('editor-area');
+
+  function getPageDimensionsPx() {
+    const sizes = {
+      a4: { w: 210 * 96 / 25.4, h: 297 * 96 / 25.4 },
+      letter: { w: 8.5 * 96, h: 11 * 96 },
+      legal: { w: 8.5 * 96, h: 14 * 96 },
+      custom: { w: 8.5 * 96, h: 11 * 96 }
+    };
+    const size = sizes[pageSizeSelect.value] || sizes.letter;
+    const orient = pageOrientSelect.value;
+    return {
+      w: orient === 'landscape' ? size.h : size.w,
+      h: orient === 'landscape' ? size.w : size.h
+    };
+  }
+
+  function calcPageWidthZoom() {
+    const page = getPageDimensionsPx();
+    const wrapperPadding = editorWrapper.classList.contains('print-layout') ? 32 : 0;
+    const available = editorArea.clientWidth - wrapperPadding;
+    return Math.round(Math.max(25, Math.min(500, (available / page.w) * 100)));
+  }
+
+  function calcFullPageZoom(pageCount) {
+    const page = getPageDimensionsPx();
+    const wrapperPadding = editorWrapper.classList.contains('print-layout') ? 32 : 0;
+    const gap = (pageCount - 1) * 16;
+    const availW = editorArea.clientWidth - wrapperPadding;
+    const availH = editorArea.clientHeight - wrapperPadding;
+    const scaleW = availW / (page.w * pageCount + gap);
+    const scaleH = availH / page.h;
+    return Math.round(Math.max(25, Math.min(500, Math.min(scaleW, scaleH) * 100)));
+  }
 
   function setZoom(pct) {
     currentZoom = Math.max(25, Math.min(500, pct));
@@ -752,11 +787,21 @@
     zoomSlider.value = currentZoom;
     statusZoomSlider.value = currentZoom;
     zoomValue.textContent = currentZoom + '%';
-    statusZoom.textContent = currentZoom + '%';
+    statusZoom.value = currentZoom + '%';
   }
 
   zoomSlider.addEventListener('input', () => setZoom(parseInt(zoomSlider.value, 10)));
   statusZoomSlider.addEventListener('input', () => setZoom(parseInt(statusZoomSlider.value, 10)));
+
+  function commitStatusZoom() {
+    const raw = parseInt(statusZoom.value, 10);
+    if (!isNaN(raw))
+      setZoom(raw);
+    else
+      statusZoom.value = currentZoom + '%';
+  }
+  statusZoom.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); commitStatusZoom(); statusZoom.blur(); } });
+  statusZoom.addEventListener('blur', commitStatusZoom);
 
   // ═══════════════════════════════════════════════════════════════
   // Insert Table

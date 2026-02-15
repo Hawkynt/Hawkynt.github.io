@@ -30,87 +30,174 @@
 <body>
 <noscript><p>Online Markdown editor with live preview. <a href="../../index.html">Open »SynthelicZ« Desktop</a> to use this app.</p></noscript>
 
-<!-- Menu Bar -->
-<div class="menu-bar" id="menu-bar">
-  <div class="menu-item" data-menu="file">
-    File
-    <div class="menu-dropdown">
-      <div class="menu-entry" data-action="new">New<span class="shortcut">Ctrl+N</span></div>
-      <div class="menu-entry" data-action="open">Open...<span class="shortcut">Ctrl+O</span></div>
-      <div class="menu-entry" data-action="save">Save<span class="shortcut">Ctrl+S</span></div>
-      <div class="menu-entry" data-action="save-as">Save As...</div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="exit">Exit</div>
-    </div>
-  </div>
-  <div class="menu-item" data-menu="edit">
-    Edit
-    <div class="menu-dropdown">
-      <div class="menu-entry" data-action="undo">Undo<span class="shortcut">Ctrl+Z</span></div>
-      <div class="menu-entry" data-action="redo">Redo<span class="shortcut">Ctrl+Y</span></div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="cut">Cut<span class="shortcut">Ctrl+X</span></div>
-      <div class="menu-entry" data-action="copy">Copy<span class="shortcut">Ctrl+C</span></div>
-      <div class="menu-entry" data-action="paste">Paste<span class="shortcut">Ctrl+V</span></div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="select-all">Select All<span class="shortcut">Ctrl+A</span></div>
-    </div>
-  </div>
-  <div class="menu-item" data-menu="insert">
-    Insert
-    <div class="menu-dropdown">
-      <div class="menu-entry" data-action="insert-heading">Heading</div>
-      <div class="menu-entry" data-action="insert-bold">Bold<span class="shortcut">Ctrl+B</span></div>
-      <div class="menu-entry" data-action="insert-italic">Italic<span class="shortcut">Ctrl+I</span></div>
-      <div class="menu-entry" data-action="insert-code">Inline Code</div>
-      <div class="menu-entry" data-action="insert-code-block">Code Block</div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="insert-link">Link<span class="shortcut">Ctrl+K</span></div>
-      <div class="menu-entry" data-action="insert-image">Image</div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="insert-list">Bullet List</div>
-      <div class="menu-entry" data-action="insert-olist">Numbered List</div>
-      <div class="menu-entry" data-action="insert-blockquote">Blockquote</div>
-      <div class="menu-entry" data-action="insert-hr">Horizontal Rule</div>
-      <div class="menu-entry" data-action="insert-table">Table</div>
-    </div>
-  </div>
-  <div class="menu-item" data-menu="view">
-    View
-    <div class="menu-dropdown">
-      <div class="menu-entry" data-action="view-split">Split View</div>
-      <div class="menu-entry" data-action="view-source">Source Only</div>
-      <div class="menu-entry" data-action="view-preview">Preview Only</div>
-    </div>
-  </div>
-  <div class="menu-item" data-menu="help">
-    Help
-    <div class="menu-dropdown">
-      <div class="menu-entry" data-action="about">About Markdown Editor</div>
-    </div>
+<!-- Quick Access Toolbar -->
+<div class="qat" id="qat">
+  <button class="qat-btn" data-action="save" title="Save (Ctrl+S)">&#128190;</button>
+  <button class="qat-btn" data-action="undo" title="Undo (Ctrl+Z)">&#8630;</button>
+  <button class="qat-btn" data-action="redo" title="Redo (Ctrl+Y)">&#8631;</button>
+  <button class="qat-btn" data-action="print" title="Print (Ctrl+P)">&#128424;</button>
+</div>
+
+<!-- Ribbon Tab Bar -->
+<div class="ribbon-tabs" id="ribbon-tabs">
+  <div class="ribbon-tab-bar">
+    <button class="ribbon-file-btn" id="ribbon-file-btn">File</button>
+    <button class="ribbon-tab active" data-tab="home">Home</button>
+    <button class="ribbon-tab" data-tab="insert">Insert</button>
+    <button class="ribbon-tab" data-tab="view">View</button>
   </div>
 </div>
 
-<!-- Toolbar -->
-<div class="toolbar" id="toolbar">
-  <button data-action="insert-heading" title="Heading">H</button>
-  <button data-action="insert-bold" title="Bold (Ctrl+B)"><b>B</b></button>
-  <button data-action="insert-italic" title="Italic (Ctrl+I)"><i>I</i></button>
-  <button data-action="insert-code" title="Inline Code">&lt;/&gt;</button>
-  <div class="tb-sep"></div>
-  <button data-action="insert-link" title="Link (Ctrl+K)">&#128279;</button>
-  <button data-action="insert-image" title="Image">&#128247;</button>
-  <div class="tb-sep"></div>
-  <button data-action="insert-list" title="Bullet List">&#8226;</button>
-  <button data-action="insert-olist" title="Numbered List">1.</button>
-  <button data-action="insert-blockquote" title="Blockquote">&gt;</button>
-  <div class="tb-sep"></div>
-  <button data-action="insert-table" title="Table">&#9638;</button>
-  <button data-action="insert-hr" title="Horizontal Rule">&#8213;</button>
-  <div class="tb-sep"></div>
-  <button data-action="view-split" class="active" title="Split View">&#9635;</button>
-  <button data-action="view-source" title="Source Only">&#9776;</button>
-  <button data-action="view-preview" title="Preview Only">&#9673;</button>
+<!-- File Backstage -->
+<div class="backstage" id="backstage">
+  <div class="backstage-sidebar">
+    <button class="backstage-back" id="backstage-back">&#8592;</button>
+    <button class="backstage-item" data-action="new">New</button>
+    <button class="backstage-item" data-action="open">Open</button>
+    <button class="backstage-item" data-action="save">Save</button>
+    <button class="backstage-item" data-action="save-as">Save As</button>
+    <div class="backstage-sep"></div>
+    <button class="backstage-item" data-action="export-html">Export as HTML</button>
+    <div class="backstage-sep"></div>
+    <button class="backstage-item" data-action="print">Print</button>
+    <div class="backstage-sep"></div>
+    <button class="backstage-item" data-action="about">About</button>
+    <div class="backstage-spacer"></div>
+    <button class="backstage-item backstage-exit" data-action="exit">Exit</button>
+  </div>
+</div>
+
+<!-- Home Tab -->
+<div class="ribbon-panel active" data-panel="home" id="ribbon-home">
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="paste" title="Paste (Ctrl+V)">
+        <span class="rb-icon rb-icon-lg">&#128203;</span>
+        <span class="rb-label">Paste</span>
+      </button>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="cut" title="Cut (Ctrl+X)">
+          <span class="rb-icon">&#9986;</span><span class="rb-label">Cut</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="copy" title="Copy (Ctrl+C)">
+          <span class="rb-icon">&#128464;</span><span class="rb-label">Copy</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Clipboard</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-row">
+        <button class="rb-btn rb-fmt" data-action="insert-heading" title="Heading">H</button>
+        <button class="rb-btn rb-fmt" data-action="insert-bold" title="Bold (Ctrl+B)"><b>B</b></button>
+        <button class="rb-btn rb-fmt" data-action="insert-italic" title="Italic (Ctrl+I)"><i>I</i></button>
+        <button class="rb-btn rb-fmt" data-action="insert-code" title="Inline Code">&lt;/&gt;</button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Format</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-sm" data-action="select-all" title="Select All (Ctrl+A)">
+        <span class="rb-icon">&#9744;</span><span class="rb-label">Select All</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Editing</div>
+  </div>
+</div>
+
+<!-- Insert Tab -->
+<div class="ribbon-panel" data-panel="insert" id="ribbon-insert">
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="insert-link" title="Hyperlink (Ctrl+K)">
+          <span class="rb-icon">&#128279;</span><span class="rb-label">Hyperlink</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-image" title="Image">
+          <span class="rb-icon">&#128247;</span><span class="rb-label">Image</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Links</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="insert-list" title="Bullet List">
+          <span class="rb-icon">&#8226;</span><span class="rb-label">Bullet List</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-olist" title="Numbered List">
+          <span class="rb-icon">1.</span><span class="rb-label">Numbered List</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Lists</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="insert-blockquote" title="Blockquote">
+          <span class="rb-icon">&gt;</span><span class="rb-label">Blockquote</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-code-block" title="Code Block">
+          <span class="rb-icon">&#9114;</span><span class="rb-label">Code Block</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="insert-hr" title="Horizontal Rule">
+          <span class="rb-icon">&#8213;</span><span class="rb-label">Horizontal Rule</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-table" title="Table">
+          <span class="rb-icon">&#9638;</span><span class="rb-label">Table</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Blocks</div>
+  </div>
+</div>
+
+<!-- View Tab -->
+<div class="ribbon-panel" data-panel="view" id="ribbon-view">
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-row">
+        <button class="rb-btn rb-fmt active" data-action="view-split" id="rb-view-split" title="Split View">&#9635; Split</button>
+        <button class="rb-btn rb-fmt" data-action="view-source" id="rb-view-source" title="Source Only">&#9776; Source</button>
+        <button class="rb-btn rb-fmt" data-action="view-preview" id="rb-view-preview" title="Preview Only">&#9673; Preview</button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Mode</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <div class="rb-row rb-zoom-row">
+          <button class="rb-btn rb-fmt" data-action="zoom-out" title="Zoom Out">&#8722;</button>
+          <input type="range" class="rb-zoom-slider" id="rb-zoom-slider" min="25" max="300" value="100">
+          <button class="rb-btn rb-fmt" data-action="zoom-in" title="Zoom In">+</button>
+          <span class="rb-zoom-value" id="rb-zoom-value">100%</span>
+        </div>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Zoom</div>
+  </div>
 </div>
 
 <!-- Split panes -->
@@ -126,6 +213,9 @@
 <div class="status-bar" id="status-bar">
   <span class="status-section" id="status-pos">Ln 1, Col 1</span>
   <span class="status-section" id="status-words">Words: 0</span>
+  <span class="status-spacer"></span>
+  <input type="text" class="status-zoom-input" id="status-zoom" value="100%">
+  <input type="range" class="status-zoom-slider" id="status-zoom-slider" min="25" max="300" value="100">
 </div>
 
 <!-- Save-changes dialog -->

@@ -40,7 +40,6 @@
   const highlightCode = document.getElementById('highlight-code');
   const lineNumbersEl = document.getElementById('line-numbers');
   const longLineMarkerEl = document.getElementById('long-line-marker');
-  const menuBar = document.getElementById('menu-bar');
   const statusPos = document.getElementById('status-pos');
   const statusSel = document.getElementById('status-sel');
   const statusEol = document.getElementById('status-eol');
@@ -48,7 +47,6 @@
   const statusMode = document.getElementById('status-mode');
   const statusLang = document.getElementById('status-lang');
   const statusModified = document.getElementById('status-modified');
-  let openMenu = null;
 
   // Current line highlight element
   const currentLineEl = document.createElement('div');
@@ -850,58 +848,137 @@
   });
 
   // =====================================================================
-  // Menu system
+  // Ribbon tab switching
   // =====================================================================
-  function closeMenus() {
-    for (const item of menuBar.querySelectorAll('.menu-item'))
-      item.classList.remove('open');
-    openMenu = null;
-  }
-
-  for (const menuItem of menuBar.querySelectorAll('.menu-item')) {
-    menuItem.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('.menu-entry') || e.target.closest('.menu-separator'))
-        return;
-      if (openMenu === menuItem) {
-        closeMenus();
-        return;
-      }
-      closeMenus();
-      menuItem.classList.add('open');
-      openMenu = menuItem;
-    });
-
-    menuItem.addEventListener('pointerenter', () => {
-      if (openMenu && openMenu !== menuItem) {
-        closeMenus();
-        menuItem.classList.add('open');
-        openMenu = menuItem;
-      }
+  const ribbonTabs = document.getElementById('ribbon-tabs');
+  for (const tab of ribbonTabs.querySelectorAll('.ribbon-tab')) {
+    tab.addEventListener('click', () => {
+      ribbonTabs.querySelectorAll('.ribbon-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      document.querySelectorAll('.ribbon-panel').forEach(p => p.classList.remove('active'));
+      const panel = document.getElementById('ribbon-' + tab.dataset.tab);
+      if (panel)
+        panel.classList.add('active');
     });
   }
 
-  document.addEventListener('pointerdown', (e) => {
-    if (openMenu && !menuBar.contains(e.target))
-      closeMenus();
+  // =====================================================================
+  // Backstage (File menu)
+  // =====================================================================
+  const backstage = document.getElementById('backstage');
+  const ribbonFileBtn = document.getElementById('ribbon-file-btn');
+  const backstageBack = document.getElementById('backstage-back');
+
+  ribbonFileBtn.addEventListener('click', () => backstage.classList.add('visible'));
+  backstageBack.addEventListener('click', () => backstage.classList.remove('visible'));
+  backstage.addEventListener('pointerdown', (e) => {
+    if (e.target === backstage)
+      backstage.classList.remove('visible');
+  });
+  for (const item of backstage.querySelectorAll('.backstage-item')) {
+    item.addEventListener('click', () => {
+      backstage.classList.remove('visible');
+      handleAction(item.dataset.action);
+    });
+  }
+
+  // =====================================================================
+  // QAT buttons
+  // =====================================================================
+  for (const btn of document.querySelectorAll('.qat-btn[data-action]'))
+    btn.addEventListener('click', () => handleAction(btn.dataset.action));
+
+  // =====================================================================
+  // Ribbon action buttons
+  // =====================================================================
+  for (const btn of document.querySelectorAll('.rb-btn[data-action]'))
+    btn.addEventListener('click', () => handleAction(btn.dataset.action));
+
+  // =====================================================================
+  // Ribbon view checkboxes
+  // =====================================================================
+  document.getElementById('rb-word-wrap').addEventListener('change', (e) => {
+    wordWrap = e.target.checked;
+    applyWordWrap();
+  });
+  document.getElementById('rb-line-numbers').addEventListener('change', (e) => {
+    showLineNumbers = e.target.checked;
+    scheduleLineNumbers();
+  });
+  document.getElementById('rb-show-whitespace').addEventListener('change', (e) => {
+    showWhitespace = e.target.checked;
+    scheduleHighlight();
+  });
+  document.getElementById('rb-show-line-endings').addEventListener('change', (e) => {
+    showLineEndings = e.target.checked;
+    scheduleHighlight();
+  });
+  document.getElementById('rb-long-line-marker').addEventListener('change', (e) => {
+    showLongLineMarker = e.target.checked;
+    updateLongLineMarker();
+  });
+  document.getElementById('rb-highlight-current-line').addEventListener('change', (e) => {
+    highlightCurrentLine = e.target.checked;
+    updateCurrentLineHighlight();
+  });
+  document.getElementById('rb-auto-indent').addEventListener('change', (e) => {
+    autoIndent = e.target.checked;
+  });
+  document.getElementById('rb-auto-close-brackets').addEventListener('change', (e) => {
+    autoCloseBrackets = e.target.checked;
   });
 
   // =====================================================================
-  // Menu actions
+  // Ribbon syntax select
   // =====================================================================
-  for (const entry of document.querySelectorAll('.menu-entry')) {
-    entry.addEventListener('click', (e) => {
-      const action = entry.dataset.action;
-      if (!action)
-        return;
-      // Do not close menus for submenu parents
-      if (entry.classList.contains('has-submenu'))
-        return;
-      closeMenus();
-      handleAction(action, entry);
+  const rbSyntaxSelect = document.getElementById('rb-syntax-select');
+  rbSyntaxSelect.addEventListener('change', () => {
+    setLanguage(rbSyntaxSelect.value);
+  });
+
+  // =====================================================================
+  // Ribbon encoding radios
+  // =====================================================================
+  for (const radio of document.querySelectorAll('input[name="rb-encoding"]')) {
+    radio.addEventListener('change', () => {
+      currentEncoding = radio.value;
+      statusEnc.textContent = radio.value.toUpperCase();
     });
   }
 
-  function handleAction(action, entry) {
+  // =====================================================================
+  // Ribbon & status bar zoom slider
+  // =====================================================================
+  const rbZoomSlider = document.getElementById('rb-zoom-slider');
+  const rbZoomValue = document.getElementById('rb-zoom-value');
+  const statusZoom = document.getElementById('status-zoom');
+  const statusZoomSlider = document.getElementById('status-zoom-slider');
+
+  function syncZoomSliders(level) {
+    zoomLevel = level;
+    const pct = Math.round(100 * Math.pow(1.1, level));
+    rbZoomValue.textContent = pct + '%';
+    statusZoom.value = pct + '%';
+    rbZoomSlider.value = level;
+    statusZoomSlider.value = level;
+    applyZoom();
+  }
+
+  rbZoomSlider.addEventListener('input', () => syncZoomSliders(parseInt(rbZoomSlider.value, 10)));
+  statusZoomSlider.addEventListener('input', () => syncZoomSliders(parseInt(statusZoomSlider.value, 10)));
+
+  function commitStatusZoom() {
+    const raw = parseInt(statusZoom.value, 10);
+    if (!isNaN(raw) && raw >= 25 && raw <= 500) {
+      const level = Math.round(Math.log(raw / 100) / Math.log(1.1));
+      syncZoomSliders(Math.max(-5, Math.min(10, level)));
+    } else
+      statusZoom.value = Math.round(100 * Math.pow(1.1, zoomLevel)) + '%';
+  }
+  statusZoom.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); commitStatusZoom(); statusZoom.blur(); } });
+  statusZoom.addEventListener('blur', commitStatusZoom);
+
+  function handleAction(action) {
     switch (action) {
       case 'new':
         doNew();
@@ -988,52 +1065,17 @@
       case 'comment-toggle':
         doToggleComment();
         break;
-      case 'word-wrap':
-        wordWrap = !wordWrap;
-        if (entry) entry.classList.toggle('checked', wordWrap);
-        applyWordWrap();
-        break;
-      case 'line-numbers':
-        showLineNumbers = !showLineNumbers;
-        if (entry) entry.classList.toggle('checked', showLineNumbers);
-        scheduleLineNumbers();
-        break;
-      case 'show-whitespace':
-        showWhitespace = !showWhitespace;
-        if (entry) entry.classList.toggle('checked', showWhitespace);
-        scheduleHighlight();
-        break;
-      case 'show-line-endings':
-        showLineEndings = !showLineEndings;
-        if (entry) entry.classList.toggle('checked', showLineEndings);
-        scheduleHighlight();
-        break;
-      case 'long-line-marker':
-        showLongLineMarker = !showLongLineMarker;
-        if (entry) entry.classList.toggle('checked', showLongLineMarker);
-        updateLongLineMarker();
-        break;
-      case 'highlight-current-line':
-        highlightCurrentLine = !highlightCurrentLine;
-        if (entry) entry.classList.toggle('checked', highlightCurrentLine);
-        updateCurrentLineHighlight();
-        break;
-      case 'syntax': {
-        const lang = entry.dataset.lang;
-        setLanguage(lang);
-        // Update radio checks in syntax submenu
-        for (const el of document.querySelectorAll('#syntax-submenu .menu-entry.radio'))
-          el.classList.toggle('checked', el.dataset.lang === lang);
-        break;
-      }
       case 'zoom-in':
         doZoom(1);
+        syncZoomSliders(zoomLevel);
         break;
       case 'zoom-out':
         doZoom(-1);
+        syncZoomSliders(zoomLevel);
         break;
       case 'zoom-reset':
         doZoom(0, true);
+        syncZoomSliders(zoomLevel);
         break;
       case 'font':
         showFontDialog();
@@ -1041,22 +1083,6 @@
       case 'tab-settings':
         showTabSettings();
         break;
-      case 'auto-indent':
-        autoIndent = !autoIndent;
-        if (entry) entry.classList.toggle('checked', autoIndent);
-        break;
-      case 'auto-close-brackets':
-        autoCloseBrackets = !autoCloseBrackets;
-        if (entry) entry.classList.toggle('checked', autoCloseBrackets);
-        break;
-      case 'encoding': {
-        const enc = entry.dataset.enc;
-        currentEncoding = enc;
-        statusEnc.textContent = enc.toUpperCase();
-        for (const el of document.querySelectorAll('[data-action="encoding"]'))
-          el.classList.toggle('checked', el.dataset.enc === enc);
-        break;
-      }
       case 'convert-crlf':
         convertLineEndings('CRLF');
         break;
@@ -1252,8 +1278,7 @@
     setLanguage(lang);
 
     // Update syntax submenu radio
-    for (const el of document.querySelectorAll('#syntax-submenu .menu-entry.radio'))
-      el.classList.toggle('checked', el.dataset.lang === lang);
+    rbSyntaxSelect.value = lang;
 
     updateTitle();
     onContentChanged();
@@ -1289,8 +1314,7 @@
       // Auto-detect language from new file name
       const lang = detectLanguageFromExtension(currentFileName);
       setLanguage(lang);
-      for (const el of document.querySelectorAll('#syntax-submenu .menu-entry.radio'))
-        el.classList.toggle('checked', el.dataset.lang === lang);
+      rbSyntaxSelect.value = lang;
 
       await saveToPath(result.path, callback);
     }
@@ -2248,8 +2272,7 @@
     const idx = langs.indexOf(currentLanguage);
     const next = langs[(idx + 1) % langs.length];
     setLanguage(next);
-    for (const el of document.querySelectorAll('#syntax-submenu .menu-entry.radio'))
-      el.classList.toggle('checked', el.dataset.lang === next);
+    rbSyntaxSelect.value = next;
   });
 
   // =====================================================================

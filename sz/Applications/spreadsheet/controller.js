@@ -4,8 +4,8 @@
   const { User32, Kernel32, ComDlg32 } = SZ.Dlls;
 
   // ── Constants ──────────────────────────────────────────────────────
-  const TOTAL_COLS = 26;
-  const TOTAL_ROWS = 200;
+  const INIT_COLS = 26;
+  const INIT_ROWS = 100;
   const DEFAULT_COL_WIDTH = 80;
   const DEFAULT_ROW_HEIGHT = 20;
   const VISIBLE_ROW_BUFFER = 5;
@@ -35,6 +35,37 @@
     { name: 'Title', fmt: { bold: true, fontSize: 18 } },
     { name: 'Total', fmt: { bold: true, borderBottom: { style: 'double', color: '#000000' } } },
     { name: 'Input', fmt: { bgColor: '#ffffcc', borderAll: { style: 'thin', color: '#999999' } } },
+    { name: 'Calculation', fmt: { italic: true, bgColor: '#f2f2f2', borderBottom: { style: 'thin', color: '#999999' } } },
+    { name: 'Check Cell', fmt: { bgColor: '#a9d18e', borderAll: { style: 'thin', color: '#548235' } } },
+    { name: 'Explanatory', fmt: { italic: true, textColor: '#7f7f7f' } },
+    { name: 'Linked Cell', fmt: { textColor: '#0563c1', borderBottom: { style: 'thin', color: '#0563c1' } } },
+    { name: 'Note', fmt: { bgColor: '#fff2cc', borderAll: { style: 'thin', color: '#ffc000' } } },
+    { name: 'Output', fmt: { bold: true, borderAll: { style: 'thin', color: '#333333' } } },
+    { name: 'Warning', fmt: { textColor: '#c00000', bold: true } },
+    { name: 'Accent 1', fmt: { bgColor: '#4472c4', textColor: '#ffffff', bold: true } },
+    { name: 'Accent 2', fmt: { bgColor: '#ed7d31', textColor: '#ffffff', bold: true } },
+    { name: 'Accent 3', fmt: { bgColor: '#70ad47', textColor: '#ffffff', bold: true } },
+  ];
+
+  const TABLE_STYLES = [
+    { name: 'Blue Medium 2', header: { bg: '#4472c4', fg: '#fff', bold: true },
+      bandEven: { bg: '#d9e2f3' }, bandOdd: { bg: '#fff' },
+      border: { style: 'thin', color: '#4472c4' } },
+    { name: 'Orange Medium 3', header: { bg: '#ed7d31', fg: '#fff', bold: true },
+      bandEven: { bg: '#fce4d6' }, bandOdd: { bg: '#fff' },
+      border: { style: 'thin', color: '#ed7d31' } },
+    { name: 'Gray Medium 4', header: { bg: '#a5a5a5', fg: '#fff', bold: true },
+      bandEven: { bg: '#ededed' }, bandOdd: { bg: '#fff' },
+      border: { style: 'thin', color: '#a5a5a5' } },
+    { name: 'Green Medium 6', header: { bg: '#70ad47', fg: '#fff', bold: true },
+      bandEven: { bg: '#e2efda' }, bandOdd: { bg: '#fff' },
+      border: { style: 'thin', color: '#70ad47' } },
+    { name: 'Gold Medium 7', header: { bg: '#ffc000', fg: '#000', bold: true },
+      bandEven: { bg: '#fff2cc' }, bandOdd: { bg: '#fff' },
+      border: { style: 'thin', color: '#ffc000' } },
+    { name: 'Red Medium 9', header: { bg: '#c00000', fg: '#fff', bold: true },
+      bandEven: { bg: '#fce4ec' }, bandOdd: { bg: '#fff' },
+      border: { style: 'thin', color: '#c00000' } },
   ];
 
   // ── Sheet state ────────────────────────────────────────────────────
@@ -48,8 +79,10 @@
       cellData: {},
       cellFormats: {},
       depGraph: {},
-      colWidths: Array.from({ length: TOTAL_COLS }, () => DEFAULT_COL_WIDTH),
-      rowHeights: Array.from({ length: TOTAL_ROWS }, () => DEFAULT_ROW_HEIGHT),
+      colWidths: {},
+      rowHeights: {},
+      maxUsedCol: -1,
+      maxUsedRow: -1,
       hiddenCols: new Set(),
       hiddenRows: new Set(),
       mergedCells: [],
@@ -66,6 +99,30 @@
   }
 
   function S() { return sheets[activeSheetIdx]; }
+
+  function totalCols() { return Math.max(INIT_COLS, (S().maxUsedCol >= 0 ? S().maxUsedCol + 2 : 0)); }
+  function totalRows() { return Math.max(INIT_ROWS, (S().maxUsedRow >= 0 ? S().maxUsedRow + 2 : 0)); }
+  function getColWidth(col) { return S().colWidths[col] ?? DEFAULT_COL_WIDTH; }
+  function getRowHeight(row) { return S().rowHeights[row] ?? DEFAULT_ROW_HEIGHT; }
+
+  function updateSheetExtent(col, row) {
+    const s = S();
+    if (col > s.maxUsedCol) s.maxUsedCol = col;
+    if (row > s.maxUsedRow) s.maxUsedRow = row;
+  }
+
+  function recalcSheetExtent() {
+    const s = S();
+    s.maxUsedCol = -1;
+    s.maxUsedRow = -1;
+    for (const key in s.cellData) {
+      if (s.cellData[key].raw === '') continue;
+      const p = parseKey(key);
+      if (!p) continue;
+      if (p.col > s.maxUsedCol) s.maxUsedCol = p.col;
+      if (p.row > s.maxUsedRow) s.maxUsedRow = p.row;
+    }
+  }
 
   sheets.push(createSheet());
 
@@ -94,11 +151,9 @@
   let clipboard = null;
   let clipboardIsCut = false;
 
-  let openFileMenu = null;
   let colorCallback = null;
 
   // ── DOM refs ───────────────────────────────────────────────────────
-  const fileMenuBar = document.getElementById('file-menu-bar');
   const ribbonTabs = document.getElementById('ribbon-tabs');
   const gridScroll = document.getElementById('grid-scroll');
   const gridHead = document.getElementById('grid-head');
@@ -182,6 +237,7 @@
     const sheet = S();
     const old = sheet.cellData[key];
     const entry = { raw, value: '', error: false, deps: [] };
+    if (raw !== '') updateSheetExtent(col, row);
 
     if (old && old.deps)
       for (const dep of old.deps) {
@@ -715,12 +771,12 @@
     const corner = document.createElement('th');
     corner.className = 'corner';
     tr.appendChild(corner);
-    for (let c = 0; c < TOTAL_COLS; ++c) {
+    for (let c = 0; c < totalCols(); ++c) {
       const th = document.createElement('th');
       th.className = 'col-header';
       if (S().hiddenCols.has(c)) th.classList.add('hidden-col');
       th.textContent = colName(c);
-      th.style.width = S().colWidths[c] + 'px';
+      th.style.width = getColWidth(c) + 'px';
       th.dataset.col = c;
       if (S().filterCol === c) th.classList.add('filtered');
       const handle = document.createElement('div');
@@ -737,7 +793,7 @@
     const viewHeight = gridScroll.clientHeight;
     const headerHeight = 20;
     const start = Math.max(0, Math.floor((scrollTop - headerHeight) / DEFAULT_ROW_HEIGHT) - VISIBLE_ROW_BUFFER);
-    const end = Math.min(TOTAL_ROWS - 1, Math.ceil((scrollTop - headerHeight + viewHeight) / DEFAULT_ROW_HEIGHT) + VISIBLE_ROW_BUFFER);
+    const end = Math.min(totalRows() - 1, Math.ceil((scrollTop - headerHeight + viewHeight) / DEFAULT_ROW_HEIGHT) + VISIBLE_ROW_BUFFER);
     return { start, end };
   }
 
@@ -765,15 +821,16 @@
   }
 
   function updateSpacers(start, end) {
+    const cols = totalCols() + 1;
     let topSpacer = gridBody.querySelector('.spacer-top');
     if (!topSpacer) {
       topSpacer = document.createElement('tr');
       topSpacer.className = 'spacer-top';
       const td = document.createElement('td');
-      td.colSpan = TOTAL_COLS + 1;
       td.style.padding = '0'; td.style.border = 'none';
       topSpacer.appendChild(td);
     }
+    topSpacer.firstChild.colSpan = cols;
     topSpacer.firstChild.style.height = (start * DEFAULT_ROW_HEIGHT) + 'px';
     if (gridBody.firstChild !== topSpacer) gridBody.insertBefore(topSpacer, gridBody.firstChild);
 
@@ -782,11 +839,11 @@
       botSpacer = document.createElement('tr');
       botSpacer.className = 'spacer-bottom';
       const td = document.createElement('td');
-      td.colSpan = TOTAL_COLS + 1;
       td.style.padding = '0'; td.style.border = 'none';
       botSpacer.appendChild(td);
     }
-    botSpacer.firstChild.style.height = ((TOTAL_ROWS - 1 - end) * DEFAULT_ROW_HEIGHT) + 'px';
+    botSpacer.firstChild.colSpan = cols;
+    botSpacer.firstChild.style.height = ((totalRows() - 1 - end) * DEFAULT_ROW_HEIGHT) + 'px';
     gridBody.appendChild(botSpacer);
   }
 
@@ -805,12 +862,12 @@
     rh.appendChild(rhandle);
     tr.appendChild(rh);
 
-    for (let c = 0; c < TOTAL_COLS; ++c) {
+    for (let c = 0; c < totalCols(); ++c) {
       const td = document.createElement('td');
       td.className = 'cell';
       td.dataset.col = c;
       td.dataset.row = r;
-      td.style.width = S().colWidths[c] + 'px';
+      td.style.width = getColWidth(c) + 'px';
       if (S().hiddenCols.has(c)) td.classList.add('hidden-col-cell');
       const merged = getMergedRegion(c, r);
       if (merged && (c !== merged.c1 || r !== merged.r1)) {
@@ -857,6 +914,9 @@
   }
 
   function applyConditionalFormat(td, col, row) {
+    const existing = td.querySelector('.cf-data-bar');
+    if (existing) existing.remove();
+    delete td.dataset.cfIcon;
     const val = getCellValue(col, row);
     for (const rule of S().conditionalRules) {
       if (col < rule.c1 || col > rule.c2 || row < rule.r1 || row > rule.r2) continue;
@@ -876,9 +936,117 @@
           match = cnt > 1;
           break;
         }
+        case 'top10': {
+          const allVals = [];
+          for (let r2 = rule.r1; r2 <= rule.r2; ++r2)
+            for (let c2 = rule.c1; c2 <= rule.c2; ++c2) {
+              const v2 = Number(getCellValue(c2, r2));
+              if (!isNaN(v2)) allVals.push(v2);
+            }
+          allVals.sort((a, b) => b - a);
+          const n = Number(rule.value1) || 10;
+          const threshold = allVals[Math.min(n, allVals.length) - 1];
+          match = !isNaN(nv) && nv >= threshold;
+          break;
+        }
+        case 'bottom10': {
+          const allVals = [];
+          for (let r2 = rule.r1; r2 <= rule.r2; ++r2)
+            for (let c2 = rule.c1; c2 <= rule.c2; ++c2) {
+              const v2 = Number(getCellValue(c2, r2));
+              if (!isNaN(v2)) allVals.push(v2);
+            }
+          allVals.sort((a, b) => a - b);
+          const n = Number(rule.value1) || 10;
+          const threshold = allVals[Math.min(n, allVals.length) - 1];
+          match = !isNaN(nv) && nv <= threshold;
+          break;
+        }
+        case 'data-bar': {
+          if (isNaN(nv)) break;
+          let minVal = Infinity, maxVal = -Infinity;
+          for (let r2 = rule.r1; r2 <= rule.r2; ++r2)
+            for (let c2 = rule.c1; c2 <= rule.c2; ++c2) {
+              const v2 = Number(getCellValue(c2, r2));
+              if (!isNaN(v2)) { if (v2 < minVal) minVal = v2; if (v2 > maxVal) maxVal = v2; }
+            }
+          const range = maxVal - minVal;
+          if (range > 0) {
+            const pct = ((nv - minVal) / range) * 100;
+            const existing = td.querySelector('.cf-data-bar');
+            if (existing) existing.remove();
+            const bar = document.createElement('div');
+            bar.className = 'cf-data-bar';
+            bar.style.width = pct + '%';
+            bar.style.backgroundColor = rule.color || '#638ec6';
+            td.appendChild(bar);
+          }
+          break;
+        }
+        case 'color-scale-2': case 'color-scale-3': {
+          if (isNaN(nv)) break;
+          let minVal = Infinity, maxVal = -Infinity;
+          for (let r2 = rule.r1; r2 <= rule.r2; ++r2)
+            for (let c2 = rule.c1; c2 <= rule.c2; ++c2) {
+              const v2 = Number(getCellValue(c2, r2));
+              if (!isNaN(v2)) { if (v2 < minVal) minVal = v2; if (v2 > maxVal) maxVal = v2; }
+            }
+          const range = maxVal - minVal;
+          if (range > 0) {
+            const t = (nv - minVal) / range;
+            if (rule.type === 'color-scale-2')
+              td.style.backgroundColor = _interpolateColor(rule.colorMin || '#f8696b', rule.colorMax || '#63be7b', t);
+            else {
+              if (t < 0.5)
+                td.style.backgroundColor = _interpolateColor(rule.colorMin || '#f8696b', rule.colorMid || '#ffeb84', t * 2);
+              else
+                td.style.backgroundColor = _interpolateColor(rule.colorMid || '#ffeb84', rule.colorMax || '#63be7b', (t - 0.5) * 2);
+            }
+          }
+          break;
+        }
+        case 'icon-3-arrows': case 'icon-3-traffic': case 'icon-3-flags': case 'icon-5-rating': {
+          if (isNaN(nv)) break;
+          let minVal = Infinity, maxVal = -Infinity;
+          for (let r2 = rule.r1; r2 <= rule.r2; ++r2)
+            for (let c2 = rule.c1; c2 <= rule.c2; ++c2) {
+              const v2 = Number(getCellValue(c2, r2));
+              if (!isNaN(v2)) { if (v2 < minVal) minVal = v2; if (v2 > maxVal) maxVal = v2; }
+            }
+          const range = maxVal - minVal;
+          if (range > 0) {
+            const pct = (nv - minVal) / range;
+            let icon = '';
+            switch (rule.type) {
+              case 'icon-3-arrows': icon = pct >= 0.67 ? '\u25B2' : pct >= 0.33 ? '\u25BA' : '\u25BC'; break;
+              case 'icon-3-traffic': icon = pct >= 0.67 ? '\uD83D\uDFE2' : pct >= 0.33 ? '\uD83D\uDFE1' : '\uD83D\uDD34'; break;
+              case 'icon-3-flags': icon = pct >= 0.67 ? '\uD83D\uDFE9' : pct >= 0.33 ? '\uD83D\uDFE8' : '\uD83D\uDFE5'; break;
+              case 'icon-5-rating': {
+                const stars = Math.ceil(pct * 5) || 1;
+                icon = '\u2605'.repeat(stars) + '\u2606'.repeat(5 - stars);
+                break;
+              }
+            }
+            td.dataset.cfIcon = icon;
+          }
+          break;
+        }
       }
       if (match) td.style.backgroundColor = rule.color;
     }
+  }
+
+  function _interpolateColor(c1, c2, t) {
+    const parse = (hex) => {
+      const h = hex.replace('#', '');
+      return [parseInt(h.substring(0, 2), 16), parseInt(h.substring(2, 4), 16), parseInt(h.substring(4, 6), 16)];
+    };
+    const [r1, g1, b1] = parse(c1);
+    const [r2, g2, b2] = parse(c2);
+    const r = Math.round(r1 + (r2 - r1) * t);
+    const g = Math.round(g1 + (g2 - g1) * t);
+    const b = Math.round(b1 + (b2 - b1) * t);
+    return '#' + ((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1);
   }
 
   function updateCellDisplay(td, col, row) {
@@ -913,7 +1081,7 @@
       const rIdx = parseInt(tr.dataset.row, 10);
       const rh = tr.children[0];
       if (rh) rh.classList.toggle('selected', rIdx >= rect.r1 && rIdx <= rect.r2);
-      for (let c = 0; c < TOTAL_COLS; ++c) {
+      for (let c = 0; c < totalCols(); ++c) {
         const td = tr.querySelector('td[data-col="' + c + '"]');
         if (!td) continue;
         const isActive = c === activeCell.col && rIdx === activeCell.row;
@@ -1037,7 +1205,13 @@
 
   // ── Navigation ─────────────────────────────────────────────────────
   function moveCursor(dc, dr) {
-    selectCell(clamp(activeCell.col + dc, 0, TOTAL_COLS - 1), clamp(activeCell.row + dr, 0, TOTAL_ROWS - 1));
+    const newCol = Math.max(0, activeCell.col + dc);
+    const newRow = Math.max(0, activeCell.row + dr);
+    const needRebuild = newCol >= totalCols() || newRow >= totalRows();
+    if (newCol > S().maxUsedCol) S().maxUsedCol = newCol;
+    if (newRow > S().maxUsedRow) S().maxUsedRow = newRow;
+    if (needRebuild) rebuildGrid();
+    selectCell(newCol, newRow);
     scrollCellIntoView(activeCell.col, activeCell.row);
   }
 
@@ -1056,8 +1230,8 @@
     if (cellTop < gridScroll.scrollTop + headerHeight) gridScroll.scrollTop = cellTop - headerHeight;
     else if (cellBottom > gridScroll.scrollTop + gridScroll.clientHeight) gridScroll.scrollTop = cellBottom - gridScroll.clientHeight;
     let colLeft = rowHeaderWidth;
-    for (let c = 0; c < col; ++c) colLeft += S().colWidths[c];
-    const colRight = colLeft + S().colWidths[col];
+    for (let c = 0; c < col; ++c) colLeft += getColWidth(c);
+    const colRight = colLeft + getColWidth(col);
     if (colLeft < gridScroll.scrollLeft + rowHeaderWidth) gridScroll.scrollLeft = colLeft - rowHeaderWidth;
     else if (colRight > gridScroll.scrollLeft + gridScroll.clientWidth) gridScroll.scrollLeft = colRight - gridScroll.clientWidth;
     renderVisibleRows();
@@ -1065,8 +1239,12 @@
 
   function extendSelection(dc, dr) {
     if (!selectionEnd) selectionEnd = { col: activeCell.col, row: activeCell.row };
-    selectionEnd.col = clamp(selectionEnd.col + dc, 0, TOTAL_COLS - 1);
-    selectionEnd.row = clamp(selectionEnd.row + dr, 0, TOTAL_ROWS - 1);
+    selectionEnd.col = Math.max(0, selectionEnd.col + dc);
+    selectionEnd.row = Math.max(0, selectionEnd.row + dr);
+    const needRebuild = selectionEnd.col >= totalCols() || selectionEnd.row >= totalRows();
+    if (selectionEnd.col > S().maxUsedCol) S().maxUsedCol = selectionEnd.col;
+    if (selectionEnd.row > S().maxUsedRow) S().maxUsedRow = selectionEnd.row;
+    if (needRebuild) rebuildGrid();
     updateSelectionDisplay();
     scrollCellIntoView(selectionEnd.col, selectionEnd.row);
   }
@@ -1100,7 +1278,6 @@
       const row = clipboard[dr];
       for (let dc = 0; dc < row.length; ++dc) {
         const c = activeCell.col + dc, r = activeCell.row + dr;
-        if (c >= TOTAL_COLS || r >= TOTAL_ROWS) continue;
         const oldVal = getCellRaw(c, r);
         const oldFmt = Object.assign({}, getFormat(c, r));
         let newVal, newFmt;
@@ -1185,10 +1362,10 @@
   // ── Column / Row resize ────────────────────────────────────────────
   function updateColumnWidth(col) {
     const th = gridHead.querySelector('th[data-col="' + col + '"]');
-    if (th) th.style.width = S().colWidths[col] + 'px';
+    if (th) th.style.width = getColWidth(col) + 'px';
     for (const [, tr] of renderedRows) {
       const td = tr.querySelector('td[data-col="' + col + '"]');
-      if (td) td.style.width = S().colWidths[col] + 'px';
+      if (td) td.style.width = getColWidth(col) + 'px';
     }
   }
 
@@ -1197,7 +1374,7 @@
     const ctx = canvas.getContext('2d');
     ctx.font = '11px Tahoma, Verdana, sans-serif';
     let maxWidth = 30;
-    for (let r = 0; r < TOTAL_ROWS; ++r) {
+    for (let r = 0; r < totalRows(); ++r) {
       const val = getCellValue(col, r);
       if (val === '') continue;
       const display = formatDisplayValue(val, getFormat(col, r));
@@ -1214,7 +1391,7 @@
     e.preventDefault();
     resizingCol = parseInt(handle.dataset.col, 10);
     resizeStartX = e.clientX;
-    resizeStartWidth = S().colWidths[resizingCol];
+    resizeStartWidth = getColWidth(resizingCol);
     handle.setPointerCapture(e.pointerId);
     const onMove = (me) => { S().colWidths[resizingCol] = Math.max(30, resizeStartWidth + me.clientX - resizeStartX); updateColumnWidth(resizingCol); };
     const onUp = () => { handle.removeEventListener('pointermove', onMove); handle.removeEventListener('pointerup', onUp); resizingCol = -1; };
@@ -1234,9 +1411,9 @@
     e.preventDefault();
     const row = parseInt(handle.dataset.row, 10);
     const startY = e.clientY;
-    const startHeight = S().rowHeights[row];
+    const startHeight = getRowHeight(row);
     handle.setPointerCapture(e.pointerId);
-    const onMove = (me) => { S().rowHeights[row] = Math.max(12, startHeight + me.clientY - startY); const tr = renderedRows.get(row); if (tr) tr.style.height = S().rowHeights[row] + 'px'; };
+    const onMove = (me) => { S().rowHeights[row] = Math.max(12, startHeight + me.clientY - startY); const tr = renderedRows.get(row); if (tr) tr.style.height = getRowHeight(row) + 'px'; };
     const onUp = () => { handle.removeEventListener('pointermove', onMove); handle.removeEventListener('pointerup', onUp); };
     handle.addEventListener('pointermove', onMove);
     handle.addEventListener('pointerup', onUp);
@@ -1374,43 +1551,84 @@
   formulaInput.addEventListener('focus', () => { statusCell.textContent = 'Edit'; });
   formulaInput.addEventListener('blur', () => { statusCell.textContent = 'Ready'; });
 
+  cellRefInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const p = parseKey(cellRefInput.value.trim().toUpperCase());
+      if (p) {
+        if (p.col >= totalCols()) S().maxUsedCol = p.col;
+        if (p.row >= totalRows()) S().maxUsedRow = p.row;
+        if (p.col >= totalCols() || p.row >= totalRows()) rebuildGrid();
+        selectCell(p.col, p.row);
+        scrollCellIntoView(p.col, p.row);
+      }
+      gridScroll.focus();
+    }
+  });
+
   // ── Ribbon tab switching ───────────────────────────────────────────
   for (const tab of ribbonTabs.querySelectorAll('.ribbon-tab')) {
     tab.addEventListener('click', () => {
       ribbonTabs.querySelectorAll('.ribbon-tab').forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
       document.querySelectorAll('.ribbon-panel').forEach(p => p.classList.remove('active'));
-      document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+      const panel = document.querySelector('.ribbon-panel[data-panel="' + tab.dataset.tab + '"]');
+      if (panel) panel.classList.add('active');
     });
   }
 
-  // ── File menu ──────────────────────────────────────────────────────
-  for (const item of fileMenuBar.querySelectorAll('.file-menu-item')) {
-    item.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('.menu-entry')) return;
-      if (openFileMenu === item) { closeFileMenu(); return; }
-      closeFileMenu();
-      item.classList.add('open');
-      openFileMenu = item;
-    });
-  }
+  // ── Backstage ──────────────────────────────────────────────────────
+  const backstage = document.getElementById('backstage');
+  const ribbonFileBtn = document.getElementById('ribbon-file-btn');
+  const backstageBack = document.getElementById('backstage-back');
 
-  function closeFileMenu() {
-    for (const item of fileMenuBar.querySelectorAll('.file-menu-item')) item.classList.remove('open');
-    openFileMenu = null;
-  }
-
-  document.addEventListener('pointerdown', (e) => {
-    if (openFileMenu && !fileMenuBar.contains(e.target)) closeFileMenu();
+  ribbonFileBtn.addEventListener('click', () => backstage.classList.add('visible'));
+  backstageBack.addEventListener('click', () => backstage.classList.remove('visible'));
+  backstage.addEventListener('pointerdown', (e) => {
+    if (e.target === backstage)
+      backstage.classList.remove('visible');
   });
+  for (const item of backstage.querySelectorAll('.backstage-item')) {
+    item.addEventListener('click', () => {
+      backstage.classList.remove('visible');
+      handleAction(item.dataset.action);
+    });
+  }
 
-  // All ribbon and menu buttons with data-action
+  // ── QAT buttons ───────────────────────────────────────────────────
+  for (const btn of document.querySelectorAll('.qat-btn[data-action]'))
+    btn.addEventListener('click', () => handleAction(btn.dataset.action));
+
+  // ── Zoom slider (status bar) ──────────────────────────────────────
+  const statusZoom = document.getElementById('status-zoom');
+  const statusZoomSlider = document.getElementById('status-zoom-slider');
+  const gridContainer = document.getElementById('grid-container');
+
+  let currentZoomPct = 100;
+  function setSpreadsheetZoom(pct) {
+    currentZoomPct = Math.max(25, Math.min(500, pct));
+    statusZoom.value = currentZoomPct + '%';
+    statusZoomSlider.value = currentZoomPct;
+    gridContainer.style.zoom = currentZoomPct === 100 ? '' : (currentZoomPct / 100);
+    visibleRowStart = -1; visibleRowEnd = -1;
+    renderVisibleRows();
+  }
+  statusZoomSlider.addEventListener('input', () => setSpreadsheetZoom(parseInt(statusZoomSlider.value, 10)));
+  function commitStatusZoom() {
+    const raw = parseInt(statusZoom.value, 10);
+    if (!isNaN(raw))
+      setSpreadsheetZoom(raw);
+    else
+      statusZoom.value = currentZoomPct + '%';
+  }
+  statusZoom.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); commitStatusZoom(); statusZoom.blur(); } });
+  statusZoom.addEventListener('blur', commitStatusZoom);
+
+  // All ribbon buttons with data-action
   document.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-action]');
+    const btn = e.target.closest('.rb-btn[data-action]');
     if (!btn) return;
-    const action = btn.dataset.action;
-    closeFileMenu();
-    handleAction(action);
+    handleAction(btn.dataset.action);
   });
 
   // ── Ribbon selects ─────────────────────────────────────────────────
@@ -1485,16 +1703,16 @@
     const needle = fpInput.value.toLowerCase();
     if (!needle) { fpStatus.textContent = ''; return; }
     let r = findLastRow, c = findLastCol;
-    for (let i = 0; i < TOTAL_ROWS * TOTAL_COLS; ++i) {
+    for (let i = 0; i < totalRows() * totalCols(); ++i) {
       const val = String(getCellValue(c, r)).toLowerCase(), raw = String(getCellRaw(c, r)).toLowerCase();
       if (val.includes(needle) || raw.includes(needle)) {
         selectCell(c, r); scrollCellIntoView(c, r); renderVisibleRows(); updateSelectionDisplay();
         fpStatus.textContent = 'Found at ' + cellKey(c, r);
-        if (++c >= TOTAL_COLS) { c = 0; if (++r >= TOTAL_ROWS) r = 0; }
+        if (++c >= totalCols()) { c = 0; if (++r >= totalRows()) r = 0; }
         findLastRow = r; findLastCol = c;
         return;
       }
-      if (++c >= TOTAL_COLS) { c = 0; if (++r >= TOTAL_ROWS) r = 0; }
+      if (++c >= totalCols()) { c = 0; if (++r >= totalRows()) r = 0; }
     }
     fpStatus.textContent = 'No matches found.';
   }
@@ -1519,8 +1737,8 @@
     if (!needle) return;
     const re = new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
     const actions = [];
-    for (let r = 0; r < TOTAL_ROWS; ++r)
-      for (let c = 0; c < TOTAL_COLS; ++c) {
+    for (let r = 0; r < totalRows(); ++r)
+      for (let c = 0; c < totalCols(); ++c) {
         const raw = getCellRaw(c, r);
         if (!re.test(raw)) continue;
         re.lastIndex = 0;
@@ -1815,9 +2033,9 @@
     const isTsv = path && /\.tsv$/i.test(path);
     if (content) {
       const lines = content.split('\n');
-      for (let r = 0; r < lines.length && r < TOTAL_ROWS; ++r) {
+      for (let r = 0; r < lines.length; ++r) {
         const cols = isTsv ? parseTSVLine(lines[r]) : parseCSVLine(lines[r]);
-        for (let c = 0; c < cols.length && c < TOTAL_COLS; ++c) setCellData(c, r, cols[c]);
+        for (let c = 0; c < cols.length; ++c) setCellData(c, r, cols[c]);
       }
     }
     currentFilePath = path;
@@ -1895,19 +2113,21 @@
         const sheet = createSheet(sheetName);
         if (ws['!ref']) {
           const range = XLSX.utils.decode_range(ws['!ref']);
-          for (let r = range.s.r; r <= Math.min(range.e.r, TOTAL_ROWS - 1); ++r)
-            for (let c = range.s.c; c <= Math.min(range.e.c, TOTAL_COLS - 1); ++c) {
+          for (let r = range.s.r; r <= range.e.r; ++r)
+            for (let c = range.s.c; c <= range.e.c; ++c) {
               const addr = XLSX.utils.encode_cell({ r, c });
               const cell = ws[addr];
               if (cell) {
                 const key = cellKey(c, r);
                 const raw = cell.f ? '=' + cell.f : String(cell.v ?? '');
                 sheet.cellData[key] = { raw, value: cell.v ?? '', error: false, deps: [] };
+                if (c > sheet.maxUsedCol) sheet.maxUsedCol = c;
+                if (r > sheet.maxUsedRow) sheet.maxUsedRow = r;
               }
             }
         }
         if (ws['!cols'])
-          for (let c = 0; c < ws['!cols'].length && c < TOTAL_COLS; ++c)
+          for (let c = 0; c < ws['!cols'].length; ++c)
             if (ws['!cols'][c]?.wpx) sheet.colWidths[c] = ws['!cols'][c].wpx;
         sheets.push(sheet);
       }
@@ -1958,7 +2178,9 @@
             ws[addr] = { t: 'n', f: d.raw.slice(1), v: d.value ?? 0 };
           }
         }
-      ws['!cols'] = sheet.colWidths.map(w => ({ wpx: w }));
+      const colsArr = [];
+      for (let c = 0; c <= maxCol; ++c) colsArr.push({ wpx: sheet.colWidths[c] ?? DEFAULT_COL_WIDTH });
+      ws['!cols'] = colsArr;
       XLSX.utils.book_append_sheet(wb, ws, sheet.name);
     }
     const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
@@ -1979,9 +2201,9 @@
     resetAllSheets();
     if (content) {
       const lines = content.split('\n');
-      for (let r = 0; r < lines.length && r < TOTAL_ROWS; ++r) {
+      for (let r = 0; r < lines.length; ++r) {
         const cols = parseTSVLine(lines[r]);
-        for (let c = 0; c < cols.length && c < TOTAL_COLS; ++c)
+        for (let c = 0; c < cols.length; ++c)
           setCellData(c, r, cols[c]);
       }
     }
@@ -2033,6 +2255,7 @@
       case 'export-xlsx': doExportXlsx(); break;
       case 'import-tsv': doImportTsv(); break;
       case 'export-tsv': doExportTsv(); break;
+      case 'print': window.print(); break;
       case 'exit': User32.DestroyWindow(); break;
       case 'undo': doUndo(); break;
       case 'redo': doRedo(); break;
@@ -2041,7 +2264,7 @@
       case 'paste': doPaste('all'); break;
       case 'paste-special': showDialog('dlg-paste-special').then(r => { if (r === 'ok') { const mode = document.querySelector('input[name="paste-what"]:checked').value; doPaste(mode); } }); break;
       case 'delete': deleteSelection(); break;
-      case 'select-all': selectionStart = { col: 0, row: 0 }; selectionEnd = { col: TOTAL_COLS - 1, row: TOTAL_ROWS - 1 }; multiSelections = []; updateSelectionDisplay(); break;
+      case 'select-all': selectionStart = { col: 0, row: 0 }; selectionEnd = { col: totalCols() - 1, row: totalRows() - 1 }; multiSelections = []; updateSelectionDisplay(); break;
       case 'find-replace': showFindPanel(); break;
       case 'bold': toggleFormat('bold'); break;
       case 'italic': toggleFormat('italic'); break;
@@ -2132,46 +2355,50 @@
       }
       case 'insert-row': {
         const row = activeCell.row;
-        for (let r = TOTAL_ROWS - 1; r > row; --r)
-          for (let c = 0; c < TOTAL_COLS; ++c) {
+        for (let r = totalRows() - 1; r > row; --r)
+          for (let c = 0; c < totalCols(); ++c) {
             const above = getCellRaw(c, r - 1);
             setCellData(c, r, above);
             S().cellFormats[cellKey(c, r)] = Object.assign({}, getFormat(c, r - 1));
           }
-        for (let c = 0; c < TOTAL_COLS; ++c) { setCellData(c, row, ''); S().cellFormats[cellKey(c, row)] = {}; }
+        for (let c = 0; c < totalCols(); ++c) { setCellData(c, row, ''); S().cellFormats[cellKey(c, row)] = {}; }
         rebuildGrid(); setDirty(true);
         break;
       }
       case 'insert-col': {
         const col = activeCell.col;
-        for (let c = TOTAL_COLS - 1; c > col; --c)
-          for (let r = 0; r < TOTAL_ROWS; ++r) {
+        for (let c = totalCols() - 1; c > col; --c)
+          for (let r = 0; r < totalRows(); ++r) {
             setCellData(c, r, getCellRaw(c - 1, r));
             S().cellFormats[cellKey(c, r)] = Object.assign({}, getFormat(c - 1, r));
           }
-        for (let r = 0; r < TOTAL_ROWS; ++r) { setCellData(col, r, ''); S().cellFormats[cellKey(col, r)] = {}; }
+        for (let r = 0; r < totalRows(); ++r) { setCellData(col, r, ''); S().cellFormats[cellKey(col, r)] = {}; }
         rebuildGrid(); setDirty(true);
         break;
       }
       case 'delete-row': {
         const row = activeCell.row;
-        for (let r = row; r < TOTAL_ROWS - 1; ++r)
-          for (let c = 0; c < TOTAL_COLS; ++c) {
+        const tc = totalCols(), tr = totalRows();
+        for (let r = row; r < tr - 1; ++r)
+          for (let c = 0; c < tc; ++c) {
             setCellData(c, r, getCellRaw(c, r + 1));
             S().cellFormats[cellKey(c, r)] = Object.assign({}, getFormat(c, r + 1));
           }
-        for (let c = 0; c < TOTAL_COLS; ++c) { setCellData(c, TOTAL_ROWS - 1, ''); S().cellFormats[cellKey(c, TOTAL_ROWS - 1)] = {}; }
+        for (let c = 0; c < tc; ++c) { setCellData(c, tr - 1, ''); S().cellFormats[cellKey(c, tr - 1)] = {}; }
+        recalcSheetExtent();
         rebuildGrid(); setDirty(true);
         break;
       }
       case 'delete-col': {
         const col = activeCell.col;
-        for (let c = col; c < TOTAL_COLS - 1; ++c)
-          for (let r = 0; r < TOTAL_ROWS; ++r) {
+        const tc = totalCols(), tr = totalRows();
+        for (let c = col; c < tc - 1; ++c)
+          for (let r = 0; r < tr; ++r) {
             setCellData(c, r, getCellRaw(c + 1, r));
             S().cellFormats[cellKey(c, r)] = Object.assign({}, getFormat(c + 1, r));
           }
-        for (let r = 0; r < TOTAL_ROWS; ++r) { setCellData(TOTAL_COLS - 1, r, ''); S().cellFormats[cellKey(TOTAL_COLS - 1, r)] = {}; }
+        for (let r = 0; r < tr; ++r) { setCellData(tc - 1, r, ''); S().cellFormats[cellKey(tc - 1, r)] = {}; }
+        recalcSheetExtent();
         rebuildGrid(); setDirty(true);
         break;
       }
@@ -2201,26 +2428,42 @@
       case 'insert-comment': showPrompt('Add Comment', 'Comment:', S().comments[cellKey(activeCell.col, activeCell.row)] || '').then(c => { if (c !== null) { S().comments[cellKey(activeCell.col, activeCell.row)] = c; rebuildGrid(); setDirty(true); } }); break;
       case 'name-manager': case 'define-name': {
         showDialog('dlg-name-manager');
-        const refresh = () => {
-          const list = document.getElementById('nm-list');
-          list.innerHTML = '';
+        const nmRefresh = () => {
+          const tbody = document.getElementById('nm-list-body');
+          tbody.innerHTML = '';
           for (const [name, range] of Object.entries(S().namedRanges)) {
-            const div = document.createElement('div');
-            div.textContent = name + ' = ' + range;
-            div.style.padding = '2px 4px'; div.style.cursor = 'default';
-            div.addEventListener('click', () => { document.getElementById('nm-name').value = name; document.getElementById('nm-range').value = range; });
-            list.appendChild(div);
+            const tr = document.createElement('tr');
+            tr.style.cursor = 'default';
+            const tdName = document.createElement('td'); tdName.textContent = name;
+            const tdRange = document.createElement('td'); tdRange.textContent = range;
+            const tdScope = document.createElement('td'); tdScope.textContent = 'Sheet';
+            const tdUsed = document.createElement('td');
+            const usedCells = [];
+            for (const key in S().cellData) {
+              const d = S().cellData[key];
+              if (d && typeof d.raw === 'string' && d.raw.startsWith('=') && d.raw.toLowerCase().includes(name.toLowerCase()))
+                usedCells.push(key);
+            }
+            tdUsed.textContent = usedCells.length ? usedCells.join(', ') : '-';
+            tr.appendChild(tdName); tr.appendChild(tdRange); tr.appendChild(tdScope); tr.appendChild(tdUsed);
+            tr.addEventListener('click', () => {
+              document.getElementById('nm-name').value = name;
+              document.getElementById('nm-range').value = range;
+              const parsed = parseKey(range.split(':')[0]);
+              if (parsed) { selectCell(parsed.col, parsed.row); scrollCellIntoView(parsed.col, parsed.row); }
+            });
+            tbody.appendChild(tr);
           }
         };
-        refresh();
+        nmRefresh();
         document.getElementById('nm-add').onclick = () => {
           const name = document.getElementById('nm-name').value.trim();
           const range = document.getElementById('nm-range').value.trim();
-          if (name && range) { S().namedRanges[name] = range; refresh(); setDirty(true); }
+          if (name && range) { S().namedRanges[name] = range; nmRefresh(); setDirty(true); }
         };
         document.getElementById('nm-delete').onclick = () => {
           const name = document.getElementById('nm-name').value.trim();
-          if (name && S().namedRanges[name]) { delete S().namedRanges[name]; refresh(); setDirty(true); }
+          if (name && S().namedRanges[name]) { delete S().namedRanges[name]; nmRefresh(); setDirty(true); document.getElementById('nm-name').value = ''; document.getElementById('nm-range').value = ''; }
         };
         break;
       }
@@ -2247,7 +2490,7 @@
       case 'custom-sort': {
         const sel = document.getElementById('sort-col');
         sel.innerHTML = '';
-        for (let c = 0; c < TOTAL_COLS; ++c) { const opt = document.createElement('option'); opt.value = c; opt.textContent = colName(c); sel.appendChild(opt); }
+        for (let c = 0; c < totalCols(); ++c) { const opt = document.createElement('option'); opt.value = c; opt.textContent = colName(c); sel.appendChild(opt); }
         sel.value = activeCell.col;
         showDialog('dlg-custom-sort').then(r => {
           if (r === 'ok') {
@@ -2256,12 +2499,12 @@
             const hasHeader = document.getElementById('sort-has-header').checked;
             const startRow = hasHeader ? 1 : 0;
             const rows = [];
-            for (let r = startRow; r < TOTAL_ROWS; ++r) {
+            for (let r = startRow; r < totalRows(); ++r) {
               let hasData = false;
-              for (let c = 0; c < TOTAL_COLS; ++c) if (getCellRaw(c, r) !== '') { hasData = true; break; }
+              for (let c = 0; c < totalCols(); ++c) if (getCellRaw(c, r) !== '') { hasData = true; break; }
               if (!hasData) continue;
               const row = [];
-              for (let c = 0; c < TOTAL_COLS; ++c) row.push({ raw: getCellRaw(c, r), fmt: Object.assign({}, getFormat(c, r)) });
+              for (let c = 0; c < totalCols(); ++c) row.push({ raw: getCellRaw(c, r), fmt: Object.assign({}, getFormat(c, r)) });
               rows.push(row);
             }
             rows.sort((a, b) => {
@@ -2271,7 +2514,7 @@
               return asc ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
             });
             for (let r = 0; r < rows.length; ++r)
-              for (let c = 0; c < TOTAL_COLS; ++c) {
+              for (let c = 0; c < totalCols(); ++c) {
                 setCellData(c, startRow + r, rows[r][c].raw);
                 S().cellFormats[cellKey(c, startRow + r)] = rows[r][c].fmt;
               }
@@ -2294,7 +2537,7 @@
           for (let r = rect.r1; r <= rect.r2; ++r) {
             const raw = getCellRaw(rect.c1, r);
             const parts = raw.split(delim);
-            for (let i = 0; i < parts.length && rect.c1 + i < TOTAL_COLS; ++i) {
+            for (let i = 0; i < parts.length; ++i) {
               setCellData(rect.c1 + i, r, parts[i].trim());
               renderCellContent(rect.c1 + i, r);
             }
@@ -2329,18 +2572,37 @@
       case 'group-cols': { const rect = getSelectionRect(); for (let c = rect.c1 + 1; c <= rect.c2; ++c) S().hiddenCols.add(c); rebuildGrid(); break; }
       case 'ungroup-cols': { S().hiddenCols.clear(); rebuildGrid(); break; }
       case 'cond-format': {
-        document.getElementById('cf-rule').addEventListener('change', () => {
-          document.getElementById('cf-value2-row').style.display = document.getElementById('cf-rule').value === 'between' ? '' : 'none';
-        });
+        const cfRuleSel = document.getElementById('cf-rule');
+        const cfUpdateVisibility = () => {
+          const v = cfRuleSel.value;
+          const isIcon = v.startsWith('icon-');
+          const isDataBar = v === 'data-bar';
+          const isColorScale = v === 'color-scale-2' || v === 'color-scale-3';
+          const needsValue = !isIcon && !isDataBar && !isColorScale && v !== 'duplicate';
+          document.getElementById('cf-value1-row').style.display = needsValue ? '' : 'none';
+          document.getElementById('cf-value2-row').style.display = v === 'between' ? '' : 'none';
+          document.getElementById('cf-color-row').style.display = (!isIcon && !isColorScale) ? '' : 'none';
+          document.getElementById('cf-color-scale-row').style.display = isColorScale ? '' : 'none';
+          document.getElementById('cf-color-mid-row').style.display = v === 'color-scale-3' ? '' : 'none';
+        };
+        cfRuleSel.onchange = cfUpdateVisibility;
+        cfUpdateVisibility();
         showDialog('dlg-cond-format').then(r => {
           if (r === 'ok') {
             const rect = getSelectionRect();
-            S().conditionalRules.push({
-              ...rect, type: document.getElementById('cf-rule').value,
+            const ruleType = cfRuleSel.value;
+            const rule = {
+              ...rect, type: ruleType,
               value1: document.getElementById('cf-value1').value,
               value2: document.getElementById('cf-value2').value,
               color: document.getElementById('cf-color').value,
-            });
+            };
+            if (ruleType === 'color-scale-2' || ruleType === 'color-scale-3') {
+              rule.colorMin = document.getElementById('cf-color-min').value;
+              rule.colorMid = document.getElementById('cf-color-mid').value;
+              rule.colorMax = document.getElementById('cf-color-max').value;
+            }
+            S().conditionalRules.push(rule);
             rebuildGrid(); setDirty(true);
           } else if (r === 'clear') { S().conditionalRules.length = 0; rebuildGrid(); setDirty(true); }
         });
@@ -2372,6 +2634,48 @@
           grid.appendChild(item);
         }
         showDialog('dlg-cell-styles');
+        break;
+      }
+      case 'format-table': {
+        const tsGrid = document.getElementById('table-styles-grid');
+        tsGrid.innerHTML = '';
+        for (const style of TABLE_STYLES) {
+          const item = document.createElement('div');
+          item.className = 'table-style-item';
+          item.innerHTML = '<div class="ts-header" style="background:' + style.header.bg + ';color:' + style.header.fg + ';font-weight:bold;">Header</div>'
+            + '<div class="ts-band" style="background:' + style.bandEven.bg + ';">Row 1</div>'
+            + '<div class="ts-band" style="background:' + style.bandOdd.bg + ';">Row 2</div>'
+            + '<div class="ts-band" style="background:' + style.bandEven.bg + ';">Row 3</div>'
+            + '<div class="ts-name">' + style.name + '</div>';
+          item.addEventListener('click', () => {
+            const rect = getSelectionRect();
+            const border = style.border;
+            const actions = [];
+            for (let r = rect.r1; r <= rect.r2; ++r)
+              for (let c = rect.c1; c <= rect.c2; ++c) {
+                const oldFmt = Object.assign({}, getFormat(c, r));
+                const newFmt = Object.assign({}, oldFmt);
+                newFmt.borderAll = border;
+                if (r === rect.r1) {
+                  newFmt.bgColor = style.header.bg;
+                  newFmt.textColor = style.header.fg;
+                  newFmt.bold = style.header.bold;
+                } else {
+                  const band = (r - rect.r1) % 2 === 1 ? style.bandOdd : style.bandEven;
+                  newFmt.bgColor = band.bg;
+                  newFmt.textColor = '';
+                  newFmt.bold = false;
+                }
+                actions.push({ type: 'cell', col: c, row: r, oldVal: getCellRaw(c, r), newVal: getCellRaw(c, r), oldFmt, newFmt });
+                S().cellFormats[cellKey(c, r)] = newFmt;
+              }
+            if (actions.length) { pushUndo({ type: 'multi', actions }); setDirty(true); }
+            rebuildGrid();
+            document.getElementById('dlg-table-styles').classList.remove('visible');
+          });
+          tsGrid.appendChild(item);
+        }
+        showDialog('dlg-table-styles');
         break;
       }
       case 'format-cells': {
@@ -2441,11 +2745,11 @@
         });
         break;
       }
-      case 'col-width': showPrompt('Column Width', 'Width (pixels):', String(S().colWidths[activeCell.col])).then(v => { if (v) { S().colWidths[activeCell.col] = Math.max(10, parseInt(v, 10) || 80); updateColumnWidth(activeCell.col); } }); break;
+      case 'col-width': showPrompt('Column Width', 'Width (pixels):', String(getColWidth(activeCell.col))).then(v => { if (v) { S().colWidths[activeCell.col] = Math.max(10, parseInt(v, 10) || 80); updateColumnWidth(activeCell.col); } }); break;
       case 'col-autofit': autoResizeColumn(activeCell.col); break;
       case 'col-hide': S().hiddenCols.add(activeCell.col); rebuildGrid(); break;
       case 'col-unhide': S().hiddenCols.clear(); rebuildGrid(); break;
-      case 'row-height': showPrompt('Row Height', 'Height (pixels):', String(S().rowHeights[activeCell.row])).then(v => { if (v) { S().rowHeights[activeCell.row] = Math.max(10, parseInt(v, 10) || 20); rebuildGrid(); } }); break;
+      case 'row-height': showPrompt('Row Height', 'Height (pixels):', String(getRowHeight(activeCell.row))).then(v => { if (v) { S().rowHeights[activeCell.row] = Math.max(10, parseInt(v, 10) || 20); rebuildGrid(); } }); break;
       case 'row-autofit': break;
       case 'row-hide': S().hiddenRows.add(activeCell.row); rebuildGrid(); break;
       case 'row-unhide': S().hiddenRows.clear(); rebuildGrid(); break;
