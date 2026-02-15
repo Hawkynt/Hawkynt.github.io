@@ -871,8 +871,13 @@ const fnTooltip = document.getElementById('fnTooltip');
 const btnAddFunction = document.getElementById('btnAddFunction');
 const menuBar = document.getElementById('menuBar');
 const statusCoords = document.getElementById('statusCoords');
-const statusZoom = document.getElementById('statusZoom');
 const statusFunctions = document.getElementById('statusFunctions');
+const statusZoomCtrl = new SZ.ZoomControl(document.getElementById('status-zoom-ctrl'), {
+  min: 1, max: 1000, step: 1, value: 100,
+  onChange: v => setZoomPercent(v),
+  onZoomIn: () => zoomBy(1.5),
+  onZoomOut: () => zoomBy(1 / 1.5),
+});
 
 const ctx = canvas.getContext('2d');
 
@@ -2054,7 +2059,8 @@ function updateStatusBar() {
   statusCoords.textContent = state.pointer.isInside
     ? `x=${formatNumber(mathX)}  y=${formatNumber(mathY)}`
     : 'x=\u2014 y=\u2014';
-  statusZoom.textContent = `Zoom: ${Math.round(state.viewport.scale / DEFAULT_VIEWPORT_SCALE * 100)}%`;
+  const zoomPct = Math.round(state.viewport.scale / DEFAULT_VIEWPORT_SCALE * 100);
+  statusZoomCtrl.value = zoomPct;
   const activeCount = state.functions.filter(f => f.enabled).length;
   statusFunctions.textContent = `${activeCount} function${activeCount !== 1 ? 's' : ''}`;
 }
@@ -2236,6 +2242,12 @@ function zoomBy(factor) {
   state.viewport.originY = centerY + mathY * state.viewport.scale;
   draw();
   analyzeActiveFunction();
+}
+
+function setZoomPercent(pct) {
+  pct = Math.max(1, Math.min(1000, pct));
+  const factor = (pct / 100 * DEFAULT_VIEWPORT_SCALE) / state.viewport.scale;
+  zoomBy(factor);
 }
 
 // -- PNG Export --

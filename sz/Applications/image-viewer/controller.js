@@ -32,8 +32,34 @@
   const emptyMsg = document.getElementById('empty-msg');
   const statusFile = document.getElementById('status-file');
   const statusDims = document.getElementById('status-dims');
-  const statusZoom = document.getElementById('status-zoom');
   const statusSize = document.getElementById('status-size');
+
+  function _closestZoomIndex(z) {
+    let best = 0;
+    for (let i = 1; i < ZOOM_LEVELS.length; ++i)
+      if (Math.abs(ZOOM_LEVELS[i] - z) < Math.abs(ZOOM_LEVELS[best] - z))
+        best = i;
+    return best;
+  }
+
+  const statusZoomCtrl = new SZ.ZoomControl(document.getElementById('status-zoom-ctrl'), {
+    min: 0, max: ZOOM_LEVELS.length - 1, step: 1,
+    value: _closestZoomIndex(1),
+    formatLabel: idx => Math.round(ZOOM_LEVELS[idx] * 100) + '%',
+    parseLabel: text => {
+      const raw = parseInt(text, 10);
+      if (isNaN(raw) || raw < 1) return null;
+      return _closestZoomIndex(raw / 100);
+    },
+    onChange: idx => {
+      fitMode = false;
+      zoomLevel = ZOOM_LEVELS[idx];
+      applyTransform();
+      updateStatusBar();
+    },
+    onZoomIn: () => doZoomIn(),
+    onZoomOut: () => doZoomOut(),
+  });
 
   let openMenu = null;
 
@@ -441,7 +467,7 @@
     if (!currentFilePath) {
       statusFile.textContent = 'No file';
       statusDims.textContent = '';
-      statusZoom.textContent = '';
+      statusZoomCtrl.value = _closestZoomIndex(1);
       statusSize.textContent = '';
       return;
     }
@@ -454,7 +480,7 @@
     statusDims.textContent = displayW + ' \u00d7 ' + displayH + ' px';
 
     const effectiveZoom = fitMode ? getEffectiveZoom() : zoomLevel;
-    statusZoom.textContent = Math.round(effectiveZoom * 100) + '%';
+    statusZoomCtrl.value = _closestZoomIndex(effectiveZoom);
 
     if (imageFileSize > 0) {
       if (imageFileSize >= 1048576)

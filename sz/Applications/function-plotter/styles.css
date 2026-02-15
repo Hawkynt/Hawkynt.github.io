@@ -583,6 +583,10 @@ details:not([open]) > .panel-toggle::before {
   white-space: nowrap;
 }
 
+.status-spacer {
+  flex: 1;
+}
+
 /* ── Dark Mode ── */
 
 body.dark {

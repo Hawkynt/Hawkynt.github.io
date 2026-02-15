@@ -40,7 +40,6 @@
     btnReloadSource: document.getElementById('btnReloadSource'),
     statusCoords: document.getElementById('statusCoords'),
     statusTool: document.getElementById('statusTool'),
-    statusZoom: document.getElementById('statusZoom'),
     statusDoc: document.getElementById('statusDoc'),
     statusElements: document.getElementById('statusElements')
   };
@@ -69,6 +68,28 @@
     resizeOrigin: null,     // original bbox at resize start
     colorPickerRequest: null // pending color picker app request
   };
+
+  function _closestZoomIndex(z) {
+    let best = 0;
+    for (let i = 1; i < ZOOM_LEVELS.length; ++i)
+      if (Math.abs(ZOOM_LEVELS[i] - z) < Math.abs(ZOOM_LEVELS[best] - z))
+        best = i;
+    return best;
+  }
+
+  const statusZoomCtrl = new SZ.ZoomControl(document.getElementById('status-zoom-ctrl'), {
+    min: 0, max: ZOOM_LEVELS.length - 1, step: 1,
+    value: _closestZoomIndex(1),
+    formatLabel: idx => Math.round(ZOOM_LEVELS[idx] * 100) + '%',
+    parseLabel: text => {
+      const raw = parseInt(text, 10);
+      if (isNaN(raw) || raw < 1) return null;
+      return _closestZoomIndex(raw / 100);
+    },
+    onChange: idx => setZoom(ZOOM_LEVELS[idx]),
+    onZoomIn: () => zoomIn(),
+    onZoomOut: () => zoomOut(),
+  });
 
   // ---- Section 4: Utility functions ----
   function updateTitle() {
@@ -144,7 +165,7 @@
   }
 
   function updateStatusZoom() {
-    refs.statusZoom.textContent = `${Math.round(state.zoom * 100)}%`;
+    statusZoomCtrl.value = _closestZoomIndex(state.zoom);
   }
 
   function updateStatusDoc() {

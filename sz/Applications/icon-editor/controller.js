@@ -121,11 +121,32 @@
   const brushPreview = document.getElementById('brush-preview');
 
   const statusPos = document.getElementById('status-pos');
-  const statusZoom = document.getElementById('status-zoom');
   const statusImageInfo = document.getElementById('status-image-info');
   const statusFilename = document.getElementById('status-filename');
   const infoSize = document.getElementById('info-size');
   const infoDepth = document.getElementById('info-depth');
+
+  const ICON_ZOOM_LEVELS = [1, 2, 4, 8, 16, 32];
+
+  function _closestIconZoomIndex(z) {
+    let best = 0;
+    for (let i = 1; i < ICON_ZOOM_LEVELS.length; ++i)
+      if (Math.abs(ICON_ZOOM_LEVELS[i] - z) < Math.abs(ICON_ZOOM_LEVELS[best] - z))
+        best = i;
+    return best;
+  }
+
+  const statusZoomCtrl = new SZ.ZoomControl(document.getElementById('status-zoom-ctrl'), {
+    min: 0, max: ICON_ZOOM_LEVELS.length - 1, step: 1,
+    value: _closestIconZoomIndex(8),
+    formatLabel: idx => ICON_ZOOM_LEVELS[idx] + 'x',
+    parseLabel: text => {
+      const raw = parseInt(text, 10);
+      if (isNaN(raw) || raw < 1) return null;
+      return _closestIconZoomIndex(raw);
+    },
+    onChange: idx => setZoom(ICON_ZOOM_LEVELS[idx]),
+  });
 
   // ══════════════════════════════════════════════════════════════════
   // INITIALIZATION
@@ -295,7 +316,7 @@
     overlayCanvas.style.height = h + 'px';
     canvasContainer.style.width = w + 'px';
     canvasContainer.style.height = h + 'px';
-    statusZoom.textContent = 'Zoom: ' + zoom + 'x';
+    statusZoomCtrl.value = _closestIconZoomIndex(zoom);
     renderChecker();
     renderOverlayGrid();
 
