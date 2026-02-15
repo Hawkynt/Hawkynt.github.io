@@ -1191,6 +1191,7 @@ State width = image width / 3. State height = image height / (tripleImages ? 2 :
 - [ ] Boot screen: animated GIF mode
 - [ ] Boot screen: BMP/PNG frame sequence mode at configurable FPS
 - [x] Skin image pre-loading with progress reporting during boot
+- [x] SEO metadata on all pages (meta descriptions, Open Graph, Twitter Cards, JSON-LD, noscript fallback, robots.txt, sitemap.xml, llms.txt)
 
 ### Window Manager
 
