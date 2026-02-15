@@ -73,27 +73,29 @@
         <div id="line-numbers">1</div>
       </div>
     </div>
+    <div id="splitter-h"></div>
     <div id="match-panel">
       <div id="match-panel-header">
         <span>Matches</span>
         <span id="match-count">0</span>
       </div>
       <div id="match-list"></div>
-      <div id="match-table-section">
-        <div id="match-table-header">
-          <span>Match Table</span>
-          <span class="match-table-export">
-            <button class="copy-btn" id="export-csv" title="Export as CSV">CSV</button>
-            <button class="copy-btn" id="export-tsv" title="Export as TSV">TSV</button>
-          </span>
-        </div>
-        <div id="match-table-wrap">
-          <table id="match-table"></table>
-        </div>
-      </div>
       <div id="replace-section">
         <div id="replace-label">Replace Result:</div>
         <div id="replace-result"></div>
+      </div>
+    </div>
+    <div id="splitter-v"></div>
+    <div id="match-table-section">
+      <div id="match-table-header">
+        <span>Match Table</span>
+        <span class="match-table-export">
+          <button class="copy-btn export-btn" id="export-csv" title="Export as CSV">CSV</button>
+          <button class="copy-btn export-btn" id="export-tsv" title="Export as TSV">TSV</button>
+        </span>
+      </div>
+      <div id="match-table-wrap">
+        <table id="match-table"></table>
       </div>
     </div>
   </div>
