@@ -35,10 +35,20 @@
       this.#buildStartMenu();
     }
 
-    addWindow(windowId, title) {
+    addWindow(windowId, title, icon) {
       const btn = document.createElement('button');
       btn.className = 'sz-taskbar-button';
-      btn.textContent = title;
+      if (icon) {
+        const img = document.createElement('img');
+        img.className = 'sz-taskbar-button-icon';
+        img.src = icon;
+        img.alt = '';
+        img.draggable = false;
+        btn.appendChild(img);
+      }
+      const span = document.createElement('span');
+      span.textContent = title;
+      btn.appendChild(span);
       btn.dataset.windowId = windowId;
       btn.addEventListener('pointerup', (e) => { e.stopPropagation(); this.#onButtonClick(windowId); });
       this.#windowList.appendChild(btn);
@@ -52,7 +62,12 @@
 
     updateTitle(windowId, title) {
       const btn = this.#buttons.get(windowId);
-      if (btn) btn.textContent = title;
+      if (!btn) return;
+      const span = btn.querySelector('span');
+      if (span)
+        span.textContent = title;
+      else
+        btn.textContent = title;
     }
 
     setActive(windowId) {
