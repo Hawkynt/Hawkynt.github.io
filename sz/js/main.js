@@ -55,7 +55,7 @@
     await appLauncher.loadManifest(SZ.manifest);
 
     // Wire WindowManager lifecycle callbacks to Taskbar + AppLauncher
-    windowManager.onWindowCreated = (win) => taskbar.addWindow(win.id, win.title);
+    windowManager.onWindowCreated = (win) => taskbar.addWindow(win.id, win.title, win.icon);
     windowManager.onWindowClosed = (win) => {
       taskbar.removeWindow(win.id);
       appLauncher.onWindowClosed(win.id);

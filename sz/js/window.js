@@ -9,6 +9,7 @@
   class SzWindow {
     #id;
     #title;
+    #icon;
     #state = 'normal';
     #config;
     #element;
@@ -21,9 +22,10 @@
     #savedRect = null;
     #active = true;
 
-    constructor({ id, title, datasource, width = 512, height = 412, resizable = true, minimizable = true, maximizable = true, skin = null }) {
+    constructor({ id, title, icon, datasource, width = 512, height = 412, resizable = true, minimizable = true, maximizable = true, skin = null }) {
       this.#id = id || `sz-win-${++_nextId}`;
       this.#title = title || '';
+      this.#icon = icon || null;
       this.#config = { datasource, width, height, resizable, minimizable, maximizable };
       this.#element = this.#buildDOM();
       if (skin)
@@ -33,6 +35,7 @@
     get element() { return this.#element; }
     get id() { return this.#id; }
     get title() { return this.#title; }
+    get icon() { return this.#icon; }
     get state() { return this.#state; }
     get iframe() { return this.#iframeEl; }
     get contentElement() { return this.#contentEl; }
@@ -223,6 +226,15 @@
     #buildTitleBar() {
       const titleBar = document.createElement('div');
       titleBar.className = 'sz-title-bar';
+
+      if (this.#icon) {
+        const iconEl = document.createElement('img');
+        iconEl.className = 'sz-title-icon';
+        iconEl.src = this.#icon;
+        iconEl.alt = '';
+        iconEl.draggable = false;
+        titleBar.appendChild(iconEl);
+      }
 
       this.#titleTextEl = document.createElement('span');
       this.#titleTextEl.className = 'sz-title-text';
