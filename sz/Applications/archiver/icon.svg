@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Folder back -->
+  <path d="M2 8h12l2-3h14v22H2z" fill="#c89020"/>
+  <!-- Folder front -->
+  <path d="M2 10h28v17H2z" fill="#e8a735"/>
+  <!-- Folder tab -->
+  <path d="M2 8h12l2-3h-2L12 8H2z" fill="#d49a28"/>
+  <!-- Zipper stripe -->
+  <rect x="14" y="10" width="4" height="17" fill="#c89020" opacity="0.4"/>
+  <!-- Zipper teeth -->
+  <rect x="14.5" y="11" width="3" height="2" rx="0.3" fill="#555"/>
+  <rect x="14.5" y="14" width="3" height="2" rx="0.3" fill="#555"/>
+  <rect x="14.5" y="17" width="3" height="2" rx="0.3" fill="#555"/>
+  <rect x="14.5" y="20" width="3" height="2" rx="0.3" fill="#555"/>
+  <rect x="14.5" y="23" width="3" height="2" rx="0.3" fill="#555"/>
+  <!-- Zipper pull -->
+  <rect x="15" y="25.5" width="2" height="1.5" rx="0.3" fill="#888"/>
+  <rect x="15.5" y="26.5" width="1" height="1" rx="0.2" fill="#666"/>
+</svg>
