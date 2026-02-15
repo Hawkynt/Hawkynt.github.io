@@ -816,6 +816,36 @@
     };
   }
 
+  function scaleImageData(srcImageData, targetW, targetH, mode) {
+    const srcCanvas = document.createElement('canvas');
+    srcCanvas.width = srcImageData.width;
+    srcCanvas.height = srcImageData.height;
+    srcCanvas.getContext('2d').putImageData(srcImageData, 0, 0);
+    const dstCanvas = document.createElement('canvas');
+    dstCanvas.width = targetW;
+    dstCanvas.height = targetH;
+    const dctx = dstCanvas.getContext('2d');
+    dctx.imageSmoothingEnabled = mode !== 'nearest';
+    dctx.drawImage(srcCanvas, 0, 0, targetW, targetH);
+    return dctx.getImageData(0, 0, targetW, targetH);
+  }
+
+  function drawPreviewFit(canvas, imageData) {
+    const cctx = canvas.getContext('2d');
+    cctx.clearRect(0, 0, canvas.width, canvas.height);
+    const tmp = document.createElement('canvas');
+    tmp.width = imageData.width;
+    tmp.height = imageData.height;
+    tmp.getContext('2d').putImageData(imageData, 0, 0);
+    const scale = Math.min(canvas.width / imageData.width, canvas.height / imageData.height);
+    const dw = Math.round(imageData.width * scale);
+    const dh = Math.round(imageData.height * scale);
+    const dx = Math.floor((canvas.width - dw) * 0.5);
+    const dy = Math.floor((canvas.height - dh) * 0.5);
+    cctx.imageSmoothingEnabled = false;
+    cctx.drawImage(tmp, dx, dy, dw, dh);
+  }
+
   function drawImageDataPreview(canvas, imageData) {
     if (!canvas || !imageData)
       return;
@@ -834,79 +864,267 @@
     cctx.drawImage(tmp, dx, dy, dw, dh);
   }
 
-  function updateDepthReductionPreview(srcImage, targetBpp, quantizer, dither) {
-    const beforeCanvas = document.getElementById('depth-preview-before');
-    const afterCanvas = document.getElementById('depth-preview-after');
-    const stats = document.getElementById('depth-preview-stats');
-    if (!srcImage || !beforeCanvas || !afterCanvas || !stats)
-      return;
-
-    drawImageDataPreview(beforeCanvas, srcImage.imageData);
-
-    try {
-      const converted = cloneImageForProcessing(srcImage);
-      converted.bpp = targetBpp;
-      applyBppConstraints(converted, { quantizer, dither });
-      drawImageDataPreview(afterCanvas, converted.imageData);
-      const beforeColors = countDistinctOpaqueColors(srcImage);
-      const afterColors = countDistinctOpaqueColors(converted);
-      stats.textContent = 'Estimated opaque colors: ' + beforeColors + ' -> ' + afterColors;
-    } catch (err) {
-      stats.textContent = 'Preview failed: ' + (err && err.message ? err.message : 'unknown error');
-    }
-  }
-
   function getEffectiveCurrentColor(button = 0) {
     return getEffectiveColorFor(button === 2 ? backgroundColor : foregroundColor);
   }
 
-  async function showDepthReductionDialog(img, fromBpp, toBpp, colorsBefore, maxColorsAfter) {
-    const dlg = document.getElementById('dlg-depth-reduce');
-    const info = document.getElementById('depth-reduce-info');
-    const quantizerSel = document.getElementById('depth-quantizer');
-    const ditherSel = document.getElementById('depth-dither');
+  // ── Unified Quantizer / Ditherer picker ────────────────────────
+  //
+  // Used by both depth-reduction and add-image-with-fill.
+  // Shows two independent panels: a quantizer list with thumbnails
+  // on the left and a ditherer grid with thumbnails on the right.
+  // A combined preview updates when either selection changes.
+  //
+  // To avoid timeouts the source image is downscaled to at most
+  // 64x64 for all preview operations (palette computation and
+  // per-cell quantization).
+  // Ditherers whose thumbnail rendering exceeded 2 s are remembered
+  // so that subsequent dialog opens skip their thumbnails entirely.
+  const _slowDitherIds = new Set();
 
-    if (quantizerSel.options.length === 0) {
-      for (const q of QUANTIZER_OPTIONS) {
-        const o = document.createElement('option');
-        o.value = q.id;
-        o.textContent = q.name;
-        quantizerSel.appendChild(o);
+  async function showQuantizeDitherDialog(sourceImageData, targetBpp, description) {
+    const dlg = document.getElementById('dlg-dq-picker');
+    const infoEl = document.getElementById('dq-picker-info');
+    const quantList = document.getElementById('dq-quant-list');
+    const ditherGrid = document.getElementById('dq-dither-grid');
+    const previewCanvas = document.getElementById('dq-combined-preview');
+    const okBtn = document.getElementById('dq-btn-ok');
+
+    infoEl.textContent = description || '';
+
+    // Downscale source for fast preview generation
+    const MAX_PREVIEW = 64;
+    let previewSrc = sourceImageData;
+    if (sourceImageData.width > MAX_PREVIEW || sourceImageData.height > MAX_PREVIEW) {
+      const s = Math.min(MAX_PREVIEW / sourceImageData.width, MAX_PREVIEW / sourceImageData.height);
+      previewSrc = scaleImageData(sourceImageData, Math.max(1, Math.round(sourceImageData.width * s)), Math.max(1, Math.round(sourceImageData.height * s)), 'nearest');
+    }
+
+    const paletteSize = getPaletteSizeForBpp(targetBpp);
+    const paletteCache = new Map();
+    let selectedQuantizer = null;
+    let selectedDither = null;
+    let ditherGenId = 0;
+    let quantGenId = 0;
+    let previewGenId = 0;
+
+    okBtn.disabled = true;
+
+    function computePalette(quantizerId) {
+      if (paletteCache.has(quantizerId))
+        return paletteCache.get(quantizerId);
+      let palette;
+      try {
+        const srcImg = { width: previewSrc.width, height: previewSrc.height, bpp: targetBpp, imageData: previewSrc, palette: createDefaultPaletteForBpp(targetBpp) };
+        palette = DrawingQuantization && DrawingQuantization.createIndexedPalette
+          ? DrawingQuantization.createIndexedPalette({ imageData: previewSrc, quantizer: quantizerId, paletteSize, currentPalette: [], fallbackPalette: createDefaultPaletteForBpp(targetBpp) || [] })
+          : buildPaletteForImage(srcImg, paletteSize, quantizerId);
+      } catch (e) {
+        palette = createDefaultPaletteForBpp(targetBpp) || [];
+      }
+      paletteCache.set(quantizerId, palette);
+      return palette;
+    }
+
+    function renderQuantized(canvas, palette, ditherId) {
+      try {
+        const clone = { width: previewSrc.width, height: previewSrc.height, imageData: new ImageData(new Uint8ClampedArray(previewSrc.data), previewSrc.width, previewSrc.height) };
+        quantizeImageToPalette(clone, palette, ditherId);
+        drawPreviewFit(canvas, clone.imageData);
+      } catch (e) {}
+    }
+
+    function updateCombinedPreview() {
+      if (!selectedQuantizer || !selectedDither) return;
+      const gen = ++previewGenId;
+      const ctx = previewCanvas.getContext('2d');
+      ctx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+      ctx.fillStyle = '#999';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = '10px sans-serif';
+      ctx.fillText('Rendering\u2026', previewCanvas.width / 2, previewCanvas.height / 2);
+      setTimeout(() => {
+        if (gen !== previewGenId) return;
+        const palette = computePalette(selectedQuantizer);
+        renderQuantized(previewCanvas, palette, selectedDither);
+      }, 0);
+    }
+
+    function updateOkState() {
+      okBtn.disabled = !selectedQuantizer || !selectedDither;
+    }
+
+    // ── Build quantizer list ──────────────────────────────────────
+    quantList.innerHTML = '';
+    const defaultDitherId = DITHER_OPTIONS[0] ? DITHER_OPTIONS[0].id : 'none';
+
+    for (const q of QUANTIZER_OPTIONS) {
+      const item = document.createElement('div');
+      item.className = 'dq-quant-item';
+      item.dataset.id = q.id;
+      item.title = q.name;
+
+      const cvs = document.createElement('canvas');
+      cvs.width = 48;
+      cvs.height = 48;
+      item.appendChild(cvs);
+
+      const lbl = document.createElement('span');
+      lbl.textContent = q.name;
+      item.appendChild(lbl);
+
+      item.addEventListener('click', () => {
+        quantList.querySelectorAll('.dq-quant-item.selected').forEach(c => c.classList.remove('selected'));
+        item.classList.add('selected');
+        selectedQuantizer = q.id;
+        updateOkState();
+        regenerateDitherPreviews();
+        updateCombinedPreview();
+      });
+
+      item.addEventListener('dblclick', () => {
+        selectedQuantizer = q.id;
+        if (selectedDither) {
+          okBtn.disabled = false;
+          dlg.querySelector('[data-result="ok"]').click();
+        }
+      });
+
+      quantList.appendChild(item);
+    }
+
+    // Generate quantizer thumbnails in batches
+    (function generateQuantThumbs() {
+      const items = Array.from(quantList.children);
+      const currentGen = ++quantGenId;
+      let idx = 0;
+      function batch() {
+        if (currentGen !== quantGenId) return;
+        const end = Math.min(idx + 2, items.length);
+        for (let i = idx; i < end; ++i) {
+          if (currentGen !== quantGenId) return;
+          const item = items[i];
+          const qId = item.dataset.id;
+          const cvs = item.querySelector('canvas');
+          const palette = computePalette(qId);
+          renderQuantized(cvs, palette, defaultDitherId);
+        }
+        idx = end;
+        if (idx < items.length)
+          setTimeout(batch, 16);
+      }
+      batch();
+    })();
+
+    // ── Build ditherer grid ───────────────────────────────────────
+    ditherGrid.innerHTML = '';
+
+    for (const d of DITHER_OPTIONS) {
+      const cell = document.createElement('div');
+      cell.className = 'dq-cell';
+      cell.dataset.id = d.id;
+      cell.title = d.name;
+
+      const cvs = document.createElement('canvas');
+      cvs.width = 48;
+      cvs.height = 48;
+      cell.appendChild(cvs);
+
+      const lbl = document.createElement('div');
+      lbl.className = 'dq-cell-label';
+      lbl.textContent = d.name;
+      cell.appendChild(lbl);
+
+      cell.addEventListener('click', () => {
+        ditherGrid.querySelectorAll('.dq-cell.selected').forEach(c => c.classList.remove('selected'));
+        cell.classList.add('selected');
+        selectedDither = d.id;
+        updateOkState();
+        updateCombinedPreview();
+      });
+
+      cell.addEventListener('dblclick', () => {
+        selectedDither = d.id;
+        if (selectedQuantizer) {
+          okBtn.disabled = false;
+          dlg.querySelector('[data-result="ok"]').click();
+        }
+      });
+
+      ditherGrid.appendChild(cell);
+    }
+
+    function _drawPlaceholder(canvas, line1, line2) {
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#999';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = '9px sans-serif';
+      if (line2) {
+        ctx.fillText(line1, canvas.width / 2, canvas.height / 2 - 6);
+        ctx.fillText(line2, canvas.width / 2, canvas.height / 2 + 6);
+      } else
+        ctx.fillText(line1, canvas.width / 2, canvas.height / 2);
+    }
+
+    function regenerateDitherPreviews() {
+      if (!selectedQuantizer) return;
+      const currentGen = ++ditherGenId;
+      const palette = computePalette(selectedQuantizer);
+      const cells = Array.from(ditherGrid.children);
+      let idx = 0;
+      function step() {
+        if (currentGen !== ditherGenId || idx >= cells.length) return;
+        const cell = cells[idx];
+        const cvs = cell.querySelector('canvas');
+        const dId = cell.dataset.id;
+        if (_slowDitherIds.has(dId)) {
+          _drawPlaceholder(cvs, '(select to', 'preview)');
+        } else {
+          const t0 = performance.now();
+          renderQuantized(cvs, palette, dId);
+          if (performance.now() - t0 > 2000)
+            _slowDitherIds.add(dId);
+        }
+        ++idx;
+        if (idx < cells.length)
+          setTimeout(step, 0);
+      }
+      step();
+    }
+
+    // Pre-select a sensible default quantizer
+    const defaultQId = (function () {
+      for (const id of ['MedianCut', 'median-cut', 'Wu', 'Popularity']) {
+        const match = QUANTIZER_OPTIONS.find(q => q.id.toLowerCase() === id.toLowerCase());
+        if (match) return match.id;
+      }
+      return QUANTIZER_OPTIONS[0] ? QUANTIZER_OPTIONS[0].id : null;
+    })();
+
+    if (defaultQId) {
+      const defaultItem = quantList.querySelector('[data-id="' + defaultQId + '"]');
+      if (defaultItem) {
+        defaultItem.classList.add('selected');
+        defaultItem.scrollIntoView({ block: 'nearest' });
+        selectedQuantizer = defaultQId;
+        regenerateDitherPreviews();
       }
     }
-    if (ditherSel.options.length === 0) {
-      for (const d of DITHER_OPTIONS) {
-        const o = document.createElement('option');
-        o.value = d.id;
-        o.textContent = d.name;
-        ditherSel.appendChild(o);
-      }
-    }
-    quantizerSel.value = pickOption(quantizerSel, ['MedianCut', 'median-cut', 'Wu', 'Popularity', 'keep']);
-    ditherSel.value = pickOption(ditherSel, ['ErrorDiffusion_FloydSteinberg', 'floyd-steinberg', 'NoDithering_Instance', 'none']);
-    info.textContent = 'Reducing ' + fromBpp + 'bpp to ' + toBpp + 'bpp keeps up to ' + maxColorsAfter + ' colors (' + colorsBefore + ' currently detected).';
-
-    const onParamsChanged = () => {
-      updateDepthReductionPreview(img, toBpp, quantizerSel.value, ditherSel.value);
-    };
-    quantizerSel.addEventListener('change', onParamsChanged);
-    ditherSel.addEventListener('change', onParamsChanged);
-    onParamsChanged();
 
     dlg.classList.add('visible');
-    return await new Promise((resolve) => {
-      awaitDialogResult(dlg, (result) => {
-        quantizerSel.removeEventListener('change', onParamsChanged);
-        ditherSel.removeEventListener('change', onParamsChanged);
-        if (result !== 'ok') {
+    return await new Promise(resolve => {
+      awaitDialogResult(dlg, result => {
+        ++ditherGenId;
+        ++quantGenId;
+        ++previewGenId;
+        if (result !== 'ok' || !selectedQuantizer || !selectedDither) {
           resolve({ cancelled: true });
           return;
         }
-        resolve({
-          cancelled: false,
-          quantizer: quantizerSel.value,
-          dither: ditherSel.value
-        });
+        resolve({ cancelled: false, quantizer: selectedQuantizer, dither: selectedDither });
       });
     });
   }
@@ -924,9 +1142,11 @@
     let options = {};
     const decreasing = targetBpp < oldBpp;
     if (decreasing) {
+      syncImageData();
       const maxColorsAfter = getPaletteSizeForBpp(targetBpp) || 16777216;
       const colorsBefore = countDistinctOpaqueColors(img);
-      const result = await showDepthReductionDialog(img, oldBpp, targetBpp, colorsBefore, maxColorsAfter);
+      const desc = 'Reducing ' + oldBpp + 'bpp \u2192 ' + targetBpp + 'bpp (up to ' + maxColorsAfter + ' colors, ' + colorsBefore + ' detected).';
+      const result = await showQuantizeDitherDialog(img.imageData, targetBpp, desc);
       if (result.cancelled) {
         depthSelect.value = String(oldBpp);
         return;
@@ -3594,11 +3814,27 @@
 
   function showAddImageDialog() {
     const dlg = document.getElementById('dlg-add-image');
+    const fillCheck = document.getElementById('add-fill-current');
+    const fillMethodRow = document.getElementById('add-fill-method-row');
+
     document.getElementById('add-width').value = 32;
     document.getElementById('add-height').value = 32;
+    fillCheck.checked = false;
+    fillMethodRow.style.display = 'none';
+
+    fillCheck.onchange = () => {
+      fillMethodRow.style.display = fillCheck.checked ? '' : 'none';
+      if (fillCheck.checked) {
+        const src = currentImage();
+        if (src) {
+          document.getElementById('add-width').value = src.width;
+          document.getElementById('add-height').value = src.height;
+        }
+      }
+    };
+
     dlg.classList.add('visible');
 
-    // Preset size buttons
     dlg.querySelectorAll('.preset-sizes button').forEach(btn => {
       btn.onclick = () => {
         const s = parseInt(btn.dataset.size, 10);
@@ -3607,7 +3843,7 @@
       };
     });
 
-    awaitDialogResult(dlg, (result) => {
+    awaitDialogResult(dlg, async (result) => {
       if (result !== 'ok')
         return;
       let w = parseInt(document.getElementById('add-width').value, 10);
@@ -3616,8 +3852,30 @@
       w = Math.max(1, Math.min(256, w || 32));
       h = Math.max(1, Math.min(256, h || 32));
       syncImageData();
-      const idx = addImage(w, h, bpp);
-      selectImage(idx);
+
+      const srcImg = currentImage();
+      if (fillCheck.checked && srcImg) {
+        const method = document.getElementById('add-fill-method').value;
+        const scaledData = scaleImageData(srcImg.imageData, w, h, method);
+
+        let options = {};
+        if (bpp <= 8 && bpp < srcImg.bpp) {
+          const dqResult = await showQuantizeDitherDialog(scaledData, bpp);
+          if (dqResult.cancelled)
+            return;
+          options = { quantizer: dqResult.quantizer, dither: dqResult.dither };
+        } else if (bpp <= 8)
+          options = { quantizer: 'keep', dither: 'none' };
+
+        const idx = addImage(w, h, bpp);
+        const newImg = iconDocument.images[idx];
+        newImg.imageData = scaledData;
+        applyBppConstraints(newImg, options);
+        selectImage(idx);
+      } else {
+        const idx = addImage(w, h, bpp);
+        selectImage(idx);
+      }
       dirty = true;
       updateTitle();
     });
