@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# Display Properties
+# Display Properties
 
 A comprehensive system settings dialog for the »SynthelicZ« desktop -- modeled after the classic Windows "Display Properties" control panel with tabs for themes, appearance (skins), desktop backgrounds, pointer effects, and taskbar configuration.
 
@@ -107,4 +107,3 @@ Modeled after the Windows XP "Display Properties" dialog (accessed via right-cli
 - [ ] As a user, I can import and export theme/skin configuration files
 - [ ] As a user, I can adjust individual system colors in the Appearance tab
 - [ ] As a user, I can see a cursor scheme selector in the Pointers tab
-`})();

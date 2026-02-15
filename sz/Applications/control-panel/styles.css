@@ -210,3 +210,32 @@ body { overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
 /* Taskbar tab */
 .chk-row { display: block; padding: 3px 0; cursor: default; user-select: none; }
 .chk-row input[type="checkbox"] { margin-right: 6px; vertical-align: middle; }
+
+/* Sub-tabs inside Window Mgmt tab */
+.subtabs {
+  display: flex; flex-wrap: wrap; padding: 0 0 0; margin-bottom: 8px;
+  border-bottom: 1px solid var(--sz-color-button-shadow);
+}
+.subtab {
+  padding: 3px 10px; cursor: default; font-size: 10px;
+  border: 1px solid var(--sz-color-button-shadow);
+  border-bottom: none; margin-right: 1px; margin-bottom: -1px;
+  background: var(--sz-color-button-face);
+  border-radius: 3px 3px 0 0; user-select: none;
+}
+.subtab.active {
+  background: var(--sz-color-window); font-weight: bold;
+  padding-bottom: 4px; z-index: 1; position: relative;
+}
+.subtab:hover:not(.active) { background: var(--sz-color-button-light); }
+.subtab-body {
+  display: none; flex-direction: column; flex: 1;
+  overflow-y: auto; min-height: 0;
+}
+.subtab-body.active { display: flex; }
+
+/* Hint text under group boxes */
+.hint-text {
+  font-size: 9px; color: var(--sz-color-gray-text);
+  margin-top: 6px; line-height: 1.4;
+}

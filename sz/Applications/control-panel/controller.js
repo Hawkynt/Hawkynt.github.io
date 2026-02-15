@@ -78,6 +78,14 @@
     });
   }
 
+  // -- Sub-tab switching (Window Mgmt tab) ---------------------------------
+  for (const subtab of document.querySelectorAll('.subtab')) {
+    subtab.addEventListener('click', () => {
+      for (const st of document.querySelectorAll('.subtab')) st.classList.toggle('active', st === subtab);
+      for (const sp of document.querySelectorAll('.subtab-body')) sp.classList.toggle('active', sp.id === 'subpanel-' + subtab.dataset.subtab);
+    });
+  }
+
   // -- Themes list ----------------------------------------------------------
   function renderThemeList() {
     themeListEl.innerHTML = '';
@@ -557,6 +565,10 @@
       _updateTrailOptionsVisibility();
     }
 
+    // Snap/tab settings
+    if (data.snap)
+      _populateSnapSettings(data.snap);
+
     dirty = false;
   }
 
@@ -716,6 +728,114 @@
   });
 
   _initCursorPreview();
+
+  // -- Window Management tab ------------------------------------------------
+
+  const snapModeEl = document.getElementById('snap-mode');
+  const chkMagnetEnabled = document.getElementById('chk-magnet-enabled');
+  const chkMagnetScreen = document.getElementById('chk-magnet-screen');
+  const chkMagnetOuter = document.getElementById('chk-magnet-outer');
+  const chkMagnetInner = document.getElementById('chk-magnet-inner');
+  const chkMagnetCorners = document.getElementById('chk-magnet-corners');
+  const magnetDistanceEl = document.getElementById('magnet-distance');
+  const magnetDistanceValueEl = document.getElementById('magnet-distance-value');
+  const chkMagnetFast = document.getElementById('chk-magnet-fast');
+  const magnetSpeedEl = document.getElementById('magnet-speed');
+  const magnetSpeedValueEl = document.getElementById('magnet-speed-value');
+  const speedThresholdRow = document.getElementById('speed-threshold-row');
+  const stretchModeEl = document.getElementById('stretch-mode');
+  const chkStretchV = document.getElementById('chk-stretch-v');
+  const chkStretchH = document.getElementById('chk-stretch-h');
+  const chkStretchD = document.getElementById('chk-stretch-d');
+  const stretchTargetEl = document.getElementById('stretch-target');
+  const chkGlueEnabled = document.getElementById('chk-glue-enabled');
+  const chkGlueDrag = document.getElementById('chk-glue-drag');
+  const chkGlueResize = document.getElementById('chk-glue-resize');
+  const chkTabEnabled = document.getElementById('chk-tab-enabled');
+  const chkTabAutohide = document.getElementById('chk-tab-autohide');
+
+  function _sendSnap(key, value) {
+    SZ.Dlls.User32.PostMessage('sz:snapSetting', { key, value });
+  }
+
+  function _updateSpeedThresholdVisibility() {
+    if (speedThresholdRow)
+      speedThresholdRow.style.opacity = chkMagnetFast.checked ? '1' : '0.5';
+    if (magnetSpeedEl)
+      magnetSpeedEl.disabled = !chkMagnetFast.checked;
+  }
+
+  function _populateSnapSettings(snap) {
+    if (!snap)
+      return;
+    if (snapModeEl) {
+      snapModeEl.value = snap.mode || 'aquasnap';
+      // Set enabled based on mode
+      if (snap.mode === 'disabled')
+        _sendSnap('enabled', false);
+    }
+    if (chkMagnetEnabled) chkMagnetEnabled.checked = snap.magnetEnabled !== false;
+    if (chkMagnetScreen) chkMagnetScreen.checked = snap.magnetScreenEdges !== false;
+    if (chkMagnetOuter) chkMagnetOuter.checked = snap.magnetOuterEdges !== false;
+    if (chkMagnetInner) chkMagnetInner.checked = !!snap.magnetInnerEdges;
+    if (chkMagnetCorners) chkMagnetCorners.checked = snap.magnetCorners !== false;
+    if (magnetDistanceEl) {
+      magnetDistanceEl.value = snap.magnetDistance || 10;
+      magnetDistanceValueEl.textContent = (snap.magnetDistance || 10) + ' px';
+    }
+    if (chkMagnetFast) chkMagnetFast.checked = !!snap.magnetDisableFast;
+    if (magnetSpeedEl) {
+      magnetSpeedEl.value = snap.magnetSpeedThreshold || 1500;
+      magnetSpeedValueEl.textContent = (snap.magnetSpeedThreshold || 1500) + ' px/s';
+    }
+    _updateSpeedThresholdVisibility();
+    if (stretchModeEl) stretchModeEl.value = snap.stretchMode || 'aquastretch';
+    if (chkStretchV) chkStretchV.checked = snap.stretchVertical !== false;
+    if (chkStretchH) chkStretchH.checked = snap.stretchHorizontal !== false;
+    if (chkStretchD) chkStretchD.checked = snap.stretchDiagonal !== false;
+    if (stretchTargetEl) stretchTargetEl.value = snap.stretchTarget || 'nearest';
+    if (chkGlueEnabled) chkGlueEnabled.checked = !!snap.glueEnabled;
+    if (chkGlueDrag) chkGlueDrag.checked = snap.glueCtrlDrag !== false;
+    if (chkGlueResize) chkGlueResize.checked = snap.glueCtrlResize !== false;
+    if (chkTabEnabled) chkTabEnabled.checked = snap.tabEnabled !== false;
+    if (chkTabAutohide) chkTabAutohide.checked = snap.tabAutoHide !== false;
+  }
+
+  // Wire up snap controls
+  if (snapModeEl) snapModeEl.addEventListener('change', () => {
+    const mode = snapModeEl.value;
+    _sendSnap('mode', mode);
+    _sendSnap('enabled', mode !== 'disabled');
+  });
+  if (chkMagnetEnabled) chkMagnetEnabled.addEventListener('change', () => _sendSnap('magnetEnabled', chkMagnetEnabled.checked));
+  if (chkMagnetScreen) chkMagnetScreen.addEventListener('change', () => _sendSnap('magnetScreenEdges', chkMagnetScreen.checked));
+  if (chkMagnetOuter) chkMagnetOuter.addEventListener('change', () => _sendSnap('magnetOuterEdges', chkMagnetOuter.checked));
+  if (chkMagnetInner) chkMagnetInner.addEventListener('change', () => _sendSnap('magnetInnerEdges', chkMagnetInner.checked));
+  if (chkMagnetCorners) chkMagnetCorners.addEventListener('change', () => _sendSnap('magnetCorners', chkMagnetCorners.checked));
+  if (magnetDistanceEl) magnetDistanceEl.addEventListener('input', () => {
+    const val = parseInt(magnetDistanceEl.value, 10);
+    magnetDistanceValueEl.textContent = val + ' px';
+    _sendSnap('magnetDistance', val);
+  });
+  if (chkMagnetFast) chkMagnetFast.addEventListener('change', () => {
+    _sendSnap('magnetDisableFast', chkMagnetFast.checked);
+    _updateSpeedThresholdVisibility();
+  });
+  if (magnetSpeedEl) magnetSpeedEl.addEventListener('input', () => {
+    const val = parseInt(magnetSpeedEl.value, 10);
+    magnetSpeedValueEl.textContent = val + ' px/s';
+    _sendSnap('magnetSpeedThreshold', val);
+  });
+  if (stretchModeEl) stretchModeEl.addEventListener('change', () => _sendSnap('stretchMode', stretchModeEl.value));
+  if (chkStretchV) chkStretchV.addEventListener('change', () => _sendSnap('stretchVertical', chkStretchV.checked));
+  if (chkStretchH) chkStretchH.addEventListener('change', () => _sendSnap('stretchHorizontal', chkStretchH.checked));
+  if (chkStretchD) chkStretchD.addEventListener('change', () => _sendSnap('stretchDiagonal', chkStretchD.checked));
+  if (stretchTargetEl) stretchTargetEl.addEventListener('change', () => _sendSnap('stretchTarget', stretchTargetEl.value));
+  if (chkGlueEnabled) chkGlueEnabled.addEventListener('change', () => _sendSnap('glueEnabled', chkGlueEnabled.checked));
+  if (chkGlueDrag) chkGlueDrag.addEventListener('change', () => _sendSnap('glueCtrlDrag', chkGlueDrag.checked));
+  if (chkGlueResize) chkGlueResize.addEventListener('change', () => _sendSnap('glueCtrlResize', chkGlueResize.checked));
+  if (chkTabEnabled) chkTabEnabled.addEventListener('change', () => _sendSnap('tabEnabled', chkTabEnabled.checked));
+  if (chkTabAutohide) chkTabAutohide.addEventListener('change', () => _sendSnap('tabAutoHide', chkTabAutohide.checked));
 
   // Switch to requested tab from URL parameter
   function init() {

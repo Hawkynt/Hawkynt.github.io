@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# Data Encryption
+# Data Encryption
 
 A simple XOR-based text encryption and decryption utility for the »SynthelicZ« desktop -- providing a straightforward interface for encoding text into hex-encoded ciphertext and decoding it back, primarily for demonstration purposes.
 
@@ -73,4 +73,3 @@ Inspired by simple encryption utilities and hex editors, presenting a straightfo
 - [ ] As a user, I can load input from a VFS file
 - [ ] As a user, I can use keyboard shortcuts (Ctrl+E to encrypt, Ctrl+D to decrypt)
 - [ ] As a user, I can see the byte length of both input and output displayed
-`})();

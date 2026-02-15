@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# About »SynthelicZ«
+# About »SynthelicZ«
 
 The system "About" dialog for the »SynthelicZ« desktop environment -- a compact informational window that displays the project name, version, description, and copyright notice, similar to the classic "About Windows" dialog.
 
@@ -50,4 +50,3 @@ Modeled after the classic "About Windows" dialog (winver.exe) found in Windows X
 - [ ] As a user, I can see an animated or branded visual element that matches the desktop aesthetic
 - [ ] As a user, I can copy the version and system info to clipboard
 - [ ] As a user, I can press Escape or Enter to close the dialog
-`})();

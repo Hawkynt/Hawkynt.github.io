@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# Color Picker
+# Color Picker
 
 A comprehensive color picker for »SynthelicZ« offering multiple color model views (RGB, HSL, HSV, CMYK), interactive canvas-based selection areas, a color wheel mode, alpha channel support, an eyedropper tool, and a customizable palette.
 
@@ -101,4 +101,3 @@ Modeled after the Windows system color picker dialog and Adobe-style color choos
 - [ ] As a user, I want to import and export palette files
 - [ ] As a user, I want to see the color rendered in different color blindness simulation modes
 - [ ] As a user, I want a history of recently used colors
-`})();
