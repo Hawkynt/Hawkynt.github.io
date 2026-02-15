@@ -1256,94 +1256,124 @@
     return kind + ':' + size;
   }
 
-  function _calcBinaryEnergy(binary, size, px, py, wantOnes) {
-    const sigma = size / 4;
-    const sigmaSq2 = 2 * sigma * sigma;
-    let energy = 0;
-    const half = Math.floor(size / 2);
-    for (let dy = -half; dy <= half; ++dy)
-      for (let dx = -half; dx <= half; ++dx) {
-        if (dx === 0 && dy === 0)
-          continue;
-        const nx = (px + dx + size) % size;
-        const ny = (py + dy + size) % size;
-        const ni = ny * size + nx;
-        if (!!binary[ni] !== !!wantOnes)
-          continue;
-        const distSq = dx * dx + dy * dy;
-        energy += Math.exp(-distSq / sigmaSq2);
-      }
-    return energy;
-  }
-
+  // Optimized void-and-cluster using incremental energy updates.
+  // Instead of recomputing O(n^2) energy per pixel per iteration
+  // (giving O(n^6) total), we maintain an energy map and update
+  // only affected neighbors on each change -- O(n^4 + n^2*k) total.
   function _generateVoidClusterRankMatrix(size) {
     const total = size * size;
     const binary = new Uint8Array(total);
     const rank = new Int32Array(total);
     const initialOnes = total >> 1;
 
+    // Pre-compute Gaussian kernel (excluding self)
+    const sigma = size / 4;
+    const sigmaSq2 = 2 * sigma * sigma;
+    const half = size >> 1;
+    const kDx = [];
+    const kDy = [];
+    const kW = [];
+    for (let dy = -half; dy <= half; ++dy)
+      for (let dx = -half; dx <= half; ++dx) {
+        if (dx === 0 && dy === 0)
+          continue;
+        kDx.push(dx);
+        kDy.push(dy);
+        kW.push(Math.exp(-(dx * dx + dy * dy) / sigmaSq2));
+      }
+    const kLen = kDx.length;
+
+    // Initialize checkerboard binary pattern
     let count = 0;
     for (let y = 0; y < size; ++y)
-      for (let x = 0; x < size; ++x) {
+      for (let x = 0; x < size; ++x)
         if (((x + y) & 1) === 0 && count < initialOnes) {
           binary[y * size + x] = 1;
-          count++;
+          ++count;
         }
+
+    // Build initial energy map: energy[i] = sum of Gaussian from nearby ones
+    const energy = new Float64Array(total);
+    for (let y = 0; y < size; ++y)
+      for (let x = 0; x < size; ++x) {
+        let e = 0;
+        for (let k = 0; k < kLen; ++k) {
+          const nx = (x + kDx[k] + size) % size;
+          const ny = (y + kDy[k] + size) % size;
+          if (binary[ny * size + nx])
+            e += kW[k];
+        }
+        energy[y * size + x] = e;
       }
 
+    function updateEnergy(idx, sign) {
+      const bx = idx % size;
+      const by = (idx / size) | 0;
+      for (let k = 0; k < kLen; ++k) {
+        const nx = (bx + kDx[k] + size) % size;
+        const ny = (by + kDy[k] + size) % size;
+        energy[ny * size + nx] += sign * kW[k];
+      }
+    }
+
+    // Phase 1: remove tightest cluster (one-pixel with max energy)
     let currentRank = initialOnes - 1;
     while (count > 0) {
       let best = -1;
-      let bestEnergy = -Infinity;
-      for (let y = 0; y < size; ++y)
-        for (let x = 0; x < size; ++x) {
-          const i = y * size + x;
-          if (!binary[i])
-            continue;
-          const e = _calcBinaryEnergy(binary, size, x, y, true);
-          if (e > bestEnergy) {
-            bestEnergy = e;
-            best = i;
-          }
+      let bestE = -Infinity;
+      for (let i = 0; i < total; ++i)
+        if (binary[i] && energy[i] > bestE) {
+          bestE = energy[i];
+          best = i;
         }
       if (best < 0)
         break;
       binary[best] = 0;
       rank[best] = currentRank--;
-      count--;
+      --count;
+      updateEnergy(best, -1);
     }
 
+    // Re-initialize for phase 2
     binary.fill(0);
+    energy.fill(0);
     count = 0;
     for (let y = 0; y < size; ++y)
-      for (let x = 0; x < size; ++x) {
+      for (let x = 0; x < size; ++x)
         if (((x + y) & 1) === 0 && count < initialOnes) {
           binary[y * size + x] = 1;
-          count++;
+          ++count;
         }
+    for (let y = 0; y < size; ++y)
+      for (let x = 0; x < size; ++x) {
+        let e = 0;
+        for (let k = 0; k < kLen; ++k) {
+          const nx = (x + kDx[k] + size) % size;
+          const ny = (y + kDy[k] + size) % size;
+          if (binary[ny * size + nx])
+            e += kW[k];
+        }
+        energy[y * size + x] = e;
       }
 
+    // Phase 2: fill largest void (zero-pixel with min energy from ones)
     currentRank = initialOnes;
     while (count < total) {
       let best = -1;
-      let bestEnergy = -Infinity;
-      for (let y = 0; y < size; ++y)
-        for (let x = 0; x < size; ++x) {
-          const i = y * size + x;
-          if (binary[i])
-            continue;
-          const e = _calcBinaryEnergy(binary, size, x, y, false);
-          if (e > bestEnergy) {
-            bestEnergy = e;
-            best = i;
-          }
+      let bestE = Infinity;
+      for (let i = 0; i < total; ++i)
+        if (!binary[i] && energy[i] < bestE) {
+          bestE = energy[i];
+          best = i;
         }
       if (best < 0)
         break;
       binary[best] = 1;
       rank[best] = currentRank++;
-      count++;
+      ++count;
+      updateEnergy(best, +1);
     }
+
     return rank;
   }
 
