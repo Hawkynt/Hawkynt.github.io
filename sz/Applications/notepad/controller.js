@@ -951,32 +951,27 @@
   // =====================================================================
   const rbZoomSlider = document.getElementById('rb-zoom-slider');
   const rbZoomValue = document.getElementById('rb-zoom-value');
-  const statusZoom = document.getElementById('status-zoom');
-  const statusZoomSlider = document.getElementById('status-zoom-slider');
+  const statusZoomCtrl = new SZ.ZoomControl(document.getElementById('status-zoom-ctrl'), {
+    min: -5, max: 10, step: 1, value: 0,
+    formatLabel: level => Math.round(100 * Math.pow(1.1, level)) + '%',
+    parseLabel: text => {
+      const raw = parseInt(text, 10);
+      if (isNaN(raw) || raw < 25 || raw > 500) return null;
+      return Math.max(-5, Math.min(10, Math.round(Math.log(raw / 100) / Math.log(1.1))));
+    },
+    onChange: level => syncZoomSliders(level),
+  });
 
   function syncZoomSliders(level) {
     zoomLevel = level;
     const pct = Math.round(100 * Math.pow(1.1, level));
     rbZoomValue.textContent = pct + '%';
-    statusZoom.value = pct + '%';
     rbZoomSlider.value = level;
-    statusZoomSlider.value = level;
+    statusZoomCtrl.value = level;
     applyZoom();
   }
 
   rbZoomSlider.addEventListener('input', () => syncZoomSliders(parseInt(rbZoomSlider.value, 10)));
-  statusZoomSlider.addEventListener('input', () => syncZoomSliders(parseInt(statusZoomSlider.value, 10)));
-
-  function commitStatusZoom() {
-    const raw = parseInt(statusZoom.value, 10);
-    if (!isNaN(raw) && raw >= 25 && raw <= 500) {
-      const level = Math.round(Math.log(raw / 100) / Math.log(1.1));
-      syncZoomSliders(Math.max(-5, Math.min(10, level)));
-    } else
-      statusZoom.value = Math.round(100 * Math.pow(1.1, zoomLevel)) + '%';
-  }
-  statusZoom.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); commitStatusZoom(); statusZoom.blur(); } });
-  statusZoom.addEventListener('blur', commitStatusZoom);
 
   function handleAction(action) {
     switch (action) {

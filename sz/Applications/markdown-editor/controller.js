@@ -280,8 +280,12 @@
   let mdZoomLevel = 100;
   const rbZoomSlider = document.getElementById('rb-zoom-slider');
   const rbZoomValue = document.getElementById('rb-zoom-value');
-  const statusZoom = document.getElementById('status-zoom');
-  const statusZoomSlider = document.getElementById('status-zoom-slider');
+  const statusZoomCtrl = new SZ.ZoomControl(document.getElementById('status-zoom-ctrl'), {
+    min: 25, max: 300, step: 1, value: 100,
+    onChange: v => applyMdZoom(v),
+    onZoomIn: () => applyMdZoom(mdZoomLevel + 10),
+    onZoomOut: () => applyMdZoom(mdZoomLevel - 10),
+  });
 
   function applyMdZoom(pct) {
     mdZoomLevel = Math.max(25, Math.min(300, pct));
@@ -289,9 +293,8 @@
     source.style.fontSize = (13 * scale) + 'px';
     preview.style.fontSize = (12 * scale) + 'px';
     rbZoomValue.textContent = mdZoomLevel + '%';
-    statusZoom.value = mdZoomLevel + '%';
     rbZoomSlider.value = mdZoomLevel;
-    statusZoomSlider.value = mdZoomLevel;
+    statusZoomCtrl.value = mdZoomLevel;
   }
 
   function doZoom(delta) {
@@ -299,17 +302,6 @@
   }
 
   rbZoomSlider.addEventListener('input', () => applyMdZoom(parseInt(rbZoomSlider.value, 10)));
-  statusZoomSlider.addEventListener('input', () => applyMdZoom(parseInt(statusZoomSlider.value, 10)));
-
-  function commitStatusZoom() {
-    const raw = parseInt(statusZoom.value, 10);
-    if (!isNaN(raw))
-      applyMdZoom(raw);
-    else
-      statusZoom.value = mdZoomLevel + '%';
-  }
-  statusZoom.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); commitStatusZoom(); statusZoom.blur(); } });
-  statusZoom.addEventListener('blur', commitStatusZoom);
 
   // -----------------------------------------------------------------------
   // Text insertion helpers

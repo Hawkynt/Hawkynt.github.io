@@ -833,35 +833,6 @@ body {
   flex: 1;
 }
 
-.status-zoom-input {
-  width: 40px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: center;
-  padding: 0 2px;
-  border-radius: 2px;
-  cursor: default;
-}
-
-.status-zoom-input:hover {
-  border-color: var(--sz-color-button-shadow);
-}
-
-.status-zoom-input:focus {
-  border-color: var(--sz-color-highlight);
-  background: var(--sz-color-window);
-  outline: none;
-  cursor: text;
-}
-
-.status-zoom-slider {
-  width: 80px;
-  height: 12px;
-  cursor: default;
-}
-
 /* ── Find & Replace Panel ─────────────────────────────────────── */
 
 .find-panel {
