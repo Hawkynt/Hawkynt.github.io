@@ -2,620 +2,368 @@
   'use strict';
   const SZ = window.SZ || (window.SZ = {});
 
-  /**
-   * Normalize a VFS path: collapse double slashes, resolve `.` and `..`,
-   * ensure leading `/`, strip trailing slash (unless root).
-   */
-  function _normalizePath(path) {
-    if (!path || path === '/')
-      return '/';
+  // =========================================================================
+  // Errors
+  // =========================================================================
+  const ERROR_CODES = {
+    InvalidPath: 'InvalidPath',
+    NotFound: 'NotFound',
+    AlreadyExists: 'AlreadyExists',
+    NotDirectory: 'NotDirectory',
+    IsDirectory: 'IsDirectory',
+    WrongType: 'WrongType',
+    InvalidValue: 'InvalidValue',
+    PermissionDenied: 'PermissionDenied',
+    DataTooLarge: 'DataTooLarge',
+  };
 
+  class VFSError extends Error {
+    constructor(code, path, message) {
+      super(message);
+      this.code = code;
+      this.path = path;
+      this.name = 'VFSError';
+    }
+  }
+
+  // =========================================================================
+  // Path Helpers
+  // =========================================================================
+  function normalizePath(path) {
+    if (!path || typeof path !== 'string') throw new VFSError(ERROR_CODES.InvalidPath, path, 'Path must be a non-empty string.');
+    
     const parts = path.replace(/\\/g, '/').split('/');
     const resolved = [];
     for (const part of parts) {
-      if (part === '' || part === '.')
-        continue;
+      if (part === '' || part === '.') continue;
       if (part === '..') {
+        if (resolved.length === 0) {
+          throw new VFSError(ERROR_CODES.InvalidPath, path, 'Path attempts to escape root.');
+        }
         resolved.pop();
         continue;
       }
       resolved.push(part);
     }
-
     const result = '/' + resolved.join('/');
     return result || '/';
   }
 
+  function getParentPath(path) {
+    if (path === '/') return null;
+    const lastSlash = path.lastIndexOf('/');
+    return path.substring(0, lastSlash) || '/';
+  }
+
+  function getBaseName(path) {
+    if (path === '/') return '';
+    const lastSlash = path.lastIndexOf('/');
+    return path.substring(lastSlash + 1);
+  }
+
+  // =========================================================================
+  // Drivers (Storage Backends)
+  // =========================================================================
+
   /**
-   * Ensure a mount-point string ends with `/`.
+   * Base class for a VFS driver.
    */
-  function _ensureTrailingSlash(mp) {
-    return mp.endsWith('/') ? mp : mp + '/';
+  class BaseDriver {
+    get readonly() { return false; }
+    async GetNode(relPath) { throw new Error('Not implemented'); }
+    async PutNode(relPath, node) { if (this.readonly) throw new VFSError(ERROR_CODES.PermissionDenied, relPath, 'This mount is read-only.'); }
+    async DeleteNode(relPath) { if (this.readonly) throw new VFSError(ERROR_CODES.PermissionDenied, relPath, 'This mount is read-only.'); }
+    async ListChildren(relPath) { throw new Error('Not implemented'); }
   }
 
-  function _bytesToBase64(bytes) {
-    let binary = '';
-    const chunk = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunk) {
-      const part = bytes.subarray(i, i + chunk);
-      for (let j = 0; j < part.length; ++j)
-        binary += String.fromCharCode(part[j]);
-    }
-    return btoa(binary);
-  }
-
-  function _isArrayBufferLike(value) {
-    if (value == null)
-      return false;
-    return value instanceof ArrayBuffer || Object.prototype.toString.call(value) === '[object ArrayBuffer]';
-  }
-
-  function _isTypedArrayLike(value) {
-    if (value == null)
-      return false;
-    if (ArrayBuffer.isView(value))
-      return true;
-    const tag = Object.prototype.toString.call(value);
-    return /\[object (?:Uint8|Uint8Clamped|Int8|Uint16|Int16|Uint32|Int32|Float32|Float64|BigInt64|BigUint64)Array\]/.test(tag);
-  }
-
-  function _toStorableValue(data) {
-    if (typeof data === 'string')
-      return data;
-
-    if (_isArrayBufferLike(data)) {
-      const bytes = new Uint8Array(data);
-      return 'data:application/octet-stream;base64,' + _bytesToBase64(bytes);
-    }
-
-    if (_isTypedArrayLike(data)) {
-      const bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-      return 'data:application/octet-stream;base64,' + _bytesToBase64(bytes);
-    }
-
-    // Cross-context fallback: objects that expose ArrayBuffer-like shape.
-    if (data && typeof data === 'object' && typeof data.byteLength === 'number') {
-      try {
-        const bytes = new Uint8Array(data);
-        return 'data:application/octet-stream;base64,' + _bytesToBase64(bytes);
-      } catch (_) {
-        try {
-          if (typeof data.slice === 'function') {
-            const sliced = data.slice(0);
-            const bytes = new Uint8Array(sliced);
-            return 'data:application/octet-stream;base64,' + _bytesToBase64(bytes);
-          }
-        } catch (_) {}
-      }
-    }
-
-    return String(data ?? '');
-  }
-
-  function _estimateStoredSize(value) {
-    if (value == null)
-      return 0;
-
-    if (typeof value === 'string') {
-      const m = value.match(/^data:([^,]*),(.*)$/i);
-      if (m) {
-        const meta = m[1] || '';
-        const payload = (m[2] || '').replace(/\s+/g, '');
-        if (/;\s*base64/i.test(meta)) {
-          const padding = payload.endsWith('==') ? 2 : payload.endsWith('=') ? 1 : 0;
-          return Math.max(0, Math.floor(payload.length * 3 / 4) - padding);
-        }
-        try {
-          return decodeURIComponent(m[2] || '').length;
-        } catch (_) {
-          return (m[2] || '').length;
-        }
-      }
-
-      // Legacy Explorer wrapper: {"type":"base64","data":"...","mime":"..."}
-      if (value.startsWith('{') && value.includes('"type":"base64"') && value.includes('"data"')) {
-        try {
-          const obj = JSON.parse(value);
-          if (obj && obj.type === 'base64' && typeof obj.data === 'string') {
-            const payload = obj.data.replace(/\s+/g, '');
-            const padding = payload.endsWith('==') ? 2 : payload.endsWith('=') ? 1 : 0;
-            return Math.max(0, Math.floor(payload.length * 3 / 4) - padding);
-          }
-        } catch (_) {}
-      }
-
-      // Plain base64 payload (legacy app writes without data: prefix)
-      const compact = value.replace(/\s+/g, '');
-      if (/^[A-Za-z0-9+/=]+$/.test(compact) && compact.length >= 32 && compact.length % 4 === 0) {
-        try {
-          const bin = atob(compact);
-          // Validate canonical base64 to avoid misclassifying normal text.
-          if (btoa(bin) === compact) {
-            const padding = compact.endsWith('==') ? 2 : compact.endsWith('=') ? 1 : 0;
-            return Math.max(0, Math.floor(compact.length * 3 / 4) - padding);
-          }
-        } catch (_) {}
-      }
-
-      return value.length;
-    }
-
-    if (_isArrayBufferLike(value))
-      return value.byteLength;
-
-    if (_isTypedArrayLike(value))
-      return value.byteLength;
-
-    return String(value).length;
-  }
-
-  // ── LocalStorageMount ──────────────────────────────────────────────
-
-  class LocalStorageMount {
+  class LocalStorageDriver extends BaseDriver {
     #prefix;
-
     constructor(keyPrefix = 'sz-vfs:') {
+      super();
       this.#prefix = keyPrefix;
     }
 
-    get readonly() { return false; }
+    async GetNode(relPath) {
+      const raw = localStorage.getItem(this.#prefix + relPath);
+      return raw ? JSON.parse(raw) : null;
+    }
 
-    async list(relativePath) {
-      const dir = relativePath === '' || relativePath === '/'
-        ? ''
-        : (relativePath.endsWith('/') ? relativePath : relativePath + '/');
-
-      const seen = new Map();
-
-      for (let i = 0; i < localStorage.length; ++i) {
+    async PutNode(relPath, node) {
+      super.PutNode(relPath);
+      localStorage.setItem(this.#prefix + relPath, JSON.stringify(node));
+    }
+    
+    async DeleteNode(relPath) {
+      super.DeleteNode(relPath);
+      localStorage.removeItem(this.#prefix + relPath);
+    }
+    
+    async ListChildren(relPath) {
+      const dirPrefix = (relPath === '/' || relPath === '') ? '' : relPath + '/';
+      const children = new Set();
+      for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (!key.startsWith(this.#prefix))
-          continue;
-
-        const full = key.slice(this.#prefix.length);
-        if (!full.startsWith(dir))
-          continue;
-
-        const remainder = full.slice(dir.length);
-        if (remainder === '')
-          continue;
-
-        const slashIdx = remainder.indexOf('/');
-        if (slashIdx === -1) {
-          const value = localStorage.getItem(key);
-          seen.set(remainder, {
-            name: remainder,
-            type: 'file',
-            size: _estimateStoredSize(value),
-            modified: null,
-          });
-        } else {
-          const childDir = remainder.slice(0, slashIdx);
-          if (!seen.has(childDir + '/'))
-            seen.set(childDir + '/', {
-              name: childDir,
-              type: 'dir',
-              size: 0,
-              modified: null,
-            });
+        if (key.startsWith(this.#prefix)) {
+          const path = key.substring(this.#prefix.length);
+          if (path.startsWith(dirPrefix)) {
+            const name = path.substring(dirPrefix.length).split('/')[0];
+            if (name) children.add(name);
+          }
         }
       }
-
-      return _sortEntries([...seen.values()]);
-    }
-
-    async read(relativePath) {
-      const key = this.#prefix + relativePath;
-      return localStorage.getItem(key);
-    }
-
-    async write(relativePath, data) {
-      const key = this.#prefix + relativePath;
-      try {
-        localStorage.setItem(key, _toStorableValue(data));
-      } catch (e) {
-        if (e.name === 'QuotaExceededError' || e.code === 22)
-          throw new Error('Storage quota exceeded. Free up space or delete files before saving.');
-        throw e;
-      }
-    }
-
-    async delete(relativePath) {
-      const exact = this.#prefix + relativePath;
-      if (localStorage.getItem(exact) !== null) {
-        localStorage.removeItem(exact);
-        return;
-      }
-
-      const dirPrefix = this.#prefix + (relativePath.endsWith('/') ? relativePath : relativePath + '/');
-      const toRemove = [];
-      for (let i = 0; i < localStorage.length; ++i) {
-        const key = localStorage.key(i);
-        if (key.startsWith(dirPrefix))
-          toRemove.push(key);
-      }
-      for (const key of toRemove)
-        localStorage.removeItem(key);
-    }
-
-    async exists(relativePath) {
-      const exact = this.#prefix + relativePath;
-      if (localStorage.getItem(exact) !== null)
-        return true;
-
-      const dirPrefix = this.#prefix + (relativePath.endsWith('/') ? relativePath : relativePath + '/');
-      for (let i = 0; i < localStorage.length; ++i) {
-        if (localStorage.key(i).startsWith(dirPrefix))
-          return true;
-      }
-      return false;
-    }
-
-    async mkdir(_relativePath) {
-      // Directories are implicit — no-op.
+      return [...children];
     }
   }
 
-  // ── MemoryMount ────────────────────────────────────────────────────
-
-  class MemoryMount {
-    #store = new Map();
-
-    get readonly() { return false; }
-
-    async list(relativePath) {
-      const dir = relativePath === '' || relativePath === '/'
-        ? ''
-        : (relativePath.endsWith('/') ? relativePath : relativePath + '/');
-
-      const seen = new Map();
-
-      for (const [full, value] of this.#store) {
-        if (!full.startsWith(dir))
-          continue;
-
-        const remainder = full.slice(dir.length);
-        if (remainder === '')
-          continue;
-
-        const slashIdx = remainder.indexOf('/');
-        if (slashIdx === -1) {
-          seen.set(remainder, {
-            name: remainder,
-            type: 'file',
-            size: _estimateStoredSize(value),
-            modified: null,
-          });
-        } else {
-          const childDir = remainder.slice(0, slashIdx);
-          if (!seen.has(childDir + '/'))
-            seen.set(childDir + '/', {
-              name: childDir,
-              type: 'dir',
-              size: 0,
-              modified: null,
-            });
-        }
-      }
-
-      return _sortEntries([...seen.values()]);
-    }
-
-    async read(relativePath) {
-      const value = this.#store.get(relativePath);
-      return value !== undefined ? value : null;
-    }
-
-    async write(relativePath, data) {
-      this.#store.set(relativePath, data);
-    }
-
-    async delete(relativePath) {
-      if (this.#store.has(relativePath)) {
-        this.#store.delete(relativePath);
-        return;
-      }
-
-      const dirPrefix = relativePath.endsWith('/') ? relativePath : relativePath + '/';
-      const toRemove = [];
-      for (const key of this.#store.keys()) {
-        if (key.startsWith(dirPrefix))
-          toRemove.push(key);
-      }
-      for (const key of toRemove)
-        this.#store.delete(key);
-    }
-
-    async exists(relativePath) {
-      if (this.#store.has(relativePath))
-        return true;
-
-      const dirPrefix = relativePath.endsWith('/') ? relativePath : relativePath + '/';
-      for (const key of this.#store.keys()) {
-        if (key.startsWith(dirPrefix))
-          return true;
-      }
-      return false;
-    }
-
-    async mkdir(_relativePath) {
-      // Directories are implicit — no-op.
-    }
-  }
-
-  // ── ReadOnlyObjectMount ────────────────────────────────────────────
-
-  class ReadOnlyObjectMount {
-    #treeFn;
-
-    constructor(treeFn) {
-      this.#treeFn = treeFn;
+  class ReadOnlyObjectDriver extends BaseDriver {
+    #root;
+    constructor(obj) {
+        super();
+        this.#root = obj;
     }
 
     get readonly() { return true; }
 
-    /**
-     * Walk the object tree to the node at the given relative path.
-     * Returns `undefined` if not found.
-     */
-    #resolve(relativePath) {
-      const tree = this.#treeFn();
-      if (!tree)
-        return undefined;
-      if (relativePath === '' || relativePath === '/')
-        return tree;
-
-      const parts = relativePath.replace(/^\/|\/$/g, '').split('/');
-      let node = tree;
-      for (const part of parts) {
-        if (node == null || typeof node !== 'object')
-          return undefined;
-        if (Array.isArray(node)) {
-          const idx = parseInt(part, 10);
-          if (isNaN(idx) || idx < 0 || idx >= node.length)
-            return undefined;
-          node = node[idx];
-        } else {
-          if (!(part in node))
-            return undefined;
-          node = node[part];
+    async GetNode(relPath) {
+        if (relPath === '') return { k: 'dir', meta: {} };
+        const parts = relPath.split('/');
+        let current = this.#root;
+        for (const part of parts) {
+            if (typeof current !== 'object' || current === null || !current.hasOwnProperty(part)) {
+                return null;
+            }
+            current = current[part];
         }
-      }
-      return node;
+        
+        // This is a simplified GetNode. It doesn't distinguish node kinds from the object.
+        // It assumes all non-object properties are files (values).
+        if (typeof current === 'object' && current !== null) {
+            return { k: 'dir', meta: {} };
+        } else {
+            return { k: 'value', v: current, meta: {} };
+        }
     }
 
-    async list(relativePath) {
-      const node = this.#resolve(relativePath);
-      if (node == null || typeof node !== 'object')
+    async ListChildren(relPath) {
+        if (relPath === '') return Object.keys(this.#root);
+        const parts = relPath.split('/');
+        let current = this.#root;
+        for (const part of parts) {
+            if (typeof current !== 'object' || current === null || !current.hasOwnProperty(part)) {
+                return [];
+            }
+            current = current[part];
+        }
+
+        if (typeof current === 'object' && current !== null) {
+            return Object.keys(current);
+        }
         return [];
-
-      const entries = [];
-      const keys = Array.isArray(node) ? node.map((_, i) => String(i)) : Object.keys(node);
-      for (const key of keys) {
-        const child = Array.isArray(node) ? node[parseInt(key, 10)] : node[key];
-        const isDir = child != null && typeof child === 'object';
-        entries.push({
-          name: key,
-          type: isDir ? 'dir' : 'file',
-          size: isDir ? 0 : String(child).length,
-          modified: null,
-        });
-      }
-
-      return _sortEntries(entries);
-    }
-
-    async read(relativePath) {
-      const node = this.#resolve(relativePath);
-      if (node === undefined)
-        return null;
-      if (node != null && typeof node === 'object')
-        return null;
-
-      return String(node);
-    }
-
-    async write(_relativePath, _data) {
-      throw new Error('Cannot write to a read-only mount.');
-    }
-
-    async delete(_relativePath) {
-      throw new Error('Cannot delete from a read-only mount.');
-    }
-
-    async exists(relativePath) {
-      return this.#resolve(relativePath) !== undefined;
-    }
-
-    async mkdir(_relativePath) {
-      throw new Error('Cannot create directories on a read-only mount.');
     }
   }
 
-  // ── Sorting helper ─────────────────────────────────────────────────
-
-  function _sortEntries(entries) {
-    return entries.sort((a, b) => {
-      if (a.type !== b.type)
-        return a.type === 'dir' ? -1 : 1;
-      return a.name.localeCompare(b.name);
-    });
-  }
-
-  // ── VFS (central router) ──────────────────────────────────────────
-
-  class VFS {
+  // =========================================================================
+  // Kernel
+  // =========================================================================
+  class Kernel {
     #mounts = new Map();
 
-    /**
-     * Register a mount handler at the given mount point.
-     * Mount points are normalized to have a trailing slash.
-     */
-    mount(mountPoint, handler) {
-      const mp = _ensureTrailingSlash(_normalizePath(mountPoint));
-      this.#mounts.set(mp, handler);
+    constructor() {
+      // Default root mount
+      this.mount('/', new LocalStorageDriver('sz-vfs-root:'));
     }
 
-    /**
-     * Remove a previously registered mount.
-     */
-    unmount(mountPoint) {
-      const mp = _ensureTrailingSlash(_normalizePath(mountPoint));
-      this.#mounts.delete(mp);
+    mount(prefix, driver) {
+      const normPrefix = normalizePath(prefix);
+      this.#mounts.set(normPrefix, driver);
     }
 
-    /**
-     * Return all registered mounts for UI display.
-     */
-    getMounts() {
-      const result = [];
-      for (const [mountPoint, handler] of this.#mounts)
-        result.push({ mountPoint, readonly: !!handler.readonly });
-      return result;
-    }
-
-    /**
-     * Find the mount and relative path for an absolute VFS path.
-     * Uses longest-prefix matching.
-     */
     #resolve(path) {
-      const normalized = _normalizePath(path);
-      const withSlash = normalized === '/' ? '/' : normalized + '/';
-
-      let bestMount = null;
-      let bestLength = 0;
-
-      for (const [mp, handler] of this.#mounts) {
-        if ((normalized + '/').startsWith(mp) || normalized === mp.slice(0, -1)) {
-          if (mp.length > bestLength) {
-            bestMount = { mountPoint: mp, handler };
-            bestLength = mp.length;
-          }
+      const normPath = normalizePath(path);
+      let bestMountPrefix = '';
+      for (const prefix of this.#mounts.keys()) {
+        if (normPath.startsWith(prefix) && prefix.length > bestMountPrefix.length) {
+          bestMountPrefix = prefix;
         }
       }
-
-      if (!bestMount)
-        return null;
-
-      let relative = normalized.slice(bestMount.mountPoint.length);
-      if (relative.startsWith('/'))
-        relative = relative.slice(1);
-
-      return { handler: bestMount.handler, relative, mountPoint: bestMount.mountPoint };
+      const driver = this.#mounts.get(bestMountPrefix);
+      const relPath = normPath.substring(bestMountPrefix.length).replace(/^\//, '');
+      return { driver, relPath, normPath };
     }
 
-    async list(path) {
-      const resolved = this.#resolve(path);
-      if (!resolved) {
-        // Root listing — show mount points as directories
-        if (_normalizePath(path) === '/') {
-          const entries = [];
-          for (const [mp] of this.#mounts) {
-            const name = mp.slice(1, -1).split('/')[0];
-            if (!entries.some(e => e.name === name))
-              entries.push({ name, type: 'dir', size: 0, modified: null });
-          }
-          return _sortEntries(entries);
-        }
-        return [];
+    async #getNode(path) {
+      const { driver, relPath, normPath } = this.#resolve(path);
+      // The root or a mount point itself is always a directory.
+      if (normPath === '/' || (this.#mounts.has(normPath) && relPath === '')) {
+        return { k: 'dir', meta: {} };
       }
-      return resolved.handler.list(resolved.relative);
+      const node = await driver.GetNode(relPath);
+      if (!node) throw new VFSError(ERROR_CODES.NotFound, normPath, 'Path not found.');
+      return node;
+    }
+    
+    async #putNode(path, node) {
+      const { driver, relPath } = this.#resolve(path);
+      const parentPath = getParentPath(path);
+      if (parentPath) {
+        try {
+          const parentNode = await this.#getNode(parentPath);
+          if (parentNode.k !== 'dir') {
+            throw new VFSError(ERROR_CODES.NotDirectory, parentPath, 'Parent path is not a directory.');
+          }
+        } catch (e) {
+          if (e.code === ERROR_CODES.NotFound) {
+             throw new VFSError(ERROR_CODES.NotFound, parentPath, 'Parent directory does not exist.');
+          }
+          throw e;
+        }
+      }
+      await driver.PutNode(relPath, node);
     }
 
-    async read(path) {
-      const resolved = this.#resolve(path);
-      if (!resolved)
-        return null;
-      return resolved.handler.read(resolved.relative);
+    // --- Core API ---
+    async Stat(path) {
+      const { meta, k } = await this.#getNode(path);
+      return { ...meta, kind: k };
     }
 
-    async write(path, data) {
-      const resolved = this.#resolve(path);
-      if (!resolved)
-        throw new Error('No mount found for path: ' + path);
-      return resolved.handler.write(resolved.relative, data);
+    async List(path) {
+      const { driver, relPath, normPath } = this.#resolve(path);
+      const node = await this.#getNode(path);
+      if (node.k !== 'dir') throw new VFSError(ERROR_CODES.NotDirectory, normPath, 'Path is not a directory.');
+      const children = await driver.ListChildren(relPath);
+      // Include direct child mount points not already in the list
+      const childPrefix = normPath === '/' ? '/' : normPath + '/';
+      for (const mountPrefix of this.#mounts.keys()) {
+        if (mountPrefix === normPath) continue;
+        if (mountPrefix.startsWith(childPrefix)) {
+          const rest = mountPrefix.substring(childPrefix.length);
+          const directChild = rest.split('/')[0];
+          if (directChild && !children.includes(directChild))
+            children.push(directChild);
+        }
+      }
+      return children;
     }
 
-    async delete(path) {
-      const resolved = this.#resolve(path);
-      if (!resolved)
-        throw new Error('No mount found for path: ' + path);
-      return resolved.handler.delete(resolved.relative);
+    async Mkdir(path) {
+      const normPath = normalizePath(path);
+      await this.#putNode(normPath, { k: 'dir', meta: { mtime: Date.now() } });
     }
 
-    async exists(path) {
-      const resolved = this.#resolve(path);
-      if (!resolved)
-        return _normalizePath(path) === '/';
-      return resolved.handler.exists(resolved.relative);
+    async Delete(path) {
+        const { driver, relPath, normPath } = this.#resolve(path);
+        const node = await this.#getNode(normPath);
+        if (node.k === 'dir') {
+            const children = await this.List(normPath);
+            if (children.length > 0) {
+                throw new VFSError(ERROR_CODES.Conflict, normPath, 'Directory is not empty.');
+            }
+        }
+        await driver.DeleteNode(relPath);
+    }
+    
+    async Move(from, to) {
+      const normFrom = normalizePath(from);
+      const normTo = normalizePath(to);
+      const node = await this.#getNode(normFrom);
+      if (node.k === 'dir')
+        throw new VFSError(ERROR_CODES.Unsupported, normFrom, 'Moving directories is not supported.');
+      await this.#putNode(normTo, node);
+      const { driver, relPath } = this.#resolve(normFrom);
+      await driver.DeleteNode(relPath);
     }
 
-    async mkdir(path) {
-      const resolved = this.#resolve(path);
-      if (!resolved)
-        throw new Error('No mount found for path: ' + path);
-      return resolved.handler.mkdir(resolved.relative);
+    // --- Typed Writes ---
+    async WriteAllBytes(path, bytes, meta = {}) {
+      const b64 = btoa(String.fromCharCode.apply(null, bytes));
+      await this.#putNode(path, { k: 'bytes', c: { t: 'inline', b64 }, meta: { ...meta, mtime: Date.now(), size: bytes.length } });
     }
-
-    /**
-     * Reads a file from VFS and returns a usable URI (e.g., a data: URL).
-     * This method is responsible for interpreting the stored VFS content.
-     */
-    async getUri(path) {
-      const content = await this.read(path);
-      if (!content) return '';
-
+    
+    async WriteValue(path, value, meta = {}) {
+      // Basic JSON-serializable check
       try {
-        const vfsObject = JSON.parse(content);
-        if (vfsObject.type === 'uri') {
-          return vfsObject.data || '';
-        }
-        if (vfsObject.type === 'base64') {
-          return `data:${vfsObject.mime};base64,${vfsObject.data}`;
-        }
-        return ''; // Unknown type
+        JSON.stringify(value);
       } catch (e) {
-        // Not a JSON object, assume it's a raw data URI from a legacy version or direct injection.
-        if (typeof content === 'string' && content.startsWith('data:')) {
-          return content;
-        }
+        throw new VFSError(ERROR_CODES.InvalidValue, path, 'Value is not JSON-serializable.');
       }
-      return ''; // Could not be resolved to a URI
+      await this.#putNode(path, { k: 'value', v: value, meta: { ...meta, mtime: Date.now() } });
     }
 
-    /**
-     * Populate initial user files if they do not already exist.
-     */
-    static async createDefaultUserFiles(vfs) {
-      const welcomePath = '/user/documents/Welcome.txt';
-      if (!await vfs.exists(welcomePath))
-        await vfs.write(
-          welcomePath,
-          'Welcome to SynthelicZ!\n\n'
-          + 'This is your personal documents folder (Eigene Dateien).\n'
-          + 'You can create, edit, and save files here using Notepad.\n\n'
-          + 'Files are stored in your browser\'s localStorage.'
-        );
-
-      // Ensure standard user directories exist
-      const ensureDir = async (path) => {
-        if (!await vfs.exists(path)) {
-          // Write and remove a placeholder to ensure the path is created
-          // by mounts that don't have an explicit mkdir (like LocalStorage).
-          const placeholder = path + '/.keep';
-          await vfs.write(placeholder, '');
-          await vfs.delete(placeholder);
+    async WriteUri(path, uri, meta = {}) {
+      await this.#putNode(path, { k: 'uri', u: uri, meta: { ...meta, mtime: Date.now() } });
+    }
+    
+    // --- Typed Reads ---
+    async ReadAllBytes(path) {
+        const node = await this.#getNode(path);
+        switch (node.k) {
+            case 'bytes':
+                if (node.c.t === 'inline') {
+                    const binary = atob(node.c.b64);
+                    const bytes = new Uint8Array(binary.length);
+                    for (let i = 0; i < binary.length; ++i)
+                        bytes[i] = binary.charCodeAt(i);
+                    return bytes;
+                }
+                throw new VFSError(ERROR_CODES.Unsupported, path, 'Unsupported byte content reference type.');
+            case 'value':
+                return new TextEncoder().encode(JSON.stringify(node.v));
+            case 'uri': {
+                const resp = await fetch(node.u);
+                if (!resp.ok)
+                    throw new VFSError(ERROR_CODES.NotFound, path, `Fetch failed: ${resp.status} ${resp.statusText}`);
+                return new Uint8Array(await resp.arrayBuffer());
+            }
+            case 'dir':
+                throw new VFSError(ERROR_CODES.IsDirectory, path, 'Cannot read directory as bytes.');
+            default:
+                throw new VFSError(ERROR_CODES.WrongType, path, `Cannot read '${node.k}' as bytes.`);
         }
-      };
+    }
 
-      await ensureDir('/user/desktop');
-      await ensureDir('/user/documents');
-      await ensureDir('/user/pictures');
+    async ReadValue(path) {
+      const node = await this.#getNode(path);
+      if (node.k !== 'value') throw new VFSError(ERROR_CODES.WrongType, path, 'Node is not a value.');
+      return JSON.parse(JSON.stringify(node.v)); // Structured clone
+    }
+
+    async ReadUri(path) {
+        const node = await this.#getNode(path);
+        switch (node.k) {
+            case 'uri':
+                return node.u;
+            case 'bytes':
+                const bytes = await this.ReadAllBytes(path);
+                const b64 = btoa(String.fromCharCode.apply(null, bytes));
+                const mime = node.meta?.contentType || 'application/octet-stream';
+                return `data:${mime};base64,${b64}`;
+            case 'value':
+                 const json = JSON.stringify(node.v);
+                 const jsonBytes = new TextEncoder().encode(json);
+                 const jsonB64 = btoa(String.fromCharCode.apply(null, jsonBytes));
+                 return `data:application/json;base64,${jsonB64}`;
+            default:
+                throw new VFSError(ERROR_CODES.WrongType, path, `Cannot read '${node.k}' as URI.`);
+        }
+    }
+
+    async ReadAllText(path) {
+      const node = await this.#getNode(path);
+      if (node.k === 'value') return JSON.stringify(node.v);
+      if (node.k === 'uri') return node.u;
+      if (node.k === 'dir') throw new VFSError(ERROR_CODES.IsDirectory, path, 'Cannot read directory as text.');
+      const bytes = await this.ReadAllBytes(path);
+      return new TextDecoder('utf-8').decode(bytes);
     }
   }
+  
+  SZ.VFS = {
+    Kernel,
+    LocalStorageDriver,
+    ReadOnlyObjectDriver,
+    VFSError,
+    ERROR_CODES
+  };
 
-  SZ.VFS = VFS;
-  SZ.LocalStorageMount = LocalStorageMount;
-  SZ.MemoryMount = MemoryMount;
-  SZ.ReadOnlyObjectMount = ReadOnlyObjectMount;
 })();

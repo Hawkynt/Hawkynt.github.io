@@ -445,14 +445,10 @@
       content: source.value,
     });
     if (!result.cancelled && result.path) {
-      savedContent = source.value;
       currentFilePath = result.path;
       const parts = result.path.split('/');
       currentFileName = parts[parts.length - 1] || 'Untitled';
-      dirty = false;
-      updateTitle();
-      if (typeof callback === 'function')
-        callback();
+      await saveToPath(result.path, callback);
     }
   }
 
