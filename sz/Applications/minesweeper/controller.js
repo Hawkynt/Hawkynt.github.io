@@ -87,7 +87,7 @@
   document.querySelectorAll('.menu-item').forEach(item => {
     item.addEventListener('pointerdown', e => {
       e.stopPropagation();
-      if (e.target.closest('.menu-dropdown-item'))
+      if (e.target.closest('.menu-entry'))
         return;
       const dropdown = item.querySelector('.menu-dropdown');
       if (openMenu === dropdown) {
@@ -111,7 +111,7 @@
     });
   });
 
-  document.querySelectorAll('.menu-dropdown-item').forEach(item => {
+  document.querySelectorAll('.menu-entry').forEach(item => {
     item.addEventListener('click', () => {
       const action = item.dataset.action;
       closeMenus();
@@ -174,7 +174,7 @@
   function updateDifficultyChecks() {
     const levels = ['beginner', 'intermediate', 'expert', 'custom'];
     levels.forEach(level => {
-      const el = document.querySelector('.menu-dropdown-item[data-action="' + level + '"]');
+      const el = document.querySelector('.menu-entry[data-action="' + level + '"]');
       if (!el)
         return;
       if (level === 'custom')
@@ -191,16 +191,13 @@
   }
 
   function updateMarksCheck() {
-    const el = document.querySelector('.menu-dropdown-item[data-action="marks"]');
+    const el = document.querySelector('.menu-entry[data-action="marks"]');
     if (el)
       el.classList.toggle('checked', marksEnabled);
   }
 
   /* ---- Best Times Dialog ---- */
   const bestTimesBackdrop = document.getElementById('bestTimesBackdrop');
-  const bestTimesClose    = document.getElementById('bestTimesClose');
-  const bestTimesOk       = document.getElementById('bestTimesOk');
-  const bestTimesReset    = document.getElementById('bestTimesReset');
 
   function showBestTimes() {
     document.getElementById('btBegTime').textContent = bestTimes.beginner.time + ' seconds';
@@ -216,23 +213,23 @@
     bestTimesBackdrop.classList.remove('visible');
   }
 
-  bestTimesClose.addEventListener('click', closeBestTimes);
-  bestTimesOk.addEventListener('click', closeBestTimes);
-  bestTimesReset.addEventListener('click', () => {
-    resetBestTimes();
-    showBestTimes();
-  });
-
   bestTimesBackdrop.addEventListener('pointerdown', e => {
     if (e.target === bestTimesBackdrop)
       closeBestTimes();
   });
+  bestTimesBackdrop.addEventListener('click', e => {
+    const btn = e.target.closest('[data-result]');
+    if (!btn)
+      return;
+    if (btn.dataset.result === 'reset') {
+      resetBestTimes();
+      showBestTimes();
+    } else
+      closeBestTimes();
+  });
 
   /* ---- Custom Field Dialog ---- */
-  const customBackdrop = document.getElementById('customBackdrop');
-  const customClose    = document.getElementById('customClose');
-  const customOk       = document.getElementById('customOk');
-  const customCancel   = document.getElementById('customCancel');
+  const customBackdrop   = document.getElementById('customBackdrop');
   const customRowsInput  = document.getElementById('customRows');
   const customColsInput  = document.getElementById('customCols');
   const customMinesInput = document.getElementById('customMines');
@@ -289,12 +286,17 @@
     requestWindowResize();
   }
 
-  customOk.addEventListener('click', applyCustom);
-  customCancel.addEventListener('click', closeCustomDialog);
-  customClose.addEventListener('click', closeCustomDialog);
-
   customBackdrop.addEventListener('pointerdown', e => {
     if (e.target === customBackdrop)
+      closeCustomDialog();
+  });
+  customBackdrop.addEventListener('click', e => {
+    const btn = e.target.closest('[data-result]');
+    if (!btn)
+      return;
+    if (btn.dataset.result === 'ok')
+      applyCustom();
+    else
       closeCustomDialog();
   });
 
@@ -309,24 +311,15 @@
   });
 
   /* ---- About Dialog ---- */
-  const aboutBackdrop = document.getElementById('aboutBackdrop');
-  const aboutClose    = document.getElementById('aboutClose');
-  const aboutOk       = document.getElementById('aboutOk');
-
   function showAboutDialog() {
-    aboutBackdrop.classList.add('visible');
+    const dlg = document.getElementById('dlg-about');
+    if (dlg) dlg.classList.add('visible');
   }
 
   function closeAboutDialog() {
-    aboutBackdrop.classList.remove('visible');
+    const dlg = document.getElementById('dlg-about');
+    if (dlg) dlg.classList.remove('visible');
   }
-
-  aboutClose.addEventListener('click', closeAboutDialog);
-  aboutOk.addEventListener('click', closeAboutDialog);
-  aboutBackdrop.addEventListener('pointerdown', e => {
-    if (e.target === aboutBackdrop)
-      closeAboutDialog();
-  });
 
   /* ---- Keyboard ---- */
   document.addEventListener('keydown', e => {
@@ -751,4 +744,10 @@
   }
 
   init();
+
+  document.getElementById('dlg-about')?.addEventListener('click', function(e) {
+    if (e.target.closest('[data-result]'))
+      this.classList.remove('visible');
+  });
+
 })();

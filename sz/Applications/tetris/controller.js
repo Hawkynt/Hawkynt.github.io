@@ -626,7 +626,7 @@
   document.querySelectorAll('.menu-item').forEach(item => {
     item.addEventListener('pointerdown', e => {
       e.stopPropagation();
-      if (e.target.closest('.menu-dropdown-item'))
+      if (e.target.closest('.menu-entry'))
         return;
       const dropdown = item.querySelector('.menu-dropdown');
       if (openMenu === dropdown) {
@@ -650,7 +650,7 @@
     });
   });
 
-  document.querySelectorAll('.menu-dropdown-item').forEach(item => {
+  document.querySelectorAll('.menu-entry').forEach(item => {
     item.addEventListener('click', () => {
       const action = item.dataset.action;
       closeMenus();
@@ -687,7 +687,7 @@
           window.close();
         break;
       case 'controls':
-        showDialog('controlsBackdrop');
+        document.getElementById('controlsBackdrop').classList.add('visible');
         break;
       case 'about': {
         const dlg = document.getElementById('dlg-about');
@@ -698,30 +698,32 @@
   }
 
   /* ---- Dialog Helpers ---- */
-  function showDialog(id) {
-    document.getElementById(id).classList.add('visible');
-  }
-
   function closeDialog(id) {
     document.getElementById(id).classList.remove('visible');
   }
 
-  /* Dialog close buttons */
-  document.getElementById('highScoresClose').addEventListener('click', closeHighScores);
-  document.getElementById('highScoresOk').addEventListener('click', closeHighScores);
-  document.getElementById('highScoresReset').addEventListener('click', () => {
-    resetHighScores();
-    showHighScores();
-  });
+  /* Dialog event delegation */
   document.getElementById('highScoresBackdrop').addEventListener('pointerdown', e => {
     if (e.target === e.currentTarget)
       closeHighScores();
   });
+  document.getElementById('highScoresBackdrop').addEventListener('click', e => {
+    const btn = e.target.closest('[data-result]');
+    if (!btn)
+      return;
+    if (btn.dataset.result === 'reset') {
+      resetHighScores();
+      showHighScores();
+    } else
+      closeHighScores();
+  });
 
-  document.getElementById('controlsClose').addEventListener('click', () => closeDialog('controlsBackdrop'));
-  document.getElementById('controlsOk').addEventListener('click', () => closeDialog('controlsBackdrop'));
   document.getElementById('controlsBackdrop').addEventListener('pointerdown', e => {
     if (e.target === e.currentTarget)
+      closeDialog('controlsBackdrop');
+  });
+  document.getElementById('controlsBackdrop').addEventListener('click', e => {
+    if (e.target.closest('[data-result]'))
       closeDialog('controlsBackdrop');
   });
 
@@ -883,4 +885,10 @@
   }
 
   init();
+
+  document.getElementById('dlg-about')?.addEventListener('click', function(e) {
+    if (e.target.closest('[data-result]'))
+      this.classList.remove('visible');
+  });
+
 })();

@@ -1269,25 +1269,9 @@ function showShortcutsDialog() {
 }
 
 function showAboutDialog() {
-  const existingOverlay = document.querySelector('.dialog-overlay');
-  if (existingOverlay)
-    existingOverlay.remove();
-
-  const overlay = document.createElement('div');
-  overlay.className = 'dialog-overlay';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:2000;display:flex;align-items:center;justify-content:center;';
-
-  const dialog = document.createElement('div');
-  dialog.style.cssText = `background:var(--fp-panel,#ece9d8);border:1px solid var(--fp-border,#8d8d8d);padding:16px;max-width:320px;font:12px/1.6 Tahoma,sans-serif;color:var(--fp-text,#1b1b1b);box-shadow:4px 4px 8px rgba(0,0,0,0.3);`;
-  dialog.innerHTML = `<b>Function Plotter</b><br><br>
-    Plot mathematical functions with syntax highlighting, autocomplete, function families (parameter t), and Kurvendiskussion analysis.<br><br>
-    Supports 42+ math functions including trigonometric, hyperbolic, logarithmic, and rounding functions.<br><br>
-    <button class="btn" style="float:right;">Close</button><div style="clear:both;"></div>`;
-
-  dialog.querySelector('.btn').addEventListener('click', () => overlay.remove());
-  overlay.addEventListener('pointerdown', (e) => { if (e.target === overlay) overlay.remove(); });
-  overlay.appendChild(dialog);
-  document.body.appendChild(overlay);
+  const overlay = document.getElementById('dlg-about');
+  if (overlay)
+    overlay.classList.add('visible');
 }
 
 function setupMenuSystem() {
@@ -2623,5 +2607,10 @@ bindEvents();
 addFunction('sin(x)');
 addFunction('x^2 - 4');
 resizeCanvas();
+
+document.getElementById('dlg-about')?.addEventListener('click', function(e) {
+  if (e.target.closest('[data-result]'))
+    this.classList.remove('visible');
+});
 
 })();

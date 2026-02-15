@@ -5,6 +5,8 @@
 <title>Calculator</title>
 <script src="../sz-app-bootstrap.js"></script>
 <link rel="stylesheet" href="styles.css">
+<script defer src="vision-data.js"></script>
+  <script defer src="../vision-renderer.js"></script>
 </head>
 <body>
 
@@ -70,6 +72,14 @@
 
   <!-- Programmer: bit toggle display -->
   <div id="bit-display" class="hidden"></div>
+</div>
+
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Calculator</div>
+    <div class="dialog-body"></div>
+    <div class="dialog-buttons"><button data-result="ok">OK</button></div>
+  </div>
 </div>
 
 <script src="controller.js"></script>

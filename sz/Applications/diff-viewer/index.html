@@ -5,8 +5,19 @@
 <title>Diff Viewer</title>
 <script src="../sz-app-bootstrap.js"></script>
 <link rel="stylesheet" href="styles.css">
+<script defer src="vision-data.js"></script>
+  <script defer src="../vision-renderer.js"></script>
 </head>
 <body>
+
+<div class="menu-bar">
+  <div class="menu-item" data-menu="help">
+    Help
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="about">About Diff Viewer</div>
+    </div>
+  </div>
+</div>
 
 <!-- Toolbar -->
 <div class="toolbar" id="toolbar">
@@ -55,6 +66,14 @@
   <span class="status-section" id="status-left-lines">Left: 0 lines</span>
   <span class="status-section" id="status-right-lines">Right: 0 lines</span>
   <span class="status-section" id="status-diff-pos"></span>
+</div>
+
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Diff Viewer</div>
+    <div class="dialog-body"></div>
+    <div class="dialog-buttons"><button data-result="ok">OK</button></div>
+  </div>
 </div>
 
 <script src="controller.js"></script>

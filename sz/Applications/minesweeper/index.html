@@ -5,28 +5,30 @@
 <title>Minesweeper</title>
 <script src="../sz-app-bootstrap.js"></script>
 <link rel="stylesheet" href="styles.css">
+<script defer src="vision-data.js"></script>
+  <script defer src="../vision-renderer.js"></script>
 </head>
 <body>
 
 <!-- Menu Bar -->
 <div class="menu-bar" id="menuBar">
   <div class="menu-item" data-menu="game">Game
-    <div class="menu-dropdown" id="menuGame">
-      <div class="menu-dropdown-item" data-action="new">New<span class="shortcut">F2</span></div>
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="new">New<span class="shortcut">F2</span></div>
       <div class="menu-separator"></div>
-      <div class="menu-dropdown-item checked" data-action="beginner">Beginner</div>
-      <div class="menu-dropdown-item" data-action="intermediate">Intermediate</div>
-      <div class="menu-dropdown-item" data-action="expert">Expert</div>
-      <div class="menu-dropdown-item" data-action="custom">Custom...</div>
+      <div class="menu-entry radio checked" data-action="beginner">Beginner</div>
+      <div class="menu-entry radio" data-action="intermediate">Intermediate</div>
+      <div class="menu-entry radio" data-action="expert">Expert</div>
+      <div class="menu-entry radio" data-action="custom">Custom...</div>
       <div class="menu-separator"></div>
-      <div class="menu-dropdown-item checked" data-action="marks">Marks (?)</div>
+      <div class="menu-entry checkbox checked" data-action="marks">Marks (?)</div>
       <div class="menu-separator"></div>
-      <div class="menu-dropdown-item" data-action="best-times">Best Times...</div>
+      <div class="menu-entry" data-action="best-times">Best Times...</div>
     </div>
   </div>
   <div class="menu-item" data-menu="help">Help
-    <div class="menu-dropdown" id="menuHelp">
-      <div class="menu-dropdown-item" data-action="about">About Minesweeper</div>
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="about">About Minesweeper</div>
     </div>
   </div>
 </div>
@@ -44,34 +46,28 @@
 </div>
 
 <!-- Best Times Dialog -->
-<div class="xp-dialog-backdrop" id="bestTimesBackdrop">
-  <div class="xp-dialog">
-    <div class="xp-dialog-titlebar">
-      <span>Fastest Mine Sweepers</span>
-      <button class="xp-dialog-close" id="bestTimesClose" type="button">x</button>
-    </div>
-    <div class="xp-dialog-body">
+<div class="dialog-overlay" id="bestTimesBackdrop">
+  <div class="dialog">
+    <div class="dialog-title">Fastest Mine Sweepers</div>
+    <div class="dialog-body">
       <table class="best-times-table">
         <tr><td>Beginner:</td><td id="btBegTime">999 seconds</td><td id="btBegName">Anonymous</td></tr>
         <tr><td>Intermediate:</td><td id="btIntTime">999 seconds</td><td id="btIntName">Anonymous</td></tr>
         <tr><td>Expert:</td><td id="btExpTime">999 seconds</td><td id="btExpName">Anonymous</td></tr>
       </table>
     </div>
-    <div class="xp-dialog-buttons">
-      <button class="xp-btn" id="bestTimesReset" type="button">Reset Scores</button>
-      <button class="xp-btn" id="bestTimesOk" type="button">OK</button>
+    <div class="dialog-buttons">
+      <button data-result="reset" type="button">Reset Scores</button>
+      <button data-result="ok" type="button">OK</button>
     </div>
   </div>
 </div>
 
 <!-- Custom Field Dialog -->
-<div class="xp-dialog-backdrop" id="customBackdrop">
-  <div class="xp-dialog">
-    <div class="xp-dialog-titlebar">
-      <span>Custom Field</span>
-      <button class="xp-dialog-close" id="customClose" type="button">x</button>
-    </div>
-    <div class="xp-dialog-body">
+<div class="dialog-overlay" id="customBackdrop">
+  <div class="dialog">
+    <div class="dialog-title">Custom Field</div>
+    <div class="dialog-body">
       <div class="custom-field-row">
         <label for="customRows">Height:</label>
         <input type="number" id="customRows" min="9" max="24" value="9">
@@ -89,28 +85,24 @@
       </div>
       <div class="custom-error" id="customError"></div>
     </div>
-    <div class="xp-dialog-buttons">
-      <button class="xp-btn" id="customOk" type="button">OK</button>
-      <button class="xp-btn" id="customCancel" type="button">Cancel</button>
+    <div class="dialog-buttons">
+      <button data-result="ok" type="button">OK</button>
+      <button data-result="cancel" type="button">Cancel</button>
     </div>
   </div>
 </div>
 
 <!-- About Dialog -->
-<div class="xp-dialog-backdrop" id="aboutBackdrop">
-  <div class="xp-dialog" style="min-width:260px;max-width:320px;">
-    <div class="xp-dialog-titlebar">
-      <span>About Minesweeper</span>
-      <button class="xp-dialog-close" id="aboutClose" type="button">x</button>
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Minesweeper</div>
+    <div class="dialog-body">
+      <strong>Minesweeper</strong><br><br>
+      Classic mine-clearing puzzle game.<br><br>
+      Part of the SynthelicZ Desktop.
     </div>
-    <div class="xp-dialog-body" style="text-align:center;">
-      <div style="font-size:24px;margin-bottom:8px;">\u{1F4A3}</div>
-      <div style="font-weight:bold;font-size:12px;margin-bottom:4px;">Minesweeper</div>
-      <div style="margin-bottom:8px;">Classic mine-clearing puzzle game.</div>
-      <div style="font-size:10px;color:var(--sz-color-button-shadow,#808080);">Part of the SynthelicZ Desktop</div>
-    </div>
-    <div class="xp-dialog-buttons">
-      <button class="xp-btn" id="aboutOk" type="button">OK</button>
+    <div class="dialog-buttons">
+      <button data-result="ok">OK</button>
     </div>
   </div>
 </div>

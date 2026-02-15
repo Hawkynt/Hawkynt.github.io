@@ -5,8 +5,20 @@
 <title>Task Manager</title>
 <script src="../sz-app-bootstrap.js"></script>
 <link rel="stylesheet" href="styles.css">
+<script defer src="vision-data.js"></script>
+  <script defer src="../vision-renderer.js"></script>
 </head>
 <body>
+
+<div class="menu-bar">
+  <div class="menu-item" data-menu="help">
+    Help
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="about">About Task Manager</div>
+    </div>
+  </div>
+</div>
+
   <div class="tabs">
     <div class="tab active" data-tab="applications">Applications</div>
     <div class="tab" data-tab="performance">Performance</div>
@@ -56,6 +68,14 @@
       <button id="btn-end" disabled>End Task</button>
     </div>
   </div>
+
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Task Manager</div>
+    <div class="dialog-body"></div>
+    <div class="dialog-buttons"><button data-result="ok">OK</button></div>
+  </div>
+</div>
 
 <script src="controller.js"></script>
 </body>
