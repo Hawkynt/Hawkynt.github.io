@@ -5,6 +5,8 @@
 <title>Tetris</title>
 <script src="../sz-app-bootstrap.js"></script>
 <link rel="stylesheet" href="styles.css">
+<script defer src="vision-data.js"></script>
+  <script defer src="../vision-renderer.js"></script>
 </head>
 <body>
 
@@ -117,20 +119,17 @@
 </div>
 
 <!-- About Dialog -->
-<div class="xp-dialog-backdrop" id="aboutBackdrop">
-  <div class="xp-dialog">
-    <div class="xp-dialog-titlebar">
-      <span>About Tetris</span>
-      <button class="xp-dialog-close" id="aboutClose" type="button">x</button>
-    </div>
-    <div class="xp-dialog-body">
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Tetris</div>
+    <div class="dialog-body">
       <strong>Tetris</strong><br><br>
       Classic block-stacking puzzle game.<br><br>
       Stack falling tetrominoes to complete horizontal lines. Completed lines are cleared for points. The game speeds up as you level up.<br><br>
       Part of the SynthelicZ Desktop.
     </div>
-    <div class="xp-dialog-buttons">
-      <button class="xp-btn" id="aboutOk" type="button">OK</button>
+    <div class="dialog-buttons">
+      <button data-result="ok">OK</button>
     </div>
   </div>
 </div>
