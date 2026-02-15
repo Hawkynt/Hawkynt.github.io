@@ -98,7 +98,17 @@
   // =========================================================================
   async function vfsList(path) {
     try {
-      const entries = await Kernel32.FindFirstFile(path);
+      const names = await Kernel32.FindFirstFile(path);
+      const entries = [];
+      for (const name of names) {
+        const fullPath = path === '/' ? '/' + name : path + '/' + name;
+        try {
+          const attrs = await Kernel32.GetFileAttributes(fullPath);
+          entries.push({ name, type: attrs.kind === 'dir' ? 'dir' : 'file', size: attrs.size || 0 });
+        } catch {
+          entries.push({ name, type: 'file', size: 0 });
+        }
+      }
       return { entries };
     } catch (e) {
       return { error: e.message, entries: [] };
@@ -175,8 +185,169 @@
     }
   }
 
-  function browse(path) {
-    return User32.SendMessage('sz:browse', { path });
+  // =========================================================================
+  // Object tree browsing (client-side)
+  // =========================================================================
+  const _OBJ_ROOTS = {};
+
+  function _initObjectRoots() {
+    // Test actual property access before adding — cross-origin (file://) blocks reads
+    try { const sz = window.parent.SZ; if (sz) { void sz.constructor; _OBJ_ROOTS['SZ'] = sz; } } catch {}
+    try { const sys = window.parent.SZ?.system; if (sys) { void sys.constructor; _OBJ_ROOTS['system'] = sys; } } catch {}
+    try { if (window.parent !== window) { void window.parent.constructor; _OBJ_ROOTS['parent'] = window.parent; } } catch {}
+    _OBJ_ROOTS['self'] = window;
+    try { const doc = window.parent.document; if (doc) { void doc.constructor; _OBJ_ROOTS['document'] = doc; } } catch {}
+  }
+
+  function _classifyObject(obj) {
+    if (obj === null) return 'null';
+    if (obj === undefined) return 'undefined';
+    const t = typeof obj;
+    if (t === 'string') return 'string';
+    if (t === 'number') return 'number';
+    if (t === 'boolean') return 'boolean';
+    if (t === 'symbol') return 'symbol';
+    if (t === 'bigint') return 'bigint';
+    if (t === 'function') {
+      try { if (Function.prototype.toString.call(obj).startsWith('class ')) return 'class'; } catch {}
+      return 'function';
+    }
+    if (t !== 'object') return 'unknown';
+    if (Array.isArray(obj)) return 'array';
+    if (obj instanceof RegExp) return 'regexp';
+    if (obj instanceof Date) return 'date';
+    if (obj instanceof Map) return 'map';
+    if (obj instanceof Set) return 'set';
+    if (obj instanceof Error) return 'error';
+    if (typeof HTMLElement !== 'undefined' && obj instanceof HTMLElement) return 'element';
+    try {
+      const ctor = obj.constructor?.name;
+      if (ctor && ctor !== 'Object') return 'instance';
+    } catch { /* cross-origin or restricted property */ }
+    return 'object';
+  }
+
+  function _browsePreview(obj, type) {
+    if (obj === null) return 'null';
+    if (obj === undefined) return 'undefined';
+    if (type === 'string') return JSON.stringify(obj.length > 100 ? obj.substring(0, 100) + '\u2026' : obj);
+    if (type === 'number' || type === 'boolean' || type === 'bigint') return String(obj);
+    if (type === 'symbol') return String(obj);
+    if (type === 'function' || type === 'class') return (obj.name || '(anonymous)') + '()';
+    if (type === 'array') return 'Array(' + obj.length + ')';
+    if (type === 'regexp') return String(obj);
+    if (type === 'date') return obj.toISOString();
+    if (type === 'map') return 'Map(' + obj.size + ')';
+    if (type === 'set') return 'Set(' + obj.size + ')';
+    if (type === 'error') return obj.message || String(obj);
+    if (type === 'element') return '<' + (obj.tagName || '?').toLowerCase() + (obj.id ? '#' + obj.id : '') + '>';
+    if (type === 'instance') return obj.constructor?.name || 'Object';
+    return 'Object';
+  }
+
+  function _browseDetail(obj, type) {
+    if (type === 'function' || type === 'class') {
+      try { return Function.prototype.toString.call(obj); } catch { return '[native code]'; }
+    }
+    if (type === 'string') return obj;
+    if (type === 'regexp') return String(obj);
+    return _browsePreview(obj, type);
+  }
+
+  function _countProps(obj) {
+    if (obj == null) return 0;
+    try { return Object.getOwnPropertyNames(obj).length; } catch { return 0; }
+  }
+
+  async function browse(path) {
+    // Root level: show vfs drive + object roots
+    if (path === '/') {
+      const entries = [];
+      entries.push({
+        name: 'vfs', type: 'vfsDrive', isContainer: true,
+        childCount: 1, preview: 'Virtual File System',
+      });
+      for (const [name, obj] of Object.entries(_OBJ_ROOTS)) {
+        try {
+          const type = _classifyObject(obj);
+          entries.push({
+            name, type, isContainer: CONTAINER_TYPES.has(type),
+            childCount: _countProps(obj),
+            preview: _browsePreview(obj, type),
+            detail: _browseDetail(obj, type),
+          });
+        } catch (e) {
+          entries.push({ name, type: 'error', isContainer: false, childCount: 0, preview: e.message || 'Access denied' });
+        }
+      }
+      return { entries, nodeType: 'root', preview: '\u00BBSynthelicZ\u00AB Root' };
+    }
+
+    // Resolve object at path
+    const parts = path.split('/').filter(Boolean);
+    if (!parts.length)
+      return { error: 'Invalid path', entries: [] };
+
+    let obj = _OBJ_ROOTS[parts[0]];
+    if (obj === undefined && !_OBJ_ROOTS.hasOwnProperty(parts[0]))
+      return { error: 'Root "' + parts[0] + '" not found', entries: [] };
+
+    for (let i = 1; i < parts.length; ++i) {
+      if (obj == null)
+        return { error: 'Cannot navigate through null/undefined', entries: [] };
+      try { obj = obj[parts[i]]; } catch (e) { return { error: e.message, entries: [] }; }
+    }
+
+    let nodeType, preview, detail;
+    try {
+      nodeType = _classifyObject(obj);
+      preview = _browsePreview(obj, nodeType);
+      detail = _browseDetail(obj, nodeType);
+    } catch (e) {
+      return { entries: [], nodeType: 'error', preview: e.message || 'Access denied', detail: '' };
+    }
+
+    // Leaf: non-container, non-function with zero properties
+    if (!CONTAINER_TYPES.has(nodeType) && typeof obj !== 'function')
+      return { entries: [], nodeType, preview, detail };
+
+    // Function: show detail + enumerate properties
+    let names;
+    try { names = Object.getOwnPropertyNames(obj); } catch { return { entries: [], nodeType, preview, detail }; }
+
+    const MAX = 2000;
+    const entries = [];
+    for (let i = 0; i < names.length && entries.length < MAX; ++i) {
+      const name = names[i];
+      try {
+        const desc = Object.getOwnPropertyDescriptor(obj, name);
+        let value, type;
+        if (desc?.get && !('value' in desc)) {
+          try { value = obj[name]; type = _classifyObject(value); }
+          catch { type = 'error'; value = undefined; }
+        } else if (desc) {
+          value = desc.value;
+          type = _classifyObject(value);
+        } else {
+          try { value = obj[name]; type = _classifyObject(value); }
+          catch { type = 'error'; value = undefined; }
+        }
+        const isContainer = CONTAINER_TYPES.has(type);
+        entries.push({
+          name, type, isContainer,
+          childCount: isContainer ? _countProps(value) : 0,
+          preview: _browsePreview(value, type),
+          detail: _browseDetail(value, type),
+        });
+      } catch (e) {
+        entries.push({ name, type: 'error', isContainer: false, childCount: 0, preview: e.message });
+      }
+    }
+
+    if (names.length > MAX)
+      entries.push({ name: '\u2026 (' + (names.length - MAX) + ' more)', type: 'unknown', isContainer: false, childCount: 0, preview: 'truncated' });
+
+    return { entries, nodeType, preview, detail };
   }
 
   // =========================================================================
@@ -288,7 +459,12 @@
       }));
       renderVfsView();
     } else {
-      result = await browse(currentPath);
+      try {
+        result = await browse(currentPath);
+      } catch (e) {
+        renderError(e.message || 'Failed to browse path');
+        return;
+      }
       if (result.error) {
         renderError(result.error || result.preview || 'Unknown error');
         return;
@@ -890,6 +1066,12 @@
     mainView.innerHTML = '';
     const entries = result.entries || [];
 
+    // Functions and classes: show source code via detail panel
+    if (result.nodeType === 'function' || result.nodeType === 'class') {
+      showDetailPanel({ name: baseName(currentPath) || result.nodeType, type: result.nodeType, preview: result.preview, detail: result.detail });
+      return;
+    }
+
     if (entries.length === 0 && !CONTAINER_TYPES.has(result.nodeType)) {
       const detail = document.createElement('div');
       detail.className = 'leaf-detail';
@@ -1287,7 +1469,7 @@
 
     const vfsPath = toVfsRelative(currentPath);
     const folderPath = (vfsPath === '/' ? '/' : vfsPath + '/') + name;
-    const result = await vfsWrite(folderPath + '/.keep', '');
+    const result = await vfsMkdir(folderPath);
     if (result.error) {
       showAlert('Could not create folder: ' + result.error);
       return;
@@ -2100,6 +2282,7 @@
   // =========================================================================
   // Init
   // =========================================================================
+  _initObjectRoots();
   const cmdLine = Kernel32.GetCommandLine();
   if (cmdLine.path) {
     currentPath = cmdLine.path;

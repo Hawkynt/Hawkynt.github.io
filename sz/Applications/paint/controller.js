@@ -955,10 +955,7 @@
       currentFilePath = result.path;
       const parts = result.path.split('/');
       currentFileName = parts[parts.length - 1] || 'Untitled';
-      dirty = false;
-      updateTitle();
-      if (typeof callback === 'function')
-        callback();
+      await saveToPath(result.path, callback);
     }
   }
 
@@ -1061,4 +1058,8 @@
   updateTitle();
   updateStatusSize();
   setZoom(1);
+
+  const cmd = Kernel32.GetCommandLine();
+  if (cmd.path)
+    loadFile(cmd.path);
 })();

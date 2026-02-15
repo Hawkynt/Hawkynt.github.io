@@ -22,8 +22,7 @@
   let dirty = false;
 
   // Resolve asset paths relative to the OS root (2 levels up from this iframe)
-  // DEPRECATED: VFS paths are absolute, data URLs are self-contained.
-  // const _resolveAssetPath = (src) => src && !src.startsWith('data:') && !src.startsWith('http') && !src.startsWith('blob:') ? '../../' + src : src;
+  const _resolveAssetPath = (src) => src && !src.startsWith('data:') && !src.startsWith('http') && !src.startsWith('blob:') && !src.startsWith('/') ? '../../' + src : src;
 
   // Theme presets
   const THEME_PRESETS = [
@@ -355,16 +354,16 @@
     let resolvedSrc = '';
     if (selectedBg.src) {
       if (selectedBg.src.startsWith('/')) {
-        // It's a VFS path, resolve it to a URI via the new bridge
+        // It's a VFS path, resolve it to a URI via the VFS bridge
         try {
-          const result = await SZ.Dlls.User32.SendMessage('sz:vfs:getUri', { path: selectedBg.src });
-          resolvedSrc = result.uri;
+          const result = await SZ.Dlls.User32.SendMessage('sz:vfs:ReadUri', { path: selectedBg.src });
+          resolvedSrc = _resolveAssetPath(result.uri);
         } catch (e) {
-          console.error('VFS getUri error for preview:', e);
+          console.error('VFS ReadUri error for preview:', e);
         }
       } else {
-        // It's already a data URI from the file picker
-        resolvedSrc = selectedBg.src;
+        // It's already a data URI or relative path
+        resolvedSrc = _resolveAssetPath(selectedBg.src);
       }
     }
 
@@ -525,11 +524,15 @@
 
     // Available backgrounds (system + user)
     const systemBgs = data.availableBackgrounds || [];
-    const userBgs = (await SZ.Dlls.User32.SendMessage('sz:vfs:list', { path: '/user/pictures' })).entries
-      .map(entry => ({
-        name: entry.name,
-        src: `/user/pictures/${entry.name}`,
-      }));
+    let userBgEntries = [];
+    try {
+      const listResult = await SZ.Dlls.User32.SendMessage('sz:vfs:List', { path: '/user/pictures' });
+      userBgEntries = (listResult.entries || []);
+    } catch (_) {}
+    const userBgs = userBgEntries.map(name => ({
+      name: typeof name === 'string' ? name : name.name,
+      src: `/user/pictures/${typeof name === 'string' ? name : name.name}`,
+    }));
     
     const merged = new Map();
     for (const bg of systemBgs) merged.set(bg.name, bg);

@@ -1282,11 +1282,9 @@
       content: saveContent,
     });
     if (!result.cancelled && result.path) {
-      savedContent = editor.value;
       currentFilePath = result.path;
       const parts = result.path.split('/');
       currentFileName = parts[parts.length - 1] || 'Untitled';
-      dirty = false;
 
       // Auto-detect language from new file name
       const lang = detectLanguageFromExtension(currentFileName);
@@ -1294,10 +1292,7 @@
       for (const el of document.querySelectorAll('#syntax-submenu .menu-entry.radio'))
         el.classList.toggle('checked', el.dataset.lang === lang);
 
-      updateTitle();
-      statusModified.textContent = '';
-      if (typeof callback === 'function')
-        callback();
+      await saveToPath(result.path, callback);
     }
   }
 

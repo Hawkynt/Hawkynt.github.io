@@ -602,6 +602,29 @@
 
   // ===== Init =====
 
+  async function loadFontFile(path) {
+    try {
+      const bytes = await SZ.Dlls.Kernel32.ReadAllBytes(path);
+      const parts = path.split('/');
+      const filename = parts[parts.length - 1] || 'Custom Font';
+      const familyName = filename.replace(/\.[^.]+$/, '');
+      const face = new FontFace(familyName, bytes.buffer);
+      await face.load();
+      document.fonts.add(face);
+      if (!allFonts.includes(familyName))
+        allFonts.unshift(familyName);
+      filterFonts();
+      renderFontList();
+      selectFont(familyName);
+      const item = fontListEl.querySelector('.font-item.selected');
+      if (item)
+        item.scrollIntoView({ block: 'nearest' });
+      SZ.Dlls.User32.SetWindowText('Font Viewer - ' + filename);
+    } catch (e) {
+      console.error('Failed to load font file:', e);
+    }
+  }
+
   function init() {
     SZ.Dlls.User32.EnableVisualStyles();
 
@@ -615,6 +638,10 @@
       selectFont(filteredFonts[0]);
 
     updatePreview();
+
+    const cmd = SZ.Dlls.Kernel32.GetCommandLine();
+    if (cmd.path)
+      loadFontFile(cmd.path);
   }
 
   if (document.readyState === 'loading')

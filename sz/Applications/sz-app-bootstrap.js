@@ -68,17 +68,21 @@
   let _reqId = 0;
   const _pending = new Map();
 
-  function _sendMessage(type, payload) {
+  function _sendMessage(type, payload, timeoutMs) {
     if (!_isInsideOS)
       return Promise.reject(new Error('Not inside OS'));
+    if (timeoutMs === undefined)
+      timeoutMs = 10000;
     return new Promise((resolve, reject) => {
       const requestId = 'dll-' + (++_reqId);
-      const timer = setTimeout(() => {
-        _pending.delete(requestId);
-        reject(new Error('Timeout: ' + type));
-      }, 10000);
+      let timer = null;
+      if (timeoutMs > 0)
+        timer = setTimeout(() => {
+          _pending.delete(requestId);
+          reject(new Error('Timeout: ' + type));
+        }, timeoutMs);
       _pending.set(requestId, (data) => {
-        clearTimeout(timer);
+        if (timer) clearTimeout(timer);
         resolve(data);
       });
       window.parent.postMessage({ type, requestId, ...payload }, '*');
@@ -321,7 +325,7 @@
     },
 
     MessageBox(text, caption, flags) {
-      return _sendMessage('sz:messageBox', { text, caption, flags: flags || 0 }).then(r => r.result);
+      return _sendMessage('sz:messageBox', { text, caption, flags: flags || 0 }, 0).then(r => r.result);
     },
 
     GetSystemMetrics(index) {
@@ -593,10 +597,10 @@
     },
 
     ReadFile(path) {
-      return _sendMessage('sz:vfs:read', { path }).then(r => {
+      return _sendMessage('sz:vfs:ReadAllText', { path }).then(r => {
         if (r.error)
-          throw new Error(r.error);
-        return _decodeToText(r.content);
+          throw new Error(r.error.message || r.error);
+        return r.text ?? '';
       });
     },
 
@@ -605,71 +609,133 @@
     },
 
     ReadAllBytes(path) {
-      return _sendMessage('sz:vfs:read', { path }).then(r => {
+      return _sendMessage('sz:vfs:ReadAllBytes', { path }).then(r => {
         if (r.error)
-          throw new Error(r.error);
-        return _toUint8Array(r.content);
+          throw new Error(r.error.message || r.error);
+        return _toUint8Array(r.bytes);
+      });
+    },
+
+    ReadUri(path) {
+      return _sendMessage('sz:vfs:ReadUri', { path }).then(r => {
+        if (r.error)
+          throw new Error(r.error.message || r.error);
+        return r.uri;
+      });
+    },
+
+    ReadValue(path) {
+      return _sendMessage('sz:vfs:ReadValue', { path }).then(r => {
+        if (r.error)
+          throw new Error(r.error.message || r.error);
+        return r.value;
       });
     },
 
     WriteFile(path, data) {
-      return _sendMessage('sz:vfs:write', { path, data }).then(r => {
+      // String → store as bytes (UTF-8 encoded)
+      if (typeof data === 'string') {
+        const bytes = Array.from(new TextEncoder().encode(data));
+        return _sendMessage('sz:vfs:WriteAllBytes', { path, bytes }).then(r => {
+          if (r.error)
+            throw new Error(r.error.message || r.error);
+          return { success: true };
+        });
+      }
+
+      // JSON-serializable object → store as value node
+      if (data != null && typeof data === 'object' && !_isTypedArrayLike(data) && !_isArrayBufferLike(data) && !Array.isArray(data))
+        return _sendMessage('sz:vfs:WriteValue', { path, value: data }).then(r => {
+          if (r.error)
+            throw new Error(r.error.message || r.error);
+          return { success: true };
+        });
+
+      // Binary / array → store as bytes
+      const bytes = Array.from(_toUint8Array(data));
+      return _sendMessage('sz:vfs:WriteAllBytes', { path, bytes }).then(r => {
         if (r.error)
-          throw new Error(r.error);
-        return { success: r.success };
+          throw new Error(r.error.message || r.error);
+        return { success: true };
       });
     },
 
     WriteAllBytes(path, bytes) {
-      const payload = _toUint8Array(bytes);
-      const dataUrl = 'data:application/octet-stream;base64,' + _bytesToBase64(payload);
-      return this.WriteFile(path, dataUrl);
+      const payload = Array.from(_toUint8Array(bytes));
+      return _sendMessage('sz:vfs:WriteAllBytes', { path, bytes: payload }).then(r => {
+        if (r.error)
+          throw new Error(r.error.message || r.error);
+        return { success: true };
+      });
+    },
+
+    WriteValue(path, value) {
+      return _sendMessage('sz:vfs:WriteValue', { path, value }).then(r => {
+        if (r.error)
+          throw new Error(r.error.message || r.error);
+        return { success: true };
+      });
+    },
+
+    WriteUri(path, uri) {
+      return _sendMessage('sz:vfs:WriteUri', { path, uri }).then(r => {
+        if (r.error)
+          throw new Error(r.error.message || r.error);
+        return { success: true };
+      });
     },
 
     DeleteFile(path) {
-      return _sendMessage('sz:vfs:delete', { path }).then(r => {
+      return _sendMessage('sz:vfs:Delete', { path }).then(r => {
         if (r.error)
-          throw new Error(r.error);
-        return { success: r.success };
+          throw new Error(r.error.message || r.error);
+        return { success: true };
       });
     },
 
     CreateDirectory(path) {
-      return _sendMessage('sz:vfs:mkdir', { path }).then(r => {
+      return _sendMessage('sz:vfs:Mkdir', { path }).then(r => {
         if (r.error)
-          throw new Error(r.error);
-        return { success: r.success };
+          throw new Error(r.error.message || r.error);
+        return { success: true };
       });
     },
 
     MoveFile(src, dest) {
-      return _sendMessage('sz:vfs:move', { src, dest }).then(r => {
+      return _sendMessage('sz:vfs:Move', { from: src, to: dest }).then(r => {
         if (r.error)
-          throw new Error(r.error);
-        return { success: r.success };
+          throw new Error(r.error.message || r.error);
+        return { success: true };
       });
     },
 
     CopyFile(src, dest) {
-      return _sendMessage('sz:vfs:copy', { src, dest }).then(r => {
+      return _sendMessage('sz:vfs:Copy', { from: src, to: dest }).then(r => {
         if (r.error)
-          throw new Error(r.error);
-        return { success: r.success };
+          throw new Error(r.error.message || r.error);
+        return { success: true };
       });
     },
 
     FindFirstFile(path) {
-      return _sendMessage('sz:vfs:list', { path }).then(r => {
+      return _sendMessage('sz:vfs:List', { path }).then(r => {
         if (r.error)
-          throw new Error(r.error);
+          throw new Error(r.error.message || r.error);
         return r.entries || [];
       });
     },
 
     GetFileAttributes(path) {
-      return _sendMessage('sz:vfs:exists', { path }).then(r => ({
-        exists: r.exists,
-      }));
+      return _sendMessage('sz:vfs:Stat', { path }).then(r => {
+        if (r.error)
+          return { exists: false };
+        return {
+          exists: true,
+          kind: r.stat?.kind,
+          size: r.stat?.size,
+          mtime: r.stat?.mtime,
+        };
+      });
     },
 
     GetTempPath() {
@@ -706,11 +772,7 @@
         case FO_DELETE:
           return Dlls.Kernel32.DeleteFile(src);
         case FO_RENAME:
-          return _sendMessage('sz:vfs:rename', { oldPath: src, newPath: dest }).then(r => {
-            if (r.error)
-              throw new Error(r.error);
-            return { success: r.success };
-          });
+          return Dlls.Kernel32.MoveFile(src, dest);
         default:
           return Promise.reject(new Error('Unknown operation: ' + op));
       }
@@ -727,7 +789,7 @@
         initialDir: options?.initialDir,
         multiSelect: options?.multiSelect,
         title: options?.title,
-      });
+      }, 0);
     },
 
     GetSaveFileName(options) {
@@ -737,7 +799,7 @@
         defaultName: options?.defaultName,
         title: options?.title,
         content: options?.content,
-      });
+      }, 0);
     },
 
     ImportFile(options) {

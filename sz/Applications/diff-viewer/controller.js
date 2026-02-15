@@ -1018,15 +1018,11 @@
       return;
 
     let text = '';
-    if (result.content != null) {
-      if (typeof result.content === 'string') {
-        // Try base64 decode, fall back to raw string
-        try {
-          text = atob(result.content);
-        } catch (_) {
-          text = result.content;
-        }
-      }
+    try {
+      text = await SZ.Dlls.Kernel32.ReadAllText(result.path);
+    } catch (err) {
+      await SZ.Dlls.User32.MessageBox('Could not open file: ' + err.message, 'Diff Viewer', 0);
+      return;
     }
 
     const parts = result.path.split('/');
@@ -1183,6 +1179,17 @@
     setupLayout();
     updateStatusBar();
     textareaLeft.focus();
+
+    const cmd = SZ.Dlls.Kernel32.GetCommandLine();
+    if (cmd.path) {
+      SZ.Dlls.Kernel32.ReadAllText(cmd.path).then(text => {
+        if (text != null) {
+          textareaLeft.value = text;
+          const parts = cmd.path.split('/');
+          SZ.Dlls.User32.SetWindowText('Diff Viewer - ' + (parts[parts.length - 1] || cmd.path));
+        }
+      }).catch(() => {});
+    }
   }
 
   init();
