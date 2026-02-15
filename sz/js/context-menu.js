@@ -33,6 +33,15 @@
         this.#appLauncher.launch('task-manager');
     }
 
+    /**
+     * Show a context menu with the given items at the given position.
+     * Reusable by any caller (e.g., title bar icon menu).
+     */
+    showAt(items, x, y, { fromBottom = false } = {}) {
+      this.#close();
+      this.#renderMenu(this.#menuEl, items, x, y, fromBottom);
+    }
+
     #init() {
       this.#menuEl = document.createElement('div');
       this.#menuEl.className = 'sz-context-menu';
@@ -220,6 +229,8 @@
 
         const el = document.createElement('div');
         el.className = 'sz-ctx-item';
+        if (item.disabled)
+          el.classList.add('sz-ctx-disabled');
         if (item.bold)
           el.style.fontWeight = 'bold';
 
