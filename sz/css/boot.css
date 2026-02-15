@@ -51,11 +51,11 @@
   user-select: none;
 }
 
-/* "S" letter - pulses with a soft blue glow */
+/* "S" letter - a mirrored Z (scaleX(-1)) that pulses with a soft blue glow */
 .sz-boot-logo-s {
   display: inline-block;
   color: #4a9eff;
-  animation: sz-boot-pulse 2s ease-in-out infinite;
+  animation: sz-boot-pulse-mirrored 2s ease-in-out infinite;
 }
 
 /* "Z" letter - same pulse, offset by 0.3 s for a wave effect */
@@ -63,6 +63,20 @@
   display: inline-block;
   color: #7eb8ff;
   animation: sz-boot-pulse 2s ease-in-out infinite 0.3s;
+}
+
+/* Pulse keyframes for the mirrored Z — keeps scaleX(-1) at all times */
+@keyframes sz-boot-pulse-mirrored {
+  0%, 100% {
+    transform: scaleX(-1) scale(1);
+    text-shadow: 0 0 8px rgba(74, 158, 255, 0.3);
+  }
+  50% {
+    transform: scaleX(-1) scale(1.1);
+    text-shadow:
+      0 0 20px rgba(74, 158, 255, 0.6),
+      0 0 40px rgba(74, 158, 255, 0.2);
+  }
 }
 
 /* Pulse keyframes - subtle scale + expanding glow shadow */
