@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="File metadata viewer and editor -- identifies file types via magic bytes, parses format-specific metadata, computes hashes">
+<meta name="robots" content="index,follow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Metadata Viewer -- &raquo;SynthelicZ&laquo; Desktop">
+<meta property="og:description" content="File metadata viewer and editor -- identifies file types via magic bytes, parses format-specific metadata, computes hashes">
+<meta property="og:url" content="https://hawkynt.github.io/sz/Applications/metadata-viewer/index.html">
+<link rel="canonical" href="https://hawkynt.github.io/sz/Applications/metadata-viewer/index.html">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Metadata Viewer",
+  "url": "https://hawkynt.github.io/sz/Applications/metadata-viewer/index.html",
+  "description": "File metadata viewer and editor -- identifies file types via magic bytes, parses format-specific metadata, computes hashes",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Web Browser",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<title>Metadata Viewer</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="styles.css">
+<!-- Cipher project: hash/checksum computation -->
+<script defer src="../../../Cipher/AlgorithmFramework.js"></script>
+<script defer src="../../../Cipher/OpCodes.js"></script>
+<script defer src="../../../Cipher/algorithms/hash/md.js"></script>
+<script defer src="../../../Cipher/algorithms/hash/sha1.js"></script>
+<script defer src="../../../Cipher/algorithms/hash/sha256.js"></script>
+<script defer src="../../../Cipher/algorithms/hash/sha512.js"></script>
+<script defer src="../../../Cipher/algorithms/hash/sha3.js"></script>
+<script defer src="../../../Cipher/algorithms/hash/blake2.js"></script>
+<script defer src="../../../Cipher/algorithms/hash/blake3.js"></script>
+<script defer src="../../../Cipher/algorithms/hash/ripemd.js"></script>
+<script defer src="../../../Cipher/algorithms/hash/whirlpool.js"></script>
+<script defer src="../../../Cipher/algorithms/hash/tiger.js"></script>
+<script defer src="../../../Cipher/algorithms/hash/sm3.js"></script>
+<script defer src="../../../Cipher/algorithms/hash/streebog.js"></script>
+<script defer src="../../../Cipher/algorithms/hash/xxhash32.js"></script>
+<script defer src="../../../Cipher/algorithms/hash/xxhash3.js"></script>
+<script defer src="../../../Cipher/algorithms/hash/murmurhash3.js"></script>
+<script defer src="../../../Cipher/algorithms/checksum/crc.js"></script>
+<script defer src="../../../Cipher/algorithms/checksum/adler.js"></script>
+<script defer src="../../../Cipher/algorithms/checksum/fletcher.js"></script>
+<script defer src="../../../Cipher/algorithms/checksum/bsd-checksum.js"></script>
+<script defer src="../../../Cipher/algorithms/checksum/sum-checksum.js"></script>
+<script defer src="../../../Cipher/algorithms/checksum/xor-checksum.js"></script>
+<script defer src="../vision-renderer.js"></script>
+</head>
+<body>
+<noscript><p>File metadata viewer and editor -- identifies file types via magic bytes, parses format-specific metadata, computes hashes. <a href="../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a> to use this app.</p></noscript>
+
+<div class="app-container">
+
+  <!-- Menu Bar -->
+  <div class="menu-bar">
+    <div class="menu-item" data-menu="file">
+      File
+      <div class="menu-dropdown">
+        <div class="menu-entry" data-action="open">Open from VFS...<span class="menu-shortcut">Ctrl+O</span></div>
+        <div class="menu-entry" data-action="import">Import File...<span class="menu-shortcut">Ctrl+I</span></div>
+        <div class="menu-sep"></div>
+        <div class="menu-entry disabled" data-action="save" id="menu-save">Save Modified...<span class="menu-shortcut">Ctrl+S</span></div>
+        <div class="menu-entry disabled" data-action="export" id="menu-export">Export File...</div>
+        <div class="menu-sep"></div>
+        <div class="menu-entry" data-action="exit">Exit</div>
+      </div>
+    </div>
+    <div class="menu-item" data-menu="edit">
+      Edit
+      <div class="menu-dropdown">
+        <div class="menu-entry disabled" data-action="copy-all" id="menu-copy-all">Copy All Metadata</div>
+        <div class="menu-entry disabled" data-action="copy-value" id="menu-copy-value">Copy Selected Value</div>
+        <div class="menu-sep"></div>
+        <div class="menu-entry disabled" data-action="revert" id="menu-revert">Revert Changes</div>
+      </div>
+    </div>
+    <div class="menu-item" data-menu="view">
+      View
+      <div class="menu-dropdown">
+        <div class="menu-entry" data-action="toggle-preview" id="menu-preview">Show Preview Panel</div>
+      </div>
+    </div>
+    <div class="menu-item" data-menu="help">
+      Help
+      <div class="menu-dropdown">
+        <div class="menu-entry" data-action="about">About Metadata Viewer</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- File Header -->
+  <div class="file-header" id="file-header">
+    <span class="file-type-badge" id="file-type-badge"></span>
+    <span class="file-name" id="file-name"></span>
+    <span class="file-size" id="file-size"></span>
+    <button class="action-btn" id="btn-open-archiver" style="display:none">Open in Archiver</button>
+  </div>
+
+  <!-- Drop Zone (shown when no file loaded) -->
+  <div class="drop-zone" id="drop-zone">
+    <div class="drop-zone-icon">&#128196;</div>
+    <div class="drop-zone-text">Drop any file here to analyze</div>
+    <div class="drop-zone-hint">or use File &gt; Open / Import</div>
+  </div>
+
+  <!-- Main Content (hidden until file loaded) -->
+  <div class="main-content" id="main-content">
+    <div class="left-panel">
+      <!-- Category Tabs -->
+      <div class="category-tabs" id="category-tabs"></div>
+      <!-- Metadata Table -->
+      <div class="metadata-table-wrapper" id="metadata-table-wrapper">
+        <table class="metadata-table" id="metadata-table">
+          <thead><tr><th>Property</th><th>Value</th></tr></thead>
+          <tbody id="metadata-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="panel-splitter" id="panel-splitter"></div>
+    <div class="right-panel" id="right-panel">
+      <div class="accordion" id="preview-accordion"></div>
+    </div>
+  </div>
+
+  <!-- Status Bar -->
+  <div class="status-bar" id="status-bar">
+    <span class="status-section" id="status-type">No file loaded</span>
+    <span class="status-section" id="status-size"></span>
+    <span class="status-section" id="status-entropy"></span>
+    <span class="status-spacer"></span>
+    <span class="status-section status-modified" id="status-modified"></span>
+  </div>
+
+</div>
+
+<!-- About Dialog -->
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Metadata Viewer</div>
+    <div class="dialog-body" style="text-align: center; padding: 20px;">
+      <p style="font-weight: bold; font-size: 13px; margin-bottom: 4px;">Metadata Viewer</p>
+      <p style="font-size: 10px; opacity: 0.6; margin-bottom: 12px;">File Analysis &amp; Metadata Editor</p>
+      <p>Identifies file types via magic bytes, parses format-specific metadata structures, displays embedded images, computes hashes/checksums, and edits metadata fields.</p>
+      <p style="margin-top: 8px; font-size: 10px; opacity: 0.5;">Supports 30+ formats with 29 hash/checksum algorithms. JPEG, PNG, MP3, FLAC, WAV, OGG, MP4, MKV, PDF, ZIP, PE, ELF, Mach-O, APK (deep), Java .class, fonts, and more.</p>
+      <p style="margin-top: 12px; font-size: 10px; opacity: 0.7;">&copy; 1995-2026 &raquo;SynthelicZ&laquo;</p>
+    </div>
+    <div class="dialog-buttons" style="justify-content: center;">
+      <button data-result="ok">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Image Preview Dialog -->
+<div class="dialog-overlay" id="dlg-image-preview">
+  <div class="dialog" style="max-width: 600px;">
+    <div class="dialog-title" id="image-preview-title">Image Preview</div>
+    <div class="dialog-body image-preview-container">
+      <img class="image-preview-img" id="image-preview-img" alt="Preview">
+    </div>
+    <div class="dialog-buttons">
+      <button data-action="save-image" id="btn-save-image">Save Image...</button>
+      <button data-result="ok">Close</button>
+    </div>
+  </div>
+</div>
+
+<script src="pe-signatures.js"></script>
+<script src="parsers.js"></script>
+<script src="editors.js"></script>
+<script src="controller.js"></script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <defs>
+    <linearGradient id="docGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f0f4ff"/>
+      <stop offset="100%" stop-color="#d0daf0"/>
+    </linearGradient>
+    <linearGradient id="lensGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#90c0ff"/>
+      <stop offset="100%" stop-color="#4080d0"/>
+    </linearGradient>
+  </defs>
+  <!-- Document body -->
+  <path d="M6 4h20l10 10v30a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" fill="url(#docGrad)" stroke="#7088a8" stroke-width="1.2"/>
+  <!-- Dog-ear fold -->
+  <path d="M26 4v8a2 2 0 0 0 2 2h8" fill="#c0d0e8" stroke="#7088a8" stroke-width="1" stroke-linejoin="round"/>
+  <!-- Text lines -->
+  <rect x="9" y="18" width="16" height="2" rx="1" fill="#8898b0" opacity="0.7"/>
+  <rect x="9" y="23" width="20" height="2" rx="1" fill="#8898b0" opacity="0.7"/>
+  <rect x="9" y="28" width="14" height="2" rx="1" fill="#8898b0" opacity="0.7"/>
+  <rect x="9" y="33" width="18" height="2" rx="1" fill="#8898b0" opacity="0.7"/>
+  <!-- Magnifying glass -->
+  <circle cx="34" cy="34" r="9" fill="url(#lensGrad)" fill-opacity="0.25" stroke="#3060a0" stroke-width="2.5"/>
+  <line x1="40.5" y1="40.5" x2="46" y2="46" stroke="#3060a0" stroke-width="3" stroke-linecap="round"/>
+  <!-- Reflection on lens -->
+  <path d="M29 30a6 6 0 0 1 4-4" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
+</svg>
