@@ -25,8 +25,7 @@
 <title>Display Properties</title>
 <script src="../sz-app-bootstrap.js"></script>
 <link rel="stylesheet" href="styles.css">
-<script defer src="vision-data.js"></script>
-  <script defer src="../vision-renderer.js"></script>
+<script defer src="../vision-renderer.js"></script>
 </head>
 <body>
 <noscript><p>System settings and configuration panel. <a href="../../index.html">Open »SynthelicZ« Desktop</a> to use this app.</p></noscript>
@@ -46,6 +45,7 @@
     <div class="tab" data-tab="background">Desktop</div>
     <div class="tab" data-tab="pointers">Pointers</div>
     <div class="tab" data-tab="taskbar">Taskbar</div>
+    <div class="tab" data-tab="windowmgmt">Window Mgmt</div>
   </div>
 
   <!-- Themes tab -->
@@ -200,6 +200,107 @@
       <label class="chk-row"><input type="checkbox" id="chk-show-run" checked> Show Run command</label>
       <div style="margin-top:8px;">
         <button id="btn-clear-mru">Clear Recently Used Programs</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Window Management tab -->
+  <div class="tab-body" id="panel-windowmgmt">
+    <div class="subtabs">
+      <div class="subtab active" data-subtab="snapping">Snapping</div>
+      <div class="subtab" data-subtab="magnet">Magnet</div>
+      <div class="subtab" data-subtab="stretching">Stretching</div>
+      <div class="subtab" data-subtab="glue">Glue</div>
+      <div class="subtab" data-subtab="tabs">Tabs</div>
+    </div>
+
+    <div class="subtab-body active" id="subpanel-snapping">
+      <div class="group-box">
+        <legend>Edge Snapping</legend>
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+          <label>Mode:</label>
+          <select id="snap-mode">
+            <option value="disabled">Disabled</option>
+            <option value="aerosnap">AeroSnap</option>
+            <option value="aquasnap">AquaSnap</option>
+          </select>
+        </div>
+        <p class="hint-text">AeroSnap: drag to screen edges to snap windows to halves/quarters.<br>AquaSnap: adds bottom-half snapping and magnetic alignment.</p>
+      </div>
+    </div>
+
+    <div class="subtab-body" id="subpanel-magnet">
+      <div class="group-box">
+        <legend>Magnetic Snapping</legend>
+        <label class="chk-row"><input type="checkbox" id="chk-magnet-enabled"> Enable magnetic snapping</label>
+        <label class="chk-row"><input type="checkbox" id="chk-magnet-screen"> Snap to screen edges</label>
+        <label class="chk-row"><input type="checkbox" id="chk-magnet-outer"> Snap to outer edges of other windows</label>
+        <label class="chk-row"><input type="checkbox" id="chk-magnet-inner"> Snap to inner edges of other windows</label>
+        <label class="chk-row"><input type="checkbox" id="chk-magnet-corners"> Snap to corners of other windows</label>
+      </div>
+      <div class="group-box">
+        <legend>Attraction</legend>
+        <div class="slider-row">
+          <label>Distance:</label>
+          <input type="range" id="magnet-distance" min="1" max="50" value="10" step="1">
+          <span id="magnet-distance-value" class="slider-value">10 px</span>
+        </div>
+        <label class="chk-row"><input type="checkbox" id="chk-magnet-fast"> Disable during fast movements</label>
+        <div class="slider-row" id="speed-threshold-row" style="margin-top:2px;">
+          <label>Speed:</label>
+          <input type="range" id="magnet-speed" min="500" max="5000" value="1500" step="100">
+          <span id="magnet-speed-value" class="slider-value">1500 px/s</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="subtab-body" id="subpanel-stretching">
+      <div class="group-box">
+        <legend>Stretch Mode</legend>
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+          <label>Mode:</label>
+          <select id="stretch-mode">
+            <option value="disabled">Disabled</option>
+            <option value="aerostretch">AeroStretch</option>
+            <option value="aquastretch">AquaStretch</option>
+          </select>
+        </div>
+        <p class="hint-text">Double-click a resize handle to stretch the window to the nearest edge.</p>
+      </div>
+      <div class="group-box">
+        <legend>Allowed Directions</legend>
+        <label class="chk-row"><input type="checkbox" id="chk-stretch-v"> Allow vertical stretching</label>
+        <label class="chk-row"><input type="checkbox" id="chk-stretch-h"> Allow horizontal stretching</label>
+        <label class="chk-row"><input type="checkbox" id="chk-stretch-d"> Allow diagonal stretching</label>
+      </div>
+      <div class="group-box">
+        <legend>Target</legend>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <label>Stretch to:</label>
+          <select id="stretch-target">
+            <option value="screen">Screen edge</option>
+            <option value="nearest">Nearest window edge</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="subtab-body" id="subpanel-glue">
+      <div class="group-box">
+        <legend>Move Together (Glue)</legend>
+        <label class="chk-row"><input type="checkbox" id="chk-glue-enabled"> Enable move-together</label>
+        <label class="chk-row"><input type="checkbox" id="chk-glue-drag"> Ctrl+Drag moves adjacent windows</label>
+        <label class="chk-row"><input type="checkbox" id="chk-glue-resize"> Ctrl+Resize adjusts adjacent windows</label>
+        <p class="hint-text">When enabled, hold Ctrl while dragging or resizing to move/resize adjacent windows together.</p>
+      </div>
+    </div>
+
+    <div class="subtab-body" id="subpanel-tabs">
+      <div class="group-box">
+        <legend>Window Tabs</legend>
+        <label class="chk-row"><input type="checkbox" id="chk-tab-enabled"> Enable window tabbing</label>
+        <label class="chk-row"><input type="checkbox" id="chk-tab-autohide"> Auto-hide tab bar</label>
+        <p class="hint-text">Drag a window onto another window's title bar to create a tab group. Click tabs to switch, drag a tab out to detach.</p>
       </div>
     </div>
   </div>

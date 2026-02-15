@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# Gradient Generator
+# Gradient Generator
 
 A CSS gradient builder for the »SynthelicZ« desktop with a live preview, interactive color stop editing, and support for linear, radial, and conic gradients. It generates ready-to-use CSS, supports gradient import/parsing, includes presets, and integrates with the SZ Color Picker app.
 
@@ -102,4 +102,3 @@ Inspired by web-based CSS gradient generators such as cssgradient.io and the gra
 - [ ] As a user, I want to export the gradient as an SVG definition
 - [ ] As a user, I want to see a color wheel visualization for selecting stop colors
 - [ ] As a user, I want to reverse the order of all color stops
-`})();

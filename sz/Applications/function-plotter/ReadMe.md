@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# Function Plotter
+# Function Plotter
 
 A mathematical function plotting application for the »SynthelicZ« desktop with expression parsing, syntax highlighting, autocomplete, parametric curve families, and Kurvendiskussion-style analysis. It supports 42+ math functions and renders interactive, zoomable, pannable plots with real-time curve tracing.
 
@@ -123,4 +123,3 @@ Inspired by desktop graphing tools such as GeoGebra and the TI-84 graphing calcu
 - [ ] As a user, I want to see the derivative curve plotted alongside the original function
 - [ ] As a user, I want to add annotations and text labels to the plot
 - [ ] As a user, I want to animate parameter t over time to see curve family evolution
-`})();

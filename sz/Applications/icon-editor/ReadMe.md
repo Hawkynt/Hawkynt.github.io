@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# Icon Editor
+# Icon Editor
 
 A full-featured multi-image ICO/CUR editor with pixel-level drawing tools, alpha channel support, and the ability to extract icons from Windows PE executables. Designed for creating and editing icon files at every standard size and bit depth within the »SynthelicZ« desktop.
 
@@ -132,4 +132,3 @@ Modeled after classic Windows icon editors such as Axialis IconWorkshop and the 
 - [ ] As a user, I want to define and save custom color palettes
 - [ ] As a user, I want to see a split view comparing the image at different bit depths
 - [ ] As a user, I want to drag and reorder images in the image list
-`})();

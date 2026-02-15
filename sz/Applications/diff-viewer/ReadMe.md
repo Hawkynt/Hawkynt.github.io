@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# Diff Viewer
+# Diff Viewer
 
 A text comparison tool within the »SynthelicZ« desktop that visualizes differences between two documents using Myers diff algorithm, supporting side-by-side, unified, and inline view modes with character-level and word-level diff highlighting.
 
@@ -116,4 +116,3 @@ Modeled after diff tools like WinMerge and the Visual Studio Code diff editor, w
 - [x] As a user, I can see character-level additions/deletions colored within modified lines
 - [x] As a user, I can see the app styled with system visual styles
 - [ ] As a user, I can see syntax highlighting applied to code files in the diff view
-`})();

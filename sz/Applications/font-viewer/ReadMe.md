@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# Font Viewer
+# Font Viewer
 
 A desktop-style font browser and inspector that discovers all available system fonts, lets users preview them with custom text and styles, and inspect individual character glyphs with detailed Unicode information inside the »SynthelicZ« desktop environment.
 
@@ -92,4 +92,3 @@ Modeled after the classic Windows Font Viewer and macOS Font Book, providing a s
 - [x] As a user, I can see a toolbar with size, weight, bold/italic, and color controls
 - [x] As a user, I can see system visual styles applied to the app
 - [ ] As a user, I can resize the sidebar width by dragging
-`})();

@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# FreeCell
+# FreeCell
 
 The classic FreeCell card game with seeded deals compatible with the original Windows numbering, supermove support, auto-complete, and a celebratory win animation -- strategic patience at its finest inside »SynthelicZ«.
 
@@ -88,4 +88,3 @@ Modeled after the classic Microsoft FreeCell (freecell.exe) from Windows 95 thro
 - [x] As a user, I can press Ctrl+Z to undo a move
 - [x] As a user, I can press Escape to deselect the current card
 - [ ] As a user, I can use keyboard-only navigation to select columns and move cards
-`})();

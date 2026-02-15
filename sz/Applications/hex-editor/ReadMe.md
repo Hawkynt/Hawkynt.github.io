@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# Hex Editor
+# Hex Editor
 
 A binary file editor for »SynthelicZ« that displays file contents in a traditional hex dump layout with offset, hex bytes, and ASCII columns, supporting full editing, search, virtual scrolling, and configurable display.
 
@@ -143,4 +143,3 @@ Modeled after classic hex editors such as HxD, XVI32, and the Windows built-in h
 - [ ] As a user, I want bookmarks/annotations at specific offsets
 - [ ] As a user, I want configurable font size for the hex display
 - [ ] As a user, I want structure/template definitions to parse binary formats
-`})();
