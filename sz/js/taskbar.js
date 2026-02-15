@@ -40,7 +40,7 @@
       btn.className = 'sz-taskbar-button';
       btn.textContent = title;
       btn.dataset.windowId = windowId;
-      btn.addEventListener('click', () => this.#onButtonClick(windowId));
+      btn.addEventListener('pointerup', (e) => { e.stopPropagation(); this.#onButtonClick(windowId); });
       this.#windowList.appendChild(btn);
       this.#buttons.set(windowId, btn);
     }
@@ -116,13 +116,15 @@
       footer.className = 'sz-start-footer';
       footer.innerHTML = '<button class="sz-start-logoff">Log Off</button><button class="sz-start-shutdown">Turn Off Computer</button>';
 
-      footer.querySelector('.sz-start-logoff').addEventListener('click', () => {
+      footer.querySelector('.sz-start-logoff').addEventListener('pointerup', (e) => {
+        e.stopPropagation();
         this.#closeStartMenu();
         if (confirm('Are you sure you want to log off?'))
           location.reload();
       });
 
-      footer.querySelector('.sz-start-shutdown').addEventListener('click', () => {
+      footer.querySelector('.sz-start-shutdown').addEventListener('pointerup', (e) => {
+        e.stopPropagation();
         this.#closeStartMenu();
         if (confirm('Are you sure you want to shut down?')) {
           document.body.style.transition = 'opacity 1s';
@@ -203,7 +205,7 @@
       const allProg = document.createElement('div');
       allProg.className = 'sz-menu-item sz-all-programs';
       allProg.innerHTML = '<span>All Programs</span><span class="sz-menu-arrow">\u25B6</span>';
-      allProg.addEventListener('click', () => this.#showAllProgramsView());
+      allProg.addEventListener('pointerup', (e) => { e.stopPropagation(); this.#showAllProgramsView(); });
       this.#leftCol.appendChild(allProg);
     }
 
@@ -232,7 +234,7 @@
             this.#showCategoryFlyout(folder, catEl);
           };
           catEl.addEventListener('pointerenter', showFlyout);
-          catEl.addEventListener('click', showFlyout);
+          catEl.addEventListener('pointerup', (e) => { e.stopPropagation(); showFlyout(); });
 
           this.#leftCol.appendChild(catEl);
         }
@@ -247,7 +249,8 @@
       const backItem = document.createElement('div');
       backItem.className = 'sz-menu-item sz-menu-back';
       backItem.innerHTML = '<span class="sz-menu-arrow">\u25C4</span><span>Back</span>';
-      backItem.addEventListener('click', () => {
+      backItem.addEventListener('pointerup', (e) => {
+        e.stopPropagation();
         this.#flyout.classList.remove('visible');
         const mru = SZ.system?.settings?.get('mru') || [];
         this.#showMRUView(mru);
@@ -315,7 +318,8 @@
         const el = document.createElement('div');
         el.className = 'sz-menu-item sz-menu-system-item';
         el.innerHTML = `<span>${si.label}</span>`;
-        el.addEventListener('click', () => {
+        el.addEventListener('pointerup', (e) => {
+          e.stopPropagation();
           this.#closeStartMenu();
           if (si.appId && this.#onAppLaunch)
             this.#onAppLaunch(si.appId, si.urlParams);
@@ -337,7 +341,10 @@
         el.innerHTML = `<img src="${icon}" alt=""><span>${name}</span>`;
       else
         el.innerHTML = `<span>${name}</span>`;
-      el.addEventListener('click', onClick);
+      el.addEventListener('pointerup', (e) => {
+        e.stopPropagation();
+        onClick();
+      });
       return el;
     }
 
@@ -465,7 +472,7 @@
       this.#startMenu.id = 'sz-start-menu';
       this.#element.appendChild(this.#startMenu);
 
-      this.#startButton.addEventListener('click', (e) => {
+      this.#startButton.addEventListener('pointerup', (e) => {
         e.stopPropagation();
         this.#toggleStartMenu();
       });
