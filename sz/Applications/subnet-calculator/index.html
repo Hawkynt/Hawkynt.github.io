@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Subnet Calculator</title>
+  <script src="../sz-app-bootstrap.js"></script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Menu Bar -->
+<div class="menu-bar" id="menu-bar">
+  <div class="menu-item" data-menu="edit">
+    Edit
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="copy-all">
+        Copy All Results
+        <span class="shortcut">Ctrl+Shift+C</span>
+      </div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="help">
+    Help
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="about">About Subnet Calculator</div>
+    </div>
+  </div>
+</div>
+
+<!-- Main Area -->
+<div class="main-area">
+
+  <!-- Input Section -->
+  <fieldset class="section">
+    <legend>Input</legend>
+    <div class="input-row">
+      <label for="ip-input">IP Address</label>
+      <input type="text" id="ip-input" value="192.168.1.10" spellcheck="false" autocomplete="off">
+      <span class="cidr-slash">/</span>
+      <input type="number" id="cidr-input" value="24" min="0" max="32">
+      <label for="mask-input">Mask</label>
+      <input type="text" id="mask-input" value="255.255.255.0" spellcheck="false" autocomplete="off">
+    </div>
+    <div class="quick-cidr" id="quick-cidr"></div>
+  </fieldset>
+
+  <!-- Network Properties -->
+  <fieldset class="section">
+    <legend>Network Properties</legend>
+    <table class="results-table" id="results-table">
+      <tr><td>Network Address</td><td id="res-network"></td></tr>
+      <tr><td>Broadcast Address</td><td id="res-broadcast"></td></tr>
+      <tr><td>First Host</td><td id="res-first-host"></td></tr>
+      <tr><td>Last Host</td><td id="res-last-host"></td></tr>
+      <tr><td>Total Hosts</td><td id="res-total"></td></tr>
+      <tr><td>Usable Hosts</td><td id="res-usable"></td></tr>
+      <tr><td>Subnet Mask</td><td id="res-mask"></td></tr>
+      <tr><td>Wildcard Mask</td><td id="res-wildcard"></td></tr>
+      <tr><td>IP Class</td><td id="res-class"></td></tr>
+      <tr><td>IP Type</td><td id="res-type"></td></tr>
+      <tr><td>Hex Representation</td><td id="res-hex"></td></tr>
+      <tr><td>Integer Representation</td><td id="res-integer"></td></tr>
+    </table>
+  </fieldset>
+
+  <!-- Binary Representation -->
+  <fieldset class="section">
+    <legend>Binary Representation</legend>
+    <div class="bit-view" id="bit-view"></div>
+  </fieldset>
+
+  <!-- Subnet Division -->
+  <fieldset class="section">
+    <legend>Subnet Division</legend>
+    <div class="division-controls">
+      <label for="division-select">Divide into</label>
+      <select id="division-select">
+        <option value="2">2 subnets</option>
+        <option value="4">4 subnets</option>
+        <option value="8">8 subnets</option>
+        <option value="16">16 subnets</option>
+        <option value="32">32 subnets</option>
+        <option value="64">64 subnets</option>
+        <option value="128">128 subnets</option>
+        <option value="256">256 subnets</option>
+      </select>
+    </div>
+    <div class="division-table-wrap">
+      <table class="division-table" id="division-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Network</th>
+            <th>Broadcast</th>
+            <th>Host Range</th>
+            <th>Hosts</th>
+          </tr>
+        </thead>
+        <tbody id="division-tbody"></tbody>
+      </table>
+    </div>
+  </fieldset>
+
+</div>
+
+<!-- Status Bar -->
+<div class="status-bar" id="status-bar">
+  <span class="status-section inset" id="status-class">—</span>
+  <span class="status-section inset" id="status-type">—</span>
+  <span class="status-section inset" id="status-valid">Valid</span>
+</div>
+
+<!-- About Dialog -->
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Subnet Calculator</div>
+    <div class="dialog-body" style="text-align: center; padding: 20px;">
+      <p style="font-weight: bold;">Subnet Calculator</p>
+      <p>IPv4 subnet calculator for &laquo;SynthelicZ&raquo;</p>
+      <p style="margin-top: 8px; font-size: 10px; opacity: 0.7;">CIDR notation &bull; Binary view &bull; Subnet division</p>
+    </div>
+    <div class="dialog-buttons" style="justify-content: center;">
+      <button data-result="ok">OK</button>
+    </div>
+  </div>
+</div>
+
+<script defer src="controller.js"></script>
+</body>
+</html>
