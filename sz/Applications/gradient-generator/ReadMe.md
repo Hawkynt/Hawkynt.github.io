@@ -13,7 +13,7 @@ The Gradient Generator provides »SynthelicZ« desktop users with a visual tool 
 - Live preview with checkerboard transparency background and real-time updates
 - Syntax-highlighted CSS output with inline color swatches and one-click clipboard copy
 - CSS gradient import/parsing supporting vendor prefixes, multiple color formats (hex, rgb, hsl, named colors), and embedded CSS rules
-- Preset gradient library (Sunset, Ocean, Rainbow, Fire, Forest, Pastel, Midnight, Gold) as starting points
+- Categorized preset gradient library with gradient preview thumbnails (Classic: Sunset, Ocean, Rainbow, Fire, Forest, Pastel, Midnight, Gold; Swatches: Vital Ocean, Kale Salad, Disco Club, Shady Lane, Retro Wagon, Fresco Crush, Cucumber Water, Sea Salt, Par Four, Ooey Gooey, Bloody Mimosa, Lovely Lilly, Aqua Spray, Mello Yellow, Dusty Cactus)
 - SZ Color Picker app integration for visual color selection
 
 ### Design Reference
@@ -72,7 +72,9 @@ Inspired by web-based CSS gradient generators such as cssgradient.io and the gra
 - [x] As a user, I can have missing stop positions automatically interpolated
 
 ### Presets
-- [x] As a user, I can quickly apply preset gradients from a dropdown (Sunset, Ocean, Rainbow, Fire, Forest, Pastel, Midnight, Gold)
+- [x] As a user, I can quickly apply preset gradients from a categorized dropdown with gradient preview thumbnails
+- [x] As a user, I can browse 23 presets organized into Classic and Swatches categories
+- [x] As a user, I can see a gradient swatch preview next to each preset name in the dropdown
 - [x] As a user, I can use presets as starting points and then customize them
 
 ### Linear Gradient Controls
