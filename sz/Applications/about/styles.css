@@ -215,6 +215,22 @@ body {
   margin-bottom: 3px;
 }
 
+.credits-link {
+  color: var(--sz-color-hot-tracking, #0066cc);
+}
+
+.donate-heart {
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+  display: inline-block;
+}
+
+.donate-heart:hover {
+  transform: scale(1.3);
+  filter: brightness(1.2);
+}
+
 /* ── OK button bar ────────────────────────────────────────────── */
 
 .button-bar {
