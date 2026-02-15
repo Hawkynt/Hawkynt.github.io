@@ -63,9 +63,13 @@
     #filterSelect;
     #okBtn;
     #cancelBtn;
+    #importBtn;
+    #downloadBtn;
     #backBtn;
     #upBtn;
     #history = [];
+    #saveContent = null;
+    #filters = null;
 
     constructor(kernel) {
       this.#kernel = kernel;
@@ -79,7 +83,11 @@
       this.#filenameInput.value = '';
       this.#selectedEntry = null;
       this.#history = [];
+      this.#saveContent = null;
+      this.#filters = options.filters || null;
       this.#populateFilters(options.filters);
+      this.#importBtn.style.display = '';
+      this.#downloadBtn.style.display = 'none';
       return new Promise(resolve => {
         this.#resolve = resolve;
         this.#overlay.style.display = 'flex';
@@ -94,7 +102,11 @@
       this.#filenameInput.value = options.defaultName || '';
       this.#selectedEntry = null;
       this.#history = [];
+      this.#saveContent = options.content || null;
+      this.#filters = options.filters || null;
       this.#populateFilters(options.filters);
+      this.#importBtn.style.display = 'none';
+      this.#downloadBtn.style.display = this.#saveContent ? '' : 'none';
       return new Promise(resolve => {
         this.#resolve = resolve;
         this.#overlay.style.display = 'flex';
@@ -230,13 +242,23 @@
       });
       const btnGroup = document.createElement('div');
       btnGroup.className = 'sz-dlg-footer-buttons';
+      this.#importBtn = document.createElement('button');
+      this.#importBtn.textContent = 'Import\u2026';
+      this.#importBtn.title = 'Import file from your PC';
+      this.#importBtn.style.display = 'none';
+      this.#importBtn.addEventListener('click', () => this.#doImport());
+      this.#downloadBtn = document.createElement('button');
+      this.#downloadBtn.textContent = 'Download';
+      this.#downloadBtn.title = 'Download file to your PC';
+      this.#downloadBtn.style.display = 'none';
+      this.#downloadBtn.addEventListener('click', () => this.#doDownload());
       this.#okBtn = document.createElement('button');
       this.#okBtn.textContent = 'Open';
       this.#okBtn.addEventListener('click', () => this.#confirm());
       this.#cancelBtn = document.createElement('button');
       this.#cancelBtn.textContent = 'Cancel';
       this.#cancelBtn.addEventListener('click', () => this.#cancel());
-      btnGroup.append(this.#okBtn, this.#cancelBtn);
+      btnGroup.append(this.#importBtn, this.#downloadBtn, this.#okBtn, this.#cancelBtn);
       fnRow.append(fnLabel, this.#filenameInput, btnGroup);
 
       // Filter row
@@ -419,6 +441,73 @@
       parts.pop();
       const parent = parts.length > 0 ? '/' + parts.join('/') : '/';
       this.#navigateTo(parent);
+    }
+
+    #doImport() {
+      const accept = this.#buildAcceptString();
+      const input = document.createElement('input');
+      input.type = 'file';
+      if (accept) input.accept = accept;
+      input.style.display = 'none';
+      document.body.appendChild(input);
+      input.addEventListener('change', () => {
+        const file = input.files[0];
+        document.body.removeChild(input);
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          this.#close();
+          if (this.#resolve) {
+            this.#resolve({ cancelled: false, path: file.name, content: reader.result, imported: true });
+            this.#resolve = null;
+          }
+        };
+        reader.onerror = () => {};
+        reader.readAsDataURL(file);
+      });
+      input.click();
+    }
+
+    #doDownload() {
+      if (!this.#saveContent) return;
+      let filename = this.#filenameInput.value.trim();
+      if (!filename) filename = 'download';
+      if (!filename.includes('.')) {
+        const ext = this.#getFirstExtension();
+        if (ext) filename += '.' + ext;
+      }
+      let blob;
+      if (typeof this.#saveContent === 'string' && this.#saveContent.startsWith('data:')) {
+        const [header, b64] = this.#saveContent.split(',');
+        const mime = header.match(/data:([^;]+)/)?.[1] || 'application/octet-stream';
+        const bytes = atob(b64);
+        const arr = new Uint8Array(bytes.length);
+        for (let i = 0; i < bytes.length; ++i) arr[i] = bytes.charCodeAt(i);
+        blob = new Blob([arr], { type: mime });
+      } else if (this.#saveContent instanceof Blob)
+        blob = this.#saveContent;
+      else
+        blob = new Blob([this.#saveContent], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    }
+
+    #buildAcceptString() {
+      if (!this.#filters || !this.#filters.length) return '';
+      const exts = [];
+      for (const f of this.#filters)
+        if (f.ext) {
+          const list = Array.isArray(f.ext) ? f.ext : [f.ext];
+          for (const e of list)
+            if (e !== '*') exts.push('.' + e);
+        }
+      return exts.join(',');
     }
 
     async #confirm() {

@@ -265,6 +265,16 @@
         case 'sz:shellExecute':
             if(data.path) openFileByPath(data.path, kernel, appLauncher);
             return;
+        case 'sz:getFileTypeAssociations': {
+            const associations = {};
+            for (const [, app] of appLauncher.apps) {
+              if (!app.fileTypes) continue;
+              for (const ext of app.fileTypes)
+                if (!associations[ext] || associations[ext].appId === 'notepad')
+                  associations[ext] = { appId: app.id, iconPath: app.icon };
+            }
+            return handle(Promise.resolve({ associations }), 'sz:getFileTypeAssociationsResult');
+        }
 
         // Common Dialogs
         case 'sz:fileOpen': return handle(commonDialogs.showOpen(data), 'sz:fileOpenResult');
@@ -322,6 +332,241 @@
         case 'sz:regWrite':
             settings.set(data.key, data.value);
             return respond('sz:regWriteResult', { success: true });
+
+        // EyeDropper bridge (top-level context for iframe apps)
+        case 'sz:eyeDropper':
+            if (!window.EyeDropper)
+              return respond('sz:eyeDropperResult', { error: { message: 'EyeDropper API not supported' } });
+            new EyeDropper().open()
+              .then(result => respond('sz:eyeDropperResult', { sRGBHex: result.sRGBHex }))
+              .catch(() => respond('sz:eyeDropperResult', { cancelled: true }));
+            return;
+
+        // Circle-sampling eyedropper (screen capture + magnifier overlay)
+        case 'sz:eyeDropperCircle': {
+            const diameter = data.diameter || 5;
+            const radius = (diameter - 1) / 2;
+
+            if (!navigator.mediaDevices?.getDisplayMedia) {
+              respond('sz:eyeDropperCircleResult', { cancelled: true, error: 'getDisplayMedia not available' });
+              return;
+            }
+
+            (async () => {
+              let stream;
+              try {
+                stream = await navigator.mediaDevices.getDisplayMedia({
+                  video: { displaySurface: 'browser' },
+                  preferCurrentTab: true
+                });
+              } catch {
+                respond('sz:eyeDropperCircleResult', { cancelled: true });
+                return;
+              }
+
+              // Grab a single frame from the stream
+              const video = document.createElement('video');
+              video.srcObject = stream;
+              video.muted = true;
+              await video.play();
+
+              // Wait for a frame to be available
+              await new Promise(r => requestAnimationFrame(r));
+
+              const captureCanvas = document.createElement('canvas');
+              captureCanvas.width = video.videoWidth;
+              captureCanvas.height = video.videoHeight;
+              const captureCtx = captureCanvas.getContext('2d', { willReadFrequently: true });
+              captureCtx.drawImage(video, 0, 0);
+
+              // Stop the stream immediately
+              for (const track of stream.getTracks())
+                track.stop();
+              video.srcObject = null;
+
+              // Scale factors: captured image may differ from screen CSS pixels
+              const scaleX = captureCanvas.width / window.innerWidth;
+              const scaleY = captureCanvas.height / window.innerHeight;
+
+              // --- Build overlay ---
+              const overlay = document.createElement('div');
+              Object.assign(overlay.style, {
+                position: 'fixed',
+                inset: '0',
+                zIndex: '99998',
+                cursor: 'none',
+                background: 'transparent'
+              });
+
+              // Loupe canvas
+              const loupeSize = Math.max(diameter * 8, 120);
+              const loupeCanvas = document.createElement('canvas');
+              loupeCanvas.width = loupeSize;
+              loupeCanvas.height = loupeSize;
+              Object.assign(loupeCanvas.style, {
+                position: 'absolute',
+                width: loupeSize + 'px',
+                height: loupeSize + 'px',
+                borderRadius: '50%',
+                border: '2px solid #fff',
+                boxShadow: '0 0 8px rgba(0,0,0,.5)',
+                pointerEvents: 'none',
+                imageRendering: 'pixelated'
+              });
+              overlay.appendChild(loupeCanvas);
+              const loupeCtx = loupeCanvas.getContext('2d', { willReadFrequently: false });
+
+              // Color label
+              const colorLabel = document.createElement('div');
+              Object.assign(colorLabel.style, {
+                position: 'absolute',
+                padding: '2px 6px',
+                background: 'rgba(0,0,0,.75)',
+                color: '#fff',
+                fontSize: '11px',
+                fontFamily: 'Consolas, monospace',
+                borderRadius: '3px',
+                pointerEvents: 'none',
+                whiteSpace: 'nowrap',
+                borderLeft: '12px solid #f00'
+              });
+              overlay.appendChild(colorLabel);
+
+              document.body.appendChild(overlay);
+
+              // --- Sampling helpers ---
+              function sampleCircle(cx, cy) {
+                const sx = Math.round(cx * scaleX);
+                const sy = Math.round(cy * scaleY);
+                const ir = Math.round(radius * Math.max(scaleX, scaleY));
+                const x0 = Math.max(0, sx - ir);
+                const y0 = Math.max(0, sy - ir);
+                const x1 = Math.min(captureCanvas.width - 1, sx + ir);
+                const y1 = Math.min(captureCanvas.height - 1, sy + ir);
+                const w = x1 - x0 + 1;
+                const h = y1 - y0 + 1;
+                if (w <= 0 || h <= 0)
+                  return [0, 0, 0];
+
+                const imgData = captureCtx.getImageData(x0, y0, w, h);
+                const px = imgData.data;
+                let rSum = 0, gSum = 0, bSum = 0, count = 0;
+                const r2 = ir * ir;
+
+                for (let dy = 0; dy < h; ++dy) {
+                  for (let dx = 0; dx < w; ++dx) {
+                    const ddx = (x0 + dx) - sx;
+                    const ddy = (y0 + dy) - sy;
+                    if (ddx * ddx + ddy * ddy <= r2) {
+                      const i = (dy * w + dx) * 4;
+                      rSum += px[i];
+                      gSum += px[i + 1];
+                      bSum += px[i + 2];
+                      ++count;
+                    }
+                  }
+                }
+
+                if (count === 0)
+                  return [0, 0, 0];
+                return [Math.round(rSum / count), Math.round(gSum / count), Math.round(bSum / count)];
+              }
+
+              function rgbHex(r, g, b) {
+                return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
+              }
+
+              let currentColor = [0, 0, 0];
+
+              function updateLoupe(px, py) {
+                // Position loupe near cursor, flip if near edges
+                const margin = 20;
+                let lx = px + margin;
+                let ly = py + margin;
+                if (lx + loupeSize + margin > window.innerWidth)
+                  lx = px - loupeSize - margin;
+                if (ly + loupeSize + 30 > window.innerHeight)
+                  ly = py - loupeSize - margin;
+
+                loupeCanvas.style.left = lx + 'px';
+                loupeCanvas.style.top = ly + 'px';
+
+                // Draw zoomed view centered on cursor
+                const zoomPixels = diameter + 4; // show a few extra pixels around the sample
+                const sx = Math.round(px * scaleX) - Math.floor(zoomPixels / 2);
+                const sy = Math.round(py * scaleY) - Math.floor(zoomPixels / 2);
+                const sw = zoomPixels;
+                const sh = zoomPixels;
+
+                loupeCtx.clearRect(0, 0, loupeSize, loupeSize);
+                loupeCtx.imageSmoothingEnabled = false;
+                loupeCtx.drawImage(captureCanvas, sx, sy, sw, sh, 0, 0, loupeSize, loupeSize);
+
+                // Draw circle outline showing the sample area
+                const pixelScale = loupeSize / zoomPixels;
+                const centerOff = loupeSize / 2;
+                loupeCtx.strokeStyle = 'rgba(255,255,255,.7)';
+                loupeCtx.lineWidth = 1.5;
+                loupeCtx.beginPath();
+                loupeCtx.arc(centerOff, centerOff, radius * pixelScale, 0, Math.PI * 2);
+                loupeCtx.stroke();
+
+                // Crosshair
+                loupeCtx.strokeStyle = 'rgba(255,255,255,.5)';
+                loupeCtx.lineWidth = 0.5;
+                loupeCtx.beginPath();
+                loupeCtx.moveTo(centerOff, 0);
+                loupeCtx.lineTo(centerOff, loupeSize);
+                loupeCtx.moveTo(0, centerOff);
+                loupeCtx.lineTo(loupeSize, centerOff);
+                loupeCtx.stroke();
+
+                // Sample color
+                currentColor = sampleCircle(px, py);
+                const hex = rgbHex(...currentColor);
+
+                // Update label
+                colorLabel.textContent = `${hex}  rgb(${currentColor.join(', ')})`;
+                colorLabel.style.borderLeftColor = hex;
+                colorLabel.style.left = lx + 'px';
+                colorLabel.style.top = (ly + loupeSize + 4) + 'px';
+              }
+
+              // --- Events ---
+              function onMove(e) {
+                updateLoupe(e.clientX, e.clientY);
+              }
+
+              function onDown(e) {
+                e.preventDefault();
+                cleanup();
+                const hex = rgbHex(...currentColor);
+                respond('sz:eyeDropperCircleResult', { hex, r: currentColor[0], g: currentColor[1], b: currentColor[2] });
+              }
+
+              function onKeyDown(e) {
+                if (e.key === 'Escape') {
+                  cleanup();
+                  respond('sz:eyeDropperCircleResult', { cancelled: true });
+                }
+              }
+
+              function cleanup() {
+                overlay.removeEventListener('pointermove', onMove);
+                overlay.removeEventListener('pointerdown', onDown);
+                document.removeEventListener('keydown', onKeyDown);
+                overlay.remove();
+              }
+
+              overlay.addEventListener('pointermove', onMove);
+              overlay.addEventListener('pointerdown', onDown);
+              document.addEventListener('keydown', onKeyDown);
+
+              // Initial position at center
+              updateLoupe(window.innerWidth / 2, window.innerHeight / 2);
+            })();
+            return;
+        }
       }
     });
   }
