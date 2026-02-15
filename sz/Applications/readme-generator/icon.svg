@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <!-- Document body -->
+  <rect x="6" y="2" width="36" height="44" rx="2" fill="#f8f8f0" stroke="#555" stroke-width="1.5"/>
+  <!-- Folded corner -->
+  <polygon points="32,2 42,12 32,12" fill="#ddd" stroke="#555" stroke-width="0.75"/>
+  <!-- Markdown # heading hint -->
+  <text x="12" y="21" font-family="Consolas,monospace" font-size="10" fill="#1565c0" font-weight="bold"># Rm</text>
+  <!-- Content lines -->
+  <rect x="12" y="25" width="24" height="2" rx="1" fill="#aaa"/>
+  <rect x="12" y="30" width="18" height="2" rx="1" fill="#bbb"/>
+  <rect x="12" y="35" width="21" height="2" rx="1" fill="#bbb"/>
+  <!-- Pencil overlay -->
+  <g transform="translate(30,30) rotate(-45)">
+    <rect x="-2" y="-10" width="4" height="14" rx="0.5" fill="#e65100"/>
+    <polygon points="-2,4 2,4 0,7" fill="#333"/>
+    <rect x="-2" y="-10" width="4" height="2" rx="0.5" fill="#f9a825"/>
+  </g>
+</svg>
