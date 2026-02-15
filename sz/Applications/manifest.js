@@ -129,7 +129,7 @@
         maximizable: true,
         singleton: false,
         category: 'Graphics',
-        fileTypes: ['bmp']
+        fileTypes: ['bmp', 'png', 'jpg', 'jpeg', 'gif', 'webp']
       },
       {
         id: 'terminal',
@@ -229,7 +229,7 @@
         maximizable: true,
         singleton: false,
         category: 'Graphics',
-        fileTypes: ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'ico']
+        fileTypes: ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp']
       },
       {
         id: 'wordpad',
@@ -244,7 +244,7 @@
         maximizable: true,
         singleton: false,
         category: 'Office',
-        fileTypes: ['rtf', 'doc']
+        fileTypes: ['rtf', 'doc', 'docx']
       },
       {
         id: 'web-browser',
@@ -318,7 +318,7 @@
         maximizable: true,
         singleton: false,
         category: 'Office',
-        fileTypes: ['csv', 'tsv']
+        fileTypes: ['csv', 'tsv', 'xlsx', 'xls']
       },
       {
         id: 'font-viewer',
@@ -332,7 +332,8 @@
         minimizable: true,
         maximizable: true,
         singleton: true,
-        category: 'Graphics'
+        category: 'Graphics',
+        fileTypes: ['ttf', 'otf', 'woff', 'woff2']
       },
       {
         id: 'json-viewer',
@@ -375,7 +376,8 @@
         minimizable: true,
         maximizable: true,
         singleton: false,
-        category: 'Development'
+        category: 'Development',
+        fileTypes: ['diff', 'patch']
       },
       {
         id: 'clock',
@@ -434,6 +436,35 @@
         singleton: false,
         category: 'Graphics',
         fileTypes: ['ico', 'cur']
+      },
+      {
+        id: 'function-plotter',
+        title: 'Function Plotter',
+        icon: 'function-plotter/icon.svg',
+        type: 'iframe',
+        entry: 'function-plotter/index.html',
+        width: 700,
+        height: 500,
+        resizable: true,
+        minimizable: true,
+        maximizable: true,
+        singleton: false,
+        category: 'Office'
+      },
+      {
+        id: 'svg-editor',
+        title: 'SVG Editor',
+        icon: 'svg-editor/icon.svg',
+        type: 'iframe',
+        entry: 'svg-editor/index.html',
+        width: 980,
+        height: 680,
+        resizable: true,
+        minimizable: true,
+        maximizable: true,
+        singleton: false,
+        category: 'Graphics',
+        fileTypes: ['svg']
       }
     ]
   };

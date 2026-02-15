@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#245edb">
+  <title>Function Plotter</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="styles.css">
+  <script src="../sz-app-bootstrap.js"></script>
+</head>
+<body>
+  <div class="plotter-app" id="plotterApp">
+
+    <div class="menu-bar" id="menuBar">
+      <div class="menu-item" data-menu="function">
+        Function
+        <div class="menu-dropdown">
+          <div class="menu-entry" data-action="new" title="Clear all functions and reset">New<span class="shortcut">Ctrl+N</span></div>
+          <div class="menu-entry" data-action="add" title="Add a new function expression">Add Function<span class="shortcut">Ctrl+Shift+N</span></div>
+          <div class="menu-separator"></div>
+          <div class="menu-entry" data-action="plot" title="Recalculate and redraw all curves">Plot All<span class="shortcut">Ctrl+Enter</span></div>
+          <div class="menu-separator"></div>
+          <div class="menu-entry" data-action="export" title="Export plot as PNG image at 2x resolution">Export PNG...<span class="shortcut">Ctrl+E</span></div>
+        </div>
+      </div>
+      <div class="menu-item" data-menu="view">
+        View
+        <div class="menu-dropdown">
+          <div class="menu-entry checkbox checked" data-action="toggle-grid" title="Show or hide grid lines">Grid</div>
+          <div class="menu-entry checkbox checked" data-action="toggle-labels" title="Show or hide axis labels">Axis Labels</div>
+          <div class="menu-separator"></div>
+          <div class="menu-entry checkbox" data-action="toggle-dark" title="Switch between light and dark theme">Dark Mode</div>
+          <div class="menu-separator"></div>
+          <div class="menu-entry" data-action="reset-view" title="Reset pan and zoom to default">Reset View<span class="shortcut">Ctrl+0</span></div>
+          <div class="menu-entry" data-action="zoom-in" title="Zoom in on the plot">Zoom In<span class="shortcut">Ctrl++</span></div>
+          <div class="menu-entry" data-action="zoom-out" title="Zoom out from the plot">Zoom Out<span class="shortcut">Ctrl+-</span></div>
+        </div>
+      </div>
+      <div class="menu-item" data-menu="help">
+        Help
+        <div class="menu-dropdown">
+          <div class="menu-entry" data-action="shortcuts" title="Show keyboard shortcut reference">Keyboard Shortcuts</div>
+          <div class="menu-separator"></div>
+          <div class="menu-entry" data-action="about" title="About Function Plotter">About</div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="sidebar">
+      <section class="panel functions-panel">
+        <div class="panel-header">
+          <h2>Functions</h2>
+          <button id="btnAddFunction" class="btn btn-add" title="Add a new function (Ctrl+Shift+N)">+ Add</button>
+        </div>
+        <div id="functionList" class="function-list"></div>
+      </section>
+
+      <details class="panel legend-panel" open>
+        <summary class="panel-toggle"><h2>Legend</h2></summary>
+        <div id="legendBody" class="legend-body"></div>
+      </details>
+
+      <details class="panel analysis-panel" open>
+        <summary class="panel-toggle"><h2>Analysis</h2></summary>
+        <div id="analysisStatus" class="analysis-status">Click a function to analyze</div>
+        <div id="analysisBody" class="analysis-body"></div>
+      </details>
+    </aside>
+
+    <main class="canvas-host" id="canvasHost">
+      <canvas id="plotCanvas"></canvas>
+      <div id="traceTooltip" class="trace-tooltip" hidden></div>
+      <div id="autocomplete" class="autocomplete" hidden></div>
+      <div id="fnTooltip" class="fn-tooltip" hidden></div>
+    </main>
+
+    <div class="status-bar" id="statusBar">
+      <span id="statusCoords">x=0 y=0</span>
+      <span id="statusZoom">Zoom: 100%</span>
+      <span id="statusFunctions">0 functions</span>
+    </div>
+  </div>
+  <script defer src="controller.js"></script>
+</body>
+</html>

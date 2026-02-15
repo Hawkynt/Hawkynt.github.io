@@ -1,0 +1,15 @@
+{
+  "name": "Function Plotter",
+  "short_name": "Plotter",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#ece9d8",
+  "theme_color": "#245edb",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
