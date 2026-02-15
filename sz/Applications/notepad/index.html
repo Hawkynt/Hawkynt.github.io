@@ -30,110 +30,215 @@
 <body>
 <noscript><p>Simple online text editor for code and notes -- supports 30+ file formats. <a href="../../index.html">Open »SynthelicZ« Desktop</a> to use this app.</p></noscript>
 
-<!-- Menu Bar -->
-<div class="menu-bar" id="menu-bar">
-  <div class="menu-item" data-menu="file">
-    File
-    <div class="menu-dropdown">
-      <div class="menu-entry" data-action="new">New<span class="shortcut">Ctrl+N</span></div>
-      <div class="menu-entry" data-action="open">Open...<span class="shortcut">Ctrl+O</span></div>
-      <div class="menu-entry" data-action="save">Save<span class="shortcut">Ctrl+S</span></div>
-      <div class="menu-entry" data-action="save-as">Save As...</div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="print">Print...<span class="shortcut">Ctrl+P</span></div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="exit">Exit</div>
-    </div>
+<!-- Quick Access Toolbar -->
+<div class="qat" id="qat">
+  <button class="qat-btn" data-action="save" title="Save (Ctrl+S)">&#128190;</button>
+  <button class="qat-btn" data-action="undo" title="Undo (Ctrl+Z)">&#8630;</button>
+  <button class="qat-btn" data-action="redo" title="Redo (Ctrl+Y)">&#8631;</button>
+  <button class="qat-btn" data-action="print" title="Print (Ctrl+P)">&#128424;</button>
+</div>
+
+<!-- Ribbon Tab Bar -->
+<div class="ribbon-tabs" id="ribbon-tabs">
+  <div class="ribbon-tab-bar">
+    <button class="ribbon-file-btn" id="ribbon-file-btn">File</button>
+    <button class="ribbon-tab active" data-tab="home">Home</button>
+    <button class="ribbon-tab" data-tab="view">View</button>
   </div>
-  <div class="menu-item" data-menu="edit">
-    Edit
-    <div class="menu-dropdown">
-      <div class="menu-entry" data-action="undo">Undo<span class="shortcut">Ctrl+Z</span></div>
-      <div class="menu-entry" data-action="redo">Redo<span class="shortcut">Ctrl+Y</span></div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="cut">Cut<span class="shortcut">Ctrl+X</span></div>
-      <div class="menu-entry" data-action="copy">Copy<span class="shortcut">Ctrl+C</span></div>
-      <div class="menu-entry" data-action="paste">Paste<span class="shortcut">Ctrl+V</span></div>
-      <div class="menu-entry" data-action="delete">Delete<span class="shortcut">Del</span></div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="find">Find...<span class="shortcut">Ctrl+F</span></div>
-      <div class="menu-entry" data-action="replace">Replace...<span class="shortcut">Ctrl+H</span></div>
-      <div class="menu-entry" data-action="goto-line">Go to Line...<span class="shortcut">Ctrl+G</span></div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="select-all">Select All<span class="shortcut">Ctrl+A</span></div>
-      <div class="menu-entry" data-action="time-date">Time/Date<span class="shortcut">F5</span></div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="duplicate-line">Duplicate Line<span class="shortcut">Ctrl+D</span></div>
-      <div class="menu-entry" data-action="comment-toggle">Toggle Comment<span class="shortcut">Ctrl+/</span></div>
-    </div>
+</div>
+
+<!-- File Backstage -->
+<div class="backstage" id="backstage">
+  <div class="backstage-sidebar">
+    <button class="backstage-back" id="backstage-back">&#8592;</button>
+    <button class="backstage-item" data-action="new">New</button>
+    <button class="backstage-item" data-action="open">Open</button>
+    <button class="backstage-item" data-action="save">Save</button>
+    <button class="backstage-item" data-action="save-as">Save As</button>
+    <div class="backstage-sep"></div>
+    <button class="backstage-item" data-action="print">Print</button>
+    <div class="backstage-sep"></div>
+    <button class="backstage-item" data-action="about">About</button>
+    <div class="backstage-spacer"></div>
+    <button class="backstage-item backstage-exit" data-action="exit">Exit</button>
   </div>
-  <div class="menu-item" data-menu="view">
-    View
-    <div class="menu-dropdown">
-      <div class="menu-entry checkbox checked" data-action="word-wrap">Word Wrap</div>
-      <div class="menu-entry checkbox checked" data-action="line-numbers">Line Numbers</div>
-      <div class="menu-entry checkbox" data-action="show-whitespace">Show Whitespace</div>
-      <div class="menu-entry checkbox" data-action="show-line-endings">Show Line Endings</div>
-      <div class="menu-entry checkbox" data-action="long-line-marker">Long Line Marker</div>
-      <div class="menu-entry checkbox checked" data-action="highlight-current-line">Highlight Current Line</div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry has-submenu" data-action="syntax-menu">
-        Syntax Highlighting
-        <span class="submenu-arrow">&#9656;</span>
-        <div class="menu-submenu" id="syntax-submenu">
-          <div class="menu-entry radio checked" data-action="syntax" data-lang="none">None (Plain Text)</div>
-          <div class="menu-separator"></div>
-          <div class="menu-entry radio" data-action="syntax" data-lang="javascript">JavaScript</div>
-          <div class="menu-entry radio" data-action="syntax" data-lang="typescript">TypeScript</div>
-          <div class="menu-entry radio" data-action="syntax" data-lang="html">HTML</div>
-          <div class="menu-entry radio" data-action="syntax" data-lang="css">CSS</div>
-          <div class="menu-entry radio" data-action="syntax" data-lang="json">JSON</div>
-          <div class="menu-entry radio" data-action="syntax" data-lang="xml">XML</div>
-          <div class="menu-entry radio" data-action="syntax" data-lang="python">Python</div>
-          <div class="menu-entry radio" data-action="syntax" data-lang="c">C / C++</div>
-          <div class="menu-entry radio" data-action="syntax" data-lang="java">Java</div>
-          <div class="menu-entry radio" data-action="syntax" data-lang="sql">SQL</div>
-          <div class="menu-entry radio" data-action="syntax" data-lang="markdown">Markdown</div>
-          <div class="menu-entry radio" data-action="syntax" data-lang="shell">Shell / Bash</div>
-          <div class="menu-entry radio" data-action="syntax" data-lang="php">PHP</div>
-          <div class="menu-entry radio" data-action="syntax" data-lang="ruby">Ruby</div>
-          <div class="menu-entry radio" data-action="syntax" data-lang="perl">Perl</div>
-          <div class="menu-entry radio" data-action="syntax" data-lang="go">Go</div>
-          <div class="menu-entry radio" data-action="syntax" data-lang="rust">Rust</div>
-          <div class="menu-entry radio" data-action="syntax" data-lang="csharp">C#</div>
+</div>
+
+<!-- Home Tab -->
+<div class="ribbon-panel active" data-panel="home" id="ribbon-home">
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="paste" title="Paste (Ctrl+V)">
+        <span class="rb-icon rb-icon-lg">&#128203;</span>
+        <span class="rb-label">Paste</span>
+      </button>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="cut" title="Cut (Ctrl+X)">
+          <span class="rb-icon">&#9986;</span><span class="rb-label">Cut</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="copy" title="Copy (Ctrl+C)">
+          <span class="rb-icon">&#128464;</span><span class="rb-label">Copy</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="delete" title="Delete (Del)">
+          <span class="rb-icon">&#10060;</span><span class="rb-label">Delete</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Clipboard</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="find" title="Find (Ctrl+F)">
+          <span class="rb-icon">&#128269;</span><span class="rb-label">Find</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="replace" title="Replace (Ctrl+H)">
+          <span class="rb-icon">&#128260;</span><span class="rb-label">Replace</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="goto-line" title="Go to Line (Ctrl+G)">
+          <span class="rb-icon">&#8618;</span><span class="rb-label">Go to Line</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="select-all" title="Select All (Ctrl+A)">
+          <span class="rb-icon">&#9744;</span><span class="rb-label">Select All</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="time-date" title="Time/Date (F5)">
+          <span class="rb-icon">&#128197;</span><span class="rb-label">Time/Date</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Editing</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="duplicate-line" title="Duplicate Line (Ctrl+D)">
+          <span class="rb-icon">&#128220;</span><span class="rb-label">Duplicate Line</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="comment-toggle" title="Toggle Comment (Ctrl+/)">
+          <span class="rb-icon">&#128172;</span><span class="rb-label">Toggle Comment</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Tools</div>
+  </div>
+</div>
+
+<!-- View Tab -->
+<div class="ribbon-panel" data-panel="view" id="ribbon-view">
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <label class="rb-check-label"><input type="checkbox" id="rb-word-wrap" checked> Word Wrap</label>
+        <label class="rb-check-label"><input type="checkbox" id="rb-line-numbers" checked> Line Numbers</label>
+        <label class="rb-check-label"><input type="checkbox" id="rb-show-whitespace"> Show Whitespace</label>
+      </div>
+      <div class="rb-stack">
+        <label class="rb-check-label"><input type="checkbox" id="rb-show-line-endings"> Show Line Endings</label>
+        <label class="rb-check-label"><input type="checkbox" id="rb-long-line-marker"> Long Line Marker</label>
+        <label class="rb-check-label"><input type="checkbox" id="rb-highlight-current-line" checked> Highlight Current Line</label>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Display</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <div class="rb-row">
+          <span class="rb-label" style="font-size: 10px; min-width: 50px;">Syntax:</span>
+          <select class="rb-select" id="rb-syntax-select" style="width: 120px;">
+            <option value="none">Plain Text</option>
+            <option value="javascript">JavaScript</option>
+            <option value="typescript">TypeScript</option>
+            <option value="html">HTML</option>
+            <option value="css">CSS</option>
+            <option value="json">JSON</option>
+            <option value="xml">XML</option>
+            <option value="python">Python</option>
+            <option value="c">C / C++</option>
+            <option value="java">Java</option>
+            <option value="sql">SQL</option>
+            <option value="markdown">Markdown</option>
+            <option value="shell">Shell / Bash</option>
+            <option value="php">PHP</option>
+            <option value="ruby">Ruby</option>
+            <option value="perl">Perl</option>
+            <option value="go">Go</option>
+            <option value="rust">Rust</option>
+            <option value="csharp">C#</option>
+          </select>
         </div>
       </div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="zoom-in">Zoom In<span class="shortcut">Ctrl++</span></div>
-      <div class="menu-entry" data-action="zoom-out">Zoom Out<span class="shortcut">Ctrl+-</span></div>
-      <div class="menu-entry" data-action="zoom-reset">Reset Zoom<span class="shortcut">Ctrl+0</span></div>
     </div>
+    <div class="ribbon-group-label">Syntax</div>
   </div>
-  <div class="menu-item" data-menu="settings">
-    Settings
-    <div class="menu-dropdown">
-      <div class="menu-entry" data-action="tab-settings">Tab Settings...</div>
-      <div class="menu-entry" data-action="font">Editor Font...</div>
-      <div class="menu-entry checkbox checked" data-action="auto-indent">Auto-Indent</div>
-      <div class="menu-entry checkbox" data-action="auto-close-brackets">Auto-Close Brackets</div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="tab-settings" title="Tab Settings">
+          <span class="rb-icon">&#8677;</span><span class="rb-label">Tab Settings</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="font" title="Editor Font">
+          <span class="rb-icon">&#127912;</span><span class="rb-label">Font</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <label class="rb-check-label"><input type="checkbox" id="rb-auto-indent" checked> Auto-Indent</label>
+        <label class="rb-check-label"><input type="checkbox" id="rb-auto-close-brackets"> Auto-Close Brackets</label>
+      </div>
     </div>
+    <div class="ribbon-group-label">Settings</div>
   </div>
-  <div class="menu-item" data-menu="encoding">
-    Encoding
-    <div class="menu-dropdown">
-      <div class="menu-entry radio checked" data-action="encoding" data-enc="utf-8">UTF-8</div>
-      <div class="menu-entry radio" data-action="encoding" data-enc="ascii">ASCII</div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="convert-crlf">Convert to CRLF (Windows)</div>
-      <div class="menu-entry" data-action="convert-lf">Convert to LF (Unix)</div>
-      <div class="menu-entry" data-action="convert-cr">Convert to CR (Mac Classic)</div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <div class="rb-row">
+          <label class="rb-radio-label"><input type="radio" name="rb-encoding" value="utf-8" checked> UTF-8</label>
+          <label class="rb-radio-label"><input type="radio" name="rb-encoding" value="ascii"> ASCII</label>
+        </div>
+        <div class="rb-row">
+          <button class="rb-btn rb-btn-sm" data-action="convert-crlf" title="Convert to CRLF">CRLF</button>
+          <button class="rb-btn rb-btn-sm" data-action="convert-lf" title="Convert to LF">LF</button>
+          <button class="rb-btn rb-btn-sm" data-action="convert-cr" title="Convert to CR">CR</button>
+        </div>
+      </div>
     </div>
+    <div class="ribbon-group-label">Encoding</div>
   </div>
-  <div class="menu-item" data-menu="help">
-    Help
-    <div class="menu-dropdown">
-      <div class="menu-entry" data-action="about">About Notepad</div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <div class="rb-row rb-zoom-row">
+          <button class="rb-btn rb-fmt" data-action="zoom-out" title="Zoom Out">&#8722;</button>
+          <input type="range" class="rb-zoom-slider" id="rb-zoom-slider" min="-5" max="10" value="0">
+          <button class="rb-btn rb-fmt" data-action="zoom-in" title="Zoom In">+</button>
+          <span class="rb-zoom-value" id="rb-zoom-value">100%</span>
+        </div>
+        <button class="rb-btn rb-btn-sm" data-action="zoom-reset" title="Reset Zoom (Ctrl+0)">
+          <span class="rb-icon">&#128269;</span><span class="rb-label">Reset Zoom</span>
+        </button>
+      </div>
     </div>
+    <div class="ribbon-group-label">Zoom</div>
   </div>
 </div>
 
@@ -156,6 +261,9 @@
   <span class="status-section status-mode clickable" id="status-mode" title="Click to toggle Insert/Overwrite">INS</span>
   <span class="status-section status-lang clickable" id="status-lang" title="Click to change syntax">Plain Text</span>
   <span class="status-section status-modified" id="status-modified"></span>
+  <span class="status-spacer"></span>
+  <input type="text" class="status-zoom-input" id="status-zoom" value="100%">
+  <input type="range" class="status-zoom-slider" id="status-zoom-slider" min="-5" max="10" value="0">
 </div>
 
 <!-- Find/Replace panel (non-modal) -->

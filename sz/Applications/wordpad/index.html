@@ -448,8 +448,13 @@
         <button class="rb-btn rb-btn-sm" data-action="zoom-page-width" title="Page Width">
           <span class="rb-label">Page Width</span>
         </button>
-        <button class="rb-btn rb-btn-sm" data-action="zoom-full-page" title="Full Page">
-          <span class="rb-label">Full Page</span>
+      </div>
+      <div class="rb-row">
+        <button class="rb-btn rb-btn-sm" data-action="zoom-full-page" title="Whole Page">
+          <span class="rb-label">Whole Page</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="zoom-two-pages" title="Two Pages">
+          <span class="rb-label">Two Pages</span>
         </button>
       </div>
     </div>
@@ -485,7 +490,7 @@
   <span class="status-section" id="status-chars">Characters: 0</span>
   <span class="status-section" id="status-lines">Lines: 0</span>
   <span class="status-spacer"></span>
-  <span class="status-section" id="status-zoom">100%</span>
+  <input type="text" class="status-zoom-input" id="status-zoom" value="100%">
   <input type="range" class="status-zoom-slider" id="status-zoom-slider" min="25" max="500" value="100">
 </div>
 
