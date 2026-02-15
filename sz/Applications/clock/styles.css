@@ -120,7 +120,7 @@
   }
   .cal-cw {
     font-size: 9px;
-    color: var(--sz-color-gray-text);
+    color: #2266cc;
     padding: 2px 3px 2px 0;
     text-align: right;
     white-space: nowrap;
@@ -129,7 +129,7 @@
   .cal-cw-header {
     font-size: 9px;
     font-weight: bold;
-    color: var(--sz-color-gray-text);
+    color: #2266cc;
     padding: 2px 3px 2px 0;
     text-align: right;
   }
@@ -165,7 +165,7 @@
     padding: 3px 0;
     border-top: 1px solid var(--sz-color-button-shadow);
   }
-  .cal-week-info .cw-number { font-weight: bold; }
+  .cal-week-info .cw-number { font-weight: bold; color: #2266cc; }
 
   /* Analog clock */
   .clock-face {
@@ -351,3 +351,19 @@
   .wc-mini-clock .clock-center { width: 3px; height: 3px; }
   .wc-card .wc-time { font-family: 'Lucida Console', monospace; font-size: 13px; margin: 2px 0; }
   .wc-card .wc-offset { font-size: 10px; color: var(--sz-color-gray-text); }
+
+  /* -- World map -- */
+  .wc-map-wrap {
+    border: 2px inset;
+    border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
+    margin-bottom: 8px;
+    line-height: 0;
+    overflow: hidden;
+  }
+  .wc-map-wrap svg { width: 100%; height: auto; display: block; }
+  .wc-map-land { fill: #5a7a4a; stroke: #4a6a3a; stroke-width: 0.5; }
+  .wc-map-night { fill: rgba(0,0,20,0.3); pointer-events: none; }
+  .wc-map-dot { fill: #aaa; stroke: #888; stroke-width: 0.3; cursor: pointer; }
+  .wc-map-dot:hover { fill: #ffcc00; stroke: #fff; stroke-width: 0.8; }
+  .wc-map-dot.active { fill: #ff4444; stroke: #fff; stroke-width: 0.6; }
+  .wc-map-label { font-size: 5px; fill: #fff; text-anchor: middle; pointer-events: none; paint-order: stroke; stroke: rgba(0,0,0,0.6); stroke-width: 0.8px; font-family: sans-serif; }

@@ -5,8 +5,19 @@
 <title>Date and Time</title>
 <script src="../sz-app-bootstrap.js"></script>
 <link rel="stylesheet" href="styles.css">
+<script defer src="vision-data.js"></script>
+  <script defer src="../vision-renderer.js"></script>
 </head>
 <body>
+
+<div class="menu-bar">
+  <div class="menu-item" data-menu="help">
+    Help
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="about">About Date and Time</div>
+    </div>
+  </div>
+</div>
 
 <div class="tab-bar" id="tab-bar"></div>
 <div class="tab-body" id="tab-body"></div>
@@ -15,6 +26,14 @@
 <div class="alarm-notification" id="alarm-notification">
   <div class="alarm-notif-label" id="alarm-notif-label"></div>
   <button class="xp-btn" id="alarm-notif-dismiss">Dismiss</button>
+</div>
+
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Date and Time</div>
+    <div class="dialog-body"></div>
+    <div class="dialog-buttons"><button data-result="ok">OK</button></div>
+  </div>
 </div>
 
 <script src="controller.js"></script>

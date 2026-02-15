@@ -35,6 +35,48 @@
     { label: 'Lagos (WAT)', tz: 'Africa/Lagos' },
   ];
 
+  /* City coordinates [longitude, latitude] for map markers */
+  const CITY_COORDS = {
+    'UTC': [0, 0],
+    'Europe/London': [-0.1, 51.5],
+    'Europe/Paris': [2.3, 48.9],
+    'Europe/Berlin': [13.4, 52.5],
+    'Europe/Moscow': [37.6, 55.8],
+    'Asia/Dubai': [55.3, 25.3],
+    'Asia/Kolkata': [88.4, 22.6],
+    'Asia/Bangkok': [100.5, 13.8],
+    'Asia/Shanghai': [121.5, 31.2],
+    'Asia/Tokyo': [139.7, 35.7],
+    'Australia/Sydney': [151.2, -33.9],
+    'Pacific/Auckland': [174.8, -36.8],
+    'Pacific/Honolulu': [-157.8, 21.3],
+    'America/Anchorage': [-149.9, 61.2],
+    'America/Los_Angeles': [-118.2, 34.1],
+    'America/Denver': [-105.0, 39.7],
+    'America/Chicago': [-87.6, 41.9],
+    'America/New_York': [-74.0, 40.7],
+    'America/Sao_Paulo': [-46.6, -23.5],
+    'Africa/Cairo': [31.2, 30.0],
+    'Africa/Nairobi': [36.8, -1.3],
+    'Africa/Lagos': [3.4, 6.5],
+  };
+
+  /* Simplified continent outlines — equirectangular, viewBox 0 0 360 180, x=lon+180, y=90-lat */
+  const MAP_LAND = [
+    'M10,28L25,30 40,28 55,40 58,48 62,56 70,66 80,70 90,72 98,80 100,64 104,54 106,49 110,47 114,45 125,40 125,35 120,27 115,20 90,18 50,20Z',
+    'M127,28L125,18 135,10 148,8 158,14 152,24 140,28Z',
+    'M102,83L108,80 120,82 132,88 145,95 143,105 138,112 130,120 122,128 115,135 110,145 105,137 100,108 100,95 102,87Z',
+    'M170,52L175,50 172,46 175,42 175,37 185,32 190,30 195,20 210,20 208,28 210,35 210,42 206,48 202,52 195,52 190,47 183,48Z',
+    'M170,55L180,56 190,58 200,60 210,60 212,68 210,78 206,90 200,102 195,110 190,118 196,125 190,122 180,118 174,112 170,105 166,95 163,85 162,75 164,65 167,58Z',
+    'M210,20L220,20 232,18 248,16 265,14 280,16 295,15 310,16 325,18 335,22 342,28 340,35 335,42 330,46 325,50 318,55 310,56 300,53 290,50 280,48 270,50 265,55 260,58 255,53 250,48 244,50 238,53 232,56 226,54 220,48 214,44 210,42Z',
+    'M250,55L258,58 262,65 258,75 252,78 248,72 248,62Z',
+    'M270,60L278,58 284,56 288,60 285,68 280,72 275,68 270,64Z',
+    'M318,42L322,36 325,30 324,42 320,48Z',
+    'M290,108L285,114 284,120 287,128 294,132 304,133 312,128 318,120 314,112 308,108 298,107Z',
+    'M350,118L352,124 350,132 348,126Z',
+    'M287,82L293,80 300,82 308,84 302,88 294,86Z',
+  ];
+
   function pad2(n) { return n < 10 ? '0' + n : '' + n; }
 
   function el(tag, attrs, children) {
@@ -670,6 +712,149 @@
 
   let worldClocks = [];
   let wcListEl = null;
+  let mapSvgEl = null;
+
+  function createWorldMap() {
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 360 180');
+    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+
+    const ocean = document.createElementNS(NS, 'rect');
+    ocean.setAttribute('width', '360');
+    ocean.setAttribute('height', '180');
+    ocean.setAttribute('fill', '#1a3a5c');
+    svg.appendChild(ocean);
+
+    /* Graticule */
+    const grid = document.createElementNS(NS, 'g');
+    grid.setAttribute('stroke', 'rgba(255,255,255,0.08)');
+    grid.setAttribute('stroke-width', '0.3');
+    grid.setAttribute('fill', 'none');
+    for (let lat = -60; lat <= 60; lat += 30) {
+      const line = document.createElementNS(NS, 'line');
+      line.setAttribute('x1', '0');
+      line.setAttribute('y1', String(90 - lat));
+      line.setAttribute('x2', '360');
+      line.setAttribute('y2', String(90 - lat));
+      grid.appendChild(line);
+    }
+    for (let lon = -150; lon <= 180; lon += 30) {
+      const line = document.createElementNS(NS, 'line');
+      line.setAttribute('x1', String(lon + 180));
+      line.setAttribute('y1', '0');
+      line.setAttribute('x2', String(lon + 180));
+      line.setAttribute('y2', '180');
+      grid.appendChild(line);
+    }
+    svg.appendChild(grid);
+
+    /* Continents */
+    for (const d of MAP_LAND) {
+      const path = document.createElementNS(NS, 'path');
+      path.setAttribute('d', d);
+      path.setAttribute('class', 'wc-map-land');
+      svg.appendChild(path);
+    }
+
+    /* Night overlay group */
+    const nightGroup = document.createElementNS(NS, 'g');
+    nightGroup.setAttribute('class', 'wc-map-night-group');
+    svg.appendChild(nightGroup);
+
+    /* City markers */
+    const markerGroup = document.createElementNS(NS, 'g');
+    for (const tz of TIMEZONES) {
+      const coords = CITY_COORDS[tz.tz];
+      if (!coords) continue;
+      const cx = coords[0] + 180;
+      const cy = 90 - coords[1];
+
+      const dot = document.createElementNS(NS, 'circle');
+      dot.setAttribute('cx', String(cx));
+      dot.setAttribute('cy', String(cy));
+      dot.setAttribute('r', '2');
+      dot.setAttribute('class', 'wc-map-dot');
+      dot.setAttribute('data-tz', tz.tz);
+
+      const title = document.createElementNS(NS, 'title');
+      title.textContent = tz.label;
+      dot.appendChild(title);
+
+      dot.addEventListener('pointerdown', () => {
+        if (!worldClocks.includes(tz.tz)) {
+          worldClocks.push(tz.tz);
+          saveJSON(STORAGE_WORLD_CLOCKS, worldClocks);
+          renderWorldClocks();
+        }
+      });
+
+      markerGroup.appendChild(dot);
+    }
+    svg.appendChild(markerGroup);
+
+    mapSvgEl = svg;
+    return svg;
+  }
+
+  function updateMapMarkers() {
+    if (!mapSvgEl) return;
+    const NS = 'http://www.w3.org/2000/svg';
+
+    const dots = mapSvgEl.querySelectorAll('.wc-map-dot');
+    for (const dot of dots)
+      dot.classList.toggle('active', worldClocks.includes(dot.getAttribute('data-tz')));
+
+    /* Labels for active cities */
+    mapSvgEl.querySelectorAll('.wc-map-label').forEach(l => l.remove());
+    for (const tz of worldClocks) {
+      const coords = CITY_COORDS[tz];
+      if (!coords) continue;
+      const cx = coords[0] + 180;
+      const cy = 90 - coords[1];
+      const label = document.createElementNS(NS, 'text');
+      label.setAttribute('x', String(cx));
+      label.setAttribute('y', String(cy - 4));
+      label.setAttribute('class', 'wc-map-label');
+      label.textContent = tz.split('/').pop().replace(/_/g, ' ');
+      mapSvgEl.appendChild(label);
+    }
+  }
+
+  function updateNightShade() {
+    if (!mapSvgEl) return;
+    const NS = 'http://www.w3.org/2000/svg';
+    const group = mapSvgEl.querySelector('.wc-map-night-group');
+    if (!group) return;
+    group.innerHTML = '';
+
+    const now = new Date();
+    const utcMins = now.getUTCHours() * 60 + now.getUTCMinutes();
+    /* Sun longitude: 180° at 00:00 UTC, 0° at 12:00 UTC */
+    const sunX = 360 - utcMins / 4;
+    const nightCenter = (sunX + 180) % 360;
+    const left = nightCenter - 90;
+    const right = nightCenter + 90;
+
+    const addRect = (x, w) => {
+      const rect = document.createElementNS(NS, 'rect');
+      rect.setAttribute('x', String(x));
+      rect.setAttribute('y', '0');
+      rect.setAttribute('width', String(w));
+      rect.setAttribute('height', '180');
+      rect.setAttribute('class', 'wc-map-night');
+      group.appendChild(rect);
+    };
+
+    if (left < 0) {
+      addRect(0, right);
+      addRect(left + 360, -left);
+    } else if (right > 360) {
+      addRect(left, 360 - left);
+      addRect(0, right - 360);
+    } else
+      addRect(left, right - left);
+  }
 
   function buildWorldClockTab(panel) {
     worldClocks = loadJSON(STORAGE_WORLD_CLOCKS, ['America/New_York', 'Europe/London', 'Asia/Tokyo']);
@@ -682,6 +867,11 @@
     addBar.appendChild(tzSelect);
     addBar.appendChild(addBtn);
     panel.appendChild(addBar);
+
+    /* World map */
+    const mapWrap = el('div', { className: 'wc-map-wrap' });
+    mapWrap.appendChild(createWorldMap());
+    panel.appendChild(mapWrap);
 
     wcListEl = el('div', { className: 'wc-list' });
     panel.appendChild(wcListEl);
@@ -762,6 +952,7 @@
       card.appendChild(el('div', { className: 'wc-offset', textContent: getOffsetFromLocal(tz) }));
       wcListEl.appendChild(card);
     }
+    updateMapMarkers();
     updateWorldClocks();
   }
 
@@ -789,6 +980,7 @@
         if (mHand) mHand.style.transform = `rotate(${mDeg}deg)`;
       } catch { /* timezone unsupported */ }
     }
+    updateNightShade();
   }
 
   // ================================================================
@@ -810,4 +1002,45 @@
   }
 
   init();
+
+  // ===== Menu system =====
+  ;(function() {
+    const menuBar = document.querySelector('.menu-bar');
+    if (!menuBar) return;
+    let openMenu = null;
+    function closeMenus() {
+      if (openMenu) { openMenu.classList.remove('open'); openMenu = null; }
+    }
+    menuBar.addEventListener('pointerdown', function(e) {
+      const item = e.target.closest('.menu-item');
+      if (!item) return;
+      const entry = e.target.closest('.menu-entry');
+      if (entry) {
+        const action = entry.dataset.action;
+        closeMenus();
+        if (action === 'about') {
+          const dlg = document.getElementById('dlg-about');
+          if (dlg) dlg.classList.add('visible');
+        }
+        return;
+      }
+      if (openMenu === item) { closeMenus(); return; }
+      closeMenus();
+      item.classList.add('open');
+      openMenu = item;
+    });
+    menuBar.addEventListener('pointerenter', function(e) {
+      if (!openMenu) return;
+      const item = e.target.closest('.menu-item');
+      if (item && item !== openMenu) { closeMenus(); item.classList.add('open'); openMenu = item; }
+    }, true);
+    document.addEventListener('pointerdown', function(e) {
+      if (openMenu && !e.target.closest('.menu-bar')) closeMenus();
+    });
+  })();
+
+  document.getElementById('dlg-about')?.addEventListener('click', function(e) {
+    if (e.target.closest('[data-result]'))
+      this.classList.remove('visible');
+  });
 })();
