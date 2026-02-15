@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cron Visualizer</title>
+  <script src="../sz-app-bootstrap.js"></script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+
+    <!-- Menu bar -->
+    <div class="menu-bar" id="menu-bar">
+      <div class="menu-item" data-menu="file">
+        File
+        <div class="menu-dropdown">
+          <div class="menu-entry" data-action="open">Open&#8230;<span class="shortcut">Ctrl+O</span></div>
+          <div class="menu-entry" data-action="save">Save As&#8230;<span class="shortcut">Ctrl+S</span></div>
+          <div class="menu-separator"></div>
+          <div class="menu-entry" data-action="clear">Clear</div>
+        </div>
+      </div>
+      <div class="menu-item" data-menu="edit">
+        Edit
+        <div class="menu-dropdown">
+          <div class="menu-entry" data-action="parse">Parse Crontab<span class="shortcut">Ctrl+Enter</span></div>
+          <div class="menu-entry" data-action="append">Append Builder Line</div>
+        </div>
+      </div>
+      <div class="menu-item" data-menu="help">
+        Help
+        <div class="menu-dropdown">
+          <div class="menu-entry" data-action="reference">Crontab Reference</div>
+          <div class="menu-separator"></div>
+          <div class="menu-entry" data-action="about">About Cron Visualizer</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="toolbar" id="toolbar">
+      <button class="tool-btn" data-action="open" title="Open Crontab (Ctrl+O)">&#128194;</button>
+      <button class="tool-btn" data-action="save" title="Save As (Ctrl+S)">&#128190;</button>
+      <span class="tool-separator"></span>
+      <button class="tool-btn" data-action="parse" title="Parse Crontab (Ctrl+Enter)">&#9654;</button>
+      <button class="tool-btn" data-action="clear" title="Clear All">&#10060;</button>
+      <span class="tool-separator"></span>
+      <button class="tool-btn" data-action="append" title="Append Builder Line">&#10010;</button>
+    </div>
+
+    <!-- Main content -->
+    <div class="content-area">
+
+      <!-- Left sidebar -->
+      <aside class="sidebar">
+
+        <details class="panel" open>
+          <summary class="panel-toggle"><h2>Builder</h2></summary>
+          <div class="panel-body">
+            <div class="field-row">
+              <label for="bMin">Minute</label>
+              <input id="bMin" value="*/15" spellcheck="false">
+            </div>
+            <div class="field-row">
+              <label for="bHour">Hour</label>
+              <input id="bHour" value="*" spellcheck="false">
+            </div>
+            <div class="field-row">
+              <label for="bDom">Day of Month</label>
+              <input id="bDom" value="*" spellcheck="false">
+            </div>
+            <div class="field-row">
+              <label for="bMon">Month</label>
+              <input id="bMon" value="*" spellcheck="false">
+            </div>
+            <div class="field-row">
+              <label for="bDow">Day of Week</label>
+              <input id="bDow" value="1-5" spellcheck="false">
+            </div>
+            <div class="field-row">
+              <label for="bCmd">Command</label>
+              <input id="bCmd" value="/usr/bin/echo hello" spellcheck="false">
+            </div>
+            <div class="button-row">
+              <button id="btnBuildPreview" class="btn">Preview</button>
+              <button id="btnAppend" class="btn">Append</button>
+            </div>
+            <div id="buildPreview" class="preview-box"></div>
+          </div>
+        </details>
+
+        <details class="panel">
+          <summary class="panel-toggle"><h2>Quick Reference</h2></summary>
+          <div class="panel-body reference-body">
+            <table class="ref-table">
+              <tr><td class="ref-sym">*</td><td>any value</td></tr>
+              <tr><td class="ref-sym">a,b</td><td>list of values</td></tr>
+              <tr><td class="ref-sym">a-b</td><td>range of values</td></tr>
+              <tr><td class="ref-sym">*/n</td><td>every n-th value</td></tr>
+              <tr><td class="ref-sym">a-b/n</td><td>stepped range</td></tr>
+            </table>
+            <div class="ref-section">
+              <strong>Months:</strong> jan&ndash;dec or 1&ndash;12<br>
+              <strong>Weekdays:</strong> sun&ndash;sat or 0&ndash;7<br>
+              <strong>Specials:</strong> @yearly @monthly @weekly @daily @hourly @reboot
+            </div>
+          </div>
+        </details>
+
+      </aside>
+
+      <!-- Right main area -->
+      <main class="main-area">
+        <section class="editor-section">
+          <div class="section-header">Crontab Input</div>
+          <textarea id="crontabInput" spellcheck="false" placeholder="# m h dom mon dow command&#10;*/5 * * * * /usr/bin/backup"></textarea>
+        </section>
+        <section class="table-section">
+          <div class="section-header">Parsed Entries</div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Schedule</th>
+                  <th>Command</th>
+                  <th>Meaning</th>
+                  <th>Next Runs</th>
+                </tr>
+              </thead>
+              <tbody id="resultBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+
+    </div>
+
+    <!-- Status bar -->
+    <div class="status-bar" id="status-bar">
+      <span class="status-section status-grow" id="statusMessage">Ready.</span>
+      <span class="status-section" id="statusEntries">0 entries</span>
+      <span class="status-section" id="statusFile">Untitled.crontab</span>
+    </div>
+
+  </div>
+
+  <!-- About dialog -->
+  <div id="aboutOverlay" class="dialog-overlay">
+    <div class="dialog">
+      <div class="dialog-title">About Cron Visualizer</div>
+      <div class="dialog-body">
+        <p><strong>Cron Visualizer</strong> helps you build, inspect and explain crontab entries.</p>
+        <p>Reference guide:</p>
+        <p><a href="#" id="aboutLink">https://linuxhandbook.com/crontab/</a></p>
+      </div>
+      <div class="dialog-actions">
+        <button id="btnAboutClose" class="btn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="controller.js"></script>
+</body>
+</html>
