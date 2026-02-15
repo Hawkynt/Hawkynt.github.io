@@ -4,96 +4,155 @@
 
   const SIDEBAR_SHORTCUTS = [
     { label: 'Documents', icon: '\uD83D\uDCC4', path: '/user/documents' },
-    { label: 'Desktop', icon: '\uD83D\uDDA5', path: '/user/desktop' },
-    { label: 'Computer', icon: '\uD83D\uDCBB', path: '/' },
-    { label: 'Temp', icon: '\uD83D\uDCC1', path: '/tmp' },
+    { label: 'Desktop', icon: '\uD83D\uDDA5\uFE0F', path: '/user/desktop' },
+    { label: 'Pictures', icon: '\uD83D\uDDBC\uFE0F', path: '/user/pictures' },
+    { label: 'System', icon: '\uD83D\uDCBB', path: '/system' },
   ];
 
+  function _formatSize(bytes) {
+    if (bytes == null) return '';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  const _FILE_TYPE_NAMES = {
+    txt: 'Text Document', log: 'Log File', cfg: 'Configuration File', ini: 'Configuration File',
+    js: 'JavaScript File', ts: 'TypeScript File', jsx: 'JSX File', tsx: 'TSX File',
+    css: 'CSS Stylesheet', html: 'HTML Document', htm: 'HTML Document',
+    json: 'JSON File', xml: 'XML Document', yml: 'YAML File', yaml: 'YAML File',
+    md: 'Markdown Document', markdown: 'Markdown Document',
+    py: 'Python Script', rb: 'Ruby Script', pl: 'Perl Script', php: 'PHP File',
+    java: 'Java Source', cs: 'C# Source', cpp: 'C++ Source', c: 'C Source', h: 'Header File',
+    go: 'Go Source', rs: 'Rust Source', sh: 'Shell Script', bat: 'Batch File',
+    sql: 'SQL Script', csv: 'CSV File', tsv: 'TSV File',
+    png: 'PNG Image', jpg: 'JPEG Image', jpeg: 'JPEG Image', gif: 'GIF Image',
+    bmp: 'Bitmap Image', svg: 'SVG Image', webp: 'WebP Image', ico: 'Icon File',
+    mp3: 'MP3 Audio', wav: 'WAV Audio', ogg: 'OGG Audio', flac: 'FLAC Audio',
+    mp4: 'MP4 Video', webm: 'WebM Video', m4a: 'M4A Audio',
+    pdf: 'PDF Document', rtf: 'Rich Text Document', doc: 'Word Document', docx: 'Word Document',
+    xls: 'Excel Spreadsheet', xlsx: 'Excel Spreadsheet',
+    bin: 'Binary File', dat: 'Data File', exe: 'Application', dll: 'DLL Library',
+    ttf: 'TrueType Font', otf: 'OpenType Font', woff: 'Web Font', woff2: 'Web Font',
+    diff: 'Diff File', patch: 'Patch File', cur: 'Cursor File',
+    lnk: 'Shortcut',
+  };
+
+  function _getFileType(name) {
+    const dot = name.lastIndexOf('.');
+    if (dot < 0) return 'File';
+    const ext = name.substring(dot + 1).toLowerCase();
+    return _FILE_TYPE_NAMES[ext] || (ext.toUpperCase() + ' File');
+  }
+
   class CommonDialogs {
-    #vfs;
+    #kernel;
     #overlay = null;
     #currentPath = '/user/documents';
-    #history = [];
-    #selectedFile = null;
     #resolve = null;
-    #mode = 'open'; // 'open' or 'save'
-    #filters = [];
-    #activeFilterIdx = 0;
-    #multiSelect = false;
-    #selectedFiles = new Set();
+    #mode = 'open'; // 'open' | 'save'
+    #selectedEntry = null;
+    #lastEntries = []; // unfiltered entries for re-filtering
 
     // DOM refs
     #titleEl;
-    #pathBar;
+    #pathInput;
+    #sidebar;
     #fileList;
     #filenameInput;
     #filterSelect;
     #okBtn;
+    #cancelBtn;
     #backBtn;
     #upBtn;
-    #uploadBtn;
-    #uploadInput;
-    #downloadBtn;
+    #history = [];
 
-    constructor(vfs) {
-      this.#vfs = vfs;
+    constructor(kernel) {
+      this.#kernel = kernel;
       this.#buildDOM();
     }
 
-    async showOpen({ filters, initialDir, multiSelect, title } = {}) {
+    async showOpen(options = {}) {
       this.#mode = 'open';
-      this.#filters = filters || [{ name: 'All Files', ext: ['*'] }];
-      this.#activeFilterIdx = 0;
-      this.#multiSelect = multiSelect || false;
-      this.#selectedFile = null;
-      this.#selectedFiles.clear();
-      this.#currentPath = initialDir || '/user/documents';
-      this.#history = [];
-
-      this.#titleEl.textContent = title || 'Open';
+      this.#titleEl.textContent = options.title || 'Open';
       this.#okBtn.textContent = 'Open';
       this.#filenameInput.value = '';
-      this.#uploadBtn.style.display = '';
-      this.#downloadBtn.style.display = 'none';
-      this.#populateFilters();
-
-      return new Promise((resolve) => {
-        this.#resolve = resolve;
-        this.#overlay.style.display = 'flex';
-        this.#navigateTo(this.#currentPath);
-        this.#filenameInput.focus();
-      });
-    }
-
-    async showSave({ filters, initialDir, defaultName, title } = {}) {
-      this.#mode = 'save';
-      this.#filters = filters || [{ name: 'All Files', ext: ['*'] }];
-      this.#activeFilterIdx = 0;
-      this.#multiSelect = false;
-      this.#selectedFile = null;
-      this.#selectedFiles.clear();
-      this.#currentPath = initialDir || '/user/documents';
+      this.#selectedEntry = null;
       this.#history = [];
-
-      this.#titleEl.textContent = title || 'Save As';
-      this.#okBtn.textContent = 'Save';
-      this.#filenameInput.value = defaultName || '';
-      this.#uploadBtn.style.display = 'none';
-      this.#downloadBtn.style.display = '';
-      this.#populateFilters();
-
-      return new Promise((resolve) => {
+      this.#populateFilters(options.filters);
+      return new Promise(resolve => {
         this.#resolve = resolve;
         this.#overlay.style.display = 'flex';
-        this.#navigateTo(this.#currentPath);
-        this.#filenameInput.focus();
-        this.#filenameInput.select();
+        this.#navigateTo(options.initialDir || '/user/documents');
       });
     }
 
-    // ── DOM construction ────────────────────────────────────────────
+    async showSave(options = {}) {
+      this.#mode = 'save';
+      this.#titleEl.textContent = options.title || 'Save As';
+      this.#okBtn.textContent = 'Save';
+      this.#filenameInput.value = options.defaultName || '';
+      this.#selectedEntry = null;
+      this.#history = [];
+      this.#populateFilters(options.filters);
+      return new Promise(resolve => {
+        this.#resolve = resolve;
+        this.#overlay.style.display = 'flex';
+        this.#navigateTo(options.initialDir || '/user/documents');
+      });
+    }
+
+    #matchesFilter(name) {
+      const pattern = this.#filterSelect.value;
+      if (!pattern || pattern === '*.*' || pattern === '*')
+        return true;
+      // pattern is like "*.txt;*.md" or "*.json"
+      const parts = pattern.split(';');
+      const lower = name.toLowerCase();
+      for (const p of parts) {
+        const ext = p.trim().replace(/^\*\.?/, '').toLowerCase();
+        if (!ext || ext === '*')
+          return true;
+        if (lower.endsWith('.' + ext))
+          return true;
+      }
+      return false;
+    }
+
+    #getFirstExtension() {
+      const pattern = this.#filterSelect.value;
+      if (!pattern || pattern === '*.*' || pattern === '*')
+        return '';
+      const first = pattern.split(';')[0].trim().replace(/^\*\.?/, '');
+      return (first && first !== '*') ? first : '';
+    }
+
+    #populateFilters(filters) {
+      this.#filterSelect.innerHTML = '';
+      if (filters && filters.length) {
+        for (const f of filters) {
+          const opt = document.createElement('option');
+          // Support both { pattern: '*.txt' } and { ext: ['txt','md'] } formats
+          if (f.ext) {
+            const exts = Array.isArray(f.ext) ? f.ext : [f.ext];
+            opt.value = exts.map(e => e === '*' ? '*.*' : '*.' + e).join(';');
+            opt.textContent = (f.name || f.label || 'Files') + ' (' + opt.value + ')';
+          } else {
+            opt.value = f.pattern || '*.*';
+            opt.textContent = f.label || f.pattern || 'All Files (*.*)';
+          }
+          this.#filterSelect.appendChild(opt);
+        }
+      } else {
+        const opt = document.createElement('option');
+        opt.value = '*.*';
+        opt.textContent = 'All Files (*.*)';
+        this.#filterSelect.appendChild(opt);
+      }
+    }
 
     #buildDOM() {
+      // Overlay
       this.#overlay = document.createElement('div');
       this.#overlay.className = 'sz-dlg-overlay';
       this.#overlay.style.display = 'none';
@@ -107,184 +166,148 @@
       this.#titleEl = document.createElement('span');
       this.#titleEl.className = 'sz-dlg-title';
       this.#titleEl.textContent = 'Open';
-      titlebar.appendChild(this.#titleEl);
-
       const closeBtn = document.createElement('span');
       closeBtn.className = 'sz-dlg-close-btn';
       closeBtn.textContent = '\u00D7';
       closeBtn.addEventListener('click', () => this.#cancel());
-      titlebar.appendChild(closeBtn);
-      win.appendChild(titlebar);
+      titlebar.append(this.#titleEl, closeBtn);
 
       // Toolbar
       const toolbar = document.createElement('div');
       toolbar.className = 'sz-dlg-toolbar';
-
       this.#backBtn = document.createElement('button');
-      this.#backBtn.textContent = '\u25C4';
+      this.#backBtn.textContent = '\u25C0';
       this.#backBtn.title = 'Back';
       this.#backBtn.disabled = true;
       this.#backBtn.addEventListener('click', () => this.#goBack());
-      toolbar.appendChild(this.#backBtn);
-
       this.#upBtn = document.createElement('button');
       this.#upBtn.textContent = '\u2191';
       this.#upBtn.title = 'Up one level';
       this.#upBtn.addEventListener('click', () => this.#goUp());
-      toolbar.appendChild(this.#upBtn);
+      this.#pathInput = document.createElement('div');
+      this.#pathInput.className = 'sz-dlg-path-bar';
+      toolbar.append(this.#backBtn, this.#upBtn, this.#pathInput);
 
-      this.#uploadInput = document.createElement('input');
-      this.#uploadInput.type = 'file';
-      this.#uploadInput.multiple = true;
-      this.#uploadInput.style.display = 'none';
-      this.#uploadInput.addEventListener('change', () => this.#handleUpload());
-
-      this.#uploadBtn = document.createElement('button');
-      this.#uploadBtn.textContent = 'Upload\u2026';
-      this.#uploadBtn.title = 'Upload files from your computer into this folder';
-      this.#uploadBtn.addEventListener('click', () => {
-        this.#uploadInput.value = '';
-        this.#uploadInput.click();
-      });
-      toolbar.appendChild(this.#uploadBtn);
-      toolbar.appendChild(this.#uploadInput);
-
-      this.#pathBar = document.createElement('div');
-      this.#pathBar.className = 'sz-dlg-path-bar';
-      this.#pathBar.addEventListener('click', () => this.#editPath());
-      toolbar.appendChild(this.#pathBar);
-      win.appendChild(toolbar);
-
-      // Body
+      // Body (sidebar + file list)
       const body = document.createElement('div');
       body.className = 'sz-dlg-body';
 
-      // Sidebar
-      const sidebar = document.createElement('div');
-      sidebar.className = 'sz-dlg-sidebar';
+      this.#sidebar = document.createElement('div');
+      this.#sidebar.className = 'sz-dlg-sidebar';
       for (const sc of SIDEBAR_SHORTCUTS) {
         const item = document.createElement('div');
         item.className = 'sz-dlg-sidebar-item';
-        item.innerHTML = `<span class="sz-dlg-sidebar-icon">${sc.icon}</span><span>${sc.label}</span>`;
+        const icon = document.createElement('span');
+        icon.className = 'sz-dlg-sidebar-icon';
+        icon.textContent = sc.icon;
+        const label = document.createElement('span');
+        label.textContent = sc.label;
+        item.append(icon, label);
         item.addEventListener('click', () => this.#navigateTo(sc.path));
-        sidebar.appendChild(item);
+        this.#sidebar.appendChild(item);
       }
-      body.appendChild(sidebar);
 
-      // File list
       this.#fileList = document.createElement('div');
       this.#fileList.className = 'sz-dlg-file-list';
-      body.appendChild(this.#fileList);
-      win.appendChild(body);
+      body.append(this.#sidebar, this.#fileList);
 
       // Footer
       const footer = document.createElement('div');
       footer.className = 'sz-dlg-footer';
 
-      // Row 1: filename
-      const row1 = document.createElement('div');
-      row1.className = 'sz-dlg-footer-row';
+      // Filename row
+      const fnRow = document.createElement('div');
+      fnRow.className = 'sz-dlg-footer-row';
       const fnLabel = document.createElement('label');
       fnLabel.textContent = 'File name:';
-      row1.appendChild(fnLabel);
       this.#filenameInput = document.createElement('input');
-      this.#filenameInput.type = 'text';
       this.#filenameInput.className = 'sz-dlg-filename-input';
+      this.#filenameInput.type = 'text';
+      this.#filenameInput.spellcheck = false;
       this.#filenameInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          this.#confirm();
-        }
-        if (e.key === 'Escape') {
-          e.preventDefault();
-          this.#cancel();
-        }
+        if (e.key === 'Enter') { e.preventDefault(); this.#confirm(); }
+        else if (e.key === 'Escape') { e.preventDefault(); this.#cancel(); }
       });
-      row1.appendChild(this.#filenameInput);
-      footer.appendChild(row1);
-
-      // Row 2: filter + buttons
-      const row2 = document.createElement('div');
-      row2.className = 'sz-dlg-footer-row';
-      const ftLabel = document.createElement('label');
-      ftLabel.textContent = 'Files of type:';
-      row2.appendChild(ftLabel);
-      this.#filterSelect = document.createElement('select');
-      this.#filterSelect.className = 'sz-dlg-filter-select';
-      this.#filterSelect.addEventListener('change', () => {
-        this.#activeFilterIdx = this.#filterSelect.selectedIndex;
-        this.#navigateTo(this.#currentPath);
-      });
-      row2.appendChild(this.#filterSelect);
-
-      const btnWrap = document.createElement('div');
-      btnWrap.className = 'sz-dlg-footer-buttons';
+      const btnGroup = document.createElement('div');
+      btnGroup.className = 'sz-dlg-footer-buttons';
       this.#okBtn = document.createElement('button');
       this.#okBtn.textContent = 'Open';
       this.#okBtn.addEventListener('click', () => this.#confirm());
-      btnWrap.appendChild(this.#okBtn);
+      this.#cancelBtn = document.createElement('button');
+      this.#cancelBtn.textContent = 'Cancel';
+      this.#cancelBtn.addEventListener('click', () => this.#cancel());
+      btnGroup.append(this.#okBtn, this.#cancelBtn);
+      fnRow.append(fnLabel, this.#filenameInput, btnGroup);
 
-      this.#downloadBtn = document.createElement('button');
-      this.#downloadBtn.textContent = 'Download to PC';
-      this.#downloadBtn.title = 'Save to VFS and also download a copy to your computer';
-      this.#downloadBtn.style.display = 'none';
-      this.#downloadBtn.addEventListener('click', () => this.#confirmAndDownload());
-      btnWrap.appendChild(this.#downloadBtn);
-
-      const cancelBtn = document.createElement('button');
-      cancelBtn.textContent = 'Cancel';
-      cancelBtn.addEventListener('click', () => this.#cancel());
-      btnWrap.appendChild(cancelBtn);
-      row2.appendChild(btnWrap);
-      footer.appendChild(row2);
-
-      win.appendChild(footer);
-      this.#overlay.appendChild(win);
-
-      // Keyboard handler on overlay
-      this.#overlay.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-          e.preventDefault();
-          this.#cancel();
-        }
-        if (e.key === 'Backspace' && document.activeElement !== this.#filenameInput) {
-          e.preventDefault();
-          this.#goUp();
-        }
+      // Filter row
+      const ftRow = document.createElement('div');
+      ftRow.className = 'sz-dlg-footer-row';
+      const ftLabel = document.createElement('label');
+      ftLabel.textContent = 'Files of type:';
+      this.#filterSelect = document.createElement('select');
+      this.#filterSelect.className = 'sz-dlg-filter-select';
+      this.#filterSelect.addEventListener('change', () => {
+        if (this.#lastEntries.length)
+          this.#renderEntries(this.#lastEntries);
       });
+      ftRow.append(ftLabel, this.#filterSelect);
 
+      footer.append(fnRow, ftRow);
+
+      // Assemble
+      win.append(titlebar, toolbar, body, footer);
+      this.#overlay.appendChild(win);
       document.body.appendChild(this.#overlay);
+
+      // Click outside window to cancel
+      this.#overlay.addEventListener('click', (e) => {
+        if (e.target === this.#overlay)
+          this.#cancel();
+      });
     }
 
-    // ── Navigation ──────────────────────────────────────────────────
-
     async #navigateTo(path) {
-      if (path !== this.#currentPath)
+      if (this.#currentPath !== path)
         this.#history.push(this.#currentPath);
       this.#currentPath = path;
+      this.#pathInput.textContent = path;
       this.#backBtn.disabled = this.#history.length === 0;
       this.#upBtn.disabled = path === '/';
-      this.#pathBar.textContent = path;
-      this.#selectedFile = null;
-      this.#selectedFiles.clear();
+      this.#selectedEntry = null;
 
-      // Update sidebar active state
-      for (const item of this.#overlay.querySelectorAll('.sz-dlg-sidebar-item'))
-        item.classList.remove('active');
-      const sidebarItems = this.#overlay.querySelectorAll('.sz-dlg-sidebar-item');
-      for (let i = 0; i < SIDEBAR_SHORTCUTS.length; ++i) {
-        if (SIDEBAR_SHORTCUTS[i].path === path)
-          sidebarItems[i]?.classList.add('active');
+      // Highlight active sidebar
+      for (const el of this.#sidebar.querySelectorAll('.sz-dlg-sidebar-item'))
+        el.classList.remove('active');
+      const idx = SIDEBAR_SHORTCUTS.findIndex(s => s.path === path);
+      if (idx >= 0) {
+        const items = this.#sidebar.querySelectorAll('.sz-dlg-sidebar-item');
+        if (items[idx]) items[idx].classList.add('active');
       }
 
       this.#fileList.innerHTML = '';
-      const emptyEl = document.createElement('div');
-      emptyEl.className = 'sz-dlg-empty';
-      emptyEl.textContent = 'Loading\u2026';
-      this.#fileList.appendChild(emptyEl);
+      const loading = document.createElement('div');
+      loading.className = 'sz-dlg-empty';
+      loading.textContent = 'Loading\u2026';
+      this.#fileList.appendChild(loading);
 
       try {
-        const entries = await this.#vfs.list(path);
+        const names = await this.#kernel.List(path);
+        const entries = [];
+        for (const name of names) {
+          try {
+            const stat = await this.#kernel.Stat(this.#joinPath(path, name));
+            entries.push({ name, ...stat });
+          } catch (e) {
+            entries.push({ name, kind: 'file' });
+          }
+        }
+        // Sort: dirs first, then alpha
+        entries.sort((a, b) => {
+          if (a.kind === 'dir' && b.kind !== 'dir') return -1;
+          if (a.kind !== 'dir' && b.kind === 'dir') return 1;
+          return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+        });
+        this.#lastEntries = entries;
         this.#renderEntries(entries);
       } catch (err) {
         this.#fileList.innerHTML = '';
@@ -297,179 +320,97 @@
 
     #renderEntries(entries) {
       this.#fileList.innerHTML = '';
-
-      // Apply filter to files (not dirs)
-      const filter = this.#filters[this.#activeFilterIdx];
-      const showAll = !filter || filter.ext.includes('*');
-
-      const filtered = entries.filter(e => {
-        if (e.type === 'dir') return true;
-        if (showAll) return true;
-        const ext = e.name.includes('.') ? e.name.split('.').pop().toLowerCase() : '';
-        return filter.ext.some(fe => fe.toLowerCase() === ext);
-      });
-
+      // Apply file type filter — directories always shown
+      const filtered = entries.filter(e => e.kind === 'dir' || this.#matchesFilter(e.name));
       if (filtered.length === 0) {
-        const emptyEl = document.createElement('div');
-        emptyEl.className = 'sz-dlg-empty';
-        emptyEl.textContent = 'This folder is empty.';
-        this.#fileList.appendChild(emptyEl);
+        const empty = document.createElement('div');
+        empty.className = 'sz-dlg-empty';
+        empty.textContent = 'This folder is empty.';
+        this.#fileList.appendChild(empty);
         return;
       }
-
       for (const entry of filtered) {
         const item = document.createElement('div');
         item.className = 'sz-dlg-file-item';
 
         const icon = document.createElement('span');
         icon.className = 'sz-dlg-file-icon';
-        icon.textContent = entry.type === 'dir' ? '\uD83D\uDCC1' : '\uD83D\uDCC4';
-        item.appendChild(icon);
+        icon.textContent = entry.kind === 'dir' ? '\uD83D\uDCC1' : '\uD83D\uDCC4';
 
         const name = document.createElement('span');
         name.className = 'sz-dlg-file-name';
         name.textContent = entry.name;
-        item.appendChild(name);
 
-        if (entry.type !== 'dir') {
-          const size = document.createElement('span');
-          size.className = 'sz-dlg-file-size';
-          size.textContent = entry.size != null ? this.#formatSize(entry.size) : '';
-          item.appendChild(size);
-        }
+        const typeEl = document.createElement('span');
+        typeEl.className = 'sz-dlg-file-type';
+        typeEl.textContent = entry.kind === 'dir' ? 'Folder' : _getFileType(entry.name);
 
-        item.addEventListener('click', (e) => {
-          if (entry.type === 'dir') {
-            // Single click on dir: just select it
-            this.#clearSelection();
-            item.classList.add('selected');
+        const sizeEl = document.createElement('span');
+        sizeEl.className = 'sz-dlg-file-size';
+        sizeEl.textContent = entry.kind === 'dir' ? '' : _formatSize(entry.size);
+
+        item.append(icon, name, typeEl, sizeEl);
+
+        item.addEventListener('click', () => {
+          // Deselect previous
+          for (const el of this.#fileList.querySelectorAll('.selected'))
+            el.classList.remove('selected');
+          item.classList.add('selected');
+          this.#selectedEntry = entry;
+          if (entry.kind !== 'dir')
             this.#filenameInput.value = entry.name;
-            this.#selectedFile = null;
-            return;
-          }
-          if (this.#multiSelect && e.ctrlKey) {
-            item.classList.toggle('selected');
-            if (item.classList.contains('selected'))
-              this.#selectedFiles.add(entry.name);
-            else
-              this.#selectedFiles.delete(entry.name);
-            this.#filenameInput.value = [...this.#selectedFiles].join('; ');
-          } else {
-            this.#clearSelection();
-            item.classList.add('selected');
-            this.#selectedFile = entry.name;
-            this.#selectedFiles.clear();
-            this.#selectedFiles.add(entry.name);
-            this.#filenameInput.value = entry.name;
-          }
         });
 
         item.addEventListener('dblclick', () => {
-          if (entry.type === 'dir') {
-            this.#navigateTo(this.#joinPath(this.#currentPath, entry.name));
-            return;
+          const newPath = this.#joinPath(this.#currentPath, entry.name);
+          if (entry.kind === 'dir')
+            this.#navigateTo(newPath);
+          else {
+            this.#filenameInput.value = entry.name;
+            this.#confirm();
           }
-          this.#selectedFile = entry.name;
-          this.#filenameInput.value = entry.name;
-          this.#confirm();
         });
 
         this.#fileList.appendChild(item);
       }
     }
 
-    #clearSelection() {
-      for (const el of this.#fileList.querySelectorAll('.sz-dlg-file-item'))
-        el.classList.remove('selected');
-    }
-
-    // ── Actions ─────────────────────────────────────────────────────
-
-    async #confirm() {
-      const filename = this.#filenameInput.value.trim();
-      if (!filename) return;
-
-      // Check if it's a directory name
-      const fullPath = this.#joinPath(this.#currentPath, filename);
-      try {
-        const entries = await this.#vfs.list(fullPath);
-        if (entries.length > 0 || filename.indexOf('.') === -1) {
-          // Might be a directory, try navigating
-          const exists = await this.#vfs.exists(fullPath);
-          if (exists) {
-            const listing = await this.#vfs.list(fullPath);
-            if (listing.length >= 0 && filename.indexOf('.') === -1) {
-              this.#navigateTo(fullPath);
-              return;
-            }
-          }
-        }
-      } catch (_) {
-        // Not a dir, treat as file
-      }
-
-      if (this.#mode === 'open') {
-        const path = this.#joinPath(this.#currentPath, filename);
-        try {
-          const content = await this.#vfs.read(path);
-          this.#close();
-          this.#resolve({ cancelled: false, path, content });
-        } catch (err) {
-          // File might not exist
-          this.#close();
-          this.#resolve({ cancelled: false, path, content: null, error: err.message });
-        }
-      } else {
-        // Save mode
-        let name = filename;
-        if (!name.includes('.')) {
-          // Add default extension from current filter
-          const filter = this.#filters[this.#activeFilterIdx];
-          if (filter && filter.ext.length > 0 && filter.ext[0] !== '*')
-            name += '.' + filter.ext[0];
-        }
-        const path = this.#joinPath(this.#currentPath, name);
-        this.#close();
-        this.#resolve({ cancelled: false, path });
-      }
-    }
-
-    #cancel() {
-      this.#close();
-      if (this.#resolve)
-        this.#resolve({ cancelled: true });
-    }
-
-    #close() {
-      this.#overlay.style.display = 'none';
-    }
-
     #goBack() {
-      if (this.#history.length > 0) {
-        const prev = this.#history.pop();
-        this.#currentPath = prev; // avoid re-pushing in navigateTo
-        this.#backBtn.disabled = this.#history.length === 0;
-        this.#navigateWithoutHistory(prev);
-      }
-    }
-
-    async #navigateWithoutHistory(path) {
-      this.#currentPath = path;
-      this.#upBtn.disabled = path === '/';
-      this.#pathBar.textContent = path;
-      this.#selectedFile = null;
-      this.#selectedFiles.clear();
-
+      if (this.#history.length === 0) return;
+      const prev = this.#history.pop();
+      const saveCurrent = this.#currentPath;
+      this.#currentPath = prev; // Set before navigateTo to avoid re-pushing
+      this.#pathInput.textContent = prev;
+      this.#backBtn.disabled = this.#history.length === 0;
+      this.#upBtn.disabled = prev === '/';
+      // Navigate without pushing to history
       this.#fileList.innerHTML = '';
-      try {
-        const entries = await this.#vfs.list(path);
+      const loading = document.createElement('div');
+      loading.className = 'sz-dlg-empty';
+      loading.textContent = 'Loading\u2026';
+      this.#fileList.appendChild(loading);
+      this.#kernel.List(prev).then(async (names) => {
+        const entries = [];
+        for (const name of names) {
+          try {
+            const stat = await this.#kernel.Stat(this.#joinPath(prev, name));
+            entries.push({ name, ...stat });
+          } catch { entries.push({ name, kind: 'file' }); }
+        }
+        entries.sort((a, b) => {
+          if (a.kind === 'dir' && b.kind !== 'dir') return -1;
+          if (a.kind !== 'dir' && b.kind === 'dir') return 1;
+          return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+        });
+        this.#lastEntries = entries;
         this.#renderEntries(entries);
-      } catch (err) {
+      }).catch(err => {
+        this.#fileList.innerHTML = '';
         const errEl = document.createElement('div');
         errEl.className = 'sz-dlg-empty';
         errEl.textContent = 'Error: ' + err.message;
         this.#fileList.appendChild(errEl);
-      }
+      });
     }
 
     #goUp() {
@@ -480,284 +421,55 @@
       this.#navigateTo(parent);
     }
 
-    async #handleUpload() {
-      const files = this.#uploadInput.files;
-      if (!files || files.length === 0) return;
-
-      let lastName = null;
-      for (const file of files) {
-        const content = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result);
-          reader.onerror = () => reject(reader.error);
-          if (file.type.startsWith('text/') || /\.(txt|html?|css|js|json|xml|csv|md|svg|ini|cfg|conf|log|sh|bat|ps1|py|rb|pl|java|cs|cpp|c|h|ts|tsx|jsx)$/i.test(file.name))
-            reader.readAsText(file);
-          else
-            reader.readAsArrayBuffer(file);
-        });
-
-        const path = this.#joinPath(this.#currentPath, file.name);
-        await this.#vfs.write(path, content);
-        lastName = file.name;
-      }
-
-      await this.#navigateTo(this.#currentPath);
-
-      if (lastName && !this.#multiSelect) {
-        this.#filenameInput.value = lastName;
-        this.#selectedFile = lastName;
-        this.#selectedFiles.clear();
-        this.#selectedFiles.add(lastName);
-        for (const el of this.#fileList.querySelectorAll('.sz-dlg-file-item')) {
-          const nameEl = el.querySelector('.sz-dlg-file-name');
-          if (nameEl && nameEl.textContent === lastName)
-            el.classList.add('selected');
-        }
-      }
-    }
-
-    async #confirmAndDownload() {
-      const filename = this.#filenameInput.value.trim();
+    async #confirm() {
+      let filename = this.#filenameInput.value.trim();
       if (!filename) return;
 
-      let name = filename;
-      if (!name.includes('.')) {
-        const filter = this.#filters[this.#activeFilterIdx];
-        if (filter && filter.ext.length > 0 && filter.ext[0] !== '*')
-          name += '.' + filter.ext[0];
+      // In save mode, auto-append extension if the filename has none
+      if (this.#mode === 'save' && !filename.includes('.')) {
+        const ext = this.#getFirstExtension();
+        if (ext)
+          filename += '.' + ext;
       }
 
-      const path = this.#joinPath(this.#currentPath, name);
+      const fullPath = this.#joinPath(this.#currentPath, filename);
 
-      // Attempt to read the file content for download; it may have just been
-      // written by the calling app (Save dialogs resolve first, then content
-      // is written).  We resolve with an extra flag so the caller can write
-      // the file, and we schedule the download for the next microtask so the
-      // VFS write from the caller has time to complete.
-      this.#close();
-      this.#resolve({ cancelled: false, path, downloadRequested: true });
-
-      // Give the caller a tick to write the file, then trigger the download.
-      await new Promise(r => setTimeout(r, 100));
       try {
-        const content = await this.#vfs.read(path);
-        const blob = this.#contentToDownloadBlob(content);
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = name;
-        a.style.display = 'none';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      } catch (_) {
-        // If the file hasn't been written yet, silently skip -- the caller
-        // received the path and can still save normally.
-      }
-    }
-
-    #base64ToBytes(base64) {
-      const compact = String(base64 || '').replace(/\s+/g, '');
-      const binary = atob(compact);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; ++i)
-        bytes[i] = binary.charCodeAt(i) & 0xff;
-      return bytes;
-    }
-
-    #contentToDownloadBlob(content) {
-      if (content instanceof Blob)
-        return content;
-
-      if (content instanceof ArrayBuffer)
-        return new Blob([content], { type: 'application/octet-stream' });
-
-      if (ArrayBuffer.isView(content))
-        return new Blob([content], { type: 'application/octet-stream' });
-
-      if (typeof content === 'string') {
-        const m = content.match(/^data:([^,]*),(.*)$/i);
-        if (m) {
-          const meta = m[1] || 'application/octet-stream';
-          const payload = m[2] || '';
-          const mime = (meta.split(';')[0] || 'application/octet-stream').trim();
-          if (/;\s*base64/i.test(meta)) {
-            try {
-              return new Blob([this.#base64ToBytes(payload)], { type: mime });
-            } catch (_) {
-              // fall through to plain text fallback
-            }
-          } else {
-            try {
-              const decoded = decodeURIComponent(payload);
-              const bytes = new Uint8Array(decoded.length);
-              for (let i = 0; i < decoded.length; ++i)
-                bytes[i] = decoded.charCodeAt(i) & 0xff;
-              return new Blob([bytes], { type: mime });
-            } catch (_) {
-              // fall through to plain text fallback
-            }
-          }
+        const stat = await this.#kernel.Stat(fullPath);
+        if (stat.kind === 'dir') {
+          this.#navigateTo(fullPath);
+          return;
+        }
+      } catch (e) {
+        // File doesn't exist — OK for save, check for open
+        if (this.#mode === 'open') {
+          // For open, the file must exist unless it's a new path
+          // Let it through — caller handles the error
         }
       }
 
-      return new Blob([content ?? ''], { type: 'text/plain;charset=utf-8' });
-    }
-
-    #editPath() {
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.className = 'sz-dlg-path-input';
-      input.value = this.#currentPath;
-      this.#pathBar.textContent = '';
-      this.#pathBar.appendChild(input);
-      input.focus();
-      input.select();
-
-      const finish = () => {
-        const val = input.value.trim();
-        input.remove();
-        this.#pathBar.textContent = this.#currentPath;
-        if (val && val !== this.#currentPath)
-          this.#navigateTo(val);
-      };
-
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); finish(); }
-        if (e.key === 'Escape') { e.preventDefault(); input.remove(); this.#pathBar.textContent = this.#currentPath; }
-      });
-      input.addEventListener('blur', finish);
-    }
-
-    // ── Helpers ─────────────────────────────────────────────────────
-
-    #populateFilters() {
-      this.#filterSelect.innerHTML = '';
-      for (const f of this.#filters) {
-        const opt = document.createElement('option');
-        opt.textContent = f.name + ' (' + f.ext.map(e => e === '*' ? '*.*' : '*.' + e).join(', ') + ')';
-        this.#filterSelect.appendChild(opt);
+      this.#close();
+      if (this.#resolve) {
+        this.#resolve({ cancelled: false, path: fullPath });
+        this.#resolve = null;
       }
-      this.#filterSelect.selectedIndex = this.#activeFilterIdx;
+    }
+
+    #cancel() {
+      this.#close();
+      if (this.#resolve) {
+        this.#resolve({ cancelled: true });
+        this.#resolve = null;
+      }
+    }
+
+    #close() {
+      this.#overlay.style.display = 'none';
     }
 
     #joinPath(base, name) {
       if (base === '/') return '/' + name;
       return base + '/' + name;
-    }
-
-    #formatSize(bytes) {
-      if (bytes < 1024) return bytes + ' B';
-      if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-      return (bytes / 1048576).toFixed(1) + ' MB';
-    }
-
-    // ── MessageBox dialog ────────────────────────────────────────────
-
-    showMessageBox(text, caption, flags) {
-      const MB_TYPEMASK = 0x0F;
-      const MB_ICONMASK = 0xF0;
-      const btnType = flags & MB_TYPEMASK;
-      const iconType = flags & MB_ICONMASK;
-
-      return new Promise((resolve) => {
-        const overlay = document.createElement('div');
-        overlay.className = 'sz-msgbox-overlay';
-
-        const box = document.createElement('div');
-        box.className = 'sz-msgbox';
-
-        // Title bar
-        const titlebar = document.createElement('div');
-        titlebar.className = 'sz-msgbox-titlebar';
-        const titleSpan = document.createElement('span');
-        titleSpan.textContent = caption || '';
-        titlebar.appendChild(titleSpan);
-
-        const closeBtn = document.createElement('span');
-        closeBtn.className = 'sz-msgbox-close';
-        closeBtn.textContent = '\u00D7';
-        closeBtn.addEventListener('click', () => finish(2)); // IDCANCEL
-        titlebar.appendChild(closeBtn);
-        box.appendChild(titlebar);
-
-        // Body
-        const body = document.createElement('div');
-        body.className = 'sz-msgbox-body';
-
-        // Icon
-        const iconEl = document.createElement('span');
-        iconEl.className = 'sz-msgbox-icon';
-        if (iconType === 0x10)      iconEl.textContent = '\u274C';  // error
-        else if (iconType === 0x20) iconEl.textContent = '\u2753';  // question
-        else if (iconType === 0x30) iconEl.textContent = '\u26A0';  // warning
-        else if (iconType === 0x40) iconEl.textContent = '\u2139';  // info
-        else                        iconEl.style.display = 'none';
-        body.appendChild(iconEl);
-
-        const textEl = document.createElement('span');
-        textEl.className = 'sz-msgbox-text';
-        textEl.textContent = text || '';
-        body.appendChild(textEl);
-        box.appendChild(body);
-
-        // Buttons
-        const btnBar = document.createElement('div');
-        btnBar.className = 'sz-msgbox-buttons';
-
-        const addBtn = (label, id) => {
-          const btn = document.createElement('button');
-          btn.textContent = label;
-          btn.addEventListener('click', () => finish(id));
-          btnBar.appendChild(btn);
-          return btn;
-        };
-
-        let firstBtn;
-        switch (btnType) {
-          case 1: // MB_OKCANCEL
-            firstBtn = addBtn('OK', 1);
-            addBtn('Cancel', 2);
-            break;
-          case 3: // MB_YESNOCANCEL
-            firstBtn = addBtn('Yes', 6);
-            addBtn('No', 7);
-            addBtn('Cancel', 2);
-            break;
-          case 4: // MB_YESNO
-            firstBtn = addBtn('Yes', 6);
-            addBtn('No', 7);
-            break;
-          default: // MB_OK
-            firstBtn = addBtn('OK', 1);
-            break;
-        }
-
-        box.appendChild(btnBar);
-        overlay.appendChild(box);
-        document.body.appendChild(overlay);
-
-        if (firstBtn)
-          firstBtn.focus();
-
-        // Keyboard
-        overlay.addEventListener('keydown', (e) => {
-          if (e.key === 'Escape') {
-            e.preventDefault();
-            finish(2); // IDCANCEL
-          }
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            finish(btnType === 4 ? 6 : btnType === 3 ? 6 : 1); // default button
-          }
-        });
-
-        function finish(result) {
-          overlay.remove();
-          resolve(result);
-        }
-      });
     }
   }
 
