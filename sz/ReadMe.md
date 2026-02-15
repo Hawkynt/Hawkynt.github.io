@@ -134,6 +134,7 @@ sz/
   Applications/
     manifest.js                 Inline app registry with file type associations (sets SZ.manifest)
     sz-app-bootstrap.js         DLL-like API library: SZ.Dlls.User32/Kernel32/GDI32/Shell32/ComDlg32/Advapi32, theme injection, WindowProc dispatch, standalone redirect
+    zoom-control.js             Reusable SZ.ZoomControl component (slider + buttons + text input) used by 9 apps
     libs/                       Vendored third-party libraries (offline-capable)
       mammoth.browser.min.js    DOCX→HTML converter (BSD-2)
       jszip.min.js              ZIP creation for DOCX export (MIT)
@@ -147,7 +148,7 @@ sz/
     media-player/               Audio/video player with visualization (Entertainment)
     minesweeper/                Classic Minesweeper game (Games)
     notepad/                    Plain text editor with VFS integration (Accessories)
-    paint/                      Bitmap drawing tool modeled after MS Paint (Accessories)
+    paint/                      Paint.NET-class bitmap editor with layers, effects, ribbon UI (Accessories)
     solitaire/                  Klondike solitaire card game (Games)
     task-manager/               Task manager with event-loop lag + NT-style graphs (hidden)
     terminal/                   Multi-shell terminal: cmd.exe + bash with VFS (System Tools)
@@ -161,6 +162,10 @@ sz/
     freecell/                   FreeCell card game (Games)
     spider-solitaire/           Spider solitaire card game (Games)
     function-plotter/           Mathematical function plotter with analysis (Office)
+    readme-generator/           Template-based README.md builder (Development)
+    resume-builder/             Resume builder with templates, wizard, and multi-format export (Office)
+    display-tester/             Display quality testing utility with 51 tests, WebGL2 HDR, and calibration tools (System Tools)
+    archiver/                   WinRAR-style archive manager with 69 format handlers (System Tools)
   assets/
     icons/
       recycle-bin.svg           Recycle Bin desktop icon
@@ -833,9 +838,9 @@ const result = await commonDialogs.showSave({
 // result: { cancelled: false, path: '/user/documents/file.txt' }
 ```
 
-**Dialog features**: XP-style sidebar (Documents, Desktop, Computer, Temp), directory navigation with history (back/up), editable path bar, file type filter dropdown, keyboard shortcuts (Escape/Enter/Backspace), skinned with CSS custom properties.
+**Dialog features**: XP-style sidebar (Documents, Desktop, Computer, Temp), directory navigation with history (back/up), editable path bar, file type filter dropdown, keyboard shortcuts (Escape/Enter/Backspace), skinned with CSS custom properties. The Open dialog includes an **Import** button for uploading files from the user's PC (browser file picker). The Save dialog includes a **Download** button for downloading files to the user's PC (when the app passes file content). These buttons appear automatically for all apps using the common dialogs.
 
-**Apps using common dialogs**: Notepad (text files), Paint (image files), WordPad (HTML/RTF files), Image Viewer (image files), Markdown Editor (markdown files), Hex Editor (binary files), Spreadsheet (CSV/TSV files). WordPad and Spreadsheet also support browser-native Import/Export for binary formats (DOCX, XLSX) via `ComDlg32.ImportFile()`/`ComDlg32.ExportFile()`.
+**Apps using common dialogs**: Notepad (text files), Paint (image files), WordPad (HTML/RTF files), Image Viewer (image files), Markdown Editor (markdown files), Hex Editor (binary files), Spreadsheet (CSV/TSV files), README Generator (markdown files), Resume Builder (markdown files). WordPad and Spreadsheet also support browser-native Import/Export for binary formats (DOCX, XLSX) via `ComDlg32.ImportFile()`/`ComDlg32.ExportFile()`.
 
 ### FileSystem (`js/filesystem.js`)
 
@@ -919,9 +924,24 @@ Provides Windows DLL-like API namespaces for all OS communication:
 - `SZ.Dlls.User32` -- window management (SetWindowText, DestroyWindow, MoveWindow, MessageBox, GetSystemMetrics, RegisterWindowProc)
 - `SZ.Dlls.Kernel32` -- VFS file operations (ReadFile, ReadAllText, ReadAllBytes, ReadUri, ReadValue, WriteFile, WriteAllBytes, WriteValue, WriteUri, FindFirstFile, DeleteFile, CreateDirectory, MoveFile, CopyFile, GetFileAttributes, GetCommandLine)
 - `SZ.Dlls.GDI32` -- system colors and fonts (GetSysColor, GetSysColorBrush, GetSystemFont)
-- `SZ.Dlls.Shell32` -- app launching and special folders (ShellExecute, SHGetFolderPath, SHFileOperation)
+- `SZ.Dlls.Shell32` -- app launching and special folders (ShellExecute, SHGetFolderPath, SHFileOperation, SHGetFileTypeAssociations)
 - `SZ.Dlls.ComDlg32` -- file open/save dialogs (GetOpenFileName, GetSaveFileName, ImportFile, ExportFile)
 - `SZ.Dlls.Advapi32` -- settings/registry (RegQueryValue, RegSetValue)
+
+### Zoom Control (`Applications/zoom-control.js`)
+
+Shared reusable component providing a unified status-bar zoom UI across nine applications. Attaches `SZ.ZoomControl` to the global namespace.
+
+**DOM created**: `<span class="sz-zoom-control">` containing a `-` button, range slider, `+` button, and editable text input.
+
+**API**:
+- `new SZ.ZoomControl(containerEl, { min, max, step, value, formatLabel, parseLabel, onChange, onZoomIn, onZoomOut })`
+- `ctrl.value = n` -- programmatic update (does not fire onChange)
+- `ctrl.destroy()` -- cleanup
+
+**CSS**: Injected once via `:where()` selectors (zero specificity) using `--sz-color-*` theme variables. Apps can override styles without `!important`.
+
+**Used by**: Spreadsheet, WordPad, Function Plotter, Markdown Editor, Notepad, Paint, Image Viewer, SVG Editor, Icon Editor.
 
 ### Pointer Handler (`js/pointer-handler.js`)
 
@@ -1329,7 +1349,7 @@ State width = image width / 3. State height = image height / (tripleImages ? 2 :
 ### Built-in Applications
 
 System apps (hosted / app.js -- require OS runtime):
-- [x] Explorer: Full file manager with VFS operations (new folder, delete, rename, copy, move, cut/paste), breadcrumb path bar with autocomplete dropdown, recursive search, forward/back history, multi-select (Ctrl/Shift+Click), context menus, toolbar with file operation buttons and overflow chevron, upload files from PC, download files to PC, double-click to run apps. Also browses SZ runtime object tree (read-only mode)
+- [x] Explorer: Full file manager with VFS operations (new folder, delete, rename, copy, move, cut/paste), breadcrumb path bar with autocomplete dropdown, recursive search, forward/back history, multi-select (Ctrl/Shift+Click), context menus, toolbar with file operation buttons and overflow chevron, upload files from PC, download files to PC, double-click to run apps, file-type-specific icons (document base with app badge overlay based on manifest file associations). Also browses SZ runtime object tree (read-only mode)
 - [x] Task Manager: Applications tab + Performance tab with real event-loop lag, NT-style canvas graphs
 - [x] Control Panel: Display Properties dialog with Themes (preset theme combos), Appearance (skin switching, color swatch previews, auto-scroll to current, sub-skin dropdown), Desktop (background selection, position mode), Pointers (mouse shadow, mouse trail, trail length slider with live preview), and Taskbar (auto-hide, show clock, clear MRU) tabs
 - [x] About: Version info, credits, system details
@@ -1338,22 +1358,22 @@ System apps (hosted / app.js -- require OS runtime):
 User apps (iframe / index.html -- can run standalone):
 - [x] Data Encryption: XOR cipher with hex encoding, key validation, swap/copy/clear buttons, error handling for malformed hex input, themed with skin colors
 - [x] Calculator: Classic calc.exe look with Standard, Scientific (sin/cos/tan/log/exp/pow/factorial/constants), and Programmer (hex/dec/oct/bin, bitwise ops, bit-length selector) modes, memory functions, keyboard support, themed
-- [x] Notepad: Notepad2-style text editor with syntax highlighting (JS, HTML, CSS, JSON, XML, Markdown, Python, SQL, C/C++, Java, Rust, Go, Ruby, PHP, Perl, YAML, TOML, INI, batch/shell), line numbers, current-line highlight, long line marker, bracket matching, auto-indent, zoom (Ctrl+scroll), configurable tab width/spaces, word wrap toggle, whitespace/line-ending visualization, Find/Replace panel with regex/case/whole-word, Go To Line, multiple encoding support (UTF-8/ASCII/Latin-1), line ending detection (CRLF/LF/CR), Font dialog, VFS integration, undo/redo, dirty tracking, print support, status bar (Ln/Col/selection/encoding/EOL/INS mode/language)
+- [x] Notepad: Notepad2-style text editor with Office-style ribbon UI (QAT, File backstage, Home/View tabs), syntax highlighting (JS, HTML, CSS, JSON, XML, Markdown, Python, SQL, C/C++, Java, Rust, Go, Ruby, PHP, Perl, YAML, TOML, INI, batch/shell), line numbers, current-line highlight, long line marker, bracket matching, auto-indent, zoom (Ctrl+scroll + ribbon/status bar slider), configurable tab width/spaces, word wrap toggle, whitespace/line-ending visualization, Find/Replace panel with regex/case/whole-word, Go To Line, multiple encoding support (UTF-8/ASCII/Latin-1), line ending detection (CRLF/LF/CR), Font dialog, VFS integration, undo/redo, dirty tracking, print support, status bar (Ln/Col/selection/encoding/EOL/INS mode/language/zoom slider)
 - [x] Minesweeper: Classic game with beginner/intermediate/expert/custom difficulty, flood fill, chording, LED counters, timer, Marks (?) toggle, best times persisted to localStorage, proper dialogs for custom field and best times
-- [x] Paint: Bitmap drawing tool (pencil, line, rectangle, ellipse, eraser, flood fill, text, eyedropper, selection), 28-color palette with FG/BG, line width selector, outline/filled mode, 20-step undo/redo, image operations (flip, rotate, resize), zoom (1x-8x via Ctrl+scroll or menu), VFS integration via common file dialog (open/save as PNG data URL)
+- [x] Paint: Paint.NET-class bitmap editor with Office-style ribbon UI (QAT, File backstage, Home/Image/Adjustments/Effects/View tabs), full layer system (add/delete/reorder/duplicate/merge/flatten, per-layer opacity and 12 blend modes, visibility toggles, thumbnail panel), mask-based selection (rectangular, lasso, magic wand with tolerance, add/subtract/intersect modes, marching ants, copy/cut/paste/paste-as-layer), 16 drawing tools (pencil, line, rectangle, ellipse, rounded-rect, polygon, bezier, eraser, flood fill, gradient, text, eyedropper, clone stamp, blur brush, sharpen brush, airbrush), image adjustments with live preview dialogs (brightness/contrast, hue/saturation, levels, invert, grayscale, sepia, auto levels), convolution effects with live preview (Gaussian blur, sharpen, noise, pixelate, edge detect, emboss), 28-color palette with FG/BG swap, brush size 1-100px, fill mode/brush shape/gradient mode selectors, 30-step per-layer undo/redo, image operations (flip H/V, rotate CW/CCW/180, resize, canvas size, crop to selection), zoom (1x-8x via Ctrl+scroll/slider/ribbon, pixel grid toggle, pan tool), VFS integration via common file dialog (open/save/export PNG/JPG)
 - [x] Terminal: Multi-shell terminal with shell selector dropdown. **cmd.exe** mode: full batch interpreter with IF/FOR/GOTO, variables, pipes, redirection, 40+ commands. **bash** mode: 50+ built-in commands (ls/grep/sed/awk/sort/cut/tr/wc/etc.), variable expansion ($VAR, ${VAR:-default}, ${#VAR}), command substitution ($(...) and backticks), pipes/redirects/logic chains, globbing, control flow (if/for/while/case), functions, aliases, tab completion, colored prompt, .sh script execution. Both shells share VFS integration, command history (up/down arrows), themed output
 - [x] Tetris: Classic Tetris with SRS rotation, 7-bag randomizer, ghost piece, hold queue, next-3 preview, scoring with levels/combos/T-spins, persistent high scores, keyboard controls
 - [x] Media Player: Audio/video player with playlist, visualization (bars/wave/circular), transport controls, volume/seek, shuffle/repeat modes, skin-themed chrome
 - [x] Solitaire: Klondike solitaire with canvas-rendered cards (suit symbols, no external assets), 7 tableau columns, 4 foundations, stock/waste, drag-and-drop, auto-complete with bouncing animation, draw-1/draw-3 modes, undo, timer/move counter
 - [x] Image Viewer: Image viewer/browser with zoom (Ctrl+scroll), rotate CW/CCW, fit-to-window, previous/next navigation through VFS directory, toolbar and status bar, opens images via common file dialog
-- [x] WordPad: Rich text editor with contentEditable, formatting toolbar (bold/italic/underline/strikethrough, font family/size, alignment, lists, indent, text color), VFS integration via common file dialog (saves as HTML), DOCX import (via mammoth.js) and export (via JSZip), RTF import/export (custom parser/generator), PDF export (via browser print dialog), dirty tracking
+- [x] WordPad: Rich text editor with Office-style ribbon UI (QAT, File backstage, Home/Insert/Page Layout/View tabs), contentEditable, formatting (bold/italic/underline/strikethrough, font family/size, alignment, lists, indent, text/highlight color), styles, page setup (size/orientation/margins), print/web/outline layout views, dynamic zoom (Page Width/Whole Page/Two Pages), VFS integration via common file dialog (saves as HTML), DOCX import (via mammoth.js) and export (via JSZip), RTF import/export (custom parser/generator), PDF export (via browser print dialog), dirty tracking
 - [x] Web Browser: Iframe-based web browser with address bar, back/forward/refresh/home/stop navigation, bookmarks bar (persisted to localStorage), built-in home page with bookmarks grid, status bar with loading indicator
 - [x] FreeCell: FreeCell solitaire with 4 free cells, 4 foundations, 8 tableau columns, canvas-rendered cards, drag-and-drop, auto-complete, undo, move counter
 - [x] Spider Solitaire: Spider solitaire with 1-suit/2-suit/4-suit difficulty modes, 10 tableau columns, 5 stock deals, canvas-rendered cards, drag-and-drop, undo, scoring
-- [x] Color Picker: Advanced color picker with multiple colorspaces (RGB, HSL, HSV, CMYK), hex/float/byte input modes, visual hue/saturation/lightness sliders, color preview, copy values
-- [x] Markdown Editor: Markdown editor with side-by-side live preview, syntax highlighting, VFS integration via common file dialog, toolbar for common formatting (headings, bold, italic, links, images, lists, code blocks)
+- [x] Color Picker: Advanced color picker with multiple colorspaces (RGB, HSL, HSV, CMYK), hex/float/byte input modes, visual hue/saturation/lightness sliders, color preview, copy values, dual-mode eyedropper (1px native picker, circle-average sampling via screen capture with magnifier loupe)
+- [x] Markdown Editor: Markdown editor with Office-style ribbon UI (QAT, File backstage, Home/Insert/View tabs), side-by-side live preview, syntax highlighting, VFS integration via common file dialog, formatting ribbon (headings, bold, italic, links, images, lists, code blocks, tables, blockquotes, horizontal rules), split/source/preview view modes, zoom (ribbon/status bar slider), Export as HTML, print support
 - [x] Hex Editor: Binary file editor with hex and ASCII views, offset column, byte-level editing, VFS integration via common file dialog, go-to-offset, search
-- [x] Spreadsheet: Excel-like spreadsheet with formula support (SUM, AVG, MIN, MAX, COUNT, IF, and arithmetic), cell references (A1 notation), multi-cell selection, column/row resize, VFS integration via common file dialog, CSV import/export, XLSX import/export (via SheetJS, multi-sheet support), TSV import/export
+- [x] Spreadsheet: Excel-like spreadsheet with Office-style ribbon UI (QAT, File backstage, Home/Insert/Format/Formulas/Data/View tabs), unlimited rows/columns (dynamic expansion via virtual scrolling), formula support (SUM, AVG, MIN, MAX, COUNT, IF, and arithmetic), cell references (A1 notation, multi-letter column names), multi-cell selection, column/row resize, VFS integration via common file dialog, CSV import/export, XLSX import/export (via SheetJS, multi-sheet support), TSV import/export, zoom (status bar slider + editable input), print support
 - [x] Font Viewer: Browse and preview all available fonts with customizable sample text, font size, and style (bold/italic/underline)
 - [x] JSON Viewer: Tree-based JSON viewer with collapsible nodes, syntax highlighting, VFS integration via common file dialog
 - [x] Regex Tester: Regular expression tester with flags (g/i/m/s/u), match highlighting, match list, replacement preview
@@ -1367,6 +1387,11 @@ User apps (iframe / index.html -- can run standalone):
 - [x] Cron Visualizer: Crontab expression builder and inspector with per-field inputs (minute/hour/dom/month/dow/command), live preview, multi-line crontab editor with parsed entries table (schedule/command/human-readable meaning/next runs), quick reference panel, special aliases (@yearly, @daily, etc.), VFS integration via common file dialog, menu bar (File/Edit/Help), toolbar, status bar with entry count (Development)
 - [x] Gradient Generator: CSS gradient builder with linear/radial/conic types, live preview, draggable color stop handles on a gradient track (click track to add, drag to reposition), per-stop color and position editor, Color Picker app integration for stop colors, type-specific controls (angle for linear, shape/size/position for radial, angle/position for conic), repeating gradient toggle, 8 built-in presets (sunset/ocean/rainbow/fire/forest/pastel/midnight/gold), syntax-highlighted CSS output with inline color swatches, CSS import via paste with robust parser (strips comments, finds gradients in arbitrary CSS, handles vendor prefixes, named/hex/rgb/hsl colors), copy to clipboard (Development)
 - [x] Skin Tester: WindowBlinds skin inspector with drag-and-drop or file-open for WBA/ZIP/UIS skin archives, skin and sub-skin/style selector dropdowns, 9-slice frame grid visualization (NW/N/NE/W/content/E/SW/S/SE cells), active/inactive state toggle, animation playback toggle, themed form control preview (buttons, text inputs, select, checkboxes, radios, textarea, slider, progress, scrollbar), info panel with skin metadata (System Tools)
+- [x] Display Tester: Comprehensive display quality testing utility with 51 tests across 8 categories (dead pixel detection, color accuracy, uniformity, FPS/refresh rate, motion/response time, HDR/dynamic range, geometry/sharpness, calibration tools), fullscreen mode (F11), WebGL2 HDR gradient and highlight clipping tests, animated FPS counter with min/avg/max graph, UFO per-FPS-lane test (24/25/30/50/60/75/100/120/144/165/240 fps lanes for refresh rate detection and motion interpolation), pursuit camera test, color banding with narrow-range gradients and dithering detection for 6-bit+FRC panels, uniformity sweep with adjustable brightness slider, viewing angle reference, burn-in/retention checker, input lag flasher (click-to-flash for slow-mo camera measurement), gray-to-gray 5x5 transition matrix, scrolling text readability test, subpixel layout identifier (RGB/BGR), moir\u00e9 pattern with adjustable spacing, 1px grid and checkerboard with adjustable sizing, text sharpness and aspect ratio tests, 12 interactive calibration tools (gamma calibration with adjustable slider, RGB balance with R/G/B gain sliders, Siemens star sharpness pattern with zone plate, contrast calibration with near-black/near-white patches, brightness calibration with 20 near-black patches, keystone grid for projector alignment, overscan detection with nested colored borders, color temperature reference with Kelvin selector, convergence test with RGB crosshair grid, backlight bleed test, screen ruler with credit card reference and DPI calibration, pixel clock/phase adjustment patterns), keyboard navigation (arrow keys cycle tests, Space pauses animations, 1-8 jump to category), ResizeObserver canvas scaling with devicePixelRatio, status bar with resolution/DPR/FPS (System Tools)
+- [x] README Generator: Template-based README.md builder with 5 presets (Standard Project, Minimal, Library/Package, CLI Tool, GitHub Profile), wizard and form editing modes, live markdown preview with resizable splitter, template editor (duplicate/customize/save to localStorage), quality score with warnings, markdown parser for importing existing READMEs, 11 field types (text, textarea, codeblock, list, checklist, table, tags, license, author, badges, images), badge builder with logo text input and autocomplete icon grid (full Simple Icons catalog fetched at runtime, 110-icon offline fallback), SZ Color Picker integration for precise color selection, dual-color support (label color + message color), per-badge placeholder overrides (user/repo/package) for support/sponsorship badges, VFS and browser file import/export, undo/redo, keyboard shortcuts, drag-and-drop .md import (Development)
+- [x] Resume Builder: Resume builder with 6 templates (Professional, Technical, Academic CV, Creative, Minimal, Entry-Level), 5 preview layouts (single-column, sidebar-left, dense-serif, accent-bar, clean-tight), wizard and form editing modes, 8 resume-specific field types (personal-info, experience-list, education-list, skills-grouped, certifications-list, projects-list, languages-list, references-list), 4 export formats (Markdown, Plain Text, PDF via print, DOCX Flat OPC XML), Markdown resume import parser, template editor with upload/download JSON and VFS load/save, completeness score with warnings, VFS file operations, undo/redo, keyboard shortcuts, drag-and-drop import (Office)
+- [x] Archiver: WinRAR/7-Zip-style archive manager with IArchiveFormat plugin architecture supporting 69 formats -- **Archive formats (25 writable)**: ZIP (Store/Deflate, ZipCrypto + AES-256), JAR/WAR/EAR, APK, EPUB, OOXML (DOCX/XLSX/PPTX), ODF (ODT/ODS/ODP), ZIPX, TAR, TAR.GZ/TGZ, TAR.BZ2/TBZ2, TAR.XZ/TXZ, TAR.ZST, TAR.LZMA/TLZ, TAR.LZ, 7z (Store + AES-256 + filename encryption), LZH/LHA, ARJ, CPIO (newc/odc), AR (.a/.lib), Base64, UUEncode, Intel HEX; **Compression (6 writable)**: GZIP, BZIP2, XZ, ZStandard, LZMA, LZIP; **Read-only archives (14)**: RAR (CDN unrar.js), SQX, ACE, ARC (SEA), ZOO, HA, StuffIt/StuffItX, PAK (Quake), ALZ, PEA, CAB (MSZIP), SHAR; **Read-only system/package (11)**: ISO 9660 (Joliet), WIM/ESD, XAR/PKG, MSI/OLE Compound, CHM, RPM, DEB, Unix Compress (.Z/LZW), NSIS, Parchive (.par/.par2), MAR (Mozilla); **Filesystem images (8)**: FAT12/16/32 (full directory listing + extraction), NTFS, EXT2/3/4, HFS+/HFSX, APFS, SquashFS, CramFS, UDF; **VM disk images (5)**: QCOW2, VHD, VHDX, VDI, VMDK; **Partition tables (2)**: GPT, MBR; **Disk images (1)**: DMG (Apple); dynamic per-format options panel (compression method/level, dictionary size, solid mode, encryption type, volume splitting, recovery records), format conversion, CDN graceful degradation, magic-byte detection, drag-and-drop, keyboard shortcuts (System Tools)
+- [x] Metadata Viewer: File analysis and metadata editor with magic-byte file identification (30+ formats), format-specific metadata parsing (JPEG EXIF/JFIF/GPS, PNG chunks, MP3 ID3v1/v2 with album art, FLAC, WAV, OGG, MP4/M4A ISO BMFF, MKV/WebM EBML, PDF, ZIP, PE/ELF/Mach-O executables, Java .class, fonts), 8-algorithm hash/checksum computation via Cipher project (MD5, SHA-1, SHA-256, SHA-512, SHA3-256, BLAKE3, CRC-32, Adler-32) with async chunked processing, inline metadata editing for MP3 ID3 tags and PNG text chunks with file reconstruction, embedded image extraction (EXIF thumbnails, album art, FLAC cover), hex preview, Shannon entropy and encoding detection, drag-and-drop, VFS integration, click-to-copy hashes, keyboard shortcuts, reusable parsers module for Explorer Properties dialog (Development)
 
 See [docs/appideas.md](docs/appideas.md) for the full application roadmap.
 
@@ -1469,7 +1494,7 @@ ESLint configured for ES2022 modules, browser globals.
 
 ### Planned Applications
 
-35 applications are currently implemented (4 system + 31 user apps). See [docs/appideas.md](docs/appideas.md) for the full application idea list with hosting format (iframe vs hosted) and status tracking.
+36 applications are currently implemented (4 system + 32 user apps). See [docs/appideas.md](docs/appideas.md) for the full application idea list with hosting format (iframe vs hosted) and status tracking.
 
 ### Virtual File System (VFS) — Implemented
 
