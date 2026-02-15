@@ -233,6 +233,16 @@
           <option value="1">1-bit (monochrome)</option>
         </select>
       </div>
+      <div class="settings-row">
+        <label><input type="checkbox" id="add-fill-current"> Fill from current image</label>
+      </div>
+      <div class="settings-row" id="add-fill-method-row" style="display:none;">
+        <label for="add-fill-method">Scale:</label>
+        <select id="add-fill-method">
+          <option value="nearest" selected>Nearest Neighbor</option>
+          <option value="bilinear">Bilinear</option>
+        </select>
+      </div>
       <div class="preset-sizes">
         <button data-size="16">16x16</button>
         <button data-size="24">24x24</button>
@@ -394,35 +404,29 @@
   </div>
 </div>
 
-<!-- Depth Reduction dialog -->
-<div class="dialog-overlay" id="dlg-depth-reduce">
-  <div class="dialog" style="min-width:340px;">
-    <div class="dialog-title">Reduce Color Depth</div>
+<!-- Quantization / Dithering Picker dialog (shared) -->
+<div class="dialog-overlay" id="dlg-dq-picker">
+  <div class="dialog dq-picker-dialog">
+    <div class="dialog-title">Choose Quantization &amp; Dithering</div>
     <div class="dialog-body">
-      <p id="depth-reduce-info">Reducing depth may lose colors.</p>
-      <div class="settings-row">
-        <label for="depth-quantizer">Quantizer:</label>
-        <select id="depth-quantizer"></select>
-      </div>
-      <div class="settings-row">
-        <label for="depth-dither">Ditherer:</label>
-        <select id="depth-dither"></select>
-      </div>
-      <div class="depth-preview-row">
-        <div class="depth-preview-box">
-          <div class="depth-preview-title">Before</div>
-          <canvas id="depth-preview-before" width="96" height="96"></canvas>
+      <p id="dq-picker-info" class="dq-picker-info"></p>
+      <div class="dq-columns">
+        <div class="dq-column-left">
+          <div class="dq-column-title">Quantizer</div>
+          <div class="dq-quant-list" id="dq-quant-list"></div>
+          <div class="dq-column-title" style="margin-top:6px;">Preview</div>
+          <canvas id="dq-combined-preview" width="128" height="128"></canvas>
         </div>
-        <div class="depth-preview-box">
-          <div class="depth-preview-title">After</div>
-          <canvas id="depth-preview-after" width="96" height="96"></canvas>
+        <div class="dq-column-right">
+          <div class="dq-column-title">Ditherer</div>
+          <div class="dq-dither-wrap">
+            <div class="dq-grid" id="dq-dither-grid"></div>
+          </div>
         </div>
       </div>
-      <p id="depth-preview-stats" class="depth-preview-stats"></p>
-      <p class="depth-warning">This operation modifies pixels and palette. Use Undo to revert.</p>
     </div>
     <div class="dialog-buttons">
-      <button data-result="ok">Apply</button>
+      <button data-result="ok" id="dq-btn-ok" disabled>OK</button>
       <button data-result="cancel">Cancel</button>
     </div>
   </div>
