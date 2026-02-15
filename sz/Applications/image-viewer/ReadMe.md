@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# Image Viewer
+# Image Viewer
 
 A lightweight image viewer for »SynthelicZ« that supports common image formats, zooming, rotation, and navigation between images in a directory.
 
@@ -101,4 +101,3 @@ Modeled after the classic Windows Photo Viewer and Windows XP image preview, pro
 - [ ] As a user, I want keyboard shortcuts for all toolbar actions
 - [ ] As a user, I want color-accurate rendering with ICC profile support
 - [ ] As a user, I want EXIF metadata displayed in a properties panel
-`})();

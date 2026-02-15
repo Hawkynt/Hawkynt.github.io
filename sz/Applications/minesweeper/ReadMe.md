@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# Minesweeper
+# Minesweeper
 
 A faithful recreation of the classic Windows Minesweeper game for the »SynthelicZ« desktop -- featuring Beginner, Intermediate, Expert, and Custom difficulty levels, a complete menu system, best times tracking, question mark support, and the iconic smiley face button.
 
@@ -114,4 +114,3 @@ A faithful recreation of the classic Windows Minesweeper (winmine.exe) from Wind
 - [ ] As a user, I can see a sound effect when revealing cells, flagging, winning, or losing
 - [ ] As a user, I can see an animation when winning the game
 - [ ] As a user, I can see the board use custom mine and flag images matching the skin
-`})();

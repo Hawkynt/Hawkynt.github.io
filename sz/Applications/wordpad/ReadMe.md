@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# WordPad
+# WordPad
 
 A rich text editor for »SynthelicZ« featuring a ribbon-style interface, full formatting controls, table editing, multi-format import/export, and a print-layout document view inspired by Microsoft WordPad and Word.
 
@@ -161,4 +161,3 @@ Modeled after Microsoft WordPad with visual and functional influences from Micro
 - [ ] As a user, I want drag-and-drop image insertion
 - [ ] As a user, I want to resize images by dragging handles
 - [ ] As a user, I want multi-level list support with custom numbering
-`})();

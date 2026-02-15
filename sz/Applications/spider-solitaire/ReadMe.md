@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# Spider Solitaire
+# Spider Solitaire
 
 A faithful recreation of the classic Windows Spider Solitaire card game for the »SynthelicZ« desktop, rendered entirely on a canvas with drag-and-drop card movement, multiple difficulty levels, and satisfying win animations.
 
@@ -100,4 +100,3 @@ Modeled after the classic Spider Solitaire included with Microsoft Windows XP an
 - [ ] As a user, I want keyboard-only navigation to select and move cards
 - [ ] As a user, I want screen reader announcements for game state changes
 - [ ] As a user, I want adjustable card sizes for better visibility
-`})();

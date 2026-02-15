@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# QR Code Generator
+# QR Code Generator
 
 A full-featured QR code generation tool built from scratch within the »SynthelicZ« desktop, with a complete QR encoder supporting versions 1-40, multiple input types, customizable rendering styles, logo overlay, and multi-format export.
 
@@ -100,4 +100,3 @@ Inspired by online QR generators like QRCode Monkey and the built-in QR features
 - [x] As a user, I can see system visual styles applied to the app
 - [ ] As a user, I can see a history of recently generated QR codes
 - [ ] As a user, I can switch between light and dark UI themes
-`})();

@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# Solitaire
+# Solitaire
 
 The classic Klondike card game with canvas-rendered cards, drag-and-drop, draw-1 and draw-3 modes, auto-complete, and a celebratory win animation -- a faithful desktop staple for »SynthelicZ«.
 
@@ -81,4 +81,3 @@ Modeled after the classic Microsoft Solitaire (sol.exe) from Windows 3.0 through
 - [x] As a user, I can press F2 to start a new game
 - [x] As a user, I can press Ctrl+Z to undo a move
 - [ ] As a user, I can use keyboard navigation to select and move cards without a mouse
-`})();

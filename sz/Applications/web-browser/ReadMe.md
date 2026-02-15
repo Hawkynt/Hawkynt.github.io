@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# Web Browser
+# Web Browser
 
 A web browser for »SynthelicZ« that loads pages directly via iframe when possible and falls back to a CORS proxy when sites block iframe embedding, complete with navigation history, bookmarks, and a new-tab page.
 
@@ -103,4 +103,3 @@ Inspired by early versions of Mozilla Firefox and Internet Explorer, with a simp
 - [ ] As a user, I want a privacy/incognito mode that does not save history
 - [ ] As a user, I want to see a favicon next to each bookmark
 - [ ] As a user, I want to see a loading progress indicator or spinner
-`})();

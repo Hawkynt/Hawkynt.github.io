@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# Tetris
+# Tetris
 
 The classic block-stacking puzzle game with standard rotation, ghost piece, next-piece preview, NES-style scoring, and high score tracking -- fast, addictive fun inside »SynthelicZ«.
 
@@ -87,4 +87,3 @@ Modeled after the classic NES Tetris and modern Tetris Guideline implementations
 - [ ] As a user, I can hear background music while playing
 - [ ] As a user, I can choose from different visual themes or skins
 - [ ] As a user, I can see particle effects when lines are cleared
-`})();

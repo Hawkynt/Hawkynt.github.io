@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# Media Player
+# Media Player
 
 An audio and video player with playlist management, audio visualization, transport controls, shuffle and repeat modes, and streaming URL support -- the all-in-one media hub for »SynthelicZ«.
 
@@ -91,4 +91,3 @@ Modeled after the classic Windows Media Player and Winamp -- combining a visual 
 - [x] As a user, I can see the current track name in the status bar
 - [x] As a user, I can see the playback state (Playing, Paused, Stopped) in the status bar
 - [ ] As a user, I can see the bitrate and format of the current file in the status bar
-`})();

@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# JSON Viewer
+# JSON Viewer
 
 A dual-pane JSON viewer and editor for inspecting, transforming, and managing JSON data inside the »SynthelicZ« desktop environment, featuring a raw text editor alongside an interactive collapsible tree view with real-time validation and search.
 
@@ -108,4 +108,3 @@ Inspired by standalone JSON editors like JSON Editor Online and the Chrome DevTo
 - [x] As a user, I can use Ctrl+Shift+F for Prettify
 - [x] As a user, I can use Ctrl+Shift+C for Copy All
 - [x] As a user, I can use F5 for Validate
-`})();
