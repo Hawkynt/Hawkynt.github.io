@@ -38,7 +38,34 @@
   const CONTAINER_TYPES = new Set(['object', 'array', 'map', 'set', 'instance', 'class', 'element']);
 
   function iconFor(type) { return ICONS[type] || ICONS.unknown; }
-  function iconForVfs(entry) { return entry.type === 'dir' ? ICONS.vfsFolder : ICONS.vfsFile; }
+
+  // Extract viewBox and inner content from an SVG string
+  function _parseAppSvg(svgText) {
+    const vbMatch = svgText.match(/viewBox="([^"]+)"/);
+    const viewBox = vbMatch ? vbMatch[1] : '0 0 16 16';
+    const inner = svgText.replace(/<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '');
+    return { viewBox, inner };
+  }
+
+  // Pre-extract inner content of the document icon for compositing
+  const _VFSFILE_PARSED = _parseAppSvg(ICONS.vfsFile);
+
+  function iconForVfsFile(name) {
+    const dot = name.lastIndexOf('.');
+    if (dot <= 0) return ICONS.vfsFile;
+    const ext = name.slice(dot + 1).toLowerCase();
+    const assoc = _fileAssocMap[ext];
+    if (!assoc) return ICONS.vfsFile;
+    const cached = _iconSvgCache.get(assoc.iconPath);
+    if (!cached) return ICONS.vfsFile;
+    return '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">'
+      + '<svg viewBox="' + _VFSFILE_PARSED.viewBox + '" width="32" height="32">' + _VFSFILE_PARSED.inner + '</svg>'
+      + '<rect x="17" y="17" width="15" height="15" rx="2" fill="#fff" stroke="#ccc" stroke-width=".5"/>'
+      + '<svg viewBox="' + cached.viewBox + '" x="18" y="18" width="13" height="13">' + cached.inner + '</svg>'
+      + '</svg>';
+  }
+
+  function iconForVfs(entry) { return entry.type === 'dir' ? ICONS.vfsFolder : iconForVfsFile(entry.name); }
 
   function treeIcon(type, open) {
     if (type === 'root') return ICONS.root;
@@ -67,6 +94,8 @@
   let activeRename = null;
   let viewMode = 'icons';
   let searchFilter = '';
+  let _fileAssocMap = {};
+  const _iconSvgCache = new Map();
 
   // DOM references
   const sidebar = document.getElementById('sidebar');
@@ -1821,24 +1850,96 @@
   }
 
   // -- Properties dialog --
-  function showProperties() {
+  async function showProperties() {
     if (selectedItems.length === 0) return;
     const sel = selectedItems[0];
     const entry = currentEntries.find(e => e.name === sel.name);
     if (!entry) return;
 
-    const lines = [];
-    lines.push('Name: ' + sel.name);
-    lines.push('Path: ' + formatPath(sel.path));
-    lines.push('Type: ' + (sel.isDir ? 'Folder' : 'File'));
-    if (!sel.isDir && entry.size != null)
-      lines.push('Size: ' + formatSize(entry.size));
-    if (isVfsMode)
-      lines.push('Location: VFS (localStorage)');
-    else
-      lines.push('Location: SZ Object Tree');
+    const overlay = document.getElementById('dlg-properties');
+    const tabsEl = document.getElementById('props-tabs');
+    const contentEl = document.getElementById('props-content');
+    document.getElementById('props-title').textContent = sel.name + ' - Properties';
 
-    showAlert(lines.join('\n'));
+    // General tab data
+    const generalFields = [
+      { label: 'Name', value: sel.name },
+      { label: 'Path', value: formatPath(sel.path) },
+      { label: 'Type', value: sel.isDir ? 'Folder' : 'File' },
+    ];
+    if (!sel.isDir && entry.size != null)
+      generalFields.push({ label: 'Size', value: formatSize(entry.size) });
+    generalFields.push({ label: 'Location', value: isVfsMode ? 'VFS (localStorage)' : 'SZ Object Tree' });
+
+    const allTabs = [{ name: 'General', fields: generalFields }];
+
+    // Try to parse metadata if parsers are available and it's a file
+    let filePath = sel.path;
+    if (!sel.isDir && isVfsMode && typeof SZ.MetadataParsers !== 'undefined') {
+      try {
+        const vfsPath = toVfsRelative(sel.path);
+        const bytes = await Kernel32.ReadAllBytes(vfsPath);
+        if (bytes && bytes.length > 0) {
+          const result = SZ.MetadataParsers.parse(bytes, sel.name);
+          if (result.fileType)
+            generalFields.splice(2, 1, { label: 'Type', value: result.fileType.name });
+          for (const cat of result.categories) {
+            if (cat.name === 'General') continue;
+            allTabs.push({ name: cat.name, fields: cat.fields.map(f => ({ label: f.label, value: f.value })) });
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Render tabs
+    let activeTab = 0;
+    function renderPropsTabs() {
+      tabsEl.innerHTML = '';
+      allTabs.forEach((tab, i) => {
+        const btn = document.createElement('button');
+        btn.className = 'props-tab' + (i === activeTab ? ' active' : '');
+        btn.textContent = tab.name;
+        btn.addEventListener('click', () => { activeTab = i; renderPropsTabs(); renderPropsContent(); });
+        tabsEl.appendChild(btn);
+      });
+    }
+
+    function renderPropsContent() {
+      contentEl.innerHTML = '';
+      const tab = allTabs[activeTab];
+      if (!tab) return;
+      const table = document.createElement('table');
+      table.className = 'props-table';
+      for (const field of tab.fields) {
+        const tr = document.createElement('tr');
+        const tdL = document.createElement('td');
+        tdL.className = 'props-label';
+        tdL.textContent = field.label;
+        tr.appendChild(tdL);
+        const tdV = document.createElement('td');
+        tdV.className = 'props-value';
+        tdV.textContent = String(field.value);
+        tr.appendChild(tdV);
+        table.appendChild(tr);
+      }
+      contentEl.appendChild(table);
+    }
+
+    renderPropsTabs();
+    renderPropsContent();
+
+    // "Open in Metadata Viewer" button
+    const mvBtn = document.getElementById('btn-open-metadata-viewer');
+    mvBtn.style.display = sel.isDir ? 'none' : '';
+    mvBtn.onclick = () => {
+      overlay.classList.remove('visible');
+      Shell32.ShellExecute('metadata-viewer', { file: isVfsMode ? toVfsRelative(sel.path) : sel.path });
+    };
+
+    // Show dialog
+    overlay.classList.add('visible');
+    overlay.querySelector('button[data-result="ok"]').addEventListener('click', () => overlay.classList.remove('visible'), { once: true });
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.classList.remove('visible'); }, { once: true });
   }
 
   function showFolderProperties() {
@@ -2280,6 +2381,34 @@
   });
 
   // =========================================================================
+  // File-type icon associations (async, fire-and-forget)
+  // =========================================================================
+  async function _loadFileAssociations() {
+    try {
+      _fileAssocMap = await Shell32.SHGetFileTypeAssociations();
+    } catch { return; }
+
+    const uniqueIcons = new Set();
+    for (const ext of Object.keys(_fileAssocMap)) {
+      const { iconPath } = _fileAssocMap[ext];
+      if (iconPath && !_iconSvgCache.has(iconPath))
+        uniqueIcons.add(iconPath);
+    }
+
+    await Promise.all([...uniqueIcons].map(async (iconPath) => {
+      try {
+        const resp = await fetch('../' + iconPath);
+        if (!resp.ok) return;
+        const text = await resp.text();
+        _iconSvgCache.set(iconPath, _parseAppSvg(text));
+      } catch { /* file:// CORS or network error — graceful fallback */ }
+    }));
+
+    if (isVfsMode)
+      render();
+  }
+
+  // =========================================================================
   // Init
   // =========================================================================
   _initObjectRoots();
@@ -2290,6 +2419,7 @@
   }
   buildTree();
   render();
+  _loadFileAssociations();
 
   // ===== Menu system =====
   ;(function() {

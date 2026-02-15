@@ -777,6 +777,10 @@
           return Promise.reject(new Error('Unknown operation: ' + op));
       }
     },
+
+    SHGetFileTypeAssociations() {
+      return _sendMessage('sz:getFileTypeAssociations', {}).then(r => r.associations || {});
+    },
   };
 
   // ── SZ.Dlls.ComDlg32 ───────────────────────────────────────────

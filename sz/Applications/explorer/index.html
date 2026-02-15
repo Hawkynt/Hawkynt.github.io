@@ -26,6 +26,7 @@
 <script src="../sz-app-bootstrap.js"></script>
 <link rel="stylesheet" href="styles.css">
 <script defer src="../vision-renderer.js"></script>
+<script defer src="../metadata-viewer/parsers.js"></script>
 </head>
 <body>
 <noscript><p>File explorer for browsing a virtual filesystem in your browser. <a href="../../index.html">Open »SynthelicZ« Desktop</a> to use this app.</p></noscript>
@@ -85,6 +86,20 @@
 <div class="status-bar">
   <span class="status-count" id="status-count"></span>
   <span class="status-info" id="status-info">&raquo;SynthelicZ&laquo; Explorer</span>
+</div>
+
+<div class="dialog-overlay" id="dlg-properties">
+  <div class="dialog properties-dialog">
+    <div class="dialog-title" id="props-title">Properties</div>
+    <div class="dialog-body" style="padding: 0;">
+      <div class="props-tabs" id="props-tabs"></div>
+      <div class="props-content" id="props-content"></div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-action="open-metadata-viewer" id="btn-open-metadata-viewer" style="margin-right: auto;">Open in Metadata Viewer</button>
+      <button data-result="ok">Close</button>
+    </div>
+  </div>
 </div>
 
 <div class="dialog-overlay" id="dlg-about">
