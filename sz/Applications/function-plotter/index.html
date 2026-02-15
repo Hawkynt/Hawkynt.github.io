@@ -8,6 +8,8 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="styles.css">
   <script src="../sz-app-bootstrap.js"></script>
+  <script defer src="vision-data.js"></script>
+  <script defer src="../vision-renderer.js"></script>
 </head>
 <body>
   <div class="plotter-app" id="plotterApp">
@@ -81,6 +83,15 @@
       <span id="statusFunctions">0 functions</span>
     </div>
   </div>
+
+  <div class="dialog-overlay" id="dlg-about">
+    <div class="dialog">
+      <div class="dialog-title">About Function Plotter</div>
+      <div class="dialog-body"></div>
+      <div class="dialog-buttons"><button data-result="ok">OK</button></div>
+    </div>
+  </div>
+
   <script defer src="controller.js"></script>
 </body>
 </html>

@@ -1355,7 +1355,7 @@
   document.querySelectorAll('.menu-item').forEach(item => {
     item.addEventListener('pointerdown', e => {
       e.stopPropagation();
-      if (e.target.closest('.menu-dropdown-item'))
+      if (e.target.closest('.menu-entry'))
         return;
       const dropdown = item.querySelector('.menu-dropdown');
       if (openMenu === dropdown) {
@@ -1379,7 +1379,7 @@
     });
   });
 
-  document.querySelectorAll('.menu-dropdown-item[data-action]').forEach(item => {
+  document.querySelectorAll('.menu-entry[data-action]').forEach(item => {
     item.addEventListener('click', e => {
       e.stopPropagation();
       const action = item.dataset.action;
@@ -1426,33 +1426,21 @@
    *  ABOUT DIALOG
    * ================================================================ */
 
-  const aboutBackdrop = document.getElementById('aboutBackdrop');
-  const aboutClose = document.getElementById('aboutClose');
-  const aboutOk = document.getElementById('aboutOk');
-
   function showAbout() {
-    aboutBackdrop.classList.add('visible');
+    const dlg = document.getElementById('dlg-about');
+    if (dlg) dlg.classList.add('visible');
   }
 
   function closeAbout() {
-    aboutBackdrop.classList.remove('visible');
+    const dlg = document.getElementById('dlg-about');
+    if (dlg) dlg.classList.remove('visible');
   }
-
-  aboutClose.addEventListener('click', closeAbout);
-  aboutOk.addEventListener('click', closeAbout);
-  aboutBackdrop.addEventListener('pointerdown', e => {
-    if (e.target === aboutBackdrop)
-      closeAbout();
-  });
 
   /* ================================================================
    *  SELECT GAME DIALOG
    * ================================================================ */
 
   const selectBackdrop = document.getElementById('selectBackdrop');
-  const selectClose = document.getElementById('selectClose');
-  const selectOk = document.getElementById('selectOk');
-  const selectCancel = document.getElementById('selectCancel');
   const gameNumInput = document.getElementById('gameNumInput');
 
   function showSelectGame() {
@@ -1477,10 +1465,15 @@
     newGame(num);
   }
 
-  selectClose.addEventListener('click', closeSelectGame);
-  selectCancel.addEventListener('click', closeSelectGame);
-  selectOk.addEventListener('click', confirmSelectGame);
-  selectBackdrop.addEventListener('pointerdown', e => {
+  selectBackdrop.addEventListener('click', e => {
+    const resultBtn = e.target.closest('[data-result]');
+    if (resultBtn) {
+      if (resultBtn.dataset.result === 'ok')
+        confirmSelectGame();
+      else
+        closeSelectGame();
+      return;
+    }
     if (e.target === selectBackdrop)
       closeSelectGame();
   });
@@ -1500,7 +1493,8 @@
    * ================================================================ */
 
   document.addEventListener('keydown', e => {
-    if (selectBackdrop.classList.contains('visible') || aboutBackdrop.classList.contains('visible')) {
+    const aboutDlg = document.getElementById('dlg-about');
+    if (selectBackdrop.classList.contains('visible') || (aboutDlg && aboutDlg.classList.contains('visible'))) {
       if (e.key === 'Escape') {
         closeSelectGame();
         closeAbout();
@@ -1537,5 +1531,10 @@
   User32.EnableVisualStyles();
   newGame(1);
   requestAnimationFrame(() => resizeCanvas());
+
+  document.getElementById('dlg-about')?.addEventListener('click', function(e) {
+    if (e.target.closest('[data-result]'))
+      this.classList.remove('visible');
+  });
 
 })();

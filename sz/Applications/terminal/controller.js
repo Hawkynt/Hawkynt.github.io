@@ -2536,4 +2536,16 @@
   shellSelect.value = initShell;
   switchShell(initShell);
 
+  const btnAbout = document.getElementById('btn-about');
+  if (btnAbout)
+    btnAbout.addEventListener('click', () => {
+      const dlg = document.getElementById('dlg-about');
+      if (dlg) dlg.classList.add('visible');
+    });
+
+  document.getElementById('dlg-about')?.addEventListener('click', function(e) {
+    if (e.target.closest('[data-result]'))
+      this.classList.remove('visible');
+  });
+
 })();

@@ -25,8 +25,7 @@
     btnBuildPreview: document.getElementById('btnBuildPreview'),
     btnAppend: document.getElementById('btnAppend'),
     buildPreview: document.getElementById('buildPreview'),
-    aboutOverlay: document.getElementById('aboutOverlay'),
-    btnAboutClose: document.getElementById('btnAboutClose'),
+    aboutOverlay: document.getElementById('dlg-about'),
     aboutLink: document.getElementById('aboutLink')
   };
 
@@ -473,9 +472,9 @@
     refs.btnBuildPreview.addEventListener('click', previewBuilder);
     refs.btnAppend.addEventListener('click', appendBuilderLine);
 
-    refs.btnAboutClose.addEventListener('click', hideAbout);
     refs.aboutOverlay.addEventListener('click', (e) => {
-      if (e.target === refs.aboutOverlay) hideAbout();
+      if (e.target === refs.aboutOverlay || e.target.closest('[data-result]'))
+        hideAbout();
     });
     refs.aboutLink.addEventListener('click', (e) => {
       e.preventDefault();

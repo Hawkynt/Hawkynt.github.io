@@ -1,54 +1,85 @@
-# Product Requirements Document: Subnet Calculator
+# Subnet Calculator
 
-## 1. Objective
+An IPv4 subnet calculator for the »SynthelicZ« desktop that computes network properties, displays binary representations with interactive bit toggling, and generates subnet division tables. It provides instant feedback as you type, with CIDR notation, subnet mask, and quick-select shortcuts.
 
-The Subnet Calculator is a utility for network administrators, students, and IT professionals using the SynthelicZ OS. It provides an intuitive interface to calculate and visualize IPv4 subnetting information, helping users understand network ranges, masks, and binary representations.
+## Product Requirements
 
-## 2. Target Audience
+### Purpose
+The Subnet Calculator provides »SynthelicZ« desktop users with a fast, interactive tool for computing IPv4 network properties and visualizing subnet boundaries. It eliminates the need to manually compute network addresses, broadcast addresses, and host ranges, and its interactive binary bit view makes it an effective teaching tool for understanding how subnet masks work at the bit level.
 
-*   Network administrators designing and troubleshooting networks.
-*   Students learning about networking fundamentals and subnetting.
-*   Software developers working with network configurations.
+### Key Capabilities
+- Instant IPv4 subnet computation showing network address, broadcast, host range, usable hosts, wildcard mask, IP class, and IP type
+- Interactive binary representation with clickable bits for toggling the CIDR boundary
+- Quick-select bar for common CIDR prefix lengths (/8 through /32)
+- Subnet division tables splitting the current network into 2 to 256 equal sub-subnets
+- Real-time input synchronization between CIDR prefix and subnet mask fields
+- Hex and integer IP representations with IP class and type detection (Private, Public, Loopback, Link-Local, Multicast, Reserved)
+- Clipboard export of all calculation results
 
-## 3. Core Features
+### Design Reference
+Modeled after classic network administrator utilities such as SolarWinds Subnet Calculator and the Advanced Subnet Calculator, with the addition of an interactive binary bit view for educational visualization.
 
-### 3.1. Feature: IP and Mask Input
-*   **Description:** Users can input an IPv4 address and a subnet mask to define the network they wish to analyze.
-*   **User Stories:**
-    *   As a user, I want to type an IPv4 address in a standard dotted-decimal format (e.g., `192.168.10.5`).
-    *   As a user, I want to provide a subnet mask either in CIDR notation (e.g., `/24`) or dotted-decimal format (e.g., `255.255.255.0`).
-    *   As a user, I want the application to automatically update the calculations whenever I change the IP address or the mask.
-*   **Acceptance Criteria:**
-    *   Input fields for IP and Mask are clearly labeled.
-    *   The Mask input field can accept both `/` prefixed numbers (1-32) and a full dotted-decimal mask.
-    *   Invalid inputs are handled gracefully, and calculated values are cleared or show an error state.
+### Technical Constraints
+- Runs inside an iframe within the »SynthelicZ« desktop shell
+- Pure HTML, CSS, and JavaScript with no external frameworks or build steps
+- Must function offline when opened from the file:// protocol
+- Themed via CSS custom properties injected by the »SynthelicZ« theme engine
 
-### 3.2. Feature: Calculated Network Properties
-*   **Description:** The application automatically calculates and displays key properties of the specified subnet.
-*   **User Stories:**
-    *   As a user, I want to instantly see the calculated Network Address for my IP and mask.
-    *   As a user, I want to see the Broadcast Address for the subnet.
-    *   As a user, I want to know the total number of hosts and the number of usable hosts in the subnet.
-    *   As a user, I want to see the range of usable host IP addresses.
-*   **Acceptance Criteria:**
-    *   All calculated fields are clearly labeled (Network, Broadcast, Usable Hosts, etc.).
-    *   Values update immediately upon a valid change to the IP or mask inputs.
-    *   Calculations are accurate according to standard IPv4 subnetting rules.
+## User Stories
 
-### 3.3. Feature: Interactive Bit-level Display
-*   **Description:** An interactive, binary representation of the IP address and subnet mask allows for direct manipulation and a deeper understanding of the subnetting process.
-*   **User Stories:**
-    *   As a user, I want to see the 32-bit binary representation of my IP Address, the Subnet Mask, the Network Address, and the Broadcast Address.
-    *   As a user, I want the binary representations to be aligned vertically in a clear, easy-to-read table.
-    *   As a user, I want to be able to click on any bit in the Subnet Mask row to flip it (0 to 1 or 1 to 0).
-    *   As a user, when I click a bit in the mask, I want all calculated values (dotted-decimal mask, CIDR, network address, etc.) to update instantly.
-*   **Acceptance Criteria:**
-    *   A view displays four rows of 32 bits each, separated into octets.
-    *   The rows correspond to the IP, Mask, Network, and Broadcast addresses.
-    *   The bits in the Subnet Mask row are interactive (clickable).
-    *   Clicking a mask bit updates the entire application state correctly.
-    *   The binary display updates when the user types a new IP address.
+### Core Calculation
+- [x] As a user, I can enter an IPv4 address and see all network properties calculated instantly
+- [x] As a user, I can enter a CIDR prefix length and see the corresponding subnet mask
+- [x] As a user, I can enter a subnet mask and see the corresponding CIDR prefix length
+- [x] As a user, I can see the network address for the given IP and mask
+- [x] As a user, I can see the broadcast address for the subnet
+- [x] As a user, I can see the first and last usable host addresses
+- [x] As a user, I can see the total number of addresses in the subnet
+- [x] As a user, I can see the number of usable host addresses
+- [x] As a user, I can see the wildcard mask
+- [x] As a user, I can see the IP class (A, B, C, D, E)
+- [x] As a user, I can see the IP type (Private, Public, Loopback, Link-Local, Multicast, Reserved)
+- [x] As a user, I can see the hexadecimal representation of the IP address
+- [x] As a user, I can see the integer representation of the IP address
+- [x] As a user, I can see correct handling of /31 and /32 special subnets
 
-## 4. UI/UX Vision
+### Binary Representation
+- [x] As a user, I can see the binary representation of the IP address, mask, network, and broadcast
+- [x] As a user, I can see network bits visually distinguished from host bits
+- [x] As a user, I can click on individual mask bits to toggle the CIDR boundary
+- [x] As a user, I can see bits organized into 4 octets for readability
 
-The application will have a single, clear view. The top section will contain the IP address and Subnet/CIDR input fields. Below this, a section will be dedicated to the calculated results, presented as a clean list of key-value pairs. The bottom and most prominent section will be the interactive bit-level view, designed for clarity and hands-on learning.
+### Quick CIDR Selection
+- [x] As a user, I can click quick-select buttons for common CIDR values (/8, /16, /24, /25, /26, /27, /28, /29, /30, /31, /32)
+- [x] As a user, I can see the currently active CIDR highlighted in the quick-select bar
+
+### Subnet Division
+- [x] As a user, I can divide the current subnet into 2, 4, 8, 16, 32, 64, 128, or 256 subnets
+- [x] As a user, I can see a table showing each sub-subnet's network, broadcast, host range, and host count
+- [x] As a user, I can see an error message when the division exceeds /32
+
+### Input Synchronization
+- [x] As a user, I can have the CIDR input automatically update the mask input and vice versa
+- [x] As a user, I can see all results update in real-time as I type
+- [x] As a user, I can see invalid IP addresses visually marked as invalid
+
+### Copy and Export
+- [x] As a user, I can copy all calculation results to the clipboard with Ctrl+Shift+C
+- [x] As a user, I can copy results via the Edit menu
+
+### User Interface
+- [x] As a user, I can see the IP class in the status bar
+- [x] As a user, I can see the IP type in the status bar
+- [x] As a user, I can see whether the input is valid in the status bar
+- [x] As a user, I can use a menu bar with Edit and Help menus
+- [x] As a user, I can see an About dialog
+
+### Aspirational Features
+- [ ] As a user, I want IPv6 subnet calculation support
+- [ ] As a user, I want to see a visual representation of subnet utilization as a bar or pie chart
+- [ ] As a user, I want to check if a specific IP address falls within a given subnet
+- [ ] As a user, I want to see the VLSM (Variable Length Subnet Masking) planner for dividing a network into subnets of different sizes
+- [ ] As a user, I want to see a supernet/aggregation calculator that combines multiple subnets
+- [ ] As a user, I want to save and load subnet configurations to/from files
+- [ ] As a user, I want to see a visual subnet map showing all subnets in a network as colored blocks
+- [ ] As a user, I want to convert between IP address formats (decimal, hex, binary, octal)

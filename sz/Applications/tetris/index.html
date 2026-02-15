@@ -13,19 +13,19 @@
 <!-- Menu Bar -->
 <div class="menu-bar" id="menuBar">
   <div class="menu-item" data-menu="game">Game
-    <div class="menu-dropdown" id="menuGame">
-      <div class="menu-dropdown-item" data-action="new">New Game<span class="shortcut">F2</span></div>
-      <div class="menu-dropdown-item" data-action="pause">Pause<span class="shortcut">P</span></div>
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="new">New Game<span class="shortcut">F2</span></div>
+      <div class="menu-entry" data-action="pause">Pause<span class="shortcut">P</span></div>
       <div class="menu-separator"></div>
-      <div class="menu-dropdown-item" data-action="high-scores">High Scores...</div>
+      <div class="menu-entry" data-action="high-scores">High Scores...</div>
       <div class="menu-separator"></div>
-      <div class="menu-dropdown-item" data-action="exit">Exit</div>
+      <div class="menu-entry" data-action="exit">Exit</div>
     </div>
   </div>
   <div class="menu-item" data-menu="help">Help
-    <div class="menu-dropdown" id="menuHelp">
-      <div class="menu-dropdown-item" data-action="controls">Controls...</div>
-      <div class="menu-dropdown-item" data-action="about">About Tetris</div>
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="controls">Controls...</div>
+      <div class="menu-entry" data-action="about">About Tetris</div>
     </div>
   </div>
 </div>
@@ -73,13 +73,10 @@
 </div>
 
 <!-- High Scores Dialog -->
-<div class="xp-dialog-backdrop" id="highScoresBackdrop">
-  <div class="xp-dialog">
-    <div class="xp-dialog-titlebar">
-      <span>High Scores</span>
-      <button class="xp-dialog-close" id="highScoresClose" type="button">x</button>
-    </div>
-    <div class="xp-dialog-body">
+<div class="dialog-overlay" id="highScoresBackdrop">
+  <div class="dialog">
+    <div class="dialog-title">High Scores</div>
+    <div class="dialog-body">
       <table class="high-scores-table">
         <thead>
           <tr><th>#</th><th>Score</th><th>Lines</th><th>Level</th></tr>
@@ -87,21 +84,18 @@
         <tbody id="highScoresBody"></tbody>
       </table>
     </div>
-    <div class="xp-dialog-buttons">
-      <button class="xp-btn" id="highScoresReset" type="button">Reset</button>
-      <button class="xp-btn" id="highScoresOk" type="button">OK</button>
+    <div class="dialog-buttons">
+      <button data-result="reset" type="button">Reset</button>
+      <button data-result="ok" type="button">OK</button>
     </div>
   </div>
 </div>
 
 <!-- Controls Dialog -->
-<div class="xp-dialog-backdrop" id="controlsBackdrop">
-  <div class="xp-dialog">
-    <div class="xp-dialog-titlebar">
-      <span>Controls</span>
-      <button class="xp-dialog-close" id="controlsClose" type="button">x</button>
-    </div>
-    <div class="xp-dialog-body">
+<div class="dialog-overlay" id="controlsBackdrop">
+  <div class="dialog">
+    <div class="dialog-title">Controls</div>
+    <div class="dialog-body">
       <table class="controls-table">
         <tr><td>Left / Right</td><td>Move piece</td></tr>
         <tr><td>Down</td><td>Soft drop</td></tr>
@@ -112,8 +106,8 @@
         <tr><td>F2</td><td>New Game</td></tr>
       </table>
     </div>
-    <div class="xp-dialog-buttons">
-      <button class="xp-btn" id="controlsOk" type="button">OK</button>
+    <div class="dialog-buttons">
+      <button data-result="ok" type="button">OK</button>
     </div>
   </div>
 </div>

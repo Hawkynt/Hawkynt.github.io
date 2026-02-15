@@ -5,30 +5,33 @@
 <title>Spider Solitaire</title>
 <script src="../sz-app-bootstrap.js"></script>
 <link rel="stylesheet" href="styles.css">
+<script defer src="vision-data.js"></script>
+  <script defer src="../vision-renderer.js"></script>
 </head>
 <body>
 
 <!-- Menu Bar -->
 <div class="menu-bar" id="menuBar">
   <div class="menu-item" data-menu="game">Game
-    <div class="menu-dropdown" id="menuGame">
-      <div class="menu-dropdown-item" data-action="new">New Game<span class="shortcut">F2</span></div>
-      <div class="menu-dropdown-item has-submenu">Difficulty
-        <div class="submenu">
-          <div class="menu-dropdown-item checked" data-action="diff1">1 Suit (Easy)</div>
-          <div class="menu-dropdown-item" data-action="diff2">2 Suits (Medium)</div>
-          <div class="menu-dropdown-item" data-action="diff4">4 Suits (Hard)</div>
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="new">New Game<span class="shortcut">F2</span></div>
+      <div class="menu-entry has-submenu">Difficulty
+        <span class="submenu-arrow">&#9656;</span>
+        <div class="menu-submenu">
+          <div class="menu-entry radio checked" data-action="diff1">1 Suit (Easy)</div>
+          <div class="menu-entry radio" data-action="diff2">2 Suits (Medium)</div>
+          <div class="menu-entry radio" data-action="diff4">4 Suits (Hard)</div>
         </div>
       </div>
       <div class="menu-separator"></div>
-      <div class="menu-dropdown-item" data-action="undo">Undo<span class="shortcut">Ctrl+Z</span></div>
+      <div class="menu-entry" data-action="undo">Undo<span class="shortcut">Ctrl+Z</span></div>
       <div class="menu-separator"></div>
-      <div class="menu-dropdown-item" data-action="exit">Exit</div>
+      <div class="menu-entry" data-action="exit">Exit</div>
     </div>
   </div>
   <div class="menu-item" data-menu="help">Help
-    <div class="menu-dropdown" id="menuHelp">
-      <div class="menu-dropdown-item" data-action="about">About Spider Solitaire</div>
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="about">About Spider Solitaire</div>
     </div>
   </div>
 </div>
@@ -47,13 +50,10 @@
 </div>
 
 <!-- Difficulty Dialog -->
-<div class="xp-dialog-backdrop" id="difficultyBackdrop">
-  <div class="xp-dialog">
-    <div class="xp-dialog-titlebar">
-      <span>New Game - Select Difficulty</span>
-      <button class="xp-dialog-close" id="difficultyClose" type="button">x</button>
-    </div>
-    <div class="xp-dialog-body">
+<div class="dialog-overlay" id="difficultyBackdrop">
+  <div class="dialog">
+    <div class="dialog-title">New Game - Select Difficulty</div>
+    <div class="dialog-body">
       <p style="font-weight:bold;margin-bottom:10px;">Select difficulty level:</p>
       <div class="difficulty-option">
         <input type="radio" name="difficulty" id="diff1" value="1" checked>
@@ -68,29 +68,26 @@
         <label for="diff4"><b>4 Suits (Hard)</b> &mdash; All four suits</label>
       </div>
     </div>
-    <div class="xp-dialog-buttons">
-      <button class="xp-btn" id="difficultyOk" type="button">OK</button>
-      <button class="xp-btn" id="difficultyCancel" type="button">Cancel</button>
+    <div class="dialog-buttons">
+      <button data-result="ok" type="button">OK</button>
+      <button data-result="cancel" type="button">Cancel</button>
     </div>
   </div>
 </div>
 
 <!-- About Dialog -->
-<div class="xp-dialog-backdrop" id="aboutBackdrop">
-  <div class="xp-dialog">
-    <div class="xp-dialog-titlebar">
-      <span>About Spider Solitaire</span>
-      <button class="xp-dialog-close" id="aboutClose" type="button">x</button>
-    </div>
-    <div class="xp-dialog-body">
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Spider Solitaire</div>
+    <div class="dialog-body">
       <p style="font-weight:bold;font-size:13px;margin-bottom:8px;">Spider Solitaire</p>
       <p>Build complete K&rarr;A same-suit sequences to win.</p>
       <p style="margin-top:4px;">Move descending runs of the same suit.</p>
       <p style="margin-top:4px;">Deal from stock adds one card to each column.</p>
       <p style="margin-top:12px;font-size:10px;opacity:0.7;">&copy; 1995-2026 &raquo;SynthelicZ&laquo;</p>
     </div>
-    <div class="xp-dialog-buttons">
-      <button class="xp-btn" id="aboutOk" type="button">OK</button>
+    <div class="dialog-buttons">
+      <button data-result="ok">OK</button>
     </div>
   </div>
 </div>

@@ -1,222 +1,125 @@
-# Product Requirements Document: Function Plotter
+# Function Plotter
 
-**Version:** 2.0
-**Scope:** Offline PWA with Symbolic Analysis
-**Target:** Web (Desktop & Mobile)
+A mathematical function plotting application for the »SynthelicZ« desktop with expression parsing, syntax highlighting, autocomplete, parametric curve families, and Kurvendiskussion-style analysis. It supports 42+ math functions and renders interactive, zoomable, pannable plots with real-time curve tracing.
 
-## 1. Objective
+## Product Requirements
 
-To provide SynthelicZ OS users with a professional-grade, offline-capable mathematical visualization tool. The app must bridge the gap between a standard graphing calculator and a computer algebra system, offering features like parameterized plotting ("Function Families") and deep mathematical analysis ("Kurvendiskussion") entirely client-side.
+### Purpose
+The Function Plotter brings a full-featured graphing calculator experience to the »SynthelicZ« desktop, allowing users to visualize mathematical functions, explore parametric curve families, and perform automated curve analysis (Kurvendiskussion). It serves students, educators, and anyone who needs to quickly plot and analyze mathematical expressions without installing a native application.
 
-## 2. Core Features
+### Key Capabilities
+- Multi-function plotting with distinct colors on an interactive, zoomable, pannable coordinate system
+- Rich expression language with 42+ functions including trigonometric, hyperbolic, logarithmic, and rounding functions plus implicit multiplication
+- Parametric curve families using a t-parameter with configurable range and step count
+- Automated Kurvendiskussion analysis: roots, extrema, inflection points, saddle points, monotonicity, discontinuities, and limits
+- Autocomplete with function descriptions and syntax-highlighted expression editing with error position marking
+- Real-time curve tracing with coordinate tooltips snapping to the nearest curve
+- PNG export at 2x resolution
 
-### 2.1. The Intelligent Editor
+### Design Reference
+Inspired by desktop graphing tools such as GeoGebra and the TI-84 graphing calculator interface, with additional curve analysis features drawn from the German mathematical tradition of Kurvendiskussion.
 
-* **Rich Text Input:** Replaces standard input fields. Supports syntax highlighting (Functions=Blue, Variables=Orange, Numbers=Green).
-* **Smart Autocomplete:** Suggests functions and constants as the user types (e.g., typing "hy" suggests `hypot`, `sinh`, etc.).
-* **Inline Tooltips:** Hovering over a function name (e.g., `acosh`) displays its mathematical definition and domain constraints.
+### Technical Constraints
+- Runs inside an iframe within the »SynthelicZ« desktop shell
+- Pure HTML, CSS, and JavaScript with no external frameworks or build steps
+- Must function offline when opened from the file:// protocol
+- Themed via CSS custom properties injected by the »SynthelicZ« theme engine
 
-### 2.2. Mathematical Engine (The "Brain")
+## User Stories
 
-* **Symbolic Processing:** Uses a Computer Algebra System (CAS) like `Nerdamer` to perform exact calculations for derivatives and roots.
-* **Numerical Fallback:** Uses `Math.js` or `Numeric.js` for plotting and when symbolic solutions are impossible.
-* **Standard & Extended Library:** Supports a massive array of Trigonometric, Hyperbolic, Logarithmic, and Rounding functions (detailed in User Stories).
+### Core Plotting
+- [x] As a user, I can enter mathematical expressions and see them plotted on a coordinate system
+- [x] As a user, I can add multiple functions and see them plotted simultaneously with distinct colors
+- [x] As a user, I can enable or disable individual functions to show/hide their curves
+- [x] As a user, I can delete functions from the list
+- [x] As a user, I can replot all functions on demand
+- [x] As a user, I can see a grid with major and minor lines on the coordinate plane
+- [x] As a user, I can see axis labels with automatically scaled tick marks
+- [x] As a user, I can see a legend panel listing all plotted functions with their colors
 
-### 2.3. Interactive Visualization
+### Expression Language
+- [x] As a user, I can use standard arithmetic operators (+, -, *, /, ^, **)
+- [x] As a user, I can use trigonometric functions (sin, cos, tan, cot, csc, sec)
+- [x] As a user, I can use inverse trigonometric functions (asin, acos, atan, atan2, acot, acsc, asec)
+- [x] As a user, I can use hyperbolic functions (sinh, cosh, tanh, coth, csch, sech)
+- [x] As a user, I can use inverse hyperbolic functions (asinh, acosh, atanh, acoth, acsch, asech)
+- [x] As a user, I can use logarithmic functions (log, log10, log2, logn)
+- [x] As a user, I can use rounding functions (floor, ceil, trunc, round with mode parameter)
+- [x] As a user, I can use utility functions (abs, sign, pow, sqrt, cbrt, exp, hypot)
+- [x] As a user, I can use constants pi and e in expressions
+- [x] As a user, I can use function aliases (ceiling, truncate, arsinh, etc.)
+- [x] As a user, I can use implicit multiplication (e.g., 2x instead of 2*x)
 
-* **Infinite Canvas:** A 2D Cartesian plane supporting infinite panning and zooming.
-* **Smart Grid:** Grid lines and axis labels that adapt density based on zoom level.
-* **Tracing:** Hovering the curve displays the exact  coordinate in a tooltip.
-* **Discontinuity Handling:** Correctly handles asymptotes (e.g., ) without drawing vertical "jump" lines.
+### Parametric Families
+- [x] As a user, I can use a parameter "t" in expressions to create curve families
+- [x] As a user, I can specify the parameter range (from, to) and step count for t
+- [x] As a user, I can see all curves in a family plotted with color variations
+- [x] As a user, I can see t-value labels on each curve in a family
+- [x] As a user, I can click on a specific curve in a family to select it for analysis
 
-### 2.4. Function Families (Parameterized Plots)
+### Autocomplete and Editing
+- [x] As a user, I can see autocomplete suggestions as I type function names
+- [x] As a user, I can navigate autocomplete suggestions with keyboard arrows and select with Enter/Tab
+- [x] As a user, I can see function descriptions and domain information in autocomplete items
+- [x] As a user, I can see a tooltip with function info when my cursor is on a function name
+- [x] As a user, I can see syntax-highlighted expressions in the function list
+- [x] As a user, I can see parse error positions highlighted in the expression
 
-* **Variable Detection:** Automatically detects the parameter  in expressions like .
-* **Control Panel:** Provides two modes to define :
-1. **Range Mode:** Min, Max, Step.
-2. **List Mode:** Explicit values (e.g., `2, 4, 8`).
+### Curve Analysis (Kurvendiskussion)
+- [x] As a user, I can see automatically computed roots (zeros) of the function
+- [x] As a user, I can see the y-intercept value
+- [x] As a user, I can see local extrema (maxima and minima) with coordinates
+- [x] As a user, I can see inflection points with coordinates
+- [x] As a user, I can see saddle points with coordinates
+- [x] As a user, I can see monotonicity intervals (increasing/decreasing)
+- [x] As a user, I can see discontinuities and poles marked with dashed vertical lines
+- [x] As a user, I can see limits as x approaches positive and negative infinity
+- [x] As a user, I can see symbolic polynomial form and derivatives when applicable
+- [x] As a user, I can see analysis markers (dots) on the plot at roots, extrema, and inflection points
+- [x] As a user, I can hover over markers to see their coordinates in a tooltip
 
+### Navigation and Zoom
+- [x] As a user, I can pan the view by dragging on the canvas
+- [x] As a user, I can zoom in and out using the mouse wheel at the cursor position
+- [x] As a user, I can zoom in and out via menu commands and keyboard shortcuts
+- [x] As a user, I can reset the view to the default viewport
+- [x] As a user, I can see the current zoom percentage in the status bar
 
-* **Rendering:** Plots multiple curves simultaneously with color variations.
+### Tracing and Interaction
+- [x] As a user, I can see real-time coordinate values as I move the mouse over the plot
+- [x] As a user, I can see a trace tooltip snapping to the nearest curve with x, y, and t values
+- [x] As a user, I can click on a curve to select it and trigger analysis for that specific function
+- [x] As a user, I can see the selected curve drawn thicker than non-selected curves
 
-### 2.5. Analysis Module ("Kurvendiskussion")
+### Export
+- [x] As a user, I can export the plot as a PNG image at 2x resolution
 
-* **Automatic Analysis:** Calculates properties of  in a background Web Worker.
-* **Scope:** Roots, Y-Intercepts, Extrema (Min/Max), Inflection Points, Saddle Points, Monotony Intervals, Continuity/Poles.
-* **Visual Feedback:** Marks these critical points on the graph with interactive icons.
+### View Options
+- [x] As a user, I can toggle grid visibility
+- [x] As a user, I can toggle axis label visibility
+- [x] As a user, I can switch between light and dark mode
 
----
+### Keyboard Shortcuts
+- [x] As a user, I can use Ctrl+N to clear all functions
+- [x] As a user, I can use Ctrl+Shift+N to add a new function
+- [x] As a user, I can use Ctrl+Enter to replot all functions
+- [x] As a user, I can use Ctrl+E to export as PNG
+- [x] As a user, I can use Ctrl+0 to reset the view
+- [x] As a user, I can use Ctrl++/- to zoom in/out
 
-# 📝 Exhaustive User Story Backlog
+### User Interface
+- [x] As a user, I can see the coordinate position in the status bar
+- [x] As a user, I can see the function count in the status bar
+- [x] As a user, I can use a menu bar with Function, View, and Help menus
+- [x] As a user, I can see a keyboard shortcuts reference dialog
+- [x] As a user, I can see an About dialog
 
-This backlog is organized by feature set. Every requested function and constant has a specific verification item.
-
-## Epic 1: General UI & Controls
-
-| ID | Story | Acceptance Criteria |
-| --- | --- | --- |
-| **US-1.01** | As a user, I want to **Pan** the graph by dragging so I can explore the plane. | Graph moves 1:1 with mouse drag. FPS > 50. |
-| **US-1.02** | As a user, I want to **Zoom** in/out using the mouse wheel centered on my cursor. | Zoom level updates; Grid lines re-scale automatically. |
-| **US-1.03** | As a user, I want a **Reset View** button to return to the origin. | Viewport resets to . |
-| **US-1.04** | As a user, I want to toggle the **Grid** visibility. | Checkbox toggles grid lines on/off. |
-| **US-1.05** | As a user, I want to toggle **Axis Labels** visibility. | Checkbox toggles numeric labels on axes. |
-| **US-1.06** | As a user, I want to **Export** the current view as a PNG. | Button triggers download of high-res image. |
-| **US-1.07** | As a user, I want **Dark Mode** support. | UI themes switch; Graph background turns dark, lines turn light. |
-
-## Epic 2: Intelligent Input (Editor)
-
-| ID | Story | Acceptance Criteria |
-| --- | --- | --- |
-| **US-2.01** | As a user, I want **Syntax Highlighting** to distinguish math elements. | Functions: Blue, Numbers: Green, Vars: Orange. |
-| **US-2.02** | As a user, I want **Autocomplete** for function names. | Typing "ta" suggests `tan`, `tanh`. |
-| **US-2.03** | As a user, I want **Hover Tooltips** for functions. | Hovering `sin` shows "Sine Function". |
-| **US-2.04** | As a user, I want **Error Validation** for mismatched parentheses. | Red underline on syntax error; "Missing )" message. |
-| **US-2.05** | As a user, I want to use **Implicit Multiplication**. | `2x` is parsed as `2*x`; `xcos(x)` as `x*cos(x)`. |
-| **US-2.06** | As a user, I want to use both **^ and **** for powers. | `x^2` and `x**2` yield identical plots. |
-
-## Epic 3: Function Families (Parameter `t`)
-
-| ID | Story | Acceptance Criteria |
-| --- | --- | --- |
-| **US-3.01** | As a user, I want the system to **Auto-Detect** parameter `t`. | Typing `t*x` reveals the Parameter Panel. |
-| **US-3.02** | As a user, I want to set the **Parameter Min** value. | Input field accepts number (e.g., -5). |
-| **US-3.03** | As a user, I want to set the **Parameter Max** value. | Input field accepts number (e.g., 5). |
-| **US-3.04** | As a user, I want to set the **Parameter Step** size. | Input field accepts number (e.g., 0.5). |
-| **US-3.05** | As a user, I want to use a **Custom List** for `t`. | Switch to "List Mode"; Input `1, 10, 100` works. |
-| **US-3.06** | As a user, I want **Color Variations** for family curves. | Curves share hue but vary in lightness. |
-
-## Epic 4: Mathematical Analysis (Kurvendiskussion)
-
-| ID | Story | Acceptance Criteria |
-| --- | --- | --- |
-| **US-4.01** | As a user, I want to find **Exact Roots** (Nullstellen). | Panel lists  values where . Marker on graph. |
-| **US-4.02** | As a user, I want to find the **Y-Intercept**. | Panel lists  value where . Marker on graph. |
-| **US-4.03** | As a user, I want to find **Local Maxima** (Hochpunkte). | Panel lists coordinates. Marker on graph. |
-| **US-4.04** | As a user, I want to find **Local Minima** (Tiefpunkte). | Panel lists coordinates. Marker on graph. |
-| **US-4.05** | As a user, I want to find **Inflection Points** (Wendepunkte). | Panel lists coordinates where . |
-| **US-4.06** | As a user, I want to find **Saddle Points** (Sattelpunkte). | Panel lists points where  AND . |
-| **US-4.07** | As a user, I want to see **Monotony Intervals**. | Panel lists intervals (e.g., "Increasing: "). |
-| **US-4.08** | As a user, I want to see **Continuity/Poles**. | Panel warns of undefined points (e.g.,  for ). |
-| **US-4.09** | As a user, I want to see **Limits** at infinity. | Panel shows . |
-
-## Epic 5: The Math Library (Specific Functions)
-
-*Note: For all stories below, the "Acceptance Criteria" implies the function is parsed correctly, plotted accurately, and appears in autocomplete.*
-
-### 5.1 Trigonometric Functions
-
-| ID | Function | User Story |
-| --- | --- | --- |
-| **US-5.01** | `sin(x)` | As a user, I want to use `Sin()` to plot sine waves. |
-| **US-5.02** | `cos(x)` | As a user, I want to use `Cos()` to plot cosine waves. |
-| **US-5.03** | `tan(x)` | As a user, I want to use `Tan()` and see accurate asymptotes. |
-| **US-5.04** | `cot(x)` | As a user, I want to use `Cot()` (Cotangent). |
-| **US-5.05** | `csc(x)` | As a user, I want to use `Csc()` (Cosecant). |
-| **US-5.06** | `sec(x)` | As a user, I want to use `Sec()` (Secant). |
-
-### 5.2 Inverse Trigonometric
-
-| ID | Function | User Story |
-| --- | --- | --- |
-| **US-5.07** | `asin(x)` | As a user, I want to use `Asin()` (Arc Sine). |
-| **US-5.08** | `acos(x)` | As a user, I want to use `Acos()` (Arc Cosine). |
-| **US-5.09** | `atan(x)` | As a user, I want to use `Atan()` (Arc Tangent). |
-| **US-5.10** | `acot(x)` | As a user, I want to use `Acot()` (Arc Cotangent). |
-| **US-5.11** | `acsc(x)` | As a user, I want to use `Acsc()` (Arc Cosecant). |
-| **US-5.12** | `asec(x)` | As a user, I want to use `Asec()` (Arc Secant). |
-
-### 5.3 Hyperbolic Functions
-
-| ID | Function | User Story |
-| --- | --- | --- |
-| **US-5.13** | `sinh(x)` | As a user, I want to use `Sinh()` (Hyperbolic Sine). |
-| **US-5.14** | `cosh(x)` | As a user, I want to use `Cosh()` (Hyperbolic Cosine). |
-| **US-5.15** | `tanh(x)` | As a user, I want to use `Tanh()` (Hyperbolic Tangent). |
-| **US-5.16** | `coth(x)` | As a user, I want to use `Coth()` (Hyperbolic Cotangent). |
-| **US-5.17** | `csch(x)` | As a user, I want to use `Csch()` (Hyperbolic Cosecant). |
-| **US-5.18** | `sech(x)` | As a user, I want to use `Sech()` (Hyperbolic Secant). |
-
-### 5.4 Inverse Hyperbolic
-
-| ID | Function | User Story |
-| --- | --- | --- |
-| **US-5.19** | `asinh(x)` | As a user, I want to use `Arsinh()` (Inverse Hyperbolic Sine). |
-| **US-5.20** | `acosh(x)` | As a user, I want to use `Arcosh()` (Inverse Hyperbolic Cosine). |
-| **US-5.21** | `atanh(x)` | As a user, I want to use `Artanh()` (Inverse Hyperbolic Tangent). |
-| **US-5.22** | `acoth(x)` | As a user, I want to use `Arcoth()` (Inverse Hyperbolic Cotangent). |
-| **US-5.23** | `acsch(x)` | As a user, I want to use `Arcsch()` (Inverse Hyperbolic Cosecant). |
-| **US-5.24** | `asech(x)` | As a user, I want to use `Arsech()` (Inverse Hyperbolic Secant). |
-
-### 5.5 Rounding & Discrete Math
-
-| ID | Function | User Story |
-| --- | --- | --- |
-| **US-5.25** | `floor(x)` | As a user, I want to use `Floor()` to round down to the nearest integer. |
-| **US-5.26** | `ceil(x)` | As a user, I want to use `Ceiling()` to round up to the nearest integer. |
-| **US-5.27** | `trunc(x)` | As a user, I want to use `Truncate()` to remove decimal digits. |
-| **US-5.28** | `round(x)` | As a user, I want to use `Round(x)` for standard rounding. |
-| **US-5.29** | `round(x, n)` | As a user, I want to use `Round(x, decimals)` to round to specific precision. |
-| **US-5.30** | `round(x, n, m)` | As a user, I want to use `Round` with MidpointRounding (Banker's) support. |
-| **US-5.31** | `abs(x)` | As a user, I want to use `Abs()` to calculate absolute value. |
-| **US-5.32** | `sign(x)` | As a user, I want to use `Sign()` to extract the sign (-1, 0, 1). |
-
-### 5.6 Powers, Roots, Logs & Constants
-
-| ID | Function | User Story |
-| --- | --- | --- |
-| **US-5.33** | `pow(b, e)` | As a user, I want to use `Pow(base, exponent)` as a function alternative to `^`. |
-| **US-5.34** | `sqrt(x)` | As a user, I want to use `Sqrt()` for square roots. |
-| **US-5.35** | `cbrt(x)` | As a user, I want to use `Cbrt()` for cube roots. |
-| **US-5.36** | `log(x)` | As a user, I want `Log()` to represent the natural logarithm (). |
-| **US-5.37** | `log10(x)` | As a user, I want to use `Log10()` for base-10 logarithms. |
-| **US-5.38** | `log2(x)` | As a user, I want to use `Log2()` for base-2 logarithms. |
-| **US-5.39** | `logn(x, b)` | As a user, I want to use `LogN(x, base)` for custom bases. |
-| **US-5.40** | `exp(x)` | As a user, I want to use `Exp()` for . |
-| **US-5.41** | `pi` | As a user, I want to use the constant `pi` in my expressions. |
-| **US-5.42** | `e` | As a user, I want to use the constant `e` (Euler's number). |
-
-### 3.1. Feature: Function Input
-*   **Description:** Users can enter a mathematical function as a string in a dedicated input field. The function will be in terms of `x`.
-*   **User Stories:**
-    *   As a user, I want to type a standard mathematical expression like `x^2`, `sin(x)`, or `(x+3)*cos(x)` into a text box.
-    *   As a user, I want to press an "Enter" key or click a "Plot" button to see the function rendered on the graph.
-*   **Acceptance Criteria:**
-    *   The input field accepts a wide range of standard mathematical characters.
-    *   The parser supports standard operators (`+`, `-`, `*`, `/`, `^` for power).
-    *   The parser supports common functions available in JavaScript's `Math` object (e.g., `sin`, `cos`, `tan`, `log`, `exp`, `sqrt`, `abs`).
-    *   Invalid or insecure expressions are handled gracefully with a user-friendly error message.
-
-### 3.2. Feature: 2D Plotting Canvas
-*   **Description:** A canvas element serves as the main viewport for the graph, rendering the visual representation of the function(s).
-*   **User Stories:**
-    *   As a user, I want to see a 2D Cartesian plane with clearly marked X and Y axes.
-    *   As a user, I want to see a grid in the background to help me gauge the scale and position of the plot.
-*   **Acceptance Criteria:**
-    *   The canvas displays a horizontal X-axis and a vertical Y-axis.
-    *   The origin (0,0) is clearly visible.
-    *   Major and minor grid lines are drawn on the canvas.
-    *   Axis labels (e.g., -5, 0, 5) are drawn at regular intervals.
-
-### 3.3. Feature: Zoom and Pan
-*   **Description:** Users can change the view of the graph by zooming in/out and panning (moving the view).
-*   **User Stories:**
-    *   As a user, I want to use my mouse wheel to zoom in and out of the graph, centered on my cursor's position.
-    *   As a user, I want to click and drag on the graph to pan the view left, right, up, and down.
-    *   As a user, I want to see the grid and axis labels update dynamically as I zoom and pan.
-*   **Acceptance Criteria:**
-    *   Scrolling the mouse wheel up zooms in; scrolling down zooms out.
-    *   Clicking and dragging the primary mouse button on the canvas moves the graph's origin.
-    *   The function plot is re-rendered at the new zoom level and position.
-
-### 3.4. Feature: Multi-Function Plotting
-*   **Description:** Users can add and manage multiple functions on the same graph, with each function having a distinct visual appearance.
-*   **User Stories:**
-    *   As a user, I want to have a list of all functions currently being plotted.
-    *   As a user, I want to click an "Add" button to get a new input field for another function.
-    *   As a user, I want each function to be drawn in a different color.
-    *   As a user, I want to be able to remove a function from the graph by clicking a "Delete" button next to it in the list.
-*   **Acceptance Criteria:**
-    *   The UI displays a list of currently plotted functions.
-    *   A color is automatically assigned to each new function from a predefined palette.
-    *   The canvas renders all active functions simultaneously.
-    *   A legend is displayed, matching each function's expression to its color on the graph.
+### Aspirational Features
+- [ ] As a user, I want to save and load function sets to/from files
+- [ ] As a user, I want to define piecewise functions
+- [ ] As a user, I want to plot polar coordinate functions (r = f(theta))
+- [ ] As a user, I want to plot parametric curves (x(t), y(t))
+- [ ] As a user, I want to compute definite integrals between two x-values with area shading
+- [ ] As a user, I want to see the derivative curve plotted alongside the original function
+- [ ] As a user, I want to add annotations and text labels to the plot
+- [ ] As a user, I want to animate parameter t over time to see curve family evolution

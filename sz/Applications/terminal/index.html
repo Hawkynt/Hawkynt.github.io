@@ -5,6 +5,8 @@
 <title>Terminal</title>
 <script src="../sz-app-bootstrap.js"></script>
 <link rel="stylesheet" href="styles.css">
+<script defer src="vision-data.js"></script>
+  <script defer src="../vision-renderer.js"></script>
 </head>
 <body>
 
@@ -14,6 +16,7 @@
     <option value="cmd">cmd.exe</option>
     <option value="bash">bash</option>
   </select>
+  <button id="btn-about" title="About Terminal" style="margin-left:auto;padding:1px 8px;font-size:11px;cursor:default;">?</button>
 </div>
 <div id="output"></div>
 <div id="input-line">
@@ -21,6 +24,14 @@
   <input id="input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
   <span id="cursor-block"></span>
   <span id="cursor-measure"></span>
+</div>
+
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Terminal</div>
+    <div class="dialog-body"></div>
+    <div class="dialog-buttons"><button data-result="ok">OK</button></div>
+  </div>
 </div>
 
 <script src="controller.js"></script>

@@ -48,7 +48,7 @@ body {
 
 .menu-dropdown.visible { display: block; }
 
-.menu-dropdown-item {
+.menu-entry {
   padding: 3px 24px 3px 24px;
   cursor: default;
   white-space: nowrap;
@@ -56,17 +56,17 @@ body {
   position: relative;
 }
 
-.menu-dropdown-item:hover {
+.menu-entry:hover {
   background: var(--sz-color-highlight);
   color: var(--sz-color-highlight-text);
 }
 
-.menu-dropdown-item.disabled {
+.menu-entry.disabled {
   color: var(--sz-color-gray-text);
   pointer-events: none;
 }
 
-.menu-dropdown-item .shortcut {
+.menu-entry .shortcut {
   float: right;
   margin-left: 24px;
   opacity: 0.7;
@@ -114,25 +114,22 @@ canvas {
 
 .status-section.flex { flex: 1; }
 
-/* ---- XP-style Dialog ---- */
-.xp-dialog-backdrop {
+
+.dialog-overlay {
   display: none;
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  top: 0; left: 0; right: 0; bottom: 0;
   background: rgba(0, 0, 0, 0.25);
   z-index: 2000;
-  align-items: center;
   justify-content: center;
+  align-items: center;
 }
 
-.xp-dialog-backdrop.visible {
+.dialog-overlay.visible {
   display: flex;
 }
 
-.xp-dialog {
+.dialog {
   background: var(--sz-color-button-face);
   border: 2px outset var(--sz-color-button-face);
   box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.4);
@@ -140,63 +137,52 @@ canvas {
   max-width: 400px;
 }
 
-.xp-dialog-titlebar {
-  background: linear-gradient(180deg, var(--sz-color-active-title) 0%, var(--sz-color-gradient-active-title) 100%);
+.dialog-title {
+  background: linear-gradient(180deg, #0a246a 0%, #3a6ea5 100%);
+  background-color: var(--sz-color-active-title);
   color: var(--sz-color-title-text);
   font-size: 11px;
   font-weight: bold;
   padding: 3px 6px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  user-select: none;
 }
 
-.xp-dialog-close {
-  width: 16px;
-  height: 14px;
-  font-size: 9px;
-  line-height: 12px;
-  text-align: center;
-  cursor: pointer;
-  padding: 0;
-}
-
-.xp-dialog-close:active {
-  border-style: inset;
-}
-
-.xp-dialog-body {
+.dialog-body {
   padding: 12px 16px;
-  text-align: center;
+  font-size: 11px;
+  line-height: 1.6;
 }
 
-.xp-dialog-body label {
+.dialog-body label {
   display: block;
   margin-bottom: 6px;
   text-align: left;
 }
 
-.xp-dialog-body input[type="number"] {
+.dialog-body input[type="number"] {
   width: 100%;
   height: 21px;
   padding: 1px 4px;
 }
 
-.xp-dialog-buttons {
+.dialog-buttons {
   display: flex;
   justify-content: center;
   gap: 8px;
   padding: 8px 16px 12px;
 }
 
-.xp-btn {
+.dialog-buttons button {
   min-width: 75px;
   height: 23px;
+  border: 2px outset var(--sz-color-button-face);
+  background: var(--sz-color-button-face);
+  font-family: inherit;
+  font-size: 11px;
   cursor: pointer;
-  padding: 0 8px;
 }
 
-.xp-btn:focus {
-  outline: 1px dotted var(--sz-color-button-text);
-  outline-offset: -4px;
+.dialog-buttons button:active {
+  border-style: inset;
 }
+
