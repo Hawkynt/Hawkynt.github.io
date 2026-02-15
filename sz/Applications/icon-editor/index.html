@@ -138,8 +138,9 @@
       <div class="tool-btn" data-tool="select" title="Selection (S)">&#9633;</div>
     </div>
 
+    <div class="sidebar-title">Tool Properties</div>
     <div class="tool-options" id="tool-options">
-      <div class="sidebar-title">Shape Fill</div>
+      <div class="section-subtitle">Shape Fill</div>
       <div class="shape-fill-options" id="shape-fill-options">
         <label><input type="radio" name="shape-fill" value="outline" checked> Outline</label>
         <label><input type="radio" name="shape-fill" value="filled"> Filled</label>
@@ -148,7 +149,7 @@
     </div>
 
     <div class="tool-options" id="brush-size-options">
-      <div class="sidebar-title">Brush</div>
+      <div class="section-subtitle">Brush</div>
       <div class="brush-size-section" id="brush-size-section">
         <input type="range" id="brush-size-slider" min="1" max="8" value="1">
         <span id="brush-size-label">1px</span>
@@ -156,12 +157,13 @@
       </div>
     </div>
 
-    <div class="sidebar-title">Color</div>
+    <div class="sidebar-title">Colors</div>
     <div class="color-section">
-      <div class="color-preview-row">
-        <div class="color-preview" id="color-preview" title="Current color"></div>
-        <div class="alpha-label" id="alpha-label">A: 255</div>
+      <div class="palette-slots" id="palette-slots">
+        <div class="color-slot active" id="fg-color-slot" title="Foreground color"></div>
+        <div class="color-slot" id="bg-color-slot" title="Background color"></div>
       </div>
+      <input type="color" id="system-color-picker" style="position:absolute; left:-9999px; width:1px; height:1px; opacity:0;" aria-hidden="true">
       <div class="color-input-row">
         <label>R</label><input type="number" id="color-r" min="0" max="255" value="0">
         <label>G</label><input type="number" id="color-g" min="0" max="255" value="0">
@@ -392,6 +394,40 @@
   </div>
 </div>
 
+<!-- Depth Reduction dialog -->
+<div class="dialog-overlay" id="dlg-depth-reduce">
+  <div class="dialog" style="min-width:340px;">
+    <div class="dialog-title">Reduce Color Depth</div>
+    <div class="dialog-body">
+      <p id="depth-reduce-info">Reducing depth may lose colors.</p>
+      <div class="settings-row">
+        <label for="depth-quantizer">Quantizer:</label>
+        <select id="depth-quantizer"></select>
+      </div>
+      <div class="settings-row">
+        <label for="depth-dither">Ditherer:</label>
+        <select id="depth-dither"></select>
+      </div>
+      <div class="depth-preview-row">
+        <div class="depth-preview-box">
+          <div class="depth-preview-title">Before</div>
+          <canvas id="depth-preview-before" width="96" height="96"></canvas>
+        </div>
+        <div class="depth-preview-box">
+          <div class="depth-preview-title">After</div>
+          <canvas id="depth-preview-after" width="96" height="96"></canvas>
+        </div>
+      </div>
+      <p id="depth-preview-stats" class="depth-preview-stats"></p>
+      <p class="depth-warning">This operation modifies pixels and palette. Use Undo to revert.</p>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Apply</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- About dialog -->
 <div class="dialog-overlay" id="dlg-about">
   <div class="dialog">
@@ -453,6 +489,9 @@
   </div>
 </div>
 
+<script src="../../js/system.drawing.bitmap.js"></script>
+<script src="../../js/system.drawing.js"></script>
+<script src="../../js/icon-codec.js"></script>
 <script src="controller.js"></script>
 </body>
 </html>
