@@ -229,7 +229,7 @@
         maximizable: true,
         singleton: false,
         category: 'Graphics',
-        fileTypes: ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp']
+        fileTypes: ['png', 'jpg', 'jpeg', 'gif', 'webp']
       },
       {
         id: 'wordpad',
@@ -465,6 +465,35 @@
         singleton: false,
         category: 'Graphics',
         fileTypes: ['svg']
+      },
+      {
+        id: 'cron-visualizer',
+        title: 'Cron Visualizer',
+        icon: 'cron-visualizer/icon.svg',
+        type: 'iframe',
+        entry: 'cron-visualizer/index.html',
+        width: 1100,
+        height: 720,
+        resizable: true,
+        minimizable: true,
+        maximizable: true,
+        singleton: false,
+        category: 'Development',
+        fileTypes: ['cron', 'crontab', 'txt']
+      },
+      {
+        id: 'subnet-calculator',
+        title: 'Subnet Calculator',
+        icon: 'subnet-calculator/icon.svg',
+        type: 'iframe',
+        entry: 'subnet-calculator/index.html',
+        width: 600,
+        height: 550,
+        resizable: true,
+        minimizable: true,
+        maximizable: true,
+        singleton: true,
+        category: 'Development'
       }
     ]
   };
