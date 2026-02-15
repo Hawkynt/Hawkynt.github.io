@@ -970,16 +970,10 @@
       content: dataUrl,
     });
     if (!result.cancelled && result.path) {
-      originalData = new Uint8Array(data);
-      modified.clear();
       currentFilePath = result.path;
       const parts = result.path.split('/');
       currentFileName = parts[parts.length - 1] || 'Untitled';
-      dirty = false;
-      updateTitle();
-      render();
-      if (typeof callback === 'function')
-        callback();
+      await saveToPath(result.path, callback);
     }
   }
 
