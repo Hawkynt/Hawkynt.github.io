@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Online README.md generator with templates, wizard mode, live preview, and quality scoring">
+<meta name="robots" content="index,follow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="README Generator -- &raquo;SynthelicZ&laquo; Desktop">
+<meta property="og:description" content="Online README.md generator with templates, wizard mode, live preview, and quality scoring">
+<meta property="og:url" content="https://hawkynt.github.io/sz/Applications/readme-generator/index.html">
+<link rel="canonical" href="https://hawkynt.github.io/sz/Applications/readme-generator/index.html">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "README Generator",
+  "url": "https://hawkynt.github.io/sz/Applications/readme-generator/index.html",
+  "description": "Online README.md generator with templates, wizard mode, live preview, and quality scoring",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Web Browser",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<title>README Generator</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="styles.css">
+<script defer src="../vision-renderer.js"></script>
+</head>
+<body>
+<noscript><p>Online README.md generator with templates, wizard mode, live preview, and quality scoring. <a href="../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a> to use this app.</p></noscript>
+
+<!-- Menu Bar -->
+<div class="menu-bar" id="menu-bar">
+  <div class="menu-item" data-menu="file">
+    File
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="new">New<span class="shortcut">Ctrl+N</span></div>
+      <div class="menu-entry" data-action="open">Open...<span class="shortcut">Ctrl+O</span></div>
+      <div class="menu-entry" data-action="import">Import File...</div>
+      <div class="menu-entry" data-action="paste-readme">Paste README...</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="save">Save<span class="shortcut">Ctrl+S</span></div>
+      <div class="menu-entry" data-action="save-as">Save As...</div>
+      <div class="menu-entry" data-action="export">Export File...</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="exit">Exit</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="edit">
+    Edit
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="undo">Undo<span class="shortcut">Ctrl+Z</span></div>
+      <div class="menu-entry" data-action="redo">Redo<span class="shortcut">Ctrl+Y</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="copy-markdown">Copy Markdown<span class="shortcut">Ctrl+Shift+C</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="clear-all">Clear All</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="templates">
+    Templates
+    <div class="menu-dropdown" id="templates-menu">
+      <!-- Populated by controller -->
+    </div>
+  </div>
+  <div class="menu-item" data-menu="view">
+    View
+    <div class="menu-dropdown">
+      <div class="menu-entry radio checked" data-action="view-wizard" id="menu-view-wizard">Wizard Mode</div>
+      <div class="menu-entry radio" data-action="view-form" id="menu-view-form">Form Mode</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry checkbox checked" data-action="toggle-preview" id="menu-toggle-preview">Show Preview</div>
+      <div class="menu-entry checkbox checked" data-action="toggle-quality" id="menu-toggle-quality">Show Quality Score</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="help">
+    Help
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="about">About README Generator</div>
+    </div>
+  </div>
+</div>
+
+<!-- Toolbar -->
+<div class="toolbar" id="toolbar">
+  <button data-action="view-wizard" id="btn-wizard" class="active" title="Step-by-step wizard">Wizard</button>
+  <button data-action="view-form" id="btn-form" title="All fields at once">Form</button>
+  <div class="toolbar-sep"></div>
+  <label class="toolbar-label">Template:</label>
+  <select id="template-select" title="Choose a template"></select>
+  <div class="toolbar-sep"></div>
+  <button data-action="copy-markdown" title="Copy markdown to clipboard">Copy MD</button>
+  <button data-action="export" title="Export as .md file">Export</button>
+</div>
+
+<!-- Main split: editor + preview -->
+<div class="main-split" id="main-split">
+  <div class="editor-panel" id="editor-panel">
+
+    <!-- Wizard mode -->
+    <div class="wizard-panel" id="wizard-panel">
+      <div class="wizard-progress" id="wizard-progress"></div>
+      <div class="wizard-step-container" id="wizard-step-container">
+        <!-- Populated by controller -->
+      </div>
+      <div class="wizard-nav" id="wizard-nav">
+        <button id="wizard-back" title="Previous step">&lt; Back</button>
+        <button id="wizard-skip" title="Skip this section">Skip</button>
+        <button id="wizard-next" title="Next step">Next &gt;</button>
+        <button id="wizard-finish" title="Finish wizard" style="display:none">Finish</button>
+      </div>
+    </div>
+
+    <!-- Form mode -->
+    <div class="form-panel" id="form-panel" style="display:none">
+      <div class="form-sections" id="form-sections">
+        <!-- Populated by controller -->
+      </div>
+    </div>
+
+  </div>
+  <div class="splitter" id="splitter"></div>
+  <div class="preview-panel" id="preview-panel">
+    <div class="preview-header">Preview</div>
+    <div class="preview-content" id="preview-content"></div>
+  </div>
+</div>
+
+<!-- Status bar -->
+<div class="status-bar" id="status-bar">
+  <span class="status-section status-quality" id="status-quality">Quality: --</span>
+  <span class="status-section" id="status-warnings">0 warnings</span>
+  <span class="status-section status-lines" id="status-lines"></span>
+</div>
+
+<!-- Copy tooltip -->
+<div class="copy-tooltip" id="copy-tooltip">Copied!</div>
+
+<!-- Paste README dialog -->
+<div class="dialog-overlay" id="dlg-paste">
+  <div class="dialog" style="min-width:450px;max-width:600px;">
+    <div class="dialog-title">Paste README</div>
+    <div class="dialog-body">
+      <p>Paste your existing README.md content below:</p>
+      <textarea id="paste-textarea" rows="14" style="width:100%;resize:vertical;font-family:Consolas,monospace;font-size:11px;"></textarea>
+    </div>
+    <div class="dialog-buttons">
+      <button id="paste-ok">Import</button>
+      <button id="paste-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Template Editor dialog -->
+<div class="dialog-overlay" id="dlg-template-editor">
+  <div class="dialog" style="min-width:500px;max-width:650px;">
+    <div class="dialog-title">Edit Templates</div>
+    <div class="dialog-body" style="max-height:60vh;overflow-y:auto;">
+      <div class="tpl-editor-toolbar">
+        <select id="tpl-editor-select"></select>
+        <button id="tpl-editor-dup" title="Duplicate as custom template">Duplicate</button>
+        <button id="tpl-editor-del" title="Delete custom template">Delete</button>
+      </div>
+      <div id="tpl-editor-fields">
+        <div class="tpl-field-row">
+          <label>Name:</label>
+          <input type="text" id="tpl-editor-name">
+        </div>
+        <div class="tpl-field-row">
+          <label>Description:</label>
+          <input type="text" id="tpl-editor-desc">
+        </div>
+        <div class="tpl-sections-header">
+          <span>Sections</span>
+          <button id="tpl-add-section" title="Add section">+ Add</button>
+        </div>
+        <div id="tpl-sections-list">
+          <!-- Populated by controller -->
+        </div>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button id="tpl-editor-save">Save</button>
+      <button id="tpl-editor-close">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- About dialog -->
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About README Generator</div>
+    <div class="dialog-body" style="text-align:center;padding:20px;">
+      <p style="font-weight:bold;font-size:13px;margin-bottom:12px;">README Generator</p>
+      <p>A README builder for &raquo;SynthelicZ&laquo;</p>
+      <p style="margin-top:8px;font-size:10px;">Create professional README.md files with templates, wizard, and live preview.</p>
+      <p style="margin-top:12px;font-size:10px;opacity:0.7;">&copy; 1995-2026 &raquo;SynthelicZ&laquo;</p>
+    </div>
+    <div class="dialog-buttons">
+      <button id="about-ok">OK</button>
+    </div>
+  </div>
+</div>
+
+<script src="templates.js"></script>
+<script src="parser.js"></script>
+<script src="controller.js"></script>
+</body>
+</html>
