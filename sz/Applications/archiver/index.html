@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Archive manager supporting 69 formats including ZIP, TAR, GZIP, BZIP2, XZ, ZStandard, LZMA, LZIP, RAR, 7z, LZH, ARJ, ACE, ARC, ZOO, HA, SQX, CPIO, CAB, ISO, WIM, XAR, MSI, CHM, RPM, DEB, AR, JAR, APK, EPUB, OOXML, FAT, NTFS, EXT, HFS, SquashFS, VHD, VMDK, QCOW2 and more">
+<meta name="robots" content="index,follow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Archiver -- &raquo;SynthelicZ&laquo; Desktop">
+<meta property="og:description" content="Archive manager supporting 69 formats including ZIP, TAR, GZIP, BZIP2, XZ, ZStandard, LZMA, LZIP, RAR, 7z, LZH, ARJ, ACE, ARC, ZOO, HA, SQX, CPIO, CAB, ISO, WIM, XAR, MSI, CHM, RPM, DEB, AR, JAR, APK, EPUB, OOXML, FAT, NTFS, EXT, HFS, SquashFS, VHD, VMDK, QCOW2 and more">
+<meta property="og:url" content="https://hawkynt.github.io/sz/Applications/archiver/index.html">
+<link rel="canonical" href="https://hawkynt.github.io/sz/Applications/archiver/index.html">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Archiver",
+  "url": "https://hawkynt.github.io/sz/Applications/archiver/index.html",
+  "description": "Archive manager supporting 69 formats including ZIP, TAR, GZIP, BZIP2, XZ, ZStandard, LZMA, LZIP, RAR, 7z, LZH, ARJ, ACE, ARC, ZOO, HA, SQX, CPIO, CAB, ISO, WIM, XAR, MSI, CHM, RPM, DEB, AR, JAR, APK, EPUB, OOXML, FAT, NTFS, EXT, HFS, SquashFS, VHD, VMDK, QCOW2 and more",
+  "applicationCategory": "UtilitiesApplication",
+  "operatingSystem": "Web Browser",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<title>Archiver</title>
+<script src="../sz-app-bootstrap.js"></script>
+<script src="../libs/jszip.min.js"></script>
+<link rel="stylesheet" href="styles.css">
+<script defer src="../vision-renderer.js"></script>
+</head>
+<body>
+<noscript><p>Archive manager supporting 69 formats including ZIP, TAR, GZIP, BZIP2, XZ, ZStandard, LZMA, LZIP, RAR, 7z, LZH, ARJ, ACE, ARC, ZOO, HA, SQX, CPIO, CAB, ISO, WIM, XAR, MSI, CHM, RPM, DEB, AR, JAR, APK, EPUB, OOXML, FAT, NTFS, EXT, HFS, SquashFS, VHD, VMDK, QCOW2 and more. <a href="../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a> to use this app.</p></noscript>
+
+<!-- Menu Bar -->
+<div class="menu-bar" id="menu-bar">
+  <div class="menu-item" data-menu="file">
+    File
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="new">New Archive...<span class="shortcut">Ctrl+N</span></div>
+      <div class="menu-entry" data-action="open">Open...<span class="shortcut">Ctrl+O</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="save">Save<span class="shortcut">Ctrl+S</span></div>
+      <div class="menu-entry" data-action="save-as">Save As...</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="import">Import Files...<span class="shortcut">Ins</span></div>
+      <div class="menu-entry" data-action="export">Export Selected...</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="exit">Exit</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="actions">
+    Actions
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="add">Add Files...<span class="shortcut">Ins</span></div>
+      <div class="menu-entry" data-action="extract-all">Extract All...<span class="shortcut">Ctrl+E</span></div>
+      <div class="menu-entry" data-action="extract-selected">Extract Selected...</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="delete">Delete Selected<span class="shortcut">Del</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="view">View File<span class="shortcut">Enter</span></div>
+      <div class="menu-entry" data-action="test">Test Archive</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="select-all">Select All<span class="shortcut">Ctrl+A</span></div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="tools">
+    Tools
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="convert">Convert Format...</div>
+      <div class="menu-entry" data-action="info">Archive Info...</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="help">
+    Help
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="about">About Archiver</div>
+    </div>
+  </div>
+</div>
+
+<!-- Toolbar -->
+<div class="toolbar" id="toolbar">
+  <button data-action="open" title="Open">&#128194;</button>
+  <button data-action="save" title="Save">&#128190;</button>
+  <div class="tb-sep"></div>
+  <button data-action="add" title="Add Files">&#10133;</button>
+  <button data-action="extract-all" title="Extract All">&#128229;</button>
+  <button data-action="delete" title="Delete">&#10060;</button>
+  <div class="tb-sep"></div>
+  <button data-action="test" title="Test Archive">&#9989;</button>
+  <button data-action="info" title="Archive Info">&#8505;</button>
+</div>
+
+<!-- Address Bar -->
+<div class="address-bar" id="address-bar">
+  <button id="btn-up" title="Up one level" class="disabled">&#8593;</button>
+  <input type="text" id="address-input" readonly value="\">
+</div>
+
+<!-- File List -->
+<div class="file-list-container" id="file-list-container">
+  <table class="file-list" id="file-list">
+    <thead>
+      <tr>
+        <th class="col-name" data-col="name">Name</th>
+        <th class="col-size" data-col="size">Size</th>
+        <th class="col-packed" data-col="packed">Packed</th>
+        <th class="col-type" data-col="type">Type</th>
+        <th class="col-modified" data-col="modified">Modified</th>
+        <th class="col-crc" data-col="crc">CRC-32</th>
+        <th class="col-encrypted" data-col="encrypted">&#128274;</th>
+      </tr>
+    </thead>
+    <tbody id="file-list-body"></tbody>
+  </table>
+  <div class="empty-state" id="empty-state">Drop an archive here or use File &rarr; Open</div>
+</div>
+
+<!-- Status Bar -->
+<div class="status-bar" id="status-bar">
+  <span class="status-section" id="status-count">0 files</span>
+  <span class="status-section" id="status-size">0 bytes</span>
+  <span class="status-section format" id="status-format"></span>
+  <span class="status-section" id="status-selection"></span>
+</div>
+
+<!-- Password Dialog -->
+<div class="dialog-overlay" id="dlg-password">
+  <div class="dialog">
+    <div class="dialog-title" id="dlg-password-title">Password</div>
+    <div class="dialog-body">
+      <label for="password-input">Enter password:</label>
+      <input type="password" id="password-input" autocomplete="off">
+      <div class="checkbox-row" id="password-confirm-row" style="display:none;">
+        <label for="password-confirm">Confirm password:</label>
+        <input type="password" id="password-confirm" autocomplete="off" style="margin-top:2px;">
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">OK</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- New Archive Dialog -->
+<div class="dialog-overlay" id="dlg-new">
+  <div class="dialog" style="min-width:400px;">
+    <div class="dialog-title">New Archive</div>
+    <div class="dialog-body">
+      <label for="new-format">Format:</label>
+      <select id="new-format"></select>
+      <div id="new-options-panel"></div>
+      <div class="options-separator"></div>
+      <div class="option-row">
+        <label for="new-volume-size">Volume splitting:</label>
+        <select id="new-volume-size">
+          <option value="0">No splitting</option>
+          <option value="1474560">1.44 MB (Floppy)</option>
+          <option value="10485760">10 MB</option>
+          <option value="104857600">100 MB</option>
+          <option value="734003200">700 MB (CD)</option>
+        </select>
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="new-recovery">
+        <label for="new-recovery">Add recovery record</label>
+      </div>
+      <div class="option-row hidden" id="new-recovery-pct-row">
+        <label for="new-recovery-pct">Recovery %:</label>
+        <select id="new-recovery-pct">
+          <option value="5">5%</option>
+          <option value="10" selected>10%</option>
+          <option value="25">25%</option>
+          <option value="50">50%</option>
+        </select>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Create</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Convert Format Dialog -->
+<div class="dialog-overlay" id="dlg-convert">
+  <div class="dialog" style="min-width:400px;">
+    <div class="dialog-title">Convert Format</div>
+    <div class="dialog-body">
+      <label for="convert-format">Target format:</label>
+      <select id="convert-format"></select>
+      <div id="convert-options-panel"></div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Convert</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Archive Info Dialog -->
+<div class="dialog-overlay" id="dlg-info">
+  <div class="dialog info-dialog">
+    <div class="dialog-title" id="dlg-info-title">Archive Info</div>
+    <div class="info-tabs">
+      <button class="info-tab active" data-tab="info-tab-info">Info</button>
+      <button class="info-tab" data-tab="info-tab-options">Options</button>
+      <button class="info-tab" data-tab="info-tab-comment">Comment</button>
+    </div>
+    <div class="dialog-body info-body">
+      <!-- Info Tab -->
+      <div class="info-tab-panel active" id="info-tab-info">
+        <div class="info-format-header" id="info-format-name"></div>
+        <div class="info-section">
+          <dl class="info-grid" id="info-grid-general"></dl>
+        </div>
+        <div class="info-separator"></div>
+        <div class="info-section">
+          <dl class="info-grid" id="info-grid-sizes"></dl>
+        </div>
+        <div class="info-separator"></div>
+        <div class="info-section">
+          <dl class="info-grid" id="info-grid-details"></dl>
+        </div>
+        <div class="info-separator"></div>
+        <div class="info-section">
+          <dl class="info-grid" id="info-grid-security"></dl>
+        </div>
+        <div class="info-ratio-bar">
+          <div class="info-ratio-fill" id="info-ratio-fill"></div>
+          <span class="info-ratio-label" id="info-ratio-label"></span>
+        </div>
+      </div>
+      <!-- Options Tab -->
+      <div class="info-tab-panel" id="info-tab-options">
+        <dl class="info-grid" id="info-grid-options"></dl>
+      </div>
+      <!-- Comment Tab -->
+      <div class="info-tab-panel" id="info-tab-comment">
+        <textarea class="info-comment" id="info-comment" readonly placeholder="No comment"></textarea>
+      </div>
+    </div>
+    <div class="dialog-buttons" style="justify-content:center;">
+      <button data-result="ok">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- About Dialog -->
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Archiver</div>
+    <div class="dialog-body" style="text-align:center; padding:20px;">
+      <p style="font-weight:bold; font-size:13px; margin-bottom:12px;">Archiver</p>
+      <p>Archive manager for &raquo;SynthelicZ&laquo;</p>
+      <p style="margin-top:8px; font-size:10px;">Supports 69 archive, compression, filesystem, and disk image formats.</p>
+      <p style="margin-top:12px; font-size:10px; opacity:0.7;">&copy; 1995-2026 &raquo;SynthelicZ&laquo;</p>
+    </div>
+    <div class="dialog-buttons" style="justify-content:center;">
+      <button data-result="ok">OK</button>
+    </div>
+  </div>
+</div>
+
+<script src="controller.js"></script>
+</body>
+</html>
