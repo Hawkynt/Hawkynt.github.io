@@ -356,13 +356,97 @@ body {
   flex-shrink: 0;
 }
 
-#output-buttons select {
-  padding: 3px 6px;
-  border: 2px inset;
-  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
-  background: var(--sz-color-window);
-  color: var(--sz-color-window-text);
+/* ---- Preset picker ---- */
+#preset-picker {
+  position: relative;
+}
+
+#btn-presets {
+  padding: 3px 10px;
+  border: 2px outset;
+  border-color: var(--sz-color-button-highlight) var(--sz-color-button-shadow) var(--sz-color-button-shadow) var(--sz-color-button-highlight);
+  background: var(--sz-color-button-face);
+  color: var(--sz-color-button-text);
+  cursor: pointer;
   font-size: 11px;
+  white-space: nowrap;
+  width: 100%;
+}
+
+#btn-presets:active,
+#btn-presets.active {
+  border-style: inset;
+  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
+}
+
+#preset-dropdown {
+  display: none;
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  width: 280px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--sz-color-menu);
+  border: 1px solid var(--sz-color-button-shadow);
+  box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.25);
+  z-index: 500;
+  padding: 4px;
+}
+
+#preset-dropdown.open {
+  display: block;
+}
+
+.preset-cat-header {
+  font-size: 10px;
+  font-weight: bold;
+  text-transform: uppercase;
+  color: var(--sz-color-gray-text);
+  padding: 4px 4px 2px;
+  letter-spacing: 0.5px;
+}
+
+.preset-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  padding: 2px 0 4px;
+}
+
+.preset-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px;
+  border: 1px solid transparent;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--sz-color-menu-text);
+  font-size: 10px;
+}
+
+.preset-item:hover {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+  border-color: var(--sz-color-highlight);
+}
+
+.preset-swatch {
+  display: block;
+  width: 36px;
+  height: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.preset-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.2;
 }
 
 #btn-import.active {
