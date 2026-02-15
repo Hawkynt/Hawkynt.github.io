@@ -56,6 +56,7 @@ Modeled after the classic "About Windows" dialog (winver.exe) found in Windows X
 ### Credits &amp; Acknowledgments
 
 - [x] As a user, I can see the original author (Hawkynt) credited
+- [x] As a user, I can click a link to the author's GitHub profile (github.com/Hawkynt)
 - [x] As a user, I can see that skins are based on Stardock WindowBlinds / Object Desktop assets
 - [x] As a user, I can see that icons are adapted from various open-source icon sets
 - [x] As a user, I can see acknowledgments for desktop environment inspirations (Windows XP, Mac OS X, Linux)
@@ -70,6 +71,7 @@ Modeled after the classic "About Windows" dialog (winver.exe) found in Windows X
 - [x] As a user, I can see the copyright notice (© 1995–2026 Hawkynt) and that skin assets remain property of their authors
 - [x] As a user, I can see a prominent notice about contacting the author for commercial/corporate licensing and product ID (PID)
 - [x] As a user, I can see a donation appeal encouraging support for the project
+- [x] As a user, I can click the heart icon in the donation notice to open the author's PayPal page
 
 ### User Interface
 
