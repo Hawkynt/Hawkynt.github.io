@@ -1228,7 +1228,7 @@
   document.querySelectorAll('.menu-item').forEach(item => {
     item.addEventListener('pointerdown', e => {
       e.stopPropagation();
-      if (e.target.closest('.menu-dropdown-item') || e.target.closest('.submenu'))
+      if (e.target.closest('.menu-entry') || e.target.closest('.menu-submenu'))
         return;
       const dropdown = item.querySelector('.menu-dropdown');
       if (openMenu === dropdown) {
@@ -1252,7 +1252,7 @@
     });
   });
 
-  document.querySelectorAll('.menu-dropdown-item[data-action]').forEach(item => {
+  document.querySelectorAll('.menu-entry[data-action]').forEach(item => {
     item.addEventListener('click', e => {
       e.stopPropagation();
       const action = item.dataset.action;
@@ -1314,24 +1314,15 @@
    *  ABOUT DIALOG
    * ================================================================ */
 
-  const aboutBackdrop = document.getElementById('aboutBackdrop');
-  const aboutClose = document.getElementById('aboutClose');
-  const aboutOk = document.getElementById('aboutOk');
-
   function showAbout() {
-    aboutBackdrop.classList.add('visible');
+    const dlg = document.getElementById('dlg-about');
+    if (dlg) dlg.classList.add('visible');
   }
 
   function closeAbout() {
-    aboutBackdrop.classList.remove('visible');
+    const dlg = document.getElementById('dlg-about');
+    if (dlg) dlg.classList.remove('visible');
   }
-
-  aboutClose.addEventListener('click', closeAbout);
-  aboutOk.addEventListener('click', closeAbout);
-  aboutBackdrop.addEventListener('pointerdown', e => {
-    if (e.target === aboutBackdrop)
-      closeAbout();
-  });
 
   /* ================================================================
    *  KEYBOARD SHORTCUTS
@@ -1358,5 +1349,10 @@
   updateDrawModeChecks();
   newGame();
   requestAnimationFrame(() => resizeCanvas());
+
+  document.getElementById('dlg-about')?.addEventListener('click', function(e) {
+    if (e.target.closest('[data-result]'))
+      this.classList.remove('visible');
+  });
 
 })();

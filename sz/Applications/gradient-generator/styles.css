@@ -1,7 +1,6 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  padding: 8px;
   overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
@@ -9,14 +8,29 @@ body {
   font-size: 12px;
   background: var(--sz-color-button-face);
   color: var(--sz-color-button-text);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
 }
+
+/* ---- Menu bar ---- */
+.menu-bar { display: flex; background: var(--sz-color-menu); color: var(--sz-color-menu-text); font-size: 11px; user-select: none; border-bottom: 1px solid var(--sz-color-button-shadow); position: relative; z-index: 100; flex-shrink: 0; }
+.menu-item { padding: 3px 8px; position: relative; cursor: default; }
+.menu-item:hover, .menu-item.open { background: var(--sz-color-highlight); color: var(--sz-color-highlight-text); }
+.menu-dropdown { display: none; position: absolute; top: 100%; left: 0; background: var(--sz-color-menu); border: 1px solid var(--sz-color-button-shadow); box-shadow: 2px 2px 4px rgba(0,0,0,0.2); min-width: 160px; z-index: 200; }
+.menu-item.open .menu-dropdown { display: block; }
+.menu-entry { padding: 3px 24px 3px 8px; white-space: nowrap; cursor: default; color: var(--sz-color-menu-text); }
+.menu-entry:hover { background: var(--sz-color-highlight); color: var(--sz-color-highlight-text); }
+.menu-separator { height: 1px; background: var(--sz-color-button-shadow); margin: 2px 4px; }
 
 /* ---- Layout ---- */
 #app {
   display: grid;
   grid-template-rows: auto 1fr auto auto auto auto;
   gap: 6px;
-  height: calc(100vh - 16px);
+  flex: 1;
+  min-height: 0;
+  padding: 8px;
 }
 
 .hidden { display: none !important; }
@@ -356,4 +370,58 @@ body {
   border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
   background: var(--sz-color-highlight);
   color: var(--sz-color-highlight-text);
+}
+
+/* ---- Dialogs ---- */
+.dialog-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.3);
+  z-index: 2000;
+  justify-content: center;
+  align-items: center;
+}
+
+.dialog-overlay.visible {
+  display: flex;
+}
+
+.dialog {
+  background: var(--sz-color-button-face);
+  border: 2px outset var(--sz-color-button-shadow);
+  min-width: 300px;
+  max-width: 450px;
+  box-shadow: 3px 3px 8px rgba(0,0,0,0.3);
+}
+
+.dialog-title {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+  padding: 4px 8px;
+  font-weight: bold;
+  font-size: 11px;
+  user-select: none;
+}
+
+.dialog-body {
+  padding: 12px;
+  font-size: 11px;
+}
+
+.dialog-body p {
+  margin-bottom: 8px;
+}
+
+.dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 8px 12px;
+}
+
+.dialog-buttons button {
+  min-width: 72px;
+  padding: 3px 12px;
+  font-size: 11px;
 }

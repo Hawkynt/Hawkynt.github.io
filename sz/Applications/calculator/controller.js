@@ -702,8 +702,10 @@
       switchMode('scientific');
     else if (action === 'mode-programmer')
       switchMode('programmer');
-    else if (action === 'about')
-      SZ.Dlls.User32.MessageBox('Calculator\nA multi-mode calculator.', 'About Calculator', MB_OK | MB_ICONINFORMATION);
+    else if (action === 'about') {
+      const dlg = document.getElementById('dlg-about');
+      if (dlg) dlg.classList.add('visible');
+    }
   }
 
   // -----------------------------------------------------------------------
@@ -712,7 +714,7 @@
   const MODE_SIZES = {
     standard: { width: 260, height: 340 },
     scientific: { width: 420, height: 400 },
-    programmer: { width: 460, height: 480 }
+    programmer: { width: 550, height: 540 }
   };
 
   const MODE_TITLES = {
@@ -1167,4 +1169,10 @@
   }
 
   init();
+
+  document.getElementById('dlg-about')?.addEventListener('click', function(e) {
+    if (e.target.closest('[data-result]'))
+      this.classList.remove('visible');
+  });
+
 })();

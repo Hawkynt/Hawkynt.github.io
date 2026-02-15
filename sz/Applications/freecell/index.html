@@ -5,25 +5,27 @@
 <title>FreeCell</title>
 <script src="../sz-app-bootstrap.js"></script>
 <link rel="stylesheet" href="styles.css">
+<script defer src="vision-data.js"></script>
+  <script defer src="../vision-renderer.js"></script>
 </head>
 <body>
 
 <!-- Menu Bar -->
 <div class="menu-bar" id="menuBar">
   <div class="menu-item" data-menu="game">Game
-    <div class="menu-dropdown" id="menuGame">
-      <div class="menu-dropdown-item" data-action="new">New Game<span class="shortcut">F2</span></div>
-      <div class="menu-dropdown-item" data-action="select">Select Game<span class="shortcut">F3</span></div>
-      <div class="menu-dropdown-item" data-action="restart">Restart Game</div>
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="new">New Game<span class="shortcut">F2</span></div>
+      <div class="menu-entry" data-action="select">Select Game<span class="shortcut">F3</span></div>
+      <div class="menu-entry" data-action="restart">Restart Game</div>
       <div class="menu-separator"></div>
-      <div class="menu-dropdown-item" data-action="undo">Undo<span class="shortcut">Ctrl+Z</span></div>
+      <div class="menu-entry" data-action="undo">Undo<span class="shortcut">Ctrl+Z</span></div>
       <div class="menu-separator"></div>
-      <div class="menu-dropdown-item" data-action="exit">Exit</div>
+      <div class="menu-entry" data-action="exit">Exit</div>
     </div>
   </div>
   <div class="menu-item" data-menu="help">Help
-    <div class="menu-dropdown" id="menuHelp">
-      <div class="menu-dropdown-item" data-action="about">About FreeCell</div>
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="about">About FreeCell</div>
     </div>
   </div>
 </div>
@@ -41,38 +43,32 @@
 </div>
 
 <!-- About Dialog -->
-<div class="xp-dialog-backdrop" id="aboutBackdrop">
-  <div class="xp-dialog">
-    <div class="xp-dialog-titlebar">
-      <span>About FreeCell</span>
-      <button class="xp-dialog-close" id="aboutClose" type="button">x</button>
-    </div>
-    <div class="xp-dialog-body">
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About FreeCell</div>
+    <div class="dialog-body">
       <p style="font-weight:bold;font-size:13px;margin-bottom:8px;">FreeCell</p>
       <p>Classic FreeCell card game.</p>
       <p style="margin-top:8px;">All 52 cards are dealt face-up. Use four free cells and build foundations from Ace to King by suit.</p>
       <p style="margin-top:12px;font-size:10px;opacity:0.7;">&copy; 1995-2026 &raquo;SynthelicZ&laquo;</p>
     </div>
-    <div class="xp-dialog-buttons">
-      <button class="xp-btn" id="aboutOk" type="button">OK</button>
+    <div class="dialog-buttons">
+      <button data-result="ok">OK</button>
     </div>
   </div>
 </div>
 
 <!-- Select Game Dialog -->
-<div class="xp-dialog-backdrop" id="selectBackdrop">
-  <div class="xp-dialog">
-    <div class="xp-dialog-titlebar">
-      <span>Select Game</span>
-      <button class="xp-dialog-close" id="selectClose" type="button">x</button>
-    </div>
-    <div class="xp-dialog-body">
+<div class="dialog-overlay" id="selectBackdrop">
+  <div class="dialog">
+    <div class="dialog-title">Select Game</div>
+    <div class="dialog-body">
       <label for="gameNumInput">Enter a game number (1 - 1000000):</label>
       <input type="number" id="gameNumInput" min="1" max="1000000" value="1">
     </div>
-    <div class="xp-dialog-buttons">
-      <button class="xp-btn" id="selectOk" type="button">OK</button>
-      <button class="xp-btn" id="selectCancel" type="button">Cancel</button>
+    <div class="dialog-buttons">
+      <button data-result="ok" type="button">OK</button>
+      <button data-result="cancel" type="button">Cancel</button>
     </div>
   </div>
 </div>
