@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Visual cookie consent banner designer with live preview, design presets, compliance modes, and code export">
+<meta name="robots" content="index,follow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Cookie Banner Generator -- &raquo;SynthelicZ&laquo; Desktop">
+<meta property="og:description" content="Visual cookie consent banner designer with live preview, design presets, compliance modes, and code export">
+<meta property="og:url" content="https://hawkynt.github.io/sz/Applications/cookie-banner/index.html">
+<link rel="canonical" href="https://hawkynt.github.io/sz/Applications/cookie-banner/index.html">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Cookie Banner Generator",
+  "url": "https://hawkynt.github.io/sz/Applications/cookie-banner/index.html",
+  "description": "Visual cookie consent banner designer with live preview, design presets, compliance modes, and code export",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Web Browser",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<title>Cookie Banner Generator</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="styles.css">
+<script defer src="../vision-renderer.js"></script>
+</head>
+<body>
+<noscript><p>Visual cookie consent banner designer with live preview, design presets, compliance modes, and code export. <a href="../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a> to use this app.</p></noscript>
+
+<div class="menu-bar">
+  <div class="menu-item" data-menu="file">
+    File
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="new">New</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="export-file">Export HTML File...</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="reset">Reset to Defaults</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="presets">
+    Presets
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="preset-minimal-clean">Minimal Clean</div>
+      <div class="menu-entry" data-action="preset-material">Material</div>
+      <div class="menu-entry" data-action="preset-glassmorphism">Glassmorphism</div>
+      <div class="menu-entry" data-action="preset-dark-elegant">Dark Elegant</div>
+      <div class="menu-entry" data-action="preset-corporate-blue">Corporate Blue</div>
+      <div class="menu-entry" data-action="preset-warm-toast">Warm Toast</div>
+      <div class="menu-entry" data-action="preset-neon-accent">Neon Accent</div>
+      <div class="menu-entry" data-action="preset-retro-pixel">Retro Pixel</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="help">
+    Help
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="about">About Cookie Banner Generator</div>
+    </div>
+  </div>
+</div>
+
+<div id="toolbar">
+  <label class="toolbar-label">Compliance:
+    <select id="sel-compliance">
+      <option value="gdpr">GDPR</option>
+      <option value="ccpa">CCPA</option>
+      <option value="eprivacy">ePrivacy</option>
+      <option value="minimal">Minimal</option>
+    </select>
+  </label>
+  <div class="toolbar-separator"></div>
+  <label class="toolbar-label">Position:
+    <select id="sel-position">
+      <option value="bottom-bar">Bottom Bar</option>
+      <option value="top-bar">Top Bar</option>
+      <option value="center-modal">Center Modal</option>
+      <option value="bottom-left">Bottom Left</option>
+      <option value="bottom-right">Bottom Right</option>
+    </select>
+  </label>
+  <div class="toolbar-separator"></div>
+  <label class="toolbar-label">Animation:
+    <select id="sel-animation">
+      <option value="slide-up">Slide Up</option>
+      <option value="fade-in">Fade In</option>
+      <option value="scale-up">Scale Up</option>
+      <option value="none">None</option>
+    </select>
+  </label>
+  <div class="toolbar-separator"></div>
+  <button class="toolbar-btn" id="btn-desktop" title="Desktop preview">Desktop</button>
+  <button class="toolbar-btn" id="btn-mobile" title="Mobile preview (375px)">Mobile</button>
+  <div class="toolbar-separator"></div>
+  <button class="toolbar-btn" id="btn-light" title="Light page background">Light</button>
+  <button class="toolbar-btn" id="btn-dark" title="Dark page background">Dark</button>
+  <div class="toolbar-separator"></div>
+  <button class="toolbar-btn" id="btn-replay" title="Replay animation">Replay</button>
+</div>
+
+<div id="app">
+
+  <!-- Preview Area -->
+  <div id="preview-area">
+    <div id="simulated-page">
+      <div id="sim-page-content">
+        <div class="sim-nav">
+          <div class="sim-nav-logo"></div>
+          <div class="sim-nav-links">
+            <div class="sim-nav-link"></div>
+            <div class="sim-nav-link"></div>
+            <div class="sim-nav-link"></div>
+          </div>
+        </div>
+        <div class="sim-hero">
+          <div class="sim-hero-title"></div>
+          <div class="sim-hero-subtitle"></div>
+          <div class="sim-hero-btn"></div>
+        </div>
+        <div class="sim-columns">
+          <div class="sim-card"></div>
+          <div class="sim-card"></div>
+          <div class="sim-card"></div>
+        </div>
+        <div class="sim-paragraph"></div>
+        <div class="sim-paragraph short"></div>
+      </div>
+      <div id="banner-preview-container"></div>
+    </div>
+  </div>
+
+  <!-- Splitter -->
+  <div id="splitter"></div>
+
+  <!-- Options Panel -->
+  <div id="options-panel">
+    <div class="tabs">
+      <div class="tab active" data-tab="content">Content</div>
+      <div class="tab" data-tab="style">Style</div>
+      <div class="tab" data-tab="categories">Categories</div>
+      <div class="tab" data-tab="code">Code</div>
+    </div>
+    <div class="tab-bodies">
+
+      <!-- Content Tab -->
+      <div class="tab-body active" id="tab-content">
+        <div class="form-row">
+          <label for="inp-heading">Heading:</label>
+          <input type="text" id="inp-heading" spellcheck="false">
+        </div>
+        <div class="form-row">
+          <label for="inp-body">Body:</label>
+          <textarea id="inp-body" rows="2" spellcheck="false"></textarea>
+        </div>
+        <div class="form-row">
+          <label for="inp-accept-label">Accept button:</label>
+          <input type="text" id="inp-accept-label" spellcheck="false">
+        </div>
+        <div class="form-row">
+          <label for="inp-reject-label">Reject button:</label>
+          <input type="text" id="inp-reject-label" spellcheck="false">
+        </div>
+        <div class="form-row">
+          <label for="inp-settings-label">Settings button:</label>
+          <input type="text" id="inp-settings-label" spellcheck="false">
+        </div>
+        <div class="form-row">
+          <label for="inp-link-text">Privacy link text:</label>
+          <input type="text" id="inp-link-text" spellcheck="false">
+        </div>
+        <div class="form-row">
+          <label for="inp-link-url">Privacy link URL:</label>
+          <input type="text" id="inp-link-url" spellcheck="false">
+        </div>
+        <div class="form-row form-row-checks">
+          <label><input type="checkbox" id="chk-show-reject"> Show reject button</label>
+          <label><input type="checkbox" id="chk-show-settings"> Show settings button</label>
+        </div>
+      </div>
+
+      <!-- Style Tab -->
+      <div class="tab-body" id="tab-style">
+        <div class="form-row color-row">
+          <label>Banner BG:</label>
+          <input type="color" id="clr-banner-bg"><input type="text" id="hex-banner-bg" class="hex-input" maxlength="7" spellcheck="false">
+        </div>
+        <div class="form-row color-row">
+          <label>Text:</label>
+          <input type="color" id="clr-text"><input type="text" id="hex-text" class="hex-input" maxlength="7" spellcheck="false">
+        </div>
+        <div class="form-row color-row">
+          <label>Accept BG:</label>
+          <input type="color" id="clr-accept-bg"><input type="text" id="hex-accept-bg" class="hex-input" maxlength="7" spellcheck="false">
+        </div>
+        <div class="form-row color-row">
+          <label>Accept Text:</label>
+          <input type="color" id="clr-accept-text"><input type="text" id="hex-accept-text" class="hex-input" maxlength="7" spellcheck="false">
+        </div>
+        <div class="form-row color-row">
+          <label>Reject BG:</label>
+          <input type="color" id="clr-reject-bg"><input type="text" id="hex-reject-bg" class="hex-input" maxlength="7" spellcheck="false">
+        </div>
+        <div class="form-row color-row">
+          <label>Reject Text:</label>
+          <input type="color" id="clr-reject-text"><input type="text" id="hex-reject-text" class="hex-input" maxlength="7" spellcheck="false">
+        </div>
+        <div class="form-row color-row">
+          <label>Link Color:</label>
+          <input type="color" id="clr-link"><input type="text" id="hex-link" class="hex-input" maxlength="7" spellcheck="false">
+        </div>
+        <div class="form-row range-row">
+          <label>Border Radius:</label>
+          <input type="range" id="rng-radius" min="0" max="32" step="1"><span id="val-radius">8</span>px
+        </div>
+        <div class="form-row range-row">
+          <label>Font Size:</label>
+          <input type="range" id="rng-font-size" min="10" max="20" step="1"><span id="val-font-size">14</span>px
+        </div>
+        <div class="form-row range-row">
+          <label>Padding:</label>
+          <input type="range" id="rng-padding" min="8" max="40" step="2"><span id="val-padding">20</span>px
+        </div>
+        <div class="form-row range-row">
+          <label>Max Width:</label>
+          <input type="range" id="rng-max-width" min="300" max="1200" step="10"><span id="val-max-width">900</span>px
+        </div>
+        <div class="form-row">
+          <label for="sel-shadow">Shadow:</label>
+          <select id="sel-shadow">
+            <option value="none">None</option>
+            <option value="light">Light</option>
+            <option value="medium" selected>Medium</option>
+            <option value="heavy">Heavy</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="sel-backdrop">Backdrop:</label>
+          <select id="sel-backdrop">
+            <option value="none" selected>None</option>
+            <option value="dim">Dim</option>
+            <option value="blur">Blur</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="inp-custom-css">Custom CSS:</label>
+          <textarea id="inp-custom-css" rows="2" spellcheck="false" placeholder=".cookie-banner { ... }"></textarea>
+        </div>
+        <div class="form-row a11y-row">
+          <label>Contrast:</label>
+          <span id="a11y-score" title="">-</span>
+        </div>
+      </div>
+
+      <!-- Categories Tab -->
+      <div class="tab-body" id="tab-categories">
+        <div id="category-list"></div>
+        <button id="btn-add-category" class="action-btn">+ Add Category</button>
+      </div>
+
+      <!-- Code Tab -->
+      <div class="tab-body" id="tab-code">
+        <div class="code-sub-tabs">
+          <button class="code-sub-tab active" data-codetab="combined">Combined</button>
+          <button class="code-sub-tab" data-codetab="html">HTML</button>
+          <button class="code-sub-tab" data-codetab="css">CSS</button>
+          <button class="code-sub-tab" data-codetab="js">JS</button>
+        </div>
+        <pre id="code-output"></pre>
+        <div class="code-actions">
+          <button id="btn-copy-code" class="action-btn">Copy to Clipboard</button>
+          <button id="btn-download-code" class="action-btn">Download .html</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Cookie Banner Generator</div>
+    <div class="dialog-body"></div>
+    <div class="dialog-buttons"><button data-result="ok">OK</button></div>
+  </div>
+</div>
+
+<script src="controller.js"></script>
+</body>
+</html>
