@@ -1,0 +1,359 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  padding: 8px;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  font-family: sans-serif;
+  font-size: 12px;
+  background: var(--sz-color-button-face);
+  color: var(--sz-color-button-text);
+}
+
+/* ---- Layout ---- */
+#app {
+  display: grid;
+  grid-template-rows: auto 1fr auto auto auto auto;
+  gap: 6px;
+  height: calc(100vh - 16px);
+}
+
+.hidden { display: none !important; }
+
+/* ---- Type bar (tabs) ---- */
+#type-bar {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid var(--sz-color-button-shadow);
+}
+
+.type-btn {
+  flex: 1;
+  padding: 4px 12px;
+  border: 1px solid var(--sz-color-button-shadow);
+  border-bottom: none;
+  background: var(--sz-color-button-face);
+  color: var(--sz-color-button-text);
+  cursor: pointer;
+  font-size: 12px;
+  margin-right: -1px;
+}
+
+.type-btn.active {
+  background: var(--sz-color-window);
+  color: var(--sz-color-window-text);
+  border-bottom: 2px solid var(--sz-color-window);
+  margin-bottom: -2px;
+  font-weight: bold;
+}
+
+.type-btn:hover:not(.active) {
+  background: var(--sz-color-button-highlight);
+}
+
+/* ---- Preview ---- */
+#preview-area {
+  min-height: 80px;
+  border: 2px inset;
+  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
+  overflow: hidden;
+}
+
+#preview {
+  width: 100%;
+  height: 100%;
+}
+
+.checker-bg {
+  background-image:
+    linear-gradient(45deg, #ccc 25%, transparent 25%),
+    linear-gradient(-45deg, #ccc 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #ccc 75%),
+    linear-gradient(-45deg, transparent 75%, #ccc 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+
+/* ---- Stop bar ---- */
+#stop-bar-section {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+#stop-track-wrap {
+  flex: 1;
+  position: relative;
+  height: 28px;
+}
+
+#stop-track {
+  position: absolute;
+  top: 8px;
+  left: 0;
+  right: 0;
+  height: 12px;
+  border: 1px solid var(--sz-color-button-shadow);
+  border-radius: 2px;
+}
+
+#stop-handles {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 28px;
+}
+
+.stop-handle {
+  position: absolute;
+  top: 0;
+  width: 14px;
+  height: 28px;
+  transform: translateX(-50%);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.stop-handle::before {
+  content: '';
+  display: block;
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 8px solid var(--sz-color-button-shadow);
+}
+
+.stop-handle::after {
+  content: '';
+  display: block;
+  width: 10px;
+  height: 16px;
+  border: 2px solid var(--sz-color-button-shadow);
+  border-radius: 0 0 2px 2px;
+  background: var(--handle-color, #fff);
+}
+
+.stop-handle.selected::before {
+  border-top-color: var(--sz-color-highlight);
+}
+
+.stop-handle.selected::after {
+  border-color: var(--sz-color-highlight);
+}
+
+#stop-buttons {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+#stop-buttons button,
+#output-buttons button {
+  padding: 3px 10px;
+  border: 2px outset;
+  border-color: var(--sz-color-button-highlight) var(--sz-color-button-shadow) var(--sz-color-button-shadow) var(--sz-color-button-highlight);
+  background: var(--sz-color-button-face);
+  color: var(--sz-color-button-text);
+  cursor: pointer;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+#stop-buttons button:active,
+#output-buttons button:active {
+  border-style: inset;
+  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
+}
+
+/* ---- Controls section ---- */
+#controls-section {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 4px 0;
+}
+
+.type-controls {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.type-controls label {
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.type-controls input[type="range"] {
+  width: 100px;
+}
+
+.type-controls input[type="number"] {
+  width: 50px;
+  padding: 2px 4px;
+  border: 2px inset;
+  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
+  background: var(--sz-color-window);
+  color: var(--sz-color-window-text);
+  font-size: 11px;
+}
+
+.type-controls select {
+  padding: 2px 4px;
+  border: 2px inset;
+  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
+  background: var(--sz-color-window);
+  color: var(--sz-color-window-text);
+  font-size: 11px;
+}
+
+#repeating-wrap {
+  margin-left: auto;
+}
+
+#repeating-wrap label {
+  font-size: 11px;
+  cursor: pointer;
+}
+
+/* ---- Stop editor ---- */
+#stop-editor {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 0;
+}
+
+#stop-editor label {
+  font-size: 11px;
+  font-weight: bold;
+}
+
+/* Color swatch button (launches Color Picker app) */
+#stop-color-swatch {
+  width: 28px;
+  height: 22px;
+  padding: 0;
+  border: 2px inset;
+  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
+  cursor: pointer;
+  background: #ff0000;
+}
+
+#stop-hex {
+  width: 65px;
+  padding: 2px 4px;
+  border: 2px inset;
+  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
+  background: var(--sz-color-window);
+  color: var(--sz-color-window-text);
+  font-family: 'Lucida Console', Consolas, monospace;
+  font-size: 11px;
+}
+
+#stop-editor input[type="range"] {
+  width: 100px;
+}
+
+#stop-editor input[type="number"] {
+  width: 50px;
+  padding: 2px 4px;
+  border: 2px inset;
+  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
+  background: var(--sz-color-window);
+  color: var(--sz-color-window-text);
+  font-size: 11px;
+}
+
+#stop-editor span {
+  font-size: 11px;
+}
+
+/* ---- Output section ---- */
+#output-section {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+
+#css-display-wrap {
+  flex: 1;
+  min-height: 48px;
+  border: 2px inset;
+  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
+  background: var(--sz-color-window);
+  overflow: auto;
+}
+
+#css-display {
+  display: block;
+  padding: 4px 6px;
+  font-family: 'Lucida Console', Consolas, monospace;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--sz-color-window-text);
+  cursor: text;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+#css-import {
+  width: 100%;
+  height: 100%;
+  resize: none;
+  padding: 4px 6px;
+  border: none;
+  background: var(--sz-color-window);
+  color: var(--sz-color-window-text);
+  font-family: 'Lucida Console', Consolas, monospace;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ---- Syntax highlighting ---- */
+.hl-prop { color: #0451a5; }
+.hl-fn   { color: #795e26; }
+.hl-color { font-weight: bold; }
+.hl-color-swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border: 1px solid rgba(0,0,0,0.3);
+  vertical-align: middle;
+  margin-right: 2px;
+}
+.hl-num  { color: #098658; }
+.hl-punc { color: #888; }
+.hl-kw   { color: #0000ff; }
+.hl-str  { color: #a31515; }
+
+#output-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+#output-buttons select {
+  padding: 3px 6px;
+  border: 2px inset;
+  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
+  background: var(--sz-color-window);
+  color: var(--sz-color-window-text);
+  font-size: 11px;
+}
+
+#btn-import.active {
+  border-style: inset;
+  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+}

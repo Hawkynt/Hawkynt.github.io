@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ff6b6b"/>
+      <stop offset="50%" stop-color="#ffd93d"/>
+      <stop offset="100%" stop-color="#6bcb77"/>
+    </linearGradient>
+  </defs>
+  <rect x="3" y="3" width="18" height="18" rx="2" fill="url(#g)" stroke="var(--sz-color-window-text, black)" stroke-width="1.5"/>
+  <line x1="8" y1="21" x2="8" y2="15" stroke="var(--sz-color-window-text, black)" stroke-width="1.5"/>
+  <line x1="12" y1="21" x2="12" y2="13" stroke="var(--sz-color-window-text, black)" stroke-width="1.5"/>
+  <line x1="16" y1="21" x2="16" y2="16" stroke="var(--sz-color-window-text, black)" stroke-width="1.5"/>
+  <circle cx="8" cy="14" r="1.5" fill="var(--sz-color-highlight, #4a90d9)" stroke="var(--sz-color-window-text, black)" stroke-width="0.5"/>
+  <circle cx="12" cy="12" r="1.5" fill="var(--sz-color-highlight, #4a90d9)" stroke="var(--sz-color-window-text, black)" stroke-width="0.5"/>
+  <circle cx="16" cy="15" r="1.5" fill="var(--sz-color-highlight, #4a90d9)" stroke="var(--sz-color-window-text, black)" stroke-width="0.5"/>
+</svg>
