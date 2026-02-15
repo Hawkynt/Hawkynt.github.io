@@ -5,49 +5,47 @@
 
   // ===== Presets =====
 
-  const PRESETS = {
-    sunset: [
-      { color: '#ff512f', position: 0 },
-      { color: '#f09819', position: 50 },
-      { color: '#dd2476', position: 100 }
-    ],
-    ocean: [
-      { color: '#2193b0', position: 0 },
-      { color: '#6dd5ed', position: 100 }
-    ],
-    rainbow: [
-      { color: '#ff0000', position: 0 },
-      { color: '#ff8800', position: 17 },
-      { color: '#ffff00', position: 33 },
-      { color: '#00cc00', position: 50 },
-      { color: '#0066ff', position: 67 },
-      { color: '#8800ff', position: 83 },
-      { color: '#ff00ff', position: 100 }
-    ],
-    fire: [
-      { color: '#f12711', position: 0 },
-      { color: '#f5af19', position: 100 }
-    ],
-    forest: [
-      { color: '#0f9b0f', position: 0 },
-      { color: '#000000', position: 50 },
-      { color: '#134e5e', position: 100 }
-    ],
-    pastel: [
-      { color: '#fbc2eb', position: 0 },
-      { color: '#a6c1ee', position: 50 },
-      { color: '#c2e9fb', position: 100 }
-    ],
-    midnight: [
-      { color: '#0f0c29', position: 0 },
-      { color: '#302b63', position: 50 },
-      { color: '#24243e', position: 100 }
-    ],
-    gold: [
-      { color: '#f7971e', position: 0 },
-      { color: '#ffd200', position: 100 }
-    ]
-  };
+  const PRESET_CATEGORIES = [
+    {
+      label: 'Classic',
+      presets: [
+        { key: 'sunset', label: 'Sunset', stops: [{ color: '#ff512f', position: 0 }, { color: '#f09819', position: 50 }, { color: '#dd2476', position: 100 }] },
+        { key: 'ocean', label: 'Ocean', stops: [{ color: '#2193b0', position: 0 }, { color: '#6dd5ed', position: 100 }] },
+        { key: 'rainbow', label: 'Rainbow', stops: [{ color: '#ff0000', position: 0 }, { color: '#ff8800', position: 17 }, { color: '#ffff00', position: 33 }, { color: '#00cc00', position: 50 }, { color: '#0066ff', position: 67 }, { color: '#8800ff', position: 83 }, { color: '#ff00ff', position: 100 }] },
+        { key: 'fire', label: 'Fire', stops: [{ color: '#f12711', position: 0 }, { color: '#f5af19', position: 100 }] },
+        { key: 'forest', label: 'Forest', stops: [{ color: '#0f9b0f', position: 0 }, { color: '#000000', position: 50 }, { color: '#134e5e', position: 100 }] },
+        { key: 'pastel', label: 'Pastel', stops: [{ color: '#fbc2eb', position: 0 }, { color: '#a6c1ee', position: 50 }, { color: '#c2e9fb', position: 100 }] },
+        { key: 'midnight', label: 'Midnight', stops: [{ color: '#0f0c29', position: 0 }, { color: '#302b63', position: 50 }, { color: '#24243e', position: 100 }] },
+        { key: 'gold', label: 'Gold', stops: [{ color: '#f7971e', position: 0 }, { color: '#ffd200', position: 100 }] }
+      ]
+    },
+    {
+      label: 'Swatches',
+      presets: [
+        { key: 'vital-ocean', label: 'Vital Ocean', stops: [{ color: '#1cb5e0', position: 0 }, { color: '#000851', position: 100 }] },
+        { key: 'kale-salad', label: 'Kale Salad', stops: [{ color: '#00c9ff', position: 0 }, { color: '#92fe9d', position: 100 }] },
+        { key: 'disco-club', label: 'Disco Club', stops: [{ color: '#fc466b', position: 0 }, { color: '#3f5efb', position: 100 }] },
+        { key: 'shady-lane', label: 'Shady Lane', stops: [{ color: '#3f2b96', position: 0 }, { color: '#a8c0ff', position: 100 }] },
+        { key: 'retro-wagon', label: 'Retro Wagon', stops: [{ color: '#fdbb2d', position: 0 }, { color: '#22c1c3', position: 100 }] },
+        { key: 'fresco-crush', label: 'Fresco Crush', stops: [{ color: '#fdbb2d', position: 0 }, { color: '#3a1c71', position: 100 }] },
+        { key: 'cucumber-water', label: 'Cucumber Water', stops: [{ color: '#e3ffe7', position: 0 }, { color: '#d9e7ff', position: 100 }] },
+        { key: 'sea-salt', label: 'Sea Salt', stops: [{ color: '#4b6cb7', position: 0 }, { color: '#182848', position: 100 }] },
+        { key: 'par-four', label: 'Par Four', stops: [{ color: '#9ebd13', position: 0 }, { color: '#008552', position: 100 }] },
+        { key: 'ooey-gooey', label: 'Ooey Gooey', stops: [{ color: '#0700b8', position: 0 }, { color: '#00ff88', position: 100 }] },
+        { key: 'bloody-mimosa', label: 'Bloody Mimosa', stops: [{ color: '#d53369', position: 0 }, { color: '#daae51', position: 100 }] },
+        { key: 'lovely-lilly', label: 'Lovely Lilly', stops: [{ color: '#efd5ff', position: 0 }, { color: '#515ada', position: 100 }] },
+        { key: 'aqua-spray', label: 'Aqua Spray', stops: [{ color: '#00d2ff', position: 0 }, { color: '#3a47d5', position: 100 }] },
+        { key: 'mello-yellow', label: 'Mello Yellow', stops: [{ color: '#f8ff00', position: 0 }, { color: '#3ad59f', position: 100 }] },
+        { key: 'dusty-cactus', label: 'Dusty Cactus', stops: [{ color: '#fcff9e', position: 0 }, { color: '#c67700', position: 100 }] }
+      ]
+    }
+  ];
+
+  // Flat lookup for quick access
+  const PRESETS = {};
+  for (const cat of PRESET_CATEGORIES)
+    for (const p of cat.presets)
+      PRESETS[p.key] = p.stops;
 
   // ===== State =====
 
@@ -107,7 +105,8 @@
 
   const $cssDisplay = document.getElementById('css-display');
   const $cssImport = document.getElementById('css-import');
-  const $selPreset = document.getElementById('sel-preset');
+  const $btnPresets = document.getElementById('btn-presets');
+  const $presetDropdown = document.getElementById('preset-dropdown');
   const $btnCopy = document.getElementById('btn-copy');
   const $btnImport = document.getElementById('btn-import');
 
@@ -131,6 +130,17 @@
 
   function sortedStops() {
     return [...state.stops].sort((a, b) => a.position - b.position);
+  }
+
+  function neighborBounds(stop) {
+    let lo = 0, hi = 100;
+    for (const s of state.stops) {
+      if (s.id !== stop.id && s.position <= stop.position && s.position >= lo)
+        lo = s.position;
+      if (s.id !== stop.id && s.position >= stop.position && s.position <= hi)
+        hi = s.position;
+    }
+    return { lo, hi };
   }
 
   function clamp(v, min, max) {
@@ -615,16 +625,30 @@
     const trackStops = sorted.map(s => `${s.color} ${s.position}%`).join(', ');
     $stopTrack.style.background = `linear-gradient(to right, ${trackStops})`;
 
-    // Handles
-    $stopHandles.innerHTML = '';
-    for (const stop of state.stops) {
-      const el = document.createElement('div');
-      el.className = 'stop-handle' + (stop.id === state.selectedStopId ? ' selected' : '');
-      el.style.left = stop.position + '%';
-      el.style.setProperty('--handle-color', stop.color);
-      el.dataset.id = stop.id;
-      $stopHandles.appendChild(el);
-    }
+    // Handles -- update in place to preserve pointer capture during drag
+    const existingHandles = $stopHandles.children;
+    const wantedIds = state.stops.map(s => String(s.id));
+    const currentIds = Array.from(existingHandles).map(el => el.dataset.id);
+    const needsRebuild = wantedIds.length !== currentIds.length || wantedIds.some((id, i) => id !== currentIds[i]);
+
+    if (needsRebuild) {
+      $stopHandles.innerHTML = '';
+      for (const stop of state.stops) {
+        const el = document.createElement('div');
+        el.className = 'stop-handle' + (stop.id === state.selectedStopId ? ' selected' : '');
+        el.style.left = stop.position + '%';
+        el.style.setProperty('--handle-color', stop.color);
+        el.dataset.id = stop.id;
+        $stopHandles.appendChild(el);
+      }
+    } else
+      for (let i = 0; i < state.stops.length; ++i) {
+        const stop = state.stops[i];
+        const el = existingHandles[i];
+        el.className = 'stop-handle' + (stop.id === state.selectedStopId ? ' selected' : '');
+        el.style.left = stop.position + '%';
+        el.style.setProperty('--handle-color', stop.color);
+      }
 
     // Type tabs
     for (const btn of $typeBtns)
@@ -651,6 +675,11 @@
     if (sel) {
       $stopColorSwatch.style.background = sel.color;
       $stopHex.value = sel.color;
+      const bounds = neighborBounds(sel);
+      $slStopPos.min = bounds.lo;
+      $slStopPos.max = bounds.hi;
+      $numStopPos.min = bounds.lo;
+      $numStopPos.max = bounds.hi;
       $slStopPos.value = sel.position;
       $numStopPos.value = sel.position;
     }
@@ -755,11 +784,12 @@
       $stopHex.value = sel.color;
   });
 
-  // Stop position
+  // Stop position (clamped to neighbor bounds)
   wireSlider($slStopPos, $numStopPos, v => {
     const sel = selectedStop();
     if (sel) {
-      sel.position = v;
+      const bounds = neighborBounds(sel);
+      sel.position = clamp(v, bounds.lo, bounds.hi);
       updateAll();
     }
   });
@@ -795,7 +825,7 @@
     }
   });
 
-  // Handle click to select / drag
+  // Handle click to select / drag (clamped between neighboring stops)
   $stopHandles.addEventListener('pointerdown', e => {
     const handle = e.target.closest('.stop-handle');
     if (!handle)
@@ -809,12 +839,13 @@
     if (!stop)
       return;
 
+    const { lo, hi } = neighborBounds(stop);
     const trackRect = $stopHandles.getBoundingClientRect();
     handle.setPointerCapture(e.pointerId);
 
     const onMove = ev => {
       const x = ev.clientX - trackRect.left;
-      stop.position = clamp(Math.round(x / trackRect.width * 100), 0, 100);
+      stop.position = clamp(Math.round(x / trackRect.width * 100), lo, hi);
       updateAll();
     };
 
@@ -839,15 +870,75 @@
     updateAll();
   });
 
-  // Presets
-  $selPreset.addEventListener('change', () => {
-    const key = $selPreset.value;
+  // ===== Preset picker (custom dropdown with gradient previews) =====
+
+  function buildPresetGradientCSS(stops) {
+    return 'linear-gradient(90deg, ' + stops.map(s => s.color + ' ' + s.position + '%').join(', ') + ')';
+  }
+
+  function buildPresetDropdown() {
+    $presetDropdown.innerHTML = '';
+    for (const cat of PRESET_CATEGORIES) {
+      const header = document.createElement('div');
+      header.className = 'preset-cat-header';
+      header.textContent = cat.label;
+      $presetDropdown.appendChild(header);
+
+      const grid = document.createElement('div');
+      grid.className = 'preset-grid';
+      for (const p of cat.presets) {
+        const item = document.createElement('button');
+        item.className = 'preset-item';
+        item.dataset.key = p.key;
+        item.title = p.label;
+
+        const swatch = document.createElement('span');
+        swatch.className = 'preset-swatch';
+        swatch.style.background = buildPresetGradientCSS(p.stops);
+
+        const label = document.createElement('span');
+        label.className = 'preset-label';
+        label.textContent = p.label;
+
+        item.appendChild(swatch);
+        item.appendChild(label);
+        grid.appendChild(item);
+      }
+      $presetDropdown.appendChild(grid);
+    }
+  }
+
+  buildPresetDropdown();
+
+  let presetOpen = false;
+
+  function togglePresetDropdown(open) {
+    presetOpen = open != null ? open : !presetOpen;
+    $presetDropdown.classList.toggle('open', presetOpen);
+    $btnPresets.classList.toggle('active', presetOpen);
+  }
+
+  $btnPresets.addEventListener('click', e => {
+    e.stopPropagation();
+    togglePresetDropdown();
+  });
+
+  $presetDropdown.addEventListener('click', e => {
+    const item = e.target.closest('.preset-item');
+    if (!item)
+      return;
+    const key = item.dataset.key;
     if (!key || !PRESETS[key])
       return;
     state.stops = PRESETS[key].map(p => makeStop(p.color, p.position));
     state.selectedStopId = state.stops[0].id;
-    $selPreset.value = '';
+    togglePresetDropdown(false);
     updateAll();
+  });
+
+  document.addEventListener('pointerdown', e => {
+    if (presetOpen && !e.target.closest('#preset-picker'))
+      togglePresetDropdown(false);
   });
 
   // Copy CSS

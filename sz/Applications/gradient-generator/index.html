@@ -140,17 +140,10 @@
       <textarea id="css-import" class="hidden" rows="3" spellcheck="false" placeholder="Paste CSS gradient here..."></textarea>
     </div>
     <div id="output-buttons">
-      <select id="sel-preset">
-        <option value="">Presets...</option>
-        <option value="sunset">Sunset</option>
-        <option value="ocean">Ocean</option>
-        <option value="rainbow">Rainbow</option>
-        <option value="fire">Fire</option>
-        <option value="forest">Forest</option>
-        <option value="pastel">Pastel</option>
-        <option value="midnight">Midnight</option>
-        <option value="gold">Gold</option>
-      </select>
+      <div id="preset-picker">
+        <button id="btn-presets">Presets &#9660;</button>
+        <div id="preset-dropdown"></div>
+      </div>
       <button id="btn-copy">Copy CSS</button>
       <button id="btn-import">Paste CSS</button>
     </div>
