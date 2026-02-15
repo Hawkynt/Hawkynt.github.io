@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Gradient Generator</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- Gradient type tabs -->
+  <div id="type-bar">
+    <button class="type-btn active" data-type="linear">Linear</button>
+    <button class="type-btn" data-type="radial">Radial</button>
+    <button class="type-btn" data-type="conic">Conic</button>
+  </div>
+
+  <!-- Live preview -->
+  <div id="preview-area">
+    <div id="preview" class="checker-bg"></div>
+  </div>
+
+  <!-- Color stop bar -->
+  <div id="stop-bar-section">
+    <div id="stop-track-wrap">
+      <div id="stop-track"></div>
+      <div id="stop-handles"></div>
+    </div>
+    <div id="stop-buttons">
+      <button id="btn-add-stop">Add</button>
+      <button id="btn-remove-stop">Remove</button>
+    </div>
+  </div>
+
+  <!-- Type-specific controls -->
+  <div id="controls-section">
+    <div id="linear-controls" class="type-controls">
+      <label>Angle</label>
+      <input type="range" id="sl-angle" min="0" max="360" value="90">
+      <input type="number" id="num-angle" min="0" max="360" value="90">
+      <span>deg</span>
+    </div>
+    <div id="radial-controls" class="type-controls hidden">
+      <label>Shape</label>
+      <select id="sel-radial-shape">
+        <option value="ellipse">Ellipse</option>
+        <option value="circle">Circle</option>
+      </select>
+      <label>Size</label>
+      <select id="sel-radial-size">
+        <option value="farthest-corner">Farthest Corner</option>
+        <option value="closest-corner">Closest Corner</option>
+        <option value="farthest-side">Farthest Side</option>
+        <option value="closest-side">Closest Side</option>
+      </select>
+      <label>At</label>
+      <select id="sel-radial-pos">
+        <option value="center">Center</option>
+        <option value="top">Top</option>
+        <option value="top right">Top Right</option>
+        <option value="right">Right</option>
+        <option value="bottom right">Bottom Right</option>
+        <option value="bottom">Bottom</option>
+        <option value="bottom left">Bottom Left</option>
+        <option value="left">Left</option>
+        <option value="top left">Top Left</option>
+      </select>
+    </div>
+    <div id="conic-controls" class="type-controls hidden">
+      <label>Angle</label>
+      <input type="range" id="sl-conic-angle" min="0" max="360" value="0">
+      <input type="number" id="num-conic-angle" min="0" max="360" value="0">
+      <span>deg</span>
+      <label>At</label>
+      <select id="sel-conic-pos">
+        <option value="center">Center</option>
+        <option value="top">Top</option>
+        <option value="top right">Top Right</option>
+        <option value="right">Right</option>
+        <option value="bottom right">Bottom Right</option>
+        <option value="bottom">Bottom</option>
+        <option value="bottom left">Bottom Left</option>
+        <option value="left">Left</option>
+        <option value="top left">Top Left</option>
+      </select>
+    </div>
+    <div id="repeating-wrap">
+      <label><input type="checkbox" id="chk-repeating"> Repeating</label>
+    </div>
+  </div>
+
+  <!-- Stop editor -->
+  <div id="stop-editor">
+    <label>Color</label>
+    <button id="stop-color-swatch" title="Pick color"></button>
+    <input type="text" id="stop-hex" maxlength="7" spellcheck="false" value="#ff0000">
+    <label>Position</label>
+    <input type="range" id="sl-stop-pos" min="0" max="100" value="0">
+    <input type="number" id="num-stop-pos" min="0" max="100" value="0">
+    <span>%</span>
+  </div>
+
+  <!-- Output area -->
+  <div id="output-section">
+    <div id="css-display-wrap">
+      <code id="css-display"></code>
+      <textarea id="css-import" class="hidden" rows="3" spellcheck="false" placeholder="Paste CSS gradient here..."></textarea>
+    </div>
+    <div id="output-buttons">
+      <select id="sel-preset">
+        <option value="">Presets...</option>
+        <option value="sunset">Sunset</option>
+        <option value="ocean">Ocean</option>
+        <option value="rainbow">Rainbow</option>
+        <option value="fire">Fire</option>
+        <option value="forest">Forest</option>
+        <option value="pastel">Pastel</option>
+        <option value="midnight">Midnight</option>
+        <option value="gold">Gold</option>
+      </select>
+      <button id="btn-copy">Copy CSS</button>
+      <button id="btn-import">Paste CSS</button>
+    </div>
+  </div>
+
+</div>
+<script src="controller.js"></script>
+</body>
+</html>

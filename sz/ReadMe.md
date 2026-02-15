@@ -1349,6 +1349,9 @@ User apps (iframe / index.html -- can run standalone):
 - [x] Function Plotter: Mathematical function plotter with expression parser (42+ functions including trig, hyperbolic, logarithmic, rounding), syntax highlighting, autocomplete, function families (parameter t with range/list modes), Kurvendiskussion analysis (roots, extrema, inflection points, monotonicity, poles, limits), symbolic polynomial analysis, dark mode, PNG export at 2x resolution, menu bar, status bar with coordinates and zoom level (Office)
 - [x] SVG Editor: Vector graphics editor with 8 drawing tools (select, rectangle, ellipse, circle, line, freehand path, text, pan), menu bar (File/Edit/View/Tools/Help), 30-step undo/redo, CSS-transform zoom with Ctrl+wheel, 8-handle element resize, copy/cut/paste/duplicate, grid overlay with snap-to-grid, arrow-key nudge (±1px, Shift ±10px), single-key tool shortcuts (V/R/E/C/L/P/T/H), layer management (visibility toggle, bring front/forward/backward/back), SVG source editing, collapsible sidebar panels, dark mode with localStorage persistence, PNG export, status bar with coordinates/tool/zoom/document size/element count, keyboard shortcuts dialog, VFS integration via common file dialog, command-line file opening (Graphics)
 - [x] Subnet Calculator: IPv4 subnet calculator with real-time computation, interactive 32-bit binary view with clickable mask bits, quick CIDR prefix buttons (/8-/32), network properties (network/broadcast/wildcard/first-last host), IP class (A-E) and type detection (Private/Public/Loopback/Link-Local/Multicast/Reserved), subnet division table (2-256 subnets), hex/integer representations, copy all results (Ctrl+Shift+C), menu bar (Edit/Help), status bar with class/type/validation (Development)
+- [x] Cron Visualizer: Crontab expression builder and inspector with per-field inputs (minute/hour/dom/month/dow/command), live preview, multi-line crontab editor with parsed entries table (schedule/command/human-readable meaning/next runs), quick reference panel, special aliases (@yearly, @daily, etc.), VFS integration via common file dialog, menu bar (File/Edit/Help), toolbar, status bar with entry count (Development)
+- [x] Gradient Generator: CSS gradient builder with linear/radial/conic types, live preview, draggable color stop handles on a gradient track (click track to add, drag to reposition), per-stop color and position editor, Color Picker app integration for stop colors, type-specific controls (angle for linear, shape/size/position for radial, angle/position for conic), repeating gradient toggle, 8 built-in presets (sunset/ocean/rainbow/fire/forest/pastel/midnight/gold), syntax-highlighted CSS output with inline color swatches, CSS import via paste with robust parser (strips comments, finds gradients in arbitrary CSS, handles vendor prefixes, named/hex/rgb/hsl colors), copy to clipboard (Development)
+- [x] Skin Tester: WindowBlinds skin inspector with drag-and-drop or file-open for WBA/ZIP/UIS skin archives, skin and sub-skin/style selector dropdowns, 9-slice frame grid visualization (NW/N/NE/W/content/E/SW/S/SE cells), active/inactive state toggle, animation playback toggle, themed form control preview (buttons, text inputs, select, checkboxes, radios, textarea, slider, progress, scrollbar), info panel with skin metadata (System Tools)
 
 See [docs/appideas.md](docs/appideas.md) for the full application roadmap.
 
@@ -1451,7 +1454,7 @@ ESLint configured for ES2022 modules, browser globals.
 
 ### Planned Applications
 
-29 applications are currently implemented (4 system + 25 user apps). See [docs/appideas.md](docs/appideas.md) for the full application idea list with hosting format (iframe vs hosted) and status tracking.
+35 applications are currently implemented (4 system + 31 user apps). See [docs/appideas.md](docs/appideas.md) for the full application idea list with hosting format (iframe vs hosted) and status tracking.
 
 ### Virtual File System (VFS) — Implemented
 
@@ -1499,7 +1502,7 @@ The VFS enables:
 - File type associations — manifest-defined `fileTypes[]` per app, specificity-based matching via `sz:shellExecute`
 - `GetCommandLine()` — apps read URL params on startup to auto-open files from Explorer
 - Registry-like settings API (`Advapi32.RegQueryValue/RegSetValue`) with `WM_SETTINGCHANGE` broadcast
-- MVC app refactoring — all 28 apps split into index.html (loader), styles.css, controller.js
+- MVC app refactoring — all apps split into index.html (loader), styles.css, controller.js
 - System metrics query — screen dimensions, work area, taskbar height, caption height
 - Common file dialogs (Open/Save As) with VFS navigation, upload from PC, download to PC
 - Start menu MRU (most recently used) + All Programs with categories and flyout submenus
