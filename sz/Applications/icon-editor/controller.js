@@ -18,6 +18,19 @@
     '#ff0080', '#80ff00', '#0080ff', '#ff80c0', '#c080ff', '#80c0ff', '#c0ff80'
   ];
 
+  const DrawingQuantization = SZ.System && SZ.System.Drawing && SZ.System.Drawing.Quantization
+    ? SZ.System.Drawing.Quantization
+    : null;
+  const IconCodec = SZ.System && SZ.System.Drawing && SZ.System.Drawing.IconCodec
+    ? SZ.System.Drawing.IconCodec
+    : null;
+  const QUANTIZER_OPTIONS = DrawingQuantization
+    ? DrawingQuantization.getQuantizers()
+    : [{ id: 'median-cut', name: 'Median Cut (Adaptive)' }];
+  const DITHER_OPTIONS = DrawingQuantization
+    ? DrawingQuantization.getDitherers()
+    : [{ id: 'none', name: 'None' }];
+
   const ICO_FILTERS = [
     { name: 'Icon Files', ext: ['ico', 'cur'] },
     { name: 'All Files', ext: ['*'] }
@@ -37,6 +50,9 @@
   let iconDocument = { type: 1, images: [] };
   let selectedIndex = 0;
   let currentTool = 'pencil';
+  let foregroundColor = { r: 0, g: 0, b: 0, a: 255 };
+  let backgroundColor = { r: 255, g: 255, b: 255, a: 255 };
+  let activeColorSlot = 'fg';
   let currentColor = { r: 0, g: 0, b: 0, a: 255 };
   let zoom = 8;
   let showGrid = true;
@@ -46,6 +62,11 @@
   let currentFileName = 'Untitled';
 
   let isDrawing = false;
+  let activePointerButton = 0;
+  let pickerMode = 'slot';
+  let pickerPaletteIndex = -1;
+  let colorPickerRequest = null;
+  let lastPaletteTouchTap = { idx: -1, ts: 0 };
   let startX = 0;
   let startY = 0;
   let lastX = -1;
@@ -78,14 +99,16 @@
   const ctx = mainCanvas.getContext('2d', { willReadFrequently: true });
   const octx = overlayCanvas.getContext('2d');
 
-  const colorPreview = document.getElementById('color-preview');
   const alphaLabel = document.getElementById('alpha-label');
   const colorR = document.getElementById('color-r');
   const colorG = document.getElementById('color-g');
   const colorB = document.getElementById('color-b');
   const colorA = document.getElementById('color-a');
   const colorHex = document.getElementById('color-hex');
+  const systemColorPicker = document.getElementById('system-color-picker');
   const alphaSlider = document.getElementById('alpha-slider');
+  const fgColorSlot = document.getElementById('fg-color-slot');
+  const bgColorSlot = document.getElementById('bg-color-slot');
   const depthSelect = document.getElementById('depth-select');
   const toolGrid = document.getElementById('tool-grid');
   const paletteGrid = document.getElementById('palette-grid');
@@ -117,10 +140,10 @@
 
   // ── Open file from command line ───────────────────────────────────
   const cmdLine = Kernel32.GetCommandLine();
-  if (cmdLine.file) {
-    Kernel32.ReadAllBytes(cmdLine.file).then(content => {
+  if (cmdLine.path) {
+    Kernel32.ReadAllBytes(cmdLine.path).then(content => {
       if (content)
-        loadFile(cmdLine.file, content);
+        loadFile(cmdLine.path, content);
     }).catch(() => {});
   }
 
@@ -134,7 +157,7 @@
     canvas.height = h;
     const imgCtx = canvas.getContext('2d');
     const imageData = imgCtx.createImageData(w, h);
-    iconDocument.images.push({ width: w, height: h, bpp, imageData, palette: null });
+    iconDocument.images.push({ width: w, height: h, bpp, imageData, palette: createDefaultPaletteForBpp(bpp) });
     refreshImageList();
     return iconDocument.images.length - 1;
   }
@@ -161,7 +184,7 @@
       height: src.height,
       bpp: src.bpp,
       imageData: newData,
-      palette: src.palette ? [...src.palette] : null
+      palette: clonePalette(src.palette)
     });
     refreshImageList();
     selectImage(iconDocument.images.length - 1);
@@ -171,6 +194,12 @@
 
   function currentImage() {
     return iconDocument.images[selectedIndex] || null;
+  }
+
+  function clonePalette(palette) {
+    if (!palette)
+      return null;
+    return palette.map(c => [c[0] | 0, c[1] | 0, c[2] | 0, (c[3] ?? 255) | 0]);
   }
 
   function selectImage(index) {
@@ -195,6 +224,7 @@
 
     setZoom(zoom);
     renderChecker();
+    buildPalette();
     refreshImageList();
     undoStack.length = 0;
     redoStack = [];
@@ -306,6 +336,44 @@
   // COLOR MANAGEMENT
   // ══════════════════════════════════════════════════════════════════
 
+  function cloneColor(c) {
+    return { r: c.r | 0, g: c.g | 0, b: c.b | 0, a: c.a | 0 };
+  }
+
+  function setSlotColor(slot, c) {
+    if (slot === 'bg')
+      backgroundColor = cloneColor(c);
+    else
+      foregroundColor = cloneColor(c);
+    if (activeColorSlot === slot)
+      currentColor = cloneColor(c);
+  }
+
+  function getSlotColor(slot) {
+    return slot === 'bg' ? backgroundColor : foregroundColor;
+  }
+
+  function setActiveColorSlot(slot) {
+    activeColorSlot = slot === 'bg' ? 'bg' : 'fg';
+    currentColor = cloneColor(getSlotColor(activeColorSlot));
+    updateColorUI();
+  }
+
+  function getEffectiveColorFor(base) {
+    const img = currentImage();
+    if (!img)
+      return cloneColor(base);
+    if (img.bpp <= 8) {
+      ensureImagePalette(img);
+      const idx = nearestPaletteIndex(img.palette, base.r, base.g, base.b, 255);
+      const p = img.palette[idx];
+      return { r: p[0], g: p[1], b: p[2], a: base.a < 128 ? 0 : 255 };
+    }
+    if (img.bpp === 24)
+      return { r: base.r, g: base.g, b: base.b, a: base.a < 128 ? 0 : 255 };
+    return cloneColor(base);
+  }
+
   function updateColorUI() {
     const { r, g, b, a } = currentColor;
     colorR.value = r;
@@ -315,8 +383,36 @@
     alphaSlider.value = a;
     const hex = '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
     colorHex.value = a < 255 ? hex + ((1 << 8) + a).toString(16).slice(1) : hex;
-    colorPreview.style.background = 'rgba(' + r + ',' + g + ',' + b + ',' + (a / 255) + ')';
-    alphaLabel.textContent = 'A: ' + a;
+    if (systemColorPicker)
+      systemColorPicker.value = hex;
+    if (alphaLabel)
+      alphaLabel.textContent = 'A: ' + a;
+    if (fgColorSlot)
+      fgColorSlot.style.background = 'rgba(' + foregroundColor.r + ',' + foregroundColor.g + ',' + foregroundColor.b + ',' + (foregroundColor.a / 255) + ')';
+    if (bgColorSlot)
+      bgColorSlot.style.background = 'rgba(' + backgroundColor.r + ',' + backgroundColor.g + ',' + backgroundColor.b + ',' + (backgroundColor.a / 255) + ')';
+    if (fgColorSlot)
+      fgColorSlot.classList.toggle('active', activeColorSlot === 'fg');
+    if (bgColorSlot)
+      bgColorSlot.classList.toggle('active', activeColorSlot === 'bg');
+    refreshPaletteMarkers();
+  }
+
+  function refreshPaletteMarkers() {
+    const swatches = paletteGrid ? paletteGrid.querySelectorAll('.palette-swatch') : [];
+    swatches.forEach((swatch) => {
+      const parsed = parseHexColor(swatch.dataset.color || '');
+      if (!parsed)
+        return;
+      swatch.classList.toggle('fg',
+        parsed.r === foregroundColor.r &&
+        parsed.g === foregroundColor.g &&
+        parsed.b === foregroundColor.b);
+      swatch.classList.toggle('bg',
+        parsed.r === backgroundColor.r &&
+        parsed.g === backgroundColor.g &&
+        parsed.b === backgroundColor.b);
+    });
   }
 
   function parseHexColor(hex) {
@@ -340,20 +436,668 @@
     return null;
   }
 
+  function getPaletteSizeForBpp(bpp) {
+    if (bpp <= 1) return 2;
+    if (bpp <= 4) return 16;
+    if (bpp <= 8) return 256;
+    return 0;
+  }
+
+  function clamp8(v) {
+    return v < 0 ? 0 : (v > 255 ? 255 : (v | 0));
+  }
+
+  function createDefaultPaletteForBpp(bpp) {
+    const size = getPaletteSizeForBpp(bpp);
+    if (size === 0)
+      return null;
+
+    const palette = [];
+    if (size === 2) {
+      palette.push([0, 0, 0, 255], [255, 255, 255, 255]);
+      return palette;
+    }
+
+    const base = PALETTE_COLORS.slice(0, Math.min(16, size));
+    for (const c of base) {
+      const p = parseHexColor(c);
+      palette.push([p.r, p.g, p.b, 255]);
+    }
+
+    while (palette.length < size) {
+      const i = palette.length;
+      const r = ((i >> 5) & 0x07) * 255 / 7;
+      const g = ((i >> 2) & 0x07) * 255 / 7;
+      const b = (i & 0x03) * 255 / 3;
+      palette.push([Math.round(r), Math.round(g), Math.round(b), 255]);
+    }
+
+    return palette;
+  }
+
+  function ensureImagePalette(img) {
+    const size = getPaletteSizeForBpp(img.bpp);
+    if (!size) {
+      img.palette = null;
+      return;
+    }
+    if (!img.palette || img.palette.length < size) {
+      const base = createDefaultPaletteForBpp(img.bpp);
+      if (!img.palette)
+        img.palette = base;
+      else {
+        const merged = img.palette.slice(0, size).map(c => [c[0] | 0, c[1] | 0, c[2] | 0, (c[3] ?? 255) | 0]);
+        while (merged.length < size)
+          merged.push(base[merged.length]);
+        img.palette = merged;
+      }
+    } else if (img.palette.length > size)
+      img.palette = img.palette.slice(0, size);
+  }
+
+  function nearestPaletteIndex(palette, r, g, b, a = 255) {
+    let best = 0;
+    let bestDist = Infinity;
+    for (let i = 0; i < palette.length; ++i) {
+      const p = palette[i];
+      const dr = r - p[0];
+      const dg = g - p[1];
+      const db = b - p[2];
+      const da = a - (p[3] ?? 255);
+      const d = dr * dr + dg * dg + db * db + da * da;
+      if (d < bestDist) {
+        bestDist = d;
+        best = i;
+      }
+    }
+    return best;
+  }
+
+  function countDistinctOpaqueColors(img) {
+    if (!img || !img.imageData)
+      return 0;
+    if (DrawingQuantization && DrawingQuantization.countDistinctOpaqueColors)
+      return DrawingQuantization.countDistinctOpaqueColors(img.imageData, 4096);
+    const seen = new Set();
+    const d = img.imageData.data;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] < 128)
+        continue;
+      seen.add((d[i] << 16) | (d[i + 1] << 8) | d[i + 2]);
+      if (seen.size > 4096)
+        return seen.size;
+    }
+    return seen.size;
+  }
+
+  function collectOpaquePixels(img, maxSamples = 16384) {
+    const d = img.imageData.data;
+    const pixelCount = d.length >> 2;
+    const step = Math.max(1, Math.ceil(pixelCount / maxSamples));
+    const out = [];
+    for (let p = 0; p < pixelCount; p += step) {
+      const i = p << 2;
+      if (d[i + 3] < 128)
+        continue;
+      out.push([d[i], d[i + 1], d[i + 2]]);
+    }
+    return out;
+  }
+
+  function dedupePalette(colors, maxColors) {
+    const out = [];
+    const seen = new Set();
+    for (const c of colors) {
+      const key = (clamp8(c[0]) << 16) | (clamp8(c[1]) << 8) | clamp8(c[2]);
+      if (seen.has(key))
+        continue;
+      seen.add(key);
+      out.push([clamp8(c[0]), clamp8(c[1]), clamp8(c[2]), 255]);
+      if (out.length >= maxColors)
+        break;
+    }
+    return out;
+  }
+
+  function buildPopularityPalette(img, maxColors) {
+    const pixels = collectOpaquePixels(img, 65536);
+    if (pixels.length === 0)
+      return [];
+    const bins = new Map();
+    for (const p of pixels) {
+      const key = ((p[0] >> 3) << 10) | ((p[1] >> 3) << 5) | (p[2] >> 3);
+      let b = bins.get(key);
+      if (!b) {
+        b = { count: 0, r: 0, g: 0, b: 0 };
+        bins.set(key, b);
+      }
+      b.count++;
+      b.r += p[0];
+      b.g += p[1];
+      b.b += p[2];
+    }
+    const ranked = [...bins.values()].sort((a, b) => b.count - a.count);
+    const colors = [];
+    for (let i = 0; i < ranked.length && colors.length < maxColors; ++i) {
+      const bin = ranked[i];
+      colors.push([
+        Math.round(bin.r / bin.count),
+        Math.round(bin.g / bin.count),
+        Math.round(bin.b / bin.count)
+      ]);
+    }
+    return dedupePalette(colors, maxColors);
+  }
+
+  function buildMedianCutPalette(img, maxColors) {
+    const pixels = collectOpaquePixels(img, 65536);
+    if (pixels.length === 0)
+      return [];
+
+    const boxes = [{ pixels }];
+    const getRange = (arr, c) => {
+      let lo = 255, hi = 0;
+      for (const p of arr) {
+        if (p[c] < lo) lo = p[c];
+        if (p[c] > hi) hi = p[c];
+      }
+      return hi - lo;
+    };
+
+    while (boxes.length < maxColors) {
+      let bestIdx = -1;
+      let bestRange = -1;
+      let bestChannel = 0;
+      for (let i = 0; i < boxes.length; ++i) {
+        const arr = boxes[i].pixels;
+        if (arr.length < 2)
+          continue;
+        const rr = getRange(arr, 0);
+        const rg = getRange(arr, 1);
+        const rb = getRange(arr, 2);
+        const range = Math.max(rr, rg, rb);
+        if (range > bestRange) {
+          bestRange = range;
+          bestIdx = i;
+          bestChannel = rr >= rg && rr >= rb ? 0 : (rg >= rb ? 1 : 2);
+        }
+      }
+      if (bestIdx < 0)
+        break;
+
+      const bucket = boxes[bestIdx].pixels.slice().sort((a, b) => a[bestChannel] - b[bestChannel]);
+      const mid = bucket.length >> 1;
+      const left = bucket.slice(0, mid);
+      const right = bucket.slice(mid);
+      if (left.length === 0 || right.length === 0)
+        break;
+      boxes.splice(bestIdx, 1, { pixels: left }, { pixels: right });
+    }
+
+    const colors = boxes.map(box => {
+      let r = 0, g = 0, b = 0;
+      for (const p of box.pixels) {
+        r += p[0];
+        g += p[1];
+        b += p[2];
+      }
+      const n = Math.max(1, box.pixels.length);
+      return [Math.round(r / n), Math.round(g / n), Math.round(b / n)];
+    });
+    return dedupePalette(colors, maxColors);
+  }
+
+  function buildPaletteForImage(img, paletteSize, quantizer = 'keep') {
+    let palette = [];
+    if (quantizer === 'keep') {
+      ensureImagePalette(img);
+      palette = clonePalette(img.palette) || [];
+    } else if (quantizer === 'uniform')
+      palette = createDefaultPaletteForBpp(img.bpp) || [];
+    else if (quantizer === 'popularity')
+      palette = buildPopularityPalette(img, paletteSize);
+    else
+      palette = buildMedianCutPalette(img, paletteSize);
+
+    palette = dedupePalette(palette, paletteSize);
+    const fallback = createDefaultPaletteForBpp(img.bpp) || [];
+    for (let i = 0; palette.length < paletteSize && i < fallback.length; ++i)
+      palette.push([fallback[i][0], fallback[i][1], fallback[i][2], 255]);
+    while (palette.length < paletteSize)
+      palette.push([0, 0, 0, 255]);
+    if (palette.length > paletteSize)
+      palette = palette.slice(0, paletteSize);
+    return palette;
+  }
+
+  function quantizeImageToPalette(img, palette, dither = 'none') {
+    if (!palette || palette.length === 0)
+      return;
+    if (DrawingQuantization && DrawingQuantization.quantizeToPalette) {
+      DrawingQuantization.quantizeToPalette({
+        imageData: img.imageData,
+        palette,
+        dither
+      });
+      return;
+    }
+    const d = img.imageData.data;
+    const w = img.width;
+    const h = img.height;
+
+    if (dither === 'bayer4') {
+      const bayer4 = [
+        [0, 8, 2, 10],
+        [12, 4, 14, 6],
+        [3, 11, 1, 9],
+        [15, 7, 13, 5]
+      ];
+      const strength = 48;
+      for (let y = 0; y < h; ++y)
+        for (let x = 0; x < w; ++x) {
+          const i = (y * w + x) * 4;
+          if (d[i + 3] < 128) {
+            d[i] = 0; d[i + 1] = 0; d[i + 2] = 0; d[i + 3] = 0;
+            continue;
+          }
+          const t = ((bayer4[y & 3][x & 3] - 7.5) / 16) * strength;
+          const r = clamp8(d[i] + t);
+          const g = clamp8(d[i + 1] + t);
+          const b = clamp8(d[i + 2] + t);
+          const idx = nearestPaletteIndex(palette, r, g, b, 255);
+          const p = palette[idx];
+          d[i] = p[0];
+          d[i + 1] = p[1];
+          d[i + 2] = p[2];
+          d[i + 3] = 255;
+        }
+      return;
+    }
+
+    const useDiffusion = dither === 'floyd-steinberg' || dither === 'atkinson';
+    if (!useDiffusion) {
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 3] < 128) {
+          d[i] = 0; d[i + 1] = 0; d[i + 2] = 0; d[i + 3] = 0;
+          continue;
+        }
+        const idx = nearestPaletteIndex(palette, d[i], d[i + 1], d[i + 2], 255);
+        const p = palette[idx];
+        d[i] = p[0];
+        d[i + 1] = p[1];
+        d[i + 2] = p[2];
+        d[i + 3] = 255;
+      }
+      return;
+    }
+
+    const errR = new Float32Array(w * h);
+    const errG = new Float32Array(w * h);
+    const errB = new Float32Array(w * h);
+    const kernel = dither === 'atkinson'
+      ? { divisor: 8, data: [[1, 0, 1], [2, 0, 1], [-1, 1, 1], [0, 1, 1], [1, 1, 1], [0, 2, 1]] }
+      : { divisor: 16, data: [[1, 0, 7], [-1, 1, 3], [0, 1, 5], [1, 1, 1]] };
+
+    for (let y = 0; y < h; ++y) {
+      const reverse = (y & 1) === 1;
+      const xStart = reverse ? (w - 1) : 0;
+      const xEnd = reverse ? -1 : w;
+      const xStep = reverse ? -1 : 1;
+      for (let x = xStart; x !== xEnd; x += xStep) {
+        const pi = y * w + x;
+        const i = pi * 4;
+        if (d[i + 3] < 128) {
+          d[i] = 0; d[i + 1] = 0; d[i + 2] = 0; d[i + 3] = 0;
+          continue;
+        }
+        const rr = clamp8(d[i] + errR[pi]);
+        const gg = clamp8(d[i + 1] + errG[pi]);
+        const bb = clamp8(d[i + 2] + errB[pi]);
+        const idx = nearestPaletteIndex(palette, rr, gg, bb, 255);
+        const p = palette[idx];
+        d[i] = p[0];
+        d[i + 1] = p[1];
+        d[i + 2] = p[2];
+        d[i + 3] = 255;
+
+        const er = rr - p[0];
+        const eg = gg - p[1];
+        const eb = bb - p[2];
+        for (const k of kernel.data) {
+          const dx = reverse ? -k[0] : k[0];
+          const nx = x + dx;
+          const ny = y + k[1];
+          if (nx < 0 || nx >= w || ny < 0 || ny >= h)
+            continue;
+          const ni = ny * w + nx;
+          const wgt = k[2] / kernel.divisor;
+          errR[ni] += er * wgt;
+          errG[ni] += eg * wgt;
+          errB[ni] += eb * wgt;
+        }
+      }
+    }
+  }
+
+  function applyBppConstraints(img, options = {}) {
+    if (!img)
+      return;
+    const quantizer = options.quantizer || 'keep';
+    const dither = options.dither || 'none';
+    if (img.bpp <= 8) {
+      const paletteSize = getPaletteSizeForBpp(img.bpp);
+      const palette = DrawingQuantization && DrawingQuantization.createIndexedPalette
+        ? DrawingQuantization.createIndexedPalette({
+          imageData: img.imageData,
+          quantizer,
+          paletteSize,
+          currentPalette: img.palette || [],
+          fallbackPalette: createDefaultPaletteForBpp(img.bpp) || []
+        })
+        : buildPaletteForImage(img, paletteSize, quantizer);
+      img.palette = palette;
+      quantizeImageToPalette(img, palette, dither);
+    } else if (img.bpp === 24) {
+      const d = img.imageData.data;
+      for (let i = 0; i < d.length; i += 4)
+        d[i + 3] = d[i + 3] < 128 ? 0 : 255;
+      img.palette = null;
+    } else
+      img.palette = null;
+  }
+
+  function cloneImageForProcessing(img) {
+    return {
+      width: img.width,
+      height: img.height,
+      bpp: img.bpp,
+      imageData: new ImageData(new Uint8ClampedArray(img.imageData.data), img.width, img.height),
+      palette: clonePalette(img.palette)
+    };
+  }
+
+  function drawImageDataPreview(canvas, imageData) {
+    if (!canvas || !imageData)
+      return;
+    const cctx = canvas.getContext('2d');
+    cctx.clearRect(0, 0, canvas.width, canvas.height);
+    const tmp = document.createElement('canvas');
+    tmp.width = imageData.width;
+    tmp.height = imageData.height;
+    tmp.getContext('2d').putImageData(imageData, 0, 0);
+    const scale = Math.max(1, Math.floor(Math.min(canvas.width / imageData.width, canvas.height / imageData.height)));
+    const dw = imageData.width * scale;
+    const dh = imageData.height * scale;
+    const dx = Math.floor((canvas.width - dw) * 0.5);
+    const dy = Math.floor((canvas.height - dh) * 0.5);
+    cctx.imageSmoothingEnabled = false;
+    cctx.drawImage(tmp, dx, dy, dw, dh);
+  }
+
+  function updateDepthReductionPreview(srcImage, targetBpp, quantizer, dither) {
+    const beforeCanvas = document.getElementById('depth-preview-before');
+    const afterCanvas = document.getElementById('depth-preview-after');
+    const stats = document.getElementById('depth-preview-stats');
+    if (!srcImage || !beforeCanvas || !afterCanvas || !stats)
+      return;
+
+    drawImageDataPreview(beforeCanvas, srcImage.imageData);
+
+    try {
+      const converted = cloneImageForProcessing(srcImage);
+      converted.bpp = targetBpp;
+      applyBppConstraints(converted, { quantizer, dither });
+      drawImageDataPreview(afterCanvas, converted.imageData);
+      const beforeColors = countDistinctOpaqueColors(srcImage);
+      const afterColors = countDistinctOpaqueColors(converted);
+      stats.textContent = 'Estimated opaque colors: ' + beforeColors + ' -> ' + afterColors;
+    } catch (err) {
+      stats.textContent = 'Preview failed: ' + (err && err.message ? err.message : 'unknown error');
+    }
+  }
+
+  function getEffectiveCurrentColor(button = 0) {
+    return getEffectiveColorFor(button === 2 ? backgroundColor : foregroundColor);
+  }
+
+  async function showDepthReductionDialog(img, fromBpp, toBpp, colorsBefore, maxColorsAfter) {
+    const dlg = document.getElementById('dlg-depth-reduce');
+    const info = document.getElementById('depth-reduce-info');
+    const quantizerSel = document.getElementById('depth-quantizer');
+    const ditherSel = document.getElementById('depth-dither');
+
+    if (quantizerSel.options.length === 0) {
+      for (const q of QUANTIZER_OPTIONS) {
+        const o = document.createElement('option');
+        o.value = q.id;
+        o.textContent = q.name;
+        quantizerSel.appendChild(o);
+      }
+    }
+    if (ditherSel.options.length === 0) {
+      for (const d of DITHER_OPTIONS) {
+        const o = document.createElement('option');
+        o.value = d.id;
+        o.textContent = d.name;
+        ditherSel.appendChild(o);
+      }
+    }
+    quantizerSel.value = pickOption(quantizerSel, ['MedianCut', 'median-cut', 'Wu', 'Popularity', 'keep']);
+    ditherSel.value = pickOption(ditherSel, ['ErrorDiffusion_FloydSteinberg', 'floyd-steinberg', 'NoDithering_Instance', 'none']);
+    info.textContent = 'Reducing ' + fromBpp + 'bpp to ' + toBpp + 'bpp keeps up to ' + maxColorsAfter + ' colors (' + colorsBefore + ' currently detected).';
+
+    const onParamsChanged = () => {
+      updateDepthReductionPreview(img, toBpp, quantizerSel.value, ditherSel.value);
+    };
+    quantizerSel.addEventListener('change', onParamsChanged);
+    ditherSel.addEventListener('change', onParamsChanged);
+    onParamsChanged();
+
+    dlg.classList.add('visible');
+    return await new Promise((resolve) => {
+      awaitDialogResult(dlg, (result) => {
+        quantizerSel.removeEventListener('change', onParamsChanged);
+        ditherSel.removeEventListener('change', onParamsChanged);
+        if (result !== 'ok') {
+          resolve({ cancelled: true });
+          return;
+        }
+        resolve({
+          cancelled: false,
+          quantizer: quantizerSel.value,
+          dither: ditherSel.value
+        });
+      });
+    });
+  }
+
+  async function applyDepthChange(targetBpp) {
+    const img = currentImage();
+    if (!img)
+      return;
+    const oldBpp = img.bpp;
+    if (targetBpp === oldBpp) {
+      depthSelect.value = String(oldBpp);
+      return;
+    }
+
+    let options = {};
+    const decreasing = targetBpp < oldBpp;
+    if (decreasing) {
+      const maxColorsAfter = getPaletteSizeForBpp(targetBpp) || 16777216;
+      const colorsBefore = countDistinctOpaqueColors(img);
+      const result = await showDepthReductionDialog(img, oldBpp, targetBpp, colorsBefore, maxColorsAfter);
+      if (result.cancelled) {
+        depthSelect.value = String(oldBpp);
+        return;
+      }
+      options = { quantizer: result.quantizer, dither: result.dither };
+    } else if (targetBpp <= 8)
+      options = { quantizer: 'keep', dither: 'none' };
+
+    pushUndo();
+    img.bpp = targetBpp;
+    applyBppConstraints(img, options);
+    ctx.putImageData(img.imageData, 0, 0);
+    buildPalette();
+    refreshImageList();
+    infoDepth.textContent = img.bpp + '-bit';
+    statusImageInfo.textContent = img.width + ' x ' + img.height + ', ' + img.bpp + 'bpp';
+    foregroundColor = getEffectiveColorFor(foregroundColor);
+    backgroundColor = getEffectiveColorFor(backgroundColor);
+    currentColor = cloneColor(getSlotColor(activeColorSlot));
+    updateColorUI();
+    dirty = true;
+    updateTitle();
+  }
+
+  function applyPaletteSlotColor(idx, rgb) {
+    const img = currentImage();
+    if (!img || !img.palette || idx < 0 || idx >= img.palette.length)
+      return;
+    pushUndo();
+    const old = img.palette[idx];
+    const next = [rgb.r, rgb.g, rgb.b, 255];
+    img.palette[idx] = next;
+    const d = img.imageData.data;
+    for (let j = 0; j < d.length; j += 4) {
+      if (d[j] === old[0] && d[j + 1] === old[1] && d[j + 2] === old[2] && d[j + 3] >= 128) {
+        d[j] = next[0];
+        d[j + 1] = next[1];
+        d[j + 2] = next[2];
+        d[j + 3] = 255;
+      }
+    }
+    ctx.putImageData(img.imageData, 0, 0);
+    refreshImageList();
+    dirty = true;
+    updateTitle();
+    buildPalette();
+  }
+
+  function openSystemColorPicker(hex, mode = 'slot', paletteIndex = -1) {
+    const returnKey = 'sz:icon-editor:colorpick:' + Date.now() + ':' + Math.random().toString(36).slice(2);
+    colorPickerRequest = {
+      returnKey,
+      mode,
+      paletteIndex,
+      slot: activeColorSlot
+    };
+    try {
+      User32.PostMessage('sz:launchApp', {
+        appId: 'color-picker',
+        urlParams: {
+          returnKey,
+          hex: hex || '#000000'
+        }
+      });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function openPaletteSlotEditor(idx) {
+    const img = currentImage();
+    if (!systemColorPicker || !img || !img.palette || idx < 0 || idx >= img.palette.length)
+      return;
+    const p = img.palette[idx];
+    const hex = '#' + ((1 << 24) + (p[0] << 16) + (p[1] << 8) + p[2]).toString(16).slice(1);
+    openSystemColorPicker(hex, 'palette', idx);
+  }
+
+  window.addEventListener('storage', (e) => {
+    if (!colorPickerRequest || !e || e.key !== colorPickerRequest.returnKey || !e.newValue)
+      return;
+    let payload = null;
+    try {
+      payload = JSON.parse(e.newValue);
+    } catch (_) {
+      return;
+    }
+    if (!payload || payload.type !== 'color-picker-result')
+      return;
+    const r = clamp8(payload.r);
+    const g = clamp8(payload.g);
+    const b = clamp8(payload.b);
+    const a = clamp8(payload.a == null ? 255 : payload.a);
+
+    if (colorPickerRequest.mode === 'palette' && Number.isInteger(colorPickerRequest.paletteIndex))
+      applyPaletteSlotColor(colorPickerRequest.paletteIndex, { r, g, b, a });
+    else {
+      const slot = colorPickerRequest.slot === 'bg' ? 'bg' : 'fg';
+      setSlotColor(slot, getEffectiveColorFor({ r, g, b, a }));
+      setActiveColorSlot(slot);
+      updateColorUI();
+      buildPalette();
+    }
+
+    try {
+      localStorage.removeItem(colorPickerRequest.returnKey);
+    } catch (_) {
+    }
+    colorPickerRequest = null;
+  });
+
   function buildPalette() {
     paletteGrid.innerHTML = '';
-    for (const c of PALETTE_COLORS) {
+    const img = currentImage();
+    const indexed = img && img.bpp <= 8;
+    if (indexed)
+      ensureImagePalette(img);
+    const colors = indexed
+      ? img.palette.map(c => '#' + ((1 << 24) + (c[0] << 16) + (c[1] << 8) + c[2]).toString(16).slice(1))
+      : PALETTE_COLORS;
+
+    for (let i = 0; i < colors.length; ++i) {
+      const c = colors[i];
       const swatch = document.createElement('div');
       swatch.className = 'palette-swatch';
       swatch.style.background = c;
       swatch.dataset.color = c;
+      const parsed = parseHexColor(c);
+      if (parsed) {
+        if (parsed.r === foregroundColor.r && parsed.g === foregroundColor.g && parsed.b === foregroundColor.b)
+          swatch.classList.add('fg');
+        if (parsed.r === backgroundColor.r && parsed.g === backgroundColor.g && parsed.b === backgroundColor.b)
+          swatch.classList.add('bg');
+      }
+      if (indexed)
+        swatch.dataset.index = String(i);
       swatch.addEventListener('pointerdown', (e) => {
-        e.preventDefault();
-        const parsed = parseHexColor(c);
+        if (e.button !== 0 && e.button !== 2)
+          return;
         if (parsed) {
-          currentColor = { ...parsed, a: currentColor.a };
+          const slot = e.button === 2 ? 'bg' : 'fg';
+          const alpha = slot === 'bg' ? backgroundColor.a : foregroundColor.a;
+          setActiveColorSlot(slot);
+          setSlotColor(slot, { r: parsed.r, g: parsed.g, b: parsed.b, a: indexed ? 255 : alpha });
           updateColorUI();
         }
+      });
+      swatch.addEventListener('contextmenu', (e) => e.preventDefault());
+      swatch.addEventListener('dblclick', (e) => {
+        if (!indexed || !systemColorPicker)
+          return;
+        e.preventDefault();
+        const idx = parseInt(swatch.dataset.index, 10);
+        if (isNaN(idx))
+          return;
+        openPaletteSlotEditor(idx);
+      });
+      swatch.addEventListener('pointerup', (e) => {
+        if (!indexed || !systemColorPicker || e.pointerType !== 'touch')
+          return;
+        const idx = parseInt(swatch.dataset.index, 10);
+        if (isNaN(idx))
+          return;
+        const now = Date.now();
+        const isDoubleTap = lastPaletteTouchTap.idx === idx && (now - lastPaletteTouchTap.ts) <= 420;
+        lastPaletteTouchTap = { idx, ts: now };
+        if (!isDoubleTap)
+          return;
+        e.preventDefault();
+        openPaletteSlotEditor(idx);
       });
       paletteGrid.appendChild(swatch);
     }
@@ -365,7 +1109,11 @@
     currentColor.g = Math.max(0, Math.min(255, parseInt(colorG.value, 10) || 0));
     currentColor.b = Math.max(0, Math.min(255, parseInt(colorB.value, 10) || 0));
     currentColor.a = Math.max(0, Math.min(255, parseInt(colorA.value, 10) || 0));
+    const c = getEffectiveColorFor(currentColor);
+    currentColor = c;
+    setSlotColor(activeColorSlot, currentColor);
     updateColorUI();
+    buildPalette();
   }
 
   colorR.addEventListener('change', onColorInputChange);
@@ -375,6 +1123,7 @@
 
   alphaSlider.addEventListener('input', () => {
     currentColor.a = parseInt(alphaSlider.value, 10);
+    setSlotColor(activeColorSlot, currentColor);
     updateColorUI();
   });
 
@@ -382,19 +1131,76 @@
     const parsed = parseHexColor(colorHex.value);
     if (parsed) {
       currentColor = parsed;
+      currentColor = getEffectiveColorFor(currentColor);
+      setSlotColor(activeColorSlot, currentColor);
       updateColorUI();
+      buildPalette();
     }
   });
 
-  depthSelect.addEventListener('change', () => {
+  if (systemColorPicker) {
+    systemColorPicker.addEventListener('input', () => {
+      const parsed = parseHexColor(systemColorPicker.value);
+      if (!parsed)
+        return;
+      if (pickerMode === 'palette' && pickerPaletteIndex >= 0) {
+        applyPaletteSlotColor(pickerPaletteIndex, parsed);
+        pickerPaletteIndex = -1;
+        pickerMode = 'slot';
+        return;
+      }
+      currentColor.r = parsed.r;
+      currentColor.g = parsed.g;
+      currentColor.b = parsed.b;
+      currentColor = getEffectiveColorFor(currentColor);
+      setSlotColor(activeColorSlot, currentColor);
+      updateColorUI();
+      buildPalette();
+    });
+  }
+
+  if (fgColorSlot)
+    fgColorSlot.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0)
+        return;
+      e.preventDefault();
+      setActiveColorSlot('fg');
+    });
+  if (fgColorSlot)
+    fgColorSlot.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      setActiveColorSlot('fg');
+      const c = foregroundColor;
+      const hex = '#' + ((1 << 24) + (c.r << 16) + (c.g << 8) + c.b).toString(16).slice(1);
+      openSystemColorPicker(hex, 'slot', -1);
+    });
+
+  if (bgColorSlot)
+    bgColorSlot.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0)
+        return;
+      e.preventDefault();
+      setActiveColorSlot('bg');
+    });
+  if (bgColorSlot)
+    bgColorSlot.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      setActiveColorSlot('bg');
+      const c = backgroundColor;
+      const hex = '#' + ((1 << 24) + (c.r << 16) + (c.g << 8) + c.b).toString(16).slice(1);
+      openSystemColorPicker(hex, 'slot', -1);
+    });
+
+  depthSelect.addEventListener('change', async () => {
     const img = currentImage();
-    if (img) {
-      img.bpp = parseInt(depthSelect.value, 10);
-      infoDepth.textContent = img.bpp + '-bit';
-      statusImageInfo.textContent = img.width + ' x ' + img.height + ', ' + img.bpp + 'bpp';
-      dirty = true;
-      updateTitle();
+    if (!img)
+      return;
+    const targetBpp = parseInt(depthSelect.value, 10);
+    if (!Number.isFinite(targetBpp)) {
+      depthSelect.value = String(img.bpp);
+      return;
     }
+    await applyDepthChange(targetBpp);
   });
 
   // ══════════════════════════════════════════════════════════════════
@@ -405,7 +1211,11 @@
     const img = currentImage();
     if (!img)
       return;
-    undoStack.push(new ImageData(new Uint8ClampedArray(img.imageData.data), img.width, img.height));
+    undoStack.push({
+      imageData: new ImageData(new Uint8ClampedArray(img.imageData.data), img.width, img.height),
+      bpp: img.bpp,
+      palette: clonePalette(img.palette)
+    });
     if (undoStack.length > MAX_UNDO)
       undoStack.shift();
     redoStack = [];
@@ -420,24 +1230,32 @@
     const img = currentImage();
     if (!img)
       return;
-    redoStack.push(new ImageData(new Uint8ClampedArray(img.imageData.data), img.width, img.height));
+    redoStack.push({
+      imageData: new ImageData(new Uint8ClampedArray(img.imageData.data), img.width, img.height),
+      bpp: img.bpp,
+      palette: clonePalette(img.palette)
+    });
     const state = undoStack.pop();
-    const sizeChanged = img.width !== state.width || img.height !== state.height;
-    img.imageData = state;
-    img.width = state.width;
-    img.height = state.height;
+    const sizeChanged = img.width !== state.imageData.width || img.height !== state.imageData.height;
+    img.imageData = state.imageData;
+    img.width = state.imageData.width;
+    img.height = state.imageData.height;
+    img.bpp = state.bpp || img.bpp;
+    img.palette = clonePalette(state.palette);
     if (sizeChanged) {
-      mainCanvas.width = state.width;
-      mainCanvas.height = state.height;
-      overlayCanvas.width = state.width;
-      overlayCanvas.height = state.height;
+      mainCanvas.width = state.imageData.width;
+      mainCanvas.height = state.imageData.height;
+      overlayCanvas.width = state.imageData.width;
+      overlayCanvas.height = state.imageData.height;
     }
-    ctx.putImageData(state, 0, 0);
+    ctx.putImageData(state.imageData, 0, 0);
     if (sizeChanged) {
       setZoom(zoom);
       renderChecker();
       updateImageInfoDisplay();
     }
+    depthSelect.value = String(img.bpp);
+    buildPalette();
     refreshImageList();
     dirty = true;
     updateTitle();
@@ -452,24 +1270,32 @@
     const img = currentImage();
     if (!img)
       return;
-    undoStack.push(new ImageData(new Uint8ClampedArray(img.imageData.data), img.width, img.height));
+    undoStack.push({
+      imageData: new ImageData(new Uint8ClampedArray(img.imageData.data), img.width, img.height),
+      bpp: img.bpp,
+      palette: clonePalette(img.palette)
+    });
     const state = redoStack.pop();
-    const sizeChanged = img.width !== state.width || img.height !== state.height;
-    img.imageData = state;
-    img.width = state.width;
-    img.height = state.height;
+    const sizeChanged = img.width !== state.imageData.width || img.height !== state.imageData.height;
+    img.imageData = state.imageData;
+    img.width = state.imageData.width;
+    img.height = state.imageData.height;
+    img.bpp = state.bpp || img.bpp;
+    img.palette = clonePalette(state.palette);
     if (sizeChanged) {
-      mainCanvas.width = state.width;
-      mainCanvas.height = state.height;
-      overlayCanvas.width = state.width;
-      overlayCanvas.height = state.height;
+      mainCanvas.width = state.imageData.width;
+      mainCanvas.height = state.imageData.height;
+      overlayCanvas.width = state.imageData.width;
+      overlayCanvas.height = state.imageData.height;
     }
-    ctx.putImageData(state, 0, 0);
+    ctx.putImageData(state.imageData, 0, 0);
     if (sizeChanged) {
       setZoom(zoom);
       renderChecker();
       updateImageInfoDisplay();
     }
+    depthSelect.value = String(img.bpp);
+    buildPalette();
     refreshImageList();
     dirty = true;
     updateTitle();
@@ -524,7 +1350,8 @@
     const img = currentImage();
     if (!img)
       return;
-    paintBrush(img.imageData, x, y, currentColor.r, currentColor.g, currentColor.b, currentColor.a, brushSize);
+    const c = getEffectiveCurrentColor(activePointerButton);
+    paintBrush(img.imageData, x, y, c.r, c.g, c.b, c.a, brushSize);
     ctx.putImageData(img.imageData, 0, 0);
   }
 
@@ -536,13 +1363,18 @@
     ctx.putImageData(img.imageData, 0, 0);
   }
 
-  function eyedropperAt(x, y) {
+  function eyedropperAt(x, y, button = 0) {
     const img = currentImage();
     if (!img)
       return;
     const px = getPixel(img.imageData, x, y);
-    currentColor = { r: px[0], g: px[1], b: px[2], a: px[3] };
+    const slot = button === 2 ? 'bg' : 'fg';
+    const sampled = { r: px[0], g: px[1], b: px[2], a: px[3] };
+    setSlotColor(slot, sampled);
+    if (activeColorSlot === slot)
+      currentColor = cloneColor(sampled);
     updateColorUI();
+    buildPalette();
   }
 
   function floodFill(startX, startY) {
@@ -553,7 +1385,8 @@
     const h = img.height;
     const data = img.imageData.data;
     const target = getPixel(img.imageData, startX, startY);
-    const fill = [currentColor.r, currentColor.g, currentColor.b, currentColor.a];
+    const c = getEffectiveCurrentColor(activePointerButton);
+    const fill = [c.r, c.g, c.b, c.a];
 
     if (target[0] === fill[0] && target[1] === fill[1] && target[2] === fill[2] && target[3] === fill[3])
       return;
@@ -707,7 +1540,7 @@
   function drawShapeOverlay(tool, x0, y0, x1, y1) {
     octx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
     const oImg = octx.createImageData(overlayCanvas.width, overlayCanvas.height);
-    const { r, g, b, a } = currentColor;
+    const { r, g, b, a } = getEffectiveCurrentColor(activePointerButton);
     drawShapeToImageData(oImg, tool, x0, y0, x1, y1, r, g, b, a);
     octx.putImageData(oImg, 0, 0);
   }
@@ -716,7 +1549,7 @@
     const img = currentImage();
     if (!img)
       return;
-    const { r, g, b, a } = currentColor;
+    const { r, g, b, a } = getEffectiveCurrentColor(activePointerButton);
     drawShapeToImageData(img.imageData, tool, x0, y0, x1, y1, r, g, b, a);
     ctx.putImageData(img.imageData, 0, 0);
     octx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
@@ -892,9 +1725,12 @@
 
   // ── Pointer events on canvas ──────────────────────────────────────
   canvasContainer.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0)
+    if (e.button !== 0 && e.button !== 2)
+      return;
+    if (currentTool === 'select' && e.button !== 0)
       return;
     e.preventDefault();
+    activePointerButton = e.button;
     const { x, y } = canvasCoords(e);
     isDrawing = true;
     startX = x;
@@ -910,7 +1746,7 @@
       pushUndo();
       erasePixel(x, y);
     } else if (currentTool === 'eyedropper') {
-      eyedropperAt(x, y);
+      eyedropperAt(x, y, activePointerButton);
     } else if (currentTool === 'fill') {
       pushUndo();
       floodFill(x, y);
@@ -957,7 +1793,7 @@
       dirty = true;
       updateTitle();
     } else if (currentTool === 'eyedropper') {
-      eyedropperAt(x, y);
+      eyedropperAt(x, y, activePointerButton);
     } else if (currentTool === 'line' || currentTool === 'rect' || currentTool === 'ellipse') {
       drawShapeOverlay(currentTool, startX, startY, x, y);
     } else if (currentTool === 'select' && selectionDragMode) {
@@ -1446,207 +2282,21 @@
   // ══════════════════════════════════════════════════════════════════
 
   function parseICO(buffer) {
-    const view = new DataView(buffer);
-    const fileSize = buffer.byteLength;
-    const reserved = view.getUint16(0, true);
-    const type = view.getUint16(2, true);
-    const count = view.getUint16(4, true);
-
-    if (reserved !== 0 || (type !== 1 && type !== 2))
-      throw new Error('Not a valid ICO/CUR file');
-
-    const doc = { type, images: [] };
-
-    for (let i = 0; i < count; ++i) {
-      const offset = 6 + i * 16;
-      if (offset + 16 > fileSize)
-        break;
-
-      const w = view.getUint8(offset) || 256;
-      const h = view.getUint8(offset + 1) || 256;
-      const colorCount = view.getUint8(offset + 2);
-      const planes = view.getUint16(offset + 4, true);
-      const bpp = view.getUint16(offset + 6, true);
-      const dataSize = view.getUint32(offset + 8, true);
-      const dataOffset = view.getUint32(offset + 12, true);
-
-      if (dataOffset >= fileSize)
-        continue;
-
-      const maxAvailable = fileSize - dataOffset;
-      const safeSize = dataSize > 0 ? Math.min(dataSize, maxAvailable) : maxAvailable;
-      if (safeSize <= 0)
-        continue;
-
-      const entryData = new Uint8Array(buffer, dataOffset, safeSize);
-      if (entryData.length < 4)
-        continue;
-
-      try {
-        // Check for PNG magic
-        if (entryData[0] === 0x89 && entryData[1] === 0x50 && entryData[2] === 0x4E && entryData[3] === 0x47) {
-          // PNG entry - decode asynchronously
-          doc.images.push({
-            width: w, height: h, bpp: bpp || 32,
-            imageData: null,
-            palette: null,
-            pngData: new Uint8Array(entryData)
-          });
-        } else {
-          // BMP entry
-          const decoded = decodeBmpEntry(entryData, w, h, bpp || (colorCount > 0 ? (colorCount <= 2 ? 1 : colorCount <= 16 ? 4 : 8) : 32));
-          const imageData = decoded.imageData;
-          doc.images.push({
-            width: imageData.width, height: imageData.height,
-            bpp: bpp || decoded.bpp || (colorCount > 0 ? (colorCount <= 2 ? 1 : colorCount <= 16 ? 4 : 8) : 32),
-            imageData,
-            palette: null
-          });
-        }
-      } catch (_) {
-        // Skip malformed entries; keep loading remaining images.
-      }
+    if (IconCodec && IconCodec.parseICO) {
+      return IconCodec.parseICO(buffer, {
+        imageDataFactory: (w, h) => new ImageData(w, h)
+      });
     }
-
-    return doc;
+    throw new Error('Icon codec not available');
   }
 
   function decodeBmpEntry(data, wHint, hHint, bppHint) {
-    if (!data || data.length < 16)
-      throw new Error('BMP entry too small');
-
-    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-    const headerSize = view.getUint32(0, true);
-    let w = Math.max(1, wHint | 0);
-    let h = Math.max(1, hHint | 0);
-    let actualBpp = bppHint || 32;
-    let topDown = false;
-    let paletteSize = 0;
-    let paletteEntrySize = 4;
-    let paletteOffset = headerSize;
-
-    if (headerSize === 12 && data.length >= 12) {
-      const cw = view.getUint16(4, true);
-      const ch = view.getUint16(6, true);
-      const cbpp = view.getUint16(10, true) || actualBpp;
-      if (cw > 0)
-        w = cw;
-      if (ch > 0)
-        h = Math.max(1, Math.floor(ch / 2));
-      actualBpp = cbpp;
-      paletteEntrySize = 3;
-      paletteOffset = 12;
-      if (actualBpp <= 8)
-        paletteSize = (1 << actualBpp);
-    } else if (headerSize >= 40 && data.length >= headerSize) {
-      const bw = view.getInt32(4, true);
-      const bh = view.getInt32(8, true);
-      const bbpp = view.getUint16(14, true) || actualBpp;
-      const clrUsed = headerSize >= 36 ? view.getUint32(32, true) : 0;
-      if (bw !== 0)
-        w = Math.max(1, Math.abs(bw));
-      if (bh !== 0) {
-        topDown = bh < 0;
-        const absH = Math.abs(bh);
-        h = Math.max(1, Math.floor(absH / 2));
-      }
-      actualBpp = bbpp;
-      paletteEntrySize = 4;
-      paletteOffset = headerSize;
-      if (actualBpp <= 8)
-        paletteSize = clrUsed > 0 ? clrUsed : (1 << actualBpp);
+    if (IconCodec && IconCodec.decodeBmpEntry) {
+      return IconCodec.decodeBmpEntry(data, wHint, hHint, bppHint, {
+        imageDataFactory: (w, h) => new ImageData(w, h)
+      });
     }
-
-    const palette = [];
-    for (let i = 0; i < paletteSize; ++i) {
-      const off = paletteOffset + i * paletteEntrySize;
-      if (off + paletteEntrySize > data.length)
-        break;
-      if (paletteEntrySize === 3)
-        palette.push([data[off + 2], data[off + 1], data[off]]);
-      else
-        palette.push([data[off + 2], data[off + 1], data[off]]);
-    }
-
-    const xorOffset = paletteOffset + paletteSize * paletteEntrySize;
-    const xorRowSize = Math.ceil((w * actualBpp) / 8);
-    const xorRowPadded = (xorRowSize + 3) & ~3;
-    const andRowSize = Math.ceil(w / 8);
-    const andRowPadded = (andRowSize + 3) & ~3;
-
-    if (xorOffset >= data.length)
-      throw new Error('Invalid BMP entry offsets');
-
-    if (xorOffset + xorRowPadded * h + andRowPadded * h > data.length) {
-      const maxRowsWithMask = Math.floor((data.length - xorOffset) / (xorRowPadded + andRowPadded));
-      const maxRowsNoMask = Math.floor((data.length - xorOffset) / xorRowPadded);
-      h = Math.max(1, Math.min(h, maxRowsWithMask > 0 ? maxRowsWithMask : maxRowsNoMask));
-    }
-
-    const andOffset = xorOffset + xorRowPadded * h;
-    const hasAndMask = andOffset + andRowPadded * h <= data.length;
-
-    const imageData = new ImageData(w, h);
-    const out = imageData.data;
-
-    for (let y = 0; y < h; ++y) {
-      const srcRow = topDown ? y : (h - 1 - y);
-      const xorRowOff = xorOffset + srcRow * xorRowPadded;
-
-      for (let x = 0; x < w; ++x) {
-        const dstIdx = (y * w + x) * 4;
-        let r = 0, g = 0, b = 0, a = 255;
-
-        if (actualBpp === 32) {
-          const off = xorRowOff + x * 4;
-          b = data[off] || 0;
-          g = data[off + 1] || 0;
-          r = data[off + 2] || 0;
-          a = data[off + 3] ?? 255;
-        } else if (actualBpp === 24) {
-          const off = xorRowOff + x * 3;
-          b = data[off] || 0;
-          g = data[off + 1] || 0;
-          r = data[off + 2] || 0;
-        } else if (actualBpp === 8) {
-          const idx = data[xorRowOff + x] || 0;
-          if (idx < palette.length)
-            [r, g, b] = palette[idx];
-        } else if (actualBpp === 4) {
-          const byteOff = xorRowOff + (x >> 1);
-          const v = data[byteOff] || 0;
-          const idx = (x & 1) === 0 ? (v >> 4) : (v & 0x0F);
-          if (idx < palette.length)
-            [r, g, b] = palette[idx];
-        } else if (actualBpp === 1) {
-          const byteOff = xorRowOff + (x >> 3);
-          const bit = 7 - (x & 7);
-          const idx = ((data[byteOff] || 0) >> bit) & 1;
-          if (idx < palette.length)
-            [r, g, b] = palette[idx];
-        } else if (actualBpp === 16) {
-          const off = xorRowOff + x * 2;
-          const px = (data[off] || 0) | ((data[off + 1] || 0) << 8);
-          r = ((px >> 10) & 0x1F) * 255 / 31;
-          g = ((px >> 5) & 0x1F) * 255 / 31;
-          b = (px & 0x1F) * 255 / 31;
-        }
-
-        if (actualBpp < 32 && hasAndMask) {
-          const andByteOff = andOffset + srcRow * andRowPadded + (x >> 3);
-          const andBit = 7 - (x & 7);
-          if (andByteOff < data.length && (((data[andByteOff] || 0) >> andBit) & 1))
-            a = 0;
-        }
-
-        out[dstIdx] = r;
-        out[dstIdx + 1] = g;
-        out[dstIdx + 2] = b;
-        out[dstIdx + 3] = a;
-      }
-    }
-
-    return { imageData, bpp: actualBpp };
+    throw new Error('Icon codec not available');
   }
 
   async function resolvePngEntries(doc) {
@@ -1678,111 +2328,26 @@
   // ══════════════════════════════════════════════════════════════════
 
   function writeICO(doc) {
-    const entries = [];
-
-    for (const img of doc.images) {
-      let entryData;
-      if (img.width === 256 && img.height === 256)
-        entryData = encodePngEntry(img);
-      else
-        entryData = encodeBmpEntry(img);
-      entries.push({ img, data: entryData });
+    if (IconCodec && IconCodec.writeICO) {
+      return IconCodec.writeICO(doc, {
+        encodePngEntry,
+        ensureImagePalette,
+        createDefaultPaletteForBpp,
+        nearestPaletteIndex
+      });
     }
-
-    // Calculate total size
-    const headerSize = 6 + doc.images.length * 16;
-    let totalSize = headerSize;
-    for (const e of entries)
-      totalSize += e.data.length;
-
-    const buffer = new ArrayBuffer(totalSize);
-    const view = new DataView(buffer);
-    const bytes = new Uint8Array(buffer);
-
-    // ICONDIR
-    view.setUint16(0, 0, true);           // reserved
-    view.setUint16(2, doc.type, true);     // type (1=ICO, 2=CUR)
-    view.setUint16(4, doc.images.length, true); // count
-
-    // ICONDIRENTRY + data
-    let dataOffset = headerSize;
-    for (let i = 0; i < entries.length; ++i) {
-      const e = entries[i];
-      const entryOff = 6 + i * 16;
-      view.setUint8(entryOff, e.img.width >= 256 ? 0 : e.img.width);
-      view.setUint8(entryOff + 1, e.img.height >= 256 ? 0 : e.img.height);
-      view.setUint8(entryOff + 2, 0); // color count
-      view.setUint8(entryOff + 3, 0); // reserved
-      view.setUint16(entryOff + 4, 1, true); // planes
-      view.setUint16(entryOff + 6, e.img.bpp, true); // bpp
-      view.setUint32(entryOff + 8, e.data.length, true); // size
-      view.setUint32(entryOff + 12, dataOffset, true); // offset
-
-      bytes.set(e.data, dataOffset);
-      dataOffset += e.data.length;
-    }
-
-    return buffer;
+    throw new Error('Icon codec not available');
   }
 
   function encodeBmpEntry(img) {
-    const w = img.width;
-    const h = img.height;
-    const bpp = img.bpp;
-    const data = img.imageData.data;
-
-    // For simplicity, always write as 32bpp BMP with AND mask
-    const headerSize = 40;
-    const xorRowSize = w * 4;
-    const xorRowPadded = (xorRowSize + 3) & ~3;
-    const andRowSize = Math.ceil(w / 8);
-    const andRowPadded = (andRowSize + 3) & ~3;
-    const totalSize = headerSize + xorRowPadded * h + andRowPadded * h;
-
-    const buf = new Uint8Array(totalSize);
-    const view = new DataView(buf.buffer);
-
-    // BITMAPINFOHEADER
-    view.setUint32(0, 40, true);        // header size
-    view.setInt32(4, w, true);           // width
-    view.setInt32(8, h * 2, true);       // height (doubled for AND mask)
-    view.setUint16(12, 1, true);         // planes
-    view.setUint16(14, 32, true);        // bpp (always write 32)
-    view.setUint32(16, 0, true);         // compression
-    view.setUint32(20, xorRowPadded * h + andRowPadded * h, true); // image size
-    // rest is 0
-
-    // XOR data (bottom-up, BGRA)
-    for (let y = 0; y < h; ++y) {
-      const srcRow = h - 1 - y;
-      const dstOff = headerSize + srcRow * xorRowPadded;
-      for (let x = 0; x < w; ++x) {
-        const si = (y * w + x) * 4;
-        const di = dstOff + x * 4;
-        buf[di] = data[si + 2];     // B
-        buf[di + 1] = data[si + 1]; // G
-        buf[di + 2] = data[si];     // R
-        buf[di + 3] = data[si + 3]; // A
-      }
+    if (IconCodec && IconCodec.encodeBmpEntry) {
+      return IconCodec.encodeBmpEntry(img, {
+        ensureImagePalette,
+        createDefaultPaletteForBpp,
+        nearestPaletteIndex
+      });
     }
-
-    // AND mask (bottom-up)
-    const andStart = headerSize + xorRowPadded * h;
-    for (let y = 0; y < h; ++y) {
-      const srcRow = h - 1 - y;
-      const dstOff = andStart + srcRow * andRowPadded;
-      for (let x = 0; x < w; ++x) {
-        const si = (y * w + x) * 4;
-        const alpha = data[si + 3];
-        if (alpha < 128) {
-          const byteIdx = x >> 3;
-          const bit = 7 - (x & 7);
-          buf[dstOff + byteIdx] |= (1 << bit);
-        }
-      }
-    }
-
-    return buf;
+    throw new Error('Icon codec not available');
   }
 
   function encodePngEntry(img) {
@@ -2052,8 +2617,8 @@
       initialDir: '/user/documents',
       title: 'Open Icon',
     });
-    if (!result.cancelled && result.path)
-      loadFile(result.path);
+    if (!result.cancelled && (result.path || result.content != null))
+      loadFile(result.path || null, result.content);
   }
 
   function isIcoBuffer(buffer) {
@@ -2229,9 +2794,12 @@
       addImage(DEFAULT_SIZE, DEFAULT_SIZE, DEFAULT_BPP);
     }
 
-    currentFilePath = path;
-    const parts = path.split('/');
-    currentFileName = parts[parts.length - 1] || 'Untitled';
+    currentFilePath = path || null;
+    if (path) {
+      const parts = String(path).split(/[\\/]/);
+      currentFileName = parts[parts.length - 1] || 'Untitled';
+    } else
+      currentFileName = 'Untitled.ico';
     selectedIndex = 0;
     selectImage(0);
     dirty = false;
@@ -2264,10 +2832,7 @@
       currentFilePath = result.path;
       const parts = result.path.split('/');
       currentFileName = parts[parts.length - 1] || 'Untitled';
-      dirty = false;
-      updateTitle();
-      if (typeof callback === 'function')
-        callback();
+      await saveToPath(result.path, callback);
     }
   }
 
@@ -2306,15 +2871,17 @@
       initialDir: '/user/documents',
       title: 'Extract Icons from EXE/DLL',
     });
-    if (result.cancelled || !result.path)
+    if (result.cancelled || (!result.path && result.content == null))
       return;
 
-    let content;
-    try {
-      content = await Kernel32.ReadAllBytes(result.path);
-    } catch (err) {
-      await User32.MessageBox('Could not open file: ' + err.message, 'Error', MB_OK | MB_ICONERROR);
-      return;
+    let content = result.content;
+    if (content == null) {
+      try {
+        content = await Kernel32.ReadAllBytes(result.path);
+      } catch (err) {
+        await User32.MessageBox('Could not open file: ' + err.message, 'Error', MB_OK | MB_ICONERROR);
+        return;
+      }
     }
 
     const buffer = decodeBinaryContent(content, 'pe');
@@ -2345,24 +2912,25 @@
       }
     }
 
+    const sourcePath = result.path || 'extracted';
     if (docs.length === 1) {
-      loadExtractedDoc(docs[0], result.path);
+      loadExtractedDoc(docs[0], sourcePath);
       return;
     }
 
-    const chosen = await showPEBrowserDialog(docs, result.path);
+    const chosen = await showPEBrowserDialog(docs, sourcePath);
     if (chosen === 'export-all')
-      exportAllIconGroups(docs, result.path);
+      exportAllIconGroups(docs, sourcePath);
     else if (chosen)
-      loadExtractedDoc(chosen, result.path);
+      loadExtractedDoc(chosen, sourcePath);
   }
 
   function loadExtractedDoc(doc, sourcePath) {
     iconDocument = doc;
     if (iconDocument.images.length === 0)
       addImage(DEFAULT_SIZE, DEFAULT_SIZE, DEFAULT_BPP);
-    const parts = sourcePath.split('/');
-    currentFileName = parts[parts.length - 1].replace(/\.(exe|dll)$/i, '') + '.ico';
+    const parts = String(sourcePath || 'extracted').split(/[\\/]/);
+    currentFileName = (parts[parts.length - 1] || 'extracted').replace(/\.(exe|dll)$/i, '') + '.ico';
     currentFilePath = null;
     selectedIndex = 0;
     selectImage(0);
@@ -2465,8 +3033,8 @@
   }
 
   function exportAllIconGroups(docs, sourcePath) {
-    const parts = sourcePath.split('/');
-    const baseName = parts[parts.length - 1].replace(/\.(exe|dll)$/i, '');
+    const parts = String(sourcePath || 'extracted').split(/[\\/]/);
+    const baseName = (parts[parts.length - 1] || 'extracted').replace(/\.(exe|dll)$/i, '');
     let i = 0;
     function exportNext() {
       if (i >= docs.length)
@@ -2495,31 +3063,82 @@
       initialDir: '/user/documents',
       title: 'Import Image',
     });
-    if (result.cancelled || !result.path)
+    if (result.cancelled || (!result.path && result.content == null))
       return;
 
     let content = result.content;
     if (content == null) {
       try {
-        content = await Kernel32.ReadFile(result.path);
+        content = await Kernel32.ReadAllBytes(result.path);
       } catch (err) {
         await User32.MessageBox('Could not open file: ' + err.message, 'Error', MB_OK | MB_ICONERROR);
         return;
       }
     }
 
-    if (typeof content !== 'string' || !content.startsWith('data:image')) {
+    function detectImageMime(path, bytes, text) {
+      const fileName = String(path || '').toLowerCase();
+      if (fileName.endsWith('.png')) return 'image/png';
+      if (fileName.endsWith('.bmp')) return 'image/bmp';
+      if (fileName.endsWith('.gif')) return 'image/gif';
+      if (fileName.endsWith('.jpg') || fileName.endsWith('.jpeg')) return 'image/jpeg';
+      if (fileName.endsWith('.svg')) return 'image/svg+xml';
+      if (bytes && bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47)
+        return 'image/png';
+      if (bytes && bytes.length >= 2 && bytes[0] === 0x42 && bytes[1] === 0x4D)
+        return 'image/bmp';
+      if (bytes && bytes.length >= 3 && bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF)
+        return 'image/jpeg';
+      if (bytes && bytes.length >= 6) {
+        const sig = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5]);
+        if (sig === 'GIF87a' || sig === 'GIF89a')
+          return 'image/gif';
+      }
+      if (typeof text === 'string' && /<svg[\s>]/i.test(text))
+        return 'image/svg+xml';
+      return 'application/octet-stream';
+    }
+
+    let imageSrc = null;
+    let tempObjectUrl = null;
+    if (typeof content === 'string' && content.startsWith('data:image'))
+      imageSrc = content;
+    else {
+      const buffer = decodeBinaryContent(content, 'binary');
+      if (buffer) {
+        const bytes = new Uint8Array(buffer);
+        const mime = detectImageMime(result.path, bytes, null);
+        tempObjectUrl = URL.createObjectURL(new Blob([bytes], { type: mime }));
+        imageSrc = tempObjectUrl;
+      } else if (typeof content === 'string') {
+        const mime = detectImageMime(result.path, null, content);
+        if (mime === 'image/svg+xml') {
+          tempObjectUrl = URL.createObjectURL(new Blob([content], { type: mime }));
+          imageSrc = tempObjectUrl;
+        }
+      }
+    }
+
+    if (!imageSrc) {
       await User32.MessageBox('Not a valid image file.', 'Error', MB_OK | MB_ICONERROR);
       return;
     }
 
     // Load the image
     const img = new Image();
-    await new Promise((resolve, reject) => {
-      img.onload = resolve;
-      img.onerror = reject;
-      img.src = content;
-    });
+    try {
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = imageSrc;
+      });
+    } catch (_) {
+      await User32.MessageBox('Not a valid image file.', 'Error', MB_OK | MB_ICONERROR);
+      return;
+    } finally {
+      if (tempObjectUrl)
+        URL.revokeObjectURL(tempObjectUrl);
+    }
 
     // Show import dialog to select sizes
     const dlg = document.getElementById('dlg-import');
@@ -3231,3 +3850,11 @@
   updateBrushPreview();
 
 })();
+    function pickOption(select, preferredIds) {
+      for (const id of preferredIds) {
+        const match = Array.from(select.options).find(o => String(o.value).toLowerCase() === String(id).toLowerCase());
+        if (match)
+          return match.value;
+      }
+      return select.options[0] ? select.options[0].value : '';
+    }
