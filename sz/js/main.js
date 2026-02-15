@@ -45,7 +45,24 @@
 
     const windowManager = new SZ.WindowManager(document.getElementById('sz-window-area'));
     await windowManager.setSkin(currentSkin);
-    SZ.setupPointerHandlers(document.getElementById('sz-window-area'), windowManager);
+
+    // -- Snap Engine & Tab Manager --
+    const snapKeys = [
+      'snap.enabled', 'snap.mode', 'snap.magnetEnabled', 'snap.magnetDistance',
+      'snap.magnetScreenEdges', 'snap.magnetOuterEdges', 'snap.magnetInnerEdges',
+      'snap.magnetCorners', 'snap.magnetDisableFast', 'snap.magnetSpeedThreshold',
+      'snap.stretchMode', 'snap.stretchVertical', 'snap.stretchHorizontal',
+      'snap.stretchDiagonal', 'snap.stretchTarget', 'snap.glueEnabled',
+      'snap.glueCtrlDrag', 'snap.glueCtrlResize', 'snap.tabEnabled', 'snap.tabAutoHide',
+    ];
+    const snapConfig = {};
+    for (const key of snapKeys)
+      snapConfig[key] = settings.get(key);
+    const snapEngine = new SZ.SnapEngine(snapConfig);
+    const tabManager = new SZ.TabManager(windowManager);
+    SZ.tabManager = tabManager;
+
+    SZ.setupPointerHandlers(document.getElementById('sz-window-area'), windowManager, snapEngine);
 
     const taskbar = new SZ.Taskbar(document.getElementById('sz-taskbar'), windowManager);
     taskbar.applySkin(currentSkin);
@@ -59,6 +76,7 @@
     windowManager.onWindowClosed = (win) => {
       taskbar.removeWindow(win.id);
       appLauncher.onWindowClosed(win.id);
+      tabManager.onWindowClosed(win.id);
     };
     windowManager.onWindowFocused = (win) => taskbar.setActive(win?.id);
     windowManager.onWindowTitleChanged = (win) => taskbar.updateTitle(win.id, win.title);
@@ -83,7 +101,7 @@
     SZ.contextMenu = new SZ.ContextMenu(desktopEl, windowManager, appLauncher, kernel);
     
     const skinState = { skin: currentSkin, name: currentSkinName, subSkinId: currentSubSkinId, cssResult: skinCSSResult };
-    setupPostMessageBridge({kernel, windowManager, themeEngine, desktop, settings, appLauncher, commonDialogs, taskbar, cursorEffects, skinState});
+    setupPostMessageBridge({kernel, windowManager, themeEngine, desktop, settings, appLauncher, commonDialogs, taskbar, cursorEffects, skinState, snapEngine});
 
     SZ.system = Object.freeze({
       windowManager, desktop, taskbar, themeEngine, settings, appLauncher, kernel, commonDialogs, cursorEffects,
@@ -99,7 +117,7 @@
   }
 
   function setupPostMessageBridge(context) {
-    const {kernel, windowManager, themeEngine, desktop, settings, appLauncher, commonDialogs, taskbar, cursorEffects, skinState} = context;
+    const {kernel, windowManager, themeEngine, desktop, settings, appLauncher, commonDialogs, taskbar, cursorEffects, skinState, snapEngine} = context;
 
     window.addEventListener('message', (e) => {
       const { data } = e;
@@ -149,6 +167,28 @@
                       shadow: settings.get('cursor.shadow'),
                       trail: settings.get('cursor.trail'),
                       trailLen: settings.get('cursor.trailLen') || 5,
+                    },
+                    snap: {
+                      enabled: settings.get('snap.enabled'),
+                      mode: settings.get('snap.mode'),
+                      magnetEnabled: settings.get('snap.magnetEnabled'),
+                      magnetDistance: settings.get('snap.magnetDistance'),
+                      magnetScreenEdges: settings.get('snap.magnetScreenEdges'),
+                      magnetOuterEdges: settings.get('snap.magnetOuterEdges'),
+                      magnetInnerEdges: settings.get('snap.magnetInnerEdges'),
+                      magnetCorners: settings.get('snap.magnetCorners'),
+                      magnetDisableFast: settings.get('snap.magnetDisableFast'),
+                      magnetSpeedThreshold: settings.get('snap.magnetSpeedThreshold'),
+                      stretchMode: settings.get('snap.stretchMode'),
+                      stretchVertical: settings.get('snap.stretchVertical'),
+                      stretchHorizontal: settings.get('snap.stretchHorizontal'),
+                      stretchDiagonal: settings.get('snap.stretchDiagonal'),
+                      stretchTarget: settings.get('snap.stretchTarget'),
+                      glueEnabled: settings.get('snap.glueEnabled'),
+                      glueCtrlDrag: settings.get('snap.glueCtrlDrag'),
+                      glueCtrlResize: settings.get('snap.glueCtrlResize'),
+                      tabEnabled: settings.get('snap.tabEnabled'),
+                      tabAutoHide: settings.get('snap.tabAutoHide'),
                     },
                     availableSkins: SZ.getAvailableSkins().map(name => {
                         const s = SZ.getSkin(name);
@@ -207,6 +247,11 @@
         case 'sz:clearMRU':
             settings.set('mru', []);
             taskbar.refreshMRU(settings, appLauncher);
+            return;
+        case 'sz:snapSetting':
+            settings.set('snap.' + data.key, data.value);
+            if (snapEngine)
+              snapEngine.updateConfig({ ['snap.' + data.key]: data.value });
             return;
         case 'sz:taskbarSetting':
             // Forward taskbar settings

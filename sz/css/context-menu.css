@@ -87,3 +87,14 @@
 .sz-ctx-arrow-hidden {
   visibility: hidden;
 }
+
+/* Disabled menu items */
+.sz-ctx-item.sz-ctx-disabled {
+  color: var(--sz-color-gray-text, #808080);
+  pointer-events: none;
+}
+
+.sz-ctx-item.sz-ctx-disabled:hover {
+  background: none;
+  color: var(--sz-color-gray-text, #808080);
+}

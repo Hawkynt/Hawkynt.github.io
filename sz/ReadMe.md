@@ -84,9 +84,10 @@ sz/
     desktop.css                 Desktop, background, icon grid layout
     window.css                  Window chrome, frames, buttons, states
     taskbar.css                 Taskbar, start button, start menu, system tray
-    animations.css              Transitions for minimize, maximize, close
-    common-dialogs.css            OS-level common file dialogs (Open/Save As)
-    context-menu.css            Windows XP-style context menus
+    animations.css              Transitions for minimize, maximize, close, roll up/down
+    snap-overlay.css            Translucent blue snap preview overlay
+    common-dialogs.css          OS-level common file dialogs (Open/Save As)
+    context-menu.css            Windows XP-style context menus (including disabled items)
   js/
     main.js                     Bootstrap, boot sequence, postMessage bridge, MRU tracking
     boot-screen.js              Boot screen manager (GIF / frames / CSS fallback)
@@ -98,7 +99,9 @@ sz/
     skin-loader.js              UIS parser, skin registry (getSkin/getAvailableSkins)
     theme-engine.js             Generate + inject control theme CSS into app iframes
     app-launcher.js             Read manifest, create icons, launch iframe/hosted apps
-    pointer-handler.js          Unified pointer events for drag, resize, select
+    pointer-handler.js          Unified pointer events for drag, resize, snap, tab merge
+    snap-engine.js              Pure calculation module for edge snap, magnet, stretch
+    tab-manager.js              TidyTabs-style tab group management
     settings.js                 Persistent user preferences (localStorage)
     vfs.js                      Virtual File System (VFS) with localStorage mount
     common-dialogs.js           OS-level Open/Save file dialogs (used by apps via postMessage)
@@ -187,11 +190,19 @@ sz/
 
 Central orchestrator. Maintains a registry of all open windows and handles:
 
-- **Z-order stack**: Array of window references sorted by depth. Focus moves a window to the top. Clicking the desktop sends all windows to their current order but deactivates focus.
-- **Window states**: Each window is in exactly one state: `normal`, `minimized`, `maximized`, `closed`. State transitions trigger CSS animations defined in `animations.css`.
+- **Z-order stack**: Array of window references sorted by depth, split into two bands: normal windows (base 100) and always-on-top windows (base 10000). Focus moves a window to the top of its band.
+- **Window states**: Each window is in exactly one state: `normal`, `minimized`, `maximized`, `rolled-up`, `closed`. State transitions trigger CSS animations defined in `animations.css`.
 - **Focus management**: Exactly one window is "active" at a time. The active window gets the skin's active title bar colors; all others get inactive colors.
 - **Cascading placement**: New windows are offset from the last-opened window by a fixed step (32px right, 32px down), wrapping when they would go off-screen.
-- **Snapping**: Windows dragged to screen edges snap to half-screen (left/right) or full-screen (top). Dragging away from edge restores the previous size.
+- **AquaSnap-style edge snapping**: Drag a window to screen edges or corners to snap it into half/quarter/full-screen zones. A translucent blue overlay previews the snap target. Dragging away restores to pre-snap size. Modes: AeroSnap (edge only), AquaSnap (corners + bottom half), or disabled.
+- **Magnetic alignment**: During drag, windows snap to nearby edges of other windows and screen edges within a configurable pixel threshold. Optionally disabled during fast cursor movements.
+- **Stretching**: Double-click a resize handle to stretch a window to fill available space in that direction. AquaStretch mode stops at the nearest window edge; AeroStretch mode stretches to the screen edge.
+- **Move-together (AquaGlue)**: Hold Ctrl during drag to move adjacent windows in unison. Hold Ctrl during resize to inversely resize adjacent windows.
+- **TidyTabs-style window tabbing**: Drag a window onto another window's title bar to merge them into a tab group. A compact tab bar appears above the title bar on hover, showing icons and truncated titles. Click tabs to switch, drag tabs out to detach. Close button on each tab.
+- **Title bar icon context menu**: Click the title icon to open a system menu with Restore, Move, Size, Minimize, Maximize, Roll Up/Down, Always on Top, Set Transparency, and Close. Double-click the icon to close the window.
+- **Roll up/down (window shade)**: Collapse a window to just its title bar, hiding content and bottom frame. Roll down to restore.
+- **Always on top**: Pin a window above all others (indicated by an orange dot).
+- **Window transparency**: Set per-window opacity from 25% to 100%.
 
 ### Window (`js/window.js`)
 
@@ -226,11 +237,14 @@ Window properties:
 - `id` -- unique identifier (auto-incrementing HWND counter)
 - `title` -- displayed in title bar and taskbar
 - `x`, `y`, `width`, `height` -- position and dimensions in pixels
-- `state` -- `normal` | `minimized` | `maximized` | `closed`
+- `state` -- `normal` | `minimized` | `maximized` | `rolled-up` | `closed`
 - `skin` -- reference to the skin object used for rendering
 - `datasource` -- URL of the application HTML loaded into the iframe
-- `zIndex` -- managed by window manager
+- `zIndex` -- managed by window manager (100+ normal, 10000+ always-on-top)
 - `resizable`, `minimizable`, `maximizable` -- boolean flags from manifest
+- `alwaysOnTop` -- boolean, keeps window above all normal windows
+- `opacity` -- 0.1 to 1.0, per-window transparency
+- `isRolledUp` -- boolean, window collapsed to title bar only
 
 ### Skin Loader (`js/skin-loader.js`)
 
@@ -1526,6 +1540,17 @@ The VFS enables:
 - File loading from Explorer — icon-editor, diff-viewer, paint, and font-viewer properly handle `GetCommandLine()` to load files on launch
 - Task manager postMessage bridge — `sz:getWindows` and `sz:closeWindow` handlers for cross-origin (file://) compatibility
 - Desktop icon launch scoping fix — MRU recording and taskbar refresh work correctly from desktop icon double-click
+- Title bar icon context menu — click icon for system menu (Restore, Move, Size, Minimize, Maximize, Roll Up/Down, Always on Top, Transparency, Close), double-click to close
+- Roll up/down (window shade) — collapse window to title bar only, restore with Roll Down
+- Always on top — pin windows above others with z-index partitioning (normal: 100+, on-top: 10000+)
+- Per-window transparency — set opacity from 25% to 100% via icon menu
+- AquaSnap-style edge snapping — 8-zone snap (edges + corners) with translucent blue preview overlay, modes: AeroSnap/AquaSnap/Disabled
+- Magnetic alignment — windows snap to nearby edges of other windows and screen edges, configurable distance threshold, optional speed-based disable
+- AquaStretch — double-click resize handles to stretch to nearest obstacle or screen edge
+- Move-together (AquaGlue) — Ctrl+drag moves adjacent windows, Ctrl+resize adjusts neighbors inversely
+- TidyTabs-style window tabbing — drag window onto another's title bar to create tab group, auto-hiding tab bar with icons, click to switch, drag to detach
+- Drag-away-from-maximized — drag a maximized window's title bar to restore and begin drag (proportional cursor position)
+- Control Panel "Window Mgmt" tab — sub-tabbed UI (Snapping, Magnet, Stretching, Glue, Tabs) with snap mode, magnet settings (screen/outer/inner edges, corners, distance, speed), stretch mode/target, glue settings, tab settings, all persisted to localStorage and applied live
 
 ### Future
 

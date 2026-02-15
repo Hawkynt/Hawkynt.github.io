@@ -140,7 +140,8 @@
   height: 16px;
   margin-right: 4px;
   flex-shrink: 0;
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: default;
 }
 
 .sz-title-text {
@@ -264,6 +265,137 @@
 
 .sz-window:not(.sz-window-active) {
   filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.2));
+}
+
+/* --------------------------------------------------------------------------
+   Rolled-Up State (window shade / roll up)
+   -------------------------------------------------------------------------- */
+
+.sz-window[data-state="rolled-up"] .sz-window-content,
+.sz-window[data-state="rolled-up"] .sz-frame-w,
+.sz-window[data-state="rolled-up"] .sz-frame-e,
+.sz-window[data-state="rolled-up"] .sz-frame-sw,
+.sz-window[data-state="rolled-up"] .sz-frame-s,
+.sz-window[data-state="rolled-up"] .sz-frame-se {
+  display: none;
+}
+
+.sz-window[data-state="rolled-up"] {
+  grid-template-rows: var(--sz-frame-top-h, 30px) 0fr 0fr;
+  height: auto !important;
+  min-height: 0;
+}
+
+.sz-window[data-state="rolled-up"] .sz-resize-handle {
+  display: none;
+}
+
+/* --------------------------------------------------------------------------
+   Always on Top indicator
+   -------------------------------------------------------------------------- */
+
+.sz-window.sz-window-always-on-top::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 6px;
+  height: 6px;
+  background: #f90;
+  border-radius: 50%;
+  z-index: 200;
+  pointer-events: none;
+}
+
+/* --------------------------------------------------------------------------
+   Tab Bar (TidyTabs-style window tabbing)
+   -------------------------------------------------------------------------- */
+
+.sz-tab-bar {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  display: flex;
+  align-items: flex-end;
+  height: 22px;
+  z-index: 3;
+  padding-left: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+}
+
+.sz-window.sz-tabbed:hover .sz-tab-bar,
+.sz-tab-bar:hover {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.sz-window.sz-tabbed {
+  grid-template-rows: 22px var(--sz-frame-top-h, 30px) 1fr var(--sz-frame-bottom-h, 4px);
+}
+
+.sz-tab {
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  max-width: 120px;
+  min-width: 60px;
+  height: 20px;
+  background: var(--sz-color-button-face, #d4d0c8);
+  border: 1px solid var(--sz-color-button-shadow, #808080);
+  border-bottom: none;
+  border-radius: 3px 3px 0 0;
+  cursor: default;
+  font-size: 11px;
+  margin-right: 1px;
+  opacity: 0.75;
+  user-select: none;
+}
+
+.sz-tab.active {
+  height: 22px;
+  background: var(--sz-color-active-title, #0a246a);
+  color: var(--sz-color-title-text, #fff);
+  opacity: 1;
+  border-bottom: 1px solid transparent;
+}
+
+.sz-tab img {
+  width: 16px;
+  height: 16px;
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+
+.sz-tab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sz-tab-close {
+  margin-left: auto;
+  padding: 0 2px;
+  font-size: 10px;
+  opacity: 0;
+  cursor: default;
+  border: none;
+  background: none;
+  color: inherit;
+}
+
+.sz-tab:hover .sz-tab-close {
+  opacity: 0.7;
+}
+
+.sz-tab-close:hover {
+  opacity: 1 !important;
+}
+
+/* Tab merge indicator: highlight border when dragging a window over another */
+.sz-window.sz-tab-merge-target {
+  outline: 2px solid rgba(66, 133, 244, 0.8);
+  outline-offset: -2px;
 }
 
 /* --------------------------------------------------------------------------

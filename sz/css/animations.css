@@ -109,6 +109,25 @@
 }
 
 /* --------------------------------------------------------------------------
+   Roll Up / Roll Down
+   Smooth transition for window shade effect.
+   -------------------------------------------------------------------------- */
+
+.sz-window {
+  transition: grid-template-rows 0.15s ease, height 0.15s ease;
+}
+
+.sz-animations-off .sz-window {
+  transition-duration: 0s !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sz-window {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* --------------------------------------------------------------------------
    Focus Pulse
    Brief highlight when a window receives focus (e.g. clicked in taskbar).
    -------------------------------------------------------------------------- */

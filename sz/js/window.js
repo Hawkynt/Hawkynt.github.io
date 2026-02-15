@@ -21,6 +21,10 @@
     #y = 0;
     #savedRect = null;
     #active = true;
+    #rolledUp = false;
+    #alwaysOnTop = false;
+    #opacity = 1.0;
+    #rolledUpSavedHeight = null;
 
     constructor({ id, title, icon, datasource, width = 512, height = 412, resizable = true, minimizable = true, maximizable = true, skin = null }) {
       this.#id = id || `sz-win-${++_nextId}`;
@@ -39,6 +43,12 @@
     get state() { return this.#state; }
     get iframe() { return this.#iframeEl; }
     get contentElement() { return this.#contentEl; }
+    get isRolledUp() { return this.#rolledUp; }
+    get alwaysOnTop() { return this.#alwaysOnTop; }
+    get opacity() { return this.#opacity; }
+    get resizable() { return this.#config.resizable; }
+    get minimizable() { return this.#config.minimizable; }
+    get maximizable() { return this.#config.maximizable; }
 
     setTitle(title) {
       this.#title = title;
@@ -94,6 +104,8 @@
     maximize() {
       if (this.#state === 'maximized' || this.#state === 'closed')
         return;
+      if (this.#rolledUp)
+        this.rollDown();
       if (this.#state === 'normal')
         this.#savedRect = this.#captureRect();
       this.#state = 'maximized';
@@ -103,6 +115,8 @@
     restore() {
       if (this.#state === 'closed')
         return;
+      if (this.#rolledUp)
+        this.rollDown();
       const prevState = this.#state;
       this.#state = 'normal';
       this.#element.dataset.state = 'normal';
@@ -119,6 +133,39 @@
         return;
       this.#state = 'closed';
       this.#element.classList.add('sz-closing');
+    }
+
+    // -----------------------------------------------------------------
+    // Roll up / Roll down, Always on Top, Opacity
+    // -----------------------------------------------------------------
+
+    rollUp() {
+      if (this.#rolledUp || this.#state === 'minimized' || this.#state === 'closed' || this.#state === 'maximized')
+        return;
+      this.#rolledUpSavedHeight = this.#element.offsetHeight;
+      this.#rolledUp = true;
+      this.#element.dataset.state = 'rolled-up';
+    }
+
+    rollDown() {
+      if (!this.#rolledUp)
+        return;
+      this.#rolledUp = false;
+      this.#element.dataset.state = 'normal';
+      if (this.#rolledUpSavedHeight != null) {
+        this.#element.style.height = `${this.#rolledUpSavedHeight}px`;
+        this.#rolledUpSavedHeight = null;
+      }
+    }
+
+    setAlwaysOnTop(value) {
+      this.#alwaysOnTop = !!value;
+      this.#element.classList.toggle('sz-window-always-on-top', this.#alwaysOnTop);
+    }
+
+    setOpacity(value) {
+      this.#opacity = Math.max(0.1, Math.min(1.0, value));
+      this.#element.style.opacity = this.#opacity < 1.0 ? String(this.#opacity) : '';
     }
 
     // -----------------------------------------------------------------
