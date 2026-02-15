@@ -205,6 +205,19 @@
 
   // ---- Main ----
 
+  function setupDialog(overlay, appTitle) {
+    const dialogTitle = overlay.querySelector('.dialog-title');
+    if (dialogTitle)
+      dialogTitle.textContent = 'About ' + appTitle;
+
+    const dialog = overlay.querySelector('.dialog');
+    const titleEl = overlay.querySelector('.dialog-title');
+    if (dialog && titleEl && !titleEl._visionDrag) {
+      makeDraggable(dialog, titleEl);
+      titleEl._visionDrag = true;
+    }
+  }
+
   function applyMarkdown(md) {
     const { title, description, bodyMd } = parseVision(md);
     const appTitle = title || document.title || 'Application';
@@ -214,17 +227,11 @@
     if (!overlay)
       return;
 
-    const dialogTitle = overlay.querySelector('.dialog-title');
-    if (dialogTitle)
-      dialogTitle.textContent = 'About ' + appTitle;
-
     const body = overlay.querySelector('.dialog-body');
     if (!body)
       return;
 
-    // Clear any inline styles that may override our CSS (e.g. text-align:center)
     body.removeAttribute('style');
-
     body.innerHTML =
       '<div class="vision-header">' +
         '<div class="vision-app-title">' + inlineFormat(appTitle) + '</div>' +
@@ -234,21 +241,43 @@
       '</div>' +
       '<div class="vision-content">' + bodyHtml + '</div>';
 
-    // Ensure drag support on existing dialogs too
-    const dialog = overlay.querySelector('.dialog');
-    const titleEl = overlay.querySelector('.dialog-title');
-    if (dialog && titleEl && !titleEl._visionDrag) {
-      makeDraggable(dialog, titleEl);
-      titleEl._visionDrag = true;
-    }
+    setupDialog(overlay, appTitle);
+  }
+
+  function applyOfflineFallback() {
+    const overlay = document.getElementById('dlg-about');
+    if (!overlay)
+      return;
+
+    overlay.classList.add('vision-dialog');
+    const appTitle = document.title || 'Application';
+
+    const body = overlay.querySelector('.dialog-body');
+    if (!body)
+      return;
+
+    body.removeAttribute('style');
+    body.innerHTML =
+      '<div class="vision-header">' +
+        '<div class="vision-app-title">' + inlineFormat(appTitle) + '</div>' +
+        '<div class="vision-version">Version 6.0</div>' +
+        '<div class="vision-author">\u00A9 1995\u20132026 \u00BBSynthelicZ\u00AB</div>' +
+      '</div>' +
+      '<div class="vision-content">' +
+        '<p>Detailed about information is available when running online.</p>' +
+      '</div>';
+
+    setupDialog(overlay, appTitle);
   }
 
   function init() {
     ensureDialogCSS();
 
-    // vision-data.js sets window.__visionMd before this script runs
-    if (window.__visionMd)
-      applyMarkdown(window.__visionMd);
+    // Load about content from ReadMe.md; fall back to a message on file://
+    fetch('ReadMe.md')
+      .then(function(r) { return r.ok ? r.text() : Promise.reject(); })
+      .then(applyMarkdown)
+      .catch(applyOfflineFallback);
 
     // F1 opens about/vision dialog in any app
     document.addEventListener('keydown', function(e) {

@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# Explorer
+# Explorer
 
 A dual-mode file and object browser for the »SynthelicZ« desktop, combining a virtual filesystem (VFS) navigator with a live JavaScript object inspector -- enabling users to browse files, folders, and the runtime object graph through a familiar Windows Explorer-style interface.
 
@@ -128,4 +128,3 @@ Modeled after Windows Explorer (XP/Vista era) with its dual-pane layout, toolbar
 - [ ] As a user, I can drag and drop files between folders
 - [ ] As a user, I can see file previews (thumbnails) for image files
 - [ ] As a user, I can see a "favorites" or "quick access" section in the sidebar
-`})();

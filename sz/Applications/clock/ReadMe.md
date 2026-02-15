@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# Date and Time
+# Date and Time
 
 A multi-function clock application within the »SynthelicZ« desktop, with five tabs providing a full-featured date/time display, alarm management, stopwatch, countdown timer, and world clock -- styled in a classic desktop OS aesthetic.
 
@@ -108,4 +108,3 @@ Modeled after the classic Windows Date and Time Properties dialog and the Window
 - [x] As a user, I can see the app styled with classic XP-style controls (buttons, inputs, fieldsets)
 - [x] As a user, I can see system visual styles applied to the app
 - [ ] As a user, I can see the app window title show the current time
-`})();

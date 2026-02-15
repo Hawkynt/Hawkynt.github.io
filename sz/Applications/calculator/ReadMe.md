@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# Calculator
+# Calculator
 
 A multi-mode calculator for the »SynthelicZ« desktop -- offering Standard, Scientific, and Programmer modes in a single application, modeled after the classic Windows Calculator with full keyboard support and a familiar menu-driven mode switcher.
 
@@ -129,4 +129,3 @@ Modeled after the classic Windows Calculator (calc.exe) from Windows XP, which p
 - [ ] As a user, I can see a "Digit grouping" option to toggle thousands separators
 - [ ] As a user, I can see a "Statistics" mode for basic statistical calculations
 - [ ] As a user, I can see a "Unit Conversion" mode for length, weight, temperature, etc.
-`})();

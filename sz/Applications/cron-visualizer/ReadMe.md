@@ -1,4 +1,4 @@
-;(function(){window.__visionMd=`# Cron Visualizer
+# Cron Visualizer
 
 A tool for building, inspecting, and explaining crontab entries within the »SynthelicZ« desktop. It parses full crontab files, shows human-readable schedule meanings, computes upcoming execution times, and provides a visual builder for constructing new cron expressions.
 
@@ -86,4 +86,3 @@ Modeled after online cron expression explainers such as crontab.guru, combined w
 - [ ] As a user, I want to export the parsed schedule as a JSON or CSV file
 - [ ] As a user, I want to receive warnings about common cron pitfalls (e.g., running every second)
 - [ ] As a user, I want to diff two crontab files and see added/removed/changed entries
-`})();
