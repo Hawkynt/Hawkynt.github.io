@@ -311,9 +311,13 @@
    Tab Bar (TidyTabs-style window tabbing)
    -------------------------------------------------------------------------- */
 
+/* The tab bar is positioned absolutely above the window so it does NOT
+   alter the 3-row grid layout (which skins rely on). */
 .sz-tab-bar {
-  grid-column: 1 / -1;
-  grid-row: 1;
+  position: absolute;
+  top: -22px;
+  left: 0;
+  right: 0;
   display: flex;
   align-items: flex-end;
   height: 22px;
@@ -330,8 +334,9 @@
   pointer-events: auto;
 }
 
+/* When tabbed, add top margin so the tab bar doesn't overlap the window above. */
 .sz-window.sz-tabbed {
-  grid-template-rows: 22px var(--sz-frame-top-h, 30px) 1fr var(--sz-frame-bottom-h, 4px);
+  margin-top: 22px;
 }
 
 .sz-tab {
@@ -390,6 +395,13 @@
 
 .sz-tab-close:hover {
   opacity: 1 !important;
+}
+
+/* Tab being dragged within the tab bar (reorder phase) */
+.sz-tab-dragging {
+  opacity: 0.5;
+  outline: 1px dashed var(--sz-color-button-shadow, #808080);
+  z-index: 1;
 }
 
 /* Tab merge indicator: highlight border when dragging a window over another */
