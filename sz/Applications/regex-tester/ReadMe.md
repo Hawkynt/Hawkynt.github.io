@@ -107,8 +107,10 @@ Inspired by online regex testers like regex101.com and RegExr, combining a patte
 - [x] As a user, I can see the sidebar on the right for reference and history
 - [x] As a user, I can see changes reflected in real time with debounced updates (150ms)
 - [x] As a user, I can start with a default example pattern and test string
+- [x] As a user, I can resize the match panel by dragging the vertical splitter between test string and matches
+- [x] As a user, I can resize the match table by dragging the horizontal splitter between the top panes and the table
+- [x] As a user, I can see a floppy-disk icon on export buttons indicating save/export functionality
 - [ ] As a user, I can switch between light and dark themes
-- [ ] As a user, I can resize the test string area by dragging
 
 ### Performance & Safety
 - [x] As a user, I can see that infinite-match patterns (empty matches) are handled safely with a 10,000-match limit
