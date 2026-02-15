@@ -254,6 +254,46 @@
       }
     }
 
+    rollUpWindow(id) {
+      const win = this.#windows.get(id);
+      if (win)
+        win.rollUp();
+    }
+
+    rollDownWindow(id) {
+      const win = this.#windows.get(id);
+      if (win)
+        win.rollDown();
+    }
+
+    setWindowAlwaysOnTop(id, value) {
+      const win = this.#windows.get(id);
+      if (!win)
+        return;
+      win.setAlwaysOnTop(value);
+      this.#updateZIndices();
+    }
+
+    setWindowOpacity(id, value) {
+      const win = this.#windows.get(id);
+      if (win)
+        win.setOpacity(value);
+    }
+
+    getVisibleWindowRects(excludeId) {
+      const rects = [];
+      for (const [id, win] of this.#windows) {
+        if (id === excludeId || win.state === 'minimized' || win.state === 'closed')
+          continue;
+        const pos = win.getPosition();
+        const size = win.getSize();
+        rects.push({ id, x: pos.x, y: pos.y, width: size.width, height: size.height });
+      }
+      return rects;
+    }
+
+    get container() { return this.#container; }
+
     // -----------------------------------------------------------------
     // Animation helpers
     // -----------------------------------------------------------------
@@ -333,10 +373,16 @@
     }
 
     #updateZIndices() {
+      let normalIdx = 0;
+      let onTopIdx = 0;
       for (let i = 0; i < this.#zStack.length; ++i) {
         const win = this.#windows.get(this.#zStack[i]);
-        if (win)
-          win.element.style.zIndex = 100 + i;
+        if (!win)
+          continue;
+        if (win.alwaysOnTop)
+          win.element.style.zIndex = 10000 + (++onTopIdx);
+        else
+          win.element.style.zIndex = 100 + (++normalIdx);
       }
     }
 
