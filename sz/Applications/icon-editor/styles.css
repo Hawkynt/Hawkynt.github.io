@@ -484,6 +484,8 @@ body {
   padding: 0 6px;
 }
 
+.status-spacer { flex: 1; }
+
 .status-section:not(:last-child) {
   border-right: 1px solid var(--sz-color-button-shadow);
 }
