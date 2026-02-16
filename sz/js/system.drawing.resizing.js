@@ -1163,7 +1163,7 @@
     { key: 'C', label: 'Ring (C)', min: 0, max: 1, step: 0.05, default: 0.333 }
   ]);
   registerResampler('rs-catmull-rom', 'Catmull-Rom', (s, w, h) => resample(s, w, h, 2, _mitchellKernel(0, 0.5)));
-  registerResampler('rs-bspline', 'B-Spline', (s, w, h) => resample(s, w, h, 2, _mitchellKernel(1, 0)));
+  registerResampler('rs-bspline', 'B-Spline 3', (s, w, h) => resample(s, w, h, 2, _mitchellKernel(1, 0)));
 
   // =======================================================================
   // Gaussian
@@ -1268,6 +1268,305 @@
   registerResampler('rs-hann', 'Hann-Sinc', (s, w, h) => resample(s, w, h, 3, _windowedSincKernel(3, _hannWindow)));
   registerResampler('rs-hamming', 'Hamming-Sinc', (s, w, h) => resample(s, w, h, 3, _windowedSincKernel(3, _hammingWindow)));
   registerResampler('rs-kaiser', 'Kaiser-Sinc', (s, w, h) => resample(s, w, h, 3, _windowedSincKernel(3, _kaiserWindow)));
+
+  // =======================================================================
+  // Additional Windowed Sinc Resamplers
+  // =======================================================================
+
+  const _triangularWindow = (x, R) => 1 - Math.abs(x) / R;
+  const _welchWindow = (x, R) => { const r = x / R; return 1 - r * r; };
+
+  const _nuttallWindow = (x, R) => {
+    const t = Math.PI * x / R;
+    return 0.355768 + 0.487396 * Math.cos(t) + 0.144232 * Math.cos(2 * t) + 0.012604 * Math.cos(3 * t);
+  };
+
+  const _blackmanNuttallWindow = (x, R) => {
+    const t = Math.PI * x / R;
+    return 0.3635819 + 0.4891775 * Math.cos(t) + 0.1365995 * Math.cos(2 * t) + 0.0106411 * Math.cos(3 * t);
+  };
+
+  const _blackmanHarrisWindow = (x, R) => {
+    const t = Math.PI * x / R;
+    return 0.35875 + 0.48829 * Math.cos(t) + 0.14128 * Math.cos(2 * t) + 0.01168 * Math.cos(3 * t);
+  };
+
+  const _flatTopWindow = (x, R) => {
+    const t = Math.PI * x / R;
+    return 1.0 + 1.93 * Math.cos(t) + 1.29 * Math.cos(2 * t) + 0.388 * Math.cos(3 * t) + 0.028 * Math.cos(4 * t);
+  };
+
+  const _bartlettHannWindow = (x, R) => 0.62 - 0.48 * Math.abs(x / R) + 0.38 * Math.cos(Math.PI * x / R);
+
+  const _bohmanWindow = (x, R) => {
+    const ax = Math.abs(x) / R;
+    return (1 - ax) * Math.cos(Math.PI * ax) + Math.sin(Math.PI * ax) / Math.PI;
+  };
+
+  registerResampler('rs-triangular', 'Triangular-Sinc', (s, w, h, p) => {
+    const lobes = p?.lobes ?? 3;
+    return resample(s, w, h, lobes, _windowedSincKernel(lobes, _triangularWindow));
+  }, [{ key: 'lobes', label: 'Lobes', min: 1, max: 8, step: 1, default: 3 }]);
+
+  registerResampler('rs-welch', 'Welch-Sinc', (s, w, h, p) => {
+    const lobes = p?.lobes ?? 3;
+    return resample(s, w, h, lobes, _windowedSincKernel(lobes, _welchWindow));
+  }, [{ key: 'lobes', label: 'Lobes', min: 1, max: 8, step: 1, default: 3 }]);
+
+  registerResampler('rs-nuttall', 'Nuttall-Sinc', (s, w, h, p) => {
+    const lobes = p?.lobes ?? 3;
+    return resample(s, w, h, lobes, _windowedSincKernel(lobes, _nuttallWindow));
+  }, [{ key: 'lobes', label: 'Lobes', min: 1, max: 8, step: 1, default: 3 }]);
+
+  registerResampler('rs-blackman-nuttall', 'Blackman-Nuttall-Sinc', (s, w, h, p) => {
+    const lobes = p?.lobes ?? 3;
+    return resample(s, w, h, lobes, _windowedSincKernel(lobes, _blackmanNuttallWindow));
+  }, [{ key: 'lobes', label: 'Lobes', min: 1, max: 8, step: 1, default: 3 }]);
+
+  registerResampler('rs-blackman-harris', 'Blackman-Harris-Sinc', (s, w, h, p) => {
+    const lobes = p?.lobes ?? 3;
+    return resample(s, w, h, lobes, _windowedSincKernel(lobes, _blackmanHarrisWindow));
+  }, [{ key: 'lobes', label: 'Lobes', min: 1, max: 8, step: 1, default: 3 }]);
+
+  registerResampler('rs-flat-top', 'Flat-Top-Sinc', (s, w, h, p) => {
+    const lobes = p?.lobes ?? 3;
+    return resample(s, w, h, lobes, _windowedSincKernel(lobes, _flatTopWindow));
+  }, [{ key: 'lobes', label: 'Lobes', min: 1, max: 8, step: 1, default: 3 }]);
+
+  registerResampler('rs-bartlett-hann', 'Bartlett-Hann-Sinc', (s, w, h, p) => {
+    const lobes = p?.lobes ?? 3;
+    return resample(s, w, h, lobes, _windowedSincKernel(lobes, _bartlettHannWindow));
+  }, [{ key: 'lobes', label: 'Lobes', min: 1, max: 8, step: 1, default: 3 }]);
+
+  registerResampler('rs-bohman', 'Bohman-Sinc', (s, w, h, p) => {
+    const lobes = p?.lobes ?? 3;
+    return resample(s, w, h, lobes, _windowedSincKernel(lobes, _bohmanWindow));
+  }, [{ key: 'lobes', label: 'Lobes', min: 1, max: 8, step: 1, default: 3 }]);
+
+  registerResampler('rs-power-cosine', 'Power-of-Cosine-Sinc', (s, w, h, p) => {
+    const lobes = p?.lobes ?? 3;
+    const alpha = p?.alpha ?? 1.5;
+    const win = (x, R) => Math.pow(Math.cos(Math.PI * x / (2 * R)), alpha);
+    return resample(s, w, h, lobes, _windowedSincKernel(lobes, win));
+  }, [
+    { key: 'lobes', label: 'Lobes', min: 1, max: 8, step: 1, default: 3 },
+    { key: 'alpha', label: 'Alpha', min: 0.1, max: 5, step: 0.1, default: 1.5 }
+  ]);
+
+  registerResampler('rs-tukey', 'Tukey-Sinc', (s, w, h, p) => {
+    const lobes = p?.lobes ?? 3;
+    const alpha = p?.alpha ?? 0.5;
+    const win = (x, R) => {
+      const ax = Math.abs(x) / R;
+      if (ax <= 1 - alpha) return 1;
+      return 0.5 * (1 + Math.cos(Math.PI * (ax - (1 - alpha)) / alpha));
+    };
+    return resample(s, w, h, lobes, _windowedSincKernel(lobes, win));
+  }, [
+    { key: 'lobes', label: 'Lobes', min: 1, max: 8, step: 1, default: 3 },
+    { key: 'alpha', label: 'Alpha', min: 0.01, max: 1, step: 0.01, default: 0.5 }
+  ]);
+
+  registerResampler('rs-poisson', 'Poisson-Sinc', (s, w, h, p) => {
+    const lobes = p?.lobes ?? 3;
+    const alpha = p?.alpha ?? 1;
+    const win = (x, R) => Math.exp(-alpha * Math.abs(x) / R);
+    return resample(s, w, h, lobes, _windowedSincKernel(lobes, win));
+  }, [
+    { key: 'lobes', label: 'Lobes', min: 1, max: 8, step: 1, default: 3 },
+    { key: 'alpha', label: 'Alpha', min: 0.1, max: 5, step: 0.1, default: 1 }
+  ]);
+
+  registerResampler('rs-hanning-poisson', 'Hanning-Poisson-Sinc', (s, w, h, p) => {
+    const lobes = p?.lobes ?? 3;
+    const alpha = p?.alpha ?? 2;
+    const win = (x, R) => _hannWindow(x, R) * Math.exp(-alpha * Math.abs(x) / R);
+    return resample(s, w, h, lobes, _windowedSincKernel(lobes, win));
+  }, [
+    { key: 'lobes', label: 'Lobes', min: 1, max: 8, step: 1, default: 3 },
+    { key: 'alpha', label: 'Alpha', min: 0.1, max: 5, step: 0.1, default: 2 }
+  ]);
+
+  registerResampler('rs-cauchy', 'Cauchy-Sinc', (s, w, h, p) => {
+    const lobes = p?.lobes ?? 3;
+    const alpha = p?.alpha ?? 3;
+    const win = (x, R) => { const r = alpha * x / R; return 1 / (1 + r * r); };
+    return resample(s, w, h, lobes, _windowedSincKernel(lobes, win));
+  }, [
+    { key: 'lobes', label: 'Lobes', min: 1, max: 8, step: 1, default: 3 },
+    { key: 'alpha', label: 'Alpha', min: 0.1, max: 10, step: 0.1, default: 3 }
+  ]);
+
+  // =======================================================================
+  // Fixed-Radius Kernels (Schaum, B-Spline higher orders, o-Moms)
+  // =======================================================================
+
+  // Schaum 2 (quadratic, radius 2)
+  function _schaum2Kernel(x) {
+    x = Math.abs(x);
+    if (x < 0.5) return 1 - x * x;
+    if (x < 1.5) return 0.5 * (x - 0.5) * (x - 1.5);
+    return 0;
+  }
+  registerResampler('rs-schaum2', 'Schaum 2', (s, w, h) => resample(s, w, h, 2, _schaum2Kernel));
+
+  // Schaum 3 (cubic, radius 2)
+  function _schaum3Kernel(x) {
+    x = Math.abs(x);
+    if (x < 1) return ((1.5 * x - 2.5) * x) * x + 1;
+    if (x < 2) return ((-0.5 * x + 2.5) * x - 4) * x + 2;
+    return 0;
+  }
+  registerResampler('rs-schaum3', 'Schaum 3', (s, w, h) => resample(s, w, h, 2, _schaum3Kernel));
+
+  // B-Spline 2 (quadratic, radius 1.5)
+  function _bspline2Kernel(x) {
+    x = Math.abs(x);
+    if (x < 0.5) return 0.75 - x * x;
+    if (x < 1.5) { const t = x - 1.5; return 0.5 * t * t; }
+    return 0;
+  }
+  registerResampler('rs-bspline2', 'B-Spline 2', (s, w, h) => resample(s, w, h, 2, _bspline2Kernel));
+
+  // B-Spline 5 (quintic, radius 3)
+  function _bspline5Kernel(x) {
+    x = Math.abs(x);
+    if (x < 1) {
+      const x2 = x * x;
+      return ((-10 * x2 + 30) * x2 - 33) * x2 / 60 + 11 / 20;
+    }
+    if (x < 2) {
+      const x2 = x * x;
+      return ((6 * x2 - 60 * x + 210) * x2 * x - 720 * x2 + 1080 * x - 648) / 720 + 0.55;
+    }
+    if (x < 3) {
+      const t = 3 - x;
+      return t * t * t * t * t / 120;
+    }
+    return 0;
+  }
+  registerResampler('rs-bspline5', 'B-Spline 5', (s, w, h) => resample(s, w, h, 3, _bspline5Kernel));
+
+  // B-Spline 7 (septic, radius 4)
+  function _bspline7Kernel(x) {
+    x = Math.abs(x);
+    if (x < 1) {
+      const x2 = x * x;
+      return ((-35 * x2 + 140) * x2 * x2 - 252 * x2 * x2 + 5765 / 21) / 5040 + 151 / 315;
+    }
+    if (x < 2) {
+      const t = 2 - x, t2 = t * t;
+      return (120 * t2 * t2 * t * t * t - 7 * (2 - x) + 21 * t2 * (2 - x) * (t2 - 1)) / 5040 + 1 / 5040;
+    }
+    if (x < 3) {
+      const t = 3 - x, t2 = t * t;
+      return (21 * t2 * t2 * t2 * t - 7 * t2 * t2 * t2 * 3 + t2 * t2 * t * 21) / 5040;
+    }
+    if (x < 4) {
+      const t = 4 - x;
+      return t * t * t * t * t * t * t / 5040;
+    }
+    return 0;
+  }
+  registerResampler('rs-bspline7', 'B-Spline 7', (s, w, h) => resample(s, w, h, 4, _bspline7Kernel));
+
+  // B-Spline 9 (9th order, radius 5)
+  function _bspline9Kernel(x) {
+    x = Math.abs(x);
+    if (x < 1) {
+      const x2 = x * x;
+      return ((-63 * x2 + 315) * x2 * x2 * x2 - 630 * x2 * x2 * x2 + 14175 / 63) / 362880 + 7936 / 14175;
+    }
+    if (x < 2) {
+      const t = 2 - x;
+      return (t * t * t * t * t * t * t * t * t * 9 - 36 * t * t * t * t * t * t * t * t + 84 * t * t * t * t * t * t * t) / 362880;
+    }
+    if (x < 3) {
+      const t = 3 - x;
+      return (t * t * t * t * t * t * t * t * t - 9 * t * t * t * t * t * t * t * t + 36 * t * t * t * t * t * t * t) / 362880;
+    }
+    if (x < 4) {
+      const t = 4 - x;
+      return (t * t * t * t * t * t * t * t * t - 9 * t * t * t * t * t * t * t * t) / 362880;
+    }
+    if (x < 5) {
+      const t = 5 - x;
+      return t * t * t * t * t * t * t * t * t / 362880;
+    }
+    return 0;
+  }
+  registerResampler('rs-bspline9', 'B-Spline 9', (s, w, h) => resample(s, w, h, 5, _bspline9Kernel));
+
+  // B-Spline 11 (11th order, radius 6)
+  function _bspline11Kernel(x) {
+    x = Math.abs(x);
+    const f = 39916800; // 11!
+    if (x >= 6) return 0;
+    const t = 6 - x;
+    let val = Math.pow(t, 11);
+    if (x < 5) val -= 12 * Math.pow(5 - x, 11);
+    if (x < 4) val += 66 * Math.pow(4 - x, 11);
+    if (x < 3) val -= 220 * Math.pow(3 - x, 11);
+    if (x < 2) val += 495 * Math.pow(2 - x, 11);
+    if (x < 1) val -= 792 * Math.pow(1 - x, 11);
+    return val / f;
+  }
+  registerResampler('rs-bspline11', 'B-Spline 11', (s, w, h) => resample(s, w, h, 6, _bspline11Kernel));
+
+  // o-Moms 3 (optimal interpolation, radius 2)
+  function _omoms3Kernel(x) {
+    x = Math.abs(x);
+    if (x < 1)
+      return ((x * 0.5 - 1) * x + 1 / 14) * x + 13 / 21;
+    if (x < 2) {
+      const t = 2 - x;
+      return ((t * (-7 / 6) + 0.5) * t + 2 / 3) * t + 1 / 42;
+    }
+    return 0;
+  }
+  registerResampler('rs-omoms3', 'o-Moms 3', (s, w, h) => resample(s, w, h, 2, _omoms3Kernel));
+
+  // o-Moms 5 (5th order, radius 3)
+  function _omoms5Kernel(x) {
+    x = Math.abs(x);
+    if (x < 1) {
+      const x2 = x * x;
+      return (((-7 * x2 + 21) * x2 - 0.2) * x2) / 12 + 68 / 105;
+    }
+    if (x < 2) {
+      const x2 = x * x;
+      return (((63 * x2 * x - 378 * x2 + 827 * x - 834) * x2 + 348 * x) + 168) / 1260;
+    }
+    if (x < 3) {
+      const t = 3 - x;
+      return t * t * t * t * t / 120;
+    }
+    return 0;
+  }
+  registerResampler('rs-omoms5', 'o-Moms 5', (s, w, h) => resample(s, w, h, 3, _omoms5Kernel));
+
+  // o-Moms 7 (7th order, radius 4)
+  function _omoms7Kernel(x) {
+    x = Math.abs(x);
+    if (x < 1) {
+      const x2 = x * x;
+      return (((33 * x2 - 165) * x2 + 286) * x2 * x2 / 7 - 286 * x2 + 5765 / 21) / 720 + 151 / 315;
+    }
+    if (x < 2) {
+      const t = x - 1, t2 = t * t;
+      return (((-33 * t2 + 297 * t - 891) * t2 * t + 1320 * t2 - 660 * t + 165) * t) / 5040;
+    }
+    if (x < 3) {
+      const t = 3 - x, t2 = t * t;
+      return (t2 * t2 * t2 * t + 7 * t2 * t2 * t2) / 5040;
+    }
+    if (x < 4) {
+      const t = 4 - x;
+      return t * t * t * t * t * t * t / 5040;
+    }
+    return 0;
+  }
+  registerResampler('rs-omoms7', 'o-Moms 7', (s, w, h) => resample(s, w, h, 4, _omoms7Kernel));
 
   // =======================================================================
   // Export
