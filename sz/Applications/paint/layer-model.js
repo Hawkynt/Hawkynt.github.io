@@ -500,6 +500,50 @@
       this.#notify();
     }
 
+    rotateAllByAngle(radians) {
+      const cos = Math.abs(Math.cos(radians));
+      const sin = Math.abs(Math.sin(radians));
+      const newW = Math.ceil(this.#width * cos + this.#height * sin);
+      const newH = Math.ceil(this.#width * sin + this.#height * cos);
+      for (const layer of this.#layers) {
+        const tmp = document.createElement('canvas');
+        tmp.width = this.#width;
+        tmp.height = this.#height;
+        const tctx = tmp.getContext('2d');
+        tctx.drawImage(layer.canvas, 0, 0);
+        layer.canvas.width = newW;
+        layer.canvas.height = newH;
+        layer.ctx.imageSmoothingEnabled = false;
+        layer.ctx.save();
+        layer.ctx.translate(newW / 2, newH / 2);
+        layer.ctx.rotate(radians);
+        layer.ctx.drawImage(tmp, -this.#width / 2, -this.#height / 2);
+        layer.ctx.restore();
+      }
+      this.#width = newW;
+      this.#height = newH;
+      this.#notify();
+    }
+
+    transformAllPixels(transformFn) {
+      for (const layer of this.#layers) {
+        const srcData = layer.getImageData();
+        const dstData = transformFn(srcData);
+        if (dstData.width !== layer.width || dstData.height !== layer.height) {
+          layer.canvas.width = dstData.width;
+          layer.canvas.height = dstData.height;
+          layer.ctx.imageSmoothingEnabled = false;
+        }
+        layer.putImageData(dstData);
+      }
+      const first = this.#layers[0];
+      if (first) {
+        this.#width = first.width;
+        this.#height = first.height;
+      }
+      this.#notify();
+    }
+
     // Flatten to a single canvas for export
     flattenToCanvas() {
       const c = document.createElement('canvas');

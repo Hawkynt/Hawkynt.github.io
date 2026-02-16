@@ -2,7 +2,7 @@
   'use strict';
 
   const { User32, Kernel32, ComDlg32 } = SZ.Dlls;
-  const { LayerModel, BLEND_MODES, Tools, SelectionEngine, Adjustments, Effects, openEffectDialog, applyEffectToLayer, cloneImageData } = window.PaintApp;
+  const { LayerModel, BLEND_MODES, Tools, SelectionEngine, Adjustments, Effects, ImageAnalysis, openEffectDialog, applyEffectToLayer, cloneImageData } = window.PaintApp;
 
   // -----------------------------------------------------------------------
   // Constants
@@ -796,6 +796,37 @@
       case 'fx-pixelate': doFxPixelate(); break;
       case 'fx-edge': pushUndo(); applyEffectToLayer(layerModel.getActiveCtx(), selection, (d) => Effects.edgeDetect(d), layerModel.width, layerModel.height); dirty = true; compositeAndDisplay(); updateTitle(); break;
       case 'fx-emboss': pushUndo(); applyEffectToLayer(layerModel.getActiveCtx(), selection, (d) => Effects.emboss(d), layerModel.width, layerModel.height); dirty = true; compositeAndDisplay(); updateTitle(); break;
+
+      // Blurs
+      case 'fx-motion-blur': doFxMotionBlur(); break;
+      case 'fx-radial-blur': doFxRadialBlur(); break;
+      case 'fx-surface-blur': doFxSurfaceBlur(); break;
+      case 'fx-box-blur': doFxBoxBlur(); break;
+      case 'fx-median': doFxMedian(); break;
+      case 'fx-unsharp-mask': doFxUnsharpMask(); break;
+
+      // Distort
+      case 'fx-swirl': doFxSwirl(); break;
+      case 'fx-spherize': doFxSpherize(); break;
+      case 'fx-ripple': doFxRipple(); break;
+      case 'fx-polar': pushUndo(); applyEffectToLayer(layerModel.getActiveCtx(), selection, (d) => Effects.polarCoordinates(d), layerModel.width, layerModel.height); dirty = true; compositeAndDisplay(); updateTitle(); break;
+      case 'fx-frosted-glass': doFxFrostedGlass(); break;
+
+      // Stylize
+      case 'fx-oil-paint': doFxOilPaint(); break;
+      case 'fx-posterize': doFxPosterize(); break;
+      case 'fx-threshold': doFxThreshold(); break;
+      case 'fx-solarize': doFxSolarize(); break;
+      case 'fx-relief': pushUndo(); applyEffectToLayer(layerModel.getActiveCtx(), selection, (d) => Effects.relief(d), layerModel.width, layerModel.height); dirty = true; compositeAndDisplay(); updateTitle(); break;
+      case 'fx-pencil-sketch': doFxPencilSketch(); break;
+      case 'fx-vignette': doFxVignette(); break;
+      case 'fx-halftone': doFxHalftone(); break;
+      case 'fx-crystallize': doFxCrystallize(); break;
+
+      // Auto-Correct
+      case 'auto-deskew': doAutoDeskew(); break;
+      case 'auto-rotate': doAutoRotate(); break;
+      case 'auto-keystone': doAutoKeystone(); break;
     }
     backstage.classList.remove('visible');
   }
@@ -971,6 +1002,294 @@
     }
   }
 
+  async function doFxMotionBlur() {
+    resetDialogSliders('dlg-motion-blur');
+    const result = await openEffectDialog('dlg-motion-blur', (imgData, vals) => {
+      Effects.motionBlur(imgData, vals.angle || 0, vals.distance || 10);
+    }, getLayerImageData);
+    if (result.result === 'ok') {
+      pushUndo();
+      applyEffectToLayer(layerModel.getActiveCtx(), selection, (d) => {
+        Effects.motionBlur(d, result.values.angle || 0, result.values.distance || 10);
+      }, layerModel.width, layerModel.height);
+      dirty = true;
+      compositeAndDisplay();
+      updateTitle();
+    }
+  }
+
+  async function doFxRadialBlur() {
+    resetDialogSliders('dlg-radial-blur');
+    const result = await openEffectDialog('dlg-radial-blur', (imgData, vals) => {
+      Effects.radialBlur(imgData, vals.amount || 10);
+    }, getLayerImageData);
+    if (result.result === 'ok') {
+      pushUndo();
+      applyEffectToLayer(layerModel.getActiveCtx(), selection, (d) => {
+        Effects.radialBlur(d, result.values.amount || 10);
+      }, layerModel.width, layerModel.height);
+      dirty = true;
+      compositeAndDisplay();
+      updateTitle();
+    }
+  }
+
+  async function doFxSurfaceBlur() {
+    resetDialogSliders('dlg-surface-blur');
+    const result = await openEffectDialog('dlg-surface-blur', (imgData, vals) => {
+      Effects.surfaceBlur(imgData, vals.radius || 5, vals.threshold || 30);
+    }, getLayerImageData);
+    if (result.result === 'ok') {
+      pushUndo();
+      applyEffectToLayer(layerModel.getActiveCtx(), selection, (d) => {
+        Effects.surfaceBlur(d, result.values.radius || 5, result.values.threshold || 30);
+      }, layerModel.width, layerModel.height);
+      dirty = true;
+      compositeAndDisplay();
+      updateTitle();
+    }
+  }
+
+  async function doFxBoxBlur() {
+    resetDialogSliders('dlg-box-blur');
+    const result = await openEffectDialog('dlg-box-blur', (imgData, vals) => {
+      Effects.boxBlur(imgData, vals.radius || 3);
+    }, getLayerImageData);
+    if (result.result === 'ok') {
+      pushUndo();
+      applyEffectToLayer(layerModel.getActiveCtx(), selection, (d) => {
+        Effects.boxBlur(d, result.values.radius || 3);
+      }, layerModel.width, layerModel.height);
+      dirty = true;
+      compositeAndDisplay();
+      updateTitle();
+    }
+  }
+
+  async function doFxMedian() {
+    resetDialogSliders('dlg-median');
+    const result = await openEffectDialog('dlg-median', (imgData, vals) => {
+      Effects.median(imgData, vals.radius || 1);
+    }, getLayerImageData);
+    if (result.result === 'ok') {
+      pushUndo();
+      applyEffectToLayer(layerModel.getActiveCtx(), selection, (d) => {
+        Effects.median(d, result.values.radius || 1);
+      }, layerModel.width, layerModel.height);
+      dirty = true;
+      compositeAndDisplay();
+      updateTitle();
+    }
+  }
+
+  async function doFxUnsharpMask() {
+    resetDialogSliders('dlg-unsharp-mask');
+    const result = await openEffectDialog('dlg-unsharp-mask', (imgData, vals) => {
+      Effects.unsharpMask(imgData, vals.amount || 150, vals.radius || 2, vals.threshold || 4);
+    }, getLayerImageData);
+    if (result.result === 'ok') {
+      pushUndo();
+      applyEffectToLayer(layerModel.getActiveCtx(), selection, (d) => {
+        Effects.unsharpMask(d, result.values.amount || 150, result.values.radius || 2, result.values.threshold || 4);
+      }, layerModel.width, layerModel.height);
+      dirty = true;
+      compositeAndDisplay();
+      updateTitle();
+    }
+  }
+
+  async function doFxSwirl() {
+    resetDialogSliders('dlg-swirl');
+    const result = await openEffectDialog('dlg-swirl', (imgData, vals) => {
+      Effects.swirl(imgData, vals.angle || 60, vals.radius || 100);
+    }, getLayerImageData);
+    if (result.result === 'ok') {
+      pushUndo();
+      applyEffectToLayer(layerModel.getActiveCtx(), selection, (d) => {
+        Effects.swirl(d, result.values.angle || 60, result.values.radius || 100);
+      }, layerModel.width, layerModel.height);
+      dirty = true;
+      compositeAndDisplay();
+      updateTitle();
+    }
+  }
+
+  async function doFxSpherize() {
+    resetDialogSliders('dlg-spherize');
+    const result = await openEffectDialog('dlg-spherize', (imgData, vals) => {
+      Effects.spherize(imgData, vals.amount || 100);
+    }, getLayerImageData);
+    if (result.result === 'ok') {
+      pushUndo();
+      applyEffectToLayer(layerModel.getActiveCtx(), selection, (d) => {
+        Effects.spherize(d, result.values.amount || 100);
+      }, layerModel.width, layerModel.height);
+      dirty = true;
+      compositeAndDisplay();
+      updateTitle();
+    }
+  }
+
+  async function doFxRipple() {
+    resetDialogSliders('dlg-ripple');
+    const result = await openEffectDialog('dlg-ripple', (imgData, vals) => {
+      Effects.ripple(imgData, vals.amplitude || 10, vals.wavelength || 30);
+    }, getLayerImageData);
+    if (result.result === 'ok') {
+      pushUndo();
+      applyEffectToLayer(layerModel.getActiveCtx(), selection, (d) => {
+        Effects.ripple(d, result.values.amplitude || 10, result.values.wavelength || 30);
+      }, layerModel.width, layerModel.height);
+      dirty = true;
+      compositeAndDisplay();
+      updateTitle();
+    }
+  }
+
+  async function doFxFrostedGlass() {
+    resetDialogSliders('dlg-frosted-glass');
+    const result = await openEffectDialog('dlg-frosted-glass', (imgData, vals) => {
+      Effects.frostedGlass(imgData, vals.amount || 5);
+    }, getLayerImageData);
+    if (result.result === 'ok') {
+      pushUndo();
+      applyEffectToLayer(layerModel.getActiveCtx(), selection, (d) => {
+        Effects.frostedGlass(d, result.values.amount || 5);
+      }, layerModel.width, layerModel.height);
+      dirty = true;
+      compositeAndDisplay();
+      updateTitle();
+    }
+  }
+
+  async function doFxOilPaint() {
+    resetDialogSliders('dlg-oil-paint');
+    const result = await openEffectDialog('dlg-oil-paint', (imgData, vals) => {
+      Effects.oilPaint(imgData, vals.radius || 4, vals.intensity || 20);
+    }, getLayerImageData);
+    if (result.result === 'ok') {
+      pushUndo();
+      applyEffectToLayer(layerModel.getActiveCtx(), selection, (d) => {
+        Effects.oilPaint(d, result.values.radius || 4, result.values.intensity || 20);
+      }, layerModel.width, layerModel.height);
+      dirty = true;
+      compositeAndDisplay();
+      updateTitle();
+    }
+  }
+
+  async function doFxPosterize() {
+    resetDialogSliders('dlg-posterize');
+    const result = await openEffectDialog('dlg-posterize', (imgData, vals) => {
+      Effects.posterize(imgData, vals.levels || 4);
+    }, getLayerImageData);
+    if (result.result === 'ok') {
+      pushUndo();
+      applyEffectToLayer(layerModel.getActiveCtx(), selection, (d) => {
+        Effects.posterize(d, result.values.levels || 4);
+      }, layerModel.width, layerModel.height);
+      dirty = true;
+      compositeAndDisplay();
+      updateTitle();
+    }
+  }
+
+  async function doFxThreshold() {
+    resetDialogSliders('dlg-threshold');
+    const result = await openEffectDialog('dlg-threshold', (imgData, vals) => {
+      Effects.threshold(imgData, vals.level || 128);
+    }, getLayerImageData);
+    if (result.result === 'ok') {
+      pushUndo();
+      applyEffectToLayer(layerModel.getActiveCtx(), selection, (d) => {
+        Effects.threshold(d, result.values.level || 128);
+      }, layerModel.width, layerModel.height);
+      dirty = true;
+      compositeAndDisplay();
+      updateTitle();
+    }
+  }
+
+  async function doFxSolarize() {
+    resetDialogSliders('dlg-solarize');
+    const result = await openEffectDialog('dlg-solarize', (imgData, vals) => {
+      Effects.solarize(imgData, vals.threshold || 128);
+    }, getLayerImageData);
+    if (result.result === 'ok') {
+      pushUndo();
+      applyEffectToLayer(layerModel.getActiveCtx(), selection, (d) => {
+        Effects.solarize(d, result.values.threshold || 128);
+      }, layerModel.width, layerModel.height);
+      dirty = true;
+      compositeAndDisplay();
+      updateTitle();
+    }
+  }
+
+  async function doFxPencilSketch() {
+    resetDialogSliders('dlg-pencil-sketch');
+    const result = await openEffectDialog('dlg-pencil-sketch', (imgData, vals) => {
+      Effects.pencilSketch(imgData, vals.strength || 50);
+    }, getLayerImageData);
+    if (result.result === 'ok') {
+      pushUndo();
+      applyEffectToLayer(layerModel.getActiveCtx(), selection, (d) => {
+        Effects.pencilSketch(d, result.values.strength || 50);
+      }, layerModel.width, layerModel.height);
+      dirty = true;
+      compositeAndDisplay();
+      updateTitle();
+    }
+  }
+
+  async function doFxVignette() {
+    resetDialogSliders('dlg-vignette');
+    const result = await openEffectDialog('dlg-vignette', (imgData, vals) => {
+      Effects.vignette(imgData, vals.amount || 50, vals.radius || 70);
+    }, getLayerImageData);
+    if (result.result === 'ok') {
+      pushUndo();
+      applyEffectToLayer(layerModel.getActiveCtx(), selection, (d) => {
+        Effects.vignette(d, result.values.amount || 50, result.values.radius || 70);
+      }, layerModel.width, layerModel.height);
+      dirty = true;
+      compositeAndDisplay();
+      updateTitle();
+    }
+  }
+
+  async function doFxHalftone() {
+    resetDialogSliders('dlg-halftone');
+    const result = await openEffectDialog('dlg-halftone', (imgData, vals) => {
+      Effects.halftone(imgData, vals.dotSize || 6);
+    }, getLayerImageData);
+    if (result.result === 'ok') {
+      pushUndo();
+      applyEffectToLayer(layerModel.getActiveCtx(), selection, (d) => {
+        Effects.halftone(d, result.values.dotSize || 6);
+      }, layerModel.width, layerModel.height);
+      dirty = true;
+      compositeAndDisplay();
+      updateTitle();
+    }
+  }
+
+  async function doFxCrystallize() {
+    resetDialogSliders('dlg-crystallize');
+    const result = await openEffectDialog('dlg-crystallize', (imgData, vals) => {
+      Effects.crystallize(imgData, vals.cellSize || 12);
+    }, getLayerImageData);
+    if (result.result === 'ok') {
+      pushUndo();
+      applyEffectToLayer(layerModel.getActiveCtx(), selection, (d) => {
+        Effects.crystallize(d, result.values.cellSize || 12);
+      }, layerModel.width, layerModel.height);
+      dirty = true;
+      compositeAndDisplay();
+      updateTitle();
+    }
+  }
+
   function resetDialogSliders(dlgId) {
     const dlg = document.getElementById(dlgId);
     if (!dlg)
@@ -1047,6 +1366,66 @@
     updateTitle();
     updateStatusSize();
     refreshLayerPanel();
+  }
+
+  // -----------------------------------------------------------------------
+  // Auto-Correct operations
+  // -----------------------------------------------------------------------
+  function _flattenForAnalysis() {
+    const c = layerModel.flattenToCanvas();
+    const ctx = c.getContext('2d');
+    return ctx.getImageData(0, 0, c.width, c.height);
+  }
+
+  function doAutoDeskew() {
+    const imgData = _flattenForAnalysis();
+    const angle = ImageAnalysis.detectSkewAngle(imgData);
+    if (Math.abs(angle) < 0.001) return; // already straight
+    pushUndoStructural();
+    layerModel.rotateAllByAngle(-angle);
+    selection.init(layerModel.width, layerModel.height);
+    dirty = true;
+    compositeAndDisplay();
+    updateTitle();
+    updateStatusSize();
+  }
+
+  function doAutoRotate() {
+    const imgData = _flattenForAnalysis();
+    const degrees = ImageAnalysis.detectDominantRotation(imgData);
+    if (degrees === 0) return;
+    pushUndoStructural();
+    if (degrees === 90) layerModel.rotateAllCW();
+    else if (degrees === 180) layerModel.rotateAll180();
+    else if (degrees === 270) layerModel.rotateAllCCW();
+    selection.init(layerModel.width, layerModel.height);
+    dirty = true;
+    compositeAndDisplay();
+    updateTitle();
+    updateStatusSize();
+  }
+
+  function doAutoKeystone() {
+    const imgData = _flattenForAnalysis();
+    const corners = ImageAnalysis.detectKeystoneCorners(imgData);
+    if (!corners) return;
+    // Check if corners are close to image corners (no correction needed)
+    const w = imgData.width, h = imgData.height;
+    const expected = [{ x: 0, y: 0 }, { x: w - 1, y: 0 }, { x: w - 1, y: h - 1 }, { x: 0, y: h - 1 }];
+    let maxDist = 0;
+    for (let i = 0; i < 4; ++i) {
+      const dx = corners[i].x - expected[i].x;
+      const dy = corners[i].y - expected[i].y;
+      maxDist = Math.max(maxDist, Math.sqrt(dx * dx + dy * dy));
+    }
+    if (maxDist < 3) return; // already corrected
+    pushUndoStructural();
+    layerModel.transformAllPixels((srcData) => ImageAnalysis.perspectiveWarp(srcData, corners));
+    selection.init(layerModel.width, layerModel.height);
+    dirty = true;
+    compositeAndDisplay();
+    updateTitle();
+    updateStatusSize();
   }
 
   // -----------------------------------------------------------------------
