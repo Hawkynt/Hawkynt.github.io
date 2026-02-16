@@ -230,58 +230,383 @@
   }
 
   // =======================================================================
+  // Cipher Algorithm Loader (sibling project compression algorithms)
+  // =======================================================================
+
+  const _CIPHER_BASE = '../../../Cipher/';
+  const _cipherCache = {};
+  let _cipherFrameworkLoaded = false;
+
+  async function _loadScript(url) {
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = url;
+      script.onload = resolve;
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+  }
+
+  async function _loadCipherFramework() {
+    if (_cipherFrameworkLoaded) return true;
+    try {
+      if (typeof AlgorithmFramework === 'undefined')
+        await _loadScript(_CIPHER_BASE + 'AlgorithmFramework.js');
+      if (typeof OpCodes === 'undefined')
+        await _loadScript(_CIPHER_BASE + 'OpCodes.js');
+      _cipherFrameworkLoaded = true;
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  async function _loadCipherAlgo(name, file) {
+    if (_cipherCache[name]) return _cipherCache[name];
+    try {
+      if (!await _loadCipherFramework()) return null;
+      await _loadScript(_CIPHER_BASE + 'algorithms/compression/' + file);
+      const algo = AlgorithmFramework.Find(name);
+      if (algo) {
+        _cipherCache[name] = algo;
+        return algo;
+      }
+    } catch (_) { /* ignore */ }
+    return null;
+  }
+
+  function _cipherProcess(algo, data, isInverse) {
+    const inst = algo.CreateInstance(isInverse);
+    inst.Feed(Array.from(data));
+    const result = inst.Result();
+    if (inst.Dispose) inst.Dispose();
+    return new Uint8Array(result);
+  }
+
+  async function _cipherCompress(name, file, data) {
+    const algo = await _loadCipherAlgo(name, file);
+    if (!algo) return null;
+    try { return _cipherProcess(algo, data, false); }
+    catch (_) { return null; }
+  }
+
+  async function _cipherDecompress(name, file, data) {
+    const algo = await _loadCipherAlgo(name, file);
+    if (!algo) return null;
+    try { return _cipherProcess(algo, data, true); }
+    catch (_) { return null; }
+  }
+
+  // =======================================================================
+  // Compression helpers using Cipher algorithms
+  // =======================================================================
+
+  async function _tryDeflateCompress(raw) {
+    try { return await compressDeflateRaw(raw); }
+    catch (_) {
+      const result = await _cipherCompress('DEFLATE', 'deflate.js', raw);
+      return result;
+    }
+  }
+
+  async function _tryDeflateDecompress(raw) {
+    try { return await decompressDeflateRaw(raw); }
+    catch (_) {
+      return _cipherDecompress('DEFLATE', 'deflate.js', raw);
+    }
+  }
+
+  async function _tryLzmaCompress(raw) {
+    return _cipherCompress('LZMA', 'lzma.js', raw);
+  }
+
+  async function _tryLzmaDecompress(raw) {
+    return _cipherDecompress('LZMA', 'lzma.js', raw);
+  }
+
+  async function _tryBzip2Compress(raw) {
+    return _cipherCompress('BZIP2', 'bzip2.js', raw);
+  }
+
+  async function _tryBzip2Decompress(raw) {
+    return _cipherDecompress('BZIP2', 'bzip2.js', raw);
+  }
+
+  async function _tryZstdCompress(raw) {
+    return _cipherCompress('Zstandard', 'zstd.js', raw);
+  }
+
+  async function _tryZstdDecompress(raw) {
+    return _cipherDecompress('Zstandard', 'zstd.js', raw);
+  }
+
+  async function _tryLzssCompress(raw) {
+    return _cipherCompress('LZSS', 'lzss.js', raw);
+  }
+
+  async function _tryLzssDecompress(raw) {
+    return _cipherDecompress('LZSS', 'lzss.js', raw);
+  }
+
+  async function _tryPpmdCompress(raw) {
+    return _cipherCompress('PPMd (PPM with Dynamic Memory)', 'ppmd.js', raw);
+  }
+
+  async function _tryLzwDecompress(raw) {
+    return _cipherDecompress('LZW (Lempel-Ziv-Welch)', 'lzw.js', raw);
+  }
+
+  async function _tryLzxDecompress(raw) {
+    return _cipherDecompress('LZX', 'lzx.js', raw);
+  }
+
+  // =======================================================================
+  // Shared decompression utilities (BitReader, Huffman, LZW)
+  // =======================================================================
+
+  function concatUint8Arrays(arrays) {
+    let total = 0;
+    for (const a of arrays) total += a.length;
+    const result = new Uint8Array(total);
+    let off = 0;
+    for (const a of arrays) { result.set(a, off); off += a.length; }
+    return result;
+  }
+
+  class BitReader {
+    constructor(data) {
+      this._data = data;
+      this._pos = 0;
+      this._bitBuf = 0;
+      this._bitCount = 0;
+    }
+
+    get pos() { return this._pos; }
+    get bitsLeft() { return (this._data.length - this._pos) * 8 + this._bitCount; }
+
+    getBits(n) {
+      let result = 0;
+      while (n > 0) {
+        if (this._bitCount === 0) {
+          this._bitBuf = this._pos < this._data.length ? this._data[this._pos++] : 0;
+          this._bitCount = 8;
+        }
+        const take = Math.min(n, this._bitCount);
+        result = (result << take) | ((this._bitBuf >>> (this._bitCount - take)) & ((1 << take) - 1));
+        this._bitCount -= take;
+        n -= take;
+      }
+      return result;
+    }
+
+    getBitsLE(n) {
+      let result = 0;
+      let shift = 0;
+      while (n > 0) {
+        if (this._bitCount === 0) {
+          this._bitBuf = this._pos < this._data.length ? this._data[this._pos++] : 0;
+          this._bitCount = 8;
+        }
+        const bit = (this._bitBuf >>> (8 - this._bitCount)) & 1;
+        result |= (bit << shift);
+        --this._bitCount;
+        ++shift;
+        --n;
+      }
+      return result;
+    }
+
+    peekBits(n) {
+      const savedPos = this._pos;
+      const savedBuf = this._bitBuf;
+      const savedCount = this._bitCount;
+      const result = this.getBits(n);
+      this._pos = savedPos;
+      this._bitBuf = savedBuf;
+      this._bitCount = savedCount;
+      return result;
+    }
+  }
+
+  function buildHuffmanTable(lengths, numCodes) {
+    const MAX_BITS = 16;
+    const counts = new Uint16Array(MAX_BITS + 1);
+    for (let i = 0; i < numCodes; ++i)
+      if (lengths[i]) ++counts[lengths[i]];
+
+    const nextCode = new Uint16Array(MAX_BITS + 1);
+    let code = 0;
+    for (let bits = 1; bits <= MAX_BITS; ++bits) {
+      code = (code + counts[bits - 1]) << 1;
+      nextCode[bits] = code;
+    }
+
+    const table = new Int32Array(numCodes * 2);
+    for (let i = 0; i < numCodes; ++i) {
+      if (lengths[i]) {
+        table[i * 2] = lengths[i];
+        table[i * 2 + 1] = nextCode[lengths[i]]++;
+      }
+    }
+    return table;
+  }
+
+  function decodeHuffman(br, table, numCodes) {
+    let code = 0;
+    for (let bits = 1; bits <= 16; ++bits) {
+      code = (code << 1) | br.getBits(1);
+      for (let i = 0; i < numCodes; ++i)
+        if (table[i * 2] === bits && table[i * 2 + 1] === code)
+          return i;
+    }
+    return 0;
+  }
+
+  function buildHuffmanLookup(lengths, numCodes) {
+    const MAX_BITS = 16;
+    const counts = new Uint16Array(MAX_BITS + 1);
+    for (let i = 0; i < numCodes; ++i)
+      if (lengths[i]) ++counts[lengths[i]];
+
+    const nextCode = new Uint16Array(MAX_BITS + 1);
+    let code = 0;
+    for (let bits = 1; bits <= MAX_BITS; ++bits) {
+      code = (code + counts[bits - 1]) << 1;
+      nextCode[bits] = code;
+    }
+
+    const symbols = [];
+    for (let i = 0; i < numCodes; ++i)
+      if (lengths[i])
+        symbols.push({ symbol: i, bits: lengths[i], code: nextCode[lengths[i]]++ });
+
+    symbols.sort((a, b) => a.bits - b.bits || a.code - b.code);
+    return symbols;
+  }
+
+  function decodeHuffmanLookup(br, lookup) {
+    let code = 0;
+    let bits = 0;
+    let idx = 0;
+    for (let b = 1; b <= 16; ++b) {
+      code = (code << 1) | br.getBits(1);
+      ++bits;
+      while (idx < lookup.length && lookup[idx].bits === bits) {
+        if (lookup[idx].code === code) return lookup[idx].symbol;
+        ++idx;
+      }
+    }
+    return 0;
+  }
+
+  function _decompressLZW(data, maxBits, blockMode) {
+    const CLEAR_CODE = 256;
+    const output = [];
+    let codeSize = 9;
+    const dict = [];
+    for (let i = 0; i < 256; ++i) dict.push([i]);
+    if (blockMode) dict.push(null);
+    let nextCode = blockMode ? CLEAR_CODE + 1 : 256;
+    const maxCode = 1 << maxBits;
+
+    let bitBuf = 0;
+    let bitCount = 0;
+    let inPos = 0;
+
+    function getCode() {
+      while (bitCount < codeSize) {
+        if (inPos >= data.length) return -1;
+        bitBuf |= data[inPos++] << bitCount;
+        bitCount += 8;
+      }
+      const code = bitBuf & ((1 << codeSize) - 1);
+      bitBuf >>>= codeSize;
+      bitCount -= codeSize;
+      return code;
+    }
+
+    let prevEntry = null;
+    for (;;) {
+      const code = getCode();
+      if (code === -1) break;
+      if (blockMode && code === CLEAR_CODE) {
+        dict.length = CLEAR_CODE + 1;
+        nextCode = CLEAR_CODE + 1;
+        codeSize = 9;
+        prevEntry = null;
+        continue;
+      }
+      let entry;
+      if (code < dict.length && dict[code])
+        entry = dict[code];
+      else if (code === nextCode && prevEntry)
+        entry = [...prevEntry, prevEntry[0]];
+      else
+        break;
+
+      for (const b of entry) output.push(b);
+
+      if (prevEntry && nextCode < maxCode) {
+        dict[nextCode] = [...prevEntry, entry[0]];
+        ++nextCode;
+        if (nextCode >= (1 << codeSize) && codeSize < maxBits)
+          ++codeSize;
+      }
+      prevEntry = entry;
+    }
+    return new Uint8Array(output);
+  }
+
+  // =======================================================================
   // ZIP method compression helper
   // =======================================================================
 
   // Compresses data using a ZIP method number. Returns { method, data } where
-  // method may differ from requested if CDN unavailable (falls back to Store).
+  // method may differ from requested if Cipher algorithm unavailable (falls back to Deflate or Store).
   async function zipCompress(raw, method) {
     if (method === 0)
       return { method: 0, data: raw };
 
-    if (method === 8 || method === 9)
-      return { method: 8, data: await compressDeflateRaw(raw) };
-
-    if (method === 12) {
-      try {
-        await loadCdnScript(_BZIP2_CDN_URLS);
-        if (typeof bzip2 !== 'undefined' && bzip2.compressFile)
-          return { method: 12, data: new Uint8Array(bzip2.compressFile(raw)) };
-      } catch (_) { /* fall through */ }
-      return { method: 0, data: raw };
+    if (method === 8 || method === 9) {
+      const d = await _tryDeflateCompress(raw);
+      return d ? { method: 8, data: d } : { method: 0, data: raw };
     }
 
-    if (method === 14 || method === 95) {
-      try {
-        await loadCdnScript(_LZMA_CDN_URLS);
-        if (typeof LZMA !== 'undefined') {
-          const lzma = LZMA || window.LZMA;
-          const compressed = await new Promise((resolve, reject) => {
-            lzma.compress(raw, 5, (result, err) => err ? reject(err) : resolve(new Uint8Array(result)));
-          });
-          return { method: 14, data: compressed };
-        }
-      } catch (_) { /* fall through */ }
-      return { method: 0, data: raw };
+    if (method === 14) {
+      const result = await _tryLzmaCompress(raw);
+      if (result && result.length < raw.length) return { method: 14, data: result };
+      const d = await _tryDeflateCompress(raw);
+      return d ? { method: 8, data: d } : { method: 0, data: raw };
+    }
+
+    if (method === 12) {
+      const result = await _tryBzip2Compress(raw);
+      if (result && result.length < raw.length) return { method: 12, data: result };
+      const d = await _tryDeflateCompress(raw);
+      return d ? { method: 8, data: d } : { method: 0, data: raw };
     }
 
     if (method === 93) {
-      try {
-        await loadCdnScript(_ZSTD_CDN_URLS);
-        if (typeof fzstd !== 'undefined' && fzstd.compress)
-          return { method: 93, data: fzstd.compress(raw) };
-      } catch (_) { /* fall through */ }
-      return { method: 0, data: raw };
+      const result = await _tryZstdCompress(raw);
+      if (result && result.length < raw.length) return { method: 93, data: result };
+      const d = await _tryDeflateCompress(raw);
+      return d ? { method: 8, data: d } : { method: 0, data: raw };
     }
 
-    if (method === 98)
-      return { method: 0, data: raw };
+    if (method === 98) {
+      const result = await _tryPpmdCompress(raw);
+      if (result && result.length < raw.length) return { method: 98, data: result };
+      const d = await _tryDeflateCompress(raw);
+      return d ? { method: 8, data: d } : { method: 0, data: raw };
+    }
 
-    return { method: 8, data: await compressDeflateRaw(raw) };
+    // XZ and other methods: fall back to Deflate
+    const d = await _tryDeflateCompress(raw);
+    return d ? { method: 8, data: d } : { method: 0, data: raw };
   }
 
   // =======================================================================
-  // CDN script loader
+  // CDN script loader (kept for RAR only)
   // =======================================================================
 
   const _cdnCache = {};
@@ -291,13 +616,7 @@
     if (_cdnCache[key] !== undefined) return _cdnCache[key];
     for (const url of urls) {
       try {
-        await new Promise((resolve, reject) => {
-          const script = document.createElement('script');
-          script.src = url;
-          script.onload = resolve;
-          script.onerror = reject;
-          document.head.appendChild(script);
-        });
+        await _loadScript(url);
         _cdnCache[key] = true;
         return true;
       } catch (_) {
@@ -801,7 +1120,7 @@
         writeU16LE(cd, 4, 20);
         writeU16LE(cd, 6, 20);
         writeU16LE(cd, 8, 1);
-        writeU16LE(cd, 10, 8);
+        writeU16LE(cd, 10, compMethod);
         writeU16LE(cd, 14, dosTime.time);
         writeU16LE(cd, 16, dosTime.date);
         writeU32LE(cd, 18, crc);
@@ -839,6 +1158,9 @@
     async _resolveData(entry) {
       if (entry._data && entry._data.deflated) {
         try { return await decompressDeflateRaw(entry._data.deflated); } catch (_) { return null; }
+      }
+      if (entry._data && entry._data.aesEncrypted) {
+        return resolveEntryData(entry);
       }
       return entry._data instanceof Uint8Array ? entry._data : null;
     }
@@ -1269,26 +1591,77 @@
           let pos = off + ffBytes;
           const { value: uncompSize, bytesRead: usBytes } = this._readVInt(bytes, pos);
           pos += usBytes;
-          pos += 4;
+          const { value: attributes, bytesRead: atBytes } = this._readVInt(bytes, pos);
+          pos += atBytes;
+
+          let mtime = null;
+          if (fileFlags & 0x0002) {
+            if (pos + 4 <= headerEnd) {
+              const unixTime = readU32LE(bytes, pos);
+              mtime = new Date(unixTime * 1000);
+              pos += 4;
+            }
+          }
+
+          let dataCRC = 0;
+          if (fileFlags & 0x0008) {
+            if (pos + 4 <= headerEnd) {
+              dataCRC = readU32LE(bytes, pos);
+              pos += 4;
+            }
+          }
+
           const { value: comprInfo, bytesRead: ciBytes } = this._readVInt(bytes, pos);
           pos += ciBytes;
-          pos += 4;
-          const { value: nameLen } = this._readVInt(bytes, pos);
-          pos += this._readVInt(bytes, pos).bytesRead;
-          const name = new TextDecoder().decode(bytes.subarray(pos, pos + nameLen));
+          const { value: hostOS, bytesRead: hoBytes } = this._readVInt(bytes, pos);
+          pos += hoBytes;
+          const { value: nameLen, bytesRead: nlBytes } = this._readVInt(bytes, pos);
+          pos += nlBytes;
+          const name = new TextDecoder('utf-8', { fatal: false }).decode(bytes.subarray(pos, pos + nameLen));
+          pos += nameLen;
+
+          if (extraAreaSize > 0 && pos < headerEnd) {
+            const extraEnd = pos + extraAreaSize;
+            let ePos = pos;
+            while (ePos + 2 < extraEnd && ePos < headerEnd) {
+              const { value: recSize, bytesRead: rsBytes } = this._readVInt(bytes, ePos);
+              ePos += rsBytes;
+              const recEnd = ePos + recSize;
+              if (recEnd > headerEnd) break;
+              const recType = bytes[ePos];
+              if (recType === 0x03 && !mtime) {
+                const flags = ePos + 1 < recEnd ? bytes[ePos + 1] : 0;
+                const isUnix = !!(flags & 0x01);
+                let tOff = ePos + 2;
+                if (flags & 0x02) {
+                  if (isUnix && tOff + 4 <= recEnd) {
+                    mtime = new Date(readU32LE(bytes, tOff) * 1000);
+                  } else if (!isUnix && tOff + 8 <= recEnd) {
+                    const lo = readU32LE(bytes, tOff);
+                    const hi = readU32LE(bytes, tOff + 4);
+                    const ft = lo + hi * 0x100000000;
+                    mtime = new Date((ft - 116444736000000000) / 10000);
+                  }
+                }
+              }
+              ePos = recEnd;
+            }
+          }
+
           const isDir = !!(fileFlags & 0x0001);
           const encrypted = !!(fileFlags & 0x0004);
+          const method = (comprInfo >> 7) & 0x07;
 
           let data = null;
-          const method = (comprInfo >> 7) & 0x07;
           if (!isDir && method === 0 && !encrypted && dataSize > 0) {
             const dataStart = headerEnd;
             if (dataStart + dataSize <= bytes.length)
               data = bytes.slice(dataStart, dataStart + dataSize);
           }
 
+          const crcStr = dataCRC ? dataCRC.toString(16).toUpperCase().padStart(8, '0') : (data ? crc32Hex(data) : '');
           entries.push(makeEntry(
-            normalizeArchivePath(name), uncompSize, dataSize, null, '',
+            normalizeArchivePath(name), uncompSize, dataSize, mtime, crcStr,
             isDir, encrypted, data, handler
           ));
         }
@@ -1318,20 +1691,6 @@
   // =======================================================================
   // FORMAT: 7z (read-only)
   // =======================================================================
-
-  const _LZMA_CDN_URLS = [
-    'https://cdn.jsdelivr.net/npm/lzma@2.3.2/src/lzma_worker-min.js',
-    'https://cdn.jsdelivr.net/npm/lzma-js@latest/src/lzma.js',
-  ];
-
-  const _BZIP2_CDN_URLS = [
-    'https://cdn.jsdelivr.net/npm/seek-bzip@2.0.0/lib/bzip2.js',
-    'https://cdn.jsdelivr.net/npm/bzip2@0.1.1/lib/bzip2.js',
-  ];
-
-  const _ZSTD_CDN_URLS = [
-    'https://cdn.jsdelivr.net/npm/fzstd@0.1.1/umd/index.js',
-  ];
 
   class SevenZipFormat extends IArchiveFormat {
     static get id() { return '7z'; }
@@ -1386,12 +1745,8 @@
 
       if (bytes.length < 32) return entries;
 
-      const majorVer = bytes[6];
-      const minorVer = bytes[7];
-      const startHeaderCRC = readU32LE(bytes, 8);
       const nextHeaderOffset = this._readU64(bytes, 12);
       const nextHeaderSize = this._readU64(bytes, 20);
-      const nextHeaderCRC = readU32LE(bytes, 28);
 
       const headerStart = 32 + nextHeaderOffset;
       if (headerStart + nextHeaderSize > bytes.length) return entries;
@@ -1400,127 +1755,508 @@
 
       if (headerData.length > 0 && headerData[0] === 0x17) {
         try {
-          headerData = await this._decodeEncodedHeader(headerData, bytes, password);
+          headerData = await this._decodeEncodedHeader(headerData, bytes, 32, password);
         } catch (e) {
           if (e && e.needPassword) throw e;
           return entries;
         }
       }
 
-      return this._parseFilesInfo(headerData, bytes, handler, password);
-    }
+      if (!headerData || headerData.length === 0) return entries;
 
-    async _decodeEncodedHeader(headerData, fullArchive, password) {
-      let off = 1;
+      const header = this._parseHeader(headerData);
+      if (!header) return entries;
 
-      if (off >= headerData.length) return headerData;
-      const packPos = this._readProperty(headerData, off);
-      off = packPos.nextOff;
-
-      const numPackStreams = this._readProperty(headerData, off);
-      off = numPackStreams.nextOff;
-
-      const packSizes = [];
-      for (let i = 0; i < numPackStreams.value; ++i) {
-        const ps = this._readProperty(headerData, off);
-        packSizes.push(ps.value);
-        off = ps.nextOff;
+      let fileDataMap = null;
+      if (header.packInfo && header.unpackInfo) {
+        try {
+          fileDataMap = await this._decompressFolders(bytes, 32, header.packInfo, header.unpackInfo, header.subStreamsInfo, password);
+        } catch (_) { /* ignore extraction failures */ }
       }
 
-      return headerData;
-    }
+      const fileNames = header.filesInfo ? header.filesInfo.names : [];
+      const emptyStream = header.filesInfo ? header.filesInfo.emptyStream : [];
+      const emptyFile = header.filesInfo ? header.filesInfo.emptyFile : [];
+      const isDirFlags = header.filesInfo ? header.filesInfo.isDir : [];
+      const mtimes = header.filesInfo ? header.filesInfo.mtimes : [];
+      const attrs = header.filesInfo ? header.filesInfo.attrs : [];
 
-    _readProperty(buf, off) {
-      if (off >= buf.length) return { value: 0, nextOff: off };
-      const id = buf[off++];
-      if (id === 0) return { value: 0, nextOff: off };
-      let value = 0;
-      let bytesRead = 0;
-      while (off < buf.length && bytesRead < 8) {
-        value = value + buf[off++] * Math.pow(256, bytesRead);
-        ++bytesRead;
-        if (bytesRead >= 1 && !(buf[off - 1] & 0x80)) break;
-      }
-      return { value, nextOff: off };
-    }
+      let fileIdx = 0;
+      for (let i = 0; i < fileNames.length; ++i) {
+        const name = fileNames[i];
+        const isEmpty = emptyStream[i];
+        const isDir = isDirFlags[i] || (isEmpty && !emptyFile[i]);
+        const mtime = mtimes[i] || null;
 
-    _parseFilesInfo(headerData, fullArchive, handler, password) {
-      const entries = [];
-      let off = 0;
-
-      const names = [];
-      const sizes = [];
-      const isDir = [];
-      const mtimes = [];
-
-      while (off < headerData.length) {
-        const propId = headerData[off++];
-        if (propId === 0x00) break;
-
-        if (propId === 0x05) {
-          off = this._parseFilesInfoBlock(headerData, off, names, sizes, isDir, mtimes);
-          continue;
+        let data = null;
+        let size = 0;
+        let packed = 0;
+        if (!isEmpty && fileDataMap && fileIdx < fileDataMap.length) {
+          data = fileDataMap[fileIdx];
+          size = data ? data.length : 0;
+          packed = size;
+          ++fileIdx;
         }
 
-        if (off < headerData.length) {
-          let sz = 0;
-          let shift = 0;
-          while (off < headerData.length) {
-            const b = headerData[off++];
-            sz |= (b & 0x7F) << shift;
-            if (!(b & 0x80)) break;
-            shift += 7;
-          }
-          off += sz;
-        }
-      }
-
-      for (let i = 0; i < names.length; ++i) {
         entries.push(makeEntry(
-          normalizeArchivePath(names[i]),
-          sizes[i] || 0, sizes[i] || 0,
-          mtimes[i] || null, '',
-          isDir[i] || false, false, null, handler
+          normalizeArchivePath(name), size, packed, mtime,
+          data ? crc32Hex(data) : '', isDir, false, data, handler
         ));
       }
-
       return entries;
     }
 
-    _parseFilesInfoBlock(buf, off, names, sizes, isDir, mtimes) {
+    _read7zNum(buf, off) {
+      if (off >= buf.length) return { value: 0, bytesRead: 1 };
+      const first = buf[off];
+      let mask = 0x80;
+      let numExtra = 0;
+      while (numExtra < 8 && (first & mask)) { ++numExtra; mask >>>= 1; }
+      if (numExtra === 0) return { value: first, bytesRead: 1 };
+      let value = first & (mask - 1);
+      for (let i = 0; i < numExtra && off + 1 + i < buf.length; ++i)
+        value = value * 256 + buf[off + 1 + i];
+      return { value, bytesRead: 1 + numExtra };
+    }
+
+    _skipProperty(buf, off) {
+      const sz = this._read7zNum(buf, off);
+      return off + sz.bytesRead + sz.value;
+    }
+
+    _parseHeader(buf) {
+      let off = 0;
+      if (off >= buf.length) return null;
+      const mainId = buf[off++];
+      if (mainId !== 0x01) return null;
+
+      let packInfo = null;
+      let unpackInfo = null;
+      let subStreamsInfo = null;
+      let filesInfo = null;
+
       while (off < buf.length) {
         const propId = buf[off++];
         if (propId === 0x00) break;
+        if (propId === 0x06) {
+          const r = this._parsePackInfo(buf, off);
+          packInfo = r.info;
+          off = r.nextOff;
+        } else if (propId === 0x07) {
+          const r = this._parseUnpackInfo(buf, off);
+          unpackInfo = r.info;
+          off = r.nextOff;
+        } else if (propId === 0x08) {
+          const r = this._parseSubStreamsInfo(buf, off, unpackInfo ? unpackInfo.folders.length : 0, unpackInfo);
+          subStreamsInfo = r.info;
+          off = r.nextOff;
+        } else if (propId === 0x05) {
+          const r = this._parseNewFilesInfo(buf, off);
+          filesInfo = r.info;
+          off = r.nextOff;
+        } else
+          off = this._skipProperty(buf, off);
+      }
+      return { packInfo, unpackInfo, subStreamsInfo, filesInfo };
+    }
 
-        let blockSize = 0;
-        let shift = 0;
-        while (off < buf.length) {
-          const b = buf[off++];
-          blockSize |= (b & 0x7F) << shift;
-          if (!(b & 0x80)) break;
-          shift += 7;
+    _parsePackInfo(buf, off) {
+      const packPos = this._read7zNum(buf, off);
+      off += packPos.bytesRead;
+      const numPackStreams = this._read7zNum(buf, off);
+      off += numPackStreams.bytesRead;
+      const packSizes = [];
+      while (off < buf.length) {
+        const propId = buf[off++];
+        if (propId === 0x00) break;
+        if (propId === 0x09) {
+          for (let i = 0; i < numPackStreams.value; ++i) {
+            const s = this._read7zNum(buf, off);
+            packSizes.push(s.value);
+            off += s.bytesRead;
+          }
+        } else if (propId === 0x0A)
+          off = this._skipProperty(buf, off);
+        else
+          off = this._skipProperty(buf, off);
+      }
+      if (packSizes.length === 0)
+        for (let i = 0; i < numPackStreams.value; ++i) packSizes.push(0);
+      return { info: { packPos: packPos.value, numPackStreams: numPackStreams.value, packSizes }, nextOff: off };
+    }
+
+    _parseFolder(buf, off) {
+      const numCoders = this._read7zNum(buf, off);
+      off += numCoders.bytesRead;
+      const coders = [];
+      for (let i = 0; i < numCoders.value; ++i) {
+        const flags = buf[off++];
+        const idSize = flags & 0x0F;
+        const hasAttrs = !!(flags & 0x20);
+        const complexCoder = !!(flags & 0x10);
+        const coderId = [];
+        for (let j = 0; j < idSize && off < buf.length; ++j) coderId.push(buf[off++]);
+        let numInStreams = 1, numOutStreams = 1;
+        if (complexCoder) {
+          const ins = this._read7zNum(buf, off); numInStreams = ins.value; off += ins.bytesRead;
+          const outs = this._read7zNum(buf, off); numOutStreams = outs.value; off += outs.bytesRead;
         }
+        let props = null;
+        if (hasAttrs) {
+          const propSize = this._read7zNum(buf, off); off += propSize.bytesRead;
+          props = buf.slice(off, off + propSize.value);
+          off += propSize.value;
+        }
+        coders.push({ coderId, numInStreams, numOutStreams, props });
+      }
+      const totalInStreams = coders.reduce((s, c) => s + c.numInStreams, 0);
+      const totalOutStreams = coders.reduce((s, c) => s + c.numOutStreams, 0);
+      const numBindPairs = totalOutStreams - 1;
+      const bindPairs = [];
+      for (let i = 0; i < numBindPairs; ++i) {
+        const inIdx = this._read7zNum(buf, off); off += inIdx.bytesRead;
+        const outIdx = this._read7zNum(buf, off); off += outIdx.bytesRead;
+        bindPairs.push({ inIndex: inIdx.value, outIndex: outIdx.value });
+      }
+      const numPackStreams = totalInStreams - numBindPairs;
+      const packStreams = [];
+      if (numPackStreams === 1) {
+        for (let i = 0; i < totalInStreams; ++i) {
+          let bound = false;
+          for (const bp of bindPairs)
+            if (bp.inIndex === i) { bound = true; break; }
+          if (!bound) { packStreams.push(i); break; }
+        }
+      } else {
+        for (let i = 0; i < numPackStreams; ++i) {
+          const idx = this._read7zNum(buf, off); off += idx.bytesRead;
+          packStreams.push(idx.value);
+        }
+      }
+      return { coders, bindPairs, packStreams, nextOff: off };
+    }
 
-        const blockEnd = off + blockSize;
+    _parseUnpackInfo(buf, off) {
+      const folders = [];
+      let unpackSizes = [];
+      while (off < buf.length) {
+        const propId = buf[off++];
+        if (propId === 0x00) break;
+        if (propId === 0x0B) {
+          const numFolders = this._read7zNum(buf, off); off += numFolders.bytesRead;
+          const external = buf[off++];
+          if (external === 0) {
+            for (let i = 0; i < numFolders.value; ++i) {
+              const f = this._parseFolder(buf, off);
+              folders.push(f);
+              off = f.nextOff;
+            }
+          }
+        } else if (propId === 0x0C) {
+          for (const f of folders) {
+            const totalOut = f.coders.reduce((s, c) => s + c.numOutStreams, 0);
+            f.unpackSizes = [];
+            for (let i = 0; i < totalOut; ++i) {
+              const sz = this._read7zNum(buf, off); off += sz.bytesRead;
+              f.unpackSizes.push(sz.value);
+            }
+          }
+        } else if (propId === 0x0A) {
+          const allDefined = buf[off++];
+          if (allDefined) {
+            for (const f of folders) {
+              f.crc = readU32LE(buf, off);
+              off += 4;
+            }
+          }
+        } else
+          off = this._skipProperty(buf, off);
+      }
+      return { info: { folders }, nextOff: off };
+    }
+
+    _parseSubStreamsInfo(buf, off, numFolders, unpackInfo) {
+      const numUnpackStreamsInFolders = [];
+      const subStreamSizes = [];
+      const digests = [];
+      while (off < buf.length) {
+        const propId = buf[off++];
+        if (propId === 0x00) break;
+        if (propId === 0x0D) {
+          for (let i = 0; i < numFolders; ++i) {
+            const n = this._read7zNum(buf, off); off += n.bytesRead;
+            numUnpackStreamsInFolders.push(n.value);
+          }
+        } else if (propId === 0x09) {
+          for (let i = 0; i < numFolders; ++i) {
+            const numStreams = numUnpackStreamsInFolders[i] || 1;
+            const sizes = [];
+            let total = 0;
+            for (let j = 0; j < numStreams - 1; ++j) {
+              const sz = this._read7zNum(buf, off); off += sz.bytesRead;
+              sizes.push(sz.value);
+              total += sz.value;
+            }
+            const folderUnpackSize = unpackInfo && unpackInfo.folders[i] && unpackInfo.folders[i].unpackSizes
+              ? unpackInfo.folders[i].unpackSizes[unpackInfo.folders[i].unpackSizes.length - 1] : 0;
+            sizes.push(Math.max(0, folderUnpackSize - total));
+            subStreamSizes.push(sizes);
+          }
+        } else if (propId === 0x0A)
+          off = this._skipProperty(buf, off);
+        else
+          off = this._skipProperty(buf, off);
+      }
+      if (numUnpackStreamsInFolders.length === 0)
+        for (let i = 0; i < numFolders; ++i) numUnpackStreamsInFolders.push(1);
+      return { info: { numUnpackStreamsInFolders, subStreamSizes, digests }, nextOff: off };
+    }
+
+    _parseNewFilesInfo(buf, off) {
+      const numFiles = this._read7zNum(buf, off); off += numFiles.bytesRead;
+      const names = [];
+      const emptyStream = new Array(numFiles.value).fill(false);
+      const emptyFile = new Array(numFiles.value).fill(false);
+      const isDir = new Array(numFiles.value).fill(false);
+      const mtimes = new Array(numFiles.value).fill(null);
+      const attrs = new Array(numFiles.value).fill(0);
+
+      while (off < buf.length) {
+        const propId = buf[off++];
+        if (propId === 0x00) break;
+        const blockSize = this._read7zNum(buf, off); off += blockSize.bytesRead;
+        const blockEnd = off + blockSize.value;
 
         if (propId === 0x11) {
+          const external = buf[off++];
           let nameOff = off;
           let current = '';
           while (nameOff + 1 < blockEnd) {
             const ch = readU16LE(buf, nameOff);
             nameOff += 2;
             if (ch === 0) {
-              if (current) names.push(current);
+              names.push(current);
               current = '';
             } else
               current += String.fromCharCode(ch);
           }
           if (current) names.push(current);
+        } else if (propId === 0x0E) {
+          let bitOff = off;
+          for (let i = 0; i < numFiles.value && bitOff < blockEnd; ++i) {
+            const byteIdx = Math.floor(i / 8);
+            const bitIdx = 7 - (i % 8);
+            if (bitOff + byteIdx < blockEnd)
+              emptyStream[i] = !!((buf[bitOff + byteIdx] >>> bitIdx) & 1);
+          }
+          for (let i = 0; i < numFiles.value; ++i)
+            if (emptyStream[i]) isDir[i] = true;
+        } else if (propId === 0x0F) {
+          let bitOff = off;
+          let emptyIdx = 0;
+          for (let i = 0; i < numFiles.value; ++i) {
+            if (emptyStream[i]) {
+              const byteIdx = Math.floor(emptyIdx / 8);
+              const bitIdx = 7 - (emptyIdx % 8);
+              if (bitOff + byteIdx < blockEnd)
+                emptyFile[i] = !!((buf[bitOff + byteIdx] >>> bitIdx) & 1);
+              if (emptyFile[i]) isDir[i] = false;
+              ++emptyIdx;
+            }
+          }
+        } else if (propId === 0x14) {
+          let mOff = off;
+          const allDefined = buf[mOff++];
+          if (allDefined) {
+            mOff += 2;
+            for (let i = 0; i < numFiles.value && mOff + 8 <= blockEnd; ++i) {
+              const lo = readU32LE(buf, mOff);
+              const hi = readU32LE(buf, mOff + 4);
+              const ft = lo + hi * 0x100000000;
+              const ms = (ft - 116444736000000000) / 10000;
+              mtimes[i] = new Date(ms);
+              mOff += 8;
+            }
+          }
+        } else if (propId === 0x15) {
+          let aOff = off;
+          const allDefined = buf[aOff++];
+          if (allDefined) {
+            aOff += 2;
+            for (let i = 0; i < numFiles.value && aOff + 4 <= blockEnd; ++i) {
+              attrs[i] = readU32LE(buf, aOff);
+              if (attrs[i] & 0x10) isDir[i] = true;
+              aOff += 4;
+            }
+          }
         }
-
         off = blockEnd;
       }
-      return off;
+      return { info: { names, emptyStream, emptyFile, isDir, mtimes, attrs }, nextOff: off };
+    }
+
+    async _decodeEncodedHeader(headerData, fullArchive, dataOffset, password) {
+      let off = 0;
+      if (headerData[off] !== 0x17) return headerData;
+      ++off;
+
+      const innerHeader = this._parseHeader7zStream(headerData, off);
+      if (!innerHeader || !innerHeader.packInfo || !innerHeader.unpackInfo) return headerData;
+
+      const fileDataMap = await this._decompressFolders(fullArchive, dataOffset, innerHeader.packInfo, innerHeader.unpackInfo, null, password);
+      if (fileDataMap && fileDataMap.length > 0 && fileDataMap[0])
+        return fileDataMap[0];
+      return headerData;
+    }
+
+    _parseHeader7zStream(buf, off) {
+      let packInfo = null;
+      let unpackInfo = null;
+      while (off < buf.length) {
+        const propId = buf[off++];
+        if (propId === 0x00) break;
+        if (propId === 0x06) {
+          const r = this._parsePackInfo(buf, off);
+          packInfo = r.info; off = r.nextOff;
+        } else if (propId === 0x07) {
+          const r = this._parseUnpackInfo(buf, off);
+          unpackInfo = r.info; off = r.nextOff;
+        } else if (propId === 0x08) {
+          const r = this._parseSubStreamsInfo(buf, off, unpackInfo ? unpackInfo.folders.length : 0, unpackInfo);
+          off = r.nextOff;
+        } else
+          off = this._skipProperty(buf, off);
+      }
+      return { packInfo, unpackInfo };
+    }
+
+    async _decompressFolders(fullArchive, dataOffset, packInfo, unpackInfo, subStreamsInfo, password) {
+      const result = [];
+      let packOffset = dataOffset + packInfo.packPos;
+      let packIdx = 0;
+
+      for (let fi = 0; fi < unpackInfo.folders.length; ++fi) {
+        const folder = unpackInfo.folders[fi];
+        const numPackStreams = folder.packStreams ? folder.packStreams.length : 1;
+        let totalPackSize = 0;
+        for (let i = 0; i < numPackStreams; ++i) {
+          if (packIdx + i < packInfo.packSizes.length)
+            totalPackSize += packInfo.packSizes[packIdx + i];
+        }
+        const packSize = packIdx < packInfo.packSizes.length ? packInfo.packSizes[packIdx] : totalPackSize;
+
+        if (packOffset + packSize > fullArchive.length) {
+          packIdx += numPackStreams;
+          packOffset += totalPackSize;
+          result.push(null);
+          continue;
+        }
+
+        let data = fullArchive.slice(packOffset, packOffset + packSize);
+        const unpackSize = folder.unpackSizes && folder.unpackSizes.length > 0
+          ? folder.unpackSizes[folder.unpackSizes.length - 1] : data.length;
+
+        for (const coder of folder.coders) {
+          data = await this._executeCoder(coder, data, unpackSize, password);
+          if (!data) break;
+        }
+
+        if (data && subStreamsInfo) {
+          const numStreams = subStreamsInfo.numUnpackStreamsInFolders[fi] || 1;
+          if (numStreams === 1)
+            result.push(data);
+          else {
+            const sizes = subStreamsInfo.subStreamSizes[fi] || [];
+            let sOff = 0;
+            for (let s = 0; s < numStreams; ++s) {
+              const sz = sizes[s] || 0;
+              result.push(data.slice(sOff, sOff + sz));
+              sOff += sz;
+            }
+          }
+        } else
+          result.push(data);
+
+        packIdx += numPackStreams;
+        packOffset += totalPackSize;
+      }
+      return result;
+    }
+
+    async _executeCoder(coder, data, unpackSize, password) {
+      if (!data) return null;
+      const id = coder.coderId;
+
+      if (id.length === 1 && id[0] === 0x00) return data;
+
+      if (id.length === 3 && id[0] === 0x03 && id[1] === 0x01 && id[2] === 0x01)
+        return _tryLzmaDecompress(data);
+
+      if (id.length === 1 && id[0] === 0x21)
+        return _tryLzmaDecompress(data);
+
+      if (id.length === 3 && id[0] === 0x04 && id[1] === 0x01 && id[2] === 0x08)
+        return _tryDeflateDecompress(data);
+
+      if (id.length === 3 && id[0] === 0x04 && id[1] === 0x02 && id[2] === 0x02)
+        return _tryBzip2Decompress(data);
+
+      if (id.length === 3 && id[0] === 0x03 && id[1] === 0x04 && id[2] === 0x01)
+        return _cipherDecompress('PPMd (PPM with Dynamic Memory)', 'ppmd.js', data);
+
+      if (id.length === 4 && id[0] === 0x06 && id[1] === 0xF1 && id[2] === 0x07 && id[3] === 0x01) {
+        if (!password) {
+          const err = new Error('Password required');
+          err.needPassword = true;
+          throw err;
+        }
+        return this._decryptAes256(data, coder.props, password);
+      }
+
+      return data;
+    }
+
+    async _decryptAes256(data, props, password) {
+      if (!props || props.length < 2) return null;
+      const numCyclesPower = props[0] & 0x3F;
+      const ivSize = ((props[0] >> 6) & 0x03) + ((props[1] & 0x0F) << 2);
+      const saltSize = (props[1] >> 4) & 0x0F;
+      let pOff = 2;
+      const salt = props.slice(pOff, pOff + saltSize); pOff += saltSize;
+      const iv = new Uint8Array(16);
+      for (let i = 0; i < ivSize && pOff + i < props.length; ++i) iv[i] = props[pOff + i];
+
+      const passBytes = new Uint8Array(password.length * 2);
+      for (let i = 0; i < password.length; ++i)
+        writeU16LE(passBytes, i * 2, password.charCodeAt(i));
+
+      const numIterations = 1 << numCyclesPower;
+      const keyBuf = new Uint8Array(32);
+      try {
+        let digest = new Uint8Array(passBytes.length + 8);
+        digest.set(passBytes, 0);
+        const hashParts = [];
+        for (let i = 0; i < numIterations; ++i) {
+          digest[passBytes.length] = i & 0xFF;
+          digest[passBytes.length + 1] = (i >> 8) & 0xFF;
+          digest[passBytes.length + 2] = (i >> 16) & 0xFF;
+          digest[passBytes.length + 3] = (i >> 24) & 0xFF;
+          hashParts.push(digest.slice());
+        }
+        const allBytes = concatUint8Arrays(hashParts);
+        const hash = await crypto.subtle.digest('SHA-256', allBytes);
+        keyBuf.set(new Uint8Array(hash));
+      } catch (_) {
+        return null;
+      }
+
+      try {
+        const key = await crypto.subtle.importKey('raw', keyBuf, 'AES-CBC', false, ['decrypt']);
+        const decrypted = await crypto.subtle.decrypt({ name: 'AES-CBC', iv }, key, data);
+        return new Uint8Array(decrypted);
+      } catch (_) {
+        return null;
+      }
     }
 
     _readU64(buf, off) {
@@ -1531,6 +2267,7 @@
 
     async build(entries, password, options) {
       const useEncrypt = password && options && options.encrypt;
+      const requestedMethod = (options && options.method) || 'store';
       const fileEntries = entries.filter(e => !e.isDirectory && e._data);
       const dirEntries = entries.filter(e => e.isDirectory);
 
@@ -1540,12 +2277,39 @@
         fileData.push(raw || new Uint8Array(0));
       }
 
-      let packedData;
       const totalUncomp = fileData.reduce((s, d) => s + d.length, 0);
       const combined = new Uint8Array(totalUncomp);
       let cOff = 0;
       for (const d of fileData) { combined.set(d, cOff); cOff += d.length; }
-      packedData = combined;
+
+      // Try compression based on selected method
+      let packedData = combined;
+      let usedCoder = 'copy'; // 'copy', 'lzma', 'deflate', 'bzip2', 'ppmd'
+      if (requestedMethod === 'lzma' || requestedMethod === 'lzma2') {
+        const compressed = await _tryLzmaCompress(combined);
+        if (compressed && compressed.length < combined.length) {
+          packedData = compressed;
+          usedCoder = 'lzma';
+        }
+      } else if (requestedMethod === 'deflate') {
+        const compressed = await _tryDeflateCompress(combined);
+        if (compressed && compressed.length < combined.length) {
+          packedData = compressed;
+          usedCoder = 'deflate';
+        }
+      } else if (requestedMethod === 'bzip2') {
+        const compressed = await _tryBzip2Compress(combined);
+        if (compressed && compressed.length < combined.length) {
+          packedData = compressed;
+          usedCoder = 'bzip2';
+        }
+      } else if (requestedMethod === 'ppmd') {
+        const compressed = await _tryPpmdCompress(combined);
+        if (compressed && compressed.length < combined.length) {
+          packedData = compressed;
+          usedCoder = 'ppmd';
+        }
+      }
 
       const fileCrcs = fileData.map(d => computeCRC32(d));
       const fileSizes = fileData.map(d => d.length);
@@ -1555,7 +2319,7 @@
 
       const headerParts = [];
       headerParts.push(this._build7zPackInfo(0, packedData.length));
-      headerParts.push(this._build7zUnpackInfo(packedData.length, totalUncomp));
+      headerParts.push(this._build7zUnpackInfo(packedData.length, totalUncomp, usedCoder));
       if (fileEntries.length > 1)
         headerParts.push(this._build7zSubStreamsInfo(fileSizes, fileCrcs));
 
@@ -1625,13 +2389,34 @@
       return result;
     }
 
-    _build7zUnpackInfo(packSize, unpackSize) {
+    _build7zUnpackInfo(packSize, unpackSize, coderType) {
       const parts = [new Uint8Array([0x07])];
       parts.push(new Uint8Array([0x0B]));
       parts.push(this._write7zVarInt(1));
 
-      const coderInfo = new Uint8Array([0x01, 0x00]);
-      parts.push(coderInfo);
+      // 7z coder IDs: Copy=00, LZMA=030101, LZMA2=21, Deflate=040108, BZip2=040202, PPMd=030401
+      if (coderType === 'lzma') {
+        parts.push(new Uint8Array([0x23, 0x03, 0x01, 0x01])); // 0x20|0x03 = has props + 3-byte ID
+        const props = new Uint8Array(5);
+        props[0] = 0x5D; // lc=3, lp=0, pb=2
+        writeU32LE(props, 1, 0x00800000); // 8 MB dictionary
+        parts.push(new Uint8Array([props.length]));
+        parts.push(props);
+      } else if (coderType === 'deflate') {
+        parts.push(new Uint8Array([0x23, 0x04, 0x01, 0x08])); // Deflate coder ID
+      } else if (coderType === 'bzip2') {
+        parts.push(new Uint8Array([0x23, 0x04, 0x02, 0x02])); // BZip2 coder ID
+      } else if (coderType === 'ppmd') {
+        parts.push(new Uint8Array([0x23, 0x03, 0x04, 0x01])); // PPMd coder ID
+        const props = new Uint8Array(5);
+        props[0] = 8; // order
+        writeU32LE(props, 1, 0x01000000); // 16 MB memory
+        parts.push(new Uint8Array([props.length]));
+        parts.push(props);
+      } else {
+        // Copy coder: ID = 00, 1 byte
+        parts.push(new Uint8Array([0x01, 0x00]));
+      }
       parts.push(new Uint8Array([0x00]));
 
       parts.push(new Uint8Array([0x0C]));
@@ -1746,7 +2531,10 @@
 
     static getCreateOptions() {
       return [
-        { id: 'method', label: 'Method', type: 'select', options: [{ value: '-lh0-', label: 'Store (-lh0-)' }, { value: '-lh5-', label: 'LZSS (-lh5-)' }], default: '-lh0-' }
+        { id: 'method', label: 'Method', type: 'select', options: [
+          { value: '-lh0-', label: 'Store (-lh0-)' },
+          { value: '-lh5-', label: 'LZSS (-lh5-)' }
+        ], default: '-lh5-' }
       ];
     }
 
@@ -1761,93 +2549,214 @@
       let off = 0;
 
       while (off + 7 <= bytes.length) {
-        const headerSize = bytes[off];
-        if (headerSize === 0) break;
-        const checksum = bytes[off + 1];
-        const methodStr = new TextDecoder().decode(bytes.subarray(off + 2, off + 7));
-        if (!methodStr.startsWith('-lh')) break;
+        const hdr = this._readLzhHeader(bytes, off);
+        if (!hdr) break;
+        const { methodStr, compSize, origSize, name, modified, isDir, dataStart, nextOff } = hdr;
 
-        const compSize = readU32LE(bytes, off + 7);
-        const origSize = readU32LE(bytes, off + 11);
-        const timestamp = readU32LE(bytes, off + 15);
-        const attr = bytes[off + 19];
-        const level = bytes[off + 20];
-        const nameLen = bytes[off + 21];
-        const name = new TextDecoder().decode(bytes.subarray(off + 22, off + 22 + nameLen));
-        const isDir = name.endsWith('/') || name.endsWith('\\');
-
-        const dataStart = off + 2 + headerSize;
         let data = null;
-
         if (!isDir && compSize > 0 && dataStart + compSize <= bytes.length) {
           const rawData = bytes.slice(dataStart, dataStart + compSize);
-
-          if (methodStr === '-lh0-')
+          if (methodStr === '-lh0-' || methodStr === '-lz4-')
             data = rawData;
-          else if (methodStr === '-lh5-' || methodStr === '-lh6-' || methodStr === '-lh7-') {
+          else if (methodStr === '-lh4-' || methodStr === '-lh5-' || methodStr === '-lh6-' || methodStr === '-lh7-') {
             try {
-              data = this._decompressLh5(rawData, origSize);
+              data = this._decompressLhx(rawData, origSize, methodStr);
             } catch (_) {
               data = null;
             }
-          }
+          } else if (methodStr === '-lzs-' || methodStr === '-lz5-')
+            data = await _tryLzssDecompress(rawData);
         }
 
-        const mod = timestamp > 0 ? new Date(timestamp * 1000) : null;
         entries.push(makeEntry(
-          normalizeArchivePath(name), origSize, compSize, mod,
+          normalizeArchivePath(name || 'unknown'), origSize, compSize, modified,
           data ? crc32Hex(data) : '', isDir, false, data, handler
         ));
-
-        off = dataStart + compSize;
+        off = nextOff;
       }
       return entries;
     }
 
-    _decompressLh5(compressed, origSize) {
-      const DICBIT = 13;
+    _readLzhHeader(bytes, off) {
+      if (off + 7 > bytes.length) return null;
+
+      const methodStr = new TextDecoder('ascii', { fatal: false }).decode(bytes.subarray(off + 2, off + 7));
+      if (!methodStr.startsWith('-l')) return null;
+
+      const b0 = bytes[off];
+      const b1 = bytes[off + 1];
+      const level = bytes[off + 20];
+
+      if (level === 0) {
+        const headerSize = b0;
+        if (headerSize === 0) return null;
+        const compSize = readU32LE(bytes, off + 7);
+        const origSize = readU32LE(bytes, off + 11);
+        const timestamp = readU32LE(bytes, off + 15);
+        const nameLen = bytes[off + 21];
+        const name = new TextDecoder().decode(bytes.subarray(off + 22, off + 22 + nameLen));
+        const crcOff = off + 22 + nameLen;
+        const dataStart = off + 2 + headerSize;
+        const modified = timestamp > 0 ? new Date(timestamp * 1000) : null;
+        const isDir = name.endsWith('/') || name.endsWith('\\');
+        return { methodStr, compSize, origSize, name, modified, isDir, dataStart, nextOff: dataStart + compSize };
+      }
+
+      if (level === 1) {
+        const headerSize = b0;
+        if (headerSize === 0) return null;
+        let compSize = readU32LE(bytes, off + 7);
+        const origSize = readU32LE(bytes, off + 11);
+        const timestamp = readU32LE(bytes, off + 15);
+        const nameLen = bytes[off + 21];
+        let name = new TextDecoder().decode(bytes.subarray(off + 22, off + 22 + nameLen));
+        let extOff = off + 2 + headerSize;
+        let dir = '';
+        while (extOff + 2 <= bytes.length) {
+          const extSize = readU16LE(bytes, extOff);
+          if (extSize === 0) { extOff += 2; break; }
+          if (extOff + extSize > bytes.length) break;
+          const extType = bytes[extOff + 2];
+          if (extType === 0x01)
+            name = new TextDecoder().decode(bytes.subarray(extOff + 3, extOff + extSize));
+          else if (extType === 0x02)
+            dir = new TextDecoder().decode(bytes.subarray(extOff + 3, extOff + extSize)).replace(/\xFF/g, '/');
+          compSize -= extSize;
+          extOff += extSize;
+        }
+        if (dir && !name.startsWith(dir)) name = dir + name;
+        const dataStart = extOff;
+        const modified = timestamp > 0 ? new Date(timestamp * 1000) : null;
+        const isDir = name.endsWith('/') || name.endsWith('\\');
+        return { methodStr, compSize, origSize, name, modified, isDir, dataStart, nextOff: dataStart + compSize };
+      }
+
+      if (level === 2) {
+        const totalHeaderSize = readU16LE(bytes, off);
+        if (totalHeaderSize === 0) return null;
+        const compSize = readU32LE(bytes, off + 7);
+        const origSize = readU32LE(bytes, off + 11);
+        const unixTime = readU32LE(bytes, off + 15);
+        let name = '';
+        let dir = '';
+        let extOff = off + 24;
+        while (extOff + 2 <= off + totalHeaderSize) {
+          const extSize = readU16LE(bytes, extOff);
+          if (extSize === 0) break;
+          if (extOff + extSize > bytes.length) break;
+          const extType = bytes[extOff + 2];
+          if (extType === 0x01)
+            name = new TextDecoder().decode(bytes.subarray(extOff + 3, extOff + extSize));
+          else if (extType === 0x02)
+            dir = new TextDecoder().decode(bytes.subarray(extOff + 3, extOff + extSize)).replace(/\xFF/g, '/');
+          extOff += extSize;
+        }
+        if (!name) {
+          const nameLen = bytes[off + 21];
+          name = new TextDecoder().decode(bytes.subarray(off + 22, off + 22 + nameLen));
+        }
+        if (dir && !name.startsWith(dir)) name = dir + name;
+        const dataStart = off + totalHeaderSize;
+        const modified = unixTime > 0 ? new Date(unixTime * 1000) : null;
+        const isDir = name.endsWith('/') || name.endsWith('\\');
+        return { methodStr, compSize, origSize, name, modified, isDir, dataStart, nextOff: dataStart + compSize };
+      }
+
+      const headerSize = b0;
+      if (headerSize === 0) return null;
+      const compSize = readU32LE(bytes, off + 7);
+      const origSize = readU32LE(bytes, off + 11);
+      const nameLen = bytes[off + 21];
+      const name = new TextDecoder().decode(bytes.subarray(off + 22, off + 22 + nameLen));
+      const dataStart = off + 2 + headerSize;
+      const isDir = name.endsWith('/') || name.endsWith('\\');
+      return { methodStr, compSize, origSize, name, modified: null, isDir, dataStart, nextOff: dataStart + compSize };
+    }
+
+    _decompressLhx(compressed, origSize, methodStr) {
+      const DICBIT_MAP = { '-lh4-': 12, '-lh5-': 13, '-lh6-': 15, '-lh7-': 16 };
+      const DICBIT = DICBIT_MAP[methodStr] || 13;
       const DICSIZ = 1 << DICBIT;
-      const buf = new Uint8Array(DICSIZ);
+      const THRESHOLD = 3;
+      const NC = 510;
+      const NT = 19;
+      const NP = DICBIT + 1;
+
+      const br = new BitReader(compressed);
       const output = new Uint8Array(origSize);
       let outPos = 0;
-      let bufPos = 0;
-      let bitBuf = 0;
-      let subBitBuf = 0;
-      let bitCount = 0;
-      let compPos = 0;
+      const window = new Uint8Array(DICSIZ);
+      let winPos = 0;
 
-      function getBits(n) {
-        let result = 0;
-        while (n > 0) {
-          if (bitCount === 0) {
-            subBitBuf = compPos < compressed.length ? compressed[compPos++] : 0;
-            bitCount = 8;
-          }
-          const take = Math.min(n, bitCount);
-          result = (result << take) | ((subBitBuf >>> (bitCount - take)) & ((1 << take) - 1));
-          bitCount -= take;
-          n -= take;
+      function readPTLen(nn, nbit, special) {
+        const n = br.getBits(nbit);
+        if (n === 0) {
+          const c = br.getBits(nbit);
+          return { lengths: new Uint8Array(nn), fixed: c };
         }
-        return result;
+        const lengths = new Uint8Array(nn);
+        let i = 0;
+        while (i < n && i < nn) {
+          let bitLen = br.getBits(3);
+          if (bitLen === 7)
+            while (br.getBits(1)) ++bitLen;
+          lengths[i++] = bitLen;
+          if (i === special) i += br.getBits(2);
+        }
+        return { lengths, fixed: -1 };
+      }
+
+      function readCLen(ptLengths, ptFixed) {
+        const n = br.getBits(9);
+        if (n === 0) {
+          const c = br.getBits(9);
+          return { lengths: new Uint8Array(NC), fixed: c };
+        }
+        const lengths = new Uint8Array(NC);
+        const ptLookup = ptFixed >= 0 ? null : buildHuffmanLookup(ptLengths, NT);
+        let i = 0;
+        while (i < n && i < NC) {
+          const c = ptFixed >= 0 ? ptFixed : decodeHuffmanLookup(br, ptLookup);
+          if (c === 0) lengths[i++] = 0;
+          else if (c === 1) { const rep = br.getBits(4) + 3; i += rep; }
+          else if (c === 2) { const rep = br.getBits(9) + 20; i += rep; }
+          else lengths[i++] = c - 2;
+        }
+        return { lengths, fixed: -1 };
       }
 
       while (outPos < origSize) {
-        const flag = getBits(1);
-        if (flag) {
-          const ch = getBits(8);
-          output[outPos++] = ch;
-          buf[bufPos] = ch;
-          bufPos = (bufPos + 1) & (DICSIZ - 1);
-        } else {
-          const matchLen = getBits(8) + 3;
-          const matchOff = getBits(DICBIT);
-          let srcPos = (bufPos - matchOff - 1 + DICSIZ) & (DICSIZ - 1);
-          for (let i = 0; i < matchLen && outPos < origSize; ++i) {
-            const ch = buf[srcPos];
-            output[outPos++] = ch;
-            buf[bufPos] = ch;
-            bufPos = (bufPos + 1) & (DICSIZ - 1);
-            srcPos = (srcPos + 1) & (DICSIZ - 1);
+        const blockSize = br.getBits(16);
+        if (blockSize === 0) break;
+
+        const pt = readPTLen(NT, 5, 3);
+        const cl = readCLen(pt.lengths, pt.fixed);
+        const pt2 = readPTLen(NP, DICBIT >= 14 ? 5 : 4, -1);
+
+        const cLookup = cl.fixed >= 0 ? null : buildHuffmanLookup(cl.lengths, NC);
+        const pLookup = pt2.fixed >= 0 ? null : buildHuffmanLookup(pt2.lengths, NP);
+
+        for (let k = 0; k < blockSize && outPos < origSize; ++k) {
+          const c = cl.fixed >= 0 ? cl.fixed : decodeHuffmanLookup(br, cLookup);
+          if (c < 256) {
+            output[outPos++] = c;
+            window[winPos] = c;
+            winPos = (winPos + 1) & (DICSIZ - 1);
+          } else {
+            const matchLen = c - 256 + THRESHOLD;
+            const pCode = pt2.fixed >= 0 ? pt2.fixed : decodeHuffmanLookup(br, pLookup);
+            let dist;
+            if (pCode === 0) dist = 0;
+            else if (pCode === 1) dist = 1;
+            else dist = ((1 << (pCode - 1)) | br.getBits(pCode - 1));
+            let srcPos = (winPos - dist - 1 + DICSIZ) & (DICSIZ - 1);
+            for (let i = 0; i < matchLen && outPos < origSize; ++i) {
+              const ch = window[srcPos];
+              output[outPos++] = ch;
+              window[winPos] = ch;
+              winPos = (winPos + 1) & (DICSIZ - 1);
+              srcPos = (srcPos + 1) & (DICSIZ - 1);
+            }
           }
         }
       }
@@ -1855,7 +2764,7 @@
     }
 
     async build(entries, _password, options) {
-      const method = (options && options.method) || '-lh0-';
+      const requestedMethod = (options && options.method) || '-lh5-';
       const parts = [];
 
       for (const entry of entries) {
@@ -1863,20 +2772,29 @@
         const raw = entry._data instanceof Uint8Array ? entry._data : null;
         if (!raw) continue;
 
+        let compData = raw;
+        let method = requestedMethod;
+        if (method === '-lh5-') {
+          const compressed = await _tryLzssCompress(raw);
+          if (compressed && compressed.length < raw.length)
+            compData = compressed;
+          else
+            method = '-lh0-';
+        }
+
         const crc = computeCRC16(raw);
         const nameBytes = new TextEncoder().encode(entry.name);
         const nameLen = Math.min(nameBytes.length, 255);
         const headerBaseSize = 22 + nameLen;
-        const methodStr = method;
 
         const header = new Uint8Array(2 + headerBaseSize);
         header[0] = headerBaseSize;
         header[1] = 0;
         header[2] = 0x2D; header[3] = 0x6C; header[4] = 0x68;
-        header[5] = methodStr.charCodeAt(3);
+        header[5] = method.charCodeAt(3);
         header[6] = 0x2D;
 
-        writeU32LE(header, 7, raw.length);
+        writeU32LE(header, 7, compData.length);
         writeU32LE(header, 11, raw.length);
         const mtime = entry.modified ? Math.floor(entry.modified.getTime() / 1000) : 0;
         writeU32LE(header, 15, mtime);
@@ -1892,7 +2810,7 @@
         header[1] = checksum;
 
         parts.push(header);
-        parts.push(raw);
+        parts.push(compData);
       }
 
       parts.push(new Uint8Array([0]));
@@ -1918,7 +2836,13 @@
 
     static getCreateOptions() {
       return [
-        { id: 'method', label: 'Method', type: 'select', options: [{ value: '0', label: 'Store (method 0)' }], default: '0' }
+        { id: 'method', label: 'Method', type: 'select', options: [
+          { value: '0', label: 'Store (method 0)' },
+          { value: '1', label: 'Maximum (method 1)' },
+          { value: '2', label: 'Stearns (method 2)' },
+          { value: '3', label: 'Fast (method 3)' },
+          { value: '4', label: 'Fastest (method 4)' }
+        ], default: '0' }
       ];
     }
 
@@ -1953,9 +2877,15 @@
           const rawData = bytes.slice(off, off + compSize);
           if (method === 0)
             data = rawData;
-          else {
+          else if (method >= 1 && method <= 3) {
             try {
-              data = this._decompressMethod1(rawData, origSize);
+              data = this._decompressArjHuffman(rawData, origSize, method);
+            } catch (_) {
+              data = null;
+            }
+          } else if (method === 4) {
+            try {
+              data = await _tryDeflateDecompress(rawData);
             } catch (_) {
               data = null;
             }
@@ -2009,59 +2939,101 @@
       return { basicSize, name, method, fileType, compSize, origSize, timestamp, crc, nextOff };
     }
 
-    _decompressMethod1(compressed, origSize) {
+    _decompressArjHuffman(compressed, origSize, method) {
+      const DICBIT = method === 1 ? 15 : (method === 2 ? 14 : 13);
+      const DICSIZ = 1 << DICBIT;
+      const THRESHOLD = 3;
+      const NC = 286;
+      const NT = 19;
+      const NP = DICBIT + 1;
+
+      const br = new BitReader(compressed);
       const output = new Uint8Array(origSize);
       let outPos = 0;
-      let inPos = 0;
-      const WINDOW = 26624;
-      const window = new Uint8Array(WINDOW);
+      const window = new Uint8Array(DICSIZ);
       let winPos = 0;
-      let bitBuf = 0;
-      let bitCount = 0;
 
-      function getBits(n) {
-        let result = 0;
-        while (n > 0) {
-          if (bitCount === 0) {
-            bitBuf = inPos < compressed.length ? compressed[inPos++] : 0;
-            bitCount = 8;
-          }
-          const take = Math.min(n, bitCount);
-          result = (result << take) | ((bitBuf >>> (bitCount - take)) & ((1 << take) - 1));
-          bitCount -= take;
-          n -= take;
+      function readPTLen(nn, nbit, special) {
+        const n = br.getBits(nbit);
+        if (n === 0) {
+          const c = br.getBits(nbit);
+          const lengths = new Uint8Array(nn);
+          return { lengths, fixed: c };
         }
-        return result;
+        const lengths = new Uint8Array(nn);
+        let i = 0;
+        while (i < n && i < nn) {
+          let bitLen = br.getBits(3);
+          if (bitLen === 7)
+            while (br.getBits(1)) ++bitLen;
+          lengths[i++] = bitLen;
+          if (i === special) i += br.getBits(2);
+        }
+        return { lengths, fixed: -1 };
+      }
+
+      function readCLen(ptLengths, ptFixed) {
+        const n = br.getBits(9);
+        if (n === 0) {
+          const c = br.getBits(9);
+          return { lengths: new Uint8Array(NC), fixed: c };
+        }
+        const lengths = new Uint8Array(NC);
+        const ptLookup = ptFixed >= 0 ? null : buildHuffmanLookup(ptLengths, NT);
+        let i = 0;
+        while (i < n && i < NC) {
+          const c = ptFixed >= 0 ? ptFixed : decodeHuffmanLookup(br, ptLookup);
+          if (c === 0) lengths[i++] = 0;
+          else if (c === 1) { const rep = br.getBits(4) + 3; i += rep; }
+          else if (c === 2) { const rep = br.getBits(9) + 20; i += rep; }
+          else lengths[i++] = c - 2;
+        }
+        return { lengths, fixed: -1 };
       }
 
       while (outPos < origSize) {
-        const flag = getBits(1);
-        if (flag) {
-          const ch = getBits(8);
-          output[outPos++] = ch;
-          window[winPos] = ch;
-          winPos = (winPos + 1) % WINDOW;
-        } else {
-          const lenCode = getBits(8) + 3;
-          const offBits = getBits(4);
-          const matchOff = offBits > 0 ? ((1 << offBits) | getBits(offBits)) : 0;
-          let srcPos = (winPos - matchOff - 1 + WINDOW) % WINDOW;
-          for (let i = 0; i < lenCode && outPos < origSize; ++i) {
-            const ch = window[srcPos];
-            output[outPos++] = ch;
-            window[winPos] = ch;
-            winPos = (winPos + 1) % WINDOW;
-            srcPos = (srcPos + 1) % WINDOW;
+        const blockSize = br.getBits(16);
+        if (blockSize === 0) break;
+
+        const pt = readPTLen(NT, 5, 3);
+        const cl = readCLen(pt.lengths, pt.fixed);
+        const pt2 = readPTLen(NP, DICBIT >= 14 ? 5 : 4, -1);
+
+        const cLookup = cl.fixed >= 0 ? null : buildHuffmanLookup(cl.lengths, NC);
+        const pLookup = pt2.fixed >= 0 ? null : buildHuffmanLookup(pt2.lengths, NP);
+
+        for (let k = 0; k < blockSize && outPos < origSize; ++k) {
+          const c = cl.fixed >= 0 ? cl.fixed : decodeHuffmanLookup(br, cLookup);
+          if (c < 256) {
+            output[outPos++] = c;
+            window[winPos] = c;
+            winPos = (winPos + 1) & (DICSIZ - 1);
+          } else {
+            const matchLen = c - 256 + THRESHOLD;
+            const pCode = pt2.fixed >= 0 ? pt2.fixed : decodeHuffmanLookup(br, pLookup);
+            let dist;
+            if (pCode === 0) dist = 0;
+            else if (pCode === 1) dist = (1 << 0) | br.getBits(0);
+            else dist = ((1 << (pCode - 1)) | br.getBits(pCode - 1));
+            let srcPos = (winPos - dist - 1 + DICSIZ) & (DICSIZ - 1);
+            for (let i = 0; i < matchLen && outPos < origSize; ++i) {
+              const ch = window[srcPos];
+              output[outPos++] = ch;
+              window[winPos] = ch;
+              winPos = (winPos + 1) & (DICSIZ - 1);
+              srcPos = (srcPos + 1) & (DICSIZ - 1);
+            }
           }
         }
       }
       return output;
     }
 
-    async build(entries, _password, _options) {
+    async build(entries, _password, options) {
+      const requestedMethod = parseInt((options && options.method) || '0', 10);
       const parts = [];
 
-      const archHdr = this._buildArjHeader('', 0, 0, 0, 0, 2);
+      const archHdr = this._buildArjHeader('', 0, 0, 0, 0, 2, 0);
       parts.push(archHdr);
 
       for (const entry of entries) {
@@ -2069,13 +3041,24 @@
         const raw = entry._data instanceof Uint8Array ? entry._data : null;
         if (!raw) continue;
 
+        // Try compression for non-Store methods
+        let packed = raw;
+        let method = 0;
+        if (requestedMethod > 0) {
+          const compressed = await _tryDeflateCompress(raw);
+          if (compressed && compressed.length < raw.length) {
+            packed = compressed;
+            method = requestedMethod;
+          }
+        }
+
         const crc = computeCRC32(raw);
         const mtime = entry.modified || new Date();
         const dosTime = dateToDos(mtime);
         const timestamp = (dosTime.date << 16) | dosTime.time;
-        const fileHdr = this._buildArjHeader(entry.name, raw.length, raw.length, timestamp, crc, 0);
+        const fileHdr = this._buildArjHeader(entry.name, packed.length, raw.length, timestamp, crc, 0, method);
         parts.push(fileHdr);
-        parts.push(raw);
+        parts.push(packed);
       }
 
       const eof = new Uint8Array(4);
@@ -2091,7 +3074,7 @@
       return result;
     }
 
-    _buildArjHeader(name, compSize, origSize, timestamp, crc, fileType) {
+    _buildArjHeader(name, compSize, origSize, timestamp, crc, fileType, method) {
       const nameBytes = new TextEncoder().encode(name);
       const firstSize = 30;
       const basicSize = firstSize + nameBytes.length + 1 + 1;
@@ -2108,7 +3091,7 @@
       basic[2] = 1;
       basic[3] = 0;
       basic[4] = 0;
-      basic[5] = 0;
+      basic[5] = method || 0;
       basic[6] = fileType;
       basic[7] = 0;
       writeU32LE(basic, 8, timestamp);
@@ -2187,16 +3170,27 @@
           const isDir = blockType === 2;
 
           let data = null;
-          if (!isDir && method === 0 && compSize > 0) {
-            const dataStart = off + blockSize;
-            if (dataStart + compSize <= bytes.length)
-              data = bytes.slice(dataStart, dataStart + compSize);
+          const dataStart = off + blockSize;
+          if (!isDir && compSize > 0 && dataStart + compSize <= bytes.length) {
+            const rawData = bytes.slice(dataStart, dataStart + compSize);
+            if (method === 0)
+              data = rawData;
+            else if (method === 1)
+              data = await _cipherDecompress('Huffman', 'huffman.js', rawData);
+            else if (method === 2) {
+              data = await _tryLzssDecompress(rawData);
+              if (!data) data = await _tryDeflateDecompress(rawData);
+            } else if (method === 3)
+              data = await _tryBzip2Decompress(rawData);
           }
 
           entries.push(makeEntry(
             normalizeArchivePath(name || 'unknown'), origSize, compSize, null,
             data ? crc32Hex(data) : '', isDir, false, data, handler
           ));
+
+          off += blockSize + compSize;
+          continue;
         }
 
         off += blockSize;
@@ -2235,38 +3229,23 @@
 
     async parse(bytes, fileName, _password) {
       const handler = this;
-      const loaded = await loadCdnScript(_BZIP2_CDN_URLS);
-      if (!loaded) return [makeEntry(stripExtension(getFileName(fileName || 'file.bz2')), bytes.length, bytes.length, null, '', false, false, null, handler)];
+      const baseName = stripExtension(getFileName(fileName || 'file.bz2'));
       try {
-        const decompressed = this._decompress(bytes);
-        const innerName = stripExtension(getFileName(fileName || 'file.bz2'));
-        return [makeEntry(innerName, decompressed.length, bytes.length, null, crc32Hex(decompressed), false, false, decompressed, handler)];
-      } catch (_) {
-        return [makeEntry(stripExtension(getFileName(fileName || 'file.bz2')), bytes.length, bytes.length, null, '', false, false, null, handler)];
-      }
+        const decompressed = await _tryBzip2Decompress(bytes);
+        if (decompressed)
+          return [makeEntry(baseName, decompressed.length, bytes.length, null, crc32Hex(decompressed), false, false, decompressed, handler)];
+      } catch (_) { /* ignore */ }
+      return [makeEntry(baseName, bytes.length, bytes.length, null, '', false, false, null, handler)];
     }
 
-    _decompress(bytes) {
-      if (typeof window.bzip2 !== 'undefined' && window.bzip2.simple)
-        return new Uint8Array(window.bzip2.simple(window.bzip2.array(bytes)));
-      if (typeof window.SeekBzip !== 'undefined')
-        return SeekBzip.decode(bytes);
-      throw new Error('BZip2 library not available');
-    }
-
-    async build(entries, _password, options) {
+    async build(entries, _password, _options) {
       const entry = entries.find(e => !e.isDirectory);
       if (!entry || !entry._data) return new Uint8Array(0);
       const data = entry._data instanceof Uint8Array ? entry._data : null;
       if (!data) return new Uint8Array(0);
-
-      const loaded = await loadCdnScript(_BZIP2_CDN_URLS);
-      if (!loaded) throw new Error('BZip2 compression requires internet connectivity');
-
-      if (typeof window.bzip2 !== 'undefined' && window.bzip2.compress)
-        return new Uint8Array(window.bzip2.compress(data));
-
-      throw new Error('BZip2 compression not available');
+      const compressed = await _tryBzip2Compress(data);
+      if (compressed) return compressed;
+      return compressGzip(data);
     }
   }
 
@@ -2289,24 +3268,16 @@
 
     async parse(bytes, fileName, _password) {
       const handler = this;
-      const loaded = await loadCdnScript(_LZMA_CDN_URLS);
-      if (!loaded)
-        return [makeEntry(stripExtension(getFileName(fileName || 'file.xz')), bytes.length, bytes.length, null, '', false, false, null, handler)];
+      const baseName = stripExtension(getFileName(fileName || 'file.xz'));
       try {
-        const decompressed = await this._decompress(bytes);
-        const innerName = stripExtension(getFileName(fileName || 'file.xz'));
-        return [makeEntry(innerName, decompressed.length, bytes.length, null, crc32Hex(decompressed), false, false, decompressed, handler)];
-      } catch (_) {
-        return [makeEntry(stripExtension(getFileName(fileName || 'file.xz')), bytes.length, bytes.length, null, '', false, false, null, handler)];
-      }
-    }
-
-    async _decompress(bytes) {
-      if (typeof LZMA !== 'undefined' && LZMA.decompress)
-        return new Uint8Array(await new Promise((resolve, reject) => LZMA.decompress(bytes, (result, err) => err ? reject(err) : resolve(result))));
-      if (typeof window.LZMA !== 'undefined' && window.LZMA.decompress)
-        return new Uint8Array(await new Promise((resolve, reject) => window.LZMA.decompress(bytes, (result, err) => err ? reject(err) : resolve(result))));
-      throw new Error('LZMA library not available');
+        // XZ/LZMA2 decompression via Cipher
+        let decompressed = await _cipherDecompress('XZ/LZMA2', 'xz-lzma2.js', bytes);
+        if (!decompressed)
+          decompressed = await _tryLzmaDecompress(bytes);
+        if (decompressed)
+          return [makeEntry(baseName, decompressed.length, bytes.length, null, crc32Hex(decompressed), false, false, decompressed, handler)];
+      } catch (_) { /* ignore */ }
+      return [makeEntry(baseName, bytes.length, bytes.length, null, '', false, false, null, handler)];
     }
 
     async build(entries, _password, _options) {
@@ -2314,16 +3285,13 @@
       if (!entry || !entry._data) return new Uint8Array(0);
       const data = entry._data instanceof Uint8Array ? entry._data : null;
       if (!data) return new Uint8Array(0);
-
-      const loaded = await loadCdnScript(_LZMA_CDN_URLS);
-      if (!loaded) throw new Error('XZ compression requires internet connectivity');
-
-      if (typeof LZMA !== 'undefined' && LZMA.compress)
-        return new Uint8Array(await new Promise((resolve, reject) => LZMA.compress(data, 6, (result, err) => err ? reject(err) : resolve(result))));
-      if (typeof window.LZMA !== 'undefined' && window.LZMA.compress)
-        return new Uint8Array(await new Promise((resolve, reject) => window.LZMA.compress(data, 6, (result, err) => err ? reject(err) : resolve(result))));
-
-      throw new Error('LZMA compression not available');
+      // Try XZ/LZMA2 compression via Cipher
+      let compressed = await _cipherCompress('XZ/LZMA2', 'xz-lzma2.js', data);
+      if (compressed) return compressed;
+      // Fallback to LZMA
+      compressed = await _tryLzmaCompress(data);
+      if (compressed) return compressed;
+      return compressGzip(data);
     }
   }
 
@@ -2355,24 +3323,13 @@
 
     async parse(bytes, fileName, _password) {
       const handler = this;
-      const loaded = await loadCdnScript(_ZSTD_CDN_URLS);
-      if (!loaded)
-        return [makeEntry(stripExtension(getFileName(fileName || 'file.zst')), bytes.length, bytes.length, null, '', false, false, null, handler)];
+      const baseName = stripExtension(getFileName(fileName || 'file.zst'));
       try {
-        const decompressed = this._decompress(bytes);
-        const innerName = stripExtension(getFileName(fileName || 'file.zst'));
-        return [makeEntry(innerName, decompressed.length, bytes.length, null, crc32Hex(decompressed), false, false, decompressed, handler)];
-      } catch (_) {
-        return [makeEntry(stripExtension(getFileName(fileName || 'file.zst')), bytes.length, bytes.length, null, '', false, false, null, handler)];
-      }
-    }
-
-    _decompress(bytes) {
-      if (typeof fzstd !== 'undefined' && fzstd.decompress)
-        return fzstd.decompress(bytes);
-      if (typeof window.fzstd !== 'undefined' && window.fzstd.decompress)
-        return window.fzstd.decompress(bytes);
-      throw new Error('ZStandard library not available');
+        const decompressed = await _tryZstdDecompress(bytes);
+        if (decompressed)
+          return [makeEntry(baseName, decompressed.length, bytes.length, null, crc32Hex(decompressed), false, false, decompressed, handler)];
+      } catch (_) { /* ignore */ }
+      return [makeEntry(baseName, bytes.length, bytes.length, null, '', false, false, null, handler)];
     }
 
     async build(entries, _password, _options) {
@@ -2380,16 +3337,9 @@
       if (!entry || !entry._data) return new Uint8Array(0);
       const data = entry._data instanceof Uint8Array ? entry._data : null;
       if (!data) return new Uint8Array(0);
-
-      const loaded = await loadCdnScript(_ZSTD_CDN_URLS);
-      if (!loaded) throw new Error('ZStandard compression requires internet connectivity');
-
-      if (typeof fzstd !== 'undefined' && fzstd.compress)
-        return fzstd.compress(data);
-      if (typeof window.fzstd !== 'undefined' && window.fzstd.compress)
-        return window.fzstd.compress(data);
-
-      throw new Error('ZStandard compression not available');
+      const compressed = await _tryZstdCompress(data);
+      if (compressed) return compressed;
+      return compressGzip(data);
     }
   }
 
@@ -2710,21 +3660,38 @@
       const flags = readU16LE(bytes, 30);
 
       let off = 36;
+      let cbCFFolder = 0;
+      let cbCFData = 0;
       if (flags & 0x0004) {
         const cbCFHeader = readU16LE(bytes, off);
+        cbCFFolder = bytes[off + 2];
+        cbCFData = bytes[off + 3];
         off += 4 + cbCFHeader;
+      }
+
+      if (flags & 0x0001) {
+        while (off < bytes.length && bytes[off] !== 0) ++off;
+        ++off;
+      }
+      if (flags & 0x0002) {
+        while (off < bytes.length && bytes[off] !== 0) ++off;
+        ++off;
       }
 
       const folders = [];
       for (let i = 0; i < cFolders && off + 8 <= bytes.length; ++i) {
         const coffCabStart = readU32LE(bytes, off);
-        const cCFData = readU16LE(bytes, off + 4);
+        const cCFDataBlocks = readU16LE(bytes, off + 4);
         const typeCompress = readU16LE(bytes, off + 6);
-        folders.push({ coffCabStart, cCFData, typeCompress });
-        off += 8;
-        if (flags & 0x0004) off += bytes[36 + 2];
+        folders.push({ coffCabStart, cCFDataBlocks, typeCompress, uncompData: null });
+        off += 8 + cbCFFolder;
       }
 
+      for (const folder of folders)
+        folder.uncompData = await this._decompressFolderData(bytes, folder, cbCFData);
+
+      const fileOff = coffFiles;
+      off = fileOff;
       for (let i = 0; i < cFiles && off + 16 <= bytes.length; ++i) {
         const uncompSize = readU32LE(bytes, off);
         const uoffFolderStart = readU32LE(bytes, off + 4);
@@ -2743,15 +3710,69 @@
         const folder = folders[iFolder];
 
         let data = null;
-        if (!isDir && folder && folder.typeCompress === 0 && uncompSize > 0) {
-          const dataOff = folder.coffCabStart + 8 + uoffFolderStart;
-          if (dataOff + uncompSize <= bytes.length)
-            data = bytes.slice(dataOff, dataOff + uncompSize);
+        if (!isDir && folder && folder.uncompData && uncompSize > 0) {
+          if (uoffFolderStart + uncompSize <= folder.uncompData.length)
+            data = folder.uncompData.slice(uoffFolderStart, uoffFolderStart + uncompSize);
         }
 
         entries.push(makeEntry(normalizeArchivePath(name), uncompSize, uncompSize, mod, data ? crc32Hex(data) : '', isDir, false, data, handler));
       }
       return entries;
+    }
+
+    async _decompressFolderData(bytes, folder, cbCFData) {
+      const compType = folder.typeCompress & 0x000F;
+      const blocks = [];
+      let off = folder.coffCabStart;
+
+      for (let i = 0; i < folder.cCFDataBlocks && off + 8 <= bytes.length; ++i) {
+        const checksum = readU32LE(bytes, off);
+        const cbData = readU16LE(bytes, off + 4);
+        const cbUncomp = readU16LE(bytes, off + 6);
+        const blockDataOff = off + 8 + cbCFData;
+        if (blockDataOff + cbData > bytes.length) break;
+        blocks.push({ data: bytes.subarray(blockDataOff, blockDataOff + cbData), cbUncomp });
+        off = blockDataOff + cbData;
+      }
+
+      if (blocks.length === 0) return null;
+
+      if (compType === 0) {
+        const parts = blocks.map(b => b.data);
+        return concatUint8Arrays(parts);
+      }
+
+      if (compType === 1) {
+        const parts = [];
+        for (const block of blocks) {
+          if (block.data.length >= 2 && block.data[0] === 0x43 && block.data[1] === 0x4B) {
+            try {
+              const decompressed = await decompressDeflateRaw(block.data.subarray(2));
+              parts.push(decompressed);
+            } catch (_) {
+              const fallback = await _tryDeflateDecompress(block.data.subarray(2));
+              if (fallback) parts.push(fallback);
+              else parts.push(block.data);
+            }
+          } else {
+            try {
+              const decompressed = await decompressDeflateRaw(block.data);
+              parts.push(decompressed);
+            } catch (_) {
+              parts.push(block.data);
+            }
+          }
+        }
+        return concatUint8Arrays(parts);
+      }
+
+      if (compType === 3) {
+        const allData = concatUint8Arrays(blocks.map(b => b.data));
+        const result = await _tryLzxDecompress(allData);
+        if (result) return result;
+      }
+
+      return null;
     }
 
     async build(_entries, _password, _options) { throw new Error('CAB creation not supported'); }
@@ -3212,17 +4233,10 @@
       const handler = this;
       const baseName = stripExtension(getFileName(fileName || 'file.lzma'));
       try {
-        const loaded = await loadCdnScript(_LZMA_CDN_URLS);
-        if (loaded && typeof LZMA !== 'undefined') {
-          const decompressed = await new Promise((resolve, reject) => {
-            LZMA.decompress(Array.from(bytes), (result, error) => {
-              if (error) reject(error);
-              else resolve(new Uint8Array(result));
-            });
-          });
+        const decompressed = await _tryLzmaDecompress(bytes);
+        if (decompressed)
           return [makeEntry(baseName, decompressed.length, bytes.length, null, crc32Hex(decompressed), false, false, decompressed, handler)];
-        }
-      } catch (_) {}
+      } catch (_) { /* ignore */ }
       const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
       const uncompSize = Number(dv.getBigUint64(5, true));
       return [makeEntry(baseName, uncompSize >= 0 ? uncompSize : null, bytes.length, null, null, false, false, null, handler)];
@@ -3231,17 +4245,9 @@
     async build(entries, _password, _options) {
       if (entries.length === 0) return new Uint8Array(0);
       const data = entries[0]._data instanceof Uint8Array ? entries[0]._data : new Uint8Array(await entries[0]._data());
-      try {
-        const loaded = await loadCdnScript(_LZMA_CDN_URLS);
-        if (loaded && typeof LZMA !== 'undefined') {
-          return await new Promise((resolve, reject) => {
-            LZMA.compress(Array.from(data), 6, (result, error) => {
-              if (error) reject(error);
-              else resolve(new Uint8Array(result));
-            });
-          });
-        }
-      } catch (_) {}
+      const compressed = await _tryLzmaCompress(data);
+      if (compressed) return compressed;
+      // Fallback: store with LZMA header
       const header = new Uint8Array(13);
       header[0] = 0x5D;
       const dv = new DataView(header.buffer);
@@ -3275,57 +4281,43 @@
       const footerView = new DataView(bytes.buffer, bytes.byteOffset + bytes.length - 20, 20);
       const dataSize = Number(footerView.getBigUint64(4, true));
       try {
-        const loaded = await loadCdnScript(_LZMA_CDN_URLS);
-        if (loaded && typeof LZMA !== 'undefined') {
-          const ds = bytes[5];
-          const dictSize = (1 << (ds & 0x1F));
-          const lzmaHeader = new Uint8Array(13);
-          lzmaHeader[0] = 0x5D;
-          const hv = new DataView(lzmaHeader.buffer);
-          hv.setUint32(1, dictSize, true);
-          hv.setBigUint64(5, BigInt(dataSize), true);
-          const lzmaData = new Uint8Array(13 + (bytes.length - 26));
-          lzmaData.set(lzmaHeader, 0);
-          lzmaData.set(bytes.subarray(6, bytes.length - 20), 13);
-          const decompressed = await new Promise((resolve, reject) => {
-            LZMA.decompress(Array.from(lzmaData), (result, error) => {
-              if (error) reject(error);
-              else resolve(new Uint8Array(result));
-            });
-          });
+        const ds = bytes[5];
+        const dictSize = (1 << (ds & 0x1F));
+        // Build standalone LZMA stream from LZIP payload
+        const lzmaHeader = new Uint8Array(13);
+        lzmaHeader[0] = 0x5D;
+        const hv = new DataView(lzmaHeader.buffer);
+        hv.setUint32(1, dictSize, true);
+        hv.setBigUint64(5, BigInt(dataSize), true);
+        const lzmaData = new Uint8Array(13 + (bytes.length - 26));
+        lzmaData.set(lzmaHeader, 0);
+        lzmaData.set(bytes.subarray(6, bytes.length - 20), 13);
+        const decompressed = await _tryLzmaDecompress(lzmaData);
+        if (decompressed)
           return [makeEntry(baseName, decompressed.length, bytes.length, null, crc32Hex(decompressed), false, false, decompressed, handler)];
-        }
-      } catch (_) {}
+      } catch (_) { /* ignore */ }
       return [makeEntry(baseName, dataSize, bytes.length, null, null, false, false, null, handler)];
     }
 
     async build(entries, _password, _options) {
       if (entries.length === 0) return new Uint8Array(0);
       const data = entries[0]._data instanceof Uint8Array ? entries[0]._data : new Uint8Array(await entries[0]._data());
-      try {
-        const loaded = await loadCdnScript(_LZMA_CDN_URLS);
-        if (loaded && typeof LZMA !== 'undefined') {
-          const compressed = await new Promise((resolve, reject) => {
-            LZMA.compress(Array.from(data), 6, (result, error) => {
-              if (error) reject(error);
-              else resolve(new Uint8Array(result));
-            });
-          });
-          const lzmaPayload = compressed.subarray(13);
-          const crc = computeCRC32(data);
-          const memberSize = 6 + lzmaPayload.length + 20;
-          const result = new Uint8Array(memberSize);
-          result[0] = 0x4C; result[1] = 0x5A; result[2] = 0x49; result[3] = 0x50;
-          result[4] = 1; result[5] = 23;
-          result.set(lzmaPayload, 6);
-          const rv = new DataView(result.buffer);
-          rv.setUint32(6 + lzmaPayload.length, crc, true);
-          rv.setBigUint64(6 + lzmaPayload.length + 4, BigInt(data.length), true);
-          rv.setBigUint64(6 + lzmaPayload.length + 12, BigInt(memberSize), true);
-          return result;
-        }
-      } catch (_) {}
-      throw new Error('LZIP compression requires internet (LZMA CDN)');
+      const compressed = await _tryLzmaCompress(data);
+      if (compressed && compressed.length >= 13) {
+        const lzmaPayload = compressed.subarray(13);
+        const crc = computeCRC32(data);
+        const memberSize = 6 + lzmaPayload.length + 20;
+        const result = new Uint8Array(memberSize);
+        result[0] = 0x4C; result[1] = 0x5A; result[2] = 0x49; result[3] = 0x50;
+        result[4] = 1; result[5] = 23;
+        result.set(lzmaPayload, 6);
+        const rv = new DataView(result.buffer);
+        rv.setUint32(6 + lzmaPayload.length, crc, true);
+        rv.setBigUint64(6 + lzmaPayload.length + 4, BigInt(data.length), true);
+        rv.setBigUint64(6 + lzmaPayload.length + 12, BigInt(memberSize), true);
+        return result;
+      }
+      throw new Error('LZMA compression not available');
     }
   }
 
@@ -3603,11 +4595,82 @@
         let originalSize = compressedSize;
         if (method >= 2 && off + 4 <= bytes.length) { originalSize = readU32LE(bytes, off); off += 4; }
         const modified = dosToDate(dosDate, dosTime);
-        const data = (method <= 2 && off + compressedSize <= bytes.length) ? bytes.slice(off, off + compressedSize) : null;
+
+        let data = null;
+        if (off + compressedSize <= bytes.length) {
+          const rawData = bytes.slice(off, off + compressedSize);
+          if (method <= 2)
+            data = rawData;
+          else if (method === 3)
+            data = this._decompressRLE(rawData);
+          else if (method === 4)
+            data = this._decompressSqueezed(rawData, originalSize);
+          else if (method >= 5 && method <= 9)
+            data = this._decompressArcLZW(rawData, method);
+        }
+
         entries.push(makeEntry(name, originalSize, compressedSize, modified, crc.toString(16).toUpperCase().padStart(4, '0'), false, false, data, handler));
         off += compressedSize;
       }
       return entries;
+    }
+
+    _decompressRLE(data) {
+      const output = [];
+      let i = 0;
+      while (i < data.length) {
+        if (data[i] === 0x90) {
+          ++i;
+          if (i >= data.length) break;
+          if (data[i] === 0) {
+            output.push(0x90);
+            ++i;
+          } else {
+            const count = data[i++];
+            const prev = output.length > 0 ? output[output.length - 1] : 0;
+            for (let j = 1; j < count; ++j) output.push(prev);
+          }
+        } else
+          output.push(data[i++]);
+      }
+      return new Uint8Array(output);
+    }
+
+    _decompressSqueezed(data, origSize) {
+      const unrle = this._decompressRLE(data);
+      if (unrle.length < 4) return null;
+      const nodeCount = readU16LE(unrle, 0);
+      if (unrle.length < 2 + nodeCount * 4) return null;
+      const nodes = [];
+      let off = 2;
+      for (let i = 0; i < nodeCount; ++i) {
+        const left = readU16LE(unrle, off);
+        const right = readU16LE(unrle, off + 2);
+        nodes.push([left >= 0x8000 ? left - 0x10000 : left, right >= 0x8000 ? right - 0x10000 : right]);
+        off += 4;
+      }
+      const br = new BitReader(unrle.subarray(off));
+      const output = new Uint8Array(origSize);
+      let outPos = 0;
+      while (outPos < origSize) {
+        let node = 0;
+        while (node >= 0) {
+          if (node >= nodes.length) return output.subarray(0, outPos);
+          const bit = br.getBits(1);
+          node = bit ? nodes[node][1] : nodes[node][0];
+        }
+        const ch = -(node + 1);
+        if (ch === 256) break;
+        output[outPos++] = ch;
+      }
+      return output;
+    }
+
+    _decompressArcLZW(data, method) {
+      if (method === 5) return _decompressLZW(data, 12, false);
+      if (method === 6 || method === 7 || method === 8) return _decompressLZW(data, 12, true);
+      if (method === 9) return _decompressLZW(data, 13, false);
+      return null;
     }
 
     async build(_entries, _password, _options) { throw new Error('ARC creation not supported'); }
@@ -3652,7 +4715,16 @@
         }
         if (type !== 0 && name) {
           const modified = dosToDate(dosDate, dosTime);
-          const data = (method === 0 && dataOff + compSize <= bytes.length) ? bytes.slice(dataOff, dataOff + compSize) : null;
+          let data = null;
+          if (dataOff + compSize <= bytes.length) {
+            const rawData = bytes.slice(dataOff, dataOff + compSize);
+            if (method === 0)
+              data = rawData;
+            else if (method === 1)
+              data = _decompressLZW(rawData, 13, true);
+            else if (method === 2)
+              data = await _tryLzssDecompress(rawData);
+          }
           entries.push(makeEntry(name, origSize, compSize, modified, crc.toString(16).toUpperCase().padStart(4, '0'), false, false, data, handler));
         }
         dirOffset = next;
@@ -3703,11 +4775,108 @@
         const fullName = path ? path + '/' + name : name;
         const modified = new Date(mtime * 1000);
         const isDir = type === 0x0E;
-        const data = (method === 0 && !isDir && off + compSize <= bytes.length) ? bytes.slice(off, off + compSize) : null;
+        let data = null;
+        if (!isDir && off + compSize <= bytes.length) {
+          const rawData = bytes.slice(off, off + compSize);
+          if (method === 0)
+            data = rawData;
+          else if (method === 1)
+            data = this._decompressASC(rawData, origSize);
+          else if (method === 2)
+            data = await _cipherDecompress('Arithmetic Coding', 'arithmetic.js', rawData);
+        }
         entries.push(makeEntry(fullName, origSize, compSize, modified, crc.toString(16).toUpperCase().padStart(8, '0'), isDir, false, data, handler));
         off += compSize;
       }
       return entries;
+    }
+
+    _decompressASC(data, origSize) {
+      const NUM_SYMBOLS = 257;
+      const EOF_SYMBOL = 256;
+      const freq = new Uint16Array(NUM_SYMBOLS + 1);
+      for (let i = 0; i <= NUM_SYMBOLS; ++i) freq[i] = i;
+      let totalFreq = NUM_SYMBOLS;
+
+      const output = new Uint8Array(origSize);
+      let outPos = 0;
+
+      const BITS = 16;
+      const TOP = 1 << BITS;
+      const HALF = TOP >>> 1;
+      const QTR = HALF >>> 1;
+
+      let lo = 0;
+      let hi = TOP - 1;
+      let value = 0;
+
+      let bitPos = 0;
+      function getBit() {
+        if (bitPos >= data.length * 8) return 0;
+        const byteIdx = bitPos >>> 3;
+        const bitIdx = 7 - (bitPos & 7);
+        ++bitPos;
+        return (data[byteIdx] >>> bitIdx) & 1;
+      }
+
+      for (let i = 0; i < BITS; ++i)
+        value = (value << 1) | getBit();
+
+      while (outPos < origSize) {
+        const range = hi - lo + 1;
+        const scaled = Math.floor(((value - lo + 1) * totalFreq - 1) / range);
+
+        let symbol = 0;
+        let cumFreq = 0;
+        for (symbol = 0; symbol < NUM_SYMBOLS; ++symbol) {
+          if (cumFreq + (freq[symbol + 1] - freq[symbol]) > scaled) break;
+          cumFreq += freq[symbol + 1] - freq[symbol];
+        }
+        if (symbol === EOF_SYMBOL) break;
+
+        const symLo = cumFreq;
+        const symHi = cumFreq + (freq[symbol + 1] - freq[symbol]);
+
+        hi = lo + Math.floor(range * symHi / totalFreq) - 1;
+        lo = lo + Math.floor(range * symLo / totalFreq);
+
+        for (;;) {
+          if (hi < HALF) {
+            // do nothing
+          } else if (lo >= HALF) {
+            lo -= HALF;
+            hi -= HALF;
+            value -= HALF;
+          } else if (lo >= QTR && hi < 3 * QTR) {
+            lo -= QTR;
+            hi -= QTR;
+            value -= QTR;
+          } else
+            break;
+          lo = lo << 1;
+          hi = (hi << 1) | 1;
+          value = (value << 1) | getBit();
+          lo &= (TOP - 1);
+          hi &= (TOP - 1);
+          value &= (TOP - 1);
+        }
+
+        output[outPos++] = symbol;
+
+        for (let i = symbol + 1; i <= NUM_SYMBOLS; ++i) ++freq[i];
+        ++totalFreq;
+
+        if (totalFreq >= 0x3FFF) {
+          let cumul = 0;
+          for (let i = 0; i <= NUM_SYMBOLS; ++i) {
+            const f = freq[i] - cumul;
+            cumul = freq[i];
+            freq[i] = (i === 0) ? 0 : freq[i - 1] + Math.max(1, f >>> 1);
+          }
+          totalFreq = freq[NUM_SYMBOLS];
+        }
+      }
+      return output;
     }
 
     async build(_entries, _password, _options) { throw new Error('HA creation not supported'); }
@@ -3744,13 +4913,26 @@
           const compSize = readU32LE(bytes, off + 7);
           const origSize = readU32LE(bytes, off + 11);
           const method = bytes[off + 19];
+          const qual = bytes[off + 20];
           const crc = readU32LE(bytes, off + 23);
           const nameLen = readU16LE(bytes, off + 31);
           const nameStart = off + 33;
           const name = new TextDecoder().decode(bytes.subarray(nameStart, nameStart + nameLen));
           const isDir = (hdrFlags & 0x1000) !== 0;
           const dataStart = off + 4 + hdrSize;
-          const data = (method === 0 && !isDir && dataStart + compSize <= bytes.length) ? bytes.slice(dataStart, dataStart + compSize) : null;
+
+          let data = null;
+          if (!isDir && dataStart + compSize <= bytes.length) {
+            const rawData = bytes.slice(dataStart, dataStart + compSize);
+            if (method === 0)
+              data = rawData;
+            else {
+              data = await _tryDeflateDecompress(rawData);
+              if (!data) data = await _cipherDecompress('LZ77', 'lz77.js', rawData);
+              if (!data) data = await _tryLzssDecompress(rawData);
+            }
+          }
+
           entries.push(makeEntry(normalizeArchivePath(name), origSize, compSize, null, crc.toString(16).toUpperCase().padStart(8, '0'), isDir, false, data, handler));
           off = dataStart + compSize;
         } else {
@@ -5466,6 +6648,29 @@
   async function resolveEntryData(entry) {
     if (!entry._data) return null;
     if (entry._data instanceof Uint8Array) return entry._data;
+    if (entry._data.aesEncrypted) {
+      try {
+        const ae = entry._data;
+        const salt = ae.aesEncrypted.slice(0, 16);
+        const verification = ae.aesEncrypted.slice(16, 18);
+        const encData = ae.aesEncrypted.slice(18, ae.aesEncrypted.length - 10);
+        const keyMaterial = await crypto.subtle.importKey('raw', new TextEncoder().encode(ae.password), 'PBKDF2', false, ['deriveBits']);
+        const derived = new Uint8Array(await crypto.subtle.deriveBits(
+          { name: 'PBKDF2', salt, iterations: 1000, hash: 'SHA-1' }, keyMaterial, (32 + 32 + 2) * 8
+        ));
+        const aesKey = derived.slice(0, 32);
+        if (derived[64] !== verification[0] || derived[65] !== verification[1]) return null;
+        const cryptoKey = await crypto.subtle.importKey('raw', aesKey, 'AES-CTR', false, ['decrypt']);
+        const counter = new Uint8Array(16);
+        counter[0] = 1;
+        const decrypted = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-CTR', counter, length: 128 }, cryptoKey, encData));
+        const result = ae.size && ae.size !== decrypted.length ? await decompressDeflateRaw(decrypted) : decrypted;
+        entry._data = result;
+        return result;
+      } catch (_) {
+        return null;
+      }
+    }
     if (entry._data.deflated) {
       try {
         const decompressed = await decompressDeflateRaw(entry._data.deflated);
@@ -5572,10 +6777,11 @@
       _infoRow('Passwords', archivePassword ? 'Set' : 'Absent') +
       _infoRow('Header encryption', archiveOptions.encryptNames ? 'Yes' : 'Absent');
 
-    // Ratio bar
+    // 3D quader ratio column
     const fillPct = Math.min(100, Math.max(0, ratioNum));
-    document.getElementById('info-ratio-fill').style.width = fillPct + '%';
-    document.getElementById('info-ratio-label').textContent = ratioStr;
+    document.getElementById('info-quader-fill').style.height = fillPct + '%';
+    document.getElementById('info-quader-side-fill').style.height = fillPct + '%';
+    document.getElementById('info-quader-label').textContent = ratioStr;
 
     // Options tab
     const optsGrid = document.getElementById('info-grid-options');
