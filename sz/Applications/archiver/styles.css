@@ -469,31 +469,99 @@ td.col-encrypted { text-align: center; }
   font-size: 11px;
 }
 
-.info-ratio-bar {
-  margin-top: 12px;
-  height: 22px;
-  position: relative;
-  border: 1px inset var(--sz-color-button-shadow);
-  background: var(--sz-color-window);
+.info-tab-layout {
   display: flex;
+  gap: 14px;
+  align-items: stretch;
+}
+
+.info-grids { flex: 1; min-width: 0; }
+
+/* ---- 3D Quader ratio column ---- */
+.info-quader-wrap {
+  display: flex;
+  flex-direction: column;
   align-items: center;
+  width: 56px;
+  flex-shrink: 0;
 }
 
-.info-ratio-fill {
-  height: 100%;
-  background: linear-gradient(to top, #1a3a8a, #3366cc, #5588ee);
-  transition: width 0.3s ease;
-  min-width: 0;
+.info-quader {
+  position: relative;
+  width: 36px;
+  flex: 1;
+  min-height: 160px;
 }
 
-.info-ratio-label {
+/* front face */
+.info-quader-front {
   position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 10px;
+  left: 0;
+  bottom: 0;
+  width: 30px;
+  top: 10px;
+  background: var(--sz-color-window);
+  border: 1px solid #8899aa;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.info-quader-fill {
+  width: 100%;
+  background: linear-gradient(to right, #2244aa, #3366cc 40%, #5588dd 70%, #88aaee);
+  transition: height 0.4s ease;
+  opacity: 0.85;
+}
+
+/* right side face (parallelogram) */
+.info-quader-side {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 12px;
+  top: 0;
+  overflow: hidden;
+  transform: skewY(-40deg);
+  transform-origin: bottom right;
+  background: var(--sz-color-window);
+  border: 1px solid #8899aa;
+  border-left: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  opacity: 0.7;
+}
+
+.info-quader-side-fill {
+  width: 100%;
+  background: linear-gradient(to right, #1a3388, #2a4499);
+  transition: height 0.4s ease;
+}
+
+/* top face (parallelogram) */
+.info-quader-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 30px;
+  height: 12px;
+  transform: skewX(-50deg);
+  transform-origin: bottom left;
+  background: linear-gradient(to bottom, #c8d4e8, #a8b8d0);
+  border: 1px solid #8899aa;
+  border-bottom: none;
+  opacity: 0.6;
+}
+
+.info-quader-label {
+  margin-top: 6px;
+  font-size: 11px;
   font-weight: bold;
   color: var(--sz-color-window-text);
-  text-shadow: 0 0 2px var(--sz-color-window);
+  text-align: center;
+  white-space: nowrap;
 }
 
 .info-comment {
