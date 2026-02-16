@@ -334,17 +334,16 @@ button:active {
   font-size: 10px;
   color: var(--sz-color-button-text, #1e1e1e);
   flex-shrink: 0;
+  user-select: none;
   gap: 12px;
+  min-height: 22px;
 }
 
 .status-section {
   white-space: nowrap;
 }
 
-.status-section.inset {
-  border: 1px inset var(--sz-color-button-shadow, #888);
-  padding: 1px 6px;
-}
+.status-spacer { flex: 1; }
 
 /* ---- Selection dash on selected SVG element ---- */
 .sel {

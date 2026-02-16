@@ -195,20 +195,19 @@ body {
   padding: 2px 8px;
   background: var(--sz-color-button-face);
   border-top: 1px solid var(--sz-color-button-shadow);
-  font-size: 11px;
+  font-size: 10px;
   color: var(--sz-color-button-text);
   flex-shrink: 0;
-  gap: 16px;
+  user-select: none;
+  gap: 12px;
+  min-height: 22px;
 }
 
 .status-bar .status-section {
   white-space: nowrap;
 }
 
-.status-bar .status-section.inset {
-  border: 1px inset var(--sz-color-button-shadow);
-  padding: 1px 6px;
-}
+.status-spacer { flex: 1; }
 
 /* ---- Dialogs ---- */
 .dialog-overlay {

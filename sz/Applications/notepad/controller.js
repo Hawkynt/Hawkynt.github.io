@@ -968,7 +968,14 @@
     rbZoomValue.textContent = pct + '%';
     rbZoomSlider.value = level;
     statusZoomCtrl.value = level;
-    applyZoom();
+    const size = baseFontSize + zoomLevel;
+    editor.style.fontSize = size + 'px';
+    highlightPre.style.fontSize = size + 'px';
+    lineNumbersEl.style.fontSize = size + 'px';
+    syncScroll();
+    scheduleHighlight();
+    scheduleLineNumbers();
+    updateLongLineMarker();
   }
 
   rbZoomSlider.addEventListener('input', () => syncZoomSliders(parseInt(rbZoomSlider.value, 10)));
