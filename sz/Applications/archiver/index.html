@@ -212,24 +212,38 @@
       <!-- Info Tab -->
       <div class="info-tab-panel active" id="info-tab-info">
         <div class="info-format-header" id="info-format-name"></div>
-        <div class="info-section">
-          <dl class="info-grid" id="info-grid-general"></dl>
-        </div>
-        <div class="info-separator"></div>
-        <div class="info-section">
-          <dl class="info-grid" id="info-grid-sizes"></dl>
-        </div>
-        <div class="info-separator"></div>
-        <div class="info-section">
-          <dl class="info-grid" id="info-grid-details"></dl>
-        </div>
-        <div class="info-separator"></div>
-        <div class="info-section">
-          <dl class="info-grid" id="info-grid-security"></dl>
-        </div>
-        <div class="info-ratio-bar">
-          <div class="info-ratio-fill" id="info-ratio-fill"></div>
-          <span class="info-ratio-label" id="info-ratio-label"></span>
+        <div class="info-tab-layout">
+          <!-- 3D Quader ratio column -->
+          <div class="info-quader-wrap">
+            <div class="info-quader">
+              <div class="info-quader-front">
+                <div class="info-quader-fill" id="info-quader-fill"></div>
+              </div>
+              <div class="info-quader-side">
+                <div class="info-quader-side-fill" id="info-quader-side-fill"></div>
+              </div>
+              <div class="info-quader-top"></div>
+            </div>
+            <div class="info-quader-label" id="info-quader-label"></div>
+          </div>
+          <!-- Info grids -->
+          <div class="info-grids">
+            <div class="info-section">
+              <dl class="info-grid" id="info-grid-general"></dl>
+            </div>
+            <div class="info-separator"></div>
+            <div class="info-section">
+              <dl class="info-grid" id="info-grid-sizes"></dl>
+            </div>
+            <div class="info-separator"></div>
+            <div class="info-section">
+              <dl class="info-grid" id="info-grid-details"></dl>
+            </div>
+            <div class="info-separator"></div>
+            <div class="info-section">
+              <dl class="info-grid" id="info-grid-security"></dl>
+            </div>
+          </div>
         </div>
       </div>
       <!-- Options Tab -->
