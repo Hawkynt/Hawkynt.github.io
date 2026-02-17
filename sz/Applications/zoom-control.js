@@ -11,7 +11,7 @@ function _injectCSS() {
   _cssInjected = true;
   const style = document.createElement('style');
   style.textContent = `
-:where(.sz-zoom-control) {
+.sz-zoom-control {
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -20,7 +20,7 @@ function _injectCSS() {
   vertical-align: middle;
 }
 
-:where(.sz-zoom-btn) {
+.sz-zoom-control .sz-zoom-btn {
   width: 20px;
   height: 18px;
   border: 1px solid transparent;
@@ -35,22 +35,22 @@ function _injectCSS() {
   opacity: 0.8;
 }
 
-:where(.sz-zoom-btn:hover) {
+.sz-zoom-control .sz-zoom-btn:hover {
   border-color: var(--sz-color-button-shadow, #888);
   background: color-mix(in srgb, var(--sz-color-button-face, #eee) 60%, #ffffff 40%);
 }
 
-:where(.sz-zoom-btn:active) {
+.sz-zoom-control .sz-zoom-btn:active {
   background: var(--sz-color-button-shadow, #888);
 }
 
-:where(.sz-zoom-slider) {
+.sz-zoom-control .sz-zoom-slider {
   width: 80px;
   height: 12px;
   cursor: default;
 }
 
-:where(.sz-zoom-input) {
+.sz-zoom-control .sz-zoom-input {
   width: 44px;
   border: 1px solid transparent;
   background: transparent;
@@ -62,11 +62,11 @@ function _injectCSS() {
   cursor: default;
 }
 
-:where(.sz-zoom-input:hover) {
+.sz-zoom-control .sz-zoom-input:hover {
   border-color: var(--sz-color-button-shadow, #888);
 }
 
-:where(.sz-zoom-input:focus) {
+.sz-zoom-control .sz-zoom-input:focus {
   border-color: var(--sz-color-highlight, #3399ff);
   background: var(--sz-color-window, #fff);
   outline: none;
