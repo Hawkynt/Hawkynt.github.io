@@ -147,6 +147,20 @@
     updateArchiverButton();
     updateTitle();
 
+    // Resolve deferred archive contents if async parse was needed
+    if (parseResult.categories._archivePromise)
+      parseResult.categories._archivePromise.then(contentsCat => {
+        if (!contentsCat) return;
+        // Replace the placeholder "Contents" category with the real one
+        const idx = parseResult.categories.findIndex(c => c.fields && c.fields.some(f => f.key === 'archive.loading'));
+        if (idx >= 0)
+          parseResult.categories.splice(idx, 1, contentsCat);
+        else
+          parseResult.categories.push(contentsCat);
+        renderCategoryTabs();
+        renderMetadata();
+      }).catch(() => { /* silently ignore failed archive parse */ });
+
     // Compute hashes async
     computeHashes();
   }
@@ -300,6 +314,36 @@
 
       tr.appendChild(tdValue);
       metadataTbody.appendChild(tr);
+
+      // Expandable rows (e.g., PE imports with per-function children)
+      if (field.expandable && field.children && field.children.length > 0) {
+        const childRows = [];
+        for (let ci = 0; ci < field.children.length; ++ci) {
+          const childTr = document.createElement('tr');
+          childTr.className = 'expandable-child';
+          childTr.style.display = 'none';
+          const childTdLabel = document.createElement('td');
+          childTdLabel.className = 'field-label expandable-child-label';
+          childTdLabel.textContent = '';
+          const childTdValue = document.createElement('td');
+          childTdValue.className = 'field-value expandable-child-value';
+          childTdValue.textContent = field.children[ci];
+          childTr.appendChild(childTdLabel);
+          childTr.appendChild(childTdValue);
+          metadataTbody.appendChild(childTr);
+          childRows.push(childTr);
+        }
+        tr.classList.add('expandable-parent');
+        const chevron = document.createElement('span');
+        chevron.className = 'expand-chevron';
+        chevron.textContent = '\u25B6';
+        tdLabel.insertBefore(chevron, tdLabel.firstChild);
+        tr.addEventListener('click', () => {
+          const visible = childRows[0].style.display !== 'none';
+          for (const cr of childRows) cr.style.display = visible ? 'none' : '';
+          chevron.textContent = visible ? '\u25B6' : '\u25BC';
+        });
+      }
     }
 
     // "Add Tag" button for editable text chunks (PNG)
@@ -325,13 +369,227 @@
     }
   }
 
-  function startEdit(tr, field, span, btn) {
-    const input = document.createElement('input');
-    input.className = 'field-edit-input';
-    input.value = modifications.has(field.key) ? modifications.get(field.key) : field.value;
+  function markDirty(key, value) {
+    modifications.set(key, value);
+    dirty = true;
+    updateTitle();
+    updateModifiedStatus();
+    document.getElementById('menu-save').classList.remove('disabled');
+    document.getElementById('menu-revert').classList.remove('disabled');
+  }
 
+  function startEdit(tr, field, span, btn) {
+    const currentValue = modifications.has(field.key) ? modifications.get(field.key) : field.value;
     const parent = span.parentElement;
     parent.innerHTML = '';
+
+    // --- Select (dropdown) edit type ---
+    if (field.editType === 'select' && field.options) {
+      const sel = document.createElement('select');
+      sel.className = 'field-edit-input';
+      for (const opt of field.options) {
+        const o = document.createElement('option');
+        o.value = opt.value != null ? opt.value : opt.label;
+        o.textContent = opt.label;
+        if (String(o.value) === String(currentValue) || opt.label === currentValue) o.selected = true;
+        sel.appendChild(o);
+      }
+      parent.appendChild(sel);
+      sel.focus();
+      function commitSel() {
+        if (sel.value !== field.value) markDirty(field.key, sel.value);
+        renderMetadata();
+      }
+      sel.addEventListener('change', commitSel);
+      sel.addEventListener('blur', commitSel);
+      sel.addEventListener('keydown', (e) => { if (e.key === 'Escape') renderMetadata(); });
+      return;
+    }
+
+    // --- Number edit type ---
+    if (field.editType === 'number') {
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.className = 'field-edit-input';
+      input.value = currentValue;
+      if (field.min != null) input.min = field.min;
+      if (field.max != null) input.max = field.max;
+      if (field.step != null) input.step = field.step;
+      parent.appendChild(input);
+      input.focus();
+      input.select();
+      function commitNum() {
+        if (input.value !== field.value) markDirty(field.key, input.value);
+        renderMetadata();
+      }
+      input.addEventListener('blur', commitNum);
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') commitNum();
+        if (e.key === 'Escape') renderMetadata();
+      });
+      return;
+    }
+
+    // --- Date edit type ---
+    if (field.editType === 'date') {
+      const input = document.createElement('input');
+      input.type = 'datetime-local';
+      input.className = 'field-edit-input';
+      // Convert EXIF date format "YYYY:MM:DD HH:MM:SS" to ISO
+      const isoVal = String(currentValue).replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3').replace(/ /, 'T');
+      input.value = isoVal.substring(0, 16);
+      parent.appendChild(input);
+      input.focus();
+      function commitDate() {
+        // Convert back to EXIF format
+        const v = input.value.replace(/-/g, ':').replace('T', ' ');
+        const exifDate = v.length >= 16 ? v.substring(0, 10).replace(/-/g, ':') + ' ' + v.substring(11) + ':00' : v;
+        if (exifDate !== field.value) markDirty(field.key, exifDate);
+        renderMetadata();
+      }
+      input.addEventListener('blur', commitDate);
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') commitDate();
+        if (e.key === 'Escape') renderMetadata();
+      });
+      return;
+    }
+
+    // --- Image edit type (thumbnail / album art / cover) ---
+    if (field.editType === 'image') {
+      const toolbar = document.createElement('div');
+      toolbar.className = 'image-edit-toolbar';
+
+      const replaceBtn = document.createElement('button');
+      replaceBtn.className = 'field-edit-btn';
+      replaceBtn.textContent = 'Replace\u2026';
+      replaceBtn.title = 'Replace with new image';
+      replaceBtn.addEventListener('click', () => {
+        const picker = document.createElement('input');
+        picker.type = 'file';
+        picker.accept = 'image/*';
+        picker.addEventListener('change', () => {
+          if (!picker.files.length) return;
+          const reader = new FileReader();
+          reader.onload = () => {
+            const ab = new Uint8Array(reader.result);
+            markDirty(field.key, { type: 'image', bytes: ab, mimeType: picker.files[0].type || 'image/jpeg' });
+            renderMetadata();
+          };
+          reader.readAsArrayBuffer(picker.files[0]);
+        });
+        picker.click();
+      });
+
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'field-edit-btn field-remove-btn';
+      removeBtn.textContent = 'Remove';
+      removeBtn.title = 'Remove image';
+      removeBtn.addEventListener('click', () => {
+        markDirty(field.key, null);
+        renderMetadata();
+      });
+
+      toolbar.appendChild(replaceBtn);
+      toolbar.appendChild(removeBtn);
+
+      // Thumbnail regenerate button (EXIF thumbnails only)
+      if (field.key === 'exif.thumbnail') {
+        const regenBtn = document.createElement('button');
+        regenBtn.className = 'field-edit-btn';
+        regenBtn.textContent = 'Regenerate';
+        regenBtn.title = 'Regenerate thumbnail from main image';
+        regenBtn.addEventListener('click', () => {
+          if (!currentBytes) return;
+          const blob = new Blob([currentBytes], { type: 'image/jpeg' });
+          const url = URL.createObjectURL(blob);
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const scale = Math.min(160 / img.width, 120 / img.height, 1);
+            canvas.width = Math.round(img.width * scale);
+            canvas.height = Math.round(img.height * scale);
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            canvas.toBlob((thumbBlob) => {
+              URL.revokeObjectURL(url);
+              if (!thumbBlob) return;
+              const reader = new FileReader();
+              reader.onload = () => {
+                markDirty(field.key, { type: 'image', bytes: new Uint8Array(reader.result), mimeType: 'image/jpeg' });
+                renderMetadata();
+              };
+              reader.readAsArrayBuffer(thumbBlob);
+            }, 'image/jpeg', 0.85);
+          };
+          img.onerror = () => URL.revokeObjectURL(url);
+          img.src = url;
+        });
+        toolbar.appendChild(regenBtn);
+      }
+
+      parent.appendChild(toolbar);
+      return;
+    }
+
+    // --- Geo coordinate edit type ---
+    if (field.editType === 'geo') {
+      const toolbar = document.createElement('div');
+      toolbar.className = 'geo-edit-toolbar';
+
+      const latInput = document.createElement('input');
+      latInput.type = 'number';
+      latInput.step = '0.000001';
+      latInput.className = 'field-edit-input geo-input';
+      latInput.placeholder = 'Latitude';
+      latInput.title = 'Latitude';
+
+      const lngInput = document.createElement('input');
+      lngInput.type = 'number';
+      lngInput.step = '0.000001';
+      lngInput.className = 'field-edit-input geo-input';
+      lngInput.placeholder = 'Longitude';
+      lngInput.title = 'Longitude';
+
+      // Parse current value — try to extract decimal degrees
+      const coordMatch = String(currentValue).match(/([-\d.]+)[°\s].*?([-\d.]+)[°\s]/);
+      if (coordMatch) {
+        latInput.value = coordMatch[1];
+        lngInput.value = coordMatch[2];
+      } else if (field.lat != null && field.lng != null) {
+        latInput.value = field.lat;
+        lngInput.value = field.lng;
+      }
+
+      const applyBtn = document.createElement('button');
+      applyBtn.className = 'field-edit-btn';
+      applyBtn.textContent = 'Apply';
+      applyBtn.addEventListener('click', () => {
+        const lat = parseFloat(latInput.value);
+        const lng = parseFloat(lngInput.value);
+        if (!isNaN(lat) && !isNaN(lng)) {
+          markDirty(field.key, JSON.stringify({ lat, lng }));
+          renderMetadata();
+        }
+      });
+
+      const mapBtn = document.createElement('button');
+      mapBtn.className = 'field-edit-btn';
+      mapBtn.textContent = '\uD83D\uDDFA Pick on Map\u2026';
+      mapBtn.addEventListener('click', () => openGeoPickerDialog(field, latInput, lngInput));
+
+      toolbar.appendChild(latInput);
+      toolbar.appendChild(lngInput);
+      toolbar.appendChild(applyBtn);
+      toolbar.appendChild(mapBtn);
+      parent.appendChild(toolbar);
+      return;
+    }
+
+    // --- Default text / genre edit type ---
+    const input = document.createElement('input');
+    input.className = 'field-edit-input';
+    input.value = currentValue;
 
     // Genre fields get a datalist for autocomplete
     if (field.editType === 'genre') {
@@ -356,14 +614,7 @@
 
     function commit() {
       const newValue = input.value;
-      if (newValue !== field.value) {
-        modifications.set(field.key, newValue);
-        dirty = true;
-        updateTitle();
-        updateModifiedStatus();
-        document.getElementById('menu-save').classList.remove('disabled');
-        document.getElementById('menu-revert').classList.remove('disabled');
-      }
+      if (newValue !== field.value) markDirty(field.key, newValue);
       renderMetadata();
     }
 
@@ -372,6 +623,161 @@
       if (e.key === 'Enter') commit();
       if (e.key === 'Escape') renderMetadata();
     });
+  }
+
+  // ---- Geo Picker Dialog (simple tile map) ----
+  function openGeoPickerDialog(field, latInput, lngInput) {
+    const overlay = document.createElement('div');
+    overlay.className = 'dialog-overlay visible';
+    const dialog = document.createElement('div');
+    dialog.className = 'dialog';
+    dialog.style.maxWidth = '600px';
+
+    const title = document.createElement('div');
+    title.className = 'dialog-title';
+    title.textContent = 'Pick GPS Coordinates';
+    dialog.appendChild(title);
+
+    const body = document.createElement('div');
+    body.className = 'dialog-body';
+    body.style.padding = '8px';
+
+    const mapDiv = document.createElement('div');
+    mapDiv.style.cssText = 'width:100%;height:350px;position:relative;overflow:hidden;background:#e0e0e0;cursor:crosshair;';
+    body.appendChild(mapDiv);
+
+    const coordRow = document.createElement('div');
+    coordRow.style.cssText = 'display:flex;gap:8px;margin-top:8px;align-items:center;';
+    const latEl = document.createElement('label');
+    latEl.innerHTML = 'Lat: <input type="number" step="0.000001" style="width:120px;padding:2px 4px;" id="geo-dlg-lat">';
+    const lngEl = document.createElement('label');
+    lngEl.innerHTML = 'Lng: <input type="number" step="0.000001" style="width:120px;padding:2px 4px;" id="geo-dlg-lng">';
+    coordRow.appendChild(latEl);
+    coordRow.appendChild(lngEl);
+    body.appendChild(coordRow);
+    dialog.appendChild(body);
+
+    const btnRow = document.createElement('div');
+    btnRow.className = 'dialog-buttons';
+    const okBtn = document.createElement('button');
+    okBtn.textContent = 'Apply';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Cancel';
+    btnRow.appendChild(okBtn);
+    btnRow.appendChild(cancelBtn);
+    dialog.appendChild(btnRow);
+
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    const dlgLat = overlay.querySelector('#geo-dlg-lat');
+    const dlgLng = overlay.querySelector('#geo-dlg-lng');
+    dlgLat.value = latInput.value || '0';
+    dlgLng.value = lngInput.value || '0';
+
+    // Simple slippy tile map using OSM tiles
+    let zoom = 4;
+    let centerLat = parseFloat(dlgLat.value) || 0;
+    let centerLng = parseFloat(dlgLng.value) || 0;
+    let markerLat = centerLat, markerLng = centerLng;
+
+    function lon2tile(lon, z) { return ((lon + 180) / 360) * (1 << z); }
+    function lat2tile(lat, z) { const r = lat * Math.PI / 180; return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * (1 << z); }
+    function tile2lon(x, z) { return x / (1 << z) * 360 - 180; }
+    function tile2lat(y, z) { const n = Math.PI - 2 * Math.PI * y / (1 << z); return 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n))); }
+
+    function renderMap() {
+      mapDiv.innerHTML = '';
+      const w = mapDiv.clientWidth || 560;
+      const h = mapDiv.clientHeight || 350;
+      const cx = lon2tile(centerLng, zoom);
+      const cy = lat2tile(centerLat, zoom);
+      const tileSize = 256;
+      const halfW = w / 2, halfH = h / 2;
+      const startTileX = Math.floor(cx - halfW / tileSize);
+      const startTileY = Math.floor(cy - halfH / tileSize);
+      const endTileX = Math.ceil(cx + halfW / tileSize);
+      const endTileY = Math.ceil(cy + halfH / tileSize);
+      const maxTile = 1 << zoom;
+
+      for (let ty = startTileY; ty <= endTileY; ++ty) {
+        for (let tx = startTileX; tx <= endTileX; ++tx) {
+          if (ty < 0 || ty >= maxTile) continue;
+          const wrappedTx = ((tx % maxTile) + maxTile) % maxTile;
+          const img = document.createElement('img');
+          img.src = 'https://tile.openstreetmap.org/' + zoom + '/' + wrappedTx + '/' + ty + '.png';
+          img.style.cssText = 'position:absolute;width:256px;height:256px;pointer-events:none;';
+          const px = halfW + (tx - cx) * tileSize;
+          const py = halfH + (ty - cy) * tileSize;
+          img.style.left = Math.round(px) + 'px';
+          img.style.top = Math.round(py) + 'px';
+          mapDiv.appendChild(img);
+        }
+      }
+
+      // Marker
+      const mx = halfW + (lon2tile(markerLng, zoom) - cx) * tileSize;
+      const my = halfH + (lat2tile(markerLat, zoom) - cy) * tileSize;
+      const marker = document.createElement('div');
+      marker.style.cssText = 'position:absolute;width:12px;height:12px;background:red;border:2px solid white;border-radius:50%;transform:translate(-50%,-50%);pointer-events:none;box-shadow:0 1px 3px rgba(0,0,0,.4);';
+      marker.style.left = Math.round(mx) + 'px';
+      marker.style.top = Math.round(my) + 'px';
+      mapDiv.appendChild(marker);
+    }
+
+    renderMap();
+
+    mapDiv.addEventListener('click', (e) => {
+      const rect = mapDiv.getBoundingClientRect();
+      const px = e.clientX - rect.left;
+      const py = e.clientY - rect.top;
+      const w = mapDiv.clientWidth, h = mapDiv.clientHeight;
+      const cx = lon2tile(centerLng, zoom);
+      const cy = lat2tile(centerLat, zoom);
+      const tileX = cx + (px - w / 2) / 256;
+      const tileY = cy + (py - h / 2) / 256;
+      markerLat = tile2lat(tileY, zoom);
+      markerLng = tile2lon(tileX, zoom);
+      dlgLat.value = markerLat.toFixed(6);
+      dlgLng.value = markerLng.toFixed(6);
+      renderMap();
+    });
+
+    mapDiv.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      zoom = Math.max(1, Math.min(18, zoom + (e.deltaY < 0 ? 1 : -1)));
+      renderMap();
+    });
+
+    // Pan via drag
+    let dragging = false, dragStartX, dragStartY, dragCLat, dragCLng;
+    mapDiv.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      dragging = true;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      dragCLat = centerLat;
+      dragCLng = centerLng;
+      mapDiv.setPointerCapture(e.pointerId);
+    });
+    mapDiv.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - dragStartX;
+      const dy = e.clientY - dragStartY;
+      const cx = lon2tile(dragCLng, zoom) - dx / 256;
+      const cy = lat2tile(dragCLat, zoom) - dy / 256;
+      centerLng = tile2lon(cx, zoom);
+      centerLat = tile2lat(cy, zoom);
+      renderMap();
+    });
+    mapDiv.addEventListener('pointerup', () => { dragging = false; });
+
+    okBtn.addEventListener('click', () => {
+      latInput.value = dlgLat.value;
+      lngInput.value = dlgLng.value;
+      document.body.removeChild(overlay);
+    });
+    cancelBtn.addEventListener('click', () => document.body.removeChild(overlay));
   }
 
   function removeField(key) {
@@ -889,6 +1295,8 @@
       sections.push({ id: 'text', title: 'Text Preview', render: renderTextBody, defaultExpand: isText && !hasImages });
     if (hasBOM || (isText && encoding !== 'ASCII / UTF-8'))
       sections.push({ id: 'unicode', title: 'Unicode', render: renderUnicodeBody, defaultExpand: false });
+    if (parseResult.disassembly && window.SZ && SZ.Disassembler)
+      sections.push({ id: 'disasm', title: 'Disassembly', render: renderDisassemblyBody, defaultExpand: false });
 
     // Ensure exactly one is expanded by default
     const hasDefault = sections.some(s => s.defaultExpand);
@@ -1267,6 +1675,52 @@
 
     div.innerHTML = html;
     container.appendChild(div);
+  }
+
+  // ---- Disassembly accordion body ----
+  function renderDisassemblyBody(container) {
+    if (!parseResult || !parseResult.disassembly || !currentBytes) return;
+    const D = window.SZ && SZ.Disassembler;
+    if (!D) return;
+
+    const info = parseResult.disassembly;
+    const archId = info.archId;
+    const offset = info.offset || 0;
+    const count = 64;
+
+    // Header info
+    const header = document.createElement('div');
+    header.style.cssText = 'font-size:9px;color:var(--sz-color-gray-text);margin-bottom:6px;';
+    header.textContent = 'Architecture: ' + archId.toUpperCase()
+      + (info.rva != null ? ' | Entry RVA: 0x' + info.rva.toString(16).toUpperCase() : '')
+      + ' | File offset: 0x' + offset.toString(16).toUpperCase();
+    container.appendChild(header);
+
+    if (offset >= currentBytes.length) {
+      const msg = document.createElement('div');
+      msg.style.cssText = 'padding:8px;color:var(--sz-color-gray-text);font-style:italic;';
+      msg.textContent = 'Entry point offset is outside the file.';
+      container.appendChild(msg);
+      return;
+    }
+
+    const instructions = D.disassemble(archId, currentBytes, offset, count, info.options || undefined);
+    if (!instructions || instructions.length === 0) {
+      const msg = document.createElement('div');
+      msg.style.cssText = 'padding:8px;color:var(--sz-color-gray-text);font-style:italic;';
+      msg.textContent = 'No instructions decoded.';
+      container.appendChild(msg);
+      return;
+    }
+
+    const pre = document.createElement('pre');
+    pre.className = 'disasm-listing';
+    if (D.formatDisassemblyHtml) {
+      pre.innerHTML = D.formatDisassemblyHtml(instructions);
+    } else {
+      pre.textContent = D.formatDisassembly(instructions);
+    }
+    container.appendChild(pre);
   }
 
   // ---- Archiver button ----

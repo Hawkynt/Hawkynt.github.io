@@ -428,11 +428,16 @@
 
   // EXIF tag → modification key mapping
   const EXIF_TAG_KEY_MAP = {
+    0x010E: 'exif.10e',   // ImageDescription
     0x010F: 'exif.10f',   // Make
     0x0110: 'exif.110',   // Model
+    0x0112: 'exif.112',   // Orientation
     0x0131: 'exif.131',   // Software
+    0x0132: 'exif.132',   // DateTime
     0x013B: 'exif.13b',   // Artist
     0x8298: 'exif.8298',  // Copyright
+    0x9003: 'exif.9003',  // DateTimeOriginal
+    0x9004: 'exif.9004',  // DateTimeDigitized
   };
 
   function rebuildJPEG(originalBytes, modifications) {
@@ -485,7 +490,7 @@
     const wU16 = le ? writeU16LE : writeU16BE_local;
     const wU32 = le ? writeU32LE : writeU32BE_local;
 
-    // Walk IFD0 and modify matching ASCII (type 2) entries
+    // Walk IFD0/SubIFD and modify matching entries
     const ifd0Offset = rU32(tiff, 4);
 
     function modifyIFD(ifdOff) {
@@ -496,29 +501,45 @@
         if (eb + 12 > tiffEnd) break;
         const tag = rU16(tiff, eb);
         const type = rU16(tiff, eb + 2);
-        if (!exifMods.has(tag) || type !== 2) continue;
+        if (!exifMods.has(tag)) continue;
 
-        const newStr = exifMods.get(tag);
-        const newBytes = stringToBytes(newStr + '\0'); // null-terminated ASCII
-        const newCount = newBytes.length;
+        const newValue = exifMods.get(tag);
 
-        // Update count
-        wU32(tiff, eb + 4, newCount);
-
-        if (newCount <= 4) {
-          // Fits inline
-          for (let j = 0; j < 4; ++j)
-            tiff[eb + 8 + j] = j < newBytes.length ? newBytes[j] : 0;
-        } else {
-          // Append at end of TIFF data, update offset
-          const newOff = tiffEnd;
-          for (let j = 0; j < newBytes.length; ++j)
-            tiff[newOff + j] = newBytes[j];
-          tiffEnd += newBytes.length;
-          if (tiffEnd & 1) tiff[tiffEnd++] = 0; // pad to even
-          wU32(tiff, eb + 8, newOff);
+        if (type === 2) {
+          // ASCII string
+          const newBytes = stringToBytes(newValue + '\0');
+          const newCount = newBytes.length;
+          wU32(tiff, eb + 4, newCount);
+          if (newCount <= 4) {
+            for (let j = 0; j < 4; ++j)
+              tiff[eb + 8 + j] = j < newBytes.length ? newBytes[j] : 0;
+          } else {
+            const newOff = tiffEnd;
+            for (let j = 0; j < newBytes.length; ++j)
+              tiff[newOff + j] = newBytes[j];
+            tiffEnd += newBytes.length;
+            if (tiffEnd & 1) tiff[tiffEnd++] = 0;
+            wU32(tiff, eb + 8, newOff);
+          }
+        } else if (type === 3) {
+          // SHORT (u16) — e.g., Orientation
+          const num = parseInt(newValue);
+          if (!isNaN(num)) wU16(tiff, eb + 8, num);
+        } else if (type === 4) {
+          // LONG (u32)
+          const num = parseInt(newValue);
+          if (!isNaN(num)) wU32(tiff, eb + 8, num);
         }
+        // Types 5 (RATIONAL) and 10 (SRATIONAL) would need offset-based writing — skip for now
+
         exifMods.delete(tag);
+
+        // Follow ExifIFD pointer to modify sub-IFD entries
+        if (tag === 0x8769 && type === 4) {
+          const subOff = rU32(tiff, eb + 8);
+          if (subOff > 0 && subOff + 2 <= tiffEnd)
+            modifyIFD(subOff);
+        }
       }
     }
 

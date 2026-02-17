@@ -11,8 +11,9 @@ Drop any file onto the Metadata Viewer to identify its type via magic bytes (not
 1. **File Identification** -- A magic byte table (100+ signatures) identifies the file type in two passes: direct signature matching (magic bytes, RIFF fourcc, ISO BMFF ftyp brands), then heuristic detection for text-based formats, ZIP containers (OOXML, JAR, APK, EPUB, ODF), shebangs, PEM certificates, and more.
 2. **Format Parsing** -- Format-specific parsers extract metadata into categorized field sets. All parsing is pure `DataView`/`Uint8Array` operations with no external libraries.
 3. **Hash Computation** -- 29 hash/checksum algorithms grouped into Cryptographic (MD5, SHA-1/224/256/384/512, SHA-512/256, SHA3-256/384/512, BLAKE2b/2s, BLAKE3, RIPEMD-160, Whirlpool, Tiger, SM3, Streebog-256), Non-Cryptographic (xxHash32, xxHash3, MurmurHash3), and Checksums (CRC-16/32/64, Adler-32, Fletcher-32, BSD, Sum-8, XOR-8) are computed using the Cipher project's `AlgorithmFramework`. Large files are processed in 512KB chunks via `setTimeout` to avoid blocking the UI.
-4. **Metadata Editing** -- Writable formats (MP3 ID3 tags, PNG text chunks, JPEG EXIF fields, MP4 iTunes atoms, Office document properties) support inline field editing with file reconstruction on save.
+4. **Metadata Editing** -- Writable formats (MP3 ID3 tags, PNG text chunks, JPEG EXIF fields, MP4 iTunes atoms, Office document properties) support inline field editing with rich edit controls (number, date picker, select dropdown, image replace/remove, geo coordinate picker) and file reconstruction on save.
 5. **PE Detection** -- Executable analysis includes packer/protector/compiler/framework detection via section names, string scanning, import analysis, and a 4,400+ entry signature database converted from ExeInfo ASL's userdb.txt format.
+6. **Disassembly** -- Executable entry-point code is disassembled using architecture-specific decoders (x86/x64, ARM/ARM64, Java bytecode, .NET MSIL, PowerPC, Dalvik, 6502/65C816, Z80, Motorola 68000, Python bytecode, VB6 P-code, Dart Kernel) with pseudo-C annotation, displayed in the accordion preview panel.
 
 ## Supported Formats
 
@@ -22,25 +23,52 @@ Drop any file onto the Metadata Viewer to identify its type via magic bytes (not
 | Audio | MP3 (ID3v1/ID3v2/MPEG frame), FLAC, OGG Vorbis, WAV, AIFF, MIDI, DSF, DFF, APE, AAC-ADTS, M4A |
 | Video | MP4/M4V (ISO BMFF), MKV/WebM (EBML), AVI, ASF/WMV/WMA, FLV, MPEG-PS, MPEG-TS, MPEG Video, AV1, 3GPP, QuickTime |
 | Document | PDF, RTF, DjVu, CHM, Word (.docx), Excel (.xlsx), PowerPoint (.pptx), OpenDocument (ODF), EPUB, Legacy Office (.doc/.xls/.ppt via OLE2) |
-| Executable | PE (.exe/.dll), ELF, Mach-O, Java .class, Android DEX, WebAssembly, Lua bytecode, Script files (shebang detection) |
+| Executable | PE (.exe/.dll), ELF, Mach-O, Java .class, Android DEX/OAT/VDEX/ART, Python .pyc, Dart Kernel (.dill), WebAssembly, Lua bytecode, Script files (shebang detection), MetaTrader EA (.ex4/.ex5) |
+| Debug | Microsoft PDB |
 | Archive | ZIP, RAR (v1.5/v5), 7Z, GZIP, TAR, XZ, LZ4, LZIP, Zstandard, BZip2, ARJ, Microsoft Cabinet, XAR, JAR, APK (deep), CRX, DEB, RPM |
-| Data | SQLite, MDB (Access), HDF5, XML, JSON, HTML, SVG, CSS, YAML, INI, iCalendar, vCard, PEM certificates, PGP/GPG, ISO 9660, LNK, VHD/VHDX, NES ROM |
+| Data | SQLite, MDB (Access), HDF5, XML, JSON, HTML, SVG, CSS, YAML, INI, iCalendar, vCard, PEM certificates, PGP/GPG, ISO 9660, LNK, VHD/VHDX |
+| Retro ROM | NES (iNES), Game Boy, Sega Master System, Sega Genesis/Mega Drive, SNES, Commodore 64 .prg, Amiga Hunk |
 | Font | TTF, OTF, WOFF, WOFF2 |
 
 ## Architecture
 
 ```
-pe-signatures.js -- SZ.PESignatures: 4,400+ PE packer/compiler/protector signatures (ExeInfo ASL format)
-parsers.js       -- SZ.MetadataParsers: magic byte table, identify(), parse(), format parsers
-editors.js       -- SZ.MetadataEditors: isEditable(), rebuildFile(), CRC32, ID3/PNG/EXIF/MP4/OOXML writers
-controller.js    -- App logic: state, UI, file loading, drag-drop, hash computation, editing
-styles.css       -- SZ theme-aware styling
-index.html       -- HTML structure + Cipher script tags
+pe-signatures.js       -- SZ.PESignatures: 4,400+ PE packer/compiler/protector signatures (ExeInfo ASL format)
+parsers-core.js        -- SZ.MetadataParsers: magic byte table, identify(), parse(), utilities, registerParsers()
+parsers-image.js       -- Image parsers: JPEG (EXIF/IPTC/JFIF/GPS), PNG, GIF, BMP, ICO, PSD, WebP, TIFF
+parsers-audio.js       -- Audio parsers: MP3 (ID3v1/v2), FLAC, WAV, OGG
+parsers-video.js       -- Video parsers: MP4/M4V (ISO BMFF), MKV/WebM (EBML)
+parsers-document.js    -- Document parsers: PDF, OOXML, OLE2
+parsers-archive.js     -- Archive parsers: ZIP, JAR, APK (with binary XML)
+parsers-executable.js  -- Executable parsers: PE, ELF, Mach-O, Java .class, PDB, EX4/EX5, DEX, OAT, VDEX, ART, PYC, Dart Kernel
+parsers-font.js        -- Font parsers: TTF, OTF, WOFF, WOFF2
+parsers-retro.js       -- Retro ROM parsers: NES, Game Boy, SMS, Genesis, SNES, C64 .prg, Amiga Hunk
+disasm-core.js         -- SZ.Disassembler: registration, dispatch, formatting framework (16 architectures)
+disasm-x86.js          -- x86/x64 variable-length instruction decoder
+disasm-arm.js          -- ARM32 + ARM64/AArch64 instruction decoder
+disasm-java.js         -- Java bytecode (JVM) instruction decoder
+disasm-msil.js         -- .NET CIL/MSIL instruction decoder
+disasm-powerpc.js      -- PowerPC 32-bit instruction decoder
+disasm-dalvik.js       -- Android Dalvik bytecode decoder (register-based VM, ~220 opcodes)
+disasm-6502.js         -- MOS 6502 + WDC 65C816 decoder (NES, C64, SNES)
+disasm-z80.js          -- Zilog Z80 decoder with Game Boy mode (Master System, Game Boy, ZX Spectrum)
+disasm-m68k.js         -- Motorola 68000 decoder (Amiga, Atari ST, Sega Genesis)
+disasm-python.js       -- Python bytecode decoder (3.6-3.12 wordcode)
+disasm-vbpcode.js      -- Visual Basic 6 P-code decoder
+disasm-dart.js         -- Dart Kernel (.dill) AST summary
+editors.js             -- SZ.MetadataEditors: isEditable(), rebuildFile(), CRC32, ID3/PNG/EXIF/MP4/OOXML writers
+controller.js          -- App logic: state, UI, file loading, drag-drop, hash computation, editing
+styles.css             -- SZ theme-aware styling
+index.html             -- HTML structure + Cipher script tags
 ```
+
+### Modular Parser Architecture
+
+The monolithic `parsers.js` has been split into a core module (`parsers-core.js`) and format-specific modules (`parsers-image.js`, `parsers-audio.js`, etc.). Each module is an IIFE that calls `SZ.MetadataParsers.registerParsers()` to register its parsers. All modules share utilities exported by the core module. Loading order: core first, then any format modules (order among format modules does not matter).
 
 ### Parsers as Shared Library
 
-`parsers.js` exports `SZ.MetadataParsers` on `window.SZ`. The Explorer app loads it via `<script src="../metadata-viewer/parsers.js">` to power its Properties dialog, with no code duplication.
+`parsers-core.js` and the `parsers-*.js` modules export `SZ.MetadataParsers` on `window.SZ`. The Explorer app loads them via `<script src="../metadata-viewer/parsers-*.js">` to power its Properties dialog, with no code duplication.
 
 ### PE Signature Database
 
@@ -50,6 +78,29 @@ index.html       -- HTML structure + Cipher script tags
 
 Hash/checksum algorithms are loaded from the Cipher project via `<script>` tags. The `AlgorithmFramework.Find(name)` API provides `CreateInstance()` with the `Feed()/Result()` pattern for streaming computation.
 
+### Disassembler Framework
+
+`disasm-core.js` exports `SZ.Disassembler` with `registerDisassembler(archId, decoderFn)`, `disassemble(archId, bytes, offset, count)`, and `formatDisassembly(instructions)`. 16 architecture modules each register a batch-mode decoder that returns arrays of instruction objects with offset, length, bytes, mnemonic, operands, and pseudo-C fields:
+
+| Architecture | Module | Platforms |
+|---|---|---|
+| x86/x64 | disasm-x86.js | Windows PE, ELF |
+| ARM32/ARM64 | disasm-arm.js | iOS Mach-O, ELF |
+| Java bytecode | disasm-java.js | Java .class |
+| .NET MSIL | disasm-msil.js | .NET assemblies |
+| PowerPC | disasm-powerpc.js | ELF (PPC) |
+| Dalvik | disasm-dalvik.js | Android DEX |
+| MOS 6502 | disasm-6502.js | NES, C64, Apple II, Atari |
+| WDC 65C816 | disasm-6502.js (65C816 mode) | SNES |
+| Zilog Z80 | disasm-z80.js | Master System, ZX Spectrum, MSX |
+| Z80 (Game Boy) | disasm-z80.js (GB mode) | Game Boy |
+| Motorola 68000 | disasm-m68k.js | Amiga, Atari ST, Sega Genesis |
+| Python bytecode | disasm-python.js | Python .pyc |
+| VB6 P-code | disasm-vbpcode.js | VB6 P-code EXEs |
+| Dart Kernel | disasm-dart.js | Dart .dill |
+
+The executable and retro ROM parsers detect the architecture and emit a `disassembly` property with `archId` and entry-point file offset, which the controller uses to render the Disassembly accordion section.
+
 ## Editing Support
 
 | Format | Editable Fields | Strategy |
@@ -57,7 +108,7 @@ Hash/checksum algorithms are loaded from the Cipher project via `<script>` tags.
 | MP3 (ID3v2) | Title, Artist, Album, Year, Genre, Track, Comment, Composer, Album Artist, Disc, BPM, Copyright, Publisher, and 30+ more frame types | Rebuild entire ID3v2 tag; genre autocomplete with 192 standard genres |
 | MP3 (ID3v1) | Title, Artist, Album, Year, Comment | Overwrite fixed-offset fields |
 | PNG (tEXt/iTXt) | All text chunks | Walk chunks, replace/insert, recalculate CRC32 |
-| JPEG (EXIF) | Make, Model, Software, Artist, Copyright | Modify IFD entries in TIFF data, rebuild APP1 |
+| JPEG (EXIF) | Make, Model, Software, Artist, Copyright, ImageDescription, Orientation, DateTime, DateTimeOriginal, DateTimeDigitized | Modify IFD/SubIFD entries (ASCII, SHORT, LONG types) in TIFF data, rebuild APP1 |
 | MP4/M4A (ilst) | Title, Artist, Album, Year, Genre, Comment, Composer, Copyright | Modify/create iTunes ilst atoms in moov/udta/meta |
 | OOXML (docx/xlsx/pptx) | Title, Subject, Author, Keywords, Description, Category | Modify docProps/core.xml in ZIP container |
 
@@ -95,6 +146,7 @@ Legacy `.doc`, `.xls`, `.ppt` files using the OLE2 Compound Document format (mag
   - **Hex Preview**: Color-coded first 256 bytes with byte regions mapped to parsed metadata fields
   - **Text Preview**: First 4KB decoded as text with non-printable character markers
   - **Unicode Preview**: BOM-aware decoding with code point annotations for non-ASCII characters
+  - **Disassembly**: Entry-point instruction disassembly for executables and ROMs (16 architectures: x86/x64, ARM/ARM64, Java, MSIL, PowerPC, Dalvik, 6502/65C816, Z80, 68000, Python, VB P-code, Dart) with pseudo-C comments
 - **Status Bar**: File type, size, entropy, modification count
 
 ## Running
@@ -105,14 +157,20 @@ Open `index.html` in a browser, or launch from the SZ desktop Start Menu under "
 
 - [x] Magic byte file identification (100+ formats)
 - [x] Format-specific metadata parsing
-- [x] EXIF data extraction (IFD0, SubIFD, GPS, thumbnail)
+- [x] Modular parser architecture (core + format-specific modules with hot registration)
+- [x] EXIF data extraction (IFD0, SubIFD, GPS, Thumbnail IFD) with 80+ tags and human-readable values
+- [x] IPTC metadata parsing for JPEG (APP13/Photoshop 3.0/8BIM resource blocks)
+- [x] GPS coordinates displayed in DMS format (e.g., 48° 51' 24.00" N)
 - [x] ID3v1/v2 tag parsing with album art extraction (50+ frame types)
 - [x] Genre autocomplete with 192 standard ID3 genres
 - [x] PE deep analysis (sections, imports, exports, .NET CLR)
+- [x] PE import expansion (individual function names per DLL, expandable/collapsible rows)
 - [x] PE packer/protector/compiler/framework detection (section names, strings, imports)
 - [x] PE entry-point signature matching (4,400+ ExeInfo ASL signatures)
 - [x] ELF deep analysis (sections, program headers, linked libraries, compiler detection)
 - [x] Mach-O deep analysis (segments, linked libraries, build version, compiler detection)
+- [x] Microsoft PDB detection and header parsing (page size, stream info)
+- [x] MetaTrader EA detection (.ex4/.ex5 via extension-based identification)
 - [x] OOXML detection and Office document metadata parsing (docx/xlsx/pptx)
 - [x] Legacy Office (OLE2) detection and metadata parsing (doc/xls/ppt)
 - [x] Dual-nature file detection (ZIP + document/archive metadata merged)
@@ -120,6 +178,9 @@ Open `index.html` in a browser, or launch from the SZ desktop Start Menu under "
 - [x] Hash/checksum computation (29 algorithms via Cipher project, grouped by category)
 - [x] Async chunked hashing for large files
 - [x] Inline metadata editing (MP3 ID3, PNG text chunks, JPEG EXIF, MP4 iTunes, OOXML properties)
+- [x] Rich edit types: text, number, date picker, select dropdown, image replace/remove/regenerate, geo coordinate picker
+- [x] Geo coordinate map picker (OpenStreetMap slippy tiles, click to set coordinates)
+- [x] EXIF editing supports ASCII, SHORT, and LONG types across IFD0 and ExifIFD
 - [x] MP4/M4A iTunes metadata parsing and cover art extraction
 - [x] File reconstruction and save
 - [x] Embedded image preview with save
@@ -127,6 +188,19 @@ Open `index.html` in a browser, or launch from the SZ desktop Start Menu under "
 - [x] Text preview (first 4KB with non-printable markers and region coloring)
 - [x] Unicode preview (BOM-aware with code point annotations)
 - [x] Waveform preview (PCM for WAV, byte-amplitude for compressed audio)
+- [x] Disassembly preview for executables and retro ROMs (entry point instructions with pseudo-C comments)
+- [x] Multi-architecture disassembler (16 architectures: x86/x64, ARM/ARM64, Java, MSIL, PowerPC, Dalvik, 6502/65C816, Z80, 68000, Python, VB P-code, Dart) with syntax highlighting
+- [x] Java bytecode constant pool resolution (class/method/field names in disassembly)
+- [x] .NET MSIL metadata token resolution (type/method/field names from CLI metadata tables)
+- [x] Android DEX full parsing (string/type/method/field tables, class definitions, Dalvik disassembly)
+- [x] Android OAT/VDEX/ART header parsing
+- [x] Python .pyc version detection and bytecode disassembly
+- [x] Dart Kernel (.dill) header and library/class summary
+- [x] VB6 P-code detection in PE executables and P-code disassembly
+- [x] Retro ROM format parsers (NES iNES, Game Boy, Sega Master System, Sega Genesis, SNES LoROM/HiROM, C64 .prg, Amiga Hunk)
+- [x] MOS 6502 disassembler with 65C816 SNES extension mode
+- [x] Z80 disassembler with Game Boy restricted mode (no IX/IY/ED)
+- [x] Motorola 68000 disassembler with full effective address decoding
 - [x] Resizable splitter between metadata and preview panels
 - [x] Accordion preview panel with smart auto-expansion by file type
 - [x] Shannon entropy and encoding detection
@@ -146,23 +220,33 @@ Open `index.html` in a browser, or launch from the SZ desktop Start Menu under "
 
 ## Planned Features
 
-- [ ] IPTC metadata parsing for JPEG
 - [ ] zTXt (compressed text) PNG chunk support
 - [ ] MKV/WebM Matroska tag editing
 - [ ] Batch file analysis
-- [ ] Java bytecode disassembly (JAR class files)
 - [ ] DEFLATE decompression for APK icon extraction from compressed entries
+- [ ] EXIF RATIONAL/SRATIONAL type editing (e.g., focal length, exposure time)
+- [ ] ID3 APIC (album art) replace/remove via image edit type
+- [ ] MP4 cover art replace/remove via image edit type
+- [ ] GPS coordinate writing to EXIF via geo picker
+- [ ] EXIF thumbnail regeneration from main image
 
 ## Known Limitations
 
-- JPEG EXIF editing limited to ASCII-type IFD0 tags (Make, Model, Software, Artist, Copyright)
+- JPEG EXIF editing supports IFD0 and ExifIFD tags with ASCII, SHORT, and LONG types; RATIONAL types are read-only
 - OOXML editing requires core.xml to be stored uncompressed (STORED method) in the ZIP container
 - MKV/WebM metadata editing not yet supported (read-only)
 - Hash computation requires the Cipher project scripts to be loadable
-- EXIF parsing handles common tags; some proprietary MakerNote data is skipped
+- EXIF parsing handles 80+ common tags including UNDEFINED type values (ExifVersion, ComponentsConfiguration, UserComment); MakerNote data is detected but not decoded (vendor-specific)
 - Large file hashing may be slow in browsers without Web Workers (29 algorithms computed sequentially)
 - PE signature matching only supports ep_only=true entries (non-EP signatures require full file scan)
 - OLE2 parsing limited to SummaryInformation properties; stream content (e.g., Word text) not extracted
 - APK icon extraction only works for STORED (uncompressed) PNG entries; DEFLATE entries are skipped
 - APK binary XML parsing extracts string pool and element attributes but does not fully decode resource references
 - "Open in Archiver" button only available when file was opened from VFS (not drag-dropped files)
+- Disassembly covers common instruction subsets; rare/vector/FPU instructions may show as `db` bytes
+- SNES LoROM/HiROM detection relies on checksum complement validation; corrupted ROMs may not be detected
+- Genesis ROM detection requires "SEGA MEGA DRIVE" or "SEGA GENESIS" header string at offset 0x100
+- VB6 P-code opcode set is partially reverse-engineered; some opcodes may decode as unknown
+- Python .pyc marshal parsing is simplified; complex nested code objects may not fully resolve
+- Geo map picker requires internet access for OpenStreetMap tiles
+- MetaTrader EA (.ex4/.ex5) identification is extension-based only (proprietary format, no reliable magic bytes)
