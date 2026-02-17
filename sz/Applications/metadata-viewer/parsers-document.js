@@ -125,6 +125,7 @@
       }
     }
     return fields;
+  }
 
   function parseOOXMLAppXml(xml) {
     const fields = [];

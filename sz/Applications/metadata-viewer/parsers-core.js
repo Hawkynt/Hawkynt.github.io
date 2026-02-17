@@ -226,8 +226,17 @@
     { signature: [0x64, 0x65, 0x78, 0x0A], offset: 0, id: 'dex', name: 'Android DEX', category: 'Executable', mimeType: 'application/vnd.android.dex' },
     { signature: [0x00, 0x61, 0x73, 0x6D], offset: 0, id: 'wasm', name: 'WebAssembly Module', category: 'Executable', mimeType: 'application/wasm' },
     { signature: [0x1B, 0x4C, 0x75, 0x61], offset: 0, id: 'luac', name: 'Lua Bytecode', category: 'Executable', mimeType: 'application/x-lua-bytecode' },
+    // Android Runtime
+    { signature: [0x6F, 0x61, 0x74, 0x0A], offset: 0, id: 'oat', name: 'Android OAT', category: 'Executable', mimeType: 'application/octet-stream' },
+    { signature: [0x76, 0x64, 0x65, 0x78], offset: 0, id: 'vdex', name: 'Android VDEX', category: 'Executable', mimeType: 'application/octet-stream' },
+    { signature: [0x61, 0x72, 0x74, 0x0A], offset: 0, id: 'art', name: 'Android ART Image', category: 'Data', mimeType: 'application/octet-stream' },
+    // Dart Kernel
+    { signature: [0x90, 0xAB, 0xCD, 0xEF], offset: 0, id: 'dart', name: 'Dart Kernel (.dill)', category: 'Executable', mimeType: 'application/octet-stream' },
+    // Amiga Hunk
+    { signature: [0x00, 0x00, 0x03, 0xF3], offset: 0, id: 'amigahunk', name: 'Amiga Hunk Executable', category: 'Executable', mimeType: 'application/octet-stream' },
 
     // ---- Data / Database ----
+    { signature: [0x4D, 0x69, 0x63, 0x72, 0x6F, 0x73, 0x6F, 0x66, 0x74, 0x20, 0x43, 0x2F, 0x43, 0x2B, 0x2B, 0x20, 0x4D, 0x53, 0x46], offset: 0, id: 'pdb', name: 'Microsoft PDB', category: 'Data', mimeType: 'application/octet-stream' },
     { signature: [0x53, 0x51, 0x4C, 0x69, 0x74, 0x65], offset: 0, id: 'sqlite', name: 'SQLite Database', category: 'Data', mimeType: 'application/x-sqlite3' },
     { signature: [0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x63], offset: 0, id: 'mdb', name: 'Microsoft Access (MDB)', category: 'Data', mimeType: 'application/x-msaccess' },
     { signature: [0x89, 0x48, 0x44, 0x46, 0x0D, 0x0A, 0x1A, 0x0A], offset: 0, id: 'hdf5', name: 'HDF5 Data', category: 'Data', mimeType: 'application/x-hdf5' },
@@ -245,6 +254,7 @@
 
     // ---- Retro / ROM ----
     { signature: [0x4E, 0x45, 0x53, 0x1A], offset: 0, id: 'nes', name: 'NES ROM (iNES)', category: 'Data', mimeType: 'application/x-nes-rom' },
+    { signature: [0xCE, 0xED, 0x66, 0x66], offset: 0x104, id: 'gb', name: 'Game Boy ROM', category: 'Data', mimeType: 'application/x-gameboy-rom' },
 
     // ---- Fonts ----
     { signature: [0x00, 0x01, 0x00, 0x00], offset: 0, id: 'ttf', name: 'TrueType Font', category: 'Font', mimeType: 'font/ttf' },
@@ -379,6 +389,64 @@
           return { id: 'pgp', name: 'PGP/GPG Data', category: 'Data', mimeType: 'application/pgp-encrypted', confidence: 60 };
       }
 
+    // Python .pyc: bytes 2-3 are 0x0D 0x0A (CRLF), magic u16 in known Python version range
+    if (bytes.length >= 16 && bytes[2] === 0x0D && bytes[3] === 0x0A) {
+      const magic = readU16LE(bytes, 0);
+      if (magic >= 3000 && magic <= 4000)
+        return { id: 'pyc', name: 'Python Bytecode (.pyc)', category: 'Executable', mimeType: 'application/x-python-code', confidence: 85 };
+    }
+
+    // Sega Master System: "TMR SEGA" at offset 0x7FF0, 0x3FF0, or 0x1FF0
+    for (const smsOff of [0x7FF0, 0x3FF0, 0x1FF0])
+      if (bytes.length > smsOff + 8 && matchBytes(bytes, smsOff, [0x54, 0x4D, 0x52, 0x20, 0x53, 0x45, 0x47, 0x41]))
+        return { id: 'sms', name: 'Sega Master System ROM', category: 'Data', mimeType: 'application/x-sms-rom', confidence: 90 };
+
+    // Sega Genesis: "SEGA MEGA DRIVE" or "SEGA GENESIS" at offset 0x100
+    if (bytes.length > 0x110) {
+      const consoleName = readString(bytes, 0x100, 16).trim();
+      if (consoleName.startsWith('SEGA MEGA DRIVE') || consoleName.startsWith('SEGA GENESIS'))
+        return { id: 'genesis', name: 'Sega Genesis ROM', category: 'Data', mimeType: 'application/x-genesis-rom', confidence: 90 };
+    }
+
+    // Commodore D64 disk images (detected by exact size)
+    {
+      const len = bytes.length;
+      if (len === 174848 || len === 175531 || len === 196608 || len === 197376)
+        return { id: 'd64', name: 'C64 1541 Disk Image', category: 'Data', mimeType: 'application/x-d64', confidence: 90 };
+    }
+
+    // Commodore D71 (1571 double-sided)
+    if (bytes.length === 349696 || bytes.length === 351062)
+      return { id: 'd71', name: 'C64 1571 Disk Image', category: 'Data', mimeType: 'application/x-d71', confidence: 90 };
+
+    // Commodore D81 (1581 3.5")
+    if (bytes.length === 819200)
+      return { id: 'd81', name: 'C64 1581 Disk Image', category: 'Data', mimeType: 'application/x-d81', confidence: 85 };
+
+    // Amiga ADF disk image (exact size + DOS signature or valid root block)
+    if (bytes.length === 901120) {
+      const dosSig = readString(bytes, 0, 3);
+      if (dosSig === 'DOS')
+        return { id: 'adf', name: 'Amiga Disk File', category: 'Data', mimeType: 'application/x-adf', confidence: 92 };
+      // Check root block as fallback
+      const rootOff = 880 * 512;
+      if (rootOff + 512 <= bytes.length && readU32BE(bytes, rootOff) === 2)
+        return { id: 'adf', name: 'Amiga Disk File', category: 'Data', mimeType: 'application/x-adf', confidence: 70 };
+    }
+
+    // SNES: checksum complement validation at 0x7FDC or 0xFFDC
+    if (bytes.length >= 0x8000) {
+      const smcSkip = (bytes.length % 1024 === 512) ? 512 : 0;
+      for (const hdrBase of [smcSkip + 0x7FC0, smcSkip + 0xFFC0]) {
+        if (hdrBase + 0x20 <= bytes.length) {
+          const complement = readU16LE(bytes, hdrBase + 0x1C);
+          const checksum = readU16LE(bytes, hdrBase + 0x1E);
+          if ((complement ^ checksum) === 0xFFFF && complement !== 0)
+            return { id: 'snes', name: 'SNES ROM', category: 'Data', mimeType: 'application/x-snes-rom', confidence: 85 };
+        }
+      }
+    }
+
     // Pass 2: heuristics for text-based formats
     const textSample = readUTF8(bytes, 0, Math.min(bytes.length, 1024)).trim();
 
@@ -431,6 +499,27 @@
     return { id: 'binary', name: 'Binary File', category: 'Unknown', mimeType: 'application/octet-stream', confidence: 10 };
   }
 
+  // Extension-based fallback for formats without reliable magic bytes
+  function identifyByExtension(name) {
+    if (!name) return null;
+    const ext = name.split('.').pop().toLowerCase();
+    if (ext === 'ex4') return { id: 'ex4', name: 'MetaTrader 4 EA', category: 'Executable', mimeType: 'application/octet-stream', confidence: 60 };
+    if (ext === 'ex5') return { id: 'ex5', name: 'MetaTrader 5 EA', category: 'Executable', mimeType: 'application/octet-stream', confidence: 60 };
+    if (ext === 'prg') return { id: 'c64prg', name: 'Commodore 64 PRG', category: 'Data', mimeType: 'application/x-c64-prg', confidence: 50 };
+    if (ext === 'd64') return { id: 'd64', name: 'C64 1541 Disk Image', category: 'Data', mimeType: 'application/x-d64', confidence: 50 };
+    if (ext === 'd71') return { id: 'd71', name: 'C64 1571 Disk Image', category: 'Data', mimeType: 'application/x-d71', confidence: 50 };
+    if (ext === 'd81') return { id: 'd81', name: 'C64 1581 Disk Image', category: 'Data', mimeType: 'application/x-d81', confidence: 50 };
+    if (ext === 't64') return { id: 't64', name: 'C64 Tape Image', category: 'Data', mimeType: 'application/x-t64', confidence: 50 };
+    if (ext === 'adf') return { id: 'adf', name: 'Amiga Disk File', category: 'Data', mimeType: 'application/x-adf', confidence: 50 };
+    if (ext === 'pyc') return { id: 'pyc', name: 'Python Bytecode (.pyc)', category: 'Executable', mimeType: 'application/x-python-code', confidence: 50 };
+    if (ext === 'dill') return { id: 'dart', name: 'Dart Kernel (.dill)', category: 'Executable', mimeType: 'application/octet-stream', confidence: 50 };
+    if (ext === 'sfc' || ext === 'smc') return { id: 'snes', name: 'SNES ROM', category: 'Data', mimeType: 'application/x-snes-rom', confidence: 50 };
+    if (ext === 'sms') return { id: 'sms', name: 'Sega Master System ROM', category: 'Data', mimeType: 'application/x-sms-rom', confidence: 50 };
+    if (ext === 'md' || ext === 'gen' || ext === 'bin') return { id: 'genesis', name: 'Sega Genesis ROM', category: 'Data', mimeType: 'application/x-genesis-rom', confidence: 30 };
+    if (ext === 'gb' || ext === 'gbc') return { id: 'gb', name: 'Game Boy ROM', category: 'Data', mimeType: 'application/x-gameboy-rom', confidence: 50 };
+    return null;
+  }
+
   // =========================================================================
   // Generic parser (always included)
   // =========================================================================
@@ -445,6 +534,57 @@
       { key: 'firstBytes', label: 'First 16 Bytes', value: bytesToHex(bytes, 0, 16) },
     ];
     return { name: 'General', icon: 'info', fields };
+  }
+
+  // =========================================================================
+  // LEB128 and MUTF-8 helpers
+  // =========================================================================
+
+  function readULEB128(bytes, offset) {
+    let value = 0, shift = 0, bytesRead = 0;
+    while (offset + bytesRead < bytes.length) {
+      const b = bytes[offset + bytesRead];
+      ++bytesRead;
+      value |= (b & 0x7F) << shift;
+      if ((b & 0x80) === 0) break;
+      shift += 7;
+    }
+    return { value: value >>> 0, bytesRead };
+  }
+
+  function readSLEB128(bytes, offset) {
+    let value = 0, shift = 0, bytesRead = 0, b;
+    do {
+      if (offset + bytesRead >= bytes.length) break;
+      b = bytes[offset + bytesRead];
+      ++bytesRead;
+      value |= (b & 0x7F) << shift;
+      shift += 7;
+    } while ((b & 0x80) !== 0);
+    if (shift < 32 && (b & 0x40) !== 0)
+      value |= (~0 << shift);
+    return { value, bytesRead };
+  }
+
+  function readMUTF8(bytes, offset, length) {
+    let s = '', i = 0;
+    while (i < length) {
+      const a = bytes[offset + i++];
+      if (a === 0) break;
+      if ((a & 0x80) === 0) {
+        s += String.fromCharCode(a);
+      } else if ((a & 0xE0) === 0xC0) {
+        const b = bytes[offset + i++];
+        s += String.fromCharCode(((a & 0x1F) << 6) | (b & 0x3F));
+      } else if ((a & 0xF0) === 0xE0) {
+        const b = bytes[offset + i++];
+        const c = bytes[offset + i++];
+        s += String.fromCharCode(((a & 0x0F) << 12) | ((b & 0x3F) << 6) | (c & 0x3F));
+      } else {
+        s += '?';
+      }
+    }
+    return s;
   }
 
   // =========================================================================
@@ -473,11 +613,17 @@
         byteRegions: [],
       };
 
-    const fileType = identify(bytes);
+    let fileType = identify(bytes);
+    // Fall back to extension-based detection when magic bytes yield generic results
+    if (fileType.id === 'binary' || fileType.id === 'text') {
+      const extType = identifyByExtension(fileName);
+      if (extType) fileType = extType;
+    }
     const categories = [parseGeneric(bytes, fileName)];
     const images = [];
     let byteRegions = [];
 
+    let disassembly = null;
     const parser = PARSER_MAP[fileType.id];
     if (parser) {
       const result = parser(bytes);
@@ -489,6 +635,8 @@
           images.push(img);
       if (result.byteRegions)
         byteRegions = result.byteRegions;
+      if (result.disassembly)
+        disassembly = result.disassembly;
     }
 
     // Dual-nature: also run ZIP parser for ZIP-based formats that aren't pure ZIP
@@ -499,7 +647,21 @@
           categories.push(cat);
     }
 
-    return { fileType, categories, images, byteRegions };
+    // Archive bridge: use the archiver's format handlers for deep inspection
+    // of archive types not already covered by the metadata-viewer's own parsers
+    const _bridge = SZ.MetadataParsers && SZ.MetadataParsers._tryArchiveBridge;
+    if (_bridge) {
+      const bridgeCats = _bridge(bytes, fileName, categories);
+      if (bridgeCats) {
+        for (const cat of bridgeCats)
+          categories.push(cat);
+        // Forward async promise if the bridge attached one
+        if (bridgeCats._archivePromise)
+          categories._archivePromise = bridgeCats._archivePromise;
+      }
+    }
+
+    return { fileType, categories, images, byteRegions, disassembly };
   }
 
   // =========================================================================
@@ -509,6 +671,7 @@
   SZ.MetadataParsers = {
     // Public API
     identify,
+    identifyByExtension,
     parse,
     registerParsers,
     formatSize,
@@ -518,6 +681,7 @@
     // Utility functions for parser modules
     readU8, readU16LE, readU16BE, readU32LE, readU32BE, readI32LE, readU64LE, readU64BE,
     readString, readUTF8, readUTF16,
+    readULEB128, readSLEB128, readMUTF8,
     formatTimestamp,
     matchBytes, countNulls, detectTextEncoding,
     // ID3_GENRES will be set by parsers-audio.js

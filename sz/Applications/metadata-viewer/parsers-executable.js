@@ -1,7 +1,251 @@
 ;(function() {
   'use strict';
   const P = window.SZ.MetadataParsers;
-  const { readU8, readU16LE, readU16BE, readU32LE, readU32BE, readI32LE, readU64LE, readU64BE, readString, readUTF8, bytesToHex, formatSize, formatTimestamp } = P;
+  const { readU8, readU16LE, readU16BE, readU32LE, readU32BE, readI32LE, readU64LE, readU64BE, readString, readUTF8, bytesToHex, formatSize, formatTimestamp, readULEB128, readMUTF8 } = P;
+
+  // =========================================================================
+  // .NET Metadata parser — extracts #Strings + table rows for token resolution
+  // =========================================================================
+
+  function _parseDotNetMetadata(bytes, metaBase, metaSize) {
+    if (metaBase + 16 > bytes.length) return null;
+    // Metadata root signature: BSJB (0x424A5342)
+    const sig = readU32LE(bytes, metaBase);
+    if (sig !== 0x424A5342) return null;
+
+    // Skip: signature(4), major(2), minor(2), reserved(4), version length(4)
+    const verLen = readU32LE(bytes, metaBase + 12);
+    let pos = metaBase + 16 + ((verLen + 3) & ~3); // version string padded to 4-byte
+    if (pos + 4 > bytes.length) return null;
+
+    // Flags(2) + number of streams(2)
+    pos += 2; // flags
+    const numStreams = readU16LE(bytes, pos); pos += 2;
+
+    // Stream headers: offset(4) + size(4) + name (null-terminated, padded to 4)
+    let stringsOff = 0, stringsSz = 0;
+    let tablesOff = 0, tablesSz = 0;
+    for (let i = 0; i < numStreams && pos + 8 < bytes.length; ++i) {
+      const sOff = readU32LE(bytes, pos); pos += 4;
+      const sSz = readU32LE(bytes, pos); pos += 4;
+      let name = '';
+      while (pos < bytes.length && bytes[pos] !== 0) name += String.fromCharCode(bytes[pos++]);
+      ++pos; // skip null
+      pos = (pos + 3) & ~3; // align to 4
+      if (name === '#Strings') { stringsOff = metaBase + sOff; stringsSz = sSz; }
+      else if (name === '#~' || name === '#-') { tablesOff = metaBase + sOff; tablesSz = sSz; }
+    }
+
+    if (!stringsOff || !tablesOff) return null;
+
+    // Read a #Strings heap string at given offset
+    function readHeapString(off) {
+      if (off === 0) return '';
+      const abs = stringsOff + off;
+      if (abs >= bytes.length) return '';
+      let s = '';
+      for (let j = abs; j < bytes.length && j < abs + 512 && bytes[j] !== 0; ++j)
+        s += String.fromCharCode(bytes[j]);
+      return s;
+    }
+
+    // Parse #~ stream header
+    let tp = tablesOff;
+    if (tp + 24 > bytes.length) return null;
+    tp += 4; // reserved
+    const majorVer = bytes[tp++];
+    const minorVer = bytes[tp++];
+    const heapSizes = bytes[tp++];
+    tp += 1; // reserved
+
+    const stringIdxSize = (heapSizes & 0x01) ? 4 : 2;
+    const guidIdxSize = (heapSizes & 0x02) ? 4 : 2;
+    const blobIdxSize = (heapSizes & 0x04) ? 4 : 2;
+
+    // Valid tables bitmask (8 bytes)
+    const validLo = readU32LE(bytes, tp); tp += 4;
+    const validHi = readU32LE(bytes, tp); tp += 4;
+    tp += 8; // sorted tables bitmask
+
+    // Row counts for each valid table
+    const rowCounts = new Array(64).fill(0);
+    for (let t = 0; t < 64 && tp + 4 <= bytes.length; ++t) {
+      const bit = t < 32 ? (validLo & (1 << t)) : (validHi & (1 << (t - 32)));
+      if (bit) {
+        rowCounts[t] = readU32LE(bytes, tp); tp += 4;
+      }
+    }
+
+    // Helper: read index of given size
+    function readIdx(size) {
+      if (size === 4) { const v = readU32LE(bytes, tp); tp += 4; return v; }
+      const v = readU16LE(bytes, tp); tp += 2;
+      return v;
+    }
+
+    // Coded index sizes — depends on max row counts of referenced tables
+    function codedIdxSize(tables) {
+      const tagBits = Math.ceil(Math.log2(tables.length));
+      const maxRows = Math.max(...tables.map(t => rowCounts[t] || 0));
+      return maxRows < (1 << (16 - tagBits)) ? 2 : 4;
+    }
+
+    const typeDefOrRefSize = codedIdxSize([0x00, 0x01, 0x02, 0x1B]);
+    const hasConstantSize = codedIdxSize([0x04, 0x08, 0x17]);
+    const hasCustomAttrSize = codedIdxSize([0x06, 0x04, 0x01, 0x02, 0x08, 0x09, 0x0A, 0x00, 0x0E, 0x17, 0x14, 0x11, 0x1A, 0x1B, 0x20, 0x23, 0x26, 0x27, 0x28]);
+    const memberRefParentSize = codedIdxSize([0x01, 0x02, 0x1A, 0x06, 0x1B]);
+    const resolutionScopeSize = codedIdxSize([0x00, 0x1A, 0x23, 0x01]);
+    const methodDefOrRefSize = codedIdxSize([0x06, 0x0A]);
+
+    // Simple index size for a single table
+    function tableIdxSize(t) { return rowCounts[t] > 0xFFFF ? 4 : 2; }
+
+    // Table data starts at tp — read the tables we care about
+    const result = { strings: readHeapString, tables: {} };
+
+    // We need to read tables in order (0..63), skipping those not valid
+    // Table 0x00: Module — skip
+    // Table 0x01: TypeRef — ResolutionScope(coded), TypeName(string), TypeNamespace(string)
+    // Table 0x02: TypeDef — Flags(4), TypeName(string), TypeNamespace(string), Extends(coded), FieldList(idx), MethodList(idx)
+    // Table 0x04: Field — Flags(2), Name(string), Signature(blob)
+    // Table 0x06: MethodDef — RVA(4), ImplFlags(2), Flags(2), Name(string), Signature(blob), ParamList(idx)
+    // Table 0x08: Param — Flags(2), Sequence(2), Name(string)
+    // Table 0x0A: MemberRef — Class(coded), Name(string), Signature(blob)
+    // We'll read tables sequentially, skipping rows for unneeded tables
+
+    for (let t = 0; t < 64; ++t) {
+      const rows = rowCounts[t];
+      if (rows === 0) continue;
+
+      if (t === 0x00) { // Module: Generation(2) + Name(str) + Mvid(guid) + EncId(guid) + EncBaseId(guid)
+        for (let r = 0; r < rows; ++r) { tp += 2; readIdx(stringIdxSize); readIdx(guidIdxSize); readIdx(guidIdxSize); readIdx(guidIdxSize); }
+      } else if (t === 0x01) { // TypeRef
+        const arr = [];
+        for (let r = 0; r < rows; ++r) {
+          readIdx(resolutionScopeSize); // skip resolution scope
+          const nameIdx = readIdx(stringIdxSize);
+          const nsIdx = readIdx(stringIdxSize);
+          arr.push({ name: nameIdx, ns: nsIdx });
+        }
+        result.tables[0x01] = arr;
+      } else if (t === 0x02) { // TypeDef
+        const arr = [];
+        for (let r = 0; r < rows; ++r) {
+          tp += 4; // flags
+          const nameIdx = readIdx(stringIdxSize);
+          const nsIdx = readIdx(stringIdxSize);
+          readIdx(typeDefOrRefSize); // extends
+          readIdx(tableIdxSize(0x04)); // field list
+          readIdx(tableIdxSize(0x06)); // method list
+          arr.push({ name: nameIdx, ns: nsIdx });
+        }
+        result.tables[0x02] = arr;
+      } else if (t === 0x04) { // Field
+        const arr = [];
+        for (let r = 0; r < rows; ++r) {
+          tp += 2; // flags
+          const nameIdx = readIdx(stringIdxSize);
+          readIdx(blobIdxSize); // signature
+          arr.push({ name: nameIdx });
+        }
+        result.tables[0x04] = arr;
+      } else if (t === 0x06) { // MethodDef
+        const arr = [];
+        for (let r = 0; r < rows; ++r) {
+          tp += 4; // RVA
+          tp += 2; // impl flags
+          tp += 2; // flags
+          const nameIdx = readIdx(stringIdxSize);
+          readIdx(blobIdxSize); // signature
+          readIdx(tableIdxSize(0x08)); // param list
+          arr.push({ name: nameIdx });
+        }
+        result.tables[0x06] = arr;
+      } else if (t === 0x08) { // Param
+        const arr = [];
+        for (let r = 0; r < rows; ++r) {
+          tp += 2; // flags
+          tp += 2; // sequence
+          const nameIdx = readIdx(stringIdxSize);
+          arr.push({ name: nameIdx });
+        }
+        result.tables[0x08] = arr;
+      } else if (t === 0x0A) { // MemberRef
+        const arr = [];
+        for (let r = 0; r < rows; ++r) {
+          readIdx(memberRefParentSize); // class (coded index)
+          const nameIdx = readIdx(stringIdxSize);
+          readIdx(blobIdxSize); // signature
+          arr.push({ name: nameIdx });
+        }
+        result.tables[0x0A] = arr;
+      } else if (t === 0x09) { // InterfaceImpl: Class(idx) + Interface(coded)
+        for (let r = 0; r < rows; ++r) { readIdx(tableIdxSize(0x02)); readIdx(typeDefOrRefSize); }
+      } else if (t === 0x0B) { // Constant: Type(2) + Parent(coded) + Value(blob)
+        for (let r = 0; r < rows; ++r) { tp += 2; readIdx(hasConstantSize); readIdx(blobIdxSize); }
+      } else if (t === 0x0C) { // CustomAttribute: Parent(coded) + Type(coded) + Value(blob)
+        const customAttrTypeSize = codedIdxSize([0x02, 0x06, 0x0A]);
+        for (let r = 0; r < rows; ++r) { readIdx(hasCustomAttrSize); readIdx(customAttrTypeSize); readIdx(blobIdxSize); }
+      } else if (t === 0x0E) { // DeclSecurity: Action(2) + Parent(coded) + PermissionSet(blob)
+        const hasDeclSecSize = codedIdxSize([0x02, 0x06, 0x20]);
+        for (let r = 0; r < rows; ++r) { tp += 2; readIdx(hasDeclSecSize); readIdx(blobIdxSize); }
+      } else if (t === 0x0F) { // ClassLayout: PackingSize(2) + ClassSize(4) + Parent(idx)
+        for (let r = 0; r < rows; ++r) { tp += 6; readIdx(tableIdxSize(0x02)); }
+      } else if (t === 0x10) { // FieldLayout: Offset(4) + Field(idx)
+        for (let r = 0; r < rows; ++r) { tp += 4; readIdx(tableIdxSize(0x04)); }
+      } else if (t === 0x11) { // StandAloneSig: Signature(blob)
+        for (let r = 0; r < rows; ++r) readIdx(blobIdxSize);
+      } else if (t === 0x12) { // EventMap: Parent(idx) + EventList(idx)
+        for (let r = 0; r < rows; ++r) { readIdx(tableIdxSize(0x02)); readIdx(tableIdxSize(0x14)); }
+      } else if (t === 0x14) { // Event: EventFlags(2) + Name(str) + EventType(coded)
+        for (let r = 0; r < rows; ++r) { tp += 2; readIdx(stringIdxSize); readIdx(typeDefOrRefSize); }
+      } else if (t === 0x15) { // PropertyMap: Parent(idx) + PropertyList(idx)
+        for (let r = 0; r < rows; ++r) { readIdx(tableIdxSize(0x02)); readIdx(tableIdxSize(0x17)); }
+      } else if (t === 0x17) { // Property: Flags(2) + Name(str) + Type(blob)
+        for (let r = 0; r < rows; ++r) { tp += 2; readIdx(stringIdxSize); readIdx(blobIdxSize); }
+      } else if (t === 0x18) { // MethodSemantics: Semantics(2) + Method(idx) + Association(coded)
+        const hasSemanticSize = codedIdxSize([0x14, 0x17]);
+        for (let r = 0; r < rows; ++r) { tp += 2; readIdx(tableIdxSize(0x06)); readIdx(hasSemanticSize); }
+      } else if (t === 0x19) { // MethodImpl: Class(idx) + MethodBody(coded) + MethodDeclaration(coded)
+        for (let r = 0; r < rows; ++r) { readIdx(tableIdxSize(0x02)); readIdx(methodDefOrRefSize); readIdx(methodDefOrRefSize); }
+      } else if (t === 0x1A) { // ModuleRef: Name(str)
+        for (let r = 0; r < rows; ++r) readIdx(stringIdxSize);
+      } else if (t === 0x1B) { // TypeSpec: Signature(blob)
+        for (let r = 0; r < rows; ++r) readIdx(blobIdxSize);
+      } else if (t === 0x1C) { // ImplMap: MappingFlags(2) + MemberForwarded(coded) + ImportName(str) + ImportScope(idx)
+        const memberForwardedSize = codedIdxSize([0x04, 0x06]);
+        for (let r = 0; r < rows; ++r) { tp += 2; readIdx(memberForwardedSize); readIdx(stringIdxSize); readIdx(tableIdxSize(0x1A)); }
+      } else if (t === 0x1D) { // FieldRVA: RVA(4) + Field(idx)
+        for (let r = 0; r < rows; ++r) { tp += 4; readIdx(tableIdxSize(0x04)); }
+      } else if (t === 0x20) { // Assembly: HashAlgId(4) + Major(2) + Minor(2) + Build(2) + Rev(2) + Flags(4) + PublicKey(blob) + Name(str) + Culture(str)
+        for (let r = 0; r < rows; ++r) { tp += 12; readIdx(blobIdxSize); readIdx(stringIdxSize); readIdx(stringIdxSize); }
+      } else if (t === 0x23) { // AssemblyRef: Major(2)+Minor(2)+Build(2)+Rev(2)+Flags(4)+PublicKeyOrToken(blob)+Name(str)+Culture(str)+HashValue(blob)
+        for (let r = 0; r < rows; ++r) { tp += 12; readIdx(blobIdxSize); readIdx(stringIdxSize); readIdx(stringIdxSize); readIdx(blobIdxSize); }
+      } else if (t === 0x26) { // File: Flags(4)+Name(str)+HashValue(blob)
+        for (let r = 0; r < rows; ++r) { tp += 4; readIdx(stringIdxSize); readIdx(blobIdxSize); }
+      } else if (t === 0x27) { // ExportedType: Flags(4)+TypeDefId(4)+TypeName(str)+TypeNamespace(str)+Implementation(coded)
+        const implSize = codedIdxSize([0x26, 0x23, 0x27]);
+        for (let r = 0; r < rows; ++r) { tp += 8; readIdx(stringIdxSize); readIdx(stringIdxSize); readIdx(implSize); }
+      } else if (t === 0x28) { // ManifestResource: Offset(4)+Flags(4)+Name(str)+Implementation(coded)
+        const implSize = codedIdxSize([0x26, 0x23, 0x27]);
+        for (let r = 0; r < rows; ++r) { tp += 8; readIdx(stringIdxSize); readIdx(implSize); }
+      } else if (t === 0x29) { // NestedClass: NestedClass(idx)+EnclosingClass(idx)
+        for (let r = 0; r < rows; ++r) { readIdx(tableIdxSize(0x02)); readIdx(tableIdxSize(0x02)); }
+      } else if (t === 0x2A) { // GenericParam: Number(2)+Flags(2)+Owner(coded)+Name(str)
+        const typeOrMethodDefSize = codedIdxSize([0x02, 0x06]);
+        for (let r = 0; r < rows; ++r) { tp += 4; readIdx(typeOrMethodDefSize); readIdx(stringIdxSize); }
+      } else if (t === 0x2B) { // MethodSpec: Method(coded)+Instantiation(blob)
+        for (let r = 0; r < rows; ++r) { readIdx(methodDefOrRefSize); readIdx(blobIdxSize); }
+      } else if (t === 0x2C) { // GenericParamConstraint: Owner(idx)+Constraint(coded)
+        for (let r = 0; r < rows; ++r) { readIdx(tableIdxSize(0x2A)); readIdx(typeDefOrRefSize); }
+      } else {
+        // Unknown table — can't reliably skip since we don't know the row size
+        break; // stop parsing further tables
+      }
+    }
+
+    return result;
+  }
 
   // =========================================================================
   // PE (exe/dll) parser — sections, imports, exports, .NET, compiler detection
@@ -154,19 +398,46 @@
           if (!dllName) { pos += 20; continue; }
           dllNames.push(dllName);
 
-          let funcCount = 0;
+          const funcNames = [];
           const thunkRVA = origFirstThunk || firstThunk;
           if (thunkRVA > 0) {
             let tp = rvaToOffset(thunkRVA);
             const ts = isPE32Plus ? 8 : 4;
-            while (tp + ts <= bytes.length) {
+            const ordinalFlag32 = 0x80000000;
+            while (tp + ts <= bytes.length && funcNames.length < 500) {
               const tv = isPE32Plus ? readU64LE(bytes, tp) : readU32LE(bytes, tp);
               if (tv === 0) break;
-              ++funcCount;
+              if (isPE32Plus) {
+                // 64-bit: ordinal flag is bit 63
+                const hi = readU32LE(bytes, tp + 4);
+                if ((hi & 0x80000000) !== 0)
+                  funcNames.push('#' + (tv & 0xFFFF));
+                else {
+                  const nameOff = rvaToOffset(tv & 0x7FFFFFFF);
+                  if (nameOff + 2 < bytes.length) {
+                    const name = readString(bytes, nameOff + 2, 256);
+                    funcNames.push(name || '#hint(' + readU16LE(bytes, nameOff) + ')');
+                  }
+                }
+              } else {
+                if ((tv & ordinalFlag32) !== 0)
+                  funcNames.push('#' + (tv & 0xFFFF));
+                else {
+                  const nameOff = rvaToOffset(tv);
+                  if (nameOff + 2 < bytes.length) {
+                    const name = readString(bytes, nameOff + 2, 256);
+                    funcNames.push(name || '#hint(' + readU16LE(bytes, nameOff) + ')');
+                  }
+                }
+              }
               tp += ts;
             }
           }
-          importFields.push({ key: 'pe.imp.' + importFields.length, label: dllName, value: funcCount + ' function(s)' });
+          importFields.push({
+            key: 'pe.imp.' + importFields.length, label: dllName,
+            value: funcNames.length + ' function(s)',
+            expandable: true, children: funcNames,
+          });
           pos += 20;
         }
         if (importFields.length > 0)
@@ -211,6 +482,7 @@
 
     // ---- .NET CLR header (Data Directory[14]) ----
     let isDotNet = false;
+    let dotNetMetadata = null; // for MSIL disassembler token resolution
     if (numDataDirs > 14 && dataDirBase + 14 * 8 + 8 <= bytes.length) {
       const clrRVA = readU32LE(bytes, dataDirBase + 14 * 8);
       const clrSz = readU32LE(bytes, dataDirBase + 14 * 8 + 4);
@@ -235,6 +507,14 @@
         else if (scanStr.includes('.NETFramework'))
           clrFields.push({ key: 'pe.clr.type', label: '.NET Type', value: '.NET Framework' });
         categories.push({ name: '.NET CLR', icon: 'exe', fields: clrFields });
+
+        // Parse .NET metadata streams for MSIL token resolution
+        if (co + 16 <= bytes.length) {
+          const metaRVA = readU32LE(bytes, co + 8);
+          const metaSz = readU32LE(bytes, co + 12);
+          if (metaRVA > 0 && metaSz > 0)
+            dotNetMetadata = _parseDotNetMetadata(bytes, rvaToOffset(metaRVA), metaSz);
+        }
       }
     }
 
@@ -486,8 +766,43 @@
     if (detFields.length > 0)
       categories.push({ name: 'Detection', icon: 'exe', fields: detFields });
 
+    // Disassembly info for the controller
+    const peArchMap = { 0x014C: 'x86', 0x8664: 'x64', 0x01C0: 'arm', 0x01C4: 'arm', 0xAA64: 'arm64' };
+    let disasmArch = peArchMap[machine] || null;
+    let disasmOptions = undefined;
+
+    // .NET assemblies: use MSIL disassembler with metadata for token resolution
+    if (isDotNet) {
+      disasmArch = 'msil';
+      if (dotNetMetadata)
+        disasmOptions = { metadata: dotNetMetadata };
+    }
+
+    // VB6 P-code detection: "VB5!" signature at entry point
+    if (!isDotNet && epOffset > 0 && epOffset + 6 < bytes.length) {
+      // VB6 entry point typically: PUSH addr / CALL ThunRTMain
+      // The addr pushed points to a VB header starting with "VB5!"
+      if (epBytes[0] === 0x68 && epBytes.length >= 6) { // PUSH imm32
+        const vbHeaderRVA = readU32LE(bytes, epOffset + 1);
+        const vbHeaderOff = rvaToOffset(vbHeaderRVA);
+        if (vbHeaderOff > 0 && vbHeaderOff + 4 < bytes.length && readString(bytes, vbHeaderOff, 4) === 'VB5!') {
+          // Check if P-code or native
+          if (vbHeaderOff + 0x25 < bytes.length) {
+            const vbNativeCode = bytes[vbHeaderOff + 0x24];
+            if (vbNativeCode === 0) {
+              disasmArch = 'vbpcode';
+              disasmOptions = undefined;
+              compilers.push('Visual Basic 6 (P-code)');
+            } else {
+              compilers.push('Visual Basic 6 (Native)');
+            }
+          }
+        }
+      }
+    }
+
     categories.unshift({ name: 'PE Header', icon: 'exe', fields });
-    return { categories, images: [], byteRegions };
+    return { categories, images: [], byteRegions, disassembly: disasmArch ? { archId: disasmArch, offset: epOffset, rva: entryRVA, options: disasmOptions } : null };
   }
 
   // =========================================================================
@@ -676,8 +991,27 @@
         { key: 'elf.compiler', label: 'Detected Compiler', value: compilerHints.join(', ') }
       ]});
 
+    // Disassembly info
+    const elfArchMap = { 0x03: 'x86', 0x3E: 'x64', 0x28: 'arm', 0xB7: 'arm64', 0x14: 'ppc', 0x15: 'ppc' };
+    const disasmArch = elfArchMap[eMachine] || null;
+    // ELF entry point is a virtual address; approximate file offset by searching sections
+    let epFileOffset = 0;
+    if (entryPoint > 0 && shOff > 0) {
+      for (let i = 0; i < shNum; ++i) {
+        const sb = shOff + i * shEntSize;
+        if (is64 ? sb + 64 > bytes.length : sb + 40 > bytes.length) break;
+        const shAddr = is64 ? readUPtr(bytes, sb + 16) : readU32(bytes, sb + 12);
+        const shOff2 = is64 ? readUPtr(bytes, sb + 24) : readU32(bytes, sb + 16);
+        const shSize = is64 ? readUPtr(bytes, sb + 32) : readU32(bytes, sb + 20);
+        if (entryPoint >= shAddr && entryPoint < shAddr + shSize) {
+          epFileOffset = entryPoint - shAddr + shOff2;
+          break;
+        }
+      }
+    }
+
     categories.unshift({ name: 'ELF Header', icon: 'exe', fields });
-    return { categories, images: [], byteRegions };
+    return { categories, images: [], byteRegions, disassembly: disasmArch && epFileOffset > 0 ? { archId: disasmArch, offset: epFileOffset, rva: entryPoint } : null };
   }
 
   // =========================================================================
@@ -806,7 +1140,11 @@
         { key: 'macho.compiler', label: 'Detected Compiler', value: compilerHints.join(', ') }
       ]});
 
-    return { categories, images: [] };
+    // Disassembly info
+    const machoArchMap = { 7: 'x86', 12: 'arm', 0x01000007: 'x64', 0x0100000C: 'arm64' };
+    const disasmArch = machoArchMap[cpuType] || null;
+
+    return { categories, images: [], disassembly: disasmArch ? { archId: disasmArch, offset: 0, rva: 0 } : null };
   }
 
   // =========================================================================
@@ -877,9 +1215,454 @@
       if (flagNames.length > 0) fields.push({ key: 'class.flags', label: 'Access Flags', value: flagNames.join(', ') });
     }
 
-    return { categories: [{ name: 'Java Class', icon: 'exe', fields }], images: [] };
+    // Find first method's Code attribute for disassembly
+    let disassembly = null;
+    if (cpOffset + 6 <= bytes.length) {
+      let pos = cpOffset + 6; // after access_flags, this_class, super_class
+      // Skip interfaces
+      if (pos + 2 <= bytes.length) {
+        const ifCount = readU16BE(bytes, pos); pos += 2;
+        pos += ifCount * 2;
+      }
+      // Skip fields
+      if (pos + 2 <= bytes.length) {
+        const fieldCount = readU16BE(bytes, pos); pos += 2;
+        for (let fi = 0; fi < fieldCount && pos + 8 <= bytes.length; ++fi) {
+          pos += 6; // access_flags, name_index, descriptor_index
+          const attrCount = readU16BE(bytes, pos); pos += 2;
+          for (let ai = 0; ai < attrCount && pos + 6 <= bytes.length; ++ai) {
+            pos += 2; // attribute_name_index
+            const attrLen = readU32BE(bytes, pos); pos += 4;
+            pos += attrLen;
+          }
+        }
+      }
+      // Walk methods to find first Code attribute
+      if (pos + 2 <= bytes.length) {
+        const methodCount = readU16BE(bytes, pos); pos += 2;
+        for (let mi = 0; mi < methodCount && pos + 8 <= bytes.length && !disassembly; ++mi) {
+          pos += 6; // access_flags, name_index, descriptor_index
+          const attrCount = readU16BE(bytes, pos); pos += 2;
+          for (let ai = 0; ai < attrCount && pos + 6 <= bytes.length; ++ai) {
+            const attrNameIdx = readU16BE(bytes, pos); pos += 2;
+            const attrLen = readU32BE(bytes, pos); pos += 4;
+            const attrName = (cpEntries[attrNameIdx] && cpEntries[attrNameIdx].tag === 1) ? cpEntries[attrNameIdx].value : '';
+            if (attrName === 'Code' && attrLen >= 12 && !disassembly) {
+              // Code attribute: max_stack(2) + max_locals(2) + code_length(4) + code[code_length] + ...
+              const codeLen = readU32BE(bytes, pos + 4);
+              const codeStart = pos + 8;
+              if (codeStart + codeLen <= bytes.length && codeLen > 0)
+                disassembly = { archId: 'java', offset: codeStart, options: { constantPool: cpEntries } };
+            }
+            pos += attrLen;
+          }
+        }
+      }
+    }
+
+    return { categories: [{ name: 'Java Class', icon: 'exe', fields }], images: [], disassembly };
+  }
+
+  // =========================================================================
+  // Microsoft PDB (Program Database) parser
+  // =========================================================================
+
+  function parsePDB(bytes) {
+    const fields = [];
+    // "Microsoft C/C++ MSF 7.00\r\n\x1ADS\0\0\0" — 32-byte signature
+    const sigStr = readString(bytes, 0, 32);
+    fields.push({ key: 'pdb.signature', label: 'Signature', value: sigStr.replace(/[\x00-\x1F]/g, '') });
+
+    if (bytes.length >= 36) {
+      const pageSize = readU32LE(bytes, 32);
+      fields.push({ key: 'pdb.pageSize', label: 'Page Size', value: formatSize(pageSize) });
+
+      if (bytes.length >= 40) {
+        const freePageMap = readU32LE(bytes, 36);
+        fields.push({ key: 'pdb.freePageMap', label: 'Free Page Map', value: String(freePageMap) });
+      }
+      if (bytes.length >= 44) {
+        const totalPages = readU32LE(bytes, 40);
+        fields.push({ key: 'pdb.totalPages', label: 'Total Pages', value: String(totalPages) });
+        if (pageSize > 0)
+          fields.push({ key: 'pdb.estSize', label: 'Estimated Data Size', value: formatSize(totalPages * pageSize) });
+      }
+      if (bytes.length >= 48) {
+        const rootStreamSize = readU32LE(bytes, 44);
+        fields.push({ key: 'pdb.rootSize', label: 'Root Stream Size', value: formatSize(rootStreamSize) });
+      }
+    }
+
+    return { categories: [{ name: 'PDB Header', icon: 'info', fields }], images: [] };
+  }
+
+  // =========================================================================
+  // MetaTrader EX4/EX5 parser
+  // =========================================================================
+
+  function parseEX4(bytes) {
+    const fields = [];
+    // EX4/EX5 format is proprietary; extract what limited header info we can
+    if (bytes.length >= 4) {
+      const ver = readU32LE(bytes, 0);
+      fields.push({ key: 'ex4.headerWord', label: 'Header Word', value: '0x' + ver.toString(16).toUpperCase() });
+    }
+    fields.push({ key: 'ex4.size', label: 'File Size', value: formatSize(bytes.length) });
+
+    // Try to find copyright or comment strings in the first 4KB
+    const scanLen = Math.min(bytes.length, 4096);
+    let copyrightFound = false;
+    for (let i = 0; i < scanLen - 10; ++i) {
+      // Look for "Copyright" or "copyright" ASCII
+      if ((bytes[i] === 0x43 || bytes[i] === 0x63) && readString(bytes, i, 9).toLowerCase() === 'copyright') {
+        const s = readString(bytes, i, 256);
+        fields.push({ key: 'ex4.copyright', label: 'Copyright', value: s });
+        copyrightFound = true;
+        break;
+      }
+    }
+    if (!copyrightFound)
+      fields.push({ key: 'ex4.note', label: 'Note', value: 'Proprietary format — limited metadata available' });
+
+    return { categories: [{ name: 'MetaTrader EA', icon: 'exe', fields }], images: [] };
+  }
+
+  // =========================================================================
+  // Android DEX (Dalvik Executable) parser
+  // =========================================================================
+
+  function parseDEX(bytes) {
+    const categories = [];
+    const fields = [];
+    if (bytes.length < 112) return { categories: [{ name: 'DEX Header', icon: 'exe', fields }], images: [] };
+
+    // DEX header (112 bytes)
+    const magic = readString(bytes, 0, 8);
+    fields.push({ key: 'dex.magic', label: 'Magic', value: magic.replace(/[\x00-\x1F]/g, '') });
+
+    const checksum = readU32LE(bytes, 8);
+    fields.push({ key: 'dex.checksum', label: 'Checksum', value: '0x' + checksum.toString(16).toUpperCase() });
+
+    // SHA-1 signature at offset 12, 20 bytes
+    let sha1 = '';
+    for (let i = 0; i < 20; ++i) sha1 += bytes[12 + i].toString(16).padStart(2, '0');
+    fields.push({ key: 'dex.sha1', label: 'SHA-1', value: sha1.toUpperCase() });
+
+    const fileSize = readU32LE(bytes, 32);
+    fields.push({ key: 'dex.fileSize', label: 'File Size', value: formatSize(fileSize) });
+
+    const headerSize = readU32LE(bytes, 36);
+    const endianTag = readU32LE(bytes, 40);
+    fields.push({ key: 'dex.endian', label: 'Endian', value: endianTag === 0x12345678 ? 'Little-endian' : 'Big-endian' });
+
+    const stringIdsSize = readU32LE(bytes, 56);
+    const stringIdsOff = readU32LE(bytes, 60);
+    const typeIdsSize = readU32LE(bytes, 64);
+    const typeIdsOff = readU32LE(bytes, 68);
+    const protoIdsSize = readU32LE(bytes, 72);
+    const protoIdsOff = readU32LE(bytes, 76);
+    const fieldIdsSize = readU32LE(bytes, 80);
+    const fieldIdsOff = readU32LE(bytes, 84);
+    const methodIdsSize = readU32LE(bytes, 88);
+    const methodIdsOff = readU32LE(bytes, 92);
+    const classDefsSize = readU32LE(bytes, 96);
+    const classDefsOff = readU32LE(bytes, 100);
+
+    fields.push({ key: 'dex.strings', label: 'String IDs', value: String(stringIdsSize) });
+    fields.push({ key: 'dex.types', label: 'Type IDs', value: String(typeIdsSize) });
+    fields.push({ key: 'dex.protos', label: 'Proto IDs', value: String(protoIdsSize) });
+    fields.push({ key: 'dex.fields', label: 'Field IDs', value: String(fieldIdsSize) });
+    fields.push({ key: 'dex.methods', label: 'Method IDs', value: String(methodIdsSize) });
+    fields.push({ key: 'dex.classes', label: 'Class Defs', value: String(classDefsSize) });
+
+    categories.push({ name: 'DEX Header', icon: 'exe', fields });
+
+    // Read string table
+    const strings = [];
+    for (let i = 0; i < Math.min(stringIdsSize, 10000) && stringIdsOff + (i + 1) * 4 <= bytes.length; ++i) {
+      const dataOff = readU32LE(bytes, stringIdsOff + i * 4);
+      if (dataOff >= bytes.length) { strings.push(''); continue; }
+      const r = readULEB128(bytes, dataOff);
+      const strLen = r.value;
+      const strStart = dataOff + r.bytesRead;
+      strings.push(readMUTF8(bytes, strStart, Math.min(strLen + 1, 256)));
+    }
+
+    // Read type table
+    const types = [];
+    for (let i = 0; i < Math.min(typeIdsSize, 10000) && typeIdsOff + (i + 1) * 4 <= bytes.length; ++i) {
+      const descIdx = readU32LE(bytes, typeIdsOff + i * 4);
+      types.push(descIdx < strings.length ? strings[descIdx] : '?');
+    }
+
+    // Read method table
+    const methods = [];
+    for (let i = 0; i < Math.min(methodIdsSize, 10000) && methodIdsOff + (i + 1) * 8 <= bytes.length; ++i) {
+      const classIdx = readU16LE(bytes, methodIdsOff + i * 8);
+      const nameIdx = readU32LE(bytes, methodIdsOff + i * 8 + 4);
+      const className = classIdx < types.length ? types[classIdx] : '?';
+      const methodName = nameIdx < strings.length ? strings[nameIdx] : '?';
+      methods.push(className.replace(/^L|;$/g, '').replace(/\//g, '.') + '.' + methodName);
+    }
+
+    // Read field table
+    const dexFields = [];
+    for (let i = 0; i < Math.min(fieldIdsSize, 10000) && fieldIdsOff + (i + 1) * 8 <= bytes.length; ++i) {
+      const classIdx = readU16LE(bytes, fieldIdsOff + i * 8);
+      const nameIdx = readU32LE(bytes, fieldIdsOff + i * 8 + 4);
+      const className = classIdx < types.length ? types[classIdx] : '?';
+      const fieldName = nameIdx < strings.length ? strings[nameIdx] : '?';
+      dexFields.push(className.replace(/^L|;$/g, '').replace(/\//g, '.') + '.' + fieldName);
+    }
+
+    // Read class defs
+    const classFields = [];
+    let firstCodeOff = 0;
+    for (let i = 0; i < Math.min(classDefsSize, 200) && classDefsOff + (i + 1) * 32 <= bytes.length; ++i) {
+      const co = classDefsOff + i * 32;
+      const classTypeIdx = readU32LE(bytes, co);
+      const accessFlags = readU32LE(bytes, co + 4);
+      const superIdx = readU32LE(bytes, co + 8);
+      const classDataOff = readU32LE(bytes, co + 24);
+
+      const className = classTypeIdx < types.length ? types[classTypeIdx].replace(/^L|;$/g, '').replace(/\//g, '.') : '?';
+      const superName = superIdx !== 0xFFFFFFFF && superIdx < types.length ? types[superIdx].replace(/^L|;$/g, '').replace(/\//g, '.') : '';
+
+      const flags = [];
+      if (accessFlags & 0x0001) flags.push('public');
+      if (accessFlags & 0x0010) flags.push('final');
+      if (accessFlags & 0x0200) flags.push('interface');
+      if (accessFlags & 0x0400) flags.push('abstract');
+      if (accessFlags & 0x4000) flags.push('enum');
+
+      const desc = (flags.length ? flags.join(' ') + ' ' : '') + className + (superName && superName !== 'java.lang.Object' ? ' extends ' + superName : '');
+      classFields.push({ key: 'dex.class.' + i, label: className.split('.').pop(), value: desc });
+
+      // Find first code item for disassembly
+      if (firstCodeOff === 0 && classDataOff > 0 && classDataOff < bytes.length) {
+        let p = classDataOff;
+        const sfCount = readULEB128(bytes, p); p += sfCount.bytesRead;
+        const ifCount = readULEB128(bytes, p); p += ifCount.bytesRead;
+        const dmCount = readULEB128(bytes, p); p += dmCount.bytesRead;
+        const vmCount = readULEB128(bytes, p); p += vmCount.bytesRead;
+        // Skip static fields
+        for (let j = 0; j < sfCount.value && p < bytes.length; ++j) {
+          const r1 = readULEB128(bytes, p); p += r1.bytesRead;
+          const r2 = readULEB128(bytes, p); p += r2.bytesRead;
+        }
+        // Skip instance fields
+        for (let j = 0; j < ifCount.value && p < bytes.length; ++j) {
+          const r1 = readULEB128(bytes, p); p += r1.bytesRead;
+          const r2 = readULEB128(bytes, p); p += r2.bytesRead;
+        }
+        // First direct method
+        for (let j = 0; j < dmCount.value && p < bytes.length; ++j) {
+          const r1 = readULEB128(bytes, p); p += r1.bytesRead;
+          const r2 = readULEB128(bytes, p); p += r2.bytesRead;
+          const codeOff = readULEB128(bytes, p); p += codeOff.bytesRead;
+          if (codeOff.value > 0 && firstCodeOff === 0)
+            firstCodeOff = codeOff.value;
+          break;
+        }
+      }
+    }
+
+    if (classFields.length > 0)
+      categories.push({ name: 'Classes (' + classFields.length + ')', icon: 'list', fields: classFields });
+
+    // Code item: registers_size(2) + ins_size(2) + outs_size(2) + tries_size(2) + debug_info_off(4) + insns_size(4) + insns[]
+    let disassembly = null;
+    if (firstCodeOff > 0 && firstCodeOff + 16 <= bytes.length) {
+      const insnsSize = readU32LE(bytes, firstCodeOff + 12); // in 16-bit code units
+      const codeStart = firstCodeOff + 16;
+      if (codeStart < bytes.length && insnsSize > 0)
+        disassembly = { archId: 'dalvik', offset: codeStart, options: { strings, types, methods, fields: dexFields } };
+    }
+
+    return { categories, images: [], disassembly };
+  }
+
+  // =========================================================================
+  // Android OAT parser
+  // =========================================================================
+
+  function parseOAT(bytes) {
+    const fields = [];
+    const version = readString(bytes, 4, 4).replace(/\x00/g, '');
+    fields.push({ key: 'oat.version', label: 'OAT Version', value: version });
+    if (bytes.length >= 20) {
+      const adler32 = readU32LE(bytes, 8);
+      fields.push({ key: 'oat.checksum', label: 'Checksum', value: '0x' + adler32.toString(16).toUpperCase() });
+      const instrSet = readU32LE(bytes, 12);
+      const instrSetNames = { 0: 'None', 1: 'ARM', 2: 'ARM64', 3: 'Thumb2', 4: 'x86', 5: 'x86-64', 6: 'MIPS', 7: 'MIPS64' };
+      fields.push({ key: 'oat.instrSet', label: 'Instruction Set', value: instrSetNames[instrSet] || String(instrSet) });
+    }
+    return { categories: [{ name: 'OAT Header', icon: 'exe', fields }], images: [] };
+  }
+
+  // =========================================================================
+  // Android VDEX parser
+  // =========================================================================
+
+  function parseVDEX(bytes) {
+    const fields = [];
+    const version = readString(bytes, 4, 4).replace(/\x00/g, '');
+    fields.push({ key: 'vdex.version', label: 'VDEX Version', value: version });
+    if (bytes.length >= 12) {
+      const dexCount = readU32LE(bytes, 8);
+      fields.push({ key: 'vdex.dexCount', label: 'DEX File Count', value: String(dexCount) });
+    }
+    return { categories: [{ name: 'VDEX Header', icon: 'exe', fields }], images: [] };
+  }
+
+  // =========================================================================
+  // Android ART image parser
+  // =========================================================================
+
+  function parseART(bytes) {
+    const fields = [];
+    const version = readString(bytes, 4, 4).replace(/\x00/g, '');
+    fields.push({ key: 'art.version', label: 'ART Version', value: version });
+    if (bytes.length >= 24) {
+      const imageSize = readU32LE(bytes, 16);
+      fields.push({ key: 'art.imageSize', label: 'Image Size', value: formatSize(imageSize) });
+    }
+    return { categories: [{ name: 'ART Image Header', icon: 'exe', fields }], images: [] };
+  }
+
+  // =========================================================================
+  // Python compiled bytecode (.pyc) parser
+  // =========================================================================
+
+  function parsePYC(bytes) {
+    const categories = [];
+    const fields = [];
+    if (bytes.length < 16) return { categories: [{ name: 'Python Bytecode', icon: 'exe', fields }], images: [] };
+
+    const magic = readU16LE(bytes, 0);
+
+    // Python version from magic number
+    const pyVersionMap = {
+      3390: '3.6', 3391: '3.6', 3392: '3.6', 3393: '3.6', 3394: '3.7',
+      3400: '3.7', 3401: '3.7', 3410: '3.7', 3411: '3.7', 3412: '3.7',
+      3413: '3.8', 3420: '3.8', 3421: '3.8', 3422: '3.8', 3423: '3.8',
+      3424: '3.8', 3425: '3.9', 3430: '3.9', 3431: '3.9', 3432: '3.9',
+      3433: '3.10', 3434: '3.10', 3435: '3.10', 3436: '3.10', 3437: '3.10',
+      3438: '3.10', 3439: '3.11', 3450: '3.11', 3451: '3.11', 3452: '3.11',
+      3453: '3.11', 3454: '3.11', 3455: '3.11', 3456: '3.11', 3457: '3.11',
+      3458: '3.11', 3459: '3.11', 3460: '3.11', 3461: '3.11', 3462: '3.12',
+      3470: '3.12', 3471: '3.12', 3472: '3.12', 3473: '3.12', 3474: '3.12',
+      3475: '3.12', 3476: '3.12', 3477: '3.12', 3478: '3.12', 3479: '3.12',
+      3480: '3.12', 3481: '3.12', 3482: '3.12', 3483: '3.12', 3484: '3.12',
+      3485: '3.12', 3486: '3.12', 3487: '3.12', 3488: '3.12', 3489: '3.12',
+      3490: '3.12', 3491: '3.12', 3492: '3.12', 3493: '3.12', 3494: '3.12',
+      3495: '3.13', 3500: '3.13', 3501: '3.13', 3502: '3.13', 3503: '3.13',
+      3504: '3.13', 3505: '3.13', 3506: '3.13', 3507: '3.13', 3508: '3.13',
+      3509: '3.13', 3510: '3.13', 3511: '3.13', 3512: '3.13', 3513: '3.13',
+      3514: '3.13',
+    };
+
+    const pyVersion = pyVersionMap[magic] || '?';
+    fields.push({ key: 'pyc.magic', label: 'Magic Number', value: String(magic) });
+    fields.push({ key: 'pyc.version', label: 'Python Version', value: 'Python ' + pyVersion });
+
+    // Header size depends on version: 3.7+ has 16-byte header, earlier 12-byte or 8-byte
+    let headerSize = 16;
+    if (magic < 3394) headerSize = 12;
+    if (magic < 3200) headerSize = 8;
+
+    if (headerSize >= 12 && bytes.length >= headerSize) {
+      const timestamp = readU32LE(bytes, headerSize === 16 ? 8 : 4);
+      if (timestamp > 0)
+        fields.push({ key: 'pyc.timestamp', label: 'Timestamp', value: formatTimestamp(timestamp) });
+      if (headerSize === 16) {
+        const sourceSize = readU32LE(bytes, 12);
+        if (sourceSize > 0)
+          fields.push({ key: 'pyc.sourceSize', label: 'Source Size', value: formatSize(sourceSize) });
+      }
+    }
+
+    categories.push({ name: 'Python Bytecode', icon: 'exe', fields });
+
+    // Attempt to find code object in marshal data
+    // Marshal format: type byte + data. Code object type = 'c' (0x63)
+    // The code object has: co_code (bytecode), co_consts, co_names, co_varnames
+    let disassembly = null;
+    let pos = headerSize;
+    // Simple marshal walk to find first code object
+    function findCodeObject(p, depth) {
+      if (depth > 10 || p >= bytes.length) return null;
+      const type = bytes[p] & 0x7F; // strip FLAG_REF bit
+      ++p;
+      if (type === 0x63) { // TYPE_CODE 'c'
+        // Code object: argcount(4) + posonlyargcount(4 if 3.8+) + kwonlyargcount(4) + nlocals(4) + stacksize(4) + flags(4)
+        // + code(string) + consts(tuple) + names(tuple) + varnames(tuple) ...
+        let skip = 20; // 5 x u32 for 3.6/3.7
+        if (magic >= 3413) skip = 24; // 6 x u32 for 3.8+ (posonlyargcount added)
+        if (p + skip >= bytes.length) return null;
+        p += skip;
+
+        // co_code: marshal string - type byte 's' (0x73) or 'z' (short string)
+        const codeType = bytes[p] & 0x7F; ++p;
+        let codeLen = 0;
+        if (codeType === 0x73) { // TYPE_STRING
+          codeLen = readU32LE(bytes, p); p += 4;
+        } else if (codeType === 0x7A) { // TYPE_SHORT_ASCII
+          codeLen = bytes[p]; ++p;
+        } else if (codeType === 0x5A) { // TYPE_SHORT_ASCII_INTERNED
+          codeLen = bytes[p]; ++p;
+        } else return null;
+
+        const codeStart = p;
+        if (codeLen > 0 && codeStart + codeLen <= bytes.length)
+          return { offset: codeStart, length: codeLen, codeP: p + codeLen };
+        return null;
+      }
+      return null;
+    }
+
+    const codeObj = findCodeObject(pos, 0);
+    if (codeObj)
+      disassembly = { archId: 'python', offset: codeObj.offset };
+
+    return { categories, images: [], disassembly };
+  }
+
+  // =========================================================================
+  // Dart Kernel AST binary parser
+  // =========================================================================
+
+  function parseDartKernel(bytes) {
+    const fields = [];
+    fields.push({ key: 'dart.magic', label: 'Magic', value: '0x' + readU32BE(bytes, 0).toString(16).toUpperCase() });
+    if (bytes.length >= 8) {
+      const formatVersion = readU32BE(bytes, 4);
+      fields.push({ key: 'dart.version', label: 'Format Version', value: String(formatVersion) });
+    }
+    fields.push({ key: 'dart.size', label: 'File Size', value: formatSize(bytes.length) });
+    fields.push({ key: 'dart.note', label: 'Note', value: 'Dart Kernel AST binary — structural summary only' });
+
+    // Attempt to extract library/class names by scanning for ASCII strings
+    const libraries = [];
+    // Simple heuristic: look for "dart:" or "package:" prefixed strings
+    const scanStr = readString(bytes, 0, Math.min(bytes.length, 65536));
+    const dartLibRe = /(?:dart|package):[a-zA-Z0-9_./]+/g;
+    let match;
+    const seen = new Set();
+    while ((match = dartLibRe.exec(scanStr)) !== null && libraries.length < 50) {
+      if (!seen.has(match[0])) {
+        seen.add(match[0]);
+        libraries.push({ name: match[0], classes: [] });
+      }
+    }
+
+    return {
+      categories: [{ name: 'Dart Kernel', icon: 'exe', fields }],
+      images: [],
+      disassembly: libraries.length > 0 ? { archId: 'dart', offset: 0, options: { libraries } } : null
+    };
   }
 
   P._parseJavaClass = parseJavaClass;
-  P.registerParsers({ pe: parsePE, elf: parseELF, macho: parseMachO, javaclass: parseJavaClass });
+  P.registerParsers({ pe: parsePE, elf: parseELF, macho: parseMachO, javaclass: parseJavaClass, pdb: parsePDB, ex4: parseEX4, ex5: parseEX4, dex: parseDEX, dart: parseDartKernel, oat: parseOAT, vdex: parseVDEX, art: parseART, pyc: parsePYC });
 })();
