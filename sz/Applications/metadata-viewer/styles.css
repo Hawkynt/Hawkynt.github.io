@@ -252,6 +252,13 @@ html, body {
 .field-value.hash { cursor: pointer; }
 .field-value.hash:hover { color: var(--sz-color-highlight, #316ac5); text-decoration: underline; }
 
+.expandable-parent { cursor: pointer; }
+.expandable-parent:hover { background: var(--sz-color-highlight, #316ac5) !important; color: var(--sz-color-highlight-text, #fff) !important; }
+.expand-chevron { display: inline-block; width: 10px; margin-right: 4px; font-size: 8px; transition: transform 0.15s; }
+.expandable-child-label { padding-left: 18px !important; }
+.expandable-child-value { font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 10px; opacity: 0.85; padding-left: 6px; }
+.expandable-child td { border-bottom: none !important; }
+
 .field-modified { border-left: 3px solid #f59e0b !important; }
 .field-removed { border-left: 3px solid #ef4444 !important; opacity: 0.6; }
 .field-removed .field-label { text-decoration: line-through; }
@@ -303,6 +310,19 @@ html, body {
   color: inherit;
   outline: none;
 }
+
+.field-edit-input[type="number"] { width: 120px; }
+.field-edit-input[type="datetime-local"] { width: auto; }
+select.field-edit-input { width: auto; min-width: 120px; }
+
+.image-edit-toolbar, .geo-edit-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.geo-input { width: 100px !important; font-size: 10px; }
 
 /* Hash status indicators */
 .hash-spinner {
@@ -460,6 +480,45 @@ html, body {
 }
 
 .unicode-codepoint { font-size: 9px; color: var(--sz-color-gray-text, #808080); vertical-align: super; margin-left: 1px; }
+
+/* ===== Disassembly Preview (inside accordion) ===== */
+
+.disasm-listing {
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  font-size: 10px;
+  line-height: 1.5;
+  user-select: text;
+  color: var(--sz-color-window-text, #000);
+  padding: 8px;
+  margin: 0;
+  white-space: pre;
+  overflow-x: auto;
+  tab-size: 4;
+}
+
+/* Disassembly syntax highlighting */
+.da-line { display: block; }
+.da-line:hover { background: rgba(0,0,0,0.04); }
+.da-off { color: #6e7681; }
+.da-hex { color: #8b949e; }
+.da-sep { color: #8b949e; opacity: 0.5; }
+.da-mn { color: #0550ae; font-weight: bold; }
+.da-mn-flow { color: #cf222e; font-weight: bold; }
+.da-mn-data { color: #0550ae; font-weight: bold; }
+.da-mn-alu { color: #6639ba; font-weight: bold; }
+.da-mn-obj { color: #953800; font-weight: bold; }
+.da-mn-access { color: #0a3069; font-weight: bold; }
+.da-mn-err { color: #ff0000; font-weight: bold; text-decoration: wavy underline; }
+.da-reg { color: #0969da; }
+.da-num { color: #0a3069; }
+.da-str { color: #0a3069; font-style: italic; }
+.da-sym { color: #8250df; }
+.da-kw { color: #cf222e; }
+.da-lbl { color: #1a7f37; text-decoration: underline; }
+.da-id { color: #24292f; }
+.da-cmt { color: #6e7681; font-style: italic; }
+.da-br { color: #cf222e; }
+.da-op { color: #24292f; }
 
 /* ===== Waveform Preview (inside accordion) ===== */
 
