@@ -224,6 +224,15 @@
   background: var(--sz-color-window, white);
 }
 
+/* Transparent overlay that intercepts clicks on inactive windows so
+   iframes (which swallow pointer events) don't prevent focus changes. */
+.sz-window:not(.sz-window-active) .sz-window-content::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
 .sz-app-frame {
   position: absolute;
   inset: 0;
