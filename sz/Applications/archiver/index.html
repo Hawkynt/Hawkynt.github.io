@@ -58,6 +58,7 @@
       <div class="menu-entry" data-action="delete">Delete Selected<span class="shortcut">Del</span></div>
       <div class="menu-separator"></div>
       <div class="menu-entry" data-action="view">View File<span class="shortcut">Enter</span></div>
+      <div class="menu-entry" data-action="properties">Properties<span class="shortcut">Alt+Enter</span></div>
       <div class="menu-entry" data-action="test">Test Archive</div>
       <div class="menu-separator"></div>
       <div class="menu-entry" data-action="select-all">Select All<span class="shortcut">Ctrl+A</span></div>
@@ -261,6 +262,22 @@
   </div>
 </div>
 
+<!-- Properties Dialog -->
+<div class="dialog-overlay" id="dlg-properties">
+  <div class="dialog" style="min-width:360px;">
+    <div class="dialog-title">Properties</div>
+    <div class="dialog-body">
+      <dl class="info-grid" id="props-info-grid"></dl>
+      <div class="options-separator" id="props-separator"></div>
+      <div id="props-options-panel"></div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">OK</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- About Dialog -->
 <div class="dialog-overlay" id="dlg-about">
   <div class="dialog">
@@ -277,6 +294,21 @@
   </div>
 </div>
 
+<script src="archive-core.js"></script>
+<script src="algorithm-huffman.js"></script>
+<script src="algorithm-lzhuf.js"></script>
+<script src="archive-compression.js"></script>
+<script src="archive-zip.js"></script>
+<script src="archive-tar.js"></script>
+<script src="archive-rar.js"></script>
+<script src="archive-7z.js"></script>
+<script src="archive-arj.js"></script>
+<script src="archive-lzh.js"></script>
+<script src="archive-cab.js"></script>
+<script src="archive-legacy.js"></script>
+<script src="archive-system.js"></script>
+<script src="archive-encoding.js"></script>
+<script src="archive-disk.js"></script>
 <script src="controller.js"></script>
 </body>
 </html>

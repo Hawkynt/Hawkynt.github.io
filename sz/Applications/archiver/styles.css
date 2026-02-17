@@ -576,6 +576,35 @@ td.col-encrypted { text-align: center; }
   padding: 4px;
 }
 
+/* ---- Context menu ---- */
+.context-menu {
+  position: fixed;
+  min-width: 160px;
+  background: var(--sz-color-menu);
+  border: 1px solid var(--sz-color-button-shadow);
+  box-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+  z-index: 3000;
+  padding: 2px 0;
+}
+
+.context-menu .menu-entry {
+  padding: 4px 24px 4px 8px;
+  cursor: default;
+  color: var(--sz-color-menu-text);
+  white-space: nowrap;
+}
+
+.context-menu .menu-entry:hover {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+}
+
+.context-menu .menu-separator {
+  height: 1px;
+  background: var(--sz-color-button-shadow);
+  margin: 2px 4px;
+}
+
 /* ---- Scrollbars ---- */
 ::-webkit-scrollbar { width: 12px; height: 12px; }
 ::-webkit-scrollbar-track { background: var(--sz-color-button-face); }
