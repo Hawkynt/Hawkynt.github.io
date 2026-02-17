@@ -128,6 +128,36 @@
           }
         }
 
+        // Extract codec configuration from stsd entries
+        if (type === 'stsd' && boxEnd - boxData > 8) {
+          const entryCount = readU32BE(bytes, boxData + 4);
+          let ePos = boxData + 8;
+          for (let e = 0; e < entryCount && ePos + 8 <= boxEnd; ++e) {
+            let eSize = readU32BE(bytes, ePos);
+            const codecTag = readString(bytes, ePos + 4, 4);
+            if (eSize < 8 || ePos + eSize > boxEnd) break;
+            // Video sample entries have width/height at offset 24/26 from entry start, followed by sub-boxes after 78 bytes
+            if (['avc1', 'avc3', 'hev1', 'hvc1', 'vp09', 'av01', 'mp4v'].includes(codecTag)) {
+              codecConfigs.push({ tag: codecTag, offset: ePos, size: eSize });
+              // Look for avcC / hvcC / vpcC / av1C sub-box inside the sample entry
+              let sPos = ePos + 78; // skip sample entry header (78 bytes for video)
+              if (sPos > ePos + eSize) sPos = ePos + 8 + 6 + 2; // fallback: after 8-byte box header + 6 reserved + 2 data_ref
+              while (sPos + 8 <= ePos + eSize) {
+                const sSize = readU32BE(bytes, sPos);
+                const sType = readString(bytes, sPos + 4, 4);
+                if (sSize < 8) break;
+                if (['avcC', 'hvcC', 'vpcC', 'av1C'].includes(sType))
+                  codecConfigs.push({ tag: sType, offset: sPos + 8, size: sSize - 8 });
+                sPos += sSize;
+              }
+            }
+            // Audio sample entries
+            if (['mp4a', 'ac-3', 'ec-3', 'Opus', 'fLaC', 'alac'].includes(codecTag))
+              codecConfigs.push({ tag: codecTag, offset: ePos, size: eSize });
+            ePos += eSize;
+          }
+        }
+
         // Recurse into container boxes (ilst handled explicitly above)
         if (type !== 'ilst' && ['moov', 'trak', 'mdia', 'minf', 'stbl', 'udta', 'meta'].includes(type)) {
           const skip = type === 'meta' ? 4 : 0; // meta has fullbox header
@@ -157,6 +187,7 @@
     };
     const ilstFields = [];
     const mp4Images = [];
+    const codecConfigs = [];
 
     walkBoxes(0, bytes.length, 0);
 
@@ -165,6 +196,87 @@
 
     if (ilstFields.length > 0)
       categories.push({ name: 'iTunes Metadata', icon: 'music', fields: ilstFields });
+
+    // Video/audio stream codec details via shared codec-video.js library
+    const CV = window.SZ && SZ.Formats && SZ.Formats.Codecs && SZ.Formats.Codecs.Video;
+    if (CV && codecConfigs.length > 0) {
+      try {
+        for (const cfg of codecConfigs) {
+          const streamFields = [];
+          // H.264 avcC box — contains SPS/PPS
+          if (cfg.tag === 'avcC' && cfg.size >= 8 && CV.parseSPS_H264) {
+            const numSps = bytes[cfg.offset + 5] & 0x1F;
+            if (numSps > 0 && cfg.offset + 8 <= bytes.length) {
+              const spsLen = readU16BE(bytes, cfg.offset + 6);
+              if (spsLen > 0 && cfg.offset + 8 + spsLen <= bytes.length) {
+                const spsBytes = bytes.slice(cfg.offset + 8, cfg.offset + 8 + spsLen);
+                const sps = CV.parseSPS_H264(spsBytes);
+                if (sps) {
+                  streamFields.push({ key: 'stream.video.codec', label: 'Codec', value: 'H.264/AVC' });
+                  if (sps.profileName) streamFields.push({ key: 'stream.video.profile', label: 'Profile', value: sps.profileName });
+                  if (sps.level) streamFields.push({ key: 'stream.video.level', label: 'Level', value: (sps.level / 10).toFixed(1) });
+                  if (sps.width && sps.height) streamFields.push({ key: 'stream.video.resolution', label: 'Resolution', value: sps.width + '\u00D7' + sps.height });
+                  if (sps.chromaFormat) {
+                    const chromaNames = { 1: '4:2:0', 2: '4:2:2', 3: '4:4:4' };
+                    streamFields.push({ key: 'stream.video.chroma', label: 'Chroma', value: chromaNames[sps.chromaFormat] || String(sps.chromaFormat) });
+                  }
+                  if (sps.bitDepthLuma) streamFields.push({ key: 'stream.video.bitDepth', label: 'Bit Depth', value: String(sps.bitDepthLuma) });
+                  if (sps.refFrames) streamFields.push({ key: 'stream.video.refFrames', label: 'Reference Frames', value: String(sps.refFrames) });
+                }
+              }
+            }
+          }
+
+          // H.265 hvcC box
+          if (cfg.tag === 'hvcC' && cfg.size >= 23 && CV.parseSPS_H265) {
+            // hvcC contains arrays of NAL units; extract first SPS
+            const generalProfileIdc = bytes[cfg.offset + 1] & 0x1F;
+            const generalLevelIdc = bytes[cfg.offset + 12];
+            const numArrays = bytes[cfg.offset + 22];
+            let aOff = cfg.offset + 23;
+            for (let a = 0; a < numArrays && aOff + 3 <= cfg.offset + cfg.size; ++a) {
+              const nalType = bytes[aOff] & 0x3F;
+              const numNalus = readU16BE(bytes, aOff + 1);
+              aOff += 3;
+              for (let n = 0; n < numNalus && aOff + 2 <= cfg.offset + cfg.size; ++n) {
+                const nalLen = readU16BE(bytes, aOff);
+                aOff += 2;
+                if (nalType === 33 && nalLen > 0 && aOff + nalLen <= bytes.length) {
+                  const spsBytes = bytes.slice(aOff, aOff + nalLen);
+                  const sps = CV.parseSPS_H265(spsBytes);
+                  if (sps) {
+                    streamFields.push({ key: 'stream.video.codec', label: 'Codec', value: 'H.265/HEVC' });
+                    if (sps.profileName) streamFields.push({ key: 'stream.video.profile', label: 'Profile', value: sps.profileName });
+                    if (sps.level) streamFields.push({ key: 'stream.video.level', label: 'Level', value: (sps.level / 30).toFixed(1) });
+                    if (sps.tier) streamFields.push({ key: 'stream.video.tier', label: 'Tier', value: sps.tier });
+                    if (sps.width && sps.height) streamFields.push({ key: 'stream.video.resolution', label: 'Resolution', value: sps.width + '\u00D7' + sps.height });
+                    if (sps.chromaFormat) {
+                      const chromaNames = { 1: '4:2:0', 2: '4:2:2', 3: '4:4:4' };
+                      streamFields.push({ key: 'stream.video.chroma', label: 'Chroma', value: chromaNames[sps.chromaFormat] || String(sps.chromaFormat) });
+                    }
+                    if (sps.bitDepthLuma) streamFields.push({ key: 'stream.video.bitDepth', label: 'Bit Depth', value: String(sps.bitDepthLuma) });
+                  }
+                }
+                aOff += nalLen;
+              }
+            }
+          }
+
+          // Codec tag identification
+          if (streamFields.length === 0 && ['avc1', 'avc3', 'hev1', 'hvc1', 'vp09', 'av01', 'mp4v'].includes(cfg.tag)) {
+            const tagNames = { avc1: 'H.264/AVC', avc3: 'H.264/AVC', hev1: 'H.265/HEVC', hvc1: 'H.265/HEVC', vp09: 'VP9', av01: 'AV1', mp4v: 'MPEG-4 Part 2' };
+            streamFields.push({ key: 'stream.video.codec', label: 'Video Codec', value: tagNames[cfg.tag] || cfg.tag });
+          }
+          if (streamFields.length === 0 && ['mp4a', 'ac-3', 'ec-3', 'Opus', 'fLaC', 'alac'].includes(cfg.tag)) {
+            const audioNames = { mp4a: 'AAC', 'ac-3': 'AC-3 (Dolby Digital)', 'ec-3': 'E-AC-3 (Dolby Digital Plus)', Opus: 'Opus', fLaC: 'FLAC', alac: 'Apple Lossless' };
+            streamFields.push({ key: 'stream.audio.codec', label: 'Audio Codec', value: audioNames[cfg.tag] || cfg.tag });
+          }
+
+          if (streamFields.length > 0)
+            categories.push({ name: 'Stream: ' + cfg.tag, icon: 'video', fields: streamFields });
+        }
+      } catch (_) { /* codec analysis is best-effort */ }
+    }
 
     return { categories, images: mp4Images, byteRegions };
   }
