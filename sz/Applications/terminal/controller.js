@@ -17,7 +17,7 @@
   // State
   // =========================================================================
   let currentShell = 'cmd';
-  let cmdCwd = '/';
+  let cmdCwd = '/user';
   let cmdPromptTemplate = '$P$G';
   let cmdPath = '';
   let cmdVars = {};
@@ -82,7 +82,17 @@
   // =========================================================================
   async function vfsList(path) {
     try {
-      const entries = await Kernel32.FindFirstFile(path);
+      const names = await Kernel32.FindFirstFile(path);
+      const entries = [];
+      for (const name of names) {
+        const fullPath = path === '/' ? '/' + name : path + '/' + name;
+        try {
+          const attrs = await Kernel32.GetFileAttributes(fullPath);
+          entries.push({ name, type: attrs.kind === 'dir' ? 'dir' : 'file', size: attrs.size || 0 });
+        } catch {
+          entries.push({ name, type: 'file', size: 0 });
+        }
+      }
       return { entries };
     } catch (e) {
       return { error: e.message, entries: [] };
@@ -300,7 +310,8 @@
       if (upper === 'COMPUTERNAME') return 'SZ-PC';
       if (upper === 'OS') return 'SynthelicZ';
       if (upper === 'HOMEDRIVE') return 'SZ:';
-      if (upper === 'HOMEPATH') return '\\';
+      if (upper === 'HOMEPATH') return '\\user';
+      if (upper === 'USERPROFILE') return 'SZ:\\user';
       if (upper === 'SYSTEMROOT') return 'SZ:\\System';
       if (upper === 'WINDIR') return 'SZ:\\System';
       if (upper === 'TEMP' || upper === 'TMP') return 'SZ:\\Temp';
@@ -1230,9 +1241,9 @@
   // =========================================================================
   // BASH shell interpreter
   // =========================================================================
-  let bashCwd = '/';
+  let bashCwd = '/user';
   let bashEnv = {
-    HOME: '/',
+    HOME: '/user',
     USER: 'user',
     HOSTNAME: 'sz-pc',
     SHELL: '/bin/bash',
@@ -1240,8 +1251,8 @@
     PATH: '/usr/bin:/bin',
     TERM: 'xterm-256color',
     LANG: 'en_US.UTF-8',
-    PWD: '/',
-    OLDPWD: '/',
+    PWD: '/user',
+    OLDPWD: '/user',
   };
   let bashAliases = {
     ll: 'ls -la',
