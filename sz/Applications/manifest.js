@@ -479,7 +479,7 @@
         maximizable: true,
         singleton: false,
         category: 'Development',
-        fileTypes: ['cron', 'crontab', 'txt']
+        fileTypes: ['cron', 'crontab']
       },
       {
         id: 'subnet-calculator',

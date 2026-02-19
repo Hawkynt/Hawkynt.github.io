@@ -134,11 +134,40 @@ sz/
   libs/
     formats/
       format-core.js            Shared format registry (SZ.Formats) + binary I/O utilities
+      format-utils.js           Shared utilities: BitstreamReader, NAL start code scanner, emulation prevention removal
+      wasm-loader.js            Lazy WASM engine loader (ffmpeg.wasm + wasm-imagemagick), returns null on file://
       disk-commodore.js         C64 1541/1571/1581 disk image parsers (D64/D71/D81/T64)
       disk-amiga.js             Amiga Disk File (ADF) parser
       graphics-ico.js           Full ICO/CUR codec (parse, decode BMP entries, write) shared by icon-editor and metadata-viewer
-      codec-audio.js            Audio codec analysis: MP3 frame scanner, Xing/LAME/VBRI header parsers, AAC ADTS, FLAC frame headers, PCM statistics
-      codec-video.js            Video codec analysis: H.264/H.265 SPS parsing, VP9 frame headers, AV1 OBU parser, Exp-Golomb bitstream reader
+      graphics-bmp.js           BMP image codec (pure JS decode/encode, 1/4/8/16/24/32-bit)
+      graphics-png.js           PNG image codec (JS chunk parser, browser canvas decode/encode)
+      graphics-jpeg.js          JPEG image codec (marker parser, EXIF-aware, browser canvas decode/encode)
+      graphics-gif.js           GIF image codec (frame count/delay metadata, browser canvas decode)
+      graphics-webp.js          WebP image codec (RIFF parser, browser canvas decode/encode)
+      graphics-avif.js          AVIF image codec (ISOBMFF ftyp detection, browser canvas decode)
+      graphics-svg.js           SVG image codec (text-based detection, browser Image decode)
+      graphics-tga.js           TGA image codec (pure JS uncompressed + RLE decode/encode)
+      graphics-tiff.js          TIFF image codec (IFD metadata parser, wasm-imagemagick decode)
+      graphics-ppm.js           PPM/PGM/PBM family codec (pure JS P1-P6 decode, P6 encode)
+      graphics-pcx.js           PCX image codec (RLE decode, 8-bit palette + 24-bit)
+      graphics-dds.js           DDS surface codec (DXT1/DXT5 block decode)
+      codec-mp3.js              MP3 frame scanner, Xing/LAME/VBRI header parsers
+      codec-aac.js              AAC ADTS frame scanner
+      codec-flac.js             FLAC frame header parser
+      codec-pcm.js              WAV/PCM analyzer + statistics (RMS/peak/clipping/silence)
+      codec-ogg.js              Ogg container page parser (Vorbis/Opus/FLAC/Theora detection)
+      codec-opus.js             Opus audio header parser (OpusHead inside Ogg)
+      codec-midi.js             MIDI header/track parser (format, tracks, timing)
+      codec-aiff.js             AIFF/AIFF-C chunk parser (COMM, sample rate, duration)
+      codec-h264.js             H.264/AVC NAL unit + SPS parser (profile, level, resolution)
+      codec-h265.js             H.265/HEVC NAL unit + SPS parser
+      codec-vp8.js              VP8 frame header parser
+      codec-vp9.js              VP9 frame header parser
+      codec-av1.js              AV1 OBU + sequence header parser
+      codec-video-identify.js   Video codec identification heuristic (tries H.264/H.265/VP9/AV1)
+    wasm/                       WASM binaries (loaded lazily by wasm-loader.js)
+      ffmpeg/                   ffmpeg.wasm single-thread core (not shipped yet — add @ffmpeg/core files)
+      magick/                   wasm-imagemagick UMD bundle (not shipped yet — add magick.js + magick.wasm)
   Applications/
     manifest.js                 Inline app registry with file type associations (sets SZ.manifest)
     sz-app-bootstrap.js         DLL-like API library: SZ.Dlls.User32/Kernel32/GDI32/Shell32/ComDlg32/Advapi32, theme injection, WindowProc dispatch, standalone redirect
@@ -1596,20 +1625,24 @@ The VFS enables:
 Three-layer architecture for reusable file format parsing:
 
 - **Layer 1** (Utilities): Binary I/O, CRC, string decoding — `format-core.js`
-- **Layer 2** (Format Libraries): Pure parsing, no UI coupling — `disk-commodore.js`, `disk-amiga.js`, `graphics-ico.js`, `codec-audio.js`, `codec-video.js`, future `executable-pe.js`, etc.
+- **Layer 1.5** (Shared Utilities): `format-utils.js` (BitstreamReader, NAL helpers), `wasm-loader.js` (lazy ffmpeg.wasm + wasm-imagemagick init)
+- **Layer 2** (Format Libraries): Pure parsing, no UI coupling — individual codec/graphics files (one per format), `disk-commodore.js`, `disk-amiga.js`, future `executable-pe.js`, etc.
 - **Layer 3** (App Adapters): Thin wrappers converting Layer 2 output to app-specific UI models (categories/fields for metadata-viewer, ArchiveEntry[] for archiver, etc.)
 
 Completed:
 - Archive bridge: metadata-viewer consumes archiver's 40+ format handlers for deep archive inspection (TAR, RAR, 7z, CAB, LZH, ARJ, CPIO, ISO, FAT contents)
 - ICO codec deduplication: `js/icon-codec.js` migrated to `libs/formats/graphics-ico.js`, shared between icon-editor and metadata-viewer with full BMP entry decode and image previews
-- Audio codec module (`codec-audio.js`): MP3 frame scanner with CBR/VBR detection, Xing/LAME/VBRI header parsing, AAC ADTS frame parser, FLAC frame header analysis, PCM sample statistics (RMS/peak/DC offset/clipping/silence detection)
-- Video codec module (`codec-video.js`): H.264/AVC SPS parsing with Exp-Golomb decoding (profile, level, resolution, chroma, ref frames), H.265/HEVC SPS parsing, VP9 frame headers, AV1 OBU sequence header parsing, codec identification heuristic
+- Audio codecs split into individual files: `codec-mp3.js` (frame scanner, Xing/LAME/VBRI), `codec-aac.js` (ADTS), `codec-flac.js` (frame headers), `codec-pcm.js` (WAV/PCM analysis), `codec-ogg.js` (Ogg pages), `codec-opus.js` (OpusHead), `codec-midi.js` (MThd/MTrk), `codec-aiff.js` (AIFF chunks)
+- Video codecs split into individual files: `codec-h264.js` (NAL/SPS), `codec-h265.js` (NAL/SPS), `codec-vp8.js` (frame header), `codec-vp9.js` (frame header), `codec-av1.js` (OBU/sequence header), `codec-video-identify.js` (identification heuristic)
+- Graphics codecs: `graphics-bmp.js` (full BMP r/w), `graphics-png.js`, `graphics-jpeg.js`, `graphics-gif.js`, `graphics-webp.js`, `graphics-avif.js`, `graphics-svg.js`, `graphics-tga.js` (r/w), `graphics-tiff.js`, `graphics-ppm.js` (P1-P6 r/w), `graphics-pcx.js`, `graphics-dds.js` (DXT1/DXT5)
+- WASM integration infrastructure: `wasm-loader.js` for lazy-loading ffmpeg.wasm and wasm-imagemagick, graceful fallback on file://
 - MP4 stream analysis: extract avcC/hvcC codec configuration from stsd sample entries, parse SPS for actual codec-level resolution/profile/level
 - WAV PCM analysis: RMS level, peak with dB, DC offset, clipping detection, leading/trailing silence detection
 - MP3 codec details: Xing/LAME/VBRI headers, encoder info, VBR quality, frame count, delay/padding
 
 Planned format library modules:
-- Gradual extraction of existing app-specific parsers into shared libraries (PE, image, audio, ELF, font)
+- Ship ffmpeg.wasm and wasm-imagemagick WASM binaries in `libs/wasm/` for full encode/decode support
+- Gradual extraction of existing app-specific parsers into shared libraries (PE, ELF, font)
 
 ### Future
 

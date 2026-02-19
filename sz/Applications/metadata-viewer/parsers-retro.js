@@ -49,7 +49,7 @@
     return {
       categories: [{ name: 'NES ROM', icon: 'info', fields }],
       images: [],
-      disassembly: { archId: '6502', offset: codeOffset, count: 200 },
+      disassembly: [{ archId: '6502', offset: codeOffset, count: 200 }],
     };
   }
 
@@ -133,7 +133,7 @@
     return {
       categories: [{ name: 'Game Boy ROM', icon: 'info', fields }],
       images: [],
-      disassembly: { archId: 'z80', offset: 0x150, count: 200, options: { gameboy: true } },
+      disassembly: [{ archId: 'z80', offset: 0x150, count: 200, options: { gameboy: true } }],
     };
   }
 
@@ -191,7 +191,7 @@
     return {
       categories: [{ name: 'SMS/GG ROM', icon: 'info', fields }],
       images: [],
-      disassembly: { archId: 'z80', offset: 0, count: 200 },
+      disassembly: [{ archId: 'z80', offset: 0, count: 200 }],
     };
   }
 
@@ -235,7 +235,7 @@
     return {
       categories: [{ name: 'Genesis ROM', icon: 'info', fields }],
       images: [],
-      disassembly: { archId: 'm68k', offset: Math.min(entryPoint, bytes.length - 1), count: 200 },
+      disassembly: [{ archId: 'm68k', offset: Math.min(entryPoint, bytes.length - 1), count: 200 }],
     };
   }
 
@@ -348,7 +348,7 @@
     return {
       categories: [{ name: 'SNES ROM', icon: 'info', fields }],
       images: [],
-      disassembly: { archId: '65c816', offset: resetFileOffset, count: 200 },
+      disassembly: [{ archId: '65c816', offset: resetFileOffset, count: 200 }],
     };
   }
 
@@ -378,7 +378,7 @@
     return {
       categories: [{ name: 'C64 PRG', icon: 'info', fields }],
       images: [],
-      disassembly: { archId: '6502', offset: 2, count: 200 },
+      disassembly: [{ archId: '6502', offset: 2, count: 200 }],
     };
   }
 
@@ -506,7 +506,7 @@
     return {
       categories,
       images: [],
-      disassembly: codeDataOffset >= 0 ? { archId: 'm68k', offset: codeDataOffset, count: 200 } : null,
+      disassembly: codeDataOffset >= 0 ? [{ archId: 'm68k', offset: codeDataOffset, count: 200 }] : null,
     };
   }
 

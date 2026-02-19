@@ -116,7 +116,7 @@
       }
     }
 
-    return { categories, images: [], disassembly };
+    return { categories, images: [], disassembly: disassembly ? [disassembly] : null };
   }
 
   // =========================================================================
