@@ -427,6 +427,12 @@
     return path.startsWith('/vfs/mount/');
   }
 
+  function isMountRoot(path) {
+    const rel = toVfsRelative(path);
+    const parts = rel.split('/').filter(Boolean);
+    return parts.length === 2 && parts[0] === 'mount';
+  }
+
   function getMountPrefix(path) {
     const rel = toVfsRelative(path);
     const parts = rel.split('/').filter(Boolean);
@@ -990,8 +996,8 @@
     btnUpload.disabled = !canModify;
     btnDownload.disabled = !canModify || !hasSelection || selectedItems.some(s => s.isDir);
     if (btnMount) btnMount.disabled = false;
-    const selectedIsMount = selectedItems.length === 1 && !!getMountPrefix(selectedItems[0].path);
-    if (btnUnmount) btnUnmount.disabled = !isMountPath(currentPath) && !selectedIsMount;
+    const selectedIsMountRoot = selectedItems.length === 1 && isMountRoot(selectedItems[0].path);
+    if (btnUnmount) btnUnmount.disabled = !isMountRoot(currentPath) && !selectedIsMountRoot;
 
     updateToolbarOverflow();
   }
@@ -1468,7 +1474,7 @@
     addCtxItem(menu, 'Delete', () => doDelete(), !canModify || !hasSelection);
     addCtxItem(menu, 'Rename', () => beginRename(), !canModify || !singleSelection);
 
-    if (singleSelection && getMountPrefix(selectedItems[0].path)) {
+    if (singleSelection && isMountRoot(selectedItems[0].path)) {
       addCtxSep(menu);
       addCtxItem(menu, '\u23CF Unmount', () => doUnmount(selectedItems[0].path));
     }
@@ -1508,7 +1514,7 @@
           showAlert('Mount failed: ' + err.message);
         }
       });
-      if (isMountPath(currentPath))
+      if (isMountRoot(currentPath))
         addCtxItem(menu, '\u23CF Unmount', () => doUnmount());
       addCtxSep(menu);
     }
@@ -2238,7 +2244,7 @@
   btnDownload.addEventListener('click', doDownload);
 
   async function doUnmount(mountPath) {
-    const prefix = getMountPrefix(mountPath || (selectedItems.length === 1 && getMountPrefix(selectedItems[0].path) ? selectedItems[0].path : currentPath));
+    const prefix = getMountPrefix(mountPath || (selectedItems.length === 1 && isMountRoot(selectedItems[0].path) ? selectedItems[0].path : currentPath));
     if (!prefix) return;
     if (!confirm('Unmount "' + prefix.replace('/mount/', '') + '"? Files on disk will not be deleted.'))
       return;
