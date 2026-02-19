@@ -766,43 +766,183 @@
     if (detFields.length > 0)
       categories.push({ name: 'Detection', icon: 'exe', fields: detFields });
 
-    // Disassembly info for the controller
+    // Disassembly info for the controller (array — multiple views for .NET/VB6)
     const peArchMap = { 0x014C: 'x86', 0x8664: 'x64', 0x01C0: 'arm', 0x01C4: 'arm', 0xAA64: 'arm64' };
-    let disasmArch = peArchMap[machine] || null;
-    let disasmOptions = undefined;
+    const nativeArch = peArchMap[machine] || null;
+    let disasmEntries = []; // each entry: { archId, offset, rva, options, label, ... }
 
-    // .NET assemblies: use MSIL disassembler with metadata for token resolution
     if (isDotNet) {
-      disasmArch = 'msil';
-      if (dotNetMetadata)
-        disasmOptions = { metadata: dotNetMetadata };
-    }
-
-    // VB6 P-code detection: "VB5!" signature at entry point
-    if (!isDotNet && epOffset > 0 && epOffset + 6 < bytes.length) {
-      // VB6 entry point typically: PUSH addr / CALL ThunRTMain
-      // The addr pushed points to a VB header starting with "VB5!"
-      if (epBytes[0] === 0x68 && epBytes.length >= 6) { // PUSH imm32
+      // .NET: native entry stub + MSIL
+      if (nativeArch)
+        disasmEntries.push({ archId: nativeArch, offset: epOffset, rva: entryRVA, label: nativeArch.toUpperCase() + ' Entry Stub' });
+      disasmEntries.push({ archId: 'msil', offset: epOffset, rva: entryRVA, label: '.NET MSIL', options: dotNetMetadata ? { metadata: dotNetMetadata } : undefined });
+    } else if (nativeArch) {
+      // VB6 P-code detection: "VB5!" signature at entry point
+      let isVB6PCode = false;
+      if (epOffset > 0 && epOffset + 6 < bytes.length && epBytes[0] === 0x68 && epBytes.length >= 6) {
         const vbHeaderRVA = readU32LE(bytes, epOffset + 1);
         const vbHeaderOff = rvaToOffset(vbHeaderRVA);
         if (vbHeaderOff > 0 && vbHeaderOff + 4 < bytes.length && readString(bytes, vbHeaderOff, 4) === 'VB5!') {
-          // Check if P-code or native
           if (vbHeaderOff + 0x25 < bytes.length) {
             const vbNativeCode = bytes[vbHeaderOff + 0x24];
             if (vbNativeCode === 0) {
-              disasmArch = 'vbpcode';
-              disasmOptions = undefined;
+              isVB6PCode = true;
               compilers.push('Visual Basic 6 (P-code)');
+              disasmEntries.push({ archId: nativeArch, offset: epOffset, rva: entryRVA, label: nativeArch.toUpperCase() + ' Entry Stub' });
+              disasmEntries.push({ archId: 'vbpcode', offset: epOffset, rva: entryRVA, label: 'VB6 P-Code' });
             } else {
               compilers.push('Visual Basic 6 (Native)');
             }
           }
         }
       }
+      if (!isVB6PCode)
+        disasmEntries.push({ archId: nativeArch, offset: epOffset, rva: entryRVA });
     }
 
     categories.unshift({ name: 'PE Header', icon: 'exe', fields });
-    return { categories, images: [], byteRegions, disassembly: disasmArch ? { archId: disasmArch, offset: epOffset, rva: entryRVA, options: disasmOptions } : null };
+
+    // ---- Build rich disassembly annotations for each entry ----
+    const disasmArch = disasmEntries.length > 0 ? disasmEntries[0].archId : null;
+    if (disasmArch) {
+      const imageBase = isPE32Plus ? readU64LE(bytes, optBase + 24) : readU32LE(bytes, optBase + 28);
+
+      // IAT address → import name map (using FirstThunk RVAs which hold runtime addresses)
+      const importMap = Object.create(null);
+      if (numDataDirs > 1 && dataDirBase + 16 <= bytes.length) {
+        const impRVA = readU32LE(bytes, dataDirBase + 8);
+        const impSz = readU32LE(bytes, dataDirBase + 12);
+        if (impRVA > 0 && impSz > 0) {
+          let ip = rvaToOffset(impRVA);
+          while (ip + 20 <= bytes.length) {
+            const inameRVA = readU32LE(bytes, ip + 12);
+            if (inameRVA === 0) break;
+            const ift = readU32LE(bytes, ip);      // OriginalFirstThunk (ILT)
+            const ft = readU32LE(bytes, ip + 16);   // FirstThunk (IAT)
+            const dll = readString(bytes, rvaToOffset(inameRVA), 256);
+            if (!dll) { ip += 20; continue; }
+            const iltRVA = ift || ft;
+            let iatRVA = ft || ift;
+            if (iltRVA > 0) {
+              let rp = rvaToOffset(iltRVA);
+              let ap = iatRVA;
+              const ts = isPE32Plus ? 8 : 4;
+              for (let n = 0; rp + ts <= bytes.length && n < 500; ++n) {
+                const tv = isPE32Plus ? readU64LE(bytes, rp) : readU32LE(bytes, rp);
+                if (tv === 0) break;
+                let fname = null;
+                if (isPE32Plus) {
+                  const hi = readU32LE(bytes, rp + 4);
+                  if ((hi & 0x80000000) !== 0)
+                    fname = '#' + (tv & 0xFFFF);
+                  else {
+                    const noff = rvaToOffset(tv & 0x7FFFFFFF);
+                    if (noff + 2 < bytes.length)
+                      fname = readString(bytes, noff + 2, 256) || '#' + readU16LE(bytes, noff);
+                  }
+                } else {
+                  if ((tv & 0x80000000) !== 0)
+                    fname = '#' + (tv & 0xFFFF);
+                  else {
+                    const noff = rvaToOffset(tv);
+                    if (noff + 2 < bytes.length)
+                      fname = readString(bytes, noff + 2, 256) || '#' + readU16LE(bytes, noff);
+                  }
+                }
+                if (fname)
+                  importMap[ap] = dll + '!' + fname;
+                rp += ts;
+                ap += ts;
+              }
+            }
+            ip += 20;
+          }
+        }
+      }
+
+      // Export RVA → name map (with function addresses)
+      const exportMap = Object.create(null);
+      if (numDataDirs > 0 && dataDirBase + 8 <= bytes.length) {
+        const expRVA = readU32LE(bytes, dataDirBase);
+        const expSz = readU32LE(bytes, dataDirBase + 4);
+        if (expRVA > 0 && expSz > 0) {
+          const exo = rvaToOffset(expRVA);
+          if (exo + 40 <= bytes.length) {
+            const nFuncs = readU32LE(bytes, exo + 20);
+            const nNames = readU32LE(bytes, exo + 24);
+            const ordBase = readU32LE(bytes, exo + 16);
+            const funcTableRVA = readU32LE(bytes, exo + 28);
+            const nameTableRVA = readU32LE(bytes, exo + 32);
+            const ordTableRVA = readU32LE(bytes, exo + 36);
+            if (nameTableRVA > 0 && ordTableRVA > 0 && funcTableRVA > 0) {
+              const nto = rvaToOffset(nameTableRVA);
+              const oto = rvaToOffset(ordTableRVA);
+              const fto = rvaToOffset(funcTableRVA);
+              for (let i = 0; i < Math.min(nNames, 500) && nto + (i + 1) * 4 <= bytes.length; ++i) {
+                const fnRVA = readU32LE(bytes, nto + i * 4);
+                const fn = readString(bytes, rvaToOffset(fnRVA), 256);
+                if (!fn) continue;
+                if (oto + (i + 1) * 2 <= bytes.length) {
+                  const ord = readU16LE(bytes, oto + i * 2);
+                  if (fto + (ord + 1) * 4 <= bytes.length) {
+                    const funcRVA = readU32LE(bytes, fto + ord * 4);
+                    exportMap[funcRVA] = fn;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // String extraction from .rdata and .data sections
+      const stringMap = Object.create(null);
+      for (const sec of sections) {
+        const sn = sec.name.toLowerCase().replace(/\0/g, '');
+        if (sn !== '.rdata' && sn !== '.data' && sn !== '.rodata') continue;
+        const base = sec.rawDataOffset;
+        const end = Math.min(base + sec.rawDataSize, bytes.length);
+        let strStart = -1;
+        for (let j = base; j < end; ++j) {
+          const b = bytes[j];
+          if (b >= 0x20 && b < 0x7F) {
+            if (strStart < 0) strStart = j;
+          } else {
+            if (b === 0 && strStart >= 0 && j - strStart >= 4) {
+              const rva = sec.virtualAddress + (strStart - base);
+              stringMap[rva] = readString(bytes, strStart, Math.min(j - strStart, 120));
+            }
+            strStart = -1;
+          }
+        }
+      }
+
+      // Find .text (code) section boundaries
+      let codeSection = null;
+      for (const sec of sections) {
+        if ((sec.characteristics & 0x00000020) && (sec.characteristics & 0x20000000)) {
+          codeSection = {
+            start: sec.rawDataOffset,
+            end: sec.rawDataOffset + sec.rawDataSize,
+            rva: sec.virtualAddress,
+            size: sec.rawDataSize,
+          };
+          break;
+        }
+      }
+
+      // Enrich each entry with the shared annotation data
+      for (const entry of disasmEntries) {
+        entry.imageBase = imageBase;
+        entry.sections = sections;
+        entry.imports = importMap;
+        entry.exports = exportMap;
+        entry.strings = stringMap;
+        entry.codeSection = codeSection;
+      }
+    }
+
+    return { categories, images: [], byteRegions, disassembly: disasmEntries.length > 0 ? disasmEntries : null };
   }
 
   // =========================================================================
@@ -996,22 +1136,105 @@
     const disasmArch = elfArchMap[eMachine] || null;
     // ELF entry point is a virtual address; approximate file offset by searching sections
     let epFileOffset = 0;
-    if (entryPoint > 0 && shOff > 0) {
-      for (let i = 0; i < shNum; ++i) {
+
+    // Build full section info array for annotations
+    const elfSections = [];
+    if (shOff > 0 && shNum > 0) {
+      for (let i = 0; i < shNum && i < 50; ++i) {
         const sb = shOff + i * shEntSize;
         if (is64 ? sb + 64 > bytes.length : sb + 40 > bytes.length) break;
+        const nameIdx = readU32(bytes, sb);
+        const shType = readU32(bytes, sb + 4);
+        const shFlags = is64 ? readUPtr(bytes, sb + 8) : readU32(bytes, sb + 8);
         const shAddr = is64 ? readUPtr(bytes, sb + 16) : readU32(bytes, sb + 12);
-        const shOff2 = is64 ? readUPtr(bytes, sb + 24) : readU32(bytes, sb + 16);
-        const shSize = is64 ? readUPtr(bytes, sb + 32) : readU32(bytes, sb + 20);
-        if (entryPoint >= shAddr && entryPoint < shAddr + shSize) {
-          epFileOffset = entryPoint - shAddr + shOff2;
-          break;
-        }
+        const shFileOff = is64 ? readUPtr(bytes, sb + 24) : readU32(bytes, sb + 16);
+        const shSz = is64 ? readUPtr(bytes, sb + 32) : readU32(bytes, sb + 20);
+        const name = readSectionName(nameIdx);
+        elfSections.push({ name, type: shType, flags: shFlags, virtualAddress: shAddr, rawDataOffset: shFileOff, rawDataSize: shSz });
+
+        if (entryPoint > 0 && entryPoint >= shAddr && entryPoint < shAddr + shSz && epFileOffset === 0)
+          epFileOffset = entryPoint - shAddr + shFileOff;
       }
     }
 
+    let disasmInfo = null;
+    if (disasmArch && epFileOffset > 0) {
+      // Symbol table extraction (.dynsym + .dynstr, .symtab + .strtab)
+      const symbolMap = Object.create(null);
+      const SHT_SYMTAB = 2, SHT_DYNSYM = 11;
+      for (const sec of elfSections) {
+        if (sec.type !== SHT_SYMTAB && sec.type !== SHT_DYNSYM) continue;
+        // Find associated string table (next section or by link field)
+        const strSecName = sec.type === SHT_DYNSYM ? '.dynstr' : '.strtab';
+        const strSec = elfSections.find(s => s.name === strSecName);
+        if (!strSec) continue;
+        const symEntSize = is64 ? 24 : 16;
+        const symOff = sec.rawDataOffset;
+        const symEnd = Math.min(symOff + sec.rawDataSize, bytes.length);
+        for (let sp = symOff; sp + symEntSize <= symEnd; sp += symEntSize) {
+          const stName = readU32(bytes, sp);
+          let stValue, stInfo;
+          if (is64) {
+            stInfo = readU8(bytes, sp + 4);
+            stValue = readUPtr(bytes, sp + 8);
+          } else {
+            stValue = readU32(bytes, sp + 4);
+            stInfo = readU8(bytes, sp + 12);
+          }
+          const symType = stInfo & 0xF;
+          if (stValue === 0 || stName === 0) continue;
+          if (symType !== 1 && symType !== 2) continue; // STT_OBJECT=1, STT_FUNC=2
+          const symName = readString(bytes, strSec.rawDataOffset + stName, 256);
+          if (symName)
+            symbolMap[stValue] = symName;
+        }
+      }
+
+      // String extraction from .rodata, .data sections
+      const elfStringMap = Object.create(null);
+      for (const sec of elfSections) {
+        if (sec.name !== '.rodata' && sec.name !== '.data') continue;
+        const base = sec.rawDataOffset;
+        const end = Math.min(base + sec.rawDataSize, bytes.length);
+        let strStart = -1;
+        for (let j = base; j < end; ++j) {
+          const b = bytes[j];
+          if (b >= 0x20 && b < 0x7F) {
+            if (strStart < 0) strStart = j;
+          } else {
+            if (b === 0 && strStart >= 0 && j - strStart >= 4) {
+              const va = sec.virtualAddress + (strStart - base);
+              elfStringMap[va] = readString(bytes, strStart, Math.min(j - strStart, 120));
+            }
+            strStart = -1;
+          }
+        }
+      }
+
+      // Find .text section for code boundaries
+      let codeSection = null;
+      for (const sec of elfSections) {
+        // SHF_EXECINSTR = 0x4, SHF_ALLOC = 0x2
+        if (sec.name === '.text' || ((sec.flags & 0x4) && (sec.flags & 0x2) && sec.type === 1)) {
+          codeSection = {
+            start: sec.rawDataOffset,
+            end: sec.rawDataOffset + sec.rawDataSize,
+            rva: sec.virtualAddress,
+            size: sec.rawDataSize,
+          };
+          break;
+        }
+      }
+
+      disasmInfo = {
+        archId: disasmArch, offset: epFileOffset, rva: entryPoint,
+        imageBase: 0, sections: elfSections, imports: Object.create(null),
+        exports: symbolMap, strings: elfStringMap, codeSection,
+      };
+    }
+
     categories.unshift({ name: 'ELF Header', icon: 'exe', fields });
-    return { categories, images: [], byteRegions, disassembly: disasmArch && epFileOffset > 0 ? { archId: disasmArch, offset: epFileOffset, rva: entryPoint } : null };
+    return { categories, images: [], byteRegions, disassembly: disasmInfo ? [disasmInfo] : null };
   }
 
   // =========================================================================
@@ -1144,7 +1367,7 @@
     const machoArchMap = { 7: 'x86', 12: 'arm', 0x01000007: 'x64', 0x0100000C: 'arm64' };
     const disasmArch = machoArchMap[cpuType] || null;
 
-    return { categories, images: [], disassembly: disasmArch ? { archId: disasmArch, offset: 0, rva: 0 } : null };
+    return { categories, images: [], disassembly: disasmArch ? [{ archId: disasmArch, offset: 0, rva: 0 }] : null };
   }
 
   // =========================================================================
@@ -1260,7 +1483,7 @@
       }
     }
 
-    return { categories: [{ name: 'Java Class', icon: 'exe', fields }], images: [], disassembly };
+    return { categories: [{ name: 'Java Class', icon: 'exe', fields }], images: [], disassembly: disassembly ? [disassembly] : null };
   }
 
   // =========================================================================
@@ -1479,7 +1702,7 @@
         disassembly = { archId: 'dalvik', offset: codeStart, options: { strings, types, methods, fields: dexFields } };
     }
 
-    return { categories, images: [], disassembly };
+    return { categories, images: [], disassembly: disassembly ? [disassembly] : null };
   }
 
   // =========================================================================
@@ -1625,7 +1848,7 @@
     if (codeObj)
       disassembly = { archId: 'python', offset: codeObj.offset };
 
-    return { categories, images: [], disassembly };
+    return { categories, images: [], disassembly: disassembly ? [disassembly] : null };
   }
 
   // =========================================================================
@@ -1659,7 +1882,7 @@
     return {
       categories: [{ name: 'Dart Kernel', icon: 'exe', fields }],
       images: [],
-      disassembly: libraries.length > 0 ? { archId: 'dart', offset: 0, options: { libraries } } : null
+      disassembly: libraries.length > 0 ? [{ archId: 'dart', offset: 0, options: { libraries } }] : null
     };
   }
 
