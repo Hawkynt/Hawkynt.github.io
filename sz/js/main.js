@@ -25,6 +25,24 @@
       // Non-critical if they already exist
     }
 
+    // -- Restore persisted local mounts --
+    try {
+      const savedMounts = await SZ.VFS.MountStore.getAll();
+      for (const { name, handle } of savedMounts) {
+        try {
+          const perm = await handle.queryPermission({ mode: 'readwrite' });
+          if (perm === 'granted') {
+            kernel.mount('/mount/' + name, new SZ.VFS.FileSystemAccessDriver(handle));
+            console.log('[SZ] Restored mount:', name);
+          }
+        } catch (err) {
+          console.warn('[SZ] Could not restore mount "' + name + '":', err);
+        }
+      }
+    } catch (err) {
+      console.warn('[SZ] Mount restoration skipped:', err);
+    }
+
     // -- Skin Engine --
     bootScreen.setProgress(15, 'Loading skin...');
     let {skin: currentSkin, name: currentSkinName, subSkin: currentSubSkinId} = await loadSkin(settings);
@@ -294,6 +312,41 @@
         case 'sz:vfs:WriteValue': return handle(kernel.WriteValue(path, data.value, data.meta).then(()=>({success:true})), 'sz:vfs:WriteValueResult');
         case 'sz:vfs:WriteUri': return handle(kernel.WriteUri(path, data.uri, data.meta).then(()=>({success:true})), 'sz:vfs:WriteUriResult');
         case 'sz:vfs:Copy': return handle(kernel.ReadAllBytes(data.from).then(bytes => kernel.WriteAllBytes(data.to, bytes)).then(()=>({success:true})), 'sz:vfs:CopyResult');
+
+        // Mount/unmount local directories
+        case 'sz:vfs:MountLocal': {
+          (async () => {
+            try {
+              const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+              let name = dirHandle.name.replace(/[^a-zA-Z0-9_\-. ]/g, '').toLowerCase().trim() || 'local';
+              // Deduplicate
+              const existing = new Set(kernel.listMounts().map(m => m.prefix));
+              let candidate = name;
+              let counter = 1;
+              while (existing.has('/mount/' + candidate))
+                candidate = name + '-' + (++counter);
+              name = candidate;
+              const driver = new SZ.VFS.FileSystemAccessDriver(dirHandle);
+              kernel.mount('/mount/' + name, driver);
+              await SZ.VFS.MountStore.put(name, dirHandle);
+              respond('sz:vfs:MountLocalResult', { success: true, name, prefix: '/mount/' + name });
+            } catch (err) {
+              if (err.name === 'AbortError')
+                return respond('sz:vfs:MountLocalResult', { cancelled: true });
+              respond('sz:vfs:MountLocalResult', { error: { message: err.message, code: err.name } });
+            }
+          })();
+          return;
+        }
+        case 'sz:vfs:Unmount': {
+          const prefix = data.prefix;
+          kernel.unmount(prefix);
+          const mountName = prefix.replace(/^\/mount\//, '');
+          SZ.VFS.MountStore.remove(mountName).catch(() => {});
+          return respond('sz:vfs:UnmountResult', { success: true });
+        }
+        case 'sz:vfs:ListMounts':
+          return respond('sz:vfs:ListMountsResult', { mounts: kernel.listMounts() });
 
         // MessageBox
         case 'sz:messageBox': {

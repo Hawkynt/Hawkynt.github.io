@@ -116,6 +116,8 @@
   const btnView = document.getElementById('btn-view');
   const btnUpload = document.getElementById('btn-upload');
   const btnDownload = document.getElementById('btn-download');
+  const btnMount = document.getElementById('btn-mount');
+  const btnUnmount = document.getElementById('btn-unmount');
   const uploadInput = document.getElementById('upload-input');
   const btnOverflow = document.getElementById('btn-overflow');
   const overflowMenu = document.getElementById('overflow-menu');
@@ -419,6 +421,18 @@
   function toVfsRelative(path) {
     if (path === '/vfs') return '/';
     return path.slice(4);
+  }
+
+  function isMountPath(path) {
+    return path.startsWith('/vfs/mount/');
+  }
+
+  function getMountPrefix(path) {
+    const rel = toVfsRelative(path);
+    const parts = rel.split('/').filter(Boolean);
+    if (parts.length >= 2 && parts[0] === 'mount')
+      return '/mount/' + parts[1];
+    return null;
   }
 
   function escapeHtml(text) {
@@ -975,6 +989,11 @@
     btnPaste.disabled = !clipboard || !canModify;
     btnUpload.disabled = !canModify;
     btnDownload.disabled = !canModify || !hasSelection || selectedItems.some(s => s.isDir);
+    if (btnMount) btnMount.disabled = false;
+    const selectedIsMount = selectedItems.length === 1 && !!getMountPrefix(selectedItems[0].path);
+    if (btnUnmount) btnUnmount.disabled = !isMountPath(currentPath) && !selectedIsMount;
+
+    updateToolbarOverflow();
   }
 
   // =========================================================================
@@ -1449,6 +1468,11 @@
     addCtxItem(menu, 'Delete', () => doDelete(), !canModify || !hasSelection);
     addCtxItem(menu, 'Rename', () => beginRename(), !canModify || !singleSelection);
 
+    if (singleSelection && getMountPrefix(selectedItems[0].path)) {
+      addCtxSep(menu);
+      addCtxItem(menu, '\u23CF Unmount', () => doUnmount(selectedItems[0].path));
+    }
+
     addCtxSep(menu);
 
     addCtxItem(menu, 'Properties', () => showProperties());
@@ -1472,6 +1496,22 @@
     addCtxItem(menu, 'Refresh', () => doRefresh());
 
     addCtxSep(menu);
+
+    if (isVfsMode) {
+      addCtxItem(menu, '\uD83D\uDCC2 Mount local folder', async () => {
+        try {
+          const result = await Kernel32.MountLocalDirectory();
+          if (result.cancelled) return;
+          if (result.success)
+            navigate('/vfs/mount/' + result.name);
+        } catch (err) {
+          showAlert('Mount failed: ' + err.message);
+        }
+      });
+      if (isMountPath(currentPath))
+        addCtxItem(menu, '\u23CF Unmount', () => doUnmount());
+      addCtxSep(menu);
+    }
 
     addCtxItem(menu, 'Properties', () => showFolderProperties());
   }
@@ -2108,7 +2148,8 @@
               }
               for (const dir of dirs) {
                 const cp = childPath(path, dir.name);
-                const child = createTreeNode(cp, dir.name, depth + 1, 'vfsFolder');
+                const isMount = cp.match(/^\/vfs\/mount\/[^/]+$/);
+                const child = createTreeNode(cp, dir.name, depth + 1, isMount ? 'vfsDrive' : 'vfsFolder');
                 childContainer.appendChild(child.container);
               }
             })
@@ -2195,6 +2236,32 @@
 
   btnUpload.addEventListener('click', doUpload);
   btnDownload.addEventListener('click', doDownload);
+
+  async function doUnmount(mountPath) {
+    const prefix = getMountPrefix(mountPath || (selectedItems.length === 1 && getMountPrefix(selectedItems[0].path) ? selectedItems[0].path : currentPath));
+    if (!prefix) return;
+    if (!confirm('Unmount "' + prefix.replace('/mount/', '') + '"? Files on disk will not be deleted.'))
+      return;
+    try {
+      await Kernel32.UnmountDirectory(prefix);
+      navigate('/vfs/mount');
+    } catch (err) {
+      showAlert('Unmount failed: ' + err.message);
+    }
+  }
+
+  if (btnMount) btnMount.addEventListener('click', async () => {
+    try {
+      const result = await Kernel32.MountLocalDirectory();
+      if (result.cancelled) return;
+      if (result.success)
+        navigate('/vfs/mount/' + result.name);
+    } catch (err) {
+      showAlert('Mount failed: ' + err.message);
+    }
+  });
+
+  if (btnUnmount) btnUnmount.addEventListener('click', () => doUnmount());
 
   btnView.addEventListener('click', () => {
     // Currently only icons mode; placeholder for future list/detail views
