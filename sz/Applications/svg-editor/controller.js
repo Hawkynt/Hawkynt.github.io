@@ -13,8 +13,6 @@
   const { Kernel32, ComDlg32, User32 } = SZ.Dlls;
 
   const refs = {
-    menuBar: document.getElementById('menu-bar'),
-    toolbar: document.getElementById('toolbar'),
     toolGrid: document.getElementById('tool-grid'),
     workspace: document.getElementById('workspace'),
     svgHost: document.getElementById('svgHost'),
@@ -41,7 +39,14 @@
     statusCoords: document.getElementById('statusCoords'),
     statusTool: document.getElementById('statusTool'),
     statusDoc: document.getElementById('statusDoc'),
-    statusElements: document.getElementById('statusElements')
+    statusElements: document.getElementById('statusElements'),
+    ribbonTabs: document.getElementById('ribbon-tabs'),
+    backstage: document.getElementById('backstage'),
+    ribbonFileBtn: document.getElementById('ribbon-file-btn'),
+    backstageBack: document.getElementById('backstage-back'),
+    btnToggleGrid: document.getElementById('btn-toggle-grid'),
+    btnToggleSnap: document.getElementById('btn-toggle-snap'),
+    btnToggleDark: document.getElementById('btn-toggle-dark')
   };
 
   // ---- Section 3: State ----
@@ -63,7 +68,6 @@
     redoStack: [],
     clipboard: null,
     grid: { visible: false, snap: false },
-    openMenu: null,
     resizeHandle: null,     // current handle being dragged
     resizeOrigin: null,     // original bbox at resize start
     colorPickerRequest: null // pending color picker app request
@@ -567,12 +571,14 @@
   function toggleGrid() {
     state.grid.visible = !state.grid.visible;
     updateGrid();
-    updateCheckableMenu('toggle-grid', state.grid.visible);
+    if (refs.btnToggleGrid)
+      refs.btnToggleGrid.classList.toggle('active', state.grid.visible);
   }
 
   function toggleSnap() {
     state.grid.snap = !state.grid.snap;
-    updateCheckableMenu('toggle-snap', state.grid.snap);
+    if (refs.btnToggleSnap)
+      refs.btnToggleSnap.classList.toggle('active', state.grid.snap);
   }
 
   // ---- Section 13: Layer management ----
@@ -865,53 +871,56 @@
     await Kernel32.WriteFile(result.path, pngData);
   }
 
-  // ---- Section 17: Menu system ----
-  function closeMenus() {
-    for (const item of refs.menuBar.querySelectorAll('.menu-item'))
-      item.classList.remove('open');
-    state.openMenu = null;
+  // ---- Section 17: Ribbon system ----
+  function closeBackstage() {
+    refs.backstage.classList.remove('visible');
   }
 
-  function updateCheckableMenu(action, checked) {
-    const entry = refs.menuBar.querySelector(`.menu-entry[data-action="${action}"]`);
-    if (entry)
-      entry.classList.toggle('checked', checked);
+  function openBackstage() {
+    refs.backstage.classList.add('visible');
   }
 
-  function bindMenuBar() {
-    for (const menuItem of refs.menuBar.querySelectorAll('.menu-item')) {
-      menuItem.addEventListener('pointerdown', (e) => {
-        if (e.target.closest('.menu-entry') || e.target.closest('.menu-separator'))
-          return;
+  function switchRibbonTab(tabName) {
+    for (const tab of refs.ribbonTabs.querySelectorAll('.ribbon-tab'))
+      tab.classList.toggle('active', tab.dataset.tab === tabName);
+    for (const panel of document.querySelectorAll('.ribbon-panel'))
+      panel.classList.toggle('active', panel.dataset.panel === tabName);
+  }
 
-        if (state.openMenu === menuItem) {
-          closeMenus();
-          return;
-        }
-        closeMenus();
-        menuItem.classList.add('open');
-        state.openMenu = menuItem;
-      });
-
-      menuItem.addEventListener('pointerenter', () => {
-        if (state.openMenu && state.openMenu !== menuItem) {
-          closeMenus();
-          menuItem.classList.add('open');
-          state.openMenu = menuItem;
-        }
+  function bindRibbon() {
+    // Tab switching
+    for (const tab of refs.ribbonTabs.querySelectorAll('.ribbon-tab')) {
+      tab.addEventListener('click', () => {
+        switchRibbonTab(tab.dataset.tab);
       });
     }
 
-    document.addEventListener('pointerdown', (e) => {
-      if (state.openMenu && !refs.menuBar.contains(e.target))
-        closeMenus();
-    });
+    // File backstage
+    refs.ribbonFileBtn.addEventListener('click', openBackstage);
+    refs.backstageBack.addEventListener('click', closeBackstage);
 
-    for (const entry of document.querySelectorAll('.menu-entry')) {
-      entry.addEventListener('click', () => {
-        const action = entry.dataset.action;
-        closeMenus();
-        handleAction(action);
+    // Backstage items
+    for (const item of refs.backstage.querySelectorAll('.backstage-item')) {
+      item.addEventListener('click', () => {
+        closeBackstage();
+        handleAction(item.dataset.action);
+      });
+    }
+
+    // QAT buttons
+    for (const btn of document.querySelectorAll('.qat-btn[data-action]')) {
+      btn.addEventListener('click', () => handleAction(btn.dataset.action));
+    }
+
+    // All [data-action] buttons in ribbon panels
+    for (const btn of document.querySelectorAll('.ribbon-panel [data-action]')) {
+      btn.addEventListener('click', () => handleAction(btn.dataset.action));
+    }
+
+    // Tool buttons in ribbon tool grid
+    for (const btn of refs.toolGrid.querySelectorAll('[data-tool]')) {
+      btn.addEventListener('pointerdown', () => {
+        setTool(btn.dataset.tool);
       });
     }
   }
@@ -935,6 +944,11 @@
       case 'select-all': doSelectAll(); break;
       case 'deselect': clearSelection(); break;
       case 'duplicate': doDuplicate(); break;
+
+      case 'bring-front': bringToFront(); break;
+      case 'bring-forward': bringForward(); break;
+      case 'send-backward': sendBackward(); break;
+      case 'send-back': sendToBack(); break;
 
       case 'zoom-in': zoomIn(); break;
       case 'zoom-out': zoomOut(); break;
@@ -968,7 +982,8 @@
   function toggleDarkMode() {
     document.body.classList.toggle('dark');
     const isDark = document.body.classList.contains('dark');
-    updateCheckableMenu('toggle-dark', isDark);
+    if (refs.btnToggleDark)
+      refs.btnToggleDark.classList.toggle('active', isDark);
     try { localStorage.setItem('svg-editor-dark', isDark ? '1' : '0'); } catch {}
   }
 
@@ -976,7 +991,8 @@
     try {
       if (localStorage.getItem('svg-editor-dark') === '1') {
         document.body.classList.add('dark');
-        updateCheckableMenu('toggle-dark', true);
+        if (refs.btnToggleDark)
+          refs.btnToggleDark.classList.toggle('active', true);
       }
     } catch {}
   }
@@ -1001,7 +1017,7 @@
   // ---- Section 21: Tool switching ----
   function setTool(tool) {
     state.tool = tool;
-    for (const b of refs.toolGrid.querySelectorAll('.tool-btn'))
+    for (const b of refs.toolGrid.querySelectorAll('.rb-btn'))
       b.classList.remove('active');
     const btn = refs.toolGrid.querySelector(`[data-tool="${tool}"]`);
     if (btn)
@@ -1009,14 +1025,8 @@
     updateStatusTool();
   }
 
-  // ---- Section 22: Toolbar & sidebar binding ----
-  function bindToolbar() {
-    for (const btn of refs.toolGrid.querySelectorAll('.tool-btn')) {
-      btn.addEventListener('pointerdown', () => {
-        setTool(btn.dataset.tool);
-      });
-    }
-
+  // ---- Section 22: Sidebar binding ----
+  function bindSidebar() {
     const styleInputs = [refs.inpFill, refs.inpStroke, refs.inpStrokeWidth, refs.inpOpacity];
     for (const inp of styleInputs) {
       inp.addEventListener('input', () => {
@@ -1035,11 +1045,6 @@
       setDirty();
       updateSource();
     });
-
-    refs.btnBringFront.addEventListener('click', bringToFront);
-    refs.btnBringForward.addEventListener('click', bringForward);
-    refs.btnSendBackward.addEventListener('click', sendBackward);
-    refs.btnSendBack.addEventListener('click', sendToBack);
 
     refs.btnApplySource.addEventListener('click', () => {
       try {
@@ -1276,7 +1281,7 @@
       // Escape
       if (e.key === 'Escape') {
         clearSelection();
-        closeMenus();
+        closeBackstage();
         return;
       }
 
@@ -1375,8 +1380,8 @@
   }
 
   // ---- Section 28: Initialization ----
-  bindMenuBar();
-  bindToolbar();
+  bindRibbon();
+  bindSidebar();
   bindScene();
   bindKeyboard();
   bindColorPicker();

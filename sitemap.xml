@@ -133,6 +133,10 @@
     <priority>0.7</priority>
   </url>
   <url>
+    <loc>https://hawkynt.github.io/sz/Applications/readme-generator/index.html</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://hawkynt.github.io/sz/Applications/about/index.html</loc>
     <priority>0.7</priority>
   </url>
@@ -146,6 +150,26 @@
   </url>
   <url>
     <loc>https://hawkynt.github.io/sz/Applications/control-panel/index.html</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://hawkynt.github.io/sz/Applications/cookie-banner/index.html</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://hawkynt.github.io/sz/Applications/display-tester/index.html</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://hawkynt.github.io/sz/Applications/resume-builder/index.html</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://hawkynt.github.io/sz/Applications/archiver/index.html</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://hawkynt.github.io/sz/Applications/metadata-viewer/index.html</loc>
     <priority>0.7</priority>
   </url>
   <url>
