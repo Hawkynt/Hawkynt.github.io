@@ -13,7 +13,7 @@ Drop any file onto the Metadata Viewer to identify its type via magic bytes (not
 3. **Hash Computation** -- 29 hash/checksum algorithms grouped into Cryptographic (MD5, SHA-1/224/256/384/512, SHA-512/256, SHA3-256/384/512, BLAKE2b/2s, BLAKE3, RIPEMD-160, Whirlpool, Tiger, SM3, Streebog-256), Non-Cryptographic (xxHash32, xxHash3, MurmurHash3), and Checksums (CRC-16/32/64, Adler-32, Fletcher-32, BSD, Sum-8, XOR-8) are computed using the Cipher project's `AlgorithmFramework`. Large files are processed in 512KB chunks via `setTimeout` to avoid blocking the UI.
 4. **Metadata Editing** -- Writable formats (MP3 ID3 tags, PNG text chunks, JPEG EXIF fields, MP4 iTunes atoms, Office document properties) support inline field editing with rich edit controls (number, date picker, select dropdown, image replace/remove, geo coordinate picker) and file reconstruction on save.
 5. **PE Detection** -- Executable analysis includes packer/protector/compiler/framework detection via section names, string scanning, import analysis, and a 4,400+ entry signature database converted from ExeInfo ASL's userdb.txt format.
-6. **Disassembly** -- Executable entry-point code is disassembled using architecture-specific decoders (x86/x64, ARM/ARM64, Java bytecode, .NET MSIL, PowerPC, Dalvik, 6502/65C816, Z80, Motorola 68000, Python bytecode, VB6 P-code, Dart Kernel) with pseudo-C annotation, displayed in the accordion preview panel.
+6. **Disassembly** -- Executable entry-point code is disassembled using architecture-specific decoders (x86/x64, ARM/ARM64, Java bytecode, .NET MSIL, PowerPC, Dalvik, 6502/65C816, Z80, Motorola 68000, Python bytecode, VB6 P-code, Dart Kernel) with pseudo-C annotation, displayed in the accordion preview panel. PE and ELF executables get rich annotations: import/export/string cross-references are resolved and shown as inline comments, jump/call targets are clickable for navigation, label lines mark branch targets, and a cross-references panel lists all imports used, strings referenced, internal call targets, and exports. Navigation toolbar provides back/forward history and address bar; scrolling near the bottom auto-loads more instructions seamlessly.
 
 ## Supported Formats
 
@@ -99,7 +99,7 @@ Hash/checksum algorithms are loaded from the Cipher project via `<script>` tags.
 | VB6 P-code | disasm-vbpcode.js | VB6 P-code EXEs |
 | Dart Kernel | disasm-dart.js | Dart .dill |
 
-The executable and retro ROM parsers detect the architecture and emit a `disassembly` property with `archId` and entry-point file offset, which the controller uses to render the Disassembly accordion section.
+The executable and retro ROM parsers detect the architecture and emit a `disassembly` property with `archId` and entry-point file offset, which the controller uses to render the Disassembly accordion section. PE and ELF parsers additionally emit rich annotation data: `imageBase`, `sections`, `imports` (IAT address to DLL!function name map), `exports` (RVA to export name map), `strings` (RVA to extracted ASCII string map), and `codeSection` boundaries. The disassembly formatter uses these to produce clickable addresses, label lines at jump targets, and inline annotation comments showing resolved import/export/string names. The controller provides navigation (back/forward/goto address), seamless scroll-based auto-loading, and a cross-references panel listing all imports, strings, calls, and exports found in the current disassembly.
 
 ## Editing Support
 
@@ -146,7 +146,7 @@ Legacy `.doc`, `.xls`, `.ppt` files using the OLE2 Compound Document format (mag
   - **Hex Preview**: Color-coded first 256 bytes with byte regions mapped to parsed metadata fields
   - **Text Preview**: First 4KB decoded as text with non-printable character markers
   - **Unicode Preview**: BOM-aware decoding with code point annotations for non-ASCII characters
-  - **Disassembly**: Entry-point instruction disassembly for executables and ROMs (16 architectures: x86/x64, ARM/ARM64, Java, MSIL, PowerPC, Dalvik, 6502/65C816, Z80, 68000, Python, VB P-code, Dart) with pseudo-C comments
+  - **Disassembly**: Entry-point instruction disassembly for executables and ROMs (16 architectures) with pseudo-C comments, clickable jump/call targets, annotation comments (resolved imports/strings/exports), navigation toolbar (back/forward/goto/address bar), scroll-based auto-loading, and cross-references panel. Formats with multiple code types (e.g. .NET = x86 entry stub + MSIL, VB6 = x86 + P-Code) get separate accordion panels, each with independent navigation
 - **Status Bar**: File type, size, entropy, modification count
 
 ## Running
@@ -189,6 +189,14 @@ Open `index.html` in a browser, or launch from the SZ desktop Start Menu under "
 - [x] Unicode preview (BOM-aware with code point annotations)
 - [x] Waveform preview (PCM for WAV, byte-amplitude for compressed audio)
 - [x] Disassembly preview for executables and retro ROMs (entry point instructions with pseudo-C comments)
+- [x] Enhanced disassembly viewer with clickable jump/call targets, navigation toolbar (back/forward/goto), and scroll-based auto-loading
+- [x] Disassembly annotations: import calls show resolved DLL!function names, string references show extracted strings, export addresses show export names
+- [x] Disassembly labels: jump/call target addresses get `loc_XXXXXXXX:` label lines for readability
+- [x] Cross-references panel: lists imports used, strings referenced, internal call targets, and exports found in disassembled code
+- [x] Section-aware instruction count: decodes up to 4096 instructions based on code section size (was 64)
+- [x] PE disassembly enrichment: ImageBase, IAT import map, export RVA map, string table extraction from .rdata/.data
+- [x] ELF disassembly enrichment: symbol table extraction (.dynsym/.symtab), string extraction from .rodata/.data
+- [x] Multi-panel disassembly: formats with multiple code types (.NET = x86 + MSIL, VB6 = x86 + P-Code) get separate accordion panels with independent navigation
 - [x] Multi-architecture disassembler (16 architectures: x86/x64, ARM/ARM64, Java, MSIL, PowerPC, Dalvik, 6502/65C816, Z80, 68000, Python, VB P-code, Dart) with syntax highlighting
 - [x] Java bytecode constant pool resolution (class/method/field names in disassembly)
 - [x] .NET MSIL metadata token resolution (type/method/field names from CLI metadata tables)
@@ -244,6 +252,8 @@ Open `index.html` in a browser, or launch from the SZ desktop Start Menu under "
 - APK binary XML parsing extracts string pool and element attributes but does not fully decode resource references
 - "Open in Archiver" button only available when file was opened from VFS (not drag-dropped files)
 - Disassembly covers common instruction subsets; rare/vector/FPU instructions may show as `db` bytes
+- Disassembly annotations (imports/exports/strings) require PE or ELF format; other formats get plain disassembly
+- String extraction from data sections uses a minimum length of 4 printable ASCII characters; shorter strings are not captured
 - SNES LoROM/HiROM detection relies on checksum complement validation; corrupted ROMs may not be detected
 - Genesis ROM detection requires "SEGA MEGA DRIVE" or "SEGA GENESIS" header string at offset 0x100
 - VB6 P-code opcode set is partially reverse-engineered; some opcodes may decode as unknown

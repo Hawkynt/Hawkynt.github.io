@@ -520,6 +520,25 @@ select.field-edit-input { width: auto; min-width: 120px; }
 .da-br { color: #cf222e; }
 .da-op { color: #24292f; }
 
+/* Clickable addresses (jump/call targets, import references) */
+.da-addr { color: #1a7f37; cursor: pointer; text-decoration: underline; }
+.da-addr:hover { color: #0969da; background: rgba(9,105,218,0.1); }
+
+/* Label lines (jump target markers like loc_XXXX:) */
+.da-label { color: #cf222e; font-weight: bold; display: block; margin-top: 4px; }
+
+/* Annotation comments (auto-resolved imports/strings) */
+.da-annot { color: #8250df; font-style: italic; }
+
+/* Navigation toolbar */
+.disasm-toolbar { display: flex; gap: 4px; margin-bottom: 6px; align-items: center; font-size: 10px; }
+.disasm-toolbar button { font-size: 10px; padding: 1px 6px; cursor: pointer; }
+.disasm-toolbar button:disabled { opacity: 0.4; cursor: default; }
+.disasm-toolbar input { width: 80px; font-size: 10px; font-family: monospace; padding: 1px 4px; }
+
+/* Highlighted instruction (navigation target) */
+.da-line.highlight { background: rgba(255,220,0,0.2); }
+
 /* ===== Waveform Preview (inside accordion) ===== */
 
 .waveform-canvas {

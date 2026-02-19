@@ -114,6 +114,7 @@
     modifications.clear();
     dirty = false;
     hashResults = null;
+    _disasmReset();
 
     // Parse
     parseResult = Parsers.parse(currentBytes, currentFileName);
@@ -1295,8 +1296,16 @@
       sections.push({ id: 'text', title: 'Text Preview', render: renderTextBody, defaultExpand: isText && !hasImages });
     if (hasBOM || (isText && encoding !== 'ASCII / UTF-8'))
       sections.push({ id: 'unicode', title: 'Unicode', render: renderUnicodeBody, defaultExpand: false });
-    if (parseResult.disassembly && window.SZ && SZ.Disassembler)
-      sections.push({ id: 'disasm', title: 'Disassembly', render: renderDisassemblyBody, defaultExpand: false });
+    if (parseResult.disassembly && parseResult.disassembly.length > 0 && window.SZ && SZ.Disassembler) {
+      const disasmArr = parseResult.disassembly;
+      for (let di = 0; di < disasmArr.length; ++di) {
+        const entry = disasmArr[di];
+        const label = entry.label || entry.archId.toUpperCase();
+        const suffix = disasmArr.length > 1 ? ' (' + label + ')' : '';
+        const idx = di;
+        sections.push({ id: 'disasm-' + di, title: 'Disassembly' + suffix, render: c => renderDisassemblyBody(c, idx), defaultExpand: false });
+      }
+    }
 
     // Ensure exactly one is expanded by default
     const hasDefault = sections.some(s => s.defaultExpand);
@@ -1678,49 +1687,427 @@
   }
 
   // ---- Disassembly accordion body ----
-  function renderDisassemblyBody(container) {
+
+  // Seamless disassembly viewer: each accordion panel gets its own state object.
+  // Multiple panels are created when a format has several code views (e.g. .NET = x86 + MSIL).
+  const _DISASM_BATCH = 256;
+  const _disasmPanels = [];  // array of per-panel state objects
+
+  function _disasmCreateState() {
+    return {
+      insns: [],              // all decoded instructions, sorted by offset
+      offsets: new Set(),     // quick dedup lookup
+      nav: { stack: [], idx: -1 },
+      container: null,        // accordion body
+      pre: null,              // <pre> listing element
+      statusEl: null,         // instruction count status line
+      xrefPanel: null,        // cross-references container
+      btnBack: null,
+      btnFwd: null,
+      addrInput: null,
+      info: null,
+      annotations: null,
+      D: null,
+      scrollTimer: null,
+    };
+  }
+
+  function _disasmReset() {
+    for (const st of _disasmPanels) {
+      if (st.scrollTimer) clearTimeout(st.scrollTimer);
+    }
+    _disasmPanels.length = 0;
+  }
+
+  function renderDisassemblyBody(container, entryIndex) {
     if (!parseResult || !parseResult.disassembly || !currentBytes) return;
     const D = window.SZ && SZ.Disassembler;
     if (!D) return;
 
-    const info = parseResult.disassembly;
-    const archId = info.archId;
-    const offset = info.offset || 0;
-    const count = 64;
+    const info = parseResult.disassembly[entryIndex];
+    if (!info) return;
+    const startOffset = info.offset || 0;
 
-    // Header info
+    if (startOffset >= currentBytes.length) {
+      container.innerHTML = '<div style="padding:8px;color:var(--sz-color-gray-text);font-style:italic;">Entry point offset is outside the file.</div>';
+      return;
+    }
+
+    // Create per-panel state
+    const st = _disasmCreateState();
+    _disasmPanels.push(st);
+    st.container = container;
+    st.info = info;
+    st.D = D;
+    st.annotations = _buildAnnotations(info);
+    st.nav.stack = [startOffset];
+    st.nav.idx = 0;
+
+    // Decode initial batch (smart count from code section size)
+    let initCount = _DISASM_BATCH;
+    if (info.codeSection) {
+      const maxBytes = info.codeSection.end - startOffset;
+      initCount = Math.min(4096, Math.max(_DISASM_BATCH, Math.floor(maxBytes / 2)));
+    }
+    _disasmDecodeAndMerge(st, startOffset, initCount);
+
+    if (st.insns.length === 0) {
+      container.innerHTML = '<div style="padding:8px;color:var(--sz-color-gray-text);font-style:italic;">No instructions decoded.</div>';
+      return;
+    }
+
+    // Build DOM once
+    _disasmBuildUI(st, container, startOffset);
+  }
+
+  function _disasmBuildUI(st, container, initialOffset) {
+    container.innerHTML = '';
+    const info = st.info;
+    const archId = info.archId;
+
+    // --- Navigation toolbar ---
+    const toolbar = document.createElement('div');
+    toolbar.className = 'disasm-toolbar';
+
+    const btnBack = document.createElement('button');
+    btnBack.textContent = '\u25C0 Back';
+    btnBack.disabled = true;
+    btnBack.onclick = () => _disasmNavGo(st, -1);
+    st.btnBack = btnBack;
+
+    const btnFwd = document.createElement('button');
+    btnFwd.textContent = 'Forward \u25B6';
+    btnFwd.disabled = true;
+    btnFwd.onclick = () => _disasmNavGo(st, 1);
+    st.btnFwd = btnFwd;
+
+    const btnEntry = document.createElement('button');
+    btnEntry.textContent = 'Entry Point';
+    btnEntry.onclick = () => _disasmNavigateTo(st, info.offset || 0);
+
+    const sep = document.createElement('span');
+    sep.textContent = ' | ';
+    sep.style.cssText = 'color:var(--sz-color-gray-text);';
+
+    const addrLabel = document.createElement('span');
+    addrLabel.textContent = 'Address: ';
+    addrLabel.style.cssText = 'color:var(--sz-color-gray-text);';
+
+    const addrInput = document.createElement('input');
+    addrInput.type = 'text';
+    addrInput.value = '0x' + initialOffset.toString(16).toUpperCase();
+    st.addrInput = addrInput;
+
+    const btnGo = document.createElement('button');
+    btnGo.textContent = 'Go';
+    btnGo.onclick = () => {
+      const val = parseInt(addrInput.value, 16);
+      if (!isNaN(val) && val >= 0)
+        _disasmNavigateTo(st, val);
+    };
+    addrInput.onkeydown = e => { if (e.key === 'Enter') btnGo.click(); };
+
+    toolbar.append(btnBack, btnFwd, btnEntry, sep, addrLabel, addrInput, btnGo);
+    container.appendChild(toolbar);
+
+    // --- Header ---
     const header = document.createElement('div');
-    header.style.cssText = 'font-size:9px;color:var(--sz-color-gray-text);margin-bottom:6px;';
+    header.style.cssText = 'font-size:9px;color:var(--sz-color-gray-text);margin-bottom:2px;';
     header.textContent = 'Architecture: ' + archId.toUpperCase()
       + (info.rva != null ? ' | Entry RVA: 0x' + info.rva.toString(16).toUpperCase() : '')
-      + ' | File offset: 0x' + offset.toString(16).toUpperCase();
+      + ' | File offset: 0x' + initialOffset.toString(16).toUpperCase();
     container.appendChild(header);
 
-    if (offset >= currentBytes.length) {
-      const msg = document.createElement('div');
-      msg.style.cssText = 'padding:8px;color:var(--sz-color-gray-text);font-style:italic;';
-      msg.textContent = 'Entry point offset is outside the file.';
-      container.appendChild(msg);
-      return;
-    }
+    // --- Status line (updates as more is decoded) ---
+    const statusEl = document.createElement('div');
+    statusEl.style.cssText = 'font-size:9px;color:var(--sz-color-gray-text);margin-bottom:6px;';
+    st.statusEl = statusEl;
+    container.appendChild(statusEl);
 
-    const instructions = D.disassemble(archId, currentBytes, offset, count, info.options || undefined);
-    if (!instructions || instructions.length === 0) {
-      const msg = document.createElement('div');
-      msg.style.cssText = 'padding:8px;color:var(--sz-color-gray-text);font-style:italic;';
-      msg.textContent = 'No instructions decoded.';
-      container.appendChild(msg);
-      return;
-    }
+    // --- Cross-references panel (above listing, collapsed by default) ---
+    const xrefPanel = document.createElement('div');
+    st.xrefPanel = xrefPanel;
+    container.appendChild(xrefPanel);
+    _disasmUpdateXrefs(st);
 
+    // --- Listing ---
     const pre = document.createElement('pre');
     pre.className = 'disasm-listing';
-    if (D.formatDisassemblyHtml) {
-      pre.innerHTML = D.formatDisassemblyHtml(instructions);
-    } else {
-      pre.textContent = D.formatDisassembly(instructions);
-    }
+    st.pre = pre;
+
+    // Click handler for navigable addresses
+    pre.addEventListener('click', e => {
+      const addrEl = e.target.closest('[data-target]');
+      if (!addrEl) return;
+      e.preventDefault();
+      const targetAddr = parseInt(addrEl.dataset.target, 16);
+
+      // Import thunks are data, not code — don't navigate
+      if (st.annotations && st.annotations.imports && st.annotations.imports[targetAddr])
+        return;
+
+      // Convert RVA to file offset
+      let fileOffset = targetAddr;
+      if (info.codeSection && targetAddr >= info.codeSection.rva)
+        fileOffset = targetAddr - info.codeSection.rva + info.codeSection.start;
+
+      _disasmNavigateTo(st, fileOffset);
+    });
+
     container.appendChild(pre);
+
+    // Render initial content
+    _disasmRenderListing(st);
+    _disasmUpdateStatus(st);
+
+    // Auto-load on scroll: when user nears bottom, decode more
+    container.addEventListener('scroll', () => {
+      if (st.scrollTimer) return;
+      st.scrollTimer = setTimeout(() => {
+        st.scrollTimer = null;
+        const remaining = container.scrollHeight - container.scrollTop - container.clientHeight;
+        if (remaining < 400)
+          _disasmLoadMore(st);
+      }, 80);
+    });
+  }
+
+  /** Decode instructions and merge into sorted dedup array. Returns count of new. */
+  function _disasmDecodeAndMerge(st, offset, count) {
+    if (offset >= currentBytes.length || !st.D) return 0;
+    const insns = st.D.disassemble(st.info.archId, currentBytes, offset, count, st.info.options || undefined);
+    if (!insns || insns.length === 0) return 0;
+    let added = 0;
+    for (const insn of insns) {
+      if (!st.offsets.has(insn.offset)) {
+        st.insns.push(insn);
+        st.offsets.add(insn.offset);
+        ++added;
+      }
+    }
+    if (added > 0)
+      st.insns.sort((a, b) => a.offset - b.offset);
+    return added;
+  }
+
+  /** Full re-render of the listing from all accumulated instructions. */
+  function _disasmRenderListing(st) {
+    const D = st.D;
+    if (!D || !st.pre) return;
+    if (D.formatDisassemblyHtml)
+      st.pre.innerHTML = D.formatDisassemblyHtml(st.insns, st.annotations);
+    else
+      st.pre.textContent = D.formatDisassembly(st.insns);
+  }
+
+  /** Append new instructions at end without re-rendering existing content. */
+  function _disasmAppendHtml(st, newInsns) {
+    const D = st.D;
+    if (!D || !st.pre || newInsns.length === 0) return;
+    if (D.formatDisassemblyHtml)
+      st.pre.insertAdjacentHTML('beforeend', '\n' + D.formatDisassemblyHtml(newInsns, st.annotations));
+    else {
+      const node = document.createTextNode('\n' + D.formatDisassembly(newInsns));
+      st.pre.appendChild(node);
+    }
+  }
+
+  function _disasmUpdateStatus(st) {
+    if (!st.statusEl) return;
+    const n = st.insns.length;
+    const first = n > 0 ? st.insns[0] : null;
+    const last = n > 0 ? st.insns[n - 1] : null;
+    let text = n + ' instructions decoded';
+    if (first && last)
+      text += ' | 0x' + first.offset.toString(16).toUpperCase() + ' \u2013 0x' + (last.offset + last.length).toString(16).toUpperCase();
+    st.statusEl.textContent = text;
+  }
+
+  /** Scroll to offset in listing, highlight it. If not yet decoded, decode first. */
+  function _disasmNavigateTo(st, offset) {
+    // Push to nav stack
+    st.nav.stack = st.nav.stack.slice(0, st.nav.idx + 1);
+    st.nav.stack.push(offset);
+    st.nav.idx = st.nav.stack.length - 1;
+    _disasmUpdateNavButtons(st);
+
+    // Already in listing? Just scroll.
+    if (st.offsets.has(offset)) {
+      _disasmScrollTo(st, offset, true);
+      return;
+    }
+
+    // Decode from target, merge, re-render (full re-render for correct labels)
+    const added = _disasmDecodeAndMerge(st, offset, _DISASM_BATCH);
+    if (added > 0) {
+      _disasmRenderListing(st);
+      _disasmUpdateStatus(st);
+      _disasmUpdateXrefs(st);
+    }
+
+    // Scroll after render
+    requestAnimationFrame(() => _disasmScrollTo(st, offset, true));
+  }
+
+  function _disasmNavGo(st, direction) {
+    const newIdx = st.nav.idx + direction;
+    if (newIdx < 0 || newIdx >= st.nav.stack.length) return;
+    st.nav.idx = newIdx;
+    _disasmUpdateNavButtons(st);
+    const offset = st.nav.stack[newIdx];
+    // Already decoded (we decoded it when first visited)
+    _disasmScrollTo(st, offset, true);
+  }
+
+  function _disasmScrollTo(st, offset, highlight) {
+    const pre = st.pre;
+    if (!pre) return;
+    if (highlight)
+      pre.querySelectorAll('.da-line.highlight').forEach(el => el.classList.remove('highlight'));
+    const target = pre.querySelector('[data-offset="' + offset.toString(16) + '"]');
+    if (target) {
+      if (highlight)
+        target.classList.add('highlight');
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    if (st.addrInput)
+      st.addrInput.value = '0x' + offset.toString(16).toUpperCase();
+  }
+
+  function _disasmUpdateNavButtons(st) {
+    if (st.btnBack)
+      st.btnBack.disabled = st.nav.idx <= 0;
+    if (st.btnFwd)
+      st.btnFwd.disabled = st.nav.idx >= st.nav.stack.length - 1;
+  }
+
+  /** Auto-load: decode next batch at end of current instructions, append HTML. */
+  function _disasmLoadMore(st) {
+    if (st.insns.length === 0) return;
+    const last = st.insns[st.insns.length - 1];
+    const nextOffset = last.offset + last.length;
+    const codeEnd = st.info.codeSection ? st.info.codeSection.end : currentBytes.length;
+    if (nextOffset >= codeEnd || nextOffset >= currentBytes.length) return;
+
+    const prevLen = st.insns.length;
+    _disasmDecodeAndMerge(st, nextOffset, _DISASM_BATCH);
+    if (st.insns.length <= prevLen) return;
+
+    // Append only the new tail (fast path — no full re-render)
+    const newInsns = st.insns.slice(prevLen);
+    _disasmAppendHtml(st, newInsns);
+    _disasmUpdateStatus(st);
+  }
+
+  function _buildAnnotations(info) {
+    if (!info.imports && !info.exports && !info.strings && !info.codeSection)
+      return null;
+
+    return {
+      imports: info.imports || null,
+      exports: info.exports || null,
+      strings: info.strings || null,
+      imageBase: info.imageBase || 0,
+      codeRange: info.codeSection ? {
+        rvaStart: info.codeSection.rva,
+        rvaEnd: info.codeSection.rva + info.codeSection.size,
+        fileStart: info.codeSection.start,
+        fileEnd: info.codeSection.end,
+      } : null,
+    };
+  }
+
+  /** Build/rebuild the cross-references panel from current decoded instructions. */
+  function _disasmUpdateXrefs(st) {
+    const panel = st.xrefPanel;
+    const annotations = st.annotations;
+    if (!panel || !annotations) return;
+    panel.innerHTML = '';
+
+    const xrefs = { imports: [], strings: [], calls: [], exports: [] };
+    for (const insn of st.insns) {
+      const ops = insn.operands || '';
+      for (const hm of ops.matchAll(/\b0[xX]([0-9A-Fa-f]+)\b/g)) {
+        const addr = parseInt(hm[1], 16);
+        if (annotations.imports && annotations.imports[addr])
+          xrefs.imports.push({ addr, name: annotations.imports[addr] });
+        if (annotations.exports && annotations.exports[addr])
+          xrefs.exports.push({ addr, name: annotations.exports[addr] });
+        if (annotations.strings && annotations.strings[addr])
+          xrefs.strings.push({ addr, str: annotations.strings[addr] });
+      }
+      const mn = (insn.mnemonic || '').toLowerCase();
+      if (/^(call|bl)$/.test(mn)) {
+        const cm = ops.match(/\b0[xX]([0-9A-Fa-f]+)\b/);
+        if (cm) {
+          const cAddr = parseInt(cm[1], 16);
+          if (!annotations.imports || !annotations.imports[cAddr])
+            xrefs.calls.push({ addr: cAddr });
+        }
+      }
+    }
+
+    const total = xrefs.imports.length + xrefs.strings.length + xrefs.calls.length + xrefs.exports.length;
+    if (total === 0) return;
+
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'margin-bottom:6px;border:1px solid var(--sz-color-button-shadow,#aca899);background:var(--sz-color-button-face,#ece9d8);';
+
+    const title = document.createElement('div');
+    title.style.cssText = 'font-size:10px;font-weight:bold;padding:3px 6px;color:var(--sz-color-gray-text);cursor:pointer;';
+    title.textContent = '\u25B6 Cross References (' + total + ')';
+    const xrefBody = document.createElement('div');
+    xrefBody.style.display = 'none';
+
+    title.onclick = () => {
+      const visible = xrefBody.style.display !== 'none';
+      xrefBody.style.display = visible ? 'none' : '';
+      title.textContent = (visible ? '\u25B6' : '\u25BC') + ' Cross References (' + total + ')';
+    };
+
+    wrapper.appendChild(title);
+
+    const escH = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    const makeSection = (label, items, formatter) => {
+      if (items.length === 0) return;
+      const sec = document.createElement('div');
+      sec.style.cssText = 'padding:2px 6px 4px 12px;';
+      const hdr = document.createElement('div');
+      hdr.style.cssText = 'font-size:9px;font-weight:bold;color:var(--sz-color-gray-text);margin-bottom:1px;';
+      hdr.textContent = label;
+      sec.appendChild(hdr);
+      const seen = new Set();
+      for (const item of items) {
+        if (seen.has(item.addr)) continue;
+        seen.add(item.addr);
+        const row = document.createElement('div');
+        row.style.cssText = 'font-size:10px;font-family:monospace;cursor:pointer;padding:1px 4px;';
+        row.innerHTML = formatter(item);
+        row.onmouseover = () => row.style.background = 'rgba(49,106,197,0.1)';
+        row.onmouseout = () => row.style.background = '';
+        row.onclick = () => {
+          let targetOffset = item.addr;
+          if (annotations.codeRange && item.addr >= annotations.codeRange.rvaStart)
+            targetOffset = item.addr - annotations.codeRange.rvaStart + annotations.codeRange.fileStart;
+          _disasmNavigateTo(st, targetOffset);
+        };
+        sec.appendChild(row);
+      }
+      xrefBody.appendChild(sec);
+    };
+
+    makeSection('Imports Used', xrefs.imports,
+      i => '<span style="color:#6e7681">0x' + i.addr.toString(16).toUpperCase().padStart(8, '0') + '</span> ' + escH(i.name));
+    makeSection('Strings Referenced', xrefs.strings,
+      i => '<span style="color:#6e7681">0x' + i.addr.toString(16).toUpperCase().padStart(8, '0') + '</span> "' + escH(i.str.length > 50 ? i.str.substring(0, 47) + '...' : i.str) + '"');
+    makeSection('Internal Calls', xrefs.calls,
+      i => '<span style="color:#6e7681">0x' + i.addr.toString(16).toUpperCase().padStart(8, '0') + '</span> sub_' + i.addr.toString(16).toUpperCase().padStart(8, '0'));
+    makeSection('Exports', xrefs.exports,
+      i => '<span style="color:#6e7681">0x' + i.addr.toString(16).toUpperCase().padStart(8, '0') + '</span> ' + escH(i.name));
+
+    wrapper.appendChild(xrefBody);
+    panel.appendChild(wrapper);
   }
 
   // ---- Archiver button ----

@@ -223,8 +223,12 @@
    * Tokenize an operands string into highlighted HTML.
    * Handles registers, numbers/hex, labels (IL_xxxx, 0xADDR targets),
    * symbols (pre-resolved names from decoders), brackets, punctuation.
+   *
+   * @param {string} operandsStr  Operand text.
+   * @param {object} [annotations]  Optional { codeRange, imageBase, imports, exports, strings, rvaBase }.
+   * @returns {string} HTML fragment.
    */
-  function tokenizeOperands(operandsStr) {
+  function tokenizeOperands(operandsStr, annotations) {
     if (!operandsStr) return '';
 
     // Pattern matches (order matters — longest/most specific first):
@@ -244,8 +248,13 @@
     while ((m = TOKEN_RE.exec(operandsStr)) !== null) {
       if (m[1]) // quoted string
         html += span('str', m[1]);
-      else if (m[2]) // hex number
-        html += span('num', m[2]);
+      else if (m[2]) { // hex number — possibly a clickable address
+        const hexVal = parseInt(m[2], 16);
+        if (annotations && _isNavigableAddress(hexVal, annotations))
+          html += '<a class="da-addr" data-target="' + hexVal.toString(16) + '">' + esc(m[2]) + '</a>';
+        else
+          html += span('num', m[2]);
+      }
       else if (m[3]) // IL label
         html += span('lbl', m[3]);
       else if (m[4]) // decimal number
@@ -275,6 +284,23 @@
   }
 
   /**
+   * Check if a hex value represents a navigable address (code, import, export, or string).
+   */
+  function _isNavigableAddress(addr, annotations) {
+    if (!annotations) return false;
+    // Direct RVA match for imports/exports/strings
+    if (annotations.imports && annotations.imports[addr]) return true;
+    if (annotations.exports && annotations.exports[addr]) return true;
+    if (annotations.strings && annotations.strings[addr]) return true;
+    // Check if within code range (RVA-based)
+    if (annotations.codeRange) {
+      const cr = annotations.codeRange;
+      if (addr >= cr.rvaStart && addr < cr.rvaEnd) return true;
+    }
+    return false;
+  }
+
+  /**
    * Render pre-tokenized operand tokens from a decoder.
    * Each token: { type: 'reg'|'num'|'sym'|'kw'|'str'|'lbl'|'op'|'br'|'id'|'text', value: string }
    */
@@ -293,15 +319,26 @@
    * Format an array of instruction objects into syntax-highlighted HTML.
    *
    * @param {Array} instructions Array from disassemble().
+   * @param {object} [annotations]  Optional annotation data:
+   *   { imports, exports, strings, codeRange, imageBase, labels }
+   *   When present, addresses become clickable and annotation comments are appended.
    * @returns {string} HTML string (to be set as innerHTML on a container).
    */
-  function formatDisassemblyHtml(instructions) {
+  function formatDisassemblyHtml(instructions, annotations) {
     if (!instructions || !instructions.length)
       return '';
+
+    // Build labels map: collect all jump/call target offsets for label lines
+    const labels = annotations ? _buildLabels(instructions, annotations) : null;
 
     const lines = [];
     for (let idx = 0; idx < instructions.length; ++idx) {
       const insn = instructions[idx];
+
+      // Insert label line before this instruction if it's a jump target
+      if (labels && labels[insn.offset])
+        lines.push('<span class="da-label">' + esc(labels[insn.offset]) + ':</span>');
+
       const off = span('off', insn.offset.toString(16).padStart(8, '0').toUpperCase());
       const hex = span('hex', formatHexBytes(insn.bytes));
 
@@ -315,28 +352,99 @@
       if (insn.tokens && Array.isArray(insn.tokens))
         opsHtml = renderTokens(insn.tokens);
       else if (insn.operands)
-        opsHtml = tokenizeOperands(insn.operands);
+        opsHtml = tokenizeOperands(insn.operands, annotations);
 
       // Pseudo-C comment
       let pseudoHtml = '';
       if (insn.pseudoC)
         pseudoHtml = span('cmt', '// ' + insn.pseudoC);
 
+      // Annotation comment — resolved import/export/string name
+      let annotHtml = '';
+      if (annotations)
+        annotHtml = _resolveAnnotation(insn, annotations);
+
       const instrHtml = mnHtml + (opsHtml ? ' ' + opsHtml : '');
 
       lines.push(
-        '<span class="da-line">'
+        '<span class="da-line" data-offset="' + insn.offset.toString(16) + '">'
         + off
         + '<span class="da-sep"> | </span>'
         + hex
         + '<span class="da-sep"> | </span>'
         + instrHtml
         + (pseudoHtml ? '<span class="da-sep"> | </span>' + pseudoHtml : '')
+        + annotHtml
         + '</span>'
       );
     }
 
     return lines.join('\n');
+  }
+
+  /**
+   * Build a labels map from instruction targets.
+   * Maps file offset → label string (e.g. "loc_00401234" or export name).
+   */
+  function _buildLabels(instructions, annotations) {
+    const labels = Object.create(null);
+    const FLOW_RE = /^(j[a-z]*|b[a-z]*|call|calli?|jmp|jsr|bl|blr|jp|jr)$/i;
+    const rvaBase = annotations.codeRange ? annotations.codeRange.rvaStart : 0;
+    const fileBase = annotations.codeRange ? annotations.codeRange.fileStart : 0;
+
+    // Build a set of valid instruction offsets for quick lookup
+    const validOffsets = new Set();
+    for (const insn of instructions)
+      validOffsets.add(insn.offset);
+
+    for (const insn of instructions) {
+      const mn = (insn.mnemonic || '').toLowerCase().replace(/\..+$/, '');
+      if (!FLOW_RE.test(mn)) continue;
+      const ops = insn.operands || '';
+      const hexMatch = ops.match(/\b0[xX]([0-9A-Fa-f]+)\b/);
+      if (!hexMatch) continue;
+      const targetAddr = parseInt(hexMatch[1], 16);
+
+      // Convert RVA to file offset
+      let targetOffset = targetAddr;
+      if (rvaBase > 0 && targetAddr >= rvaBase)
+        targetOffset = targetAddr - rvaBase + fileBase;
+
+      if (!validOffsets.has(targetOffset)) continue;
+      if (labels[targetOffset]) continue;
+
+      // Check if this is a known export
+      if (annotations.exports && annotations.exports[targetAddr])
+        labels[targetOffset] = annotations.exports[targetAddr];
+      else
+        labels[targetOffset] = 'loc_' + targetAddr.toString(16).padStart(8, '0').toUpperCase();
+    }
+    return labels;
+  }
+
+  /**
+   * Resolve an annotation comment for an instruction based on its operand addresses.
+   * Returns HTML string or empty string.
+   */
+  function _resolveAnnotation(insn, annotations) {
+    const ops = insn.operands || '';
+    const hexMatches = ops.matchAll(/\b0[xX]([0-9A-Fa-f]+)\b/g);
+    for (const hm of hexMatches) {
+      const addr = parseInt(hm[1], 16);
+      // Import reference
+      if (annotations.imports && annotations.imports[addr])
+        return '<span class="da-annot"> ; ' + esc(annotations.imports[addr]) + '</span>';
+      // Export reference
+      if (annotations.exports && annotations.exports[addr])
+        return '<span class="da-annot"> ; ' + esc(annotations.exports[addr]) + '</span>';
+      // String reference
+      if (annotations.strings && annotations.strings[addr]) {
+        const s = annotations.strings[addr];
+        const display = s.length > 60 ? s.substring(0, 57) + '...' : s;
+        return '<span class="da-annot"> ; "' + esc(display) + '"</span>';
+      }
+    }
+    return '';
   }
 
   /**
