@@ -749,6 +749,26 @@
     GetTickCount() {
       return performance.now() | 0;
     },
+
+    MountLocalDirectory(mountName) {
+      return _sendMessage('sz:vfs:MountLocal', { mountName }, 0).then(r => {
+        if (r.error)
+          throw new Error(r.error.message || r.error);
+        return r;
+      });
+    },
+
+    UnmountDirectory(prefix) {
+      return _sendMessage('sz:vfs:Unmount', { prefix }).then(r => {
+        if (r.error)
+          throw new Error(r.error.message || r.error);
+        return r;
+      });
+    },
+
+    ListMounts() {
+      return _sendMessage('sz:vfs:ListMounts', {}).then(r => r.mounts || []);
+    },
   };
 
   // ── SZ.Dlls.Shell32 ────────────────────────────────────────────

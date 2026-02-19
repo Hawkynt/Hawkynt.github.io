@@ -163,6 +163,162 @@
   }
 
   // =========================================================================
+  // File System Access API Driver
+  // =========================================================================
+  class FileSystemAccessDriver extends BaseDriver {
+    #root;
+    constructor(directoryHandle) {
+      super();
+      this.#root = directoryHandle;
+    }
+
+    async #walkPath(relPath) {
+      if (!relPath || relPath === '') return { handle: this.#root, kind: 'directory' };
+      const segments = relPath.split('/');
+      let current = this.#root;
+      for (let i = 0; i < segments.length; ++i) {
+        const seg = segments[i];
+        const isLast = i === segments.length - 1;
+        if (!isLast) {
+          current = await current.getDirectoryHandle(seg);
+          continue;
+        }
+        // Last segment: try directory first, then file
+        try {
+          const dir = await current.getDirectoryHandle(seg);
+          return { handle: dir, kind: 'directory' };
+        } catch {
+          const file = await current.getFileHandle(seg);
+          return { handle: file, kind: 'file' };
+        }
+      }
+      return { handle: current, kind: 'directory' };
+    }
+
+    async GetNode(relPath) {
+      if (!relPath || relPath === '') return { k: 'dir', meta: {} };
+      try {
+        const { handle, kind } = await this.#walkPath(relPath);
+        if (kind === 'directory')
+          return { k: 'dir', meta: {} };
+        const file = await handle.getFile();
+        return {
+          k: 'bytes',
+          c: { t: 'fsaa', handle },
+          meta: { size: file.size, mtime: file.lastModified, contentType: file.type || 'application/octet-stream' },
+        };
+      } catch {
+        return null;
+      }
+    }
+
+    async PutNode(relPath, node) {
+      const segments = relPath.split('/');
+      const name = segments.pop();
+      let parent = this.#root;
+      for (const seg of segments)
+        parent = await parent.getDirectoryHandle(seg, { create: false });
+
+      if (node.k === 'dir') {
+        await parent.getDirectoryHandle(name, { create: true });
+        return;
+      }
+      const fh = await parent.getFileHandle(name, { create: true });
+      const writable = await fh.createWritable();
+      if (node.k === 'bytes' && node.c?.t === 'inline') {
+        const binary = atob(node.c.b64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; ++i)
+          bytes[i] = binary.charCodeAt(i);
+        await writable.write(bytes);
+      } else if (node.k === 'bytes' && node.c?.t === 'fsaa') {
+        const file = await node.c.handle.getFile();
+        await writable.write(await file.arrayBuffer());
+      } else if (node.k === 'value') {
+        await writable.write(JSON.stringify(node.v));
+      } else if (node.k === 'uri') {
+        await writable.write(node.u);
+      }
+      await writable.close();
+    }
+
+    async DeleteNode(relPath) {
+      const segments = relPath.split('/');
+      const name = segments.pop();
+      let parent = this.#root;
+      for (const seg of segments)
+        parent = await parent.getDirectoryHandle(seg, { create: false });
+      await parent.removeEntry(name, { recursive: true });
+    }
+
+    async ListChildren(relPath) {
+      let dir;
+      if (!relPath || relPath === '')
+        dir = this.#root;
+      else {
+        const { handle, kind } = await this.#walkPath(relPath);
+        if (kind !== 'directory') return [];
+        dir = handle;
+      }
+      const names = [];
+      for await (const name of dir.keys())
+        names.push(name);
+      return names;
+    }
+  }
+
+  // =========================================================================
+  // MountStore — IndexedDB persistence for FileSystemDirectoryHandles
+  // =========================================================================
+  const MountStore = {
+    _dbPromise: null,
+    _open() {
+      if (this._dbPromise) return this._dbPromise;
+      this._dbPromise = new Promise((resolve, reject) => {
+        const req = indexedDB.open('sz-mounts', 1);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains('mounts'))
+            db.createObjectStore('mounts', { keyPath: 'name' });
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      return this._dbPromise;
+    },
+    async getAll() {
+      const db = await this._open();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction('mounts', 'readonly');
+        const store = tx.objectStore('mounts');
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+      });
+    },
+    async put(name, handle) {
+      const db = await this._open();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction('mounts', 'readwrite');
+        const store = tx.objectStore('mounts');
+        const req = store.put({ name, handle });
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+      });
+    },
+    async remove(name) {
+      const db = await this._open();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction('mounts', 'readwrite');
+        const store = tx.objectStore('mounts');
+        const req = store.delete(name);
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+      });
+    },
+  };
+
+  // =========================================================================
   // Kernel
   // =========================================================================
   class Kernel {
@@ -176,6 +332,17 @@
     mount(prefix, driver) {
       const normPrefix = normalizePath(prefix);
       this.#mounts.set(normPrefix, driver);
+    }
+
+    unmount(prefix) {
+      this.#mounts.delete(normalizePath(prefix));
+    }
+
+    listMounts() {
+      const result = [];
+      for (const [prefix, driver] of this.#mounts)
+        result.push({ prefix, readonly: driver.readonly, isLocal: driver instanceof FileSystemAccessDriver });
+      return result;
     }
 
     #resolve(path) {
@@ -194,9 +361,13 @@
     async #getNode(path) {
       const { driver, relPath, normPath } = this.#resolve(path);
       // The root or a mount point itself is always a directory.
-      if (normPath === '/' || (this.#mounts.has(normPath) && relPath === '')) {
+      if (normPath === '/' || (this.#mounts.has(normPath) && relPath === ''))
         return { k: 'dir', meta: {} };
-      }
+      // Intermediate mount prefix (e.g. /mount when /mount/foo is mounted)
+      const prefix = normPath + '/';
+      for (const mp of this.#mounts.keys())
+        if (mp.startsWith(prefix))
+          return { k: 'dir', meta: {} };
       const node = await driver.GetNode(relPath);
       if (!node) throw new VFSError(ERROR_CODES.NotFound, normPath, 'Path not found.');
       return node;
@@ -306,6 +477,10 @@
                         bytes[i] = binary.charCodeAt(i);
                     return bytes;
                 }
+                if (node.c.t === 'fsaa') {
+                    const file = await node.c.handle.getFile();
+                    return new Uint8Array(await file.arrayBuffer());
+                }
                 throw new VFSError(ERROR_CODES.Unsupported, path, 'Unsupported byte content reference type.');
             case 'value':
                 return new TextEncoder().encode(JSON.stringify(node.v));
@@ -362,6 +537,8 @@
     Kernel,
     LocalStorageDriver,
     ReadOnlyObjectDriver,
+    FileSystemAccessDriver,
+    MountStore,
     VFSError,
     ERROR_CODES
   };
