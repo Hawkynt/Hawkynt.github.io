@@ -30,96 +30,290 @@
 <body>
 <noscript><p>Online ICO and cursor file editor. <a href="../../index.html">Open »SynthelicZ« Desktop</a> to use this app.</p></noscript>
 
-<!-- Menu Bar -->
-<div class="menu-bar" id="menu-bar">
-  <div class="menu-item" data-menu="file">
-    File
-    <div class="menu-dropdown">
-      <div class="menu-entry" data-action="new">New<span class="shortcut">Ctrl+N</span></div>
-      <div class="menu-entry" data-action="open">Open...<span class="shortcut">Ctrl+O</span></div>
-      <div class="menu-entry" data-action="open-exe">Extract from EXE/DLL...</div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="save">Save<span class="shortcut">Ctrl+S</span></div>
-      <div class="menu-entry" data-action="save-as">Save As...<span class="shortcut">Ctrl+Shift+S</span></div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="import-image">Import Image (PNG/BMP/SVG)...</div>
-      <div class="menu-entry" data-action="export-favicon">Export Favicon...</div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="exit">Exit</div>
-    </div>
+<!-- Quick Access Toolbar -->
+<div class="qat" id="qat">
+  <button class="qat-btn" data-action="save" title="Save (Ctrl+S)">&#128190;</button>
+  <button class="qat-btn" data-action="undo" title="Undo (Ctrl+Z)">&#8630;</button>
+  <button class="qat-btn" data-action="redo" title="Redo (Ctrl+Y)">&#8631;</button>
+</div>
+
+<!-- Ribbon Tab Bar -->
+<div class="ribbon-tabs" id="ribbon-tabs">
+  <div class="ribbon-tab-bar">
+    <button class="ribbon-file-btn" id="ribbon-file-btn">File</button>
+    <button class="ribbon-tab active" data-tab="home">Home</button>
+    <button class="ribbon-tab" data-tab="image">Image</button>
+    <button class="ribbon-tab" data-tab="view">View</button>
   </div>
-  <div class="menu-item" data-menu="edit">
-    Edit
-    <div class="menu-dropdown">
-      <div class="menu-entry" data-action="undo">Undo<span class="shortcut">Ctrl+Z</span></div>
-      <div class="menu-entry" data-action="redo">Redo<span class="shortcut">Ctrl+Y</span></div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="cut-image">Cut<span class="shortcut">Ctrl+X</span></div>
-      <div class="menu-entry" data-action="copy-image">Copy<span class="shortcut">Ctrl+C</span></div>
-      <div class="menu-entry" data-action="paste-image">Paste<span class="shortcut">Ctrl+V</span></div>
-      <div class="menu-entry" data-action="paste-as-new">Paste as New Image</div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="select-all">Select All<span class="shortcut">Ctrl+A</span></div>
-      <div class="menu-entry" data-action="deselect">Deselect<span class="shortcut">Ctrl+D</span></div>
-      <div class="menu-entry" data-action="delete-selection">Delete<span class="shortcut">Del</span></div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="clear-image">Clear Image</div>
-    </div>
+</div>
+
+<!-- File Backstage -->
+<div class="backstage" id="backstage">
+  <div class="backstage-sidebar">
+    <button class="backstage-back" id="backstage-back">&#8592;</button>
+    <button class="backstage-item" data-action="new">New</button>
+    <button class="backstage-item" data-action="open">Open</button>
+    <button class="backstage-item" data-action="open-exe">Extract from EXE/DLL</button>
+    <div class="backstage-sep"></div>
+    <button class="backstage-item" data-action="save">Save</button>
+    <button class="backstage-item" data-action="save-as">Save As</button>
+    <div class="backstage-sep"></div>
+    <button class="backstage-item" data-action="import-image">Import Image</button>
+    <button class="backstage-item" data-action="export-favicon">Export Favicon</button>
+    <div class="backstage-sep"></div>
+    <button class="backstage-item" data-action="about">About</button>
+    <div class="backstage-spacer"></div>
+    <button class="backstage-item" data-action="exit">Exit</button>
   </div>
-  <div class="menu-item" data-menu="view">
-    View
-    <div class="menu-dropdown">
-      <div class="menu-entry checkbox checked" data-action="toggle-grid">Show Grid</div>
-      <div class="menu-entry checkbox checked" data-action="toggle-checkerboard">Show Transparency</div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry radio" data-action="zoom-1">Zoom 1x<span class="shortcut">Ctrl+1</span></div>
-      <div class="menu-entry radio" data-action="zoom-4">Zoom 4x<span class="shortcut">Ctrl+2</span></div>
-      <div class="menu-entry radio checked" data-action="zoom-8">Zoom 8x<span class="shortcut">Ctrl+3</span></div>
-      <div class="menu-entry radio" data-action="zoom-16">Zoom 16x<span class="shortcut">Ctrl+4</span></div>
-      <div class="menu-entry" data-action="zoom-fit">Fit to View</div>
+</div>
+
+<!-- ============================================================= -->
+<!-- Home Tab -->
+<!-- ============================================================= -->
+<div class="ribbon-panel active" data-panel="home" id="ribbon-home">
+
+  <!-- Clipboard -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="paste-image" title="Paste (Ctrl+V)">
+        <span class="rb-icon rb-icon-lg">&#128203;</span>
+        <span class="rb-label">Paste</span>
+      </button>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="cut-image" title="Cut (Ctrl+X)">
+          <span class="rb-icon">&#9986;</span><span class="rb-label">Cut</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="copy-image" title="Copy (Ctrl+C)">
+          <span class="rb-icon">&#128464;</span><span class="rb-label">Copy</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="paste-as-new" title="Paste as New Image">
+          <span class="rb-icon">&#128466;</span><span class="rb-label">Paste New</span>
+        </button>
+      </div>
     </div>
+    <div class="ribbon-group-label">Clipboard</div>
   </div>
-  <div class="menu-item" data-menu="image">
-    Image
-    <div class="menu-dropdown">
-      <div class="menu-entry" data-action="flip-h">Flip Horizontal</div>
-      <div class="menu-entry" data-action="flip-v">Flip Vertical</div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="rotate-cw">Rotate 90&deg; CW</div>
-      <div class="menu-entry" data-action="rotate-ccw">Rotate 90&deg; CCW</div>
-      <div class="menu-entry" data-action="rotate-180">Rotate 180&deg;</div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="crop-to-selection">Crop to Selection</div>
-      <div class="menu-entry" data-action="resize-image">Resize...</div>
-      <div class="menu-entry" data-action="shift-image">Shift/Offset...</div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="grayscale">Grayscale</div>
-      <div class="menu-entry" data-action="invert">Invert Colors</div>
-      <div class="menu-entry" data-action="hsl-adjust">Hue/Saturation...</div>
-      <div class="menu-entry" data-action="replace-color">Replace Color...</div>
+
+  <div class="ribbon-sep"></div>
+
+  <!-- Tools -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="tool-grid-4x2" id="tool-grid">
+        <button class="rb-btn active" data-tool="pencil" title="Pencil (P)">&#9998;</button>
+        <button class="rb-btn" data-tool="eraser" title="Eraser (E)">&#9634;</button>
+        <button class="rb-btn" data-tool="eyedropper" title="Eyedropper (I)">&#9738;</button>
+        <button class="rb-btn" data-tool="fill" title="Flood Fill (G)">&#9783;</button>
+        <button class="rb-btn" data-tool="line" title="Line (L)">&#9585;</button>
+        <button class="rb-btn" data-tool="rect" title="Rectangle (R)">&#9645;</button>
+        <button class="rb-btn" data-tool="ellipse" title="Ellipse (O)">&#9711;</button>
+        <button class="rb-btn" data-tool="select" title="Selection (S)">&#9633;</button>
+      </div>
     </div>
+    <div class="ribbon-group-label">Tools</div>
   </div>
-  <div class="menu-item" data-menu="tools">
-    Tools
-    <div class="menu-dropdown">
-      <div class="menu-entry radio checked" data-action="tool" data-tool="pencil">Pencil<span class="shortcut">P</span></div>
-      <div class="menu-entry radio" data-action="tool" data-tool="eraser">Eraser<span class="shortcut">E</span></div>
-      <div class="menu-entry radio" data-action="tool" data-tool="eyedropper">Eyedropper<span class="shortcut">I</span></div>
-      <div class="menu-entry radio" data-action="tool" data-tool="fill">Flood Fill<span class="shortcut">G</span></div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry radio" data-action="tool" data-tool="line">Line<span class="shortcut">L</span></div>
-      <div class="menu-entry radio" data-action="tool" data-tool="rect">Rectangle<span class="shortcut">R</span></div>
-      <div class="menu-entry radio" data-action="tool" data-tool="ellipse">Ellipse<span class="shortcut">O</span></div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry radio" data-action="tool" data-tool="select">Selection<span class="shortcut">S</span></div>
+
+  <div class="ribbon-sep"></div>
+
+  <!-- Brush -->
+  <div class="ribbon-group" id="brush-size-options">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <div class="rb-slider-row">
+          <label>Size:</label>
+          <input type="range" id="brush-size-slider" min="1" max="8" value="1">
+          <span id="brush-size-label">1px</span>
+        </div>
+        <div class="brush-preview" id="brush-preview"></div>
+      </div>
     </div>
+    <div class="ribbon-group-label">Brush</div>
   </div>
-  <div class="menu-item" data-menu="help">
-    Help
-    <div class="menu-dropdown">
-      <div class="menu-entry" data-action="about">About Icon Editor</div>
+
+  <div class="ribbon-sep"></div>
+
+  <!-- Shape -->
+  <div class="ribbon-group" id="tool-options">
+    <div class="ribbon-group-content">
+      <div class="rb-stack" id="shape-fill-options">
+        <label class="rb-check-label"><input type="radio" name="shape-fill" value="outline" checked> Outline</label>
+        <label class="rb-check-label"><input type="radio" name="shape-fill" value="filled"> Filled</label>
+        <label class="rb-check-label"><input type="radio" name="shape-fill" value="both"> Both</label>
+      </div>
     </div>
+    <div class="ribbon-group-label">Shape</div>
   </div>
+
+  <div class="ribbon-sep"></div>
+
+  <!-- Colors -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-color-block">
+        <div class="rb-fg-bg" id="palette-slots">
+          <div class="rb-fg-swatch active" id="fg-color-slot" title="Foreground color"></div>
+          <div class="rb-bg-swatch" id="bg-color-slot" title="Background color"></div>
+        </div>
+      </div>
+      <div class="rb-palette-mini" id="mini-palette"></div>
+      <input type="color" id="system-color-picker" style="position:absolute; left:-9999px; width:1px; height:1px; opacity:0;" aria-hidden="true">
+    </div>
+    <div class="ribbon-group-label">Colors</div>
+  </div>
+
+</div>
+
+<!-- ============================================================= -->
+<!-- Image Tab -->
+<!-- ============================================================= -->
+<div class="ribbon-panel" data-panel="image" id="ribbon-image">
+
+  <!-- Transform -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="flip-h" title="Flip Horizontal">
+          <span class="rb-icon">&#8596;</span><span class="rb-label">Flip H</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="flip-v" title="Flip Vertical">
+          <span class="rb-icon">&#8597;</span><span class="rb-label">Flip V</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="rotate-cw" title="Rotate 90&deg; CW">
+          <span class="rb-icon">&#8635;</span><span class="rb-label">Rotate CW</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="rotate-ccw" title="Rotate 90&deg; CCW">
+          <span class="rb-icon">&#8634;</span><span class="rb-label">Rotate CCW</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="rotate-180" title="Rotate 180&deg;">
+          <span class="rb-icon">&#8635;</span><span class="rb-label">Rotate 180</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Transform</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <!-- Size -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="resize-image" title="Resize">
+          <span class="rb-icon">&#8690;</span><span class="rb-label">Resize</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="crop-to-selection" title="Crop to Selection">
+          <span class="rb-icon">&#9986;</span><span class="rb-label">Crop to Sel</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="shift-image" title="Shift / Offset">
+          <span class="rb-icon">&#8614;</span><span class="rb-label">Shift/Offset</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Size</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <!-- Adjustments -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="grayscale" title="Grayscale">
+          <span class="rb-icon">&#9673;</span><span class="rb-label">Grayscale</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="invert" title="Invert Colors">
+          <span class="rb-icon">&#8963;</span><span class="rb-label">Invert</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="hsl-adjust" title="Hue/Saturation">
+          <span class="rb-icon">&#127752;</span><span class="rb-label">Hue/Sat</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="replace-color" title="Replace Color">
+          <span class="rb-icon">&#128396;</span><span class="rb-label">Replace Color</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Adjustments</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <!-- Selection -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="select-all" title="Select All (Ctrl+A)">
+          <span class="rb-icon">&#9634;</span><span class="rb-label">Select All</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="deselect" title="Deselect (Ctrl+D)">
+          <span class="rb-icon">&#8709;</span><span class="rb-label">Deselect</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="delete-selection" title="Delete (Del)">
+          <span class="rb-icon">&#128465;</span><span class="rb-label">Delete</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="clear-image" title="Clear Image">
+          <span class="rb-icon">&#9634;</span><span class="rb-label">Clear Image</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Selection</div>
+  </div>
+
+</div>
+
+<!-- ============================================================= -->
+<!-- View Tab -->
+<!-- ============================================================= -->
+<div class="ribbon-panel" data-panel="view" id="ribbon-view">
+
+  <!-- Zoom -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="zoom-1" title="Zoom 1x (Ctrl+1)">
+          <span class="rb-label">1x</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="zoom-4" title="Zoom 4x (Ctrl+2)">
+          <span class="rb-label">4x</span>
+        </button>
+        <button class="rb-btn rb-btn-sm active" data-action="zoom-8" title="Zoom 8x (Ctrl+3)">
+          <span class="rb-label">8x</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="zoom-16" title="Zoom 16x (Ctrl+4)">
+          <span class="rb-label">16x</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="zoom-fit" title="Fit to View">
+          <span class="rb-label">Fit</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Zoom</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <!-- Display -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm active" data-action="toggle-grid" title="Show Grid">
+          <span class="rb-icon">&#9638;</span><span class="rb-label">Grid</span>
+        </button>
+        <button class="rb-btn rb-btn-sm active" data-action="toggle-checkerboard" title="Show Transparency">
+          <span class="rb-icon">&#9641;</span><span class="rb-label">Transparency</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Display</div>
+  </div>
+
 </div>
 
 <!-- Main 3-column layout -->
@@ -146,63 +340,8 @@
     </div>
   </div>
 
-  <!-- Right sidebar: Tools + Color -->
+  <!-- Right sidebar: Palette + Info -->
   <div class="sidebar-right" id="sidebar-right">
-    <div class="sidebar-title">Tools</div>
-    <div class="tool-grid" id="tool-grid">
-      <div class="tool-btn active" data-tool="pencil" title="Pencil (P)">&#9998;</div>
-      <div class="tool-btn" data-tool="eraser" title="Eraser (E)">&#9634;</div>
-      <div class="tool-btn" data-tool="eyedropper" title="Eyedropper (I)">&#9738;</div>
-      <div class="tool-btn" data-tool="fill" title="Flood Fill (G)">&#9783;</div>
-      <div class="tool-btn" data-tool="line" title="Line (L)">&#9585;</div>
-      <div class="tool-btn" data-tool="rect" title="Rectangle (R)">&#9645;</div>
-      <div class="tool-btn" data-tool="ellipse" title="Ellipse (O)">&#9711;</div>
-      <div class="tool-btn" data-tool="select" title="Selection (S)">&#9633;</div>
-    </div>
-
-    <div class="sidebar-title">Tool Properties</div>
-    <div class="tool-options" id="tool-options">
-      <div class="section-subtitle">Shape Fill</div>
-      <div class="shape-fill-options" id="shape-fill-options">
-        <label><input type="radio" name="shape-fill" value="outline" checked> Outline</label>
-        <label><input type="radio" name="shape-fill" value="filled"> Filled</label>
-        <label><input type="radio" name="shape-fill" value="both"> Both</label>
-      </div>
-    </div>
-
-    <div class="tool-options" id="brush-size-options">
-      <div class="section-subtitle">Brush</div>
-      <div class="brush-size-section" id="brush-size-section">
-        <input type="range" id="brush-size-slider" min="1" max="8" value="1">
-        <span id="brush-size-label">1px</span>
-        <div class="brush-preview" id="brush-preview"></div>
-      </div>
-    </div>
-
-    <div class="sidebar-title">Colors</div>
-    <div class="color-section">
-      <div class="palette-slots" id="palette-slots">
-        <div class="color-slot active" id="fg-color-slot" title="Foreground color"></div>
-        <div class="color-slot" id="bg-color-slot" title="Background color"></div>
-      </div>
-      <input type="color" id="system-color-picker" style="position:absolute; left:-9999px; width:1px; height:1px; opacity:0;" aria-hidden="true">
-      <div class="color-input-row">
-        <label>R</label><input type="number" id="color-r" min="0" max="255" value="0">
-        <label>G</label><input type="number" id="color-g" min="0" max="255" value="0">
-      </div>
-      <div class="color-input-row">
-        <label>B</label><input type="number" id="color-b" min="0" max="255" value="0">
-        <label>A</label><input type="number" id="color-a" min="0" max="255" value="255">
-      </div>
-      <div class="color-input-row">
-        <label>Hex</label><input type="text" id="color-hex" value="#000000" maxlength="9">
-      </div>
-      <div class="alpha-slider-row">
-        <label>Alpha</label>
-        <input type="range" id="alpha-slider" min="0" max="255" value="255">
-      </div>
-    </div>
-
     <div class="sidebar-title">Palette</div>
     <div class="palette-grid" id="palette-grid"></div>
 

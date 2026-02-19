@@ -84,10 +84,7 @@
   const undoStack = [];
   let redoStack = [];
 
-  let openMenu = null;
-
   // ── DOM refs ──────────────────────────────────────────────────────
-  const menuBar = document.getElementById('menu-bar');
   const imageList = document.getElementById('image-list');
   const canvasArea = document.getElementById('canvas-area');
   const canvasWrapper = document.getElementById('canvas-wrapper');
@@ -99,16 +96,11 @@
   const ctx = mainCanvas.getContext('2d', { willReadFrequently: true });
   const octx = overlayCanvas.getContext('2d');
 
-  const alphaLabel = document.getElementById('alpha-label');
-  const colorR = document.getElementById('color-r');
-  const colorG = document.getElementById('color-g');
-  const colorB = document.getElementById('color-b');
-  const colorA = document.getElementById('color-a');
-  const colorHex = document.getElementById('color-hex');
   const systemColorPicker = document.getElementById('system-color-picker');
-  const alphaSlider = document.getElementById('alpha-slider');
   const fgColorSlot = document.getElementById('fg-color-slot');
   const bgColorSlot = document.getElementById('bg-color-slot');
+  const ribbonTabs = document.getElementById('ribbon-tabs');
+  const backstage = document.getElementById('backstage');
   const depthSelect = document.getElementById('depth-select');
   const toolGrid = document.getElementById('tool-grid');
   const paletteGrid = document.getElementById('palette-grid');
@@ -158,6 +150,8 @@
   updateColorUI();
   setTool('pencil');
   updateTitle();
+  // Defer initial ribbon state update to after all DOM bindings
+  setTimeout(updateMenuStates, 0);
 
   // ── Open file from command line ───────────────────────────────────
   const cmdLine = Kernel32.GetCommandLine();
@@ -320,11 +314,14 @@
     renderChecker();
     renderOverlayGrid();
 
-    // Update zoom radio states in View menu
+    // Update zoom button states in View ribbon panel
     const zoomMap = { 1: 'zoom-1', 4: 'zoom-4', 8: 'zoom-8', 16: 'zoom-16' };
-    menuBar.querySelectorAll('[data-action^="zoom-"]').forEach(el => {
-      el.classList.toggle('checked', el.dataset.action === zoomMap[zoom]);
-    });
+    const viewPanel = document.getElementById('ribbon-view');
+    if (viewPanel)
+      viewPanel.querySelectorAll('[data-action^="zoom-"]').forEach(el => {
+        if (el.dataset.action !== 'zoom-fit')
+          el.classList.toggle('active', el.dataset.action === zoomMap[zoom]);
+      });
   }
 
   function renderChecker() {
@@ -396,22 +393,16 @@
   }
 
   function updateColorUI() {
-    const { r, g, b, a } = currentColor;
-    colorR.value = r;
-    colorG.value = g;
-    colorB.value = b;
-    colorA.value = a;
-    alphaSlider.value = a;
+    const { r, g, b } = currentColor;
     const hex = '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
-    colorHex.value = a < 255 ? hex + ((1 << 8) + a).toString(16).slice(1) : hex;
     if (systemColorPicker)
       systemColorPicker.value = hex;
-    if (alphaLabel)
-      alphaLabel.textContent = 'A: ' + a;
+    const fgBg = 'rgba(' + foregroundColor.r + ',' + foregroundColor.g + ',' + foregroundColor.b + ',' + (foregroundColor.a / 255) + ')';
+    const bgBgStr = 'rgba(' + backgroundColor.r + ',' + backgroundColor.g + ',' + backgroundColor.b + ',' + (backgroundColor.a / 255) + ')';
     if (fgColorSlot)
-      fgColorSlot.style.background = 'rgba(' + foregroundColor.r + ',' + foregroundColor.g + ',' + foregroundColor.b + ',' + (foregroundColor.a / 255) + ')';
+      fgColorSlot.style.background = fgBg;
     if (bgColorSlot)
-      bgColorSlot.style.background = 'rgba(' + backgroundColor.r + ',' + backgroundColor.g + ',' + backgroundColor.b + ',' + (backgroundColor.a / 255) + ')';
+      bgColorSlot.style.background = bgBgStr;
     if (fgColorSlot)
       fgColorSlot.classList.toggle('active', activeColorSlot === 'fg');
     if (bgColorSlot)
@@ -1343,41 +1334,6 @@
       paletteGrid.appendChild(swatch);
     }
   }
-
-  // Color input event handlers
-  function onColorInputChange() {
-    currentColor.r = Math.max(0, Math.min(255, parseInt(colorR.value, 10) || 0));
-    currentColor.g = Math.max(0, Math.min(255, parseInt(colorG.value, 10) || 0));
-    currentColor.b = Math.max(0, Math.min(255, parseInt(colorB.value, 10) || 0));
-    currentColor.a = Math.max(0, Math.min(255, parseInt(colorA.value, 10) || 0));
-    const c = getEffectiveColorFor(currentColor);
-    currentColor = c;
-    setSlotColor(activeColorSlot, currentColor);
-    updateColorUI();
-    buildPalette();
-  }
-
-  colorR.addEventListener('change', onColorInputChange);
-  colorG.addEventListener('change', onColorInputChange);
-  colorB.addEventListener('change', onColorInputChange);
-  colorA.addEventListener('change', onColorInputChange);
-
-  alphaSlider.addEventListener('input', () => {
-    currentColor.a = parseInt(alphaSlider.value, 10);
-    setSlotColor(activeColorSlot, currentColor);
-    updateColorUI();
-  });
-
-  colorHex.addEventListener('change', () => {
-    const parsed = parseHexColor(colorHex.value);
-    if (parsed) {
-      currentColor = parsed;
-      currentColor = getEffectiveColorFor(currentColor);
-      setSlotColor(activeColorSlot, currentColor);
-      updateColorUI();
-      buildPalette();
-    }
-  });
 
   if (systemColorPicker) {
     systemColorPicker.addEventListener('input', () => {
@@ -3610,20 +3566,19 @@
   }
 
   // ══════════════════════════════════════════════════════════════════
-  // MENU SYSTEM
+  // RIBBON SYSTEM
   // ══════════════════════════════════════════════════════════════════
 
   function updateMenuStates() {
     const setEnabled = (action, enabled) => {
-      const el = menuBar.querySelector('[data-action="' + action + '"]');
-      if (el)
+      document.querySelectorAll('[data-action="' + action + '"]').forEach(el => {
         el.classList.toggle('disabled', !enabled);
+      });
     };
     const hasSelection = !!selection;
     const hasClipboard = !!clipboardImageData;
     const hasUndo = undoStack.length > 0;
     const hasRedo = redoStack.length > 0;
-    const hasImages = iconDocument.images.length > 1;
 
     setEnabled('undo', hasUndo);
     setEnabled('redo', hasRedo);
@@ -3636,57 +3591,86 @@
     setEnabled('crop-to-selection', hasSelection);
   }
 
-  menuBar.addEventListener('pointerdown', (e) => {
-    if (e.target.closest('.menu-entry') || e.target.closest('.menu-separator'))
+  // ── Ribbon tab switching ────────────────────────────────────────
+  ribbonTabs.addEventListener('click', (e) => {
+    const tab = e.target.closest('.ribbon-tab');
+    if (!tab)
       return;
-    const item = e.target.closest('.menu-item');
+    const tabName = tab.dataset.tab;
+    ribbonTabs.querySelectorAll('.ribbon-tab').forEach(t => t.classList.toggle('active', t === tab));
+    document.querySelectorAll('.ribbon-panel').forEach(p => p.classList.toggle('active', p.dataset.panel === tabName));
+  });
+
+  // ── File backstage ──────────────────────────────────────────────
+  document.getElementById('ribbon-file-btn').addEventListener('click', () => {
+    backstage.classList.add('visible');
+  });
+
+  document.getElementById('backstage-back').addEventListener('click', () => {
+    backstage.classList.remove('visible');
+  });
+
+  backstage.addEventListener('click', (e) => {
+    const item = e.target.closest('.backstage-item');
     if (!item)
       return;
-    if (openMenu === item) {
-      item.classList.remove('open');
-      openMenu = null;
-      return;
-    }
-    if (openMenu)
-      openMenu.classList.remove('open');
-    item.classList.add('open');
-    openMenu = item;
-    updateMenuStates();
-  });
-
-  menuBar.addEventListener('pointerover', (e) => {
-    if (!openMenu)
-      return;
-    const item = e.target.closest('.menu-item');
-    if (item && item !== openMenu) {
-      openMenu.classList.remove('open');
-      item.classList.add('open');
-      openMenu = item;
-      updateMenuStates();
-    }
-  });
-
-  document.addEventListener('pointerdown', (e) => {
-    if (!openMenu)
-      return;
-    if (!e.target.closest('.menu-bar')) {
-      openMenu.classList.remove('open');
-      openMenu = null;
-    }
-  });
-
-  menuBar.addEventListener('click', (e) => {
-    const entry = e.target.closest('.menu-entry');
-    if (!entry || entry.classList.contains('disabled'))
-      return;
-    const action = entry.dataset.action;
+    const action = item.dataset.action;
+    backstage.classList.remove('visible');
     if (action)
-      handleAction(action, entry);
-    if (openMenu) {
-      openMenu.classList.remove('open');
-      openMenu = null;
-    }
+      handleAction(action, item);
   });
+
+  // close backstage when clicking outside sidebar
+  backstage.addEventListener('pointerdown', (e) => {
+    if (!e.target.closest('.backstage-sidebar'))
+      backstage.classList.remove('visible');
+  });
+
+  // ── QAT buttons ─────────────────────────────────────────────────
+  document.getElementById('qat').addEventListener('click', (e) => {
+    const btn = e.target.closest('.qat-btn');
+    if (btn && btn.dataset.action)
+      handleAction(btn.dataset.action, btn);
+  });
+
+  // ── Ribbon panel action buttons ─────────────────────────────────
+  document.querySelectorAll('.ribbon-panel').forEach(panel => {
+    panel.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn || btn.classList.contains('disabled'))
+        return;
+      handleAction(btn.dataset.action, btn);
+    });
+  });
+
+  // ── Mini palette in ribbon ──────────────────────────────────────
+  (function buildMiniPalette() {
+    const mini = document.getElementById('mini-palette');
+    if (!mini)
+      return;
+    const first14 = PALETTE_COLORS.slice(0, 14);
+    first14.forEach(hex => {
+      const sw = document.createElement('div');
+      sw.className = 'color-swatch';
+      sw.style.background = hex;
+      sw.title = hex;
+      sw.addEventListener('click', () => {
+        const r = parseInt(hex.slice(1, 3), 16);
+        const g = parseInt(hex.slice(3, 5), 16);
+        const b = parseInt(hex.slice(5, 7), 16);
+        const c = { r, g, b, a: currentColor.a };
+        if (activeColorSlot === 'fg') {
+          foregroundColor = c;
+          currentColor = { ...c };
+        } else {
+          backgroundColor = c;
+          currentColor = { ...c };
+        }
+        updateColorUI();
+      });
+      mini.appendChild(sw);
+    });
+  })();
 
   function handleAction(action, entry) {
     switch (action) {
@@ -3712,12 +3696,14 @@
 
       case 'toggle-grid':
         showGrid = !showGrid;
-        entry.classList.toggle('checked', showGrid);
+        if (entry)
+          entry.classList.toggle('active', showGrid);
         renderOverlayGrid();
         break;
       case 'toggle-checkerboard':
         showCheckerboard = !showCheckerboard;
-        entry.classList.toggle('checked', showCheckerboard);
+        if (entry)
+          entry.classList.toggle('active', showCheckerboard);
         renderChecker();
         break;
       case 'zoom-1': setZoom(1); break;
@@ -3759,6 +3745,7 @@
         showDialog('dlg-about');
         break;
     }
+    updateMenuStates();
   }
 
   // ══════════════════════════════════════════════════════════════════
@@ -3770,14 +3757,9 @@
       commitSelection();
     currentTool = tool;
 
-    // Update toolbar
-    toolGrid.querySelectorAll('.tool-btn').forEach(b => {
+    // Update toolbar (ribbon tool grid uses .rb-btn)
+    toolGrid.querySelectorAll('.rb-btn').forEach(b => {
       b.classList.toggle('active', b.dataset.tool === tool);
-    });
-
-    // Update menu
-    menuBar.querySelectorAll('[data-action="tool"]').forEach(e => {
-      e.classList.toggle('checked', e.dataset.tool === tool);
     });
 
     // Show/hide shape fill options
@@ -3803,7 +3785,7 @@
   }
 
   toolGrid.addEventListener('click', (e) => {
-    const btn = e.target.closest('.tool-btn');
+    const btn = e.target.closest('[data-tool]');
     if (btn && btn.dataset.tool)
       setTool(btn.dataset.tool);
   });
@@ -4049,9 +4031,8 @@
         doDeselect();
         return;
       }
-      if (openMenu) {
-        openMenu.classList.remove('open');
-        openMenu = null;
+      if (backstage.classList.contains('visible')) {
+        backstage.classList.remove('visible');
         return;
       }
     }

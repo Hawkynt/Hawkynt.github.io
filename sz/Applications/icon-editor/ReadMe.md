@@ -121,7 +121,7 @@ Modeled after classic Windows icon editors such as Axialis IconWorkshop and the 
 - [x] As a user, I can see the current zoom level in the status bar
 - [x] As a user, I can see the image dimensions and bit depth in the status bar and sidebar
 - [x] As a user, I can see the current filename in the status bar with a dirty indicator
-- [x] As a user, I can use a standard menu bar with File, Edit, View, Image, Tools, and Help menus
+- [x] As a user, I can use a ribbon interface with Home, Image, and View tabs plus a File backstage menu
 - [x] As a user, I can see an About dialog with application information
 
 ### Aspirational Features
