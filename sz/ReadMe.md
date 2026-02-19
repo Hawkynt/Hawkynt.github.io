@@ -103,7 +103,7 @@ sz/
     snap-engine.js              Pure calculation module for edge snap, magnet, stretch
     tab-manager.js              TidyTabs-style tab group management
     settings.js                 Persistent user preferences (localStorage)
-    vfs.js                      Virtual File System (VFS) with localStorage mount
+    vfs.js                      Virtual File System (VFS) with localStorage, read-only object, and File System Access API mounts
     common-dialogs.js           OS-level Open/Save file dialogs (used by apps via postMessage)
     context-menu.js             Desktop + taskbar context menus (XP-style with submenus)
     filesystem.js               Shell folder abstraction (Desktop, StartMenu, Programs categories)
@@ -930,7 +930,7 @@ Shared library included by each application. When an app's `index.html` is opene
 Provides Windows DLL-like API namespaces for all OS communication:
 
 - `SZ.Dlls.User32` -- window management (SetWindowText, DestroyWindow, MoveWindow, MessageBox, GetSystemMetrics, RegisterWindowProc)
-- `SZ.Dlls.Kernel32` -- VFS file operations (ReadFile, ReadAllText, ReadAllBytes, ReadUri, ReadValue, WriteFile, WriteAllBytes, WriteValue, WriteUri, FindFirstFile, DeleteFile, CreateDirectory, MoveFile, CopyFile, GetFileAttributes, GetCommandLine)
+- `SZ.Dlls.Kernel32` -- VFS file operations (ReadFile, ReadAllText, ReadAllBytes, ReadUri, ReadValue, WriteFile, WriteAllBytes, WriteValue, WriteUri, FindFirstFile, DeleteFile, CreateDirectory, MoveFile, CopyFile, GetFileAttributes, GetCommandLine, MountLocalDirectory, UnmountDirectory, ListMounts)
 - `SZ.Dlls.GDI32` -- system colors and fonts (GetSysColor, GetSysColorBrush, GetSystemFont)
 - `SZ.Dlls.Shell32` -- app launching and special folders (ShellExecute, SHGetFolderPath, SHFileOperation, SHGetFileTypeAssociations)
 - `SZ.Dlls.ComDlg32` -- file open/save dialogs (GetOpenFileName, GetSaveFileName, ImportFile, ExportFile)
@@ -1425,6 +1425,12 @@ See [docs/appideas.md](docs/appideas.md) for the full application roadmap.
 - [x] OS service bridge (sz:messageBox, sz:getSystemMetrics, sz:regRead, sz:regWrite)
 - [x] VFS exposed on SZ.system for hosted apps
 - [x] VFS browsable in Explorer via SZ:\vfs\ path (navigate to vfs/user/documents to find saved files)
+- [x] FileSystemAccessDriver: mount real local directories into VFS at /mount/<name> via File System Access API (showDirectoryPicker)
+- [x] MountStore: IndexedDB persistence for directory handles — mounts survive page reloads (auto-restored when permission is granted)
+- [x] Explorer Mount/Unmount toolbar buttons and context menu entries for mounting/unmounting local directories
+- [x] Mounted directories appear as drive icons in Explorer sidebar tree
+- [x] postMessage bridge: sz:vfs:MountLocal, sz:vfs:Unmount, sz:vfs:ListMounts
+- [x] DLL API: Kernel32.MountLocalDirectory(), Kernel32.UnmountDirectory(), Kernel32.ListMounts()
 
 ### Icon Packs
 
