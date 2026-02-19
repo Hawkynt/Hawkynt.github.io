@@ -121,7 +121,7 @@ Inspired by simplified vector editors such as SVG-edit and the basic shape tools
 - [x] As a user, I can see the zoom level in the status bar
 - [x] As a user, I can see the document dimensions in the status bar
 - [x] As a user, I can see the element count in the status bar
-- [x] As a user, I can use a menu bar with File, Edit, View, Tools, and Help menus
+- [x] As a user, I can use a ribbon interface with Home, View, and Help tabs plus a File backstage menu
 - [x] As a user, I can see a keyboard shortcuts reference dialog
 - [x] As a user, I can see an About dialog
 

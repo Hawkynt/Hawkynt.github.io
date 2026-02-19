@@ -30,149 +30,242 @@
 <body>
   <noscript><p>Online SVG vector graphics editor. <a href="../../index.html">Open »SynthelicZ« Desktop</a> to use this app.</p></noscript>
 
-  <!-- Menu Bar -->
-  <div class="menu-bar" id="menu-bar">
-    <div class="menu-item" data-menu="file">
-      File
-      <div class="menu-dropdown">
-        <div class="menu-entry" data-action="new">New<span class="shortcut">Ctrl+N</span></div>
-        <div class="menu-entry" data-action="open">Open...<span class="shortcut">Ctrl+O</span></div>
-        <div class="menu-entry" data-action="save">Save<span class="shortcut">Ctrl+S</span></div>
-        <div class="menu-entry" data-action="save-as">Save As...</div>
-        <div class="menu-separator"></div>
-        <div class="menu-entry" data-action="export-png">Export PNG...</div>
-        <div class="menu-separator"></div>
-        <div class="menu-entry" data-action="exit">Exit</div>
+<!-- Quick Access Toolbar -->
+<div class="qat" id="qat">
+  <button class="qat-btn" data-action="save" title="Save (Ctrl+S)">&#128190;</button>
+  <button class="qat-btn" data-action="undo" title="Undo (Ctrl+Z)">&#8630;</button>
+  <button class="qat-btn" data-action="redo" title="Redo (Ctrl+Y)">&#8631;</button>
+</div>
+
+<!-- Ribbon Tab Bar -->
+<div class="ribbon-tabs" id="ribbon-tabs">
+  <div class="ribbon-tab-bar">
+    <button class="ribbon-file-btn" id="ribbon-file-btn">File</button>
+    <button class="ribbon-tab active" data-tab="home">Home</button>
+    <button class="ribbon-tab" data-tab="view">View</button>
+  </div>
+</div>
+
+<!-- File Backstage -->
+<div class="backstage" id="backstage">
+  <div class="backstage-sidebar">
+    <button class="backstage-back" id="backstage-back">&#8592;</button>
+    <button class="backstage-item" data-action="new">New</button>
+    <button class="backstage-item" data-action="open">Open</button>
+    <button class="backstage-item" data-action="save">Save</button>
+    <button class="backstage-item" data-action="save-as">Save As</button>
+    <button class="backstage-item" data-action="export-png">Export PNG</button>
+    <div class="backstage-sep"></div>
+    <button class="backstage-item" data-action="shortcuts">Keyboard Shortcuts</button>
+    <button class="backstage-item" data-action="about">About</button>
+    <div class="backstage-spacer"></div>
+    <button class="backstage-item" data-action="exit">Exit</button>
+  </div>
+</div>
+
+<!-- ============================================================= -->
+<!-- Home Tab -->
+<!-- ============================================================= -->
+<div class="ribbon-panel active" data-panel="home" id="ribbon-home">
+
+  <!-- Clipboard -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="paste" title="Paste (Ctrl+V)">
+        <span class="rb-icon rb-icon-lg">&#128203;</span>
+        <span class="rb-label">Paste</span>
+      </button>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="cut" title="Cut (Ctrl+X)">
+          <span class="rb-icon">&#9986;</span><span class="rb-label">Cut</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="copy" title="Copy (Ctrl+C)">
+          <span class="rb-icon">&#128464;</span><span class="rb-label">Copy</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="delete" title="Delete (Del)">
+          <span class="rb-icon">&#128465;</span><span class="rb-label">Delete</span>
+        </button>
       </div>
     </div>
-    <div class="menu-item" data-menu="edit">
-      Edit
-      <div class="menu-dropdown">
-        <div class="menu-entry" data-action="undo">Undo<span class="shortcut">Ctrl+Z</span></div>
-        <div class="menu-entry" data-action="redo">Redo<span class="shortcut">Ctrl+Y</span></div>
-        <div class="menu-separator"></div>
-        <div class="menu-entry" data-action="cut">Cut<span class="shortcut">Ctrl+X</span></div>
-        <div class="menu-entry" data-action="copy">Copy<span class="shortcut">Ctrl+C</span></div>
-        <div class="menu-entry" data-action="paste">Paste<span class="shortcut">Ctrl+V</span></div>
-        <div class="menu-entry" data-action="delete">Delete<span class="shortcut">Del</span></div>
-        <div class="menu-separator"></div>
-        <div class="menu-entry" data-action="select-all">Select All<span class="shortcut">Ctrl+A</span></div>
-        <div class="menu-entry" data-action="deselect">Deselect<span class="shortcut">Esc</span></div>
-        <div class="menu-separator"></div>
-        <div class="menu-entry" data-action="duplicate">Duplicate<span class="shortcut">Ctrl+D</span></div>
-      </div>
-    </div>
-    <div class="menu-item" data-menu="view">
-      View
-      <div class="menu-dropdown">
-        <div class="menu-entry" data-action="zoom-in">Zoom In<span class="shortcut">Ctrl++</span></div>
-        <div class="menu-entry" data-action="zoom-out">Zoom Out<span class="shortcut">Ctrl+&minus;</span></div>
-        <div class="menu-entry" data-action="zoom-100">Zoom 100%<span class="shortcut">Ctrl+0</span></div>
-        <div class="menu-entry" data-action="zoom-fit">Fit to Window</div>
-        <div class="menu-separator"></div>
-        <div class="menu-entry checkable" data-action="toggle-grid">Grid<span class="shortcut">Ctrl+G</span></div>
-        <div class="menu-entry checkable" data-action="toggle-snap">Snap to Grid</div>
-        <div class="menu-separator"></div>
-        <div class="menu-entry checkable" data-action="toggle-dark">Dark Mode</div>
-      </div>
-    </div>
-    <div class="menu-item" data-menu="tools">
-      Tools
-      <div class="menu-dropdown">
-        <div class="menu-entry" data-action="tool-select">Select<span class="shortcut">V</span></div>
-        <div class="menu-entry" data-action="tool-rect">Rectangle<span class="shortcut">R</span></div>
-        <div class="menu-entry" data-action="tool-ellipse">Ellipse<span class="shortcut">E</span></div>
-        <div class="menu-entry" data-action="tool-circle">Circle<span class="shortcut">C</span></div>
-        <div class="menu-entry" data-action="tool-line">Line<span class="shortcut">L</span></div>
-        <div class="menu-entry" data-action="tool-path">Freehand<span class="shortcut">P</span></div>
-        <div class="menu-entry" data-action="tool-text">Text<span class="shortcut">T</span></div>
-        <div class="menu-entry" data-action="tool-pan">Pan<span class="shortcut">H</span></div>
-      </div>
-    </div>
-    <div class="menu-item" data-menu="help">
-      Help
-      <div class="menu-dropdown">
-        <div class="menu-entry" data-action="shortcuts">Keyboard Shortcuts</div>
-        <div class="menu-separator"></div>
-        <div class="menu-entry" data-action="about">About SVG Editor</div>
-      </div>
-    </div>
+    <div class="ribbon-group-label">Clipboard</div>
   </div>
 
-  <!-- Main Area -->
-  <div class="main-area">
+  <div class="ribbon-sep"></div>
 
-    <!-- Vertical Toolbar (left) -->
-    <div class="toolbar" id="toolbar">
-      <div class="tool-grid" id="tool-grid">
-        <div class="tool-btn active" data-tool="select" title="Select (V)">&#9095;</div>
-        <div class="tool-btn" data-tool="rect" title="Rectangle (R)">&#9645;</div>
-        <div class="tool-btn" data-tool="ellipse" title="Ellipse (E)">&#9711;</div>
-        <div class="tool-btn" data-tool="circle" title="Circle (C)">&#9679;</div>
-        <div class="tool-btn" data-tool="line" title="Line (L)">&#9585;</div>
-        <div class="tool-btn" data-tool="path" title="Freehand (P)">&#9998;</div>
-        <div class="tool-btn" data-tool="text" title="Text (T)">T</div>
-        <div class="tool-btn" data-tool="pan" title="Pan (H)">&#9995;</div>
+  <!-- Tools -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="tool-grid-4x2" id="tool-grid">
+        <button class="rb-btn active" data-tool="select" title="Select (V)">&#9095;</button>
+        <button class="rb-btn" data-tool="rect" title="Rectangle (R)">&#9645;</button>
+        <button class="rb-btn" data-tool="ellipse" title="Ellipse (E)">&#9711;</button>
+        <button class="rb-btn" data-tool="circle" title="Circle (C)">&#9679;</button>
+        <button class="rb-btn" data-tool="line" title="Line (L)">&#9585;</button>
+        <button class="rb-btn" data-tool="path" title="Freehand (P)">&#9998;</button>
+        <button class="rb-btn" data-tool="text" title="Text (T)">T</button>
+        <button class="rb-btn" data-tool="pan" title="Pan (H)">&#9995;</button>
       </div>
     </div>
-
-    <!-- Canvas Workspace -->
-    <main class="workspace" id="workspace">
-      <div class="svg-host" id="svgHost">
-        <svg id="svgCanvas" xmlns="http://www.w3.org/2000/svg" width="1024" height="768" viewBox="0 0 1024 768">
-          <defs>
-            <pattern id="gridPattern" width="20" height="20" patternUnits="userSpaceOnUse">
-              <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#ccc" stroke-width="0.5" />
-            </pattern>
-          </defs>
-          <rect id="gridOverlay" width="100%" height="100%" fill="url(#gridPattern)" style="display:none" pointer-events="none" />
-          <g id="sceneRoot"></g>
-        </svg>
-      </div>
-    </main>
-
-    <!-- Sidebar (right) -->
-    <aside class="sidebar" id="sidebar">
-
-      <details class="panel" open>
-        <summary class="panel-toggle"><h2>Style</h2></summary>
-        <label>Fill <input id="inpFill" type="color" value="#44aaff"></label>
-        <label>Stroke <input id="inpStroke" type="color" value="#1a1a1a"></label>
-        <label>Stroke Width <input id="inpStrokeWidth" type="number" value="2" min="0" max="64" step="0.5"></label>
-        <label>Opacity <input id="inpOpacity" type="number" value="1" min="0" max="1" step="0.05"></label>
-      </details>
-
-      <details class="panel">
-        <summary class="panel-toggle"><h2>Document</h2></summary>
-        <label>Width <input id="inpDocW" type="number" value="1024" min="1" max="8192"></label>
-        <label>Height <input id="inpDocH" type="number" value="768" min="1" max="8192"></label>
-        <div class="row">
-          <button id="btnResizeDoc">Apply Size</button>
-        </div>
-      </details>
-
-      <details class="panel" open>
-        <summary class="panel-toggle"><h2>Layers</h2></summary>
-        <div id="layerList" class="layer-list"></div>
-        <div class="row">
-          <button id="btnBringFront" title="Bring to front">&#9650;</button>
-          <button id="btnBringForward" title="Bring forward">&#9651;</button>
-          <button id="btnSendBackward" title="Send backward">&#9661;</button>
-          <button id="btnSendBack" title="Send to back">&#9660;</button>
-        </div>
-      </details>
-
-      <details class="panel">
-        <summary class="panel-toggle"><h2>Source</h2></summary>
-        <textarea id="sourceBox" spellcheck="false"></textarea>
-        <div class="row">
-          <button id="btnApplySource">Apply</button>
-          <button id="btnReloadSource">Reload</button>
-        </div>
-      </details>
-
-    </aside>
+    <div class="ribbon-group-label">Tools</div>
   </div>
+
+  <div class="ribbon-sep"></div>
+
+  <!-- Shape (style properties) -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <div class="rb-row">
+          <label class="rb-inline-label">Fill:</label>
+          <input id="inpFill" type="color" value="#44aaff" class="rb-color-input">
+        </div>
+        <div class="rb-row">
+          <label class="rb-inline-label">Stroke:</label>
+          <input id="inpStroke" type="color" value="#1a1a1a" class="rb-color-input">
+        </div>
+      </div>
+      <div class="rb-stack">
+        <div class="rb-row">
+          <label class="rb-inline-label">Width:</label>
+          <input id="inpStrokeWidth" type="number" value="2" min="0" max="64" step="0.5" class="rb-num-input">
+        </div>
+        <div class="rb-row">
+          <label class="rb-inline-label">Opacity:</label>
+          <input id="inpOpacity" type="number" value="1" min="0" max="1" step="0.05" class="rb-num-input">
+        </div>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Shape</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <!-- Arrange -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" id="btnBringFront" data-action="bring-front" title="Bring to Front">
+          <span class="rb-icon">&#9650;</span><span class="rb-label">To Front</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" id="btnBringForward" data-action="bring-forward" title="Bring Forward">
+          <span class="rb-icon">&#9651;</span><span class="rb-label">Forward</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" id="btnSendBackward" data-action="send-backward" title="Send Backward">
+          <span class="rb-icon">&#9661;</span><span class="rb-label">Backward</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" id="btnSendBack" data-action="send-back" title="Send to Back">
+          <span class="rb-icon">&#9660;</span><span class="rb-label">To Back</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="duplicate" title="Duplicate (Ctrl+D)">
+          <span class="rb-icon">&#128464;</span><span class="rb-label">Duplicate</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Arrange</div>
+  </div>
+
+</div>
+
+<!-- ============================================================= -->
+<!-- View Tab -->
+<!-- ============================================================= -->
+<div class="ribbon-panel" data-panel="view" id="ribbon-view">
+
+  <!-- Zoom -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="zoom-in" title="Zoom In (Ctrl++)">
+          <span class="rb-icon">+</span><span class="rb-label">Zoom In</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="zoom-out" title="Zoom Out (Ctrl+-)">
+          <span class="rb-icon">&#8722;</span><span class="rb-label">Zoom Out</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="zoom-100" title="Zoom 100% (Ctrl+0)">
+          <span class="rb-label">100%</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="zoom-fit" title="Fit to Window">
+          <span class="rb-label">Fit</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Zoom</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <!-- Display -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" id="btn-toggle-grid" data-action="toggle-grid" title="Toggle Grid (Ctrl+G)">
+          <span class="rb-icon">&#9638;</span><span class="rb-label">Grid</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" id="btn-toggle-snap" data-action="toggle-snap" title="Snap to Grid">
+          <span class="rb-icon">&#9783;</span><span class="rb-label">Snap</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" id="btn-toggle-dark" data-action="toggle-dark" title="Dark Mode">
+          <span class="rb-icon">&#9789;</span><span class="rb-label">Dark Mode</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Display</div>
+  </div>
+
+</div>
+
+<!-- ============================================================= -->
+<!-- Main content area -->
+<!-- ============================================================= -->
+<div class="main-area">
+
+  <!-- Canvas Workspace -->
+  <main class="workspace" id="workspace">
+    <div class="svg-host" id="svgHost">
+      <svg id="svgCanvas" xmlns="http://www.w3.org/2000/svg" width="1024" height="768" viewBox="0 0 1024 768">
+        <defs>
+          <pattern id="gridPattern" width="20" height="20" patternUnits="userSpaceOnUse">
+            <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#ccc" stroke-width="0.5" />
+          </pattern>
+        </defs>
+        <rect id="gridOverlay" width="100%" height="100%" fill="url(#gridPattern)" style="display:none" pointer-events="none" />
+        <g id="sceneRoot"></g>
+      </svg>
+    </div>
+  </main>
+
+  <!-- Sidebar (right) -->
+  <aside class="sidebar" id="sidebar">
+
+    <details class="panel">
+      <summary class="panel-toggle"><h2>Document</h2></summary>
+      <label>Width <input id="inpDocW" type="number" value="1024" min="1" max="8192"></label>
+      <label>Height <input id="inpDocH" type="number" value="768" min="1" max="8192"></label>
+      <div class="row">
+        <button id="btnResizeDoc">Apply Size</button>
+      </div>
+    </details>
+
+    <details class="panel" open>
+      <summary class="panel-toggle"><h2>Layers</h2></summary>
+      <div id="layerList" class="layer-list"></div>
+    </details>
+
+    <details class="panel">
+      <summary class="panel-toggle"><h2>Source</h2></summary>
+      <textarea id="sourceBox" spellcheck="false"></textarea>
+      <div class="row">
+        <button id="btnApplySource">Apply</button>
+        <button id="btnReloadSource">Reload</button>
+      </div>
+    </details>
+
+  </aside>
+</div>
 
   <!-- Status Bar -->
   <div class="status-bar" id="status-bar">
