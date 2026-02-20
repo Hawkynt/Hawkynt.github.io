@@ -46,6 +46,8 @@
   const statusSize = document.getElementById('status-size');
   const statusEntropy = document.getElementById('status-entropy');
   const statusModified = document.getElementById('status-modified');
+  const loadingOverlay = document.getElementById('loading-overlay');
+  const loadingText = document.getElementById('loading-text');
 
   const ARCHIVE_TYPE_IDS = new Set([
     'zip', 'rar', '7z', 'gzip', 'tar', 'xz', 'lz4', 'lzip', 'zstd', 'bzip2',
@@ -105,7 +107,12 @@
     } catch (_) { return urlBytes; }
   }
 
-  function loadFromBytes(bytes, name, path) {
+  // Yield to browser so it can paint before synchronous work
+  function _yieldForPaint() {
+    return new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+  }
+
+  async function loadFromBytes(bytes, name, path) {
     hashAbortFlag = true; // cancel any pending hash computation
     currentBytes = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
     currentBytes = resolveVfsBytes(currentBytes);
@@ -116,8 +123,16 @@
     hashResults = null;
     _disasmReset();
 
+    // Show loading overlay and yield so the browser paints it
+    loadingText.textContent = 'Parsing ' + currentFileName + '\u2026';
+    loadingOverlay.classList.remove('hidden');
+    await _yieldForPaint();
+
     // Parse
     parseResult = Parsers.parse(currentBytes, currentFileName);
+
+    // Hide loading overlay
+    loadingOverlay.classList.add('hidden');
 
     // Show UI
     dropZone.classList.add('hidden');
@@ -550,7 +565,8 @@
         tdValue.className = 'field-value';
         // Badge for encoding + section
         const badge = document.createElement('span');
-        const encClass = field.encoding === 'Unicode' ? 'unicode' : field.encoding === 'UTF-16' ? 'utf16' : 'ansi';
+        const enc = field.encoding || 'ANSI';
+        const encClass = enc.startsWith('UTF-16') ? 'utf16' : 'ansi';
         badge.className = 'strings-badge strings-badge-' + encClass;
         badge.textContent = field.encoding || 'ANSI';
         badge.title = 'Section: ' + (field.section || '?');
@@ -3413,6 +3429,7 @@
       exports: info.exports || null,
       strings: info.strings || null,
       imageBase: info.imageBase || 0,
+      metadata: info.options && info.options.metadata || null,
       codeRange: info.codeSection ? {
         rvaStart: info.codeSection.rva,
         rvaEnd: info.codeSection.rva + info.codeSection.size,
@@ -3656,6 +3673,8 @@
     const file = e.dataTransfer?.files?.[0];
     if (!file) return;
 
+    loadingText.textContent = 'Loading file\u2026';
+    loadingOverlay.classList.remove('hidden');
     const reader = new FileReader();
     reader.onload = () => loadFromBytes(new Uint8Array(reader.result), file.name, null);
     reader.readAsArrayBuffer(file);
@@ -3747,16 +3766,20 @@
       if (result.cancelled) return;
       const path = result.path || result.filePath;
       if (!path) return;
+      loadingText.textContent = 'Loading file\u2026';
+      loadingOverlay.classList.remove('hidden');
       const bytes = await Kernel32.ReadAllBytes(path);
       const name = path.split('/').pop();
-      loadFromBytes(bytes, name, path);
-    } catch (_) {}
+      await loadFromBytes(bytes, name, path);
+    } catch (_) { loadingOverlay.classList.add('hidden'); }
   }
 
   async function doImport() {
     const result = await ComDlg32.ImportFile({ accept: '*/*', readAs: 'arrayBuffer' });
     if (result.cancelled) return;
-    loadFromBytes(new Uint8Array(result.data), result.name, null);
+    loadingText.textContent = 'Loading file\u2026';
+    loadingOverlay.classList.remove('hidden');
+    await loadFromBytes(new Uint8Array(result.data), result.name, null);
   }
 
   // =========================================================================
@@ -3776,10 +3799,12 @@
     const path = params.file || params.path;
     if (path) {
       try {
+        loadingText.textContent = 'Loading file\u2026';
+        loadingOverlay.classList.remove('hidden');
         const bytes = await Kernel32.ReadAllBytes(path);
         const name = path.split('/').pop();
-        loadFromBytes(bytes, name, path);
-      } catch (_) {}
+        await loadFromBytes(bytes, name, path);
+      } catch (_) { loadingOverlay.classList.add('hidden'); }
     }
   }
 

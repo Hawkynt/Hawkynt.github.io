@@ -59,6 +59,11 @@
     const tableIdx = (val >>> 24) & 0xFF;
     const rowNum = val & 0x00FFFFFF;
     if (!rowNum) return null;
+    // US heap (0x70) — user strings for ldstr
+    if (tableIdx === 0x70 && meta.readUserString) {
+      const s = meta.readUserString(rowNum);
+      return s != null ? '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t') + '"' : null;
+    }
     const table = meta.tables && meta.tables[tableIdx];
     if (!table || rowNum > table.length) return null;
     const row = table[rowNum - 1];
@@ -70,6 +75,8 @@
     const ns = row.ns != null ? str(row.ns) : '';
     return (ns ? ns + '.' : '') + name;
   }
+
+  function tokenRaw(bytes, off) { return u32(bytes, off); }
 
   function token(bytes, off) {
     const val = u32(bytes, off);
@@ -153,9 +160,9 @@
   SINGLE[0x26] = ['pop', 0, () => ({ operands: '', pseudoC: 'pop()' })];
 
   // -- jmp / call / calli / ret --
-  SINGLE[0x27] = ['jmp', 4, (b, o) => { const t = token(b, o); return { operands: t, pseudoC: 'jmp(' + t + ')' }; }];
-  SINGLE[0x28] = ['call', 4, (b, o) => { const t = token(b, o); return { operands: t, pseudoC: 'call(' + t + ')' }; }];
-  SINGLE[0x29] = ['calli', 4, (b, o) => { const t = token(b, o); return { operands: t, pseudoC: 'calli(' + t + ')' }; }];
+  SINGLE[0x27] = ['jmp', 4, (b, o) => { const r = tokenRaw(b, o); const t = token(b, o); return { operands: t, pseudoC: 'jmp(' + t + ')', rawToken: r }; }];
+  SINGLE[0x28] = ['call', 4, (b, o) => { const r = tokenRaw(b, o); const t = token(b, o); return { operands: t, pseudoC: 'call(' + t + ')', rawToken: r }; }];
+  SINGLE[0x29] = ['calli', 4, (b, o) => { const r = tokenRaw(b, o); const t = token(b, o); return { operands: t, pseudoC: 'calli(' + t + ')', rawToken: r }; }];
   SINGLE[0x2A] = ['ret', 0, () => ({ operands: '', pseudoC: 'return' })];
 
   // -- short branches (1-byte signed offset) --
@@ -287,11 +294,11 @@
     SINGLE[op] = [mn, 0, () => ({ operands: '', pseudoC: pseudo })];
 
   // -- callvirt / cpobj / ldobj / ldstr / newobj --
-  SINGLE[0x6F] = ['callvirt', 4, (b, o) => { const t = token(b, o); return { operands: t, pseudoC: 'vcall(' + t + ')' }; }];
+  SINGLE[0x6F] = ['callvirt', 4, (b, o) => { const r = tokenRaw(b, o); const t = token(b, o); return { operands: t, pseudoC: 'vcall(' + t + ')', rawToken: r }; }];
   SINGLE[0x70] = ['cpobj', 4, (b, o) => { const t = token(b, o); return { operands: t, pseudoC: 'cpobj(' + t + ')' }; }];
   SINGLE[0x71] = ['ldobj', 4, (b, o) => { const t = token(b, o); return { operands: t, pseudoC: 'push(*(' + t + '*)pop())' }; }];
   SINGLE[0x72] = ['ldstr', 4, (b, o) => { const t = token(b, o); return { operands: t, pseudoC: 'push(str ' + t + ')' }; }];
-  SINGLE[0x73] = ['newobj', 4, (b, o) => { const t = token(b, o); return { operands: t, pseudoC: 'push(new ' + t + ')' }; }];
+  SINGLE[0x73] = ['newobj', 4, (b, o) => { const r = tokenRaw(b, o); const t = token(b, o); return { operands: t, pseudoC: 'push(new ' + t + ')', rawToken: r }; }];
 
   // -- castclass / isinst --
   SINGLE[0x74] = ['castclass', 4, (b, o) => { const t = token(b, o); return { operands: t, pseudoC: 'push((' + t + ')pop())' }; }];
@@ -453,8 +460,8 @@
   TWOBYTE[0x05] = ['clt.un', 0, () => ({ operands: '', pseudoC: 'a=pop(); push((uint)pop()<(uint)a ? 1 : 0)' })];
 
   // -- ldftn / ldvirtftn --
-  TWOBYTE[0x06] = ['ldftn', 4, (b, o) => { const t = token(b, o); return { operands: t, pseudoC: 'push(ftnptr(' + t + '))' }; }];
-  TWOBYTE[0x07] = ['ldvirtftn', 4, (b, o) => { const t = token(b, o); return { operands: t, pseudoC: 'push(vftnptr(pop(), ' + t + '))' }; }];
+  TWOBYTE[0x06] = ['ldftn', 4, (b, o) => { const r = tokenRaw(b, o); const t = token(b, o); return { operands: t, pseudoC: 'push(ftnptr(' + t + '))', rawToken: r }; }];
+  TWOBYTE[0x07] = ['ldvirtftn', 4, (b, o) => { const r = tokenRaw(b, o); const t = token(b, o); return { operands: t, pseudoC: 'push(vftnptr(pop(), ' + t + '))', rawToken: r }; }];
 
   // -- ldarg / ldarga / starg --
   TWOBYTE[0x09] = ['ldarg', 2, (b, o) => { const v = u16(b, o); return { operands: String(v), pseudoC: 'push(arg[' + v + '])' }; }];
@@ -531,7 +538,9 @@
         return { length: 2, mnemonic: mn, operands: '(truncated)', pseudoC: '/* truncated */' };
 
       const decoded = decodeFn(bytes, operandOff, pos);
-      return { length: 2 + opSize, mnemonic: mn, operands: decoded.operands, pseudoC: decoded.pseudoC };
+      const r = { length: 2 + opSize, mnemonic: mn, operands: decoded.operands, pseudoC: decoded.pseudoC };
+      if (decoded.rawToken != null) r.rawToken = decoded.rawToken;
+      return r;
     }
 
     // Single-byte opcodes
@@ -555,7 +564,9 @@
       return { length: 1, mnemonic: mn, operands: '(truncated)', pseudoC: '/* truncated */' };
 
     const decoded = decodeFn(bytes, operandOff, pos);
-    return { length: 1 + opSize, mnemonic: mn, operands: decoded.operands, pseudoC: decoded.pseudoC };
+    const r = { length: 1 + opSize, mnemonic: mn, operands: decoded.operands, pseudoC: decoded.pseudoC };
+    if (decoded.rawToken != null) r.rawToken = decoded.rawToken;
+    return r;
   }
 
   // -------------------------------------------------------------------------
@@ -565,56 +576,51 @@
   D.registerDisassembler('msil', decodeMsil);
 
   // =========================================================================
-  // MSIL Decompiler Formatters (C#, VB.NET) — syntax-highlighted output
-  //
-  // Each MSIL instruction already carries a `pseudoC` field from the opcode
-  // table (e.g. "push(pop() + pop())", "if (pop()) goto IL_XXXX").  The
-  // decompilers use that directly and dress it up for C# / VB presentation.
+  // MSIL Decompiler — stack-tracking expression builder
   // =========================================================================
 
   const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const span = (cls, text) => '<span class="da-' + cls + '">' + esc(text) + '</span>';
 
-  // Keyword sets for syntax highlighting
   const CS_KW = new Set([
     'if', 'else', 'goto', 'return', 'throw', 'new', 'null', 'true', 'false',
     'try', 'catch', 'finally', 'is', 'as', 'typeof', 'sizeof', 'checked', 'unchecked',
     'while', 'for', 'foreach', 'do', 'switch', 'case', 'break', 'continue', 'default',
-    'void', 'int', 'long', 'short', 'byte', 'float', 'double', 'bool', 'char',
-    'string', 'object', 'var', 'this', 'base', 'ref', 'out',
-    'push', 'pop', 'peek', 'call', 'vcall', 'jmp', 'leave', 'rethrow',
-    'arg', 'local', 'static', 'token', 'str', 'ftnptr', 'vftnptr',
-    'box', 'unbox', 'initobj', 'cpobj', 'memcpy', 'memset', 'stackalloc',
-    'refanyval', 'refanytype', 'mkrefany', 'arglist',
-    'int8', 'uint8', 'int16', 'uint16', 'int32', 'uint32', 'int64', 'uint64',
-    'float32', 'float64', 'nint', 'nuint',
+    'void', 'int', 'uint', 'long', 'ulong', 'short', 'ushort', 'byte', 'sbyte',
+    'float', 'double', 'bool', 'char', 'decimal', 'nint', 'nuint',
+    'string', 'object', 'var', 'this', 'base', 'ref', 'out', 'in',
+    'async', 'await', 'yield', 'delegate', 'event', 'using', 'lock',
+    'class', 'struct', 'record', 'interface', 'enum', 'namespace',
+    'public', 'private', 'protected', 'internal', 'static', 'sealed', 'abstract', 'virtual', 'override',
+    'stackalloc', 'nameof', 'when',
   ]);
   const VB_KW = new Set([
-    'If', 'Then', 'Else', 'GoTo', 'Return', 'Throw', 'New', 'Nothing', 'True', 'False',
-    'Try', 'Catch', 'Finally', 'TypeOf', 'Is', 'Dim', 'As', 'End',
-    'While', 'For', 'Each', 'Do', 'Select', 'Case', 'Exit', 'Continue',
-    'Integer', 'Long', 'Short', 'Byte', 'Single', 'Double', 'Boolean', 'Char',
-    'String', 'Object', 'Me', 'MyBase', 'ByRef', 'ByVal',
-    'Push', 'Pop', 'Peek', 'Call', 'DirectCast', 'CType', 'TryCast',
+    'If', 'Then', 'Else', 'ElseIf', 'End', 'GoTo', 'Return', 'Throw', 'New', 'Nothing',
+    'True', 'False', 'Try', 'Catch', 'Finally', 'TypeOf', 'Is', 'IsNot', 'Not', 'And', 'Or',
+    'Dim', 'As', 'Of', 'Like', 'Mod', 'Xor', 'AndAlso', 'OrElse',
+    'While', 'Wend', 'For', 'To', 'Step', 'Each', 'In', 'Next', 'Do', 'Loop', 'Until',
+    'Select', 'Case', 'Exit', 'Continue', 'With',
+    'Integer', 'Long', 'Short', 'Byte', 'SByte', 'Single', 'Double', 'Boolean', 'Char',
+    'UInteger', 'ULong', 'UShort', 'Decimal',
+    'String', 'Object', 'Me', 'MyBase', 'MyClass', 'ByRef', 'ByVal',
+    'Sub', 'Function', 'Property', 'Get', 'Set', 'Let',
+    'Public', 'Private', 'Protected', 'Friend', 'Shared', 'Overrides', 'MustOverride', 'Overridable',
+    'Class', 'Structure', 'Interface', 'Enum', 'Module', 'Namespace', 'Imports',
+    'Async', 'Await', 'Yield', 'Iterator', 'Using', 'SyncLock', 'AddHandler', 'RemoveHandler',
+    'DirectCast', 'CType', 'TryCast', 'CInt', 'CLng', 'CShort', 'CByte', 'CSng', 'CDbl', 'CBool', 'CStr',
+    'GetType', 'NameOf',
   ]);
 
   /** Syntax-highlight a code string into HTML. */
-  function _highlightCode(code, kwSet) {
+  function _hl(code, kwSet) {
     const RE = /("(?:[^"\\]|\\.)*")|(IL_[0-9A-Fa-f]+)|(\b0[xX][0-9A-Fa-f]+\b)|(-?\b\d+(?:\.\d+)?[fFL]?\b)|([A-Za-z_][A-Za-z0-9_.]*)|([+\-*/%&|^~!=<>?:]+)|(\/\*.*?\*\/)|(\/\/.*$)|([()[\]{},;])|(\s+)|(.)/gm;
     let html = '', m;
     while ((m = RE.exec(code)) !== null) {
       if (m[1]) html += span('str', m[1]);
-      else if (m[2]) { // IL label — clickable
-        const off = parseInt(m[2].substring(3), 16);
-        html += '<a class="da-addr da-lbl" data-target="' + off.toString(16) + '">' + esc(m[2]) + '</a>';
-      }
+      else if (m[2]) { const off = parseInt(m[2].substring(3), 16); html += '<a class="da-addr da-lbl" data-target="' + off.toString(16) + '">' + esc(m[2]) + '</a>'; }
       else if (m[3]) html += span('num', m[3]);
       else if (m[4]) html += span('num', m[4]);
-      else if (m[5]) {
-        if (kwSet.has(m[5])) html += span('kw', m[5]);
-        else if (m[5].includes('.')) html += span('sym', m[5]);
-        else html += span('id', m[5]);
-      }
+      else if (m[5]) { if (kwSet.has(m[5])) html += span('kw', m[5]); else if (m[5].includes('.')) html += span('sym', m[5]); else html += span('id', m[5]); }
       else if (m[6]) html += span('op', m[6]);
       else if (m[7]) html += span('cmt', m[7]);
       else if (m[8]) html += span('cmt', m[8]);
@@ -625,84 +631,358 @@
     return html;
   }
 
-  // ---- Low-level C# 2.0: use pseudoC directly from opcode table ----
-  function _msilToCSharpLow(insn) {
-    const pc = insn.pseudoC;
-    if (pc) return pc;
-    const mn = insn.mnemonic || '??';
-    const ops = insn.operands || '';
-    return '/* ' + mn + (ops ? ' ' + ops : '') + ' */';
+  // ---- Call info: extract param count from metadata token ----
+  function _getCallInfo(rawToken, meta) {
+    if (!meta || !meta.tables || !meta.readBlob) return null;
+    const tbl = (rawToken >>> 24) & 0xFF, row = (rawToken & 0xFFFFFF) - 1;
+    if (row < 0) return null;
+    const table = meta.tables[tbl];
+    if (!table || row >= table.length) return null;
+    const sigIdx = table[row].signature;
+    if (sigIdx == null) return null;
+    const blob = meta.readBlob(sigIdx);
+    if (!blob || blob.length < 2) return null;
+    const cc = blob[0];
+    const hasThis = (cc & 0x20) !== 0;
+    let pos = 1;
+    if (cc & 0x10) { // Skip generic param count (compressed uint)
+      if (pos >= blob.length) return null;
+      const g0 = blob[pos++];
+      if ((g0 & 0x80) !== 0 && (g0 & 0xC0) === 0x80) ++pos;
+      else if ((g0 & 0xC0) === 0xC0) pos += 3;
+    }
+    if (pos >= blob.length) return null;
+    // Compressed unsigned int: param count
+    let paramCount = 0;
+    const b0 = blob[pos++];
+    if ((b0 & 0x80) === 0) paramCount = b0;
+    else if ((b0 & 0xC0) === 0x80 && pos < blob.length) paramCount = ((b0 & 0x3F) << 8) | blob[pos++];
+    else if (pos + 2 < blob.length) { paramCount = ((b0 & 0x1F) << 24) | (blob[pos] << 16) | (blob[pos + 1] << 8) | blob[pos + 2]; pos += 3; }
+    // Check void return type
+    let returnsVoid = false;
+    while (pos < blob.length && (blob[pos] === 0x1E || blob[pos] === 0x1F || blob[pos] === 0x45)) ++pos;
+    if (pos < blob.length && blob[pos] === 0x01) returnsVoid = true;
+    return { paramCount, hasThis, returnsVoid };
   }
 
-  // ---- VB.NET: translate pseudoC into VB-flavoured syntax ----
-  function _msilToVB(insn) {
-    const pc = insn.pseudoC;
-    if (!pc) {
-      const mn = insn.mnemonic || '??';
-      const ops = insn.operands || '';
-      return "' " + mn + (ops ? ' ' + ops : '');
+  // ---- Core stack-tracking decompiler ----
+  function _decompileStatements(instructions, annotations) {
+    const meta = annotations && annotations.metadata;
+    const stack = [];
+    const out = [];
+    function pop() { return stack.length > 0 ? stack.pop() : '???'; }
+    function paren(e) {
+      if (!/[+\-*/%&|^<>=!? ]/.test(e)) return e;
+      if (e[0] === '(') {
+        let d = 0;
+        for (let i = 0; i < e.length; ++i) {
+          if (e[i] === '(') ++d; else if (e[i] === ')') --d;
+          if (d === 0) { if (i === e.length - 1) return e; break; }
+        }
+      }
+      return '(' + e + ')';
     }
-    return pc
-      .replace(/\bgoto\b/g, 'GoTo')
-      .replace(/\breturn\b/g, 'Return')
-      .replace(/\bthrow\b/g, 'Throw')
-      .replace(/\brethrow\b/g, 'Throw')
-      .replace(/\bnew\b/g, 'New')
+
+    function popCallArgs(insn, isNewObj) {
+      if (insn.rawToken && meta) {
+        const ci = _getCallInfo(insn.rawToken, meta);
+        if (ci) {
+          const n = isNewObj ? ci.paramCount : ci.paramCount + (ci.hasThis ? 1 : 0);
+          const args = [];
+          for (let i = 0; i < n && stack.length > 0; ++i) args.unshift(pop());
+          return { args, info: ci };
+        }
+      }
+      return { args: stack.splice(0), info: null };
+    }
+
+    function shortName(n) { const d = n.lastIndexOf('.'); return d >= 0 ? n.substring(d + 1) : n; }
+
+    for (const insn of instructions) {
+      const mn = (insn.mnemonic || '').toLowerCase();
+      const ops = insn.operands || '';
+      const off = insn.offset;
+
+      // --- NOP ---
+      if (mn === 'nop') continue;
+
+      // --- Load constants ---
+      if (mn === 'ldnull') { stack.push('null'); continue; }
+      if (mn.startsWith('ldstr')) { stack.push(ops || '""'); continue; }
+      if (mn === 'ldc.i4.m1') { stack.push('-1'); continue; }
+      if (mn === 'ldc.i4.s' || mn === 'ldc.i4') { stack.push(ops || '0'); continue; }
+      if (mn.startsWith('ldc.i4.') && mn.length === 9) { stack.push(mn.substring(8)); continue; }
+      if (mn.startsWith('ldc.i8')) { stack.push((ops || '0') + 'L'); continue; }
+      if (mn.startsWith('ldc.r4')) { stack.push((ops || '0') + 'f'); continue; }
+      if (mn.startsWith('ldc.r8')) { stack.push(ops || '0.0'); continue; }
+
+      // --- Load arguments ---
+      if (mn === 'ldarg.0') { stack.push('this'); continue; }
+      if (mn === 'ldarg' || mn === 'ldarg.s') { stack.push('arg' + (ops || '0')); continue; }
+      if (mn === 'ldarga' || mn === 'ldarga.s') { stack.push('ref arg' + (ops || '0')); continue; }
+      if (mn.startsWith('ldarg.') && mn.length === 7) { stack.push('arg' + mn.substring(6)); continue; }
+
+      // --- Load locals ---
+      if (mn === 'ldloc' || mn === 'ldloc.s') { stack.push('v' + (ops || '0')); continue; }
+      if (mn === 'ldloca' || mn === 'ldloca.s') { stack.push('ref v' + (ops || '0')); continue; }
+      if (mn.startsWith('ldloc.') && mn.length === 7) { stack.push('v' + mn.substring(6)); continue; }
+
+      // --- Store locals ---
+      if (mn === 'stloc' || mn === 'stloc.s') { out.push({ offset: off, code: 'v' + (ops || '0') + ' = ' + pop() + ';' }); continue; }
+      if (mn.startsWith('stloc.') && mn.length === 7) { out.push({ offset: off, code: 'v' + mn.substring(6) + ' = ' + pop() + ';' }); continue; }
+      if (mn === 'starg' || mn === 'starg.s') { out.push({ offset: off, code: 'arg' + (ops || '0') + ' = ' + pop() + ';' }); continue; }
+
+      // --- Dup / Pop ---
+      if (mn === 'dup') { const v = stack.length > 0 ? stack[stack.length - 1] : '???'; stack.push(v); continue; }
+      if (mn === 'pop') { out.push({ offset: off, code: pop() + ';' }); continue; }
+
+      // --- Arithmetic ---
+      if (mn === 'add' || mn === 'add.ovf' || mn === 'add.ovf.un') { const b = pop(), a = pop(); stack.push(a + ' + ' + b); continue; }
+      if (mn === 'sub' || mn === 'sub.ovf' || mn === 'sub.ovf.un') { const b = pop(), a = pop(); stack.push(a + ' - ' + b); continue; }
+      if (mn === 'mul' || mn === 'mul.ovf' || mn === 'mul.ovf.un') { const b = pop(), a = pop(); stack.push(paren(a) + ' * ' + paren(b)); continue; }
+      if (mn === 'div' || mn === 'div.un') { const b = pop(), a = pop(); stack.push(paren(a) + ' / ' + paren(b)); continue; }
+      if (mn === 'rem' || mn === 'rem.un') { const b = pop(), a = pop(); stack.push(paren(a) + ' % ' + paren(b)); continue; }
+      if (mn === 'and') { const b = pop(), a = pop(); stack.push(paren(a) + ' & ' + paren(b)); continue; }
+      if (mn === 'or') { const b = pop(), a = pop(); stack.push(paren(a) + ' | ' + paren(b)); continue; }
+      if (mn === 'xor') { const b = pop(), a = pop(); stack.push(paren(a) + ' ^ ' + paren(b)); continue; }
+      if (mn === 'shl') { const b = pop(), a = pop(); stack.push(paren(a) + ' << ' + paren(b)); continue; }
+      if (mn === 'shr' || mn === 'shr.un') { const b = pop(), a = pop(); stack.push(paren(a) + ' >> ' + paren(b)); continue; }
+      if (mn === 'neg') { stack.push('-' + paren(pop())); continue; }
+      if (mn === 'not') { stack.push('~' + paren(pop())); continue; }
+
+      // --- Comparisons ---
+      if (mn === 'ceq') { const b = pop(), a = pop(); stack.push(a + ' == ' + b); continue; }
+      if (mn === 'clt' || mn === 'clt.un') { const b = pop(), a = pop(); stack.push(a + ' < ' + b); continue; }
+      if (mn === 'cgt' || mn === 'cgt.un') { const b = pop(), a = pop(); stack.push(a + ' > ' + b); continue; }
+
+      // --- Conversions (always wrap operand so VB CInt(...) replacement works) ---
+      if (mn === 'conv.i1') { stack.push('(sbyte)(' + pop() + ')'); continue; }
+      if (mn === 'conv.u1') { stack.push('(byte)(' + pop() + ')'); continue; }
+      if (mn === 'conv.i2') { stack.push('(short)(' + pop() + ')'); continue; }
+      if (mn === 'conv.u2') { stack.push('(ushort)(' + pop() + ')'); continue; }
+      if (mn === 'conv.i4') { stack.push('(int)(' + pop() + ')'); continue; }
+      if (mn === 'conv.u4') { stack.push('(uint)(' + pop() + ')'); continue; }
+      if (mn === 'conv.i8') { stack.push('(long)(' + pop() + ')'); continue; }
+      if (mn === 'conv.u8') { stack.push('(ulong)(' + pop() + ')'); continue; }
+      if (mn === 'conv.r4') { stack.push('(float)(' + pop() + ')'); continue; }
+      if (mn === 'conv.r8') { stack.push('(double)(' + pop() + ')'); continue; }
+      if (mn === 'conv.i') { stack.push('(nint)(' + pop() + ')'); continue; }
+      if (mn === 'conv.u') { stack.push('(nuint)(' + pop() + ')'); continue; }
+      if (mn === 'conv.r.un') { stack.push('(float)((uint)(' + pop() + '))'); continue; }
+      if (mn.startsWith('conv.ovf.')) { const t = mn.substring(9).replace('.un', ''); stack.push('checked((' + t + ')(' + pop() + '))'); continue; }
+
+      // --- Box / Unbox / Cast ---
+      if (mn === 'box') { stack.push('(object)(' + pop() + ')'); continue; }
+      if (mn === 'unbox' || mn === 'unbox.any') { stack.push('(' + (ops || 'T') + ')(' + pop() + ')'); continue; }
+      if (mn === 'castclass') { stack.push('(' + (ops || 'T') + ')(' + pop() + ')'); continue; }
+      if (mn === 'isinst') { stack.push(pop() + ' is ' + (ops || 'T')); continue; }
+
+      // --- Fields ---
+      if (mn === 'ldfld') { stack.push(pop() + '.' + shortName(ops)); continue; }
+      if (mn === 'ldsfld') { stack.push(ops); continue; }
+      if (mn === 'ldflda') { stack.push('ref ' + pop() + '.' + shortName(ops)); continue; }
+      if (mn === 'ldsflda') { stack.push('ref ' + ops); continue; }
+      if (mn === 'stfld') { const val = pop(), obj = pop(); out.push({ offset: off, code: obj + '.' + shortName(ops) + ' = ' + val + ';' }); continue; }
+      if (mn === 'stsfld') { out.push({ offset: off, code: ops + ' = ' + pop() + ';' }); continue; }
+
+      // --- Arrays ---
+      if (mn === 'newarr') { stack.push('new ' + (ops || 'object') + '[' + pop() + ']'); continue; }
+      if (mn === 'ldlen') { stack.push(pop() + '.Length'); continue; }
+      if (mn === 'ldelem' || mn.startsWith('ldelem.')) { const idx = pop(), arr = pop(); stack.push(arr + '[' + idx + ']'); continue; }
+      if (mn === 'stelem' || mn.startsWith('stelem.')) { const val = pop(), idx = pop(), arr = pop(); out.push({ offset: off, code: arr + '[' + idx + '] = ' + val + ';' }); continue; }
+      if (mn === 'ldelema') { const idx = pop(), arr = pop(); stack.push('ref ' + arr + '[' + idx + ']'); continue; }
+
+      // --- Indirect ---
+      if (mn.startsWith('ldind.')) { stack.push('*' + paren(pop())); continue; }
+      if (mn.startsWith('stind.')) { const val = pop(), ptr = pop(); out.push({ offset: off, code: '*' + paren(ptr) + ' = ' + val + ';' }); continue; }
+      if (mn === 'ldobj') { stack.push('*' + paren(pop())); continue; }
+      if (mn === 'stobj') { const val = pop(), ptr = pop(); out.push({ offset: off, code: '*' + paren(ptr) + ' = ' + val + ';' }); continue; }
+      if (mn === 'cpobj') { const s = pop(), d = pop(); out.push({ offset: off, code: '*' + paren(d) + ' = *' + paren(s) + ';' }); continue; }
+      if (mn === 'initobj') { out.push({ offset: off, code: '*' + paren(pop()) + ' = default(' + (ops || 'T') + ');' }); continue; }
+
+      // --- Call / Callvirt ---
+      if (mn === 'call' || mn === 'callvirt') {
+        const { args, info } = popCallArgs(insn, false);
+        const name = ops || 'method';
+        // Property getter: get_XXX
+        const gp = name.match(/(?:^|\.)get_(\w+)$/);
+        if (gp) { const obj = args.length > 0 ? args.shift() : ''; stack.push((obj ? obj + '.' : '') + gp[1] + (args.length > 0 ? '[' + args.join(', ') + ']' : '')); continue; }
+        // Property setter: set_XXX
+        const sp = name.match(/(?:^|\.)set_(\w+)$/);
+        if (sp && args.length >= 1) { const val = args.pop(); const obj = args.length > 0 ? args.shift() : ''; const ix = args.length > 0 ? '[' + args.join(', ') + ']' : ''; out.push({ offset: off, code: (obj ? obj + '.' : '') + sp[1] + ix + ' = ' + val + ';' }); continue; }
+        // Event add/remove
+        const ae = name.match(/(?:^|\.)add_(\w+)$/);
+        if (ae && args.length >= 2) { out.push({ offset: off, code: args[0] + '.' + ae[1] + ' += ' + args[1] + ';' }); continue; }
+        const re = name.match(/(?:^|\.)remove_(\w+)$/);
+        if (re && args.length >= 2) { out.push({ offset: off, code: args[0] + '.' + re[1] + ' -= ' + args[1] + ';' }); continue; }
+        // Operator overloads
+        const opOv = name.match(/(?:^|\.)op_(\w+)$/);
+        if (opOv) {
+          const binOps = { Equality: '==', Inequality: '!=', GreaterThan: '>', LessThan: '<', GreaterThanOrEqual: '>=', LessThanOrEqual: '<=', Addition: '+', Subtraction: '-', Multiply: '*', Division: '/', Modulus: '%', BitwiseAnd: '&', BitwiseOr: '|', ExclusiveOr: '^', LeftShift: '<<', RightShift: '>>' };
+          const unOps = { UnaryNegation: '-', UnaryPlus: '+', LogicalNot: '!', OnesComplement: '~', Increment: '++', Decrement: '--' };
+          if (args.length === 2 && binOps[opOv[1]]) { stack.push('(' + args[0] + ' ' + binOps[opOv[1]] + ' ' + args[1] + ')'); continue; }
+          if (args.length === 1 && unOps[opOv[1]]) { stack.push(unOps[opOv[1]] + paren(args[0])); continue; }
+          if (args.length === 1 && (opOv[1] === 'Explicit' || opOv[1] === 'Implicit')) { stack.push('(' + shortName(name.replace(/\.op_\w+$/, '')) + ')' + paren(args[0])); continue; }
+        }
+        // String.Concat → +
+        if (/String\.Concat$/i.test(name)) { stack.push(args.join(' + ') || '""'); continue; }
+        // Regular call
+        let obj = '', callArgs = args;
+        if (mn === 'callvirt' && args.length > 0) { obj = args[0]; callArgs = args.slice(1); }
+        else if (args.length > 0 && args[0] === 'this') { obj = args[0]; callArgs = args.slice(1); }
+        const expr = (obj ? obj + '.' : '') + shortName(name) + '(' + callArgs.join(', ') + ')';
+        if (info && info.returnsVoid) { out.push({ offset: off, code: expr + ';' }); }
+        else { stack.push(expr); }
+        continue;
+      }
+
+      // --- newobj ---
+      if (mn === 'newobj') {
+        const { args } = popCallArgs(insn, true);
+        const tn = (ops || '.ctor').replace(/\.\.ctor$/, '');
+        stack.push('new ' + shortName(tn) + '(' + args.join(', ') + ')');
+        continue;
+      }
+
+      // --- Branches ---
+      if (mn === 'br' || mn === 'br.s') { out.push({ offset: off, code: 'goto ' + ops + ';' }); continue; }
+      if (mn === 'brtrue' || mn === 'brtrue.s') { out.push({ offset: off, code: 'if (' + pop() + ') goto ' + ops + ';' }); continue; }
+      if (mn === 'brfalse' || mn === 'brfalse.s') { const c = pop(); out.push({ offset: off, code: 'if (!(' + c + ')) goto ' + ops + ';' }); continue; }
+      if (mn === 'beq' || mn === 'beq.s') { const b = pop(), a = pop(); out.push({ offset: off, code: 'if (' + a + ' == ' + b + ') goto ' + ops + ';' }); continue; }
+      if (mn.startsWith('bne')) { const b = pop(), a = pop(); out.push({ offset: off, code: 'if (' + a + ' != ' + b + ') goto ' + ops + ';' }); continue; }
+      if (mn.startsWith('blt')) { const b = pop(), a = pop(); out.push({ offset: off, code: 'if (' + a + ' < ' + b + ') goto ' + ops + ';' }); continue; }
+      if (mn.startsWith('bgt')) { const b = pop(), a = pop(); out.push({ offset: off, code: 'if (' + a + ' > ' + b + ') goto ' + ops + ';' }); continue; }
+      if (mn.startsWith('ble')) { const b = pop(), a = pop(); out.push({ offset: off, code: 'if (' + a + ' <= ' + b + ') goto ' + ops + ';' }); continue; }
+      if (mn.startsWith('bge')) { const b = pop(), a = pop(); out.push({ offset: off, code: 'if (' + a + ' >= ' + b + ') goto ' + ops + ';' }); continue; }
+      if (mn === 'switch') { out.push({ offset: off, code: 'switch (' + pop() + ') { ' + ops + ' }' }); continue; }
+
+      // --- Return / Throw ---
+      if (mn === 'ret') { out.push({ offset: off, code: stack.length > 0 ? 'return ' + pop() + ';' : 'return;' }); continue; }
+      if (mn === 'throw') { out.push({ offset: off, code: 'throw ' + pop() + ';' }); continue; }
+      if (mn === 'rethrow') { out.push({ offset: off, code: 'throw;' }); continue; }
+
+      // --- Leave / endfinally ---
+      if (mn === 'leave' || mn === 'leave.s') { out.push({ offset: off, code: 'goto ' + ops + '; // leave' }); continue; }
+      if (mn === 'endfinally' || mn === 'endfault') continue;
+      if (mn === 'endfilter') continue;
+
+      // --- Misc ---
+      if (mn === 'ldtoken') { stack.push('typeof(' + (ops || 'T') + ')'); continue; }
+      if (mn === 'sizeof') { stack.push('sizeof(' + (ops || 'T') + ')'); continue; }
+      if (mn === 'localloc') { stack.push('stackalloc byte[' + pop() + ']'); continue; }
+      if (mn === 'ldftn') { stack.push(ops || 'method'); continue; }
+      if (mn === 'ldvirtftn') { stack.push(pop() + '.' + shortName(ops || 'method')); continue; }
+      if (mn === 'calli') { const fp = pop(); const a = stack.splice(0); stack.push(fp + '(' + a.join(', ') + ')'); continue; }
+      if (mn === 'jmp') { out.push({ offset: off, code: ops + '(); // jmp' }); continue; }
+      if (mn === 'arglist') { stack.push('__arglist'); continue; }
+      if (mn === 'mkrefany') { stack.push('__makeref(' + pop() + ')'); continue; }
+      if (mn === 'refanyval') { stack.push('__refvalue(' + pop() + ', ' + (ops || 'T') + ')'); continue; }
+      if (mn === 'refanytype') { stack.push('__reftype(' + pop() + ')'); continue; }
+      if (mn === 'ckfinite') continue;
+      if (mn === 'cpblk') { const n = pop(), s = pop(), d = pop(); out.push({ offset: off, code: 'Buffer.MemoryCopy(' + s + ', ' + d + ', ' + n + ');' }); continue; }
+      if (mn === 'initblk') { const n = pop(), v = pop(), p = pop(); out.push({ offset: off, code: 'Unsafe.InitBlock(' + p + ', ' + v + ', ' + n + ');' }); continue; }
+      if (mn === 'break') continue;
+      // Prefixes
+      if (mn === 'constrained.' || mn === 'readonly.' || mn === 'tail.' || mn === 'volatile.' || mn === 'unaligned.' || mn === 'no.') continue;
+
+      // Fallback
+      out.push({ offset: off, code: '/* ' + (insn.mnemonic || '??') + (ops ? ' ' + ops : '') + ' */' });
+    }
+    return out;
+  }
+
+  // ---- C# → VB.NET syntax transformation ----
+  function _toVB(code) {
+    return code
       .replace(/\bnull\b/g, 'Nothing')
-      .replace(/\bif\b/gi, 'If')
-      .replace(/\bpush\b/g, 'Push')
-      .replace(/\bpop\b/g, 'Pop')
-      .replace(/\bpeek\b/g, 'Peek')
       .replace(/\btrue\b/g, 'True')
       .replace(/\bfalse\b/g, 'False')
-      .replace(/\blocal\[/g, 'Local(')
-      .replace(/\barg\[/g, 'Arg(')
-      .replace(/\bstatic\./g, 'Shared.')
-      .replace(/\]/g, function(_, offset, str) {
-        // Only replace ] that came from local[ or arg[ → )
-        const preceding = str.substring(Math.max(0, offset - 20), offset);
-        if (/(?:Local|Arg)\([^)]*$/.test(preceding)) return ')';
-        return ']';
-      });
+      .replace(/\bnew\b/g, 'New')
+      .replace(/\btypeof\b/g, 'GetType')
+      .replace(/\bsizeof\b/g, 'Len')
+      .replace(/\bstackalloc\b/g, 'ReDim')
+      .replace(/\bthrow;/g, "Throw")
+      .replace(/\bthrow\b/g, 'Throw')
+      .replace(/\breturn\b/g, 'Return')
+      .replace(/\bgoto\b/g, 'GoTo')
+      .replace(/\bif\s*\((.+?)\)\s*goto\s+(IL_[0-9A-Fa-f]+);/g, 'If $1 Then GoTo $2')
+      .replace(/\bif\s*\((.+?)\)\s*GoTo\s+(IL_[0-9A-Fa-f]+);/g, 'If $1 Then GoTo $2')
+      .replace(/\bswitch\b/g, 'Select Case')
+      .replace(/!=\s/g, '<> ')
+      .replace(/ != /g, ' <> ')
+      .replace(/ == /g, ' = ')
+      .replace(/!(\w)/g, 'Not $1')
+      .replace(/!\(/g, 'Not (')
+      .replace(/ && /g, ' AndAlso ')
+      .replace(/ \|\| /g, ' OrElse ')
+      .replace(/\(sbyte\)/g, 'CSByte').replace(/\(byte\)/g, 'CByte').replace(/\(short\)/g, 'CShort').replace(/\(ushort\)/g, 'CUShort')
+      .replace(/\(int\)/g, 'CInt').replace(/\(uint\)/g, 'CUInt').replace(/\(long\)/g, 'CLng').replace(/\(ulong\)/g, 'CULng')
+      .replace(/\(float\)/g, 'CSng').replace(/\(double\)/g, 'CDbl').replace(/\(nint\)/g, 'CType').replace(/\(nuint\)/g, 'CType')
+      .replace(/\(object\)/g, 'CObj').replace(/\(string\)/g, 'CStr')
+      .replace(/ is (\w+)/g, function(_, t) { return ' Is ' + t; })
+      .replace(/;\s*$/g, '')
+      .replace(/;/g, '');
   }
 
-  // ---- Higher-level C#: clean up push/pop for readability ----
-  function _msilToCSharpHigh(insn) {
-    const pc = insn.pseudoC;
-    if (!pc) return _msilToCSharpLow(insn);
-    // Simplify common stack patterns
-    return pc
-      .replace(/\ba=pop\(\); push\(pop\(\) ([+\-*/%&|^]) a\)/g, '/* $1 */')
-      .replace(/\ba=pop\(\); push\(pop\(\) (>>|<<|>>>|>=|<=|>|<) a\)/g, '/* $1 */')
-      .replace(/\ba=pop\(\); push\(pop\(\)([><=!]=?)a \? 1 : 0\)/g, '/* $1 */')
-      .replace(/\bpush\(pop\(\) ([+\-*/%&|^]) pop\(\)\)/g, '/* $1 */')
-      .replace(/\bpush\(pop\(\)==pop\(\) \? 1 : 0\)/g, '/* == */')
-      .replace(/\bpush\((-?)pop\(\)\)/g, '/* $1val */')
-      .replace(/\bpush\(~pop\(\)\)/g, '/* ~val */')
-      .replace(/\bpush\(pop\(\)\.Length\)/g, '.Length')
-      .replace(/\bpush\(pop\(\)\)/g, '/* dup */')
-      .replace(/\bpush\(str /g, 'string s = ')
-      .replace(/\bpush\(new /g, 'new ')
-      .replace(/\bpush\(null\)/g, 'null')
-      .replace(/\bpush\((-?\d+[fFL]?)\)/g, '$1')
-      .replace(/\bpush\(0[xX][0-9A-Fa-f]+\)/g, function(m) { return m.substring(5, m.length - 1); })
-      .replace(/\blocal\[(\d+)\] = pop\(\)/g, 'var v$1 = ...')
-      .replace(/\barg\[(\d+)\] = pop\(\)/g, 'arg$1 = ...')
-      .replace(/\bpop\(\)/g, '...');
+  // ---- Modern C# pattern detection (applied to statement list) ----
+  function _modernize(stmts) {
+    const result = [];
+    for (let i = 0; i < stmts.length; ++i) {
+      let c = stmts[i].code;
+      // Clean up compiler-generated names
+      c = c.replace(/<>c__DisplayClass\w*/g, 'λ_closure');
+      c = c.replace(/<(\w+)>b__\d+/g, 'λ_$1');
+      c = c.replace(/<>1__state/g, 'state');
+      c = c.replace(/<>t__builder/g, 'builder');
+      c = c.replace(/<>s__\d+/g, function(m) { return 'tmp' + m.substring(4); });
+      c = c.replace(/<(\w+)>d__\d+/g, '$1_stateMachine');
+      c = c.replace(/CS\$<>8__locals\d*/g, 'locals');
+      // Async/await patterns
+      c = c.replace(/\.GetAwaiter\(\)\.GetResult\(\)/g, ''); // The actual call becomes await
+      if (/AsyncTaskMethodBuilder|AsyncVoidMethodBuilder/.test(c)) c = '// async ' + c;
+      if (/\.AwaitUnsafeOnCompleted\(|\.AwaitOnCompleted\(/.test(c)) c = c.replace(/\.\w+OnCompleted\(.+\);?/, '// await');
+      // Yield patterns
+      if (/<>1__state/.test(stmts[i].code) || /state = /.test(c)) c = c.replace(/state = (-?\d+);/, 'state = $1; // yield state');
+      // Nullable patterns: .HasValue → != null, .Value → !
+      c = c.replace(/\.get_HasValue\(\)/g, ' != null');
+      c = c.replace(/\.HasValue/g, ' != null');
+      c = c.replace(/\.get_Value\(\)/g, '.Value');
+      // nameof() pattern: ldstr with identifier-like content used with ArgumentNullException
+      // String.Format → $"..."
+      if (/String\.Format\(/.test(c)) c = c.replace(/String\.Format\(("[^"]*"),\s*(.+)\)/, '/* $"$1" args: $2 */');
+      // Simplify goto patterns: if !(x) goto L; stmt; L: → if (x) { stmt }
+      // (complex - detect sequential goto + label pairs)
+      if (i + 2 < stmts.length) {
+        const m = c.match(/^if \(!\((.+)\)\) goto (IL_[0-9A-Fa-f]+);$/);
+        if (m) {
+          const targetLabel = m[2];
+          const targetOff = parseInt(targetLabel.substring(3), 16);
+          // Check if the target is the statement after next (simple if body)
+          if (stmts[i + 2] && stmts[i + 2].offset === targetOff) {
+            result.push({ offset: stmts[i].offset, code: 'if (' + m[1] + ') {' });
+            result.push({ offset: stmts[i + 1].offset, code: '    ' + stmts[i + 1].code });
+            result.push({ offset: stmts[i + 2].offset, code: '}' });
+            i += 1; // skip the body statement; target line handled normally
+            continue;
+          }
+        }
+      }
+      result.push({ offset: stmts[i].offset, code: c });
+    }
+    return result;
   }
 
-  /** Format decompiled output with syntax highlighting and clickable labels. */
-  function _formatDecompiledMsil(instructions, _annotations, formatter, kwSet) {
+  // ---- Format statement list to HTML ----
+  function _fmtStmts(stmts, kwSet) {
     const lines = [];
-    for (const insn of instructions) {
-      const off = '<span class="da-off">' + esc(insn.offset.toString(16).padStart(8, '0').toUpperCase()) + '</span>';
-      const code = formatter(insn);
-      const highlighted = _highlightCode(code, kwSet);
+    for (const s of stmts) {
+      if (!s.code && s.code !== '') continue;
+      const offHex = s.offset.toString(16).padStart(8, '0').toUpperCase();
       lines.push(
-        '<span class="da-line" data-offset="' + insn.offset.toString(16) + '">'
-        + off
+        '<span class="da-line" data-offset="' + s.offset.toString(16) + '">'
+        + '<span class="da-off">' + esc(offHex) + '</span>'
         + '<span class="da-sep"> | </span>'
-        + highlighted
+        + _hl(s.code, kwSet)
         + '</span>'
       );
     }
@@ -710,9 +990,15 @@
   }
 
   if (D.registerDecompileFormatter) {
-    D.registerDecompileFormatter('csharp-low', (insns, annot) => _formatDecompiledMsil(insns, annot, _msilToCSharpLow, CS_KW));
-    D.registerDecompileFormatter('vb', (insns, annot) => _formatDecompiledMsil(insns, annot, _msilToVB, VB_KW));
-    D.registerDecompileFormatter('csharp', (insns, annot) => _formatDecompiledMsil(insns, annot, _msilToCSharpHigh, CS_KW));
+    // C# 2.0 — stack-tracking, no push/pop, reads like C#
+    D.registerDecompileFormatter('csharp-low', (insns, annot) => _fmtStmts(_decompileStatements(insns, annot), CS_KW));
+    // VB.NET — translate C# statements to VB syntax
+    D.registerDecompileFormatter('vb', (insns, annot) => {
+      const stmts = _decompileStatements(insns, annot);
+      return _fmtStmts(stmts.map(s => ({ offset: s.offset, code: _toVB(s.code) })), VB_KW);
+    });
+    // Modern C# — pattern detection for records, lambdas, yield, async, etc.
+    D.registerDecompileFormatter('csharp', (insns, annot) => _fmtStmts(_modernize(_decompileStatements(insns, annot)), CS_KW));
   }
 
 })();

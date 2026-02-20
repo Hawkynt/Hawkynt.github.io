@@ -27,6 +27,7 @@
     let tablesOff = 0, tablesSz = 0;
     let blobOff = 0, blobSz = 0;
     let guidOff = 0, guidSz = 0;
+    let usOff = 0, usSz = 0;
     for (let i = 0; i < numStreams && pos + 8 < bytes.length; ++i) {
       const sOff = readU32LE(bytes, pos); pos += 4;
       const sSz = readU32LE(bytes, pos); pos += 4;
@@ -38,6 +39,7 @@
       else if (name === '#~' || name === '#-') { tablesOff = metaBase + sOff; tablesSz = sSz; }
       else if (name === '#Blob') { blobOff = metaBase + sOff; blobSz = sSz; }
       else if (name === '#GUID') { guidOff = metaBase + sOff; guidSz = sSz; }
+      else if (name === '#US') { usOff = metaBase + sOff; usSz = sSz; }
     }
 
     if (!stringsOff || !tablesOff) return null;
@@ -64,6 +66,23 @@
       else { len = ((bytes[abs] & 0x1F) << 24) | (bytes[abs + 1] << 16) | (bytes[abs + 2] << 8) | bytes[abs + 3]; start = abs + 4; }
       if (start + len > bytes.length) return null;
       return bytes.slice(start, start + len);
+    }
+
+    // Read a #US (User Strings) heap entry at given offset — UTF-16LE with compressed length prefix
+    function readUserString(off) {
+      if (!off || !usOff) return null;
+      const abs = usOff + off;
+      if (abs >= bytes.length) return null;
+      let len, start;
+      if ((bytes[abs] & 0x80) === 0) { len = bytes[abs]; start = abs + 1; }
+      else if ((bytes[abs] & 0xC0) === 0x80) { len = ((bytes[abs] & 0x3F) << 8) | bytes[abs + 1]; start = abs + 2; }
+      else { len = ((bytes[abs] & 0x1F) << 24) | (bytes[abs + 1] << 16) | (bytes[abs + 2] << 8) | bytes[abs + 3]; start = abs + 4; }
+      if (start + len > bytes.length || len < 1) return null;
+      // US entries are UTF-16LE with a trailing byte; read len-1 bytes as UTF-16
+      const charCount = (len - 1) >> 1;
+      let s = '';
+      for (let i = 0; i < charCount; ++i) s += String.fromCharCode(bytes[start + i * 2] | (bytes[start + i * 2 + 1] << 8));
+      return s;
     }
 
     // Parse #~ stream header
@@ -118,7 +137,7 @@
     function tableIdxSize(t) { return rowCounts[t] > 0xFFFF ? 4 : 2; }
 
     // Table data starts at tp — read the tables we care about
-    const result = { strings: readHeapString, readBlob: readHeapBlob, tables: {} };
+    const result = { strings: readHeapString, readBlob: readHeapBlob, readUserString: readUserString, tables: {} };
 
     for (let t = 0; t < 64; ++t) {
       const rows = rowCounts[t];
@@ -774,16 +793,16 @@
       }
 
       // Unicode (UTF-16LE) strings: character pairs >= 4 chars, null-terminated
-      // Supports full BMP range (not just ASCII) — detects printable Unicode chars
+      // Restricted to Latin-1 range (U+0020..U+007E, U+00A0..U+00FF) — finds
+      // two-byte encoded ANSI strings, not CJK/Arabic/etc.
       for (let j = base; j + 1 < end; j += 2) {
         const cp = readU16LE(bytes, j);
-        // Accept printable characters: space..tilde, Latin-1 Supplement (0xA0+), or common Unicode ranges
-        if (cp >= 0x20 && cp !== 0x7F && cp !== 0xFFFE && cp !== 0xFFFF) {
+        if ((cp >= 0x20 && cp < 0x7F) || (cp >= 0xA0 && cp <= 0xFF)) {
           const uStart = j;
           let uEnd = j;
           while (uEnd + 1 < end) {
             const uc = readU16LE(bytes, uEnd);
-            if (uc >= 0x20 && uc !== 0x7F && uc !== 0xFFFE && uc !== 0xFFFF)
+            if ((uc >= 0x20 && uc < 0x7F) || (uc >= 0xA0 && uc <= 0xFF))
               uEnd += 2;
             else
               break;
@@ -797,8 +816,8 @@
             if (!seen.has(val)) {
               seen.add(val);
               const rva = sec.virtualAddress + (uStart - base);
-              const isAsciiOnly = charCount === val.length && /^[\x20-\x7E]+$/.test(val);
-              results.push({ offset: uStart, rva, value: val, encoding: isAsciiOnly ? 'UTF-16' : 'Unicode', section: secName });
+              const isAsciiOnly = /^[\x20-\x7E]+$/.test(val);
+              results.push({ offset: uStart, rva, value: val, encoding: isAsciiOnly ? 'UTF-16' : 'UTF-16 (Latin-1)', section: secName });
             }
           }
           j = Math.max(j, uEnd - 2); // -2 because the loop does j+=2
