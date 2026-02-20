@@ -1710,64 +1710,6 @@ tr.recent-highlight.selected {
 .hl-func    { color: #795e26; }
 .hl-regex   { color: #811f3f; }
 
-/* -- Properties dialog --------------------------------------------- */
-.properties-dialog { min-width: 380px; max-width: 500px; }
-
-.props-tabs {
-  display: flex;
-  gap: 0;
-  background: var(--sz-color-button-face, #ece9d8);
-  border-bottom: 1px solid var(--sz-color-button-shadow, #aca899);
-  overflow-x: auto;
-}
-
-.props-tab {
-  padding: 4px 10px;
-  border: 1px solid transparent;
-  border-bottom: none;
-  background: transparent;
-  cursor: pointer;
-  font: inherit;
-  font-size: 10px;
-  white-space: nowrap;
-  color: inherit;
-}
-
-.props-tab:hover { background: var(--sz-color-button-highlight, #fff); }
-
-.props-tab.active {
-  background: var(--sz-color-window, #fff);
-  border-color: var(--sz-color-button-shadow, #aca899);
-  border-bottom: 1px solid var(--sz-color-window, #fff);
-  margin-bottom: -1px;
-  font-weight: bold;
-}
-
-.props-content {
-  padding: 8px;
-  background: var(--sz-color-window, #fff);
-  min-height: 120px;
-  max-height: 300px;
-  overflow: auto;
-}
-
-.props-table { width: 100%; border-collapse: collapse; }
-
-.props-table td {
-  padding: 3px 6px;
-  font-size: 11px;
-  border-bottom: 1px solid var(--sz-color-button-highlight, #f0f0f0);
-  vertical-align: top;
-}
-
-.props-label {
-  width: 35%;
-  color: var(--sz-color-gray-text, #808080);
-  font-size: 10px;
-}
-
-.props-value { word-break: break-all; }
-
 /* -- Bulk Rename Dialog -------------------------------------------- */
 .bulk-rename-dialog { min-width: 400px; max-width: 540px; }
 

@@ -63,7 +63,7 @@
       let datasource;
 
       if (type === 'hosted') {
-        datasource = await this.#createHostedDatasource(app);
+        datasource = await this.#createHostedDatasource(app, urlParams);
       } else {
         datasource = 'Applications/' + app.entry;
         const params = Object.assign({}, urlParams);
@@ -93,6 +93,11 @@
 
       if (app.singleton)
         this.#singletons.set(appId, win.id);
+
+      if (type === 'hosted' && datasource?.element) {
+        datasource.element._szWindow = win;
+        datasource.element._szAppInstance?.onAttach?.(win);
+      }
 
       if (type !== 'hosted') {
         const iframe = win.iframe;
@@ -135,7 +140,7 @@
      * Load a hosted app.js via <script> injection (works on file://).
      * The app.js must register: SZ.Apps['appId'] = { Application: class { ... } }
      */
-    async #createHostedDatasource(app) {
+    async #createHostedDatasource(app, urlParams) {
       const scriptPath = 'Applications/' + app.entry;
 
       SZ.Apps = SZ.Apps || {};
@@ -156,7 +161,7 @@
       container.className = 'sz-hosted-app';
       container.style.cssText = 'position:absolute;inset:0;overflow:auto;';
 
-      const instance = new AppClass(container);
+      const instance = new AppClass(container, urlParams || {});
       container._szAppInstance = instance;
 
       return { type: 'hosted', element: container };

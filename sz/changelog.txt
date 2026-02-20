@@ -1,3 +1,11 @@
+Main: 6.7
+by Hawkynt 20.02.2026
++ Properties: standalone hosted app for file/folder properties (extracted from Explorer)
++ hosted app framework: parameter passing, onAttach callback, SZ.os service access
++ Metadata Viewer: loading progress indicator during file parsing
+* Metadata Viewer: PE string extraction restricted to Latin-1 range (no CJK/Arabic noise)
+* Explorer: 8 metadata parser scripts removed from initial load (deferred to Properties app)
+
 Main: 6.6
 by Hawkynt 19.02.2026-22:20
 + Explorer: mount and unmount local directories via File System Access API
