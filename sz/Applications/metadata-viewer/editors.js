@@ -387,7 +387,7 @@
   }
 
   // =========================================================================
-  // JPEG EXIF writer — modifies text IFD entries in APP1 segment
+  // JPEG EXIF writer — full IFD rebuild engine
   // =========================================================================
 
   function readU16LE(bytes, offset) {
@@ -426,34 +426,193 @@
     arr[offset + 3] = value & 0xFF;
   }
 
-  // EXIF tag → modification key mapping
-  const EXIF_TAG_KEY_MAP = {
-    0x010E: 'exif.10e',   // ImageDescription
-    0x010F: 'exif.10f',   // Make
-    0x0110: 'exif.110',   // Model
-    0x0112: 'exif.112',   // Orientation
-    0x0131: 'exif.131',   // Software
-    0x0132: 'exif.132',   // DateTime
-    0x013B: 'exif.13b',   // Artist
-    0x8298: 'exif.8298',  // Copyright
-    0x9003: 'exif.9003',  // DateTimeOriginal
-    0x9004: 'exif.9004',  // DateTimeDigitized
+  // RATIONAL helpers
+  function decimalToDmsRationals(decimalDeg) {
+    const abs = Math.abs(decimalDeg);
+    const deg = Math.floor(abs);
+    const minFloat = (abs - deg) * 60;
+    const min = Math.floor(minFloat);
+    const sec = (minFloat - min) * 60;
+    const secScaled = Math.round(sec * 10000);
+    return [
+      { num: deg, den: 1 },
+      { num: min, den: 1 },
+      { num: secScaled, den: 10000 },
+    ];
+  }
+
+  function rationalToBytes(rationals, wU32Fn, le) {
+    const buf = new Uint8Array(rationals.length * 8);
+    for (let i = 0; i < rationals.length; ++i) {
+      wU32Fn(buf, i * 8, rationals[i].num >>> 0);
+      wU32Fn(buf, i * 8 + 4, rationals[i].den >>> 0);
+    }
+    return buf;
+  }
+
+  // EXIF type sizes
+  const TYPE_SIZES = [0, 1, 1, 2, 4, 8, 1, 1, 2, 4, 8, 4, 8];
+
+  // Known EXIF tag types for creating new entries
+  const TAG_TYPE_MAP = {
+    // IFD0 tags
+    0x010E: 2,   // ImageDescription — ASCII
+    0x010F: 2,   // Make
+    0x0110: 2,   // Model
+    0x0112: 3,   // Orientation — SHORT
+    0x0131: 2,   // Software
+    0x0132: 2,   // DateTime
+    0x013B: 2,   // Artist
+    0x8298: 2,   // Copyright
+    // ExifSubIFD tags
+    0x9003: 2,   // DateTimeOriginal
+    0x9004: 2,   // DateTimeDigitized
+    // Pointers
+    0x8769: 4,   // ExifIFD pointer — LONG
+    0x8825: 4,   // GPSIFD pointer — LONG
+    // GPS tags
+    0x0000: 1,   // GPSVersionID — BYTE
+    0x0001: 2,   // GPSLatitudeRef — ASCII
+    0x0002: 5,   // GPSLatitude — RATIONAL
+    0x0003: 2,   // GPSLongitudeRef
+    0x0004: 5,   // GPSLongitude
+    0x0005: 1,   // GPSAltitudeRef — BYTE
+    0x0006: 5,   // GPSAltitude — RATIONAL
+    0x0010: 2,   // GPSImgDirectionRef — ASCII
+    0x0011: 5,   // GPSImgDirection — RATIONAL
   };
 
-  function rebuildJPEG(originalBytes, modifications) {
-    // Build tag → new value map
-    const exifMods = new Map();
-    for (const [key, value] of modifications) {
-      if (value === null) continue; // removals not supported for EXIF
-      for (const [tag, modKey] of Object.entries(EXIF_TAG_KEY_MAP))
-        if (key === modKey)
-          exifMods.set(parseInt(tag), value);
-    }
-    if (exifMods.size === 0) return originalBytes;
+  // IFD0 tags vs ExifSubIFD tags
+  const IFD0_TAGS = new Set([0x010E, 0x010F, 0x0110, 0x0112, 0x0131, 0x0132, 0x013B, 0x8298, 0x8769, 0x8825]);
+  const EXIF_SUB_TAGS = new Set([0x9003, 0x9004]);
 
+  // Parse one IFD into an array of entry objects
+  function parseIFDEntries(tiff, ifdOffset, rU16, rU32) {
+    const entries = [];
+    if (ifdOffset + 2 > tiff.length) return { entries, nextIFD: 0 };
+    const count = rU16(tiff, ifdOffset);
+    for (let i = 0; i < count; ++i) {
+      const eb = ifdOffset + 2 + i * 12;
+      if (eb + 12 > tiff.length) break;
+      const tag = rU16(tiff, eb);
+      const type = rU16(tiff, eb + 2);
+      const cnt = rU32(tiff, eb + 4);
+      const typeSize = TYPE_SIZES[type] || 1;
+      const totalSize = cnt * typeSize;
+      let valueBytes;
+      if (totalSize <= 4) {
+        valueBytes = new Uint8Array(4);
+        for (let j = 0; j < 4; ++j) valueBytes[j] = tiff[eb + 8 + j];
+      } else {
+        const off = rU32(tiff, eb + 8);
+        if (off + totalSize <= tiff.length)
+          valueBytes = tiff.slice(off, off + totalSize);
+        else
+          valueBytes = new Uint8Array(totalSize);
+      }
+      entries.push({ tag, type, count: cnt, valueBytes });
+    }
+    const nextOff = ifdOffset + 2 + count * 12;
+    const nextIFD = nextOff + 4 <= tiff.length ? rU32(tiff, nextOff) : 0;
+    return { entries, nextIFD };
+  }
+
+  // Serialize an IFD entry array back to bytes
+  function serializeIFD(entries, dataStartOffset, wU16, wU32) {
+    // Sort by tag (EXIF spec)
+    entries.sort((a, b) => a.tag - b.tag);
+    const count = entries.length;
+    const ifdSize = 2 + count * 12 + 4; // count + entries + nextIFD pointer
+    const ifdBuf = new Uint8Array(ifdSize);
+    wU16(ifdBuf, 0, count);
+
+    const dataChunks = [];
+    let dataOffset = dataStartOffset + ifdSize;
+
+    for (let i = 0; i < count; ++i) {
+      const e = entries[i];
+      const eb = 2 + i * 12;
+      wU16(ifdBuf, eb, e.tag);
+      wU16(ifdBuf, eb + 2, e.type);
+      wU32(ifdBuf, eb + 4, e.count);
+
+      const totalSize = e.valueBytes.length;
+      if (totalSize <= 4) {
+        for (let j = 0; j < Math.min(totalSize, 4); ++j)
+          ifdBuf[eb + 8 + j] = e.valueBytes[j];
+      } else {
+        wU32(ifdBuf, eb + 8, dataOffset);
+        dataChunks.push(e.valueBytes);
+        dataOffset += totalSize;
+        if (totalSize & 1) {
+          dataChunks.push(new Uint8Array([0])); // word-align
+          ++dataOffset;
+        }
+      }
+    }
+
+    return { ifdBuf, dataChunks, nextPtrOffset: 2 + count * 12, totalDataEnd: dataOffset };
+  }
+
+  // Create value bytes for a tag
+  function makeValueBytes(type, value, wU16, wU32) {
+    if (type === 2) {
+      // ASCII
+      const str = String(value) + '\0';
+      const b = new Uint8Array(str.length);
+      for (let i = 0; i < str.length; ++i) b[i] = str.charCodeAt(i) & 0xFF;
+      return { valueBytes: b, count: str.length };
+    }
+    if (type === 3) {
+      // SHORT
+      const b = new Uint8Array(2);
+      wU16(b, 0, parseInt(value) & 0xFFFF);
+      return { valueBytes: b, count: 1 };
+    }
+    if (type === 4) {
+      // LONG
+      const b = new Uint8Array(4);
+      wU32(b, 0, parseInt(value) >>> 0);
+      return { valueBytes: b, count: 1 };
+    }
+    if (type === 5) {
+      // RATIONAL — value should be an array of {num, den}
+      if (Array.isArray(value)) {
+        const b = new Uint8Array(value.length * 8);
+        for (let i = 0; i < value.length; ++i) {
+          wU32(b, i * 8, value[i].num >>> 0);
+          wU32(b, i * 8 + 4, value[i].den >>> 0);
+        }
+        return { valueBytes: b, count: value.length };
+      }
+      // Single rational
+      const num = Math.round(parseFloat(value) * 10000);
+      const b = new Uint8Array(8);
+      wU32(b, 0, num >>> 0);
+      wU32(b, 4, 10000);
+      return { valueBytes: b, count: 1 };
+    }
+    if (type === 1) {
+      // BYTE
+      if (Array.isArray(value)) {
+        const b = new Uint8Array(value.length);
+        for (let i = 0; i < value.length; ++i) b[i] = value[i] & 0xFF;
+        return { valueBytes: b, count: value.length };
+      }
+      const b = new Uint8Array([parseInt(value) & 0xFF]);
+      return { valueBytes: b, count: 1 };
+    }
+    // Fallback: ASCII
+    const str = String(value) + '\0';
+    const b = new Uint8Array(str.length);
+    for (let i = 0; i < str.length; ++i) b[i] = str.charCodeAt(i) & 0xFF;
+    return { valueBytes: b, count: str.length };
+  }
+
+  function rebuildJPEG(originalBytes, exifMods, gpsMods) {
     // Find APP1 EXIF segment
     let app1Start = -1, app1SegLen = 0, tiffStart = -1;
-    let offset = 2; // skip SOI (FF D8)
+    let offset = 2;
     while (offset < originalBytes.length - 1) {
       if (originalBytes[offset] !== 0xFF) break;
       const marker = originalBytes[offset + 1];
@@ -463,107 +622,442 @@
       if (offset + 2 > originalBytes.length) break;
       const segLen = readU16BE_local(originalBytes, offset);
       if (marker === 0xE1 && segLen >= 8) {
-        const id = readString(originalBytes, offset + 2, 6);
-        if (id === 'Exif\0\0') {
-          app1Start = offset - 2; // FF E1
+        const hdr = readString(originalBytes, offset + 2, 6);
+        if (hdr.startsWith('Exif') && originalBytes[offset + 6] === 0 && originalBytes[offset + 7] === 0) {
+          app1Start = offset - 2;
           app1SegLen = segLen;
-          tiffStart = offset + 2 + 6; // after length(2) + "Exif\0\0"(6)
+          tiffStart = offset + 2 + 6;
           break;
         }
       }
       offset += segLen;
     }
 
-    if (app1Start < 0) return originalBytes;
+    const hasExistingApp1 = app1Start >= 0;
+    let tiff, le, rU16, rU32, wU16, wU32;
+    let ifd0Entries = [], subIfdEntries = [], gpsIfdEntries = [], ifd1Entries = [];
+    let thumbnailData = null;
 
-    // Copy TIFF data into a mutable buffer with extra room for new strings
-    const app1End = app1Start + 2 + app1SegLen;
-    const origTiffLen = app1End - tiffStart;
-    const extraRoom = 4096;
-    const tiff = new Uint8Array(origTiffLen + extraRoom);
-    tiff.set(originalBytes.slice(tiffStart, app1End), 0);
-    let tiffEnd = origTiffLen;
+    if (hasExistingApp1) {
+      const app1End = app1Start + 2 + app1SegLen;
+      const origTiffLen = app1End - tiffStart;
+      tiff = originalBytes.slice(tiffStart, app1End);
+      le = tiff[0] === 0x49;
+      rU16 = le ? readU16LE : readU16BE_local;
+      rU32 = le ? readU32LE : readU32BE;
+      wU16 = le ? writeU16LE : writeU16BE_local;
+      wU32 = le ? writeU32LE : writeU32BE_local;
 
-    const le = tiff[0] === 0x49; // II = little-endian
-    const rU16 = le ? readU16LE : readU16BE_local;
-    const rU32 = le ? readU32LE : readU32BE;
-    const wU16 = le ? writeU16LE : writeU16BE_local;
-    const wU32 = le ? writeU32LE : writeU32BE_local;
+      const ifd0Off = rU32(tiff, 4);
+      const ifd0Result = parseIFDEntries(tiff, ifd0Off, rU16, rU32);
+      ifd0Entries = ifd0Result.entries;
 
-    // Walk IFD0/SubIFD and modify matching entries
-    const ifd0Offset = rU32(tiff, 4);
+      // Parse ExifSubIFD
+      const exifPtrEntry = ifd0Entries.find(e => e.tag === 0x8769);
+      if (exifPtrEntry) {
+        const subOff = rU32(exifPtrEntry.valueBytes, 0);
+        if (subOff > 0 && subOff < tiff.length)
+          subIfdEntries = parseIFDEntries(tiff, subOff, rU16, rU32).entries;
+      }
 
-    function modifyIFD(ifdOff) {
-      if (ifdOff + 2 > tiffEnd) return;
-      const count = rU16(tiff, ifdOff);
-      for (let i = 0; i < count; ++i) {
-        const eb = ifdOff + 2 + i * 12;
-        if (eb + 12 > tiffEnd) break;
-        const tag = rU16(tiff, eb);
-        const type = rU16(tiff, eb + 2);
-        if (!exifMods.has(tag)) continue;
+      // Parse GPSIFD
+      const gpsPtrEntry = ifd0Entries.find(e => e.tag === 0x8825);
+      if (gpsPtrEntry) {
+        const gpsOff = rU32(gpsPtrEntry.valueBytes, 0);
+        if (gpsOff > 0 && gpsOff < tiff.length)
+          gpsIfdEntries = parseIFDEntries(tiff, gpsOff, rU16, rU32).entries;
+      }
 
-        const newValue = exifMods.get(tag);
-
-        if (type === 2) {
-          // ASCII string
-          const newBytes = stringToBytes(newValue + '\0');
-          const newCount = newBytes.length;
-          wU32(tiff, eb + 4, newCount);
-          if (newCount <= 4) {
-            for (let j = 0; j < 4; ++j)
-              tiff[eb + 8 + j] = j < newBytes.length ? newBytes[j] : 0;
-          } else {
-            const newOff = tiffEnd;
-            for (let j = 0; j < newBytes.length; ++j)
-              tiff[newOff + j] = newBytes[j];
-            tiffEnd += newBytes.length;
-            if (tiffEnd & 1) tiff[tiffEnd++] = 0;
-            wU32(tiff, eb + 8, newOff);
-          }
-        } else if (type === 3) {
-          // SHORT (u16) — e.g., Orientation
-          const num = parseInt(newValue);
-          if (!isNaN(num)) wU16(tiff, eb + 8, num);
-        } else if (type === 4) {
-          // LONG (u32)
-          const num = parseInt(newValue);
-          if (!isNaN(num)) wU32(tiff, eb + 8, num);
+      // Parse IFD1 (thumbnail)
+      if (ifd0Result.nextIFD > 0 && ifd0Result.nextIFD < tiff.length) {
+        const ifd1Result = parseIFDEntries(tiff, ifd0Result.nextIFD, rU16, rU32);
+        ifd1Entries = ifd1Result.entries;
+        // Extract thumbnail JPEG data
+        const thumbOffEntry = ifd1Entries.find(e => e.tag === 0x0201);
+        const thumbLenEntry = ifd1Entries.find(e => e.tag === 0x0202);
+        if (thumbOffEntry && thumbLenEntry) {
+          const thumbOff = rU32(thumbOffEntry.valueBytes, 0);
+          const thumbLen = rU32(thumbLenEntry.valueBytes, 0);
+          if (thumbOff + thumbLen <= tiff.length)
+            thumbnailData = tiff.slice(thumbOff, thumbOff + thumbLen);
         }
-        // Types 5 (RATIONAL) and 10 (SRATIONAL) would need offset-based writing — skip for now
+      }
+    } else {
+      // No existing EXIF — create from scratch
+      le = false; // big-endian by default
+      rU16 = readU16BE_local;
+      rU32 = readU32BE;
+      wU16 = writeU16BE_local;
+      wU32 = writeU32BE_local;
+    }
 
-        exifMods.delete(tag);
+    // Apply exif.* modifications to IFD0 and ExifSubIFD
+    for (const [key, value] of exifMods) {
+      const tagNum = parseInt(key.substring(5), 16);
+      if (isNaN(tagNum)) continue;
 
-        // Follow ExifIFD pointer to modify sub-IFD entries
-        if (tag === 0x8769 && type === 4) {
-          const subOff = rU32(tiff, eb + 8);
-          if (subOff > 0 && subOff + 2 <= tiffEnd)
-            modifyIFD(subOff);
+      const isIfd0 = IFD0_TAGS.has(tagNum);
+      const isSubIfd = EXIF_SUB_TAGS.has(tagNum);
+      const targetEntries = isIfd0 ? ifd0Entries : isSubIfd ? subIfdEntries : ifd0Entries;
+      const idx = targetEntries.findIndex(e => e.tag === tagNum);
+
+      if (value === null) {
+        // Remove entry
+        if (idx >= 0) targetEntries.splice(idx, 1);
+        continue;
+      }
+
+      const type = TAG_TYPE_MAP[tagNum] || (idx >= 0 ? targetEntries[idx].type : 2);
+      const { valueBytes, count } = makeValueBytes(type, value, wU16, wU32);
+
+      if (idx >= 0) {
+        targetEntries[idx].type = type;
+        targetEntries[idx].count = count;
+        targetEntries[idx].valueBytes = valueBytes;
+      } else
+        targetEntries.push({ tag: tagNum, type, count, valueBytes });
+    }
+
+    // Apply gps.* modifications
+    if (gpsMods.size > 0) {
+      const coordVal = gpsMods.get('gps.coordinates');
+      if (coordVal) {
+        let coords;
+        try { coords = JSON.parse(coordVal); } catch (_) { coords = null; }
+        if (coords && coords.lat != null && coords.lng != null) {
+          const latRat = decimalToDmsRationals(coords.lat);
+          const lngRat = decimalToDmsRationals(coords.lng);
+          const latRef = coords.lat >= 0 ? 'N' : 'S';
+          const lngRef = coords.lng >= 0 ? 'E' : 'W';
+
+          _setGpsEntry(gpsIfdEntries, 0x0000, 1, [2, 3, 0, 0], 4, wU16, wU32); // GPSVersionID
+          _setGpsEntry(gpsIfdEntries, 0x0001, 2, latRef, null, wU16, wU32); // LatRef
+          _setGpsEntry(gpsIfdEntries, 0x0002, 5, latRat, 3, wU16, wU32); // Lat
+          _setGpsEntry(gpsIfdEntries, 0x0003, 2, lngRef, null, wU16, wU32); // LngRef
+          _setGpsEntry(gpsIfdEntries, 0x0004, 5, lngRat, 3, wU16, wU32); // Lng
+
+          if (coords.alt != null) {
+            const altRef = coords.alt < 0 ? 1 : 0;
+            _setGpsEntry(gpsIfdEntries, 0x0005, 1, [altRef], 1, wU16, wU32);
+            _setGpsEntry(gpsIfdEntries, 0x0006, 5, [{ num: Math.round(Math.abs(coords.alt) * 1000), den: 1000 }], 1, wU16, wU32);
+          }
+
+          if (coords.direction != null) {
+            _setGpsEntry(gpsIfdEntries, 0x0010, 2, 'T', null, wU16, wU32);
+            _setGpsEntry(gpsIfdEntries, 0x0011, 5, [{ num: Math.round(coords.direction * 100), den: 100 }], 1, wU16, wU32);
+          }
+        }
+      }
+
+      // Standalone altitude modification
+      const altVal = gpsMods.get('gps.altitude');
+      if (altVal != null && !coordVal) {
+        const alt = parseFloat(altVal);
+        if (!isNaN(alt)) {
+          _setGpsEntry(gpsIfdEntries, 0x0005, 1, [alt < 0 ? 1 : 0], 1, wU16, wU32);
+          _setGpsEntry(gpsIfdEntries, 0x0006, 5, [{ num: Math.round(Math.abs(alt) * 1000), den: 1000 }], 1, wU16, wU32);
+        }
+      }
+
+      // Standalone direction modification
+      const dirVal = gpsMods.get('gps.direction');
+      if (dirVal != null && !coordVal) {
+        const dir = parseFloat(dirVal);
+        if (!isNaN(dir)) {
+          _setGpsEntry(gpsIfdEntries, 0x0010, 2, 'T', null, wU16, wU32);
+          _setGpsEntry(gpsIfdEntries, 0x0011, 5, [{ num: Math.round(dir * 100), den: 100 }], 1, wU16, wU32);
+        }
+      }
+
+      // GPS Destination
+      const destVal = gpsMods.get('gps.destination');
+      if (destVal) {
+        let dest;
+        try { dest = JSON.parse(destVal); } catch (_) { dest = null; }
+        if (dest && dest.lat != null && dest.lng != null) {
+          const dLatRat = decimalToDmsRationals(dest.lat);
+          const dLngRat = decimalToDmsRationals(dest.lng);
+          _setGpsEntry(gpsIfdEntries, 0x0013, 2, dest.lat >= 0 ? 'N' : 'S', null, wU16, wU32);
+          _setGpsEntry(gpsIfdEntries, 0x0014, 5, dLatRat, 3, wU16, wU32);
+          _setGpsEntry(gpsIfdEntries, 0x0015, 2, dest.lng >= 0 ? 'E' : 'W', null, wU16, wU32);
+          _setGpsEntry(gpsIfdEntries, 0x0016, 5, dLngRat, 3, wU16, wU32);
+
+          if (dest.bearing != null) {
+            _setGpsEntry(gpsIfdEntries, 0x0017, 2, 'T', null, wU16, wU32);
+            _setGpsEntry(gpsIfdEntries, 0x0018, 5, [{ num: Math.round(dest.bearing * 100), den: 100 }], 1, wU16, wU32);
+          }
+          if (dest.distance != null) {
+            _setGpsEntry(gpsIfdEntries, 0x0019, 2, 'K', null, wU16, wU32);
+            _setGpsEntry(gpsIfdEntries, 0x001A, 5, [{ num: Math.round(dest.distance * 1000), den: 1000 }], 1, wU16, wU32);
+          }
         }
       }
     }
 
-    modifyIFD(ifd0Offset);
+    // Ensure ExifSubIFD pointer exists if we have sub-IFD entries
+    if (subIfdEntries.length > 0 && !ifd0Entries.some(e => e.tag === 0x8769)) {
+      const ptrBytes = new Uint8Array(4);
+      ifd0Entries.push({ tag: 0x8769, type: 4, count: 1, valueBytes: ptrBytes });
+    }
 
-    // Build new APP1 segment
-    const newTiff = tiff.slice(0, tiffEnd);
-    const exifHdr = [0x45, 0x78, 0x69, 0x66, 0x00, 0x00]; // "Exif\0\0"
-    const newDataLen = exifHdr.length + newTiff.length;
+    // Ensure GPSIFD pointer exists if we have GPS entries
+    if (gpsIfdEntries.length > 0 && !ifd0Entries.some(e => e.tag === 0x8825)) {
+      const ptrBytes = new Uint8Array(4);
+      ifd0Entries.push({ tag: 0x8825, type: 4, count: 1, valueBytes: ptrBytes });
+    }
+
+    // Serialize all IFDs
+    // Layout: TIFF header (8) -> IFD0 -> ExifSubIFD -> GPSIFD -> IFD1 -> thumbnail data
+    let currentOffset = 8; // after TIFF header
+
+    const ifd0Ser = serializeIFD(ifd0Entries, currentOffset, wU16, wU32);
+    currentOffset = ifd0Ser.totalDataEnd;
+
+    let subIfdSer = null;
+    if (subIfdEntries.length > 0) {
+      subIfdSer = serializeIFD(subIfdEntries, currentOffset, wU16, wU32);
+      // Fix ExifIFD pointer in IFD0
+      const exifPtrIdx = ifd0Entries.findIndex(e => e.tag === 0x8769);
+      if (exifPtrIdx >= 0)
+        wU32(ifd0Entries[exifPtrIdx].valueBytes, 0, currentOffset);
+      currentOffset = subIfdSer.totalDataEnd;
+    }
+
+    let gpsSer = null;
+    if (gpsIfdEntries.length > 0) {
+      gpsSer = serializeIFD(gpsIfdEntries, currentOffset, wU16, wU32);
+      // Fix GPSIFD pointer in IFD0
+      const gpsPtrIdx = ifd0Entries.findIndex(e => e.tag === 0x8825);
+      if (gpsPtrIdx >= 0)
+        wU32(ifd0Entries[gpsPtrIdx].valueBytes, 0, currentOffset);
+      currentOffset = gpsSer.totalDataEnd;
+    }
+
+    let ifd1Ser = null;
+    if (ifd1Entries.length > 0 && thumbnailData) {
+      ifd1Ser = serializeIFD(ifd1Entries, currentOffset, wU16, wU32);
+      // Fix thumbnail offset
+      const thumbOffIdx = ifd1Entries.findIndex(e => e.tag === 0x0201);
+      if (thumbOffIdx >= 0)
+        wU32(ifd1Entries[thumbOffIdx].valueBytes, 0, ifd1Ser.totalDataEnd);
+      currentOffset = ifd1Ser.totalDataEnd + thumbnailData.length;
+    }
+
+    // Re-serialize IFD0 with correct pointer values (need to redo since pointers changed)
+    const ifd0Final = serializeIFD(ifd0Entries, 8, wU16, wU32);
+
+    // Assemble TIFF
+    const tiffParts = [];
+    // TIFF header
+    const tiffHeader = new Uint8Array(8);
+    tiffHeader[0] = le ? 0x49 : 0x4D;
+    tiffHeader[1] = le ? 0x49 : 0x4D;
+    wU16(tiffHeader, 2, 0x002A);
+    wU32(tiffHeader, 4, 8); // IFD0 offset
+    tiffParts.push(tiffHeader);
+
+    // IFD0
+    tiffParts.push(ifd0Final.ifdBuf);
+    // Set IFD0 next-IFD pointer
+    if (ifd1Ser && ifd1Entries.length > 0) {
+      // Recalculate IFD1 start offset
+      let ifd1Start = ifd0Final.totalDataEnd;
+      if (subIfdSer) ifd1Start = subIfdSer.totalDataEnd;
+      if (gpsSer) ifd1Start = gpsSer.totalDataEnd;
+      // Re-serialize to get correct offsets...
+    }
+    for (const chunk of ifd0Final.dataChunks) tiffParts.push(chunk);
+
+    if (subIfdSer) {
+      // Re-serialize SubIFD at correct offset
+      const subStart = ifd0Final.totalDataEnd;
+      const subFinal = serializeIFD(subIfdEntries, subStart, wU16, wU32);
+      // Fix ExifIFD pointer
+      const exifPtrIdx2 = ifd0Entries.findIndex(e => e.tag === 0x8769);
+      if (exifPtrIdx2 >= 0) {
+        wU32(ifd0Entries[exifPtrIdx2].valueBytes, 0, subStart);
+      }
+      tiffParts.push(subFinal.ifdBuf);
+      for (const chunk of subFinal.dataChunks) tiffParts.push(chunk);
+    }
+
+    if (gpsSer) {
+      // Calculate GPS IFD start
+      let gpsStart = ifd0Final.totalDataEnd;
+      if (subIfdSer) {
+        const subFinal = serializeIFD(subIfdEntries, ifd0Final.totalDataEnd, wU16, wU32);
+        gpsStart = subFinal.totalDataEnd;
+      }
+      const gpsFinal = serializeIFD(gpsIfdEntries, gpsStart, wU16, wU32);
+      const gpsPtrIdx2 = ifd0Entries.findIndex(e => e.tag === 0x8825);
+      if (gpsPtrIdx2 >= 0)
+        wU32(ifd0Entries[gpsPtrIdx2].valueBytes, 0, gpsStart);
+      tiffParts.push(gpsFinal.ifdBuf);
+      for (const chunk of gpsFinal.dataChunks) tiffParts.push(chunk);
+    }
+
+    // IFD1 + thumbnail
+    let ifd1StartOffset = 0;
+    if (ifd1Entries.length > 0 && thumbnailData) {
+      // Calculate exact IFD1 position
+      let pos = 8;
+      for (let i = 1; i < tiffParts.length; ++i) pos += tiffParts[i].length;
+      ifd1StartOffset = pos;
+
+      const ifd1Final = serializeIFD(ifd1Entries, pos, wU16, wU32);
+      // Fix thumbnail offset to point after IFD1 data
+      const thumbOffIdx2 = ifd1Entries.findIndex(e => e.tag === 0x0201);
+      if (thumbOffIdx2 >= 0)
+        wU32(ifd1Entries[thumbOffIdx2].valueBytes, 0, ifd1Final.totalDataEnd);
+
+      const ifd1Final2 = serializeIFD(ifd1Entries, pos, wU16, wU32);
+      tiffParts.push(ifd1Final2.ifdBuf);
+      for (const chunk of ifd1Final2.dataChunks) tiffParts.push(chunk);
+      tiffParts.push(thumbnailData);
+    }
+
+    // Now do a final pass: re-serialize everything with correct offsets
+    // Use a simpler two-pass approach: measure then write
+    const finalTiff = _assembleTiffFinal(ifd0Entries, subIfdEntries, gpsIfdEntries, ifd1Entries, thumbnailData, le, wU16, wU32);
+
+    // Build new APP1
+    const exifHdr = [0x45, 0x78, 0x69, 0x66, 0x00, 0x00];
+    const newDataLen = exifHdr.length + finalTiff.length;
+    if (newDataLen + 2 > 65535)
+      console.warn('APP1 segment exceeds 64KB limit (' + (newDataLen + 2) + ' bytes)');
+
     const newApp1 = new Uint8Array(2 + 2 + newDataLen);
     newApp1[0] = 0xFF;
     newApp1[1] = 0xE1;
-    writeU16BE(newApp1, 2, newDataLen + 2); // segment length includes itself
+    writeU16BE(newApp1, 2, Math.min(newDataLen + 2, 65535));
     for (let i = 0; i < 6; ++i) newApp1[4 + i] = exifHdr[i];
-    newApp1.set(newTiff, 10);
+    newApp1.set(finalTiff, 10);
 
-    // Reassemble JPEG: before APP1 + new APP1 + after APP1
-    const before = originalBytes.slice(0, app1Start);
-    const after = originalBytes.slice(app1End);
+    // Reassemble JPEG
+    let before, after;
+    if (hasExistingApp1) {
+      const app1End = app1Start + 2 + app1SegLen;
+      before = originalBytes.slice(0, app1Start);
+      after = originalBytes.slice(app1End);
+    } else {
+      // Insert after SOI marker
+      before = originalBytes.slice(0, 2);
+      after = originalBytes.slice(2);
+    }
+
     const result = new Uint8Array(before.length + newApp1.length + after.length);
     result.set(before, 0);
     result.set(newApp1, before.length);
     result.set(after, before.length + newApp1.length);
     return result;
+  }
+
+  function _setGpsEntry(entries, tag, type, value, count, wU16, wU32) {
+    const { valueBytes, count: cnt } = makeValueBytes(type, value, wU16, wU32);
+    const idx = entries.findIndex(e => e.tag === tag);
+    if (idx >= 0) {
+      entries[idx].type = type;
+      entries[idx].count = count != null ? count : cnt;
+      entries[idx].valueBytes = valueBytes;
+    } else
+      entries.push({ tag, type, count: count != null ? count : cnt, valueBytes });
+  }
+
+  // Final TIFF assembly with correct offsets (two-pass)
+  function _assembleTiffFinal(ifd0Entries, subIfdEntries, gpsIfdEntries, ifd1Entries, thumbnailData, le, wU16, wU32) {
+    // Pass 1: measure sizes
+    const headerSize = 8;
+    const ifd0Size = _measureIFD(ifd0Entries);
+    const subSize = subIfdEntries.length > 0 ? _measureIFD(subIfdEntries) : 0;
+    const gpsSize = gpsIfdEntries.length > 0 ? _measureIFD(gpsIfdEntries) : 0;
+    const ifd1Size = ifd1Entries.length > 0 ? _measureIFD(ifd1Entries) : 0;
+    const thumbSize = thumbnailData ? thumbnailData.length : 0;
+
+    const ifd0Start = headerSize;
+    const subStart = ifd0Start + ifd0Size;
+    const gpsStart = subStart + subSize;
+    const ifd1Start = gpsStart + gpsSize;
+    const thumbStart = ifd1Start + ifd1Size;
+    const totalSize = thumbStart + thumbSize;
+
+    // Fix pointers
+    const exifPtrEntry = ifd0Entries.find(e => e.tag === 0x8769);
+    if (exifPtrEntry && subIfdEntries.length > 0)
+      wU32(exifPtrEntry.valueBytes, 0, subStart);
+
+    const gpsPtrEntry = ifd0Entries.find(e => e.tag === 0x8825);
+    if (gpsPtrEntry && gpsIfdEntries.length > 0)
+      wU32(gpsPtrEntry.valueBytes, 0, gpsStart);
+
+    // Fix thumbnail offset
+    if (ifd1Entries.length > 0 && thumbnailData) {
+      const thumbOffEntry = ifd1Entries.find(e => e.tag === 0x0201);
+      if (thumbOffEntry)
+        wU32(thumbOffEntry.valueBytes, 0, thumbStart);
+      const thumbLenEntry = ifd1Entries.find(e => e.tag === 0x0202);
+      if (thumbLenEntry)
+        wU32(thumbLenEntry.valueBytes, 0, thumbnailData.length);
+    }
+
+    // Pass 2: write
+    const buf = new Uint8Array(totalSize);
+    // Header
+    buf[0] = le ? 0x49 : 0x4D;
+    buf[1] = le ? 0x49 : 0x4D;
+    wU16(buf, 2, 0x002A);
+    wU32(buf, 4, ifd0Start);
+
+    _writeIFD(buf, ifd0Start, ifd0Entries, ifd1Entries.length > 0 ? ifd1Start : 0, wU16, wU32);
+    if (subIfdEntries.length > 0)
+      _writeIFD(buf, subStart, subIfdEntries, 0, wU16, wU32);
+    if (gpsIfdEntries.length > 0)
+      _writeIFD(buf, gpsStart, gpsIfdEntries, 0, wU16, wU32);
+    if (ifd1Entries.length > 0)
+      _writeIFD(buf, ifd1Start, ifd1Entries, 0, wU16, wU32);
+    if (thumbnailData)
+      buf.set(thumbnailData, thumbStart);
+
+    return buf;
+  }
+
+  function _measureIFD(entries) {
+    const count = entries.length;
+    let size = 2 + count * 12 + 4; // count + entries + nextIFD
+    for (const e of entries) {
+      if (e.valueBytes.length > 4) {
+        size += e.valueBytes.length;
+        if (e.valueBytes.length & 1) ++size; // word-align
+      }
+    }
+    return size;
+  }
+
+  function _writeIFD(buf, ifdOffset, entries, nextIFDOffset, wU16, wU32) {
+    entries.sort((a, b) => a.tag - b.tag);
+    const count = entries.length;
+    wU16(buf, ifdOffset, count);
+
+    let dataOffset = ifdOffset + 2 + count * 12 + 4;
+
+    for (let i = 0; i < count; ++i) {
+      const e = entries[i];
+      const eb = ifdOffset + 2 + i * 12;
+      wU16(buf, eb, e.tag);
+      wU16(buf, eb + 2, e.type);
+      wU32(buf, eb + 4, e.count);
+
+      if (e.valueBytes.length <= 4) {
+        for (let j = 0; j < 4; ++j)
+          buf[eb + 8 + j] = j < e.valueBytes.length ? e.valueBytes[j] : 0;
+      } else {
+        wU32(buf, eb + 8, dataOffset);
+        buf.set(e.valueBytes, dataOffset);
+        dataOffset += e.valueBytes.length;
+        if (e.valueBytes.length & 1) buf[dataOffset++] = 0;
+      }
+    }
+
+    wU32(buf, ifdOffset + 2 + count * 12, nextIFDOffset);
   }
 
   // =========================================================================
@@ -966,6 +1460,174 @@
   // Main rebuild dispatcher
   // =========================================================================
 
+  // =========================================================================
+  // IPTC APP13 writer
+  // =========================================================================
+
+  function rebuildIPTC(originalBytes, iptcMods) {
+    // Build dataset ID → value map
+    const datasets = new Map();
+    for (const [key, value] of iptcMods) {
+      if (value === null) continue;
+      const dsId = parseInt(key.substring(5), 16);
+      if (!isNaN(dsId)) datasets.set(dsId, value);
+    }
+    if (datasets.size === 0) return originalBytes;
+
+    // Find APP13 segment
+    let app13Start = -1, app13SegLen = 0;
+    let offset = 2;
+    while (offset < originalBytes.length - 1) {
+      if (originalBytes[offset] !== 0xFF) break;
+      const marker = originalBytes[offset + 1];
+      offset += 2;
+      if (marker === 0xD9) break;
+      if (marker === 0x00 || marker === 0x01 || (marker >= 0xD0 && marker <= 0xD7)) continue;
+      if (offset + 2 > originalBytes.length) break;
+      const segLen = readU16BE_local(originalBytes, offset);
+      if (marker === 0xED && segLen > 16) {
+        const hdr = readString(originalBytes, offset + 2, 14);
+        if (hdr.startsWith('Photoshop 3.0')) {
+          app13Start = offset - 2;
+          app13SegLen = segLen;
+          break;
+        }
+      }
+      offset += segLen;
+    }
+
+    // Parse existing IIM datasets if APP13 exists
+    const existingDatasets = new Map();
+    if (app13Start >= 0) {
+      const psDataStart = app13Start + 2 + 2 + 14; // marker + length + "Photoshop 3.0\0"
+      const psDataEnd = app13Start + 2 + app13SegLen;
+      let pos = psDataStart;
+      while (pos + 12 <= psDataEnd) {
+        if (originalBytes[pos] !== 0x38 || originalBytes[pos + 1] !== 0x42 ||
+            originalBytes[pos + 2] !== 0x49 || originalBytes[pos + 3] !== 0x4D) {
+          ++pos;
+          continue;
+        }
+        pos += 4;
+        const resId = readU16BE_local(originalBytes, pos);
+        pos += 2;
+        const nameLen = originalBytes[pos];
+        ++pos;
+        pos += nameLen;
+        if ((nameLen + 1) & 1) ++pos;
+        if (pos + 4 > psDataEnd) break;
+        const dataSize = readU32BE(originalBytes, pos);
+        pos += 4;
+
+        if (resId === 0x0404 && dataSize > 0) {
+          // Parse IIM datasets
+          const iimEnd = Math.min(pos + dataSize, psDataEnd);
+          let ip = pos;
+          while (ip + 5 <= iimEnd) {
+            if (originalBytes[ip] !== 0x1C) { ++ip; continue; }
+            const record = originalBytes[ip + 1];
+            const dsId = originalBytes[ip + 2];
+            const dsSize = readU16BE_local(originalBytes, ip + 3);
+            ip += 5;
+            if (record === 0x02 && ip + dsSize <= iimEnd) {
+              if (!datasets.has(dsId)) {
+                // Preserve unmodified datasets
+                const val = new TextDecoder().decode(originalBytes.slice(ip, ip + dsSize));
+                existingDatasets.set(dsId, val.replace(/\0+$/, ''));
+              }
+            }
+            ip += dsSize;
+          }
+        }
+
+        pos += dataSize;
+        if (dataSize & 1) ++pos;
+      }
+    }
+
+    // Merge: modified datasets override existing
+    for (const [dsId, val] of datasets) existingDatasets.set(dsId, val);
+
+    // Build IIM record bytes
+    const iimParts = [];
+    // Record version dataset (required)
+    if (!existingDatasets.has(0x00))
+      iimParts.push(new Uint8Array([0x1C, 0x02, 0x00, 0x00, 0x02, 0x00, 0x04]));
+
+    for (const [dsId, val] of existingDatasets) {
+      if (dsId === 0x00) continue; // already added
+      const valBytes = new TextEncoder().encode(val);
+      const ds = new Uint8Array(5 + valBytes.length);
+      ds[0] = 0x1C;
+      ds[1] = 0x02;
+      ds[2] = dsId;
+      ds[3] = (valBytes.length >> 8) & 0xFF;
+      ds[4] = valBytes.length & 0xFF;
+      ds.set(valBytes, 5);
+      iimParts.push(ds);
+    }
+
+    let iimTotalLen = 0;
+    for (const p of iimParts) iimTotalLen += p.length;
+
+    // Build 8BIM resource 0x0404
+    const resHeader = new Uint8Array(12);
+    resHeader[0] = 0x38; resHeader[1] = 0x42; resHeader[2] = 0x49; resHeader[3] = 0x4D; // "8BIM"
+    writeU16BE(resHeader, 4, 0x0404);
+    resHeader[6] = 0; resHeader[7] = 0; // empty pascal string + pad
+    writeU32BE(resHeader, 8, iimTotalLen);
+
+    // Build APP13 segment
+    const psHeader = utf8ToBytes('Photoshop 3.0\0');
+    const app13DataLen = psHeader.length + resHeader.length + iimTotalLen + (iimTotalLen & 1 ? 1 : 0);
+    const newApp13 = new Uint8Array(2 + 2 + app13DataLen);
+    newApp13[0] = 0xFF;
+    newApp13[1] = 0xED;
+    writeU16BE(newApp13, 2, app13DataLen + 2);
+    let wp = 4;
+    for (let i = 0; i < psHeader.length; ++i) newApp13[wp++] = psHeader[i];
+    newApp13.set(resHeader, wp);
+    wp += resHeader.length;
+    for (const p of iimParts) {
+      newApp13.set(p, wp);
+      wp += p.length;
+    }
+
+    // Reassemble JPEG
+    let before, after;
+    if (app13Start >= 0) {
+      const app13End = app13Start + 2 + app13SegLen;
+      before = originalBytes.slice(0, app13Start);
+      after = originalBytes.slice(app13End);
+    } else {
+      // Insert after SOI + any existing APP segments
+      let insertPos = 2;
+      let scanOff = 2;
+      while (scanOff < originalBytes.length - 1) {
+        if (originalBytes[scanOff] !== 0xFF) break;
+        const m = originalBytes[scanOff + 1];
+        if (m >= 0xE0 && m <= 0xEF) {
+          const sl = readU16BE_local(originalBytes, scanOff + 2);
+          insertPos = scanOff + 2 + sl;
+          scanOff = insertPos;
+        } else
+          break;
+      }
+      before = originalBytes.slice(0, insertPos);
+      after = originalBytes.slice(insertPos);
+    }
+
+    const result = new Uint8Array(before.length + newApp13.length + after.length);
+    result.set(before, 0);
+    result.set(newApp13, before.length);
+    result.set(after, before.length + newApp13.length);
+    return result;
+  }
+
+  // =========================================================================
+  // Main rebuild dispatcher
+  // =========================================================================
+
   function rebuildFile(fileTypeId, originalBytes, modifications) {
     if (modifications.size === 0)
       return originalBytes;
@@ -975,6 +1637,8 @@
     const id3v1Mods = new Map();
     const pngMods = new Map();
     const exifMods = new Map();
+    const gpsMods = new Map();
+    const iptcMods = new Map();
     const mp4Mods = new Map();
     const ooxmlMods = new Map();
 
@@ -987,6 +1651,10 @@
         pngMods.set(key, value);
       else if (key.startsWith('exif.'))
         exifMods.set(key, value);
+      else if (key.startsWith('gps.'))
+        gpsMods.set(key, value);
+      else if (key.startsWith('iptc.'))
+        iptcMods.set(key, value);
       else if (key.startsWith('mp4.ilst.'))
         mp4Mods.set(key, value);
       else if (key.startsWith('ooxml.'))
@@ -1005,8 +1673,14 @@
     if (fileTypeId === 'png' && pngMods.size > 0)
       return rebuildPNG(originalBytes, pngMods);
 
-    if (fileTypeId === 'jpeg' && exifMods.size > 0)
-      return rebuildJPEG(originalBytes, exifMods);
+    if (fileTypeId === 'jpeg') {
+      let result = originalBytes;
+      if (exifMods.size > 0 || gpsMods.size > 0)
+        result = rebuildJPEG(result, exifMods, gpsMods);
+      if (iptcMods.size > 0)
+        result = rebuildIPTC(result, iptcMods);
+      return result;
+    }
 
     if (fileTypeId === 'mp4' && mp4Mods.size > 0)
       return rebuildMP4(originalBytes, mp4Mods);

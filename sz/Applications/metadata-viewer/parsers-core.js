@@ -525,14 +525,126 @@
   // =========================================================================
 
   function parseGeneric(bytes, fileName) {
+    const len = bytes.length;
     const fields = [
       { key: 'fileName', label: 'File Name', value: fileName || '(unknown)' },
-      { key: 'fileSize', label: 'File Size', value: formatSize(bytes.length), raw: bytes.length },
+      { key: 'fileSize', label: 'File Size', value: formatSize(len), raw: len },
       { key: 'encoding', label: 'Encoding', value: detectTextEncoding(bytes) },
       { key: 'entropy', label: 'Shannon Entropy', value: computeEntropy(bytes).toFixed(4) + ' bits/byte' },
-      { key: 'nullPct', label: 'Null Byte %', value: (countNulls(bytes) / Math.max(bytes.length, 1) * 100).toFixed(1) + '%' },
+      { key: 'nullPct', label: 'Null Byte %', value: (countNulls(bytes) / Math.max(len, 1) * 100).toFixed(1) + '%' },
       { key: 'firstBytes', label: 'First 16 Bytes', value: bytesToHex(bytes, 0, 16) },
+      { key: 'lastBytes', label: 'Last 16 Bytes', value: len >= 16 ? bytesToHex(bytes, len - 16, 16) : bytesToHex(bytes, 0, len) },
     ];
+
+    // Byte frequency analysis
+    if (len > 0) {
+      const freq = new Uint32Array(256);
+      let ffCount = 0;
+      for (let i = 0; i < len; ++i) {
+        ++freq[bytes[i]];
+        if (bytes[i] === 0xFF) ++ffCount;
+      }
+      fields.push({ key: 'ffPct', label: '0xFF Byte %', value: (ffCount / len * 100).toFixed(1) + '%' });
+
+      // Bit count: 1-bits vs 0-bits (use byte-value popcount from freq table)
+      let oneBits = 0;
+      for (let v = 0; v < 256; ++v) {
+        if (freq[v] === 0) continue;
+        // popcount for byte value v
+        let bits = v;
+        bits = bits - ((bits >> 1) & 0x55);
+        bits = (bits & 0x33) + ((bits >> 2) & 0x33);
+        bits = (bits + (bits >> 4)) & 0x0F;
+        oneBits += bits * freq[v];
+      }
+      const totalBits = len * 8;
+      const zeroBits = totalBits - oneBits;
+      const onesPct = (oneBits / totalBits * 100).toFixed(1);
+      const zerosPct = (zeroBits / totalBits * 100).toFixed(1);
+      fields.push({
+        key: 'bitRatio', label: '1-Bits vs 0-Bits',
+        value: oneBits.toLocaleString() + ' (' + onesPct + '%) vs ' + zeroBits.toLocaleString() + ' (' + zerosPct + '%)',
+        visual: { type: 'bar', segments: [
+          { pct: parseFloat(onesPct), color: '#3b82f6', label: '1' },
+          { pct: parseFloat(zerosPct), color: '#cbd5e1', label: '0' },
+        ]},
+      });
+
+      // Unique byte count
+      let uniqueCount = 0;
+      for (let i = 0; i < 256; ++i)
+        if (freq[i] > 0) ++uniqueCount;
+      fields.push({ key: 'uniqueBytes', label: 'Unique Byte Values', value: uniqueCount + ' / 256' });
+
+      // Byte frequency histogram
+      fields.push({
+        key: 'byteHist', label: 'Byte Distribution',
+        value: uniqueCount + ' unique values',
+        visual: { type: 'histogram', data: Array.from(freq) },
+      });
+
+      // Most and least common bytes
+      let maxByte = 0, minByte = -1, minCount = len + 1;
+      for (let i = 0; i < 256; ++i) {
+        if (freq[i] > freq[maxByte]) maxByte = i;
+        if (freq[i] > 0 && freq[i] < minCount) { minByte = i; minCount = freq[i]; }
+      }
+      fields.push({ key: 'mostCommon', label: 'Most Common Byte', value: '0x' + maxByte.toString(16).toUpperCase().padStart(2, '0') + ' (' + freq[maxByte] + ' times, ' + (freq[maxByte] / len * 100).toFixed(1) + '%)' });
+      if (minByte >= 0)
+        fields.push({ key: 'leastCommon', label: 'Least Common Byte', value: '0x' + minByte.toString(16).toUpperCase().padStart(2, '0') + ' (' + minCount + ' times, ' + (minCount / len * 100).toFixed(1) + '%)' });
+
+      // Chi-square test (deviation from uniform distribution)
+      const expected = len / 256;
+      let chiSquare = 0;
+      for (let i = 0; i < 256; ++i) {
+        const diff = freq[i] - expected;
+        chiSquare += diff * diff / expected;
+      }
+      // Interpret: for 255 dof, uniform random data gives ~255 +/- ~22.6
+      let chiInterpretation;
+      if (chiSquare < 212.3) chiInterpretation = 'very uniform (suspiciously non-random)';
+      else if (chiSquare < 293.2) chiInterpretation = 'consistent with random data';
+      else if (chiSquare < 500) chiInterpretation = 'slightly non-random';
+      else chiInterpretation = 'non-random / structured';
+      fields.push({ key: 'chiSquare', label: 'Chi-Square', value: chiSquare.toFixed(2) + ' (' + chiInterpretation + ')' });
+
+      // Serial correlation coefficient
+      if (len > 1) {
+        let sumXY = 0, sumX = 0, sumY = 0, sumX2 = 0, sumY2 = 0;
+        const n = len - 1;
+        for (let i = 0; i < n; ++i) {
+          const x = bytes[i], y = bytes[i + 1];
+          sumXY += x * y;
+          sumX += x;
+          sumY += y;
+          sumX2 += x * x;
+          sumY2 += y * y;
+        }
+        const denom = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
+        const scc = denom === 0 ? 0 : (n * sumXY - sumX * sumY) / denom;
+        let sccInterpretation;
+        if (Math.abs(scc) < 0.05) sccInterpretation = 'no sequential dependence';
+        else if (Math.abs(scc) < 0.2) sccInterpretation = 'weak sequential dependence';
+        else sccInterpretation = 'significant sequential dependence';
+        fields.push({ key: 'serialCorr', label: 'Serial Correlation', value: scc.toFixed(6) + ' (' + sccInterpretation + ')' });
+      }
+
+      // Monte Carlo Pi estimate (pairs of bytes as coordinates in 256x256 square)
+      if (len >= 12) {
+        const pairs = Math.floor(len / 2);
+        let insideCircle = 0;
+        const r = 128;
+        for (let i = 0; i < pairs; ++i) {
+          const x = bytes[i * 2] - r;
+          const y = bytes[i * 2 + 1] - r;
+          if (x * x + y * y <= r * r) ++insideCircle;
+        }
+        const piEstimate = 4 * insideCircle / pairs;
+        const piError = Math.abs(piEstimate - Math.PI);
+        fields.push({ key: 'monteCarloPi', label: 'Monte Carlo Pi', value: piEstimate.toFixed(6) + ' (error: ' + piError.toFixed(6) + ', ' + (piError < 0.05 ? 'consistent with random' : 'non-random pattern') + ')' });
+      }
+    }
+
     return { name: 'General', icon: 'info', fields };
   }
 

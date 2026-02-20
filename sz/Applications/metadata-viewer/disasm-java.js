@@ -661,4 +661,106 @@
   // =========================================================================
   D.registerDisassembler('java', decode);
 
+  // =========================================================================
+  // Java Decompiler Formatters (Java, Kotlin)
+  // =========================================================================
+
+  const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  function _jvmToJavaLow(insn) {
+    const mn = (insn.mnemonic || '').toLowerCase();
+    const ops = insn.operands || '';
+    const pc = insn.pseudoC || '';
+
+    if (mn === 'aload_0') return 'this';
+    if (mn.startsWith('aload')) return 'push ref' + (ops || '');
+    if (mn.startsWith('iload') || mn.startsWith('lload') || mn.startsWith('fload') || mn.startsWith('dload'))
+      return 'push local' + (ops || '');
+    if (mn.startsWith('istore') || mn.startsWith('lstore') || mn.startsWith('fstore') || mn.startsWith('dstore') || mn.startsWith('astore'))
+      return 'var v' + (ops || '') + ' = pop();';
+    if (mn === 'invokevirtual' || mn === 'invokeinterface')
+      return 'obj.' + (ops || 'method') + '();';
+    if (mn === 'invokestatic')
+      return (ops || 'Class.method') + '();';
+    if (mn === 'invokespecial')
+      return 'super.' + (ops || 'method') + '();';
+    if (mn === 'new') return 'new ' + (ops || 'Object') + '()';
+    if (mn === 'return' || mn === 'ireturn' || mn === 'lreturn' || mn === 'freturn' || mn === 'dreturn' || mn === 'areturn')
+      return 'return;';
+    if (mn === 'iadd' || mn === 'ladd' || mn === 'fadd' || mn === 'dadd') return 'push(pop() + pop());';
+    if (mn === 'isub' || mn === 'lsub' || mn === 'fsub' || mn === 'dsub') return 'push(pop() - pop());';
+    if (mn === 'imul' || mn === 'lmul' || mn === 'fmul' || mn === 'dmul') return 'push(pop() * pop());';
+    if (mn === 'idiv' || mn === 'ldiv' || mn === 'fdiv' || mn === 'ddiv') return 'push(pop() / pop());';
+    if (mn === 'irem' || mn === 'lrem' || mn === 'frem' || mn === 'drem') return 'push(pop() % pop());';
+    if (mn === 'ineg' || mn === 'lneg' || mn === 'fneg' || mn === 'dneg') return 'push(-pop());';
+    if (mn === 'iand' || mn === 'land') return 'push(pop() & pop());';
+    if (mn === 'ior' || mn === 'lor') return 'push(pop() | pop());';
+    if (mn === 'ixor' || mn === 'lxor') return 'push(pop() ^ pop());';
+    if (mn === 'ishl' || mn === 'lshl') return 'push(pop() << pop());';
+    if (mn === 'ishr' || mn === 'lshr') return 'push(pop() >> pop());';
+    if (mn === 'iushr' || mn === 'lushr') return 'push(pop() >>> pop());';
+    if (mn.startsWith('if_icmp') || mn.startsWith('if_acmp') || mn.startsWith('if'))
+      return pc || 'if (...) goto ' + ops + ';';
+    if (mn === 'goto' || mn === 'goto_w') return 'goto ' + ops + ';';
+    if (mn === 'athrow') return 'throw pop();';
+    if (mn === 'nop') return '// nop';
+    if (mn === 'pop' || mn === 'pop2') return '_ = pop();';
+    if (mn === 'dup' || mn === 'dup2') return 'push(peek());';
+    if (mn === 'ldc' || mn === 'ldc_w' || mn === 'ldc2_w')
+      return 'push(' + ops + ');';
+    if (mn.startsWith('iconst') || mn.startsWith('lconst') || mn.startsWith('fconst') || mn.startsWith('dconst'))
+      return 'push(' + ops + ');';
+    if (mn === 'bipush' || mn === 'sipush') return 'push(' + ops + ');';
+    if (mn === 'aconst_null') return 'push(null);';
+    if (mn === 'getfield') return 'push(obj.' + (ops || 'field') + ');';
+    if (mn === 'putfield') return 'obj.' + (ops || 'field') + ' = pop();';
+    if (mn === 'getstatic') return 'push(' + (ops || 'Class.field') + ');';
+    if (mn === 'putstatic') return (ops || 'Class.field') + ' = pop();';
+    if (mn === 'arraylength') return 'push(pop().length);';
+    if (mn === 'newarray' || mn === 'anewarray') return 'push(new ' + (ops || 'Object') + '[pop()]);';
+    if (mn.includes('aload')) return 'push(arr[idx]);';
+    if (mn.includes('astore')) return 'arr[idx] = pop();';
+    if (mn === 'instanceof') return 'push(pop() instanceof ' + ops + ');';
+    if (mn === 'checkcast') return 'push((' + ops + ')pop());';
+    if (mn === 'i2l' || mn === 'i2f' || mn === 'i2d' || mn === 'l2i' || mn === 'l2f' || mn === 'l2d' ||
+        mn === 'f2i' || mn === 'f2l' || mn === 'f2d' || mn === 'd2i' || mn === 'd2l' || mn === 'd2f' ||
+        mn === 'i2b' || mn === 'i2c' || mn === 'i2s')
+      return 'push((' + mn.charAt(2) + ')pop());';
+    return pc || mn + ' ' + ops;
+  }
+
+  function _jvmToKotlin(insn) {
+    const j = _jvmToJavaLow(insn);
+    return j
+      .replace(/^var (v\d+) = (.+);$/, 'val $1 = $2')
+      .replace(/^return;$/, 'return')
+      .replace(/\bnew (\w+)\(\)/, '$1()')
+      .replace(/\bnull\b/g, 'null')
+      .replace(/\binstanceof\b/g, 'is')
+      .replace(/\bvoid\b/g, 'Unit')
+      .replace(/\/\/ nop/, '// nop');
+  }
+
+  function _formatDecompiledJava(instructions, _annotations, formatter) {
+    const lines = [];
+    for (const insn of instructions) {
+      const off = '<span class="da-off">' + esc(insn.offset.toString(16).padStart(8, '0').toUpperCase()) + '</span>';
+      const code = formatter(insn);
+      lines.push(
+        '<span class="da-line" data-offset="' + insn.offset.toString(16) + '">'
+        + off
+        + '<span class="da-sep"> | </span>'
+        + '<span class="da-cmt">' + esc(code) + '</span>'
+        + '</span>'
+      );
+    }
+    return lines.join('\n');
+  }
+
+  if (D.registerDecompileFormatter) {
+    D.registerDecompileFormatter('java-low', (insns, annot) => _formatDecompiledJava(insns, annot, _jvmToJavaLow));
+    D.registerDecompileFormatter('java', (insns, annot) => _formatDecompiledJava(insns, annot, _jvmToJavaLow));
+    D.registerDecompileFormatter('kotlin', (insns, annot) => _formatDecompiledJava(insns, annot, _jvmToKotlin));
+  }
+
 })();

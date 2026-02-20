@@ -197,9 +197,42 @@
       if (hasOoxmlMods)
         cats.push({ name: 'Document Properties', icon: 'document', fields: [] });
     }
+    // Add virtual "GPS" tab for JPEG if there are GPS modifications but no existing tab
+    if (ftId === 'jpeg' && !cats.some(c => c.name === 'GPS')) {
+      const hasGpsMods = [...modifications.keys()].some(k => k.startsWith('gps.'));
+      if (hasGpsMods)
+        cats.push({ name: 'GPS', icon: 'location', fields: [] });
+    }
+    // Add virtual "IPTC" tab for JPEG if there are IPTC modifications but no existing tab
+    if (ftId === 'jpeg' && !cats.some(c => c.name === 'IPTC')) {
+      const hasIptcMods = [...modifications.keys()].some(k => k.startsWith('iptc.'));
+      if (hasIptcMods)
+        cats.push({ name: 'IPTC', icon: 'tag', fields: [] });
+    }
     cats.push({ name: 'Hashes & Checksums', icon: 'hash', fields: [] });
     return cats;
   }
+
+  const CATEGORY_ICON_MAP = {
+    info: '\u2139\uFE0F',
+    exe: '\u2699\uFE0F',
+    image: '\uD83D\uDDBC\uFE0F',
+    camera: '\uD83D\uDCF7',
+    link: '\uD83D\uDD17',
+    list: '\uD83D\uDCCB',
+    hash: '#\uFE0F\u20E3',
+    tag: '\uD83C\uDFF7\uFE0F',
+    music: '\uD83C\uDFB5',
+    text: '\uD83D\uDCC4',
+    document: '\uD83D\uDCC3',
+    cpu: '\uD83D\uDCBB',
+    dotnet: '\uD83D\uDD35',
+    java: '\u2615',
+    resource: '\uD83D\uDDC2\uFE0F',
+    strings: '\uD83D\uDD24',
+    location: '\uD83D\uDCCD',
+    waveform: '\uD83C\uDF0A',
+  };
 
   function renderCategoryTabs() {
     categoryTabs.innerHTML = '';
@@ -208,7 +241,14 @@
     allCategories.forEach((cat, i) => {
       const tab = document.createElement('button');
       tab.className = 'category-tab' + (i === activeCategory ? ' active' : '');
-      tab.textContent = cat.name;
+      const iconChar = CATEGORY_ICON_MAP[cat.icon] || '';
+      if (iconChar) {
+        const iconSpan = document.createElement('span');
+        iconSpan.className = 'category-tab-icon';
+        iconSpan.textContent = iconChar;
+        tab.appendChild(iconSpan);
+      }
+      tab.appendChild(document.createTextNode(cat.name));
       tab.addEventListener('click', () => {
         activeCategory = i;
         renderCategoryTabs();
@@ -223,6 +263,9 @@
   // =========================================================================
   function renderMetadata() {
     metadataTbody.innerHTML = '';
+    // Remove leftover strings filter when leaving Strings tab
+    const staleFilter = metadataTbody.parentElement.parentElement.querySelector('.strings-filter-row');
+    if (staleFilter) staleFilter.remove();
     const allCategories = getAllCategories();
     const cat = allCategories[activeCategory];
     if (!cat) return;
@@ -230,6 +273,19 @@
     // Hashes tab
     if (cat.name === 'Hashes & Checksums') {
       renderHashesTab();
+      return;
+    }
+
+    // Strings tab — add search/filter input above the table
+    const isStringsTab = cat.icon === 'strings' && cat._stringData;
+    if (isStringsTab) {
+      renderStringsTab(cat);
+      return;
+    }
+
+    // .NET Assembly tab — render tree view
+    if (cat.icon === 'dotnet' && cat._assemblyTree) {
+      renderAssemblyTree(cat);
       return;
     }
 
@@ -244,15 +300,26 @@
           || (cat.name === 'ID3v2' && (key.startsWith('id3.') && !key.startsWith('id3v1.')))
           || (cat.name === 'ID3v1' && key.startsWith('id3v1.'))
           || (cat.name === 'iTunes Metadata' && key.startsWith('mp4.ilst.'))
-          || (cat.name === 'Document Properties' && key.startsWith('ooxml.'));
+          || (cat.name === 'Document Properties' && key.startsWith('ooxml.'))
+          || (cat.name === 'EXIF' && key.startsWith('exif.'))
+          || (cat.name === 'GPS' && key.startsWith('gps.'))
+          || (cat.name === 'IPTC' && key.startsWith('iptc.'));
         if (!belongsHere) continue;
-        const label = key.startsWith('png.text.') ? key.substring(9)
-          : key.startsWith('png.itext.') ? key.substring(10) + ' (iTXt)'
-          : key.startsWith('mp4.ilst.') ? MP4_ILST_LABELS[key] || key.substring(9)
-          : key.startsWith('ooxml.') ? key.substring(6).charAt(0).toUpperCase() + key.substring(7)
-          : key.startsWith('id3.TXXX.') ? key.substring(9)
-          : ID3_TAG_OPTIONS[key] || key;
-        const editType = (key === 'id3.TCON' || key === 'id3.TCO') ? 'genre' : 'text';
+        let label, editType = 'text';
+        if (key.startsWith('png.text.')) label = key.substring(9);
+        else if (key.startsWith('png.itext.')) label = key.substring(10) + ' (iTXt)';
+        else if (key.startsWith('mp4.ilst.')) label = MP4_ILST_LABELS[key] || key.substring(9);
+        else if (key.startsWith('ooxml.')) label = key.substring(6).charAt(0).toUpperCase() + key.substring(7);
+        else if (key.startsWith('id3.TXXX.')) label = key.substring(9);
+        else if (key.startsWith('gps.coordinates')) { label = 'Coordinates'; editType = 'geo'; }
+        else if (key.startsWith('gps.altitude')) { label = 'Altitude'; editType = 'number'; }
+        else if (key.startsWith('gps.direction')) { label = 'Image Direction'; editType = 'compass'; }
+        else if (key.startsWith('gps.destination')) { label = 'Destination'; editType = 'geo'; }
+        else if (key.startsWith('gps.')) label = 'GPS ' + key.substring(4);
+        else if (key.startsWith('iptc.')) label = IPTC_FIELD_LABELS[key] || key.substring(5);
+        else if (key.startsWith('exif.')) label = EXIF_ADD_TAG_LABELS[key] || key;
+        else label = ID3_TAG_OPTIONS[key] || key;
+        if (key === 'id3.TCON' || key === 'id3.TCO') editType = 'genre';
         effectiveFields.push({ key, label, value, editable: true, editType, isNew: true });
       }
     }
@@ -311,6 +378,10 @@
           tdValue.style.fontSize = '10px';
         }
         tdValue.textContent = displayValue;
+
+        // Visual elements (bar charts, histograms)
+        if (field.visual)
+          _renderFieldVisual(tdValue, field.visual);
       }
 
       tr.appendChild(tdValue);
@@ -347,14 +418,15 @@
       }
     }
 
-    // "Add Tag" button for editable text chunks (PNG)
+    // "Add Tag" button for editable formats
     const ftId = parseResult.fileType.id;
     if (Editors.isEditable(ftId)) {
       const showPngAdd = ftId === 'png' && (cat.name === 'Text Chunks' || (cat.name === 'Image' && !parseResult.categories.some(c => c.name === 'Text Chunks')));
       const showMp4Add = ftId === 'mp4' && cat.name === 'iTunes Metadata';
       const showOoxmlAdd = ['docx', 'xlsx', 'pptx', 'ooxml'].includes(ftId) && cat.name === 'Document Properties';
       const showId3Add = ftId === 'mp3' && cat.name === 'ID3v2';
-      if (showPngAdd || showMp4Add || showOoxmlAdd || showId3Add) {
+      const showExifAdd = ftId === 'jpeg' && (cat.name === 'EXIF' || cat.name === 'GPS');
+      if (showPngAdd || showMp4Add || showOoxmlAdd || showId3Add || showExifAdd) {
         const tr = document.createElement('tr');
         tr.className = 'add-tag-row';
         const td = document.createElement('td');
@@ -362,12 +434,254 @@
         const btn = document.createElement('button');
         btn.className = 'add-tag-btn';
         btn.textContent = showPngAdd ? '+ Add Text Tag' : '+ Add Tag';
-        btn.addEventListener('click', () => showPngAdd ? showAddTagDialog() : showMp4Add ? showAddMp4Dialog() : showId3Add ? showAddId3Dialog() : showAddOoxmlDialog());
+        btn.addEventListener('click', () => showPngAdd ? showAddTagDialog() : showMp4Add ? showAddMp4Dialog() : showId3Add ? showAddId3Dialog() : showExifAdd ? showAddExifDialog() : showAddOoxmlDialog());
         td.appendChild(btn);
         tr.appendChild(td);
         metadataTbody.appendChild(tr);
       }
     }
+  }
+
+  // ---- Visual field renderers (inline bar charts, histograms) ----
+  function _renderFieldVisual(container, visual) {
+    if (visual.type === 'bar')
+      _renderBarVisual(container, visual);
+    else if (visual.type === 'histogram')
+      _renderHistogramVisual(container, visual);
+  }
+
+  function _renderBarVisual(container, visual) {
+    const bar = document.createElement('div');
+    bar.className = 'visual-bar';
+    for (const seg of visual.segments) {
+      const section = document.createElement('div');
+      section.className = 'visual-bar-segment';
+      section.style.width = seg.pct + '%';
+      section.style.background = seg.color;
+      section.title = seg.label + ': ' + seg.pct.toFixed(1) + '%';
+      if (seg.pct > 8) {
+        const lbl = document.createElement('span');
+        lbl.className = 'visual-bar-label';
+        lbl.textContent = seg.label;
+        section.appendChild(lbl);
+      }
+      bar.appendChild(section);
+    }
+    container.appendChild(bar);
+  }
+
+  function _renderHistogramVisual(container, visual) {
+    const data = visual.data;
+    if (!data || data.length === 0) return;
+    const max = Math.max(...data);
+    if (max === 0) return;
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'visual-histogram';
+
+    const canvas = document.createElement('canvas');
+    canvas.className = 'visual-histogram-canvas';
+    canvas.width = 256;
+    canvas.height = 48;
+    wrapper.appendChild(canvas);
+
+    const ctx = canvas.getContext('2d');
+    // Background
+    ctx.fillStyle = '#f1f5f9';
+    ctx.fillRect(0, 0, 256, 48);
+    // Bars
+    for (let i = 0; i < 256; ++i) {
+      if (data[i] === 0) continue;
+      const h = Math.max(1, Math.round((data[i] / max) * 46));
+      // Color: gradient from blue (low byte values) to teal (high)
+      const hue = 200 + (i / 255) * 30;
+      ctx.fillStyle = 'hsl(' + hue + ', 60%, 55%)';
+      ctx.fillRect(i, 48 - h, 1, h);
+    }
+    // Axis labels
+    const axisRow = document.createElement('div');
+    axisRow.className = 'visual-histogram-axis';
+    axisRow.innerHTML = '<span>0x00</span><span>0x40</span><span>0x80</span><span>0xC0</span><span>0xFF</span>';
+    wrapper.appendChild(axisRow);
+
+    // Tooltip on hover
+    canvas.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = Math.floor((e.clientX - rect.left) / (rect.width / 256));
+      if (x >= 0 && x < 256)
+        canvas.title = '0x' + x.toString(16).toUpperCase().padStart(2, '0') + ': ' + data[x].toLocaleString() + ' occurrences';
+    });
+
+    container.appendChild(wrapper);
+  }
+
+  // ---- Strings tab with search/filter ----
+  function renderStringsTab(cat) {
+    const wrapper = metadataTbody.parentElement;
+    // Insert filter above the table
+    let filterRow = wrapper.parentElement.querySelector('.strings-filter-row');
+    if (filterRow) filterRow.remove();
+
+    filterRow = document.createElement('div');
+    filterRow.className = 'strings-filter-row';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'strings-search';
+    input.placeholder = 'Filter strings\u2026';
+    const countEl = document.createElement('span');
+    countEl.className = 'strings-count';
+    filterRow.appendChild(input);
+    filterRow.appendChild(countEl);
+    wrapper.parentElement.insertBefore(filterRow, wrapper);
+
+    function renderFiltered(filter) {
+      metadataTbody.innerHTML = '';
+      const lf = filter.toLowerCase();
+      let shown = 0;
+      for (const field of cat.fields) {
+        if (lf && !field.value.toLowerCase().includes(lf) && !field.label.toLowerCase().includes(lf))
+          continue;
+        ++shown;
+        const tr = document.createElement('tr');
+        const tdLabel = document.createElement('td');
+        tdLabel.className = 'field-label';
+        tdLabel.textContent = field.label;
+        const tdValue = document.createElement('td');
+        tdValue.className = 'field-value';
+        // Badge for encoding + section
+        const badge = document.createElement('span');
+        const encClass = field.encoding === 'Unicode' ? 'unicode' : field.encoding === 'UTF-16' ? 'utf16' : 'ansi';
+        badge.className = 'strings-badge strings-badge-' + encClass;
+        badge.textContent = field.encoding || 'ANSI';
+        badge.title = 'Section: ' + (field.section || '?');
+        tdValue.appendChild(badge);
+        tdValue.appendChild(document.createTextNode(' ' + field.value));
+        tr.appendChild(tdLabel);
+        tr.appendChild(tdValue);
+        metadataTbody.appendChild(tr);
+      }
+      countEl.textContent = shown + ' / ' + cat.fields.length + ' strings';
+    }
+
+    input.addEventListener('input', () => renderFiltered(input.value));
+    renderFiltered('');
+    input.focus();
+  }
+
+  // ---- .NET Assembly tree view ----
+  function renderAssemblyTree(cat) {
+    metadataTbody.innerHTML = '';
+    const tree = cat._assemblyTree;
+    if (!tree || tree.length === 0) return;
+
+    for (const ns of tree) {
+      const nsTr = document.createElement('tr');
+      nsTr.className = 'assembly-tree-ns expandable-parent';
+      const nsTdLabel = document.createElement('td');
+      nsTdLabel.className = 'field-label';
+      nsTdLabel.colSpan = 2;
+      const nsChevron = document.createElement('span');
+      nsChevron.className = 'expand-chevron';
+      nsChevron.textContent = '\u25B6';
+      nsTdLabel.appendChild(nsChevron);
+      nsTdLabel.appendChild(document.createTextNode(' ' + ns.namespace + ' (' + ns.types.length + ' types)'));
+      nsTr.appendChild(nsTdLabel);
+      metadataTbody.appendChild(nsTr);
+
+      const typeRows = [];
+      for (const type of ns.types) {
+        const typeTr = document.createElement('tr');
+        typeTr.className = 'assembly-tree-type expandable-child';
+        typeTr.style.display = 'none';
+        const typeTd = document.createElement('td');
+        typeTd.className = 'field-label assembly-tree-indent';
+        typeTd.colSpan = 2;
+        const typeChevron = document.createElement('span');
+        typeChevron.className = 'expand-chevron';
+        typeChevron.textContent = '\u25B6';
+        typeTd.appendChild(typeChevron);
+        typeTd.appendChild(document.createTextNode(' ' + type.declaration));
+        typeTr.appendChild(typeTd);
+        metadataTbody.appendChild(typeTr);
+        typeRows.push(typeTr);
+
+        const memberRows = [];
+        for (const member of type.members) {
+          const memTr = document.createElement('tr');
+          memTr.className = 'assembly-tree-member expandable-child';
+          memTr.style.display = 'none';
+          const memTd = document.createElement('td');
+          memTd.className = 'field-value assembly-tree-indent2';
+          memTd.colSpan = 2;
+          const memText = typeof member === 'string' ? member : member.text;
+          memTd.textContent = memText;
+          // Make method members clickable — navigate to disassembly
+          if (member.kind === 'method' && member.rva) {
+            memTd.style.cursor = 'pointer';
+            memTd.title = 'Click to view disassembly';
+            memTd.addEventListener('click', e => {
+              e.stopPropagation();
+              _navigateToMethodRva(member.rva);
+            });
+          }
+          memTr.appendChild(memTd);
+          metadataTbody.appendChild(memTr);
+          memberRows.push(memTr);
+        }
+
+        typeTr.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const visible = memberRows.length > 0 && memberRows[0].style.display !== 'none';
+          for (const mr of memberRows) mr.style.display = visible ? 'none' : '';
+          typeChevron.textContent = visible ? '\u25B6' : '\u25BC';
+        });
+      }
+
+      nsTr.addEventListener('click', () => {
+        const visible = typeRows.length > 0 && typeRows[0].style.display !== 'none';
+        for (const tr of typeRows) tr.style.display = visible ? 'none' : '';
+        if (visible)
+          for (const type of ns.types)
+            for (const mr of metadataTbody.querySelectorAll('.assembly-tree-member'))
+              mr.style.display = 'none';
+        nsChevron.textContent = visible ? '\u25B6' : '\u25BC';
+      });
+    }
+  }
+
+  /** Navigate to a method's IL body in the MSIL disassembly panel by RVA. */
+  function _navigateToMethodRva(rva) {
+    // Find the MSIL disasm panel that has methods
+    const st = _disasmPanels.find(p => p.info && p.info.archId === 'msil' && p.info.methods);
+    if (!st) return;
+    // Find the method with matching RVA
+    const me = st.info.methods.find(m => m.rva === rva);
+    if (!me) return;
+    // Expand the disassembly accordion if collapsed
+    const section = st.container && st.container.closest('.accordion-section');
+    if (section && section.classList.contains('collapsed'))
+      section.classList.remove('collapsed');
+    // Decode the method body and navigate
+    _disasmDecodeAndMerge(st, me.offset, Math.max(_DISASM_BATCH, Math.ceil((me.codeSection ? me.codeSection.size : 256) / 2)));
+    _disasmRenderListing(st);
+    _disasmUpdateStatus(st);
+    // Update the method picker dropdown if present
+    const toolbar = st.container && st.container.querySelector('.disasm-toolbar');
+    if (toolbar) {
+      const selects = toolbar.querySelectorAll('select');
+      for (const sel of selects) {
+        if (sel.style.maxWidth === '260px') {
+          const idx = st.info.methods.indexOf(me);
+          if (idx >= 0) sel.value = String(idx);
+          break;
+        }
+      }
+    }
+    requestAnimationFrame(() => {
+      _disasmScrollTo(st, me.offset, true);
+      // Scroll the accordion body into view
+      if (st.container) st.container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   }
 
   function markDirty(key, value) {
@@ -552,15 +866,15 @@
       lngInput.placeholder = 'Longitude';
       lngInput.title = 'Longitude';
 
-      // Parse current value — try to extract decimal degrees
-      const coordMatch = String(currentValue).match(/([-\d.]+)[°\s].*?([-\d.]+)[°\s]/);
-      if (coordMatch) {
-        latInput.value = coordMatch[1];
-        lngInput.value = coordMatch[2];
-      } else if (field.lat != null && field.lng != null) {
-        latInput.value = field.lat;
-        lngInput.value = field.lng;
+      // Parse current value — prefer modification JSON, then field properties, then regex fallback
+      let _initLat, _initLng;
+      try { const j = JSON.parse(currentValue); _initLat = j.lat; _initLng = j.lng; } catch (_) {}
+      if (_initLat == null && field.lat != null) { _initLat = field.lat; _initLng = field.lng; }
+      if (_initLat == null) {
+        const m = String(currentValue).match(/([-\d.]+)\s*°/g);
+        if (m && m.length >= 2) { _initLat = parseFloat(m[0]); _initLng = parseFloat(m[1]); }
       }
+      if (_initLat != null) { latInput.value = _initLat; lngInput.value = _initLng; }
 
       const applyBtn = document.createElement('button');
       applyBtn.className = 'field-edit-btn';
@@ -584,6 +898,57 @@
       toolbar.appendChild(applyBtn);
       toolbar.appendChild(mapBtn);
       parent.appendChild(toolbar);
+      return;
+    }
+
+    // --- Compass edit type ---
+    if (field.editType === 'compass') {
+      const toolbar = document.createElement('div');
+      toolbar.className = 'compass-edit-toolbar';
+
+      const numInput = document.createElement('input');
+      numInput.type = 'number';
+      numInput.min = '0';
+      numInput.max = '360';
+      numInput.step = '0.1';
+      numInput.className = 'field-edit-input';
+      numInput.style.width = '80px';
+      const dirMatch = String(currentValue).match(/([\d.]+)/);
+      numInput.value = dirMatch ? dirMatch[1] : '0';
+
+      const canvas = document.createElement('canvas');
+      canvas.className = 'compass-canvas';
+      canvas.width = 60;
+      canvas.height = 60;
+
+      _drawCompass(canvas, parseFloat(numInput.value) || 0);
+      numInput.addEventListener('input', () => _drawCompass(canvas, parseFloat(numInput.value) || 0));
+
+      canvas.addEventListener('click', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const cx = rect.width / 2, cy = rect.height / 2;
+        const dx = e.clientX - rect.left - cx;
+        const dy = e.clientY - rect.top - cy;
+        let angle = Math.atan2(dy, dx) * 180 / Math.PI + 90;
+        if (angle < 0) angle += 360;
+        numInput.value = angle.toFixed(1);
+        _drawCompass(canvas, angle);
+      });
+
+      const applyBtn = document.createElement('button');
+      applyBtn.className = 'field-edit-btn';
+      applyBtn.textContent = 'Apply';
+      applyBtn.addEventListener('click', () => {
+        markDirty(field.key, numInput.value);
+        renderMetadata();
+      });
+
+      toolbar.appendChild(numInput);
+      toolbar.appendChild(document.createTextNode('\u00B0'));
+      toolbar.appendChild(canvas);
+      toolbar.appendChild(applyBtn);
+      parent.appendChild(toolbar);
+      numInput.focus();
       return;
     }
 
@@ -626,61 +991,506 @@
     });
   }
 
-  // ---- Geo Picker Dialog (simple tile map) ----
+  // ---- Nominatim Geocoding ----
+  let _geocodeTimer = null;
+  let _lastGeocodeTime = 0;
+  const _NOMINATIM_HEADERS = { 'User-Agent': 'SynthelicZ-MetadataViewer/1.0' };
+
+  async function reverseGeocode(lat, lng) {
+    const url = 'https://nominatim.openstreetmap.org/reverse?format=json'
+      + '&lat=' + lat.toFixed(6) + '&lon=' + lng.toFixed(6)
+      + '&zoom=18&addressdetails=1&accept-language=en';
+    const resp = await fetch(url, { headers: _NOMINATIM_HEADERS });
+    const data = await resp.json();
+    return {
+      country: data.address?.country || '',
+      countryCode: (data.address?.country_code || '').toUpperCase(),
+      state: data.address?.state || data.address?.region || '',
+      city: data.address?.city || data.address?.town || data.address?.village || '',
+      sublocation: data.address?.suburb || data.address?.neighbourhood || '',
+    };
+  }
+
+  async function forwardGeocode(query) {
+    const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1'
+      + '&q=' + encodeURIComponent(query);
+    const resp = await fetch(url, { headers: _NOMINATIM_HEADERS });
+    const results = await resp.json();
+    if (results.length === 0) return null;
+    return { lat: parseFloat(results[0].lat), lng: parseFloat(results[0].lon), name: results[0].display_name };
+  }
+
+  const IPTC_FIELD_LABELS = {
+    'iptc.65': 'Country', 'iptc.5f': 'Province/State',
+    'iptc.5a': 'City', 'iptc.5c': 'Sub-Location', 'iptc.64': 'Country Code',
+  };
+
+  // ---- DMS formatting helper ----
+  function _decToDms(dec) {
+    const abs = Math.abs(dec);
+    const d = Math.floor(abs);
+    const mf = (abs - d) * 60;
+    const m = Math.floor(mf);
+    const s = ((mf - m) * 60).toFixed(2);
+    return d + '\u00B0' + String(m).padStart(2, '0') + "'" + String(s).padStart(5, '0') + '"';
+  }
+
+  function _formatDmsLat(dec) { return _decToDms(dec) + (dec >= 0 ? ' N' : ' S'); }
+  function _formatDmsLng(dec) { return _decToDms(dec) + (dec >= 0 ? ' E' : ' W'); }
+
+  // ---- Compass drawing ----
+  function _drawCompass(canvas, angle) {
+    const w = canvas.width, h = canvas.height;
+    const ctx = canvas.getContext('2d');
+    const cx = w / 2, cy = h / 2, r = Math.min(cx, cy) - 4;
+    ctx.clearRect(0, 0, w, h);
+    // Circle
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.strokeStyle = '#aca899';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    // Tick marks
+    for (let a = 0; a < 360; a += 30) {
+      const rad = (a - 90) * Math.PI / 180;
+      const inner = a % 90 === 0 ? r - 10 : r - 4;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(rad) * inner, cy + Math.sin(rad) * inner);
+      ctx.lineTo(cx + Math.cos(rad) * r, cy + Math.sin(rad) * r);
+      ctx.strokeStyle = '#808080';
+      ctx.lineWidth = a % 90 === 0 ? 2 : 0.5;
+      ctx.stroke();
+    }
+    // N/E/S/W labels
+    const fs = Math.max(8, Math.round(r * 0.22));
+    ctx.font = 'bold ' + fs + 'px Tahoma';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#333';
+    ctx.fillText('N', cx, cy - r + fs - 1);
+    ctx.fillText('S', cx, cy + r - fs + 1);
+    ctx.fillText('E', cx + r - fs + 1, cy);
+    ctx.fillText('W', cx - r + fs - 1, cy);
+    // Red arrow
+    const aRad = (angle - 90) * Math.PI / 180;
+    const arrowLen = r - Math.round(r * 0.2);
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(aRad) * arrowLen, cy + Math.sin(aRad) * arrowLen);
+    ctx.strokeStyle = '#ef4444';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    // Arrow tip
+    ctx.beginPath();
+    ctx.arc(cx + Math.cos(aRad) * arrowLen, cy + Math.sin(aRad) * arrowLen, 3, 0, Math.PI * 2);
+    ctx.fillStyle = '#ef4444';
+    ctx.fill();
+    // Center dot
+    ctx.beginPath();
+    ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+    ctx.fillStyle = '#333';
+    ctx.fill();
+  }
+
+  // ---- Geodesic helpers (Haversine) ----
+  const _R_EARTH_KM = 6371.0;
+  const _deg2rad = d => d * Math.PI / 180;
+  const _rad2deg = r => r * 180 / Math.PI;
+
+  function _haversineDistance(lat1, lng1, lat2, lng2) {
+    const dLat = _deg2rad(lat2 - lat1), dLng = _deg2rad(lng2 - lng1);
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(_deg2rad(lat1)) * Math.cos(_deg2rad(lat2)) * Math.sin(dLng / 2) ** 2;
+    return _R_EARTH_KM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  function _bearing(lat1, lng1, lat2, lng2) {
+    const dLng = _deg2rad(lng2 - lng1);
+    const y = Math.sin(dLng) * Math.cos(_deg2rad(lat2));
+    const x = Math.cos(_deg2rad(lat1)) * Math.sin(_deg2rad(lat2)) - Math.sin(_deg2rad(lat1)) * Math.cos(_deg2rad(lat2)) * Math.cos(dLng);
+    return (_rad2deg(Math.atan2(y, x)) + 360) % 360;
+  }
+
+  function _destPoint(lat, lng, bearingDeg, distKm) {
+    const brng = _deg2rad(bearingDeg);
+    const lat1 = _deg2rad(lat), lng1 = _deg2rad(lng);
+    const d = distKm / _R_EARTH_KM;
+    const lat2 = Math.asin(Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(brng));
+    const lng2 = lng1 + Math.atan2(Math.sin(brng) * Math.sin(d) * Math.cos(lat1), Math.cos(d) - Math.sin(lat1) * Math.sin(lat2));
+    return { lat: _rad2deg(lat2), lng: _rad2deg(lng2) };
+  }
+
+  // ---- Geo Picker — MDI-style movable/resizable sub-window ----
   function openGeoPickerDialog(field, latInput, lngInput) {
-    const overlay = document.createElement('div');
-    overlay.className = 'dialog-overlay visible';
-    const dialog = document.createElement('div');
-    dialog.className = 'dialog';
-    dialog.style.maxWidth = '600px';
+    // Remove existing geo picker if open
+    const existing = document.querySelector('.geo-mdi');
+    if (existing) existing.remove();
 
-    const title = document.createElement('div');
-    title.className = 'dialog-title';
-    title.textContent = 'Pick GPS Coordinates';
-    dialog.appendChild(title);
+    const win = document.createElement('div');
+    win.className = 'geo-mdi';
+    // Default position/size: centered, 780x560
+    const appRect = document.querySelector('.app-container').getBoundingClientRect();
+    const defW = Math.min(780, appRect.width - 20);
+    const defH = Math.min(560, appRect.height - 20);
+    win.style.width = defW + 'px';
+    win.style.height = defH + 'px';
+    win.style.left = Math.max(0, (appRect.width - defW) / 2) + 'px';
+    win.style.top = Math.max(0, (appRect.height - defH) / 2) + 'px';
 
+    // ---- Title bar (draggable) ----
+    const titleBar = document.createElement('div');
+    titleBar.className = 'geo-mdi-title';
+    const titleText = document.createElement('span');
+    titleText.className = 'geo-mdi-title-text';
+    titleText.textContent = 'GPS & Location Editor';
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'geo-mdi-close';
+    closeBtn.textContent = '\u2715';
+    closeBtn.addEventListener('click', () => win.remove());
+    titleBar.appendChild(titleText);
+    titleBar.appendChild(closeBtn);
+    win.appendChild(titleBar);
+
+    // Drag via title bar
+    let _dragWin = false, _dwX, _dwY;
+    titleBar.addEventListener('pointerdown', (e) => {
+      if (e.target === closeBtn) return;
+      _dragWin = true;
+      _dwX = e.clientX - win.offsetLeft;
+      _dwY = e.clientY - win.offsetTop;
+      titleBar.setPointerCapture(e.pointerId);
+    });
+    titleBar.addEventListener('pointermove', (e) => {
+      if (!_dragWin) return;
+      win.style.left = Math.max(0, e.clientX - _dwX) + 'px';
+      win.style.top = Math.max(0, e.clientY - _dwY) + 'px';
+    });
+    titleBar.addEventListener('pointerup', () => { _dragWin = false; });
+
+    // ---- Body: map panel (left) + data panel (right) ----
     const body = document.createElement('div');
-    body.className = 'dialog-body';
-    body.style.padding = '8px';
+    body.className = 'geo-mdi-body';
+
+    // ======= Left: Map panel =======
+    const mapPanel = document.createElement('div');
+    mapPanel.className = 'geo-mdi-map-panel';
 
     const mapDiv = document.createElement('div');
-    mapDiv.style.cssText = 'width:100%;height:350px;position:relative;overflow:hidden;background:#e0e0e0;cursor:crosshair;';
-    body.appendChild(mapDiv);
+    mapDiv.className = 'geo-mdi-map';
+    mapPanel.appendChild(mapDiv);
 
-    const coordRow = document.createElement('div');
-    coordRow.style.cssText = 'display:flex;gap:8px;margin-top:8px;align-items:center;';
-    const latEl = document.createElement('label');
-    latEl.innerHTML = 'Lat: <input type="number" step="0.000001" style="width:120px;padding:2px 4px;" id="geo-dlg-lat">';
-    const lngEl = document.createElement('label');
-    lngEl.innerHTML = 'Lng: <input type="number" step="0.000001" style="width:120px;padding:2px 4px;" id="geo-dlg-lng">';
-    coordRow.appendChild(latEl);
-    coordRow.appendChild(lngEl);
-    body.appendChild(coordRow);
-    dialog.appendChild(body);
+    // SVG overlay for FOV cone (drawn on top of tiles)
+    const fovSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    fovSvg.setAttribute('class', 'geo-fov-overlay');
+    mapDiv.appendChild(fovSvg);
 
+    // Map bottom bar: direction info | search | coordinates
+    const mapBar = document.createElement('div');
+    mapBar.className = 'geo-mdi-map-bar';
+    const dirDisplay = document.createElement('span');
+    dirDisplay.className = 'geo-mdi-coord-display';
+    const searchInput = _el('input', { type: 'text', placeholder: 'Search location\u2026' });
+    const searchBtn = document.createElement('button');
+    searchBtn.textContent = 'Search';
+    const coordDisplay = document.createElement('span');
+    coordDisplay.className = 'geo-mdi-coord-display';
+    mapBar.appendChild(dirDisplay);
+    mapBar.appendChild(searchInput);
+    mapBar.appendChild(searchBtn);
+    mapBar.appendChild(coordDisplay);
+    mapPanel.appendChild(mapBar);
+
+    body.appendChild(mapPanel);
+
+    // ======= Right: Data panel =======
+    const dataPanel = document.createElement('div');
+    dataPanel.className = 'geo-mdi-data-panel';
+
+    // --- GPS Data section ---
+    const gpsSec = document.createElement('div');
+    gpsSec.className = 'geo-mdi-section';
+    const gpsTitle = document.createElement('div');
+    gpsTitle.className = 'geo-mdi-section-title';
+    gpsTitle.textContent = 'GPS Data';
+    gpsSec.appendChild(gpsTitle);
+
+    const dlgLat = _el('input', { type: 'number', step: '0.000001' });
+    const dmsLat = document.createElement('span');
+    dmsLat.className = 'geo-dms';
+    const dlgLng = _el('input', { type: 'number', step: '0.000001' });
+    const dmsLng = document.createElement('span');
+    dmsLng.className = 'geo-dms';
+    const dlgDir = _el('input', { type: 'number', min: '0', max: '360', step: '0.1' });
+    const dirRefSel = _el('select');
+    dirRefSel.innerHTML = '<option value="T">True North</option><option value="M">Magnetic North</option>';
+    const dlgAlt = _el('input', { type: 'number', step: '0.01' });
+
+    dlgLat.value = latInput.value || '0';
+    dlgLng.value = lngInput.value || '0';
+    dlgDir.value = '0';
+    dlgAlt.value = '0';
+
+    // Pre-fill from existing modifications
+    const existingAlt = modifications.get('gps.altitude');
+    if (existingAlt != null) { const m = String(existingAlt).match(/([\d.]+)/); if (m) dlgAlt.value = m[1]; }
+    const existingDir = modifications.get('gps.direction');
+    if (existingDir != null) { const m = String(existingDir).match(/([\d.]+)/); if (m) dlgDir.value = m[1]; }
+
+    function updateDms() {
+      const lat = parseFloat(dlgLat.value) || 0;
+      const lng = parseFloat(dlgLng.value) || 0;
+      dmsLat.textContent = _formatDmsLat(lat);
+      dmsLng.textContent = _formatDmsLng(lng);
+      coordDisplay.textContent = lat.toFixed(6) + ', ' + lng.toFixed(6);
+    }
+    updateDms();
+
+    function _gpsField(label, input, extra) {
+      const row = document.createElement('div');
+      row.className = 'geo-mdi-field';
+      const lbl = document.createElement('label');
+      lbl.textContent = label;
+      row.appendChild(lbl);
+      row.appendChild(input);
+      if (extra) row.appendChild(extra);
+      return row;
+    }
+
+    gpsSec.appendChild(_gpsField('Latitude:', dlgLat, dmsLat));
+    gpsSec.appendChild(_gpsField('Longitude:', dlgLng, dmsLng));
+
+    // Direction row: input + compass canvas
+    const dirFieldRow = _gpsField('Direction [\u00B0]:', dlgDir, dirRefSel);
+    gpsSec.appendChild(dirFieldRow);
+
+    const compassRow = document.createElement('div');
+    compassRow.className = 'geo-mdi-compass-row';
+    const compassCanvas = document.createElement('canvas');
+    compassCanvas.className = 'compass-canvas';
+    compassCanvas.width = 80;
+    compassCanvas.height = 80;
+    compassRow.appendChild(compassCanvas);
+    // Instruction text next to compass
+    const compassHint = document.createElement('span');
+    compassHint.style.cssText = 'font-size:9px;color:var(--sz-color-gray-text);';
+    compassHint.textContent = 'Click compass or map cone to set direction';
+    compassRow.appendChild(compassHint);
+    gpsSec.appendChild(compassRow);
+
+    gpsSec.appendChild(_gpsField('Altitude [m]:', dlgAlt));
+
+    dataPanel.appendChild(gpsSec);
+
+    // --- Destination section ---
+    const destSec = document.createElement('div');
+    destSec.className = 'geo-mdi-section';
+    const destTitle = document.createElement('div');
+    destTitle.className = 'geo-mdi-section-title';
+    destTitle.textContent = 'Destination (Target)';
+    destSec.appendChild(destTitle);
+
+    const destEnableCb = _el('input', { type: 'checkbox' });
+    const destEnableRow = document.createElement('div');
+    destEnableRow.className = 'geo-mdi-loc-field';
+    const destEnableLbl = document.createElement('label');
+    destEnableLbl.textContent = 'Show target on map';
+    destEnableRow.appendChild(destEnableCb);
+    destEnableRow.appendChild(destEnableLbl);
+    destSec.appendChild(destEnableRow);
+
+    const dlgDestLat = _el('input', { type: 'number', step: '0.000001' });
+    const dmsDestLat = document.createElement('span');
+    dmsDestLat.className = 'geo-dms';
+    const dlgDestLng = _el('input', { type: 'number', step: '0.000001' });
+    const dmsDestLng = document.createElement('span');
+    dmsDestLng.className = 'geo-dms';
+    const dlgDestDist = _el('input', { type: 'number', min: '0', step: '0.01' });
+
+    dlgDestLat.value = '0';
+    dlgDestLng.value = '0';
+    dlgDestDist.value = '1';
+
+    // Pre-fill from existing destination modification or parsed field
+    const existingDest = modifications.get('gps.destination');
+    if (existingDest) {
+      try {
+        const d = JSON.parse(existingDest);
+        if (d.lat != null) dlgDestLat.value = d.lat;
+        if (d.lng != null) dlgDestLng.value = d.lng;
+        destEnableCb.checked = true;
+      } catch (_) {}
+    } else if (field.key === 'gps.destination' && field.lat != null) {
+      dlgDestLat.value = field.lat;
+      dlgDestLng.value = field.lng;
+      destEnableCb.checked = true;
+    } else {
+      // Check if there's a parsed destination field in the current metadata
+      const gpsCat = parseResult.categories.find(c => c.name === 'GPS');
+      const destField = gpsCat && gpsCat.fields.find(f => f.key === 'gps.destination');
+      if (destField && destField.lat != null) {
+        dlgDestLat.value = destField.lat;
+        dlgDestLng.value = destField.lng;
+        destEnableCb.checked = true;
+      }
+    }
+
+    const destFieldsDiv = document.createElement('div');
+    destFieldsDiv.className = 'geo-mdi-dest-fields';
+    destFieldsDiv.appendChild(_gpsField('Target Lat:', dlgDestLat, dmsDestLat));
+    destFieldsDiv.appendChild(_gpsField('Target Lng:', dlgDestLng, dmsDestLng));
+    destFieldsDiv.appendChild(_gpsField('Distance [km]:', dlgDestDist));
+
+    const destHint = document.createElement('div');
+    destHint.style.cssText = 'font-size:9px;color:var(--sz-color-gray-text);margin-top:2px;';
+    destHint.textContent = 'Right-click map to place target; or enter coordinates';
+    destFieldsDiv.appendChild(destHint);
+
+    destSec.appendChild(destFieldsDiv);
+    dataPanel.appendChild(destSec);
+
+    function updateDestFields() {
+      destFieldsDiv.style.display = destEnableCb.checked ? '' : 'none';
+    }
+    destEnableCb.addEventListener('change', () => { updateDestFields(); renderMap(); });
+    updateDestFields();
+
+    function updateDestDms() {
+      const lat = parseFloat(dlgDestLat.value) || 0;
+      const lng = parseFloat(dlgDestLng.value) || 0;
+      dmsDestLat.textContent = _formatDmsLat(lat);
+      dmsDestLng.textContent = _formatDmsLng(lng);
+    }
+    updateDestDms();
+
+    // Sync distance from image-to-target coordinates
+    function syncDestDistance() {
+      const sLat = parseFloat(dlgLat.value) || 0, sLng = parseFloat(dlgLng.value) || 0;
+      const dLat = parseFloat(dlgDestLat.value) || 0, dLng = parseFloat(dlgDestLng.value) || 0;
+      dlgDestDist.value = _haversineDistance(sLat, sLng, dLat, dLng).toFixed(3);
+    }
+
+    // Sync target position from direction + distance
+    function syncTargetFromDirDist() {
+      const sLat = parseFloat(dlgLat.value) || 0, sLng = parseFloat(dlgLng.value) || 0;
+      const dir = parseFloat(dlgDir.value) || 0;
+      const dist = parseFloat(dlgDestDist.value) || 1;
+      const pt = _destPoint(sLat, sLng, dir, dist);
+      dlgDestLat.value = pt.lat.toFixed(6);
+      dlgDestLng.value = pt.lng.toFixed(6);
+      updateDestDms();
+    }
+
+    // Sync direction + distance from target position
+    function syncDirDistFromTarget() {
+      const sLat = parseFloat(dlgLat.value) || 0, sLng = parseFloat(dlgLng.value) || 0;
+      const dLat = parseFloat(dlgDestLat.value) || 0, dLng = parseFloat(dlgDestLng.value) || 0;
+      if (sLat === dLat && sLng === dLng) return;
+      const b = _bearing(sLat, sLng, dLat, dLng);
+      dlgDir.value = b.toFixed(1);
+      syncDestDistance();
+      _drawCompass(compassCanvas, b);
+    }
+
+    // If we have a destination but no direction, compute direction from source to dest
+    if (destEnableCb.checked) {
+      syncDestDistance();
+      const dLat = parseFloat(dlgDestLat.value) || 0, dLng = parseFloat(dlgDestLng.value) || 0;
+      const sLat = parseFloat(dlgLat.value) || 0, sLng = parseFloat(dlgLng.value) || 0;
+      if ((dLat !== 0 || dLng !== 0) && (sLat !== dLat || sLng !== dLng)) {
+        const b = _bearing(sLat, sLng, dLat, dLng);
+        if (parseFloat(dlgDir.value) === 0) dlgDir.value = b.toFixed(1);
+      }
+    }
+
+    // --- Location section ---
+    const locSec = document.createElement('div');
+    locSec.className = 'geo-mdi-section';
+    const locTitle = document.createElement('div');
+    locTitle.className = 'geo-mdi-section-title';
+    locTitle.textContent = 'Location';
+    locSec.appendChild(locTitle);
+
+    const geoFields = {};
+    for (const [id, label] of [['countryCode', 'Code'], ['country', 'Country'], ['state', 'State'], ['city', 'City'], ['sublocation', 'Place']]) {
+      const row = document.createElement('div');
+      row.className = 'geo-mdi-loc-field';
+      const cb = _el('input', { type: 'checkbox', checked: true });
+      const lbl = document.createElement('label');
+      lbl.textContent = label + ':';
+      const inp = _el('input', { type: 'text' });
+      if (id === 'countryCode') inp.style.width = '50px';
+      row.appendChild(cb);
+      row.appendChild(lbl);
+      row.appendChild(inp);
+      locSec.appendChild(row);
+      geoFields[id] = { cb, input: inp };
+    }
+
+    // Pre-fill from existing IPTC
+    const iptcPrefill = { country: 'iptc.65', state: 'iptc.5f', city: 'iptc.5a', sublocation: 'iptc.5c', countryCode: 'iptc.64' };
+    for (const [gk, mk] of Object.entries(iptcPrefill)) {
+      const val = modifications.get(mk);
+      if (val) geoFields[gk].input.value = val;
+    }
+
+    const gpsLookupRow = document.createElement('div');
+    gpsLookupRow.style.cssText = 'margin-top:4px;';
+    const gpsLookupBtn = document.createElement('button');
+    gpsLookupBtn.className = 'action-btn';
+    gpsLookupBtn.textContent = 'Look Up Location';
+    gpsLookupRow.appendChild(gpsLookupBtn);
+    locSec.appendChild(gpsLookupRow);
+
+    const geoStatus = document.createElement('div');
+    geoStatus.className = 'geo-mdi-status';
+    locSec.appendChild(geoStatus);
+    dataPanel.appendChild(locSec);
+
+    body.appendChild(dataPanel);
+    win.appendChild(body);
+
+    // ---- Button row ----
     const btnRow = document.createElement('div');
-    btnRow.className = 'dialog-buttons';
+    btnRow.className = 'geo-mdi-buttons';
     const okBtn = document.createElement('button');
-    okBtn.textContent = 'Apply';
+    okBtn.textContent = 'OK';
     const cancelBtn = document.createElement('button');
     cancelBtn.textContent = 'Cancel';
     btnRow.appendChild(okBtn);
     btnRow.appendChild(cancelBtn);
-    dialog.appendChild(btnRow);
+    win.appendChild(btnRow);
 
-    overlay.appendChild(dialog);
-    document.body.appendChild(overlay);
+    // ---- Resize handle ----
+    const resizeHandle = document.createElement('div');
+    resizeHandle.className = 'geo-mdi-resize';
+    win.appendChild(resizeHandle);
 
-    const dlgLat = overlay.querySelector('#geo-dlg-lat');
-    const dlgLng = overlay.querySelector('#geo-dlg-lng');
-    dlgLat.value = latInput.value || '0';
-    dlgLng.value = lngInput.value || '0';
+    let _resizing = false, _rsx, _rsy, _rsw, _rsh;
+    resizeHandle.addEventListener('pointerdown', (e) => {
+      _resizing = true;
+      _rsx = e.clientX;
+      _rsy = e.clientY;
+      _rsw = win.offsetWidth;
+      _rsh = win.offsetHeight;
+      resizeHandle.setPointerCapture(e.pointerId);
+      e.stopPropagation();
+    });
+    resizeHandle.addEventListener('pointermove', (e) => {
+      if (!_resizing) return;
+      win.style.width = Math.max(520, _rsw + e.clientX - _rsx) + 'px';
+      win.style.height = Math.max(400, _rsh + e.clientY - _rsy) + 'px';
+      renderMap();
+    });
+    resizeHandle.addEventListener('pointerup', () => { _resizing = false; });
 
-    // Simple slippy tile map using OSM tiles
-    let zoom = 4;
-    let centerLat = parseFloat(dlgLat.value) || 0;
-    let centerLng = parseFloat(dlgLng.value) || 0;
-    let markerLat = centerLat, markerLng = centerLng;
+    // Mount into app container
+    document.querySelector('.app-container').appendChild(win);
+
+    // ======= Map engine =======
+    const initLat = parseFloat(dlgLat.value) || 0;
+    const initLng = parseFloat(dlgLng.value) || 0;
+    let zoom = (initLat !== 0 || initLng !== 0) ? 14 : 4;
+    let centerLat = initLat, centerLng = initLng;
+    let markerLat = initLat, markerLng = initLng;
 
     function lon2tile(lon, z) { return ((lon + 180) / 360) * (1 << z); }
     function lat2tile(lat, z) { const r = lat * Math.PI / 180; return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * (1 << z); }
@@ -688,9 +1498,14 @@
     function tile2lat(y, z) { const n = Math.PI - 2 * Math.PI * y / (1 << z); return 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n))); }
 
     function renderMap() {
-      mapDiv.innerHTML = '';
-      const w = mapDiv.clientWidth || 560;
-      const h = mapDiv.clientHeight || 350;
+      // Clear tiles (keep SVG overlay)
+      const children = [...mapDiv.children];
+      for (const c of children) { if (c !== fovSvg) mapDiv.removeChild(c); }
+      // Bring SVG to front
+      mapDiv.appendChild(fovSvg);
+
+      const w = mapDiv.clientWidth || 500;
+      const h = mapDiv.clientHeight || 300;
       const cx = lon2tile(centerLng, zoom);
       const cy = lat2tile(centerLat, zoom);
       const tileSize = 256;
@@ -708,52 +1523,187 @@
           const img = document.createElement('img');
           img.src = 'https://tile.openstreetmap.org/' + zoom + '/' + wrappedTx + '/' + ty + '.png';
           img.style.cssText = 'position:absolute;width:256px;height:256px;pointer-events:none;';
-          const px = halfW + (tx - cx) * tileSize;
-          const py = halfH + (ty - cy) * tileSize;
-          img.style.left = Math.round(px) + 'px';
-          img.style.top = Math.round(py) + 'px';
-          mapDiv.appendChild(img);
+          img.style.left = Math.round(halfW + (tx - cx) * tileSize) + 'px';
+          img.style.top = Math.round(halfH + (ty - cy) * tileSize) + 'px';
+          mapDiv.insertBefore(img, fovSvg);
         }
       }
 
-      // Marker
+      // Marker pixel position
       const mx = halfW + (lon2tile(markerLng, zoom) - cx) * tileSize;
       const my = halfH + (lat2tile(markerLat, zoom) - cy) * tileSize;
-      const marker = document.createElement('div');
-      marker.style.cssText = 'position:absolute;width:12px;height:12px;background:red;border:2px solid white;border-radius:50%;transform:translate(-50%,-50%);pointer-events:none;box-shadow:0 1px 3px rgba(0,0,0,.4);';
-      marker.style.left = Math.round(mx) + 'px';
-      marker.style.top = Math.round(my) + 'px';
-      mapDiv.appendChild(marker);
+
+      // GeoSetter-style FOV cone via SVG
+      const dir = parseFloat(dlgDir.value) || 0;
+      fovSvg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+      fovSvg.style.width = w + 'px';
+      fovSvg.style.height = h + 'px';
+      fovSvg.innerHTML = '';
+
+      if (dir > 0) {
+        // Large FOV triangle: 60-degree spread, length ~40% of map diagonal
+        const fovHalf = 30 * Math.PI / 180; // 30 deg each side
+        const coneLen = Math.max(w, h) * 0.6;
+        const dirRad = (dir - 90) * Math.PI / 180;
+        const x1 = mx + Math.cos(dirRad - fovHalf) * coneLen;
+        const y1 = my + Math.sin(dirRad - fovHalf) * coneLen;
+        const x2 = mx + Math.cos(dirRad + fovHalf) * coneLen;
+        const y2 = my + Math.sin(dirRad + fovHalf) * coneLen;
+        const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+        polygon.setAttribute('points', mx + ',' + my + ' ' + x1 + ',' + y1 + ' ' + x2 + ',' + y2);
+        polygon.setAttribute('fill', 'rgba(100, 80, 200, 0.25)');
+        polygon.setAttribute('stroke', 'rgba(100, 80, 200, 0.6)');
+        polygon.setAttribute('stroke-width', '1');
+        fovSvg.appendChild(polygon);
+
+        // Direction line (center of cone)
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', mx);
+        line.setAttribute('y1', my);
+        line.setAttribute('x2', mx + Math.cos(dirRad) * coneLen);
+        line.setAttribute('y2', my + Math.sin(dirRad) * coneLen);
+        line.setAttribute('stroke', 'rgba(100, 80, 200, 0.4)');
+        line.setAttribute('stroke-width', '1');
+        line.setAttribute('stroke-dasharray', '4,3');
+        fovSvg.appendChild(line);
+
+        dirDisplay.textContent = 'Dir: ' + dir.toFixed(1) + '\u00B0';
+      } else
+        dirDisplay.textContent = '';
+
+      // Target marker (blue dot) if destination enabled
+      if (destEnableCb.checked) {
+        const tLat = parseFloat(dlgDestLat.value) || 0;
+        const tLng = parseFloat(dlgDestLng.value) || 0;
+        const tx = halfW + (lon2tile(tLng, zoom) - cx) * tileSize;
+        const ty = halfH + (lat2tile(tLat, zoom) - cy) * tileSize;
+
+        // Dashed line from source to target
+        const connLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        connLine.setAttribute('x1', mx);
+        connLine.setAttribute('y1', my);
+        connLine.setAttribute('x2', tx);
+        connLine.setAttribute('y2', ty);
+        connLine.setAttribute('stroke', 'rgba(59, 130, 246, 0.5)');
+        connLine.setAttribute('stroke-width', '1.5');
+        connLine.setAttribute('stroke-dasharray', '5,4');
+        fovSvg.appendChild(connLine);
+
+        // Target circle
+        const targetCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        targetCircle.setAttribute('cx', tx);
+        targetCircle.setAttribute('cy', ty);
+        targetCircle.setAttribute('r', '7');
+        targetCircle.setAttribute('fill', '#3b82f6');
+        targetCircle.setAttribute('stroke', '#fff');
+        targetCircle.setAttribute('stroke-width', '2');
+        fovSvg.appendChild(targetCircle);
+        // Target crosshair
+        for (const [dx, dy] of [[0, -4], [0, 4], [-4, 0], [4, 0]]) {
+          const ch = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          ch.setAttribute('x1', tx + dx * 0.5);
+          ch.setAttribute('y1', ty + dy * 0.5);
+          ch.setAttribute('x2', tx + dx * 1.8);
+          ch.setAttribute('y2', ty + dy * 1.8);
+          ch.setAttribute('stroke', '#fff');
+          ch.setAttribute('stroke-width', '1.5');
+          fovSvg.appendChild(ch);
+        }
+      }
+
+      // Source marker dot (red, on top of everything)
+      const markerCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      markerCircle.setAttribute('cx', mx);
+      markerCircle.setAttribute('cy', my);
+      markerCircle.setAttribute('r', '7');
+      markerCircle.setAttribute('fill', '#e11d48');
+      markerCircle.setAttribute('stroke', '#fff');
+      markerCircle.setAttribute('stroke-width', '2');
+      fovSvg.appendChild(markerCircle);
+      // Inner dot
+      const innerDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      innerDot.setAttribute('cx', mx);
+      innerDot.setAttribute('cy', my);
+      innerDot.setAttribute('r', '2.5');
+      innerDot.setAttribute('fill', '#fff');
+      fovSvg.appendChild(innerDot);
     }
 
     renderMap();
+    _drawCompass(compassCanvas, parseFloat(dlgDir.value) || 0);
+    updateDms();
 
-    mapDiv.addEventListener('click', (e) => {
-      const rect = mapDiv.getBoundingClientRect();
-      const px = e.clientX - rect.left;
-      const py = e.clientY - rect.top;
+    // ======= Map interactions =======
+    function scheduleGeocode() {
+      if (_geocodeTimer) clearTimeout(_geocodeTimer);
+      _geocodeTimer = setTimeout(doReverseGeocode, 1200);
+    }
+
+    function _pixelToLatLng(px, py) {
       const w = mapDiv.clientWidth, h = mapDiv.clientHeight;
       const cx = lon2tile(centerLng, zoom);
       const cy = lat2tile(centerLat, zoom);
-      const tileX = cx + (px - w / 2) / 256;
-      const tileY = cy + (py - h / 2) / 256;
-      markerLat = tile2lat(tileY, zoom);
-      markerLng = tile2lon(tileX, zoom);
+      return { lat: tile2lat(cy + (py - h / 2) / 256, zoom), lng: tile2lon(cx + (px - w / 2) / 256, zoom) };
+    }
+
+    mapDiv.addEventListener('click', (e) => {
+      if (e.target.closest('.geo-mdi-map-bar') || e.target === fovSvg) return;
+      const rect = mapDiv.getBoundingClientRect();
+      const pt = _pixelToLatLng(e.clientX - rect.left, e.clientY - rect.top);
+      markerLat = pt.lat;
+      markerLng = pt.lng;
       dlgLat.value = markerLat.toFixed(6);
       dlgLng.value = markerLng.toFixed(6);
+      updateDms();
+      if (destEnableCb.checked) syncDirDistFromTarget();
+      renderMap();
+      scheduleGeocode();
+    });
+
+    // Right-click to place target
+    mapDiv.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      if (e.target.closest('.geo-mdi-map-bar')) return;
+      const rect = mapDiv.getBoundingClientRect();
+      const pt = _pixelToLatLng(e.clientX - rect.left, e.clientY - rect.top);
+      destEnableCb.checked = true;
+      updateDestFields();
+      dlgDestLat.value = pt.lat.toFixed(6);
+      dlgDestLng.value = pt.lng.toFixed(6);
+      updateDestDms();
+      syncDirDistFromTarget();
+      _drawCompass(compassCanvas, parseFloat(dlgDir.value) || 0);
       renderMap();
     });
 
     mapDiv.addEventListener('wheel', (e) => {
       e.preventDefault();
-      zoom = Math.max(1, Math.min(18, zoom + (e.deltaY < 0 ? 1 : -1)));
+      const newZoom = Math.max(1, Math.min(18, zoom + (e.deltaY < 0 ? 1 : -1)));
+      if (newZoom === zoom) return;
+
+      // Zoom towards mouse position: keep the lat/lng under the cursor fixed
+      const rect = mapDiv.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const w = mapDiv.clientWidth, h = mapDiv.clientHeight;
+
+      // Lat/lng under the mouse at current zoom
+      const cx = lon2tile(centerLng, zoom);
+      const cy = lat2tile(centerLat, zoom);
+      const mouseLng = tile2lon(cx + (mx - w / 2) / 256, zoom);
+      const mouseLat = tile2lat(cy + (my - h / 2) / 256, zoom);
+
+      // Adjust center so that same lat/lng stays under the mouse at new zoom
+      centerLng = tile2lon(lon2tile(mouseLng, newZoom) - (mx - w / 2) / 256, newZoom);
+      centerLat = tile2lat(lat2tile(mouseLat, newZoom) - (my - h / 2) / 256, newZoom);
+      zoom = newZoom;
       renderMap();
-    });
+    }, { passive: false });
 
     // Pan via drag
     let dragging = false, dragStartX, dragStartY, dragCLat, dragCLng;
     mapDiv.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0) return;
+      if (e.button !== 0 || e.target.closest('.geo-mdi-map-bar')) return;
       dragging = true;
       dragStartX = e.clientX;
       dragStartY = e.clientY;
@@ -763,22 +1713,183 @@
     });
     mapDiv.addEventListener('pointermove', (e) => {
       if (!dragging) return;
-      const dx = e.clientX - dragStartX;
-      const dy = e.clientY - dragStartY;
-      const cx = lon2tile(dragCLng, zoom) - dx / 256;
-      const cy = lat2tile(dragCLat, zoom) - dy / 256;
-      centerLng = tile2lon(cx, zoom);
-      centerLat = tile2lat(cy, zoom);
+      centerLng = tile2lon(lon2tile(dragCLng, zoom) - (e.clientX - dragStartX) / 256, zoom);
+      centerLat = tile2lat(lat2tile(dragCLat, zoom) - (e.clientY - dragStartY) / 256, zoom);
       renderMap();
     });
     mapDiv.addEventListener('pointerup', () => { dragging = false; });
+    mapDiv.addEventListener('lostpointercapture', () => { dragging = false; });
 
-    okBtn.addEventListener('click', () => {
-      latInput.value = dlgLat.value;
-      lngInput.value = dlgLng.value;
-      document.body.removeChild(overlay);
+    // ======= Data panel interactions =======
+    dlgLat.addEventListener('change', () => {
+      markerLat = parseFloat(dlgLat.value) || 0;
+      centerLat = markerLat;
+      updateDms();
+      if (destEnableCb.checked) syncDirDistFromTarget();
+      renderMap();
+      scheduleGeocode();
     });
-    cancelBtn.addEventListener('click', () => document.body.removeChild(overlay));
+    dlgLng.addEventListener('change', () => {
+      markerLng = parseFloat(dlgLng.value) || 0;
+      centerLng = markerLng;
+      updateDms();
+      if (destEnableCb.checked) syncDirDistFromTarget();
+      renderMap();
+      scheduleGeocode();
+    });
+
+    dlgDir.addEventListener('input', () => {
+      const a = parseFloat(dlgDir.value) || 0;
+      _drawCompass(compassCanvas, a);
+      if (destEnableCb.checked) syncTargetFromDirDist();
+      renderMap();
+    });
+
+    compassCanvas.addEventListener('click', (e) => {
+      const rect = compassCanvas.getBoundingClientRect();
+      const ccx = rect.width / 2, ccy = rect.height / 2;
+      const dx = e.clientX - rect.left - ccx;
+      const dy = e.clientY - rect.top - ccy;
+      let angle = Math.atan2(dy, dx) * 180 / Math.PI + 90;
+      if (angle < 0) angle += 360;
+      dlgDir.value = angle.toFixed(1);
+      _drawCompass(compassCanvas, angle);
+      if (destEnableCb.checked) syncTargetFromDirDist();
+      renderMap();
+    });
+
+    // Destination field interactions
+    dlgDestLat.addEventListener('change', () => {
+      updateDestDms();
+      syncDirDistFromTarget();
+      _drawCompass(compassCanvas, parseFloat(dlgDir.value) || 0);
+      renderMap();
+    });
+    dlgDestLng.addEventListener('change', () => {
+      updateDestDms();
+      syncDirDistFromTarget();
+      _drawCompass(compassCanvas, parseFloat(dlgDir.value) || 0);
+      renderMap();
+    });
+    dlgDestDist.addEventListener('change', () => {
+      syncTargetFromDirDist();
+      renderMap();
+    });
+
+    // ======= Search (forward geocoding) =======
+    function doSearch() {
+      const q = searchInput.value.trim();
+      if (!q) return;
+      const now = Date.now();
+      if (now - _lastGeocodeTime < 1200) return;
+      _lastGeocodeTime = now;
+      geoStatus.textContent = 'Searching...';
+      forwardGeocode(q).then(result => {
+        geoStatus.textContent = '';
+        if (!result) { geoStatus.textContent = 'No results'; return; }
+        markerLat = result.lat;
+        markerLng = result.lng;
+        centerLat = result.lat;
+        centerLng = result.lng;
+        zoom = 14;
+        dlgLat.value = result.lat.toFixed(6);
+        dlgLng.value = result.lng.toFixed(6);
+        updateDms();
+        renderMap();
+        scheduleGeocode();
+      }).catch(() => {
+        geoStatus.textContent = 'Search failed (offline?)';
+      });
+    }
+
+    searchBtn.addEventListener('click', doSearch);
+    searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
+
+    // ======= Reverse geocode (location lookup) =======
+    function doReverseGeocode() {
+      const lat = parseFloat(dlgLat.value);
+      const lng = parseFloat(dlgLng.value);
+      if (isNaN(lat) || isNaN(lng)) return;
+      const now = Date.now();
+      if (now - _lastGeocodeTime < 1200) return;
+      _lastGeocodeTime = now;
+      geoStatus.textContent = 'Looking up...';
+      reverseGeocode(lat, lng).then(result => {
+        geoStatus.textContent = '';
+        if (result.countryCode) { geoFields.countryCode.input.value = result.countryCode; geoFields.countryCode.cb.checked = true; }
+        if (result.country) { geoFields.country.input.value = result.country; geoFields.country.cb.checked = true; }
+        if (result.state) { geoFields.state.input.value = result.state; geoFields.state.cb.checked = true; }
+        if (result.city) { geoFields.city.input.value = result.city; geoFields.city.cb.checked = true; }
+        if (result.sublocation) { geoFields.sublocation.input.value = result.sublocation; geoFields.sublocation.cb.checked = true; }
+      }).catch(() => {
+        geoStatus.textContent = 'Offline or no results';
+      });
+    }
+
+    gpsLookupBtn.addEventListener('click', doReverseGeocode);
+
+    // ======= OK / Cancel =======
+    okBtn.addEventListener('click', () => {
+      const lat = parseFloat(dlgLat.value);
+      const lng = parseFloat(dlgLng.value);
+      const alt = parseFloat(dlgAlt.value);
+      const dir = parseFloat(dlgDir.value);
+
+      if (!isNaN(lat) && !isNaN(lng)) {
+        latInput.value = dlgLat.value;
+        lngInput.value = dlgLng.value;
+        const coordObj = { lat, lng };
+        if (!isNaN(alt)) coordObj.alt = alt;
+        if (!isNaN(dir) && dir > 0) coordObj.direction = dir;
+        markDirty(field.key, JSON.stringify(coordObj));
+        if (!isNaN(alt)) markDirty('gps.altitude', String(alt));
+        if (!isNaN(dir) && dir > 0) markDirty('gps.direction', String(dir));
+      }
+
+      // GPS Destination
+      if (destEnableCb.checked) {
+        const dLat = parseFloat(dlgDestLat.value);
+        const dLng = parseFloat(dlgDestLng.value);
+        if (!isNaN(dLat) && !isNaN(dLng)) {
+          const destObj = { lat: dLat, lng: dLng };
+          if (!isNaN(dir) && dir > 0) destObj.bearing = dir;
+          const dist = parseFloat(dlgDestDist.value);
+          if (!isNaN(dist) && dist > 0) destObj.distance = dist;
+          markDirty('gps.destination', JSON.stringify(destObj));
+        }
+      }
+
+      // IPTC location fields
+      const iptcMap = { countryCode: 'iptc.64', country: 'iptc.65', state: 'iptc.5f', city: 'iptc.5a', sublocation: 'iptc.5c' };
+      for (const [gk, mk] of Object.entries(iptcMap)) {
+        const gf = geoFields[gk];
+        if (gf.cb.checked && gf.input.value.trim())
+          markDirty(mk, gf.input.value.trim());
+      }
+
+      win.remove();
+      renderMetadata();
+    });
+    cancelBtn.addEventListener('click', () => win.remove());
+  }
+
+  // DOM helpers
+  function _el(tag, attrs) {
+    const el = document.createElement(tag);
+    if (attrs) for (const [k, v] of Object.entries(attrs)) {
+      if (k === 'checked') el.checked = v;
+      else if (k === 'value') el.value = v;
+      else el.setAttribute(k, v);
+    }
+    return el;
+  }
+
+  function _label(text, input) {
+    const lbl = document.createElement('label');
+    lbl.style.cssText = 'font-size:11px;display:flex;align-items:center;gap:3px;';
+    lbl.textContent = text;
+    lbl.appendChild(input);
+    return lbl;
   }
 
   function removeField(key) {
@@ -1092,6 +2203,210 @@
     valInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doAdd(); if (e.key === 'Escape') overlay.remove(); });
   }
 
+  const EXIF_ADD_TAG_OPTIONS = {
+    'exif.10e': { label: 'Image Description', type: 'text' },
+    'exif.10f': { label: 'Make', type: 'text' },
+    'exif.110': { label: 'Model', type: 'text' },
+    'exif.112': { label: 'Orientation', type: 'select', options: [
+      { value: '1', label: '1 - Normal' }, { value: '2', label: '2 - Mirrored' },
+      { value: '3', label: '3 - Rotated 180' }, { value: '4', label: '4 - Mirrored 180' },
+      { value: '5', label: '5 - Mirrored 90 CW' }, { value: '6', label: '6 - Rotated 90 CW' },
+      { value: '7', label: '7 - Mirrored 90 CCW' }, { value: '8', label: '8 - Rotated 90 CCW' },
+    ] },
+    'exif.131': { label: 'Software', type: 'text' },
+    'exif.132': { label: 'Date/Time', type: 'date' },
+    'exif.13b': { label: 'Artist', type: 'text' },
+    'exif.8298': { label: 'Copyright', type: 'text' },
+    'exif.9003': { label: 'Date/Time Original', type: 'date' },
+    'exif.9004': { label: 'Date/Time Digitized', type: 'date' },
+  };
+
+  const GPS_ADD_TAG_OPTIONS = {
+    'gps.coordinates': { label: 'GPS Coordinates', type: 'geo' },
+    'gps.altitude': { label: 'Altitude', type: 'number' },
+    'gps.direction': { label: 'Image Direction', type: 'compass' },
+    'gps.destination': { label: 'Destination', type: 'geo' },
+  };
+
+  const EXIF_ADD_TAG_LABELS = {};
+  for (const [k, v] of Object.entries(EXIF_ADD_TAG_OPTIONS)) EXIF_ADD_TAG_LABELS[k] = v.label;
+  for (const [k, v] of Object.entries(GPS_ADD_TAG_OPTIONS)) EXIF_ADD_TAG_LABELS[k] = v.label;
+
+  function showAddExifDialog() {
+    const overlay = document.createElement('div');
+    overlay.className = 'dialog-overlay visible';
+
+    const dialog = document.createElement('div');
+    dialog.className = 'dialog';
+    dialog.style.maxWidth = '440px';
+
+    const titleEl = document.createElement('div');
+    titleEl.className = 'dialog-title';
+    titleEl.textContent = 'Add EXIF Tag';
+    dialog.appendChild(titleEl);
+
+    const body = document.createElement('div');
+    body.className = 'dialog-body';
+
+    // Tag selector
+    const selectLabel = document.createElement('label');
+    selectLabel.style.cssText = 'display:block;font-size:11px;margin-bottom:2px;';
+    selectLabel.textContent = 'Tag:';
+    body.appendChild(selectLabel);
+
+    const sel = document.createElement('select');
+    sel.style.cssText = 'width:100%;box-sizing:border-box;padding:3px 6px;margin-bottom:8px;';
+
+    const exifGroup = document.createElement('optgroup');
+    exifGroup.label = 'EXIF';
+    for (const [key, opt] of Object.entries(EXIF_ADD_TAG_OPTIONS)) {
+      const o = document.createElement('option');
+      o.value = key;
+      o.textContent = opt.label;
+      exifGroup.appendChild(o);
+    }
+    sel.appendChild(exifGroup);
+
+    const gpsGroup = document.createElement('optgroup');
+    gpsGroup.label = 'GPS';
+    for (const [key, opt] of Object.entries(GPS_ADD_TAG_OPTIONS)) {
+      const o = document.createElement('option');
+      o.value = key;
+      o.textContent = opt.label;
+      gpsGroup.appendChild(o);
+    }
+    sel.appendChild(gpsGroup);
+    body.appendChild(sel);
+
+    // Dynamic value input area
+    const valArea = document.createElement('div');
+    valArea.style.cssText = 'margin-bottom:4px;';
+    body.appendChild(valArea);
+
+    let currentVal = null;
+
+    function updateValueInput() {
+      valArea.innerHTML = '';
+      const key = sel.value;
+      const tagInfo = EXIF_ADD_TAG_OPTIONS[key] || GPS_ADD_TAG_OPTIONS[key];
+      if (!tagInfo) return;
+
+      if (tagInfo.type === 'text') {
+        const label = document.createElement('label');
+        label.style.cssText = 'display:block;font-size:11px;margin-bottom:2px;';
+        label.textContent = 'Value:';
+        valArea.appendChild(label);
+        const inp = document.createElement('input');
+        inp.type = 'text';
+        inp.style.cssText = 'width:100%;box-sizing:border-box;padding:3px 6px;';
+        inp.placeholder = 'Enter value';
+        valArea.appendChild(inp);
+        currentVal = () => inp.value;
+      } else if (tagInfo.type === 'date') {
+        const label = document.createElement('label');
+        label.style.cssText = 'display:block;font-size:11px;margin-bottom:2px;';
+        label.textContent = 'Date/Time:';
+        valArea.appendChild(label);
+        const inp = document.createElement('input');
+        inp.type = 'datetime-local';
+        inp.style.cssText = 'width:100%;box-sizing:border-box;padding:3px 6px;';
+        valArea.appendChild(inp);
+        currentVal = () => {
+          const v = inp.value;
+          if (!v) return '';
+          return v.substring(0, 10).replace(/-/g, ':') + ' ' + v.substring(11) + ':00';
+        };
+      } else if (tagInfo.type === 'select') {
+        const label = document.createElement('label');
+        label.style.cssText = 'display:block;font-size:11px;margin-bottom:2px;';
+        label.textContent = 'Value:';
+        valArea.appendChild(label);
+        const s = document.createElement('select');
+        s.style.cssText = 'width:100%;box-sizing:border-box;padding:3px 6px;';
+        for (const opt of tagInfo.options) {
+          const o = document.createElement('option');
+          o.value = opt.value;
+          o.textContent = opt.label;
+          s.appendChild(o);
+        }
+        valArea.appendChild(s);
+        currentVal = () => s.value;
+      } else if (tagInfo.type === 'number') {
+        const label = document.createElement('label');
+        label.style.cssText = 'display:block;font-size:11px;margin-bottom:2px;';
+        label.textContent = 'Value:';
+        valArea.appendChild(label);
+        const inp = document.createElement('input');
+        inp.type = 'number';
+        inp.step = '0.01';
+        inp.style.cssText = 'width:150px;padding:3px 6px;';
+        inp.placeholder = '0.00';
+        valArea.appendChild(inp);
+        currentVal = () => inp.value;
+      } else if (tagInfo.type === 'geo') {
+        const info = document.createElement('div');
+        info.style.cssText = 'font-size:11px;color:var(--sz-color-gray-text);';
+        info.textContent = 'Coordinates will be set via the map picker after adding.';
+        valArea.appendChild(info);
+        currentVal = () => JSON.stringify({ lat: 0, lng: 0 });
+      } else if (tagInfo.type === 'compass') {
+        const label = document.createElement('label');
+        label.style.cssText = 'display:block;font-size:11px;margin-bottom:2px;';
+        label.textContent = 'Direction (degrees):';
+        valArea.appendChild(label);
+        const inp = document.createElement('input');
+        inp.type = 'number';
+        inp.min = '0';
+        inp.max = '360';
+        inp.step = '0.1';
+        inp.style.cssText = 'width:100px;padding:3px 6px;';
+        inp.value = '0';
+        valArea.appendChild(inp);
+        currentVal = () => inp.value;
+      }
+    }
+
+    sel.addEventListener('change', updateValueInput);
+    updateValueInput();
+
+    dialog.appendChild(body);
+
+    const buttons = document.createElement('div');
+    buttons.className = 'dialog-buttons';
+    const okBtn = document.createElement('button');
+    okBtn.textContent = 'Add';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Cancel';
+    buttons.appendChild(okBtn);
+    buttons.appendChild(cancelBtn);
+    dialog.appendChild(buttons);
+
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    function doAdd() {
+      const key = sel.value;
+      const value = currentVal ? currentVal() : '';
+      if (!key) return;
+      markDirty(key, value);
+      overlay.remove();
+
+      // Switch to appropriate tab
+      const allCategories = getAllCategories();
+      const targetTab = key.startsWith('gps.') ? 'GPS' : 'EXIF';
+      const idx = allCategories.findIndex(c => c.name === targetTab);
+      if (idx >= 0) {
+        activeCategory = idx;
+        renderCategoryTabs();
+      }
+      renderMetadata();
+    }
+
+    okBtn.addEventListener('click', doAdd);
+    cancelBtn.addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  }
+
   function updateModifiedStatus() {
     const count = [...modifications.values()].filter(v => v !== undefined).length;
     statusModified.textContent = count > 0 ? count + ' modification(s)' : '';
@@ -1121,7 +2436,7 @@
         { name: 'Whirlpool', algoName: 'Whirlpool' },
         { name: 'Tiger', algoName: 'Tiger' },
         { name: 'SM3', algoName: 'SM3' },
-        { name: 'Streebog-256', algoName: 'Streebog' },
+        { name: 'Streebog-256', algoName: 'Streebog (GOST R 34.11-2012)' },
       ],
     },
     {
@@ -1135,9 +2450,9 @@
     {
       label: 'Checksums',
       algorithms: [
-        { name: 'CRC-16-CCITT', algoName: 'CRC-16-KERMIT' },
+        { name: 'CRC-16-CCITT', algoName: 'CRC-16-CCITT' },
         { name: 'CRC-32', algoName: 'CRC-32-IEEE' },
-        { name: 'CRC-64', algoName: 'CRC-64-ECMA' },
+        { name: 'CRC-64', algoName: 'CRC-64-ECMA182' },
         { name: 'Adler-32', algoName: 'Adler-32' },
         { name: 'Fletcher-32', algoName: 'Fletcher-32' },
         { name: 'BSD Checksum', algoName: 'BSD-Checksum' },
@@ -1709,6 +3024,7 @@
       annotations: null,
       D: null,
       scrollTimer: null,
+      viewMode: 'asm',
     };
   }
 
@@ -1808,6 +3124,92 @@
     addrInput.onkeydown = e => { if (e.key === 'Enter') btnGo.click(); };
 
     toolbar.append(btnBack, btnFwd, btnEntry, sep, addrLabel, addrInput, btnGo);
+
+    // View mode combobox for multi-mode architectures
+    const DISASM_MODES = {
+      x86: [{ id: 'asm', label: 'Assembly' }, { id: 'pseudo-c', label: 'Pseudo-C' }],
+      x64: [{ id: 'asm', label: 'Assembly' }, { id: 'pseudo-c', label: 'Pseudo-C' }],
+      arm: [{ id: 'asm', label: 'Assembly' }, { id: 'pseudo-c', label: 'Pseudo-C' }],
+      arm64: [{ id: 'asm', label: 'Assembly' }, { id: 'pseudo-c', label: 'Pseudo-C' }],
+      msil: [{ id: 'il', label: 'MSIL/CIL' }, { id: 'csharp-low', label: 'Pseudo-C#' }, { id: 'vb', label: 'Pseudo-VB' }, { id: 'csharp', label: 'C# (simplified)' }],
+      java: [{ id: 'jil', label: 'Java IL' }, { id: 'java-low', label: 'Low-level Java' }, { id: 'java', label: 'Java' }, { id: 'kotlin', label: 'Kotlin' }],
+    };
+    const modes = DISASM_MODES[archId];
+    if (modes && modes.length > 1) {
+      // Sync viewMode to this architecture's first mode if 'asm' isn't available
+      if (!modes.some(m => m.id === st.viewMode))
+        st.viewMode = modes[0].id;
+
+      const modeSep = document.createElement('span');
+      modeSep.textContent = ' | ';
+      modeSep.style.cssText = 'color:var(--sz-color-gray-text);';
+
+      const modeLabel = document.createElement('span');
+      modeLabel.textContent = 'View: ';
+      modeLabel.style.cssText = 'color:var(--sz-color-gray-text);';
+
+      const modeSelect = document.createElement('select');
+      modeSelect.className = 'disasm-mode-select';
+      for (const m of modes) {
+        const opt = document.createElement('option');
+        opt.value = m.id;
+        opt.textContent = m.label;
+        if (m.id === st.viewMode)
+          opt.selected = true;
+        modeSelect.appendChild(opt);
+      }
+      modeSelect.addEventListener('change', () => {
+        st.viewMode = modeSelect.value;
+        _disasmRenderListing(st);
+      });
+      toolbar.append(modeSep, modeLabel, modeSelect);
+    }
+
+    // Method picker for .NET per-method IL bodies
+    if (info.methods && info.methods.length > 0) {
+      const mSep = document.createElement('span');
+      mSep.textContent = ' | ';
+      mSep.style.cssText = 'color:var(--sz-color-gray-text);';
+
+      const mLabel = document.createElement('span');
+      mLabel.textContent = 'Method: ';
+      mLabel.style.cssText = 'color:var(--sz-color-gray-text);';
+
+      const mSelect = document.createElement('select');
+      mSelect.className = 'disasm-mode-select';
+      mSelect.style.maxWidth = '260px';
+
+      const defaultOpt = document.createElement('option');
+      defaultOpt.value = '';
+      defaultOpt.textContent = '(Entry Point)';
+      mSelect.appendChild(defaultOpt);
+
+      for (let mi = 0; mi < info.methods.length; ++mi) {
+        const me = info.methods[mi];
+        const opt = document.createElement('option');
+        opt.value = String(mi);
+        opt.textContent = me.label || ('Method #' + mi);
+        mSelect.appendChild(opt);
+      }
+
+      mSelect.addEventListener('change', () => {
+        const idx = mSelect.value;
+        if (idx === '') {
+          _disasmNavigateTo(st, info.offset || 0);
+          return;
+        }
+        const me = info.methods[parseInt(idx, 10)];
+        if (!me) return;
+        // Decode the method body region and navigate
+        _disasmDecodeAndMerge(st, me.offset, Math.max(_DISASM_BATCH, Math.ceil((me.codeSection ? me.codeSection.size : 256) / 2)));
+        _disasmRenderListing(st);
+        _disasmUpdateStatus(st);
+        requestAnimationFrame(() => _disasmScrollTo(st, me.offset, true));
+      });
+
+      toolbar.append(mSep, mLabel, mSelect);
+    }
+
     container.appendChild(toolbar);
 
     // --- Header ---
@@ -1846,9 +3248,10 @@
       if (st.annotations && st.annotations.imports && st.annotations.imports[targetAddr])
         return;
 
-      // Convert RVA to file offset
+      // Convert RVA to file offset (MSIL/Java targets are already file offsets)
       let fileOffset = targetAddr;
-      if (info.codeSection && targetAddr >= info.codeSection.rva)
+      const arch = (info.archId || '').toLowerCase();
+      if (arch !== 'msil' && arch !== 'java' && info.codeSection && targetAddr >= info.codeSection.rva)
         fileOffset = targetAddr - info.codeSection.rva + info.codeSection.start;
 
       _disasmNavigateTo(st, fileOffset);
@@ -1894,8 +3297,9 @@
   function _disasmRenderListing(st) {
     const D = st.D;
     if (!D || !st.pre) return;
+    const mode = st.viewMode || 'asm';
     if (D.formatDisassemblyHtml)
-      st.pre.innerHTML = D.formatDisassemblyHtml(st.insns, st.annotations);
+      st.pre.innerHTML = D.formatDisassemblyHtml(st.insns, st.annotations, mode);
     else
       st.pre.textContent = D.formatDisassembly(st.insns);
   }
@@ -1904,8 +3308,9 @@
   function _disasmAppendHtml(st, newInsns) {
     const D = st.D;
     if (!D || !st.pre || newInsns.length === 0) return;
+    const mode = st.viewMode || 'asm';
     if (D.formatDisassemblyHtml)
-      st.pre.insertAdjacentHTML('beforeend', '\n' + D.formatDisassemblyHtml(newInsns, st.annotations));
+      st.pre.insertAdjacentHTML('beforeend', '\n' + D.formatDisassemblyHtml(newInsns, st.annotations, mode));
     else {
       const node = document.createTextNode('\n' + D.formatDisassembly(newInsns));
       st.pre.appendChild(node);
