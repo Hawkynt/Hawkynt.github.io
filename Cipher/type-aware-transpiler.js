@@ -9,6 +9,18 @@
   'use strict';
 
   /**
+   * BigInt-safe JSON serialization helper
+   * Converts BigInt values to strings for serialization
+   * @param {*} obj - Object to serialize
+   * @returns {string} JSON string
+   */
+  function safeJSONStringify(obj) {
+    return JSON.stringify(obj, (key, value) =>
+      typeof value === 'bigint' ? value.toString() + 'n' : value
+    );
+  }
+
+  /**
    * JSDoc Comment Parser
    * Extracts type information from JSDoc comments
    */
@@ -239,72 +251,60 @@
 
       // Enhanced cryptographic patterns with precise types
       this.patternTypes = {
-        // Variable name patterns → types
-        namePatterns: [
-          { pattern: /key|Key/, type: 'byte[]' },
-          { pattern: /iv|IV|nonce/, type: 'byte[]' },
-          { pattern: /block|Block/, type: 'byte[]' },
-          { pattern: /data|Data/, type: 'byte[]' },
-          { pattern: /state|State/, type: 'dword[]' },
-          { pattern: /sbox|SBox|sBox/, type: 'byte[]' },
-          { pattern: /matrix|Matrix/, type: 'byte[][]' },
-          { pattern: /hash|Hash|digest|Digest/, type: 'byte[]' },
-          { pattern: /size|Size|length|Length/, type: 'int' },
-          { pattern: /count|Count|rounds|Rounds/, type: 'int' },
-          { pattern: /index|Index|pos|position/, type: 'int' },
-          { pattern: /byte|Byte/, type: 'byte' },
-          { pattern: /word|Word/, type: 'word' },
-          { pattern: /dword|DWord|Dword/, type: 'dword' },
-          { pattern: /qword|QWord|Qword/, type: 'qword' },
-          { pattern: /temp|Temp|tmp|Tmp/, type: 'dword' }, // Commonly used for intermediate calculations
-          { pattern: /mask|Mask/, type: 'dword' },
-          { pattern: /shift|Shift/, type: 'int' },
-          { pattern: /rotate|Rotate|rot|Rot/, type: 'int' }
-        ],
+        // Variable name patterns removed - types should come from JSDoc, assignments, or OpCodes signatures
+        // Name-based guessing caused false type assignments (e.g., "compress(int $with_length = true)")
+        namePatterns: [],
 
-        // Method name patterns → return types
+        // Method name patterns → return types (framework-based, not name guessing)
         methodPatterns: [
-          { pattern: /encrypt|Encrypt/, type: 'byte[]' },
-          { pattern: /decrypt|Decrypt/, type: 'byte[]' },
-          { pattern: /hash|Hash/, type: 'byte[]' },
-          { pattern: /compute|Compute/, type: 'byte[]' },
-          { pattern: /generate|Generate/, type: 'byte[]' },
+          { pattern: /encrypt|Encrypt/, type: 'uint8[]' },
+          { pattern: /decrypt|Decrypt/, type: 'uint8[]' },
+          { pattern: /hash|Hash/, type: 'uint8[]' },
+          { pattern: /compute|Compute/, type: 'uint8[]' },
+          { pattern: /generate|Generate/, type: 'uint8[]' },
           { pattern: /create|Create/, type: 'Object' },
           { pattern: /setup|Setup|init|Init/, type: 'void' },
           { pattern: /validate|Validate|verify|Verify/, type: 'boolean' },
-          { pattern: /process|Process/, type: 'byte[]' },
-          { pattern: /pack|Pack/, type: 'dword' },
-          { pattern: /unpack|Unpack/, type: 'byte[]' },
-          { pattern: /swap|Swap/, type: 'dword' },
-          { pattern: /rotate|Rotate/, type: 'dword' }
+          { pattern: /process|Process/, type: 'uint8[]' },
+          { pattern: /pack|Pack/, type: 'uint32' },
+          { pattern: /unpack|Unpack/, type: 'uint8[]' },
+          { pattern: /swap|Swap/, type: 'uint32' },
+          { pattern: /rotate|Rotate/, type: 'uint32' }
         ],
 
         // Literal value patterns → types
         literalPatterns: [
-          { pattern: value => value >= 0 && value <= 255, type: 'byte' },
-          { pattern: value => value >= 0 && value <= 65535, type: 'word' },
-          { pattern: value => value >= 0 && value <= 4294967295, type: 'dword' },
-          { pattern: value => typeof value === 'number' && value % 1 !== 0, type: 'float' },
+          { pattern: value => value >= 0 && value <= 255, type: 'uint8' },
+          { pattern: value => value >= 0 && value <= 65535, type: 'uint16' },
+          { pattern: value => value >= 0 && value <= 4294967295, type: 'uint32' },
+          { pattern: value => typeof value === 'number' && value % 1 !== 0, type: 'float64' },
           { pattern: value => typeof value === 'string', type: 'string' },
           { pattern: value => typeof value === 'boolean', type: 'boolean' }
         ]
       };
 
-      // Type hierarchy and compatibility
+      // Type hierarchy and compatibility (using IL vocabulary)
       this.typeHierarchy = {
-        'byte': { bits: 8, signed: false, category: 'integer', canPromoteTo: ['word', 'dword', 'qword', 'float', 'double'] },
-        'sbyte': { bits: 8, signed: true, category: 'integer', canPromoteTo: ['short', 'int', 'long', 'float', 'double'] },
-        'word': { bits: 16, signed: false, category: 'integer', canPromoteTo: ['dword', 'qword', 'float', 'double'] },
-        'short': { bits: 16, signed: true, category: 'integer', canPromoteTo: ['int', 'long', 'float', 'double'] },
-        'dword': { bits: 32, signed: false, category: 'integer', canPromoteTo: ['qword', 'double'] },
-        'int': { bits: 32, signed: true, category: 'integer', canPromoteTo: ['long', 'double'] },
-        'qword': { bits: 64, signed: false, category: 'integer', canPromoteTo: ['double'] },
-        'long': { bits: 64, signed: true, category: 'integer', canPromoteTo: ['double'] },
-        'float': { bits: 32, signed: true, category: 'float', canPromoteTo: ['double'] },
-        'double': { bits: 64, signed: true, category: 'float', canPromoteTo: [] },
+        'uint8': { bits: 8, signed: false, category: 'integer', canPromoteTo: ['uint16', 'uint32', 'uint64', 'float32', 'float64'] },
+        'int8': { bits: 8, signed: true, category: 'integer', canPromoteTo: ['int16', 'int32', 'int64', 'float32', 'float64'] },
+        'uint16': { bits: 16, signed: false, category: 'integer', canPromoteTo: ['uint32', 'uint64', 'float32', 'float64'] },
+        'int16': { bits: 16, signed: true, category: 'integer', canPromoteTo: ['int32', 'int64', 'float32', 'float64'] },
+        'uint32': { bits: 32, signed: false, category: 'integer', canPromoteTo: ['uint64', 'float64'] },
+        'int32': { bits: 32, signed: true, category: 'integer', canPromoteTo: ['int64', 'float64'] },
+        'uint64': { bits: 64, signed: false, category: 'integer', canPromoteTo: ['float64'] },
+        'int64': { bits: 64, signed: true, category: 'integer', canPromoteTo: ['float64'] },
+        'float32': { bits: 32, signed: true, category: 'float', canPromoteTo: ['float64'] },
+        'float64': { bits: 64, signed: true, category: 'float', canPromoteTo: [] },
+        'bigint': { bits: -1, signed: true, category: 'integer', canPromoteTo: [] },
         'boolean': { bits: 1, signed: false, category: 'boolean', canPromoteTo: [] },
         'string': { bits: -1, signed: false, category: 'string', canPromoteTo: [] },
-        'void': { bits: 0, signed: false, category: 'void', canPromoteTo: [] }
+        'void': { bits: 0, signed: false, category: 'void', canPromoteTo: [] },
+        // Legacy aliases for backward compatibility with transformers that may still use these
+        'byte': { bits: 8, signed: false, category: 'integer', canPromoteTo: ['uint16', 'uint32', 'uint64', 'float32', 'float64'] },
+        'word': { bits: 16, signed: false, category: 'integer', canPromoteTo: ['uint32', 'uint64', 'float32', 'float64'] },
+        'dword': { bits: 32, signed: false, category: 'integer', canPromoteTo: ['uint64', 'float64'] },
+        'qword': { bits: 64, signed: false, category: 'integer', canPromoteTo: ['float64'] },
+        'int': { bits: 32, signed: true, category: 'integer', canPromoteTo: ['int64', 'float64'] }
       };
     }
 
@@ -324,11 +324,11 @@
         const typeName = typeof jsDocType === 'object' ? jsDocType.name : jsDocType;
         if (!typeName) return null;
         const typeMap = {
-          'uint8': 'byte', 'uint16': 'word', 'uint32': 'dword', 'uint64': 'qword',
-          'int8': 'sbyte', 'int16': 'short', 'int32': 'int', 'int64': 'long',
-          'number': 'int', 'boolean': 'bool', 'bool': 'bool',
-          'uint8[]': 'byte[]', 'uint16[]': 'word[]', 'uint32[]': 'dword[]', 'uint64[]': 'qword[]',
-          'byte[]': 'byte[]', 'string': 'string', 'void': 'void', 'object': 'object'
+          'byte': 'uint8', 'word': 'uint16', 'dword': 'uint32', 'qword': 'uint64',
+          'sbyte': 'int8', 'short': 'int16', 'int': 'int32', 'long': 'int64',
+          'number': 'int32', 'boolean': 'boolean', 'bool': 'boolean',
+          'byte[]': 'uint8[]', 'word[]': 'uint16[]', 'dword[]': 'uint32[]', 'qword[]': 'uint64[]',
+          'uint8[]': 'uint8[]', 'string': 'string', 'void': 'void', 'object': 'object'
         };
         // Handle array types from JSDocParser
         const baseType = typeMap[typeName] || typeName;
@@ -609,7 +609,7 @@
     resolveType(varName) {
       const constraints = this.typeConstraints.get(varName);
       if (!constraints || constraints.length === 0) {
-        return 'dword'; // Default for unknown types in crypto context
+        return 'uint32'; // Default for unknown types in crypto context
       }
       
       // Sort by confidence and take highest confidence type
@@ -639,7 +639,7 @@
       }
       
       // Rule 2: Promote to largest compatible type
-      const hierarchy = ['byte', 'word', 'dword', 'qword', 'float', 'double'];
+      const hierarchy = ['uint8', 'uint16', 'uint32', 'uint64', 'float32', 'float64'];
       let maxType = types[0];
       for (const type of types) {
         if (hierarchy.indexOf(type) > hierarchy.indexOf(maxType)) {
@@ -674,11 +674,11 @@
       if (context.className && this.frameworkTypes[context.className]) {
         const classInfo = this.frameworkTypes[context.className];
         if (context.propertyName && classInfo.properties) {
-          return classInfo.properties[context.propertyName] || 'dword';
+          return classInfo.properties[context.propertyName] || 'uint32';
         }
         if (context.methodName && classInfo.methods) {
           const methodInfo = classInfo.methods[context.methodName];
-          return methodInfo ? methodInfo.returns : 'dword';
+          return methodInfo ? methodInfo.returns : 'uint32';
         }
       }
 
@@ -691,7 +691,7 @@
       }
 
       // Default fallback
-      return 'dword';
+      return 'uint32';
     }
 
     /**
@@ -760,6 +760,109 @@
       this.pendingComments = []; // Track all comments between tokens
       this.classHierarchy = new Map(); // Maps class names to their base classes
       this.classMembers = new Map(); // Maps class names to their member type signatures
+      // Scope-based variable type tracking for type inference
+      this.scopeStack = [new Map()]; // Stack of variable type maps, global scope at bottom
+      this.constantTypes = new Map(); // Module-level constant types
+      this.classFieldTypes = new Map(); // Maps "ClassName.fieldName" to type
+      this.classMethodReturnTypes = new Map(); // Maps "ClassName.methodName" to return type
+    }
+
+    /**
+     * Push a new scope onto the scope stack
+     * Called when entering a function, class body, or block
+     */
+    pushScope() {
+      this.scopeStack.push(new Map());
+    }
+
+    /**
+     * Pop the current scope from the stack
+     * Called when leaving a function, class body, or block
+     */
+    popScope() {
+      if (this.scopeStack.length > 1)
+        this.scopeStack.pop();
+    }
+
+    /**
+     * Register a variable with its type in the current scope
+     * @param {string} name - Variable name
+     * @param {string} type - Type string (e.g., 'uint32', 'uint8[]', 'string')
+     */
+    registerVariableType(name, type) {
+      if (!name || !type) return;
+      const currentScope = this.scopeStack[this.scopeStack.length - 1];
+      currentScope.set(name, type);
+    }
+
+    /**
+     * Look up a variable's type from current scope up through parent scopes
+     * @param {string} name - Variable name
+     * @returns {string|null} Type string or null if not found
+     */
+    lookupVariableType(name) {
+      // Check scopes from innermost to outermost
+      for (let i = this.scopeStack.length - 1; i >= 0; --i) {
+        const scope = this.scopeStack[i];
+        if (scope.has(name))
+          return scope.get(name);
+      }
+      // Check module-level constants
+      if (this.constantTypes.has(name))
+        return this.constantTypes.get(name);
+      return null;
+    }
+
+    /**
+     * Register a module-level constant with its type
+     * @param {string} name - Constant name
+     * @param {string} type - Type string
+     */
+    registerConstantType(name, type) {
+      if (!name || !type) return;
+      this.constantTypes.set(name, type);
+    }
+
+    /**
+     * Register a class field with its type
+     * @param {string} className - Class name
+     * @param {string} fieldName - Field name
+     * @param {string} type - Type string
+     */
+    registerClassFieldType(className, fieldName, type) {
+      if (!className || !fieldName || !type) return;
+      this.classFieldTypes.set(`${className}.${fieldName}`, type);
+    }
+
+    /**
+     * Look up a class field's type
+     * @param {string} className - Class name
+     * @param {string} fieldName - Field name
+     * @returns {string|null} Type string or null if not found
+     */
+    lookupClassFieldType(className, fieldName) {
+      return this.classFieldTypes.get(`${className}.${fieldName}`) || null;
+    }
+
+    /**
+     * Register a class method's return type
+     * @param {string} className - Class name
+     * @param {string} methodName - Method name
+     * @param {string} returnType - Return type string
+     */
+    registerClassMethodReturnType(className, methodName, returnType) {
+      if (!className || !methodName || !returnType) return;
+      this.classMethodReturnTypes.set(`${className}.${methodName}`, returnType);
+    }
+
+    /**
+     * Look up a class method's return type
+     * @param {string} className - Class name
+     * @param {string} methodName - Method name
+     * @returns {string|null} Return type string or null if not found
+     */
+    lookupClassMethodReturnType(className, methodName) {
+      return this.classMethodReturnTypes.get(`${className}.${methodName}`) || null;
     }
 
     /**
@@ -1096,11 +1199,13 @@
       const value = this.normalizedCode.slice(pos, end);
       const keywords = new Set([
         'class', 'function', 'const', 'let', 'var', 'if', 'else', 'for', 'while',
-        'return', 'this', 'new', 'static', 'get', 'set', 'async', 'await',
-        'export', 'import', 'default', 'from', 'as', 'extends', 'constructor',
+        'return', 'this', 'new', 'static', 'get', 'set', 'async', 'await', 'super',
+        'export', 'import', 'default', 'as', 'extends', 'constructor',
         'throw', 'typeof', 'undefined', 'null', 'true', 'false', 'break',
         'continue', 'try', 'catch', 'finally', 'switch', 'case', 'do', 'with',
         'in', 'of', 'instanceof', 'delete', 'void'
+        // Note: 'from' is intentionally omitted - it's a contextual keyword in ES6 modules
+        // but since we use UMD patterns, we allow 'from' as a regular identifier
       ]);
       
       return {
@@ -1115,7 +1220,8 @@
       const operators = [
         '>>>=', '===', '!==', '>>>', '<<<', '>>=', '<<=', '&&', '||',
         '++', '--', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=',
-        '==', '!=', '<=', '>=', '>>', '<<', '=>', '...', '?.'
+        '==', '!=', '<=', '>=', '>>', '<<', '=>', '...', '?.',
+        '**=', '**'  // Exponentiation operator (ES2016)
       ];
       
       for (const op of operators) {
@@ -1247,13 +1353,2930 @@
       // Step 2: Flatten prototype methods and constructor function assignments
       ilAst = this.flattenMethodDefinitions(ilAst);
 
-      // Step 3: Multi-pass type narrowing until convergence
+      // Step 2.5: Hoist IIFE-computed variable initializers
+      // Transforms: const X = (() => { const A = ...; return { A }; })()
+      // Into: const A = ...; const X = { A };
+      ilAst = this.hoistIIFEVariables(ilAst);
+
+      // Step 2.6: Filter out JS-specific module loader functions
+      // Removes functions that load dependencies via require/import
+      ilAst = this.filterModuleLoaderFunctions(ilAst);
+
+      // Step 3: Normalize JavaScript-specific patterns to IL AST nodes
+      // This converts super(), this.x, OpCodes.X(), Math.X(), Array methods, etc.
+      ilAst = this.normalizeJSPatterns(ilAst);
+
+      // Step 4: Multi-pass type narrowing until convergence
       this.performTypeNarrowing(ilAst);
 
       // Mark as IL AST for downstream consumers
       ilAst.isILAST = true;
 
       return ilAst;
+    }
+
+    // ========================[ IL AST BUILDING - JS PATTERN NORMALIZATION ]========================
+
+    /**
+     * OpCodes operations that should be inlined to bitwise expressions
+     * Maps OpCodes method names to their IL representation
+     */
+    static INLINE_OPCODES = {
+      // XOR operations
+      'XorN': { type: 'BinaryExpression', operator: '^' },
+      'Xor8': { type: 'BinaryExpression', operator: '^', mask: 0xFF },
+      'Xor16': { type: 'BinaryExpression', operator: '^', mask: 0xFFFF },
+      'Xor32': { type: 'BinaryExpression', operator: '^', mask: 0xFFFFFFFF },
+
+      // OR operations
+      'OrN': { type: 'BinaryExpression', operator: '|' },
+      'Or8': { type: 'BinaryExpression', operator: '|', mask: 0xFF },
+      'Or16': { type: 'BinaryExpression', operator: '|', mask: 0xFFFF },
+      'Or32': { type: 'BinaryExpression', operator: '|', mask: 0xFFFFFFFF },
+
+      // AND operations
+      'AndN': { type: 'BinaryExpression', operator: '&' },
+      'And8': { type: 'BinaryExpression', operator: '&', mask: 0xFF },
+      'And16': { type: 'BinaryExpression', operator: '&', mask: 0xFFFF },
+      'And32': { type: 'BinaryExpression', operator: '&', mask: 0xFFFFFFFF },
+
+      // NOT operations
+      'NotN': { type: 'UnaryExpression', operator: '~' },
+      'Not8': { type: 'UnaryExpression', operator: '~', mask: 0xFF },
+      'Not16': { type: 'UnaryExpression', operator: '~', mask: 0xFFFF },
+      'Not32': { type: 'UnaryExpression', operator: '~', mask: 0xFFFFFFFF },
+
+      // Shift operations
+      'Shl8': { type: 'BinaryExpression', operator: '<<', mask: 0xFF },
+      'Shl16': { type: 'BinaryExpression', operator: '<<', mask: 0xFFFF },
+      'Shl32': { type: 'BinaryExpression', operator: '<<', mask: 0xFFFFFFFF },
+      'Shr8': { type: 'BinaryExpression', operator: '>>', mask: 0xFF },
+      'Shr16': { type: 'BinaryExpression', operator: '>>', mask: 0xFFFF },
+      'Shr32': { type: 'BinaryExpression', operator: '>>', mask: 0xFFFFFFFF },
+      'UShr32': { type: 'BinaryExpression', operator: '>>>' },
+
+      // N-suffix operations for BigInt (arbitrary precision) - no mask needed
+      'ShiftLn': { type: 'BinaryExpression', operator: '<<' },
+      'ShiftRn': { type: 'BinaryExpression', operator: '>>' },
+
+      // Add/Sub with mask
+      'Add32': { type: 'BinaryExpression', operator: '+', mask: 0xFFFFFFFF },
+      'Sub32': { type: 'BinaryExpression', operator: '-', mask: 0xFFFFFFFF },
+      'Mul32': { type: 'BinaryExpression', operator: '*', mask: 0xFFFFFFFF }
+    };
+
+    /**
+     * OpCodes operations that become rotation IL nodes
+     */
+    static ROTATION_OPCODES = {
+      'RotL8': { bits: 8, direction: 'left' },
+      'RotR8': { bits: 8, direction: 'right' },
+      'RotL16': { bits: 16, direction: 'left' },
+      'RotR16': { bits: 16, direction: 'right' },
+      'RotL32': { bits: 32, direction: 'left' },
+      'RotR32': { bits: 32, direction: 'right' },
+      'RotL64': { bits: 64, direction: 'left' },
+      'RotR64': { bits: 64, direction: 'right' }
+    };
+
+    /**
+     * OpCodes operations that become helper function calls (complex operations)
+     */
+    static COMPLEX_OPCODES = {
+      'Pack16BE': { type: 'PackBytes', endian: 'big', bits: 16 },
+      'Pack16LE': { type: 'PackBytes', endian: 'little', bits: 16 },
+      'Pack32BE': { type: 'PackBytes', endian: 'big', bits: 32 },
+      'Pack32LE': { type: 'PackBytes', endian: 'little', bits: 32 },
+      'Pack64BE': { type: 'PackBytes', endian: 'big', bits: 64 },
+      'Pack64LE': { type: 'PackBytes', endian: 'little', bits: 64 },
+      'Unpack16BE': { type: 'UnpackBytes', endian: 'big', bits: 16 },
+      'Unpack16LE': { type: 'UnpackBytes', endian: 'little', bits: 16 },
+      'Unpack32BE': { type: 'UnpackBytes', endian: 'big', bits: 32 },
+      'Unpack32LE': { type: 'UnpackBytes', endian: 'little', bits: 32 },
+      'Unpack64BE': { type: 'UnpackBytes', endian: 'big', bits: 64 },
+      'Unpack64LE': { type: 'UnpackBytes', endian: 'little', bits: 64 },
+      'XorArrays': { type: 'ArrayXor' },
+      'ClearArray': { type: 'ArrayClear' },
+      'Hex8ToBytes': { type: 'HexDecode' },
+      'BytesToHex8': { type: 'HexEncode' },
+      'AnsiToBytes': { type: 'StringToBytes', encoding: 'ascii' },
+      'Utf8ToBytes': { type: 'StringToBytes', encoding: 'utf8' },
+      'BytesToAnsi': { type: 'BytesToString', encoding: 'ascii' },
+      'BytesToUtf8': { type: 'BytesToString', encoding: 'utf8' },
+      'ToUint32': { type: 'Cast', targetType: 'uint32' },
+      'ToUint16': { type: 'Cast', targetType: 'uint16' },
+      'ToUint8': { type: 'Cast', targetType: 'uint8' },
+      'ToByte': { type: 'Cast', targetType: 'uint8' },
+      'ToInt32': { type: 'Cast', targetType: 'int32' },
+      'ToInt16': { type: 'Cast', targetType: 'int16' },
+      'ToInt8': { type: 'Cast', targetType: 'int8' },
+      'ToDWord': { type: 'Cast', targetType: 'uint32' },
+      'ToQWord': { type: 'Cast', targetType: 'uint64' },
+      'ToWord': { type: 'Cast', targetType: 'uint16' },
+      'ToInt': { type: 'Cast', targetType: 'int' },
+      'ToFloat': { type: 'Cast', targetType: 'float' },
+      'ToDouble': { type: 'Cast', targetType: 'double' },
+      'ToBool': { type: 'Cast', targetType: 'boolean' },
+      'ToString': { type: 'Cast', targetType: 'string' },
+      'ConcatArrays': { type: 'OpCodesCall', name: 'ConcatArrays' },
+      'CopyArray': { type: 'OpCodesCall', name: 'CopyArray' },
+      'CompareArrays': { type: 'OpCodesCall', name: 'CompareArrays' },
+      'ConstantTimeCompare': { type: 'OpCodesCall', name: 'ConstantTimeCompare' },
+      'SecureCompare': { type: 'OpCodesCall', name: 'SecureCompare' },
+      'DoubleToBytes': { type: 'OpCodesCall', name: 'DoubleToBytes' },
+      'GetBit': { type: 'OpCodesCall', name: 'GetBit' },
+      'GetBitN': { type: 'OpCodesCall', name: 'GetBitN' },
+      'SetBit': { type: 'OpCodesCall', name: 'SetBit' },
+      'GetByte': { type: 'OpCodesCall', name: 'GetByte' },
+      'BitMask': { type: 'OpCodesCall', name: 'BitMask' },
+      'PopCountFast': { type: 'OpCodesCall', name: 'PopCountFast' },
+      'BitCountN': { type: 'OpCodesCall', name: 'BitCountN' },
+      'GF256Mul': { type: 'OpCodesCall', name: 'GF256Mul' }
+    };
+
+    /**
+     * TypedArray element type mappings for IL nodes
+     * Maps JavaScript TypedArray names to precise IL element types
+     */
+    static TYPED_ARRAY_ELEMENT_TYPES = {
+      'Uint8Array': 'uint8',
+      'Int8Array': 'int8',
+      'Uint8ClampedArray': 'uint8',
+      'Uint16Array': 'uint16',
+      'Int16Array': 'int16',
+      'Uint32Array': 'uint32',
+      'Int32Array': 'int32',
+      'Float32Array': 'float32',
+      'Float64Array': 'float64',
+      'BigUint64Array': 'uint64',
+      'BigInt64Array': 'int64'
+    };
+
+    /**
+     * Operation result types for IL nodes
+     * Provides precise types for various operations
+     */
+    static OPERATION_RESULT_TYPES = {
+      // Rotation operations return same bit-width unsigned
+      'RotateLeft': bits => `uint${bits}`,
+      'RotateRight': bits => `uint${bits}`,
+      // Pack operations return unsigned int of target size
+      'PackBytes': bits => `uint${bits}`,
+      // Unpack operations return byte array
+      'UnpackBytes': () => 'uint8[]',
+      // XOR operations on arrays return byte array
+      'ArrayXor': () => 'uint8[]',
+      // Hex decode returns byte array
+      'HexDecode': () => 'uint8[]',
+      // Hex encode returns string
+      'HexEncode': () => 'string',
+      // String to bytes returns byte array
+      'StringToBytes': () => 'uint8[]',
+      // Bytes to string returns string
+      'BytesToString': () => 'string',
+      // Math operations
+      'Floor': () => 'int32',
+      'Ceil': () => 'int32',
+      'Round': () => 'int32',
+      'Truncate': () => 'int32',
+      'Abs': (_bits, operandType) => operandType || 'float64',
+      'Min': (_bits, operandType) => operandType || 'float64',
+      'Max': (_bits, operandType) => operandType || 'float64',
+      'Sqrt': () => 'float64',
+      'Power': () => 'float64',
+      'Log': () => 'float64',
+      'Log2': () => 'float64',
+      'Log10': () => 'float64',
+      'Random': () => 'float64',
+      'CountLeadingZeros': () => 'int32',
+      // Cast operation
+      'Cast': bits => `uint${bits || 32}`,
+      // Math constants and number constants
+      'MathConstant': () => 'float64',
+      'NumberConstant': () => 'float64',
+      // Instance check
+      'InstanceOfCheck': () => 'boolean',
+      // Trigonometric and transcendental functions
+      'Sin': () => 'float64',
+      'Cos': () => 'float64',
+      'Tan': () => 'float64',
+      'Asin': () => 'float64',
+      'Acos': () => 'float64',
+      'Atan': () => 'float64',
+      'Atan2': () => 'float64',
+      'Sinh': () => 'float64',
+      'Cosh': () => 'float64',
+      'Tanh': () => 'float64',
+      'Exp': () => 'float64',
+      'Cbrt': () => 'float64',
+      'Hypot': () => 'float64',
+      'Sign': () => 'int32',
+      'Fround': () => 'float32',
+      // Array operations
+      'ArrayLength': () => 'int32',
+      'ArraySlice': elementType => elementType ? `${elementType}[]` : 'uint8[]',
+      'ArrayConcat': elementType => elementType ? `${elementType}[]` : 'uint8[]',
+      'ArrayPop': elementType => elementType || 'uint8',
+      'ArrayShift': elementType => elementType || 'uint8',
+      'ArrayIndexOf': () => 'int32',
+      'ArrayFindIndex': () => 'int32',
+      'ArrayIncludes': () => 'boolean',
+      'ArrayEvery': () => 'boolean',
+      'ArraySome': () => 'boolean'
+    };
+
+    /**
+     * IL AST Building Step 3: Normalize JavaScript-specific patterns
+     *
+     * Converts JavaScript patterns to language-agnostic IL nodes:
+     *   - super() calls → ParentConstructorCall
+     *   - this.property → ThisPropertyAccess
+     *   - this.method() → ThisMethodCall
+     *   - OpCodes.XorN() → Inline bitwise expressions
+     *   - OpCodes.RotL32() → RotateLeft/RotateRight nodes
+     *   - OpCodes.Pack32BE() → PackBytes nodes
+     *   - Math.floor() → Floor node
+     *   - new Array() → ArrayCreation
+     *   - arr.push() → ArrayAppend
+     *   - arr.length → ArrayLength
+     *   - For-loop multi-declarations → split or normalized
+     *   - Destructuring → sequential assignments
+     *
+     * @param {Object} ast - AST from previous transformation steps
+     * @returns {Object} Normalized IL AST
+     */
+    normalizeJSPatterns(ast) {
+      if (!ast) return ast;
+      // Reset scope stack for new normalization pass
+      this.scopeStack = [new Map()];
+      this.constantTypes = new Map();
+      this.classFieldTypes = new Map();
+      return this._normalizeNode(ast, { inClass: false, className: null, isModuleLevel: true });
+    }
+
+    /**
+     * Recursively normalize a node and its children
+     * @private
+     */
+    _normalizeNode(node, context) {
+      if (!node || typeof node !== 'object') return node;
+      if (Array.isArray(node)) {
+        return node.map(child => this._normalizeNode(child, context)).filter(n => n !== null);
+      }
+
+      // Update context for class declarations
+      let newContext = context;
+      let pushNewScope = false;
+
+      if (node.type === 'ClassDeclaration' && node.id) {
+        newContext = { ...context, inClass: true, className: node.id.name, superClass: node.superClass, isModuleLevel: false };
+        pushNewScope = true;
+      } else if (node.type === 'FunctionDeclaration' || node.type === 'FunctionExpression' ||
+                 node.type === 'ArrowFunctionExpression' || node.type === 'MethodDefinition') {
+        newContext = { ...context, isModuleLevel: false };
+        pushNewScope = true;
+      } else if (node.type === 'BlockStatement') {
+        // Block statements don't change isModuleLevel but create a scope
+        pushNewScope = true;
+      }
+
+      // Push scope if entering a new scope
+      if (pushNewScope)
+        this.pushScope();
+
+      // Register function parameters in the new scope
+      if (node.params && (node.type === 'FunctionDeclaration' || node.type === 'FunctionExpression' ||
+                          node.type === 'ArrowFunctionExpression')) {
+        this._registerFunctionParameters(node, newContext);
+      }
+
+      // Register method return types from JSDoc annotations
+      if (node.type === 'MethodDefinition' && context?.className && node.key?.name) {
+        const returnType = node.value?.typeInfo?.returns || node.value?.jsDoc?.returns?.type;
+        if (returnType)
+          this.registerClassMethodReturnType(context.className, node.key.name, returnType);
+
+        // Also register parameters for methods
+        if (node.value)
+          this._registerFunctionParameters(node.value, newContext);
+      }
+
+      // First, normalize children
+      const normalized = {};
+      for (const key of Object.keys(node)) {
+        if (key === 'loc' || key === 'range' || key === 'parent') {
+          normalized[key] = node[key];
+        } else if (Array.isArray(node[key])) {
+          normalized[key] = node[key].map(child => this._normalizeNode(child, newContext)).filter(n => n !== null);
+        } else if (node[key] && typeof node[key] === 'object') {
+          normalized[key] = this._normalizeNode(node[key], newContext);
+        } else {
+          normalized[key] = node[key];
+        }
+      }
+
+      // Now transform the normalized node
+      const result = this._transformNode(normalized, newContext);
+
+      // Pop scope if we pushed one
+      if (pushNewScope)
+        this.popScope();
+
+      return result;
+    }
+
+    /**
+     * Register function parameter types in scope from JSDoc annotations
+     * @private
+     */
+    _registerFunctionParameters(node, context) {
+      for (const param of (node.params || [])) {
+        if (param.type === 'Identifier' && param.name) {
+          // Get type from JSDoc type annotations only - no name-based fallback
+          let paramType = null;
+
+          // Check typeInfo on the function node (from JSDoc parsing)
+          if (node.typeInfo?.params?.has(param.name))
+            paramType = node.typeInfo.params.get(param.name);
+
+          // Also check the value's typeInfo (for MethodDefinition where typeInfo is on node.value)
+          if (!paramType && node.value?.typeInfo?.params?.has(param.name))
+            paramType = node.value.typeInfo.params.get(param.name);
+
+          // Check typeAnnotations map as fallback
+          if (!paramType && this.typeAnnotations.has(param)) {
+            const annotation = this.typeAnnotations.get(param);
+            paramType = annotation?.type;
+          }
+
+          if (paramType)
+            this.registerVariableType(param.name, paramType);
+        }
+      }
+    }
+
+    /**
+     * Transform a single node to its IL representation
+     * @private
+     */
+    _transformNode(node, context) {
+      switch (node.type) {
+        case 'CallExpression':
+          return this._transformCallExpression(node, context);
+
+        case 'MemberExpression':
+          return this._transformMemberExpression(node, context);
+
+        case 'NewExpression':
+          return this._transformNewExpression(node, context);
+
+        case 'VariableDeclaration':
+          return this._transformVariableDeclaration(node, context);
+
+        case 'ForStatement':
+          return this._transformForStatement(node, context);
+
+        case 'Literal':
+          return this._transformLiteral(node, context);
+
+        case 'ArrayExpression':
+          return this._transformArrayExpression(node, context);
+
+        case 'BinaryExpression':
+          return this._transformBinaryExpression(node, context);
+
+        case 'UnaryExpression':
+          return this._transformUnaryExpression(node, context);
+
+        case 'Identifier':
+          return this._transformIdentifier(node, context);
+
+        case 'AssignmentExpression':
+          return this._transformAssignmentExpression(node, context);
+
+        case 'UpdateExpression':
+          return this._transformUpdateExpression(node, context);
+
+        case 'ConditionalExpression':
+          return this._transformConditionalExpression(node, context);
+
+        case 'LogicalExpression':
+          return this._transformLogicalExpression(node, context);
+
+        case 'ThisExpression':
+          return { ...node, ilNodeType: 'ThisExpression' };
+
+        case 'TemplateLiteral':
+          return this._transformTemplateLiteral(node, context);
+
+        case 'SpreadElement':
+          return this._transformSpreadElement(node, context);
+
+        case 'RestElement':
+          return this._transformRestElement(node, context);
+
+        case 'ObjectExpression':
+          return this._transformObjectExpression(node, context);
+
+        case 'ArrowFunctionExpression':
+        case 'FunctionExpression':
+          return this._transformFunctionExpression(node, context);
+
+        case 'SequenceExpression':
+          return this._transformSequenceExpression(node, context);
+
+        case 'AwaitExpression':
+          return this._transformAwaitExpression(node, context);
+
+        case 'YieldExpression':
+          return this._transformYieldExpression(node, context);
+
+        default:
+          return node;
+      }
+    }
+
+    /**
+     * Transform Identifier nodes to add resultType from variable lookup
+     * @private
+     */
+    _transformIdentifier(node, context) {
+      const name = node.name;
+      if (!name) return node;
+
+      let resultType;
+
+      // Handle special global values first
+      if (name === 'Infinity' || name === 'NaN') {
+        resultType = 'float64';
+      } else if (name === 'undefined') {
+        resultType = 'void';
+      } else {
+        // Look up variable type from scope - no name-based fallback
+        resultType = this.lookupVariableType(name);
+      }
+
+      return {
+        ...node,
+        resultType,
+        ilNodeType: 'Identifier'
+      };
+    }
+
+    /**
+     * Transform AssignmentExpression to propagate types
+     * @private
+     */
+    _transformAssignmentExpression(node, context) {
+      const left = this._transformNode(node.left, context);
+      const right = this._transformNode(node.right, context);
+
+      // Get type based on operator
+      let resultType;
+      const op = node.operator;
+      if (op === '=') {
+        resultType = right?.resultType;
+      } else {
+        // Compound assignment: derive type from the implicit binary operator
+        const leftType = typeof left?.resultType === 'string' ? left.resultType : '';
+        const rightType = typeof right?.resultType === 'string' ? right.resultType : '';
+        if (['|=', '&=', '^=', '<<=', '>>='].includes(op)) {
+          // Bitwise compound: result is left operand type or int32
+          resultType = (leftType && leftType !== 'any' && leftType !== 'number') ? leftType : 'int32';
+        } else if (op === '>>>=') {
+          // Unsigned right shift always produces uint32
+          resultType = 'uint32';
+        } else if (['+=', '-=', '*=', '%='].includes(op)) {
+          if (op === '+=' && (leftType === 'string' || rightType === 'string'))
+            resultType = 'string';
+          else if (leftType.includes('float') || rightType.includes('float'))
+            resultType = 'float64';
+          else if (leftType.includes('64') || rightType.includes('64'))
+            resultType = leftType.includes('int') || rightType.includes('int') ? 'int64' : 'uint64';
+          else if (leftType && leftType !== 'any' && leftType !== 'number')
+            resultType = leftType;
+          else if (rightType && rightType !== 'any' && rightType !== 'number')
+            resultType = rightType;
+          else
+            resultType = 'int32';
+        } else if (op === '/=') {
+          resultType = 'float64';
+        } else if (op === '**=') {
+          resultType = 'float64';
+        } else {
+          resultType = right?.resultType;
+        }
+      }
+
+      // Register variable type if assigning to identifier
+      if (node.left?.type === 'Identifier' && node.left.name && resultType)
+        this.registerVariableType(node.left.name, resultType);
+
+      // Register class field type if assigning to this.field
+      if (node.left?.type === 'MemberExpression' &&
+          node.left.object?.type === 'ThisExpression' &&
+          context?.className && resultType) {
+        const fieldName = node.left.property?.name || node.left.property?.value;
+        if (fieldName)
+          this.registerClassFieldType(context.className, fieldName, resultType);
+      }
+
+      return {
+        ...node,
+        left,
+        right,
+        resultType,
+        ilNodeType: 'AssignmentExpression'
+      };
+    }
+
+    /**
+     * Transform UpdateExpression (++x, x++, --x, x--)
+     * @private
+     */
+    _transformUpdateExpression(node, context) {
+      const argument = this._transformNode(node.argument, context);
+      // Update expressions return the same type as the argument (typically numeric)
+      const resultType = argument?.resultType || 'uint32';
+
+      return {
+        ...node,
+        argument,
+        resultType,
+        ilNodeType: 'UpdateExpression'
+      };
+    }
+
+    /**
+     * Transform ConditionalExpression (ternary operator: a ? b : c)
+     * Propagates type from consequent and alternate branches
+     * @private
+     */
+    _transformConditionalExpression(node, context) {
+      const test = this._transformNode(node.test, context);
+      const consequent = this._transformNode(node.consequent, context);
+      const alternate = this._transformNode(node.alternate, context);
+
+      // Determine result type - prefer consequent type, fall back to alternate
+      // If both have types and they differ, use a common base type
+      let resultType = consequent?.resultType || alternate?.resultType;
+
+      // If both branches have different types, try to find common type
+      if (consequent?.resultType && alternate?.resultType &&
+          consequent.resultType !== alternate.resultType) {
+        resultType = this._getCommonType(consequent.resultType, alternate.resultType);
+      }
+
+      return {
+        ...node,
+        test,
+        consequent,
+        alternate,
+        resultType,
+        ilNodeType: 'ConditionalExpression'
+      };
+    }
+
+    /**
+     * Transform LogicalExpression (&& and || operators)
+     * @private
+     */
+    _transformLogicalExpression(node, context) {
+      const left = this._transformNode(node.left, context);
+      const right = this._transformNode(node.right, context);
+
+      // JavaScript's || and && operators return actual values, not booleans:
+      // - a || b returns a if a is truthy, else b
+      // - a && b returns a if a is falsy, else b
+      // For null-coalescing patterns like `configs[x] || configs["default"]`, the result
+      // is the same type as the operands, not boolean.
+
+      // Logical expressions (&&, ||) always return boolean in strongly-typed languages
+      // Even though JavaScript uses short-circuit evaluation that returns operand values,
+      // for type-safe transpilation targets, these are boolean expressions
+      const resultType = 'boolean';
+
+      return {
+        ...node,
+        left,
+        right,
+        resultType,
+        ilNodeType: 'LogicalExpression'
+      };
+    }
+
+    /**
+     * Transform CallExpression nodes
+     * Handles: super(), this.method(), OpCodes.X(), Math.X(), array methods
+     * @private
+     */
+    _transformCallExpression(node, context) {
+      const callee = node.callee;
+
+      // super() → ParentConstructorCall
+      if (callee && callee.type === 'Super') {
+        return {
+          type: 'ParentConstructorCall',
+          arguments: node.arguments || [],
+          parentClass: context.superClass ? (context.superClass.name || context.superClass.property?.name) : null,
+          ilNodeType: 'ParentConstructorCall'
+        };
+      }
+
+      // super.method() → ParentMethodCall
+      if (callee && callee.type === 'MemberExpression' && callee.object?.type === 'Super') {
+        return {
+          type: 'ParentMethodCall',
+          method: callee.property?.name || callee.property?.value,
+          arguments: node.arguments || [],
+          parentClass: context.superClass ? (context.superClass.name || context.superClass.property?.name) : null,
+          ilNodeType: 'ParentMethodCall'
+        };
+      }
+
+      // this.method() → ThisMethodCall
+      if (callee && callee.type === 'MemberExpression' && callee.object?.type === 'ThisExpression') {
+        const methodName = callee.property?.name || callee.property?.value;
+        const resultType = context?.className ?
+          this.lookupClassMethodReturnType(context.className, methodName) : null;
+        return {
+          type: 'ThisMethodCall',
+          method: methodName,
+          arguments: node.arguments || [],
+          resultType,
+          ilNodeType: 'ThisMethodCall'
+        };
+      }
+
+      // Handle already-normalized ThisPropertyAccess callee → ThisMethodCall
+      // This happens when children are normalized before the CallExpression is processed
+      if (callee && callee.type === 'ThisPropertyAccess') {
+        const methodName = callee.property;
+        const resultType = context?.className ?
+          this.lookupClassMethodReturnType(context.className, methodName) : null;
+        return {
+          type: 'ThisMethodCall',
+          method: methodName,
+          arguments: node.arguments || [],
+          resultType,
+          ilNodeType: 'ThisMethodCall'
+        };
+      }
+
+      // OpCodes.X() or global.OpCodes.X() → inline or IL node
+      const isOpCodesCall = callee && callee.type === 'MemberExpression' && (
+        callee.object?.name === 'OpCodes' ||
+        (callee.object?.type === 'MemberExpression' && callee.object.property?.name === 'OpCodes')
+      );
+      if (isOpCodesCall) {
+        const methodName = callee.property?.name || callee.property?.value;
+        return this._transformOpCodesCall(methodName, node.arguments || [], context);
+      }
+
+      // Math.X() → IL node
+      if (callee && callee.type === 'MemberExpression' && callee.object?.name === 'Math') {
+        const methodName = callee.property?.name || callee.property?.value;
+        return this._transformMathCall(methodName, node.arguments || [], context);
+      }
+
+      // Array methods: arr.push(), arr.fill(), arr.slice()
+      if (callee && callee.type === 'MemberExpression') {
+        const methodName = callee.property?.name || callee.property?.value;
+        const arrayMethodResult = this._transformArrayMethod(callee.object, methodName, node.arguments || [], context);
+        if (arrayMethodResult) return arrayMethodResult;
+
+        // String methods: s.split(), s.charCodeAt(), etc.
+        const stringMethodResult = this._transformStringMethod(callee.object, methodName, node.arguments || [], context);
+        if (stringMethodResult) return stringMethodResult;
+
+        // DataView methods: view.getUint8(), view.setUint32(), etc.
+        const dataViewMethodResult = this._transformDataViewMethod(callee.object, methodName, node.arguments || [], context);
+        if (dataViewMethodResult) return dataViewMethodResult;
+      }
+
+      // BigInt() constructor - convert to the argument value directly
+      // BigInt('0x...') or BigInt(123) → just the numeric value
+      if (callee && callee.type === 'Identifier' && callee.name === 'BigInt') {
+        const arg = node.arguments?.[0];
+        if (arg) {
+          // If argument is a string literal, parse it as BigInt
+          if (arg.type === 'Literal' && typeof arg.value === 'string') {
+            let str = arg.value;
+            if (str.endsWith('n')) str = str.slice(0, -1);
+            try {
+              return { type: 'Literal', value: BigInt(str), resultType: 'bigint', ilNodeType: 'BigIntLiteral' };
+            } catch (e) { /* fall through */ }
+          }
+          // If argument is a number, convert to BigInt
+          if (arg.type === 'Literal' && typeof arg.value === 'number') {
+            return { type: 'Literal', value: BigInt(arg.value), resultType: 'bigint', ilNodeType: 'BigIntLiteral' };
+          }
+          // If argument is already a BigInt literal, return it
+          if (arg.type === 'Literal' && typeof arg.value === 'bigint') {
+            return { ...arg, resultType: 'bigint' };
+          }
+          // For other expressions, wrap in a cast-like construct
+          return { type: 'BigIntCast', argument: arg, resultType: 'bigint', ilNodeType: 'BigIntCast' };
+        }
+      }
+
+      // Handle static method calls: Array.X(), Object.X(), String.X(), Number.X(), console.X()
+      if (callee && callee.type === 'MemberExpression' && callee.object?.type === 'Identifier') {
+        const objectName = callee.object.name;
+        const methodName = callee.property?.name || callee.property?.value;
+        const args = (node.arguments || []).map(arg => this._transformNode(arg, context));
+
+        // Array static methods
+        if (objectName === 'Array') {
+          const staticArrayResult = this._transformArrayStaticMethod(methodName, args, context);
+          if (staticArrayResult) return staticArrayResult;
+        }
+
+        // Object static methods
+        if (objectName === 'Object') {
+          const staticObjectResult = this._transformObjectStaticMethod(methodName, args, context);
+          if (staticObjectResult) return staticObjectResult;
+        }
+
+        // String static methods
+        if (objectName === 'String') {
+          const staticStringResult = this._transformStringStaticMethod(methodName, args, context);
+          if (staticStringResult) return staticStringResult;
+        }
+
+        // Number static methods
+        if (objectName === 'Number') {
+          const staticNumberResult = this._transformNumberStaticMethod(methodName, args, context);
+          if (staticNumberResult) return staticNumberResult;
+        }
+
+        // console methods - transform to DebugOutput IL node (can be easily stripped or handled by transformers)
+        if (objectName === 'console') {
+          return {
+            type: 'DebugOutput',
+            method: methodName, // 'log', 'warn', 'error', 'info', etc.
+            arguments: args,
+            resultType: 'void',
+            ilNodeType: 'DebugOutput'
+          };
+        }
+
+        // JSON static methods
+        if (objectName === 'JSON') {
+          if (methodName === 'stringify') {
+            return {
+              type: 'JsonSerialize',
+              value: args[0],
+              replacer: args[1] || null,
+              space: args[2] || null,
+              resultType: 'string',
+              ilNodeType: 'JsonSerialize'
+            };
+          }
+          if (methodName === 'parse') {
+            return {
+              type: 'JsonDeserialize',
+              text: args[0],
+              reviver: args[1] || null,
+              resultType: 'object',
+              ilNodeType: 'JsonDeserialize'
+            };
+          }
+        }
+      }
+
+      return node;
+    }
+
+    /**
+     * Transform OpCodes method calls
+     * @private
+     */
+    _transformOpCodesCall(methodName, rawArgs, context) {
+      // Transform all arguments first to ensure type information propagates
+      const args = rawArgs.map(arg => this._transformNode(arg, context));
+
+      // Helper to determine result type from mask
+      const getTypeFromMask = (mask) => {
+        if (mask === 0xFF) return 'uint8';
+        if (mask === 0xFFFF) return 'uint16';
+        if (mask === 0xFFFFFFFF) return 'uint32';
+        return 'int32';
+      };
+
+      // Check for inline operations (simple bitwise)
+      const inlineOp = TypeAwareJSASTParser.INLINE_OPCODES[methodName];
+      if (inlineOp) {
+        const resultType = inlineOp.mask ? getTypeFromMask(inlineOp.mask) : (args[0]?.resultType || 'int32');
+
+        if (inlineOp.type === 'UnaryExpression') {
+          const result = {
+            type: 'UnaryExpression',
+            operator: inlineOp.operator,
+            prefix: true,
+            argument: args[0],
+            resultType,
+            ilNodeType: 'InlinedOpCode'
+          };
+          if (inlineOp.mask) {
+            return {
+              type: 'BinaryExpression',
+              operator: '&',
+              left: result,
+              right: { type: 'Literal', value: inlineOp.mask, resultType },
+              resultType,
+              ilNodeType: 'InlinedOpCode'
+            };
+          }
+          return result;
+        }
+
+        if (args.length >= 2) {
+          const result = {
+            type: 'BinaryExpression',
+            operator: inlineOp.operator,
+            left: args[0],
+            right: args[1],
+            resultType,
+            ilNodeType: 'InlinedOpCode'
+          };
+          if (inlineOp.mask) {
+            return {
+              type: 'BinaryExpression',
+              operator: '&',
+              left: result,
+              right: { type: 'Literal', value: inlineOp.mask, resultType },
+              resultType,
+              ilNodeType: 'InlinedOpCode'
+            };
+          }
+          return result;
+        }
+      }
+
+      // Check for rotation operations
+      const rotOp = TypeAwareJSASTParser.ROTATION_OPCODES[methodName];
+      if (rotOp && args.length >= 2) {
+        const nodeType = rotOp.direction === 'left' ? 'RotateLeft' : 'RotateRight';
+        const resultTypeFn = TypeAwareJSASTParser.OPERATION_RESULT_TYPES[nodeType];
+        const resultType = resultTypeFn ? resultTypeFn(rotOp.bits) : `uint${rotOp.bits}`;
+        return {
+          type: nodeType,
+          bits: rotOp.bits,
+          value: args[0],
+          amount: args[1],
+          resultType,
+          ilNodeType: nodeType
+        };
+      }
+
+      // Check for complex operations (helper functions)
+      const complexOp = TypeAwareJSASTParser.COMPLEX_OPCODES[methodName];
+      if (complexOp) {
+        const resultTypeFn = TypeAwareJSASTParser.OPERATION_RESULT_TYPES[complexOp.type];
+        const resultType = resultTypeFn ? resultTypeFn(complexOp.bits, args[0]?.resultType) : `uint${complexOp.bits || 32}`;
+        const ilNode = {
+          type: complexOp.type,
+          arguments: args,
+          resultType,
+          ilNodeType: complexOp.type
+        };
+        // Copy additional properties from the operation definition
+        for (const key of Object.keys(complexOp)) {
+          if (key !== 'type') {
+            ilNode[key] = complexOp[key];
+          }
+        }
+        return ilNode;
+      }
+
+      // Unknown OpCodes method - keep as-is but mark it
+      return {
+        type: 'OpCodesCall',
+        method: methodName,
+        arguments: args,
+        resultType: args[0]?.resultType || 'int32',
+        ilNodeType: 'OpCodesCall'
+      };
+    }
+
+    /**
+     * Transform Math method calls
+     * @private
+     */
+    _transformMathCall(methodName, args, context) {
+      // Helper to get result type for math operations
+      const getResultType = (nodeType, operandType) => {
+        const resultTypeFn = TypeAwareJSASTParser.OPERATION_RESULT_TYPES[nodeType];
+        return resultTypeFn ? resultTypeFn(undefined, operandType) : 'float64';
+      };
+
+      // Helper to get the wider type from multiple arguments
+      const getWiderType = (argList) => {
+        if (!argList || argList.length === 0) return undefined;
+        let result = argList[0]?.resultType;
+        for (let i = 1; i < argList.length; ++i) {
+          const t = argList[i]?.resultType;
+          if (t) result = this._getCommonType(result || t, t);
+        }
+        return result;
+      };
+
+      switch (methodName) {
+        case 'floor':
+          return { type: 'Floor', argument: args[0], resultType: getResultType('Floor'), ilNodeType: 'Floor' };
+        case 'ceil':
+          return { type: 'Ceil', argument: args[0], resultType: getResultType('Ceil'), ilNodeType: 'Ceil' };
+        case 'round':
+          return { type: 'Round', argument: args[0], resultType: getResultType('Round'), ilNodeType: 'Round' };
+        case 'abs':
+          return { type: 'Abs', argument: args[0], resultType: getResultType('Abs', args[0]?.resultType), ilNodeType: 'Abs' };
+        case 'min':
+          return { type: 'Min', arguments: args, resultType: getResultType('Min', getWiderType(args)), ilNodeType: 'Min' };
+        case 'max':
+          return { type: 'Max', arguments: args, resultType: getResultType('Max', getWiderType(args)), ilNodeType: 'Max' };
+        case 'pow':
+          return { type: 'Power', base: args[0], exponent: args[1], resultType: getResultType('Power'), ilNodeType: 'Power' };
+        case 'sqrt':
+          return { type: 'Sqrt', argument: args[0], resultType: getResultType('Sqrt'), ilNodeType: 'Sqrt' };
+        case 'random':
+          return { type: 'Random', resultType: getResultType('Random'), ilNodeType: 'Random' };
+        case 'trunc':
+          return { type: 'Truncate', argument: args[0], resultType: getResultType('Truncate'), ilNodeType: 'Truncate' };
+        case 'log':
+          return { type: 'Log', argument: args[0], resultType: getResultType('Log'), ilNodeType: 'Log' };
+        case 'log2':
+          return { type: 'Log2', argument: args[0], resultType: getResultType('Log2'), ilNodeType: 'Log2' };
+        case 'log10':
+          return { type: 'Log10', argument: args[0], resultType: getResultType('Log10'), ilNodeType: 'Log10' };
+        case 'clz32':
+          return { type: 'CountLeadingZeros', argument: args[0], bits: 32, resultType: getResultType('CountLeadingZeros'), ilNodeType: 'CountLeadingZeros' };
+        case 'sin':
+          return { type: 'Sin', argument: args[0], resultType: 'float64', ilNodeType: 'Sin' };
+        case 'cos':
+          return { type: 'Cos', argument: args[0], resultType: 'float64', ilNodeType: 'Cos' };
+        case 'tan':
+          return { type: 'Tan', argument: args[0], resultType: 'float64', ilNodeType: 'Tan' };
+        case 'asin':
+          return { type: 'Asin', argument: args[0], resultType: 'float64', ilNodeType: 'Asin' };
+        case 'acos':
+          return { type: 'Acos', argument: args[0], resultType: 'float64', ilNodeType: 'Acos' };
+        case 'atan':
+          return { type: 'Atan', argument: args[0], resultType: 'float64', ilNodeType: 'Atan' };
+        case 'atan2':
+          return { type: 'Atan2', y: args[0], x: args[1], resultType: 'float64', ilNodeType: 'Atan2' };
+        case 'sinh':
+          return { type: 'Sinh', argument: args[0], resultType: 'float64', ilNodeType: 'Sinh' };
+        case 'cosh':
+          return { type: 'Cosh', argument: args[0], resultType: 'float64', ilNodeType: 'Cosh' };
+        case 'tanh':
+          return { type: 'Tanh', argument: args[0], resultType: 'float64', ilNodeType: 'Tanh' };
+        case 'exp':
+          return { type: 'Exp', argument: args[0], resultType: 'float64', ilNodeType: 'Exp' };
+        case 'cbrt':
+          return { type: 'Cbrt', argument: args[0], resultType: 'float64', ilNodeType: 'Cbrt' };
+        case 'hypot':
+          return { type: 'Hypot', arguments: args, resultType: 'float64', ilNodeType: 'Hypot' };
+        case 'sign':
+          return { type: 'Sign', argument: args[0], resultType: 'int32', ilNodeType: 'Sign' };
+        case 'fround':
+          return { type: 'Fround', argument: args[0], resultType: 'float32', ilNodeType: 'Fround' };
+        default:
+          // Keep as MathCall for other methods
+          return { type: 'MathCall', method: methodName, arguments: args, resultType: 'float64', ilNodeType: 'MathCall' };
+      }
+    }
+
+    /**
+     * Transform Array static method calls (Array.from, Array.isArray, Array.of)
+     * @private
+     */
+    _transformArrayStaticMethod(methodName, args, context) {
+      switch (methodName) {
+        case 'from':
+          // Array.from(iterable, mapFn?, thisArg?) → creates array from iterable
+          return {
+            type: 'ArrayFrom',
+            iterable: args[0],
+            mapFunction: args[1] || null,
+            thisArg: args[2] || null,
+            resultType: 'any[]',
+            ilNodeType: 'ArrayFrom'
+          };
+        case 'isArray':
+          // Array.isArray(value) → type check
+          return {
+            type: 'IsArrayCheck',
+            value: args[0],
+            resultType: 'boolean',
+            ilNodeType: 'IsArrayCheck'
+          };
+        case 'of':
+          // Array.of(...elements) → creates array from arguments
+          return {
+            type: 'ArrayOf',
+            elements: args,
+            resultType: 'any[]',
+            ilNodeType: 'ArrayOf'
+          };
+        default:
+          return null;
+      }
+    }
+
+    /**
+     * Transform Object static method calls (Object.keys, Object.values, Object.entries, etc.)
+     * @private
+     */
+    _transformObjectStaticMethod(methodName, args, context) {
+      switch (methodName) {
+        case 'keys':
+          return {
+            type: 'ObjectKeys',
+            object: args[0],
+            resultType: 'string[]',
+            ilNodeType: 'ObjectKeys'
+          };
+        case 'values':
+          return {
+            type: 'ObjectValues',
+            object: args[0],
+            resultType: 'any[]',
+            ilNodeType: 'ObjectValues'
+          };
+        case 'entries':
+          return {
+            type: 'ObjectEntries',
+            object: args[0],
+            resultType: 'any[][]',
+            ilNodeType: 'ObjectEntries'
+          };
+        case 'assign':
+          // Object.assign(target, ...sources) → merges objects
+          return {
+            type: 'ObjectMerge',
+            target: args[0],
+            sources: args.slice(1),
+            resultType: 'object',
+            ilNodeType: 'ObjectMerge'
+          };
+        case 'freeze':
+          // Object.freeze(obj) → returns frozen object (semantically same object)
+          return {
+            type: 'ObjectFreeze',
+            object: args[0],
+            resultType: args[0]?.resultType || 'object',
+            ilNodeType: 'ObjectFreeze'
+          };
+        case 'seal':
+          return {
+            type: 'ObjectSeal',
+            object: args[0],
+            resultType: args[0]?.resultType || 'object',
+            ilNodeType: 'ObjectSeal'
+          };
+        case 'create':
+          return {
+            type: 'ObjectCreate',
+            prototype: args[0],
+            properties: args[1] || null,
+            resultType: 'object',
+            ilNodeType: 'ObjectCreate'
+          };
+        case 'hasOwn':
+        case 'hasOwnProperty':
+          return {
+            type: 'ObjectHasProperty',
+            object: args[0],
+            property: args[1],
+            resultType: 'boolean',
+            ilNodeType: 'ObjectHasProperty'
+          };
+        case 'getOwnPropertyNames':
+          return {
+            type: 'ObjectPropertyNames',
+            object: args[0],
+            resultType: 'string[]',
+            ilNodeType: 'ObjectPropertyNames'
+          };
+        case 'fromEntries':
+          return {
+            type: 'ObjectFromEntries',
+            entries: args[0],
+            resultType: 'object',
+            ilNodeType: 'ObjectFromEntries'
+          };
+        default:
+          return null;
+      }
+    }
+
+    /**
+     * Transform String static method calls (String.fromCharCode, String.fromCodePoint)
+     * @private
+     */
+    _transformStringStaticMethod(methodName, args, context) {
+      switch (methodName) {
+        case 'fromCharCode':
+          return {
+            type: 'StringFromCharCodes',
+            charCodes: args,
+            resultType: 'string',
+            ilNodeType: 'StringFromCharCodes'
+          };
+        case 'fromCodePoint':
+          return {
+            type: 'StringFromCodePoints',
+            codePoints: args,
+            resultType: 'string',
+            ilNodeType: 'StringFromCodePoints'
+          };
+        case 'raw':
+          // String.raw`template` - raw template literal
+          return {
+            type: 'StringRaw',
+            template: args[0],
+            substitutions: args.slice(1),
+            resultType: 'string',
+            ilNodeType: 'StringRaw'
+          };
+        default:
+          return null;
+      }
+    }
+
+    /**
+     * Transform Number static method calls (Number.isInteger, Number.isNaN, etc.)
+     * @private
+     */
+    _transformNumberStaticMethod(methodName, args, context) {
+      switch (methodName) {
+        case 'isInteger':
+          return {
+            type: 'IsIntegerCheck',
+            value: args[0],
+            resultType: 'boolean',
+            ilNodeType: 'IsIntegerCheck'
+          };
+        case 'isNaN':
+          return {
+            type: 'IsNaNCheck',
+            value: args[0],
+            resultType: 'boolean',
+            ilNodeType: 'IsNaNCheck'
+          };
+        case 'isFinite':
+          return {
+            type: 'IsFiniteCheck',
+            value: args[0],
+            resultType: 'boolean',
+            ilNodeType: 'IsFiniteCheck'
+          };
+        case 'isSafeInteger':
+          return {
+            type: 'IsSafeIntegerCheck',
+            value: args[0],
+            resultType: 'boolean',
+            ilNodeType: 'IsSafeIntegerCheck'
+          };
+        case 'parseInt':
+          return {
+            type: 'ParseInteger',
+            string: args[0],
+            radix: args[1] || null,
+            resultType: 'int32',
+            ilNodeType: 'ParseInteger'
+          };
+        case 'parseFloat':
+          return {
+            type: 'ParseFloat',
+            string: args[0],
+            resultType: 'float64',
+            ilNodeType: 'ParseFloat'
+          };
+        default:
+          return null;
+      }
+    }
+
+    /**
+     * Transform DataView method calls (getUint8, setUint32, etc.)
+     * @private
+     */
+    _transformDataViewMethod(viewNode, methodName, args, context) {
+      // Transform the view node to get its type
+      const transformedView = this._transformNode(viewNode, context);
+      const viewType = transformedView?.resultType;
+
+      // Only handle if we know it's a DataView type
+      const isDataView = viewType === 'DataView' ||
+                          transformedView?.type === 'DataViewCreation' ||
+                          transformedView?.ilNodeType === 'DataViewCreation';
+
+      // Map DataView methods to IL nodes
+      const getterMethods = {
+        'getInt8': { bits: 8, signed: true, resultType: 'int8' },
+        'getUint8': { bits: 8, signed: false, resultType: 'uint8' },
+        'getInt16': { bits: 16, signed: true, resultType: 'int16' },
+        'getUint16': { bits: 16, signed: false, resultType: 'uint16' },
+        'getInt32': { bits: 32, signed: true, resultType: 'int32' },
+        'getUint32': { bits: 32, signed: false, resultType: 'uint32' },
+        'getFloat32': { bits: 32, signed: true, resultType: 'float32' },
+        'getFloat64': { bits: 64, signed: true, resultType: 'float64' },
+        'getBigInt64': { bits: 64, signed: true, resultType: 'int64' },
+        'getBigUint64': { bits: 64, signed: false, resultType: 'uint64' }
+      };
+
+      const setterMethods = {
+        'setInt8': { bits: 8, signed: true, valueType: 'int8' },
+        'setUint8': { bits: 8, signed: false, valueType: 'uint8' },
+        'setInt16': { bits: 16, signed: true, valueType: 'int16' },
+        'setUint16': { bits: 16, signed: false, valueType: 'uint16' },
+        'setInt32': { bits: 32, signed: true, valueType: 'int32' },
+        'setUint32': { bits: 32, signed: false, valueType: 'uint32' },
+        'setFloat32': { bits: 32, signed: true, valueType: 'float32' },
+        'setFloat64': { bits: 64, signed: true, valueType: 'float64' },
+        'setBigInt64': { bits: 64, signed: true, valueType: 'int64' },
+        'setBigUint64': { bits: 64, signed: false, valueType: 'uint64' }
+      };
+
+      // Transform arguments
+      const transformedArgs = args.map(arg => this._transformNode(arg, context));
+
+      if (getterMethods[methodName]) {
+        const spec = getterMethods[methodName];
+        return {
+          type: 'DataViewRead',
+          view: transformedView,
+          method: methodName,
+          offset: transformedArgs[0],
+          littleEndian: transformedArgs[1] || null, // Optional for 8-bit methods
+          bits: spec.bits,
+          signed: spec.signed,
+          resultType: spec.resultType,
+          ilNodeType: 'DataViewRead'
+        };
+      }
+
+      if (setterMethods[methodName]) {
+        const spec = setterMethods[methodName];
+        return {
+          type: 'DataViewWrite',
+          view: transformedView,
+          method: methodName,
+          offset: transformedArgs[0],
+          value: transformedArgs[1],
+          littleEndian: transformedArgs[2] || null, // Optional for 8-bit methods
+          bits: spec.bits,
+          signed: spec.signed,
+          valueType: spec.valueType,
+          resultType: 'void',
+          ilNodeType: 'DataViewWrite'
+        };
+      }
+
+      // Other DataView methods
+      if (methodName === 'buffer' && !args.length) {
+        return {
+          type: 'DataViewGetBuffer',
+          view: transformedView,
+          resultType: 'ArrayBuffer',
+          ilNodeType: 'DataViewGetBuffer'
+        };
+      }
+
+      if (methodName === 'byteOffset' && !args.length) {
+        return {
+          type: 'DataViewGetByteOffset',
+          view: transformedView,
+          resultType: 'int32',
+          ilNodeType: 'DataViewGetByteOffset'
+        };
+      }
+
+      if (methodName === 'byteLength' && !args.length) {
+        return {
+          type: 'DataViewGetByteLength',
+          view: transformedView,
+          resultType: 'int32',
+          ilNodeType: 'DataViewGetByteLength'
+        };
+      }
+
+      return null; // Not a DataView method we handle
+    }
+
+    /**
+     * Transform array method calls
+     * @private
+     */
+    _transformArrayMethod(arrayNode, methodName, args, context) {
+      // Transform the array node to get its type
+      const transformedArray = this._transformNode(arrayNode, context);
+      const resultType = transformedArray?.resultType;
+
+      // Extract type string, handling both string types and type objects
+      // Type objects have shape: { name: 'Uint8Array', isArray: false, ... }
+      let resultTypeStr;
+      if (typeof resultType === 'string') {
+        resultTypeStr = resultType;
+      } else if (resultType && typeof resultType === 'object' && resultType.name) {
+        resultTypeStr = resultType.name;
+      } else {
+        resultTypeStr = String(resultType || '');
+      }
+
+      // Only handle if the object is an array type (ends with [] or is Array/TypedArray)
+      const isArrayType = resultTypeStr.endsWith('[]') ||
+                          resultTypeStr.startsWith('Array') ||
+                          resultTypeStr === 'Uint8Array' ||
+                          resultTypeStr === 'Uint16Array' ||
+                          resultTypeStr === 'Uint32Array' ||
+                          resultTypeStr === 'Int8Array' ||
+                          resultTypeStr === 'Int16Array' ||
+                          resultTypeStr === 'Int32Array' ||
+                          resultTypeStr === 'Float32Array' ||
+                          resultTypeStr === 'Float64Array';
+
+      // If we can determine it's NOT an array type, skip array method handling
+      // This prevents treating HashTable.find() as Array.find()
+      if (resultTypeStr && !isArrayType && resultType !== null) {
+        return null;
+      }
+
+      // Try to get element type from the array node if available
+      const arrayElementType = arrayNode.elementType || resultTypeStr.replace('[]', '') || 'uint8';
+      const arrayResultType = arrayNode.resultType || `${arrayElementType}[]`;
+
+      // Helper to get result type for array operations
+      const getResultType = (nodeType, elemType) => {
+        const resultTypeFn = TypeAwareJSASTParser.OPERATION_RESULT_TYPES[nodeType];
+        return resultTypeFn ? resultTypeFn(elemType) : elemType;
+      };
+
+      switch (methodName) {
+        case 'push':
+          // push() mutates the array in-place, returns new length
+          // Preserve all arguments for multi-spread: arr.push(...a, ...b, ...c)
+          return { type: 'ArrayAppend', array: arrayNode, value: args[0], values: args, resultType: 'int32', ilNodeType: 'ArrayAppend' };
+        case 'pop':
+          return { type: 'ArrayPop', array: arrayNode, elementType: arrayElementType, resultType: arrayElementType, ilNodeType: 'ArrayPop' };
+        case 'shift':
+          return { type: 'ArrayShift', array: arrayNode, elementType: arrayElementType, resultType: arrayElementType, ilNodeType: 'ArrayShift' };
+        case 'unshift':
+          return { type: 'ArrayUnshift', array: arrayNode, value: args[0], resultType: 'int32', ilNodeType: 'ArrayUnshift' };
+        case 'fill':
+          return {
+            type: 'ArrayFill',
+            array: arrayNode,
+            value: args[0],
+            start: args[1] || null,
+            end: args[2] || null,
+            elementType: arrayElementType,
+            resultType: arrayResultType,
+            ilNodeType: 'ArrayFill'
+          };
+        case 'slice':
+          return {
+            type: 'ArraySlice',
+            array: arrayNode,
+            start: args[0] || null,
+            end: args[1] || null,
+            elementType: arrayElementType,
+            resultType: arrayResultType,
+            ilNodeType: 'ArraySlice'
+          };
+        case 'splice':
+          return {
+            type: 'ArraySplice',
+            array: arrayNode,
+            start: args[0],
+            deleteCount: args[1] || null,
+            items: args.slice(2),
+            elementType: arrayElementType,
+            resultType: arrayResultType,
+            ilNodeType: 'ArraySplice'
+          };
+        case 'concat':
+          return { type: 'ArrayConcat', array: arrayNode, arrays: args, elementType: arrayElementType, resultType: arrayResultType, ilNodeType: 'ArrayConcat' };
+        case 'indexOf':
+          return { type: 'ArrayIndexOf', array: arrayNode, value: args[0], start: args[1] || null, resultType: 'int32', ilNodeType: 'ArrayIndexOf' };
+        case 'includes':
+          return { type: 'ArrayIncludes', array: arrayNode, value: args[0], resultType: 'boolean', ilNodeType: 'ArrayIncludes' };
+        case 'join':
+          return { type: 'ArrayJoin', array: arrayNode, separator: args[0] || null, resultType: 'string', ilNodeType: 'ArrayJoin' };
+        case 'reverse':
+          return { type: 'ArrayReverse', array: arrayNode, elementType: arrayElementType, resultType: arrayResultType, ilNodeType: 'ArrayReverse' };
+        case 'sort':
+          return { type: 'ArraySort', array: arrayNode, compareFn: args[0] || null, elementType: arrayElementType, resultType: arrayResultType, ilNodeType: 'ArraySort' };
+        case 'map':
+          // Map result depends on callback, default to same element type
+          return { type: 'ArrayMap', array: arrayNode, callback: args[0], elementType: arrayElementType, resultType: arrayResultType, ilNodeType: 'ArrayMap' };
+        case 'filter':
+          return { type: 'ArrayFilter', array: arrayNode, callback: args[0], elementType: arrayElementType, resultType: arrayResultType, ilNodeType: 'ArrayFilter' };
+        case 'forEach':
+          return { type: 'ArrayForEach', array: arrayNode, callback: args[0], resultType: 'void', ilNodeType: 'ArrayForEach' };
+        case 'reduce':
+          // Reduce result type comes from initialValue if provided, otherwise element type
+          const reduceResultType = args[1]?.resultType || arrayElementType;
+          return { type: 'ArrayReduce', array: arrayNode, callback: args[0], initialValue: args[1] || null, resultType: reduceResultType, ilNodeType: 'ArrayReduce' };
+        case 'find':
+          // Only treat as Array.find() if callback is a function expression
+          if (!args[0] || (args[0].type !== 'ArrowFunctionExpression' && args[0].type !== 'FunctionExpression')) {
+            return null; // Not Array.find() - might be HashTable.find() or similar
+          }
+          return { type: 'ArrayFind', array: arrayNode, callback: args[0], resultType: arrayElementType, ilNodeType: 'ArrayFind' };
+        case 'findIndex':
+          // Only treat as Array.findIndex() if callback is a function expression
+          if (!args[0] || (args[0].type !== 'ArrowFunctionExpression' && args[0].type !== 'FunctionExpression')) {
+            return null;
+          }
+          return { type: 'ArrayFindIndex', array: arrayNode, callback: args[0], resultType: 'int32', ilNodeType: 'ArrayFindIndex' };
+        case 'every':
+          return { type: 'ArrayEvery', array: arrayNode, callback: args[0], resultType: 'boolean', ilNodeType: 'ArrayEvery' };
+        case 'some':
+          return { type: 'ArraySome', array: arrayNode, callback: args[0], resultType: 'boolean', ilNodeType: 'ArraySome' };
+        case 'set': {
+          // TypedArray.set() - copy elements from another array, returns void
+          // ONLY handle if we know it's a TypedArray (not Map/Set which also have .set())
+          // Include both JS TypedArray names and IL array types (uint8[], int32[], etc.)
+          const isTypedArray = resultTypeStr === 'Uint8Array' ||
+                               resultTypeStr === 'Uint16Array' ||
+                               resultTypeStr === 'Uint32Array' ||
+                               resultTypeStr === 'Int8Array' ||
+                               resultTypeStr === 'Int16Array' ||
+                               resultTypeStr === 'Int32Array' ||
+                               resultTypeStr === 'Float32Array' ||
+                               resultTypeStr === 'Float64Array' ||
+                               resultTypeStr === 'uint8[]' ||
+                               resultTypeStr === 'uint16[]' ||
+                               resultTypeStr === 'uint32[]' ||
+                               resultTypeStr === 'int8[]' ||
+                               resultTypeStr === 'int16[]' ||
+                               resultTypeStr === 'int32[]' ||
+                               resultTypeStr.endsWith('[]');  // Any array type
+          if (isTypedArray) {
+            return { type: 'TypedArraySet', array: arrayNode, source: args[0], offset: args[1] || null, resultType: 'void', ilNodeType: 'TypedArraySet' };
+          }
+
+          // Heuristic: if first argument looks like an array (not a primitive), treat as TypedArraySet
+          // TypedArray.set(array, offset) vs Map.set(key, value)
+          // Array indicators: ArrayExpression, Identifier with array-like name, CallExpression returning array
+          const firstArg = args[0];
+          const firstArgType = firstArg?.type || firstArg?.resultType || firstArg?.ilNodeType;
+          // Get name for pattern matching - check 'name' (Identifier), 'property' (ThisPropertyAccess/MemberExpression)
+          const firstArgName = firstArg?.name || firstArg?.property || '';
+          // Match names that start with OR end with array-like patterns
+          const arrayNameStartRegex = /^_?(b\d|bytes|data|source|arr|array|ciphertext|plaintext|tag|encrypted|decrypted|block|output|input|buffer|state|key|iv|nonce|result|chunk|msg|message)/i;
+          const arrayNameEndRegex = /(bytes|data|array|buffer|block|chunk|state)$/i;
+          const matchesArrayName = arrayNameStartRegex.test(firstArgName) || arrayNameEndRegex.test(firstArgName);
+          const isFirstArgArray = firstArgType === 'ArrayExpression' ||
+                                   firstArgType === 'UnpackBytes' ||  // OpCodes.Unpack32LE etc (returns byte array)
+                                   firstArgType === 'PackBytes' ||     // OpCodes.Pack32LE etc (returns byte array)
+                                   firstArgType === 'CallExpression' ||  // Any call expression likely returns array for .set()
+                                   firstArgType === 'TypedArraySubarray' ||  // arr.subarray() returns TypedArray
+                                   firstArgType === 'ArraySlice' ||    // arr.slice() returns array
+                                   firstArgType === 'TypedArraySlice' ||  // TypedArray.slice() returns array
+                                   firstArgType === 'ThisPropertyAccess' && matchesArrayName ||  // this._nonce, this._key, etc.
+                                   (firstArgType && (firstArgType.endsWith('[]') || firstArgType === 'Uint8Array')) ||
+                                   matchesArrayName;
+
+          // If first arg looks like array data and second is a number/offset expression, it's TypedArraySet
+          const secondArg = args[1];
+          const secondArgType = secondArg?.type || secondArg?.ilNodeType;
+          // Match offset/index/length variable names: offset, pos, i, index, start, n, len, plen, clen, dlen, size, etc.
+          // Also match names ending with pos, len, idx, etc. (e.g., cpos, mlen, srcIdx)
+          const offsetNameStartRegex = /^(offset|pos|i|j|k|index|idx|start|n|len|plen|clen|dlen|alen|blen|mlen|size|count)/i;
+          const offsetNameEndRegex = /(offset|pos|index|idx|len)$/i;
+          const matchesOffsetName = (secondArg?.name && (offsetNameStartRegex.test(secondArg.name) || offsetNameEndRegex.test(secondArg.name)));
+          const isSecondArgOffset = !secondArg ||
+                                     secondArgType === 'Literal' ||
+                                     secondArgType === 'ArrayLength' ||  // arr.length transformed to IL node
+                                     secondArgType === 'BinaryExpression' ||  // offset + size, etc.
+                                     (secondArgType === 'Identifier' && matchesOffsetName) ||
+                                     (secondArgType === 'MemberExpression' && secondArg.property?.name === 'length');
+          if (isFirstArgArray && isSecondArgOffset) {
+            return { type: 'TypedArraySet', array: arrayNode, source: args[0], offset: args[1] || null, resultType: 'void', ilNodeType: 'TypedArraySet' };
+          }
+
+          // For Map.set(key, value), create a MapSet IL node
+          if (args.length >= 2) {
+            return { type: 'MapSet', map: arrayNode, key: args[0], value: args[1], resultType: 'void', ilNodeType: 'MapSet' };
+          }
+          return null; // Let it fall through for other cases
+        }
+        case 'subarray':
+          return { type: 'TypedArraySubarray', array: arrayNode, begin: args[0] || null, end: args[1] || null, elementType: arrayElementType, resultType: arrayResultType, ilNodeType: 'TypedArraySubarray' };
+        default:
+          return null; // Not an array method we handle
+      }
+    }
+
+    /**
+     * Transform string method calls to add resultType
+     * @private
+     */
+    _transformStringMethod(stringNode, methodName, args, context) {
+      // Transform the string node to get its type
+      const transformedString = this._transformNode(stringNode, context);
+      const stringType = transformedString?.resultType;
+
+      // Only handle if the object is a string type
+      if (stringType !== 'string') return null;
+
+      switch (methodName) {
+        case 'split':
+          return {
+            type: 'StringSplit',
+            string: transformedString,
+            separator: args[0] || null,
+            resultType: 'string[]',
+            ilNodeType: 'StringSplit'
+          };
+        case 'substring':
+        case 'substr':
+        case 'slice':
+          return {
+            type: 'StringSubstring',
+            string: transformedString,
+            start: args[0] || null,
+            end: args[1] || null,
+            resultType: 'string',
+            ilNodeType: 'StringSubstring'
+          };
+        case 'toLowerCase':
+        case 'toUpperCase':
+        case 'trim':
+        case 'trimStart':
+        case 'trimEnd':
+          return {
+            type: 'StringTransform',
+            string: transformedString,
+            method: methodName,
+            resultType: 'string',
+            ilNodeType: 'StringTransform'
+          };
+        case 'charAt':
+          return {
+            type: 'StringCharAt',
+            string: transformedString,
+            index: args[0] || null,
+            resultType: 'string',
+            ilNodeType: 'StringCharAt'
+          };
+        case 'charCodeAt':
+          return {
+            type: 'StringCharCodeAt',
+            string: transformedString,
+            index: args[0] || null,
+            resultType: 'int32',
+            ilNodeType: 'StringCharCodeAt'
+          };
+        case 'indexOf':
+        case 'lastIndexOf':
+          return {
+            type: 'StringIndexOf',
+            string: transformedString,
+            searchValue: args[0] || null,
+            fromIndex: args[1] || null,
+            method: methodName,
+            resultType: 'int32',
+            ilNodeType: 'StringIndexOf'
+          };
+        case 'includes':
+        case 'startsWith':
+        case 'endsWith':
+          return {
+            type: 'StringIncludes',
+            string: transformedString,
+            searchValue: args[0] || null,
+            method: methodName,
+            resultType: 'boolean',
+            ilNodeType: 'StringIncludes'
+          };
+        case 'concat':
+          return {
+            type: 'StringConcat',
+            string: transformedString,
+            values: args,
+            resultType: 'string',
+            ilNodeType: 'StringConcat'
+          };
+        case 'repeat':
+          return {
+            type: 'StringRepeat',
+            string: transformedString,
+            count: args[0] || null,
+            resultType: 'string',
+            ilNodeType: 'StringRepeat'
+          };
+        case 'replace':
+        case 'replaceAll':
+          return {
+            type: 'StringReplace',
+            string: transformedString,
+            searchValue: args[0] || null,
+            replaceValue: args[1] || null,
+            method: methodName,
+            resultType: 'string',
+            ilNodeType: 'StringReplace'
+          };
+        case 'padStart':
+        case 'padEnd':
+          return {
+            type: 'StringPad',
+            string: transformedString,
+            targetLength: args[0] || null,
+            padString: args[1] || null,
+            method: methodName,
+            resultType: 'string',
+            ilNodeType: 'StringPad'
+          };
+        default:
+          return null; // Not a string method we handle
+      }
+    }
+
+    /**
+     * Transform MemberExpression nodes
+     * Handles: this.property, arr.length, arr[i]
+     * @private
+     */
+    _transformMemberExpression(node, context) {
+      const object = node.object;
+      const property = node.property;
+      const propertyName = property?.name || property?.value;
+
+      // this.property → ThisPropertyAccess
+      if (object?.type === 'ThisExpression') {
+        // Look up property type from class field types registry (set during class parsing)
+        let resultType = null;
+        const className = context?.className;
+        if (className && propertyName)
+          resultType = this.lookupClassFieldType(className, propertyName);
+
+        return {
+          type: 'ThisPropertyAccess',
+          property: propertyName,
+          computed: node.computed || false,
+          resultType,
+          ilNodeType: 'ThisPropertyAccess'
+        };
+      }
+
+      // arr.length → ArrayLength
+      if (propertyName === 'length' && !node.computed) {
+        return {
+          type: 'ArrayLength',
+          array: this._transformNode(object, context),
+          resultType: 'int32',
+          ilNodeType: 'ArrayLength'
+        };
+      }
+
+      // Math constants: Math.PI, Math.E, Math.LN2, etc. → MathConstant IL node
+      const MATH_CONSTANTS = {
+        'PI': Math.PI, 'E': Math.E, 'LN2': Math.LN2, 'LN10': Math.LN10,
+        'LOG2E': Math.LOG2E, 'LOG10E': Math.LOG10E, 'SQRT2': Math.SQRT2, 'SQRT1_2': Math.SQRT1_2
+      };
+      if (object?.type === 'Identifier' && object.name === 'Math' && propertyName in MATH_CONSTANTS) {
+        return {
+          type: 'MathConstant',
+          name: propertyName,
+          value: MATH_CONSTANTS[propertyName],
+          resultType: 'float64',
+          ilNodeType: 'MathConstant'
+        };
+      }
+
+      // Number constants: Number.MAX_SAFE_INTEGER, Number.EPSILON, etc. → NumberConstant IL node
+      const NUMBER_CONSTANTS = {
+        'MAX_SAFE_INTEGER': Number.MAX_SAFE_INTEGER, 'MIN_SAFE_INTEGER': Number.MIN_SAFE_INTEGER,
+        'MAX_VALUE': Number.MAX_VALUE, 'MIN_VALUE': Number.MIN_VALUE,
+        'EPSILON': Number.EPSILON, 'POSITIVE_INFINITY': Infinity,
+        'NEGATIVE_INFINITY': -Infinity, 'NaN': NaN
+      };
+      if (object?.type === 'Identifier' && object.name === 'Number' && propertyName in NUMBER_CONSTANTS) {
+        return {
+          type: 'NumberConstant',
+          name: propertyName,
+          value: NUMBER_CONSTANTS[propertyName],
+          resultType: 'float64',
+          ilNodeType: 'NumberConstant'
+        };
+      }
+
+      // Array indexing: arr[i] → preserve MemberExpression structure with element type
+      if (node.computed) {
+        const transformedObject = this._transformNode(object, context);
+        const transformedProperty = this._transformNode(property, context);
+
+        // Get the array type to extract element type
+        let objectType = transformedObject?.resultType;
+
+        // If object is an identifier, look up its type
+        if (!objectType && object?.type === 'Identifier' && object.name)
+          objectType = this.lookupVariableType(object.name);
+
+        // Extract element type from array type (e.g., "uint8[]" → "uint8")
+        let elementType = null;
+        if (objectType && typeof objectType === 'string') {
+          if (objectType.endsWith('[]'))
+            elementType = objectType.slice(0, -2);
+          else if (objectType.startsWith('Array<') && objectType.endsWith('>'))
+            elementType = objectType.slice(6, -1);
+        }
+
+        // Preserve MemberExpression structure for backward compatibility with transformers
+        return {
+          type: 'MemberExpression',
+          object: transformedObject,
+          property: transformedProperty,
+          computed: true,
+          resultType: elementType,
+          ilNodeType: 'MemberExpression'
+        };
+      }
+
+      // General property access - transform and preserve type information
+      const transformedObject = this._transformNode(object, context);
+      let resultType = null;
+
+      // Try to get property type from object's known type
+      let objectType = transformedObject?.resultType;
+      if (!objectType && object?.type === 'Identifier' && object.name)
+        objectType = this.lookupVariableType(object.name);
+
+      // Known property patterns that apply to any object
+      if (propertyName === 'length' || propertyName === 'size' || propertyName === 'count')
+        resultType = 'int32';
+
+      return {
+        ...node,
+        object: transformedObject,
+        resultType,
+        ilNodeType: 'MemberExpression'
+      };
+    }
+
+    /**
+     * Transform NewExpression nodes
+     * Handles: new Array(), new Uint8Array(), new DataView(), etc.
+     * @private
+     */
+    _transformNewExpression(node, context) {
+      const callee = node.callee;
+      const calleeName = callee?.name;
+      const args = node.arguments || [];
+
+      // Helper to create TypedArrayCreation IL node
+      // Distinguishes between: new TypedArray(size), new TypedArray([elements]), new TypedArray(buffer)
+      const createTypedArrayNode = (arrayType, arg) => {
+        // Get precise element type from our mapping
+        const elementType = TypeAwareJSASTParser.TYPED_ARRAY_ELEMENT_TYPES[arrayType] || 'uint8';
+        const resultType = `${elementType}[]`;
+
+        if (!arg) {
+          return { type: 'TypedArrayCreation', arrayType, elementType, resultType, size: null, ilNodeType: 'TypedArrayCreation' };
+        }
+        // If arg is an array literal, treat as elements (not size)
+        if (arg.type === 'ArrayExpression' || arg.type === 'ArrayLiteral') {
+          return { type: 'ArrayLiteral', elements: arg.elements || [], elementType, resultType, ilNodeType: 'ArrayLiteral' };
+        }
+        // If arg is an identifier or member expression, might be a buffer reference
+        if (arg.type === 'Identifier' || arg.type === 'MemberExpression') {
+          return {
+            type: 'TypedArrayCreation',
+            arrayType,
+            elementType,
+            resultType,
+            size: arg,
+            buffer: arg,
+            ilNodeType: 'TypedArrayCreation'
+          };
+        }
+        // Otherwise, treat as size
+        return { type: 'TypedArrayCreation', arrayType, elementType, resultType, size: arg, ilNodeType: 'TypedArrayCreation' };
+      };
+
+      switch (calleeName) {
+        case 'Array':
+          if (args.length === 1) {
+            // Try to infer element type from context (e.g., variable name patterns)
+            // Leave elementType null if no context - let language transformers infer from assignment target
+            const inferredElementType = context.expectedElementType || null;
+            return {
+              type: 'ArrayCreation',
+              size: args[0],
+              elementType: inferredElementType,
+              resultType: inferredElementType ? `${inferredElementType}[]` : null,
+              ilNodeType: 'ArrayCreation'
+            };
+          }
+          // For array literals, infer type from first element if available
+          if (args.length > 0 && args[0]) {
+            const firstEl = args[0];
+            let elementType = 'uint8'; // Default for crypto code
+            if (firstEl.type === 'Literal') {
+              if (typeof firstEl.value === 'number') {
+                elementType = Number.isInteger(firstEl.value) && firstEl.value >= 0 && firstEl.value <= 255 ? 'uint8' :
+                              Number.isInteger(firstEl.value) && firstEl.value >= 0 && firstEl.value <= 0xFFFFFFFF ? 'uint32' : 'float64';
+              } else if (typeof firstEl.value === 'string') {
+                elementType = 'string';
+              } else if (typeof firstEl.value === 'boolean') {
+                elementType = 'boolean';
+              }
+            } else if (firstEl.resultType) {
+              elementType = firstEl.resultType;
+            }
+            return { type: 'ArrayLiteral', elements: args, elementType, resultType: `${elementType}[]`, ilNodeType: 'ArrayLiteral' };
+          }
+          return { type: 'ArrayLiteral', elements: args, elementType: 'uint8', resultType: 'uint8[]', ilNodeType: 'ArrayLiteral' };
+
+        case 'Uint8Array':
+        case 'Int8Array':
+        case 'Uint8ClampedArray':
+          return createTypedArrayNode(calleeName, args[0]);
+
+        case 'Uint16Array':
+        case 'Int16Array':
+          return createTypedArrayNode(calleeName, args[0]);
+
+        case 'Uint32Array':
+        case 'Int32Array':
+        case 'Float32Array':
+        case 'Float64Array':
+          return createTypedArrayNode(calleeName, args[0]);
+
+        case 'BigUint64Array':
+        case 'BigInt64Array':
+          return createTypedArrayNode(calleeName, args[0]);
+
+        case 'ArrayBuffer':
+          return { type: 'BufferCreation', size: args[0], resultType: 'ArrayBuffer', ilNodeType: 'BufferCreation' };
+
+        case 'DataView':
+          return {
+            type: 'DataViewCreation',
+            buffer: args[0],
+            byteOffset: args[1] || null,
+            byteLength: args[2] || null,
+            resultType: 'DataView',
+            ilNodeType: 'DataViewCreation'
+          };
+
+        case 'Map':
+          // For crypto code, maps typically use string keys and uint8[] values
+          return { type: 'MapCreation', entries: args[0] || null, resultType: 'Map', keyType: 'string', valueType: 'uint8[]', ilNodeType: 'MapCreation' };
+
+        case 'Set':
+          // For crypto code, sets typically contain uint8 or uint32 values
+          return { type: 'SetCreation', values: args[0] || null, resultType: 'Set', elementType: 'uint32', ilNodeType: 'SetCreation' };
+
+        case 'Error':
+        case 'TypeError':
+        case 'RangeError':
+        case 'ReferenceError':
+          return { type: 'ErrorCreation', errorType: calleeName, message: args[0], resultType: calleeName, ilNodeType: 'ErrorCreation' };
+
+        default:
+          // Keep as NewExpression but mark it
+          node.ilNodeType = 'NewExpression';
+          return node;
+      }
+    }
+
+    /**
+     * Transform VariableDeclaration nodes
+     * Handles: destructuring patterns, multiple declarators
+     * @private
+     */
+    _transformVariableDeclaration(node, context) {
+      const declarations = node.declarations || [];
+      const kind = node.kind;
+      const transformedDeclarations = [];
+      const isModuleLevel = context.isModuleLevel;
+      const isConst = kind === 'const';
+
+      for (const decl of declarations) {
+        // Handle destructuring: const {a, b} = obj or const [a, b] = arr
+        if (decl.id?.type === 'ObjectPattern' || decl.id?.type === 'ArrayPattern') {
+          // Create a temporary variable for the source
+          const tempName = `_destructure_${this._destructureCounter || 0}`;
+          this._destructureCounter = (this._destructureCounter || 0) + 1;
+
+          // Transform and get type of source expression
+          const transformedInit = decl.init ? this._transformNode(decl.init, context) : null;
+          const sourceType = transformedInit?.resultType;
+
+          // First, assign the source to the temp variable
+          transformedDeclarations.push({
+            type: 'VariableDeclarator',
+            id: { type: 'Identifier', name: tempName, resultType: sourceType },
+            init: transformedInit,
+            ilNodeType: 'DestructureTemp',
+            resultType: sourceType
+          });
+
+          if (sourceType)
+            this.registerVariableType(tempName, sourceType);
+
+          // Then create individual assignments from the temp
+          if (decl.id.type === 'ObjectPattern') {
+            for (const prop of (decl.id.properties || [])) {
+              const propName = prop.key?.name || prop.key?.value;
+              const varName = prop.value?.name || propName;
+              transformedDeclarations.push({
+                type: 'VariableDeclarator',
+                id: { type: 'Identifier', name: varName },
+                init: {
+                  type: 'MemberExpression',
+                  object: { type: 'Identifier', name: tempName },
+                  property: { type: 'Identifier', name: propName },
+                  computed: false
+                },
+                ilNodeType: 'DestructuredProperty'
+              });
+            }
+          } else if (decl.id.type === 'ArrayPattern') {
+            // For array destructuring, element type is the array's element type
+            let elementType = null;
+            // sourceType can be a string like 'uint8[]' or an object with type info
+            const sourceTypeStr = typeof sourceType === 'string' ? sourceType : sourceType?.name;
+            if (sourceTypeStr && typeof sourceTypeStr === 'string' && sourceTypeStr.endsWith('[]'))
+              elementType = sourceTypeStr.slice(0, -2);
+
+            let index = 0;
+            for (const element of (decl.id.elements || [])) {
+              if (element) {
+                const varName = element.name;
+                transformedDeclarations.push({
+                  type: 'VariableDeclarator',
+                  id: { type: 'Identifier', name: varName, resultType: elementType },
+                  init: {
+                    type: 'MemberExpression',
+                    object: { type: 'Identifier', name: tempName },
+                    property: { type: 'Literal', value: index, resultType: 'int32' },
+                    computed: true,
+                    resultType: elementType
+                  },
+                  ilNodeType: 'DestructuredElement',
+                  resultType: elementType
+                });
+                if (elementType)
+                  this.registerVariableType(varName, elementType);
+              }
+              ++index;
+            }
+          }
+        } else {
+          // Regular declarator - transform init and register type
+          const varName = decl.id?.name;
+          let transformedInit = decl.init ? this._transformNode(decl.init, context) : null;
+          let varType = transformedInit?.resultType || null;
+
+          // No name-based fallback - types must come from values or JSDoc
+
+          // Register the variable type
+          if (varName && varType) {
+            if (isModuleLevel && isConst)
+              this.registerConstantType(varName, varType);
+            else
+              this.registerVariableType(varName, varType);
+          }
+
+          // Create transformed declarator with type info
+          const transformedDecl = {
+            ...decl,
+            init: transformedInit,
+            resultType: varType
+          };
+          if (decl.id) {
+            transformedDecl.id = { ...decl.id, resultType: varType };
+          }
+          transformedDeclarations.push(transformedDecl);
+        }
+      }
+
+      return {
+        type: 'VariableDeclaration',
+        kind: kind,
+        declarations: transformedDeclarations
+      };
+    }
+
+    /**
+     * Transform ForStatement nodes
+     * Handles: multiple declarations in init (for (let i=0, j=0; ...))
+     * @private
+     */
+    _transformForStatement(node, context) {
+      const init = node.init;
+
+      // If init is a VariableDeclaration with multiple declarators, we may need to handle it
+      // Most languages can handle this, but we mark it for transformers to handle properly
+      if (init?.type === 'VariableDeclaration' && init.declarations?.length > 1) {
+        node.ilNodeType = 'MultiDeclForStatement';
+      }
+
+      return node;
+    }
+
+    /**
+     * Transform Literal nodes to add resultType based on value type
+     * @private
+     */
+    _transformLiteral(node, context) {
+      const value = node.value;
+      let resultType;
+
+      if (typeof value === 'number') {
+        // Handle special float values first (Infinity, NaN)
+        if (!Number.isFinite(value)) {
+          resultType = 'float64';
+        } else if (!Number.isInteger(value)) {
+          // Explicit float (has decimal point)
+          resultType = 'float64';
+        } else {
+          // Integer literals default to int32 (like most typed languages)
+          // Only use larger types when value exceeds int32 range
+          if (value >= -2147483648 && value <= 2147483647) {
+            resultType = 'int32';
+          } else if (value >= 0 && value <= 4294967295) {
+            resultType = 'uint32';
+          } else if (value < -2147483648) {
+            resultType = 'int64';
+          } else {
+            resultType = 'uint64';
+          }
+        }
+      } else if (typeof value === 'bigint') {
+        resultType = value >= 0n ? 'uint64' : 'int64';
+      } else if (typeof value === 'string') {
+        resultType = 'string';
+      } else if (typeof value === 'boolean') {
+        resultType = 'boolean';
+      } else if (value === null) {
+        resultType = 'null';
+      } else if (value === undefined) {
+        resultType = 'void';
+      } else if (node.regex) {
+        // Regex literal
+        resultType = 'regex';
+      } else {
+        // Unknown literal - use 'object' as more specific than 'any'
+        resultType = 'object';
+      }
+
+      return {
+        ...node,
+        resultType,
+        ilNodeType: 'Literal'
+      };
+    }
+
+    /**
+     * Transform ArrayExpression nodes to add resultType and elementType
+     * @private
+     */
+    _transformArrayExpression(node, context) {
+      // Transform all elements first
+      const elements = (node.elements || []).map(el =>
+        el ? this._transformNode(el, context) : null
+      );
+
+      // Infer element type from elements with type coercion
+      let elementType = null;
+      for (const el of elements) {
+        if (el && el.resultType) {
+          const elType = el.resultType;
+          if (!elementType) {
+            elementType = elType;
+          } else if (elementType !== elType) {
+            // Type coercion: find common type
+            elementType = this._getCommonType(elementType, elType);
+          }
+        }
+      }
+
+      // If no element types found, use int32 as default (consistent with literal default)
+      if (!elementType) {
+        elementType = 'int32';
+      }
+
+      return {
+        ...node,
+        elements,
+        elementType,
+        resultType: `${elementType}[]`,
+        ilNodeType: 'ArrayLiteral'
+      };
+    }
+
+    /**
+     * Get common type between two types for type coercion
+     * @private
+     */
+    _getCommonType(type1, type2) {
+      // Same types
+      if (type1 === type2) return type1;
+
+      // Numeric type widening
+      const numericTypes = ['uint8', 'uint16', 'uint32', 'uint64', 'int8', 'int16', 'int32', 'int64', 'float32', 'float64'];
+      const idx1 = numericTypes.indexOf(type1);
+      const idx2 = numericTypes.indexOf(type2);
+
+      if (idx1 >= 0 && idx2 >= 0) {
+        // Both numeric - use the larger type
+        const isSigned1 = type1.startsWith('int') || type1.startsWith('float');
+        const isSigned2 = type2.startsWith('int') || type2.startsWith('float');
+
+        // If one is signed and one unsigned, prefer signed
+        if (isSigned1 !== isSigned2) {
+          // Use the larger bit width with signed
+          const bits1 = parseInt(type1.match(/\d+/)?.[0] || '32');
+          const bits2 = parseInt(type2.match(/\d+/)?.[0] || '32');
+          const maxBits = Math.max(bits1, bits2);
+          return maxBits <= 8 ? 'int8' : maxBits <= 16 ? 'int16' : maxBits <= 32 ? 'int32' : 'int64';
+        }
+
+        // Same signedness - use larger type
+        return idx1 > idx2 ? type1 : type2;
+      }
+
+      // String and anything else -> string
+      if (type1 === 'string' || type2 === 'string') return 'string';
+
+      // Fallback to the first type
+      return type1;
+    }
+
+    /**
+     * Transform BinaryExpression nodes to add resultType
+     * @private
+     */
+    _transformBinaryExpression(node, context) {
+      const left = this._transformNode(node.left, context);
+      const right = this._transformNode(node.right, context);
+      const op = node.operator;
+
+      // instanceof → InstanceOfCheck IL node
+      if (op === 'instanceof') {
+        return {
+          type: 'InstanceOfCheck',
+          value: left,
+          className: right,
+          resultType: 'boolean',
+          ilNodeType: 'InstanceOfCheck'
+        };
+      }
+
+      let resultType;
+
+      // Helper to get literal value from right operand
+      const getRightValue = () => {
+        if (right.type === 'Literal' && typeof right.value === 'number')
+          return right.value;
+        return null;
+      };
+      const rightValue = getRightValue();
+
+      // Check for idioms first (common JavaScript type coercion patterns)
+
+      // Idiom: x & 0xff or x & 255 → uint8
+      if (op === '&' && (rightValue === 0xff || rightValue === 255)) {
+        resultType = 'uint8';
+      }
+      // Idiom: x & 0xffff or x & 65535 → uint16
+      else if (op === '&' && (rightValue === 0xffff || rightValue === 65535)) {
+        resultType = 'uint16';
+      }
+      // Idiom: x & 0xffffffff → uint32
+      else if (op === '&' && rightValue === 0xffffffff) {
+        resultType = 'uint32';
+      }
+      // Idiom: x | 0 → int32 (JavaScript ToInt32)
+      else if (op === '|' && rightValue === 0) {
+        resultType = 'int32';
+      }
+      // Idiom: x >> 0 → int32 (JavaScript ToInt32)
+      else if (op === '>>' && rightValue === 0) {
+        resultType = 'int32';
+      }
+      // Idiom: x >>> 0 → uint32 (JavaScript ToUint32)
+      else if (op === '>>>' && rightValue === 0) {
+        resultType = 'uint32';
+      }
+      // Comparison operators always return boolean
+      else if (['==', '===', '!=', '!==', '<', '>', '<=', '>='].includes(op)) {
+        resultType = 'boolean';
+      }
+      // Logical operators return boolean
+      else if (['&&', '||'].includes(op)) {
+        resultType = 'boolean';
+      }
+      // Bitwise operators - return left operand type (unless idiom above)
+      else if (['&', '|', '^', '<<', '>>', '>>>'].includes(op)) {
+        // >>> always produces uint32 in JavaScript (ToUint32)
+        if (op === '>>>') {
+          resultType = 'uint32';
+        } else {
+          const leftType = left.resultType;
+          // Return left operand type for bitwise ops
+          if (leftType && leftType !== 'any' && leftType !== 'number')
+            resultType = leftType;
+          else
+            resultType = 'int32'; // Default to int32
+        }
+      }
+      // Arithmetic operators
+      else if (['+', '-', '*', '%'].includes(op)) {
+        // Convert resultType to string for safe comparison (it may be an object)
+        const leftType = typeof left.resultType === 'string' ? left.resultType : String(left.resultType || '');
+        const rightType = typeof right.resultType === 'string' ? right.resultType : String(right.resultType || '');
+
+        // String concatenation check
+        if (op === '+' && (leftType === 'string' || rightType === 'string')) {
+          resultType = 'string';
+        }
+        // If either is float, result is float
+        else if (leftType.includes('float') || rightType.includes('float')) {
+          resultType = 'float64';
+        }
+        // If either is 64-bit, result is 64-bit
+        else if (leftType.includes('64') || rightType.includes('64')) {
+          resultType = leftType.includes('int') || rightType.includes('int') ? 'int64' : 'uint64';
+        }
+        // Preserve left type if specific, else default to int32
+        else if (leftType && leftType !== 'any' && leftType !== 'number') {
+          resultType = leftType;
+        }
+        else if (rightType && rightType !== 'any' && rightType !== 'number') {
+          resultType = rightType;
+        }
+        else {
+          resultType = 'int32';
+        }
+      }
+      // Division may produce float
+      else if (op === '/') {
+        resultType = 'float64';
+      }
+      // Exponentiation
+      else if (op === '**') {
+        resultType = 'float64';
+      }
+      else {
+        resultType = left.resultType || right.resultType || 'int32';
+      }
+
+      return {
+        ...node,
+        left,
+        right,
+        resultType,
+        ilNodeType: 'BinaryExpression'
+      };
+    }
+
+    /**
+     * Transform UnaryExpression nodes to add resultType
+     * @private
+     */
+    _transformUnaryExpression(node, context) {
+      const argument = this._transformNode(node.argument, context);
+      const op = node.operator;
+
+      let resultType;
+
+      if (op === '!') {
+        resultType = 'boolean';
+      } else if (op === '~') {
+        // Bitwise NOT - always returns int32 in JavaScript (ToInt32 then NOT)
+        resultType = 'int32';
+      } else if (op === '-' || op === '+') {
+        // Preserve argument type if specific, else default to int32
+        const argType = argument.resultType;
+        if (argType && argType !== 'any' && argType !== 'number')
+          resultType = argType;
+        else
+          resultType = 'int32';
+      } else if (op === 'typeof') {
+        // Transform typeof to a language-agnostic TypeOfExpression IL node
+        // This allows target transformers to handle type checking without JS-specific patterns
+        return {
+          type: 'TypeOfExpression',
+          argument,
+          resultType: 'string',
+          ilNodeType: 'TypeOfExpression',
+          // Provide inferred type for optimization (can skip runtime type check)
+          inferredType: argument.resultType || null
+        };
+      } else if (op === 'void') {
+        resultType = 'void';
+      } else if (op === 'delete') {
+        // Transform delete to a language-agnostic DeleteExpression IL node
+        return {
+          type: 'DeleteExpression',
+          argument,
+          resultType: 'boolean',
+          ilNodeType: 'DeleteExpression'
+        };
+      } else {
+        resultType = argument.resultType || 'int32';
+      }
+
+      return {
+        ...node,
+        argument,
+        resultType,
+        ilNodeType: 'UnaryExpression'
+      };
+    }
+
+    // ========================[ IL AST BUILDING - JS-SPECIFIC PATTERN NORMALIZATION ]========================
+
+    /**
+     * Transform TemplateLiteral to language-agnostic StringInterpolation IL node
+     * Converts JS template strings (`Hello ${name}`) to a normalized format
+     * @private
+     */
+    _transformTemplateLiteral(node, context) {
+      const parts = [];
+      const quasis = node.quasis || [];
+      const expressions = node.expressions || [];
+
+      // Interleave quasis (string parts) and expressions
+      for (let i = 0; i < quasis.length; ++i) {
+        const quasi = quasis[i];
+        // Add static string part if non-empty
+        if (quasi.value?.cooked || quasi.value?.raw) {
+          const strValue = quasi.value.cooked !== undefined ? quasi.value.cooked : quasi.value.raw;
+          if (strValue) {
+            parts.push({
+              type: 'StringPart',
+              value: strValue,
+              ilNodeType: 'StringPart'
+            });
+          }
+        }
+        // Add expression part if there's a corresponding expression
+        if (i < expressions.length) {
+          const transformedExpr = this._transformNode(expressions[i], context);
+          parts.push({
+            type: 'ExpressionPart',
+            expression: transformedExpr,
+            ilNodeType: 'ExpressionPart'
+          });
+        }
+      }
+
+      return {
+        type: 'StringInterpolation',
+        parts,
+        resultType: 'string',
+        ilNodeType: 'StringInterpolation'
+      };
+    }
+
+    /**
+     * Transform SpreadElement to language-agnostic IL node
+     * Converts JS spread syntax (...arr) to a normalized format
+     * @private
+     */
+    _transformSpreadElement(node, context) {
+      const argument = this._transformNode(node.argument, context);
+
+      // Determine element type from argument type
+      let elementType = null;
+      const argType = argument?.resultType;
+      if (argType && typeof argType === 'string') {
+        if (argType.endsWith('[]'))
+          elementType = argType.slice(0, -2);
+        else if (argType === 'string')
+          elementType = 'char';
+      }
+
+      return {
+        type: 'SpreadElement',
+        argument,
+        elementType,
+        resultType: argType,
+        ilNodeType: 'SpreadElement'
+      };
+    }
+
+    /**
+     * Transform RestElement to language-agnostic IL node
+     * Converts JS rest syntax (...args) in function parameters to a normalized format
+     * @private
+     */
+    _transformRestElement(node, context) {
+      const argument = node.argument;
+      const paramName = argument?.name || argument?.value;
+
+      return {
+        type: 'RestParameter',
+        name: paramName,
+        argument: argument ? this._transformNode(argument, context) : null,
+        resultType: 'any[]', // Rest parameters are always arrays
+        ilNodeType: 'RestParameter'
+      };
+    }
+
+    /**
+     * Transform ObjectExpression to language-agnostic ObjectLiteral IL node
+     * @private
+     */
+    _transformObjectExpression(node, context) {
+      const properties = [];
+
+      for (const prop of (node.properties || [])) {
+        if (prop.type === 'SpreadElement') {
+          // Object spread: { ...other }
+          properties.push({
+            type: 'ObjectSpread',
+            argument: this._transformNode(prop.argument, context),
+            ilNodeType: 'ObjectSpread'
+          });
+        } else if (prop.type === 'Property') {
+          // Determine key
+          let keyName;
+          let computed = prop.computed || false;
+          if (prop.key?.type === 'Identifier') {
+            keyName = prop.key.name;
+          } else if (prop.key?.type === 'Literal') {
+            keyName = String(prop.key.value);
+          } else {
+            keyName = prop.key;
+            computed = true;
+          }
+
+          // Transform value
+          const transformedValue = this._transformNode(prop.value, context);
+
+          // Handle shorthand properties: { x } instead of { x: x }
+          const isShorthand = prop.shorthand || false;
+
+          // Handle method definitions: { foo() {} }
+          const isMethod = prop.method || (prop.value?.type === 'FunctionExpression' || prop.value?.type === 'ArrowFunctionExpression');
+
+          properties.push({
+            type: 'ObjectProperty',
+            key: keyName,
+            value: transformedValue,
+            computed,
+            shorthand: isShorthand,
+            method: isMethod,
+            kind: prop.kind || 'init', // 'init', 'get', or 'set'
+            resultType: transformedValue?.resultType,
+            ilNodeType: 'ObjectProperty'
+          });
+        }
+      }
+
+      return {
+        type: 'ObjectLiteral',
+        properties,
+        resultType: 'object',
+        ilNodeType: 'ObjectLiteral'
+      };
+    }
+
+    /**
+     * Transform FunctionExpression/ArrowFunctionExpression to language-agnostic IL node
+     * @private
+     */
+    _transformFunctionExpression(node, context) {
+      const isArrow = node.type === 'ArrowFunctionExpression';
+      const params = [];
+
+      // Transform parameters
+      for (const param of (node.params || [])) {
+        if (param.type === 'RestElement') {
+          params.push(this._transformRestElement(param, context));
+        } else if (param.type === 'AssignmentPattern') {
+          // Default parameter: (x = 5) => ...
+          params.push({
+            type: 'DefaultParameter',
+            name: param.left?.name,
+            left: this._transformNode(param.left, context),
+            defaultValue: this._transformNode(param.right, context),
+            ilNodeType: 'DefaultParameter'
+          });
+        } else if (param.type === 'ObjectPattern' || param.type === 'ArrayPattern') {
+          // Destructuring parameter
+          params.push({
+            type: 'DestructuringParameter',
+            pattern: param,
+            ilNodeType: 'DestructuringParameter'
+          });
+        } else {
+          params.push(this._transformNode(param, context));
+        }
+      }
+
+      // Transform body
+      let body = node.body;
+      if (body) {
+        if (body.type === 'BlockStatement') {
+          // Block body - transform each statement
+          body = {
+            ...body,
+            body: (body.body || []).map(stmt => this._transformNode(stmt, context))
+          };
+        } else {
+          // Expression body (arrow function): () => expr
+          body = this._transformNode(body, context);
+        }
+      }
+
+      const result = {
+        type: isArrow ? 'ArrowFunction' : 'FunctionExpression',
+        params,
+        body,
+        async: node.async || false,
+        generator: node.generator || false,
+        expression: node.expression || !node.body?.type || node.body.type !== 'BlockStatement',
+        resultType: 'function',
+        ilNodeType: isArrow ? 'ArrowFunction' : 'FunctionExpression'
+      };
+
+      // Preserve return type annotation from stub methods or JSDoc
+      if (node.returnType)
+        result.returnType = node.returnType;
+
+      // Preserve typeInfo (e.g., from stub methods)
+      if (node.typeInfo)
+        result.typeInfo = node.typeInfo;
+
+      return result;
+    }
+
+    /**
+     * Transform SequenceExpression (comma operator) to language-agnostic IL node
+     * @private
+     */
+    _transformSequenceExpression(node, context) {
+      const expressions = (node.expressions || []).map(expr =>
+        this._transformNode(expr, context)
+      );
+
+      // Result type is the type of the last expression
+      const lastExpr = expressions[expressions.length - 1];
+      const resultType = lastExpr?.resultType || null;
+
+      return {
+        type: 'SequenceExpression',
+        expressions,
+        resultType,
+        ilNodeType: 'SequenceExpression'
+      };
+    }
+
+    /**
+     * Transform AwaitExpression to language-agnostic IL node
+     * @private
+     */
+    _transformAwaitExpression(node, context) {
+      const argument = this._transformNode(node.argument, context);
+
+      // Unwrap Promise type if present
+      let resultType = argument?.resultType;
+      if (resultType && typeof resultType === 'string') {
+        if (resultType.startsWith('Promise<') && resultType.endsWith('>'))
+          resultType = resultType.slice(8, -1);
+      }
+
+      return {
+        type: 'AwaitExpression',
+        argument,
+        resultType,
+        ilNodeType: 'AwaitExpression'
+      };
+    }
+
+    /**
+     * Transform YieldExpression to language-agnostic IL node
+     * @private
+     */
+    _transformYieldExpression(node, context) {
+      const argument = node.argument ? this._transformNode(node.argument, context) : null;
+
+      return {
+        type: 'YieldExpression',
+        argument,
+        delegate: node.delegate || false, // yield* vs yield
+        resultType: argument?.resultType,
+        ilNodeType: 'YieldExpression'
+      };
+    }
+
+    // ========================[ IL AST BUILDING - IIFE VARIABLE HOISTING ]========================
+
+    /**
+     * IL AST Building Step 2.5: Hoist IIFE-computed variable initializers
+     *
+     * Transforms patterns like:
+     *   const X = (() => { const A = ...; const B = ...; return { A, B }; })();
+     * Into:
+     *   const A = ...;
+     *   const B = ...;
+     *   const X = { A, B };
+     *
+     * This is necessary because most languages don't support IIFEs (Immediately Invoked
+     * Function Expressions) as initializers, but need the inner variables to be accessible.
+     *
+     * @param {Object} ast - IL AST from previous steps
+     * @returns {Object} AST with IIFE variables hoisted
+     */
+    hoistIIFEVariables(ast) {
+      if (!ast || !ast.body) return ast;
+
+      const newBody = [];
+
+      for (const stmt of ast.body) {
+        // Check for variable declarations with IIFE initializers
+        if (stmt.type === 'VariableDeclaration') {
+          const expanded = this._expandIIFEDeclarations(stmt);
+          newBody.push(...expanded);
+        } else {
+          newBody.push(stmt);
+        }
+      }
+
+      return { ...ast, body: newBody };
+    }
+
+    /**
+     * Expand a VariableDeclaration that may contain IIFE initializers
+     * @private
+     */
+    _expandIIFEDeclarations(stmt) {
+      const results = [];
+      const kind = stmt.kind;
+
+      for (const decl of stmt.declarations || []) {
+        // Check if the initializer is an IIFE: (() => { ... })() or (function() { ... })()
+        const iife = this._extractIIFE(decl.init);
+        if (iife) {
+          // Extract statements and return value from the IIFE
+          const { hoistedStatements, returnValue } = this._processIIFEBody(iife, kind);
+
+          // Add hoisted statements
+          results.push(...hoistedStatements);
+
+          // Add the original variable with the return value as its initializer
+          if (returnValue) {
+            results.push({
+              type: 'VariableDeclaration',
+              kind: kind,
+              declarations: [{
+                type: 'VariableDeclarator',
+                id: decl.id,
+                init: returnValue
+              }]
+            });
+          }
+        } else {
+          // Not an IIFE, keep as-is
+          results.push({
+            type: 'VariableDeclaration',
+            kind: kind,
+            declarations: [decl]
+          });
+        }
+      }
+
+      return results;
+    }
+
+    /**
+     * Extract IIFE from an expression
+     * Handles: (() => { ... })() and (function() { ... })()
+     * @private
+     */
+    _extractIIFE(expr) {
+      if (!expr || expr.type !== 'CallExpression') return null;
+      if (expr.arguments && expr.arguments.length > 0) return null; // IIFEs don't take arguments
+
+      const callee = expr.callee;
+      if (!callee) return null;
+
+      // Check for arrow function or function expression
+      if (callee.type === 'ArrowFunctionExpression' || callee.type === 'FunctionExpression') {
+        // Must be a no-argument function
+        if (!callee.params || callee.params.length === 0) {
+          return callee;
+        }
+      }
+
+      return null;
+    }
+
+    /**
+     * Process an IIFE body, extracting hoisted statements and return value
+     * @private
+     */
+    _processIIFEBody(iife, kind) {
+      const hoistedStatements = [];
+      let returnValue = null;
+
+      let body = iife.body;
+
+      // Arrow function with expression body: () => expr
+      if (body && body.type !== 'BlockStatement') {
+        return { hoistedStatements: [], returnValue: body };
+      }
+
+      // Block body: () => { ... }
+      if (!body || !body.body) {
+        return { hoistedStatements: [], returnValue: null };
+      }
+
+      for (const stmt of body.body) {
+        if (stmt.type === 'ReturnStatement') {
+          // This is the final value - stop hoisting and capture the return
+          returnValue = stmt.argument;
+
+          // Unwrap Object.freeze(), Object.seal(), and similar wrappers
+          // to get the underlying ObjectExpression
+          if (returnValue && returnValue.type === 'CallExpression') {
+            const callee = returnValue.callee;
+            if (callee && callee.type === 'MemberExpression' &&
+                callee.object && callee.object.name === 'Object' &&
+                callee.property && ['freeze', 'seal', 'assign'].includes(callee.property.name)) {
+              // Extract the first argument (the actual object)
+              if (returnValue.arguments && returnValue.arguments.length > 0) {
+                returnValue = returnValue.arguments[0];
+              }
+            }
+          }
+          break;
+        } else if (stmt.type === 'VariableDeclaration') {
+          // Hoist variable declarations
+          hoistedStatements.push(stmt);
+        } else if (stmt.type === 'FunctionDeclaration') {
+          // Hoist function declarations
+          hoistedStatements.push(stmt);
+        } else if (stmt.type === 'ExpressionStatement') {
+          // Hoist expression statements (but not side-effect-free ones)
+          hoistedStatements.push(stmt);
+        } else {
+          // Other statements - hoist them too
+          hoistedStatements.push(stmt);
+        }
+      }
+
+      return { hoistedStatements, returnValue };
+    }
+
+    // ========================[ IL AST BUILDING - MODULE LOADER FILTERING ]========================
+
+    /**
+     * IL AST Building Step 2.6: Filter out JS-specific module loader functions
+     *
+     * Removes or stubs functions that are JS-specific and load dependencies:
+     * - Functions containing 'require', 'AlgorithmFramework', '__dirname'
+     * - These are JavaScript runtime functions that don't apply to other languages
+     *
+     * @param {Object} ast - IL AST from previous steps
+     * @returns {Object} AST with module loader functions removed
+     */
+    filterModuleLoaderFunctions(ast) {
+      if (!ast || !ast.body) return ast;
+
+      const newBody = [];
+
+      for (const stmt of ast.body) {
+        // Check function declarations for JS-specific patterns
+        if (stmt.type === 'FunctionDeclaration') {
+          if (this._isJSSpecificFunction(stmt)) {
+            // Skip this function entirely
+            continue;
+          }
+        }
+
+        // For class declarations, filter out JS-specific methods
+        if (stmt.type === 'ClassDeclaration') {
+          stmt.body = this._filterClassBody(stmt.body);
+        }
+
+        newBody.push(stmt);
+      }
+
+      return { ...ast, body: newBody };
+    }
+
+    /**
+     * Check if a function/method contains JS-specific code
+     * @private
+     */
+    _isJSSpecificFunction(node) {
+      // For MethodDefinition nodes, check the value (FunctionExpression)
+      // For FunctionDeclaration nodes, check the body directly
+      let bodyToCheck = node.body;
+      if (node.type === 'MethodDefinition' && node.value) {
+        bodyToCheck = node.value.body || node.value;
+      }
+
+      const bodyStr = safeJSONStringify(bodyToCheck || {});
+
+      // Patterns that indicate JS-specific runtime code
+      // Note: We allow AlgorithmFramework.EnumType.VALUE references (e.g., AlgorithmFramework.CategoryType.BLOCK)
+      // as these are legitimate enum accesses that should be transpiled. We only filter AlgorithmFramework
+      // when used in require() or assignment patterns indicating module loading.
+      const jsPatterns = [
+        /\brequire\s*\(\s*['"][^'"]*AlgorithmFramework/,  // require('...AlgorithmFramework')
+        /\brequire\s*\(\s*['"][^'"]*OpCodes/,             // require('...OpCodes')
+        /\brequire\b/,           // Node.js require (other modules)
+        /\b__dirname\b/,          // Node.js directory
+        /\b__filename\b/,         // Node.js filename
+        /\bmodule\.exports\b/,    // CommonJS exports
+        /\bglobal\.\w+\s*=\s*require/, // global.X = require(...)
+      ];
+
+      for (const pattern of jsPatterns) {
+        if (pattern.test(bodyStr)) {
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    /**
+     * Filter methods from a class body - JS-specific methods become stubs
+     * @private
+     */
+    _filterClassBody(classBody) {
+      if (!classBody || !classBody.body) return classBody;
+
+      classBody.body = classBody.body.map(member => {
+        if (member.type === 'MethodDefinition') {
+          // Check if the method is JS-specific
+          if (this._isJSSpecificFunction(member)) {
+            // Generate a stub method that throws an error
+            return this._createStubMethod(member);
+          }
+        }
+        return member;
+      });
+
+      return classBody;
+    }
+
+    /**
+     * Create a stub method that throws a NotSupportedException
+     * @private
+     */
+    _createStubMethod(methodNode) {
+      const methodName = methodNode.key?.name || methodNode.key?.value || 'unknown';
+
+      // Determine if the original method appears to return a value
+      const hasReturnValue = this._methodHasReturnValue(methodNode.value?.body);
+
+      // Copy the method signature but replace body with throw statement
+      const stubValue = {
+        ...methodNode.value,
+        body: {
+          type: 'BlockStatement',
+          body: [{
+            type: 'ThrowStatement',
+            argument: {
+              type: 'NewExpression',
+              callee: { type: 'Identifier', name: 'Error' },
+              arguments: [{
+                type: 'Literal',
+                value: `Method '${methodName}' requires JavaScript runtime features (require/module loading) and cannot be transpiled to other languages.`,
+                raw: `"Method '${methodName}' requires JavaScript runtime features (require/module loading) and cannot be transpiled to other languages."`
+              }]
+            }
+          }]
+        }
+      };
+
+      // Add type info for return type if the method returns something
+      if (hasReturnValue) {
+        stubValue.typeInfo = { returns: 'object' };
+        stubValue.returnType = 'object';
+      }
+
+      return {
+        ...methodNode,
+        value: stubValue
+      };
+    }
+
+    /**
+     * Check if a method body contains return statements with values
+     * @private
+     */
+    _methodHasReturnValue(body) {
+      if (!body) return false;
+      const bodyStr = safeJSONStringify(body);
+      // Check for return statements that have an argument (not just "return;")
+      return /ReturnStatement.*"argument":\s*\{/.test(bodyStr);
     }
 
     // ========================[ IL AST BUILDING - SYNTAX FLATTENING ]========================
@@ -1371,6 +4394,48 @@
 
           // Remove from function map so we don't process it again
           functionConstructorMap.delete(className);
+        }
+      }
+
+      // Synthesize classes for remaining constructor functions (no prototype methods)
+      // that have this.X = ... assignments in their body (e.g., function State() { this.S = [0,0,0,0]; })
+      for (const [className, constructorFunc] of functionConstructorMap) {
+        const hasThisAssign = (constructorFunc.body?.body || []).some(s =>
+          s.type === 'ExpressionStatement' &&
+          s.expression?.type === 'AssignmentExpression' &&
+          s.expression.left?.type === 'MemberExpression' &&
+          s.expression.left.object?.type === 'ThisExpression'
+        );
+        if (hasThisAssign) {
+          const syntheticClass = {
+            type: 'ClassDeclaration',
+            id: { type: 'Identifier', name: className },
+            superClass: null,
+            body: {
+              type: 'ClassBody',
+              body: [
+                {
+                  type: 'MethodDefinition',
+                  kind: 'constructor',
+                  static: false,
+                  computed: false,
+                  key: { type: 'Identifier', name: 'constructor' },
+                  value: {
+                    type: 'FunctionExpression',
+                    params: constructorFunc.params || [],
+                    body: constructorFunc.body,
+                    async: false,
+                    generator: false
+                  }
+                }
+              ]
+            }
+          };
+          classMap.set(className, syntheticClass);
+          const funcIndex = statementsToKeep.findIndex(s => s === constructorFunc);
+          if (funcIndex >= 0) {
+            statementsToKeep[funcIndex] = syntheticClass;
+          }
         }
       }
 
@@ -1534,11 +4599,17 @@
     unwrapModulePatterns(ast) {
       if (!ast || !ast.body || ast.body.length === 0) return ast;
 
-      // Check if program consists primarily of a single IIFE call expression
-      const mainStatements = ast.body.filter(stmt =>
-        stmt.type !== 'EmptyStatement' &&
-        !(stmt.type === 'ExpressionStatement' && stmt.expression?.type === 'Literal')
-      );
+      // Filter out non-essential statements:
+      // - Empty statements
+      // - String literals (like "use strict")
+      // - Module loader patterns: if (!global.X && typeof require !== 'undefined') { global.X = require(...) }
+      const mainStatements = ast.body.filter(stmt => {
+        if (stmt.type === 'EmptyStatement') return false;
+        if (stmt.type === 'ExpressionStatement' && stmt.expression?.type === 'Literal') return false;
+        // Filter out module loader patterns: if (!global.AlgorithmFramework ...) { ... }
+        if (stmt.type === 'IfStatement' && this._isModuleLoaderPattern(stmt)) return false;
+        return true;
+      });
 
       if (mainStatements.length !== 1) return ast;
 
@@ -1546,14 +4617,174 @@
 
       // Pattern 1: ExpressionStatement containing CallExpression
       if (stmt.type === 'ExpressionStatement' && stmt.expression?.type === 'CallExpression') {
-        const unwrapped = this.tryUnwrapUMD(stmt.expression);
+        // Try UMD pattern first (2-parameter factory pattern)
+        let unwrapped = this.tryUnwrapUMD(stmt.expression);
         if (unwrapped) {
           console.error('📦 Unwrapped UMD module pattern');
+          return unwrapped;
+        }
+
+        // Try simple IIFE pattern: (function(global) { ... })(this)
+        unwrapped = this.tryUnwrapSimpleIIFE(stmt.expression);
+        if (unwrapped) {
+          console.error('📦 Unwrapped IIFE module pattern');
           return unwrapped;
         }
       }
 
       return ast;
+    }
+
+    /**
+     * Try to unwrap a simple IIFE pattern: (function(global) { ... })(this)
+     * @param {Object} callExpr - CallExpression AST node
+     * @returns {Object|null} Unwrapped Program AST or null if not an IIFE pattern
+     */
+    tryUnwrapSimpleIIFE(callExpr) {
+      const callee = callExpr.callee;
+
+      // Callee must be a FunctionExpression
+      if (!callee || callee.type !== 'FunctionExpression') return null;
+
+      // Simple IIFE typically has 0-1 parameters (e.g., 'global')
+      const wrapperParams = callee.params || [];
+      if (wrapperParams.length > 1) return null;
+
+      // Extract the function body
+      const body = callee.body;
+      if (!body || body.type !== 'BlockStatement') return null;
+
+      const statements = body.body || [];
+
+      // Filter out "use strict" directives and module loader patterns
+      const filteredStatements = statements.filter(stmt => {
+        // Skip "use strict"
+        if (stmt.type === 'ExpressionStatement' &&
+            stmt.expression?.type === 'Literal' &&
+            stmt.expression?.value === 'use strict') {
+          return false;
+        }
+
+        // Skip global export patterns: global.X = Y or global['X'] = Y
+        if (stmt.type === 'ExpressionStatement' &&
+            stmt.expression?.type === 'AssignmentExpression') {
+          const left = stmt.expression.left;
+          // global.X = Y pattern
+          if (left?.type === 'MemberExpression' &&
+              left?.object?.type === 'Identifier' &&
+              (left?.object?.name === 'global' || left?.object?.name === 'globalThis')) {
+            return false;
+          }
+        }
+
+        // Skip module loader patterns: if (!global.X && typeof require !== 'undefined') ...
+        if (this._isModuleLoaderPattern(stmt)) {
+          return false;
+        }
+
+        // Skip require statements for external dependencies
+        if (stmt.type === 'IfStatement' &&
+            stmt.consequent?.type === 'BlockStatement' &&
+            stmt.consequent.body?.[0]?.type === 'ExpressionStatement' &&
+            stmt.consequent.body[0].expression?.type === 'CallExpression' &&
+            stmt.consequent.body[0].expression.callee?.name === 'require') {
+          return false;
+        }
+
+        // Skip destructuring from AlgorithmFramework
+        if (stmt.type === 'VariableDeclaration') {
+          const decl = stmt.declarations?.[0];
+          if (decl?.id?.type === 'ObjectPattern' &&
+              decl?.init?.type === 'Identifier' &&
+              decl?.init?.name === 'AlgorithmFramework') {
+            // Store framework imports for reference
+            this.frameworkImports = new Set();
+            for (const prop of decl.id.properties || []) {
+              if (prop.key?.name) {
+                this.frameworkImports.add(prop.key.name);
+              }
+            }
+            return false;
+          }
+          // Skip global references: const X = global.X or const X = global.OpCodes
+          if (decl?.init?.type === 'MemberExpression' &&
+              decl?.init?.object?.name === 'global') {
+            const propName = decl?.init?.property?.name;
+            if (propName === 'OpCodes' || propName === 'AlgorithmFramework') {
+              return false;
+            }
+          }
+        }
+
+        return true;
+      });
+
+      // Return the unwrapped program
+      return {
+        type: 'Program',
+        body: filteredStatements,
+        isUnwrappedModule: true,
+      };
+    }
+
+    /**
+     * Check if a statement is a module loader pattern like:
+     * if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+     *   global.AlgorithmFramework = require('...');
+     * }
+     * @private
+     */
+    _isModuleLoaderPattern(stmt) {
+      if (stmt.type !== 'IfStatement') return false;
+      const test = stmt.test;
+      if (!test) return false;
+
+      // Check for patterns involving 'global.X' or 'typeof require'
+      const testStr = this._nodeToString(test);
+      if (!testStr) return false;
+
+      // Common module loader patterns
+      // Pattern 1: if (!global.X && typeof require !== 'undefined')
+      if (testStr.includes('global.') && (testStr.includes('require') || testStr.includes('typeof'))) {
+        return true;
+      }
+      // Pattern 2: if (typeof require !== 'undefined') - simple require check
+      if (testStr.includes('typeof require') || testStr.includes('typeof(require)')) {
+        return true;
+      }
+      // Pattern 3: if (!global.X) - simple global check (often contains nested require checks)
+      // This catches patterns like: if (!global.AlgorithmFramework) { if (typeof require...) }
+      if (testStr.match(/^!global\.\w+$/) || testStr.match(/^!global\[/)) {
+        return true;
+      }
+      // Pattern 4: if (global.Cipher) or if (global.X && ...) - registration patterns
+      if (testStr.match(/^global\.\w+$/) || testStr.match(/^global\[/)) {
+        return true;
+      }
+      return false;
+    }
+
+    /**
+     * Simple node-to-string for pattern detection
+     * @private
+     */
+    _nodeToString(node) {
+      if (!node) return '';
+      switch (node.type) {
+        case 'Identifier':
+          return node.name;
+        case 'MemberExpression':
+          return this._nodeToString(node.object) + '.' + this._nodeToString(node.property);
+        case 'UnaryExpression':
+          return node.operator + this._nodeToString(node.argument);
+        case 'BinaryExpression':
+        case 'LogicalExpression':
+          return this._nodeToString(node.left) + ' ' + node.operator + ' ' + this._nodeToString(node.right);
+        case 'Literal':
+          return String(node.value);
+        default:
+          return safeJSONStringify(node).substring(0, 50);
+      }
     }
 
     /**
@@ -1586,14 +4817,10 @@
       for (let i = 0; i < args.length; i++) {
         const arg = args[i];
         if (arg.type === 'FunctionExpression' || arg.type === 'ArrowFunctionExpression') {
-          // Check if this function has parameters matching the expected dependencies
-          // (AlgorithmFramework, OpCodes, etc.)
-          const params = arg.params || [];
-          if (params.length >= 1) {
-            // This is likely the factory function
-            factoryFn = arg;
-            break;
-          }
+          // This is likely the factory function (may have 0 or more parameters)
+          // Some UMD patterns use dependencies via global scope rather than parameters
+          factoryFn = arg;
+          break;
         }
       }
 
@@ -1614,19 +4841,74 @@
 
       // Filter out "use strict" directives and dependency validation checks
       const filteredStatements = statements.filter(stmt => {
-        // Keep "use strict"
+        // Skip "use strict"
         if (stmt.type === 'ExpressionStatement' &&
             stmt.expression?.type === 'Literal' &&
             stmt.expression?.value === 'use strict') {
-          return false; // Skip, C# doesn't need this
+          return false;
         }
 
         // Skip dependency validation: if (!Dependency) throw ...
+        // Handles both direct throw and throw in block
         if (stmt.type === 'IfStatement' &&
             stmt.test?.type === 'UnaryExpression' &&
-            stmt.test?.operator === '!' &&
-            stmt.consequent?.type === 'ThrowStatement') {
-          return false;
+            stmt.test?.operator === '!') {
+          const consequent = stmt.consequent;
+          if (consequent?.type === 'ThrowStatement') {
+            return false;
+          }
+          // Also check for throw inside a block: if (...) { throw ...; }
+          if (consequent?.type === 'BlockStatement' &&
+              consequent.body?.length === 1 &&
+              consequent.body[0]?.type === 'ThrowStatement') {
+            return false;
+          }
+        }
+
+        // Skip module loader patterns: if (!global.X && typeof require !== 'undefined') { global.X = require(...) }
+        if (stmt.type === 'IfStatement') {
+          // Check if this is a module loader pattern by examining the test condition
+          const test = stmt.test;
+          let isModuleLoader = false;
+
+          // Pattern 1: LogicalExpression with global.X and typeof require check
+          if (test?.type === 'LogicalExpression') {
+            const left = test.left;
+            const right = test.right;
+            // Check for !global.X pattern on either side
+            if ((left?.type === 'UnaryExpression' && left?.operator === '!' &&
+                 left?.argument?.type === 'MemberExpression' &&
+                 left?.argument?.object?.name === 'global') ||
+                (right?.type === 'UnaryExpression' && right?.operator === '!' &&
+                 right?.argument?.type === 'MemberExpression' &&
+                 right?.argument?.object?.name === 'global')) {
+              isModuleLoader = true;
+            }
+            // Check for typeof require pattern
+            const testStr = this._nodeToString(test);
+            if (testStr?.includes('typeof require')) {
+              isModuleLoader = true;
+            }
+          }
+
+          // Pattern 2: Simple !global.X or !AlgorithmFramework check
+          if (test?.type === 'UnaryExpression' && test?.operator === '!' &&
+              test?.argument?.type === 'MemberExpression' &&
+              test?.argument?.object?.name === 'global') {
+            isModuleLoader = true;
+          }
+
+          // Pattern 3: Simple typeof require !== 'undefined' check (BinaryExpression)
+          if (test?.type === 'BinaryExpression') {
+            const testStr = this._nodeToString(test);
+            if (testStr?.includes('typeof require')) {
+              isModuleLoader = true;
+            }
+          }
+
+          if (isModuleLoader) {
+            return false;
+          }
         }
 
         return true;
@@ -1634,9 +4916,15 @@
 
       // Skip destructuring from AlgorithmFramework (const { ... } = AlgorithmFramework)
       // These are framework imports that need different handling
+      // Also skip return statements (module exports in UMD pattern)
       const processedStatements = filteredStatements.filter(stmt => {
+        // Skip return statements - these are module exports in UMD pattern
+        if (stmt.type === 'ReturnStatement')
+          return false;
+
         if (stmt.type === 'VariableDeclaration') {
           const decl = stmt.declarations?.[0];
+          // Skip destructuring from AlgorithmFramework: const { ... } = AlgorithmFramework
           if (decl?.id?.type === 'ObjectPattern' &&
               decl?.init?.type === 'Identifier' &&
               decl?.init?.name === 'AlgorithmFramework') {
@@ -1648,6 +4936,21 @@
               }
             }
             return false; // Skip this statement
+          }
+          // Skip global references: const X = global.X or const X = global.OpCodes
+          if (decl?.init?.type === 'MemberExpression' &&
+              decl?.init?.object?.name === 'global') {
+            const propName = decl?.init?.property?.name;
+            if (propName === 'OpCodes' || propName === 'AlgorithmFramework') {
+              return false;
+            }
+          }
+          // Skip global scope detection IIFE: var global = (function() { ... return this; })()
+          if (decl?.id?.name === 'global' &&
+              decl?.init?.type === 'CallExpression' &&
+              (decl?.init?.callee?.type === 'FunctionExpression' ||
+               decl?.init?.callee?.type === 'ArrowFunctionExpression')) {
+            return false;
           }
         }
         return true;
@@ -1827,13 +5130,202 @@
      * Helper to analyze return type from JSDoc or return statements
      */
     _analyzeReturnType(funcNode) {
-      // Check for JSDoc return type
-      if (funcNode.typeInfo && funcNode.typeInfo.returns) {
+      // Check for JSDoc return type first (highest priority)
+      if (funcNode.typeInfo && funcNode.typeInfo.returns)
         return funcNode.typeInfo.returns;
+
+      // Analyze actual return statements in function body
+      const body = funcNode.body || funcNode.value?.body;
+      if (!body) return 'void';
+
+      const returnTypes = [];
+      let hasVoidReturn = false;
+
+      const collectReturnTypes = (node) => {
+        if (!node || typeof node !== 'object') return;
+
+        if (node.type === 'ReturnStatement') {
+          if (!node.argument) {
+            hasVoidReturn = true;
+          } else {
+            const retType = this.inferExpressionType(node.argument, { funcNode });
+            // Extract type name - inferExpressionType returns { name: 'typeName' } objects
+            const typeName = retType?.name || (typeof retType === 'string' ? retType : null);
+            if (typeName && typeName !== 'object' && typeName !== 'unknown')
+              returnTypes.push(typeName);
+            else {
+              // Try pattern-based inference from return expression
+              const patternType = this._inferReturnTypeFromExpression(node.argument);
+              if (patternType)
+                returnTypes.push(patternType);
+            }
+          }
+          return; // Don't recurse into nested functions from return
+        }
+
+        // Don't analyze nested function declarations
+        if (node.type === 'FunctionDeclaration' || node.type === 'FunctionExpression' ||
+            node.type === 'ArrowFunctionExpression')
+          return;
+
+        // Recurse into child nodes
+        for (const key in node) {
+          if (key === 'type' || key === 'loc' || key === 'range') continue;
+          const child = node[key];
+          if (Array.isArray(child))
+            child.forEach(collectReturnTypes);
+          else if (child && typeof child === 'object')
+            collectReturnTypes(child);
+        }
+      };
+
+      collectReturnTypes(body);
+
+      // Determine final return type
+      if (returnTypes.length === 0)
+        return hasVoidReturn ? 'void' : 'object';
+
+      // Filter unique types
+      const uniqueTypes = [...new Set(returnTypes)];
+      if (uniqueTypes.length === 1)
+        return uniqueTypes[0];
+
+      // Multiple types - try to find common base or use first non-object type
+      // Ensure we only process string types (filter out any non-strings that might have gotten in)
+      const nonObjectTypes = uniqueTypes.filter(t => typeof t === 'string' && t !== 'object' && t !== 'unknown');
+      if (nonObjectTypes.length === 1)
+        return nonObjectTypes[0];
+
+      // Check for numeric type hierarchy (normalize legacy aliases to IL vocabulary)
+      const numericTypes = ['byte', 'uint8', 'word', 'uint16', 'dword', 'uint32', 'qword', 'uint64', 'int', 'int32', 'long', 'int64'];
+      const foundNumeric = nonObjectTypes.filter(t => numericTypes.includes(t));
+      if (foundNumeric.length > 0) {
+        // Return the widest numeric type, normalized to IL vocabulary
+        const typeOrder = { 'byte': 0, 'uint8': 0, 'word': 1, 'uint16': 1, 'dword': 2, 'uint32': 2, 'int': 2, 'int32': 2, 'qword': 3, 'uint64': 3, 'long': 3, 'int64': 3 };
+        const toIL = { 'byte': 'uint8', 'word': 'uint16', 'dword': 'uint32', 'qword': 'uint64', 'int': 'int32', 'long': 'int64' };
+        foundNumeric.sort((a, b) => (typeOrder[b] || 0) - (typeOrder[a] || 0));
+        const widest = foundNumeric[0];
+        return toIL[widest] || widest;
       }
 
-      // TODO: Analyze actual return statements in function body
-      return 'object';
+      // Array types take precedence
+      const arrayType = nonObjectTypes.find(t => typeof t === 'string' && (t.includes('[]') || t.startsWith('Array')));
+      if (arrayType) return arrayType;
+
+      return nonObjectTypes[0] || 'object';
+    }
+
+    /**
+     * Infer return type from expression patterns
+     */
+    _inferReturnTypeFromExpression(expr) {
+      if (!expr) return null;
+
+      // Literal values
+      if (expr.type === 'Literal') {
+        if (typeof expr.value === 'boolean') return 'boolean';
+        if (typeof expr.value === 'string') return 'string';
+        if (typeof expr.value === 'number') {
+          if (Number.isInteger(expr.value)) {
+            if (expr.value >= 0 && expr.value <= 255) return 'uint8';
+            if (expr.value >= 0 && expr.value <= 65535) return 'uint16';
+            if (expr.value >= 0 && expr.value <= 4294967295) return 'uint32';
+            return 'int32';
+          }
+          return 'double';
+        }
+        if (expr.value === null) return 'null';
+      }
+
+      // Array expression
+      if (expr.type === 'ArrayExpression') {
+        if (expr.elements && expr.elements.length > 0) {
+          const elemType = this._inferReturnTypeFromExpression(expr.elements[0]);
+          if (elemType) return elemType + '[]';
+        }
+        return 'byte[]';
+      }
+
+      // New expression (constructor call)
+      if (expr.type === 'NewExpression') {
+        const calleeName = expr.callee?.name;
+        if (calleeName === 'Uint8Array') return 'uint8[]';
+        if (calleeName === 'Uint16Array') return 'uint16[]';
+        if (calleeName === 'Uint32Array') return 'uint32[]';
+        if (calleeName === 'Int8Array') return 'int8[]';
+        if (calleeName === 'Int16Array') return 'int16[]';
+        if (calleeName === 'Int32Array') return 'int32[]';
+        if (calleeName === 'Array') return 'object[]';
+        if (calleeName) return calleeName;
+      }
+
+      // This member access - common patterns
+      if (expr.type === 'MemberExpression' && expr.object?.type === 'ThisExpression') {
+        const propName = expr.property?.name || expr.property?.value;
+        if (propName) {
+          const lowerName = propName.toLowerCase();
+          if (lowerName.includes('state') || lowerName.includes('key') || lowerName.includes('block'))
+            return 'uint8[]';
+          if (lowerName.includes('size') || lowerName.includes('length') || lowerName.includes('count'))
+            return 'int32';
+        }
+      }
+
+      // Binary expressions with bitwise operators
+      if (expr.type === 'BinaryExpression') {
+        if (['&', '|', '^', '<<', '>>', '>>>'].includes(expr.operator)) {
+          // Check for masking patterns
+          if (expr.operator === '&' && expr.right?.type === 'Literal') {
+            const mask = expr.right.value;
+            if (mask === 0xFF) return 'uint8';
+            if (mask === 0xFFFF) return 'uint16';
+            if (mask === 0xFFFFFFFF) return 'uint32';
+          }
+          return 'uint32';
+        }
+        if (['+', '-', '*', '/', '%'].includes(expr.operator))
+          return 'int32';
+        if (['==', '===', '!=', '!==', '<', '>', '<=', '>='].includes(expr.operator))
+          return 'boolean';
+        if (['&&', '||'].includes(expr.operator))
+          return 'boolean';
+      }
+
+      // Call expressions - check method names
+      if (expr.type === 'CallExpression') {
+        if (expr.callee?.type === 'MemberExpression') {
+          const methodName = expr.callee.property?.name;
+          if (methodName) {
+            if (['slice', 'concat', 'map', 'filter'].includes(methodName)) return 'uint8[]';
+            if (['join'].includes(methodName)) return 'string';
+            if (['indexOf', 'findIndex', 'length'].includes(methodName)) return 'int32';
+            if (['includes', 'every', 'some'].includes(methodName)) return 'boolean';
+          }
+          // OpCodes calls
+          if (expr.callee.object?.name === 'OpCodes') {
+            const opName = expr.callee.property?.name;
+            if (opName) {
+              if (opName.startsWith('RotL') || opName.startsWith('RotR')) return 'uint32';
+              if (opName.includes('Pack') || opName.includes('32')) return 'uint32';
+              if (opName.includes('Unpack') || opName.includes('ToBytes')) return 'uint8[]';
+              if (opName.includes('Hex') && opName.includes('Bytes')) return 'uint8[]';
+            }
+          }
+        }
+      }
+
+      // Identifier - check variable name patterns
+      if (expr.type === 'Identifier') {
+        const name = expr.name.toLowerCase();
+        if (name.includes('result') || name.includes('output') || name.includes('hash'))
+          return 'uint8[]';
+        if (name.includes('size') || name.includes('length') || name.includes('index'))
+          return 'int32';
+        if (name.includes('flag') || name.includes('valid') || name.includes('ok'))
+          return 'boolean';
+      }
+
+      return null;
     }
 
     /**
@@ -1841,7 +5333,12 @@
      */
     _extractJSDocParamType(funcNode, paramName) {
       if (funcNode.typeInfo && funcNode.typeInfo.params) {
-        return funcNode.typeInfo.params.get(paramName);
+        // Handle both Map and plain object params
+        const params = funcNode.typeInfo.params;
+        if (params instanceof Map)
+          return params.get(paramName);
+        if (typeof params === 'object' && params !== null)
+          return params[paramName];
       }
       return null;
     }
@@ -2009,9 +5506,29 @@
             return this.parseBlockStatement();
           }
           return this.parseExpressionStatement();
+        case 'IDENTIFIER':
+          // Check for labeled statement (identifier followed by colon)
+          if (this.tokens[this.position + 1] &&
+              this.tokens[this.position + 1].type === 'PUNCTUATION' &&
+              this.tokens[this.position + 1].value === ':') {
+            return this.parseLabeledStatement();
+          }
+          return this.parseExpressionStatement();
         default:
           return this.parseExpressionStatement();
       }
+    }
+
+    /**
+     * Parse labeled statement (e.g., label: for (...) { ... })
+     */
+    parseLabeledStatement() {
+      const node = { type: 'LabeledStatement' };
+      node.label = this.parseIdentifier();
+      this.consume('PUNCTUATION', ':');
+      this.skipComments();
+      node.body = this.parseStatement();
+      return node;
     }
 
     /**
@@ -2104,28 +5621,87 @@
      * Parse a class member (method or field)
      */
     parseClassMember() {
+      // Consume JSDoc before parsing class member
+      const jsDoc = this.consumeJSDoc();
+
       // Look ahead to determine if this is a field declaration or method
       let lookahead = this.position;
-      
-      // Skip 'static' if present
+
+      // Check for static initialization block: static { ... }
       if (this.tokens[lookahead] && this.tokens[lookahead].type === 'KEYWORD' && this.tokens[lookahead].value === 'static') {
+        const nextToken = this.tokens[lookahead + 1];
+        if (nextToken && nextToken.type === 'PUNCTUATION' && nextToken.value === '{')
+          // This is a static initialization block
+          return this.parseStaticBlock();
+
         lookahead++; // Move past 'static'
       }
-      
+
       // Look for identifier followed by = (field) or ( (method)
       if (lookahead < this.tokens.length - 1) {
         const identifierToken = this.tokens[lookahead];
         const nextToken = this.tokens[lookahead + 1];
-        
-        if (identifierToken && identifierToken.type === 'IDENTIFIER' && 
+
+        if (identifierToken && identifierToken.type === 'IDENTIFIER' &&
             nextToken && nextToken.type === 'OPERATOR' && nextToken.value === '=') {
           // This is a field declaration like: static FIELD = value;
-          return this.parseClassField();
+          const field = this.parseClassField();
+          if (jsDoc) {
+            field.jsDoc = jsDoc;
+            // If JSDoc has @type, store it
+            if (jsDoc.type)
+              this.typeAnnotations.set(field, { type: jsDoc.type, source: 'jsdoc' });
+          }
+          return field;
         }
       }
-      
+
       // Otherwise, it's a method
-      return this.parseClassMethod();
+      const method = this.parseClassMethod();
+
+      // Attach JSDoc to method
+      if (jsDoc && method.value) {
+        method.jsDoc = jsDoc;
+        method.value.jsDoc = jsDoc;
+        method.value.typeInfo = {
+          params: new Map(jsDoc.params.map(p => [p.name, p.type])),
+          returns: jsDoc.returns ? jsDoc.returns.type : null,
+          csharpOverride: jsDoc.csharpOverride || null
+        };
+
+        // Attach type info to method parameters
+        if (method.value.params) {
+          method.value.params.forEach((param, index) => {
+            if (jsDoc.params[index] && param.type === 'Identifier') {
+              this.typeAnnotations.set(param, {
+                type: jsDoc.params[index].type,
+                source: 'jsdoc'
+              });
+            }
+          });
+        }
+
+        // Store return type in type annotations
+        if (jsDoc.returns)
+          this.typeAnnotations.set(method.value, { type: jsDoc.returns.type, source: 'jsdoc' });
+      }
+
+      return method;
+    }
+
+    /**
+     * Parse static initialization block: static { ... }
+     */
+    parseStaticBlock() {
+      const node = { type: 'StaticBlock', body: [] };
+
+      // Consume 'static'
+      this.consume('KEYWORD', 'static');
+
+      // Parse the block body
+      node.body = this.parseBlockStatement();
+
+      return node;
     }
 
     /**
@@ -2175,12 +5751,22 @@
         if (this.currentToken.value === 'static') {
           node.static = true;
           this.advance();
-        } else if (this.currentToken.value === 'get') {
-          node.kind = 'get';
-          this.advance();
-        } else if (this.currentToken.value === 'set') {
-          node.kind = 'set';
-          this.advance();
+        } else if (this.currentToken.value === 'get' || this.currentToken.value === 'set') {
+          // Look ahead to determine if this is a getter/setter or a method named "get"/"set"
+          const nextToken = this.tokens[this.position + 1];
+          if (nextToken && nextToken.type === 'IDENTIFIER') {
+            // It's a getter/setter (e.g., "get propertyName()" or "set propertyName(value)")
+            node.kind = this.currentToken.value;
+            this.advance();
+          } else if (nextToken && nextToken.type === 'PUNCTUATION' && nextToken.value === '(') {
+            // It's a method named "get" or "set" (e.g., "get()" or "set(args)")
+            // Don't treat as getter/setter, exit loop to let it be parsed as method name
+            break;
+          } else {
+            // Default: treat as getter/setter keyword
+            node.kind = this.currentToken.value;
+            this.advance();
+          }
         } else {
           break; // Exit if we encounter a keyword that's not a modifier
         }
@@ -2190,12 +5776,17 @@
         node.kind = 'method';
       }
       
-      // Constructor or method name
-      if (this.currentToken && (this.currentToken.type === 'IDENTIFIER' || 
-          (this.currentToken.type === 'KEYWORD' && this.currentToken.value === 'constructor'))) {
+      // Constructor or method name (can be identifier, 'constructor', or 'get'/'set' as method names)
+      if (this.currentToken && (this.currentToken.type === 'IDENTIFIER' ||
+          (this.currentToken.type === 'KEYWORD' &&
+           (this.currentToken.value === 'constructor' || this.currentToken.value === 'get' || this.currentToken.value === 'set')))) {
         if (this.currentToken.type === 'KEYWORD' && this.currentToken.value === 'constructor') {
           node.key = { type: 'Identifier', name: 'constructor' };
           node.kind = 'constructor';
+          this.advance();
+        } else if (this.currentToken.type === 'KEYWORD' && (this.currentToken.value === 'get' || this.currentToken.value === 'set')) {
+          // Method named "get" or "set" (not a getter/setter)
+          node.key = { type: 'Identifier', name: this.currentToken.value };
           this.advance();
         } else {
           node.key = this.parseIdentifier();
@@ -2239,34 +5830,78 @@
     }
 
     /**
-     * Parse object pattern for destructuring {a, b, c}
+     * Parse object pattern for destructuring {a, b, c} or {a: renamed, b: renamed2}
      */
     parseObjectPattern() {
       const node = { type: 'ObjectPattern', properties: [] };
-      
+
       this.consume('PUNCTUATION', '{');
-      
+
       while (this.currentToken && !(this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === '}')) {
+        this.skipComments();
+
+        // Check for closing brace after skipping comments
+        if (this.currentToken && this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === '}') {
+          break;
+        }
+
         const property = { type: 'Property' };
-        
+
         if (this.currentToken.type === 'IDENTIFIER') {
-          const id = this.parseIdentifier();
-          property.key = id;
-          property.value = id; // shorthand property
-          property.shorthand = true;
+          const key = this.parseIdentifier();
+          property.key = key;
+
+          this.skipComments();
+
+          // Check for renamed property: { originalName: newName }
+          if (this.currentToken && this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === ':') {
+            this.advance(); // consume ':'
+            this.skipComments();
+
+            // The value can be an identifier or nested pattern
+            if (this.currentToken.type === 'IDENTIFIER') {
+              property.value = this.parseIdentifier();
+            } else if (this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === '{') {
+              property.value = this.parseObjectPattern();
+            } else if (this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === '[') {
+              property.value = this.parseArrayPattern();
+            } else {
+              throw new Error(`Expected identifier or pattern after ':' in object pattern, got: ${this.currentToken.type}`);
+            }
+            property.shorthand = false;
+          } else {
+            // Shorthand property: { a } means { a: a }
+            property.value = { type: 'Identifier', name: key.name };
+            property.shorthand = true;
+          }
+
+          // Check for default value: { a = default } or { a: b = default }
+          this.skipComments();
+          if (this.currentToken && this.currentToken.type === 'OPERATOR' && this.currentToken.value === '=') {
+            this.advance(); // consume '='
+            this.skipComments();
+            const defaultValue = this.parseAssignmentExpression();
+            // Wrap value in AssignmentPattern
+            property.value = {
+              type: 'AssignmentPattern',
+              left: property.value,
+              right: defaultValue
+            };
+          }
         } else {
           throw new Error(`Expected identifier in object pattern, got: ${this.currentToken.type}`);
         }
-        
+
         node.properties.push(property);
-        
+
+        this.skipComments();
         if (this.currentToken && this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === ',') {
           this.advance();
         }
       }
-      
+
       this.consume('PUNCTUATION', '}');
-      
+
       return node;
     }
 
@@ -2299,7 +5934,9 @@
         
         if (this.currentToken && this.currentToken.type === 'OPERATOR' && this.currentToken.value === '=') {
           this.advance();
-          declarator.init = this.parseExpression();
+          // Use parseAssignmentExpression instead of parseExpression to avoid consuming
+          // the comma that separates variable declarators (e.g., const a = 1, b = 2)
+          declarator.init = this.parseAssignmentExpression();
         }
         
         node.declarations.push(declarator);
@@ -2322,13 +5959,42 @@
      * Parse function declaration
      */
     parseFunction() {
+      // Consume JSDoc before parsing function
+      const jsDoc = this.consumeJSDoc();
+
       const node = { type: 'FunctionDeclaration' };
-      
+
       this.consume('KEYWORD', 'function');
       node.id = this.parseIdentifier();
       node.params = this.parseParameterList();
       node.body = this.parseBlockStatement();
-      
+
+      // Attach JSDoc type information if available
+      if (jsDoc) {
+        node.jsDoc = jsDoc;
+        node.typeInfo = {
+          params: new Map(jsDoc.params.map(p => [p.name, p.type])),
+          returns: jsDoc.returns ? jsDoc.returns.type : null,
+          csharpOverride: jsDoc.csharpOverride || null
+        };
+
+        // Attach type info to function parameters
+        if (node.params) {
+          node.params.forEach((param, index) => {
+            if (jsDoc.params[index] && param.type === 'Identifier') {
+              this.typeAnnotations.set(param, {
+                type: jsDoc.params[index].type,
+                source: 'jsdoc'
+              });
+            }
+          });
+        }
+
+        // Store return type in type annotations
+        if (jsDoc.returns)
+          this.typeAnnotations.set(node, { type: jsDoc.returns.type, source: 'jsdoc' });
+      }
+
       return node;
     }
 
@@ -2336,21 +6002,56 @@
      * Parse function expression
      */
     parseFunctionExpression() {
+      // Consume JSDoc before parsing function expression
+      const jsDoc = this.consumeJSDoc();
+
       const node = { type: 'FunctionExpression' };
-      
-      if (this.currentToken && this.currentToken.type === 'KEYWORD' && this.currentToken.value === 'function') {
+
+      if (this.currentToken && this.currentToken.type === 'KEYWORD' && this.currentToken.value === 'function')
         this.advance();
+
+      // Handle optional function name (named function expression)
+      if (this.currentToken && this.currentToken.type === 'IDENTIFIER') {
+        node.id = this.parseIdentifier();
+      } else {
+        node.id = null;
       }
-      
+
       node.params = this.parseParameterList();
-      
+
       if (this.currentToken && this.currentToken.type === 'ARROW') {
         node.type = 'ArrowFunctionExpression';
         this.advance();
       }
-      
+
       node.body = this.parseBlockStatement();
-      
+
+      // Attach JSDoc type information if available
+      if (jsDoc) {
+        node.jsDoc = jsDoc;
+        node.typeInfo = {
+          params: new Map(jsDoc.params.map(p => [p.name, p.type])),
+          returns: jsDoc.returns ? jsDoc.returns.type : null,
+          csharpOverride: jsDoc.csharpOverride || null
+        };
+
+        // Attach type info to function parameters
+        if (node.params) {
+          node.params.forEach((param, index) => {
+            if (jsDoc.params[index] && param.type === 'Identifier') {
+              this.typeAnnotations.set(param, {
+                type: jsDoc.params[index].type,
+                source: 'jsdoc'
+              });
+            }
+          });
+        }
+
+        // Store return type in type annotations
+        if (jsDoc.returns)
+          this.typeAnnotations.set(node, { type: jsDoc.returns.type, source: 'jsdoc' });
+      }
+
       return node;
     }
 
@@ -2500,8 +6201,8 @@
       }
       
       // Regular assignment expression
-      if (this.currentToken && this.currentToken.type === 'OPERATOR' && 
-          ['=', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '<<=', '>>=', '>>>='].includes(this.currentToken.value)) {
+      if (this.currentToken && this.currentToken.type === 'OPERATOR' &&
+          ['=', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '<<=', '>>=', '>>>=', '**='].includes(this.currentToken.value)) {
         const node = { type: 'AssignmentExpression' };
         node.left = left;
         node.operator = this.currentToken.value;
@@ -2703,18 +6404,39 @@
      * Parse multiplicative expression
      */
     parseMultiplicativeExpression() {
-      let left = this.parseUnaryExpression();
-      
-      while (this.currentToken && this.currentToken.type === 'OPERATOR' && 
+      let left = this.parseExponentiationExpression();
+
+      while (this.currentToken && this.currentToken.type === 'OPERATOR' &&
              ['*', '/', '%'].includes(this.currentToken.value)) {
         const node = { type: 'BinaryExpression' };
         node.left = left;
         node.operator = this.currentToken.value;
         this.advance();
-        node.right = this.parseUnaryExpression();
+        node.right = this.parseExponentiationExpression();
         left = node;
       }
-      
+
+      return left;
+    }
+
+    /**
+     * Parse exponentiation expression (ES2016 ** operator)
+     * Right-associative: 2 ** 3 ** 2 = 2 ** 9 = 512
+     */
+    parseExponentiationExpression() {
+      let left = this.parseUnaryExpression();
+
+      // ** is right-associative, so we recursively parse the right side
+      if (this.currentToken && this.currentToken.type === 'OPERATOR' &&
+          this.currentToken.value === '**') {
+        const node = { type: 'BinaryExpression' };
+        node.left = left;
+        node.operator = '**';
+        this.advance();
+        node.right = this.parseExponentiationExpression(); // Right-associative recursion
+        return node;
+      }
+
       return left;
     }
 
@@ -2786,7 +6508,7 @@
           node.object = left;
           this.advance(); // consume '.'
           this.skipComments(); // Skip comments after the dot
-          node.property = this.parseIdentifier();
+          node.property = this.parsePropertyName(); // Allow keywords as property names
           node.computed = false;
           left = node;
         } else if (this.currentToken.value === '[') {
@@ -2880,6 +6602,9 @@
           if (this.currentToken.value === 'this') {
             this.advance();
             return { type: 'ThisExpression' };
+          } else if (this.currentToken.value === 'super') {
+            this.advance();
+            return { type: 'Super' };
           } else if (this.currentToken.value === 'new') {
             return this.parseNewExpression();
           } else if (this.currentToken.value === 'function') {
@@ -3003,12 +6728,89 @@
     }
 
     /**
-     * Parse string
+     * Parse string literal with proper escape sequence handling
      */
     parseString() {
-      const node = { type: 'Literal', value: this.currentToken.value.slice(1, -1) };
+      const rawValue = this.currentToken.value.slice(1, -1); // Remove quotes
+      const value = this._processEscapeSequences(rawValue);
+      const node = { type: 'Literal', value };
       this.advance();
       return node;
+    }
+
+    /**
+     * Process escape sequences in a string literal
+     * @param {string} str - The raw string content (without quotes)
+     * @returns {string} The string with escape sequences resolved
+     */
+    _processEscapeSequences(str) {
+      let result = '';
+      let i = 0;
+      while (i < str.length) {
+        if (str[i] === '\\' && i + 1 < str.length) {
+          const next = str[i + 1];
+          switch (next) {
+            case 'n': result += '\n'; i += 2; break;
+            case 'r': result += '\r'; i += 2; break;
+            case 't': result += '\t'; i += 2; break;
+            case 'b': result += '\b'; i += 2; break;
+            case 'f': result += '\f'; i += 2; break;
+            case 'v': result += '\v'; i += 2; break;
+            case '0': result += '\0'; i += 2; break;
+            case '\\': result += '\\'; i += 2; break;
+            case "'": result += "'"; i += 2; break;
+            case '"': result += '"'; i += 2; break;
+            case '`': result += '`'; i += 2; break;
+            case 'x':
+              // Hex escape: \xNN
+              if (i + 3 < str.length) {
+                const hex = str.slice(i + 2, i + 4);
+                if (/^[0-9a-fA-F]{2}$/.test(hex)) {
+                  result += String.fromCharCode(parseInt(hex, 16));
+                  i += 4;
+                  break;
+                }
+              }
+              result += str[i];
+              ++i;
+              break;
+            case 'u':
+              // Unicode escape: \uNNNN or \u{N...}
+              if (i + 2 < str.length && str[i + 2] === '{') {
+                // \u{N...} format
+                const closeBrace = str.indexOf('}', i + 3);
+                if (closeBrace !== -1) {
+                  const hex = str.slice(i + 3, closeBrace);
+                  if (/^[0-9a-fA-F]+$/.test(hex)) {
+                    result += String.fromCodePoint(parseInt(hex, 16));
+                    i = closeBrace + 1;
+                    break;
+                  }
+                }
+              } else if (i + 5 < str.length) {
+                // \uNNNN format
+                const hex = str.slice(i + 2, i + 6);
+                if (/^[0-9a-fA-F]{4}$/.test(hex)) {
+                  result += String.fromCharCode(parseInt(hex, 16));
+                  i += 6;
+                  break;
+                }
+              }
+              result += str[i];
+              ++i;
+              break;
+            default:
+              // Unknown escape - just include the character after backslash
+              result += next;
+              i += 2;
+              break;
+          }
+        } else {
+          result += str[i];
+          ++i;
+        }
+      }
+      return result;
     }
 
     /**
@@ -3045,22 +6847,92 @@
      */
     parseTemplateLiteral() {
       const rawValue = this.currentToken.value;
-      // Remove backticks and parse template expressions
+      // Remove backticks
       const value = rawValue.slice(1, -1);
-      
-      // For now, treat as a simple literal (can be enhanced later for expression interpolation)
-      const node = { 
+
+      // Parse template literal expressions (${...})
+      const expressions = [];
+      const quasis = [];
+      let currentPos = 0;
+      let i = 0;
+
+      while (i < value.length) {
+        // Look for ${ pattern
+        if (value[i] === '$' && i + 1 < value.length && value[i + 1] === '{') {
+          // Add the quasi before this expression
+          const quasiText = value.slice(currentPos, i);
+          quasis.push({
+            type: 'TemplateElement',
+            value: { raw: quasiText, cooked: quasiText },
+            tail: false
+          });
+
+          // Find the matching closing brace, handling nested braces
+          let braceCount = 1;
+          let exprStart = i + 2;
+          let j = exprStart;
+          while (j < value.length && braceCount > 0) {
+            if (value[j] === '{') braceCount++;
+            else if (value[j] === '}') braceCount--;
+            if (braceCount > 0) j++;
+          }
+
+          // Extract the expression text
+          const exprText = value.slice(exprStart, j);
+
+          // Parse the expression by creating a temporary parser
+          if (exprText.trim()) {
+            try {
+              const tempParser = new TypeAwareJSASTParser(exprText + ';');
+              tempParser.tokenize();
+              tempParser.position = 0;
+              tempParser.currentToken = tempParser.tokens[0];
+              const exprNode = tempParser.parseExpression();
+              if (exprNode) {
+                expressions.push(exprNode);
+              } else {
+                // Fallback: treat as simple identifier
+                expressions.push({
+                  type: 'Identifier',
+                  name: exprText.trim()
+                });
+              }
+            } catch (e) {
+              // Fallback: treat as simple identifier if parsing fails
+              expressions.push({
+                type: 'Identifier',
+                name: exprText.trim()
+              });
+            }
+          }
+
+          // Move past the closing brace
+          currentPos = j + 1;
+          i = currentPos;
+        } else if (value[i] === '\\' && i + 1 < value.length) {
+          // Skip escaped characters
+          i += 2;
+        } else {
+          i++;
+        }
+      }
+
+      // Add the final quasi
+      const finalQuasiText = value.slice(currentPos);
+      quasis.push({
+        type: 'TemplateElement',
+        value: { raw: finalQuasiText, cooked: finalQuasiText },
+        tail: true
+      });
+
+      const node = {
         type: 'TemplateLiteral',
         value: value,
         raw: rawValue,
-        expressions: [],
-        quasis: [{
-          type: 'TemplateElement',
-          value: { raw: value, cooked: value },
-          tail: true
-        }]
+        expressions: expressions,
+        quasis: quasis
       };
-      
+
       this.advance();
       return node;
     }
@@ -3165,7 +7037,8 @@
             property.value = this.parseAssignmentExpression();
           }
         } else if (this.currentToken.type === 'STRING') {
-          property.key = { type: 'Literal', value: this.currentToken.value };
+          // Strip surrounding quotes from string token to get the actual key value
+          property.key = { type: 'Literal', value: this.currentToken.value.slice(1, -1) };
           this.advance();
           this.skipComments(); // Skip comments before colon
           this.expect('PUNCTUATION', ':');
@@ -3180,27 +7053,31 @@
           property.value = this.parseAssignmentExpression();
         } else if (this.currentToken.type === 'KEYWORD') {
           // Check for getter/setter syntax (get key() or set key())
-          if (this.currentToken.value === 'get' || this.currentToken.value === 'set') {
+          // BUT: if followed by ':', it's just using get/set as a property name
+          if ((this.currentToken.value === 'get' || this.currentToken.value === 'set') &&
+              this.tokens[this.position + 1] &&
+              !(this.tokens[this.position + 1].type === 'PUNCTUATION' && this.tokens[this.position + 1].value === ':')) {
             property.kind = this.currentToken.value;
             this.advance(); // consume 'get' or 'set'
             this.skipComments();
-            
+
             // Parse the property name after get/set
             if (this.currentToken.type === 'IDENTIFIER') {
               property.key = this.parseIdentifier();
             } else if (this.currentToken.type === 'STRING') {
-              property.key = { type: 'Literal', value: this.currentToken.value };
+              // Strip surrounding quotes from string token to get the actual key value
+              property.key = { type: 'Literal', value: this.currentToken.value.slice(1, -1) };
               this.advance();
             } else {
               throw new Error(`Expected property name after ${property.kind}`);
             }
-            
+
             // Parse the function parameters and body
             this.skipComments();
             const params = this.parseParameterList();
             this.skipComments();
             const body = this.parseBlockStatement();
-            
+
             property.value = {
               type: 'FunctionExpression',
               params,
@@ -3214,7 +7091,54 @@
             this.skipComments(); // Skip comments before colon
             this.expect('PUNCTUATION', ':');
             this.skipComments(); // Skip comments after colon
-            property.value = this.parseExpression();
+            property.value = this.parseAssignmentExpression();
+          }
+        } else if (this.currentToken.type === 'OPERATOR' && this.currentToken.value === '...') {
+          // Object spread syntax: { ...expr }
+          this.advance(); // consume '...'
+          this.skipComments();
+          const argument = this.parseAssignmentExpression();
+
+          // Create SpreadElement node and push directly
+          const spreadElement = {
+            type: 'SpreadElement',
+            argument: argument
+          };
+          node.properties.push(spreadElement);
+
+          this.skipComments();
+          // Handle comma separator
+          if (this.currentToken && this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === ',') {
+            this.advance();
+            this.skipComments();
+          }
+          continue; // Skip the normal property push
+        } else if (this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === '[') {
+          // Computed property name: { [expression]: value }
+          this.advance(); // consume '['
+          this.skipComments();
+          property.key = this.parseAssignmentExpression();
+          this.skipComments();
+          this.consume('PUNCTUATION', ']');
+          property.computed = true;
+          this.skipComments();
+
+          // Check for method shorthand with computed property: { [key]() {} }
+          if (this.currentToken && this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === '(') {
+            const params = this.parseParameterList();
+            this.skipComments();
+            const body = this.parseBlockStatement();
+            property.value = {
+              type: 'FunctionExpression',
+              params,
+              body
+            };
+            property.method = true;
+          } else {
+            // Regular computed property: [key]: value
+            this.expect('PUNCTUATION', ':');
+            this.skipComments();
+            property.value = this.parseAssignmentExpression();
           }
         } else {
           throw new Error(`Unexpected token in object key: ${this.currentToken.type} ${this.currentToken.value}`);
@@ -3501,38 +7425,77 @@
         return this.typeAnnotations.get(node).type;
       }
 
+      // Check if node already has resultType from IL transformation
+      if (node.resultType) {
+        return { name: node.resultType };
+      }
+
       switch (node.type) {
         case 'Literal':
-          if (typeof node.value === 'number') return { name: 'number' };
+          if (typeof node.value === 'number') {
+            const val = node.value;
+            // Handle special float values first
+            if (!Number.isFinite(val))
+              return { name: 'float64' }; // Infinity or NaN
+            // Check for explicit float (has decimal or is result of division)
+            if (!Number.isInteger(val))
+              return { name: 'float64' };
+            // Integer literals default to int32 (like most typed languages)
+            // Only use larger types when value exceeds int32 range
+            if (val >= -2147483648 && val <= 2147483647)
+              return { name: 'int32' };
+            if (val >= 0 && val <= 4294967295)
+              return { name: 'uint32' };
+            if (val < -2147483648)
+              return { name: 'int64' };
+            return { name: 'uint64' };
+          }
           if (typeof node.value === 'string') return { name: 'string' };
           if (typeof node.value === 'boolean') return { name: 'boolean' };
-          return { name: 'any' };
+          if (node.value === null) return { name: 'null' };
+          if (node.value === undefined) return { name: 'void' };
+          return { name: 'object' };
+
+        case 'TemplateLiteral':
+          return { name: 'string' };
+
+        case 'Identifier':
+          // Handle special global values first
+          if (node.name === 'Infinity' || node.name === 'NaN')
+            return { name: 'float64' };
+          if (node.name === 'undefined')
+            return { name: 'void' };
+
+          // Check context first (function parameters, local variables)
+          if (context[node.name])
+            return context[node.name];
+
+          // Check our variable type tracking
+          const varType = this.lookupVariableType(node.name);
+          if (varType)
+            return { name: varType };
+
+          // Check type annotations
+          if (this.typeAnnotations.has(node))
+            return this.typeAnnotations.get(node).type;
+
+          // No name-based fallback - use type knowledge
+          return this.typeKnowledge.inferType(node.name, context);
 
         case 'ArrayExpression':
           // Infer array element type from first element
-          if (node.elements.length > 0) {
+          if (node.elements && node.elements.length > 0) {
             const elementType = this.inferExpressionType(node.elements[0], context);
             return { name: elementType.name + '[]', isArray: true, elementType };
           }
-          return { name: 'any[]', isArray: true };
+          // For empty arrays, use int32[] as default (consistent with int32 default)
+          return { name: 'int32[]', isArray: true, elementType: { name: 'int32' } };
 
         case 'CallExpression':
           return this.inferCallExpressionType(node, context);
 
         case 'MemberExpression':
           return this.inferMemberExpressionType(node, context);
-
-        case 'Identifier':
-          // Check context first (function parameters, local variables)
-          if (context[node.name]) {
-            return context[node.name];
-          }
-          // Check type annotations
-          if (this.typeAnnotations.has(node)) {
-            return this.typeAnnotations.get(node).type;
-          }
-          // Fallback to type knowledge
-          return this.typeKnowledge.inferType(node.name, context);
 
         case 'BinaryExpression':
         case 'LogicalExpression':
@@ -3542,8 +7505,12 @@
           return this.inferUnaryExpressionType(node, context);
 
         case 'UpdateExpression':
-          // ++x, x++, --x, x-- always return number
-          return { name: 'number' };
+          // ++x, x++, --x, x-- return the type of the operand
+          if (node.argument) {
+            const argType = this.inferExpressionType(node.argument, context);
+            if (argType.name !== 'object') return argType;
+          }
+          return { name: 'uint32' };
 
         case 'AssignmentExpression':
           // Assignment returns the type of the right side
@@ -3555,13 +7522,14 @@
 
         case 'NewExpression':
           // new Array(), new List(), etc.
-          if (node.callee.name === 'Array' || node.callee.name === 'List') {
-            return { name: 'any[]', isArray: true };
+          if (node.callee && (node.callee.name === 'Array' || node.callee.name === 'List')) {
+            return { name: 'uint8[]', isArray: true, elementType: { name: 'uint8' } };
           }
-          return { name: node.callee.name || 'object' };
+          return { name: node.callee?.name || 'object' };
 
         default:
-          return { name: 'any' };
+          // Use 'object' as fallback instead of 'any' - more specific
+          return { name: 'object' };
       }
     }
 
@@ -3571,24 +7539,37 @@
     inferBinaryExpressionType(node, context) {
       const left = this.inferExpressionType(node.left, context);
       const right = this.inferExpressionType(node.right, context);
+      const op = node.operator;
 
-      switch (node.operator) {
-        case '+':
-        case '-':
-        case '*':
-        case '/':
-        case '%':
-        case '<<':
-        case '>>':
-        case '>>>':
-        case '&':
-        case '|':
-        case '^':
-          // Bitwise and arithmetic operators return number (or preserve specific type)
-          if (left.name !== 'any' && left.name !== 'string') return left;
-          if (right.name !== 'any' && right.name !== 'string') return right;
-          return { name: 'number' };
+      // Check for idioms first (common JavaScript type coercion patterns)
+      const rightValue = this._getLiteralValue(node.right);
 
+      // Idiom: x & 0xff or x & 255 → uint8
+      if (op === '&' && (rightValue === 0xff || rightValue === 255))
+        return { name: 'uint8' };
+
+      // Idiom: x & 0xffff or x & 65535 → uint16
+      if (op === '&' && (rightValue === 0xffff || rightValue === 65535))
+        return { name: 'uint16' };
+
+      // Idiom: x & 0xffffffff → uint32
+      if (op === '&' && rightValue === 0xffffffff)
+        return { name: 'uint32' };
+
+      // Idiom: x | 0 → int32 (JavaScript ToInt32)
+      if (op === '|' && rightValue === 0)
+        return { name: 'int32' };
+
+      // Idiom: x >> 0 → int32 (JavaScript ToInt32)
+      if (op === '>>' && rightValue === 0)
+        return { name: 'int32' };
+
+      // Idiom: x >>> 0 → uint32 (JavaScript ToUint32)
+      if (op === '>>>' && rightValue === 0)
+        return { name: 'uint32' };
+
+      switch (op) {
+        // Comparison operators → boolean
         case '==':
         case '===':
         case '!=':
@@ -3597,33 +7578,112 @@
         case '>':
         case '<=':
         case '>=':
-        case '&&':
-        case '||':
-          // Comparison and logical operators return boolean
           return { name: 'boolean' };
 
+        // Logical operators: JavaScript returns actual values, not booleans
+        case '&&':
+        case '||':
+          // If both operands are boolean, return boolean
+          if (left.name === 'boolean' && right.name === 'boolean')
+            return { name: 'boolean' };
+          // For || (null-coalescing), return the type of operands
+          if (op === '||')
+            return left.name !== 'object' ? left : right;
+          // For && return right type (a && b returns b when a is truthy)
+          return right.name !== 'object' ? right : left;
+
+        // Bitwise operators → left operand type (unless idiom detected above)
+        case '&':
+        case '|':
+        case '^':
+        case '<<':
+        case '>>':
+        case '>>>':
+          // Return left operand type for bitwise ops
+          if (left.name && left.name !== 'any' && left.name !== 'number')
+            return left;
+          // If left is generic, use int32 as default
+          return { name: 'int32' };
+
+        // Arithmetic operators
+        case '+':
+          // String concatenation check
+          if (left.name === 'string' || right.name === 'string')
+            return { name: 'string' };
+          // Numeric addition - return left type
+          if (left.name && left.name !== 'any' && left.name !== 'number')
+            return left;
+          if (right.name && right.name !== 'any' && right.name !== 'number')
+            return right;
+          return { name: 'int32' };
+
+        case '-':
+        case '*':
+        case '%':
+          // Preserve left type for arithmetic
+          if (left.name && left.name !== 'any' && left.name !== 'number')
+            return left;
+          if (right.name && right.name !== 'any' && right.name !== 'number')
+            return right;
+          return { name: 'int32' };
+
+        case '/':
+          // Division may produce float
+          return { name: 'float64' };
+
+        case '**':
+          // Exponentiation
+          return { name: 'float64' };
+
         default:
-          return { name: 'any' };
+          // Unknown operator - use int32 as default
+          return { name: 'int32' };
       }
+    }
+
+    /**
+     * Get literal numeric value from a node, or null if not a literal
+     */
+    _getLiteralValue(node) {
+      if (!node) return null;
+      if (node.type === 'Literal' && typeof node.value === 'number')
+        return node.value;
+      // Handle negative literals like -1
+      if (node.type === 'UnaryExpression' && node.operator === '-' &&
+          node.argument && node.argument.type === 'Literal' &&
+          typeof node.argument.value === 'number')
+        return -node.argument.value;
+      return null;
     }
 
     /**
      * Infer type for unary expressions
      */
     inferUnaryExpressionType(node, context) {
+      const argType = this.inferExpressionType(node.argument, context);
+
       switch (node.operator) {
         case '!':
           return { name: 'boolean' };
         case '+':
+          // Unary plus converts to number, preserve specific type or use int32
+          if (argType.name && argType.name !== 'any' && argType.name !== 'number')
+            return argType;
+          return { name: 'int32' };
         case '-':
+          // Negation - preserve type if specific, use int32 default
+          if (argType.name && argType.name !== 'any' && argType.name !== 'number')
+            return argType;
+          return { name: 'int32' };
         case '~':
-          return { name: 'number' };
+          // Bitwise NOT - always returns int32 in JavaScript
+          return { name: 'int32' };
         case 'typeof':
           return { name: 'string' };
         case 'void':
           return { name: 'void' };
         default:
-          return this.inferExpressionType(node.argument, context);
+          return argType;
       }
     }
 
@@ -3661,14 +7721,14 @@
 
         // Check for array methods
         const objectType = this.inferExpressionType(node.callee.object, context);
-        if (objectType.isArray || (objectType.name && objectType.name.endsWith('[]'))) {
+        if (objectType && (objectType.isArray || (typeof objectType.name === 'string' && objectType.name.endsWith('[]')))) {
           if (methodName === 'slice' || methodName === 'concat' || methodName === 'filter' || methodName === 'map') {
             return objectType; // Returns same array type
           }
           if (methodName === 'pop' || methodName === 'shift') {
             // Returns element type
             if (objectType.elementType) return objectType.elementType;
-            if (objectType.name && objectType.name.endsWith('[]')) {
+            if (typeof objectType.name === 'string' && objectType.name.endsWith('[]')) {
               const elementTypeName = objectType.name.slice(0, -2);
               return { name: elementTypeName };
             }
@@ -3682,7 +7742,7 @@
         }
 
         // String methods
-        if (objectType.name === 'string') {
+        if (objectType && objectType.name === 'string') {
           if (methodName === 'substring' || methodName === 'substr' || methodName === 'slice' ||
               methodName === 'toLowerCase' || methodName === 'toUpperCase' || methodName === 'trim') {
             return { name: 'string' };
@@ -3705,20 +7765,21 @@
 
         // Check for constructors
         if (funcName === 'Array') {
-          return { name: 'any[]', isArray: true };
+          return { name: 'uint8[]', isArray: true, elementType: { name: 'uint8' } };
         }
         if (funcName === 'String') {
           return { name: 'string' };
         }
         if (funcName === 'Number') {
-          return { name: 'number' };
+          return { name: 'uint32' };
         }
         if (funcName === 'Boolean') {
           return { name: 'boolean' };
         }
       }
 
-      return { name: 'any' };
+      // Use object as fallback for unknown function calls
+      return { name: 'object' };
     }
 
     /**
@@ -3727,40 +7788,54 @@
     inferMemberExpressionType(node, context) {
       const objectType = this.inferExpressionType(node.object, context);
 
-      // Handle array indexing: arr[i] returns element type
+      // Handle indexed access: arr[i] or obj[key]
       if (node.computed) {
-        if (objectType.isArray && objectType.elementType) {
+        // Array indexing: arr[i] returns element type
+        if (objectType && objectType.isArray && objectType.elementType)
           return objectType.elementType;
-        }
-        if (objectType.name && objectType.name.endsWith('[]')) {
+        if (objectType && typeof objectType.name === 'string' && objectType.name.endsWith('[]')) {
           // Extract element type from "type[]" format
           const elementTypeName = objectType.name.slice(0, -2);
           return { name: elementTypeName };
         }
-        // Default for indexed access
-        return { name: 'any' };
+        // Handle string type directly
+        if (typeof objectType === 'string' && objectType.endsWith('[]')) {
+          const elementTypeName = objectType.slice(0, -2);
+          return { name: elementTypeName };
+        }
+        // Object/Map indexing: obj[key] returns object (the value type)
+        const objectTypeName = typeof objectType === 'string' ? objectType : objectType?.name;
+
+        // Only return uint8 for explicit byte array types (Uint8Array, Buffer, etc.)
+        if (objectTypeName === 'uint8[]' || objectTypeName === 'Uint8Array' ||
+            objectTypeName === 'Buffer' || objectTypeName === 'byte[]')
+          return { name: 'uint8' };
+
+        // For all other indexed access (objects, maps, etc.), return object
+        // This allows downstream transformers to properly handle the type
+        return { name: 'object' };
       }
 
       // Handle property access
       const propertyName = node.property.name || node.property.value;
+      const objectTypeName = typeof objectType === 'string' ? objectType : objectType?.name;
+      const isArray = objectType?.isArray ||
+                      (typeof objectTypeName === 'string' && objectTypeName.endsWith('[]'));
 
       // Array properties
-      if (objectType.isArray || (objectType.name && objectType.name.endsWith('[]'))) {
-        if (propertyName === 'length') {
+      if (isArray) {
+        if (propertyName === 'length')
           return { name: 'int' };
-        }
         if (propertyName === 'push' || propertyName === 'pop' || propertyName === 'shift' ||
-            propertyName === 'unshift' || propertyName === 'slice' || propertyName === 'splice') {
+            propertyName === 'unshift' || propertyName === 'slice' || propertyName === 'splice')
           // These are methods - would need full method signature handling
           return { name: 'function' };
-        }
       }
 
       // String properties
-      if (objectType.name === 'string') {
-        if (propertyName === 'length') {
+      if (objectTypeName === 'string') {
+        if (propertyName === 'length')
           return { name: 'int' };
-        }
       }
 
       // Check framework class properties
@@ -3772,7 +7847,15 @@
         }
       }
 
-      return { name: 'any' };
+      // Try to infer from property name patterns
+      const lowerProp = propertyName?.toLowerCase() || '';
+      if (lowerProp === 'length' || lowerProp === 'size' || lowerProp === 'count')
+        return { name: 'int32' };
+      if (lowerProp.startsWith('is') || lowerProp.startsWith('has'))
+        return { name: 'boolean' };
+
+      // Fallback to object for unknown properties
+      return { name: 'object' };
     }
 
     /**
@@ -4176,12 +8259,11 @@
      */
     generate(ast) {
       const result = this.languagePlugin.GenerateFromAST(ast, {
+        ...this.options,  // Pass all options through to the language plugin
         parser: this.parser,
         typeKnowledge: this.typeKnowledge,
         indent: this.indentString,
-        useAstPipeline: true,  // Use new AST pipeline for better type handling
-        className: this.options.className,  // Pass through class name
-        namespace: this.options.namespace   // Pass through namespace
+        useAstPipeline: true  // Use new AST pipeline for better type handling
       });
 
       if (!result.success) {
@@ -4224,15 +8306,31 @@
           this.removeTestVectors(ast);
         }
 
+        // Generate test runner if requested (global property)
+        let testRunnerNode = null;
+        if (options.generateTestRunner === true) {
+          testRunnerNode = this.extractAndGenerateTestRunner(ast);
+        }
+
         // Generate code using LanguagePlugin
         this.generator = new TypeAwareCodeGenerator(languagePlugin, this.parser, options);
         const generatedCode = this.generator.generate(ast);
+
+        // If test runner was generated, append it to the code
+        let finalCode = generatedCode;
+        if (testRunnerNode && languagePlugin.generateTestRunner) {
+          const testRunnerCode = languagePlugin.generateTestRunner(testRunnerNode);
+          if (testRunnerCode) {
+            finalCode = generatedCode + '\n\n' + testRunnerCode;
+          }
+        }
         
         return {
           success: true,
-          code: generatedCode,
+          code: finalCode,
           ast: ast,
-          typeInfo: this.parser.typeAnnotations
+          typeInfo: this.parser.typeAnnotations,
+          testRunner: testRunnerNode
         };
       } catch (error) {
         return {
@@ -4350,6 +8448,249 @@
       if (removedCount > 0) {
         console.error(`✅ Removed ${removedCount} test vector assignment(s) from ${classNode.id?.name}`);
       }
+    }
+
+    /**
+     * Extract test vectors from AST and generate ILTestRunner node (global property)
+     * @param {Object} ast - The AST to extract test vectors from
+     * @returns {Object|null} ILTestRunner node or null if no tests found
+     */
+    extractAndGenerateTestRunner(ast) {
+      const testRunner = {
+        type: 'ILTestRunner',
+        ilNodeType: 'ILTestRunner',
+        algorithmClasses: [],
+        instanceClasses: [],
+        tests: []
+      };
+
+      const extractFromNode = (node) => {
+        if (!node || typeof node !== 'object') return;
+
+        // Handle class declarations - look for classes extending Algorithm types
+        if (node.type === 'ClassDeclaration' && node.superClass) {
+          const isAlgorithmClass = this.isAlgorithmFrameworkClass(node.superClass);
+          if (isAlgorithmClass) {
+            const className = node.id?.name;
+            if (className) {
+              testRunner.algorithmClasses.push(className);
+              // Find the Instance class (usually named *Instance)
+              const instanceClassName = className.replace(/Algorithm$/, 'Instance');
+              testRunner.instanceClasses.push(instanceClassName);
+
+              // Extract tests from this class
+              const classTests = this.extractTestsFromClass(node);
+              if (classTests && classTests.length > 0) {
+                testRunner.tests.push({
+                  algorithmClass: className,
+                  instanceClass: instanceClassName,
+                  testCases: classTests
+                });
+              }
+            }
+          }
+        }
+
+        // Recursively process child nodes
+        for (const key in node) {
+          if (node.hasOwnProperty(key) && key !== 'parent') {
+            const child = node[key];
+            if (Array.isArray(child)) {
+              child.forEach(extractFromNode);
+            } else if (child && typeof child === 'object') {
+              extractFromNode(child);
+            }
+          }
+        }
+      };
+
+      extractFromNode(ast);
+
+      return testRunner.tests.length > 0 ? testRunner : null;
+    }
+
+    /**
+     * Extract test cases from a class's this.tests assignment
+     * @param {Object} classNode - The class AST node
+     * @returns {Array} Array of test case objects
+     */
+    extractTestsFromClass(classNode) {
+      const tests = [];
+
+      // Handle different class body structures
+      let classMembers;
+      if (classNode.body && Array.isArray(classNode.body)) {
+        classMembers = classNode.body;
+      } else if (classNode.body && classNode.body.body && Array.isArray(classNode.body.body)) {
+        classMembers = classNode.body.body;
+      } else {
+        return tests;
+      }
+
+      // Find constructor method
+      const constructor = classMembers.find(member => {
+        return member.type === 'MethodDefinition' &&
+               (member.kind === 'constructor' || member.key?.name === 'constructor');
+      });
+
+      if (!constructor || !constructor.value || !constructor.value.body || !constructor.value.body.body) {
+        return tests;
+      }
+
+      const statements = constructor.value.body.body;
+
+      // Find this.tests = [...] assignment
+      for (const stmt of statements) {
+        if (stmt.type === 'ExpressionStatement' &&
+            stmt.expression.type === 'AssignmentExpression' &&
+            stmt.expression.left.type === 'MemberExpression' &&
+            stmt.expression.left.object?.type === 'ThisExpression' &&
+            stmt.expression.left.property?.name === 'tests') {
+
+          const testsArray = stmt.expression.right;
+          if (testsArray.type === 'ArrayExpression' && testsArray.elements) {
+            for (const element of testsArray.elements) {
+              const testCase = this.extractTestCase(element);
+              if (testCase) {
+                tests.push(testCase);
+              }
+            }
+          }
+          break;
+        }
+      }
+
+      return tests;
+    }
+
+    /**
+     * Extract a single test case from an AST node
+     * @param {Object} node - The test case AST node (ObjectExpression or NewExpression)
+     * @returns {Object|null} Test case object or null
+     */
+    extractTestCase(node) {
+      if (!node) return null;
+
+      const testCase = {
+        input: null,
+        expected: null,
+        key: null,
+        iv: null,
+        nonce: null,
+        description: null,
+        source: null
+      };
+
+      // Handle new TestCase(...) constructor call
+      if (node.type === 'NewExpression' && node.callee?.name === 'TestCase') {
+        const args = node.arguments || [];
+        if (args.length >= 2) {
+          testCase.input = this.extractByteArray(args[0]);
+          testCase.expected = this.extractByteArray(args[1]);
+        }
+        if (args.length >= 3) {
+          testCase.description = this.extractStringLiteral(args[2]);
+        }
+        if (args.length >= 4) {
+          testCase.source = this.extractStringLiteral(args[3]);
+        }
+        return testCase;
+      }
+
+      // Handle object literal { input: [...], expected: [...], ... }
+      if (node.type === 'ObjectExpression' && node.properties) {
+        for (const prop of node.properties) {
+          const key = prop.key?.name || prop.key?.value;
+          if (key === 'input' || key === 'text') {
+            testCase.input = this.extractByteArray(prop.value);
+          } else if (key === 'expected' || key === 'output') {
+            testCase.expected = this.extractByteArray(prop.value);
+          } else if (key === 'key') {
+            testCase.key = this.extractByteArray(prop.value);
+          } else if (key === 'iv') {
+            testCase.iv = this.extractByteArray(prop.value);
+          } else if (key === 'nonce') {
+            testCase.nonce = this.extractByteArray(prop.value);
+          } else if (key === 'description' || key === 'text') {
+            testCase.description = this.extractStringLiteral(prop.value);
+          } else if (key === 'source' || key === 'uri') {
+            testCase.source = this.extractStringLiteral(prop.value);
+          }
+        }
+        return testCase;
+      }
+
+      return null;
+    }
+
+    /**
+     * Extract byte array from AST node (handles ArrayExpression and OpCodes calls)
+     * @param {Object} node - AST node
+     * @returns {Array|null} Byte array or null
+     */
+    extractByteArray(node) {
+      if (!node) return null;
+
+      // Direct array literal [0x01, 0x02, ...]
+      if (node.type === 'ArrayExpression' && node.elements) {
+        return node.elements.map(el => {
+          if (el.type === 'Literal') return el.value;
+          return 0;
+        });
+      }
+
+      // OpCodes.Hex8ToBytes("...") or OpCodes.AnsiToBytes("...") or global.OpCodes.X(...)
+      const isOpCodesCallForBytes = node.type === 'CallExpression' &&
+          node.callee?.type === 'MemberExpression' &&
+          (node.callee?.object?.name === 'OpCodes' ||
+           (node.callee?.object?.type === 'MemberExpression' && node.callee?.object?.property?.name === 'OpCodes'));
+      if (isOpCodesCallForBytes) {
+        const method = node.callee.property?.name;
+        const arg = node.arguments?.[0];
+
+        if (method === 'Hex8ToBytes' && arg?.type === 'Literal') {
+          // Convert hex string to bytes
+          const hex = arg.value;
+          const bytes = [];
+          for (let i = 0; i < hex.length; i += 2) {
+            bytes.push(parseInt(hex.substr(i, 2), 16));
+          }
+          return bytes;
+        }
+
+        if (method === 'AnsiToBytes' && arg?.type === 'Literal') {
+          // Convert ASCII string to bytes
+          return Array.from(arg.value).map(c => c.charCodeAt(0));
+        }
+      }
+
+      // System.Text.Encoding.ASCII.GetBytes("...")
+      if (node.type === 'CallExpression' &&
+          node.callee?.type === 'MemberExpression' &&
+          node.callee?.property?.name === 'GetBytes') {
+        const arg = node.arguments?.[0];
+        if (arg?.type === 'Literal' && typeof arg.value === 'string') {
+          return Array.from(arg.value).map(c => c.charCodeAt(0));
+        }
+      }
+
+      return null;
+    }
+
+    /**
+     * Extract string literal from AST node
+     * @param {Object} node - AST node
+     * @returns {string|null} String value or null
+     */
+    extractStringLiteral(node) {
+      if (!node) return null;
+      if (node.type === 'Literal' && typeof node.value === 'string') {
+        return node.value;
+      }
+      if (node.type === 'TemplateLiteral' && node.quasis?.[0]) {
+        return node.quasis[0].value?.cooked || node.quasis[0].value?.raw;
+      }
+      return null;
     }
 
     /**
