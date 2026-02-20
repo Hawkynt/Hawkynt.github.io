@@ -53,13 +53,33 @@ body {
 }
 
 .menu-entry {
-  padding: 4px 24px 4px 8px;
+  padding: 4px 24px 4px 4px;
   cursor: default;
   color: var(--sz-color-menu-text);
   white-space: nowrap;
   display: flex;
-  justify-content: space-between;
   align-items: center;
+}
+
+.menu-entry .menu-icon {
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.menu-entry .menu-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.menu-entry .menu-label {
+  flex: 1;
 }
 
 .menu-entry:hover {
@@ -588,10 +608,12 @@ td.col-encrypted { text-align: center; }
 }
 
 .context-menu .menu-entry {
-  padding: 4px 24px 4px 8px;
+  padding: 4px 24px 4px 4px;
   cursor: default;
   color: var(--sz-color-menu-text);
   white-space: nowrap;
+  display: flex;
+  align-items: center;
 }
 
 .context-menu .menu-entry:hover {
