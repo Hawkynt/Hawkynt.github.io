@@ -1,6 +1,12 @@
 ;(function() {
   'use strict';
 
+  // ── URL parameters ──────────────────────────────────────────────
+  const _params = SZ.Dlls.Kernel32.GetCommandLine();
+  const _osVersion = _params._szOsVersion || '6.0';
+  const _gitHash = _params._szGitHash || '';
+  const _autostart = _params.autostart === '1';
+
   // ── Tab switching ──────────────────────────────────────────────
   const tabs = document.querySelectorAll('.tab');
   const panels = document.querySelectorAll('.tab-panel');
@@ -13,6 +19,8 @@
 
     if (tabId === 'system')
       populateSystemInfo();
+    if (tabId === 'whatsnew')
+      populateChangelog();
   }
 
   for (const t of tabs)
@@ -34,6 +42,13 @@
     if (msg === WM_CLOSE)
       closeWindow();
   });
+
+  // ── Version line update ─────────────────────────────────────────
+  const versionEl = document.getElementById('version-line');
+  if (versionEl) {
+    const hashPart = _gitHash ? ' [' + _gitHash + ']' : '';
+    versionEl.textContent = 'Version ' + _osVersion + hashPart + ' | \u00A9 1995\u20132026 \u00BBSynthelicZ\u00AB';
+  }
 
   // ── System info population ─────────────────────────────────────
   let _systemInfoLoaded = false;
@@ -138,13 +153,14 @@
   // ── Copy to clipboard ─────────────────────────────────────────
   document.getElementById('btn-copy').addEventListener('click', async function() {
     const rows = document.querySelectorAll('.sys-info tr');
-    const lines = ['»SynthelicZ« Desktop — System Information', ''];
+    const lines = ['\u00BBSynthelicZ\u00AB Desktop \u2014 System Information', ''];
     for (const row of rows) {
       const th = row.querySelector('th')?.textContent || '';
       const td = row.querySelector('td')?.textContent || '';
       lines.push(th + ': ' + td);
     }
-    lines.push('', 'Version 6.0 | © 1995–2026 »SynthelicZ«');
+    const hashPart = _gitHash ? ' [' + _gitHash + ']' : '';
+    lines.push('', 'Version ' + _osVersion + hashPart + ' | \u00A9 1995\u20132026 \u00BBSynthelicZ\u00AB');
 
     try {
       await navigator.clipboard.writeText(lines.join('\n'));
@@ -156,9 +172,114 @@
     }
   });
 
+  // ── Changelog population ───────────────────────────────────────
+  let _changelogLoaded = false;
+
+  const _ENTRY_CLASSES = {
+    '+': 'changelog-added',
+    '#': 'changelog-fixed',
+    '*': 'changelog-changed',
+    '-': 'changelog-removed',
+    '!': 'changelog-issue',
+  };
+
+  function parseChangelog(text) {
+    const sections = [];
+    let current = null;
+
+    for (const line of text.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        if (current)
+          sections.push(current);
+        current = null;
+        continue;
+      }
+
+      // Version header line (starts with "Main:" or "System " or just a version string without a prefix char)
+      const firstChar = trimmed[0];
+      if (!_ENTRY_CLASSES[firstChar] && !trimmed.startsWith('by ')) {
+        current = current || { version: '', date: '', entries: [] };
+        current.version = trimmed;
+        continue;
+      }
+
+      // Author/date line
+      if (trimmed.startsWith('by ')) {
+        current = current || { version: '', date: '', entries: [] };
+        current.date = trimmed;
+        continue;
+      }
+
+      // Entry line
+      if (_ENTRY_CLASSES[firstChar]) {
+        current = current || { version: '', date: '', entries: [] };
+        current.entries.push({ type: firstChar, text: trimmed.substring(1).trim() });
+      }
+    }
+
+    if (current)
+      sections.push(current);
+
+    return sections;
+  }
+
+  function renderChangelog(sections) {
+    const container = document.getElementById('whatsnew-content');
+    container.innerHTML = '';
+
+    for (const section of sections) {
+      if (section.version) {
+        const h = document.createElement('h3');
+        h.className = 'changelog-version';
+        h.textContent = section.version;
+        container.appendChild(h);
+      }
+      if (section.date) {
+        const d = document.createElement('div');
+        d.className = 'changelog-date';
+        d.textContent = section.date;
+        container.appendChild(d);
+      }
+      for (const entry of section.entries) {
+        const div = document.createElement('div');
+        div.className = 'changelog-entry ' + (_ENTRY_CLASSES[entry.type] || '');
+        const prefix = { '+': '\u2795', '#': '\uD83D\uDD27', '*': '\uD83D\uDD04', '-': '\u274C', '!' : '\u26A0\uFE0F' }[entry.type] || '\u2022';
+        div.textContent = prefix + ' ' + entry.text;
+        container.appendChild(div);
+      }
+    }
+
+    if (sections.length === 0)
+      container.textContent = 'No changelog available.';
+  }
+
+  async function populateChangelog() {
+    if (_changelogLoaded)
+      return;
+    _changelogLoaded = true;
+
+    try {
+      const result = await SZ.Dlls.User32.SendMessage('sz:getChangelog');
+      const text = result.changelog || '';
+      if (text) {
+        const sections = parseChangelog(text);
+        renderChangelog(sections);
+      } else {
+        document.getElementById('whatsnew-content').textContent = 'No changelog available.';
+      }
+    } catch (_) {
+      document.getElementById('whatsnew-content').textContent = 'Could not load changelog.';
+    }
+  }
+
   // ── Init ───────────────────────────────────────────────────────
   function init() {
     SZ.Dlls.User32.EnableVisualStyles();
+
+    if (_autostart)
+      switchTab('whatsnew');
+
     document.getElementById('btn-ok').focus();
   }
 

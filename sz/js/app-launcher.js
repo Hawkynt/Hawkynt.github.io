@@ -66,10 +66,18 @@
         datasource = await this.#createHostedDatasource(app);
       } else {
         datasource = 'Applications/' + app.entry;
-        if (urlParams) {
-          const qs = new URLSearchParams(urlParams).toString();
-          if (qs) datasource += '?' + qs;
+        const params = Object.assign({}, urlParams);
+        const versions = SZ.appVersions;
+        if (versions) {
+          if (versions.apps?.[appId])
+            params._szVersion = versions.apps[appId];
+          if (versions.gitHash)
+            params._szGitHash = versions.gitHash;
+          if (versions.osVersion)
+            params._szOsVersion = versions.osVersion;
         }
+        const qs = new URLSearchParams(params).toString();
+        if (qs) datasource += '?' + qs;
       }
 
       const win = this.#windowManager.createWindow({
@@ -113,9 +121,10 @@
       for (const [appId, wId] of this.#singletons) {
         if (wId === windowId) {
           this.#singletons.delete(appId);
-          break;
+          return appId;
         }
       }
+      return null;
     }
 
     resolveIconPath(app) {

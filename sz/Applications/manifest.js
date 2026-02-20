@@ -38,7 +38,7 @@
         type: 'iframe',
         entry: 'about/index.html',
         width: 440,
-        height: 510,
+        height: 550,
         resizable: false,
         minimizable: true,
         maximizable: false,

@@ -1,3 +1,87 @@
+Main: 6.6
+by Hawkynt 19.02.2026-22:20
++ Explorer: mount and unmount local directories via File System Access API
++ Icon Editor and SVG Editor: ribbon-style toolbar UI
+* shared format library refactored into individual audio/video codec modules
+
+Main: 6.5
+by Hawkynt 17.02.2026-06:28
++ Metadata Viewer: CPU disassemblers (x86, ARM, 6502, Z80, M68k, MSIL, Java, Dalvik, Python, PowerPC, and more)
++ shared ICO codec library (deduped between Icon Editor and Metadata Viewer)
+# clicking on inactive window content now brings it to front
+# Terminal home path corrected
+
+Main: 6.4
+by Hawkynt 16.02.2026-06:23
++ Archiver: support for 40+ archive formats (RAR, 7z, CAB, LZH, ARJ, CPIO, ISO, TAR, and many more)
++ Paint: additional image effects and layer operations
+# zoom control layout fixed across apps
+
+Main: 6.3
+by Hawkynt 15.02.2026-21:11
++ Function Plotter app
++ SVG Editor app
++ Cron Visualizer/Editor app
++ Subnet Calculator app
++ Gradient Generator app with preset previews
++ Cookie Banner Generator app
++ Display Tester app (dead pixel, color, HDR, FPS tests)
++ README Generator app
++ Resume Builder app
++ Archiver app
++ Metadata Viewer/Editor app
++ AquaSnap-style window edge snapping (8-zone snap with translucent preview overlay)
++ magnetic window alignment (snap to nearby window edges and screen borders)
++ AquaStretch (double-click resize handles to stretch to nearest obstacle)
++ move-together / AquaGlue (Ctrl+drag moves adjacent windows)
++ TidyTabs-style window tab grouping (drag windows onto each other to create tab groups)
++ window roll up/down (collapse to title bar only)
++ always on top (pin windows above others)
++ per-window transparency (25%-100%)
++ title bar icon context menu (Restore, Move, Size, Minimize, Maximize, Roll Up, Always on Top, Transparency, Close)
++ app icons shown in window title bar and taskbar buttons
++ unified ribbon toolbar across Notepad, WordPad, Spreadsheet, and Markdown Editor
++ shared zoom control in text editors, Image Viewer, Function Plotter, SVG Editor, and Icon Editor
++ Color Picker: adjustable-size circle eye-dropper
++ Regex Tester: table-based match results with export
++ Clock: stylized world map view
++ Icon Editor: palette mode editing with dithering/quantizer preview
++ Paint: image resizing and resampling with multiple algorithms
++ About dialog: system info tab, credits tab, license and donation info
++ save/open file dialogs support importing from PC and exporting (downloading) to PC
++ Explorer: file type icons based on associated application
++ default file extensions auto-applied when saving/loading
+* boot screen: replaced "S" by a mirrored "Z" for style conformity
+* VFS rewritten with typed node storage (bytes, value, uri, dir)
+# Tetris game over detection
+# Calculator resizing
+# Taskbar click behavior
+
+Main: 6.2
+by Hawkynt 14.02.2026-09:01
++ Color Picker: open with a specific color via command line
+# JSON Viewer: file saving
+# Spreadsheet and WordPad: file save/load
+
+Main: 6.1
+by Hawkynt 13.02.2026-21:51
++ Icon Editor app (multi-image ICO/CUR editor with pixel-level editing)
++ Calculator: scientific and programmer modes
++ Color Picker: color wheel selection
++ Notepad: advanced editing functions (find/replace, line numbers, word wrap)
++ Spreadsheet: ribbon UI with cell styling, formula bar, XLSX import/export
++ WordPad: ribbon UI with rich text formatting, DOCX/RTF import/export
++ QR Generator: embedded logo support
++ Terminal: help command
++ Diff Viewer: refresh button and ignore-EOL option
++ Control Panel: mouse pointer settings (cursor shadow, trails)
++ cursor effects: pointer shadow and mouse trail
++ context menu scrolling for long menus
++ skinned form controls (checkboxes, radios, push buttons, combo dropdowns) rendered from skin images
++ skinned button hover states
++ Explorer: syntax-highlighted file preview
+# Clock layout
+
 Main: 6.0
 by Hawkynt 11.02.2026-19:08
 * rewrite into a modern ES6 codebase with modular structure, better performance and more features
@@ -118,7 +202,7 @@ by Hawkynt 21.12.2004-11:41
 
 System 0.2a:Windows 0.68b:Main 0.68c:Icons 0.67d
 by Hawkynt 21.12.2004-11:24
-+ CPU/RAM waste routine again to work around DOM bugs 
++ CPU/RAM waste routine again to work around DOM bugs
 + icons in windows but not working
 + ability to show empty windows
 # red boxes appear in the upper left of all windows
@@ -128,11 +212,11 @@ by Hawkynt 21.12.2004-09:52
 by Xerxekyran 21.12.2004-9:40
 # width and height behaviour of icons
 
-System 0.2a:Windows 0.68b:Main 0.68c:Icons 0.67c 
+System 0.2a:Windows 0.68b:Main 0.68c:Icons 0.67c
 by Hawkynt 20.12.2004-13:36
 + support for Titles in Windows but some Skins appear to use it incorrect
 
-System 0.2a:Windows 0.68a:Main 0.68c:Icons 0.67c 
+System 0.2a:Windows 0.68a:Main 0.68c:Icons 0.67c
 by Hawkynt 20.12.2004-10:51
 + Move for Windows
 + Transparencies for Windows
@@ -141,7 +225,7 @@ by Hawkynt 20.12.2004-10:51
 * Events capturing in System to support Move event
 - BUG When moving Frame only, the IE does not move until mouse key is release(very weird behavior)
 
-System 0.1a:Windows 0.67c:Main 0.68b:Icons 0.67c 
+System 0.1a:Windows 0.67c:Main 0.68b:Icons 0.67c
 by Hawkynt 19.12.2004-12:44
 + Widget Classes support for Alpha blending(transparency)
 + Icon Subsystem

@@ -35,6 +35,7 @@
     <button class="tab active" data-tab="general">General</button>
     <button class="tab" data-tab="system">System</button>
     <button class="tab" data-tab="credits">Credits</button>
+    <button class="tab" data-tab="whatsnew">What's New</button>
   </div>
 
   <!-- General tab -->
@@ -57,8 +58,15 @@
       Clearing your browser data, using private/incognito mode, or switching browsers will erase all saved content permanently.
     </div>
 
+    <div class="data-notice">
+      <strong>&#x1F4C1; Mount local folders for real persistence.</strong>
+      You can mount directories from your computer directly into the virtual file system using the Explorer&rsquo;s mount feature.
+      Mounted folders read and write to your actual disk&nbsp;&mdash; files are not limited to browser storage and survive cache clears, browser switches, and device changes.
+      Open Explorer, right-click a folder in the sidebar, and choose &ldquo;Mount local directory&rdquo; to get started.
+    </div>
+
     <hr class="divider">
-    <p class="version">Version 6.0 | &copy; 1995&ndash;2026 &raquo;SynthelicZ&laquo;</p>
+    <p class="version" id="version-line">Version 6.0 | &copy; 1995&ndash;2026 &raquo;SynthelicZ&laquo;</p>
   </div>
 
   <!-- System tab -->
@@ -78,7 +86,13 @@
 
   <!-- Credits tab -->
   <div class="tab-panel" id="tab-credits">
+    <div class="donate-notice">
+      <strong><a href="https://paypal.me/Hawkynt" target="_blank" rel="noopener" class="donate-heart" title="Donate via PayPal">&#x2764;&#xFE0F;</a> Support this project</strong>
+      If you enjoy &raquo;SynthelicZ&laquo;, please consider making a donation. Your support helps keep the project alive and motivates further development. Thank&nbsp;you!
+    </div>
+      
     <div class="credits-scroll">
+
       <h3>Credits</h3>
       <p><strong>Hawkynt</strong> &mdash; original author &amp; developer &mdash; <a href="https://github.com/Hawkynt" target="_blank" rel="noopener" class="credits-link">github.com/Hawkynt</a></p>
       <p>Skin format based on Stardock WindowBlinds / Object Desktop skin assets.</p>
@@ -96,10 +110,13 @@
         <strong>&#x1F3E2; Corporate &amp; commercial use</strong>
         If you would like to use &raquo;SynthelicZ&laquo; in a commercial or corporate environment, please contact the author for licensing options and a product&nbsp;ID&nbsp;(PID).
       </div>
-      <div class="donate-notice">
-        <strong><a href="https://paypal.me/Hawkynt" target="_blank" rel="noopener" class="donate-heart" title="Donate via PayPal">&#x2764;&#xFE0F;</a> Support this project</strong>
-        If you enjoy &raquo;SynthelicZ&laquo;, please consider making a donation. Your support helps keep the project alive and motivates further development. Thank&nbsp;you!
-      </div>
+    </div>
+  </div>
+
+  <!-- What's New tab -->
+  <div class="tab-panel" id="tab-whatsnew">
+    <div class="whatsnew-scroll" id="whatsnew-content">
+      <p class="changelog-loading">Loading changelog&hellip;</p>
     </div>
   </div>
 
