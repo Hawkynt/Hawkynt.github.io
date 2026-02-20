@@ -38,66 +38,398 @@
 <body>
 <noscript><p>File explorer for browsing a virtual filesystem in your browser. <a href="../../index.html">Open »SynthelicZ« Desktop</a> to use this app.</p></noscript>
 
-<div class="menu-bar">
-  <div class="menu-item" data-menu="help">
-    Help
-    <div class="menu-dropdown">
-      <div class="menu-entry" data-action="about">About Explorer</div>
-    </div>
+<!-- Quick Access Toolbar (shared -- dispatches to active pane) -->
+<div class="qat" id="qat">
+  <button class="qat-btn" data-action="back" title="Back (Alt+Left)">&#x25C0;</button>
+  <button class="qat-btn" data-action="forward" title="Forward (Alt+Right)">&#x25B6;</button>
+  <button class="qat-btn" data-action="up" title="Up (Alt+Up)">&#x2191;</button>
+  <button class="qat-btn" data-action="refresh" title="Refresh (F5)">&#x21BB;</button>
+</div>
+
+<!-- Ribbon Tab Bar -->
+<div class="ribbon-tabs" id="ribbon-tabs">
+  <div class="ribbon-tab-bar">
+    <button class="ribbon-file-btn" id="ribbon-file-btn">File</button>
+    <button class="ribbon-tab active" data-tab="home">Home</button>
+    <button class="ribbon-tab" data-tab="view">View</button>
   </div>
 </div>
 
-<div class="toolbar-wrapper">
-  <div class="toolbar" id="toolbar">
-    <button id="btn-back" disabled title="Back">&#x25C0; Back</button>
-    <button id="btn-forward" disabled title="Forward">Forward &#x25B6;</button>
-    <button id="btn-up" disabled title="Up">&#x2191; Up</button>
-    <button id="btn-refresh" title="Refresh">&#x21BB; Refresh</button>
-    <div class="sep"></div>
-    <button id="btn-newfolder" disabled title="New folder">&#x1F4C1; New</button>
-    <button id="btn-delete" disabled title="Delete">&#x1F5D1; Delete</button>
-    <button id="btn-rename" disabled title="Rename">&#x270E; Rename</button>
-    <div class="sep"></div>
-    <button id="btn-copy" disabled title="Copy">&#x1F4CB; Copy</button>
-    <button id="btn-cut" disabled title="Cut">&#x2702; Cut</button>
-    <button id="btn-paste" disabled title="Paste">&#x1F4CB; Paste</button>
-    <div class="sep"></div>
-    <button id="btn-upload" disabled title="Upload files">&#x1F4E4; Upload</button>
-    <button id="btn-download" disabled title="Download file">&#x1F4E5; Download</button>
-    <div class="sep"></div>
-    <button id="btn-mount" title="Mount local folder">&#x1F4C2; Mount</button>
-    <button id="btn-unmount" disabled title="Unmount local folder">&#x23CF; Unmount</button>
-    <div class="sep"></div>
-    <button id="btn-view" title="View mode">Icons &#x25BC;</button>
-    <button class="toolbar-overflow-btn" id="btn-overflow" title="More buttons">&#x25B8;</button>
+<!-- File Backstage -->
+<div class="backstage" id="backstage">
+  <div class="backstage-sidebar">
+    <button class="backstage-back" id="backstage-back">&#x2190;</button>
+    <button class="backstage-item" data-action="new-window">New Window</button>
+    <div class="backstage-sep"></div>
+    <button class="backstage-item" data-action="mount">Mount Local Folder</button>
+    <button class="backstage-item" data-action="unmount">Unmount</button>
+    <div class="backstage-sep"></div>
+    <button class="backstage-item" data-action="save-layout">Save Layout</button>
+    <button class="backstage-item" data-action="load-layout">Load Layout</button>
+    <div class="backstage-sep"></div>
+    <button class="backstage-item" data-action="options">Options</button>
+    <button class="backstage-item" data-action="about">About</button>
+    <div class="backstage-spacer"></div>
+    <button class="backstage-item" data-action="exit">Exit</button>
   </div>
-  <div class="toolbar-overflow-menu" id="overflow-menu"></div>
 </div>
+
+<!-- Ribbon Panel: Home -->
+<div class="ribbon-panel active" data-panel="home" id="ribbon-home">
+
+  <!-- Clipboard -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="paste" title="Paste (Ctrl+V)">
+        <span class="rb-icon rb-icon-lg">&#x1F4CB;</span>
+        <span class="rb-label">Paste</span>
+      </button>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="cut" title="Cut (Ctrl+X)">
+          <span class="rb-icon">&#x2702;</span><span class="rb-label">Cut</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="copy" title="Copy (Ctrl+C)">
+          <span class="rb-icon">&#x1F4CB;</span><span class="rb-label">Copy</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="delete" title="Delete (Del)">
+          <span class="rb-icon">&#x1F5D1;</span><span class="rb-label">Delete</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Clipboard</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <!-- Organize -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="rename" title="Rename (F2)">
+          <span class="rb-icon">&#x270E;</span><span class="rb-label">Rename</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="bulk-rename" title="Bulk Rename">
+          <span class="rb-icon">&#x270D;</span><span class="rb-label">Bulk Rename</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="new-folder" title="New Folder">
+          <span class="rb-icon">&#x1F4C1;</span><span class="rb-label">New Folder</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Organize</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <!-- New -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="new-file" title="New Text Document">
+          <span class="rb-icon">&#x1F4C4;</span><span class="rb-label">New File</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="new-folder-with-selection" title="New Folder from Selection">
+          <span class="rb-icon">&#x1F4C2;</span><span class="rb-label">Folder from Sel.</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="copy-path" title="Copy as Path">
+          <span class="rb-icon">&#x1F4CE;</span><span class="rb-label">Copy Path</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">New</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <!-- Transfer -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="upload" title="Upload files">
+          <span class="rb-icon">&#x1F4E4;</span><span class="rb-label">Upload</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="download" title="Download file">
+          <span class="rb-icon">&#x1F4E5;</span><span class="rb-label">Download</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Transfer</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <!-- Selection -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="select-all" title="Select All (Ctrl+A)">
+          <span class="rb-icon">&#x2610;</span><span class="rb-label">Select All</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="select-none" title="Select None">
+          <span class="rb-icon">&#x2612;</span><span class="rb-label">Select None</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="invert-selection" title="Invert Selection">
+          <span class="rb-icon">&#x21C4;</span><span class="rb-label">Invert</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Selection</div>
+  </div>
+
+</div>
+
+<!-- Ribbon Panel: View -->
+<div class="ribbon-panel" data-panel="view" id="ribbon-view">
+
+  <!-- Layout -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm active" data-action="view-icons" title="Icons">
+          <span class="rb-icon">&#x2B1A;</span><span class="rb-label">Icons</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="view-details" title="Details">
+          <span class="rb-icon">&#x2630;</span><span class="rb-label">Details</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="view-tiles" title="Tiles">
+          <span class="rb-icon">&#x25A3;</span><span class="rb-label">Tiles</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Layout</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <!-- Zoom -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="zoom-in" title="Larger icons (Ctrl++)">
+          <span class="rb-icon">&#xFF0B;</span><span class="rb-label">Zoom In</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="zoom-out" title="Smaller icons (Ctrl+-)">
+          <span class="rb-icon">&#xFF0D;</span><span class="rb-label">Zoom Out</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Zoom</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <!-- Panes -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="toggle-preview" title="Preview Pane (Space)">
+          <span class="rb-icon">&#x1F5BC;</span><span class="rb-label">Preview Pane</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="toggle-nav" title="Navigation Pane">
+          <span class="rb-icon">&#x1F4C2;</span><span class="rb-label">Navigation Pane</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="expand-folder" title="Expand Folder (Ctrl+E)">
+          <span class="rb-icon">&#x29C9;</span><span class="rb-label">Expand Folder</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Panes</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <!-- Split -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="split-right" title="Split Right (Ctrl+Shift+S)">
+          <span class="rb-icon">&#x25EB;</span><span class="rb-label">Split Right</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="split-bottom" title="Split Bottom">
+          <span class="rb-icon">&#x2B13;</span><span class="rb-label">Split Bottom</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="close-pane" title="Close Pane">
+          <span class="rb-icon">&#x2715;</span><span class="rb-label">Close Pane</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Split</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <!-- Sort By -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm active" data-action="sort-name" title="Sort by Name">
+          <span class="rb-icon">&#x25B4;</span><span class="rb-label">Name</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="sort-size" title="Sort by Size">
+          <span class="rb-icon">&#x25B4;</span><span class="rb-label">Size</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="sort-type" title="Sort by Type">
+          <span class="rb-icon">&#x25B4;</span><span class="rb-label">Type</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="sort-date" title="Sort by Date">
+          <span class="rb-icon">&#x25B4;</span><span class="rb-label">Date</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Sort By</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <!-- Display -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="toggle-hidden" title="Show Hidden Files (Ctrl+H)">
+          <span class="rb-icon">&#x1F441;</span><span class="rb-label">Hidden Files</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="toggle-extensions" title="Show/Hide File Extensions">
+          <span class="rb-icon">.ext</span><span class="rb-label">Extensions</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="toggle-highlight-recents" title="Highlight Recently Modified">
+          <span class="rb-icon">&#x1F552;</span><span class="rb-label">Highlight Recent</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Display</div>
+  </div>
+
+</div>
+
 <input type="file" id="upload-input" multiple style="display:none">
-<div class="address-bar">
-  <label>Address:</label>
-  <div class="breadcrumb-wrapper">
-    <div class="breadcrumb-container" id="breadcrumb-container">
-      <div class="breadcrumb" id="breadcrumb"></div>
-      <input class="address-input" id="address-input" type="text" spellcheck="false" autocomplete="off">
-    </div>
-    <div class="autocomplete-dropdown" id="autocomplete-dropdown"></div>
+
+<!-- Explorer body: sidebar + pane root -->
+<div class="explorer-body" id="explorer-body">
+  <div class="sidebar" id="sidebar">
+    <input class="sidebar-filter" id="sidebar-filter" type="text" placeholder="Filter..." spellcheck="false">
+    <div class="sidebar-sections" id="sidebar-sections"></div>
   </div>
-  <div class="search-box">
-    <span class="search-icon">&#x1F50D;</span>
-    <input type="text" id="search-input" placeholder="Search..." spellcheck="false">
-    <span class="search-clear" id="search-clear">&times;</span>
-  </div>
-</div>
-<div class="content">
-  <div class="sidebar" id="sidebar"></div>
-  <div class="main-view" id="main-view"></div>
-</div>
-<div class="status-bar">
-  <span class="status-count" id="status-count"></span>
-  <span class="status-info" id="status-info">&raquo;SynthelicZ&laquo; Explorer</span>
+  <div class="pane-root" id="pane-root"></div>
 </div>
 
+<!-- Status bar -->
+<div class="status-bar">
+  <div class="status-left">
+    <span class="view-filter-group" id="view-filter-group">
+      <button class="vf-btn active" data-vf="all" title="Show all items">&#x229E;</button>
+      <button class="vf-btn" data-vf="folders" title="Show folders only">&#x1F4C1;</button>
+      <button class="vf-btn" data-vf="files" title="Show files only">&#x1F4C4;</button>
+      <span class="vf-sep">|</span>
+      <button class="vf-btn active" data-vf="folders-first" title="Toggle folders first">&#x21C5;</button>
+    </span>
+    <span class="status-count" id="status-count"></span>
+    <span class="status-load-time" id="status-load-time"></span>
+    <span class="status-info" id="status-info">&raquo;SynthelicZ&laquo; Explorer</span>
+  </div>
+  <div class="status-right">
+    <span class="status-view-mode" id="status-view-mode"></span>
+    <span class="status-scroll-pct" id="status-scroll-pct"></span>
+  </div>
+</div>
+
+<!-- Command Palette (Ctrl+Shift+P) -->
+<div class="dialog-overlay cp-overlay" id="dlg-command-palette">
+  <div class="command-palette">
+    <input type="text" class="cp-input" id="cp-input" placeholder="Type a command..." spellcheck="false" autocomplete="off">
+    <div class="cp-list" id="cp-list"></div>
+  </div>
+</div>
+
+<!-- GoTo Dialog (Ctrl+P / F4) -->
+<div class="dialog-overlay cp-overlay" id="dlg-goto">
+  <div class="goto-dialog">
+    <input type="text" class="goto-input" id="goto-input" placeholder="Go to path or folder..." spellcheck="false" autocomplete="off">
+    <div class="goto-recents" id="goto-recents"></div>
+  </div>
+</div>
+
+<!-- Options Dialog (Ctrl+,) -->
+<div class="dialog-overlay" id="dlg-options">
+  <div class="dialog options-dialog">
+    <div class="dialog-title">Options</div>
+    <div class="dialog-body">
+      <div class="opts-grid" id="opts-grid">
+        <div class="opts-row">
+          <label>Font size:</label>
+          <select id="opt-font-size">
+            <option value="11">Small (11px)</option>
+            <option value="12" selected>Normal (12px)</option>
+            <option value="13">Medium (13px)</option>
+            <option value="14">Large (14px)</option>
+            <option value="16">Extra Large (16px)</option>
+          </select>
+        </div>
+        <div class="opts-row">
+          <label>Row spacing:</label>
+          <select id="opt-row-spacing">
+            <option value="compact">Compact</option>
+            <option value="normal" selected>Normal</option>
+            <option value="comfortable">Comfortable</option>
+          </select>
+        </div>
+        <div class="opts-row">
+          <label>Icon zoom level:</label>
+          <select id="opt-icon-zoom">
+            <option value="small">Small (32px)</option>
+            <option value="medium" selected>Medium (48px)</option>
+            <option value="large">Large (64px)</option>
+            <option value="xlarge">Extra Large (96px)</option>
+          </select>
+        </div>
+        <div class="opts-row">
+          <label>Default view mode:</label>
+          <select id="opt-default-view">
+            <option value="icons" selected>Icons</option>
+            <option value="details">Details</option>
+            <option value="tiles">Tiles</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">OK</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk Rename Dialog -->
+<div class="dialog-overlay" id="dlg-bulk-rename">
+  <div class="dialog bulk-rename-dialog">
+    <div class="dialog-title">Bulk Rename</div>
+    <div class="dialog-body">
+      <div class="br-row">
+        <label>Pattern:</label>
+        <input type="text" id="br-pattern" value="{name}{ext}" spellcheck="false">
+      </div>
+      <div class="br-row">
+        <label>Tokens:</label>
+        <span class="br-tokens">{name} {ext} {counter} {date} {id}</span>
+      </div>
+      <div class="br-row">
+        <label>Counter start:</label>
+        <input type="number" id="br-counter-start" value="1" min="0" style="width:60px">
+      </div>
+      <div class="br-row">
+        <label>Counter padding:</label>
+        <input type="number" id="br-counter-pad" value="1" min="1" max="6" style="width:60px">
+      </div>
+      <div class="br-preview-label">Preview:</div>
+      <div class="br-preview" id="br-preview"></div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Rename</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Properties Dialog -->
 <div class="dialog-overlay" id="dlg-properties">
   <div class="dialog properties-dialog">
     <div class="dialog-title" id="props-title">Properties</div>
@@ -112,6 +444,7 @@
   </div>
 </div>
 
+<!-- About Dialog -->
 <div class="dialog-overlay" id="dlg-about">
   <div class="dialog">
     <div class="dialog-title">About Explorer</div>

@@ -110,6 +110,27 @@
       this.#savePositions();
     }
 
+    get icons() { return this.#icons; }
+    get iconArea() { return this.#iconArea; }
+
+    findIcon(id) { return this.#icons.find(ic => ic.id === id) || null; }
+
+    removeIcon(id) {
+      const idx = this.#icons.findIndex(ic => ic.id === id);
+      if (idx < 0)
+        return false;
+      const icon = this.#icons[idx];
+      icon.element.remove();
+      this.#icons.splice(idx, 1);
+      for (const [key, occupantId] of this.#occupiedCells)
+        if (occupantId === id) {
+          this.#occupiedCells.delete(key);
+          break;
+        }
+      this.#savePositions();
+      return true;
+    }
+
     clearIcons() {
       this.#icons = [];
       this.#occupiedCells.clear();
