@@ -59,7 +59,8 @@
         upperCase: false,      // Use mixed case keywords
         strictTypes: true,     // Enable strong typing
         useClasses: true,      // Enable OOP features for modern variants
-        useExceptionHandling: true // Use Try/Catch vs On Error
+        useExceptionHandling: true, // Use Try/Catch vs On Error
+        skipInheritance: false // Skip base class inheritance (for standalone testing)
       };
 
       // Option metadata - defines enum choices

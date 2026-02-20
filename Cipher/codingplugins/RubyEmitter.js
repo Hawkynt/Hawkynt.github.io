@@ -543,7 +543,35 @@
     emitBinaryExpression(node) {
       const left = this.emit(node.left);
       const right = this.emit(node.right);
-      return `${left} ${node.operator} ${right}`;
+      const op = node.operator;
+
+      // Add parentheses for operator precedence
+      const leftStr = this.needsParens(node.left, op, 'left') ? `(${left})` : left;
+      const rightStr = this.needsParens(node.right, op, 'right') ? `(${right})` : right;
+      return `${leftStr} ${op} ${rightStr}`;
+    }
+
+    needsParens(node, parentOp, side) {
+      if (!node || node.nodeType !== 'BinaryExpression') return false;
+      const childOp = node.operator;
+      // Ruby operator precedence (higher = binds tighter)
+      const precedence = {
+        '**': 15,
+        '*': 13, '/': 13, '%': 13,
+        '+': 12, '-': 12,
+        '<<': 11, '>>': 11,
+        '&': 10,
+        '^': 9, '|': 9,
+        '<': 8, '<=': 8, '>': 8, '>=': 8,
+        '<=>': 7, '==': 7, '!=': 7, '===': 7,
+        '&&': 6, 'and': 6,
+        '||': 5, 'or': 5
+      };
+      const parentPrec = precedence[parentOp] || 0;
+      const childPrec = precedence[childOp] || 0;
+      if (childPrec < parentPrec) return true;
+      if (childPrec === parentPrec && side === 'right') return true;
+      return false;
     }
 
     emitUnaryExpression(node) {
@@ -682,12 +710,13 @@
 
         code += ' { ';
 
-        if (node.body.statements.length === 1) {
-          code += this.emit(node.body.statements[0]).trim();
-        } else {
+        const stmts1 = (node.body && node.body.statements) || (node.body ? [node.body] : []);
+        if (stmts1.length === 1) {
+          code += this.emit(stmts1[0]).trim();
+        } else if (stmts1.length > 0) {
           this.indentLevel++;
           code += this.newline;
-          code += this.emitBlockContents(node.body);
+          code += node.body.statements ? this.emitBlockContents(node.body) : stmts1.map(s => this.indent() + this.emit(s)).join(this.newline);
           this.indentLevel--;
           code += this.indent();
         }
@@ -702,12 +731,13 @@
           code += '|' + params.join(', ') + '| ';
         }
 
-        if (node.body.statements.length === 1) {
-          code += this.emit(node.body.statements[0]).trim();
-        } else {
+        const stmts2 = (node.body && node.body.statements) || (node.body ? [node.body] : []);
+        if (stmts2.length === 1) {
+          code += this.emit(stmts2[0]).trim();
+        } else if (stmts2.length > 0) {
           this.indentLevel++;
           code += this.newline;
-          code += this.emitBlockContents(node.body);
+          code += node.body.statements ? this.emitBlockContents(node.body) : stmts2.map(s => this.indent() + this.emit(s)).join(this.newline);
           this.indentLevel--;
           code += this.indent();
         }
@@ -792,6 +822,19 @@
 
       code += this.line(`${node.name} = ${this.emit(node.value)}`);
 
+      return code;
+    }
+
+    // ========================[ RAW CODE ]========================
+
+    emitRawCode(node) {
+      // Emit raw Ruby code as-is (used for framework stubs)
+      // Handle multi-line code properly with indentation
+      const lines = node.code.split('\n');
+      let code = '';
+      for (const line of lines) {
+        code += this.line(line);
+      }
       return code;
     }
   }

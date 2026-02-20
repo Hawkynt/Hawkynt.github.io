@@ -334,6 +334,96 @@ class TypeScriptPlugin extends LanguagePlugin {
     };
   }
 
+  /**
+   * Generate TypeScript test runner code from ILTestRunner node (global property)
+   * @param {Object} testRunner - ILTestRunner node with test cases
+   * @returns {string} TypeScript test runner code
+   */
+  generateTestRunner(testRunner) {
+    if (!testRunner || !testRunner.tests || testRunner.tests.length === 0) {
+      return '';
+    }
+
+    const lines = [];
+    lines.push('// Auto-generated Test Runner');
+    lines.push('');
+    lines.push('function bytesToHex(bytes: Uint8Array | number[]): string {');
+    lines.push('  return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");');
+    lines.push('}');
+    lines.push('');
+    lines.push('function arraysEqual(a: Uint8Array | number[], b: Uint8Array | number[]): boolean {');
+    lines.push('  if (a.length !== b.length) return false;');
+    lines.push('  for (let i = 0; i < a.length; ++i) {');
+    lines.push('    if (a[i] !== b[i]) return false;');
+    lines.push('  }');
+    lines.push('  return true;');
+    lines.push('}');
+    lines.push('');
+    lines.push('(function main(): void {');
+    lines.push('  let passed: number = 0;');
+    lines.push('  let failed: number = 0;');
+    lines.push('  console.log("Running tests...");');
+    lines.push('  console.log("");');
+    lines.push('');
+
+    for (const testGroup of testRunner.tests) {
+      const algoClass = testGroup.algorithmClass;
+      const instClass = testGroup.instanceClass;
+
+      for (let i = 0; i < testGroup.testCases.length; ++i) {
+        const tc = testGroup.testCases[i];
+        const desc = tc.description || `Test ${i + 1}`;
+        const inputBytes = tc.input ? `new Uint8Array([${tc.input.join(', ')}])` : 'new Uint8Array(0)';
+        const expectedBytes = tc.expected ? `new Uint8Array([${tc.expected.join(', ')}])` : 'new Uint8Array(0)';
+
+        lines.push(`  // Test: ${desc}`);
+        lines.push('  try {');
+        lines.push(`    const algo = new ${algoClass}();`);
+        lines.push(`    const instance = algo.CreateInstance() as ${instClass};`);
+        lines.push('');
+
+        // Set key/iv/nonce if provided
+        if (tc.key) {
+          lines.push(`    instance.key = new Uint8Array([${tc.key.join(', ')}]);`);
+        }
+        if (tc.iv) {
+          lines.push(`    instance.iv = new Uint8Array([${tc.iv.join(', ')}]);`);
+        }
+        if (tc.nonce) {
+          lines.push(`    instance.nonce = new Uint8Array([${tc.nonce.join(', ')}]);`);
+        }
+
+        lines.push(`    const input: Uint8Array = ${inputBytes};`);
+        lines.push(`    const expected: Uint8Array = ${expectedBytes};`);
+        lines.push('');
+        lines.push('    instance.feed(input);');
+        lines.push('    const actual: Uint8Array | number[] = instance.result();');
+        lines.push('');
+        lines.push('    if (arraysEqual(actual, expected)) {');
+        lines.push(`      console.log("PASS: ${desc}");`);
+        lines.push('      ++passed;');
+        lines.push('    } else {');
+        lines.push(`      console.log("FAIL: ${desc}");`);
+        lines.push('      console.log("  Expected: " + bytesToHex(expected));');
+        lines.push('      console.log("  Actual:   " + bytesToHex(actual));');
+        lines.push('      ++failed;');
+        lines.push('    }');
+        lines.push('  } catch (error) {');
+        lines.push(`    console.log("ERROR: ${desc} - " + (error as Error).message);`);
+        lines.push('    ++failed;');
+        lines.push('  }');
+        lines.push('');
+      }
+    }
+
+    lines.push('  console.log("");');
+    lines.push('  console.log(`Results: ${passed} passed, ${failed} failed`);');
+    lines.push('  process.exit(failed === 0 ? 0 : 1);');
+    lines.push('})();');
+
+    return lines.join('\n');
+  }
+
 }
 
 // Register the plugin

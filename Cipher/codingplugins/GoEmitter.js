@@ -56,6 +56,16 @@
       return content ? `${this.indent()}${content}${this.newline}` : this.newline;
     }
 
+    /**
+     * Escape Go reserved keywords by appending underscore
+     * @param {string} name - The identifier name to escape
+     * @returns {string} Escaped name if reserved, original otherwise
+     */
+    escapeReserved(name) {
+      const reserved = ['type', 'func', 'interface', 'struct', 'map', 'range', 'defer', 'go', 'chan', 'select', 'fallthrough', 'default', 'case', 'package', 'import', 'const', 'var'];
+      return reserved.includes(name) ? name + '_' : name;
+    }
+
     // ========================[ FILE STRUCTURE ]========================
 
     emitFile(node) {
@@ -206,7 +216,14 @@
         code += this.line(`// ${node.docComment}`);
       }
 
-      let field = `${node.name} ${node.type.toString()}`;
+      // Handle anonymous embedded fields (for struct embedding/inheritance)
+      let field;
+      if (node.isEmbedded) {
+        // Embedded field: just the type name, no field name
+        field = node.type.toString();
+      } else {
+        field = `${node.name} ${node.type.toString()}`;
+      }
       if (node.tag) {
         field += ` \`${node.tag}\``;
       }
@@ -261,11 +278,12 @@
     }
 
     emitParameterDecl(node) {
+      const name = node.name ? this.escapeReserved(node.name) : null;
       if (node.isVariadic) {
-        return `${node.name} ...${node.type.toString()}`;
+        return `${name} ...${node.type.toString()}`;
       }
-      if (node.name) {
-        return `${node.name} ${node.type.toString()}`;
+      if (name) {
+        return `${name} ${node.type.toString()}`;
       }
       return node.type.toString();
     }
@@ -284,7 +302,8 @@
         code += this.line(`// ${node.docComment}`);
       }
 
-      let decl = `const ${node.name}`;
+      const name = this.escapeReserved(node.name);
+      let decl = `const ${name}`;
       if (node.type) {
         decl += ` ${node.type.toString()}`;
       }
@@ -294,14 +313,19 @@
     }
 
     emitVar(node) {
+      const name = this.escapeReserved(node.name);
       if (node.isShortDecl && node.initializer) {
         // := syntax
-        return this.line(`${node.name} := ${this.emit(node.initializer)}`);
+        return this.line(`${name} := ${this.emit(node.initializer)}`);
       }
 
-      let decl = `var ${node.name}`;
+      let decl = `var ${name}`;
       if (node.type) {
         decl += ` ${node.type.toString()}`;
+      } else if (!node.initializer) {
+        // Go requires a type when there's no initializer
+        // Use interface{} as fallback (compatible with all Go versions)
+        decl += ' interface{}';
       }
       if (node.initializer) {
         decl += ` = ${this.emit(node.initializer)}`;
@@ -375,10 +399,12 @@
       if (node.isRange) {
         // for range loop
         let forLine = 'for ';
-        if (node.rangeKey && node.rangeValue) {
-          forLine += `${node.rangeKey}, ${node.rangeValue} := range ${this.emit(node.rangeExpr)}`;
-        } else if (node.rangeKey) {
-          forLine += `${node.rangeKey} := range ${this.emit(node.rangeExpr)}`;
+        const rangeKey = node.rangeKey ? this.escapeReserved(node.rangeKey) : null;
+        const rangeValue = node.rangeValue ? this.escapeReserved(node.rangeValue) : null;
+        if (rangeKey && rangeValue) {
+          forLine += `${rangeKey}, ${rangeValue} := range ${this.emit(node.rangeExpr)}`;
+        } else if (rangeKey) {
+          forLine += `${rangeKey} := range ${this.emit(node.rangeExpr)}`;
         } else {
           forLine += `range ${this.emit(node.rangeExpr)}`;
         }
@@ -519,15 +545,71 @@
         return `0x${node.value.toString(16).toUpperCase()}`;
       }
 
+      // Handle large numbers that exceed JS Number.MAX_SAFE_INTEGER
+      // JavaScript can't represent these exactly, so emit as hex
+      if (typeof node.value === 'number' && node.value > 9007199254740991) {
+        const hex = Math.round(node.value).toString(16).toUpperCase();
+        // Cap at max uint64 if the hex exceeds 16 digits (FFFFFFFFFFFFFFFF)
+        if (hex.length > 16)
+          return '0xFFFFFFFFFFFFFFFF';
+        return `0x${hex}`;
+      }
+
+      // BigInt values - emit as-is (they can be arbitrarily large)
+      if (typeof node.value === 'bigint') {
+        return node.value.toString();
+      }
+
       return String(node.value);
     }
 
     emitIdentifier(node) {
-      return node.name;
+      return this.escapeReserved(node.name);
     }
 
     emitBinaryExpression(node) {
-      return `${this.emit(node.left)} ${node.operator} ${this.emit(node.right)}`;
+      const left = this.emit(node.left);
+      const right = this.emit(node.right);
+      const op = node.operator;
+
+      // Add parentheses when needed for proper operator precedence
+      const leftStr = this.needsParens(node.left, op, 'left') ? `(${left})` : left;
+      const rightStr = this.needsParens(node.right, op, 'right') ? `(${right})` : right;
+      return `${leftStr} ${op} ${rightStr}`;
+    }
+
+    /**
+     * Check if an expression needs parentheses in a binary expression
+     */
+    needsParens(node, parentOp, side) {
+      if (!node || node.nodeType !== 'BinaryExpression') return false;
+
+      const childOp = node.operator;
+
+      // Go operator precedence (higher = binds tighter)
+      const precedence = {
+        '*': 13, '/': 13, '%': 13, '<<': 13, '>>': 13, '&': 13, '&^': 13,
+        '+': 12, '-': 12, '|': 12, '^': 12,
+        '==': 11, '!=': 11, '<': 11, '<=': 11, '>': 11, '>=': 11,
+        '&&': 10,
+        '||': 9
+      };
+
+      const parentPrec = precedence[parentOp] || 0;
+      const childPrec = precedence[childOp] || 0;
+
+      // If child has lower precedence, needs parens
+      if (childPrec < parentPrec) return true;
+
+      // If same precedence and right side, needs parens for left-associativity
+      if (childPrec === parentPrec && side === 'right') return true;
+
+      // Comparison operators at the same precedence level need parens when chained
+      // e.g., (a != nil) == nil must be written with parens; Go doesn't allow chaining comparisons
+      const compOps = ['==', '!=', '<', '<=', '>', '>='];
+      if (compOps.includes(parentOp) && compOps.includes(childOp)) return true;
+
+      return false;
     }
 
     emitUnaryExpression(node) {
@@ -569,16 +651,43 @@
     }
 
     emitCallExpression(node) {
-      const args = node.arguments.map(a => this.emit(a));
-      return `${this.emit(node.function)}(${args.join(', ')})`;
+      const args = node.arguments.map(a => this.emit(a).replace(/\s+$/, ''));
+      const joined = args.join(', ');
+
+      // Go requires trailing comma on last arg in multi-line call expressions
+      if (joined.includes('\n') || joined.length > 120) {
+        const indent = this.indent();
+        const innerIndent = indent + this.indentString;
+        const lines = args.map(a => `${innerIndent}${a},`);
+        return `${this.emit(node.function)}(\n${lines.join('\n')}\n${indent})`;
+      }
+
+      return `${this.emit(node.function)}(${joined})`;
     }
 
     emitTypeAssertion(node) {
-      return `${this.emit(node.expression)}.(${node.type.toString()})`;
+      let expr = this.emit(node.expression);
+      // Add parentheses for compound expressions to ensure correct precedence
+      // Type assertions bind tightly, so a >> b.(type) means a >> (b.(type)) not (a >> b).(type)
+      if (node.expression.nodeType === 'BinaryExpression' ||
+          node.expression.nodeType === 'UnaryExpression') {
+        expr = `(${expr})`;
+      }
+      return `${expr}.(${node.type.toString()})`;
     }
 
     emitTypeConversion(node) {
-      return `${node.type.toString()}(${this.emit(node.expression)})`;
+      // Check if source expression is interface{}/any - need type assertion instead
+      const exprType = node.expression?.goType?.toString() ||
+                       node.expression?.type?.toString() || '';
+      const targetType = node.type.toString();
+
+      // If source is interface{}/any and target is a slice/concrete type, use assertion
+      if ((exprType === 'interface{}' || exprType === 'any') && targetType.startsWith('[]')) {
+        return `${this.emit(node.expression)}.(${targetType})`;
+      }
+
+      return `${targetType}(${this.emit(node.expression)})`;
     }
 
     emitCompositeLiteral(node) {
@@ -589,17 +698,32 @@
       }
 
       const elements = node.elements.map(e => {
-        if (e.nodeType === 'KeyValue') {
-          return `${this.emit(e.key)}: ${this.emit(e.value)}`;
-        }
-        return this.emit(e);
+        let code;
+        if (e.nodeType === 'KeyValue')
+          code = `${this.emit(e.key)}: ${this.emit(e.value)}`;
+        else
+          code = this.emit(e);
+        // Strip trailing whitespace/newlines from emitted elements
+        return code.replace(/\s+$/, '');
       });
 
-      return `${typeName}{${elements.join(', ')}}`;
+      // Check if any element contains newlines or total length is very long
+      const joined = elements.join(', ');
+      const isMultiLine = joined.includes('\n') || joined.length > 120;
+
+      if (isMultiLine) {
+        // Go requires trailing comma on last element in multi-line composite literals
+        const indent = this.indent();
+        const innerIndent = indent + this.indentString;
+        const lines = elements.map(el => `${innerIndent}${el},`);
+        return `${typeName}{\n${lines.join('\n')}\n${indent}}`;
+      }
+
+      return `${typeName}{${joined}}`;
     }
 
     emitKeyValue(node) {
-      return `${this.emit(node.key)}: ${this.emit(node.value)}`;
+      return `${this.emit(node.key).replace(/\s+$/, '')}: ${this.emit(node.value).replace(/\s+$/, '')}`;
     }
 
     emitFuncLit(node) {
@@ -645,6 +769,23 @@
 
     emitType(node) {
       return node.toString();
+    }
+
+    // ========================[ RAW CODE ]========================
+
+    emitRawCode(node) {
+      // Emit raw Go code as-is
+      // Single-line code is returned inline (for use in expressions)
+      // Multi-line code gets indentation (for use as statements/stubs)
+      const lines = node.code.split('\n');
+      if (lines.length === 1)
+        return node.code;
+
+      let code = '';
+      for (const line of lines) {
+        code += this.line(line);
+      }
+      return code;
     }
   }
 

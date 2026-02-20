@@ -90,7 +90,7 @@
   }
 
   /**
-   * Method declaration
+   * Method declaration (class member)
    */
   class JavaScriptMethod extends JavaScriptNode {
     constructor(name) {
@@ -106,6 +106,22 @@
   }
 
   /**
+   * Function declaration (top-level or nested function)
+   */
+  class JavaScriptFunction extends JavaScriptNode {
+    constructor(name) {
+      super('Function');
+      this.name = name;
+      this.isAsync = false;
+      this.isGenerator = false;
+      this.isExported = false;
+      this.parameters = [];        // JavaScriptParameter[]
+      this.body = null;            // JavaScriptBlock
+      this.jsDoc = null;
+    }
+  }
+
+  /**
    * Constructor declaration
    */
   class JavaScriptConstructor extends JavaScriptNode {
@@ -114,6 +130,16 @@
       this.parameters = [];
       this.body = null;
       this.jsDoc = null;
+    }
+  }
+
+  /**
+   * Static block (ES2022) - static { ... }
+   */
+  class JavaScriptStaticBlock extends JavaScriptNode {
+    constructor() {
+      super('StaticBlock');
+      this.body = null;  // JavaScriptBlock
     }
   }
 
@@ -302,13 +328,15 @@
   // ========================[ EXPRESSIONS ]========================
 
   /**
-   * Literal expression (numbers, strings, booleans, null)
+   * Literal expression (numbers, strings, booleans, null, regex)
    */
   class JavaScriptLiteral extends JavaScriptNode {
     constructor(value, literalType) {
       super('Literal');
       this.value = value;           // The actual value
-      this.literalType = literalType; // 'number', 'string', 'boolean', 'null', 'bigint'
+      this.literalType = literalType; // 'number', 'string', 'boolean', 'null', 'bigint', 'regex'
+      this.pattern = null;          // For regex: the pattern string
+      this.flags = null;            // For regex: the flags string
     }
 
     static Number(value) { return new JavaScriptLiteral(value, 'number'); }
@@ -317,6 +345,12 @@
     static Null() { return new JavaScriptLiteral(null, 'null'); }
     static Undefined() { return new JavaScriptLiteral(undefined, 'undefined'); }
     static BigInt(value) { return new JavaScriptLiteral(value, 'bigint'); }
+    static Regex(pattern, flags) {
+      const lit = new JavaScriptLiteral(null, 'regex');
+      lit.pattern = pattern;
+      lit.flags = flags || '';
+      return lit;
+    }
   }
 
   /**
@@ -489,6 +523,70 @@
     }
   }
 
+  /**
+   * Yield expression (for generators)
+   * yield value or yield* iterable
+   */
+  class JavaScriptYieldExpression extends JavaScriptNode {
+    constructor(argument = null, delegate = false) {
+      super('YieldExpression');
+      this.argument = argument;     // JavaScriptExpression or null
+      this.delegate = delegate;     // true for yield*, false for yield
+    }
+  }
+
+  /**
+   * Chain expression (for optional chaining)
+   * a?.b, a?.b(), a?.[index]
+   */
+  class JavaScriptChainExpression extends JavaScriptNode {
+    constructor(expression) {
+      super('ChainExpression');
+      this.expression = expression; // The inner expression
+    }
+  }
+
+  /**
+   * Spread element (...expr)
+   * Used in arrays and function arguments
+   */
+  class JavaScriptSpreadElement extends JavaScriptNode {
+    constructor(argument) {
+      super('SpreadElement');
+      this.argument = argument; // JavaScriptExpression
+    }
+  }
+
+  /**
+   * Await expression (await promise)
+   */
+  class JavaScriptAwaitExpression extends JavaScriptNode {
+    constructor(argument) {
+      super('AwaitExpression');
+      this.argument = argument; // JavaScriptExpression
+    }
+  }
+
+  /**
+   * Delete expression (delete obj.prop)
+   */
+  class JavaScriptDeleteExpression extends JavaScriptNode {
+    constructor(argument) {
+      super('DeleteExpression');
+      this.argument = argument; // JavaScriptExpression
+    }
+  }
+
+  /**
+   * Sequence expression (a, b, c)
+   */
+  class JavaScriptSequenceExpression extends JavaScriptNode {
+    constructor(expressions = []) {
+      super('SequenceExpression');
+      this.expressions = expressions; // JavaScriptExpression[]
+    }
+  }
+
   // ========================[ JSDOC COMMENTS ]========================
 
   /**
@@ -519,7 +617,9 @@
     JavaScriptClass,
     JavaScriptProperty,
     JavaScriptMethod,
+    JavaScriptFunction,
     JavaScriptConstructor,
+    JavaScriptStaticBlock,
     JavaScriptParameter,
 
     // Statements
@@ -558,6 +658,12 @@
     JavaScriptSuper,
     JavaScriptParenthesized,
     JavaScriptTemplateLiteral,
+    JavaScriptYieldExpression,
+    JavaScriptChainExpression,
+    JavaScriptSpreadElement,
+    JavaScriptAwaitExpression,
+    JavaScriptDeleteExpression,
+    JavaScriptSequenceExpression,
 
     // Documentation
     JavaScriptJSDoc

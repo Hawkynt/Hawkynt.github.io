@@ -340,12 +340,13 @@
    * Foreach loop
    */
   class PhpForeach extends PhpNode {
-    constructor(iterable, value, body, key = null) {
+    constructor(iterable, value, body, key = null, byReference = false) {
       super('Foreach');
       this.iterable = iterable;        // PhpExpression
       this.key = key;                  // string (variable name without $) or null
       this.value = value;              // string (variable name without $)
       this.body = body;                // PhpBlock
+      this.byReference = byReference;  // boolean - use &$value for pass-by-reference
     }
   }
 
@@ -658,6 +659,19 @@
   }
 
   /**
+   * Short ternary / Elvis operator (a ?: b)
+   * Returns a if a is truthy, otherwise b
+   * PHP equivalent of JavaScript's || for values
+   */
+  class PhpShortTernary extends PhpNode {
+    constructor(left, right) {
+      super('ShortTernary');
+      this.left = left;
+      this.right = right;
+    }
+  }
+
+  /**
    * Instanceof expression (obj instanceof Class)
    */
   class PhpInstanceof extends PhpNode {
@@ -748,6 +762,27 @@
     }
   }
 
+  /**
+   * Raw PHP code (for framework stubs)
+   */
+  class PhpRawCode extends PhpNode {
+    constructor(code) {
+      super('RawCode');
+      this.code = code;
+    }
+  }
+
+  /**
+   * Spread element (...$array)
+   * Used in function calls and array unpacking
+   */
+  class PhpSpreadElement extends PhpNode {
+    constructor(argument) {
+      super('SpreadElement');
+      this.argument = argument;  // PhpExpression - the value being spread
+    }
+  }
+
   // ========================[ EXPORTS ]========================
 
   const PhpAST = {
@@ -812,6 +847,7 @@
     PhpNew,
     PhpTernary,
     PhpNullCoalescing,
+    PhpShortTernary,
     PhpInstanceof,
     PhpArrowFunction,
     PhpClosure,
@@ -823,7 +859,13 @@
     PhpDocComment,
 
     // Constants
-    PhpConst
+    PhpConst,
+
+    // Raw Code
+    PhpRawCode,
+
+    // Spread
+    PhpSpreadElement
   };
 
   // Export for different environments

@@ -45,6 +45,26 @@
     emit(node) {
       if (!node) return '';
 
+      if (typeof node === 'string') return node;
+
+      // Handle arrays
+      if (Array.isArray(node)) {
+        return node.map(n => this.emit(n)).filter(s => s).join('');
+      }
+
+      // Duck typing fallback
+      if (!node.nodeType) {
+        if (node.statements !== undefined) return this.emitBlock(node);
+        if (node.target && node.value && node.operator !== undefined) return this.emitAssignment(node);
+        if (node.name && typeof node.name === 'string') return this.emitIdentifier(node);
+        // Skip known control objects from transformer (not AST nodes)
+        if (node.isMethod !== undefined || node.initStatement !== undefined) return '';
+        // Show more debug info for unknown nodes
+        const keys = Object.keys(node).slice(0, 5).join(', ');
+        console.error(`No emitter for node type: ${node.nodeType} (keys: ${keys})`);
+        return '';
+      }
+
       const emitterMethod = `emit${node.nodeType}`;
       if (typeof this[emitterMethod] === 'function') {
         return this[emitterMethod](node);
@@ -464,6 +484,11 @@
         code += '$' + node.key + ' => ';
       }
 
+      // Add & for pass-by-reference when the loop variable is modified
+      if (node.byReference) {
+        code += '&';
+      }
+
       code += '$' + node.value + ') {' + this.newline;
 
       this.indentLevel++;
@@ -620,9 +645,54 @@
       return node.name;  // Non-variable identifiers (parent, self, static)
     }
 
+    // PHP operator precedence (higher number = higher precedence)
+    getOperatorPrecedence(op) {
+      const precedences = {
+        '||': 1, 'or': 1,
+        '&&': 2, 'and': 2,
+        '|': 3,
+        '^': 4,
+        '&': 5,
+        '==': 6, '!=': 6, '===': 6, '!==': 6, '<>': 6, '<=>': 6,
+        '<': 7, '<=': 7, '>': 7, '>=': 7,
+        '<<': 8, '>>': 8,
+        '+': 9, '-': 9, '.': 9,
+        '*': 10, '/': 10, '%': 10,
+        '**': 11
+      };
+      return precedences[op] || 0;
+    }
+
     emitBinaryExpression(node) {
-      const left = this.emit(node.left);
-      const right = this.emit(node.right);
+      const myPrecedence = this.getOperatorPrecedence(node.operator);
+
+      // Emit left operand with parentheses if needed
+      let left;
+      if (node.left && node.left.nodeType === 'BinaryExpression') {
+        const leftPrecedence = this.getOperatorPrecedence(node.left.operator);
+        if (leftPrecedence < myPrecedence) {
+          left = '(' + this.emit(node.left) + ')';
+        } else {
+          left = this.emit(node.left);
+        }
+      } else {
+        left = this.emit(node.left);
+      }
+
+      // Emit right operand with parentheses if needed
+      let right;
+      if (node.right && node.right.nodeType === 'BinaryExpression') {
+        const rightPrecedence = this.getOperatorPrecedence(node.right.operator);
+        // For right operand, also parenthesize if same precedence (left-to-right associativity)
+        if (rightPrecedence <= myPrecedence) {
+          right = '(' + this.emit(node.right) + ')';
+        } else {
+          right = this.emit(node.right);
+        }
+      } else {
+        right = this.emit(node.right);
+      }
+
       return `${left} ${node.operator} ${right}`;
     }
 
@@ -649,7 +719,8 @@
     }
 
     emitArrayAccess(node) {
-      return `${this.emit(node.target)}[${this.emit(node.index)}]`;
+      const index = this.emit(node.index).replace(/[\r\n\t]/g, '').trim();
+      return `${this.emit(node.target)}[${index}]`;
     }
 
     emitMethodCall(node) {
@@ -664,8 +735,21 @@
     }
 
     emitFunctionCall(node) {
-      const functionName = typeof node.functionName === 'string' ? node.functionName : this.emit(node.functionName);
       const args = node.arguments.map(a => this.emit(a));
+
+      // Check if function name is a Closure - needs to be wrapped in parentheses for IIFE
+      if (typeof node.functionName !== 'string' && node.functionName?.nodeType === 'Closure') {
+        const closureCode = this.emit(node.functionName);
+        return `(${closureCode})(${args.join(', ')})`;
+      }
+
+      // Check if function name is an ArrowFunction - also needs wrapping
+      if (typeof node.functionName !== 'string' && node.functionName?.nodeType === 'ArrowFunction') {
+        const arrowCode = this.emit(node.functionName);
+        return `(${arrowCode})(${args.join(', ')})`;
+      }
+
+      const functionName = typeof node.functionName === 'string' ? node.functionName : this.emit(node.functionName);
       return `${functionName}(${args.join(', ')})`;
     }
 
@@ -677,10 +761,17 @@
         }
 
         const elements = node.elements.map(elem => {
+          // Handle null/undefined elements (sparse arrays) by emitting null
+          if (elem == null || (elem.value == null && !elem.key)) {
+            return 'null';
+          }
+          const prefix = elem.spread ? '...' : '';
           if (elem.key) {
-            return this.emit(elem.key) + ' => ' + this.emit(elem.value);
+            return this.emit(elem.key) + ' => ' + prefix + this.emit(elem.value);
           } else {
-            return this.emit(elem.value);
+            const value = this.emit(elem.value);
+            // Handle empty emission (e.g., undefined/null value)
+            return prefix + (value || 'null');
           }
         });
 
@@ -692,10 +783,16 @@
         }
 
         const elements = node.elements.map(elem => {
+          // Handle null/undefined elements (sparse arrays) by emitting null
+          if (elem == null || (elem.value == null && !elem.key)) {
+            return 'null';
+          }
+          const prefix = elem.spread ? '...' : '';
           if (elem.key) {
-            return this.emit(elem.key) + ' => ' + this.emit(elem.value);
+            return this.emit(elem.key) + ' => ' + prefix + this.emit(elem.value);
           } else {
-            return this.emit(elem.value);
+            const value = this.emit(elem.value);
+            return prefix + (value || 'null');
           }
         });
 
@@ -705,15 +802,52 @@
 
     emitNew(node) {
       const args = node.arguments.map(a => this.emit(a));
-      return `new ${node.className}(${args.join(', ')})`;
+      // Handle class name that might be an object (emit it) instead of a string
+      let className = node.className;
+      if (typeof className !== 'string') {
+        if (className && className.nodeType)
+          className = this.emit(className);
+        else if (className && className.name)
+          className = className.name;
+        else if (className && className.identifier)
+          className = className.identifier;
+        else
+          className = String(className);
+      }
+      return `new ${className}(${args.join(', ')})`;
     }
 
     emitTernary(node) {
-      return `${this.emit(node.condition)} ? ${this.emit(node.thenExpression)} : ${this.emit(node.elseExpression)}`;
+      // PHP 8 requires parentheses around nested ternary expressions
+      // To be safe, always wrap ternary sub-expressions in parentheses
+      let elseExpr = this.emit(node.elseExpression);
+      if (node.elseExpression && node.elseExpression.nodeType === 'Ternary') {
+        elseExpr = `(${elseExpr})`;
+      }
+
+      let condition = this.emit(node.condition);
+      if (node.condition && node.condition.nodeType === 'Ternary') {
+        condition = `(${condition})`;
+      }
+
+      let thenExpr = this.emit(node.thenExpression);
+      if (node.thenExpression && node.thenExpression.nodeType === 'Ternary') {
+        thenExpr = `(${thenExpr})`;
+      }
+
+      // Wrap the entire ternary in parentheses to avoid operator precedence issues
+      // This is especially important when ternaries appear in expressions like "a + (b ? c : d)"
+      return `(${condition} ? ${thenExpr} : ${elseExpr})`;
     }
 
     emitNullCoalescing(node) {
       return `${this.emit(node.left)} ?? ${this.emit(node.right)}`;
+    }
+
+    emitShortTernary(node) {
+      // PHP Elvis operator: $a ?: $b (returns $a if truthy, else $b)
+      // Wrap in parens for operator precedence safety
+      return `(${this.emit(node.left)} ?: ${this.emit(node.right)})`;
     }
 
     emitInstanceof(node) {
@@ -731,7 +865,12 @@
       let code = 'function(' + params.join(', ') + ')';
 
       if (node.useVariables.length > 0) {
-        const useVars = node.useVariables.map(v => '$' + v);
+        const useVars = node.useVariables.map(v => {
+          // Handle by-reference variables (prefixed with &)
+          if (v.startsWith('&'))
+            return '&$' + v.substring(1);
+          return '$' + v;
+        });
         code += ' use (' + useVars.join(', ') + ')';
       }
 
@@ -749,21 +888,43 @@
       return `(${typeStr})${this.emit(node.expression)}`;
     }
 
+    emitSpreadElement(node) {
+      // PHP spread operator: ...array
+      return `...${this.emit(node.argument)}`;
+    }
+
     emitStringInterpolation(node) {
-      let result = '"';
+      // PHP cannot interpolate function calls or complex expressions in strings
+      // Use concatenation instead: "prefix " . expr . " suffix"
+      const segments = [];
+      let currentString = '';
 
       for (const part of node.parts) {
         if (typeof part === 'string') {
-          result += part.replace(/\\/g, '\\\\')
-                        .replace(/"/g, '\\"')
-                        .replace(/\$/g, '\\$');
+          currentString += part.replace(/\\/g, '\\\\')
+                               .replace(/'/g, "\\'");
         } else {
-          result += '{' + this.emit(part) + '}';
+          // Push current string segment if any
+          if (currentString) {
+            segments.push(`'${currentString}'`);
+            currentString = '';
+          }
+          // For simple variables, we can use direct emission
+          // For complex expressions (function calls, etc.), just emit directly
+          const emitted = this.emit(part);
+          segments.push(emitted);
         }
       }
 
-      result += '"';
-      return result;
+      // Push final string segment if any
+      if (currentString) {
+        segments.push(`'${currentString}'`);
+      }
+
+      // Join with . for concatenation
+      if (segments.length === 0) return "''";
+      if (segments.length === 1) return segments[0];
+      return segments.join(' . ');
     }
 
     emitClassConstant(node) {
@@ -812,6 +973,12 @@
       code += this.line(' */');
 
       return code;
+    }
+
+    // ========================[ RAW CODE ]========================
+
+    emitRawCode(node) {
+      return this.line(node.code);
     }
   }
 

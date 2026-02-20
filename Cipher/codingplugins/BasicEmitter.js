@@ -28,6 +28,49 @@
    * - variant: string - Basic dialect. Default: 'FREEBASIC'
    * - upperCase: boolean - Use uppercase keywords. Default: false
    */
+  // FreeBASIC reserved words that cannot be used as identifiers
+  const FREEBASIC_RESERVED_WORDS = new Set([
+    // I/O Keywords
+    'data', 'input', 'output', 'write', 'read', 'print', 'open', 'close', 'get', 'put',
+    'seek', 'loc', 'lof', 'eof', 'lock', 'unlock', 'width', 'name',
+    // Control Flow
+    'if', 'then', 'else', 'elseif', 'end', 'do', 'loop', 'while', 'wend', 'until',
+    'for', 'to', 'step', 'next', 'exit', 'continue', 'goto', 'gosub', 'return',
+    'select', 'case', 'with',
+    // Data Types
+    'type', 'dim', 'redim', 'as', 'const', 'static', 'shared', 'common', 'extern',
+    'public', 'private', 'protected', 'integer', 'long', 'short', 'byte', 'ubyte',
+    'single', 'double', 'string', 'boolean', 'object', 'variant', 'any', 'ptr',
+    'pointer', 'zstring', 'wstring', 'longint', 'ulongint', 'uinteger', 'ulong', 'ushort',
+    // Functions/Subs
+    'sub', 'function', 'property', 'operator', 'constructor', 'destructor',
+    'declare', 'byref', 'byval', 'overload', 'abstract', 'virtual', 'override',
+    // Memory
+    'new', 'delete', 'allocate', 'deallocate', 'reallocate', 'callocate', 'erase', 'clear',
+    // Boolean/Logic
+    'and', 'or', 'not', 'xor', 'eqv', 'imp', 'mod', 'shl', 'shr',
+    'true', 'false',
+    // Classes/OOP
+    'class', 'extends', 'implements', 'base', 'this', 'me',
+    // Other
+    'let', 'set', 'rem', 'option', 'defint', 'deflng', 'defsng', 'defdbl', 'defstr',
+    'on', 'error', 'resume', 'err', 'is', 'typeof', 'namespace', 'using', 'import',
+    'export', 'include', 'once', 'ifdef', 'ifndef', 'endif', 'define', 'undef', 'macro',
+    'endmacro', 'assert', 'scope', 'union', 'enum', 'alias', 'lib', 'cdecl', 'stdcall',
+    'pascal', 'naked', 'preserve', 'explicit', 'base', 'field', 'key', 'access',
+    'append', 'binary', 'random', 'len', 'event', 'signal', 'wait', 'thread', 'threadcall',
+    'mutexcreate', 'mutexlock', 'mutexunlock', 'mutexdestroy', 'condcreate', 'condwait',
+    'condsignal', 'condbroadcast', 'conddestroy', 'screenres', 'screenlock', 'screenunlock',
+    'screenptr', 'screenset', 'screenlist', 'screencontrol', 'screensync', 'screenevent',
+    'screeninfo', 'screenglproc', 'imagecreate', 'imagedestroy', 'imageinfo', 'imageconvertrow',
+    'sleep', 'timer', 'date', 'time', 'command', 'environ', 'shell', 'run', 'chain',
+    'swap', 'sizeof', 'offsetof', 'va_arg', 'va_first', 'va_next', 'procptr', 'sadd', 'strptr',
+    'varptr', 'peek', 'poke', 'cvd', 'cvi', 'cvl', 'cvs', 'cvlongint', 'cvshort',
+    'mkd', 'mki', 'mkl', 'mks', 'mklongint', 'mkshort',
+    'lbound', 'ubound'
+    // Note: count, state, status, result, value, buffer, length, size are NOT reserved in FreeBASIC
+  ]);
+
   class BasicEmitter {
     constructor(options = {}) {
       this.options = options;
@@ -36,6 +79,20 @@
       this.newline = options.newline || options.lineEnding || '\n';
       this.variant = (options.variant || 'FREEBASIC').toUpperCase();
       this.upperCase = options.upperCase || false;
+    }
+
+    /**
+     * Escape a name if it's a FreeBASIC reserved word
+     * Adds underscore suffix to avoid conflicts
+     */
+    escapeReservedWord(name) {
+      if (this.variant !== 'FREEBASIC')
+        return name;
+
+      if (FREEBASIC_RESERVED_WORDS.has(name.toLowerCase()))
+        return name + '_';
+
+      return name;
     }
 
     /**
@@ -91,6 +148,12 @@
         code += this.newline;
       }
 
+      // Add FreeBASIC helper functions (OpCodes equivalents)
+      if (this.variant === 'FREEBASIC' && this.options.includeHelpers !== false) {
+        code += this.emitFreeBASICHelpers();
+        code += this.newline;
+      }
+
       // Module-level attributes
       for (const attr of node.attributes) {
         code += this.emit(attr);
@@ -116,6 +179,161 @@
         code += this.emit(func);
         code += this.newline;
       }
+
+      return code;
+    }
+
+    /**
+     * Generate FreeBASIC helper functions for OpCodes operations
+     */
+    emitFreeBASICHelpers() {
+      let code = '';
+      code += this.line("' OpCodes helper functions");
+      code += this.newline;
+
+      // BitMask function
+      code += this.line("Private Function BitMask(bits As Long) As ULongInt");
+      this.indentLevel++;
+      code += this.line("If bits >= 64 Then Return &HFFFFFFFFFFFFFFFF");
+      code += this.line("Return (1ULL Shl bits) - 1");
+      this.indentLevel--;
+      code += this.line("End Function");
+      code += this.newline;
+
+      // Pack16BE - pack 2 bytes to 16-bit big-endian
+      code += this.line("Private Function Pack16BE(b0 As UByte, b1 As UByte) As UShort");
+      this.indentLevel++;
+      code += this.line("Return (Cast(UShort, b0) Shl 8) Or b1");
+      this.indentLevel--;
+      code += this.line("End Function");
+      code += this.newline;
+
+      // Pack16LE - pack 2 bytes to 16-bit little-endian
+      code += this.line("Private Function Pack16LE(b0 As UByte, b1 As UByte) As UShort");
+      this.indentLevel++;
+      code += this.line("Return b0 Or (Cast(UShort, b1) Shl 8)");
+      this.indentLevel--;
+      code += this.line("End Function");
+      code += this.newline;
+
+      // Pack32BE - pack 4 bytes to 32-bit big-endian
+      code += this.line("Private Function Pack32BE(b0 As UByte, b1 As UByte, b2 As UByte, b3 As UByte) As ULong");
+      this.indentLevel++;
+      code += this.line("Return (Cast(ULong, b0) Shl 24) Or (Cast(ULong, b1) Shl 16) Or (Cast(ULong, b2) Shl 8) Or b3");
+      this.indentLevel--;
+      code += this.line("End Function");
+      code += this.newline;
+
+      // Pack32LE - pack 4 bytes to 32-bit little-endian
+      code += this.line("Private Function Pack32LE(b0 As UByte, b1 As UByte, b2 As UByte, b3 As UByte) As ULong");
+      this.indentLevel++;
+      code += this.line("Return b0 Or (Cast(ULong, b1) Shl 8) Or (Cast(ULong, b2) Shl 16) Or (Cast(ULong, b3) Shl 24)");
+      this.indentLevel--;
+      code += this.line("End Function");
+      code += this.newline;
+
+      // Unpack16BE - unpack 16-bit big-endian, returns byte at given index
+      code += this.line("Private Function Unpack16BE(value As UShort, index_ As Long = 0) As UByte");
+      this.indentLevel++;
+      code += this.line("Select Case index_");
+      this.indentLevel++;
+      code += this.line("Case 0: Return (value Shr 8) And &HFF");
+      code += this.line("Case Else: Return value And &HFF");
+      this.indentLevel--;
+      code += this.line("End Select");
+      this.indentLevel--;
+      code += this.line("End Function");
+      code += this.newline;
+
+      // Unpack16LE - unpack 16-bit little-endian, returns byte at given index
+      code += this.line("Private Function Unpack16LE(value As UShort, index_ As Long = 0) As UByte");
+      this.indentLevel++;
+      code += this.line("Select Case index_");
+      this.indentLevel++;
+      code += this.line("Case 0: Return value And &HFF");
+      code += this.line("Case Else: Return (value Shr 8) And &HFF");
+      this.indentLevel--;
+      code += this.line("End Select");
+      this.indentLevel--;
+      code += this.line("End Function");
+      code += this.newline;
+
+      // Unpack32BE - unpack 32-bit big-endian, returns byte at given index
+      code += this.line("Private Function Unpack32BE(value As ULong, index_ As Long = 0) As UByte");
+      this.indentLevel++;
+      code += this.line("Select Case index_");
+      this.indentLevel++;
+      code += this.line("Case 0: Return (value Shr 24) And &HFF");
+      code += this.line("Case 1: Return (value Shr 16) And &HFF");
+      code += this.line("Case 2: Return (value Shr 8) And &HFF");
+      code += this.line("Case Else: Return value And &HFF");
+      this.indentLevel--;
+      code += this.line("End Select");
+      this.indentLevel--;
+      code += this.line("End Function");
+      code += this.newline;
+
+      // Unpack32LE - unpack 32-bit little-endian, returns byte at given index
+      code += this.line("Private Function Unpack32LE(value As ULong, index_ As Long = 0) As UByte");
+      this.indentLevel++;
+      code += this.line("Select Case index_");
+      this.indentLevel++;
+      code += this.line("Case 0: Return value And &HFF");
+      code += this.line("Case 1: Return (value Shr 8) And &HFF");
+      code += this.line("Case 2: Return (value Shr 16) And &HFF");
+      code += this.line("Case Else: Return (value Shr 24) And &HFF");
+      this.indentLevel--;
+      code += this.line("End Select");
+      this.indentLevel--;
+      code += this.line("End Function");
+      code += this.newline;
+
+      // RotL32 - 32-bit left rotation
+      code += this.line("Private Function RotL32(value As ULong, amount As Long) As ULong");
+      this.indentLevel++;
+      code += this.line("amount = amount And 31");
+      code += this.line("Return ((value Shl amount) Or (value Shr (32 - amount))) And &HFFFFFFFF");
+      this.indentLevel--;
+      code += this.line("End Function");
+      code += this.newline;
+
+      // RotR32 - 32-bit right rotation
+      code += this.line("Private Function RotR32(value As ULong, amount As Long) As ULong");
+      this.indentLevel++;
+      code += this.line("amount = amount And 31");
+      code += this.line("Return ((value Shr amount) Or (value Shl (32 - amount))) And &HFFFFFFFF");
+      this.indentLevel--;
+      code += this.line("End Function");
+      code += this.newline;
+
+      // Hex8ToBytes - convert hex string to byte array
+      code += this.line("Private Function Hex8ToBytes(hexStr As String) As UByte Ptr");
+      this.indentLevel++;
+      code += this.line("Dim length As Long = Len(hexStr) \\ 2");
+      code += this.line("Dim result As UByte Ptr = Allocate(length)");
+      code += this.line("For i As Long = 0 To length - 1");
+      this.indentLevel++;
+      code += this.line("result[i] = ValUInt(\"&H\" & Mid(hexStr, i * 2 + 1, 2))");
+      this.indentLevel--;
+      code += this.line("Next i");
+      code += this.line("Return result");
+      this.indentLevel--;
+      code += this.line("End Function");
+      code += this.newline;
+
+      // XorArrays - XOR two byte arrays
+      code += this.line("Private Sub XorArrays(arr1() As UByte, arr2() As UByte, result_() As UByte)");
+      this.indentLevel++;
+      code += this.line("Dim length As Long = UBound(arr1) - LBound(arr1) + 1");
+      code += this.line("ReDim result_(0 To length - 1)");
+      code += this.line("For i As Long = 0 To length - 1");
+      this.indentLevel++;
+      code += this.line("result_(i) = arr1(LBound(arr1) + i) Xor arr2(LBound(arr2) + i)");
+      this.indentLevel--;
+      code += this.line("Next i");
+      this.indentLevel--;
+      code += this.line("End Sub");
+      code += this.newline;
 
       return code;
     }
@@ -165,8 +383,13 @@
       code += this.line(decl);
       this.indentLevel++;
 
-      for (const field of node.fields) {
-        code += this.emit(field);
+      // FreeBASIC requires at least one field in a Type
+      if (!node.fields || node.fields.length === 0) {
+        code += this.line('dummy ' + this.kw('As') + ' ' + this.kw('Byte'));
+      } else {
+        for (const field of node.fields) {
+          code += this.emit(field);
+        }
       }
 
       this.indentLevel--;
@@ -182,7 +405,35 @@
         code += node.visibility + ' ';
       }
 
-      code += node.name + ' ' + this.kw('As') + ' ' + node.type.toString();
+      // Handle FreeBASIC-specific array syntax: fieldName(Any) As ElementType
+      const typeStr = node.type ? node.type.toString() : 'Any';
+      const isArray = node.type?.isArray || typeStr.endsWith('[]') || typeStr.endsWith('()');
+
+      if (this.variant === 'FREEBASIC' && isArray) {
+        // Extract element type: 'Byte[]' -> 'Byte', 'Byte()' -> 'Byte'
+        let elementType = typeStr;
+        if (typeStr.endsWith('[]'))
+          elementType = typeStr.slice(0, -2);
+        else if (typeStr.endsWith('()'))
+          elementType = typeStr.slice(0, -2);
+
+        // Determine array dimensions - check for 2D array patterns
+        let dimensions = 1;
+        if (node.type?.arrayDimensions?.length > 1)
+          dimensions = node.type.arrayDimensions.length;
+        else if (node.type?.elementType?.isArray)
+          dimensions = 2; // Array of arrays = 2D
+        else if (typeStr.endsWith('[][]') || typeStr.endsWith('()()'))
+          dimensions = 2;
+
+        // Build (Any, Any, ...) for multi-dimensional arrays
+        const anyList = Array(dimensions).fill(this.kw('Any')).join(', ');
+        code += node.name + '(' + anyList + ') ' + this.kw('As') + ' ' + this.getFreeBASICType(elementType);
+      } else if (this.variant === 'FREEBASIC') {
+        code += node.name + ' ' + this.kw('As') + ' ' + this.getFreeBASICType(typeStr);
+      } else {
+        code += node.name + ' ' + this.kw('As') + ' ' + typeStr;
+      }
 
       if (node.defaultValue) {
         code += ' = ' + this.emit(node.defaultValue);
@@ -192,8 +443,13 @@
     }
 
     emitClass(node) {
-      if (this.variant !== 'VBNET' && this.variant !== 'FREEBASIC' &&
-          this.variant !== 'VB6' && this.variant !== 'GAMBAS' && this.variant !== 'XOJO') {
+      // FreeBASIC uses Type with OOP extensions, not Class
+      if (this.variant === 'FREEBASIC') {
+        return this.emitFreeBASICClass(node);
+      }
+
+      if (this.variant !== 'VBNET' && this.variant !== 'VB6' &&
+          this.variant !== 'GAMBAS' && this.variant !== 'XOJO') {
         // Fall back to Type for dialects without OOP
         const typeDecl = {
           nodeType: 'TypeDeclaration',
@@ -256,6 +512,179 @@
       code += this.line(this.kw('End Class'));
 
       return code;
+    }
+
+    /**
+     * Emit FreeBASIC-style class using Type with OOP extensions
+     * FreeBASIC syntax:
+     * Type ClassName Extends BaseClass
+     *     Dim field As Type
+     *     Declare Constructor()
+     *     Declare Sub Method()
+     * End Type
+     */
+    emitFreeBASICClass(node) {
+      let code = '';
+
+      if (node.docComment && this.options.addComments !== false) {
+        code += this.emit(node.docComment);
+      }
+
+      // Type declaration with optional Extends
+      let decl = this.kw('Type') + ' ' + node.name;
+      if (node.baseClass) {
+        decl += ' ' + this.kw('Extends') + ' ' + node.baseClass;
+      }
+      code += this.line(decl);
+      this.indentLevel++;
+
+      // Fields
+      for (const field of (node.fields || [])) {
+        code += this.emitFreeBASICField(field);
+      }
+
+      if ((node.fields || []).length > 0 && ((node.constructors || []).length > 0 || (node.methods || []).length > 0)) {
+        code += this.newline;
+      }
+
+      // Constructor declarations
+      for (const ctor of (node.constructors || [])) {
+        code += this.emitFreeBASICConstructorDecl(ctor);
+      }
+
+      // Method declarations
+      for (const method of (node.methods || [])) {
+        code += this.emitFreeBASICMethodDecl(method);
+      }
+
+      this.indentLevel--;
+      code += this.line(this.kw('End Type'));
+      code += this.newline;
+
+      // Constructor implementations
+      for (const ctor of (node.constructors || [])) {
+        code += this.emitFreeBASICConstructorImpl(node.name, ctor);
+      }
+
+      // Method implementations
+      for (const method of (node.methods || [])) {
+        code += this.emitFreeBASICMethodImpl(node.name, method);
+      }
+
+      return code;
+    }
+
+    emitFreeBASICField(node) {
+      // FreeBASIC: Fields inside Type don't use Dim, just: fieldName As Type
+      // For dynamic arrays: fieldName(Any) As ElementType
+      const typeStr = this.getFreeBASICType(node.type);
+      let code;
+      if (typeStr.endsWith('()')) {
+        // Array type: use fieldName(Any) As ElementType for dynamic arrays
+        const elementType = typeStr.slice(0, -2);
+        code = node.name + '(' + this.kw('Any') + ') ' + this.kw('As') + ' ' + elementType;
+      } else if (typeStr.endsWith(' Ptr')) {
+        // Pointer type, might represent dynamic array
+        code = node.name + ' ' + this.kw('As') + ' ' + typeStr;
+      } else {
+        code = node.name + ' ' + this.kw('As') + ' ' + typeStr;
+      }
+      if (node.defaultValue) {
+        code += ' = ' + this.emit(node.defaultValue);
+      }
+      return this.line(code);
+    }
+
+    emitFreeBASICConstructorDecl(node) {
+      const params = (node.parameters || []).map(p =>
+        p.name + ' ' + this.kw('As') + ' ' + this.getFreeBASICType(p.type)
+      ).join(', ');
+      return this.line(this.kw('Declare Constructor') + '(' + params + ')');
+    }
+
+    emitFreeBASICMethodDecl(node) {
+      const params = (node.parameters || []).map(p =>
+        p.name + ' ' + this.kw('As') + ' ' + this.getFreeBASICType(p.type)
+      ).join(', ');
+      const returnType = node.returnType ? ' ' + this.kw('As') + ' ' + this.getFreeBASICType(node.returnType) : '';
+      const keyword = node.returnType ? this.kw('Declare Function') : this.kw('Declare Sub');
+      return this.line(keyword + ' ' + node.name + '(' + params + ')' + returnType);
+    }
+
+    emitFreeBASICConstructorImpl(className, node) {
+      let code = '';
+      const params = (node.parameters || []).map(p =>
+        p.name + ' ' + this.kw('As') + ' ' + this.getFreeBASICType(p.type)
+      ).join(', ');
+      code += this.line(this.kw('Constructor') + ' ' + className + '(' + params + ')');
+      this.indentLevel++;
+      if (node.body) {
+        code += this.emitBlock(node.body);
+      }
+      this.indentLevel--;
+      code += this.line(this.kw('End Constructor'));
+      code += this.newline;
+      return code;
+    }
+
+    emitFreeBASICMethodImpl(className, node) {
+      let code = '';
+      const params = (node.parameters || []).map(p =>
+        p.name + ' ' + this.kw('As') + ' ' + this.getFreeBASICType(p.type)
+      ).join(', ');
+      const returnType = node.returnType ? ' ' + this.kw('As') + ' ' + this.getFreeBASICType(node.returnType) : '';
+      const keyword = node.returnType ? this.kw('Function') : this.kw('Sub');
+      const endKeyword = node.returnType ? this.kw('End Function') : this.kw('End Sub');
+      code += this.line(keyword + ' ' + className + '.' + node.name + '(' + params + ')' + returnType);
+      this.indentLevel++;
+      if (node.body) {
+        code += this.emitBlock(node.body);
+      }
+      this.indentLevel--;
+      code += this.line(endKeyword);
+      code += this.newline;
+      return code;
+    }
+
+    getFreeBASICType(type) {
+      if (!type) return 'Any';
+      const typeStr = type.toString ? type.toString() : String(type);
+
+      // Handle array types - returns ElementType() which will be handled by field emitter
+      if (typeStr.endsWith('[]')) {
+        const elementType = typeStr.slice(0, -2);
+        return this.getFreeBASICType(elementType) + '()';
+      }
+      if (typeStr.endsWith('Array')) {
+        const elementType = typeStr.slice(0, -5);
+        return this.getFreeBASICType(elementType) + '()';
+      }
+
+      const typeMap = {
+        'int': 'Integer',
+        'integer': 'Integer',
+        'long': 'Long',
+        'byte': 'UByte',
+        'ubyte': 'UByte',
+        'short': 'Short',
+        'ushort': 'UShort',
+        'uint': 'UInteger',
+        'ulong': 'ULong',
+        'single': 'Single',
+        'float': 'Single',
+        'double': 'Double',
+        'string': 'String',
+        'boolean': 'Boolean',
+        'bool': 'Boolean',
+        'object': 'Any',
+        'any': 'Any',
+        'void': 'Any',
+        'uint32': 'ULong',
+        'uint8': 'UByte',
+        'dword': 'ULong',
+        'number': 'Long'
+      };
+      return typeMap[typeStr.toLowerCase()] || typeStr;
     }
 
     emitClassField(node) {
@@ -378,10 +807,28 @@
         decl += this.kw('ParamArray') + ' ';
       }
 
-      decl += node.name;
+      // In FreeBASIC, array parameters use: ByRef name() As ElementType
+      // Not: name As ElementType()
+      const typeStr = node.type ? node.type.toString() : '';
+      const isArray = node.type?.isArray || typeStr.endsWith('[]') || typeStr.endsWith('()');
 
-      if (node.type) {
-        decl += ' ' + this.kw('As') + ' ' + node.type.toString();
+      // Escape reserved words in parameter names
+      const paramName = this.escapeReservedWord(node.name);
+
+      if (this.variant === 'FREEBASIC' && isArray) {
+        // Extract element type: 'Byte[]' -> 'Byte', 'Byte()' -> 'Byte'
+        let elementType = typeStr;
+        if (typeStr.endsWith('[]'))
+          elementType = typeStr.slice(0, -2);
+        else if (typeStr.endsWith('()'))
+          elementType = typeStr.slice(0, -2);
+        // FreeBASIC: arrays are passed by reference by default, no need for ByRef
+        decl += paramName + '() ' + this.kw('As') + ' ' + this.getFreeBASICType(elementType);
+      } else {
+        decl += paramName;
+        if (node.type) {
+          decl += ' ' + this.kw('As') + ' ' + (this.variant === 'FREEBASIC' ? this.getFreeBASICType(typeStr) : typeStr);
+        }
       }
 
       if (node.defaultValue) {
@@ -414,18 +861,51 @@
     emitDim(node) {
       let code = '';
 
-      if (node.isConst) {
+      // Check if type is array (FreeBASIC doesn't support Const arrays)
+      const typeStr = node.type ? node.type.toString() : '';
+      const isArray = node.type?.isArray || typeStr.endsWith('[]') || typeStr.endsWith('()');
+
+      // In FreeBASIC, Const can only be used with compile-time constant values
+      // Check if the initializer is a simple literal
+      const isConstantExpr = node.initializer &&
+        node.initializer.nodeType === 'Literal' &&
+        ['int', 'float', 'string', 'boolean', 'hex'].includes(node.initializer.literalType);
+
+      if (node.isConst && !isArray && this.variant === 'FREEBASIC' && !isConstantExpr) {
+        // Not a constant expression in FreeBASIC - use Dim instead
+        code += this.kw('Dim') + ' ';
+      } else if (node.isConst && !isArray) {
         code += this.kw('Const') + ' ';
+      } else if (node.isConst && isArray) {
+        // Arrays can't be Const in FreeBASIC, use Dim Shared
+        code += this.kw('Dim') + ' ' + this.kw('Shared') + ' ';
       } else if (node.isStatic) {
         code += this.kw('Static') + ' ';
       } else {
         code += this.kw('Dim') + ' ';
       }
 
-      code += node.name;
+      code += this.escapeReservedWord(node.name);
 
       if (node.type) {
-        code += ' ' + this.kw('As') + ' ' + node.type.toString();
+        // Handle array type syntax for FreeBASIC
+        if (this.variant === 'FREEBASIC' && isArray) {
+          let elementType = typeStr;
+          if (typeStr.endsWith('[]'))
+            elementType = typeStr.slice(0, -2);
+          else if (typeStr.endsWith('()'))
+            elementType = typeStr.slice(0, -2);
+          // For initialized arrays, specify size; otherwise use (Any)
+          if (node.initializer && node.initializer.nodeType === 'ArrayLiteral') {
+            const size = node.initializer.elements?.length || 0;
+            code += '(0 ' + this.kw('To') + ' ' + (size - 1) + ')';
+          } else {
+            code += '(' + this.kw('Any') + ')';
+          }
+          code += ' ' + this.kw('As') + ' ' + this.getFreeBASICType(elementType);
+        } else {
+          code += ' ' + this.kw('As') + ' ' + node.type.toString();
+        }
       }
 
       if (node.initializer) {
@@ -436,9 +916,76 @@
     }
 
     emitAssignment(node) {
+      // FreeBASIC: Handle empty array assignment with Erase
+      if (this.variant === 'FREEBASIC' &&
+          node.value?.nodeType === 'ArrayLiteral' &&
+          (!node.value.elements || node.value.elements.length === 0)) {
+        return this.line(this.kw('Erase') + ' ' + this.emit(node.target));
+      }
+
+      // FreeBASIC: Handle array literal assignment to member fields or array elements
+      // Dynamic array fields can't be assigned directly with array literals
+      // Need to ReDim and assign elements individually
+      if (this.variant === 'FREEBASIC' &&
+          node.value?.nodeType === 'ArrayLiteral' &&
+          node.value.elements && node.value.elements.length > 0) {
+        const targetType = node.target?.nodeType;
+        if (targetType === 'MemberAccess' || targetType === 'Identifier') {
+          const target = this.emit(node.target);
+          const elements = node.value.elements;
+          const lastIndex = elements.length - 1;
+
+          // Check if this is a 2D array (array of arrays)
+          const isNestedArray = elements.length > 0 && elements[0]?.nodeType === 'ArrayLiteral';
+
+          if (isNestedArray) {
+            // 2D array - ReDim with two dimensions and assign each element
+            const innerSize = elements[0].elements?.length || 0;
+            let code = '';
+            code += this.line(this.kw('ReDim') + ' ' + target + '(0 ' + this.kw('To') + ' ' + lastIndex + ', 0 ' + this.kw('To') + ' ' + (innerSize - 1) + ')');
+            for (let i = 0; i < elements.length; ++i) {
+              const innerElements = elements[i].elements || [];
+              for (let j = 0; j < innerElements.length; ++j) {
+                code += this.line(target + '(' + i + ', ' + j + ') = ' + this.emit(innerElements[j]));
+              }
+            }
+            return code;
+          } else {
+            // 1D array
+            let code = '';
+            code += this.line(this.kw('ReDim') + ' ' + target + '(0 ' + this.kw('To') + ' ' + lastIndex + ')');
+            for (let i = 0; i < elements.length; ++i) {
+              code += this.line(target + '(' + i + ') = ' + this.emit(elements[i]));
+            }
+            return code;
+          }
+        } else if (targetType === 'IndexAccess') {
+          // Assigning array literal to an indexed element (e.g., arr(0) = {1, 2, 3})
+          // This is a 2D array scenario - assign each element individually
+          const target = this.emit(node.target);
+          const elements = node.value.elements;
+          let code = '';
+          for (let i = 0; i < elements.length; ++i) {
+            // Replace the last index with both indices: arr(0) -> arr(0, i)
+            const baseTarget = this.emit(node.target.target);
+            const baseIndices = node.target.indices.map(idx => this.emit(idx)).join(', ');
+            code += this.line(baseTarget + '(' + baseIndices + ', ' + i + ') = ' + this.emit(elements[i]));
+          }
+          return code;
+        }
+      }
+
       let code = this.emit(node.target);
 
-      code += ' ' + node.operator + ' ';
+      // FreeBASIC doesn't support compound assignment operators like +=, -=, etc.
+      // Convert them to expanded form: x += 1 becomes x = x + 1
+      let op = node.operator || '=';
+      if (this.variant === 'FREEBASIC' && op.length > 1 && op.endsWith('=')) {
+        const baseOp = op.slice(0, -1); // '+=' -> '+', '-=' -> '-'
+        code += ' = ' + this.emit(node.target) + ' ' + baseOp + ' ';
+      } else {
+        code += ' ' + op + ' ';
+      }
       code += this.emit(node.value);
 
       return this.line(code);
@@ -454,8 +1001,40 @@
       }
 
       if (node.expression) {
-        // In Basic, use function name assignment for return value
-        return this.line(this.emit(node.expression));
+        // Check if returning Nothing/null - use Exit Function instead
+        if (node.expression.nodeType === 'Literal' &&
+            (node.expression.type === 'nothing' || node.expression.value === null)) {
+          return this.line(this.kw('Exit Function'));
+        }
+
+        // FreeBASIC: Handle returning array literals
+        // Can't return array literals directly - need to create temp array
+        if (this.variant === 'FREEBASIC' && node.expression.nodeType === 'ArrayLiteral') {
+          const elements = node.expression.elements || [];
+          if (elements.length === 0) {
+            // Return empty - use Exit Function
+            return this.line(this.kw('Exit Function'));
+          } else if (elements.length === 1) {
+            // Single element - just return that element (simplified)
+            return this.line(this.kw('Return') + ' ' + this.emit(elements[0]));
+          } else {
+            // Multiple elements - create temp array and return it
+            let code = '';
+            code += this.line(this.kw('Dim') + ' __tempArray(0 ' + this.kw('To') + ' ' + (elements.length - 1) + ') ' + this.kw('As') + ' Long');
+            for (let i = 0; i < elements.length; ++i) {
+              code += this.line('__tempArray(' + i + ') = ' + this.emit(elements[i]));
+            }
+            code += this.line(this.kw('Return') + ' __tempArray()');
+            return code;
+          }
+        }
+
+        // FreeBASIC supports 'Return expression' syntax
+        if (this.variant === 'FREEBASIC') {
+          return this.line(this.kw('Return') + ' ' + this.emit(node.expression));
+        }
+        // VB.NET also supports Return
+        return this.line(this.kw('Return') + ' ' + this.emit(node.expression));
       }
 
       return this.line(this.kw('Exit Sub'));
@@ -491,7 +1070,15 @@
     }
 
     emitFor(node) {
-      let code = this.kw('For') + ' ' + node.variable + ' = ' + this.emit(node.start) + ' ' + this.kw('To') + ' ' + this.emit(node.end);
+      // FreeBASIC: Declare loop variable inline with 'For i As Integer = ...'
+      const loopVar = this.escapeReservedWord(node.variable);
+      let code = this.kw('For') + ' ' + loopVar;
+      if (this.variant === 'FREEBASIC') {
+        // Add type declaration for the loop variable
+        const varType = node.variableType ? node.variableType.toString() : 'Long';
+        code += ' ' + this.kw('As') + ' ' + this.getFreeBASICType(varType);
+      }
+      code += ' = ' + this.emit(node.start) + ' ' + this.kw('To') + ' ' + this.emit(node.end);
 
       if (node.step) {
         code += ' ' + this.kw('Step') + ' ' + this.emit(node.step);
@@ -501,13 +1088,14 @@
       this.indentLevel++;
       code += this.emitBlockContents(node.body);
       this.indentLevel--;
-      code += this.line(this.kw('Next') + ' ' + node.variable);
+      code += this.line(this.kw('Next') + ' ' + loopVar);
 
       return code;
     }
 
     emitForEach(node) {
-      let code = this.kw('For Each') + ' ' + node.variable + ' ' + this.kw('In') + ' ' + this.emit(node.collection);
+      const loopVar = this.escapeReservedWord(node.variable);
+      let code = this.kw('For Each') + ' ' + loopVar + ' ' + this.kw('In') + ' ' + this.emit(node.collection);
 
       code = this.line(code);
       this.indentLevel++;
@@ -702,6 +1290,9 @@
       }
 
       if (node.literalType === 'nothing') {
+        // FreeBASIC doesn't have Nothing keyword - use 0 for null/nothing
+        if (this.variant === 'FREEBASIC')
+          return '0';
         return this.kw('Nothing');
       }
 
@@ -720,13 +1311,35 @@
     }
 
     emitIdentifier(node) {
-      return node.name;
+      return this.escapeReservedWord(node.name);
     }
 
     emitBinaryExpression(node) {
       const left = this.emit(node.left);
       const right = this.emit(node.right);
-      return `${left} ${node.operator} ${right}`;
+
+      // Translate JavaScript operators to Basic operators
+      let op = node.operator;
+      if (this.variant === 'FREEBASIC') {
+        const opMap = {
+          '<<': 'Shl',
+          '>>': 'Shr',
+          '>>>': 'Shr',  // Unsigned right shift - same as Shr in FreeBASIC
+          '&': 'And',
+          '|': 'Or',
+          '^': 'Xor',
+          '&&': 'AndAlso',
+          '||': 'OrElse',
+          '===': '=',
+          '!==': '<>',
+          '==': '=',
+          '!=': '<>',
+          '%': 'Mod',
+        };
+        op = opMap[op] || op;
+      }
+
+      return `${left} ${op} ${right}`;
     }
 
     emitUnaryExpression(node) {
@@ -735,16 +1348,58 @@
     }
 
     emitMemberAccess(node) {
-      return `${this.emit(node.target)}.${node.member}`;
+      return `${this.emit(node.target)}.${this.escapeReservedWord(node.member)}`;
     }
 
     emitIndexAccess(node) {
+      // For FreeBASIC, flatten nested index accesses: arr(i)(j) -> arr(i, j)
+      if (this.variant === 'FREEBASIC' && node.target?.nodeType === 'IndexAccess') {
+        const allIndices = [];
+        let current = node;
+
+        // Walk up the chain of nested IndexAccess to collect all indices
+        while (current?.nodeType === 'IndexAccess') {
+          // Add current indices in reverse order (we'll have them in correct order after loop)
+          allIndices.unshift(...current.indices.map(i => this.emit(i)));
+          current = current.target;
+        }
+
+        // Now 'current' is the base (Identifier or MemberAccess)
+        const base = this.emit(current);
+        return `${base}(${allIndices.join(', ')})`;
+      }
+
       const indices = node.indices.map(i => this.emit(i));
       return `${this.emit(node.target)}(${indices.join(', ')})`;
     }
 
     emitCall(node) {
-      const callee = typeof node.callee === 'string' ? node.callee : this.emit(node.callee);
+      // For FreeBASIC, flatten nested array accesses: arr(i)(j) -> arr(i, j)
+      if (this.variant === 'FREEBASIC' && node.callee?.nodeType === 'Call') {
+        const allIndices = [];
+        let current = node;
+
+        // Walk up the chain of nested calls to collect all indices
+        while (current?.nodeType === 'Call') {
+          // Add current arguments in reverse order (we'll reverse the whole array later)
+          allIndices.unshift(...current.arguments.map(a => this.emit(a)));
+          current = current.callee;
+        }
+
+        // Now 'current' is the base (Identifier or MemberAccess)
+        const base = this.emit(current);
+        return `${base}(${allIndices.join(', ')})`;
+      }
+
+      // For function calls, don't escape the callee name (function names are not variable names)
+      let callee;
+      if (typeof node.callee === 'string') {
+        callee = node.callee;
+      } else if (node.callee.nodeType === 'Identifier') {
+        callee = node.callee.name; // Don't escape function names
+      } else {
+        callee = this.emit(node.callee);
+      }
       const args = node.arguments.map(a => this.emit(a));
 
       let code = '';
@@ -763,11 +1418,21 @@
 
     emitNew(node) {
       const args = node.arguments.map(a => this.emit(a));
+      // FreeBASIC in procedural mode (useClasses: false): Can't directly create instances
+      // UDTs need to be Dim'd and then initialized via Create function
+      // Return 0 as placeholder - proper implementation needs statement-level transformation
+      if (this.variant === 'FREEBASIC' && this.options.useClasses === false) {
+        return '0';
+      }
+      // FreeBASIC with classes: Constructor calls
+      if (this.variant === 'FREEBASIC')
+        return `${node.typeName}(${args.join(', ')})`;
       return `${this.kw('New')} ${node.typeName}(${args.join(', ')})`;
     }
 
     emitArrayLiteral(node) {
       const elements = node.elements.map(e => this.emit(e));
+      // FreeBASIC uses {} for array initializers (same as VB)
       return `{${elements.join(', ')}}`;
     }
 

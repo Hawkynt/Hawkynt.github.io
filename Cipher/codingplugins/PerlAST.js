@@ -187,9 +187,9 @@
    * Block statement
    */
   class PerlBlock extends PerlNode {
-    constructor() {
+    constructor(statements = []) {
       super('Block');
-      this.statements = [];
+      this.statements = statements;
     }
   }
 
@@ -366,6 +366,27 @@
     }
     static Undef() { return new PerlLiteral(null, 'undef'); }
     static Hex(value) { return new PerlLiteral(value, 'hex'); }
+
+    toString() {
+      if (this.literalType === 'undef') return 'undef';
+      if (this.literalType === 'string') return `${this.stringDelimiter}${this.value}${this.stringDelimiter}`;
+      if (this.literalType === 'hex') return `0x${this.value.toString(16).toUpperCase()}`;
+      return String(this.value);
+    }
+  }
+
+  /**
+   * Grouped/parenthesized expression
+   */
+  class PerlGrouped extends PerlNode {
+    constructor(expression) {
+      super('Grouped');
+      this.expression = expression;
+    }
+
+    toString() {
+      return `(${this.expression})`;
+    }
   }
 
   /**
@@ -401,12 +422,24 @@
   class PerlUnaryExpression extends PerlNode {
     constructor(operator, operand, isPrefix = true) {
       super('UnaryExpression');
-      this.operator = operator; // '!', '-', '~', 'not', etc.
+      this.operator = operator; // '!', '-', '~', 'not', '@', '%', '$#', etc.
       this.operand = operand;
       this.isPrefix = isPrefix;
     }
 
-    toString() { return this.isPrefix ? `${this.operator}${this.operand}` : `${this.operand}${this.operator}`; }
+    toString() {
+      // Sigil operators (@, %, $#) for dereferencing need braces: @{$ref}, %{$ref}, $#{$ref}
+      if (this.isPrefix && ['@', '%', '$#'].includes(this.operator)) {
+        // If operand is already a simple identifier with $ sigil, we can use @$ref instead of @{$ref}
+        const opStr = String(this.operand);
+        if (opStr.startsWith('$') && /^\$[a-zA-Z_][a-zA-Z0-9_]*$/.test(opStr)) {
+          return `${this.operator}${opStr}`;
+        }
+        // Otherwise use braces: @{expr}
+        return `${this.operator}{${this.operand}}`;
+      }
+      return this.isPrefix ? `${this.operator}${this.operand}` : `${this.operand}${this.operator}`;
+    }
   }
 
   /**
@@ -445,15 +478,19 @@
    * Array/hash indexing
    */
   class PerlSubscript extends PerlNode {
-    constructor(object, index, subscriptType) {
+    constructor(object, index, subscriptType, isRefDeref = false) {
       super('Subscript');
       this.object = object;
       this.index = index;
       this.subscriptType = subscriptType; // 'array' or 'hash'
+      this.isRefDeref = isRefDeref;       // Use arrow notation for references
     }
 
     toString() {
-      return this.subscriptType === 'hash' ? `${this.object}{${this.index}}` : `${this.object}[${this.index}]`;
+      const accessor = this.isRefDeref ? '->' : '';
+      return this.subscriptType === 'hash'
+        ? `${this.object}${accessor}{${this.index}}`
+        : `${this.object}${accessor}[${this.index}]`;
     }
   }
 
@@ -486,6 +523,28 @@
     constructor(pairs = []) {
       super('Hash');
       this.pairs = pairs;       // [{key, value}]
+    }
+  }
+
+  /**
+   * Array slice @array[start..end]
+   */
+  class PerlArraySlice extends PerlNode {
+    constructor(array, start, end) {
+      super('ArraySlice');
+      this.array = array;       // The array to slice
+      this.start = start;       // Start index
+      this.end = end;           // End index (null for to-end)
+    }
+
+    toString() {
+      const arrayStr = String(this.array);
+      // Convert $array to @array for slice
+      const sliceArray = arrayStr.startsWith('$') ? '@' + arrayStr.slice(1) : arrayStr;
+      if (this.end === null) {
+        return `${sliceArray}[${this.start} .. $#${arrayStr.replace(/^[@$]/, '')}]`;
+      }
+      return `${sliceArray}[${this.start} .. ${this.end}]`;
     }
   }
 
@@ -587,6 +646,20 @@
     }
   }
 
+  /**
+   * Raw Perl code - emit as-is (for stubs, special cases)
+   */
+  class PerlRawCode extends PerlNode {
+    constructor(code) {
+      super('RawCode');
+      this.code = code;
+    }
+
+    toString() {
+      return this.code;
+    }
+  }
+
   // ========================[ EXPORTS ]========================
 
   const PerlAST = {
@@ -627,6 +700,7 @@
 
     // Expressions
     PerlLiteral,
+    PerlGrouped,
     PerlIdentifier,
     PerlBinaryExpression,
     PerlUnaryExpression,
@@ -636,6 +710,7 @@
     PerlCall,
     PerlArray,
     PerlHash,
+    PerlArraySlice,
     PerlAnonSub,
     PerlBless,
     PerlConditional,
@@ -646,7 +721,10 @@
 
     // Documentation
     PerlPOD,
-    PerlComment
+    PerlComment,
+
+    // Raw Code
+    PerlRawCode
   };
 
   // Export for different environments

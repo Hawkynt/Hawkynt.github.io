@@ -1,9 +1,21 @@
 /**
- * TypeScriptTransformer.js - JavaScript AST to TypeScript AST Transformer
- * Converts type-annotated JavaScript AST to TypeScript AST
+ * TypeScriptTransformer.js - IL AST to TypeScript AST Transformer
+ * Converts IL AST (type-inferred, language-agnostic) to TypeScript AST
  * (c)2006-2025 Hawkynt
  *
- * Pipeline: JS Source -> JS AST -> Type Inference -> TS AST -> TS Emitter -> TS Source
+ * Full Pipeline:
+ *   JS Source → Parser → JS AST → IL Transformer → IL AST → Language Transformer → Language AST → Language Emitter → Language Source
+ *
+ * This transformer handles: IL AST → TypeScript AST
+ *
+ * IL AST characteristics:
+ *   - Type-inferred (no untyped nodes)
+ *   - Language-agnostic (no JS-specific constructs like UMD, IIFE, Math.*, Object.*, etc.)
+ *   - Global options already applied
+ *
+ * Language options (applied here and in emitter):
+ *   - strictNullChecks: Enable strict null checking
+ *   - typeKnowledge: External type information
  */
 
 (function(global) {
@@ -20,7 +32,7 @@
   const {
     TypeScriptType, TypeScriptCompilationUnit, TypeScriptImportDeclaration, TypeScriptExportDeclaration,
     TypeScriptInterface, TypeScriptTypeAlias, TypeScriptClass, TypeScriptProperty, TypeScriptMethod,
-    TypeScriptConstructor, TypeScriptParameter, TypeScriptBlock, TypeScriptVariableDeclaration,
+    TypeScriptConstructor, TypeScriptStaticBlock, TypeScriptParameter, TypeScriptBlock, TypeScriptVariableDeclaration,
     TypeScriptExpressionStatement, TypeScriptReturn, TypeScriptIf, TypeScriptFor, TypeScriptForOf,
     TypeScriptWhile, TypeScriptDoWhile, TypeScriptSwitch, TypeScriptSwitchCase, TypeScriptBreak,
     TypeScriptContinue, TypeScriptThrow, TypeScriptTryCatch, TypeScriptCatchClause,
@@ -28,7 +40,9 @@
     TypeScriptAssignment, TypeScriptMemberAccess, TypeScriptElementAccess, TypeScriptCall,
     TypeScriptNew, TypeScriptArrayLiteral, TypeScriptObjectLiteral, TypeScriptAssertion,
     TypeScriptConditional, TypeScriptArrowFunction, TypeScriptThis, TypeScriptSuper, TypeScriptTypeOf,
-    TypeScriptParenthesized, TypeScriptTemplateLiteral, TypeScriptJSDoc
+    TypeScriptParenthesized, TypeScriptTemplateLiteral, TypeScriptYieldExpression, TypeScriptChainExpression,
+    TypeScriptAwaitExpression, TypeScriptDeleteExpression, TypeScriptSpreadElement, TypeScriptSequenceExpression,
+    TypeScriptJSDoc
   } = TypeScriptAST;
 
   /**
@@ -109,6 +123,14 @@
      */
     addToUnit(unit, transformed) {
       if (!transformed) return;
+
+      // Handle arrays (e.g., from multi-variable declarations like: const a = 1, b = 2)
+      if (Array.isArray(transformed)) {
+        for (const item of transformed)
+          this.addToUnit(unit, item);
+        return;
+      }
+
       if (transformed.nodeType === 'Class') {
         unit.types.push(transformed);
       } else if (transformed.nodeType === 'ImportDeclaration') {
@@ -185,30 +207,34 @@
       // Skip 'use strict' and other expression statements that aren't useful
       if (node.type === 'ExpressionStatement') {
         // Skip string literals ('use strict')
-        if (node.expression.type === 'Literal' && typeof node.expression.value === 'string') {
+        if (node.expression.type === 'Literal' && typeof node.expression.value === 'string')
           return null;
-        }
-        // Skip if statements (usually feature detection)
+
+        // Transform useful expression statements (like RegisterAlgorithm calls)
+        if (node.expression.type === 'CallExpression')
+          return this.transformExpressionStatement(node);
+
+        // Skip other expression statements
         return null;
       }
 
       // Skip if statements (usually feature detection)
       if (node.type === 'IfStatement') return null;
 
+      // Skip return statements at top level (module exports from UMD)
+      if (node.type === 'ReturnStatement') return null;
+
       // Process class declarations
-      if (node.type === 'ClassDeclaration') {
+      if (node.type === 'ClassDeclaration')
         return this.transformClassDeclaration(node);
-      }
 
       // Process function declarations
-      if (node.type === 'FunctionDeclaration') {
+      if (node.type === 'FunctionDeclaration')
         return this.transformFunctionDeclaration(node);
-      }
 
       // Process variable declarations
-      if (node.type === 'VariableDeclaration') {
+      if (node.type === 'VariableDeclaration')
         return this.transformVariableDeclaration(node);
-      }
 
       return null;
     }
@@ -235,7 +261,39 @@
         'UnaryExpression', 'UpdateExpression', 'AssignmentExpression', 'MemberExpression',
         'CallExpression', 'NewExpression', 'ArrayExpression', 'ObjectExpression',
         'ConditionalExpression', 'ArrowFunctionExpression', 'FunctionExpression',
-        'ThisExpression', 'TemplateLiteral', 'SequenceExpression', 'SpreadElement'];
+        'ThisExpression', 'TemplateLiteral', 'SequenceExpression', 'SpreadElement',
+        'ChainExpression', 'YieldExpression', 'ClassExpression', 'PrivateIdentifier',
+        // IL AST node types that should be handled as expressions
+        'ThisPropertyAccess', 'ThisMethodCall', 'ParentMethodCall', 'ParentConstructorCall',
+        'ErrorCreation', 'StringToBytes', 'BytesToString', 'HexDecode', 'HexEncode',
+        'ArrayCreation', 'TypedArrayCreation', 'ArrayLength', 'ArrayIndexOf', 'ArrayIncludes',
+        'ArraySlice', 'ArrayConcat', 'ArrayAppend', 'ArrayReverse', 'ArrayFill', 'ArrayClear',
+        'ArrayJoin', 'ArrayPop', 'ArrayShift', 'ArraySplice', 'Cast', 'UnpackBytes', 'PackBytes', 'OpCodesCall',
+        'MathCall', 'Rotation', 'BitwiseOperation',
+        'Floor', 'Ceil', 'Round', 'Abs', 'Min', 'Max', 'RotateLeft', 'RotateRight',
+        'TypedArraySet', 'TypedArraySubarray', 'MapSet', 'MapGet', 'MapHas', 'MapDelete',
+        'DataViewCreation', 'BufferCreation', 'BigIntConversion', 'StringLength',
+        // Additional IL AST expression types
+        'ArrayMap', 'ArrayForEach', 'ArrayFilter', 'ArrayFind', 'ArrayReduce', 'ArrayEvery',
+        'ArraySome', 'ArraySort', 'ArrayUnshift', 'ArrayLiteral', 'ArrayXor',
+        'StringRepeat', 'StringReplace', 'StringTransform', 'StringCharCodeAt', 'StringSplit',
+        'StringSubstring', 'StringIndexOf', 'BigIntCast', 'Power', 'Sqrt', 'FieldDefinition',
+        'MapCreation', 'SetCreation', 'RegExpCreation', 'Typeof', 'Instanceof',
+        'Log', 'Log2', 'Log10', 'Random', 'Sin', 'Cos', 'Tan', 'Asin', 'Acos', 'Atan', 'Atan2', 'Exp', 'Sign', 'Trunc',
+        'Sinh', 'Cosh', 'Tanh', 'Cbrt', 'Hypot', 'Fround', 'MathConstant', 'NumberConstant', 'InstanceOfCheck',
+        'StringCharAt', 'StringIncludes', 'StringStartsWith', 'StringEndsWith', 'StringTrim', 'StringPadStart', 'StringPadEnd',
+        'ArrayFindIndex', 'ArrayLastIndexOf', 'ArrayCopyWithin', 'ArrayFlat', 'ArrayFlatMap', 'ArrayFrom', 'ArrayOf',
+        'StringToLowerCase', 'StringToUpperCase', 'StringNormalize', 'StringSlice', 'StringConcat', 'StringLocaleCompare',
+        'NumberParseInt', 'NumberParseFloat', 'NumberIsNaN', 'NumberIsFinite', 'NumberToFixed', 'NumberToPrecision',
+        'ObjectKeys', 'ObjectValues', 'ObjectEntries', 'ObjectAssign', 'ObjectFreeze', 'ObjectSeal',
+        'JsonParse', 'JsonStringify', 'PromiseResolve', 'PromiseReject', 'PromiseAll', 'DateNow', 'DateParse',
+        // New IL AST node types from enhanced JS-to-IL transformer
+        'DebugOutput', 'TypeOfExpression', 'DeleteExpression', 'StringInterpolation',
+        'SpreadElement', 'RestParameter', 'ObjectLiteral', 'ArrowFunction', 'FunctionExpression',
+        'AwaitExpression', 'YieldExpression', 'DataViewRead', 'DataViewWrite',
+        'IsArrayCheck', 'ObjectMerge', 'ObjectHasProperty', 'ObjectFromEntries',
+        'StringFromCharCodes', 'StringFromCodePoints', 'IsIntegerCheck', 'IsNaNCheck', 'IsFiniteCheck',
+        'ParseInteger', 'ParseFloat', 'JsonSerialize', 'JsonDeserialize', 'SequenceExpression'];
 
       if (statementTypes.includes(node.type)) {
         return this.transformStatement(node);
@@ -580,7 +638,8 @@
       const type = node.value ? this.inferType(node.value) : TypeScriptType.Any();
       const initializer = node.value ? this.transformExpression(node.value) : null;
 
-      const prop = new TypeScriptProperty(name, type, initializer);
+      const prop = new TypeScriptProperty(name, type);
+      prop.initializer = initializer;
       prop.isStatic = node.static || false;
 
       if (name.startsWith('_')) {
@@ -595,38 +654,89 @@
     transformStaticBlock(node) {
       // TypeScript/ES2022 supports static blocks natively
       // static { code } -> static { code }
-      const statements = node.body.map(stmt => this.transformStatement(stmt));
+      const staticBlock = new TypeScriptStaticBlock();
+      const block = new TypeScriptBlock();
 
-      // Create a static block representation (simple object with isStatic marker)
-      return {
-        type: 'StaticBlock',
-        isStaticBlock: true,
-        body: statements
-      };
+      // Handle both array body and BlockStatement body
+      const bodyStatements = Array.isArray(node.body)
+        ? node.body
+        : (node.body?.body || []);
+
+      for (const stmt of bodyStatements) {
+        const transformed = this.transformStatement(stmt);
+        if (transformed) {
+          if (Array.isArray(transformed)) {
+            block.statements.push(...transformed);
+          } else {
+            block.statements.push(transformed);
+          }
+        }
+      }
+
+      staticBlock.body = block;
+      return staticBlock;
+    }
+
+    transformClassExpression(node) {
+      // ClassExpression -> anonymous class in TypeScript
+      const classDecl = new TypeScriptClass(node.id?.name || 'AnonymousClass');
+
+      if (node.superClass)
+        classDecl.extends = this.transformExpression(node.superClass);
+
+      if (node.body?.body) {
+        for (const member of node.body.body) {
+          if (member.type === 'MethodDefinition') {
+            const method = this.transformMethodDefinition(member);
+            if (method)
+              classDecl.members.push(method);
+          } else if (member.type === 'PropertyDefinition') {
+            const prop = this.transformPropertyDefinition(member);
+            if (prop)
+              classDecl.members.push(prop);
+          }
+        }
+      }
+
+      return classDecl;
+    }
+
+    transformYieldExpression(node) {
+      // yield value or yield* iterable
+      const argument = node.argument ? this.transformExpression(node.argument) : null;
+      return new TypeScriptYieldExpression(argument, node.delegate || false);
     }
 
     transformMethodDefinition(node) {
-      if (node.kind === 'constructor') {
+      if (node.kind === 'constructor')
         return this.transformConstructor(node);
-      }
 
       this.pushScope();
+
+      const isGetter = node.kind === 'get';
+      const isSetter = node.kind === 'set';
 
       const typeInfo = this.extractTypeInfo(node.value);
       let returnType = TypeScriptType.Void();
 
+      if (isGetter) {
+        // Getters should return Any by default since they return a property value
+        returnType = TypeScriptType.Any();
+      }
+
       if (typeInfo?.returns) {
         returnType = this.mapType(typeInfo.returns);
-      } else if (node.value.body) {
-        // Infer from return statements
+      } else if (node.value.body && !isSetter) {
+        // Infer from return statements (but not for setters which return void)
         const hasReturn = this.hasReturnWithValue(node.value.body);
-        if (hasReturn) {
+        if (hasReturn)
           returnType = this.inferReturnType(node.value.body) || TypeScriptType.Any();
-        }
       }
 
       const method = new TypeScriptMethod(node.key.name, returnType);
       method.isStatic = node.static || false;
+      method.isGetter = isGetter;
+      method.isSetter = isSetter;
 
       // Access modifier based on naming convention
       if (node.key.name.startsWith('_')) {
@@ -738,8 +848,28 @@
       collect(bodyNode);
 
       if (returnTypes.length === 0) return null;
-      // Return first non-any type, or any if all are any
-      return returnTypes.find(t => t.name !== 'any') || returnTypes[0];
+
+      // Filter out null types and get unique non-null, non-any types
+      const nonNullTypes = returnTypes.filter(t => t.name !== 'null');
+      const nonAnyTypes = nonNullTypes.filter(t => t.name !== 'any');
+
+      // If we have multiple different return types, use 'any'
+      if (nonAnyTypes.length > 1) {
+        const uniqueTypeNames = [...new Set(nonAnyTypes.map(t => t.name))];
+        if (uniqueTypeNames.length > 1)
+          return TypeScriptType.Any();
+      }
+
+      // If there's a non-null, non-any type, use it
+      if (nonAnyTypes.length > 0)
+        return nonAnyTypes[0];
+
+      // If only null returns, use 'any' (common pattern for factory methods returning null on error)
+      if (returnTypes.every(t => t.name === 'null'))
+        return TypeScriptType.Any();
+
+      // Fall back to any
+      return TypeScriptType.Any();
     }
 
     transformConstructor(node) {
@@ -824,6 +954,9 @@
 
         case 'FunctionDeclaration':
           return this.transformFunctionDeclaration(node);
+
+        case 'LabeledStatement':
+          return this.transformLabeledStatement(node);
 
         default:
           console.warn(`Unhandled statement type: ${node.type}`);
@@ -958,11 +1091,13 @@
     }
 
     transformBreakStatement(node) {
-      return new TypeScriptBreak();
+      const label = node.label?.name || null;
+      return new TypeScriptBreak(label);
     }
 
     transformContinueStatement(node) {
-      return new TypeScriptContinue();
+      const label = node.label?.name || null;
+      return new TypeScriptContinue(label);
     }
 
     transformThrowStatement(node) {
@@ -987,6 +1122,25 @@
       }
 
       return tryCatch;
+    }
+
+    transformLabeledStatement(node) {
+      // TypeScript supports labeled statements natively: label: statement
+      // Transform the body statement and wrap in a labeled block
+      const body = this.transformStatement(node.body);
+      const label = node.label?.name || 'label';
+
+      // Create a block that will be emitted with the label
+      const block = new TypeScriptBlock();
+      block.label = label;
+      if (body) {
+        if (Array.isArray(body)) {
+          block.statements.push(...body);
+        } else {
+          block.statements.push(body);
+        }
+      }
+      return block;
     }
 
     // ========================[ EXPRESSIONS ]========================
@@ -1048,8 +1202,11 @@
         case 'SequenceExpression':
           return this.transformSequenceExpression(node);
 
-        case 'SpreadElement':
-          return this.transformExpression(node.argument);
+        case 'SpreadElement': {
+          // Handle both JS AST SpreadElement and IL AST SpreadElement
+          const spreadArg = this.transformExpression(node.argument);
+          return new TypeScriptSpreadElement(spreadArg);
+        }
 
         case 'Super':
           return new TypeScriptSuper();
@@ -1059,9 +1216,1163 @@
           // Return a comment placeholder
           return new TypeScriptIdentifier('/* Object destructuring pattern */');
 
+        case 'StaticBlock':
+          return this.transformStaticBlock(node);
+
+        case 'ChainExpression':
+          // Optional chaining a?.b - TypeScript supports this natively
+          const chainedExpr = this.transformExpression(node.expression);
+          return new TypeScriptChainExpression(chainedExpr);
+
+        case 'ClassExpression':
+          // Anonymous class expression - transform like class declaration but return as expression
+          return this.transformClassExpression(node);
+
+        case 'YieldExpression':
+          // yield value or yield* iterable
+          return this.transformYieldExpression(node);
+
+        case 'PrivateIdentifier':
+          // #field -> TypeScript private field
+          return new TypeScriptIdentifier('#' + node.name);
+
+        // ========================[ IL AST NODE TYPES ]========================
+        // These are language-agnostic intermediate nodes from the type-aware transpiler
+
+        case 'ThisPropertyAccess': {
+          // IL AST: this.property → TypeScript: this.property
+          const target = new TypeScriptThis();
+          return new TypeScriptMemberAccess(target, node.property);
+        }
+
+        case 'ThisMethodCall': {
+          // IL AST: this.method(...) → TypeScript: this.method(...)
+          const target = new TypeScriptThis();
+          const args = (node.arguments || []).map(arg => this.transformExpression(arg));
+          return new TypeScriptCall(target, node.method, args);
+        }
+
+        case 'ParentMethodCall': {
+          // IL AST: super.method(...) → TypeScript: super.method(...)
+          const target = new TypeScriptSuper();
+          const args = (node.arguments || []).map(arg => this.transformExpression(arg));
+          return new TypeScriptCall(target, node.method, args);
+        }
+
+        case 'ParentConstructorCall': {
+          // IL AST: super(...) → TypeScript: super(...)
+          const args = (node.arguments || []).map(arg => this.transformExpression(arg));
+          return new TypeScriptCall(null, 'super', args);
+        }
+
+        case 'HexDecode': {
+          // IL AST: hex string to bytes → TypeScript: helper function call
+          const value = node.arguments?.[0] ? this.transformExpression(node.arguments[0]) : this.transformExpression(node.value);
+          return new TypeScriptCall(null, 'hexToBytes', [value]);
+        }
+
+        case 'HexEncode': {
+          // IL AST: bytes to hex string → TypeScript: helper function call
+          const value = node.arguments?.[0] ? this.transformExpression(node.arguments[0]) : this.transformExpression(node.value);
+          return new TypeScriptCall(null, 'bytesToHex', [value]);
+        }
+
+        // IL AST Error node
+        case 'ErrorCreation': {
+          // TypeScript uses new Error(message) just like JavaScript
+          const errorType = node.errorType || 'Error';
+          return new TypeScriptNew(
+            new TypeScriptType(errorType),
+            [node.message ? this.transformExpression(node.message) : TypeScriptLiteral.String('')]
+          );
+        }
+
+        // Array operations - TypeScript uses native JavaScript array methods
+        case 'ArrayIndexOf': {
+          const array = this.transformExpression(node.array);
+          const value = this.transformExpression(node.value);
+          return new TypeScriptCall(array, 'indexOf', [value]);
+        }
+
+        case 'ArrayIncludes': {
+          const array = this.transformExpression(node.array);
+          const value = this.transformExpression(node.value);
+          return new TypeScriptCall(array, 'includes', [value]);
+        }
+
+        case 'ArrayConcat': {
+          const array = this.transformExpression(node.array);
+          const other = this.transformExpression(node.other);
+          return new TypeScriptCall(array, 'concat', [other]);
+        }
+
+        case 'ArrayJoin': {
+          const array = this.transformExpression(node.array);
+          const separator = node.separator ? this.transformExpression(node.separator) : TypeScriptLiteral.String('');
+          return new TypeScriptCall(array, 'join', [separator]);
+        }
+
+        case 'ArrayReverse': {
+          const array = this.transformExpression(node.array);
+          return new TypeScriptCall(array, 'reverse', []);
+        }
+
+        case 'ArrayPop': {
+          const array = this.transformExpression(node.array);
+          return new TypeScriptCall(array, 'pop', []);
+        }
+
+        case 'ArrayShift': {
+          const array = this.transformExpression(node.array);
+          return new TypeScriptCall(array, 'shift', []);
+        }
+
+        case 'ArrayLength': {
+          const array = this.transformExpression(node.array);
+          return new TypeScriptMemberAccess(array, 'length');
+        }
+
+        case 'ArrayAppend': {
+          const array = this.transformExpression(node.array);
+          const value = this.transformExpression(node.value);
+          return new TypeScriptCall(array, 'push', [value]);
+        }
+
+        case 'ArraySlice': {
+          const array = this.transformExpression(node.array);
+          const start = node.start ? this.transformExpression(node.start) : null;
+          const end = node.end ? this.transformExpression(node.end) : null;
+          const args = [];
+          if (start) args.push(start);
+          if (end) args.push(end);
+          return new TypeScriptCall(array, 'slice', args);
+        }
+
+        case 'ArrayFill': {
+          const array = this.transformExpression(node.array);
+          const value = this.transformExpression(node.value);
+          return new TypeScriptCall(array, 'fill', [value]);
+        }
+
+        case 'ArrayClear': {
+          const array = this.transformExpression(node.array || node.arguments?.[0]);
+          return new TypeScriptCall(array, 'splice', [TypeScriptLiteral.Number(0)]);
+        }
+
+        case 'ArrayCreation': {
+          const size = node.size ? this.transformExpression(node.size) : null;
+          if (size) {
+            return new TypeScriptNew(
+              new TypeScriptType('Array'),
+              [size]
+            );
+          }
+          return new TypeScriptArrayLiteral([]);
+        }
+
+        case 'TypedArrayCreation': {
+          const size = node.size ? this.transformExpression(node.size) : TypeScriptLiteral.Number(0);
+          const arrayType = node.arrayType || 'Uint8Array';
+          return new TypeScriptNew(
+            new TypeScriptType(arrayType),
+            [size]
+          );
+        }
+
+        case 'StringToBytes': {
+          // TypeScript: new TextEncoder().encode(string) or Array.from(string, c => c.charCodeAt(0))
+          const value = node.arguments?.[0] ? this.transformExpression(node.arguments[0]) : this.transformExpression(node.value);
+          // Use TextEncoder for UTF-8, or simpler approach for ASCII
+          return new TypeScriptCall(
+            new TypeScriptNew(new TypeScriptType('TextEncoder'), []),
+            'encode',
+            [value]
+          );
+        }
+
+        case 'BytesToString': {
+          // TypeScript: new TextDecoder().decode(bytes)
+          const value = node.arguments?.[0] ? this.transformExpression(node.arguments[0]) : this.transformExpression(node.value);
+          return new TypeScriptCall(
+            new TypeScriptNew(new TypeScriptType('TextDecoder'), []),
+            'decode',
+            [value]
+          );
+        }
+
+        // Fallback for unknown OpCodes methods
+        case 'OpCodesCall': {
+          const args = node.arguments.map(a => this.transformExpression(a));
+          // Handle specific OpCodes methods that need special TypeScript translation
+          switch (node.method) {
+            case 'CopyArray':
+              // [...array] or array.slice() in TypeScript
+              return new TypeScriptCall(args[0], 'slice', []);
+            case 'ClearArray':
+              // array.length = 0 or array.splice(0) in TypeScript
+              return new TypeScriptCall(args[0], 'splice', [TypeScriptLiteral.Number(0)]);
+            default:
+              // Generic fallback - call method as function
+              return new TypeScriptCall(null, node.method, args);
+          }
+        }
+
+        // Type casting - TypeScript doesn't need explicit numeric casts but may use 'as' for type assertions
+        case 'Cast': {
+          const value = this.transformExpression(node.arguments?.[0] || node.expression || node.value);
+          const targetType = node.targetType || node.toType || 'number';
+
+          // For numeric types, use JavaScript runtime coercion or bitwise ops
+          switch (targetType) {
+            case 'uint8':
+            case 'byte':
+              // value & 0xFF
+              return new TypeScriptBinaryExpression(value, '&', TypeScriptLiteral.Number(0xFF));
+            case 'uint16':
+              // value & 0xFFFF
+              return new TypeScriptBinaryExpression(value, '&', TypeScriptLiteral.Number(0xFFFF));
+            case 'uint32':
+              // value >>> 0
+              return new TypeScriptBinaryExpression(value, '>>>', TypeScriptLiteral.Number(0));
+            case 'int32':
+            case 'int':
+              // value | 0
+              return new TypeScriptBinaryExpression(value, '|', TypeScriptLiteral.Number(0));
+            default:
+              // For other types, use 'as' type assertion
+              return new TypeScriptAsExpression(value, new TypeScriptType(targetType));
+          }
+        }
+
+        // Unpack bytes - convert integer to byte array
+        case 'UnpackBytes': {
+          const value = this.transformExpression(node.arguments?.[0] || node.value);
+          const bits = node.bits || 32;
+          const isBigEndian = node.endian === 'big' || node.bigEndian;
+
+          // Use helper functions for unpacking
+          const funcName = bits === 16 ? (isBigEndian ? 'unpack16BE' : 'unpack16LE') :
+                           bits === 64 ? (isBigEndian ? 'unpack64BE' : 'unpack64LE') :
+                                         (isBigEndian ? 'unpack32BE' : 'unpack32LE');
+
+          return new TypeScriptCall(null, funcName, [value]);
+        }
+
+        // Pack bytes - convert byte array to integer
+        case 'PackBytes': {
+          const args = (node.arguments || []).map(a => this.transformExpression(a));
+          const bits = node.bits || 32;
+          const isBigEndian = node.endian === 'big' || node.bigEndian;
+
+          const funcName = bits === 16 ? (isBigEndian ? 'pack16BE' : 'pack16LE') :
+                           bits === 64 ? (isBigEndian ? 'pack64BE' : 'pack64LE') :
+                                         (isBigEndian ? 'pack32BE' : 'pack32LE');
+
+          return new TypeScriptCall(null, funcName, args);
+        }
+
+        // Bit rotation operations
+        case 'Rotation': {
+          const value = this.transformExpression(node.value || node.arguments?.[0]);
+          const amount = this.transformExpression(node.amount || node.arguments?.[1]);
+          const bits = node.bits || 32;
+          const direction = node.direction || 'left';
+
+          const funcName = direction === 'left' ? `rotl${bits}` : `rotr${bits}`;
+          return new TypeScriptCall(null, funcName, [value, amount]);
+        }
+
+        // Math function calls
+        case 'MathCall': {
+          const args = (node.arguments || []).map(a => this.transformExpression(a));
+          const method = node.method;
+          // Map to JavaScript Math methods: Math.method(args)
+          return new TypeScriptCall(new TypeScriptIdentifier('Math'), method, args);
+        }
+
+        // Individual math operations as IL nodes
+        case 'Floor': {
+          const value = this.transformExpression(node.arguments?.[0] || node.value);
+          return new TypeScriptCall(new TypeScriptIdentifier('Math'), 'floor', [value]);
+        }
+
+        case 'Ceil': {
+          const value = this.transformExpression(node.arguments?.[0] || node.value);
+          return new TypeScriptCall(new TypeScriptIdentifier('Math'), 'ceil', [value]);
+        }
+
+        case 'Round': {
+          const value = this.transformExpression(node.arguments?.[0] || node.value);
+          return new TypeScriptCall(new TypeScriptIdentifier('Math'), 'round', [value]);
+        }
+
+        case 'Abs': {
+          const value = this.transformExpression(node.arguments?.[0] || node.value);
+          return new TypeScriptCall(new TypeScriptIdentifier('Math'), 'abs', [value]);
+        }
+
+        case 'Min': {
+          const args = (node.arguments || []).map(a => this.transformExpression(a));
+          return new TypeScriptCall(new TypeScriptIdentifier('Math'), 'min', args);
+        }
+
+        case 'Max': {
+          const args = (node.arguments || []).map(a => this.transformExpression(a));
+          return new TypeScriptCall(new TypeScriptIdentifier('Math'), 'max', args);
+        }
+
+        // Bit rotation operations
+        case 'RotateLeft': {
+          const value = this.transformExpression(node.value || node.arguments?.[0]);
+          const amount = this.transformExpression(node.amount || node.arguments?.[1]);
+          const bits = node.bits || 32;
+          return new TypeScriptCall(null, `rotl${bits}`, [value, amount]);
+        }
+
+        case 'RotateRight': {
+          const value = this.transformExpression(node.value || node.arguments?.[0]);
+          const amount = this.transformExpression(node.amount || node.arguments?.[1]);
+          const bits = node.bits || 32;
+          return new TypeScriptCall(null, `rotr${bits}`, [value, amount]);
+        }
+
+        // ========================[ ADDITIONAL IL AST NODE TYPES ]========================
+
+        case 'FieldDefinition': {
+          // IL AST: class field definition → TypeScript property
+          const name = node.key?.name || node.name || 'field';
+          const type = node.value ? this.inferType(node.value) : TypeScriptType.Any();
+          const initializer = node.value ? this.transformExpression(node.value) : null;
+          const prop = new TypeScriptProperty(name, type);
+          prop.initializer = initializer;
+          prop.isStatic = node.static || false;
+          return prop;
+        }
+
+        case 'ArrayLiteral': {
+          // IL AST: array literal → TypeScript array literal
+          const elements = (node.elements || []).map(el => el ? this.transformExpression(el) : TypeScriptLiteral.Undefined());
+          return new TypeScriptArrayLiteral(elements);
+        }
+
+        case 'ArraySort': {
+          // IL AST: array.sort(compareFn) → TypeScript: array.sort(compareFn)
+          const array = this.transformExpression(node.array);
+          const args = node.compareFn ? [this.transformExpression(node.compareFn)] : [];
+          return new TypeScriptCall(array, 'sort', args);
+        }
+
+        case 'ArraySome': {
+          // IL AST: array.some(callback) → TypeScript: array.some(callback)
+          const array = this.transformExpression(node.array);
+          const callback = node.callback ? this.transformExpression(node.callback) : null;
+          return new TypeScriptCall(array, 'some', callback ? [callback] : []);
+        }
+
+        case 'ArrayMap': {
+          // IL AST: array.map(callback) → TypeScript: array.map(callback)
+          const array = this.transformExpression(node.array);
+          const callback = node.callback ? this.transformExpression(node.callback) : null;
+          return new TypeScriptCall(array, 'map', callback ? [callback] : []);
+        }
+
+        case 'ArrayForEach': {
+          // IL AST: array.forEach(callback) → TypeScript: array.forEach(callback)
+          const array = this.transformExpression(node.array);
+          const callback = node.callback ? this.transformExpression(node.callback) : null;
+          return new TypeScriptCall(array, 'forEach', callback ? [callback] : []);
+        }
+
+        case 'ArrayFilter': {
+          // IL AST: array.filter(callback) → TypeScript: array.filter(callback)
+          const array = this.transformExpression(node.array);
+          const callback = node.callback ? this.transformExpression(node.callback) : null;
+          return new TypeScriptCall(array, 'filter', callback ? [callback] : []);
+        }
+
+        case 'ArrayFind': {
+          // IL AST: array.find(callback) → TypeScript: array.find(callback)
+          const array = this.transformExpression(node.array);
+          const callback = node.callback ? this.transformExpression(node.callback) : null;
+          return new TypeScriptCall(array, 'find', callback ? [callback] : []);
+        }
+
+        case 'ArrayReduce': {
+          // IL AST: array.reduce(callback, initial) → TypeScript: array.reduce(callback, initial)
+          const array = this.transformExpression(node.array);
+          const args = [];
+          if (node.callback) args.push(this.transformExpression(node.callback));
+          if (node.initialValue) args.push(this.transformExpression(node.initialValue));
+          return new TypeScriptCall(array, 'reduce', args);
+        }
+
+        case 'ArrayEvery': {
+          // IL AST: array.every(callback) → TypeScript: array.every(callback)
+          const array = this.transformExpression(node.array);
+          const callback = node.callback ? this.transformExpression(node.callback) : null;
+          return new TypeScriptCall(array, 'every', callback ? [callback] : []);
+        }
+
+        case 'ArrayUnshift': {
+          // IL AST: array.unshift(value) → TypeScript: array.unshift(value)
+          const array = this.transformExpression(node.array);
+          const value = node.value ? this.transformExpression(node.value) : null;
+          return new TypeScriptCall(array, 'unshift', value ? [value] : []);
+        }
+
+        case 'ArraySplice': {
+          // IL AST: array.splice(start, deleteCount, items...) → TypeScript: array.splice(...)
+          const array = this.transformExpression(node.array);
+          const args = [];
+          if (node.start) args.push(this.transformExpression(node.start));
+          if (node.deleteCount) args.push(this.transformExpression(node.deleteCount));
+          if (node.items) {
+            for (const item of node.items) {
+              args.push(this.transformExpression(item));
+            }
+          }
+          return new TypeScriptCall(array, 'splice', args);
+        }
+
+        case 'StringTransform': {
+          // IL AST: string.method() → TypeScript: string.method()
+          const str = this.transformExpression(node.string || node.value);
+          const method = node.method || 'toString';
+          const args = (node.arguments || []).map(a => this.transformExpression(a));
+          return new TypeScriptCall(str, method, args);
+        }
+
+        case 'StringCharCodeAt': {
+          // IL AST: string.charCodeAt(index) → TypeScript: string.charCodeAt(index)
+          const str = this.transformExpression(node.string || node.value);
+          const index = node.index ? this.transformExpression(node.index) : TypeScriptLiteral.Number(0);
+          return new TypeScriptCall(str, 'charCodeAt', [index]);
+        }
+
+        case 'StringSplit': {
+          // IL AST: string.split(separator) → TypeScript: string.split(separator)
+          const str = this.transformExpression(node.string || node.value);
+          const separator = node.separator ? this.transformExpression(node.separator) : null;
+          return new TypeScriptCall(str, 'split', separator ? [separator] : []);
+        }
+
+        case 'StringSubstring': {
+          // IL AST: string.substring(start, end) → TypeScript: string.substring(start, end)
+          const str = this.transformExpression(node.string || node.value);
+          const args = [];
+          if (node.start) args.push(this.transformExpression(node.start));
+          if (node.end) args.push(this.transformExpression(node.end));
+          return new TypeScriptCall(str, 'substring', args);
+        }
+
+        case 'StringIndexOf': {
+          // IL AST: string.indexOf(search) → TypeScript: string.indexOf(search)
+          const str = this.transformExpression(node.string || node.value);
+          const search = node.search ? this.transformExpression(node.search) : null;
+          return new TypeScriptCall(str, 'indexOf', search ? [search] : []);
+        }
+
+        case 'StringLength': {
+          // IL AST: string.length → TypeScript: string.length
+          const str = this.transformExpression(node.string || node.value);
+          return new TypeScriptMemberAccess(str, 'length');
+        }
+
+        case 'BigIntCast': {
+          // IL AST: BigInt(value) → TypeScript: BigInt(value)
+          const value = this.transformExpression(node.argument || node.value);
+          return new TypeScriptCall(null, 'BigInt', [value]);
+        }
+
+        case 'DataViewCreation': {
+          // IL AST: new DataView(buffer) → TypeScript: new DataView(buffer)
+          const buffer = node.buffer ? this.transformExpression(node.buffer) : null;
+          const args = buffer ? [buffer] : [];
+          if (node.byteOffset) args.push(this.transformExpression(node.byteOffset));
+          if (node.byteLength) args.push(this.transformExpression(node.byteLength));
+          return new TypeScriptNew(new TypeScriptType('DataView'), args);
+        }
+
+        case 'BufferCreation': {
+          // IL AST: new ArrayBuffer(size) → TypeScript: new ArrayBuffer(size)
+          const size = node.size ? this.transformExpression(node.size) : TypeScriptLiteral.Number(0);
+          return new TypeScriptNew(new TypeScriptType('ArrayBuffer'), [size]);
+        }
+
+        case 'TypedArraySet': {
+          // IL AST: typedArray.set(source, offset) → TypeScript: typedArray.set(source, offset)
+          const array = this.transformExpression(node.array);
+          const source = node.source ? this.transformExpression(node.source) : null;
+          const args = source ? [source] : [];
+          if (node.offset) args.push(this.transformExpression(node.offset));
+          return new TypeScriptCall(array, 'set', args);
+        }
+
+        case 'TypedArraySubarray': {
+          // IL AST: typedArray.subarray(begin, end) → TypeScript: typedArray.subarray(begin, end)
+          const array = this.transformExpression(node.array);
+          const args = [];
+          if (node.begin) args.push(this.transformExpression(node.begin));
+          if (node.end) args.push(this.transformExpression(node.end));
+          return new TypeScriptCall(array, 'subarray', args);
+        }
+
+        case 'ArrayXor': {
+          // IL AST: XOR two arrays → TypeScript: helper function
+          const arr1 = this.transformExpression(node.array1 || node.arguments?.[0]);
+          const arr2 = this.transformExpression(node.array2 || node.arguments?.[1]);
+          return new TypeScriptCall(null, 'xorArrays', [arr1, arr2]);
+        }
+
+        case 'MapSet': {
+          // IL AST: map.set(key, value) → TypeScript: map.set(key, value)
+          const map = this.transformExpression(node.map);
+          const key = this.transformExpression(node.key);
+          const value = this.transformExpression(node.value);
+          return new TypeScriptCall(map, 'set', [key, value]);
+        }
+
+        case 'Power': {
+          // IL AST: base ** exponent → TypeScript: Math.pow(base, exponent)
+          const base = this.transformExpression(node.base || node.arguments?.[0]);
+          const exponent = this.transformExpression(node.exponent || node.arguments?.[1]);
+          return new TypeScriptCall(new TypeScriptIdentifier('Math'), 'pow', [base, exponent]);
+        }
+
+        case 'BitwiseOperation': {
+          // IL AST: bitwise operation → TypeScript bitwise operation
+          const left = this.transformExpression(node.left || node.arguments?.[0]);
+          const right = node.right ? this.transformExpression(node.right) : this.transformExpression(node.arguments?.[1]);
+          const op = node.operator || '&';
+          return new TypeScriptBinaryExpression(left, op, right);
+        }
+
+        case 'StringRepeat': {
+          // IL AST: string.repeat(count) → TypeScript: string.repeat(count)
+          const str = this.transformExpression(node.string || node.value);
+          const count = this.transformExpression(node.count);
+          return new TypeScriptCall(str, 'repeat', [count]);
+        }
+
+        case 'StringReplace': {
+          // IL AST: string.replace(search, replacement) → TypeScript: string.replace(search, replacement)
+          const str = this.transformExpression(node.string || node.value);
+          const search = this.transformExpression(node.search || node.pattern);
+          const replacement = this.transformExpression(node.replacement || node.replaceWith);
+          return new TypeScriptCall(str, 'replace', [search, replacement]);
+        }
+
+        case 'Sqrt': {
+          // IL AST: Math.sqrt(value) → TypeScript: Math.sqrt(value)
+          const value = this.transformExpression(node.argument || node.value);
+          return new TypeScriptCall(new TypeScriptIdentifier('Math'), 'sqrt', [value]);
+        }
+
+        case 'MapCreation': {
+          // IL AST: new Map() → TypeScript: new Map()
+          const args = node.entries ? [this.transformExpression(node.entries)] : [];
+          return new TypeScriptNew(new TypeScriptType('Map'), args);
+        }
+
+        case 'SetCreation': {
+          // IL AST: new Set() → TypeScript: new Set()
+          const args = node.values ? [this.transformExpression(node.values)] : [];
+          return new TypeScriptNew(new TypeScriptType('Set'), args);
+        }
+
+        case 'RegExpCreation': {
+          // IL AST: new RegExp(pattern, flags) → TypeScript: new RegExp(pattern, flags)
+          const args = [];
+          if (node.pattern) args.push(this.transformExpression(node.pattern));
+          if (node.flags) args.push(this.transformExpression(node.flags));
+          return new TypeScriptNew(new TypeScriptType('RegExp'), args);
+        }
+
+        case 'Typeof': {
+          // IL AST: typeof value → TypeScript: typeof value
+          const value = this.transformExpression(node.argument || node.value);
+          return new TypeScriptTypeOf(value);
+        }
+
+        case 'Instanceof': {
+          // IL AST: value instanceof Type → TypeScript: value instanceof Type
+          const left = this.transformExpression(node.left || node.value);
+          const right = this.transformExpression(node.right || node.type);
+          return new TypeScriptBinaryExpression(left, 'instanceof', right);
+        }
+
+        case 'MapGet': {
+          // IL AST: map.get(key) → TypeScript: map.get(key)
+          const map = this.transformExpression(node.map);
+          const key = this.transformExpression(node.key);
+          return new TypeScriptCall(map, 'get', [key]);
+        }
+
+        case 'MapHas': {
+          // IL AST: map.has(key) → TypeScript: map.has(key)
+          const map = this.transformExpression(node.map);
+          const key = this.transformExpression(node.key);
+          return new TypeScriptCall(map, 'has', [key]);
+        }
+
+        case 'MapDelete': {
+          // IL AST: map.delete(key) → TypeScript: map.delete(key)
+          const map = this.transformExpression(node.map);
+          const key = this.transformExpression(node.key);
+          return new TypeScriptCall(map, 'delete', [key]);
+        }
+
+        case 'Log': {
+          // IL AST: Math.log(value) → TypeScript: Math.log(value)
+          const value = this.transformExpression(node.argument || node.value);
+          return new TypeScriptCall(new TypeScriptIdentifier('Math'), 'log', [value]);
+        }
+
+        case 'Log2': {
+          // IL AST: Math.log2(value) → TypeScript: Math.log2(value)
+          const value = this.transformExpression(node.argument || node.value);
+          return new TypeScriptCall(new TypeScriptIdentifier('Math'), 'log2', [value]);
+        }
+
+        case 'Log10': {
+          // IL AST: Math.log10(value) → TypeScript: Math.log10(value)
+          const value = this.transformExpression(node.argument || node.value);
+          return new TypeScriptCall(new TypeScriptIdentifier('Math'), 'log10', [value]);
+        }
+
+        case 'Random': {
+          // IL AST: Math.random() → TypeScript: Math.random()
+          return new TypeScriptCall(new TypeScriptIdentifier('Math'), 'random', []);
+        }
+
+        case 'Sin': {
+          const value = this.transformExpression(node.argument || node.value);
+          return new TypeScriptCall(new TypeScriptIdentifier('Math'), 'sin', [value]);
+        }
+
+        case 'Cos': {
+          const value = this.transformExpression(node.argument || node.value);
+          return new TypeScriptCall(new TypeScriptIdentifier('Math'), 'cos', [value]);
+        }
+
+        case 'Tan': {
+          const value = this.transformExpression(node.argument || node.value);
+          return new TypeScriptCall(new TypeScriptIdentifier('Math'), 'tan', [value]);
+        }
+
+        case 'Asin': {
+          const value = this.transformExpression(node.argument || node.value);
+          return new TypeScriptCall(new TypeScriptIdentifier('Math'), 'asin', [value]);
+        }
+
+        case 'Acos': {
+          const value = this.transformExpression(node.argument || node.value);
+          return new TypeScriptCall(new TypeScriptIdentifier('Math'), 'acos', [value]);
+        }
+
+        case 'Atan': {
+          const value = this.transformExpression(node.argument || node.value);
+          return new TypeScriptCall(new TypeScriptIdentifier('Math'), 'atan', [value]);
+        }
+
+        case 'Atan2': {
+          const y = this.transformExpression(node.y || node.arguments?.[0]);
+          const x = this.transformExpression(node.x || node.arguments?.[1]);
+          return new TypeScriptCall(new TypeScriptIdentifier('Math'), 'atan2', [y, x]);
+        }
+
+        case 'Exp': {
+          const value = this.transformExpression(node.argument || node.value);
+          return new TypeScriptCall(new TypeScriptIdentifier('Math'), 'exp', [value]);
+        }
+
+        case 'Sign': {
+          const value = this.transformExpression(node.argument || node.value);
+          return new TypeScriptCall(new TypeScriptIdentifier('Math'), 'sign', [value]);
+        }
+
+        case 'Trunc': {
+          const value = this.transformExpression(node.argument || node.value);
+          return new TypeScriptCall(new TypeScriptIdentifier('Math'), 'trunc', [value]);
+        }
+
+        case 'Sinh': {
+          const value = this.transformExpression(node.argument || node.value);
+          return new TypeScriptCall(new TypeScriptIdentifier('Math'), 'sinh', [value]);
+        }
+
+        case 'Cosh': {
+          const value = this.transformExpression(node.argument || node.value);
+          return new TypeScriptCall(new TypeScriptIdentifier('Math'), 'cosh', [value]);
+        }
+
+        case 'Tanh': {
+          const value = this.transformExpression(node.argument || node.value);
+          return new TypeScriptCall(new TypeScriptIdentifier('Math'), 'tanh', [value]);
+        }
+
+        case 'Cbrt': {
+          const value = this.transformExpression(node.argument || node.value);
+          return new TypeScriptCall(new TypeScriptIdentifier('Math'), 'cbrt', [value]);
+        }
+
+        case 'Hypot': {
+          const args = (node.arguments || []).map(a => this.transformExpression(a));
+          return new TypeScriptCall(new TypeScriptIdentifier('Math'), 'hypot', args);
+        }
+
+        case 'Fround': {
+          const value = this.transformExpression(node.argument || node.value);
+          return new TypeScriptCall(new TypeScriptIdentifier('Math'), 'fround', [value]);
+        }
+
+        case 'MathConstant': {
+          // IL AST: Math constant → TypeScript: Math.PI, Math.E, etc.
+          return new TypeScriptMemberAccess(new TypeScriptIdentifier('Math'), node.name);
+        }
+
+        case 'NumberConstant': {
+          // IL AST: Number constant → TypeScript: Number.MAX_SAFE_INTEGER, Infinity, NaN, etc.
+          switch (node.name) {
+            case 'POSITIVE_INFINITY':
+              return new TypeScriptIdentifier('Infinity');
+            case 'NEGATIVE_INFINITY':
+              return new TypeScriptUnaryExpression('-', new TypeScriptIdentifier('Infinity'), true);
+            case 'NaN':
+              return new TypeScriptIdentifier('NaN');
+            default:
+              return new TypeScriptMemberAccess(new TypeScriptIdentifier('Number'), node.name);
+          }
+        }
+
+        case 'InstanceOfCheck': {
+          // IL AST: value instanceof ClassName → TypeScript: value instanceof ClassName
+          const value = this.transformExpression(node.value);
+          const className = this.transformExpression(node.className);
+          return new TypeScriptBinaryExpression(value, 'instanceof', className);
+        }
+
+        case 'StringCharAt': {
+          const str = this.transformExpression(node.string || node.value);
+          const index = this.transformExpression(node.index);
+          return new TypeScriptCall(str, 'charAt', [index]);
+        }
+
+        case 'StringIncludes': {
+          const str = this.transformExpression(node.string || node.value);
+          const searchValue = this.transformExpression(node.searchValue || node.search);
+          const args = [searchValue];
+          if (node.position !== undefined && node.position !== null) {
+            args.push(this.transformExpression(node.position));
+          }
+          return new TypeScriptCall(str, 'includes', args);
+        }
+
+        case 'StringStartsWith': {
+          const str = this.transformExpression(node.string || node.value);
+          const searchValue = this.transformExpression(node.searchValue || node.search);
+          const args = [searchValue];
+          if (node.position !== undefined && node.position !== null) {
+            args.push(this.transformExpression(node.position));
+          }
+          return new TypeScriptCall(str, 'startsWith', args);
+        }
+
+        case 'StringEndsWith': {
+          const str = this.transformExpression(node.string || node.value);
+          const searchValue = this.transformExpression(node.searchValue || node.search);
+          const args = [searchValue];
+          if (node.length !== undefined && node.length !== null) {
+            args.push(this.transformExpression(node.length));
+          }
+          return new TypeScriptCall(str, 'endsWith', args);
+        }
+
+        case 'StringTrim': {
+          const str = this.transformExpression(node.string || node.value);
+          return new TypeScriptCall(str, 'trim', []);
+        }
+
+        case 'StringPadStart': {
+          const str = this.transformExpression(node.string || node.value);
+          const targetLength = this.transformExpression(node.targetLength || node.length);
+          const args = [targetLength];
+          if (node.padString) {
+            args.push(this.transformExpression(node.padString));
+          }
+          return new TypeScriptCall(str, 'padStart', args);
+        }
+
+        case 'StringPadEnd': {
+          const str = this.transformExpression(node.string || node.value);
+          const targetLength = this.transformExpression(node.targetLength || node.length);
+          const args = [targetLength];
+          if (node.padString) {
+            args.push(this.transformExpression(node.padString));
+          }
+          return new TypeScriptCall(str, 'padEnd', args);
+        }
+
+        case 'StringToLowerCase': {
+          const str = this.transformExpression(node.string || node.value);
+          return new TypeScriptCall(str, 'toLowerCase', []);
+        }
+
+        case 'StringToUpperCase': {
+          const str = this.transformExpression(node.string || node.value);
+          return new TypeScriptCall(str, 'toUpperCase', []);
+        }
+
+        case 'StringSlice': {
+          const str = this.transformExpression(node.string || node.value);
+          const start = this.transformExpression(node.start || node.beginIndex);
+          const args = [start];
+          if (node.end !== undefined && node.end !== null) {
+            args.push(this.transformExpression(node.end));
+          }
+          return new TypeScriptCall(str, 'slice', args);
+        }
+
+        case 'StringConcat': {
+          const str = this.transformExpression(node.string || node.value);
+          const args = (node.args || node.strings || []).map(a => this.transformExpression(a));
+          return new TypeScriptCall(str, 'concat', args);
+        }
+
+        case 'ArrayFindIndex': {
+          const arr = this.transformExpression(node.array);
+          const callback = this.transformExpression(node.callback);
+          return new TypeScriptCall(arr, 'findIndex', [callback]);
+        }
+
+        case 'ArrayLastIndexOf': {
+          const arr = this.transformExpression(node.array);
+          const searchElement = this.transformExpression(node.searchElement || node.element);
+          const args = [searchElement];
+          if (node.fromIndex !== undefined && node.fromIndex !== null) {
+            args.push(this.transformExpression(node.fromIndex));
+          }
+          return new TypeScriptCall(arr, 'lastIndexOf', args);
+        }
+
+        case 'ArrayFrom': {
+          const arrayLike = this.transformExpression(node.arrayLike || node.iterable);
+          const args = [arrayLike];
+          if (node.mapFn) {
+            args.push(this.transformExpression(node.mapFn));
+          }
+          return new TypeScriptCall(new TypeScriptIdentifier('Array'), 'from', args);
+        }
+
+        case 'ObjectKeys': {
+          const obj = this.transformExpression(node.object || node.value);
+          return new TypeScriptCall(new TypeScriptIdentifier('Object'), 'keys', [obj]);
+        }
+
+        case 'ObjectValues': {
+          const obj = this.transformExpression(node.object || node.value);
+          return new TypeScriptCall(new TypeScriptIdentifier('Object'), 'values', [obj]);
+        }
+
+        case 'ObjectEntries': {
+          const obj = this.transformExpression(node.object || node.value);
+          return new TypeScriptCall(new TypeScriptIdentifier('Object'), 'entries', [obj]);
+        }
+
+        case 'JsonParse': {
+          const text = this.transformExpression(node.text || node.value);
+          return new TypeScriptCall(new TypeScriptIdentifier('JSON'), 'parse', [text]);
+        }
+
+        case 'JsonStringify': {
+          const value = this.transformExpression(node.value);
+          const args = [value];
+          if (node.replacer) args.push(this.transformExpression(node.replacer));
+          if (node.space) args.push(this.transformExpression(node.space));
+          return new TypeScriptCall(new TypeScriptIdentifier('JSON'), 'stringify', args);
+        }
+
+        case 'DateNow': {
+          return new TypeScriptCall(new TypeScriptIdentifier('Date'), 'now', []);
+        }
+
+        case 'NumberParseInt': {
+          const str = this.transformExpression(node.string || node.value);
+          const args = [str];
+          if (node.radix !== undefined && node.radix !== null) {
+            args.push(this.transformExpression(node.radix));
+          }
+          return new TypeScriptCall(null, 'parseInt', args);
+        }
+
+        case 'NumberParseFloat': {
+          const str = this.transformExpression(node.string || node.value);
+          return new TypeScriptCall(null, 'parseFloat', [str]);
+        }
+
+        // ========================[ NEW IL AST NODE TYPES ]========================
+        // These are language-agnostic intermediate nodes from the enhanced type-aware transpiler
+
+        case 'StringInterpolation': {
+          // IL AST: string interpolation with parts → TypeScript: template literal
+          const templateParts = [];
+          const expressions = [];
+          let currentStr = '';
+
+          for (const part of (node.parts || [])) {
+            if (part.type === 'StringPart') {
+              currentStr += part.value;
+            } else if (part.type === 'ExpressionPart') {
+              templateParts.push(currentStr);
+              currentStr = '';
+              expressions.push(this.transformExpression(part.expression));
+            }
+          }
+          templateParts.push(currentStr);
+
+          return new TypeScriptTemplateLiteral(templateParts, expressions);
+        }
+
+        case 'TypeOfExpression': {
+          // IL AST: typeof x → TypeScript: typeof x
+          const argument = this.transformExpression(node.argument);
+          return new TypeScriptUnaryExpression('typeof', argument, true);
+        }
+
+        case 'DeleteExpression': {
+          // IL AST: delete x → TypeScript: delete x
+          const argument = this.transformExpression(node.argument);
+          return new TypeScriptUnaryExpression('delete', argument, true);
+        }
+
+        case 'DebugOutput': {
+          // IL AST: console.log(...) → TypeScript: console.log(...)
+          // In release builds, these could be stripped; for TypeScript we preserve them
+          const args = (node.arguments || []).map(arg => this.transformExpression(arg));
+          const consoleObj = new TypeScriptIdentifier('console');
+          return new TypeScriptCall(consoleObj, node.method || 'log', args);
+        }
+
+        case 'SpreadElement': {
+          // IL AST: spread element → TypeScript: ...x
+          const argument = this.transformExpression(node.argument);
+          return new TypeScriptSpreadElement(argument);
+        }
+
+        case 'RestParameter': {
+          // IL AST: rest parameter → TypeScript: ...args
+          const param = new TypeScriptParameter(node.name, TypeScriptType.Any());
+          param.isRest = true;
+          return param;
+        }
+
+        case 'ObjectLiteral': {
+          // IL AST: object literal → TypeScript: { key: value, ... }
+          const objLit = new TypeScriptObjectLiteral();
+          for (const prop of (node.properties || [])) {
+            if (prop.type === 'ObjectSpread') {
+              // Spread property: { ...x }
+              objLit.properties.push({
+                isSpread: true,
+                value: this.transformExpression(prop.argument)
+              });
+            } else {
+              const key = typeof prop.key === 'string' ? prop.key : this.transformExpression(prop.key);
+              const value = this.transformExpression(prop.value);
+              objLit.properties.push({
+                key,
+                value,
+                computed: prop.computed || false,
+                shorthand: prop.shorthand || false,
+                method: prop.method || false
+              });
+            }
+          }
+          return objLit;
+        }
+
+        case 'ArrowFunction':
+        case 'FunctionExpression': {
+          // IL AST: function expression → TypeScript: (params) => body
+          const params = (node.params || []).map(p => {
+            if (p.type === 'RestParameter') {
+              const param = new TypeScriptParameter(p.name, TypeScriptType.Any());
+              param.isRest = true;
+              return param;
+            }
+            if (p.type === 'DefaultParameter') {
+              const param = new TypeScriptParameter(p.name, TypeScriptType.Any());
+              param.defaultValue = this.transformExpression(p.defaultValue);
+              return param;
+            }
+            if (typeof p === 'string' || p.type === 'Identifier')
+              return new TypeScriptParameter(p.name || p, TypeScriptType.Any());
+            return this.transformExpression(p);
+          });
+          const body = node.body ? (node.body.type === 'BlockStatement' ?
+            this.transformBlockStatement(node.body) :
+            this.transformExpression(node.body)) : null;
+          const arrowFn = new TypeScriptArrowFunction(params, body, null);
+          arrowFn.isAsync = node.async || false;
+          return arrowFn;
+        }
+
+        case 'AwaitExpression': {
+          // IL AST: await x → TypeScript: await x
+          const argument = this.transformExpression(node.argument);
+          return new TypeScriptAwaitExpression(argument);
+        }
+
+        case 'YieldExpression': {
+          // IL AST: yield x → TypeScript: yield x (or yield* x)
+          const argument = node.argument ? this.transformExpression(node.argument) : null;
+          return new TypeScriptYieldExpression(argument, node.delegate || false);
+        }
+
+        case 'DataViewRead': {
+          // IL AST: dataview.getUint32(offset, littleEndian) → TypeScript: view.getUint32(offset, littleEndian)
+          const view = this.transformExpression(node.view);
+          const args = [this.transformExpression(node.offset)];
+          if (node.littleEndian) args.push(this.transformExpression(node.littleEndian));
+          return new TypeScriptCall(view, node.method, args);
+        }
+
+        case 'DataViewWrite': {
+          // IL AST: dataview.setUint32(offset, value, littleEndian) → TypeScript: view.setUint32(offset, value, littleEndian)
+          const view = this.transformExpression(node.view);
+          const args = [this.transformExpression(node.offset), this.transformExpression(node.value)];
+          if (node.littleEndian) args.push(this.transformExpression(node.littleEndian));
+          return new TypeScriptCall(view, node.method, args);
+        }
+
+        case 'ArrayFrom': {
+          // IL AST: Array.from(iterable) → TypeScript: Array.from(iterable)
+          const args = [this.transformExpression(node.iterable)];
+          if (node.mapFunction) args.push(this.transformExpression(node.mapFunction));
+          return new TypeScriptCall(new TypeScriptIdentifier('Array'), 'from', args);
+        }
+
+        case 'IsArrayCheck': {
+          // IL AST: Array.isArray(x) → TypeScript: Array.isArray(x)
+          const value = this.transformExpression(node.value);
+          return new TypeScriptCall(new TypeScriptIdentifier('Array'), 'isArray', [value]);
+        }
+
+        case 'ArrayOf': {
+          // IL AST: Array.of(...) → TypeScript: Array.of(...)
+          const elements = (node.elements || []).map(el => this.transformExpression(el));
+          return new TypeScriptCall(new TypeScriptIdentifier('Array'), 'of', elements);
+        }
+
+        case 'ObjectMerge': {
+          // IL AST: Object.assign(target, ...sources) → TypeScript: Object.assign(target, ...sources)
+          const target = this.transformExpression(node.target);
+          const sources = (node.sources || []).map(s => this.transformExpression(s));
+          return new TypeScriptCall(new TypeScriptIdentifier('Object'), 'assign', [target, ...sources]);
+        }
+
+        case 'ObjectFreeze': {
+          // IL AST: Object.freeze(obj) → TypeScript: Object.freeze(obj)
+          const obj = this.transformExpression(node.object);
+          return new TypeScriptCall(new TypeScriptIdentifier('Object'), 'freeze', [obj]);
+        }
+
+        case 'ObjectSeal': {
+          // IL AST: Object.seal(obj) → TypeScript: Object.seal(obj)
+          const obj = this.transformExpression(node.object);
+          return new TypeScriptCall(new TypeScriptIdentifier('Object'), 'seal', [obj]);
+        }
+
+        case 'ObjectHasProperty': {
+          // IL AST: Object.hasOwn(obj, prop) → TypeScript: Object.hasOwn(obj, prop)
+          const obj = this.transformExpression(node.object);
+          const prop = this.transformExpression(node.property);
+          return new TypeScriptCall(new TypeScriptIdentifier('Object'), 'hasOwn', [obj, prop]);
+        }
+
+        case 'ObjectFromEntries': {
+          // IL AST: Object.fromEntries(entries) → TypeScript: Object.fromEntries(entries)
+          const entries = this.transformExpression(node.entries);
+          return new TypeScriptCall(new TypeScriptIdentifier('Object'), 'fromEntries', [entries]);
+        }
+
+        case 'StringFromCharCodes': {
+          // IL AST: String.fromCharCode(...codes) → TypeScript: String.fromCharCode(...codes)
+          const codes = (node.charCodes || []).map(c => this.transformExpression(c));
+          return new TypeScriptCall(new TypeScriptIdentifier('String'), 'fromCharCode', codes);
+        }
+
+        case 'StringFromCodePoints': {
+          // IL AST: String.fromCodePoint(...points) → TypeScript: String.fromCodePoint(...points)
+          const points = (node.codePoints || []).map(p => this.transformExpression(p));
+          return new TypeScriptCall(new TypeScriptIdentifier('String'), 'fromCodePoint', points);
+        }
+
+        case 'IsIntegerCheck': {
+          // IL AST: Number.isInteger(x) → TypeScript: Number.isInteger(x)
+          const value = this.transformExpression(node.value);
+          return new TypeScriptCall(new TypeScriptIdentifier('Number'), 'isInteger', [value]);
+        }
+
+        case 'IsNaNCheck': {
+          // IL AST: Number.isNaN(x) → TypeScript: Number.isNaN(x)
+          const value = this.transformExpression(node.value);
+          return new TypeScriptCall(new TypeScriptIdentifier('Number'), 'isNaN', [value]);
+        }
+
+        case 'IsFiniteCheck': {
+          // IL AST: Number.isFinite(x) → TypeScript: Number.isFinite(x)
+          const value = this.transformExpression(node.value);
+          return new TypeScriptCall(new TypeScriptIdentifier('Number'), 'isFinite', [value]);
+        }
+
+        case 'ParseInteger': {
+          // IL AST: parseInt(str, radix) → TypeScript: parseInt(str, radix)
+          const str = this.transformExpression(node.string);
+          const args = [str];
+          if (node.radix) args.push(this.transformExpression(node.radix));
+          return new TypeScriptCall(null, 'parseInt', args);
+        }
+
+        case 'ParseFloat': {
+          // IL AST: parseFloat(str) → TypeScript: parseFloat(str)
+          const str = this.transformExpression(node.string);
+          return new TypeScriptCall(null, 'parseFloat', [str]);
+        }
+
+        case 'JsonSerialize': {
+          // IL AST: JSON.stringify(value) → TypeScript: JSON.stringify(value)
+          const value = this.transformExpression(node.value);
+          const args = [value];
+          if (node.replacer) args.push(this.transformExpression(node.replacer));
+          if (node.space) args.push(this.transformExpression(node.space));
+          return new TypeScriptCall(new TypeScriptIdentifier('JSON'), 'stringify', args);
+        }
+
+        case 'JsonDeserialize': {
+          // IL AST: JSON.parse(text) → TypeScript: JSON.parse(text)
+          const text = this.transformExpression(node.text);
+          const args = [text];
+          if (node.reviver) args.push(this.transformExpression(node.reviver));
+          return new TypeScriptCall(new TypeScriptIdentifier('JSON'), 'parse', args);
+        }
+
+        case 'SequenceExpression': {
+          // IL AST: (a, b, c) → TypeScript: (a, b, c)
+          const expressions = (node.expressions || []).map(e => this.transformExpression(e));
+          return new TypeScriptSequenceExpression(expressions);
+        }
+
         default:
-          console.warn(`Unhandled expression type: ${node.type}`);
-          return new TypeScriptIdentifier(`/* ${node.type} */`);
+          // Log warning for unhandled expression types to aid debugging
+          const safeStringify = (obj) => {
+            try {
+              return JSON.stringify(obj, (_, v) => typeof v === 'bigint' ? v.toString() + 'n' : v, 2).substring(0, 200);
+            } catch (e) { return '[stringify error]'; }
+          };
+          console.warn(`[TypeScriptTransformer] Unhandled expression type: ${node.type}`, safeStringify(node));
+          // Return a placeholder that will cause compilation to fail with clear message
+          return new TypeScriptIdentifier(`UNHANDLED_EXPRESSION_${node.type}`);
       }
     }
 
@@ -1137,7 +2448,7 @@
     transformCallExpression(node) {
       if (node.callee.type === 'MemberExpression') {
         const target = this.transformExpression(node.callee.object);
-        const methodName = node.callee.property.name;
+        const methodName = node.callee.property.name || node.callee.property.value || 'unknownMethod';
         const args = node.arguments.map(arg => this.transformExpression(arg));
 
         // Handle Object methods - TypeScript keeps these as-is since it's similar to JS
@@ -1181,7 +2492,13 @@
     transformObjectExpression(node) {
       const obj = new TypeScriptObjectLiteral();
       for (const prop of node.properties) {
-        const key = prop.key.name || prop.key.value;
+        // Handle SpreadElement like {...obj}
+        if (prop.type === 'SpreadElement') {
+          const spread = this.transformExpression(prop.argument);
+          obj.properties.push({ isSpread: true, value: spread });
+          continue;
+        }
+        const key = prop.key?.name || prop.key?.value;
         const value = this.transformExpression(prop.value);
         obj.properties.push({ key, value });
       }

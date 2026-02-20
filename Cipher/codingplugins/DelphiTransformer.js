@@ -1,9 +1,23 @@
 /**
- * DelphiTransformer.js - JavaScript AST to Delphi AST Transformer
- * Converts type-annotated JavaScript AST (IL AST) to Delphi AST
+ * DelphiTransformer.js - IL AST to Delphi AST Transformer
+ * Converts IL AST (type-inferred, language-agnostic) to Delphi AST
  * (c)2006-2025 Hawkynt
  *
- * Pipeline: JS Source -> JS AST -> Type Inference -> Delphi AST -> Delphi Emitter -> Delphi Source
+ * Full Pipeline:
+ *   JS Source → Parser → JS AST → IL Transformer → IL AST → Language Transformer → Language AST → Language Emitter → Language Source
+ *
+ * This transformer handles: IL AST → Delphi AST
+ *
+ * IL AST characteristics:
+ *   - Type-inferred (no untyped nodes)
+ *   - Language-agnostic (no JS-specific constructs like UMD, IIFE, Math.*, Object.*, etc.)
+ *   - Global options already applied
+ *
+ * Language options (applied here and in emitter):
+ *   - variant: 'DELPHI' | 'FPC' (Free Pascal) | 'LAZARUS'
+ *   - useClasses: boolean (generate class vs record types)
+ *   - useProperties: boolean (generate properties with getters/setters)
+ *   - useSets: boolean (use set types where appropriate)
  */
 
 (function(global) {
@@ -620,7 +634,35 @@
     transformStaticBlock(node) {
       // ES2022 static block -> Delphi initialization/finalization section
       // Transform to statements that will be emitted in initialization section
-      return node.body.map(stmt => this.transformStatement(stmt));
+      // Handle both array body and object with body property
+      const statements = Array.isArray(node.body) ? node.body :
+                         (node.body?.body && Array.isArray(node.body.body)) ? node.body.body : [];
+      return statements.map(stmt => this.transformStatement(stmt));
+    }
+
+    transformClassExpression(node) {
+      // ClassExpression -> Delphi class type
+      const className = node.id?.name || 'TAnonymousClass';
+      const classDecl = new DelphiClass(className);
+
+      if (node.superClass) {
+        classDecl.parentClass = this.transformExpression(node.superClass);
+      }
+
+      if (node.body?.body) {
+        for (const member of node.body.body) {
+          const transformed = this.transformClassMember(member);
+          if (transformed)
+            classDecl.members.push(transformed);
+        }
+      }
+
+      return classDecl;
+    }
+
+    transformYieldExpression(node) {
+      // Delphi doesn't have yield - return the argument value directly
+      return node.argument ? this.transformExpression(node.argument) : DelphiLiteral.Nil();
     }
 
     /**
@@ -987,6 +1029,26 @@
         case 'ThisExpression':
           return new DelphiIdentifier('Self');
 
+        // IL AST node types from type-aware-transpiler
+        case 'ThisPropertyAccess':
+          // Self.Property in Delphi - convert to PascalCase
+          return new DelphiFieldAccess(new DelphiIdentifier('Self'), this.toPascalCase(node.property));
+
+        case 'ThisMethodCall':
+          // Self.Method(args) in Delphi
+          {
+            const args = (node.arguments || []).map(a => this.transformExpression(a));
+            const methodAccess = new DelphiFieldAccess(new DelphiIdentifier('Self'), this.toPascalCase(node.method));
+            return new DelphiCall(methodAccess, args);
+          }
+
+        case 'ParentConstructorCall':
+          // inherited Create in Delphi
+          {
+            const args = (node.arguments || []).map(a => this.transformExpression(a));
+            return new DelphiCall(new DelphiIdentifier('inherited Create'), args);
+          }
+
         case 'Super':
           return new DelphiIdentifier('inherited');
 
@@ -1014,6 +1076,908 @@
           // Object destructuring - Delphi doesn't support this directly
           // Return a comment placeholder
           return new DelphiIdentifier('{ Object destructuring not supported in Delphi }');
+
+        case 'StaticBlock':
+          return this.transformStaticBlock(node);
+
+        case 'ChainExpression':
+          // Optional chaining a?.b - Delphi doesn't have this
+          return this.transformExpression(node.expression);
+
+        case 'ClassExpression':
+          // Anonymous class expression
+          return this.transformClassExpression(node);
+
+        case 'YieldExpression':
+          // yield - Delphi doesn't have generators
+          return this.transformYieldExpression(node);
+
+        case 'PrivateIdentifier':
+          // #field -> Delphi private field with F prefix convention
+          return new DelphiIdentifier('F' + this.toPascalCase(node.name));
+
+        // IL AST node types for cryptographic operations
+        case 'PackBytes':
+          // Pack bytes to integer value - Pack32BE(b0, b1, b2, b3) etc.
+          {
+            const endian = node.endian || 'big';
+            const bits = node.bits || 32;
+            const funcName = `Pack${bits}${endian === 'big' ? 'BE' : 'LE'}`;
+            const args = (node.arguments || node.bytes || []).map(a => this.transformExpression(a));
+            return new DelphiCall(new DelphiIdentifier(funcName), args);
+          }
+
+        case 'UnpackBytes':
+          // Unpack integer to bytes - Unpack32BE(value) etc.
+          {
+            const endian = node.endian || 'big';
+            const bits = node.bits || 32;
+            const funcName = `Unpack${bits}${endian === 'big' ? 'BE' : 'LE'}`;
+            // Check multiple possible locations for the value
+            const value = node.value ? this.transformExpression(node.value) :
+                         node.argument ? this.transformExpression(node.argument) :
+                         node.arguments?.[0] ? this.transformExpression(node.arguments[0]) : null;
+            return new DelphiCall(new DelphiIdentifier(funcName), value ? [value] : []);
+          }
+
+        case 'RotateLeft':
+          // Bit rotation left - RotL32(value, amount) etc.
+          {
+            const bits = node.bits || 32;
+            const funcName = `RotL${bits}`;
+            const value = this.transformExpression(node.value || node.arguments?.[0]);
+            const amount = this.transformExpression(node.amount || node.arguments?.[1]);
+            return new DelphiCall(new DelphiIdentifier(funcName), [value, amount]);
+          }
+
+        case 'RotateRight':
+          // Bit rotation right - RotR32(value, amount) etc.
+          {
+            const bits = node.bits || 32;
+            const funcName = `RotR${bits}`;
+            const value = this.transformExpression(node.value || node.arguments?.[0]);
+            const amount = this.transformExpression(node.amount || node.arguments?.[1]);
+            return new DelphiCall(new DelphiIdentifier(funcName), [value, amount]);
+          }
+
+        case 'HexDecode':
+          // Convert hex string to bytes - HexToBytes(hexStr)
+          {
+            const args = (node.arguments || []).map(a => this.transformExpression(a));
+            return new DelphiCall(new DelphiIdentifier('HexToBytes'), args);
+          }
+
+        case 'HexEncode':
+          // Convert bytes to hex string - BytesToHex(bytes)
+          {
+            const args = (node.arguments || []).map(a => this.transformExpression(a));
+            return new DelphiCall(new DelphiIdentifier('BytesToHex'), args);
+          }
+
+        case 'StringToBytes':
+          // Convert string to bytes - StringToBytes(str)
+          {
+            const args = (node.arguments || []).map(a => this.transformExpression(a));
+            return new DelphiCall(new DelphiIdentifier('AnsiStringToBytes'), args);
+          }
+
+        case 'BytesToString':
+          // Convert bytes to string - BytesToAnsiString(bytes)
+          {
+            const args = (node.arguments || []).map(a => this.transformExpression(a));
+            return new DelphiCall(new DelphiIdentifier('BytesToAnsiString'), args);
+          }
+
+        case 'ArrayXor':
+          // XOR two arrays - XorArrays(arr1, arr2)
+          {
+            const args = (node.arguments || []).map(a => this.transformExpression(a));
+            return new DelphiCall(new DelphiIdentifier('XorArrays'), args);
+          }
+
+        case 'ArrayClear':
+          // Clear array contents - ClearArray(arr)
+          {
+            const args = (node.arguments || []).map(a => this.transformExpression(a));
+            return new DelphiCall(new DelphiIdentifier('ClearArray'), args);
+          }
+
+        case 'ArrayLength':
+          // Get array length - Length(arr)
+          {
+            const arr = this.transformExpression(node.argument || node.array || node.arguments?.[0]);
+            return new DelphiCall(new DelphiIdentifier('Length'), [arr]);
+          }
+
+        case 'ArrayPush':
+          // Append to array - requires SetLength + assignment
+          {
+            const arr = this.transformExpression(node.array || node.arguments?.[0]);
+            const value = this.transformExpression(node.value || node.arguments?.[1]);
+            // Use helper function AppendToArray
+            return new DelphiCall(new DelphiIdentifier('AppendToArray'), [arr, value]);
+          }
+
+        case 'ArraySlice':
+          // Slice array - Copy(arr, start, length)
+          {
+            const arr = this.transformExpression(node.array || node.arguments?.[0]);
+            const start = this.transformExpression(node.start || node.arguments?.[1] || { type: 'Literal', value: 0 });
+            const end = node.end || node.arguments?.[2];
+            if (end) {
+              const endExpr = this.transformExpression(end);
+              // Copy from start to end-start length
+              return new DelphiCall(new DelphiIdentifier('Copy'), [arr, start, new DelphiBinaryExpression('-', endExpr, start)]);
+            }
+            return new DelphiCall(new DelphiIdentifier('Copy'), [arr, start]);
+          }
+
+        case 'Cast':
+          // Type cast - use appropriate Delphi type cast
+          {
+            const value = this.transformExpression(node.value || node.argument || node.arguments?.[0]);
+            const targetType = node.targetType || 'Cardinal';
+            let delphiType = 'Cardinal';
+            if (targetType === 'uint32' || targetType === 'dword') delphiType = 'Cardinal';
+            else if (targetType === 'uint8' || targetType === 'byte') delphiType = 'Byte';
+            else if (targetType === 'int32') delphiType = 'Integer';
+            else if (targetType === 'uint16') delphiType = 'Word';
+            else if (targetType === 'int16') delphiType = 'SmallInt';
+            else if (targetType === 'uint64') delphiType = 'UInt64';
+            else if (targetType === 'int64') delphiType = 'Int64';
+            return new DelphiCall(new DelphiIdentifier(delphiType), [value]);
+          }
+
+        // IL AST StringInterpolation - `Hello ${name}` -> 'Hello ' + name
+        case 'StringInterpolation': {
+          const parts = [];
+          if (node.parts) {
+            for (const part of node.parts) {
+              if (part.type === 'StringPart' || part.ilNodeType === 'StringPart') {
+                if (part.value)
+                  parts.push(DelphiLiteral.String(part.value));
+              } else if (part.type === 'ExpressionPart' || part.ilNodeType === 'ExpressionPart') {
+                parts.push(this.transformExpression(part.expression));
+              }
+            }
+          }
+          if (parts.length === 0) return DelphiLiteral.String('');
+          if (parts.length === 1) return parts[0];
+          return parts.reduce((acc, part) => new DelphiBinaryExpression('+', acc, part));
+        }
+
+        // IL AST ObjectLiteral - {key: value} -> nil (Delphi needs explicit types)
+        case 'ObjectLiteral': {
+          return DelphiLiteral.Nil();
+        }
+
+        // IL AST StringFromCharCodes - String.fromCharCode(65) -> Chr(65)
+        case 'StringFromCharCodes': {
+          const args = (node.arguments || []).map(a => this.transformExpression(a));
+          if (args.length === 0)
+            return DelphiLiteral.String('');
+          if (args.length === 1)
+            return new DelphiCall(new DelphiIdentifier('Chr'), args);
+          // Multiple: Chr(c1) + Chr(c2) + ...
+          const chrCalls = args.map(a => new DelphiCall(new DelphiIdentifier('Chr'), [a]));
+          return chrCalls.reduce((acc, call) => new DelphiBinaryExpression('+', acc, call));
+        }
+
+        // IL AST IsArrayCheck - Array.isArray(x) -> Length(x) > 0
+        case 'IsArrayCheck': {
+          const value = this.transformExpression(node.value);
+          return new DelphiBinaryExpression('>', new DelphiCall(new DelphiIdentifier('Length'), [value]), DelphiLiteral.Integer(0));
+        }
+
+        // IL AST ArrowFunction - not supported in Delphi
+        case 'ArrowFunction': {
+          return new DelphiIdentifier('{ anonymous function }');
+        }
+
+        // IL AST TypeOfExpression - typeof x -> ClassName (for objects)
+        case 'TypeOfExpression': {
+          const value = this.transformExpression(node.value);
+          return new DelphiCall(new DelphiIdentifier('ClassName'), [value]);
+        }
+
+        // IL AST Power - x ** y -> Power(x, y)
+        case 'Power': {
+          const left = this.transformExpression(node.left);
+          const right = this.transformExpression(node.right);
+          return new DelphiCall(new DelphiIdentifier('Power'), [left, right]);
+        }
+
+        // IL AST ObjectFreeze - Object.freeze(x) -> just return x
+        case 'ObjectFreeze': {
+          return this.transformExpression(node.value);
+        }
+
+        case 'Floor':
+          return new DelphiCall(new DelphiIdentifier('Floor'), [this.transformExpression(node.arguments?.[0] || node.value)]);
+
+        case 'Ceil':
+          return new DelphiCall(new DelphiIdentifier('Ceil'), [this.transformExpression(node.arguments?.[0] || node.value)]);
+
+        case 'Abs':
+          return new DelphiCall(new DelphiIdentifier('Abs'), [this.transformExpression(node.arguments?.[0] || node.value)]);
+
+        case 'Min':
+          return new DelphiCall(new DelphiIdentifier('Min'), (node.values || node.arguments || []).map(v => this.transformExpression(v)));
+
+        case 'Max':
+          return new DelphiCall(new DelphiIdentifier('Max'), (node.values || node.arguments || []).map(v => this.transformExpression(v)));
+
+        case 'Pow':
+          return new DelphiCall(new DelphiIdentifier('Power'), [
+            this.transformExpression(node.base || node.arguments?.[0]),
+            this.transformExpression(node.exponent || node.arguments?.[1])
+          ]);
+
+        case 'Sqrt':
+          return new DelphiCall(new DelphiIdentifier('Sqrt'), [this.transformExpression(node.arguments?.[0] || node.value)]);
+
+        case 'Cbrt':
+          // Delphi: Power(arg, 1/3)
+          return new DelphiCall(new DelphiIdentifier('Power'), [
+            this.transformExpression(node.arguments?.[0] || node.value),
+            new DelphiBinaryExpression('/', DelphiLiteral.Integer(1), DelphiLiteral.Integer(3))
+          ]);
+
+        case 'Log':
+          return new DelphiCall(new DelphiIdentifier('Ln'), [this.transformExpression(node.arguments?.[0] || node.value)]);
+
+        case 'Log2':
+          return new DelphiCall(new DelphiIdentifier('Log2'), [this.transformExpression(node.arguments?.[0] || node.value)]);
+
+        case 'Log10':
+          return new DelphiCall(new DelphiIdentifier('Log10'), [this.transformExpression(node.arguments?.[0] || node.value)]);
+
+        case 'Exp':
+          return new DelphiCall(new DelphiIdentifier('Exp'), [this.transformExpression(node.arguments?.[0] || node.value)]);
+
+        case 'Round':
+          return new DelphiCall(new DelphiIdentifier('Round'), [this.transformExpression(node.arguments?.[0] || node.value)]);
+
+        case 'Trunc':
+          return new DelphiCall(new DelphiIdentifier('Trunc'), [this.transformExpression(node.arguments?.[0] || node.value)]);
+
+        case 'Sign':
+          return new DelphiCall(new DelphiIdentifier('Sign'), [this.transformExpression(node.arguments?.[0] || node.value)]);
+
+        case 'Sin':
+          return new DelphiCall(new DelphiIdentifier('Sin'), [this.transformExpression(node.arguments?.[0] || node.value)]);
+
+        case 'Cos':
+          return new DelphiCall(new DelphiIdentifier('Cos'), [this.transformExpression(node.arguments?.[0] || node.value)]);
+
+        case 'Tan':
+          return new DelphiCall(new DelphiIdentifier('Tan'), [this.transformExpression(node.arguments?.[0] || node.value)]);
+
+        case 'Asin':
+          return new DelphiCall(new DelphiIdentifier('ArcSin'), [this.transformExpression(node.arguments?.[0] || node.value)]);
+
+        case 'Acos':
+          return new DelphiCall(new DelphiIdentifier('ArcCos'), [this.transformExpression(node.arguments?.[0] || node.value)]);
+
+        case 'Atan':
+          return new DelphiCall(new DelphiIdentifier('ArcTan'), [this.transformExpression(node.arguments?.[0] || node.value)]);
+
+        case 'Atan2': {
+          const y = this.transformExpression(node.arguments?.[0] || node.y);
+          const x = this.transformExpression(node.arguments?.[1] || node.x);
+          return new DelphiCall(new DelphiIdentifier('ArcTan2'), [y, x]);
+        }
+
+        case 'Sinh':
+          return new DelphiCall(new DelphiIdentifier('Sinh'), [this.transformExpression(node.arguments?.[0] || node.value)]);
+
+        case 'Cosh':
+          return new DelphiCall(new DelphiIdentifier('Cosh'), [this.transformExpression(node.arguments?.[0] || node.value)]);
+
+        case 'Tanh':
+          return new DelphiCall(new DelphiIdentifier('Tanh'), [this.transformExpression(node.arguments?.[0] || node.value)]);
+
+        case 'Hypot':
+          return new DelphiCall(new DelphiIdentifier('Hypot'), (node.arguments || []).map(a => this.transformExpression(a)));
+
+        case 'Fround':
+          // Delphi: Single(arg) - cast to single-precision float
+          return new DelphiCall(new DelphiIdentifier('Single'), [this.transformExpression(node.arguments?.[0] || node.value)]);
+
+        case 'MathCall': {
+          const method = node.method;
+          const args = (node.arguments || []).map(a => this.transformExpression(a));
+          if (method === 'imul') {
+            if (args.length >= 2)
+              return new DelphiCall(new DelphiIdentifier('Integer'), [new DelphiBinaryExpression('*', args[0], args[1])]);
+          }
+          // Map known methods to Delphi equivalents
+          const methodMap = {
+            'floor': 'Floor', 'ceil': 'Ceil', 'abs': 'Abs',
+            'min': 'Min', 'max': 'Max', 'pow': 'Power',
+            'sqrt': 'Sqrt', 'log': 'Ln', 'log2': 'Log2', 'log10': 'Log10',
+            'exp': 'Exp', 'round': 'Round', 'trunc': 'Trunc',
+            'sign': 'Sign', 'sin': 'Sin', 'cos': 'Cos', 'tan': 'Tan',
+            'random': 'Random'
+          };
+          const delphiMethod = methodMap[method] || this.toPascalCase(method);
+          return new DelphiCall(new DelphiIdentifier(delphiMethod), args);
+        }
+
+        case 'MathConstant': {
+          switch (node.name) {
+            case 'PI': return new DelphiIdentifier('Pi');
+            case 'E': return new DelphiCall(new DelphiIdentifier('Exp'), [DelphiLiteral.Integer(1)]);
+            case 'LN2': return new DelphiCall(new DelphiIdentifier('Ln'), [DelphiLiteral.Integer(2)]);
+            case 'LN10': return new DelphiCall(new DelphiIdentifier('Ln'), [DelphiLiteral.Integer(10)]);
+            case 'LOG2E': return new DelphiCall(new DelphiIdentifier('Log2'), [new DelphiCall(new DelphiIdentifier('Exp'), [DelphiLiteral.Integer(1)])]);
+            case 'LOG10E': return new DelphiCall(new DelphiIdentifier('Log10'), [new DelphiCall(new DelphiIdentifier('Exp'), [DelphiLiteral.Integer(1)])]);
+            case 'SQRT2': return new DelphiCall(new DelphiIdentifier('Sqrt'), [DelphiLiteral.Integer(2)]);
+            case 'SQRT1_2': return new DelphiCall(new DelphiIdentifier('Sqrt'), [DelphiLiteral.Float(0.5)]);
+            default: return DelphiLiteral.Float(node.value);
+          }
+        }
+
+        case 'NumberConstant': {
+          switch (node.name) {
+            case 'MAX_SAFE_INTEGER': return new DelphiIdentifier('MaxLongInt');
+            case 'MIN_SAFE_INTEGER': return new DelphiUnaryExpression('-', new DelphiIdentifier('MaxLongInt'));
+            case 'MAX_VALUE': return new DelphiIdentifier('MaxDouble');
+            case 'MIN_VALUE': return new DelphiIdentifier('MinDouble');
+            case 'POSITIVE_INFINITY': return new DelphiIdentifier('Infinity');
+            case 'NEGATIVE_INFINITY': return new DelphiIdentifier('NegInfinity');
+            case 'NaN': return new DelphiIdentifier('NaN');
+            case 'EPSILON': return DelphiLiteral.Float(5e-324);
+            default: return DelphiLiteral.Float(node.value);
+          }
+        }
+
+        case 'InstanceOfCheck': {
+          const value = this.transformExpression(node.value);
+          const className = typeof node.className === 'string' ? new DelphiIdentifier(node.className) : this.transformExpression(node.className);
+          return new DelphiBinaryExpression('is', value, className);
+        }
+
+        // ========================[ Array Operations ]========================
+
+        case 'ArrayAppend': {
+          // IL AST: array.push(value) -> SetLength(arr, Length(arr) + 1); arr[High(arr)] := value
+          // For expression context, use AppendToArray helper
+          const arr = this.transformExpression(node.array);
+          const value = this.transformExpression(node.value);
+          return new DelphiCall(new DelphiIdentifier('AppendToArray'), [arr, value]);
+        }
+
+        case 'ArrayConcat': {
+          // IL AST: arr1.concat(arr2, ...) -> Concat(arr1, arr2)
+          const arr = this.transformExpression(node.array);
+          let result = arr;
+          for (const other of (node.arrays || [])) {
+            const otherExpr = this.transformExpression(other);
+            result = new DelphiCall(new DelphiIdentifier('Concat'), [result, otherExpr]);
+          }
+          return result;
+        }
+
+        case 'ArrayEvery': {
+          // IL AST: array.every(callback) -> AllMatch(arr, callback)
+          // Delphi has no lambdas in older versions; use helper
+          const arr = this.transformExpression(node.array);
+          const callback = node.callback ? this.transformExpression(node.callback) : DelphiLiteral.Nil();
+          return new DelphiCall(new DelphiIdentifier('AllMatch'), [arr, callback]);
+        }
+
+        case 'ArrayFilter': {
+          // IL AST: array.filter(callback) -> FilterArray(arr, callback)
+          const arr = this.transformExpression(node.array);
+          const callback = node.callback ? this.transformExpression(node.callback) : DelphiLiteral.Nil();
+          return new DelphiCall(new DelphiIdentifier('FilterArray'), [arr, callback]);
+        }
+
+        case 'ArrayFind': {
+          // IL AST: array.find(callback) -> FindInArray(arr, callback)
+          const arr = this.transformExpression(node.array);
+          const callback = node.callback ? this.transformExpression(node.callback) : DelphiLiteral.Nil();
+          return new DelphiCall(new DelphiIdentifier('FindInArray'), [arr, callback]);
+        }
+
+        case 'ArrayFindIndex': {
+          // IL AST: array.findIndex(callback) -> FindIndexInArray(arr, callback)
+          const arr = this.transformExpression(node.array);
+          const callback = node.callback ? this.transformExpression(node.callback) : DelphiLiteral.Nil();
+          return new DelphiCall(new DelphiIdentifier('FindIndexInArray'), [arr, callback]);
+        }
+
+        case 'ArrayForEach': {
+          // IL AST: array.forEach(callback) -> for item in arr do callback(item)
+          const arr = this.transformExpression(node.array);
+          const callback = node.callback ? this.transformExpression(node.callback) : DelphiLiteral.Nil();
+          return new DelphiCall(new DelphiIdentifier('ForEachInArray'), [arr, callback]);
+        }
+
+        case 'ArrayFrom': {
+          // IL AST: Array.from(iterable) -> Copy(arr) or array assignment
+          const iterable = this.transformExpression(node.iterable || node.argument || node.arguments?.[0]);
+          if (node.mapFunction) {
+            const mapFn = this.transformExpression(node.mapFunction);
+            return new DelphiCall(new DelphiIdentifier('MapArray'), [iterable, mapFn]);
+          }
+          return new DelphiCall(new DelphiIdentifier('Copy'), [iterable]);
+        }
+
+        case 'ArrayIncludes': {
+          // IL AST: array.includes(value) -> ArrayContains(arr, value)
+          const arr = this.transformExpression(node.array);
+          const value = this.transformExpression(node.value);
+          return new DelphiCall(new DelphiIdentifier('ArrayContains'), [arr, value]);
+        }
+
+        case 'ArrayIndexOf': {
+          // IL AST: array.indexOf(value) -> IndexOfInArray(arr, value)
+          const arr = this.transformExpression(node.array);
+          const value = this.transformExpression(node.value);
+          const args = [arr, value];
+          if (node.start)
+            args.push(this.transformExpression(node.start));
+          return new DelphiCall(new DelphiIdentifier('IndexOfInArray'), args);
+        }
+
+        case 'ArrayJoin': {
+          // IL AST: array.join(separator) -> StringJoin(separator, arr)
+          const arr = this.transformExpression(node.array);
+          const separator = node.separator
+            ? this.transformExpression(node.separator)
+            : DelphiLiteral.String(',');
+          return new DelphiCall(new DelphiIdentifier('StringJoin'), [separator, arr]);
+        }
+
+        case 'ArrayMap': {
+          // IL AST: array.map(callback) -> MapArray(arr, callback)
+          const arr = this.transformExpression(node.array);
+          const callback = node.callback ? this.transformExpression(node.callback) : DelphiLiteral.Nil();
+          return new DelphiCall(new DelphiIdentifier('MapArray'), [arr, callback]);
+        }
+
+        case 'ArrayPop': {
+          // IL AST: array.pop() -> get last + SetLength(arr, Length(arr) - 1)
+          const arr = this.transformExpression(node.array);
+          return new DelphiCall(new DelphiIdentifier('ArrayPopLast'), [arr]);
+        }
+
+        case 'ArrayReduce': {
+          // IL AST: array.reduce(callback, initial) -> ReduceArray(arr, callback, initial)
+          const arr = this.transformExpression(node.array);
+          const callback = node.callback ? this.transformExpression(node.callback) : DelphiLiteral.Nil();
+          const args = [arr, callback];
+          if (node.initialValue)
+            args.push(this.transformExpression(node.initialValue));
+          return new DelphiCall(new DelphiIdentifier('ReduceArray'), args);
+        }
+
+        case 'ArrayReverse': {
+          // IL AST: array.reverse() -> ReverseArray(arr)
+          const arr = this.transformExpression(node.array);
+          return new DelphiCall(new DelphiIdentifier('ReverseArray'), [arr]);
+        }
+
+        case 'ArrayShift': {
+          // IL AST: array.shift() -> get first + shift elements + SetLength
+          const arr = this.transformExpression(node.array);
+          return new DelphiCall(new DelphiIdentifier('ArrayShiftFirst'), [arr]);
+        }
+
+        case 'ArraySome': {
+          // IL AST: array.some(callback) -> AnyMatch(arr, callback)
+          const arr = this.transformExpression(node.array);
+          const callback = node.callback ? this.transformExpression(node.callback) : DelphiLiteral.Nil();
+          return new DelphiCall(new DelphiIdentifier('AnyMatch'), [arr, callback]);
+        }
+
+        case 'ArraySort': {
+          // IL AST: array.sort(compareFn) -> TArray.Sort<T>(arr) or SortArray(arr, compareFn)
+          const arr = this.transformExpression(node.array);
+          if (node.compareFn) {
+            const compareFn = this.transformExpression(node.compareFn);
+            return new DelphiCall(new DelphiIdentifier('SortArray'), [arr, compareFn]);
+          }
+          return new DelphiCall(new DelphiFieldAccess(new DelphiIdentifier('TArray'), 'Sort'), [arr]);
+        }
+
+        case 'ArraySplice': {
+          // IL AST: array.splice(start, deleteCount, items...) -> manual array manipulation
+          const arr = this.transformExpression(node.array);
+          const start = this.transformExpression(node.start);
+          const deleteCount = node.deleteCount ? this.transformExpression(node.deleteCount) : DelphiLiteral.Integer(0);
+          const args = [arr, start, deleteCount];
+          if (node.items) {
+            for (const item of node.items)
+              args.push(this.transformExpression(item));
+          }
+          return new DelphiCall(new DelphiIdentifier('SpliceArray'), args);
+        }
+
+        case 'ArrayUnshift': {
+          // IL AST: array.unshift(value) -> shift elements + insert at 0
+          const arr = this.transformExpression(node.array);
+          const value = node.value ? this.transformExpression(node.value) : DelphiLiteral.Nil();
+          return new DelphiCall(new DelphiIdentifier('ArrayUnshiftFirst'), [arr, value]);
+        }
+
+        case 'CopyArray': {
+          // IL AST: OpCodes.CopyArray(arr) -> Copy(arr)
+          const arr = this.transformExpression(node.array || node.argument || node.arguments?.[0]);
+          return new DelphiCall(new DelphiIdentifier('Copy'), [arr]);
+        }
+
+        case 'ArrayCreation': {
+          // IL AST: new Array(size) -> SetLength(arr, size)
+          const size = node.size ? this.transformExpression(node.size) : DelphiLiteral.Integer(0);
+          return new DelphiCall(new DelphiIdentifier('SetLength'), [size]);
+        }
+
+        // ========================[ String Operations ]========================
+
+        case 'StringCharAt': {
+          // IL AST: string.charAt(index) -> str[index + 1] (Delphi is 1-based!)
+          const str = this.transformExpression(node.string || node.value);
+          const index = this.transformExpression(node.index);
+          // Delphi strings are 1-based, so add 1 to 0-based index
+          return new DelphiArrayAccess(str, new DelphiBinaryExpression(index, '+', DelphiLiteral.Integer(1)));
+        }
+
+        case 'StringCharCodeAt': {
+          // IL AST: string.charCodeAt(index) -> Ord(str[index + 1]) (1-based!)
+          const str = this.transformExpression(node.string || node.value);
+          const index = this.transformExpression(node.index);
+          const charAccess = new DelphiArrayAccess(str, new DelphiBinaryExpression(index, '+', DelphiLiteral.Integer(1)));
+          return new DelphiCall(new DelphiIdentifier('Ord'), [charAccess]);
+        }
+
+        case 'StringEndsWith': {
+          // IL AST: string.endsWith(suffix) -> str.EndsWith(suffix) or Copy comparison
+          const str = this.transformExpression(node.string || node.value);
+          const suffix = this.transformExpression(node.suffix || node.search);
+          return new DelphiCall(new DelphiFieldAccess(str, 'EndsWith'), [suffix]);
+        }
+
+        case 'StringIncludes': {
+          // IL AST: string.includes(search) -> Pos(search, str) > 0
+          const str = this.transformExpression(node.string || node.value);
+          const search = this.transformExpression(node.searchValue || node.search);
+          return new DelphiBinaryExpression(
+            new DelphiCall(new DelphiIdentifier('Pos'), [search, str]),
+            '>',
+            DelphiLiteral.Integer(0)
+          );
+        }
+
+        case 'StringIndexOf': {
+          // IL AST: string.indexOf(search) -> Pos(search, str) - 1 (convert to 0-based)
+          const str = this.transformExpression(node.string || node.value);
+          const search = this.transformExpression(node.searchValue || node.search);
+          return new DelphiBinaryExpression(
+            new DelphiCall(new DelphiIdentifier('Pos'), [search, str]),
+            '-',
+            DelphiLiteral.Integer(1)
+          );
+        }
+
+        case 'StringRepeat': {
+          // IL AST: string.repeat(count) -> StringOfChar or loop concatenation
+          const str = this.transformExpression(node.string || node.value);
+          const count = this.transformExpression(node.count);
+          return new DelphiCall(new DelphiIdentifier('StringRepeat'), [str, count]);
+        }
+
+        case 'StringReplace': {
+          // IL AST: string.replace(search, replace) -> StringReplace(str, old, new, [rfReplaceAll])
+          const str = this.transformExpression(node.string || node.value);
+          const search = this.transformExpression(node.searchValue || node.search);
+          const replace = this.transformExpression(node.replaceValue || node.replacement);
+          return new DelphiCall(new DelphiIdentifier('StringReplace'), [str, search, replace, new DelphiArrayLiteral([new DelphiIdentifier('rfReplaceAll')])]);
+        }
+
+        case 'StringSplit': {
+          // IL AST: string.split(separator) -> str.Split([separator])
+          const str = this.transformExpression(node.string || node.value);
+          const separator = this.transformExpression(node.separator);
+          return new DelphiCall(new DelphiFieldAccess(str, 'Split'), [new DelphiArrayLiteral([separator])]);
+        }
+
+        case 'StringStartsWith': {
+          // IL AST: string.startsWith(prefix) -> str.StartsWith(prefix)
+          const str = this.transformExpression(node.string || node.value);
+          const prefix = this.transformExpression(node.prefix || node.search);
+          return new DelphiCall(new DelphiFieldAccess(str, 'StartsWith'), [prefix]);
+        }
+
+        case 'StringSubstring': {
+          // IL AST: string.substring(start, end) -> Copy(str, start + 1, end - start) (1-based!)
+          const str = this.transformExpression(node.string || node.value);
+          const start = this.transformExpression(node.start);
+          if (node.end) {
+            const end = this.transformExpression(node.end);
+            // Copy(str, start + 1, end - start)
+            return new DelphiCall(new DelphiIdentifier('Copy'), [
+              str,
+              new DelphiBinaryExpression(start, '+', DelphiLiteral.Integer(1)),
+              new DelphiBinaryExpression(end, '-', start)
+            ]);
+          }
+          // Copy(str, start + 1, MaxInt) - to end of string
+          return new DelphiCall(new DelphiIdentifier('Copy'), [
+            str,
+            new DelphiBinaryExpression(start, '+', DelphiLiteral.Integer(1)),
+            new DelphiIdentifier('MaxInt')
+          ]);
+        }
+
+        case 'StringToLowerCase': {
+          // IL AST: string.toLowerCase() -> LowerCase(str)
+          const str = this.transformExpression(node.string || node.value);
+          return new DelphiCall(new DelphiIdentifier('LowerCase'), [str]);
+        }
+
+        case 'StringToUpperCase': {
+          // IL AST: string.toUpperCase() -> UpperCase(str)
+          const str = this.transformExpression(node.string || node.value);
+          return new DelphiCall(new DelphiIdentifier('UpperCase'), [str]);
+        }
+
+        case 'StringTrim': {
+          // IL AST: string.trim() -> Trim(str)
+          const str = this.transformExpression(node.string || node.value);
+          return new DelphiCall(new DelphiIdentifier('Trim'), [str]);
+        }
+
+        case 'StringTransform': {
+          // IL AST: string transform (toUpperCase/toLowerCase/trim etc.)
+          const str = this.transformExpression(node.string || node.value);
+          const methodMap = {
+            'toUpperCase': 'UpperCase',
+            'toLowerCase': 'LowerCase',
+            'trim': 'Trim',
+            'trimStart': 'TrimLeft',
+            'trimEnd': 'TrimRight'
+          };
+          const delphiFunc = methodMap[node.method] || this.toPascalCase(node.method);
+          return new DelphiCall(new DelphiIdentifier(delphiFunc), [str]);
+        }
+
+        case 'StringConcat': {
+          // IL AST: string.concat(...others) -> str1 + str2 + ...
+          const str = this.transformExpression(node.string || node.value);
+          const args = (node.arguments || []).map(arg => this.transformExpression(arg));
+          if (args.length === 0) return str;
+          return args.reduce((acc, arg) => new DelphiBinaryExpression(acc, '+', arg), str);
+        }
+
+        // ========================[ Buffer/DataView Operations ]========================
+
+        case 'BufferCreation': {
+          // IL AST: new ArrayBuffer(size) or Buffer.alloc(size) -> SetLength(buf, size) for TBytes
+          const size = this.transformExpression(node.size);
+          return new DelphiCall(new DelphiIdentifier('SetLength'), [size]);
+        }
+
+        case 'DataViewCreation': {
+          // IL AST: new DataView(buffer) -> use TBytes/pointer-based access
+          const buffer = node.buffer ? this.transformExpression(node.buffer) : DelphiLiteral.Nil();
+          // In Delphi, DataView is just the byte array itself with manual access
+          return buffer;
+        }
+
+        case 'DataViewRead': {
+          // IL AST: view.getUint32(offset, littleEndian) -> manual byte reading with bit shifting
+          const view = this.transformExpression(node.view);
+          const offset = this.transformExpression(node.offset);
+          const method = node.method || 'getUint32';
+          const littleEndian = node.littleEndian;
+
+          let readFunc = 'ReadUInt32';
+          if (method === 'getUint16') readFunc = 'ReadUInt16';
+          else if (method === 'getUint8') readFunc = 'ReadByte';
+          else if (method === 'getInt32') readFunc = 'ReadInt32';
+          else if (method === 'getInt16') readFunc = 'ReadInt16';
+
+          if (littleEndian !== false)
+            readFunc += 'LE';
+          else
+            readFunc += 'BE';
+
+          return new DelphiCall(new DelphiIdentifier(readFunc), [view, offset]);
+        }
+
+        case 'DataViewWrite': {
+          // IL AST: view.setUint32(offset, value, littleEndian) -> manual byte writing
+          const view = this.transformExpression(node.view);
+          const offset = this.transformExpression(node.offset);
+          const value = this.transformExpression(node.value);
+          const method = node.method || 'setUint32';
+          const littleEndian = node.littleEndian;
+
+          let writeFunc = 'WriteUInt32';
+          if (method === 'setUint16') writeFunc = 'WriteUInt16';
+          else if (method === 'setUint8') writeFunc = 'WriteByte';
+          else if (method === 'setInt32') writeFunc = 'WriteInt32';
+          else if (method === 'setInt16') writeFunc = 'WriteInt16';
+
+          if (littleEndian !== false)
+            writeFunc += 'LE';
+          else
+            writeFunc += 'BE';
+
+          return new DelphiCall(new DelphiIdentifier(writeFunc), [view, offset, value]);
+        }
+
+        case 'TypedArrayCreation': {
+          // IL AST: new Uint8Array(size) -> SetLength(arr, size)
+          const size = node.size ? this.transformExpression(node.size) : DelphiLiteral.Integer(0);
+          return new DelphiCall(new DelphiIdentifier('SetLength'), [size]);
+        }
+
+        case 'TypedArraySet': {
+          // IL AST: typedArray.set(source, offset) -> Move(source[0], dest[offset], Length(source))
+          const arr = this.transformExpression(node.array);
+          const source = node.source ? this.transformExpression(node.source) : DelphiLiteral.Nil();
+          const offset = node.offset ? this.transformExpression(node.offset) : DelphiLiteral.Integer(0);
+          return new DelphiCall(new DelphiIdentifier('Move'), [
+            new DelphiArrayAccess(source, DelphiLiteral.Integer(0)),
+            new DelphiArrayAccess(arr, offset),
+            new DelphiCall(new DelphiIdentifier('Length'), [source])
+          ]);
+        }
+
+        case 'TypedArraySubarray': {
+          // IL AST: arr.subarray(start, end) -> Copy(arr, start, end - start)
+          const arr = this.transformExpression(node.array);
+          const start = this.transformExpression(node.start);
+          if (node.end) {
+            const end = this.transformExpression(node.end);
+            return new DelphiCall(new DelphiIdentifier('Copy'), [arr, start, new DelphiBinaryExpression(end, '-', start)]);
+          }
+          return new DelphiCall(new DelphiIdentifier('Copy'), [arr, start]);
+        }
+
+        // ========================[ Map/Set Operations ]========================
+
+        case 'MapCreation': {
+          // IL AST: new Map() -> TDictionary<TKey, TValue>.Create
+          return new DelphiCall(
+            new DelphiFieldAccess(new DelphiIdentifier('TDictionary'), 'Create'),
+            []
+          );
+        }
+
+        case 'MapGet': {
+          // IL AST: map.get(key) -> dict[key] or dict.TryGetValue(key, value)
+          const map = this.transformExpression(node.map);
+          const key = this.transformExpression(node.key);
+          return new DelphiArrayAccess(map, key);
+        }
+
+        case 'MapSet': {
+          // IL AST: map.set(key, value) -> dict.AddOrSetValue(key, value)
+          const map = this.transformExpression(node.map);
+          const key = this.transformExpression(node.key);
+          const value = this.transformExpression(node.value);
+          return new DelphiCall(new DelphiFieldAccess(map, 'AddOrSetValue'), [key, value]);
+        }
+
+        case 'MapHas': {
+          // IL AST: map.has(key) -> dict.ContainsKey(key)
+          const map = this.transformExpression(node.map);
+          const key = this.transformExpression(node.key);
+          return new DelphiCall(new DelphiFieldAccess(map, 'ContainsKey'), [key]);
+        }
+
+        case 'MapDelete': {
+          // IL AST: map.delete(key) -> dict.Remove(key)
+          const map = this.transformExpression(node.map);
+          const key = this.transformExpression(node.key);
+          return new DelphiCall(new DelphiFieldAccess(map, 'Remove'), [key]);
+        }
+
+        case 'SetCreation': {
+          // IL AST: new Set() -> TList<T>.Create or set type
+          return new DelphiCall(
+            new DelphiFieldAccess(new DelphiIdentifier('TList'), 'Create'),
+            []
+          );
+        }
+
+        // ========================[ Utility Operations ]========================
+
+        case 'AnsiToBytes': {
+          // IL AST: AnsiToBytes(str) -> TEncoding.ASCII.GetBytes(str)
+          const args = (node.arguments || []).map(a => this.transformExpression(a));
+          return new DelphiCall(
+            new DelphiFieldAccess(new DelphiFieldAccess(new DelphiIdentifier('TEncoding'), 'ASCII'), 'GetBytes'),
+            args
+          );
+        }
+
+        case 'Hex8ToBytes': {
+          // IL AST: Hex8ToBytes(hex) -> HexToBytes(hex)
+          const args = (node.arguments || []).map(a => this.transformExpression(a));
+          return new DelphiCall(new DelphiIdentifier('HexToBytes'), args);
+        }
+
+        case 'BytesToHex8': {
+          // IL AST: BytesToHex8(bytes) -> BytesToHex(bytes)
+          const args = (node.arguments || []).map(a => this.transformExpression(a));
+          return new DelphiCall(new DelphiIdentifier('BytesToHex'), args);
+        }
+
+        case 'Random': {
+          // IL AST: Math.random() -> Random (after Randomize)
+          return new DelphiCall(new DelphiIdentifier('Random'), []);
+        }
+
+        case 'DebugOutput': {
+          // IL AST: console.log/warn/error -> WriteLn()
+          const args = (node.arguments || []).map(arg => this.transformExpression(arg));
+          return new DelphiCall(new DelphiIdentifier('WriteLn'), args);
+        }
+
+        case 'ErrorCreation': {
+          // IL AST: new Error(message) -> Exception.Create(message)
+          const errorType = node.errorType === 'TypeError' ? 'EArgumentException' :
+                           node.errorType === 'RangeError' ? 'ERangeError' : 'Exception';
+          const msg = node.message ? this.transformExpression(node.message) : DelphiLiteral.String('');
+          return new DelphiCall(
+            new DelphiFieldAccess(new DelphiIdentifier(errorType), 'Create'),
+            [msg]
+          );
+        }
+
+        case 'ObjectKeys': {
+          // IL AST: Object.keys(obj) -> dict.Keys.ToArray
+          const obj = this.transformExpression(node.argument || node.object);
+          return new DelphiFieldAccess(new DelphiFieldAccess(obj, 'Keys'), 'ToArray');
+        }
+
+        case 'ObjectValues': {
+          // IL AST: Object.values(obj) -> dict.Values.ToArray
+          const obj = this.transformExpression(node.argument || node.object);
+          return new DelphiFieldAccess(new DelphiFieldAccess(obj, 'Values'), 'ToArray');
+        }
+
+        case 'ObjectEntries': {
+          // IL AST: Object.entries(obj) -> iterate dictionary as key-value pairs
+          const obj = this.transformExpression(node.argument || node.object);
+          return new DelphiFieldAccess(obj, 'ToArray');
+        }
+
+        case 'OpCodesCall': {
+          // IL AST: OpCodes.method(args) -> transform to equivalent Delphi operation
+          const args = (node.arguments || []).map(a => this.transformExpression(a));
+          switch (node.method) {
+            case 'CopyArray':
+              return new DelphiCall(new DelphiIdentifier('Copy'), args.length > 0 ? [args[0]] : []);
+            case 'ClearArray':
+              return new DelphiCall(new DelphiIdentifier('FillChar'), args);
+            default: {
+              const opCodesMap = {
+                'RotL32': 'RolDWord', 'RotR32': 'RorDWord',
+                'RotL8': 'RolByte', 'RotR8': 'RorByte',
+                'Pack32LE': 'PackLE', 'Pack32BE': 'PackBE',
+                'Unpack32LE': 'UnpackLE', 'Unpack32BE': 'UnpackBE',
+                'XorArrays': 'XorBytes',
+                'Hex8ToBytes': 'HexToBytes', 'BytesToHex8': 'BytesToHex',
+                'AnsiToBytes': 'AnsiStringToBytes', 'BytesToAnsi': 'BytesToAnsiString'
+              };
+              const delphiFunc = opCodesMap[node.method] || node.method;
+              return new DelphiCall(new DelphiIdentifier(delphiFunc), args);
+            }
+          }
+        }
+
+        case 'BigIntCast': {
+          // IL AST: BigInt(value) -> use Int64 or custom big integer
+          const value = this.transformExpression(node.argument || node.value);
+          return new DelphiCall(new DelphiIdentifier('Int64'), [value]);
+        }
 
         default:
           return null;
@@ -1055,6 +2019,10 @@
       }
 
       if (node.value === null) {
+        return DelphiLiteral.Nil();
+      }
+      // Handle undefined - treat same as nil in Delphi
+      if (node.value === undefined) {
         return DelphiLiteral.Nil();
       }
 

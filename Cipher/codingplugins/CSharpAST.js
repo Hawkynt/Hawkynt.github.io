@@ -58,6 +58,7 @@
     static String() { return new CSharpType('string'); }
     static Void() { return new CSharpType('void'); }
     static Object() { return new CSharpType('object'); }
+    static Dynamic() { return new CSharpType('dynamic'); } // Late-bound type for property access
     static Var() { return new CSharpType('var'); } // Type inference
 
     static Array(elementType) {
@@ -483,6 +484,7 @@
     static Float(value) { const l = new CSharpLiteral(value, 'float'); l.suffix = 'f'; return l; }
     static Double(value) { return new CSharpLiteral(value, 'double'); }
     static String(value) { return new CSharpLiteral(value, 'string'); }
+    static Char(value) { return new CSharpLiteral(value, 'char'); }
     static Bool(value) { return new CSharpLiteral(value, 'bool'); }
     static Null() { return new CSharpLiteral(null, 'null'); }
     static Hex(value, suffixOrBits = 32) {
@@ -580,6 +582,28 @@
   }
 
   /**
+   * Index from end expression (^n) for C# 8.0+ range syntax
+   * Used for negative indices: array[^5] means 5th element from end
+   */
+  class CSharpIndexFromEnd extends CSharpNode {
+    constructor(index) {
+      super('IndexFromEnd');
+      this.index = index;               // CSharpExpression (the positive offset from end)
+    }
+  }
+
+  /**
+   * Range expression (start..end) for array slicing
+   */
+  class CSharpRange extends CSharpNode {
+    constructor(start, end) {
+      super('Range');
+      this.start = start;               // CSharpExpression or null for ^0
+      this.end = end;                   // CSharpExpression or null for end
+    }
+  }
+
+  /**
    * Method invocation (Method(args))
    */
   class CSharpMethodCall extends CSharpNode {
@@ -625,6 +649,27 @@
       super('ObjectInitializer');
       this.assignments = [];            // [{name, value}]
       this.isDictionary = isDictionary; // If true, emit as collection initializer
+    }
+  }
+
+  /**
+   * Anonymous object creation (new { Prop1 = val1, Prop2 = val2 })
+   */
+  class CSharpAnonymousObject extends CSharpNode {
+    constructor(properties = []) {
+      super('AnonymousObject');
+      this.properties = properties;     // [{name, value}]
+    }
+  }
+
+  /**
+   * Interpolated string ($"Hello {name}!")
+   * Parts can be strings (literal text) or AST nodes (expressions)
+   */
+  class CSharpStringInterpolation extends CSharpNode {
+    constructor(parts = []) {
+      super('StringInterpolation');
+      this.parts = parts;               // [string | CSharpNode, ...]
     }
   }
 
@@ -798,10 +843,14 @@
     CSharpAssignment,
     CSharpMemberAccess,
     CSharpElementAccess,
+    CSharpIndexFromEnd,
+    CSharpRange,
     CSharpMethodCall,
     CSharpObjectCreation,
     CSharpArrayCreation,
     CSharpObjectInitializer,
+    CSharpAnonymousObject,
+    CSharpStringInterpolation,
     CSharpCast,
     CSharpConditional,
     CSharpLambda,

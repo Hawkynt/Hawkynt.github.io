@@ -450,6 +450,7 @@
     static Int(value, suffix = null) { return new RustLiteral(value, 'int', suffix); }
     static UInt(value, suffix = 'u32') { const l = new RustLiteral(value, 'uint'); l.suffix = suffix; return l; }
     static String(value) { return new RustLiteral(value, 'string'); }
+    static Str(value) { return new RustLiteral(value, 'str'); } // Raw &str without .to_string()
     static Bool(value) { return new RustLiteral(value, 'bool'); }
     static Char(value) { return new RustLiteral(value, 'char'); }
     static Hex(value, suffix = 'u32') {
@@ -654,10 +655,11 @@
    * Macro invocation (println!("Hello"))
    */
   class RustMacroCall extends RustNode {
-    constructor(macroName, tokens) {
+    constructor(macroName, tokens, separator = ', ') {
       super('MacroCall');
       this.macroName = macroName; // 'println', 'vec', etc.
       this.tokens = tokens;       // Raw token string or structured args
+      this.separator = separator; // Separator between tokens (', ' default, '; ' for vec repeat)
     }
   }
 

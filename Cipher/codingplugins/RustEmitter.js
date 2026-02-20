@@ -169,7 +169,7 @@
         code += node.visibility + ' ';
       }
 
-      code += node.name + ': ' + node.type.toString();
+      code += node.name + ': ' + (node.type ? node.type.toString() : '_');
       return this.line(code + ',');
     }
 
@@ -437,10 +437,30 @@
       code += ' => ';
 
       if (node.body.nodeType === 'Block') {
-        code += this.newline;
-        this.indentLevel++;
-        code += this.emitBlockContents(node.body);
-        this.indentLevel--;
+        // Filter out break statements (from JS switch) and check for multi-statement blocks
+        const stmts = (node.body.statements || []).filter(s => s.nodeType !== 'Break');
+
+        if (stmts.length === 0) {
+          // Empty block
+          code += '{},' + this.newline;
+        } else if (stmts.length === 1) {
+          // Single statement - can be inline
+          code += this.emit(stmts[0]).trim();
+          // Remove trailing semicolon for expression-like statements
+          if (code.endsWith(';')) {
+            code = code.slice(0, -1);
+          }
+          code += ',' + this.newline;
+        } else {
+          // Multi-statement block needs braces
+          code += '{' + this.newline;
+          this.indentLevel++;
+          for (const stmt of stmts) {
+            code += this.emit(stmt);
+          }
+          this.indentLevel--;
+          code += this.indent() + '}' + this.newline;
+        }
       } else {
         code += this.emit(node.body) + ',' + this.newline;
       }
@@ -478,10 +498,28 @@
           .replace(/\n/g, '\\n')
           .replace(/\r/g, '\\r')
           .replace(/\t/g, '\\t');
+        // Use .to_string() to convert &str to String for owned string fields
+        return `"${escaped}".to_string()`;
+      }
+      if (node.literalType === 'str') {
+        // Raw &str without conversion (for function parameters, etc.)
+        const escaped = String(node.value)
+          .replace(/\\/g, '\\\\')
+          .replace(/"/g, '\\"')
+          .replace(/\n/g, '\\n')
+          .replace(/\r/g, '\\r')
+          .replace(/\t/g, '\\t');
         return `"${escaped}"`;
       }
       if (node.literalType === 'char') {
-        return `'${node.value}'`;
+        const ch = String(node.value);
+        const escaped = ch
+          .replace(/\\/g, '\\\\')
+          .replace(/'/g, "\\'")
+          .replace(/\n/g, '\\n')
+          .replace(/\r/g, '\\r')
+          .replace(/\t/g, '\\t');
+        return `'${escaped}'`;
       }
 
       // Numeric literal
@@ -506,7 +544,69 @@
     emitBinaryExpression(node) {
       const left = this.emit(node.left);
       const right = this.emit(node.right);
-      return `${left} ${node.operator} ${right}`;
+      const op = node.operator;
+
+      // Wrapping arithmetic for cryptographic code (prevents overflow panics)
+      // Use .wrapping_add(), .wrapping_sub(), .wrapping_mul() for +, -, *
+      if (op === '+') {
+        return `${this.wrapForMethodCall(left, node.left)}.wrapping_add(${right})`;
+      }
+      if (op === '-') {
+        return `${this.wrapForMethodCall(left, node.left)}.wrapping_sub(${right})`;
+      }
+      if (op === '*') {
+        return `${this.wrapForMethodCall(left, node.left)}.wrapping_mul(${right})`;
+      }
+
+      // For other operators, add parentheses when needed for precedence
+      const leftStr = this.needsParens(node.left, op, 'left') ? `(${left})` : left;
+      const rightStr = this.needsParens(node.right, op, 'right') ? `(${right})` : right;
+      return `${leftStr} ${op} ${rightStr}`;
+    }
+
+    /**
+     * Wrap expression in parentheses if needed for method call
+     */
+    wrapForMethodCall(code, node) {
+      // Binary expressions and casts need parentheses before method calls
+      if (node && (node.nodeType === 'BinaryExpression' || node.nodeType === 'Cast')) {
+        return `(${code})`;
+      }
+      return code;
+    }
+
+    /**
+     * Check if an expression needs parentheses in a binary expression
+     */
+    needsParens(node, parentOp, side) {
+      if (!node || node.nodeType !== 'BinaryExpression') return false;
+
+      const childOp = node.operator;
+
+      // Precedence table (higher = binds tighter)
+      const precedence = {
+        '*': 13, '/': 13, '%': 13,
+        '+': 12, '-': 12,
+        '<<': 11, '>>': 11,
+        '<': 10, '<=': 10, '>': 10, '>=': 10,
+        '==': 9, '!=': 9,
+        '&': 8,
+        '^': 7,
+        '|': 6,
+        '&&': 5,
+        '||': 4
+      };
+
+      const parentPrec = precedence[parentOp] || 0;
+      const childPrec = precedence[childOp] || 0;
+
+      // If child has lower precedence, needs parens
+      if (childPrec < parentPrec) return true;
+
+      // If same precedence and right side, needs parens for left-associativity
+      if (childPrec === parentPrec && side === 'right') return true;
+
+      return false;
     }
 
     emitUnaryExpression(node) {
@@ -533,7 +633,13 @@
     }
 
     emitMethodCall(node) {
-      let code = this.emit(node.target) + '.' + node.methodName;
+      // Cast expressions need parentheses before method calls
+      if (!node.target) return `/* null target */.${node.methodName ?? 'unknown'}()`;
+      let target = this.emit(node.target);
+      if (node.target.nodeType === 'Cast') {
+        target = '(' + target + ')';
+      }
+      let code = target + '.' + node.methodName;
 
       if (node.turbofish) {
         code += '::' + node.turbofish;
@@ -585,7 +691,18 @@
     }
 
     emitCast(node) {
-      return `${this.emit(node.expression)} as ${node.targetType.toString()}`;
+      if (!node.expression) return `/* null cast */ 0 as ${node.targetType?.toString() ?? '_'}`;
+      const exprCode = this.emit(node.expression);
+      // Need parentheses for complex expressions to ensure correct operator precedence
+      // e.g., (j & 3u32) as usize, not j & 3u32 as usize (which parses as j & (3u32 as usize))
+      const needsParens = node.expression.nodeType === 'BinaryExpression' ||
+                          node.expression.nodeType === 'UnaryExpression' ||
+                          node.expression.nodeType === 'ConditionalExpression' ||
+                          node.expression.nodeType === 'Cast';
+      if (needsParens) {
+        return `(${exprCode}) as ${node.targetType.toString()}`;
+      }
+      return `${exprCode} as ${node.targetType.toString()}`;
     }
 
     emitReference(node) {
@@ -616,17 +733,18 @@
 
       code += '|';
       const params = node.parameters.map(p => {
-        let param = p.name;
-        if (p.type) param += ': ' + p.type.toString();
+        // Handle both string parameters and RustParameter objects
+        let param = typeof p === 'string' ? p : p.name;
+        if (p && p.type) param += ': ' + p.type.toString();
         return param;
       });
       code += params.join(', ');
       code += '| ';
 
-      if (node.body.nodeType === 'Block') {
+      if (node.body) {
         code += this.emit(node.body);
       } else {
-        code += this.emit(node.body);
+        code += '{ /* empty body */ }';
       }
 
       return code;
@@ -635,14 +753,18 @@
     emitMacroCall(node) {
       // Handle tokens that might be RustNodes or strings
       let tokens = node.tokens;
+      // Use separator from node (default ', ', or '; ' for vec repeat)
+      const separator = node.separator || ', ';
       if (tokens && typeof tokens === 'object' && tokens.nodeType) {
         tokens = this.emit(tokens);
       } else if (Array.isArray(tokens)) {
-        tokens = tokens.map(t => typeof t === 'object' && t.nodeType ? this.emit(t) : t).join(', ');
+        tokens = tokens.map(t => t && typeof t === 'object' && t.nodeType ? this.emit(t) : (t ?? '')).join(separator);
       }
       // Remove trailing ! from macroName if present (emitter adds it)
       const macroName = node.macroName.endsWith('!') ? node.macroName.slice(0, -1) : node.macroName;
-      return `${macroName}!(${tokens})`;
+      // vec! and array macros use brackets, most others use parentheses
+      const useBrackets = ['vec', 'array', 'arr'].includes(macroName.toLowerCase());
+      return useBrackets ? `${macroName}![${tokens}]` : `${macroName}!(${tokens})`;
     }
 
     emitIfExpression(node) {

@@ -45,6 +45,24 @@
         return node; // Pass through legacy formatted strings
       }
 
+      // Handle arrays (list of statements)
+      if (Array.isArray(node)) {
+        return node.map(n => this.emit(n)).filter(s => s).join('');
+      }
+
+      // Handle nodes with missing nodeType
+      if (!node.nodeType) {
+        // Try to infer type from node properties (duck typing)
+        if (node.statements !== undefined) return this.emitBlock(node);
+        if (node.target && node.value && node.operator !== undefined) return this.emitAssignment(node);
+        if (node.name && typeof node.name === 'string' && Object.keys(node).length <= 3) return this.emitIdentifier(node);
+        // Skip known control objects
+        if (node.isMethod !== undefined || node.initStatement !== undefined) return '';
+        const keys = Object.keys(node).slice(0, 5).join(', ');
+        console.error(`No emitter for node type: ${node.nodeType} (keys: ${keys})`);
+        return '';
+      }
+
       const emitterMethod = `emit${node.nodeType}`;
       if (typeof this[emitterMethod] === 'function') {
         return this[emitterMethod](node);
@@ -112,6 +130,15 @@
         }
         return this.line(`import ${node.module}`);
       }
+    }
+
+    // ========================[ RAW CODE ]========================
+
+    emitRawCode(node) {
+      // Emit raw Python code as-is (used for framework stubs)
+      // Each line needs proper indentation at module level
+      const lines = node.code.split('\n');
+      return lines.map(line => this.line(line)).join('') + this.newline;
     }
 
     // ========================[ CLASS ]========================
@@ -228,19 +255,34 @@
       return code;
     }
 
-    emitAssignment(node) {
+    emitAssignment(node, asExpression = false) {
       const target = this.emit(node.target);
       const value = this.emit(node.value);
 
       let code = target;
 
-      // Type annotation (only if addTypeHints is enabled)
-      if (this.addTypeHints && node.type && node.operator === '=') {
+      // Type annotation (only if addTypeHints is enabled and in statement context)
+      if (!asExpression && this.addTypeHints && node.type && node.operator === '=') {
         code += `: ${node.type.toString()}`;
       }
 
       code += ` ${node.operator} ${value}`;
+
+      // In expression context (e.g., inside subscript), don't add line formatting
+      if (asExpression) {
+        return code;
+      }
       return this.line(code);
+    }
+
+    /**
+     * Emit an assignment as an expression (for use in expression contexts like subscripts)
+     * Note: Python 3.8+ has walrus operator := for true assignment expressions,
+     * but augmented assignments (+=, -=) cannot be expressions in Python.
+     * We emit them inline but this may produce invalid Python for some constructs.
+     */
+    emitAssignmentAsExpression(node) {
+      return this.emitAssignment(node, true);
     }
 
     emitExpressionStatement(node) {
@@ -292,17 +334,87 @@
         this.indentLevel--;
       }
 
-      // else branch
+      // else branch (could be another If node for elif, or a Block)
       if (node.elseBranch) {
-        code += this.line('else:');
-        this.indentLevel++;
-        const elseStatements = node.elseBranch?.statements || [];
-        if (elseStatements.length > 0) {
-          code += this.emit(node.elseBranch);
+        // Check if elseBranch is another If node (convert to elif)
+        if (node.elseBranch.nodeType === 'If') {
+          code += this.line(`elif ${this.emit(node.elseBranch.condition)}:`);
+          this.indentLevel++;
+          const elifStatements = node.elseBranch.thenBranch?.statements || [];
+          if (elifStatements.length > 0) {
+            code += this.emit(node.elseBranch.thenBranch);
+          } else {
+            code += this.line('pass');
+          }
+          this.indentLevel--;
+          // Recursively handle the rest of the elif chain
+          if (node.elseBranch.elseBranch) {
+            // Create a fake If node to continue the chain
+            const fakeIf = { nodeType: 'If', condition: null, thenBranch: null, elseBranch: node.elseBranch.elseBranch };
+            if (node.elseBranch.elseBranch.nodeType === 'If') {
+              // More elif
+              code += this.line(`elif ${this.emit(node.elseBranch.elseBranch.condition)}:`);
+              this.indentLevel++;
+              const nestedStatements = node.elseBranch.elseBranch.thenBranch?.statements || [];
+              if (nestedStatements.length > 0) {
+                code += this.emit(node.elseBranch.elseBranch.thenBranch);
+              } else {
+                code += this.line('pass');
+              }
+              this.indentLevel--;
+              // Continue recursively for deeply nested
+              let current = node.elseBranch.elseBranch;
+              while (current.elseBranch) {
+                if (current.elseBranch.nodeType === 'If') {
+                  code += this.line(`elif ${this.emit(current.elseBranch.condition)}:`);
+                  this.indentLevel++;
+                  const stmts = current.elseBranch.thenBranch?.statements || [];
+                  if (stmts.length > 0) {
+                    code += this.emit(current.elseBranch.thenBranch);
+                  } else {
+                    code += this.line('pass');
+                  }
+                  this.indentLevel--;
+                  current = current.elseBranch;
+                } else {
+                  // Final else block
+                  code += this.line('else:');
+                  this.indentLevel++;
+                  const stmts = current.elseBranch?.statements || [];
+                  if (stmts.length > 0) {
+                    code += this.emit(current.elseBranch);
+                  } else {
+                    code += this.line('pass');
+                  }
+                  this.indentLevel--;
+                  break;
+                }
+              }
+            } else {
+              // Final else block
+              code += this.line('else:');
+              this.indentLevel++;
+              const elseStmts = node.elseBranch.elseBranch?.statements || [];
+              if (elseStmts.length > 0) {
+                code += this.emit(node.elseBranch.elseBranch);
+              } else {
+                code += this.line('pass');
+              }
+              this.indentLevel--;
+            }
+          }
         } else {
-          code += this.line('pass');
+          // Regular else block
+          code += this.line('else:');
+          this.indentLevel++;
+          const elseStatements = node.elseBranch?.statements || [];
+          if (elseStatements.length > 0) {
+            code += this.emit(node.elseBranch);
+          } else {
+            code += this.line('pass');
+          }
+          this.indentLevel--;
         }
-        this.indentLevel--;
       }
 
       return code;
@@ -406,7 +518,8 @@
           .replace(/"/g, '\\"')
           .replace(/\n/g, '\\n')
           .replace(/\r/g, '\\r')
-          .replace(/\t/g, '\\t');
+          .replace(/\t/g, '\\t')
+          .replace(/\0/g, '\\x00');  // Escape null bytes
         return `"${escaped}"`;
       }
       if (node.literalType === 'bytes') {
@@ -420,24 +533,49 @@
 
     emitFString(node) {
       // Emit Python f-string: f"text {expr} text {expr} ..."
-      let result = 'f"';
+      // First, emit all expressions to check for quote conflicts
+      const emittedExprs = node.expressions.map(e => this.emit(e));
+
+      // Check if any expression contains double quotes - if so, use single quotes for f-string
+      const hasDoubleQuotes = emittedExprs.some(expr => expr.includes('"'));
+      const hasSingleQuotes = emittedExprs.some(expr => expr.includes("'"));
+
+      // Choose quote character: prefer double, but use single if expressions have double quotes
+      // If expressions have both, we need to use string concatenation instead
+      let quote = '"';
+      let altQuote = "'";
+      if (hasDoubleQuotes && !hasSingleQuotes) {
+        quote = "'";
+        altQuote = '"';
+      } else if (hasDoubleQuotes && hasSingleQuotes) {
+        // Both quote types in expressions - fall back to str.format or concatenation
+        // For simplicity, just use double quotes and hope for the best (rare case)
+        quote = '"';
+        altQuote = "'";
+      }
+
+      let result = `f${quote}`;
       for (let i = 0; i < node.parts.length; ++i) {
-        // Escape the string part
-        const part = (node.parts[i] || '')
+        // Escape the string part - escape the quote we're using
+        let part = (node.parts[i] || '')
           .replace(/\\/g, '\\\\')
-          .replace(/"/g, '\\"')
           .replace(/\n/g, '\\n')
           .replace(/\r/g, '\\r')
           .replace(/\t/g, '\\t')
           .replace(/\{/g, '{{')   // Escape literal braces in f-strings
           .replace(/\}/g, '}}');
+
+        // Escape the quote character we're using
+        if (quote === '"')
+          part = part.replace(/"/g, '\\"');
+        else
+          part = part.replace(/'/g, "\\'");
+
         result += part;
-        if (i < node.expressions.length) {
-          const expr = this.emit(node.expressions[i]);
-          result += `{${expr}}`;
-        }
+        if (i < emittedExprs.length)
+          result += `{${emittedExprs[i]}}`;
       }
-      result += '"';
+      result += quote;
       return result;
     }
 
@@ -456,16 +594,136 @@
       return node.name;
     }
 
+    // Python operator precedence (higher number = higher precedence, binds tighter)
+    // Based on: https://docs.python.org/3/reference/expressions.html#operator-precedence
+    // Note: Python docs list from lowest to highest, we reverse for easier comparison
+    getOperatorPrecedence(op) {
+      const precedence = {
+        // Exponentiation (highest precedence, binds tightest)
+        '**': 14,
+        // Unary
+        '~': 13,
+        // Multiplication
+        '*': 12, '/': 12, '//': 12, '%': 12, '@': 12,
+        // Addition
+        '+': 11, '-': 11,
+        // Shift
+        '<<': 10, '>>': 10,
+        // Bitwise and
+        '&': 9,
+        // Bitwise xor
+        '^': 8,
+        // Bitwise or
+        '|': 7,
+        // Comparisons
+        'in': 6, 'not in': 6, 'is': 6, 'is not': 6, '<': 6, '<=': 6, '>': 6, '>=': 6, '==': 6, '!=': 6,
+        // Boolean not
+        'not': 5,
+        // Boolean and
+        'and': 4,
+        // Boolean or
+        'or': 3,
+        // Conditional
+        'if': 2,
+        // Lambda (lowest)
+        'lambda': 1
+      };
+      return precedence[op] || 0;
+    }
+
     emitBinaryExpression(node) {
-      const left = this.emit(node.left);
-      const right = this.emit(node.right);
+      const parentPrecedence = this.getOperatorPrecedence(node.operator);
+      const parentOp = node.operator;
+
+      // Right-associative operators: only ** (exponentiation) in Python
+      const isRightAssociative = parentOp === '**';
+
+      // Emit operands and determine if they need parentheses
+      let left = this.emit(node.left);
+      let right = this.emit(node.right);
+
+      // Add parentheses to left operand if needed
+      if (node.left && node.left.nodeType === 'BinaryExpression') {
+        const leftOp = node.left.operator;
+        const leftPrecedence = this.getOperatorPrecedence(leftOp);
+
+        // Left operand needs parens when it would be parsed differently without them
+        // Examples:
+        // - (a + b) * c: + (11) < * (12), without parens → a + b * c → a + (b * c) WRONG, need parens ✓
+        // - (a & b) == c: & (9) > == (6), without parens → a & b == c → (a & b) == c CORRECT, no parens
+        // - (a + b) + c: + == +, left-associative, → a + b + c → (a + b) + c CORRECT, no parens
+        // - (a + b) - c: + (11) == - (11) but different op, need parens for clarity
+
+        const needsParens = leftPrecedence < parentPrecedence ||
+                           (leftPrecedence === parentPrecedence && leftOp !== parentOp);
+
+        if (needsParens)
+          left = `(${left})`;
+      }
+
+      // Add parentheses to right operand if needed
+      if (node.right && node.right.nodeType === 'BinaryExpression') {
+        const rightOp = node.right.operator;
+        const rightPrecedence = this.getOperatorPrecedence(rightOp);
+
+        let needsParens;
+        if (isRightAssociative) {
+          // For right-associative ops (like **), right operand needs parens if:
+          // - Strictly lower precedence
+          // - Equal precedence but different operator
+          needsParens = rightPrecedence < parentPrecedence ||
+                       (rightPrecedence === parentPrecedence && rightOp !== parentOp);
+        } else {
+          // For left-associative ops, right operand needs parens if:
+          // - Lower or EQUAL precedence (to force left-to-right evaluation)
+          needsParens = rightPrecedence <= parentPrecedence;
+        }
+
+        if (needsParens)
+          right = `(${right})`;
+      }
 
       // Map operators
-      let op = node.operator;
+      let op = parentOp;
       if (op === '===') op = '==';
       if (op === '!==') op = '!=';
       if (op === '&&') op = 'and';
       if (op === '||') op = 'or';
+
+      // For bitwise operators, wrap operands with int() to handle floats
+      // JavaScript implicitly converts floats to ints for bitwise operations, Python doesn't
+      const bitwiseOps = ['&', '|', '^', '<<', '>>', '~'];
+      if (bitwiseOps.includes(op)) {
+        // Only wrap if not already an int literal or already wrapped with int()
+        const needsWrap = (str) => {
+          if (/^-?\d+$/.test(str)) return false; // Integer literal
+          if (/^0x[\da-fA-F]+$/.test(str)) return false; // Hex literal
+          if (/^int\(/.test(str)) return false; // Already wrapped with int()
+          return true;
+        };
+        if (needsWrap(left))
+          left = `int(${left})`;
+        if (needsWrap(right))
+          right = `int(${right})`;
+      }
+
+      // For left shift operations in Python:
+      // JavaScript truncates shifts to 32-bit, but Python integers are unbounded.
+      // HOWEVER: Automatic 32-bit masking can break BigInt operations where
+      // large shifts are intentional (e.g., 1 << 128 for cryptographic modular arithmetic).
+      //
+      // The transpiler handles this as follows:
+      // - IL AST operations like RotL32, Shl32 explicitly add 32-bit masking
+      // - Raw << operations are NOT masked to preserve BigInt semantics
+      // - If 32-bit behavior is needed, the source code should use OpCodes.Shl32
+      //
+      // This approach:
+      // - Preserves BigInt arithmetic (1 << 128 works correctly)
+      // - Relies on explicit masking for 32-bit operations (via OpCodes.Shl32)
+      if (op === '<<') {
+        // Don't automatically mask - let the algorithm handle bit width
+        return `${left} ${op} ${right}`;
+      }
 
       return `${left} ${op} ${right}`;
     }
@@ -477,8 +735,24 @@
       let op = node.operator;
       if (op === '!') op = 'not';
 
-      // Word operators need a space after them
-      const wordOperators = ['not', 'await', '*'];
+      // Handle ++ and -- operators that leaked through
+      if (op === '++')
+        return `${operand} += 1`;
+      if (op === '--')
+        return `${operand} -= 1`;
+
+      // Bitwise NOT (~) in Python produces -(x+1), which is negative for positive inputs
+      // JavaScript truncates to 32-bit, so ~0 = -1 (0xFFFFFFFF), but Python's ~0 = -1 (unbounded)
+      // We need to mask to 32-bit to match JavaScript behavior
+      // IMPORTANT: Wrap entire expression in parens to preserve precedence in larger expressions
+      // e.g., (~x) + 1 should become ((~int(x)) & 0xFFFFFFFF) + 1, not (~int(x)) & (0xFFFFFFFF + 1)
+      if (op === '~') {
+        return `((~int(${operand})) & 0xFFFFFFFF)`;
+      }
+
+      // Word operators need a space after them (not, await)
+      // Note: * for unpacking does NOT need a space: [*arr] not [* arr]
+      const wordOperators = ['not', 'await'];
       if (wordOperators.includes(op)) {
         return `${op} ${operand}`;
       }
@@ -486,22 +760,76 @@
       return `${op}${operand}`;
     }
 
+    // Fallback for UpdateExpression nodes that weren't transformed
+    emitUpdateExpression(node) {
+      const operand = this.emit(node.argument);
+      const op = node.operator === '++' ? '+= 1' : '-= 1';
+      return `${operand} ${op}`;
+    }
+
     emitMemberAccess(node) {
-      return `${this.emit(node.object)}.${node.attribute}`;
+      const objCode = this.emit(node.object);
+      // Wrap in parentheses if the object is a complex expression that needs grouping
+      const needsParens = node.object?.nodeType === 'BinaryExpression' ||
+                          node.object?.nodeType === 'UnaryExpression' ||
+                          node.object?.nodeType === 'Conditional' ||
+                          node.object?.nodeType === 'ConditionalExpression' ||
+                          node.object?.nodeType === 'LogicalExpression' ||
+                          node.object?.nodeType === 'Lambda';
+      return needsParens ? `(${objCode}).${node.attribute}` : `${objCode}.${node.attribute}`;
     }
 
     emitSubscript(node) {
       const obj = this.emit(node.object);
-      const index = this.emit(node.index);
 
-      if (obj.includes('\n') || obj.match(/^\s{4}/)) {
-        console.error('[ERROR Subscript] Object contains formatting:', JSON.stringify(obj.substring(0, 50)));
+      // Handle index specially - if it's an assignment, emit as expression to avoid line formatting
+      // Check multiple ways since some nodes might not have proper nodeType set
+      let index;
+      if (node.index && (
+        node.index.nodeType === 'Assignment' ||
+        (node.index.operator && node.index.target && node.index.value)  // Duck typing for assignment
+      )) {
+        index = this.emitAssignmentAsExpression(node.index);
+      } else {
+        index = this.emit(node.index);
       }
-      if (index.includes('\n') || index.match(/^\s{4}/)) {
-        console.error('[ERROR Subscript] Index contains formatting:', JSON.stringify(index.substring(0, 50)));
+
+      // Safety: strip any line formatting that leaked through (shouldn't happen but belt & suspenders)
+      if (typeof index === 'string') {
+        index = index.trim();
       }
+
+      // Check if index contains division which could produce float
+      // JavaScript truncates floats for array indices, Python requires int
+      const containsDivision = this._containsDivisionOperator(node.index);
+      if (containsDivision)
+        return `${obj}[int(${index})]`;
 
       return `${obj}[${index}]`;
+    }
+
+    /**
+     * Check if an expression contains a division operator that could produce a float
+     */
+    _containsDivisionOperator(node) {
+      if (!node) return false;
+      // Check if this node is a binary expression with division
+      if (node.nodeType === 'BinaryExpression') {
+        if (node.operator === '/') return true;
+        // Recursively check operands
+        return this._containsDivisionOperator(node.left) || this._containsDivisionOperator(node.right);
+      }
+      // Check call expressions (like math.floor returns float in some cases)
+      if (node.nodeType === 'Call') {
+        // Check arguments recursively
+        if (node.args && node.args.some(arg => this._containsDivisionOperator(arg)))
+          return true;
+      }
+      // Check nested expressions
+      if (node.expression) return this._containsDivisionOperator(node.expression);
+      if (node.argument) return this._containsDivisionOperator(node.argument);
+      if (node.operand) return this._containsDivisionOperator(node.operand);
+      return false;
     }
 
     emitCall(node) {
@@ -514,12 +842,30 @@
 
     emitList(node) {
       const elements = node.elements.map(e => this.emit(e));
+      // Use list() for empty lists so overridden list class takes effect (JSArray)
+      if (elements.length === 0)
+        return 'list()';
       return `[${elements.join(', ')}]`;
     }
 
     emitDict(node) {
-      const items = node.items.map(item => `${this.emit(item.key)}: ${this.emit(item.value)}`);
-      return `{${items.join(', ')}}`;
+      const parts = [];
+
+      // Add spread elements first (Python 3.5+ dict unpacking)
+      if (node.spreads && node.spreads.length > 0) {
+        for (const spread of node.spreads) {
+          parts.push(`**${this.emit(spread)}`);
+        }
+      }
+
+      // Add regular key-value pairs
+      for (const item of node.items) {
+        parts.push(`${this.emit(item.key)}: ${this.emit(item.value)}`);
+      }
+
+      const dictLiteral = `{${parts.join(', ')}}`;
+      // Use JSObject wrapper for JavaScript-like attribute access on dicts
+      return node.useJSObject ? `JSObject(${dictLiteral})` : dictLiteral;
     }
 
     emitTuple(node) {
@@ -532,11 +878,24 @@
     }
 
     emitListComprehension(node) {
-      let code = `[${this.emit(node.expression)} for ${node.variable} in ${this.emit(node.iterable)}`;
+      // Handle variable as either string or AST node
+      const varStr = typeof node.variable === 'string' ? node.variable : this.emit(node.variable);
+      let code = `[${this.emit(node.expression)} for ${varStr} in ${this.emit(node.iterable)}`;
       if (node.condition) {
         code += ` if ${this.emit(node.condition)}`;
       }
       code += ']';
+      return code;
+    }
+
+    emitGeneratorExpression(node) {
+      // Handle variable as either string or AST node
+      const varStr = typeof node.variable === 'string' ? node.variable : this.emit(node.variable);
+      let code = `(${this.emit(node.expression)} for ${varStr} in ${this.emit(node.iterable)}`;
+      if (node.condition) {
+        code += ` if ${this.emit(node.condition)}`;
+      }
+      code += ')';
       return code;
     }
 
@@ -550,10 +909,21 @@
     }
 
     emitSlice(node) {
-      const start = node.start ? this.emit(node.start) : '';
-      const stop = node.stop ? this.emit(node.stop) : '';
-      const step = node.step ? `:${this.emit(node.step)}` : '';
-      return `${start}:${stop}${step}`;
+      // Check for division in slice indices and wrap with int() if needed
+      // Python slice indices must be integers, JavaScript truncates floats
+      let start = node.start ? this.emit(node.start) : '';
+      let stop = node.stop ? this.emit(node.stop) : '';
+      let step = node.step ? this.emit(node.step) : '';
+
+      if (start && this._containsDivisionOperator(node.start))
+        start = `int(${start})`;
+      if (stop && this._containsDivisionOperator(node.stop))
+        stop = `int(${stop})`;
+      if (step && this._containsDivisionOperator(node.step))
+        step = `int(${step})`;
+
+      const stepPart = step ? `:${step}` : '';
+      return `${start}:${stop}${stepPart}`;
     }
 
     emitType(node) {

@@ -18,40 +18,45 @@
 
 ## Architecture Overview
 
-The code generation system uses a **five-stage pipeline** that parses JavaScript source code, builds an intermediate representation with types, and transforms it into target language code.
+The code generation system uses a **six-stage pipeline** that parses JavaScript source code, builds an intermediate representation with types, and transforms it into target language code.
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                      COMPLETE CODE GENERATION PIPELINE                          │
-├─────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                  │
-│  ┌────────────┐   ┌────────────┐   ┌────────────┐   ┌────────────┐   ┌────────┐│
-│  │ JavaScript │   │   JS AST   │   │   IL AST   │   │  Target    │   │ Target ││
-│  │   Source   │──>│  (Plain)   │──>│  (Typed)   │──>│ Lang AST   │──>│  Code  ││
-│  │            │   │            │   │            │   │            │   │        ││
-│  └────────────┘   └────────────┘   └────────────┘   └────────────┘   └────────┘│
-│        │                │                │                │              │      │
-│        ▼                ▼                ▼                ▼              ▼      │
-│  ┌───────────┐   ┌───────────┐   ┌───────────┐   ┌───────────┐   ┌───────────┐ │
-│  │  Tokenizer│   │  Parser   │   │    IL     │   │Transformer│   │  Emitter  │ │
-│  │           │   │           │   │  Builder  │   │(per lang) │   │(per lang) │ │
-│  └───────────┘   └───────────┘   └───────────┘   └───────────┘   └───────────┘ │
-│                                                                                  │
-│  ════════════════════════════════════════════════════════════════════════════   │
-│     STAGE 1         STAGE 2          STAGE 3          STAGE 4       STAGE 5     │
-│    Tokenizing       Parsing        IL Building     Transformation   Emission    │
-│                                                                                  │
-│  └──────────────────────────────────────────┘                                   │
-│            TypeAwareJSASTParser                                                 │
-│                                                                                  │
-└─────────────────────────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────────────────────────┐
+│                        COMPLETE CODE GENERATION PIPELINE                               │
+├───────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                        │
+│  JS Source → Parser → JS AST → IL Transformer → IL AST → Language Transformer          │
+│                                                    ↓                                   │
+│                              Language Source ← Language Emitter ← Language AST         │
+│                                                                                        │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐   │
+│  │    JS    │  │  JS AST  │  │  IL AST  │  │ Language │  │ Language │  │ Language │   │
+│  │  Source  │─>│ (Plain)  │─>│ (Typed)  │─>│   AST    │─>│  Source  │─>│   Code   │   │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘  └──────────┘  └──────────┘   │
+│       │             │             │             │             │             │          │
+│       ▼             ▼             ▼             ▼             ▼             ▼          │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐                 │
+│  │  Parser  │  │    IL    │  │ Language │  │ Language │  │  Final   │                 │
+│  │          │  │Transformer│  │Transformer│  │ Emitter  │  │  Output  │                 │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘  └──────────┘                 │
+│                                                                                        │
+│  ══════════════════════════════════════════════════════════════════════════════════   │
+│   STAGE 1      STAGE 2        STAGE 3         STAGE 4         STAGE 5      STAGE 6    │
+│   Parsing    JS AST Build   IL Transform   Lang Transform   Lang Emission   Output    │
+│                                                                                        │
+│  └─────────────────────────────────────┘  └────────────────────────────────────────┘  │
+│         Global Options Applied               Language Options Applied                  │
+│                                                                                        │
+└───────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Key Terminology
 
 - **JS AST** - Plain JavaScript Abstract Syntax Tree (direct parse of JS syntax)
-- **IL AST** - Intermediate Language AST (with types inferred and syntax flattened)
-- **Target AST** - Language-specific AST (Rust, Go, Java, etc.)
+- **IL AST** - Intermediate Language AST (type-inferred, language-agnostic - no JS-specific constructs like UMD, IIFE, Math.*, Object.*, etc.)
+- **Language AST** - Language-specific AST (Rust, Go, Java, etc.) with constructs native to the target language
+- **Global Options** - Applied during IL transformation (affect all languages)
+- **Language Options** - Applied during Language Transformer and Language Emitter (language-specific)
 
 ### What Plugins Receive: The IL AST
 
@@ -283,11 +288,11 @@ JavaScript has multiple ways to define the same thing. The IL AST normalizes the
 
 ---
 
-## From IL AST to Target Code
+## From IL AST to Language Source
 
 ### Stage 4: Transformation (Language-Specific)
 
-The transformer converts the **IL AST** to a **language-specific Target AST**:
+The transformer converts the **IL AST** to a **language-specific Language AST**:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
@@ -346,7 +351,7 @@ The transformer converts the **IL AST** to a **language-specific Target AST**:
 
 ### Stage 5: Emission (Language-Specific)
 
-The emitter converts the **Target AST** to actual source code:
+The emitter converts the **Language AST** to the final Language Source code:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
@@ -382,8 +387,8 @@ All 15 language plugins use the full AST pipeline architecture:
 │  4 files per language:                                                          │
 │  ├── XXX.js           Plugin entry point, coordinates pipeline                  │
 │  ├── XXXAST.js        Language-specific AST node definitions                    │
-│  ├── XXXTransformer.js IL AST → Target AST                                      │
-│  └── XXXEmitter.js    Target AST → Source code                                  │
+│  ├── XXXTransformer.js IL AST → Language AST                                    │
+│  └── XXXEmitter.js    Language AST → Language Source                            │
 │                                                                                  │
 │  All 15 Languages:                                                              │
 │  Basic, C, C++, C#, Delphi, Go, Java, JavaScript, Kotlin,                      │
@@ -426,7 +431,7 @@ All 15 language plugins use the full AST pipeline architecture:
 │           │ uses                                                                 │
 │           ▼                                                                      │
 │  ┌─────────────────┐                                                            │
-│  │ RustTransformer │  IL AST → Rust AST (Target AST)                            │
+│  │ RustTransformer │  IL AST → Rust AST (Language AST)                          │
 │  ├─────────────────┤  ──────────────────────────────                            │
 │  │                 │                                                            │
 │  │  transform()    │  Entry point - transforms entire program                   │
@@ -472,7 +477,7 @@ All 15 language plugins use the full AST pipeline architecture:
 │  │  GenerateFromAST(ilAst, options) {                                           │
 │  │    // ilAst is the IL AST with typeAnnotation on nodes                       │
 │  │    transformer = new RustTransformer(options)                                │
-│  │    rustAst = transformer.transform(ilAst) // Target AST                      │
+│  │    rustAst = transformer.transform(ilAst) // Language AST                    │
 │  │    emitter = new RustEmitter(options)                                        │
 │  │    return emitter.emit(rustAst)                                              │
 │  │  }                                                                           │
@@ -548,7 +553,7 @@ All 15 language plugins use the full AST pipeline architecture:
 │         │ RustTransformer.transform()                                            │
 │         ▼                                                                        │
 │  ┌─────────────────────────────────────────────────────────────────────────┐    │
-│  │  Target AST: Rust AST (RustModule)                                      │    │
+│  │  Language AST: Rust AST (RustModule)                                    │    │
 │  │                                                                          │    │
 │  │  RustModule {                                                            │    │
 │  │    items: [                                                              │    │

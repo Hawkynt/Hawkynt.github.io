@@ -55,11 +55,17 @@
     static Char() { return new CType('char'); }
     static Bool() { return new CType('bool'); }
     static Void() { return new CType('void'); }
+    static Float() { return new CType('float'); }
+    static Double() { return new CType('double'); }
     static SizeT() { return new CType('size_t'); }
     static PtrDiffT() { return new CType('ptrdiff_t'); }
+    // Auto type placeholder - defaults to uint32_t for crypto context
+    static Auto() { return new CType('uint32_t'); }
 
     static Pointer(targetType) {
-      const type = new CType(targetType.name || targetType.toString(), { isPointer: true, pointerLevel: 1 });
+      // Accumulate pointer levels when wrapping another pointer type
+      const basePointerLevel = targetType.pointerLevel || 0;
+      const type = new CType(targetType.name || targetType.toString(), { isPointer: true, pointerLevel: basePointerLevel + 1 });
       type.baseType = targetType;
       return type;
     }
@@ -71,13 +77,25 @@
     }
 
     static Array(elementType, size = null) {
-      const type = new CType(elementType.name || elementType.toString(), { isArray: true, arraySize: size });
+      // Handle undefined elementType - default to 'int'
+      if (!elementType) {
+        elementType = new CType('int');
+      }
+      // Use toString() to preserve pointer info (e.g., uint32_t* instead of just uint32_t)
+      const type = new CType(elementType.toString(), { isArray: true, arraySize: size });
       type.baseType = elementType;
+      // Copy pointer info from element type so array knows it contains pointers
+      if (elementType.isPointer || elementType.pointerLevel > 0) {
+        type.elementIsPointer = true;
+        type.elementPointerLevel = elementType.pointerLevel || 1;
+      }
       return type;
     }
 
     /**
      * Convert to C type string
+     * Note: Arrays are NOT included here - array brackets go after identifier in C declarations
+     * Use toCompoundLiteralString() for compound literal types like (uint32_t[]){...}
      */
     toString() {
       let result = '';
@@ -97,6 +115,24 @@
       }
 
       return result.trim();
+    }
+
+    /**
+     * Convert to C type string for compound literals where array brackets go after type
+     * e.g., (uint32_t[]){0, 1, 2}
+     */
+    toCompoundLiteralString() {
+      let result = this.toString();
+
+      // Add array brackets after the type for compound literals
+      if (this.isArray) {
+        if (this.arraySize !== null && this.arraySize !== undefined)
+          result += `[${this.arraySize}]`;
+        else
+          result += '[]';
+      }
+
+      return result;
     }
   }
 
@@ -517,6 +553,18 @@
   }
 
   /**
+   * Compound literal (C99): (type[]){elements}
+   * Used for array literals in expression contexts (return statements, assignments)
+   */
+  class CCompoundLiteral extends CNode {
+    constructor(type, initializer) {
+      super('CompoundLiteral');
+      this.type = type;              // CType
+      this.initializer = initializer; // CArrayInitializer or CStructInitializer
+    }
+  }
+
+  /**
    * Struct initializer {.field1 = val1, .field2 = val2}
    */
   class CStructInitializer extends CNode {
@@ -601,6 +649,7 @@
     CSizeof,
     CConditional,
     CArrayInitializer,
+    CCompoundLiteral,
     CStructInitializer,
     CComma,
 

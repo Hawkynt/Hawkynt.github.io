@@ -600,6 +600,114 @@ class CppPlugin extends LanguagePlugin {
       documentation: 'https://en.cppreference.com/'
     };
   }
+
+  /**
+   * Generate C++ test runner code from ILTestRunner node
+   * @param {Object} testRunner - ILTestRunner node with test cases
+   * @returns {string} C++ test runner code
+   */
+  generateTestRunner(testRunner) {
+    if (!testRunner || !testRunner.tests || testRunner.tests.length === 0) {
+      return '';
+    }
+
+    const lines = [];
+    lines.push('// Auto-generated Test Runner');
+    lines.push('#include <iostream>');
+    lines.push('#include <vector>');
+    lines.push('#include <cstdint>');
+    lines.push('#include <iomanip>');
+    lines.push('#include <string>');
+    lines.push('');
+    lines.push('using namespace std;');
+    lines.push('');
+    lines.push('// Helper function to convert byte array to hex string');
+    lines.push('string toHex(const vector<uint8_t>& bytes) {');
+    lines.push('    ostringstream oss;');
+    lines.push('    for (auto b : bytes) {');
+    lines.push('        oss << hex << setw(2) << setfill(\'0\') << (int)b;');
+    lines.push('    }');
+    lines.push('    return oss.str();');
+    lines.push('}');
+    lines.push('');
+    lines.push('int main() {');
+    lines.push('    int passed = 0, failed = 0;');
+    lines.push('    cout << "Running tests..." << endl;');
+    lines.push('    cout << endl;');
+    lines.push('');
+
+    for (const testGroup of testRunner.tests) {
+      const algoClass = testGroup.algorithmClass;
+      const instClass = testGroup.instanceClass;
+
+      for (let i = 0; i < testGroup.testCases.length; ++i) {
+        const tc = testGroup.testCases[i];
+        const desc = tc.description || `Test ${i + 1}`;
+        const inputBytes = tc.input ? `{ ${tc.input.join(', ')} }` : '{}';
+        const expectedBytes = tc.expected ? `{ ${tc.expected.join(', ')} }` : '{}';
+
+        lines.push(`    // Test: ${desc}`);
+        lines.push('    try {');
+        lines.push(`        ${algoClass} algo;`);
+        lines.push(`        auto instance = dynamic_cast<${instClass}*>(algo.CreateInstance());`);
+        lines.push('');
+
+        // Set key/iv/nonce if provided
+        if (tc.key) {
+          lines.push(`        vector<uint8_t> key = { ${tc.key.join(', ')} };`);
+          lines.push('        instance->SetKey(key);');
+        }
+        if (tc.iv) {
+          lines.push(`        vector<uint8_t> iv = { ${tc.iv.join(', ')} };`);
+          lines.push('        instance->SetIv(iv);');
+        }
+        if (tc.nonce) {
+          lines.push(`        vector<uint8_t> nonce = { ${tc.nonce.join(', ')} };`);
+          lines.push('        instance->SetNonce(nonce);');
+        }
+
+        lines.push(`        vector<uint8_t> input = ${inputBytes};`);
+        lines.push(`        vector<uint8_t> expected = ${expectedBytes};`);
+        lines.push('');
+        lines.push('        instance->Feed(input);');
+        lines.push('        vector<uint8_t> actual = instance->Result();');
+        lines.push('');
+        lines.push('        bool match = (actual.size() == expected.size());');
+        lines.push('        if (match) {');
+        lines.push('            for (size_t i = 0; i < actual.size(); ++i) {');
+        lines.push('                if (actual[i] != expected[i]) {');
+        lines.push('                    match = false;');
+        lines.push('                    break;');
+        lines.push('                }');
+        lines.push('            }');
+        lines.push('        }');
+        lines.push('');
+        lines.push('        if (match) {');
+        lines.push(`            cout << "PASS: ${desc}" << endl;`);
+        lines.push('            ++passed;');
+        lines.push('        } else {');
+        lines.push(`            cout << "FAIL: ${desc}" << endl;`);
+        lines.push('            cout << "  Expected: " << toHex(expected) << endl;');
+        lines.push('            cout << "  Actual:   " << toHex(actual) << endl;');
+        lines.push('            ++failed;');
+        lines.push('        }');
+        lines.push('');
+        lines.push('        delete instance;');
+        lines.push('    } catch (const exception& ex) {');
+        lines.push(`        cout << "ERROR: ${desc} - " << ex.what() << endl;`);
+        lines.push('        ++failed;');
+        lines.push('    }');
+        lines.push('');
+      }
+    }
+
+    lines.push('    cout << endl;');
+    lines.push('    cout << "Results: " << passed << " passed, " << failed << " failed" << endl;');
+    lines.push('    return (failed == 0) ? 0 : 1;');
+    lines.push('}');
+
+    return lines.join('\n');
+  }
 }
 
 // Register the plugin

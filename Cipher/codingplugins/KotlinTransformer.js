@@ -1,9 +1,20 @@
 /**
- * KotlinTransformer.js - JavaScript AST to Kotlin AST Transformer
- * Converts type-annotated JavaScript AST to Kotlin AST
+ * KotlinTransformer.js - IL AST to Kotlin AST Transformer
+ * Converts IL AST (type-inferred, language-agnostic) to Kotlin AST
  * (c)2006-2025 Hawkynt
  *
- * Pipeline: JS Source -> JS AST -> Type Inference -> Kotlin AST -> Kotlin Emitter -> Kotlin Source
+ * Full Pipeline:
+ *   JS Source → Parser → JS AST → IL Transformer → IL AST → Language Transformer → Language AST → Language Emitter → Language Source
+ *
+ * This transformer handles: IL AST → Kotlin AST
+ *
+ * IL AST characteristics:
+ *   - Type-inferred (no untyped nodes)
+ *   - Language-agnostic (no JS-specific constructs like UMD, IIFE, Math.*, Object.*, etc.)
+ *   - Global options already applied
+ *
+ * Language options (applied here and in emitter):
+ *   - packageName: Kotlin package name
  */
 
 (function(global) {
@@ -220,6 +231,15 @@
         return this[methodName](node);
       }
 
+      // Fall back to transformExpression for IL AST node types
+      // handled inside the expression switch statement
+      try {
+        const result = this.transformExpression(node);
+        if (result) return result;
+      } catch(e) {
+        // ignore and fall through to warning
+      }
+
       console.warn(`No transformer for node type: ${node.type}`);
       return null;
     }
@@ -325,6 +345,1227 @@
           // Object destructuring - Kotlin supports destructuring declarations
           // Return a comment placeholder
           return new KotlinIdentifier('/* Object destructuring pattern */');
+
+        case 'StaticBlock':
+          return this.transformStaticBlock(node);
+
+        case 'ChainExpression':
+          // Optional chaining a?.b - Kotlin supports ?. operator
+          return this.transformExpression(node.expression);
+
+        case 'ClassExpression':
+          // Anonymous class expression - Kotlin has object expressions
+          return this.transformClassExpression(node);
+
+        case 'YieldExpression':
+          // yield - Kotlin has sequence/flow builders
+          return this.transformYieldExpression(node);
+
+        case 'PrivateIdentifier':
+          // #field -> Kotlin private property with _ prefix
+          return new KotlinIdentifier('_' + this.toCamelCase(node.name));
+
+        case 'Floor':
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(new KotlinIdentifier('Math'), 'floor'),
+            [this.transformExpression(node.arguments?.[0] || node.value)]
+          );
+
+        case 'Ceil':
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(new KotlinIdentifier('Math'), 'ceil'),
+            [this.transformExpression(node.arguments?.[0] || node.value)]
+          );
+
+        case 'Abs':
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(new KotlinIdentifier('Math'), 'abs'),
+            [this.transformExpression(node.arguments?.[0] || node.value)]
+          );
+
+        case 'Min':
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(new KotlinIdentifier('Math'), 'min'),
+            (node.values || node.arguments || []).map(v => this.transformExpression(v))
+          );
+
+        case 'Max':
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(new KotlinIdentifier('Math'), 'max'),
+            (node.values || node.arguments || []).map(v => this.transformExpression(v))
+          );
+
+        case 'Pow':
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(new KotlinIdentifier('Math'), 'pow'),
+            [this.transformExpression(node.base || node.arguments?.[0]), this.transformExpression(node.exponent || node.arguments?.[1])]
+          );
+
+        case 'Sqrt':
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(new KotlinIdentifier('Math'), 'sqrt'),
+            [this.transformExpression(node.arguments?.[0] || node.value)]
+          );
+
+        case 'Cbrt':
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(new KotlinIdentifier('Math'), 'cbrt'),
+            [this.transformExpression(node.arguments?.[0] || node.value)]
+          );
+
+        case 'Log':
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(new KotlinIdentifier('Math'), 'log'),
+            [this.transformExpression(node.arguments?.[0] || node.value)]
+          );
+
+        case 'Log2':
+          // Kotlin: Math.log(x) / Math.log(2.0)
+          return new KotlinBinaryExpression(
+            new KotlinFunctionCall(new KotlinMemberAccess(new KotlinIdentifier('Math'), 'log'), [this.transformExpression(node.arguments?.[0] || node.value)]),
+            '/',
+            new KotlinFunctionCall(new KotlinMemberAccess(new KotlinIdentifier('Math'), 'log'), [KotlinLiteral.Double(2.0)])
+          );
+
+        case 'Log10':
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(new KotlinIdentifier('Math'), 'log10'),
+            [this.transformExpression(node.arguments?.[0] || node.value)]
+          );
+
+        case 'Exp':
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(new KotlinIdentifier('Math'), 'exp'),
+            [this.transformExpression(node.arguments?.[0] || node.value)]
+          );
+
+        case 'Round':
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(new KotlinIdentifier('Math'), 'round'),
+            [this.transformExpression(node.arguments?.[0] || node.value)]
+          );
+
+        case 'Trunc':
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(this.transformExpression(node.arguments?.[0] || node.value), 'toLong'),
+            []
+          );
+
+        case 'Sign':
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(new KotlinIdentifier('Math'), 'signum'),
+            [this.transformExpression(node.arguments?.[0] || node.value)]
+          );
+
+        case 'Sin':
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(new KotlinIdentifier('Math'), 'sin'),
+            [this.transformExpression(node.arguments?.[0] || node.value)]
+          );
+
+        case 'Cos':
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(new KotlinIdentifier('Math'), 'cos'),
+            [this.transformExpression(node.arguments?.[0] || node.value)]
+          );
+
+        case 'Tan':
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(new KotlinIdentifier('Math'), 'tan'),
+            [this.transformExpression(node.arguments?.[0] || node.value)]
+          );
+
+        case 'Asin':
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(new KotlinIdentifier('Math'), 'asin'),
+            [this.transformExpression(node.arguments?.[0] || node.value)]
+          );
+
+        case 'Acos':
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(new KotlinIdentifier('Math'), 'acos'),
+            [this.transformExpression(node.arguments?.[0] || node.value)]
+          );
+
+        case 'Atan':
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(new KotlinIdentifier('Math'), 'atan'),
+            [this.transformExpression(node.arguments?.[0] || node.value)]
+          );
+
+        case 'Atan2': {
+          const y = this.transformExpression(node.arguments?.[0] || node.y);
+          const x = this.transformExpression(node.arguments?.[1] || node.x);
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(new KotlinIdentifier('Math'), 'atan2'),
+            [y, x]
+          );
+        }
+
+        case 'Sinh':
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(new KotlinIdentifier('Math'), 'sinh'),
+            [this.transformExpression(node.arguments?.[0] || node.value)]
+          );
+
+        case 'Cosh':
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(new KotlinIdentifier('Math'), 'cosh'),
+            [this.transformExpression(node.arguments?.[0] || node.value)]
+          );
+
+        case 'Tanh':
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(new KotlinIdentifier('Math'), 'tanh'),
+            [this.transformExpression(node.arguments?.[0] || node.value)]
+          );
+
+        case 'Hypot': {
+          const args = (node.arguments || []).map(a => this.transformExpression(a));
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(new KotlinIdentifier('Math'), 'hypot'),
+            args
+          );
+        }
+
+        case 'Fround':
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(this.transformExpression(node.arguments?.[0] || node.value), 'toFloat'),
+            []
+          );
+
+        case 'MathCall': {
+          const method = node.method;
+          const args = (node.arguments || []).map(a => this.transformExpression(a));
+          if (method === 'imul') {
+            if (args.length >= 2)
+              return new KotlinFunctionCall(
+                new KotlinMemberAccess(new KotlinParenthesized(new KotlinBinaryExpression(args[0], '*', args[1])), 'toInt'),
+                []
+              );
+          }
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(new KotlinIdentifier('Math'), method),
+            args
+          );
+        }
+
+        case 'MathConstant': {
+          switch (node.name) {
+            case 'PI': return new KotlinMemberAccess(new KotlinIdentifier('Math'), 'PI');
+            case 'E': return new KotlinMemberAccess(new KotlinIdentifier('Math'), 'E');
+            case 'LN2': return new KotlinFunctionCall(new KotlinMemberAccess(new KotlinIdentifier('Math'), 'log'), [KotlinLiteral.Double(2.0)]);
+            case 'LN10': return new KotlinFunctionCall(new KotlinMemberAccess(new KotlinIdentifier('Math'), 'log'), [KotlinLiteral.Double(10.0)]);
+            case 'LOG2E': return new KotlinBinaryExpression(KotlinLiteral.Double(1.0), '/', new KotlinFunctionCall(new KotlinMemberAccess(new KotlinIdentifier('Math'), 'log'), [KotlinLiteral.Double(2.0)]));
+            case 'LOG10E': return new KotlinFunctionCall(new KotlinMemberAccess(new KotlinIdentifier('Math'), 'log10'), [new KotlinMemberAccess(new KotlinIdentifier('Math'), 'E')]);
+            case 'SQRT2': return new KotlinFunctionCall(new KotlinMemberAccess(new KotlinIdentifier('Math'), 'sqrt'), [KotlinLiteral.Double(2.0)]);
+            case 'SQRT1_2': return new KotlinFunctionCall(new KotlinMemberAccess(new KotlinIdentifier('Math'), 'sqrt'), [KotlinLiteral.Double(0.5)]);
+            default: return KotlinLiteral.Double(node.value);
+          }
+        }
+
+        case 'NumberConstant': {
+          switch (node.name) {
+            case 'MAX_SAFE_INTEGER': return new KotlinMemberAccess(new KotlinIdentifier('Long'), 'MAX_VALUE');
+            case 'MIN_SAFE_INTEGER': return new KotlinMemberAccess(new KotlinIdentifier('Long'), 'MIN_VALUE');
+            case 'MAX_VALUE': return new KotlinMemberAccess(new KotlinIdentifier('Double'), 'MAX_VALUE');
+            case 'MIN_VALUE': return new KotlinMemberAccess(new KotlinIdentifier('Double'), 'MIN_VALUE');
+            case 'POSITIVE_INFINITY': return new KotlinMemberAccess(new KotlinIdentifier('Double'), 'POSITIVE_INFINITY');
+            case 'NEGATIVE_INFINITY': return new KotlinMemberAccess(new KotlinIdentifier('Double'), 'NEGATIVE_INFINITY');
+            case 'NaN': return new KotlinMemberAccess(new KotlinIdentifier('Double'), 'NaN');
+            case 'EPSILON': return new KotlinMemberAccess(new KotlinIdentifier('Double'), 'MIN_VALUE');
+            default: return KotlinLiteral.Double(node.value);
+          }
+        }
+
+        case 'InstanceOfCheck': {
+          const value = this.transformExpression(node.value);
+          const className = typeof node.className === 'string' ? new KotlinIdentifier(node.className) : this.transformExpression(node.className);
+          return new KotlinIsExpression(value, className);
+        }
+
+        // ========================[ ARRAY OPERATIONS ]========================
+
+        case 'ArrayAppend': {
+          // array.push(value) -> list.add(element)
+          const arr = this.transformExpression(node.array);
+          const value = this.transformExpression(node.value);
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(arr, 'add'),
+            [value]
+          );
+        }
+
+        case 'ArrayClear': {
+          // OpCodes.ClearArray(arr) -> array.fill(0) or list.clear()
+          const arr = this.transformExpression(node.array || node.arguments?.[0]);
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(arr, 'fill'),
+            [KotlinLiteral.Int(0)]
+          );
+        }
+
+        case 'ArrayConcat': {
+          // arr1.concat(arr2) -> list1 + list2
+          const arr1 = this.transformExpression(node.array);
+          const arr2 = this.transformExpression(node.other);
+          return new KotlinBinaryExpression(arr1, '+', arr2);
+        }
+
+        case 'ArrayEvery': {
+          // array.every(callback) -> list.all { ... }
+          const arr = this.transformExpression(node.array);
+          const callback = node.callback ? this.transformExpression(node.callback) : null;
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(arr, 'all'),
+            callback ? [callback] : []
+          );
+        }
+
+        case 'ArrayFill': {
+          // array.fill(value) -> array.fill(value)
+          const arr = this.transformExpression(node.array);
+          const value = this.transformExpression(node.value);
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(arr, 'fill'),
+            [value]
+          );
+        }
+
+        case 'ArrayFilter': {
+          // array.filter(callback) -> list.filter { ... }
+          const arr = this.transformExpression(node.array);
+          const callback = node.callback ? this.transformExpression(node.callback) : null;
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(arr, 'filter'),
+            callback ? [callback] : []
+          );
+        }
+
+        case 'ArrayFind': {
+          // array.find(callback) -> list.find { ... }
+          const arr = this.transformExpression(node.array);
+          const callback = node.callback ? this.transformExpression(node.callback) : null;
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(arr, 'find'),
+            callback ? [callback] : []
+          );
+        }
+
+        case 'ArrayFindIndex': {
+          // array.findIndex(callback) -> list.indexOfFirst { ... }
+          const arr = this.transformExpression(node.array);
+          const callback = node.callback ? this.transformExpression(node.callback) : null;
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(arr, 'indexOfFirst'),
+            callback ? [callback] : []
+          );
+        }
+
+        case 'ArrayForEach': {
+          // array.forEach(callback) -> list.forEach { ... }
+          const arr = this.transformExpression(node.array);
+          const callback = node.callback ? this.transformExpression(node.callback) : null;
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(arr, 'forEach'),
+            callback ? [callback] : []
+          );
+        }
+
+        case 'ArrayFrom': {
+          // Array.from(iterable) -> iterable.toList() or iterable.toTypedArray()
+          const arrayLike = this.transformExpression(node.arrayLike || node.iterable);
+          if (node.mapFn) {
+            const mapFn = this.transformExpression(node.mapFn);
+            return new KotlinFunctionCall(
+              new KotlinMemberAccess(
+                new KotlinFunctionCall(new KotlinMemberAccess(arrayLike, 'map'), [mapFn]),
+                'toTypedArray'
+              ),
+              []
+            );
+          }
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(arrayLike, 'toTypedArray'),
+            []
+          );
+        }
+
+        case 'ArrayIncludes': {
+          // array.includes(value) -> element in list
+          const arr = this.transformExpression(node.array);
+          const value = this.transformExpression(node.value);
+          return new KotlinBinaryExpression(value, 'in', arr);
+        }
+
+        case 'ArrayIndexOf': {
+          // array.indexOf(value) -> list.indexOf(element)
+          const arr = this.transformExpression(node.array);
+          const value = this.transformExpression(node.value);
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(arr, 'indexOf'),
+            [value]
+          );
+        }
+
+        case 'ArrayJoin': {
+          // array.join(sep) -> list.joinToString(separator)
+          const arr = this.transformExpression(node.array);
+          const sep = node.separator ? this.transformExpression(node.separator) : KotlinLiteral.String(',');
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(arr, 'joinToString'),
+            [sep]
+          );
+        }
+
+        case 'ArrayLength': {
+          // array.length -> list.size
+          const arr = this.transformExpression(node.array);
+          return new KotlinMemberAccess(arr, 'size');
+        }
+
+        case 'ArrayMap': {
+          // array.map(callback) -> list.map { ... }
+          const arr = this.transformExpression(node.array);
+          const callback = node.callback ? this.transformExpression(node.callback) : null;
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(arr, 'map'),
+            callback ? [callback] : []
+          );
+        }
+
+        case 'ArrayPop': {
+          // array.pop() -> list.removeAt(list.size - 1) or list.removeLast()
+          const arr = this.transformExpression(node.array);
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(arr, 'removeLast'),
+            []
+          );
+        }
+
+        case 'ArrayPush': {
+          // array.push(value) -> list.add(element)
+          const arr = this.transformExpression(node.array);
+          const value = node.value ? this.transformExpression(node.value) : null;
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(arr, 'add'),
+            value ? [value] : []
+          );
+        }
+
+        case 'ArrayReduce': {
+          // array.reduce(callback, initial) -> list.fold(init) { acc, e -> ... }
+          const arr = this.transformExpression(node.array);
+          const args = [];
+          if (node.initialValue) {
+            // Use fold when initial value is provided
+            args.push(this.transformExpression(node.initialValue));
+            if (node.callback) args.push(this.transformExpression(node.callback));
+            return new KotlinFunctionCall(
+              new KotlinMemberAccess(arr, 'fold'),
+              args
+            );
+          }
+          // Use reduce when no initial value
+          if (node.callback) args.push(this.transformExpression(node.callback));
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(arr, 'reduce'),
+            args
+          );
+        }
+
+        case 'ArrayReverse': {
+          // array.reverse() -> list.reversed()
+          const arr = this.transformExpression(node.array);
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(arr, 'reversed'),
+            []
+          );
+        }
+
+        case 'ArrayShift': {
+          // array.shift() -> list.removeAt(0)
+          const arr = this.transformExpression(node.array);
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(arr, 'removeAt'),
+            [KotlinLiteral.Int(0)]
+          );
+        }
+
+        case 'ArraySlice': {
+          // array.slice(start, end) -> list.subList(start, end) or list.slice(start until end)
+          const arr = this.transformExpression(node.array);
+          const start = node.start ? this.transformExpression(node.start) : KotlinLiteral.Int(0);
+          const end = node.end ? this.transformExpression(node.end) : new KotlinMemberAccess(arr, 'size');
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(arr, 'subList'),
+            [start, end]
+          );
+        }
+
+        case 'ArraySome': {
+          // array.some(callback) -> list.any { ... }
+          const arr = this.transformExpression(node.array);
+          const callback = node.callback ? this.transformExpression(node.callback) : null;
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(arr, 'any'),
+            callback ? [callback] : []
+          );
+        }
+
+        case 'ArraySort': {
+          // array.sort(compareFn) -> list.sortWith(comparator) or list.sort()
+          const arr = this.transformExpression(node.array);
+          const args = node.compareFn ? [this.transformExpression(node.compareFn)] : [];
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(arr, args.length > 0 ? 'sortWith' : 'sort'),
+            args
+          );
+        }
+
+        case 'ArraySplice': {
+          // array.splice(start, deleteCount, items...) -> manual subList manipulation
+          const arr = this.transformExpression(node.array);
+          const args = [];
+          if (node.start) args.push(this.transformExpression(node.start));
+          if (node.deleteCount) args.push(this.transformExpression(node.deleteCount));
+          if (node.items) {
+            for (const item of node.items)
+              args.push(this.transformExpression(item));
+          }
+          // No direct equivalent; emit as a helper call
+          return new KotlinFunctionCall(
+            new KotlinIdentifier('splice'),
+            [arr, ...args]
+          );
+        }
+
+        case 'ArrayUnshift': {
+          // array.unshift(value) -> list.add(0, element)
+          const arr = this.transformExpression(node.array);
+          const value = node.value ? this.transformExpression(node.value) : null;
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(arr, 'add'),
+            value ? [KotlinLiteral.Int(0), value] : [KotlinLiteral.Int(0)]
+          );
+        }
+
+        case 'ArrayXor': {
+          // XOR two arrays -> helper function
+          const arr1 = this.transformExpression(node.array1 || node.arguments?.[0]);
+          const arr2 = this.transformExpression(node.array2 || node.arguments?.[1]);
+          return new KotlinFunctionCall(
+            new KotlinIdentifier('xorArrays'),
+            [arr1, arr2]
+          );
+        }
+
+        case 'ClearArray': {
+          // OpCodes.ClearArray(arr) -> array.fill(0)
+          const arr = this.transformExpression(node.arguments?.[0] || node.array);
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(arr, 'fill'),
+            [KotlinLiteral.Int(0)]
+          );
+        }
+
+        case 'CopyArray': {
+          // array copy -> array.copyOf() or list.toMutableList()
+          const arr = this.transformExpression(node.arguments?.[0] || node.array || node.value);
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(arr, 'copyOf'),
+            []
+          );
+        }
+
+        case 'ArrayCreation': {
+          // new Array(size) -> Array(size) { 0 }
+          const size = node.size ? this.transformExpression(node.size) : null;
+          if (size) {
+            return new KotlinFunctionCall(
+              new KotlinIdentifier('Array'),
+              [size, new KotlinLambda([], KotlinLiteral.UInt(0))]
+            );
+          }
+          return new KotlinArrayCreation('mutableListOf', []);
+        }
+
+        case 'ArrayLiteral': {
+          // [a, b, c] -> mutableListOf(a, b, c)
+          const elements = (node.elements || []).map(e => this.transformExpression(e));
+          return new KotlinArrayCreation('mutableListOf', elements);
+        }
+
+        // ========================[ STRING OPERATIONS ]========================
+
+        case 'StringCharAt': {
+          // str.charAt(index) -> str[index]
+          const str = this.transformExpression(node.string || node.value);
+          const index = this.transformExpression(node.index);
+          return new KotlinElementAccess(str, index);
+        }
+
+        case 'StringCharCodeAt': {
+          // str.charCodeAt(index) -> str[index].code
+          const str = this.transformExpression(node.string || node.value);
+          const index = node.index ? this.transformExpression(node.index) : KotlinLiteral.Int(0);
+          return new KotlinMemberAccess(
+            new KotlinElementAccess(str, index),
+            'code'
+          );
+        }
+
+        case 'StringEndsWith': {
+          // str.endsWith(suffix) -> str.endsWith(suffix)
+          const str = this.transformExpression(node.string || node.value);
+          const searchValue = this.transformExpression(node.searchValue || node.search);
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(str, 'endsWith'),
+            [searchValue]
+          );
+        }
+
+        case 'StringFromCharCodes': {
+          // String.fromCharCode(...codes) -> chars.map { it.toChar() }.joinToString("")
+          const codes = (node.charCodes || node.arguments || []).map(c => this.transformExpression(c));
+          if (codes.length === 1) {
+            return new KotlinFunctionCall(
+              new KotlinMemberAccess(codes[0], 'toChar'),
+              []
+            );
+          }
+          // Multiple codes: charArrayOf(c1, c2, ...).concatToString()
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(
+              new KotlinArrayCreation('charArrayOf', codes.map(c =>
+                new KotlinFunctionCall(new KotlinMemberAccess(c, 'toChar'), [])
+              )),
+              'concatToString'
+            ),
+            []
+          );
+        }
+
+        case 'StringIncludes': {
+          // str.includes(sub) -> str.contains(sub)
+          const str = this.transformExpression(node.string || node.value);
+          const searchValue = this.transformExpression(node.searchValue || node.search);
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(str, 'contains'),
+            [searchValue]
+          );
+        }
+
+        case 'StringIndexOf': {
+          // str.indexOf(sub) -> str.indexOf(sub)
+          const str = this.transformExpression(node.string || node.value);
+          const search = node.search ? this.transformExpression(node.search) : null;
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(str, 'indexOf'),
+            search ? [search] : []
+          );
+        }
+
+        case 'StringRepeat': {
+          // str.repeat(count) -> str.repeat(count)
+          const str = this.transformExpression(node.string || node.value);
+          const count = this.transformExpression(node.count);
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(str, 'repeat'),
+            [count]
+          );
+        }
+
+        case 'StringReplace': {
+          // str.replace(old, new) -> str.replace(old, new)
+          const str = this.transformExpression(node.string || node.value);
+          const search = this.transformExpression(node.search || node.pattern);
+          const replacement = this.transformExpression(node.replacement || node.replaceWith);
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(str, 'replace'),
+            [search, replacement]
+          );
+        }
+
+        case 'StringSplit': {
+          // str.split(delim) -> str.split(delim)
+          const str = this.transformExpression(node.string || node.value);
+          const separator = node.separator ? this.transformExpression(node.separator) : null;
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(str, 'split'),
+            separator ? [separator] : []
+          );
+        }
+
+        case 'StringStartsWith': {
+          // str.startsWith(prefix) -> str.startsWith(prefix)
+          const str = this.transformExpression(node.string || node.value);
+          const searchValue = this.transformExpression(node.searchValue || node.search);
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(str, 'startsWith'),
+            [searchValue]
+          );
+        }
+
+        case 'StringSubstring': {
+          // str.substring(start, end) -> str.substring(start, end)
+          const str = this.transformExpression(node.string || node.value);
+          const args = [];
+          if (node.start) args.push(this.transformExpression(node.start));
+          if (node.end) args.push(this.transformExpression(node.end));
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(str, 'substring'),
+            args
+          );
+        }
+
+        case 'StringToLowerCase': {
+          // str.toLowerCase() -> str.lowercase()
+          const str = this.transformExpression(node.string || node.value);
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(str, 'lowercase'),
+            []
+          );
+        }
+
+        case 'StringToUpperCase': {
+          // str.toUpperCase() -> str.uppercase()
+          const str = this.transformExpression(node.string || node.value);
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(str, 'uppercase'),
+            []
+          );
+        }
+
+        case 'StringTrim': {
+          // str.trim() -> str.trim()
+          const str = this.transformExpression(node.string || node.value);
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(str, 'trim'),
+            []
+          );
+        }
+
+        case 'StringInterpolation': {
+          // String interpolation with parts -> Kotlin string template
+          let templateStr = '';
+          if (node.parts) {
+            for (const part of node.parts) {
+              if (part.type === 'StringPart' || part.ilNodeType === 'StringPart') {
+                if (part.value)
+                  templateStr += part.value.replace(/\$/g, '\\$');
+              } else if (part.type === 'ExpressionPart' || part.ilNodeType === 'ExpressionPart') {
+                const expr = this.transformExpression(part.expression);
+                if (expr.nodeType === 'Identifier')
+                  templateStr += `\$${expr.name}`;
+                else
+                  templateStr += `\${${this.emitExpressionInline(expr)}}`;
+              }
+            }
+          }
+          return new KotlinStringTemplate(templateStr);
+        }
+
+        // ========================[ BYTE/BUFFER OPERATIONS ]========================
+
+        case 'BufferCreation': {
+          // new ArrayBuffer(size) -> ByteArray(size)
+          const size = node.size ? this.transformExpression(node.size) : KotlinLiteral.Int(0);
+          return new KotlinFunctionCall(
+            new KotlinIdentifier('ByteArray'),
+            [size]
+          );
+        }
+
+        case 'BytesToString': {
+          // bytes to string -> String(bytes, Charsets.UTF_8)
+          const bytes = this.transformExpression(node.value || node.argument || node.arguments?.[0]);
+          const encoding = node.encoding === 'utf8' ? 'UTF_8' : 'US_ASCII';
+          return new KotlinObjectCreation(
+            new KotlinType('String'),
+            [bytes, new KotlinMemberAccess(new KotlinIdentifier('Charsets'), encoding)]
+          );
+        }
+
+        case 'StringToBytes': {
+          // str to bytes -> str.toByteArray(Charsets.UTF_8)
+          const str = this.transformExpression(node.value || node.argument || node.arguments?.[0]);
+          const encoding = node.encoding === 'utf8' ? 'UTF_8' : 'US_ASCII';
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(str, 'toByteArray'),
+            [new KotlinMemberAccess(new KotlinIdentifier('Charsets'), encoding)]
+          );
+        }
+
+        case 'AnsiToBytes': {
+          // str to ASCII bytes -> str.toByteArray(Charsets.US_ASCII)
+          const str = this.transformExpression(node.value || node.argument || node.arguments?.[0]);
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(str, 'toByteArray'),
+            [new KotlinMemberAccess(new KotlinIdentifier('Charsets'), 'US_ASCII')]
+          );
+        }
+
+        case 'HexDecode': {
+          // Hex string to bytes -> hexToBytes helper
+          const value = this.transformExpression(node.arguments?.[0] || node.value);
+          return new KotlinFunctionCall(
+            new KotlinIdentifier('hexToBytes'),
+            [value]
+          );
+        }
+
+        case 'HexEncode': {
+          // Bytes to hex string -> bytesToHex helper
+          const value = this.transformExpression(node.arguments?.[0] || node.value);
+          return new KotlinFunctionCall(
+            new KotlinIdentifier('bytesToHex'),
+            [value]
+          );
+        }
+
+        case 'PackBytes': {
+          // Pack bytes to integer -> helper function
+          const args = (node.arguments || node.bytes || []).map(arg => {
+            if (arg.type === 'SpreadElement')
+              return this.transformExpression(arg.argument);
+            return this.transformExpression(arg);
+          });
+          const isBE = node.endian === 'big' || node.bigEndian;
+          const bits = node.bits || 32;
+          const methodName = `pack${bits}${isBE ? 'BE' : 'LE'}`;
+          return new KotlinFunctionCall(
+            new KotlinIdentifier(methodName),
+            args
+          );
+        }
+
+        case 'UnpackBytes': {
+          // Unpack integer to bytes -> helper function
+          const value = this.transformExpression(node.arguments?.[0] || node.value);
+          const isBE = node.endian === 'big' || node.bigEndian;
+          const bits = node.bits || 32;
+          const methodName = `unpack${bits}${isBE ? 'BE' : 'LE'}`;
+          return new KotlinFunctionCall(
+            new KotlinIdentifier(methodName),
+            [value]
+          );
+        }
+
+        // ========================[ DATAVIEW OPERATIONS ]========================
+
+        case 'DataViewCreation': {
+          // new DataView(buffer) -> ByteBuffer.wrap(buffer)
+          this.addImport('java.nio.ByteBuffer');
+          const buffer = node.buffer ? this.transformExpression(node.buffer) : null;
+          const args = buffer ? [buffer] : [];
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(new KotlinIdentifier('ByteBuffer'), 'wrap'),
+            args
+          );
+        }
+
+        case 'DataViewRead': {
+          // dataview.getUint32(offset, littleEndian) -> buffer.getInt() etc.
+          this.addImport('java.nio.ByteBuffer');
+          const view = this.transformExpression(node.view);
+          const args = [this.transformExpression(node.offset)];
+          const method = node.method || 'getInt';
+          // Map JS DataView methods to ByteBuffer methods
+          const methodMap = {
+            'getUint8': 'get', 'getInt8': 'get',
+            'getUint16': 'getShort', 'getInt16': 'getShort',
+            'getUint32': 'getInt', 'getInt32': 'getInt',
+            'getFloat32': 'getFloat', 'getFloat64': 'getDouble'
+          };
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(view, methodMap[method] || method),
+            args
+          );
+        }
+
+        case 'DataViewWrite': {
+          // dataview.setUint32(offset, value, littleEndian) -> buffer.putInt() etc.
+          this.addImport('java.nio.ByteBuffer');
+          const view = this.transformExpression(node.view);
+          const args = [this.transformExpression(node.offset), this.transformExpression(node.value)];
+          const method = node.method || 'setInt';
+          const methodMap = {
+            'setUint8': 'put', 'setInt8': 'put',
+            'setUint16': 'putShort', 'setInt16': 'putShort',
+            'setUint32': 'putInt', 'setInt32': 'putInt',
+            'setFloat32': 'putFloat', 'setFloat64': 'putDouble'
+          };
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(view, methodMap[method] || method),
+            args
+          );
+        }
+
+        // ========================[ MAP/SET OPERATIONS ]========================
+
+        case 'MapCreation': {
+          // new Map() -> mutableMapOf<K, V>()
+          const args = node.entries ? [this.transformExpression(node.entries)] : [];
+          return new KotlinFunctionCall(
+            new KotlinIdentifier('mutableMapOf'),
+            args
+          );
+        }
+
+        case 'MapGet': {
+          // map.get(key) -> map[key]
+          const map = this.transformExpression(node.map);
+          const key = this.transformExpression(node.key);
+          return new KotlinElementAccess(map, key);
+        }
+
+        case 'MapSet': {
+          // map.set(key, value) -> map[key] = value
+          const map = this.transformExpression(node.map);
+          const key = this.transformExpression(node.key);
+          const value = this.transformExpression(node.value);
+          return new KotlinAssignment(
+            new KotlinElementAccess(map, key),
+            value
+          );
+        }
+
+        case 'MapHas': {
+          // map.has(key) -> key in map
+          const map = this.transformExpression(node.map);
+          const key = this.transformExpression(node.key);
+          return new KotlinBinaryExpression(key, 'in', map);
+        }
+
+        case 'MapDelete': {
+          // map.delete(key) -> map.remove(key)
+          const map = this.transformExpression(node.map);
+          const key = this.transformExpression(node.key);
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(map, 'remove'),
+            [key]
+          );
+        }
+
+        case 'SetCreation': {
+          // new Set() -> mutableSetOf<T>()
+          const args = node.values ? [this.transformExpression(node.values)] : [];
+          return new KotlinFunctionCall(
+            new KotlinIdentifier('mutableSetOf'),
+            args
+          );
+        }
+
+        // ========================[ UTILITY OPERATIONS ]========================
+
+        case 'Cast': {
+          // Type cast -> (value as Type) or value.toInt() etc.
+          const value = this.transformExpression(node.value || node.argument || node.arguments?.[0]);
+          const targetType = node.targetType || node.toType || 'int';
+          const castMethodMap = {
+            'uint8': 'toUByte', 'byte': 'toUByte',
+            'uint16': 'toUShort', 'word': 'toUShort',
+            'uint32': 'toUInt', 'dword': 'toUInt',
+            'uint64': 'toULong', 'qword': 'toULong',
+            'int8': 'toByte', 'sbyte': 'toByte',
+            'int16': 'toShort', 'short': 'toShort',
+            'int32': 'toInt', 'int': 'toInt',
+            'int64': 'toLong', 'long': 'toLong',
+            'float': 'toFloat', 'float32': 'toFloat',
+            'double': 'toDouble', 'float64': 'toDouble',
+            'boolean': 'toBoolean', 'bool': 'toBoolean',
+            'string': 'toString'
+          };
+          const castMethod = castMethodMap[targetType];
+          if (castMethod) {
+            return new KotlinFunctionCall(
+              new KotlinMemberAccess(value, castMethod),
+              []
+            );
+          }
+          // Fallback: use 'as' cast
+          return new KotlinAsExpression(value, new KotlinType(this.toPascalCase(targetType)));
+        }
+
+        case 'OpCodesCall': {
+          // OpCodes.MethodName(args) -> Kotlin equivalent
+          const methodName = node.methodName || node.method;
+          const args = (node.arguments || []).map(a => this.transformExpression(a));
+          switch (methodName) {
+            case 'CopyArray':
+              return new KotlinFunctionCall(new KotlinMemberAccess(args[0], 'copyOf'), []);
+            case 'ClearArray':
+              return new KotlinFunctionCall(new KotlinMemberAccess(args[0], 'fill'), [KotlinLiteral.Int(0)]);
+            default:
+              return new KotlinFunctionCall(new KotlinIdentifier(this.toCamelCase(methodName)), args);
+          }
+        }
+
+        case 'TypeOfExpression': {
+          // typeof value -> when(value) { is Int -> "number", is String -> "string", ... }
+          // Simplified: value::class.simpleName
+          const argument = this.transformExpression(node.argument || node.value);
+          return new KotlinMemberAccess(
+            new KotlinMemberAccess(argument, '::class'),
+            'simpleName'
+          );
+        }
+
+        case 'IsArrayCheck': {
+          // Array.isArray(x) -> value is Array<*> or value is List<*>
+          const value = this.transformExpression(node.value);
+          return new KotlinIsExpression(value, new KotlinIdentifier('List<*>'));
+        }
+
+        case 'TypedArrayCreation': {
+          // new Uint8Array(size) -> UByteArray(size), etc.
+          const size = node.size ? this.transformExpression(node.size) : KotlinLiteral.Int(0);
+          const typeMap = {
+            'Uint8Array': 'UByteArray', 'Int8Array': 'ByteArray',
+            'Uint16Array': 'UShortArray', 'Int16Array': 'ShortArray',
+            'Uint32Array': 'UIntArray', 'Int32Array': 'IntArray',
+            'Uint64Array': 'ULongArray', 'Int64Array': 'LongArray',
+            'Float32Array': 'FloatArray', 'Float64Array': 'DoubleArray'
+          };
+          const kotlinType = typeMap[node.arrayType] || 'IntArray';
+          return new KotlinFunctionCall(
+            new KotlinIdentifier(kotlinType),
+            [size]
+          );
+        }
+
+        case 'TypedArraySet': {
+          // typedArray.set(source, offset) -> System.arraycopy() or source.copyInto(dest, offset)
+          const array = this.transformExpression(node.array);
+          const source = node.source ? this.transformExpression(node.source) : null;
+          const args = source ? [array] : [];
+          if (node.offset) args.push(this.transformExpression(node.offset));
+          if (source) {
+            return new KotlinFunctionCall(
+              new KotlinMemberAccess(source, 'copyInto'),
+              [array, ...(node.offset ? [this.transformExpression(node.offset)] : [])]
+            );
+          }
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(array, 'set'),
+            args
+          );
+        }
+
+        case 'TypedArraySubarray': {
+          // typedArray.subarray(begin, end) -> array.copyOfRange(begin, end)
+          const array = this.transformExpression(node.array);
+          const args = [];
+          if (node.begin) args.push(this.transformExpression(node.begin));
+          if (node.end) args.push(this.transformExpression(node.end));
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(array, 'copyOfRange'),
+            args
+          );
+        }
+
+        case 'BigIntCast': {
+          // BigInt(value) -> value.toBigInteger()
+          const value = this.transformExpression(node.argument || node.value);
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(value, 'toBigInteger'),
+            []
+          );
+        }
+
+        case 'ObjectFreeze': {
+          // Object.freeze(x) -> no direct equivalent, emit as-is
+          return this.transformExpression(node.value || node.object);
+        }
+
+        case 'ObjectKeys': {
+          // Object.keys(obj) -> map.keys.toList()
+          const obj = this.transformExpression(node.object || node.value);
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(new KotlinMemberAccess(obj, 'keys'), 'toList'),
+            []
+          );
+        }
+
+        case 'ObjectValues': {
+          // Object.values(obj) -> map.values.toList()
+          const obj = this.transformExpression(node.object || node.value);
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(new KotlinMemberAccess(obj, 'values'), 'toList'),
+            []
+          );
+        }
+
+        case 'ObjectEntries': {
+          // Object.entries(obj) -> map.entries.map { it.key to it.value }
+          const obj = this.transformExpression(node.object || node.value);
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(new KotlinMemberAccess(obj, 'entries'), 'toList'),
+            []
+          );
+        }
+
+        case 'ObjectLiteral': {
+          // {key: value} -> mapOf("key" to value)
+          if (!node.properties || node.properties.length === 0)
+            return new KotlinFunctionCall(new KotlinIdentifier('mapOf'), []);
+          const pairs = [];
+          for (const prop of (node.properties || [])) {
+            if (prop.type === 'SpreadElement' || prop.type === 'ObjectSpread') continue;
+            const key = typeof prop.key === 'string'
+              ? KotlinLiteral.String(prop.key)
+              : (prop.key?.name ? KotlinLiteral.String(prop.key.name) : KotlinLiteral.String(prop.key?.value || 'key'));
+            const value = this.transformExpression(prop.value);
+            pairs.push(new KotlinBinaryExpression(key, 'to', value));
+          }
+          return new KotlinFunctionCall(new KotlinIdentifier('mapOf'), pairs);
+        }
+
+        case 'Random': {
+          // Math.random() -> kotlin.random.Random.nextDouble()
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(
+              new KotlinMemberAccess(new KotlinIdentifier('kotlin.random'), 'Random'),
+              'nextDouble'
+            ),
+            []
+          );
+        }
+
+        case 'ErrorCreation': {
+          // new Error("message") -> Exception(message) or RuntimeException(message)
+          const errorTypeMap = {
+            'Error': 'Exception',
+            'TypeError': 'IllegalArgumentException',
+            'RangeError': 'IndexOutOfBoundsException',
+            'ReferenceError': 'NullPointerException'
+          };
+          const errorType = errorTypeMap[node.errorType] || 'RuntimeException';
+          const message = node.message ? this.transformExpression(node.message) : KotlinLiteral.String('');
+          return new KotlinObjectCreation(
+            new KotlinType(errorType),
+            [message]
+          );
+        }
+
+        case 'DebugOutput': {
+          // console.log(...) -> println(...)
+          const args = (node.arguments || []).map(arg => this.transformExpression(arg));
+          return new KotlinFunctionCall(
+            new KotlinIdentifier('println'),
+            args
+          );
+        }
+
+        case 'YieldExpression': {
+          // yield value -> yield(value) in sequence builder
+          const argument = node.argument ? this.transformExpression(node.argument) : KotlinLiteral.Null();
+          return new KotlinFunctionCall(
+            new KotlinIdentifier('yield'),
+            [argument]
+          );
+        }
+
+        case 'ThisMethodCall': {
+          // this.method(args) -> this.method(args)
+          const args = (node.arguments || []).map(a => this.transformExpression(a));
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(new KotlinThis(), this.toCamelCase(node.method)),
+            args
+          );
+        }
+
+        case 'ThisPropertyAccess': {
+          // this.property -> this.property
+          return new KotlinMemberAccess(new KotlinThis(), this.toCamelCase(node.property));
+        }
+
+        case 'ParentConstructorCall': {
+          // super(args) -> super(args)
+          const args = (node.arguments || []).map(a => this.transformExpression(a));
+          return new KotlinFunctionCall(
+            new KotlinSuper(),
+            args
+          );
+        }
+
+        case 'ParentMethodCall': {
+          // super.method(args) -> super.method(args)
+          const args = (node.arguments || []).map(a => this.transformExpression(a));
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(new KotlinSuper(), this.toCamelCase(node.method)),
+            args
+          );
+        }
+
+        // ========================[ ADDITIONAL IL NODE TYPES ]========================
+
+        case 'Rotation': {
+          // Bitwise rotation -> value.rotateLeft/rotateRight(amount)
+          const value = this.transformExpression(node.value || node.arguments?.[0]);
+          const amount = this.transformExpression(node.amount || node.arguments?.[1]);
+          const direction = node.direction || 'left';
+          const method = direction === 'left' ? 'rotateLeft' : 'rotateRight';
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(value, method),
+            [amount]
+          );
+        }
+
+        case 'RotateLeft': {
+          // value.rotateLeft(amount)
+          const value = this.transformExpression(node.value || node.arguments?.[0]);
+          const amount = this.transformExpression(node.amount || node.arguments?.[1]);
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(value, 'rotateLeft'),
+            [amount]
+          );
+        }
+
+        case 'RotateRight': {
+          // value.rotateRight(amount)
+          const value = this.transformExpression(node.value || node.arguments?.[0]);
+          const amount = this.transformExpression(node.amount || node.arguments?.[1]);
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(value, 'rotateRight'),
+            [amount]
+          );
+        }
+
+        case 'Power': {
+          // x ** y -> Math.pow(x.toDouble(), y.toDouble())
+          const left = this.transformExpression(node.base || node.left || node.arguments?.[0]);
+          const right = this.transformExpression(node.exponent || node.right || node.arguments?.[1]);
+          return new KotlinFunctionCall(
+            new KotlinMemberAccess(new KotlinIdentifier('Math'), 'pow'),
+            [
+              new KotlinFunctionCall(new KotlinMemberAccess(left, 'toDouble'), []),
+              new KotlinFunctionCall(new KotlinMemberAccess(right, 'toDouble'), [])
+            ]
+          );
+        }
+
+        case 'ArrowFunction':
+        case 'FunctionExpression': {
+          // (params) => body -> { params -> body }
+          const params = (node.params || []).map(p => {
+            const paramName = typeof p === 'string' ? p : (p.name || 'arg');
+            const paramType = this.inferParameterType(paramName, typeof p === 'string' ? {} : p);
+            return new KotlinParameter(paramName, paramType);
+          });
+          let body;
+          if (node.body) {
+            if (node.body.type === 'BlockStatement')
+              body = this.transformBlockStatement(node.body);
+            else
+              body = this.transformExpression(node.body);
+          } else {
+            body = KotlinLiteral.Null();
+          }
+          return new KotlinLambda(params, body);
+        }
+
         default:
           console.warn(`No expression transformer for: ${node.type}`);
           return new KotlinIdentifier(`/* Unhandled: ${node.type} */`);
@@ -578,6 +1819,43 @@
       initBlock.body = statements;
 
       return initBlock;
+    }
+
+    transformClassExpression(node) {
+      // ClassExpression -> Kotlin class
+      const className = node.id?.name || 'AnonymousClass';
+      const classDecl = new KotlinClass(className);
+
+      if (node.superClass)
+        classDecl.superClass = this.transformExpression(node.superClass);
+
+      if (node.body?.body) {
+        for (const member of node.body.body) {
+          if (member.type === 'MethodDefinition') {
+            // Transform as function
+            const func = this.transformFunctionDeclaration({
+              type: 'FunctionDeclaration',
+              id: member.key,
+              params: member.value?.params || [],
+              body: member.value?.body
+            });
+            if (func)
+              classDecl.members.push(func);
+          } else if (member.type === 'PropertyDefinition') {
+            const prop = this.transformPropertyDefinition(member);
+            if (prop)
+              classDecl.members.push(prop);
+          }
+        }
+      }
+
+      return classDecl;
+    }
+
+    transformYieldExpression(node) {
+      // Kotlin uses sequence { yield(value) } - return argument for now
+      const argument = node.argument ? this.transformExpression(node.argument) : KotlinLiteral.Null();
+      return argument;
     }
 
     transformAccessor(node) {
@@ -1032,6 +2310,8 @@
 
     transformLiteral(node) {
       if (node.value === null) return KotlinLiteral.Null();
+      // Handle undefined - treat same as null in Kotlin
+      if (node.value === undefined) return KotlinLiteral.Null();
       if (typeof node.value === 'boolean') return KotlinLiteral.Boolean(node.value);
       if (typeof node.value === 'string') return KotlinLiteral.String(node.value);
       if (typeof node.value === 'number') {
@@ -1135,6 +2415,10 @@
     }
 
     transformMemberExpression(node) {
+      if (!node.property) {
+        // Fallback for IL nodes without a property field
+        return this.transformNode(node.object) || new KotlinIdentifier('/* missing property */');
+      }
       let member = node.property.name || node.property.value;
 
       if (node.computed) {
@@ -1167,7 +2451,7 @@
 
       if (node.callee.type === 'MemberExpression') {
         const obj = this.transformNode(node.callee.object);
-        const method = node.callee.property.name || node.callee.property.value;
+        const method = (node.callee.property && (node.callee.property.name || node.callee.property.value)) || '';
 
         // Handle Object methods (JavaScript built-ins)
         if (node.callee.object.type === 'Identifier' && node.callee.object.name === 'Object') {
@@ -1307,12 +2591,20 @@
     // ========================[ HELPER METHODS ]========================
 
     isOpCodesCall(node) {
-      return node.callee.type === 'MemberExpression' &&
+      return node.callee &&
+             node.callee.type === 'MemberExpression' &&
+             node.callee.object &&
              node.callee.object.type === 'Identifier' &&
              node.callee.object.name === 'OpCodes';
     }
 
     transformOpCodesCall(node) {
+      if (!node.callee || !node.callee.property) {
+        // Fallback for IL OpCodesCall nodes that use .method instead of .callee
+        const method = node.method || node.methodName || '';
+        const args = (node.arguments || []).map(arg => this.transformExpression(arg));
+        return new KotlinFunctionCall(new KotlinIdentifier(method), args);
+      }
       const method = node.callee.property.name || node.callee.property.value;
       const args = (node.arguments || []).map(arg => this.transformExpression(arg));
 

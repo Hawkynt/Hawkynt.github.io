@@ -199,6 +199,36 @@
       return code;
     }
 
+    emitFunction(node) {
+      let code = '';
+
+      if (node.jsDoc) {
+        code += this.emit(node.jsDoc);
+      }
+
+      let decl = '';
+      if (node.isExported) decl += 'export ';
+      if (node.isAsync) decl += 'async ';
+      decl += 'function ';
+      if (node.isGenerator) decl += '*';
+
+      decl += node.name;
+
+      // Parameters
+      const params = node.parameters.map(p => this.emitParameterDecl(p));
+      decl += `(${params.join(', ')})`;
+
+      code += this.line(decl + ' {');
+      this.indentLevel++;
+      if (node.body) {
+        code += this.emit(node.body);
+      }
+      this.indentLevel--;
+      code += this.line('}');
+
+      return code;
+    }
+
     emitConstructor(node) {
       let code = '';
 
@@ -217,6 +247,17 @@
       this.indentLevel--;
       code += this.line('}');
 
+      return code;
+    }
+
+    emitStaticBlock(node) {
+      let code = this.line('static {');
+      this.indentLevel++;
+      if (node.body) {
+        code += this.emit(node.body);
+      }
+      this.indentLevel--;
+      code += this.line('}');
       return code;
     }
 
@@ -288,7 +329,22 @@
     emitFor(node) {
       let init = '';
       if (node.initializer) {
-        if (node.initializer.nodeType === 'VariableDeclaration') {
+        // Handle array of variable declarations (for multi-variable: let i = 0, j = 10)
+        if (Array.isArray(node.initializer)) {
+          const decls = node.initializer;
+          if (decls.length > 0 && decls[0].nodeType === 'VariableDeclaration') {
+            const kind = decls[0].kind || 'let';
+            const parts = decls.map(d => {
+              let part = d.name;
+              if (d.initializer) part += ` = ${this.emit(d.initializer)}`;
+              return part;
+            });
+            init = `${kind} ${parts.join(', ')}`;
+          } else {
+            // Array of expressions (comma operator)
+            init = decls.map(d => this.emit(d)).join(', ');
+          }
+        } else if (node.initializer.nodeType === 'VariableDeclaration') {
           init = `${node.initializer.kind} ${node.initializer.name}`;
           if (node.initializer.initializer) {
             init += ` = ${this.emit(node.initializer.initializer)}`;
@@ -433,6 +489,9 @@
       if (node.literalType === 'bigint') {
         return `${node.value}n`;
       }
+      if (node.literalType === 'regex') {
+        return `/${node.pattern}/${node.flags || ''}`;
+      }
 
       // Numeric literal
       return String(node.value);
@@ -505,10 +564,38 @@
       if (node.properties.length === 0) {
         return '{}';
       }
-      const props = node.properties.map(p =>
-        `${p.key}: ${this.emit(p.value)}`
-      );
+      const props = node.properties.map(p => {
+        // Handle spread properties: {...other}
+        if (p.spread || p.key === '...') {
+          return `...${this.emit(p.value)}`;
+        }
+        // Quote key if it's not a valid identifier
+        const key = this.formatObjectKey(p.key);
+        return `${key}: ${this.emit(p.value)}`;
+      });
       return `{ ${props.join(', ')} }`;
+    }
+
+    /**
+     * Format object key, quoting if necessary
+     * @param {string} key - The object key
+     * @returns {string} Properly formatted key
+     */
+    formatObjectKey(key) {
+      // Check if key is a valid JavaScript identifier
+      // Valid identifiers: start with letter, _, or $; contain only letters, digits, _, $
+      const validIdentifier = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/;
+      if (validIdentifier.test(key)) {
+        return key;
+      }
+      // Quote the key, escaping any special characters
+      const escaped = key
+        .replace(/\\/g, '\\\\')
+        .replace(/"/g, '\\"')
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '\\r')
+        .replace(/\t/g, '\\t');
+      return `"${escaped}"`;
     }
 
     emitConditional(node) {
@@ -559,6 +646,36 @@
       }
       result += '`';
       return result;
+    }
+
+    emitYieldExpression(node) {
+      if (node.delegate) {
+        return node.argument ? `yield* ${this.emit(node.argument)}` : 'yield*';
+      }
+      return node.argument ? `yield ${this.emit(node.argument)}` : 'yield';
+    }
+
+    emitChainExpression(node) {
+      // Chain expressions just emit their inner expression
+      // The optional chaining markers (?.) are handled by MemberAccess/ElementAccess/Call nodes
+      return this.emit(node.expression);
+    }
+
+    emitSpreadElement(node) {
+      return `...${this.emit(node.argument)}`;
+    }
+
+    emitAwaitExpression(node) {
+      return `await ${this.emit(node.argument)}`;
+    }
+
+    emitDeleteExpression(node) {
+      return `delete ${this.emit(node.argument)}`;
+    }
+
+    emitSequenceExpression(node) {
+      const expressions = node.expressions.map(e => this.emit(e));
+      return `(${expressions.join(', ')})`;
     }
 
     // ========================[ DOCUMENTATION ]========================
