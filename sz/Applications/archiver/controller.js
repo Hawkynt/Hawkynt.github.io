@@ -617,22 +617,8 @@
     if (entry._data instanceof Uint8Array) return entry._data;
     if (entry._data.aesEncrypted) {
       try {
-        const ae = entry._data;
-        const salt = ae.aesEncrypted.slice(0, 16);
-        const verification = ae.aesEncrypted.slice(16, 18);
-        const encData = ae.aesEncrypted.slice(18, ae.aesEncrypted.length - 10);
-        const keyMaterial = await crypto.subtle.importKey('raw', new TextEncoder().encode(ae.password), 'PBKDF2', false, ['deriveBits']);
-        const derived = new Uint8Array(await crypto.subtle.deriveBits(
-          { name: 'PBKDF2', salt, iterations: 1000, hash: 'SHA-1' }, keyMaterial, (32 + 32 + 2) * 8
-        ));
-        const aesKey = derived.slice(0, 32);
-        if (derived[64] !== verification[0] || derived[65] !== verification[1]) return null;
-        const cryptoKey = await crypto.subtle.importKey('raw', aesKey, 'AES-CTR', false, ['decrypt']);
-        const counter = new Uint8Array(16);
-        counter[0] = 1;
-        const decrypted = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-CTR', counter, length: 128 }, cryptoKey, encData));
-        const result = ae.size && ae.size !== decrypted.length ? await decompressDeflateRaw(decrypted) : decrypted;
-        entry._data = result;
+        const result = await A.decryptAesZipEntry(entry._data);
+        if (result) entry._data = result;
         return result;
       } catch (_) {
         return null;
@@ -1320,6 +1306,13 @@
     menu.style.left = e.clientX + 'px';
     menu.style.top = e.clientY + 'px';
 
+    const _ctxIcons = {
+      view: '<svg viewBox="0 0 16 16"><path d="M8 3C4 3 1.5 8 1.5 8s2.5 5 6.5 5 6.5-5 6.5-5S12 3 8 3z" fill="#e0e8f5" stroke="#4466aa" stroke-width=".7"/><circle cx="8" cy="8" r="2.5" fill="#4466aa"/><circle cx="8" cy="8" r="1" fill="#fff"/></svg>',
+      'extract-selected': '<svg viewBox="0 0 16 16"><path d="M5 3h6v10H5z" fill="#e8d8a0" stroke="#a08040" stroke-width=".7"/><path d="M8 5.5v4M6.5 7.5l1.5 2 1.5-2" stroke="#2266cc" stroke-width="1" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+      delete: '<svg viewBox="0 0 16 16"><path d="M5 4v9h6V4" fill="#fdd" stroke="#c44" stroke-width=".7"/><path d="M3 4h10" stroke="#c44" stroke-width="1"/><path d="M6 2h4v2H6z" fill="none" stroke="#c44" stroke-width=".7"/><path d="M7 6v5M9 6v5" stroke="#c44" stroke-width=".7"/></svg>',
+      properties: '<svg viewBox="0 0 16 16"><rect x="3" y="2" width="10" height="12" rx="1" fill="#e8e8e8" stroke="#888" stroke-width=".7"/><path d="M5 5h6M5 7.5h6M5 10h4" stroke="#666" stroke-width=".7" stroke-linecap="round"/></svg>',
+    };
+
     const items = [
       { label: 'View', action: 'view' },
       { label: 'Extract', action: 'extract-selected' },
@@ -1336,7 +1329,8 @@
       } else {
         const entry = document.createElement('div');
         entry.className = 'menu-entry';
-        entry.textContent = item.label;
+        const icon = _ctxIcons[item.action] || '';
+        entry.innerHTML = `<span class="menu-icon">${icon}</span><span class="menu-label">${item.label}</span>`;
         entry.addEventListener('click', () => { _dismissCtxMenu(); handleAction(item.action); });
         menu.appendChild(entry);
       }

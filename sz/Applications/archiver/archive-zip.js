@@ -160,6 +160,12 @@ class ZipFormat extends IArchiveFormat {
   }
 
   _hasEncryptedEntries(bytes) {
+    // Check central directory first (reliable even with data descriptors)
+    const cdEntries = this._parseCentralDirectory(bytes);
+    if (cdEntries.length > 0)
+      return cdEntries.some(e => !!(e.flags & 1));
+
+    // Fallback: scan local headers
     let off = 0;
     while (off + 30 <= bytes.length) {
       if (bytes[off] !== 0x50 || bytes[off + 1] !== 0x4B || bytes[off + 2] !== 0x03 || bytes[off + 3] !== 0x04)
@@ -169,47 +175,126 @@ class ZipFormat extends IArchiveFormat {
       const compSize = readU32LE(bytes, off + 18);
       const nameLen = readU16LE(bytes, off + 26);
       const extraLen = readU16LE(bytes, off + 28);
+      if (flags & 0x08) break; // data descriptor — can't reliably skip
       off += 30 + nameLen + extraLen + compSize;
     }
     return false;
   }
 
+  _parseCentralDirectory(bytes) {
+    // Find EOCD signature (search backwards from end, max 65KB comment)
+    let eocdOff = -1;
+    const searchStart = Math.max(0, bytes.length - 65557);
+    for (let i = bytes.length - 22; i >= searchStart; --i) {
+      if (bytes[i] === 0x50 && bytes[i + 1] === 0x4B && bytes[i + 2] === 0x05 && bytes[i + 3] === 0x06) {
+        eocdOff = i;
+        break;
+      }
+    }
+    if (eocdOff < 0) return [];
+
+    const cdSize = readU32LE(bytes, eocdOff + 12);
+    const cdOffset = readU32LE(bytes, eocdOff + 16);
+    const numEntries = readU16LE(bytes, eocdOff + 10);
+    const result = [];
+
+    let off = cdOffset;
+    for (let i = 0; i < numEntries && off + 46 <= bytes.length; ++i) {
+      if (bytes[off] !== 0x50 || bytes[off + 1] !== 0x4B || bytes[off + 2] !== 0x01 || bytes[off + 3] !== 0x02)
+        break;
+      const flags = readU16LE(bytes, off + 8);
+      const method = readU16LE(bytes, off + 10);
+      const dosTime = readU16LE(bytes, off + 14);
+      const dosDate = readU16LE(bytes, off + 16);
+      const crc = readU32LE(bytes, off + 18);
+      const compSize = readU32LE(bytes, off + 22);
+      const uncompSize = readU32LE(bytes, off + 26);
+      const nameLen = readU16LE(bytes, off + 30);
+      const extraLen = readU16LE(bytes, off + 32);
+      const commentLen = readU16LE(bytes, off + 34);
+      const localOffset = readU32LE(bytes, off + 42);
+      const nameBytes = bytes.subarray(off + 46, off + 46 + nameLen);
+      const name = new TextDecoder().decode(nameBytes);
+      const extraData = bytes.subarray(off + 46 + nameLen, off + 46 + nameLen + extraLen);
+
+      result.push({ name, flags, method, dosTime, dosDate, crc, compSize, uncompSize, localOffset, extraData });
+      off += 46 + nameLen + extraLen + commentLen;
+    }
+    return result;
+  }
+
   _parseEncrypted(bytes, password) {
-    const entries = [];
     const handler = this;
+
+    // Use central directory for reliable sizes/CRCs (handles data descriptors)
+    const cdEntries = this._parseCentralDirectory(bytes);
+
+    // Build lookup by local header offset → CD entry
+    const cdByOffset = new Map();
+    for (const cd of cdEntries)
+      cdByOffset.set(cd.localOffset, cd);
+
+    const entries = [];
     let off = 0;
 
     while (off + 30 <= bytes.length) {
       if (bytes[off] !== 0x50 || bytes[off + 1] !== 0x4B || bytes[off + 2] !== 0x03 || bytes[off + 3] !== 0x04)
         break;
 
-      const method = readU16LE(bytes, off + 8);
-      const flags = readU16LE(bytes, off + 6);
-      const encrypted = !!(flags & 1);
-      const dosTime = readU16LE(bytes, off + 12);
-      const dosDate = readU16LE(bytes, off + 14);
-      const crc = readU32LE(bytes, off + 16);
-      const compSize = readU32LE(bytes, off + 18);
-      const uncompSize = readU32LE(bytes, off + 22);
+      const localOff = off;
+      let method = readU16LE(bytes, off + 8);
+      let flags = readU16LE(bytes, off + 6);
+      let dosTime = readU16LE(bytes, off + 12);
+      let dosDate = readU16LE(bytes, off + 14);
+      let crc = readU32LE(bytes, off + 16);
+      let compSize = readU32LE(bytes, off + 18);
+      let uncompSize = readU32LE(bytes, off + 22);
       const nameLen = readU16LE(bytes, off + 26);
       const extraLen = readU16LE(bytes, off + 28);
 
       const nameBytes = bytes.subarray(off + 30, off + 30 + nameLen);
       const name = new TextDecoder().decode(nameBytes);
       const isDir = name.endsWith('/');
-      const mod = dosToDate(dosDate, dosTime);
 
+      // Override from central directory if available (fixes data descriptor entries)
+      const cd = cdByOffset.get(localOff);
+      if (cd) {
+        if (flags & 0x08) {
+          crc = cd.crc;
+          compSize = cd.compSize;
+          uncompSize = cd.uncompSize;
+        }
+        method = cd.method;
+        flags = cd.flags;
+      }
+
+      const encrypted = !!(flags & 1);
+      const mod = dosToDate(dosDate, dosTime);
       const dataStart = off + 30 + nameLen + extraLen;
       const rawData = bytes.slice(dataStart, dataStart + compSize);
 
       let fileData = null;
       if (!isDir) {
         if (encrypted && method === 99) {
-          fileData = { aesEncrypted: rawData, size: uncompSize, extraData: bytes.subarray(off + 30, off + 30 + nameLen + extraLen), password };
+          // Parse AE extra field (0x9901) from local or CD extra data
+          let aesStrength = 3;
+          let actualMethod = 8;
+          const extraSrc = cd ? cd.extraData : bytes.subarray(off + 30 + nameLen, off + 30 + nameLen + extraLen);
+          let eOff = 0;
+          while (eOff + 4 <= extraSrc.length) {
+            const hdrId = readU16LE(extraSrc, eOff);
+            const hdrSize = readU16LE(extraSrc, eOff + 2);
+            if (hdrId === 0x9901 && hdrSize >= 7) {
+              aesStrength = extraSrc[eOff + 8];
+              actualMethod = readU16LE(extraSrc, eOff + 9);
+            }
+            eOff += 4 + hdrSize;
+          }
+          fileData = { aesEncrypted: rawData, size: uncompSize, aesStrength, actualMethod, password };
         } else if (encrypted) {
-          const crypto = new ZipCrypto();
-          crypto.initKeys(password);
-          const decrypted = crypto.decrypt(rawData);
+          const zc = new ZipCrypto();
+          zc.initKeys(password);
+          const decrypted = zc.decrypt(rawData);
           const check = decrypted[11];
           if (check !== ((crc >>> 24) & 0xFF) && check !== ((dosTime >>> 8) & 0xFF))
             throw new Error('Wrong password');
@@ -527,7 +612,7 @@ class ZipFormat extends IArchiveFormat {
       try { return await decompressDeflateRaw(entry._data.deflated); } catch (_) { return null; }
     }
     if (entry._data && entry._data.aesEncrypted) {
-      return resolveEntryData(entry);
+      try { return await decryptAesZipEntry(entry._data); } catch (_) { return null; }
     }
     return entry._data instanceof Uint8Array ? entry._data : null;
   }
@@ -648,10 +733,91 @@ class ZipxFormat extends IArchiveFormat {
 }
 
 // =======================================================================
+// AES-CTR decryption with little-endian counter (WinZip AES spec)
+// Web Crypto only supports big-endian counter increment, so we process
+// block-by-block with concurrent crypto operations for performance.
+// =======================================================================
+
+const _AES_SALT_SIZES = { 1: 8, 2: 12, 3: 16 };
+const _AES_KEY_SIZES  = { 1: 16, 2: 24, 3: 32 };
+
+async function decryptAesZipEntry(ae) {
+  const strength = ae.aesStrength || 3;
+  const saltLen  = _AES_SALT_SIZES[strength] || 16;
+  const keyLen   = _AES_KEY_SIZES[strength] || 32;
+  const raw      = ae.aesEncrypted;
+
+  if (raw.length < saltLen + 2 + 10) return null;
+
+  const salt         = raw.slice(0, saltLen);
+  const verification = raw.slice(saltLen, saltLen + 2);
+  const encData      = raw.slice(saltLen + 2, raw.length - 10);
+
+  // PBKDF2 key derivation: keyLen (enc) + keyLen (hmac) + 2 (verify)
+  const derivedLen = keyLen + keyLen + 2;
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(ae.password), 'PBKDF2', false, ['deriveBits']
+  );
+  const derived = new Uint8Array(await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt, iterations: 1000, hash: 'SHA-1' }, keyMaterial, derivedLen * 8
+  ));
+
+  const aesKey = derived.slice(0, keyLen);
+  const verifyBytes = derived.slice(keyLen + keyLen, keyLen + keyLen + 2);
+
+  if (verifyBytes[0] !== verification[0] || verifyBytes[1] !== verification[1])
+    return null; // wrong password
+
+  // AES-CTR with LE counter starting at 1 (WinZip spec)
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw', aesKey, 'AES-CTR', false, ['encrypt']
+  );
+
+  const BLOCK = 16;
+  const numBlocks = Math.ceil(encData.length / BLOCK);
+  const result = new Uint8Array(encData.length);
+  const zeros = new Uint8Array(BLOCK);
+
+  // Process in batches of 256 blocks to limit concurrent promises
+  const BATCH = 256;
+  for (let bStart = 0; bStart < numBlocks; bStart += BATCH) {
+    const bEnd = Math.min(bStart + BATCH, numBlocks);
+    const promises = [];
+    for (let b = bStart; b < bEnd; ++b) {
+      const ctr = new Uint8Array(16);
+      const v = b + 1;
+      ctr[0] = v & 0xFF;
+      ctr[1] = (v >>> 8) & 0xFF;
+      ctr[2] = (v >>> 16) & 0xFF;
+      ctr[3] = (v >>> 24) & 0xFF;
+      promises.push(crypto.subtle.encrypt({ name: 'AES-CTR', counter: ctr, length: 128 }, cryptoKey, zeros));
+    }
+    const keystreams = await Promise.all(promises);
+    for (let i = 0; i < keystreams.length; ++i) {
+      const b = bStart + i;
+      const ks = new Uint8Array(keystreams[i]);
+      const off = b * BLOCK;
+      const len = Math.min(BLOCK, encData.length - off);
+      for (let j = 0; j < len; ++j)
+        result[off + j] = encData[off + j] ^ ks[j];
+    }
+  }
+
+  // Decompress if the actual method was deflate (or other)
+  const actualMethod = ae.actualMethod ?? 8;
+  if (actualMethod === 8 && ae.size && ae.size !== result.length) {
+    try { return await decompressDeflateRaw(result); }
+    catch (_) { return result; }
+  }
+  return result;
+}
+
+// =======================================================================
 // Registration & Exports
 // =======================================================================
 
 A.ZipCrypto = ZipCrypto;
+A.decryptAesZipEntry = decryptAesZipEntry;
 IArchiveFormat.register(ZipFormat);
 IArchiveFormat.register(JarFormat);
 IArchiveFormat.register(ApkFormat);
