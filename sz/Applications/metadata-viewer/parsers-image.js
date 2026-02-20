@@ -111,6 +111,14 @@
     0x0010: 'Img Direction Ref',
     0x0011: 'Img Direction',
     0x0012: 'Map Datum',
+    0x0013: 'Dest Latitude Ref',
+    0x0014: 'Dest Latitude',
+    0x0015: 'Dest Longitude Ref',
+    0x0016: 'Dest Longitude',
+    0x0017: 'Dest Bearing Ref',
+    0x0018: 'Dest Bearing',
+    0x0019: 'Dest Distance Ref',
+    0x001A: 'Dest Distance',
     0x001D: 'Date Stamp',
   };
 
@@ -179,6 +187,14 @@
     const deg = rational[0], min = rational[1], sec = rational[2];
     const decimal = deg + min / 60 + sec / 3600;
     return deg + '\u00B0 ' + min + "' " + sec.toFixed(2) + '" ' + (ref || '') + ' (' + decimal.toFixed(6) + '\u00B0)';
+  }
+
+  function gpsToDecimal(rationalArr, ref) {
+    if (!Array.isArray(rationalArr) || rationalArr.length < 3) return 0;
+    const deg = rationalArr[0], min = rationalArr[1], sec = rationalArr[2];
+    let decimal = deg + min / 60 + sec / 3600;
+    if (ref === 'S' || ref === 'W') decimal = -decimal;
+    return decimal;
   }
 
   // =========================================================================
@@ -457,28 +473,103 @@
       for (const entry of Object.values(gpsIFD)) {
         if (!entry.tagName || entry.tagName.startsWith('_')) continue;
         gpsRaw[entry.tag] = entry.value;
-        let displayValue = entry.value;
+      }
 
-        // Format coordinates as DMS
-        if (entry.tag === 0x0002 && Array.isArray(displayValue))
-          displayValue = formatGPSCoord(displayValue, gpsIFD[0x0001] ? gpsIFD[0x0001].value : '');
-        else if (entry.tag === 0x0004 && Array.isArray(displayValue))
-          displayValue = formatGPSCoord(displayValue, gpsIFD[0x0003] ? gpsIFD[0x0003].value : '');
-        else if (entry.tag === 0x0006 && typeof displayValue === 'number')
-          displayValue = displayValue.toFixed(2) + ' m' + (gpsIFD[0x0005] && gpsIFD[0x0005].value === 1 ? ' (below sea level)' : '');
-        else if (entry.tag === 0x0007 && Array.isArray(displayValue))
+      // Compound editable Coordinates field
+      const hasLat = gpsRaw[0x0002] && gpsRaw[0x0001];
+      const hasLng = gpsRaw[0x0004] && gpsRaw[0x0003];
+      if (hasLat && hasLng) {
+        const decLat = gpsToDecimal(gpsRaw[0x0002], gpsRaw[0x0001]);
+        const decLng = gpsToDecimal(gpsRaw[0x0004], gpsRaw[0x0003]);
+        const latStr = formatGPSCoord(gpsRaw[0x0002], gpsRaw[0x0001]);
+        const lngStr = formatGPSCoord(gpsRaw[0x0004], gpsRaw[0x0003]);
+        gpsFields.push({
+          key: 'gps.coordinates', label: 'Coordinates',
+          value: latStr + '  /  ' + lngStr,
+          editable: true, editType: 'geo',
+          lat: decLat, lng: decLng,
+        });
+      }
+
+      // Editable Altitude field
+      if (gpsRaw[0x0006] != null) {
+        const altVal = typeof gpsRaw[0x0006] === 'number' ? gpsRaw[0x0006] : 0;
+        const belowSea = gpsRaw[0x0005] && gpsRaw[0x0005] === 1;
+        gpsFields.push({
+          key: 'gps.altitude', label: 'Altitude',
+          value: altVal.toFixed(2) + ' m' + (belowSea ? ' (below sea level)' : ''),
+          editable: true, editType: 'number', step: 0.01,
+        });
+      }
+
+      // Editable Image Direction field
+      if (gpsRaw[0x0011] != null) {
+        const dirVal = typeof gpsRaw[0x0011] === 'number' ? gpsRaw[0x0011] : 0;
+        const dirRef = gpsRaw[0x0010] || 'T';
+        gpsFields.push({
+          key: 'gps.direction', label: 'Image Direction',
+          value: dirVal.toFixed(1) + '\u00B0 ' + (dirRef === 'M' ? 'Magnetic' : 'True'),
+          editable: true, editType: 'compass',
+        });
+      }
+
+      // Compound editable Destination field
+      const hasDestLat = gpsRaw[0x0014] && gpsRaw[0x0013];
+      const hasDestLng = gpsRaw[0x0016] && gpsRaw[0x0015];
+      if (hasDestLat && hasDestLng) {
+        const decDestLat = gpsToDecimal(gpsRaw[0x0014], gpsRaw[0x0013]);
+        const decDestLng = gpsToDecimal(gpsRaw[0x0016], gpsRaw[0x0015]);
+        const destLatStr = formatGPSCoord(gpsRaw[0x0014], gpsRaw[0x0013]);
+        const destLngStr = formatGPSCoord(gpsRaw[0x0016], gpsRaw[0x0015]);
+        gpsFields.push({
+          key: 'gps.destination', label: 'Destination',
+          value: destLatStr + '  /  ' + destLngStr,
+          editable: true, editType: 'geo',
+          lat: decDestLat, lng: decDestLng,
+        });
+      }
+
+      // Dest Bearing
+      if (gpsRaw[0x0018] != null) {
+        const bearVal = typeof gpsRaw[0x0018] === 'number' ? gpsRaw[0x0018] : 0;
+        const bearRef = gpsRaw[0x0017] || 'T';
+        gpsFields.push({
+          key: 'gps.destBearing', label: 'Dest Bearing',
+          value: bearVal.toFixed(1) + '\u00B0 ' + (bearRef === 'M' ? 'Magnetic' : 'True'),
+        });
+      }
+
+      // Dest Distance
+      if (gpsRaw[0x001A] != null) {
+        const distVal = typeof gpsRaw[0x001A] === 'number' ? gpsRaw[0x001A] : 0;
+        const distRef = gpsRaw[0x0019] || 'K';
+        const unitLabel = distRef === 'M' ? 'mi' : distRef === 'N' ? 'nmi' : 'km';
+        gpsFields.push({
+          key: 'gps.destDistance', label: 'Dest Distance',
+          value: distVal.toFixed(2) + ' ' + unitLabel,
+        });
+      }
+
+      // Remaining GPS fields (non-compound)
+      for (const entry of Object.values(gpsIFD)) {
+        if (!entry.tagName || entry.tagName.startsWith('_')) continue;
+        // Skip tags already handled as compound fields
+        if ([0x0001, 0x0002, 0x0003, 0x0004, 0x0005, 0x0006, 0x0010, 0x0011,
+             0x0013, 0x0014, 0x0015, 0x0016, 0x0017, 0x0018, 0x0019, 0x001A].includes(entry.tag))
+          continue;
+
+        let displayValue = entry.value;
+        if (entry.tag === 0x0007 && Array.isArray(displayValue))
           displayValue = Math.floor(displayValue[0]) + ':' + String(Math.floor(displayValue[1])).padStart(2, '0') + ':' + displayValue[2].toFixed(2).padStart(5, '0') + ' UTC';
         else if (entry.tag === 0x000D && typeof displayValue === 'number')
-          displayValue = displayValue.toFixed(2) + ' ' + (gpsIFD[0x000C] ? gpsIFD[0x000C].value : '');
+          displayValue = displayValue.toFixed(2) + ' ' + (gpsRaw[0x000C] || '');
+        else if (entry.tag === 0x000C || entry.tag === 0x000E)
+          continue; // ref tags folded into other displays
         else if (Array.isArray(displayValue))
           displayValue = displayValue.map(v => typeof v === 'number' ? v.toFixed(4) : String(v)).join(', ');
         else if (typeof displayValue === 'number')
           displayValue = displayValue.toFixed(4);
         else if (displayValue == null)
-          continue;
-
-        // Skip ref tags — they're folded into coordinate display
-        if (entry.tag === 0x0001 || entry.tag === 0x0003 || entry.tag === 0x0005 || entry.tag === 0x000C || entry.tag === 0x000E || entry.tag === 0x0010)
           continue;
 
         gpsFields.push({ key: 'gps.' + entry.tag.toString(16), label: entry.tagName, value: String(displayValue) });
@@ -640,7 +731,7 @@
       // APP0 — JFIF
       if (marker === 0xE0 && segLen >= 14) {
         const id = readString(bytes, segData, 5);
-        if (id === 'JFIF\0') {
+        if (id === 'JFIF' && bytes[segData + 4] === 0) {
           const verMaj = readU8(bytes, segData + 5);
           const verMin = readU8(bytes, segData + 6);
           const units = readU8(bytes, segData + 7);
@@ -655,7 +746,7 @@
       // APP1 — EXIF
       if (marker === 0xE1 && segLen >= 8) {
         const exifHeader = readString(bytes, segData, 6);
-        if (exifHeader === 'Exif\0\0')
+        if (exifHeader === 'Exif' && bytes[segData + 4] === 0 && bytes[segData + 5] === 0)
           exifData = { offset: segData + 6, length: segLen - 8 };
       }
 

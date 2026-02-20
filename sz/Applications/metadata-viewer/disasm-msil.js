@@ -62,8 +62,13 @@
     const table = meta.tables && meta.tables[tableIdx];
     if (!table || rowNum > table.length) return null;
     const row = table[rowNum - 1];
-    if (!row || !row.name) return null;
-    return (row.namespace ? row.namespace + '.' : '') + row.name;
+    if (!row) return null;
+    const str = meta.strings;
+    if (!str || row.name == null) return null;
+    const name = str(row.name);
+    if (!name) return null;
+    const ns = row.ns != null ? str(row.ns) : '';
+    return (ns ? ns + '.' : '') + name;
   }
 
   function token(bytes, off) {
@@ -558,5 +563,156 @@
   // -------------------------------------------------------------------------
 
   D.registerDisassembler('msil', decodeMsil);
+
+  // =========================================================================
+  // MSIL Decompiler Formatters (C#, VB.NET) — syntax-highlighted output
+  //
+  // Each MSIL instruction already carries a `pseudoC` field from the opcode
+  // table (e.g. "push(pop() + pop())", "if (pop()) goto IL_XXXX").  The
+  // decompilers use that directly and dress it up for C# / VB presentation.
+  // =========================================================================
+
+  const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const span = (cls, text) => '<span class="da-' + cls + '">' + esc(text) + '</span>';
+
+  // Keyword sets for syntax highlighting
+  const CS_KW = new Set([
+    'if', 'else', 'goto', 'return', 'throw', 'new', 'null', 'true', 'false',
+    'try', 'catch', 'finally', 'is', 'as', 'typeof', 'sizeof', 'checked', 'unchecked',
+    'while', 'for', 'foreach', 'do', 'switch', 'case', 'break', 'continue', 'default',
+    'void', 'int', 'long', 'short', 'byte', 'float', 'double', 'bool', 'char',
+    'string', 'object', 'var', 'this', 'base', 'ref', 'out',
+    'push', 'pop', 'peek', 'call', 'vcall', 'jmp', 'leave', 'rethrow',
+    'arg', 'local', 'static', 'token', 'str', 'ftnptr', 'vftnptr',
+    'box', 'unbox', 'initobj', 'cpobj', 'memcpy', 'memset', 'stackalloc',
+    'refanyval', 'refanytype', 'mkrefany', 'arglist',
+    'int8', 'uint8', 'int16', 'uint16', 'int32', 'uint32', 'int64', 'uint64',
+    'float32', 'float64', 'nint', 'nuint',
+  ]);
+  const VB_KW = new Set([
+    'If', 'Then', 'Else', 'GoTo', 'Return', 'Throw', 'New', 'Nothing', 'True', 'False',
+    'Try', 'Catch', 'Finally', 'TypeOf', 'Is', 'Dim', 'As', 'End',
+    'While', 'For', 'Each', 'Do', 'Select', 'Case', 'Exit', 'Continue',
+    'Integer', 'Long', 'Short', 'Byte', 'Single', 'Double', 'Boolean', 'Char',
+    'String', 'Object', 'Me', 'MyBase', 'ByRef', 'ByVal',
+    'Push', 'Pop', 'Peek', 'Call', 'DirectCast', 'CType', 'TryCast',
+  ]);
+
+  /** Syntax-highlight a code string into HTML. */
+  function _highlightCode(code, kwSet) {
+    const RE = /("(?:[^"\\]|\\.)*")|(IL_[0-9A-Fa-f]+)|(\b0[xX][0-9A-Fa-f]+\b)|(-?\b\d+(?:\.\d+)?[fFL]?\b)|([A-Za-z_][A-Za-z0-9_.]*)|([+\-*/%&|^~!=<>?:]+)|(\/\*.*?\*\/)|(\/\/.*$)|([()[\]{},;])|(\s+)|(.)/gm;
+    let html = '', m;
+    while ((m = RE.exec(code)) !== null) {
+      if (m[1]) html += span('str', m[1]);
+      else if (m[2]) { // IL label — clickable
+        const off = parseInt(m[2].substring(3), 16);
+        html += '<a class="da-addr da-lbl" data-target="' + off.toString(16) + '">' + esc(m[2]) + '</a>';
+      }
+      else if (m[3]) html += span('num', m[3]);
+      else if (m[4]) html += span('num', m[4]);
+      else if (m[5]) {
+        if (kwSet.has(m[5])) html += span('kw', m[5]);
+        else if (m[5].includes('.')) html += span('sym', m[5]);
+        else html += span('id', m[5]);
+      }
+      else if (m[6]) html += span('op', m[6]);
+      else if (m[7]) html += span('cmt', m[7]);
+      else if (m[8]) html += span('cmt', m[8]);
+      else if (m[9]) html += span('op', m[9]);
+      else if (m[10]) html += m[10];
+      else html += esc(m[11]);
+    }
+    return html;
+  }
+
+  // ---- Low-level C# 2.0: use pseudoC directly from opcode table ----
+  function _msilToCSharpLow(insn) {
+    const pc = insn.pseudoC;
+    if (pc) return pc;
+    const mn = insn.mnemonic || '??';
+    const ops = insn.operands || '';
+    return '/* ' + mn + (ops ? ' ' + ops : '') + ' */';
+  }
+
+  // ---- VB.NET: translate pseudoC into VB-flavoured syntax ----
+  function _msilToVB(insn) {
+    const pc = insn.pseudoC;
+    if (!pc) {
+      const mn = insn.mnemonic || '??';
+      const ops = insn.operands || '';
+      return "' " + mn + (ops ? ' ' + ops : '');
+    }
+    return pc
+      .replace(/\bgoto\b/g, 'GoTo')
+      .replace(/\breturn\b/g, 'Return')
+      .replace(/\bthrow\b/g, 'Throw')
+      .replace(/\brethrow\b/g, 'Throw')
+      .replace(/\bnew\b/g, 'New')
+      .replace(/\bnull\b/g, 'Nothing')
+      .replace(/\bif\b/gi, 'If')
+      .replace(/\bpush\b/g, 'Push')
+      .replace(/\bpop\b/g, 'Pop')
+      .replace(/\bpeek\b/g, 'Peek')
+      .replace(/\btrue\b/g, 'True')
+      .replace(/\bfalse\b/g, 'False')
+      .replace(/\blocal\[/g, 'Local(')
+      .replace(/\barg\[/g, 'Arg(')
+      .replace(/\bstatic\./g, 'Shared.')
+      .replace(/\]/g, function(_, offset, str) {
+        // Only replace ] that came from local[ or arg[ → )
+        const preceding = str.substring(Math.max(0, offset - 20), offset);
+        if (/(?:Local|Arg)\([^)]*$/.test(preceding)) return ')';
+        return ']';
+      });
+  }
+
+  // ---- Higher-level C#: clean up push/pop for readability ----
+  function _msilToCSharpHigh(insn) {
+    const pc = insn.pseudoC;
+    if (!pc) return _msilToCSharpLow(insn);
+    // Simplify common stack patterns
+    return pc
+      .replace(/\ba=pop\(\); push\(pop\(\) ([+\-*/%&|^]) a\)/g, '/* $1 */')
+      .replace(/\ba=pop\(\); push\(pop\(\) (>>|<<|>>>|>=|<=|>|<) a\)/g, '/* $1 */')
+      .replace(/\ba=pop\(\); push\(pop\(\)([><=!]=?)a \? 1 : 0\)/g, '/* $1 */')
+      .replace(/\bpush\(pop\(\) ([+\-*/%&|^]) pop\(\)\)/g, '/* $1 */')
+      .replace(/\bpush\(pop\(\)==pop\(\) \? 1 : 0\)/g, '/* == */')
+      .replace(/\bpush\((-?)pop\(\)\)/g, '/* $1val */')
+      .replace(/\bpush\(~pop\(\)\)/g, '/* ~val */')
+      .replace(/\bpush\(pop\(\)\.Length\)/g, '.Length')
+      .replace(/\bpush\(pop\(\)\)/g, '/* dup */')
+      .replace(/\bpush\(str /g, 'string s = ')
+      .replace(/\bpush\(new /g, 'new ')
+      .replace(/\bpush\(null\)/g, 'null')
+      .replace(/\bpush\((-?\d+[fFL]?)\)/g, '$1')
+      .replace(/\bpush\(0[xX][0-9A-Fa-f]+\)/g, function(m) { return m.substring(5, m.length - 1); })
+      .replace(/\blocal\[(\d+)\] = pop\(\)/g, 'var v$1 = ...')
+      .replace(/\barg\[(\d+)\] = pop\(\)/g, 'arg$1 = ...')
+      .replace(/\bpop\(\)/g, '...');
+  }
+
+  /** Format decompiled output with syntax highlighting and clickable labels. */
+  function _formatDecompiledMsil(instructions, _annotations, formatter, kwSet) {
+    const lines = [];
+    for (const insn of instructions) {
+      const off = '<span class="da-off">' + esc(insn.offset.toString(16).padStart(8, '0').toUpperCase()) + '</span>';
+      const code = formatter(insn);
+      const highlighted = _highlightCode(code, kwSet);
+      lines.push(
+        '<span class="da-line" data-offset="' + insn.offset.toString(16) + '">'
+        + off
+        + '<span class="da-sep"> | </span>'
+        + highlighted
+        + '</span>'
+      );
+    }
+    return lines.join('\n');
+  }
+
+  if (D.registerDecompileFormatter) {
+    D.registerDecompileFormatter('csharp-low', (insns, annot) => _formatDecompiledMsil(insns, annot, _msilToCSharpLow, CS_KW));
+    D.registerDecompileFormatter('vb', (insns, annot) => _formatDecompiledMsil(insns, annot, _msilToVB, VB_KW));
+    D.registerDecompileFormatter('csharp', (insns, annot) => _formatDecompiledMsil(insns, annot, _msilToCSharpHigh, CS_KW));
+  }
 
 })();
