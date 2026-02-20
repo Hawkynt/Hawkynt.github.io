@@ -88,6 +88,19 @@
       });
     }
 
+    static ConstRef(innerType) {
+      const type = new CppType(innerType.name, {
+        ...innerType,
+        isConst: true,
+        isReference: true
+      });
+      // Copy over vector/array properties if they exist
+      if (innerType.isVector) type.isVector = true;
+      if (innerType.vectorElement) type.vectorElement = innerType.vectorElement;
+      if (innerType.templateArgs) type.templateArgs = innerType.templateArgs;
+      return type;
+    }
+
     /**
      * Convert to C++ type string
      */
@@ -469,6 +482,7 @@
     static Float(value) { const l = new CppLiteral(value, 'float'); l.suffix = 'f'; return l; }
     static Double(value) { return new CppLiteral(value, 'double'); }
     static String(value) { return new CppLiteral(value, 'string'); }
+    static Char(value) { return new CppLiteral(value, 'char'); }
     static Bool(value) { return new CppLiteral(value, 'bool'); }
     static Nullptr() { return new CppLiteral(null, 'nullptr'); }
     static Hex(value, suffixOrBits = 32) {
@@ -561,12 +575,13 @@
    * Function call (Function(args))
    */
   class CppFunctionCall extends CppNode {
-    constructor(target, functionName, args = []) {
+    constructor(target, functionName, args = [], isPointer = false) {
       super('FunctionCall');
       this.target = target;             // CppExpression or null for simple call
       this.functionName = functionName;
       this.arguments = args;            // CppExpression[]
       this.templateArgs = [];           // For template functions
+      this.isPointer = isPointer;       // Use -> instead of . for pointer targets
     }
   }
 
@@ -604,6 +619,16 @@
   }
 
   /**
+   * Map initializer for std::map with key-value pairs
+   */
+  class CppMapInitializer extends CppNode {
+    constructor(pairs = []) {
+      super('MapInitializer');
+      this.pairs = pairs;               // CppInitializerList[] (each pair is {key, value})
+    }
+  }
+
+  /**
    * Cast expression ((Type)expr or static_cast<Type>(expr))
    */
   class CppCast extends CppNode {
@@ -631,9 +656,9 @@
    * Lambda expression ([captures](args) { body })
    */
   class CppLambda extends CppNode {
-    constructor(parameters, body, captures = []) {
+    constructor(parameters, body, captures = ['&']) {
       super('Lambda');
-      this.captures = captures;         // Capture list
+      this.captures = captures;         // Capture list (default [&] captures all by ref)
       this.parameters = parameters;     // CppParameter[]
       this.body = body;                 // CppBlock or CppExpression
       this.returnType = null;           // Optional return type
@@ -737,6 +762,7 @@
     CppObjectCreation,
     CppArrayCreation,
     CppInitializerList,
+    CppMapInitializer,
     CppCast,
     CppConditional,
     CppLambda,

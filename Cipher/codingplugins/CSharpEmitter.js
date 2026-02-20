@@ -37,6 +37,26 @@
     emit(node) {
       if (!node) return '';
 
+      if (typeof node === 'string') return node;
+
+      // Handle arrays
+      if (Array.isArray(node)) {
+        return node.map(n => this.emit(n)).filter(s => s).join('');
+      }
+
+      // Duck typing fallback for nodes with missing nodeType
+      if (!node.nodeType) {
+        if (node.statements !== undefined) return this.emitBlock(node);
+        if (node.target && node.value && node.operator !== undefined) return this.emitAssignment(node);
+        if (node.name && typeof node.name === 'string') return this.emitIdentifier(node);
+        // Skip known control objects
+        if (node.isMethod !== undefined || node.initStatement !== undefined) return '';
+        // Show more debug info for unknown nodes
+        const keys = Object.keys(node).slice(0, 5).join(', ');
+        console.error(`No emitter for node type: ${node.nodeType} (keys: ${keys})`);
+        return '';
+      }
+
       const emitterMethod = `emit${node.nodeType}`;
       if (typeof this[emitterMethod] === 'function') {
         return this[emitterMethod](node);
@@ -305,18 +325,26 @@
         code += this.emit(node.xmlDoc);
       }
 
-      let decl = `${node.accessModifier} ${node.className}`;
+      // Static constructors have different syntax: static ClassName() with no access modifier
+      let decl = '';
+      if (node.isStatic) {
+        decl = `static ${node.className}`;
+      } else {
+        decl = `${node.accessModifier} ${node.className}`;
+      }
 
       const params = node.parameters.map(p => this.emitParameterDecl(p));
       decl += `(${params.join(', ')})`;
 
-      // Base/this call
-      if (node.baseCall) {
-        const baseArgs = node.baseCall.arguments.map(a => this.emit(a));
-        decl += ` : base(${baseArgs.join(', ')})`;
-      } else if (node.thisCall) {
-        const thisArgs = node.thisCall.arguments.map(a => this.emit(a));
-        decl += ` : this(${thisArgs.join(', ')})`;
+      // Base/this call (not allowed for static constructors)
+      if (!node.isStatic) {
+        if (node.baseCall) {
+          const baseArgs = node.baseCall.arguments.map(a => this.emit(a));
+          decl += ` : base(${baseArgs.join(', ')})`;
+        } else if (node.thisCall) {
+          const thisArgs = node.thisCall.arguments.map(a => this.emit(a));
+          decl += ` : this(${thisArgs.join(', ')})`;
+        }
       }
 
       code += this.line(decl);
@@ -547,6 +575,17 @@
           .replace(/\t/g, '\\t');
         return `"${escaped}"`;
       }
+      if (node.literalType === 'char') {
+        // Escape char and wrap in single quotes
+        const char = String(node.value);
+        let escaped = char
+          .replace(/\\/g, '\\\\')
+          .replace(/'/g, "\\'")
+          .replace(/\n/g, '\\n')
+          .replace(/\r/g, '\\r')
+          .replace(/\t/g, '\\t');
+        return `'${escaped}'`;
+      }
 
       // BigInteger literal - use BigInteger.Parse for very large values
       if (node.isBigInteger) {
@@ -614,7 +653,21 @@
     }
 
     emitElementAccess(node) {
-      return `${this.emit(node.target)}[${this.emit(node.index)}]`;
+      const index = this.emit(node.index).replace(/[\r\n]+/g, '').replace(/\s+/g, ' ').trim();
+      return `${this.emit(node.target)}[${index}]`;
+    }
+
+    emitRange(node) {
+      // C# range syntax: start..end, start.., ..end, or ..
+      const start = node.start ? this.emit(node.start) : '';
+      const end = node.end ? this.emit(node.end) : '';
+      return `${start}..${end}`;
+    }
+
+    emitIndexFromEnd(node) {
+      // C# 8.0+ index from end syntax: ^n (means n elements from end)
+      const index = this.emit(node.index);
+      return `^${index}`;
     }
 
     emitMethodCall(node) {
@@ -655,11 +708,14 @@
     }
 
     emitArrayCreation(node) {
+      // Defensive: if elementType is null, fallback to object
+      const elementType = node.elementType || { toString: () => 'object', isArray: false };
+
       // For sized array creation, C# requires the size on the first dimension
       // e.g., new uint[4][] not new uint[][4]
       if (node.size) {
         // Get the base type (without array brackets)
-        let baseType = node.elementType;
+        let baseType = elementType;
         let trailingBrackets = '';
 
         // If element type is itself an array, extract the base and collect trailing brackets
@@ -669,12 +725,12 @@
         }
 
         // Emit as: new BaseType[size] + trailingBrackets
-        const baseTypeName = baseType ? baseType.toString() : node.elementType.toString();
+        const baseTypeName = baseType ? baseType.toString() : elementType.toString();
         return `new ${baseTypeName}[${this.emit(node.size)}]${trailingBrackets}`;
       } else if (node.initializer) {
-        return `new ${node.elementType.toString()}[] { ${node.initializer.map(e => this.emit(e)).join(', ')} }`;
+        return `new ${elementType.toString()}[] { ${node.initializer.map(e => this.emit(e)).join(', ')} }`;
       } else {
-        return `new ${node.elementType.toString()}[0]`;
+        return `new ${elementType.toString()}[0]`;
       }
     }
 
@@ -692,6 +748,52 @@
         );
         return `{ ${assignments.join(', ')} }`;
       }
+    }
+
+    emitAnonymousObject(node) {
+      if (!node.properties || node.properties.length === 0) {
+        return 'new { }';
+      }
+      // C# reserved keywords that need @ prefix when used as identifiers
+      const reservedKeywords = new Set([
+        'abstract', 'as', 'base', 'bool', 'break', 'byte', 'case', 'catch',
+        'char', 'checked', 'class', 'const', 'continue', 'decimal', 'default',
+        'delegate', 'do', 'double', 'else', 'enum', 'event', 'explicit', 'extern',
+        'false', 'finally', 'fixed', 'float', 'for', 'foreach', 'goto', 'if',
+        'implicit', 'in', 'int', 'interface', 'internal', 'is', 'lock', 'long',
+        'namespace', 'new', 'null', 'object', 'operator', 'out', 'override',
+        'params', 'private', 'protected', 'public', 'readonly', 'ref', 'return',
+        'sbyte', 'sealed', 'short', 'sizeof', 'stackalloc', 'static', 'string',
+        'struct', 'switch', 'this', 'throw', 'true', 'try', 'typeof', 'uint',
+        'ulong', 'unchecked', 'unsafe', 'ushort', 'using', 'virtual', 'void',
+        'volatile', 'while'
+      ]);
+      const escapeIfReserved = (name) =>
+        reservedKeywords.has(name) ? `@${name}` : name;
+      const props = node.properties.map(p =>
+        `${escapeIfReserved(p.name)} = ${this.emit(p.value)}`
+      );
+      return `new { ${props.join(', ')} }`;
+    }
+
+    emitStringInterpolation(node) {
+      // Build C# interpolated string: $"Hello {name}!"
+      let result = '$"';
+      for (const part of node.parts) {
+        if (typeof part === 'string') {
+          // String literal part - escape for C# interpolated strings
+          result += part
+            .replace(/\\/g, '\\\\')
+            .replace(/"/g, '\\"')
+            .replace(/\{/g, '{{')
+            .replace(/\}/g, '}}');
+        } else {
+          // Expression part - emit and wrap in braces
+          result += '{' + this.emit(part) + '}';
+        }
+      }
+      result += '"';
+      return result;
     }
 
     emitCast(node) {

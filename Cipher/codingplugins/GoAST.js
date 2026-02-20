@@ -200,6 +200,7 @@
       this.type = type;       // GoType
       this.tag = null;        // `json:"name"` style tags
       this.isExported = true;
+      this.isEmbedded = false; // For anonymous embedding
       this.docComment = null;
     }
   }
@@ -458,6 +459,18 @@
   }
 
   /**
+   * Spread operator for variadic expansion (arg...)
+   */
+  class GoSpread extends GoNode {
+    constructor(operand) {
+      super('UnaryExpression');
+      this.operator = '...';
+      this.operand = operand;
+      this.isPostfix = true;
+    }
+  }
+
+  /**
    * Assignment expression (x = y, x := y)
    */
   class GoAssignment extends GoNode {
@@ -593,6 +606,16 @@
     }
   }
 
+  /**
+   * Raw Go code - emit as-is (for framework stubs)
+   */
+  class GoRawCode extends GoNode {
+    constructor(code) {
+      super('RawCode');
+      this.code = code;
+    }
+  }
+
   // ========================[ EXPORTS ]========================
 
   const GoAST = {
@@ -637,6 +660,7 @@
     GoIdentifier,
     GoBinaryExpression,
     GoUnaryExpression,
+    GoSpread,
     GoAssignment,
     GoSelectorExpression,
     GoIndexExpression,
@@ -648,7 +672,10 @@
     GoKeyValue,
     GoFuncLit,
     GoMake,
-    GoNew
+    GoNew,
+
+    // Raw Code
+    GoRawCode
   };
 
   // Export for different environments

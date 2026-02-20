@@ -432,6 +432,188 @@
         documentation: 'https://www.php.net/manual/en/'
       };
     }
+
+    /**
+     * Generate PHP test runner code from ILTestRunner node
+     * @param {Object} testRunner - ILTestRunner node with structure:
+     *   {
+     *     tests: [
+     *       {
+     *         algorithmClass: "AlgorithmClassName",
+     *         instanceClass: "InstanceClassName",
+     *         testCases: [
+     *           { input: [byte array], expected: [byte array], key: [optional], iv: [optional], description: "test desc" }
+     *         ]
+     *       }
+     *     ]
+     *   }
+     * @returns {string} PHP test runner code
+     */
+    generateTestRunner(testRunner) {
+      if (!testRunner || !testRunner.tests || !Array.isArray(testRunner.tests)) {
+        throw new Error('Invalid ILTestRunner node structure');
+      }
+
+      const lines = [];
+
+      // PHP opening tag with strict types
+      lines.push('<?php');
+      if (this.options.strictTypes) {
+        lines.push('declare(strict_types=1);');
+      }
+      lines.push('');
+      lines.push('// Generated test runner');
+      lines.push('');
+      lines.push('// Test execution begins after class definitions');
+      lines.push('');
+
+      // Helper function to format byte array
+      const formatByteArray = (bytes) => {
+        if (!bytes || bytes.length === 0) {
+          return '[]';
+        }
+        const hexValues = bytes.map(b => '0x' + ('0' + (b & 0xFF).toString(16).toUpperCase()).slice(-2));
+        return '[' + hexValues.join(', ') + ']';
+      };
+
+      // Helper function to convert byte array to hex string for display
+      const bytesToHex = (bytes) => {
+        return bytes.map(b => ('0' + (b & 0xFF).toString(16).toUpperCase()).slice(-2)).join('');
+      };
+
+      // Generate main test code block
+      lines.push('// === TEST RUNNER ===');
+      lines.push('');
+      lines.push('$totalTests = 0;');
+      lines.push('$passedTests = 0;');
+      lines.push('$failedTests = 0;');
+      lines.push('');
+
+      let testNumber = 1;
+
+      // Iterate through each algorithm's tests
+      for (const algorithmTest of testRunner.tests) {
+        const { algorithmClass, instanceClass, testCases } = algorithmTest;
+
+        if (!algorithmClass || !testCases || testCases.length === 0) {
+          continue;
+        }
+
+        lines.push(`// Testing ${algorithmClass}`);
+        lines.push(`echo "\\n=== Testing ${algorithmClass} ===\\n";`);
+        lines.push('');
+
+        // Generate tests for each test case
+        for (const testCase of testCases) {
+          const { input, expected, key, iv, nonce, outputSize, description } = testCase;
+
+          if (!input || !expected) {
+            continue;
+          }
+
+          const testLabel = description || `Test ${testNumber}`;
+
+          lines.push(`// ${testLabel}`);
+          lines.push(`echo "\\nTest #${testNumber}: ${testLabel}\\n";`);
+          lines.push('$totalTests++;');
+          lines.push('');
+
+          // Create algorithm instance
+          lines.push(`$algo = new ${algorithmClass}();`);
+
+          // Create instance (use instanceClass if provided, otherwise assume CreateInstance method)
+          if (instanceClass) {
+            lines.push(`$instance = new ${instanceClass}($algo, false);`);
+          } else {
+            lines.push('$instance = $algo->CreateInstance(false);');
+          }
+          lines.push('');
+
+          // Set properties if provided
+          if (key) {
+            const keyArray = formatByteArray(key);
+            lines.push(`$instance->key = ${keyArray};`);
+          }
+
+          if (iv) {
+            const ivArray = formatByteArray(iv);
+            lines.push(`$instance->iv = ${ivArray};`);
+          }
+
+          if (nonce) {
+            const nonceArray = formatByteArray(nonce);
+            lines.push(`$instance->nonce = ${nonceArray};`);
+          }
+
+          if (outputSize !== undefined && outputSize !== null) {
+            lines.push(`$instance->outputSize = ${outputSize};`);
+          }
+
+          if (key || iv || nonce || (outputSize !== undefined && outputSize !== null)) {
+            lines.push('');
+          }
+
+          // Feed input
+          const inputArray = formatByteArray(input);
+          lines.push(`$input = ${inputArray};`);
+          lines.push('$instance->Feed($input);');
+          lines.push('');
+
+          // Get result
+          lines.push('$actual = $instance->Result();');
+          lines.push('');
+
+          // Expected output
+          const expectedArray = formatByteArray(expected);
+          lines.push(`$expected = ${expectedArray};`);
+          lines.push('');
+
+          // Compare byte-by-byte
+          lines.push('// Compare actual vs expected');
+          lines.push('$match = count($actual) === count($expected);');
+          lines.push('if ($match) {');
+          lines.push('    for ($i = 0; $i < count($actual); $i++) {');
+          lines.push('        if ($actual[$i] !== $expected[$i]) {');
+          lines.push('            $match = false;');
+          lines.push('            break;');
+          lines.push('        }');
+          lines.push('    }');
+          lines.push('}');
+          lines.push('');
+
+          // Report result
+          lines.push('if ($match) {');
+          lines.push(`    echo "PASS: ${testLabel}\\n";`);
+          lines.push('    $passedTests++;');
+          lines.push('} else {');
+          lines.push(`    echo "FAIL: ${testLabel}\\n";`);
+          lines.push('    echo "  Expected: " . bin2hex(pack("C*", ...$expected)) . "\\n";');
+          lines.push('    echo "  Actual:   " . bin2hex(pack("C*", ...$actual)) . "\\n";');
+          lines.push('    $failedTests++;');
+          lines.push('}');
+          lines.push('');
+
+          testNumber++;
+        }
+      }
+
+      // Summary and exit
+      lines.push('// === TEST SUMMARY ===');
+      lines.push('echo "\\n=== Test Summary ===\\n";');
+      lines.push('echo "Total tests: $totalTests\\n";');
+      lines.push('echo "Passed: $passedTests\\n";');
+      lines.push('echo "Failed: $failedTests\\n";');
+      lines.push('');
+      lines.push('if ($failedTests === 0) {');
+      lines.push('    echo "\\nAll tests passed!\\n";');
+      lines.push('    exit(0);');
+      lines.push('} else {');
+      lines.push('    echo "\\n$failedTests test(s) failed!\\n";');
+      lines.push('    exit(1);');
+      lines.push('}');
+
+      return lines.join('\n');
+    }
   }
 
   // Register the plugin

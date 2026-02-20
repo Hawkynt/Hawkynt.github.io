@@ -638,6 +638,16 @@
     }
   }
 
+  /**
+   * Raw Ruby code - emit as-is (for framework stubs)
+   */
+  class RubyRawCode extends RubyNode {
+    constructor(code) {
+      super('RawCode');
+      this.code = code;
+    }
+  }
+
   // ========================[ EXPORTS ]========================
 
   const RubyAST = {
@@ -702,7 +712,10 @@
 
     // Documentation
     RubyDocComment,
-    RubyConstant
+    RubyConstant,
+
+    // Raw Code
+    RubyRawCode
   };
 
   // Export for different environments

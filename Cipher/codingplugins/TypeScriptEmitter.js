@@ -241,24 +241,26 @@
     emitMethod(node) {
       let code = '';
 
-      if (node.jsDoc) {
+      if (node.jsDoc)
         code += this.emit(node.jsDoc);
-      }
 
       let decl = '';
       if (node.accessModifier) decl += `${node.accessModifier} `;
       if (node.isStatic) decl += 'static ';
       if (node.isAbstract) decl += 'abstract ';
       if (node.isAsync) decl += 'async ';
+      if (node.isGetter) decl += 'get ';
+      if (node.isSetter) decl += 'set ';
 
       decl += node.name;
 
-      // Parameters
+      // Parameters (getters have no params, setters have one param)
       const params = node.parameters.map(p => this.emitParameterDecl(p));
       decl += `(${params.join(', ')})`;
 
-      // Return type
-      decl += `: ${node.returnType.toString()}`;
+      // Return type (omit for setters as they implicitly return void)
+      if (!node.isSetter)
+        decl += `: ${node.returnType.toString()}`;
 
       if (node.isAbstract || !node.body) {
         code += this.line(`${decl};`);
@@ -296,6 +298,17 @@
       return code;
     }
 
+    emitStaticBlock(node) {
+      let code = this.line('static {');
+      this.indentLevel++;
+      if (node.body) {
+        code += this.emit(node.body);
+      }
+      this.indentLevel--;
+      code += this.line('}');
+      return code;
+    }
+
     emitParameterDecl(node) {
       let decl = '';
       if (node.isRest) decl += '...';
@@ -311,10 +324,15 @@
     // ========================[ STATEMENTS ]========================
 
     emitBlock(node) {
-      for (const stmt of node.statements) {
-        this.emit(stmt);
+      let code = '';
+      // Handle labeled blocks: label: { ... }
+      if (node.label) {
+        code += `${node.label}: `;
       }
-      return node.statements.map(s => this.emit(s)).join('');
+      for (const stmt of node.statements) {
+        code += this.emit(stmt);
+      }
+      return code;
     }
 
     emitVariableDeclaration(node) {
@@ -372,7 +390,23 @@
     emitFor(node) {
       let init = '';
       if (node.initializer) {
-        if (node.initializer.nodeType === 'VariableDeclaration') {
+        // Handle array of variable declarations (for multi-variable: let i = 0, j = 10)
+        if (Array.isArray(node.initializer)) {
+          const decls = node.initializer;
+          if (decls.length > 0 && decls[0].nodeType === 'VariableDeclaration') {
+            const kind = decls[0].kind || 'let';
+            const parts = decls.map(d => {
+              let part = d.name;
+              if (d.type) part += `: ${d.type.toString()}`;
+              if (d.initializer) part += ` = ${this.emit(d.initializer)}`;
+              return part;
+            });
+            init = `${kind} ${parts.join(', ')}`;
+          } else {
+            // Array of expressions (comma operator)
+            init = decls.map(d => this.emit(d)).join(', ');
+          }
+        } else if (node.initializer.nodeType === 'VariableDeclaration') {
           init = `${node.initializer.kind} ${node.initializer.name}`;
           if (node.initializer.type) {
             init += `: ${node.initializer.type.toString()}`;
@@ -460,10 +494,14 @@
     }
 
     emitBreak(node) {
+      if (node.label)
+        return this.line(`break ${node.label};`);
       return this.line('break;');
     }
 
     emitContinue(node) {
+      if (node.label)
+        return this.line(`continue ${node.label};`);
       return this.line('continue;');
     }
 
@@ -605,10 +643,36 @@
       if (node.properties.length === 0) {
         return '{}';
       }
-      const props = node.properties.map(p =>
-        `${p.key}: ${this.emit(p.value)}`
-      );
+      const props = node.properties.map(p => {
+        if (p.isSpread)
+          return `...${this.emit(p.value)}`;
+        // Quote key if it's not a valid identifier
+        const key = this.formatObjectKey(p.key);
+        return `${key}: ${this.emit(p.value)}`;
+      });
       return `{ ${props.join(', ')} }`;
+    }
+
+    /**
+     * Format object key, quoting if necessary
+     * @param {string} key - The object key
+     * @returns {string} Properly formatted key
+     */
+    formatObjectKey(key) {
+      // Check if key is a valid JavaScript identifier
+      // Valid identifiers: start with letter, _, or $; contain only letters, digits, _, $
+      const validIdentifier = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/;
+      if (validIdentifier.test(key)) {
+        return key;
+      }
+      // Quote the key, escaping any special characters
+      const escaped = key
+        .replace(/\\/g, '\\\\')
+        .replace(/"/g, '\\"')
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '\\r')
+        .replace(/\t/g, '\\t');
+      return `"${escaped}"`;
     }
 
     emitAssertion(node) {
@@ -664,14 +728,53 @@
 
     emitTemplateLiteral(node) {
       let result = '`';
-      for (const part of node.parts) {
-        result += part.text || '';
-        if (part.expression) {
-          result += '${' + this.emit(part.expression) + '}';
+      // Handle new format with quasis and expressions
+      if (node.quasis && node.quasis.length > 0) {
+        for (let i = 0; i < node.quasis.length; ++i) {
+          result += node.quasis[i] || '';
+          if (i < node.expressions.length)
+            result += '${' + this.emit(node.expressions[i]) + '}';
+        }
+      } else {
+        // Legacy format with parts
+        for (const part of node.parts) {
+          result += part.text || '';
+          if (part.expression)
+            result += '${' + this.emit(part.expression) + '}';
         }
       }
       result += '`';
       return result;
+    }
+
+    emitAwaitExpression(node) {
+      return `await ${this.emit(node.argument)}`;
+    }
+
+    emitDeleteExpression(node) {
+      return `delete ${this.emit(node.argument)}`;
+    }
+
+    emitSpreadElement(node) {
+      return `...${this.emit(node.argument)}`;
+    }
+
+    emitSequenceExpression(node) {
+      const expressions = node.expressions.map(e => this.emit(e));
+      return `(${expressions.join(', ')})`;
+    }
+
+    emitYieldExpression(node) {
+      if (node.delegate) {
+        return node.argument ? `yield* ${this.emit(node.argument)}` : 'yield*';
+      }
+      return node.argument ? `yield ${this.emit(node.argument)}` : 'yield';
+    }
+
+    emitChainExpression(node) {
+      // Chain expressions just emit their inner expression
+      // The optional chaining markers (?.) are handled by MemberAccess/ElementAccess/Call nodes
+      return this.emit(node.expression);
     }
 
     emitType(node) {

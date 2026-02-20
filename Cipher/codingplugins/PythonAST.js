@@ -460,14 +460,17 @@
    * Dict literal
    */
   class PythonDict extends PythonNode {
-    constructor(items = []) {
+    constructor(items = [], useJSObject = true) {
       super('Dict');
       this.items = items;           // [{key, value}]
+      this.useJSObject = useJSObject;  // Use JSObject for attribute access support
     }
 
     toString() {
       const pairs = this.items.map(item => `${item.key}: ${item.value}`);
-      return `{${pairs.join(', ')}}`;
+      const dictLiteral = `{${pairs.join(', ')}}`;
+      // Use JSObject() wrapper for JavaScript-like attribute access
+      return this.useJSObject ? `JSObject(${dictLiteral})` : dictLiteral;
     }
   }
 
@@ -502,6 +505,25 @@
       let code = `[${this.expression} for ${this.variable} in ${this.iterable}`;
       if (this.condition) code += ` if ${this.condition}`;
       return code + ']';
+    }
+  }
+
+  /**
+   * Generator expression
+   */
+  class PythonGeneratorExpression extends PythonNode {
+    constructor(expression, variable, iterable, condition = null) {
+      super('GeneratorExpression');
+      this.expression = expression;
+      this.variable = variable;
+      this.iterable = iterable;
+      this.condition = condition;
+    }
+
+    toString() {
+      let code = `(${this.expression} for ${this.variable} in ${this.iterable}`;
+      if (this.condition) code += ` if ${this.condition}`;
+      return code + ')';
     }
   }
 
@@ -604,6 +626,7 @@
     PythonDict,
     PythonTuple,
     PythonListComprehension,
+    PythonGeneratorExpression,
     PythonConditional,
     PythonLambda,
     PythonSlice
