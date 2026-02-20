@@ -1,9 +1,23 @@
 /**
- * BasicTransformer.js - JavaScript AST to Basic AST Transformer
- * Converts type-annotated JavaScript AST to Basic AST
+ * BasicTransformer.js - IL AST to Basic AST Transformer
+ * Converts IL AST (type-inferred, language-agnostic) to Basic AST
  * (c)2006-2025 Hawkynt
  *
- * Pipeline: JS Source -> JS AST -> Type Inference -> Basic AST -> Basic Emitter -> Basic Source
+ * Full Pipeline:
+ *   JS Source → Parser → JS AST → IL Transformer → IL AST → Language Transformer → Language AST → Language Emitter → Language Source
+ *
+ * This transformer handles: IL AST → Basic AST
+ *
+ * IL AST characteristics:
+ *   - Type-inferred (no untyped nodes)
+ *   - Language-agnostic (no JS-specific constructs like UMD, IIFE, Math.*, Object.*, etc.)
+ *   - Global options already applied
+ *
+ * Language options (applied here and in emitter):
+ *   - variant: 'FREEBASIC' | 'VBNET' | 'VB6' | 'VB' | 'VBA' | 'VBSCRIPT' | 'GAMBAS' | 'XOJO'
+ *   - useClasses: boolean (generate Class vs Type structures)
+ *   - useProperties: boolean (generate Property Get/Set)
+ *   - useModules: boolean (wrap in Module vs Class)
  */
 
 (function(global) {
@@ -76,6 +90,7 @@
       this.currentClass = null;
       this.variableTypes = new Map();  // Maps variable name -> BasicType
       this.scopeStack = [];
+      this.insideStandaloneFunction = false; // For procedural mode: use 'self' instead of 'This'
     }
 
     /**
@@ -397,9 +412,62 @@
           }
           return BasicType.Array(BasicType.Byte());
 
+        case 'CallExpression':
+          // Infer return type from known function names
+          return this.inferTypeFromCall(valueNode);
+
         default:
           return BasicType.Long();
       }
+    }
+
+    /**
+     * Infer return type from a call expression
+     */
+    inferTypeFromCall(node) {
+      // Get the callee name
+      let funcName = '';
+      if (node.callee?.type === 'Identifier') {
+        funcName = node.callee.name.toLowerCase();
+      } else if (node.callee?.type === 'MemberExpression') {
+        const objName = node.callee.object?.name?.toLowerCase() || '';
+        const methodName = (node.callee.property?.name || node.callee.property?.value || '').toLowerCase();
+        funcName = `${objName}.${methodName}`;
+      }
+
+      // String-returning functions
+      const stringFuncs = [
+        'chr', 'chr$', 'string.fromcharcode', 'str', 'str$', 'string', 'string$',
+        'left', 'left$', 'right', 'right$', 'mid', 'mid$', 'trim', 'trim$',
+        'ltrim', 'ltrim$', 'rtrim', 'rtrim$', 'ucase', 'ucase$', 'lcase', 'lcase$',
+        'space', 'space$', 'format', 'format$', 'hex', 'hex$', 'oct', 'oct$', 'bin', 'bin$'
+      ];
+      if (stringFuncs.includes(funcName))
+        return BasicType.String();
+
+      // Integer-returning functions
+      const intFuncs = [
+        'len', 'asc', 'instr', 'instrrev', 'ubound', 'lbound',
+        'cint', 'clng', 'cbyte', 'cshort', 'int', 'fix', 'abs', 'sgn'
+      ];
+      if (intFuncs.includes(funcName))
+        return BasicType.Long();
+
+      // Boolean-returning functions
+      const boolFuncs = ['isarray', 'isnumeric', 'isdate', 'isnull', 'isempty', 'isobject'];
+      if (boolFuncs.includes(funcName))
+        return BasicType.Boolean();
+
+      // Double-returning functions
+      const doubleFuncs = [
+        'cdbl', 'csng', 'val', 'sin', 'cos', 'tan', 'atn', 'sqr', 'sqrt', 'log', 'exp',
+        'math.sin', 'math.cos', 'math.tan', 'math.sqrt', 'math.log', 'math.exp',
+        'math.floor', 'math.ceil', 'math.round', 'math.pow', 'math.abs'
+      ];
+      if (doubleFuncs.includes(funcName))
+        return BasicType.Double();
+
+      return BasicType.Long();
     }
 
     /**
@@ -454,6 +522,14 @@
         const prevClass = this.currentClass;
         this.currentClass = cls;
 
+        // Handle inheritance (skip if skipInheritance option is set)
+        if (node.superClass && !this.options.skipInheritance) {
+          const baseClassName = node.superClass.type === 'Identifier' ?
+            this.toPascalCase(node.superClass.name) :
+            this.transformExpression(node.superClass);
+          cls.baseClass = typeof baseClassName === 'string' ? baseClassName : baseClassName.toString();
+        }
+
         // Handle both class body structures
         const members = node.body?.body || node.body || [];
 
@@ -488,13 +564,27 @@
         this.currentClass = prevClass;
         targetModule.declarations.push(cls);
       } else {
-        // Use Type/Structure for non-OOP dialects
+        // Use Type/Structure for non-OOP dialects (procedural style)
         const typeDecl = new BasicTypeDeclaration(className);
+        const standaloneFunctions = [];
 
         const members = node.body?.body || node.body || [];
         if (members && members.length > 0) {
           for (const member of members) {
-            if (member.type === 'PropertyDefinition') {
+            if (member.type === 'MethodDefinition') {
+              if (member.kind === 'constructor') {
+                // Extract fields from constructor
+                const { fields } = this.extractFieldsFromConstructor(member);
+                typeDecl.fields.push(...fields);
+                // Create constructor function with 'Create' name (avoids conflict with 'init' method)
+                const initFunc = this.transformMethodToStandaloneFunction(member, className, 'Create');
+                if (initFunc) standaloneFunctions.push(initFunc);
+              } else {
+                // Convert method to standalone function
+                const func = this.transformMethodToStandaloneFunction(member, className);
+                if (func) standaloneFunctions.push(func);
+              }
+            } else if (member.type === 'PropertyDefinition') {
               const field = this.transformPropertyDefinitionToField(member);
               typeDecl.fields.push(field);
             } else if (member.type === 'StaticBlock') {
@@ -509,7 +599,156 @@
         }
 
         targetModule.types.push(typeDecl);
+        // Add standalone functions after the type
+        for (const func of standaloneFunctions) {
+          targetModule.declarations.push(func);
+        }
       }
+    }
+
+    /**
+     * Transform a method to a standalone function (for procedural mode)
+     */
+    transformMethodToStandaloneFunction(node, className, overrideName = null) {
+      const methodName = overrideName || this.toPascalCase(node.key.name);
+      const funcName = className + '_' + methodName;
+
+      // Determine if Sub or Function
+      const hasReturn = node.value && node.value.body ?
+        this.hasReturnWithValue(node.value.body) : false;
+
+      const func = new BasicFunction(funcName, !hasReturn);
+      func.isShared = node.static || false;
+
+      // For functions, set a default return type (Long for FreeBASIC compatibility)
+      if (hasReturn) {
+        func.returnType = new BasicType('Long');
+      }
+
+      // Add 'self' parameter as first parameter for instance methods
+      if (!node.static) {
+        func.parameters.push(new BasicParameter('self', new BasicType(className)));
+      }
+
+      // Parameters
+      if (node.value && node.value.params) {
+        for (const param of node.value.params) {
+          const paramName = this.toCamelCase(param.name);
+          const paramType = this.inferTypeFromName(param.name);
+          func.parameters.push(new BasicParameter(paramName, paramType));
+          this.registerVariableType(param.name, paramType);
+        }
+      }
+
+      // Body - transform and replace This/Me references with self
+      if (node.value && node.value.body) {
+        const body = new BasicBlock();
+        const statements = node.value.body.body || [];
+
+        // Set flag so This/Me gets replaced with 'self'
+        const prevFlag = this.insideStandaloneFunction;
+        this.insideStandaloneFunction = !node.static; // Only for instance methods
+
+        for (const stmt of statements) {
+          // Skip ParentConstructorCall in procedural mode
+          if (stmt.type === 'ExpressionStatement' &&
+              stmt.expression?.type === 'ParentConstructorCall') {
+            continue;
+          }
+          // Skip framework metadata assignments in procedural mode
+          if (this.isFrameworkMetadataAssignment(stmt)) {
+            continue;
+          }
+          const transformed = this.transformStatement(stmt);
+          if (transformed) {
+            if (Array.isArray(transformed))
+              body.statements.push(...transformed);
+            else
+              body.statements.push(transformed);
+          }
+        }
+
+        this.insideStandaloneFunction = prevFlag; // Restore
+        func.body = body;
+      }
+
+      return func;
+    }
+
+    /**
+     * Check if statement is a framework metadata assignment that should be skipped
+     * Examples: this.category = categoryType.HASH, this.documentation = [LinkItem(...)]
+     */
+    isFrameworkMetadataAssignment(stmt) {
+      if (stmt.type !== 'ExpressionStatement') return false;
+      const expr = stmt.expression;
+      if (expr.type !== 'AssignmentExpression') return false;
+
+      // Check if it's a this.property assignment
+      const left = expr.left;
+      let propName = null;
+      if (left.type === 'ThisPropertyAccess') {
+        propName = left.property;
+      } else if (left.type === 'MemberExpression' && left.object.type === 'ThisExpression') {
+        propName = left.property.name || left.property.value;
+      }
+      if (!propName) return false;
+
+      // List of framework metadata properties to skip
+      const metadataProps = [
+        'category', 'securityStatus', 'complexity', 'country',
+        'documentation', 'references', 'tests', 'inventor',
+        'year', 'description', 'name', 'subCategory',
+        'supportedKeySizes', 'supportedBlockSizes', 'supportedOutputSizes',
+        'notes', 'algorithm', 'icon', 'variants', 'history',
+        'vulnerabilities', 'applications', 'standardizedIn',
+        'knownVulnerabilities', 'testVectors', 'checksumSize',
+        'supportedIvSizes', 'supportedNonceSizes', 'supportedTagSizes',
+        'blockSize', 'outputSize', 'stateSize', 'rounds', 'keySize',
+        'minKeySize', 'maxKeySize', 'defaultKeySize', 'ivSize',
+        'tagSize', 'nonceSize', 'wordSize', 'parallelism',
+        'memoryCost', 'timeCost', 'saltSize', 'hashSize',
+        'padding', 'mode', 'feedbackSize', 'alphabetSize'
+      ];
+
+      const propLower = propName.toLowerCase();
+      if (metadataProps.some(p => p.toLowerCase() === propLower)) {
+        return true;
+      }
+
+      // Also check if the right side uses framework enums
+      const right = expr.right;
+      if (right.type === 'MemberExpression' || right.type === 'StaticPropertyAccess') {
+        const objName = right.object?.name || right.object;
+        const frameworkEnums = ['categorytype', 'securitystatus', 'complexitytype', 'countrycode'];
+        if (typeof objName === 'string' && frameworkEnums.includes(objName.toLowerCase())) {
+          return true;
+        }
+      }
+
+      // Check for LinkItem, TestCase, KeySize constructor calls
+      if (right.type === 'CallExpression' || right.type === 'NewExpression') {
+        const callee = right.callee;
+        const calleeName = callee?.name || callee?.property?.name;
+        const frameworkTypes = ['linkitem', 'testcase', 'keysize', 'vulnerability', 'authresult'];
+        if (typeof calleeName === 'string' && frameworkTypes.includes(calleeName.toLowerCase())) {
+          return true;
+        }
+      }
+
+      // Check for arrays of LinkItem/TestCase
+      if (right.type === 'ArrayExpression' && right.elements?.length > 0) {
+        const firstElem = right.elements[0];
+        if (firstElem?.type === 'CallExpression' || firstElem?.type === 'NewExpression') {
+          const calleeName = firstElem.callee?.name || firstElem.callee?.property?.name;
+          const frameworkTypes = ['linkitem', 'testcase', 'keysize'];
+          if (typeof calleeName === 'string' && frameworkTypes.includes(calleeName.toLowerCase())) {
+            return true;
+          }
+        }
+      }
+
+      return false;
     }
 
     /**
@@ -536,8 +775,13 @@
 
       for (const stmt of node.value.body.body) {
         if (this.isThisPropertyAssignment(stmt)) {
+          // Skip framework metadata in procedural mode
+          if (!this.options.useClasses && this.isFrameworkMetadataAssignment(stmt)) {
+            continue;
+          }
+
           const expr = stmt.expression;
-          const propName = expr.left.property.name || expr.left.property.value;
+          const propName = this.getThisPropertyName(expr);
           let fieldName = this.toCamelCase(propName);
 
           // Remove leading underscore
@@ -579,8 +823,20 @@
       if (stmt.type !== 'ExpressionStatement') return false;
       const expr = stmt.expression;
       if (expr.type !== 'AssignmentExpression') return false;
+      // Handle both standard JS AST and IL AST node types
+      if (expr.left.type === 'ThisPropertyAccess')
+        return true;
       if (expr.left.type !== 'MemberExpression') return false;
       return expr.left.object.type === 'ThisExpression';
+    }
+
+    /**
+     * Get property name from this property access
+     */
+    getThisPropertyName(expr) {
+      if (expr.left.type === 'ThisPropertyAccess')
+        return expr.left.property;
+      return expr.left.property.name || expr.left.property.value;
     }
 
     /**
@@ -637,7 +893,40 @@
     transformStaticBlock(node) {
       // ES2022 static block -> BASIC module-level statements
       // BASIC doesn't have static class blocks, so transform to statements
-      return node.body.map(stmt => this.transformStatement(stmt));
+      // Handle both BlockStatement (node.body.body) and direct array (node.body)
+      const statements = Array.isArray(node.body) ? node.body :
+                         node.body?.body ? node.body.body :
+                         node.body?.type === 'BlockStatement' ? node.body.body :
+                         [];
+      if (!Array.isArray(statements))
+        return [];
+      return statements.map(stmt => this.transformStatement(stmt));
+    }
+
+    transformClassExpression(node) {
+      // ClassExpression -> VB.NET Class
+      const className = node.id?.name || 'AnonymousClass';
+      const classDecl = new BasicClass(className);
+
+      if (node.superClass) {
+        classDecl.inherits = this.transformExpression(node.superClass);
+      }
+
+      if (node.body?.body) {
+        for (const member of node.body.body) {
+          const transformed = this.transformClassMember(member);
+          if (transformed)
+            classDecl.members.push(transformed);
+        }
+      }
+
+      return classDecl;
+    }
+
+    transformYieldExpression(node) {
+      // VB.NET has Yield keyword - return argument for now
+      const argument = node.argument ? this.transformExpression(node.argument) : BasicLiteral.Nothing();
+      return argument;
     }
 
     /**
@@ -913,9 +1202,26 @@
         }
       }
 
-      // Extract end from test
-      if (node.test && node.test.type === 'BinaryExpression') {
-        end = this.transformExpression(node.test.right);
+      // Extract end from test - handle various test forms
+      if (node.test) {
+        if (node.test.type === 'BinaryExpression') {
+          // i < n or i <= n
+          const rightExpr = this.transformExpression(node.test.right);
+          if (rightExpr) {
+            // For < operator, we need to subtract 1: for(i=0; i<n; i++) -> For i = 0 To n-1
+            if (node.test.operator === '<') {
+              end = new BasicBinaryExpression(rightExpr, '-', new BasicLiteral(1, 'int'));
+            } else {
+              end = rightExpr;
+            }
+          }
+        } else {
+          // Try to transform the whole test expression
+          const testExpr = this.transformExpression(node.test);
+          if (testExpr) {
+            end = testExpr;
+          }
+        }
       }
 
       // Extract step from update
@@ -1117,7 +1423,11 @@
 
         // 12. ThisExpression
         case 'ThisExpression':
-          return new BasicIdentifier('Me');
+          // In procedural mode (standalone functions), use 'self' parameter
+          if (this.insideStandaloneFunction)
+            return new BasicIdentifier('self');
+          // FreeBASIC uses This, VB uses Me
+          return new BasicIdentifier(this.variant === 'FREEBASIC' ? 'This' : 'Me');
 
         // 13. ConditionalExpression
         case 'ConditionalExpression':
@@ -1154,6 +1464,400 @@
           // Return a comment placeholder
           return new BasicComment('Object destructuring not supported in Basic', true);
 
+        case 'StaticBlock':
+          return this.transformStaticBlock(node);
+
+        case 'ChainExpression':
+          // Optional chaining a?.b - Basic doesn't have this
+          return this.transformExpression(node.expression);
+
+        case 'ClassExpression':
+          // Anonymous class expression
+          return this.transformClassExpression(node);
+
+        case 'YieldExpression':
+          // yield - VB.NET has Iterator/Yield
+          return this.transformYieldExpression(node);
+
+        case 'PrivateIdentifier':
+          // #field -> VB.NET Private field with _ prefix
+          return new BasicIdentifier('_' + this.toCamelCase(node.name));
+
+        // IL AST node types from type-aware-transpiler
+        case 'ThisPropertyAccess':
+          // this.property -> This.property (FreeBASIC) or Me.property (VB.NET)
+          // In procedural mode (standalone functions), use 'self' parameter
+          {
+            const selfRef = this.insideStandaloneFunction ? 'self' :
+              (this.variant === 'FREEBASIC' ? 'This' : 'Me');
+            return new BasicMemberAccess(new BasicIdentifier(selfRef), node.property);
+          }
+
+        case 'ParentConstructorCall':
+          // super(args) -> dialect-specific parent constructor call
+          // FreeBASIC: Base(args)
+          // VB.NET: MyBase.New(args)
+          // Skip if skipInheritance option is set (return null to skip)
+          {
+            if (this.options.skipInheritance)
+              return null; // Skip parent constructor call
+            const args = (node.arguments || []).map(a => this.transformExpression(a));
+            if (this.variant === 'FREEBASIC')
+              return new BasicCall(new BasicIdentifier('Base'), args);
+            return new BasicCall(new BasicMemberAccess(new BasicIdentifier('MyBase'), 'New'), args);
+          }
+
+        case 'ThisMethodCall':
+          // this.method(args) -> This.method(args) (FreeBASIC) or Me.method(args) (VB.NET)
+          // In procedural mode, use 'self' parameter
+          {
+            const selfRef = this.insideStandaloneFunction ? 'self' :
+              (this.variant === 'FREEBASIC' ? 'This' : 'Me');
+            const args = (node.arguments || []).map(a => this.transformExpression(a));
+            return new BasicCall(new BasicMemberAccess(new BasicIdentifier(selfRef), node.method), args);
+          }
+
+        case 'RotateLeft':
+          // Bit rotation left - use function call or inline expression
+          {
+            const value = this.transformExpression(node.value);
+            const amount = this.transformExpression(node.amount);
+            const bits = node.bits || 32;
+            // ((value << amount) Or (value >> (bits - amount))) And mask
+            const mask = bits === 32 ? '&HFFFFFFFF' : bits === 64 ? '&HFFFFFFFFFFFFFFFF' : `((1 Shl ${bits}) - 1)`;
+            return new BasicBinaryExpression(
+              new BasicBinaryExpression(
+                new BasicBinaryExpression(value, 'Shl', amount),
+                'Or',
+                new BasicBinaryExpression(value, 'Shr', new BasicBinaryExpression(BasicLiteral.Int(bits), '-', amount))
+              ),
+              'And', new BasicLiteral(mask, 'Long')
+            );
+          }
+
+        case 'RotateRight':
+          // Bit rotation right
+          {
+            const value = this.transformExpression(node.value);
+            const amount = this.transformExpression(node.amount);
+            const bits = node.bits || 32;
+            const mask = bits === 32 ? '&HFFFFFFFF' : bits === 64 ? '&HFFFFFFFFFFFFFFFF' : `((1 Shl ${bits}) - 1)`;
+            return new BasicBinaryExpression(
+              new BasicBinaryExpression(
+                new BasicBinaryExpression(value, 'Shr', amount),
+                'Or',
+                new BasicBinaryExpression(value, 'Shl', new BasicBinaryExpression(BasicLiteral.Int(bits), '-', amount))
+              ),
+              'And', new BasicLiteral(mask, 'Long')
+            );
+          }
+
+        case 'ArrayClear':
+          // ClearArray -> Erase or ReDim
+          {
+            const arr = node.arguments?.[0] ? this.transformExpression(node.arguments[0]) : new BasicIdentifier('array');
+            return new BasicCall(new BasicIdentifier('Erase'), [arr]);
+          }
+
+        case 'ArrayLiteral':
+          // [a, b, c] -> {a, b, c} array initializer
+          {
+            const elements = (node.elements || []).map(e => this.transformExpression(e));
+            return new BasicArrayLiteral(elements);
+          }
+
+        case 'OpCodesCall':
+          // OpCodes.MethodName(args) -> Basic equivalent or function call
+          {
+            const methodName = node.methodName || node.method;
+            const args = (node.arguments || []).map(a => this.transformExpression(a));
+            const funcName = this.toPascalCase(methodName);
+            return new BasicCall(new BasicIdentifier(funcName), args);
+          }
+
+        case 'Cast':
+          // Type cast
+          {
+            const value = node.value ? this.transformExpression(node.value) :
+                         node.argument ? this.transformExpression(node.argument) :
+                         node.arguments?.[0] ? this.transformExpression(node.arguments[0]) : BasicLiteral.Int(0);
+            const targetType = node.targetType || 'int';
+            const castFunc = targetType === 'uint32' || targetType === 'dword' ? 'CUInt' :
+                            targetType === 'int32' || targetType === 'int' ? 'CInt' :
+                            targetType === 'uint8' || targetType === 'byte' ? 'CByte' :
+                            targetType === 'float' || targetType === 'single' ? 'CSng' :
+                            targetType === 'double' ? 'CDbl' : 'CInt';
+            return new BasicCall(new BasicIdentifier(castFunc), [value]);
+          }
+
+        case 'ArraySlice':
+          // array.slice(start, end) - use CopyArray helper function or direct array syntax
+          {
+            const arr = this.transformExpression(node.array || node.arguments?.[0]);
+            const start = node.start ? this.transformExpression(node.start) :
+                         node.arguments?.[1] ? this.transformExpression(node.arguments[1]) : BasicLiteral.Int(0);
+            const end = node.end ? this.transformExpression(node.end) :
+                       node.arguments?.[2] ? this.transformExpression(node.arguments[2]) : null;
+            // Use CopyArray helper function: CopyArray(arr, start, length)
+            if (end) {
+              // Length = end - start
+              const length = new BasicBinaryExpression(end, '-', start);
+              return new BasicCall(new BasicIdentifier('CopyArray'), [arr, start, length]);
+            } else {
+              // Copy from start to end of array
+              return new BasicCall(new BasicIdentifier('CopyArray'), [arr, start]);
+            }
+          }
+
+        case 'ArrayIndexOf':
+          // array.indexOf(value) - Basic needs loop or function
+          {
+            const arr = this.transformExpression(node.array);
+            const value = node.value ? this.transformExpression(node.value) : BasicLiteral.Nothing();
+            return new BasicCall(new BasicIdentifier('IndexOf'), [arr, value]);
+          }
+
+        case 'ErrorCreation':
+          // new Error("message") -> Err.Raise or Throw New Exception
+          {
+            const message = node.message ? this.transformExpression(node.message) : BasicLiteral.String('');
+            return new BasicCall(new BasicIdentifier('Err.Raise'), [BasicLiteral.Int(5), BasicLiteral.String(''), message]);
+          }
+
+        case 'StringFromCharCode':
+          // String.fromCharCode(n) -> Chr(n)
+          {
+            const code = node.arguments?.[0] ? this.transformExpression(node.arguments[0]) : BasicLiteral.Int(0);
+            return new BasicCall(new BasicIdentifier('Chr'), [code]);
+          }
+
+        case 'StringCharCodeAt':
+          // str.charCodeAt(i) -> Asc(Mid(str, i+1, 1))
+          {
+            const str = this.transformExpression(node.string || node.object);
+            const idx = node.index ? this.transformExpression(node.index) : BasicLiteral.Int(0);
+            return new BasicCall(new BasicIdentifier('Asc'), [
+              new BasicCall(new BasicIdentifier('Mid'), [str, new BasicBinaryExpression(idx, '+', BasicLiteral.Int(1)), BasicLiteral.Int(1)])
+            ]);
+          }
+
+        case 'ArrayLength':
+          // array.length -> UBound(array) - LBound(array) + 1 or just UBound+1 for 0-based
+          {
+            const arr = node.array ? this.transformExpression(node.array) : new BasicIdentifier('array');
+            // In FreeBASIC, arrays are typically 0-based, so UBound(arr) + 1 gives length
+            return new BasicBinaryExpression(
+              new BasicCall(new BasicIdentifier('UBound'), [arr]),
+              '+',
+              BasicLiteral.Int(1)
+            );
+          }
+
+        case 'PackBytes':
+          // Pack bytes to value - use function call
+          {
+            const endian = node.endian || 'big';
+            const bits = node.bits || 32;
+            const args = (node.arguments || []).map(a => this.transformExpression(a));
+            const funcName = `Pack${bits}${endian === 'big' ? 'BE' : 'LE'}`;
+            return new BasicCall(new BasicIdentifier(funcName), args);
+          }
+
+        case 'UnpackBytes':
+          // Unpack value to bytes - use function call
+          {
+            const endian = node.endian || 'big';
+            const bits = node.bits || 32;
+            // Check multiple possible locations for the value argument
+            const value = node.value ? this.transformExpression(node.value) :
+                         node.argument ? this.transformExpression(node.argument) :
+                         node.arguments?.[0] ? this.transformExpression(node.arguments[0]) :
+                         BasicLiteral.Int(0);
+            const funcName = `Unpack${bits}${endian === 'big' ? 'BE' : 'LE'}`;
+            return new BasicCall(new BasicIdentifier(funcName), [value]);
+          }
+
+        case 'HexDecode':
+          // Decode hex string to byte array - Hex8ToBytes(hexString)
+          {
+            const hexStr = node.arguments?.[0] ? this.transformExpression(node.arguments[0]) : BasicLiteral.String('');
+            return new BasicCall(new BasicIdentifier('Hex8ToBytes'), [hexStr]);
+          }
+
+        case 'HexEncode':
+          // Encode byte array to hex string - BytesToHex8(bytes)
+          {
+            const bytes = node.arguments?.[0] ? this.transformExpression(node.arguments[0]) : new BasicIdentifier('bytes');
+            return new BasicCall(new BasicIdentifier('BytesToHex8'), [bytes]);
+          }
+
+        case 'BitwiseXor':
+          // Bitwise XOR
+          {
+            const left = this.transformExpression(node.left);
+            const right = this.transformExpression(node.right);
+            return new BasicBinaryExpression(left, 'Xor', right);
+          }
+
+        case 'BitwiseAnd':
+          // Bitwise AND
+          {
+            const left = this.transformExpression(node.left);
+            const right = this.transformExpression(node.right);
+            return new BasicBinaryExpression(left, 'And', right);
+          }
+
+        case 'BitwiseOr':
+          // Bitwise OR
+          {
+            const left = this.transformExpression(node.left);
+            const right = this.transformExpression(node.right);
+            return new BasicBinaryExpression(left, 'Or', right);
+          }
+
+        case 'BitwiseNot':
+          // Bitwise NOT
+          {
+            const arg = this.transformExpression(node.argument);
+            return new BasicUnaryExpression('Not', arg);
+          }
+
+        case 'LeftShift':
+          // Left shift
+          {
+            const value = this.transformExpression(node.left || node.value);
+            const amount = this.transformExpression(node.right || node.amount);
+            return new BasicBinaryExpression(value, 'Shl', amount);
+          }
+
+        case 'RightShift':
+          // Right shift (logical)
+          {
+            const value = this.transformExpression(node.left || node.value);
+            const amount = this.transformExpression(node.right || node.amount);
+            return new BasicBinaryExpression(value, 'Shr', amount);
+          }
+
+        case 'RightShiftSigned':
+          // Right shift (arithmetic/signed) - same as Shr in Basic for signed types
+          {
+            const value = this.transformExpression(node.left || node.value);
+            const amount = this.transformExpression(node.right || node.amount);
+            return new BasicBinaryExpression(value, 'Shr', amount);
+          }
+
+        case 'UnsignedRightShift':
+          // Unsigned right shift - in Basic, Shr on unsigned types
+          {
+            const value = this.transformExpression(node.left || node.value);
+            const amount = this.transformExpression(node.right || node.amount);
+            return new BasicBinaryExpression(value, 'Shr', amount);
+          }
+
+        case 'XorArrays':
+          // XOR two byte arrays element-wise
+          {
+            const arr1 = node.arguments?.[0] ? this.transformExpression(node.arguments[0]) : new BasicIdentifier('arr1');
+            const arr2 = node.arguments?.[1] ? this.transformExpression(node.arguments[1]) : new BasicIdentifier('arr2');
+            return new BasicCall(new BasicIdentifier('XorArrays'), [arr1, arr2]);
+          }
+
+        case 'TypeMask':
+          // Mask to N bits - value And ((1 Shl bits) - 1) or value And &HFFFFFFFF
+          {
+            const value = this.transformExpression(node.value || node.argument);
+            const bits = node.bits || 32;
+            let mask;
+            if (bits === 8) mask = '&HFF';
+            else if (bits === 16) mask = '&HFFFF';
+            else if (bits === 32) mask = '&HFFFFFFFF';
+            else if (bits === 64) mask = '&HFFFFFFFFFFFFFFFF';
+            else mask = `((1 Shl ${bits}) - 1)`;
+            return new BasicBinaryExpression(value, 'And', new BasicLiteral(mask, 'Long'));
+          }
+
+        case 'Concatenate':
+          // String concatenation
+          {
+            const parts = (node.arguments || node.parts || []).map(a => this.transformExpression(a));
+            if (parts.length === 0) return BasicLiteral.String('');
+            if (parts.length === 1) return parts[0];
+            return parts.reduce((acc, part) => new BasicBinaryExpression(acc, '&', part));
+          }
+
+        case 'ObjectProperty':
+          // Object property access
+          {
+            const obj = this.transformExpression(node.object);
+            return new BasicMemberAccess(obj, node.property);
+          }
+
+        // IL AST StringInterpolation - `Hello ${name}` -> "Hello " & name
+        case 'StringInterpolation': {
+          const parts = [];
+          if (node.parts) {
+            for (const part of node.parts) {
+              if (part.type === 'StringPart' || part.ilNodeType === 'StringPart') {
+                if (part.value)
+                  parts.push(BasicLiteral.String(part.value));
+              } else if (part.type === 'ExpressionPart' || part.ilNodeType === 'ExpressionPart') {
+                parts.push(this.transformExpression(part.expression));
+              }
+            }
+          }
+          if (parts.length === 0) return BasicLiteral.String('');
+          if (parts.length === 1) return parts[0];
+          return parts.reduce((acc, part) => new BasicBinaryExpression(acc, '&', part));
+        }
+
+        // IL AST ObjectLiteral - {key: value} -> Not directly supported in BASIC
+        case 'ObjectLiteral': {
+          // BASIC doesn't have object literals; return Nothing
+          return new BasicIdentifier('Nothing');
+        }
+
+        // IL AST StringFromCharCodes - String.fromCharCode(65) -> Chr(65)
+        case 'StringFromCharCodes': {
+          const args = (node.arguments || []).map(a => this.transformExpression(a));
+          if (args.length === 0)
+            return BasicLiteral.String('');
+          if (args.length === 1)
+            return new BasicCall(new BasicIdentifier('Chr'), args);
+          // Multiple: Chr(c1) & Chr(c2) & ...
+          const chrCalls = args.map(a => new BasicCall(new BasicIdentifier('Chr'), [a]));
+          return chrCalls.reduce((acc, call) => new BasicBinaryExpression(acc, '&', call));
+        }
+
+        // IL AST IsArrayCheck - Array.isArray(x) -> IsArray(x)
+        case 'IsArrayCheck': {
+          const value = this.transformExpression(node.value);
+          return new BasicCall(new BasicIdentifier('IsArray'), [value]);
+        }
+
+        // IL AST ArrowFunction - (x) => expr -> Function(x) = expr (not really supported)
+        case 'ArrowFunction': {
+          // BASIC doesn't have lambdas; return placeholder
+          return new BasicIdentifier("' Lambda function");
+        }
+
+        // IL AST TypeOfExpression - typeof x -> TypeName(x)
+        case 'TypeOfExpression': {
+          const value = this.transformExpression(node.value);
+          return new BasicCall(new BasicIdentifier('TypeName'), [value]);
+        }
+
+        // IL AST Power - x ** y -> x ^ y
+        case 'Power': {
+          const left = this.transformExpression(node.left);
+          const right = this.transformExpression(node.right);
+          return new BasicBinaryExpression(left, '^', right);
+        }
+
+        // IL AST ObjectFreeze - Object.freeze(x) -> just return x (no-op in BASIC)
+        case 'ObjectFreeze': {
+          return this.transformExpression(node.value);
+        }
+
         default:
           return null;
       }
@@ -1181,6 +1885,10 @@
       }
 
       if (node.value === null) {
+        return BasicLiteral.Nothing();
+      }
+      // Handle undefined - treat same as Nothing in BASIC
+      if (node.value === undefined) {
         return BasicLiteral.Nothing();
       }
 
@@ -1244,13 +1952,39 @@
       const operand = this.transformExpression(node.argument);
 
       let operator = node.operator;
-      if (operator === '!') operator = 'Not';
+
+      // Handle !array (array null/empty check) -> UBound(array) < LBound(array)
+      if (operator === '!') {
+        // Check if operand is likely an array based on type info
+        const argType = this.getVariableType(node.argument?.name);
+        if (argType?.isArray || this.isLikelyArrayName(node.argument?.name)) {
+          // Transform !arrayVar to (UBound(arrayVar) < LBound(arrayVar)) which checks if empty
+          return new BasicBinaryExpression(
+            new BasicCall(new BasicIdentifier('UBound'), [operand]),
+            '<',
+            new BasicCall(new BasicIdentifier('LBound'), [operand])
+          );
+        }
+        operator = 'Not';
+      }
+
       if (operator === 'typeof') {
         // TypeOf is different in Basic
         return new BasicCall(new BasicIdentifier('TypeName'), [operand]);
       }
 
       return new BasicUnaryExpression(operator, operand);
+    }
+
+    /**
+     * Check if a variable name is likely an array based on naming conventions
+     */
+    isLikelyArrayName(name) {
+      if (!name) return false;
+      const lower = name.toLowerCase();
+      return lower.includes('data') || lower.includes('bytes') || lower.includes('buffer') ||
+             lower.includes('array') || lower.includes('input') || lower.includes('output') ||
+             lower.includes('block') || lower.includes('key') || lower.includes('state');
     }
 
     /**
@@ -1317,6 +2051,39 @@
         return this.transformOpCodesCall(node);
       }
 
+      // Handle JavaScript builtins
+      if (node.callee.type === 'MemberExpression' && node.callee.object.type === 'Identifier') {
+        const objName = node.callee.object.name.toLowerCase();
+        const methodName = (node.callee.property.name || node.callee.property.value || '').toLowerCase();
+        const args = node.arguments.map(arg => this.transformExpression(arg));
+
+        // String.fromCharCode(n) -> Chr(n)
+        if (objName === 'string' && methodName === 'fromcharcode') {
+          return new BasicCall(new BasicIdentifier('Chr'), args);
+        }
+
+        // Array.isArray(x) -> IsArray(x) or (TypeOf x Is Array)
+        if (objName === 'array' && methodName === 'isarray') {
+          // FreeBASIC: use a check for array - no direct equivalent, so just use a simple check
+          // This would require runtime support in actual code
+          return new BasicCall(new BasicIdentifier('IsArray'), args);
+        }
+
+        // Math functions
+        if (objName === 'math') {
+          const mathMap = {
+            'floor': 'Int', 'ceil': 'CInt', 'round': 'CInt',
+            'abs': 'Abs', 'sqrt': 'Sqr', 'sin': 'Sin', 'cos': 'Cos',
+            'tan': 'Tan', 'exp': 'Exp', 'log': 'Log', 'pow': 'Pow',
+            'min': 'Min', 'max': 'Max', 'random': 'Rnd'
+          };
+          const basicFunc = mathMap[methodName];
+          if (basicFunc) {
+            return new BasicCall(new BasicIdentifier(basicFunc), args);
+          }
+        }
+      }
+
       // Handle method calls
       if (node.callee.type === 'MemberExpression') {
         const object = this.transformExpression(node.callee.object);
@@ -1359,8 +2126,15 @@
      */
     transformObjectExpression(node) {
       // For Basic, we'd typically use a Type or Class instance
-      // For now, return a placeholder
-      return new BasicIdentifier('ObjectLiteral');
+      // Object literals with properties can be converted to anonymous type initializers in VB.NET
+      // or to Nothing in FreeBASIC (no direct equivalent)
+      if (this.variant === 'FREEBASIC') {
+        // FreeBASIC: Return Nothing since there's no object literal syntax
+        // The algorithm should still work if test data is handled separately
+        return BasicLiteral.Nothing();
+      }
+      // VB.NET: Could use anonymous types, but for simplicity return Nothing
+      return BasicLiteral.Nothing();
     }
 
     /**

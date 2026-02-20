@@ -271,6 +271,154 @@ class PythonPlugin extends LanguagePlugin {
       documentation: 'https://docs.python.org/'
     };
   }
+
+  /**
+   * Generate Python test runner code from ILTestRunner node
+   * @param {Object} testRunner - ILTestRunner node with tests array
+   * @returns {string} Python test runner code
+   */
+  generateTestRunner(testRunner) {
+    if (!testRunner || !testRunner.tests || !Array.isArray(testRunner.tests)) {
+      return '# Error: Invalid test runner structure\n';
+    }
+
+    const lines = [];
+    const indent = this.options.indent || '    ';
+
+    // Add header comment
+    lines.push('#!/usr/bin/env python3');
+    lines.push('"""');
+    lines.push('Auto-generated test runner for cryptographic algorithm implementations');
+    lines.push('"""');
+    lines.push('');
+    lines.push('import sys');
+    lines.push('');
+
+    // Helper function to format byte array
+    const formatByteArray = (bytes) => {
+      if (!bytes || bytes.length === 0) return 'bytes([])';
+      const hexValues = bytes.map(b => `0x${b.toString(16).padStart(2, '0')}`);
+      return `bytes([${hexValues.join(', ')}])`;
+    };
+
+    // Helper function to convert property name to snake_case
+    const toSnakeCase = (str) => {
+      return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+    };
+
+    // Generate main test function
+    lines.push('def run_tests():');
+    lines.push(`${indent}"""Run all test cases and return success status"""`);
+    lines.push(`${indent}passed = 0`);
+    lines.push(`${indent}failed = 0`);
+    lines.push('');
+
+    // Generate test cases
+    testRunner.tests.forEach((algorithmTest, algIndex) => {
+      const { algorithmClass, instanceClass, testCases } = algorithmTest;
+
+      if (!testCases || testCases.length === 0) return;
+
+      lines.push(`${indent}# Test cases for ${algorithmClass}`);
+
+      testCases.forEach((testCase, testIndex) => {
+        const testNum = `${algIndex + 1}_${testIndex + 1}`;
+        const description = testCase.description || `Test ${testNum}`;
+
+        lines.push(`${indent}# ${description}`);
+        lines.push(`${indent}try:`);
+
+        // Create algorithm instance
+        const instanceVar = toSnakeCase(instanceClass.replace(/Instance$/, ''));
+        lines.push(`${indent}${indent}${instanceVar} = ${instanceClass}()`);
+        lines.push('');
+
+        // Set properties (key, iv, nonce, etc.)
+        if (testCase.key) {
+          lines.push(`${indent}${indent}# Set key`);
+          lines.push(`${indent}${indent}${instanceVar}.key = ${formatByteArray(testCase.key)}`);
+        }
+        if (testCase.iv) {
+          lines.push(`${indent}${indent}# Set IV`);
+          lines.push(`${indent}${indent}${instanceVar}.iv = ${formatByteArray(testCase.iv)}`);
+        }
+        if (testCase.nonce) {
+          lines.push(`${indent}${indent}# Set nonce`);
+          lines.push(`${indent}${indent}${instanceVar}.nonce = ${formatByteArray(testCase.nonce)}`);
+        }
+        if (testCase.outputSize !== undefined) {
+          lines.push(`${indent}${indent}# Set output size`);
+          lines.push(`${indent}${indent}${instanceVar}.output_size = ${testCase.outputSize}`);
+        }
+
+        // Set any other properties from test case
+        Object.keys(testCase).forEach(key => {
+          if (!['input', 'expected', 'key', 'iv', 'nonce', 'outputSize', 'description'].includes(key)) {
+            const value = testCase[key];
+            const propName = toSnakeCase(key);
+            if (Array.isArray(value)) {
+              lines.push(`${indent}${indent}${instanceVar}.${propName} = ${formatByteArray(value)}`);
+            } else if (typeof value === 'number') {
+              lines.push(`${indent}${indent}${instanceVar}.${propName} = ${value}`);
+            } else if (typeof value === 'string') {
+              lines.push(`${indent}${indent}${instanceVar}.${propName} = "${value}"`);
+            } else if (typeof value === 'boolean') {
+              lines.push(`${indent}${indent}${instanceVar}.${propName} = ${value ? 'True' : 'False'}`);
+            }
+          }
+        });
+
+        lines.push('');
+
+        // Feed input
+        lines.push(`${indent}${indent}# Feed input data`);
+        lines.push(`${indent}${indent}input_data = ${formatByteArray(testCase.input)}`);
+        lines.push(`${indent}${indent}${instanceVar}.feed(input_data)`);
+        lines.push('');
+
+        // Get result
+        lines.push(`${indent}${indent}# Get result`);
+        lines.push(`${indent}${indent}actual = ${instanceVar}.result()`);
+        lines.push(`${indent}${indent}expected = ${formatByteArray(testCase.expected)}`);
+        lines.push('');
+
+        // Compare results
+        lines.push(`${indent}${indent}# Compare byte-by-byte`);
+        lines.push(`${indent}${indent}if actual == expected:`);
+        lines.push(`${indent}${indent}${indent}print(f"PASS: ${description}")`);
+        lines.push(`${indent}${indent}${indent}passed += 1`);
+        lines.push(`${indent}${indent}else:`);
+        lines.push(`${indent}${indent}${indent}print(f"FAIL: ${description}")`);
+        lines.push(`${indent}${indent}${indent}print(f"  Expected: {expected.hex()}")`);
+        lines.push(`${indent}${indent}${indent}print(f"  Actual:   {actual.hex()}")`);
+        lines.push(`${indent}${indent}${indent}failed += 1`);
+        lines.push('');
+
+        // Exception handling
+        lines.push(`${indent}except Exception as e:`);
+        lines.push(`${indent}${indent}print(f"ERROR: ${description}")`);
+        lines.push(`${indent}${indent}print(f"  Exception: {str(e)}")`);
+        lines.push(`${indent}${indent}failed += 1`);
+        lines.push('');
+      });
+    });
+
+    // Print summary
+    lines.push(`${indent}# Print summary`);
+    lines.push(`${indent}print()`);
+    lines.push(`${indent}print(f"Test Results: {passed} passed, {failed} failed")`);
+    lines.push(`${indent}return failed == 0`);
+    lines.push('');
+
+    // Main block
+    lines.push('');
+    lines.push('if __name__ == "__main__":');
+    lines.push(`${indent}success = run_tests()`);
+    lines.push(`${indent}sys.exit(0 if success else 1)`);
+    lines.push('');
+
+    return lines.join('\n');
+  }
 }
 
 // Register the plugin

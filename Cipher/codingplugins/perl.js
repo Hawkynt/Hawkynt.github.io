@@ -429,6 +429,114 @@
         documentation: 'https://perldoc.perl.org/'
       };
     }
+
+    /**
+     * Generate Perl test runner code from ILTestRunner node
+     * @param {Object} testRunner - ILTestRunner node with test cases
+     * @returns {string} Perl test runner code
+     */
+    generateTestRunner(testRunner) {
+      if (!testRunner || !testRunner.tests || testRunner.tests.length === 0) {
+        return '';
+      }
+
+      const lines = [];
+      lines.push('# Auto-generated Test Runner');
+      lines.push('use strict;');
+      lines.push('use warnings;');
+      lines.push('');
+      lines.push('sub bytes_to_hex {');
+      lines.push('    my ($bytes_ref) = @_;');
+      lines.push('    return join "", map { sprintf "%02X", $_ } @$bytes_ref;');
+      lines.push('}');
+      lines.push('');
+      lines.push('sub run_tests {');
+      lines.push('    my $passed = 0;');
+      lines.push('    my $failed = 0;');
+      lines.push('    print "Running tests...\\n";');
+      lines.push('');
+
+      for (const testGroup of testRunner.tests) {
+        const algoClass = testGroup.algorithmClass;
+        const instClass = testGroup.instanceClass;
+
+        for (let i = 0; i < testGroup.testCases.length; ++i) {
+          const tc = testGroup.testCases[i];
+          const desc = (tc.description || `Test ${i + 1}`).replace(/'/g, "\\'");
+          const inputBytes = tc.input ? `(${tc.input.map(b => `0x${b.toString(16).padStart(2, '0')}`).join(', ')})` : '()';
+          const expectedBytes = tc.expected ? `(${tc.expected.map(b => `0x${b.toString(16).padStart(2, '0')}`).join(', ')})` : '()';
+
+          lines.push(`    # Test: ${desc}`);
+          lines.push('    eval {');
+          lines.push(`        my $algo = ${algoClass}->new();`);
+          lines.push(`        my $instance = $algo->create_instance();`);
+          lines.push('');
+
+          // Set key/iv/nonce if provided
+          if (tc.key) {
+            const keyBytes = `(${tc.key.map(b => `0x${b.toString(16).padStart(2, '0')}`).join(', ')})`;
+            lines.push(`        my @key = ${keyBytes};`);
+            lines.push('        $instance->key(\\@key);');
+          }
+          if (tc.iv) {
+            const ivBytes = `(${tc.iv.map(b => `0x${b.toString(16).padStart(2, '0')}`).join(', ')})`;
+            lines.push(`        my @iv = ${ivBytes};`);
+            lines.push('        $instance->iv(\\@iv);');
+          }
+          if (tc.nonce) {
+            const nonceBytes = `(${tc.nonce.map(b => `0x${b.toString(16).padStart(2, '0')}`).join(', ')})`;
+            lines.push(`        my @nonce = ${nonceBytes};`);
+            lines.push('        $instance->nonce(\\@nonce);');
+          }
+
+          lines.push('');
+          lines.push(`        my @input = ${inputBytes};`);
+          lines.push(`        my @expected = ${expectedBytes};`);
+          lines.push('');
+          lines.push('        $instance->feed(\\@input);');
+          lines.push('        my $actual_ref = $instance->result();');
+          lines.push('        my @actual = @$actual_ref;');
+          lines.push('');
+          lines.push('        my $match = 1;');
+          lines.push('        if (scalar(@actual) != scalar(@expected)) {');
+          lines.push('            $match = 0;');
+          lines.push('        } else {');
+          lines.push('            for (my $i = 0; $i < scalar(@actual); ++$i) {');
+          lines.push('                if ($actual[$i] != $expected[$i]) {');
+          lines.push('                    $match = 0;');
+          lines.push('                    last;');
+          lines.push('                }');
+          lines.push('            }');
+          lines.push('        }');
+          lines.push('');
+          lines.push('        if ($match) {');
+          lines.push(`            print "PASS: ${desc}\\n";`);
+          lines.push('            ++$passed;');
+          lines.push('        } else {');
+          lines.push(`            print "FAIL: ${desc}\\n";`);
+          lines.push('            print "  Expected: " . bytes_to_hex(\\@expected) . "\\n";');
+          lines.push('            print "  Actual:   " . bytes_to_hex(\\@actual) . "\\n";');
+          lines.push('            ++$failed;');
+          lines.push('        }');
+          lines.push('    };');
+          lines.push('    if ($@) {');
+          lines.push(`        print "ERROR: ${desc} - $@\\n";`);
+          lines.push('        ++$failed;');
+          lines.push('    }');
+          lines.push('');
+        }
+      }
+
+      lines.push('    print "\\n";');
+      lines.push('    print "Results: $passed passed, $failed failed\\n";');
+      lines.push('    return ($failed == 0) ? 0 : 1;');
+      lines.push('}');
+      lines.push('');
+      lines.push('# Run tests and exit with appropriate status');
+      lines.push('exit(run_tests());');
+
+      return lines.join('\n');
+    }
   }
 
   // Register the plugin

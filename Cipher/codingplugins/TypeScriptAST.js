@@ -234,6 +234,8 @@
       this.isStatic = false;
       this.isAbstract = false;
       this.isAsync = false;
+      this.isGetter = false;            // Is this a getter method
+      this.isSetter = false;            // Is this a setter method
       this.parameters = [];             // TypeScriptParameter[]
       this.body = null;                 // TypeScriptBlock
       this.jsDoc = null;
@@ -250,6 +252,16 @@
       this.parameters = [];
       this.body = null;
       this.jsDoc = null;
+    }
+  }
+
+  /**
+   * Static block (ES2022) - static { ... }
+   */
+  class TypeScriptStaticBlock extends TypeScriptNode {
+    constructor() {
+      super('StaticBlock');
+      this.body = null;  // TypeScriptBlock
     }
   }
 
@@ -399,14 +411,20 @@
    * Break statement
    */
   class TypeScriptBreak extends TypeScriptNode {
-    constructor() { super('Break'); }
+    constructor(label = null) {
+      super('Break');
+      this.label = label;
+    }
   }
 
   /**
    * Continue statement
    */
   class TypeScriptContinue extends TypeScriptNode {
-    constructor() { super('Continue'); }
+    constructor(label = null) {
+      super('Continue');
+      this.label = label;
+    }
   }
 
   /**
@@ -648,9 +666,78 @@
    * Template literal `text ${expr}`
    */
   class TypeScriptTemplateLiteral extends TypeScriptNode {
-    constructor() {
+    constructor(quasis = [], expressions = []) {
       super('TemplateLiteral');
-      this.parts = [];                  // [{text, expression}]
+      this.quasis = quasis;             // string[] - the static text parts
+      this.expressions = expressions;   // TypeScriptExpression[] - the interpolated expressions
+      this.parts = [];                  // Legacy [{text, expression}] format
+    }
+  }
+
+  /**
+   * Yield expression (for generators)
+   * yield value or yield* iterable
+   */
+  class TypeScriptYieldExpression extends TypeScriptNode {
+    constructor(argument = null, delegate = false) {
+      super('YieldExpression');
+      this.argument = argument;         // TypeScriptExpression or null
+      this.delegate = delegate;         // true for yield*, false for yield
+    }
+  }
+
+  /**
+   * Chain expression (for optional chaining)
+   * a?.b, a?.b(), a?.[index]
+   */
+  class TypeScriptChainExpression extends TypeScriptNode {
+    constructor(expression) {
+      super('ChainExpression');
+      this.expression = expression;     // The inner expression
+    }
+  }
+
+  /**
+   * Await expression (for async functions)
+   * await promise
+   */
+  class TypeScriptAwaitExpression extends TypeScriptNode {
+    constructor(argument) {
+      super('AwaitExpression');
+      this.argument = argument;         // TypeScriptExpression
+    }
+  }
+
+  /**
+   * Delete expression
+   * delete obj.property
+   */
+  class TypeScriptDeleteExpression extends TypeScriptNode {
+    constructor(argument) {
+      super('DeleteExpression');
+      this.argument = argument;         // TypeScriptExpression
+    }
+  }
+
+  /**
+   * Spread element
+   * ...array, ...object
+   */
+  class TypeScriptSpreadElement extends TypeScriptNode {
+    constructor(argument) {
+      super('SpreadElement');
+      this.argument = argument;         // TypeScriptExpression
+    }
+  }
+
+  /**
+   * Sequence expression (comma expression)
+   * expr1, expr2, expr3
+   */
+  class TypeScriptSequenceExpression extends TypeScriptNode {
+    constructor(expressions = []) {
+      super('SequenceExpression');
+      this.expressions = expressions;   // TypeScriptExpression[]
     }
   }
 
@@ -692,6 +779,7 @@
     TypeScriptProperty,
     TypeScriptMethod,
     TypeScriptConstructor,
+    TypeScriptStaticBlock,
     TypeScriptParameter,
 
     // Statements
@@ -732,6 +820,12 @@
     TypeScriptTypeOf,
     TypeScriptParenthesized,
     TypeScriptTemplateLiteral,
+    TypeScriptYieldExpression,
+    TypeScriptChainExpression,
+    TypeScriptAwaitExpression,
+    TypeScriptDeleteExpression,
+    TypeScriptSpreadElement,
+    TypeScriptSequenceExpression,
 
     // Documentation
     TypeScriptJSDoc

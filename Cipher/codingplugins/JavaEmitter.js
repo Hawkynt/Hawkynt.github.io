@@ -106,6 +106,16 @@
         code += this.emit(node.javadoc);
       }
 
+      // Handle enum declaration
+      if (node.isEnum) {
+        return this.emitEnumFromClass(node);
+      }
+
+      // Handle interface declaration (when using JavaClass with isInterface=true)
+      if (node.isInterface) {
+        return this.emitInterfaceFromClass(node);
+      }
+
       // Declaration line
       let decl = '';
       if (node.accessModifier) decl += node.accessModifier + ' ';
@@ -163,6 +173,102 @@
       for (const member of node.members) {
         code += this.emit(member);
         code += this.newline;
+      }
+
+      this.indentLevel--;
+      code += this.line('}');
+      return code;
+    }
+
+    emitInterfaceFromClass(node) {
+      let code = '';
+
+      if (node.javadoc) {
+        code += this.emit(node.javadoc);
+      }
+
+      let decl = '';
+      if (node.accessModifier) decl += node.accessModifier + ' ';
+      decl += `interface ${node.name}`;
+
+      if (node.extendsInterfaces && node.extendsInterfaces.length > 0) {
+        decl += ` extends ${node.extendsInterfaces.map(i => i.toString()).join(', ')}`;
+      } else if (node.implementsInterfaces && node.implementsInterfaces.length > 0) {
+        // Sometimes extends may be stored in implementsInterfaces
+        decl += ` extends ${node.implementsInterfaces.map(i => i.toString()).join(', ')}`;
+      }
+
+      code += this.line(decl + ' {');
+      this.indentLevel++;
+
+      for (const member of node.members || []) {
+        // For interface methods, emit without body
+        if (member.nodeType === 'Method') {
+          code += this.emitInterfaceMethod(member);
+        } else {
+          code += this.emit(member);
+        }
+        code += this.newline;
+      }
+
+      this.indentLevel--;
+      code += this.line('}');
+      return code;
+    }
+
+    emitInterfaceMethod(node) {
+      let decl = '';
+      if (node.returnType) {
+        decl += `${node.returnType.toString()} `;
+      } else {
+        decl += 'void ';
+      }
+      decl += node.name;
+
+      const params = node.parameters.map(p => this.emitParameterDecl(p));
+      decl += `(${params.join(', ')})`;
+
+      if (node.throwsExceptions && node.throwsExceptions.length > 0) {
+        decl += ` throws ${node.throwsExceptions.map(t => t.toString()).join(', ')}`;
+      }
+
+      return this.line(`${decl};`);
+    }
+
+    emitEnumFromClass(node) {
+      let code = '';
+
+      if (node.javadoc) {
+        code += this.emit(node.javadoc);
+      }
+
+      let decl = '';
+      if (node.accessModifier) decl += node.accessModifier + ' ';
+      decl += `enum ${node.name}`;
+
+      if (node.implementsInterfaces && node.implementsInterfaces.length > 0) {
+        decl += ` implements ${node.implementsInterfaces.map(i => i.toString()).join(', ')}`;
+      }
+
+      code += this.line(decl + ' {');
+      this.indentLevel++;
+
+      // Emit enum constants
+      if (node.enumConstants && node.enumConstants.length > 0) {
+        const constants = node.enumConstants.join(',' + this.newline + this.indent());
+        code += this.line(constants);
+      }
+
+      // If there are members, add semicolon separator after constants
+      if (node.members && node.members.length > 0) {
+        // Replace last line's ending with semicolon
+        if (node.enumConstants && node.enumConstants.length > 0) {
+          code = code.trimEnd() + ';' + this.newline + this.newline;
+        }
+        for (const member of node.members) {
+          code += this.emit(member);
+          code += this.newline;
+        }
       }
 
       this.indentLevel--;
@@ -552,13 +658,29 @@
 
       // Numeric literal
       let result;
-      if (node.isHex) {
-        result = `0x${node.value.toString(16).toUpperCase()}`;
-      } else {
-        result = String(node.value);
+      let numValue = node.value;
+
+      // Handle BigInt values
+      if (typeof numValue === 'bigint') {
+        if (node.isHex) {
+          result = `0x${numValue.toString(16).toUpperCase()}L`;
+        } else {
+          result = `${numValue}L`;
+        }
+        return result;
       }
 
-      if (node.suffix) {
+      if (node.isHex) {
+        result = `0x${numValue.toString(16).toUpperCase()}`;
+      } else {
+        result = String(numValue);
+      }
+
+      // Auto-add L suffix for large integers (> 32-bit)
+      const MAX_INT = 0x7FFFFFFF;
+      if (!node.suffix && typeof numValue === 'number' && (numValue > MAX_INT || numValue < -MAX_INT - 1)) {
+        result += 'L';
+      } else if (node.suffix) {
         result += node.suffix;
       }
 
@@ -572,7 +694,35 @@
     emitBinaryExpression(node) {
       const left = this.emit(node.left);
       const right = this.emit(node.right);
-      return `${left} ${node.operator} ${right}`;
+      const op = node.operator;
+
+      // Add parentheses for operator precedence
+      const leftStr = this.needsParens(node.left, op, 'left') ? `(${left})` : left;
+      const rightStr = this.needsParens(node.right, op, 'right') ? `(${right})` : right;
+      return `${leftStr} ${op} ${rightStr}`;
+    }
+
+    needsParens(node, parentOp, side) {
+      if (!node || node.nodeType !== 'BinaryExpression') return false;
+      const childOp = node.operator;
+      // Java operator precedence (higher = binds tighter)
+      const precedence = {
+        '*': 13, '/': 13, '%': 13,
+        '+': 12, '-': 12,
+        '<<': 11, '>>': 11, '>>>': 11,
+        '<': 10, '<=': 10, '>': 10, '>=': 10, 'instanceof': 10,
+        '==': 9, '!=': 9,
+        '&': 8,
+        '^': 7,
+        '|': 6,
+        '&&': 5,
+        '||': 4
+      };
+      const parentPrec = precedence[parentOp] || 0;
+      const childPrec = precedence[childOp] || 0;
+      if (childPrec < parentPrec) return true;
+      if (childPrec === parentPrec && side === 'right') return true;
+      return false;
     }
 
     emitUnaryExpression(node) {
@@ -597,10 +747,21 @@
 
     emitMethodCall(node) {
       let code = '';
+
+      // Special handling for super() and this() calls
+      if (node.target && node.target.nodeType === 'Super' && !node.methodName) {
+        const args = node.arguments.map(a => this.emit(a));
+        return `super(${args.join(', ')})`;
+      }
+      if (node.target && node.target.nodeType === 'This' && !node.methodName) {
+        const args = node.arguments.map(a => this.emit(a));
+        return `this(${args.join(', ')})`;
+      }
+
       if (node.target) {
         code += `${this.emit(node.target)}.`;
       }
-      code += node.methodName;
+      code += node.methodName || '';
 
       if (node.typeArguments && node.typeArguments.length > 0) {
         code += `<${node.typeArguments.map(t => t.toString()).join(', ')}>`;
