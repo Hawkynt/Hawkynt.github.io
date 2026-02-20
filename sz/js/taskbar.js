@@ -206,7 +206,7 @@
         const el = this.#createMenuItem(item.name, item.icon, () => {
           this.#closeStartMenu();
           if (this.#onAppLaunch) this.#onAppLaunch(item.appId);
-        });
+        }, item.appId);
         mruSection.appendChild(el);
       }
       this.#leftCol.appendChild(mruSection);
@@ -220,7 +220,7 @@
       const allProg = document.createElement('div');
       allProg.className = 'sz-menu-item sz-all-programs';
       allProg.innerHTML = '<span>All Programs</span><span class="sz-menu-arrow">\u25B6</span>';
-      allProg.addEventListener('pointerup', (e) => { e.stopPropagation(); this.#showAllProgramsView(); });
+      allProg.addEventListener('pointerup', (e) => { if (e.button !== 0) return; e.stopPropagation(); this.#showAllProgramsView(); });
       this.#leftCol.appendChild(allProg);
     }
 
@@ -249,7 +249,7 @@
             this.#showCategoryFlyout(folder, catEl);
           };
           catEl.addEventListener('pointerenter', showFlyout);
-          catEl.addEventListener('pointerup', (e) => { e.stopPropagation(); showFlyout(); });
+          catEl.addEventListener('pointerup', (e) => { if (e.button !== 0) return; e.stopPropagation(); showFlyout(); });
 
           this.#leftCol.appendChild(catEl);
         }
@@ -265,6 +265,7 @@
       backItem.className = 'sz-menu-item sz-menu-back';
       backItem.innerHTML = '<span class="sz-menu-arrow">\u25C4</span><span>Back</span>';
       backItem.addEventListener('pointerup', (e) => {
+        if (e.button !== 0) return;
         e.stopPropagation();
         this.#flyout.classList.remove('visible');
         const mru = SZ.system?.settings?.get('mru') || [];
@@ -287,7 +288,7 @@
           this.#closeStartMenu();
           if (item.appId && this.#onAppLaunch)
             this.#onAppLaunch(item.appId);
-        });
+        }, item.appId);
         this.#flyout.appendChild(el);
       }
 
@@ -333,14 +334,24 @@
         const el = document.createElement('div');
         el.className = 'sz-menu-item sz-menu-system-item';
         el.innerHTML = `<span>${si.label}</span>`;
-        el.addEventListener('pointerup', (e) => {
-          e.stopPropagation();
+        const launch = () => {
           this.#closeStartMenu();
           if (si.appId && this.#onAppLaunch)
             this.#onAppLaunch(si.appId, si.urlParams);
           else if (si.action)
             si.action();
+        };
+        el.addEventListener('pointerup', (e) => {
+          if (e.button !== 0) return;
+          e.stopPropagation();
+          launch();
         });
+        if (si.appId)
+          el.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.#showItemContextMenu(si.appId, launch, e.clientX, e.clientY);
+          });
         rightCol.appendChild(el);
       }
     }
@@ -349,7 +360,7 @@
     // Helper: create a standard menu item
     // -----------------------------------------------------------------
 
-    #createMenuItem(name, icon, onClick) {
+    #createMenuItem(name, icon, onClick, appId) {
       const el = document.createElement('div');
       el.className = 'sz-menu-item';
       if (icon)
@@ -357,10 +368,64 @@
       else
         el.innerHTML = `<span>${name}</span>`;
       el.addEventListener('pointerup', (e) => {
+        if (e.button !== 0) return;
         e.stopPropagation();
         onClick();
       });
+      if (appId)
+        el.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          this.#showItemContextMenu(appId, onClick, e.clientX, e.clientY);
+        });
       return el;
+    }
+
+    #showItemContextMenu(appId, onLaunch, x, y) {
+      const ctxMenu = SZ.contextMenu;
+      if (!ctxMenu) return;
+
+      const app = this.#appLauncher?.getApp(appId);
+      const launchIcon = '<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M5 3L13 8L5 13Z" fill="#22c55e" stroke="#166534" stroke-width=".6"/></svg>';
+      const linkIcon = '<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M6.5 9.5L9.5 6.5" stroke="#3b82f6" stroke-width="1.2" fill="none" stroke-linecap="round"/><path d="M8 5L10 3A2.12 2.12 0 0 1 12.83 5.83L10.5 8" stroke="#3b82f6" stroke-width="1.2" fill="none" stroke-linecap="round"/><path d="M8 11L6 13A2.12 2.12 0 0 1 3.17 10.17L5.5 8" stroke="#3b82f6" stroke-width="1.2" fill="none" stroke-linecap="round"/></svg>';
+
+      const items = [
+        {
+          label: 'Launch',
+          icon: launchIcon,
+          bold: true,
+          action: () => {
+            this.#closeStartMenu();
+            onLaunch();
+          },
+        },
+        { separator: true },
+        {
+          label: 'Copy URL',
+          icon: linkIcon,
+          disabled: !app?.entry,
+          action: () => {
+            if (!app) return;
+            const url = new URL('Applications/' + app.entry, location.href).href;
+            if (navigator.clipboard?.writeText)
+              navigator.clipboard.writeText(url).catch(() => this.#fallbackCopy(url));
+            else
+              this.#fallbackCopy(url);
+          },
+        },
+      ];
+
+      ctxMenu.showAt(items, x, y);
+    }
+
+    #fallbackCopy(text) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;opacity:0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
     }
 
     /**

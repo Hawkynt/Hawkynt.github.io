@@ -26,7 +26,8 @@
 .sz-ctx-item {
   display: flex;
   align-items: center;
-  padding: 4px 24px 4px 28px;
+  padding: 4px 24px 4px 4px;
+  gap: 4px;
   cursor: default;
   color: var(--sz-color-menu-text, #000);
   white-space: nowrap;
@@ -38,11 +39,26 @@
   color: var(--sz-color-highlight-text, #fff);
 }
 
+.sz-ctx-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sz-ctx-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
 .sz-ctx-check {
-  position: absolute;
-  left: 8px;
+  width: 16px;
+  flex-shrink: 0;
   font-size: 12px;
   line-height: 1;
+  text-align: center;
 }
 
 .sz-ctx-label {

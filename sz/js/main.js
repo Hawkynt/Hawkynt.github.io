@@ -18,7 +18,10 @@
       await kernel.Mkdir('/system/wallpapers');
       await kernel.Mkdir('/user/desktop');
       await kernel.Mkdir('/user/documents');
+      await kernel.Mkdir('/user/downloads');
+      await kernel.Mkdir('/user/music');
       await kernel.Mkdir('/user/pictures');
+      await kernel.Mkdir('/user/videos');
       await kernel.WriteUri('/system/wallpapers/bliss.svg', 'assets/backgrounds/bliss.svg');
       await kernel.WriteUri('/system/wallpapers/default.jpg', 'assets/backgrounds/default.jpg');
     } catch (e) {
@@ -93,8 +96,13 @@
     windowManager.onWindowCreated = (win) => taskbar.addWindow(win.id, win.title, win.icon);
     windowManager.onWindowClosed = (win) => {
       taskbar.removeWindow(win.id);
-      appLauncher.onWindowClosed(win.id);
+      const closedAppId = appLauncher.onWindowClosed(win.id);
       tabManager.onWindowClosed(win.id);
+      if (closedAppId === 'about') {
+        const aboutVer = SZ.appVersions?.apps?.['about'];
+        if (aboutVer)
+          settings.set('about.lastSeenVersion', aboutVer);
+      }
     };
     windowManager.onWindowFocused = (win) => taskbar.setActive(win?.id);
     windowManager.onWindowTitleChanged = (win) => taskbar.updateTitle(win.id, win.title);
@@ -102,6 +110,8 @@
     const fileSystem = new SZ.FileSystem(); // For shell icons
     populateFileSystem(fileSystem, appLauncher);
     createDesktopIcons(fileSystem, appLauncher, desktop, kernel, settings, taskbar);
+    await refreshDesktopVFS(kernel, appLauncher, desktop, settings, taskbar);
+    setupDesktopDropZone(desktopEl, kernel, appLauncher, desktop, settings, taskbar);
     
     const mru = settings.get('mru') || [];
     taskbar.populateStartMenu(
@@ -132,10 +142,36 @@
     await bootScreen.hide();
     bootScreen.destroy();
     console.log('[SZ] Desktop ready');
+
+    // Auto-start About app on version change
+    const aboutVer = SZ.appVersions?.apps?.['about'];
+    if (aboutVer && aboutVer !== settings.get('about.lastSeenVersion'))
+      appLauncher.launch('about', { autostart: '1' });
+
+    // Auto-launch app from URL parameter (standalone redirect from sz-app-bootstrap)
+    const urlParams = new URLSearchParams(location.search);
+    const autoApp = urlParams.get('app');
+    if (autoApp) {
+      const launchParams = {};
+      for (const [k, v] of urlParams)
+        if (k !== 'app')
+          launchParams[k] = v;
+
+      const win = await appLauncher.launch(autoApp, launchParams);
+      if (win && launchParams.maximized)
+        windowManager.maximizeWindow(win.id);
+    }
   }
 
   function setupPostMessageBridge(context) {
     const {kernel, windowManager, themeEngine, desktop, settings, appLauncher, commonDialogs, taskbar, cursorEffects, skinState, snapEngine} = context;
+
+    let _dskRefreshTimer = null;
+    const _dskRefresh = () => {
+      clearTimeout(_dskRefreshTimer);
+      _dskRefreshTimer = setTimeout(() => refreshDesktopVFS(kernel, appLauncher, desktop, settings, taskbar), 300);
+    };
+    const _affectsDesktop = (p) => p && (p === '/user/desktop' || p.startsWith('/user/desktop/'));
 
     window.addEventListener('message', (e) => {
       const { data } = e;
@@ -148,6 +184,9 @@
       const handle = (p, type) => p.then(res => respond(type, res)).catch(err => respond(type, { error: { message: err.message, code: err.code } }));
 
       switch (type) {
+        // Changelog
+        case 'sz:getChangelog': return respond('sz:getChangelogResult', { changelog: SZ.appVersions?.changelog || '' });
+
         // Window management
         case 'sz:getTheme': return respond('sz:themeCSS', { css: themeEngine.styleText });
         case 'sz:setTitle': if (win) { win.setTitle(data.title); taskbar.updateTitle(win.id, data.title); } return;
@@ -301,17 +340,19 @@
         // VFS Bridge
         case 'sz:vfs:Stat': return handle(kernel.Stat(path).then(stat=>({stat})), 'sz:vfs:StatResult');
         case 'sz:vfs:List': return handle(kernel.List(path).then(entries=>({entries})), 'sz:vfs:ListResult');
-        case 'sz:vfs:Mkdir': return handle(kernel.Mkdir(path).then(()=>({success:true})), 'sz:vfs:MkdirResult');
-        case 'sz:vfs:Delete': return handle(kernel.Delete(path).then(()=>({success:true})), 'sz:vfs:DeleteResult');
-        case 'sz:vfs:Move': return handle(kernel.Move(data.from, data.to).then(()=>({success:true})), 'sz:vfs:MoveResult');
-        case 'sz:vfs:WriteAllBytes': return handle(kernel.WriteAllBytes(path, new Uint8Array(data.bytes), data.meta).then(()=>({success:true})), 'sz:vfs:WriteAllBytesResult');
+        case 'sz:vfs:Mkdir': return handle(kernel.Mkdir(path).then(()=>{ if (_affectsDesktop(path)) _dskRefresh(); return {success:true}; }), 'sz:vfs:MkdirResult');
+        case 'sz:vfs:Delete': return handle(kernel.Delete(path).then(()=>{ if (_affectsDesktop(path)) _dskRefresh(); return {success:true}; }), 'sz:vfs:DeleteResult');
+        case 'sz:vfs:Move': return handle(kernel.Move(data.from, data.to).then(()=>{ if (_affectsDesktop(data.from) || _affectsDesktop(data.to)) _dskRefresh(); return {success:true}; }), 'sz:vfs:MoveResult');
+        case 'sz:vfs:WriteAllBytes': return handle(kernel.WriteAllBytes(path, new Uint8Array(data.bytes), data.meta).then(()=>{ if (_affectsDesktop(path)) _dskRefresh(); return {success:true}; }), 'sz:vfs:WriteAllBytesResult');
         case 'sz:vfs:ReadAllText': return handle(kernel.ReadAllText(path).then(text=>({text})), 'sz:vfs:ReadAllTextResult');
         case 'sz:vfs:ReadUri': return handle(kernel.ReadUri(path).then(uri=>({uri})), 'sz:vfs:ReadUriResult');
         case 'sz:vfs:ReadAllBytes': return handle(kernel.ReadAllBytes(path).then(bytes=>({bytes: Array.from(bytes)})), 'sz:vfs:ReadAllBytesResult');
         case 'sz:vfs:ReadValue': return handle(kernel.ReadValue(path).then(value=>({value})), 'sz:vfs:ReadValueResult');
-        case 'sz:vfs:WriteValue': return handle(kernel.WriteValue(path, data.value, data.meta).then(()=>({success:true})), 'sz:vfs:WriteValueResult');
-        case 'sz:vfs:WriteUri': return handle(kernel.WriteUri(path, data.uri, data.meta).then(()=>({success:true})), 'sz:vfs:WriteUriResult');
-        case 'sz:vfs:Copy': return handle(kernel.ReadAllBytes(data.from).then(bytes => kernel.WriteAllBytes(data.to, bytes)).then(()=>({success:true})), 'sz:vfs:CopyResult');
+        case 'sz:vfs:WriteValue': return handle(kernel.WriteValue(path, data.value, data.meta).then(()=>{ if (_affectsDesktop(path)) _dskRefresh(); return {success:true}; }), 'sz:vfs:WriteValueResult');
+        case 'sz:vfs:WriteUri': return handle(kernel.WriteUri(path, data.uri, data.meta).then(()=>{ if (_affectsDesktop(path)) _dskRefresh(); return {success:true}; }), 'sz:vfs:WriteUriResult');
+        case 'sz:vfs:Copy': return handle(kernel.ReadAllBytes(data.from).then(bytes => kernel.WriteAllBytes(data.to, bytes)).then(()=>{ if (_affectsDesktop(data.to)) _dskRefresh(); return {success:true}; }), 'sz:vfs:CopyResult');
+        case 'sz:desktopRefresh': _dskRefresh(); return;
+        case 'sz:clipboardUpdate': window._szClipboard = data.clipboard; return;
 
         // Mount/unmount local directories
         case 'sz:vfs:MountLocal': {
@@ -667,6 +708,161 @@
           kernel.WriteValue(vfsPath, vfsValue).catch(e => console.warn(`Failed to create VFS shortcut for ${item.name}:`, e));
       }
   }
+
+  // -- Desktop ↔ VFS integration -------------------------------------------------
+
+  const _VFS_ICON_PREFIX = 'vfs-desktop:';
+
+  const _GENERIC_FILE_ICON = 'data:image/svg+xml,' + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><path d="M12 4h16l10 10v28a2 2 0 0 1-2 2H12a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" fill="#e8eaed" stroke="#5f6368" stroke-width="1.5"/><path d="M28 4v8a2 2 0 0 0 2 2h8" fill="none" stroke="#5f6368" stroke-width="1.5"/></svg>'
+  );
+  const _GENERIC_FOLDER_ICON = 'data:image/svg+xml,' + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><path d="M4 8h14l4 4h22a2 2 0 0 1 2 2v26a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z" fill="#fdd663" stroke="#f9a825" stroke-width="1"/></svg>'
+  );
+
+  function _getFileIconForExt(ext, appLauncher) {
+    for (const [, app] of appLauncher.apps)
+      if (app.fileTypes?.includes(ext))
+        return appLauncher.resolveIconPath(app);
+    return _GENERIC_FILE_ICON;
+  }
+
+  async function refreshDesktopVFS(kernel, appLauncher, desktop, settings, taskbar) {
+    let entries;
+    try {
+      entries = await kernel.List('/user/desktop');
+    } catch {
+      return;
+    }
+
+    const existingVfsIds = new Set();
+    for (const icon of desktop.icons)
+      if (icon.id.startsWith(_VFS_ICON_PREFIX))
+        existingVfsIds.add(icon.id);
+
+    const expectedIds = new Set();
+    for (const name of entries) {
+      if (name.endsWith('.lnk'))
+        continue;
+
+      const id = _VFS_ICON_PREFIX + name;
+      expectedIds.add(id);
+
+      if (existingVfsIds.has(id)) {
+        existingVfsIds.delete(id);
+        continue;
+      }
+
+      const vfsPath = '/user/desktop/' + name;
+      let iconSrc;
+      try {
+        const stat = await kernel.Stat(vfsPath);
+        if (stat.kind === 'dir') {
+          iconSrc = _GENERIC_FOLDER_ICON;
+        } else {
+          const dot = name.lastIndexOf('.');
+          const ext = dot >= 0 ? name.substring(dot + 1).toLowerCase() : '';
+          iconSrc = _getFileIconForExt(ext, appLauncher);
+        }
+      } catch {
+        const dot = name.lastIndexOf('.');
+        const ext = dot >= 0 ? name.substring(dot + 1).toLowerCase() : '';
+        iconSrc = _getFileIconForExt(ext, appLauncher);
+      }
+
+      const icon = new SZ.Icon({
+        id,
+        title: name,
+        iconSrc,
+        onLaunch: () => {
+          try {
+            kernel.Stat(vfsPath).then(stat => {
+              if (stat.kind === 'dir')
+                appLauncher.launch('explorer', { path: '/user/desktop/' + name });
+              else
+                openFileByPath(vfsPath, kernel, appLauncher);
+            });
+          } catch {
+            openFileByPath(vfsPath, kernel, appLauncher);
+          }
+        },
+      });
+      desktop.addIcon(icon);
+    }
+
+    // Remove icons for files that no longer exist
+    for (const removedId of existingVfsIds)
+      desktop.removeIcon(removedId);
+  }
+
+  function setupDesktopDropZone(desktopEl, kernel, appLauncher, desktop, settings, taskbar) {
+    const iconArea = desktop.iconArea;
+
+    desktopEl.addEventListener('dragover', (e) => {
+      if (e.target.closest('.sz-window'))
+        return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
+      iconArea.classList.add('sz-drop-target');
+    });
+
+    desktopEl.addEventListener('dragleave', (e) => {
+      if (!desktopEl.contains(e.relatedTarget) || e.relatedTarget?.closest?.('.sz-window'))
+        iconArea.classList.remove('sz-drop-target');
+    });
+
+    desktopEl.addEventListener('drop', async (e) => {
+      iconArea.classList.remove('sz-drop-target');
+      if (e.target.closest('.sz-window'))
+        return;
+      e.preventDefault();
+
+      // 1) VFS drops from Explorer (try dataTransfer first, then shared variable for cross-iframe)
+      const vfsJson = e.dataTransfer.getData('application/x-sz-vfs') || window._szDragData;
+      window._szDragData = null;
+      if (vfsJson) {
+        try {
+          const data = JSON.parse(vfsJson);
+          const isCopy = e.ctrlKey;
+          for (const srcPath of data.paths) {
+            const name = srcPath.split('/').pop();
+            const dest = '/user/desktop/' + name;
+            if (srcPath === dest)
+              continue;
+            if (isCopy) {
+              const bytes = await kernel.ReadAllBytes(srcPath);
+              await kernel.WriteAllBytes(dest, bytes);
+            } else
+              await kernel.Move(srcPath, dest);
+          }
+        } catch (err) {
+          console.warn('[SZ] Desktop drop (VFS) failed:', err);
+        }
+        await refreshDesktopVFS(kernel, appLauncher, desktop, settings, taskbar);
+        return;
+      }
+
+      // 2) OS file drops
+      if (e.dataTransfer.files?.length) {
+        for (const file of e.dataTransfer.files) {
+          try {
+            const buf = await file.arrayBuffer();
+            const bytes = new Uint8Array(buf);
+            await kernel.WriteAllBytes('/user/desktop/' + file.name, bytes, {
+              contentType: file.type,
+              size: file.size,
+              mtime: file.lastModified,
+            });
+          } catch (err) {
+            console.warn('[SZ] Desktop drop (OS file) failed:', err);
+          }
+        }
+        await refreshDesktopVFS(kernel, appLauncher, desktop, settings, taskbar);
+      }
+    });
+  }
+
+  // ----------------------------------------------------------------------------------
 
   async function openFileByPath(path, kernel, appLauncher) {
     if (path.endsWith('.lnk')) {
