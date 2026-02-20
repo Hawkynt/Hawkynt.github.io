@@ -583,6 +583,19 @@
         fileTypes: ['zip', 'gz', 'tar', 'tgz', 'bz2', 'xz', 'zst', 'b64', 'rar', '7z', 'lzh', 'lha', 'arj', 'sqx', 'cpio', 'cab', 'iso', 'z', 'rpm', 'deb', 'jar', 'war', 'ear', 'apk', 'epub', 'docx', 'xlsx', 'pptx', 'odt', 'ods', 'odp', 'zipx', 'lzma', 'lz', 'lzo', 'uue', 'uu', 'tlz', 'a', 'ar', 'lib', 'arc', 'zoo', 'ha', 'ace', 'sit', 'sitx', 'pak', 'shar', 'wim', 'esd', 'xar', 'pkg', 'msi', 'chm', 'dmg', 'squashfs', 'cramfs', 'udf', 'fat', 'ntfs', 'ext2', 'ext3', 'ext4', 'hfs', 'apfs', 'qcow2', 'vhd', 'vhdx', 'vdi', 'vmdk', 'hex', 'ihex', 'par', 'par2', 'mar', 'alz', 'pea']
       },
       {
+        id: 'properties',
+        title: 'Properties',
+        type: 'hosted',
+        entry: 'properties/app.js',
+        width: 420,
+        height: 480,
+        resizable: true,
+        minimizable: true,
+        maximizable: false,
+        singleton: false,
+        hidden: true
+      },
+      {
         id: 'metadata-viewer',
         title: 'Metadata Viewer',
         icon: 'metadata-viewer/icon.svg',

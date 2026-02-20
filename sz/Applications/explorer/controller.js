@@ -3293,104 +3293,29 @@
     }
 
     // -- Properties dialog --
-    async showProperties() {
+    showProperties() {
       if (this.selectedItems.length === 0) return;
       const sel = this.selectedItems[0];
       const entry = this.currentEntries.find(e => e.name === sel.name);
       if (!entry) return;
-
-      const overlay = document.getElementById('dlg-properties');
-      const tabsEl = document.getElementById('props-tabs');
-      const contentEl = document.getElementById('props-content');
-      document.getElementById('props-title').textContent = sel.name + ' - Properties';
-
-      const generalFields = [
-        { label: 'Name', value: sel.name },
-        { label: 'Path', value: formatPath(sel.path) },
-        { label: 'Type', value: sel.isDir ? 'Folder' : 'File' },
-      ];
-      if (!sel.isDir && entry.size != null) generalFields.push({ label: 'Size', value: formatSize(entry.size) });
-      if (entry.mtime) generalFields.push({ label: 'Modified', value: formatDate(entry.mtime) });
-      generalFields.push({ label: 'Location', value: this.isVfsMode ? 'VFS (localStorage)' : 'SZ Object Tree' });
-
-      const allTabs = [{ name: 'General', fields: generalFields }];
-
-      if (!sel.isDir && this.isVfsMode && typeof SZ.MetadataParsers !== 'undefined') {
-        try {
-          const vfsPath = toVfsRelative(sel.path);
-          const bytes = await Kernel32.ReadAllBytes(vfsPath);
-          if (bytes && bytes.length > 0) {
-            const result = SZ.MetadataParsers.parse(bytes, sel.name);
-            if (result.fileType) generalFields.splice(2, 1, { label: 'Type', value: result.fileType.name });
-            for (const cat of result.categories) {
-              if (cat.name === 'General') continue;
-              allTabs.push({ name: cat.name, fields: cat.fields.map(f => ({ label: f.label, value: f.value })) });
-            }
-          }
-        } catch {}
-      }
-
-      let activeTab = 0;
-      function renderPropsTabs() {
-        tabsEl.innerHTML = '';
-        allTabs.forEach((tab, i) => {
-          const btn = document.createElement('button');
-          btn.className = 'props-tab' + (i === activeTab ? ' active' : '');
-          btn.textContent = tab.name;
-          btn.addEventListener('click', () => { activeTab = i; renderPropsTabs(); renderPropsContent(); });
-          tabsEl.appendChild(btn);
-        });
-      }
-
-      function renderPropsContent() {
-        contentEl.innerHTML = '';
-        const tab = allTabs[activeTab];
-        if (!tab) return;
-        const table = document.createElement('table');
-        table.className = 'props-table';
-        for (const field of tab.fields) {
-          const tr = document.createElement('tr');
-          const tdL = document.createElement('td');
-          tdL.className = 'props-label';
-          tdL.textContent = field.label;
-          tr.appendChild(tdL);
-          const tdV = document.createElement('td');
-          tdV.className = 'props-value';
-          tdV.textContent = String(field.value);
-          tr.appendChild(tdV);
-          table.appendChild(tr);
-        }
-        contentEl.appendChild(table);
-      }
-
-      renderPropsTabs();
-      renderPropsContent();
-
-      const mvBtn = document.getElementById('btn-open-metadata-viewer');
-      mvBtn.style.display = sel.isDir ? 'none' : '';
-      mvBtn.onclick = () => {
-        overlay.classList.remove('visible');
-        Shell32.ShellExecute('metadata-viewer', { file: this.isVfsMode ? toVfsRelative(sel.path) : sel.path });
+      const params = {
+        name: sel.name,
+        file: this.isVfsMode ? toVfsRelative(sel.path) : sel.path,
+        isDir: sel.isDir ? '1' : '',
+        isVfs: this.isVfsMode ? '1' : '',
       };
-
-      overlay.classList.add('visible');
-      overlay.querySelector('button[data-result="ok"]').addEventListener('click', () => overlay.classList.remove('visible'), { once: true });
-      overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.classList.remove('visible'); }, { once: true });
+      if (!sel.isDir && entry.size != null) params.size = String(entry.size);
+      if (entry.mtime) params.mtime = String(entry.mtime);
+      Shell32.ShellExecute('properties', params);
     }
 
     showFolderProperties() {
-      const lines = [];
-      lines.push('Path: ' + formatPath(this.currentPath));
-      lines.push('Items: ' + this.currentEntries.length);
-      if (this.isVfsMode) {
-        let totalSize = 0;
-        for (const e of this.currentEntries)
-          if (e.type !== 'dir') totalSize += e.size || 0;
-        lines.push('Total file size: ' + formatSize(totalSize));
-        lines.push('Location: VFS (localStorage)');
-      } else
-        lines.push('Location: SZ Object Tree (read-only)');
-      showAlert(lines.join('\n'));
+      Shell32.ShellExecute('properties', {
+        name: baseName(this.currentPath) || 'Root',
+        file: this.isVfsMode ? toVfsRelative(this.currentPath) : this.currentPath,
+        isDir: '1',
+        isVfs: this.isVfsMode ? '1' : '',
+      });
     }
 
     // -----------------------------------------------------------------------

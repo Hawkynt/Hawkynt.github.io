@@ -92,6 +92,8 @@
     const appLauncher = new SZ.AppLauncher(windowManager, themeEngine, desktop);
     await appLauncher.loadManifest(SZ.manifest);
 
+    SZ.os = { kernel, windowManager, appLauncher, taskbar, themeEngine, settings };
+
     // Wire WindowManager lifecycle callbacks to Taskbar + AppLauncher
     windowManager.onWindowCreated = (win) => taskbar.addWindow(win.id, win.title, win.icon);
     windowManager.onWindowClosed = (win) => {
