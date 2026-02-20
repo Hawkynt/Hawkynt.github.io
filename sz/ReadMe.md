@@ -79,6 +79,8 @@ Applications can be hosted two ways. The choice depends on whether the app needs
 ```
 sz/
   index.html                    Entry point (boot overlay + desktop + taskbar)
+  update-versions.sh            Generates Applications/versions.js from git history
+  changelog.txt                 Full project changelog (parsed by About app)
   css/
     boot.css                    Boot screen overlay, animations, progress bar
     desktop.css                 Desktop, background, icon grid layout
@@ -170,6 +172,7 @@ sz/
       magick/                   wasm-imagemagick UMD bundle (not shipped yet — add magick.js + magick.wasm)
   Applications/
     manifest.js                 Inline app registry with file type associations (sets SZ.manifest)
+    versions.js                 Generated per-app version data, git hash, changelog (sets SZ.appVersions)
     sz-app-bootstrap.js         DLL-like API library: SZ.Dlls.User32/Kernel32/GDI32/Shell32/ComDlg32/Advapi32, theme injection, WindowProc dispatch, standalone redirect
     zoom-control.js             Reusable SZ.ZoomControl component (slider + buttons + text input) used by 9 apps
     libs/                       Vendored third-party libraries (offline-capable)
@@ -1386,7 +1389,7 @@ State width = image width / 3. State height = image height / (tripleImages ? 2 :
 ### Built-in Applications
 
 System apps (hosted / app.js -- require OS runtime):
-- [x] Explorer: Full file manager with VFS operations (new folder, delete, rename, copy, move, cut/paste), breadcrumb path bar with autocomplete dropdown, recursive search, forward/back history, multi-select (Ctrl/Shift+Click), context menus, toolbar with file operation buttons and overflow chevron, upload files from PC, download files to PC, double-click to run apps, file-type-specific icons (document base with app badge overlay based on manifest file associations). Also browses SZ runtime object tree (read-only mode)
+- [x] Explorer: FilePilot-inspired file manager with Office-style ribbon UI (QAT, Home/View tabs, File backstage), multi-pane layout (split right/bottom, resizable splitters, drag-and-drop arrangement with blue drop-zone previews), navigation tabs with independent state per pane, three view modes (Icons/Details/Tiles), sortable columns with resize and column filter icons, preview pane with prev/next navigation and zoom controls, sidebar with six collapsible sections (Recents, Bookmarks, Quick Access, Storage with usage bars, Places, Tree) and filter input, VFS operations (new folder/file, delete, rename, copy, move, cut/paste), breadcrumb path bar with autocomplete, enhanced search with scope toggle and detail-format results, command palette (Ctrl+Shift+P), GoTo dialog (Ctrl+P/F4), bulk rename with pattern tokens, expand folder mode (Ctrl+E), view filtering (files/folders/both + folders-first), display toggles (hidden files, extensions, highlight recents), options dialog (font/spacing/zoom/default view), type-ahead file selection, save/load layout persistence, directory change watching, folder size calculation, drag-and-drop between panes (move by default, Ctrl to copy) and from OS into VFS, upload/download files, mount/unmount local folders, context menu enhancements (Open with, Copy as Path, New Folder from Selection, Add to Bookmarks), rich status bar with load time and scroll percentage, persisted settings via registry. Also browses SZ runtime object tree (read-only mode)
 - [x] Task Manager: Applications tab + Performance tab with real event-loop lag, NT-style canvas graphs
 - [x] Control Panel: Display Properties dialog with Themes (preset theme combos), Appearance (skin switching, color swatch previews, auto-scroll to current, sub-skin dropdown), Desktop (background selection, position mode), Pointers (mouse shadow, mouse trail, trail length slider with live preview), and Taskbar (auto-hide, show clock, clear MRU) tabs
 - [x] About: Tabbed dialog (General/System/Credits) with version info, data-privacy notice (local-storage-only warning with data-persistence explanation), system details (resolution, memory, browser, skin, storage usage), credits (author with GitHub link, Stardock, TidyTabs, AquaSnap, Winamp inspirations), license (free for personal/educational use, contact for commercial/corporate PID), donation appeal with clickable PayPal heart, OK/Escape/Enter to close, copy-to-clipboard, animated logo
@@ -1595,7 +1598,7 @@ The VFS enables:
 - Desktop icon dragging (free-form placement, positions saved to localStorage)
 - Taskbar auto-hide with proper background rendering
 - Theme engine styles buttons/inputs in app iframes with skin colors
-- Explorer: run apps by double-clicking, toolbar overflow chevron, recursive search, upload/download files
+- Explorer: FilePilot-inspired multi-pane file manager with ribbon UI, multi-pane split layout, navigation tabs, three view modes, preview pane, command palette, bulk rename, expand folder mode, directory watching
 - VFS operations: rename, copy, move
 - Transparency mask support (alpha channel from mask BMPs)
 - FreeCell, Spider Solitaire, Color Picker, Markdown Editor, Hex Editor, Spreadsheet apps
@@ -1620,6 +1623,8 @@ The VFS enables:
 - TidyTabs-style window tabbing — drag window onto another's title bar to create tab group, auto-hiding tab bar with icons, click to switch, drag to detach
 - Drag-away-from-maximized — drag a maximized window's title bar to restore and begin drag (proportional cursor position)
 - Control Panel "Window Mgmt" tab — sub-tabbed UI (Snapping, Magnet, Stretching, Glue, Tabs) with snap mode, magnet settings (screen/outer/inner edges, corners, distance, speed), stretch mode/target, glue settings, tab settings, all persisted to localStorage and applied live
+- Per-app versioning — `update-versions.sh` generates `Applications/versions.js` from git history (commit count per app folder → `1.x` version, git hash, OS version, full changelog text). Every iframe app receives `_szVersion`, `_szGitHash`, `_szOsVersion` as URL params on launch, readable via `SZ.Dlls.Kernel32.GetCommandLine()`.
+- About app auto-start on version change — compares `SZ.appVersions.apps['about']` against `localStorage` last-seen version; if different, auto-launches the About app focused on the "What's New" tab showing a color-coded changelog (added/fixed/changed/removed/issue). Version saved on close to suppress re-launch until next change.
 
 ### Shared Format Library (`libs/formats/`)
 

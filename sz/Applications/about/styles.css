@@ -231,6 +231,69 @@ body {
   filter: brightness(1.2);
 }
 
+/* ── What's New tab ───────────────────────────────────────────── */
+
+.whatsnew-scroll {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.changelog-loading {
+  opacity: 0.6;
+  font-style: italic;
+}
+
+.changelog-version {
+  margin: 12px 0 2px;
+  font-size: 13px;
+  font-weight: bold;
+  border-bottom: 1px solid var(--sz-color-button-shadow, #808080);
+  padding-bottom: 2px;
+}
+
+.changelog-version:first-child {
+  margin-top: 0;
+}
+
+.changelog-date {
+  font-size: 10px;
+  opacity: 0.6;
+  margin-bottom: 4px;
+}
+
+.changelog-entry {
+  padding: 1px 0 1px 4px;
+  font-size: 11px;
+  border-left: 3px solid transparent;
+  margin: 1px 0;
+}
+
+.changelog-added {
+  border-left-color: #2e7d32;
+  color: #1b5e20;
+}
+
+.changelog-fixed {
+  border-left-color: #1565c0;
+  color: #0d47a1;
+}
+
+.changelog-changed {
+  border-left-color: #f57f17;
+  color: #e65100;
+}
+
+.changelog-removed {
+  border-left-color: #c62828;
+  color: #b71c1c;
+}
+
+.changelog-issue {
+  border-left-color: #ff8f00;
+  color: #e65100;
+  font-style: italic;
+}
+
 /* ── OK button bar ────────────────────────────────────────────── */
 
 .button-bar {
