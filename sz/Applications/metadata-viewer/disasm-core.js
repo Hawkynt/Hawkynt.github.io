@@ -255,8 +255,10 @@
         else
           html += span('num', m[2]);
       }
-      else if (m[3]) // IL label
-        html += span('lbl', m[3]);
+      else if (m[3]) { // IL label — always clickable (target is a file offset)
+        const labelOffset = parseInt(m[3].substring(3), 16);
+        html += '<a class="da-addr da-lbl" data-target="' + labelOffset.toString(16) + '">' + esc(m[3]) + '</a>';
+      }
       else if (m[4]) // decimal number
         html += span('num', m[4]);
       else if (m[5]) { // identifier
@@ -297,6 +299,8 @@
       const cr = annotations.codeRange;
       if (addr >= cr.rvaStart && addr < cr.rvaEnd) return true;
     }
+    // Check if addr matches a known decoded instruction offset (Java/MSIL file-offset targets)
+    if (annotations.knownOffsets && annotations.knownOffsets.has(addr)) return true;
     return false;
   }
 
@@ -324,12 +328,28 @@
    *   When present, addresses become clickable and annotation comments are appended.
    * @returns {string} HTML string (to be set as innerHTML on a container).
    */
-  function formatDisassemblyHtml(instructions, annotations) {
+  function formatDisassemblyHtml(instructions, annotations, mode) {
     if (!instructions || !instructions.length)
       return '';
 
+    // Decompiled view modes: delegate to registered decompiler formatters
+    const isDecompiled = mode && mode !== 'asm' && mode !== 'il' && mode !== 'jil';
+    if (isDecompiled) {
+      const formatter = DECOMPILE_FORMATTERS[mode];
+      if (formatter)
+        return formatter(instructions, annotations);
+    }
+
+    // Build known offsets set so branch targets (Java/MSIL file offsets) become clickable
+    const effectiveAnnotations = annotations ? Object.assign({}, annotations) : {};
+    if (!effectiveAnnotations.knownOffsets) {
+      const offsets = new Set();
+      for (const insn of instructions) offsets.add(insn.offset);
+      effectiveAnnotations.knownOffsets = offsets;
+    }
+
     // Build labels map: collect all jump/call target offsets for label lines
-    const labels = annotations ? _buildLabels(instructions, annotations) : null;
+    const labels = annotations ? _buildLabels(instructions, effectiveAnnotations) : null;
 
     const lines = [];
     for (let idx = 0; idx < instructions.length; ++idx) {
@@ -342,6 +362,19 @@
       const off = span('off', insn.offset.toString(16).padStart(8, '0').toUpperCase());
       const hex = span('hex', formatHexBytes(insn.bytes));
 
+      // For pseudo-C mode, show pseudoC as the main instruction
+      if (mode === 'pseudo-c' && insn.pseudoC) {
+        const pseudoLine = span('cmt', insn.pseudoC);
+        lines.push(
+          '<span class="da-line" data-offset="' + insn.offset.toString(16) + '">'
+          + off
+          + '<span class="da-sep"> | </span>'
+          + pseudoLine
+          + '</span>'
+        );
+        continue;
+      }
+
       // Mnemonic — classify for coloring
       const mn = insn.mnemonic || '??';
       const mnCls = classifyMnemonic(mn);
@@ -352,7 +385,7 @@
       if (insn.tokens && Array.isArray(insn.tokens))
         opsHtml = renderTokens(insn.tokens);
       else if (insn.operands)
-        opsHtml = tokenizeOperands(insn.operands, annotations);
+        opsHtml = tokenizeOperands(insn.operands, effectiveAnnotations);
 
       // Pseudo-C comment
       let pseudoHtml = '';
@@ -362,7 +395,7 @@
       // Annotation comment — resolved import/export/string name
       let annotHtml = '';
       if (annotations)
-        annotHtml = _resolveAnnotation(insn, annotations);
+        annotHtml = _resolveAnnotation(insn, effectiveAnnotations);
 
       const instrHtml = mnHtml + (opsHtml ? ' ' + opsHtml : '');
 
@@ -380,6 +413,13 @@
     }
 
     return lines.join('\n');
+  }
+
+  // Registry for decompiler formatters (mode -> function)
+  const DECOMPILE_FORMATTERS = Object.create(null);
+
+  function registerDecompileFormatter(mode, fn) {
+    DECOMPILE_FORMATTERS[mode] = fn;
   }
 
   /**
@@ -554,6 +594,7 @@
 
   SZ.Disassembler = {
     registerDisassembler,
+    registerDecompileFormatter,
     disassemble,
     formatDisassembly,
     formatDisassemblyHtml,

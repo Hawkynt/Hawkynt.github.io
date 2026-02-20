@@ -13,7 +13,10 @@ Drop any file onto the Metadata Viewer to identify its type via magic bytes (not
 3. **Hash Computation** -- 29 hash/checksum algorithms grouped into Cryptographic (MD5, SHA-1/224/256/384/512, SHA-512/256, SHA3-256/384/512, BLAKE2b/2s, BLAKE3, RIPEMD-160, Whirlpool, Tiger, SM3, Streebog-256), Non-Cryptographic (xxHash32, xxHash3, MurmurHash3), and Checksums (CRC-16/32/64, Adler-32, Fletcher-32, BSD, Sum-8, XOR-8) are computed using the Cipher project's `AlgorithmFramework`. Large files are processed in 512KB chunks via `setTimeout` to avoid blocking the UI.
 4. **Metadata Editing** -- Writable formats (MP3 ID3 tags, PNG text chunks, JPEG EXIF fields, MP4 iTunes atoms, Office document properties) support inline field editing with rich edit controls (number, date picker, select dropdown, image replace/remove, geo coordinate picker) and file reconstruction on save.
 5. **PE Detection** -- Executable analysis includes packer/protector/compiler/framework detection via section names, string scanning, import analysis, and a 4,400+ entry signature database converted from ExeInfo ASL's userdb.txt format.
-6. **Disassembly** -- Executable entry-point code is disassembled using architecture-specific decoders (x86/x64, ARM/ARM64, Java bytecode, .NET MSIL, PowerPC, Dalvik, 6502/65C816, Z80, Motorola 68000, Python bytecode, VB6 P-code, Dart Kernel) with pseudo-C annotation, displayed in the accordion preview panel. PE and ELF executables get rich annotations: import/export/string cross-references are resolved and shown as inline comments, jump/call targets are clickable for navigation, label lines mark branch targets, and a cross-references panel lists all imports used, strings referenced, internal call targets, and exports. Navigation toolbar provides back/forward history and address bar; scrolling near the bottom auto-loads more instructions seamlessly.
+6. **PE Resources** -- Resource directory (Data Directory[2]) is walked to extract RT_ICON, RT_BITMAP, RT_VERSION, and RT_MANIFEST entries. ICO files are reconstructed from RT_GROUP_ICON + RT_ICON entries; bitmaps get BITMAPFILEHEADER prepended; version info (StringFileInfo) is parsed for FileDescription, ProductName, etc.; manifests are shown as XML text.
+7. **Embedded Strings** -- PE sections are scanned for printable ANSI (ASCII runs >= 4 chars) and Unicode (UTF-16LE with full BMP support, >= 4 chars) strings. Results are deduplicated by value, sorted by file offset, and shown in a searchable/filterable tab (filter only visible on the Strings tab) with encoding badges (ANSI/UTF-16/Unicode) and section names.
+8. **.NET Assembly View** -- When CLR metadata is present, a namespace > type > member tree is built from TypeDef, MethodDef, Field, and Param tables. Method signatures are decoded from #Blob heap using the ECMA-335 compressed format. Each method's IL body is individually addressable via the method picker dropdown in the MSIL disassembly panel.
+9. **Disassembly** -- Executable entry-point code is disassembled using architecture-specific decoders (x86/x64, ARM/ARM64, Java bytecode, .NET MSIL, PowerPC, Dalvik, 6502/65C816, Z80, Motorola 68000, Python bytecode, VB6 P-code, Dart Kernel) with pseudo-C annotation, displayed in the accordion preview panel. PE and ELF executables get rich annotations: import/export/string cross-references are resolved and shown as inline comments, jump/call targets are clickable for navigation, label lines mark branch targets, and a cross-references panel lists all imports used, strings referenced, internal call targets, and exports. Navigation toolbar provides back/forward history and address bar; scrolling near the bottom auto-loads more instructions seamlessly. A view mode combobox allows switching between output modes (Assembly/Pseudo-C for x86, IL/Pseudo-C#/Pseudo-VB/C# simplified for MSIL, JIL/Java/Kotlin for Java bytecode). The MSIL decompiler uses each instruction's built-in pseudoC field for accurate stack-based representation.
 
 ## Supported Formats
 
@@ -108,7 +111,8 @@ The executable and retro ROM parsers detect the architecture and emit a `disasse
 | MP3 (ID3v2) | Title, Artist, Album, Year, Genre, Track, Comment, Composer, Album Artist, Disc, BPM, Copyright, Publisher, and 30+ more frame types | Rebuild entire ID3v2 tag; genre autocomplete with 192 standard genres |
 | MP3 (ID3v1) | Title, Artist, Album, Year, Comment | Overwrite fixed-offset fields |
 | PNG (tEXt/iTXt) | All text chunks | Walk chunks, replace/insert, recalculate CRC32 |
-| JPEG (EXIF) | Make, Model, Software, Artist, Copyright, ImageDescription, Orientation, DateTime, DateTimeOriginal, DateTimeDigitized | Modify IFD/SubIFD entries (ASCII, SHORT, LONG types) in TIFF data, rebuild APP1 |
+| JPEG (EXIF) | Make, Model, Software, Artist, Copyright, ImageDescription, Orientation, DateTime, DateTimeOriginal, DateTimeDigitized, GPS Coordinates, Altitude, Image Direction, Destination (target coordinates, bearing, distance) | Full IFD rebuild engine (ASCII, SHORT, LONG, RATIONAL types), add/remove tags, GPS IFD creation from scratch |
+| JPEG (IPTC) | Country, State/Province, City, Sub-Location, Country Code | Create/modify APP13 Photoshop 3.0 / 8BIM / IIM datasets |
 | MP4/M4A (ilst) | Title, Artist, Album, Year, Genre, Comment, Composer, Copyright | Modify/create iTunes ilst atoms in moov/udta/meta |
 | OOXML (docx/xlsx/pptx) | Title, Subject, Author, Keywords, Description, Category | Modify docProps/core.xml in ZIP container |
 
@@ -146,7 +150,7 @@ Legacy `.doc`, `.xls`, `.ppt` files using the OLE2 Compound Document format (mag
   - **Hex Preview**: Color-coded first 256 bytes with byte regions mapped to parsed metadata fields
   - **Text Preview**: First 4KB decoded as text with non-printable character markers
   - **Unicode Preview**: BOM-aware decoding with code point annotations for non-ASCII characters
-  - **Disassembly**: Entry-point instruction disassembly for executables and ROMs (16 architectures) with pseudo-C comments, clickable jump/call targets, annotation comments (resolved imports/strings/exports), navigation toolbar (back/forward/goto/address bar), scroll-based auto-loading, and cross-references panel. Formats with multiple code types (e.g. .NET = x86 entry stub + MSIL, VB6 = x86 + P-Code) get separate accordion panels, each with independent navigation
+  - **Disassembly**: Entry-point instruction disassembly for executables and ROMs (16 architectures) with pseudo-C comments, clickable jump/call targets, annotation comments (resolved imports/strings/exports), navigation toolbar (back/forward/goto/address bar), scroll-based auto-loading, cross-references panel, and view mode combobox (Assembly/Pseudo-C for x86, IL/C#/VB for MSIL, JIL/Java/Kotlin for Java). Formats with multiple code types (e.g. .NET = x86 entry stub + MSIL, VB6 = x86 + P-Code) get separate accordion panels, each with independent navigation. .NET assemblies include a method picker dropdown for navigating to individual method IL bodies
 - **Status Bar**: File type, size, entropy, modification count
 
 ## Running
@@ -178,9 +182,12 @@ Open `index.html` in a browser, or launch from the SZ desktop Start Menu under "
 - [x] Hash/checksum computation (29 algorithms via Cipher project, grouped by category)
 - [x] Async chunked hashing for large files
 - [x] Inline metadata editing (MP3 ID3, PNG text chunks, JPEG EXIF, MP4 iTunes, OOXML properties)
-- [x] Rich edit types: text, number, date picker, select dropdown, image replace/remove/regenerate, geo coordinate picker
-- [x] Geo coordinate map picker (OpenStreetMap slippy tiles, click to set coordinates)
-- [x] EXIF editing supports ASCII, SHORT, and LONG types across IFD0 and ExifIFD
+- [x] Rich edit types: text, number, date picker, select dropdown, image replace/remove/regenerate, geo coordinate picker, compass angle
+- [x] GeoSetter-style GPS editor: movable/resizable MDI sub-window with OSM map, SVG FOV cone overlay, forward/reverse geocoding (Nominatim), compass widget, altitude, DMS display, direction reference (True/Magnetic North), destination target marker (right-click to place, with bearing/distance), and IPTC location fields (country code, country, state, city, sub-location)
+- [x] Full EXIF IFD rebuild engine: add/remove/modify tags, RATIONAL type support, GPS IFD creation from scratch
+- [x] IPTC APP13 writing (City, Sub-Location, State, Country, Country Code) with create-from-scratch support
+- [x] GPS coordinate writing to EXIF via geo picker (latitude, longitude, altitude, image direction) with map search bar for forward geocoding
+- [x] "Add EXIF Tag" dialog for JPEG with EXIF and GPS tag groups
 - [x] MP4/M4A iTunes metadata parsing and cover art extraction
 - [x] File reconstruction and save
 - [x] Embedded image preview with save
@@ -217,6 +224,17 @@ Open `index.html` in a browser, or launch from the SZ desktop Start Menu under "
 - [x] Click-to-copy hash values
 - [x] Copy All Metadata to clipboard
 - [x] Keyboard shortcuts (Ctrl+O, Ctrl+I, Ctrl+S)
+- [x] PE resource extraction (RT_ICON/RT_BITMAP/RT_VERSION/RT_MANIFEST) with ICO reconstruction and BMP display
+- [x] PE embedded strings tab with ANSI/UTF-16/Unicode extraction, deduplication, and real-time search filter (filter only on Strings tab)
+- [x] .NET Assembly tree view (namespace > type > member hierarchy with signature decoding)
+- [x] .NET per-method IL body extraction with method picker dropdown navigation
+- [x] .NET blob signature decoder (ECMA-335 method signatures to C#-like type names)
+- [x] Disassembly view mode combobox: Assembly/Pseudo-C for x86, IL/Pseudo-C#/Pseudo-VB/C# simplified for MSIL, JIL/Java/Kotlin for Java
+- [x] MSIL decompiler formatters using opcode pseudoC (Pseudo-C#, Pseudo-VB, simplified C#)
+- [x] Java decompiler formatters (low-level Java, high-level Java, Kotlin syntax)
+- [x] Category tab icons (Unicode emoji indicators per category type)
+- [x] Enhanced general statistics (chi-square, serial correlation, Monte Carlo Pi, byte frequency analysis)
+- [x] EXIF/JFIF null-byte header comparison fix for local file reading
 - [x] Explorer Properties dialog integration
 - [x] ISO BMFF brand detection (HEIC, AVIF, AV1, 3GPP, M4V, QuickTime, Canon RAW)
 - [x] RIFF sub-type detection (WAV, AVI, WebP, ANI, MIDI, CorelDRAW)
@@ -232,15 +250,17 @@ Open `index.html` in a browser, or launch from the SZ desktop Start Menu under "
 - [ ] MKV/WebM Matroska tag editing
 - [ ] Batch file analysis
 - [ ] DEFLATE decompression for APK icon extraction from compressed entries
-- [ ] EXIF RATIONAL/SRATIONAL type editing (e.g., focal length, exposure time)
+- [x] EXIF RATIONAL/SRATIONAL type editing (e.g., focal length, exposure time)
 - [ ] ID3 APIC (album art) replace/remove via image edit type
 - [ ] MP4 cover art replace/remove via image edit type
-- [ ] GPS coordinate writing to EXIF via geo picker
+- [x] GPS coordinate writing to EXIF via geo picker
 - [ ] EXIF thumbnail regeneration from main image
 
 ## Known Limitations
 
-- JPEG EXIF editing supports IFD0 and ExifIFD tags with ASCII, SHORT, and LONG types; RATIONAL types are read-only
+- JPEG EXIF editing uses full IFD rebuild; MakerNote data is preserved as raw bytes but internal absolute offsets may break on rewrite
+- EXIF APP1 segment is limited to 64KB; large IFDs with many RATIONAL values may approach this limit
+- Reverse geocoding requires internet access (Nominatim API, rate-limited to 1 req/sec)
 - OOXML editing requires core.xml to be stored uncompressed (STORED method) in the ZIP container
 - MKV/WebM metadata editing not yet supported (read-only)
 - Hash computation requires the Cipher project scripts to be loadable
@@ -253,7 +273,7 @@ Open `index.html` in a browser, or launch from the SZ desktop Start Menu under "
 - "Open in Archiver" button only available when file was opened from VFS (not drag-dropped files)
 - Disassembly covers common instruction subsets; rare/vector/FPU instructions may show as `db` bytes
 - Disassembly annotations (imports/exports/strings) require PE or ELF format; other formats get plain disassembly
-- String extraction from data sections uses a minimum length of 4 printable ASCII characters; shorter strings are not captured
+- String extraction from data sections uses a minimum length of 4 characters (ANSI or Unicode); shorter strings are not captured; results are deduplicated by value
 - SNES LoROM/HiROM detection relies on checksum complement validation; corrupted ROMs may not be detected
 - Genesis ROM detection requires "SEGA MEGA DRIVE" or "SEGA GENESIS" header string at offset 0x100
 - VB6 P-code opcode set is partially reverse-engineered; some opcodes may decode as unknown
