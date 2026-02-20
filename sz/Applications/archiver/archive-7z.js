@@ -480,8 +480,9 @@ class SevenZipFormat extends IArchiveFormat {
       const unpackSize = folder.unpackSizes && folder.unpackSizes.length > 0
         ? folder.unpackSizes[folder.unpackSizes.length - 1] : data.length;
 
-      for (const coder of folder.coders) {
-        data = await this._executeCoder(coder, data, unpackSize, password);
+      const coderOrder = this._getCoderOrder(folder);
+      for (const ci of coderOrder) {
+        data = await this._executeCoder(folder.coders[ci], data, unpackSize, password);
         if (!data) break;
       }
 
@@ -505,6 +506,55 @@ class SevenZipFormat extends IArchiveFormat {
       packOffset += totalPackSize;
     }
     return result;
+  }
+
+  _getCoderOrder(folder) {
+    const n = folder.coders.length;
+    if (n <= 1) return [0];
+
+    // Build per-coder input/output stream ranges
+    let inBase = 0, outBase = 0;
+    const ranges = [];
+    for (const c of folder.coders) {
+      ranges.push({ inStart: inBase, inCount: c.numInStreams, outStart: outBase, outCount: c.numOutStreams });
+      inBase += c.numInStreams;
+      outBase += c.numOutStreams;
+    }
+
+    const ownerOfInStream = (s) => ranges.findIndex(r => s >= r.inStart && s < r.inStart + r.inCount);
+    const ownerOfOutStream = (s) => ranges.findIndex(r => s >= r.outStart && s < r.outStart + r.outCount);
+
+    // Start from the pack stream → find the first coder in the chain
+    const packStream = (folder.packStreams && folder.packStreams[0]) ?? 0;
+    let current = ownerOfInStream(packStream);
+    if (current < 0) current = n - 1; // fallback: last coder gets packed data
+
+    const order = [current];
+    const visited = new Set([current]);
+
+    // Follow bind pairs: current coder's output feeds the next coder's input
+    for (let step = 0; step < n - 1; ++step) {
+      let next = -1;
+      const curOut = ranges[current];
+      for (const bp of folder.bindPairs) {
+        const src = ownerOfOutStream(bp.outIndex);
+        if (src === current) {
+          next = ownerOfInStream(bp.inIndex);
+          break;
+        }
+      }
+      if (next < 0 || visited.has(next)) break;
+      order.push(next);
+      visited.add(next);
+      current = next;
+    }
+
+    // If we didn't find all coders via bind pairs, append remaining in order
+    if (order.length < n)
+      for (let i = 0; i < n; ++i)
+        if (!visited.has(i)) order.push(i);
+
+    return order;
   }
 
   async _executeCoder(coder, data, unpackSize, password) {
@@ -543,8 +593,8 @@ class SevenZipFormat extends IArchiveFormat {
   async _decryptAes256(data, props, password) {
     if (!props || props.length < 2) return null;
     const numCyclesPower = props[0] & 0x3F;
-    const ivSize = ((props[0] >> 6) & 0x03) + ((props[1] & 0x0F) << 2);
-    const saltSize = (props[1] >> 4) & 0x0F;
+    const saltSize = ((props[0] >> 7) & 1) + ((props[1] >> 4) & 0x0F);
+    const ivSize = ((props[0] >> 6) & 1) + (props[1] & 0x0F);
     let pOff = 2;
     const salt = props.slice(pOff, pOff + saltSize); pOff += saltSize;
     const iv = new Uint8Array(16);
@@ -557,17 +607,31 @@ class SevenZipFormat extends IArchiveFormat {
     const numIterations = 1 << numCyclesPower;
     const keyBuf = new Uint8Array(32);
     try {
-      let digest = new Uint8Array(passBytes.length + 8);
-      digest.set(passBytes, 0);
-      const hashParts = [];
-      for (let i = 0; i < numIterations; ++i) {
-        digest[passBytes.length] = i & 0xFF;
-        digest[passBytes.length + 1] = (i >> 8) & 0xFF;
-        digest[passBytes.length + 2] = (i >> 16) & 0xFF;
-        digest[passBytes.length + 3] = (i >> 24) & 0xFF;
-        hashParts.push(digest.slice());
+      // 7-Zip key derivation: SHA-256 over all rounds concatenated.
+      // Each round feeds: salt + password(UTF-16LE) + counter(8 bytes LE)
+      const roundLen = salt.length + passBytes.length + 8;
+      const round = new Uint8Array(roundLen);
+      round.set(salt, 0);
+      round.set(passBytes, salt.length);
+      const cOff = salt.length + passBytes.length;
+
+      // For large iteration counts, batch into chunks to avoid huge allocations
+      const BATCH = 1 << 16;
+      const batches = [];
+      for (let start = 0; start < numIterations; start += BATCH) {
+        const end = Math.min(start + BATCH, numIterations);
+        const chunk = new Uint8Array((end - start) * roundLen);
+        for (let i = start; i < end; ++i) {
+          round[cOff]     = i & 0xFF;
+          round[cOff + 1] = (i >>> 8) & 0xFF;
+          round[cOff + 2] = (i >>> 16) & 0xFF;
+          round[cOff + 3] = (i >>> 24) & 0xFF;
+          round[cOff + 4] = round[cOff + 5] = round[cOff + 6] = round[cOff + 7] = 0;
+          chunk.set(round, (i - start) * roundLen);
+        }
+        batches.push(chunk);
       }
-      const allBytes = concatUint8Arrays(hashParts);
+      const allBytes = batches.length === 1 ? batches[0] : concatUint8Arrays(batches);
       const hash = await crypto.subtle.digest('SHA-256', allBytes);
       keyBuf.set(new Uint8Array(hash));
     } catch (_) {
