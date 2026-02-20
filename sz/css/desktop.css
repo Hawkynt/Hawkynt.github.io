@@ -113,6 +113,16 @@ html, body {
 }
 
 /* --------------------------------------------------------------------------
+   Desktop drop-target highlight (shown when dragging files over the desktop)
+   -------------------------------------------------------------------------- */
+
+#sz-icon-area.sz-drop-target {
+  outline: 2px dashed rgba(49, 106, 197, 0.6);
+  outline-offset: -4px;
+  background: rgba(49, 106, 197, 0.05);
+}
+
+/* --------------------------------------------------------------------------
    Rubber-band selection rectangle (drawn by JS on the desktop surface)
    -------------------------------------------------------------------------- */
 
