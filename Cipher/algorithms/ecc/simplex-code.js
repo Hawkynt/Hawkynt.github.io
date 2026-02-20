@@ -263,7 +263,7 @@
     }
 
     DetectError(data) {
-      const n = (OpCodes.Shl32(1, this)._m) - 1;
+      const n = (OpCodes.Shl32(1, this._m)) - 1;
       if (data.length !== n) return true;
 
       try {
