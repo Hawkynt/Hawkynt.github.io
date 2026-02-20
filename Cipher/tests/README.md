@@ -263,6 +263,8 @@ const result = await testAPI.testAlgorithm('./algorithms/block/rijndael.js');
 - **TestSuite.js** - CLI interface (refactored to use TestEngine)
 - **TestAPI.js** - UI module interface (uses TestEngine)
 - **TestDemo.js** - Verification that both interfaces are identical
+- **TranspilerValidationSuite.js** - Cross-language transpiler validation
+- **CodeGenTestSuite.js** - Comprehensive transpiler AST coverage tests
 - **README.md** - This documentation
 
 ## Verification
@@ -274,6 +276,101 @@ node tests/TestDemo.js
 ```
 
 This proves both CLI and UI interfaces produce identical results using the same core testing logic.
+
+---
+
+## Cross-Language Transpiler Validation
+
+The `TranspilerValidationSuite.js` provides comprehensive cross-language testing:
+
+### Features
+
+1. **Auto-detects compilers/interpreters**: C (gcc), C++ (g++), C# (dotnet), Java, Python, PHP, Perl, Ruby, Go, Rust
+2. **Dynamic algorithm discovery**: No hardcoded algorithms - works with all current and future algorithms
+3. **JavaScript reference validation**: Validates algorithms pass JS tests before transpiling
+4. **Multi-language transpilation**: Transpiles each algorithm to all available target languages
+5. **Compilation testing**: Verifies transpiled code compiles/parses correctly
+6. **Runtime execution**: Executes interpreted languages (Python, PHP, Perl, Ruby) to validate test harness
+7. **Detailed reporting**: Generates JSON reports with per-algorithm, per-language results
+
+### Usage
+
+```bash
+# Run all tests
+node tests/TranspilerValidationSuite.js
+
+# Quick test (3 algorithms per category)
+node tests/TranspilerValidationSuite.js --quick
+
+# Test specific algorithm
+node tests/TranspilerValidationSuite.js --algorithm=tea
+
+# Test specific category
+node tests/TranspilerValidationSuite.js --category=block
+
+# Test specific language only
+node tests/TranspilerValidationSuite.js --language=csharp
+
+# Compile-only mode (skip execution)
+node tests/TranspilerValidationSuite.js --compile-only
+
+# Verbose output with error details
+node tests/TranspilerValidationSuite.js --verbose
+
+# Generate detailed JSON report
+node tests/TranspilerValidationSuite.js --report
+
+# Combine options
+node tests/TranspilerValidationSuite.js --quick --language=python --verbose
+```
+
+### Output Example
+
+```
+╔════════════════════════════════════════════════════════════╗
+║       Transpiler Validation Suite                          ║
+╚════════════════════════════════════════════════════════════╝
+
+Detecting compilers/interpreters...
+
+  ✓ C: gcc 13.2.0
+  ✓ C++: g++ 13.2.0
+  ✓ C#: 10.0.100
+  ✓ Python: Python 3.11.9
+  - Java: not found
+
+Target languages: C, C++, C#, Python
+
+Found 240 algorithms to test
+
+━━━ BLOCK (45 algorithms) ━━━
+  rijndael                  OK (4/4)
+  tea                       OK (4/4)
+  blowfish                  PARTIAL (compile: 3/4) [cpp]
+
+Summary (45.2s)
+
+Algorithms: 240 total, 235 JS-validated
+
+Language Results:
+  C:
+    Transpiled: 230/235 (98%)
+    Compiled:   215/230 (93%)
+  C++:
+    Transpiled: 230/235 (98%)
+    Compiled:   210/230 (91%)
+```
+
+### Extending for New Languages
+
+To add support for a new language:
+
+1. Add compiler detection in `LANGUAGE_COMPILERS`
+2. Create a test harness generator function (`generateXxxTestHarness`)
+3. Add compilation/syntax test function (`testXxxCompilation`)
+4. Optionally add execution function for interpreted languages
+
+The suite automatically picks up new language plugins from `codingplugins/`.
 
 ---
 

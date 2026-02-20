@@ -194,16 +194,20 @@
         result.issues.errors = foundIssues;
 
         // Test OpCodes optimization
-        const nonOpCodesPatterns = [/(?<!\/\/.*)<<(?!\s*EOF)/g, /(?<!\/\/.*)>>/g, /\s+\^\s+/, /\s+\&\s+(?!&)/];
+        // First strip all comments (both line and block comments) from the entire file
+        const codeWithoutComments = fileContent
+            .replace(/\/\*[\s\S]*?\*\//gm, '') // Remove block comments
+            .replace(/\/\/.*/g, '');            // Remove line comments
+
+        const nonOpCodesPatterns = [/<<(?!\s*EOF)/g, />>/g, /\s+\^\s+/g, /\s+\&\s+(?!&)/g];
         let optimizationIssues = 0;
 
-        lines.forEach((line, lineNum) => {
-            if (line.includes('//')) line = line.split('//')[0]; // Strip comments
-            nonOpCodesPatterns.forEach(pattern => {
-                if (pattern.test(line)) {
-                    optimizationIssues++;
-                }
-            });
+        // Count matches in code without comments
+        nonOpCodesPatterns.forEach(pattern => {
+            const matches = codeWithoutComments.match(pattern);
+            if (matches) {
+                optimizationIssues += matches.length;
+            }
         });
 
         result.optimization.passed = optimizationIssues === 0;
