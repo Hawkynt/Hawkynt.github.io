@@ -239,3 +239,58 @@ body { overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
   font-size: 9px; color: var(--sz-color-gray-text);
   margin-top: 6px; line-height: 1.4;
 }
+
+/* Base layer row */
+.base-layer-row {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+.base-layer-row input[type="color"] {
+  width: 28px; height: 22px; padding: 0; border: 1px solid var(--sz-color-button-shadow); cursor: pointer;
+}
+
+/* Desktop tab top row: preview + base layer side by side */
+.bg-top-row {
+  display: flex; gap: 8px; flex: 0 0 auto;
+}
+.bg-top-row > .group-box { flex: 1; }
+.bg-top-row > .group-box:first-child { flex: 0 0 auto; }
+
+/* Desktop tab content source subtabs */
+.bg-subtabs {
+  display: flex; flex-wrap: wrap; margin-bottom: 0;
+  border-bottom: 1px solid var(--sz-color-button-shadow);
+}
+
+/* Source panels */
+.source-panel {
+  display: none; flex-direction: column; flex: 1; min-height: 0; overflow: auto;
+  border: 1px solid var(--sz-color-button-shadow); border-top: none;
+  padding: 8px; background: var(--sz-color-window);
+}
+.source-panel.active { display: flex; }
+
+/* Online thumbnails grid */
+.online-thumbnails {
+  display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;
+  max-height: 90px; overflow-y: auto; background: var(--sz-color-window);
+  border: 1px solid var(--sz-color-button-shadow); padding: 4px;
+}
+.online-thumbnails:empty { display: none; }
+.online-thumb {
+  width: 60px; height: 45px; object-fit: cover; cursor: pointer;
+  border: 2px solid transparent; border-radius: 2px;
+}
+.online-thumb:hover { border-color: var(--sz-color-highlight); }
+.online-thumb.selected { border-color: var(--sz-color-highlight); box-shadow: 0 0 4px rgba(49,106,197,0.5); }
+
+/* Pattern preset list */
+.pattern-preset-list {
+  list-style: none; border: 1px solid var(--sz-color-button-shadow);
+  background: var(--sz-color-window); padding: 2px; margin: 2px 0 0;
+  max-height: 180px; overflow-y: auto;
+}
+.pattern-preset-list li {
+  padding: 2px 6px; cursor: default; user-select: none; font-size: 10px;
+}
+.pattern-preset-list li:hover { background: var(--sz-color-highlight); color: var(--sz-color-highlight-text); }
+.pattern-preset-list li.selected { background: var(--sz-color-highlight); color: var(--sz-color-highlight-text); }

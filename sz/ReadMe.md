@@ -98,7 +98,7 @@ sz/
     boot-screen.js              Boot screen manager (GIF / frames / CSS fallback)
     window-manager.js           Window lifecycle, z-order, focus, state
     window.js                   Window class (create, move, resize, skin rendering)
-    desktop.js                  Desktop surface, icon placement, background
+    desktop.js                  Desktop surface, icon placement, layered background (color + pattern + image/slideshow/video/online)
     icon.js                     Icon class (render, click, drag)
     taskbar.js                  Taskbar with XP-style start menu (MRU + All Programs), window list, clock
     skin-loader.js              UIS parser, skin registry (getSkin/getAvailableSkins)
@@ -666,10 +666,35 @@ A built-in application modeled after the Windows XP Display Properties dialog. T
 
 #### Desktop (Background)
 
-- **Preview monitor**: Shows the selected background image with the current position mode applied.
-- **Background list**: Scrollable list of available backgrounds (bundled from `assets/backgrounds/` + `(None)` option). Selecting updates the preview.
-- **Position dropdown**: Stretch, Fit, Fill, Center, Tile — maps to CSS `object-fit` modes and tile repeat.
-- **Browse button**: File picker to upload custom background images. The image is stored and sent to the desktop as a data URL.
+Layered background system with two conceptual layers:
+1. **Base Layer** (always visible through gaps): solid color + optional monochrome pattern overlay
+2. **Content Layer** (sits on top): none / image / slideshow / video / online service
+
+- **Preview monitor**: Enhanced CRT mockup showing base color, pattern overlay, and content layer. Updates live for all source types.
+- **Base Layer group**: Color picker for the solid background color. Pattern overlay checkbox with "Edit Pattern..." button to open the pixel-grid pattern editor dialog.
+- **Content Source dropdown**: None, Image, Slideshow, Video, Online — switches between sub-panels.
+- **Image sub-panel**: Background list (system + user images), position dropdown (Stretch/Fit/Fill/Center/Tile), Browse button for uploading custom images.
+- **Slideshow sub-panel**: Folder path selector, interval slider (5s-5min), shuffle checkbox, transition type dropdown (Fade/Dissolve/Slide Left/Slide Right/Zoom), transition duration slider, position mode dropdown.
+- **Video sub-panel**: Video file selector, loop checkbox, playback speed slider (0.25x-2x). Videos play muted for autoplay policy compliance.
+- **Online sub-panel**: Service dropdown (Lorem Picsum, NASA APOD, Bing Daily, Giphy), search keywords input (for services that support it), Fetch Now button, thumbnail gallery grid, position mode. Disabled on `file://` with notice.
+- **Pattern editor dialog**: Canvas-based pixel grid with click/drag painting, foreground color picker, width/height inputs (1-16), and ~10 built-in presets (Dots, Checker, Crosshatch, Diagonal, H/V Lines, Grid, Bricks, Weave). Bit encoding: row-major, MSB first, hex-encoded.
+
+**Background data model** (persisted under `sz-background` in localStorage):
+
+```js
+{
+  baseColor: '#3A6EA5',       // CSS hex color (also serves as pattern background)
+  pattern: null,              // null or { width, height, fg, bits (hex-encoded bitmap) }
+  sourceType: 'image',        // 'none' | 'image' | 'slideshow' | 'video' | 'online'
+  mode: 'cover',              // 'cover' | 'contain' | 'fill' | 'center' | 'tile'
+  src: '/system/wallpapers/default.jpg',
+  slideshow: { folder, interval, shuffle, transition, transitionDuration },
+  video: { src, loop, playbackRate },
+  online: { service, cachedUrl },
+}
+```
+
+Backward compatible: missing `sourceType` field auto-normalizes to `{ sourceType: 'image', src, mode }`.
 
 **Bottom bar**: OK (apply + close), Cancel (revert + close), Apply (apply without closing).
 
@@ -681,7 +706,11 @@ A built-in application modeled after the Windows XP Display Properties dialog. T
 { type: 'sz:setSkin', skinName: 'LUNAX', subSkin: 'olive' }       // specific sub-skin
 { type: 'sz:installSkin', wbaFile: File }                         // File object from picker
 
-// Background
+// Background (extended format)
+{ type: 'sz:setBackground', baseColor: '#3A6EA5', pattern: null, sourceType: 'image',
+  src: 'path/to/image.jpg', mode: 'cover' }
+
+// Background (legacy format -- auto-normalized)
 { type: 'sz:setBackground', src: 'path/to/image.jpg', mode: 'cover' }
 
 // Close window
@@ -702,8 +731,10 @@ On load, the control panel sends `{ type: 'sz:getSettings' }` and the desktop re
       subSkins: [{ id: 'default', name: 'Blue (Default)' }, { id: 'olive', name: 'Olive Green', colors: { ... } }, ...] },
     { id: 'AQUARIUM', displayName: 'Aquarium', colors: { ... }, fonts: { ... }, subSkins: null },
   ],
-  background: { src: 'assets/backgrounds/default.jpg', mode: 'cover' },
+  background: { baseColor: '#3A6EA5', pattern: null, sourceType: 'image',
+    src: 'assets/backgrounds/default.jpg', mode: 'cover' },
   availableBackgrounds: [{ name: 'Bliss', src: 'assets/backgrounds/default.jpg' }],
+  onlineServicesAvailable: true,
   cursor: { shadow: false, trail: false, trailLen: 5 },
 }
 ```
@@ -800,8 +831,8 @@ window.parent.postMessage({ type: 'sz:resize', width: 800, height: 600 }, '*');
 window.parent.postMessage({ type: 'sz:getSettings' }, '*');            // Request current state
 window.parent.postMessage({ type: 'sz:setSkin', skinName: 'LUNAX' }, '*');
 window.parent.postMessage({ type: 'sz:installSkin', wbaFile: File }, '*');
-window.parent.postMessage({ type: 'sz:setBackground', src: '...', mode: 'fill' }, '*');
-window.parent.postMessage({ type: 'sz:setBackgroundColor', color: '#003366' }, '*');
+window.parent.postMessage({ type: 'sz:setBackground', baseColor: '#3A6EA5', pattern: null, sourceType: 'image', src: '...', mode: 'fill' }, '*');
+// Legacy format also supported: { type: 'sz:setBackground', src: '...', mode: 'fill' }
 window.parent.postMessage({ type: 'sz:setIconPack', packName: 'default' }, '*');
 window.parent.postMessage({ type: 'sz:setCursorTheme', themeName: 'default' }, '*');
 window.parent.postMessage({ type: 'sz:setSetting', key: 'animations', value: true }, '*');
@@ -850,8 +881,10 @@ iframe.contentWindow.postMessage({
       subSkins: [{ id: 'default', name: 'Blue (Default)' }, { id: 'olive', name: 'Olive Green', colors: { ... } }, ...] },
     { id: 'AQUARIUM', displayName: 'Aquarium', colors: { ... }, fonts: { ... }, subSkins: null },
   ],
-  background: { src: 'assets/backgrounds/default.jpg', mode: 'cover' },
+  background: { baseColor: '#3A6EA5', pattern: null, sourceType: 'image',
+    src: 'assets/backgrounds/default.jpg', mode: 'cover' },
   availableBackgrounds: [{ name: 'Bliss', src: 'assets/backgrounds/default.jpg' }],
+  onlineServicesAvailable: true,
 }, '*');
 ```
 
@@ -907,12 +940,21 @@ This separates "which apps exist" (manifest) from "what appears on the desktop" 
 
 ### Desktop (`js/desktop.js`)
 
-- Renders the background image with configurable display modes:
-  - **cover** (Stretch) — `<img>` with `object-fit: cover`, fills viewport
-  - **contain** (Fit) — `<img>` with `object-fit: contain`, letterboxed
-  - **fill** (Fill) — `<img>` with `object-fit: fill`, distorts to fill
-  - **none** (Center) — `<img>` at natural size, centered via CSS transform
-  - **tile** — hides `<img>`, uses CSS `background-image` with `background-repeat: repeat` on the desktop element
+Layered background model with two conceptual layers:
+
+1. **Base Layer** — Solid `backgroundColor` on the desktop element + optional monochrome pattern overlay (`#sz-bg-pattern` div with tiled data URI from a tiny canvas rendered at pattern dimensions, 3x CSS scaling, `image-rendering: pixelated`)
+2. **Content Layer** — One of:
+   - **none** — no content, base layer shows through
+   - **image** — `<img>` with configurable display modes:
+     - **cover** (Stretch) — `object-fit: cover`, fills viewport
+     - **contain** (Fit) — `object-fit: contain`, letterboxed
+     - **fill** (Fill) — `object-fit: fill`, distorts to fill
+     - **center** — natural size, centered via CSS transform
+     - **tile** — hides `<img>`, uses CSS `background-image` with `repeat` on the desktop element
+   - **slideshow** — Two alternating `<img>` elements (`#sz-background` and `#sz-background-alt`) with CSS transitions for cross-fade. `setInterval` timer cycles images from a VFS folder. Transition effects: fade, dissolve, slide-left, slide-right, zoom. Fisher-Yates shuffle when shuffle mode is on.
+   - **video** — `<video>` element (`#sz-bg-video`) with `muted`, `loop`, `autoplay`, `playsinline`. Configurable playback rate. Graceful autoplay failure handling.
+   - **online** — Cached URL from online services (Lorem Picsum, NASA APOD, Bing Daily, Giphy) rendered as image.
+
 - Places desktop icons in a grid layout (CSS grid, auto-flowing top-to-bottom then left-to-right)
 - Click on empty desktop area deactivates the focused window
 
@@ -1017,7 +1059,7 @@ User preferences stored in `localStorage`:
 
 - `sz-skin` -- name of active skin
 - `sz-subSkin` -- ID of active sub-skin / color scheme (empty string for default)
-- `sz-background` -- JSON: `{ src, mode }` (image path + stretch mode)
+- `sz-background` -- JSON: `{ baseColor, pattern, sourceType, src, mode, slideshow, video, online }` (layered background settings)
 - `sz-icon-pack` -- name of active icon pack
 - `sz-cursor-theme` -- name of active cursor theme
 - `sz-cursor.shadow` -- boolean: enable/disable mouse shadow effect
@@ -1243,7 +1285,7 @@ State width = image width / 3. State height = image height / (tripleImages ? 2 :
 ### Core Desktop
 
 - [x] ~~Original 2004 implementation~~ (archived)
-- [x] Desktop surface with configurable background image (cover, contain, fill, center, tile modes)
+- [x] Desktop surface with layered background system: solid color base + optional monochrome pattern overlay + content layer (image/slideshow/video/online). Image modes: cover, contain, fill, center, tile
 - [x] Desktop icon grid (auto-layout, top-to-bottom then left-to-right)
 - [x] Desktop icon double-click to launch application
 - [x] Desktop icon single-click to select
@@ -1394,7 +1436,7 @@ State width = image width / 3. State height = image height / (tripleImages ? 2 :
 System apps (hosted / app.js -- require OS runtime):
 - [x] Explorer: FilePilot-inspired file manager with Office-style ribbon UI (QAT, Home/View tabs, File backstage), multi-pane layout (split right/bottom, resizable splitters, drag-and-drop arrangement with blue drop-zone previews), navigation tabs with independent state per pane, three view modes (Icons/Details/Tiles), sortable columns with resize and column filter icons, preview pane with prev/next navigation and zoom controls, sidebar with six collapsible sections (Recents, Bookmarks, Quick Access, Storage with usage bars, Places, Tree) and filter input, VFS operations (new folder/file, delete, rename, copy, move, cut/paste), breadcrumb path bar with autocomplete, enhanced search with scope toggle and detail-format results, command palette (Ctrl+Shift+P), GoTo dialog (Ctrl+P/F4), bulk rename with pattern tokens, expand folder mode (Ctrl+E), view filtering (files/folders/both + folders-first), display toggles (hidden files, extensions, highlight recents), options dialog (font/spacing/zoom/default view), type-ahead file selection, save/load layout persistence, directory change watching, folder size calculation, drag-and-drop between panes (move by default, Ctrl to copy) and from OS into VFS, upload/download files, mount/unmount local folders, context menu enhancements (Open with, Copy as Path, New Folder from Selection, Add to Bookmarks), rich status bar with load time and scroll percentage, persisted settings via registry. Also browses SZ runtime object tree (read-only mode)
 - [x] Task Manager: Applications tab + Performance tab with real event-loop lag, NT-style canvas graphs
-- [x] Control Panel: Display Properties dialog with Themes (preset theme combos), Appearance (skin switching, color swatch previews, auto-scroll to current, sub-skin dropdown), Desktop (background selection, position mode), Pointers (mouse shadow, mouse trail, trail length slider with live preview), and Taskbar (auto-hide, show clock, clear MRU) tabs
+- [x] Control Panel: Display Properties dialog with Themes (preset theme combos), Appearance (skin switching, color swatch previews, auto-scroll to current, sub-skin dropdown), Desktop (layered background: base color + pattern overlay + content source [None/Image/Slideshow/Video/Online], pattern editor with pixel grid and presets, slideshow with transitions, video background, online wallpaper services), Pointers (mouse shadow, mouse trail, trail length slider with live preview), and Taskbar (auto-hide, show clock, clear MRU) tabs
 - [x] About: Tabbed dialog (General/System/Credits) with version info, data-privacy notice (local-storage-only warning with data-persistence explanation), system details (resolution, memory, browser, skin, storage usage), credits (author with GitHub link, Stardock, TidyTabs, AquaSnap, Winamp inspirations), license (free for personal/educational use, contact for commercial/corporate PID), donation appeal with clickable PayPal heart, OK/Escape/Enter to close, copy-to-clipboard, animated logo
 - [x] Properties: Hosted app (first `type: "hosted"` app) — file/folder properties dialog launched from Explorer context menu via `Shell32.ShellExecute`. Shows General tab instantly (name, path, type, size, modified, location), defers metadata parsing to background promises by dynamically loading parser scripts on demand. For VFS files, parses metadata and adds category tabs (same parsers as Metadata Viewer). For VFS folders, computes item count and total size. Includes "Open in Metadata Viewer" button. Multiple instances supported (non-singleton). Accesses OS services via `SZ.os` (kernel for VFS reads, windowManager for close, appLauncher for launching Metadata Viewer). Theme-aware via CSS custom properties.
 - [ ] Convert Explorer, Task Manager, About from iframe to hosted app.js format
@@ -1496,7 +1538,7 @@ See [docs/appideas.md](docs/appideas.md) for the full application roadmap.
 
 ### Settings and Persistence
 
-- [x] Background preference saved to localStorage (image path + display mode: cover/contain/fill/none/tile)
+- [x] Background preference saved to localStorage (layered settings: base color, pattern, content type, image/slideshow/video/online config, display mode)
 - [x] Active skin preference saved to localStorage
 - [ ] Active icon pack preference saved to localStorage
 - [ ] Active cursor theme preference saved to localStorage
@@ -1681,7 +1723,7 @@ Planned format library modules:
 - **Same-origin requirement for theming**: The theme engine injects CSS into application iframes via `contentDocument` access, which requires same-origin. All applications must be served from the same origin as the desktop. Cross-origin iframes cannot be themed and will display with default browser styling.
 - **CSS cursor format**: `.cur` and `.ani` files work in most browsers. PNG cursors with hotspot offsets require the `x y` syntax in CSS `url()`, which has inconsistent browser support. Prefer `.cur` format for maximum compatibility.
 - **Control BMP state layouts vary**: Different skins use different grid layouts for checkbox/radio/button sprites (some 3-wide, some 6-wide, some with rows for focused/disabled states). The theme engine must probe image dimensions and divide by expected state count, which may not be correct for all skins. Pure color fallback is always available.
-- **Single background bundled**: Only one background image is bundled. Additional backgrounds can be uploaded via the Control Panel's Desktop tab (stored as data URLs) or added to `assets/backgrounds/`.
+- **Online wallpaper services**: Lorem Picsum, NASA APOD, Bing Daily, and Giphy require an HTTP server (not available on `file://`). The Giphy public beta API key may have rate limits.
 - **Font rendering**: Skin-specified fonts (e.g., Trebuchet MS) depend on the user's system having them installed. Fallbacks are applied but may not match the original skin appearance.
 - **postMessage has no enforced schema**: Applications and the desktop communicate via `postMessage` with a convention-based type field. Malformed messages are silently ignored. The control panel depends on this protocol for all settings changes.
 - **Approximate performance metrics**: The Task Manager measures real event-loop lag (via `setTimeout` drift with 100ms intervals) for CPU load estimation, but this is an approximation since browsers don't expose actual CPU metrics. Memory uses `performance.memory` where available (Chrome only), otherwise estimated from DOM node counts.

@@ -52,7 +52,7 @@
         type: 'iframe',
         entry: 'control-panel/index.html',
         width: 600,
-        height: 450,
+        height: 500,
         resizable: true,
         minimizable: true,
         maximizable: true,

@@ -34,6 +34,45 @@ html, body {
   pointer-events: none;
 }
 
+/* Slideshow alternate image (cross-fade partner) */
+#sz-background-alt {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+  user-select: none;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 1s ease;
+}
+
+/* Pattern overlay (tiled tiny bitmap on top of solid color) */
+#sz-bg-pattern {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  user-select: none;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  display: none;
+}
+
+/* Video background */
+#sz-bg-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+  pointer-events: none;
+  user-select: none;
+  display: none;
+}
+
 /* --------------------------------------------------------------------------
    Icon Grid
    Auto-flows columns first so icons fill top-to-bottom, then left-to-right.
