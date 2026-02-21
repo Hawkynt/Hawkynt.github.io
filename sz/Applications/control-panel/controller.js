@@ -15,11 +15,32 @@
   let currentSubSkin = '';
   let selectedSkinName = '';
   let selectedSubSkin = '';
-  let currentBg = { src: '', mode: 'cover' };
-  let selectedBg = { src: '', mode: 'cover' };
+  let currentBg = { baseColor: '#3A6EA5', pattern: null, type: 'image', src: '', mode: 'cover' };
+  let selectedBg = { baseColor: '#3A6EA5', pattern: null, type: 'image', src: '', mode: 'cover' };
   let availableBackgrounds = [];
   let selectedThemeId = '';
+  let onlineServicesAvailable = false;
   let dirty = false;
+
+  // Pattern editor state
+  let patternBits = null; // Uint8Array of 0/1
+  let patternWidth = 8;
+  let patternHeight = 8;
+
+  // Pattern presets (classic Windows 95/98 style)
+  const PATTERN_PRESETS = [
+    { name: 'None', w: 8, h: 8, fg: '#FFFFFF', bits: null },
+    { name: 'Dots', w: 8, h: 8, fg: '#FFFFFF', bits: '8000000000000000' },
+    { name: 'Checker', w: 2, h: 2, fg: '#FFFFFF', bits: '9' }, // 1001
+    { name: 'Crosshatch', w: 8, h: 8, fg: '#FFFFFF', bits: 'FF808080FF080808' },
+    { name: 'Diagonal L', w: 8, h: 8, fg: '#FFFFFF', bits: '0102040810204080' },
+    { name: 'Diagonal R', w: 8, h: 8, fg: '#FFFFFF', bits: '8040201008040201' },
+    { name: 'H Lines', w: 8, h: 4, fg: '#FFFFFF', bits: 'FF000000' },
+    { name: 'V Lines', w: 4, h: 8, fg: '#FFFFFF', bits: '88888888' },
+    { name: 'Grid', w: 8, h: 8, fg: '#FFFFFF', bits: 'FF01010101010101' },
+    { name: 'Bricks', w: 8, h: 8, fg: '#FFFFFF', bits: 'FF01010180808080' },
+    { name: 'Weave', w: 8, h: 8, fg: '#FFFFFF', bits: '8844221188442211' },
+  ];
 
   // Resolve asset paths relative to the OS root (2 levels up from this iframe)
   const _resolveAssetPath = (src) => src && !src.startsWith('data:') && !src.startsWith('http') && !src.startsWith('blob:') && !src.startsWith('/') ? '../../' + src : src;
@@ -40,7 +61,46 @@
   const bgListEl = document.getElementById('bg-list');
   const bgModeEl = document.getElementById('bg-mode');
   const pvBgImg = document.getElementById('pv-bg-img');
+  const pvBgScreen = document.getElementById('pv-bg-screen');
+  const pvBgPattern = document.getElementById('pv-bg-pattern');
+  const pvBgVideo = document.getElementById('pv-bg-video');
   const themeListEl = document.getElementById('theme-list');
+
+  // Background extended elements
+  const bgBaseColorEl = document.getElementById('bg-base-color');
+  const chkPattern = document.getElementById('chk-pattern');
+  const btnEditPattern = document.getElementById('btn-edit-pattern');
+  const bgSourceTypeEl = document.getElementById('bg-source-type');
+
+  // Slideshow elements
+  const slideshowFolderEl = document.getElementById('slideshow-folder');
+  const slideshowIntervalEl = document.getElementById('slideshow-interval');
+  const slideshowIntervalValueEl = document.getElementById('slideshow-interval-value');
+  const chkSlideshowShuffle = document.getElementById('chk-slideshow-shuffle');
+  const slideshowTransitionEl = document.getElementById('slideshow-transition');
+  const slideshowDurationEl = document.getElementById('slideshow-duration');
+  const slideshowDurationValueEl = document.getElementById('slideshow-duration-value');
+  const slideshowModeEl = document.getElementById('slideshow-mode');
+
+  // Video elements
+  const videoFileEl = document.getElementById('video-file');
+  const chkVideoLoop = document.getElementById('chk-video-loop');
+  const videoSpeedEl = document.getElementById('video-speed');
+  const videoSpeedValueEl = document.getElementById('video-speed-value');
+
+  // Online elements
+  const onlineServiceEl = document.getElementById('online-service');
+  const onlineQueryEl = document.getElementById('online-query');
+  const onlineModeEl = document.getElementById('online-mode');
+  const onlineThumbnailsEl = document.getElementById('online-thumbnails');
+
+  // Pattern editor dialog elements
+  const patternCanvas = document.getElementById('pattern-canvas');
+  const patternCtx = patternCanvas?.getContext('2d');
+  const patternFgColorEl = document.getElementById('pattern-fg-color');
+  const patternWidthEl = document.getElementById('pattern-width');
+  const patternHeightEl = document.getElementById('pattern-height');
+  const patternPresetsEl = document.getElementById('pattern-presets');
 
   // Preview elements
   const pvScreen = document.getElementById('pv-screen');
@@ -358,40 +418,92 @@
     dirty = true;
   }
 
-  async function updateBgPreview() {
-    let resolvedSrc = '';
-    if (selectedBg.src) {
-      if (selectedBg.src.startsWith('/')) {
-        // It's a VFS path, resolve it to a URI via the VFS bridge
-        try {
-          const result = await SZ.Dlls.User32.SendMessage('sz:vfs:ReadUri', { path: selectedBg.src });
-          resolvedSrc = _resolveAssetPath(result.uri);
-        } catch (e) {
-          console.error('VFS ReadUri error for preview:', e);
-        }
-      } else {
-        // It's already a data URI or relative path
-        resolvedSrc = _resolveAssetPath(selectedBg.src);
+  async function _resolveVfsSrc(src) {
+    if (!src) return '';
+    if (src.startsWith('/')) {
+      try {
+        const result = await SZ.Dlls.User32.SendMessage('sz:vfs:ReadUri', { path: src });
+        return _resolveAssetPath(result.uri);
+      } catch (e) {
+        console.error('VFS ReadUri error for preview:', e);
+        return '';
       }
     }
+    return _resolveAssetPath(src);
+  }
 
+  async function updateBgPreview() {
+    const baseColor = bgBaseColorEl.value || '#3A6EA5';
+    pvBgScreen.style.backgroundColor = baseColor;
+
+    // Pattern preview
+    _updatePatternPreview();
+
+    // Hide video preview by default
+    pvBgVideo.style.display = 'none';
+    pvBgVideo.pause();
+
+    const sourceType = bgSourceTypeEl.value;
+
+    if (sourceType === 'none') {
+      pvBgImg.style.display = 'none';
+      pvBgImg.src = '';
+      pvBgScreen.style.backgroundImage = '';
+      return;
+    }
+
+    if (sourceType === 'video') {
+      pvBgImg.style.display = 'none';
+      pvBgImg.src = '';
+      pvBgScreen.style.backgroundImage = '';
+      const videoSrc = videoFileEl.value;
+      if (videoSrc) {
+        const resolved = await _resolveVfsSrc(videoSrc);
+        if (resolved) {
+          pvBgVideo.src = resolved;
+          pvBgVideo.style.display = '';
+          pvBgVideo.muted = true;
+          pvBgVideo.play().catch(() => {});
+        }
+      }
+      return;
+    }
+
+    if (sourceType === 'online') {
+      // Show cached URL if any
+      const cachedUrl = selectedBg.online?.cachedUrl;
+      if (cachedUrl) {
+        const resolved = await _resolveVfsSrc(cachedUrl);
+        _showPreviewImage(resolved, onlineModeEl.value);
+      } else {
+        pvBgImg.style.display = 'none';
+        pvBgScreen.style.backgroundImage = '';
+      }
+      return;
+    }
+
+    // image or slideshow -- show the selected image
+    let resolvedSrc = '';
+    if (selectedBg.src)
+      resolvedSrc = await _resolveVfsSrc(selectedBg.src);
+
+    const mode = sourceType === 'slideshow' ? slideshowModeEl.value : bgModeEl.value;
+    _showPreviewImage(resolvedSrc, mode);
+  }
+
+  function _showPreviewImage(resolvedSrc, mode) {
     pvBgImg.src = resolvedSrc;
     pvBgImg.style.display = resolvedSrc ? '' : 'none';
-    const screen = document.getElementById('pv-bg-screen');
-    const mode = bgModeEl.value;
 
     if (mode === 'tile') {
       pvBgImg.style.display = 'none';
-      screen.style.backgroundImage = resolvedSrc ? `url('${resolvedSrc}')` : '';
-      screen.style.backgroundRepeat = 'repeat';
-      screen.style.backgroundSize = 'auto';
-      screen.style.backgroundPosition = 'top left';
+      pvBgScreen.style.backgroundImage = resolvedSrc ? `url('${resolvedSrc}')` : '';
+      pvBgScreen.style.backgroundRepeat = 'repeat';
+      pvBgScreen.style.backgroundSize = 'auto';
+      pvBgScreen.style.backgroundPosition = 'top left';
     } else {
-      screen.style.backgroundImage = '';
-      pvBgImg.style.objectFit = mode === 'fill' ? 'fill'
-        : mode === 'center' ? 'none'
-        : mode; // 'cover' or 'contain'
-      
+      pvBgScreen.style.backgroundImage = '';
+      pvBgImg.style.objectFit = mode === 'fill' ? 'fill' : mode === 'center' ? 'none' : mode;
       if (mode === 'center') {
         pvBgImg.style.width = 'auto';
         pvBgImg.style.height = 'auto';
@@ -408,9 +520,434 @@
     }
   }
 
+  function _updatePatternPreview() {
+    if (!chkPattern.checked || !selectedBg.pattern) {
+      pvBgPattern.style.display = 'none';
+      return;
+    }
+    const { width, height, fg, bits } = selectedBg.pattern;
+    const ctx = pvBgPattern.getContext('2d');
+    const cw = pvBgPattern.width;
+    const ch = pvBgPattern.height;
+    ctx.clearRect(0, 0, cw, ch);
+
+    const baseColor = bgBaseColorEl.value || '#3A6EA5';
+    const bitString = bits.split('').map(c => parseInt(c, 16).toString(2).padStart(4, '0')).join('');
+    const scale = 2;
+
+    for (let py = 0; py < ch; py += height * scale)
+      for (let px = 0; px < cw; px += width * scale)
+        for (let y = 0; y < height; ++y)
+          for (let x = 0; x < width; ++x) {
+            const bitIndex = y * width + x;
+            const bit = bitString[bitIndex] === '1';
+            ctx.fillStyle = bit ? fg : baseColor;
+            ctx.fillRect(px + x * scale, py + y * scale, scale, scale);
+          }
+
+    pvBgPattern.style.display = '';
+  }
+
+  // Source type switching via subtabs
+  function _switchBgSource(type) {
+    bgSourceTypeEl.value = type;
+    for (const panel of document.querySelectorAll('.source-panel'))
+      panel.classList.toggle('active', panel.id === 'source-' + type);
+    for (const st of document.querySelectorAll('.bg-subtabs .subtab'))
+      st.classList.toggle('active', st.dataset.bgtab === type);
+    selectedBg.sourceType = type;
+
+    if (type === 'online') {
+      document.getElementById('online-unavailable').style.display = onlineServicesAvailable ? 'none' : '';
+      document.getElementById('online-controls').style.display = onlineServicesAvailable ? '' : 'none';
+    }
+
+    updateBgPreview();
+    dirty = true;
+  }
+
+  for (const st of document.querySelectorAll('.bg-subtabs .subtab'))
+    st.addEventListener('click', () => _switchBgSource(st.dataset.bgtab));
+
+  bgSourceTypeEl.addEventListener('change', () => _switchBgSource(bgSourceTypeEl.value));
+
   bgModeEl.addEventListener('change', async () => {
     selectedBg.mode = bgModeEl.value;
     await updateBgPreview();
+    dirty = true;
+  });
+
+  // Base color picker
+  bgBaseColorEl.addEventListener('input', () => {
+    selectedBg.baseColor = bgBaseColorEl.value;
+    updateBgPreview();
+    dirty = true;
+  });
+
+  // Pattern checkbox
+  chkPattern.addEventListener('change', () => {
+    btnEditPattern.disabled = !chkPattern.checked;
+    if (!chkPattern.checked)
+      selectedBg.pattern = null;
+    updateBgPreview();
+    dirty = true;
+  });
+
+  // -- Pattern editor -------------------------------------------------------
+
+  btnEditPattern.addEventListener('click', () => {
+    _openPatternEditor();
+  });
+
+  function _openPatternEditor() {
+    const existing = selectedBg.pattern;
+    patternWidth = existing?.width || 8;
+    patternHeight = existing?.height || 8;
+    patternFgColorEl.value = existing?.fg || '#FFFFFF';
+    patternWidthEl.value = patternWidth;
+    patternHeightEl.value = patternHeight;
+
+    // Decode bits into array
+    patternBits = new Uint8Array(patternWidth * patternHeight);
+    if (existing?.bits) {
+      const bitString = existing.bits.split('').map(c => parseInt(c, 16).toString(2).padStart(4, '0')).join('');
+      for (let i = 0; i < patternBits.length && i < bitString.length; ++i)
+        patternBits[i] = bitString[i] === '1' ? 1 : 0;
+    }
+
+    _renderPatternPresets();
+    _drawPatternGrid();
+    document.getElementById('dlg-pattern').classList.add('visible');
+  }
+
+  function _renderPatternPresets() {
+    patternPresetsEl.innerHTML = '';
+    for (const preset of PATTERN_PRESETS) {
+      const li = document.createElement('li');
+      li.textContent = preset.name;
+      li.addEventListener('click', () => {
+        if (!preset.bits) {
+          patternBits = new Uint8Array(patternWidth * patternHeight);
+        } else {
+          patternWidth = preset.w;
+          patternHeight = preset.h;
+          patternWidthEl.value = preset.w;
+          patternHeightEl.value = preset.h;
+          patternFgColorEl.value = preset.fg;
+          patternBits = new Uint8Array(patternWidth * patternHeight);
+          const bitString = preset.bits.split('').map(c => parseInt(c, 16).toString(2).padStart(4, '0')).join('');
+          for (let i = 0; i < patternBits.length && i < bitString.length; ++i)
+            patternBits[i] = bitString[i] === '1' ? 1 : 0;
+        }
+        _drawPatternGrid();
+        for (const l of patternPresetsEl.querySelectorAll('li'))
+          l.classList.toggle('selected', l === li);
+      });
+      patternPresetsEl.appendChild(li);
+    }
+  }
+
+  function _drawPatternGrid() {
+    if (!patternCtx) return;
+    const cw = patternCanvas.width;
+    const ch = patternCanvas.height;
+    patternCtx.clearRect(0, 0, cw, ch);
+
+    const cellW = Math.floor(cw / patternWidth);
+    const cellH = Math.floor(ch / patternHeight);
+    const cellSize = Math.min(cellW, cellH, 24);
+
+    const offsetX = Math.floor((cw - cellSize * patternWidth) / 2);
+    const offsetY = Math.floor((ch - cellSize * patternHeight) / 2);
+
+    const fg = patternFgColorEl.value;
+    const bg = bgBaseColorEl.value;
+
+    for (let y = 0; y < patternHeight; ++y)
+      for (let x = 0; x < patternWidth; ++x) {
+        const bit = patternBits[y * patternWidth + x];
+        patternCtx.fillStyle = bit ? fg : bg;
+        patternCtx.fillRect(offsetX + x * cellSize, offsetY + y * cellSize, cellSize, cellSize);
+        patternCtx.strokeStyle = '#666';
+        patternCtx.lineWidth = 0.5;
+        patternCtx.strokeRect(offsetX + x * cellSize, offsetY + y * cellSize, cellSize, cellSize);
+      }
+
+    // Store grid layout for click handling
+    patternCanvas._gridInfo = { offsetX, offsetY, cellSize };
+  }
+
+  // Pattern canvas click/drag
+  let _patternPainting = false;
+  let _patternPaintValue = 1;
+
+  patternCanvas.addEventListener('pointerdown', (e) => {
+    _patternPainting = true;
+    const pos = _getPatternCell(e);
+    if (pos) {
+      _patternPaintValue = patternBits[pos.y * patternWidth + pos.x] ? 0 : 1;
+      patternBits[pos.y * patternWidth + pos.x] = _patternPaintValue;
+      _drawPatternGrid();
+    }
+    patternCanvas.setPointerCapture(e.pointerId);
+  });
+
+  patternCanvas.addEventListener('pointermove', (e) => {
+    if (!_patternPainting) return;
+    const pos = _getPatternCell(e);
+    if (pos) {
+      patternBits[pos.y * patternWidth + pos.x] = _patternPaintValue;
+      _drawPatternGrid();
+    }
+  });
+
+  patternCanvas.addEventListener('pointerup', () => { _patternPainting = false; });
+
+  function _getPatternCell(e) {
+    const rect = patternCanvas.getBoundingClientRect();
+    const scaleX = patternCanvas.width / rect.width;
+    const scaleY = patternCanvas.height / rect.height;
+    const px = (e.clientX - rect.left) * scaleX;
+    const py = (e.clientY - rect.top) * scaleY;
+    const info = patternCanvas._gridInfo;
+    if (!info) return null;
+    const x = Math.floor((px - info.offsetX) / info.cellSize);
+    const y = Math.floor((py - info.offsetY) / info.cellSize);
+    if (x < 0 || x >= patternWidth || y < 0 || y >= patternHeight) return null;
+    return { x, y };
+  }
+
+  // Pattern width/height changes
+  patternWidthEl.addEventListener('change', () => {
+    const nw = parseInt(patternWidthEl.value, 10) || 8;
+    const oldBits = patternBits;
+    const oldW = patternWidth;
+    patternWidth = Math.max(1, Math.min(16, nw));
+    patternWidthEl.value = patternWidth;
+    patternBits = new Uint8Array(patternWidth * patternHeight);
+    for (let y = 0; y < patternHeight; ++y)
+      for (let x = 0; x < Math.min(patternWidth, oldW); ++x)
+        patternBits[y * patternWidth + x] = oldBits[y * oldW + x] || 0;
+    _drawPatternGrid();
+  });
+
+  patternHeightEl.addEventListener('change', () => {
+    const nh = parseInt(patternHeightEl.value, 10) || 8;
+    const oldBits = patternBits;
+    const oldH = patternHeight;
+    patternHeight = Math.max(1, Math.min(16, nh));
+    patternHeightEl.value = patternHeight;
+    patternBits = new Uint8Array(patternWidth * patternHeight);
+    for (let y = 0; y < Math.min(patternHeight, oldH); ++y)
+      for (let x = 0; x < patternWidth; ++x)
+        patternBits[y * patternWidth + x] = oldBits[y * patternWidth + x] || 0;
+    _drawPatternGrid();
+  });
+
+  patternFgColorEl.addEventListener('input', () => _drawPatternGrid());
+
+  // Pattern dialog OK/Cancel
+  document.getElementById('dlg-pattern')?.addEventListener('click', function(e) {
+    const btn = e.target.closest('[data-result]');
+    if (!btn) return;
+    this.classList.remove('visible');
+    if (btn.dataset.result === 'ok') {
+      // Encode bits to hex
+      const totalBits = patternWidth * patternHeight;
+      let binStr = '';
+      for (let i = 0; i < totalBits; ++i)
+        binStr += patternBits[i] ? '1' : '0';
+      // Pad to multiple of 4
+      while (binStr.length % 4 !== 0)
+        binStr += '0';
+      let hexStr = '';
+      for (let i = 0; i < binStr.length; i += 4)
+        hexStr += parseInt(binStr.substring(i, i + 4), 2).toString(16).toUpperCase();
+      selectedBg.pattern = { width: patternWidth, height: patternHeight, fg: patternFgColorEl.value, bits: hexStr };
+      chkPattern.checked = true;
+      btnEditPattern.disabled = false;
+      updateBgPreview();
+      dirty = true;
+    }
+  });
+
+  // -- Slideshow controls ---------------------------------------------------
+
+  slideshowIntervalEl.addEventListener('input', () => {
+    slideshowIntervalValueEl.textContent = slideshowIntervalEl.value + 's';
+    dirty = true;
+  });
+
+  slideshowDurationEl.addEventListener('input', () => {
+    slideshowDurationValueEl.textContent = parseFloat(slideshowDurationEl.value).toFixed(1) + 's';
+    dirty = true;
+  });
+
+  document.getElementById('btn-slideshow-browse')?.addEventListener('click', async () => {
+    try {
+      const result = await SZ.Dlls.User32.SendMessage('sz:fileOpen', { folderMode: true, title: 'Select Slideshow Folder' });
+      if (result && result.path) {
+        slideshowFolderEl.value = result.path;
+        dirty = true;
+      }
+    } catch {
+      // Fallback: use text input
+      const folder = prompt('Enter VFS folder path (e.g. /user/pictures):');
+      if (folder) {
+        slideshowFolderEl.value = folder;
+        dirty = true;
+      }
+    }
+  });
+
+  // -- Video controls -------------------------------------------------------
+
+  videoSpeedEl.addEventListener('input', () => {
+    videoSpeedValueEl.textContent = parseFloat(videoSpeedEl.value).toFixed(2) + 'x';
+    dirty = true;
+  });
+
+  document.getElementById('btn-video-browse')?.addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'video/*';
+    input.addEventListener('change', () => {
+      const file = input.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        videoFileEl.value = file.name;
+        videoFileEl._dataUrl = reader.result;
+        updateBgPreview();
+        dirty = true;
+      };
+      reader.readAsDataURL(file);
+    });
+    input.click();
+  });
+
+  // -- Online service controls -----------------------------------------------
+
+  const ONLINE_SERVICES = {
+    picsum: {
+      name: 'Lorem Picsum',
+      supportsList: true,
+      supportsQuery: false,
+      fetchList: async () => {
+        const resp = await fetch('https://picsum.photos/v2/list?page=' + Math.floor(Math.random() * 10 + 1) + '&limit=12');
+        const data = await resp.json();
+        return data.map(item => ({
+          thumb: `https://picsum.photos/id/${item.id}/120/90`,
+          full: `https://picsum.photos/id/${item.id}/1920/1080`,
+          author: item.author,
+        }));
+      },
+      fetchSingle: async () => {
+        return `https://picsum.photos/1920/1080?random=${Date.now()}`;
+      },
+    },
+    nasa: {
+      name: 'NASA APOD',
+      supportsList: false,
+      supportsQuery: false,
+      fetchSingle: async () => {
+        const resp = await fetch('https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY');
+        const data = await resp.json();
+        return data.hdurl || data.url;
+      },
+    },
+    bing: {
+      name: 'Bing Daily',
+      supportsList: false,
+      supportsQuery: false,
+      fetchSingle: async () => {
+        // Bing daily image - using CORS-friendly approach
+        try {
+          const resp = await fetch('https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1&mkt=en-US');
+          const data = await resp.json();
+          return 'https://www.bing.com' + data.images[0].url;
+        } catch {
+          return 'https://www.bing.com/th?id=OHR.DefaultImage_EN-US&w=1920&h=1080';
+        }
+      },
+    },
+    giphy: {
+      name: 'Giphy',
+      supportsList: true,
+      supportsQuery: true,
+      fetchList: async (query) => {
+        const q = encodeURIComponent(query || 'nature');
+        const resp = await fetch(`https://api.giphy.com/v1/gifs/search?api_key=dc6zaTOxFJmzC&q=${q}&limit=12&rating=g`);
+        const data = await resp.json();
+        return (data.data || []).map(item => ({
+          thumb: item.images.fixed_height_small.url,
+          full: item.images.original.url,
+        }));
+      },
+    },
+  };
+
+  onlineServiceEl.addEventListener('change', () => {
+    const service = ONLINE_SERVICES[onlineServiceEl.value];
+    const filterRow = document.getElementById('online-filter-row');
+    if (filterRow)
+      filterRow.style.display = service?.supportsQuery ? '' : 'none';
+    onlineThumbnailsEl.innerHTML = '';
+    dirty = true;
+  });
+
+  document.getElementById('btn-online-fetch')?.addEventListener('click', async () => {
+    const serviceKey = onlineServiceEl.value;
+    const service = ONLINE_SERVICES[serviceKey];
+    if (!service) return;
+
+    const btn = document.getElementById('btn-online-fetch');
+    btn.disabled = true;
+    btn.textContent = 'Fetching...';
+
+    try {
+      if (service.supportsList) {
+        const items = await service.fetchList(onlineQueryEl.value);
+        onlineThumbnailsEl.innerHTML = '';
+        for (const item of items) {
+          const img = document.createElement('img');
+          img.className = 'online-thumb';
+          img.src = item.thumb;
+          img.title = item.author || '';
+          img.addEventListener('click', () => {
+            for (const t of onlineThumbnailsEl.querySelectorAll('.online-thumb'))
+              t.classList.remove('selected');
+            img.classList.add('selected');
+            selectedBg.online = { ...(selectedBg.online || {}), service: serviceKey, cachedUrl: item.full };
+            _showPreviewImage(item.full, onlineModeEl.value);
+            dirty = true;
+          });
+          onlineThumbnailsEl.appendChild(img);
+        }
+      } else {
+        const url = await service.fetchSingle();
+        selectedBg.online = { ...(selectedBg.online || {}), service: serviceKey, cachedUrl: url };
+        onlineThumbnailsEl.innerHTML = '';
+        const img = document.createElement('img');
+        img.className = 'online-thumb selected';
+        img.src = url;
+        img.style.width = '120px';
+        img.style.height = '90px';
+        onlineThumbnailsEl.appendChild(img);
+        _showPreviewImage(url, onlineModeEl.value);
+        dirty = true;
+      }
+    } catch (err) {
+      console.error('Online fetch error:', err);
+      onlineThumbnailsEl.innerHTML = '<span style="font-size:10px;color:red;">Fetch failed: ' + err.message + '</span>';
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'Fetch Now';
+  });
+
+  onlineModeEl.addEventListener('change', () => {
+    updateBgPreview();
     dirty = true;
   });
 
@@ -425,7 +962,6 @@
       const reader = new FileReader();
       reader.onload = async () => {
         const dataUrl = reader.result;
-        // Add to list as a custom entry
         const name = file.name;
         const existing = availableBackgrounds.find(b => b.name === name);
         if (!existing)
@@ -457,11 +993,39 @@
   }
 
   function applyBackground() {
-    const mode = bgModeEl.value;
-    SZ.Dlls.User32.PostMessage('sz:setBackground', {
-      src: selectedBg.src || 'assets/backgrounds/bliss.svg',
-      mode: mode,
-    });
+    const sourceType = bgSourceTypeEl.value;
+    const mode = sourceType === 'slideshow' ? slideshowModeEl.value
+      : sourceType === 'online' ? onlineModeEl.value
+      : bgModeEl.value;
+
+    const bgSettings = {
+      baseColor: bgBaseColorEl.value || '#3A6EA5',
+      pattern: chkPattern.checked ? selectedBg.pattern : null,
+      sourceType,
+      src: selectedBg.src || '',
+      mode,
+    };
+
+    if (sourceType === 'slideshow')
+      bgSettings.slideshow = {
+        folder: slideshowFolderEl.value,
+        interval: parseInt(slideshowIntervalEl.value, 10) || 30,
+        shuffle: chkSlideshowShuffle.checked,
+        transition: slideshowTransitionEl.value,
+        transitionDuration: parseFloat(slideshowDurationEl.value) || 1,
+      };
+
+    if (sourceType === 'video')
+      bgSettings.video = {
+        src: videoFileEl._dataUrl || videoFileEl.value,
+        loop: chkVideoLoop.checked,
+        playbackRate: parseFloat(videoSpeedEl.value) || 1,
+      };
+
+    if (sourceType === 'online')
+      bgSettings.online = selectedBg.online || null;
+
+    SZ.Dlls.User32.PostMessage('sz:setBackground', bgSettings);
   }
 
   function applyAll() {
@@ -519,15 +1083,67 @@
     // Auto-scroll skin list to current selection
     requestAnimationFrame(() => scrollToSelectedSkin());
 
+    // Online services availability
+    onlineServicesAvailable = !!data.onlineServicesAvailable;
+
     // Background
     if (data.background) {
+      const bg = data.background;
       // Normalize legacy 'none' mode to 'center'
-      let mode = data.background.mode || 'cover';
+      let mode = bg.mode || 'cover';
       if (mode === 'none')
         mode = 'center';
-      currentBg = { src: data.background.src || '', mode };
+      currentBg = {
+        baseColor: bg.baseColor || '#3A6EA5',
+        pattern: bg.pattern || null,
+        sourceType: bg.sourceType || bg.type || 'image',
+        src: bg.src || '',
+        mode,
+        slideshow: bg.slideshow || null,
+        video: bg.video || null,
+        online: bg.online || null,
+      };
       selectedBg = { ...currentBg };
+
+      // Populate base layer controls
+      bgBaseColorEl.value = currentBg.baseColor;
+      if (currentBg.pattern) {
+        chkPattern.checked = true;
+        btnEditPattern.disabled = false;
+      } else {
+        chkPattern.checked = false;
+        btnEditPattern.disabled = true;
+      }
+
+      // Source type (drive subtabs + panels)
+      _switchBgSource(currentBg.sourceType);
+
       bgModeEl.value = mode;
+
+      // Slideshow settings
+      if (currentBg.slideshow) {
+        slideshowFolderEl.value = currentBg.slideshow.folder || '';
+        slideshowIntervalEl.value = currentBg.slideshow.interval || 30;
+        slideshowIntervalValueEl.textContent = (currentBg.slideshow.interval || 30) + 's';
+        chkSlideshowShuffle.checked = !!currentBg.slideshow.shuffle;
+        slideshowTransitionEl.value = currentBg.slideshow.transition || 'fade';
+        slideshowDurationEl.value = currentBg.slideshow.transitionDuration || 1;
+        slideshowDurationValueEl.textContent = (currentBg.slideshow.transitionDuration || 1).toFixed(1) + 's';
+        slideshowModeEl.value = mode;
+      }
+
+      // Video settings
+      if (currentBg.video) {
+        videoFileEl.value = currentBg.video.src || '';
+        chkVideoLoop.checked = currentBg.video.loop !== false;
+        videoSpeedEl.value = currentBg.video.playbackRate || 1;
+        videoSpeedValueEl.textContent = (currentBg.video.playbackRate || 1).toFixed(2) + 'x';
+      }
+
+      // Online settings
+      if (currentBg.online) {
+        onlineServiceEl.value = currentBg.online.service || 'picsum';
+      }
     }
 
     // Available backgrounds (system + user)

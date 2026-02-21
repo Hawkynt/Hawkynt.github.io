@@ -10,76 +10,359 @@
   class Desktop {
     #element;
     #bgElement;
+    #bgAltElement;
+    #patternElement;
+    #videoElement;
     #iconArea;
     #icons = [];
     #occupiedCells = new Map(); // "col,row" -> icon id
     #savedPositions = null;
+    #slideshowTimer = null;
+    #slideshowImages = [];
+    #slideshowIndex = 0;
+    #slideshowFront = true; // true = #bgElement is front, false = #bgAltElement is front
+    #currentSettings = null;
 
     constructor(element) {
       this.#element = element;
       this.#bgElement = element.querySelector('#sz-background');
+      this.#bgAltElement = element.querySelector('#sz-background-alt');
+      this.#patternElement = element.querySelector('#sz-bg-pattern');
+      this.#videoElement = element.querySelector('#sz-bg-video');
       this.#iconArea = element.querySelector('#sz-icon-area');
       this.#element.addEventListener('pointerdown', (e) => {
-        if (e.target === this.#element || e.target === this.#bgElement || e.target === this.#iconArea)
+        if (e.target === this.#element || e.target === this.#bgElement || e.target === this.#bgAltElement || e.target === this.#patternElement || e.target === this.#iconArea)
           this.#deselectAll();
       });
       this.#loadPositions();
     }
 
     async setBackground(src, mode = 'cover') {
+      // Legacy single-image API -- delegate to full API
+      await this.setBackgroundFull({ sourceType: 'image', src, mode, baseColor: '#3A6EA5', pattern: null });
+    }
+
+    async setBackgroundFull(settings) {
+      this.#currentSettings = settings;
+      const baseColor = settings.baseColor || '#3A6EA5';
+      this.#element.style.backgroundColor = baseColor;
+
+      // Pattern overlay
+      this.#applyPattern(settings.pattern, baseColor);
+
+      // Clear content layer first
+      this.#clearContentLayer();
+
+      switch (settings.sourceType || 'image') {
+        case 'none':
+          break;
+        case 'image':
+          await this.#applyImageBackground(settings.src, settings.mode || 'cover');
+          break;
+        case 'slideshow':
+          await this.#startSlideshow(settings.slideshow, settings.mode || 'cover');
+          break;
+        case 'video':
+          this.#applyVideoBackground(settings.video);
+          break;
+        case 'online':
+          if (settings.online?.cachedUrl)
+            await this.#applyImageBackground(settings.online.cachedUrl, settings.mode || 'cover');
+          break;
+      }
+    }
+
+    setBaseColor(color) {
+      this.#element.style.backgroundColor = color;
+      // Re-render pattern if present since it uses baseColor for 0-bits
+      if (this.#currentSettings?.pattern)
+        this.#applyPattern(this.#currentSettings.pattern, color);
+    }
+
+    #clearContentLayer() {
+      this.#stopSlideshow();
+      this.#bgElement.style.display = 'none';
+      this.#bgElement.src = '';
+      this.#bgAltElement.style.display = 'none';
+      this.#bgAltElement.src = '';
+      this.#bgAltElement.style.opacity = '0';
+      this.#videoElement.style.display = 'none';
+      this.#videoElement.pause();
+      this.#videoElement.removeAttribute('src');
+      this.#videoElement.load();
+      this.#element.style.backgroundImage = '';
+    }
+
+    // -- Pattern rendering ----------------------------------------------------
+
+    #applyPattern(pattern, baseColor) {
+      if (!pattern) {
+        this.#patternElement.style.display = 'none';
+        this.#patternElement.style.backgroundImage = '';
+        return;
+      }
+
+      const { width, height, fg, bits } = pattern;
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+
+      // Parse hex bits into binary
+      const bitString = bits.split('').map(c => parseInt(c, 16).toString(2).padStart(4, '0')).join('');
+
+      for (let y = 0; y < height; ++y)
+        for (let x = 0; x < width; ++x) {
+          const bitIndex = y * width + x;
+          const bit = bitString[bitIndex] === '1';
+          ctx.fillStyle = bit ? fg : baseColor;
+          ctx.fillRect(x, y, 1, 1);
+        }
+
+      const dataUri = canvas.toDataURL('image/png');
+      this.#patternElement.style.backgroundImage = `url('${dataUri}')`;
+      this.#patternElement.style.backgroundRepeat = 'repeat';
+      this.#patternElement.style.backgroundSize = `${width * 3}px ${height * 3}px`;
+      this.#patternElement.style.display = 'block';
+    }
+
+    // -- Image background -----------------------------------------------------
+
+    async #applyImageBackground(src, mode) {
+      if (!src) return;
+
+      const kernel = SZ.system?.kernel;
       const fallback = '/system/wallpapers/bliss.svg';
       let finalSrc = src;
 
-      if (src.startsWith('/')) {
+      if (src.startsWith('/') && kernel) {
         try {
-          const content = await SZ.system.vfs.read(src);
-          if (content) {
-            finalSrc = content;
-          } else {
-            finalSrc = await SZ.system.vfs.read(fallback);
-          }
+          const content = await kernel.ReadUri(src);
+          finalSrc = content || await kernel.ReadUri(fallback);
         } catch (e) {
           console.error(`VFS read error for ${src}:`, e);
-          finalSrc = await SZ.system.vfs.read(fallback);
+          try { finalSrc = await kernel.ReadUri(fallback); } catch {}
         }
       }
 
       this.#bgElement.onerror = async () => {
         this.#bgElement.onerror = null;
-        const fallbackContent = await SZ.system.vfs.read(fallback);
-        if (this.#bgElement.src !== fallbackContent)
-          this.#bgElement.src = fallbackContent;
+        if (!kernel) return;
+        try {
+          const fallbackContent = await kernel.ReadUri(fallback);
+          if (this.#bgElement.src !== fallbackContent)
+            this.#bgElement.src = fallbackContent;
+        } catch {}
       };
 
       if (mode === 'tile') {
-        // Tile mode: hide <img>, use CSS background on parent
         this.#bgElement.style.display = 'none';
         this.#element.style.backgroundImage = `url('${finalSrc}')`;
         this.#element.style.backgroundRepeat = 'repeat';
         this.#element.style.backgroundSize = 'auto';
         this.#element.style.backgroundPosition = 'top left';
       } else {
-        // Standard mode: use <img> with object-fit
         this.#bgElement.style.display = '';
         this.#element.style.backgroundImage = '';
         this.#bgElement.src = finalSrc;
-        this.#bgElement.style.objectFit = mode === 'center' ? 'none' : mode;
-        if (mode === 'center' || mode === 'none') {
-          // Center mode: natural size, centered
-          this.#bgElement.style.width = 'auto';
-          this.#bgElement.style.height = 'auto';
-          this.#bgElement.style.position = 'absolute';
-          this.#bgElement.style.top = '50%';
-          this.#bgElement.style.left = '50%';
-          this.#bgElement.style.transform = 'translate(-50%, -50%)';
-        } else {
-          this.#bgElement.style.width = '';
-          this.#bgElement.style.height = '';
-          this.#bgElement.style.position = '';
-          this.#bgElement.style.top = '';
-          this.#bgElement.style.left = '';
-          this.#bgElement.style.transform = '';
+        this.#applyImgMode(this.#bgElement, mode);
+      }
+    }
+
+    #applyImgMode(img, mode) {
+      img.style.objectFit = mode === 'center' ? 'none' : mode;
+      if (mode === 'center' || mode === 'none') {
+        img.style.width = 'auto';
+        img.style.height = 'auto';
+        img.style.position = 'absolute';
+        img.style.top = '50%';
+        img.style.left = '50%';
+        img.style.transform = 'translate(-50%, -50%)';
+      } else {
+        img.style.width = '';
+        img.style.height = '';
+        img.style.position = '';
+        img.style.top = '';
+        img.style.left = '';
+        img.style.transform = '';
+      }
+    }
+
+    // -- Slideshow engine -----------------------------------------------------
+
+    async #startSlideshow(config, mode) {
+      if (!config?.folder) return;
+      this.#stopSlideshow();
+
+      const interval = (config.interval || 30) * 1000;
+      const shuffle = !!config.shuffle;
+      const transition = config.transition || 'fade';
+      const transitionDuration = config.transitionDuration || 1;
+
+      // Load image list from VFS folder
+      try {
+        const kernel = SZ.system?.kernel;
+        if (!kernel) return;
+        const entries = await kernel.List(config.folder);
+        const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp'];
+        this.#slideshowImages = entries.filter(name => {
+          const ext = name.split('.').pop().toLowerCase();
+          return imageExts.includes(ext);
+        }).map(name => config.folder + '/' + name);
+      } catch (e) {
+        console.warn('[SZ] Slideshow folder read error:', e);
+        return;
+      }
+
+      if (this.#slideshowImages.length === 0) return;
+
+      if (shuffle)
+        this.#shuffleArray(this.#slideshowImages);
+
+      this.#slideshowIndex = 0;
+      this.#slideshowFront = true;
+
+      // Set transition durations
+      this.#bgElement.style.transition = `opacity ${transitionDuration}s ease`;
+      this.#bgAltElement.style.transition = `opacity ${transitionDuration}s ease`;
+
+      // Show first image
+      const firstSrc = await this.#resolveVfsSrc(this.#slideshowImages[0]);
+      this.#bgElement.src = firstSrc;
+      this.#bgElement.style.display = '';
+      this.#bgElement.style.opacity = '1';
+      this.#applyImgMode(this.#bgElement, mode);
+      this.#bgAltElement.style.display = '';
+      this.#applyImgMode(this.#bgAltElement, mode);
+
+      this.#slideshowTimer = setInterval(async () => {
+        ++this.#slideshowIndex;
+        if (this.#slideshowIndex >= this.#slideshowImages.length) {
+          this.#slideshowIndex = 0;
+          if (shuffle)
+            this.#shuffleArray(this.#slideshowImages);
         }
+
+        const nextSrc = await this.#resolveVfsSrc(this.#slideshowImages[this.#slideshowIndex]);
+        const front = this.#slideshowFront ? this.#bgElement : this.#bgAltElement;
+        const back = this.#slideshowFront ? this.#bgAltElement : this.#bgElement;
+
+        // Load next image into back element
+        back.src = nextSrc;
+        // Apply transition effect
+        this.#applySlideshowTransition(front, back, transition, transitionDuration);
+        this.#slideshowFront = !this.#slideshowFront;
+      }, interval);
+    }
+
+    #stopSlideshow() {
+      if (this.#slideshowTimer) {
+        clearInterval(this.#slideshowTimer);
+        this.#slideshowTimer = null;
+      }
+      this.#bgElement.style.transition = '';
+      this.#bgAltElement.style.transition = '';
+      this.#bgElement.style.transform = '';
+      this.#bgAltElement.style.transform = '';
+    }
+
+    #applySlideshowTransition(front, back, transition, duration) {
+      switch (transition) {
+        case 'slide-left':
+          back.style.opacity = '1';
+          back.style.transform = 'translateX(100%)';
+          requestAnimationFrame(() => {
+            front.style.transform = 'translateX(-100%)';
+            front.style.transition = `transform ${duration}s ease, opacity ${duration}s ease`;
+            back.style.transition = `transform ${duration}s ease, opacity ${duration}s ease`;
+            back.style.transform = 'translateX(0)';
+            setTimeout(() => { front.style.opacity = '0'; front.style.transform = ''; }, duration * 1000);
+          });
+          break;
+        case 'slide-right':
+          back.style.opacity = '1';
+          back.style.transform = 'translateX(-100%)';
+          requestAnimationFrame(() => {
+            front.style.transform = 'translateX(100%)';
+            front.style.transition = `transform ${duration}s ease, opacity ${duration}s ease`;
+            back.style.transition = `transform ${duration}s ease, opacity ${duration}s ease`;
+            back.style.transform = 'translateX(0)';
+            setTimeout(() => { front.style.opacity = '0'; front.style.transform = ''; }, duration * 1000);
+          });
+          break;
+        case 'zoom':
+          back.style.opacity = '0';
+          back.style.transform = 'scale(1.2)';
+          requestAnimationFrame(() => {
+            back.style.transition = `opacity ${duration}s ease, transform ${duration}s ease`;
+            back.style.opacity = '1';
+            back.style.transform = 'scale(1)';
+            front.style.transition = `opacity ${duration}s ease`;
+            front.style.opacity = '0';
+          });
+          break;
+        case 'dissolve':
+          back.style.opacity = '0';
+          requestAnimationFrame(() => {
+            back.style.transition = `opacity ${duration * 1.5}s ease`;
+            back.style.opacity = '1';
+            front.style.transition = `opacity ${duration * 1.5}s ease`;
+            front.style.opacity = '0';
+          });
+          break;
+        case 'fade':
+        default:
+          back.style.opacity = '0';
+          requestAnimationFrame(() => {
+            back.style.transition = `opacity ${duration}s ease`;
+            back.style.opacity = '1';
+            front.style.transition = `opacity ${duration}s ease`;
+            front.style.opacity = '0';
+          });
+          break;
+      }
+    }
+
+    async #resolveVfsSrc(path) {
+      try {
+        const kernel = SZ.system?.kernel;
+        if (kernel && path.startsWith('/'))
+          return await kernel.ReadUri(path) || path;
+      } catch {}
+      return path;
+    }
+
+    #shuffleArray(arr) {
+      for (let i = arr.length - 1; i > 0; --i) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+    }
+
+    // -- Video background -----------------------------------------------------
+
+    #applyVideoBackground(config) {
+      if (!config?.src) return;
+
+      this.#videoElement.style.display = 'block';
+      this.#videoElement.muted = true;
+      this.#videoElement.loop = config.loop !== false;
+      this.#videoElement.playbackRate = config.playbackRate || 1;
+
+      // Resolve VFS path
+      if (config.src.startsWith('/')) {
+        const kernel = SZ.system?.kernel;
+        if (kernel) {
+          kernel.ReadUri(config.src).then(uri => {
+            if (uri) {
+              this.#videoElement.src = uri;
+              this.#videoElement.play().catch(e => console.warn('[SZ] Video autoplay blocked:', e));
+            }
+          }).catch(e => console.warn('[SZ] Video VFS error:', e));
+        }
+      } else {
+        this.#videoElement.src = config.src;
+        this.#videoElement.play().catch(e => console.warn('[SZ] Video autoplay blocked:', e));
       }
     }
 

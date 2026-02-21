@@ -206,21 +206,20 @@
             return;
 
         // Settings
-        case 'sz:setBackground':
-            if (data.src) {
-                kernel.ReadUri(data.src).then(uri => {
-                    desktop.setBackground(uri, data.mode || 'cover');
-                    settings.set('background', { src: data.src, mode: data.mode || 'cover' });
-                });
-            }
+        case 'sz:setBackground': {
+            const bgSettings = _normalizeBackgroundSettings(data);
+            settings.set('background', bgSettings);
+            _applyBackgroundFull(kernel, desktop, bgSettings);
             return;
+        }
         case 'sz:getSettings':
             return handle(
                 Promise.all([kernel.List('/system/wallpapers').catch(()=>[]), kernel.List('/user/pictures').catch(()=>[])])
                 .then(([sys, usr]) => ({
                     skin: skinState.name,
                     subSkin: skinState.subSkinId,
-                    background: settings.get('background'),
+                    background: _normalizeBackgroundSettings(settings.get('background')),
+                    onlineServicesAvailable: location.protocol !== 'file:',
                     animations: settings.get('animations'),
                     cursor: {
                       shadow: settings.get('cursor.shadow'),
@@ -905,20 +904,50 @@
     return {skin, name, subSkin};
   }
   
+  function _normalizeBackgroundSettings(data) {
+    if (!data) return { baseColor: '#3A6EA5', pattern: null, sourceType: 'image', src: '/system/wallpapers/default.jpg', mode: 'cover' };
+    // Backward compat: old format { src, mode } without sourceType
+    const st = data.sourceType;
+    if (st === undefined && data.src !== undefined)
+      return { baseColor: data.baseColor || '#3A6EA5', pattern: data.pattern || null, sourceType: 'image', src: data.src, mode: data.mode || 'cover' };
+    return {
+      baseColor: data.baseColor || '#3A6EA5',
+      pattern: data.pattern || null,
+      sourceType: st || 'image',
+      src: data.src || '',
+      mode: data.mode || 'cover',
+      slideshow: data.slideshow || null,
+      video: data.video || null,
+      online: data.online || null,
+    };
+  }
+
+  async function _applyBackgroundFull(kernel, desktop, bgSettings) {
+    const resolved = { ...bgSettings };
+    // Resolve VFS image src to data URI
+    if (resolved.sourceType === 'image' && resolved.src && resolved.src.startsWith('/')) {
+      try {
+        const uri = await kernel.ReadUri(resolved.src);
+        resolved.src = uri;
+      } catch (err) {
+        console.error('Failed to resolve background src:', err);
+        try { resolved.src = await kernel.ReadUri('/system/wallpapers/bliss.svg'); } catch {}
+      }
+    }
+    if (resolved.sourceType === 'online' && resolved.online?.cachedUrl && resolved.online.cachedUrl.startsWith('/')) {
+      try { resolved.online = { ...resolved.online, cachedUrl: await kernel.ReadUri(resolved.online.cachedUrl) }; } catch {}
+    }
+    await desktop.setBackgroundFull(resolved);
+  }
+
   async function setInitialBackground(kernel, desktop, settings) {
     const bgPref = settings.get('background');
-    let path = '/system/wallpapers/default.jpg';
-    let mode = 'cover';
-    if (bgPref && bgPref.src) {
-        path = bgPref.src;
-        mode = bgPref.mode || 'cover';
-    }
+    const bgSettings = _normalizeBackgroundSettings(bgPref);
     try {
-        const uri = await kernel.ReadUri(path);
-        desktop.setBackground(uri, mode);
+      await _applyBackgroundFull(kernel, desktop, bgSettings);
     } catch (err) {
-        console.error("Failed to set initial background:", err);
-        desktop.setBackground('assets/backgrounds/default.jpg', 'cover');
+      console.error("Failed to set initial background:", err);
+      desktop.setBackground('assets/backgrounds/default.jpg', 'cover');
     }
   }
   
