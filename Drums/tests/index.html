@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SynthelicZ Drums — Tests</title>
+  <style>
+    body { font-family: 'Segoe UI', Consolas, monospace; background: #1e1e1e; color: #d4d4d4; padding: 1em 2em; }
+    summary { font-size: 1.1em; margin: 0.3em 0; }
+    h1 { font-size: 1.4em; }
+    details { margin-bottom: 0.3em; }
+  </style>
+</head>
+<body>
+  <div id="results">Loading tests…</div>
+
+  <!-- Source files (dependency order) -->
+  <script src="../model.js"></script>
+  <script src="../abc-converter.js"></script>
+  <script src="../kit-renderer.js"></script>
+  <script src="../lane-renderer.js"></script>
+  <script src="../belt-renderer.js"></script>
+  <script src="../bar-editor.js"></script>
+  <script src="../note-flight.js"></script>
+
+  <!-- Test runner -->
+  <script src="test-runner.js"></script>
+
+  <!-- Test suites (each self-registers via describe/it) -->
+  <script src="model.test.js"></script>
+  <script src="abc-converter.test.js"></script>
+  <script src="controller.test.js"></script>
+  <script src="kit-renderer.test.js"></script>
+  <script src="lane-renderer.test.js"></script>
+  <script src="sheet-belt.test.js"></script>
+  <script src="bar-editor.test.js"></script>
+  <script src="note-flight.test.js"></script>
+
+  <!-- Run all tests after everything has loaded -->
+  <script>
+    (async function () {
+      const results = await TestRunner.runAllTests();
+      TestRunner.renderResults(results, document.getElementById('results'));
+    })();
+  </script>
+</body>
+</html>
