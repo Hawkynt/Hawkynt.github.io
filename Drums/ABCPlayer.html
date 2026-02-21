@@ -7,840 +7,118 @@
   <meta name="description" content="ABC notation music player and drum pattern editor with playback controls">
   <meta name="robots" content="index,follow">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="ABC Music Player -- »SynthelicZ«">
-  <meta property="og:description" content="ABC notation music player and drum pattern editor with playback controls.">
+  <meta property="og:title" content="»SynthelicZ« Drums — Groove Editor">
+  <meta property="og:description" content="Browser-based drum groove editor and player with sheet music, Guitar Hero lanes, and a virtual drum kit.">
   <meta property="og:url" content="https://hawkynt.github.io/Drums/ABCPlayer.html">
   <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="ABC Music Player -- »SynthelicZ«">
-  <meta name="twitter:description" content="ABC notation music player and drum pattern editor with playback controls.">
+  <meta name="twitter:title" content="»SynthelicZ« Drums — Groove Editor">
+  <meta name="twitter:description" content="Browser-based drum groove editor and player with sheet music, Guitar Hero lanes, and a virtual drum kit.">
   <link rel="related" href="https://hawkynt.github.io/sz/" title="»SynthelicZ« Desktop">
-  <title>ABCJS Music Display with Controls</title>
+  <title>»SynthelicZ« Drums — Groove Editor</title>
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="styles.css">
+
+  <!-- abcjs library (global, non-module) -->
   <script src="https://cdn.jsdelivr.net/npm/abcjs@6.2.3/dist/abcjs-basic-min.js"></script>
 
-  <style>
-    .highlight {
-      fill: #0a9ecc;
-    }
-
-    .abcjs-cursor {
-      stroke: red;
-    }
-
-    .abcjs-css-warning {
-      display: none;
-    }
-  </style>
-
-  <script>
-    const Instrument = Object.freeze({
-      Crash: 'crash',
-      Ride: 'ride',
-      OpenHiHat: 'hi-hat(open)',
-      ClosedHiHat: 'hi-hat(closed)',
-      HiHatPedal: 'hi-hat(pedal)',
-      BassDrum: 'bass-drum',
-      SnareDrum: 'snare',
-      HighTom: 'tom(high)',
-      MidTom: 'tom(normal)',
-      FloorTom: 'tom(floor)',
-    });
-
-    const PlayState = Object.freeze({
-      Silence: 'not played',
-      Stroke: 'played(hit)',
-      Click: 'clicked',
-      Flam: 'doubled',
-      Ruff: 'multiple',
-      Rimshot: 'rimshot',
-      Ghost: 'quiet',
-      Accent: 'loud',
-      Choke: 'choke',
-    });
-
-    class DrumBit {
-
-      static Mode = Object.freeze({
-        DrumKit: 0b0,
-        Toms: 0b1,
-      });
-
-      static BassDrumState = Object.freeze({
-        Off: 0b0,
-        Kick: 0b1,
-      });
-
-      static SnareState = Object.freeze({
-        Off: 0b000,
-        Stroke: 0b001,
-        Click: 0b010,
-        Rimshot: 0b011,
-        Flam: 0b100,
-        Ruff: 0b101,
-        Ghost: 0b110,
-        Accent: 0b111,
-      });
-
-      static HiHatState = Object.freeze({
-        Off: 0b000,
-        Closed: 0b001,
-        Pedal: 0b010,
-        Open: 0b011,
-        Crash: 0b100,
-        Choke: 0b101,
-        Ghost: 0b110,
-        Accent: 0b111,
-      });
-
-      static TomState = Object.freeze({
-        Off: 0b00,
-        Stroke: 0b01,
-        Quiet: 0b10,
-        Loud: 0b11,
-      });
-
-      static TomSelection = Object.freeze({
-        SnareAndLowTom: 0b000,
-        HighTomOnly: 0b100,
-        MidTomOnly: 0b010,
-        LowTomOnly: 0b001,
-        HighAndMidTom: 0b110,
-        HighAndLowTom: 0b101,
-        MidAndLowTom: 0b011,
-        SnareAndHighTom: 0b111,
-      });
-
-      static ReservedPattern = 0b10000000;
-      static SilencePattern = 0b00000000;
-
-      static ModeMask = 0b10000000;
-      static ModeShift = 7;
-
-      static BassDrumMask = 0b00000001;
-      static BassDrumShift = 0;
-
-      static HiHatMask = 0b00001110;
-      static HiHatShift = 1;
-
-      static SnareMask = 0b01110000;
-      static SnareShift = 4;
-
-      static TomsModeMask = 0b01110000;
-      static TomsModeShift = 4;
-
-      static TomsLeftHandMask = 0b00001100;
-      static TomsLeftHandShift = 2;
-
-      static TomsRightHandMask = 0b00000011;
-      static TomsRightHandShift = 0;
-
-      _bitPattern = DrumBit.SilencePattern;
-
-      constructor(bitPattern) {
-        if (bitPattern !== undefined)
-          this._bitPattern = bitPattern;
-      }
-
-      _getMode = () => { return (this._bitPattern & DrumBit.ModeMask) >> DrumBit.ModeShift; }
-      _getToms = () => { return this._getMode() != DrumBit.Mode.Toms ? null : (this._bitPattern & DrumBit.TomsModeMask) >> DrumBit.TomsModeShift; }
-      _getLeftTom = () => { return this._getMode() != DrumBit.Mode.Toms ? null : (this._bitPattern & DrumBit.TomsLeftHandMask) >> DrumBit.TomsLeftHandShift; }
-      _getRightTom = () => { return this._getMode() != DrumBit.Mode.Toms ? null : (this._bitPattern & DrumBit.TomsRightHandMask) >> DrumBit.TomsRightHandMaskShift; }
-      _getHiHat = () => { return this._getMode() != DrumBit.Mode.DrumKit ? null : (this._bitPattern & DrumBit.HiHatMask) >> DrumBit.HiHatShift; }
-      _getBassDrum = () => { return this._getMode() != DrumBit.Mode.DrumKit ? null : (this._bitPattern & DrumBit.BassDrumMask) >> DrumBit.BassDrumShift; }
-
-      _getSnare = () => {
-        switch (this._getMode()) {
-          case DrumBit.Mode.DrumKit:
-            return (this._bitPattern & DrumBit.SnareMask) >> DrumBit.SnareShift;
-          case DrumBit.Mode.Toms:
-            switch (this._getToms()) {
-              case DrumBit.TomSelection.SnareAndLowTom:
-              case DrumBit.TomSelection.SnareAndHighTom:
-                switch (this._getLeftTom()) {
-                  case DrumBit.TomState.Stroke:
-                    return DrumBit.SnareState.Stroke;
-                  case DrumBit.TomState.Quiet:
-                    return DrumBit.SnareState.Ghost;
-                  case DrumBit.TomState.Loud:
-                    return DrumBit.SnareState.Accent;
-                }
-            }
-        }
-        return null;
-      }
-      
-      static _multiTomStateConverter = (leftOrRight) => {
-        switch (leftOrRight) {
-          case DrumBit.TomState.Stroke:
-            return PlayState.Stroke;
-          case DrumBit.TomState.Quiet:
-            return PlayState.Ghost;
-          case DrumBit.TomState.Loud:
-            return PlayState.Accent;
-        }
-      }
-
-      _singleTomStateConverter = () => {
-        const left = this._getLeftTom();
-        const right = this._getRightTom();
-        if (right === DrumBit.TomState.Off)
-          return DrumBit._multiTomStateConverter(left);
-
-        if (right === DrumBit.TomState.Loud)
-          switch (left) {
-            case DrumBit.TomState.Stroke:
-              return PlayState.Flam;
-            case DrumBit.TomState.Quiet:
-              return PlayState.Ruff;
-            case DrumBit.TomState.Loud:
-              return PlayState.Rimshot;
-          }
-
-        return PlayState.Silence;
-      }
-
-      _setMode(mode) {
-        this._bitPattern = (this._bitPattern & ~DrumBit.ModeMask) & (mode << DrumBit.ModeShift);
-      }
-
-      _setHiHat(hiHatSate) {
-        if (this._getMode() !== DrumBit.Mode.DrumKit){
-          if(hiHatSate === DrumBit.HiHatState.Off)
-            return;
-
-          const snare = this._getSnare();
-          this._bitPattern = DrumBit.SilencePattern;
-          this._setMode(DrumBit.Mode.DrumKit);
-          this._setSnare(snare);
-        }
-
-        this._bitPattern = (this._bitPattern & ~DrumBit.HiHatMask) & (hiHatState << DrumBit.HiHatShift);
-      }
-
-      _setSnare(snareState) {
-        if (this._getMode() !== DrumBit.Mode.DrumKit) {
-          // TODO:
-        }
-
-        this._bitPattern = (this._bitPattern & ~DrumBit.SnareMask) & (snareState << DrumBit.SnareShift);
-      }
-
-      _setToms(tomSelection) {
-        // TODO:
-      }
-
-      _setLeftTom(tomState) {
-        // TODO:
-      }
-
-      _setRightTom(tomState) {
-        // TODO:
-      }
-
-      _setBassDrum(bassDrumState) {
-        if (this._getMode() !== DrumBit.Mode.DrumKit) {
-          if (bassDrumState === DrumBit.BassDrumState.Off)
-            return;
-
-          const snare = this._getSnare();
-          this._bitPattern = DrumBit.SilencePattern;
-          this._setMode(DrumBit.Mode.DrumKit);
-          this._setSnare(snare);
-        }
-        
-        this._bitPattern = (this._bitPattern & ~DrumBit.BassDrumMask) & (bassDrumState << DrumBit.BassDrumShift);
-      }
-
-      setInstrument = (instrument, playState) => {
-        switch(instrument) {
-          case Instrument.BassDrum: 
-            switch(playState){
-              case PlayState.Silence:
-                this._setBassDrum(DrumBit.BassDrumState.Off);
-              default:
-                this._setBassDrum(DrumBit.BassDrumState.Kick);
-          }
-          case Instrument.ClosedHiHat:
-            // TODO:
-          case Instrument.Crash:
-            // TODO:
-          case Instrument.OpenHiHat:
-            // TODO:
-          case Instrument.HiHatPedal:
-            // TODO:
-          case Instrument.Ride:
-            // TODO:
-          case Instrument.FloorTom:
-            // TODO:
-          case Instrument.MidTom:
-            // TODO:
-          case Instrument.HighTom:
-            // TODO:
-        }
-      }
-
-      getInstrument = (instrument) => {
-        switch (instrument) {
-          case Instrument.FloorTom:
-            switch (this._getToms()) {
-              case DrumBit.TomSelection.LowTomOnly:
-                return this._singleTomStateConverter();
-              case DrumBit.TomSelection.MidAndLowTom:
-              case DrumBit.TomSelection.HighAndLowTom:
-              case DrumBit.TomSelection.SnareAndLowTom:
-                return DrumBit._multiTomStateConverter(this._getRightTom());
-            }
-            break;
-          case Instrument.MidTom:
-            switch (this._getToms()) {
-              case DrumBit.TomSelection.MidTomOnly:
-                return this._singleTomStateConverter();
-              case DrumBit.TomSelection.MidAndLowTom:
-                return DrumBit._multiTomStateConverter(this._getLeftTom());
-              case DrumBit.TomSelection.HighAndMidTom:
-                return DrumBit._multiTomStateConverter(this._getRightTom());
-            }
-            break;
-          case Instrument.HighTom:
-            switch (this._getToms()) {
-              case DrumBit.TomSelection.HighTomOnly:
-                return this._singleTomStateConverter();
-              case DrumBit.TomSelection.HighAndLowTom:
-              case DrumBit.TomSelection.HighAndMidTom:
-                return DrumBit._multiTomStateConverter(this._getLeftTom());
-              case DrumBit.TomSelection.SnareAndHighTom:
-                return DrumBit._multiTomStateConverter(this._getRightTom());
-            }
-            break;
-          case Instrument.BassDrum:
-            switch (this._getBassDrum()) {
-              case DrumBit.BassDrumState.Kick:
-                return PlayState.Stroke;
-            }
-            break;
-          case Instrument.Crash:
-            switch (this._getHiHat()) {
-              case DrumBit.HiHatState.Crash:
-                return PlayState.Stroke;
-              case DrumBit.HiHatState.Choke:
-                return PlayState.Choke;
-            }
-            break;
-          case Instrument.ClosedHiHat:
-            switch (this._getHiHat()) {
-              case DrumBit.HiHatState.Closed:
-                return PlayState.Stroke;
-              case DrumBit.HiHatState.Ghost:
-                return PlayState.Ghost;
-              case DrumBit.HiHatState.Accent:
-                return PlayState.Accent;
-            }
-            break;
-          case Instrument.OpenHiHat:
-            switch (this._getHiHat()) {
-              case DrumBit.HiHatState.Open:
-                return PlayState.Stroke;
-            }
-            break;
-          case Instrument.HiHatPedal:
-            switch (this._getHiHat()) {
-              case DrumBit.HiHatState.Pedal:
-                return PlayState.Stroke;
-            }
-            break;
-          case Instrument.SnareDrum:
-            switch (this._getSnare()) {
-              case DrumBit.SnareState.Stroke:
-                return PlayState.Stroke;
-              case DrumBit.SnareState.Ghost:
-                return PlayState.Ghost;
-              case DrumBit.SnareState.Accent:
-                return PlayState.Accent;
-              case DrumBit.SnareState.Click:
-                return PlayState.Click;
-              case DrumBit.SnareState.Flam:
-                return PlayState.Flam;
-              case DrumBit.SnareState.Ruff:
-                return PlayState.Ruff;
-              case DrumBit.SnareState.Rimshot:
-                return PlayState.Rimshot;
-            }
-            break;
-          default:
-            console.log("error getting instrument: " + instrument);
-        }
-        return PlayState.Silence;
-      }
-
-    }
-
-    NoteIndex=Object.freeze({
-      Beat1:0,
-      Beat3:1,
-      Beat2:2,
-      Beat4:3,
-      Beat1Plus:4,
-      Beat3Plus:5,
-      Beat2Plus:6,
-      Beat4Plus:7,
-      Beat1E:8,
-      Beat3E:9,
-      Beat2E:10,
-      Beat4E:11,
-      Beat1A:12,
-      Beat3A:13,
-      Beat2A:14,
-      Beat4A:15,
-    });
-
-    class Bar {
-      bits = new Array(16).fill().map(() => new DrumBit());
-
-      setDrumBit = (index, drumBit) => {
-        if (index >= 0 && index < this.bits.length)
-          this.bits[index] = drumBit;
-      }
-
-      getDrumBit = (index) => {
-        return (index >= 0 && index < this.bits.length) ? this.bits[index] : null;
-      }
-
-      clone = () => {
-        const newBar = new Bar();
-        newBar.bits = this.bits.map(bit => Object.assign(new DrumBit(), bit));
-        return newBar;
-      }
-    }
-
-    class DrumGroove {
-      bars = [];
-
-      addBar = (bar, index) => {
-        if (index !== undefined)
-          this.bars.splice(index, 0, bar);
-        else
-          this.bars.push(bar);
-      }
-
-      removeBar = (index) => {
-        if (index >= 0 && index < this.bars.length)
-          this.bars.splice(index, 1);
-      }
-
-      cloneBar = (index) => {
-        return (index >= 0 && index < this.bars.length) ? this.bars[index].clone() : null;
-      }
-
-      getBar = (index) => {
-        return (index >= 0 && index < this.bars.length) ? this.bars[index] : null;
-      }
-    }
-
-    class AbcConverter {
-
-      static _instrumentMapping = Object.freeze([
-        [Instrument.SnareDrum, "c"],
-        [Instrument.BassDrum, "F"],
-        [Instrument.FloorTom, "A"],
-        [Instrument.MidTom, "d"],
-        [Instrument.HighTom, "e"],
-        [Instrument.OpenHiHat, "!open!ng"],
-        [Instrument.ClosedHiHat, "ng"],
-        [Instrument.HiHatPedal, "nD"],
-        [Instrument.Crash, "na"],
-        [Instrument.Ride, "nf"],
-      ]);
-
-      // Convert a DrumBit to an ABC notation string
-      static _drumBitToAbc = (drumBit) => {
-        let result = "";
-        for (const [instrument, notation] of AbcConverter._instrumentMapping) {
-          switch (drumBit.getInstrument(instrument)) {
-            case PlayState.Stroke:
-              result += notation;
-              break;
-            case PlayState.Accent:
-              result += `!accent!${notation}`;
-              break;
-            case PlayState.Ghost:
-              result += `"@-6,-15(""@10,-15)"${notation}`;
-              break;
-            case PlayState.Click:
-              if (notation.startsWith("n"))
-                result += `"@-6,-15(""@10,-15)"${notation}`;
-              else
-                result += `n${notation}`;
-              break;
-            case PlayState.Flam:
-              result += `{/${notation}}${notation}`;
-              break;
-            case PlayState.Ruff:
-              result += `{/${notation}${notation}}${notation}`;
-              break;
-            case PlayState.Choke:
-              result += `.${notation}`;
-              break;
-          }
-        }
-
-        return result;
-      }
-
-      static _drumBitToSymbol = (drumBit) => {
-        let abcNotation = AbcConverter._drumBitToAbc(drumBit);
-        var result = 'z';
-        if (abcNotation) {
-          
-          // HACK: ABC renders some stuff inside square-brackets wrong so we need to move them before the brackets
-          let prefix = '';
-          
-          // Regular expressions to match problematic parts
-          const enclosedRegex = /(![^!]+!|{[^{}]+}|"[^"]+"|\.)/g;
-
-          // Extract all enclosed parts
-          const enclosedParts = abcNotation.match(enclosedRegex);
-          if (enclosedParts) {
-            
-            // Remove duplicates from the array
-            const uniqueEnclosedParts = [...new Set(enclosedParts)];
-
-            // Collect the unique enclosed parts in 'prefix'
-            uniqueEnclosedParts.forEach((enclosedPart) => {
-              prefix += enclosedPart;
-              abcNotation = abcNotation.replaceAll(enclosedPart, '',);
-            });
-          }
-          
-          // if already multiple notes in the ABC-notation, just add them plain
-          abcNotation = abcNotation.replaceAll('[', '');
-          abcNotation = abcNotation.replaceAll(']', '');
-
-          result = `${prefix}[${abcNotation}]`;
-        }
-
-        return result;
-      }
-
-      static _beatIndexes = Object.freeze([
-        NoteIndex.Beat1,
-        NoteIndex.Beat1E,
-        NoteIndex.Beat1Plus,
-        NoteIndex.Beat1A,
-        NoteIndex.Beat2,
-        NoteIndex.Beat2E,
-        NoteIndex.Beat2Plus,
-        NoteIndex.Beat2A,
-        NoteIndex.Beat3,
-        NoteIndex.Beat3E,
-        NoteIndex.Beat3Plus,
-        NoteIndex.Beat3A,
-        NoteIndex.Beat4,
-        NoteIndex.Beat4E,
-        NoteIndex.Beat4Plus,
-        NoteIndex.Beat4A,
-      ]);
-
-      // Convert a Bar to ABC notation
-      _barToAbc = (bar) => {
-        let result = "";
-        var lastSymbol = "z";
-        var symbolCount = 0;
-        
-        for (let i = 0; i < AbcConverter._beatIndexes.length; ++i) {
-          const drumBit = bar.bits[AbcConverter._beatIndexes[i]];
-          const currentSymbol = AbcConverter._drumBitToSymbol(drumBit);
-          
-          if (lastSymbol === currentSymbol)
-            ++symbolCount;
-          else if (currentSymbol === 'z')
-            ++symbolCount;
-          else {
-            if (symbolCount < 1)
-              ;
-            else if (symbolCount === 1)
-              result += lastSymbol;
-            else
-              result += lastSymbol + symbolCount;
-
-            if (i % 4 === 0)
-              result += " ";
-
-            lastSymbol = currentSymbol;
-            symbolCount = 1;
-          }
-        }
-
-        if (symbolCount === 1)
-          result += lastSymbol;
-        else
-          result += lastSymbol + symbolCount;
-
-        return result;
-      }
-
-      // Convert the entire DrumGroove to ABC notation
-      convert = (drumGroove, title = "Auto-Generated", artist = "CPU", barsPerLine = 4) => {
-        const application = "ABCPlayer"
-        const currentDate = new Date();
-        const formattedDate = currentDate.toLocaleDateString("en-GB", {
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit'
-        }).replace(/\//g, '.');
-
-        var abcHeader = `%abc
-X:1
-T:${title}
-C:${artist}
-Z:${application} (${formattedDate})
-M:4/4
-Q:75
-K:clef=perc
-U:n=!style=x!
-U:m=!style=triangle!
-%%stretchlast 1
-%%flatbeams 1
-%%ornament up
-%%partsbox 1
-%%staffsep 5cm % separation of lines
-%%MIDI channel 10
-%%MIDI program 0
-%%MIDI drummap D 44 %pedal hi-hat
-%%MIDI drummap F 36 %bass drum 1
-%%MIDI drummap A 41 %low floor tom
-%%MIDI drummap B 45 %low tom
-%%MIDI drummap c 38 %acoustic snare
-%%MIDI drummap d 48 %hi mid tom
-%%MIDI drummap e 50 %high tom
-%%MIDI drummap f 51 %ride cymbal 1
-%%MIDI drummap g 42 %closed hi hat
-%%MIDI drummap a 49 %crash cymbal 1
-%%MIDI drummap b 52 %chinese cymbal
-V:drums stem=up
-L:1/16
-`;
-        let abcBody = '';
-        for (let i = 0; i < drumGroove.bars.length; ++i) {
-          abcBody += this._barToAbc(drumGroove.bars[i]);
-
-          // Add a separator for each bar except the last one
-          if (i < drumGroove.bars.length - 1)
-            abcBody += " | ";
-          
-          // Add a line break after every n-th bar, except the last bar
-          if ((i + 1) % barsPerLine === 0 && i < drumGroove.bars.length - 1)
-            abcBody += "\n";
-        }
-
-        return abcHeader + '|: ' + abcBody + ' :|';        
-      }
-    }
-
-    // used for diplaying a moving cursor while playing
-    class CursorControl {
-      constructor() {
-        this.beatSubdivisions = 2;
-      }
-
-      onReady() {
-      };
-
-      onStart() {
-        const svg = document.querySelector("#paper svg");
-        const cursor = document.createElementNS("http://www.w3.org/2000/svg", "line");
-        cursor.setAttribute("class", "abcjs-cursor");
-        cursor.setAttributeNS(null, 'x1', 0);
-        cursor.setAttributeNS(null, 'y1', 0);
-        cursor.setAttributeNS(null, 'x2', 0);
-        cursor.setAttributeNS(null, 'y2', 0);
-        svg.appendChild(cursor);
-      };
-
-      onBeat(beatNumber, totalBeats, totalTime) { };
-
-      onEvent(event) {
-
-        // this was the second part of a tie across a measure line. Just ignore it.  
-        if (event.measureStart && event.left === null)
-          return;
-
-        const highlightedElements = document.querySelectorAll("#paper svg .highlight");
-        for (const element of highlightedElements)
-          element.classList.remove("highlight");
-
-        JSON.stringify(event, null, 4);
-        for (const element of event.elements)
-          for (const note of element)
-            note.classList.add("highlight");
-
-        const cursor = document.querySelector("#paper svg .abcjs-cursor");
-        if (cursor) {
-          cursor.setAttribute("x1", event.left - 2);
-          cursor.setAttribute("x2", event.left - 2);
-          cursor.setAttribute("y1", event.top);
-          cursor.setAttribute("y2", event.top + event.height);
-        }
-      };
-
-      onFinished() {
-        const highlightedElements = document.querySelectorAll("svg .highlight");
-        for (const element of highlightedElements)
-          element.classList.remove("highlight");
-
-        const cursor = document.querySelector("#paper svg .abcjs-cursor");
-        if (cursor) {
-          cursor.setAttribute("x1", 0);
-          cursor.setAttribute("x2", 0);
-          cursor.setAttribute("y1", 0);
-          cursor.setAttribute("y2", 0);
-        }
-      };
-    }
-
-    var cursorControl = new CursorControl();
-
-    // Global variables for ABCJS synth control
-    var synthControl;
-    var currentNotationInstance;
-
-    function clickListener(abcElem, tuneNumber, classes, analysis, drag, mouseEvent) {
-      var lastClicked = abcElem.midiPitches;
-      if (!lastClicked)
-        return;
-
-      ABCJS.synth.playEvent(lastClicked, abcElem.midiGraceNotePitches, synthControl.visualObj.millisecondsPerMeasure()).then(function (response) {
-        console.log("note played");
-      }).catch(function (error) {
-        console.log("error playing note", error);
-      });
-    }
-
-    var abcOptions = {
-      add_classes: true,
-      clickListener: clickListener,
-      responsive: "resize"
-    };
-
-    function loadAndDisplayABC(uri) {
-      fetch(uri)
-        .then(response => response.text())
-        .then(abcNotation => {
-          if (abcNotation) {
-            displayABC(abcNotation);
-          } else {
-            console.error("No ABC notation found at the URI.");
-          }
-        })
-        .catch(error => console.error("Error loading ABC notation:", error));
-    }
-
-    function displayABC(abcNotation) {
-      console.log("ABC:" + abcNotation);
-
-      // Render ABC Notation
-      currentNotationInstance = ABCJS.renderAbc("paper", abcNotation, abcOptions)[0];
-
-      // Attach Synthesizer to Rendered Notation
-      synthControl.setTune(currentNotationInstance, false);
-
-      setupEventHandlers();
-      document.getElementById("downloadMidi").disabled = "";
-    }
-
-    function initializeSynthControl() {
-      synthControl = new ABCJS.synth.SynthController();
-      synthControl.load("#audio", cursorControl, {
-        displayLoop: true,
-        displayRestart: true,
-        displayPlay: true,
-        displayProgress: true,
-        displayWarp: true
-      });
-    }
-
-    function setupEventHandlers() {
-      document.getElementById("downloadMidi").addEventListener("click", function () {
-        if (!currentNotationInstance)
-          return;
-
-        var midi = ABCJS.synth.getMidiFile(currentNotationInstance);
-        var element = document.createElement('a');
-        element.setAttribute('href', 'data:audio/midi;charset=utf-8,' + encodeURIComponent(midi));
-        element.setAttribute('download', "music.mid");
-
-        element.style.display = 'none';
-        document.body.appendChild(element);
-
-        element.click();
-
-        document.body.removeChild(element);
-      });
-    }
-
-    window.onload = function () {
-      initializeSynthControl();
-      var uri = getParameterByName('uri');
-      if (uri) {
-        loadAndDisplayABC(uri);
-        return;
-      }
-
-      var mode = getParameterByName('mode');
-      if (mode === 'random') {
-        var groove = new DrumGroove();
-        var bar = new Bar();
-        groove.addBar(bar);
-        bar.setDrumBit(NoteIndex.Beat1, new DrumBit(0b00000011));
-        bar.setDrumBit(NoteIndex.Beat3, new DrumBit(0b00000011));
-        bar.setDrumBit(NoteIndex.Beat2, new DrumBit(0b00010010));
-        bar.setDrumBit(NoteIndex.Beat4, new DrumBit(0b00010010));
-        bar.setDrumBit(NoteIndex.Beat1Plus, new DrumBit(0b00000010));
-        bar.setDrumBit(NoteIndex.Beat2Plus, new DrumBit(0b00000010));
-        bar.setDrumBit(NoteIndex.Beat3Plus, new DrumBit(0b00000010));
-        bar.setDrumBit(NoteIndex.Beat4Plus, new DrumBit(0b00000010));
-        
-        bar = new Bar();
-        groove.addBar(bar);
-        bar.setDrumBit(NoteIndex.Beat1, new DrumBit(0b11110101));
-        bar.setDrumBit(NoteIndex.Beat1Plus, new DrumBit(0b11111010));
-        bar.setDrumBit(NoteIndex.Beat2, new DrumBit(0b11111111));
-        bar.setDrumBit(NoteIndex.Beat3, new DrumBit(0b01110111));
-        bar.setDrumBit(NoteIndex.Beat4, new DrumBit(0b01111011));
-
-        for(var i=0;i<5;++i){
-          bar=new Bar();
-          groove.addBar(bar);
-          for(var j=0;j<16;++j)
-            bar.setDrumBit(j,new DrumBit(getRandom(256)));
-        }
-
-        var abc = new AbcConverter().convert(groove);
-        displayABC(abc);
-        return;
-      }
-
-      console.error("No URI provided in the 'uri' GET parameter.");
-    };
-
-    function getRandom(exclusiveMaximum) {
-      return Math.floor(Math.random() * exclusiveMaximum);
-    }
-
-    // Function to get the value of a GET parameter by name
-    function getParameterByName(name, url = window.location.href) {
-      name = name.replace(/[\[\]]/g, '\\$&');
-      var regex = new RegExp('[?&]' + name + '(=([^&#]*)|&|#|$)'),
-        results = regex.exec(url);
-      if (!results) return null;
-      if (!results[2]) return '';
-      return decodeURIComponent(results[2].replace(/\+/g, ' '));
-    }
-  </script>
+  <!-- Application scripts (plain, no modules — works from file://) -->
+  <script src="model.js"></script>
+  <script src="abc-converter.js"></script>
+  <script src="kit-renderer.js"></script>
+  <script src="lane-renderer.js"></script>
+  <script src="belt-renderer.js"></script>
+  <script src="bar-editor.js"></script>
+  <script src="note-flight.js"></script>
+  <script src="controller.js" defer></script>
 </head>
 
 <body>
-  <div id="audio"></div>
-  <div id="paper"></div>
-  <button id="downloadMidi" disabled="disabled">Download MIDI</button>
+
+  <!-- ── App Shell ──────────────────────────────────────── -->
+  <div id="app">
+
+    <!-- ── Transport Bar ──────────────────────────────────── -->
+    <header id="transport">
+      <span class="brand">»SynthelicZ«&thinsp;Drums</span>
+
+      <div class="controls">
+        <button id="btn-new" type="button" title="Create empty groove">📝 New</button>
+        <button id="btn-random" type="button" title="Generate random groove">🎲 Random</button>
+        <button id="btn-download-midi" type="button" disabled title="Download MIDI file">⬇ MIDI</button>
+        <button id="btn-record" type="button" title="Toggle recording (tap keys to add notes during playback)">⏺ Record</button>
+      </div>
+
+      <div id="audio"></div>
+
+      <label class="beam-toggle" title="Per-instrument beaming on the belt">
+        <input id="chk-beam-per-instrument" type="checkbox"> Beam/Inst
+      </label>
+
+      <div class="spacer"></div>
+
+      <div class="tempo">
+        <label for="tempo-input">BPM</label>
+        <input id="tempo-input" type="number" min="30" max="300" value="60" step="1">
+      </div>
+
+      <button id="btn-light-mode" type="button" title="Toggle light/dark mode">Light</button>
+    </header>
+
+    <!-- ── Main Content (2×2 grid: lanes|tabs  kit|belt) ─── -->
+    <main id="main">
+
+      <!-- Top-left: falling lanes -->
+      <div id="lane-viewport">
+        <canvas id="lane-canvas"></canvas>
+      </div>
+
+      <!-- Top-right: tabbed editor area -->
+      <div id="right-top">
+        <nav id="editor-tabs">
+          <button class="tab-btn active" data-tab="tab-sheet" type="button">🎼 Sheet</button>
+          <button class="tab-btn" data-tab="tab-bar-editor" type="button">🎛️ Bar Editor</button>
+          <button class="tab-btn" data-tab="tab-abc" type="button">📜 ABC</button>
+        </nav>
+        <div id="tab-panes">
+          <div id="tab-sheet" class="tab-pane active">
+            <div id="score-viewport">
+              <div id="paper"></div>
+            </div>
+          </div>
+          <div id="tab-bar-editor" class="tab-pane">
+            <div id="bar-editor-viewport">
+              <!-- Built dynamically by bar-editor.js -->
+            </div>
+          </div>
+          <div id="tab-abc" class="tab-pane">
+            <pre id="abc-text"></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom-left: drum kit SVG (same grid row as belt → same height) -->
+      <div id="kit-viewport">
+        <!-- SVG drum kit is rendered procedurally by kit-renderer.js -->
+      </div>
+
+      <!-- Bottom-right: sheet belt (same grid row as kit → same height) -->
+      <div id="sheet-belt">
+        <div class="scroll-track"></div>
+      </div>
+
+    </main>
+
+    <!-- ── Mixer / Status ─────────────────────────────────── -->
+    <footer id="mixer">
+      <span class="status" id="status-text">Ready</span>
+    </footer>
+
+  </div>
+
+  <!-- Particle effects overlay (driven by JS) -->
+  <canvas id="particles"></canvas>
+
 </body>
 
 </html>
