@@ -173,6 +173,18 @@
     <priority>0.7</priority>
   </url>
   <url>
+    <loc>https://hawkynt.github.io/sz/Applications/font-pairing/index.html</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://hawkynt.github.io/sz/Applications/mock-data/index.html</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://hawkynt.github.io/sz/Applications/email-signature/index.html</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://hawkynt.github.io/Cipher/</loc>
     <priority>0.6</priority>
   </url>
