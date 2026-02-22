@@ -285,6 +285,11 @@
     const cat = allCategories[activeCategory];
     if (!cat) return;
 
+    // Hide Property/Value column headers for the assembly tree tab
+    const thead = document.querySelector('#metadata-table thead');
+    if (thead)
+      thead.style.display = (cat.icon === 'dotnet' && cat._assemblyTree) ? 'none' : '';
+
     // Hashes tab
     if (cat.name === 'Hashes & Checksums') {
       renderHashesTab();
@@ -590,6 +595,139 @@
     const tree = cat._assemblyTree;
     if (!tree || tree.length === 0) return;
 
+    // --- VS 2012+ "Color" theme icons (matches ReSharper's "Color" icon set) ---
+    const _S = 'http://www.w3.org/2000/svg';
+    const _svgIcon = (svg) => {
+      const img = document.createElement('img');
+      img.src = 'data:image/svg+xml,' + encodeURIComponent(svg);
+      img.style.cssText = 'width:16px;height:16px;vertical-align:middle;margin-right:4px';
+      return img;
+    };
+
+    // 3D isometric cube: top=lightest, front=medium, right=darkest (class, struct, enum, namespace)
+    const _cube = (top, front, right, outline) =>
+      '<svg xmlns="' + _S + '" viewBox="0 0 16 16">'
+      + '<polygon points="8,1 15,5 8,9 1,5" fill="' + top + '" stroke="' + outline + '" stroke-width="0.7" stroke-linejoin="round"/>'
+      + '<polygon points="1,5 8,9 8,15 1,11" fill="' + front + '" stroke="' + outline + '" stroke-width="0.7" stroke-linejoin="round"/>'
+      + '<polygon points="8,9 15,5 15,11 8,15" fill="' + right + '" stroke="' + outline + '" stroke-width="0.7" stroke-linejoin="round"/>'
+      + '</svg>';
+
+    // Lollipop: circle on a stem (interface, delegate)
+    const _lollipop = (fill, stroke) =>
+      '<svg xmlns="' + _S + '" viewBox="0 0 16 16">'
+      + '<line x1="8" y1="9" x2="8" y2="15" stroke="' + stroke + '" stroke-width="2"/>'
+      + '<circle cx="8" cy="6" r="5" fill="' + fill + '" stroke="' + stroke + '" stroke-width="0.8"/>'
+      + '</svg>';
+
+    // Diamond shape (method, field)
+    const _diamond = (fill, stroke) =>
+      '<svg xmlns="' + _S + '" viewBox="0 0 16 16">'
+      + '<polygon points="8,1 15,8 8,15 1,8" fill="' + fill + '" stroke="' + stroke + '" stroke-width="0.8" stroke-linejoin="round"/>'
+      + '</svg>';
+
+    const _TYPE_ICONS = {
+      'class':          _cube('#F5D265', '#E8A830', '#C48820', '#7B5B1E'),
+      'static class':   _cube('#F5D265', '#E8A830', '#C48820', '#7B5B1E'),
+      'abstract class': _cube('#F5D265', '#E8A830', '#C48820', '#7B5B1E'),
+      'sealed class':   _cube('#F5D265', '#E8A830', '#C48820', '#7B5B1E'),
+      'interface':      _lollipop('#5BA0D0', '#1B5080'),
+      'struct':         _cube('#90E0E8', '#50C8D8', '#20A0B8', '#106878'),
+      'enum':           _cube('#FFF176', '#FFD740', '#FFC107', '#8D6E00'),
+      'delegate':       _lollipop('#AB47BC', '#5C1670'),
+    };
+
+    const _typeIcon = (kind) => {
+      const k = (kind || '').toLowerCase();
+      let svg = _TYPE_ICONS[k];
+      if (!svg) {
+        if (k.includes('record'))
+          svg = _cube('#A5D6A7', '#66BB6A', '#43A047', '#2E6B30');
+        else if (k.includes('delegate'))
+          svg = _TYPE_ICONS['delegate'];
+        else
+          svg = _TYPE_ICONS['class'];
+      }
+      return _svgIcon(svg);
+    };
+
+    // Member icons: classic VS geometric shapes
+    const _MEMBER_SVGS = {
+      'method': _diamond('#B07CD8', '#6A3D8A'),
+      'field': _diamond('#50A8E8', '#2060A0'),
+      'property':
+        '<svg xmlns="' + _S + '" viewBox="0 0 16 16">'
+        + '<path d="M2,5 L8,5 Q10,5 10,7 L10,8 Q10,10 12,10 L14,10 L14,12 L12,12 Q8,12 8,9 L8,8 Q8,7 6,7 L2,7 Z" fill="#808890" stroke="#505860" stroke-width="0.6" stroke-linejoin="round"/>'
+        + '<circle cx="4" cy="6" r="1.2" fill="#505860"/>'
+        + '</svg>',
+      'event':
+        '<svg xmlns="' + _S + '" viewBox="0 0 16 16">'
+        + '<polygon points="9,1 4,9 7.5,9 6,15 12,7 8.5,7" fill="#F5C542" stroke="#A08020" stroke-width="0.6" stroke-linejoin="round"/>'
+        + '</svg>',
+      'constant':
+        '<svg xmlns="' + _S + '" viewBox="0 0 16 16">'
+        + '<rect x="2" y="4" width="12" height="9" rx="1" fill="#E0E4E8" stroke="#707880" stroke-width="0.7"/>'
+        + '<line x1="5" y1="7" x2="11" y2="7" stroke="#707880" stroke-width="1.2"/>'
+        + '<line x1="5" y1="10" x2="11" y2="10" stroke="#707880" stroke-width="1.2"/>'
+        + '</svg>',
+    };
+    const _DEFAULT_MEMBER_SVG =
+      '<svg xmlns="' + _S + '" viewBox="0 0 16 16">'
+      + '<rect x="3" y="3" width="10" height="10" rx="1" fill="#B0B8C0" stroke="#707880" stroke-width="0.7"/>'
+      + '</svg>';
+
+    const _memberIcon = (kind) => {
+      const k = (kind || '').toLowerCase();
+      let svg;
+      if (k === 'constructor' || k === '.ctor' || k === 'cctor')
+        svg = _MEMBER_SVGS['method'];
+      else
+        svg = _MEMBER_SVGS[k] || _DEFAULT_MEMBER_SVG;
+      return _svgIcon(svg);
+    };
+
+    const _nsIcon = () => _svgIcon(_cube('#C8B88A', '#B0986A', '#98804A', '#7A6A40'));
+
+    // --- Export toolbar row ---
+    const toolbarTr = document.createElement('tr');
+    const toolbarTd = document.createElement('td');
+    toolbarTd.colSpan = 2;
+    toolbarTd.style.cssText = 'padding:2px 4px 6px;';
+    const btnExport = document.createElement('button');
+    btnExport.textContent = 'Export';
+    btnExport.title = 'Export assembly tree as text';
+    btnExport.style.cssText = 'font-size:10px;padding:1px 6px;cursor:pointer;';
+    btnExport.addEventListener('click', () => {
+      const textLines = [];
+      for (const ns of tree) {
+        textLines.push(ns.namespace);
+        for (const type of ns.types) {
+          textLines.push('  ' + type.declaration);
+          for (const member of type.members) {
+            const memText = typeof member === 'string' ? member : member.text;
+            textLines.push('    ' + memText);
+          }
+        }
+      }
+      const text = textLines.join('\n') + '\n';
+      const baseName = (currentFileName || 'assembly').replace(/\.[^.]+$/, '');
+      const fileName = baseName + '.tree.txt';
+      const bytes = new TextEncoder().encode(text);
+      if (currentFilePath) {
+        const dir = currentFilePath.substring(0, currentFilePath.lastIndexOf('/'));
+        const targetPath = dir + '/' + fileName;
+        Kernel32.WriteAllBytes(targetPath, bytes).then(() => {
+          showCopyTooltip(btnExport, 'Saved: ' + fileName);
+        }).catch(() => {
+          ComDlg32.ExportFile(bytes, fileName, 'text/plain');
+        });
+      } else
+        ComDlg32.ExportFile(bytes, fileName, 'text/plain');
+    });
+    toolbarTd.appendChild(btnExport);
+    toolbarTr.appendChild(toolbarTd);
+    metadataTbody.appendChild(toolbarTr);
+
+    // --- Namespace / Type / Member rows ---
     for (const ns of tree) {
       const nsTr = document.createElement('tr');
       nsTr.className = 'assembly-tree-ns expandable-parent';
@@ -598,9 +736,11 @@
       nsTdLabel.colSpan = 2;
       const nsChevron = document.createElement('span');
       nsChevron.className = 'expand-chevron';
-      nsChevron.textContent = '\u25B6';
+      nsChevron.textContent = '▶';
       nsTdLabel.appendChild(nsChevron);
-      nsTdLabel.appendChild(document.createTextNode(' ' + ns.namespace + ' (' + ns.types.length + ' types)'));
+      nsTdLabel.appendChild(document.createTextNode(' '));
+      nsTdLabel.appendChild(_nsIcon());
+      nsTdLabel.appendChild(document.createTextNode(ns.namespace + ' (' + ns.types.length + ' types)'));
       nsTr.appendChild(nsTdLabel);
       metadataTbody.appendChild(nsTr);
 
@@ -614,9 +754,11 @@
         typeTd.colSpan = 2;
         const typeChevron = document.createElement('span');
         typeChevron.className = 'expand-chevron';
-        typeChevron.textContent = '\u25B6';
+        typeChevron.textContent = '▶';
         typeTd.appendChild(typeChevron);
-        typeTd.appendChild(document.createTextNode(' ' + type.declaration));
+        typeTd.appendChild(document.createTextNode(' '));
+        typeTd.appendChild(_typeIcon(type.kind));
+        typeTd.appendChild(document.createTextNode(type.declaration));
         typeTr.appendChild(typeTd);
         metadataTbody.appendChild(typeTr);
         typeRows.push(typeTr);
@@ -630,8 +772,10 @@
           memTd.className = 'field-value assembly-tree-indent2';
           memTd.colSpan = 2;
           const memText = typeof member === 'string' ? member : member.text;
-          memTd.textContent = memText;
-          // Make method members clickable — navigate to disassembly
+          const memKind = typeof member === 'string' ? null : member.kind;
+          memTd.appendChild(_memberIcon(memKind));
+          memTd.appendChild(document.createTextNode(memText));
+          // Make method members clickable -- navigate to disassembly
           if (member.kind === 'method' && member.rva) {
             memTd.style.cursor = 'pointer';
             memTd.title = 'Click to view disassembly';
@@ -649,7 +793,7 @@
           e.stopPropagation();
           const visible = memberRows.length > 0 && memberRows[0].style.display !== 'none';
           for (const mr of memberRows) mr.style.display = visible ? 'none' : '';
-          typeChevron.textContent = visible ? '\u25B6' : '\u25BC';
+          typeChevron.textContent = visible ? '▶' : '▼';
         });
       }
 
@@ -660,7 +804,7 @@
           for (const type of ns.types)
             for (const mr of metadataTbody.querySelectorAll('.assembly-tree-member'))
               mr.style.display = 'none';
-        nsChevron.textContent = visible ? '\u25B6' : '\u25BC';
+        nsChevron.textContent = visible ? '▶' : '▼';
       });
     }
   }
@@ -677,22 +821,14 @@
     const section = st.container && st.container.closest('.accordion-section');
     if (section && section.classList.contains('collapsed'))
       section.classList.remove('collapsed');
+    // Track current method and rebuild annotations with per-method context
+    st.currentMethod = me;
+    st.annotations = _buildAnnotations(st.info, me);
     // Decode the method body and navigate
     _disasmDecodeAndMerge(st, me.offset, Math.max(_DISASM_BATCH, Math.ceil((me.codeSection ? me.codeSection.size : 256) / 2)));
     _disasmRenderListing(st);
     _disasmUpdateStatus(st);
-    // Update the method picker dropdown if present
-    const toolbar = st.container && st.container.querySelector('.disasm-toolbar');
-    if (toolbar) {
-      const selects = toolbar.querySelectorAll('select');
-      for (const sel of selects) {
-        if (sel.style.maxWidth === '260px') {
-          const idx = st.info.methods.indexOf(me);
-          if (idx >= 0) sel.value = String(idx);
-          break;
-        }
-      }
-    }
+    _disasmUpdateUpButton(st);
     requestAnimationFrame(() => {
       _disasmScrollTo(st, me.offset, true);
       // Scroll the accordion body into view
@@ -2721,7 +2857,7 @@
   function showImagePreview(img) {
     document.getElementById('image-preview-title').textContent = img.label;
     document.getElementById('image-preview-img').src = img.dataUrl;
-    document.getElementById('dlg-image-preview').classList.add('visible');
+    SZ.Dialog.show('dlg-image-preview');
 
     document.getElementById('btn-save-image').onclick = () => {
       const ext = img.mimeType.includes('png') ? '.png' : '.jpg';
@@ -3035,7 +3171,8 @@
       xrefPanel: null,        // cross-references container
       btnBack: null,
       btnFwd: null,
-      addrInput: null,
+      btnUp: null,
+      currentMethod: null,    // current method entry (null = entry point)
       info: null,
       annotations: null,
       D: null,
@@ -3097,49 +3234,48 @@
     const info = st.info;
     const archId = info.archId;
 
-    // --- Navigation toolbar ---
+    // --- Icon toolbar ---
     const toolbar = document.createElement('div');
     toolbar.className = 'disasm-toolbar';
 
-    const btnBack = document.createElement('button');
-    btnBack.textContent = '\u25C0 Back';
+    const _iconBtn = (icon, title, onclick) => {
+      const btn = document.createElement('button');
+      btn.className = 'disasm-icon-btn';
+      btn.textContent = icon;
+      btn.title = title;
+      btn.onclick = onclick;
+      return btn;
+    };
+
+    const btnBack = _iconBtn('\u25C0', 'Back', () => _disasmNavGo(st, -1));
     btnBack.disabled = true;
-    btnBack.onclick = () => _disasmNavGo(st, -1);
     st.btnBack = btnBack;
 
-    const btnFwd = document.createElement('button');
-    btnFwd.textContent = 'Forward \u25B6';
+    const btnFwd = _iconBtn('\u25B6', 'Forward', () => _disasmNavGo(st, 1));
     btnFwd.disabled = true;
-    btnFwd.onclick = () => _disasmNavGo(st, 1);
     st.btnFwd = btnFwd;
 
-    const btnEntry = document.createElement('button');
-    btnEntry.textContent = 'Entry Point';
-    btnEntry.onclick = () => _disasmNavigateTo(st, info.offset || 0);
+    const btnUp = _iconBtn('\u25B2', 'Up to entry point', () => {
+      st.currentMethod = null;
+      st.annotations = _buildAnnotations(info);
+      _disasmUpdateUpButton(st);
+      _disasmNavigateTo(st, info.offset || 0);
+    });
+    btnUp.disabled = true;
+    st.btnUp = btnUp;
 
-    const sep = document.createElement('span');
-    sep.textContent = ' | ';
-    sep.style.cssText = 'color:var(--sz-color-gray-text);';
+    const btnEntry = _iconBtn('\u2302', 'Go to entry point', () => _disasmNavigateTo(st, info.offset || 0));
 
-    const addrLabel = document.createElement('span');
-    addrLabel.textContent = 'Address: ';
-    addrLabel.style.cssText = 'color:var(--sz-color-gray-text);';
+    const btnCopy = _iconBtn('\u29C9', 'Copy to clipboard', () => {
+      if (!st.pre) return;
+      const sel = window.getSelection();
+      const text = sel && !sel.isCollapsed && st.pre.contains(sel.anchorNode)
+        ? sel.toString()
+        : (st.pre.innerText || st.pre.textContent);
+      copyToClipboard(text, btnCopy);
+    });
 
-    const addrInput = document.createElement('input');
-    addrInput.type = 'text';
-    addrInput.value = '0x' + initialOffset.toString(16).toUpperCase();
-    st.addrInput = addrInput;
-
-    const btnGo = document.createElement('button');
-    btnGo.textContent = 'Go';
-    btnGo.onclick = () => {
-      const val = parseInt(addrInput.value, 16);
-      if (!isNaN(val) && val >= 0)
-        _disasmNavigateTo(st, val);
-    };
-    addrInput.onkeydown = e => { if (e.key === 'Enter') btnGo.click(); };
-
-    toolbar.append(btnBack, btnFwd, btnEntry, sep, addrLabel, addrInput, btnGo);
+    toolbar.append(btnBack, btnFwd, btnUp, btnEntry);
 
     // View mode combobox for multi-mode architectures
     const DISASM_MODES = {
@@ -3152,17 +3288,8 @@
     };
     const modes = DISASM_MODES[archId];
     if (modes && modes.length > 1) {
-      // Sync viewMode to this architecture's first mode if 'asm' isn't available
       if (!modes.some(m => m.id === st.viewMode))
         st.viewMode = modes[0].id;
-
-      const modeSep = document.createElement('span');
-      modeSep.textContent = ' | ';
-      modeSep.style.cssText = 'color:var(--sz-color-gray-text);';
-
-      const modeLabel = document.createElement('span');
-      modeLabel.textContent = 'View: ';
-      modeLabel.style.cssText = 'color:var(--sz-color-gray-text);';
 
       const modeSelect = document.createElement('select');
       modeSelect.className = 'disasm-mode-select';
@@ -3178,53 +3305,10 @@
         st.viewMode = modeSelect.value;
         _disasmRenderListing(st);
       });
-      toolbar.append(modeSep, modeLabel, modeSelect);
+      toolbar.append(modeSelect);
     }
 
-    // Method picker for .NET per-method IL bodies
-    if (info.methods && info.methods.length > 0) {
-      const mSep = document.createElement('span');
-      mSep.textContent = ' | ';
-      mSep.style.cssText = 'color:var(--sz-color-gray-text);';
-
-      const mLabel = document.createElement('span');
-      mLabel.textContent = 'Method: ';
-      mLabel.style.cssText = 'color:var(--sz-color-gray-text);';
-
-      const mSelect = document.createElement('select');
-      mSelect.className = 'disasm-mode-select';
-      mSelect.style.maxWidth = '260px';
-
-      const defaultOpt = document.createElement('option');
-      defaultOpt.value = '';
-      defaultOpt.textContent = '(Entry Point)';
-      mSelect.appendChild(defaultOpt);
-
-      for (let mi = 0; mi < info.methods.length; ++mi) {
-        const me = info.methods[mi];
-        const opt = document.createElement('option');
-        opt.value = String(mi);
-        opt.textContent = me.label || ('Method #' + mi);
-        mSelect.appendChild(opt);
-      }
-
-      mSelect.addEventListener('change', () => {
-        const idx = mSelect.value;
-        if (idx === '') {
-          _disasmNavigateTo(st, info.offset || 0);
-          return;
-        }
-        const me = info.methods[parseInt(idx, 10)];
-        if (!me) return;
-        // Decode the method body region and navigate
-        _disasmDecodeAndMerge(st, me.offset, Math.max(_DISASM_BATCH, Math.ceil((me.codeSection ? me.codeSection.size : 256) / 2)));
-        _disasmRenderListing(st);
-        _disasmUpdateStatus(st);
-        requestAnimationFrame(() => _disasmScrollTo(st, me.offset, true));
-      });
-
-      toolbar.append(mSep, mLabel, mSelect);
-    }
+    toolbar.append(btnCopy);
 
     container.appendChild(toolbar);
 
@@ -3391,8 +3475,6 @@
         target.classList.add('highlight');
       target.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-    if (st.addrInput)
-      st.addrInput.value = '0x' + offset.toString(16).toUpperCase();
   }
 
   function _disasmUpdateNavButtons(st) {
@@ -3420,11 +3502,16 @@
     _disasmUpdateStatus(st);
   }
 
-  function _buildAnnotations(info) {
-    if (!info.imports && !info.exports && !info.strings && !info.codeSection)
+  function _disasmUpdateUpButton(st) {
+    if (st.btnUp)
+      st.btnUp.disabled = st.currentMethod == null;
+  }
+
+  function _buildAnnotations(info, methodEntry) {
+    if (!info.imports && !info.exports && !info.strings && !info.codeSection && !methodEntry)
       return null;
 
-    return {
+    const annot = {
       imports: info.imports || null,
       exports: info.exports || null,
       strings: info.strings || null,
@@ -3436,7 +3523,29 @@
         fileStart: info.codeSection.start,
         fileEnd: info.codeSection.end,
       } : null,
+      methodContext: null,
     };
+
+    if (methodEntry) {
+      annot.methodContext = {
+        localTypes: methodEntry.localTypes || null,
+        ehClauses: methodEntry.ehClauses || null,
+        paramInfo: methodEntry.paramInfo || null,
+        methodFlags: methodEntry.methodFlags != null ? methodEntry.methodFlags : null,
+        methodDefIndex: methodEntry.methodDefIndex != null ? methodEntry.methodDefIndex : null,
+        label: methodEntry.label || null,
+      };
+      // Override code range with method-specific section
+      if (methodEntry.codeSection)
+        annot.codeRange = {
+          rvaStart: methodEntry.codeSection.rva,
+          rvaEnd: methodEntry.codeSection.rva + methodEntry.codeSection.size,
+          fileStart: methodEntry.codeSection.start,
+          fileEnd: methodEntry.codeSection.end,
+        };
+    }
+
+    return annot;
   }
 
   /** Build/rebuild the cross-references panel from current decoded instructions. */
@@ -3685,29 +3794,26 @@
   // =========================================================================
   // Menu actions
   // =========================================================================
-  document.querySelectorAll('.menu-entry').forEach(el => {
-    el.addEventListener('click', (e) => {
-      const action = el.dataset.action;
-      if (el.classList.contains('disabled')) return;
+  function handleMenuAction(action) {
+    switch (action) {
+      case 'open': doOpen(); break;
+      case 'import': doImport(); break;
+      case 'save': saveModified(); break;
+      case 'export': exportFile(); break;
+      case 'exit': User32.DestroyWindow(); break;
+      case 'copy-all': copyAllMetadata(); break;
+      case 'revert': revertChanges(); break;
+      case 'toggle-preview':
+        showPreviewPanel = !showPreviewPanel;
+        updatePanelVisibility();
+        break;
+      case 'about':
+        SZ.Dialog.show('dlg-about');
+        break;
+    }
+  }
 
-      switch (action) {
-        case 'open': doOpen(); break;
-        case 'import': doImport(); break;
-        case 'save': saveModified(); break;
-        case 'export': exportFile(); break;
-        case 'exit': User32.DestroyWindow(); break;
-        case 'copy-all': copyAllMetadata(); break;
-        case 'revert': revertChanges(); break;
-        case 'toggle-preview':
-          showPreviewPanel = !showPreviewPanel;
-          updatePanelVisibility();
-          break;
-        case 'about':
-          document.getElementById('dlg-about').classList.add('visible');
-          break;
-      }
-    });
-  });
+  new SZ.MenuBar({ onAction: handleMenuAction });
 
   function updatePanelVisibility() {
     rightPanel.classList.toggle('hidden', !showPreviewPanel);
@@ -3748,14 +3854,7 @@
   // =========================================================================
   // Dialog close handlers
   // =========================================================================
-  document.querySelectorAll('.dialog-overlay').forEach(overlay => {
-    overlay.querySelectorAll('button[data-result]').forEach(btn => {
-      btn.addEventListener('click', () => overlay.classList.remove('visible'));
-    });
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) overlay.classList.remove('visible');
-    });
-  });
+  SZ.Dialog.wireAll();
 
   // =========================================================================
   // File open

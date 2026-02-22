@@ -137,7 +137,11 @@
     function tableIdxSize(t) { return rowCounts[t] > 0xFFFF ? 4 : 2; }
 
     // Table data starts at tp — read the tables we care about
-    const result = { strings: readHeapString, readBlob: readHeapBlob, readUserString: readUserString, tables: {} };
+    const result = {
+      strings: readHeapString, readBlob: readHeapBlob, readUserString: readUserString, tables: {},
+      decodeMethodSig: (b) => _decodeMethodSig(b, readHeapString, result.tables),
+      decodeLocalVarSig: (b) => _decodeLocalVarSig(b, readHeapString, result.tables),
+    };
 
     for (let t = 0; t < 64; ++t) {
       const rows = rowCounts[t];
@@ -220,7 +224,9 @@
       } else if (t === 0x10) { // FieldLayout
         for (let r = 0; r < rows; ++r) { tp += 4; readIdx(tableIdxSize(0x04)); }
       } else if (t === 0x11) { // StandAloneSig
-        for (let r = 0; r < rows; ++r) readIdx(blobIdxSize);
+        const arr = [];
+        for (let r = 0; r < rows; ++r) arr.push({ signature: readIdx(blobIdxSize) });
+        result.tables[0x11] = arr;
       } else if (t === 0x12) { // EventMap
         for (let r = 0; r < rows; ++r) { readIdx(tableIdxSize(0x02)); readIdx(tableIdxSize(0x14)); }
       } else if (t === 0x14) { // Event
@@ -284,66 +290,138 @@
     0x1C: 'object',
   };
 
+  function _readTypeFromBlob(blobBytes, posRef, readHeapStr, tables) {
+    if (posRef.p >= blobBytes.length) return '?';
+    const t = blobBytes[posRef.p++];
+    if (ELEMENT_TYPE_NAMES[t]) return ELEMENT_TYPE_NAMES[t];
+    if (t === 0x15) { // GENERICINST — generic instantiation
+      const isValue = blobBytes[posRef.p++]; // 0x11 or 0x12
+      // read TypeDefOrRefOrSpecEncoded
+      let tokenVal = 0, shift = 0;
+      while (posRef.p < blobBytes.length) {
+        const b = blobBytes[posRef.p++];
+        tokenVal |= (b & 0x7F) << shift;
+        if ((b & 0x80) === 0) break;
+        shift += 7;
+      }
+      const tableIdx = tokenVal & 3;
+      const row = (tokenVal >> 2) - 1;
+      const tokenTables = [0x02, 0x01, 0x1B];
+      const table = tables[tokenTables[tableIdx]];
+      let baseName = isValue === 0x11 ? 'valuetype?' : 'class?';
+      if (table && row >= 0 && row < table.length) {
+        const entry = table[row];
+        const ns = readHeapStr(entry.ns);
+        const name = readHeapStr(entry.name);
+        baseName = ns ? ns + '.' + name : name;
+      }
+      // read genArgCount
+      let genArgCount = 0;
+      if (posRef.p < blobBytes.length) {
+        const g0 = blobBytes[posRef.p++];
+        if ((g0 & 0x80) === 0) genArgCount = g0;
+        else if ((g0 & 0xC0) === 0x80 && posRef.p < blobBytes.length) genArgCount = ((g0 & 0x3F) << 8) | blobBytes[posRef.p++];
+        else if (posRef.p + 2 < blobBytes.length) { genArgCount = ((g0 & 0x1F) << 24) | (blobBytes[posRef.p] << 16) | (blobBytes[posRef.p + 1] << 8) | blobBytes[posRef.p + 2]; posRef.p += 3; }
+      }
+      const genArgs = [];
+      for (let i = 0; i < genArgCount && posRef.p < blobBytes.length; ++i)
+        genArgs.push(_readTypeFromBlob(blobBytes, posRef, readHeapStr, tables));
+      // Clean up `1 `2 etc from name
+      baseName = baseName.replace(/`\d+$/, '');
+      return baseName + '<' + genArgs.join(', ') + '>';
+    }
+    if (t === 0x10) return _readTypeFromBlob(blobBytes, posRef, readHeapStr, tables) + '&'; // byref
+    if (t === 0x0F) return _readTypeFromBlob(blobBytes, posRef, readHeapStr, tables) + '*'; // ptr
+    if (t === 0x1D) return _readTypeFromBlob(blobBytes, posRef, readHeapStr, tables) + '[]'; // szarray
+    if (t === 0x11 || t === 0x12) { // valuetype or class — read compressed token
+      let tokenVal = 0, shift = 0;
+      while (posRef.p < blobBytes.length) {
+        const b = blobBytes[posRef.p++];
+        tokenVal |= (b & 0x7F) << shift;
+        if ((b & 0x80) === 0) break;
+        shift += 7;
+      }
+      const tableIdx = tokenVal & 3;
+      const row = (tokenVal >> 2) - 1;
+      const tokenTables = [0x02, 0x01, 0x1B];
+      const table = tables[tokenTables[tableIdx]];
+      if (table && row >= 0 && row < table.length) {
+        const entry = table[row];
+        const ns = readHeapStr(entry.ns);
+        const name = readHeapStr(entry.name);
+        return ns ? ns + '.' + name : name;
+      }
+      return t === 0x11 ? 'valuetype?' : 'class?';
+    }
+    if (t === 0x14) { // array
+      const elemType = _readTypeFromBlob(blobBytes, posRef, readHeapStr, tables);
+      // skip rank + sizes + lo-bounds (compressed ints)
+      if (posRef.p < blobBytes.length) {
+        const rank = blobBytes[posRef.p++];
+        if (posRef.p < blobBytes.length) { const numSizes = blobBytes[posRef.p++]; posRef.p += numSizes; }
+        if (posRef.p < blobBytes.length) { const numLoBounds = blobBytes[posRef.p++]; posRef.p += numLoBounds; }
+      }
+      return elemType + '[,]';
+    }
+    if (t === 0x13) return '!' + (posRef.p < blobBytes.length ? blobBytes[posRef.p++] : '?'); // VAR (type generic param)
+    if (t === 0x1E) { // CMOD_OPT — skip type token, then read real type
+      let tokenVal = 0, shift = 0;
+      while (posRef.p < blobBytes.length) { const b = blobBytes[posRef.p++]; tokenVal |= (b & 0x7F) << shift; if ((b & 0x80) === 0) break; shift += 7; }
+      return _readTypeFromBlob(blobBytes, posRef, readHeapStr, tables);
+    }
+    if (t === 0x1F) { // CMOD_REQD
+      let tokenVal = 0, shift = 0;
+      while (posRef.p < blobBytes.length) { const b = blobBytes[posRef.p++]; tokenVal |= (b & 0x7F) << shift; if ((b & 0x80) === 0) break; shift += 7; }
+      return _readTypeFromBlob(blobBytes, posRef, readHeapStr, tables);
+    }
+    if (t === 0x45) return _readTypeFromBlob(blobBytes, posRef, readHeapStr, tables); // pinned — just read inner type
+    if (t === 0x1E) return _readTypeFromBlob(blobBytes, posRef, readHeapStr, tables) + '?'; // CMOD_OPT (duplicate guard)
+    return '?';
+  }
+
+  function _readCompressedUint(blob, posRef) {
+    if (posRef.p >= blob.length) return 0;
+    const b0 = blob[posRef.p++];
+    if ((b0 & 0x80) === 0) return b0;
+    if ((b0 & 0xC0) === 0x80 && posRef.p < blob.length) return ((b0 & 0x3F) << 8) | blob[posRef.p++];
+    if (posRef.p + 2 < blob.length) { const v = ((b0 & 0x1F) << 24) | (blob[posRef.p] << 16) | (blob[posRef.p + 1] << 8) | blob[posRef.p + 2]; posRef.p += 3; return v; }
+    return 0;
+  }
+
   function _decodeMethodSig(blobBytes, readHeapStr, tables) {
     if (!blobBytes || blobBytes.length < 2) return null;
-    let pos = 0;
-    const callConv = blobBytes[pos++];
-    // Generic method?
+    const posRef = { p: 0 };
+    const callConv = blobBytes[posRef.p++];
+    const hasThis = (callConv & 0x20) !== 0;
     let genParamCount = 0;
-    if (callConv & 0x10) {
-      genParamCount = blobBytes[pos++];
-    }
-    const paramCount = blobBytes[pos++];
-
-    function readType() {
-      if (pos >= blobBytes.length) return '?';
-      const t = blobBytes[pos++];
-      if (ELEMENT_TYPE_NAMES[t]) return ELEMENT_TYPE_NAMES[t];
-      if (t === 0x10) return readType() + '&'; // byref
-      if (t === 0x0F) return readType() + '*'; // ptr
-      if (t === 0x1D) return readType() + '[]'; // szarray
-      if (t === 0x11 || t === 0x12) { // valuetype or class — read compressed token
-        let tokenVal = 0, shift = 0;
-        while (pos < blobBytes.length) {
-          const b = blobBytes[pos++];
-          tokenVal |= (b & 0x7F) << shift;
-          if ((b & 0x80) === 0) break;
-          shift += 7;
-        }
-        const tableIdx = tokenVal & 3;
-        const row = (tokenVal >> 2) - 1;
-        const tokenTables = [0x02, 0x01, 0x1B];
-        const table = tables[tokenTables[tableIdx]];
-        if (table && row >= 0 && row < table.length) {
-          const entry = table[row];
-          const ns = readHeapStr(entry.ns);
-          const name = readHeapStr(entry.name);
-          return ns ? ns + '.' + name : name;
-        }
-        return t === 0x11 ? 'valuetype?' : 'class?';
-      }
-      if (t === 0x14) { // array
-        const elemType = readType();
-        // skip rank + sizes + lo-bounds (compressed ints)
-        if (pos < blobBytes.length) {
-          const rank = blobBytes[pos++];
-          if (pos < blobBytes.length) { const numSizes = blobBytes[pos++]; pos += numSizes; }
-          if (pos < blobBytes.length) { const numLoBounds = blobBytes[pos++]; pos += numLoBounds; }
-        }
-        return elemType + '[,]';
-      }
-      if (t === 0x1E) return readType() + '?'; // CMOD_OPT
-      if (t === 0x1F) return readType() + '!'; // CMOD_REQD
-      if (t === 0x45) return readType() + '^'; // pinned
-      return '?';
-    }
-
-    const retType = readType();
+    if (callConv & 0x10)
+      genParamCount = _readCompressedUint(blobBytes, posRef);
+    const paramCount = _readCompressedUint(blobBytes, posRef);
+    const retType = _readTypeFromBlob(blobBytes, posRef, readHeapStr, tables);
     const paramTypes = [];
-    for (let i = 0; i < paramCount && pos < blobBytes.length; ++i)
-      paramTypes.push(readType());
+    for (let i = 0; i < paramCount && posRef.p < blobBytes.length; ++i)
+      paramTypes.push(_readTypeFromBlob(blobBytes, posRef, readHeapStr, tables));
+    return { retType, paramTypes, genParamCount, hasThis };
+  }
 
-    return { retType, paramTypes, genParamCount };
+  function _decodeLocalVarSig(blobBytes, readHeapStr, tables) {
+    if (!blobBytes || blobBytes.length < 2) return null;
+    const posRef = { p: 0 };
+    const callingConv = blobBytes[posRef.p++];
+    if (callingConv !== 0x07) return null; // LOCAL_SIG
+    const count = _readCompressedUint(blobBytes, posRef);
+    const types = [];
+    for (let i = 0; i < count && posRef.p < blobBytes.length; ++i)
+      types.push(_readTypeFromBlob(blobBytes, posRef, readHeapStr, tables));
+    return types;
+  }
+
+  function _decodeFieldSig(blobBytes, readHeapStr, tables) {
+    if (!blobBytes || blobBytes.length < 2) return null;
+    const posRef = { p: 0 };
+    const callingConv = blobBytes[posRef.p++];
+    if ((callingConv & 0x0F) !== 0x06) return null; // FIELD
+    return _readTypeFromBlob(blobBytes, posRef, readHeapStr, tables);
   }
 
   // =========================================================================
@@ -438,12 +516,18 @@
           const fVis = fd.flags & 0x07;
           const fStatic = (fd.flags & 0x10) !== 0;
           const fAccess = fVis === 6 ? 'public' : fVis === 5 ? 'internal' : fVis === 4 ? 'protected' : 'private';
-          members.push({ text: fAccess + (fStatic ? ' static' : '') + ' field ' + fName, kind: 'field' });
+          let fType = '';
+          if (meta.readBlob && fd.signature) {
+            const fSigBlob = meta.readBlob(fd.signature);
+            const decoded = _decodeFieldSig(fSigBlob, str, meta.tables);
+            if (decoded) fType = decoded + ' ';
+          }
+          members.push({ text: fAccess + (fStatic ? ' static' : '') + ' ' + fType + fName, kind: 'field' });
         }
       }
 
       if (!namespaces[ns]) namespaces[ns] = [];
-      namespaces[ns].push({ declaration, members });
+      namespaces[ns].push({ declaration, members, kind });
     }
 
     const tree = Object.entries(namespaces)
@@ -457,10 +541,84 @@
   // .NET method body discovery — extract per-method IL entry points
   // =========================================================================
 
+  /** Parse ECMA-335 II.25.4.6 exception handling clauses after method body. */
+  function _parseEHClauses(bytes, afterCode, meta) {
+    // Align to 4-byte boundary
+    let pos = (afterCode + 3) & ~3;
+    const clauses = [];
+    while (pos + 4 <= bytes.length) {
+      const kind = bytes[pos];
+      if (!(kind & 0x01)) break; // Not an EH section
+      const isFat = (kind & 0x40) !== 0;
+      const moreSectsFlag = (kind & 0x80) !== 0;
+      if (isFat) {
+        // Fat format: 24-byte clauses
+        const dataSize = ((bytes[pos + 1]) | (bytes[pos + 2] << 8) | (bytes[pos + 3] << 16)) & 0xFFFFFF;
+        const numClauses = (dataSize - 4) / 24;
+        let cp = pos + 4;
+        for (let i = 0; i < numClauses && cp + 24 <= bytes.length; ++i) {
+          const flags = readU32LE(bytes, cp);
+          const tryOffset = readU32LE(bytes, cp + 4);
+          const tryLength = readU32LE(bytes, cp + 8);
+          const handlerOffset = readU32LE(bytes, cp + 12);
+          const handlerLength = readU32LE(bytes, cp + 16);
+          const classTokenOrFilter = readU32LE(bytes, cp + 20);
+          let catchType = null;
+          if (flags === 0 && classTokenOrFilter && meta) {
+            const tblIdx = (classTokenOrFilter >>> 24) & 0xFF;
+            const rowNum = classTokenOrFilter & 0x00FFFFFF;
+            const table = meta.tables && meta.tables[tblIdx];
+            if (table && rowNum > 0 && rowNum <= table.length) {
+              const row = table[rowNum - 1];
+              const ns = row.ns != null ? meta.strings(row.ns) : '';
+              const name = row.name != null ? meta.strings(row.name) : '';
+              catchType = (ns ? ns + '.' : '') + name;
+            }
+          }
+          clauses.push({ flags, tryOffset, tryLength, handlerOffset, handlerLength, classTokenOrFilter, catchType });
+          cp += 24;
+        }
+        pos += dataSize;
+      } else {
+        // Small format: 12-byte clauses
+        const dataSize = bytes[pos + 1];
+        const numClauses = (dataSize - 4) / 12;
+        let cp = pos + 4;
+        for (let i = 0; i < numClauses && cp + 12 <= bytes.length; ++i) {
+          const flags = readU16LE(bytes, cp);
+          const tryOffset = readU16LE(bytes, cp + 2);
+          const tryLength = bytes[cp + 4];
+          const handlerOffset = readU16LE(bytes, cp + 5);
+          const handlerLength = bytes[cp + 7];
+          const classTokenOrFilter = readU32LE(bytes, cp + 8);
+          let catchType = null;
+          if (flags === 0 && classTokenOrFilter && meta) {
+            const tblIdx = (classTokenOrFilter >>> 24) & 0xFF;
+            const rowNum = classTokenOrFilter & 0x00FFFFFF;
+            const table = meta.tables && meta.tables[tblIdx];
+            if (table && rowNum > 0 && rowNum <= table.length) {
+              const row = table[rowNum - 1];
+              const ns = row.ns != null ? meta.strings(row.ns) : '';
+              const name = row.name != null ? meta.strings(row.name) : '';
+              catchType = (ns ? ns + '.' : '') + name;
+            }
+          }
+          clauses.push({ flags, tryOffset, tryLength, handlerOffset, handlerLength, classTokenOrFilter, catchType });
+          cp += 12;
+        }
+        pos += dataSize;
+      }
+      if (!moreSectsFlag) break;
+      pos = (pos + 3) & ~3; // Align next section
+    }
+    return clauses.length > 0 ? clauses : null;
+  }
+
   function _discoverMethodBodies(meta, rvaToOffset, bytes) {
     if (!meta || !meta.tables) return null;
     const methodDefs = meta.tables[0x06];
     const typeDefs = meta.tables[0x02];
+    const params = meta.tables[0x08];
     if (!methodDefs) return null;
     const str = meta.strings;
     const entries = [];
@@ -473,7 +631,7 @@
 
       // Read method header to determine code size
       const headerByte = bytes[fileOffset];
-      let codeOffset, codeSize;
+      let codeOffset, codeSize, localTypes = null, ehClauses = null;
       if ((headerByte & 0x03) === 0x02) {
         // Tiny header: upper 6 bits = code size, header is 1 byte
         codeSize = (headerByte >> 2) & 0x3F;
@@ -481,11 +639,49 @@
       } else if ((headerByte & 0x03) === 0x03) {
         // Fat header: 12 bytes
         if (fileOffset + 12 > bytes.length) continue;
+        const fatFlags = readU16LE(bytes, fileOffset);
         codeSize = readU32LE(bytes, fileOffset + 4);
+        const localVarSigTok = readU32LE(bytes, fileOffset + 8);
         codeOffset = fileOffset + 12;
+
+        // Resolve local variable types from StandAloneSig table
+        if (localVarSigTok && meta.readBlob && meta.tables[0x11]) {
+          const sigTblIdx = (localVarSigTok >>> 24) & 0xFF;
+          const sigRow = (localVarSigTok & 0x00FFFFFF) - 1;
+          if (sigTblIdx === 0x11 && meta.tables[0x11][sigRow]) {
+            const blobIdx = meta.tables[0x11][sigRow].signature;
+            const blobData = meta.readBlob(blobIdx);
+            if (blobData)
+              localTypes = _decodeLocalVarSig(blobData, str, meta.tables);
+          }
+        }
+
+        // Parse EH clauses if MoreSects flag set
+        if (fatFlags & 0x08) {
+          const afterCode = codeOffset + codeSize;
+          ehClauses = _parseEHClauses(bytes, afterCode, meta);
+        }
       } else continue;
 
       if (codeSize === 0 || codeOffset + codeSize > bytes.length) continue;
+
+      // Decode method signature for param info
+      let paramInfo = null;
+      if (meta.readBlob && md.signature) {
+        const sigBlob = meta.readBlob(md.signature);
+        const decoded = _decodeMethodSig(sigBlob, str, meta.tables);
+        if (decoded) {
+          const pStart = md.paramList - 1;
+          const pEnd = (m + 1 < methodDefs.length) ? methodDefs[m + 1].paramList - 1 : (params ? params.length : 0);
+          const paramNames = [];
+          const hasRetParam = params && pStart < params.length && params[pStart].sequence === 0;
+          for (let p = 0; p < decoded.paramTypes.length; ++p) {
+            const pIdx = pStart + p + (hasRetParam ? 1 : 0);
+            paramNames.push(params && pIdx >= 0 && pIdx < params.length ? str(params[pIdx].name) : 'arg' + p);
+          }
+          paramInfo = { retType: decoded.retType, paramTypes: decoded.paramTypes, paramNames, hasThis: decoded.hasThis, genParamCount: decoded.genParamCount };
+        }
+      }
 
       // Find containing type
       const mName = str(md.name);
@@ -509,6 +705,11 @@
         label: typeName + '.' + mName,
         options: meta ? { metadata: meta } : undefined,
         codeSection: { start: codeOffset, end: codeOffset + codeSize, rva: md.rva, size: codeSize },
+        methodDefIndex: m,
+        localTypes,
+        ehClauses,
+        paramInfo,
+        methodFlags: md.flags,
       });
     }
     return entries.length > 0 ? entries : null;
