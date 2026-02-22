@@ -33,9 +33,18 @@
       this.#windowManager = windowManager;
       this.#startClock();
       this.#buildStartMenu();
+
+      this.#windowList.addEventListener('wheel', (e) => {
+        if (this.#windowList.scrollWidth > this.#windowList.clientWidth) {
+          e.preventDefault();
+          this.#windowList.scrollLeft += e.deltaY;
+        }
+      }, { passive: false });
+
+      new ResizeObserver(() => this.#updateOverflow()).observe(this.#windowList);
     }
 
-    addWindow(windowId, title, icon) {
+    addWindow(windowId, title, icon, appId) {
       const btn = document.createElement('button');
       btn.className = 'sz-taskbar-button';
       if (icon) {
@@ -50,14 +59,23 @@
       span.textContent = title;
       btn.appendChild(span);
       btn.dataset.windowId = windowId;
+      if (appId)
+        btn.dataset.appId = appId;
       btn.addEventListener('pointerup', (e) => { e.stopPropagation(); this.#onButtonClick(windowId); });
+      btn.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.#showButtonContextMenu(windowId, e.clientX, e.clientY);
+      });
       this.#windowList.appendChild(btn);
       this.#buttons.set(windowId, btn);
+      this.#updateOverflow();
     }
 
     removeWindow(windowId) {
       const btn = this.#buttons.get(windowId);
       if (btn) { btn.remove(); this.#buttons.delete(windowId); }
+      this.#updateOverflow();
     }
 
     updateTitle(windowId, title) {
@@ -593,6 +611,52 @@
     // -----------------------------------------------------------------
     // Private helpers
     // -----------------------------------------------------------------
+
+    #showButtonContextMenu(windowId, x, y) {
+      const ctxMenu = SZ.contextMenu;
+      if (!ctxMenu)
+        return;
+
+      const wm = this.#windowManager;
+      const btn = this.#buttons.get(windowId);
+      const appId = btn?.dataset.appId;
+      const hasSameApp = appId && [...this.#buttons.values()].filter(b => b.dataset.appId === appId).length > 1;
+
+      const closeIcon = '<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><line x1="4" y1="4" x2="12" y2="12" stroke="#ef4444" stroke-width="1.5" stroke-linecap="round"/><line x1="12" y1="4" x2="4" y2="12" stroke="#ef4444" stroke-width="1.5" stroke-linecap="round"/></svg>';
+      const closeAllIcon = '<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><line x1="3" y1="3" x2="9" y2="9" stroke="#ef4444" stroke-width="1.2" stroke-linecap="round"/><line x1="9" y1="3" x2="3" y2="9" stroke="#ef4444" stroke-width="1.2" stroke-linecap="round"/><line x1="7" y1="7" x2="13" y2="13" stroke="#ef4444" stroke-width="1.2" stroke-linecap="round"/><line x1="13" y1="7" x2="7" y2="13" stroke="#ef4444" stroke-width="1.2" stroke-linecap="round"/></svg>';
+
+      const items = [
+        { label: 'Close', icon: closeIcon, bold: true, action: () => wm.closeWindow(windowId) },
+        { label: 'Close All Windows', icon: closeAllIcon, action: () => { for (const id of [...this.#buttons.keys()]) wm.closeWindow(id); } },
+      ];
+
+      if (hasSameApp)
+        items.push({ label: 'Close All of Same App', icon: closeAllIcon, action: () => this.#closeAllSameApp(appId) });
+
+      items.push({ separator: true });
+      items.push({ label: 'Cascade Windows', icon: '<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="1" width="8" height="6" rx=".5" fill="#93c5fd" stroke="#3b82f6" stroke-width=".5"/><rect x="4" y="4" width="8" height="6" rx=".5" fill="#bfdbfe" stroke="#3b82f6" stroke-width=".5"/><rect x="7" y="7" width="8" height="6" rx=".5" fill="#dbeafe" stroke="#3b82f6" stroke-width=".5"/></svg>', action: () => wm.cascadeWindows() });
+      items.push({ label: 'Tile Horizontally', icon: '<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="1" width="14" height="6" rx=".5" fill="#93c5fd" stroke="#3b82f6" stroke-width=".6"/><rect x="1" y="9" width="14" height="6" rx=".5" fill="#bfdbfe" stroke="#3b82f6" stroke-width=".6"/></svg>', action: () => wm.tileHorizontally() });
+      items.push({ label: 'Tile Vertically', icon: '<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="1" width="6" height="14" rx=".5" fill="#93c5fd" stroke="#3b82f6" stroke-width=".6"/><rect x="9" y="1" width="6" height="14" rx=".5" fill="#bfdbfe" stroke="#3b82f6" stroke-width=".6"/></svg>', action: () => wm.tileVertically() });
+      items.push({ label: 'Tile Grid', icon: '<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="5" height="5" rx=".5" fill="#93c5fd" stroke="#3b82f6" stroke-width=".6"/><rect x="9" y="2" width="5" height="5" rx=".5" fill="#93c5fd" stroke="#3b82f6" stroke-width=".6"/><rect x="2" y="9" width="5" height="5" rx=".5" fill="#93c5fd" stroke="#3b82f6" stroke-width=".6"/><rect x="9" y="9" width="5" height="5" rx=".5" fill="#93c5fd" stroke="#3b82f6" stroke-width=".6"/></svg>', action: () => wm.tileGrid() });
+      items.push({
+        label: 'Show Desktop',
+        icon: '<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="1" width="14" height="10" rx="1" fill="#6baed6" stroke="#2171b5" stroke-width=".8"/><rect x="2" y="2" width="12" height="8" fill="#deebf7"/><rect x="5" y="12" width="6" height="1" fill="#999"/><rect x="4" y="13" width="8" height="1.5" rx=".5" fill="#bbb"/></svg>',
+        action: () => { for (const win of wm.allWindows) if (win.state !== 'minimized') wm.minimizeWindow(win.id); }
+      });
+
+      ctxMenu.showAt(items, x, y, { fromBottom: true });
+    }
+
+    #closeAllSameApp(appId) {
+      for (const [winId, btn] of this.#buttons)
+        if (btn.dataset.appId === appId)
+          this.#windowManager.closeWindow(winId);
+    }
+
+    #updateOverflow() {
+      const needed = this.#buttons.size * 120 > this.#windowList.clientWidth;
+      this.#windowList.classList.toggle('sz-overflow', needed);
+    }
 
     #onButtonClick(windowId) {
       const win = this.#windowManager.getWindow(windowId);

@@ -208,6 +208,11 @@
           action: () => this.#windowManager.tileVertically()
         },
         {
+          label: 'Tile Windows Grid',
+          icon: _CTX.arrange,
+          action: () => this.#windowManager.tileGrid()
+        },
+        {
           label: 'Show the Desktop',
           icon: _CTX.showDsk,
           action: () => {
