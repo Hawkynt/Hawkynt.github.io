@@ -3521,6 +3521,91 @@
     }
 
     // -----------------------------------------------------------------------
+    // Keyboard navigation helpers
+    // -----------------------------------------------------------------------
+    _getColumnsPerRow() {
+      const grid = this.mainView.querySelector('.file-list');
+      if (!grid) return 1;
+      const items = grid.querySelectorAll('.file-item');
+      if (items.length < 2) return 1;
+      const firstTop = items[0].getBoundingClientRect().top;
+      let cols = 1;
+      for (let i = 1; i < items.length; ++i) {
+        if (items[i].getBoundingClientRect().top !== firstTop) break;
+        ++cols;
+      }
+      return cols;
+    }
+
+    _getPageSize() {
+      const container = this.mainView;
+      if (!container) return 10;
+      const elements = this._getVisibleEntryElements();
+      if (elements.length === 0) return 10;
+      const itemHeight = elements[0].getBoundingClientRect().height;
+      if (itemHeight <= 0) return 10;
+      const cols = this._getColumnsPerRow();
+      const visibleRows = Math.max(1, Math.floor(container.clientHeight / itemHeight));
+      return visibleRows * cols;
+    }
+
+    navigateToIndex(index, modifiers) {
+      const elements = this._getVisibleEntryElements();
+      if (elements.length === 0 || this.currentEntries.length === 0) return;
+      const target = Math.max(0, Math.min(index, Math.min(elements.length, this.currentEntries.length) - 1));
+      this.selectItem(target, elements[target], this.currentEntries[target], { ctrl: false, shift: modifiers && modifiers.shift });
+      elements[target].scrollIntoView({ block: 'nearest' });
+    }
+
+    navigateByArrow(direction, modifiers) {
+      const elements = this._getVisibleEntryElements();
+      const count = Math.min(elements.length, this.currentEntries.length);
+      if (count === 0) return;
+
+      let currentIdx = this.selectedItems.length > 0
+        ? this.selectedItems[this.selectedItems.length - 1].index
+        : -1;
+
+      const isGrid = this.viewMode !== 'details';
+      const cols = isGrid ? this._getColumnsPerRow() : 1;
+      let offset = 0;
+
+      switch (direction) {
+        case 'up': offset = -cols; break;
+        case 'down': offset = cols; break;
+        case 'left': offset = isGrid ? -1 : 0; break;
+        case 'right': offset = isGrid ? 1 : 0; break;
+      }
+
+      if (offset === 0) return;
+
+      let newIdx = currentIdx + offset;
+      if (currentIdx < 0) newIdx = 0;
+      newIdx = Math.max(0, Math.min(newIdx, count - 1));
+      if (newIdx === currentIdx && currentIdx >= 0) return;
+
+      this.selectItem(newIdx, elements[newIdx], this.currentEntries[newIdx], { ctrl: false, shift: modifiers && modifiers.shift });
+      elements[newIdx].scrollIntoView({ block: 'nearest' });
+    }
+
+    navigateByOffset(offset, modifiers) {
+      const elements = this._getVisibleEntryElements();
+      const count = Math.min(elements.length, this.currentEntries.length);
+      if (count === 0) return;
+
+      let currentIdx = this.selectedItems.length > 0
+        ? this.selectedItems[this.selectedItems.length - 1].index
+        : -1;
+
+      let newIdx = currentIdx < 0 ? 0 : currentIdx + offset;
+      newIdx = Math.max(0, Math.min(newIdx, count - 1));
+      if (newIdx === currentIdx && currentIdx >= 0) return;
+
+      this.selectItem(newIdx, elements[newIdx], this.currentEntries[newIdx], { ctrl: false, shift: modifiers && modifiers.shift });
+      elements[newIdx].scrollIntoView({ block: 'nearest' });
+    }
+
+    // -----------------------------------------------------------------------
     // Type-ahead selection
     // -----------------------------------------------------------------------
     handleTypeAhead(char) {
@@ -4411,7 +4496,7 @@
         showAlert('No saved layout found.');
     },
     options: () => showOptionsDialog(),
-    about: () => { const dlg = document.getElementById('dlg-about'); if (dlg) dlg.classList.add('visible'); },
+    about: () => SZ.Dialog.show('dlg-about'),
     exit: () => User32.PostMessage('sz:closeWindow'),
   };
 
@@ -4420,40 +4505,13 @@
     document.documentElement.style.setProperty('--icon-size', sizes[zoom] || '48px');
   }
 
-  // Event delegation for ribbon panels and QAT
-  document.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-action]');
-    if (!btn) return;
-    const action = btn.dataset.action;
-    if (action && ribbonActions[action]) {
-      e.stopPropagation();
-      const backstage = document.getElementById('backstage');
-      if (backstage && backstage.contains(btn))
-        backstage.classList.remove('visible');
+  function handleAction(action) {
+    if (action && ribbonActions[action])
       ribbonActions[action]();
-    }
-  });
+  }
 
-  // Ribbon tab switching
-  document.querySelector('.ribbon-tab-bar')?.addEventListener('click', (e) => {
-    const tab = e.target.closest('.ribbon-tab');
-    if (!tab) return;
-    const tabName = tab.dataset.tab;
-    document.querySelectorAll('.ribbon-tab').forEach(t => t.classList.toggle('active', t === tab));
-    document.querySelectorAll('.ribbon-panel').forEach(p => p.classList.toggle('active', p.dataset.panel === tabName));
-  });
-
-  // Backstage
-  document.getElementById('ribbon-file-btn')?.addEventListener('click', () => {
-    document.getElementById('backstage')?.classList.add('visible');
-  });
-  document.getElementById('backstage-back')?.addEventListener('click', () => {
-    document.getElementById('backstage')?.classList.remove('visible');
-  });
-  document.getElementById('backstage')?.addEventListener('click', (e) => {
-    if (e.target === document.getElementById('backstage'))
-      document.getElementById('backstage').classList.remove('visible');
-  });
+  new SZ.Ribbon({ onAction: handleAction });
+  SZ.Dialog.wireAll();
 
   // =========================================================================
   // View filter buttons
@@ -4704,9 +4762,6 @@
   // Options Dialog (Ctrl+,)
   // =========================================================================
   function showOptionsDialog() {
-    const overlay = document.getElementById('dlg-options');
-    overlay.classList.add('visible');
-
     const fontSel = document.getElementById('opt-font-size');
     const spacingSel = document.getElementById('opt-row-spacing');
     const zoomSel = document.getElementById('opt-icon-zoom');
@@ -4717,11 +4772,8 @@
     zoomSel.value = optIconZoom;
     viewSel.value = optDefaultView;
 
-    const handler = (e) => {
-      const btn = e.target.closest('[data-result]');
-      if (!btn) return;
-      overlay.classList.remove('visible');
-      if (btn.dataset.result === 'ok') {
+    SZ.Dialog.show('dlg-options').then((result) => {
+      if (result === 'ok') {
         optFontSize = parseInt(fontSel.value, 10);
         optRowSpacing = spacingSel.value;
         optIconZoom = zoomSel.value;
@@ -4729,10 +4781,7 @@
         applyOptions();
         saveOptions();
       }
-      overlay.removeEventListener('click', handler);
-    };
-    overlay.addEventListener('click', handler);
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) { overlay.classList.remove('visible'); overlay.removeEventListener('click', handler); } }, { once: true });
+    });
   }
 
   function applyOptions() {
@@ -4777,9 +4826,6 @@
   function showBulkRenameDialog() {
     const pane = paneManager.getActive();
     if (!pane || pane.selectedItems.length < 2 || !pane.isVfsMode) return;
-
-    const overlay = document.getElementById('dlg-bulk-rename');
-    overlay.classList.add('visible');
 
     const patternInput = document.getElementById('br-pattern');
     const counterStartInput = document.getElementById('br-counter-start');
@@ -4843,11 +4889,8 @@
     counterStartInput.addEventListener('input', generatePreview);
     counterPadInput.addEventListener('input', generatePreview);
 
-    const handler = async (e) => {
-      const btn = e.target.closest('[data-result]');
-      if (!btn) return;
-      overlay.classList.remove('visible');
-      if (btn.dataset.result === 'ok') {
+    SZ.Dialog.show('dlg-bulk-rename').then(async (result) => {
+      if (result === 'ok') {
         const pattern = patternInput.value;
         const counterStart = parseInt(counterStartInput.value, 10) || 0;
         const padding = parseInt(counterPadInput.value, 10) || 1;
@@ -4874,18 +4917,10 @@
         pane.clearSelection();
         await pane.doRefresh();
       }
-      overlay.removeEventListener('click', handler);
       patternInput.removeEventListener('input', generatePreview);
       counterStartInput.removeEventListener('input', generatePreview);
       counterPadInput.removeEventListener('input', generatePreview);
-    };
-    overlay.addEventListener('click', handler);
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) {
-        overlay.classList.remove('visible');
-        overlay.removeEventListener('click', handler);
-      }
-    }, { once: true });
+    });
   }
 
   // =========================================================================
@@ -4994,6 +5029,12 @@
     } else if (e.key === 'v' && e.ctrlKey && pane.isVfsMode) {
       e.preventDefault();
       pane.doPaste();
+    } else if (e.key === 'Enter' && e.altKey) {
+      e.preventDefault();
+      if (pane.selectedItems.length > 0)
+        pane.showProperties();
+      else
+        pane.showFolderProperties();
     } else if (e.key === 'Enter' && pane.selectedItems.length === 1) {
       e.preventDefault();
       const sel = pane.selectedItems[0];
@@ -5014,6 +5055,30 @@
     } else if (e.key === 'w' && e.ctrlKey) {
       e.preventDefault();
       pane.closeTab(pane.activeTabId);
+    } else if (e.key === 'ArrowDown' && !e.altKey) {
+      e.preventDefault();
+      pane.navigateByArrow('down', { shift: e.shiftKey });
+    } else if (e.key === 'ArrowUp' && !e.altKey) {
+      e.preventDefault();
+      pane.navigateByArrow('up', { shift: e.shiftKey });
+    } else if (e.key === 'ArrowRight' && !e.altKey) {
+      e.preventDefault();
+      pane.navigateByArrow('right', { shift: e.shiftKey });
+    } else if (e.key === 'ArrowLeft' && !e.altKey) {
+      e.preventDefault();
+      pane.navigateByArrow('left', { shift: e.shiftKey });
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      pane.navigateToIndex(0, { shift: e.shiftKey });
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      pane.navigateToIndex(pane.currentEntries.length - 1, { shift: e.shiftKey });
+    } else if (e.key === 'PageDown') {
+      e.preventDefault();
+      pane.navigateByOffset(pane._getPageSize(), { shift: e.shiftKey });
+    } else if (e.key === 'PageUp') {
+      e.preventDefault();
+      pane.navigateByOffset(-pane._getPageSize(), { shift: e.shiftKey });
     } else if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
       // Type-ahead selection
       pane.handleTypeAhead(e.key);
@@ -5114,11 +5179,5 @@
   updatePreviewButton();
   _loadFileAssociations();
   startDirectoryWatch();
-
-  // About dialog handler
-  document.getElementById('dlg-about')?.addEventListener('click', function(e) {
-    if (e.target.closest('[data-result]'))
-      this.classList.remove('visible');
-  });
 
 })();
