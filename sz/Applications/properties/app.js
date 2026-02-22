@@ -370,24 +370,76 @@
         const kernel = SZ.os?.kernel;
         if (!kernel) return;
 
-        const entries = await kernel.List(this.#params.file);
+        const basePath = this.#params.file;
+        const entries = await kernel.List(basePath);
         const genFields = this.#tabs[0].fields;
 
-        genFields.push({ label: 'Items', value: entries.length });
+        // Direct children stats
+        let directFiles = 0;
+        let directFolders = 0;
+        let directSize = 0;
+        const childPaths = [];
 
-        let totalSize = 0;
         for (const name of entries) {
+          const childPath = (basePath === '/' ? '/' : basePath + '/') + name;
           try {
-            const stat = await kernel.Stat(
-              (this.#params.file === '/' ? '/' : this.#params.file + '/') + name
-            );
-            if (stat.kind !== 'dir' && stat.size != null)
-              totalSize += stat.size;
+            const stat = await kernel.Stat(childPath);
+            if (stat.kind === 'dir') {
+              ++directFolders;
+              childPaths.push({ path: childPath, isDir: true });
+            } else {
+              ++directFiles;
+              if (stat.size != null)
+                directSize += stat.size;
+              childPaths.push({ path: childPath, isDir: false });
+            }
+          } catch {
+            ++directFiles;
+            childPaths.push({ path: childPath, isDir: false });
+          }
+        }
+
+        genFields.push({ label: 'Items', value: `${entries.length} (${directFiles} files, ${directFolders} folders)` });
+        if (directSize > 0)
+          genFields.push({ label: 'Size', value: formatSize(directSize) });
+
+        this.#render();
+
+        // Async recursive walk
+        let totalFiles = directFiles;
+        let totalFolders = directFolders;
+        let totalSize = directSize;
+        const stack = childPaths.filter(c => c.isDir).map(c => c.path);
+
+        while (stack.length > 0) {
+          const dir = stack.pop();
+          try {
+            const subEntries = await kernel.List(dir);
+            for (const name of subEntries) {
+              const subPath = dir + '/' + name;
+              try {
+                const stat = await kernel.Stat(subPath);
+                if (stat.kind === 'dir') {
+                  ++totalFolders;
+                  stack.push(subPath);
+                } else {
+                  ++totalFiles;
+                  if (stat.size != null)
+                    totalSize += stat.size;
+                }
+              } catch {
+                ++totalFiles;
+              }
+            }
           } catch {}
         }
 
-        if (totalSize > 0)
-          genFields.push({ label: 'Total file size', value: formatSize(totalSize) });
+        // Update with recursive totals if different from direct counts
+        if (totalFiles !== directFiles || totalFolders !== directFolders) {
+          genFields.push({ label: 'Total items', value: `${totalFiles + totalFolders} (${totalFiles} files, ${totalFolders} folders)` });
+          if (totalSize > 0)
+            genFields.push({ label: 'Total size', value: formatSize(totalSize) });
+        }
 
         this.#render();
       } catch (err) {

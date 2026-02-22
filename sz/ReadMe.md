@@ -980,7 +980,7 @@ A bottom-anchored bar (default 35px, adapts to start button height) with:
 
 - **Start button**: Skinned from WindowBlinds START.BMP (3-frame sprite: normal/hover/pressed). CSS `background-position` switches frames on hover and press. Taskbar height auto-adapts to the start button image height. Opens an XP-style two-column start menu.
 - **Taskbar gradient**: Derived from the skin's `activeTitle`/`gradientActiveTitle` colors. Auto-contrast text color (white on dark taskbars, black on light) via luma calculation.
-- **Window list**: One button per open (non-closed) window. Translucent buttons with CSS custom properties for bg/border/text colors set per-skin. Active window is highlighted. Clicking a minimized window's button restores it. Clicking the active window's button minimizes it.
+- **Window list**: One button per open (non-closed) window. Translucent buttons with CSS custom properties for bg/border/text colors set per-skin. Active window is highlighted. Clicking a minimized window's button restores it. Clicking the active window's button minimizes it. **Overflow handling**: when buttons exceed available width, the `.sz-overflow` class activates (scrollbar hidden, mouse wheel scrolls horizontally, `ResizeObserver` re-evaluates on resize). **Per-button context menu**: right-click a taskbar button for Close, Close All Windows, Close All of Same App (when multiple instances of the same app are open), plus window arrangement options (Cascade, Tile Horizontally/Vertically/Grid, Show Desktop).
 - **System tray**: Clock showing time (HH:MM:SS), date, and ISO calendar week. Updates every second.
 
 **Start menu (XP two-column layout):**
@@ -1006,7 +1006,7 @@ Windows XP-style right-click context menus with nested submenus:
 **Taskbar context menu:**
 
 - Toolbars (submenu)
-- Cascade Windows / Tile Windows Horizontally / Tile Windows Vertically
+- Cascade Windows / Tile Windows Horizontally / Tile Windows Vertically / Tile Windows Grid
 - Show the Desktop / Undo Minimize All
 - Task Manager (launches hidden task-manager app)
 - Properties
@@ -1502,7 +1502,7 @@ State width = image width / 3. State height = image height / (tripleImages ? 2 :
 
 System apps (hosted / app.js -- require OS runtime):
 - [x] Explorer: FilePilot-inspired file manager with Office-style ribbon UI (QAT, Home/View tabs, File backstage), multi-pane layout (split right/bottom, resizable splitters, drag-and-drop arrangement with blue drop-zone previews), navigation tabs with independent state per pane, three view modes (Icons/Details/Tiles), sortable columns with resize and column filter icons, preview pane with prev/next navigation and zoom controls, sidebar with six collapsible sections (Recents, Bookmarks, Quick Access, Storage with usage bars, Places, Tree) and filter input, VFS operations (new folder/file, delete, rename, copy, move, cut/paste), breadcrumb path bar with autocomplete, enhanced search with scope toggle and detail-format results, command palette (Ctrl+Shift+P), GoTo dialog (Ctrl+P/F4), bulk rename with pattern tokens, expand folder mode (Ctrl+E), view filtering (files/folders/both + folders-first), display toggles (hidden files, extensions, highlight recents), options dialog (font/spacing/zoom/default view), type-ahead file selection, arrow key navigation (Up/Down/Left/Right with grid-aware column stepping, Shift+arrow for extend selection), Home/End jump to first/last, PageUp/PageDown, Alt+Enter for properties, save/load layout persistence, directory change watching, folder size calculation, drag-and-drop between panes (move by default, Ctrl to copy) and from OS into VFS, upload/download files, mount/unmount local folders, context menu enhancements (Open with, Copy as Path, New Folder from Selection, Add to Bookmarks), rich status bar with load time and scroll percentage, persisted settings via registry. Also browses SZ runtime object tree (read-only mode)
-- [x] Task Manager: Applications tab + Performance tab with real event-loop lag, NT-style canvas graphs
+- [x] Task Manager: Applications tab with multi-select (Ctrl+Click toggle, Shift+Click range select, batch End Task with count badge) + Performance tab with real event-loop lag, NT-style canvas graphs
 - [x] Control Panel: Display Properties dialog with Themes (preset theme combos), Appearance (skin switching, color swatch previews, auto-scroll to current, sub-skin dropdown), Desktop (layered background: base color + pattern overlay + content source [None/Image/Slideshow/Video/Online], pattern editor with pixel grid and presets, slideshow with transitions, video background, online wallpaper services), Pointers (mouse shadow, mouse trail, trail length slider with live preview), and Taskbar (auto-hide, show clock, clear MRU) tabs
 - [x] About: Tabbed dialog (General/System/Credits) with version info, data-privacy notice (local-storage-only warning with data-persistence explanation), system details (resolution, memory, browser, skin, storage usage), credits (author with GitHub link, Stardock, TidyTabs, AquaSnap, Winamp inspirations), license (free for personal/educational use, contact for commercial/corporate PID), donation appeal with clickable PayPal heart, OK/Escape/Enter to close, copy-to-clipboard, animated logo
 - [x] Properties: Hosted app (first `type: "hosted"` app) — file/folder properties dialog launched from Explorer context menu via `Shell32.ShellExecute`. Shows General tab instantly (name, path, type, size, modified, location), defers metadata parsing to background promises by dynamically loading parser scripts on demand. For VFS files, parses metadata and adds category tabs (same parsers as Metadata Viewer). For VFS folders, computes item count and total size. Includes "Open in Metadata Viewer" button. Multiple instances supported (non-singleton). Accesses OS services via `SZ.os` (kernel for VFS reads, windowManager for close, appLauncher for launching Metadata Viewer). Theme-aware via CSS custom properties.
@@ -1707,6 +1707,9 @@ The VFS enables:
 
 ### Recently Completed
 
+- Taskbar improvements: overflow handling (hidden scrollbar, mouse wheel scroll, ResizeObserver), per-button right-click context menu (Close, Close All, Close All of Same App, window arrangement), appId plumbing through window creation
+- Window Manager: added tileGrid() arrangement (NxM grid using ceil(sqrt(n)) columns), exposed in both taskbar and desktop context menus
+- Task Manager: multi-select support (Ctrl+Click toggle, Shift+Click range select, batch End Task with dynamic count badge, min-width button to prevent label jitter)
 - E-Mail Signature Generator: added flat-top hexagon frame variant (7 total shapes), replaced inline SVG social icons with Simple Icons CDN (14 services total)
 - Font Viewer: migrated from menu bar to Office-style ribbon UI with File/Home/View tabs, SZ Color Picker integration for text color
 - Color Picker: mode-specific visual pickers (HSV: hue ring + SV square, HSL: hue ring + rotating SL triangle, CMYK: filled color disc + K bar), increased default window height
