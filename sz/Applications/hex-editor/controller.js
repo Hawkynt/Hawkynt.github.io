@@ -2,6 +2,7 @@
   'use strict';
 
   const { User32, Kernel32, Shell32, ComDlg32 } = SZ.Dlls;
+  const HexEngine = SZ.StructEngine;
 
   // -----------------------------------------------------------------------
   // Constants
@@ -9,6 +10,14 @@
   const ROW_HEIGHT = 18;
   const OVERSCAN = 5;
   const HEX_CHARS = '0123456789abcdef';
+
+  // 16 pastel colors for struct field colorization
+  const FIELD_COLORS = [
+    '#FFD6D6', '#FFE8CC', '#FFFACD', '#D6FFD6',
+    '#D6F5FF', '#D6D6FF', '#F0D6FF', '#FFD6F0',
+    '#FFE0B2', '#C8E6C9', '#B3E5FC', '#D1C4E9',
+    '#F8BBD0', '#DCEDC8', '#B2EBF2', '#E1BEE7',
+  ];
 
   // -----------------------------------------------------------------------
   // State
@@ -23,6 +32,7 @@
   let nibbleHigh = true;
   let insertMode = false;
   let bytesPerRow = 16;
+  let bprMode = 'auto';
   let currentFilePath = null;
   let currentFileName = 'Untitled';
   let dirty = false;
@@ -38,8 +48,14 @@
   let lastFindQuery = '';
   let lastFindType = 'hex';
 
+  // Struct template state
+  let appliedTemplates = [];
+  let fieldMap = new Map();
+
+  // -----------------------------------------------------------------------
   // DOM references
-  const menuBar = document.getElementById('menu-bar');
+  // -----------------------------------------------------------------------
+  const hexMain = document.getElementById('hex-main');
   const hexContainer = document.getElementById('hex-container');
   const hexHeader = document.getElementById('hex-header');
   const hexViewport = document.getElementById('hex-viewport');
@@ -49,7 +65,12 @@
   const statusOffset = document.getElementById('status-offset');
   const statusSelection = document.getElementById('status-selection');
   const statusMode = document.getElementById('status-mode');
-  let openMenu = null;
+  const structPanel = document.getElementById('struct-panel');
+  const structTree = document.getElementById('struct-tree');
+  const dataInspector = document.getElementById('data-inspector');
+  const inspectorEndian = document.getElementById('inspector-endian');
+  const templateSelect = document.getElementById('template-select');
+  const chkStructPanel = document.getElementById('chk-struct-panel');
 
   // -----------------------------------------------------------------------
   // Utility
@@ -78,6 +99,31 @@
     const title = prefix + currentFileName + ' - Hex Editor';
     document.title = title;
     User32.SetWindowText(title);
+  }
+
+  // -----------------------------------------------------------------------
+  // Auto bytes-per-row calculation
+  // -----------------------------------------------------------------------
+  function calculateAutoBpr() {
+    const available = hexViewport.clientWidth - getOffsetColWidth() - 1 - 24 - 17;
+    // Each byte needs: 22px hex + ~3px avg group space + 8px ascii = ~33px
+    const byteCost = 33;
+    let bpr = Math.floor(available / byteCost);
+    bpr = bpr & ~7; // round down to multiple of 8
+    return Math.max(8, Math.min(64, bpr));
+  }
+
+  function applyBprMode() {
+    if (bprMode === 'auto') {
+      const newBpr = calculateAutoBpr();
+      if (newBpr !== bytesPerRow) {
+        bytesPerRow = newBpr;
+        renderHeader();
+        updateScrollHeight();
+        render();
+        ensureCursorVisible();
+      }
+    }
   }
 
   // -----------------------------------------------------------------------
@@ -161,6 +207,7 @@
     dirty = modified.size > 0 || data.length !== originalData.length;
     updateTitle();
     updateScrollHeight();
+    reEvaluateTemplates();
     render();
     ensureCursorVisible();
     updateStatusBar();
@@ -335,7 +382,23 @@
             cls += ' selected';
           if (isInFindResult(offset))
             cls += ' found';
-          html += '<span class="' + cls + '" data-offset="' + offset + '">' + toHex2(data[offset]) + '</span>';
+
+          // Struct field coloring
+          let style = '';
+          const fieldEntries = fieldMap.get(offset);
+          if (fieldEntries && fieldEntries.length > 0) {
+            cls += ' struct-field';
+            if (fieldEntries.length === 1)
+              style = ' style="background:' + fieldEntries[0].color + '"';
+            else {
+              const colors = fieldEntries.map(e => e.color);
+              const pct = 100 / colors.length;
+              const stops = colors.map((c, idx) => c + ' ' + (idx * pct) + '%,' + c + ' ' + ((idx + 1) * pct) + '%').join(',');
+              style = ' style="background:linear-gradient(135deg,' + stops + ')"';
+            }
+          }
+
+          html += '<span class="' + cls + '" data-offset="' + offset + '"' + style + '>' + toHex2(data[offset]) + '</span>';
         } else {
           const cls = (i > 0 && i % 2 === 0) ? 'hex-byte group-space' : 'hex-byte';
           html += '<span class="' + cls + '">  </span>';
@@ -413,6 +476,7 @@
     nibbleHigh = true;
     ensureCursorVisible();
     render();
+    renderDataInspector();
     updateStatusBar();
   }
 
@@ -437,6 +501,30 @@
   hexViewport.addEventListener('pointerdown', (e) => {
     const target = e.target;
 
+    // Ctrl+click: rebase existing templates or apply new one
+    if (e.ctrlKey && !e.shiftKey) {
+      const byteEl = target.closest('[data-offset]');
+      if (byteEl) {
+        const offset = parseInt(byteEl.dataset.offset, 10);
+        if (appliedTemplates.length > 0) {
+          for (const entry of appliedTemplates) {
+            entry.baseOffset = offset;
+            entry.result = entry.template.evaluate(data, offset);
+          }
+          rebuildFieldMap();
+          renderStructPanel();
+          render();
+          e.preventDefault();
+          return;
+        }
+        if (templateSelect.value) {
+          applyTemplate(templateSelect.value, offset);
+          e.preventDefault();
+          return;
+        }
+      }
+    }
+
     const hexByte = target.closest('.hex-byte[data-offset]');
     if (hexByte) {
       const offset = parseInt(hexByte.dataset.offset, 10);
@@ -454,6 +542,7 @@
       nibbleHigh = true;
       hexViewport.focus();
       render();
+      renderDataInspector();
       updateStatusBar();
       return;
     }
@@ -475,6 +564,7 @@
       nibbleHigh = true;
       hexViewport.focus();
       render();
+      renderDataInspector();
       updateStatusBar();
       return;
     }
@@ -562,6 +652,7 @@
         } else if (data.length > 0)
           deleteBytes(cursorOffset, 1);
         cursorOffset = clamp(cursorOffset, 0, Math.max(0, data.length - 1));
+        reEvaluateTemplates();
         render();
         updateStatusBar();
         return;
@@ -577,6 +668,7 @@
           --cursorOffset;
         }
         cursorOffset = clamp(cursorOffset, 0, Math.max(0, data.length - 1));
+        reEvaluateTemplates();
         render();
         updateStatusBar();
         return;
@@ -618,6 +710,7 @@
       insertByte(0, nibbleValue << 4);
       cursorOffset = 0;
       nibbleHigh = false;
+      reEvaluateTemplates();
       render();
       updateStatusBar();
       return;
@@ -626,6 +719,7 @@
     if (insertMode && nibbleHigh) {
       insertByte(cursorOffset, nibbleValue << 4);
       nibbleHigh = false;
+      reEvaluateTemplates();
       render();
       updateStatusBar();
       return;
@@ -645,6 +739,7 @@
         ++cursorOffset;
     }
     clearSelection();
+    reEvaluateTemplates();
     render();
     updateStatusBar();
   }
@@ -653,6 +748,7 @@
     if (data.length === 0) {
       insertByte(0, charCode);
       cursorOffset = 0;
+      reEvaluateTemplates();
       render();
       updateStatusBar();
       return;
@@ -669,6 +765,7 @@
     }
     nibbleHigh = true;
     clearSelection();
+    reEvaluateTemplates();
     render();
     updateStatusBar();
   }
@@ -681,58 +778,54 @@
   });
 
   // -----------------------------------------------------------------------
-  // Menu system
+  // Ribbon system
   // -----------------------------------------------------------------------
-  function closeMenus() {
-    for (const item of menuBar.querySelectorAll('.menu-item'))
-      item.classList.remove('open');
-    openMenu = null;
+  const ribbon = new SZ.Ribbon({ onAction: handleAction });
+
+  // BPR radio buttons
+  function updateBprRadios() {
+    for (const radio of document.querySelectorAll('input[name="bpr"]'))
+      radio.checked = radio.value === bprMode;
   }
 
-  for (const menuItem of menuBar.querySelectorAll('.menu-item')) {
-    menuItem.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('.menu-entry') || e.target.closest('.menu-separator'))
+  for (const radio of document.querySelectorAll('input[name="bpr"]')) {
+    radio.addEventListener('change', () => {
+      if (!radio.checked)
         return;
-      if (openMenu === menuItem) {
-        closeMenus();
-        return;
+      bprMode = radio.value;
+      if (bprMode === 'auto')
+        applyBprMode();
+      else {
+        bytesPerRow = parseInt(bprMode, 10);
+        renderHeader();
+        updateScrollHeight();
+        render();
+        ensureCursorVisible();
       }
-      closeMenus();
-      menuItem.classList.add('open');
-      openMenu = menuItem;
-    });
-
-    menuItem.addEventListener('pointerenter', () => {
-      if (openMenu && openMenu !== menuItem) {
-        closeMenus();
-        menuItem.classList.add('open');
-        openMenu = menuItem;
-      }
+      hexViewport.focus();
     });
   }
 
-  document.addEventListener('pointerdown', (e) => {
-    if (openMenu && !menuBar.contains(e.target))
-      closeMenus();
+  // Struct panel toggle
+  chkStructPanel.addEventListener('change', () => {
+    toggleStructPanel(chkStructPanel.checked);
   });
 
-  for (const entry of document.querySelectorAll('.menu-entry')) {
-    entry.addEventListener('click', () => {
-      const action = entry.dataset.action;
-      closeMenus();
-      handleAction(action, entry);
-    });
+  document.getElementById('struct-panel-close').addEventListener('click', () => {
+    toggleStructPanel(false);
+    chkStructPanel.checked = false;
+  });
+
+  function toggleStructPanel(show) {
+    structPanel.style.display = show ? '' : 'none';
+    chkStructPanel.checked = show;
+    if (show)
+      renderDataInspector();
+    // Trigger resize recalculation
+    setTimeout(() => applyBprMode(), 0);
   }
 
-  function updateBprRadios() {
-    for (const entry of document.querySelectorAll('.menu-entry[data-bpr]')) {
-      const bpr = parseInt(entry.dataset.bpr, 10);
-      entry.classList.toggle('checked', bpr === bytesPerRow);
-    }
-  }
-  updateBprRadios();
-
-  function handleAction(action, entry) {
+  function handleAction(action) {
     switch (action) {
       case 'new':
         doNew();
@@ -780,23 +873,969 @@
       case 'find':
         showFindDialog();
         break;
-      case 'bpr-8':
-      case 'bpr-16':
-      case 'bpr-32': {
-        const bpr = parseInt(entry.dataset.bpr, 10);
-        bytesPerRow = bpr;
-        updateBprRadios();
-        renderHeader();
-        updateScrollHeight();
-        render();
-        ensureCursorVisible();
-        hexViewport.focus();
-        break;
-      }
       case 'about':
-        showDialog('dlg-about');
+        SZ.Dialog.show('dlg-about');
+        break;
+      case 'auto-detect-template':
+        doAutoDetectTemplate();
+        break;
+      case 'apply-template':
+        doApplySelectedTemplate();
+        break;
+      case 'clear-templates':
+        appliedTemplates = [];
+        rebuildFieldMap();
+        renderStructPanel();
+        render();
+        break;
+      case 'import-c-header':
+        doImportStruct('c');
+        break;
+      case 'import-cs-struct':
+        doImportStruct('cs');
         break;
     }
+  }
+
+  // -----------------------------------------------------------------------
+  // Struct template operations
+  // -----------------------------------------------------------------------
+  function populateTemplateDropdown() {
+    const templates = HexEngine.allTemplates();
+    templateSelect.innerHTML = '<option value="">(none)</option>';
+    for (const tmpl of templates) {
+      const opt = document.createElement('option');
+      opt.value = tmpl.id;
+      opt.textContent = tmpl.label;
+      templateSelect.appendChild(opt);
+    }
+  }
+
+  function applyTemplate(id, baseOffset) {
+    const tmpl = HexEngine.getTemplate(id);
+    if (!tmpl)
+      return;
+    const result = tmpl.evaluate(data, baseOffset);
+    appliedTemplates.push({ id, label: tmpl.label, template: tmpl, baseOffset, result });
+    rebuildFieldMap();
+    if (!chkStructPanel.checked)
+      toggleStructPanel(true);
+    renderStructPanel();
+    render();
+  }
+
+  function removeTemplate(index) {
+    appliedTemplates.splice(index, 1);
+    rebuildFieldMap();
+    renderStructPanel();
+    render();
+  }
+
+  function reEvaluateTemplates() {
+    for (const entry of appliedTemplates)
+      entry.result = entry.template.evaluate(data, entry.baseOffset);
+    rebuildFieldMap();
+    renderStructPanel();
+  }
+
+  function doAutoDetectTemplate() {
+    if (data.length === 0)
+      return;
+    const tmpl = HexEngine.detectTemplate(data, currentFileName);
+    if (tmpl) {
+      templateSelect.value = tmpl.id;
+      applyTemplate(tmpl.id, tmpl.headerOffset);
+    }
+  }
+
+  function doApplySelectedTemplate() {
+    const id = templateSelect.value;
+    if (!id)
+      return;
+    applyTemplate(id, cursorOffset);
+  }
+
+  // -----------------------------------------------------------------------
+  // Field map + coloring
+  // -----------------------------------------------------------------------
+  function assignFieldColors(nodes, colorStart) {
+    let colorIdx = colorStart;
+    for (const node of nodes) {
+      if (node.children && node.children.length > 0) {
+        colorIdx = assignFieldColors(node.children, colorIdx);
+      } else {
+        node._color = FIELD_COLORS[colorIdx % FIELD_COLORS.length];
+        ++colorIdx;
+      }
+    }
+    return colorIdx;
+  }
+
+  function rebuildFieldMap() {
+    fieldMap = new Map();
+    let colorStart = 0;
+    for (const entry of appliedTemplates) {
+      assignFieldColors(entry.result, colorStart);
+      _addToFieldMap(entry.result);
+      colorStart += 5; // offset palette per template
+    }
+  }
+
+  function _addToFieldMap(nodes) {
+    for (const node of nodes) {
+      if (node.children && node.children.length > 0) {
+        _addToFieldMap(node.children);
+      } else {
+        const color = node._color || '#ddd';
+        for (let i = 0; i < node.size; ++i) {
+          const byteOff = node.offset + i;
+          if (!fieldMap.has(byteOff))
+            fieldMap.set(byteOff, []);
+          fieldMap.get(byteOff).push({ node, color });
+        }
+      }
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Struct panel rendering
+  // -----------------------------------------------------------------------
+  function renderStructPanel() {
+    if (structPanel.style.display === 'none')
+      return;
+
+    if (appliedTemplates.length === 0) {
+      structTree.innerHTML = '<div class="struct-panel-empty">No templates applied.<br>Use Templates tab to apply a format.</div>';
+      return;
+    }
+
+    let html = '';
+    for (let ti = 0; ti < appliedTemplates.length; ++ti) {
+      const entry = appliedTemplates[ti];
+      html += '<div class="struct-template-section" data-tmpl-idx="' + ti + '">';
+      html += '<div class="struct-template-header">';
+      html += '<span class="struct-tmpl-label">' + _escHtml(entry.label) + '</span>';
+      html += '<span class="struct-tmpl-offset">@ 0x' + toHex8(entry.baseOffset) + '</span>';
+      html += '<button class="struct-tmpl-remove" data-remove-tmpl="' + ti + '" title="Remove">&times;</button>';
+      html += '</div>';
+      html += _renderNodes(entry.result, ti);
+      html += '</div>';
+    }
+
+    structTree.innerHTML = html;
+    _wireStructPanelEvents();
+  }
+
+  function _renderNodes(nodes, tmplIdx) {
+    let html = '';
+    for (let ni = 0; ni < nodes.length; ++ni) {
+      const node = nodes[ni];
+      const hasChildren = node.children && node.children.length > 0;
+      const nodeId = tmplIdx + '-' + node.offset + '-' + ni;
+
+      html += '<div class="struct-node" data-node-id="' + nodeId + '">';
+      html += '<div class="struct-node-row" data-offset="' + node.offset + '" data-size="' + node.size + '" data-node-id="' + nodeId + '">';
+
+      // Toggle
+      if (hasChildren)
+        html += '<span class="struct-node-toggle" data-toggle="' + nodeId + '">&#9660;</span>';
+      else
+        html += '<span class="struct-node-toggle"></span>';
+
+      // Color swatch
+      const color = node._color || '';
+      if (color)
+        html += '<span class="struct-node-swatch" style="background:' + color + '"></span>';
+      else
+        html += '<span class="struct-node-swatch" style="background:transparent;border-color:transparent"></span>';
+
+      // Name
+      html += '<span class="struct-node-name">' + _escHtml(node.field.name) + '</span>';
+
+      // Bitfield indicator
+      if (node.bitSize != null)
+        html += '<span class="struct-node-bits">[:' + node.bitSize + ']</span>';
+
+      // Type
+      html += '<span class="struct-node-type">' + _escHtml(node.field.type) + '</span>';
+
+      // Value
+      if (!hasChildren) {
+        const display = _formatValue(node);
+        html += '<span class="struct-node-value" data-editable="' + nodeId + '">' + _escHtml(display) + '</span>';
+      }
+
+      html += '</div>';
+
+      // Children
+      if (hasChildren) {
+        html += '<div class="struct-node-children" data-children-of="' + nodeId + '">';
+        html += _renderNodes(node.children, tmplIdx);
+        html += '</div>';
+      }
+
+      html += '</div>';
+    }
+    return html;
+  }
+
+  function _formatValue(node) {
+    if (node.value == null)
+      return '';
+    if (node.displayValue != null)
+      return node.displayValue + ' (' + node.value + ')';
+
+    // Check for type-level format callback
+    const endian = node.field.endian || 'le';
+    const resolvedName = HexEngine.resolveType(node.field.type, endian);
+    const typeInfo = resolvedName ? HexEngine.TYPES[resolvedName] : null;
+    if (typeInfo && typeInfo.format && typeof node.value === 'number')
+      return typeInfo.format(node.value);
+
+    const display = node.field.display || 'hex';
+    switch (display) {
+      case 'hex':
+        if (typeof node.value === 'number')
+          return '0x' + (node.value >>> 0).toString(16).toUpperCase();
+        return String(node.value);
+      case 'dec':
+        return String(node.value);
+      case 'string':
+        return '"' + node.value + '"';
+      default:
+        return String(node.value);
+    }
+  }
+
+  function _escHtml(str) {
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function _wireStructPanelEvents() {
+    // Remove template buttons
+    for (const btn of structTree.querySelectorAll('[data-remove-tmpl]'))
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        removeTemplate(parseInt(btn.dataset.removeTmpl, 10));
+      });
+
+    // Toggle expand/collapse
+    for (const toggle of structTree.querySelectorAll('[data-toggle]'))
+      toggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = toggle.dataset.toggle;
+        const children = structTree.querySelector('[data-children-of="' + id + '"]');
+        if (children) {
+          const collapsed = children.style.display === 'none';
+          children.style.display = collapsed ? '' : 'none';
+          toggle.innerHTML = collapsed ? '&#9660;' : '&#9654;';
+        }
+      });
+
+    // Click node to select bytes
+    for (const row of structTree.querySelectorAll('.struct-node-row[data-offset]'))
+      row.addEventListener('click', () => {
+        const offset = parseInt(row.dataset.offset, 10);
+        const size = parseInt(row.dataset.size, 10);
+        cursorOffset = offset;
+        selectionStart = offset;
+        selectionEnd = offset + size;
+        nibbleHigh = true;
+        ensureCursorVisible();
+        render();
+        updateStatusBar();
+
+        // Highlight active node row
+        for (const r of structTree.querySelectorAll('.struct-node-row.active'))
+          r.classList.remove('active');
+        row.classList.add('active');
+      });
+
+    // Double-click value to edit
+    for (const val of structTree.querySelectorAll('[data-editable]'))
+      val.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        _startInlineEdit(val);
+      });
+  }
+
+  function _startInlineEdit(valueEl) {
+    if (valueEl.querySelector('.struct-node-edit'))
+      return;
+    const nodeId = valueEl.dataset.editable;
+    const node = _findNodeById(nodeId);
+    if (!node || node.value == null)
+      return;
+
+    const currentText = _formatValue(node);
+    const input = document.createElement('input');
+    input.className = 'struct-node-edit';
+    input.type = 'text';
+    input.value = currentText;
+    valueEl.textContent = '';
+    valueEl.appendChild(input);
+    input.focus();
+    input.select();
+
+    const finish = (commit) => {
+      if (commit) {
+        let newValue = input.value.trim();
+        // Parse the value
+        if (node.field.type.startsWith('char')) {
+          // String value — strip quotes
+          newValue = newValue.replace(/^"|"$/g, '');
+        } else if (newValue.startsWith('0x') || newValue.startsWith('0X'))
+          newValue = parseInt(newValue, 16);
+        else if (newValue.startsWith('0b') || newValue.startsWith('0B'))
+          newValue = parseInt(newValue.substring(2), 2);
+        else
+          newValue = parseFloat(newValue);
+
+        if (!isNaN(newValue) || typeof newValue === 'string') {
+          // Find the template that owns this node
+          const tmplIdx = parseInt(nodeId.split('-')[0], 10);
+          const entry = appliedTemplates[tmplIdx];
+          if (entry) {
+            entry.template.writeValue(data, node, newValue);
+            // Mark bytes as modified
+            for (let i = 0; i < node.size; ++i) {
+              const off = node.offset + i;
+              if (off < data.length) {
+                if (data[off] !== originalData[off])
+                  modified.add(off);
+                else
+                  modified.delete(off);
+              }
+            }
+            dirty = modified.size > 0 || data.length !== originalData.length;
+            updateTitle();
+            reEvaluateTemplates();
+            render();
+          }
+        }
+      }
+      valueEl.textContent = _formatValue(node);
+    };
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        finish(true);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        finish(false);
+      }
+    });
+    input.addEventListener('blur', () => finish(true));
+  }
+
+  function _findNodeById(nodeId) {
+    const parts = nodeId.split('-');
+    const tmplIdx = parseInt(parts[0], 10);
+    const targetOffset = parseInt(parts[1], 10);
+    const targetNi = parseInt(parts[2], 10);
+    if (tmplIdx >= appliedTemplates.length)
+      return null;
+    return _searchNodes(appliedTemplates[tmplIdx].result, targetOffset, targetNi);
+  }
+
+  function _searchNodes(nodes, targetOffset, targetNi) {
+    for (let i = 0; i < nodes.length; ++i) {
+      const node = nodes[i];
+      if (node.offset === targetOffset && i === targetNi)
+        return node;
+      if (node.children) {
+        const found = _searchNodes(node.children, targetOffset, targetNi);
+        if (found)
+          return found;
+      }
+    }
+    return null;
+  }
+
+  // -----------------------------------------------------------------------
+  // Accordion expand/collapse
+  // -----------------------------------------------------------------------
+  for (const header of document.querySelectorAll('.struct-accordion-header')) {
+    header.addEventListener('click', (e) => {
+      if (e.target.closest('.inspector-endian-toggle'))
+        return;
+      const body = header.nextElementSibling;
+      if (!body)
+        return;
+      const collapsed = body.classList.toggle('collapsed');
+      const toggle = header.querySelector('.struct-accordion-toggle');
+      if (toggle)
+        toggle.innerHTML = collapsed ? '&#9654;' : '&#9660;';
+    });
+  }
+
+  // Endian toggle for inspector
+  inspectorEndian.addEventListener('change', () => renderDataInspector());
+
+  // -----------------------------------------------------------------------
+  // Data Inspector
+  // -----------------------------------------------------------------------
+  const INSPECTOR_TYPES = [
+    { cat: 'Integers', items: [
+      { label: 'int8',     le: 'int8',      be: 'int8' },
+      { label: 'uint8',    le: 'uint8',     be: 'uint8' },
+      { label: 'int16',    le: 'int16le',   be: 'int16be' },
+      { label: 'uint16',   le: 'uint16le',  be: 'uint16be' },
+      { label: 'int24',    le: 'int24le',   be: 'int24be' },
+      { label: 'uint24',   le: 'uint24le',  be: 'uint24be' },
+      { label: 'int32',    le: 'int32le',   be: 'int32be' },
+      { label: 'uint32',   le: 'uint32le',  be: 'uint32be' },
+      { label: 'int64',    le: 'int64le',   be: 'int64be' },
+      { label: 'uint64',   le: 'uint64le',  be: 'uint64be' },
+    ]},
+    { cat: 'Floats', items: [
+      { label: 'float16',  le: 'float16le', be: 'float16be' },
+      { label: 'float32',  le: 'float32le', be: 'float32be' },
+      { label: 'float64',  le: 'float64le', be: 'float64be' },
+    ]},
+    { cat: 'Binary', items: [
+      { label: 'bin8',     le: 'bin8',      be: 'bin8' },
+      { label: 'bin16',    le: 'bin16le',   be: 'bin16be' },
+      { label: 'bin32',    le: 'bin32le',   be: 'bin32be' },
+      { label: 'oct8',     le: 'oct8',      be: 'oct8' },
+      { label: 'oct16',    le: 'oct16le',   be: 'oct16be' },
+      { label: 'oct32',    le: 'oct32le',   be: 'oct32be' },
+    ]},
+    { cat: 'Characters', items: [
+      { label: 'ASCII',    le: 'char',      be: 'char' },
+      { label: 'UTF-16LE', le: 'wchar',     be: 'wchar' },
+      { label: 'UTF-8',    le: 'utf8',      be: 'utf8' },
+    ]},
+    { cat: 'Date/Time', items: [
+      { label: 'Unix32',   le: 'unix32le',  be: 'unix32be' },
+      { label: 'DOS Date', le: 'dosdate',   be: 'dosdate' },
+      { label: 'FILETIME', le: 'filetime',  be: 'filetime' },
+      { label: '.NET',     le: 'dotnet_ticks', be: 'dotnet_ticks' },
+    ]},
+    { cat: 'Colors', items: [
+      { label: 'RGB24',    le: 'rgb24',     be: 'rgb24' },
+      { label: 'RGBA32',   le: 'rgba32le',  be: 'rgba32le' },
+      { label: 'RGB565',   le: 'rgb565le',  be: 'rgb565le' },
+    ]},
+    { cat: 'Special', items: [
+      { label: 'IPv4',     le: 'ipv4',      be: 'ipv4' },
+      { label: 'FourCC',   le: 'fourcc',    be: 'fourcc' },
+      { label: 'GUID',     le: 'guid',      be: 'guid' },
+    ]},
+  ];
+
+  const _inspectorCollapsed = {};
+
+  function renderDataInspector() {
+    if (structPanel.style.display === 'none')
+      return;
+    if (dataInspector.classList.contains('collapsed'))
+      return;
+
+    if (data.length === 0) {
+      dataInspector.innerHTML = '<div class="inspector-empty">No data loaded.</div>';
+      return;
+    }
+
+    const endian = inspectorEndian.value;
+    const TYPES = HexEngine.TYPES;
+    let html = '';
+
+    for (const group of INSPECTOR_TYPES) {
+      const collapsed = !!_inspectorCollapsed[group.cat];
+      const arrow = collapsed ? '&#9654;' : '&#9660;';
+      html += '<div class="inspector-group-header" data-insp-cat="' + _escHtml(group.cat) + '">';
+      html += '<span class="inspector-group-toggle">' + arrow + '</span>';
+      html += _escHtml(group.cat);
+      html += '</div>';
+      html += '<div class="inspector-group-body' + (collapsed ? ' collapsed' : '') + '" data-insp-cat-body="' + _escHtml(group.cat) + '">';
+
+      for (const item of group.items) {
+        const typeName = endian === 'be' ? item.be : item.le;
+        const typeInfo = TYPES[typeName];
+        if (!typeInfo) {
+          html += '<div class="inspector-row"><span class="inspector-type">' + _escHtml(item.label) + '</span><span class="inspector-value na">N/A</span></div>';
+          continue;
+        }
+
+        const remaining = data.length - cursorOffset;
+        if (remaining < typeInfo.size) {
+          html += '<div class="inspector-row"><span class="inspector-type">' + _escHtml(item.label) + '</span><span class="inspector-value na">N/A</span></div>';
+          continue;
+        }
+
+        const rawValue = typeInfo.read(data, cursorOffset);
+        let display;
+        if (typeInfo.format)
+          display = typeInfo.format(rawValue);
+        else if (typeof rawValue === 'string')
+          display = rawValue;
+        else if (typeof rawValue === 'number') {
+          if (Number.isInteger(rawValue) && rawValue >= 0)
+            display = rawValue + ' (0x' + rawValue.toString(16).toUpperCase() + ')';
+          else
+            display = String(rawValue);
+        } else
+          display = String(rawValue);
+
+        let swatch = '';
+        if (typeInfo.colorFormat)
+          swatch = '<span class="inspector-swatch" style="background:' + typeInfo.colorFormat(rawValue) + '"></span>';
+
+        html += '<div class="inspector-row" data-insp-type="' + typeName + '">';
+        html += '<span class="inspector-type">' + _escHtml(item.label) + '</span>';
+        html += '<span class="inspector-value">' + swatch + _escHtml(display) + '</span>';
+        html += '</div>';
+      }
+
+      html += '</div>';
+    }
+
+    dataInspector.innerHTML = html;
+
+    // Wire category collapse/expand
+    for (const hdr of dataInspector.querySelectorAll('[data-insp-cat]')) {
+      hdr.addEventListener('click', () => {
+        const cat = hdr.dataset.inspCat;
+        const body = dataInspector.querySelector('[data-insp-cat-body="' + cat + '"]');
+        if (!body)
+          return;
+        const nowCollapsed = body.classList.toggle('collapsed');
+        _inspectorCollapsed[cat] = nowCollapsed;
+        const toggle = hdr.querySelector('.inspector-group-toggle');
+        if (toggle)
+          toggle.innerHTML = nowCollapsed ? '&#9654;' : '&#9660;';
+      });
+    }
+
+    // Wire double-click editing
+    for (const row of dataInspector.querySelectorAll('[data-insp-type]'))
+      row.addEventListener('dblclick', () => _startInspectorEdit(row));
+  }
+
+  const _TYPE_RANGES = {
+    int8:      [-128, 127],
+    uint8:     [0, 255],
+    int16le:   [-32768, 32767],       int16be:   [-32768, 32767],
+    uint16le:  [0, 65535],            uint16be:  [0, 65535],
+    int24le:   [-8388608, 8388607],   int24be:   [-8388608, 8388607],
+    uint24le:  [0, 16777215],         uint24be:  [0, 16777215],
+    int32le:   [-2147483648, 2147483647],   int32be:   [-2147483648, 2147483647],
+    uint32le:  [0, 4294967295],       uint32be:  [0, 4294967295],
+    int64le:   [-9007199254740991, 9007199254740991],
+    int64be:   [-9007199254740991, 9007199254740991],
+    uint64le:  [0, 9007199254740991], uint64be:  [0, 9007199254740991],
+    bin8:      [0, 255],
+    bin16le:   [0, 65535],            bin16be:   [0, 65535],
+    bin32le:   [0, 4294967295],       bin32be:   [0, 4294967295],
+    oct8:      [0, 255],
+    oct16le:   [0, 65535],            oct16be:   [0, 65535],
+    oct32le:   [0, 4294967295],       oct32be:   [0, 4294967295],
+    unix32le:  [0, 4294967295],       unix32be:  [0, 4294967295],
+    unix64le:  [0, 9007199254740991], unix64be:  [0, 9007199254740991],
+    dosdate:   [0, 4294967295],
+    filetime:  [0, 9007199254740991],
+    dotnet_ticks: [0, 9007199254740991],
+    rgb24:     [0, 16777215],
+    rgba32le:  [0, 4294967295],
+    rgb565le:  [0, 65535],
+    bgr24:     [0, 16777215],
+    bgra32le:  [0, 4294967295],
+    ipv4:      [0, 4294967295],
+    bcd8:      [0, 255],
+    bcd16le:   [0, 65535],
+    bcd32le:   [0, 4294967295],
+    wchar:     [0, 65535],
+  };
+
+  const _CHAR_TYPES = { char: 1, wchar: 2 };
+  const _COLOR_TYPES = new Set(['rgb24', 'rgba32le', 'bgr24', 'bgra32le', 'rgb565le']);
+  let _colorPickerRequest = null;
+
+  // Listen for color picker results
+  window.addEventListener('storage', (e) => {
+    if (!_colorPickerRequest || !e || e.key !== _colorPickerRequest.returnKey || !e.newValue)
+      return;
+    let payload;
+    try { payload = JSON.parse(e.newValue); } catch { return; }
+    if (!payload || payload.type !== 'color-picker-result')
+      return;
+
+    const r = Math.max(0, Math.min(255, payload.r || 0));
+    const g = Math.max(0, Math.min(255, payload.g || 0));
+    const b = Math.max(0, Math.min(255, payload.b || 0));
+    const a = Math.max(0, Math.min(255, payload.a == null ? 255 : payload.a));
+    const off = _colorPickerRequest.offset;
+    const tn = _colorPickerRequest.typeName;
+    const ti = HexEngine.TYPES[tn];
+
+    if (ti && off + ti.size <= data.length) {
+      let packed;
+      if (tn === 'rgb24')
+        packed = (r << 16) | (g << 8) | b;
+      else if (tn === 'rgba32le')
+        packed = ((a << 24) | (b << 16) | (g << 8) | r) >>> 0;
+      else if (tn === 'bgr24')
+        packed = (b << 16) | (g << 8) | r;
+      else if (tn === 'bgra32le')
+        packed = ((a << 24) | (r << 16) | (g << 8) | b) >>> 0;
+      else if (tn === 'rgb565le')
+        packed = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+      else
+        packed = 0;
+
+      for (let i = 0; i < ti.size; ++i) {
+        const o = off + i;
+        if (o < data.length)
+          pushUndo({ type: 'modify', offset: o, oldValue: data[o], newValue: data[o] });
+      }
+      ti.write(data, off, packed);
+      for (let i = 0; i < ti.size; ++i) {
+        const o = off + i;
+        if (o < data.length) {
+          undoStack[undoStack.length - ti.size + i].newValue = data[o];
+          if (data[o] !== originalData[o])
+            modified.add(o);
+          else
+            modified.delete(o);
+        }
+      }
+      dirty = modified.size > 0 || data.length !== originalData.length;
+      updateTitle();
+      reEvaluateTemplates();
+      render();
+      renderDataInspector();
+    }
+
+    try { localStorage.removeItem(_colorPickerRequest.returnKey); } catch {}
+    _colorPickerRequest = null;
+  });
+
+  function _startInspectorEdit(row) {
+    const typeName = row.dataset.inspType;
+    const typeInfo = HexEngine.TYPES[typeName];
+    if (!typeInfo || cursorOffset + typeInfo.size > data.length)
+      return;
+    const valueEl = row.querySelector('.inspector-value');
+    if (!valueEl)
+      return;
+
+    // Color types: open SZ Color Picker
+    if (_COLOR_TYPES.has(typeName)) {
+      const rawValue = typeInfo.read(data, cursorOffset);
+      const hex = typeInfo.colorFormat ? typeInfo.colorFormat(rawValue) : '#000000';
+      const returnKey = 'sz:hex-editor:colorpick:' + Date.now() + ':' + Math.random().toString(36).slice(2);
+      _colorPickerRequest = { returnKey, typeName, offset: cursorOffset };
+      try {
+        User32.PostMessage('sz:launchApp', {
+          appId: 'color-picker',
+          urlParams: { returnKey, hex },
+        });
+      } catch {
+        _colorPickerRequest = null;
+      }
+      return;
+    }
+
+    if (valueEl.querySelector('input'))
+      return;
+
+    const isChar = typeName in _CHAR_TYPES;
+    const isUtf8 = typeName === 'utf8';
+    const isFourCC = typeName === 'fourcc';
+    const rawValue = typeInfo.read(data, cursorOffset);
+    const range = _TYPE_RANGES[typeName];
+    const input = document.createElement('input');
+    input.className = 'struct-node-edit';
+    input.type = 'text';
+    input.style.width = '100%';
+
+    if (isUtf8) {
+      const cp = typeof rawValue === 'object' ? rawValue.cp : rawValue;
+      input.value = String.fromCodePoint(cp);
+    } else if (isChar) {
+      const charVal = typeName === 'char' ? String.fromCharCode(data[cursorOffset]) : String.fromCharCode(data[cursorOffset] | (data[cursorOffset + 1] << 8));
+      input.value = charVal;
+    } else if (isFourCC) {
+      input.value = String(rawValue);
+      input.maxLength = 4;
+    } else
+      input.value = typeof rawValue === 'string' ? rawValue : String(rawValue);
+
+    valueEl.textContent = '';
+    valueEl.appendChild(input);
+    input.focus();
+    input.select();
+
+    // Live-clamp ranged integer inputs as the user types
+    if (range && !isChar && !isUtf8 && !isFourCC) {
+      input.addEventListener('input', () => {
+        const text = input.value.trim();
+        if (text === '' || text === '-')
+          return;
+        const isHex = text.startsWith('0x') || text.startsWith('0X');
+        const isBin = text.startsWith('0b') || text.startsWith('0B');
+        const isOct = text.startsWith('0o') || text.startsWith('0O');
+        let num;
+        if (isHex) num = parseInt(text.slice(2), 16);
+        else if (isBin) num = parseInt(text.slice(2), 2);
+        else if (isOct) num = parseInt(text.slice(2), 8);
+        else num = parseFloat(text);
+        if (isNaN(num))
+          return;
+        if (num > range[1]) {
+          const clamped = Math.floor(range[1]);
+          if (isHex) input.value = '0x' + clamped.toString(16).toUpperCase();
+          else if (isBin) input.value = '0b' + (clamped >>> 0).toString(2);
+          else if (isOct) input.value = '0o' + (clamped >>> 0).toString(8);
+          else input.value = String(clamped);
+        } else if (num < range[0]) {
+          const clamped = Math.ceil(range[0]);
+          input.value = String(clamped);
+        }
+      });
+    }
+
+    const finish = (commit) => {
+      if (commit) {
+        const text = input.value;
+
+        // UTF-8: encode typed character(s) as UTF-8 bytes
+        if (isUtf8) {
+          if (text.length === 0) {
+            renderDataInspector();
+            return;
+          }
+          const encoded = new TextEncoder().encode(text);
+          const endOff = Math.min(cursorOffset + encoded.length, data.length);
+          for (let off = cursorOffset; off < endOff; ++off)
+            pushUndo({ type: 'modify', offset: off, oldValue: data[off], newValue: data[off] });
+          for (let i = 0; i < encoded.length && cursorOffset + i < data.length; ++i)
+            data[cursorOffset + i] = encoded[i];
+          for (let off = cursorOffset; off < endOff; ++off) {
+            const idx = undoStack.length - (endOff - off);
+            if (idx >= 0)
+              undoStack[idx].newValue = data[off];
+            if (data[off] !== originalData[off])
+              modified.add(off);
+            else
+              modified.delete(off);
+          }
+          dirty = modified.size > 0 || data.length !== originalData.length;
+          updateTitle();
+          reEvaluateTemplates();
+          render();
+          renderDataInspector();
+          return;
+        }
+
+        // Character types: write multi-char string to consecutive bytes
+        if (isChar) {
+          const bytesPerChar = _CHAR_TYPES[typeName];
+          if (text.length === 0) {
+            renderDataInspector();
+            return;
+          }
+          const totalBytes = text.length * bytesPerChar;
+          const endOff = Math.min(cursorOffset + totalBytes, data.length);
+          for (let off = cursorOffset; off < endOff; ++off)
+            pushUndo({ type: 'modify', offset: off, oldValue: data[off], newValue: data[off] });
+          for (let i = 0; i < text.length; ++i) {
+            const off = cursorOffset + i * bytesPerChar;
+            if (off + bytesPerChar > data.length)
+              break;
+            const code = text.charCodeAt(i);
+            if (bytesPerChar === 1)
+              data[off] = code & 0xff;
+            else {
+              data[off] = code & 0xff;
+              data[off + 1] = (code >> 8) & 0xff;
+            }
+          }
+          for (let off = cursorOffset; off < endOff; ++off) {
+            const idx = undoStack.length - (endOff - off);
+            if (idx >= 0)
+              undoStack[idx].newValue = data[off];
+            if (data[off] !== originalData[off])
+              modified.add(off);
+            else
+              modified.delete(off);
+          }
+          dirty = modified.size > 0 || data.length !== originalData.length;
+          updateTitle();
+          reEvaluateTemplates();
+          render();
+          renderDataInspector();
+          return;
+        }
+
+        // FourCC: require exactly 4 characters
+        if (isFourCC) {
+          const str = text;
+          if (str.length !== 4) {
+            renderDataInspector();
+            return;
+          }
+          for (let i = 0; i < typeInfo.size; ++i) {
+            const off = cursorOffset + i;
+            if (off < data.length)
+              pushUndo({ type: 'modify', offset: off, oldValue: data[off], newValue: data[off] });
+          }
+          typeInfo.write(data, cursorOffset, str);
+          for (let i = 0; i < typeInfo.size; ++i) {
+            const off = cursorOffset + i;
+            if (off < data.length) {
+              undoStack[undoStack.length - typeInfo.size + i].newValue = data[off];
+              if (data[off] !== originalData[off])
+                modified.add(off);
+              else
+                modified.delete(off);
+            }
+          }
+          dirty = modified.size > 0 || data.length !== originalData.length;
+          updateTitle();
+          reEvaluateTemplates();
+          render();
+          renderDataInspector();
+          return;
+        }
+
+        // Numeric / special types
+        let newValue = text.trim();
+        if (typeof rawValue === 'string')
+          newValue = newValue.replace(/^"|"$/g, '');
+        else if (newValue.startsWith('0x') || newValue.startsWith('0X'))
+          newValue = parseInt(newValue.slice(2), 16);
+        else if (newValue.startsWith('0b') || newValue.startsWith('0B'))
+          newValue = parseInt(newValue.slice(2), 2);
+        else if (newValue.startsWith('0o') || newValue.startsWith('0O'))
+          newValue = parseInt(newValue.slice(2), 8);
+        else
+          newValue = parseFloat(newValue);
+
+        if (typeof newValue === 'number') {
+          if (isNaN(newValue)) {
+            renderDataInspector();
+            return;
+          }
+          if (range)
+            newValue = Math.max(range[0], Math.min(range[1], newValue));
+        } else if (typeof rawValue !== 'string') {
+          renderDataInspector();
+          return;
+        }
+
+        for (let i = 0; i < typeInfo.size; ++i) {
+          const off = cursorOffset + i;
+          if (off < data.length)
+            pushUndo({ type: 'modify', offset: off, oldValue: data[off], newValue: data[off] });
+        }
+        typeInfo.write(data, cursorOffset, newValue);
+        for (let i = 0; i < typeInfo.size; ++i) {
+          const off = cursorOffset + i;
+          if (off < data.length) {
+            undoStack[undoStack.length - typeInfo.size + i].newValue = data[off];
+            if (data[off] !== originalData[off])
+              modified.add(off);
+            else
+              modified.delete(off);
+          }
+        }
+        dirty = modified.size > 0 || data.length !== originalData.length;
+        updateTitle();
+        reEvaluateTemplates();
+        render();
+      }
+      renderDataInspector();
+    };
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+      else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+    });
+    input.addEventListener('blur', () => finish(true));
+  }
+
+  // -----------------------------------------------------------------------
+  // Import struct files
+  // -----------------------------------------------------------------------
+  async function doImportStruct(lang) {
+    const filters = lang === 'c'
+      ? [{ name: 'C/C++ Headers', ext: ['h', 'hpp', 'c', 'cpp'] }, { name: 'All Files', ext: ['*'] }]
+      : [{ name: 'C# Files', ext: ['cs'] }, { name: 'All Files', ext: ['*'] }];
+
+    const result = await ComDlg32.GetOpenFileName({
+      filters,
+      initialDir: '/user/documents',
+      title: 'Import ' + (lang === 'c' ? 'C/C++ Header' : 'C# Struct'),
+    });
+
+    if (result.cancelled || !result.path)
+      return;
+
+    let content;
+    try {
+      content = await Kernel32.ReadAllBytes(result.path);
+    } catch (err) {
+      alert('Could not read file: ' + err.message);
+      return;
+    }
+
+    // Decode to text
+    let text;
+    if (typeof content === 'string') {
+      try { text = atob(content); } catch (_) { text = content; }
+    } else if (content instanceof ArrayBuffer)
+      text = new TextDecoder().decode(content);
+    else if (content instanceof Uint8Array)
+      text = new TextDecoder().decode(content);
+    else
+      text = String(content);
+
+    const structs = lang === 'c'
+      ? HexEngine.parseCHeader(text)
+      : HexEngine.parseCSharpStruct(text);
+
+    if (structs.length === 0) {
+      alert('No structures found in the file.');
+      return;
+    }
+
+    if (structs.length === 1) {
+      // Apply directly
+      const def = structs[0];
+      const id = 'import-' + Date.now();
+      HexEngine.registerTemplate(id, def);
+      populateTemplateDropdown();
+      templateSelect.value = id;
+      applyTemplate(id, cursorOffset);
+      return;
+    }
+
+    // Multiple structs — show selection dialog
+    const selectEl = document.getElementById('import-struct-select');
+    selectEl.innerHTML = '';
+    for (let i = 0; i < structs.length; ++i) {
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = structs[i].label;
+      selectEl.appendChild(opt);
+    }
+
+    const dlgResult = await SZ.Dialog.show('dlg-import-struct');
+    if (dlgResult !== 'ok')
+      return;
+
+    const idx = parseInt(selectEl.value, 10);
+    const endian = document.querySelector('input[name="import-endian"]:checked').value;
+    const def = structs[idx];
+    def.endian = endian;
+    const id = 'import-' + Date.now();
+    HexEngine.registerTemplate(id, def);
+    populateTemplateDropdown();
+    templateSelect.value = id;
+    applyTemplate(id, cursorOffset);
   }
 
   // -----------------------------------------------------------------------
@@ -810,6 +1849,7 @@
     deleteBytes(sel.lo, sel.hi - sel.lo);
     cursorOffset = clamp(sel.lo, 0, Math.max(0, data.length - 1));
     clearSelection();
+    reEvaluateTemplates();
     render();
     updateStatusBar();
   }
@@ -852,6 +1892,7 @@
         insertByte(cursorOffset + i, bytes[i]);
 
       cursorOffset = clamp(cursorOffset + bytes.length, 0, Math.max(0, data.length - 1));
+      reEvaluateTemplates();
       render();
       ensureCursorVisible();
       updateStatusBar();
@@ -875,9 +1916,12 @@
     currentFileName = 'Untitled';
     dirty = false;
     nibbleHigh = true;
+    appliedTemplates = [];
+    rebuildFieldMap();
     updateTitle();
     updateScrollHeight();
     render();
+    renderStructPanel();
     updateStatusBar();
     hexViewport.focus();
   }
@@ -941,10 +1985,15 @@
     currentFileName = parts[parts.length - 1] || 'Untitled';
     dirty = false;
     nibbleHigh = true;
+    appliedTemplates = [];
+    rebuildFieldMap();
     updateTitle();
+    applyBprMode();
     updateScrollHeight();
     render();
+    renderStructPanel();
     updateStatusBar();
+    doAutoDetectTemplate();
     hexViewport.focus();
   }
 
@@ -1014,7 +2063,7 @@
     const overlay = document.getElementById('dlg-goto');
     const input = document.getElementById('goto-input');
     input.value = toHex8(cursorOffset);
-    overlay.classList.add('visible');
+    SZ.Dialog.show('dlg-goto');
     input.focus();
     input.select();
 
@@ -1043,7 +2092,7 @@
     }
 
     function closeGoto() {
-      overlay.classList.remove('visible');
+      SZ.Dialog.close('dlg-goto');
       input.removeEventListener('keydown', handleKey);
       hexViewport.focus();
     }
@@ -1067,7 +2116,7 @@
     const statusEl = document.getElementById('find-status');
     input.value = lastFindQuery;
     statusEl.textContent = '';
-    overlay.classList.add('visible');
+    SZ.Dialog.show('dlg-find');
     input.focus();
     input.select();
 
@@ -1083,7 +2132,7 @@
     }
 
     function closeFind() {
-      overlay.classList.remove('visible');
+      SZ.Dialog.close('dlg-find');
       input.removeEventListener('keydown', handleKey);
       hexViewport.focus();
     }
@@ -1105,7 +2154,7 @@
             findPrevious();
           statusEl.textContent = 'Found ' + findResults.length + ' match' + (findResults.length !== 1 ? 'es' : '') + '.';
         }
-        overlay.classList.add('visible');
+        SZ.Dialog.show('dlg-find');
         awaitDialogResult(overlay, arguments.callee);
       } else
         closeFind();
@@ -1214,12 +2263,6 @@
   // -----------------------------------------------------------------------
   // Dialog helpers
   // -----------------------------------------------------------------------
-  function showDialog(id) {
-    const overlay = document.getElementById(id);
-    overlay.classList.add('visible');
-    awaitDialogResult(overlay);
-  }
-
   function awaitDialogResult(overlay, callback) {
     function handleClick(e) {
       const btn = e.target.closest('[data-result]');
@@ -1303,6 +2346,7 @@
   // Resize observer
   // -----------------------------------------------------------------------
   const resizeObserver = new ResizeObserver(() => {
+    applyBprMode();
     render();
   });
   resizeObserver.observe(hexViewport);
@@ -1335,10 +2379,15 @@
       currentFileName = file.name;
       dirty = false;
       nibbleHigh = true;
+      appliedTemplates = [];
+      rebuildFieldMap();
       updateTitle();
+      applyBprMode();
       updateScrollHeight();
       render();
+      renderStructPanel();
       updateStatusBar();
+      doAutoDetectTemplate();
       hexViewport.focus();
     };
     reader.readAsArrayBuffer(file);
@@ -1347,6 +2396,9 @@
   // -----------------------------------------------------------------------
   // Init
   // -----------------------------------------------------------------------
+  populateTemplateDropdown();
+  updateBprRadios();
+  applyBprMode();
   renderHeader();
   updateScrollHeight();
   render();
