@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Professional e-mail signature generator with live preview, multiple templates, social media links, and HTML export for Outlook, Gmail, and Apple Mail">
+<meta name="robots" content="index,follow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="E-Mail Signature Generator -- &raquo;SynthelicZ&laquo; Desktop">
+<meta property="og:description" content="Professional e-mail signature generator with live preview, multiple templates, social media links, and HTML export for Outlook, Gmail, and Apple Mail">
+<meta property="og:url" content="https://hawkynt.github.io/sz/Applications/email-signature/index.html">
+<link rel="canonical" href="https://hawkynt.github.io/sz/Applications/email-signature/index.html">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "E-Mail Signature Generator",
+  "url": "https://hawkynt.github.io/sz/Applications/email-signature/index.html",
+  "description": "Professional email signature generator with live preview, multiple templates, social media links, and HTML export for Outlook, Gmail, and Apple Mail",
+  "applicationCategory": "BusinessApplication",
+  "operatingSystem": "Web Browser",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<title>E-Mail Signature Generator</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="../shared/ribbon.css">
+<link rel="stylesheet" href="../shared/dialog.css">
+<link rel="stylesheet" href="styles.css">
+<script defer src="../vision-renderer.js"></script>
+</head>
+<body>
+<noscript><p>Professional email signature generator with live preview, multiple templates, social media links, and HTML export for Outlook, Gmail, and Apple Mail. <a href="../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a> to use this app.</p></noscript>
+
+<!-- Quick Access Toolbar -->
+<div class="qat">
+  <button class="qat-btn" data-action="copy-html" title="Copy HTML">&#128203;</button>
+  <button class="qat-btn" data-action="copy-text" title="Copy Plain Text">&#128196;</button>
+  <button class="qat-btn" data-action="export-html" title="Export HTML">&#128190;</button>
+</div>
+
+<!-- Ribbon Tab Bar -->
+<div class="ribbon-tabs">
+  <div class="ribbon-tab-bar">
+    <button class="ribbon-file-btn">File</button>
+    <button class="ribbon-tab active" data-tab="home">Home</button>
+    <button class="ribbon-tab" data-tab="template">Template</button>
+    <button class="ribbon-tab" data-tab="view">View</button>
+  </div>
+</div>
+
+<!-- File Backstage -->
+<div class="backstage">
+  <div class="backstage-sidebar">
+    <button class="backstage-back">&#8592;</button>
+    <button class="backstage-item" data-action="new">New</button>
+    <div class="backstage-sep"></div>
+    <button class="backstage-item" data-action="copy-html">Copy HTML</button>
+    <button class="backstage-item" data-action="copy-text">Copy as Plain Text</button>
+    <button class="backstage-item" data-action="export-html">Export HTML File</button>
+    <div class="backstage-sep"></div>
+    <button class="backstage-item" data-action="about">About</button>
+    <div class="backstage-spacer"></div>
+    <button class="backstage-item backstage-exit" data-action="exit">Exit</button>
+  </div>
+</div>
+
+<!-- Home Tab -->
+<div class="ribbon-panel active" id="ribbon-home">
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="copy-html" title="Copy HTML to clipboard">
+        <span class="rb-icon rb-icon-lg">&#128203;</span>
+        <span class="rb-label">Copy HTML</span>
+      </button>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="copy-text" title="Copy as plain text">
+          <span class="rb-icon">&#128196;</span><span class="rb-label">Copy Text</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="new" title="Clear all fields">
+          <span class="rb-icon">&#128196;</span><span class="rb-label">New</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Clipboard</div>
+  </div>
+  <div class="ribbon-sep"></div>
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="export-html" title="Export as HTML file">
+        <span class="rb-icon rb-icon-lg">&#128190;</span>
+        <span class="rb-label">Export</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Export</div>
+  </div>
+</div>
+
+<!-- Template Tab -->
+<div class="ribbon-panel" id="ribbon-template">
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <label class="rb-btn rb-btn-sm rb-radio">
+          <input type="radio" name="rb-tpl" value="classic" checked data-action="tpl-classic"><span class="rb-label">Classic Horizontal</span>
+        </label>
+        <label class="rb-btn rb-btn-sm rb-radio">
+          <input type="radio" name="rb-tpl" value="modern" data-action="tpl-modern"><span class="rb-label">Modern Vertical</span>
+        </label>
+      </div>
+      <div class="rb-stack">
+        <label class="rb-btn rb-btn-sm rb-radio">
+          <input type="radio" name="rb-tpl" value="compact" data-action="tpl-compact"><span class="rb-label">Compact Minimal</span>
+        </label>
+        <label class="rb-btn rb-btn-sm rb-radio">
+          <input type="radio" name="rb-tpl" value="bold" data-action="tpl-bold"><span class="rb-label">Bold with Banner</span>
+        </label>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Template</div>
+  </div>
+  <div class="ribbon-sep"></div>
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <div class="rb-btn rb-btn-sm" style="gap:4px;">
+          <span class="rb-label">Accent</span>
+          <input type="color" id="rb-accent-color" value="#3a6ea5" style="width:24px;height:16px;border:1px solid var(--sz-color-button-shadow);padding:0;cursor:pointer;">
+        </div>
+        <div class="rb-btn rb-btn-sm" style="gap:4px;">
+          <span class="rb-label">Frame</span>
+          <select id="rb-frame" style="font-size:10px;">
+            <option value="circle">Circle</option>
+            <option value="square">Square</option>
+            <option value="rounded">Rounded Square</option>
+            <option value="hexagon">Hexagon &#9651;</option>
+            <option value="hexagon-flat">Hexagon &#9661;</option>
+            <option value="diamond">Diamond</option>
+            <option value="octagon">Octagon</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Appearance</div>
+  </div>
+</div>
+
+<!-- View Tab -->
+<div class="ribbon-panel" id="ribbon-view">
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <label class="rb-btn rb-btn-sm rb-check">
+          <input type="checkbox" id="rb-show-social" checked><span class="rb-label">Show Social Icons</span>
+        </label>
+        <label class="rb-btn rb-btn-sm rb-check">
+          <input type="checkbox" id="rb-show-photo" checked><span class="rb-label">Show Photo</span>
+        </label>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Preview</div>
+  </div>
+</div>
+
+<!-- Main Content -->
+<div class="main-split" id="main-split">
+
+  <!-- Left Panel: Form -->
+  <div class="form-panel" id="form-panel">
+    <div class="form-scroll">
+
+      <!-- Personal Info -->
+      <fieldset class="field-group">
+        <legend>Personal Information</legend>
+        <div class="field-row">
+          <label for="inp-name">Full Name</label>
+          <input type="text" id="inp-name" placeholder="John Doe">
+        </div>
+        <div class="field-row">
+          <label for="inp-title">Job Title</label>
+          <input type="text" id="inp-title" placeholder="Senior Developer">
+        </div>
+        <div class="field-row">
+          <label for="inp-company">Company</label>
+          <input type="text" id="inp-company" placeholder="Acme Corp">
+        </div>
+        <div class="field-row">
+          <label for="inp-department">Department</label>
+          <input type="text" id="inp-department" placeholder="Engineering">
+        </div>
+      </fieldset>
+
+      <!-- Contact -->
+      <fieldset class="field-group">
+        <legend>Contact Details</legend>
+        <div class="field-row">
+          <label for="inp-email">Email</label>
+          <input type="text" id="inp-email" placeholder="john@acme.com">
+        </div>
+        <div class="field-row">
+          <label for="inp-phone">Phone</label>
+          <input type="text" id="inp-phone" placeholder="+1 (555) 123-4567">
+        </div>
+        <div class="field-row">
+          <label for="inp-mobile">Mobile</label>
+          <input type="text" id="inp-mobile" placeholder="+1 (555) 987-6543">
+        </div>
+        <div class="field-row">
+          <label for="inp-website">Website</label>
+          <input type="text" id="inp-website" placeholder="https://acme.com">
+        </div>
+      </fieldset>
+
+      <!-- Photo -->
+      <fieldset class="field-group">
+        <legend>Photo</legend>
+        <div class="photo-upload-area" id="photo-drop">
+          <div class="photo-preview" id="photo-preview">
+            <span class="photo-placeholder" id="photo-placeholder">Drop image here or click Browse</span>
+            <img id="photo-img" alt="Photo preview">
+          </div>
+          <div class="photo-buttons">
+            <button id="btn-browse" type="button">Browse...</button>
+            <button id="btn-remove-photo" type="button">Remove</button>
+          </div>
+          <input type="file" id="photo-input" accept="image/*" hidden>
+        </div>
+        <div class="field-row">
+          <label for="inp-frame">Frame</label>
+          <select id="inp-frame">
+            <option value="circle">Circle</option>
+            <option value="square">Square</option>
+            <option value="rounded">Rounded Square</option>
+            <option value="hexagon">Hexagon &#9651;</option>
+            <option value="hexagon-flat">Hexagon &#9661;</option>
+            <option value="diamond">Diamond</option>
+            <option value="octagon">Octagon</option>
+          </select>
+        </div>
+      </fieldset>
+
+      <!-- Social Media -->
+      <fieldset class="field-group">
+        <legend>Social Media</legend>
+        <div class="field-row">
+          <label for="inp-linkedin">LinkedIn</label>
+          <input type="text" id="inp-linkedin" placeholder="https://linkedin.com/in/johndoe">
+        </div>
+        <div class="field-row">
+          <label for="inp-twitter">Twitter / X</label>
+          <input type="text" id="inp-twitter" placeholder="https://x.com/johndoe">
+        </div>
+        <div class="field-row">
+          <label for="inp-github">GitHub</label>
+          <input type="text" id="inp-github" placeholder="https://github.com/johndoe">
+        </div>
+        <div class="field-row">
+          <label for="inp-instagram">Instagram</label>
+          <input type="text" id="inp-instagram" placeholder="https://instagram.com/johndoe">
+        </div>
+        <div class="field-row">
+          <label for="inp-facebook">Facebook</label>
+          <input type="text" id="inp-facebook" placeholder="https://facebook.com/johndoe">
+        </div>
+        <div class="field-row">
+          <label for="inp-youtube">YouTube</label>
+          <input type="text" id="inp-youtube" placeholder="https://youtube.com/@johndoe">
+        </div>
+        <div class="field-row">
+          <label for="inp-mastodon">Mastodon</label>
+          <input type="text" id="inp-mastodon" placeholder="https://mastodon.social/@johndoe">
+        </div>
+        <div class="field-row">
+          <label for="inp-discord">Discord</label>
+          <input type="text" id="inp-discord" placeholder="https://discord.gg/invite">
+        </div>
+        <div class="field-row">
+          <label for="inp-stackoverflow">Stack Overflow</label>
+          <input type="text" id="inp-stackoverflow" placeholder="https://stackoverflow.com/users/123">
+        </div>
+        <div class="field-row">
+          <label for="inp-dribbble">Dribbble</label>
+          <input type="text" id="inp-dribbble" placeholder="https://dribbble.com/johndoe">
+        </div>
+        <div class="field-row">
+          <label for="inp-behance">Behance</label>
+          <input type="text" id="inp-behance" placeholder="https://behance.net/johndoe">
+        </div>
+        <div class="field-row">
+          <label for="inp-medium">Medium</label>
+          <input type="text" id="inp-medium" placeholder="https://medium.com/@johndoe">
+        </div>
+        <div class="field-row">
+          <label for="inp-twitch">Twitch</label>
+          <input type="text" id="inp-twitch" placeholder="https://twitch.tv/johndoe">
+        </div>
+        <div class="field-row">
+          <label for="inp-tiktok">TikTok</label>
+          <input type="text" id="inp-tiktok" placeholder="https://tiktok.com/@johndoe">
+        </div>
+      </fieldset>
+
+      <!-- Appearance -->
+      <fieldset class="field-group">
+        <legend>Appearance</legend>
+        <div class="field-row">
+          <label for="inp-accent">Accent Color</label>
+          <div class="color-picker-row">
+            <input type="color" id="inp-accent" value="#3a6ea5">
+            <input type="text" id="inp-accent-hex" value="#3a6ea5" maxlength="7" class="color-hex-input">
+          </div>
+        </div>
+        <div class="field-row">
+          <label>Template</label>
+          <select id="inp-template">
+            <option value="classic">Classic Horizontal</option>
+            <option value="modern">Modern Vertical</option>
+            <option value="compact">Compact Minimal</option>
+            <option value="bold">Bold with Banner</option>
+          </select>
+        </div>
+      </fieldset>
+
+    </div>
+  </div>
+
+  <!-- Splitter -->
+  <div class="splitter" id="splitter"></div>
+
+  <!-- Right Panel: Preview -->
+  <div class="preview-panel" id="preview-panel">
+    <div class="preview-header">Live Preview</div>
+    <div class="email-mock">
+      <div class="email-mock-header">
+        <div class="email-mock-row"><span class="email-mock-label">From:</span> <span id="mock-from">you@example.com</span></div>
+        <div class="email-mock-row"><span class="email-mock-label">To:</span> recipient@example.com</div>
+        <div class="email-mock-row"><span class="email-mock-label">Subject:</span> Re: Meeting Tomorrow</div>
+      </div>
+      <div class="email-mock-body">
+        <p class="email-mock-text">Hi,</p>
+        <p class="email-mock-text">Thanks for your message. Let me get back to you shortly.</p>
+        <p class="email-mock-text">Best regards,</p>
+        <hr class="email-mock-divider">
+        <div class="signature-output" id="signature-output">
+          <!-- Signature renders here -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Copy tooltip -->
+<div class="copy-tooltip" id="copy-tooltip">Copied!</div>
+
+<!-- About dialog -->
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About E-Mail Signature Generator</div>
+    <div class="dialog-body" style="text-align:center;padding:20px;">
+      <p style="font-weight:bold;font-size:13px;margin-bottom:12px;">E-Mail Signature Generator</p>
+      <p>A signature designer for &raquo;SynthelicZ&laquo;</p>
+      <p style="margin-top:8px;font-size:10px;">Create professional email signatures with live preview, multiple templates, photo upload, social links, and HTML export compatible with Outlook, Gmail, and Apple Mail.</p>
+      <p style="margin-top:12px;font-size:10px;opacity:0.7;">&copy; 1995-2026 &raquo;SynthelicZ&laquo;</p>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">OK</button>
+    </div>
+  </div>
+</div>
+
+<script src="../shared/ribbon.js"></script>
+<script src="../shared/dialog.js"></script>
+<script src="controller.js"></script>
+</body>
+</html>
