@@ -178,6 +178,15 @@ sz/
     versions.js                 Generated per-app version data, git hash, changelog (sets SZ.appVersions)
     sz-app-bootstrap.js         DLL-like API library: SZ.Dlls.User32/Kernel32/GDI32/Shell32/ComDlg32/Advapi32, theme injection, WindowProc dispatch, standalone redirect
     zoom-control.js             Reusable SZ.ZoomControl component (slider + buttons + text input) used by 9 apps
+    shared/
+      ribbon.css                Shared ribbon UI styles (QAT, tab bar, backstage, panels, buttons)
+      ribbon.js                 SZ.Ribbon class (tab switching, backstage, action dispatch)
+      menu.css                  Shared menu bar styles (items, dropdowns, entries, separators)
+      menu.js                   SZ.MenuBar class (open/close/hover, action dispatch)
+      dialog.css                Shared modal dialog styles (overlay, box, title, body, buttons)
+      dialog.js                 SZ.Dialog object (show/close/wireAll, Promise-based results)
+      syntax-highlighter.css    Token color classes for syntax highlighting (26 token types)
+      syntax-highlighter.js     SZ.SyntaxHighlighter (tokenizer for 19 languages, highlightBlock/highlightLine)
     libs/                       Vendored third-party libraries (offline-capable)
       mammoth.browser.min.js    DOCX→HTML converter (BSD-2)
       jszip.min.js              ZIP creation for DOCX export (MIT)
@@ -674,7 +683,7 @@ Layered background system with two conceptual layers:
 - **Base Layer group**: Color picker for the solid background color. Pattern overlay checkbox with "Edit Pattern..." button to open the pixel-grid pattern editor dialog.
 - **Content Source dropdown**: None, Image, Slideshow, Video, Online — switches between sub-panels.
 - **Image sub-panel**: Background list (system + user images), position dropdown (Stretch/Fit/Fill/Center/Tile), Browse button for uploading custom images.
-- **Slideshow sub-panel**: Folder path selector, interval slider (5s-5min), shuffle checkbox, transition type dropdown (Fade/Dissolve/Slide Left/Slide Right/Zoom), transition duration slider, position mode dropdown.
+- **Slideshow sub-panel**: Folder path selector, interval slider (5s-5min), shuffle checkbox (randomizes starting image and re-shuffles on cycle), "Include subfolders" checkbox (recursive listing via `SearchOption.BreadthFirst`), transition type dropdown with 50+ transitions organized in categories (Subtle, Push & Cover, Wipe & Reveal, Shape, Exciting, Zoom & Spin, 3D-like, Effects) plus a Random option, transition duration slider, position mode dropdown. The preview monitor cycles through real images from the selected folder at 3-second intervals with the chosen transition.
 - **Video sub-panel**: Video file selector, loop checkbox, playback speed slider (0.25x-2x). Videos play muted for autoplay policy compliance.
 - **Online sub-panel**: Service dropdown (Lorem Picsum, NASA APOD, Bing Daily, Giphy), search keywords input (for services that support it), Fetch Now button, thumbnail gallery grid, position mode. Disabled on `file://` with notice.
 - **Pattern editor dialog**: Canvas-based pixel grid with click/drag painting, foreground color picker, width/height inputs (1-16), and ~10 built-in presets (Dots, Checker, Crosshatch, Diagonal, H/V Lines, Grid, Bricks, Weave). Bit encoding: row-major, MSB first, hex-encoded.
@@ -912,9 +921,16 @@ const result = await commonDialogs.showSave({
   title: 'Save As'
 });
 // result: { cancelled: false, path: '/user/documents/file.txt' }
+
+// Show Browse For Folder dialog
+const result = await commonDialogs.showBrowseFolder({
+  initialDir: '/user/pictures',
+  title: 'Select Slideshow Folder'
+});
+// result: { cancelled: false, path: '/user/pictures/vacation' }
 ```
 
-**Dialog features**: XP-style sidebar (Documents, Desktop, Computer, Temp), directory navigation with history (back/up), editable path bar, file type filter dropdown, keyboard shortcuts (Escape/Enter/Backspace), skinned with CSS custom properties. The Open dialog includes an **Import** button for uploading files from the user's PC (browser file picker). The Save dialog includes a **Download** button for downloading files to the user's PC (when the app passes file content). These buttons appear automatically for all apps using the common dialogs.
+**Dialog features**: XP-style sidebar (Documents, Desktop, Pictures, Computer), directory navigation with history (back/up), editable path bar, file type filter dropdown, keyboard shortcuts (Escape/Enter/Backspace), skinned with CSS custom properties. The Open dialog includes an **Import** button for uploading files from the user's PC (browser file picker). The Save dialog includes a **Download** button for downloading files to the user's PC (when the app passes file content). These buttons appear automatically for all apps using the common dialogs. The **Browse For Folder** dialog hides the filename input, file type filter, Import, and Download buttons — showing only directories with a "Select Folder" confirm button. Single-click selects a folder; double-click navigates into it; confirming with no selection returns the current directory.
 
 **Apps using common dialogs**: Notepad (text files), Paint (image files), WordPad (HTML/RTF files), Image Viewer (image files), Markdown Editor (markdown files), Hex Editor (binary files), Spreadsheet (CSV/TSV files), README Generator (markdown files), Resume Builder (markdown files). WordPad and Spreadsheet also support browser-native Import/Export for binary formats (DOCX, XLSX) via `ComDlg32.ImportFile()`/`ComDlg32.ExportFile()`.
 
@@ -951,7 +967,7 @@ Layered background model with two conceptual layers:
      - **fill** (Fill) — `object-fit: fill`, distorts to fill
      - **center** — natural size, centered via CSS transform
      - **tile** — hides `<img>`, uses CSS `background-image` with `repeat` on the desktop element
-   - **slideshow** — Two alternating `<img>` elements (`#sz-background` and `#sz-background-alt`) with CSS transitions for cross-fade. `setInterval` timer cycles images from a VFS folder. Transition effects: fade, dissolve, slide-left, slide-right, zoom. Fisher-Yates shuffle when shuffle mode is on.
+   - **slideshow** — Two alternating `<img>` elements (`#sz-background` and `#sz-background-alt`) with 50+ CSS/JS transition effects organized in categories (Subtle, Push & Cover, Wipe & Reveal, Shape, Exciting, Zoom & Spin, 3D-like, Effects) plus Random. Fisher-Yates shuffle when shuffle mode is on; shuffle also randomizes the starting image. **Persistent dual-slot cache**: two compressed JPEG data URIs (slots A/B) are kept in localStorage so the last-displayed image appears instantly on page reload — no VFS or mount-permission round-trip needed. Each tick transitions to the pre-loaded other slot, then resolves + compresses the next image into the freed slot in the background (ping-pong). Images are canvas-compressed to screen dimensions at JPEG quality 0.85 to stay within localStorage limits. Cache is invalidated when the source folder changes or background mode switches away from slideshow.
    - **video** — `<video>` element (`#sz-bg-video`) with `muted`, `loop`, `autoplay`, `playsinline`. Configurable playback rate. Graceful autoplay failure handling.
    - **online** — Cached URL from online services (Lorem Picsum, NASA APOD, Bing Daily, Giphy) rendered as image.
 
@@ -1007,10 +1023,10 @@ Shared library included by each application. When an app's `index.html` is opene
 Provides Windows DLL-like API namespaces for all OS communication:
 
 - `SZ.Dlls.User32` -- window management (SetWindowText, DestroyWindow, MoveWindow, MessageBox, GetSystemMetrics, RegisterWindowProc)
-- `SZ.Dlls.Kernel32` -- VFS file operations (ReadFile, ReadAllText, ReadAllBytes, ReadUri, ReadValue, WriteFile, WriteAllBytes, WriteValue, WriteUri, FindFirstFile, DeleteFile, CreateDirectory, MoveFile, CopyFile, GetFileAttributes, GetCommandLine, MountLocalDirectory, UnmountDirectory, ListMounts)
+- `SZ.Dlls.Kernel32` -- VFS file operations (ReadFile, ReadAllText, ReadAllBytes, ReadUri, ReadValue, WriteFile, WriteAllBytes, WriteValue, WriteUri, FindFirstFile, DeleteFile, CreateDirectory, MoveFile, CopyFile, GetFileAttributes, GetCommandLine, MountLocalDirectory, UnmountDirectory, ListMounts, SearchOption)
 - `SZ.Dlls.GDI32` -- system colors and fonts (GetSysColor, GetSysColorBrush, GetSystemFont)
 - `SZ.Dlls.Shell32` -- app launching and special folders (ShellExecute, SHGetFolderPath, SHFileOperation, SHGetFileTypeAssociations)
-- `SZ.Dlls.ComDlg32` -- file open/save dialogs (GetOpenFileName, GetSaveFileName, ImportFile, ExportFile)
+- `SZ.Dlls.ComDlg32` -- file open/save dialogs (GetOpenFileName, GetSaveFileName, BrowseForFolder, ImportFile, ExportFile)
 - `SZ.Dlls.Advapi32` -- settings/registry (RegQueryValue, RegSetValue)
 
 ### Zoom Control (`Applications/zoom-control.js`)
@@ -1027,6 +1043,53 @@ Shared reusable component providing a unified status-bar zoom UI across nine app
 **CSS**: Injected once via `:where()` selectors (zero specificity) using `--sz-color-*` theme variables. Apps can override styles without `!important`.
 
 **Used by**: Spreadsheet, WordPad, Function Plotter, Markdown Editor, Notepad, Paint, Image Viewer, SVG Editor, Icon Editor.
+
+### Shared UI Modules (`Applications/shared/`)
+
+Extracted shared CSS and JS modules used by all applications. Apps include them via `<link>` and `<script>` tags before their own `styles.css` and `controller.js`. Shared CSS loads first so app-specific styles naturally override via cascade. Works on `file://` with no bundler.
+
+**Ribbon** (`ribbon.css` + `ribbon.js`):
+
+Provides the Office-style ribbon interface used by 10 apps. CSS defines QAT toolbar, tab bar, backstage overlay/sidebar, ribbon panels/groups, and button variants (large/small/format/check/radio). JS provides `SZ.Ribbon` class:
+
+- `new SZ.Ribbon({ onAction })` -- auto-wires `.ribbon-tab[data-tab]` switching, `.ribbon-file-btn` → backstage, `.backstage-item[data-action]` / `.qat-btn[data-action]` / `.rb-btn[data-action]` → `onAction(action)`
+- `selectTab(name)` -- programmatic tab switch
+- `openBackstage()` / `closeBackstage()` -- programmatic backstage control
+
+Used by: Notepad, Paint, WordPad, Spreadsheet, Markdown Editor, SVG Editor, Icon Editor, Explorer, E-Mail Signature Generator, Font Pairing Tool, Font Viewer.
+
+**Menu Bar** (`menu.css` + `menu.js`):
+
+Provides the classic menu bar interface used by ~30 apps. CSS defines `.menu-bar`, `.menu-item`, `.menu-dropdown`, `.menu-entry`, `.menu-separator`, and states (hover, checked, radio, disabled). JS provides `SZ.MenuBar` class:
+
+- `new SZ.MenuBar({ onAction })` -- auto-wires menu open/close/hover-switch, dispatches `data-action` from `.menu-entry` clicks
+- `closeMenus()` -- programmatic close
+
+Used by: Calculator, Clock, Minesweeper, Solitaire, FreeCell, Spider Solitaire, Tetris, JSON Viewer, Hex Editor, Diff Viewer, Regex Tester, Cron Visualizer, Subnet Calculator, Cookie Banner Generator, Gradient Generator, README Generator, QR Generator, Mock Data Generator, Image Viewer, Resume Builder, Color Picker, Display Tester, Function Plotter, Media Player, Web Browser, Archiver, Encryptor, Control Panel, Skin Tester, Task Manager, Metadata Viewer.
+
+**Dialog** (`dialog.css` + `dialog.js`):
+
+Provides modal dialog infrastructure used by ~42 apps. CSS defines `.dialog-overlay`, `.dialog`, `.dialog-title`, `.dialog-body`, `.dialog-buttons`. JS provides `SZ.Dialog` object:
+
+- `SZ.Dialog.show(dialogId)` -- returns `Promise<string>` resolved with the `data-result` value of the clicked button
+- `SZ.Dialog.close(dialogId)` -- programmatic close
+- `SZ.Dialog.wireAll()` -- auto-wire all `.dialog-overlay` elements for click-outside-to-close
+
+**Syntax Highlighter** (`syntax-highlighter.css` + `syntax-highlighter.js`):
+
+Tokenizer with 19 language grammars extracted from Notepad. CSS defines 26 token color classes (`.sh-keyword`, `.sh-string`, `.sh-comment`, `.sh-number`, etc.). JS provides `SZ.SyntaxHighlighter` object:
+
+- `highlightBlock(text, lang)` -- full text → highlighted HTML
+- `highlightLine(text, rules)` -- single line → HTML with `<span class="sh-*">`
+- `buildRules(lang)` -- returns `[{re, cls}]` array for a language
+- `detectLanguage(filename)` -- filename → language key
+- `escapeHtml(str)` -- HTML-entity escaping
+- `LANG_NAMES` -- `{ js: 'JavaScript', py: 'Python', ... }`
+- `EXT_TO_LANG` -- `{ js: 'js', py: 'python', ... }`
+
+Languages: JavaScript, TypeScript, Python, HTML, CSS, JSON, XML, C/C++, Java, SQL, Markdown, Shell, PHP, Ruby, Perl, Go, Rust, C#, Plain Text.
+
+Used by: Notepad (full editor highlighting), Mock Data Generator (JSON/SQL/XML output), Cookie Banner Generator (HTML/CSS/JS code export).
 
 ### Pointer Handler (`js/pointer-handler.js`)
 
@@ -1068,6 +1131,10 @@ User preferences stored in `localStorage`:
 - `sz-behavior` -- JSON: `{ animations, edgeSnapping, taskbarPosition, taskbarAutoHide, doubleClickSpeed }`
 - `sz-icon-layout` -- serialized icon positions (if user rearranged)
 - `sz-window-prefs` -- per-application last-used size/position
+- `sz-ss-a` / `sz-ss-b` -- JPEG data URIs for the two slideshow cache slots (A/B ping-pong)
+- `sz-ss-front` -- `'a'` or `'b'`: which cache slot is the currently displayed image
+- `sz-ss-idx` -- last-shown image index (for resume on reload)
+- `sz-ss-dir` -- source folder path (cache invalidation key)
 
 ---
 
@@ -1434,7 +1501,7 @@ State width = image width / 3. State height = image height / (tripleImages ? 2 :
 ### Built-in Applications
 
 System apps (hosted / app.js -- require OS runtime):
-- [x] Explorer: FilePilot-inspired file manager with Office-style ribbon UI (QAT, Home/View tabs, File backstage), multi-pane layout (split right/bottom, resizable splitters, drag-and-drop arrangement with blue drop-zone previews), navigation tabs with independent state per pane, three view modes (Icons/Details/Tiles), sortable columns with resize and column filter icons, preview pane with prev/next navigation and zoom controls, sidebar with six collapsible sections (Recents, Bookmarks, Quick Access, Storage with usage bars, Places, Tree) and filter input, VFS operations (new folder/file, delete, rename, copy, move, cut/paste), breadcrumb path bar with autocomplete, enhanced search with scope toggle and detail-format results, command palette (Ctrl+Shift+P), GoTo dialog (Ctrl+P/F4), bulk rename with pattern tokens, expand folder mode (Ctrl+E), view filtering (files/folders/both + folders-first), display toggles (hidden files, extensions, highlight recents), options dialog (font/spacing/zoom/default view), type-ahead file selection, save/load layout persistence, directory change watching, folder size calculation, drag-and-drop between panes (move by default, Ctrl to copy) and from OS into VFS, upload/download files, mount/unmount local folders, context menu enhancements (Open with, Copy as Path, New Folder from Selection, Add to Bookmarks), rich status bar with load time and scroll percentage, persisted settings via registry. Also browses SZ runtime object tree (read-only mode)
+- [x] Explorer: FilePilot-inspired file manager with Office-style ribbon UI (QAT, Home/View tabs, File backstage), multi-pane layout (split right/bottom, resizable splitters, drag-and-drop arrangement with blue drop-zone previews), navigation tabs with independent state per pane, three view modes (Icons/Details/Tiles), sortable columns with resize and column filter icons, preview pane with prev/next navigation and zoom controls, sidebar with six collapsible sections (Recents, Bookmarks, Quick Access, Storage with usage bars, Places, Tree) and filter input, VFS operations (new folder/file, delete, rename, copy, move, cut/paste), breadcrumb path bar with autocomplete, enhanced search with scope toggle and detail-format results, command palette (Ctrl+Shift+P), GoTo dialog (Ctrl+P/F4), bulk rename with pattern tokens, expand folder mode (Ctrl+E), view filtering (files/folders/both + folders-first), display toggles (hidden files, extensions, highlight recents), options dialog (font/spacing/zoom/default view), type-ahead file selection, arrow key navigation (Up/Down/Left/Right with grid-aware column stepping, Shift+arrow for extend selection), Home/End jump to first/last, PageUp/PageDown, Alt+Enter for properties, save/load layout persistence, directory change watching, folder size calculation, drag-and-drop between panes (move by default, Ctrl to copy) and from OS into VFS, upload/download files, mount/unmount local folders, context menu enhancements (Open with, Copy as Path, New Folder from Selection, Add to Bookmarks), rich status bar with load time and scroll percentage, persisted settings via registry. Also browses SZ runtime object tree (read-only mode)
 - [x] Task Manager: Applications tab + Performance tab with real event-loop lag, NT-style canvas graphs
 - [x] Control Panel: Display Properties dialog with Themes (preset theme combos), Appearance (skin switching, color swatch previews, auto-scroll to current, sub-skin dropdown), Desktop (layered background: base color + pattern overlay + content source [None/Image/Slideshow/Video/Online], pattern editor with pixel grid and presets, slideshow with transitions, video background, online wallpaper services), Pointers (mouse shadow, mouse trail, trail length slider with live preview), and Taskbar (auto-hide, show clock, clear MRU) tabs
 - [x] About: Tabbed dialog (General/System/Credits) with version info, data-privacy notice (local-storage-only warning with data-persistence explanation), system details (resolution, memory, browser, skin, storage usage), credits (author with GitHub link, Stardock, TidyTabs, AquaSnap, Winamp inspirations), license (free for personal/educational use, contact for commercial/corporate PID), donation appeal with clickable PayPal heart, OK/Escape/Enter to close, copy-to-clipboard, animated logo
@@ -1456,18 +1523,18 @@ User apps (iframe / index.html -- can run standalone):
 - [x] Web Browser: Iframe-based web browser with address bar, back/forward/refresh/home/stop navigation, bookmarks bar (persisted to localStorage), built-in home page with bookmarks grid, status bar with loading indicator
 - [x] FreeCell: FreeCell solitaire with 4 free cells, 4 foundations, 8 tableau columns, canvas-rendered cards, drag-and-drop, auto-complete, undo, move counter
 - [x] Spider Solitaire: Spider solitaire with 1-suit/2-suit/4-suit difficulty modes, 10 tableau columns, 5 stock deals, canvas-rendered cards, drag-and-drop, undo, scoring
-- [x] Color Picker: Advanced color picker with multiple colorspaces (RGB, HSL, HSV, CMYK), hex/float/byte input modes, visual hue/saturation/lightness sliders, color preview, copy values, dual-mode eyedropper (1px native picker, circle-average sampling via screen capture with magnifier loupe)
+- [x] Color Picker: Advanced color picker with multiple colorspaces (RGB, HSL, HSV, CMYK), mode-specific visual pickers (RGB: SV square + hue bar, HSV: hue ring + SV square, HSL: hue ring + SL triangle, CMYK: filled color disc + K bar), hex/float/byte input modes, visual hue/saturation/lightness sliders, color preview, copy values, dual-mode eyedropper (1px native picker, circle-average sampling via screen capture with magnifier loupe)
 - [x] Markdown Editor: Markdown editor with Office-style ribbon UI (QAT, File backstage, Home/Insert/View tabs), side-by-side live preview, syntax highlighting, VFS integration via common file dialog, formatting ribbon (headings, bold, italic, links, images, lists, code blocks, tables, blockquotes, horizontal rules), split/source/preview view modes, zoom (ribbon/status bar slider), Export as HTML, print support
-- [x] Hex Editor: Binary file editor with hex and ASCII views, offset column, byte-level editing, VFS integration via common file dialog, go-to-offset, search
+- [x] Hex Editor: Binary file editor with hex and ASCII views, offset column, byte-level editing, VFS integration via common file dialog, go-to-offset, search, struct template system (auto-detect via magic bytes, manual apply, C/C++ header and C# struct import, Ctrl+click template rebasing), data inspector panel (BitBench-style multi-type interpretation at cursor with LE/BE toggle, inline editing, color swatches), accordion UI (Data Inspector + Structure sections), 40 format templates (PE, ELF, PNG, BMP, JPEG, GIF, TIFF, ICO, CUR, WAV, AVI, ANI, WebP, FLAC, OGG, MP3, MKV, MIDI, ZIP, GZIP, RAR, 7z, TAR, PDF, PSD, SQLite, WASM, Java Class, Mach-O, NES, Game Boy, SNES, N64, Genesis), rich type system (int8-64, float16/32/64, GUID, FourCC, IPv4, Unix/DOS/FILETIME/.NET timestamps, RGB/RGBA/BGR/BGRA/RGB565 colors, BCD, wchar)
 - [x] Spreadsheet: Excel-like spreadsheet with Office-style ribbon UI (QAT, File backstage, Home/Insert/Format/Formulas/Data/View tabs), unlimited rows/columns (dynamic expansion via virtual scrolling), formula support (SUM, AVG, MIN, MAX, COUNT, IF, and arithmetic), cell references (A1 notation, multi-letter column names), multi-cell selection, column/row resize, VFS integration via common file dialog, CSV import/export, XLSX import/export (via SheetJS, multi-sheet support), TSV import/export, zoom (status bar slider + editable input), print support
-- [x] Font Viewer: Browse and preview all available fonts with customizable sample text, font size, and style (bold/italic/underline)
+- [x] Font Viewer: Browse and preview all available fonts with Office-style ribbon UI (QAT, File backstage, Home/View tabs), customizable sample text with 5 presets (Pangram, Alphabet, Numbers, Lorem Ipsum, Custom), font size slider, weight selector, bold/italic toggles, SZ Color Picker integration for text color, category filter (All/Serif/Sans/Mono/Cursive/Fantasy/System), character grid with glyph inspector, open font file support (TTF/OTF/WOFF/WOFF2), info panel with font family/classification/weights/CSS
 - [x] JSON Viewer: Tree-based JSON viewer with collapsible nodes, syntax highlighting, VFS integration via common file dialog
 - [x] Regex Tester: Regular expression tester with flags (g/i/m/s/u), match highlighting, match list, replacement preview
 - [x] Diff Viewer: Side-by-side text diff viewer with added/removed/changed line highlighting, merge controls
 - [x] Date and Time: Clock with analog/digital display, calendar date picker, timezone selector
 - [x] QR Code Generator: QR code generator with customizable size, error correction level, foreground/background colors, download as PNG
 - [x] Icon Editor: Multi-image ICO/CUR editor with Office-style ribbon UI (QAT, File backstage, Home/Image/View tabs), pixel-level editing, 32-bit RGBA with per-pixel alpha, checkerboard transparency, 8 drawing tools (pencil, eraser, eyedropper, flood fill, line, rectangle, ellipse, selection), configurable brush size (1-8px for pencil/eraser), filled shapes (outline/filled/both modes for rectangle and ellipse), rectangular selection tool (select, move, cut/copy/paste regions, marching ants, crop to selection), clipboard operations (cut/copy/paste/paste as new image), FG/BG color swatches with mini palette in ribbon, image list sidebar (add/remove/duplicate entries), ICO format parser and writer (BMP + PNG entries), PE (EXE/DLL) multi-icon resource browser (browse/select/export-all icon groups from DLL/EXE), image import from PNG/BMP/SVG with multi-size generation, favicon export, image operations (flip, rotate 90°/180°, resize, shift/offset with wrapping, grayscale, invert, HSL adjust, color replace), Escape key support (cancel drawing/deselect/close dialogs), 30-step undo/redo with dimension restore, unsaved-changes guard on exit/open/import, VFS integration via common file dialog
-- [x] Function Plotter: Mathematical function plotter with expression parser (42+ functions including trig, hyperbolic, logarithmic, rounding), syntax highlighting, autocomplete, function families (parameter t with range/list modes), Kurvendiskussion analysis (roots, extrema, inflection points, monotonicity, poles, limits), symbolic polynomial analysis, dark mode, PNG export at 2x resolution, menu bar, status bar with coordinates and zoom level (Office)
+- [x] Function Plotter: Mathematical function plotter with expression parser (42+ functions including trig, hyperbolic, logarithmic, rounding), syntax highlighting, autocomplete, function families (parameter t with range/list modes), Kurvendiskussion analysis (roots, extrema, inflection points, monotonicity, poles, limits), symbolic polynomial analysis, SZ skin theme inheritance (EnableVisualStyles), dark mode, PNG export at 2x resolution, menu bar, status bar with coordinates and zoom level (Office)
 - [x] SVG Editor: Vector graphics editor with Office-style ribbon UI (QAT, File backstage with keyboard shortcuts and about, Home/View tabs), 8 drawing tools (select, rectangle, ellipse, circle, line, freehand path, text, pan), 30-step undo/redo, CSS-transform zoom with Ctrl+wheel, 8-handle element resize, copy/cut/paste/duplicate, grid overlay with snap-to-grid, arrow-key nudge (±1px, Shift ±10px), single-key tool shortcuts (V/R/E/C/L/P/T/H), layer management (visibility toggle, bring front/forward/backward/back), SVG source editing, collapsible sidebar panels, dark mode with localStorage persistence, PNG export, status bar with coordinates/tool/zoom/document size/element count, keyboard shortcuts dialog, VFS integration via common file dialog, command-line file opening (Graphics)
 - [x] Subnet Calculator: IPv4 subnet calculator with real-time computation, interactive 32-bit binary view with clickable mask bits, quick CIDR prefix buttons (/8-/32), network properties (network/broadcast/wildcard/first-last host), IP class (A-E) and type detection (Private/Public/Loopback/Link-Local/Multicast/Reserved), subnet division table (2-256 subnets), hex/integer representations, copy all results (Ctrl+Shift+C), menu bar (Edit/Help), status bar with class/type/validation (Development)
 - [x] Cron Visualizer: Crontab expression builder and inspector with per-field inputs (minute/hour/dom/month/dow/command), live preview, multi-line crontab editor with parsed entries table (schedule/command/human-readable meaning/next runs), quick reference panel, special aliases (@yearly, @daily, etc.), VFS integration via common file dialog, menu bar (File/Edit/Help), toolbar, status bar with entry count (Development)
@@ -1478,6 +1545,9 @@ User apps (iframe / index.html -- can run standalone):
 - [x] README Generator: Template-based README.md builder with 5 presets (Standard Project, Minimal, Library/Package, CLI Tool, GitHub Profile), wizard and form editing modes, live markdown preview with resizable splitter, template editor (duplicate/customize/save to localStorage), quality score with warnings, markdown parser for importing existing READMEs, 11 field types (text, textarea, codeblock, list, checklist, table, tags, license, author, badges, images), badge builder with logo text input and autocomplete icon grid (full Simple Icons catalog fetched at runtime, 110-icon offline fallback), SZ Color Picker integration for precise color selection, dual-color support (label color + message color), per-badge placeholder overrides (user/repo/package) for support/sponsorship badges, VFS and browser file import/export, undo/redo, keyboard shortcuts, drag-and-drop .md import (Development)
 - [x] Resume Builder: Resume builder with 6 templates (Professional, Technical, Academic CV, Creative, Minimal, Entry-Level), 5 preview layouts (single-column, sidebar-left, dense-serif, accent-bar, clean-tight), wizard and form editing modes, 8 resume-specific field types (personal-info, experience-list, education-list, skills-grouped, certifications-list, projects-list, languages-list, references-list), 4 export formats (Markdown, Plain Text, PDF via print, DOCX Flat OPC XML), Markdown resume import parser, template editor with upload/download JSON and VFS load/save, completeness score with warnings, VFS file operations, undo/redo, keyboard shortcuts, drag-and-drop import (Office)
 - [x] Archiver: WinRAR/7-Zip-style archive manager with IArchiveFormat plugin architecture supporting 69 formats -- **Archive formats (26 writable)**: ZIP (Store/Deflate, ZipCrypto + AES-256), JAR/WAR/EAR, APK, EPUB, OOXML (DOCX/XLSX/PPTX), ODF (ODT/ODS/ODP), ZIPX, TAR, TAR.GZ/TGZ, TAR.BZ2/TBZ2, TAR.XZ/TXZ, TAR.ZST, TAR.LZMA/TLZ, TAR.LZ, 7z (LZMA/LZMA2/Deflate/BZip2/PPMd/AES-256 with full extraction and filename encryption), LZH/LHA (level 0/1/2 headers, -lh4- through -lh7- Huffman+LZSS compression and decompression), ARJ (methods 1-4 Huffman+LZ compression and Deflate decompression), CAB (Store/MS-ZIP creation and Store/MSZIP/LZX decompression), CPIO (newc/odc), AR (.a/.lib), Base64, UUEncode, Intel HEX; **Compression (6 writable)**: GZIP, BZIP2, XZ, ZStandard, LZMA, LZIP; **Read-only archives (13)**: RAR (CDN unrar.js + native RAR5 store extraction with timestamps), SQX (store + Huffman/LZSS/BZip2 best-effort), ACE (store + Deflate/LZ77/LZSS best-effort), ARC (SEA; methods 1-9: store/RLE/Squeezed Huffman/LZW), ZOO (methods 0-2: store/LZW/LZH), HA (methods 0-2: store/ASC arithmetic/HSC), StuffIt/StuffItX, PAK (Quake), ALZ, PEA, SHAR; **Read-only system/package (11)**: ISO 9660 (Joliet), WIM/ESD, XAR/PKG, MSI/OLE Compound, CHM, RPM, DEB, Unix Compress (.Z/LZW), NSIS, Parchive (.par/.par2), MAR (Mozilla); **Filesystem images (8)**: FAT12/16/32 (full directory listing + extraction), NTFS, EXT2/3/4, HFS+/HFSX, APFS, SquashFS, CramFS, UDF; **VM disk images (5)**: QCOW2, VHD, VHDX, VDI, VMDK; **Partition tables (2)**: GPT, MBR; **Disk images (1)**: DMG (Apple); shared decompression infrastructure (BitReader, Huffman table builder, LZW decoder); dynamic per-format options panel (compression method/level, dictionary size, solid mode, encryption type, volume splitting, recovery records), format conversion, CDN graceful degradation, magic-byte detection, drag-and-drop, keyboard shortcuts (System Tools)
+- [x] E-Mail Signature Generator: Professional HTML email signature builder with Office-style ribbon UI (QAT, File backstage, Home/Template/View tabs), 4 templates (Classic Horizontal, Modern Vertical, Compact Minimal, Bold with Banner), personal/contact/social media fields (14 services: LinkedIn, Twitter/X, GitHub, Instagram, Facebook, YouTube, Mastodon, Discord, Stack Overflow, Dribbble, Behance, Medium, Twitch, TikTok), photo upload with base64 embedding, 7 photo frame shapes (circle, square, rounded square, hexagon pointy-top, hexagon flat-top, diamond, octagon) with frame selector in form and ribbon, accent color picker in ribbon, live email client preview, toggle social icons and photo visibility from View tab, table-based HTML output compatible with Outlook/Gmail/Apple Mail, Simple Icons CDN social media icons, copy HTML/plain text to clipboard, HTML file export, splitter between form and preview panels (Office)
+- [x] Font Pairing Tool: Typography specimen tool with Office-style ribbon UI (QAT, File backstage, Home/Typography/View tabs), 42 Google Fonts across 5 categories (serif, sans-serif, monospace, display, handwriting), 25 curated font pairs in 5 moods (Classic, Modern, Playful, Technical, Elegant), dynamic Google Fonts loading with caching, heading/body font dropdowns in ribbon, font size/line height/letter spacing sliders in Typography tab, weight selector (400/500/700), dark/light preview toggle, weight samples toggle, editable sample text, shuffle and swap buttons, sidebar with filterable curated pairs, copy CSS (@import + font-family) and HTML (<link> + sample markup) to clipboard (Graphics)
+- [x] Mock Data Generator: Fake test data generator with 40+ field types across 10 categories (Person, Contact, Address, Internet, Business, Finance, Data, Text, Color, File), configurable field list with add/remove/reorder, row count up to 10000, 5 output formats (JSON, CSV, SQL INSERT, XML, TSV), syntax-highlighted output (JSON/SQL/XML via shared SyntaxHighlighter), built-in data pools (120 first names, 100 last names, 50 cities, 30 companies, 30 job titles), realistic derived data (emails from names, Luhn-valid credit cards, UUID v4, formatted phone numbers, ISO 8601 dates), XML tag sanitization, copy to clipboard, file export (Development)
 - [x] Metadata Viewer: File analysis and metadata editor with magic-byte file identification (30+ formats), format-specific metadata parsing (JPEG EXIF/JFIF/GPS, PNG chunks, MP3 ID3v1/v2 with album art, FLAC, WAV, OGG, MP4/M4A ISO BMFF, MKV/WebM EBML, PDF, ZIP, PE/ELF/Mach-O executables, Java .class, fonts, C64 D64/D71/D81/T64 disk images, Amiga ADF disk images), archive bridge for deep inspection of 40+ archive formats via archiver's IArchiveFormat plugin system (TAR, RAR, 7z, CAB, LZH, ARJ, CPIO, ISO, FAT contents with file tree, sizes, dates, compression ratios), shared format library framework (`libs/formats/` with `SZ.Formats` registry), shared ICO codec with full BMP entry decode and per-entry image previews, audio codec analysis (MP3 Xing/LAME/VBRI headers, CBR/VBR detection, frame scanning; WAV PCM statistics with RMS/peak/DC offset/clipping/silence), video codec analysis (H.264/H.265 SPS parsing from MP4 avcC/hvcC for codec-level resolution/profile/level, stream identification), 8-algorithm hash/checksum computation via Cipher project (MD5, SHA-1, SHA-256, SHA-512, SHA3-256, BLAKE3, CRC-32, Adler-32) with async chunked processing, inline metadata editing for MP3 ID3 tags and PNG text chunks with file reconstruction, embedded image extraction (EXIF thumbnails, album art, FLAC cover, ICO entries), hex preview, Shannon entropy and encoding detection, loading progress indicator during file parsing, PE embedded strings extraction (Latin-1 scoped UTF-16LE) with searchable/filterable strings tab, drag-and-drop, VFS integration, click-to-copy hashes, keyboard shortcuts, reusable parsers module shared with Properties hosted app (Development)
 
 See [docs/appideas.md](docs/appideas.md) for the full application roadmap.
@@ -1587,7 +1657,7 @@ ESLint configured for ES2022 modules, browser globals.
 
 ### Planned Applications
 
-41 applications are currently implemented (5 system + 36 user apps). See [docs/appideas.md](docs/appideas.md) for the full application idea list with hosting format (iframe vs hosted) and status tracking.
+44 applications are currently implemented (5 system + 39 user apps). See [docs/appideas.md](docs/appideas.md) for the full application idea list with hosting format (iframe vs hosted) and status tracking.
 
 ### Virtual File System (VFS) — Implemented
 
@@ -1620,6 +1690,14 @@ class FileSystemMount {
 }
 ```
 
+`Kernel.List(path, searchOption)` supports three modes via the `SearchOption` enum (`SZ.VFS.SearchOption` / `Kernel32.SearchOption`):
+
+| Value | Name | Behavior |
+|-------|------|----------|
+| 0 | `TopOnly` | Default — returns direct child names (backward compatible) |
+| 1 | `BreadthFirst` | BFS walk — returns relative paths from the search root (e.g. `'photo.jpg'`, `'vacation/beach.jpg'`) |
+| 2 | `DepthFirst` | DFS walk — same return format, depth-first order |
+
 The VFS enables:
 
 - A **file manager** app that browses the unified tree
@@ -1629,6 +1707,19 @@ The VFS enables:
 
 ### Recently Completed
 
+- E-Mail Signature Generator: added flat-top hexagon frame variant (7 total shapes), replaced inline SVG social icons with Simple Icons CDN (14 services total)
+- Font Viewer: migrated from menu bar to Office-style ribbon UI with File/Home/View tabs, SZ Color Picker integration for text color
+- Color Picker: mode-specific visual pickers (HSV: hue ring + SV square, HSL: hue ring + rotating SL triangle, CMYK: filled color disc + K bar), increased default window height
+- Function Plotter: added EnableVisualStyles() and skin-aware button theming
+- README Generator: fixed badge builder logo grid (undefined variable reference)
+- E-Mail Signature Generator: added 6 photo frame shapes (circle, square, rounded square, hexagon, diamond, octagon) with frame selector in both form panel and ribbon Template tab
+- Paint: fixed opening mounted (FSAA) images — falls back to `ReadAllBytes` → data URL when `ReadFile` returns binary garbage instead of a data URI
+- Explorer: added full keyboard navigation — arrow keys (grid-aware column stepping), Shift+arrow for extend selection, Home/End, PageUp/PageDown, Alt+Enter for properties
+- Shared UI modules (`Applications/shared/`) — extracted ribbon, menu bar, dialog, and syntax highlighter infrastructure into 8 reusable modules. All 45 apps migrated from inline duplicated CSS/JS to shared module imports. Net reduction: ~8,400 lines of duplicated code. Ribbon module used by 10 apps, menu bar by ~30 apps, dialog by ~42 apps, syntax highlighter by 3 apps.
+- E-Mail Signature Generator upgraded from menu bar to Office-style ribbon UI with Home/Template/View tabs, accent color picker, social icons and photo visibility toggles
+- Font Pairing Tool upgraded from menu bar + controls bar to Office-style ribbon UI with Home/Typography/View tabs, weight samples toggle
+- Mock Data Generator output enhanced with syntax highlighting for JSON, SQL, and XML formats
+- Cookie Banner Generator code export enhanced with per-language syntax highlighting (HTML, CSS, JavaScript) via shared SyntaxHighlighter module
 - Windows DLL-like API system (`SZ.Dlls.*`) — `User32`, `Kernel32`, `GDI32`, `Shell32`, `ComDlg32`, `Advapi32` namespaces
 - WindowProc dispatch — apps register handlers for `WM_THEMECHANGED`, `WM_SETTINGCHANGE` broadcasts
 - MessageBox dialog (XP-style modal with icons, skinned buttons, MB_OK/MB_YESNO/MB_OKCANCEL)
@@ -1723,7 +1814,7 @@ Planned format library modules:
 - **Same-origin requirement for theming**: The theme engine injects CSS into application iframes via `contentDocument` access, which requires same-origin. All applications must be served from the same origin as the desktop. Cross-origin iframes cannot be themed and will display with default browser styling.
 - **CSS cursor format**: `.cur` and `.ani` files work in most browsers. PNG cursors with hotspot offsets require the `x y` syntax in CSS `url()`, which has inconsistent browser support. Prefer `.cur` format for maximum compatibility.
 - **Control BMP state layouts vary**: Different skins use different grid layouts for checkbox/radio/button sprites (some 3-wide, some 6-wide, some with rows for focused/disabled states). The theme engine must probe image dimensions and divide by expected state count, which may not be correct for all skins. Pure color fallback is always available.
-- **Online wallpaper services**: Lorem Picsum, NASA APOD, Bing Daily, and Giphy require an HTTP server (not available on `file://`). The Giphy public beta API key may have rate limits.
+- **Online wallpaper services**: Lorem Picsum, NASA APOD, Bing Daily, and Giphy require an HTTP server (not available on `file://`). Bing Daily uses the peapix.com CORS-friendly wrapper API. The Giphy public beta API key may have rate limits.
 - **Font rendering**: Skin-specified fonts (e.g., Trebuchet MS) depend on the user's system having them installed. Fallbacks are applied but may not match the original skin appearance.
 - **postMessage has no enforced schema**: Applications and the desktop communicate via `postMessage` with a convention-based type field. Malformed messages are silently ignored. The control panel depends on this protocol for all settings changes.
 - **Approximate performance metrics**: The Task Manager measures real event-loop lag (via `setTimeout` drift with 100ms intervals) for CPU load estimation, but this is an approximation since browsers don't expose actual CPU metrics. Memory uses `performance.memory` where available (Chrome only), otherwise estimated from DOM node counts.

@@ -65,6 +65,9 @@ Standalone-capable apps that can run in a browser tab independently.
 | Color Palette         | idea            | Color harmony generator with contrast checker (WCAG)                      |
 | JSON Viewer           | exists (iframe) | JSON prettifier/validator with collapsible tree view, search, JSONPath    |
 | Regex Tester          | exists (iframe) | Regex builder with live match highlighting, groups, explanation, cheatsheet|
+| Email Signature Gen.  | exists (iframe) | Professional HTML email signature builder with templates and live preview  |
+| Font Pairing Tool     | exists (iframe) | Typography specimen with 42 Google Fonts, 25 curated pairs, live preview  |
+| Mock Data Generator   | exists (iframe) | Fake test data generator with 40+ field types and 5 output formats        |
 | CSS Gradient Tool     | idea            | Visual CSS gradient editor with direction, stops, and code export         |
 
 ---

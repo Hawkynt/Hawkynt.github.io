@@ -1,3 +1,25 @@
+Main: 6.8
+by Hawkynt 22.02.2026
++ E-Mail Signature Generator app (HTML signatures with templates, social links, photo frames)
++ Font Pairing Tool app (42 Google Fonts, 25 curated pairs, copy CSS/HTML)
++ Mock Data Generator app (40+ field types, JSON/CSV/SQL/XML/TSV output, syntax highlighting)
++ Hex Editor: struct template system with 40 built-in format templates (PE, ELF, PNG, BMP, ZIP, PDF, SQLite, Game Boy, and more)
++ Hex Editor: Data Inspector panel with multi-type interpretation at cursor (integers, floats, dates, colors) and inline editing
++ Hex Editor: C/C++ header and C# struct file import with nested structs, unions, bitfields
++ Desktop: slideshow engine with 50+ transition effects in 8 categories, persistent dual-slot cache
++ Desktop: recursive folder listing with BreadthFirst/DepthFirst search options
++ Control Panel: live slideshow preview monitor with real-time transition effects
++ Color Picker: mode-specific visual pickers (HSV square, HSL triangle, CMYK disc)
++ Font Viewer: ribbon UI and SZ Color Picker integration for text color selection
++ Common Dialogs: BrowseForFolder() dialog mode for folder selection
++ Explorer: full keyboard navigation (arrow keys, Shift+extend, Home/End, PageUp/PageDown, Alt+Enter)
++ VFS: recursive directory walks with SearchOption enum, blob URL optimization
++ shared UI modules: ribbon, menu bar, dialog, syntax highlighter extracted for reuse across all apps
+* all apps migrated to shared UI modules (net reduction of ~8,400 lines of duplicated code)
+* Metadata Viewer: enhanced MSIL disassembly with method signatures and generic type parsing
+# Paint: fixed opening mounted (FSAA) images via blob URL fallback
+# README Generator: fixed badge builder logo grid (undefined variable reference)
+
 Main: 6.7
 by Hawkynt 20.02.2026
 + Properties: standalone hosted app for file/folder properties (extracted from Explorer)
