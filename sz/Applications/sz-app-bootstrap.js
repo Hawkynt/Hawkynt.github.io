@@ -717,13 +717,15 @@
       });
     },
 
-    FindFirstFile(path) {
-      return _sendMessage('sz:vfs:List', { path }).then(r => {
+    FindFirstFile(path, searchOption) {
+      return _sendMessage('sz:vfs:List', { path, searchOption }).then(r => {
         if (r.error)
           throw new Error(r.error.message || r.error);
         return r.entries || [];
       });
     },
+
+    SearchOption: Object.freeze({ TopOnly: 0, BreadthFirst: 1, DepthFirst: 2 }),
 
     GetFileAttributes(path) {
       return _sendMessage('sz:vfs:Stat', { path }).then(r => {
@@ -799,7 +801,11 @@
     },
 
     SHGetFileTypeAssociations() {
-      return _sendMessage('sz:getFileTypeAssociations', {}).then(r => r.associations || {});
+      return _sendMessage('sz:getFileTypeAssociations', {}).then(r => ({
+        associations: r.associations || {},
+        allHandlers: r.allHandlers || {},
+        wildcardApps: r.wildcardApps || [],
+      }));
     },
   };
 
@@ -859,6 +865,13 @@
       a.click();
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 10000);
+    },
+
+    BrowseForFolder(options) {
+      return _sendMessage('sz:browseFolder', {
+        initialDir: options?.initialDir,
+        title: options?.title,
+      }, 0);
     },
   };
 

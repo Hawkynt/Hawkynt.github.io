@@ -85,7 +85,9 @@
     const dot = name.lastIndexOf('.');
     if (dot <= 0) return ICONS.vfsFile;
     const ext = name.slice(dot + 1).toLowerCase();
-    const assoc = _fileAssocMap[ext];
+    let assoc = _fileAssocMap[ext];
+    if (!assoc && _wildcardApps.length > 0)
+      assoc = _wildcardApps[0];
     if (!assoc) return ICONS.vfsFile;
     const cached = _iconSvgCache.get(assoc.iconPath);
     if (!cached) return ICONS.vfsFile;
@@ -116,6 +118,8 @@
   // =========================================================================
   let clipboard = null;
   let _fileAssocMap = {};
+  let _allHandlersMap = {};
+  let _wildcardApps = [];
   const _iconSvgCache = new Map();
   let activeContextMenu = null;
 
@@ -2914,20 +2918,22 @@
         // Open with submenu
         if (singleSelection && !sel.isDir) {
           const ext = getFileExtension(sel.name).replace('.', '');
-          if (ext && _fileAssocMap) {
-            const openWithPanel = addCtxSubmenu(menu, 'Open with...', ICONS.ctxOpenWith);
-            const seenApps = new Set();
-            for (const assoc of Object.values(_fileAssocMap)) {
-              if (!assoc.appId || seenApps.has(assoc.appId)) continue;
-              seenApps.add(assoc.appId);
-              const appIcon = _iconSvgCache.get(assoc.iconPath);
-              const appSvg = appIcon ? ('<svg viewBox="' + appIcon.viewBox + '" xmlns="http://www.w3.org/2000/svg">' + appIcon.inner + '</svg>') : null;
-              addCtxItem(openWithPanel, assoc.appId, () => {
-                Shell32.ShellExecute(assoc.appId, { path: toVfsRelative(sel.path) });
-              }, false, appSvg);
+          if (ext) {
+            const specificHandlers = _allHandlersMap[ext] || (_fileAssocMap[ext] ? [_fileAssocMap[ext]] : []);
+            const handlers = [...specificHandlers, ...(_wildcardApps || [])];
+            if (handlers.length > 0) {
+              const openWithPanel = addCtxSubmenu(menu, 'Open with...', ICONS.ctxOpenWith);
+              const seenApps = new Set();
+              for (const assoc of handlers) {
+                if (!assoc.appId || seenApps.has(assoc.appId)) continue;
+                seenApps.add(assoc.appId);
+                const appIcon = _iconSvgCache.get(assoc.iconPath);
+                const appSvg = appIcon ? ('<svg viewBox="' + appIcon.viewBox + '" xmlns="http://www.w3.org/2000/svg">' + appIcon.inner + '</svg>') : null;
+                addCtxItem(openWithPanel, assoc.appId, () => {
+                  Shell32.ShellExecute(assoc.appId, { path: toVfsRelative(sel.path) });
+                }, false, appSvg);
+              }
             }
-            if (seenApps.size === 0)
-              addCtxItem(openWithPanel, '(no apps)', () => {}, true);
           }
         }
 
@@ -5123,12 +5129,22 @@
   // File-type icon associations (async, fire-and-forget)
   // =========================================================================
   async function _loadFileAssociations() {
-    try { _fileAssocMap = await Shell32.SHGetFileTypeAssociations(); } catch { return; }
+    try {
+      const result = await Shell32.SHGetFileTypeAssociations();
+      _fileAssocMap = result.associations || result;
+      _allHandlersMap = result.allHandlers || {};
+      _wildcardApps = result.wildcardApps || [];
+    } catch { return; }
     const uniqueIcons = new Set();
     for (const ext of Object.keys(_fileAssocMap)) {
       const { iconPath } = _fileAssocMap[ext];
       if (iconPath && !_iconSvgCache.has(iconPath)) uniqueIcons.add(iconPath);
     }
+    for (const handlers of Object.values(_allHandlersMap))
+      for (const h of handlers)
+        if (h.iconPath && !_iconSvgCache.has(h.iconPath)) uniqueIcons.add(h.iconPath);
+    for (const w of _wildcardApps)
+      if (w.iconPath && !_iconSvgCache.has(w.iconPath)) uniqueIcons.add(w.iconPath);
     await Promise.all([...uniqueIcons].map(async (iconPath) => {
       try {
         const resp = await fetch('../' + iconPath);

@@ -326,18 +326,27 @@
             if(data.path) openFileByPath(data.path, kernel, appLauncher);
             return;
         case 'sz:getFileTypeAssociations': {
-            const _GENERIC = new Set(['notepad', 'hex-editor', 'metadata-viewer']);
             const associations = {};
             const allHandlers = {};
+            const wildcardApps = [];
             for (const [, app] of appLauncher.apps) {
               if (!app.fileTypes) continue;
-              for (const ext of app.fileTypes) {
-                if (!associations[ext] || !_GENERIC.has(app.id) || _GENERIC.has(associations[ext].appId))
-                  associations[ext] = { appId: app.id, iconPath: app.icon };
-                (allHandlers[ext] || (allHandlers[ext] = [])).push({ appId: app.id, iconPath: app.icon });
+              const entry = { appId: app.id, iconPath: app.icon };
+              let isWildcard = false;
+              for (const pattern of app.fileTypes) {
+                if (pattern === '*') {
+                  isWildcard = true;
+                  continue;
+                }
+                // Specific patterns: first match wins as default
+                if (!associations[pattern])
+                  associations[pattern] = entry;
+                (allHandlers[pattern] || (allHandlers[pattern] = [])).push(entry);
               }
+              if (isWildcard)
+                wildcardApps.push(entry);
             }
-            return handle(Promise.resolve({ associations, allHandlers }), 'sz:getFileTypeAssociationsResult');
+            return handle(Promise.resolve({ associations, allHandlers, wildcardApps }), 'sz:getFileTypeAssociationsResult');
         }
 
         // Common Dialogs
@@ -729,10 +738,18 @@
   );
 
   function _getFileIconForExt(ext, appLauncher) {
-    for (const [, app] of appLauncher.apps)
-      if (app.fileTypes?.includes(ext))
-        return appLauncher.resolveIconPath(app);
-    return _GENERIC_FILE_ICON;
+    let wildcardIcon = null;
+    for (const [, app] of appLauncher.apps) {
+      if (!app.fileTypes) continue;
+      for (const pattern of app.fileTypes) {
+        if (!_extensionMatchesPattern(ext, pattern)) continue;
+        if (pattern === '*') {
+          if (!wildcardIcon) wildcardIcon = appLauncher.resolveIconPath(app);
+        } else
+          return appLauncher.resolveIconPath(app);
+      }
+    }
+    return wildcardIcon || _GENERIC_FILE_ICON;
   }
 
   async function refreshDesktopVFS(kernel, appLauncher, desktop, settings, taskbar) {
@@ -872,6 +889,13 @@
 
   // ----------------------------------------------------------------------------------
 
+  function _extensionMatchesPattern(ext, pattern) {
+    if (pattern === '*') return true;
+    const re = new RegExp('^' + pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+      .replace(/\*/g, '.*').replace(/\?/g, '.') + '$', 'i');
+    return re.test(ext);
+  }
+
   async function openFileByPath(path, kernel, appLauncher) {
     if (path.endsWith('.lnk')) {
         try {
@@ -888,17 +912,20 @@
     const dot = path.lastIndexOf('.');
     const ext = dot >= 0 ? path.substring(dot + 1).toLowerCase() : '';
 
-    // Find the best matching app by fileTypes in manifest.
-    // Among specialized apps, last one in manifest order wins.
-    // Generic apps (notepad, hex-editor, metadata-viewer) are only used
-    // as fallback when no specialized app matches.
-    const _GENERIC_APPS = new Set(['notepad', 'hex-editor', 'metadata-viewer']);
+    // Find best matching app: specific patterns beat wildcards, first match wins
     let bestApp = null;
+    let bestIsWild = true;
     for (const [, app] of appLauncher.apps) {
-        if (!app.fileTypes || !app.fileTypes.includes(ext))
-            continue;
-        if (!bestApp || !_GENERIC_APPS.has(app.id) || _GENERIC_APPS.has(bestApp.id))
-            bestApp = app;
+      if (!app.fileTypes) continue;
+      for (const pattern of app.fileTypes) {
+        if (!_extensionMatchesPattern(ext, pattern)) continue;
+        const isWild = pattern === '*';
+        if (!bestApp || (bestIsWild && !isWild)) {
+          bestApp = app;
+          bestIsWild = isWild;
+        }
+        break;
+      }
     }
 
     appLauncher.launch(bestApp ? bestApp.id : 'notepad', { path });
