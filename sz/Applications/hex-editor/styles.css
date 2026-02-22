@@ -7,88 +7,13 @@ body {
   height: 100vh;
 }
 
-/* ---- Menu bar ---- */
-.menu-bar {
+/* ---- Main layout ---- */
+.hex-main {
+  flex: 1;
   display: flex;
-  align-items: center;
-  padding: 0;
-  background: var(--sz-color-menu);
-  border-bottom: 1px solid var(--sz-color-button-shadow);
-  user-select: none;
-  flex-shrink: 0;
-}
-
-.menu-item {
-  position: relative;
-  padding: 3px 8px;
-  cursor: default;
-  color: var(--sz-color-menu-text);
-}
-
-.menu-item:hover,
-.menu-item.open {
-  background: var(--sz-color-highlight);
-  color: var(--sz-color-highlight-text);
-}
-
-.menu-dropdown {
-  display: none;
-  position: absolute;
-  top: 100%;
-  left: 0;
-  min-width: 200px;
-  background: var(--sz-color-menu);
-  border: 1px solid var(--sz-color-button-shadow);
-  box-shadow: 2px 2px 4px rgba(0,0,0,0.2);
-  z-index: 1000;
-  padding: 2px 0;
-}
-
-.menu-item.open > .menu-dropdown {
-  display: block;
-}
-
-.menu-entry {
-  padding: 4px 24px 4px 8px;
-  cursor: default;
-  color: var(--sz-color-menu-text);
-  white-space: nowrap;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.menu-entry:hover {
-  background: var(--sz-color-highlight);
-  color: var(--sz-color-highlight-text);
-}
-
-.menu-entry.disabled {
-  color: var(--sz-color-gray-text);
-  pointer-events: none;
-}
-
-.menu-entry .shortcut {
-  margin-left: 24px;
-  font-size: 10px;
-  opacity: 0.7;
-}
-
-.menu-entry.radio::before {
-  content: '';
-  display: inline-block;
-  width: 12px;
-  margin-right: 4px;
-}
-
-.menu-entry.radio.checked::before {
-  content: '\2022';
-}
-
-.menu-separator {
-  height: 1px;
-  background: var(--sz-color-button-shadow);
-  margin: 2px 4px;
+  flex-direction: row;
+  overflow: hidden;
+  min-height: 0;
 }
 
 /* ---- Hex view ---- */
@@ -100,6 +25,7 @@ body {
   background: var(--sz-color-window);
   color: var(--sz-color-window-text);
   border-top: 1px solid var(--sz-color-button-shadow);
+  min-width: 0;
 }
 
 .hex-header {
@@ -212,6 +138,15 @@ body {
   color: #000;
 }
 
+.hex-byte.struct-field {
+  color: #000;
+}
+
+.hex-byte.struct-field.cursor {
+  outline: 2px solid var(--sz-color-highlight);
+  outline-offset: -2px;
+}
+
 .ascii-sep {
   width: 1px;
   background: var(--sz-color-button-shadow);
@@ -286,59 +221,15 @@ body {
   text-align: center;
 }
 
-/* ---- Dialogs ---- */
-.dialog-overlay {
-  display: none;
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.3);
-  z-index: 2000;
-  justify-content: center;
-  align-items: center;
-}
-
-.dialog-overlay.visible {
-  display: flex;
-}
-
-.dialog {
-  background: var(--sz-color-button-face);
-  border: 2px outset var(--sz-color-button-shadow);
-  min-width: 300px;
-  max-width: 450px;
-  box-shadow: 3px 3px 8px rgba(0,0,0,0.3);
-}
-
-.dialog-title {
-  background: var(--sz-color-highlight);
-  color: var(--sz-color-highlight-text);
-  padding: 4px 8px;
-  font-weight: bold;
-  font-size: 11px;
-  user-select: none;
-}
-
-.dialog-body {
-  padding: 12px;
-  font-size: 11px;
-}
-
-.dialog-body p {
-  margin-bottom: 8px;
-}
-
+/* App-specific dialog overrides */
 .dialog-body label {
   display: block;
   margin-bottom: 4px;
 }
 
 .dialog-body input[type="text"] {
-  width: 100%;
-  padding: 2px 4px;
-  font-size: 11px;
   font-family: 'Consolas', 'Lucida Console', monospace;
   border: 1px inset var(--sz-color-button-shadow);
-  margin-top: 4px;
 }
 
 .dialog-body .radio-group {
@@ -350,20 +241,6 @@ body {
   align-items: center;
   gap: 4px;
   margin-bottom: 4px;
-  cursor: default;
-}
-
-.dialog-buttons {
-  display: flex;
-  justify-content: flex-end;
-  gap: 6px;
-  padding: 8px 12px;
-}
-
-.dialog-buttons button {
-  min-width: 72px;
-  padding: 3px 12px;
-  font-size: 11px;
   cursor: default;
 }
 
@@ -385,4 +262,356 @@ body {
 
 .ascii-col.active-column {
   outline: 1px dotted rgba(0,0,0,0.1);
+}
+
+/* ---- Struct Panel ---- */
+.struct-panel {
+  width: 300px;
+  min-width: 220px;
+  border-left: 1px solid var(--sz-color-button-shadow);
+  background: var(--sz-color-window);
+  color: var(--sz-color-window-text);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.struct-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background: var(--sz-color-button-face);
+  border-bottom: 1px solid var(--sz-color-button-shadow);
+  flex-shrink: 0;
+}
+
+.struct-panel-title {
+  font-size: 11px;
+  font-weight: bold;
+  color: var(--sz-color-button-text);
+}
+
+.struct-panel-close {
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  cursor: default;
+  color: var(--sz-color-button-text);
+  width: 18px;
+  height: 18px;
+  line-height: 18px;
+  text-align: center;
+  border-radius: 2px;
+  padding: 0;
+}
+
+.struct-panel-close:hover {
+  background: var(--sz-color-button-highlight);
+}
+
+/* ---- Scroll wrapper (single scrollbar for the whole panel) ---- */
+.struct-panel-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+}
+
+.struct-panel-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.struct-panel-scroll::-webkit-scrollbar-thumb {
+  background: var(--sz-color-button-shadow);
+  border-radius: 4px;
+}
+
+/* ---- Accordion ---- */
+.struct-accordion-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: var(--sz-color-button-face);
+  border-bottom: 1px solid var(--sz-color-button-shadow);
+  font-size: 11px;
+  font-weight: bold;
+  color: var(--sz-color-button-text);
+  cursor: default;
+  user-select: none;
+}
+
+.struct-accordion-header:hover {
+  background: var(--sz-color-button-highlight, rgba(0,0,0,0.05));
+}
+
+.struct-accordion-toggle {
+  font-size: 8px;
+  color: var(--sz-color-gray-text);
+  width: 10px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.struct-accordion-body {
+  font-family: 'Consolas', 'Lucida Console', 'Courier New', monospace;
+  font-size: 11px;
+  line-height: 16px;
+  padding: 2px 0;
+}
+
+.struct-accordion-body.collapsed {
+  display: none;
+}
+
+/* Inspector endian toggle */
+.inspector-endian-toggle {
+  margin-left: auto;
+  font-weight: normal;
+  font-size: 10px;
+}
+
+.inspector-endian-select {
+  font-size: 10px;
+  padding: 0 2px;
+  border: 1px solid var(--sz-color-button-shadow);
+  background: var(--sz-color-window);
+  color: var(--sz-color-window-text);
+  cursor: default;
+}
+
+/* ---- Data Inspector ---- */
+.inspector-group-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px 1px;
+  font-size: 10px;
+  font-weight: bold;
+  color: var(--sz-color-gray-text);
+  border-left: 3px solid var(--sz-color-highlight);
+  margin: 2px 0 0;
+  font-family: sans-serif;
+  cursor: default;
+  user-select: none;
+}
+
+.inspector-group-header:hover {
+  color: var(--sz-color-button-text);
+}
+
+.inspector-group-toggle {
+  font-size: 7px;
+  width: 8px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.inspector-group-body.collapsed {
+  display: none;
+}
+
+.inspector-row {
+  display: flex;
+  align-items: center;
+  padding: 1px 6px 1px 14px;
+  gap: 4px;
+  min-height: 16px;
+  cursor: default;
+}
+
+.inspector-row:hover {
+  background: var(--sz-color-button-highlight, rgba(0,0,0,0.05));
+}
+
+.inspector-type {
+  flex-shrink: 0;
+  width: 80px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--sz-color-gray-text);
+  font-size: 10px;
+}
+
+.inspector-value {
+  flex: 1;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #336699;
+}
+
+.inspector-value.na {
+  color: var(--sz-color-gray-text);
+  opacity: 0.5;
+}
+
+.inspector-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1px solid rgba(0,0,0,0.2);
+  border-radius: 1px;
+  vertical-align: middle;
+  margin-right: 3px;
+  flex-shrink: 0;
+}
+
+.inspector-empty {
+  padding: 12px;
+  color: var(--sz-color-gray-text);
+  font-size: 11px;
+  font-style: italic;
+  text-align: center;
+  font-family: sans-serif;
+}
+
+/* Template section in struct panel */
+.struct-template-section {
+  margin-bottom: 2px;
+}
+
+.struct-template-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  background: var(--sz-color-button-face);
+  border-bottom: 1px solid var(--sz-color-button-shadow);
+  font-size: 10px;
+  font-weight: bold;
+  color: var(--sz-color-button-text);
+  cursor: default;
+  user-select: none;
+}
+
+.struct-template-header .struct-tmpl-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.struct-template-header .struct-tmpl-offset {
+  color: var(--sz-color-gray-text);
+  font-weight: normal;
+}
+
+.struct-template-header .struct-tmpl-remove {
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  cursor: default;
+  color: var(--sz-color-button-text);
+  width: 16px;
+  height: 16px;
+  line-height: 16px;
+  text-align: center;
+  border-radius: 2px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.struct-template-header .struct-tmpl-remove:hover {
+  background: #c42b1c;
+  color: #fff;
+}
+
+/* Tree nodes */
+.struct-node {
+  user-select: none;
+}
+
+.struct-node-row {
+  display: flex;
+  align-items: center;
+  padding: 1px 4px 1px 0;
+  cursor: default;
+  gap: 3px;
+  min-height: 16px;
+}
+
+.struct-node-row:hover {
+  background: var(--sz-color-button-highlight, rgba(0,0,0,0.05));
+}
+
+.struct-node-row.active {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+}
+
+.struct-node-toggle {
+  width: 14px;
+  text-align: center;
+  flex-shrink: 0;
+  font-size: 8px;
+  color: var(--sz-color-gray-text);
+}
+
+.struct-node-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+  flex-shrink: 0;
+  border: 1px solid rgba(0,0,0,0.15);
+}
+
+.struct-node-name {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.struct-node-type {
+  color: var(--sz-color-gray-text);
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-size: 10px;
+}
+
+.struct-node-value {
+  flex: 1;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #336699;
+  padding-left: 4px;
+}
+
+.struct-node-row.active .struct-node-value {
+  color: var(--sz-color-highlight-text);
+}
+
+.struct-node-bits {
+  font-size: 9px;
+  color: var(--sz-color-gray-text);
+}
+
+.struct-node-children {
+  padding-left: 16px;
+}
+
+.struct-node-edit {
+  width: 80px;
+  font-family: inherit;
+  font-size: inherit;
+  border: 1px solid var(--sz-color-highlight);
+  padding: 0 2px;
+  text-align: right;
+  background: var(--sz-color-window);
+  color: var(--sz-color-window-text);
+}
+
+/* Empty struct panel state */
+.struct-panel-empty {
+  padding: 12px;
+  color: var(--sz-color-gray-text);
+  font-size: 11px;
+  font-style: italic;
+  text-align: center;
+  font-family: sans-serif;
 }

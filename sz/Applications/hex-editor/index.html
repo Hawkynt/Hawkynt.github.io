@@ -24,62 +24,190 @@
 </script>
 <title>Hex Editor</title>
 <script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="../shared/ribbon.css">
+<link rel="stylesheet" href="../shared/dialog.css">
 <link rel="stylesheet" href="styles.css">
 <script defer src="../vision-renderer.js"></script>
 </head>
 <body>
 <noscript><p>Online hex editor for viewing and editing binary files. <a href="../../index.html">Open »SynthelicZ« Desktop</a> to use this app.</p></noscript>
 
-<!-- Menu Bar -->
-<div class="menu-bar" id="menu-bar">
-  <div class="menu-item" data-menu="file">
-    File
-    <div class="menu-dropdown">
-      <div class="menu-entry" data-action="new">New<span class="shortcut">Ctrl+N</span></div>
-      <div class="menu-entry" data-action="open">Open...<span class="shortcut">Ctrl+O</span></div>
-      <div class="menu-entry" data-action="save">Save<span class="shortcut">Ctrl+S</span></div>
-      <div class="menu-entry" data-action="save-as">Save As...</div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="exit">Exit</div>
-    </div>
+<!-- Quick Access Toolbar -->
+<div class="qat" id="qat">
+  <button class="qat-btn" data-action="save" title="Save (Ctrl+S)">&#128190;</button>
+  <button class="qat-btn" data-action="undo" title="Undo (Ctrl+Z)">&#8630;</button>
+  <button class="qat-btn" data-action="redo" title="Redo (Ctrl+Y)">&#8631;</button>
+</div>
+
+<!-- Ribbon Tab Bar -->
+<div class="ribbon-tabs" id="ribbon-tabs">
+  <div class="ribbon-tab-bar">
+    <button class="ribbon-file-btn" id="ribbon-file-btn">File</button>
+    <button class="ribbon-tab active" data-tab="home">Home</button>
+    <button class="ribbon-tab" data-tab="view">View</button>
+    <button class="ribbon-tab" data-tab="templates">Templates</button>
   </div>
-  <div class="menu-item" data-menu="edit">
-    Edit
-    <div class="menu-dropdown">
-      <div class="menu-entry" data-action="undo">Undo<span class="shortcut">Ctrl+Z</span></div>
-      <div class="menu-entry" data-action="redo">Redo<span class="shortcut">Ctrl+Y</span></div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="cut">Cut<span class="shortcut">Ctrl+X</span></div>
-      <div class="menu-entry" data-action="copy">Copy (Hex)<span class="shortcut">Ctrl+C</span></div>
-      <div class="menu-entry" data-action="paste">Paste<span class="shortcut">Ctrl+V</span></div>
-      <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="select-all">Select All<span class="shortcut">Ctrl+A</span></div>
-      <div class="menu-entry" data-action="goto">Go to Address...<span class="shortcut">Ctrl+G</span></div>
-      <div class="menu-entry" data-action="find">Find...<span class="shortcut">Ctrl+F</span></div>
-    </div>
+</div>
+
+<!-- File Backstage -->
+<div class="backstage" id="backstage">
+  <div class="backstage-sidebar">
+    <button class="backstage-back" id="backstage-back">&#8592;</button>
+    <button class="backstage-item" data-action="new">New</button>
+    <button class="backstage-item" data-action="open">Open</button>
+    <button class="backstage-item" data-action="save">Save</button>
+    <button class="backstage-item" data-action="save-as">Save As</button>
+    <div class="backstage-sep"></div>
+    <button class="backstage-item" data-action="about">About</button>
+    <div class="backstage-spacer"></div>
+    <button class="backstage-item backstage-exit" data-action="exit">Exit</button>
   </div>
-  <div class="menu-item" data-menu="view">
-    View
-    <div class="menu-dropdown">
-      <div class="menu-entry radio checked" data-action="bpr-8" data-bpr="8">8 Bytes per Row</div>
-      <div class="menu-entry radio checked" data-action="bpr-16" data-bpr="16">16 Bytes per Row</div>
-      <div class="menu-entry radio" data-action="bpr-32" data-bpr="32">32 Bytes per Row</div>
+</div>
+
+<!-- Home Tab -->
+<div class="ribbon-panel active" data-panel="home" id="ribbon-home">
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="paste" title="Paste (Ctrl+V)">
+        <span class="rb-icon rb-icon-lg">&#128203;</span>
+        <span class="rb-label">Paste</span>
+      </button>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="cut" title="Cut (Ctrl+X)">
+          <span class="rb-icon">&#9986;</span><span class="rb-label">Cut</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="copy" title="Copy (Ctrl+C)">
+          <span class="rb-icon">&#128203;</span><span class="rb-label">Copy</span>
+        </button>
+      </div>
     </div>
+    <div class="ribbon-group-label">Clipboard</div>
   </div>
-  <div class="menu-item" data-menu="help">
-    Help
-    <div class="menu-dropdown">
-      <div class="menu-entry" data-action="about">About Hex Editor</div>
+  <div class="ribbon-sep"></div>
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="find" title="Find (Ctrl+F)">
+          <span class="rb-icon">&#128269;</span><span class="rb-label">Find</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="goto" title="Go to Address (Ctrl+G)">
+          <span class="rb-icon">&#10145;</span><span class="rb-label">Go To</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="select-all" title="Select All (Ctrl+A)">
+          <span class="rb-icon">&#9744;</span><span class="rb-label">Select All</span>
+        </button>
+      </div>
     </div>
+    <div class="ribbon-group-label">Editing</div>
+  </div>
+</div>
+
+<!-- View Tab -->
+<div class="ribbon-panel" data-panel="view" id="ribbon-view">
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <label class="rb-radio-label"><input type="radio" name="bpr" value="auto" checked> Auto</label>
+        <label class="rb-radio-label"><input type="radio" name="bpr" value="8"> 8</label>
+        <label class="rb-radio-label"><input type="radio" name="bpr" value="16"> 16</label>
+      </div>
+      <div class="rb-stack">
+        <label class="rb-radio-label"><input type="radio" name="bpr" value="32"> 32</label>
+        <label class="rb-radio-label"><input type="radio" name="bpr" value="64"> 64</label>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Bytes Per Row</div>
+  </div>
+  <div class="ribbon-sep"></div>
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <label class="rb-check-label"><input type="checkbox" id="chk-struct-panel"> Struct Panel</label>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Panels</div>
+  </div>
+</div>
+
+<!-- Templates Tab -->
+<div class="ribbon-panel" data-panel="templates" id="ribbon-templates">
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="auto-detect-template" title="Auto-detect format">
+        <span class="rb-icon rb-icon-lg">&#128270;</span>
+        <span class="rb-label">Auto Detect</span>
+      </button>
+      <div class="rb-stack">
+        <select class="rb-select" id="template-select" title="Select template">
+          <option value="">(none)</option>
+        </select>
+        <button class="rb-btn rb-btn-sm" data-action="apply-template" title="Apply selected template at cursor">
+          <span class="rb-icon">&#9654;</span><span class="rb-label">Apply</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="clear-templates" title="Clear all templates">
+          <span class="rb-icon">&#10060;</span><span class="rb-label">Clear</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Format Template</div>
+  </div>
+  <div class="ribbon-sep"></div>
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="import-c-header" title="Import C/C++ header (.h)">
+          <span class="rb-icon">&#128196;</span><span class="rb-label">Import .h</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="import-cs-struct" title="Import C# struct (.cs)">
+          <span class="rb-icon">&#128196;</span><span class="rb-label">Import .cs</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Import</div>
   </div>
 </div>
 
 <!-- Hex view -->
-<div class="hex-container" id="hex-container">
-  <div class="hex-header" id="hex-header"></div>
-  <div class="hex-viewport" id="hex-viewport" tabindex="0">
-    <div class="hex-scroll-content" id="hex-scroll-content">
-      <div class="hex-rows" id="hex-rows"></div>
+<div class="hex-main" id="hex-main">
+  <div class="hex-container" id="hex-container">
+    <div class="hex-header" id="hex-header"></div>
+    <div class="hex-viewport" id="hex-viewport" tabindex="0">
+      <div class="hex-scroll-content" id="hex-scroll-content">
+        <div class="hex-rows" id="hex-rows"></div>
+      </div>
+    </div>
+  </div>
+  <div class="struct-panel" id="struct-panel" style="display:none">
+    <div class="struct-panel-header">
+      <span class="struct-panel-title">Inspector</span>
+      <button class="struct-panel-close" id="struct-panel-close" title="Close">&times;</button>
+    </div>
+    <div class="struct-panel-scroll">
+
+      <!-- Data Inspector accordion -->
+      <div class="struct-accordion">
+        <div class="struct-accordion-header" data-accordion="inspector">
+          <span class="struct-accordion-toggle">&#9660;</span>
+          Data Inspector
+          <label class="inspector-endian-toggle" title="Byte order">
+            <select id="inspector-endian" class="inspector-endian-select">
+              <option value="le" selected>LE</option>
+              <option value="be">BE</option>
+            </select>
+          </label>
+        </div>
+        <div class="struct-accordion-body" id="data-inspector"></div>
+      </div>
+
+      <!-- Structure accordion -->
+      <div class="struct-accordion">
+        <div class="struct-accordion-header" data-accordion="structure">
+          <span class="struct-accordion-toggle">&#9660;</span>
+          Structure
+        </div>
+        <div class="struct-accordion-body" id="struct-tree"></div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -128,6 +256,25 @@
   </div>
 </div>
 
+<!-- Import Struct dialog -->
+<div class="dialog-overlay" id="dlg-import-struct">
+  <div class="dialog" style="min-width: 300px;">
+    <div class="dialog-title">Import Structure</div>
+    <div class="dialog-body">
+      <label for="import-struct-select">Select structure:</label>
+      <select id="import-struct-select" style="width:100%; margin-bottom:8px;"></select>
+      <div class="radio-group">
+        <label><input type="radio" name="import-endian" value="le" checked> Little Endian</label>
+        <label><input type="radio" name="import-endian" value="be"> Big Endian</label>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Apply</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- About dialog -->
 <div class="dialog-overlay" id="dlg-about">
   <div class="dialog">
@@ -135,7 +282,7 @@
     <div class="dialog-body" style="text-align: center; padding: 20px;">
       <p style="font-weight: bold; font-size: 13px; margin-bottom: 12px;">Hex Editor</p>
       <p>A binary file editor for &raquo;SynthelicZ&laquo;</p>
-      <p style="margin-top: 8px; font-size: 10px;">View and edit files at the byte level.</p>
+      <p style="margin-top: 8px; font-size: 10px;">View and edit files at the byte level with struct templates.</p>
       <p style="margin-top: 12px; font-size: 10px; opacity: 0.7;">&copy; 1995-2026 &raquo;SynthelicZ&laquo;</p>
     </div>
     <div class="dialog-buttons" style="justify-content: center;">
@@ -144,6 +291,11 @@
   </div>
 </div>
 
+<script src="../shared/ribbon.js"></script>
+<script src="../shared/dialog.js"></script>
+<script src="../shared/struct-engine.js"></script>
+<script src="../shared/struct-templates.js"></script>
+<script src="struct-parser.js"></script>
 <script src="controller.js"></script>
 </body>
 </html>
