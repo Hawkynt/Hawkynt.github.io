@@ -14,11 +14,19 @@ by Hawkynt 22.02.2026
 + Common Dialogs: BrowseForFolder() dialog mode for folder selection
 + Explorer: full keyboard navigation (arrow keys, Shift+extend, Home/End, PageUp/PageDown, Alt+Enter)
 + VFS: recursive directory walks with SearchOption enum, blob URL optimization
++ Taskbar: right-click context menu (Cascade, Tile Horizontally/Vertically/Grid, Show Desktop, Close All, Close All Same App)
++ Taskbar: mouse wheel scrolling when buttons overflow
++ Window Manager: grid tiling layout for arranging windows
++ Task Manager: multi-select processes (Ctrl+Click, Shift+Click) with batch End Task
++ Explorer: "Open With" submenu lists all matching handlers including wildcard apps
++ file type associations: wildcard pattern matching and multiple handler support
 + shared UI modules: ribbon, menu bar, dialog, syntax highlighter extracted for reuse across all apps
 * all apps migrated to shared UI modules (net reduction of ~8,400 lines of duplicated code)
 * Metadata Viewer: enhanced MSIL disassembly with method signatures and generic type parsing
 # Paint: fixed opening mounted (FSAA) images via blob URL fallback
 # README Generator: fixed badge builder logo grid (undefined variable reference)
+# Function Plotter: graph display rendering
+# Image Viewer: loading mounted (blob URL) files
 
 Main: 6.7
 by Hawkynt 20.02.2026
