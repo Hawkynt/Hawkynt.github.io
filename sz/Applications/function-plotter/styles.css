@@ -43,94 +43,7 @@ html {
 
 .menu-bar {
   grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  padding: 0;
-  background: var(--fp-menu);
-  border-bottom: 1px solid var(--fp-border);
-  user-select: none;
-  flex-shrink: 0;
   z-index: 100;
-}
-
-.menu-item {
-  position: relative;
-  padding: 3px 8px;
-  cursor: default;
-  color: var(--fp-menu-text);
-}
-
-.menu-item:hover,
-.menu-item.open {
-  background: var(--fp-highlight);
-  color: var(--fp-highlight-text);
-}
-
-.menu-dropdown {
-  display: none;
-  position: absolute;
-  top: 100%;
-  left: 0;
-  min-width: 200px;
-  background: var(--fp-menu);
-  border: 1px solid var(--fp-border);
-  box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
-  z-index: 1000;
-  padding: 2px 0;
-}
-
-.menu-item.open > .menu-dropdown {
-  display: block;
-}
-
-.menu-entry {
-  padding: 4px 24px;
-  cursor: default;
-  color: var(--fp-menu-text);
-  white-space: nowrap;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  position: relative;
-}
-
-.menu-entry:hover {
-  background: var(--fp-highlight);
-  color: var(--fp-highlight-text);
-}
-
-.menu-entry.disabled {
-  color: var(--sz-color-gray-text, #808080);
-  pointer-events: none;
-}
-
-.menu-entry .shortcut {
-  margin-left: 24px;
-  font-size: 10px;
-  opacity: 0.7;
-}
-
-.menu-entry.checkbox::before,
-.menu-entry.radio::before {
-  content: '';
-  display: inline-block;
-  width: 16px;
-  margin-left: -16px;
-  text-align: center;
-}
-
-.menu-entry.checkbox.checked::before {
-  content: '\2713';
-}
-
-.menu-entry.radio.checked::before {
-  content: '\2022';
-}
-
-.menu-separator {
-  height: 1px;
-  background: var(--fp-border);
-  margin: 2px 4px;
 }
 
 /* ── Sidebar ── */
@@ -197,7 +110,7 @@ details:not([open]) > .panel-toggle::before {
 
 .btn {
   border: 1px solid var(--fp-border);
-  background: linear-gradient(to bottom, #fff, #d8d8d8);
+  background: var(--sz-color-button-face, linear-gradient(to bottom, #fff, #d8d8d8));
   color: var(--fp-text);
   padding: 4px 8px;
   font: inherit;
@@ -325,7 +238,7 @@ details:not([open]) > .panel-toggle::before {
   height: 18px;
   padding: 0;
   border: 1px solid var(--fp-border);
-  background: linear-gradient(to bottom, #fff, #e8e8e8);
+  background: var(--sz-color-button-face, linear-gradient(to bottom, #fff, #e8e8e8));
   color: var(--fp-text);
   font: bold 11px Tahoma, sans-serif;
   cursor: pointer;
@@ -611,13 +524,13 @@ body.dark .expr-input {
 }
 
 body.dark .expr-ref-btn {
-  background: linear-gradient(to bottom, #3a3f47, #2a2f36);
-  color: #e4e4e4;
+  background: var(--sz-color-button-face, linear-gradient(to bottom, #3a3f47, #2a2f36));
+  color: var(--sz-color-button-text, #e4e4e4);
 }
 
 body.dark .btn {
-  background: linear-gradient(to bottom, #3a3f47, #2a2f36);
-  color: #e4e4e4;
+  background: var(--sz-color-button-face, linear-gradient(to bottom, #3a3f47, #2a2f36));
+  color: var(--sz-color-button-text, #e4e4e4);
 }
 
 body.dark .trace-tooltip,

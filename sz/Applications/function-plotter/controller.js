@@ -1,6 +1,9 @@
 ;(function () {
 'use strict';
 
+const SZ = window.SZ || (window.SZ = {});
+if (SZ.Dlls && SZ.Dlls.User32) SZ.Dlls.User32.EnableVisualStyles();
+
 // ══════════════════════════════════════════════════════════════════════════════
 // Section 1: Constants & Configuration
 // ══════════════════════════════════════════════════════════════════════════════
@@ -869,7 +872,6 @@ const traceTooltip = document.getElementById('traceTooltip');
 const autocompleteEl = document.getElementById('autocomplete');
 const fnTooltip = document.getElementById('fnTooltip');
 const btnAddFunction = document.getElementById('btnAddFunction');
-const menuBar = document.getElementById('menuBar');
 const statusCoords = document.getElementById('statusCoords');
 const statusFunctions = document.getElementById('statusFunctions');
 const statusZoomCtrl = new SZ.ZoomControl(document.getElementById('status-zoom-ctrl'), {
@@ -1170,15 +1172,7 @@ function showFunctionInfoFromCaret(textarea) {
 
 // -- Menu System --
 
-let openMenu = null;
-
-function closeMenus() {
-  for (const item of menuBar.querySelectorAll('.menu-item'))
-    item.classList.remove('open');
-  openMenu = null;
-}
-
-function handleMenuAction(action, entry) {
+function handleMenuAction(action) {
   switch (action) {
     case 'new':
       state.functions = [];
@@ -1204,23 +1198,29 @@ function handleMenuAction(action, entry) {
       exportPng();
       break;
 
-    case 'toggle-grid':
+    case 'toggle-grid': {
       state.viewport.showGrid = !state.viewport.showGrid;
-      entry.classList.toggle('checked', state.viewport.showGrid);
+      const el = document.querySelector('.menu-entry[data-action="toggle-grid"]');
+      if (el) el.classList.toggle('checked', state.viewport.showGrid);
       draw();
       break;
+    }
 
-    case 'toggle-labels':
+    case 'toggle-labels': {
       state.viewport.showLabels = !state.viewport.showLabels;
-      entry.classList.toggle('checked', state.viewport.showLabels);
+      const el = document.querySelector('.menu-entry[data-action="toggle-labels"]');
+      if (el) el.classList.toggle('checked', state.viewport.showLabels);
       draw();
       break;
+    }
 
-    case 'toggle-dark':
+    case 'toggle-dark': {
       document.body.classList.toggle('dark');
-      entry.classList.toggle('checked', document.body.classList.contains('dark'));
+      const el = document.querySelector('.menu-entry[data-action="toggle-dark"]');
+      if (el) el.classList.toggle('checked', document.body.classList.contains('dark'));
       draw();
       break;
+    }
 
     case 'reset-view':
       resetView();
@@ -1239,23 +1239,23 @@ function handleMenuAction(action, entry) {
       break;
 
     case 'about':
-      showAboutDialog();
+      SZ.Dialog.show('dlg-about');
       break;
   }
 }
 
 function showShortcutsDialog() {
-  const existingOverlay = document.querySelector('.dialog-overlay');
+  const existingOverlay = document.querySelector('.dialog-overlay.shortcuts-dlg');
   if (existingOverlay)
     existingOverlay.remove();
 
   const overlay = document.createElement('div');
-  overlay.className = 'dialog-overlay';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:2000;display:flex;align-items:center;justify-content:center;';
+  overlay.className = 'dialog-overlay shortcuts-dlg visible';
 
   const dialog = document.createElement('div');
-  dialog.style.cssText = `background:var(--fp-panel,#ece9d8);border:1px solid var(--fp-border,#8d8d8d);padding:16px;max-width:340px;font:12px/1.6 Tahoma,sans-serif;color:var(--fp-text,#1b1b1b);box-shadow:4px 4px 8px rgba(0,0,0,0.3);`;
-  dialog.innerHTML = `<b>Keyboard Shortcuts</b><br><br>
+  dialog.className = 'dialog';
+  dialog.innerHTML = `<div class="dialog-title">Keyboard Shortcuts</div>
+    <div class="dialog-body">
     <b>Ctrl+N</b> - New (clear all)<br>
     <b>Ctrl+Shift+N</b> - Add function<br>
     <b>Ctrl+Enter</b> - Plot all<br>
@@ -1264,60 +1264,18 @@ function showShortcutsDialog() {
     <b>Ctrl++</b> - Zoom in<br>
     <b>Ctrl+-</b> - Zoom out<br>
     <b>Mouse wheel</b> - Zoom at cursor<br>
-    <b>Drag</b> - Pan<br><br>
-    <button class="btn" style="float:right;">Close</button><div style="clear:both;"></div>`;
+    <b>Drag</b> - Pan</div>
+    <div class="dialog-buttons"><button data-result="ok">Close</button></div>`;
 
-  dialog.querySelector('.btn').addEventListener('click', () => overlay.remove());
+  dialog.querySelector('[data-result]').addEventListener('click', () => overlay.remove());
   overlay.addEventListener('pointerdown', (e) => { if (e.target === overlay) overlay.remove(); });
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
 }
 
-function showAboutDialog() {
-  const overlay = document.getElementById('dlg-about');
-  if (overlay)
-    overlay.classList.add('visible');
-}
-
 function setupMenuSystem() {
-  for (const menuItem of menuBar.querySelectorAll('.menu-item')) {
-    menuItem.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('.menu-entry') || e.target.closest('.menu-separator'))
-        return;
-
-      if (openMenu === menuItem) {
-        closeMenus();
-        return;
-      }
-
-      closeMenus();
-      menuItem.classList.add('open');
-      openMenu = menuItem;
-    });
-
-    menuItem.addEventListener('pointerenter', () => {
-      if (openMenu && openMenu !== menuItem) {
-        closeMenus();
-        menuItem.classList.add('open');
-        openMenu = menuItem;
-      }
-    });
-  }
-
-  document.addEventListener('pointerdown', (e) => {
-    if (openMenu && !menuBar.contains(e.target))
-      closeMenus();
-  });
-
-  for (const entry of menuBar.querySelectorAll('.menu-entry')) {
-    entry.addEventListener('click', () => {
-      const action = entry.dataset.action;
-      if (!action)
-        return;
-      closeMenus();
-      handleMenuAction(action, entry);
-    });
-  }
+  new SZ.MenuBar({ onAction: handleMenuAction });
+  SZ.Dialog.wireAll();
 }
 
 // -- Reference Popup --
@@ -2620,9 +2578,5 @@ addFunction('sin(x)');
 addFunction('x^2 - 4');
 resizeCanvas();
 
-document.getElementById('dlg-about')?.addEventListener('click', function(e) {
-  if (e.target.closest('[data-result]'))
-    this.classList.remove('visible');
-});
 
 })();
