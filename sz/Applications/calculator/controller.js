@@ -4,7 +4,6 @@
   const MAX_DIGITS = 16;
   const display = document.getElementById('display');
   const buttonArea = document.getElementById('button-area');
-  const menuBar = document.getElementById('menu-bar');
   const baseDisplay = document.getElementById('base-display');
   const bitDisplayEl = document.getElementById('bit-display');
   const programmerSelectors = document.getElementById('programmer-selectors');
@@ -27,8 +26,6 @@
   // Programmer state
   let currentBase = 10;
   let wordSize = 32;
-  let openMenu = null;
-
   // Expression stack for parentheses (scientific mode)
   const parenStack = [];
 
@@ -654,58 +651,17 @@
   // -----------------------------------------------------------------------
   // Menu system
   // -----------------------------------------------------------------------
-  function closeMenus() {
-    for (const item of menuBar.querySelectorAll('.menu-item'))
-      item.classList.remove('open');
-    openMenu = null;
-  }
+  new SZ.MenuBar({ onAction: handleMenuAction });
 
-  for (const menuItem of menuBar.querySelectorAll('.menu-item')) {
-    menuItem.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('.menu-entry') || e.target.closest('.menu-separator'))
-        return;
-      if (openMenu === menuItem) {
-        closeMenus();
-        return;
-      }
-      closeMenus();
-      menuItem.classList.add('open');
-      openMenu = menuItem;
-    });
-
-    menuItem.addEventListener('pointerenter', () => {
-      if (openMenu && openMenu !== menuItem) {
-        closeMenus();
-        menuItem.classList.add('open');
-        openMenu = menuItem;
-      }
-    });
-  }
-
-  document.addEventListener('pointerdown', (e) => {
-    if (openMenu && !menuBar.contains(e.target))
-      closeMenus();
-  });
-
-  for (const entry of document.querySelectorAll('.menu-entry')) {
-    entry.addEventListener('click', () => {
-      const action = entry.dataset.action;
-      closeMenus();
-      handleMenuAction(action, entry);
-    });
-  }
-
-  function handleMenuAction(action, entry) {
+  function handleMenuAction(action) {
     if (action === 'mode-standard')
       switchMode('standard');
     else if (action === 'mode-scientific')
       switchMode('scientific');
     else if (action === 'mode-programmer')
       switchMode('programmer');
-    else if (action === 'about') {
-      const dlg = document.getElementById('dlg-about');
-      if (dlg) dlg.classList.add('visible');
-    }
+    else if (action === 'about')
+      SZ.Dialog.show('dlg-about');
   }
 
   // -----------------------------------------------------------------------
@@ -1170,9 +1126,6 @@
 
   init();
 
-  document.getElementById('dlg-about')?.addEventListener('click', function(e) {
-    if (e.target.closest('[data-result]'))
-      this.classList.remove('visible');
-  });
+  SZ.Dialog.wireAll();
 
 })();

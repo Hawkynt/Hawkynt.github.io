@@ -2370,44 +2370,42 @@ void main() {
 
   // ===== Menu handling =====
 
-  document.querySelectorAll('.menu-entry[data-action]').forEach(el => {
-    el.addEventListener('click', (e) => {
-      const action = el.dataset.action;
+  let lastClickedTest = null;
+  document.querySelector('.menu-bar').addEventListener('pointerdown', (e) => {
+    const entry = e.target.closest('.menu-entry[data-test]');
+    lastClickedTest = entry ? entry.dataset.test : null;
+  }, true);
 
-      if (action === 'run-test')
-        runTest(el.dataset.test);
-      else if (action === 'fullscreen')
-        toggleFullscreen();
-      else if (action === 'exit')
-        window.parent !== window
-          ? window.parent.postMessage({ type: 'sz:close' }, '*')
-          : window.close();
-      else if (action === 'toggle-toolbar') {
-        el.classList.toggle('checked');
-        toolbar.style.display = el.classList.contains('checked') ? '' : 'none';
-      } else if (action === 'toggle-statusbar') {
-        el.classList.toggle('checked');
-        statusBar.style.display = el.classList.contains('checked') ? '' : 'none';
-      } else if (action === 'toggle-descriptions') {
-        el.classList.toggle('checked');
-        showDescriptions = el.classList.contains('checked');
-        buildSelector();
-      } else if (action === 'shortcuts')
-        document.getElementById('dlg-shortcuts').classList.add('visible');
-      else if (action === 'about')
-        document.getElementById('dlg-about').classList.add('visible');
+  function handleMenuAction(action) {
+    if (action === 'run-test' && lastClickedTest)
+      runTest(lastClickedTest);
+    else if (action === 'fullscreen')
+      toggleFullscreen();
+    else if (action === 'exit')
+      window.parent !== window
+        ? window.parent.postMessage({ type: 'sz:close' }, '*')
+        : window.close();
+    else if (action === 'toggle-toolbar') {
+      const el = document.querySelector('.menu-entry[data-action="toggle-toolbar"]');
+      el.classList.toggle('checked');
+      toolbar.style.display = el.classList.contains('checked') ? '' : 'none';
+    } else if (action === 'toggle-statusbar') {
+      const el = document.querySelector('.menu-entry[data-action="toggle-statusbar"]');
+      el.classList.toggle('checked');
+      statusBar.style.display = el.classList.contains('checked') ? '' : 'none';
+    } else if (action === 'toggle-descriptions') {
+      const el = document.querySelector('.menu-entry[data-action="toggle-descriptions"]');
+      el.classList.toggle('checked');
+      showDescriptions = el.classList.contains('checked');
+      buildSelector();
+    } else if (action === 'shortcuts')
+      SZ.Dialog.show('dlg-shortcuts');
+    else if (action === 'about')
+      SZ.Dialog.show('dlg-about');
+  }
 
-      // Close menus
-      document.querySelectorAll('.menu-item').forEach(mi => mi.blur());
-    });
-  });
-
-  // Dialog close
-  document.querySelectorAll('.dialog-buttons button').forEach(btn => {
-    btn.addEventListener('click', () => {
-      btn.closest('.dialog-overlay').classList.remove('visible');
-    });
-  });
+  new SZ.MenuBar({ onAction: handleMenuAction });
+  SZ.Dialog.wireAll();
 
   // ===== Toolbar buttons =====
 
@@ -2421,7 +2419,7 @@ void main() {
     const openDialog = document.querySelector('.dialog-overlay.visible');
     if (openDialog) {
       if (e.key === 'Escape' || e.key === 'Enter')
-        openDialog.classList.remove('visible');
+        SZ.Dialog.close(openDialog.id);
       return;
     }
 

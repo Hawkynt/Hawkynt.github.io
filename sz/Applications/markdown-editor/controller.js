@@ -167,52 +167,8 @@
   }
 
   // -----------------------------------------------------------------------
-  // Ribbon tab switching
+  // Action handler
   // -----------------------------------------------------------------------
-  const ribbonTabs = document.getElementById('ribbon-tabs');
-  for (const tab of ribbonTabs.querySelectorAll('.ribbon-tab')) {
-    tab.addEventListener('click', () => {
-      ribbonTabs.querySelectorAll('.ribbon-tab').forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      document.querySelectorAll('.ribbon-panel').forEach(p => p.classList.remove('active'));
-      const panel = document.getElementById('ribbon-' + tab.dataset.tab);
-      if (panel)
-        panel.classList.add('active');
-    });
-  }
-
-  // -----------------------------------------------------------------------
-  // Backstage (File menu)
-  // -----------------------------------------------------------------------
-  const backstage = document.getElementById('backstage');
-  const ribbonFileBtn = document.getElementById('ribbon-file-btn');
-  const backstageBack = document.getElementById('backstage-back');
-
-  ribbonFileBtn.addEventListener('click', () => backstage.classList.add('visible'));
-  backstageBack.addEventListener('click', () => backstage.classList.remove('visible'));
-  backstage.addEventListener('pointerdown', (e) => {
-    if (e.target === backstage)
-      backstage.classList.remove('visible');
-  });
-  for (const item of backstage.querySelectorAll('.backstage-item')) {
-    item.addEventListener('click', () => {
-      backstage.classList.remove('visible');
-      handleAction(item.dataset.action);
-    });
-  }
-
-  // -----------------------------------------------------------------------
-  // QAT buttons
-  // -----------------------------------------------------------------------
-  for (const btn of document.querySelectorAll('.qat-btn[data-action]'))
-    btn.addEventListener('click', () => handleAction(btn.dataset.action));
-
-  // -----------------------------------------------------------------------
-  // Ribbon action buttons
-  // -----------------------------------------------------------------------
-  for (const btn of document.querySelectorAll('.rb-btn[data-action]'))
-    btn.addEventListener('click', () => handleAction(btn.dataset.action));
-
   function handleAction(action) {
     switch (action) {
       case 'new': doNew(); break;
@@ -258,9 +214,15 @@
       case 'export-html': doExportHtml(); break;
       case 'zoom-in': doZoom(10); break;
       case 'zoom-out': doZoom(-10); break;
-      case 'about': showDialog('dlg-about'); break;
+      case 'about': SZ.Dialog.show('dlg-about'); break;
     }
   }
+
+  // -----------------------------------------------------------------------
+  // Shared ribbon & dialog wiring
+  // -----------------------------------------------------------------------
+  new SZ.Ribbon({ onAction: handleAction });
+  SZ.Dialog.wireAll();
 
   // -----------------------------------------------------------------------
   // Export as HTML
@@ -519,29 +481,8 @@
   // -----------------------------------------------------------------------
   // Dialog helpers
   // -----------------------------------------------------------------------
-  function showDialog(id) {
-    const overlay = document.getElementById(id);
-    overlay.classList.add('visible');
-    awaitDialogResult(overlay);
-  }
-
-  function awaitDialogResult(overlay, callback) {
-    function handleClick(e) {
-      const btn = e.target.closest('[data-result]');
-      if (!btn)
-        return;
-      overlay.classList.remove('visible');
-      overlay.removeEventListener('click', handleClick);
-      if (typeof callback === 'function')
-        callback(btn.dataset.result);
-    }
-    overlay.addEventListener('click', handleClick);
-  }
-
   function promptSaveChanges(callback) {
-    const overlay = document.getElementById('dlg-save-changes');
-    overlay.classList.add('visible');
-    awaitDialogResult(overlay, callback);
+    SZ.Dialog.show('dlg-save-changes').then(callback);
   }
 
   // -----------------------------------------------------------------------

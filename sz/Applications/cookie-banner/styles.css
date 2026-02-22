@@ -13,16 +13,6 @@ body {
   height: 100vh;
 }
 
-/* ---- Menu bar ---- */
-.menu-bar { display: flex; background: var(--sz-color-menu); color: var(--sz-color-menu-text); font-size: 11px; user-select: none; border-bottom: 1px solid var(--sz-color-button-shadow); position: relative; z-index: 100; flex-shrink: 0; }
-.menu-item { padding: 3px 8px; position: relative; cursor: default; }
-.menu-item:hover, .menu-item.open { background: var(--sz-color-highlight); color: var(--sz-color-highlight-text); }
-.menu-dropdown { display: none; position: absolute; top: 100%; left: 0; background: var(--sz-color-menu); border: 1px solid var(--sz-color-button-shadow); box-shadow: 2px 2px 4px rgba(0,0,0,0.2); min-width: 180px; z-index: 200; }
-.menu-item.open .menu-dropdown { display: block; }
-.menu-entry { padding: 3px 24px 3px 8px; white-space: nowrap; cursor: default; color: var(--sz-color-menu-text); }
-.menu-entry:hover { background: var(--sz-color-highlight); color: var(--sz-color-highlight-text); }
-.menu-separator { height: 1px; background: var(--sz-color-button-shadow); margin: 2px 4px; }
-
 /* ---- Toolbar ---- */
 #toolbar {
   display: flex;
@@ -54,24 +44,13 @@ body {
 .toolbar-btn {
   padding: 2px 6px;
   font-size: 10px;
-  font-family: inherit;
-  border: 2px outset;
-  border-color: var(--sz-color-button-highlight) var(--sz-color-button-shadow) var(--sz-color-button-shadow) var(--sz-color-button-highlight);
-  background: var(--sz-color-button-face);
-  color: var(--sz-color-button-text);
   cursor: default;
   white-space: nowrap;
 }
 
-.toolbar-btn:hover {
-  background: var(--sz-color-highlight);
-  color: var(--sz-color-highlight-text);
-}
-
 .toolbar-btn.active {
-  border-style: inset;
-  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
-  background: var(--sz-color-window);
+  filter: brightness(0.88);
+  box-shadow: inset 1px 1px 2px rgba(0,0,0,0.25);
 }
 
 .toolbar-separator {
@@ -491,22 +470,7 @@ body {
 .action-btn {
   padding: 3px 8px;
   font-size: 10px;
-  font-family: inherit;
-  border: 2px outset;
-  border-color: var(--sz-color-button-highlight) var(--sz-color-button-shadow) var(--sz-color-button-shadow) var(--sz-color-button-highlight);
-  background: var(--sz-color-button-face);
-  color: var(--sz-color-button-text);
   cursor: default;
-}
-
-.action-btn:hover {
-  background: var(--sz-color-highlight);
-  color: var(--sz-color-highlight-text);
-}
-
-.action-btn:active {
-  border-style: inset;
-  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
 }
 
 /* ---- Code tab ---- */
@@ -571,78 +535,6 @@ body {
   flex-shrink: 0;
 }
 
-/* Syntax highlighting -- intentional fixed colors for code output */
-.hl-tag { color: #881280; }
-.hl-attr { color: #994500; }
-.hl-str { color: #1a1aa6; }
-.hl-prop { color: #881280; }
-.hl-val { color: #1a1aa6; }
-.hl-comment { color: #236e25; font-style: italic; }
-.hl-kw { color: #0000ff; }
-.hl-fn { color: #795e26; }
-.hl-sel { color: #800000; }
-
-/* ---- Dialog ---- */
-.dialog-overlay {
-  position: fixed;
-  inset: 0;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0,0,0,0.5);
-  z-index: 10000;
-}
-
-.dialog-overlay.visible {
-  display: flex;
-}
-
-.dialog {
-  background: var(--sz-color-window);
-  border: 2px outset;
-  border-color: var(--sz-color-button-highlight) var(--sz-color-button-shadow) var(--sz-color-button-shadow) var(--sz-color-button-highlight);
-  padding: 8px;
-  min-width: 300px;
-  max-width: 420px;
-  max-height: 80vh;
-  overflow-y: auto;
-}
-
-.dialog-title {
-  font-weight: bold;
-  font-size: 11px;
-  margin-bottom: 8px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid var(--sz-color-button-shadow);
-}
-
-.dialog-body {
-  font-size: 11px;
-  line-height: 1.4;
-  margin-bottom: 8px;
-  user-select: text;
-  -webkit-user-select: text;
-}
-
-.dialog-buttons {
-  text-align: right;
-}
-
-.dialog-buttons button {
-  padding: 3px 16px;
-  font-size: 11px;
-  font-family: inherit;
-  border: 2px outset;
-  border-color: var(--sz-color-button-highlight) var(--sz-color-button-shadow) var(--sz-color-button-shadow) var(--sz-color-button-highlight);
-  background: var(--sz-color-button-face);
-  color: var(--sz-color-button-text);
-  cursor: default;
-}
-
-.dialog-buttons button:hover {
-  background: var(--sz-color-highlight);
-  color: var(--sz-color-highlight-text);
-}
 
 /* ---- Banner preview inner styles ---- */
 .cb-preview {

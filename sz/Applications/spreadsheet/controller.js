@@ -154,7 +154,6 @@
   let colorCallback = null;
 
   // ── DOM refs ───────────────────────────────────────────────────────
-  const ribbonTabs = document.getElementById('ribbon-tabs');
   const gridScroll = document.getElementById('grid-scroll');
   const gridHead = document.getElementById('grid-head');
   const gridBody = document.getElementById('grid-body');
@@ -1566,38 +1565,9 @@
     }
   });
 
-  // ── Ribbon tab switching ───────────────────────────────────────────
-  for (const tab of ribbonTabs.querySelectorAll('.ribbon-tab')) {
-    tab.addEventListener('click', () => {
-      ribbonTabs.querySelectorAll('.ribbon-tab').forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      document.querySelectorAll('.ribbon-panel').forEach(p => p.classList.remove('active'));
-      const panel = document.querySelector('.ribbon-panel[data-panel="' + tab.dataset.tab + '"]');
-      if (panel) panel.classList.add('active');
-    });
-  }
-
-  // ── Backstage ──────────────────────────────────────────────────────
-  const backstage = document.getElementById('backstage');
-  const ribbonFileBtn = document.getElementById('ribbon-file-btn');
-  const backstageBack = document.getElementById('backstage-back');
-
-  ribbonFileBtn.addEventListener('click', () => backstage.classList.add('visible'));
-  backstageBack.addEventListener('click', () => backstage.classList.remove('visible'));
-  backstage.addEventListener('pointerdown', (e) => {
-    if (e.target === backstage)
-      backstage.classList.remove('visible');
-  });
-  for (const item of backstage.querySelectorAll('.backstage-item')) {
-    item.addEventListener('click', () => {
-      backstage.classList.remove('visible');
-      handleAction(item.dataset.action);
-    });
-  }
-
-  // ── QAT buttons ───────────────────────────────────────────────────
-  for (const btn of document.querySelectorAll('.qat-btn[data-action]'))
-    btn.addEventListener('click', () => handleAction(btn.dataset.action));
+  // ── Ribbon + Backstage + QAT (shared module) ──────────────────────
+  new SZ.Ribbon({ onAction: handleAction });
+  SZ.Dialog.wireAll();
 
   // ── Zoom slider (status bar) ──────────────────────────────────────
   const gridContainer = document.getElementById('grid-container');
@@ -1615,13 +1585,6 @@
     visibleRowStart = -1; visibleRowEnd = -1;
     renderVisibleRows();
   }
-
-  // All ribbon buttons with data-action
-  document.addEventListener('click', (e) => {
-    const btn = e.target.closest('.rb-btn[data-action]');
-    if (!btn) return;
-    handleAction(btn.dataset.action);
-  });
 
   // ── Ribbon selects ─────────────────────────────────────────────────
   document.getElementById('sel-font-size').addEventListener('change', (e) => applyFormatToSelection('fontSize', parseInt(e.target.value, 10)));
@@ -1958,21 +1921,8 @@
     };
   }
 
-  // ── Dialog helper ──────────────────────────────────────────────────
-  function showDialog(id) {
-    const overlay = document.getElementById(id);
-    overlay.classList.add('visible');
-    return new Promise((resolve) => {
-      function handleClick(e) {
-        const btn = e.target.closest('[data-result]');
-        if (!btn) return;
-        overlay.classList.remove('visible');
-        overlay.removeEventListener('click', handleClick);
-        resolve(btn.dataset.result);
-      }
-      overlay.addEventListener('click', handleClick);
-    });
-  }
+  // ── Dialog helper (delegates to shared SZ.Dialog) ──────────────────
+  function showDialog(id) { return SZ.Dialog.show(id); }
 
   async function showPrompt(title, msg, defaultVal) {
     document.getElementById('dlg-prompt-title').textContent = title;
@@ -2404,7 +2354,7 @@
         document.getElementById('fn-insert-ok').onclick = () => {
           const sel = document.getElementById('fn-list').value;
           if (sel) { startEditing(activeCell.col, activeCell.row, '=' + sel + '('); }
-          document.getElementById('dlg-insert-function').classList.remove('visible');
+          SZ.Dialog.close('dlg-insert-function');
         };
         break;
       }
@@ -2620,7 +2570,7 @@
                 S().cellFormats[cellKey(c, r)] = Object.assign({}, getFormat(c, r), style.fmt);
                 renderCellContent(c, r);
               }
-            document.getElementById('dlg-cell-styles').classList.remove('visible');
+            SZ.Dialog.close('dlg-cell-styles');
             setDirty(true);
           });
           grid.appendChild(item);
@@ -2663,7 +2613,7 @@
               }
             if (actions.length) { pushUndo({ type: 'multi', actions }); setDirty(true); }
             rebuildGrid();
-            document.getElementById('dlg-table-styles').classList.remove('visible');
+            SZ.Dialog.close('dlg-table-styles');
           });
           tsGrid.appendChild(item);
         }
