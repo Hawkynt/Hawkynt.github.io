@@ -218,6 +218,11 @@
     }
   }
 
+  function getAppVersion() {
+    const params = new URLSearchParams(location.search);
+    return params.get('_szVersion') || params.get('_szOsVersion') || '6.8';
+  }
+
   function applyMarkdown(md) {
     const { title, description, bodyMd } = parseVision(md);
     const appTitle = title || document.title || 'Application';
@@ -235,7 +240,7 @@
     body.innerHTML =
       '<div class="vision-header">' +
         '<div class="vision-app-title">' + inlineFormat(appTitle) + '</div>' +
-        '<div class="vision-version">Version 6.0</div>' +
+        '<div class="vision-version">Version ' + getAppVersion() + '</div>' +
         '<div class="vision-author">\u00A9 1995\u20132026 \u00BBSynthelicZ\u00AB</div>' +
         (description ? '<div class="vision-description">' + inlineFormat(description) + '</div>' : '') +
       '</div>' +
@@ -260,7 +265,7 @@
     body.innerHTML =
       '<div class="vision-header">' +
         '<div class="vision-app-title">' + inlineFormat(appTitle) + '</div>' +
-        '<div class="vision-version">Version 6.0</div>' +
+        '<div class="vision-version">Version ' + getAppVersion() + '</div>' +
         '<div class="vision-author">\u00A9 1995\u20132026 \u00BBSynthelicZ\u00AB</div>' +
       '</div>' +
       '<div class="vision-content">' +
