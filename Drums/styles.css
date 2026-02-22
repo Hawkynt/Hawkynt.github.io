@@ -509,6 +509,100 @@ html, body {
 .ctx-item:hover { background: var(--bg-surface); color: var(--accent-cyan); }
 .ctx-action { color: var(--text-secondary); font-size: 0.92em; }
 
+/* Record overlay (key map + beat indicator) */
+.record-overlay {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 6px 16px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-color);
+  flex-wrap: wrap;
+}
+.record-overlay[hidden] { display: none; }
+
+.key-map {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+.key-map-title {
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  font-weight: 700;
+  color: var(--accent-red);
+  margin-right: 4px;
+  white-space: nowrap;
+}
+.key-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-mono);
+  font-size: 0.78em;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.key-hint kbd {
+  display: inline-block;
+  min-width: 20px;
+  padding: 1px 5px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 0.95em;
+  color: var(--text-primary);
+  text-align: center;
+  line-height: 1.4;
+  box-shadow: 0 1px 0 var(--border-color);
+  transition: background var(--transition-fast), box-shadow var(--transition-fast), color var(--transition-fast);
+}
+.key-hint.flash kbd {
+  background: var(--accent-cyan);
+  color: var(--bg-primary);
+  box-shadow: var(--glow-cyan);
+}
+
+.beat-indicator {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.beat-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--border-color);
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  font-weight: 700;
+  color: var(--text-muted);
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.beat-dot.active {
+  background: var(--accent-cyan);
+  border-color: var(--accent-cyan);
+  color: var(--bg-primary);
+  box-shadow: var(--glow-cyan);
+}
+
+/* Light mode overrides for record overlay */
+html.light-mode .key-hint.flash kbd {
+  background: #0090a0;
+  color: #fff;
+}
+html.light-mode .beat-dot.active {
+  background: #0090a0;
+  border-color: #0090a0;
+  color: #fff;
+}
+
 /* Mixer / Status */
 #mixer {
   display: flex;
@@ -537,6 +631,33 @@ html, body {
 
 /* Particle canvas overlay */
 #particles { position: fixed; inset: 0; pointer-events: none; z-index: var(--z-overlay); }
+
+/* Tap tempo button */
+#btn-tap-tempo { font-family: var(--font-mono); min-width: 50px; }
+
+/* Record overlay options */
+.record-options { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.overdub-toggle {
+  display: flex; align-items: center; gap: 4px;
+  font-family: var(--font-mono); font-size: 0.82em;
+  color: var(--text-secondary); cursor: pointer; white-space: nowrap;
+}
+
+/* Armed state (pulsing border before first key) */
+.record-overlay.armed { border-bottom-color: var(--accent-red); animation: armed-pulse 1.5s ease-in-out infinite; }
+@keyframes armed-pulse {
+  0%, 100% { border-bottom-color: var(--accent-red); }
+  50% { border-bottom-color: var(--accent-orange); }
+}
+
+/* Beat-1 accent for metronome dots */
+.beat-dot.active[data-beat="1"] {
+  background: var(--accent-orange); border-color: var(--accent-orange);
+  box-shadow: 0 0 12px rgba(255, 140, 0, 0.5);
+}
+html.light-mode .beat-dot.active[data-beat="1"] {
+  background: #c06000; border-color: #c06000; color: #fff;
+}
 
 /* Responsive: narrow screens stack vertically */
 @media (max-width: 768px) {
