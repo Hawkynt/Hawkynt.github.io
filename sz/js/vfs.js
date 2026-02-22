@@ -17,6 +17,8 @@
     DataTooLarge: 'DataTooLarge',
   };
 
+  const SearchOption = Object.freeze({ TopOnly: 0, BreadthFirst: 1, DepthFirst: 2 });
+
   class VFSError extends Error {
     constructor(code, path, message) {
       super(message);
@@ -398,7 +400,7 @@
       return { ...meta, kind: k };
     }
 
-    async List(path) {
+    async List(path, searchOption = 0) {
       const { driver, relPath, normPath } = this.#resolve(path);
       const node = await this.#getNode(path);
       if (node.k !== 'dir') throw new VFSError(ERROR_CODES.NotDirectory, normPath, 'Path is not a directory.');
@@ -414,7 +416,47 @@
             children.push(directChild);
         }
       }
-      return children;
+
+      if (!searchOption || searchOption === SearchOption.TopOnly)
+        return children;
+
+      // Recursive walk — BFS or DFS
+      const results = [];
+      if (searchOption === SearchOption.BreadthFirst) {
+        const queue = children.map(name => ({ prefix: '', name }));
+        while (queue.length) {
+          const { prefix, name } = queue.shift();
+          const rel = prefix ? prefix + '/' + name : name;
+          results.push(rel);
+          const fullPath = normPath === '/' ? '/' + rel : normPath + '/' + rel;
+          try {
+            const childNode = await this.#getNode(fullPath);
+            if (childNode.k === 'dir') {
+              const subChildren = await this.List(fullPath);
+              for (const sub of subChildren)
+                queue.push({ prefix: rel, name: sub });
+            }
+          } catch { /* skip inaccessible */ }
+        }
+      } else {
+        // DepthFirst
+        const stack = children.slice().reverse().map(name => ({ prefix: '', name }));
+        while (stack.length) {
+          const { prefix, name } = stack.pop();
+          const rel = prefix ? prefix + '/' + name : name;
+          results.push(rel);
+          const fullPath = normPath === '/' ? '/' + rel : normPath + '/' + rel;
+          try {
+            const childNode = await this.#getNode(fullPath);
+            if (childNode.k === 'dir') {
+              const subChildren = await this.List(fullPath);
+              for (let i = subChildren.length - 1; i >= 0; --i)
+                stack.push({ prefix: rel, name: subChildren[i] });
+            }
+          } catch { /* skip inaccessible */ }
+        }
+      }
+      return results;
     }
 
     async Mkdir(path) {
@@ -508,16 +550,21 @@
         switch (node.k) {
             case 'uri':
                 return node.u;
-            case 'bytes':
+            case 'bytes': {
+                // Fast path: FSAA files — create blob URL directly, avoids base64
+                if (node.c?.t === 'fsaa') {
+                    const file = await node.c.handle.getFile();
+                    return URL.createObjectURL(file);
+                }
                 const bytes = await this.ReadAllBytes(path);
-                const b64 = btoa(String.fromCharCode.apply(null, bytes));
                 const mime = node.meta?.contentType || 'application/octet-stream';
-                return `data:${mime};base64,${b64}`;
-            case 'value':
+                return URL.createObjectURL(new Blob([bytes], { type: mime }));
+            }
+            case 'value': {
                  const json = JSON.stringify(node.v);
                  const jsonBytes = new TextEncoder().encode(json);
-                 const jsonB64 = btoa(String.fromCharCode.apply(null, jsonBytes));
-                 return `data:application/json;base64,${jsonB64}`;
+                 return URL.createObjectURL(new Blob([jsonBytes], { type: 'application/json' }));
+            }
             default:
                 throw new VFSError(ERROR_CODES.WrongType, path, `Cannot read '${node.k}' as URI.`);
         }
@@ -540,7 +587,8 @@
     FileSystemAccessDriver,
     MountStore,
     VFSError,
-    ERROR_CODES
+    ERROR_CODES,
+    SearchOption,
   };
 
 })();

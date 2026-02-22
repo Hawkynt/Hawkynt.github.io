@@ -6,7 +6,7 @@
     { label: 'Documents', icon: '\uD83D\uDCC4', path: '/user/documents' },
     { label: 'Desktop', icon: '\uD83D\uDDA5\uFE0F', path: '/user/desktop' },
     { label: 'Pictures', icon: '\uD83D\uDDBC\uFE0F', path: '/user/pictures' },
-    { label: 'System', icon: '\uD83D\uDCBB', path: '/system' },
+    { label: 'Computer', icon: '\uD83D\uDCBB', path: '/' },
   ];
 
   function _formatSize(bytes) {
@@ -50,7 +50,7 @@
     #overlay = null;
     #currentPath = '/user/documents';
     #resolve = null;
-    #mode = 'open'; // 'open' | 'save'
+    #mode = 'open'; // 'open' | 'save' | 'folder'
     #selectedEntry = null;
     #lastEntries = []; // unfiltered entries for re-filtering
 
@@ -65,6 +65,8 @@
     #cancelBtn;
     #importBtn;
     #downloadBtn;
+    #fnRow;
+    #ftRow;
     #backBtn;
     #upBtn;
     #history = [];
@@ -86,6 +88,8 @@
       this.#saveContent = null;
       this.#filters = options.filters || null;
       this.#populateFilters(options.filters);
+      this.#fnRow.style.display = '';
+      this.#ftRow.style.display = '';
       this.#importBtn.style.display = '';
       this.#downloadBtn.style.display = 'none';
       return new Promise(resolve => {
@@ -105,8 +109,30 @@
       this.#saveContent = options.content || null;
       this.#filters = options.filters || null;
       this.#populateFilters(options.filters);
+      this.#fnRow.style.display = '';
+      this.#ftRow.style.display = '';
       this.#importBtn.style.display = 'none';
       this.#downloadBtn.style.display = this.#saveContent ? '' : 'none';
+      return new Promise(resolve => {
+        this.#resolve = resolve;
+        this.#overlay.style.display = 'flex';
+        this.#navigateTo(options.initialDir || '/user/documents');
+      });
+    }
+
+    async showBrowseFolder(options = {}) {
+      this.#mode = 'folder';
+      this.#titleEl.textContent = options.title || 'Browse For Folder';
+      this.#okBtn.textContent = 'Select Folder';
+      this.#filenameInput.value = '';
+      this.#selectedEntry = null;
+      this.#history = [];
+      this.#saveContent = null;
+      this.#filters = null;
+      this.#fnRow.style.display = 'none';
+      this.#ftRow.style.display = 'none';
+      this.#importBtn.style.display = 'none';
+      this.#downloadBtn.style.display = 'none';
       return new Promise(resolve => {
         this.#resolve = resolve;
         this.#overlay.style.display = 'flex';
@@ -228,8 +254,8 @@
       footer.className = 'sz-dlg-footer';
 
       // Filename row
-      const fnRow = document.createElement('div');
-      fnRow.className = 'sz-dlg-footer-row';
+      this.#fnRow = document.createElement('div');
+      this.#fnRow.className = 'sz-dlg-footer-row';
       const fnLabel = document.createElement('label');
       fnLabel.textContent = 'File name:';
       this.#filenameInput = document.createElement('input');
@@ -240,6 +266,22 @@
         if (e.key === 'Enter') { e.preventDefault(); this.#confirm(); }
         else if (e.key === 'Escape') { e.preventDefault(); this.#cancel(); }
       });
+      this.#fnRow.append(fnLabel, this.#filenameInput);
+
+      // Filter row
+      this.#ftRow = document.createElement('div');
+      this.#ftRow.className = 'sz-dlg-footer-row';
+      const ftLabel = document.createElement('label');
+      ftLabel.textContent = 'Files of type:';
+      this.#filterSelect = document.createElement('select');
+      this.#filterSelect.className = 'sz-dlg-filter-select';
+      this.#filterSelect.addEventListener('change', () => {
+        if (this.#lastEntries.length)
+          this.#renderEntries(this.#lastEntries);
+      });
+      this.#ftRow.append(ftLabel, this.#filterSelect);
+
+      // Button group (always visible)
       const btnGroup = document.createElement('div');
       btnGroup.className = 'sz-dlg-footer-buttons';
       this.#importBtn = document.createElement('button');
@@ -259,22 +301,8 @@
       this.#cancelBtn.textContent = 'Cancel';
       this.#cancelBtn.addEventListener('click', () => this.#cancel());
       btnGroup.append(this.#importBtn, this.#downloadBtn, this.#okBtn, this.#cancelBtn);
-      fnRow.append(fnLabel, this.#filenameInput, btnGroup);
 
-      // Filter row
-      const ftRow = document.createElement('div');
-      ftRow.className = 'sz-dlg-footer-row';
-      const ftLabel = document.createElement('label');
-      ftLabel.textContent = 'Files of type:';
-      this.#filterSelect = document.createElement('select');
-      this.#filterSelect.className = 'sz-dlg-filter-select';
-      this.#filterSelect.addEventListener('change', () => {
-        if (this.#lastEntries.length)
-          this.#renderEntries(this.#lastEntries);
-      });
-      ftRow.append(ftLabel, this.#filterSelect);
-
-      footer.append(fnRow, ftRow);
+      footer.append(this.#fnRow, this.#ftRow, btnGroup);
 
       // Assemble
       win.append(titlebar, toolbar, body, footer);
@@ -342,8 +370,10 @@
 
     #renderEntries(entries) {
       this.#fileList.innerHTML = '';
-      // Apply file type filter — directories always shown
-      const filtered = entries.filter(e => e.kind === 'dir' || this.#matchesFilter(e.name));
+      // In folder mode only show directories; otherwise apply file type filter
+      const filtered = this.#mode === 'folder'
+        ? entries.filter(e => e.kind === 'dir')
+        : entries.filter(e => e.kind === 'dir' || this.#matchesFilter(e.name));
       if (filtered.length === 0) {
         const empty = document.createElement('div');
         empty.className = 'sz-dlg-empty';
@@ -379,7 +409,7 @@
             el.classList.remove('selected');
           item.classList.add('selected');
           this.#selectedEntry = entry;
-          if (entry.kind !== 'dir')
+          if (this.#mode !== 'folder' && entry.kind !== 'dir')
             this.#filenameInput.value = entry.name;
         });
 
@@ -387,7 +417,7 @@
           const newPath = this.#joinPath(this.#currentPath, entry.name);
           if (entry.kind === 'dir')
             this.#navigateTo(newPath);
-          else {
+          else if (this.#mode !== 'folder') {
             this.#filenameInput.value = entry.name;
             this.#confirm();
           }
@@ -511,6 +541,19 @@
     }
 
     async #confirm() {
+      // Folder mode: return the selected folder or current directory
+      if (this.#mode === 'folder') {
+        const path = (this.#selectedEntry && this.#selectedEntry.kind === 'dir')
+          ? this.#joinPath(this.#currentPath, this.#selectedEntry.name)
+          : this.#currentPath;
+        this.#close();
+        if (this.#resolve) {
+          this.#resolve({ cancelled: false, path });
+          this.#resolve = null;
+        }
+        return;
+      }
+
       let filename = this.#filenameInput.value.trim();
       if (!filename) return;
 
