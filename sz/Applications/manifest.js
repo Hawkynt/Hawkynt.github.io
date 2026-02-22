@@ -114,7 +114,22 @@
         maximizable: true,
         singleton: false,
         category: 'Office',
-        fileTypes: ['txt', 'log', 'cfg', 'ini', 'bat', 'cmd', 'sh', 'js', 'css', 'xml', 'py', 'rb', 'pl', 'java', 'cs', 'cpp', 'c', 'h', 'ts', 'tsx', 'jsx', 'yml', 'yaml', 'toml', 'conf', 'env', 'gitignore', 'sql', 'json', 'md', 'markdown', 'csv', 'tsv', 'html', 'htm']
+        fileTypes: ['*']
+      },
+      {
+        id: 'image-viewer',
+        title: 'Image Viewer',
+        icon: 'image-viewer/icon.svg',
+        type: 'iframe',
+        entry: 'image-viewer/index.html',
+        width: 640,
+        height: 480,
+        resizable: true,
+        minimizable: true,
+        maximizable: true,
+        singleton: false,
+        category: 'Graphics',
+        fileTypes: ['bmp', 'png', 'jpg', 'jpeg', 'jp2', 'gif', 'webp', 'tif', 'tiff', 'tga', 'pcx', 'svg', 'ico', 'avif']
       },
       {
         id: 'paint',
@@ -217,21 +232,6 @@
         category: 'Games'
       },
       {
-        id: 'image-viewer',
-        title: 'Image Viewer',
-        icon: 'image-viewer/icon.svg',
-        type: 'iframe',
-        entry: 'image-viewer/index.html',
-        width: 640,
-        height: 480,
-        resizable: true,
-        minimizable: true,
-        maximizable: true,
-        singleton: false,
-        category: 'Graphics',
-        fileTypes: ['png', 'jpg', 'jpeg', 'gif', 'webp']
-      },
-      {
         id: 'wordpad',
         title: 'WordPad',
         icon: 'wordpad/icon.svg',
@@ -303,7 +303,7 @@
         maximizable: true,
         singleton: false,
         category: 'Development',
-        fileTypes: ['bin', 'dat', 'exe', 'dll', 'rom']
+        fileTypes: ['*']
       },
       {
         id: 'spreadsheet',
@@ -621,7 +621,8 @@
         minimizable: true,
         maximizable: true,
         singleton: false,
-        category: 'Development'
+        category: 'Development',
+        fileTypes: ['*']
       },
       {
         id: 'mock-data',
