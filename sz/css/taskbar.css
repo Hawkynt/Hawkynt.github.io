@@ -78,6 +78,16 @@
   gap: 2px;
   overflow: hidden;
   padding: 0 2px;
+  scroll-behavior: smooth;
+}
+
+#sz-window-list.sz-overflow {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+#sz-window-list.sz-overflow::-webkit-scrollbar {
+  display: none;
 }
 
 .sz-taskbar-button {

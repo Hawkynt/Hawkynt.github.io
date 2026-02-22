@@ -83,6 +83,7 @@
       const win = this.#windowManager.createWindow({
         title: app.title,
         icon: this.resolveIconPath(app),
+        appId,
         datasource,
         width: app.width || 512,
         height: app.height || 412,
