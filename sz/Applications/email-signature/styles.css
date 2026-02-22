@@ -1,0 +1,290 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* ---- Main split ---- */
+.main-split {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ---- Form panel (left) ---- */
+.form-panel {
+  flex: 0 0 320px;
+  min-width: 260px;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--sz-color-button-face);
+}
+
+.form-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px;
+}
+
+/* ---- Field groups ---- */
+.field-group {
+  border: 1px solid var(--sz-color-button-shadow);
+  background: var(--sz-color-window);
+  margin-bottom: 8px;
+  padding: 8px;
+}
+
+.field-group legend {
+  font-size: 11px;
+  font-weight: bold;
+  color: var(--sz-color-window-text);
+  padding: 0 4px;
+}
+
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 5px;
+}
+
+.field-row:last-child {
+  margin-bottom: 0;
+}
+
+.field-row label {
+  width: 72px;
+  font-size: 11px;
+  color: var(--sz-color-window-text);
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.field-row input[type="text"],
+.field-row select {
+  flex: 1;
+  font-size: 11px;
+}
+
+.field-row input[type="text"]:focus,
+.field-row select:focus {
+  outline: 1px solid var(--sz-color-highlight);
+}
+
+/* ---- Color picker row ---- */
+.color-picker-row {
+  flex: 1;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.color-picker-row input[type="color"] {
+  width: 28px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--sz-color-button-shadow);
+  background: var(--sz-color-window);
+  cursor: pointer;
+}
+
+.color-hex-input {
+  width: 64px !important;
+  flex: 0 0 64px !important;
+  font-family: Consolas, monospace !important;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+/* ---- Photo upload ---- */
+.photo-upload-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.photo-preview {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 2px dashed var(--sz-color-button-shadow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+  cursor: pointer;
+  background: var(--sz-color-window);
+}
+
+.photo-preview.frame-square { border-radius: 0; clip-path: none; }
+.photo-preview.frame-circle { border-radius: 50%; clip-path: none; }
+.photo-preview.frame-rounded { border-radius: 12%; clip-path: none; }
+.photo-preview.frame-hexagon { border-radius: 0; clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%); }
+.photo-preview.frame-hexagon-flat { border-radius: 0; clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%); }
+.photo-preview.frame-diamond { border-radius: 0; clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); }
+.photo-preview.frame-octagon { border-radius: 0; clip-path: polygon(29% 0%, 71% 0%, 100% 29%, 100% 71%, 71% 100%, 29% 100%, 0% 71%, 0% 29%); }
+
+.photo-preview.has-photo {
+  border-style: solid;
+  border-color: var(--sz-color-highlight);
+}
+
+.photo-preview.dragover {
+  border-color: var(--sz-color-highlight);
+  background: var(--sz-color-highlight);
+  opacity: 0.7;
+}
+
+.photo-placeholder {
+  font-size: 9px;
+  color: var(--sz-color-gray-text);
+  text-align: center;
+  padding: 8px;
+  line-height: 1.3;
+}
+
+.photo-preview.has-photo .photo-placeholder {
+  display: none;
+}
+
+#photo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: none;
+}
+
+.photo-preview.has-photo #photo-img {
+  display: block;
+}
+
+.photo-buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.photo-buttons button {
+  font-size: 10px;
+  padding: 2px 10px;
+}
+
+/* ---- Splitter ---- */
+.splitter {
+  width: 5px;
+  cursor: col-resize;
+  background: var(--sz-color-button-face);
+  border-left: 1px solid var(--sz-color-button-shadow);
+  border-right: 1px solid var(--sz-color-button-shadow);
+  flex-shrink: 0;
+}
+
+.splitter:hover {
+  background: var(--sz-color-button-light);
+}
+
+/* ---- Preview panel (right) ---- */
+.preview-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 300px;
+  overflow: hidden;
+  background: var(--sz-color-window);
+}
+
+.preview-header {
+  padding: 3px 8px;
+  background: var(--sz-color-button-face);
+  border-bottom: 1px solid var(--sz-color-button-shadow);
+  font-size: 10px;
+  font-weight: bold;
+  color: var(--sz-color-button-text);
+  user-select: none;
+  flex-shrink: 0;
+}
+
+/* ---- Email mock ---- */
+.email-mock {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  background: #f5f5f5;
+}
+
+.email-mock-header {
+  padding: 10px 16px;
+  background: #fff;
+  border-bottom: 1px solid #ddd;
+  font-size: 12px;
+  font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+  color: #333;
+  flex-shrink: 0;
+}
+
+.email-mock-row {
+  margin-bottom: 3px;
+}
+
+.email-mock-row:last-child {
+  margin-bottom: 0;
+}
+
+.email-mock-label {
+  font-weight: bold;
+  color: #666;
+  display: inline-block;
+  width: 55px;
+}
+
+.email-mock-body {
+  flex: 1;
+  padding: 20px 24px;
+  background: #fff;
+  font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  color: #333;
+  line-height: 1.5;
+}
+
+.email-mock-text {
+  margin-bottom: 8px;
+}
+
+.email-mock-divider {
+  border: none;
+  border-top: 1px solid #e0e0e0;
+  margin: 16px 0;
+}
+
+.signature-output {
+  min-height: 60px;
+}
+
+/* ---- Copy tooltip ---- */
+.copy-tooltip {
+  position: fixed;
+  background: var(--sz-color-window-text);
+  color: var(--sz-color-window);
+  padding: 3px 8px;
+  font-size: 10px;
+  border-radius: 3px;
+  pointer-events: none;
+  z-index: 3000;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.copy-tooltip.visible {
+  opacity: 1;
+}
+

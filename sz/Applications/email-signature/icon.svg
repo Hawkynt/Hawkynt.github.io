@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+  <!-- Envelope body -->
+  <rect x="4" y="12" width="40" height="26" rx="2" fill="#e8e0d4" stroke="#5a4a3a" stroke-width="1.5"/>
+  <!-- Envelope flap -->
+  <path d="M4 14 L24 28 L44 14" fill="#f5efe6" stroke="#5a4a3a" stroke-width="1.5" stroke-linejoin="round"/>
+  <!-- Envelope bottom fold lines -->
+  <path d="M4 38 L18 26" stroke="#c4b8a8" stroke-width="1" stroke-linecap="round"/>
+  <path d="M44 38 L30 26" stroke="#c4b8a8" stroke-width="1" stroke-linecap="round"/>
+  <!-- Pen / signature element -->
+  <g transform="translate(30, 4) rotate(35)">
+    <!-- Pen barrel -->
+    <rect x="-1.5" y="0" width="3" height="18" rx="0.8" fill="#3a6ea5"/>
+    <!-- Pen tip -->
+    <polygon points="-1.5,18 1.5,18 0,23" fill="#5a4a3a"/>
+    <!-- Pen clip -->
+    <rect x="1.5" y="1" width="1" height="8" rx="0.5" fill="#c0a030"/>
+    <!-- Pen ring -->
+    <rect x="-2" y="16" width="4" height="1.5" rx="0.5" fill="#c0a030"/>
+  </g>
+  <!-- Signature scribble on envelope -->
+  <path d="M12 32 Q14 29 17 32 Q20 35 23 31 Q25 28 27 32" stroke="#3a6ea5" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+  <path d="M13 35 L22 35" stroke="#3a6ea5" stroke-width="0.8" fill="none" stroke-linecap="round"/>
+</svg>
