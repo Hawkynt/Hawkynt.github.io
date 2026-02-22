@@ -111,17 +111,15 @@ class AbcConverter {
       const drumBit = bar.bits[AbcConverter._beatIndexes[i]];
       const currentSymbol = AbcConverter.drumBitToSymbol(drumBit);
 
-      if (lastSymbol === currentSymbol)
+      if (lastSymbol === currentSymbol) {
         ++symbolCount;
-      else if (currentSymbol === 'z')
-        ++symbolCount;
-      else {
-        if (symbolCount < 1)
-          ;
-        else if (symbolCount === 1)
-          result += lastSymbol;
-        else
-          result += lastSymbol + symbolCount;
+      } else {
+        if (symbolCount >= 1) {
+          if (symbolCount === 1)
+            result += lastSymbol;
+          else
+            result += lastSymbol + symbolCount;
+        }
 
         if (i % 4 === 0)
           result += " ";

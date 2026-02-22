@@ -287,11 +287,13 @@ class NoteFlightRenderer {
     const dpr = window.devicePixelRatio || 1;
     const w = window.innerWidth;
     const h = window.innerHeight;
+    if (w === 0 || h === 0) return;
     this._canvas.width = w * dpr;
     this._canvas.height = h * dpr;
     this._ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this._canvas._logicalW = w;
     this._canvas._logicalH = h;
+    this.render(performance.now());
   }
 }
 
