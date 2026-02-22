@@ -117,7 +117,15 @@ let currentBpm = 60;
 let rafId = null;
 let lastKnownBeat = 0;
 let lastBeatTimestamp = 0;
-let isRecording = false;
+const RecordState = Object.freeze({ IDLE: 'idle', ARMED: 'armed', RECORDING: 'recording' });
+let _recordState = RecordState.IDLE;
+let _metronomeTimerId = null;
+let _metronomeStartWall = 0;
+let _metronomeTick = 0;
+let _metronomeTickScheduled = 0;
+let _overdubMode = true;
+let _tapTempoTimestamps = [];
+let _audioCtx = null;
 let _recordingDirty = false;
 let _bpmDirty = false;
 let _abcDirty = false;   // bar editor edits deferred until tab switch / play
@@ -171,7 +179,7 @@ const startRenderLoop = () => {
   const tick = (now) => {
     // Continue if playing or if note-flight has active elements
     const flightBusy = noteFlightRenderer ? noteFlightRenderer.hasActiveElements() : false;
-    if (!isPlaying && !flightBusy) {
+    if (!isPlaying && _recordState !== RecordState.RECORDING && !flightBusy) {
       _renderLoopActive = false;
       rafId = null;
       return;
@@ -420,9 +428,15 @@ const initializeSynthControl = () => {
   const audioEl = document.getElementById('audio');
   if (audioEl)
     audioEl.addEventListener('click', (e) => {
-      if (e.target.closest('.abcjs-midi-start') && isPlaying) {
+      if (!e.target.closest('.abcjs-midi-start'))
+        return;
+
+      if (isPlaying) {
         _manualPauseAt = performance.now();
         _setPlayingState(false);
+      } else {
+        // Sync deferred bar-editor edits BEFORE abcjs starts playback
+        _syncAbcIfDirty();
       }
     });
 };
@@ -434,7 +448,18 @@ const initializeRenderers = () => {
   const kitViewport = document.getElementById('kit-viewport');
   if (kitViewport) {
     kitRenderer = new KitRenderer(kitViewport, (instrument) => {
+      // Recording: pad tap triggers armed→recording or records a note
+      if (_recordState === RecordState.ARMED) {
+        _beginStandaloneRecording(instrument);
+        return;
+      }
+      if (_recordState === RecordState.RECORDING || (isPlaying && _recordState !== RecordState.IDLE)) {
+        _recordTap(instrument);
+        return;
+      }
+
       // click-to-play: audition a single drum hit via abcjs
+      _syncAbcIfDirty();
       if (!currentNotationInstance)
         return;
 
@@ -522,6 +547,110 @@ const _instrumentToMidiPitch = (instrument) => {
   }
 };
 
+// ── Metronome Audio ─────────────────────────────────────
+
+const _ensureAudioCtx = () => {
+  if (!_audioCtx)
+    _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (_audioCtx.state === 'suspended')
+    _audioCtx.resume();
+  return _audioCtx;
+};
+
+const _playMetronomeClick = (accent) => {
+  const ctx = _ensureAudioCtx();
+  const t = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.frequency.value = accent ? 1000 : 800;
+  osc.type = 'sine';
+  gain.gain.setValueAtTime(accent ? 0.3 : 0.15, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+  osc.start(t);
+  osc.stop(t + 0.06);
+};
+
+// ── Standalone Metronome Timer ──────────────────────────
+
+const _msPerSixteenth = () => 15000 / currentBpm;
+
+const _startMetronome = () => {
+  _metronomeStartWall = performance.now();
+  _metronomeTick = 0;
+  _metronomeTickScheduled = 0;
+  _onMetronomeTick();
+};
+
+const _stopMetronome = () => {
+  if (_metronomeTimerId !== null) {
+    clearTimeout(_metronomeTimerId);
+    _metronomeTimerId = null;
+  }
+  for (const dot of document.querySelectorAll('.beat-dot'))
+    dot.classList.remove('active');
+};
+
+const _scheduleMetronomeTick = () => {
+  ++_metronomeTickScheduled;
+  const nextMs = _metronomeTickScheduled * _msPerSixteenth();
+  const delay = Math.max(0, nextMs - (performance.now() - _metronomeStartWall));
+  _metronomeTimerId = setTimeout(_onMetronomeTick, delay);
+};
+
+const _onMetronomeTick = () => {
+  if (_recordState !== RecordState.RECORDING) return;
+
+  // Auto-extend
+  const totalSlots = currentGroove ? currentGroove.bars.length * 16 : 16;
+  if (_metronomeTick >= totalSlots) {
+    currentGroove.addBar(new Bar());
+    feedRenderersGroove(currentGroove);
+  }
+
+  // Click on quarter notes
+  if (_metronomeTick % 4 === 0) {
+    const beatInBar = Math.floor((_metronomeTick % 16) / 4) + 1;
+    _playMetronomeClick(beatInBar === 1);
+    for (const dot of document.querySelectorAll('.beat-dot'))
+      dot.classList.toggle('active', +dot.dataset.beat === beatInBar);
+  }
+
+  // Sync timing refs for _recordTap interpolation
+  const currentBeat = _metronomeTick / 4;
+  lastKnownBeat = currentBeat;
+  lastBeatTimestamp = performance.now();
+
+  // Feed renderers so belt/lanes scroll
+  if (laneRenderer) laneRenderer.setCurrentBeat(currentBeat);
+  if (sheetBeltRenderer) sheetBeltRenderer.setCurrentBeat(currentBeat);
+
+  // Bar editor follows
+  const barIdx = Math.floor(currentBeat / 4);
+  if (barEditor && currentGroove && barIdx < currentGroove.bars.length)
+    if (barEditor._currentBarIndex !== barIdx) {
+      barEditor._currentBarIndex = barIdx;
+      barEditor.refresh();
+    }
+
+  ++_metronomeTick;
+  _scheduleMetronomeTick();
+};
+
+// ── Drum Sound Helper ───────────────────────────────────
+
+const _playDrumSound = (instrument) => {
+  if (currentNotationInstance) {
+    const midiPitch = _instrumentToMidiPitch(instrument);
+    if (midiPitch >= 0)
+      ABCJS.synth.playEvent(
+        [{ cmd: 'note', pitch: midiPitch, volume: 80, start: 0, duration: 0.25, instrument: 128, gap: 0 }],
+        [], currentNotationInstance.millisecondsPerMeasure()
+      ).catch(() => {});
+  }
+};
+
 // ── Play / Pause SVG icons ────────────────────────────────
 
 const PLAY_SVG  = '<path d="M4 2 L4 22 L20 12 Z"/>';
@@ -549,8 +678,16 @@ const _setPlayingState = (playing) => {
       svg.innerHTML = playing ? PAUSE_SVG : PLAY_SVG;
   }
 
+  // If abcjs starts playing while armed, transition to recording
+  if (playing && _recordState === RecordState.ARMED) {
+    _recordState = RecordState.RECORDING;
+    const overlay = document.getElementById('record-overlay');
+    if (overlay) overlay.classList.remove('armed');
+    const status = document.getElementById('status-text');
+    if (status) status.textContent = 'Recording\u2026';
+  }
+
   if (playing) {
-    _syncAbcIfDirty();
     startRenderLoop();
   } else if ((_recordingDirty || _bpmDirty) && currentGroove) {
     // Sync ABC notation with notes recorded or BPM changed during playback
@@ -665,6 +802,14 @@ const wireCursorToRenderers = () => {
 
     lastKnownBeat = wrappedBeat;
     lastBeatTimestamp = now;
+
+    // Update beat indicator dots (1–4 within each bar)
+    if (_recordState !== RecordState.IDLE) {
+      const beatInBar = Math.floor(wrappedBeat % 4) + 1;
+      const dots = document.querySelectorAll('.beat-dot');
+      for (const dot of dots)
+        dot.classList.toggle('active', +dot.dataset.beat === beatInBar);
+    }
   };
 };
 
@@ -707,7 +852,8 @@ const KEY_INSTRUMENT_MAP = Object.freeze({
 // ── Recording logic ──────────────────────────────────────
 
 const _recordTap = (instrument) => {
-  if (!currentGroove || !isPlaying) return;
+  if (!currentGroove) return;
+  if (!isPlaying && _recordState !== RecordState.RECORDING) return;
 
   // Interpolate current beat for best timing accuracy
   const now = performance.now();
@@ -740,50 +886,128 @@ const _recordTap = (instrument) => {
   if (laneRenderer) laneRenderer.loadGroove(currentGroove);
   if (sheetBeltRenderer) sheetBeltRenderer.loadGroove(currentGroove);
 
+  // Refresh bar editor if it's showing the tapped bar
+  if (barEditor) {
+    const tapBarIdx = Math.floor(quantizedBeat / 4);
+    if (barEditor._currentBarIndex === tapBarIdx)
+      barEditor.refresh();
+  }
+
   // Visual feedback: trigger kit hit
   if (kitRenderer) kitRenderer.triggerHit(instrument);
 
-  // Audio feedback: play the drum sound
-  if (currentNotationInstance) {
-    const midiPitch = _instrumentToMidiPitch(instrument);
-    if (midiPitch >= 0)
-      ABCJS.synth.playEvent(
-        [{ cmd: 'note', pitch: midiPitch, volume: 80, start: 0, duration: 0.25, instrument: 128, gap: 0 }],
-        [],
-        currentNotationInstance.millisecondsPerMeasure()
-      ).catch(() => {});
+  // Flash key hint in the record overlay
+  const hint = document.querySelector(`.key-hint[data-instrument="${instrument}"]`);
+  if (hint) {
+    hint.classList.add('flash');
+    setTimeout(() => hint.classList.remove('flash'), 150);
   }
+
+  // Audio feedback: play the drum sound
+  _playDrumSound(instrument);
 };
 
 // ── Record button ────────────────────────────────────────
+
+const _beginStandaloneRecording = (firstInstrument) => {
+  _recordState = RecordState.RECORDING;
+
+  const overlay = document.getElementById('record-overlay');
+  if (overlay) overlay.classList.remove('armed');
+
+  const status = document.getElementById('status-text');
+  if (status) status.textContent = 'Recording\u2026';
+
+  // Sync ABC so currentNotationInstance exists for drum sounds
+  if (currentGroove) {
+    const abc = convertGroove(currentGroove);
+    currentNotationInstance = ABCJS.renderAbc('paper', abc, abcOptions)[0];
+    synthControl.setTune(currentNotationInstance, false);
+    feedRenderersGroove(currentGroove);
+  }
+
+  // Tell renderers to scroll
+  if (laneRenderer) { laneRenderer.setPlaying(true); laneRenderer.setPlaybackRate(currentBpm / 60000); }
+  if (sheetBeltRenderer) { sheetBeltRenderer.setPlaying(true); sheetBeltRenderer.setPlaybackRate(currentBpm / 60000); }
+
+  startRenderLoop();
+  _startMetronome();
+
+  // Place first note at position 0
+  _recordTap(firstInstrument);
+};
+
+const _stopRecording = () => {
+  _stopMetronome();
+  _recordState = RecordState.IDLE;
+
+  const btn = document.getElementById('btn-record');
+  if (btn) { btn.classList.remove('active'); btn.textContent = '\u23FA Record'; }
+
+  const overlay = document.getElementById('record-overlay');
+  if (overlay) { overlay.hidden = true; overlay.classList.remove('armed'); }
+
+  if (!isPlaying) {
+    if (laneRenderer) laneRenderer.setPlaying(false);
+    if (sheetBeltRenderer) sheetBeltRenderer.setPlaying(false);
+  }
+
+  if (_recordingDirty && currentGroove) {
+    _recordingDirty = false;
+    displayABC(convertGroove(currentGroove));
+  }
+
+  const status = document.getElementById('status-text');
+  if (status) status.textContent = 'Ready';
+};
 
 const wireRecordButton = () => {
   const btn = document.getElementById('btn-record');
   if (!btn) return;
 
   btn.addEventListener('click', () => {
-    isRecording = !isRecording;
-    btn.classList.toggle('active', isRecording);
-    btn.textContent = isRecording ? '\u23F9 Stop Rec' : '\u23FA Record';
+    if (_recordState === RecordState.IDLE) {
+      // -> ARMED
+      _recordState = RecordState.ARMED;
+      btn.classList.add('active');
+      btn.textContent = '\u23F9 Stop Rec';
 
-    // When stopping recording while playback is stopped, sync immediately
-    if (!isRecording && _recordingDirty && !isPlaying && currentGroove) {
-      _recordingDirty = false;
-      const abc = convertGroove(currentGroove);
-      displayABC(abc);
+      // Fresh mode: clear groove
+      if (!_overdubMode) {
+        currentGroove = new DrumGroove();
+        currentGroove.addBar(new Bar());
+        feedRenderersGroove(currentGroove);
+      }
+      if (!currentGroove || currentGroove.bars.length === 0) {
+        currentGroove = new DrumGroove();
+        currentGroove.addBar(new Bar());
+      }
+
+      const overlay = document.getElementById('record-overlay');
+      if (overlay) { overlay.hidden = false; overlay.classList.add('armed'); }
+
+      const status = document.getElementById('status-text');
+      if (status) status.textContent = 'Armed \u2014 tap a drum key to start';
+    } else {
+      // ARMED or RECORDING -> IDLE
+      _stopRecording();
     }
   });
 
-  // Key handler for recording taps
+  // Keydown handler: works in ARMED and RECORDING
   document.addEventListener('keydown', (e) => {
-    if (!isRecording || !isPlaying) return;
+    if (_recordState === RecordState.IDLE) return;
     if (e.repeat) return;
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
     const instrument = KEY_INSTRUMENT_MAP[e.key] ?? KEY_INSTRUMENT_MAP[e.key.toLowerCase()];
     if (!instrument) return;
-
     e.preventDefault();
+
+    if (_recordState === RecordState.ARMED) {
+      _beginStandaloneRecording(instrument);
+      return;
+    }
     _recordTap(instrument);
   });
 };
@@ -894,6 +1118,49 @@ const wireTabs = () => {
   });
 };
 
+// ── Tap Tempo ─────────────────────────────────────────────
+
+const wireTapTempo = () => {
+  const btn = document.getElementById('btn-tap-tempo');
+  if (!btn) return;
+
+  btn.addEventListener('click', () => {
+    const now = performance.now();
+    if (_tapTempoTimestamps.length > 0 && now - _tapTempoTimestamps[_tapTempoTimestamps.length - 1] > 2000)
+      _tapTempoTimestamps = [];
+
+    _tapTempoTimestamps.push(now);
+    if (_tapTempoTimestamps.length < 2) { btn.textContent = 'Tap (1)'; return; }
+    if (_tapTempoTimestamps.length > 8) _tapTempoTimestamps.shift();
+
+    let total = 0;
+    for (let i = 1; i < _tapTempoTimestamps.length; ++i)
+      total += _tapTempoTimestamps[i] - _tapTempoTimestamps[i - 1];
+
+    const bpm = Math.max(30, Math.min(300, Math.round(60000 / (total / (_tapTempoTimestamps.length - 1)))));
+    currentBpm = bpm;
+    const input = document.getElementById('tempo-input');
+    if (input) input.value = bpm;
+    if (laneRenderer) laneRenderer.setBpm(bpm);
+    if (sheetBeltRenderer) sheetBeltRenderer.setBpm(bpm);
+    if (!isPlaying && currentGroove) displayABC(convertGroove(currentGroove));
+    else _bpmDirty = true;
+
+    btn.textContent = `Tap (${bpm})`;
+    clearTimeout(btn._resetTimer);
+    btn._resetTimer = setTimeout(() => { btn.textContent = 'Tap'; }, 3000);
+  });
+};
+
+// ── Overdub Toggle ────────────────────────────────────────
+
+const wireOverdubToggle = () => {
+  const chk = document.getElementById('chk-overdub');
+  if (!chk) return;
+  chk.checked = true;
+  chk.addEventListener('change', () => { _overdubMode = chk.checked; });
+};
+
 // ── Boot ───────────────────────────────────────────────────
 
 const boot = () => {
@@ -903,6 +1170,8 @@ const boot = () => {
   wireRandomButton();
   wireNewButton();
   wireRecordButton();
+  wireTapTempo();
+  wireOverdubToggle();
   wireBeamToggle();
   wireTempoInput();
   wireTabs();

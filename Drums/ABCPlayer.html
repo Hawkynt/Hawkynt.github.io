@@ -47,6 +47,7 @@
         <button id="btn-random" type="button" title="Generate random groove">🎲 Random</button>
         <button id="btn-download-midi" type="button" disabled title="Download MIDI file">⬇ MIDI</button>
         <button id="btn-record" type="button" title="Toggle recording (tap keys to add notes during playback)">⏺ Record</button>
+        <button id="btn-tap-tempo" type="button" title="Tap in rhythm to set BPM">Tap</button>
       </div>
 
       <div id="audio"></div>
@@ -64,6 +65,34 @@
 
       <button id="btn-light-mode" type="button" title="Toggle light/dark mode">Light</button>
     </header>
+
+    <!-- ── Record Overlay (key map + beat indicator) ──────── -->
+    <div id="record-overlay" class="record-overlay" hidden>
+      <div class="record-options">
+        <label class="overdub-toggle" title="Layer notes on existing groove (uncheck to start fresh)">
+          <input id="chk-overdub" type="checkbox" checked> Overdub
+        </label>
+      </div>
+      <div class="key-map">
+        <span class="key-map-title">Tap Keys:</span>
+        <span class="key-hint" data-instrument="crash"><kbd>Q</kbd> CR</span>
+        <span class="key-hint" data-instrument="hi-hat(closed)"><kbd>W</kbd> HH</span>
+        <span class="key-hint" data-instrument="ride"><kbd>E</kbd> RD</span>
+        <span class="key-hint" data-instrument="hi-hat(open)"><kbd>R</kbd> OH</span>
+        <span class="key-hint" data-instrument="hi-hat(pedal)"><kbd>T</kbd> HP</span>
+        <span class="key-hint" data-instrument="tom(high)"><kbd>A</kbd> HT</span>
+        <span class="key-hint" data-instrument="snare"><kbd>S</kbd> SN</span>
+        <span class="key-hint" data-instrument="tom(normal)"><kbd>D</kbd> MT</span>
+        <span class="key-hint" data-instrument="tom(floor)"><kbd>F</kbd> FT</span>
+        <span class="key-hint" data-instrument="bass-drum"><kbd>&#x2423;</kbd> BD</span>
+      </div>
+      <div class="beat-indicator">
+        <span class="beat-dot" data-beat="1">1</span>
+        <span class="beat-dot" data-beat="2">2</span>
+        <span class="beat-dot" data-beat="3">3</span>
+        <span class="beat-dot" data-beat="4">4</span>
+      </div>
+    </div>
 
     <!-- ── Main Content (2×2 grid: lanes|tabs  kit|belt) ─── -->
     <main id="main">
