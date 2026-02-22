@@ -195,3 +195,118 @@ body {
   margin-top: 4px;
   min-height: 14px;
 }
+
+/* ---- Animations ---- */
+
+/* Reveal cascade ripple */
+.cell.revealing {
+  animation: cell-reveal 0.1s ease-out forwards;
+}
+
+@keyframes cell-reveal {
+  0% { transform: scale(0.8); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* Flag plant bounce */
+.cell.flag-placed {
+  animation: flag-bounce 0.15s ease-out;
+}
+
+@keyframes flag-bounce {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+
+/* Mine explosion shake */
+.game-frame.mine-shake {
+  animation: mine-shake 0.1s ease-out;
+}
+
+@keyframes mine-shake {
+  0% { transform: translate(0, 0); }
+  20% { transform: translate(-3px, 2px); }
+  40% { transform: translate(3px, -1px); }
+  60% { transform: translate(-2px, 1px); }
+  80% { transform: translate(1px, -2px); }
+  100% { transform: translate(0, 0); }
+}
+
+/* Mine hit shockwave */
+.cell.mine-hit::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 0, 0, 0.6);
+  transform: translate(-50%, -50%) scale(1);
+  animation: shockwave 0.4s ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes shockwave {
+  0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(4); opacity: 0; }
+}
+
+.cell.mine-hit {
+  position: relative;
+}
+
+/* Mine staggered reveal */
+.cell.mine-reveal-stagger {
+  animation: mine-appear 0.15s ease-out forwards;
+}
+
+@keyframes mine-appear {
+  0% { transform: scale(0.5); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* Explosion particles */
+.mine-particle {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 50%;
+  z-index: 200;
+}
+
+/* Smiley button polish */
+.smiley-btn {
+  transition: transform 0.08s ease;
+}
+
+.smiley-btn:active {
+  transform: scale(0.9);
+}
+
+.smiley-btn.smiley-bounce {
+  animation: smiley-pop 0.2s ease-out;
+}
+
+@keyframes smiley-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+/* Win confetti canvas overlay */
+.confetti-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 150;
+}
+
+/* Field border needs relative positioning for particles and confetti */
+.field-border {
+  position: relative;
+  overflow: hidden;
+}

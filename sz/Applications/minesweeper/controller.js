@@ -255,7 +255,14 @@
   });
 
   /* ---- Smiley ---- */
-  smileyBtn.addEventListener('click', () => newGame());
+  smileyBtn.addEventListener('click', () => {
+    smileyBtn.classList.add('smiley-bounce');
+    smileyBtn.addEventListener('animationend', function handler() {
+      smileyBtn.classList.remove('smiley-bounce');
+      smileyBtn.removeEventListener('animationend', handler);
+    });
+    newGame();
+  });
 
   function setSmiley(face) {
     smileyBtn.textContent = face;
@@ -337,6 +344,113 @@
       }
   }
 
+  /* ---- Animation Helpers ---- */
+  const EXPLOSION_COLORS = ['#f44', '#f80', '#ff0', '#fa0', '#f00', '#ff6'];
+
+  function spawnExplosionParticles(r, c) {
+    const fieldBorder = document.querySelector('.field-border');
+    const cellEl = grid[r][c].el;
+    const rect = cellEl.getBoundingClientRect();
+    const parentRect = fieldBorder.getBoundingClientRect();
+    const cx = rect.left - parentRect.left + rect.width / 2;
+    const cy = rect.top - parentRect.top + rect.height / 2;
+    const count = 8 + Math.floor(Math.random() * 5);
+    for (let i = 0; i < count; ++i) {
+      const p = document.createElement('div');
+      p.className = 'mine-particle';
+      const size = 2 + Math.random() * 3;
+      p.style.width = size + 'px';
+      p.style.height = size + 'px';
+      p.style.background = EXPLOSION_COLORS[Math.floor(Math.random() * EXPLOSION_COLORS.length)];
+      p.style.left = cx + 'px';
+      p.style.top = cy + 'px';
+      fieldBorder.appendChild(p);
+
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 2 + Math.random() * 4;
+      let vx = Math.cos(angle) * speed;
+      let vy = Math.sin(angle) * speed;
+      const gravity = 0.12;
+      let x = cx;
+      let y = cy;
+      let alpha = 1;
+
+      const animate = () => {
+        vy += gravity;
+        x += vx;
+        y += vy;
+        alpha -= 0.02;
+        if (alpha <= 0) {
+          p.remove();
+          return;
+        }
+        p.style.left = x + 'px';
+        p.style.top = y + 'px';
+        p.style.opacity = alpha;
+        requestAnimationFrame(animate);
+      };
+      requestAnimationFrame(animate);
+    }
+  }
+
+  function startConfetti() {
+    const fieldBorder = document.querySelector('.field-border');
+    const cvs = document.createElement('canvas');
+    cvs.className = 'confetti-overlay';
+    cvs.width = fieldBorder.offsetWidth;
+    cvs.height = fieldBorder.offsetHeight;
+    fieldBorder.appendChild(cvs);
+    const cCtx = cvs.getContext('2d');
+
+    const pieces = [];
+    const colors = ['#f44', '#4af', '#fa0', '#4f4', '#f4f', '#ff0', '#0ff', '#f80'];
+    const w = cvs.width;
+    const h = cvs.height;
+
+    for (let i = 0; i < 50; ++i)
+      pieces.push({
+        x: Math.random() * w,
+        y: -Math.random() * h * 0.5,
+        vx: (Math.random() - 0.5) * 2,
+        vy: 1 + Math.random() * 2,
+        angle: Math.random() * 360,
+        spin: (Math.random() - 0.5) * 8,
+        size: 3 + Math.random() * 4,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        alpha: 1
+      });
+
+    let elapsed = 0;
+    const animate = () => {
+      cCtx.clearRect(0, 0, w, h);
+      elapsed += 16;
+      let alive = false;
+      for (const p of pieces) {
+        p.x += p.vx;
+        p.vy += 0.03;
+        p.y += p.vy;
+        p.angle += p.spin;
+        if (elapsed > 2000)
+          p.alpha -= 0.02;
+        if (p.alpha <= 0 || p.y > h + 20)
+          continue;
+        alive = true;
+        cCtx.save();
+        cCtx.globalAlpha = p.alpha;
+        cCtx.translate(p.x, p.y);
+        cCtx.rotate(p.angle * Math.PI / 180);
+        cCtx.fillStyle = p.color;
+        cCtx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
+        cCtx.restore();
+      }
+      if (alive)
+        requestAnimationFrame(animate);
+      else
+        cvs.remove();
+    };
+    requestAnimationFrame(animate);
+  }
+
   /* ---- Rendering ---- */
   function buildField() {
     minefield.innerHTML = '';
@@ -385,6 +499,9 @@
   }
 
   /* ---- Reveal Logic ---- */
+  let revealOriginR = -1;
+  let revealOriginC = -1;
+
   function revealCell(r, c) {
     const data = grid[r][c];
     if (data.revealed || data.flagged)
@@ -402,6 +519,17 @@
     }
 
     renderCell(r, c);
+
+    if (revealOriginR >= 0) {
+      const dist = Math.abs(r - revealOriginR) + Math.abs(c - revealOriginC);
+      data.el.classList.add('revealing');
+      data.el.style.animationDelay = (dist * 30) + 'ms';
+      data.el.addEventListener('animationend', function handler() {
+        data.el.classList.remove('revealing');
+        data.el.style.animationDelay = '';
+        data.el.removeEventListener('animationend', handler);
+      });
+    }
 
     if (data.adjacent === 0)
       forEachNeighbor(r, c, (nr, nc) => revealCell(nr, nc));
@@ -452,6 +580,7 @@
             renderCell(r, c);
           }
       updateMineCounter();
+      startConfetti();
 
       // Only track best times for standard difficulties
       if (difficulty !== 'custom' && bestTimes[difficulty] && timerValue < bestTimes[difficulty].time) {
@@ -462,13 +591,43 @@
       }
     } else {
       setSmiley(SMILEY_LOSE);
-      // Reveal all mines, mark wrong flags
+
+      // Screen shake
+      const gameFrame = document.querySelector('.game-frame');
+      gameFrame.classList.add('mine-shake');
+      gameFrame.addEventListener('animationend', function handler() {
+        gameFrame.classList.remove('mine-shake');
+        gameFrame.removeEventListener('animationend', handler);
+      });
+
+      // Find the hit mine for distance calculations and particles
+      let hitR = -1;
+      let hitC = -1;
+      for (let r = 0; r < rows; ++r)
+        for (let c = 0; c < cols; ++c)
+          if (grid[r][c].hitMine) {
+            hitR = r;
+            hitC = c;
+          }
+
+      if (hitR >= 0)
+        spawnExplosionParticles(hitR, hitC);
+
+      // Reveal all mines with stagger, mark wrong flags
       for (let r = 0; r < rows; ++r)
         for (let c = 0; c < cols; ++c) {
           const d = grid[r][c];
           if (d.mine && !d.revealed && !d.flagged) {
             d.revealed = true;
-            renderCell(r, c);
+            const dist = hitR >= 0 ? Math.abs(r - hitR) + Math.abs(c - hitC) : 0;
+            setTimeout(() => {
+              renderCell(r, c);
+              d.el.classList.add('mine-reveal-stagger');
+              d.el.addEventListener('animationend', function handler() {
+                d.el.classList.remove('mine-reveal-stagger');
+                d.el.removeEventListener('animationend', handler);
+              });
+            }, dist * 40);
           } else if (d.flagged && !d.mine) {
             d.flagged = false;
             d.wrongFlag = true;
@@ -514,6 +673,7 @@
       const c = +cell.dataset.c;
       const data = grid[r][c];
       if (!data.revealed) {
+        const wasFlagged = data.flagged;
         if (!data.flagged && !data.question) {
           data.flagged = true;
           ++flagCount;
@@ -527,6 +687,13 @@
         }
         renderCell(r, c);
         updateMineCounter();
+        if (data.flagged && !wasFlagged) {
+          data.el.classList.add('flag-placed');
+          data.el.addEventListener('animationend', function handler() {
+            data.el.classList.remove('flag-placed');
+            data.el.removeEventListener('animationend', handler);
+          });
+        }
       }
     }
   });
@@ -568,7 +735,11 @@
           startTimer();
         }
 
+        revealOriginR = r;
+        revealOriginC = c;
         chordCell(r, c);
+        revealOriginR = -1;
+        revealOriginC = -1;
         if (!gameOver) {
           checkWin();
           setSmiley(gameOver ? (gameWon ? SMILEY_WIN : SMILEY_LOSE) : SMILEY_NORMAL);
@@ -586,7 +757,11 @@
           firstClick = false;
           startTimer();
         }
+        revealOriginR = r;
+        revealOriginC = c;
         revealCell(r, c);
+        revealOriginR = -1;
+        revealOriginC = -1;
         if (!gameOver)
           checkWin();
       }

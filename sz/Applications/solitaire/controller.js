@@ -62,6 +62,17 @@
   let winAnimCards = [];
   let winAnimRunning = false;
   let winAnimId = null;
+  let particles = [];
+  let lastFireworkTime = 0;
+
+  // Card move animation
+  let animatingCards = [];
+
+  // Card flip animation
+  let flippingCards = [];
+
+  // Stock deal animation
+  let dealAnimCards = [];
 
   // Drag state
   let dragging = null;
@@ -600,6 +611,13 @@
     else
       drawRecycleSymbol(ctx, sp.x, sp.y);
 
+    // Build set of cards currently animating (should not be drawn at destination)
+    const animSet = new Set();
+    for (const d of dealAnimCards)
+      animSet.add(d.card);
+    for (const a of animatingCards)
+      animSet.add(a.card);
+
     // Waste pile
     const wp = wastePos();
     if (waste.length === 0) {
@@ -607,12 +625,14 @@
     } else {
       if (drawMode === 1) {
         const top = waste[waste.length - 1];
-        if (!isDragSource('waste', waste.length - 1))
+        if (!isDragSource('waste', waste.length - 1) && !animSet.has(top))
           drawCard(ctx, wp.x, wp.y, top);
       } else {
         const visibleStart = Math.max(0, waste.length - 3);
         for (let i = visibleStart; i < waste.length; ++i) {
           if (isDragSource('waste', i))
+            continue;
+          if (animSet.has(waste[i]))
             continue;
           const pos = wasteCardPos(i);
           drawCard(ctx, pos.x, pos.y, waste[i]);
@@ -630,7 +650,15 @@
         drawSuitSymbol(ctx, foundSuits[i], fp.x + CARD_W / 2, fp.y + CARD_H / 2, 28);
       } else {
         const top = foundations[i][foundations[i].length - 1];
-        drawCard(ctx, fp.x, fp.y, top);
+        if (!animSet.has(top))
+          drawCard(ctx, fp.x, fp.y, top);
+        else if (foundations[i].length > 1)
+          drawCard(ctx, fp.x, fp.y, foundations[i][foundations[i].length - 2]);
+        else {
+          drawEmptySlot(ctx, fp.x, fp.y, null);
+          ctx.fillStyle = 'rgba(255,255,255,0.3)';
+          drawSuitSymbol(ctx, foundSuits[i], fp.x + CARD_W / 2, fp.y + CARD_H / 2, 28);
+        }
       }
     }
 
@@ -769,11 +797,14 @@
     }
 
     saveState();
+    const sp = stockPos();
     const count = Math.min(drawMode, stock.length);
     for (let i = 0; i < count; ++i) {
       const card = stock.pop();
       card.faceUp = true;
       waste.push(card);
+      const wp = wasteCardPos(waste.length - 1);
+      startDealFromStockAnim(card, sp.x, sp.y, wp.x, wp.y, i * 80);
     }
     ++moveCount;
     updateMoves();
@@ -793,21 +824,38 @@
       startTimer();
     saveState();
 
+    // Calculate source position before removing
+    let fromX, fromY;
     if (sourceType === 'waste') {
+      const wp = wasteCardPos(sourceIndex);
+      fromX = wp.x;
+      fromY = wp.y;
       waste.splice(sourceIndex, 1);
     } else if (sourceType === 'tableau') {
+      const tp = tableauCardPos(sourceCol, sourceIndex);
+      fromX = tp.x;
+      fromY = tp.y;
       tableau[sourceCol].splice(sourceIndex, 1);
       const pile = tableau[sourceCol];
-      if (pile.length > 0 && !pile[pile.length - 1].faceUp)
-        pile[pile.length - 1].faceUp = true;
+      if (pile.length > 0 && !pile[pile.length - 1].faceUp) {
+        const flippedCard = pile[pile.length - 1];
+        flippedCard.faceUp = true;
+        const fpos = tableauCardPos(sourceCol, pile.length - 1);
+        startFlipAnim(flippedCard, fpos.x, fpos.y);
+      }
     }
 
     card.faceUp = true;
     foundations[fi].push(card);
     ++moveCount;
     updateMoves();
+
+    const fp = foundationPos(fi);
+    startCardMoveAnim(card, fromX, fromY, fp.x, fp.y, () => {
+      draw();
+      checkWin();
+    });
     draw();
-    checkWin();
     return true;
   }
 
@@ -912,8 +960,12 @@
     } else if (dragging.source === 'tableau') {
       tableau[dragging.sourceCol].splice(dragging.sourceIndex);
       const pile = tableau[dragging.sourceCol];
-      if (pile.length > 0 && !pile[pile.length - 1].faceUp)
-        pile[pile.length - 1].faceUp = true;
+      if (pile.length > 0 && !pile[pile.length - 1].faceUp) {
+        const flippedCard = pile[pile.length - 1];
+        flippedCard.faceUp = true;
+        const fpos = tableauCardPos(dragging.sourceCol, pile.length - 1);
+        startFlipAnim(flippedCard, fpos.x, fpos.y);
+      }
     }
   }
 
@@ -958,25 +1010,31 @@
         const card = pile[pile.length - 1];
         const fi = findFoundationTarget(card);
         if (fi >= 0) {
+          const fromPos = tableauCardPos(col, pile.length - 1);
           pile.pop();
           foundations[fi].push(card);
           ++moveCount;
           moved = true;
+
+          const toPos = foundationPos(fi);
+          updateMoves();
+          draw();
+          startCardMoveAnim(card, fromPos.x, fromPos.y, toPos.x, toPos.y, () => {
+            let total = 0;
+            for (let i = 0; i < FOUNDATION_COUNT; ++i)
+              total += foundations[i].length;
+            if (total === 52)
+              doWin();
+            else
+              setTimeout(step, 30);
+          });
           break;
         }
       }
 
-      updateMoves();
-      draw();
-
-      if (moved) {
-        let total = 0;
-        for (let i = 0; i < FOUNDATION_COUNT; ++i)
-          total += foundations[i].length;
-        if (total === 52)
-          doWin();
-        else
-          setTimeout(step, 60);
+      if (!moved) {
+        updateMoves();
+        draw();
       }
     };
     setTimeout(step, 200);
@@ -990,12 +1048,222 @@
   }
 
   /* ================================================================
-   *  WIN ANIMATION: bouncing cards
+   *  FIREWORK PARTICLES
+   * ================================================================ */
+
+  const FIREWORK_COLORS = ['#ff4444', '#44ff44', '#4444ff', '#ffff44', '#ff44ff', '#44ffff', '#ff8800', '#ff0088', '#88ff00', '#ffffff'];
+
+  function spawnFirework(x, y) {
+    const count = 30 + Math.floor(Math.random() * 31);
+    const color = FIREWORK_COLORS[Math.floor(Math.random() * FIREWORK_COLORS.length)];
+    for (let i = 0; i < count; ++i) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 1 + Math.random() * 4;
+      particles.push({
+        x,
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        gravity: 0.04,
+        alpha: 1,
+        size: 2 + Math.random() * 3,
+        color,
+        glow: 8 + Math.random() * 8
+      });
+    }
+  }
+
+  function updateAndDrawParticles() {
+    for (let i = particles.length - 1; i >= 0; --i) {
+      const p = particles[i];
+      p.vy += p.gravity;
+      p.x += p.vx;
+      p.y += p.vy;
+      p.alpha -= 0.012;
+      p.size *= 0.995;
+      if (p.alpha <= 0 || p.size < 0.3) {
+        particles.splice(i, 1);
+        continue;
+      }
+      ctx.save();
+      ctx.globalAlpha = p.alpha;
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = p.glow * p.alpha;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  /* ================================================================
+   *  SPARKLE BURST (landing effect)
+   * ================================================================ */
+
+  function spawnSparkle(x, y) {
+    const count = 8;
+    for (let i = 0; i < count; ++i) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 0.5 + Math.random() * 2;
+      particles.push({
+        x,
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        gravity: 0.02,
+        alpha: 1,
+        size: 1 + Math.random() * 2,
+        color: '#ffff88',
+        glow: 6
+      });
+    }
+  }
+
+  /* ================================================================
+   *  CARD MOVE ANIMATION
+   * ================================================================ */
+
+  function easeOutCubic(t) {
+    return 1 - Math.pow(1 - t, 3);
+  }
+
+  function startCardMoveAnim(card, fromX, fromY, toX, toY, onDone) {
+    animatingCards.push({
+      card,
+      fromX,
+      fromY,
+      toX,
+      toY,
+      startTime: performance.now(),
+      duration: 250,
+      onDone
+    });
+    if (!winAnimRunning && animatingCards.length === 1)
+      requestAnimationFrame(tickAnimations);
+  }
+
+  function tickAnimations() {
+    if (animatingCards.length === 0 && flippingCards.length === 0 && dealAnimCards.length === 0)
+      return;
+    const now = performance.now();
+    draw();
+
+    for (let i = animatingCards.length - 1; i >= 0; --i) {
+      const a = animatingCards[i];
+      const elapsed = now - a.startTime;
+      const t = Math.min(elapsed / a.duration, 1);
+      const e = easeOutCubic(t);
+      const x = a.fromX + (a.toX - a.fromX) * e;
+      const y = a.fromY + (a.toY - a.fromY) * e;
+      drawCardFace(ctx, x, y, a.card);
+      if (t >= 1) {
+        animatingCards.splice(i, 1);
+        spawnSparkle(a.toX + CARD_W / 2, a.toY + CARD_H / 2);
+        if (a.onDone)
+          a.onDone();
+      }
+    }
+
+    for (let i = flippingCards.length - 1; i >= 0; --i) {
+      const f = flippingCards[i];
+      const elapsed = now - f.startTime;
+      const t = Math.min(elapsed / f.duration, 1);
+      let scaleX;
+      if (t < 0.5)
+        scaleX = 1 - t * 2;
+      else
+        scaleX = (t - 0.5) * 2;
+      ctx.save();
+      ctx.translate(f.x + CARD_W / 2, f.y);
+      ctx.scale(scaleX, 1);
+      if (t < 0.5)
+        drawCardBack(ctx, -CARD_W / 2, 0);
+      else
+        drawCardFace(ctx, -CARD_W / 2, 0, f.card);
+      ctx.restore();
+      if (t >= 1)
+        flippingCards.splice(i, 1);
+    }
+
+    // Stock deal animations (slide + flip from stock to waste)
+    for (let i = dealAnimCards.length - 1; i >= 0; --i) {
+      const d = dealAnimCards[i];
+      if (now < d.startTime)
+        continue;
+      const elapsed = now - d.startTime;
+      const t = Math.min(elapsed / d.duration, 1);
+      const e = easeOutCubic(t);
+      const x = d.fromX + (d.toX - d.fromX) * e;
+      const y = d.fromY + (d.toY - d.fromY) * e;
+
+      // Flip: first part shows back, second part shows face
+      let scaleX;
+      if (t < 0.35)
+        scaleX = 1;
+      else if (t < 0.55)
+        scaleX = 1 - (t - 0.35) / 0.2;
+      else
+        scaleX = (t - 0.55) / 0.45;
+
+      ctx.save();
+      ctx.translate(x + CARD_W / 2, y);
+      ctx.scale(Math.max(scaleX, 0.01), 1);
+      if (t < 0.45)
+        drawCardBack(ctx, -CARD_W / 2, 0);
+      else
+        drawCardFace(ctx, -CARD_W / 2, 0, d.card);
+      ctx.restore();
+
+      if (t >= 1)
+        dealAnimCards.splice(i, 1);
+    }
+
+    updateAndDrawParticles();
+
+    if (animatingCards.length > 0 || flippingCards.length > 0 || dealAnimCards.length > 0 || particles.length > 0)
+      requestAnimationFrame(tickAnimations);
+  }
+
+  /* ================================================================
+   *  CARD FLIP ANIMATION
+   * ================================================================ */
+
+  function startFlipAnim(card, x, y) {
+    flippingCards.push({
+      card,
+      x,
+      y,
+      startTime: performance.now(),
+      duration: 200
+    });
+    if (!winAnimRunning && animatingCards.length === 0 && flippingCards.length === 1 && dealAnimCards.length === 0)
+      requestAnimationFrame(tickAnimations);
+  }
+
+  /* ================================================================
+   *  STOCK DEAL ANIMATION (slide + flip from stock to waste)
+   * ================================================================ */
+
+  function startDealFromStockAnim(card, fromX, fromY, toX, toY, delay) {
+    dealAnimCards.push({
+      card, fromX, fromY, toX, toY,
+      startTime: performance.now() + delay,
+      duration: 250
+    });
+    if (!winAnimRunning && dealAnimCards.length === 1 && animatingCards.length === 0 && flippingCards.length === 0)
+      requestAnimationFrame(tickAnimations);
+  }
+
+  /* ================================================================
+   *  WIN ANIMATION: bouncing cards + fireworks + trails + rotation
    * ================================================================ */
 
   function startWinAnimation() {
     winAnimCards = [];
+    particles = [];
     winAnimRunning = true;
+    lastFireworkTime = 0;
 
     const allCards = [];
     for (let fi = 0; fi < FOUNDATION_COUNT; ++fi) {
@@ -1018,17 +1286,26 @@
         vx: (Math.random() - 0.5) * 8,
         vy: -(Math.random() * 6 + 2),
         gravity: 0.2,
-        bounces: 0
+        bounces: 0,
+        angle: 0,
+        angularVelocity: (Math.random() - 0.5) * 0.08,
+        trail: []
       });
       ++launchIndex;
     }, 80);
 
-    const animate = () => {
+    const animate = (timestamp) => {
       if (!winAnimRunning)
         return;
 
       ctx.fillStyle = GREEN;
       ctx.fillRect(0, 0, canvasW, canvasH);
+
+      // Spawn fireworks periodically
+      if (timestamp - lastFireworkTime > 500) {
+        spawnFirework(Math.random() * canvasW, Math.random() * canvasH * 0.6);
+        lastFireworkTime = timestamp;
+      }
 
       let anyAlive = false;
 
@@ -1036,6 +1313,7 @@
         ac.vy += ac.gravity;
         ac.x += ac.vx;
         ac.y += ac.vy;
+        ac.angle += ac.angularVelocity;
 
         if (ac.y + CARD_H > canvasH) {
           ac.y = canvasH - CARD_H;
@@ -1047,10 +1325,33 @@
           continue;
 
         anyAlive = true;
-        drawCardFace(ctx, ac.x, ac.y, ac.card);
+
+        // Draw trail
+        ac.trail.push({ x: ac.x, y: ac.y, alpha: 0.4 });
+        if (ac.trail.length > 6)
+          ac.trail.shift();
+        for (const t of ac.trail) {
+          ctx.save();
+          ctx.globalAlpha = t.alpha;
+          ctx.translate(t.x + CARD_W / 2, t.y + CARD_H / 2);
+          ctx.rotate(ac.angle);
+          drawCardFace(ctx, -CARD_W / 2, -CARD_H / 2, ac.card);
+          ctx.restore();
+          t.alpha *= 0.6;
+        }
+
+        // Draw card with rotation
+        ctx.save();
+        ctx.translate(ac.x + CARD_W / 2, ac.y + CARD_H / 2);
+        ctx.rotate(ac.angle);
+        drawCardFace(ctx, -CARD_W / 2, -CARD_H / 2, ac.card);
+        ctx.restore();
       }
 
-      if (anyAlive || launchIndex < allCards.length)
+      // Draw particles
+      updateAndDrawParticles();
+
+      if (anyAlive || launchIndex < allCards.length || particles.length > 0)
         winAnimId = requestAnimationFrame(animate);
       else
         winAnimRunning = false;
@@ -1066,6 +1367,10 @@
       winAnimId = null;
     }
     winAnimCards = [];
+    particles = [];
+    animatingCards = [];
+    flippingCards = [];
+    dealAnimCards = [];
   }
 
   /* ================================================================
