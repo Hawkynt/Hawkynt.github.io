@@ -24,6 +24,8 @@
 </script>
 <title>JSON Viewer</title>
 <script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="../shared/menu.css">
+<link rel="stylesheet" href="../shared/dialog.css">
 <link rel="stylesheet" href="styles.css">
 <script defer src="../vision-renderer.js"></script>
 </head>
@@ -132,11 +134,13 @@
       <p style="margin-top: 12px; font-size: 10px; opacity: 0.7;">&copy; 1995-2026 &raquo;SynthelicZ&laquo;</p>
     </div>
     <div class="dialog-buttons">
-      <button id="about-ok">OK</button>
+      <button id="about-ok" data-result="ok">OK</button>
     </div>
   </div>
 </div>
 
+<script src="../shared/menu.js"></script>
+<script src="../shared/dialog.js"></script>
 <script src="controller.js"></script>
 </body>
 </html>

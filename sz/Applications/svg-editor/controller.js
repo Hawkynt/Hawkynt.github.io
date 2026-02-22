@@ -40,10 +40,6 @@
     statusTool: document.getElementById('statusTool'),
     statusDoc: document.getElementById('statusDoc'),
     statusElements: document.getElementById('statusElements'),
-    ribbonTabs: document.getElementById('ribbon-tabs'),
-    backstage: document.getElementById('backstage'),
-    ribbonFileBtn: document.getElementById('ribbon-file-btn'),
-    backstageBack: document.getElementById('backstage-back'),
     btnToggleGrid: document.getElementById('btn-toggle-grid'),
     btnToggleSnap: document.getElementById('btn-toggle-snap'),
     btnToggleDark: document.getElementById('btn-toggle-dark')
@@ -872,50 +868,11 @@
   }
 
   // ---- Section 17: Ribbon system ----
-  function closeBackstage() {
-    refs.backstage.classList.remove('visible');
-  }
-
-  function openBackstage() {
-    refs.backstage.classList.add('visible');
-  }
-
-  function switchRibbonTab(tabName) {
-    for (const tab of refs.ribbonTabs.querySelectorAll('.ribbon-tab'))
-      tab.classList.toggle('active', tab.dataset.tab === tabName);
-    for (const panel of document.querySelectorAll('.ribbon-panel'))
-      panel.classList.toggle('active', panel.dataset.panel === tabName);
-  }
+  let ribbon;
 
   function bindRibbon() {
-    // Tab switching
-    for (const tab of refs.ribbonTabs.querySelectorAll('.ribbon-tab')) {
-      tab.addEventListener('click', () => {
-        switchRibbonTab(tab.dataset.tab);
-      });
-    }
-
-    // File backstage
-    refs.ribbonFileBtn.addEventListener('click', openBackstage);
-    refs.backstageBack.addEventListener('click', closeBackstage);
-
-    // Backstage items
-    for (const item of refs.backstage.querySelectorAll('.backstage-item')) {
-      item.addEventListener('click', () => {
-        closeBackstage();
-        handleAction(item.dataset.action);
-      });
-    }
-
-    // QAT buttons
-    for (const btn of document.querySelectorAll('.qat-btn[data-action]')) {
-      btn.addEventListener('click', () => handleAction(btn.dataset.action));
-    }
-
-    // All [data-action] buttons in ribbon panels
-    for (const btn of document.querySelectorAll('.ribbon-panel [data-action]')) {
-      btn.addEventListener('click', () => handleAction(btn.dataset.action));
-    }
+    ribbon = new SZ.Ribbon({ onAction: handleAction });
+    SZ.Dialog.wireAll();
 
     // Tool buttons in ribbon tool grid
     for (const btn of refs.toolGrid.querySelectorAll('[data-tool]')) {
@@ -967,8 +924,8 @@
       case 'tool-text': setTool('text'); break;
       case 'tool-pan': setTool('pan'); break;
 
-      case 'shortcuts': showDialog('dlg-shortcuts'); break;
-      case 'about': showDialog('dlg-about'); break;
+      case 'shortcuts': SZ.Dialog.show('dlg-shortcuts'); break;
+      case 'about': SZ.Dialog.show('dlg-about'); break;
     }
   }
 
@@ -995,23 +952,6 @@
           refs.btnToggleDark.classList.toggle('active', true);
       }
     } catch {}
-  }
-
-  // ---- Section 20: Dialog system ----
-  function showDialog(id) {
-    const overlay = document.getElementById(id);
-    if (!overlay)
-      return;
-    overlay.classList.add('visible');
-
-    function handleClick(e) {
-      const btn = e.target.closest('[data-result]');
-      if (!btn)
-        return;
-      overlay.classList.remove('visible');
-      overlay.removeEventListener('click', handleClick);
-    }
-    overlay.addEventListener('click', handleClick);
   }
 
   // ---- Section 21: Tool switching ----
@@ -1281,7 +1221,7 @@
       // Escape
       if (e.key === 'Escape') {
         clearSelection();
-        closeBackstage();
+        ribbon.closeBackstage();
         return;
       }
 

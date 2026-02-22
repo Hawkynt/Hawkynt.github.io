@@ -244,8 +244,9 @@ body { overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
 .base-layer-row {
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
 }
-.base-layer-row input[type="color"] {
-  width: 28px; height: 22px; padding: 0; border: 1px solid var(--sz-color-button-shadow); cursor: pointer;
+.color-swatch {
+  width: 28px; height: 22px; border: 1px solid var(--sz-color-button-shadow); cursor: pointer;
+  border-style: inset;
 }
 
 /* Desktop tab top row: preview + base layer side by side */
@@ -259,6 +260,11 @@ body { overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
 .bg-subtabs {
   display: flex; flex-wrap: wrap; margin-bottom: 0;
   border-bottom: 1px solid var(--sz-color-button-shadow);
+}
+.bg-subtabs .subtab input[type="checkbox"] {
+  pointer-events: none;
+  margin: 0 3px 0 0;
+  vertical-align: middle;
 }
 
 /* Source panels */

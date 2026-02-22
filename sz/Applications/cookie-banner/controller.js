@@ -771,45 +771,29 @@
     return lines.join('\n');
   }
 
-  // ===== Syntax Highlighting =====
-
-  function highlightCode(code) {
-    // Escape HTML first
-    let html = escapeHtml(code);
-
-    // HTML tags
-    html = html.replace(/(&lt;\/?)([\w-]+)/g, '$1<span class="hl-tag">$2</span>');
-    // HTML attributes
-    html = html.replace(/([\w-]+)(=)(&quot;)/g, '<span class="hl-attr">$1</span>$2$3');
-    // Strings in quotes
-    html = html.replace(/(&quot;)(.*?)(&quot;)/g, '<span class="hl-str">$1$2$3</span>');
-    // CSS properties
-    html = html.replace(/([\w-]+)(\s*:\s*)(?=[^;{]*[;}])/g, '<span class="hl-prop">$1</span>$2');
-    // CSS selectors (lines starting with . or # or element name before {)
-    html = html.replace(/^(\s*)([\.\#]?[\w\-\:\[\]&gt;=\*\+\~\,\s]+)(\s*\{)/gm, '$1<span class="hl-sel">$2</span>$3');
-    // JS keywords
-    html = html.replace(/\b(var|const|let|function|return|if|else|for|new|try|catch|null|true|false|this|typeof|void)\b/g, '<span class="hl-kw">$1</span>');
-    // JS function calls
-    html = html.replace(/\b([\w]+)\s*\(/g, '<span class="hl-fn">$1</span>(');
-    // Comments
-    html = html.replace(/(\/\/.*$)/gm, '<span class="hl-comment">$1</span>');
-    html = html.replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="hl-comment">$1</span>');
-
-    return html;
-  }
+  // ===== Code output =====
 
   function updateCodeOutput() {
     let code;
-    if (activeCodeTab === 'combined')
+    let lang;
+    if (activeCodeTab === 'combined') {
       code = generateCombined();
-    else if (activeCodeTab === 'html')
+      lang = 'html';
+    } else if (activeCodeTab === 'html') {
       code = generateHTML();
-    else if (activeCodeTab === 'css')
+      lang = 'html';
+    } else if (activeCodeTab === 'css') {
       code = generateCSS();
-    else
+      lang = 'css';
+    } else {
       code = generateJS();
+      lang = 'javascript';
+    }
 
-    codeOutput.innerHTML = highlightCode(code);
+    if (SZ.SyntaxHighlighter)
+      codeOutput.innerHTML = SZ.SyntaxHighlighter.highlightBlock(code, lang);
+    else
+      codeOutput.textContent = code;
   }
 
   // ===== Presets =====
@@ -1204,60 +1188,21 @@
 
   // ===== Menu System =====
 
-  ;(function() {
-    const menuBar = document.querySelector('.menu-bar');
-    if (!menuBar) return;
-    let openMenu = null;
+  function handleMenuAction(action) {
+    if (action === 'about')
+      SZ.Dialog.show('dlg-about');
+    else if (action === 'new' || action === 'reset') {
+      state = JSON.parse(JSON.stringify(DEFAULT_STATE));
+      syncStateToControls();
+      updateAll();
+    } else if (action === 'export-file')
+      btnDownloadCode.dispatchEvent(new PointerEvent('pointerdown'));
+    else if (action && action.startsWith('preset-'))
+      applyDesignPreset(action.replace('preset-', ''));
+  }
 
-    function closeMenus() {
-      if (openMenu) { openMenu.classList.remove('open'); openMenu = null; }
-    }
-
-    menuBar.addEventListener('pointerdown', function(e) {
-      const item = e.target.closest('.menu-item');
-      if (!item) return;
-      const entry = e.target.closest('.menu-entry');
-      if (entry) {
-        const action = entry.dataset.action;
-        closeMenus();
-
-        if (action === 'about') {
-          const dlg = document.getElementById('dlg-about');
-          if (dlg) dlg.classList.add('visible');
-        } else if (action === 'new' || action === 'reset') {
-          state = JSON.parse(JSON.stringify(DEFAULT_STATE));
-          syncStateToControls();
-          updateAll();
-        } else if (action === 'export-file') {
-          btnDownloadCode.dispatchEvent(new PointerEvent('pointerdown'));
-        } else if (action && action.startsWith('preset-')) {
-          const presetName = action.replace('preset-', '');
-          applyDesignPreset(presetName);
-        }
-        return;
-      }
-      if (openMenu === item) { closeMenus(); return; }
-      closeMenus();
-      item.classList.add('open');
-      openMenu = item;
-    });
-
-    menuBar.addEventListener('pointerenter', function(e) {
-      if (!openMenu) return;
-      const item = e.target.closest('.menu-item');
-      if (item && item !== openMenu) { closeMenus(); item.classList.add('open'); openMenu = item; }
-    }, true);
-
-    document.addEventListener('pointerdown', function(e) {
-      if (openMenu && !e.target.closest('.menu-bar')) closeMenus();
-    });
-  })();
-
-  // Dialog
-  document.getElementById('dlg-about')?.addEventListener('click', function(e) {
-    if (e.target.closest('[data-result]'))
-      this.classList.remove('visible');
-  });
+  new SZ.MenuBar({ onAction: handleMenuAction });
+  SZ.Dialog.wireAll();
 
   // ===== Hash update =====
 

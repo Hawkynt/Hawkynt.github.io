@@ -1,0 +1,90 @@
+/* ==== Menu Bar ==== */
+.menu-bar {
+  display: flex;
+  align-items: center;
+  padding: 0;
+  background: var(--sz-color-menu);
+  border-bottom: 1px solid var(--sz-color-button-shadow);
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.menu-item {
+  position: relative;
+  padding: 3px 8px;
+  cursor: default;
+  color: var(--sz-color-menu-text);
+}
+
+.menu-item:hover,
+.menu-item.open {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+}
+
+.menu-dropdown {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 200px;
+  background: var(--sz-color-menu);
+  border: 1px solid var(--sz-color-button-shadow);
+  box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+  padding: 2px 0;
+}
+
+.menu-item.open > .menu-dropdown {
+  display: block;
+}
+
+.menu-entry {
+  padding: 4px 24px 4px 8px;
+  cursor: default;
+  color: var(--sz-color-menu-text);
+  white-space: nowrap;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.menu-entry:hover {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+}
+
+.menu-entry.disabled {
+  color: var(--sz-color-gray-text);
+  pointer-events: none;
+}
+
+.menu-entry .shortcut {
+  margin-left: 24px;
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.menu-entry.checkbox::before,
+.menu-entry.radio::before {
+  content: '';
+  display: inline-block;
+  width: 16px;
+  margin-left: -4px;
+  margin-right: 2px;
+  text-align: center;
+}
+
+.menu-entry.checkbox.checked::before {
+  content: '\2713';
+}
+
+.menu-entry.radio.checked::before {
+  content: '\2022';
+}
+
+.menu-separator {
+  height: 1px;
+  background: var(--sz-color-button-shadow);
+  margin: 2px 4px;
+}

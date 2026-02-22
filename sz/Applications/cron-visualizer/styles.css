@@ -19,76 +19,6 @@ html, body {
   height: 100%;
 }
 
-/* ---------- Menu bar ---------- */
-
-.menu-bar {
-  display: flex;
-  align-items: center;
-  padding: 0;
-  background: var(--sz-color-menu, #ece9d8);
-  border-bottom: 1px solid var(--sz-color-button-shadow, #7f7f7f);
-  user-select: none;
-  flex-shrink: 0;
-  z-index: 100;
-}
-
-.menu-item {
-  position: relative;
-  padding: 3px 8px;
-  cursor: default;
-  color: var(--sz-color-menu-text, #1f1f1f);
-}
-
-.menu-item:hover,
-.menu-item.open {
-  background: var(--sz-color-highlight, #316ac5);
-  color: var(--sz-color-highlight-text, #fff);
-}
-
-.menu-dropdown {
-  display: none;
-  position: absolute;
-  top: 100%;
-  left: 0;
-  min-width: 200px;
-  background: var(--sz-color-menu, #ece9d8);
-  border: 1px solid var(--sz-color-button-shadow, #7f7f7f);
-  box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
-  z-index: 1000;
-  padding: 2px 0;
-}
-
-.menu-item.open > .menu-dropdown {
-  display: block;
-}
-
-.menu-entry {
-  padding: 4px 24px;
-  cursor: default;
-  color: var(--sz-color-menu-text, #1f1f1f);
-  white-space: nowrap;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.menu-entry:hover {
-  background: var(--sz-color-highlight, #316ac5);
-  color: var(--sz-color-highlight-text, #fff);
-}
-
-.menu-entry .shortcut {
-  margin-left: 24px;
-  font-size: 10px;
-  opacity: 0.7;
-}
-
-.menu-separator {
-  height: 1px;
-  background: var(--sz-color-button-shadow, #7f7f7f);
-  margin: 2px 4px;
-}
-
 /* ---------- Toolbar ---------- */
 
 .toolbar {
@@ -411,55 +341,11 @@ details:not([open]) > .panel-toggle::before {
   min-width: 0;
 }
 
-/* ---------- Dialog ---------- */
-
-.dialog-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.35);
-  display: none;
-  align-items: center;
-  justify-content: center;
-  z-index: 2000;
-}
-
-.dialog-overlay.visible {
-  display: flex;
-}
-
-.dialog {
-  width: min(420px, calc(100% - 24px));
-  border: 1px solid var(--sz-color-button-shadow, #7f7f7f);
-  background: var(--sz-color-button-face, #ece9d8);
-  box-shadow: 2px 4px 12px rgba(0, 0, 0, 0.35);
-}
-
-.dialog-title {
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--sz-color-button-shadow, #7f7f7f);
-  font-weight: 700;
-}
-
-.dialog-body {
-  padding: 10px;
-  background: var(--sz-color-window, #fff);
-  color: var(--sz-color-window-text, #000);
-}
-
-.dialog-body p {
-  margin: 0 0 8px;
-}
+/* ---------- App-specific dialog overrides ---------- */
 
 .dialog-body a {
   color: #245edb;
   text-decoration: underline;
-}
-
-.dialog-actions {
-  padding: 6px 10px;
-  border-top: 1px solid var(--sz-color-button-shadow, #7f7f7f);
-  display: flex;
-  justify-content: flex-end;
 }
 
 /* ---------- Responsive ---------- */

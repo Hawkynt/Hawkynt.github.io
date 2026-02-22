@@ -82,53 +82,7 @@
   const smileyBtn    = document.getElementById('smileyBtn');
 
   /* ---- Menu System ---- */
-  let openMenu = null;
-
-  document.querySelectorAll('.menu-item').forEach(item => {
-    item.addEventListener('pointerdown', e => {
-      e.stopPropagation();
-      if (e.target.closest('.menu-entry'))
-        return;
-      const dropdown = item.querySelector('.menu-dropdown');
-      if (openMenu === dropdown) {
-        closeMenus();
-        return;
-      }
-      closeMenus();
-      dropdown.classList.add('visible');
-      item.classList.add('open');
-      openMenu = dropdown;
-    });
-
-    item.addEventListener('pointerenter', () => {
-      if (openMenu && openMenu !== item.querySelector('.menu-dropdown')) {
-        closeMenus();
-        const dropdown = item.querySelector('.menu-dropdown');
-        dropdown.classList.add('visible');
-        item.classList.add('open');
-        openMenu = dropdown;
-      }
-    });
-  });
-
-  document.querySelectorAll('.menu-entry').forEach(item => {
-    item.addEventListener('click', () => {
-      const action = item.dataset.action;
-      closeMenus();
-      handleMenuAction(action);
-    });
-  });
-
-  document.addEventListener('pointerdown', (e) => {
-    if (!e.target.closest('.menu-bar'))
-      closeMenus();
-  });
-
-  function closeMenus() {
-    document.querySelectorAll('.menu-dropdown').forEach(d => d.classList.remove('visible'));
-    document.querySelectorAll('.menu-item').forEach(i => i.classList.remove('open'));
-    openMenu = null;
-  }
+  new SZ.MenuBar({ onAction: handleMenuAction });
 
   function handleMenuAction(action) {
     switch (action) {
@@ -197,8 +151,6 @@
   }
 
   /* ---- Best Times Dialog ---- */
-  const bestTimesBackdrop = document.getElementById('bestTimesBackdrop');
-
   function showBestTimes() {
     document.getElementById('btBegTime').textContent = bestTimes.beginner.time + ' seconds';
     document.getElementById('btBegName').textContent = bestTimes.beginner.name;
@@ -206,30 +158,15 @@
     document.getElementById('btIntName').textContent = bestTimes.intermediate.name;
     document.getElementById('btExpTime').textContent = bestTimes.expert.time + ' seconds';
     document.getElementById('btExpName').textContent = bestTimes.expert.name;
-    bestTimesBackdrop.classList.add('visible');
+    SZ.Dialog.show('bestTimesBackdrop').then(result => {
+      if (result === 'reset') {
+        resetBestTimes();
+        showBestTimes();
+      }
+    });
   }
-
-  function closeBestTimes() {
-    bestTimesBackdrop.classList.remove('visible');
-  }
-
-  bestTimesBackdrop.addEventListener('pointerdown', e => {
-    if (e.target === bestTimesBackdrop)
-      closeBestTimes();
-  });
-  bestTimesBackdrop.addEventListener('click', e => {
-    const btn = e.target.closest('[data-result]');
-    if (!btn)
-      return;
-    if (btn.dataset.result === 'reset') {
-      resetBestTimes();
-      showBestTimes();
-    } else
-      closeBestTimes();
-  });
 
   /* ---- Custom Field Dialog ---- */
-  const customBackdrop   = document.getElementById('customBackdrop');
   const customRowsInput  = document.getElementById('customRows');
   const customColsInput  = document.getElementById('customCols');
   const customMinesInput = document.getElementById('customMines');
@@ -242,12 +179,11 @@
       customMinesInput.value = customConfig.mines;
     }
     customError.textContent = '';
-    customBackdrop.classList.add('visible');
+    SZ.Dialog.show('customBackdrop').then(result => {
+      if (result === 'ok')
+        applyCustom();
+    });
     customRowsInput.focus();
-  }
-
-  function closeCustomDialog() {
-    customBackdrop.classList.remove('visible');
   }
 
   function applyCustom() {
@@ -257,16 +193,19 @@
 
     if (isNaN(r) || r < 9 || r > 24) {
       customError.textContent = 'Height must be between 9 and 24.';
+      showCustomDialog();
       customRowsInput.focus();
       return;
     }
     if (isNaN(c) || c < 9 || c > 30) {
       customError.textContent = 'Width must be between 9 and 30.';
+      showCustomDialog();
       customColsInput.focus();
       return;
     }
     if (isNaN(m) || m < 10 || m > 667) {
       customError.textContent = 'Mines must be between 10 and 667.';
+      showCustomDialog();
       customMinesInput.focus();
       return;
     }
@@ -274,6 +213,7 @@
     const maxMines = r * c - 9;
     if (m >= maxMines) {
       customError.textContent = 'Mines must be less than ' + maxMines + ' (' + r + 'x' + c + ' - 9).';
+      showCustomDialog();
       customMinesInput.focus();
       return;
     }
@@ -281,30 +221,16 @@
     customConfig = { rows: r, cols: c, mines: m };
     difficulty = 'custom';
     updateDifficultyChecks();
-    closeCustomDialog();
     newGame();
     requestWindowResize();
   }
-
-  customBackdrop.addEventListener('pointerdown', e => {
-    if (e.target === customBackdrop)
-      closeCustomDialog();
-  });
-  customBackdrop.addEventListener('click', e => {
-    const btn = e.target.closest('[data-result]');
-    if (!btn)
-      return;
-    if (btn.dataset.result === 'ok')
-      applyCustom();
-    else
-      closeCustomDialog();
-  });
 
   // Allow Enter key in custom dialog inputs
   [customRowsInput, customColsInput, customMinesInput].forEach(input => {
     input.addEventListener('keydown', e => {
       if (e.key === 'Enter') {
         e.preventDefault();
+        SZ.Dialog.close('customBackdrop');
         applyCustom();
       }
     });
@@ -312,13 +238,7 @@
 
   /* ---- About Dialog ---- */
   function showAboutDialog() {
-    const dlg = document.getElementById('dlg-about');
-    if (dlg) dlg.classList.add('visible');
-  }
-
-  function closeAboutDialog() {
-    const dlg = document.getElementById('dlg-about');
-    if (dlg) dlg.classList.remove('visible');
+    SZ.Dialog.show('dlg-about');
   }
 
   /* ---- Keyboard ---- */
@@ -328,9 +248,9 @@
       newGame();
     }
     if (e.key === 'Escape') {
-      closeBestTimes();
-      closeCustomDialog();
-      closeAboutDialog();
+      SZ.Dialog.close('bestTimesBackdrop');
+      SZ.Dialog.close('customBackdrop');
+      SZ.Dialog.close('dlg-about');
     }
   });
 
@@ -744,10 +664,5 @@
   }
 
   init();
-
-  document.getElementById('dlg-about')?.addEventListener('click', function(e) {
-    if (e.target.closest('[data-result]'))
-      this.classList.remove('visible');
-  });
 
 })();

@@ -36,7 +36,6 @@
   // DOM References
   // =======================================================================
 
-  const menuBar = document.getElementById('menu-bar');
   const toolbar = document.getElementById('toolbar');
   const btnUp = document.getElementById('btn-up');
   const addressInput = document.getElementById('address-input');
@@ -47,8 +46,6 @@
   const statusSize = document.getElementById('status-size');
   const statusFormat = document.getElementById('status-format');
   const statusSelection = document.getElementById('status-selection');
-  let openMenu = null;
-
   // =======================================================================
   // Window title
   // =======================================================================
@@ -67,33 +64,26 @@
 
   function showDialog(id) {
     const dlg = document.getElementById(id);
-    dlg.classList.add('visible');
     const first = dlg.querySelector('input, select, button[data-result="ok"]');
     if (first) setTimeout(() => first.focus(), 50);
+
     return new Promise(resolve => {
-      function handler(e) {
-        const btn = e.target.closest('[data-result]');
-        if (!btn) return;
-        dlg.classList.remove('visible');
-        dlg.removeEventListener('click', handler);
+      let settled = false;
+      function settle(result) {
+        if (settled) return;
+        settled = true;
+        SZ.Dialog.close(id);
         dlg.removeEventListener('keydown', keyHandler);
-        resolve(btn.dataset.result);
+        resolve(result);
       }
       function keyHandler(e) {
-        if (e.key === 'Escape') {
-          dlg.classList.remove('visible');
-          dlg.removeEventListener('click', handler);
-          dlg.removeEventListener('keydown', keyHandler);
-          resolve('cancel');
-        } else if (e.key === 'Enter') {
-          dlg.classList.remove('visible');
-          dlg.removeEventListener('click', handler);
-          dlg.removeEventListener('keydown', keyHandler);
-          resolve('ok');
-        }
+        if (e.key === 'Escape')
+          settle('cancel');
+        else if (e.key === 'Enter')
+          settle('ok');
       }
-      dlg.addEventListener('click', handler);
       dlg.addEventListener('keydown', keyHandler);
+      SZ.Dialog.show(id).then(result => settle(result));
     });
   }
 
@@ -1192,38 +1182,7 @@
   // Menu system
   // =======================================================================
 
-  function closeMenus() {
-    for (const item of menuBar.querySelectorAll('.menu-item'))
-      item.classList.remove('open');
-    openMenu = null;
-  }
-
-  for (const menuItem of menuBar.querySelectorAll('.menu-item')) {
-    menuItem.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('.menu-entry') || e.target.closest('.menu-separator'))
-        return;
-      if (openMenu === menuItem) {
-        closeMenus();
-        return;
-      }
-      closeMenus();
-      menuItem.classList.add('open');
-      openMenu = menuItem;
-    });
-
-    menuItem.addEventListener('pointerenter', () => {
-      if (openMenu && openMenu !== menuItem) {
-        closeMenus();
-        menuItem.classList.add('open');
-        openMenu = menuItem;
-      }
-    });
-  }
-
-  document.addEventListener('pointerdown', (e) => {
-    if (openMenu && !menuBar.contains(e.target))
-      closeMenus();
-  });
+  new SZ.MenuBar({ onAction: handleAction });
 
   // =======================================================================
   // Action dispatch
@@ -1250,14 +1209,6 @@
       case 'about': showDialog('dlg-about'); break;
       case 'exit': window.close(); break;
     }
-  }
-
-  for (const entry of document.querySelectorAll('.menu-entry')) {
-    entry.addEventListener('click', () => {
-      const action = entry.dataset.action;
-      closeMenus();
-      handleAction(action);
-    });
   }
 
   for (const btn of toolbar.querySelectorAll('button[data-action]')) {

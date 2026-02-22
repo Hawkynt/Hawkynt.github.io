@@ -21,7 +21,6 @@
   let parseTimer = null;
 
   // DOM references
-  const menuBar = document.getElementById('menu-bar');
   const toolbar = document.getElementById('toolbar');
   const editor = document.getElementById('editor');
   const errorBar = document.getElementById('error-bar');
@@ -37,7 +36,6 @@
   const searchBar = document.getElementById('search-bar');
   const searchInput = document.getElementById('search-input');
   const searchInfo = document.getElementById('search-info');
-  let openMenu = null;
 
   // -----------------------------------------------------------------------
   // Utility
@@ -726,38 +724,7 @@
   // -----------------------------------------------------------------------
   // Menu system
   // -----------------------------------------------------------------------
-  function closeMenus() {
-    for (const item of menuBar.querySelectorAll('.menu-item'))
-      item.classList.remove('open');
-    openMenu = null;
-  }
-
-  for (const menuItem of menuBar.querySelectorAll('.menu-item')) {
-    menuItem.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('.menu-entry') || e.target.closest('.menu-separator'))
-        return;
-      if (openMenu === menuItem) {
-        closeMenus();
-        return;
-      }
-      closeMenus();
-      menuItem.classList.add('open');
-      openMenu = menuItem;
-    });
-
-    menuItem.addEventListener('pointerenter', () => {
-      if (openMenu && openMenu !== menuItem) {
-        closeMenus();
-        menuItem.classList.add('open');
-        openMenu = menuItem;
-      }
-    });
-  }
-
-  document.addEventListener('pointerdown', (e) => {
-    if (openMenu && !menuBar.contains(e.target))
-      closeMenus();
-  });
+  new SZ.MenuBar({ onAction: handleAction });
 
   // -----------------------------------------------------------------------
   // Action dispatcher
@@ -783,15 +750,6 @@
     }
   }
 
-  // Menu entries
-  for (const entry of document.querySelectorAll('.menu-entry')) {
-    entry.addEventListener('click', () => {
-      const action = entry.dataset.action;
-      closeMenus();
-      handleAction(action);
-    });
-  }
-
   // Toolbar buttons
   for (const btn of toolbar.querySelectorAll('button[data-action]')) {
     btn.addEventListener('click', () => {
@@ -803,15 +761,7 @@
   // About dialog
   // -----------------------------------------------------------------------
   function showAbout() {
-    const dlg = document.getElementById('dlg-about');
-    dlg.classList.add('visible');
-    const okBtn = document.getElementById('about-ok');
-    okBtn.focus();
-    function handler() {
-      dlg.classList.remove('visible');
-      okBtn.removeEventListener('click', handler);
-    }
-    okBtn.addEventListener('click', handler);
+    SZ.Dialog.show('dlg-about');
   }
 
   // -----------------------------------------------------------------------

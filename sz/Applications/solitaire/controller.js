@@ -1223,54 +1223,7 @@
    *  MENU SYSTEM
    * ================================================================ */
 
-  let openMenu = null;
-
-  document.querySelectorAll('.menu-item').forEach(item => {
-    item.addEventListener('pointerdown', e => {
-      e.stopPropagation();
-      if (e.target.closest('.menu-entry') || e.target.closest('.menu-submenu'))
-        return;
-      const dropdown = item.querySelector('.menu-dropdown');
-      if (openMenu === dropdown) {
-        closeMenus();
-        return;
-      }
-      closeMenus();
-      dropdown.classList.add('visible');
-      item.classList.add('open');
-      openMenu = dropdown;
-    });
-
-    item.addEventListener('pointerenter', () => {
-      if (openMenu && openMenu !== item.querySelector('.menu-dropdown')) {
-        closeMenus();
-        const dropdown = item.querySelector('.menu-dropdown');
-        dropdown.classList.add('visible');
-        item.classList.add('open');
-        openMenu = dropdown;
-      }
-    });
-  });
-
-  document.querySelectorAll('.menu-entry[data-action]').forEach(item => {
-    item.addEventListener('click', e => {
-      e.stopPropagation();
-      const action = item.dataset.action;
-      closeMenus();
-      handleMenuAction(action);
-    });
-  });
-
-  document.addEventListener('pointerdown', e => {
-    if (!e.target.closest('.menu-bar'))
-      closeMenus();
-  });
-
-  function closeMenus() {
-    document.querySelectorAll('.menu-dropdown').forEach(d => d.classList.remove('visible'));
-    document.querySelectorAll('.menu-item').forEach(i => i.classList.remove('open'));
-    openMenu = null;
-  }
+  new SZ.MenuBar({ onAction: handleMenuAction });
 
   function handleMenuAction(action) {
     switch (action) {
@@ -1315,13 +1268,7 @@
    * ================================================================ */
 
   function showAbout() {
-    const dlg = document.getElementById('dlg-about');
-    if (dlg) dlg.classList.add('visible');
-  }
-
-  function closeAbout() {
-    const dlg = document.getElementById('dlg-about');
-    if (dlg) dlg.classList.remove('visible');
+    SZ.Dialog.show('dlg-about');
   }
 
   /* ================================================================
@@ -1338,7 +1285,7 @@
       doUndo();
     }
     if (e.key === 'Escape')
-      closeAbout();
+      SZ.Dialog.close('dlg-about');
   });
 
   /* ================================================================
@@ -1349,10 +1296,5 @@
   updateDrawModeChecks();
   newGame();
   requestAnimationFrame(() => resizeCanvas());
-
-  document.getElementById('dlg-about')?.addEventListener('click', function(e) {
-    if (e.target.closest('[data-result]'))
-      this.classList.remove('visible');
-  });
 
 })();

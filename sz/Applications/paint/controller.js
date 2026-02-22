@@ -373,33 +373,10 @@
   refreshLayerPanel();
 
   // -----------------------------------------------------------------------
-  // Ribbon tab switching
+  // Ribbon + Dialog shared wiring
   // -----------------------------------------------------------------------
-  for (const tab of document.querySelectorAll('.ribbon-tab[data-tab]')) {
-    tab.addEventListener('click', () => {
-      for (const t of document.querySelectorAll('.ribbon-tab'))
-        t.classList.remove('active');
-      tab.classList.add('active');
-      for (const p of document.querySelectorAll('.ribbon-panel'))
-        p.classList.remove('active');
-      const panel = document.querySelector(`.ribbon-panel[data-panel="${tab.dataset.tab}"]`);
-      if (panel)
-        panel.classList.add('active');
-    });
-  }
-
-  // Backstage
-  const backstage = document.getElementById('backstage');
-  document.getElementById('ribbon-file-btn').addEventListener('click', () => {
-    backstage.classList.add('visible');
-  });
-  document.getElementById('backstage-back').addEventListener('click', () => {
-    backstage.classList.remove('visible');
-  });
-  backstage.addEventListener('click', (e) => {
-    if (e.target === backstage)
-      backstage.classList.remove('visible');
-  });
+  new SZ.Ribbon({ onAction: handleAction });
+  SZ.Dialog.wireAll();
 
   // -----------------------------------------------------------------------
   // Tool selection (from tool grid and selection buttons)
@@ -735,7 +712,7 @@
       case 'export-png': doExport('image/png'); break;
       case 'export-jpg': doExport('image/jpeg'); break;
       case 'exit': User32.DestroyWindow(); break;
-      case 'about': showDialog('dlg-about'); break;
+      case 'about': SZ.Dialog.show('dlg-about'); break;
 
       // Edit
       case 'undo': doUndo(); break;
@@ -828,13 +805,11 @@
       case 'auto-rotate': doAutoRotate(); break;
       case 'auto-keystone': doAutoKeystone(); break;
     }
-    backstage.classList.remove('visible');
   }
 
-  // Wire up all action buttons
-  for (const btn of document.querySelectorAll('[data-action]')) {
+  // Wire up layer-panel action buttons (not covered by shared Ribbon)
+  for (const btn of document.querySelectorAll('.layer-controls [data-action]'))
     btn.addEventListener('click', () => handleAction(btn.dataset.action));
-  }
 
   // -----------------------------------------------------------------------
   // Clipboard operations
@@ -1329,11 +1304,9 @@
     const hInput = document.getElementById('canvas-h');
     wInput.value = layerModel.width;
     hInput.value = layerModel.height;
-    const dlg = document.getElementById('dlg-canvas-size');
-    dlg.classList.add('visible');
     wInput.focus();
     wInput.select();
-    awaitDialogResult(dlg, (result) => {
+    SZ.Dialog.show('dlg-canvas-size').then((result) => {
       if (result !== 'ok')
         return;
       let nw = parseInt(wInput.value, 10);
@@ -1474,6 +1447,28 @@
     } else
       content = String(content);
 
+    // If ReadFile didn't return a data URI (e.g. mounted FSAA binary file),
+    // fall back to ReadAllBytes and convert to data URL
+    if (!content.startsWith('data:image')) {
+      try {
+        const bytes = await Kernel32.ReadAllBytes(path);
+        if (bytes && bytes.length) {
+          const ext = (path.split('.').pop() || '').toLowerCase();
+          const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', bmp: 'image/bmp', webp: 'image/webp', svg: 'image/svg+xml', ico: 'image/x-icon', tif: 'image/tiff', tiff: 'image/tiff' };
+          const blob = new Blob([bytes], { type: MIME[ext] || 'image/png' });
+          const reader = new FileReader();
+          content = await new Promise((resolve, reject) => {
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+        }
+      } catch (err) {
+        alert('Could not open file: ' + err.message);
+        return;
+      }
+    }
+
     if (!content.startsWith('data:image')) {
       alert('Not a valid image file.');
       return;
@@ -1560,28 +1555,6 @@
       content: dataUrl,
     });
     // No need to track path for export
-  }
-
-  // -----------------------------------------------------------------------
-  // Dialog helpers
-  // -----------------------------------------------------------------------
-  function showDialog(id) {
-    const dlg = document.getElementById(id);
-    dlg.classList.add('visible');
-    awaitDialogResult(dlg);
-  }
-
-  function awaitDialogResult(dlg, callback) {
-    function handleClick(e) {
-      const btn = e.target.closest('[data-result]');
-      if (!btn)
-        return;
-      dlg.classList.remove('visible');
-      dlg.removeEventListener('click', handleClick);
-      if (typeof callback === 'function')
-        callback(btn.dataset.result);
-    }
-    dlg.addEventListener('click', handleClick);
   }
 
   // -----------------------------------------------------------------------

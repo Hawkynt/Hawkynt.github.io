@@ -32,8 +32,6 @@
   const statusType = document.getElementById('status-type');
   const statusValid = document.getElementById('status-valid');
 
-  const menuBar = document.getElementById('menu-bar');
-
   // ---- Conversion Helpers ----
 
   function ipToLong(ip) {
@@ -349,77 +347,11 @@
 
   // ---- Menu System ----
 
-  let openMenu = null;
-
-  function closeMenus() {
-    for (const item of menuBar.querySelectorAll('.menu-item'))
-      item.classList.remove('open');
-    openMenu = null;
-  }
-
   function handleAction(action) {
     switch (action) {
       case 'copy-all': copyAllResults(); break;
-      case 'about': showDialog('dlg-about'); break;
+      case 'about': SZ.Dialog.show('dlg-about'); break;
     }
-  }
-
-  function bindMenuBar() {
-    for (const menuItem of menuBar.querySelectorAll('.menu-item')) {
-      menuItem.addEventListener('pointerdown', (e) => {
-        if (e.target.closest('.menu-entry') || e.target.closest('.menu-separator'))
-          return;
-        if (openMenu === menuItem) {
-          closeMenus();
-          return;
-        }
-        closeMenus();
-        menuItem.classList.add('open');
-        openMenu = menuItem;
-      });
-
-      menuItem.addEventListener('pointerenter', () => {
-        if (openMenu && openMenu !== menuItem) {
-          closeMenus();
-          menuItem.classList.add('open');
-          openMenu = menuItem;
-        }
-      });
-    }
-
-    document.addEventListener('pointerdown', (e) => {
-      if (openMenu && !menuBar.contains(e.target))
-        closeMenus();
-    });
-
-    for (const entry of menuBar.querySelectorAll('.menu-entry')) {
-      entry.addEventListener('click', () => {
-        const action = entry.dataset.action;
-        closeMenus();
-        handleAction(action);
-      });
-    }
-  }
-
-  // ---- Dialog System ----
-
-  function awaitDialogResult(dlgOverlay, callback) {
-    function handleClick(e) {
-      const btn = e.target.closest('[data-result]');
-      if (!btn)
-        return;
-      dlgOverlay.classList.remove('visible');
-      dlgOverlay.removeEventListener('click', handleClick);
-      if (callback)
-        callback(btn.dataset.result);
-    }
-    dlgOverlay.addEventListener('click', handleClick);
-  }
-
-  function showDialog(id) {
-    const dlgOverlay = document.getElementById(id);
-    dlgOverlay.classList.add('visible');
-    awaitDialogResult(dlgOverlay);
   }
 
   // ---- Event Binding ----
@@ -470,7 +402,7 @@
   // ---- Initialization ----
 
   renderQuickCidr();
-  bindMenuBar();
+  new SZ.MenuBar({ onAction: handleAction });
   updateFromCIDR();
 
 })();

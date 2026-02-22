@@ -613,61 +613,16 @@
         body.appendChild(tr);
       }
     }
-    document.getElementById('highScoresBackdrop').classList.add('visible');
-  }
-
-  function closeHighScores() {
-    document.getElementById('highScoresBackdrop').classList.remove('visible');
+    SZ.Dialog.show('highScoresBackdrop').then(result => {
+      if (result === 'reset') {
+        resetHighScores();
+        showHighScores();
+      }
+    });
   }
 
   /* ---- Menu System ---- */
-  let openMenu = null;
-
-  document.querySelectorAll('.menu-item').forEach(item => {
-    item.addEventListener('pointerdown', e => {
-      e.stopPropagation();
-      if (e.target.closest('.menu-entry'))
-        return;
-      const dropdown = item.querySelector('.menu-dropdown');
-      if (openMenu === dropdown) {
-        closeMenus();
-        return;
-      }
-      closeMenus();
-      dropdown.classList.add('visible');
-      item.classList.add('open');
-      openMenu = dropdown;
-    });
-
-    item.addEventListener('pointerenter', () => {
-      if (openMenu && openMenu !== item.querySelector('.menu-dropdown')) {
-        closeMenus();
-        const dropdown = item.querySelector('.menu-dropdown');
-        dropdown.classList.add('visible');
-        item.classList.add('open');
-        openMenu = dropdown;
-      }
-    });
-  });
-
-  document.querySelectorAll('.menu-entry').forEach(item => {
-    item.addEventListener('click', () => {
-      const action = item.dataset.action;
-      closeMenus();
-      handleMenuAction(action);
-    });
-  });
-
-  document.addEventListener('pointerdown', e => {
-    if (!e.target.closest('.menu-bar'))
-      closeMenus();
-  });
-
-  function closeMenus() {
-    document.querySelectorAll('.menu-dropdown').forEach(d => d.classList.remove('visible'));
-    document.querySelectorAll('.menu-item').forEach(i => i.classList.remove('open'));
-    openMenu = null;
-  }
+  new SZ.MenuBar({ onAction: handleMenuAction });
 
   function handleMenuAction(action) {
     switch (action) {
@@ -687,56 +642,20 @@
           window.close();
         break;
       case 'controls':
-        document.getElementById('controlsBackdrop').classList.add('visible');
+        SZ.Dialog.show('controlsBackdrop');
         break;
-      case 'about': {
-        const dlg = document.getElementById('dlg-about');
-        if (dlg) dlg.classList.add('visible');
+      case 'about':
+        SZ.Dialog.show('dlg-about');
         break;
-      }
     }
   }
-
-  /* ---- Dialog Helpers ---- */
-  function closeDialog(id) {
-    document.getElementById(id).classList.remove('visible');
-  }
-
-  /* Dialog event delegation */
-  document.getElementById('highScoresBackdrop').addEventListener('pointerdown', e => {
-    if (e.target === e.currentTarget)
-      closeHighScores();
-  });
-  document.getElementById('highScoresBackdrop').addEventListener('click', e => {
-    const btn = e.target.closest('[data-result]');
-    if (!btn)
-      return;
-    if (btn.dataset.result === 'reset') {
-      resetHighScores();
-      showHighScores();
-    } else
-      closeHighScores();
-  });
-
-  document.getElementById('controlsBackdrop').addEventListener('pointerdown', e => {
-    if (e.target === e.currentTarget)
-      closeDialog('controlsBackdrop');
-  });
-  document.getElementById('controlsBackdrop').addEventListener('click', e => {
-    if (e.target.closest('[data-result]'))
-      closeDialog('controlsBackdrop');
-  });
-
 
   /* ---- Keyboard Input ---- */
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
-      closeHighScores();
-      closeDialog('controlsBackdrop');
-      {
-        const dlg = document.getElementById('dlg-about');
-        if (dlg) dlg.classList.remove('visible');
-      }
+      SZ.Dialog.close('highScoresBackdrop');
+      SZ.Dialog.close('controlsBackdrop');
+      SZ.Dialog.close('dlg-about');
       return;
     }
 
@@ -885,10 +804,5 @@
   }
 
   init();
-
-  document.getElementById('dlg-about')?.addEventListener('click', function(e) {
-    if (e.target.closest('[data-result]'))
-      this.classList.remove('visible');
-  });
 
 })();

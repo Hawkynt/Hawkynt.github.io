@@ -25,7 +25,6 @@
   // -----------------------------------------------------------------------
   // DOM refs
   // -----------------------------------------------------------------------
-  const menuBar = document.getElementById('menu-bar');
   const viewport = document.getElementById('viewport');
   const imgContainer = document.getElementById('img-container');
   const viewerImg = document.getElementById('viewer-img');
@@ -60,8 +59,6 @@
     onZoomIn: () => doZoomIn(),
     onZoomOut: () => doZoomOut(),
   });
-
-  let openMenu = null;
 
   const imageControls = [
     'tb-prev', 'tb-next', 'tb-zoom-in', 'tb-zoom-out', 'tb-fit', 'tb-actual',
@@ -110,51 +107,11 @@
   // -----------------------------------------------------------------------
   // Menu system
   // -----------------------------------------------------------------------
-  function closeMenus() {
-    for (const item of menuBar.querySelectorAll('.menu-item'))
-      item.classList.remove('open');
-    openMenu = null;
-  }
-
-  for (const menuItem of menuBar.querySelectorAll('.menu-item')) {
-    menuItem.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('.menu-entry') || e.target.closest('.menu-separator'))
-        return;
-      if (openMenu === menuItem) {
-        closeMenus();
-        return;
-      }
-      closeMenus();
-      menuItem.classList.add('open');
-      openMenu = menuItem;
-    });
-    menuItem.addEventListener('pointerenter', () => {
-      if (openMenu && openMenu !== menuItem) {
-        closeMenus();
-        menuItem.classList.add('open');
-        openMenu = menuItem;
-      }
-    });
-  }
-
-  document.addEventListener('pointerdown', (e) => {
-    if (openMenu && !menuBar.contains(e.target))
-      closeMenus();
-  });
+  new SZ.MenuBar({ onAction: handleAction });
 
   // -----------------------------------------------------------------------
-  // Menu/toolbar actions
+  // Toolbar actions
   // -----------------------------------------------------------------------
-  for (const entry of document.querySelectorAll('.menu-entry')) {
-    entry.addEventListener('click', () => {
-      if (entry.classList.contains('disabled'))
-        return;
-      const action = entry.dataset.action;
-      closeMenus();
-      handleAction(action);
-    });
-  }
-
   for (const btn of document.querySelectorAll('.tb-btn')) {
     btn.addEventListener('click', () => {
       if (btn.classList.contains('disabled'))
@@ -176,7 +133,7 @@
       case 'actual-size': doActualSize(); break;
       case 'rotate-cw': doRotate(90); break;
       case 'rotate-ccw': doRotate(-90); break;
-      case 'about': showDialog('dlg-about'); break;
+      case 'about': SZ.Dialog.show('dlg-about'); break;
     }
   }
 
@@ -666,24 +623,7 @@
   // -----------------------------------------------------------------------
   // Dialog helpers
   // -----------------------------------------------------------------------
-  function showDialog(id) {
-    const overlay = document.getElementById(id);
-    overlay.classList.add('visible');
-    awaitDialogResult(overlay);
-  }
-
-  function awaitDialogResult(overlay, callback) {
-    function handleClick(e) {
-      const btn = e.target.closest('[data-result]');
-      if (!btn)
-        return;
-      overlay.classList.remove('visible');
-      overlay.removeEventListener('click', handleClick);
-      if (typeof callback === 'function')
-        callback(btn.dataset.result);
-    }
-    overlay.addEventListener('click', handleClick);
-  }
+  SZ.Dialog.wireAll();
 
   // -----------------------------------------------------------------------
   // Init

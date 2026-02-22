@@ -68,6 +68,7 @@
 
   // Background extended elements
   const bgBaseColorEl = document.getElementById('bg-base-color');
+  const bgColorSwatch = document.getElementById('bg-color-swatch');
   const chkPattern = document.getElementById('chk-pattern');
   const btnEditPattern = document.getElementById('btn-edit-pattern');
   const bgSourceTypeEl = document.getElementById('bg-source-type');
@@ -81,6 +82,8 @@
   const slideshowDurationEl = document.getElementById('slideshow-duration');
   const slideshowDurationValueEl = document.getElementById('slideshow-duration-value');
   const slideshowModeEl = document.getElementById('slideshow-mode');
+  const chkSlideshowRecursive = document.getElementById('chk-slideshow-recursive');
+  const pvBgImgAlt = document.getElementById('pv-bg-img-alt');
 
   // Video elements
   const videoFileEl = document.getElementById('video-file');
@@ -139,10 +142,10 @@
   }
 
   // -- Sub-tab switching (Window Mgmt tab) ---------------------------------
-  for (const subtab of document.querySelectorAll('.subtab')) {
+  for (const subtab of document.querySelectorAll('#panel-windowmgmt .subtab')) {
     subtab.addEventListener('click', () => {
-      for (const st of document.querySelectorAll('.subtab')) st.classList.toggle('active', st === subtab);
-      for (const sp of document.querySelectorAll('.subtab-body')) sp.classList.toggle('active', sp.id === 'subpanel-' + subtab.dataset.subtab);
+      for (const st of subtab.parentElement.querySelectorAll('.subtab')) st.classList.toggle('active', st === subtab);
+      for (const sp of document.querySelectorAll('#panel-windowmgmt .subtab-body')) sp.classList.toggle('active', sp.id === 'subpanel-' + subtab.dataset.subtab);
     });
   }
 
@@ -418,14 +421,34 @@
     dirty = true;
   }
 
+  const _localBlobUrls = new Set();
+
+  function _revokeLocalBlobs() {
+    for (const url of _localBlobUrls)
+      URL.revokeObjectURL(url);
+    _localBlobUrls.clear();
+  }
+
   async function _resolveVfsSrc(src) {
     if (!src) return '';
     if (src.startsWith('/')) {
       try {
-        const result = await SZ.Dlls.User32.SendMessage('sz:vfs:ReadUri', { path: src });
-        return _resolveAssetPath(result.uri);
+        const Kernel32 = SZ.Dlls.Kernel32;
+        const uri = await Kernel32.ReadUri(src);
+        if (!uri) return '';
+        // Non-blob URIs (relative paths, http://, data:) work directly
+        if (!uri.startsWith('blob:'))
+          return _resolveAssetPath(uri);
+        // Blob URLs from parent frame may not be accessible in this iframe
+        // (file:// origin isolation). Re-read as bytes and create a local blob URL.
+        const bytes = await Kernel32.ReadAllBytes(src);
+        const ext = src.split('.').pop().toLowerCase();
+        const mime = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', bmp: 'image/bmp', svg: 'image/svg+xml', webp: 'image/webp', mp4: 'video/mp4', webm: 'video/webm' }[ext] || 'application/octet-stream';
+        const localUrl = URL.createObjectURL(new Blob([bytes], { type: mime }));
+        _localBlobUrls.add(localUrl);
+        return localUrl;
       } catch (e) {
-        console.error('VFS ReadUri error for preview:', e);
+        console.error('VFS read error for preview:', e);
         return '';
       }
     }
@@ -482,13 +505,23 @@
       return;
     }
 
-    // image or slideshow -- show the selected image
+    if (sourceType === 'slideshow') {
+      if (slideshowFolderEl.value)
+        _startSlideshowPreview();
+      else {
+        _stopSlideshowPreview();
+        pvBgImg.style.display = 'none';
+        pvBgImg.src = '';
+      }
+      return;
+    }
+
+    // image -- show the selected image
     let resolvedSrc = '';
     if (selectedBg.src)
       resolvedSrc = await _resolveVfsSrc(selectedBg.src);
 
-    const mode = sourceType === 'slideshow' ? slideshowModeEl.value : bgModeEl.value;
-    _showPreviewImage(resolvedSrc, mode);
+    _showPreviewImage(resolvedSrc, bgModeEl.value);
   }
 
   function _showPreviewImage(resolvedSrc, mode) {
@@ -548,13 +581,1088 @@
     pvBgPattern.style.display = '';
   }
 
+  // -- Slideshow preview engine ---------------------------------------------
+
+  function _shuffleArray(arr) {
+    for (let i = arr.length - 1; i > 0; --i) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+  }
+
+  let _pvSlideshowTimer = null;
+  let _pvSlideshowImages = [];
+  let _pvSlideshowIndex = 0;
+  let _pvSlideshowFront = true; // true = pvBgImg is front
+  let _pvPreloadPromise = null;
+  const _pvSubTimers = new Set();
+  const _pvPendingLaters = [];
+  const _pvPendingRAFs = [];
+
+  // Preload the next slide's image URL and fully decode it before use
+  function _pvPreloadNext() {
+    if (!_pvSlideshowTimer || _pvSlideshowImages.length < 2) return;
+    const nextIdx = (_pvSlideshowIndex + 1) % _pvSlideshowImages.length;
+    _pvPreloadPromise = (async () => {
+      const url = await _resolveVfsSrc(_pvSlideshowImages[nextIdx]);
+      if (!url || !_pvSlideshowTimer) return null;
+      const img = new Image();
+      img.src = url;
+      try { await img.decode(); } catch {}
+      if (!_pvSlideshowTimer) return null;
+      return { url, idx: nextIdx };
+    })();
+  }
+
+  async function _startSlideshowPreview() {
+    _stopSlideshowPreview();
+
+    const folder = slideshowFolderEl.value;
+    if (!folder) return;
+
+    const recursive = chkSlideshowRecursive.checked;
+    const Kernel32 = SZ.Dlls.Kernel32;
+
+    try {
+      const entries = await Kernel32.FindFirstFile(folder, recursive ? Kernel32.SearchOption.BreadthFirst : 0);
+      const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp'];
+      _pvSlideshowImages = entries
+        .filter(name => { const ext = name.split('.').pop().toLowerCase(); return imageExts.includes(ext); })
+        .map(name => folder + '/' + name);
+    } catch (e) {
+      console.warn('[CP] Slideshow preview folder read error:', e);
+      return;
+    }
+
+    if (_pvSlideshowImages.length === 0) {
+      pvBgImg.style.display = 'none';
+      pvBgImgAlt.style.display = 'none';
+      return;
+    }
+
+    // Shuffle before showing the first image so even the starting image is random
+    if (chkSlideshowShuffle.checked)
+      _shuffleArray(_pvSlideshowImages);
+
+    _pvSlideshowIndex = 0;
+    _pvSlideshowFront = true;
+
+    // Show first image (source)
+    const firstSrc = await _resolveVfsSrc(_pvSlideshowImages[0]);
+    const mode = slideshowModeEl.value;
+    _showPreviewImage(firstSrc, mode);
+    pvBgImgAlt.style.display = 'none';
+    pvBgImgAlt.style.opacity = '0';
+
+    // Start preloading the target image immediately
+    _pvPreloadNext();
+
+    // Schedule first tick
+    _pvScheduleTick();
+  }
+
+  function _pvScheduleTick() {
+    _pvSlideshowTimer = setTimeout(() => _pvSlideshowTick(), 3000);
+  }
+
+  async function _pvSlideshowTick() {
+    // 1. Advance index
+    ++_pvSlideshowIndex;
+    if (_pvSlideshowIndex >= _pvSlideshowImages.length) {
+      _pvSlideshowIndex = 0;
+      if (chkSlideshowShuffle.checked)
+        _shuffleArray(_pvSlideshowImages);
+    }
+
+    // 2. Wait for target image to be ready
+    let nextSrc;
+    if (_pvPreloadPromise) {
+      const result = await _pvPreloadPromise;
+      _pvPreloadPromise = null;
+      if (result && result.idx === _pvSlideshowIndex)
+        nextSrc = result.url;
+    }
+    // Fallback: resolve + decode on the spot
+    if (!nextSrc) {
+      nextSrc = await _resolveVfsSrc(_pvSlideshowImages[_pvSlideshowIndex]);
+      if (nextSrc) {
+        const tmp = new Image();
+        tmp.src = nextSrc;
+        try { await tmp.decode(); } catch {}
+      }
+    }
+    if (!_pvSlideshowTimer || !nextSrc) return;
+
+    const front = _pvSlideshowFront ? pvBgImg : pvBgImgAlt;
+    const back = _pvSlideshowFront ? pvBgImgAlt : pvBgImg;
+
+    back.src = nextSrc;
+    try { await back.decode(); } catch {};
+    if (!_pvSlideshowTimer) return;
+
+    back.style.objectFit = slideshowModeEl.value === 'tile' ? 'cover' : (slideshowModeEl.value === 'fill' ? 'fill' : slideshowModeEl.value === 'center' ? 'none' : slideshowModeEl.value);
+    back.style.display = '';
+
+    // 3. Start transition animation (source → target)
+    const duration = parseFloat(slideshowDurationEl.value) || 1;
+    _applyPreviewTransition(front, back);
+
+    // 4. Wait for animation to complete, THEN swap and load next
+    _pvSlideshowTimer = setTimeout(() => {
+      if (!_pvSlideshowTimer) return;
+
+      // Cancel remaining transition callbacks
+      for (const id of _pvPendingLaters) clearTimeout(id);
+      for (const id of _pvPendingRAFs) cancelAnimationFrame(id);
+      _pvPendingLaters.length = 0;
+      _pvPendingRAFs.length = 0;
+      _pvClearAllSubTimers();
+
+      // Reset old source (the element that was animated out)
+      const _r = (el) => { el.style.transition = ''; el.style.clipPath = ''; el.style.filter = ''; el.style.transform = ''; el.style.opacity = ''; el.style.transformOrigin = ''; el.style.zIndex = ''; };
+      _r(front);
+
+      // 5. Swap: target becomes the new source
+      _pvSlideshowFront = !_pvSlideshowFront;
+
+      // 6. Preload next target
+      _pvPreloadNext();
+
+      // 7. Restart interval
+      _pvScheduleTick();
+    }, duration * 1000);
+  }
+
+  // All non-random transition keys for random picker
+  const _ALL_TRANSITIONS = [
+    'fade','cut','fade-black','fade-white','dissolve','crossfade',
+    'push-left','push-right','push-up','push-down',
+    'cover-left','cover-right','cover-up','cover-down',
+    'uncover-left','uncover-right','uncover-up','uncover-down',
+    'wipe-left','wipe-right','wipe-up','wipe-down',
+    'split-horizontal-out','split-horizontal-in','split-vertical-out','split-vertical-in',
+    'reveal-left','reveal-right',
+    'circle-in','circle-out','diamond-in','diamond-out',
+    'clock-cw','clock-ccw','wedge',
+    'blinds-horizontal','blinds-vertical','checkerboard',
+    'comb-horizontal','comb-vertical','pixelate','bars-random',
+    'zoom-in','zoom-out','zoom-rotate','spin-cw','spin-ccw',
+    'flip-horizontal','flip-vertical',
+    'cube-left','cube-right','cube-up','cube-down',
+    'blur','glitch','morph',
+  ];
+
+  function _applyPreviewTransition(front, back) {
+    let transition = slideshowTransitionEl.value || 'fade';
+    const duration = parseFloat(slideshowDurationEl.value) || 1;
+    if (transition === 'random')
+      transition = _ALL_TRANSITIONS[Math.floor(Math.random() * _ALL_TRANSITIONS.length)];
+    _runTransition(front, back, transition, duration);
+  }
+
+  function _pvTrackedInterval(fn, ms) {
+    const id = setInterval(() => fn(id), ms);
+    _pvSubTimers.add(id);
+    return id;
+  }
+
+  function _pvClearSubTimer(id) {
+    clearInterval(id);
+    _pvSubTimers.delete(id);
+  }
+
+  function _pvClearAllSubTimers() {
+    for (const id of _pvSubTimers)
+      clearInterval(id);
+    _pvSubTimers.clear();
+  }
+
+  // Transitions where the front element must be on top (it animates out to reveal back)
+  const _FRONT_ON_TOP = new Set([
+    'uncover-left','uncover-right','uncover-up','uncover-down',
+    'circle-out','diamond-out',
+    'split-horizontal-in','split-vertical-in',
+    'flip-horizontal','flip-vertical',
+    'glitch',
+  ]);
+
+  function _runTransition(front, back, transition, duration) {
+    // Reset any previous clip-path / filter / transform state
+    const _reset = (el) => {
+      el.style.transition = '';
+      el.style.clipPath = '';
+      el.style.filter = '';
+      el.style.transform = '';
+      el.style.opacity = '';
+      el.style.transformOrigin = '';
+      el.style.zIndex = '';
+    };
+    // Cancel pending timers/RAFs from any previous transition
+    for (const id of _pvPendingLaters) clearTimeout(id);
+    for (const id of _pvPendingRAFs) cancelAnimationFrame(id);
+    _pvPendingLaters.length = 0;
+    _pvPendingRAFs.length = 0;
+    for (const id of _pvSubTimers) clearInterval(id);
+    _pvSubTimers.clear();
+    const _later = (fn, ms) => { const id = setTimeout(fn, ms); _pvPendingLaters.push(id); };
+    const _rAF = (fn) => { const id = requestAnimationFrame(fn); _pvPendingRAFs.push(id); };
+    _reset(front);
+    _reset(back);
+
+    // Set z-order: some transitions need front on top (it departs), others need back on top (it arrives)
+    if (_FRONT_ON_TOP.has(transition)) {
+      front.style.zIndex = '1';
+      back.style.zIndex = '0';
+    } else {
+      back.style.zIndex = '1';
+      front.style.zIndex = '0';
+    }
+
+    const d = duration;
+    const ease = 'ease';
+    const easeIO = 'ease-in-out';
+
+    switch (transition) {
+
+      // ── Subtle ───────────────────────────────────────────────────
+      case 'cut':
+        back.style.opacity = '1';
+        front.style.opacity = '0';
+        break;
+
+      case 'fade-black':
+        front.style.transition = `opacity ${d * 0.5}s ${ease}`;
+        front.style.opacity = '0';
+        back.style.opacity = '0';
+        _later(() => {
+          back.style.transition = `opacity ${d * 0.5}s ${ease}`;
+          back.style.opacity = '1';
+        }, d * 500);
+        break;
+
+      case 'fade-white':
+        front.style.transition = `opacity ${d * 0.5}s ${ease}`;
+        front.style.opacity = '0';
+        back.style.opacity = '0';
+        back.style.filter = 'brightness(5)';
+        _later(() => {
+          back.style.transition = `opacity ${d * 0.4}s ${ease}, filter ${d * 0.6}s ${ease}`;
+          back.style.opacity = '1';
+          back.style.filter = 'brightness(1)';
+        }, d * 400);
+        break;
+
+      case 'dissolve':
+        back.style.opacity = '0';
+        _rAF(() => {
+          back.style.transition = `opacity ${d * 1.5}s ${ease}`;
+          back.style.opacity = '1';
+          front.style.transition = `opacity ${d * 1.5}s ${ease}`;
+          front.style.opacity = '0';
+        });
+        break;
+
+      case 'crossfade':
+        back.style.opacity = '0';
+        _rAF(() => {
+          back.style.transition = `opacity ${d}s linear`;
+          back.style.opacity = '1';
+          front.style.transition = `opacity ${d}s linear`;
+          front.style.opacity = '0';
+        });
+        break;
+
+      // ── Push ─────────────────────────────────────────────────────
+      case 'push-left':
+        back.style.opacity = '1';
+        back.style.transform = 'translateX(100%)';
+        _rAF(() => {
+          const t = `transform ${d}s ${easeIO}`;
+          front.style.transition = t;
+          back.style.transition = t;
+          front.style.transform = 'translateX(-100%)';
+          back.style.transform = 'translateX(0)';
+          _later(() => { front.style.opacity = '0'; _reset(front); }, d * 1000);
+        });
+        break;
+      case 'push-right':
+        back.style.opacity = '1';
+        back.style.transform = 'translateX(-100%)';
+        _rAF(() => {
+          const t = `transform ${d}s ${easeIO}`;
+          front.style.transition = t;
+          back.style.transition = t;
+          front.style.transform = 'translateX(100%)';
+          back.style.transform = 'translateX(0)';
+          _later(() => { front.style.opacity = '0'; _reset(front); }, d * 1000);
+        });
+        break;
+      case 'push-up':
+        back.style.opacity = '1';
+        back.style.transform = 'translateY(100%)';
+        _rAF(() => {
+          const t = `transform ${d}s ${easeIO}`;
+          front.style.transition = t;
+          back.style.transition = t;
+          front.style.transform = 'translateY(-100%)';
+          back.style.transform = 'translateY(0)';
+          _later(() => { front.style.opacity = '0'; _reset(front); }, d * 1000);
+        });
+        break;
+      case 'push-down':
+        back.style.opacity = '1';
+        back.style.transform = 'translateY(-100%)';
+        _rAF(() => {
+          const t = `transform ${d}s ${easeIO}`;
+          front.style.transition = t;
+          back.style.transition = t;
+          front.style.transform = 'translateY(100%)';
+          back.style.transform = 'translateY(0)';
+          _later(() => { front.style.opacity = '0'; _reset(front); }, d * 1000);
+        });
+        break;
+
+      // ── Cover (new slides over old) ──────────────────────────────
+      case 'cover-left':
+        back.style.opacity = '1';
+        back.style.transform = 'translateX(100%)';
+        _rAF(() => {
+          back.style.transition = `transform ${d}s ${easeIO}`;
+          back.style.transform = 'translateX(0)';
+          _later(() => { front.style.opacity = '0'; }, d * 1000);
+        });
+        break;
+      case 'cover-right':
+        back.style.opacity = '1';
+        back.style.transform = 'translateX(-100%)';
+        _rAF(() => {
+          back.style.transition = `transform ${d}s ${easeIO}`;
+          back.style.transform = 'translateX(0)';
+          _later(() => { front.style.opacity = '0'; }, d * 1000);
+        });
+        break;
+      case 'cover-up':
+        back.style.opacity = '1';
+        back.style.transform = 'translateY(100%)';
+        _rAF(() => {
+          back.style.transition = `transform ${d}s ${easeIO}`;
+          back.style.transform = 'translateY(0)';
+          _later(() => { front.style.opacity = '0'; }, d * 1000);
+        });
+        break;
+      case 'cover-down':
+        back.style.opacity = '1';
+        back.style.transform = 'translateY(-100%)';
+        _rAF(() => {
+          back.style.transition = `transform ${d}s ${easeIO}`;
+          back.style.transform = 'translateY(0)';
+          _later(() => { front.style.opacity = '0'; }, d * 1000);
+        });
+        break;
+
+      // ── Uncover (old slides away revealing new) ──────────────────
+      case 'uncover-left':
+        back.style.opacity = '1';
+        _rAF(() => {
+          front.style.transition = `transform ${d}s ${easeIO}`;
+          front.style.transform = 'translateX(-100%)';
+          _later(() => { front.style.opacity = '0'; _reset(front); }, d * 1000);
+        });
+        break;
+      case 'uncover-right':
+        back.style.opacity = '1';
+        _rAF(() => {
+          front.style.transition = `transform ${d}s ${easeIO}`;
+          front.style.transform = 'translateX(100%)';
+          _later(() => { front.style.opacity = '0'; _reset(front); }, d * 1000);
+        });
+        break;
+      case 'uncover-up':
+        back.style.opacity = '1';
+        _rAF(() => {
+          front.style.transition = `transform ${d}s ${easeIO}`;
+          front.style.transform = 'translateY(-100%)';
+          _later(() => { front.style.opacity = '0'; _reset(front); }, d * 1000);
+        });
+        break;
+      case 'uncover-down':
+        back.style.opacity = '1';
+        _rAF(() => {
+          front.style.transition = `transform ${d}s ${easeIO}`;
+          front.style.transform = 'translateY(100%)';
+          _later(() => { front.style.opacity = '0'; _reset(front); }, d * 1000);
+        });
+        break;
+
+      // ── Wipe (clip-path reveal) ──────────────────────────────────
+      case 'wipe-left':
+        back.style.opacity = '1';
+        back.style.clipPath = 'inset(0 100% 0 0)';
+        _rAF(() => {
+          back.style.transition = `clip-path ${d}s ${easeIO}`;
+          back.style.clipPath = 'inset(0 0 0 0)';
+          _later(() => { front.style.opacity = '0'; }, d * 1000);
+        });
+        break;
+      case 'wipe-right':
+        back.style.opacity = '1';
+        back.style.clipPath = 'inset(0 0 0 100%)';
+        _rAF(() => {
+          back.style.transition = `clip-path ${d}s ${easeIO}`;
+          back.style.clipPath = 'inset(0 0 0 0)';
+          _later(() => { front.style.opacity = '0'; }, d * 1000);
+        });
+        break;
+      case 'wipe-up':
+        back.style.opacity = '1';
+        back.style.clipPath = 'inset(100% 0 0 0)';
+        _rAF(() => {
+          back.style.transition = `clip-path ${d}s ${easeIO}`;
+          back.style.clipPath = 'inset(0 0 0 0)';
+          _later(() => { front.style.opacity = '0'; }, d * 1000);
+        });
+        break;
+      case 'wipe-down':
+        back.style.opacity = '1';
+        back.style.clipPath = 'inset(0 0 100% 0)';
+        _rAF(() => {
+          back.style.transition = `clip-path ${d}s ${easeIO}`;
+          back.style.clipPath = 'inset(0 0 0 0)';
+          _later(() => { front.style.opacity = '0'; }, d * 1000);
+        });
+        break;
+
+      // ── Split ────────────────────────────────────────────────────
+      case 'split-horizontal-out':
+        back.style.opacity = '1';
+        back.style.clipPath = 'inset(50% 0 50% 0)';
+        _rAF(() => {
+          back.style.transition = `clip-path ${d}s ${easeIO}`;
+          back.style.clipPath = 'inset(0 0 0 0)';
+          _later(() => { front.style.opacity = '0'; }, d * 1000);
+        });
+        break;
+      case 'split-horizontal-in':
+        back.style.opacity = '1';
+        front.style.clipPath = 'inset(0 0 0 0)';
+        _rAF(() => {
+          front.style.transition = `clip-path ${d}s ${easeIO}`;
+          front.style.clipPath = 'inset(50% 0 50% 0)';
+          _later(() => { front.style.opacity = '0'; front.style.clipPath = ''; }, d * 1000);
+        });
+        break;
+      case 'split-vertical-out':
+        back.style.opacity = '1';
+        back.style.clipPath = 'inset(0 50% 0 50%)';
+        _rAF(() => {
+          back.style.transition = `clip-path ${d}s ${easeIO}`;
+          back.style.clipPath = 'inset(0 0 0 0)';
+          _later(() => { front.style.opacity = '0'; }, d * 1000);
+        });
+        break;
+      case 'split-vertical-in':
+        back.style.opacity = '1';
+        front.style.clipPath = 'inset(0 0 0 0)';
+        _rAF(() => {
+          front.style.transition = `clip-path ${d}s ${easeIO}`;
+          front.style.clipPath = 'inset(0 50% 0 50%)';
+          _later(() => { front.style.opacity = '0'; front.style.clipPath = ''; }, d * 1000);
+        });
+        break;
+
+      // ── Reveal (wipe + slide) ────────────────────────────────────
+      case 'reveal-left':
+        back.style.opacity = '1';
+        back.style.clipPath = 'inset(0 100% 0 0)';
+        _rAF(() => {
+          back.style.transition = `clip-path ${d}s ${easeIO}`;
+          front.style.transition = `transform ${d}s ${easeIO}`;
+          back.style.clipPath = 'inset(0 0 0 0)';
+          front.style.transform = 'translateX(-100%)';
+          _later(() => { front.style.opacity = '0'; _reset(front); }, d * 1000);
+        });
+        break;
+      case 'reveal-right':
+        back.style.opacity = '1';
+        back.style.clipPath = 'inset(0 0 0 100%)';
+        _rAF(() => {
+          back.style.transition = `clip-path ${d}s ${easeIO}`;
+          front.style.transition = `transform ${d}s ${easeIO}`;
+          back.style.clipPath = 'inset(0 0 0 0)';
+          front.style.transform = 'translateX(100%)';
+          _later(() => { front.style.opacity = '0'; _reset(front); }, d * 1000);
+        });
+        break;
+
+      // ── Shape (clip-path polygons & circles) ─────────────────────
+      case 'circle-in':
+        back.style.opacity = '1';
+        back.style.clipPath = 'circle(0% at 50% 50%)';
+        _rAF(() => {
+          back.style.transition = `clip-path ${d}s ${easeIO}`;
+          back.style.clipPath = 'circle(75% at 50% 50%)';
+          _later(() => { front.style.opacity = '0'; }, d * 1000);
+        });
+        break;
+      case 'circle-out':
+        back.style.opacity = '1';
+        front.style.clipPath = 'circle(75% at 50% 50%)';
+        _rAF(() => {
+          front.style.transition = `clip-path ${d}s ${easeIO}`;
+          front.style.clipPath = 'circle(0% at 50% 50%)';
+          _later(() => { front.style.opacity = '0'; front.style.clipPath = ''; }, d * 1000);
+        });
+        break;
+      case 'diamond-in':
+        back.style.opacity = '1';
+        back.style.clipPath = 'polygon(50% 50%, 50% 50%, 50% 50%, 50% 50%)';
+        _rAF(() => {
+          back.style.transition = `clip-path ${d}s ${easeIO}`;
+          back.style.clipPath = 'polygon(50% -50%, 150% 50%, 50% 150%, -50% 50%)';
+          _later(() => { front.style.opacity = '0'; }, d * 1000);
+        });
+        break;
+      case 'diamond-out':
+        back.style.opacity = '1';
+        front.style.clipPath = 'polygon(50% -50%, 150% 50%, 50% 150%, -50% 50%)';
+        _rAF(() => {
+          front.style.transition = `clip-path ${d}s ${easeIO}`;
+          front.style.clipPath = 'polygon(50% 50%, 50% 50%, 50% 50%, 50% 50%)';
+          _later(() => { front.style.opacity = '0'; front.style.clipPath = ''; }, d * 1000);
+        });
+        break;
+
+      // ── Clock / Wedge (animated via JS keyframes) ────────────────
+      case 'clock-cw':
+      case 'clock-ccw':
+      case 'wedge': {
+        back.style.opacity = '1';
+        const ccw = transition === 'clock-ccw';
+        const isWedge = transition === 'wedge';
+        const steps = 60;
+        const stepTime = (d * 1000) / steps;
+        let step = 0;
+        _pvTrackedInterval((clockTimer) => {
+          ++step;
+          const progress = step / steps;
+          if (isWedge) {
+            const angle = progress * 180;
+            back.style.clipPath = `polygon(50% 50%, ${50 + _clockX(angle)}% ${50 + _clockY(angle)}%, 50% 0%, ${50 + _clockX(-angle)}% ${50 + _clockY(-angle)}%)`;
+            if (progress > 0.5)
+              back.style.clipPath = `polygon(50% 50%, ${50 + _clockX(angle)}% ${50 + _clockY(angle)}%, ${50 + _clockX(angle - 30)}% ${50 + _clockY(angle - 30)}%, 50% 0%, ${50 + _clockX(-angle + 30)}% ${50 + _clockY(-angle + 30)}%, ${50 + _clockX(-angle)}% ${50 + _clockY(-angle)}%)`;
+          } else {
+            const angle = (ccw ? -1 : 1) * progress * 360;
+            const pts = _clockPolygon(angle, ccw);
+            back.style.clipPath = `polygon(${pts})`;
+          }
+          if (step >= steps) {
+            _pvClearSubTimer(clockTimer);
+            back.style.clipPath = '';
+            front.style.opacity = '0';
+          }
+        }, stepTime);
+        break;
+      }
+
+      // ── Blinds ───────────────────────────────────────────────────
+      case 'blinds-horizontal': {
+        back.style.opacity = '1';
+        const n = 8;
+        const h = 100 / n;
+        back.style.clipPath = _blindsClip(n, true, 0);
+        _rAF(() => {
+          const steps = 30;
+          const stepTime = (d * 1000) / steps;
+          let step = 0;
+          _pvTrackedInterval((timer) => {
+            ++step;
+            back.style.clipPath = _blindsClip(n, true, step / steps);
+            if (step >= steps) {
+              _pvClearSubTimer(timer);
+              back.style.clipPath = '';
+              front.style.opacity = '0';
+            }
+          }, stepTime);
+        });
+        break;
+      }
+      case 'blinds-vertical': {
+        back.style.opacity = '1';
+        back.style.clipPath = _blindsClip(10, false, 0);
+        _rAF(() => {
+          const steps = 30;
+          const stepTime = (d * 1000) / steps;
+          let step = 0;
+          _pvTrackedInterval((timer) => {
+            ++step;
+            back.style.clipPath = _blindsClip(10, false, step / steps);
+            if (step >= steps) {
+              _pvClearSubTimer(timer);
+              back.style.clipPath = '';
+              front.style.opacity = '0';
+            }
+          }, stepTime);
+        });
+        break;
+      }
+
+      // ── Checkerboard ─────────────────────────────────────────────
+      case 'checkerboard': {
+        back.style.opacity = '1';
+        const cols = 8, rows = 6;
+        const cells = [];
+        for (let r = 0; r < rows; ++r)
+          for (let c = 0; c < cols; ++c)
+            cells.push({ r, c, delay: ((r + c) % 2) * 0.3 + Math.random() * 0.4 });
+        cells.sort((a, b) => a.delay - b.delay);
+        const cw = 100 / cols, ch = 100 / rows;
+        const revealed = new Set();
+        const steps = 20;
+        const stepTime = (d * 1000) / steps;
+        let step = 0;
+        _pvTrackedInterval((timer) => {
+          ++step;
+          const progress = step / steps;
+          for (const cell of cells)
+            if (progress >= cell.delay / 1.1 && !revealed.has(`${cell.r},${cell.c}`))
+              revealed.add(`${cell.r},${cell.c}`);
+          back.style.clipPath = _checkerClip(cols, rows, cw, ch, revealed);
+          if (step >= steps) {
+            _pvClearSubTimer(timer);
+            back.style.clipPath = '';
+            front.style.opacity = '0';
+          }
+        }, stepTime);
+        break;
+      }
+
+      // ── Comb ─────────────────────────────────────────────────────
+      case 'comb-horizontal': {
+        back.style.opacity = '1';
+        const n = 10;
+        const stepTime = (d * 1000) / 30;
+        let step = 0;
+        _pvTrackedInterval((timer) => {
+          ++step;
+          const p = step / 30;
+          back.style.clipPath = _combClip(n, true, p);
+          if (step >= 30) {
+            _pvClearSubTimer(timer);
+            back.style.clipPath = '';
+            front.style.opacity = '0';
+          }
+        }, stepTime);
+        break;
+      }
+      case 'comb-vertical': {
+        back.style.opacity = '1';
+        const n = 8;
+        const stepTime = (d * 1000) / 30;
+        let step = 0;
+        _pvTrackedInterval((timer) => {
+          ++step;
+          const p = step / 30;
+          back.style.clipPath = _combClip(n, false, p);
+          if (step >= 30) {
+            _pvClearSubTimer(timer);
+            back.style.clipPath = '';
+            front.style.opacity = '0';
+          }
+        }, stepTime);
+        break;
+      }
+
+      // ── Pixelate ─────────────────────────────────────────────────
+      case 'pixelate':
+        back.style.opacity = '0'; back.style.filter = 'blur(20px)'; front.style.filter = 'blur(0px)';
+        _rAF(() => {
+          front.style.transition = `filter ${d * 0.4}s ${ease}`;
+          front.style.filter = 'blur(20px)';
+          _later(() => {
+            front.style.transition = `opacity ${d * 0.2}s ${ease}`;
+            front.style.opacity = '0';
+            back.style.transition = `opacity ${d * 0.2}s ${ease}`;
+            back.style.opacity = '1';
+            _later(() => {
+              back.style.transition = `filter ${d * 0.4}s ${ease}`;
+              back.style.filter = 'blur(0px)';
+            }, d * 200);
+          }, d * 400);
+        });
+        break;
+
+      // ── Random Bars ──────────────────────────────────────────────
+      case 'bars-random': {
+        back.style.opacity = '1';
+        const n = 20;
+        const order = Array.from({ length: n }, (_, i) => i);
+        for (let i = n - 1; i > 0; --i) { const j = Math.floor(Math.random() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
+        const bw = 100 / n;
+        const revealed = new Set();
+        const steps = n;
+        const stepTime = (d * 1000) / steps;
+        let step = 0;
+        _pvTrackedInterval((timer) => {
+          revealed.add(order[step]);
+          ++step;
+          const rects = [];
+          for (const idx of revealed) {
+            const x = idx * bw;
+            rects.push(`${x}% 0%, ${x + bw}% 0%, ${x + bw}% 100%, ${x}% 100%`);
+          }
+          back.style.clipPath = rects.length ? `polygon(evenodd, ${rects.join(', ')})` : '';
+          if (step >= steps) {
+            _pvClearSubTimer(timer);
+            back.style.clipPath = '';
+            front.style.opacity = '0';
+          }
+        }, stepTime);
+        break;
+      }
+
+      // ── Zoom & Spin ──────────────────────────────────────────────
+      case 'zoom-in':
+        back.style.opacity = '0';
+        back.style.transform = 'scale(1.5)';
+        _rAF(() => {
+          back.style.transition = `opacity ${d}s ${ease}, transform ${d}s ${ease}`;
+          back.style.opacity = '1';
+          back.style.transform = 'scale(1)';
+          front.style.transition = `opacity ${d}s ${ease}`;
+          front.style.opacity = '0';
+        });
+        break;
+      case 'zoom-out':
+        back.style.opacity = '0';
+        back.style.transform = 'scale(0.5)';
+        _rAF(() => {
+          back.style.transition = `opacity ${d}s ${ease}, transform ${d}s ${ease}`;
+          back.style.opacity = '1';
+          back.style.transform = 'scale(1)';
+          front.style.transition = `opacity ${d * 0.8}s ${ease}, transform ${d}s ${ease}`;
+          front.style.opacity = '0';
+          front.style.transform = 'scale(1.5)';
+          _later(() => _reset(front), d * 1000);
+        });
+        break;
+      case 'zoom-rotate':
+        back.style.opacity = '0';
+        back.style.transform = 'scale(0.3) rotate(90deg)';
+        _rAF(() => {
+          back.style.transition = `opacity ${d}s ${ease}, transform ${d}s ${ease}`;
+          back.style.opacity = '1';
+          back.style.transform = 'scale(1) rotate(0deg)';
+          front.style.transition = `opacity ${d * 0.7}s ${ease}, transform ${d}s ${ease}`;
+          front.style.opacity = '0';
+          front.style.transform = 'scale(2) rotate(-45deg)';
+          _later(() => _reset(front), d * 1000);
+        });
+        break;
+      case 'spin-cw':
+        back.style.opacity = '0';
+        back.style.transform = 'rotate(-180deg) scale(0.5)';
+        _rAF(() => {
+          back.style.transition = `opacity ${d}s ${ease}, transform ${d}s ${easeIO}`;
+          back.style.opacity = '1';
+          back.style.transform = 'rotate(0deg) scale(1)';
+          front.style.transition = `opacity ${d * 0.6}s ${ease}`;
+          front.style.opacity = '0';
+        });
+        break;
+      case 'spin-ccw':
+        back.style.opacity = '0';
+        back.style.transform = 'rotate(180deg) scale(0.5)';
+        _rAF(() => {
+          back.style.transition = `opacity ${d}s ${ease}, transform ${d}s ${easeIO}`;
+          back.style.opacity = '1';
+          back.style.transform = 'rotate(0deg) scale(1)';
+          front.style.transition = `opacity ${d * 0.6}s ${ease}`;
+          front.style.opacity = '0';
+        });
+        break;
+
+      // ── 3D-like (perspective transforms) ─────────────────────────
+      case 'flip-horizontal':
+        back.style.opacity = '0';
+        front.style.transformOrigin = '50% 50%';
+        back.style.transformOrigin = '50% 50%';
+        _rAF(() => {
+          front.style.transition = `transform ${d * 0.5}s ${ease}, opacity ${d * 0.5}s ${ease}`;
+          front.style.transform = 'perspective(800px) rotateY(90deg)';
+          front.style.opacity = '0';
+          _later(() => {
+            back.style.transform = 'perspective(800px) rotateY(-90deg)';
+            back.style.opacity = '1';
+            back.style.transition = `transform ${d * 0.5}s ${ease}`;
+            _rAF(() => { back.style.transform = 'perspective(800px) rotateY(0deg)'; });
+          }, d * 500);
+        });
+        break;
+      case 'flip-vertical':
+        back.style.opacity = '0';
+        front.style.transformOrigin = '50% 50%';
+        back.style.transformOrigin = '50% 50%';
+        _rAF(() => {
+          front.style.transition = `transform ${d * 0.5}s ${ease}, opacity ${d * 0.5}s ${ease}`;
+          front.style.transform = 'perspective(800px) rotateX(-90deg)';
+          front.style.opacity = '0';
+          _later(() => {
+            back.style.transform = 'perspective(800px) rotateX(90deg)';
+            back.style.opacity = '1';
+            back.style.transition = `transform ${d * 0.5}s ${ease}`;
+            _rAF(() => { back.style.transform = 'perspective(800px) rotateX(0deg)'; });
+          }, d * 500);
+        });
+        break;
+      case 'cube-left':
+        back.style.opacity = '0';
+        front.style.transformOrigin = '100% 50%';
+        _rAF(() => {
+          front.style.transition = `transform ${d * 0.5}s ${easeIO}`;
+          front.style.transform = 'perspective(800px) rotateY(90deg)';
+          _later(() => {
+            front.style.opacity = '0';
+            back.style.transformOrigin = '0% 50%';
+            back.style.transform = 'perspective(800px) rotateY(-90deg)';
+            back.style.opacity = '1';
+            back.style.transition = `transform ${d * 0.5}s ${easeIO}`;
+            _rAF(() => { back.style.transform = 'perspective(800px) rotateY(0deg)'; });
+          }, d * 500);
+        });
+        break;
+      case 'cube-right':
+        back.style.opacity = '0';
+        front.style.transformOrigin = '0% 50%';
+        _rAF(() => {
+          front.style.transition = `transform ${d * 0.5}s ${easeIO}`;
+          front.style.transform = 'perspective(800px) rotateY(-90deg)';
+          _later(() => {
+            front.style.opacity = '0';
+            back.style.transformOrigin = '100% 50%';
+            back.style.transform = 'perspective(800px) rotateY(90deg)';
+            back.style.opacity = '1';
+            back.style.transition = `transform ${d * 0.5}s ${easeIO}`;
+            _rAF(() => { back.style.transform = 'perspective(800px) rotateY(0deg)'; });
+          }, d * 500);
+        });
+        break;
+      case 'cube-up':
+        back.style.opacity = '0';
+        front.style.transformOrigin = '50% 100%';
+        _rAF(() => {
+          front.style.transition = `transform ${d * 0.5}s ${easeIO}`;
+          front.style.transform = 'perspective(800px) rotateX(-90deg)';
+          _later(() => {
+            front.style.opacity = '0';
+            back.style.transformOrigin = '50% 0%';
+            back.style.transform = 'perspective(800px) rotateX(90deg)';
+            back.style.opacity = '1';
+            back.style.transition = `transform ${d * 0.5}s ${easeIO}`;
+            _rAF(() => { back.style.transform = 'perspective(800px) rotateX(0deg)'; });
+          }, d * 500);
+        });
+        break;
+      case 'cube-down':
+        back.style.opacity = '0';
+        front.style.transformOrigin = '50% 0%';
+        _rAF(() => {
+          front.style.transition = `transform ${d * 0.5}s ${easeIO}`;
+          front.style.transform = 'perspective(800px) rotateX(90deg)';
+          _later(() => {
+            front.style.opacity = '0';
+            back.style.transformOrigin = '50% 100%';
+            back.style.transform = 'perspective(800px) rotateX(-90deg)';
+            back.style.opacity = '1';
+            back.style.transition = `transform ${d * 0.5}s ${easeIO}`;
+            _rAF(() => { back.style.transform = 'perspective(800px) rotateX(0deg)'; });
+          }, d * 500);
+        });
+        break;
+
+      // ── Effects ──────────────────────────────────────────────────
+      case 'blur':
+        back.style.opacity = '0'; back.style.filter = 'blur(30px)'; front.style.filter = 'blur(0px)';
+        _rAF(() => {
+          front.style.transition = `filter ${d * 0.4}s ${ease}`;
+          front.style.filter = 'blur(30px)';
+          _later(() => {
+            front.style.transition = `opacity ${d * 0.2}s ${ease}`;
+            front.style.opacity = '0';
+            back.style.transition = `opacity ${d * 0.2}s ${ease}`;
+            back.style.opacity = '1';
+            _later(() => {
+              back.style.transition = `filter ${d * 0.4}s ${ease}`;
+              back.style.filter = 'blur(0px)';
+            }, d * 200);
+          }, d * 400);
+        });
+        break;
+      case 'glitch': {
+        back.style.opacity = '1';
+        const steps = 12;
+        const stepTime = (d * 1000) / steps;
+        let step = 0;
+        _pvTrackedInterval((timer) => {
+          ++step;
+          const rx = (Math.random() - 0.5) * 10;
+          const ry = (Math.random() - 0.5) * 6;
+          const skew = (Math.random() - 0.5) * 5;
+          const show = Math.random() > step / steps;
+          front.style.transform = `translate(${rx}px, ${ry}px) skewX(${skew}deg)`;
+          front.style.opacity = show ? '1' : '0';
+          front.style.filter = show ? `hue-rotate(${Math.random() * 90}deg) saturate(${1 + Math.random() * 2})` : '';
+          if (step >= steps) {
+            _pvClearSubTimer(timer);
+            front.style.opacity = '0';
+            _reset(front);
+          }
+        }, stepTime);
+        break;
+      }
+      case 'morph':
+        back.style.opacity = '0';
+        back.style.transform = 'scale(1.1)';
+        back.style.filter = 'blur(10px) brightness(1.2)';
+        _rAF(() => {
+          const t = `opacity ${d}s ${ease}, transform ${d}s ${ease}, filter ${d}s ${ease}`;
+          front.style.transition = t;
+          front.style.opacity = '0';
+          front.style.transform = 'scale(0.95)';
+          front.style.filter = 'blur(10px) brightness(1.2)';
+          back.style.transition = t;
+          back.style.opacity = '1';
+          back.style.transform = 'scale(1)';
+          back.style.filter = 'blur(0px) brightness(1)';
+          _later(() => _reset(front), d * 1000);
+        });
+        break;
+
+      // ── Default / fade ───────────────────────────────────────────
+      case 'fade':
+      default:
+        back.style.opacity = '0';
+        _rAF(() => {
+          back.style.transition = `opacity ${d}s ${ease}`;
+          back.style.opacity = '1';
+          front.style.transition = `opacity ${d}s ${ease}`;
+          front.style.opacity = '0';
+        });
+        break;
+    }
+  }
+
+  // ── Transition helper functions ──────────────────────────────────
+
+  function _clockX(angleDeg) {
+    return Math.sin(angleDeg * Math.PI / 180) * 75;
+  }
+
+  function _clockY(angleDeg) {
+    return -Math.cos(angleDeg * Math.PI / 180) * 75;
+  }
+
+  function _clockPolygon(angle, ccw) {
+    const pts = ['50% 50%', '50% 0%'];
+    const a = ccw ? -angle : angle;
+    const absA = Math.abs(a);
+    if (absA > 45) pts.push(ccw ? '0% 0%' : '100% 0%');
+    if (absA > 135) pts.push(ccw ? '0% 100%' : '100% 100%');
+    if (absA > 225) pts.push(ccw ? '100% 100%' : '0% 100%');
+    if (absA > 315) pts.push(ccw ? '100% 0%' : '0% 0%');
+    const ex = 50 + _clockX(a);
+    const ey = 50 + _clockY(a);
+    pts.push(`${ex}% ${ey}%`);
+    return pts.join(', ');
+  }
+
+  function _blindsClip(n, horizontal, progress) {
+    const rects = [];
+    const size = 100 / n;
+    for (let i = 0; i < n; ++i) {
+      const start = i * size;
+      const revealed = size * progress;
+      if (horizontal)
+        rects.push(`${0}% ${start}%, ${100}% ${start}%, ${100}% ${start + revealed}%, ${0}% ${start + revealed}%`);
+      else
+        rects.push(`${start}% ${0}%, ${start + revealed}% ${0}%, ${start + revealed}% ${100}%, ${start}% ${100}%`);
+    }
+    return `polygon(evenodd, ${rects.join(', ')})`;
+  }
+
+  function _checkerClip(cols, rows, cw, ch, revealed) {
+    if (revealed.size === 0) return 'polygon(0 0, 0 0, 0 0)';
+    const rects = [];
+    for (const key of revealed) {
+      const [r, c] = key.split(',').map(Number);
+      const x = c * cw, y = r * ch;
+      rects.push(`${x}% ${y}%, ${x + cw}% ${y}%, ${x + cw}% ${y + ch}%, ${x}% ${y + ch}%`);
+    }
+    return `polygon(evenodd, ${rects.join(', ')})`;
+  }
+
+  function _combClip(n, horizontal, progress) {
+    const rects = [];
+    const size = 100 / n;
+    for (let i = 0; i < n; ++i) {
+      const start = i * size;
+      const fromLeft = i % 2 === 0;
+      if (horizontal) {
+        const revealed = 100 * progress;
+        const x0 = fromLeft ? 0 : 100 - revealed;
+        const x1 = fromLeft ? revealed : 100;
+        rects.push(`${x0}% ${start}%, ${x1}% ${start}%, ${x1}% ${start + size}%, ${x0}% ${start + size}%`);
+      } else {
+        const revealed = 100 * progress;
+        const y0 = fromLeft ? 0 : 100 - revealed;
+        const y1 = fromLeft ? revealed : 100;
+        rects.push(`${start}% ${y0}%, ${start + size}% ${y0}%, ${start + size}% ${y1}%, ${start}% ${y1}%`);
+      }
+    }
+    return `polygon(evenodd, ${rects.join(', ')})`;
+  }
+
+  function _stopSlideshowPreview() {
+    // Cancel pending transition timers/RAFs
+    for (const id of _pvPendingLaters) clearTimeout(id);
+    for (const id of _pvPendingRAFs) cancelAnimationFrame(id);
+    _pvPendingLaters.length = 0;
+    _pvPendingRAFs.length = 0;
+    if (_pvSlideshowTimer) {
+      clearTimeout(_pvSlideshowTimer);
+      _pvSlideshowTimer = null;
+    }
+    _pvClearAllSubTimers();
+    _pvSlideshowImages = [];
+    _pvPreloadPromise = null;
+    _revokeLocalBlobs();
+    for (const el of [pvBgImg, pvBgImgAlt]) {
+      el.style.transition = '';
+      el.style.transform = '';
+      el.style.clipPath = '';
+      el.style.filter = '';
+      el.style.opacity = '';
+      el.style.transformOrigin = '';
+      el.style.zIndex = '';
+    }
+    pvBgImgAlt.style.display = 'none';
+    pvBgImgAlt.src = '';
+  }
+
   // Source type switching via subtabs
   function _switchBgSource(type) {
     bgSourceTypeEl.value = type;
     for (const panel of document.querySelectorAll('.source-panel'))
       panel.classList.toggle('active', panel.id === 'source-' + type);
-    for (const st of document.querySelectorAll('.bg-subtabs .subtab'))
-      st.classList.toggle('active', st.dataset.bgtab === type);
+    for (const st of document.querySelectorAll('.bg-subtabs .subtab')) {
+      const isActive = st.dataset.bgtab === type;
+      st.classList.toggle('active', isActive);
+      const chk = st.querySelector('.bg-source-chk');
+      if (chk) chk.checked = isActive;
+    }
+
+    if (selectedBg.sourceType === 'slideshow' && type !== 'slideshow')
+      _stopSlideshowPreview();
+
     selectedBg.sourceType = type;
 
     if (type === 'online') {
@@ -577,11 +1685,49 @@
     dirty = true;
   });
 
-  // Base color picker
-  bgBaseColorEl.addEventListener('input', () => {
-    selectedBg.baseColor = bgBaseColorEl.value;
+  // Base color picker — launches color-picker app
+  let colorPickerRequest = null;
+
+  function updateBgColorSwatch() {
+    bgColorSwatch.style.backgroundColor = bgBaseColorEl.value || '#3A6EA5';
+  }
+  updateBgColorSwatch();
+
+  function setBgBaseColor(hex) {
+    bgBaseColorEl.value = hex;
+    selectedBg.baseColor = hex;
+    updateBgColorSwatch();
     updateBgPreview();
     dirty = true;
+  }
+
+  bgColorSwatch.addEventListener('click', () => {
+    const returnKey = 'sz:control-panel:colorpick:' + Date.now() + ':' + Math.random().toString(36).slice(2);
+    colorPickerRequest = { returnKey };
+    try {
+      SZ.Dlls.User32.PostMessage('sz:launchApp', {
+        appId: 'color-picker',
+        urlParams: { returnKey, hex: bgBaseColorEl.value || '#3A6EA5' }
+      });
+    } catch (_) {
+      colorPickerRequest = null;
+    }
+  });
+
+  window.addEventListener('storage', (e) => {
+    if (!colorPickerRequest || !e || e.key !== colorPickerRequest.returnKey || !e.newValue)
+      return;
+    let payload = null;
+    try { payload = JSON.parse(e.newValue); } catch { return; }
+    if (!payload || payload.type !== 'color-picker-result')
+      return;
+    const r = Math.max(0, Math.min(255, payload.r || 0));
+    const g = Math.max(0, Math.min(255, payload.g || 0));
+    const b = Math.max(0, Math.min(255, payload.b || 0));
+    const hex = '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+    setBgBaseColor(hex);
+    try { localStorage.removeItem(colorPickerRequest.returnKey); } catch {}
+    colorPickerRequest = null;
   });
 
   // Pattern checkbox
@@ -783,20 +1929,31 @@
     dirty = true;
   });
 
+  slideshowTransitionEl.addEventListener('change', () => {
+    if (bgSourceTypeEl.value === 'slideshow' && slideshowFolderEl.value)
+      _startSlideshowPreview();
+    dirty = true;
+  });
+
+  slideshowModeEl.addEventListener('change', () => {
+    if (bgSourceTypeEl.value === 'slideshow' && slideshowFolderEl.value)
+      _startSlideshowPreview();
+    dirty = true;
+  });
+
+  chkSlideshowRecursive.addEventListener('change', () => {
+    if (bgSourceTypeEl.value === 'slideshow' && slideshowFolderEl.value)
+      _startSlideshowPreview();
+    dirty = true;
+  });
+
   document.getElementById('btn-slideshow-browse')?.addEventListener('click', async () => {
-    try {
-      const result = await SZ.Dlls.User32.SendMessage('sz:fileOpen', { folderMode: true, title: 'Select Slideshow Folder' });
-      if (result && result.path) {
-        slideshowFolderEl.value = result.path;
-        dirty = true;
-      }
-    } catch {
-      // Fallback: use text input
-      const folder = prompt('Enter VFS folder path (e.g. /user/pictures):');
-      if (folder) {
-        slideshowFolderEl.value = folder;
-        dirty = true;
-      }
+    const result = await SZ.Dlls.ComDlg32.BrowseForFolder({ title: 'Select Slideshow Folder' });
+    if (result && !result.cancelled && result.path) {
+      slideshowFolderEl.value = result.path;
+      if (bgSourceTypeEl.value === 'slideshow')
+        _startSlideshowPreview();
+      dirty = true;
     }
   });
 
@@ -807,22 +1964,19 @@
     dirty = true;
   });
 
-  document.getElementById('btn-video-browse')?.addEventListener('click', () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'video/*';
-    input.addEventListener('change', () => {
-      const file = input.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        videoFileEl.value = file.name;
-        videoFileEl._dataUrl = reader.result;
-        updateBgPreview();
-        dirty = true;
-      };
-      reader.readAsDataURL(file);
+  document.getElementById('btn-video-browse')?.addEventListener('click', async () => {
+    const result = await SZ.Dlls.ComDlg32.GetOpenFileName({
+      title: 'Select Video File',
+      filters: [
+        { name: 'Video Files', extensions: ['mp4', 'webm', 'ogg', 'ogv', 'mov', 'avi', 'mkv'] },
+        { name: 'All Files', extensions: ['*'] },
+      ],
     });
+    if (result && !result.cancelled && result.path) {
+      videoFileEl.value = result.path;
+      updateBgPreview();
+      dirty = true;
+    }
     input.click();
   });
 
@@ -858,17 +2012,37 @@
     },
     bing: {
       name: 'Bing Daily',
-      supportsList: false,
+      supportsList: true,
       supportsQuery: false,
-      fetchSingle: async () => {
-        // Bing daily image - using CORS-friendly approach
+      fetchList: async () => {
+        // Bing HPImageArchive API is CORS-blocked; use the peapix.com wrapper
         try {
-          const resp = await fetch('https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1&mkt=en-US');
+          const resp = await fetch('https://peapix.com/bing/feed?country=us');
           const data = await resp.json();
-          return 'https://www.bing.com' + data.images[0].url;
+          return (data || []).slice(0, 8).map(item => ({
+            thumb: item.thumbUrl || item.imageUrl,
+            full: item.fullUrl || item.imageUrl,
+            author: item.title || '',
+          }));
         } catch {
-          return 'https://www.bing.com/th?id=OHR.DefaultImage_EN-US&w=1920&h=1080';
+          // Fallback: direct Bing thumbnail URLs for recent days
+          const results = [];
+          for (let i = 0; i < 4; ++i)
+            results.push({
+              thumb: `https://www.bing.com/th?id=OHR.Random${i}_EN-US&w=320&h=180`,
+              full: `https://www.bing.com/th?id=OHR.Random${i}_EN-US&w=1920&h=1080`,
+            });
+          return results;
         }
+      },
+      fetchSingle: async () => {
+        try {
+          const resp = await fetch('https://peapix.com/bing/feed?country=us');
+          const data = await resp.json();
+          if (data?.length)
+            return data[0].fullUrl || data[0].imageUrl;
+        } catch { /* fall through */ }
+        return 'https://www.bing.com/th?id=OHR.DefaultImage_EN-US&w=1920&h=1080';
       },
     },
     giphy: {
@@ -993,6 +2167,7 @@
   }
 
   function applyBackground() {
+    _stopSlideshowPreview(); // stop preview — the desktop engine takes over
     const sourceType = bgSourceTypeEl.value;
     const mode = sourceType === 'slideshow' ? slideshowModeEl.value
       : sourceType === 'online' ? onlineModeEl.value
@@ -1011,13 +2186,14 @@
         folder: slideshowFolderEl.value,
         interval: parseInt(slideshowIntervalEl.value, 10) || 30,
         shuffle: chkSlideshowShuffle.checked,
+        recursive: chkSlideshowRecursive.checked,
         transition: slideshowTransitionEl.value,
         transitionDuration: parseFloat(slideshowDurationEl.value) || 1,
       };
 
     if (sourceType === 'video')
       bgSettings.video = {
-        src: videoFileEl._dataUrl || videoFileEl.value,
+        src: videoFileEl.value,
         loop: chkVideoLoop.checked,
         playbackRate: parseFloat(videoSpeedEl.value) || 1,
       };
@@ -1107,6 +2283,7 @@
 
       // Populate base layer controls
       bgBaseColorEl.value = currentBg.baseColor;
+      updateBgColorSwatch();
       if (currentBg.pattern) {
         chkPattern.checked = true;
         btnEditPattern.disabled = false;
@@ -1126,6 +2303,7 @@
         slideshowIntervalEl.value = currentBg.slideshow.interval || 30;
         slideshowIntervalValueEl.textContent = (currentBg.slideshow.interval || 30) + 's';
         chkSlideshowShuffle.checked = !!currentBg.slideshow.shuffle;
+        chkSlideshowRecursive.checked = !!currentBg.slideshow.recursive;
         slideshowTransitionEl.value = currentBg.slideshow.transition || 'fade';
         slideshowDurationEl.value = currentBg.slideshow.transitionDuration || 1;
         slideshowDurationValueEl.textContent = (currentBg.slideshow.transitionDuration || 1).toFixed(1) + 's';
@@ -1474,43 +2652,12 @@
   init();
 
   // ===== Menu system =====
-  ;(function() {
-    const menuBar = document.querySelector('.menu-bar');
-    if (!menuBar) return;
-    let openMenu = null;
-    function closeMenus() {
-      if (openMenu) { openMenu.classList.remove('open'); openMenu = null; }
+  new SZ.MenuBar({
+    onAction(action) {
+      if (action === 'about')
+        SZ.Dialog.show('dlg-about');
     }
-    menuBar.addEventListener('pointerdown', function(e) {
-      const item = e.target.closest('.menu-item');
-      if (!item) return;
-      const entry = e.target.closest('.menu-entry');
-      if (entry) {
-        const action = entry.dataset.action;
-        closeMenus();
-        if (action === 'about') {
-          const dlg = document.getElementById('dlg-about');
-          if (dlg) dlg.classList.add('visible');
-        }
-        return;
-      }
-      if (openMenu === item) { closeMenus(); return; }
-      closeMenus();
-      item.classList.add('open');
-      openMenu = item;
-    });
-    menuBar.addEventListener('pointerenter', function(e) {
-      if (!openMenu) return;
-      const item = e.target.closest('.menu-item');
-      if (item && item !== openMenu) { closeMenus(); item.classList.add('open'); openMenu = item; }
-    }, true);
-    document.addEventListener('pointerdown', function(e) {
-      if (openMenu && !e.target.closest('.menu-bar')) closeMenus();
-    });
-  })();
-
-  document.getElementById('dlg-about')?.addEventListener('click', function(e) {
-    if (e.target.closest('[data-result]'))
-      this.classList.remove('visible');
   });
+
+  SZ.Dialog.wireAll();
 })();

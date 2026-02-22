@@ -24,7 +24,11 @@
 </script>
 <title>Display Properties</title>
 <script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="../shared/menu.css">
+<link rel="stylesheet" href="../shared/dialog.css">
 <link rel="stylesheet" href="styles.css">
+<script src="../shared/menu.js"></script>
+<script src="../shared/dialog.js"></script>
 <script defer src="../vision-renderer.js"></script>
 </head>
 <body>
@@ -128,6 +132,7 @@
           <div class="preview-bg-screen" id="pv-bg-screen">
             <canvas id="pv-bg-pattern" width="172" height="130" style="position:absolute;inset:0;pointer-events:none;display:none;image-rendering:pixelated;width:100%;height:100%;"></canvas>
             <img id="pv-bg-img" src="" alt="" style="display:none;">
+            <img id="pv-bg-img-alt" src="" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none;opacity:0;">
             <video id="pv-bg-video" muted loop playsinline style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none;"></video>
           </div>
         </div>
@@ -136,7 +141,8 @@
         <legend>Base Layer</legend>
         <div class="base-layer-row">
           <label>Color:</label>
-          <input type="color" id="bg-base-color" value="#3A6EA5">
+          <input type="hidden" id="bg-base-color" value="#3A6EA5">
+          <div id="bg-color-swatch" class="color-swatch" title="Pick color"></div>
         </div>
         <div class="base-layer-row" style="margin-top:4px;">
           <label class="chk-row"><input type="checkbox" id="chk-pattern"> Pattern</label>
@@ -147,11 +153,11 @@
 
     <!-- Content source subtabs -->
     <div class="bg-subtabs" id="bg-subtabs">
-      <div class="subtab" data-bgtab="none">None</div>
-      <div class="subtab active" data-bgtab="image">Image</div>
-      <div class="subtab" data-bgtab="slideshow">Slideshow</div>
-      <div class="subtab" data-bgtab="video">Video</div>
-      <div class="subtab" data-bgtab="online">Online</div>
+      <div class="subtab" data-bgtab="none"><input type="checkbox" class="bg-source-chk"> None</div>
+      <div class="subtab active" data-bgtab="image"><input type="checkbox" class="bg-source-chk" checked> Image</div>
+      <div class="subtab" data-bgtab="slideshow"><input type="checkbox" class="bg-source-chk"> Slideshow</div>
+      <div class="subtab" data-bgtab="video"><input type="checkbox" class="bg-source-chk"> Video</div>
+      <div class="subtab" data-bgtab="online"><input type="checkbox" class="bg-source-chk"> Online</div>
     </div>
 
     <!-- hidden select kept for controller.js compatibility -->
@@ -200,14 +206,83 @@
         <span id="slideshow-interval-value" class="slider-value">30s</span>
       </div>
       <label class="chk-row"><input type="checkbox" id="chk-slideshow-shuffle"> Shuffle</label>
+      <label class="chk-row"><input type="checkbox" id="chk-slideshow-recursive"> Include subfolders</label>
       <div style="display:flex;align-items:center;gap:8px;">
         <label>Transition:</label>
         <select id="slideshow-transition">
-          <option value="fade">Fade</option>
-          <option value="dissolve">Dissolve</option>
-          <option value="slide-left">Slide Left</option>
-          <option value="slide-right">Slide Right</option>
-          <option value="zoom">Zoom</option>
+          <option value="random">Random</option>
+          <optgroup label="Subtle">
+            <option value="fade" selected>Fade</option>
+            <option value="cut">Cut</option>
+            <option value="fade-black">Fade through Black</option>
+            <option value="fade-white">Fade through White</option>
+            <option value="dissolve">Dissolve</option>
+            <option value="crossfade">Crossfade</option>
+          </optgroup>
+          <optgroup label="Push &amp; Cover">
+            <option value="push-left">Push Left</option>
+            <option value="push-right">Push Right</option>
+            <option value="push-up">Push Up</option>
+            <option value="push-down">Push Down</option>
+            <option value="cover-left">Cover Left</option>
+            <option value="cover-right">Cover Right</option>
+            <option value="cover-up">Cover Up</option>
+            <option value="cover-down">Cover Down</option>
+            <option value="uncover-left">Uncover Left</option>
+            <option value="uncover-right">Uncover Right</option>
+            <option value="uncover-up">Uncover Up</option>
+            <option value="uncover-down">Uncover Down</option>
+          </optgroup>
+          <optgroup label="Wipe &amp; Reveal">
+            <option value="wipe-left">Wipe Left</option>
+            <option value="wipe-right">Wipe Right</option>
+            <option value="wipe-up">Wipe Up</option>
+            <option value="wipe-down">Wipe Down</option>
+            <option value="split-horizontal-out">Split Horizontal Out</option>
+            <option value="split-horizontal-in">Split Horizontal In</option>
+            <option value="split-vertical-out">Split Vertical Out</option>
+            <option value="split-vertical-in">Split Vertical In</option>
+            <option value="reveal-left">Reveal Left</option>
+            <option value="reveal-right">Reveal Right</option>
+          </optgroup>
+          <optgroup label="Shape">
+            <option value="circle-in">Circle In</option>
+            <option value="circle-out">Circle Out</option>
+            <option value="diamond-in">Diamond In</option>
+            <option value="diamond-out">Diamond Out</option>
+            <option value="clock-cw">Clock (Clockwise)</option>
+            <option value="clock-ccw">Clock (Counter-CW)</option>
+            <option value="wedge">Wedge</option>
+          </optgroup>
+          <optgroup label="Exciting">
+            <option value="blinds-horizontal">Blinds Horizontal</option>
+            <option value="blinds-vertical">Blinds Vertical</option>
+            <option value="checkerboard">Checkerboard</option>
+            <option value="comb-horizontal">Comb Horizontal</option>
+            <option value="comb-vertical">Comb Vertical</option>
+            <option value="pixelate">Pixelate</option>
+            <option value="bars-random">Random Bars</option>
+          </optgroup>
+          <optgroup label="Zoom &amp; Spin">
+            <option value="zoom-in">Zoom In</option>
+            <option value="zoom-out">Zoom Out</option>
+            <option value="zoom-rotate">Zoom &amp; Rotate</option>
+            <option value="spin-cw">Spin Clockwise</option>
+            <option value="spin-ccw">Spin Counter-CW</option>
+          </optgroup>
+          <optgroup label="3D-like">
+            <option value="flip-horizontal">Flip Horizontal</option>
+            <option value="flip-vertical">Flip Vertical</option>
+            <option value="cube-left">Cube Left</option>
+            <option value="cube-right">Cube Right</option>
+            <option value="cube-up">Cube Up</option>
+            <option value="cube-down">Cube Down</option>
+          </optgroup>
+          <optgroup label="Effects">
+            <option value="blur">Blur</option>
+            <option value="glitch">Glitch</option>
+            <option value="morph">Morph</option>
+          </optgroup>
         </select>
       </div>
       <div class="slider-row">

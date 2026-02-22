@@ -26,7 +26,6 @@
   // -----------------------------------------------------------------------
   // DOM refs
   // -----------------------------------------------------------------------
-  const menuBar = document.getElementById('menu-bar');
   const btnBack = document.getElementById('btn-back');
   const btnForward = document.getElementById('btn-forward');
   const btnRefresh = document.getElementById('btn-refresh');
@@ -45,8 +44,6 @@
   const contextMenu = document.getElementById('bookmark-context-menu');
   const proxyInfoBar = document.getElementById('proxy-info-bar');
   const proxyDismissBtn = document.getElementById('proxy-dismiss-btn');
-
-  let openMenu = null;
 
   proxyDismissBtn.addEventListener('click', () => {
     proxyInfoBar.classList.remove('visible');
@@ -552,49 +549,7 @@
   // -----------------------------------------------------------------------
   // Menu system
   // -----------------------------------------------------------------------
-  function closeMenus() {
-    for (const item of menuBar.querySelectorAll('.menu-item'))
-      item.classList.remove('open');
-    openMenu = null;
-  }
-
-  for (const menuItem of menuBar.querySelectorAll('.menu-item')) {
-    menuItem.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('.menu-entry') || e.target.closest('.menu-separator'))
-        return;
-      if (openMenu === menuItem) {
-        closeMenus();
-        return;
-      }
-      closeMenus();
-      menuItem.classList.add('open');
-      openMenu = menuItem;
-    });
-
-    menuItem.addEventListener('pointerenter', () => {
-      if (openMenu && openMenu !== menuItem) {
-        closeMenus();
-        menuItem.classList.add('open');
-        openMenu = menuItem;
-      }
-    });
-  }
-
-  document.addEventListener('pointerdown', (e) => {
-    if (openMenu && !menuBar.contains(e.target))
-      closeMenus();
-  });
-
-  // -----------------------------------------------------------------------
-  // Menu actions
-  // -----------------------------------------------------------------------
-  for (const entry of document.querySelectorAll('.menu-entry')) {
-    entry.addEventListener('click', () => {
-      const action = entry.dataset.action;
-      closeMenus();
-      handleAction(action);
-    });
-  }
+  new SZ.MenuBar({ onAction: handleAction });
 
   function handleAction(action) {
     switch (action) {
@@ -623,31 +578,9 @@
         showManageBookmarksDialog();
         break;
       case 'about':
-        showDialog('dlg-about');
+        SZ.Dialog.show('dlg-about');
         break;
     }
-  }
-
-  // -----------------------------------------------------------------------
-  // Dialog helpers
-  // -----------------------------------------------------------------------
-  function showDialog(id) {
-    const overlay = document.getElementById(id);
-    overlay.classList.add('visible');
-    awaitDialogResult(overlay);
-  }
-
-  function awaitDialogResult(overlay, callback) {
-    function handleClick(e) {
-      const btn = e.target.closest('[data-result]');
-      if (!btn)
-        return;
-      overlay.classList.remove('visible');
-      overlay.removeEventListener('click', handleClick);
-      if (typeof callback === 'function')
-        callback(btn.dataset.result);
-    }
-    overlay.addEventListener('click', handleClick);
   }
 
   // -----------------------------------------------------------------------
@@ -656,30 +589,25 @@
   function showOpenLocationDialog() {
     const dlgInput = document.getElementById('dlg-url-input');
     dlgInput.value = currentUrl === HOME_URL ? '' : currentUrl;
-    const overlay = document.getElementById('dlg-open-location');
-    overlay.classList.add('visible');
-
-    dlgInput.focus();
-    setTimeout(() => dlgInput.select(), 0);
 
     function onKeyDown(e) {
       if (e.key === 'Enter') {
         e.preventDefault();
-        overlay.classList.remove('visible');
+        SZ.Dialog.close('dlg-open-location');
         dlgInput.removeEventListener('keydown', onKeyDown);
         const url = dlgInput.value.trim();
         if (url)
           navigateTo(url);
       } else if (e.key === 'Escape') {
         e.preventDefault();
-        overlay.classList.remove('visible');
+        SZ.Dialog.close('dlg-open-location');
         dlgInput.removeEventListener('keydown', onKeyDown);
       }
     }
 
     dlgInput.addEventListener('keydown', onKeyDown);
 
-    awaitDialogResult(overlay, (result) => {
+    SZ.Dialog.show('dlg-open-location').then((result) => {
       dlgInput.removeEventListener('keydown', onKeyDown);
       if (result === 'ok') {
         const url = dlgInput.value.trim();
@@ -687,6 +615,9 @@
           navigateTo(url);
       }
     });
+
+    dlgInput.focus();
+    setTimeout(() => dlgInput.select(), 0);
   }
 
   // -----------------------------------------------------------------------
@@ -705,12 +636,7 @@
     nameInput.value = pageTitle || currentUrl || 'Bookmark';
     urlInputDlg.value = currentUrl === HOME_URL ? '' : currentUrl;
 
-    const overlay = document.getElementById('dlg-add-bookmark');
-    overlay.classList.add('visible');
-    nameInput.focus();
-    setTimeout(() => nameInput.select(), 0);
-
-    awaitDialogResult(overlay, (result) => {
+    SZ.Dialog.show('dlg-add-bookmark').then((result) => {
       if (result !== 'ok')
         return;
       const name = nameInput.value.trim();
@@ -721,6 +647,9 @@
       saveBookmarks();
       renderBookmarksBar();
     });
+
+    nameInput.focus();
+    setTimeout(() => nameInput.select(), 0);
   }
 
   // -----------------------------------------------------------------------
@@ -728,7 +657,6 @@
   // -----------------------------------------------------------------------
   function showManageBookmarksDialog() {
     const list = document.getElementById('bm-manage-list');
-    const overlay = document.getElementById('dlg-manage-bookmarks');
 
     function render() {
       list.innerHTML = '';
@@ -771,8 +699,7 @@
     }
 
     render();
-    overlay.classList.add('visible');
-    awaitDialogResult(overlay);
+    SZ.Dialog.show('dlg-manage-bookmarks');
   }
 
   // -----------------------------------------------------------------------
@@ -797,9 +724,7 @@
     }
 
     textarea.value = source;
-    const overlay = document.getElementById('dlg-page-source');
-    overlay.classList.add('visible');
-    awaitDialogResult(overlay);
+    SZ.Dialog.show('dlg-page-source');
   }
 
   // -----------------------------------------------------------------------

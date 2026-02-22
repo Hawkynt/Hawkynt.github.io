@@ -99,7 +99,6 @@
   const systemColorPicker = document.getElementById('system-color-picker');
   const fgColorSlot = document.getElementById('fg-color-slot');
   const bgColorSlot = document.getElementById('bg-color-slot');
-  const ribbonTabs = document.getElementById('ribbon-tabs');
   const backstage = document.getElementById('backstage');
   const depthSelect = document.getElementById('depth-select');
   const toolGrid = document.getElementById('tool-grid');
@@ -1126,19 +1125,13 @@
       }
     }
 
-    dlg.classList.add('visible');
-    return await new Promise(resolve => {
-      awaitDialogResult(dlg, result => {
-        ++ditherGenId;
-        ++quantGenId;
-        ++previewGenId;
-        if (result !== 'ok' || !selectedQuantizer || !selectedDither) {
-          resolve({ cancelled: true });
-          return;
-        }
-        resolve({ cancelled: false, quantizer: selectedQuantizer, dither: selectedDither });
-      });
-    });
+    const result = await SZ.Dialog.show('dlg-dq-picker');
+    ++ditherGenId;
+    ++quantGenId;
+    ++previewGenId;
+    if (result !== 'ok' || !selectedQuantizer || !selectedDither)
+      return { cancelled: true };
+    return { cancelled: false, quantizer: selectedQuantizer, dither: selectedDither };
   }
 
   async function applyDepthChange(targetBpp) {
@@ -3154,7 +3147,7 @@
         if (resolved)
           return;
         resolved = true;
-        dlg.classList.remove('visible');
+        SZ.Dialog.close('dlg-pe-browser');
         resolve(value);
       }
 
@@ -3216,9 +3209,7 @@
       }
       requestAnimationFrame(renderBatch);
 
-      dlg.classList.add('visible');
-
-      awaitDialogResult(dlg, (result) => {
+      SZ.Dialog.show('dlg-pe-browser').then((result) => {
         if (result === 'open' && selectedDoc)
           finish(selectedDoc);
         else if (result === 'export-all')
@@ -3339,19 +3330,12 @@
 
     // Show import dialog to select sizes
     const dlg = document.getElementById('dlg-import');
-    dlg.classList.add('visible');
-
-    const chosen = await new Promise((resolve) => {
-      awaitDialogResult(dlg, (resultStr) => {
-        if (resultStr !== 'ok') {
-          resolve(null);
-          return;
-        }
-        const checks = dlg.querySelectorAll('#import-sizes input[type="checkbox"]:checked');
-        const sizes = Array.from(checks).map(c => parseInt(c.value, 10));
-        resolve(sizes);
-      });
-    });
+    const resultStr = await SZ.Dialog.show('dlg-import');
+    let chosen = null;
+    if (resultStr === 'ok') {
+      const checks = dlg.querySelectorAll('#import-sizes input[type="checkbox"]:checked');
+      chosen = Array.from(checks).map(c => parseInt(c.value, 10));
+    }
 
     if (!chosen || chosen.length === 0)
       return;
@@ -3400,18 +3384,12 @@
       container.appendChild(label);
     }
 
-    dlg.classList.add('visible');
-
-    const chosen = await new Promise((resolve) => {
-      awaitDialogResult(dlg, (resultStr) => {
-        if (resultStr !== 'ok') {
-          resolve(null);
-          return;
-        }
-        const checks = dlg.querySelectorAll('#favicon-sizes input[type="checkbox"]:checked');
-        resolve(Array.from(checks).map(c => parseInt(c.value, 10)));
-      });
-    });
+    const faviconResult = await SZ.Dialog.show('dlg-favicon');
+    let chosen = null;
+    if (faviconResult === 'ok') {
+      const checks = dlg.querySelectorAll('#favicon-sizes input[type="checkbox"]:checked');
+      chosen = Array.from(checks).map(c => parseInt(c.value, 10));
+    }
 
     if (!chosen || chosen.length === 0)
       return;
@@ -3454,20 +3432,15 @@
     a.click();
   }
 
-  function confirmSave() {
-    return new Promise((resolve) => {
-      const dlg = document.getElementById('dlg-save-changes');
-      dlg.classList.add('visible');
-      awaitDialogResult(dlg, async (result) => {
-        if (result === 'yes') {
-          await doSave();
-          resolve('saved');
-        } else if (result === 'no')
-          resolve('no');
-        else
-          resolve('cancel');
-      });
-    });
+  async function confirmSave() {
+    const result = await SZ.Dialog.show('dlg-save-changes');
+    if (result === 'yes') {
+      await doSave();
+      return 'saved';
+    }
+    if (result === 'no')
+      return 'no';
+    return 'cancel';
   }
 
   // ══════════════════════════════════════════════════════════════════
@@ -3591,57 +3564,9 @@
     setEnabled('crop-to-selection', hasSelection);
   }
 
-  // ── Ribbon tab switching ────────────────────────────────────────
-  ribbonTabs.addEventListener('click', (e) => {
-    const tab = e.target.closest('.ribbon-tab');
-    if (!tab)
-      return;
-    const tabName = tab.dataset.tab;
-    ribbonTabs.querySelectorAll('.ribbon-tab').forEach(t => t.classList.toggle('active', t === tab));
-    document.querySelectorAll('.ribbon-panel').forEach(p => p.classList.toggle('active', p.dataset.panel === tabName));
-  });
-
-  // ── File backstage ──────────────────────────────────────────────
-  document.getElementById('ribbon-file-btn').addEventListener('click', () => {
-    backstage.classList.add('visible');
-  });
-
-  document.getElementById('backstage-back').addEventListener('click', () => {
-    backstage.classList.remove('visible');
-  });
-
-  backstage.addEventListener('click', (e) => {
-    const item = e.target.closest('.backstage-item');
-    if (!item)
-      return;
-    const action = item.dataset.action;
-    backstage.classList.remove('visible');
-    if (action)
-      handleAction(action, item);
-  });
-
-  // close backstage when clicking outside sidebar
-  backstage.addEventListener('pointerdown', (e) => {
-    if (!e.target.closest('.backstage-sidebar'))
-      backstage.classList.remove('visible');
-  });
-
-  // ── QAT buttons ─────────────────────────────────────────────────
-  document.getElementById('qat').addEventListener('click', (e) => {
-    const btn = e.target.closest('.qat-btn');
-    if (btn && btn.dataset.action)
-      handleAction(btn.dataset.action, btn);
-  });
-
-  // ── Ribbon panel action buttons ─────────────────────────────────
-  document.querySelectorAll('.ribbon-panel').forEach(panel => {
-    panel.addEventListener('click', (e) => {
-      const btn = e.target.closest('[data-action]');
-      if (!btn || btn.classList.contains('disabled'))
-        return;
-      handleAction(btn.dataset.action, btn);
-    });
-  });
+  // ── Ribbon wiring (shared module) ──────────────────────────────
+  new SZ.Ribbon({ onAction: handleAction });
+  SZ.Dialog.wireAll();
 
   // ── Mini palette in ribbon ──────────────────────────────────────
   (function buildMiniPalette() {
@@ -3742,7 +3667,7 @@
         break;
 
       case 'about':
-        showDialog('dlg-about');
+        SZ.Dialog.show('dlg-about');
         break;
     }
     updateMenuStates();
@@ -3815,7 +3740,7 @@
     duplicateImage(selectedIndex);
   });
 
-  function showAddImageDialog() {
+  async function showAddImageDialog() {
     const dlg = document.getElementById('dlg-add-image');
     const fillCheck = document.getElementById('add-fill-current');
     const fillMethodRow = document.getElementById('add-fill-method-row');
@@ -3836,8 +3761,6 @@
       }
     };
 
-    dlg.classList.add('visible');
-
     dlg.querySelectorAll('.preset-sizes button').forEach(btn => {
       btn.onclick = () => {
         const s = parseInt(btn.dataset.size, 10);
@@ -3846,68 +3769,48 @@
       };
     });
 
-    awaitDialogResult(dlg, async (result) => {
-      if (result !== 'ok')
-        return;
-      let w = parseInt(document.getElementById('add-width').value, 10);
-      let h = parseInt(document.getElementById('add-height').value, 10);
-      const bpp = parseInt(document.getElementById('add-depth').value, 10);
-      w = Math.max(1, Math.min(256, w || 32));
-      h = Math.max(1, Math.min(256, h || 32));
-      syncImageData();
+    const result = await SZ.Dialog.show('dlg-add-image');
+    if (result !== 'ok')
+      return;
+    let w = parseInt(document.getElementById('add-width').value, 10);
+    let h = parseInt(document.getElementById('add-height').value, 10);
+    const bpp = parseInt(document.getElementById('add-depth').value, 10);
+    w = Math.max(1, Math.min(256, w || 32));
+    h = Math.max(1, Math.min(256, h || 32));
+    syncImageData();
 
-      const srcImg = currentImage();
-      if (fillCheck.checked && srcImg) {
-        const method = document.getElementById('add-fill-method').value;
-        const scaledData = scaleImageData(srcImg.imageData, w, h, method);
+    const srcImg = currentImage();
+    if (fillCheck.checked && srcImg) {
+      const method = document.getElementById('add-fill-method').value;
+      const scaledData = scaleImageData(srcImg.imageData, w, h, method);
 
-        let options = {};
-        if (bpp <= 8 && bpp < srcImg.bpp) {
-          const dqResult = await showQuantizeDitherDialog(scaledData, bpp);
-          if (dqResult.cancelled)
-            return;
-          options = { quantizer: dqResult.quantizer, dither: dqResult.dither };
-        } else if (bpp <= 8)
-          options = { quantizer: 'keep', dither: 'none' };
+      let options = {};
+      if (bpp <= 8 && bpp < srcImg.bpp) {
+        const dqResult = await showQuantizeDitherDialog(scaledData, bpp);
+        if (dqResult.cancelled)
+          return;
+        options = { quantizer: dqResult.quantizer, dither: dqResult.dither };
+      } else if (bpp <= 8)
+        options = { quantizer: 'keep', dither: 'none' };
 
-        const idx = addImage(w, h, bpp);
-        const newImg = iconDocument.images[idx];
-        newImg.imageData = scaledData;
-        applyBppConstraints(newImg, options);
-        selectImage(idx);
-      } else {
-        const idx = addImage(w, h, bpp);
-        selectImage(idx);
-      }
-      dirty = true;
-      updateTitle();
-    });
+      const idx = addImage(w, h, bpp);
+      const newImg = iconDocument.images[idx];
+      newImg.imageData = scaledData;
+      applyBppConstraints(newImg, options);
+      selectImage(idx);
+    } else {
+      const idx = addImage(w, h, bpp);
+      selectImage(idx);
+    }
+    dirty = true;
+    updateTitle();
   }
 
   // ══════════════════════════════════════════════════════════════════
   // DIALOGS
   // ══════════════════════════════════════════════════════════════════
 
-  function showDialog(id) {
-    const dlg = document.getElementById(id);
-    dlg.classList.add('visible');
-    awaitDialogResult(dlg);
-  }
-
-  function awaitDialogResult(dlgOverlay, callback) {
-    function handleClick(e) {
-      const btn = e.target.closest('[data-result]');
-      if (!btn)
-        return;
-      dlgOverlay.classList.remove('visible');
-      dlgOverlay.removeEventListener('click', handleClick);
-      if (typeof callback === 'function')
-        callback(btn.dataset.result);
-    }
-    dlgOverlay.addEventListener('click', handleClick);
-  }
-
-  function showResizeDialog() {
+  async function showResizeDialog() {
     const img = currentImage();
     if (!img)
       return;
@@ -3915,25 +3818,21 @@
     const hInput = document.getElementById('resize-h');
     wInput.value = img.width;
     hInput.value = img.height;
-    const dlg = document.getElementById('dlg-resize');
-    dlg.classList.add('visible');
     wInput.focus();
 
-    awaitDialogResult(dlg, (result) => {
-      if (result !== 'ok')
-        return;
-      let nw = parseInt(wInput.value, 10);
-      let nh = parseInt(hInput.value, 10);
-      nw = Math.max(1, Math.min(256, nw || img.width));
-      nh = Math.max(1, Math.min(256, nh || img.height));
-      const mode = document.getElementById('resize-mode').value;
-      if (nw !== img.width || nh !== img.height)
-        doResize(nw, nh, mode);
-    });
+    const result = await SZ.Dialog.show('dlg-resize');
+    if (result !== 'ok')
+      return;
+    let nw = parseInt(wInput.value, 10);
+    let nh = parseInt(hInput.value, 10);
+    nw = Math.max(1, Math.min(256, nw || img.width));
+    nh = Math.max(1, Math.min(256, nh || img.height));
+    const mode = document.getElementById('resize-mode').value;
+    if (nw !== img.width || nh !== img.height)
+      doResize(nw, nh, mode);
   }
 
-  function showHslDialog() {
-    const dlg = document.getElementById('dlg-hsl');
+  async function showHslDialog() {
     const hueInput = document.getElementById('hsl-hue');
     const satInput = document.getElementById('hsl-sat');
     const briInput = document.getElementById('hsl-bri');
@@ -3952,56 +3851,48 @@
     satInput.oninput = () => { satVal.textContent = satInput.value; };
     briInput.oninput = () => { briVal.textContent = briInput.value; };
 
-    dlg.classList.add('visible');
-    awaitDialogResult(dlg, (result) => {
-      if (result !== 'ok')
-        return;
-      const h = parseInt(hueInput.value, 10);
-      const s = parseInt(satInput.value, 10);
-      const b = parseInt(briInput.value, 10);
-      if (h !== 0 || s !== 0 || b !== 0)
-        doHslAdjust(h, s, b);
-    });
+    const result = await SZ.Dialog.show('dlg-hsl');
+    if (result !== 'ok')
+      return;
+    const h = parseInt(hueInput.value, 10);
+    const s = parseInt(satInput.value, 10);
+    const b = parseInt(briInput.value, 10);
+    if (h !== 0 || s !== 0 || b !== 0)
+      doHslAdjust(h, s, b);
   }
 
-  function showReplaceColorDialog() {
-    const dlg = document.getElementById('dlg-replace-color');
+  async function showReplaceColorDialog() {
     const { r, g, b, a } = currentColor;
     const fromHex = '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
     document.getElementById('replace-from').value = fromHex;
     document.getElementById('replace-from-a').value = a;
-    dlg.classList.add('visible');
-    awaitDialogResult(dlg, (result) => {
-      if (result !== 'ok')
-        return;
-      const from = parseHexColor(document.getElementById('replace-from').value);
-      const fromA = parseInt(document.getElementById('replace-from-a').value, 10);
-      const to = parseHexColor(document.getElementById('replace-to').value);
-      const toA = parseInt(document.getElementById('replace-to-a').value, 10);
-      const tolerance = parseInt(document.getElementById('replace-tolerance').value, 10);
-      if (from && to)
-        doReplaceColor(from.r, from.g, from.b, fromA, to.r, to.g, to.b, toA, tolerance);
-    });
+    const result = await SZ.Dialog.show('dlg-replace-color');
+    if (result !== 'ok')
+      return;
+    const from = parseHexColor(document.getElementById('replace-from').value);
+    const fromA = parseInt(document.getElementById('replace-from-a').value, 10);
+    const to = parseHexColor(document.getElementById('replace-to').value);
+    const toA = parseInt(document.getElementById('replace-to-a').value, 10);
+    const tolerance = parseInt(document.getElementById('replace-tolerance').value, 10);
+    if (from && to)
+      doReplaceColor(from.r, from.g, from.b, fromA, to.r, to.g, to.b, toA, tolerance);
   }
 
-  function showShiftDialog() {
+  async function showShiftDialog() {
     const img = currentImage();
     if (!img)
       return;
-    const dlg = document.getElementById('dlg-shift');
     document.getElementById('shift-dx').value = 0;
     document.getElementById('shift-dy').value = 0;
     document.getElementById('shift-wrap').checked = true;
-    dlg.classList.add('visible');
-    awaitDialogResult(dlg, (result) => {
-      if (result !== 'ok')
-        return;
-      const dx = parseInt(document.getElementById('shift-dx').value, 10) || 0;
-      const dy = parseInt(document.getElementById('shift-dy').value, 10) || 0;
-      const wrap = document.getElementById('shift-wrap').checked;
-      if (dx !== 0 || dy !== 0)
-        doShiftImage(dx, dy, wrap);
-    });
+    const result = await SZ.Dialog.show('dlg-shift');
+    if (result !== 'ok')
+      return;
+    const dx = parseInt(document.getElementById('shift-dx').value, 10) || 0;
+    const dy = parseInt(document.getElementById('shift-dy').value, 10) || 0;
+    const wrap = document.getElementById('shift-wrap').checked;
+    if (dx !== 0 || dy !== 0)
+      doShiftImage(dx, dy, wrap);
   }
 
   // ══════════════════════════════════════════════════════════════════
