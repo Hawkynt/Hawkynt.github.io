@@ -62,7 +62,6 @@
     
     const desktopEl = document.getElementById('sz-desktop');
     const desktop = new SZ.Desktop(desktopEl);
-    await setInitialBackground(kernel, desktop, settings);
 
     const windowManager = new SZ.WindowManager(document.getElementById('sz-window-area'));
     await windowManager.setSkin(currentSkin);
@@ -137,6 +136,9 @@
       windowManager, desktop, taskbar, themeEngine, settings, appLauncher, kernel, commonDialogs, cursorEffects,
       get skin() { return skinState.skin; },
     });
+
+    // Apply saved background (must happen after SZ.system so desktop.js can access kernel)
+    await setInitialBackground(kernel, desktop, settings);
 
     bootScreen.setProgress(100, 'Ready');
     desktopEl.style.visibility = '';
@@ -337,10 +339,11 @@
         // Common Dialogs
         case 'sz:fileOpen': return handle(commonDialogs.showOpen(data), 'sz:fileOpenResult');
         case 'sz:fileSave': return handle(commonDialogs.showSave(data), 'sz:fileSaveResult');
+        case 'sz:browseFolder': return handle(commonDialogs.showBrowseFolder(data), 'sz:browseFolderResult');
 
         // VFS Bridge
         case 'sz:vfs:Stat': return handle(kernel.Stat(path).then(stat=>({stat})), 'sz:vfs:StatResult');
-        case 'sz:vfs:List': return handle(kernel.List(path).then(entries=>({entries})), 'sz:vfs:ListResult');
+        case 'sz:vfs:List': return handle(kernel.List(path, data.searchOption).then(entries=>({entries})), 'sz:vfs:ListResult');
         case 'sz:vfs:Mkdir': return handle(kernel.Mkdir(path).then(()=>{ if (_affectsDesktop(path)) _dskRefresh(); return {success:true}; }), 'sz:vfs:MkdirResult');
         case 'sz:vfs:Delete': return handle(kernel.Delete(path).then(()=>{ if (_affectsDesktop(path)) _dskRefresh(); return {success:true}; }), 'sz:vfs:DeleteResult');
         case 'sz:vfs:Move': return handle(kernel.Move(data.from, data.to).then(()=>{ if (_affectsDesktop(data.from) || _affectsDesktop(data.to)) _dskRefresh(); return {success:true}; }), 'sz:vfs:MoveResult');
