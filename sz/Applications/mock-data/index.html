@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Generate realistic mock data in JSON, CSV, SQL, XML, and TSV formats with configurable field types">
+<meta name="robots" content="index,follow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Mock Data Generator -- &laquo;SynthelicZ&raquo; Desktop">
+<meta property="og:description" content="Generate realistic mock data in JSON, CSV, SQL, XML, and TSV formats with configurable field types">
+<meta property="og:url" content="https://hawkynt.github.io/sz/Applications/mock-data/index.html">
+<link rel="canonical" href="https://hawkynt.github.io/sz/Applications/mock-data/index.html">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Mock Data Generator",
+  "url": "https://hawkynt.github.io/sz/Applications/mock-data/index.html",
+  "description": "Generate realistic mock data in JSON, CSV, SQL, XML, and TSV formats with configurable field types",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Web Browser",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<title>Mock Data Generator</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="../shared/menu.css">
+<link rel="stylesheet" href="../shared/dialog.css">
+<link rel="stylesheet" href="../shared/syntax-highlighter.css">
+<link rel="stylesheet" href="styles.css">
+<script defer src="../vision-renderer.js"></script>
+</head>
+<body>
+<noscript><p>Generate realistic mock data in JSON, CSV, SQL, XML, and TSV formats with configurable field types. <a href="../../index.html">Open &laquo;SynthelicZ&raquo; Desktop</a> to use this app.</p></noscript>
+
+<div class="menu-bar">
+  <div class="menu-item" data-menu="help">
+    Help
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="about">About Mock Data Generator</div>
+    </div>
+  </div>
+</div>
+
+<div id="app">
+
+  <!-- Top toolbar -->
+  <div id="toolbar">
+    <label>Rows: <input type="number" id="row-count" min="1" max="10000" value="10"></label>
+    <label>Format:
+      <select id="output-format">
+        <option value="json">JSON</option>
+        <option value="csv">CSV</option>
+        <option value="sql">SQL INSERT</option>
+        <option value="xml">XML</option>
+        <option value="tsv">TSV</option>
+      </select>
+    </label>
+    <label id="table-name-label" class="hidden">Table: <input type="text" id="table-name" value="users" spellcheck="false"></label>
+    <button id="btn-generate" class="btn-primary">Generate</button>
+    <button id="btn-copy">Copy</button>
+    <button id="btn-export">Export</button>
+  </div>
+
+  <!-- Main content area -->
+  <div id="main">
+
+    <!-- Left panel: field configuration -->
+    <div id="field-panel">
+      <div id="field-panel-header">Fields</div>
+      <div id="field-list"></div>
+      <div id="field-panel-footer">
+        <button id="btn-add-field">+ Add Field</button>
+      </div>
+    </div>
+
+    <!-- Right panel: output preview -->
+    <div id="output-panel">
+      <div id="output-header">Output Preview</div>
+      <div id="output-wrap">
+        <pre id="output-code"></pre>
+      </div>
+      <div id="status-bar">Ready</div>
+    </div>
+
+  </div>
+
+</div>
+
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Mock Data Generator</div>
+    <div class="dialog-body"></div>
+    <div class="dialog-buttons"><button data-result="ok">OK</button></div>
+  </div>
+</div>
+
+<script src="../shared/menu.js"></script>
+<script src="../shared/dialog.js"></script>
+<script src="../shared/syntax-highlighter.js"></script>
+<script src="controller.js"></script>
+</body>
+</html>

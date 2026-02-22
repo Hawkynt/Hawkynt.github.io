@@ -268,7 +268,7 @@
         type: 'iframe',
         entry: 'color-picker/index.html',
         width: 480,
-        height: 400,
+        height: 460,
         resizable: true,
         minimizable: true,
         maximizable: true,
@@ -334,6 +334,20 @@
         singleton: true,
         category: 'Graphics',
         fileTypes: ['ttf', 'otf', 'woff', 'woff2']
+      },
+      {
+        id: 'font-pairing',
+        title: 'Font Pairing Tool',
+        icon: 'font-pairing/icon.svg',
+        type: 'iframe',
+        entry: 'font-pairing/index.html',
+        width: 950,
+        height: 650,
+        resizable: true,
+        minimizable: true,
+        maximizable: true,
+        singleton: true,
+        category: 'Graphics'
       },
       {
         id: 'json-viewer',
@@ -608,6 +622,34 @@
         maximizable: true,
         singleton: false,
         category: 'Development'
+      },
+      {
+        id: 'mock-data',
+        title: 'Mock Data Generator',
+        icon: 'mock-data/icon.svg',
+        type: 'iframe',
+        entry: 'mock-data/index.html',
+        width: 900,
+        height: 600,
+        resizable: true,
+        minimizable: true,
+        maximizable: true,
+        singleton: false,
+        category: 'Development'
+      },
+      {
+        id: 'email-signature',
+        title: 'E-Mail Signature Generator',
+        icon: 'email-signature/icon.svg',
+        type: 'iframe',
+        entry: 'email-signature/index.html',
+        width: 880,
+        height: 580,
+        resizable: true,
+        minimizable: true,
+        maximizable: true,
+        singleton: true,
+        category: 'Office'
       }
     ]
   };
