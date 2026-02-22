@@ -1,0 +1,27 @@
+/* ==== Syntax highlighting tokens ==== */
+.sh-keyword { color: #0000ff; }
+.sh-string { color: #a31515; }
+.sh-comment { color: #008000; font-style: italic; }
+.sh-number { color: #098658; }
+.sh-operator { color: #000000; }
+.sh-punctuation { color: #000000; }
+.sh-function { color: #795e26; }
+.sh-type { color: #267f99; }
+.sh-constant { color: #0070c1; }
+.sh-tag { color: #800000; }
+.sh-attr-name { color: #ff0000; }
+.sh-attr-value { color: #0000ff; }
+.sh-entity { color: #267f99; }
+.sh-selector { color: #800000; }
+.sh-property { color: #ff0000; }
+.sh-value { color: #0000ff; }
+.sh-variable { color: #001080; }
+.sh-regex { color: #811f3f; }
+.sh-heading { color: #0000ff; font-weight: bold; }
+.sh-bold { font-weight: bold; }
+.sh-italic { font-style: italic; }
+.sh-link { color: #0070c1; text-decoration: underline; }
+.sh-decorator { color: #795e26; }
+.sh-preprocessor { color: #808080; }
+.sh-bracket-match { background: rgba(0, 120, 215, 0.2); outline: 1px solid rgba(0, 120, 215, 0.5); }
+.sh-selection-match { background: rgba(255, 200, 0, 0.3); }

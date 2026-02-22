@@ -645,27 +645,79 @@
     const cc = blob[0];
     const hasThis = (cc & 0x20) !== 0;
     let pos = 1;
-    if (cc & 0x10) { // Skip generic param count (compressed uint)
+    if (cc & 0x10) {
       if (pos >= blob.length) return null;
       const g0 = blob[pos++];
       if ((g0 & 0x80) !== 0 && (g0 & 0xC0) === 0x80) ++pos;
       else if ((g0 & 0xC0) === 0xC0) pos += 3;
     }
     if (pos >= blob.length) return null;
-    // Compressed unsigned int: param count
     let paramCount = 0;
     const b0 = blob[pos++];
     if ((b0 & 0x80) === 0) paramCount = b0;
     else if ((b0 & 0xC0) === 0x80 && pos < blob.length) paramCount = ((b0 & 0x3F) << 8) | blob[pos++];
     else if (pos + 2 < blob.length) { paramCount = ((b0 & 0x1F) << 24) | (blob[pos] << 16) | (blob[pos + 1] << 8) | blob[pos + 2]; pos += 3; }
-    // Check void return type
     let returnsVoid = false;
     while (pos < blob.length && (blob[pos] === 0x1E || blob[pos] === 0x1F || blob[pos] === 0x45)) ++pos;
     if (pos < blob.length && blob[pos] === 0x01) returnsVoid = true;
     return { paramCount, hasThis, returnsVoid };
   }
 
-  // ---- Core stack-tracking decompiler ----
+  // ---- Argument name resolution from method context ----
+  function _argName(idx, annot) {
+    const mc = annot && annot.methodContext;
+    if (!mc || !mc.paramInfo) return 'arg' + idx;
+    const pi = mc.paramInfo;
+    if (pi.hasThis) {
+      if (idx === 0) return 'this';
+      return (idx - 1) < pi.paramNames.length ? pi.paramNames[idx - 1] : 'arg' + idx;
+    }
+    return idx < pi.paramNames.length ? pi.paramNames[idx] : 'arg' + idx;
+  }
+
+  // ---- Build method header line ----
+  function _buildMethodHeader(annot) {
+    const mc = annot && annot.methodContext;
+    if (!mc || !mc.paramInfo) return null;
+    const flags = mc.methodFlags;
+    const pi = mc.paramInfo;
+    const parts = [];
+    if (flags != null) {
+      const access = flags & 0x07;
+      if (access === 6) parts.push('public');
+      else if (access === 5) parts.push('internal');
+      else if (access === 4) parts.push('protected');
+      else if (access === 3) parts.push('protected internal');
+      else if (access === 2) parts.push('private protected');
+      else if (access === 1) parts.push('private');
+      if (flags & 0x10) parts.push('static');
+      if (flags & 0x0400) parts.push('abstract');
+      else if (flags & 0x0040) parts.push((flags & 0x0100) ? 'virtual' : 'override');
+      if ((flags & 0x0020) && !(flags & 0x0040)) parts.push('sealed');
+    }
+    parts.push(pi.retType);
+    const label = mc.label || 'Method';
+    const dot = label.lastIndexOf('.');
+    const methodName = dot >= 0 ? label.substring(dot + 1) : label;
+    const paramStrs = pi.paramTypes.map((t, i) => t + ' ' + (i < pi.paramNames.length ? pi.paramNames[i] : 'arg' + i));
+    parts.push(methodName + '(' + paramStrs.join(', ') + ')');
+    return parts.join(' ');
+  }
+
+  // ---- Build local variable declarations ----
+  function _buildLocalDecls(annot) {
+    const mc = annot && annot.methodContext;
+    if (!mc || !mc.localTypes || mc.localTypes.length === 0) return [];
+    return mc.localTypes.map((t, i) => ({ offset: 0, code: t + ' v' + i + ';', indent: 0 }));
+  }
+
+  // ---- Parse IL label offset from label string ----
+  function _labelOff(label) {
+    if (!label || !label.startsWith('IL_')) return -1;
+    return parseInt(label.substring(3), 16);
+  }
+
+  // ---- Core stack-tracking decompiler (enhanced with named params + branch metadata) ----
   function _decompileStatements(instructions, annotations) {
     const meta = annotations && annotations.metadata;
     const stack = [];
@@ -682,7 +734,6 @@
       }
       return '(' + e + ')';
     }
-
     function popCallArgs(insn, isNewObj) {
       if (insn.rawToken && meta) {
         const ci = _getCallInfo(insn.rawToken, meta);
@@ -693,9 +744,8 @@
           return { args, info: ci };
         }
       }
-      return { args: stack.splice(0), info: null };
+      return { args: [], info: null };
     }
-
     function shortName(n) { const d = n.lastIndexOf('.'); return d >= 0 ? n.substring(d + 1) : n; }
 
     for (const insn of instructions) {
@@ -703,7 +753,6 @@
       const ops = insn.operands || '';
       const off = insn.offset;
 
-      // --- NOP ---
       if (mn === 'nop') continue;
 
       // --- Load constants ---
@@ -716,11 +765,11 @@
       if (mn.startsWith('ldc.r4')) { stack.push((ops || '0') + 'f'); continue; }
       if (mn.startsWith('ldc.r8')) { stack.push(ops || '0.0'); continue; }
 
-      // --- Load arguments ---
-      if (mn === 'ldarg.0') { stack.push('this'); continue; }
-      if (mn === 'ldarg' || mn === 'ldarg.s') { stack.push('arg' + (ops || '0')); continue; }
-      if (mn === 'ldarga' || mn === 'ldarga.s') { stack.push('ref arg' + (ops || '0')); continue; }
-      if (mn.startsWith('ldarg.') && mn.length === 7) { stack.push('arg' + mn.substring(6)); continue; }
+      // --- Load arguments (named) ---
+      if (mn === 'ldarg.0') { stack.push(_argName(0, annotations)); continue; }
+      if (mn === 'ldarg' || mn === 'ldarg.s') { stack.push(_argName(parseInt(ops, 10) || 0, annotations)); continue; }
+      if (mn === 'ldarga' || mn === 'ldarga.s') { stack.push('ref ' + _argName(parseInt(ops, 10) || 0, annotations)); continue; }
+      if (mn.startsWith('ldarg.') && mn.length === 7) { stack.push(_argName(parseInt(mn.substring(6), 10), annotations)); continue; }
 
       // --- Load locals ---
       if (mn === 'ldloc' || mn === 'ldloc.s') { stack.push('v' + (ops || '0')); continue; }
@@ -730,7 +779,7 @@
       // --- Store locals ---
       if (mn === 'stloc' || mn === 'stloc.s') { out.push({ offset: off, code: 'v' + (ops || '0') + ' = ' + pop() + ';' }); continue; }
       if (mn.startsWith('stloc.') && mn.length === 7) { out.push({ offset: off, code: 'v' + mn.substring(6) + ' = ' + pop() + ';' }); continue; }
-      if (mn === 'starg' || mn === 'starg.s') { out.push({ offset: off, code: 'arg' + (ops || '0') + ' = ' + pop() + ';' }); continue; }
+      if (mn === 'starg' || mn === 'starg.s') { out.push({ offset: off, code: _argName(parseInt(ops, 10) || 0, annotations) + ' = ' + pop() + ';' }); continue; }
 
       // --- Dup / Pop ---
       if (mn === 'dup') { const v = stack.length > 0 ? stack[stack.length - 1] : '???'; stack.push(v); continue; }
@@ -755,7 +804,7 @@
       if (mn === 'clt' || mn === 'clt.un') { const b = pop(), a = pop(); stack.push(a + ' < ' + b); continue; }
       if (mn === 'cgt' || mn === 'cgt.un') { const b = pop(), a = pop(); stack.push(a + ' > ' + b); continue; }
 
-      // --- Conversions (always wrap operand so VB CInt(...) replacement works) ---
+      // --- Conversions ---
       if (mn === 'conv.i1') { stack.push('(sbyte)(' + pop() + ')'); continue; }
       if (mn === 'conv.u1') { stack.push('(byte)(' + pop() + ')'); continue; }
       if (mn === 'conv.i2') { stack.push('(short)(' + pop() + ')'); continue; }
@@ -804,18 +853,14 @@
       if (mn === 'call' || mn === 'callvirt') {
         const { args, info } = popCallArgs(insn, false);
         const name = ops || 'method';
-        // Property getter: get_XXX
         const gp = name.match(/(?:^|\.)get_(\w+)$/);
         if (gp) { const obj = args.length > 0 ? args.shift() : ''; stack.push((obj ? obj + '.' : '') + gp[1] + (args.length > 0 ? '[' + args.join(', ') + ']' : '')); continue; }
-        // Property setter: set_XXX
         const sp = name.match(/(?:^|\.)set_(\w+)$/);
         if (sp && args.length >= 1) { const val = args.pop(); const obj = args.length > 0 ? args.shift() : ''; const ix = args.length > 0 ? '[' + args.join(', ') + ']' : ''; out.push({ offset: off, code: (obj ? obj + '.' : '') + sp[1] + ix + ' = ' + val + ';' }); continue; }
-        // Event add/remove
         const ae = name.match(/(?:^|\.)add_(\w+)$/);
         if (ae && args.length >= 2) { out.push({ offset: off, code: args[0] + '.' + ae[1] + ' += ' + args[1] + ';' }); continue; }
         const re = name.match(/(?:^|\.)remove_(\w+)$/);
         if (re && args.length >= 2) { out.push({ offset: off, code: args[0] + '.' + re[1] + ' -= ' + args[1] + ';' }); continue; }
-        // Operator overloads
         const opOv = name.match(/(?:^|\.)op_(\w+)$/);
         if (opOv) {
           const binOps = { Equality: '==', Inequality: '!=', GreaterThan: '>', LessThan: '<', GreaterThanOrEqual: '>=', LessThanOrEqual: '<=', Addition: '+', Subtraction: '-', Multiply: '*', Division: '/', Modulus: '%', BitwiseAnd: '&', BitwiseOr: '|', ExclusiveOr: '^', LeftShift: '<<', RightShift: '>>' };
@@ -824,15 +869,14 @@
           if (args.length === 1 && unOps[opOv[1]]) { stack.push(unOps[opOv[1]] + paren(args[0])); continue; }
           if (args.length === 1 && (opOv[1] === 'Explicit' || opOv[1] === 'Implicit')) { stack.push('(' + shortName(name.replace(/\.op_\w+$/, '')) + ')' + paren(args[0])); continue; }
         }
-        // String.Concat → +
         if (/String\.Concat$/i.test(name)) { stack.push(args.join(' + ') || '""'); continue; }
-        // Regular call
         let obj = '', callArgs = args;
         if (mn === 'callvirt' && args.length > 0) { obj = args[0]; callArgs = args.slice(1); }
+        else if (info && info.hasThis && args.length > 0) { obj = args[0]; callArgs = args.slice(1); }
         else if (args.length > 0 && args[0] === 'this') { obj = args[0]; callArgs = args.slice(1); }
         const expr = (obj ? obj + '.' : '') + shortName(name) + '(' + callArgs.join(', ') + ')';
-        if (info && info.returnsVoid) { out.push({ offset: off, code: expr + ';' }); }
-        else { stack.push(expr); }
+        if (info && info.returnsVoid) out.push({ offset: off, code: expr + ';' });
+        else stack.push(expr);
         continue;
       }
 
@@ -844,26 +888,33 @@
         continue;
       }
 
-      // --- Branches ---
-      if (mn === 'br' || mn === 'br.s') { out.push({ offset: off, code: 'goto ' + ops + ';' }); continue; }
-      if (mn === 'brtrue' || mn === 'brtrue.s') { out.push({ offset: off, code: 'if (' + pop() + ') goto ' + ops + ';' }); continue; }
-      if (mn === 'brfalse' || mn === 'brfalse.s') { const c = pop(); out.push({ offset: off, code: 'if (!(' + c + ')) goto ' + ops + ';' }); continue; }
-      if (mn === 'beq' || mn === 'beq.s') { const b = pop(), a = pop(); out.push({ offset: off, code: 'if (' + a + ' == ' + b + ') goto ' + ops + ';' }); continue; }
-      if (mn.startsWith('bne')) { const b = pop(), a = pop(); out.push({ offset: off, code: 'if (' + a + ' != ' + b + ') goto ' + ops + ';' }); continue; }
-      if (mn.startsWith('blt')) { const b = pop(), a = pop(); out.push({ offset: off, code: 'if (' + a + ' < ' + b + ') goto ' + ops + ';' }); continue; }
-      if (mn.startsWith('bgt')) { const b = pop(), a = pop(); out.push({ offset: off, code: 'if (' + a + ' > ' + b + ') goto ' + ops + ';' }); continue; }
-      if (mn.startsWith('ble')) { const b = pop(), a = pop(); out.push({ offset: off, code: 'if (' + a + ' <= ' + b + ') goto ' + ops + ';' }); continue; }
-      if (mn.startsWith('bge')) { const b = pop(), a = pop(); out.push({ offset: off, code: 'if (' + a + ' >= ' + b + ') goto ' + ops + ';' }); continue; }
-      if (mn === 'switch') { out.push({ offset: off, code: 'switch (' + pop() + ') { ' + ops + ' }' }); continue; }
+      // --- Branches (with metadata for structurer) ---
+      if (mn === 'br' || mn === 'br.s') { out.push({ offset: off, code: 'goto ' + ops + ';', kind: 'goto', target: _labelOff(ops) }); continue; }
+      if (mn === 'brtrue' || mn === 'brtrue.s') { const c = pop(); out.push({ offset: off, code: 'if (' + c + ') goto ' + ops + ';', kind: 'cond', cond: c, neg: false, target: _labelOff(ops) }); continue; }
+      if (mn === 'brfalse' || mn === 'brfalse.s') { const c = pop(); out.push({ offset: off, code: 'if (!(' + c + ')) goto ' + ops + ';', kind: 'cond', cond: c, neg: true, target: _labelOff(ops) }); continue; }
+      if (mn === 'beq' || mn === 'beq.s') { const b = pop(), a = pop(); const c = a + ' == ' + b; out.push({ offset: off, code: 'if (' + c + ') goto ' + ops + ';', kind: 'cond', cond: c, neg: false, target: _labelOff(ops) }); continue; }
+      if (mn.startsWith('bne')) { const b = pop(), a = pop(); const c = a + ' != ' + b; out.push({ offset: off, code: 'if (' + c + ') goto ' + ops + ';', kind: 'cond', cond: c, neg: false, target: _labelOff(ops) }); continue; }
+      if (mn.startsWith('blt')) { const b = pop(), a = pop(); const c = a + ' < ' + b; out.push({ offset: off, code: 'if (' + c + ') goto ' + ops + ';', kind: 'cond', cond: c, neg: false, target: _labelOff(ops) }); continue; }
+      if (mn.startsWith('bgt')) { const b = pop(), a = pop(); const c = a + ' > ' + b; out.push({ offset: off, code: 'if (' + c + ') goto ' + ops + ';', kind: 'cond', cond: c, neg: false, target: _labelOff(ops) }); continue; }
+      if (mn.startsWith('ble')) { const b = pop(), a = pop(); const c = a + ' <= ' + b; out.push({ offset: off, code: 'if (' + c + ') goto ' + ops + ';', kind: 'cond', cond: c, neg: false, target: _labelOff(ops) }); continue; }
+      if (mn.startsWith('bge')) { const b = pop(), a = pop(); const c = a + ' >= ' + b; out.push({ offset: off, code: 'if (' + c + ') goto ' + ops + ';', kind: 'cond', cond: c, neg: false, target: _labelOff(ops) }); continue; }
+      if (mn === 'switch') {
+        const val = pop();
+        // Parse targets from operands
+        const targets = [];
+        for (const m of ops.matchAll(/IL_[0-9A-Fa-f]+/g)) targets.push(_labelOff(m[0]));
+        out.push({ offset: off, code: 'switch (' + val + ') { ' + ops + ' }', kind: 'switch', switchTargets: targets });
+        continue;
+      }
 
       // --- Return / Throw ---
-      if (mn === 'ret') { out.push({ offset: off, code: stack.length > 0 ? 'return ' + pop() + ';' : 'return;' }); continue; }
-      if (mn === 'throw') { out.push({ offset: off, code: 'throw ' + pop() + ';' }); continue; }
-      if (mn === 'rethrow') { out.push({ offset: off, code: 'throw;' }); continue; }
+      if (mn === 'ret') { out.push({ offset: off, code: stack.length > 0 ? 'return ' + pop() + ';' : 'return;', kind: 'ret' }); continue; }
+      if (mn === 'throw') { out.push({ offset: off, code: 'throw ' + pop() + ';', kind: 'throw' }); continue; }
+      if (mn === 'rethrow') { out.push({ offset: off, code: 'throw;', kind: 'throw' }); continue; }
 
       // --- Leave / endfinally ---
-      if (mn === 'leave' || mn === 'leave.s') { out.push({ offset: off, code: 'goto ' + ops + '; // leave' }); continue; }
-      if (mn === 'endfinally' || mn === 'endfault') continue;
+      if (mn === 'leave' || mn === 'leave.s') { out.push({ offset: off, code: '/* leave */', kind: 'leave', target: _labelOff(ops) }); continue; }
+      if (mn === 'endfinally' || mn === 'endfault') { out.push({ offset: off, code: '/* endfinally */', kind: 'endfinally' }); continue; }
       if (mn === 'endfilter') continue;
 
       // --- Misc ---
@@ -872,7 +923,7 @@
       if (mn === 'localloc') { stack.push('stackalloc byte[' + pop() + ']'); continue; }
       if (mn === 'ldftn') { stack.push(ops || 'method'); continue; }
       if (mn === 'ldvirtftn') { stack.push(pop() + '.' + shortName(ops || 'method')); continue; }
-      if (mn === 'calli') { const fp = pop(); const a = stack.splice(0); stack.push(fp + '(' + a.join(', ') + ')'); continue; }
+      if (mn === 'calli') { const fp = pop(); const { args } = popCallArgs(insn, false); stack.push(fp + '(' + args.join(', ') + ')'); continue; }
       if (mn === 'jmp') { out.push({ offset: off, code: ops + '(); // jmp' }); continue; }
       if (mn === 'arglist') { stack.push('__arglist'); continue; }
       if (mn === 'mkrefany') { stack.push('__makeref(' + pop() + ')'); continue; }
@@ -882,18 +933,666 @@
       if (mn === 'cpblk') { const n = pop(), s = pop(), d = pop(); out.push({ offset: off, code: 'Buffer.MemoryCopy(' + s + ', ' + d + ', ' + n + ');' }); continue; }
       if (mn === 'initblk') { const n = pop(), v = pop(), p = pop(); out.push({ offset: off, code: 'Unsafe.InitBlock(' + p + ', ' + v + ', ' + n + ');' }); continue; }
       if (mn === 'break') continue;
-      // Prefixes
       if (mn === 'constrained.' || mn === 'readonly.' || mn === 'tail.' || mn === 'volatile.' || mn === 'unaligned.' || mn === 'no.') continue;
 
-      // Fallback
       out.push({ offset: off, code: '/* ' + (insn.mnemonic || '??') + (ops ? ' ' + ops : '') + ' */' });
     }
     return out;
   }
 
-  // ---- C# → VB.NET syntax transformation ----
+  // =========================================================================
+  // Control Flow Reconstruction
+  // =========================================================================
+
+  /** Find statement index by offset (first stmt at or after offset). */
+  function _findIdx(stmts, targetOff) {
+    for (let i = 0; i < stmts.length; ++i)
+      if (stmts[i].offset >= targetOff) return i;
+    return stmts.length;
+  }
+
+  /** Wrap EH regions in try/catch/finally structure. */
+  function _structureEH(stmts, annot) {
+    const mc = annot && annot.methodContext;
+    const ehClauses = mc && mc.ehClauses;
+    if (!ehClauses || !ehClauses.length) return stmts;
+    const codeBase = annot.codeRange ? annot.codeRange.fileStart : 0;
+    if (!codeBase) return stmts;
+
+    // Group clauses sharing the same try region
+    const sorted = [...ehClauses].sort((a, b) => a.tryOffset - b.tryOffset || a.handlerOffset - b.handlerOffset);
+    const groups = [];
+    for (const eh of sorted) {
+      const last = groups[groups.length - 1];
+      if (last && last[0].tryOffset === eh.tryOffset && last[0].tryLength === eh.tryLength)
+        last.push(eh);
+      else
+        groups.push([eh]);
+    }
+
+    // Process from last group to first (so splice indices stay valid)
+    const result = [...stmts];
+    for (let g = groups.length - 1; g >= 0; --g) {
+      const group = groups[g];
+      const eh0 = group[0];
+      const tryAbsStart = codeBase + eh0.tryOffset;
+      const tryAbsEnd = codeBase + eh0.tryOffset + eh0.tryLength;
+
+      const tryStartIdx = _findIdx(result, tryAbsStart);
+      let tryEndIdx = _findIdx(result, tryAbsEnd);
+      if (tryStartIdx >= result.length) continue;
+
+      // Build handlers
+      const handlers = [];
+      let overallEndIdx = tryEndIdx;
+      for (const eh of group) {
+        const hAbsStart = codeBase + eh.handlerOffset;
+        const hAbsEnd = codeBase + eh.handlerOffset + eh.handlerLength;
+        const hStartIdx = _findIdx(result, hAbsStart);
+        let hEndIdx = _findIdx(result, hAbsEnd);
+        if (hStartIdx >= result.length) continue;
+        // Filter out leave/endfinally from handler body
+        const hBody = [];
+        for (let i = hStartIdx; i < hEndIdx && i < result.length; ++i) {
+          const k = result[i].kind;
+          if (k === 'leave' || k === 'endfinally') continue;
+          hBody.push({ ...result[i], indent: (result[i].indent || 0) + 1 });
+        }
+        handlers.push({ eh, body: hBody, startIdx: hStartIdx, endIdx: hEndIdx });
+        if (hEndIdx > overallEndIdx) overallEndIdx = hEndIdx;
+      }
+
+      // Build try body (filter out leave)
+      const tryBody = [];
+      for (let i = tryStartIdx; i < tryEndIdx && i < result.length; ++i) {
+        if (result[i].kind === 'leave') continue;
+        tryBody.push({ ...result[i], indent: (result[i].indent || 0) + 1 });
+      }
+
+      // Assemble replacement
+      const replacement = [];
+      const baseOff = result[tryStartIdx].offset;
+      replacement.push({ offset: baseOff, code: 'try {', indent: 0, kind: '_eh' });
+      replacement.push(...tryBody);
+      for (const h of handlers) {
+        const hOff = h.body.length > 0 ? h.body[0].offset : baseOff;
+        if (h.eh.flags === 2 || h.eh.flags === 4)
+          replacement.push({ offset: hOff, code: '} finally {', indent: 0, kind: '_eh' });
+        else {
+          const ct = h.eh.catchType || 'Exception';
+          replacement.push({ offset: hOff, code: '} catch (' + ct + ') {', indent: 0, kind: '_eh' });
+        }
+        replacement.push(...h.body);
+      }
+      replacement.push({ offset: baseOff, code: '}', indent: 0, kind: '_eh' });
+
+      result.splice(tryStartIdx, overallEndIdx - tryStartIdx, ...replacement);
+    }
+    return result;
+  }
+
+  /** Recursive control flow pattern matching on a statement range. */
+  function _structureCF(stmts) {
+    if (stmts.length === 0) return [];
+
+    // Build offset → index map
+    const offIdx = new Map();
+    stmts.forEach((s, i) => { if (!offIdx.has(s.offset)) offIdx.set(s.offset, i); });
+
+    // Identify backward jump targets (loop headers)
+    const loopBack = new Map(); // headerIdx → backJumpIdx
+    for (let i = 0; i < stmts.length; ++i) {
+      const s = stmts[i];
+      if (s.target != null && s.target < s.offset && (s.kind === 'goto' || (s.kind === 'cond' && !s.neg))) {
+        const hIdx = offIdx.get(s.target);
+        if (hIdx != null && (!loopBack.has(hIdx) || i > loopBack.get(hIdx)))
+          loopBack.set(hIdx, i);
+      }
+    }
+
+    const result = [];
+    let i = 0;
+
+    while (i < stmts.length) {
+      const s = stmts[i];
+      const baseIndent = s.indent || 0;
+
+      // Skip EH structural markers
+      if (s.kind === '_eh') { result.push(s); ++i; continue; }
+
+      // ---- While loop (C# pattern: while header has negated forward exit) ----
+      // Pattern: if (!cond) goto EXIT; body; goto HEAD; EXIT:
+      if (loopBack.has(i) && s.kind === 'cond' && s.neg && s.target > s.offset) {
+        const backIdx = loopBack.get(i);
+        const exitIdx = offIdx.get(s.target);
+        if (exitIdx != null && backIdx < stmts.length && stmts[backIdx].kind === 'goto') {
+          const body = stmts.slice(i + 1, backIdx);
+          const structured = _structureCF(body);
+          result.push({ offset: s.offset, code: 'while (' + s.cond + ') {', indent: baseIndent });
+          for (const bs of structured) result.push({ ...bs, indent: (bs.indent || 0) + baseIndent + 1 });
+          result.push({ offset: stmts[backIdx].offset, code: '}', indent: baseIndent });
+          i = backIdx + 1;
+          continue;
+        }
+      }
+
+      // ---- C# while pattern: goto COND; HEAD: body; COND: if (cond) goto HEAD; ----
+      if (s.kind === 'goto' && s.target > s.offset) {
+        const condIdx = offIdx.get(s.target);
+        if (condIdx != null && condIdx < stmts.length) {
+          const condStmt = stmts[condIdx];
+          if (condStmt.kind === 'cond' && !condStmt.neg && condStmt.target != null) {
+            const headIdx = offIdx.get(condStmt.target);
+            if (headIdx != null && headIdx === i + 1) {
+              // while (cond) { body }
+              const body = stmts.slice(i + 1, condIdx);
+              const structured = _structureCF(body);
+              result.push({ offset: s.offset, code: 'while (' + condStmt.cond + ') {', indent: baseIndent });
+              for (const bs of structured) result.push({ ...bs, indent: (bs.indent || 0) + baseIndent + 1 });
+              result.push({ offset: condStmt.offset, code: '}', indent: baseIndent });
+              i = condIdx + 1;
+              continue;
+            }
+          }
+        }
+      }
+
+      // ---- Do-while loop: body ends with backward conditional branch ----
+      if (loopBack.has(i)) {
+        const backIdx = loopBack.get(i);
+        if (backIdx < stmts.length && stmts[backIdx].kind === 'cond' && !stmts[backIdx].neg) {
+          const body = stmts.slice(i, backIdx);
+          const structured = _structureCF(body);
+          result.push({ offset: s.offset, code: 'do {', indent: baseIndent });
+          for (const bs of structured) result.push({ ...bs, indent: (bs.indent || 0) + baseIndent + 1 });
+          result.push({ offset: stmts[backIdx].offset, code: '} while (' + stmts[backIdx].cond + ');', indent: baseIndent });
+          i = backIdx + 1;
+          continue;
+        }
+      }
+
+      // ---- If-then-else (negated forward branch, then body ends with goto past else) ----
+      if (s.kind === 'cond' && s.neg && s.target > s.offset) {
+        const elseIdx = offIdx.get(s.target);
+        if (elseIdx != null && elseIdx > i && elseIdx <= stmts.length) {
+          // Check for else: last statement of then body is goto past else
+          const lastThenIdx = elseIdx - 1;
+          if (lastThenIdx > i && stmts[lastThenIdx].kind === 'goto' && stmts[lastThenIdx].target > s.target) {
+            const endIdx = offIdx.get(stmts[lastThenIdx].target);
+            if (endIdx != null && endIdx > elseIdx && endIdx <= stmts.length) {
+              const thenBody = _structureCF(stmts.slice(i + 1, lastThenIdx));
+              const elseBody = _structureCF(stmts.slice(elseIdx, endIdx));
+              result.push({ offset: s.offset, code: 'if (' + s.cond + ') {', indent: baseIndent });
+              for (const t of thenBody) result.push({ ...t, indent: (t.indent || 0) + baseIndent + 1 });
+              result.push({ offset: stmts[lastThenIdx].offset, code: '} else {', indent: baseIndent });
+              for (const e of elseBody) result.push({ ...e, indent: (e.indent || 0) + baseIndent + 1 });
+              result.push({ offset: stmts[lastThenIdx].target, code: '}', indent: baseIndent });
+              i = endIdx;
+              continue;
+            }
+          }
+          // Simple if-then (no else)
+          const thenBody = _structureCF(stmts.slice(i + 1, elseIdx));
+          result.push({ offset: s.offset, code: 'if (' + s.cond + ') {', indent: baseIndent });
+          for (const t of thenBody) result.push({ ...t, indent: (t.indent || 0) + baseIndent + 1 });
+          result.push({ offset: s.target, code: '}', indent: baseIndent });
+          i = elseIdx;
+          continue;
+        }
+      }
+
+      // ---- Positive condition forward branch: if (cond) goto TARGET ----
+      // This often appears in short-circuit evaluation or early exits
+      if (s.kind === 'cond' && !s.neg && s.target > s.offset) {
+        const targetIdx = offIdx.get(s.target);
+        if (targetIdx != null && targetIdx > i + 1 && targetIdx <= stmts.length) {
+          // Check if this is a negated if-then: if (cond) skip body → if (!cond) { body }
+          const body = stmts.slice(i + 1, targetIdx);
+          // Only convert if the body doesn't contain its own branches outside the range
+          let safe = true;
+          for (const bs of body) {
+            if (bs.kind === 'goto' && bs.target != null && (bs.target < s.offset || bs.target > stmts[targetIdx - 1].offset + 10))
+              { safe = false; break; }
+          }
+          if (safe && body.length > 0 && body.length <= 20) {
+            const negCond = s.cond.startsWith('!(') ? s.cond.substring(2, s.cond.length - 1) : '!(' + s.cond + ')';
+            const structured = _structureCF(body);
+            result.push({ offset: s.offset, code: 'if (' + negCond + ') {', indent: baseIndent });
+            for (const bs of structured) result.push({ ...bs, indent: (bs.indent || 0) + baseIndent + 1 });
+            result.push({ offset: s.target, code: '}', indent: baseIndent });
+            i = targetIdx;
+            continue;
+          }
+        }
+      }
+
+      // ---- Switch/case ----
+      if (s.kind === 'switch' && s.switchTargets && s.switchTargets.length > 0) {
+        // Find the extent of all switch targets
+        let maxTargetIdx = i + 1;
+        for (const t of s.switchTargets) {
+          const idx = offIdx.get(t);
+          if (idx != null && idx > maxTargetIdx) maxTargetIdx = idx;
+        }
+        // Emit as structured switch
+        const switchExpr = s.code.match(/^switch \((.+?)\)/);
+        if (switchExpr) {
+          result.push({ offset: s.offset, code: 'switch (' + switchExpr[1] + ') {', indent: baseIndent });
+          for (let c = 0; c < s.switchTargets.length; ++c) {
+            const targetIdx = offIdx.get(s.switchTargets[c]);
+            const nextTarget = c + 1 < s.switchTargets.length ? offIdx.get(s.switchTargets[c + 1]) : maxTargetIdx;
+            if (targetIdx != null) {
+              result.push({ offset: s.switchTargets[c], code: 'case ' + c + ':', indent: baseIndent + 1 });
+              const caseBody = stmts.slice(targetIdx, nextTarget != null ? nextTarget : targetIdx);
+              for (const cb of caseBody) result.push({ ...cb, indent: (cb.indent || 0) + baseIndent + 2 });
+              result.push({ offset: s.switchTargets[c], code: 'break;', indent: baseIndent + 2 });
+            }
+          }
+          result.push({ offset: s.offset, code: '}', indent: baseIndent });
+          i = maxTargetIdx;
+          continue;
+        }
+      }
+
+      // Default: emit as-is
+      result.push({ ...s, indent: s.indent || 0 });
+      ++i;
+    }
+    return result;
+  }
+
+  // =========================================================================
+  // C# 2.0 Pattern Recognition (post-processing on structured output)
+  // =========================================================================
+
+  function _applyPatterns(stmts) {
+    let result = stmts;
+    result = _patternCompoundAssign(result);
+    result = _patternTernary(result);
+    result = _patternUsing(result);
+    result = _patternForeach(result);
+    result = _patternLock(result);
+    result = _patternForLoop(result);
+    return result;
+  }
+
+  /** Compound assignments: v = v + expr → v += expr; v = v + 1 → ++v; */
+  function _patternCompoundAssign(stmts) {
+    const result = [];
+    for (const s of stmts) {
+      let c = s.code;
+      // v = v OP expr → v OP= expr
+      const m = c.match(/^(\w+) = \1 ([+\-*/%&|^]) (.+);$/);
+      if (m) {
+        if (m[2] === '+' && m[3] === '1') c = '++' + m[1] + ';';
+        else if (m[2] === '-' && m[3] === '1') c = '--' + m[1] + ';';
+        else c = m[1] + ' ' + m[2] + '= ' + m[3] + ';';
+      }
+      result.push({ ...s, code: c });
+    }
+    return result;
+  }
+
+  /** Ternary: if (cond) { v = a; } else { v = b; } → v = cond ? a : b; */
+  function _patternTernary(stmts) {
+    const result = [];
+    for (let i = 0; i < stmts.length; ++i) {
+      if (i + 4 < stmts.length) {
+        const open = stmts[i], thenS = stmts[i + 1], mid = stmts[i + 2], elseS = stmts[i + 3], close = stmts[i + 4];
+        const ifM = open.code.match(/^if \((.+)\) \{$/);
+        const thenM = thenS.code.match(/^(\w+) = (.+);$/);
+        const elseM = elseS.code.match(/^(\w+) = (.+);$/);
+        if (ifM && thenM && elseM && mid.code === '} else {' && close.code === '}' && thenM[1] === elseM[1]) {
+          result.push({ offset: open.offset, code: thenM[1] + ' = ' + ifM[1] + ' ? ' + thenM[2] + ' : ' + elseM[2] + ';', indent: open.indent });
+          i += 4;
+          continue;
+        }
+      }
+      result.push(stmts[i]);
+    }
+    return result;
+  }
+
+  /** Using pattern: try { ... } finally { v.Dispose(); } → using (v) { ... } */
+  function _patternUsing(stmts) {
+    const result = [];
+    for (let i = 0; i < stmts.length; ++i) {
+      if (stmts[i].code === 'try {' && stmts[i].kind === '_eh') {
+        // Scan for matching finally with Dispose
+        let depth = 1, finallyIdx = -1, closeIdx = -1;
+        for (let j = i + 1; j < stmts.length; ++j) {
+          const c = stmts[j].code;
+          if (c === 'try {' && stmts[j].kind === '_eh') ++depth;
+          else if (/^\} finally \{$/.test(c) && stmts[j].kind === '_eh' && depth === 1) finallyIdx = j;
+          else if (c === '}' && stmts[j].kind === '_eh') {
+            --depth;
+            if (depth === 0) { closeIdx = j; break; }
+          }
+        }
+        if (finallyIdx >= 0 && closeIdx >= 0) {
+          // Check if finally body is just Dispose
+          const finallyBody = stmts.slice(finallyIdx + 1, closeIdx).filter(s => s.kind !== '_eh');
+          const disposeMatch = finallyBody.length === 1 && finallyBody[0].code.match(/^(\w+)(?:\?)?\.Dispose\(\);?$/);
+          if (disposeMatch) {
+            // Find the variable assignment before try
+            const varName = disposeMatch[1];
+            let initExpr = null, initIdx = -1;
+            if (i > 0 && stmts[i - 1].code.match(new RegExp('^' + varName + ' = (.+);$'))) {
+              initExpr = stmts[i - 1].code.match(new RegExp('^' + varName + ' = (.+);$'))[1];
+              initIdx = i - 1;
+            }
+            if (initExpr) {
+              result.pop(); // remove the assignment we already pushed
+              result.push({ offset: stmts[initIdx].offset, code: 'using (var ' + varName + ' = ' + initExpr + ') {', indent: stmts[i].indent });
+            } else
+              result.push({ offset: stmts[i].offset, code: 'using (' + varName + ') {', indent: stmts[i].indent });
+            // Copy try body
+            for (let j = i + 1; j < finallyIdx; ++j) result.push(stmts[j]);
+            result.push({ offset: stmts[closeIdx].offset, code: '}', indent: stmts[i].indent });
+            i = closeIdx;
+            continue;
+          }
+        }
+      }
+      result.push(stmts[i]);
+    }
+    return result;
+  }
+
+  /** Foreach pattern: GetEnumerator + try { while (MoveNext) { Current } } finally { Dispose } */
+  function _patternForeach(stmts) {
+    const result = [];
+    for (let i = 0; i < stmts.length; ++i) {
+      // Look for: v = coll.GetEnumerator(); using (...) { while (v.MoveNext()) { cur = v.Current; ... } }
+      const enumM = stmts[i].code.match(/^(\w+) = (.+)\.GetEnumerator\(\);$/);
+      if (enumM && i + 1 < stmts.length) {
+        const enumVar = enumM[1], coll = enumM[2];
+        // Check if next is using (enumVar) { while (enumVar.MoveNext()) { ... } }
+        const nextCode = stmts[i + 1].code;
+        if (nextCode.match(new RegExp('^using \\(' + enumVar + '\\) \\{$')) || nextCode.match(new RegExp('^using \\(var ' + enumVar))) {
+          // Find the while inside
+          let whileIdx = -1;
+          for (let j = i + 2; j < stmts.length && j < i + 5; ++j) {
+            if (stmts[j].code.match(new RegExp('^while \\(' + enumVar + '\\.MoveNext\\(\\)\\)')))
+              { whileIdx = j; break; }
+          }
+          if (whileIdx >= 0) {
+            // Find Current assignment inside while body
+            let curVar = null;
+            for (let j = whileIdx + 1; j < stmts.length && j < whileIdx + 3; ++j) {
+              const curM = stmts[j].code.match(new RegExp('^(\\w+) = ' + enumVar + '\\.Current;$'));
+              if (curM) { curVar = curM[1]; break; }
+            }
+            if (curVar) {
+              // Collect the rest of the while body
+              let depth = 1, whileEnd = -1;
+              for (let j = whileIdx + 1; j < stmts.length; ++j) {
+                if (stmts[j].code.match(/\{$/)) ++depth;
+                if (stmts[j].code === '}') { --depth; if (depth === 0) { whileEnd = j; break; } }
+              }
+              if (whileEnd >= 0) {
+                // Find the using close
+                let usingEnd = -1;
+                for (let j = whileEnd + 1; j < stmts.length; ++j)
+                  if (stmts[j].code === '}') { usingEnd = j; break; }
+                if (usingEnd >= 0) {
+                  const indent = stmts[i].indent || 0;
+                  result.push({ offset: stmts[i].offset, code: 'foreach (var ' + curVar + ' in ' + coll + ') {', indent });
+                  // Copy while body minus the Current assignment and while header
+                  for (let j = whileIdx + 1; j < whileEnd; ++j) {
+                    if (stmts[j].code.match(new RegExp('^' + curVar + ' = ' + enumVar + '\\.Current;$'))) continue;
+                    result.push({ ...stmts[j], indent: indent + 1 });
+                  }
+                  result.push({ offset: stmts[usingEnd].offset, code: '}', indent });
+                  i = usingEnd;
+                  continue;
+                }
+              }
+            }
+          }
+        }
+      }
+      result.push(stmts[i]);
+    }
+    return result;
+  }
+
+  /** Lock pattern: Monitor.Enter(obj); try { ... } finally { Monitor.Exit(obj); } */
+  function _patternLock(stmts) {
+    const result = [];
+    for (let i = 0; i < stmts.length; ++i) {
+      const enterM = stmts[i].code.match(/^Monitor\.Enter\((.+?)(?:,\s*.+)?\);?$/);
+      if (enterM && i + 1 < stmts.length && stmts[i + 1].code === 'try {' && stmts[i + 1].kind === '_eh') {
+        // Check if the finally body is Monitor.Exit
+        let depth = 1, finallyIdx = -1, closeIdx = -1;
+        for (let j = i + 2; j < stmts.length; ++j) {
+          const c = stmts[j].code;
+          if (c === 'try {' && stmts[j].kind === '_eh') ++depth;
+          else if (/^\} finally \{$/.test(c) && stmts[j].kind === '_eh' && depth === 1) finallyIdx = j;
+          else if (c === '}' && stmts[j].kind === '_eh') {
+            --depth;
+            if (depth === 0) { closeIdx = j; break; }
+          }
+        }
+        if (finallyIdx >= 0 && closeIdx >= 0) {
+          const finallyBody = stmts.slice(finallyIdx + 1, closeIdx).filter(s => s.kind !== '_eh');
+          const exitM = finallyBody.length === 1 && finallyBody[0].code.match(/^Monitor\.Exit\((.+?)\);?$/);
+          if (exitM) {
+            const indent = stmts[i].indent || 0;
+            result.push({ offset: stmts[i].offset, code: 'lock (' + enterM[1] + ') {', indent });
+            for (let j = i + 2; j < finallyIdx; ++j) result.push(stmts[j]);
+            result.push({ offset: stmts[closeIdx].offset, code: '}', indent });
+            i = closeIdx;
+            continue;
+          }
+        }
+      }
+      result.push(stmts[i]);
+    }
+    return result;
+  }
+
+  /** For loop: detect while preceded by init and ending with increment */
+  function _patternForLoop(stmts) {
+    const result = [];
+    for (let i = 0; i < stmts.length; ++i) {
+      // Look for: v = init; while (cond) { body; ++v; }
+      const whileM = stmts[i].code.match(/^while \((.+)\) \{$/);
+      if (whileM && i > 0) {
+        const prev = result[result.length - 1];
+        const initM = prev && prev.code.match(/^(\w+) = (.+);$/);
+        if (initM) {
+          // Find the closing brace and check if the last body statement is an increment
+          let depth = 1, closeIdx = -1;
+          for (let j = i + 1; j < stmts.length; ++j) {
+            if (stmts[j].code.match(/\{$/)) ++depth;
+            if (stmts[j].code === '}') { --depth; if (depth === 0) { closeIdx = j; break; } }
+          }
+          if (closeIdx > i + 1) {
+            const lastBody = stmts[closeIdx - 1];
+            const incrM = lastBody && lastBody.code.match(new RegExp('^\\+\\+' + initM[1] + ';$'));
+            const incrM2 = lastBody && lastBody.code.match(new RegExp('^' + initM[1] + ' \\+= (\\d+);$'));
+            if (incrM || incrM2) {
+              const incr = incrM ? '++' + initM[1] : initM[1] + ' += ' + incrM2[1];
+              result.pop(); // remove init statement
+              result.push({ offset: prev.offset, code: 'for (var ' + initM[1] + ' = ' + initM[2] + '; ' + whileM[1] + '; ' + incr + ') {', indent: stmts[i].indent });
+              // Copy body minus the increment
+              for (let j = i + 1; j < closeIdx - 1; ++j) result.push(stmts[j]);
+              result.push({ offset: stmts[closeIdx].offset, code: '}', indent: stmts[i].indent });
+              i = closeIdx;
+              continue;
+            }
+          }
+        }
+      }
+      result.push(stmts[i]);
+    }
+    return result;
+  }
+
+  // =========================================================================
+  // Modern C# Patterns (Phase 6)
+  // =========================================================================
+
+  function _modernize(stmts) {
+    const result = [];
+    for (let i = 0; i < stmts.length; ++i) {
+      let c = stmts[i].code;
+      // Clean up compiler-generated names
+      c = c.replace(/<>c__DisplayClass\w*/g, 'closure');
+      c = c.replace(/<(\w+)>b__\d+/g, '$1_lambda');
+      c = c.replace(/<>1__state/g, 'state');
+      c = c.replace(/<>t__builder/g, 'builder');
+      c = c.replace(/<>s__\d+/g, function(m) { return 'tmp' + m.substring(4); });
+      c = c.replace(/<(\w+)>d__\d+/g, '$1_stateMachine');
+      c = c.replace(/CS\$<>8__locals\d*/g, 'locals');
+      c = c.replace(/<>4__this/g, 'this');
+
+      // Async/await: .GetAwaiter().GetResult() → await
+      if (/\.GetAwaiter\(\)\.GetResult\(\)/.test(c)) {
+        c = c.replace(/(\w+(?:\.\w+)*(?:\([^)]*\))?)\.GetAwaiter\(\)\.GetResult\(\)/g, 'await $1');
+      }
+      // Remove async builder boilerplate
+      if (/AsyncTaskMethodBuilder|AsyncVoidMethodBuilder/.test(c)) {
+        if (/\.Create\(\)/.test(c) || /\.SetResult\(/.test(c) || /\.Start\(/.test(c) || /\.SetException\(/.test(c))
+          c = '// ' + c;
+      }
+      if (/\.AwaitUnsafeOnCompleted\(|\.AwaitOnCompleted\(/.test(c)) c = '// ' + c;
+
+      // Nullable patterns
+      c = c.replace(/\.get_HasValue\(\)/g, ' != null');
+      c = c.replace(/\.HasValue/g, ' != null');
+      c = c.replace(/\.get_Value\(\)/g, '.Value');
+
+      // String.Format → $"..."
+      const fmtM = c.match(/^(.*)String\.Format\("([^"]*)",\s*(.+)\)(.*)$/);
+      if (fmtM) {
+        const format = fmtM[2];
+        const argsPart = fmtM[3];
+        const args = [];
+        let depth = 0, current = '';
+        for (const ch of argsPart) {
+          if (ch === '(' || ch === '[') ++depth;
+          else if (ch === ')' || ch === ']') --depth;
+          if (ch === ',' && depth === 0) { args.push(current.trim()); current = ''; }
+          else current += ch;
+        }
+        if (current.trim()) args.push(current.trim());
+        let interpolated = format.replace(/\{(\d+)(?::[^}]*)?\}/g, (_, idx) => '{' + (args[parseInt(idx, 10)] || '?') + '}');
+        c = fmtM[1] + '$"' + interpolated + '"' + fmtM[4];
+      }
+
+      // Null-conditional: detect if (x == null) goto L; result = x.Method(); L: result = null;
+      // (simplified — detect in adjacent statements)
+      if (i + 3 < stmts.length) {
+        const nullChk = c.match(/^if \((\w+) == null\) \{$/);
+        if (nullChk) {
+          const varName = nullChk[1];
+          // Look for pattern: if (x == null) { v = null; } else { v = x.Something; }
+          if (stmts[i + 1].code.match(new RegExp('^(\\w+) = null;$'))) {
+            const assignVar = stmts[i + 1].code.match(/^(\w+) = null;$/)[1];
+            if (stmts[i + 2].code === '} else {') {
+              const elseM = stmts[i + 3].code.match(new RegExp('^' + assignVar + ' = ' + varName + '\\.(.+);$'));
+              if (elseM && i + 4 < stmts.length && stmts[i + 4].code === '}') {
+                result.push({ ...stmts[i], code: assignVar + ' = ' + varName + '?.' + elseM[1] + ';' });
+                i += 4;
+                continue;
+              }
+            }
+          }
+        }
+      }
+
+      // Null-coalescing: detect if (v != null) goto END; v = default; END:
+      if (i + 2 < stmts.length) {
+        const nnChk = c.match(/^if \((\w+) != null\) \{$/);
+        if (nnChk && stmts[i + 1].code.match(new RegExp('^' + nnChk[1] + ' = (.+);$')) && stmts[i + 2].code === '}') {
+          const fallback = stmts[i + 1].code.match(new RegExp('^' + nnChk[1] + ' = (.+);$'))[1];
+          // Check if there's a previous assignment to this var
+          if (result.length > 0 && result[result.length - 1].code.match(new RegExp('^' + nnChk[1] + ' = (.+);$'))) {
+            const prevVal = result[result.length - 1].code.match(new RegExp('^' + nnChk[1] + ' = (.+);$'))[1];
+            result[result.length - 1] = { ...result[result.length - 1], code: nnChk[1] + ' = ' + prevVal + ' ?? ' + fallback + ';' };
+            i += 2;
+            continue;
+          }
+        }
+      }
+
+      // Pattern matching: if (obj is Type) { t = (Type)obj; ... } → if (obj is Type t) { ... }
+      if (i + 2 < stmts.length) {
+        const isM = c.match(/^if \((\w+) is (\w+)\) \{$/);
+        if (isM) {
+          const castM = stmts[i + 1].code.match(new RegExp('^(\\w+) = \\(' + isM[2] + '\\)\\(' + isM[1] + '\\);$'));
+          if (castM) {
+            result.push({ ...stmts[i], code: 'if (' + isM[1] + ' is ' + isM[2] + ' ' + castM[1] + ') {' });
+            i += 1; // skip the cast assignment
+            continue;
+          }
+        }
+      }
+
+      // Expression-bodied: single return in method body
+      // (detected at formatter level, not here)
+
+      result.push({ ...stmts[i], code: c });
+    }
+    return result;
+  }
+
+  // =========================================================================
+  // VB.NET Syntax Transformation (enhanced with structured blocks)
+  // =========================================================================
+
   function _toVB(code) {
-    return code
+    // Structured block transforms
+    let c = code;
+    // while (cond) { → While cond
+    const whileM = c.match(/^(\s*)while \((.+)\) \{$/);
+    if (whileM) return whileM[1] + 'While ' + _vbExpr(whileM[2]);
+    // } (closing while) — handled by depth tracking
+    // do { → Do
+    if (/^\s*do \{$/.test(c)) return c.replace(/do \{$/, 'Do');
+    // } while (cond); → Loop While cond
+    const doWhileM = c.match(/^(\s*)\} while \((.+)\);$/);
+    if (doWhileM) return doWhileM[1] + 'Loop While ' + _vbExpr(doWhileM[2]);
+    // for (...) { → For ...
+    const forM = c.match(/^(\s*)for \(var (\w+) = (.+); (.+); \+\+\2\) \{$/);
+    if (forM) return forM[1] + 'For ' + forM[2] + ' = ' + _vbExpr(forM[3]) + ' To ' + _vbExpr(forM[4].replace(new RegExp(forM[2] + '\\s*<\\s*'), '').replace(new RegExp(forM[2] + '\\s*<=\\s*'), ''));
+    // foreach (var x in coll) { → For Each x In coll
+    const feM = c.match(/^(\s*)foreach \(var (\w+) in (.+)\) \{$/);
+    if (feM) return feM[1] + 'For Each ' + feM[2] + ' In ' + _vbExpr(feM[3]);
+    // if (cond) { → If cond Then
+    const ifM = c.match(/^(\s*)if \((.+)\) \{$/);
+    if (ifM) return ifM[1] + 'If ' + _vbExpr(ifM[2]) + ' Then';
+    // } else { → Else
+    if (/^\s*\} else \{$/.test(c)) return c.replace(/\} else \{$/, 'Else');
+    // } catch (Type) { → Catch ex As Type
+    const catchM = c.match(/^(\s*)\} catch \((.+)\) \{$/);
+    if (catchM) return catchM[1] + 'Catch ex As ' + catchM[2];
+    // } finally { → Finally
+    if (/^\s*\} finally \{$/.test(c)) return c.replace(/\} finally \{$/, 'Finally');
+    // try { → Try
+    if (/^\s*try \{$/.test(c)) return c.replace(/try \{$/, 'Try');
+    // using (...) { → Using ...
+    const usingM = c.match(/^(\s*)using \((.+)\) \{$/);
+    if (usingM) return usingM[1] + 'Using ' + _vbExpr(usingM[2]);
+    // lock (obj) { → SyncLock obj
+    const lockM = c.match(/^(\s*)lock \((.+)\) \{$/);
+    if (lockM) return lockM[1] + 'SyncLock ' + _vbExpr(lockM[2]);
+    // switch (expr) { → Select Case expr
+    const switchM = c.match(/^(\s*)switch \((.+)\) \{$/);
+    if (switchM) return switchM[1] + 'Select Case ' + _vbExpr(switchM[2]);
+    // case N: → Case N
+    const caseM = c.match(/^(\s*)case (.+):$/);
+    if (caseM) return caseM[1] + 'Case ' + caseM[2];
+    // } → End ... (generic close)
+    if (/^\s*\}$/.test(c)) return c.replace('}', 'End');
+    // Regular statements
+    return _vbExpr(c);
+  }
+
+  function _vbExpr(c) {
+    return c
       .replace(/\bnull\b/g, 'Nothing')
       .replace(/\btrue\b/g, 'True')
       .replace(/\bfalse\b/g, 'False')
@@ -901,14 +1600,12 @@
       .replace(/\btypeof\b/g, 'GetType')
       .replace(/\bsizeof\b/g, 'Len')
       .replace(/\bstackalloc\b/g, 'ReDim')
-      .replace(/\bthrow;/g, "Throw")
+      .replace(/\bthrow;/g, 'Throw')
       .replace(/\bthrow\b/g, 'Throw')
       .replace(/\breturn\b/g, 'Return')
       .replace(/\bgoto\b/g, 'GoTo')
       .replace(/\bif\s*\((.+?)\)\s*goto\s+(IL_[0-9A-Fa-f]+);/g, 'If $1 Then GoTo $2')
       .replace(/\bif\s*\((.+?)\)\s*GoTo\s+(IL_[0-9A-Fa-f]+);/g, 'If $1 Then GoTo $2')
-      .replace(/\bswitch\b/g, 'Select Case')
-      .replace(/!=\s/g, '<> ')
       .replace(/ != /g, ' <> ')
       .replace(/ == /g, ' = ')
       .replace(/!(\w)/g, 'Not $1')
@@ -924,64 +1621,70 @@
       .replace(/;/g, '');
   }
 
-  // ---- Modern C# pattern detection (applied to statement list) ----
-  function _modernize(stmts) {
-    const result = [];
-    for (let i = 0; i < stmts.length; ++i) {
-      let c = stmts[i].code;
-      // Clean up compiler-generated names
-      c = c.replace(/<>c__DisplayClass\w*/g, 'λ_closure');
-      c = c.replace(/<(\w+)>b__\d+/g, 'λ_$1');
-      c = c.replace(/<>1__state/g, 'state');
-      c = c.replace(/<>t__builder/g, 'builder');
-      c = c.replace(/<>s__\d+/g, function(m) { return 'tmp' + m.substring(4); });
-      c = c.replace(/<(\w+)>d__\d+/g, '$1_stateMachine');
-      c = c.replace(/CS\$<>8__locals\d*/g, 'locals');
-      // Async/await patterns
-      c = c.replace(/\.GetAwaiter\(\)\.GetResult\(\)/g, ''); // The actual call becomes await
-      if (/AsyncTaskMethodBuilder|AsyncVoidMethodBuilder/.test(c)) c = '// async ' + c;
-      if (/\.AwaitUnsafeOnCompleted\(|\.AwaitOnCompleted\(/.test(c)) c = c.replace(/\.\w+OnCompleted\(.+\);?/, '// await');
-      // Yield patterns
-      if (/<>1__state/.test(stmts[i].code) || /state = /.test(c)) c = c.replace(/state = (-?\d+);/, 'state = $1; // yield state');
-      // Nullable patterns: .HasValue → != null, .Value → !
-      c = c.replace(/\.get_HasValue\(\)/g, ' != null');
-      c = c.replace(/\.HasValue/g, ' != null');
-      c = c.replace(/\.get_Value\(\)/g, '.Value');
-      // nameof() pattern: ldstr with identifier-like content used with ArgumentNullException
-      // String.Format → $"..."
-      if (/String\.Format\(/.test(c)) c = c.replace(/String\.Format\(("[^"]*"),\s*(.+)\)/, '/* $"$1" args: $2 */');
-      // Simplify goto patterns: if !(x) goto L; stmt; L: → if (x) { stmt }
-      // (complex - detect sequential goto + label pairs)
-      if (i + 2 < stmts.length) {
-        const m = c.match(/^if \(!\((.+)\)\) goto (IL_[0-9A-Fa-f]+);$/);
-        if (m) {
-          const targetLabel = m[2];
-          const targetOff = parseInt(targetLabel.substring(3), 16);
-          // Check if the target is the statement after next (simple if body)
-          if (stmts[i + 2] && stmts[i + 2].offset === targetOff) {
-            result.push({ offset: stmts[i].offset, code: 'if (' + m[1] + ') {' });
-            result.push({ offset: stmts[i + 1].offset, code: '    ' + stmts[i + 1].code });
-            result.push({ offset: stmts[i + 2].offset, code: '}' });
-            i += 1; // skip the body statement; target line handled normally
-            continue;
-          }
-        }
-      }
-      result.push({ offset: stmts[i].offset, code: c });
-    }
-    return result;
-  }
+  // =========================================================================
+  // Formatting & Formatter Registration
+  // =========================================================================
 
-  // ---- Format statement list to HTML ----
-  function _fmtStmts(stmts, kwSet) {
+  function _fmtStmts(stmts, kwSet, decompiled) {
+    if (decompiled) {
+      // Collect all goto targets to build label map
+      const targetOffsets = new Set();
+      const gotoRx = /\b(?:goto|GoTo)\s+IL_([0-9A-Fa-f]{4,})\b/g;
+      for (const s of stmts) {
+        if (!s.code) continue;
+        let m;
+        while ((m = gotoRx.exec(s.code)) !== null)
+          targetOffsets.add(parseInt(m[1], 16));
+        gotoRx.lastIndex = 0;
+      }
+
+      // Assign sequential label names ordered by offset
+      const sorted = [...targetOffsets].sort((a, b) => a - b);
+      const labelMap = new Map();
+      for (let i = 0; i < sorted.length; ++i)
+        labelMap.set(sorted[i], 'label_' + i);
+
+      // Replace IL_XXXX references with label names in code text
+      const replaceLabels = (code) =>
+        code.replace(/\bIL_([0-9A-Fa-f]{4,})\b/g, (_, hex) => {
+          const off = parseInt(hex, 16);
+          return labelMap.has(off) ? labelMap.get(off) : 'IL_' + hex;
+        });
+
+      const lines = [];
+      for (const s of stmts) {
+        if (!s.code && s.code !== '') continue;
+        const indent = '    '.repeat(s.indent || 0);
+
+        // Insert label line before this statement if it is a jump target
+        if (labelMap.has(s.offset))
+          lines.push(
+            '<span class="da-line" data-offset="' + s.offset.toString(16) + '">'
+            + (indent ? esc(indent) : '')
+            + _hl(labelMap.get(s.offset) + ':', kwSet)
+            + '</span>'
+          );
+
+        lines.push(
+          '<span class="da-line" data-offset="' + s.offset.toString(16) + '">'
+          + (indent ? esc(indent) : '')
+          + _hl(replaceLabels(s.code), kwSet)
+          + '</span>'
+        );
+      }
+      return lines.join('\n');
+    }
+
     const lines = [];
     for (const s of stmts) {
       if (!s.code && s.code !== '') continue;
       const offHex = s.offset.toString(16).padStart(8, '0').toUpperCase();
+      const indent = '    '.repeat(s.indent || 0);
       lines.push(
         '<span class="da-line" data-offset="' + s.offset.toString(16) + '">'
         + '<span class="da-off">' + esc(offHex) + '</span>'
         + '<span class="da-sep"> | </span>'
+        + (indent ? esc(indent) : '')
         + _hl(s.code, kwSet)
         + '</span>'
       );
@@ -989,16 +1692,53 @@
     return lines.join('\n');
   }
 
+  /** Full structuring pipeline: EH → control flow → patterns */
+  function _fullStructure(stmts, annot) {
+    let result = _structureEH(stmts, annot);
+    result = _structureCF(result);
+    result = _applyPatterns(result);
+    return result;
+  }
+
+  /** Wrap method body with header and local declarations */
+  function _wrapMethod(stmts, annot) {
+    const header = _buildMethodHeader(annot);
+    const locals = _buildLocalDecls(annot);
+    if (!header && locals.length === 0) return stmts;
+    const prefix = [];
+    const baseOff = stmts.length > 0 ? stmts[0].offset : 0;
+    if (header)
+      prefix.push({ offset: baseOff, code: header + ' {', indent: 0 });
+    for (const l of locals) prefix.push({ ...l, offset: baseOff, indent: 1 });
+    if (prefix.length > 0 && locals.length > 0)
+      prefix.push({ offset: baseOff, code: '', indent: 0 }); // blank line after locals
+    const indented = stmts.map(s => ({ ...s, indent: (s.indent || 0) + 1 }));
+    const endOff = stmts.length > 0 ? stmts[stmts.length - 1].offset : 0;
+    return [...prefix, ...indented, { offset: endOff, code: '}', indent: 0 }];
+  }
+
   if (D.registerDecompileFormatter) {
-    // C# 2.0 — stack-tracking, no push/pop, reads like C#
-    D.registerDecompileFormatter('csharp-low', (insns, annot) => _fmtStmts(_decompileStatements(insns, annot), CS_KW));
-    // VB.NET — translate C# statements to VB syntax
-    D.registerDecompileFormatter('vb', (insns, annot) => {
-      const stmts = _decompileStatements(insns, annot);
-      return _fmtStmts(stmts.map(s => ({ offset: s.offset, code: _toVB(s.code) })), VB_KW);
+    // Pseudo-C# (C# 2.0 level) — structured with method header
+    D.registerDecompileFormatter('csharp-low', (insns, annot) => {
+      let stmts = _decompileStatements(insns, annot);
+      stmts = _fullStructure(stmts, annot);
+      stmts = _wrapMethod(stmts, annot);
+      return _fmtStmts(stmts, CS_KW, true);
     });
-    // Modern C# — pattern detection for records, lambdas, yield, async, etc.
-    D.registerDecompileFormatter('csharp', (insns, annot) => _fmtStmts(_modernize(_decompileStatements(insns, annot)), CS_KW));
+    // Pseudo-VB.NET — structured with VB syntax
+    D.registerDecompileFormatter('vb', (insns, annot) => {
+      let stmts = _decompileStatements(insns, annot);
+      stmts = _fullStructure(stmts, annot);
+      return _fmtStmts(stmts.map(s => ({ ...s, code: _toVB(s.code) })), VB_KW, true);
+    });
+    // C# (simplified) — modern patterns with method header
+    D.registerDecompileFormatter('csharp', (insns, annot) => {
+      let stmts = _decompileStatements(insns, annot);
+      stmts = _fullStructure(stmts, annot);
+      stmts = _modernize(stmts);
+      stmts = _wrapMethod(stmts, annot);
+      return _fmtStmts(stmts, CS_KW, true);
+    });
   }
 
 })();
