@@ -10,7 +10,7 @@
   /* Applications tab */
   .task-table { width: 100%; border-collapse: collapse; }
   .task-table th { position: sticky; top: 0; background: var(--sz-color-button-face); border: 1px solid var(--sz-color-button-shadow); padding: 2px 6px; text-align: left; font-weight: bold; cursor: default; user-select: none; font-size: 11px; }
-  .task-table td { padding: 2px 6px; border-bottom: 1px solid var(--sz-color-button-light); font-size: 11px; }
+  .task-table td { padding: 2px 6px; border-bottom: 1px solid var(--sz-color-button-light); font-size: 11px; user-select: none; cursor: default; }
   .task-table tr:hover td { background: #efe; }
   .task-table tr.selected td { background: var(--sz-color-highlight); color: var(--sz-color-highlight-text); }
   .table-scroll { flex: 1; overflow: auto; }
@@ -29,5 +29,5 @@
 
   /* Bottom bar */
   .bottom-bar { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px; border-top: 1px solid var(--sz-color-button-shadow); background: var(--sz-color-button-face); }
-  .bottom-bar button { font-size: 11px; padding: 2px 16px; cursor: default; }
+  .bottom-bar button { font-size: 11px; padding: 2px 16px; cursor: default; min-width: 80px; }
   .status-text { font-size: 10px; color: var(--sz-color-gray-text); }

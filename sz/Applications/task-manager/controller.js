@@ -7,7 +7,8 @@
   const statusText = document.getElementById('status-text');
   const btnEnd = document.getElementById('btn-end');
 
-  let selectedWindowId = null;
+  const selectedWindowIds = new Set();
+  let lastClickedIndex = -1;
   let windowList = [];
   let activeTab = 'applications';
 
@@ -68,19 +69,51 @@
     }
   }
 
+  function updateEndButton() {
+    const n = selectedWindowIds.size;
+    btnEnd.disabled = n === 0;
+    btnEnd.textContent = n > 1 ? `End Task (${n})` : 'End Task';
+  }
+
+  function updateRowSelections() {
+    for (const r of taskBody.querySelectorAll('tr'))
+      r.classList.toggle('selected', selectedWindowIds.has(r.dataset.id));
+  }
+
   function renderApplications() {
     const fragment = document.createDocumentFragment();
-    for (const win of windowList) {
+    for (let i = 0; i < windowList.length; ++i) {
+      const win = windowList[i];
       const tr = document.createElement('tr');
       const winId = String(win.id);
-      if (winId === selectedWindowId) tr.classList.add('selected');
+      if (selectedWindowIds.has(winId)) tr.classList.add('selected');
       tr.dataset.id = winId;
+      tr.dataset.index = i;
 
-      tr.addEventListener('click', () => {
-        selectedWindowId = winId;
-        btnEnd.disabled = false;
-        for (const r of taskBody.querySelectorAll('tr'))
-          r.classList.toggle('selected', r.dataset.id === winId);
+      tr.addEventListener('click', (e) => {
+        const idx = parseInt(tr.dataset.index, 10);
+
+        if (e.ctrlKey || e.metaKey) {
+          if (selectedWindowIds.has(winId))
+            selectedWindowIds.delete(winId);
+          else
+            selectedWindowIds.add(winId);
+        } else if (e.shiftKey && lastClickedIndex >= 0) {
+          const lo = Math.min(lastClickedIndex, idx);
+          const hi = Math.max(lastClickedIndex, idx);
+          for (let j = lo; j <= hi; ++j) {
+            const id = String(windowList[j]?.id);
+            if (id)
+              selectedWindowIds.add(id);
+          }
+        } else {
+          selectedWindowIds.clear();
+          selectedWindowIds.add(winId);
+        }
+
+        lastClickedIndex = idx;
+        updateRowSelections();
+        updateEndButton();
       });
 
       const tdTask = document.createElement('td');
@@ -108,15 +141,21 @@
     taskBody.appendChild(fragment);
 
     statusText.textContent = `Windows: ${windowList.length}`;
-    if (!windowList.find(w => String(w.id) === selectedWindowId)) {
-      selectedWindowId = null;
-      btnEnd.disabled = true;
-    }
+
+    const validIds = new Set(windowList.map(w => String(w.id)));
+    for (const id of [...selectedWindowIds])
+      if (!validIds.has(id))
+        selectedWindowIds.delete(id);
+
+    updateEndButton();
   }
 
   btnEnd.addEventListener('click', () => {
-    if (selectedWindowId && isInsideOS) {
-      SZ.Dlls.User32.PostMessage('sz:closeWindow', { windowId: selectedWindowId });
+    if (selectedWindowIds.size > 0 && isInsideOS) {
+      for (const winId of selectedWindowIds)
+        SZ.Dlls.User32.PostMessage('sz:closeWindow', { windowId: winId });
+      selectedWindowIds.clear();
+      updateEndButton();
       setTimeout(fetchWindowList, 300);
     }
   });
@@ -382,44 +421,13 @@
   init();
 
   // ===== Menu system =====
-  ;(function() {
-    const menuBar = document.querySelector('.menu-bar');
-    if (!menuBar) return;
-    let openMenu = null;
-    function closeMenus() {
-      if (openMenu) { openMenu.classList.remove('open'); openMenu = null; }
+  new SZ.MenuBar({
+    onAction(action) {
+      if (action === 'about')
+        SZ.Dialog.show('dlg-about');
     }
-    menuBar.addEventListener('pointerdown', function(e) {
-      const item = e.target.closest('.menu-item');
-      if (!item) return;
-      const entry = e.target.closest('.menu-entry');
-      if (entry) {
-        const action = entry.dataset.action;
-        closeMenus();
-        if (action === 'about') {
-          const dlg = document.getElementById('dlg-about');
-          if (dlg) dlg.classList.add('visible');
-        }
-        return;
-      }
-      if (openMenu === item) { closeMenus(); return; }
-      closeMenus();
-      item.classList.add('open');
-      openMenu = item;
-    });
-    menuBar.addEventListener('pointerenter', function(e) {
-      if (!openMenu) return;
-      const item = e.target.closest('.menu-item');
-      if (item && item !== openMenu) { closeMenus(); item.classList.add('open'); openMenu = item; }
-    }, true);
-    document.addEventListener('pointerdown', function(e) {
-      if (openMenu && !e.target.closest('.menu-bar')) closeMenus();
-    });
-  })();
-
-  document.getElementById('dlg-about')?.addEventListener('click', function(e) {
-    if (e.target.closest('[data-result]'))
-      this.classList.remove('visible');
   });
+
+  SZ.Dialog.wireAll();
 
 })();
