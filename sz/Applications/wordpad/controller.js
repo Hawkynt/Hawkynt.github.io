@@ -73,60 +73,6 @@
   });
 
   // ═══════════════════════════════════════════════════════════════
-  // Ribbon Tab Switching
-  // ═══════════════════════════════════════════════════════════════
-
-  const ribbonTabs = document.querySelectorAll('.ribbon-tab[data-tab]');
-  const ribbonPanels = document.querySelectorAll('.ribbon-panel[data-panel]');
-
-  for (const tab of ribbonTabs) {
-    tab.addEventListener('click', () => {
-      for (const t of ribbonTabs) t.classList.remove('active');
-      for (const p of ribbonPanels) p.classList.remove('active');
-      tab.classList.add('active');
-      const panel = document.querySelector('.ribbon-panel[data-panel="' + tab.dataset.tab + '"]');
-      if (panel)
-        panel.classList.add('active');
-    });
-  }
-
-  // ═══════════════════════════════════════════════════════════════
-  // File Backstage
-  // ═══════════════════════════════════════════════════════════════
-
-  const backstage = document.getElementById('backstage');
-
-  document.getElementById('ribbon-file-btn').addEventListener('click', () => {
-    backstage.classList.add('visible');
-  });
-
-  document.getElementById('backstage-back').addEventListener('click', () => {
-    backstage.classList.remove('visible');
-  });
-
-  backstage.addEventListener('click', (e) => {
-    if (e.target === backstage)
-      backstage.classList.remove('visible');
-  });
-
-  for (const item of backstage.querySelectorAll('.backstage-item[data-action]')) {
-    item.addEventListener('click', () => {
-      backstage.classList.remove('visible');
-      handleAction(item.dataset.action);
-    });
-  }
-
-  // ═══════════════════════════════════════════════════════════════
-  // Quick Access Toolbar
-  // ═══════════════════════════════════════════════════════════════
-
-  for (const btn of document.querySelectorAll('.qat-btn[data-action]')) {
-    btn.addEventListener('click', () => {
-      handleAction(btn.dataset.action);
-    });
-  }
-
-  // ═══════════════════════════════════════════════════════════════
   // Action Router
   // ═══════════════════════════════════════════════════════════════
 
@@ -146,7 +92,7 @@
       case 'export-rtf': doExportRtf(); break;
       case 'export-pdf': doExportPdf(); break;
       case 'exit': doExit(); break;
-      case 'about': showDialog('dlg-about'); break;
+      case 'about': SZ.Dialog.show('dlg-about'); break;
 
       // Edit
       case 'undo': document.execCommand('undo'); editor.focus(); break;
@@ -198,23 +144,21 @@
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // Ribbon action buttons (non-cmd, data-action)
+  // Ribbon wiring (shared module)
   // ═══════════════════════════════════════════════════════════════
 
-  for (const btn of document.querySelectorAll('.rb-btn[data-action]')) {
+  new SZ.Ribbon({ onAction: handleAction });
+  SZ.Dialog.wireAll();
+
+  // Prevent ribbon buttons from stealing editor focus
+  for (const btn of document.querySelectorAll('.rb-btn[data-action], .rb-btn[data-cmd]'))
     btn.addEventListener('pointerdown', (e) => e.preventDefault());
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      handleAction(btn.dataset.action);
-    });
-  }
 
   // ═══════════════════════════════════════════════════════════════
   // Format Command Buttons (data-cmd)
   // ═══════════════════════════════════════════════════════════════
 
   for (const btn of document.querySelectorAll('.rb-btn[data-cmd]')) {
-    btn.addEventListener('pointerdown', (e) => e.preventDefault());
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       document.execCommand(btn.dataset.cmd, false, null);
@@ -833,7 +777,6 @@
     }
 
     const overlay = document.getElementById('dlg-insert-table');
-    overlay.classList.add('visible');
     awaitDialogResult(overlay, (result) => {
       if (result !== 'ok')
         return;
@@ -1025,7 +968,6 @@
     document.getElementById('img-alt').value = '';
     document.getElementById('img-width').value = '';
     document.getElementById('img-height').value = '';
-    overlay.classList.add('visible');
     awaitDialogResult(overlay, (result) => {
       if (result !== 'ok')
         return;
@@ -1111,7 +1053,6 @@
     document.getElementById('link-url').value = 'https://';
 
     const overlay = document.getElementById('dlg-insert-link');
-    overlay.classList.add('visible');
     awaitDialogResult(overlay, (result) => {
       if (result !== 'ok')
         return;
@@ -1132,7 +1073,6 @@
   function showInsertBookmarkDialog() {
     document.getElementById('bm-name').value = '';
     const overlay = document.getElementById('dlg-insert-bookmark');
-    overlay.classList.add('visible');
     awaitDialogResult(overlay, (result) => {
       if (result !== 'ok')
         return;
@@ -1205,7 +1145,6 @@
       grid.appendChild(cell);
     }
     const overlay = document.getElementById('dlg-symbol');
-    overlay.classList.add('visible');
     awaitDialogResult(overlay);
   }
 
@@ -1244,7 +1183,6 @@
       wmText.value = existing.textContent;
 
     const overlay = document.getElementById('dlg-watermark');
-    overlay.classList.add('visible');
     awaitDialogResult(overlay, (result) => {
       if (result !== 'ok')
         return;
@@ -2222,32 +2160,18 @@
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // Dialog Helpers
+  // Dialog Helpers (using shared SZ.Dialog)
   // ═══════════════════════════════════════════════════════════════
 
-  function showDialog(id) {
-    const overlay = document.getElementById(id);
-    overlay.classList.add('visible');
-    awaitDialogResult(overlay);
-  }
-
   function awaitDialogResult(overlay, callback) {
-    function handleClick(e) {
-      const btn = e.target.closest('[data-result]');
-      if (!btn)
-        return;
-      overlay.classList.remove('visible');
-      overlay.removeEventListener('click', handleClick);
+    SZ.Dialog.show(overlay.id).then((result) => {
       if (typeof callback === 'function')
-        callback(btn.dataset.result);
-    }
-    overlay.addEventListener('click', handleClick);
+        callback(result);
+    });
   }
 
   function promptSaveChanges(callback) {
-    const overlay = document.getElementById('dlg-save-changes');
-    overlay.classList.add('visible');
-    awaitDialogResult(overlay, callback);
+    SZ.Dialog.show('dlg-save-changes').then(callback);
   }
 
   // ═══════════════════════════════════════════════════════════════

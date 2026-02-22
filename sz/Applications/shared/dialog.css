@@ -1,0 +1,62 @@
+/* ==== Dialogs ==== */
+.dialog-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 2000;
+  justify-content: center;
+  align-items: center;
+}
+
+.dialog-overlay.visible {
+  display: flex;
+}
+
+.dialog {
+  background: var(--sz-color-button-face);
+  border: 2px outset var(--sz-color-button-shadow);
+  min-width: 300px;
+  max-width: 450px;
+  box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.3);
+}
+
+.dialog-title {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+  padding: 4px 8px;
+  font-weight: bold;
+  font-size: 11px;
+  user-select: none;
+}
+
+.dialog-body {
+  padding: 12px;
+  font-size: 11px;
+}
+
+.dialog-body p {
+  margin-bottom: 8px;
+}
+
+.dialog-body input[type="text"],
+.dialog-body input[type="number"] {
+  width: 100%;
+  padding: 2px 4px;
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+.dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 8px 12px;
+}
+
+.dialog-buttons button {
+  min-width: 72px;
+  padding: 3px 12px;
+  font-size: 11px;
+  cursor: default;
+}

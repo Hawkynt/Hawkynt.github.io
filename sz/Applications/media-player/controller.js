@@ -12,7 +12,6 @@
   // -----------------------------------------------------------------------
   // DOM references
   // -----------------------------------------------------------------------
-  const menuBar = document.getElementById('menu-bar');
   const displayArea = document.getElementById('display-area');
   const placeholderArt = document.getElementById('placeholder-art');
   const canvas = document.getElementById('visualizer');
@@ -59,7 +58,6 @@
   let isMuted = false;
   let volumeBeforeMute = 0.8;
   let activeMediaElement = null; // audioEl or videoEl
-  let openMenu = null;
   let audioContext = null;
   let analyser = null;
   let sourceNode = null;
@@ -113,46 +111,7 @@
   // -----------------------------------------------------------------------
   // Menu system
   // -----------------------------------------------------------------------
-  function closeMenus() {
-    for (const item of menuBar.querySelectorAll('.menu-item'))
-      item.classList.remove('open');
-    openMenu = null;
-  }
-
-  for (const menuItem of menuBar.querySelectorAll('.menu-item')) {
-    menuItem.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('.menu-entry') || e.target.closest('.menu-separator'))
-        return;
-      if (openMenu === menuItem) {
-        closeMenus();
-        return;
-      }
-      closeMenus();
-      menuItem.classList.add('open');
-      openMenu = menuItem;
-    });
-
-    menuItem.addEventListener('pointerenter', () => {
-      if (openMenu && openMenu !== menuItem) {
-        closeMenus();
-        menuItem.classList.add('open');
-        openMenu = menuItem;
-      }
-    });
-  }
-
-  document.addEventListener('pointerdown', (e) => {
-    if (openMenu && !menuBar.contains(e.target))
-      closeMenus();
-  });
-
-  for (const entry of document.querySelectorAll('.menu-entry')) {
-    entry.addEventListener('click', () => {
-      const action = entry.dataset.action;
-      closeMenus();
-      handleAction(action, entry);
-    });
-  }
+  new SZ.MenuBar({ onAction: handleAction });
 
   // -----------------------------------------------------------------------
   // Action handler
@@ -199,7 +158,7 @@
         displayArea.classList.toggle('compact', compactMode);
         break;
       case 'about':
-        showDialog('dlg-about');
+        SZ.Dialog.show('dlg-about');
         break;
     }
   }
@@ -831,14 +790,11 @@
   function showOpenUrlDialog() {
     const urlInput = document.getElementById('url-input');
     urlInput.value = '';
-    const overlay = document.getElementById('dlg-open-url');
-    overlay.classList.add('visible');
-    urlInput.focus();
 
     urlInput.addEventListener('keydown', function onKey(e) {
       if (e.key === 'Enter') {
         e.preventDefault();
-        overlay.classList.remove('visible');
+        SZ.Dialog.close('dlg-open-url');
         urlInput.removeEventListener('keydown', onKey);
         const url = urlInput.value.trim();
         if (url) {
@@ -849,12 +805,12 @@
       }
       if (e.key === 'Escape') {
         e.preventDefault();
-        overlay.classList.remove('visible');
+        SZ.Dialog.close('dlg-open-url');
         urlInput.removeEventListener('keydown', onKey);
       }
     });
 
-    awaitDialogResult(overlay, (result) => {
+    SZ.Dialog.show('dlg-open-url').then((result) => {
       if (result === 'ok') {
         const url = urlInput.value.trim();
         if (url) {
@@ -864,28 +820,8 @@
         }
       }
     });
-  }
 
-  // -----------------------------------------------------------------------
-  // Dialog helpers
-  // -----------------------------------------------------------------------
-  function showDialog(id) {
-    const overlay = document.getElementById(id);
-    overlay.classList.add('visible');
-    awaitDialogResult(overlay);
-  }
-
-  function awaitDialogResult(overlay, callback) {
-    function handleClick(e) {
-      const btn = e.target.closest('[data-result]');
-      if (!btn)
-        return;
-      overlay.classList.remove('visible');
-      overlay.removeEventListener('click', handleClick);
-      if (typeof callback === 'function')
-        callback(btn.dataset.result);
-    }
-    overlay.addEventListener('click', handleClick);
+    urlInput.focus();
   }
 
   // -----------------------------------------------------------------------

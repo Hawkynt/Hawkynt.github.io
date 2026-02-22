@@ -9,7 +9,6 @@
   const DOW_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   const refs = {
-    menuBar: document.getElementById('menu-bar'),
     toolbar: document.getElementById('toolbar'),
     crontabInput: document.getElementById('crontabInput'),
     resultBody: document.getElementById('resultBody'),
@@ -25,7 +24,6 @@
     btnBuildPreview: document.getElementById('btnBuildPreview'),
     btnAppend: document.getElementById('btnAppend'),
     buildPreview: document.getElementById('buildPreview'),
-    aboutOverlay: document.getElementById('dlg-about'),
     aboutLink: document.getElementById('aboutLink')
   };
 
@@ -377,11 +375,11 @@
   /* ---------- About dialog ---------- */
 
   function showAbout() {
-    refs.aboutOverlay.classList.add('visible');
+    SZ.Dialog.show('dlg-about');
   }
 
   function hideAbout() {
-    refs.aboutOverlay.classList.remove('visible');
+    SZ.Dialog.close('dlg-about');
   }
 
   /* ---------- Reference link ---------- */
@@ -392,26 +390,6 @@
       User32.PostMessage('sz:launchApp', { appId: 'web-browser', urlParams: { url } });
     } catch {}
     setStatus(`Reference: ${url}`);
-  }
-
-  /* ---------- Menu logic ---------- */
-
-  let openMenu = null;
-
-  function closeAllMenus() {
-    if (!openMenu) return;
-    openMenu.classList.remove('open');
-    openMenu = null;
-  }
-
-  function toggleMenu(item) {
-    if (openMenu === item) {
-      closeAllMenus();
-      return;
-    }
-    closeAllMenus();
-    item.classList.add('open');
-    openMenu = item;
   }
 
   /* ---------- Action dispatch ---------- */
@@ -434,35 +412,7 @@
   /* ---------- Bindings ---------- */
 
   function bind() {
-    refs.menuBar.addEventListener('pointerdown', (e) => {
-      const item = e.target.closest('.menu-item');
-      if (!item) return;
-
-      const entry = e.target.closest('.menu-entry');
-      if (entry) {
-        const action = entry.dataset.action;
-        closeAllMenus();
-        dispatchAction(action);
-        return;
-      }
-
-      toggleMenu(item);
-    });
-
-    refs.menuBar.addEventListener('pointerover', (e) => {
-      if (!openMenu) return;
-      const item = e.target.closest('.menu-item');
-      if (item && item !== openMenu && item.parentNode === refs.menuBar) {
-        closeAllMenus();
-        item.classList.add('open');
-        openMenu = item;
-      }
-    });
-
-    document.addEventListener('pointerdown', (e) => {
-      if (openMenu && !e.target.closest('.menu-bar'))
-        closeAllMenus();
-    });
+    new SZ.MenuBar({ onAction: dispatchAction });
 
     refs.toolbar.addEventListener('click', (e) => {
       const btn = e.target.closest('.tool-btn');
@@ -472,10 +422,6 @@
     refs.btnBuildPreview.addEventListener('click', previewBuilder);
     refs.btnAppend.addEventListener('click', appendBuilderLine);
 
-    refs.aboutOverlay.addEventListener('click', (e) => {
-      if (e.target === refs.aboutOverlay || e.target.closest('[data-result]'))
-        hideAbout();
-    });
     refs.aboutLink.addEventListener('click', (e) => {
       e.preventDefault();
       openReference();
@@ -489,10 +435,6 @@
 
     document.addEventListener('keydown', async (e) => {
       if (e.key === 'Escape') {
-        if (openMenu) {
-          closeAllMenus();
-          return;
-        }
         hideAbout();
         return;
       }

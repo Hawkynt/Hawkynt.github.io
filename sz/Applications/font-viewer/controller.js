@@ -494,51 +494,95 @@
 
   // ===== Event: bold / italic toggles =====
 
-  btnBold.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
+  function toggleBold() {
     isBold = !isBold;
     btnBold.classList.toggle('active', isBold);
     updatePreview();
     updateCharGrid();
-  });
+  }
 
-  btnItalic.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
+  function toggleItalic() {
     isItalic = !isItalic;
     btnItalic.classList.toggle('active', isItalic);
     updatePreview();
     updateCharGrid();
+  }
+
+  btnBold.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    toggleBold();
   });
 
-  // ===== Event: color picker =====
+  btnItalic.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    toggleItalic();
+  });
 
-  textColorInput.addEventListener('input', () => {
-    textColor = textColorInput.value;
+  // ===== Event: color picker (SZ Color Picker integration) =====
+
+  let colorPickerRequest = null;
+  const User32 = SZ.Dlls && SZ.Dlls.User32;
+
+  function setTextColor(hex) {
+    textColor = hex;
+    textColorInput.style.background = hex;
     updatePreview();
     updateCharGrid();
     if (selectedCharCode >= 0)
       document.getElementById('glyph-char').style.color = textColor;
+  }
+
+  function openSzColorPicker(currentHex, onResult) {
+    const returnKey = 'sz:font-viewer:colorpick:' + Date.now() + ':' + Math.random().toString(36).slice(2);
+    colorPickerRequest = { returnKey, onResult };
+    try {
+      User32.PostMessage('sz:launchApp', {
+        appId: 'color-picker',
+        urlParams: { returnKey, hex: currentHex }
+      });
+    } catch (_) {
+      colorPickerRequest = null;
+    }
+  }
+
+  window.addEventListener('storage', (e) => {
+    if (!colorPickerRequest || !e || e.key !== colorPickerRequest.returnKey || !e.newValue)
+      return;
+    let payload = null;
+    try { payload = JSON.parse(e.newValue); } catch { return; }
+    if (!payload || payload.type !== 'color-picker-result')
+      return;
+    const r = Math.max(0, Math.min(255, payload.r || 0));
+    const g = Math.max(0, Math.min(255, payload.g || 0));
+    const b = Math.max(0, Math.min(255, payload.b || 0));
+    const hex = '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+    if (typeof colorPickerRequest.onResult === 'function')
+      colorPickerRequest.onResult(hex);
+    try { localStorage.removeItem(colorPickerRequest.returnKey); } catch {}
+    colorPickerRequest = null;
+  });
+
+  textColorInput.addEventListener('click', (e) => {
+    e.preventDefault();
+    openSzColorPicker(textColor, setTextColor);
   });
 
   // ===== Event: sample presets =====
 
-  document.getElementById('sample-presets').addEventListener('pointerdown', (e) => {
-    const btn = e.target.closest('.preset-btn');
-    if (!btn) return;
-    e.preventDefault();
+  function activatePreset(preset) {
+    currentPreset = preset;
 
     for (const b of document.querySelectorAll('.preset-btn'))
-      b.classList.remove('active');
-    btn.classList.add('active');
-
-    const preset = btn.dataset.preset;
-    currentPreset = preset;
+      b.classList.toggle('active', b.dataset.preset === preset);
 
     if (preset === 'custom')
       sampleTextEl.textContent = customText;
     else
       sampleTextEl.textContent = PRESETS[preset];
-  });
+
+    // Switch to sample view when a preset is selected
+    switchToPanel('sample');
+  }
 
   // ===== Event: save custom text on edit =====
 
@@ -547,20 +591,17 @@
       customText = sampleTextEl.textContent;
   });
 
-  // ===== Event: tab switching =====
+  // ===== Panel switching =====
 
-  document.getElementById('tab-bar').addEventListener('pointerdown', (e) => {
-    const btn = e.target.closest('.tab-btn');
-    if (!btn) return;
-
-    for (const t of document.querySelectorAll('#tab-bar .tab-btn'))
-      t.classList.remove('active');
-    btn.classList.add('active');
-
+  function switchToPanel(tab) {
     for (const p of document.querySelectorAll('.tab-panel'))
       p.classList.remove('active');
-    document.getElementById('panel-' + btn.dataset.tab).classList.add('active');
-  });
+    document.getElementById('panel-' + tab).classList.add('active');
+
+    // Sync ribbon radio buttons
+    const radio = document.querySelector('input[name="rb-display"][value="' + tab + '"]');
+    if (radio) radio.checked = true;
+  }
 
   // ===== Event: character grid click =====
 
@@ -649,45 +690,73 @@
   else
     requestAnimationFrame(init);
 
-  // ===== Menu system =====
+  // ===== Ribbon system =====
 
-  const menuBar = document.querySelector('.menu-bar');
-  if (menuBar) {
-    let openMenu = null;
-    function closeMenus() {
-      if (openMenu) { openMenu.classList.remove('open'); openMenu = null; }
+  function handleMenuAction(action) {
+    switch (action) {
+      case 'about':
+        SZ.Dialog.show('dlg-about');
+        break;
+      case 'exit':
+        SZ.Dlls.User32.DestroyWindow();
+        break;
+      case 'open-file':
+        openFontFilePicker();
+        break;
+      case 'toggle-bold':
+        toggleBold();
+        break;
+      case 'toggle-italic':
+        toggleItalic();
+        break;
+      case 'view-sample':
+        switchToPanel('sample');
+        break;
+      case 'view-characters':
+        switchToPanel('characters');
+        break;
+      case 'preset-pangram':
+        activatePreset('pangram');
+        break;
+      case 'preset-alphabet':
+        activatePreset('alphabet');
+        break;
+      case 'preset-numbers':
+        activatePreset('numbers');
+        break;
+      case 'preset-lorem':
+        activatePreset('lorem');
+        break;
+      case 'preset-custom':
+        activatePreset('custom');
+        break;
     }
-    menuBar.addEventListener('pointerdown', function(e) {
-      const item = e.target.closest('.menu-item');
-      if (!item) return;
-      const entry = e.target.closest('.menu-entry');
-      if (entry) {
-        const action = entry.dataset.action;
-        closeMenus();
-        if (action === 'about') {
-          const dlg = document.getElementById('dlg-about');
-          if (dlg) dlg.classList.add('visible');
-        }
-        return;
-      }
-      if (openMenu === item) { closeMenus(); return; }
-      closeMenus();
-      item.classList.add('open');
-      openMenu = item;
-    });
-    menuBar.addEventListener('pointerenter', function(e) {
-      if (!openMenu) return;
-      const item = e.target.closest('.menu-item');
-      if (item && item !== openMenu) { closeMenus(); item.classList.add('open'); openMenu = item; }
-    }, true);
-    document.addEventListener('pointerdown', function(e) {
-      if (openMenu && !e.target.closest('.menu-bar')) closeMenus();
-    });
   }
 
-  document.getElementById('dlg-about')?.addEventListener('click', function(e) {
-    if (e.target.closest('[data-result]'))
-      this.classList.remove('visible');
+  async function openFontFilePicker() {
+    if (!SZ.Dlls || !SZ.Dlls.ComDlg32 || !SZ.Dlls.ComDlg32.GetOpenFileName) return;
+    try {
+      const result = await SZ.Dlls.ComDlg32.GetOpenFileName({
+        filters: [
+          { name: 'Font Files', ext: ['ttf', 'otf', 'woff', 'woff2'] },
+          { name: 'All Files', ext: ['*'] }
+        ],
+        title: 'Open Font File'
+      });
+      if (result.cancelled || !result.path) return;
+      loadFontFile(result.path);
+    } catch (_) {}
+  }
+
+  // Wire ribbon view radio buttons
+  document.querySelectorAll('input[name="rb-display"]').forEach((radio) => {
+    radio.addEventListener('change', () => {
+      if (radio.checked)
+        switchToPanel(radio.value);
+    });
   });
+
+  new SZ.Ribbon({ onAction: handleMenuAction });
+  SZ.Dialog.wireAll();
 
 })();

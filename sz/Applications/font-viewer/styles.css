@@ -6,16 +6,6 @@ body {
   height: 100vh;
 }
 
-/* ---- Menu bar ---- */
-.menu-bar { display: flex; background: var(--sz-color-menu); color: var(--sz-color-menu-text); font-size: 11px; user-select: none; border-bottom: 1px solid var(--sz-color-button-shadow); position: relative; z-index: 100; flex-shrink: 0; }
-.menu-item { padding: 3px 8px; position: relative; cursor: default; }
-.menu-item:hover, .menu-item.open { background: var(--sz-color-highlight); color: var(--sz-color-highlight-text); }
-.menu-dropdown { display: none; position: absolute; top: 100%; left: 0; background: var(--sz-color-menu); border: 1px solid var(--sz-color-button-shadow); box-shadow: 2px 2px 4px rgba(0,0,0,0.2); min-width: 160px; z-index: 200; }
-.menu-item.open .menu-dropdown { display: block; }
-.menu-entry { padding: 3px 24px 3px 8px; white-space: nowrap; cursor: default; color: var(--sz-color-menu-text); }
-.menu-entry:hover { background: var(--sz-color-highlight); color: var(--sz-color-highlight-text); }
-.menu-separator { height: 1px; background: var(--sz-color-button-shadow); margin: 2px 4px; }
-
 /* ---- Main layout ---- */
 #app {
   display: grid;
@@ -123,132 +113,16 @@ body {
   overflow: hidden;
 }
 
-/* ---- Toolbar ---- */
-#toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 6px;
-  border-bottom: 1px solid var(--sz-color-button-shadow);
-  background: var(--sz-color-button-face);
-  flex-shrink: 0;
-}
-
-#toolbar label {
-  font-size: 10px;
-  font-weight: bold;
-}
-
-#toolbar select,
-#toolbar input[type="number"] {
-  font-family: inherit;
-  font-size: 10px;
-  padding: 1px 2px;
-  border: 1px solid var(--sz-color-button-shadow);
-  background: var(--sz-color-window);
-  color: var(--sz-color-window-text);
-}
-
-#toolbar input[type="color"] {
-  width: 22px;
-  height: 18px;
-  padding: 0;
-  border: 1px solid var(--sz-color-button-shadow);
-  cursor: pointer;
-}
-
-.toolbar-group {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-}
-
-.style-btn {
-  padding: 1px 5px;
-  font-family: inherit;
-  font-size: 10px;
-  cursor: default;
-  border: 1px solid var(--sz-color-button-shadow);
-  background: var(--sz-color-button-face);
-  color: var(--sz-color-button-text);
-  min-width: 22px;
-  text-align: center;
-}
-
-.style-btn.active {
+/* ---- Ribbon toggle active state ---- */
+.rb-toggle.active {
   background: var(--sz-color-highlight);
   color: var(--sz-color-highlight-text);
 }
 
-#size-slider {
-  width: 80px;
-  height: 14px;
-  -webkit-appearance: none;
-  appearance: none;
-  background: transparent;
-  cursor: pointer;
-}
-
-#size-slider::-webkit-slider-runnable-track {
-  height: 6px;
-  border: 1px solid var(--sz-color-button-shadow);
-  background: var(--sz-color-window);
-}
-
-#size-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 10px;
-  height: 16px;
-  background: var(--sz-color-button-face);
-  border: 1px solid var(--sz-color-button-shadow);
-  margin-top: -6px;
-  cursor: pointer;
-}
-
-#size-slider::-moz-range-track {
-  height: 6px;
-  border: 1px solid var(--sz-color-button-shadow);
-  background: var(--sz-color-window);
-}
-
-#size-slider::-moz-range-thumb {
-  width: 10px;
-  height: 16px;
-  background: var(--sz-color-button-face);
-  border: 1px solid var(--sz-color-button-shadow);
-  cursor: pointer;
-  border-radius: 0;
-}
-
-/* ---- Tabs ---- */
-#tab-bar {
-  display: flex;
-  gap: 0;
-  padding: 0 6px;
-  border-bottom: 1px solid var(--sz-color-button-shadow);
-  background: var(--sz-color-button-face);
-  flex-shrink: 0;
-}
-
-.tab-btn {
-  padding: 2px 8px;
-  font-size: 10px;
-  font-family: inherit;
-  cursor: default;
-  border: 1px solid var(--sz-color-button-shadow);
-  border-bottom: none;
-  background: var(--sz-color-button-face);
-  color: var(--sz-color-button-text);
-  margin-bottom: -1px;
-  position: relative;
-}
-
-.tab-btn.active {
-  background: var(--sz-color-window);
-  border-bottom: 1px solid var(--sz-color-window);
-  z-index: 1;
-  font-weight: bold;
+/* ---- Ribbon preset active state ---- */
+.ribbon-panel .preset-btn.active {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
 }
 
 /* ---- Tab content ---- */
@@ -264,28 +138,6 @@ body {
 .tab-panel.active { display: block; }
 
 /* ---- Sample text ---- */
-#sample-presets {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 6px;
-  flex-wrap: wrap;
-}
-
-.preset-btn {
-  padding: 1px 6px;
-  font-family: inherit;
-  font-size: 9px;
-  cursor: default;
-  border: 1px solid var(--sz-color-button-shadow);
-  background: var(--sz-color-button-face);
-  color: var(--sz-color-button-text);
-}
-
-.preset-btn.active {
-  background: var(--sz-color-highlight);
-  color: var(--sz-color-highlight-text);
-}
-
 #sample-text {
   width: 100%;
   min-height: 80px;
@@ -407,56 +259,3 @@ body {
   font-size: 9px;
 }
 
-/* ---- Dialogs ---- */
-.dialog-overlay {
-  display: none;
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.3);
-  z-index: 2000;
-  justify-content: center;
-  align-items: center;
-}
-
-.dialog-overlay.visible {
-  display: flex;
-}
-
-.dialog {
-  background: var(--sz-color-button-face);
-  border: 2px outset var(--sz-color-button-shadow);
-  min-width: 300px;
-  max-width: 450px;
-  box-shadow: 3px 3px 8px rgba(0,0,0,0.3);
-}
-
-.dialog-title {
-  background: var(--sz-color-highlight);
-  color: var(--sz-color-highlight-text);
-  padding: 4px 8px;
-  font-weight: bold;
-  font-size: 11px;
-  user-select: none;
-}
-
-.dialog-body {
-  padding: 12px;
-  font-size: 11px;
-}
-
-.dialog-body p {
-  margin-bottom: 8px;
-}
-
-.dialog-buttons {
-  display: flex;
-  justify-content: flex-end;
-  gap: 6px;
-  padding: 8px 12px;
-}
-
-.dialog-buttons button {
-  min-width: 72px;
-  padding: 3px 12px;
-  font-size: 11px;
-}

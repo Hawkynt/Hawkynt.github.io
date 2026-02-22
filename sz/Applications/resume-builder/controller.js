@@ -39,12 +39,9 @@
   let redoStack = [];
   const MAX_UNDO = 50;
 
-  let openMenu = null;
-
   // -----------------------------------------------------------------------
   // DOM references
   // -----------------------------------------------------------------------
-  const menuBar = document.getElementById('menu-bar');
   const templateSelect = document.getElementById('template-select');
   const exportFormat = document.getElementById('export-format');
   const wizardPanel = document.getElementById('wizard-panel');
@@ -2094,10 +2091,9 @@
   }
 
   function doPasteResume() {
-    const dlg = document.getElementById('dlg-paste');
     const textarea = document.getElementById('paste-textarea');
     textarea.value = '';
-    dlg.classList.add('visible');
+    SZ.Dialog.show('dlg-paste');
     textarea.focus();
   }
 
@@ -2186,7 +2182,7 @@
   // -----------------------------------------------------------------------
   document.getElementById('paste-ok').addEventListener('click', () => {
     const text = document.getElementById('paste-textarea').value;
-    document.getElementById('dlg-paste').classList.remove('visible');
+    SZ.Dialog.close('dlg-paste');
     if (text.trim()) {
       importMarkdown(text);
       currentFilePath = null;
@@ -2196,7 +2192,7 @@
   });
 
   document.getElementById('paste-cancel').addEventListener('click', () => {
-    document.getElementById('dlg-paste').classList.remove('visible');
+    SZ.Dialog.close('dlg-paste');
   });
 
   // -----------------------------------------------------------------------
@@ -2205,7 +2201,6 @@
   let editingTemplate = null;
 
   function openTemplateEditor() {
-    const dlg = document.getElementById('dlg-template-editor');
     const select = document.getElementById('tpl-editor-select');
 
     select.innerHTML = '';
@@ -2218,7 +2213,7 @@
 
     editingTemplate = deepClone(allTemplates[0]);
     renderTemplateEditorFields();
-    dlg.classList.add('visible');
+    SZ.Dialog.show('dlg-template-editor');
   }
 
   function renderTemplateEditorFields() {
@@ -2360,7 +2355,7 @@
   });
 
   document.getElementById('tpl-editor-close').addEventListener('click', () => {
-    document.getElementById('dlg-template-editor').classList.remove('visible');
+    SZ.Dialog.close('dlg-template-editor');
   });
 
   // Template I/O buttons
@@ -2445,12 +2440,7 @@
   // About dialog
   // -----------------------------------------------------------------------
   function showAbout() {
-    const dlg = document.getElementById('dlg-about');
-    dlg.classList.add('visible');
-    const okBtn = document.getElementById('about-ok');
-    okBtn.focus();
-    function handler() { dlg.classList.remove('visible'); okBtn.removeEventListener('click', handler); }
-    okBtn.addEventListener('click', handler);
+    SZ.Dialog.show('dlg-about');
   }
 
   // -----------------------------------------------------------------------
@@ -2480,33 +2470,10 @@
   // -----------------------------------------------------------------------
   // Menu system
   // -----------------------------------------------------------------------
-  function closeMenus() {
-    for (const item of menuBar.querySelectorAll('.menu-item'))
-      item.classList.remove('open');
-    openMenu = null;
-  }
-
-  for (const menuItem of menuBar.querySelectorAll('.menu-item')) {
-    menuItem.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('.menu-entry') || e.target.closest('.menu-separator')) return;
-      if (openMenu === menuItem) { closeMenus(); return; }
-      closeMenus();
-      menuItem.classList.add('open');
-      openMenu = menuItem;
-    });
-
-    menuItem.addEventListener('pointerenter', () => {
-      if (openMenu && openMenu !== menuItem) {
-        closeMenus();
-        menuItem.classList.add('open');
-        openMenu = menuItem;
-      }
-    });
-  }
-
-  document.addEventListener('pointerdown', (e) => {
-    if (openMenu && !menuBar.contains(e.target)) closeMenus();
-  });
+  const menuBarInstance = new SZ.MenuBar({ onAction: (action) => {
+    const entry = document.querySelector('.menu-entry[data-action="' + action + '"]');
+    handleAction(action, entry);
+  }});
 
   // -----------------------------------------------------------------------
   // Action dispatcher
@@ -2542,14 +2509,6 @@
         break;
     }
   }
-
-  menuBar.addEventListener('click', (e) => {
-    const entry = e.target.closest('.menu-entry');
-    if (!entry) return;
-    const action = entry.dataset.action;
-    closeMenus();
-    handleAction(action, entry);
-  });
 
   for (const btn of document.querySelectorAll('.toolbar button[data-action]'))
     btn.addEventListener('click', () => handleAction(btn.dataset.action));
