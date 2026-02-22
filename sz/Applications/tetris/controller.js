@@ -123,6 +123,7 @@
   let lastDropTime;
   let animFrameId;
   let clearingRows;
+  let clearingRowsSnapshot;
   let clearAnimStart;
   let softDropping;
 
@@ -135,6 +136,8 @@
   const pauseOverlay = document.getElementById('pauseOverlay');
   const gameOverOverlay = document.getElementById('gameOverOverlay');
   const finalScoreEl = document.getElementById('finalScore');
+  const boardBorder = document.querySelector('.board-border');
+  const boardWrapper = document.querySelector('.board-wrapper');
 
   let boardCells = [];
   let previewCells = [];
@@ -361,6 +364,8 @@
     }
     addHardDropPoints(dropped);
     updateDisplays();
+    if (dropped > 0)
+      shakeBoard(1);
     lockAndAdvance();
   }
 
@@ -401,6 +406,7 @@
     const lockedRow = currentPiece.row;
     const lockedShape = getShape(currentPiece.type, currentPiece.rotation);
 
+    flashLockedCells();
     lockPieceToBoard();
     currentPiece = null;
 
@@ -425,10 +431,15 @@
   }
 
   function advanceAfterClear(linesCleared) {
+    const prevLevel = level;
     if (linesCleared > 0) {
       lines += linesCleared;
+      const pts = LINE_SCORES[linesCleared] * (level + 1);
       addScore(linesCleared);
       updateLevel();
+      showScorePopup(pts, linesCleared, Math.min(...clearingRowsSnapshot));
+      if (level > prevLevel)
+        showLevelUp();
     }
     updateDisplays();
 
@@ -515,12 +526,141 @@
       }
   }
 
+  /* ---- Effects: Screen Shake ---- */
+  function shakeBoard(intensity) {
+    const cls = intensity >= 4 ? 'shaking-heavy' : intensity >= 2 ? 'shaking-medium' : 'shaking-light';
+    boardBorder.classList.remove('shaking-light', 'shaking-medium', 'shaking-heavy');
+    void boardBorder.offsetWidth;
+    boardBorder.classList.add(cls);
+    boardBorder.addEventListener('animationend', function handler() {
+      boardBorder.classList.remove(cls);
+      boardBorder.removeEventListener('animationend', handler);
+    });
+  }
+
+  /* ---- Effects: Score Popup ---- */
+  function showScorePopup(points, linesCleared, row) {
+    const popup = document.createElement('div');
+    popup.className = 'score-popup';
+    if (linesCleared >= 4)
+      popup.classList.add('tetris');
+    const label = linesCleared >= 4 ? '+' + points + ' TETRIS!' : '+' + points;
+    popup.textContent = label;
+    const cellSize = 20;
+    popup.style.left = (COLS * cellSize / 2 - 30) + 'px';
+    popup.style.top = (row * cellSize) + 'px';
+    boardWrapper.appendChild(popup);
+    popup.addEventListener('animationend', () => popup.remove());
+  }
+
+  /* ---- Effects: Line Clear Particles ---- */
+  const PARTICLE_COLORS = ['#ff0', '#f80', '#0ff', '#f0f', '#0f0', '#fff', '#f44', '#4af'];
+
+  function spawnClearParticles(rows) {
+    const cellSize = 20;
+    for (const row of rows)
+      for (let c = 0; c < COLS; ++c) {
+        const count = 3 + Math.floor(Math.random() * 2);
+        for (let p = 0; p < count; ++p) {
+          const particle = document.createElement('div');
+          particle.className = 'clear-particle';
+          const size = 2 + Math.random() * 4;
+          particle.style.width = size + 'px';
+          particle.style.height = size + 'px';
+          particle.style.background = PARTICLE_COLORS[Math.floor(Math.random() * PARTICLE_COLORS.length)];
+          const startX = c * cellSize + cellSize / 2;
+          const startY = row * cellSize + cellSize / 2;
+          particle.style.left = startX + 'px';
+          particle.style.top = startY + 'px';
+          boardWrapper.appendChild(particle);
+
+          const vx = (Math.random() - 0.5) * 6;
+          const vy = -(Math.random() * 4 + 1);
+          const gravity = 0.15;
+          let x = startX;
+          let y = startY;
+          let velX = vx;
+          let velY = vy;
+          let alpha = 1;
+          let angle = Math.random() * 360;
+
+          const animateParticle = () => {
+            velY += gravity;
+            x += velX;
+            y += velY;
+            alpha -= 0.018;
+            angle += velX * 3;
+            if (alpha <= 0) {
+              particle.remove();
+              return;
+            }
+            particle.style.left = x + 'px';
+            particle.style.top = y + 'px';
+            particle.style.opacity = alpha;
+            particle.style.transform = 'rotate(' + angle + 'deg)';
+            requestAnimationFrame(animateParticle);
+          };
+          requestAnimationFrame(animateParticle);
+        }
+      }
+  }
+
+  /* ---- Effects: Piece Lock Flash ---- */
+  function flashLockedCells() {
+    if (!currentPiece)
+      return;
+    const shape = getShape(currentPiece.type, currentPiece.rotation);
+    const size = shape.length;
+    for (let r = 0; r < size; ++r)
+      for (let c = 0; c < size; ++c) {
+        if (!shape[r][c])
+          continue;
+        const br = currentPiece.row + r;
+        const bc = currentPiece.col + c;
+        if (br >= 0 && br < ROWS && bc >= 0 && bc < COLS) {
+          const idx = br * COLS + bc;
+          boardCells[idx].classList.add('just-locked');
+          boardCells[idx].addEventListener('animationend', function handler() {
+            boardCells[idx].classList.remove('just-locked');
+            boardCells[idx].removeEventListener('animationend', handler);
+          });
+        }
+      }
+  }
+
+  /* ---- Effects: Level Up ---- */
+  function showLevelUp() {
+    levelDisplay.classList.remove('level-flash');
+    void levelDisplay.offsetWidth;
+    levelDisplay.classList.add('level-flash');
+    levelDisplay.addEventListener('animationend', function handler() {
+      levelDisplay.classList.remove('level-flash');
+      levelDisplay.removeEventListener('animationend', handler);
+    });
+
+    boardBorder.classList.remove('level-border-pulse');
+    void boardBorder.offsetWidth;
+    boardBorder.classList.add('level-border-pulse');
+    boardBorder.addEventListener('animationend', function handler() {
+      boardBorder.classList.remove('level-border-pulse');
+      boardBorder.removeEventListener('animationend', handler);
+    });
+
+    const text = document.createElement('div');
+    text.className = 'level-up-text';
+    text.textContent = 'LEVEL UP!';
+    boardWrapper.appendChild(text);
+    text.addEventListener('animationend', () => text.remove());
+  }
+
   function renderClearAnimation(rows) {
     for (const row of rows)
       for (let c = 0; c < COLS; ++c) {
         const idx = row * COLS + c;
         boardCells[idx].className = 'board-cell clearing';
       }
+    spawnClearParticles(rows);
+    shakeBoard(rows.length);
   }
 
   function updateDisplays() {
@@ -725,8 +865,9 @@
       return;
 
     if (clearingRows) {
-      if (timestamp - clearAnimStart >= 300) {
+      if (timestamp - clearAnimStart >= 500) {
         const count = clearingRows.length;
+        clearingRowsSnapshot = [...clearingRows];
         removeRows(clearingRows);
         clearingRows = null;
         clearAnimStart = 0;
@@ -764,6 +905,7 @@
     gamePaused = false;
     gameOverFlag = false;
     clearingRows = null;
+    clearingRowsSnapshot = [];
     clearAnimStart = 0;
     softDropping = false;
     bag = null;
