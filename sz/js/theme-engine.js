@@ -53,8 +53,17 @@
       if (!src) return Promise.resolve(null);
       return new Promise(resolve => {
         const img = new Image();
-        img.onload = () => resolve(img);
-        img.onerror = () => resolve(null);
+        img.onload = () => {
+          const done = () => resolve(img);
+          if (img.decode)
+            img.decode().then(done, done);
+          else
+            done();
+        };
+        img.onerror = () => {
+          console.warn('[SZ ThemeEngine] Failed to load control image:', src);
+          resolve(null);
+        };
         img.src = src;
       });
     }
@@ -89,22 +98,26 @@
 
         // Mask-based alpha (greyscale mask → alpha channel)
         if (maskImg) {
-          const mc = document.createElement('canvas');
-          mc.width = sw;
-          mc.height = sh;
-          const mctx = mc.getContext('2d');
-          mctx.drawImage(maskImg, sx, sy, sw, sh, 0, 0, sw, sh);
-          const md = mctx.getImageData(0, 0, sw, sh);
-          const mp = md.data;
-          for (let i = 0; i < mp.length; i += 4) {
-            const grey = Math.round(mp[i] * 0.299 + mp[i + 1] * 0.587 + mp[i + 2] * 0.114);
-            mp[i] = mp[i + 1] = mp[i + 2] = 255;
-            mp[i + 3] = grey;
+          try {
+            const mc = document.createElement('canvas');
+            mc.width = sw;
+            mc.height = sh;
+            const mctx = mc.getContext('2d');
+            mctx.drawImage(maskImg, sx, sy, sw, sh, 0, 0, sw, sh);
+            const md = mctx.getImageData(0, 0, sw, sh);
+            const mp = md.data;
+            for (let i = 0; i < mp.length; i += 4) {
+              const grey = Math.round(mp[i] * 0.299 + mp[i + 1] * 0.587 + mp[i + 2] * 0.114);
+              mp[i] = mp[i + 1] = mp[i + 2] = 255;
+              mp[i + 3] = grey;
+            }
+            mctx.putImageData(md, 0, 0);
+            ctx.globalCompositeOperation = 'destination-in';
+            ctx.drawImage(mc, 0, 0);
+            ctx.globalCompositeOperation = 'source-over';
+          } catch {
+            console.warn('[SZ ThemeEngine] Mask processing failed, using image without alpha masking');
           }
-          mctx.putImageData(md, 0, 0);
-          ctx.globalCompositeOperation = 'destination-in';
-          ctx.drawImage(mc, 0, 0);
-          ctx.globalCompositeOperation = 'source-over';
         }
 
         return canvas.toDataURL();
@@ -139,27 +152,35 @@
 
       const [btnImg, btnMask, checkImg, checkMask, radioImg, progressImg, tabImg] = await Promise.all(loads);
 
+      console.debug(
+        '[SZ ThemeEngine] Control images loaded —',
+        'check:', !!checkImg, 'checkMask:', !!checkMask,
+        'radio:', !!radioImg, 'button:', !!btnImg,
+        'btnMask:', !!btnMask, 'progress:', !!progressImg,
+        'tab:', !!tabImg
+      );
+
       let css = '';
 
-      if (checkImg) {
+      if (checkImg && checkImg.naturalWidth > 0 && checkImg.naturalHeight > 0) {
         const nf = Math.max(1, Math.floor(checkImg.naturalWidth / checkImg.naturalHeight));
         css += this.#buildCheckRadioCSS('checkbox', checkImg, checkMask, nf, b.checkbutton);
       }
 
-      if (radioImg) {
+      if (radioImg && radioImg.naturalWidth > 0 && radioImg.naturalHeight > 0) {
         const nf = Math.max(1, Math.floor(radioImg.naturalWidth / radioImg.naturalHeight));
         css += this.#buildCheckRadioCSS('radio', radioImg, null, nf, b.radiobutton);
       }
 
-      if (btnImg) {
+      if (btnImg && btnImg.naturalWidth > 0 && btnImg.naturalHeight > 0) {
         const nf = b.framecount || this.#detectButtonFrameCount(btnImg, !!b.mouseover);
         css += this.#buildPushButtonCSS(b, btnImg, btnMask, nf);
       }
 
-      if (progressImg && pb)
+      if (progressImg && progressImg.naturalWidth > 0 && progressImg.naturalHeight > 0 && pb)
         css += this.#buildProgressBarCSS(pb, progressImg);
 
-      if (tabImg && tc)
+      if (tabImg && tabImg.naturalWidth > 0 && tabImg.naturalHeight > 0 && tc)
         css += this.#buildTabControlCSS(tc, tabImg);
 
       return css;
@@ -204,12 +225,20 @@
       const useData = dataUrls.length === numFrames;
       const absRawUrl = useData ? null : this.#absUrl(rawPath);
 
-      // CSS background for frame f (data URL or raw sprite positioning)
-      const bg = (f) => {
+      // CSS background properties for frame f (individual properties for robustness)
+      const bgProps = (f) => {
         if (useData)
-          return `url("${dataUrls[f]}") no-repeat 0 0 / 100% 100%`;
+          return `background-image: url("${dataUrls[f]}"); background-repeat: no-repeat; background-position: 0px 0px; background-size: 100% 100%;`;
         const pct = numFrames > 1 ? `${(f * 100 / (numFrames - 1)).toFixed(4)}%` : '0%';
-        return `url("${absRawUrl}") no-repeat ${pct} 0% / ${numFrames * 100}% 100%`;
+        return `background-image: url("${absRawUrl}"); background-repeat: no-repeat; background-position: ${pct} 0%; background-size: ${numFrames * 100}% 100%;`;
+      };
+
+      // Short form for state overrides — only position changes for sprites, full set for data URLs
+      const bgOverride = (f) => {
+        if (useData)
+          return `background-image: url("${dataUrls[f]}");`;
+        const pct = numFrames > 1 ? `${(f * 100 / (numFrames - 1)).toFixed(4)}%` : '0%';
+        return `background-position: ${pct} 0%;`;
       };
 
       let css = `
@@ -219,33 +248,33 @@
   -webkit-appearance: none;
   width: ${fw}px;
   height: ${fh}px;
-  background: ${bg(0)};
+  ${bgProps(0)}
   vertical-align: middle;
   margin: 3px;
   cursor: default;
   border: none;
   flex-shrink: 0;
 }
-:where(${sel}:checked) { background: ${bg(1)}; }`;
+:where(${sel}:checked) { ${bgOverride(1)} }`;
 
       if (numFrames >= 8)
         css += `
-:where(${sel}:hover:not(:checked):not(:disabled)) { background: ${bg(2)}; }
-:where(${sel}:hover:checked:not(:disabled)) { background: ${bg(3)}; }
-:where(${sel}:active:not(:checked)) { background: ${bg(4)}; }
-:where(${sel}:active:checked) { background: ${bg(5)}; }
-:where(${sel}:disabled:not(:checked)) { background: ${bg(6)}; }
-:where(${sel}:disabled:checked) { background: ${bg(7)}; }`;
+:where(${sel}:hover:not(:checked):not(:disabled)) { ${bgOverride(2)} }
+:where(${sel}:hover:checked:not(:disabled)) { ${bgOverride(3)} }
+:where(${sel}:active:not(:checked)) { ${bgOverride(4)} }
+:where(${sel}:active:checked) { ${bgOverride(5)} }
+:where(${sel}:disabled:not(:checked)) { ${bgOverride(6)} }
+:where(${sel}:disabled:checked) { ${bgOverride(7)} }`;
       else if (numFrames >= 6)
         css += `
-:where(${sel}:hover:not(:checked):not(:disabled)) { background: ${bg(2)}; }
-:where(${sel}:hover:checked:not(:disabled)) { background: ${bg(3)}; }
-:where(${sel}:disabled:not(:checked)) { background: ${bg(4)}; }
-:where(${sel}:disabled:checked) { background: ${bg(5)}; }`;
+:where(${sel}:hover:not(:checked):not(:disabled)) { ${bgOverride(2)} }
+:where(${sel}:hover:checked:not(:disabled)) { ${bgOverride(3)} }
+:where(${sel}:disabled:not(:checked)) { ${bgOverride(4)} }
+:where(${sel}:disabled:checked) { ${bgOverride(5)} }`;
       else if (numFrames >= 4)
         css += `
-:where(${sel}:disabled:not(:checked)) { background: ${bg(2)}; }
-:where(${sel}:disabled:checked) { background: ${bg(3)}; }`;
+:where(${sel}:disabled:not(:checked)) { ${bgOverride(2)} }
+:where(${sel}:disabled:checked) { ${bgOverride(3)} }`;
 
       return css + '\n';
     }
@@ -350,7 +379,6 @@
       const pos = (idx) => numFrames > 1
         ? `${(idx * 100 / (numFrames - 1)).toFixed(4)}% 0%`
         : '0% 0%';
-      const bgBase = `url("${url}") no-repeat`;
       const bgSize = `${numFrames * 100}% 100%`;
 
       let css = `
@@ -360,7 +388,10 @@
   -webkit-appearance: none;
   border: none;
   border-image: none;
-  background: ${bgBase} ${pos(normalIdx)} / ${bgSize};
+  background-image: url("${url}");
+  background-repeat: no-repeat;
+  background-position: ${pos(normalIdx)};
+  background-size: ${bgSize};
   color: var(--sz-color-button-text);
   padding: ${top}px ${right}px ${bottom}px ${left}px;
   font-family: var(--sz-font-family);
@@ -371,12 +402,12 @@
 }`;
       if (hoverIdx >= 0)
         css += `
-:where(${sel}):where(:hover:not(:disabled):not(:active)) { background: ${bgBase} ${pos(hoverIdx)} / ${bgSize}; }`;
+:where(${sel}):where(:hover:not(:disabled):not(:active)) { background-position: ${pos(hoverIdx)}; }`;
       css += `
-:where(${sel}):where(:active) { background: ${bgBase} ${pos(pressedIdx)} / ${bgSize}; }`;
+:where(${sel}):where(:active) { background-position: ${pos(pressedIdx)}; }`;
       if (disabledIdx >= 0)
         css += `
-:where(${sel}):where(:disabled) { background: ${bgBase} ${pos(disabledIdx)} / ${bgSize}; color: var(--sz-color-gray-text); }`;
+:where(${sel}):where(:disabled) { background-position: ${pos(disabledIdx)}; color: var(--sz-color-gray-text); }`;
       else
         css += `
 :where(${sel}):where(:disabled) { color: var(--sz-color-gray-text); }`;
@@ -546,7 +577,10 @@ ${sel}:where(:hover:not(.active):not([aria-selected="true"]):not(.sz-tab-active)
 /* ── Skinned tabs (raw fallback) ───────────────────────────── */
 ${sel} {
   appearance: none;
-  background: url("${absUrl}") no-repeat ${pos(normalIdx)} / ${bgSize};
+  background-image: url("${absUrl}");
+  background-repeat: no-repeat;
+  background-position: ${pos(normalIdx)};
+  background-size: ${bgSize};
   border: none;
   padding: ${top}px ${right}px ${bottom}px ${left}px;
   cursor: default;
