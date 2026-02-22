@@ -13,7 +13,7 @@ const { Instrument, PlayState, LANE_ORDER_UD, INSTRUMENT_COLORS, INSTRUMENT_COLO
 // ── Tunables ───────────────────────────────────────────────
 
 const LOOK_AHEAD_BEATS  = 8;
-const LOOK_BEHIND_BEATS = 0;   // no notes behind the cursor (they've fired into the kit)
+const LOOK_BEHIND_BEATS = 0.25; // small margin so the first note at beat 0 is visible
 const CURSOR_WIDTH      = 2;
 const CURSOR_X          = 2;   // pink line sits at left edge, flush with the drum kit
 
@@ -38,10 +38,21 @@ const BEAM_GAP       = 8;   // vertical gap between beam lines
 const CYMBAL_SET = new Set([
   Instrument.Crash,
   Instrument.Ride,
-  Instrument.RideBell,
   Instrument.ClosedHiHat,
   Instrument.OpenHiHat,
   Instrument.HiHatPedal,
+]);
+
+// ── Triangle notehead set (ride bell) ────────────────────
+
+const TRIANGLE_SET = new Set([
+  Instrument.RideBell,
+]);
+
+// ── Open indicator set ("o" above the note) ──────────────
+
+const OPEN_INDICATOR_SET = new Set([
+  Instrument.OpenHiHat,
 ]);
 
 // ── Ledger-line set (instruments above / below the staff) ──
@@ -450,7 +461,8 @@ class SheetBeltRenderer {
       const stemUp = true;   // drum notation: all stems up
 
       // fade out near the cursor so the note smoothly becomes the projectile
-      const fadeFactor = beatDelta < FADE_BEATS ? beatDelta / FADE_BEATS : 1;
+      // only fade during playback; when stopped, show all notes at full opacity
+      const fadeFactor = (!this._playing || beatDelta >= FADE_BEATS) ? 1 : Math.max(0, beatDelta / FADE_BEATS);
       ctx.globalAlpha = alpha * fadeFactor;
 
       // Stem — beamed notes extend to the group's flat beam level
@@ -468,7 +480,9 @@ class SheetBeltRenderer {
         _drawLedgerLine(ctx, x, y, this._lightMode);
 
       // Notehead
-      if (isCymbal)
+      if (TRIANGLE_SET.has(note.instrument))
+        _drawTriangleHead(ctx, x, y, color);
+      else if (isCymbal || note.playState === PlayState.Click)
         _drawXHead(ctx, x, y, color);
       else if (note.flagCount < 0)
         _drawOpenOvalHead(ctx, x, y, color);
@@ -481,6 +495,16 @@ class SheetBeltRenderer {
 
       if (note.playState === PlayState.Ghost)
         _drawGhostParens(ctx, x, y, this._lightMode);
+
+      // Open indicator ("o" above cymbal)
+      if (OPEN_INDICATOR_SET.has(note.instrument))
+        _drawOpenIndicator(ctx, x, y, this._lightMode);
+
+      // Flam / ruff grace notes
+      if (note.playState === PlayState.Flam)
+        _drawGraceNote(ctx, x, y, color, 1, this._lightMode);
+      else if (note.playState === PlayState.Ruff)
+        _drawGraceNote(ctx, x, y, color, 2, this._lightMode);
 
       // Dot for dotted notes (slotDur = 3, 6, 12)
       if (_isDotted(note.slotDur))
@@ -510,11 +534,13 @@ class SheetBeltRenderer {
   _handleResize() {
     const dpr  = window.devicePixelRatio || 1;
     const rect = this._container.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
     this._canvas.width  = rect.width * dpr;
     this._canvas.height = rect.height * dpr;
     this._ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this._canvas._logicalW = rect.width;
     this._canvas._logicalH = rect.height;
+    this.render(performance.now());
   }
 }
 
@@ -768,6 +794,84 @@ function _drawLedgerLine(ctx, x, y, lightMode) {
   ctx.beginPath();
   ctx.moveTo(x - extend, y);
   ctx.lineTo(x + extend, y);
+  ctx.stroke();
+}
+
+/** Triangle notehead (ride bell). */
+function _drawTriangleHead(ctx, x, y, color) {
+  const s = X_SIZE;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x, y - s);
+  ctx.lineTo(x + s, y + s * 0.7);
+  ctx.lineTo(x - s, y + s * 0.7);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.lineJoin = 'miter';
+}
+
+/** Open indicator — small "o" above the notehead (open hi-hat). */
+function _drawOpenIndicator(ctx, x, y, lightMode) {
+  ctx.strokeStyle = lightMode ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.8)';
+  ctx.lineWidth = 1.6;
+  const oy = y - HEAD_RY - 8;
+  ctx.beginPath();
+  ctx.arc(x, oy, 4, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+/** Grace note(s) before the main note — flam (1) or ruff (2). */
+function _drawGraceNote(ctx, x, y, color, count, lightMode) {
+  const graceR = 4;
+  const spacing = 12;
+  const stemTop = y - 18;
+  const stemX = (gx) => gx + graceR - 0.5;
+
+  for (let i = 0; i < count; ++i) {
+    const gx = x - 8 - spacing * (count - i);
+    // small filled notehead
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.ellipse(gx, y, graceR, graceR * 0.7, -0.35, 0, Math.PI * 2);
+    ctx.fill();
+    // small stem
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(stemX(gx), y);
+    ctx.lineTo(stemX(gx), stemTop);
+    ctx.stroke();
+    // slash through stem (grace note convention)
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(gx + graceR - 4, y - 8);
+    ctx.lineTo(gx + graceR + 3, y - 16);
+    ctx.stroke();
+  }
+
+  // beam connecting stems (ruff: 2 grace notes)
+  if (count > 1) {
+    const x1 = stemX(x - 8 - spacing * count);
+    const x2 = stemX(x - 8 - spacing);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2.8;
+    ctx.beginPath();
+    ctx.moveTo(x1, stemTop);
+    ctx.lineTo(x2, stemTop);
+    ctx.stroke();
+  }
+
+  // slur arc from last grace note to main note
+  const lastGx = x - 8 - spacing;
+  const slurY = y + HEAD_RY + 3;
+  const cpY = slurY + 8;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(lastGx, slurY);
+  ctx.quadraticCurveTo((lastGx + x) / 2, cpY, x, slurY);
   ctx.stroke();
 }
 
