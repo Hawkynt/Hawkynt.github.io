@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Font Pairing Tool -- explore curated typography pairs with live preview, Google Fonts integration, and CSS export">
+<meta name="robots" content="index,follow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Font Pairing Tool -- &laquo;SynthelicZ&raquo; Desktop">
+<meta property="og:description" content="Font Pairing Tool -- explore curated typography pairs with live preview, Google Fonts integration, and CSS export">
+<meta property="og:url" content="https://hawkynt.github.io/sz/Applications/font-pairing/index.html">
+<link rel="canonical" href="https://hawkynt.github.io/sz/Applications/font-pairing/index.html">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Font Pairing Tool",
+  "url": "https://hawkynt.github.io/sz/Applications/font-pairing/index.html",
+  "description": "Font Pairing Tool -- explore curated typography pairs with live preview, Google Fonts integration, and CSS export",
+  "applicationCategory": "DesignApplication",
+  "operatingSystem": "Web Browser",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<title>Font Pairing Tool</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="../shared/ribbon.css">
+<link rel="stylesheet" href="../shared/dialog.css">
+<link rel="stylesheet" href="styles.css">
+<script defer src="../vision-renderer.js"></script>
+</head>
+<body>
+<noscript><p>Font Pairing Tool -- explore curated typography pairs with live preview, Google Fonts integration, and CSS export. <a href="../../index.html">Open &laquo;SynthelicZ&raquo; Desktop</a> to use this app.</p></noscript>
+
+<!-- Quick Access Toolbar -->
+<div class="qat">
+  <button class="qat-btn" data-action="copy-css" title="Copy CSS">&#128196;</button>
+  <button class="qat-btn" data-action="copy-html" title="Copy HTML">&#128203;</button>
+</div>
+
+<!-- Ribbon Tab Bar -->
+<div class="ribbon-tabs">
+  <div class="ribbon-tab-bar">
+    <button class="ribbon-file-btn">File</button>
+    <button class="ribbon-tab active" data-tab="home">Home</button>
+    <button class="ribbon-tab" data-tab="typography">Typography</button>
+    <button class="ribbon-tab" data-tab="view">View</button>
+  </div>
+</div>
+
+<!-- File Backstage -->
+<div class="backstage">
+  <div class="backstage-sidebar">
+    <button class="backstage-back">&#8592;</button>
+    <button class="backstage-item" data-action="copy-css">Copy CSS</button>
+    <button class="backstage-item" data-action="copy-html">Copy HTML</button>
+    <div class="backstage-sep"></div>
+    <button class="backstage-item" data-action="about">About</button>
+    <div class="backstage-spacer"></div>
+    <button class="backstage-item backstage-exit" data-action="exit">Exit</button>
+  </div>
+</div>
+
+<!-- Home Tab -->
+<div class="ribbon-panel active" id="ribbon-home">
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <div class="rb-btn rb-btn-sm" style="gap:4px;">
+          <span class="rb-label" style="min-width:50px;">Heading</span>
+          <select id="sel-heading-font" style="max-width:140px;font-size:11px;"></select>
+        </div>
+        <div class="rb-btn rb-btn-sm" style="gap:4px;">
+          <span class="rb-label" style="min-width:50px;">Body</span>
+          <select id="sel-body-font" style="max-width:140px;font-size:11px;"></select>
+        </div>
+        <div class="rb-btn rb-btn-sm" style="gap:4px;">
+          <span class="rb-label" style="min-width:50px;">Weight</span>
+          <select id="sel-heading-weight" style="font-size:11px;">
+            <option value="400">Regular</option>
+            <option value="500">Medium</option>
+            <option value="700" selected>Bold</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Pair</div>
+  </div>
+  <div class="ribbon-sep"></div>
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="shuffle" title="Random complementary pair">
+        <span class="rb-icon rb-icon-lg">&#127922;</span>
+        <span class="rb-label">Shuffle</span>
+      </button>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="swap" title="Swap heading and body fonts">
+          <span class="rb-icon">&#8693;</span><span class="rb-label">Swap</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Actions</div>
+  </div>
+</div>
+
+<!-- Typography Tab -->
+<div class="ribbon-panel" id="ribbon-typography">
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <div class="rb-btn rb-btn-sm" style="gap:4px;">
+          <span class="rb-label" style="min-width:36px;">Size</span>
+          <input type="range" id="sl-heading-size" min="16" max="72" value="42" style="width:80px;">
+          <span id="val-heading-size" style="min-width:32px;font-size:10px;text-align:right;">42px</span>
+        </div>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Heading</div>
+  </div>
+  <div class="ribbon-sep"></div>
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <div class="rb-btn rb-btn-sm" style="gap:4px;">
+          <span class="rb-label" style="min-width:36px;">Size</span>
+          <input type="range" id="sl-body-size" min="12" max="24" value="16" style="width:80px;">
+          <span id="val-body-size" style="min-width:32px;font-size:10px;text-align:right;">16px</span>
+        </div>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Body</div>
+  </div>
+  <div class="ribbon-sep"></div>
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <div class="rb-btn rb-btn-sm" style="gap:4px;">
+          <span class="rb-label" style="min-width:40px;">Line H</span>
+          <input type="range" id="sl-line-height" min="10" max="25" value="16" style="width:80px;">
+          <span id="val-line-height" style="min-width:32px;font-size:10px;text-align:right;">1.6</span>
+        </div>
+        <div class="rb-btn rb-btn-sm" style="gap:4px;">
+          <span class="rb-label" style="min-width:40px;">Spacing</span>
+          <input type="range" id="sl-letter-spacing" min="-20" max="50" value="0" style="width:80px;">
+          <span id="val-letter-spacing" style="min-width:32px;font-size:10px;text-align:right;">0px</span>
+        </div>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Spacing</div>
+  </div>
+</div>
+
+<!-- View Tab -->
+<div class="ribbon-panel" id="ribbon-view">
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="dark-toggle" title="Toggle dark/light preview">
+          <span class="rb-icon">&#127763;</span><span class="rb-label" id="btn-dark-toggle">Dark</span>
+        </button>
+        <label class="rb-btn rb-btn-sm rb-check">
+          <input type="checkbox" id="rb-show-weights" checked><span class="rb-label">Show Weight Samples</span>
+        </label>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Preview</div>
+  </div>
+  <div class="ribbon-sep"></div>
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="copy-css" title="Copy @import + CSS declarations">
+        <span class="rb-icon rb-icon-lg">&#128196;</span>
+        <span class="rb-label">Copy CSS</span>
+      </button>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="copy-html" title="Copy Google Fonts link + HTML sample">
+          <span class="rb-icon">&#128203;</span><span class="rb-label">Copy HTML</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Export</div>
+  </div>
+</div>
+
+<div id="app">
+
+  <!-- Main content: sidebar + preview -->
+  <div id="main-content">
+
+    <!-- Left sidebar: curated pairs -->
+    <div id="sidebar">
+      <div id="sidebar-header">Curated Pairs</div>
+      <div id="category-tabs"></div>
+      <div id="pairs-list"></div>
+    </div>
+
+    <!-- Center preview area -->
+    <div id="preview-area">
+      <div id="preview-container">
+        <div id="preview-heading" contenteditable="true" spellcheck="false">The quick brown fox jumps over the lazy dog</div>
+        <div id="preview-divider"></div>
+        <div id="preview-body" contenteditable="true" spellcheck="false">Typography is the art and technique of arranging type to make written language legible, readable, and appealing when displayed. The arrangement of type involves selecting typefaces, point sizes, line lengths, line-spacing, and letter-spacing, as well as adjusting the space between pairs of letters.</div>
+        <div id="preview-weights">
+          <div class="weight-sample" data-weight="400">
+            <span class="weight-label">Regular 400</span>
+            <span class="weight-text heading-weight">AaBbCcDdEe 0123456789</span>
+          </div>
+          <div class="weight-sample" data-weight="500">
+            <span class="weight-label">Medium 500</span>
+            <span class="weight-text heading-weight">AaBbCcDdEe 0123456789</span>
+          </div>
+          <div class="weight-sample" data-weight="700">
+            <span class="weight-label">Bold 700</span>
+            <span class="weight-text heading-weight">AaBbCcDdEe 0123456789</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Font Pairing Tool</div>
+    <div class="dialog-body">
+      <p><strong>Font Pairing Tool</strong></p>
+      <p>Explore curated typography pairs with live preview. Powered by Google Fonts.</p>
+      <p>Select heading and body fonts, adjust sizes and spacing, then copy CSS or HTML for your project.</p>
+    </div>
+    <div class="dialog-buttons"><button data-result="ok">OK</button></div>
+  </div>
+</div>
+
+<script src="../shared/ribbon.js"></script>
+<script src="../shared/dialog.js"></script>
+<script src="controller.js"></script>
+</body>
+</html>

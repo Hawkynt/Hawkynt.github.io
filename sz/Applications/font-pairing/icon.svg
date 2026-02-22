@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <!-- Background card -->
+  <rect x="4" y="4" width="40" height="40" rx="3" fill="#f8f8f8" stroke="#666" stroke-width="1.2"/>
+  <!-- Serif capital A (heading font) -->
+  <text x="14" y="30" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="28" font-weight="bold" fill="#2c3e50">A</text>
+  <!-- Sans-serif lowercase a (body font) -->
+  <text x="34" y="30" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="22" fill="#7f8c8d">a</text>
+  <!-- Decorative baseline -->
+  <line x1="8" y1="34" x2="40" y2="34" stroke="#e74c3c" stroke-width="0.8" opacity="0.6"/>
+  <!-- Top accent bar -->
+  <rect x="8" y="7" width="32" height="2.5" rx="1" fill="#3498db" opacity="0.7"/>
+</svg>
