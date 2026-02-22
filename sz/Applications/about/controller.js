@@ -3,7 +3,7 @@
 
   // ── URL parameters ──────────────────────────────────────────────
   const _params = SZ.Dlls.Kernel32.GetCommandLine();
-  const _osVersion = _params._szOsVersion || '6.0';
+  const _osVersion = _params._szOsVersion || '6.8';
   const _gitHash = _params._szGitHash || '';
   const _autostart = _params.autostart === '1';
 

@@ -42,7 +42,7 @@ Modeled after the classic "About Windows" dialog (winver.exe) found in Windows X
 - [x] As a user, I can see that SynthelicZ is described as a browser-based desktop environment simulator
 - [x] As a user, I can see the original creation dates (2004-2006) and author (Hawkynt)
 - [x] As a user, I can see that it was rewritten with modern web technologies
-- [x] As a user, I can see the current version number (Version 6.0)
+- [x] As a user, I can see the current version number (Version 6.8)
 - [x] As a user, I can see the copyright notice with year range (1995-2026)
 - [x] As a user, I can see themed visual styles matching the current desktop skin
 
