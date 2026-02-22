@@ -153,6 +153,8 @@
       loadImage(result.path, result.content);
   }
 
+  const _MIME_MAP = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', bmp: 'image/bmp', webp: 'image/webp', svg: 'image/svg+xml', ico: 'image/x-icon', tif: 'image/tiff', tiff: 'image/tiff' };
+
   async function loadImage(path, contentArg) {
     let content = contentArg;
     if (content == null) {
@@ -164,6 +166,24 @@
       }
     }
     content = String(content || '');
+
+    // ReadFile (ReadAllText) corrupts binary data from mounted FSAA
+    // directories; re-read as raw bytes and build a data URL.
+    if (content && !content.startsWith('data:')) {
+      try {
+        const bytes = await SZ.Dlls.Kernel32.ReadAllBytes(path);
+        if (bytes && bytes.length) {
+          const ext = (path.split('.').pop() || '').toLowerCase();
+          const blob = new Blob([bytes], { type: _MIME_MAP[ext] || 'application/octet-stream' });
+          content = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+        }
+      } catch (_) {}
+    }
 
     // Estimate file size from data URL
     if (content.startsWith('data:')) {
