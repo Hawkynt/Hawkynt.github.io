@@ -94,7 +94,7 @@
     SZ.os = { kernel, windowManager, appLauncher, taskbar, themeEngine, settings };
 
     // Wire WindowManager lifecycle callbacks to Taskbar + AppLauncher
-    windowManager.onWindowCreated = (win) => taskbar.addWindow(win.id, win.title, win.icon);
+    windowManager.onWindowCreated = (win) => taskbar.addWindow(win.id, win.title, win.icon, win.appId);
     windowManager.onWindowClosed = (win) => {
       taskbar.removeWindow(win.id);
       const closedAppId = appLauncher.onWindowClosed(win.id);
@@ -326,14 +326,18 @@
             if(data.path) openFileByPath(data.path, kernel, appLauncher);
             return;
         case 'sz:getFileTypeAssociations': {
+            const _GENERIC = new Set(['notepad', 'hex-editor', 'metadata-viewer']);
             const associations = {};
+            const allHandlers = {};
             for (const [, app] of appLauncher.apps) {
               if (!app.fileTypes) continue;
-              for (const ext of app.fileTypes)
-                if (!associations[ext] || associations[ext].appId === 'notepad')
+              for (const ext of app.fileTypes) {
+                if (!associations[ext] || !_GENERIC.has(app.id) || _GENERIC.has(associations[ext].appId))
                   associations[ext] = { appId: app.id, iconPath: app.icon };
+                (allHandlers[ext] || (allHandlers[ext] = [])).push({ appId: app.id, iconPath: app.icon });
+              }
             }
-            return handle(Promise.resolve({ associations }), 'sz:getFileTypeAssociationsResult');
+            return handle(Promise.resolve({ associations, allHandlers }), 'sz:getFileTypeAssociationsResult');
         }
 
         // Common Dialogs
@@ -884,16 +888,17 @@
     const dot = path.lastIndexOf('.');
     const ext = dot >= 0 ? path.substring(dot + 1).toLowerCase() : '';
 
-    // Find the best matching app by fileTypes in manifest
+    // Find the best matching app by fileTypes in manifest.
+    // Among specialized apps, last one in manifest order wins.
+    // Generic apps (notepad, hex-editor, metadata-viewer) are only used
+    // as fallback when no specialized app matches.
+    const _GENERIC_APPS = new Set(['notepad', 'hex-editor', 'metadata-viewer']);
     let bestApp = null;
     for (const [, app] of appLauncher.apps) {
-        if (!app.fileTypes)
+        if (!app.fileTypes || !app.fileTypes.includes(ext))
             continue;
-        if (app.fileTypes.includes(ext)) {
-            // Prefer specialized apps over notepad (which handles everything)
-            if (!bestApp || bestApp.id === 'notepad')
-                bestApp = app;
-        }
+        if (!bestApp || !_GENERIC_APPS.has(app.id) || _GENERIC_APPS.has(bestApp.id))
+            bestApp = app;
     }
 
     appLauncher.launch(bestApp ? bestApp.id : 'notepad', { path });

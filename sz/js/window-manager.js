@@ -246,6 +246,28 @@
       }
     }
 
+    tileGrid() {
+      const visible = [...this.#windows.values()].filter(w => w.state !== 'minimized' && w.state !== 'closed');
+      if (!visible.length)
+        return;
+      const n = visible.length;
+      const cols = Math.ceil(Math.sqrt(n));
+      const rows = Math.ceil(n / cols);
+      const areaW = this.#container.clientWidth;
+      const areaH = this.#container.clientHeight;
+      const cellW = Math.floor(areaW / cols);
+      const cellH = Math.floor(areaH / rows);
+      for (let i = 0; i < n; ++i) {
+        const win = visible[i];
+        if (win.state === 'maximized')
+          win.restore();
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        win.moveTo(col * cellW, row * cellH);
+        win.resizeTo(cellW, cellH);
+      }
+    }
+
     handleButtonAction(windowId, action) {
       switch (action) {
         case 'close': this.closeWindow(windowId); break;
