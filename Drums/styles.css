@@ -284,7 +284,8 @@ html, body {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-all;
-  user-select: all;
+  user-select: text;
+  cursor: text;
   tab-size: 4;
   overflow: auto;
   max-height: 100%;
@@ -414,20 +415,29 @@ html, body {
   white-space: nowrap;
   border-right: 1px solid var(--border-color);
   user-select: none;
+  height: 28px;
+  box-sizing: border-box;
+  line-height: 28px;
+  overflow: hidden;
 }
 
 .grid-cell {
   text-align: center;
   vertical-align: middle;
   cursor: pointer;
-  padding: 6px 0;
+  padding: 0;
   font-size: 1em;
+  line-height: 26px;
   border: 1px solid var(--bg-primary);
   border-radius: 3px;
   transition: background-color var(--transition-fast), transform var(--transition-fast);
   min-width: 26px;
   height: 28px;
+  max-height: 28px;
+  box-sizing: border-box;
+  overflow: hidden;
 }
+.grid-cell:empty::after { content: '\200B'; }
 .grid-cell:hover { filter: brightness(1.35); transform: scale(1.08); z-index: 1; position: relative; }
 .grid-cell.beat-start { border-left: 2px solid var(--border-color); }
 .grid-cell[data-state="not played"] { background-color: var(--bg-elevated); color: transparent; }

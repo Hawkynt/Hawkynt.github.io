@@ -234,7 +234,7 @@ class LaneRenderer {
       const color = colorMap[note.instrument] ?? DEFAULT_COLOR;
 
       // fade out near the hit-line so the gem smoothly becomes the projectile
-      const fadeFactor = beatDelta < FADE_BEATS ? beatDelta / FADE_BEATS : 1;
+      const fadeFactor = (!this._playing || beatDelta >= FADE_BEATS) ? 1 : Math.max(0, beatDelta / FADE_BEATS);
 
       // gem style varies with PlayState
       ctx.globalAlpha = _gemAlpha(note.playState) * fadeFactor;
@@ -301,6 +301,7 @@ class LaneRenderer {
 
     const dpr = window.devicePixelRatio || 1;
     const rect = parent.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
     this._canvas.width = rect.width * dpr;
     this._canvas.height = rect.height * dpr;
     this._ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -309,6 +310,7 @@ class LaneRenderer {
     // store logical size for rendering
     this._canvas._logicalW = rect.width;
     this._canvas._logicalH = rect.height;
+    this.render(performance.now());
   }
 }
 

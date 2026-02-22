@@ -120,6 +120,7 @@ let lastBeatTimestamp = 0;
 let isRecording = false;
 let _recordingDirty = false;
 let _bpmDirty = false;
+let _abcDirty = false;   // bar editor edits deferred until tab switch / play
 let _prevEventMs   = 0;   // event.milliseconds from previous abcjs event
 let _prevEventWall = 0;   // performance.now() at previous abcjs event
 let _prevBeatPos   = 0;   // beat position from previous onBeat
@@ -128,6 +129,13 @@ let _manualPauseAt = 0;   // timestamp of last user-initiated pause (debounce fo
 
 /** Convert a groove to ABC notation using the current BPM. */
 const convertGroove = (groove) => new AbcConverter().convert(groove, undefined, undefined, undefined, currentBpm);
+
+/** Sync ABC notation / abcjs synth if deferred bar-editor edits are pending. */
+const _syncAbcIfDirty = () => {
+  if (!_abcDirty || !currentGroove) return;
+  _abcDirty = false;
+  displayABC(convertGroove(currentGroove));
+};
 
 // ── Click-to-audition ──────────────────────────────────────
 
@@ -485,10 +493,12 @@ const initializeRenderers = () => {
   const barEditorViewport = document.getElementById('bar-editor-viewport');
   if (barEditorViewport) {
     barEditor = new BarEditor(barEditorViewport, (groove) => {
-      // User edited the groove via the bar editor — re-render everything
+      // Lightweight update: refresh visual renderers only, defer heavy ABC/synth rebuild
       currentGroove = groove;
-      const abc = convertGroove(currentGroove);
-      displayABC(abc);
+      if (laneRenderer) laneRenderer.loadGroove(groove);
+      if (sheetBeltRenderer) sheetBeltRenderer.loadGroove(groove);
+      renderOnce();
+      _abcDirty = true;
     });
   }
 };
@@ -540,6 +550,7 @@ const _setPlayingState = (playing) => {
   }
 
   if (playing) {
+    _syncAbcIfDirty();
     startRenderLoop();
   } else if ((_recordingDirty || _bpmDirty) && currentGroove) {
     // Sync ABC notation with notes recorded or BPM changed during playback
@@ -864,6 +875,10 @@ const wireTabs = () => {
     if (!targetId)
       return;
 
+    // Sync deferred bar-editor changes before showing sheet / ABC
+    if (targetId !== 'tab-bar-editor')
+      _syncAbcIfDirty();
+
     // deactivate all tabs + panes
     for (const b of tabBar.querySelectorAll('.tab-btn'))
       b.classList.remove('active');
@@ -892,6 +907,9 @@ const boot = () => {
   wireTempoInput();
   wireTabs();
   wireLightModeToggle();
+
+  // Repaint renderers with fresh kit layout after any resize
+  window.addEventListener('resize', () => requestAnimationFrame(() => renderOnce()));
 
   // Paint initial state of lane + belt renderers (loop starts on play)
   renderOnce();
