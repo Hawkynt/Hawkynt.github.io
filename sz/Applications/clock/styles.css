@@ -51,26 +51,13 @@
 
   /* -- Common controls -- */
   .xp-btn {
-    background: var(--sz-color-button-face);
-    color: var(--sz-color-button-text);
-    border: 2px outset;
-    border-color: var(--sz-color-button-highlight) var(--sz-color-button-dark-shadow) var(--sz-color-button-dark-shadow) var(--sz-color-button-highlight);
     font: inherit;
     padding: 2px 12px;
     min-height: 22px;
     cursor: default;
     outline: none;
   }
-  .xp-btn:hover { background: var(--sz-color-button-light); }
-  .xp-btn:active {
-    border-style: inset;
-    border-color: var(--sz-color-button-dark-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-dark-shadow);
-  }
   .xp-input, .xp-select {
-    background: var(--sz-color-window);
-    color: var(--sz-color-window-text);
-    border: 2px inset;
-    border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
     font: inherit;
     padding: 1px 4px;
     outline: none;
