@@ -204,11 +204,7 @@
     colorPickerRequest = null;
   });
 
-  // Menu
-  let openMenu = null;
-
   // DOM references
-  const menuBar = document.getElementById('menu-bar');
   const templateSelect = document.getElementById('template-select');
   const wizardPanel = document.getElementById('wizard-panel');
   const formPanel = document.getElementById('form-panel');
@@ -336,8 +332,7 @@
     for (const tpl of allTemplates) {
       const entry = document.createElement('div');
       entry.className = 'menu-entry radio' + (currentTemplate && tpl.id === currentTemplate.id ? ' checked' : '');
-      entry.dataset.action = 'select-template';
-      entry.dataset.templateId = tpl.id;
+      entry.dataset.action = 'select-template:' + tpl.id;
       entry.textContent = tpl.name;
       menu.appendChild(entry);
     }
@@ -1610,7 +1605,7 @@
         renderLogoGrid();
 
         logoContainer.appendChild(logoGrid);
-        logoContainer.appendChild(logoHoverName);
+        logoContainer.appendChild(logoStatus);
         logoRow.appendChild(logoLbl);
         logoRow.appendChild(logoContainer);
         builderPanel.appendChild(logoRow);
@@ -2168,10 +2163,9 @@
   }
 
   function doPasteReadme() {
-    const dlg = document.getElementById('dlg-paste');
     const textarea = document.getElementById('paste-textarea');
     textarea.value = '';
-    dlg.classList.add('visible');
+    SZ.Dialog.show('dlg-paste');
     textarea.focus();
   }
 
@@ -2243,7 +2237,7 @@
   // -----------------------------------------------------------------------
   document.getElementById('paste-ok').addEventListener('click', () => {
     const text = document.getElementById('paste-textarea').value;
-    document.getElementById('dlg-paste').classList.remove('visible');
+    SZ.Dialog.close('dlg-paste');
     if (text.trim()) {
       importMarkdown(text);
       currentFilePath = null;
@@ -2253,7 +2247,7 @@
   });
 
   document.getElementById('paste-cancel').addEventListener('click', () => {
-    document.getElementById('dlg-paste').classList.remove('visible');
+    SZ.Dialog.close('dlg-paste');
   });
 
   // -----------------------------------------------------------------------
@@ -2276,7 +2270,7 @@
 
     editingTemplate = deepClone(allTemplates[0]);
     renderTemplateEditorFields();
-    dlg.classList.add('visible');
+    SZ.Dialog.show('dlg-template-editor');
   }
 
   function renderTemplateEditorFields() {
@@ -2421,23 +2415,18 @@
   });
 
   document.getElementById('tpl-editor-close').addEventListener('click', () => {
-    document.getElementById('dlg-template-editor').classList.remove('visible');
+    SZ.Dialog.close('dlg-template-editor');
   });
 
   // -----------------------------------------------------------------------
   // About dialog
   // -----------------------------------------------------------------------
   function showAbout() {
-    const dlg = document.getElementById('dlg-about');
-    dlg.classList.add('visible');
-    const okBtn = document.getElementById('about-ok');
-    okBtn.focus();
-    function handler() {
-      dlg.classList.remove('visible');
-      okBtn.removeEventListener('click', handler);
-    }
-    okBtn.addEventListener('click', handler);
+    SZ.Dialog.show('dlg-about');
+    document.getElementById('about-ok').focus();
   }
+
+  SZ.Dialog.wireAll();
 
   // -----------------------------------------------------------------------
   // Splitter drag
@@ -2464,45 +2453,13 @@
   splitter.addEventListener('lostpointercapture', () => { splitting = false; });
 
   // -----------------------------------------------------------------------
-  // Menu system
-  // -----------------------------------------------------------------------
-  function closeMenus() {
-    for (const item of menuBar.querySelectorAll('.menu-item'))
-      item.classList.remove('open');
-    openMenu = null;
-  }
-
-  for (const menuItem of menuBar.querySelectorAll('.menu-item')) {
-    menuItem.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('.menu-entry') || e.target.closest('.menu-separator'))
-        return;
-      if (openMenu === menuItem) {
-        closeMenus();
-        return;
-      }
-      closeMenus();
-      menuItem.classList.add('open');
-      openMenu = menuItem;
-    });
-
-    menuItem.addEventListener('pointerenter', () => {
-      if (openMenu && openMenu !== menuItem) {
-        closeMenus();
-        menuItem.classList.add('open');
-        openMenu = menuItem;
-      }
-    });
-  }
-
-  document.addEventListener('pointerdown', (e) => {
-    if (openMenu && !menuBar.contains(e.target))
-      closeMenus();
-  });
-
-  // -----------------------------------------------------------------------
   // Action dispatcher
   // -----------------------------------------------------------------------
-  function handleAction(action, target) {
+  function handleAction(action) {
+    if (action && action.startsWith('select-template:')) {
+      selectTemplate(action.slice('select-template:'.length));
+      return;
+    }
     switch (action) {
       case 'new': doNew(); break;
       case 'open': doOpen(); break;
@@ -2523,21 +2480,10 @@
       case 'edit-templates': openTemplateEditor(); break;
       case 'apply-template': applyDifferentTemplate(); break;
       case 'about': showAbout(); break;
-      case 'select-template':
-        if (target && target.dataset.templateId)
-          selectTemplate(target.dataset.templateId);
-        break;
     }
   }
 
-  // Menu entry clicks (delegate because Templates menu is dynamic)
-  menuBar.addEventListener('click', (e) => {
-    const entry = e.target.closest('.menu-entry');
-    if (!entry) return;
-    const action = entry.dataset.action;
-    closeMenus();
-    handleAction(action, entry);
-  });
+  new SZ.MenuBar({ onAction: handleAction });
 
   // Toolbar buttons
   for (const btn of document.querySelectorAll('.toolbar button[data-action]'))
