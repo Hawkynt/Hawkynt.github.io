@@ -274,6 +274,23 @@
   let wheelLastLV = -1;
   let wheelLastMode = null;
 
+  const RING_WIDTH = 28;
+
+  // Triangle vertices rotated to current hue angle
+  function getTriangleVertices(centerX, centerY, triR, hueDeg) {
+    const hueRad = hueDeg * Math.PI / 180;
+    // Vertex A = pure hue (at the hue angle on the ring)
+    const ax = centerX + triR * Math.cos(hueRad);
+    const ay = centerY + triR * Math.sin(hueRad);
+    // Vertex B = white (120° further)
+    const bx = centerX + triR * Math.cos(hueRad + 2 * Math.PI / 3);
+    const by = centerY + triR * Math.sin(hueRad + 2 * Math.PI / 3);
+    // Vertex C = black (240° further)
+    const cx = centerX + triR * Math.cos(hueRad + 4 * Math.PI / 3);
+    const cy = centerY + triR * Math.sin(hueRad + 4 * Math.PI / 3);
+    return { ax, ay, bx, by, cx, cy };
+  }
+
   function drawWheelCanvas() {
     const size = 200;
     wheelCanvas.width = size;
@@ -281,55 +298,125 @@
     const ctx = wheelCanvas.getContext('2d', { willReadFrequently: false });
     const centerX = size / 2;
     const centerY = size / 2;
-    const radius = size / 2;
+    const outerR = size / 2;
 
-    // Determine current L or V value
-    const isHSL = activeMode === 'hsl';
-    let lvValue;
-    if (isHSL) {
-      const [, , l] = rgbToHsl(...getRgb());
-      lvValue = l;
-    } else
-      lvValue = state.v;
-
-    // Cache: only redraw if L/V or mode changed
-    if (wheelImageData && wheelLastLV === lvValue && wheelLastMode === activeMode) {
-      ctx.putImageData(wheelImageData, 0, 0);
+    if (activeMode === 'cmyk') {
+      // CMYK: filled color disc — always at full brightness (K=0), K bar is separate
+      if (wheelImageData && wheelLastMode === 'cmyk') {
+        ctx.putImageData(wheelImageData, 0, 0);
+        return;
+      }
+      const imgData = ctx.createImageData(size, size);
+      const data = imgData.data;
+      for (let y = 0; y < size; ++y) {
+        for (let x = 0; x < size; ++x) {
+          const dx = x - centerX;
+          const dy = y - centerY;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const idx = (y * size + x) * 4;
+          if (dist <= outerR) {
+            const hue = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+            const sat = (dist / outerR) * 100;
+            const [r, g, b] = hsvToRgb(hue, sat, 100);
+            data[idx] = r;
+            data[idx + 1] = g;
+            data[idx + 2] = b;
+            data[idx + 3] = 255;
+          }
+        }
+      }
+      ctx.putImageData(imgData, 0, 0);
+      wheelImageData = imgData;
+      wheelLastLV = -1;
+      wheelLastMode = 'cmyk';
       return;
     }
 
+    // HSV / HSL: hue ring + inner shape
+    const innerR = outerR - RING_WIDTH;
+
+    // Always redraw (inner shape depends on hue/state)
     const imgData = ctx.createImageData(size, size);
     const data = imgData.data;
 
+    // Draw hue ring
     for (let y = 0; y < size; ++y) {
       for (let x = 0; x < size; ++x) {
         const dx = x - centerX;
         const dy = y - centerY;
         const dist = Math.sqrt(dx * dx + dy * dy);
         const idx = (y * size + x) * 4;
-
-        if (dist <= radius) {
+        if (dist <= outerR && dist >= innerR) {
           const hue = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
-          const sat = (dist / radius) * 100;
-          let r, g, b;
-          if (isHSL)
-            [r, g, b] = hslToRgb(hue, sat, lvValue);
-          else
-            [r, g, b] = hsvToRgb(hue, sat, lvValue);
-
+          const [r, g, b] = hsvToRgb(hue, 100, 100);
           data[idx] = r;
           data[idx + 1] = g;
           data[idx + 2] = b;
           data[idx + 3] = 255;
-        } else {
-          data[idx + 3] = 0;
+        }
+      }
+    }
+
+    if (activeMode === 'hsv') {
+      // HSV: inscribed square inside inner circle
+      const sqHalf = innerR * Math.SQRT1_2 - 1;
+      const sqLeft = centerX - sqHalf;
+      const sqTop = centerY - sqHalf;
+      const sqSize = sqHalf * 2;
+      for (let y = Math.max(0, Math.floor(sqTop)); y < Math.min(size, Math.ceil(sqTop + sqSize)); ++y) {
+        for (let x = Math.max(0, Math.floor(sqLeft)); x < Math.min(size, Math.ceil(sqLeft + sqSize)); ++x) {
+          const sx = (x - sqLeft) / sqSize;
+          const sy = (y - sqTop) / sqSize;
+          if (sx >= 0 && sx <= 1 && sy >= 0 && sy <= 1) {
+            const s = sx * 100;
+            const v = (1 - sy) * 100;
+            const [r, g, b] = hsvToRgb(state.h, s, v);
+            const idx = (y * size + x) * 4;
+            data[idx] = r;
+            data[idx + 1] = g;
+            data[idx + 2] = b;
+            data[idx + 3] = 255;
+          }
+        }
+      }
+    } else {
+      // HSL: inscribed equilateral triangle, rotated to current hue
+      const triR = innerR - 2;
+      const tri = getTriangleVertices(centerX, centerY, triR, state.h);
+
+      // Barycentric triangle fill
+      const denom = (tri.by - tri.cy) * (tri.ax - tri.cx) + (tri.cx - tri.bx) * (tri.ay - tri.cy);
+      if (Math.abs(denom) > 0.001) {
+        const minX = Math.max(0, Math.floor(Math.min(tri.ax, tri.bx, tri.cx)));
+        const maxX = Math.min(size - 1, Math.ceil(Math.max(tri.ax, tri.bx, tri.cx)));
+        const minY = Math.max(0, Math.floor(Math.min(tri.ay, tri.by, tri.cy)));
+        const maxY = Math.min(size - 1, Math.ceil(Math.max(tri.ay, tri.by, tri.cy)));
+        for (let y = minY; y <= maxY; ++y) {
+          for (let x = minX; x <= maxX; ++x) {
+            const w1 = ((tri.by - tri.cy) * (x - tri.cx) + (tri.cx - tri.bx) * (y - tri.cy)) / denom;
+            const w2 = ((tri.cy - tri.ay) * (x - tri.cx) + (tri.ax - tri.cx) * (y - tri.cy)) / denom;
+            const w3 = 1 - w1 - w2;
+            if (w1 >= -0.005 && w2 >= -0.005 && w3 >= -0.005) {
+              // w1 = vertex A weight (pure hue: S=100, L=50)
+              // w2 = vertex B weight (white: S=0, L=100)
+              // w3 = vertex C weight (black: S=0, L=0)
+              const s = clamp(w1 * 100, 0, 100);
+              const l = clamp(w2 * 100, 0, 100);
+              const [r, g, b] = hslToRgb(state.h, s, l);
+              const idx = (y * size + x) * 4;
+              data[idx] = r;
+              data[idx + 1] = g;
+              data[idx + 2] = b;
+              data[idx + 3] = 255;
+            }
+          }
         }
       }
     }
 
     ctx.putImageData(imgData, 0, 0);
     wheelImageData = imgData;
-    wheelLastLV = lvValue;
+    wheelLastLV = -1;
     wheelLastMode = activeMode;
   }
 
@@ -340,33 +427,48 @@
       return;
 
     const ctx = lvCanvas.getContext('2d', { willReadFrequently: false });
-    const isHSL = activeMode === 'hsl';
     const imgData = ctx.createImageData(w, h);
     const data = imgData.data;
 
-    // For HSL mode, use the HSL saturation derived from current color
-    let sat;
-    if (isHSL) {
+    if (activeMode === 'cmyk') {
+      // K (key/black) bar: top = 0% K (bright), bottom = 100% K (black)
+      const [cVal, mVal, yVal] = rgbToCmyk(...getRgb());
+      for (let y = 0; y < h; ++y) {
+        const kVal = (y / (h - 1)) * 100;
+        const [r, g, b] = cmykToRgb(cVal, mVal, yVal, kVal);
+        for (let x = 0; x < w; ++x) {
+          const idx = (y * w + x) * 4;
+          data[idx] = r;
+          data[idx + 1] = g;
+          data[idx + 2] = b;
+          data[idx + 3] = 255;
+        }
+      }
+    } else if (activeMode === 'hsl') {
       const [, hslS] = rgbToHsl(...getRgb());
-      sat = hslS;
-    } else
-      sat = state.s;
-
-    for (let y = 0; y < h; ++y) {
-      // top = 100%, bottom = 0%
-      const lvVal = (1 - y / (h - 1)) * 100;
-      let r, g, b;
-      if (isHSL)
-        [r, g, b] = hslToRgb(state.h, sat, lvVal);
-      else
-        [r, g, b] = hsvToRgb(state.h, sat, lvVal);
-
-      for (let x = 0; x < w; ++x) {
-        const idx = (y * w + x) * 4;
-        data[idx] = r;
-        data[idx + 1] = g;
-        data[idx + 2] = b;
-        data[idx + 3] = 255;
+      for (let y = 0; y < h; ++y) {
+        const lvVal = (1 - y / (h - 1)) * 100;
+        const [r, g, b] = hslToRgb(state.h, hslS, lvVal);
+        for (let x = 0; x < w; ++x) {
+          const idx = (y * w + x) * 4;
+          data[idx] = r;
+          data[idx + 1] = g;
+          data[idx + 2] = b;
+          data[idx + 3] = 255;
+        }
+      }
+    } else {
+      // HSV: value bar
+      for (let y = 0; y < h; ++y) {
+        const lvVal = (1 - y / (h - 1)) * 100;
+        const [r, g, b] = hsvToRgb(state.h, state.s, lvVal);
+        for (let x = 0; x < w; ++x) {
+          const idx = (y * w + x) * 4;
+          data[idx] = r;
+          data[idx + 1] = g;
+          data[idx + 2] = b;
+          data[idx + 3] = 255;
+        }
       }
     }
 
@@ -392,30 +494,52 @@
     const size = 200;
     const centerX = size / 2;
     const centerY = size / 2;
-    const radius = size / 2;
+    const outerR = size / 2;
+    const innerR = outerR - RING_WIDTH;
 
-    // Convert hue+saturation to x,y on wheel
-    // For HSL mode, we need to derive saturation from HSL saturation
-    let sat;
-    if (activeMode === 'hsl') {
-      const [, hslS] = rgbToHsl(...getRgb());
-      sat = hslS;
-    } else
+    if (activeMode === 'cmyk') {
+      // Disc mode: hue at angle, saturation at radius
+      let sat;
+      const [, , , kVal] = rgbToCmyk(...getRgb());
       sat = state.s;
-
-    const hueRad = state.h * Math.PI / 180;
-    const dist = (sat / 100) * radius;
-    const x = centerX + dist * Math.cos(hueRad);
-    const y = centerY + dist * Math.sin(hueRad);
-    wheelCursor.style.left = x + 'px';
-    wheelCursor.style.top = y + 'px';
+      const hueRad = state.h * Math.PI / 180;
+      const dist = (sat / 100) * outerR;
+      const x = centerX + dist * Math.cos(hueRad);
+      const y = centerY + dist * Math.sin(hueRad);
+      wheelCursor.style.left = x + 'px';
+      wheelCursor.style.top = y + 'px';
+    } else if (activeMode === 'hsv') {
+      // Ring+square: cursor sits inside the inscribed square
+      const sqHalf = innerR * Math.SQRT1_2 - 1;
+      const sqLeft = centerX - sqHalf;
+      const sqTop = centerY - sqHalf;
+      const sqSize = sqHalf * 2;
+      const x = sqLeft + (state.s / 100) * sqSize;
+      const y = sqTop + (1 - state.v / 100) * sqSize;
+      wheelCursor.style.left = x + 'px';
+      wheelCursor.style.top = y + 'px';
+    } else {
+      // HSL triangle: map S,L to barycentric coords, rotated to hue
+      const triR = innerR - 2;
+      const tri = getTriangleVertices(centerX, centerY, triR, state.h);
+      const [, hslS, hslL] = rgbToHsl(...getRgb());
+      const w1 = hslS / 100;
+      const w2 = hslL / 100;
+      const w3 = 1 - w1 - w2;
+      const x = w1 * tri.ax + w2 * tri.bx + w3 * tri.cx;
+      const y = w1 * tri.ay + w2 * tri.by + w3 * tri.cy;
+      wheelCursor.style.left = clamp(x, 0, size) + 'px';
+      wheelCursor.style.top = clamp(y, 0, size) + 'px';
+    }
   }
 
   function updateLvSlider() {
     const h = lvWrap.clientHeight;
-    const isHSL = activeMode === 'hsl';
     let lvVal;
-    if (isHSL) {
+    if (activeMode === 'cmyk') {
+      const [, , , kVal] = rgbToCmyk(...getRgb());
+      lvVal = 100 - kVal; // top = 0% K = 100% here, bottom = 100% K = 0%
+    } else if (activeMode === 'hsl') {
       const [, , l] = rgbToHsl(...getRgb());
       lvVal = l;
     } else
@@ -432,7 +556,7 @@
   }
 
   function isWheelMode() {
-    return activeMode === 'hsl' || activeMode === 'hsv';
+    return activeMode === 'hsl' || activeMode === 'hsv' || activeMode === 'cmyk';
   }
 
   function invalidateWheelCache() {
@@ -640,31 +764,73 @@
     const size = rect.width;
     const centerX = size / 2;
     const centerY = size / 2;
-    const radius = size / 2;
+    const outerR = size / 2;
+    const innerR = outerR - RING_WIDTH;
 
     const px = e.clientX - rect.left;
     const py = e.clientY - rect.top;
     const dx = px - centerX;
     const dy = py - centerY;
-    let dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist > radius)
-      dist = radius;
+    const dist = Math.sqrt(dx * dx + dy * dy);
 
-    const hue = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
-    const sat = (dist / radius) * 100;
-
-    if (activeMode === 'hsl') {
-      // Get current L
-      const [, , curL] = rgbToHsl(...getRgb());
-      const [r, g, b] = hslToRgb(hue, sat, curL);
-      setFromRgb(r, g, b, true);
-      state.h = round(hue);
-    } else {
+    if (activeMode === 'cmyk') {
+      // Disc mode: same as old behavior
+      const clampedDist = Math.min(dist, outerR);
+      const hue = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+      const sat = (clampedDist / outerR) * 100;
       state.h = round(hue);
       state.s = round(sat);
+      updateAllUI();
+      return;
     }
 
-    updateAllUI();
+    // HSV / HSL: ring + inner shape
+    if (dist >= innerR && dist <= outerR) {
+      // Click in hue ring: update hue only
+      const hue = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+      state.h = round(hue);
+      invalidateWheelCache();
+      updateAllUI();
+      return;
+    }
+
+    if (dist < innerR) {
+      if (activeMode === 'hsv') {
+        // Click in SV square
+        const sqHalf = innerR * Math.SQRT1_2 - 1;
+        const sqLeft = centerX - sqHalf;
+        const sqTop = centerY - sqHalf;
+        const sqSize = sqHalf * 2;
+        const sx = clamp((px - sqLeft) / sqSize, 0, 1);
+        const sy = clamp((py - sqTop) / sqSize, 0, 1);
+        state.s = round(sx * 100);
+        state.v = round((1 - sy) * 100);
+        updateAllUI();
+      } else {
+        // HSL: click in triangle (rotated to hue)
+        const triR = innerR - 2;
+        const tri = getTriangleVertices(centerX, centerY, triR, state.h);
+
+        const denom = (tri.by - tri.cy) * (tri.ax - tri.cx) + (tri.cx - tri.bx) * (tri.ay - tri.cy);
+        if (Math.abs(denom) < 0.001) return;
+        let w1 = ((tri.by - tri.cy) * (px - tri.cx) + (tri.cx - tri.bx) * (py - tri.cy)) / denom;
+        let w2 = ((tri.cy - tri.ay) * (px - tri.cx) + (tri.ax - tri.cx) * (py - tri.cy)) / denom;
+        let w3 = 1 - w1 - w2;
+
+        // Clamp to triangle
+        if (w1 < 0) { w1 = 0; const t = w2 + w3; if (t > 0) { w2 /= t; w3 /= t; } else { w2 = 0.5; w3 = 0.5; } }
+        if (w2 < 0) { w2 = 0; const t = w1 + w3; if (t > 0) { w1 /= t; w3 /= t; } else { w1 = 0.5; w3 = 0.5; } }
+        if (w3 < 0) { w3 = 0; const t = w1 + w2; if (t > 0) { w1 /= t; w2 /= t; } else { w1 = 0.5; w2 = 0.5; } }
+
+        const hslS = clamp(w1 * 100, 0, 100);
+        const hslL = clamp(w2 * 100, 0, 100);
+        const curH = state.h;
+        const [r, g, b] = hslToRgb(curH, hslS, hslL);
+        setFromRgb(r, g, b, true);
+        state.h = curH;
+        updateAllUI();
+      }
+    }
   }
 
   let wheelDragging = false;
@@ -689,8 +855,13 @@
     const y = clamp(e.clientY - rect.top, 0, rect.height);
     const lvVal = round((1 - y / rect.height) * 100);
 
-    if (activeMode === 'hsl') {
-      // Get current H and HSL-S
+    if (activeMode === 'cmyk') {
+      // K bar: top = 0% K, bottom = 100% K
+      const kVal = round((y / rect.height) * 100);
+      const [cVal, mVal, yVal] = rgbToCmyk(...getRgb());
+      const [r, g, b] = cmykToRgb(cVal, mVal, yVal, kVal);
+      setFromRgb(r, g, b, true);
+    } else if (activeMode === 'hsl') {
       const curH = state.h;
       const [, hslS] = rgbToHsl(...getRgb());
       const [r, g, b] = hslToRgb(curH, hslS, lvVal);
@@ -1136,43 +1307,10 @@
     requestAnimationFrame(init);
 
   // ===== Menu system =====
-  ;(function() {
-    const menuBar = document.querySelector('.menu-bar');
-    if (!menuBar) return;
-    let openMenu = null;
-    function closeMenus() {
-      if (openMenu) { openMenu.classList.remove('open'); openMenu = null; }
+  new SZ.MenuBar({ onAction: (action) => {
+    switch (action) {
+      case 'about': SZ.Dialog.show('dlg-about'); break;
     }
-    menuBar.addEventListener('pointerdown', function(e) {
-      const item = e.target.closest('.menu-item');
-      if (!item) return;
-      const entry = e.target.closest('.menu-entry');
-      if (entry) {
-        const action = entry.dataset.action;
-        closeMenus();
-        if (action === 'about') {
-          const dlg = document.getElementById('dlg-about');
-          if (dlg) dlg.classList.add('visible');
-        }
-        return;
-      }
-      if (openMenu === item) { closeMenus(); return; }
-      closeMenus();
-      item.classList.add('open');
-      openMenu = item;
-    });
-    menuBar.addEventListener('pointerenter', function(e) {
-      if (!openMenu) return;
-      const item = e.target.closest('.menu-item');
-      if (item && item !== openMenu) { closeMenus(); item.classList.add('open'); openMenu = item; }
-    }, true);
-    document.addEventListener('pointerdown', function(e) {
-      if (openMenu && !e.target.closest('.menu-bar')) closeMenus();
-    });
-  })();
-
-  document.getElementById('dlg-about')?.addEventListener('click', function(e) {
-    if (e.target.closest('[data-result]'))
-      this.classList.remove('visible');
-  });
+  }});
+  SZ.Dialog.wireAll();
 })();

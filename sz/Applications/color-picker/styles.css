@@ -1,23 +1,27 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  padding: 8px;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
   user-select: none;
   -webkit-user-select: none;
 }
 
 /* ---- Layout ---- */
 #app {
+  flex: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: 1fr 200px;
-  grid-template-rows: 1fr auto auto;
+  grid-template-rows: 1fr auto min-content;
   grid-template-areas:
     "visual  panel"
     "palette palette"
     "footer  footer";
   gap: 8px;
-  height: calc(100vh - 16px);
+  padding: 8px;
 }
 
 #visual-area {
@@ -148,7 +152,6 @@ body {
   display: block;
   width: 100%;
   height: 100%;
-  border-radius: 50%;
 }
 
 #wheel-cursor {
@@ -231,7 +234,7 @@ body {
   grid-area: panel;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   min-height: 0;
   min-width: 0;
   overflow-y: auto;
@@ -242,7 +245,7 @@ body {
   display: flex;
   gap: 4px;
   align-items: stretch;
-  height: 44px;
+  height: 36px;
 }
 
 #preview-area > div {
@@ -356,7 +359,7 @@ body {
   border-top: none;
   padding: 4px;
   flex: 1 1 0;
-  min-height: 60px;
+  min-height: 0;
   overflow-y: auto;
 }
 
@@ -452,13 +455,6 @@ body {
   min-width: 0;
 }
 
-.section-label {
-  font-weight: bold;
-  font-size: 10px;
-  margin: 4px 0 2px;
-  color: var(--sz-color-button-text);
-}
-
 /* ---- Palette ---- */
 #palette-area {
   grid-area: palette;
@@ -516,10 +512,9 @@ body {
 /* ---- Float display ---- */
 .float-grid {
   display: grid;
-  grid-template-columns: 16px 1fr;
+  grid-template-columns: auto auto auto auto;
   gap: 2px 4px;
   align-items: center;
-  margin-bottom: 3px;
 }
 
 .float-grid label {
@@ -532,6 +527,7 @@ body {
   font-family: 'Lucida Console', 'Consolas', monospace;
   font-size: 10px;
   padding: 1px 3px;
+  width: 52px;
 }
 
 /* ---- Dialog footer (OK / Cancel) ---- */
@@ -540,7 +536,7 @@ body {
   display: flex;
   justify-content: flex-end;
   gap: 6px;
-  padding: 6px 0 2px;
+  padding: 4px 0 0;
   border-top: 1px solid var(--sz-color-button-shadow);
 }
 

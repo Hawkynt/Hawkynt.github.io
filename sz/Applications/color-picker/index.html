@@ -24,6 +24,8 @@
 </script>
 <title>Color Picker</title>
 <script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="../shared/menu.css">
+<link rel="stylesheet" href="../shared/dialog.css">
 <link rel="stylesheet" href="styles.css">
 <script defer src="../vision-renderer.js"></script>
 </head>
@@ -145,13 +147,6 @@
           <input type="range" id="sl-b" min="0" max="255" value="0">
           <input type="number" id="num-b" min="0" max="255" value="0">
         </div>
-        <div class="section-label">Float (0.0 - 1.0)</div>
-        <div class="float-grid">
-          <label>R</label><input type="text" id="float-r" readonly>
-          <label>G</label><input type="text" id="float-g" readonly>
-          <label>B</label><input type="text" id="float-b" readonly>
-          <label>A</label><input type="text" id="float-a" readonly>
-        </div>
       </div>
 
       <!-- HSL panel -->
@@ -226,6 +221,14 @@
       </div>
     </div>
 
+    <!-- Float values (always visible) -->
+    <div class="float-grid">
+      <label>R</label><input type="text" id="float-r" readonly>
+      <label>G</label><input type="text" id="float-g" readonly>
+      <label>B</label><input type="text" id="float-b" readonly>
+      <label>A</label><input type="text" id="float-a" readonly>
+    </div>
+
   </div>
 
   <!-- Bottom palette area -->
@@ -254,6 +257,8 @@
   </div>
 </div>
 
+<script src="../shared/menu.js"></script>
+<script src="../shared/dialog.js"></script>
 <script src="controller.js"></script>
 </body>
 </html>
