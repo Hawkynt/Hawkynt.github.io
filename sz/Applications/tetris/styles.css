@@ -54,13 +54,153 @@ body {
 }
 
 .board-cell.clearing {
-  animation: flash-row 0.3s ease-in-out;
+  animation: clear-sparkle 0.2s ease-in-out, clear-dissolve 0.3s 0.15s ease-out forwards;
 }
 
-@keyframes flash-row {
-  0% { background: #fff; }
-  50% { background: #fff; }
-  100% { background: #000; }
+@keyframes clear-sparkle {
+  0% { background: #fff; filter: brightness(2); }
+  25% { filter: brightness(1); }
+  50% { background: #fff; filter: brightness(2); }
+  75% { filter: brightness(1); }
+  100% { background: #fff; filter: brightness(1.5); }
+}
+
+@keyframes clear-dissolve {
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.3); opacity: 0; }
+}
+
+/* Piece lock flash */
+.board-cell.just-locked {
+  animation: lock-glow 0.2s ease-out;
+}
+
+@keyframes lock-glow {
+  0% { filter: brightness(2) drop-shadow(0 0 4px rgba(255, 255, 255, 0.8)); }
+  100% { filter: brightness(1) drop-shadow(0 0 0 transparent); }
+}
+
+/* Screen shake */
+.board-border.shaking-light {
+  animation: shake-light 80ms ease-out;
+}
+
+.board-border.shaking-medium {
+  animation: shake-medium 100ms ease-out;
+}
+
+.board-border.shaking-heavy {
+  animation: shake-heavy 150ms ease-out;
+}
+
+@keyframes shake-light {
+  0% { transform: translate(0, 0); }
+  25% { transform: translate(1px, 1px); }
+  50% { transform: translate(-1px, 0); }
+  75% { transform: translate(1px, -1px); }
+  100% { transform: translate(0, 0); }
+}
+
+@keyframes shake-medium {
+  0% { transform: translate(0, 0); }
+  20% { transform: translate(-2px, 1px); }
+  40% { transform: translate(2px, -1px); }
+  60% { transform: translate(-1px, 2px); }
+  80% { transform: translate(1px, -1px); }
+  100% { transform: translate(0, 0); }
+}
+
+@keyframes shake-heavy {
+  0% { transform: translate(0, 0); }
+  15% { transform: translate(-3px, 2px); }
+  30% { transform: translate(3px, -2px); }
+  45% { transform: translate(-2px, 3px); }
+  60% { transform: translate(2px, -1px); }
+  75% { transform: translate(-1px, 2px); }
+  100% { transform: translate(0, 0); }
+}
+
+/* Score popup */
+.score-popup {
+  position: absolute;
+  pointer-events: none;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-weight: bold;
+  font-size: 14px;
+  color: #ff0;
+  text-shadow: 1px 1px 2px #000, 0 0 6px rgba(255, 255, 0, 0.5);
+  z-index: 50;
+  animation: float-up 1s ease-out forwards;
+  white-space: nowrap;
+}
+
+.score-popup.tetris {
+  font-size: 18px;
+  background: linear-gradient(90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.6));
+  text-shadow: none;
+}
+
+@keyframes float-up {
+  0% { opacity: 1; transform: translateY(0) scale(1); }
+  50% { opacity: 1; transform: translateY(-20px) scale(1.1); }
+  100% { opacity: 0; transform: translateY(-40px) scale(0.9); }
+}
+
+/* Line clear particles */
+.clear-particle {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 50%;
+  z-index: 40;
+}
+
+/* Level up effect */
+.led-display.level-flash {
+  animation: level-pulse 0.6s ease-out;
+}
+
+@keyframes level-pulse {
+  0% { color: #fff; background: #330; }
+  30% { color: #ff0; background: #440; }
+  60% { color: #f00; background: #000; }
+  100% { color: #f00; background: #000; }
+}
+
+.level-up-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 20px;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 0 0 8px #ff0, 0 0 16px #f80, 2px 2px 4px #000;
+  z-index: 60;
+  pointer-events: none;
+  animation: level-up-appear 1.2s ease-out forwards;
+  white-space: nowrap;
+}
+
+@keyframes level-up-appear {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+  15% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
+  30% { transform: translate(-50%, -50%) scale(1); }
+  70% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -55%) scale(0.9); }
+}
+
+.board-border.level-border-pulse {
+  animation: border-color-pulse 0.6s ease-out;
+}
+
+@keyframes border-color-pulse {
+  0% { border-color: #ff0 #ff0 #ff0 #ff0; }
+  50% { border-color: #f80 #f80 #f80 #f80; }
+  100% { border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow); }
 }
 
 /* Piece colors with 3D borders */

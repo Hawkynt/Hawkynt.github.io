@@ -651,6 +651,76 @@
         maximizable: true,
         singleton: true,
         category: 'Office'
+      },
+      {
+        id: 'snake',
+        title: 'Snake',
+        icon: 'snake/icon.svg',
+        type: 'iframe',
+        entry: 'snake/index.html',
+        width: 420,
+        height: 480,
+        resizable: false,
+        minimizable: true,
+        maximizable: false,
+        singleton: true,
+        category: 'Games'
+      },
+      {
+        id: 'breakout',
+        title: 'Breakout',
+        icon: 'breakout/icon.svg',
+        type: 'iframe',
+        entry: 'breakout/index.html',
+        width: 480,
+        height: 560,
+        resizable: false,
+        minimizable: true,
+        maximizable: false,
+        singleton: true,
+        category: 'Games'
+      },
+      {
+        id: 'space-invaders',
+        title: 'Space Invaders',
+        icon: 'space-invaders/icon.svg',
+        type: 'iframe',
+        entry: 'space-invaders/index.html',
+        width: 480,
+        height: 540,
+        resizable: false,
+        minimizable: true,
+        maximizable: false,
+        singleton: true,
+        category: 'Games'
+      },
+      {
+        id: 'asteroids',
+        title: 'Asteroids',
+        icon: 'asteroids/icon.svg',
+        type: 'iframe',
+        entry: 'asteroids/index.html',
+        width: 520,
+        height: 520,
+        resizable: false,
+        minimizable: true,
+        maximizable: false,
+        singleton: true,
+        category: 'Games'
+      },
+      {
+        id: 'pacman',
+        title: 'Pac-Man',
+        icon: 'pacman/icon.svg',
+        type: 'iframe',
+        entry: 'pacman/index.html',
+        width: 470,
+        height: 560,
+        resizable: false,
+        minimizable: true,
+        maximizable: false,
+        singleton: true,
+        category: 'Games'
       }
     ]
   };

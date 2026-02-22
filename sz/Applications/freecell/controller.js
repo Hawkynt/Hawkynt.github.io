@@ -70,6 +70,15 @@
   let winAnimCards = [];
   let winAnimRunning = false;
   let winAnimId = null;
+  let particles = [];
+  let lastFireworkTime = 0;
+
+  // Card move animation
+  let animatingCards = [];
+
+  // Deal animation
+  let dealAnimCards = [];
+  let dealAnimRunning = false;
 
   /* ================================================================
    *  CANVAS
@@ -142,6 +151,8 @@
   function newGame(num) {
     stopWinAnimation();
     stopTimer();
+    dealAnimCards = [];
+    dealAnimRunning = false;
 
     if (num === undefined)
       num = Math.floor(Math.random() * 1000000) + 1;
@@ -163,8 +174,8 @@
     updateStatusMsg('Game #' + gameNumber);
     updateMoves();
     updateTimer();
-    draw();
     updateTitle();
+    startDealAnimation();
   }
 
   function restartGame() {
@@ -542,6 +553,11 @@
     ctx.fillRect(0, 0, canvasW, 2);
     ctx.fillRect(0, 0, 2, canvasH);
 
+    // Build set of cards currently in move animation (should not be drawn at destination)
+    const animSet = new Set();
+    for (const a of animatingCards)
+      animSet.add(a.card);
+
     // Separator line between free cells and foundations
     ctx.strokeStyle = 'rgba(255,255,255,0.1)';
     ctx.lineWidth = 1;
@@ -574,7 +590,15 @@
         drawSuitSymbol(ctx, foundSuits[i], fp.x + CARD_W / 2, fp.y + CARD_H / 2, 28);
       } else {
         const top = foundations[i][foundations[i].length - 1];
-        drawCard(ctx, fp.x, fp.y, top);
+        if (!animSet.has(top))
+          drawCard(ctx, fp.x, fp.y, top);
+        else if (foundations[i].length > 1)
+          drawCard(ctx, fp.x, fp.y, foundations[i][foundations[i].length - 2]);
+        else {
+          drawEmptySlot(ctx, fp.x, fp.y, null);
+          ctx.fillStyle = 'rgba(255,255,255,0.3)';
+          drawSuitSymbol(ctx, foundSuits[i], fp.x + CARD_W / 2, fp.y + CARD_H / 2, 28);
+        }
       }
     }
 
@@ -706,16 +730,29 @@
       startTimer();
     saveState();
 
-    if (sourceType === 'freecell')
+    let fromX, fromY;
+    if (sourceType === 'freecell') {
+      const pos = freeCellPos(sourceCol);
+      fromX = pos.x;
+      fromY = pos.y;
       freeCells[sourceCol] = null;
-    else if (sourceType === 'tableau')
+    } else if (sourceType === 'tableau') {
+      const pos = tableauCardPos(sourceCol, tableau[sourceCol].length - 1);
+      fromX = pos.x;
+      fromY = pos.y;
       tableau[sourceCol].pop();
+    }
 
     foundations[fi].push(card);
     ++moveCount;
     updateMoves();
+
+    const fp = foundationPos(fi);
+    startCardMoveAnim(card, fromX, fromY, fp.x, fp.y, () => {
+      draw();
+      checkWin();
+    });
     draw();
-    checkWin();
     return true;
   }
 
@@ -751,10 +788,24 @@
         const fi = findFoundationTarget(card);
         if (fi >= 0) {
           saveState();
+          const fromPos = freeCellPos(i);
           freeCells[i] = null;
           foundations[fi].push(card);
           ++moveCount;
           moved = true;
+
+          const toPos = foundationPos(fi);
+          updateMoves();
+          draw();
+          startCardMoveAnim(card, fromPos.x, fromPos.y, toPos.x, toPos.y, () => {
+            let total = 0;
+            for (let j = 0; j < FOUNDATION_COUNT; ++j)
+              total += foundations[j].length;
+            if (total === 52)
+              doWin();
+            else
+              setTimeout(step, 30);
+          });
           break;
         }
       }
@@ -768,26 +819,32 @@
           const fi = findFoundationTarget(card);
           if (fi >= 0) {
             saveState();
+            const fromPos = tableauCardPos(col, pile.length - 1);
             pile.pop();
             foundations[fi].push(card);
             ++moveCount;
             moved = true;
+
+            const toPos = foundationPos(fi);
+            updateMoves();
+            draw();
+            startCardMoveAnim(card, fromPos.x, fromPos.y, toPos.x, toPos.y, () => {
+              let total = 0;
+              for (let j = 0; j < FOUNDATION_COUNT; ++j)
+                total += foundations[j].length;
+              if (total === 52)
+                doWin();
+              else
+                setTimeout(step, 30);
+            });
             break;
           }
         }
       }
 
-      updateMoves();
-      draw();
-
-      if (moved) {
-        let total = 0;
-        for (let i = 0; i < FOUNDATION_COUNT; ++i)
-          total += foundations[i].length;
-        if (total === 52)
-          doWin();
-        else
-          setTimeout(step, 60);
+      if (!moved) {
+        updateMoves();
+        draw();
       }
     };
     updateStatusMsg('Auto-completing...');
@@ -1060,12 +1117,212 @@
   }
 
   /* ================================================================
-   *  WIN ANIMATION: bouncing cards
+   *  FIREWORK PARTICLES
+   * ================================================================ */
+
+  const FIREWORK_COLORS = ['#ff4444', '#44ff44', '#4444ff', '#ffff44', '#ff44ff', '#44ffff', '#ff8800', '#ff0088', '#88ff00', '#ffffff'];
+
+  function spawnFirework(x, y) {
+    const count = 30 + Math.floor(Math.random() * 31);
+    const color = FIREWORK_COLORS[Math.floor(Math.random() * FIREWORK_COLORS.length)];
+    for (let i = 0; i < count; ++i) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 1 + Math.random() * 4;
+      particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        gravity: 0.04,
+        alpha: 1,
+        size: 2 + Math.random() * 3,
+        color,
+        glow: 8 + Math.random() * 8
+      });
+    }
+  }
+
+  function updateAndDrawParticles() {
+    for (let i = particles.length - 1; i >= 0; --i) {
+      const p = particles[i];
+      p.vy += p.gravity;
+      p.x += p.vx;
+      p.y += p.vy;
+      p.alpha -= 0.012;
+      p.size *= 0.995;
+      if (p.alpha <= 0 || p.size < 0.3) {
+        particles.splice(i, 1);
+        continue;
+      }
+      ctx.save();
+      ctx.globalAlpha = p.alpha;
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = p.glow * p.alpha;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function spawnSparkle(x, y) {
+    const count = 8;
+    for (let i = 0; i < count; ++i) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 0.5 + Math.random() * 2;
+      particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        gravity: 0.02,
+        alpha: 1,
+        size: 1 + Math.random() * 2,
+        color: '#ffff88',
+        glow: 6
+      });
+    }
+  }
+
+  /* ================================================================
+   *  DEAL ANIMATION
+   * ================================================================ */
+
+  function startDealAnimation() {
+    dealAnimCards = [];
+    dealAnimRunning = true;
+    const now = performance.now();
+    const centerX = canvasW / 2 - CARD_W / 2;
+    const centerY = canvasH / 2 - CARD_H / 2;
+    let cardNum = 0;
+    for (let col = 0; col < TABLEAU_COUNT; ++col)
+      for (let row = 0; row < tableau[col].length; ++row) {
+        const dest = tableauCardPos(col, row);
+        dealAnimCards.push({
+          card: tableau[col][row],
+          fromX: centerX,
+          fromY: centerY,
+          toX: dest.x,
+          toY: dest.y,
+          startTime: now + cardNum * 30,
+          duration: 250
+        });
+        ++cardNum;
+      }
+    requestAnimationFrame(tickDealAnimation);
+  }
+
+  function tickDealAnimation() {
+    if (!dealAnimRunning || dealAnimCards.length === 0) {
+      dealAnimRunning = false;
+      dealAnimCards = [];
+      return;
+    }
+
+    const now = performance.now();
+
+    ctx.fillStyle = GREEN;
+    ctx.fillRect(0, 0, canvasW, canvasH);
+    ctx.fillStyle = DARK_GREEN;
+    ctx.fillRect(0, 0, canvasW, 2);
+    ctx.fillRect(0, 0, 2, canvasH);
+
+    // Draw empty slots
+    for (let i = 0; i < FREECELL_COUNT; ++i) {
+      const pos = freeCellPos(i);
+      drawEmptySlot(ctx, pos.x, pos.y, null);
+    }
+    const foundSuits = ['clubs', 'diamonds', 'hearts', 'spades'];
+    for (let i = 0; i < FOUNDATION_COUNT; ++i) {
+      const fp = foundationPos(i);
+      drawEmptySlot(ctx, fp.x, fp.y, null);
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      drawSuitSymbol(ctx, foundSuits[i], fp.x + CARD_W / 2, fp.y + CARD_H / 2, 28);
+    }
+    for (let col = 0; col < TABLEAU_COUNT; ++col) {
+      const tp = tableauPos(col);
+      drawEmptySlot(ctx, tp.x, tp.y, null);
+    }
+
+    let allDone = true;
+    for (const d of dealAnimCards) {
+      if (now < d.startTime) {
+        allDone = false;
+        continue;
+      }
+      const elapsed = now - d.startTime;
+      const t = Math.min(elapsed / d.duration, 1);
+      const e = easeOutCubic(t);
+      const x = d.fromX + (d.toX - d.fromX) * e;
+      const y = d.fromY + (d.toY - d.fromY) * e;
+      drawCardFace(ctx, x, y, d.card);
+      if (t < 1)
+        allDone = false;
+    }
+
+    if (allDone) {
+      dealAnimRunning = false;
+      dealAnimCards = [];
+      draw();
+    } else
+      requestAnimationFrame(tickDealAnimation);
+  }
+
+  /* ================================================================
+   *  CARD MOVE ANIMATION
+   * ================================================================ */
+
+  function easeOutCubic(t) {
+    return 1 - Math.pow(1 - t, 3);
+  }
+
+  function startCardMoveAnim(card, fromX, fromY, toX, toY, onDone) {
+    animatingCards.push({
+      card, fromX, fromY, toX, toY,
+      startTime: performance.now(),
+      duration: 250,
+      onDone
+    });
+    if (!winAnimRunning && !dealAnimRunning && animatingCards.length === 1)
+      requestAnimationFrame(tickAnimations);
+  }
+
+  function tickAnimations() {
+    if (animatingCards.length === 0)
+      return;
+    const now = performance.now();
+    draw();
+
+    for (let i = animatingCards.length - 1; i >= 0; --i) {
+      const a = animatingCards[i];
+      const elapsed = now - a.startTime;
+      const t = Math.min(elapsed / a.duration, 1);
+      const e = easeOutCubic(t);
+      const x = a.fromX + (a.toX - a.fromX) * e;
+      const y = a.fromY + (a.toY - a.fromY) * e;
+      drawCardFace(ctx, x, y, a.card);
+      if (t >= 1) {
+        animatingCards.splice(i, 1);
+        spawnSparkle(a.toX + CARD_W / 2, a.toY + CARD_H / 2);
+        if (a.onDone)
+          a.onDone();
+      }
+    }
+
+    updateAndDrawParticles();
+
+    if (animatingCards.length > 0 || particles.length > 0)
+      requestAnimationFrame(tickAnimations);
+  }
+
+  /* ================================================================
+   *  WIN ANIMATION: bouncing cards + fireworks + trails + rotation
    * ================================================================ */
 
   function startWinAnimation() {
     winAnimCards = [];
+    particles = [];
     winAnimRunning = true;
+    lastFireworkTime = 0;
 
     const allCards = [];
     for (let fi = 0; fi < FOUNDATION_COUNT; ++fi) {
@@ -1088,17 +1345,25 @@
         vx: (Math.random() - 0.5) * 8,
         vy: -(Math.random() * 6 + 2),
         gravity: 0.2,
-        bounces: 0
+        bounces: 0,
+        angle: 0,
+        angularVelocity: (Math.random() - 0.5) * 0.08,
+        trail: []
       });
       ++launchIndex;
     }, 80);
 
-    const animate = () => {
+    const animate = (timestamp) => {
       if (!winAnimRunning)
         return;
 
       ctx.fillStyle = GREEN;
       ctx.fillRect(0, 0, canvasW, canvasH);
+
+      if (timestamp - lastFireworkTime > 500) {
+        spawnFirework(Math.random() * canvasW, Math.random() * canvasH * 0.6);
+        lastFireworkTime = timestamp;
+      }
 
       let anyAlive = false;
 
@@ -1106,6 +1371,7 @@
         ac.vy += ac.gravity;
         ac.x += ac.vx;
         ac.y += ac.vy;
+        ac.angle += ac.angularVelocity;
 
         if (ac.y + CARD_H > canvasH) {
           ac.y = canvasH - CARD_H;
@@ -1117,10 +1383,30 @@
           continue;
 
         anyAlive = true;
-        drawCardFace(ctx, ac.x, ac.y, ac.card);
+
+        ac.trail.push({ x: ac.x, y: ac.y, alpha: 0.4 });
+        if (ac.trail.length > 6)
+          ac.trail.shift();
+        for (const t of ac.trail) {
+          ctx.save();
+          ctx.globalAlpha = t.alpha;
+          ctx.translate(t.x + CARD_W / 2, t.y + CARD_H / 2);
+          ctx.rotate(ac.angle);
+          drawCardFace(ctx, -CARD_W / 2, -CARD_H / 2, ac.card);
+          ctx.restore();
+          t.alpha *= 0.6;
+        }
+
+        ctx.save();
+        ctx.translate(ac.x + CARD_W / 2, ac.y + CARD_H / 2);
+        ctx.rotate(ac.angle);
+        drawCardFace(ctx, -CARD_W / 2, -CARD_H / 2, ac.card);
+        ctx.restore();
       }
 
-      if (anyAlive || launchIndex < allCards.length)
+      updateAndDrawParticles();
+
+      if (anyAlive || launchIndex < allCards.length || particles.length > 0)
         winAnimId = requestAnimationFrame(animate);
       else
         winAnimRunning = false;
@@ -1136,6 +1422,10 @@
       winAnimId = null;
     }
     winAnimCards = [];
+    particles = [];
+    animatingCards = [];
+    dealAnimCards = [];
+    dealAnimRunning = false;
   }
 
   /* ================================================================
