@@ -1,0 +1,118 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  height: 100%;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- Game Frame ---- */
+.game-frame {
+  flex: 1;
+  min-height: 0;
+  border: 3px solid;
+  border-color: var(--sz-color-button-highlight) var(--sz-color-button-shadow) var(--sz-color-button-shadow) var(--sz-color-button-highlight);
+  margin: 4px;
+  padding: 5px;
+  background: var(--sz-color-button-face);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+canvas {
+  display: block;
+  border: 2px solid;
+  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
+  background: #000;
+  cursor: none;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+/* ---- Status Bar ---- */
+.status-bar {
+  display: flex;
+  border-top: 2px solid var(--sz-color-button-shadow);
+  background: var(--sz-color-button-face);
+  padding: 2px 4px;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.status-cell {
+  border: 1px solid;
+  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
+  padding: 1px 6px;
+  font-size: 11px;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* ---- Dialog Overrides ---- */
+.dialog-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* ---- High Scores Table ---- */
+.high-scores-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 4px;
+  font-size: 11px;
+}
+
+.high-scores-table th {
+  text-align: left;
+  padding: 2px 6px;
+  font-weight: bold;
+  border-bottom: 1px solid var(--sz-color-button-shadow);
+}
+
+.high-scores-table td {
+  padding: 2px 6px;
+}
+
+.high-scores-table td:nth-child(1) {
+  text-align: center;
+  width: 24px;
+}
+
+.high-scores-table td:nth-child(2) {
+  text-align: right;
+  font-family: 'Consolas', 'Courier New', monospace;
+}
+
+.high-scores-table td:nth-child(3) {
+  text-align: right;
+  font-size: 10px;
+  color: var(--sz-color-button-shadow);
+}
+
+/* ---- Controls Info ---- */
+.controls-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.controls-table td {
+  padding: 2px 6px;
+}
+
+.controls-table td:first-child {
+  font-weight: bold;
+  white-space: nowrap;
+  width: 90px;
+}
