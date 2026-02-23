@@ -1,0 +1,231 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ---- Flex Layout (enabled by JS after initial sizing) ---- */
+html.flex-layout,
+body.flex-layout {
+  height: 100%;
+}
+
+body.flex-layout {
+  display: flex;
+  flex-direction: column;
+}
+
+body.flex-layout .menu-bar {
+  flex-shrink: 0;
+}
+
+body.flex-layout .game-frame {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+body.flex-layout .status-bar {
+  flex-shrink: 0;
+}
+
+/* ---- Game Frame ---- */
+.game-frame {
+  border: 3px solid;
+  border-color: var(--sz-color-button-highlight) var(--sz-color-button-shadow) var(--sz-color-button-shadow) var(--sz-color-button-highlight);
+  margin: 4px;
+  padding: 5px;
+  background: var(--sz-color-button-face);
+}
+
+#gameCanvas {
+  display: block;
+  background: #000;
+  border: 2px solid;
+  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
+}
+
+/* ---- Status Bar ---- */
+.status-bar {
+  display: flex;
+  border-top: 2px solid var(--sz-color-button-shadow);
+  background: var(--sz-color-button-face);
+  padding: 2px 4px;
+  gap: 2px;
+}
+
+.status-cell {
+  flex: 1;
+  border: 1px solid;
+  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
+  padding: 1px 6px;
+  font-size: 11px;
+  font-family: 'Tahoma', 'Verdana', sans-serif;
+  color: var(--sz-color-button-text);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.status-cell span {
+  font-weight: bold;
+  font-family: 'Consolas', 'Courier New', monospace;
+}
+
+/* ---- Dialog Title ---- */
+.dialog-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* ---- High Scores Table ---- */
+.high-scores-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 4px;
+  font-size: 11px;
+}
+
+.high-scores-table th {
+  text-align: left;
+  padding: 2px 6px;
+  font-weight: bold;
+  border-bottom: 1px solid var(--sz-color-button-shadow);
+}
+
+.high-scores-table td {
+  padding: 2px 6px;
+}
+
+.high-scores-table td:nth-child(1) {
+  text-align: center;
+  width: 24px;
+}
+
+.high-scores-table td:nth-child(2) {
+  text-align: right;
+  font-family: 'Consolas', 'Courier New', monospace;
+}
+
+.high-scores-table td:nth-child(3) {
+  text-align: right;
+  font-size: 10px;
+  color: var(--sz-color-button-shadow);
+}
+
+.high-scores-table td:nth-child(4) {
+  font-size: 10px;
+  color: var(--sz-color-button-shadow);
+  padding-left: 8px;
+}
+
+/* ---- Controls Info ---- */
+.controls-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.controls-table td {
+  padding: 2px 6px;
+}
+
+.controls-table td:first-child {
+  font-weight: bold;
+  white-space: nowrap;
+  width: 90px;
+}
+
+.controls-section {
+  margin-top: 8px;
+  font-size: 11px;
+}
+
+.controls-section strong {
+  display: block;
+  margin-bottom: 3px;
+  border-bottom: 1px solid var(--sz-color-button-shadow);
+  padding-bottom: 2px;
+}
+
+.controls-mode {
+  padding: 1px 0 1px 6px;
+  font-size: 10px;
+  color: var(--sz-color-button-text);
+}
+
+/* ---- Powerup Icons in Controls ---- */
+.pu-icon {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  line-height: 14px;
+  text-align: center;
+  border-radius: 50%;
+  font-size: 9px;
+  font-weight: bold;
+  color: #fff;
+  margin-right: 3px;
+  vertical-align: middle;
+}
+
+.pu-shield   { background: #369; }
+.pu-triple   { background: #a63; }
+.pu-rapid    { background: #a33; }
+.pu-piercing { background: #739; }
+.pu-spread   { background: #2a8a5a; }
+.pu-homing   { background: #088; }
+.pu-life     { background: #393; }
+.pu-nuke     { background: #993; }
+
+/* ---- Rock Type Icons in Controls ---- */
+.rt-icon {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  line-height: 14px;
+  text-align: center;
+  border-radius: 50%;
+  font-size: 8px;
+  font-weight: bold;
+  color: #fff;
+  margin-right: 3px;
+  vertical-align: middle;
+}
+
+.rt-normal    { background: #6b5335; }
+.rt-iron      { background: #667; }
+.rt-crystal   { background: #469; }
+.rt-exploding { background: #b43; }
+.rt-ice       { background: #79b; }
+.rt-lava      { background: #843; }
+.rt-electric  { background: #997; }
+
+/* ---- Enemy Icons in Controls ---- */
+.en-icon {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  line-height: 14px;
+  text-align: center;
+  border-radius: 3px;
+  font-size: 8px;
+  font-weight: bold;
+  color: #fff;
+  margin-right: 3px;
+  vertical-align: middle;
+}
+
+.en-ufo       { background: #186; }
+.en-drone     { background: #a33; }
+.en-gunship   { background: #5a3; }
+.en-minelayer { background: #a80; }
+.en-stealth   { background: #63a; }
+.en-boss      { background: #a3a; }
+.en-ally      { background: #2a8; }
