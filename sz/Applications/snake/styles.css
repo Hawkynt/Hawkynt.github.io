@@ -1,0 +1,158 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- Game Frame ---- */
+.game-frame {
+  border: 3px solid;
+  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
+  margin: 4px;
+  background: #000;
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.game-frame canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* ---- Status Bar ---- */
+.status-bar {
+  display: flex;
+  align-items: center;
+  height: 20px;
+  background: var(--sz-color-button-face);
+  border-top: 1px solid var(--sz-color-button-shadow);
+  padding: 0 4px;
+  flex-shrink: 0;
+  gap: 2px;
+}
+
+.status-section {
+  border: 1px solid;
+  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
+  padding: 1px 6px;
+  font-size: 11px;
+  white-space: nowrap;
+  color: var(--sz-color-menu-text);
+  flex: 1;
+}
+
+/* ---- Dialog Overrides ---- */
+.dialog-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* ---- High Scores Table ---- */
+.high-scores-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 4px;
+  font-size: 11px;
+}
+
+.high-scores-table th {
+  text-align: left;
+  padding: 2px 6px;
+  font-weight: bold;
+  border-bottom: 1px solid var(--sz-color-button-shadow);
+}
+
+.high-scores-table td {
+  padding: 2px 6px;
+}
+
+.high-scores-table td:nth-child(1) {
+  text-align: center;
+  width: 24px;
+}
+
+.high-scores-table td:nth-child(2),
+.high-scores-table td:nth-child(3) {
+  text-align: right;
+  font-family: 'Consolas', 'Courier New', monospace;
+}
+
+/* ---- Controls Info ---- */
+.controls-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.controls-table td {
+  padding: 2px 6px;
+}
+
+.controls-table td:first-child {
+  font-weight: bold;
+  white-space: nowrap;
+  width: 120px;
+}
+
+/* ---- Options Dialog ---- */
+.options-body {
+  padding: 8px 12px;
+}
+
+.options-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--sz-color-button-shadow);
+}
+
+.preset-btn {
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: default;
+  min-width: 56px;
+}
+
+.options-group {
+  border: 1px solid var(--sz-color-button-shadow);
+  padding: 3px 8px 4px;
+  margin: 3px 0;
+}
+
+.options-group legend {
+  font-weight: bold;
+  font-size: 11px;
+  padding: 0 4px;
+  color: var(--sz-color-menu-text);
+}
+
+.options-group label {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  margin-right: 10px;
+  cursor: default;
+  gap: 2px;
+  color: var(--sz-color-menu-text);
+}
+
+.options-group input[type="radio"],
+.options-group input[type="checkbox"] {
+  margin: 0 2px 0 0;
+}
