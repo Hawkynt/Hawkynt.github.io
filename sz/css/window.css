@@ -24,7 +24,6 @@
     "sw sw s  se se";
   min-width: 200px;
   min-height: 100px;
-  will-change: transform;
 }
 
 /* --------------------------------------------------------------------------
@@ -36,8 +35,8 @@
 }
 
 .sz-window[data-state="maximized"] {
-  transform: none !important;
-  inset: 0;
+  left: 0 !important;
+  top: 0 !important;
   width: 100% !important;
   height: 100% !important;
 }

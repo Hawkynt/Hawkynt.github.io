@@ -191,6 +191,18 @@
         // Changelog
         case 'sz:getChangelog': return respond('sz:getChangelogResult', { changelog: SZ.appVersions?.changelog || '' });
 
+        // Skin data (for skin tester and other apps)
+        case 'sz:getSkinList':
+            return respond('sz:getSkinListResult', {
+              skins: SZ.getAvailableSkins().map(key => ({ key, name: (SZ.getSkin(key)?.name) || key })),
+              baseURI: document.baseURI,
+            });
+        case 'sz:getSkinData':
+            return respond('sz:getSkinDataResult', {
+              skin: SZ.getSkin(data.key) || null,
+              baseURI: document.baseURI,
+            });
+
         // Window management
         case 'sz:getTheme': return respond('sz:themeCSS', { css: themeEngine.styleText });
         case 'sz:setTitle': if (win) { win.setTitle(data.title); taskbar.updateTitle(win.id, data.title); } return;

@@ -38,7 +38,15 @@ body {
 #toolbar button {
   font-size: 11px;
   padding: 1px 8px;
-  min-width: 48px;
+  min-width: 24px;
+}
+
+#mag-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  padding: 1px 4px;
 }
 
 #toolbar button.toggled {
@@ -81,33 +89,44 @@ body {
   display: flex;
 }
 
-/* ---- 9-piece frame grid ---- */
+/* ---- 9-piece frame grid ----
+   Uses the same --sz-frame-* custom properties as the real window
+   so that skin-css-generator.js output directly controls sizing. */
 #frame-grid {
   display: grid;
   gap: 4px;
   grid-template-columns:
-    var(--grid-left, 40px)
-    var(--grid-nw-ext, 0px)
+    var(--sz-frame-left-w, 40px)
+    var(--sz-frame-nw-ext, 0px)
     1fr
-    var(--grid-ne-ext, 0px)
-    var(--grid-right, 40px);
+    var(--sz-frame-ne-ext, 0px)
+    var(--sz-frame-right-w, 40px);
   grid-template-rows:
-    var(--grid-top, 30px)
+    var(--sz-frame-top-h, 30px)
     minmax(200px, 1fr)
-    var(--grid-bottom, 10px);
+    var(--sz-frame-bottom-h, 10px);
   grid-template-areas:
     "nw nw n  ne ne"
     "w  c  c  c  e"
-    "sw s  s  s  se";
+    "sw sw s  se se";
   min-width: 400px;
   min-height: 300px;
+}
+
+/* Override: the frame grid is not a floating window, so disable
+   position/size rules that skin-css-generator sets on .sz-window. */
+#frame-grid.sz-window {
+  position: static;
+  width: auto;
+  height: auto;
+  min-width: 400px;
+  min-height: 300px;
+  animation: none;
 }
 
 .frame-cell {
   position: relative;
   overflow: hidden;
-  background-repeat: no-repeat;
-  background-size: 100% 100%;
   outline: 1px dashed rgba(255, 0, 0, 0.4);
 }
 
@@ -135,6 +154,70 @@ body {
 #cell-sw  { grid-area: sw; }
 #cell-s   { grid-area: s; }
 #cell-se  { grid-area: se; }
+
+/* ---- Sub-skin color overlay (mirrors window.css) ----
+   Recolors frame BMP images via mix-blend-mode when a non-default sub-skin
+   is active.  Toggled by adding .sz-subskin-tint to the frame grid. */
+.sz-subskin-tint .sz-frame-nw::after,
+.sz-subskin-tint .sz-frame-n::after,
+.sz-subskin-tint .sz-frame-ne::after,
+.sz-subskin-tint .sz-frame-w::after,
+.sz-subskin-tint .sz-frame-e::after,
+.sz-subskin-tint .sz-frame-sw::after,
+.sz-subskin-tint .sz-frame-s::after,
+.sz-subskin-tint .sz-frame-se::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  mix-blend-mode: color;
+  pointer-events: none;
+}
+
+/* Title row — gradient tint */
+.sz-window-active.sz-subskin-tint .sz-frame-nw::after,
+.sz-window-active.sz-subskin-tint .sz-frame-n::after,
+.sz-window-active.sz-subskin-tint .sz-frame-ne::after {
+  background: linear-gradient(to right,
+    var(--sz-color-active-title, transparent),
+    var(--sz-color-gradient-active-title, transparent));
+}
+
+.sz-window:not(.sz-window-active).sz-subskin-tint .sz-frame-nw::after,
+.sz-window:not(.sz-window-active).sz-subskin-tint .sz-frame-n::after,
+.sz-window:not(.sz-window-active).sz-subskin-tint .sz-frame-ne::after {
+  background: linear-gradient(to right,
+    var(--sz-color-inactive-title, transparent),
+    var(--sz-color-gradient-inactive-title, transparent));
+}
+
+/* Side borders — border color tint */
+.sz-window-active.sz-subskin-tint .sz-frame-w::after,
+.sz-window-active.sz-subskin-tint .sz-frame-e::after {
+  background: var(--sz-color-active-border, transparent);
+}
+
+.sz-window:not(.sz-window-active).sz-subskin-tint .sz-frame-w::after,
+.sz-window:not(.sz-window-active).sz-subskin-tint .sz-frame-e::after {
+  background: var(--sz-color-inactive-border, transparent);
+}
+
+/* Bottom row — border color tint */
+.sz-window-active.sz-subskin-tint .sz-frame-sw::after,
+.sz-window-active.sz-subskin-tint .sz-frame-s::after,
+.sz-window-active.sz-subskin-tint .sz-frame-se::after {
+  background: var(--sz-color-active-border, transparent);
+}
+
+.sz-window:not(.sz-window-active).sz-subskin-tint .sz-frame-sw::after,
+.sz-window:not(.sz-window-active).sz-subskin-tint .sz-frame-s::after,
+.sz-window:not(.sz-window-active).sz-subskin-tint .sz-frame-se::after {
+  background: var(--sz-color-inactive-border, transparent);
+}
+
+/* Disable animations when toggled off */
+.sz-anim-off [class^="sz-frame-"] {
+  animation-duration: 0s !important;
+}
 
 /* ---- Content area controls ---- */
 #controls-area {
@@ -185,15 +268,58 @@ body {
   max-height: 180px;
   overflow-y: auto;
   border-top: 1px solid var(--sz-color-button-shadow);
-  padding: 4px 8px;
   font-size: 10px;
   font-family: 'Consolas', 'Lucida Console', monospace;
   background: var(--sz-color-window, #fff);
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+#info-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 8px;
+  border-bottom: 1px solid var(--sz-color-button-shadow, #808080);
+  background: var(--sz-color-button-face, #d4d0c8);
+  font-weight: bold;
+  font-size: 10px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#copy-info-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--sz-color-button-shadow, #808080);
+  background: var(--sz-color-button-face, #d4d0c8);
+  cursor: default;
+  color: var(--sz-color-button-text, #000);
+}
+
+#copy-info-btn:hover {
+  filter: brightness(1.1);
+}
+
+#copy-info-btn:active {
+  border-style: inset;
+}
+
+#copy-info-btn.copied {
+  color: #080;
 }
 
 #info-content {
   white-space: pre-wrap;
   line-height: 1.5;
+  padding: 4px 8px;
 }
 
 .info-section {
@@ -211,4 +337,77 @@ body {
 
 .info-ok {
   color: #080;
+}
+
+/* ---- Magnifier ---- */
+#magnifier {
+  display: none;
+  position: absolute;
+  width: 180px;
+  height: 180px;
+  border: 2px solid #333;
+  border-radius: 50%;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 50;
+  background: #000;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+#magnifier.active {
+  display: block;
+}
+
+#magnifier-clone-wrap {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+#magnifier-clone-wrap > * {
+  image-rendering: pixelated;
+  -ms-interpolation-mode: nearest-neighbor;
+}
+
+#magnifier-crosshair-h,
+#magnifier-crosshair-v {
+  position: absolute;
+  pointer-events: none;
+  background: rgba(255, 0, 0, 0.5);
+  z-index: 1;
+}
+
+#magnifier-crosshair-h {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+}
+
+#magnifier-crosshair-v {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+}
+
+#magnifier-info {
+  position: absolute;
+  bottom: 8px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 9px;
+  color: #fff;
+  text-shadow: 0 0 3px #000, 0 0 3px #000;
+  pointer-events: none;
+  z-index: 2;
+}
+
+#mag-zoom-label {
+  font-weight: normal;
+}
+
+#mag-zoom {
+  font-size: 11px;
 }
