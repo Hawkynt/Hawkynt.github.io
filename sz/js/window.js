@@ -67,7 +67,8 @@
       this.#x = x;
       this.#y = y;
       const style = this.#element.style;
-      style.transform = `translate3d(${x}px, ${y}px, 0)`;
+      style.left = `${x}px`;
+      style.top = `${y}px`;
       style.setProperty('--sz-x', `${x}px`);
       style.setProperty('--sz-y', `${y}px`);
     }
