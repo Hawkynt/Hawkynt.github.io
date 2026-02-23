@@ -60,6 +60,7 @@
         ],
       },
       { separator: true },
+      { label: 'Restart', disabled: !win.appId, action: () => wm.restartWindow(id) },
       { label: 'Close', bold: true, action: () => wm.closeWindow(id) },
     ];
   }

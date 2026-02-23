@@ -172,6 +172,33 @@
       this.#element.style.opacity = this.#opacity < 1.0 ? String(this.#opacity) : '';
     }
 
+    restart() {
+      if (this.#iframeEl) {
+        this.#iframeEl.src = this.#iframeEl.src;
+        return;
+      }
+
+      const container = this.#contentEl.querySelector('.sz-hosted-app');
+      if (!container?._szAppInstance)
+        return;
+
+      const instance = container._szAppInstance;
+      const AppClass = instance.constructor;
+      const urlParams = container._szUrlParams || {};
+      const win = container._szWindow;
+
+      instance.onDetach?.();
+      instance.destroy?.();
+      instance.dispose?.();
+
+      container.innerHTML = '';
+
+      const newInstance = new AppClass(container, urlParams);
+      container._szAppInstance = newInstance;
+      if (win)
+        newInstance.onAttach?.(win);
+    }
+
     // -----------------------------------------------------------------
     // Animation helpers
     // -----------------------------------------------------------------
