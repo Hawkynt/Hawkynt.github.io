@@ -24,6 +24,9 @@
   const FOUNDATION_COUNT = 4;
   const TABLEAU_COUNT = 7;
 
+  const BASE_W = MARGIN_X * 2 + (TABLEAU_COUNT - 1) * PILE_GAP + CARD_W;
+  const BASE_H = 450;
+
   const GREEN = '#1a7a2e';
   const DARK_GREEN = '#126622';
 
@@ -86,17 +89,19 @@
   const ctx = canvas.getContext('2d');
   let canvasW = 640;
   let canvasH = 480;
+  let scale = 1;
 
   function resizeCanvas() {
     const rect = canvasArea.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
-    canvasW = rect.width;
-    canvasH = rect.height;
-    canvas.width = canvasW * dpr;
-    canvas.height = canvasH * dpr;
-    canvas.style.width = canvasW + 'px';
-    canvas.style.height = canvasH + 'px';
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    scale = Math.min(rect.width / BASE_W, rect.height / BASE_H);
+    canvasW = rect.width / scale;
+    canvasH = rect.height / scale;
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    canvas.style.width = rect.width + 'px';
+    canvas.style.height = rect.height + 'px';
+    ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
     draw();
   }
 
@@ -1396,8 +1401,8 @@
     }
 
     const rect = canvas.getBoundingClientRect();
-    const px = e.clientX - rect.left;
-    const py = e.clientY - rect.top;
+    const px = (e.clientX - rect.left) / scale;
+    const py = (e.clientY - rect.top) / scale;
 
     pointerDown = true;
     pointerStartX = px;
@@ -1484,8 +1489,8 @@
     if (!dragging)
       return;
     const rect = canvas.getBoundingClientRect();
-    dragging.currentX = e.clientX - rect.left;
-    dragging.currentY = e.clientY - rect.top;
+    dragging.currentX = (e.clientX - rect.left) / scale;
+    dragging.currentY = (e.clientY - rect.top) / scale;
     draw();
   });
 
@@ -1498,8 +1503,8 @@
       return;
 
     const rect = canvas.getBoundingClientRect();
-    const px = e.clientX - rect.left;
-    const py = e.clientY - rect.top;
+    const px = (e.clientX - rect.left) / scale;
+    const py = (e.clientY - rect.top) / scale;
 
     const dx = px - pointerStartX;
     const dy = py - pointerStartY;
