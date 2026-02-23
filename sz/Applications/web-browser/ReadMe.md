@@ -84,6 +84,11 @@ Inspired by early versions of Mozilla Firefox and Internet Explorer, with a simp
 ### Window Title
 - [x] As a user, I can see the page title or URL displayed in the window title bar
 
+### Navigation Auto-Tracking
+- [x] As a user, I can click links within a loaded page and the address bar automatically updates to show the current URL
+- [x] As a user, the browser detects same-origin navigation and updates history so back/forward buttons navigate through actual visited pages
+- [x] As a user, the page title updates when navigating within a page via links
+
 ### Keyboard Shortcuts
 - [x] As a user, I can press F5 to refresh
 - [x] As a user, I can press Escape to stop loading

@@ -262,6 +262,11 @@ Inspired by [FilePilot](https://filepilot.tech) -- a modern file manager with mu
 ### Bulk Operations
 - [x] Bulk rename with pattern support (ID, date, counter options -- FilePilot-inspired)
 - [x] Keyboard-driven file selection (type-ahead to select by typing name prefix)
+- [x] Arrow key navigation (Up/Down/Left/Right) with Shift+Arrow for multi-selection
+- [x] Home/End/PageUp/PageDown navigation with optional multi-selection
+- [x] Alt+Enter shortcut to open Properties dialog for selected items
+- [x] Lasso/rubber-band selection by dragging a rectangle on the background
+- [x] Right-click tab to Duplicate Tab; middle-click tab to close it
 
 ### View Enhancements
 - [x] Zoom levels for icon sizes (small, medium, large, extra large)

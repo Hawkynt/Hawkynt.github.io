@@ -166,9 +166,10 @@ Modeled after Microsoft Excel and Google Sheets, with a ribbon-style toolbar org
 - [x] As a user, I can see sheet tabs at the bottom for multi-sheet navigation
 - [x] As a user, I can use a color picker palette for font and background colors
 - [x] As a user, I can see the app title reflect the current filename
-- [ ] As a user, I can print or export a sheet as a PDF
-- [ ] As a user, I can insert hyperlinks into cells with clickable behavior
-- [ ] As a user, I can add and view cell comments/notes
+- [x] As a user, I can print the spreadsheet using Ctrl+P or File > Print
+- [x] As a user, I can insert hyperlinks into cells with clickable behavior
+- [x] As a user, I can add and view cell comments with a red triangle indicator
+- [x] As a user, I can zoom in/out from 25% to 500% using the zoom slider in the status bar
 
 ### Keyboard Shortcuts
 - [x] As a user, I can use Ctrl+B/I/U for bold/italic/underline

@@ -89,6 +89,11 @@ Modeled after the classic Windows Font Viewer and macOS Font Book, providing a s
 ### User Interface
 - [x] As a user, I can see a split layout with font list on the left and preview on the right
 - [x] As a user, I can switch between "Sample" and "Characters" tabs in the main area
-- [x] As a user, I can see a toolbar with size, weight, bold/italic, and color controls
+- [x] As a user, I can see a ribbon toolbar with Home and View tabs for organizing controls
+- [x] As a user, I can see a Quick Access Toolbar with common actions
+- [x] As a user, I can open a file picker dialog to load font files from the virtual file system
+- [x] As a user, I can launch the Color Picker app for precise text color selection
+- [x] As a user, I can select view tab options (Sample/Characters) via radio buttons in the ribbon
+- [x] As a user, I can see an About dialog with application information
 - [x] As a user, I can see system visual styles applied to the app
 - [ ] As a user, I can resize the sidebar width by dragging

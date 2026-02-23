@@ -92,6 +92,9 @@ Modeled after classic Windows icon editors such as Axialis IconWorkshop and the 
 - [x] As a user, I can adjust alpha transparency via a dedicated slider
 - [x] As a user, I can pick colors from a built-in palette grid
 - [x] As a user, I can use the system color picker dialog
+- [x] As a user, I can double-click a palette swatch to edit that color slot (indexed images only)
+- [x] As a user, I can right-click a palette swatch to set it as the background color
+- [x] As a user, when I edit a palette slot color, all pixels using that color are automatically updated
 
 ### Quantization and Dithering
 - [x] As a user, I can choose from multiple quantization algorithms when reducing color depth

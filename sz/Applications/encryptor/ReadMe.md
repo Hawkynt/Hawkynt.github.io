@@ -58,6 +58,7 @@ Inspired by simple encryption utilities and hex editors, presenting a straightfo
 - [x] As a user, I can see the output textarea is read-only
 - [x] As a user, I can see error output styled differently from normal output
 - [x] As a user, I can see themed visual styles matching the current desktop skin
+- [x] As a user, I can see an About dialog with application information
 
 ### Aspirational Features
 

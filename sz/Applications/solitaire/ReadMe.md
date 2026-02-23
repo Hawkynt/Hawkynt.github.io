@@ -61,6 +61,12 @@ Modeled after the classic Microsoft Solitaire (sol.exe) from Windows 3.0 through
 - [x] As a user, I can see the game automatically detect when all cards can be moved to foundations
 - [x] As a user, I can watch an auto-complete animation when the game is won
 - [x] As a user, I can see a bouncing card celebration animation on winning
+- [x] As a user, I can see fireworks and particle effects burst during the celebration
+- [x] As a user, I can see smooth easing animations when cards move to foundations or tableau with landing sparkles
+- [x] As a user, I can watch a 3D flip animation when tableau cards are revealed
+- [x] As a user, I can watch an animated slide and flip effect when dealing from stock to waste
+- [x] As a user, I can see physics-based rotating cards with motion trails during the win animation
+- [x] As a user, I can see a recycle symbol on the stock pile when all cards have been dealt
 - [ ] As a user, I can see my win statistics (games played, games won, win percentage)
 
 ### Scoring and Timer

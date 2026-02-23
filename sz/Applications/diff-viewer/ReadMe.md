@@ -115,4 +115,6 @@ Modeled after diff tools like WinMerge and the Visual Studio Code diff editor, w
 - [x] As a user, I can see line numbers and gutter indicators (+/-/~) alongside diff lines
 - [x] As a user, I can see character-level additions/deletions colored within modified lines
 - [x] As a user, I can see the app styled with system visual styles
+- [x] As a user, I can press F1 to open the About dialog
+- [x] As a user, I can see the display update correctly when the window is resized
 - [ ] As a user, I can see syntax highlighting applied to code files in the diff view

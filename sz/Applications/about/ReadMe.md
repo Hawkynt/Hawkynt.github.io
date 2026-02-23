@@ -15,7 +15,7 @@ The About dialog provides users with essential information about the »Synthelic
 - Historical context (original creation dates and author)
 - Description of the project as a browser-based desktop environment
 - Clear data-privacy notice explaining that all user data stays in the browser and may be lost
-- Tabbed layout: General, System, Credits
+- Tabbed layout: General, System, Credits, What's New (changelog)
 - System information panel (resolution, memory, browser, platform, skin, color depth, language, storage usage)
 - Credits listing with author and third-party inspirations (TidyTabs, AquaSnap, Winamp, Stardock)
 - License section: free for personal/educational use, contact for commercial licensing and PID
@@ -73,11 +73,25 @@ Modeled after the classic "About Windows" dialog (winver.exe) found in Windows X
 - [x] As a user, I can see a donation appeal encouraging support for the project
 - [x] As a user, I can click the heart icon in the donation notice to open the author's PayPal page
 
+### What's New Tab
+
+- [x] As a user, I can click the "What's New" tab to view the changelog of recent updates to the system
+- [x] As a user, I can see changelog entries organized by version number with release dates
+- [x] As a user, I can see categorized entries (Added, Fixed, Changed, Removed, Issues) with color-coded emoji prefixes
+- [x] As a user, I can see a "No changelog available" message if the changelog is not loaded
+- [x] As a user, I can see the What's New tab populated on-demand only when I click it for performance
+
+### Data Storage Details
+
+- [x] As a user, I can see information about mounting local directories from my computer into the virtual file system for persistent storage
+- [x] As a user, I can understand the difference between browser storage and mounted local directories
+
 ### User Interface
 
 - [x] As a user, I can see a clean, minimal dialog layout with a heading, description, and version line
 - [x] As a user, I can see a horizontal divider separating the description from the version info
 - [x] As a user, I can see the SynthelicZ logo or icon displayed in the dialog
+- [x] As a user, I can see the git commit hash (if available) displayed in the version line
 - [x] As a user, I can click an "OK" button to close the dialog
 - [x] As a user, I can see system information such as available memory and display resolution
 - [x] As a user, I can see the current skin name and theme displayed
@@ -86,3 +100,7 @@ Modeled after the classic "About Windows" dialog (winver.exe) found in Windows X
 - [x] As a user, I can see an animated or branded visual element that matches the desktop aesthetic
 - [x] As a user, I can copy the version and system info to clipboard
 - [x] As a user, I can press Escape or Enter to close the dialog
+
+### Advanced
+
+- [x] As a developer, I can pass an `autostart=1` parameter to the About app to automatically display the What's New tab on launch

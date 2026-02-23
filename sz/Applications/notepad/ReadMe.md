@@ -51,7 +51,8 @@ Modeled after the classic Windows Notepad for simplicity and file handling, comb
 - [x] As a user, I can toggle between insert and overwrite mode
 - [x] As a user, I can use auto-indent when pressing Enter
 - [x] As a user, I can have brackets automatically closed when I type an opening bracket
-- [ ] As a user, I can move lines up and down with keyboard shortcuts
+- [x] As a user, I can move lines up and down with Alt+Up and Alt+Down keyboard shortcuts
+- [x] As a user, I can indent and unindent selected blocks with Tab and Shift+Tab
 - [ ] As a user, I can use multi-cursor editing to type in multiple places at once
 - [ ] As a user, I can drag and drop text within the editor
 

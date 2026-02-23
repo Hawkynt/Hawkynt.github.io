@@ -110,6 +110,10 @@ Inspired by online regex testers like regex101.com and RegExr, combining a patte
 - [x] As a user, I can resize the match panel by dragging the vertical splitter between test string and matches
 - [x] As a user, I can resize the match table by dragging the horizontal splitter between the top panes and the table
 - [x] As a user, I can see a floppy-disk icon on export buttons indicating save/export functionality
+- [x] As a user, I can see the regex pattern displayed with `/` delimiters on both sides and flags shown in red
+- [x] As a user, I can scroll through the match table while keeping the column headers visible (sticky headers)
+- [x] As a user, I can access an About dialog from the Help menu
+- [x] As a user, I can see the app styled with system visual styles matching the current desktop skin
 - [ ] As a user, I can switch between light and dark themes
 
 ### Performance & Safety

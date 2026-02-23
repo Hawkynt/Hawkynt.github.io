@@ -46,8 +46,8 @@ Modeled after the Windows Command Prompt (cmd.exe) and Unix bash terminal, provi
 ### Tab Completion
 - [x] As a user, I can auto-complete file and directory names by pressing Tab
 - [x] As a user, I can auto-complete commands by pressing Tab
-- [ ] As a user, I can see a list of possible completions when there are multiple matches
-- [ ] As a user, I can cycle through completions with repeated Tab presses
+- [x] As a user, I can see a list of possible completions displayed when there are multiple matches
+- [x] As a user, I can cycle through completions with repeated Tab presses
 
 ### File System Commands (CMD)
 - [x] As a user, I can list directory contents with dir
@@ -93,8 +93,11 @@ Modeled after the Windows Command Prompt (cmd.exe) and Unix bash terminal, provi
 - [x] As a user, I can set and use environment variables in bash ($VAR)
 - [x] As a user, I can view all environment variables with set or env
 - [x] As a user, I can export and unset variables in bash
-- [x] As a user, I can use bash variable expansion with \${var:-default} syntax
-- [ ] As a user, I can define and use aliases persistently
+- [x] As a user, I can use bash variable expansion with ${var:-default}, ${var:=default}, ${var:?error}, ${var:+alt}, and ${#var} syntax
+- [x] As a user, I can define and use aliases with the alias command
+- [x] As a user, I can view all defined aliases by running alias with no arguments
+- [x] As a user, I can remove aliases with the unalias command
+- [x] As a user, I can use pre-defined aliases (ll, la, l) for common commands
 
 ### System Information
 - [x] As a user, I can see the OS version with ver or uname
@@ -116,3 +119,36 @@ Modeled after the Windows Command Prompt (cmd.exe) and Unix bash terminal, provi
 - [ ] As a user, I can change the terminal font and font size
 - [ ] As a user, I can choose from preset color schemes (Solarized, Monokai, etc.)
 - [ ] As a user, I can set the terminal opacity/transparency
+
+### Keyboard Shortcuts
+- [x] As a user, I can clear the current input line with the Escape key
+- [x] As a user, I can clear the terminal screen and redisplay the prompt with Ctrl+L
+- [x] As a user, I can interrupt the current command with Ctrl+C
+
+### CMD Advanced Features
+- [x] As a user, I can use delayed expansion with !VAR! syntax in batch files
+- [x] As a user, I can perform arithmetic evaluation with set /A
+- [x] As a user, I can prompt for user input with set /P
+
+### Batch Script Execution
+- [x] As a user, I can use labels and goto statements in batch files to control flow
+- [x] As a user, I can use the call command to invoke batch file subroutines
+- [x] As a user, I can suppress command echo with @echo off
+- [x] As a user, I can use :EOF labels to exit batch files early
+
+### Additional Commands
+- [x] As a user, I can search for files with find and findstr (CMD) and grep (bash)
+- [x] As a user, I can paginate long output with the more command
+- [x] As a user, I can push and pop directories with pushd and popd
+- [x] As a user, I can get file type information with the file command (bash)
+- [x] As a user, I can check disk usage with du, df, and free commands (bash)
+- [x] As a user, I can generate number sequences with seq (bash)
+- [x] As a user, I can manipulate paths with basename, dirname, and realpath (bash)
+- [x] As a user, I can pause execution and prompt user selection with pause and choice commands (CMD)
+- [x] As a user, I can set timeouts with the timeout command (CMD)
+- [x] As a user, I can test conditional logic with test and [ ] brackets (bash)
+- [x] As a user, I can split output to file and stdout simultaneously with tee (bash)
+- [x] As a user, I can display a calendar with cal (bash)
+
+### About
+- [x] As a user, I can view application information by clicking the About button

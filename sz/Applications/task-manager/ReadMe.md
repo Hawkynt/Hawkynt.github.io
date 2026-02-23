@@ -37,6 +37,9 @@ Modeled after the classic Windows Task Manager (Windows XP/2000 era), with its A
 - [x] As a user, I can see the task list auto-refresh every second
 - [x] As a user, I can see the End Task button disabled when no window is selected
 - [x] As a user, I can see the selection cleared when a closed window disappears from the list
+- [x] As a user, I can Ctrl+click a window to toggle its selection (multi-select)
+- [x] As a user, I can Shift+click to select a range of windows
+- [x] As a user, I can see the End Task button display the count of selected windows (e.g., "End Task (3)")
 
 ### Performance Tab
 
@@ -67,6 +70,8 @@ Modeled after the classic Windows Task Manager (Windows XP/2000 era), with its A
 ### User Interface
 
 - [x] As a user, I can see themed visual styles matching the current desktop skin
+- [x] As a user, I can click Help > About Task Manager to view application information
+- [x] As a user, the performance canvases automatically resize when the window is resized
 - [ ] As a user, I can right-click a task and choose "Switch To" to bring it to the foreground
 - [ ] As a user, I can right-click a task and choose "Minimize" or "Maximize"
 - [ ] As a user, I can see a "Processes" tab showing more detailed per-app resource info

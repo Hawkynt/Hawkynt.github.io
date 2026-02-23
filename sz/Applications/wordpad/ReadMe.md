@@ -127,13 +127,15 @@ Modeled after Microsoft WordPad with visual and functional influences from Micro
 - [x] As a user, I can remove a previously added watermark
 
 ### View Options
-- [x] As a user, I can switch between Print Layout, Web Layout, and Outline views
+- [x] As a user, I can switch between Print Layout, Web Layout, and Outline views for document structure review
 - [x] As a user, I can toggle a ruler display
 - [x] As a user, I can toggle gridlines on the editor
 - [x] As a user, I can toggle a navigation pane that shows document headings
 - [x] As a user, I can click headings in the navigation pane to jump to that section
+- [x] As a user, the navigation pane automatically updates as I edit document headings
 - [x] As a user, I can toggle formatting marks visibility
 - [x] As a user, I can zoom in and out using a slider (25% to 500%)
+- [x] As a user, I can view two pages side-by-side using the Two Pages zoom preset
 - [x] As a user, I can reset zoom to 100%, Page Width, or Full Page presets
 - [x] As a user, I can see and adjust zoom from both the ribbon and the status bar
 

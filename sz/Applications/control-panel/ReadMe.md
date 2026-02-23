@@ -14,7 +14,8 @@ Display Properties is the central configuration hub for the »SynthelicZ« deskt
 - Pointer effect configuration (cursor shadow, cursor trails with adjustable length)
 - Taskbar and Start menu behavior settings (auto-hide, grouping, clock, transition effects)
 - Apply/OK/Cancel workflow with real-time preview and PostMessage-based system integration
-- Tab-based navigation across five configuration categories
+- Window management configuration (snapping, magnetic, stretching, glue, tabbing)
+- Tab-based navigation across six configuration categories
 
 ### Design Reference
 Modeled after the Windows XP "Display Properties" dialog (accessed via right-click desktop > Properties), which uses a tabbed interface for Themes, Desktop, Screen Saver, Appearance, and Settings -- adapted here with a Pointers and Taskbar tab instead of Screen Saver and Settings.
@@ -47,6 +48,9 @@ Modeled after the Windows XP "Display Properties" dialog (accessed via right-cli
 
 ### Desktop Tab
 
+- [x] As a user, I can configure a base layer with a solid color picker (click color swatch to open the color-picker app)
+- [x] As a user, I can enable a background pattern and click "Edit..." to open a pixel pattern editor
+- [x] As a user, I can choose between background source types: None, Image, Slideshow, Video, Online
 - [x] As a user, I can see a list of available background images (system and user-uploaded)
 - [x] As a user, I can select "(None)" to remove the desktop background
 - [x] As a user, I can select a background and see a preview in the mini monitor
@@ -55,6 +59,18 @@ Modeled after the Windows XP "Display Properties" dialog (accessed via right-cli
 - [x] As a user, I can click "Browse..." to upload a custom background image from my local machine
 - [x] As a user, I can see custom uploaded backgrounds added to the selection list
 - [x] As a user, I can see user pictures from the VFS (/user/pictures) merged into the background list
+- [x] As a user, I can configure a slideshow with folder selection, interval (5-300s), shuffle, and subfolder inclusion
+- [x] As a user, I can select from 40+ slideshow transitions (Fade, Push, Wipe, Circle, Diamond, Blinds, Checkerboard, Pixelate, Zoom, Spin, Flip, Cube, Blur, Glitch, Morph, etc.)
+- [x] As a user, I can set slideshow transition duration (0.2-5s) and position mode
+- [x] As a user, I can upload and play a video background with looping and playback speed controls (0.25x-2.0x)
+- [x] As a user, I can fetch images from online services (Lorem Picsum, NASA APOD, Bing Daily, Giphy) with search
+- [x] As a user, I can see online service thumbnails and click to select an image
+
+### Pattern Editor
+
+- [x] As a user, I can draw custom pixel patterns on a pixelated canvas
+- [x] As a user, I can set pattern dimensions (1x1 to 16x16 cells) and foreground color
+- [x] As a user, I can choose from 11 pattern presets (Dots, Checker, Crosshatch, Diagonal, Lines, Grid, Bricks, Weave, etc.)
 
 ### Pointers Tab
 
@@ -77,6 +93,18 @@ Modeled after the Windows XP "Display Properties" dialog (accessed via right-cli
 - [x] As a user, I can toggle "Show Run command" in the Start menu
 - [x] As a user, I can click "Clear Recently Used Programs" to reset the MRU list
 
+### Window Management Tab
+
+- [x] As a user, I can select an edge-snapping mode: Disabled, AeroSnap, or AquaSnap
+- [x] As a user, I can enable or disable magnetic snapping for windows
+- [x] As a user, I can enable or disable snapping to screen edges, outer/inner edges of other windows, and corners
+- [x] As a user, I can adjust the magnetic attraction distance with a slider (1-50 pixels)
+- [x] As a user, I can enable "Disable magnetic snapping during fast movements" with configurable speed threshold
+- [x] As a user, I can select a stretch mode: Disabled, AeroStretch, or AquaStretch
+- [x] As a user, I can configure vertical, horizontal, and diagonal stretching with target (screen edge or nearest window)
+- [x] As a user, I can enable or disable the move-together (Glue) feature with Ctrl+Drag and Ctrl+Resize options
+- [x] As a user, I can enable or disable window tabbing with auto-hiding tab bar option
+
 ### Apply/OK/Cancel
 
 - [x] As a user, I can click "Apply" to apply all changes without closing the dialog
@@ -86,7 +114,7 @@ Modeled after the Windows XP "Display Properties" dialog (accessed via right-cli
 
 ### Tab Navigation
 
-- [x] As a user, I can switch between Themes, Appearance, Desktop, Pointers, and Taskbar tabs
+- [x] As a user, I can switch between Themes, Appearance, Desktop, Pointers, Taskbar, and Window Mgmt tabs
 - [x] As a user, I can see the active tab visually highlighted
 
 ### System Integration

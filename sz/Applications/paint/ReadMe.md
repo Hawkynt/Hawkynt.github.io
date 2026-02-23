@@ -220,6 +220,21 @@ Each layer is an offscreen `<canvas>` at document resolution. The display canvas
 - [x] Delete -- Delete active layer
 - [x] Ctrl+1/2/3/4 -- Zoom 1x/2x/4x/8x
 
+### Additional Effects (Planned)
+- [ ] As a user, I can apply motion blur with configurable angle and distance
+- [ ] As a user, I can apply radial blur for zoom/spin effects
+- [ ] As a user, I can apply surface blur with radius and threshold controls
+- [ ] As a user, I can apply box blur with configurable radius
+- [ ] As a user, I can apply median filter for noise reduction
+- [ ] As a user, I can apply unsharp mask sharpening with amount, radius, and threshold
+- [ ] As a user, I can apply polar coordinate transformation for distortion effects
+- [ ] As a user, I can apply relief effect for embossed appearance
+
+### Auto-Correct (Planned)
+- [ ] As a user, I can auto-deskew scanned documents to straighten text
+- [ ] As a user, I can auto-rotate images to detect and snap to dominant orientation
+- [ ] As a user, I can apply auto-keystone correction for perspective warping
+
 ## Planned Features
 - Undo history panel to jump to a specific state
 - Rotate by arbitrary angle

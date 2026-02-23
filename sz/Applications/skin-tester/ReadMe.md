@@ -74,6 +74,7 @@ Modeled after the diagnostic and inspection panels found in WindowBlinds SkinStu
 - [x] As a user, I can see a drop hint message in the toolbar area
 - [x] As a user, I can see a visual drop overlay when dragging files over the main area
 - [x] As a user, I can have the current desktop skin auto-selected on startup when running inside SZ
+- [x] As a user, I can press F1 to open the About dialog with product information
 
 ### Aspirational Features
 - [ ] As a user, I want to see title bar button previews (close, minimize, maximize) with hover/pressed states

@@ -66,6 +66,9 @@ Modeled after the classic Microsoft FreeCell (freecell.exe) from Windows 95 thro
 - [x] As a user, I can see the game detect when it is safe to auto-complete all remaining cards
 - [x] As a user, I can watch an auto-complete animation move cards to foundations
 - [x] As a user, I can see a bouncing card celebration animation on winning
+- [x] As a user, I can see fireworks and particle effects burst during the celebration
+- [x] As a user, I can see smooth easing animations when cards move to foundations or tableau with landing sparkles
+- [x] As a user, I can see physics-based rotating cards with motion trails during the win animation
 - [ ] As a user, I can see win statistics (games played, games won, win streak)
 
 ### Scoring and Timer
