@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Free online Space Invaders game with power-ups, boss fights, and multiple game modes -- play directly in your browser">
+<meta name="robots" content="index,follow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Space Invaders -- &raquo;SynthelicZ&laquo; Desktop">
+<meta property="og:description" content="Free online Space Invaders game with power-ups, boss fights, and multiple game modes -- play directly in your browser">
+<meta property="og:url" content="https://hawkynt.github.io/sz/Applications/space-invaders/index.html">
+<link rel="canonical" href="https://hawkynt.github.io/sz/Applications/space-invaders/index.html">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Space Invaders",
+  "url": "https://hawkynt.github.io/sz/Applications/space-invaders/index.html",
+  "description": "Free online Space Invaders game with power-ups, boss fights, and multiple game modes -- play directly in your browser",
+  "applicationCategory": "GameApplication",
+  "operatingSystem": "Web Browser",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<title>Space Invaders</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="../shared/menu.css">
+<link rel="stylesheet" href="../shared/dialog.css">
+<link rel="stylesheet" href="styles.css">
+<script defer src="../vision-renderer.js"></script>
+</head>
+<body>
+<noscript><p>Free online Space Invaders game with power-ups, boss fights, and multiple game modes -- play directly in your browser. <a href="../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a> to use this app.</p></noscript>
+
+<!-- Menu Bar -->
+<div class="menu-bar" id="menuBar">
+  <div class="menu-item" data-menu="game">Game
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="new">New Game<span class="shortcut">F2</span></div>
+      <div class="menu-entry" data-action="pause">Pause<span class="shortcut">P</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="high-scores">High Scores...</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="exit">Exit</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="help">Help
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="controls">Controls...</div>
+      <div class="menu-entry" data-action="about">About Space Invaders</div>
+    </div>
+  </div>
+</div>
+
+<!-- Game Area -->
+<div class="game-frame">
+  <canvas id="gameCanvas"></canvas>
+</div>
+
+<!-- Status Bar -->
+<div class="status-bar">
+  <div class="status-cell" id="statusScore">Score: 0</div>
+  <div class="status-cell" id="statusLives">Lives: 3</div>
+  <div class="status-cell" id="statusLevel">Level: 1</div>
+</div>
+
+<!-- High Scores Dialog -->
+<div class="dialog-overlay" id="highScoresBackdrop">
+  <div class="dialog">
+    <div class="dialog-title">High Scores</div>
+    <div class="dialog-body">
+      <table class="high-scores-table">
+        <thead>
+          <tr><th>#</th><th>Score</th><th>Lvl</th><th>Mode</th></tr>
+        </thead>
+        <tbody id="highScoresBody"></tbody>
+      </table>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="reset" type="button">Reset</button>
+      <button data-result="ok" type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Controls Dialog -->
+<div class="dialog-overlay" id="controlsBackdrop">
+  <div class="dialog" style="width: 320px;">
+    <div class="dialog-title">Controls &amp; Power-Ups</div>
+    <div class="dialog-body">
+      <table class="controls-table">
+        <tr><td>Left / A</td><td>Move left</td></tr>
+        <tr><td>Right / D</td><td>Move right</td></tr>
+        <tr><td>Space / Up</td><td>Shoot</td></tr>
+        <tr><td>P</td><td>Pause / Resume</td></tr>
+        <tr><td>F2</td><td>Mode Selection</td></tr>
+        <tr><td>1 / 2 / 3</td><td>Select game mode</td></tr>
+      </table>
+      <div style="margin-top: 8px; font-weight: bold; font-size: 11px;">Power-Ups</div>
+      <table class="controls-table">
+        <tr><td style="color:#0ff;">Triple Shot</td><td>Fire 3 bullets at once</td></tr>
+        <tr><td style="color:#ff0;">Rapid Fire</td><td>Faster shooting</td></tr>
+        <tr><td style="color:#88f;">Shield</td><td>Block one hit</td></tr>
+        <tr><td style="color:#f0f;">Laser</td><td>Piercing shots</td></tr>
+        <tr><td style="color:#aaf;">Slow-Mo</td><td>Slows alien movement</td></tr>
+        <tr><td style="color:#f88;">Extra Life</td><td>+1 life</td></tr>
+        <tr><td style="color:#fa0;">Bomb</td><td>Destroys all aliens</td></tr>
+        <tr><td style="color:#8f8;">Drone</td><td>Helper ship</td></tr>
+      </table>
+      <div style="margin-top: 8px; font-weight: bold; font-size: 11px;">Game Modes</div>
+      <table class="controls-table">
+        <tr><td style="color:#4f4;">Classic</td><td>Progressive levels, boss every 5</td></tr>
+        <tr><td style="color:#ff4;">Survival</td><td>Endless waves, no mercy</td></tr>
+        <tr><td style="color:#f44;">Boss Rush</td><td>Boss fight every level</td></tr>
+      </table>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok" type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- About Dialog -->
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Space Invaders</div>
+    <div class="dialog-body">
+      <strong>Space Invaders &mdash; Enhanced Edition</strong><br><br>
+      Defend Earth from waves of alien invaders across three game modes. Features 12 unique wave formations, 8 power-up types, boss fights, combo scoring, special enemy types, and a drone helper.<br><br>
+      Destroy all aliens before they reach the bottom. Shoot the UFO for bonus points and guaranteed power-ups. Build combos for score multipliers.<br><br>
+      Part of the &raquo;SynthelicZ&laquo; Desktop.
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">OK</button>
+    </div>
+  </div>
+</div>
+
+<script src="../shared/menu.js"></script>
+<script src="../shared/dialog.js"></script>
+<script src="../shared/game-effects.js"></script>
+<script src="controller.js"></script>
+</body>
+</html>
