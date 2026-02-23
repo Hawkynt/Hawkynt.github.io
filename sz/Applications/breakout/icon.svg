@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Row of bricks -->
+  <rect x="1" y="2" width="9" height="4" rx="0.5" fill="#e03030" stroke="#a01010" stroke-width="0.5"/>
+  <rect x="11" y="2" width="9" height="4" rx="0.5" fill="#e08020" stroke="#a05010" stroke-width="0.5"/>
+  <rect x="21" y="2" width="9" height="4" rx="0.5" fill="#e0c020" stroke="#a09010" stroke-width="0.5"/>
+  <rect x="1" y="7" width="9" height="4" rx="0.5" fill="#30b030" stroke="#108010" stroke-width="0.5"/>
+  <rect x="11" y="7" width="9" height="4" rx="0.5" fill="#3070e0" stroke="#1040a0" stroke-width="0.5"/>
+  <rect x="21" y="7" width="9" height="4" rx="0.5" fill="#e03030" stroke="#a01010" stroke-width="0.5"/>
+  <!-- Highlights on bricks -->
+  <rect x="2" y="3" width="3" height="1" rx="0.5" fill="rgba(255,255,255,0.35)"/>
+  <rect x="12" y="3" width="3" height="1" rx="0.5" fill="rgba(255,255,255,0.35)"/>
+  <rect x="22" y="3" width="3" height="1" rx="0.5" fill="rgba(255,255,255,0.35)"/>
+  <rect x="2" y="8" width="3" height="1" rx="0.5" fill="rgba(255,255,255,0.35)"/>
+  <rect x="12" y="8" width="3" height="1" rx="0.5" fill="rgba(255,255,255,0.35)"/>
+  <rect x="22" y="8" width="3" height="1" rx="0.5" fill="rgba(255,255,255,0.35)"/>
+  <!-- Ball -->
+  <circle cx="16" cy="19" r="3" fill="#fff"/>
+  <circle cx="14.8" cy="17.8" r="1" fill="rgba(255,255,255,0.6)"/>
+  <!-- Ball glow -->
+  <circle cx="16" cy="19" r="4" fill="none" stroke="rgba(255,255,200,0.3)" stroke-width="1"/>
+  <!-- Paddle -->
+  <rect x="8" y="26" width="16" height="4" rx="2" fill="#4488ee" stroke="#2255aa" stroke-width="0.5"/>
+  <rect x="9" y="27" width="6" height="1.5" rx="0.75" fill="rgba(255,255,255,0.3)"/>
+</svg>
