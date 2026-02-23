@@ -77,6 +77,11 @@ Modeled after the classic Microsoft FreeCell (freecell.exe) from Windows 95 thro
 - [ ] As a user, I can see a best-time leaderboard for completed games
 - [ ] As a user, I can see a score combining moves and time
 
+### Display & Window
+- [x] As a user, I can resize the game window and the canvas scales to fill the available space
+- [x] As a user, I can maximize the game window for a larger view
+- [x] As a user, I can see the canvas rendered at the correct resolution for my display (HiDPI support)
+
 ### Visual Quality
 - [x] As a user, I can see detailed card faces with suit symbols and pip layouts
 - [x] As a user, I can see a green felt background

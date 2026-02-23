@@ -1,0 +1,101 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* ---- Game Frame ---- */
+.game-frame {
+  border: 3px solid;
+  border-color: var(--sz-color-button-highlight) var(--sz-color-button-shadow) var(--sz-color-button-shadow) var(--sz-color-button-highlight);
+  margin: 4px;
+  padding: 5px;
+  background: var(--sz-color-button-face);
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.game-frame canvas {
+  display: block;
+}
+
+/* ---- Status Bar ---- */
+.status-bar {
+  display: flex;
+  border-top: 1px solid var(--sz-color-button-shadow);
+  background: var(--sz-color-button-face);
+  font-size: 11px;
+  padding: 2px 4px;
+}
+
+.status-cell {
+  padding: 1px 8px;
+  border: 1px solid;
+  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- High Scores Table ---- */
+.high-scores-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 4px;
+  font-size: 11px;
+}
+
+.high-scores-table th {
+  text-align: left;
+  padding: 2px 6px;
+  font-weight: bold;
+  border-bottom: 1px solid var(--sz-color-button-shadow);
+}
+
+.high-scores-table td {
+  padding: 2px 6px;
+}
+
+.high-scores-table td:nth-child(1) {
+  text-align: center;
+  width: 24px;
+}
+
+.high-scores-table td:nth-child(2) {
+  text-align: right;
+  font-family: 'Consolas', 'Courier New', monospace;
+}
+
+.high-scores-table td:nth-child(3) {
+  text-align: right;
+  font-size: 10px;
+  color: var(--sz-color-button-shadow);
+}
+
+/* ---- Controls Info ---- */
+.controls-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.controls-table td {
+  padding: 2px 6px;
+}
+
+.controls-table td:first-child {
+  font-weight: bold;
+  white-space: nowrap;
+  width: 100px;
+}

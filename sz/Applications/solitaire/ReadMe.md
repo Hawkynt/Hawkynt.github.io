@@ -75,6 +75,11 @@ Modeled after the classic Microsoft Solitaire (sol.exe) from Windows 3.0 through
 - [ ] As a user, I can see a score based on time, moves, and draw mode
 - [ ] As a user, I can view a high-scores table of my best games
 
+### Display & Window
+- [x] As a user, I can resize the game window and the canvas scales to fill the available space
+- [x] As a user, I can maximize the game window for a larger view
+- [x] As a user, I can see the canvas rendered at the correct resolution for my display (HiDPI support)
+
 ### Visual Quality
 - [x] As a user, I can see detailed card faces with suit symbols and pip layouts
 - [x] As a user, I can see a green felt background
