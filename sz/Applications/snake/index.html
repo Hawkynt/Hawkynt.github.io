@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Free online Snake game -- play directly in your browser">
+<meta name="robots" content="index,follow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Snake -- &raquo;SynthelicZ&laquo; Desktop">
+<meta property="og:description" content="Free online Snake game -- play directly in your browser">
+<meta property="og:url" content="https://hawkynt.github.io/sz/Applications/snake/index.html">
+<link rel="canonical" href="https://hawkynt.github.io/sz/Applications/snake/index.html">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Snake",
+  "url": "https://hawkynt.github.io/sz/Applications/snake/index.html",
+  "description": "Free online Snake game -- play directly in your browser",
+  "applicationCategory": "GameApplication",
+  "operatingSystem": "Web Browser",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<title>Snake</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="../shared/menu.css">
+<link rel="stylesheet" href="../shared/dialog.css">
+<link rel="stylesheet" href="styles.css">
+<script defer src="../vision-renderer.js"></script>
+</head>
+<body>
+<noscript><p>Free online Snake game. <a href="../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a></p></noscript>
+
+<!-- Menu Bar -->
+<div class="menu-bar" id="menuBar">
+  <div class="menu-item" data-menu="game">Game
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="new">New Game...<span class="shortcut">F2</span></div>
+      <div class="menu-entry" data-action="pause">Pause<span class="shortcut">P</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="high-scores">High Scores...</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="exit">Exit</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="help">Help
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="controls">Controls...</div>
+      <div class="menu-entry" data-action="about">About Snake</div>
+    </div>
+  </div>
+</div>
+
+<!-- Game Area -->
+<div class="game-frame">
+  <canvas id="gameCanvas"></canvas>
+</div>
+
+<!-- Status Bar -->
+<div class="status-bar">
+  <div class="status-section" id="statusScore">Score: 0</div>
+  <div class="status-section" id="statusLength">Length: 3</div>
+  <div class="status-section" id="statusLevel">Level: 1</div>
+  <div class="status-section" id="statusEffects" style="display:none"></div>
+</div>
+
+<!-- New Game Options Dialog -->
+<div class="dialog-overlay" id="optionsBackdrop">
+  <div class="dialog" style="min-width:340px">
+    <div class="dialog-title">New Game</div>
+    <div class="dialog-body options-body">
+      <div class="options-presets">
+        <button type="button" class="preset-btn" data-preset="classic">Classic</button>
+        <button type="button" class="preset-btn" data-preset="tron">Tron</button>
+        <button type="button" class="preset-btn" data-preset="mazeRunner">Maze Runner</button>
+        <button type="button" class="preset-btn" data-preset="battleRoyale">Battle Royale</button>
+        <button type="button" class="preset-btn" data-preset="zen">Zen</button>
+      </div>
+      <fieldset class="options-group">
+        <legend>Walls</legend>
+        <label><input type="radio" name="walls" value="solid" checked> Solid</label>
+        <label><input type="radio" name="walls" value="wrap"> Wrap-around</label>
+      </fieldset>
+      <fieldset class="options-group">
+        <legend>Obstacles</legend>
+        <label><input type="radio" name="obstacles" value="none" checked> None</label>
+        <label><input type="radio" name="obstacles" value="random"> Random blocks</label>
+        <label><input type="radio" name="obstacles" value="maze"> Maze</label>
+        <label><input type="radio" name="obstacles" value="growing"> Growing walls</label>
+      </fieldset>
+      <fieldset class="options-group">
+        <legend>Enemies</legend>
+        <label><input type="radio" name="enemies" value="0" checked> None</label>
+        <label><input type="radio" name="enemies" value="1"> 1 AI</label>
+        <label><input type="radio" name="enemies" value="2"> 2 AI</label>
+        <label><input type="radio" name="enemies" value="3"> 3 AI</label>
+      </fieldset>
+      <fieldset class="options-group">
+        <legend>Power-ups</legend>
+        <label><input type="checkbox" id="optPowerups"> Enable power-ups</label>
+      </fieldset>
+      <fieldset class="options-group">
+        <legend>Field Size</legend>
+        <label><input type="radio" name="fieldSize" value="small"> Small 15&times;15</label>
+        <label><input type="radio" name="fieldSize" value="medium" checked> Medium 20&times;20</label>
+        <label><input type="radio" name="fieldSize" value="large"> Large 80&times;60</label>
+      </fieldset>
+      <fieldset class="options-group">
+        <legend>Speed</legend>
+        <label><input type="radio" name="speed" value="slow"> Slow</label>
+        <label><input type="radio" name="speed" value="normal" checked> Normal</label>
+        <label><input type="radio" name="speed" value="fast"> Fast</label>
+        <label><input type="radio" name="speed" value="insane"> Insane</label>
+      </fieldset>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="start" data-default type="button">Start</button>
+      <button data-result="cancel" type="button">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- High Scores Dialog -->
+<div class="dialog-overlay" id="highScoresBackdrop">
+  <div class="dialog">
+    <div class="dialog-title">High Scores</div>
+    <div class="dialog-body">
+      <table class="high-scores-table">
+        <thead>
+          <tr><th>#</th><th>Score</th><th>Length</th></tr>
+        </thead>
+        <tbody id="highScoresBody"></tbody>
+      </table>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="reset" type="button">Reset</button>
+      <button data-result="ok" data-default type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Controls Dialog -->
+<div class="dialog-overlay" id="controlsBackdrop">
+  <div class="dialog">
+    <div class="dialog-title">Controls</div>
+    <div class="dialog-body">
+      <table class="controls-table">
+        <tr><td>Arrow Keys / WASD</td><td>Move</td></tr>
+        <tr><td>P</td><td>Pause / Resume</td></tr>
+        <tr><td>F2</td><td>New Game...</td></tr>
+        <tr><td>Space</td><td>New Game...</td></tr>
+        <tr><td>Escape</td><td>Close dialog</td></tr>
+      </table>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok" data-default type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- About Dialog -->
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Snake</div>
+    <div class="dialog-body">
+      <strong>Snake</strong><br><br>
+      Classic snake game with multiple game modes. Guide the snake to eat food and grow longer without crashing.<br><br>
+      Choose from presets like Classic, Tron, Maze Runner, Battle Royale, and Zen -- or customize walls, obstacles, AI enemies, power-ups, field size, and speed.<br><br>
+      Part of the &raquo;SynthelicZ&laquo; Desktop.
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok" data-default>OK</button>
+    </div>
+  </div>
+</div>
+
+<script src="../shared/menu.js"></script>
+<script src="../shared/dialog.js"></script>
+<script src="../shared/game-effects.js"></script>
+<script src="controller.js"></script>
+</body>
+</html>
