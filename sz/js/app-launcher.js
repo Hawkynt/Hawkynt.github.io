@@ -164,6 +164,7 @@
 
       const instance = new AppClass(container, urlParams || {});
       container._szAppInstance = instance;
+      container._szUrlParams = urlParams || {};
 
       return { type: 'hosted', element: container };
     }
