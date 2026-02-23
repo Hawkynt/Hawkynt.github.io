@@ -302,6 +302,12 @@
         win.setOpacity(value);
     }
 
+    restartWindow(id) {
+      const win = this.#windows.get(id);
+      if (win)
+        win.restart();
+    }
+
     getVisibleWindowRects(excludeId) {
       const rects = [];
       for (const [id, win] of this.#windows) {
