@@ -185,6 +185,26 @@
     <priority>0.7</priority>
   </url>
   <url>
+    <loc>https://hawkynt.github.io/sz/Applications/snake/index.html</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://hawkynt.github.io/sz/Applications/breakout/index.html</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://hawkynt.github.io/sz/Applications/space-invaders/index.html</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://hawkynt.github.io/sz/Applications/asteroids/index.html</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://hawkynt.github.io/sz/Applications/pacman/index.html</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://hawkynt.github.io/Cipher/</loc>
     <priority>0.6</priority>
   </url>
