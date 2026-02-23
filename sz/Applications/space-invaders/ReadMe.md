@@ -141,3 +141,31 @@ Canvas-based game with proper aspect-ratio scaling. All game logic runs in a vir
 - As a player, I want the game to scale to any window size so I can play in any configuration
 - As a player, I want my high scores to track game mode so I can compare across modes
 - As a player, I want wave announcements so I know what formation I'm facing
+- As a player, I want fluid animations so the game feels smooth and polished
+- As a player, I want varied explosion effects so each destruction feels unique
+- As a player, I want bullet trail particles so shots feel dynamic
+- As a player, I want a pulsing animated title screen so the game feels alive before I start
+- As a player, I want a starfield background so the space setting feels immersive
+- As a player, I want screen flash on big events so explosions and power-ups feel impactful
+- As a player, I want confetti on level completion so clearing a wave feels celebratory
+- As a player, I want the boss to have a dramatic WARNING entrance so boss fights feel epic
+- As a player, I want the boss to have a multi-stage explosion on death so defeating it feels satisfying
+- As a player, I want power-ups to stack so I can combine abilities for overpowered moments
+- As a player, I want active power-up timers in the HUD so I know how long each lasts
+- As a player, I want the rapid fire power-up to also increase max bullets so the effect feels meaningful
+- As a player, I want triple shot combined with laser to pierce through entire formations
+- As a player, I want the drone to follow me and auto-fire so it feels like a real helper
+- As a player, I want the boss to change behavior at low health so the fight escalates
+- As a player, I want boss attack patterns to vary so each encounter requires different dodging
+- As a player, I want escort aliens during boss fights so the battlefield stays active
+- As a player, I want survival mode to seamlessly spawn the next wave so the action never stops
+- As a player, I want boss rush mode to have double power-up frequency so I can keep up with constant bosses
+- As a player, I want diver aliens to leave particle trails so I can track their swooping path
+- As a player, I want shielded aliens to have a visible energy bubble so I know they need two hits
+- As a player, I want the shield power-up bubble to pulse around my ship so I can see I'm protected
+- As a player, I want combo milestone announcements so I feel rewarded for kill streaks
+- As a player, I want the combo multiplier display to grow with higher combos so it feels escalating
+- As a player, I want aliens reaching my row to be an instant game over regardless of shield so there's real consequence
+- As a player, I want the canvas to maintain aspect ratio with letterboxing so the game looks correct at any size
+- As a player, I want 12 different formations so each level presents a new visual pattern
+- As a player, I want boss fights to drop 3 power-ups so defeating a boss feels highly rewarding
