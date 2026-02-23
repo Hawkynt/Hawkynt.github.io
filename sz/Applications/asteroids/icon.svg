@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Asteroid rock shape -->
+  <polygon points="8,2 14,1 20,3 26,2 30,8 28,14 31,20 27,26 22,30 16,28 10,31 5,27 2,22 1,16 3,10 2,6"
+    fill="#6b6b6b" stroke="#9a9a9a" stroke-width="1.2" stroke-linejoin="round"/>
+  <!-- Inner detail cracks -->
+  <line x1="10" y1="8" x2="14" y2="14" stroke="#555" stroke-width="0.8"/>
+  <line x1="20" y1="6" x2="18" y2="12" stroke="#555" stroke-width="0.8"/>
+  <line x1="24" y1="18" x2="20" y2="22" stroke="#555" stroke-width="0.8"/>
+  <!-- Crater shadows -->
+  <circle cx="12" cy="12" r="2.5" fill="#585858" stroke="#4a4a4a" stroke-width="0.5"/>
+  <circle cx="20" cy="18" r="3" fill="#585858" stroke="#4a4a4a" stroke-width="0.5"/>
+  <circle cx="10" cy="22" r="1.8" fill="#585858" stroke="#4a4a4a" stroke-width="0.5"/>
+  <!-- Highlight edge -->
+  <path d="M8,2 L14,1 L20,3 L26,2 L30,8" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="1"/>
+</svg>

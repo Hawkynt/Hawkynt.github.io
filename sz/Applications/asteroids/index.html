@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Free online Asteroids game -- play directly in your browser">
+<meta name="robots" content="index,follow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Asteroids -- &raquo;SynthelicZ&laquo; Desktop">
+<meta property="og:description" content="Free online Asteroids game -- play directly in your browser">
+<meta property="og:url" content="https://hawkynt.github.io/sz/Applications/asteroids/index.html">
+<link rel="canonical" href="https://hawkynt.github.io/sz/Applications/asteroids/index.html">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Asteroids",
+  "url": "https://hawkynt.github.io/sz/Applications/asteroids/index.html",
+  "description": "Free online Asteroids game -- play directly in your browser",
+  "applicationCategory": "GameApplication",
+  "operatingSystem": "Web Browser",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<title>Asteroids</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="../shared/menu.css">
+<link rel="stylesheet" href="../shared/dialog.css">
+<link rel="stylesheet" href="styles.css">
+<script defer src="../vision-renderer.js"></script>
+</head>
+<body>
+<noscript><p>Free online Asteroids game -- play directly in your browser. <a href="../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a> to use this app.</p></noscript>
+
+<!-- Menu Bar -->
+<div class="menu-bar" id="menuBar">
+  <div class="menu-item" data-menu="game">Game
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="new">New Game<span class="shortcut">F2</span></div>
+      <div class="menu-entry" data-action="pause">Pause<span class="shortcut">P</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="high-scores">High Scores...</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="exit">Exit</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="help">Help
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="controls">Controls...</div>
+      <div class="menu-entry" data-action="about">About Asteroids</div>
+    </div>
+  </div>
+</div>
+
+<!-- Game Area -->
+<div class="game-frame">
+  <canvas id="gameCanvas"></canvas>
+</div>
+
+<!-- Status Bar -->
+<div class="status-bar">
+  <div class="status-cell">Score: <span id="statusScore">0</span></div>
+  <div class="status-cell">Lives: <span id="statusLives">3</span></div>
+  <div class="status-cell"><span id="statusLevelLabel">Level</span>: <span id="statusLevel">1</span></div>
+  <div class="status-cell">Mode: <span id="statusMode">Classic</span></div>
+</div>
+
+<!-- High Scores Dialog -->
+<div class="dialog-overlay" id="highScoresBackdrop">
+  <div class="dialog">
+    <div class="dialog-title">High Scores</div>
+    <div class="dialog-body">
+      <table class="high-scores-table">
+        <thead>
+          <tr><th>#</th><th>Score</th><th>Level</th><th>Mode</th></tr>
+        </thead>
+        <tbody id="highScoresBody"></tbody>
+      </table>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="reset" type="button">Reset</button>
+      <button data-result="ok" type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Controls Dialog -->
+<div class="dialog-overlay" id="controlsBackdrop">
+  <div class="dialog">
+    <div class="dialog-title">Controls</div>
+    <div class="dialog-body">
+      <table class="controls-table">
+        <tr><td>Left / A</td><td>Rotate left</td></tr>
+        <tr><td>Right / D</td><td>Rotate right</td></tr>
+        <tr><td>Up / W</td><td>Thrust</td></tr>
+        <tr><td>Space</td><td>Shoot (hold for auto-fire)</td></tr>
+        <tr><td>Down / S</td><td>Hyperspace</td></tr>
+        <tr><td>P</td><td>Pause / Resume</td></tr>
+        <tr><td>F2</td><td>New Game (mode select)</td></tr>
+        <tr><td>1&ndash;4</td><td>Select game mode</td></tr>
+        <tr><td>&larr; / &rarr;</td><td>Change field size (mode select)</td></tr>
+      </table>
+      <div class="controls-section">
+        <strong>Game Modes</strong>
+        <div class="controls-mode">Classic &ndash; 3 lives, progressive levels</div>
+        <div class="controls-mode">Survival &ndash; 1 life, endless waves</div>
+        <div class="controls-mode">Zen &ndash; Infinite lives, 3-min timer</div>
+        <div class="controls-mode">Hardcore &ndash; 1 life, 1.5&times; speed, 2&times; score</div>
+      </div>
+      <div class="controls-section">
+        <strong>Rock Types</strong>
+        <div class="controls-mode"><span class="rt-icon rt-normal">N</span> Normal &ndash; 1 hit to destroy</div>
+        <div class="controls-mode"><span class="rt-icon rt-iron">I</span> Iron (grey, level 3+) &ndash; 2 hits, 1.5&times; points</div>
+        <div class="controls-mode"><span class="rt-icon rt-crystal">C</span> Crystal (blue, level 6+) &ndash; 3 hits, 2&times; points</div>
+        <div class="controls-mode"><span class="rt-icon rt-exploding">X</span> Exploding (orange, level 9+) &ndash; 2 hits, AoE on death</div>
+        <div class="controls-mode"><span class="rt-icon rt-ice">F</span> Ice (white, level 12+) &ndash; 2 hits, slow zone on death</div>
+        <div class="controls-mode"><span class="rt-icon rt-lava">L</span> Lava (dark, level 15+) &ndash; 3 hits, fire trail + patches</div>
+        <div class="controls-mode"><span class="rt-icon rt-electric">E</span> Electric (yellow, level 18+) &ndash; 2 hits, EMP on death</div>
+      </div>
+      <div class="controls-section">
+        <strong>Enemy Ships</strong>
+        <div class="controls-mode"><span class="en-icon en-ufo">U</span> UFO (level 1+) &ndash; random or aimed shots</div>
+        <div class="controls-mode"><span class="en-icon en-drone">D</span> Drone (level 5+) &ndash; kamikaze charge, spawns in groups</div>
+        <div class="controls-mode"><span class="en-icon en-gunship">G</span> Gunship (level 8+) &ndash; burst fire, strafing</div>
+        <div class="controls-mode"><span class="en-icon en-minelayer">M</span> Mine-Layer (level 11+) &ndash; drops proximity mines</div>
+        <div class="controls-mode"><span class="en-icon en-stealth">S</span> Stealth (level 14+) &ndash; cloaks, aimed shots</div>
+        <div class="controls-mode"><span class="en-icon en-boss">B</span> Boss (every 5 levels from 10) &ndash; multi-attack, high HP</div>
+      </div>
+      <div class="controls-section">
+        <strong>Allies</strong>
+        <div class="controls-mode"><span class="en-icon en-ally">A</span> Fighter ally spawns every 5 levels (from 5). Follows you and shoots enemies. Max 2.</div>
+      </div>
+      <div class="controls-section">
+        <strong>Powerups</strong>
+        <div class="controls-mode"><span class="pu-icon pu-shield">S</span> Shield &ndash; absorbs one hit</div>
+        <div class="controls-mode"><span class="pu-icon pu-triple">T</span> Triple Shot &ndash; 3-way spread</div>
+        <div class="controls-mode"><span class="pu-icon pu-rapid">R</span> Rapid Fire &ndash; faster shooting</div>
+        <div class="controls-mode"><span class="pu-icon pu-piercing">P</span> Piercing &ndash; bullets pass through</div>
+        <div class="controls-mode"><span class="pu-icon pu-spread">W</span> Spread Shot &ndash; 5-way burst</div>
+        <div class="controls-mode"><span class="pu-icon pu-homing">H</span> Homing &ndash; bullets track asteroids</div>
+        <div class="controls-mode"><span class="pu-icon pu-life">+</span> Extra Life</div>
+        <div class="controls-mode"><span class="pu-icon pu-nuke">N</span> Nuke &ndash; destroys all asteroids</div>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok" type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- About Dialog -->
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Asteroids</div>
+    <div class="dialog-body">
+      <strong>Asteroids &ndash; Enhanced Edition</strong><br><br>
+      Classic arcade space shooter with modern visuals, powerups, progressive difficulty, and multiple game modes.<br><br>
+      Destroy asteroids and enemy ships while collecting powerups. Build combos for score multipliers. Face 7 rock types with unique death effects, 6 enemy ship types including bosses, and recruit ally fighters as you advance. Choose from Classic, Survival, Zen, or Hardcore modes with selectable field sizes.<br><br>
+      Part of the &raquo;SynthelicZ&laquo; Desktop.
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">OK</button>
+    </div>
+  </div>
+</div>
+
+<script src="../shared/menu.js"></script>
+<script src="../shared/dialog.js"></script>
+<script src="../shared/game-effects.js"></script>
+<script src="controller.js"></script>
+</body>
+</html>
