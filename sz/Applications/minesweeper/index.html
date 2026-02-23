@@ -46,6 +46,9 @@
       <div class="menu-entry checkbox checked" data-action="marks">Marks (?)</div>
       <div class="menu-separator"></div>
       <div class="menu-entry" data-action="best-times">Best Times...</div>
+      <div class="menu-entry" data-action="statistics">Statistics...</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="exit">Exit</div>
     </div>
   </div>
   <div class="menu-item" data-menu="help">Help
@@ -56,14 +59,17 @@
 </div>
 
 <!-- Game Area -->
-<div class="game-frame">
-  <div class="status-panel">
-    <div class="led-counter" id="mineCounter">010</div>
-    <button class="smiley-btn" id="smileyBtn" type="button"></button>
-    <div class="led-counter" id="timer">000</div>
-  </div>
-  <div class="field-border">
-    <div class="minefield" id="minefield"></div>
+<div class="scale-wrapper" id="scaleWrapper">
+  <div class="game-frame" id="gameFrame">
+    <div class="status-panel">
+      <div class="led-counter" id="mineCounter">010</div>
+      <button class="smiley-btn" id="smileyBtn" type="button"></button>
+      <div class="led-counter" id="timer">000</div>
+    </div>
+    <div class="field-border">
+      <div class="minefield" id="minefield"></div>
+      <div class="flash-overlay" id="flashOverlay"></div>
+    </div>
   </div>
 </div>
 
@@ -120,7 +126,9 @@
     <div class="dialog-title">About Minesweeper</div>
     <div class="dialog-body">
       <strong>Minesweeper</strong><br><br>
-      Classic mine-clearing puzzle game.<br><br>
+      Classic mine-clearing puzzle game with<br>
+      enhanced visual effects, statistics<br>
+      tracking, and cross-platform graphics.<br><br>
       Part of the »SynthelicZ« Desktop.
     </div>
     <div class="dialog-buttons">
@@ -129,8 +137,30 @@
   </div>
 </div>
 
+<!-- Statistics Dialog -->
+<div class="dialog-overlay" id="statsBackdrop">
+  <div class="dialog">
+    <div class="dialog-title">Game Statistics</div>
+    <div class="dialog-body">
+      <div class="stats-difficulty" id="statsDifficulty">Beginner</div>
+      <table class="stats-table">
+        <tr><td>Games Played:</td><td id="statsPlayed">0</td></tr>
+        <tr><td>Games Won:</td><td id="statsWon">0</td></tr>
+        <tr><td>Win Percentage:</td><td id="statsWinPct">0%</td></tr>
+        <tr><td>Current Streak:</td><td id="statsStreak">0</td></tr>
+        <tr><td>Best Streak:</td><td id="statsBestStreak">0</td></tr>
+      </table>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="reset" type="button">Reset</button>
+      <button data-result="ok" type="button">OK</button>
+    </div>
+  </div>
+</div>
+
 <script src="../shared/menu.js"></script>
 <script src="../shared/dialog.js"></script>
+<script src="../shared/game-effects.js"></script>
 <script src="controller.js"></script>
 </body>
 </html>
