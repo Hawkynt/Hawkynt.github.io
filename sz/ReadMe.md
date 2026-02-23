@@ -187,6 +187,7 @@ sz/
       dialog.js                 SZ.Dialog object (show/close/wireAll, Promise-based results)
       syntax-highlighter.css    Token color classes for syntax highlighting (26 token types)
       syntax-highlighter.js     SZ.SyntaxHighlighter (tokenizer for 19 languages, highlightBlock/highlightLine)
+      game-effects.js           SZ.GameEffects (ParticleSystem, ScreenShake, FloatingText, drawGlow)
     libs/                       Vendored third-party libraries (offline-capable)
       mammoth.browser.min.js    DOCX→HTML converter (BSD-2)
       jszip.min.js              ZIP creation for DOCX export (MIT)
@@ -213,6 +214,11 @@ sz/
     spreadsheet/                Excel-like spreadsheet with formulas (Accessories)
     freecell/                   FreeCell card game (Games)
     spider-solitaire/           Spider solitaire card game (Games)
+    snake/                      Classic Snake game with particle effects (Games)
+    breakout/                   Breakout brick-breaker with power-ups (Games)
+    space-invaders/             Space Invaders with shields and UFO bonus (Games)
+    asteroids/                  Asteroids Enhanced -- 7 rock types, 6 enemy types, bosses, allies, zones, powerups, 4 modes, resizable field (Games)
+    pacman/                     Pac-Man with 4-ghost AI and maze chase (Games)
     function-plotter/           Mathematical function plotter with analysis (Office)
     readme-generator/           Template-based README.md builder (Development)
     resume-builder/             Resume builder with templates, wizard, and multi-format export (Office)
@@ -1065,7 +1071,7 @@ Provides the classic menu bar interface used by ~30 apps. CSS defines `.menu-bar
 - `new SZ.MenuBar({ onAction })` -- auto-wires menu open/close/hover-switch, dispatches `data-action` from `.menu-entry` clicks
 - `closeMenus()` -- programmatic close
 
-Used by: Calculator, Clock, Minesweeper, Solitaire, FreeCell, Spider Solitaire, Tetris, JSON Viewer, Hex Editor, Diff Viewer, Regex Tester, Cron Visualizer, Subnet Calculator, Cookie Banner Generator, Gradient Generator, README Generator, QR Generator, Mock Data Generator, Image Viewer, Resume Builder, Color Picker, Display Tester, Function Plotter, Media Player, Web Browser, Archiver, Encryptor, Control Panel, Skin Tester, Task Manager, Metadata Viewer.
+Used by: Calculator, Clock, Minesweeper, Solitaire, FreeCell, Spider Solitaire, Tetris, Snake, Breakout, Space Invaders, Asteroids, Pac-Man, JSON Viewer, Hex Editor, Diff Viewer, Regex Tester, Cron Visualizer, Subnet Calculator, Cookie Banner Generator, Gradient Generator, README Generator, QR Generator, Mock Data Generator, Image Viewer, Resume Builder, Color Picker, Display Tester, Function Plotter, Media Player, Web Browser, Archiver, Encryptor, Control Panel, Skin Tester, Task Manager, Metadata Viewer.
 
 **Dialog** (`dialog.css` + `dialog.js`):
 
@@ -1090,6 +1096,17 @@ Tokenizer with 19 language grammars extracted from Notepad. CSS defines 26 token
 Languages: JavaScript, TypeScript, Python, HTML, CSS, JSON, XML, C/C++, Java, SQL, Markdown, Shell, PHP, Ruby, Perl, Go, Rust, C#, Plain Text.
 
 Used by: Notepad (full editor highlighting), Mock Data Generator (JSON/SQL/XML output), Cookie Banner Generator (HTML/CSS/JS code export).
+
+**Game Effects** (`game-effects.js`):
+
+Shared visual effects library for canvas-based games. JS provides `SZ.GameEffects` object:
+
+- `new ParticleSystem()` -- particle manager with `burst(x,y,count,opts)`, `trail(x,y,opts)`, `sparkle(x,y,count,opts)`, `confetti(x,y,count,opts)`, `update()`, `draw(ctx)`, `clear()`
+- `new ScreenShake()` -- `trigger(intensity,duration)`, `update(dt)`, `apply(ctx)` (translates canvas context)
+- `new FloatingText()` -- `add(x,y,text,opts)`, `update()`, `draw(ctx)`, `clear()` (score popups that float and fade)
+- `drawGlow(ctx,drawFn,color,blur)` -- shadow-based glow wrapper (double-draw for intensity)
+
+Used by: Snake, Breakout, Space Invaders, Asteroids, Pac-Man.
 
 ### Pointer Handler (`js/pointer-handler.js`)
 
@@ -1523,6 +1540,11 @@ User apps (iframe / index.html -- can run standalone):
 - [x] Web Browser: Iframe-based web browser with address bar, back/forward/refresh/home/stop navigation, bookmarks bar (persisted to localStorage), built-in home page with bookmarks grid, status bar with loading indicator
 - [x] FreeCell: FreeCell solitaire with 4 free cells, 4 foundations, 8 tableau columns, canvas-rendered cards, drag-and-drop, auto-complete with animated card slides, undo, move counter, enhanced win animation (bouncing cards with rotation, color trails, firework particle bursts), smooth card move animation (easeOutCubic slide with sparkle landing), deal animation (cards slide from center to tableau columns with stagger)
 - [x] Spider Solitaire: Spider solitaire with 1-suit/2-suit/4-suit difficulty modes, 10 tableau columns, 5 stock deals, canvas-rendered cards, drag-and-drop, undo, scoring, enhanced win animation (bouncing cards with rotation, color trails, firework particle bursts), card flip animation (horizontal scale flip when revealing face-down cards), stock deal animation (cards slide + flip from stock to columns with stagger)
+- [x] Snake: Classic grid-based snake game on canvas with smooth interpolation between grid cells, growing snake eats food, wall/self collision death, levels every 5 foods with speed increase, visual effects via shared GameEffects module (eat burst particles, death scatter, tail trail, screen shake on death, pulsing food glow, floating score popups), snake head with directional eyes, gradient body segments with highlights, persistent high scores
+- [x] Breakout: Paddle + ball brick-breaker on canvas with 5 rows x 10 columns rainbow bricks, 3 lives, level progression with speed increase, 3 power-up types (Wide paddle, Multi-ball, Slow ball) dropping from destroyed bricks, pointer lock mouse control, visual effects (brick shatter particles in brick color, ball trail, level complete confetti, screen shake on ball loss, ball glow, paddle glow, floating power-up name text), persistent high scores
+- [x] Space Invaders: Classic arcade shooter on canvas with 5x11 alien grid (3 types with 2-frame animation, 10/20/30 points), player ship, 4 destructible shield bunkers (pixel-block grid), UFO bonus crossing top (50-300 points), aliens march and speed up as fewer remain, alien shooting from bottom-most per column, level progression, visual effects (alien explosion particles, shield chunk destruction, player fireball on death, screen shake, laser trail glow, pulsing UFO aura, UFO score popup), persistent high scores
+- [x] Asteroids Enhanced: Modern space shooter on canvas with 4 game modes (Classic 3-lives/Survival endless/Zen 3-min timer/Hardcore 1-life 2x score), 4 selectable field sizes (520/800/1200/1600) with resizable/maximizable window, 7 rock types (Normal 1HP/Iron 2HP metallic shimmer/Crystal 3HP glowing facets/Exploding 2HP AoE chain reactions/Ice 2HP slow zones/Lava 3HP fire trails+patches/Electric 2HP arcs+EMP) with HP pips and damage cracks, zone effects system (ice slow fields, fire damage patches, proximity mines), 6 enemy ship types (UFO random+aimed shots/Drone kamikaze swarms/Gunship burst fire+strafe/Mine-Layer drops proximity mines/Stealth cloaking+ambush/Boss multi-attack HP-bar shield every 5 levels from 10), ally fighter ships (spawn every 5 levels from 5, follow player, auto-target, max 2), warp-speed star-streak level transitions with boss fight and ally announcements, drifting parallax stars, filled gradient asteroids with craters and type-specific effects (magma cracks, frost sparkles, electric surface arcs), metallic gradient ship with engine flame and cockpit light, deep space nebula background, 8 powerup types (Shield bubble/Triple Shot/Rapid Fire/Piercing/Spread Shot 5-way/Homing tracking bullets/Extra Life/Nuke), combo scoring (x2-x8 multiplier), progressive difficulty with level-gated content (level 1 starts with 1 medium rock, new types introduced through level 18+, speed +5%/level), bullet trails with directional glow (cyan player/red enemy/green ally), electric arc rendering between nearby electric asteroids, shockwave rings, screen flash, EMP disables powerups for 3s, game over stats, mode selection with field picker, active powerup HUD timers with EMP warning, auto-fire, persistent high scores
+- [x] Pac-Man: Classic maze chase on canvas with 28x31 tile grid (classic symmetric layout), animated Pac-Man with opening/closing mouth and queued input, 4 ghosts with unique AI (Blinky direct chase, Pinky ambush 4 tiles ahead, Inky vector calculation via Blinky, Clyde chase/scatter threshold), scatter/chase mode alternation on timers, frightened mode after power pellets (blue ghosts with flash warning, 200/400/800/1600 ghost scoring), eaten mode with eyes returning to ghost house, fruit bonuses, tunnel passages, visual effects (dot sparkle, ghost eaten burst, death scatter, screen shake, power pellet pulse glow, frightened ghost aura, floating ghost score text), persistent high scores
 - [x] Color Picker: Advanced color picker with multiple colorspaces (RGB, HSL, HSV, CMYK), mode-specific visual pickers (RGB: SV square + hue bar, HSV: hue ring + SV square, HSL: hue ring + SL triangle, CMYK: filled color disc + K bar), hex/float/byte input modes, visual hue/saturation/lightness sliders, color preview, copy values, dual-mode eyedropper (1px native picker, circle-average sampling via screen capture with magnifier loupe)
 - [x] Markdown Editor: Markdown editor with Office-style ribbon UI (QAT, File backstage, Home/Insert/View tabs), side-by-side live preview, syntax highlighting, VFS integration via common file dialog, formatting ribbon (headings, bold, italic, links, images, lists, code blocks, tables, blockquotes, horizontal rules), split/source/preview view modes, zoom (ribbon/status bar slider), Export as HTML, print support
 - [x] Hex Editor: Binary file editor with hex and ASCII views, offset column, byte-level editing, VFS integration via common file dialog, go-to-offset, search, struct template system (auto-detect via magic bytes, manual apply, C/C++ header and C# struct import, Ctrl+click template rebasing), data inspector panel (BitBench-style multi-type interpretation at cursor with LE/BE toggle, inline editing, color swatches), accordion UI (Data Inspector + Structure sections), 40 format templates (PE, ELF, PNG, BMP, JPEG, GIF, TIFF, ICO, CUR, WAV, AVI, ANI, WebP, FLAC, OGG, MP3, MKV, MIDI, ZIP, GZIP, RAR, 7z, TAR, PDF, PSD, SQLite, WASM, Java Class, Mach-O, NES, Game Boy, SNES, N64, Genesis), rich type system (int8-64, float16/32/64, GUID, FourCC, IPv4, Unix/DOS/FILETIME/.NET timestamps, RGB/RGBA/BGR/BGRA/RGB565 colors, BCD, wchar)
