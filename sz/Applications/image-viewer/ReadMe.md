@@ -53,6 +53,7 @@ Modeled after the classic Windows Photo Viewer and Windows XP image preview, pro
 - [x] As a user, I can view the image at actual size (1:1) using Ctrl+1
 - [x] As a user, I can zoom using Ctrl+mouse wheel
 - [x] As a user, I can see the current zoom percentage in the status bar
+- [x] As a user, I can use an interactive zoom control widget in the status bar with a slider, buttons, and text input
 - [x] As a user, I can see the image scaled through predefined zoom levels (10% to 1600%)
 - [x] As a user, I see fit-to-window mode reapplied when the window is resized
 - [ ] As a user, I want to pan the image by clicking and dragging when zoomed beyond the viewport

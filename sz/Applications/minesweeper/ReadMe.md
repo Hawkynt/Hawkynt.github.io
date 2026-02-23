@@ -112,5 +112,11 @@ A faithful recreation of the classic Windows Minesweeper (winmine.exe) from Wind
 - [ ] As a user, I can see a replay of the completed game
 - [ ] As a user, I can see a hint highlighting a safe cell to click
 - [ ] As a user, I can see a sound effect when revealing cells, flagging, winning, or losing
-- [ ] As a user, I can see an animation when winning the game
+- [x] As a user, I can see a confetti animation when I win the game
+- [x] As a user, I can see the game board shake when I hit a mine
+- [x] As a user, I can see explosion particles burst from the mine I hit
+- [x] As a user, I can see cells reveal with a cascading animation effect based on distance from my click
+- [x] As a user, I can see flags bounce slightly when I place them
+- [x] As a user, I can see mines stagger-reveal with animation ordered by distance from the hit mine when I lose
+- [x] As a user, I can see the smiley button bounce when I click it to start a new game
 - [ ] As a user, I can see the board use custom mine and flag images matching the skin

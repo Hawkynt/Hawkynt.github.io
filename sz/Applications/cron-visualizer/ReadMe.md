@@ -43,7 +43,7 @@ Modeled after online cron expression explainers such as crontab.guru, combined w
 - [x] As a user, I can use ranges (e.g., 1-5)
 - [x] As a user, I can use step values (e.g., */15, 1-10/2)
 - [x] As a user, I can use month names (jan-dec) and weekday names (sun-sat)
-- [x] As a user, I can use special schedules (@yearly, @monthly, @weekly, @daily, @hourly, @reboot)
+- [x] As a user, I can use special schedules (@yearly, @annually, @monthly, @weekly, @daily, @midnight, @hourly, @reboot)
 
 ### Expression Builder
 - [x] As a user, I can build a cron expression using individual input fields for minute, hour, day-of-month, month, and day-of-week

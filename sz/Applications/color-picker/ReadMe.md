@@ -8,7 +8,7 @@ A comprehensive color picker for »SynthelicZ« offering multiple color model vi
 Color Picker provides a full-featured color selection and conversion tool within the »SynthelicZ« desktop. It serves both as a standalone utility for designers and developers who need to pick, convert, and copy color values, and as a system dialog that other applications can invoke to let users choose colors.
 
 ### Key Capabilities
-- Dual selection modes: saturation-value canvas with hue bar, and circular color wheel with lightness/value slider
+- Four visual picker modes tied to color model tabs: SV canvas with hue bar (RGB), hue wheel with lightness triangle (HSL), hue wheel with saturation-value square (HSV), and hue-saturation disc with key/black slider (CMYK)
 - Four color model tabs (RGB, HSL, HSV, CMYK) with synchronized sliders and numeric inputs
 - Alpha channel control with transparent-aware hex (#RRGGBBAA) and CSS (rgba()) output
 - Hex and CSS value display with one-click copy to clipboard and direct hex input
@@ -34,13 +34,22 @@ Modeled after the Windows system color picker dialog and Adobe-style color choos
 - [x] As a user, I can see a cursor indicator tracking my selection on the SV canvas
 - [x] As a user, I can see slider indicators on the hue and alpha bars
 
-### Color Selection - Color Wheel Mode
-- [x] As a user, I can pick hue and saturation by clicking or dragging on a circular color wheel
-- [x] As a user, I can adjust lightness (HSL) or value (HSV) on a vertical slider beside the wheel
+### Color Selection - HSL Wheel Mode
+- [x] As a user, I can pick hue and saturation on a circular color wheel with an inner triangle showing lightness gradients
+- [x] As a user, I can adjust lightness on a vertical slider beside the wheel
 - [x] As a user, I can adjust alpha on a separate vertical slider in wheel mode
 - [x] As a user, I can see cursor and slider indicators update in real time on the wheel
-- [x] As a user, I see the wheel mode automatically activate when I switch to the HSL or HSV tab
-- [x] As a user, I see the SV canvas mode when I switch to the RGB or CMYK tab
+- [x] As a user, I see the HSL wheel mode automatically activate when I switch to the HSL tab
+
+### Color Selection - HSV Wheel Mode
+- [x] As a user, I can pick hue on a circular color wheel with an inner inscribed square for saturation and value
+- [x] As a user, I can adjust value on a vertical slider beside the wheel
+- [x] As a user, I see the HSV wheel mode automatically activate when I switch to the HSV tab
+
+### Color Selection - CMYK Disc Mode
+- [x] As a user, I can pick hue and saturation on a filled color disc where angle represents hue and distance from center represents saturation
+- [x] As a user, I can adjust the key/black channel on a vertical slider beside the disc
+- [x] As a user, I see the CMYK disc mode automatically activate when I switch to the CMYK tab
 
 ### Color Models
 - [x] As a user, I can adjust RGB values (0-255) using sliders and numeric inputs
@@ -73,6 +82,8 @@ Modeled after the Windows system color picker dialog and Adobe-style color choos
 
 ### Eyedropper
 - [x] As a user, I can use the EyeDropper API (where supported) to pick a color from anywhere on screen
+- [x] As a user, I can select a sample diameter (1px to 101px) for circle averaging when picking colors
+- [x] As a user, I can use circle sampling mode to average colors over a circular region on screen
 - [x] As a user, I see a fallback prompt when the EyeDropper API is not available
 
 ### Color Palette

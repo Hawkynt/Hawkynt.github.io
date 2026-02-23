@@ -83,7 +83,10 @@ Modeled after the classic NES Tetris and modern Tetris Guideline implementations
 ### Visual and Audio
 - [x] As a user, I can see each tetromino in a distinct color
 - [x] As a user, I can see a clear board with gridlines
+- [x] As a user, I can see a brief flash effect when a piece locks onto the board
+- [x] As a user, I can feel haptic-like feedback through screen shake animations when hard-dropping pieces
+- [x] As a user, I can see a level-up announcement with flashing level display, pulsing border, and floating "LEVEL UP!" text when I advance to the next level
+- [x] As a user, I can see particle effects when lines are cleared
 - [ ] As a user, I can hear sound effects for drops, line clears, and game over
 - [ ] As a user, I can hear background music while playing
 - [ ] As a user, I can choose from different visual themes or skins
-- [ ] As a user, I can see particle effects when lines are cleared

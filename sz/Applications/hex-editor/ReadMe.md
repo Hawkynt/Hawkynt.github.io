@@ -200,7 +200,8 @@ Applications/shared/
 - [x] As a user, I can toggle between Little Endian and Big Endian interpretation via a dropdown
 - [x] As a user, I can see types that don't fit at the cursor shown as N/A
 - [x] As a user, I can see color swatches inline for color type values (RGB, RGBA, RGB565)
-- [x] As a user, I can double-click a value in the Data Inspector to edit it inline
+- [x] As a user, I can click a color swatch to launch the Color Picker app for precise color editing
+- [x] As a user, I can double-click a value in the Data Inspector to edit it inline with multi-format input parsing
 - [x] As a user, I can see the inspector panel updates in real-time as I move the cursor
 - [x] As a user, I can expand/collapse the Data Inspector and Structure accordion sections independently
 

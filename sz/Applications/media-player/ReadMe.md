@@ -83,11 +83,14 @@ Modeled after the classic Windows Media Player and Winamp -- combining a visual 
 
 ### Keyboard Shortcuts
 - [x] As a user, I can use Space to toggle play/pause
-- [x] As a user, I can use arrow keys to seek forward and backward
+- [x] As a user, I can use Left/Right arrow keys to seek forward and backward
+- [x] As a user, I can use Up/Down arrow keys to adjust volume
 - [x] As a user, I can use M to mute, N for next, P for previous
-- [ ] As a user, I can use keyboard shortcuts to adjust volume (up/down arrows with modifier)
+- [x] As a user, I can use Ctrl+O to open files
 
 ### Status
 - [x] As a user, I can see the current track name in the status bar
 - [x] As a user, I can see the playback state (Playing, Paused, Stopped) in the status bar
-- [ ] As a user, I can see the bitrate and format of the current file in the status bar
+- [x] As a user, I can see the format type of the current file in the status bar
+- [x] As a user, I can see track durations listed in the playlist
+- [x] As a user, I can double-click a playlist item to play it
