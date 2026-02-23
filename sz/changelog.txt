@@ -1,3 +1,18 @@
+Main: 6.9
+by Hawkynt 23.02.2026
++ Snake app (classic grid-based game with smooth interpolation, particle effects, persistent high scores)
++ Breakout app (brick-breaker with power-ups, pointer lock mouse control, visual effects)
++ Space Invaders app (classic arcade shooter with shields, UFO bonus, level progression)
++ Asteroids Enhanced app (4 game modes, 7 rock types, 6 enemy types, bosses, allies, powerups, resizable field)
++ Pac-Man app (4-ghost AI with unique behaviors, power pellets, fruit bonuses, tunnel passages)
++ shared GameEffects module for canvas-based games (particles, screen shake, floating text, trails)
++ Skin Tester: WYSIWYG preview with magnifier loupe
++ Window Manager: restart app via system menu (title bar icon context menu)
++ Minesweeper: enhanced visual effects (cascade ripple, mine explosion shockwave, win confetti, flag bounce, smiley polish)
++ Solitaire/FreeCell/Spider Solitaire: responsive card scaling on window resize
++ Solitaire/FreeCell/Spider Solitaire: enhanced win/deal/flip animations with particle effects
++ Tetris: enhanced line clear effects (sparkle, dissolve, screen shake, floating score popups, level-up flash)
+
 Main: 6.8
 by Hawkynt 22.02.2026
 + E-Mail Signature Generator app (HTML signatures with templates, social links, photo frames)
