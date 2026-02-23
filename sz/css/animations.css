@@ -17,10 +17,11 @@
 @keyframes sz-window-open {
   from {
     opacity: 0;
-    transform: translate3d(var(--sz-x, 0), var(--sz-y, 0), 0) scale(0.95);
+    transform: scale(0.95);
   }
   to {
     opacity: 1;
+    transform: none;
   }
 }
 
@@ -38,7 +39,7 @@
 /* --------------------------------------------------------------------------
    Minimize (shrink + fade toward the corresponding taskbar button)
    --sz-anim-tx / --sz-anim-ty are set by JS to the offset from the
-   window's current translate3d position to the taskbar button center.
+   window's current left/top position to the taskbar button center.
    -------------------------------------------------------------------------- */
 
 .sz-window.sz-minimizing {
@@ -69,7 +70,7 @@
   }
   to {
     opacity: 1;
-    transform: translate3d(var(--sz-x, 0), var(--sz-y, 0), 0) scale(1);
+    transform: none;
   }
 }
 

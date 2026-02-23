@@ -29,6 +29,7 @@
 <link rel="stylesheet" href="styles.css">
 <script src="../shared/menu.js"></script>
 <script src="../shared/dialog.js"></script>
+<script src="../../js/skin-css-generator.js"></script>
 <script defer src="../vision-renderer.js"></script>
 </head>
 <body>
@@ -53,18 +54,31 @@
     <select id="subskin-select"><option value="">--</option></select>
     <button id="active-toggle" title="Toggle active/inactive state">Active</button>
     <button id="anim-toggle" title="Toggle animation playback">Anim</button>
+    <button id="mag-toggle" title="Toggle magnifying glass">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="10" cy="10" r="7"/><line x1="15" y1="15" x2="21" y2="21"/>
+      </svg>
+    </button>
+    <label for="mag-zoom" id="mag-zoom-label" style="display:none">
+      <select id="mag-zoom">
+        <option value="4">4x</option>
+        <option value="8" selected>8x</option>
+        <option value="12">12x</option>
+        <option value="16">16x</option>
+      </select>
+    </label>
     <span id="drop-hint">Drop .wba / .zip / folder here</span>
   </div>
 
   <div id="main-area">
     <div id="drop-overlay">Drop skin folder here</div>
 
-    <div id="frame-grid">
-      <div class="frame-cell" id="cell-nw"><span class="cell-label">NW</span></div>
-      <div class="frame-cell" id="cell-n"><span class="cell-label">N</span></div>
-      <div class="frame-cell" id="cell-ne"><span class="cell-label">NE</span></div>
-      <div class="frame-cell" id="cell-w"><span class="cell-label">W</span></div>
-      <div class="frame-cell" id="cell-content">
+    <div id="frame-grid" class="sz-window sz-window-active">
+      <div class="frame-cell sz-frame-nw" id="cell-nw"><span class="cell-label">NW</span></div>
+      <div class="frame-cell sz-frame-n"  id="cell-n"><span class="cell-label">N</span></div>
+      <div class="frame-cell sz-frame-ne" id="cell-ne"><span class="cell-label">NE</span></div>
+      <div class="frame-cell sz-frame-w"  id="cell-w"><span class="cell-label">W</span></div>
+      <div class="frame-cell sz-window-content" id="cell-content">
         <div id="controls-area">
           <fieldset>
             <legend>Form Controls</legend>
@@ -104,14 +118,30 @@
           </fieldset>
         </div>
       </div>
-      <div class="frame-cell" id="cell-e"><span class="cell-label">E</span></div>
-      <div class="frame-cell" id="cell-sw"><span class="cell-label">SW</span></div>
-      <div class="frame-cell" id="cell-s"><span class="cell-label">S</span></div>
-      <div class="frame-cell" id="cell-se"><span class="cell-label">SE</span></div>
+      <div class="frame-cell sz-frame-e"  id="cell-e"><span class="cell-label">E</span></div>
+      <div class="frame-cell sz-frame-sw" id="cell-sw"><span class="cell-label">SW</span></div>
+      <div class="frame-cell sz-frame-s"  id="cell-s"><span class="cell-label">S</span></div>
+      <div class="frame-cell sz-frame-se" id="cell-se"><span class="cell-label">SE</span></div>
+    </div>
+
+    <div id="magnifier">
+      <div id="magnifier-clone-wrap"></div>
+      <div id="magnifier-crosshair-h"></div>
+      <div id="magnifier-crosshair-v"></div>
+      <div id="magnifier-info"></div>
     </div>
   </div>
 
   <div id="info-panel">
+    <div id="info-header">
+      <span>Details</span>
+      <button id="copy-info-btn" title="Copy to clipboard">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="8" y="8" width="13" height="13" rx="2"/>
+          <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>
+        </svg>
+      </button>
+    </div>
     <div id="info-content">Select a skin to inspect.</div>
   </div>
 </div>

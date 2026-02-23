@@ -330,22 +330,21 @@
      * animation target on the window so the CSS animation can use it.
      */
     #setTaskbarTarget(win, id) {
+      const pos = win.getPosition();
       const btn = document.querySelector(`.sz-taskbar-button[data-window-id="${id}"]`);
       if (!btn) {
         // Fallback: aim at center-bottom of the screen (taskbar area)
-        const pos = win.getPosition();
         const size = win.getSize();
-        const cx = pos.x + size.width / 2;
-        win.setAnimationTarget(cx, window.innerHeight);
+        win.setAnimationTarget(size.width / 2, window.innerHeight - pos.y);
         return;
       }
 
       const btnRect = btn.getBoundingClientRect();
       const containerRect = this.#container.getBoundingClientRect();
 
-      // Target = center of the taskbar button, relative to the window-area container
-      const targetX = btnRect.left + btnRect.width / 2 - containerRect.left;
-      const targetY = btnRect.top + btnRect.height / 2 - containerRect.top;
+      // Target = offset from window's left/top to the taskbar button center
+      const targetX = btnRect.left + btnRect.width / 2 - containerRect.left - pos.x;
+      const targetY = btnRect.top + btnRect.height / 2 - containerRect.top - pos.y;
 
       win.setAnimationTarget(targetX, targetY);
     }
