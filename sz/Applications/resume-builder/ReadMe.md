@@ -35,9 +35,17 @@ State is managed as a flat `currentData` object keyed by section IDs. Every fiel
 - [x] Template editor: duplicate, customize sections, upload/download JSON, VFS load/save
 - [x] VFS file operations (New, Open, Save, Save As)
 - [x] Undo/Redo (50 levels)
-- [x] Keyboard shortcuts (Ctrl+N/O/S/Z/Y, Ctrl+Shift+C)
+- [x] Keyboard shortcuts (Ctrl+N/O/S/Z/Y, Ctrl+Shift+C for copy Markdown)
 - [x] Drag and drop Markdown files
-- [x] Resizable split view with draggable splitter
+- [x] Resizable split view with draggable splitter (20-80% range)
+- [x] Clear all resume data with Edit > Clear All
+- [x] Apply a different template to existing data via Templates > Apply Different Template
+- [x] Status bar shows line count of generated Markdown resume
+- [x] Collapsible form sections in Form Mode (click section header to collapse/expand)
+- [x] Command-line file loading: pass file path as argument to open resume on startup
+- [x] Window title dirty flag: asterisk (*) prefix indicates unsaved changes
+- [x] Custom template JSON import/export: Upload/Download template definitions as JSON files
+- [x] VFS template persistence: Load/Save custom templates via virtual filesystem dialogs
 
 ### Resume-specific field types
 

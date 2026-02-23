@@ -71,7 +71,7 @@ Inspired by web-based README generators such as readme.so and makeareadme.com, c
 - [x] As a user, I can add tags by typing and pressing Enter, and remove them by clicking the X
 - [x] As a user, I can select a license from a dropdown of 8 common licenses or enter custom text
 - [x] As a user, I can fill in author fields (name, email, website, GitHub username) as a grouped form
-- [x] As a user, I can toggle 35 preset badges across 7 categories (GitHub, CI/Build, Quality, Package Managers, Social, Size & Stats, Support) using visual toggle buttons, fill in user/repo/package context to resolve placeholders, build custom shields.io badges with a live-preview builder (label, message, dual color support for label and message sides, style, logo text input with autocomplete icon grid from the full Simple Icons catalog (~3 400 icons fetched at runtime, 110-icon offline fallback)), use the SZ Color Picker app for precise color selection on all color fields, and set per-badge placeholder overrides (user/repo/package) so sponsorship badges can use different usernames than the global context
+- [x] As a user, I can toggle 34 preset badges across 7 categories (GitHub, CI/Build, Quality, Package Managers, Social, Size & Stats, Support) using visual toggle buttons, fill in user/repo/package context to resolve placeholders, build custom shields.io badges with a live-preview builder (label, message, dual color support for label and message sides, style, logo text input with autocomplete icon grid from the full Simple Icons catalog (~3 400 icons fetched at runtime, 110-icon offline fallback)), use the SZ Color Picker app for precise color selection on all color fields, and set per-badge placeholder overrides (user/repo/package) so sponsorship badges can use different usernames than the global context
 - [x] As a user, I can add image URLs with alt text for screenshots
 
 ### Live Preview
@@ -127,11 +127,12 @@ Inspired by web-based README generators such as readme.so and makeareadme.com, c
 - [x] As a user, I can use a toolbar with Wizard/Form toggle, template dropdown, Copy MD, and Export buttons
 - [x] As a user, I can see an About dialog with application information
 - [x] As a user, I can see the current filename and dirty state in the window title
+- [x] As a user, I can clear all form data and start fresh with Edit > Clear All
 
 ### Aspirational Features
 - [ ] As a user, I want to reorder sections via drag handles in the wizard and form
 - [ ] As a user, I want to see a review step after import showing which fields were populated
-- [ ] As a user, I want to apply a different template to existing data and see a field mapping preview
+- [x] As a user, I can apply a different template to existing data via Templates > Apply Different Template and have the data re-map to matching section IDs
 - [x] As a user, I want to preview badges as rendered images in the editor (not just URLs)
 - [ ] As a user, I want to undo/redo per-field rather than global state snapshots
 - [ ] As a user, I want to see a diff between my current document and the last saved version

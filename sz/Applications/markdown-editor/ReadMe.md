@@ -111,11 +111,17 @@ Inspired by popular Markdown editors such as Typora, MarkdownPad, and the VS Cod
 - [x] As a user, I can see a save-changes confirmation dialog with Yes, No, and Cancel options
 - [x] As a user, I can see an About dialog with application information
 
+### Print and Export
+- [x] As a user, I can print the document with Ctrl+P
+- [x] As a user, I can export the rendered HTML to a file
+
+### Zoom
+- [x] As a user, I can zoom the editor and preview from 25% to 300%
+
 ### Future Enhancements
 - [ ] As a user, I want syntax highlighting in the Markdown source editor
 - [ ] As a user, I want synchronized scrolling between the source and preview panes
 - [ ] As a user, I want line numbers displayed in the editor
-- [ ] As a user, I want to export the rendered HTML to a file
 - [ ] As a user, I want to export the document as PDF
 - [ ] As a user, I want drag-and-drop file opening
 - [ ] As a user, I want auto-save with configurable interval

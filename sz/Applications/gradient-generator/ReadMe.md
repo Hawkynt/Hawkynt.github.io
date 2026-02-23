@@ -94,6 +94,7 @@ Inspired by web-based CSS gradient generators such as cssgradient.io and the gra
 - [x] As a user, I can see the gradient type highlighted in the tab bar
 - [x] As a user, I can see the Remove button disabled when only 2 stops remain
 - [x] As a user, I can see the import mode toggle between Paste CSS and Apply states
+- [x] As a user, I can see an About dialog with application information
 
 ### Aspirational Features
 - [ ] As a user, I want to undo and redo changes to the gradient

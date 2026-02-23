@@ -72,7 +72,11 @@ Modeled after the classic Spider Solitaire included with Microsoft Windows XP an
 - [x] As a user, I can see empty tableau slots marked with a subtle outline
 - [x] As a user, I see a green felt table background
 - [ ] As a user, I want to see a hint system that suggests possible moves
-- [ ] As a user, I want to see card movement animations when dealing from the stock
+- [x] As a user, I can see cards animate with a slide and flip when dealt from the stock pile
+- [x] As a user, I can see a smooth flip animation when a card transitions from face-down to face-up
+- [x] As a user, I can see colorful fireworks spawn and fade during the win celebration
+- [x] As a user, I can see bouncing cards leave semi-transparent motion trails during the win animation
+- [x] As a user, I can see bouncing cards rotate as they bounce during the win animation
 
 ### Interaction
 - [x] As a user, I can drag cards with smooth pointer tracking

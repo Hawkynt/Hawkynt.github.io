@@ -134,3 +134,6 @@ Inspired by simplified vector editors such as SVG-edit and the basic shape tools
 - [ ] As a user, I want to import SVG clip art or symbols from a library
 - [ ] As a user, I want to align and distribute multiple selected elements
 - [ ] As a user, I want to see a ruler along the edges of the workspace
+
+### Color Picker Integration
+- [x] As a user, I can click on fill or stroke color inputs to launch the Color Picker app for interactive color selection

@@ -97,9 +97,14 @@ Modeled after the classic Windows Date and Time Properties dialog and the Window
 - [x] As a user, I can see world clocks persisted across sessions via localStorage
 - [x] As a user, I can see default world clocks pre-configured (New York, London, Tokyo)
 - [x] As a user, I can see duplicate timezone additions prevented
+- [x] As a user, I can see an interactive world map showing all available timezones with city marker dots
+- [x] As a user, I can click on a city dot on the map to add a world clock for that timezone
+- [x] As a user, I can see active city dots highlighted in red to show selected timezones
+- [x] As a user, I can see a real-time night shade overlay showing the current day/night terminator
+- [x] As a user, I can see latitude/longitude graticule lines on the map for geographic reference
+- [x] As a user, I can see city name labels appear on the map for selected timezones
 - [ ] As a user, I can search/filter the timezone dropdown
 - [ ] As a user, I can reorder world clocks by dragging
-- [ ] As a user, I can see a map view showing all clock locations
 
 ### User Interface
 - [x] As a user, I can switch between five tabs: Date & Time, Alarms, Stopwatch, Timer, World Clock
