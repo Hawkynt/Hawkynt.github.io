@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <!-- Stars background -->
+  <circle cx="5" cy="8" r="1" fill="#fff" opacity="0.6"/>
+  <circle cx="42" cy="5" r="1" fill="#fff" opacity="0.5"/>
+  <circle cx="12" cy="42" r="1" fill="#fff" opacity="0.4"/>
+  <circle cx="38" cy="38" r="1" fill="#fff" opacity="0.5"/>
+  <circle cx="28" cy="4" r="0.8" fill="#fff" opacity="0.3"/>
+  <!-- Player ship -->
+  <polygon points="24,6 18,22 24,18 30,22" fill="#4ec0ca" stroke="#2a8a96" stroke-width="0.5"/>
+  <!-- Thruster glow -->
+  <ellipse cx="24" cy="23" rx="3" ry="4" fill="#ff6600" opacity="0.7"/>
+  <ellipse cx="24" cy="24" rx="2" ry="3" fill="#ffcc00" opacity="0.8"/>
+  <!-- Laser bolts -->
+  <rect x="23" y="1" width="2" height="4" rx="1" fill="#0ff" opacity="0.9"/>
+  <rect x="19" y="3" width="2" height="3" rx="1" fill="#0ff" opacity="0.6"/>
+  <rect x="27" y="3" width="2" height="3" rx="1" fill="#0ff" opacity="0.6"/>
+  <!-- Enemy ship -->
+  <polygon points="24,34 20,40 24,38 28,40" fill="#e74c3c" stroke="#a93226" stroke-width="0.5" transform="rotate(180,24,37)"/>
+  <!-- Shield arc -->
+  <path d="M16,12 A10,10 0 0,1 32,12" fill="none" stroke="#00bfff" stroke-width="1.5" opacity="0.5"/>
+  <!-- Explosion particle -->
+  <circle cx="36" cy="28" r="3" fill="#ff4500" opacity="0.6"/>
+  <circle cx="38" cy="26" r="2" fill="#ffd700" opacity="0.5"/>
+</svg>
