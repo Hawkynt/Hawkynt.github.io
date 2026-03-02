@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <!-- Impossible triangle (Penrose) -->
+  <polygon points="24,6 42,38 6,38" fill="none" stroke="#88f" stroke-width="2.5" stroke-linejoin="round"/>
+  <!-- Inner impossible detail -->
+  <line x1="24" y1="6" x2="24" y2="22" stroke="#88f" stroke-width="1.5"/>
+  <line x1="15" y1="30" x2="33" y2="30" stroke="#88f" stroke-width="1.5"/>
+  <!-- Isometric tiles -->
+  <polygon points="24,26 32,30 24,34 16,30" fill="#334" stroke="#556" stroke-width="0.5"/>
+  <polygon points="24,20 32,24 24,28 16,24" fill="#445" stroke="#556" stroke-width="0.5"/>
+  <!-- Gem collectible -->
+  <polygon points="24,14 27,17 24,20 21,17" fill="#ff0" opacity="0.8"/>
+  <!-- Player dot -->
+  <circle cx="24" cy="30" r="3" fill="#0af" opacity="0.9"/>
+</svg>
