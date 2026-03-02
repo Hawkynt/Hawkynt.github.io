@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <!-- Card back -->
+  <rect x="10" y="4" width="28" height="40" rx="3" fill="#1a237e" stroke="#5c6bc0" stroke-width="1.5"/>
+  <!-- Card face behind -->
+  <rect x="6" y="6" width="28" height="38" rx="3" fill="#283593" stroke="#7986cb" stroke-width="1"/>
+  <!-- Card face front -->
+  <rect x="14" y="2" width="28" height="40" rx="3" fill="#e8eaf6" stroke="#3f51b5" stroke-width="1.5"/>
+  <!-- Star symbol on card -->
+  <polygon points="28,12 30,18 36,18 31,22 33,28 28,24 23,28 25,22 20,18 26,18" fill="#ffd54f" stroke="#f9a825" stroke-width="0.5"/>
+  <!-- Mana gem -->
+  <circle cx="28" cy="36" r="4" fill="#42a5f5" opacity="0.9"/>
+  <circle cx="28" cy="36" r="2" fill="#90caf9"/>
+  <!-- Sparkle -->
+  <circle cx="18" cy="8" r="1.5" fill="#fff" opacity="0.8"/>
+</svg>
