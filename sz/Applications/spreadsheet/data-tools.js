@@ -277,6 +277,7 @@
       const opt = document.createElement('div');
       opt.className = 'val-dropdown-item';
       opt.textContent = item;
+      opt.addEventListener('pointerdown', (e) => e.preventDefault());
       opt.addEventListener('click', () => {
         _pushUndo({ type: 'cell', col, row, oldVal: _getCellRaw(col, row), newVal: item, oldFmt: Object.assign({}, _getFormat(col, row)), newFmt: Object.assign({}, _getFormat(col, row)) });
         _setCellData(col, row, item);
