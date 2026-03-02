@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <!-- Cave background -->
+  <rect x="2" y="2" width="44" height="44" rx="2" fill="#3d2b1f"/>
+  <!-- Dirt texture -->
+  <rect x="2" y="2" width="44" height="44" rx="2" fill="#8B4513" opacity="0.5"/>
+  <!-- Empty tunnel -->
+  <rect x="8" y="14" width="32" height="10" rx="1" fill="#111"/>
+  <rect x="18" y="8" width="10" height="32" rx="1" fill="#111"/>
+  <!-- Wall blocks -->
+  <rect x="2" y="2" width="6" height="6" fill="#555"/>
+  <rect x="40" y="2" width="6" height="6" fill="#555"/>
+  <rect x="2" y="40" width="6" height="6" fill="#555"/>
+  <rect x="40" y="40" width="6" height="6" fill="#555"/>
+  <!-- Boulder -->
+  <circle cx="12" cy="12" r="5" fill="#999"/>
+  <circle cx="10" cy="10" r="2" fill="#bbb"/>
+  <!-- Gem (diamond shape) -->
+  <polygon points="34,10 38,16 34,22 30,16" fill="#00e5ff"/>
+  <!-- Player -->
+  <circle cx="23" cy="19" r="5" fill="#4ec0ca"/>
+  <circle cx="21" cy="18" r="1.5" fill="#fff"/>
+  <circle cx="25" cy="18" r="1.5" fill="#fff"/>
+  <circle cx="21.5" cy="18" r="0.8" fill="#000"/>
+  <circle cx="25.5" cy="18" r="0.8" fill="#000"/>
+  <!-- Exit door -->
+  <rect x="20" y="34" width="8" height="8" rx="1" fill="#ffd700" opacity="0.8"/>
+  <rect x="25" y="37" width="2" height="3" rx="0.5" fill="#333"/>
+</svg>
