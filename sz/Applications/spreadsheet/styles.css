@@ -707,6 +707,83 @@ body {
   background: var(--sz-color-button-light);
 }
 
+/* ==== Data Validation Dropdown ==== */
+.val-dropdown-arrow {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 8px;
+  color: var(--sz-color-button-shadow);
+  cursor: default;
+  padding: 0 2px;
+  line-height: 1;
+}
+
+.val-dropdown-arrow:hover {
+  color: var(--sz-color-highlight);
+}
+
+.val-dropdown-list {
+  background: var(--sz-color-window);
+  border: 1px solid var(--sz-color-button-shadow);
+  box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.2);
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.val-dropdown-item {
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: default;
+  color: var(--sz-color-window-text);
+}
+
+.val-dropdown-item:hover {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+}
+
+/* ==== Pivot Table dialog ==== */
+.pivot-zone {
+  background: var(--sz-color-window);
+}
+
+.pf-btn {
+  border: 1px solid var(--sz-color-button-shadow);
+  background: var(--sz-color-button-face);
+  color: var(--sz-color-button-text);
+  cursor: default;
+  font-family: inherit;
+}
+
+.pf-btn:hover {
+  background: var(--sz-color-button-light);
+  border-color: var(--sz-color-highlight);
+}
+
+.pf-agg {
+  border: 1px solid var(--sz-color-button-shadow);
+  background: var(--sz-color-window);
+  color: var(--sz-color-window-text);
+  font-family: inherit;
+}
+
+/* ==== Inline Charts ==== */
+.inline-chart {
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.inline-chart canvas {
+  display: block;
+}
+
+/* ==== Sparklines ==== */
+.sparkline-canvas {
+  pointer-events: none;
+}
+
 /* ==== Print styles ==== */
 @media print {
   .qat,
@@ -728,4 +805,319 @@ body {
   .grid-scroll {
     overflow: visible;
   }
+}
+
+/* ── Print Layout / Page Breaks ─────────────────────────────── */
+.page-break-h {
+  border-top: 2px dashed #2266cc !important;
+}
+.page-break-v {
+  border-left: 2px dashed #2266cc !important;
+}
+.outside-print-area {
+  background-color: rgba(128, 128, 128, 0.15) !important;
+  color: rgba(0, 0, 0, 0.4) !important;
+}
+.page-break-preview .outside-print-area {
+  background-color: rgba(128, 128, 128, 0.25) !important;
+}
+
+@media print {
+  .page-break-h { page-break-before: always; }
+  .outside-print-area { display: none; }
+  .page-break-v, .page-break-h { border: none !important; }
+}
+
+/* ── Protection indicator ────────────────────────────────────── */
+.cell-locked-indicator {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  font-size: 7px;
+  color: var(--sz-color-gray-text);
+  opacity: 0.5;
+}
+
+/* ── Format Painter cursor ──────────────────────────────────── */
+.format-painter-active {
+  cursor: crosshair !important;
+}
+.format-painter-active td {
+  cursor: crosshair !important;
+}
+
+/* ── Conditional Formatting Manage Rules ──────────────────── */
+.cf-rule-row { display: flex; align-items: center; padding: 6px 8px; border-bottom: 1px solid #e0e0e0; cursor: pointer; }
+.cf-rule-row.selected { background: #cce5ff; }
+.cf-rule-row .cf-rule-preview { width: 40px; height: 20px; border: 1px solid #ccc; margin-right: 8px; flex-shrink: 0; }
+.cf-rule-row .cf-rule-info { flex: 1; font-size: 11px; }
+.cf-rule-row .cf-rule-stop { font-size: 10px; margin-left: 8px; }
+
+/* ── Outline / Group gutter ──────────────────────────────── */
+.outline-gutter { position: sticky; left: 0; z-index: 5; background: #f0f0f0; }
+.outline-btn { width: 14px; height: 14px; border: 1px solid #aaa; background: #fff; font-size: 9px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; line-height: 1; }
+.outline-btn:hover { background: #e0e0e0; }
+.outline-level-btn { width: 14px; height: 14px; border: 1px solid #aaa; background: #f8f8f8; font-size: 9px; cursor: pointer; text-align: center; margin: 1px; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+
+/* ── Trace Arrows SVG overlay ────────────────────────────── */
+.trace-arrow-overlay { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 100; overflow: visible; }
+.trace-arrow-overlay line { stroke: #0066cc; stroke-width: 1.5; }
+.trace-arrow-overlay marker path { fill: #0066cc; }
+.trace-arrow-overlay circle { fill: #0066cc; r: 3; }
+
+/* ── Text to Columns preview ─────────────────────────────── */
+.ttc-preview { margin-top: 8px; border: 1px solid #ccc; padding: 4px; max-height: 150px; overflow: auto; font-family: monospace; font-size: 11px; white-space: pre; background: var(--sz-color-window); }
+.ttc-fixed-break { position: absolute; top: 0; bottom: 0; width: 1px; background: red; pointer-events: none; }
+
+/* ── Advanced Sort level rows ────────────────────────────── */
+.as-level-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; padding: 4px; border: 1px solid var(--sz-color-button-shadow); background: var(--sz-color-window); }
+.as-level-row.selected { outline: 2px solid var(--sz-color-highlight); }
+.as-level-row select { font-size: 11px; font-family: inherit; padding: 1px 4px; }
+
+/* ── Error Checking panel ────────────────────────────────── */
+.error-panel { position: fixed; top: 120px; right: 4px; z-index: 4000; background: var(--sz-color-button-face); border: 2px outset var(--sz-color-button-highlight); box-shadow: 2px 2px 6px rgba(0,0,0,0.25); min-width: 280px; max-width: 360px; font-size: 11px; display: none; }
+.error-panel.visible { display: block; }
+.error-panel-title { background: var(--sz-color-highlight); color: var(--sz-color-highlight-text); padding: 3px 8px; font-weight: bold; font-size: 11px; user-select: none; display: flex; justify-content: space-between; align-items: center; }
+.error-panel-body { padding: 8px; max-height: 250px; overflow-y: auto; }
+.error-item { padding: 3px 4px; cursor: pointer; }
+.error-item:hover { background: var(--sz-color-button-light); }
+
+/* ── Evaluate Formula dialog ─────────────────────────────── */
+.eval-step { font-family: monospace; font-size: 11px; padding: 2px 0; border-bottom: 1px dotted #ddd; }
+.eval-step-result { color: #006600; font-weight: bold; }
+
+/* ── Sheet Tab Context Menu ─────────────────────────────── */
+.sheet-context-menu {
+  position: fixed;
+  background: var(--sz-color-menu);
+  border: 1px solid var(--sz-color-button-shadow);
+  box-shadow: 2px 2px 5px rgba(0,0,0,0.15);
+  z-index: 5000;
+  min-width: 150px;
+  padding: 4px 0;
+}
+.sheet-ctx-item {
+  padding: 4px 16px;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--sz-color-menu-text);
+}
+.sheet-ctx-item:hover { background: var(--sz-color-highlight); color: var(--sz-color-highlight-text); }
+.sheet-ctx-sep { border-top: 1px solid var(--sz-color-button-shadow); margin: 2px 0; }
+
+/* ── Page Setup tabs ────────────────────────────────────── */
+.ps-tabs { display: flex; border-bottom: 1px solid var(--sz-color-button-shadow); margin-bottom: 8px; }
+.ps-tab { padding: 6px 12px; border: 1px solid transparent; background: none; cursor: pointer; font-size: 11px; font-family: inherit; color: var(--sz-color-button-text); }
+.ps-tab.active { border: 1px solid var(--sz-color-button-shadow); border-bottom: 1px solid var(--sz-color-button-face); margin-bottom: -1px; background: var(--sz-color-button-face); }
+.ps-tab:hover:not(.active) { background: var(--sz-color-button-light); }
+.ps-panel { display: none; }
+.ps-panel.active { display: block; }
+
+/* ── Freeze pane dropdown ───────────────────────────────── */
+.rb-dropdown { position: relative; display: inline-block; }
+.rb-dropdown-menu { display: none; position: absolute; top: 100%; left: 0; z-index: 4000; background: var(--sz-color-menu); border: 1px solid var(--sz-color-button-shadow); box-shadow: 2px 2px 4px rgba(0,0,0,0.15); min-width: 160px; padding: 4px 0; }
+.rb-dropdown:hover .rb-dropdown-menu { display: block; }
+.rb-dropdown-menu button { display: block; width: 100%; text-align: left; padding: 4px 12px; border: none; background: none; font-size: 11px; font-family: inherit; cursor: pointer; color: var(--sz-color-menu-text); }
+.rb-dropdown-menu button:hover { background: var(--sz-color-highlight); color: var(--sz-color-highlight-text); }
+.rb-dropdown-menu hr { border: none; border-top: 1px solid var(--sz-color-button-shadow); margin: 2px 0; }
+
+/* ── Template buttons ───────────────────────────────────── */
+.template-btn { padding: 8px 16px; border: 1px solid var(--sz-color-button-shadow); background: var(--sz-color-button-face); cursor: pointer; font-size: 11px; font-family: inherit; }
+.template-btn:hover { background: var(--sz-color-button-light); border-color: var(--sz-color-highlight); }
+
+/* ── Theme grid ─────────────────────────────────────────── */
+.theme-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.theme-item { padding: 10px; border: 2px solid var(--sz-color-button-shadow); cursor: pointer; text-align: center; font-size: 11px; }
+.theme-item:hover { border-color: var(--sz-color-highlight); }
+.theme-item.active { border-color: var(--sz-color-highlight); background: var(--sz-color-button-light); }
+.theme-colors { display: flex; gap: 2px; justify-content: center; margin-bottom: 4px; }
+.theme-swatch { width: 16px; height: 16px; border: 1px solid rgba(0,0,0,0.2); }
+
+/* ── Status bar context menu ────────────────────────────── */
+.statusbar-context-menu {
+  position: fixed;
+  background: var(--sz-color-menu);
+  border: 1px solid var(--sz-color-button-shadow);
+  box-shadow: 2px 2px 5px rgba(0,0,0,0.15);
+  z-index: 5000;
+  min-width: 160px;
+  padding: 4px 0;
+}
+.statusbar-ctx-item {
+  padding: 4px 16px;
+  cursor: pointer;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--sz-color-menu-text);
+}
+.statusbar-ctx-item:hover { background: var(--sz-color-highlight); color: var(--sz-color-highlight-text); }
+
+/* ── Slicer panels ──────────────────────────────────────── */
+.slicer-panel {
+  position: fixed;
+  z-index: 4500;
+  background: var(--sz-color-button-face);
+  border: 2px outset var(--sz-color-button-highlight);
+  box-shadow: 2px 2px 6px rgba(0,0,0,0.25);
+  min-width: 160px;
+  max-width: 200px;
+  font-size: 11px;
+}
+
+.slicer-panel-title {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+  padding: 3px 8px;
+  font-weight: bold;
+  user-select: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: move;
+}
+
+.slicer-panel-title .slicer-close {
+  cursor: default;
+  padding: 0 4px;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.slicer-panel-title .slicer-close:hover {
+  background: rgba(255,255,255,0.2);
+}
+
+.slicer-panel-body {
+  padding: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.slicer-panel-body label {
+  display: block;
+  padding: 2px 4px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.slicer-panel-body label:hover {
+  background: var(--sz-color-button-light);
+}
+
+.slicer-panel-body label.slicer-item-deselected {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+.slicer-clear-btn {
+  display: block;
+  width: 100%;
+  padding: 3px 8px;
+  border: none;
+  border-top: 1px solid var(--sz-color-button-shadow);
+  background: var(--sz-color-button-face);
+  cursor: pointer;
+  font-size: 10px;
+  font-family: inherit;
+  color: var(--sz-color-button-text);
+  text-align: center;
+}
+
+.slicer-clear-btn:hover {
+  background: var(--sz-color-button-light);
+  color: var(--sz-color-highlight);
+}
+
+/* ── Slicer field preview ──────────────────────────────── */
+#slicer-field-preview {
+  font-size: 10px;
+  color: var(--sz-color-gray-text);
+  background: var(--sz-color-window);
+}
+
+/* ── Group Field numeric options ──────────────────────── */
+#group-numeric-opts p {
+  font-size: 10px;
+  color: var(--sz-color-gray-text);
+}
+
+/* ── Sparkline Options dialog tabs ──────────────────────── */
+.sp-tab { padding: 3px 10px; cursor: default; font-size: 11px; border: 1px solid transparent; border-bottom: none; margin-bottom: -1px; font-family: inherit; background: none; color: var(--sz-color-button-text); }
+.sp-tab:hover { background: var(--sz-color-button-light); }
+.sp-tab.active { background: var(--sz-color-button-face); border-color: var(--sz-color-button-shadow); border-bottom: 1px solid var(--sz-color-button-face); font-weight: bold; }
+.sp-panel { display: none; }
+.sp-panel.active { display: block; }
+
+/* ── Freeze pane indicator (enhanced) ───────────────────── */
+.freeze-indicator-col {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--sz-color-button-dark-shadow);
+  z-index: 7;
+  pointer-events: none;
+  box-shadow: 1px 0 2px rgba(0,0,0,0.3);
+}
+
+.freeze-indicator-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--sz-color-button-dark-shadow);
+  z-index: 7;
+  pointer-events: none;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+
+/* ── Frozen pane containers ─────────────────────────────── */
+.frozen-corner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 12;
+  overflow: hidden;
+  background: var(--sz-color-window);
+}
+
+.frozen-rows {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 11;
+  overflow: hidden;
+  background: var(--sz-color-window);
+}
+
+.frozen-cols {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 10;
+  overflow: hidden;
+  background: var(--sz-color-window);
+}
+
+.frozen-corner table,
+.frozen-rows table,
+.frozen-cols table {
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+/* ── Print page setup media queries ─────────────────────── */
+@media print {
+  .ps-print-header, .ps-print-footer {
+    position: fixed;
+    left: 0;
+    right: 0;
+    font-size: 10px;
+    text-align: center;
+    color: #333;
+  }
+  .ps-print-header { top: 0; }
+  .ps-print-footer { bottom: 0; }
 }
