@@ -2803,7 +2803,7 @@
     ctx.fillStyle = '#556';
     ctx.font = scaledFont(11, 'normal');
     ctx.textAlign = 'center';
-    ctx.fillText('Press 1\u20134 to start  \u00b7  \u25C0 \u25B6 field size', W / 2, footerY);
+    ctx.fillText('Tap or press 1\u20134 to start  \u00b7  \u25C0 \u25B6 field size', W / 2, footerY);
     ctx.fillText('Arrow keys or WASD to move \u00b7 Space to shoot', W / 2, footerY + 16 * uiS);
   }
 
@@ -2847,7 +2847,7 @@
 
     ctx.fillStyle = '#667';
     ctx.font = scaledFont(12, 'normal');
-    ctx.fillText('Press F2 for new game', W / 2, H / 2 + 110 * uiS);
+    ctx.fillText('Tap or press F2 for new game', W / 2, H / 2 + 110 * uiS);
   }
 
   function drawPauseOverlay() {
@@ -3115,6 +3115,12 @@
   });
 
   document.addEventListener('keyup', e => { keys[e.key] = false; });
+
+  /* ── Click/Tap to start ── */
+  canvas.addEventListener('pointerdown', () => {
+    if (!gameActive || gameOverFlag)
+      showModeSelect();
+  });
 
   /* ============================== GAME LOOP ============================== */
 

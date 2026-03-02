@@ -2232,9 +2232,9 @@
     else if (gameState === 'paused')
       drawOverlayText('PAUSED', 'Press P to resume');
     else if (gameState === 'gameover')
-      drawOverlayText('GAME OVER', 'Press Space or F2 for new game');
+      drawOverlayText('GAME OVER', 'Tap or press Space for new game');
     else if (gameState === 'idle')
-      drawOverlayText('PAC-MAN', 'Press Space to start');
+      drawOverlayText('PAC-MAN', 'Tap or press Space to start');
     else if (gameState === 'bossVictory')
       drawOverlayText('BOSS DEFEATED!', 'Well done!');
 
@@ -2555,6 +2555,37 @@
         break;
     }
   });
+
+  /* ---- Touch / click controls ---- */
+  {
+    let touchStartX = 0, touchStartY = 0, touchId = null;
+    const SWIPE_THRESHOLD = 20;
+
+    canvas.addEventListener('pointerdown', (e) => {
+      if (gameState === 'idle' || gameState === 'gameover') {
+        newGame();
+        return;
+      }
+      touchStartX = e.clientX;
+      touchStartY = e.clientY;
+      touchId = e.pointerId;
+    });
+
+    canvas.addEventListener('pointerup', (e) => {
+      if (e.pointerId !== touchId) return;
+      touchId = null;
+      if (gameState !== 'playing') return;
+
+      const dx = e.clientX - touchStartX;
+      const dy = e.clientY - touchStartY;
+      if (Math.abs(dx) < SWIPE_THRESHOLD && Math.abs(dy) < SWIPE_THRESHOLD) return;
+
+      if (Math.abs(dx) > Math.abs(dy))
+        pacman.nextDir = dx > 0 ? DIR_RIGHT : DIR_LEFT;
+      else
+        pacman.nextDir = dy > 0 ? DIR_DOWN : DIR_UP;
+    });
+  }
 
   /* ================================================================
    *  INIT

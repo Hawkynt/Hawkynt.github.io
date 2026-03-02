@@ -2106,7 +2106,7 @@
       ctx.fillStyle = '#ccc';
       ctx.font = '14px sans-serif';
       ctx.fillText(MODES[gameMode].name + ' - Level ' + level, GAME_W / 2, GAME_H / 2 + 20);
-      ctx.fillText('Press F2 for New Game', GAME_W / 2, GAME_H / 2 + 44);
+      ctx.fillText('Tap or press F2 for New Game', GAME_W / 2, GAME_H / 2 + 44);
     }
 
     if (gameState === 'idle') {
@@ -2151,7 +2151,7 @@
 
       ctx.fillStyle = '#666';
       ctx.font = '11px sans-serif';
-      ctx.fillText('Press 1-3 to start  |  Enter for Classic', GAME_W / 2, GAME_H / 2 + 120);
+      ctx.fillText('Tap or press 1-3 to start  |  Enter for Classic', GAME_W / 2, GAME_H / 2 + 120);
     }
 
     if (gameState === 'levelComplete') {
@@ -2362,6 +2362,12 @@
 
   document.addEventListener('keyup', (e) => {
     keys[e.code] = false;
+  });
+
+  /* ── Click/Tap to start ── */
+  canvas.addEventListener('pointerdown', () => {
+    if (gameState === 'idle' || gameState === 'gameover')
+      newGame(gameMode || 'classic');
   });
 
   /* ================================================================
