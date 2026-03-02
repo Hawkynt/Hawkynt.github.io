@@ -1,0 +1,1085 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Online presentation editor with PPTX support and 60+ slide transitions">
+<meta name="robots" content="index,follow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Presentations -- SynthelicZ Desktop">
+<meta property="og:description" content="Online presentation editor with PPTX support and 60+ slide transitions">
+<meta property="og:url" content="https://hawkynt.github.io/sz/Applications/presentations/index.html">
+<link rel="canonical" href="https://hawkynt.github.io/sz/Applications/presentations/index.html">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Presentations",
+  "url": "https://hawkynt.github.io/sz/Applications/presentations/index.html",
+  "description": "Online presentation editor with PPTX support and 60+ slide transitions",
+  "applicationCategory": "BusinessApplication",
+  "operatingSystem": "Web Browser",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<title>Presentations</title>
+<script src="../sz-app-bootstrap.js"></script>
+<script src="../libs/jszip.min.js"></script>
+<link rel="stylesheet" href="../shared/ribbon.css">
+<link rel="stylesheet" href="../shared/dialog.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<noscript><p>Online presentation editor with PPTX support and 60+ slide transitions. <a href="../../index.html">Open SynthelicZ Desktop</a> to use this app.</p></noscript>
+
+<!-- Quick Access Toolbar -->
+<div class="qat" id="qat">
+  <button class="qat-btn" data-action="save" title="Save (Ctrl+S)">&#128190;</button>
+  <button class="qat-btn" data-action="undo" title="Undo (Ctrl+Z)">&#8630;</button>
+  <button class="qat-btn" data-action="redo" title="Redo (Ctrl+Y)">&#8631;</button>
+</div>
+
+<!-- Ribbon Tab Bar -->
+<div class="ribbon-tabs" id="ribbon-tabs">
+  <div class="ribbon-tab-bar">
+    <button class="ribbon-file-btn" id="ribbon-file-btn">File</button>
+    <button class="ribbon-tab active" data-tab="home">Home</button>
+    <button class="ribbon-tab" data-tab="insert">Insert</button>
+    <button class="ribbon-tab" data-tab="design">Design</button>
+    <button class="ribbon-tab" data-tab="transitions">Transitions</button>
+    <button class="ribbon-tab" data-tab="animations">Animations</button>
+    <button class="ribbon-tab" data-tab="slideshow">Slideshow</button>
+    <button class="ribbon-tab" data-tab="review">Review</button>
+    <button class="ribbon-tab" data-tab="view">View</button>
+    <button class="ribbon-tab ribbon-tab-contextual" data-tab="table-design" id="tab-table-design" style="display:none;color:#e06000;">Table Design</button>
+  </div>
+</div>
+
+<!-- File Backstage -->
+<div class="backstage" id="backstage">
+  <div class="backstage-sidebar">
+    <button class="backstage-back" id="backstage-back">&#8592;</button>
+    <button class="backstage-item" data-action="new">New</button>
+    <button class="backstage-item" data-action="open">Open</button>
+    <button class="backstage-item" data-action="save">Save</button>
+    <button class="backstage-item" data-action="save-as">Save As</button>
+    <div class="backstage-sep"></div>
+    <button class="backstage-item" data-action="export-png">Export as PNG</button>
+    <button class="backstage-item" data-action="export-pdf">Export as PDF</button>
+    <button class="backstage-item" data-action="print">Print</button>
+    <div class="backstage-sep"></div>
+    <button class="backstage-item" data-action="about">About</button>
+    <div class="backstage-spacer"></div>
+    <button class="backstage-item backstage-exit" data-action="exit">Exit</button>
+  </div>
+</div>
+
+<!-- === Ribbon Panels === -->
+
+<!-- Home Tab -->
+<div class="ribbon-panel active" data-panel="home" id="ribbon-home">
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="paste" title="Paste (Ctrl+V)">
+        <span class="rb-icon rb-icon-lg">&#128203;</span>
+        <span class="rb-label">Paste</span>
+      </button>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="cut" title="Cut (Ctrl+X)">
+          <span class="rb-icon">&#9986;</span><span class="rb-label">Cut</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="copy" title="Copy (Ctrl+C)">
+          <span class="rb-icon">&#128464;</span><span class="rb-label">Copy</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="format-painter" title="Format Painter (click to copy format, double-click for sticky)">
+          <span class="rb-icon">&#128396;</span><span class="rb-label">Format Painter</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Clipboard</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="new-slide" title="New Slide">
+        <span class="rb-icon rb-icon-lg">&#128196;</span>
+        <span class="rb-label">New Slide</span>
+      </button>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="show-layout-dropdown" title="Layout">
+          <span class="rb-icon">&#9638;</span><span class="rb-label">Layout</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="duplicate-slide" title="Duplicate Slide">
+          <span class="rb-icon">&#128464;</span><span class="rb-label">Duplicate</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="delete-slide" title="Delete Slide">
+          <span class="rb-icon">&#10060;</span><span class="rb-label">Delete</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Slides</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group ribbon-group-font">
+    <div class="ribbon-group-content">
+      <div class="rb-row">
+        <select class="rb-select rb-font-family" id="rb-font-family" title="Font Family">
+          <option>Arial</option><option>Calibri</option><option>Calibri Light</option>
+          <option>Cambria</option><option>Comic Sans MS</option><option>Consolas</option>
+          <option>Courier New</option><option>Georgia</option><option>Impact</option>
+          <option>Segoe UI</option><option>Tahoma</option><option>Times New Roman</option>
+          <option>Trebuchet MS</option><option>Verdana</option>
+        </select>
+        <select class="rb-select rb-font-size" id="rb-font-size" title="Font Size">
+          <option>8</option><option>9</option><option>10</option><option>11</option>
+          <option>12</option><option>14</option><option>16</option><option>18</option>
+          <option>20</option><option selected>24</option><option>28</option><option>32</option>
+          <option>36</option><option>48</option><option>60</option><option>72</option>
+        </select>
+      </div>
+      <div class="rb-row">
+        <button class="rb-btn rb-fmt" data-action="bold" title="Bold (Ctrl+B)"><b>B</b></button>
+        <button class="rb-btn rb-fmt" data-action="italic" title="Italic (Ctrl+I)"><i>I</i></button>
+        <button class="rb-btn rb-fmt" data-action="underline" title="Underline (Ctrl+U)"><u>U</u></button>
+        <div class="rb-sep-v"></div>
+        <span class="rb-color-wrap" title="Font Color">
+          <input type="color" class="rb-color" id="rb-font-color" value="#000000">
+          <span class="rb-color-label" id="rb-font-color-swatch" style="background:#000000;">A</span>
+        </span>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Font</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-row">
+        <button class="rb-btn rb-fmt" data-action="align-left" title="Align Left">&#9776;</button>
+        <button class="rb-btn rb-fmt" data-action="align-center" title="Center">&#8801;</button>
+        <button class="rb-btn rb-fmt" data-action="align-right" title="Align Right">&#8803;</button>
+      </div>
+      <div class="rb-row">
+        <button class="rb-btn rb-fmt" data-action="bullets" title="Bullets">&#8226; List</button>
+        <button class="rb-btn rb-fmt" data-action="numbering" title="Numbering">1. List</button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Paragraph</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="bring-front" title="Bring to Front">
+          <span class="rb-icon">&#8679;</span><span class="rb-label">Front</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="send-back" title="Send to Back">
+          <span class="rb-icon">&#8681;</span><span class="rb-label">Back</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="bring-forward" title="Bring Forward">
+          <span class="rb-icon">&#8593;</span><span class="rb-label">Forward</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="group" title="Group (Ctrl+G)">
+          <span class="rb-icon">&#9744;</span><span class="rb-label">Group</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="ungroup" title="Ungroup (Ctrl+Shift+G)">
+          <span class="rb-icon">&#9638;</span><span class="rb-label">Ungroup</span>
+        </button>
+      </div>
+      <div class="rb-dropdown">
+        <button class="rb-btn rb-btn-sm" title="Align Objects">
+          <span class="rb-icon">&#9638;</span><span class="rb-label">Align &#9660;</span>
+        </button>
+        <div class="rb-dropdown-menu">
+          <button data-action="elem-align-left">Align Left</button>
+          <button data-action="elem-align-center">Align Center</button>
+          <button data-action="elem-align-right">Align Right</button>
+          <hr>
+          <button data-action="elem-align-top">Align Top</button>
+          <button data-action="elem-align-middle">Align Middle</button>
+          <button data-action="elem-align-bottom">Align Bottom</button>
+          <hr>
+          <button data-action="distribute-h">Distribute Horizontally</button>
+          <button data-action="distribute-v">Distribute Vertically</button>
+        </div>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Arrange</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-sm" data-action="find-replace" title="Find & Replace (Ctrl+F)">
+        <span class="rb-icon">&#128270;</span><span class="rb-label">Find &amp; Replace</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Editing</div>
+  </div>
+
+</div>
+
+<!-- Insert Tab -->
+<div class="ribbon-panel" data-panel="insert" id="ribbon-insert">
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="new-slide" title="New Slide">
+        <span class="rb-icon rb-icon-lg">&#128196;</span>
+        <span class="rb-label">New Slide</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Slides</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="insert-image" title="Insert Image">
+        <span class="rb-icon rb-icon-lg">&#128247;</span>
+        <span class="rb-label">Image</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Images</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="insert-textbox" title="Insert Text Box">
+        <span class="rb-icon rb-icon-lg">&#128221;</span>
+        <span class="rb-label">Text Box</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Text</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="insert-shape-rect" title="Rectangle">
+          <span class="rb-icon">&#9632;</span><span class="rb-label">Rectangle</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-shape-ellipse" title="Ellipse">
+          <span class="rb-icon">&#9679;</span><span class="rb-label">Ellipse</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="show-shapes-dropdown" title="More Shapes">
+          <span class="rb-icon">&#9660;</span><span class="rb-label">More...</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Shapes</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="insert-table" title="Insert Table">
+        <span class="rb-icon rb-icon-lg">&#9638;</span>
+        <span class="rb-label">Table</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Table</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="insert-hyperlink" title="Insert Hyperlink">
+          <span class="rb-icon">&#128279;</span><span class="rb-label">Hyperlink</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="header-footer" title="Header & Footer">
+          <span class="rb-icon">#</span><span class="rb-label">Header &amp; Footer</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Links</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="insert-video" title="Insert Video">
+          <span class="rb-icon">&#127909;</span><span class="rb-label">Video</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-audio" title="Insert Audio">
+          <span class="rb-icon">&#127925;</span><span class="rb-label">Audio</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Media</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="insert-chart" title="Insert Chart">
+          <span class="rb-icon">&#128202;</span><span class="rb-label">Chart</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-smartart" title="Insert SmartArt">
+          <span class="rb-icon">&#128736;</span><span class="rb-label">SmartArt</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Illustrations</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="insert-action-button" title="Insert Action Button">
+          <span class="rb-icon">&#9654;</span><span class="rb-label">Action Button</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-connector" title="Insert Connector Line">
+          <span class="rb-icon">&#8594;</span><span class="rb-label">Connector</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="photo-album" title="Photo Album">
+          <span class="rb-icon">&#127748;</span><span class="rb-label">Photo Album</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Extras</div>
+  </div>
+
+</div>
+
+<!-- Design Tab -->
+<div class="ribbon-panel" data-panel="design" id="ribbon-design">
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="theme-gallery" id="theme-gallery"></div>
+    </div>
+    <div class="ribbon-group-label">Themes</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="format-background" title="Format Background">
+        <span class="rb-icon rb-icon-lg">&#127912;</span>
+        <span class="rb-label">Background</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Customize</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="element-shadow" title="Toggle Element Shadow">
+          <span class="rb-icon">&#9632;</span><span class="rb-label">Shadow</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="element-3d" title="3D Perspective">
+          <span class="rb-icon">&#9670;</span><span class="rb-label">3D Effects</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="text-shadow" title="Text Shadow">
+          <span class="rb-icon">A</span><span class="rb-label">Text Shadow</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="text-glow" title="Text Glow">
+          <span class="rb-icon">A</span><span class="rb-label">Glow</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="text-reflection" title="Text Reflection">
+          <span class="rb-icon">A</span><span class="rb-label">Reflection</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Effects</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="edit-master" title="Edit Slide Master">
+        <span class="rb-icon rb-icon-lg">&#9638;</span>
+        <span class="rb-label">Edit Master</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Master</div>
+  </div>
+
+</div>
+
+<!-- Transitions Tab -->
+<div class="ribbon-panel" data-panel="transitions" id="ribbon-transitions">
+
+  <div class="ribbon-group" style="flex:1;">
+    <div class="ribbon-group-content">
+      <div class="transition-gallery" id="transition-gallery"></div>
+    </div>
+    <div class="ribbon-group-label">Transition to This Slide</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <div class="rb-row" style="align-items:center;gap:4px;">
+          <label style="font-size:11px;">Duration:</label>
+          <input type="number" id="transition-duration" min="0.1" max="5" step="0.1" value="0.5" style="width:50px;font-size:11px;" title="Transition duration (seconds)">
+          <span style="font-size:11px;">s</span>
+        </div>
+        <button class="rb-btn rb-btn-sm" data-action="apply-transition-all" title="Apply to All Slides">
+          <span class="rb-icon">&#10004;</span><span class="rb-label">Apply to All</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="preview-transition" title="Preview Transition">
+          <span class="rb-icon">&#9654;</span><span class="rb-label">Preview</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Timing</div>
+  </div>
+
+</div>
+
+<!-- Animations Tab -->
+<div class="ribbon-panel" data-panel="animations" id="ribbon-animations">
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-dropdown">
+        <button class="rb-btn rb-btn-lg" title="Add Animation">
+          <span class="rb-icon rb-icon-lg">&#9889;</span>
+          <span class="rb-label">Add &#9660;</span>
+        </button>
+        <div class="rb-dropdown-menu" id="anim-presets-menu">
+          <div class="anim-category-label">Entrance</div>
+          <button data-action="anim-appear">Appear</button>
+          <button data-action="anim-fade-in">Fade In</button>
+          <button data-action="anim-fly-in">Fly In</button>
+          <button data-action="anim-wipe">Wipe</button>
+          <button data-action="anim-zoom-in">Zoom In</button>
+          <button data-action="anim-bounce">Bounce</button>
+          <button data-action="anim-float-in">Float In</button>
+          <div class="anim-category-label">Emphasis</div>
+          <button data-action="anim-pulse">Pulse</button>
+          <button data-action="anim-grow-shrink">Grow/Shrink</button>
+          <button data-action="anim-spin">Spin</button>
+          <button data-action="anim-color-change">Color Change</button>
+          <button data-action="anim-transparency">Transparency</button>
+          <div class="anim-category-label">Exit</div>
+          <button data-action="anim-disappear">Disappear</button>
+          <button data-action="anim-fade-out">Fade Out</button>
+          <button data-action="anim-fly-out">Fly Out</button>
+          <button data-action="anim-shrink">Shrink</button>
+          <button data-action="anim-zoom-out">Zoom Out</button>
+          <div class="anim-category-label">Motion Path</div>
+          <button data-action="anim-motion-line">Line</button>
+          <button data-action="anim-motion-arc">Arc</button>
+        </div>
+      </div>
+      <button class="rb-btn rb-btn-lg" data-action="remove-animation" title="Remove Animation">
+        <span class="rb-icon rb-icon-lg">&#10060;</span>
+        <span class="rb-label">Remove</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Animation</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <div class="rb-row" style="align-items:center;gap:4px;">
+          <label style="font-size:11px;">Trigger:</label>
+          <select id="anim-trigger" style="font-size:11px;width:120px;" data-action="anim-trigger">
+            <option value="on-click">On Click</option>
+            <option value="with-previous">With Previous</option>
+            <option value="after-previous">After Previous</option>
+          </select>
+        </div>
+        <div class="rb-row" style="align-items:center;gap:4px;">
+          <label style="font-size:11px;">Duration:</label>
+          <select id="anim-duration" style="font-size:11px;width:120px;" data-action="anim-duration">
+            <option value="200">Very Fast (0.2s)</option>
+            <option value="500" selected>Fast (0.5s)</option>
+            <option value="1000">Medium (1s)</option>
+            <option value="2000">Slow (2s)</option>
+            <option value="3000">Very Slow (3s)</option>
+          </select>
+        </div>
+        <div class="rb-row" style="align-items:center;gap:4px;">
+          <label style="font-size:11px;">Delay:</label>
+          <input type="number" id="anim-delay" min="0" max="10000" step="100" value="0" style="width:60px;font-size:11px;" title="Delay (ms)">
+          <span style="font-size:11px;">ms</span>
+        </div>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Timing</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="preview-animation" title="Preview Animation">
+          <span class="rb-icon">&#9654;</span><span class="rb-label">Preview</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="toggle-animation-pane" title="Animation Pane">
+          <span class="rb-icon">&#9776;</span><span class="rb-label">Animation Pane</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Preview</div>
+  </div>
+
+</div>
+
+<!-- Slideshow Tab -->
+<div class="ribbon-panel" data-panel="slideshow" id="ribbon-slideshow">
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="slideshow-start" title="From Beginning (F5)">
+        <span class="rb-icon rb-icon-lg">&#9654;</span>
+        <span class="rb-label">From Start</span>
+      </button>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="slideshow-current" title="From Current Slide (Shift+F5)">
+          <span class="rb-icon">&#9654;</span><span class="rb-label">From Current</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="presenter-view" title="Presenter View">
+          <span class="rb-icon">&#128187;</span><span class="rb-label">Presenter View</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Start Slideshow</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <div class="rb-row" style="align-items:center;gap:4px;">
+          <input type="checkbox" id="ss-loop" title="Loop slideshow">
+          <label for="ss-loop" style="font-size:11px;">Loop</label>
+        </div>
+        <div class="rb-row" style="align-items:center;gap:4px;">
+          <input type="checkbox" id="ss-auto-advance" title="Auto advance slides">
+          <label for="ss-auto-advance" style="font-size:11px;">Auto-advance</label>
+        </div>
+        <div class="rb-row" style="align-items:center;gap:4px;">
+          <label style="font-size:11px;">Interval:</label>
+          <input type="number" id="ss-interval" min="1" max="120" value="5" style="width:40px;font-size:11px;">
+          <span style="font-size:11px;">s</span>
+        </div>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Setup</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="rehearse-timings" title="Rehearse Timings">
+          <span class="rb-icon">&#9201;</span><span class="rb-label">Rehearse</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="custom-shows" title="Custom Slide Show">
+          <span class="rb-icon">&#128196;</span><span class="rb-label">Custom Show</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="add-section" title="Add Section">
+          <span class="rb-icon">&#9776;</span><span class="rb-label">Add Section</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Custom</div>
+  </div>
+
+</div>
+
+<!-- Review Tab -->
+<div class="ribbon-panel" data-panel="review" id="ribbon-review">
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="spell-check" id="btn-spell-check" title="Toggle Spell Check">
+        <span class="rb-icon rb-icon-lg">&#9998;</span>
+        <span class="rb-label">Spelling</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Proofing</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="toggle-comments-panel" title="Toggle Comments Panel">
+        <span class="rb-icon rb-icon-lg">&#128172;</span>
+        <span class="rb-label">Comments</span>
+      </button>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="add-comment" title="Add Comment">
+          <span class="rb-icon">+</span><span class="rb-label">New Comment</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Comments</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="find-replace" title="Find & Replace (Ctrl+F)">
+        <span class="rb-icon rb-icon-lg">&#128270;</span>
+        <span class="rb-label">Find &amp; Replace</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Editing</div>
+  </div>
+
+</div>
+
+<!-- View Tab -->
+<div class="ribbon-panel" data-panel="view" id="ribbon-view">
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="view-normal" title="Normal View">
+          <span class="rb-icon">&#9638;</span><span class="rb-label">Normal</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="view-sorter" title="Slide Sorter">
+          <span class="rb-icon">&#9642;&#9642;</span><span class="rb-label">Slide Sorter</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="view-notes" title="Notes Page">
+          <span class="rb-icon">&#128221;</span><span class="rb-label">Notes Page</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Views</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="zoom-fit" title="Fit Slide">
+          <span class="rb-icon">&#128269;</span><span class="rb-label">Fit Slide</span>
+        </button>
+        <div class="rb-row" style="align-items:center;gap:4px;">
+          <label style="font-size:11px;">Zoom:</label>
+          <input type="range" id="zoom-slider" min="25" max="200" value="100" style="width:80px;" title="Zoom">
+          <span id="zoom-value" style="font-size:11px;min-width:30px;">100%</span>
+        </div>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Zoom</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <div class="rb-row" style="align-items:center;gap:4px;">
+          <input type="checkbox" id="show-notes" checked title="Show speaker notes panel">
+          <label for="show-notes" style="font-size:11px;">Notes</label>
+        </div>
+        <button class="rb-btn rb-btn-sm" data-action="toggle-snap" id="btn-toggle-snap" title="Toggle Snap to Grid">
+          <span class="rb-icon">&#9638;</span><span class="rb-label">Snap to Grid</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="toggle-rulers" title="Toggle Rulers">
+          <span class="rb-icon">&#128207;</span><span class="rb-label">Rulers</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="toggle-format-panel" title="Format Shape Panel">
+          <span class="rb-icon">&#9638;</span><span class="rb-label">Format Panel</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Show</div>
+  </div>
+
+</div>
+
+<!-- Table Design Tab (contextual) -->
+<div class="ribbon-panel" data-panel="table-design" id="ribbon-table-design">
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="table-style-default" title="Default">
+          <span class="rb-icon">&#9638;</span><span class="rb-label">Default</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="table-style-banded-blue" title="Banded Blue">
+          <span class="rb-icon">&#9638;</span><span class="rb-label">Banded Blue</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="table-style-banded-green" title="Banded Green">
+          <span class="rb-icon">&#9638;</span><span class="rb-label">Banded Green</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="table-style-dark" title="Dark">
+          <span class="rb-icon">&#9638;</span><span class="rb-label">Dark</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="table-style-minimal" title="Minimal">
+          <span class="rb-icon">&#9638;</span><span class="rb-label">Minimal</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="table-style-accent-orange" title="Accent Orange">
+          <span class="rb-icon">&#9638;</span><span class="rb-label">Accent Orange</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="table-style-header-only" title="Header Only">
+          <span class="rb-icon">&#9638;</span><span class="rb-label">Header Only</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="table-style-no-banding" title="No Banding">
+          <span class="rb-icon">&#9638;</span><span class="rb-label">No Banding</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Table Styles</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <div class="rb-row" style="align-items:center;gap:4px;">
+          <input type="checkbox" id="tbl-header-row" checked>
+          <label for="tbl-header-row" style="font-size:11px;">Header Row</label>
+        </div>
+        <div class="rb-row" style="align-items:center;gap:4px;">
+          <input type="checkbox" id="tbl-banded-rows" checked>
+          <label for="tbl-banded-rows" style="font-size:11px;">Banded Rows</label>
+        </div>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Options</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="table-borders" title="Table Borders">
+        <span class="rb-icon rb-icon-lg">&#9638;</span>
+        <span class="rb-label">Borders</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Borders</div>
+  </div>
+
+</div>
+
+<!-- === Slide Sorter (hidden by default) === -->
+<div class="slide-sorter" id="slide-sorter"></div>
+
+<!-- === Main App Layout === -->
+<div class="app-layout" id="app-layout">
+  <div class="slide-panel" id="slide-panel">
+    <div class="slide-thumbs" id="slide-thumbs"></div>
+    <button class="add-slide-btn" data-action="new-slide">+ Add Slide</button>
+  </div>
+  <div class="editor-area" id="editor-area">
+    <div class="canvas-viewport" id="canvas-viewport">
+      <div class="slide-canvas" id="slide-canvas" style="width:960px;height:540px;"></div>
+    </div>
+  </div>
+  <div id="animation-pane" class="animation-pane" style="display:none">
+    <div class="animation-pane-header">
+      <span>Animation Pane</span>
+      <button id="anim-pane-close" title="Close">&times;</button>
+    </div>
+    <div id="animation-pane-list" class="animation-pane-list"></div>
+    <div class="animation-pane-actions">
+      <button id="anim-pane-move-up" title="Move Up">&#9650;</button>
+      <button id="anim-pane-move-down" title="Move Down">&#9660;</button>
+    </div>
+  </div>
+  <div id="comments-panel" class="comments-panel" style="display:none">
+    <div class="comments-panel-header"><span>Comments</span><button id="comments-close">&times;</button></div>
+    <div id="comments-list" class="comments-list"></div>
+    <div class="comments-add"><button data-action="add-comment">Add Comment</button></div>
+  </div>
+  <div id="shape-format-panel" class="shape-format-panel" style="display:none">
+    <div class="shape-format-header"><span>Format Shape</span><button id="shape-format-close">&times;</button></div>
+    <div class="shape-format-body">
+      <details open>
+        <summary>Fill</summary>
+        <div class="sfp-section">
+          <select id="sfp-fill-type" style="width:100%;font-size:11px;margin-bottom:4px;">
+            <option value="solid">Solid</option>
+            <option value="gradient">Gradient</option>
+            <option value="none">No Fill</option>
+          </select>
+          <div id="sfp-fill-solid" class="sfp-row">
+            <label>Color:</label>
+            <input type="color" id="sfp-fill-color" value="#4472c4">
+          </div>
+          <div id="sfp-fill-gradient" class="sfp-row" style="display:none;">
+            <label>From:</label><input type="color" id="sfp-grad-from" value="#4472c4">
+            <label>To:</label><input type="color" id="sfp-grad-to" value="#ffffff">
+          </div>
+        </div>
+      </details>
+      <details open>
+        <summary>Line</summary>
+        <div class="sfp-section">
+          <div class="sfp-row"><label>Color:</label><input type="color" id="sfp-line-color" value="#000000"></div>
+          <div class="sfp-row"><label>Width:</label><input type="number" id="sfp-line-width" min="0" max="20" step="0.5" value="0" style="width:50px;font-size:11px;">px</div>
+          <div class="sfp-row"><label>Dash:</label>
+            <select id="sfp-line-dash" style="font-size:11px;">
+              <option value="solid">Solid</option>
+              <option value="dashed">Dashed</option>
+              <option value="dotted">Dotted</option>
+            </select>
+          </div>
+        </div>
+      </details>
+      <details>
+        <summary>Shadow</summary>
+        <div class="sfp-section">
+          <div class="sfp-row"><input type="checkbox" id="sfp-shadow-on"><label for="sfp-shadow-on">Enable Shadow</label></div>
+          <div class="sfp-row"><label>Offset X:</label><input type="number" id="sfp-shadow-ox" min="-20" max="20" value="3" style="width:45px;font-size:11px;">px</div>
+          <div class="sfp-row"><label>Offset Y:</label><input type="number" id="sfp-shadow-oy" min="-20" max="20" value="3" style="width:45px;font-size:11px;">px</div>
+          <div class="sfp-row"><label>Blur:</label><input type="number" id="sfp-shadow-blur" min="0" max="30" value="6" style="width:45px;font-size:11px;">px</div>
+        </div>
+      </details>
+      <details open>
+        <summary>Size &amp; Position</summary>
+        <div class="sfp-section">
+          <div class="sfp-row"><label>X:</label><input type="number" id="sfp-pos-x" style="width:60px;font-size:11px;">px</div>
+          <div class="sfp-row"><label>Y:</label><input type="number" id="sfp-pos-y" style="width:60px;font-size:11px;">px</div>
+          <div class="sfp-row"><label>W:</label><input type="number" id="sfp-size-w" min="1" style="width:60px;font-size:11px;">px</div>
+          <div class="sfp-row"><label>H:</label><input type="number" id="sfp-size-h" min="1" style="width:60px;font-size:11px;">px</div>
+        </div>
+      </details>
+      <details>
+        <summary>Text Options</summary>
+        <div class="sfp-section">
+          <div class="sfp-row"><label>Align:</label>
+            <select id="sfp-text-align" style="font-size:11px;">
+              <option value="left">Left</option>
+              <option value="center">Center</option>
+              <option value="right">Right</option>
+            </select>
+          </div>
+          <div class="sfp-row"><label>Margin:</label><input type="number" id="sfp-text-margin" min="0" max="50" value="8" style="width:45px;font-size:11px;">px</div>
+        </div>
+      </details>
+    </div>
+  </div>
+  <div class="notes-panel" id="notes-panel">
+    <div class="notes-label">Speaker Notes</div>
+    <textarea class="notes-editor" id="notes-editor" placeholder="Click to add notes"></textarea>
+  </div>
+</div>
+<div class="status-bar" id="status-bar">
+  <span id="slide-count">Slide 1 of 1</span>
+  <span id="zoom-status">100%</span>
+</div>
+
+<!-- === Dialogs === -->
+
+<!-- Insert Table Dialog -->
+<div class="pp-dialog-overlay dialog-overlay" id="dlg-insert-table">
+  <div class="pp-dialog">
+    <h3>Insert Table</h3>
+    <label for="table-rows">Rows:</label>
+    <input type="number" id="table-rows" min="1" max="20" value="3">
+    <label for="table-cols">Columns:</label>
+    <input type="number" id="table-cols" min="1" max="10" value="3">
+    <div class="dlg-buttons">
+      <button data-result="cancel">Cancel</button>
+      <button class="primary" data-result="ok" data-default>Insert</button>
+    </div>
+  </div>
+</div>
+
+<!-- Format Background Dialog -->
+<div class="pp-dialog-overlay dialog-overlay" id="dlg-format-bg">
+  <div class="pp-dialog" style="min-width:340px;">
+    <h3>Format Background</h3>
+    <div class="bg-type-tabs">
+      <button class="bg-type-tab active" data-bg-type="solid">Solid</button>
+      <button class="bg-type-tab" data-bg-type="gradient">Gradient</button>
+      <button class="bg-type-tab" data-bg-type="image">Image</button>
+    </div>
+    <div class="bg-section active" id="bg-section-solid">
+      <label for="bg-color-input">Color:</label>
+      <input type="color" id="bg-color-input" value="#ffffff">
+    </div>
+    <div class="bg-section" id="bg-section-gradient">
+      <label for="bg-gradient-1">Color 1:</label>
+      <input type="color" id="bg-gradient-1" value="#ffffff">
+      <label for="bg-gradient-2">Color 2:</label>
+      <input type="color" id="bg-gradient-2" value="#4472c4">
+      <label for="bg-gradient-dir">Direction:</label>
+      <select id="bg-gradient-dir">
+        <option value="to bottom">Top to Bottom</option>
+        <option value="to right">Left to Right</option>
+        <option value="to bottom right">Diagonal</option>
+        <option value="to top">Bottom to Top</option>
+      </select>
+      <div class="gradient-preview" id="gradient-preview"></div>
+    </div>
+    <div class="bg-section" id="bg-section-image">
+      <button class="rb-btn" data-action="bg-choose-image" style="margin:8px 0;">Choose Image...</button>
+      <div id="bg-image-preview" style="max-height:80px;overflow:hidden;margin-top:8px;"></div>
+    </div>
+    <div class="dlg-buttons" style="margin-top:16px;">
+      <button data-result="apply-all">Apply to All</button>
+      <button data-result="cancel">Cancel</button>
+      <button class="primary" data-result="ok" data-default>Apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- Find & Replace Dialog (Feature 6) -->
+<div class="pp-dialog-overlay" id="dlg-find-replace" style="display:none">
+  <div class="pp-dialog" style="width:400px">
+    <h3>Find and Replace</h3>
+    <div class="pp-dlg-field"><label>Find:</label><input type="text" id="fr-find-input"></div>
+    <div class="pp-dlg-field"><label>Replace:</label><input type="text" id="fr-replace-input"></div>
+    <div class="pp-dlg-field" style="display:flex;gap:12px;">
+      <label style="display:inline-flex;align-items:center;gap:4px;"><input type="checkbox" id="fr-match-case"> Match case</label>
+      <label style="display:inline-flex;align-items:center;gap:4px;"><input type="checkbox" id="fr-whole-word"> Whole word</label>
+    </div>
+    <div id="fr-status" style="padding:4px 0;font-size:11px;color:#666"></div>
+    <div class="dlg-buttons" style="display:flex;gap:6px;flex-wrap:wrap">
+      <button id="fr-find-prev">Find Prev</button>
+      <button id="fr-find-next">Find Next</button>
+      <button id="fr-replace-btn">Replace</button>
+      <button id="fr-replace-all">Replace All</button>
+      <button id="fr-close">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Hyperlink Dialog (Feature 8) -->
+<div class="pp-dialog-overlay" id="dlg-hyperlink" style="display:none">
+  <div class="pp-dialog" style="width:380px">
+    <h3>Insert Hyperlink</h3>
+    <div class="pp-dlg-field"><label>URL:</label><input type="text" id="hl-url" placeholder="https://"></div>
+    <div class="pp-dlg-field"><label>Tooltip:</label><input type="text" id="hl-tooltip" placeholder="Optional tooltip"></div>
+    <div class="dlg-buttons">
+      <button id="hl-remove" style="margin-right:auto">Remove Link</button>
+      <button id="hl-cancel">Cancel</button>
+      <button class="primary" id="hl-ok">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Header & Footer Dialog (Feature 9) -->
+<div class="pp-dialog-overlay" id="dlg-header-footer" style="display:none">
+  <div class="pp-dialog" style="width:420px">
+    <h3>Header and Footer</h3>
+    <div class="pp-dlg-field">
+      <label style="display:inline-flex;align-items:center;gap:4px;"><input type="checkbox" id="hf-date"> Date and time</label>
+    </div>
+    <div style="padding-left:20px;margin-bottom:8px;"><input type="text" id="hf-date-text" placeholder="Date text" style="width:100%;box-sizing:border-box;padding:4px 6px;border:1px solid #ccc;border-radius:3px;font:inherit;"></div>
+    <div class="pp-dlg-field">
+      <label style="display:inline-flex;align-items:center;gap:4px;"><input type="checkbox" id="hf-slide-number"> Slide number</label>
+    </div>
+    <div class="pp-dlg-field">
+      <label style="display:inline-flex;align-items:center;gap:4px;"><input type="checkbox" id="hf-footer"> Footer</label>
+    </div>
+    <div style="padding-left:20px;margin-bottom:8px;"><input type="text" id="hf-footer-text" placeholder="Footer text" style="width:100%;box-sizing:border-box;padding:4px 6px;border:1px solid #ccc;border-radius:3px;font:inherit;"></div>
+    <hr style="border:none;border-top:1px solid #ddd;margin:8px 0;">
+    <div class="pp-dlg-field">
+      <label style="display:inline-flex;align-items:center;gap:4px;"><input type="checkbox" id="hf-not-title" checked> Don't show on title slide</label>
+    </div>
+    <div class="dlg-buttons">
+      <button id="hf-cancel">Cancel</button>
+      <button class="primary" id="hf-apply-all">Apply to All</button>
+    </div>
+  </div>
+</div>
+
+<!-- Alt Text Dialog (Feature: Alt Text for Images) -->
+<div class="pp-dialog-overlay" id="dlg-alt-text" style="display:none">
+  <div class="pp-dialog" style="width:380px">
+    <h3>Edit Alt Text</h3>
+    <div class="pp-dlg-field"><label>Title:</label><input type="text" id="alt-text-title" placeholder="Short title"></div>
+    <div class="pp-dlg-field"><label>Description:</label><textarea id="alt-text-desc" rows="4" placeholder="Describe this image for accessibility" style="width:100%;box-sizing:border-box;padding:4px 6px;border:1px solid #ccc;border-radius:3px;font:inherit;resize:vertical;"></textarea></div>
+    <div class="dlg-buttons">
+      <button id="alt-cancel">Cancel</button>
+      <button class="primary" id="alt-ok">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Custom Slide Shows Dialog (Feature 18) -->
+<div class="pp-dialog-overlay" id="dlg-custom-shows" style="display:none">
+  <div class="pp-dialog" style="width:420px">
+    <h3>Custom Slide Shows</h3>
+    <select id="cs-list" size="6" style="width:100%;margin-bottom:8px;"></select>
+    <div style="display:flex;gap:4px">
+      <button id="cs-new">New...</button>
+      <button id="cs-edit">Edit...</button>
+      <button id="cs-delete">Delete</button>
+      <button id="cs-show">Show</button>
+    </div>
+    <div class="dlg-buttons" style="margin-top:12px;">
+      <button class="pp-dlg-cancel">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Hidden print container for PDF export -->
+<div id="print-container" class="print-container"></div>
+
+<!-- Scripts loaded in dependency order -->
+<link rel="stylesheet" href="../shared/color-palette.css">
+<link rel="stylesheet" href="../shared/border-picker.css">
+<script defer src="../shared/ribbon.js"></script>
+<script defer src="../shared/dialog.js"></script>
+<script defer src="../shared/spell-check-core.js"></script>
+<script defer src="../shared/format-painter.js"></script>
+<script defer src="../shared/color-palette.js"></script>
+<script defer src="../shared/font-picker.js"></script>
+<script defer src="../shared/find-replace.js"></script>
+<script defer src="../shared/border-picker.js"></script>
+<script defer src="slide-renderer.js"></script>
+<script defer src="pptx-engine.js"></script>
+<script defer src="animation-engine.js"></script>
+<script defer src="slideshow-mode.js"></script>
+<script defer src="../wordpad/dictionary-en.js"></script>
+<script defer src="spell-check.js"></script>
+<script defer src="comments.js"></script>
+<script defer src="presenter-view.js"></script>
+<script defer src="chart-element.js"></script>
+<script defer src="smartart-engine.js"></script>
+<script defer src="controller.js"></script>
+</body>
+</html>
