@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <!-- Brain outline -->
+  <ellipse cx="24" cy="22" rx="16" ry="14" fill="none" stroke="#88f" stroke-width="2"/>
+  <!-- Brain folds -->
+  <path d="M16 18 Q20 12 24 18 Q28 12 32 18" fill="none" stroke="#88f" stroke-width="1.5"/>
+  <path d="M14 24 Q20 20 24 24 Q28 20 34 24" fill="none" stroke="#88f" stroke-width="1.5"/>
+  <!-- Reality fracture -->
+  <line x1="24" y1="8" x2="24" y2="36" stroke="#f44" stroke-width="1" stroke-dasharray="2,2"/>
+  <!-- Glow orb -->
+  <circle cx="24" cy="22" r="4" fill="#ffd700" opacity="0.7"/>
+  <circle cx="24" cy="22" r="2" fill="#fff"/>
+  <!-- Portal door -->
+  <rect x="36" y="32" width="8" height="12" rx="2" fill="#4a90d9" opacity="0.8"/>
+  <!-- Question mark -->
+  <text x="8" y="44" font-size="10" fill="#aaa" font-family="sans-serif">?</text>
+</svg>
