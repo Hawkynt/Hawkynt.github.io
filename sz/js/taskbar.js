@@ -117,16 +117,18 @@
       const body = document.createElement('div');
       body.className = 'sz-start-body';
 
-      // Left column
-      this.#leftCol = document.createElement('div');
+      // Left column with scroll arrows
+      const leftWrap = this.#buildScrollCol();
+      this.#leftCol = leftWrap.content;
       this.#leftCol.className = 'sz-start-left';
-      body.appendChild(this.#leftCol);
+      body.appendChild(leftWrap.wrapper);
 
-      // Right column: system folders
-      const rightCol = document.createElement('div');
+      // Right column with scroll arrows
+      const rightWrap = this.#buildScrollCol();
+      const rightCol = rightWrap.content;
       rightCol.className = 'sz-start-right';
       this.#buildRightColumn(rightCol);
-      body.appendChild(rightCol);
+      body.appendChild(rightWrap.wrapper);
 
       // Flyout for category submenus — appended to taskbar element
       // (outside start menu to avoid overflow:hidden clipping)
@@ -310,12 +312,32 @@
         this.#flyout.appendChild(el);
       }
 
-      // Position the flyout to the right of the start menu
+      // Position the flyout — prefer right of menu, fall back to overlap/left
       const menuRect = this.#startMenu.getBoundingClientRect();
       const anchorRect = anchorEl.getBoundingClientRect();
-      this.#flyout.style.left = menuRect.right + 'px';
-      this.#flyout.style.bottom = (window.innerHeight - anchorRect.bottom) + 'px';
+      const flyoutWidth = Math.min(200, window.innerWidth - 20);
+
+      // Try right side first
+      let flyoutLeft = menuRect.right;
+      // If it would overflow the viewport, shift left to fit
+      if (flyoutLeft + flyoutWidth > window.innerWidth - 5)
+        flyoutLeft = Math.max(5, window.innerWidth - flyoutWidth - 5);
+
+      // Vertical positioning: align with anchor, clamp to viewport
+      let flyoutBottom = window.innerHeight - anchorRect.bottom;
+      this.#flyout.style.left = flyoutLeft + 'px';
+      this.#flyout.style.bottom = Math.max(5, flyoutBottom) + 'px';
+      this.#flyout.style.top = '';
       this.#flyout.classList.add('visible');
+
+      // After rendering, check if flyout overflows top of viewport
+      requestAnimationFrame(() => {
+        const flyoutRect = this.#flyout.getBoundingClientRect();
+        if (flyoutRect.top < 5) {
+          this.#flyout.style.bottom = '';
+          this.#flyout.style.top = '5px';
+        }
+      });
     }
 
     // -----------------------------------------------------------------
@@ -397,6 +419,63 @@
           this.#showItemContextMenu(appId, onClick, e.clientX, e.clientY);
         });
       return el;
+    }
+
+    #buildScrollCol() {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'sz-scroll-col';
+
+      const arrowUp = document.createElement('div');
+      arrowUp.className = 'sz-scroll-arrow';
+      arrowUp.textContent = '\u25B2';
+
+      const content = document.createElement('div');
+
+      const arrowDown = document.createElement('div');
+      arrowDown.className = 'sz-scroll-arrow';
+      arrowDown.textContent = '\u25BC';
+
+      wrapper.appendChild(arrowUp);
+      wrapper.appendChild(content);
+      wrapper.appendChild(arrowDown);
+
+      const updateArrows = () => {
+        const canUp = content.scrollTop > 0;
+        const canDown = content.scrollTop + content.clientHeight < content.scrollHeight - 1;
+        arrowUp.classList.toggle('visible', canUp);
+        arrowDown.classList.toggle('visible', canDown);
+      };
+
+      content.addEventListener('scroll', updateArrows);
+
+      let scrollInterval = null;
+      const startScroll = (dir) => {
+        if (scrollInterval) return;
+        scrollInterval = setInterval(() => content.scrollBy(0, dir * 40), 100);
+      };
+      const stopScroll = () => {
+        if (scrollInterval) {
+          clearInterval(scrollInterval);
+          scrollInterval = null;
+        }
+      };
+
+      arrowUp.addEventListener('pointerdown', (e) => { e.stopPropagation(); startScroll(-1); });
+      arrowDown.addEventListener('pointerdown', (e) => { e.stopPropagation(); startScroll(1); });
+      arrowUp.addEventListener('pointerup', stopScroll);
+      arrowDown.addEventListener('pointerup', stopScroll);
+      arrowUp.addEventListener('pointerleave', stopScroll);
+      arrowDown.addEventListener('pointerleave', stopScroll);
+
+      // Observe size/content changes to update arrows
+      const observer = new ResizeObserver(updateArrows);
+      observer.observe(content);
+
+      // Also re-check after DOM mutations (items added/removed)
+      const mutObserver = new MutationObserver(updateArrows);
+      mutObserver.observe(content, { childList: true, subtree: true });
+
+      return { wrapper, content, arrowUp, arrowDown, updateArrows };
     }
 
     #showItemContextMenu(appId, onLaunch, x, y) {

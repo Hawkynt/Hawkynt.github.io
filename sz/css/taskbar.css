@@ -177,7 +177,7 @@
   position: absolute;
   bottom: 100%;
   left: 0;
-  width: 380px;
+  width: min(380px, calc(100vw - 10px));
   max-height: calc(100vh - 40px);
   background: var(--sz-color-button-face, #eeeddd);
   border: 2px solid var(--sz-color-highlight, #316ac5);
@@ -233,15 +233,18 @@
   flex: 1;
   background: white;
   padding: 4px 0;
-  border-right: 1px solid var(--sz-color-button-shadow, #cac6af);
   overflow-y: auto;
+  position: relative;
+  scrollbar-width: thin;
 }
 
 .sz-start-right {
-  width: 150px;
+  flex: 1;
   padding: 4px 0;
   background: var(--sz-color-button-face, #eeeddd);
   overflow-y: auto;
+  position: relative;
+  scrollbar-width: thin;
 }
 
 /* Footer (log off / turn off) */
@@ -360,7 +363,9 @@
 
 .sz-start-flyout {
   position: fixed;
-  width: 200px;
+  width: min(200px, calc(100vw - 20px));
+  max-height: calc(100vh - 60px);
+  overflow-y: auto;
   background: white;
   border: 1px solid var(--sz-color-button-shadow, #cac6af);
   box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.2);
@@ -368,6 +373,7 @@
   display: none;
   flex-direction: column;
   padding: 4px 0;
+  scrollbar-width: thin;
 }
 
 .sz-start-flyout.visible {
@@ -376,6 +382,52 @@
 
 .sz-start-body {
   position: relative;
+}
+
+/* Scroll arrows for overflowing columns */
+.sz-scroll-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 16px;
+  background: var(--sz-color-button-face, #eeeddd);
+  border: 1px solid var(--sz-color-button-shadow, #cac6af);
+  cursor: default;
+  flex-shrink: 0;
+  font-size: 8px;
+  color: var(--sz-color-button-text, black);
+  user-select: none;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+.sz-scroll-arrow.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.sz-scroll-arrow:hover {
+  background: var(--sz-color-highlight, #316ac5);
+  color: var(--sz-color-highlight-text, white);
+}
+
+/* Wrapper around scrollable column for arrows */
+.sz-scroll-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sz-start-body > .sz-scroll-col:first-child {
+  flex: 1;
+  border-right: 1px solid var(--sz-color-button-shadow, #cac6af);
+}
+
+.sz-start-body > .sz-scroll-col:last-child {
+  width: min(150px, 35%);
+  flex-shrink: 0;
 }
 
 /* --------------------------------------------------------------------------
