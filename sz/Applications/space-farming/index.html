@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Space Farming — grow crops, tend livestock, manage weather events, and sell produce on your space station in the SynthelicZ Desktop.">
+<meta name="robots" content="index,follow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Space Farming -- &raquo;SynthelicZ&laquo; Desktop">
+<meta property="og:description" content="Casual farm sim on a space station. Grow 7 crop types, tend livestock, survive space weather, and sell produce for credits.">
+<meta property="og:url" content="https://hawkynt.github.io/sz/Applications/space-farming/index.html">
+<link rel="canonical" href="index.html">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Space Farming",
+  "url": "https://hawkynt.github.io/sz/Applications/space-farming/index.html",
+  "description": "Casual space station farming game with crop growth stages, livestock, space weather events, and a shop system.",
+  "applicationCategory": "GameApplication",
+  "operatingSystem": "Web Browser",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<title>Space Farming</title>
+<script src="../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="../shared/menu.css">
+<link rel="stylesheet" href="../shared/dialog.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<noscript><p>Space Farming — grow crops, tend livestock, and sell produce on a space station. <a href="../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a></p></noscript>
+
+<!-- Menu Bar -->
+<div class="menu-bar" id="menuBar">
+  <div class="menu-item" data-menu="game">Game
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="new">New Game<span class="shortcut">F2</span></div>
+      <div class="menu-entry" data-action="pause">Pause<span class="shortcut">Esc</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="high-scores">High Scores...</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="exit">Exit</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="help">Help
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="controls">Controls...</div>
+      <div class="menu-entry" data-action="about">About Space Farming</div>
+    </div>
+  </div>
+</div>
+
+<!-- Game Canvas -->
+<div class="game-frame">
+  <canvas id="gameCanvas"></canvas>
+</div>
+
+<!-- Status Bar -->
+<div class="status-bar">
+  <div class="status-section" id="statusCredits">Credits: --</div>
+  <div class="status-section" id="statusTool">Tool: --</div>
+  <div class="status-section" id="statusWeather">Weather: --</div>
+  <div class="status-section" id="statusDay">Day: --</div>
+</div>
+
+<!-- High Scores Dialog -->
+<div class="dialog-overlay" id="highScoresBackdrop">
+  <div class="dialog">
+    <div class="dialog-title">High Scores</div>
+    <div class="dialog-body">
+      <table class="high-scores-table">
+        <thead>
+          <tr><th>#</th><th>Credits</th><th>Days</th></tr>
+        </thead>
+        <tbody id="highScoresBody"></tbody>
+      </table>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="reset" type="button">Reset</button>
+      <button data-result="ok" data-default type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Controls Dialog -->
+<div class="dialog-overlay" id="controlsBackdrop">
+  <div class="dialog">
+    <div class="dialog-title">Controls</div>
+    <div class="dialog-body">
+      <table class="controls-table">
+        <tr><td>Click/Tap</td><td>Plant / Harvest / Feed</td></tr>
+        <tr><td>1-7</td><td>Select crop type</td></tr>
+        <tr><td>S</td><td>Sell all produce</td></tr>
+        <tr><td>F2</td><td>New game</td></tr>
+        <tr><td>Escape</td><td>Pause / Resume</td></tr>
+      </table>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok" data-default type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- About Dialog -->
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Space Farming</div>
+    <div class="dialog-body">
+      <strong>Space Farming</strong><br><br>
+      Casual farm simulation on a space station. Grow 7 crop types through growth stages, tend 4 livestock types,
+      survive space weather events (solar flares boost growth, meteor showers damage crops), and sell produce for credits.
+      Features crop-growth sparkle effects, harvest particle bursts, and weather visual overlays.<br><br>
+      Part of the &raquo;SynthelicZ&laquo; Desktop.
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok" data-default type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<script src="../shared/menu.js"></script>
+<script src="../shared/dialog.js"></script>
+<script src="../shared/game-effects.js"></script>
+<script src="controller.js"></script>
+</body>
+</html>
