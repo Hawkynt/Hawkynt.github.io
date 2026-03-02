@@ -1,0 +1,61 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #0a0a1a;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.game-frame {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex: 1;
+  overflow: hidden;
+}
+
+.game-frame canvas {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  image-rendering: auto;
+}
+
+.status-bar {
+  display: flex;
+  gap: 2px;
+  padding: 2px 4px;
+  background: var(--sz-color-btnface, #c0c0c0);
+  color: var(--sz-color-btntext, #000);
+  font-size: 11px;
+  border-top: 1px solid var(--sz-color-btnshadow, #808080);
+}
+
+.status-section {
+  padding: 1px 6px;
+  border: 1px inset var(--sz-color-btnface, #c0c0c0);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.high-scores-table,
+.controls-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.high-scores-table th,
+.high-scores-table td,
+.controls-table td {
+  padding: 3px 8px;
+  border-bottom: 1px solid #ddd;
+  text-align: left;
+}
+
+.high-scores-table th {
+  background: #f0f0f0;
+  font-weight: bold;
+}
