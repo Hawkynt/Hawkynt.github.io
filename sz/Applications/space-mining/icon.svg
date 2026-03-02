@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <!-- asteroid body -->
+  <ellipse cx="28" cy="26" rx="14" ry="12" fill="#6b5b4f" stroke="#4a3f36" stroke-width="1.5"/>
+  <ellipse cx="32" cy="22" rx="4" ry="3" fill="#8a7a6e" opacity="0.5"/>
+  <circle cx="24" cy="30" r="2" fill="#5a4a3e"/>
+  <!-- ore glow spots -->
+  <circle cx="30" cy="24" r="2.5" fill="#ffd700" opacity="0.9"/>
+  <circle cx="26" cy="28" r="2" fill="#40e0d0" opacity="0.8"/>
+  <circle cx="34" cy="28" r="1.5" fill="#c0c0c0" opacity="0.7"/>
+  <!-- mining rig -->
+  <polygon points="12,16 16,10 20,16 18,18 14,18" fill="#aab" stroke="#889" stroke-width="0.8"/>
+  <!-- drill beam -->
+  <line x1="16" y1="18" x2="26" y2="24" stroke="#0ff" stroke-width="1.5" opacity="0.7" stroke-dasharray="2,2"/>
+  <!-- thruster -->
+  <polygon points="13,18 15,22 11,22" fill="#f80" opacity="0.7"/>
+</svg>
