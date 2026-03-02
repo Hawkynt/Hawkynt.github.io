@@ -857,6 +857,45 @@
       softDropping = false;
   });
 
+  /* ---- Touch / click controls ---- */
+  {
+    let touchStartX = 0, touchStartY = 0, touchId = null;
+    const SWIPE_THRESHOLD = 30;
+
+    canvas.addEventListener('pointerdown', (e) => {
+      if (gameOverFlag || !gameActive) {
+        newGame();
+        return;
+      }
+      touchStartX = e.clientX;
+      touchStartY = e.clientY;
+      touchId = e.pointerId;
+    });
+
+    canvas.addEventListener('pointerup', (e) => {
+      if (e.pointerId !== touchId) return;
+      touchId = null;
+      if (!gameActive || gamePaused || gameOverFlag) return;
+
+      const dx = e.clientX - touchStartX;
+      const dy = e.clientY - touchStartY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist < SWIPE_THRESHOLD) {
+        rotateCW();
+        return;
+      }
+
+      if (Math.abs(dx) > Math.abs(dy)) {
+        if (dx > 0) moveRight();
+        else moveLeft();
+      } else {
+        if (dy > 0) softDrop();
+        else hardDrop();
+      }
+    });
+  }
+
   /* ---- Game Loop ---- */
   function gameLoop(timestamp) {
     animFrameId = requestAnimationFrame(gameLoop);

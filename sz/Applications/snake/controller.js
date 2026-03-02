@@ -1467,11 +1467,11 @@
 
     const overlayTitle = isTron() ? 'TRON' : isMaze() ? 'DUNGEON' : isZen() ? 'ZEN' : 'SNAKE';
     if (waitingToStart)
-      drawOverlay(overlayTitle, 'Press Space or F2 for New Game');
+      drawOverlay(overlayTitle, 'Tap or press Space for New Game');
     else if (gamePaused)
       drawOverlay('PAUSED', 'Press P to resume');
     else if (gameOverFlag)
-      drawOverlay('GAME OVER', 'Score: ' + score + '  --  Press F2 for New Game');
+      drawOverlay('GAME OVER', 'Score: ' + score + '  --  Tap or press Space for New Game');
   }
 
   /* ---- Game Logic ---- */
@@ -1880,6 +1880,42 @@
         inputQueue.push(qDir);
     }
   });
+
+  /* ---- Touch / click controls ---- */
+  {
+    let touchStartX = 0, touchStartY = 0, touchId = null;
+    const SWIPE_THRESHOLD = 20;
+
+    canvas.addEventListener('pointerdown', (e) => {
+      if (waitingToStart || gameOverFlag) {
+        showOptionsDialog();
+        return;
+      }
+      touchStartX = e.clientX;
+      touchStartY = e.clientY;
+      touchId = e.pointerId;
+    });
+
+    canvas.addEventListener('pointerup', (e) => {
+      if (e.pointerId !== touchId) return;
+      touchId = null;
+      if (!gameActive || gamePaused || gameOverFlag || waitingToStart) return;
+
+      const dx = e.clientX - touchStartX;
+      const dy = e.clientY - touchStartY;
+      if (Math.abs(dx) < SWIPE_THRESHOLD && Math.abs(dy) < SWIPE_THRESHOLD) return;
+
+      let qDir;
+      if (Math.abs(dx) > Math.abs(dy))
+        qDir = dx > 0 ? DIR.RIGHT : DIR.LEFT;
+      else
+        qDir = dy > 0 ? DIR.DOWN : DIR.UP;
+
+      const ref = inputQueue.length > 0 ? inputQueue[inputQueue.length - 1] : direction;
+      if (!isOpposite(qDir, ref) && inputQueue.length < 3)
+        inputQueue.push(qDir);
+    });
+  }
 
   /* ---- New Game ---- */
   function newGame() {
