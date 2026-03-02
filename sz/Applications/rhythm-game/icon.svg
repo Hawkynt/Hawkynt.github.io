@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Background circle -->
+  <circle cx="32" cy="32" r="30" fill="#1a0a3a" stroke="#8040ff" stroke-width="2"/>
+  <!-- Music note -->
+  <ellipse cx="22" cy="44" rx="7" ry="5" fill="#ff40a0"/>
+  <rect x="28" y="18" width="3" height="26" fill="#ff40a0"/>
+  <ellipse cx="42" cy="38" rx="7" ry="5" fill="#40a0ff"/>
+  <rect x="48" y="12" width="3" height="26" fill="#40a0ff"/>
+  <!-- Beam connecting notes -->
+  <rect x="28" y="12" width="23" height="3" fill="#fff" rx="1"/>
+  <!-- Hit indicators -->
+  <circle cx="16" cy="56" r="3" fill="#f44" opacity="0.8"/>
+  <circle cx="26" cy="56" r="3" fill="#4f4" opacity="0.8"/>
+  <circle cx="36" cy="56" r="3" fill="#44f" opacity="0.8"/>
+  <circle cx="46" cy="56" r="3" fill="#ff4" opacity="0.8"/>
+</svg>
