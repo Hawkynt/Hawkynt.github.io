@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <!-- Background -->
+  <rect x="2" y="2" width="44" height="44" rx="4" fill="#1a2a5a"/>
+  <!-- Ground -->
+  <rect x="2" y="38" width="44" height="8" rx="1" fill="#5a3a1a"/>
+  <rect x="2" y="38" width="44" height="2" fill="#4a8a2a"/>
+  <!-- Platform -->
+  <rect x="20" y="26" width="20" height="4" rx="1" fill="#886644"/>
+  <rect x="20" y="26" width="20" height="1" fill="#66aa44"/>
+  <!-- Player -->
+  <circle cx="16" cy="30" r="5" fill="#ffcc88"/>
+  <rect x="12" y="32" width="8" height="6" rx="1" fill="#3366cc"/>
+  <rect x="12" y="38" width="3" height="3" fill="#224488"/>
+  <rect x="17" y="38" width="3" height="3" fill="#224488"/>
+  <!-- Coin -->
+  <circle cx="34" cy="22" r="4" fill="#ffd700"/>
+  <circle cx="33" cy="21" r="1.5" fill="#ffee88"/>
+  <!-- Enemy -->
+  <rect x="36" y="32" width="8" height="6" rx="1" fill="#dd3333"/>
+  <rect x="37" y="33" width="2" height="2" fill="#fff"/>
+  <rect x="41" y="33" width="2" height="2" fill="#fff"/>
+</svg>
