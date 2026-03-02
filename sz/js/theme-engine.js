@@ -109,7 +109,8 @@
             for (let i = 0; i < mp.length; i += 4) {
               const grey = Math.round(mp[i] * 0.299 + mp[i + 1] * 0.587 + mp[i + 2] * 0.114);
               mp[i] = mp[i + 1] = mp[i + 2] = 255;
-              mp[i + 3] = grey;
+              // WindowBlinds masks are region masks: non-zero = visible, zero = transparent
+              mp[i + 3] = grey > 0 ? 255 : 0;
             }
             mctx.putImageData(md, 0, 0);
             ctx.globalCompositeOperation = 'destination-in';
@@ -164,7 +165,11 @@
 
       if (checkImg && checkImg.naturalWidth > 0 && checkImg.naturalHeight > 0) {
         const nf = Math.max(1, Math.floor(checkImg.naturalWidth / checkImg.naturalHeight));
-        css += this.#buildCheckRadioCSS('checkbox', checkImg, checkMask, nf, b.checkbutton);
+        // NOTE: checkbox masks define border vs interior transparency, but the
+        // checkmark is baked into the BMP frames.  Applying the mask erases the
+        // interior (and checkmark) on https:// where canvas succeeds.  Magenta
+        // transparency already handles the outer region, so skip the mask here.
+        css += this.#buildCheckRadioCSS('checkbox', checkImg, null, nf, b.checkbutton);
       }
 
       if (radioImg && radioImg.naturalWidth > 0 && radioImg.naturalHeight > 0) {

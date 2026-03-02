@@ -158,7 +158,8 @@
       for (let i = 0; i < mp.length; i += 4) {
         const grey = Math.round(mp[i] * 0.299 + mp[i + 1] * 0.587 + mp[i + 2] * 0.114);
         mp[i] = mp[i + 1] = mp[i + 2] = 255;
-        mp[i + 3] = grey;
+        // WindowBlinds masks are region masks: non-zero = visible, zero = transparent
+        mp[i + 3] = grey > 0 ? 255 : 0;
       }
       maskCtx.putImageData(maskData, 0, 0);
       ctx.globalCompositeOperation = 'destination-in';
@@ -735,7 +736,8 @@
           for (let j = 0; j < mp.length; j += 4) {
             const grey = Math.round(mp[j] * 0.299 + mp[j + 1] * 0.587 + mp[j + 2] * 0.114);
             mp[j] = mp[j + 1] = mp[j + 2] = 255;
-            mp[j + 3] = grey;
+            // WindowBlinds masks are region masks: non-zero = visible, zero = transparent
+            mp[j + 3] = grey > 0 ? 255 : 0;
           }
           mctx.putImageData(md, 0, 0);
           ctx.globalCompositeOperation = 'destination-in';
