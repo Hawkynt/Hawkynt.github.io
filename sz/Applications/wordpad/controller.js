@@ -1212,8 +1212,16 @@
           updateGridHighlight(picker, pickedRows, pickedCols);
         });
         cell.addEventListener('click', () => {
-          rowsInput.value = pickedRows;
-          colsInput.value = pickedCols;
+          const rows = parseInt(cell.dataset.row, 10);
+          const cols = parseInt(cell.dataset.col, 10);
+          if (rows > 0 && cols > 0) {
+            const dlgOverlay = document.getElementById('dlg-insert-table');
+            if (dlgOverlay._dialogDone)
+              dlgOverlay._dialogDone(null);
+            else
+              dlgOverlay.classList.remove('visible');
+            insertTable(rows, cols);
+          }
         });
         picker.appendChild(cell);
       }

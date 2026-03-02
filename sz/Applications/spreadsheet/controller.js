@@ -1193,6 +1193,31 @@
     updateColumnWidth(col);
   }
 
+  function autoResizeRow(row) {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.font = '11px Tahoma, Verdana, sans-serif';
+    let maxHeight = DEFAULT_ROW_HEIGHT;
+    for (let c = 0; c < totalCols(); ++c) {
+      const val = getCellValue(c, row);
+      if (val === '') continue;
+      const fmt = getFormat(c, row);
+      const display = formatDisplayValue(val, fmt);
+      if (fmt.wrapText) {
+        const colW = getColWidth(c) - 8;
+        const textW = ctx.measureText(display).width;
+        const lines = Math.ceil(textW / colW) || 1;
+        const h = lines * 16 + 4;
+        if (h > maxHeight) maxHeight = h;
+      } else {
+        const h = 20;
+        if (h > maxHeight) maxHeight = h;
+      }
+    }
+    S().rowHeights[row] = Math.min(400, Math.max(DEFAULT_ROW_HEIGHT, Math.ceil(maxHeight)));
+    rebuildGrid();
+  }
+
   gridHead.addEventListener('pointerdown', (e) => {
     const handle = e.target.closest('.col-resize-handle');
     if (!handle) return;
@@ -1628,7 +1653,12 @@
       labels.push(String(getCellValue(rect.c1, r) || ('Row ' + (r + 1))));
     }
     if (!data.length) return;
-    SZ.Dialog.show('dlg-chart');
+    SZ.Dialog.show('dlg-chart').then((result) => {
+      if (result !== 'ok' || !_lastChartDraw) return;
+      const rect = getSelectionRect();
+      const sourceRange = cellKey(rect.c1, rect.r1) + ':' + cellKey(rect.c2, rect.r2);
+      createInlineChart(_lastChartDraw.type, sourceRange, _lastChartDraw.opts);
+    });
     const title = type.charAt(0).toUpperCase() + type.slice(1) + ' Chart';
     document.getElementById('chart-title').textContent = title;
     document.getElementById('chart-trendline-enable').checked = false;
@@ -4079,7 +4109,7 @@
       case 'col-hide': S().hiddenCols.add(activeCell.col); rebuildGrid(); break;
       case 'col-unhide': S().hiddenCols.clear(); rebuildGrid(); break;
       case 'row-height': showPrompt('Row Height', 'Height (pixels):', String(getRowHeight(activeCell.row))).then(v => { if (v) { S().rowHeights[activeCell.row] = Math.max(10, parseInt(v, 10) || 20); rebuildGrid(); } }); break;
-      case 'row-autofit': break;
+      case 'row-autofit': autoResizeRow(activeCell.row); break;
       case 'row-hide': S().hiddenRows.add(activeCell.row); rebuildGrid(); break;
       case 'row-unhide': S().hiddenRows.clear(); rebuildGrid(); break;
       case 'sheet-rename': showPrompt('Rename Sheet', 'New name:', S().name).then(n => { if (n && n.trim()) { S().name = n.trim(); renderSheetTabs(); setDirty(true); } }); break;

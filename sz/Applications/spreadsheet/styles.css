@@ -737,6 +737,7 @@ body {
   font-size: 11px;
   cursor: default;
   color: var(--sz-color-window-text);
+  user-select: none;
 }
 
 .val-dropdown-item:hover {
