@@ -376,6 +376,17 @@
       this._h = height;
     }
 
+    resize(width, height) {
+      this._w = width;
+      this._h = height;
+      for (const s of this.#stars) {
+        if (s.x > width)
+          s.x = Math.random() * width;
+        if (s.y > height)
+          s.y = Math.random() * height;
+      }
+    }
+
     update(dt) {
       for (const s of this.#stars) {
         s.y += s.speed;

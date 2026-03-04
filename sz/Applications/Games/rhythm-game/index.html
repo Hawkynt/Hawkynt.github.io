@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Rhythm Game — hit falling notes in time with music using D/F/J/K keys. Features timing accuracy (Perfect/Great/Good/Miss), combo multiplier, 5+ songs, final grades S/A/B/C/D, note-hit burst particles, streak glow, and smooth note-scroll animations in the SynthelicZ Desktop.">
+<meta name="robots" content="index,follow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Rhythm Game -- &raquo;SynthelicZ&laquo; Desktop">
+<meta property="og:description" content="Hit falling notes with perfect timing using D/F/J/K keys. Build combos, earn grades, and enjoy burst particles, streak glow effects, miss screen-shake, and smooth note-scroll animations.">
+<meta property="og:url" content="https://hawkynt.github.io/sz/Applications/rhythm-game/index.html">
+<link rel="canonical" href="index.html">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Rhythm Game",
+  "url": "https://hawkynt.github.io/sz/Applications/rhythm-game/index.html",
+  "description": "Rhythm game with 4-key input (D/F/J/K), timing accuracy grading, combo multiplier, 5+ procedurally generated songs, final letter grades, note-hit burst particles, perfect-streak glow, miss screen-shake, and smooth note-scroll animations.",
+  "applicationCategory": "GameApplication",
+  "operatingSystem": "Web Browser",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<title>Rhythm Game</title>
+<script src="../../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="../../shared/menu.css">
+<link rel="stylesheet" href="../../shared/dialog.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<noscript><p>Rhythm Game — hit notes in time with music using keyboard keys. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a></p></noscript>
+
+<!-- Menu Bar -->
+<div class="menu-bar" id="menuBar">
+  <div class="menu-item" data-menu="game">Game
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="new">New Game<span class="shortcut">F2</span></div>
+      <div class="menu-entry" data-action="pause">Pause<span class="shortcut">Esc</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="high-scores">High Scores...</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="exit">Exit</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="help">Help
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="controls">Controls...</div>
+      <div class="menu-entry" data-action="about">About Rhythm Game</div>
+    </div>
+  </div>
+</div>
+
+<!-- Game Canvas -->
+<div class="game-frame">
+  <canvas id="gameCanvas"></canvas>
+</div>
+
+<!-- Status Bar -->
+<div class="status-bar">
+  <div class="status-section" id="statusScore">Score: 0</div>
+  <div class="status-section" id="statusCombo">Combo: 0</div>
+  <div class="status-section" id="statusSong">Select a song</div>
+</div>
+
+<!-- High Scores Dialog -->
+<div class="dialog-overlay" id="highScoresBackdrop">
+  <div class="dialog">
+    <div class="dialog-title">High Scores</div>
+    <div class="dialog-body">
+      <table class="high-scores-table">
+        <thead>
+          <tr><th>#</th><th>Song</th><th>Score</th><th>Grade</th></tr>
+        </thead>
+        <tbody id="highScoresBody"></tbody>
+      </table>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="reset" type="button">Reset</button>
+      <button data-result="ok" data-default type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Controls Dialog -->
+<div class="dialog-overlay" id="controlsBackdrop">
+  <div class="dialog">
+    <div class="dialog-title">Controls</div>
+    <div class="dialog-body">
+      <table class="controls-table">
+        <tr><td>D / F / J / K</td><td>Hit notes in lanes 1-4</td></tr>
+        <tr><td>Enter</td><td>Select song / Continue</td></tr>
+        <tr><td>Arrow Up/Down</td><td>Navigate song list</td></tr>
+        <tr><td>F2</td><td>New game / Back to song select</td></tr>
+        <tr><td>Escape</td><td>Pause / Resume</td></tr>
+      </table>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok" data-default type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- About Dialog -->
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Rhythm Game</div>
+    <div class="dialog-body">
+      <strong>Rhythm Game</strong><br><br>
+      Hit falling notes in time with music! Use D/F/J/K keys to hit notes
+      as they reach the hit zone. Timing accuracy determines your score:
+      Perfect, Great, Good, or Miss. Build combos for score multipliers.
+      Features 5+ songs, final letter grades (S/A/B/C/D), burst particles,
+      streak glow, and smooth animations.<br><br>
+      Part of the &raquo;SynthelicZ&laquo; Desktop.
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok" data-default type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<script src="../../shared/menu.js"></script>
+<script src="../../shared/dialog.js"></script>
+<script src="../../shared/game-effects.js"></script>
+<script src="controller.js"></script>
+</body>
+</html>
