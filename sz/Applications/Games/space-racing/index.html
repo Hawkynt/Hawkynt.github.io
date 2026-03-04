@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Space Racing — high-speed top-down spaceship racing with boost pads, hazards, AI opponents, and multiple tracks in the SynthelicZ Desktop.">
+<meta name="robots" content="index,follow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Space Racing -- &raquo;SynthelicZ&laquo; Desktop">
+<meta property="og:description" content="Race spaceships through obstacle courses with boost pads, hazards, and AI opponents across 5+ tracks.">
+<meta property="og:url" content="https://hawkynt.github.io/sz/Applications/space-racing/index.html">
+<link rel="canonical" href="index.html">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Space Racing",
+  "url": "https://hawkynt.github.io/sz/Applications/space-racing/index.html",
+  "description": "High-speed top-down spaceship racing with boost pads, hazards, AI opponents, and multiple tracks.",
+  "applicationCategory": "GameApplication",
+  "operatingSystem": "Web Browser",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<title>Space Racing</title>
+<script src="../../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="../../shared/menu.css">
+<link rel="stylesheet" href="../../shared/dialog.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<noscript><p>Space Racing — high-speed spaceship racing with boost pads, hazards, and AI opponents. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a></p></noscript>
+
+<!-- Menu Bar -->
+<div class="menu-bar" id="menuBar">
+  <div class="menu-item" data-menu="game">Game
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="new">New Race<span class="shortcut">F2</span></div>
+      <div class="menu-entry" data-action="pause">Pause<span class="shortcut">Esc</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="ship-select">Ship Select<span class="shortcut">Tab</span></div>
+      <div class="menu-entry" data-action="upgrades">Upgrades<span class="shortcut">F3</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="high-scores">High Scores...</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="exit">Exit</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="help">Help
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="tutorial">How to Play...<span class="shortcut">H</span></div>
+      <div class="menu-entry" data-action="controls">Controls...</div>
+      <div class="menu-entry" data-action="about">About Space Racing</div>
+    </div>
+  </div>
+</div>
+
+<!-- Game Canvas -->
+<div class="game-frame">
+  <canvas id="gameCanvas"></canvas>
+</div>
+
+<!-- Status Bar -->
+<div class="status-bar">
+  <div class="status-section" id="statusPosition">Pos: --</div>
+  <div class="status-section" id="statusLap">Lap: --</div>
+  <div class="status-section" id="statusSpeed">Speed: --</div>
+  <div class="status-section" id="statusTime">Time: --</div>
+  <div class="status-section" id="statusCredits">Credits: 0</div>
+</div>
+
+<!-- High Scores Dialog -->
+<div class="dialog-overlay" id="highScoresBackdrop">
+  <div class="dialog">
+    <div class="dialog-title">High Scores</div>
+    <div class="dialog-body">
+      <table class="high-scores-table">
+        <thead>
+          <tr><th>#</th><th>Time</th><th>Track</th></tr>
+        </thead>
+        <tbody id="highScoresBody"></tbody>
+      </table>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="reset" type="button">Reset</button>
+      <button data-result="ok" data-default type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Controls Dialog -->
+<div class="dialog-overlay" id="controlsBackdrop">
+  <div class="dialog">
+    <div class="dialog-title">Controls</div>
+    <div class="dialog-body">
+      <table class="controls-table">
+        <tr><td>Up / W</td><td>Accelerate</td></tr>
+        <tr><td>Down / S</td><td>Brake / Reverse</td></tr>
+        <tr><td>Left / A</td><td>Steer left</td></tr>
+        <tr><td>Right / D</td><td>Steer right</td></tr>
+        <tr><td>F2</td><td>New race</td></tr>
+        <tr><td>Tab</td><td>Ship select</td></tr>
+        <tr><td>F3</td><td>Upgrades</td></tr>
+        <tr><td>Escape</td><td>Pause / Resume / Back</td></tr>
+        <tr><td>H</td><td>How to Play</td></tr>
+      </table>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok" data-default type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- About Dialog -->
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Space Racing</div>
+    <div class="dialog-body">
+      <strong>Space Racing</strong><br><br>
+      High-speed top-down spaceship racing with boost pads, hazards, AI opponents, and multiple tracks.
+      Choose from 5 unique ships with different stats, earn credits from races, and upgrade your ship's engine, thrusters, gyroscope, and nitro tank.
+      Features speed-line effects, boost flame trails, collision sparks, smooth camera following, and confetti celebrations.<br><br>
+      Part of the &raquo;SynthelicZ&laquo; Desktop.
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok" data-default type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<script src="../../shared/menu.js"></script>
+<script src="../../shared/dialog.js"></script>
+<script src="../../shared/game-effects.js"></script>
+<script src="controller.js"></script>
+</body>
+</html>

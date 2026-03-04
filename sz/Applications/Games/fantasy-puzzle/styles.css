@@ -1,0 +1,46 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  background: #0a0a1a;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+.game-frame {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+canvas {
+  display: block;
+  background: #0a0a1a;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.status-bar {
+  display: flex;
+  gap: 2px;
+  background: var(--sz-color-button-face, #c0c0c0);
+  padding: 2px;
+  font-size: 12px;
+  color: var(--sz-color-button-text, #000);
+}
+
+.status-section {
+  flex: 1;
+  padding: 1px 6px;
+  border: 1px inset var(--sz-color-button-face, #c0c0c0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

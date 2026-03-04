@@ -57,11 +57,31 @@
       moreBtn.className = 'sz-color-more';
       moreBtn.textContent = 'More Colors\u2026';
       moreBtn.addEventListener('click', () => {
-        const input = document.createElement('input');
-        input.type = 'color';
-        input.value = '#000000';
-        input.addEventListener('input', () => this.#pick(input.value));
-        input.click();
+        const returnKey = 'sz:colorpalette:' + Date.now() + ':' + Math.random().toString(36).slice(2);
+        const onStorage = (e) => {
+          if (e.key !== returnKey || !e.newValue) return;
+          window.removeEventListener('storage', onStorage);
+          localStorage.removeItem(returnKey);
+          try {
+            const result = JSON.parse(e.newValue);
+            if (result.hex) this.#pick(result.hex);
+          } catch (_e) { /* ignore */ }
+        };
+        window.addEventListener('storage', onStorage);
+        const User32 = window.SZ && SZ.Dlls && SZ.Dlls.User32;
+        if (User32 && User32.PostMessage) {
+          User32.PostMessage('sz:launchApp', { appId: 'color-picker', urlParams: { returnKey, hex: '#000000' } });
+        } else if (window.parent && window.parent !== window) {
+          window.parent.postMessage({ type: 'sz:launchApp', appId: 'color-picker', urlParams: { returnKey, hex: '#000000' } }, '*');
+        } else {
+          // Fallback to native picker when SZ is not available
+          window.removeEventListener('storage', onStorage);
+          const input = document.createElement('input');
+          input.type = 'color';
+          input.value = '#000000';
+          input.addEventListener('input', () => this.#pick(input.value));
+          input.click();
+        }
       });
       this.#panelEl.appendChild(moreBtn);
 

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Browser-based command-line terminal with a virtual filesystem">
+<meta name="robots" content="index,follow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Terminal -- »SynthelicZ« Desktop">
+<meta property="og:description" content="Browser-based command-line terminal with a virtual filesystem">
+<meta property="og:url" content="https://hawkynt.github.io/sz/Applications/terminal/index.html">
+<link rel="canonical" href="https://hawkynt.github.io/sz/Applications/terminal/index.html">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Terminal",
+  "url": "https://hawkynt.github.io/sz/Applications/terminal/index.html",
+  "description": "Browser-based command-line terminal with a virtual filesystem",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Web Browser",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<title>Terminal</title>
+<script src="../../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="../../shared/dialog.css">
+<link rel="stylesheet" href="styles.css">
+<script defer src="../../vision-renderer.js"></script>
+</head>
+<body>
+<noscript><p>Browser-based command-line terminal with a virtual filesystem. <a href="../../../index.html">Open »SynthelicZ« Desktop</a> to use this app.</p></noscript>
+
+<div id="shell-bar">
+  <label for="shell-select">Shell:</label>
+  <select id="shell-select">
+    <option value="cmd">cmd.exe</option>
+    <option value="bash">bash</option>
+  </select>
+  <button id="btn-about" title="About Terminal" style="margin-left:auto;padding:1px 8px;font-size:11px;cursor:default;">?</button>
+</div>
+<div id="output"></div>
+<div id="input-line">
+  <span id="prompt">SZ:\></span>
+  <input id="input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+  <span id="cursor-block"></span>
+  <span id="cursor-measure"></span>
+</div>
+
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Terminal</div>
+    <div class="dialog-body"></div>
+    <div class="dialog-buttons"><button data-result="ok">OK</button></div>
+  </div>
+</div>
+
+<script src="../../shared/dialog.js"></script>
+<script src="controller.js"></script>
+</body>
+</html>

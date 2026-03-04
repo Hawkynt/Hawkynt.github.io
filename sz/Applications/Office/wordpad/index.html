@@ -1,0 +1,1484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Online rich text editor with formatting tools">
+<meta name="robots" content="index,follow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="WordPad -- »SynthelicZ« Desktop">
+<meta property="og:description" content="Online rich text editor with formatting tools">
+<meta property="og:url" content="https://hawkynt.github.io/sz/Applications/wordpad/index.html">
+<link rel="canonical" href="https://hawkynt.github.io/sz/Applications/wordpad/index.html">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "WordPad",
+  "url": "https://hawkynt.github.io/sz/Applications/wordpad/index.html",
+  "description": "Online rich text editor with formatting tools",
+  "applicationCategory": "BusinessApplication",
+  "operatingSystem": "Web Browser",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<title>WordPad</title>
+<script src="../../sz-app-bootstrap.js"></script>
+<script src="../../libs/mammoth.browser.min.js"></script>
+<script src="../../libs/jszip.min.js"></script>
+<link rel="stylesheet" href="../../shared/ribbon.css">
+<link rel="stylesheet" href="../../shared/dialog.css">
+<link rel="stylesheet" href="styles.css">
+<script defer src="../../vision-renderer.js"></script>
+</head>
+<body>
+<noscript><p>Online rich text editor with formatting tools. <a href="../../../index.html">Open »SynthelicZ« Desktop</a> to use this app.</p></noscript>
+
+<!-- Quick Access Toolbar -->
+<div class="qat" id="qat">
+  <button class="qat-btn" data-action="save" title="Save (Ctrl+S)">&#128190;</button>
+  <button class="qat-btn" data-action="undo" title="Undo (Ctrl+Z)">&#8630;</button>
+  <button class="qat-btn" data-action="redo" title="Redo (Ctrl+Y)">&#8631;</button>
+  <button class="qat-btn" data-action="print" title="Print (Ctrl+P)">&#128424;</button>
+</div>
+
+<!-- Ribbon Tab Bar -->
+<div class="ribbon-tabs" id="ribbon-tabs">
+  <div class="ribbon-tab-bar">
+    <button class="ribbon-file-btn" id="ribbon-file-btn">File</button>
+    <button class="ribbon-tab active" data-tab="home">Home</button>
+    <button class="ribbon-tab" data-tab="insert">Insert</button>
+    <button class="ribbon-tab" data-tab="page-layout">Page Layout</button>
+    <button class="ribbon-tab" data-tab="view">View</button>
+    <button class="ribbon-tab" data-tab="review">Review</button>
+    <button class="ribbon-tab ribbon-tab-contextual" data-tab="table-tools" id="tab-table-tools" style="display:none;color:#c44;font-weight:bold;">Table Tools</button>
+  </div>
+</div>
+
+<!-- File Backstage -->
+<div class="backstage" id="backstage">
+  <div class="backstage-sidebar">
+    <button class="backstage-back" id="backstage-back">&#8592;</button>
+    <button class="backstage-item" data-action="new">New</button>
+    <button class="backstage-item" data-action="new-from-template">New from Template</button>
+    <button class="backstage-item" data-action="open">Open</button>
+    <button class="backstage-item" data-action="save">Save</button>
+    <button class="backstage-item" data-action="save-as">Save As</button>
+    <div class="backstage-sep"></div>
+    <button class="backstage-item" data-action="import-rtf">Import RTF...</button>
+    <div class="backstage-sep"></div>
+    <button class="backstage-item" data-action="print">Print</button>
+    <button class="backstage-item" data-action="export-txt">Export as .txt</button>
+    <button class="backstage-item" data-action="export-html">Export as .html</button>
+    <button class="backstage-item" data-action="export-rtf">Export as .rtf</button>
+    <button class="backstage-item" data-action="export-pdf">Export as PDF (Print)</button>
+    <div class="backstage-sep"></div>
+    <button class="backstage-item" data-action="doc-properties">Properties</button>
+    <button class="backstage-item" data-action="about">About</button>
+    <div class="backstage-spacer"></div>
+    <button class="backstage-item backstage-exit" data-action="exit">Exit</button>
+  </div>
+</div>
+
+<!-- ═══ Ribbon Panels ═══ -->
+
+<!-- Home Tab -->
+<div class="ribbon-panel active" data-panel="home" id="ribbon-home">
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="paste" title="Paste (Ctrl+V)">
+        <span class="rb-icon rb-icon-lg">&#128203;</span>
+        <span class="rb-label">Paste</span>
+      </button>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="cut" title="Cut (Ctrl+X)">
+          <span class="rb-icon">&#9986;</span><span class="rb-label">Cut</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="copy" title="Copy (Ctrl+C)">
+          <span class="rb-icon">&#128464;</span><span class="rb-label">Copy</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="paste-special" title="Paste Special">
+          <span class="rb-icon">&#128466;</span><span class="rb-label">Paste Special</span>
+        </button>
+      </div>
+      <button class="rb-btn rb-btn-sm" data-action="format-painter" id="btn-format-painter" title="Format Painter (click=once, dblclick=sticky)">
+        <span class="rb-icon">&#128396;</span><span class="rb-label">Format Painter</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Clipboard</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group ribbon-group-font">
+    <div class="ribbon-group-content">
+      <div class="rb-row">
+        <select class="rb-select rb-font-family" id="rb-font-family" title="Font Family"></select>
+        <select class="rb-select rb-font-size" id="rb-font-size" title="Font Size"></select>
+      </div>
+      <div class="rb-row">
+        <button class="rb-btn rb-fmt" data-cmd="bold" title="Bold (Ctrl+B)"><b>B</b></button>
+        <button class="rb-btn rb-fmt" data-cmd="italic" title="Italic (Ctrl+I)"><i>I</i></button>
+        <button class="rb-btn rb-fmt" data-cmd="underline" title="Underline (Ctrl+U)"><u>U</u></button>
+        <button class="rb-btn rb-fmt" data-cmd="strikeThrough" title="Strikethrough"><s>S</s></button>
+        <button class="rb-btn rb-fmt" data-cmd="subscript" title="Subscript">X<sub>2</sub></button>
+        <button class="rb-btn rb-fmt" data-cmd="superscript" title="Superscript">X<sup>2</sup></button>
+        <div class="rb-sep-v"></div>
+        <span class="rb-color-wrap" title="Font Color">
+          <input type="color" class="rb-color" id="rb-font-color" value="#000000">
+          <span class="rb-color-label" id="rb-font-color-swatch" style="background:#000000;">A</span>
+        </span>
+        <span class="rb-color-wrap" title="Highlight Color">
+          <input type="color" class="rb-color" id="rb-highlight-color" value="#ffff00">
+          <span class="rb-color-label rb-highlight-swatch" id="rb-highlight-swatch" style="background:#ffff00;"></span>
+        </span>
+        <div class="rb-sep-v"></div>
+        <button class="rb-btn rb-fmt" data-action="clear-formatting" title="Clear Formatting">&#8709;</button>
+        <div class="rb-sep-v"></div>
+        <select data-action="char-spacing" class="rb-select" id="rb-char-spacing" title="Character Spacing" style="width:80px;">
+          <option value="0">Normal</option>
+          <option value="-0.5">Tight</option>
+          <option value="-1">Very Tight</option>
+          <option value="1">Loose</option>
+          <option value="2">Very Loose</option>
+        </select>
+        <div class="rb-sep-v"></div>
+        <div class="rb-dropdown" id="dropdown-text-effects">
+          <button class="rb-btn rb-fmt" title="Text Effects"><span class="rb-icon">&#10024;</span></button>
+          <div class="rb-dropdown-menu">
+            <button data-action="text-effect-shadow">Shadow</button>
+            <button data-action="text-effect-outline">Outline</button>
+            <button data-action="text-effect-glow">Glow</button>
+            <hr>
+            <button data-action="text-effect-none">No Effect</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Font</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-row">
+        <button class="rb-btn rb-fmt" data-cmd="justifyLeft" title="Align Left">&#9776;</button>
+        <button class="rb-btn rb-fmt" data-cmd="justifyCenter" title="Center">&#9776;</button>
+        <button class="rb-btn rb-fmt" data-cmd="justifyRight" title="Align Right">&#9776;</button>
+        <button class="rb-btn rb-fmt" data-cmd="justifyFull" title="Justify">&#9776;</button>
+        <div class="rb-sep-v"></div>
+        <button class="rb-btn rb-fmt" data-action="line-spacing" title="Line Spacing">
+          <span class="rb-icon">&#8691;</span>
+        </button>
+      </div>
+      <div class="rb-row">
+        <button class="rb-btn rb-fmt" data-cmd="insertUnorderedList" title="Bullets">&#8226;</button>
+        <button class="rb-btn rb-fmt" data-cmd="insertOrderedList" title="Numbering">1.</button>
+        <div class="rb-dropdown rb-dropdown-inline">
+          <button class="rb-btn rb-fmt" title="List Options">&#9660;</button>
+          <div class="rb-dropdown-menu">
+            <button data-action="restart-numbering">Restart at 1</button>
+            <button data-action="continue-numbering">Continue Numbering</button>
+            <button data-action="define-list-style">Define New List Style...</button>
+          </div>
+        </div>
+        <div class="rb-sep-v"></div>
+        <button class="rb-btn rb-fmt" data-cmd="outdent" title="Decrease Indent">&#8676;</button>
+        <button class="rb-btn rb-fmt" data-cmd="indent" title="Increase Indent">&#8677;</button>
+        <div class="rb-sep-v"></div>
+        <button class="rb-btn rb-fmt" data-action="borders" title="Borders">&#9638;</button>
+        <button class="rb-btn rb-fmt" data-action="shading" title="Shading">&#9639;</button>
+        <div class="rb-sep-v"></div>
+        <button class="rb-btn rb-fmt" data-action="drop-cap" title="Drop Cap">&#9047;</button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Paragraph</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="styles-gallery" id="styles-gallery"></div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="manage-styles" title="Manage Styles">
+          <span class="rb-icon">&#9998;</span><span class="rb-label">Manage</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Styles</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="find" title="Find (Ctrl+F)">
+          <span class="rb-icon">&#128269;</span><span class="rb-label">Find</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="replace" title="Replace (Ctrl+H)">
+          <span class="rb-icon">&#8644;</span><span class="rb-label">Replace</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="select-all" title="Select All (Ctrl+A)">
+          <span class="rb-icon">&#9634;</span><span class="rb-label">Select All</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Editing</div>
+  </div>
+
+</div>
+
+<!-- Insert Tab -->
+<div class="ribbon-panel" data-panel="insert" id="ribbon-insert">
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="insert-table" title="Insert Table">
+        <span class="rb-icon rb-icon-lg">&#9638;</span>
+        <span class="rb-label">Table</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Tables</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="insert-image-url" title="Image from URL">
+          <span class="rb-icon">&#128247;</span><span class="rb-label">Image (URL)</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-image-file" title="Image from File">
+          <span class="rb-icon">&#128444;</span><span class="rb-label">Image (File)</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-textbox" title="Text Box">
+          <span class="rb-icon">&#128196;</span><span class="rb-label">Text Box</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="insert-shape-rect" title="Rectangle">
+          <span class="rb-icon">&#9645;</span><span class="rb-label">Rectangle</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-shape-circle" title="Circle">
+          <span class="rb-icon">&#9711;</span><span class="rb-label">Circle</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-shape-line" title="Line">
+          <span class="rb-icon">&#9473;</span><span class="rb-label">Line</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Illustrations</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="insert-link" title="Hyperlink (Ctrl+K)">
+          <span class="rb-icon">&#128279;</span><span class="rb-label">Hyperlink</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-bookmark" title="Bookmark">
+          <span class="rb-icon">&#128278;</span><span class="rb-label">Bookmark</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Links</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="insert-header" title="Page Header">
+          <span class="rb-icon">&#9650;</span><span class="rb-label">Header</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-footer" title="Page Footer">
+          <span class="rb-icon">&#9660;</span><span class="rb-label">Footer</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-page-number" title="Page Number">
+          <span class="rb-icon">#</span><span class="rb-label">Page No.</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="insert-page-count" title="Page Count">
+          <span class="rb-icon">#</span><span class="rb-label"># Pages</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Header &amp; Footer</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="insert-symbol" title="Special Characters">
+          <span class="rb-icon">&#937;</span><span class="rb-label">Symbol</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-hr" title="Horizontal Rule">
+          <span class="rb-icon">&#8213;</span><span class="rb-label">Horiz. Rule</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-page-break" title="Page Break">
+          <span class="rb-icon">&#8629;</span><span class="rb-label">Page Break</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="insert-datetime" title="Date &amp; Time">
+          <span class="rb-icon">&#128197;</span><span class="rb-label">Date/Time</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Symbols</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-dropdown">
+        <button class="rb-btn" data-action="quick-parts" title="Quick Parts">
+          <span class="rb-icon">&#128203;</span><span class="rb-label">Quick Parts</span>
+        </button>
+        <div class="rb-dropdown-menu" id="quick-parts-menu">
+          <button data-action="save-to-quick-parts">Save Selection to Quick Parts...</button>
+          <hr>
+          <div id="quick-parts-list"></div>
+          <hr>
+          <button data-action="manage-building-blocks">Manage Building Blocks...</button>
+        </div>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Quick Parts</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="insert-toc" title="Table of Contents">
+          <span class="rb-icon">&#128220;</span><span class="rb-label">TOC</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-footnote" title="Insert Footnote">
+          <span class="rb-icon">&#185;</span><span class="rb-label">Footnote</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-endnote" title="Insert Endnote">
+          <span class="rb-icon">&#8321;</span><span class="rb-label">Endnote</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="insert-column-break" title="Column Break">
+          <span class="rb-icon">&#9613;</span><span class="rb-label">Col Break</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-caption" title="Insert Caption">
+          <span class="rb-icon">&#128196;</span><span class="rb-label">Caption</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="cross-reference" title="Cross-Reference">
+          <span class="rb-icon">&#128279;</span><span class="rb-label">Cross-Ref</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="insert-citation" title="Insert Citation">
+          <span class="rb-icon">&#128214;</span><span class="rb-label">Citation</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="manage-sources" title="Manage Sources">
+          <span class="rb-icon">&#128218;</span><span class="rb-label">Sources</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-bibliography" title="Insert Bibliography">
+          <span class="rb-icon">&#128209;</span><span class="rb-label">Bibliography</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">References</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="insert-equation" title="Insert Equation">
+        <span class="rb-icon rb-icon-lg">&#8721;</span>
+        <span class="rb-label">Equation</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Equations</div>
+  </div>
+
+</div>
+
+<!-- Page Layout Tab -->
+<div class="ribbon-panel" data-panel="page-layout" id="ribbon-page-layout">
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <div class="rb-field">
+          <label>Size:</label>
+          <select class="rb-select rb-narrow" id="rb-page-size">
+            <option value="a4">A4</option>
+            <option value="letter" selected>Letter</option>
+            <option value="legal">Legal</option>
+            <option value="custom">Custom</option>
+          </select>
+        </div>
+        <div class="rb-field">
+          <label>Orientation:</label>
+          <select class="rb-select rb-narrow" id="rb-page-orient">
+            <option value="portrait" selected>Portrait</option>
+            <option value="landscape">Landscape</option>
+          </select>
+        </div>
+        <div class="rb-field">
+          <label>Margins:</label>
+          <select class="rb-select rb-narrow" id="rb-page-margins">
+            <option value="normal" selected>Normal</option>
+            <option value="narrow">Narrow</option>
+            <option value="wide">Wide</option>
+            <option value="custom">Custom...</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Page Setup</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <div class="rb-field">
+          <label>Before:</label>
+          <select class="rb-select rb-narrow" id="rb-spacing-before">
+            <option value="0" selected>0 pt</option>
+            <option value="6">6 pt</option>
+            <option value="12">12 pt</option>
+            <option value="18">18 pt</option>
+            <option value="24">24 pt</option>
+          </select>
+        </div>
+        <div class="rb-field">
+          <label>After:</label>
+          <select class="rb-select rb-narrow" id="rb-spacing-after">
+            <option value="0">0 pt</option>
+            <option value="6">6 pt</option>
+            <option value="8" selected>8 pt</option>
+            <option value="12">12 pt</option>
+            <option value="24">24 pt</option>
+          </select>
+        </div>
+        <div class="rb-field">
+          <label>Indent:</label>
+          <select class="rb-select rb-narrow" id="rb-para-indent">
+            <option value="0" selected>None</option>
+            <option value="1">0.5 in</option>
+            <option value="2">1.0 in</option>
+            <option value="3">1.5 in</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Paragraph</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <div class="rb-field">
+          <label>Color:</label>
+          <input type="color" class="rb-color" id="rb-page-color" value="#ffffff" title="Page Color">
+        </div>
+        <button class="rb-btn rb-btn-sm" data-action="watermark" title="Watermark">
+          <span class="rb-icon">&#128167;</span><span class="rb-label">Watermark</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Background</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <div class="rb-field">
+          <label>Columns:</label>
+          <select class="rb-select rb-narrow" id="rb-columns">
+            <option value="1" selected>1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+            <option value="6">6</option>
+            <option value="custom">Custom...</option>
+          </select>
+        </div>
+        <div class="rb-field">
+          <label>Gap:</label>
+          <input type="text" id="rb-column-gap" value="0.5in" style="width:60px;padding:2px 4px;font-size:10px;border:1px solid var(--sz-color-button-shadow);border-radius:2px;" title="Column Gap">
+        </div>
+        <button class="rb-btn rb-btn-sm" data-action="insert-multilevel-list" title="Multi-Level List">
+          <span class="rb-icon">1.</span><span class="rb-label">Multi-Level</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Layout</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <div class="rb-dropdown">
+          <button class="rb-btn rb-btn-sm" title="Paragraph Flow">
+            <span class="rb-icon">&#8693;</span><span class="rb-label">Flow</span>
+          </button>
+          <div class="rb-dropdown-menu">
+            <button data-action="keep-with-next">Keep with Next</button>
+            <button data-action="keep-together">Keep Together</button>
+            <button data-action="page-break-before">Page Break Before</button>
+            <button data-action="widow-orphan">Widow/Orphan Control</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Paragraph</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <div class="rb-dropdown">
+          <button class="rb-btn rb-btn-sm" title="Section Breaks">
+            <span class="rb-icon">&#9776;</span><span class="rb-label">Section Breaks</span>
+          </button>
+          <div class="rb-dropdown-menu">
+            <button data-action="section-break-next">Next Page</button>
+            <button data-action="section-break-continuous">Continuous</button>
+            <button data-action="section-break-even">Even Page</button>
+            <button data-action="section-break-odd">Odd Page</button>
+          </div>
+        </div>
+        <button class="rb-btn rb-btn-sm" data-action="page-borders" title="Page Borders">
+          <span class="rb-icon">&#9634;</span><span class="rb-label">Page Borders</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="line-numbering" title="Line Numbers">
+          <span class="rb-icon">&#8470;</span><span class="rb-label">Line Numbers</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Sections</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <label class="rb-check-label"><input type="checkbox" data-action="toggle-different-first-page"> Different First Page</label>
+        <label class="rb-check-label"><input type="checkbox" data-action="toggle-different-odd-even"> Different Odd &amp; Even</label>
+      </div>
+      <div class="rb-stack">
+        <div class="wp-dlg-field" style="margin-bottom:0"><label style="min-width:42px">Gutter:</label><input type="number" id="ps-gutter" value="0" min="0" step="0.1" style="width:50px;padding:1px 3px;font-size:10px;border:1px solid var(--sz-color-button-shadow);border-radius:2px;"> in</div>
+        <label class="rb-check-label"><input type="checkbox" id="ps-mirror"> Mirror margins</label>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Headers / Margins</div>
+  </div>
+
+</div>
+
+<!-- View Tab -->
+<div class="ribbon-panel" data-panel="view" id="ribbon-view">
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <label class="rb-radio-label"><input type="radio" name="view-mode" value="print" checked> Print Layout</label>
+        <label class="rb-radio-label"><input type="radio" name="view-mode" value="web"> Web Layout</label>
+        <label class="rb-radio-label"><input type="radio" name="view-mode" value="outline"> Outline</label>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Document Views</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <label class="rb-check-label"><input type="checkbox" id="view-ruler"> Ruler</label>
+        <label class="rb-check-label"><input type="checkbox" id="view-gridlines"> Gridlines</label>
+        <label class="rb-check-label"><input type="checkbox" id="view-nav-pane"> Navigation Pane</label>
+      </div>
+      <div class="rb-stack">
+        <label class="rb-check-label"><input type="checkbox" id="view-formatting-marks"> Formatting Marks</label>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Show</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-row rb-zoom-row">
+        <button class="rb-btn rb-fmt" data-action="zoom-out" title="Zoom Out">&#8722;</button>
+        <input type="range" class="rb-zoom-slider" id="rb-zoom-slider" min="25" max="500" value="100">
+        <button class="rb-btn rb-fmt" data-action="zoom-in" title="Zoom In">+</button>
+        <span class="rb-zoom-value" id="rb-zoom-value">100%</span>
+      </div>
+      <div class="rb-row">
+        <button class="rb-btn rb-btn-sm" data-action="zoom-100" title="100%">
+          <span class="rb-label">100%</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="zoom-page-width" title="Page Width">
+          <span class="rb-label">Page Width</span>
+        </button>
+      </div>
+      <div class="rb-row">
+        <button class="rb-btn rb-btn-sm" data-action="zoom-full-page" title="Whole Page">
+          <span class="rb-label">Whole Page</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="zoom-two-pages" title="Two Pages">
+          <span class="rb-label">Two Pages</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Zoom</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="print-preview" title="Print Preview">
+        <span class="rb-icon rb-icon-lg">&#128438;</span>
+        <span class="rb-label">Print<br>Preview</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Preview</div>
+  </div>
+
+</div>
+
+<!-- Review Tab -->
+<div class="ribbon-panel" data-panel="review" id="ribbon-review">
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="spell-check" title="Spelling (F7)">
+        <span class="rb-icon rb-icon-lg">&#128221;</span>
+        <span class="rb-label">Spelling</span>
+      </button>
+      <div class="rb-stack">
+        <label class="rb-check-label"><input type="checkbox" id="view-spell-check" checked> Spell Check</label>
+        <div class="rb-field">
+          <label>Language:</label>
+          <select class="rb-select rb-narrow" id="spell-language">
+            <option value="auto">Auto</option>
+            <option value="en">English</option>
+            <option value="de">Deutsch</option>
+          </select>
+        </div>
+      </div>
+      <button class="rb-btn rb-btn-sm" data-action="word-count" title="Word Count">
+        <span class="rb-icon">&#128220;</span><span class="rb-label">Word Count</span>
+      </button>
+      <button class="rb-btn rb-btn-sm" data-action="grammar-check" title="Grammar Check">
+        <span class="rb-icon" style="color:green;">&#10003;</span><span class="rb-label">Grammar</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Proofing</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="new-comment" title="New Comment">
+        <span class="rb-icon rb-icon-lg">&#128172;</span>
+        <span class="rb-label">New<br>Comment</span>
+      </button>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="delete-comment" title="Delete Comment">
+          <span class="rb-icon">&#10006;</span><span class="rb-label">Delete</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="prev-comment" title="Previous Comment">
+          <span class="rb-icon">&#9668;</span><span class="rb-label">Previous</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="next-comment" title="Next Comment">
+          <span class="rb-icon">&#9658;</span><span class="rb-label">Next</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Comments</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="toggle-track-changes" title="Track Changes" id="btn-track-changes">
+        <span class="rb-icon rb-icon-lg">&#128221;</span>
+        <span class="rb-label">Track<br>Changes</span>
+      </button>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="accept-change" title="Accept Change">
+          <span class="rb-icon">&#10004;</span><span class="rb-label">Accept</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="reject-change" title="Reject Change">
+          <span class="rb-icon">&#10008;</span><span class="rb-label">Reject</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="accept-all-changes" title="Accept All">
+          <span class="rb-icon">&#10004;&#10004;</span><span class="rb-label">Accept All</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="reject-all-changes" title="Reject All">
+          <span class="rb-icon">&#10008;&#10008;</span><span class="rb-label">Reject All</span>
+        </button>
+        <label class="rb-check-label"><input type="checkbox" id="view-show-markup" checked> Show Markup</label>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Tracking</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="toggle-comments-pane" title="Comments Pane">
+        <span class="rb-icon rb-icon-lg">&#128196;</span>
+        <span class="rb-label">Comments<br>Pane</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Panes</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="restrict-editing" title="Restrict Editing">
+        <span class="rb-icon rb-icon-lg">&#128274;</span>
+        <span class="rb-label">Restrict<br>Editing</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Protect</div>
+  </div>
+
+</div>
+
+<!-- Table Tools Contextual Tab -->
+<div class="ribbon-panel" data-panel="table-tools" id="ribbon-table-tools">
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="tbl-insert-row-above" title="Insert Row Above">
+          <span class="rb-icon">&#8679;</span><span class="rb-label">Row Above</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="tbl-insert-row-below" title="Insert Row Below">
+          <span class="rb-icon">&#8681;</span><span class="rb-label">Row Below</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="tbl-insert-col-left" title="Insert Column Left">
+          <span class="rb-icon">&#8678;</span><span class="rb-label">Col Left</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="tbl-insert-col-right" title="Insert Column Right">
+          <span class="rb-icon">&#8680;</span><span class="rb-label">Col Right</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Rows &amp; Columns</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="tbl-delete-row" title="Delete Row">
+          <span class="rb-icon">&#10006;</span><span class="rb-label">Delete Row</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="tbl-delete-col" title="Delete Column">
+          <span class="rb-icon">&#10006;</span><span class="rb-label">Delete Col</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="tbl-delete-table" title="Delete Table">
+          <span class="rb-icon">&#10006;</span><span class="rb-label">Delete Table</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Delete</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="tbl-merge-cells" title="Merge Cells">
+          <span class="rb-icon">&#8703;</span><span class="rb-label">Merge</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="tbl-split-cell" title="Split Cell">
+          <span class="rb-icon">&#9638;</span><span class="rb-label">Split</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Merge</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <label class="rb-check-label"><input type="checkbox" data-action="tbl-toggle-banded" id="tbl-banded"> Banded Rows</label>
+        <label class="rb-check-label"><input type="checkbox" data-action="tbl-toggle-header" id="tbl-header-row"> Header Row</label>
+        <label class="rb-check-label"><input type="checkbox" data-action="tbl-toggle-repeat-header" id="tbl-repeat-header"> Repeat Header</label>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Table Style</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="tbl-formula" title="Insert Formula">
+          <span class="rb-icon">fx</span><span class="rb-label">Formula</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="tbl-cell-bg" title="Cell Background">
+          <span class="rb-icon">&#9608;</span><span class="rb-label">Cell Color</span>
+        </button>
+      </div>
+      <button class="rb-btn rb-btn-lg" data-action="tbl-properties" title="Table Properties">
+        <span class="rb-icon rb-icon-lg">&#9638;</span>
+        <span class="rb-label">Properties</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Properties</div>
+  </div>
+
+</div>
+
+<!-- Ruler -->
+<div class="ruler" id="ruler" style="display:none;">
+  <div class="ruler-inner"></div>
+</div>
+
+<!-- Navigation Pane -->
+<div class="nav-pane" id="nav-pane" style="display:none;">
+  <div class="nav-pane-title">
+    <span>Navigation</span>
+    <span class="nav-pane-close" id="nav-pane-close">&times;</span>
+  </div>
+  <div class="nav-pane-search" style="padding:4px;border-bottom:1px solid var(--sz-color-button-shadow);">
+    <input type="text" id="nav-pane-filter" placeholder="Search headings..." style="width:100%;padding:3px 6px;font-size:10px;border:1px solid var(--sz-color-button-shadow);background:var(--sz-color-window);color:var(--sz-color-window-text);border-radius:2px;box-sizing:border-box;">
+  </div>
+  <div class="nav-pane-body" id="nav-pane-body"></div>
+</div>
+
+<!-- Editor Area -->
+<div class="editor-area" id="editor-area">
+  <div class="editor-wrapper" id="editor-wrapper">
+    <div class="editor" id="editor" contenteditable="true" spellcheck="true"></div>
+  </div>
+  <!-- Comment Sidebar -->
+  <div class="comment-sidebar" id="comment-sidebar" style="display:none;">
+    <div class="comment-sidebar-title">
+      <span>Comments</span>
+      <span class="comment-sidebar-close" id="comment-sidebar-close">&times;</span>
+    </div>
+    <div class="comment-sidebar-body" id="comment-sidebar-body"></div>
+  </div>
+</div>
+
+<!-- Status bar -->
+<div class="status-bar" id="status-bar">
+  <span class="status-section" id="status-words">Words: 0</span>
+  <span class="status-section" id="status-chars">Characters: 0</span>
+  <span class="status-section" id="status-lines">Lines: 0</span>
+  <span class="status-spacer"></span>
+  <span id="status-zoom-ctrl"></span>
+</div>
+
+<!-- ═══ Dialogs ═══ -->
+
+<!-- Find & Replace Panel -->
+<div class="find-panel" id="find-panel">
+  <div class="find-panel-title">
+    <span id="fp-title-text">Find and Replace</span>
+    <span class="fp-close" id="fp-close">&times;</span>
+  </div>
+  <div class="find-panel-body">
+    <div class="fp-tabs">
+      <button class="fp-tab active" data-fp-tab="find">Find</button>
+      <button class="fp-tab" data-fp-tab="replace">Replace</button>
+    </div>
+    <div class="fp-field">
+      <label for="fp-find-input">Find:</label>
+      <input type="text" id="fp-find-input" autocomplete="off">
+    </div>
+    <div class="fp-field fp-replace-row" id="fp-replace-row" style="display:none;">
+      <label for="fp-replace-input">Replace:</label>
+      <input type="text" id="fp-replace-input" autocomplete="off">
+    </div>
+    <div class="fp-options">
+      <label><input type="checkbox" id="fp-case-sensitive"> Match case</label>
+      <label><input type="checkbox" id="fp-regex"> Use regex</label>
+      <label class="fr-option"><input type="checkbox" id="fr-whole-word"> Whole words</label>
+    </div>
+    <div class="fp-format-options" style="margin:4px 0;font-size:10px;">
+      <label style="display:flex;align-items:center;gap:3px;">
+        <input type="checkbox" id="fp-format-aware"> Format:
+      </label>
+      <span id="fp-format-filters" style="display:none;margin-left:4px;">
+        <label style="display:inline-flex;align-items:center;gap:2px;margin-right:6px;"><input type="checkbox" id="fp-fmt-bold"> Bold</label>
+        <label style="display:inline-flex;align-items:center;gap:2px;margin-right:6px;"><input type="checkbox" id="fp-fmt-italic"> Italic</label>
+        <label style="display:inline-flex;align-items:center;gap:2px;margin-right:6px;">
+          Font: <input type="text" id="fp-fmt-font" style="width:70px;font-size:10px;padding:1px 3px;border:1px solid #999;border-radius:2px;" placeholder="any">
+        </label>
+        <label style="display:inline-flex;align-items:center;gap:2px;">
+          Color: <input type="color" id="fp-fmt-color" value="#000000" style="width:20px;height:16px;padding:0;border:1px solid #999;">
+          <input type="checkbox" id="fp-fmt-color-enabled" title="Enable color filter">
+        </label>
+      </span>
+    </div>
+    <div class="fp-buttons">
+      <button id="fp-find-next">Find Next</button>
+      <button id="fp-find-prev">Find Prev</button>
+      <button data-action="find-all" id="btn-find-all" class="fr-btn">Find All</button>
+      <button id="fp-replace-one" style="display:none;">Replace</button>
+      <button id="fp-replace-all" style="display:none;">Replace All</button>
+    </div>
+    <div class="fp-status" id="fp-status"></div>
+  </div>
+</div>
+
+<!-- Save-changes dialog -->
+<div class="dialog-overlay" id="dlg-save-changes">
+  <div class="dialog">
+    <div class="dialog-title">WordPad</div>
+    <div class="dialog-body">
+      <p>The document has been changed.</p>
+      <p>Do you want to save the changes?</p>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="yes">Yes</button>
+      <button data-result="no">No</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- About dialog -->
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About WordPad</div>
+    <div class="dialog-body" style="text-align: center; padding: 20px;">
+      <p style="font-weight: bold; font-size: 13px; margin-bottom: 12px;">WordPad</p>
+      <p>A rich text editor for &raquo;SynthelicZ&laquo;</p>
+      <p style="margin-top: 12px; font-size: 10px; opacity: 0.7;">&copy; 1995-2026 &raquo;SynthelicZ&laquo;</p>
+    </div>
+    <div class="dialog-buttons" style="justify-content: center;">
+      <button data-result="ok">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Insert Table dialog -->
+<div class="dialog-overlay" id="dlg-insert-table">
+  <div class="dialog" style="min-width:300px;">
+    <div class="dialog-title">Insert Table</div>
+    <div class="dialog-body">
+      <div class="table-grid-picker" id="table-grid-picker"></div>
+      <div class="table-grid-label" id="table-grid-label">0 x 0</div>
+      <div class="fp-field" style="margin-top:8px;">
+        <label for="tbl-rows">Rows:</label>
+        <input type="number" id="tbl-rows" min="1" max="50" value="3" style="width:50px;">
+        <label for="tbl-cols" style="margin-left:12px;">Cols:</label>
+        <input type="number" id="tbl-cols" min="1" max="20" value="3" style="width:50px;">
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Insert</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Insert Hyperlink dialog -->
+<div class="dialog-overlay" id="dlg-insert-link">
+  <div class="dialog" style="min-width:360px;">
+    <div class="dialog-title">Insert Hyperlink</div>
+    <div class="dialog-body">
+      <div class="fp-field">
+        <label for="link-text">Text:</label>
+        <input type="text" id="link-text" autocomplete="off">
+      </div>
+      <div class="fp-field">
+        <label for="link-url">URL:</label>
+        <input type="text" id="link-url" autocomplete="off" value="https://">
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Insert</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Insert Image from URL dialog -->
+<div class="dialog-overlay" id="dlg-insert-image">
+  <div class="dialog" style="min-width:360px;">
+    <div class="dialog-title">Insert Image</div>
+    <div class="dialog-body">
+      <div class="fp-field">
+        <label for="img-url">URL:</label>
+        <input type="text" id="img-url" autocomplete="off" placeholder="https://example.com/image.png">
+      </div>
+      <div class="fp-field">
+        <label for="img-alt">Alt text:</label>
+        <input type="text" id="img-alt" autocomplete="off">
+      </div>
+      <div class="fp-field">
+        <label for="img-width">Width:</label>
+        <input type="number" id="img-width" min="1" placeholder="auto" style="width:70px;">
+        <label for="img-height" style="margin-left:8px;">Height:</label>
+        <input type="number" id="img-height" min="1" placeholder="auto" style="width:70px;">
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Insert</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Insert Bookmark dialog -->
+<div class="dialog-overlay" id="dlg-insert-bookmark">
+  <div class="dialog" style="min-width:300px;">
+    <div class="dialog-title">Insert Bookmark</div>
+    <div class="dialog-body">
+      <div class="fp-field">
+        <label for="bm-name">Name:</label>
+        <input type="text" id="bm-name" autocomplete="off" placeholder="bookmark-name">
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Insert</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Symbol picker dialog -->
+<div class="dialog-overlay" id="dlg-symbol">
+  <div class="dialog" style="min-width:380px;">
+    <div class="dialog-title">Insert Symbol</div>
+    <div class="dialog-body">
+      <div class="symbol-grid" id="symbol-grid"></div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="cancel">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Watermark dialog -->
+<div class="dialog-overlay" id="dlg-watermark">
+  <div class="dialog" style="min-width:340px;">
+    <div class="dialog-title">Watermark</div>
+    <div class="dialog-body">
+      <div class="wp-wm-tabs">
+        <button class="wp-wm-tab active" data-wm-tab="text">Text</button>
+        <button class="wp-wm-tab" data-wm-tab="image">Image</button>
+      </div>
+      <div class="wp-wm-panel" id="wm-panel-text">
+        <div class="fp-field">
+          <label for="wm-text">Text:</label>
+          <input type="text" id="wm-text" autocomplete="off" value="DRAFT" placeholder="Watermark text">
+        </div>
+      </div>
+      <div class="wp-wm-panel" id="wm-panel-image" style="display:none;">
+        <div class="fp-field">
+          <label for="wm-image-file">Image:</label>
+          <input type="file" id="wm-image-file" accept="image/*" style="font-size:10px;">
+        </div>
+      </div>
+      <div class="fp-options" style="margin-top:8px;">
+        <label><input type="checkbox" id="wm-remove"> Remove watermark</label>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Apply</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Document Properties dialog -->
+<div class="dialog-overlay" id="dlg-doc-properties">
+  <div class="dialog" style="min-width:440px;">
+    <div class="dialog-title">Document Properties</div>
+    <div class="dialog-body">
+      <div class="wp-dlg-field"><label for="dp-title">Title:</label><input type="text" id="dp-title"></div>
+      <div class="wp-dlg-field"><label for="dp-author">Author:</label><input type="text" id="dp-author"></div>
+      <div class="wp-dlg-field"><label for="dp-subject">Subject:</label><input type="text" id="dp-subject"></div>
+      <div class="wp-dlg-field"><label for="dp-keywords">Keywords:</label><input type="text" id="dp-keywords"></div>
+      <div class="wp-dlg-field"><label for="dp-description">Description:</label><textarea id="dp-description" rows="3" style="flex:1;font-size:11px;border:1px solid var(--sz-color-button-shadow);background:var(--sz-color-window);color:var(--sz-color-window-text);border-radius:2px;padding:3px 6px;resize:vertical;"></textarea></div>
+      <div class="wp-dlg-field"><label>Created:</label><span id="dp-created" style="font-size:11px;color:var(--sz-color-gray-text);">&mdash;</span></div>
+      <div class="wp-dlg-field"><label>Modified:</label><span id="dp-modified" style="font-size:11px;color:var(--sz-color-gray-text);">&mdash;</span></div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">OK</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Word Count dialog -->
+<div class="dialog-overlay" id="dlg-word-count">
+  <div class="dialog" style="min-width:320px;">
+    <div class="dialog-title">Word Count</div>
+    <div class="dialog-body">
+      <table class="wc-table">
+        <tr><td>Pages:</td><td id="wc-pages">0</td></tr>
+        <tr><td>Words:</td><td id="wc-words">0</td></tr>
+        <tr><td>Characters (no spaces):</td><td id="wc-chars-no-space">0</td></tr>
+        <tr><td>Characters (with spaces):</td><td id="wc-chars">0</td></tr>
+        <tr><td>Paragraphs:</td><td id="wc-paragraphs">0</td></tr>
+        <tr><td>Lines:</td><td id="wc-lines">0</td></tr>
+      </table>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Equation Editor dialog -->
+<div class="dialog-overlay" id="dlg-equation">
+  <div class="dialog" style="min-width:520px;">
+    <div class="dialog-title">Equation Editor</div>
+    <div class="dialog-body">
+      <div class="eq-preview-container">
+        <div class="eq-section-label">Preview</div>
+        <div class="eq-preview" id="eq-preview" contenteditable="true"></div>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Insert</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Manage Styles dialog -->
+<div class="dialog-overlay" id="dlg-manage-styles">
+  <div class="dialog" style="min-width:420px;">
+    <div class="dialog-title">Manage Styles</div>
+    <div class="dialog-body">
+      <div class="fp-field"><label for="ms-name">Name:</label><input type="text" id="ms-name" autocomplete="off"></div>
+      <div class="fp-field"><label for="ms-tag">Tag:</label>
+        <select id="ms-tag">
+          <option value="p">Paragraph</option>
+          <option value="h1">Heading 1</option>
+          <option value="h2">Heading 2</option>
+          <option value="h3">Heading 3</option>
+          <option value="h4">Heading 4</option>
+          <option value="blockquote">Quote</option>
+          <option value="pre">Code</option>
+        </select>
+      </div>
+      <div class="fp-field"><label for="ms-font">Font:</label><input type="text" id="ms-font" value="Calibri" autocomplete="off"></div>
+      <div class="fp-field"><label for="ms-size">Size (pt):</label><input type="number" id="ms-size" min="6" max="72" value="11" style="width:60px;"></div>
+      <div class="fp-field"><label for="ms-color">Color:</label><input type="color" id="ms-color" value="#000000"></div>
+      <div class="fp-options">
+        <label><input type="checkbox" id="ms-bold"> Bold</label>
+        <label><input type="checkbox" id="ms-italic"> Italic</label>
+      </div>
+      <div class="fp-field"><label for="ms-line-height">Line Height:</label><input type="text" id="ms-line-height" value="1.15" style="width:60px;"></div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="add" id="ms-add">Add</button>
+      <button data-result="update" id="ms-update">Update</button>
+      <button data-result="delete" id="ms-delete">Delete</button>
+      <button data-result="cancel">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Caption dialog -->
+<div class="dialog-overlay" id="dlg-caption">
+  <div class="dialog" style="min-width:380px;">
+    <div class="dialog-title">Insert Caption</div>
+    <div class="dialog-body">
+      <div class="wp-dlg-field"><label>Label:</label>
+        <select id="cap-label" style="flex:1;padding:2px 4px;font-size:11px;border:1px solid var(--sz-color-button-shadow);border-radius:2px;"><option>Figure</option><option>Table</option><option>Equation</option></select>
+      </div>
+      <div class="wp-dlg-field"><label>Caption text:</label><input type="text" id="cap-text"></div>
+      <div class="wp-dlg-field"><label>Position:</label>
+        <select id="cap-position" style="flex:1;padding:2px 4px;font-size:11px;border:1px solid var(--sz-color-button-shadow);border-radius:2px;"><option value="below">Below selection</option><option value="above">Above selection</option></select>
+      </div>
+      <div class="wp-dlg-field"><label>Numbering:</label>
+        <select id="cap-numbering" style="flex:1;padding:2px 4px;font-size:11px;border:1px solid var(--sz-color-button-shadow);border-radius:2px;"><option value="decimal">1, 2, 3</option><option value="alpha">A, B, C</option><option value="roman">I, II, III</option></select>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">OK</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Cross-Reference dialog -->
+<div class="dialog-overlay" id="dlg-cross-ref">
+  <div class="dialog" style="min-width:420px;">
+    <div class="dialog-title">Cross-Reference</div>
+    <div class="dialog-body">
+      <div class="wp-dlg-field"><label>Reference type:</label>
+        <select id="xref-type" style="flex:1;padding:2px 4px;font-size:11px;border:1px solid var(--sz-color-button-shadow);border-radius:2px;"><option value="heading">Heading</option><option value="bookmark">Bookmark</option><option value="figure">Figure</option><option value="table">Table</option></select>
+      </div>
+      <div class="wp-dlg-field"><label>Insert reference to:</label>
+        <select id="xref-format" style="flex:1;padding:2px 4px;font-size:11px;border:1px solid var(--sz-color-button-shadow);border-radius:2px;"><option value="text">Heading/Bookmark text</option><option value="page">Page number</option><option value="label-number">Label and number</option></select>
+      </div>
+      <div class="wp-dlg-field" style="align-items:flex-start"><label style="padding-top:4px">Available:</label>
+        <select id="xref-targets" size="8" style="flex:1;font-size:11px;border:1px solid var(--sz-color-button-shadow);border-radius:2px;background:var(--sz-color-window);color:var(--sz-color-window-text);"></select>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Insert</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Page Borders dialog -->
+<div class="dialog-overlay" id="dlg-page-borders">
+  <div class="dialog" style="min-width:400px;">
+    <div class="dialog-title">Page Borders</div>
+    <div class="dialog-body">
+      <div class="wp-dlg-field"><label>Style:</label>
+        <select id="pb-style" style="flex:1;padding:2px 4px;font-size:11px;border:1px solid var(--sz-color-button-shadow);border-radius:2px;"><option value="none">None</option><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option><option value="double">Double</option></select>
+      </div>
+      <div class="wp-dlg-field"><label>Width:</label>
+        <select id="pb-width" style="flex:1;padding:2px 4px;font-size:11px;border:1px solid var(--sz-color-button-shadow);border-radius:2px;"><option value="1">1px</option><option value="2">2px</option><option value="3">3px</option><option value="4">4px</option></select>
+      </div>
+      <div class="wp-dlg-field"><label>Color:</label><input type="color" id="pb-color" value="#000000"></div>
+      <div class="wp-dlg-field"><label>Apply to:</label>
+        <select id="pb-apply" style="flex:1;padding:2px 4px;font-size:11px;border:1px solid var(--sz-color-button-shadow);border-radius:2px;"><option value="document">Whole document</option><option value="section">This section</option><option value="first">First page only</option></select>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">OK</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Line Spacing popup -->
+<div class="popup-menu" id="popup-line-spacing">
+  <div class="popup-entry" data-spacing="1.0">1.0</div>
+  <div class="popup-entry" data-spacing="1.15">1.15</div>
+  <div class="popup-entry" data-spacing="1.5">1.5</div>
+  <div class="popup-entry" data-spacing="2.0">2.0</div>
+  <div class="popup-entry" data-spacing="2.5">2.5</div>
+  <div class="popup-entry" data-spacing="3.0">3.0</div>
+  <div class="popup-separator"></div>
+  <div class="popup-entry" data-spacing="custom">Custom...</div>
+</div>
+
+<!-- Paste Special popup -->
+<div class="popup-menu" id="popup-paste-special">
+  <div class="popup-entry" data-paste="html">Paste (keep formatting)</div>
+  <div class="popup-entry" data-paste="plain">Paste as Plain Text</div>
+</div>
+
+<!-- Border popup -->
+<div class="popup-menu" id="popup-borders">
+  <div class="popup-entry" data-border="all">All Borders</div>
+  <div class="popup-entry" data-border="none">No Borders</div>
+  <div class="popup-entry" data-border="outside">Outside Borders</div>
+  <div class="popup-entry" data-border="bottom">Bottom Border</div>
+</div>
+
+<!-- Image Wrapping popup -->
+<div class="popup-menu" id="popup-img-wrap">
+  <div class="popup-entry" data-wrap="inline">Inline with Text</div>
+  <div class="popup-entry" data-wrap="square-left">Square - Left</div>
+  <div class="popup-entry" data-wrap="square-right">Square - Right</div>
+  <div class="popup-entry" data-wrap="tight">Tight</div>
+  <div class="popup-separator"></div>
+  <div class="popup-entry" data-wrap="behind">Behind Text</div>
+  <div class="popup-entry" data-wrap="front">In Front of Text</div>
+  <div class="popup-separator"></div>
+  <div class="popup-entry" data-action="crop-image">Crop Image</div>
+</div>
+
+<!-- Table Properties dialog -->
+<div class="wp-dialog-overlay" id="dlg-table-props" style="display:none">
+  <div class="wp-dialog" style="width:420px">
+    <div class="wp-dialog-title">Table Properties</div>
+    <div class="wp-dialog-body">
+      <div class="wp-dlg-field"><label>Width:</label><input type="number" id="tp-width" min="10" max="100" value="100">%</div>
+      <div class="wp-dlg-field"><label>Alignment:</label>
+        <select id="tp-align"><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select>
+      </div>
+      <div class="wp-dlg-field"><label>Cell padding:</label><input type="number" id="tp-padding" min="0" max="20" value="4">px</div>
+      <div class="wp-dlg-field"><label>Border width:</label><input type="number" id="tp-border" min="0" max="5" value="1">px</div>
+      <div class="wp-dlg-field"><label>Border color:</label><input type="color" id="tp-border-color" value="#999999"></div>
+      <div class="wp-dlg-field">
+        <label><input type="checkbox" id="tp-banded"> Banded rows</label>
+      </div>
+      <div class="wp-dlg-field">
+        <label><input type="checkbox" id="tp-header-row"> Header row style</label>
+      </div>
+      <div class="wp-dlg-field">
+        <label><input type="checkbox" id="tp-repeat-header"> Repeat header on new pages</label>
+      </div>
+    </div>
+    <div class="wp-dialog-buttons"><button class="wp-dlg-ok">OK</button><button class="wp-dlg-cancel">Cancel</button></div>
+  </div>
+</div>
+
+<!-- Template Picker dialog -->
+<div class="dialog-overlay" id="dlg-template-picker">
+  <div class="dialog" style="min-width:460px;">
+    <div class="dialog-title">New from Template</div>
+    <div class="dialog-body">
+      <div id="template-list" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;"></div>
+      <div class="fp-field" style="border-top:1px solid var(--sz-color-button-shadow);padding-top:8px;margin-top:8px;">
+        <label for="tpl-save-name">Save current as template:</label>
+        <input type="text" id="tpl-save-name" autocomplete="off" placeholder="Template name">
+        <button id="tpl-save-btn" style="min-width:50px;padding:3px 8px;font-size:11px;border:1px solid var(--sz-color-button-shadow);background:var(--sz-color-button-face);color:var(--sz-color-button-text);border-radius:2px;cursor:default;">Save</button>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="cancel">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Restrict Editing dialog -->
+<div class="dialog-overlay" id="dlg-restrict-editing">
+  <div class="dialog" style="min-width:360px;">
+    <div class="dialog-title">Restrict Editing</div>
+    <div class="dialog-body">
+      <div class="fp-field" style="flex-direction:column;align-items:flex-start;gap:6px;">
+        <label style="min-width:auto;text-align:left;font-weight:bold;">Editing Restrictions:</label>
+        <label class="rb-radio-label"><input type="radio" name="restrict-mode" value="none" checked> No restrictions</label>
+        <label class="rb-radio-label"><input type="radio" name="restrict-mode" value="tracked"> Tracked changes only</label>
+        <label class="rb-radio-label"><input type="radio" name="restrict-mode" value="readonly"> Read-only</label>
+      </div>
+      <div class="fp-field" style="margin-top:10px;">
+        <label for="restrict-password">Password (optional):</label>
+        <input type="password" id="restrict-password" autocomplete="off" placeholder="Leave blank for none" style="flex:1;padding:3px 6px;font-size:11px;border:1px solid var(--sz-color-button-shadow);background:var(--sz-color-window);color:var(--sz-color-window-text);border-radius:2px;">
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">OK</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Custom Columns dialog -->
+<div class="dialog-overlay" id="dlg-custom-columns">
+  <div class="dialog" style="min-width:320px;">
+    <div class="dialog-title">Custom Columns</div>
+    <div class="dialog-body">
+      <div class="fp-field">
+        <label for="cc-count">Number of columns:</label>
+        <input type="number" id="cc-count" min="1" max="12" value="4" style="width:60px;">
+      </div>
+      <div class="fp-field">
+        <label for="cc-gap">Column gap:</label>
+        <input type="text" id="cc-gap" value="0.5in" style="width:80px;padding:3px 6px;font-size:11px;border:1px solid var(--sz-color-button-shadow);background:var(--sz-color-window);color:var(--sz-color-window-text);border-radius:2px;">
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Apply</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Manage Sources dialog -->
+<div class="wp-dialog-overlay" id="dlg-manage-sources" style="display:none">
+  <div class="wp-dialog" style="width:520px">
+    <div class="wp-dialog-title">Manage Sources</div>
+    <div class="wp-dialog-body">
+      <div id="sources-list" style="max-height:200px;overflow:auto;border:1px solid #ccc;margin-bottom:8px"></div>
+      <button id="src-add">Add New Source</button>
+      <button id="src-edit">Edit</button>
+      <button id="src-delete">Delete</button>
+      <hr>
+      <div id="source-form" style="display:none">
+        <div class="wp-dlg-field"><label>Type:</label>
+          <select id="src-type"><option>Book</option><option>Journal</option><option>Website</option><option>Conference</option></select>
+        </div>
+        <div class="wp-dlg-field"><label>Author(s):</label><input type="text" id="src-author"></div>
+        <div class="wp-dlg-field"><label>Title:</label><input type="text" id="src-title"></div>
+        <div class="wp-dlg-field"><label>Year:</label><input type="text" id="src-year"></div>
+        <div class="wp-dlg-field"><label>Publisher:</label><input type="text" id="src-publisher"></div>
+        <div class="wp-dlg-field"><label>URL:</label><input type="text" id="src-url"></div>
+        <button id="src-save">Save Source</button>
+      </div>
+      <hr>
+      <div class="wp-dlg-field"><label>Bibliography style:</label>
+        <select id="bib-style"><option value="apa">APA</option><option value="mla">MLA</option><option value="chicago">Chicago</option></select>
+      </div>
+    </div>
+    <div class="wp-dialog-buttons"><button class="wp-dlg-ok">Close</button></div>
+  </div>
+</div>
+
+<script src="../../zoom-control.js"></script>
+<script src="../../shared/ribbon.js"></script>
+<script src="../../shared/dialog.js"></script>
+<link rel="stylesheet" href="../../shared/color-palette.css">
+<link rel="stylesheet" href="../../shared/border-picker.css">
+<script defer src="../../shared/spell-check-core.js"></script>
+<script defer src="../../shared/format-painter.js"></script>
+<script defer src="../../shared/color-palette.js"></script>
+<script defer src="../../shared/font-picker.js"></script>
+<script defer src="../../shared/find-replace.js"></script>
+<script defer src="../../shared/border-picker.js"></script>
+<script defer src="docx-engine.js"></script>
+<script defer src="rtf-engine.js"></script>
+<script defer src="comments-tracking.js"></script>
+<script defer src="toc-footnotes.js"></script>
+<script defer src="image-tools.js"></script>
+<script defer src="shape-tools.js"></script>
+<script defer src="dictionary-en.js"></script>
+<script defer src="dictionary-de.js"></script>
+<script defer src="spell-check.js"></script>
+<script defer src="styles-gallery.js"></script>
+<script defer src="equation-editor.js"></script>
+<script defer src="auto-correct.js"></script>
+<script defer src="field-codes.js"></script>
+<script defer src="sections.js"></script>
+<script defer src="bibliography.js"></script>
+<script defer src="auto-text.js"></script>
+<script defer src="templates.js"></script>
+<script defer src="controller.js"></script>
+</body>
+</html>

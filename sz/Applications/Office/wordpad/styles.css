@@ -1,0 +1,2190 @@
+/* ═══════════════════════════════════════════════════════════════════
+   WordPad — Ribbon-style UI
+   Uses OS skin colors via --sz-color-* custom properties
+   ═══════════════════════════════════════════════════════════════════ */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  font-family: 'Segoe UI', Tahoma, Verdana, sans-serif;
+  font-size: 11px;
+  color: var(--sz-color-button-text);
+  background: var(--sz-color-button-face);
+}
+
+/* ── App-specific Ribbon Select Sizes ────────────────────────── */
+
+.rb-font-family {
+  width: 140px;
+}
+
+.rb-font-size {
+  width: 52px;
+}
+
+.rb-style-select {
+  width: 120px;
+}
+
+.rb-narrow {
+  width: 100px;
+}
+
+/* ── Ribbon Fields (label + control) ──────────────────────────── */
+
+.rb-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 20px;
+}
+
+.rb-field label {
+  font-size: 10px;
+  color: var(--sz-color-button-text);
+  white-space: nowrap;
+  min-width: 50px;
+  text-align: right;
+}
+
+/* ── Color Inputs ─────────────────────────────────────────────── */
+
+.rb-color-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 22px;
+  cursor: default;
+}
+
+.rb-color {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+
+.rb-color-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  font-weight: bold;
+  font-size: 12px;
+  color: #fff;
+  text-shadow: 0 0 2px #000, 0 0 2px #000;
+  border: 1px solid var(--sz-color-button-shadow);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.rb-highlight-swatch {
+  font-size: 0;
+}
+
+/* ── Ruler ────────────────────────────────────────────────────── */
+
+.ruler {
+  height: 20px;
+  background: var(--sz-color-button-face);
+  border-bottom: 1px solid var(--sz-color-button-shadow);
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.ruler-inner {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(
+    to right,
+    var(--sz-color-button-shadow) 0px,
+    var(--sz-color-button-shadow) 1px,
+    transparent 1px,
+    transparent 96px
+  );
+}
+
+/* ── Navigation Pane ──────────────────────────────────────────── */
+
+.nav-pane {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 200px;
+  height: 100%;
+  background: var(--sz-color-window);
+  border-right: 1px solid var(--sz-color-button-shadow);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  font-size: 11px;
+}
+
+.nav-pane-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 8px;
+  background: var(--sz-color-button-face);
+  border-bottom: 1px solid var(--sz-color-button-shadow);
+  font-weight: bold;
+  font-size: 11px;
+}
+
+.nav-pane-close {
+  cursor: default;
+  padding: 0 4px;
+  font-size: 14px;
+}
+
+.nav-pane-close:hover {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+  border-radius: 2px;
+}
+
+.nav-pane-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.nav-pane-body a {
+  display: block;
+  padding: 2px 4px;
+  text-decoration: none;
+  color: var(--sz-color-window-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-radius: 2px;
+  font-size: 11px;
+}
+
+.nav-pane-body a:hover {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+}
+
+.nav-pane-body a.nav-h1 { padding-left: 4px; font-weight: bold; }
+.nav-pane-body a.nav-h2 { padding-left: 12px; }
+.nav-pane-body a.nav-h3 { padding-left: 20px; font-size: 10px; }
+.nav-pane-body a.nav-h4 { padding-left: 28px; font-size: 10px; }
+.nav-pane-body a.nav-h5 { padding-left: 36px; font-size: 10px; }
+.nav-pane-body a.nav-h6 { padding-left: 44px; font-size: 10px; }
+
+/* ── Editor Area ──────────────────────────────────────────────── */
+
+.editor-area {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  min-height: 0;
+  position: relative;
+}
+
+.editor-wrapper {
+  flex: 1;
+  display: flex;
+  overflow: auto;
+  min-height: 0;
+  background: var(--sz-color-app-workspace, #808080);
+  justify-content: center;
+  padding: 0;
+}
+
+/* Print Layout mode -- paper look */
+.editor-wrapper.print-layout {
+  padding: 16px;
+}
+
+.editor-wrapper.print-layout .editor {
+  max-width: 8.5in;
+  min-height: 11in;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
+  border: none;
+}
+
+/* Web Layout mode */
+.editor-wrapper.web-layout .editor {
+  max-width: none;
+  min-height: 100%;
+  box-shadow: none;
+}
+
+.editor {
+  flex: 1;
+  padding: 1in;
+  outline: none;
+  font-family: 'Calibri', Arial, sans-serif;
+  font-size: 11pt;
+  line-height: 1.15;
+  background: var(--sz-color-window);
+  color: var(--sz-color-window-text);
+  overflow-y: auto;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  min-height: 100%;
+  position: relative;
+}
+
+.editor:empty::before {
+  content: '';
+}
+
+/* Formatting marks */
+.editor.show-marks p::after,
+.editor.show-marks div::after {
+  content: '\00B6';
+  color: var(--sz-color-gray-text);
+  opacity: 0.4;
+  font-size: 10px;
+}
+
+.editor.show-marks br::after {
+  content: '\21B5';
+  color: var(--sz-color-gray-text);
+  opacity: 0.4;
+  font-size: 10px;
+}
+
+/* Gridlines */
+.editor.show-gridlines {
+  background-image:
+    linear-gradient(to right, rgba(0,0,0,0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0,0,0,0.05) 1px, transparent 1px);
+  background-size: 96px 96px;
+}
+
+/* Watermark */
+.editor .watermark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-45deg);
+  font-size: 72px;
+  color: rgba(0, 0, 0, 0.08);
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+  z-index: 0;
+}
+
+/* Editor tables */
+.editor table {
+  border-collapse: collapse;
+  margin: 8px 0;
+  width: auto;
+  min-width: 100px;
+}
+
+.editor table td,
+.editor table th {
+  border: 1px solid var(--sz-color-button-shadow, #999);
+  padding: 4px 8px;
+  min-width: 40px;
+  min-height: 20px;
+  vertical-align: top;
+}
+
+.editor table th {
+  background: var(--sz-color-button-face, #eee);
+  font-weight: bold;
+}
+
+/* Selected cells highlight */
+.editor table td.cell-selected {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+}
+
+/* Editor images */
+.editor img {
+  max-width: 100%;
+  height: auto;
+  cursor: default;
+}
+
+.editor img.img-selected {
+  outline: 2px solid var(--sz-color-highlight);
+  outline-offset: 1px;
+}
+
+/* Editor shapes */
+.editor .wp-shape {
+  display: inline-block;
+  margin: 4px;
+}
+
+.editor .wp-shape-rect {
+  width: 120px;
+  height: 80px;
+  border: 2px solid var(--sz-color-button-text, #333);
+  background: transparent;
+}
+
+.editor .wp-shape-circle {
+  width: 80px;
+  height: 80px;
+  border: 2px solid var(--sz-color-button-text, #333);
+  border-radius: 50%;
+  background: transparent;
+}
+
+.editor .wp-shape-line {
+  width: 120px;
+  height: 2px;
+  background: var(--sz-color-button-text, #333);
+}
+
+.editor .wp-shape-selected {
+  outline: 2px solid var(--sz-color-highlight, #0078d4);
+  outline-offset: 1px;
+}
+
+.wp-shape-resize-overlay {
+  position: fixed;
+  pointer-events: auto;
+  cursor: move;
+  z-index: 3000;
+  border: 1px dashed var(--sz-color-highlight, #0078d4);
+  box-sizing: border-box;
+}
+
+.wp-shape-handle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: #fff;
+  border: 1px solid var(--sz-color-highlight, #0078d4);
+  box-sizing: border-box;
+}
+
+.wp-shape-handle.nw { top: -4px; left: -4px; cursor: nw-resize; }
+.wp-shape-handle.n  { top: -4px; left: 50%; margin-left: -4px; cursor: n-resize; }
+.wp-shape-handle.ne { top: -4px; right: -4px; cursor: ne-resize; }
+.wp-shape-handle.e  { top: 50%; margin-top: -4px; right: -4px; cursor: e-resize; }
+.wp-shape-handle.se { bottom: -4px; right: -4px; cursor: se-resize; }
+.wp-shape-handle.s  { bottom: -4px; left: 50%; margin-left: -4px; cursor: s-resize; }
+.wp-shape-handle.sw { bottom: -4px; left: -4px; cursor: sw-resize; }
+.wp-shape-handle.w  { top: 50%; margin-top: -4px; left: -4px; cursor: w-resize; }
+
+/* Text box */
+.editor .wp-textbox {
+  display: inline-block;
+  border: 1px solid var(--sz-color-button-shadow, #999);
+  padding: 8px;
+  min-width: 100px;
+  min-height: 40px;
+  background: var(--sz-color-window, #fff);
+}
+
+/* Page break */
+.editor .wp-page-break {
+  display: block;
+  border: none;
+  border-top: 2px dashed var(--sz-color-button-shadow);
+  margin: 16px 0;
+  page-break-after: always;
+  position: relative;
+}
+
+.editor .wp-page-break::after {
+  content: 'Page Break';
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--sz-color-window);
+  padding: 0 8px;
+  font-size: 9px;
+  color: var(--sz-color-gray-text);
+}
+
+/* Auto page break indicators (print layout) */
+.wp-page-indicator {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 1px dashed rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+  z-index: 50;
+}
+
+.wp-page-indicator::after {
+  content: attr(data-page-label);
+  position: absolute;
+  top: -8px;
+  right: 8px;
+  font-size: 8px;
+  color: rgba(0, 0, 0, 0.35);
+  background: var(--sz-color-window, #fff);
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+@media print {
+  .wp-page-indicator { display: none !important; }
+}
+
+/* Header / Footer */
+.editor .wp-header,
+.editor .wp-footer {
+  border-bottom: 1px dashed var(--sz-color-button-shadow);
+  padding: 4px 0;
+  margin-bottom: 12px;
+  font-size: 10px;
+  color: var(--sz-color-gray-text);
+}
+
+.editor .wp-footer {
+  border-bottom: none;
+  border-top: 1px dashed var(--sz-color-button-shadow);
+  margin-bottom: 0;
+  margin-top: 12px;
+  padding-top: 4px;
+}
+
+/* Blockquote style */
+.editor blockquote {
+  border-left: 4px solid var(--sz-color-button-shadow);
+  margin: 8px 0;
+  padding: 4px 12px;
+  color: var(--sz-color-gray-text);
+  font-style: italic;
+}
+
+/* Code style */
+.editor pre {
+  background: var(--sz-color-button-face);
+  border: 1px solid var(--sz-color-button-shadow);
+  padding: 8px 12px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 10pt;
+  margin: 8px 0;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+
+/* Heading styles */
+.editor h1 { font-size: 24pt; margin: 12px 0 6px; }
+.editor h2 { font-size: 18pt; margin: 10px 0 5px; }
+.editor h3 { font-size: 14pt; margin: 8px 0 4px; }
+.editor h4 { font-size: 12pt; margin: 6px 0 3px; }
+.editor h5 { font-size: 10pt; margin: 6px 0 3px; }
+.editor h6 { font-size: 9pt; margin: 4px 0 2px; }
+
+/* ── Status Bar ───────────────────────────────────────────────── */
+
+.status-bar {
+  display: flex;
+  align-items: center;
+  padding: 2px 8px;
+  background: var(--sz-color-button-face);
+  border-top: 1px solid var(--sz-color-button-shadow);
+  font-size: 10px;
+  color: var(--sz-color-button-text);
+  flex-shrink: 0;
+  user-select: none;
+  gap: 12px;
+  min-height: 22px;
+}
+
+.status-bar .status-section {
+  white-space: nowrap;
+}
+
+.status-spacer {
+  flex: 1;
+}
+
+/* ── Find & Replace Panel ─────────────────────────────────────── */
+
+.find-panel {
+  display: none;
+  position: fixed;
+  top: 110px;
+  right: 8px;
+  z-index: 1500;
+  background: var(--sz-color-button-face);
+  border: 1px solid var(--sz-color-button-shadow);
+  box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.25);
+  min-width: 340px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.find-panel.visible {
+  display: block;
+}
+
+.find-panel-title {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+  padding: 4px 8px;
+  font-weight: bold;
+  font-size: 11px;
+  user-select: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-radius: 4px 4px 0 0;
+}
+
+.find-panel-title .fp-close {
+  cursor: default;
+  padding: 0 4px;
+  font-size: 14px;
+  line-height: 1;
+  border-radius: 2px;
+}
+
+.find-panel-title .fp-close:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.find-panel-body {
+  padding: 8px;
+}
+
+.fp-tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.fp-tab {
+  padding: 3px 12px;
+  font-size: 10px;
+  border: 1px solid var(--sz-color-button-shadow);
+  background: var(--sz-color-button-face);
+  color: var(--sz-color-button-text);
+  cursor: default;
+  border-radius: 3px 3px 0 0;
+  border-bottom: none;
+}
+
+.fp-tab.active {
+  background: var(--sz-color-window);
+  font-weight: bold;
+}
+
+.fp-field {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+  gap: 6px;
+}
+
+.fp-field label {
+  min-width: 50px;
+  text-align: right;
+  font-size: 11px;
+}
+
+.fp-field input[type="text"] {
+  flex: 1;
+  padding: 3px 6px;
+  font-size: 11px;
+  border: 1px solid var(--sz-color-button-shadow);
+  background: var(--sz-color-window);
+  color: var(--sz-color-window-text);
+  border-radius: 2px;
+}
+
+.fp-field input[type="number"] {
+  padding: 2px 4px;
+  font-size: 11px;
+  border: 1px solid var(--sz-color-button-shadow);
+  background: var(--sz-color-window);
+  color: var(--sz-color-window-text);
+  border-radius: 2px;
+}
+
+.fp-options {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 6px;
+  font-size: 10px;
+}
+
+.fp-options label {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  cursor: default;
+}
+
+.fp-buttons {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.fp-buttons button {
+  min-width: 72px;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: default;
+  border: 1px solid var(--sz-color-button-shadow);
+  background: var(--sz-color-button-face);
+  color: var(--sz-color-button-text);
+  border-radius: 2px;
+}
+
+.fp-buttons button:hover {
+  background: var(--sz-color-button-highlight);
+}
+
+.fp-status {
+  font-size: 10px;
+  color: var(--sz-color-gray-text);
+  margin-top: 4px;
+  min-height: 14px;
+}
+
+/* ── Popup Menus (line spacing, paste special, borders) ───────── */
+
+.popup-menu {
+  display: none;
+  position: fixed;
+  z-index: 3000;
+  background: var(--sz-color-menu);
+  border: 1px solid var(--sz-color-button-shadow);
+  box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.25);
+  min-width: 160px;
+  padding: 2px 0;
+  border-radius: 3px;
+}
+
+.popup-menu.visible {
+  display: block;
+}
+
+.popup-entry {
+  padding: 4px 16px;
+  cursor: default;
+  color: var(--sz-color-menu-text);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.popup-entry:hover {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+}
+
+.popup-separator {
+  height: 1px;
+  background: var(--sz-color-button-shadow);
+  margin: 2px 4px;
+}
+
+/* ── Dialog Overrides (extends shared/dialog.css) ────────────── */
+
+.dialog-overlay {
+  z-index: 4000;
+}
+
+.dialog {
+  border: 1px solid var(--sz-color-button-shadow);
+  max-width: 500px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+}
+
+.dialog-title {
+  padding: 6px 12px;
+  border-radius: 4px 4px 0 0;
+}
+
+.dialog-buttons {
+  border-top: 1px solid var(--sz-color-button-shadow);
+}
+
+.dialog-buttons button {
+  padding: 4px 14px;
+  border: 1px solid var(--sz-color-button-shadow);
+  background: var(--sz-color-button-face);
+  color: var(--sz-color-button-text);
+  border-radius: 3px;
+}
+
+.dialog-buttons button:hover {
+  background: var(--sz-color-button-highlight);
+}
+
+.dialog-buttons button:first-child {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+  border-color: var(--sz-color-highlight);
+}
+
+.dialog-buttons button:first-child:hover {
+  filter: brightness(1.1);
+}
+
+/* ── Table Grid Picker ────────────────────────────────────────── */
+
+.table-grid-picker {
+  display: grid;
+  grid-template-columns: repeat(10, 20px);
+  grid-template-rows: repeat(8, 20px);
+  gap: 1px;
+  margin-bottom: 4px;
+}
+
+.table-grid-picker .tgp-cell {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--sz-color-button-shadow);
+  background: var(--sz-color-window);
+  cursor: default;
+}
+
+.table-grid-picker .tgp-cell.tgp-active {
+  background: var(--sz-color-highlight);
+  border-color: var(--sz-color-highlight);
+}
+
+.table-grid-label {
+  text-align: center;
+  font-size: 10px;
+  color: var(--sz-color-gray-text);
+  margin-top: 2px;
+}
+
+/* ── Symbol Grid ──────────────────────────────────────────────── */
+
+.symbol-grid {
+  display: grid;
+  grid-template-columns: repeat(16, 1fr);
+  gap: 1px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.symbol-grid .sym-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  font-size: 14px;
+  border: 1px solid transparent;
+  cursor: default;
+  border-radius: 2px;
+}
+
+.symbol-grid .sym-cell:hover {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+  border-color: var(--sz-color-button-shadow);
+}
+
+/* ── Table context menu ───────────────────────────────────────── */
+
+.table-context-menu {
+  display: none;
+  position: fixed;
+  z-index: 3500;
+  background: var(--sz-color-menu);
+  border: 1px solid var(--sz-color-button-shadow);
+  box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.25);
+  min-width: 180px;
+  padding: 2px 0;
+  border-radius: 3px;
+}
+
+.table-context-menu.visible {
+  display: block;
+}
+
+.table-context-menu .ctx-entry {
+  padding: 4px 16px;
+  cursor: default;
+  color: var(--sz-color-menu-text);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.table-context-menu .ctx-entry:hover {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+}
+
+.table-context-menu .ctx-sep {
+  height: 1px;
+  background: var(--sz-color-button-shadow);
+  margin: 2px 4px;
+}
+
+/* ── Image Resize Handles ──────────────────────────────────── */
+
+.wp-img-resize-overlay {
+  position: absolute;
+  pointer-events: none;
+  z-index: 500;
+  border: 1px solid var(--sz-color-highlight);
+}
+
+.wp-img-resize-overlay .wp-resize-handle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: var(--sz-color-highlight);
+  border: 1px solid var(--sz-color-highlight-text);
+  pointer-events: auto;
+  z-index: 501;
+}
+
+.wp-resize-handle.nw { top: -4px; left: -4px; cursor: nw-resize; }
+.wp-resize-handle.n  { top: -4px; left: 50%; margin-left: -4px; cursor: n-resize; }
+.wp-resize-handle.ne { top: -4px; right: -4px; cursor: ne-resize; }
+.wp-resize-handle.e  { top: 50%; margin-top: -4px; right: -4px; cursor: e-resize; }
+.wp-resize-handle.se { bottom: -4px; right: -4px; cursor: se-resize; }
+.wp-resize-handle.s  { bottom: -4px; left: 50%; margin-left: -4px; cursor: s-resize; }
+.wp-resize-handle.sw { bottom: -4px; left: -4px; cursor: sw-resize; }
+.wp-resize-handle.w  { top: 50%; margin-top: -4px; left: -4px; cursor: w-resize; }
+
+/* ── Image Text Wrapping ────────────────────────────────────── */
+
+.editor img.wrap-inline { display: inline; float: none; }
+.editor img.wrap-square-left { float: left; margin: 4px 12px 4px 0; }
+.editor img.wrap-square-right { float: right; margin: 4px 0 4px 12px; }
+.editor img.wrap-tight { float: left; margin: 4px 8px 4px 0; shape-outside: content-box; }
+.editor img.wrap-behind { position: absolute; z-index: -1; }
+.editor img.wrap-front { position: absolute; z-index: 10; }
+
+/* ── Comments ────────────────────────────────────────────────── */
+
+.editor .wp-comment-range {
+  background: rgba(255, 212, 0, 0.3);
+  border-bottom: 2px solid #ffd400;
+  cursor: default;
+}
+
+/* ── Track Changes ───────────────────────────────────────────── */
+
+.editor .wp-tc-insert {
+  color: #22863a;
+  text-decoration: underline;
+  text-decoration-color: #22863a;
+}
+
+.editor .wp-tc-delete {
+  color: #cb2431;
+  text-decoration: line-through;
+  text-decoration-color: #cb2431;
+}
+
+/* Hide markup mode */
+.editor.hide-markup .wp-comment-range {
+  background: none;
+  border-bottom: none;
+}
+
+.editor.hide-markup .wp-tc-insert {
+  color: inherit;
+  text-decoration: none;
+}
+
+.editor.hide-markup .wp-tc-delete {
+  display: none;
+}
+
+/* ── Comment Sidebar ─────────────────────────────────────────── */
+
+.comment-sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  background: var(--sz-color-window);
+  border-left: 1px solid var(--sz-color-button-shadow);
+  display: flex;
+  flex-direction: column;
+  font-size: 11px;
+  overflow: hidden;
+}
+
+.comment-sidebar-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 8px;
+  background: var(--sz-color-button-face);
+  border-bottom: 1px solid var(--sz-color-button-shadow);
+  font-weight: bold;
+  font-size: 11px;
+  user-select: none;
+}
+
+.comment-sidebar-close {
+  cursor: default;
+  padding: 0 4px;
+  font-size: 14px;
+}
+
+.comment-sidebar-close:hover {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+  border-radius: 2px;
+}
+
+.comment-sidebar-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.comment-card {
+  border: 1px solid var(--sz-color-button-shadow);
+  border-radius: 4px;
+  margin-bottom: 6px;
+  padding: 6px;
+  background: var(--sz-color-button-face);
+  font-size: 11px;
+}
+
+.comment-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.comment-card-author {
+  font-weight: bold;
+  font-size: 10px;
+}
+
+.comment-card-time {
+  font-size: 9px;
+  color: var(--sz-color-gray-text);
+}
+
+.comment-card-text {
+  margin-bottom: 4px;
+}
+
+.comment-card-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.comment-card-actions button {
+  font-size: 9px;
+  padding: 1px 6px;
+  border: 1px solid var(--sz-color-button-shadow);
+  background: var(--sz-color-button-face);
+  color: var(--sz-color-button-text);
+  border-radius: 2px;
+  cursor: default;
+}
+
+.comment-card-actions button:hover {
+  background: var(--sz-color-button-highlight);
+}
+
+.comment-card.resolved {
+  opacity: 0.5;
+}
+
+/* ── Table of Contents ───────────────────────────────────────── */
+
+.wp-toc {
+  border: 1px solid var(--sz-color-button-shadow);
+  padding: 12px 16px;
+  margin: 12px 0;
+  background: var(--sz-color-button-face);
+  font-size: 11px;
+}
+
+.wp-toc-title {
+  font-weight: bold;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.wp-toc-entry {
+  display: flex;
+  align-items: baseline;
+  margin: 2px 0;
+  cursor: default;
+}
+
+.wp-toc-entry:hover {
+  color: var(--sz-color-highlight);
+}
+
+.wp-toc-entry .toc-num {
+  min-width: 40px;
+  color: var(--sz-color-gray-text);
+  font-size: 10px;
+}
+
+.wp-toc-entry .toc-text {
+  flex: 1;
+}
+
+.wp-toc-entry .toc-dots {
+  flex: 1;
+  border-bottom: 1px dotted var(--sz-color-gray-text);
+  margin: 0 4px;
+  min-width: 20px;
+}
+
+.wp-toc-entry .toc-page {
+  min-width: 20px;
+  text-align: right;
+  font-size: 10px;
+  color: var(--sz-color-gray-text);
+}
+
+.wp-toc-entry.toc-level-1 { font-weight: bold; }
+.wp-toc-entry.toc-level-2 { padding-left: 16px; }
+.wp-toc-entry.toc-level-3 { padding-left: 32px; font-size: 10px; }
+.wp-toc-entry.toc-level-4 { padding-left: 48px; font-size: 10px; }
+.wp-toc-entry.toc-level-5 { padding-left: 64px; font-size: 9px; }
+.wp-toc-entry.toc-level-6 { padding-left: 80px; font-size: 9px; }
+
+/* ── Footnotes ───────────────────────────────────────────────── */
+
+.wp-footnote-ref {
+  color: var(--sz-color-highlight);
+  cursor: default;
+  font-size: 0.8em;
+  vertical-align: super;
+}
+
+.wp-footnote-ref a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.wp-footnotes {
+  margin-top: 24px;
+  padding-top: 8px;
+  border-top: 1px solid var(--sz-color-button-shadow);
+  font-size: 10px;
+}
+
+.wp-footnotes .wp-footnote {
+  display: flex;
+  gap: 4px;
+  margin: 2px 0;
+}
+
+.wp-footnotes .wp-footnote-num {
+  min-width: 20px;
+  font-weight: bold;
+  color: var(--sz-color-highlight);
+  cursor: default;
+}
+
+.wp-footnotes .wp-footnote-text {
+  flex: 1;
+}
+
+/* ── Multi-Level Lists ───────────────────────────────────────── */
+
+.editor ol.wp-multilevel {
+  list-style-type: none;
+  counter-reset: level1;
+  padding-left: 0;
+}
+
+.editor ol.wp-multilevel > li {
+  counter-increment: level1;
+  padding-left: 20px;
+}
+
+.editor ol.wp-multilevel > li::before {
+  content: counter(level1) ". ";
+  font-weight: bold;
+}
+
+.editor ol.wp-multilevel ol {
+  list-style-type: none;
+  counter-reset: level2;
+  padding-left: 0;
+}
+
+.editor ol.wp-multilevel ol > li {
+  counter-increment: level2;
+  padding-left: 20px;
+}
+
+.editor ol.wp-multilevel ol > li::before {
+  content: counter(level1) "." counter(level2) " ";
+}
+
+.editor ol.wp-multilevel ol ol {
+  list-style-type: none;
+  counter-reset: level3;
+  padding-left: 0;
+}
+
+.editor ol.wp-multilevel ol ol > li {
+  counter-increment: level3;
+  padding-left: 20px;
+}
+
+.editor ol.wp-multilevel ol ol > li::before {
+  content: counter(level1) "." counter(level2) "." counter(level3) " ";
+}
+
+/* ── Columns ─────────────────────────────────────────────────── */
+
+.editor.columns-2 { column-count: 2; column-gap: 0.5in; }
+.editor.columns-3 { column-count: 3; column-gap: 0.5in; }
+.editor.columns-4 { column-count: 4; column-gap: 0.5in; }
+.editor.columns-5 { column-count: 5; column-gap: 0.5in; }
+.editor.columns-6 { column-count: 6; column-gap: 0.5in; }
+
+.editor .wp-column-break {
+  break-before: column;
+  height: 0;
+}
+
+/* ── Spell Check ─────────────────────────────────────────────── */
+
+.spell-error {
+  text-decoration: underline wavy #c00000;
+  text-underline-offset: 2px;
+}
+
+.spell-suggestion {
+  font-weight: bold;
+}
+
+.spell-context-menu {
+  z-index: 3500;
+}
+
+/* ── Styles Gallery ──────────────────────────────────────────── */
+
+.styles-gallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  max-height: 62px;
+  overflow: hidden;
+  align-items: flex-start;
+}
+
+.style-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 60px;
+  max-width: 80px;
+  height: 28px;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  cursor: default;
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: none;
+}
+
+.style-tile:hover {
+  border-color: var(--sz-color-highlight);
+  background: var(--sz-color-button-highlight, rgba(0,0,0,0.05));
+}
+
+.style-tile.active {
+  border-color: var(--sz-color-highlight);
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+}
+
+.styles-context-menu {
+  z-index: 3500;
+}
+
+/* ── Equation Editor ─────────────────────────────────────────── */
+.equation {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-family: 'Cambria Math', 'Times New Roman', serif;
+  font-size: inherit;
+  vertical-align: middle;
+  padding: 2px 4px;
+  border-radius: 2px;
+  cursor: default;
+}
+.equation:hover {
+  outline: 1px dashed var(--sz-color-highlight, #3399ff);
+}
+
+.eq-frac {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  vertical-align: middle;
+}
+.eq-num {
+  border-bottom: 1px solid currentColor;
+  padding: 0 4px 1px;
+  min-width: 12px;
+  text-align: center;
+}
+.eq-den {
+  padding: 1px 4px 0;
+  min-width: 12px;
+  text-align: center;
+}
+
+.eq-sqrt {
+  display: inline-flex;
+  align-items: stretch;
+  vertical-align: middle;
+}
+.eq-radical {
+  font-size: 1.3em;
+  line-height: 1;
+}
+.eq-radicand {
+  border-top: 1px solid currentColor;
+  padding: 0 4px;
+  min-width: 12px;
+}
+
+.eq-nthroot {
+  display: inline-flex;
+  align-items: flex-start;
+  vertical-align: middle;
+}
+.eq-index {
+  font-size: 0.65em;
+  vertical-align: super;
+  margin-right: -4px;
+}
+
+.eq-bigop {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  vertical-align: middle;
+  margin: 0 2px;
+}
+.eq-op {
+  font-size: 1.6em;
+  line-height: 1;
+}
+.eq-limit-sup, .eq-limit-sub {
+  font-size: 0.65em;
+  line-height: 1;
+}
+.eq-body {
+  padding: 0 2px;
+}
+
+.eq-matrix {
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 8px;
+  text-align: center;
+  vertical-align: middle;
+  padding: 2px;
+}
+
+.eq-bracket {
+  font-size: 1.4em;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.eq-paren {
+  font-size: 1.2em;
+  vertical-align: middle;
+}
+
+/* ── Equation Dialog ─────────────────────────────────────────── */
+.eq-templates, .eq-symbols {
+  margin-bottom: 8px;
+}
+.eq-section-label {
+  font-size: 10px;
+  font-weight: bold;
+  color: var(--sz-color-gray-text);
+  margin-bottom: 3px;
+}
+.eq-template-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+.eq-tpl-btn {
+  font-size: 9px;
+  padding: 3px 6px;
+  border: 1px solid var(--sz-color-button-shadow);
+  background: var(--sz-color-button-face);
+  color: var(--sz-color-button-text);
+  cursor: pointer;
+  border-radius: 2px;
+}
+.eq-tpl-btn:hover {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+}
+.eq-sym-toolbar {
+  margin-bottom: 4px;
+}
+.eq-cat-select {
+  font-size: 10px;
+  padding: 1px 4px;
+}
+.eq-sym-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  max-height: 60px;
+  overflow-y: auto;
+}
+.eq-sym-cell {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  border: 1px solid transparent;
+  background: none;
+  cursor: pointer;
+  font-family: 'Cambria Math', 'Times New Roman', serif;
+}
+.eq-sym-cell:hover {
+  border-color: var(--sz-color-highlight);
+  background: var(--sz-color-button-highlight, rgba(0,0,0,0.05));
+}
+.eq-preview-container {
+  margin-top: 8px;
+}
+.eq-preview {
+  border: 1px solid var(--sz-color-button-shadow);
+  padding: 8px;
+  min-height: 40px;
+  font-family: 'Cambria Math', 'Times New Roman', serif;
+  font-size: 14pt;
+  background: var(--sz-color-window);
+  color: var(--sz-color-window-text);
+}
+
+/* ── Format Painter Cursor ───────────────────────────────────── */
+
+.format-painter-cursor { cursor: crosshair !important; }
+.format-painter-cursor * { cursor: crosshair !important; }
+
+#btn-format-painter.active {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+}
+
+/* ── Drop Cap ────────────────────────────────────────────────── */
+
+.wp-drop-cap {
+  float: left;
+  font-size: 3.5em;
+  line-height: 0.8;
+  padding: 0 6px 0 0;
+  margin: 2px 0 0 0;
+  font-weight: bold;
+  color: inherit;
+}
+
+/* ── Document Properties Dialog ──────────────────────────────── */
+
+.wp-dlg-field {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+  gap: 6px;
+}
+
+.wp-dlg-field label {
+  min-width: 70px;
+  text-align: right;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.wp-dlg-field input[type="text"] {
+  flex: 1;
+  padding: 3px 6px;
+  font-size: 11px;
+  border: 1px solid var(--sz-color-button-shadow);
+  background: var(--sz-color-window);
+  color: var(--sz-color-window-text);
+  border-radius: 2px;
+}
+
+/* ── Word Count Table ────────────────────────────────────────── */
+
+.wc-table { width: 100%; border-collapse: collapse; }
+.wc-table td { padding: 4px 8px; border-bottom: 1px solid #e0e0e0; font-size: 11px; }
+.wc-table td:last-child { text-align: right; font-weight: bold; }
+
+/* ── Image Watermark ─────────────────────────────────────────── */
+
+.wp-watermark-image {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0.15;
+  pointer-events: none;
+  z-index: 0;
+  max-width: 80%;
+  max-height: 80%;
+}
+
+/* ── Watermark Dialog Tabs ───────────────────────────────────── */
+
+.wp-wm-tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.wp-wm-tab {
+  padding: 3px 12px;
+  font-size: 10px;
+  border: 1px solid var(--sz-color-button-shadow);
+  background: var(--sz-color-button-face);
+  color: var(--sz-color-button-text);
+  cursor: default;
+  border-radius: 3px 3px 0 0;
+  border-bottom: none;
+}
+
+.wp-wm-tab.active {
+  background: var(--sz-color-window);
+  font-weight: bold;
+}
+
+/* ── Text Effects Dropdown ───────────────────────────────────── */
+
+.rb-dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.rb-dropdown-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 3000;
+  background: var(--sz-color-menu);
+  border: 1px solid var(--sz-color-button-shadow);
+  box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.25);
+  min-width: 120px;
+  padding: 2px 0;
+  border-radius: 3px;
+}
+
+.rb-dropdown:hover .rb-dropdown-menu,
+.rb-dropdown.open .rb-dropdown-menu {
+  display: block;
+}
+
+.rb-dropdown-menu button {
+  display: block;
+  width: 100%;
+  padding: 4px 16px;
+  border: none;
+  background: none;
+  color: var(--sz-color-menu-text);
+  font-size: 11px;
+  text-align: left;
+  cursor: default;
+  white-space: nowrap;
+}
+
+.rb-dropdown-menu button:hover {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
+}
+
+.rb-dropdown-menu hr {
+  height: 1px;
+  background: var(--sz-color-button-shadow);
+  border: none;
+  margin: 2px 4px;
+}
+
+/* ── Print Preview ───────────────────────────────────────────── */
+
+.wp-print-preview-overlay {
+  position: fixed;
+  inset: 0;
+  background: #666;
+  z-index: 10000;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+}
+
+.wp-print-preview-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #333;
+  color: white;
+  padding: 8px 16px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  border-radius: 4px;
+  margin-bottom: 16px;
+  font-size: 12px;
+}
+
+.wp-print-preview-toolbar button {
+  background: #555;
+  color: white;
+  border: 1px solid #777;
+  padding: 4px 16px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.wp-print-preview-toolbar button:hover { background: #666; }
+
+.wp-print-preview-page {
+  background: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  margin-bottom: 20px;
+  padding: 96px 72px;
+  width: 8.5in;
+  min-height: 11in;
+  box-sizing: border-box;
+  position: relative;
+  color: black;
+  font-family: 'Calibri', Arial, sans-serif;
+  font-size: 11pt;
+  line-height: 1.15;
+}
+
+.wp-print-preview-page-number {
+  position: absolute;
+  bottom: 36px;
+  width: 100%;
+  left: 0;
+  text-align: center;
+  font-size: 10pt;
+  color: #666;
+}
+
+.wp-print-preview-header {
+  position: absolute;
+  top: 36px;
+  left: 72px;
+  right: 72px;
+  text-align: center;
+  font-size: 10pt;
+  color: #666;
+}
+
+/* ── Image Crop Tool ─────────────────────────────────────────── */
+
+.wp-crop-overlay {
+  position: absolute;
+  pointer-events: none;
+  z-index: 1001;
+}
+
+.wp-crop-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: white;
+  border: 1px solid #333;
+  pointer-events: auto;
+  cursor: crosshair;
+  z-index: 1002;
+}
+
+.wp-crop-handle.crop-nw { top: -5px; left: -5px; cursor: nw-resize; }
+.wp-crop-handle.crop-n  { top: -5px; left: 50%; margin-left: -5px; cursor: n-resize; }
+.wp-crop-handle.crop-ne { top: -5px; right: -5px; cursor: ne-resize; }
+.wp-crop-handle.crop-e  { top: 50%; margin-top: -5px; right: -5px; cursor: e-resize; }
+.wp-crop-handle.crop-se { bottom: -5px; right: -5px; cursor: se-resize; }
+.wp-crop-handle.crop-s  { bottom: -5px; left: 50%; margin-left: -5px; cursor: s-resize; }
+.wp-crop-handle.crop-sw { bottom: -5px; left: -5px; cursor: sw-resize; }
+.wp-crop-handle.crop-w  { top: 50%; margin-top: -5px; left: -5px; cursor: w-resize; }
+
+.wp-crop-shade {
+  position: absolute;
+  background: rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+.wp-crop-toolbar {
+  position: absolute;
+  bottom: -32px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 4px;
+  z-index: 1003;
+  pointer-events: auto;
+}
+
+.wp-crop-toolbar button {
+  padding: 2px 10px;
+  font-size: 10px;
+  border: 1px solid #999;
+  background: #fff;
+  color: #333;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.wp-crop-toolbar button:hover {
+  background: #e0e0e0;
+}
+
+/* ── Print styles ─────────────────────────────────────────────── */
+
+@media print {
+  .qat,
+  .ribbon-tabs,
+  .ribbon-panel,
+  .ruler,
+  .nav-pane,
+  .status-bar,
+  .find-panel,
+  .backstage,
+  .popup-menu,
+  .table-context-menu,
+  .dialog-overlay,
+  .wp-img-resize-overlay,
+  .comment-sidebar {
+    display: none !important;
+  }
+
+  .spell-context-menu {
+    display: none !important;
+  }
+
+  .spell-error {
+    text-decoration: none;
+  }
+
+  .editor-area {
+    overflow: visible;
+  }
+
+  .editor-wrapper {
+    overflow: visible;
+    background: white;
+    padding: 0;
+  }
+
+  .editor {
+    box-shadow: none;
+    max-width: none;
+    min-height: auto;
+    padding: 0;
+    background: white;
+    color: black;
+  }
+
+  .editor .watermark,
+  .editor .wp-watermark-image {
+    display: none;
+  }
+
+  .wp-print-preview-overlay {
+    display: none !important;
+  }
+
+  .wp-crop-overlay,
+  .wp-crop-toolbar {
+    display: none !important;
+  }
+
+  .equation { border: none; outline: none; }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Sprint 2 — Field Codes
+   ═══════════════════════════════════════════════════════════════ */
+
+.wp-field {
+  background: #f0f0f0;
+  padding: 0 2px;
+  border-radius: 2px;
+  font-family: inherit;
+}
+
+.wp-field:hover {
+  background: #e0e0ff;
+}
+
+.wp-field[data-field-type="REF"] {
+  color: #0066cc;
+  cursor: pointer;
+}
+
+.wp-caption {
+  font-style: italic;
+  font-size: 0.9em;
+  color: #444;
+  margin: 4px 0;
+  text-align: center;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Sprint 3 — Sections
+   ═══════════════════════════════════════════════════════════════ */
+
+.wp-section {
+  position: relative;
+  min-height: 1em;
+}
+
+.wp-section-break {
+  border-top: 2px dashed #999;
+  margin: 16px 0;
+  padding-top: 8px;
+  position: relative;
+}
+
+.wp-section-break::before {
+  content: attr(data-break-label);
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: white;
+  padding: 0 8px;
+  font-size: 9px;
+  color: #999;
+  white-space: nowrap;
+}
+
+.wp-page-border {
+  outline-offset: -8px;
+}
+
+/* ── Line Numbering ──────────────────────────────────────────── */
+
+.wp-line-numbers {
+  counter-reset: wp-line-counter;
+}
+
+.wp-line-numbers p,
+.wp-line-numbers div:not(.wp-section):not(.wp-toc):not(.wp-footnotes-section):not(.watermark):not(.wp-watermark-image):not(.wp-page-break):not(.wp-section-break):not(.wp-header):not(.wp-footer) {
+  counter-increment: wp-line-counter;
+  position: relative;
+  padding-left: 40px;
+}
+
+.wp-line-numbers p::before,
+.wp-line-numbers div:not(.wp-section):not(.wp-toc):not(.wp-footnotes-section):not(.watermark):not(.wp-watermark-image):not(.wp-page-break):not(.wp-section-break):not(.wp-header):not(.wp-footer)::before {
+  content: counter(wp-line-counter);
+  position: absolute;
+  left: 0;
+  width: 30px;
+  text-align: right;
+  color: #999;
+  font-size: 0.85em;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Sprint 4 — Tab Stops with Ruler
+   ═══════════════════════════════════════════════════════════════════ */
+
+.wp-tab-marker {
+  position: absolute;
+  top: 0;
+  width: 0;
+  height: 100%;
+  cursor: pointer;
+  border-left: 1px solid #333;
+}
+
+.wp-tab-marker::before {
+  content: 'L';
+  position: absolute;
+  bottom: 0;
+  left: -4px;
+  font-size: 8px;
+  font-weight: bold;
+  color: #333;
+}
+
+.wp-tab-marker[data-tab-type="center"]::before { content: 'C'; }
+.wp-tab-marker[data-tab-type="right"]::before { content: 'R'; }
+.wp-tab-marker[data-tab-type="decimal"]::before { content: 'D'; }
+
+.wp-tab-space {
+  display: inline-block;
+  min-width: 2em;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Sprint 4 — Table Styles
+   ═══════════════════════════════════════════════════════════════════ */
+
+.wp-table-banded tr:nth-child(even) { background: #f5f5f5; }
+.wp-table-header-row tr:first-child { background: #4472c4; color: white; font-weight: bold; }
+.wp-table-header-row tr:first-child td { border-color: #3061a0; }
+.wp-table-first-column td:first-child { font-weight: bold; background: #d6e4f0; }
+.wp-table-last-column td:last-child { font-weight: bold; background: #d6e4f0; }
+.wp-table-formula {
+  background: #fffde0;
+  font-family: monospace;
+  font-size: 0.9em;
+  padding: 1px 3px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Sprint 4 — Table Properties Dialog
+   ═══════════════════════════════════════════════════════════════════ */
+
+.wp-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+
+.wp-dialog {
+  background: var(--sz-color-window, #fff);
+  color: var(--sz-color-window-text, #222);
+  border: 1px solid var(--sz-color-active-border, #999);
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  padding: 0;
+  min-width: 320px;
+}
+
+.wp-dialog-title {
+  padding: 8px 12px;
+  font-weight: bold;
+  font-size: 12px;
+  background: var(--sz-color-active-caption, #0078d4);
+  color: var(--sz-color-caption-text, #fff);
+  border-bottom: 1px solid var(--sz-color-active-border, #999);
+}
+
+.wp-dialog-body {
+  padding: 12px;
+}
+
+.wp-dlg-field {
+  margin-bottom: 8px;
+}
+
+.wp-dlg-field label {
+  display: inline-block;
+  min-width: 90px;
+  font-size: 11px;
+}
+
+.wp-dlg-field input[type="text"],
+.wp-dlg-field input[type="number"],
+.wp-dlg-field select {
+  font-size: 11px;
+  padding: 2px 4px;
+  border: 1px solid #aaa;
+  border-radius: 2px;
+}
+
+.wp-dialog-buttons {
+  padding: 8px 12px;
+  text-align: right;
+  border-top: 1px solid #ddd;
+}
+
+.wp-dialog-buttons button {
+  font-size: 11px;
+  padding: 4px 16px;
+  margin-left: 4px;
+  cursor: pointer;
+  border: 1px solid #aaa;
+  border-radius: 2px;
+  background: var(--sz-color-button-face, #f0f0f0);
+  color: var(--sz-color-button-text, #222);
+}
+
+.wp-dialog-buttons button:hover {
+  background: var(--sz-color-highlight, #cce5ff);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Sprint 5 — Find Highlights
+   ═══════════════════════════════════════════════════════════════════ */
+
+.wp-find-highlight {
+  background: #ffff00;
+  outline: 1px solid #cccc00;
+}
+
+.wp-find-current {
+  background: #ff9900;
+  outline: 1px solid #cc7700;
+}
+
+.fr-option {
+  font-size: 10px;
+}
+
+.fr-btn {
+  font-size: 10px;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Sprint 5 — Endnotes
+   ═══════════════════════════════════════════════════════════════════ */
+
+.wp-endnotes-section {
+  border-top: 1px solid #999;
+  margin-top: 24px;
+  padding-top: 12px;
+}
+
+.wp-endnotes-section::before {
+  content: 'Endnotes';
+  display: block;
+  font-weight: bold;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.wp-endnote {
+  margin-bottom: 4px;
+  font-size: 0.9em;
+}
+
+.wp-endnote-num {
+  font-weight: bold;
+  margin-right: 6px;
+}
+
+.wp-endnote-ref {
+  vertical-align: super;
+  font-size: 0.75em;
+  color: #0066cc;
+  cursor: pointer;
+}
+
+.wp-endnote-ref a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.wp-endnote-ref a:hover {
+  text-decoration: underline;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Sprint 5 — Comment Replies
+   ═══════════════════════════════════════════════════════════════════ */
+
+.wp-comment-reply {
+  margin-left: 16px;
+  border-left: 2px solid #ccc;
+  padding-left: 8px;
+}
+
+.wp-comment-reply-btn {
+  font-size: 10px;
+  color: #0066cc;
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 2px 4px;
+}
+
+.wp-comment-reply-btn:hover {
+  text-decoration: underline;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Sprint 6 — Grammar Check
+   ═══════════════════════════════════════════════════════════════════ */
+
+.grammar-error,
+.wp-grammar-error {
+  text-decoration: wavy underline green;
+  text-decoration-skip-ink: none;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='3'%3E%3Cpath d='M0 2.5 Q1 0 2 2.5 Q3 5 4 2.5' fill='none' stroke='green' stroke-width='0.7'/%3E%3C/svg%3E");
+  background-repeat: repeat-x;
+  background-position: bottom;
+  background-size: 4px 3px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Sprint 6 — Bibliography / Citations
+   ═══════════════════════════════════════════════════════════════════ */
+
+.wp-citation {
+  color: #0066cc;
+  cursor: pointer;
+}
+
+.wp-citation:hover {
+  text-decoration: underline;
+}
+
+.wp-bibliography {
+  margin-top: 24px;
+  border-top: 1px solid #999;
+  padding-top: 12px;
+}
+
+.wp-bibliography::before {
+  content: 'Bibliography';
+  display: block;
+  font-weight: bold;
+  font-size: 16px;
+  margin-bottom: 12px;
+}
+
+.wp-bibliography-entry {
+  margin-bottom: 8px;
+  padding-left: 2em;
+  text-indent: -2em;
+  font-size: 0.95em;
+}
+
+.source-row {
+  padding: 4px 8px;
+  cursor: pointer;
+  border-bottom: 1px solid #eee;
+  font-size: 11px;
+}
+
+.source-row.selected {
+  background: #cce5ff;
+}
+
+.source-row:hover {
+  background: #f0f0f0;
+}
+
+#sources-list {
+  min-height: 60px;
+}
+
+#source-form button,
+#src-add, #src-edit, #src-delete {
+  font-size: 10px;
+  padding: 3px 8px;
+  margin-right: 4px;
+  cursor: pointer;
+  border: 1px solid #aaa;
+  border-radius: 2px;
+  background: var(--sz-color-button-face, #f0f0f0);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Sprint 6 — Quick Parts / AutoText
+   ═══════════════════════════════════════════════════════════════════ */
+
+.wp-quick-part-item {
+  padding: 6px 12px;
+  cursor: pointer;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 11px;
+}
+
+.wp-quick-part-item:hover {
+  background: #e8f0ff;
+}
+
+.wp-quick-part-preview {
+  font-size: 9px;
+  color: #666;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Sprint 4 — Inline dropdown for list options
+   ═══════════════════════════════════════════════════════════════════ */
+
+.rb-dropdown-inline {
+  display: inline-block;
+  position: relative;
+}
+
+.rb-dropdown-inline > .rb-btn {
+  padding: 1px 3px;
+  font-size: 8px;
+  min-width: auto;
+}
+
+.rb-dropdown-inline > .rb-dropdown-menu {
+  min-width: 180px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Nav Pane Tree (Feature 4.2)
+   ═══════════════════════════════════════════════════════════════════ */
+
+.nav-tree-item {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.nav-tree-children {
+  margin-left: 4px;
+}
+
+.nav-toggle {
+  display: inline-block;
+  width: 12px;
+  font-size: 8px;
+  cursor: default;
+  text-align: center;
+  flex-shrink: 0;
+  user-select: none;
+  color: var(--sz-color-gray-text);
+}
+
+.nav-toggle:hover {
+  color: var(--sz-color-highlight);
+}
