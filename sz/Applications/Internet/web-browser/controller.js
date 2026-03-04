@@ -1,7 +1,7 @@
 ;(function() {
   'use strict';
 
-  const { User32, Kernel32 } = SZ.Dlls;
+  const { User32, Kernel32 } = SZ.Dlls || {};
 
   // -----------------------------------------------------------------------
   // Constants

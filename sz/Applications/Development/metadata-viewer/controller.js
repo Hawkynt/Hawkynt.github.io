@@ -1,7 +1,7 @@
 ;(function() {
   'use strict';
 
-  const { User32, Kernel32, Shell32, ComDlg32 } = SZ.Dlls;
+  const { User32, Kernel32, Shell32, ComDlg32 } = SZ.Dlls || {};
   const Parsers = SZ.MetadataParsers;
   const Editors = SZ.MetadataEditors;
 

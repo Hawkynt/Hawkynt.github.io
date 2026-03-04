@@ -10,7 +10,7 @@
   const TOOL_LABELS = { select: 'Select', rect: 'Rectangle', ellipse: 'Ellipse', circle: 'Circle', line: 'Line', path: 'Freehand', text: 'Text', pan: 'Pan' };
 
   // ---- Section 2: SZ Dll imports + DOM refs ----
-  const { Kernel32, ComDlg32, User32 } = SZ.Dlls;
+  const { Kernel32, ComDlg32, User32 } = SZ.Dlls || {};
 
   const refs = {
     toolGrid: document.getElementById('tool-grid'),
