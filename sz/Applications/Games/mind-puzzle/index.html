@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Mind-Bending Puzzle — solve spatial manipulation, non-Euclidean geometry, and reality-warping puzzles in the SynthelicZ Desktop.">
+<meta name="robots" content="index,follow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Mind-Bending Puzzle -- &raquo;SynthelicZ&laquo; Desktop">
+<meta property="og:description" content="Antichamber-style brain teasers with hidden rules, non-Euclidean rooms, perspective shifts, reality warp distortion, ambient atmospherics, and 15+ surreal puzzle rooms.">
+<meta property="og:url" content="https://hawkynt.github.io/sz/Applications/mind-puzzle/index.html">
+<link rel="canonical" href="index.html">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Mind-Bending Puzzle",
+  "url": "https://hawkynt.github.io/sz/Applications/mind-puzzle/index.html",
+  "description": "Spatial manipulation and reality-warping puzzle game with non-Euclidean geometry, hidden room rules, perspective shifting, ambient particle atmospherics, and 15+ surreal rooms.",
+  "applicationCategory": "GameApplication",
+  "operatingSystem": "Web Browser",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<title>Mind-Bending Puzzle</title>
+<script src="../../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="../../shared/menu.css">
+<link rel="stylesheet" href="../../shared/dialog.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<noscript><p>Mind-Bending Puzzle — solve surreal spatial puzzles with hidden rules and reality warps. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a></p></noscript>
+
+<!-- Menu Bar -->
+<div class="menu-bar" id="menuBar">
+  <div class="menu-item" data-menu="game">Game
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="new">New Game<span class="shortcut">F2</span></div>
+      <div class="menu-entry" data-action="pause">Pause<span class="shortcut">Esc</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="high-scores">High Scores...</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="exit">Exit</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="help">Help
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="controls">Controls...</div>
+      <div class="menu-entry" data-action="about">About Mind-Bending Puzzle</div>
+    </div>
+  </div>
+</div>
+
+<!-- Game Canvas -->
+<div class="game-frame">
+  <canvas id="gameCanvas"></canvas>
+</div>
+
+<!-- Status Bar -->
+<div class="status-bar">
+  <div class="status-section" id="statusRoom">Room: --</div>
+  <div class="status-section" id="statusDiscovered">Discovered: --</div>
+  <div class="status-section" id="statusProgress">Progress: --</div>
+</div>
+
+<!-- High Scores Dialog -->
+<div class="dialog-overlay" id="highScoresBackdrop">
+  <div class="dialog">
+    <div class="dialog-title">High Scores</div>
+    <div class="dialog-body">
+      <table class="high-scores-table">
+        <thead>
+          <tr><th>#</th><th>Room</th><th>Time</th></tr>
+        </thead>
+        <tbody id="highScoresBody"></tbody>
+      </table>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="reset" type="button">Reset</button>
+      <button data-result="ok" data-default type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Controls Dialog -->
+<div class="dialog-overlay" id="controlsBackdrop">
+  <div class="dialog">
+    <div class="dialog-title">Controls</div>
+    <div class="dialog-body">
+      <table class="controls-table">
+        <tr><td>Arrow Keys / WASD</td><td>Move player</td></tr>
+        <tr><td>E / Space</td><td>Interact with doors &amp; objects</td></tr>
+        <tr><td>Q</td><td>Shift perspective</td></tr>
+        <tr><td>R</td><td>Reset room</td></tr>
+        <tr><td>F2</td><td>New game / Restart</td></tr>
+        <tr><td>Escape</td><td>Pause / Resume</td></tr>
+      </table>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok" data-default type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- About Dialog -->
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Mind-Bending Puzzle</div>
+    <div class="dialog-body">
+      <strong>Mind-Bending Puzzle</strong><br><br>
+      Solve surreal spatial puzzles across 15+ rooms with hidden rules you must discover
+      by experimentation. Walk through doors that lead to unexpected places, shift perspective
+      to reveal new paths, and trigger reality-warping distortion effects. Ambient particle
+      atmospherics and glow effects create an immersive, otherworldly atmosphere.<br><br>
+      Part of the &raquo;SynthelicZ&laquo; Desktop.
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok" data-default type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<script src="../../shared/menu.js"></script>
+<script src="../../shared/dialog.js"></script>
+<script src="../../shared/game-effects.js"></script>
+<script src="controller.js"></script>
+</body>
+</html>

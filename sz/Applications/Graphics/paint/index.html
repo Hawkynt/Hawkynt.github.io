@@ -1,0 +1,1124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Advanced bitmap editor with layers, effects, and selection tools">
+<meta name="robots" content="index,follow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Paint -- »SynthelicZ« Desktop">
+<meta property="og:description" content="Advanced bitmap editor with layers, effects, and selection tools">
+<meta property="og:url" content="https://hawkynt.github.io/sz/Applications/paint/index.html">
+<link rel="canonical" href="https://hawkynt.github.io/sz/Applications/paint/index.html">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Paint",
+  "url": "https://hawkynt.github.io/sz/Applications/paint/index.html",
+  "description": "Advanced bitmap editor with layers, effects, and selection tools",
+  "applicationCategory": "MultimediaApplication",
+  "operatingSystem": "Web Browser",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<title>Paint</title>
+<script src="../../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="../../shared/ribbon.css">
+<link rel="stylesheet" href="../../shared/dialog.css">
+<link rel="stylesheet" href="styles.css">
+<script defer src="../../vision-renderer.js"></script>
+</head>
+<body>
+<noscript><p>Advanced bitmap editor with layers, effects, and selection tools. <a href="../../../index.html">Open »SynthelicZ« Desktop</a> to use this app.</p></noscript>
+
+<!-- Quick Access Toolbar -->
+<div class="qat" id="qat">
+  <button class="qat-btn" data-action="save" title="Save (Ctrl+S)">&#128190;</button>
+  <button class="qat-btn" data-action="undo" title="Undo (Ctrl+Z)">&#8630;</button>
+  <button class="qat-btn" data-action="redo" title="Redo (Ctrl+Y)">&#8631;</button>
+</div>
+
+<!-- Ribbon Tab Bar -->
+<div class="ribbon-tabs" id="ribbon-tabs">
+  <div class="ribbon-tab-bar">
+    <button class="ribbon-file-btn" id="ribbon-file-btn">File</button>
+    <button class="ribbon-tab active" data-tab="home">Home</button>
+    <button class="ribbon-tab" data-tab="image">Image</button>
+    <button class="ribbon-tab" data-tab="adjustments">Adjustments</button>
+    <button class="ribbon-tab" data-tab="effects">Effects</button>
+    <button class="ribbon-tab" data-tab="view">View</button>
+  </div>
+</div>
+
+<!-- File Backstage -->
+<div class="backstage" id="backstage">
+  <div class="backstage-sidebar">
+    <button class="backstage-back" id="backstage-back">&#8592;</button>
+    <button class="backstage-item" data-action="new">New</button>
+    <button class="backstage-item" data-action="open">Open</button>
+    <button class="backstage-item" data-action="save">Save</button>
+    <button class="backstage-item" data-action="save-as">Save As</button>
+    <div class="backstage-sep"></div>
+    <button class="backstage-item" data-action="export-png">Export PNG</button>
+    <button class="backstage-item" data-action="export-jpg">Export JPG</button>
+    <div class="backstage-sep"></div>
+    <button class="backstage-item" data-action="about">About</button>
+    <div class="backstage-spacer"></div>
+    <button class="backstage-item" data-action="exit">Exit</button>
+  </div>
+</div>
+
+<!-- ============================================================= -->
+<!-- Home Tab -->
+<!-- ============================================================= -->
+<div class="ribbon-panel active" data-panel="home" id="ribbon-home">
+
+  <!-- Clipboard -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="paste" title="Paste (Ctrl+V)">
+        <span class="rb-icon rb-icon-lg">&#128203;</span>
+        <span class="rb-label">Paste</span>
+      </button>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="cut" title="Cut (Ctrl+X)">
+          <span class="rb-icon">&#9986;</span><span class="rb-label">Cut</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="copy" title="Copy (Ctrl+C)">
+          <span class="rb-icon">&#128464;</span><span class="rb-label">Copy</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="paste-as-layer" title="Paste as New Layer (Ctrl+Shift+V)">
+          <span class="rb-icon">&#128466;</span><span class="rb-label">Paste Layer</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Clipboard</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <!-- Tools -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="tool-grid-4x4" id="tool-grid">
+        <button class="rb-btn active" data-tool="pencil" title="Pencil">&#9998;</button>
+        <button class="rb-btn" data-tool="line" title="Line">&#9585;</button>
+        <button class="rb-btn" data-tool="rect" title="Rectangle">&#9645;</button>
+        <button class="rb-btn" data-tool="ellipse" title="Ellipse">&#9711;</button>
+        <button class="rb-btn" data-tool="rounded-rect" title="Rounded Rectangle">&#9634;</button>
+        <button class="rb-btn" data-tool="polygon" title="Polygon">&#9662;</button>
+        <button class="rb-btn" data-tool="bezier" title="Bezier Curve">&#8767;</button>
+        <button class="rb-btn" data-tool="eraser" title="Eraser">&#9003;</button>
+        <button class="rb-btn" data-tool="fill" title="Fill / Bucket">&#9783;</button>
+        <button class="rb-btn" data-tool="gradient" title="Gradient">&#9638;</button>
+        <button class="rb-btn" data-tool="text" title="Text">A</button>
+        <button class="rb-btn" data-tool="picker" title="Color Picker">&#9738;</button>
+        <button class="rb-btn" data-tool="airbrush" title="Airbrush / Spray">&#8226;</button>
+        <button class="rb-btn" data-tool="clone" title="Clone Stamp">&#9842;</button>
+        <button class="rb-btn" data-tool="blur-brush" title="Blur Brush">&#9737;</button>
+        <button class="rb-btn" data-tool="sharpen-brush" title="Sharpen Brush">&#9670;</button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Tools</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <!-- Selection -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-tool="rect-select" title="Rectangle Select">
+          <span class="rb-icon">&#11034;</span><span class="rb-label">Rect Select</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-tool="lasso" title="Lasso Select">
+          <span class="rb-icon">&#10070;</span><span class="rb-label">Lasso</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-tool="magic-wand" title="Magic Wand">
+          <span class="rb-icon">&#10036;</span><span class="rb-label">Magic Wand</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="select-all" title="Select All (Ctrl+A)">
+          <span class="rb-icon">&#9634;</span><span class="rb-label">Select All</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="deselect" title="Deselect (Ctrl+D)">
+          <span class="rb-icon">&#8709;</span><span class="rb-label">Deselect</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="invert-selection" title="Invert Selection (Ctrl+Shift+I)">
+          <span class="rb-icon">&#8635;</span><span class="rb-label">Invert Sel</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <div class="rb-slider-row">
+          <label>Tol:</label>
+          <input type="range" id="tolerance-slider" min="0" max="128" value="32">
+          <span id="tolerance-val">32</span>
+        </div>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Selection</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <!-- Brush -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <div class="rb-slider-row">
+          <label>Size:</label>
+          <input type="range" id="brush-size-slider" min="1" max="100" value="1">
+          <span id="brush-size-val">1</span>
+        </div>
+        <div class="rb-row">
+          <label style="font-size:10px;">Fill:</label>
+          <select class="rb-select rb-narrow" id="fill-mode-select" style="width:70px;">
+            <option value="outline">Outline</option>
+            <option value="filled">Filled</option>
+          </select>
+        </div>
+        <div class="rb-row">
+          <label style="font-size:10px;">Brush:</label>
+          <select class="rb-select rb-narrow" id="brush-shape-select" style="width:70px;">
+            <option value="round">Round</option>
+            <option value="square">Square</option>
+          </select>
+        </div>
+      </div>
+      <div class="rb-stack">
+        <div class="rb-row">
+          <label style="font-size:10px;">Grad:</label>
+          <select class="rb-select rb-narrow" id="gradient-mode-select" style="width:70px;">
+            <option value="linear">Linear</option>
+            <option value="radial">Radial</option>
+          </select>
+        </div>
+        <div class="rb-slider-row">
+          <label>Rad:</label>
+          <input type="range" id="corner-radius-slider" min="1" max="50" value="10">
+          <span id="corner-radius-val">10</span>
+        </div>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Brush</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <!-- Colors -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-color-block">
+        <div class="rb-fg-bg">
+          <div class="rb-fg-swatch" id="fg-swatch" style="background:#000000;" title="Foreground color"></div>
+          <div class="rb-bg-swatch" id="bg-swatch" style="background:#ffffff;" title="Background color"></div>
+        </div>
+        <button class="rb-swap-btn" id="swap-colors" title="Swap Colors">&#8645;</button>
+      </div>
+      <div class="rb-palette-grid" id="color-grid"></div>
+    </div>
+    <div class="ribbon-group-label">Colors</div>
+  </div>
+
+</div>
+
+<!-- ============================================================= -->
+<!-- Image Tab -->
+<!-- ============================================================= -->
+<div class="ribbon-panel" data-panel="image" id="ribbon-image">
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="resize" title="Resize / Stretch">
+          <span class="rb-icon">&#8690;</span><span class="rb-label">Resize</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="canvas-size" title="Canvas Size">
+          <span class="rb-icon">&#9638;</span><span class="rb-label">Canvas Size</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="crop-to-selection" title="Crop to Selection">
+          <span class="rb-icon">&#9986;</span><span class="rb-label">Crop to Sel</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Size</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="flip-h" title="Flip Horizontal">
+          <span class="rb-icon">&#8596;</span><span class="rb-label">Flip H</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="flip-v" title="Flip Vertical">
+          <span class="rb-icon">&#8597;</span><span class="rb-label">Flip V</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="rotate-cw" title="Rotate 90° CW">
+          <span class="rb-icon">&#8635;</span><span class="rb-label">Rotate CW</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="rotate-ccw" title="Rotate 90° CCW">
+          <span class="rb-icon">&#8634;</span><span class="rb-label">Rotate CCW</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="rotate-180" title="Rotate 180°">
+          <span class="rb-icon">&#8635;</span><span class="rb-label">Rotate 180</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Transform</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="auto-deskew" title="Straighten scanned text">
+          <span class="rb-icon">&#8630;</span><span class="rb-label">Auto-Deskew</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="auto-rotate" title="Snap to dominant orientation">
+          <span class="rb-icon">&#8635;</span><span class="rb-label">Auto-Rotate</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="auto-keystone" title="Perspective correction">
+          <span class="rb-icon">&#9645;</span><span class="rb-label">Auto-Keystone</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Auto-Correct</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="flatten-all" title="Flatten All Layers">
+          <span class="rb-icon">&#9644;</span><span class="rb-label">Flatten All</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="clear-layer" title="Clear Active Layer">
+          <span class="rb-icon">&#9634;</span><span class="rb-label">Clear Layer</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Layers</div>
+  </div>
+
+</div>
+
+<!-- ============================================================= -->
+<!-- Adjustments Tab -->
+<!-- ============================================================= -->
+<div class="ribbon-panel" data-panel="adjustments" id="ribbon-adjustments">
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="adj-brightness" title="Brightness / Contrast">
+          <span class="rb-icon">&#9728;</span><span class="rb-label">Brightness</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="adj-hue-sat" title="Hue / Saturation">
+          <span class="rb-icon">&#127752;</span><span class="rb-label">Hue/Sat</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="adj-levels" title="Levels">
+          <span class="rb-icon">&#9776;</span><span class="rb-label">Levels</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="adj-invert" title="Invert Colors">
+          <span class="rb-icon">&#8963;</span><span class="rb-label">Invert</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="adj-grayscale" title="Grayscale">
+          <span class="rb-icon">&#9673;</span><span class="rb-label">Grayscale</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="adj-sepia" title="Sepia">
+          <span class="rb-icon">&#9683;</span><span class="rb-label">Sepia</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="adj-auto-levels" title="Auto Levels">
+          <span class="rb-icon">&#9881;</span><span class="rb-label">Auto Levels</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Adjustments</div>
+  </div>
+
+</div>
+
+<!-- ============================================================= -->
+<!-- Effects Tab -->
+<!-- ============================================================= -->
+<div class="ribbon-panel" data-panel="effects" id="ribbon-effects">
+
+  <!-- Basic -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="fx-blur" title="Gaussian Blur">
+          <span class="rb-icon">&#9737;</span><span class="rb-label">Gaussian Blur</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="fx-sharpen" title="Sharpen">
+          <span class="rb-icon">&#9670;</span><span class="rb-label">Sharpen</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="fx-noise" title="Add Noise">
+          <span class="rb-icon">&#8226;</span><span class="rb-label">Add Noise</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="fx-pixelate" title="Pixelate">
+          <span class="rb-icon">&#9638;</span><span class="rb-label">Pixelate</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="fx-edge" title="Edge Detect">
+          <span class="rb-icon">&#9601;</span><span class="rb-label">Edge Detect</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="fx-emboss" title="Emboss">
+          <span class="rb-icon">&#9830;</span><span class="rb-label">Emboss</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Basic</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <!-- Blurs -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="fx-motion-blur" title="Motion Blur">
+          <span class="rb-icon">&#8674;</span><span class="rb-label">Motion Blur</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="fx-radial-blur" title="Radial Blur">
+          <span class="rb-icon">&#10687;</span><span class="rb-label">Radial Blur</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="fx-surface-blur" title="Surface Blur">
+          <span class="rb-icon">&#9724;</span><span class="rb-label">Surface Blur</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="fx-box-blur" title="Box Blur">
+          <span class="rb-icon">&#9632;</span><span class="rb-label">Box Blur</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="fx-median" title="Median Filter">
+          <span class="rb-icon">&#9679;</span><span class="rb-label">Median</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="fx-unsharp-mask" title="Unsharp Mask">
+          <span class="rb-icon">&#9674;</span><span class="rb-label">Unsharp Mask</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Blurs</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <!-- Distort -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="fx-swirl" title="Swirl">
+          <span class="rb-icon">&#127744;</span><span class="rb-label">Swirl</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="fx-spherize" title="Spherize">
+          <span class="rb-icon">&#9673;</span><span class="rb-label">Spherize</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="fx-ripple" title="Ripple">
+          <span class="rb-icon">&#8776;</span><span class="rb-label">Ripple</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="fx-polar" title="Polar Coordinates">
+          <span class="rb-icon">&#8857;</span><span class="rb-label">Polar Coords</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="fx-frosted-glass" title="Frosted Glass">
+          <span class="rb-icon">&#10052;</span><span class="rb-label">Frosted Glass</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Distort</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <!-- Stylize -->
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="fx-oil-paint" title="Oil Painting">
+          <span class="rb-icon">&#127912;</span><span class="rb-label">Oil Painting</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="fx-posterize" title="Posterize">
+          <span class="rb-icon">&#9641;</span><span class="rb-label">Posterize</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="fx-threshold" title="Threshold">
+          <span class="rb-icon">&#9644;</span><span class="rb-label">Threshold</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="fx-solarize" title="Solarize">
+          <span class="rb-icon">&#9788;</span><span class="rb-label">Solarize</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="fx-relief" title="Relief">
+          <span class="rb-icon">&#9650;</span><span class="rb-label">Relief</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="fx-pencil-sketch" title="Pencil Sketch">
+          <span class="rb-icon">&#9998;</span><span class="rb-label">Pencil Sketch</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="fx-vignette" title="Vignette">
+          <span class="rb-icon">&#9684;</span><span class="rb-label">Vignette</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="fx-halftone" title="Halftone">
+          <span class="rb-icon">&#9783;</span><span class="rb-label">Halftone</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="fx-crystallize" title="Crystallize">
+          <span class="rb-icon">&#10070;</span><span class="rb-label">Crystallize</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Stylize</div>
+  </div>
+
+</div>
+
+<!-- ============================================================= -->
+<!-- View Tab -->
+<!-- ============================================================= -->
+<div class="ribbon-panel" data-panel="view" id="ribbon-view">
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-row rb-zoom-row">
+        <button class="rb-btn rb-fmt" data-action="zoom-out" title="Zoom Out">&#8722;</button>
+        <input type="range" class="rb-zoom-slider" id="rb-zoom-slider" min="0" max="1000" value="200">
+        <button class="rb-btn rb-fmt" data-action="zoom-in" title="Zoom In">+</button>
+        <span class="rb-zoom-value" id="rb-zoom-value">100%</span>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="zoom-100" title="100%">
+          <span class="rb-label">100%</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="zoom-200" title="200%">
+          <span class="rb-label">200%</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="zoom-400" title="400%">
+          <span class="rb-label">400%</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="zoom-800" title="800%">
+          <span class="rb-label">800%</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Zoom</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <label class="rb-check-label"><input type="checkbox" id="view-pixel-grid"> Pixel Grid</label>
+        <button class="rb-btn rb-btn-sm" data-tool="pan" title="Pan / Hand Tool">
+          <span class="rb-icon">&#9995;</span><span class="rb-label">Pan</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Display</div>
+  </div>
+
+</div>
+
+<!-- ============================================================= -->
+<!-- Main content area -->
+<!-- ============================================================= -->
+<div class="main-area">
+
+  <!-- Canvas area -->
+  <div class="canvas-area" id="canvas-area">
+    <div class="canvas-wrapper">
+      <div class="canvas-container" id="canvas-container">
+        <canvas id="display-canvas" width="640" height="480"></canvas>
+        <canvas id="overlay-canvas" width="640" height="480"></canvas>
+        <div class="text-input-overlay" id="text-overlay">
+          <textarea id="text-input" rows="1" cols="10"></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Layer Panel (right sidebar) -->
+  <div class="layer-panel" id="layer-panel">
+    <div class="layer-panel-title">Layers</div>
+    <div class="layer-controls">
+      <button data-action="layer-add" title="New Layer (Ctrl+Shift+N)">+</button>
+      <button data-action="layer-delete" title="Delete Layer (Del)">&#128465;</button>
+      <button data-action="layer-up" title="Move Up">&#9650;</button>
+      <button data-action="layer-down" title="Move Down">&#9660;</button>
+      <button data-action="layer-duplicate" title="Duplicate">&#128464;</button>
+      <button data-action="layer-merge-down" title="Merge Down">&#8615;</button>
+    </div>
+    <div class="layer-props" id="layer-props">
+      <label>Opacity: <input type="range" id="layer-opacity" min="0" max="100" value="100"> <span class="opacity-val" id="layer-opacity-val">100%</span></label>
+      <label>Blend: <select id="layer-blend" class="rb-select" style="flex:1;font-size:10px;"></select></label>
+    </div>
+    <div class="layer-list" id="layer-list"></div>
+  </div>
+
+</div>
+
+<!-- Status bar -->
+<div class="status-bar" id="status-bar">
+  <span class="status-section" id="status-pos">0, 0 px</span>
+  <span class="status-section" id="status-size">640 x 480</span>
+  <span class="status-spacer"></span>
+  <span id="status-zoom-ctrl"></span>
+</div>
+
+<!-- ============================================================= -->
+<!-- Dialogs -->
+<!-- ============================================================= -->
+
+<!-- Resize dialog -->
+<div class="dialog-overlay" id="dlg-resize">
+  <div class="dialog scaler-picker-dialog">
+    <div class="dialog-title">Resize Image</div>
+    <div class="dialog-body">
+      <div class="scaler-mode-tabs">
+        <button class="scaler-mode-tab active" data-mode="size">By Size</button>
+        <button class="scaler-mode-tab" data-mode="factor">By Factor</button>
+      </div>
+      <div class="scaler-dims" id="scaler-dims-size">
+        <label>Width: <input type="number" id="resize-w" min="1" max="8192"></label>
+        <span>&times;</span>
+        <label>Height: <input type="number" id="resize-h" min="1" max="8192"></label>
+        <label class="scaler-lock"><input type="checkbox" id="resize-lock" checked> Lock aspect ratio</label>
+      </div>
+      <div class="scaler-dims" id="scaler-dims-factor" style="display:none">
+        <label>Factor: <input type="number" id="resize-factor" min="0.1" max="16" step="0.1" value="2"></label>
+        <span>&times;</span>
+      </div>
+      <p id="scaler-info" class="scaler-info"></p>
+      <div class="scaler-columns">
+        <div class="scaler-list-col">
+          <div class="scaler-list" id="scaler-list"></div>
+        </div>
+        <div class="scaler-preview-col">
+          <div class="scaler-preview-title">Preview</div>
+          <canvas id="scaler-preview" width="192" height="192"></canvas>
+        </div>
+      </div>
+      <div class="scaler-params" id="scaler-params"></div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok" id="scaler-ok" disabled>OK</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Canvas Size dialog -->
+<div class="dialog-overlay" id="dlg-canvas-size">
+  <div class="dialog">
+    <div class="dialog-title">Canvas Size</div>
+    <div class="dialog-body">
+      <div class="resize-row">
+        <label for="canvas-w">Width:</label>
+        <input type="number" id="canvas-w" min="1" max="4096" value="640">
+        <span>px</span>
+      </div>
+      <div class="resize-row">
+        <label for="canvas-h">Height:</label>
+        <input type="number" id="canvas-h" min="1" max="4096" value="480">
+        <span>px</span>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">OK</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Brightness/Contrast dialog -->
+<div class="dialog-overlay" id="dlg-brightness">
+  <div class="dialog">
+    <div class="dialog-title">Brightness / Contrast</div>
+    <div class="dialog-body">
+      <canvas class="effect-preview" width="200" height="150"></canvas>
+      <div class="effect-controls">
+        <label>Brightness: <input type="range" data-param="brightness" min="-100" max="100" value="0"> <span>0</span></label>
+        <label>Contrast: <input type="range" data-param="contrast" min="-100" max="100" value="0"> <span>0</span></label>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Apply</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Hue/Saturation dialog -->
+<div class="dialog-overlay" id="dlg-hue-sat">
+  <div class="dialog">
+    <div class="dialog-title">Hue / Saturation</div>
+    <div class="dialog-body">
+      <canvas class="effect-preview" width="200" height="150"></canvas>
+      <div class="effect-controls">
+        <label>Hue: <input type="range" data-param="hue" min="-180" max="180" value="0"> <span>0</span></label>
+        <label>Saturation: <input type="range" data-param="saturation" min="-100" max="100" value="0"> <span>0</span></label>
+        <label>Lightness: <input type="range" data-param="lightness" min="-100" max="100" value="0"> <span>0</span></label>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Apply</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Levels dialog -->
+<div class="dialog-overlay" id="dlg-levels">
+  <div class="dialog">
+    <div class="dialog-title">Levels</div>
+    <div class="dialog-body">
+      <canvas class="effect-preview" width="200" height="150"></canvas>
+      <div class="effect-controls">
+        <label>Black: <input type="range" data-param="black" min="0" max="254" value="0"> <span>0</span></label>
+        <label>White: <input type="range" data-param="white" min="1" max="255" value="255"> <span>255</span></label>
+        <label>Gamma: <input type="range" data-param="gamma" min="10" max="300" value="100"> <span>1.00</span></label>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Apply</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Gaussian Blur dialog -->
+<div class="dialog-overlay" id="dlg-blur">
+  <div class="dialog">
+    <div class="dialog-title">Gaussian Blur</div>
+    <div class="dialog-body">
+      <canvas class="effect-preview" width="200" height="150"></canvas>
+      <div class="effect-controls">
+        <label>Radius: <input type="range" data-param="radius" min="1" max="20" value="3"> <span>3</span></label>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Apply</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Sharpen dialog -->
+<div class="dialog-overlay" id="dlg-sharpen">
+  <div class="dialog">
+    <div class="dialog-title">Sharpen</div>
+    <div class="dialog-body">
+      <canvas class="effect-preview" width="200" height="150"></canvas>
+      <div class="effect-controls">
+        <label>Amount: <input type="range" data-param="amount" min="1" max="200" value="50"> <span>50</span></label>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Apply</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Noise dialog -->
+<div class="dialog-overlay" id="dlg-noise">
+  <div class="dialog">
+    <div class="dialog-title">Add Noise</div>
+    <div class="dialog-body">
+      <canvas class="effect-preview" width="200" height="150"></canvas>
+      <div class="effect-controls">
+        <label>Amount: <input type="range" data-param="amount" min="1" max="100" value="20"> <span>20</span></label>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Apply</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Pixelate dialog -->
+<div class="dialog-overlay" id="dlg-pixelate">
+  <div class="dialog">
+    <div class="dialog-title">Pixelate</div>
+    <div class="dialog-body">
+      <canvas class="effect-preview" width="200" height="150"></canvas>
+      <div class="effect-controls">
+        <label>Size: <input type="range" data-param="size" min="2" max="50" value="8"> <span>8</span></label>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Apply</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Motion Blur dialog -->
+<div class="dialog-overlay" id="dlg-motion-blur">
+  <div class="dialog">
+    <div class="dialog-title">Motion Blur</div>
+    <div class="dialog-body">
+      <canvas class="effect-preview" width="200" height="150"></canvas>
+      <div class="effect-controls">
+        <label>Angle: <input type="range" data-param="angle" min="0" max="360" value="0"> <span>0</span></label>
+        <label>Distance: <input type="range" data-param="distance" min="1" max="50" value="10"> <span>10</span></label>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Apply</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Radial Blur dialog -->
+<div class="dialog-overlay" id="dlg-radial-blur">
+  <div class="dialog">
+    <div class="dialog-title">Radial Blur</div>
+    <div class="dialog-body">
+      <canvas class="effect-preview" width="200" height="150"></canvas>
+      <div class="effect-controls">
+        <label>Amount: <input type="range" data-param="amount" min="1" max="30" value="10"> <span>10</span></label>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Apply</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Surface Blur dialog -->
+<div class="dialog-overlay" id="dlg-surface-blur">
+  <div class="dialog">
+    <div class="dialog-title">Surface Blur</div>
+    <div class="dialog-body">
+      <canvas class="effect-preview" width="200" height="150"></canvas>
+      <div class="effect-controls">
+        <label>Radius: <input type="range" data-param="radius" min="1" max="15" value="5"> <span>5</span></label>
+        <label>Threshold: <input type="range" data-param="threshold" min="1" max="100" value="30"> <span>30</span></label>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Apply</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Box Blur dialog -->
+<div class="dialog-overlay" id="dlg-box-blur">
+  <div class="dialog">
+    <div class="dialog-title">Box Blur</div>
+    <div class="dialog-body">
+      <canvas class="effect-preview" width="200" height="150"></canvas>
+      <div class="effect-controls">
+        <label>Radius: <input type="range" data-param="radius" min="1" max="20" value="3"> <span>3</span></label>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Apply</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Median dialog -->
+<div class="dialog-overlay" id="dlg-median">
+  <div class="dialog">
+    <div class="dialog-title">Median Filter</div>
+    <div class="dialog-body">
+      <canvas class="effect-preview" width="200" height="150"></canvas>
+      <div class="effect-controls">
+        <label>Radius: <input type="range" data-param="radius" min="1" max="5" value="1"> <span>1</span></label>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Apply</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Unsharp Mask dialog -->
+<div class="dialog-overlay" id="dlg-unsharp-mask">
+  <div class="dialog">
+    <div class="dialog-title">Unsharp Mask</div>
+    <div class="dialog-body">
+      <canvas class="effect-preview" width="200" height="150"></canvas>
+      <div class="effect-controls">
+        <label>Amount: <input type="range" data-param="amount" min="1" max="300" value="150"> <span>150</span></label>
+        <label>Radius: <input type="range" data-param="radius" min="1" max="10" value="2"> <span>2</span></label>
+        <label>Threshold: <input type="range" data-param="threshold" min="0" max="50" value="4"> <span>4</span></label>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Apply</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Swirl dialog -->
+<div class="dialog-overlay" id="dlg-swirl">
+  <div class="dialog">
+    <div class="dialog-title">Swirl</div>
+    <div class="dialog-body">
+      <canvas class="effect-preview" width="200" height="150"></canvas>
+      <div class="effect-controls">
+        <label>Angle: <input type="range" data-param="angle" min="-360" max="360" value="60"> <span>60</span></label>
+        <label>Radius: <input type="range" data-param="radius" min="10" max="500" value="100"> <span>100</span></label>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Apply</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Spherize dialog -->
+<div class="dialog-overlay" id="dlg-spherize">
+  <div class="dialog">
+    <div class="dialog-title">Spherize</div>
+    <div class="dialog-body">
+      <canvas class="effect-preview" width="200" height="150"></canvas>
+      <div class="effect-controls">
+        <label>Amount: <input type="range" data-param="amount" min="-100" max="100" value="100"> <span>100</span></label>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Apply</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Ripple dialog -->
+<div class="dialog-overlay" id="dlg-ripple">
+  <div class="dialog">
+    <div class="dialog-title">Ripple</div>
+    <div class="dialog-body">
+      <canvas class="effect-preview" width="200" height="150"></canvas>
+      <div class="effect-controls">
+        <label>Amplitude: <input type="range" data-param="amplitude" min="1" max="50" value="10"> <span>10</span></label>
+        <label>Wavelength: <input type="range" data-param="wavelength" min="5" max="200" value="30"> <span>30</span></label>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Apply</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Frosted Glass dialog -->
+<div class="dialog-overlay" id="dlg-frosted-glass">
+  <div class="dialog">
+    <div class="dialog-title">Frosted Glass</div>
+    <div class="dialog-body">
+      <canvas class="effect-preview" width="200" height="150"></canvas>
+      <div class="effect-controls">
+        <label>Amount: <input type="range" data-param="amount" min="1" max="20" value="5"> <span>5</span></label>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Apply</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Oil Painting dialog -->
+<div class="dialog-overlay" id="dlg-oil-paint">
+  <div class="dialog">
+    <div class="dialog-title">Oil Painting</div>
+    <div class="dialog-body">
+      <canvas class="effect-preview" width="200" height="150"></canvas>
+      <div class="effect-controls">
+        <label>Radius: <input type="range" data-param="radius" min="1" max="8" value="4"> <span>4</span></label>
+        <label>Intensity: <input type="range" data-param="intensity" min="1" max="30" value="20"> <span>20</span></label>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Apply</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Posterize dialog -->
+<div class="dialog-overlay" id="dlg-posterize">
+  <div class="dialog">
+    <div class="dialog-title">Posterize</div>
+    <div class="dialog-body">
+      <canvas class="effect-preview" width="200" height="150"></canvas>
+      <div class="effect-controls">
+        <label>Levels: <input type="range" data-param="levels" min="2" max="32" value="4"> <span>4</span></label>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Apply</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Threshold dialog -->
+<div class="dialog-overlay" id="dlg-threshold">
+  <div class="dialog">
+    <div class="dialog-title">Threshold</div>
+    <div class="dialog-body">
+      <canvas class="effect-preview" width="200" height="150"></canvas>
+      <div class="effect-controls">
+        <label>Level: <input type="range" data-param="level" min="0" max="255" value="128"> <span>128</span></label>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Apply</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Solarize dialog -->
+<div class="dialog-overlay" id="dlg-solarize">
+  <div class="dialog">
+    <div class="dialog-title">Solarize</div>
+    <div class="dialog-body">
+      <canvas class="effect-preview" width="200" height="150"></canvas>
+      <div class="effect-controls">
+        <label>Threshold: <input type="range" data-param="threshold" min="0" max="255" value="128"> <span>128</span></label>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Apply</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Pencil Sketch dialog -->
+<div class="dialog-overlay" id="dlg-pencil-sketch">
+  <div class="dialog">
+    <div class="dialog-title">Pencil Sketch</div>
+    <div class="dialog-body">
+      <canvas class="effect-preview" width="200" height="150"></canvas>
+      <div class="effect-controls">
+        <label>Strength: <input type="range" data-param="strength" min="1" max="100" value="50"> <span>50</span></label>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Apply</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Vignette dialog -->
+<div class="dialog-overlay" id="dlg-vignette">
+  <div class="dialog">
+    <div class="dialog-title">Vignette</div>
+    <div class="dialog-body">
+      <canvas class="effect-preview" width="200" height="150"></canvas>
+      <div class="effect-controls">
+        <label>Amount: <input type="range" data-param="amount" min="1" max="100" value="50"> <span>50</span></label>
+        <label>Radius: <input type="range" data-param="radius" min="10" max="100" value="70"> <span>70</span></label>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Apply</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Halftone dialog -->
+<div class="dialog-overlay" id="dlg-halftone">
+  <div class="dialog">
+    <div class="dialog-title">Halftone</div>
+    <div class="dialog-body">
+      <canvas class="effect-preview" width="200" height="150"></canvas>
+      <div class="effect-controls">
+        <label>Dot Size: <input type="range" data-param="dotSize" min="2" max="20" value="6"> <span>6</span></label>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Apply</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Crystallize dialog -->
+<div class="dialog-overlay" id="dlg-crystallize">
+  <div class="dialog">
+    <div class="dialog-title">Crystallize</div>
+    <div class="dialog-body">
+      <canvas class="effect-preview" width="200" height="150"></canvas>
+      <div class="effect-controls">
+        <label>Cell Size: <input type="range" data-param="cellSize" min="3" max="50" value="12"> <span>12</span></label>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Apply</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- About dialog -->
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Paint</div>
+    <div class="dialog-body" style="text-align: center; padding: 20px;">
+      <p style="font-weight: bold; font-size: 13px; margin-bottom: 12px;">Paint</p>
+      <p>An advanced bitmap editor for &raquo;SynthelicZ&laquo;</p>
+      <p style="margin-top: 8px; font-size: 10px;">Layers &bull; Selections &bull; Effects &bull; Adjustments</p>
+      <p style="margin-top: 12px; font-size: 10px; opacity: 0.7;">&copy; 1995-2026 &raquo;SynthelicZ&laquo;</p>
+    </div>
+    <div class="dialog-buttons" style="justify-content: center;">
+      <button data-result="ok">OK</button>
+    </div>
+  </div>
+</div>
+
+<script defer src="../../../libs/formats/format-core.js"></script>
+<!-- <script defer src="../../../libs/formats/wasm-loader.js"></script> -->
+<script defer src="../../../libs/formats/graphics-bmp.js"></script>
+<script defer src="../../../libs/formats/graphics-png.js"></script>
+<script defer src="../../../libs/formats/graphics-jpeg.js"></script>
+<script defer src="../../../libs/formats/graphics-gif.js"></script>
+<script defer src="../../../libs/formats/graphics-webp.js"></script>
+<script defer src="../../../libs/formats/graphics-tga.js"></script>
+<script defer src="../../../libs/formats/graphics-ppm.js"></script>
+<script defer src="layer-model.js"></script>
+<script defer src="selection-engine.js"></script>
+<script defer src="effects-engine.js"></script>
+<script defer src="../../../js/system.drawing.resizing.js"></script>
+<script defer src="scaler-engine.js"></script>
+<script defer src="tools.js"></script>
+<script defer src="../../zoom-control.js"></script>
+<script src="../../shared/ribbon.js"></script>
+<script src="../../shared/dialog.js"></script>
+<script defer src="controller.js"></script>
+</body>
+</html>

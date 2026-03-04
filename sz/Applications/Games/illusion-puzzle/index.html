@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Optical Illusion Puzzle — navigate impossible architectural spaces with Penrose stairs and perspective-shifting mechanics in the SynthelicZ Desktop.">
+<meta name="robots" content="index,follow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Optical Illusion Puzzle -- &raquo;SynthelicZ&laquo; Desktop">
+<meta property="og:description" content="Monument Valley-style isometric puzzles with impossible geometry, perspective rotation, collectible sparkle effects, glow trails, and 15+ levels.">
+<meta property="og:url" content="https://hawkynt.github.io/sz/Applications/illusion-puzzle/index.html">
+<link rel="canonical" href="index.html">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Optical Illusion Puzzle",
+  "url": "https://hawkynt.github.io/sz/Applications/illusion-puzzle/index.html",
+  "description": "Isometric impossible-geometry puzzle game with Penrose stairs, perspective rotation, collectible sparkles, path glow trails, and 15+ Monument Valley-style levels.",
+  "applicationCategory": "GameApplication",
+  "operatingSystem": "Web Browser",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<title>Optical Illusion Puzzle</title>
+<script src="../../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="../../shared/menu.css">
+<link rel="stylesheet" href="../../shared/dialog.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<noscript><p>Optical Illusion Puzzle — navigate impossible architectural spaces with perspective-shifting mechanics. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a></p></noscript>
+
+<!-- Menu Bar -->
+<div class="menu-bar" id="menuBar">
+  <div class="menu-item" data-menu="game">Game
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="new">New Game<span class="shortcut">F2</span></div>
+      <div class="menu-entry" data-action="pause">Pause<span class="shortcut">Esc</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="high-scores">High Scores...</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="exit">Exit</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="help">Help
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="controls">Controls...</div>
+      <div class="menu-entry" data-action="about">About Optical Illusion Puzzle</div>
+    </div>
+  </div>
+</div>
+
+<!-- Game Canvas -->
+<div class="game-frame">
+  <canvas id="gameCanvas"></canvas>
+</div>
+
+<!-- Status Bar -->
+<div class="status-bar">
+  <div class="status-section" id="statusLevel">Level: --</div>
+  <div class="status-section" id="statusGems">Gems: --</div>
+  <div class="status-section" id="statusMoves">Moves: --</div>
+</div>
+
+<!-- High Scores Dialog -->
+<div class="dialog-overlay" id="highScoresBackdrop">
+  <div class="dialog">
+    <div class="dialog-title">High Scores</div>
+    <div class="dialog-body">
+      <table class="high-scores-table">
+        <thead>
+          <tr><th>#</th><th>Level</th><th>Moves</th></tr>
+        </thead>
+        <tbody id="highScoresBody"></tbody>
+      </table>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="reset" type="button">Reset</button>
+      <button data-result="ok" data-default type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Controls Dialog -->
+<div class="dialog-overlay" id="controlsBackdrop">
+  <div class="dialog">
+    <div class="dialog-title">Controls</div>
+    <div class="dialog-body">
+      <table class="controls-table">
+        <tr><td>Arrow Keys / WASD</td><td>Move player on grid</td></tr>
+        <tr><td>Q / E</td><td>Rotate perspective left / right</td></tr>
+        <tr><td>Space</td><td>Interact</td></tr>
+        <tr><td>F2</td><td>New game / Restart</td></tr>
+        <tr><td>Escape</td><td>Pause / Resume</td></tr>
+      </table>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok" data-default type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- About Dialog -->
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Optical Illusion Puzzle</div>
+    <div class="dialog-body">
+      <strong>Optical Illusion Puzzle</strong><br><br>
+      Navigate impossible architectural spaces inspired by Monument Valley and M.C. Escher.
+      Rotate perspective to create and break paths through Penrose stairs and impossible geometry.
+      Collect gems placed in tricky locations across 15+ levels with smooth isometric transitions,
+      path-complete glow trails, and collectible sparkle effects.<br><br>
+      Part of the &raquo;SynthelicZ&laquo; Desktop.
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok" data-default type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<script src="../../shared/menu.js"></script>
+<script src="../../shared/dialog.js"></script>
+<script src="../../shared/game-effects.js"></script>
+<script src="controller.js"></script>
+</body>
+</html>

@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Tower Defense — place 9 tower types (arrow, cannon, frost, lightning, laser, poison, tesla, mortar, flame) to stop waves of enemies in the SynthelicZ Desktop. Features auto-wave mode, mouse-only controls, path visualization, and pre-wave warnings.">
+<meta name="robots" content="index,follow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Tower Defense -- &raquo;SynthelicZ&laquo; Desktop">
+<meta property="og:description" content="Strategic tower defense with 9 tower types, 3-tier upgrades, 8 enemy varieties, auto-wave mode, mouse-only controls, path visualization, and 12 maps.">
+<meta property="og:url" content="https://hawkynt.github.io/sz/Applications/tower-defense/index.html">
+<link rel="canonical" href="index.html">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Tower Defense",
+  "url": "https://hawkynt.github.io/sz/Applications/tower-defense/index.html",
+  "description": "Path-based tower defense with 9 tower types (arrow, cannon, frost, lightning, laser, poison, tesla, mortar, flame), 3-tier upgrades, 8 enemy varieties, auto-wave mode, mouse-only controls, and 12 maps.",
+  "applicationCategory": "GameApplication",
+  "operatingSystem": "Web Browser",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<title>Tower Defense</title>
+<script src="../../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="../../shared/menu.css">
+<link rel="stylesheet" href="../../shared/dialog.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<noscript><p>Tower Defense — place towers to stop waves of enemies. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a></p></noscript>
+
+<!-- Menu Bar -->
+<div class="menu-bar" id="menuBar">
+  <div class="menu-item" data-menu="game">Game
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="new">New Game<span class="shortcut">F2</span></div>
+      <div class="menu-entry" data-action="pause">Pause<span class="shortcut">Esc</span></div>
+      <div class="menu-entry" data-action="auto-wave">Auto-Wave Mode<span class="shortcut">A</span></div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="high-scores">High Scores...</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="exit">Exit</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="help">Help
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="controls">Controls...</div>
+      <div class="menu-entry" data-action="about">About Tower Defense</div>
+    </div>
+  </div>
+</div>
+
+<!-- Game Canvas -->
+<div class="game-frame">
+  <canvas id="gameCanvas"></canvas>
+</div>
+
+<!-- Status Bar -->
+<div class="status-bar">
+  <div class="status-section" id="statusWave">Wave: --</div>
+  <div class="status-section" id="statusGold">Gold: --</div>
+  <div class="status-section" id="statusLives">Lives: --</div>
+</div>
+
+<!-- High Scores Dialog -->
+<div class="dialog-overlay" id="highScoresBackdrop">
+  <div class="dialog">
+    <div class="dialog-title">High Scores</div>
+    <div class="dialog-body">
+      <table class="high-scores-table">
+        <thead>
+          <tr><th>#</th><th>Map</th><th>Waves</th></tr>
+        </thead>
+        <tbody id="highScoresBody"></tbody>
+      </table>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="reset" type="button">Reset</button>
+      <button data-result="ok" data-default type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Controls Dialog -->
+<div class="dialog-overlay" id="controlsBackdrop">
+  <div class="dialog">
+    <div class="dialog-title">Controls</div>
+    <div class="dialog-body">
+      <table class="controls-table">
+        <tr><td colspan="2" style="font-weight:bold;padding-top:4px">Mouse Controls</td></tr>
+        <tr><td>Left Click</td><td>Place tower / select tower / click palette buttons</td></tr>
+        <tr><td>Right Click</td><td>Upgrade/sell menu on tower</td></tr>
+        <tr><td colspan="2" style="font-weight:bold;padding-top:4px">Keyboard Shortcuts</td></tr>
+        <tr><td>1-9</td><td>Select tower type</td></tr>
+        <tr><td>U</td><td>Upgrade selected tower</td></tr>
+        <tr><td>S</td><td>Sell selected tower</td></tr>
+        <tr><td>A</td><td>Toggle auto-wave mode</td></tr>
+        <tr><td>Space</td><td>Start wave / fast-forward</td></tr>
+        <tr><td>F2</td><td>New game / Restart</td></tr>
+        <tr><td>Escape</td><td>Pause / Resume</td></tr>
+        <tr><td colspan="2" style="font-weight:bold;padding-top:4px">Tower Types</td></tr>
+        <tr><td>Arrow</td><td>Fast, cheap general purpose</td></tr>
+        <tr><td>Cannon</td><td>Splash damage</td></tr>
+        <tr><td>Frost</td><td>Slows enemies</td></tr>
+        <tr><td>Lightning</td><td>Chain hits 2 targets</td></tr>
+        <tr><td>Laser</td><td>High single-target damage</td></tr>
+        <tr><td>Poison</td><td>Damage over time</td></tr>
+        <tr><td>Tesla</td><td>Multi-chain (4 targets)</td></tr>
+        <tr><td>Mortar</td><td>Long-range area splash</td></tr>
+        <tr><td>Flame</td><td>Close-range AoE + burn</td></tr>
+      </table>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok" data-default type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- About Dialog -->
+<div class="dialog-overlay" id="dlg-about">
+  <div class="dialog">
+    <div class="dialog-title">About Tower Defense</div>
+    <div class="dialog-body">
+      <strong>Tower Defense</strong><br><br>
+      Place 9 tower types (arrow, cannon, frost, lightning, laser, poison, tesla, mortar, flame)
+      along enemy paths to defend your base. Upgrade towers through 3 tiers, manage your gold
+      economy, and survive escalating waves of normal, fast, armored, flying, healer, swarm,
+      shield, and boss enemies across 12 unique maps.<br><br>
+      Features auto-wave mode, full mouse-only controls with right-click context menus,
+      pre-wave warnings, and path visualization with spawn/exit markers.<br><br>
+      Part of the &raquo;SynthelicZ&laquo; Desktop.
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok" data-default type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<script src="../../shared/menu.js"></script>
+<script src="../../shared/dialog.js"></script>
+<script src="../../shared/game-effects.js"></script>
+<script src="controller.js"></script>
+</body>
+</html>
