@@ -1,7 +1,7 @@
 ;(function() {
   'use strict';
 
-  const { User32, Kernel32, ComDlg32 } = SZ.Dlls;
+  const { User32, Kernel32, ComDlg32 } = SZ.Dlls || {};
   const { LayerModel, BLEND_MODES, Tools, SelectionEngine, Adjustments, Effects, ImageAnalysis, openEffectDialog, applyEffectToLayer, cloneImageData } = window.PaintApp;
 
   // -----------------------------------------------------------------------

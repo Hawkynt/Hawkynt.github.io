@@ -703,7 +703,7 @@
   }
 
   function populateFileSystem(fileSystem, appLauncher) {
-      fileSystem.desktop.addSystemItem({ name: 'My Computer', icon: 'Applications/explorer/icon.svg', appId: 'explorer' });
+      fileSystem.desktop.addSystemItem({ name: 'My Computer', icon: 'Applications/System/explorer/icon.svg', appId: 'explorer' });
       for (const app of SZ.manifest.applications) {
           if (!app.hidden) {
               const item = {name: app.title, icon: `Applications/${app.icon}`, appId: app.id};

@@ -1,7 +1,7 @@
 ;(function() {
   'use strict';
 
-  const { User32, Kernel32, ComDlg32 } = SZ.Dlls;
+  const { User32, Kernel32, ComDlg32 } = SZ.Dlls || {};
 
   // Import archive framework symbols
   const A = window.SZ.Archiver;

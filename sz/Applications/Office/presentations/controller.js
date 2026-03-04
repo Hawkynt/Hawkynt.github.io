@@ -3,7 +3,7 @@
 
   const PresentationsApp = window.PresentationsApp || (window.PresentationsApp = {});
   const { SlideRenderer, SlideshowMode, AnimationEngine, Comments, PresenterView, ChartElement, SmartArtEngine } = PresentationsApp;
-  const { User32, Kernel32, ComDlg32 } = SZ.Dlls;
+  const { User32, Kernel32, ComDlg32 } = SZ.Dlls || {};
 
   // ===============================================================
   // Constants
@@ -1265,7 +1265,7 @@
       return;
 
     const target = startEvent.currentTarget;
-    target.setPointerCapture(startEvent.pointerId);
+    try { target.setPointerCapture(startEvent.pointerId); } catch (_) { /* pointer may no longer be active */ }
 
     const onMove = (e) => {
       const dx = (e.clientX - startX) / scale;
@@ -1340,7 +1340,7 @@
     const origH = element.h;
 
     const target = startEvent.target;
-    target.setPointerCapture(startEvent.pointerId);
+    try { target.setPointerCapture(startEvent.pointerId); } catch (_) { /* pointer may no longer be active */ }
 
     const onMove = (e) => {
       const dx = (e.clientX - startX) / scale;
@@ -1424,7 +1424,7 @@
     const startAngle = Math.atan2(startEvent.clientY - centerY, startEvent.clientX - centerX);
 
     const target = startEvent.target;
-    target.setPointerCapture(startEvent.pointerId);
+    try { target.setPointerCapture(startEvent.pointerId); } catch (_) { /* pointer may no longer be active */ }
 
     const onMove = (e) => {
       const currentAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX);
@@ -3660,7 +3660,8 @@
 
     const transitionType = slide.transition.type || 'fade';
     const duration = slide.transition.duration || 0.5;
-    const engine = window.parent?.SZ?.TransitionEngine;
+    let engine = null;
+    try { engine = window.parent?.SZ?.TransitionEngine; } catch (_) { /* cross-origin access blocked on file:// */ }
     const viewport = canvasViewport;
     if (!viewport)
       return;

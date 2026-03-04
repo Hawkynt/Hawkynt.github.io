@@ -2,7 +2,7 @@
   'use strict';
 
   const { FormulaEngine, ChartEngine, XlsxEngine, PivotEngine, DataTools, GoalSeek, Protection, PrintLayout, WhatIf } = window.SpreadsheetApp;
-  const { User32, Kernel32, ComDlg32 } = SZ.Dlls;
+  const { User32, Kernel32, ComDlg32 } = SZ.Dlls || {};
 
   // ── Constants ──────────────────────────────────────────────────────
   const INIT_COLS = 26;

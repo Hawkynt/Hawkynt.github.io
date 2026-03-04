@@ -2,7 +2,7 @@
   'use strict';
 
   const { DocxEngine, RtfEngine, CommentsTracking, TocFootnotes, ImageTools, ShapeTools, SpellCheck, StylesGallery, EquationEditor, AutoCorrect, FieldCodes, Sections, Bibliography, AutoText, Templates } = window.WordPadApp;
-  const { User32, Kernel32, ComDlg32 } = SZ.Dlls;
+  const { User32, Kernel32, ComDlg32 } = SZ.Dlls || {};
 
   // ═══════════════════════════════════════════════════════════════
   // State

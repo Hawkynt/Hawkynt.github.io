@@ -1,7 +1,7 @@
 ;(function() {
   'use strict';
 
-  const { User32, Kernel32, Shell32, Advapi32 } = SZ.Dlls;
+  const { User32, Kernel32, Shell32, Advapi32 } = SZ.Dlls || {};
 
   // =========================================================================
   // SVG icons for object-browser types (16x16 viewBox)
@@ -94,7 +94,7 @@
     return '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">'
       + '<svg viewBox="' + _VFSFILE_PARSED.viewBox + '" width="32" height="32">' + _VFSFILE_PARSED.inner + '</svg>'
       + '<rect x="17" y="17" width="15" height="15" rx="2" fill="#fff" stroke="#ccc" stroke-width=".5"/>'
-      + '<svg viewBox="' + cached.viewBox + '" x="18" y="18" width="13" height="13">' + cached.inner + '</svg>'
+      + '<image href="' + cached + '" x="18" y="18" width="13" height="13"/>'
       + '</svg>';
   }
 
@@ -2927,8 +2927,8 @@
               for (const assoc of handlers) {
                 if (!assoc.appId || seenApps.has(assoc.appId)) continue;
                 seenApps.add(assoc.appId);
-                const appIcon = _iconSvgCache.get(assoc.iconPath);
-                const appSvg = appIcon ? ('<svg viewBox="' + appIcon.viewBox + '" xmlns="http://www.w3.org/2000/svg">' + appIcon.inner + '</svg>') : null;
+                const appIconUrl = _iconSvgCache.get(assoc.iconPath);
+                const appSvg = appIconUrl ? ('<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><image href="' + appIconUrl + '" width="16" height="16"/></svg>') : null;
                 addCtxItem(openWithPanel, assoc.appId, () => {
                   Shell32.ShellExecute(assoc.appId, { path: toVfsRelative(sel.path) });
                 }, false, appSvg);
@@ -5145,14 +5145,13 @@
         if (h.iconPath && !_iconSvgCache.has(h.iconPath)) uniqueIcons.add(h.iconPath);
     for (const w of _wildcardApps)
       if (w.iconPath && !_iconSvgCache.has(w.iconPath)) uniqueIcons.add(w.iconPath);
-    await Promise.all([...uniqueIcons].map(async (iconPath) => {
-      try {
-        const resp = await fetch('../' + iconPath);
-        if (!resp.ok) return;
-        const text = await resp.text();
-        _iconSvgCache.set(iconPath, _parseAppSvg(text));
-      } catch {}
-    }));
+    await Promise.all([...uniqueIcons].map(iconPath => new Promise(resolve => {
+      const url = '../../' + iconPath;
+      const img = new Image();
+      img.onload = () => { _iconSvgCache.set(iconPath, url); resolve(); };
+      img.onerror = () => resolve();
+      img.src = url;
+    })));
     // Re-render active pane
     const pane = paneManager.getActive();
     if (pane && pane.isVfsMode) pane.render();
