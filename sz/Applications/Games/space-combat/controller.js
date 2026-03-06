@@ -492,7 +492,7 @@
 
   /* ── Boss System ── */
   function spawnBoss() {
-    const bossIdx = ((waveNumber / 5 - 1) % BOSS_TYPES.length);
+    const bossIdx = Math.floor((waveNumber / 5 - 1) % BOSS_TYPES.length);
     const def = BOSS_TYPES[bossIdx];
     const cycle = Math.floor((waveNumber / 5 - 1) / BOSS_TYPES.length);
     const hpScale = 1 + 0.3 * cycle;
@@ -1125,7 +1125,7 @@
       }
 
       e.x = Math.max(e.size, Math.min(CANVAS_W - e.size, e.x));
-      e.y = Math.max(-30, Math.min(CANVAS_H + 30, e.y));
+      e.y = Math.max(-30, Math.min(CANVAS_H + 60, e.y));
 
       // Enemy firing (type-specific)
       if (e.canShoot && e.y > 20) {
