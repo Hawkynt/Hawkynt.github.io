@@ -714,14 +714,30 @@
       const mx = mouseCanvasX;
       const my = mouseCanvasY;
 
-      const panelX = CANVAS_W / 2 - 160;
+      const panelW = 320;
+      const panelX = CANVAS_W / 2 - panelW / 2;
       const panelY = 60;
       const rowH = 28;
       const startY = panelY + 50;
 
+      /* Close button */
+      const closeBtnX = panelX + panelW / 2 - 40;
+      const closeBtnY = startY + UPGRADE_KEYS.length * rowH + 34;
+      if (mx >= closeBtnX && mx <= closeBtnX + 80 && my >= closeBtnY && my <= closeBtnY + 22) {
+        shopOpen = false;
+        return;
+      }
+
+      /* Click outside panel to close */
+      const panelH = 50 + UPGRADE_KEYS.length * rowH + 60;
+      if (mx < panelX || mx > panelX + panelW || my < panelY || my > panelY + panelH) {
+        shopOpen = false;
+        return;
+      }
+
       for (let i = 0; i < UPGRADE_KEYS.length; ++i) {
         const ry = startY + i * rowH;
-        if (mx >= panelX && mx <= panelX + 320 && my >= ry && my <= ry + rowH) {
+        if (mx >= panelX && mx <= panelX + panelW && my >= ry && my <= ry + rowH) {
           shopSelection = i;
           buyUpgrade(UPGRADE_KEYS[i]);
           break;
@@ -1435,7 +1451,7 @@
         ctx.fillStyle = '#0f0';
         ctx.font = '11px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(shopOpen ? '[E] Close Shop  |  [ESC] Leave' : '[E] or Click to Sell & Shop', sx, sy + STATION_RADIUS + 20);
+        ctx.fillText(shopOpen ? 'Click Close or press E / ESC' : '[E] or Click to Sell & Shop', sx, sy + STATION_RADIUS + 20);
       }
     }
   }
@@ -1782,8 +1798,19 @@
       priceText += '  ' + ORE_TYPES[key].label + ' ' + marketPrices[key];
     ctx.fillText(priceText, px + panelW / 2, startY + UPGRADE_KEYS.length * rowH + 28);
 
-    ctx.fillStyle = '#666';
-    ctx.fillText('Arrow Keys to select, Enter to buy, E or ESC to close', px + panelW / 2, startY + UPGRADE_KEYS.length * rowH + 44);
+    /* Close button */
+    const closeBtnX = px + panelW / 2 - 40;
+    const closeBtnY = startY + UPGRADE_KEYS.length * rowH + 34;
+    const closeBtnW = 80;
+    const closeBtnH = 22;
+    ctx.fillStyle = '#533';
+    ctx.fillRect(closeBtnX, closeBtnY, closeBtnW, closeBtnH);
+    ctx.strokeStyle = '#a66';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(closeBtnX, closeBtnY, closeBtnW, closeBtnH);
+    ctx.fillStyle = '#faa';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillText('Close', closeBtnX + closeBtnW / 2, closeBtnY + 15);
 
     ctx.restore();
   }

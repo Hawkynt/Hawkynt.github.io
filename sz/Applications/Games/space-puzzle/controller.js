@@ -904,6 +904,12 @@
 
   /* ── Pointer input for drag & launch ── */
   canvas.addEventListener('pointerdown', (e) => {
+    // Click to start from READY or restart from GAME_OVER
+    if (state === STATE_READY || state === STATE_GAME_OVER) {
+      resetGame();
+      return;
+    }
+
     if (state !== STATE_PLAYING && state !== STATE_AIMING) return;
     if (obj.active) return;
 
