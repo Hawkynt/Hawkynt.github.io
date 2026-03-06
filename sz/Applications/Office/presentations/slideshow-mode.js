@@ -2,9 +2,19 @@
   'use strict';
   const PresentationsApp = window.PresentationsApp || (window.PresentationsApp = {});
 
-  const SLIDE_WIDTH = 960;
-  const SLIDE_HEIGHT = 540;
+  const DEFAULT_SLIDE_WIDTH = 960;
+  const DEFAULT_SLIDE_HEIGHT = 540;
   const CURSOR_HIDE_DELAY = 3000;
+
+  function _getSlideWidth() {
+    const pres = _getPresentation();
+    return pres?.slideWidth || DEFAULT_SLIDE_WIDTH;
+  }
+
+  function _getSlideHeight() {
+    const pres = _getPresentation();
+    return pres?.slideHeight || DEFAULT_SLIDE_HEIGHT;
+  }
 
   let _ctx = null;
   let _active = false;
@@ -26,6 +36,17 @@
   let _animPlayer = null;
   let _animTimeline = null;
 
+  // Pen / Laser pointer state
+  let _penActive = false;
+  let _laserActive = false;
+  let _penCanvas = null;
+  let _penCtx = null;
+  let _penDrawing = false;
+  let _penColor = '#ff0000';
+  let _laserDot = null;
+  let _slideshowToolbar = null;
+  let _toolbarHideTimer = null;
+
   function _getAnimationEngine() {
     return PresentationsApp.AnimationEngine ?? null;
   }
@@ -35,20 +56,20 @@
   }
 
   function _calcFitScale() {
-    return Math.min(window.innerWidth / SLIDE_WIDTH, window.innerHeight / SLIDE_HEIGHT);
+    return Math.min(window.innerWidth / _getSlideWidth(), window.innerHeight / _getSlideHeight());
   }
 
   function _createSlideContainer(parent) {
     const container = document.createElement('div');
     const scale = _calcFitScale();
-    container.style.cssText = `width:${SLIDE_WIDTH}px;height:${SLIDE_HEIGHT}px;transform:scale(${scale});transform-origin:center center;position:relative;overflow:hidden;`;
+    container.style.cssText = `width:${_getSlideWidth()}px;height:${_getSlideHeight()}px;transform:scale(${scale});transform-origin:center center;position:relative;overflow:hidden;`;
     parent.appendChild(container);
     return container;
   }
 
   function _updateContainerScales() {
     const scale = _calcFitScale();
-    const css = `width:${SLIDE_WIDTH}px;height:${SLIDE_HEIGHT}px;transform:scale(${scale});transform-origin:center center;position:relative;overflow:hidden;`;
+    const css = `width:${_getSlideWidth()}px;height:${_getSlideHeight()}px;transform:scale(${scale});transform-origin:center center;position:relative;overflow:hidden;`;
     if (_frontContainer)
       _frontContainer.style.cssText = css;
     if (_backContainer)
@@ -91,11 +112,21 @@
     return overlay;
   }
 
-  function _renderSlideInto(slide, container) {
+  function _renderSlideInto(slide, container, slideIndex) {
     container.innerHTML = '';
     const scale = _calcFitScale();
-    if (PresentationsApp.SlideRenderer)
-      PresentationsApp.SlideRenderer.renderSlide(slide, container, { editable: false, scale });
+    if (!PresentationsApp.SlideRenderer)
+      return;
+
+    const pres = _getPresentation();
+    PresentationsApp.SlideRenderer.renderSlide(slide, container, {
+      editable: false,
+      scale,
+      headerFooter: pres?.headerFooter || null,
+      slideIndex: slideIndex != null ? slideIndex : _currentIndex,
+      slideWidth: pres?.slideWidth,
+      slideHeight: pres?.slideHeight
+    });
   }
 
   function _getPresentation() {
@@ -105,6 +136,45 @@
   function _getSlides() {
     const pres = _getPresentation();
     return pres?.slides ?? [];
+  }
+
+  // ---------------------------------------------------------------
+  // Media Playback (Video/Audio)
+  // ---------------------------------------------------------------
+
+  function _handleSlideMedia(container, action) {
+    if (!container)
+      return;
+
+    const mediaElements = container.querySelectorAll('video, audio');
+    for (const media of mediaElements) {
+      if (action === 'play') {
+        const wrapper = media.closest('.slide-element');
+        const autoplay = wrapper ? wrapper.dataset.autoplay === 'true' : media.autoplay;
+        if (autoplay) {
+          media.play().catch(() => {});
+        } else {
+          // Add click-to-play/pause for manual media
+          if (!media._ssClickHandler) {
+            media._ssClickHandler = (e) => {
+              e.stopPropagation();
+              if (media.paused)
+                media.play().catch(() => {});
+              else
+                media.pause();
+            };
+            media.addEventListener('click', media._ssClickHandler);
+          }
+        }
+      } else if (action === 'stop') {
+        media.pause();
+        media.currentTime = 0;
+        if (media._ssClickHandler) {
+          media.removeEventListener('click', media._ssClickHandler);
+          media._ssClickHandler = null;
+        }
+      }
+    }
   }
 
   // ---------------------------------------------------------------
@@ -529,13 +599,21 @@
     _clearAutoAdvance();
     _cleanupAnimationPlayer();
 
+    // Stop media on the current slide before transitioning away
+    _handleSlideMedia(_frontContainer, 'stop');
+
     const currentSlide = _currentIndex >= 0 && _currentIndex < slides.length ? slides[_currentIndex] : null;
     const targetSlide = slides[targetIndex];
     const transition = targetSlide?.transition;
     const transitionType = (typeof transition === 'object' ? transition?.type : transition) || 'fade';
     const duration = (typeof transition === 'object' ? transition?.duration : null) ?? 0.5;
 
-    _renderSlideInto(targetSlide, _backContainer);
+    _renderSlideInto(targetSlide, _backContainer, targetIndex);
+
+    // P3: Play transition sound effect
+    const transitionSound = (typeof transition === 'object' ? transition?.sound : null) || 'none';
+    if (transitionSound !== 'none' && _ctx?.playTransitionSound)
+      _ctx.playTransitionSound(transitionSound);
 
     // Feature 28: Morph transition
     if (transitionType === 'morph' && currentSlide) {
@@ -580,6 +658,9 @@
 
       // Setup animation player for new slide
       _setupAnimationPlayer();
+
+      // Play media on the new slide
+      _handleSlideMedia(_frontContainer, 'play');
 
       _scheduleAutoAdvance();
     }, finishDelay);
@@ -640,6 +721,211 @@
   }
 
   // ---------------------------------------------------------------
+  // Pen / Laser Pointer Tools
+  // ---------------------------------------------------------------
+
+  function _togglePen() {
+    if (_laserActive)
+      _toggleLaser(); // deactivate laser first
+    _penActive = !_penActive;
+    if (_penActive)
+      _createPenCanvas();
+    else
+      _removePenCanvas();
+    _updateToolbarState();
+  }
+
+  function _toggleLaser() {
+    if (_penActive)
+      _togglePen(); // deactivate pen first
+    _laserActive = !_laserActive;
+    if (_laserActive)
+      _createLaserDot();
+    else
+      _removeLaserDot();
+    _updateToolbarState();
+  }
+
+  function _erasePenAnnotations() {
+    if (_penCtx && _penCanvas)
+      _penCtx.clearRect(0, 0, _penCanvas.width, _penCanvas.height);
+  }
+
+  function _createPenCanvas() {
+    if (_penCanvas)
+      return;
+    const canvas = document.createElement('canvas');
+    canvas.className = 'slideshow-pen-canvas';
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    _overlay.appendChild(canvas);
+    _penCanvas = canvas;
+    _penCtx = canvas.getContext('2d');
+    _penCtx.lineWidth = 3;
+    _penCtx.lineCap = 'round';
+    _penCtx.lineJoin = 'round';
+    _penCtx.strokeStyle = _penColor;
+
+    canvas.addEventListener('pointerdown', _onPenPointerDown);
+    canvas.addEventListener('pointermove', _onPenPointerMove);
+    canvas.addEventListener('pointerup', _onPenPointerUp);
+    canvas.addEventListener('pointercancel', _onPenPointerUp);
+  }
+
+  function _removePenCanvas() {
+    if (!_penCanvas)
+      return;
+    _penCanvas.removeEventListener('pointerdown', _onPenPointerDown);
+    _penCanvas.removeEventListener('pointermove', _onPenPointerMove);
+    _penCanvas.removeEventListener('pointerup', _onPenPointerUp);
+    _penCanvas.removeEventListener('pointercancel', _onPenPointerUp);
+    if (_penCanvas.parentNode)
+      _penCanvas.parentNode.removeChild(_penCanvas);
+    _penCanvas = null;
+    _penCtx = null;
+    _penDrawing = false;
+  }
+
+  function _onPenPointerDown(e) {
+    if (!_penCtx)
+      return;
+    _penDrawing = true;
+    _penCtx.strokeStyle = _penColor;
+    _penCtx.beginPath();
+    _penCtx.moveTo(e.clientX, e.clientY);
+    e.preventDefault();
+  }
+
+  function _onPenPointerMove(e) {
+    if (!_penDrawing || !_penCtx)
+      return;
+    _penCtx.lineTo(e.clientX, e.clientY);
+    _penCtx.stroke();
+    e.preventDefault();
+  }
+
+  function _onPenPointerUp(e) {
+    _penDrawing = false;
+    e.preventDefault();
+  }
+
+  function _createLaserDot() {
+    if (_laserDot)
+      return;
+    const dot = document.createElement('div');
+    dot.className = 'slideshow-laser';
+    dot.style.display = 'none';
+    _overlay.appendChild(dot);
+    _laserDot = dot;
+  }
+
+  function _removeLaserDot() {
+    if (!_laserDot)
+      return;
+    if (_laserDot.parentNode)
+      _laserDot.parentNode.removeChild(_laserDot);
+    _laserDot = null;
+  }
+
+  function _updateLaserPosition(e) {
+    if (!_laserDot || !_laserActive)
+      return;
+    _laserDot.style.display = '';
+    _laserDot.style.left = e.clientX + 'px';
+    _laserDot.style.top = e.clientY + 'px';
+  }
+
+  // ---------------------------------------------------------------
+  // Slideshow Toolbar (auto-hide near bottom)
+  // ---------------------------------------------------------------
+
+  function _createSlideshowToolbar() {
+    if (_slideshowToolbar)
+      return;
+    const toolbar = document.createElement('div');
+    toolbar.className = 'slideshow-toolbar';
+    toolbar.style.opacity = '0';
+
+    const penBtn = document.createElement('button');
+    penBtn.textContent = 'Pen';
+    penBtn.dataset.tool = 'pen';
+    penBtn.addEventListener('click', (e) => { e.stopPropagation(); _togglePen(); });
+
+    const laserBtn = document.createElement('button');
+    laserBtn.textContent = 'Laser';
+    laserBtn.dataset.tool = 'laser';
+    laserBtn.addEventListener('click', (e) => { e.stopPropagation(); _toggleLaser(); });
+
+    const eraserBtn = document.createElement('button');
+    eraserBtn.textContent = 'Eraser';
+    eraserBtn.addEventListener('click', (e) => { e.stopPropagation(); _erasePenAnnotations(); });
+
+    const colorInput = document.createElement('input');
+    colorInput.type = 'color';
+    colorInput.value = _penColor;
+    colorInput.style.cssText = 'width:28px;height:24px;border:none;padding:0;cursor:pointer;border-radius:4px;';
+    colorInput.addEventListener('input', (e) => {
+      e.stopPropagation();
+      _penColor = e.target.value;
+      if (_penCtx)
+        _penCtx.strokeStyle = _penColor;
+    });
+    colorInput.addEventListener('click', (e) => e.stopPropagation());
+
+    toolbar.appendChild(penBtn);
+    toolbar.appendChild(laserBtn);
+    toolbar.appendChild(eraserBtn);
+    toolbar.appendChild(colorInput);
+
+    _overlay.appendChild(toolbar);
+    _slideshowToolbar = toolbar;
+  }
+
+  function _removeSlideshowToolbar() {
+    if (_toolbarHideTimer != null) {
+      clearTimeout(_toolbarHideTimer);
+      _toolbarHideTimer = null;
+    }
+    if (!_slideshowToolbar)
+      return;
+    if (_slideshowToolbar.parentNode)
+      _slideshowToolbar.parentNode.removeChild(_slideshowToolbar);
+    _slideshowToolbar = null;
+  }
+
+  function _showToolbarBriefly() {
+    if (!_slideshowToolbar)
+      return;
+    _slideshowToolbar.style.opacity = '1';
+    if (_toolbarHideTimer != null)
+      clearTimeout(_toolbarHideTimer);
+    _toolbarHideTimer = setTimeout(() => {
+      if (_slideshowToolbar)
+        _slideshowToolbar.style.opacity = '0';
+    }, 3000);
+  }
+
+  function _updateToolbarState() {
+    if (!_slideshowToolbar)
+      return;
+    const penBtn = _slideshowToolbar.querySelector('[data-tool="pen"]');
+    const laserBtn = _slideshowToolbar.querySelector('[data-tool="laser"]');
+    if (penBtn)
+      penBtn.classList.toggle('active', _penActive);
+    if (laserBtn)
+      laserBtn.classList.toggle('active', _laserActive);
+  }
+
+  function _cleanupPenLaser() {
+    _penActive = false;
+    _laserActive = false;
+    _penDrawing = false;
+    _removePenCanvas();
+    _removeLaserDot();
+    _removeSlideshowToolbar();
+  }
+
+  // ---------------------------------------------------------------
   // Event handlers
   // ---------------------------------------------------------------
 
@@ -679,6 +965,21 @@
         e.preventDefault();
         _toggleWhite();
         break;
+      case 'p':
+      case 'P':
+        e.preventDefault();
+        _togglePen();
+        break;
+      case 'l':
+      case 'L':
+        e.preventDefault();
+        _toggleLaser();
+        break;
+      case 'e':
+      case 'E':
+        e.preventDefault();
+        _erasePenAnnotations();
+        break;
     }
   }
 
@@ -688,6 +989,14 @@
       _whiteScreen.style.display = 'none';
       return;
     }
+
+    // When pen or laser is active, don't navigate on click
+    if (_penActive || _laserActive)
+      return;
+
+    // Allow media elements to handle their own clicks
+    if (e.target.closest('video') || e.target.closest('audio'))
+      return;
 
     // Feature 20: Action button clicks
     const actionBtn = e.target.closest('.el-action-button');
@@ -724,8 +1033,13 @@
       stopSlideshow();
   }
 
-  function _handleMouseMove() {
+  function _handleMouseMove(e) {
     _resetCursorTimer();
+    _updateLaserPosition(e);
+
+    // Show toolbar when cursor is within 50px of bottom
+    if (e.clientY >= window.innerHeight - 50)
+      _showToolbarBriefly();
   }
 
   function _handleResize() {
@@ -790,10 +1104,13 @@
     _frontLayer.style.opacity = '1';
     _backLayer.style.opacity = '0';
 
-    _renderSlideInto(slides[_currentIndex], _frontContainer);
+    _renderSlideInto(slides[_currentIndex], _frontContainer, _currentIndex);
 
     // Setup animation player for first slide
     _setupAnimationPlayer();
+
+    // Play media on the first slide
+    _handleSlideMedia(_frontContainer, 'play');
 
     document.addEventListener('keydown', _handleKeyDown, { signal });
     overlay.addEventListener('click', _handleClick, { signal });
@@ -801,6 +1118,8 @@
     document.addEventListener('webkitfullscreenchange', _handleFullscreenChange, { signal });
     overlay.addEventListener('mousemove', _handleMouseMove, { signal });
     window.addEventListener('resize', _handleResize, { signal });
+
+    _createSlideshowToolbar();
 
     _tryEnterFullscreen();
     _resetCursorTimer();
@@ -817,6 +1136,11 @@
     _clearAutoAdvance();
     _clearCursorTimer();
     _cleanupAnimationPlayer();
+    _cleanupPenLaser();
+
+    // Stop all media before tearing down
+    _handleSlideMedia(_frontContainer, 'stop');
+    _handleSlideMedia(_backContainer, 'stop');
 
     const engine = _getTransitionEngine();
     if (engine)

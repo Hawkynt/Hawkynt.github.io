@@ -316,6 +316,47 @@
     for (const id of ids) rejectChange(id);
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // Import from DOCX
+  // ═══════════════════════════════════════════════════════════════
+
+  function importComments(commentData) {
+    if (!commentData || !commentData.length) return;
+    commentStore.comments = [];
+    let maxId = 0;
+    for (const c of commentData) {
+      commentStore.comments.push({
+        id: c.id,
+        parentId: c.parentId || null,
+        author: c.author || 'Unknown',
+        timestamp: c.timestamp || new Date().toISOString(),
+        text: c.text || '',
+        resolved: !!c.resolved,
+        rangeId: c.rangeId || c.id,
+      });
+      if (c.id > maxId) maxId = c.id;
+    }
+    commentStore.nextId = maxId + 1;
+    refreshCommentSidebar();
+  }
+
+  function importTrackChanges(changeData) {
+    if (!changeData || !changeData.length) return;
+    trackChangesState.changes = [];
+    let maxId = 0;
+    for (const tc of changeData) {
+      trackChangesState.changes.push({
+        id: tc.id,
+        type: tc.type || 'insertion',
+        author: tc.author || 'Unknown',
+        timestamp: tc.timestamp || new Date().toISOString(),
+        rangeId: tc.rangeId || tc.id,
+      });
+      if (tc.id > maxId) maxId = tc.id;
+    }
+    trackChangesState.nextId = maxId + 1;
+  }
+
   WP.CommentsTracking = {
     init,
     addComment,
@@ -328,6 +369,9 @@
     rejectAllChanges,
     toggleCommentsSidebar,
     refreshCommentSidebar,
+    importComments,
+    importTrackChanges,
     _getCommentStore: () => commentStore,
+    _getTrackChangesState: () => trackChangesState,
   };
 })();

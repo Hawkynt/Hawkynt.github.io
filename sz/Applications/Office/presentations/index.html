@@ -151,6 +151,7 @@
           <input type="color" class="rb-color" id="rb-font-color" value="#000000">
           <span class="rb-color-label" id="rb-font-color-swatch" style="background:#000000;">A</span>
         </span>
+        <button class="rb-btn rb-fmt" data-action="eyedropper" title="Eyedropper (pick color from slide)">&#128065;</button>
       </div>
     </div>
     <div class="ribbon-group-label">Font</div>
@@ -226,6 +227,17 @@
       </button>
     </div>
     <div class="ribbon-group-label">Editing</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-sm" data-action="crop-image" title="Crop Image">
+        <span class="rb-icon">&#9986;</span><span class="rb-label">Crop</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Picture</div>
   </div>
 
 </div>
@@ -350,6 +362,18 @@
 
   <div class="ribbon-group">
     <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="insert-equation" title="Insert Equation">
+        <span class="rb-icon rb-icon-lg">&#8721;</span>
+        <span class="rb-label">Equation</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Symbols</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
       <div class="rb-stack">
         <button class="rb-btn rb-btn-sm" data-action="insert-action-button" title="Insert Action Button">
           <span class="rb-icon">&#9654;</span><span class="rb-label">Action Button</span>
@@ -428,6 +452,17 @@
     <div class="ribbon-group-label">Master</div>
   </div>
 
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-sm" data-action="slide-size" title="Slide Size">
+        <span class="rb-icon">&#9634;</span><span class="rb-label">Slide Size</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Page Setup</div>
+  </div>
+
 </div>
 
 <!-- Transitions Tab -->
@@ -459,6 +494,27 @@
       </div>
     </div>
     <div class="ribbon-group-label">Timing</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <div class="rb-row" style="align-items:center;gap:4px;">
+          <label style="font-size:11px;">Sound:</label>
+          <select id="transition-sound" style="font-size:11px;width:100px;" title="Transition Sound Effect">
+            <option value="none">None</option>
+            <option value="applause">Applause</option>
+            <option value="chime">Chime</option>
+            <option value="click">Click</option>
+            <option value="drumroll">Drum Roll</option>
+            <option value="whoosh">Whoosh</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Sound</div>
   </div>
 
 </div>
@@ -497,6 +553,7 @@
           <div class="anim-category-label">Motion Path</div>
           <button data-action="anim-motion-line">Line</button>
           <button data-action="anim-motion-arc">Arc</button>
+          <button data-action="anim-custom-path">Custom Path</button>
         </div>
       </div>
       <button class="rb-btn rb-btn-lg" data-action="remove-animation" title="Remove Animation">
@@ -505,6 +562,23 @@
       </button>
     </div>
     <div class="ribbon-group-label">Animation</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-dropdown">
+        <button class="rb-btn rb-btn-lg" title="Effect Options">
+          <span class="rb-icon rb-icon-lg">&#9881;</span>
+          <span class="rb-label">Effect Options &#9660;</span>
+        </button>
+        <div class="rb-dropdown-menu" id="effect-options-menu">
+          <div style="padding:6px 12px;color:#999;font-size:11px;">Select an animation first</div>
+        </div>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Effect Options</div>
   </div>
 
   <div class="ribbon-sep"></div>
@@ -550,6 +624,9 @@
         </button>
         <button class="rb-btn rb-btn-sm" data-action="toggle-animation-pane" title="Animation Pane">
           <span class="rb-icon">&#9776;</span><span class="rb-label">Animation Pane</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="animation-painter" title="Animation Painter (copy animations to another element)">
+          <span class="rb-icon">&#128396;</span><span class="rb-label">Anim Painter</span>
         </button>
       </div>
     </div>
@@ -804,6 +881,12 @@
 <!-- === Slide Sorter (hidden by default) === -->
 <div class="slide-sorter" id="slide-sorter"></div>
 
+<!-- Master View Banner (Feature 22) -->
+<div class="master-view-banner" id="master-view-banner" style="display:none;">
+  <span>Editing Master Slide</span>
+  <button data-action="close-master-view">Close Master View</button>
+</div>
+
 <!-- === Main App Layout === -->
 <div class="app-layout" id="app-layout">
   <div class="slide-panel" id="slide-panel">
@@ -1052,6 +1135,112 @@
     </div>
     <div class="dlg-buttons" style="margin-top:12px;">
       <button class="pp-dlg-cancel">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Action Button Settings Dialog (Feature 20) -->
+<div class="pp-dialog-overlay" id="dlg-action-button" style="display:none">
+  <div class="pp-dialog" style="width:380px">
+    <h3>Action Button Settings</h3>
+    <div class="pp-dlg-field">
+      <label>Action Type:</label>
+      <select id="ab-action-type">
+        <option value="next">Next Slide</option>
+        <option value="prev">Previous Slide</option>
+        <option value="first">First Slide</option>
+        <option value="last">Last Slide</option>
+        <option value="end">End Show</option>
+        <option value="url">Hyperlink...</option>
+        <option value="custom">Custom</option>
+      </select>
+    </div>
+    <div class="pp-dlg-field" id="ab-url-field" style="display:none;">
+      <label>URL:</label>
+      <input type="text" id="ab-url" placeholder="https://" style="width:100%;box-sizing:border-box;padding:4px 6px;border:1px solid #ccc;border-radius:3px;">
+    </div>
+    <div class="pp-dlg-field">
+      <label>Label:</label>
+      <input type="text" id="ab-label" placeholder="Button text" style="width:100%;box-sizing:border-box;padding:4px 6px;border:1px solid #ccc;border-radius:3px;">
+    </div>
+    <div class="pp-dlg-field">
+      <label>Shape:</label>
+      <select id="ab-shape">
+        <option value="rect">Rectangle</option>
+        <option value="rounded-rect">Rounded Rectangle</option>
+        <option value="ellipse">Ellipse</option>
+        <option value="arrow-right">Arrow</option>
+      </select>
+    </div>
+    <div class="dlg-buttons">
+      <button data-result="cancel">Cancel</button>
+      <button class="primary" data-result="ok" data-default>OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Slide Size Dialog -->
+<div class="pp-dialog-overlay dialog-overlay" id="dlg-slide-size" style="display:none">
+  <div class="pp-dialog" style="min-width:340px;">
+    <h3>Slide Size</h3>
+    <div class="pp-dlg-field"><label>Preset:</label>
+      <select id="ss-preset" style="width:100%;box-sizing:border-box;padding:4px 6px;border:1px solid #ccc;border-radius:3px;font:inherit;">
+        <option value="16:9">Widescreen (16:9)</option>
+        <option value="4:3">Standard (4:3)</option>
+        <option value="16:9-hd">Wide HD (1280x720)</option>
+        <option value="custom">Custom</option>
+      </select>
+    </div>
+    <div class="pp-dlg-field"><label>Width:</label><input type="number" id="ss-width" value="960" min="320" max="3840" style="width:80px;"> px</div>
+    <div class="pp-dlg-field"><label>Height:</label><input type="number" id="ss-height" value="540" min="240" max="2160" style="width:80px;"> px</div>
+    <div class="dlg-buttons">
+      <button data-result="cancel">Cancel</button>
+      <button class="primary" data-result="ok" data-default>Apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- P1: Equation Editor Dialog -->
+<div class="pp-dialog-overlay" id="dlg-equation" style="display:none">
+  <div class="pp-dialog" style="width:520px;max-width:95vw;">
+    <h3>Insert Equation</h3>
+    <div class="eq-symbol-palette">
+      <span class="eq-symbol" title="Plus/Minus">&plusmn;</span>
+      <span class="eq-symbol" title="Times">&times;</span>
+      <span class="eq-symbol" title="Divide">&divide;</span>
+      <span class="eq-symbol" title="Not Equal">&ne;</span>
+      <span class="eq-symbol" title="Less or Equal">&le;</span>
+      <span class="eq-symbol" title="Greater or Equal">&ge;</span>
+      <span class="eq-symbol" title="Approximately">&asymp;</span>
+      <span class="eq-symbol" title="Infinity">&infin;</span>
+      <span class="eq-symbol" title="Summation">&sum;</span>
+      <span class="eq-symbol" title="Product">&prod;</span>
+      <span class="eq-symbol" title="Integral">&int;</span>
+      <span class="eq-symbol" title="Square Root">&radic;</span>
+      <span class="eq-symbol" title="Partial">&part;</span>
+      <span class="eq-symbol" title="Delta">&Delta;</span>
+      <span class="eq-symbol" title="Pi">&pi;</span>
+      <span class="eq-symbol" title="Theta">&theta;</span>
+      <span class="eq-symbol" title="Alpha">&alpha;</span>
+      <span class="eq-symbol" title="Beta">&beta;</span>
+      <span class="eq-symbol" title="Gamma">&gamma;</span>
+      <span class="eq-symbol" title="Lambda">&lambda;</span>
+      <span class="eq-symbol" title="Sigma">&sigma;</span>
+      <span class="eq-symbol" title="Omega">&omega;</span>
+      <span class="eq-symbol" title="Element Of">&isin;</span>
+      <span class="eq-symbol" title="For All">&forall;</span>
+      <span class="eq-symbol" title="There Exists">&exist;</span>
+      <span class="eq-symbol" title="Nabla">&nabla;</span>
+      <span class="eq-symbol" title="Arrow Right">&rarr;</span>
+      <span class="eq-symbol" title="Double Arrow">&hArr;</span>
+    </div>
+    <div style="font-size:11px;font-weight:bold;margin:10px 0 4px;">Templates</div>
+    <div class="eq-template-gallery" id="eq-template-gallery"></div>
+    <div style="font-size:11px;font-weight:bold;margin:10px 0 4px;">Preview</div>
+    <div class="eq-preview-box" id="eq-preview" contenteditable="true"></div>
+    <div class="dlg-buttons">
+      <button data-result="cancel">Cancel</button>
+      <button class="primary" data-result="ok" data-default>Insert</button>
     </div>
   </div>
 </div>

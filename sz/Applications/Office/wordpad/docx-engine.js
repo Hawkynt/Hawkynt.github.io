@@ -87,12 +87,40 @@
       }
     }
 
+    // Parse comments.xml
+    const commentsFile = zip.file('word/comments.xml');
+    const importedComments = {};
+    if (commentsFile) {
+      const commentsText = await commentsFile.async('string');
+      const commentsDoc = parser.parseFromString(commentsText, 'text/xml');
+      const commentEls = commentsDoc.getElementsByTagName('w:comment');
+      for (const ce of commentEls) {
+        const cId = ce.getAttribute('w:id');
+        const author = ce.getAttribute('w:author') || 'Unknown';
+        const date = ce.getAttribute('w:date') || new Date().toISOString();
+        let text = '';
+        const paras = ce.getElementsByTagName('w:p');
+        for (const p of paras) {
+          const runs = p.getElementsByTagName('w:r');
+          for (const r of runs) {
+            const ts = r.getElementsByTagName('w:t');
+            for (const t of ts) text += t.textContent;
+          }
+          if (text && p !== paras[paras.length - 1]) text += '\n';
+        }
+        importedComments[cId] = { id: parseInt(cId, 10), author, timestamp: date, text: text.trim() };
+      }
+    }
+
     // Parse document.xml
     const docFile = zip.file('word/document.xml');
     if (!docFile) throw new Error('No document.xml found');
     const docXml = await docFile.async('string');
     const docDom = parser.parseFromString(docXml, 'text/xml');
     const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+
+    // Track change ID counter for imports
+    let _tcIdCounter = 0;
 
     function getW(el, localName) {
       return el.getElementsByTagNameNS(W, localName);
@@ -215,7 +243,77 @@
       let inField = false;
       let fieldInstr = '';
       let fieldContent = '';
+      const openCommentRanges = {}; // id -> index in content where range started
       for (const child of p.childNodes) {
+        // Comment range markers
+        if (child.localName === 'commentRangeStart' && child.namespaceURI === W) {
+          const cmId = child.getAttribute('w:id');
+          openCommentRanges[cmId] = content.length;
+          continue;
+        }
+        if (child.localName === 'commentRangeEnd' && child.namespaceURI === W) {
+          const cmId = child.getAttribute('w:id');
+          if (cmId in openCommentRanges) {
+            const startIdx = openCommentRanges[cmId];
+            const rangedText = content.slice(startIdx);
+            content = content.slice(0, startIdx)
+              + '<span class="wp-comment-range" data-comment-id="' + cmId + '">'
+              + rangedText + '</span>';
+            delete openCommentRanges[cmId];
+          }
+          continue;
+        }
+        // Skip commentReference runs (already handled via comments.xml)
+        if (child.localName === 'commentReference' && child.namespaceURI === W)
+          continue;
+
+        // Track changes: <w:ins> wraps inserted runs
+        if (child.localName === 'ins' && child.namespaceURI === W) {
+          const tcId = ++_tcIdCounter;
+          let insContent = '';
+          for (const insChild of child.childNodes) {
+            if (insChild.localName === 'r' && insChild.namespaceURI === W)
+              insContent += convertRun(insChild);
+          }
+          if (insContent)
+            content += '<span class="wp-tc-insert" data-change-id="' + tcId
+              + '" data-change-author="' + _escapeHtml(child.getAttribute('w:author') || 'Unknown')
+              + '" data-change-date="' + _escapeHtml(child.getAttribute('w:date') || '')
+              + '">' + insContent + '</span>';
+          continue;
+        }
+
+        // Track changes: <w:del> wraps deleted runs
+        if (child.localName === 'del' && child.namespaceURI === W) {
+          const tcId = ++_tcIdCounter;
+          let delContent = '';
+          for (const delChild of child.childNodes) {
+            if (delChild.localName === 'r' && delChild.namespaceURI === W) {
+              // w:del runs use w:delText instead of w:t
+              const rPr = getWFirst(delChild, 'rPr');
+              const style = parseRunProperties(rPr);
+              let runHtml = '';
+              for (const rc of delChild.childNodes) {
+                if (rc.localName === 'delText' && rc.namespaceURI === W)
+                  runHtml += _escapeHtml(rc.textContent || '');
+                else if (rc.localName === 't' && rc.namespaceURI === W)
+                  runHtml += _escapeHtml(rc.textContent || '');
+              }
+              const css = styleToCSS(style);
+              if (css)
+                delContent += '<span style="' + css + '">' + runHtml + '</span>';
+              else
+                delContent += runHtml;
+            }
+          }
+          if (delContent)
+            content += '<span class="wp-tc-delete" data-change-id="' + tcId
+              + '" data-change-author="' + _escapeHtml(child.getAttribute('w:author') || 'Unknown')
+              + '" data-change-date="' + _escapeHtml(child.getAttribute('w:date') || '')
+              + '">' + delContent + '</span>';
+          continue;
+        }
+
         if (child.localName === 'r' && child.namespaceURI === W) {
           // Check for fldChar
           const fldChar = getWFirst(child, 'fldChar');
@@ -253,6 +351,10 @@
             if (t) fieldContent += t.textContent || '';
             continue;
           }
+
+          // Skip commentReference runs
+          if (getWFirst(child, 'commentReference'))
+            continue;
 
           content += convertRun(child);
         } else if (child.localName === 'fldSimple') {
@@ -425,20 +527,55 @@
 
     if (currentList) html += '</' + currentList.tag + '>';
 
-    // Parse header
+    // Parse header (including VML watermarks)
     for (const [rId, rel] of Object.entries(rels)) {
       if (rel.type && rel.type.includes('/header')) {
         const hdrFile = zip.file('word/' + rel.target);
         if (hdrFile) {
           const hdrXml = await hdrFile.async('string');
           const hdrDom = parser.parseFromString(hdrXml, 'text/xml');
+
+          // Detect VML text watermark (v:textpath with string attribute)
+          const textpathMatch = hdrXml.match(/v:textpath[^>]*\bstring="([^"]*)"/);
+          if (textpathMatch) {
+            const wmRaw = textpathMatch[1].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'");
+            html = '<div class="watermark">' + _escapeHtml(wmRaw) + '</div>' + html;
+          }
+
+          // Detect VML image watermark (v:imagedata with r:id)
+          const imgDataMatch = !textpathMatch && hdrXml.match(/v:imagedata[^>]*r:id="([^"]*)"/);
+          if (imgDataMatch) {
+            const wmRId = imgDataMatch[1];
+            const hdrTarget = rel.target.replace(/^.*?([^/]+)$/, '$1');
+            const hdrRelsFile = zip.file('word/_rels/' + hdrTarget + '.rels');
+            if (hdrRelsFile) {
+              const hdrRelsXml = await hdrRelsFile.async('string');
+              const hdrRelsDom = parser.parseFromString(hdrRelsXml, 'text/xml');
+              for (const hdrRel of hdrRelsDom.querySelectorAll('Relationship')) {
+                if (hdrRel.getAttribute('Id') === wmRId) {
+                  const imgTarget = hdrRel.getAttribute('Target');
+                  const imgPath = 'word/' + imgTarget;
+                  const imgFile = zip.file(imgPath);
+                  if (imgFile) {
+                    const data = await imgFile.async('base64');
+                    const ext = imgTarget.split('.').pop().toLowerCase();
+                    const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'gif' ? 'image/gif' : 'image/png';
+                    html = '<img class="wp-watermark-image" src="data:' + mime + ';base64,' + data + '" alt="Watermark">' + html;
+                  }
+                  break;
+                }
+              }
+            }
+          }
+
+          // Extract regular header text (not from VML elements)
           let headerText = '';
           for (const p of hdrDom.getElementsByTagNameNS(W, 'p'))
             for (const r of p.getElementsByTagNameNS(W, 'r'))
               for (const t of r.getElementsByTagNameNS(W, 't'))
                 headerText += t.textContent;
           if (headerText)
-            html = '<div class="wp-header" contenteditable="true">' + _escapeHtml(headerText) + '</div>' + html;
+            html = '<div class="wp-header-editor" contenteditable="true" data-hf-type="header">' + _escapeHtml(headerText) + '</div>' + html;
         }
       }
     }
@@ -456,7 +593,7 @@
               for (const t of r.getElementsByTagNameNS(W, 't'))
                 footerText += t.textContent;
           if (footerText)
-            html += '<div class="wp-footer" contenteditable="true">' + _escapeHtml(footerText) + '</div>';
+            html += '<div class="wp-footer-editor" contenteditable="true" data-hf-type="footer">' + _escapeHtml(footerText) + '</div>';
         }
       }
     }
@@ -490,7 +627,79 @@
       if (hasEndnotes) html += endnotesHtml;
     }
 
-    return html || '<p><br></p>';
+    // Build imported comment data for CommentsTracking integration
+    const commentData = [];
+    if (Object.keys(importedComments).length) {
+      for (const [cId, c] of Object.entries(importedComments))
+        commentData.push({
+          id: c.id,
+          parentId: null,
+          author: c.author,
+          timestamp: c.timestamp,
+          text: c.text,
+          resolved: false,
+          rangeId: c.id,
+        });
+    }
+
+    // Build imported track changes data
+    const trackChangeData = [];
+    const tcSpanRegex = /wp-tc-(insert|delete).*?data-change-id="(\d+)".*?data-change-author="([^"]*)".*?data-change-date="([^"]*)"/g;
+    let tcMatch;
+    while ((tcMatch = tcSpanRegex.exec(html)) !== null) {
+      trackChangeData.push({
+        id: parseInt(tcMatch[2], 10),
+        type: tcMatch[1] === 'insert' ? 'insertion' : 'deletion',
+        author: tcMatch[3],
+        timestamp: tcMatch[4],
+        rangeId: parseInt(tcMatch[2], 10),
+      });
+    }
+
+    return {
+      html: html || '<p><br></p>',
+      comments: commentData,
+      trackChanges: trackChangeData,
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // Header/Footer Run Builder (field-code aware)
+  // ═══════════════════════════════════════════════════════════════
+
+  function _buildHeaderFooterRuns(el, escXml) {
+    let runs = '';
+    for (const child of el.childNodes) {
+      // Skip toolbar elements
+      if (child.nodeType === 1 && child.classList && child.classList.contains('wp-hf-toolbar'))
+        continue;
+
+      if (child.nodeType === 3) {
+        const text = child.textContent;
+        if (text)
+          runs += '<w:r><w:t xml:space="preserve">' + escXml(text) + '</w:t></w:r>';
+      } else if (child.nodeType === 1) {
+        // Field codes
+        if (child.classList && child.classList.contains('wp-field')) {
+          const fieldType = child.getAttribute('data-field-type') || '';
+          const fieldParam = child.getAttribute('data-field-param') || '';
+          let instrText = fieldType;
+          if (fieldParam)
+            instrText += ' ' + fieldParam;
+          runs += '<w:r><w:rPr><w:noProof/></w:rPr><w:fldChar w:fldCharType="begin"/></w:r>'
+            + '<w:r><w:instrText xml:space="preserve"> ' + escXml(instrText) + ' </w:instrText></w:r>'
+            + '<w:r><w:fldChar w:fldCharType="separate"/></w:r>'
+            + '<w:r><w:t>' + escXml(child.textContent || '') + '</w:t></w:r>'
+            + '<w:r><w:fldChar w:fldCharType="end"/></w:r>';
+        } else if (child.tagName === 'BR') {
+          runs += '<w:r><w:br/></w:r>';
+        } else {
+          // Recurse for any other inline elements
+          runs += _buildHeaderFooterRuns(child, escXml);
+        }
+      }
+    }
+    return runs || '<w:r><w:t></w:t></w:r>';
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -648,6 +857,56 @@
       if (node.classList.contains('wp-endnote-ref')) {
         const enId = parseInt(node.dataset.endnoteId, 10) || 1;
         return '<w:r><w:rPr><w:rStyle w:val="EndnoteReference"/></w:rPr><w:endnoteReference w:id="' + enId + '"/></w:r>';
+      }
+
+      // Comment range spans -> commentRangeStart/End markers wrapping content
+      if (node.classList.contains('wp-comment-range')) {
+        const cmId = node.dataset.commentId || '1';
+        let innerRuns = '';
+        for (const child of node.childNodes)
+          innerRuns += processInlineElement(child);
+        return '<w:commentRangeStart w:id="' + escXml(cmId) + '"/>'
+          + innerRuns
+          + '<w:commentRangeEnd w:id="' + escXml(cmId) + '"/>'
+          + '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="' + escXml(cmId) + '"/></w:r>';
+      }
+
+      // Track changes: insertion spans -> <w:ins>
+      if (node.classList.contains('wp-tc-insert')) {
+        const author = node.dataset.changeAuthor || 'User';
+        const date = node.dataset.changeDate || new Date().toISOString();
+        let innerRuns = '';
+        for (const child of node.childNodes)
+          innerRuns += processInlineElement(child);
+        return '<w:ins w:id="' + (node.dataset.changeId || '0')
+          + '" w:author="' + escXml(author)
+          + '" w:date="' + escXml(date) + '">'
+          + innerRuns + '</w:ins>';
+      }
+
+      // Track changes: deletion spans -> <w:del>
+      if (node.classList.contains('wp-tc-delete')) {
+        const author = node.dataset.changeAuthor || 'User';
+        const date = node.dataset.changeDate || new Date().toISOString();
+        let delRuns = '';
+        for (const child of node.childNodes) {
+          if (child.nodeType === 3) {
+            const text = child.textContent;
+            if (text)
+              delRuns += '<w:r><w:delText xml:space="preserve">' + escXml(text) + '</w:delText></w:r>';
+          } else if (child.nodeType === 1) {
+            const childRPr = buildRunProperties(child);
+            let childText = '';
+            for (const gc of child.childNodes)
+              if (gc.nodeType === 3) childText += gc.textContent || '';
+            if (childText)
+              delRuns += '<w:r>' + (childRPr ? '<w:rPr>' + childRPr + '</w:rPr>' : '') + '<w:delText xml:space="preserve">' + escXml(childText) + '</w:delText></w:r>';
+          }
+        }
+        return '<w:del w:id="' + (node.dataset.changeId || '0')
+          + '" w:author="' + escXml(author)
+          + '" w:date="' + escXml(date) + '">'
+          + delRuns + '</w:del>';
       }
 
       const rPr = buildRunProperties(node);
@@ -874,14 +1133,16 @@
       if (node.nodeType !== 1) return '';
       const tag = node.tagName.toLowerCase();
 
-      // Skip non-content elements
+      // Skip non-content elements (watermarks exported via header VML)
       if (node.classList.contains('watermark')) return '';
+      if (node.classList.contains('wp-watermark-image')) return '';
 
       // Page break
       if (node.classList.contains('wp-page-break')) return processPageBreak();
 
       // Header/footer handled separately
-      if (node.classList.contains('wp-header') || node.classList.contains('wp-footer')) return '';
+      if (node.classList.contains('wp-header') || node.classList.contains('wp-footer')
+        || node.classList.contains('wp-header-editor') || node.classList.contains('wp-footer-editor')) return '';
 
       // Headings
       if (/^h[1-6]$/.test(tag)) {
@@ -962,27 +1223,89 @@
     if (!body) body = '<w:p/>';
 
     // --- Build header/footer XML if present ---
-    const headerEl = document.querySelector('#editor .wp-header');
-    const footerEl = document.querySelector('#editor .wp-footer');
+    const headerEl = document.querySelector('#editor .wp-header-editor') || document.querySelector('#editor .wp-header');
+    const footerEl = document.querySelector('#editor .wp-footer-editor') || document.querySelector('#editor .wp-footer');
     let headerXml = '';
     let footerXml = '';
     let headerRId = '';
     let footerRId = '';
 
-    if (headerEl) {
+    // Detect watermarks for header VML embedding
+    const wmTextEl = document.querySelector('#editor .watermark');
+    const wmImageEl = document.querySelector('#editor .wp-watermark-image');
+    let wmVml = '';
+    let hdrRelsXml = '';
+    let wmImageExt = '';
+
+    if (wmTextEl) {
+      const wmText = escXml(wmTextEl.textContent || 'DRAFT');
+      wmVml = '<w:p><w:pPr><w:pStyle w:val="Header"/></w:pPr>'
+        + '<w:r><w:rPr><w:noProof/></w:rPr><w:pict>'
+        + '<v:shapetype id="_x0000_t136" coordsize="21600,21600" o:spt="136" '
+        + 'path="m@7,l@8,m@5,21600l@6,21600e">'
+        + '<v:textpath on="t" fitshape="t"/></v:shapetype>'
+        + '<v:shape id="PowerPlusWaterMarkObject" type="#_x0000_t136" '
+        + 'style="position:absolute;margin-left:0;margin-top:0;width:527.85pt;height:131.95pt;'
+        + 'rotation:315;z-index:-251657216;mso-position-horizontal:center;'
+        + 'mso-position-horizontal-relative:margin;mso-position-vertical:center;'
+        + 'mso-position-vertical-relative:margin" fillcolor="silver" stroked="f">'
+        + '<v:fill opacity=".5"/>'
+        + '<v:textpath style="font-family:&#39;Calibri&#39;;font-size:1pt" string="' + wmText + '"/>'
+        + '</v:shape></w:pict></w:r></w:p>';
+    } else if (wmImageEl) {
+      const wmSrc = wmImageEl.getAttribute('src') || '';
+      if (wmSrc.startsWith('data:')) {
+        const match = wmSrc.match(/^data:image\/([^;]+);base64,(.+)$/);
+        if (match) {
+          wmImageExt = match[1] === 'jpeg' ? 'jpg' : match[1];
+          const wmData = match[2];
+          const wmFileName = 'watermark.' + wmImageExt;
+          zip.file('word/media/' + wmFileName, wmData, { base64: true });
+          const wmImgRId = 'rIdWm1';
+          hdrRelsXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            + '<Relationship Id="' + wmImgRId + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/' + wmFileName + '"/>'
+            + '</Relationships>';
+          wmVml = '<w:p><w:pPr><w:pStyle w:val="Header"/></w:pPr>'
+            + '<w:r><w:rPr><w:noProof/></w:rPr><w:pict>'
+            + '<v:shape id="WordPictureWatermark" '
+            + 'style="position:absolute;margin-left:0;margin-top:0;width:467.75pt;height:467.75pt;'
+            + 'z-index:-251657216;mso-position-horizontal:center;'
+            + 'mso-position-horizontal-relative:margin;mso-position-vertical:center;'
+            + 'mso-position-vertical-relative:margin" stroked="f">'
+            + '<v:imagedata r:id="' + wmImgRId + '" o:title="Watermark"/>'
+            + '</v:shape></w:pict></w:r></w:p>';
+        }
+      }
+    }
+
+    if (headerEl || wmVml) {
       headerRId = 'rId' + (++rIdCounter);
+      let hdrContent = '';
+      if (wmVml)
+        hdrContent += wmVml;
+      if (headerEl) {
+        let hdrRuns = _buildHeaderFooterRuns(headerEl, escXml);
+        hdrContent += '<w:p>' + hdrRuns + '</w:p>';
+      }
       headerXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        + '<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
-        + '<w:p><w:r><w:t>' + escXml(headerEl.textContent || '') + '</w:t></w:r></w:p>'
+        + '<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+        + ' xmlns:v="urn:schemas-microsoft-com:vml"'
+        + ' xmlns:o="urn:schemas-microsoft-com:office:office"'
+        + ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        + hdrContent
         + '</w:hdr>';
       zip.file('word/header1.xml', headerXml);
+      if (hdrRelsXml)
+        zip.file('word/_rels/header1.xml.rels', hdrRelsXml);
     }
 
     if (footerEl) {
       footerRId = 'rId' + (++rIdCounter);
+      let ftrRuns = _buildHeaderFooterRuns(footerEl, escXml);
       footerXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         + '<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
-        + '<w:p><w:r><w:t>' + escXml(footerEl.textContent || '') + '</w:t></w:r></w:p>'
+        + '<w:p>' + ftrRuns + '</w:p>'
         + '</w:ftr>';
       zip.file('word/footer1.xml', footerXml);
     }
@@ -1124,8 +1447,9 @@
       + '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
       + '<Default Extension="xml" ContentType="application/xml"/>';
 
-    // Add image content types
+    // Add image content types (include watermark image extension if present)
     const imageExts = new Set(images.map(i => i.ext));
+    if (wmImageExt) imageExts.add(wmImageExt);
     for (const ext of imageExts) {
       const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'gif' ? 'image/gif' : ext === 'svg' ? 'image/svg+xml' : 'image/png';
       contentTypes += '<Default Extension="' + ext + '" ContentType="' + mime + '"/>';
@@ -1198,11 +1522,8 @@
     try {
       const html = getEditorContent();
       const zip = buildDocxPackage(html);
-      const blob = await zip.generateAsync({
-        type: 'blob',
-        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-      });
-      await _Kernel32.WriteFile(path, blob);
+      const bytes = await zip.generateAsync({ type: 'uint8array' });
+      await _Kernel32.WriteFile(path, bytes);
     } catch (err) {
       await _User32.MessageBox('Could not save DOCX: ' + err.message, 'WordPad', MB_OK);
       return false;

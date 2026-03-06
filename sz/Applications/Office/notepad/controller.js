@@ -28,6 +28,16 @@
   let zoomLevel = 0; // -5 to +10
   let baseFontSize = 13;
 
+  // Code folding
+  const foldRegions = []; // detected: [{start, end}] (1-based)
+  const foldedSet = new Set(); // collapsed fold-start line numbers
+
+  // Line bookmarks
+  const bookmarks = new Set(); // bookmarked line numbers (1-based)
+
+  // Minimap
+  let showMinimap = false;
+
   // Undo/Redo stacks
   const undoStack = [];
   const redoStack = [];
@@ -106,6 +116,17 @@
         lineHtml = lineHtml.replace(/ (?![^<]*>)/g, '<span class="ws-space"> </span>');
         lineHtml = lineHtml.replace(/\t(?![^<]*>)/g, '<span class="ws-tab">\t</span>');
       }
+
+      // Fold badge on fold-start lines
+      if (foldedSet.has(i + 1)) {
+        const region = getFoldRegion(i + 1);
+        if (region)
+          lineHtml += '<span class="fold-badge"> ... ' + (region.end - region.start) + ' lines</span>';
+      }
+
+      // Dim folded inner lines
+      if (isLineFolded(i + 1))
+        lineHtml = '<span class="folded-content">' + lineHtml + '</span>';
 
       html.push(lineHtml);
     }
@@ -255,6 +276,57 @@
   }
 
   // =====================================================================
+  // Code Folding
+  // =====================================================================
+  function detectFoldRegions() {
+    const text = editor.value;
+    const lines = text.split('\n');
+    foldRegions.length = 0;
+    const stack = [];
+
+    for (let i = 0; i < lines.length; ++i) {
+      const trimmed = lines[i].trimEnd();
+      for (let j = 0; j < trimmed.length; ++j) {
+        if (trimmed[j] === '{')
+          stack.push(i + 1);
+        else if (trimmed[j] === '}' && stack.length > 0) {
+          const start = stack.pop();
+          if (i + 1 > start)
+            foldRegions.push({ start, end: i + 1 });
+        }
+      }
+    }
+
+    foldRegions.sort((a, b) => a.start - b.start);
+  }
+
+  function toggleFold(lineNum) {
+    if (foldedSet.has(lineNum))
+      foldedSet.delete(lineNum);
+    else
+      foldedSet.add(lineNum);
+    scheduleHighlight();
+    scheduleLineNumbers();
+  }
+
+  function isFoldStart(lineNum) {
+    return foldRegions.some(r => r.start === lineNum);
+  }
+
+  function getFoldRegion(lineNum) {
+    return foldRegions.find(r => r.start === lineNum);
+  }
+
+  function isLineFolded(lineNum) {
+    for (const startLine of foldedSet) {
+      const region = foldRegions.find(r => r.start === startLine);
+      if (region && lineNum > region.start && lineNum <= region.end)
+        return true;
+    }
+    return false;
+  }
+
+  // =====================================================================
   // Selection occurrence highlights
   // =====================================================================
   function renderSelectionHighlights() {
@@ -296,6 +368,7 @@
     lineNumbersEl.scrollTop = editor.scrollTop;
     updateCurrentLineHighlight();
     updateLongLineMarker();
+    updateMinimapViewport();
   }
 
   editor.addEventListener('scroll', syncScroll);
@@ -325,16 +398,38 @@
     const lineCount = text.split('\n').length;
     const currentLine = getCurrentLine();
     const digits = String(lineCount).length;
-    const width = Math.max(40, digits * 8 + 16);
+    const width = Math.max(52, digits * 8 + 28);
     lineNumbersEl.style.minWidth = width + 'px';
+
+    detectFoldRegions();
 
     const html = [];
     for (let i = 1; i <= lineCount; ++i) {
-      const cls = i === currentLine ? 'line-number current' : 'line-number';
-      html.push('<div class="' + cls + '">' + i + '</div>');
+      let cls = i === currentLine ? 'line-number current' : 'line-number';
+      if (isLineFolded(i))
+        cls += ' folded-line';
+
+      let prefix = '';
+      if (bookmarks.has(i))
+        prefix += '<span class="bookmark-dot"></span>';
+
+      if (isFoldStart(i)) {
+        const isColl = foldedSet.has(i);
+        prefix += '<span class="fold-marker' + (isColl ? ' collapsed' : '') +
+          '" data-fold-line="' + i + '">' + (isColl ? '&#9654;' : '&#9660;') + '</span>';
+      }
+
+      html.push('<div class="' + cls + '">' + prefix + i + '</div>');
     }
     lineNumbersEl.innerHTML = html.join('');
     lineNumbersEl.scrollTop = editor.scrollTop;
+
+    for (const marker of lineNumbersEl.querySelectorAll('.fold-marker')) {
+      marker.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleFold(parseInt(marker.dataset.foldLine, 10));
+      });
+    }
   }
 
   // =====================================================================
@@ -479,6 +574,7 @@
     updateStatusBar();
     updateCurrentLineHighlight();
     updateLongLineMarker();
+    renderMinimap();
   }
 
   editor.addEventListener('input', () => {
@@ -556,32 +652,45 @@
   document.getElementById('rb-word-wrap').addEventListener('change', (e) => {
     wordWrap = e.target.checked;
     applyWordWrap();
+    scheduleSaveSettings();
   });
   document.getElementById('rb-line-numbers').addEventListener('change', (e) => {
     showLineNumbers = e.target.checked;
     scheduleLineNumbers();
+    scheduleSaveSettings();
   });
   document.getElementById('rb-show-whitespace').addEventListener('change', (e) => {
     showWhitespace = e.target.checked;
     scheduleHighlight();
+    scheduleSaveSettings();
   });
   document.getElementById('rb-show-line-endings').addEventListener('change', (e) => {
     showLineEndings = e.target.checked;
     scheduleHighlight();
+    scheduleSaveSettings();
   });
   document.getElementById('rb-long-line-marker').addEventListener('change', (e) => {
     showLongLineMarker = e.target.checked;
     updateLongLineMarker();
+    scheduleSaveSettings();
   });
   document.getElementById('rb-highlight-current-line').addEventListener('change', (e) => {
     highlightCurrentLine = e.target.checked;
     updateCurrentLineHighlight();
+    scheduleSaveSettings();
   });
   document.getElementById('rb-auto-indent').addEventListener('change', (e) => {
     autoIndent = e.target.checked;
+    scheduleSaveSettings();
   });
   document.getElementById('rb-auto-close-brackets').addEventListener('change', (e) => {
     autoCloseBrackets = e.target.checked;
+    scheduleSaveSettings();
+  });
+  document.getElementById('rb-show-minimap').addEventListener('change', (e) => {
+    showMinimap = e.target.checked;
+    renderMinimap();
+    scheduleSaveSettings();
   });
 
   // =====================================================================
@@ -749,6 +858,18 @@
         break;
       case 'convert-cr':
         convertLineEndings('CR');
+        break;
+      case 'toggle-bookmark':
+        toggleBookmark();
+        break;
+      case 'next-bookmark':
+        nextBookmark();
+        break;
+      case 'prev-bookmark':
+        prevBookmark();
+        break;
+      case 'clear-bookmarks':
+        clearBookmarks();
         break;
       case 'about':
         showDialog('dlg-about');
@@ -1778,6 +1899,19 @@
       return;
     }
 
+    if (e.key === 'F2' && e.ctrlKey && !e.altKey) {
+      e.preventDefault();
+      toggleBookmark();
+      return;
+    }
+    if (e.key === 'F2' && !e.ctrlKey && !e.altKey) {
+      e.preventDefault();
+      if (e.shiftKey)
+        prevBookmark();
+      else
+        nextBookmark();
+      return;
+    }
     if (e.key === 'F5' && !e.ctrlKey && !e.altKey && !e.shiftKey) {
       e.preventDefault();
       handleAction('time-date');
@@ -1910,6 +2044,192 @@
   });
 
   // =====================================================================
+  // Minimap
+  // =====================================================================
+  const minimapEl = document.getElementById('minimap');
+  const minimapCanvas = document.getElementById('minimap-canvas');
+  const minimapViewport = document.getElementById('minimap-viewport');
+
+  function renderMinimap() {
+    if (!showMinimap || !minimapEl) {
+      if (minimapEl) minimapEl.classList.add('hidden');
+      return;
+    }
+    minimapEl.classList.remove('hidden');
+
+    const text = editor.value;
+    const lines = text.split('\n');
+    const ctx = minimapCanvas.getContext('2d');
+    const lineH = 2;
+    const charW = 1;
+
+    minimapCanvas.width = 80;
+    minimapCanvas.height = Math.max(lines.length * lineH, minimapEl.clientHeight);
+
+    ctx.clearRect(0, 0, minimapCanvas.width, minimapCanvas.height);
+    ctx.fillStyle = '#888';
+
+    for (let i = 0; i < lines.length; ++i) {
+      const len = Math.min(lines[i].length, 80);
+      if (len > 0) {
+        ctx.globalAlpha = isLineFolded(i + 1) ? 0.15 : 0.35;
+        ctx.fillRect(0, i * lineH, len * charW, lineH - 0.5);
+      }
+    }
+    ctx.globalAlpha = 1;
+    updateMinimapViewport();
+  }
+
+  function updateMinimapViewport() {
+    if (!showMinimap || !minimapViewport) return;
+    const lineH = 2;
+    const lineHeight = parseFloat(getComputedStyle(editor).lineHeight) || 18.2;
+    const visibleLines = Math.floor(editor.clientHeight / lineHeight);
+    const scrollLine = Math.floor(editor.scrollTop / lineHeight);
+    minimapViewport.style.top = scrollLine * lineH + 'px';
+    minimapViewport.style.height = Math.max(visibleLines * lineH, 10) + 'px';
+  }
+
+  if (minimapEl) {
+    minimapEl.addEventListener('click', (e) => {
+      const rect = minimapCanvas.getBoundingClientRect();
+      const y = e.clientY - rect.top;
+      const lineH = 2;
+      const targetLine = Math.floor(y / lineH) + 1;
+      gotoLine(targetLine);
+    });
+  }
+
+  // =====================================================================
+  // Line Bookmarks
+  // =====================================================================
+  function toggleBookmark() {
+    const line = getCurrentLine();
+    if (bookmarks.has(line))
+      bookmarks.delete(line);
+    else
+      bookmarks.add(line);
+    scheduleLineNumbers();
+  }
+
+  function nextBookmark() {
+    if (bookmarks.size === 0) return;
+    const current = getCurrentLine();
+    const sorted = [...bookmarks].sort((a, b) => a - b);
+    const next = sorted.find(b => b > current) || sorted[0];
+    gotoLine(next);
+  }
+
+  function prevBookmark() {
+    if (bookmarks.size === 0) return;
+    const current = getCurrentLine();
+    const sorted = [...bookmarks].sort((a, b) => b - a);
+    const prev = sorted.find(b => b < current) || sorted[0];
+    gotoLine(prev);
+  }
+
+  function clearBookmarks() {
+    bookmarks.clear();
+    scheduleLineNumbers();
+  }
+
+  // =====================================================================
+  // Persistent Settings (localStorage)
+  // =====================================================================
+  const SETTINGS_KEY = 'sz-notepad-settings';
+
+  function saveSettings() {
+    try {
+      const settings = {
+        wordWrap, showLineNumbers, showWhitespace, showLineEndings,
+        showLongLineMarker, highlightCurrentLine, autoIndent,
+        autoCloseBrackets, tabWidth, tabsAsSpaces, longLineColumn,
+        currentEncoding, baseFontSize, showMinimap, zoomLevel,
+      };
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    } catch {}
+  }
+
+  let saveSettingsTimeout = null;
+  function scheduleSaveSettings() {
+    clearTimeout(saveSettingsTimeout);
+    saveSettingsTimeout = setTimeout(saveSettings, 500);
+  }
+
+  function loadSettings() {
+    try {
+      const raw = localStorage.getItem(SETTINGS_KEY);
+      if (!raw) return;
+      const s = JSON.parse(raw);
+      if (s.wordWrap != null) wordWrap = s.wordWrap;
+      if (s.showLineNumbers != null) showLineNumbers = s.showLineNumbers;
+      if (s.showWhitespace != null) showWhitespace = s.showWhitespace;
+      if (s.showLineEndings != null) showLineEndings = s.showLineEndings;
+      if (s.showLongLineMarker != null) showLongLineMarker = s.showLongLineMarker;
+      if (s.highlightCurrentLine != null) highlightCurrentLine = s.highlightCurrentLine;
+      if (s.autoIndent != null) autoIndent = s.autoIndent;
+      if (s.autoCloseBrackets != null) autoCloseBrackets = s.autoCloseBrackets;
+      if (s.tabWidth != null) tabWidth = s.tabWidth;
+      if (s.tabsAsSpaces != null) tabsAsSpaces = s.tabsAsSpaces;
+      if (s.longLineColumn != null) longLineColumn = s.longLineColumn;
+      if (s.currentEncoding != null) currentEncoding = s.currentEncoding;
+      if (s.baseFontSize != null) baseFontSize = s.baseFontSize;
+      if (s.showMinimap != null) showMinimap = s.showMinimap;
+      if (s.zoomLevel != null) zoomLevel = s.zoomLevel;
+
+      const check = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.checked = val;
+      };
+      check('rb-word-wrap', wordWrap);
+      check('rb-line-numbers', showLineNumbers);
+      check('rb-show-whitespace', showWhitespace);
+      check('rb-show-line-endings', showLineEndings);
+      check('rb-long-line-marker', showLongLineMarker);
+      check('rb-highlight-current-line', highlightCurrentLine);
+      check('rb-auto-indent', autoIndent);
+      check('rb-auto-close-brackets', autoCloseBrackets);
+      check('rb-show-minimap', showMinimap);
+
+      statusEnc.textContent = currentEncoding.toUpperCase();
+      editor.style.tabSize = tabWidth;
+      editor.style.MozTabSize = tabWidth;
+      highlightPre.style.tabSize = tabWidth;
+      highlightPre.style.MozTabSize = tabWidth;
+    } catch {}
+  }
+
+  // =====================================================================
+  // Drag-and-Drop File Open
+  // =====================================================================
+  const editorContainer = document.getElementById('editor-container');
+  const dropOverlay = document.getElementById('drop-overlay');
+
+  editorContainer.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    if (dropOverlay) dropOverlay.classList.add('visible');
+  });
+
+  editorContainer.addEventListener('dragleave', (e) => {
+    if (!editorContainer.contains(e.relatedTarget))
+      if (dropOverlay) dropOverlay.classList.remove('visible');
+  });
+
+  editorContainer.addEventListener('drop', (e) => {
+    e.preventDefault();
+    if (dropOverlay) dropOverlay.classList.remove('visible');
+    const files = e.dataTransfer.files;
+    if (files.length === 0) return;
+    const file = files[0];
+    const reader = new FileReader();
+    reader.onload = () => {
+      loadFile('/user/documents/' + file.name, reader.result);
+    };
+    reader.readAsText(file);
+  });
+
+  // =====================================================================
   // Resize observer for scroll sync
   // =====================================================================
   const resizeObserver = new ResizeObserver(() => {
@@ -1923,9 +2243,11 @@
   // =====================================================================
   // Init
   // =====================================================================
+  loadSettings();
   applyWordWrap();
   scheduleLineNumbers();
   updateLongLineMarker();
+  renderMinimap();
 
   // Push initial undo state
   undoStack.push({

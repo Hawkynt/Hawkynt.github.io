@@ -24,6 +24,12 @@
   let restrictMode = 'none'; // 'none' | 'tracked' | 'readonly'
   let restrictPasswordHash = null;
 
+  // Custom Margins state (inches)
+  let customMargins = { top: 1, bottom: 1, left: 1, right: 1, gutter: 0 };
+
+  // Reading Mode state (W4)
+  let readingMode = false;
+
   const editor = document.getElementById('editor');
   const editorWrapper = document.getElementById('editor-wrapper');
 
@@ -128,9 +134,7 @@
       case 'insert-image-url': showInsertImageDialog(); break;
       case 'insert-image-file': doInsertImageFile(); break;
       case 'insert-textbox': doInsertTextbox(); break;
-      case 'insert-shape-rect': doInsertShape('rect'); break;
-      case 'insert-shape-circle': doInsertShape('circle'); break;
-      case 'insert-shape-line': doInsertShape('line'); break;
+      case 'insert-shape': ShapeTools.showShapePicker(document.querySelector('[data-action="insert-shape"]')); break;
       case 'insert-link': showInsertLinkDialog(); break;
       case 'insert-bookmark': showInsertBookmarkDialog(); break;
       case 'insert-header': doInsertHeader(); break;
@@ -195,6 +199,12 @@
 
       // Image
       case 'crop-image': ImageTools.startCrop(); break;
+      case 'img-shadow': toggleImageEffect('data-img-shadow'); break;
+      case 'img-glow': toggleImageEffect('data-img-glow'); break;
+      case 'img-soft-edges': toggleImageEffect('data-img-soft'); break;
+      case 'img-grayscale': toggleImageFilter('grayscale'); break;
+      case 'img-sepia': toggleImageFilter('sepia'); break;
+      case 'img-reset': resetImageEffects(); break;
 
       // Spell Check & Styles
       case 'spell-check': SpellCheck.runSpellCheck(); break;
@@ -230,6 +240,23 @@
 
       // Find All (Sprint 5)
       case 'find-all': doFindAll(); break;
+
+      // Word Art (W1)
+      case 'insert-wordart': showWordArtDialog(); break;
+
+      // Quick Tables (W2)
+      case 'quick-tables': showQuickTableDialog(); break;
+
+      // Document Inspector (W3)
+      case 'document-inspector': showDocumentInspector(); break;
+
+      // Reading Mode (W4)
+      case 'reading-mode': toggleReadingMode(); break;
+
+      // Form Fields (W5)
+      case 'insert-text-field': insertFormField('text'); break;
+      case 'insert-checkbox-field': insertFormField('checkbox'); break;
+      case 'insert-dropdown-field': insertFormField('dropdown'); break;
 
       // Table Tools Contextual Tab actions
       case 'tbl-insert-row-above':
@@ -931,13 +958,17 @@
       wm.remove();
 
     // Get header/footer text
-    const headerEl = editor.querySelector('.wp-header');
-    const footerEl = editor.querySelector('.wp-footer');
+    const headerEl = editor.querySelector('.wp-header-editor') || editor.querySelector('.wp-header');
+    const footerEl = editor.querySelector('.wp-footer-editor') || editor.querySelector('.wp-footer');
     const headerText = headerEl ? headerEl.textContent : '';
 
     // Remove header/footer from clone (we'll add them per page)
-    for (const el of content.querySelectorAll('.wp-header, .wp-footer'))
+    for (const el of content.querySelectorAll('.wp-header, .wp-footer, .wp-header-editor, .wp-footer-editor'))
       el.remove();
+
+    // Remove header/footer toolbars from clone
+    for (const tb of content.querySelectorAll('.wp-hf-toolbar'))
+      tb.remove();
 
     // Create a measuring container
     const measurer = document.createElement('div');
@@ -1020,7 +1051,14 @@
 
   pageSizeSelect.addEventListener('change', () => { applyPageSetup(); updatePageBreakIndicators(); });
   pageOrientSelect.addEventListener('change', () => { applyPageSetup(); updatePageBreakIndicators(); });
-  pageMarginsSelect.addEventListener('change', () => { applyPageSetup(); updatePageBreakIndicators(); });
+  pageMarginsSelect.addEventListener('change', () => {
+    if (pageMarginsSelect.value === 'custom') {
+      showCustomMarginsDialog();
+      return;
+    }
+    applyPageSetup();
+    updatePageBreakIndicators();
+  });
 
   function applyPageSetup() {
     const sizes = {
@@ -1029,17 +1067,63 @@
       legal: { w: '8.5in', h: '14in' },
       custom: { w: '8.5in', h: '11in' }
     };
-    const margins = { normal: '1in', narrow: '0.5in', wide: '1.25in', custom: '1in' };
+    const presetMargins = { normal: '1in', narrow: '0.5in', wide: '1.25in' };
+    const presetMarginInches = { normal: 1, narrow: 0.5, wide: 1.25 };
 
     const size = sizes[pageSizeSelect.value] || sizes.letter;
     const orient = pageOrientSelect.value;
-    const margin = margins[pageMarginsSelect.value] || margins.normal;
+    const marginKey = pageMarginsSelect.value;
 
     if (editorWrapper.classList.contains('print-layout')) {
       editor.style.maxWidth = orient === 'landscape' ? size.h : size.w;
       editor.style.minHeight = orient === 'landscape' ? size.w : size.h;
     }
-    editor.style.padding = margin;
+
+    if (marginKey === 'custom') {
+      const g = customMargins.gutter;
+      editor.style.paddingTop = customMargins.top + 'in';
+      editor.style.paddingBottom = customMargins.bottom + 'in';
+      editor.style.paddingLeft = (customMargins.left + g) + 'in';
+      editor.style.paddingRight = customMargins.right + 'in';
+      rulerMargins.left = customMargins.left + g;
+      rulerMargins.right = customMargins.right;
+    } else {
+      const margin = presetMargins[marginKey] || presetMargins.normal;
+      editor.style.padding = margin;
+      const mInch = presetMarginInches[marginKey] || 1;
+      rulerMargins.left = mInch;
+      rulerMargins.right = mInch;
+    }
+
+    // Re-render ruler if visible
+    renderRuler();
+  }
+
+  function showCustomMarginsDialog() {
+    // Pre-fill dialog inputs with current custom margin values
+    document.getElementById('cm-top').value = customMargins.top;
+    document.getElementById('cm-bottom').value = customMargins.bottom;
+    document.getElementById('cm-left').value = customMargins.left;
+    document.getElementById('cm-right').value = customMargins.right;
+    document.getElementById('cm-gutter').value = customMargins.gutter;
+
+    SZ.Dialog.show('dlg-custom-margins').then((result) => {
+      if (result === 'ok') {
+        customMargins.top = parseFloat(document.getElementById('cm-top').value) || 0;
+        customMargins.bottom = parseFloat(document.getElementById('cm-bottom').value) || 0;
+        customMargins.left = parseFloat(document.getElementById('cm-left').value) || 0;
+        customMargins.right = parseFloat(document.getElementById('cm-right').value) || 0;
+        customMargins.gutter = parseFloat(document.getElementById('cm-gutter').value) || 0;
+        applyPageSetup();
+        updatePageBreakIndicators();
+        markDirty();
+      } else {
+        // User cancelled -- revert the select to its previous value if needed
+        const prev = editor.style.paddingTop ? 'custom' : 'normal';
+        if (prev !== 'custom')
+          pageMarginsSelect.value = 'normal';
+      }
+    });
   }
 
   spacingBeforeSelect.addEventListener('change', () => {
@@ -1080,6 +1164,9 @@
   for (const radio of document.querySelectorAll('input[name="view-mode"]')) {
     radio.addEventListener('change', () => {
       editorWrapper.classList.remove('print-layout', 'web-layout');
+      // Clear multi-page styles
+      editor.style.backgroundImage = '';
+      editor.style.minHeight = '';
       switch (radio.value) {
         case 'print':
           editorWrapper.classList.add('print-layout');
@@ -1099,10 +1186,15 @@
   // Default to print layout
   editorWrapper.classList.add('print-layout');
 
-  // Ruler
+  // Ruler (horizontal + vertical)
   const ruler = document.getElementById('ruler');
+  const vertRuler = document.getElementById('ruler-vertical');
   document.getElementById('view-ruler').addEventListener('change', function() {
-    ruler.style.display = this.checked ? 'block' : 'none';
+    ruler.style.display = this.checked ? 'flex' : 'none';
+    if (vertRuler)
+      vertRuler.style.display = this.checked ? 'block' : 'none';
+    if (this.checked)
+      renderRuler();
   });
 
   // Gridlines
@@ -1578,6 +1670,142 @@
   editor.addEventListener('keyup', () => setTimeout(updateTableToolsVisibility, 10));
 
   // ═══════════════════════════════════════════════════════════════
+  // Picture Format Contextual Ribbon Tab
+  // ═══════════════════════════════════════════════════════════════
+
+  const pictureFormatTab = document.getElementById('tab-picture-format');
+  const imgBrightnessSlider = document.getElementById('img-brightness');
+  const imgContrastSlider = document.getElementById('img-contrast');
+
+  function updatePictureFormatVisibility() {
+    const img = ImageTools.getSelectedImage();
+    if (img && editor.contains(img)) {
+      if (pictureFormatTab) {
+        pictureFormatTab.style.display = '';
+        // Auto-switch to Picture Format tab
+        pictureFormatTab.click();
+      }
+      // Sync sliders with current image state
+      syncPictureFormatControls(img);
+    } else {
+      if (pictureFormatTab) pictureFormatTab.style.display = 'none';
+      // If Picture Format panel is active, switch to Home
+      const activePanel = document.querySelector('.ribbon-panel.active');
+      if (activePanel && activePanel.id === 'ribbon-picture-format') {
+        const homeTab = document.querySelector('.ribbon-tab[data-tab="home"]');
+        if (homeTab) homeTab.click();
+      }
+    }
+  }
+
+  function syncPictureFormatControls(img) {
+    if (imgBrightnessSlider) {
+      const bVal = img.getAttribute('data-img-brightness');
+      imgBrightnessSlider.value = bVal != null ? bVal : '0';
+    }
+    if (imgContrastSlider) {
+      const cVal = img.getAttribute('data-img-contrast');
+      imgContrastSlider.value = cVal != null ? cVal : '0';
+    }
+  }
+
+  function toggleImageEffect(attr) {
+    const img = ImageTools.getSelectedImage();
+    if (!img) return;
+    if (img.hasAttribute(attr))
+      img.removeAttribute(attr);
+    else
+      img.setAttribute(attr, '');
+    // Shadow and glow are mutually exclusive (both use box-shadow)
+    if (attr === 'data-img-shadow' && img.hasAttribute('data-img-glow'))
+      img.removeAttribute('data-img-glow');
+    else if (attr === 'data-img-glow' && img.hasAttribute('data-img-shadow'))
+      img.removeAttribute('data-img-shadow');
+    editor.focus();
+    markDirty();
+  }
+
+  function toggleImageFilter(filterName) {
+    const img = ImageTools.getSelectedImage();
+    if (!img) return;
+    const attr = 'data-img-' + filterName;
+    if (img.hasAttribute(attr))
+      img.removeAttribute(attr);
+    else
+      img.setAttribute(attr, '');
+    // Grayscale and sepia are mutually exclusive
+    if (filterName === 'grayscale' && img.hasAttribute('data-img-sepia'))
+      img.removeAttribute('data-img-sepia');
+    else if (filterName === 'sepia' && img.hasAttribute('data-img-grayscale'))
+      img.removeAttribute('data-img-grayscale');
+    rebuildImageFilter(img);
+    editor.focus();
+    markDirty();
+  }
+
+  function rebuildImageFilter(img) {
+    const parts = [];
+    if (img.hasAttribute('data-img-grayscale'))
+      parts.push('grayscale(100%)');
+    if (img.hasAttribute('data-img-sepia'))
+      parts.push('sepia(100%)');
+    const brightness = parseInt(img.getAttribute('data-img-brightness') || '0', 10);
+    if (brightness !== 0)
+      parts.push('brightness(' + ((100 + brightness) / 100) + ')');
+    const contrast = parseInt(img.getAttribute('data-img-contrast') || '0', 10);
+    if (contrast !== 0)
+      parts.push('contrast(' + ((100 + contrast) / 100) + ')');
+    img.style.filter = parts.length ? parts.join(' ') : '';
+  }
+
+  function resetImageEffects() {
+    const img = ImageTools.getSelectedImage();
+    if (!img) return;
+    img.removeAttribute('data-img-shadow');
+    img.removeAttribute('data-img-glow');
+    img.removeAttribute('data-img-soft');
+    img.removeAttribute('data-img-grayscale');
+    img.removeAttribute('data-img-sepia');
+    img.removeAttribute('data-img-brightness');
+    img.removeAttribute('data-img-contrast');
+    img.style.filter = '';
+    img.style.boxShadow = '';
+    img.style.borderRadius = '';
+    if (imgBrightnessSlider) imgBrightnessSlider.value = '0';
+    if (imgContrastSlider) imgContrastSlider.value = '0';
+    editor.focus();
+    markDirty();
+  }
+
+  // Wire brightness/contrast sliders
+  if (imgBrightnessSlider) {
+    imgBrightnessSlider.addEventListener('input', () => {
+      const img = ImageTools.getSelectedImage();
+      if (!img) return;
+      img.setAttribute('data-img-brightness', imgBrightnessSlider.value);
+      rebuildImageFilter(img);
+      markDirty();
+    });
+  }
+
+  if (imgContrastSlider) {
+    imgContrastSlider.addEventListener('input', () => {
+      const img = ImageTools.getSelectedImage();
+      if (!img) return;
+      img.setAttribute('data-img-contrast', imgContrastSlider.value);
+      rebuildImageFilter(img);
+      markDirty();
+    });
+  }
+
+  // Update Picture Format visibility on click/keyup (piggyback on existing events)
+  editor.addEventListener('click', () => setTimeout(updatePictureFormatVisibility, 20));
+  document.addEventListener('pointerdown', (e) => {
+    if (!e.target.closest('#ribbon-picture-format') && !e.target.closest('#tab-picture-format') && e.target.tagName !== 'IMG')
+      setTimeout(updatePictureFormatVisibility, 20);
+  });
+
+  // ═══════════════════════════════════════════════════════════════
   // Table Formula Evaluation
   // ═══════════════════════════════════════════════════════════════
 
@@ -1801,22 +2029,7 @@
   // ═══════════════════════════════════════════════════════════════
 
   function doInsertShape(type) {
-    let html;
-    switch (type) {
-      case 'rect':
-        html = '<div class="wp-shape wp-shape-rect" contenteditable="false"></div>';
-        break;
-      case 'circle':
-        html = '<div class="wp-shape wp-shape-circle" contenteditable="false"></div>';
-        break;
-      case 'line':
-        html = '<div class="wp-shape wp-shape-line" contenteditable="false"></div>';
-        break;
-      default:
-        return;
-    }
-    document.execCommand('insertHTML', false, html);
-    editor.focus();
+    ShapeTools.insertShape(type);
   }
 
   function doInsertTextbox() {
@@ -1874,38 +2087,121 @@
   // ═══════════════════════════════════════════════════════════════
 
   function doInsertHeader() {
-    const existing = editor.querySelector('.wp-header');
+    const existing = editor.querySelector('.wp-header-editor');
     if (existing) {
       existing.focus();
+      _showHeaderFooterToolbar(existing, 'header');
       return;
     }
+    // Remove legacy wp-header if present
+    const legacy = editor.querySelector('.wp-header');
+    let legacyContent = '';
+    if (legacy) {
+      legacyContent = legacy.innerHTML;
+      legacy.remove();
+    }
     const header = document.createElement('div');
-    header.className = 'wp-header';
+    header.className = 'wp-header-editor';
     header.contentEditable = 'true';
-    header.textContent = 'Header - click to edit';
+    header.setAttribute('data-hf-type', 'header');
+    if (legacyContent && legacyContent !== 'Header - click to edit')
+      header.innerHTML = legacyContent;
+
     editor.insertBefore(header, editor.firstChild);
+    header.focus();
+    _showHeaderFooterToolbar(header, 'header');
+    markDirty();
   }
 
   function doInsertFooter() {
-    const existing = editor.querySelector('.wp-footer');
+    const existing = editor.querySelector('.wp-footer-editor');
     if (existing) {
       existing.focus();
+      _showHeaderFooterToolbar(existing, 'footer');
       return;
     }
+    // Remove legacy wp-footer if present
+    const legacy = editor.querySelector('.wp-footer');
+    let legacyContent = '';
+    if (legacy) {
+      legacyContent = legacy.innerHTML;
+      legacy.remove();
+    }
     const footer = document.createElement('div');
-    footer.className = 'wp-footer';
+    footer.className = 'wp-footer-editor';
     footer.contentEditable = 'true';
-    footer.textContent = 'Footer - click to edit';
+    footer.setAttribute('data-hf-type', 'footer');
+    if (legacyContent && legacyContent !== 'Footer - click to edit')
+      footer.innerHTML = legacyContent;
+
     editor.appendChild(footer);
+    footer.focus();
+    _showHeaderFooterToolbar(footer, 'footer');
+    markDirty();
+  }
+
+  function _showHeaderFooterToolbar(targetEl, type) {
+    // Remove existing toolbar if any
+    _closeHeaderFooterToolbar();
+
+    const toolbar = document.createElement('div');
+    toolbar.className = 'wp-hf-toolbar';
+    toolbar.contentEditable = 'false';
+
+    const label = document.createElement('span');
+    label.className = 'wp-hf-toolbar-label';
+    label.textContent = type === 'header' ? 'Header' : 'Footer';
+    toolbar.appendChild(label);
+
+    const fieldCodes = ['PAGE', 'NUMPAGES', 'DATE', 'TIME'];
+    for (const code of fieldCodes) {
+      const btn = document.createElement('button');
+      btn.className = 'wp-hf-toolbar-btn';
+      btn.textContent = '{' + code + '}';
+      btn.title = 'Insert ' + code + ' field';
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        // Focus the editor div and place cursor at end
+        targetEl.focus();
+        const sel = window.getSelection();
+        if (!sel.rangeCount || !targetEl.contains(sel.focusNode)) {
+          const range = document.createRange();
+          range.selectNodeContents(targetEl);
+          range.collapse(false);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+        FieldCodes.insertField(code);
+      });
+      toolbar.appendChild(btn);
+    }
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'wp-hf-toolbar-btn wp-hf-toolbar-close';
+    closeBtn.textContent = 'Close Header and Footer';
+    closeBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      _closeHeaderFooterToolbar();
+      editor.focus();
+    });
+    toolbar.appendChild(closeBtn);
+
+    targetEl.appendChild(toolbar);
+  }
+
+  function _closeHeaderFooterToolbar() {
+    const existing = editor.querySelector('.wp-hf-toolbar');
+    if (existing)
+      existing.remove();
   }
 
   function doInsertPageNumberField() {
     // Use field code instead of static text
-    const footer = editor.querySelector('.wp-footer');
-    if (!footer) {
+    let footer = editor.querySelector('.wp-footer-editor') || editor.querySelector('.wp-footer');
+    if (!footer)
       doInsertFooter();
-    }
-    const target = editor.querySelector('.wp-footer');
+    const target = editor.querySelector('.wp-footer-editor') || editor.querySelector('.wp-footer');
     if (target) {
       // Clear default text if it's the placeholder
       if (target.textContent === 'Footer - click to edit')
@@ -2648,24 +2944,30 @@
   }
 
   async function loadFile(path, content) {
+    const ext = (path.match(/\.([^.]+)$/) || [])[1] || '';
+    const lowerExt = ext.toLowerCase();
+
     if (content == null) {
       try {
-        content = await Kernel32.ReadAllText(path);
+        // DOCX files are ZIP archives -- read as binary to avoid UTF-8 decode corruption
+        if (lowerExt === 'docx')
+          content = await Kernel32.ReadAllBytes(path);
+        else
+          content = await Kernel32.ReadAllText(path);
       } catch (err) {
         await User32.MessageBox('Could not open file: ' + err.message, 'WordPad', MB_OK);
         return;
       }
     }
 
-    const ext = (path.match(/\.([^.]+)$/) || [])[1] || '';
-    const lowerExt = ext.toLowerCase();
-
     if (lowerExt === 'docx') {
-      // DOCX files come as ArrayBuffer from the OS file system
+      // DOCX files need an ArrayBuffer for JSZip
       try {
         let arrayBuf;
         if (content instanceof ArrayBuffer)
           arrayBuf = content;
+        else if (content instanceof Uint8Array)
+          arrayBuf = content.buffer.slice(content.byteOffset, content.byteOffset + content.byteLength);
         else if (typeof content === 'string') {
           // Try base64 decode
           const binary = atob(content);
@@ -2673,17 +2975,32 @@
           for (let i = 0; i < binary.length; ++i)
             arrayBuf[i] = binary.charCodeAt(i);
           arrayBuf = arrayBuf.buffer;
-        } else
+        } else if (ArrayBuffer.isView(content))
+          arrayBuf = content.buffer.slice(content.byteOffset, content.byteOffset + content.byteLength);
+        else
           arrayBuf = content;
 
-        const html = await DocxEngine.parseDocxDirect(arrayBuf);
+        const result = await DocxEngine.parseDocxDirect(arrayBuf);
+        const html = typeof result === 'string' ? result : result.html;
         setEditorContent(html);
+        // Import comments and track changes if available
+        if (result && result.comments && result.comments.length && CommentsTracking.importComments)
+          CommentsTracking.importComments(result.comments);
+        if (result && result.trackChanges && result.trackChanges.length && CommentsTracking.importTrackChanges)
+          CommentsTracking.importTrackChanges(result.trackChanges);
         currentFileFormat = 'docx';
       } catch (err) {
         // Fallback to mammoth.js
         try {
+          let abForMammoth;
+          if (content instanceof ArrayBuffer)
+            abForMammoth = content;
+          else if (content instanceof Uint8Array || ArrayBuffer.isView(content))
+            abForMammoth = content.buffer.slice(content.byteOffset, content.byteOffset + content.byteLength);
+          else
+            abForMammoth = new TextEncoder().encode(String(content)).buffer;
           const mammothResult = await mammoth.convertToHtml(
-            { arrayBuffer: content instanceof ArrayBuffer ? content : new TextEncoder().encode(content).buffer },
+            { arrayBuffer: abForMammoth },
             { styleMap: ["p[style-name='Heading 1'] => h1", "p[style-name='Heading 2'] => h2", "p[style-name='Heading 3'] => h3"] }
           );
           setEditorContent(mammothResult.value);
@@ -2777,11 +3094,8 @@
     try {
       const html = getEditorContent();
       const zip = DocxEngine.buildDocxPackage(html);
-      const blob = await zip.generateAsync({
-        type: 'blob',
-        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-      });
-      await Kernel32.WriteFile(path, blob);
+      const bytes = await zip.generateAsync({ type: 'uint8array' });
+      await Kernel32.WriteFile(path, bytes);
     } catch (err) {
       await User32.MessageBox('Could not save DOCX: ' + err.message, 'WordPad', MB_OK);
       return;
@@ -2875,61 +3189,102 @@
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // Page Break Indicators (print layout)
+  // Multi-Page Layout (print layout)
   // ═══════════════════════════════════════════════════════════════
 
-  function updatePageBreakIndicators() {
-    // Remove existing indicators
-    for (const ind of editor.querySelectorAll('.wp-page-indicator'))
-      ind.remove();
+  const PAGE_GAP_HEIGHT = 28; // px, visual gap between pages
+  let _pageLayoutTimer = null;
+  let _lastPageCount = 1;
 
-    // Only show in print layout mode
-    if (!editorWrapper.classList.contains('print-layout'))
-      return;
-
+  function getPageHeightPx() {
     const pageSizeVal = document.getElementById('rb-page-size').value;
     const orientVal = document.getElementById('rb-page-orient').value;
     const pageSizes = {
-      a4: { w: 210, h: 297 },   // mm
+      a4: { w: 210, h: 297 },
       letter: { w: 8.5 * 25.4, h: 11 * 25.4 },
       legal: { w: 8.5 * 25.4, h: 14 * 25.4 },
       custom: { w: 8.5 * 25.4, h: 11 * 25.4 }
     };
-
     const size = pageSizes[pageSizeVal] || pageSizes.letter;
-    // Convert mm to px at 96 DPI
-    let pageHeightPx = (orientVal === 'landscape' ? size.w : size.h) * 96 / 25.4;
+    return (orientVal === 'landscape' ? size.w : size.h) * 96 / 25.4;
+  }
 
-    // Account for zoom
-    const zoom = currentZoom / 100;
-    pageHeightPx *= zoom;
+  function updatePageBreakIndicators() {
+    // Remove existing gap overlays
+    for (const gap of editor.querySelectorAll('.wp-page-gap-overlay'))
+      gap.remove();
+    // Remove old-style indicators too
+    for (const ind of editor.querySelectorAll('.wp-page-indicator'))
+      ind.remove();
 
-    // Account for margins (padding of the editor)
-    const editorStyle = window.getComputedStyle(editor);
-    const paddingTop = parseFloat(editorStyle.paddingTop) || 0;
-    const paddingBottom = parseFloat(editorStyle.paddingBottom) || 0;
+    // Only show in print layout mode
+    if (!editorWrapper.classList.contains('print-layout')) {
+      editor.style.backgroundImage = '';
+      editor.style.paddingBottom = '';
+      return;
+    }
 
-    // Usable content height per page (subtract top+bottom margins from page height)
-    const contentHeightPerPage = pageHeightPx - paddingTop - paddingBottom;
-    if (contentHeightPerPage <= 0)
+    const pageHeightPx = getPageHeightPx();
+    if (pageHeightPx <= 0)
       return;
 
-    const totalHeight = editor.scrollHeight;
-    const pageCount = Math.ceil(totalHeight / pageHeightPx);
+    // Set editor min-height to one page
+    editor.style.minHeight = pageHeightPx + 'px';
 
+    // Get content height (exclude gap overlays which we just removed)
+    const contentHeight = editor.scrollHeight;
+    const pageCount = Math.max(1, Math.ceil(contentHeight / pageHeightPx));
+    _lastPageCount = pageCount;
+
+    if (pageCount <= 1) {
+      editor.style.paddingBottom = '';
+      return;
+    }
+
+    // Add extra padding at the bottom so the last page extends to full page height
+    const remainder = contentHeight % pageHeightPx;
+    if (remainder > 0) {
+      const extraPadding = pageHeightPx - remainder + (pageCount - 1) * PAGE_GAP_HEIGHT;
+      editor.style.paddingBottom = extraPadding + 'px';
+    } else {
+      editor.style.paddingBottom = ((pageCount - 1) * PAGE_GAP_HEIGHT) + 'px';
+    }
+
+    // Insert visual page gap overlays at each page boundary
     for (let p = 1; p < pageCount; ++p) {
-      const indicator = document.createElement('div');
-      indicator.className = 'wp-page-indicator';
-      indicator.style.top = (pageHeightPx * p) + 'px';
-      indicator.dataset.pageLabel = 'Page ' + p + ' / ' + pageCount;
-      editor.appendChild(indicator);
+      const gapTop = pageHeightPx * p + PAGE_GAP_HEIGHT * (p - 1);
+      const gap = document.createElement('div');
+      gap.className = 'wp-page-gap-overlay';
+      gap.style.top = gapTop + 'px';
+      gap.dataset.pageLabel = 'Page ' + p + ' | Page ' + (p + 1);
+      gap.contentEditable = 'false';
+      editor.appendChild(gap);
     }
   }
 
-  // Recalculate page breaks on resize and scroll
+  function getPageCount() {
+    return _lastPageCount;
+  }
+
+  // Recalculate page layout on resize
   window.addEventListener('resize', () => {
-    clearTimeout(window._pageBreakResizeTimer);
-    window._pageBreakResizeTimer = setTimeout(updatePageBreakIndicators, 200);
+    clearTimeout(_pageLayoutTimer);
+    _pageLayoutTimer = setTimeout(updatePageBreakIndicators, 200);
+  });
+
+  // Also recalculate when editor content changes
+  const _pageLayoutObserver = new MutationObserver((mutations) => {
+    // Ignore mutations caused by our own gap overlays
+    const isOwnMutation = mutations.every(m =>
+      m.type === 'childList' && [...m.addedNodes, ...m.removedNodes].every(
+        n => n.nodeType === 1 && (n.classList.contains('wp-page-gap-overlay') || n.classList.contains('wp-page-indicator'))
+      )
+    );
+    if (isOwnMutation)
+      return;
+
+    clearTimeout(_pageLayoutTimer);
+    _pageLayoutTimer = setTimeout(updatePageBreakIndicators, 300);
   });
 
   // ═══════════════════════════════════════════════════════════════
@@ -2948,21 +3303,8 @@
     const wordCount = trimmed === '' ? 0 : trimmed.split(/\s+/).length;
     const lineCount = text === '' ? 0 : text.split('\n').length;
 
-    // Page estimate
-    const pageSizeVal = document.getElementById('rb-page-size').value;
-    const orientVal = document.getElementById('rb-page-orient').value;
-    const pageSizes = {
-      a4: { h: 297 * 96 / 25.4 },
-      letter: { h: 11 * 96 },
-      legal: { h: 14 * 96 },
-      custom: { h: 11 * 96 }
-    };
-    let pageH = (pageSizes[pageSizeVal] || pageSizes.letter).h;
-    if (orientVal === 'landscape') {
-      const sizeW = { a4: 210 * 96 / 25.4, letter: 8.5 * 96, legal: 8.5 * 96, custom: 8.5 * 96 };
-      pageH = (sizeW[pageSizeVal] || sizeW.letter);
-    }
-    const pageCount = Math.max(1, Math.ceil(editor.scrollHeight / pageH));
+    // Use the multi-page layout page count
+    const pageCount = getPageCount();
 
     statusWords.textContent = wordCount + ' words';
     statusChars.textContent = charsNoSpaces + ' chars (no spaces) | ' + charsWithSpaces + ' chars';
@@ -2991,6 +3333,365 @@
   }
 
   // ═══════════════════════════════════════════════════════════════
+  // W1 — Word Art
+  // ═══════════════════════════════════════════════════════════════
+
+  const WORDART_STYLES = [
+    { id: 1, name: 'Blue Gradient', className: 'wordart-style-1', preview: 'Abc' },
+    { id: 2, name: 'Gold Outline', className: 'wordart-style-2', preview: 'Abc' },
+    { id: 3, name: 'Neon Glow', className: 'wordart-style-3', preview: 'Abc', bgDark: true },
+    { id: 4, name: '3D Extrusion', className: 'wordart-style-4', preview: 'Abc' },
+    { id: 5, name: 'Rainbow', className: 'wordart-style-5', preview: 'Abc' },
+    { id: 6, name: 'Silver Emboss', className: 'wordart-style-6', preview: 'Abc' },
+    { id: 7, name: 'Fire', className: 'wordart-style-7', preview: 'Abc' },
+    { id: 8, name: 'Ice', className: 'wordart-style-8', preview: 'Abc' },
+  ];
+
+  let selectedWordArtStyle = 1;
+
+  function buildWordArtPreview(text, styleId, sizePt, color) {
+    const style = WORDART_STYLES.find(s => s.id === styleId) || WORDART_STYLES[0];
+    const div = document.createElement('div');
+    div.className = 'wp-wordart ' + style.className;
+    div.style.fontSize = sizePt + 'pt';
+    if (color && styleId === 2)
+      div.style.color = color;
+    div.textContent = text || 'Word Art';
+    return div;
+  }
+
+  function showWordArtDialog() {
+    const gallery = document.getElementById('wa-style-gallery');
+    const preview = document.getElementById('wa-preview');
+    const textInput = document.getElementById('wa-text');
+    const sizeInput = document.getElementById('wa-size');
+    const colorInput = document.getElementById('wa-color');
+
+    gallery.innerHTML = '';
+    for (const style of WORDART_STYLES) {
+      const tile = document.createElement('div');
+      tile.className = 'wa-style-tile ' + style.className + (style.id === selectedWordArtStyle ? ' active' : '');
+      if (style.bgDark)
+        tile.style.background = '#222';
+      tile.textContent = style.preview;
+      tile.title = style.name;
+      tile.addEventListener('click', () => {
+        selectedWordArtStyle = style.id;
+        for (const t of gallery.querySelectorAll('.wa-style-tile'))
+          t.classList.remove('active');
+        tile.classList.add('active');
+        refreshWordArtPreview();
+      });
+      gallery.appendChild(tile);
+    }
+
+    function refreshWordArtPreview() {
+      preview.innerHTML = '';
+      const el = buildWordArtPreview(textInput.value, selectedWordArtStyle, parseInt(sizeInput.value, 10) || 36, colorInput.value);
+      preview.appendChild(el);
+    }
+
+    textInput.value = 'Word Art';
+    sizeInput.value = 36;
+    refreshWordArtPreview();
+
+    textInput.addEventListener('input', refreshWordArtPreview);
+    sizeInput.addEventListener('input', refreshWordArtPreview);
+    colorInput.addEventListener('input', refreshWordArtPreview);
+
+    const overlay = document.getElementById('dlg-wordart');
+    awaitDialogResult(overlay, (result) => {
+      textInput.removeEventListener('input', refreshWordArtPreview);
+      sizeInput.removeEventListener('input', refreshWordArtPreview);
+      colorInput.removeEventListener('input', refreshWordArtPreview);
+      if (result !== 'ok')
+        return;
+      insertWordArt(textInput.value, selectedWordArtStyle, parseInt(sizeInput.value, 10) || 36, colorInput.value);
+    });
+  }
+
+  function insertWordArt(text, styleId, sizePt, color) {
+    if (!text.trim())
+      return;
+    const el = buildWordArtPreview(text, styleId, sizePt, color);
+    el.contentEditable = 'false';
+    const html = el.outerHTML + '<p><br></p>';
+    editor.focus();
+    document.execCommand('insertHTML', false, html);
+    markDirty();
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // W2 — Quick Tables
+  // ═══════════════════════════════════════════════════════════════
+
+  const QUICK_TABLE_TEMPLATES = [
+    {
+      id: 'calendar',
+      name: 'Calendar Grid',
+      build() {
+        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        let html = '<table style="width:100%;border-collapse:collapse;">';
+        html += '<tr>' + days.map(d => '<th style="padding:4px 8px;border:1px solid #999;background:#4472c4;color:#fff;font-weight:bold;text-align:center;">' + d + '</th>').join('') + '</tr>';
+        for (let r = 0; r < 5; ++r)
+          html += '<tr>' + days.map(() => '<td style="padding:4px 8px;border:1px solid #999;height:40px;vertical-align:top;"><br></td>').join('') + '</tr>';
+        html += '</table>';
+        return html;
+      }
+    },
+    {
+      id: 'matrix',
+      name: 'Matrix (Labeled)',
+      build() {
+        const size = 4;
+        let html = '<table style="width:100%;border-collapse:collapse;">';
+        html += '<tr><th style="padding:4px 8px;border:1px solid #999;background:#4472c4;color:#fff;"></th>';
+        for (let c = 1; c <= size; ++c)
+          html += '<th style="padding:4px 8px;border:1px solid #999;background:#4472c4;color:#fff;text-align:center;">Col ' + c + '</th>';
+        html += '</tr>';
+        for (let r = 1; r <= size; ++r) {
+          html += '<tr><th style="padding:4px 8px;border:1px solid #999;background:#d6e4f0;font-weight:bold;">Row ' + r + '</th>';
+          for (let c = 1; c <= size; ++c)
+            html += '<td style="padding:4px 8px;border:1px solid #999;text-align:center;"><br></td>';
+          html += '</tr>';
+        }
+        html += '</table>';
+        return html;
+      }
+    },
+    {
+      id: 'tabular-list',
+      name: 'Tabular List',
+      build() {
+        const headers = ['Item', 'Description', 'Status', 'Notes'];
+        let html = '<table style="width:100%;border-collapse:collapse;">';
+        html += '<tr>' + headers.map(h => '<th style="padding:6px 10px;border:1px solid #999;background:#4472c4;color:#fff;font-weight:bold;">' + h + '</th>').join('') + '</tr>';
+        for (let r = 0; r < 5; ++r) {
+          const bg = r % 2 === 0 ? '' : ' background:#f5f5f5;';
+          html += '<tr>' + headers.map(() => '<td style="padding:4px 8px;border:1px solid #999;' + bg + '"><br></td>').join('') + '</tr>';
+        }
+        html += '</table>';
+        return html;
+      }
+    },
+    {
+      id: 'double-table',
+      name: 'Double Table',
+      build() {
+        function miniTable(title) {
+          let h = '<div style="display:inline-block;vertical-align:top;width:48%;margin-right:2%;">';
+          h += '<p style="font-weight:bold;margin-bottom:4px;">' + title + '</p>';
+          h += '<table style="width:100%;border-collapse:collapse;">';
+          h += '<tr><th style="padding:4px 6px;border:1px solid #999;background:#4472c4;color:#fff;">A</th><th style="padding:4px 6px;border:1px solid #999;background:#4472c4;color:#fff;">B</th></tr>';
+          for (let r = 0; r < 3; ++r)
+            h += '<tr><td style="padding:4px 6px;border:1px solid #999;"><br></td><td style="padding:4px 6px;border:1px solid #999;"><br></td></tr>';
+          h += '</table></div>';
+          return h;
+        }
+        return miniTable('Table 1') + miniTable('Table 2');
+      }
+    },
+    {
+      id: 'subheadings',
+      name: 'With Subheadings',
+      build() {
+        let html = '<table style="width:100%;border-collapse:collapse;">';
+        html += '<tr><th colspan="3" style="padding:6px 10px;border:1px solid #999;background:#4472c4;color:#fff;font-weight:bold;text-align:center;">Section Title</th></tr>';
+        html += '<tr><td colspan="3" style="padding:4px 8px;border:1px solid #999;background:#d6e4f0;font-weight:bold;">Category A</td></tr>';
+        for (let r = 0; r < 2; ++r)
+          html += '<tr><td style="padding:4px 8px;border:1px solid #999;"><br></td><td style="padding:4px 8px;border:1px solid #999;"><br></td><td style="padding:4px 8px;border:1px solid #999;"><br></td></tr>';
+        html += '<tr><td colspan="3" style="padding:4px 8px;border:1px solid #999;background:#d6e4f0;font-weight:bold;">Category B</td></tr>';
+        for (let r = 0; r < 2; ++r)
+          html += '<tr><td style="padding:4px 8px;border:1px solid #999;"><br></td><td style="padding:4px 8px;border:1px solid #999;"><br></td><td style="padding:4px 8px;border:1px solid #999;"><br></td></tr>';
+        html += '</table>';
+        return html;
+      }
+    }
+  ];
+
+  function showQuickTableDialog() {
+    const gallery = document.getElementById('qt-gallery');
+    gallery.innerHTML = '';
+
+    for (const tpl of QUICK_TABLE_TEMPLATES) {
+      const tile = document.createElement('div');
+      tile.className = 'qt-tile';
+
+      const name = document.createElement('div');
+      name.className = 'qt-tile-name';
+      name.textContent = tpl.name;
+      tile.appendChild(name);
+
+      const previewDiv = document.createElement('div');
+      previewDiv.className = 'qt-tile-preview';
+      previewDiv.innerHTML = tpl.build();
+      tile.appendChild(previewDiv);
+
+      tile.addEventListener('click', () => {
+        const dlgOverlay = document.getElementById('dlg-quick-table');
+        if (dlgOverlay._dialogDone)
+          dlgOverlay._dialogDone(null);
+        else
+          dlgOverlay.classList.remove('visible');
+        insertQuickTable(tpl.id);
+      });
+
+      gallery.appendChild(tile);
+    }
+
+    SZ.Dialog.show('dlg-quick-table');
+  }
+
+  function insertQuickTable(templateId) {
+    const tpl = QUICK_TABLE_TEMPLATES.find(t => t.id === templateId);
+    if (!tpl)
+      return;
+    editor.focus();
+    document.execCommand('insertHTML', false, tpl.build() + '<p><br></p>');
+    markDirty();
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // W3 — Document Inspector
+  // ═══════════════════════════════════════════════════════════════
+
+  function showDocumentInspector() {
+    const text = editor.innerText || '';
+    const trimmed = text.trim();
+
+    const wordCount = trimmed === '' ? 0 : trimmed.split(/\s+/).length;
+    const charCount = text.length;
+    const charNoSpaces = text.replace(/\s/g, '').length;
+
+    const blocks = editor.querySelectorAll('p, h1, h2, h3, h4, h5, h6, div:not(.watermark):not(.wp-watermark-image):not(.wp-page-break):not(.wp-section-break):not(.wp-page-gap-overlay), blockquote, pre, li');
+    const paragraphCount = Math.max(1, blocks.length);
+
+    const images = editor.querySelectorAll('img');
+    const imageCount = images.length;
+    let estimatedImageSize = 0;
+    for (const img of images) {
+      const src = img.src || '';
+      if (src.startsWith('data:')) {
+        const base64 = src.split(',')[1] || '';
+        estimatedImageSize += Math.round(base64.length * 0.75);
+      } else {
+        estimatedImageSize += (img.naturalWidth || 100) * (img.naturalHeight || 100) * 3;
+      }
+    }
+
+    const tableCount = editor.querySelectorAll('table').length;
+
+    const h1Count = editor.querySelectorAll('h1').length;
+    const h2Count = editor.querySelectorAll('h2').length;
+    const h3Count = editor.querySelectorAll('h3').length;
+
+    const linkCount = editor.querySelectorAll('a[href]').length;
+
+    const readingTime = Math.max(1, Math.ceil(wordCount / 200));
+
+    function formatSize(bytes) {
+      if (bytes < 1024)
+        return bytes + ' B';
+      if (bytes < 1048576)
+        return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / 1048576).toFixed(1) + ' MB';
+    }
+
+    const stats = [
+      { label: 'Words', value: wordCount.toLocaleString() },
+      { label: 'Characters', value: charCount.toLocaleString() },
+      { label: 'Characters (no spaces)', value: charNoSpaces.toLocaleString() },
+      { label: 'Paragraphs', value: paragraphCount.toLocaleString() },
+      { label: 'Images', value: imageCount.toLocaleString() },
+      { label: 'Est. Image Size', value: formatSize(estimatedImageSize) },
+      { label: 'Tables', value: tableCount.toLocaleString() },
+      { label: 'Headings (H1)', value: h1Count.toLocaleString() },
+      { label: 'Headings (H2)', value: h2Count.toLocaleString() },
+      { label: 'Headings (H3)', value: h3Count.toLocaleString() },
+      { label: 'Links', value: linkCount.toLocaleString() },
+      { label: 'Est. Reading Time', value: readingTime + ' min' },
+    ];
+
+    const container = document.getElementById('di-stats');
+    container.innerHTML = '';
+    for (const s of stats) {
+      const row = document.createElement('div');
+      row.className = 'di-stat';
+      row.innerHTML = '<span class="di-stat-label">' + s.label + '</span><span class="di-stat-value">' + s.value + '</span>';
+      container.appendChild(row);
+    }
+
+    SZ.Dialog.show('dlg-document-inspector');
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // W4 — Reading Mode
+  // ═══════════════════════════════════════════════════════════════
+
+  const readingModeExitBtn = document.getElementById('reading-mode-exit');
+
+  function toggleReadingMode() {
+    readingMode = !readingMode;
+    document.body.classList.toggle('reading-mode', readingMode);
+    readingModeExitBtn.style.display = readingMode ? '' : 'none';
+
+    if (readingMode)
+      editor.setAttribute('contenteditable', 'false');
+    else
+      editor.setAttribute('contenteditable', 'true');
+  }
+
+  readingModeExitBtn.addEventListener('click', () => {
+    if (readingMode)
+      toggleReadingMode();
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // W5 — Form Fields
+  // ═══════════════════════════════════════════════════════════════
+
+  const FORM_FIELD_TYPES = {
+    text: {
+      label: 'Text Field',
+      build() {
+        return '<span class="wp-form-field wp-text-field" contenteditable="false">'
+          + '<input type="text" placeholder="Enter text..." onclick="this.focus()">'
+          + '</span>';
+      }
+    },
+    checkbox: {
+      label: 'Checkbox',
+      build() {
+        return '<span class="wp-form-field wp-checkbox-field" contenteditable="false">'
+          + '<input type="checkbox"><span class="wp-checkbox-label">Check</span>'
+          + '</span>';
+      }
+    },
+    dropdown: {
+      label: 'Dropdown',
+      build() {
+        return '<span class="wp-form-field wp-dropdown-field" contenteditable="false">'
+          + '<select>'
+          + '<option value="">-- Select --</option>'
+          + '<option value="option1">Option 1</option>'
+          + '<option value="option2">Option 2</option>'
+          + '<option value="option3">Option 3</option>'
+          + '</select>'
+          + '</span>';
+      }
+    }
+  };
+
+  function insertFormField(type) {
+    const fieldDef = FORM_FIELD_TYPES[type];
+    if (!fieldDef)
+      return;
+    editor.focus();
+    document.execCommand('insertHTML', false, fieldDef.build() + '&nbsp;');
+    markDirty();
+  }
+
+  // ═══════════════════════════════════════════════════════════════
   // Keyboard Shortcuts
   // ═══════════════════════════════════════════════════════════════
 
@@ -2999,6 +3700,20 @@
     if (e.key === 'F7') {
       e.preventDefault();
       handleAction('spell-check');
+      return;
+    }
+
+    // F11 for reading mode (no modifier needed)
+    if (e.key === 'F11') {
+      e.preventDefault();
+      handleAction('reading-mode');
+      return;
+    }
+
+    // Escape exits reading mode
+    if (e.key === 'Escape' && readingMode) {
+      e.preventDefault();
+      toggleReadingMode();
       return;
     }
 
@@ -3104,30 +3819,80 @@
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // Tab Stops with Ruler (Sprint 4)
+  // MS Word-Style Ruler with Snap Points (Sprint 4 rewrite)
   // ═══════════════════════════════════════════════════════════════
 
   const TAB_TYPES = ['left', 'center', 'right', 'decimal'];
   let currentTabTypeIndex = 0;
+  const DPI = 96; // CSS pixels per inch
+
+  // Ruler state
+  let rulerMargins = { left: 1, right: 1 }; // inches
+  let rulerIndents = { first: 0, left: 0, right: 0 }; // inches from margin
+
+  function getPageWidthInches() {
+    const pageSizeVal = document.getElementById('rb-page-size').value;
+    const orientVal = document.getElementById('rb-page-orient').value;
+    const sizes = {
+      a4: { w: 210 / 25.4, h: 297 / 25.4 },
+      letter: { w: 8.5, h: 11 },
+      legal: { w: 8.5, h: 14 },
+      custom: { w: 8.5, h: 11 }
+    };
+    const size = sizes[pageSizeVal] || sizes.letter;
+    return orientVal === 'landscape' ? size.h : size.w;
+  }
+
+  function getMarginInches(side) {
+    const val = document.getElementById('rb-page-margins').value;
+    if (val === 'custom') {
+      if (side === 'top') return customMargins.top;
+      if (side === 'bottom') return customMargins.bottom;
+      if (side === 'right') return customMargins.right;
+      return customMargins.left + customMargins.gutter; // default: left (includes gutter)
+    }
+    const margins = { normal: 1, narrow: 0.5, wide: 1.25 };
+    return margins[val] || 1;
+  }
 
   function initTabStopRuler() {
-    const ruler = document.getElementById('ruler');
-    if (!ruler)
+    const rulerEl = document.getElementById('ruler');
+    const rulerInner = document.getElementById('ruler-inner');
+    const tabSelector = document.getElementById('ruler-tab-selector');
+    const verticalRuler = document.getElementById('ruler-vertical');
+    if (!rulerEl || !rulerInner)
       return;
 
-    // Make ruler interactive for tab stops
-    ruler.style.position = 'relative';
-    ruler.style.cursor = 'crosshair';
+    // Tab type selector: click to cycle through tab types
+    if (tabSelector) {
+      tabSelector.addEventListener('click', () => {
+        currentTabTypeIndex = (currentTabTypeIndex + 1) % TAB_TYPES.length;
+        const labels = { left: 'L', center: 'C', right: 'R', decimal: 'D' };
+        tabSelector.textContent = labels[TAB_TYPES[currentTabTypeIndex]];
+        tabSelector.title = TAB_TYPES[currentTabTypeIndex].charAt(0).toUpperCase()
+          + TAB_TYPES[currentTabTypeIndex].slice(1) + ' Tab Stop';
+      });
+    }
 
-    ruler.addEventListener('click', (e) => {
-      if (e.target.classList.contains('wp-tab-marker'))
+    // Initial ruler render
+    renderRuler();
+
+    // Click on ruler to add tab stop
+    rulerInner.addEventListener('click', (e) => {
+      if (e.target.classList.contains('wp-tab-marker') ||
+          e.target.classList.contains('ruler-handle'))
         return;
 
-      const rulerRect = ruler.getBoundingClientRect();
+      const rulerRect = rulerInner.getBoundingClientRect();
       const clickX = e.clientX - rulerRect.left;
-      const positionPercent = (clickX / rulerRect.width) * 100;
+      const pageW = getPageWidthInches();
+      const inchPos = (clickX / rulerRect.width) * pageW;
 
-      // Get current paragraph
+      // Only allow tab stops in the content area (between margins)
+      const margin = getMarginInches();
+      if (inchPos < margin || inchPos > pageW - margin)
+        return;
+
       const sel = window.getSelection();
       if (!sel.rangeCount)
         return;
@@ -3137,32 +3902,436 @@
       if (!block)
         return;
 
-      // Parse existing tab stops
       let tabStops = [];
       try {
         const raw = block.getAttribute('data-tab-stops');
         if (raw) tabStops = JSON.parse(raw);
       } catch (ex) { /* ignore */ }
 
-      // Add new tab stop
+      // Convert inch position to percentage of content width
+      const contentW = pageW - margin * 2;
+      const pctPos = Math.round(((inchPos - margin) / contentW) * 1000) / 10;
+
       const tabType = TAB_TYPES[currentTabTypeIndex];
-      tabStops.push({ position: Math.round(positionPercent * 10) / 10, type: tabType });
+      tabStops.push({ position: pctPos, type: tabType });
       tabStops.sort((a, b) => a.position - b.position);
 
       block.setAttribute('data-tab-stops', JSON.stringify(tabStops));
-      renderTabMarkers(ruler, tabStops);
+      renderTabMarkers(rulerInner, tabStops);
       markDirty();
     });
 
-    // Update tab markers when selection changes
-    editor.addEventListener('click', () => updateTabMarkersForSelection(ruler));
-    editor.addEventListener('keyup', () => updateTabMarkersForSelection(ruler));
+    // Update tab markers and indent handles when selection changes
+    editor.addEventListener('click', () => {
+      updateTabMarkersForSelection(rulerInner);
+      updateIndentHandlesForSelection();
+    });
+    editor.addEventListener('keyup', () => {
+      updateTabMarkersForSelection(rulerInner);
+      updateIndentHandlesForSelection();
+    });
+
   }
 
-  function updateTabMarkersForSelection(ruler) {
+  function renderRuler() {
+    const rulerInner = document.getElementById('ruler-inner');
+    if (!rulerInner)
+      return;
+
+    // Clear previous content
+    rulerInner.innerHTML = '';
+
+    const pageW = getPageWidthInches();
+    const totalInches = pageW;
+
+    // Draw margin regions (gray areas)
+    const leftMarginPct = (rulerMargins.left / totalInches) * 100;
+    const rightMarginPct = (rulerMargins.right / totalInches) * 100;
+
+    const leftMargin = document.createElement('div');
+    leftMargin.className = 'ruler-margin-left';
+    leftMargin.style.width = leftMarginPct + '%';
+    rulerInner.appendChild(leftMargin);
+
+    const rightMargin = document.createElement('div');
+    rightMargin.className = 'ruler-margin-right';
+    rightMargin.style.width = rightMarginPct + '%';
+    rulerInner.appendChild(rightMargin);
+
+    // White content track
+    const track = document.createElement('div');
+    track.className = 'ruler-track';
+    track.style.left = leftMarginPct + '%';
+    track.style.right = rightMarginPct + '%';
+    rulerInner.appendChild(track);
+
+    // Draw tick marks and labels
+    // Eighth-inch ticks
+    const eighthInch = 1 / 8;
+    for (let i = 0; i <= totalInches / eighthInch; ++i) {
+      const inches = i * eighthInch;
+      if (inches > totalInches)
+        break;
+
+      const pct = (inches / totalInches) * 100;
+      const tick = document.createElement('div');
+      tick.className = 'ruler-tick';
+      tick.style.left = pct + '%';
+
+      if (i % 8 === 0) {
+        // Full inch
+        tick.classList.add('ruler-tick-major');
+        // Add number label (skip 0)
+        if (inches > 0 && inches < totalInches) {
+          const label = document.createElement('div');
+          label.className = 'ruler-label';
+          label.style.left = pct + '%';
+          label.textContent = Math.round(inches);
+          rulerInner.appendChild(label);
+        }
+      } else if (i % 4 === 0) {
+        // Half inch
+        tick.classList.add('ruler-tick-half');
+      } else if (i % 2 === 0) {
+        // Quarter inch
+        tick.classList.add('ruler-tick-quarter');
+      } else {
+        // Eighth inch
+        tick.classList.add('ruler-tick-eighth');
+      }
+
+      rulerInner.appendChild(tick);
+    }
+
+    // Add margin drag handles
+    addMarginHandle(rulerInner, 'left');
+    addMarginHandle(rulerInner, 'right');
+
+    // Add indent handles
+    addIndentHandles(rulerInner);
+
+    // Re-add tab markers for current selection
+    updateTabMarkersForSelection(rulerInner);
+
+    // Render vertical ruler too
+    renderVerticalRuler();
+  }
+
+  function addMarginHandle(rulerInner, side) {
+    const handle = document.createElement('div');
+    handle.className = 'ruler-handle ruler-handle-margin-' + side;
+    const pageW = getPageWidthInches();
+    const margin = side === 'left' ? rulerMargins.left : rulerMargins.right;
+    const pct = (margin / pageW) * 100;
+
+    if (side === 'left')
+      handle.style.left = (pct - 0.3) + '%';
+    else
+      handle.style.right = (pct - 0.3) + '%';
+
+    handle.title = (side === 'left' ? 'Left' : 'Right') + ' Margin: ' + margin.toFixed(2) + '"';
+
+    // Drag to resize margin
+    let dragging = false;
+    handle.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dragging = true;
+      handle.setPointerCapture(e.pointerId);
+    });
+
+    handle.addEventListener('pointermove', (e) => {
+      if (!dragging)
+        return;
+      const rulerRect = rulerInner.getBoundingClientRect();
+      const x = e.clientX - rulerRect.left;
+      const newMarginInches = Math.round((x / rulerRect.width) * pageW * 8) / 8; // snap to 1/8 inch
+
+      if (side === 'left') {
+        rulerMargins.left = Math.max(0, Math.min(pageW / 2, newMarginInches));
+        const newPct = (rulerMargins.left / pageW) * 100;
+        handle.style.left = (newPct - 0.3) + '%';
+        handle.title = 'Left Margin: ' + rulerMargins.left.toFixed(2) + '"';
+      } else {
+        const fromRight = pageW - ((x / rulerRect.width) * pageW);
+        rulerMargins.right = Math.round(Math.max(0, Math.min(pageW / 2, fromRight)) * 8) / 8;
+        const newPct = (rulerMargins.right / pageW) * 100;
+        handle.style.right = (newPct - 0.3) + '%';
+        handle.title = 'Right Margin: ' + rulerMargins.right.toFixed(2) + '"';
+      }
+    });
+
+    handle.addEventListener('pointerup', (e) => {
+      if (!dragging)
+        return;
+      dragging = false;
+      handle.releasePointerCapture(e.pointerId);
+      applyMarginsFromRuler();
+      renderRuler();
+    });
+
+    rulerInner.appendChild(handle);
+  }
+
+  function applyMarginsFromRuler() {
+    const left = rulerMargins.left;
+    const right = rulerMargins.right;
+    editor.style.paddingLeft = left + 'in';
+    editor.style.paddingRight = right + 'in';
+  }
+
+  function addIndentHandles(rulerInner) {
+    const pageW = getPageWidthInches();
+    const margin = rulerMargins.left;
+
+    // First-line indent handle (top triangle)
+    const firstIndent = document.createElement('div');
+    firstIndent.className = 'ruler-handle ruler-handle-indent ruler-handle-first-indent';
+    firstIndent.id = 'ruler-first-indent';
+    const firstPct = ((margin + rulerIndents.first) / pageW) * 100;
+    firstIndent.style.left = 'calc(' + firstPct + '% - 5px)';
+    firstIndent.title = 'First Line Indent: ' + rulerIndents.first.toFixed(2) + '"';
+    setupIndentDrag(firstIndent, 'first', rulerInner);
+    rulerInner.appendChild(firstIndent);
+
+    // Hanging indent handle (bottom triangle on left)
+    const hangingIndent = document.createElement('div');
+    hangingIndent.className = 'ruler-handle ruler-handle-indent ruler-handle-hanging-indent';
+    hangingIndent.id = 'ruler-hanging-indent';
+    const hangPct = ((margin + rulerIndents.left) / pageW) * 100;
+    hangingIndent.style.left = 'calc(' + hangPct + '% - 5px)';
+    hangingIndent.title = 'Hanging Indent: ' + rulerIndents.left.toFixed(2) + '"';
+    setupIndentDrag(hangingIndent, 'left', rulerInner);
+    rulerInner.appendChild(hangingIndent);
+
+    // Left indent handle (rectangle below hanging)
+    const leftIndent = document.createElement('div');
+    leftIndent.className = 'ruler-handle ruler-handle-indent ruler-handle-left-indent';
+    leftIndent.id = 'ruler-left-indent';
+    leftIndent.style.left = 'calc(' + hangPct + '% - 5px)';
+    leftIndent.title = 'Left Indent (moves both): ' + rulerIndents.left.toFixed(2) + '"';
+    setupIndentDrag(leftIndent, 'leftBoth', rulerInner);
+    rulerInner.appendChild(leftIndent);
+
+    // Right indent handle (bottom triangle on right)
+    const rightIndent = document.createElement('div');
+    rightIndent.className = 'ruler-handle ruler-handle-indent ruler-handle-right-indent';
+    rightIndent.id = 'ruler-right-indent';
+    const rightPct = ((pageW - rulerMargins.right - rulerIndents.right) / pageW) * 100;
+    rightIndent.style.left = 'calc(' + rightPct + '% - 5px)';
+    rightIndent.title = 'Right Indent: ' + rulerIndents.right.toFixed(2) + '"';
+    setupIndentDrag(rightIndent, 'right', rulerInner);
+    rulerInner.appendChild(rightIndent);
+  }
+
+  function setupIndentDrag(handle, type, rulerInner) {
+    let dragging = false;
+
+    handle.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dragging = true;
+      handle.setPointerCapture(e.pointerId);
+    });
+
+    handle.addEventListener('pointermove', (e) => {
+      if (!dragging)
+        return;
+      const pageW = getPageWidthInches();
+      const margin = rulerMargins.left;
+      const rulerRect = rulerInner.getBoundingClientRect();
+      const x = e.clientX - rulerRect.left;
+      const inchPos = (x / rulerRect.width) * pageW;
+      // Snap to 1/8 inch
+      const snapped = Math.round(inchPos * 8) / 8;
+
+      if (type === 'first') {
+        rulerIndents.first = Math.max(-margin, Math.min(pageW - margin - rulerMargins.right, snapped - margin));
+        const pct = ((margin + rulerIndents.first) / pageW) * 100;
+        handle.style.left = 'calc(' + pct + '% - 5px)';
+        handle.title = 'First Line Indent: ' + rulerIndents.first.toFixed(2) + '"';
+      } else if (type === 'left') {
+        rulerIndents.left = Math.max(0, Math.min(pageW - margin - rulerMargins.right, snapped - margin));
+        const pct = ((margin + rulerIndents.left) / pageW) * 100;
+        handle.style.left = 'calc(' + pct + '% - 5px)';
+        // Also move the left indent rectangle
+        const leftIndent = document.getElementById('ruler-left-indent');
+        if (leftIndent)
+          leftIndent.style.left = 'calc(' + pct + '% - 5px)';
+        handle.title = 'Hanging Indent: ' + rulerIndents.left.toFixed(2) + '"';
+      } else if (type === 'leftBoth') {
+        // Move both first-line and hanging together
+        const oldLeft = rulerIndents.left;
+        const diff = rulerIndents.first - oldLeft;
+        rulerIndents.left = Math.max(0, Math.min(pageW - margin - rulerMargins.right, snapped - margin));
+        rulerIndents.first = rulerIndents.left + diff;
+        const pct = ((margin + rulerIndents.left) / pageW) * 100;
+        handle.style.left = 'calc(' + pct + '% - 5px)';
+        // Move hanging indent handle
+        const hangHandle = document.getElementById('ruler-hanging-indent');
+        if (hangHandle)
+          hangHandle.style.left = 'calc(' + pct + '% - 5px)';
+        // Move first-line indent handle
+        const firstHandle = document.getElementById('ruler-first-indent');
+        if (firstHandle) {
+          const firstPct = ((margin + rulerIndents.first) / pageW) * 100;
+          firstHandle.style.left = 'calc(' + firstPct + '% - 5px)';
+        }
+        handle.title = 'Left Indent (both): ' + rulerIndents.left.toFixed(2) + '"';
+      } else if (type === 'right') {
+        const fromRight = pageW - snapped;
+        rulerIndents.right = Math.max(0, Math.min(pageW - margin - rulerMargins.right, fromRight - rulerMargins.right));
+        const rightPct = ((pageW - rulerMargins.right - rulerIndents.right) / pageW) * 100;
+        handle.style.left = 'calc(' + rightPct + '% - 5px)';
+        handle.title = 'Right Indent: ' + rulerIndents.right.toFixed(2) + '"';
+      }
+    });
+
+    handle.addEventListener('pointerup', (e) => {
+      if (!dragging)
+        return;
+      dragging = false;
+      handle.releasePointerCapture(e.pointerId);
+      applyIndentsToSelection();
+    });
+  }
+
+  function applyIndentsToSelection() {
+    const block = getSelectedBlock();
+    if (!block)
+      return;
+    block.style.marginLeft = rulerIndents.left > 0 ? rulerIndents.left + 'in' : '';
+    block.style.marginRight = rulerIndents.right > 0 ? rulerIndents.right + 'in' : '';
+    block.style.textIndent = rulerIndents.first !== 0 ? rulerIndents.first + 'in' : '';
+    markDirty();
+  }
+
+  function updateIndentHandlesForSelection() {
+    const block = getSelectedBlock();
+    if (!block) return;
+
+    const cs = window.getComputedStyle(block);
+    const marginLeft = parseFloat(cs.marginLeft) || 0;
+    const marginRight = parseFloat(cs.marginRight) || 0;
+    const textIndent = parseFloat(cs.textIndent) || 0;
+
+    // Convert px to inches
+    rulerIndents.left = marginLeft / DPI;
+    rulerIndents.right = marginRight / DPI;
+    rulerIndents.first = textIndent / DPI;
+
+    // Update handle positions
+    const pageW = getPageWidthInches();
+    const margin = rulerMargins.left;
+
+    const firstHandle = document.getElementById('ruler-first-indent');
+    const hangHandle = document.getElementById('ruler-hanging-indent');
+    const leftHandle = document.getElementById('ruler-left-indent');
+    const rightHandle = document.getElementById('ruler-right-indent');
+
+    if (firstHandle) {
+      const pct = ((margin + rulerIndents.first + rulerIndents.left) / pageW) * 100;
+      firstHandle.style.left = 'calc(' + pct + '% - 5px)';
+      firstHandle.title = 'First Line Indent: ' + (rulerIndents.first).toFixed(2) + '"';
+    }
+    if (hangHandle) {
+      const pct = ((margin + rulerIndents.left) / pageW) * 100;
+      hangHandle.style.left = 'calc(' + pct + '% - 5px)';
+      hangHandle.title = 'Hanging Indent: ' + rulerIndents.left.toFixed(2) + '"';
+    }
+    if (leftHandle) {
+      const pct = ((margin + rulerIndents.left) / pageW) * 100;
+      leftHandle.style.left = 'calc(' + pct + '% - 5px)';
+    }
+    if (rightHandle) {
+      const rightPct = ((pageW - rulerMargins.right - rulerIndents.right) / pageW) * 100;
+      rightHandle.style.left = 'calc(' + rightPct + '% - 5px)';
+      rightHandle.title = 'Right Indent: ' + rulerIndents.right.toFixed(2) + '"';
+    }
+  }
+
+  function renderVerticalRuler() {
+    const vRuler = document.getElementById('ruler-vertical');
+    const viewRulerCheck = document.getElementById('view-ruler');
+    if (!vRuler || !viewRulerCheck || !viewRulerCheck.checked)
+      return;
+
+    vRuler.innerHTML = '';
+
+    const pageSizeVal = document.getElementById('rb-page-size').value;
+    const orientVal = document.getElementById('rb-page-orient').value;
+    const sizes = {
+      a4: { w: 210 / 25.4, h: 297 / 25.4 },
+      letter: { w: 8.5, h: 11 },
+      legal: { w: 8.5, h: 14 },
+      custom: { w: 8.5, h: 11 }
+    };
+    const size = sizes[pageSizeVal] || sizes.letter;
+    const pageH = orientVal === 'landscape' ? size.w : size.h;
+
+    const topMarginInch = getMarginInches('top');
+    const botMarginInch = getMarginInches('bottom');
+
+    // Draw margin regions
+    const topPct = (topMarginInch / pageH) * 100;
+    const botPct = (botMarginInch / pageH) * 100;
+
+    const topMargin = document.createElement('div');
+    topMargin.style.cssText = 'position:absolute;top:0;left:0;right:0;height:' + topPct + '%;background:var(--sz-color-button-face);';
+    vRuler.appendChild(topMargin);
+
+    const botMargin = document.createElement('div');
+    botMargin.style.cssText = 'position:absolute;bottom:0;left:0;right:0;height:' + botPct + '%;background:var(--sz-color-button-face);';
+    vRuler.appendChild(botMargin);
+
+    // Content track
+    const track = document.createElement('div');
+    track.style.cssText = 'position:absolute;top:' + topPct + '%;bottom:' + botPct + '%;left:0;right:0;background:#fff;border-top:1px solid var(--sz-color-button-shadow);border-bottom:1px solid var(--sz-color-button-shadow);';
+    vRuler.appendChild(track);
+
+    // Tick marks
+    const eighthInch = 1 / 8;
+    for (let i = 0; i <= pageH / eighthInch; ++i) {
+      const inches = i * eighthInch;
+      if (inches > pageH)
+        break;
+      const pct = (inches / pageH) * 100;
+      const tick = document.createElement('div');
+      tick.className = 'ruler-tick';
+      tick.style.top = pct + '%';
+      tick.style.right = '0';
+      tick.style.left = 'auto';
+      tick.style.bottom = 'auto';
+      tick.style.height = '1px';
+
+      if (i % 8 === 0) {
+        tick.style.width = '10px';
+        tick.style.opacity = '0.7';
+        if (inches > 0 && inches < pageH) {
+          const label = document.createElement('div');
+          label.style.cssText = 'position:absolute;left:1px;top:' + pct + '%;font-size:7px;color:var(--sz-color-button-text);transform:translateY(-50%);pointer-events:none;opacity:0.7;';
+          label.textContent = Math.round(inches);
+          vRuler.appendChild(label);
+        }
+      } else if (i % 4 === 0) {
+        tick.style.width = '7px';
+        tick.style.opacity = '0.5';
+      } else if (i % 2 === 0) {
+        tick.style.width = '4px';
+        tick.style.opacity = '0.35';
+      } else {
+        tick.style.width = '3px';
+        tick.style.opacity = '0.25';
+      }
+
+      vRuler.appendChild(tick);
+    }
+  }
+
+  function updateTabMarkersForSelection(rulerInner) {
     const sel = window.getSelection();
     if (!sel.rangeCount) {
-      clearTabMarkers(ruler);
+      clearTabMarkers(rulerInner);
       return;
     }
     let container = sel.focusNode;
@@ -3176,11 +4345,11 @@
         if (raw) tabStops = JSON.parse(raw);
       } catch (ex) { /* ignore */ }
     }
-    renderTabMarkers(ruler, tabStops);
+    renderTabMarkers(rulerInner, tabStops);
   }
 
-  function clearTabMarkers(ruler) {
-    for (const m of ruler.querySelectorAll('.wp-tab-marker'))
+  function clearTabMarkers(rulerInner) {
+    for (const m of rulerInner.querySelectorAll('.wp-tab-marker'))
       m.remove();
   }
 
@@ -3203,65 +4372,86 @@
     markDirty();
   }
 
-  function renderTabMarkers(ruler, tabStops) {
-    clearTabMarkers(ruler);
+  function renderTabMarkers(rulerInner, tabStops) {
+    clearTabMarkers(rulerInner);
+    const pageW = getPageWidthInches();
+    const margin = rulerMargins.left;
+    const contentW = pageW - margin - rulerMargins.right;
+
     for (const ts of tabStops) {
       const marker = document.createElement('div');
       marker.className = 'wp-tab-marker';
       marker.setAttribute('data-tab-type', ts.type);
-      marker.style.left = ts.position + '%';
-      marker.title = ts.type.charAt(0).toUpperCase() + ts.type.slice(1) + ' tab at ' + ts.position + '%'
+      // Convert percentage of content width back to percentage of full ruler
+      const absoluteInches = margin + (ts.position / 100) * contentW;
+      const pct = (absoluteInches / pageW) * 100;
+      marker.style.left = pct + '%';
+      marker.title = ts.type.charAt(0).toUpperCase() + ts.type.slice(1)
+        + ' tab at ' + absoluteInches.toFixed(2) + '"'
         + (ts.leader && ts.leader !== 'none' ? ' (' + ts.leader + ')' : '');
 
       // Drag to reposition / drag off ruler to remove
-      marker.setAttribute('draggable', 'true');
-      marker.addEventListener('dragstart', (e) => {
-        e.dataTransfer.setData('text/plain', ts.position + '|' + ts.type);
-        e.dataTransfer.effectAllowed = 'move';
+      let markerDragging = false;
+
+      marker.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        markerDragging = true;
+        marker.setPointerCapture(e.pointerId);
       });
-      marker.addEventListener('drag', (e) => {
-        // Visual feedback while dragging
-        if (e.clientY === 0 && e.clientX === 0) return; // Ignore final drag event at 0,0
-        const rulerRect = ruler.getBoundingClientRect();
-        const isOutsideRuler = e.clientY < rulerRect.top - 20 || e.clientY > rulerRect.bottom + 20;
-        marker.style.opacity = isOutsideRuler ? '0.3' : '1';
+
+      marker.addEventListener('pointermove', (e) => {
+        if (!markerDragging)
+          return;
+        const rulerRect = rulerInner.getBoundingClientRect();
+        const isOutside = e.clientY < rulerRect.top - 20 || e.clientY > rulerRect.bottom + 20;
+        marker.style.opacity = isOutside ? '0.3' : '1';
+        if (!isOutside) {
+          const x = e.clientX - rulerRect.left;
+          const newInch = (x / rulerRect.width) * pageW;
+          const newPct = ((newInch / pageW) * 100);
+          marker.style.left = newPct + '%';
+        }
       });
-      marker.addEventListener('dragend', (e) => {
-        const rulerRect = ruler.getBoundingClientRect();
-        const isOutsideRuler = e.clientY < rulerRect.top - 20 || e.clientY > rulerRect.bottom + 20;
-        if (isOutsideRuler) {
-          // Remove the tab stop (dragged off ruler)
+
+      marker.addEventListener('pointerup', (e) => {
+        if (!markerDragging)
+          return;
+        markerDragging = false;
+        marker.releasePointerCapture(e.pointerId);
+
+        const rulerRect = rulerInner.getBoundingClientRect();
+        const isOutside = e.clientY < rulerRect.top - 20 || e.clientY > rulerRect.bottom + 20;
+        if (isOutside) {
           const removeIdx = tabStops.findIndex(t => t.position === ts.position && t.type === ts.type);
           if (removeIdx >= 0) tabStops.splice(removeIdx, 1);
           syncTabStopsToBlock(tabStops);
           marker.remove();
         } else {
-          // Reposition the tab stop
-          const newX = e.clientX - rulerRect.left;
-          const newPercent = Math.round(Math.max(0, Math.min(100, (newX / rulerRect.width) * 100)) * 10) / 10;
-          ts.position = newPercent;
+          const x = e.clientX - rulerRect.left;
+          const newInch = Math.round(((x / rulerRect.width) * pageW) * 8) / 8; // snap to 1/8 inch
+          const newPct = Math.round(Math.max(0, Math.min(100, ((newInch - margin) / contentW) * 100)) * 10) / 10;
+          ts.position = newPct;
           tabStops.sort((a, b) => a.position - b.position);
           syncTabStopsToBlock(tabStops);
-          renderTabMarkers(ruler, tabStops);
+          renderTabMarkers(rulerInner, tabStops);
         }
       });
 
-      // Prevent click propagation so ruler click doesn't add a new tab
-      marker.addEventListener('click', (e) => {
-        e.stopPropagation();
-      });
+      // Prevent click propagation
+      marker.addEventListener('click', (e) => e.stopPropagation());
 
-      // Double-click to open tab stop properties dialog
+      // Double-click to edit tab stop properties
       marker.addEventListener('dblclick', (e) => {
         e.stopPropagation();
-        showTabStopDialog(ts, tabStops, ruler);
+        showTabStopDialog(ts, tabStops, rulerInner);
       });
 
-      ruler.appendChild(marker);
+      rulerInner.appendChild(marker);
     }
   }
 
-  function showTabStopDialog(tabStop, tabStops, ruler) {
+  function showTabStopDialog(tabStop, tabStops, rulerInner) {
     const typeChoice = prompt(
       'Tab Stop at ' + tabStop.position + '%\n\n'
       + 'Type (enter number):\n'
@@ -3284,7 +4474,7 @@
       const removeIdx = tabStops.findIndex(t => t.position === tabStop.position && t.type === tabStop.type);
       if (removeIdx >= 0) tabStops.splice(removeIdx, 1);
       syncTabStopsToBlock(tabStops);
-      renderTabMarkers(ruler, tabStops);
+      renderTabMarkers(rulerInner, tabStops);
       return;
     }
 
@@ -3302,7 +4492,7 @@
     }
 
     syncTabStopsToBlock(tabStops);
-    renderTabMarkers(ruler, tabStops);
+    renderTabMarkers(rulerInner, tabStops);
   }
 
   // Handle Tab key in editor to use custom tab stops
@@ -3310,7 +4500,21 @@
     if (e.key !== 'Tab')
       return;
 
+    // Multilevel list Tab/Shift+Tab for promote/demote
     const sel = window.getSelection();
+    if (sel.rangeCount) {
+      let mlNode = sel.focusNode;
+      if (mlNode && mlNode.nodeType === 3) mlNode = mlNode.parentElement;
+      if (mlNode && mlNode.closest('.wp-multilevel li')) {
+        e.preventDefault();
+        if (e.shiftKey)
+          TocFootnotes.promoteListItem();
+        else
+          TocFootnotes.demoteListItem();
+        return;
+      }
+    }
+
     if (!sel.rangeCount)
       return;
     let container = sel.focusNode;
@@ -3853,6 +5057,10 @@
   // Start MutationObserver for auto-refresh nav pane
   navObserver.observe(editor, { childList: true, subtree: true, characterData: true });
 
+  // Start MutationObserver for auto page layout updates
+  _pageLayoutObserver.observe(editor, { childList: true, subtree: true, characterData: true });
+
   applyPageSetup();
+  updatePageBreakIndicators();
   editor.focus();
 })();

@@ -262,12 +262,21 @@
     // Rebuild sequence counters first (order-dependent)
     rebuildSequenceCounters();
 
-    // Update non-SEQ fields
+    // Update non-SEQ fields in main editor and header/footer editors
     const fields = _editor.querySelectorAll('.wp-field');
     for (const field of fields) {
       const type = field.getAttribute('data-field-type');
       if (type === 'SEQ')
         continue; // already handled
+      field.textContent = evaluateField(field);
+    }
+
+    // Also update fields inside header/footer editors (which are children of the editor)
+    const hfEditors = _editor.querySelectorAll('.wp-header-editor .wp-field, .wp-footer-editor .wp-field');
+    for (const field of hfEditors) {
+      const type = field.getAttribute('data-field-type');
+      if (type === 'SEQ')
+        continue;
       field.textContent = evaluateField(field);
     }
   }

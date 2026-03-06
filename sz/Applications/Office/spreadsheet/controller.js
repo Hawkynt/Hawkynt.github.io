@@ -62,6 +62,147 @@
       border: { style: 'thin', color: '#c00000' } },
   ];
 
+  // ── Formula autocomplete catalog ──────────────────────────────────
+  const AC_FUNCTION_CATALOG = [
+    // Math & Trig
+    { name: 'SUM', description: 'Adds all numbers in a range', syntax: 'SUM(number1, [number2], ...)' },
+    { name: 'SUMIF', description: 'Adds cells that meet a condition', syntax: 'SUMIF(range, criteria, [sum_range])' },
+    { name: 'SUMIFS', description: 'Adds cells that meet multiple conditions', syntax: 'SUMIFS(sum_range, range1, criteria1, ...)' },
+    { name: 'SUMPRODUCT', description: 'Returns sum of element-wise products', syntax: 'SUMPRODUCT(array1, [array2], ...)' },
+    { name: 'PRODUCT', description: 'Multiplies all numbers in a range', syntax: 'PRODUCT(number1, [number2], ...)' },
+    { name: 'ABS', description: 'Returns the absolute value', syntax: 'ABS(number)' },
+    { name: 'SQRT', description: 'Returns the square root', syntax: 'SQRT(number)' },
+    { name: 'POWER', description: 'Returns number raised to a power', syntax: 'POWER(number, power)' },
+    { name: 'MOD', description: 'Returns the remainder after division', syntax: 'MOD(number, divisor)' },
+    { name: 'ROUND', description: 'Rounds to a specified number of digits', syntax: 'ROUND(number, num_digits)' },
+    { name: 'ROUNDUP', description: 'Rounds a number up', syntax: 'ROUNDUP(number, num_digits)' },
+    { name: 'ROUNDDOWN', description: 'Rounds a number down', syntax: 'ROUNDDOWN(number, num_digits)' },
+    { name: 'CEILING', description: 'Rounds up to the nearest multiple', syntax: 'CEILING(number, significance)' },
+    { name: 'FLOOR', description: 'Rounds down to the nearest multiple', syntax: 'FLOOR(number, significance)' },
+    { name: 'INT', description: 'Rounds down to the nearest integer', syntax: 'INT(number)' },
+    { name: 'SIGN', description: 'Returns the sign of a number', syntax: 'SIGN(number)' },
+    { name: 'TRUNC', description: 'Truncates a number to an integer', syntax: 'TRUNC(number, [num_digits])' },
+    { name: 'RAND', description: 'Returns a random number between 0 and 1', syntax: 'RAND()' },
+    { name: 'RANDBETWEEN', description: 'Returns a random integer between limits', syntax: 'RANDBETWEEN(bottom, top)' },
+    { name: 'PI', description: 'Returns the value of Pi', syntax: 'PI()' },
+    { name: 'SIN', description: 'Returns the sine of an angle', syntax: 'SIN(number)' },
+    { name: 'COS', description: 'Returns the cosine of an angle', syntax: 'COS(number)' },
+    { name: 'TAN', description: 'Returns the tangent of an angle', syntax: 'TAN(number)' },
+    { name: 'LOG', description: 'Returns logarithm of a number', syntax: 'LOG(number, [base])' },
+    { name: 'LN', description: 'Returns the natural logarithm', syntax: 'LN(number)' },
+    { name: 'EXP', description: 'Returns e raised to a power', syntax: 'EXP(number)' },
+    { name: 'FACT', description: 'Returns the factorial', syntax: 'FACT(number)' },
+    { name: 'GCD', description: 'Returns the greatest common divisor', syntax: 'GCD(number1, number2, ...)' },
+    { name: 'LCM', description: 'Returns the least common multiple', syntax: 'LCM(number1, number2, ...)' },
+    // Statistical
+    { name: 'AVERAGE', description: 'Returns the arithmetic mean', syntax: 'AVERAGE(number1, [number2], ...)' },
+    { name: 'AVERAGEIF', description: 'Averages cells that meet a condition', syntax: 'AVERAGEIF(range, criteria, [average_range])' },
+    { name: 'MEDIAN', description: 'Returns the median value', syntax: 'MEDIAN(number1, [number2], ...)' },
+    { name: 'MODE', description: 'Returns the most frequent value', syntax: 'MODE(number1, [number2], ...)' },
+    { name: 'MIN', description: 'Returns the smallest value', syntax: 'MIN(number1, [number2], ...)' },
+    { name: 'MAX', description: 'Returns the largest value', syntax: 'MAX(number1, [number2], ...)' },
+    { name: 'COUNT', description: 'Counts cells containing numbers', syntax: 'COUNT(value1, [value2], ...)' },
+    { name: 'COUNTA', description: 'Counts non-empty cells', syntax: 'COUNTA(value1, [value2], ...)' },
+    { name: 'COUNTBLANK', description: 'Counts empty cells in a range', syntax: 'COUNTBLANK(range)' },
+    { name: 'COUNTIF', description: 'Counts cells that meet a condition', syntax: 'COUNTIF(range, criteria)' },
+    { name: 'COUNTIFS', description: 'Counts cells meeting multiple conditions', syntax: 'COUNTIFS(range1, criteria1, ...)' },
+    { name: 'STDEV', description: 'Estimates standard deviation of a sample', syntax: 'STDEV(number1, [number2], ...)' },
+    { name: 'VAR', description: 'Estimates variance of a sample', syntax: 'VAR(number1, [number2], ...)' },
+    { name: 'LARGE', description: 'Returns the k-th largest value', syntax: 'LARGE(array, k)' },
+    { name: 'SMALL', description: 'Returns the k-th smallest value', syntax: 'SMALL(array, k)' },
+    { name: 'RANK', description: 'Returns the rank of a number in a list', syntax: 'RANK(number, ref, [order])' },
+    { name: 'PERCENTILE', description: 'Returns the k-th percentile', syntax: 'PERCENTILE(array, k)' },
+    { name: 'CORREL', description: 'Returns the correlation coefficient', syntax: 'CORREL(array1, array2)' },
+    { name: 'FORECAST', description: 'Predicts a future value using linear regression', syntax: 'FORECAST(x, known_ys, known_xs)' },
+    // Lookup & Reference
+    { name: 'VLOOKUP', description: 'Searches first column and returns a value', syntax: 'VLOOKUP(lookup_value, table_array, col_index, [range_lookup])' },
+    { name: 'HLOOKUP', description: 'Searches first row and returns a value', syntax: 'HLOOKUP(lookup_value, table_array, row_index, [range_lookup])' },
+    { name: 'XLOOKUP', description: 'Searches a range and returns a match', syntax: 'XLOOKUP(lookup_value, lookup_array, return_array, [if_not_found])' },
+    { name: 'INDEX', description: 'Returns a value at a row and column in a range', syntax: 'INDEX(array, row_num, [col_num])' },
+    { name: 'MATCH', description: 'Returns the position of a value in a range', syntax: 'MATCH(lookup_value, lookup_array, [match_type])' },
+    { name: 'XMATCH', description: 'Returns the position of a value (extended)', syntax: 'XMATCH(lookup_value, lookup_array, [match_mode])' },
+    { name: 'INDIRECT', description: 'Returns a reference specified by a text string', syntax: 'INDIRECT(ref_text)' },
+    { name: 'OFFSET', description: 'Returns a reference offset from a starting point', syntax: 'OFFSET(reference, rows, cols, [height], [width])' },
+    { name: 'ADDRESS', description: 'Returns a cell address as text', syntax: 'ADDRESS(row_num, col_num, [abs_num])' },
+    { name: 'ROW', description: 'Returns the row number of a reference', syntax: 'ROW([reference])' },
+    { name: 'COLUMN', description: 'Returns the column number of a reference', syntax: 'COLUMN([reference])' },
+    { name: 'ROWS', description: 'Returns the number of rows in a reference', syntax: 'ROWS(array)' },
+    { name: 'COLUMNS', description: 'Returns the number of columns in a reference', syntax: 'COLUMNS(array)' },
+    { name: 'TRANSPOSE', description: 'Transposes rows and columns of an array', syntax: 'TRANSPOSE(array)' },
+    { name: 'FILTER', description: 'Filters data based on criteria', syntax: 'FILTER(array, include, [if_empty])' },
+    { name: 'SORT', description: 'Sorts the contents of a range', syntax: 'SORT(array, [sort_index], [sort_order])' },
+    { name: 'UNIQUE', description: 'Returns unique values from a range', syntax: 'UNIQUE(array)' },
+    // Text
+    { name: 'CONCATENATE', description: 'Joins several text strings into one', syntax: 'CONCATENATE(text1, [text2], ...)' },
+    { name: 'TEXTJOIN', description: 'Joins text with a delimiter', syntax: 'TEXTJOIN(delimiter, ignore_empty, text1, ...)' },
+    { name: 'LEFT', description: 'Returns leftmost characters from a string', syntax: 'LEFT(text, [num_chars])' },
+    { name: 'RIGHT', description: 'Returns rightmost characters from a string', syntax: 'RIGHT(text, [num_chars])' },
+    { name: 'MID', description: 'Returns characters from the middle of a string', syntax: 'MID(text, start_num, num_chars)' },
+    { name: 'LEN', description: 'Returns the number of characters', syntax: 'LEN(text)' },
+    { name: 'FIND', description: 'Finds text within another (case-sensitive)', syntax: 'FIND(find_text, within_text, [start_num])' },
+    { name: 'SEARCH', description: 'Finds text within another (case-insensitive)', syntax: 'SEARCH(find_text, within_text, [start_num])' },
+    { name: 'SUBSTITUTE', description: 'Replaces occurrences of text', syntax: 'SUBSTITUTE(text, old_text, new_text, [instance])' },
+    { name: 'TRIM', description: 'Removes extra spaces from text', syntax: 'TRIM(text)' },
+    { name: 'UPPER', description: 'Converts text to uppercase', syntax: 'UPPER(text)' },
+    { name: 'LOWER', description: 'Converts text to lowercase', syntax: 'LOWER(text)' },
+    { name: 'PROPER', description: 'Capitalizes the first letter of each word', syntax: 'PROPER(text)' },
+    { name: 'TEXT', description: 'Formats a number as text with a format', syntax: 'TEXT(value, format_text)' },
+    { name: 'VALUE', description: 'Converts text to a number', syntax: 'VALUE(text)' },
+    { name: 'CLEAN', description: 'Removes non-printable characters', syntax: 'CLEAN(text)' },
+    { name: 'REPT', description: 'Repeats text a given number of times', syntax: 'REPT(text, number_times)' },
+    { name: 'EXACT', description: 'Checks whether two strings are identical', syntax: 'EXACT(text1, text2)' },
+    // Logical
+    { name: 'IF', description: 'Returns one value if true, another if false', syntax: 'IF(logical_test, value_if_true, [value_if_false])' },
+    { name: 'IFS', description: 'Checks multiple conditions in sequence', syntax: 'IFS(condition1, value1, [condition2, value2], ...)' },
+    { name: 'IFERROR', description: 'Returns a value if no error, else an alternate', syntax: 'IFERROR(value, value_if_error)' },
+    { name: 'IFNA', description: 'Returns a value if not #N/A, else an alternate', syntax: 'IFNA(value, value_if_na)' },
+    { name: 'AND', description: 'Returns TRUE if all arguments are true', syntax: 'AND(logical1, [logical2], ...)' },
+    { name: 'OR', description: 'Returns TRUE if any argument is true', syntax: 'OR(logical1, [logical2], ...)' },
+    { name: 'NOT', description: 'Reverses the logic of its argument', syntax: 'NOT(logical)' },
+    { name: 'SWITCH', description: 'Evaluates an expression against a list of values', syntax: 'SWITCH(expression, value1, result1, ...)' },
+    { name: 'CHOOSE', description: 'Returns a value from a list based on index', syntax: 'CHOOSE(index_num, value1, [value2], ...)' },
+    // Date & Time
+    { name: 'NOW', description: 'Returns the current date and time', syntax: 'NOW()' },
+    { name: 'TODAY', description: 'Returns the current date', syntax: 'TODAY()' },
+    { name: 'DATE', description: 'Returns a date from year, month, day', syntax: 'DATE(year, month, day)' },
+    { name: 'TIME', description: 'Returns a time from hour, minute, second', syntax: 'TIME(hour, minute, second)' },
+    { name: 'YEAR', description: 'Returns the year of a date', syntax: 'YEAR(serial_number)' },
+    { name: 'MONTH', description: 'Returns the month of a date', syntax: 'MONTH(serial_number)' },
+    { name: 'DAY', description: 'Returns the day of a date', syntax: 'DAY(serial_number)' },
+    { name: 'HOUR', description: 'Returns the hour of a time', syntax: 'HOUR(serial_number)' },
+    { name: 'MINUTE', description: 'Returns the minute of a time', syntax: 'MINUTE(serial_number)' },
+    { name: 'WEEKDAY', description: 'Returns the day of the week', syntax: 'WEEKDAY(serial_number, [return_type])' },
+    { name: 'EOMONTH', description: 'Returns the last day of the month', syntax: 'EOMONTH(start_date, months)' },
+    { name: 'EDATE', description: 'Returns a date offset by months', syntax: 'EDATE(start_date, months)' },
+    { name: 'DATEDIF', description: 'Calculates the difference between two dates', syntax: 'DATEDIF(start_date, end_date, unit)' },
+    { name: 'NETWORKDAYS', description: 'Returns working days between two dates', syntax: 'NETWORKDAYS(start_date, end_date, [holidays])' },
+    // Information
+    { name: 'ISNUMBER', description: 'Returns TRUE if the value is a number', syntax: 'ISNUMBER(value)' },
+    { name: 'ISTEXT', description: 'Returns TRUE if the value is text', syntax: 'ISTEXT(value)' },
+    { name: 'ISBLANK', description: 'Returns TRUE if the cell is empty', syntax: 'ISBLANK(value)' },
+    { name: 'ISERROR', description: 'Returns TRUE if the value is an error', syntax: 'ISERROR(value)' },
+    { name: 'TYPE', description: 'Returns a number indicating the data type', syntax: 'TYPE(value)' },
+    // Financial
+    { name: 'PMT', description: 'Calculates the payment for a loan', syntax: 'PMT(rate, nper, pv, [fv], [type])' },
+    { name: 'PV', description: 'Returns the present value of an investment', syntax: 'PV(rate, nper, pmt, [fv], [type])' },
+    { name: 'FV', description: 'Returns the future value of an investment', syntax: 'FV(rate, nper, pmt, [pv], [type])' },
+    { name: 'NPV', description: 'Returns the net present value', syntax: 'NPV(rate, value1, [value2], ...)' },
+    { name: 'IRR', description: 'Returns the internal rate of return', syntax: 'IRR(values, [guess])' },
+    // Conversion
+    { name: 'CONVERT', description: 'Converts between measurement units', syntax: 'CONVERT(number, from_unit, to_unit)' },
+    { name: 'ROMAN', description: 'Converts a number to Roman numerals', syntax: 'ROMAN(number)' },
+    { name: 'ARABIC', description: 'Converts Roman numerals to a number', syntax: 'ARABIC(text)' },
+    { name: 'AGGREGATE', description: 'Returns an aggregate in a list or database', syntax: 'AGGREGATE(function_num, options, ref1, ...)' },
+    // Hyperlink
+    { name: 'HYPERLINK', description: 'Creates a clickable hyperlink', syntax: 'HYPERLINK(url, [friendly_name])' },
+    // Statistical Distributions
+    { name: 'NORM.DIST', description: 'Returns the normal distribution', syntax: 'NORM.DIST(x, mean, stddev, cumulative)' },
+    { name: 'NORM.INV', description: 'Returns the inverse of the normal distribution', syntax: 'NORM.INV(probability, mean, stddev)' },
+    { name: 'T.DIST', description: 'Returns the Student t-distribution', syntax: 'T.DIST(x, degrees_freedom, tails)' },
+    { name: 'POISSON.DIST', description: 'Returns the Poisson distribution', syntax: 'POISSON.DIST(x, mean, cumulative)' },
+    { name: 'BINOM.DIST', description: 'Returns the binomial distribution', syntax: 'BINOM.DIST(successes, trials, probability, cumulative)' },
+  ];
+
   // ── Sheet state ────────────────────────────────────────────────────
   const sheets = [];
   let activeSheetIdx = 0;
@@ -154,6 +295,185 @@
 
   // ── Custom cell styles ────────────────────────────────────────────
   const customCellStyles = [];
+
+  // ── Comment threading ──────────────────────────────────────────────
+  const COMMENT_THREADS = new Map();
+
+  function addCellComment(cellRef, text) {
+    if (!text || !text.trim()) return;
+    if (!COMMENT_THREADS.has(cellRef))
+      COMMENT_THREADS.set(cellRef, []);
+    COMMENT_THREADS.get(cellRef).push({
+      author: 'User',
+      text: text.trim(),
+      timestamp: Date.now(),
+      replies: [],
+    });
+    // Also store in legacy comments for indicator rendering
+    S().comments[cellRef] = text.trim();
+    rebuildGrid();
+    setDirty(true);
+  }
+
+  function replyCellComment(cellRef, parentIndex, text) {
+    if (!text || !text.trim()) return;
+    const thread = COMMENT_THREADS.get(cellRef);
+    if (!thread || parentIndex < 0 || parentIndex >= thread.length) return;
+    thread[parentIndex].replies.push({
+      author: 'User',
+      text: text.trim(),
+      timestamp: Date.now(),
+    });
+    setDirty(true);
+  }
+
+  function deleteCellComment(cellRef, index) {
+    const thread = COMMENT_THREADS.get(cellRef);
+    if (!thread || index < 0 || index >= thread.length) return;
+    thread.splice(index, 1);
+    if (!thread.length) {
+      COMMENT_THREADS.delete(cellRef);
+      delete S().comments[cellRef];
+    } else
+      S().comments[cellRef] = thread[0].text;
+    rebuildGrid();
+    setDirty(true);
+  }
+
+  function showCommentPopup(cellRef) {
+    const existing = document.getElementById('comment-popup');
+    if (existing) existing.remove();
+
+    const popup = document.createElement('div');
+    popup.id = 'comment-popup';
+    popup.className = 'comment-popup';
+
+    const header = document.createElement('div');
+    header.className = 'comment-popup-header';
+    header.textContent = 'Comments: ' + cellRef;
+    const closeBtn = document.createElement('span');
+    closeBtn.className = 'comment-popup-close';
+    closeBtn.textContent = '\u00D7';
+    closeBtn.addEventListener('click', () => popup.remove());
+    header.appendChild(closeBtn);
+    popup.appendChild(header);
+
+    const threadEl = document.createElement('div');
+    threadEl.className = 'comment-thread';
+
+    const thread = COMMENT_THREADS.get(cellRef) || [];
+    for (let i = 0; i < thread.length; ++i) {
+      const entry = thread[i];
+      const entryEl = document.createElement('div');
+      entryEl.className = 'comment-entry';
+
+      const metaEl = document.createElement('div');
+      metaEl.className = 'comment-meta';
+      metaEl.textContent = entry.author + ' \u2022 ' + new Date(entry.timestamp).toLocaleString();
+      entryEl.appendChild(metaEl);
+
+      const textEl = document.createElement('div');
+      textEl.className = 'comment-text';
+      textEl.textContent = entry.text;
+      entryEl.appendChild(textEl);
+
+      const actionsEl = document.createElement('div');
+      actionsEl.className = 'comment-actions';
+
+      const replyBtn = document.createElement('button');
+      replyBtn.className = 'comment-action-btn';
+      replyBtn.textContent = 'Reply';
+      const idx = i;
+      replyBtn.addEventListener('click', () => {
+        const replyText = prompt('Reply:');
+        if (replyText) {
+          replyCellComment(cellRef, idx, replyText);
+          showCommentPopup(cellRef);
+        }
+      });
+      actionsEl.appendChild(replyBtn);
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'comment-action-btn';
+      deleteBtn.textContent = 'Delete';
+      deleteBtn.addEventListener('click', () => {
+        deleteCellComment(cellRef, idx);
+        if (COMMENT_THREADS.has(cellRef))
+          showCommentPopup(cellRef);
+        else
+          popup.remove();
+      });
+      actionsEl.appendChild(deleteBtn);
+      entryEl.appendChild(actionsEl);
+
+      // Render replies
+      for (const reply of entry.replies) {
+        const replyEl = document.createElement('div');
+        replyEl.className = 'comment-reply';
+        const rMeta = document.createElement('div');
+        rMeta.className = 'comment-meta';
+        rMeta.textContent = reply.author + ' \u2022 ' + new Date(reply.timestamp).toLocaleString();
+        replyEl.appendChild(rMeta);
+        const rText = document.createElement('div');
+        rText.className = 'comment-text';
+        rText.textContent = reply.text;
+        replyEl.appendChild(rText);
+        entryEl.appendChild(replyEl);
+      }
+
+      threadEl.appendChild(entryEl);
+    }
+
+    popup.appendChild(threadEl);
+
+    // Add new comment input
+    const addArea = document.createElement('div');
+    addArea.className = 'comment-add-area';
+    const addInput = document.createElement('input');
+    addInput.type = 'text';
+    addInput.className = 'comment-add-input';
+    addInput.placeholder = 'Add a comment...';
+    const addBtn = document.createElement('button');
+    addBtn.className = 'comment-action-btn';
+    addBtn.textContent = 'Add';
+    addBtn.addEventListener('click', () => {
+      if (addInput.value.trim()) {
+        addCellComment(cellRef, addInput.value);
+        showCommentPopup(cellRef);
+      }
+    });
+    addInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && addInput.value.trim()) {
+        addCellComment(cellRef, addInput.value);
+        showCommentPopup(cellRef);
+      }
+    });
+    addArea.appendChild(addInput);
+    addArea.appendChild(addBtn);
+    popup.appendChild(addArea);
+
+    // Position near active cell
+    const cellEl = getCellElement(activeCell.col, activeCell.row);
+    if (cellEl) {
+      const rect = cellEl.getBoundingClientRect();
+      popup.style.left = Math.min(rect.right + 4, window.innerWidth - 280) + 'px';
+      popup.style.top = Math.max(rect.top, 0) + 'px';
+    } else {
+      popup.style.right = '10px';
+      popup.style.top = '120px';
+    }
+
+    document.body.appendChild(popup);
+
+    // Close on click outside
+    const closeOnOutside = (ev) => {
+      if (!popup.contains(ev.target)) {
+        popup.remove();
+        document.removeEventListener('pointerdown', closeOnOutside, true);
+      }
+    };
+    setTimeout(() => document.addEventListener('pointerdown', closeOnOutside, true), 0);
+  }
 
   // ── DOM refs ───────────────────────────────────────────────────────
   const gridScroll = document.getElementById('grid-scroll');
@@ -380,6 +700,18 @@
 
   // ── Undo / Redo ─────────────────────────────────────────────────
   function pushUndo(action) {
+    if (!action.description) {
+      switch (action.type) {
+        case 'cell': action.description = 'Edit cell ' + cellKey(action.col, action.row); break;
+        case 'multi': action.description = 'Edit ' + action.actions.length + ' cells'; break;
+        case 'format': action.description = 'Format cells'; break;
+        case 'row-insert': action.description = 'Insert row'; break;
+        case 'col-insert': action.description = 'Insert column'; break;
+        case 'row-delete': action.description = 'Delete row'; break;
+        case 'col-delete': action.description = 'Delete column'; break;
+        default: action.description = 'Edit'; break;
+      }
+    }
     undoStack.push(action);
     if (undoStack.length > MAX_UNDO) undoStack.shift();
     redoStack.length = 0;
@@ -397,6 +729,75 @@
     const action = redoStack.pop();
     undoStack.push(action);
     applyUndoAction(action, true);
+  }
+
+  function showUndoHistory() {
+    const popup = document.getElementById('undo-history-popup');
+    if (!popup) return;
+    if (popup.style.display !== 'none') { popup.style.display = 'none'; return; }
+    if (!undoStack.length) return;
+
+    popup.innerHTML = '';
+    const maxItems = Math.min(undoStack.length, 20);
+    const items = [];
+    for (let i = undoStack.length - 1; i >= undoStack.length - maxItems; --i) {
+      const action = undoStack[i];
+      const div = document.createElement('div');
+      div.className = 'undo-history-item';
+      div.textContent = action.description || 'Edit';
+      div.dataset.index = i;
+      items.push(div);
+      popup.appendChild(div);
+    }
+
+    // Footer showing count of actions that would be undone
+    const footer = document.createElement('div');
+    footer.className = 'undo-history-footer';
+    footer.textContent = 'Undo 1 action';
+    popup.appendChild(footer);
+
+    // Hover: highlight hovered item AND all items above it (earlier in DOM = more recent)
+    for (let idx = 0; idx < items.length; ++idx) {
+      items[idx].addEventListener('pointerenter', () => {
+        for (let j = 0; j < items.length; ++j)
+          items[j].classList.toggle('highlight', j <= idx);
+        footer.textContent = 'Undo ' + (idx + 1) + ' action' + (idx > 0 ? 's' : '');
+      });
+    }
+
+    popup.addEventListener('pointerleave', () => {
+      for (const item of items) item.classList.remove('highlight');
+      footer.textContent = 'Undo 1 action';
+    });
+
+    // Click: undo all steps from top of stack down to (and including) clicked entry
+    for (let idx = 0; idx < items.length; ++idx) {
+      items[idx].addEventListener('pointerup', () => {
+        popup.style.display = 'none';
+        const count = idx + 1;
+        for (let n = 0; n < count; ++n) doUndo();
+        renderGrid();
+        updateSelectionDisplay();
+      });
+    }
+
+    // Position below the undo button
+    const btn = document.querySelector('[data-action="undo-history"]');
+    if (btn) {
+      const rect = btn.getBoundingClientRect();
+      popup.style.left = rect.left + 'px';
+      popup.style.top = rect.bottom + 'px';
+    }
+    popup.style.display = 'block';
+
+    // Dismiss on click outside
+    const dismiss = (e) => {
+      if (!popup.contains(e.target) && e.target.dataset.action !== 'undo-history') {
+        popup.style.display = 'none';
+        document.removeEventListener('pointerdown', dismiss, true);
+      }
+    };
+    setTimeout(() => document.addEventListener('pointerdown', dismiss, true), 0);
   }
 
   function applyUndoAction(action, isRedo) {
@@ -529,8 +930,16 @@
       updateCellDisplay(td, c, r);
       applyConditionalFormat(td, c, r);
       renderValidationDropdown(td, c, r);
-      if (S().comments[cellKey(c, r)]) td.classList.add('has-comment');
-      if (S().hyperlinks[cellKey(c, r)]) td.classList.add('has-hyperlink');
+      const ck = cellKey(c, r);
+      if (S().comments[ck]) {
+        td.classList.add('has-comment');
+        const thread = COMMENT_THREADS.get(ck);
+        if (thread && thread.length)
+          td.title = thread.map(e => e.author + ': ' + e.text).join('\n');
+        else
+          td.title = S().comments[ck];
+      }
+      if (S().hyperlinks[ck]) td.classList.add('has-hyperlink');
       PrintLayout.applyCellBreakIndicators(td, c, r);
       tr.appendChild(td);
     }
@@ -751,6 +1160,12 @@
     const err = getCellError(col, row);
     const fmt = getFormat(col, row);
     let display;
+
+    // Remove any existing hyperlink element
+    const existingLink = td.querySelector('.cell-hyperlink');
+    if (existingLink) existingLink.remove();
+    td.classList.remove('has-hyperlink-formula');
+
     if (showFormulas) {
       const raw = getCellRaw(col, row);
       // Show array formula braces
@@ -772,6 +1187,32 @@
           }
         }
       }
+
+      // Check for HYPERLINK formula result
+      if (typeof val === 'string' && val.startsWith('{') && val.includes('"type":"hyperlink"')) {
+        try {
+          const hlObj = JSON.parse(val);
+          if (hlObj && hlObj.type === 'hyperlink') {
+            const link = document.createElement('a');
+            link.className = 'cell-hyperlink';
+            link.href = hlObj.url;
+            link.textContent = hlObj.label || hlObj.url;
+            link.title = hlObj.url;
+            link.addEventListener('click', (e) => {
+              e.stopPropagation();
+              window.open(hlObj.url, '_blank');
+            });
+            td.textContent = '';
+            td.appendChild(link);
+            td.classList.add('has-hyperlink-formula');
+            td.classList.toggle('error', false);
+            return;
+          }
+        } catch (_ignored) {
+          // Not valid JSON, fall through
+        }
+      }
+
       display = err ? String(val) : formatDisplayValue(val, fmt);
       // Apply color from custom format
       if (fmt && fmt.customFormat) {
@@ -876,6 +1317,14 @@
     document.getElementById('sel-font-family').value = fmt.fontFamily || 'Tahoma, Verdana, sans-serif';
     document.getElementById('sel-number-format').value = fmt.numberFmt || 'general';
     document.getElementById('btn-show-formulas').classList.toggle('active', showFormulas);
+
+    // Update Lock/Unlock Cell label in the Format ribbon
+    const lockBtn = document.querySelector('[data-action="lock-cell"]');
+    if (lockBtn) {
+      const lockLabel = lockBtn.querySelector('.rb-label');
+      if (lockLabel)
+        lockLabel.textContent = Protection.isCellLocked(activeCell.col, activeCell.row) ? 'Unlock Cell' : 'Lock Cell';
+    }
   }
 
   function updateStatusSummary() {
@@ -920,8 +1369,9 @@
     td.appendChild(input);
     input.focus();
     formulaInput.value = input.value;
-    input.addEventListener('input', () => { formulaInput.value = input.value; });
+    input.addEventListener('input', () => { formulaInput.value = input.value; acShow(input); });
     input.addEventListener('keydown', (e) => {
+      if (acHandleKey(e)) return;
       if (e.key === 'Enter') {
         e.preventDefault();
         e.stopPropagation();
@@ -930,6 +1380,9 @@
         moveCursor(0, 1);
       } else if (e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); finishEditing(); moveCursor(e.shiftKey ? -1 : 1, 0); }
       else if (e.key === 'Escape') { e.preventDefault(); cancelEditing(); }
+    });
+    input.addEventListener('blur', () => {
+      setTimeout(() => { if (acTarget === input) acHide(); }, 150);
     });
     statusCell.textContent = 'Edit';
   }
@@ -1314,6 +1767,7 @@
 
     const td = e.target.closest('td.cell');
     if (!td) return;
+    e.preventDefault();
     const col = parseInt(td.dataset.col, 10), row = parseInt(td.dataset.row, 10);
     if (isEditing) finishEditing();
 
@@ -1388,6 +1842,7 @@
       menu.style.left = e.clientX + 'px';
       menu.style.top = e.clientY + 'px';
 
+      const isLocked = Protection.isCellLocked(col, row);
       const items = [
         { label: 'Cut', action: 'cut' },
         { label: 'Copy', action: 'copy' },
@@ -1407,6 +1862,12 @@
         { sep: true },
         { label: 'Sort A\u2192Z', action: 'sort-asc' },
         { label: 'Sort Z\u2192A', action: 'sort-desc' },
+        { sep: true },
+        { label: 'Format Cells...', action: 'format-cells' },
+        { label: isLocked ? 'Unlock Cell' : 'Lock Cell', action: 'lock-cell' },
+        { sep: true },
+        { label: 'Add Comment', action: 'add-comment' },
+        { label: 'Show Comments', action: 'show-comments' },
       ];
 
       for (const item of items) {
@@ -1537,6 +1998,157 @@
   formulaInput.addEventListener('focus', () => { statusCell.textContent = 'Edit'; });
   formulaInput.addEventListener('blur', () => { statusCell.textContent = 'Ready'; });
 
+  // ── Formula autocomplete ──────────────────────────────────────────
+  const acPopup = document.getElementById('formula-autocomplete');
+  let acItems = [];
+  let acIndex = -1;
+  let acTarget = null;
+
+  function acExtractPrefix(input) {
+    const val = input.value;
+    const pos = input.selectionStart;
+    if (!val.startsWith('=') || pos < 2)
+      return null;
+    // Walk backwards from cursor to find the start of a function name
+    let end = pos;
+    let start = end - 1;
+    while (start >= 0 && /[A-Za-z_]/.test(val[start]))
+      --start;
+    ++start;
+    if (start >= end)
+      return null;
+    // The character before the name must be = ( , + - * / ^ < > & or space (start of token context)
+    if (start > 0 && !/[=\(,+\-*\/^<>&\s]/.test(val[start - 1]))
+      return null;
+    return val.substring(start, end).toUpperCase();
+  }
+
+  function acBuildMatches(prefix) {
+    const results = [];
+    // Match functions
+    for (let i = 0; i < AC_FUNCTION_CATALOG.length; ++i)
+      if (AC_FUNCTION_CATALOG[i].name.startsWith(prefix))
+        results.push({ type: 'fn', name: AC_FUNCTION_CATALOG[i].name, desc: AC_FUNCTION_CATALOG[i].description, syntax: AC_FUNCTION_CATALOG[i].syntax });
+    // Match named ranges
+    const nr = S().namedRanges;
+    if (nr)
+      for (const name of Object.keys(nr))
+        if (name.toUpperCase().startsWith(prefix))
+          results.push({ type: 'nr', name, desc: 'Named range: ' + nr[name], syntax: '' });
+    return results.slice(0, 8);
+  }
+
+  function acRender() {
+    acPopup.innerHTML = '';
+    for (let i = 0; i < acItems.length; ++i) {
+      const div = document.createElement('div');
+      div.className = 'formula-ac-item' + (i === acIndex ? ' active' : '');
+      div.innerHTML = '<span class="formula-ac-name">' + acItems[i].name + '</span><span class="formula-ac-desc">' + acItems[i].desc + '</span>';
+      div.dataset.idx = i;
+      div.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        acAccept(+e.currentTarget.dataset.idx);
+      });
+      acPopup.appendChild(div);
+    }
+  }
+
+  function acShow(input) {
+    acTarget = input;
+    const prefix = acExtractPrefix(input);
+    if (!prefix || prefix.length < 1) {
+      acHide();
+      return;
+    }
+    acItems = acBuildMatches(prefix);
+    if (!acItems.length) {
+      acHide();
+      return;
+    }
+    acIndex = 0;
+    acRender();
+    // Position below the active input
+    const rect = input.getBoundingClientRect();
+    const containerRect = input.closest('.formula-bar') ? input.closest('.formula-bar').parentElement.getBoundingClientRect() : document.body.getBoundingClientRect();
+    acPopup.style.left = (rect.left - containerRect.left) + 'px';
+    acPopup.style.top = (rect.bottom - containerRect.top) + 'px';
+    acPopup.style.display = 'block';
+  }
+
+  function acHide() {
+    acPopup.style.display = 'none';
+    acItems = [];
+    acIndex = -1;
+    acTarget = null;
+  }
+
+  function acAccept(idx) {
+    if (idx < 0 || idx >= acItems.length || !acTarget)
+      return;
+    const item = acItems[idx];
+    const input = acTarget;
+    const val = input.value;
+    const pos = input.selectionStart;
+    // Find the prefix start again
+    let start = pos - 1;
+    while (start >= 0 && /[A-Za-z_]/.test(val[start]))
+      --start;
+    ++start;
+    const insert = item.type === 'fn' ? item.name + '(' : item.name;
+    const before = val.substring(0, start);
+    const after = val.substring(pos);
+    input.value = before + insert + after;
+    const newPos = start + insert.length;
+    input.setSelectionRange(newPos, newPos);
+    // Sync formula bar if editing in cell
+    if (input !== formulaInput)
+      formulaInput.value = input.value;
+    acHide();
+    input.focus();
+  }
+
+  function acHandleKey(e) {
+    if (acPopup.style.display === 'none')
+      return false;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      e.stopPropagation();
+      acIndex = (acIndex + 1) % acItems.length;
+      acRender();
+      return true;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      e.stopPropagation();
+      acIndex = (acIndex - 1 + acItems.length) % acItems.length;
+      acRender();
+      return true;
+    }
+    if (e.key === 'Tab' || e.key === 'Enter') {
+      if (acIndex >= 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        acAccept(acIndex);
+        return true;
+      }
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      acHide();
+      return true;
+    }
+    return false;
+  }
+
+  // Attach to formula bar input
+  formulaInput.addEventListener('input', () => acShow(formulaInput));
+  formulaInput.addEventListener('keydown', (e) => acHandleKey(e), true);
+  formulaInput.addEventListener('blur', () => {
+    // Delay to allow pointerdown on popup items
+    setTimeout(() => { if (acTarget === formulaInput) acHide(); }, 150);
+  });
+
   const nameBoxDropdown = document.getElementById('name-box-dropdown');
   cellRefInput.removeAttribute('readonly');
 
@@ -1653,6 +2265,8 @@
   });
 
   // ── Sheet tabs ─────────────────────────────────────────────────────
+  let _dragSheetIdx = -1;
+
   function renderSheetTabs() {
     const tabs = sheetTabsEl.querySelectorAll('.sheet-tab');
     tabs.forEach(t => t.remove());
@@ -1663,6 +2277,7 @@
       tab.className = 'sheet-tab' + (i === activeSheetIdx ? ' active' : '');
       tab.textContent = sheets[i].name;
       tab.dataset.idx = i;
+      tab.draggable = true;
       if (sheets[i].tabColor) {
         const bar = document.createElement('div');
         bar.className = 'tab-color-bar';
@@ -1675,8 +2290,53 @@
         if (newName && newName.trim()) { sheets[i].name = newName.trim(); renderSheetTabs(); setDirty(true); }
       });
       tab.addEventListener('contextmenu', (e) => showSheetContextMenu(e, i));
+      tab.addEventListener('dragstart', (e) => {
+        _dragSheetIdx = i;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', String(i));
+        tab.style.opacity = '0.5';
+      });
+      tab.addEventListener('dragend', () => {
+        tab.style.opacity = '';
+        _dragSheetIdx = -1;
+        for (const t of sheetTabsEl.querySelectorAll('.sheet-tab.drag-over'))
+          t.classList.remove('drag-over');
+      });
+      tab.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        for (const t of sheetTabsEl.querySelectorAll('.sheet-tab.drag-over'))
+          t.classList.remove('drag-over');
+        tab.classList.add('drag-over');
+      });
+      tab.addEventListener('dragleave', () => {
+        tab.classList.remove('drag-over');
+      });
+      tab.addEventListener('drop', (e) => {
+        e.preventDefault();
+        tab.classList.remove('drag-over');
+        const toIdx = parseInt(tab.dataset.idx, 10);
+        if (_dragSheetIdx >= 0 && _dragSheetIdx !== toIdx)
+          reorderSheet(_dragSheetIdx, toIdx);
+        _dragSheetIdx = -1;
+      });
       sheetTabsEl.insertBefore(tab, addBtn);
     }
+  }
+
+  function reorderSheet(fromIndex, toIndex) {
+    if (fromIndex === toIndex) return;
+    const sheet = sheets.splice(fromIndex, 1)[0];
+    sheets.splice(toIndex, 0, sheet);
+    // Adjust active sheet index to follow the moved sheet
+    if (activeSheetIdx === fromIndex)
+      activeSheetIdx = toIndex;
+    else if (fromIndex < activeSheetIdx && toIndex >= activeSheetIdx)
+      --activeSheetIdx;
+    else if (fromIndex > activeSheetIdx && toIndex <= activeSheetIdx)
+      ++activeSheetIdx;
+    renderSheetTabs();
+    setDirty(true);
   }
 
   document.getElementById('sheet-add').addEventListener('click', () => {
@@ -1700,6 +2360,9 @@
 
   // ── Scroll ─────────────────────────────────────────────────────────
   gridScroll.addEventListener('scroll', () => renderVisibleRows());
+
+  // ── Resize ────────────────────────────────────────────────────────
+  new ResizeObserver(() => renderVisibleRows()).observe(gridScroll);
 
   // ── Find & Replace ─────────────────────────────────────────────────
   const findPanel = document.getElementById('find-panel');
@@ -1794,12 +2457,19 @@
     if (!data.length) return;
     SZ.Dialog.show('dlg-chart').then((result) => {
       if (result !== 'ok' || !_lastChartDraw) return;
+      // Read label fields on OK in case user typed without clicking Apply
+      _lastChartDraw.opts.title = document.getElementById('chart-opt-title').value || undefined;
+      _lastChartDraw.opts.xLabel = document.getElementById('chart-opt-xlabel').value || undefined;
+      _lastChartDraw.opts.yLabel = document.getElementById('chart-opt-ylabel').value || undefined;
       const rect = getSelectionRect();
       const sourceRange = cellKey(rect.c1, rect.r1) + ':' + cellKey(rect.c2, rect.r2);
       createInlineChart(_lastChartDraw.type, sourceRange, _lastChartDraw.opts);
     });
     const title = type.charAt(0).toUpperCase() + type.slice(1) + ' Chart';
     document.getElementById('chart-title').textContent = title;
+    document.getElementById('chart-opt-title').value = title;
+    document.getElementById('chart-opt-xlabel').value = '';
+    document.getElementById('chart-opt-ylabel').value = '';
     document.getElementById('chart-trendline-enable').checked = false;
     document.getElementById('chart-dl-value').checked = false;
     document.getElementById('chart-dl-percent').checked = false;
@@ -1814,6 +2484,9 @@
   document.getElementById('chart-apply-opts').addEventListener('click', () => {
     if (!_lastChartDraw) return;
     const { type, data, labels, opts } = _lastChartDraw;
+    opts.title = document.getElementById('chart-opt-title').value || undefined;
+    opts.xLabel = document.getElementById('chart-opt-xlabel').value || undefined;
+    opts.yLabel = document.getElementById('chart-opt-ylabel').value || undefined;
     if (document.getElementById('chart-trendline-enable').checked) {
       opts.trendline = {
         type: document.getElementById('chart-trendline-type').value,
@@ -1973,6 +2646,12 @@
     { name: 'BASE', cat: 'math', desc: 'BASE(number, radix, [min_length]) - Convert to text in base' },
     { name: 'DECIMAL', cat: 'math', desc: 'DECIMAL(text, radix) - Convert text from base to decimal' },
     { name: 'SUBTOTAL', cat: 'math', desc: 'SUBTOTAL(function_num, ref1, ...) - Subtotal ignoring hidden rows' },
+    { name: 'HYPERLINK', cat: 'lookup', desc: 'HYPERLINK(url, [friendly_name]) - Creates a clickable hyperlink' },
+    { name: 'NORM.DIST', cat: 'stat', desc: 'NORM.DIST(x, mean, stddev, cumulative) - Normal distribution' },
+    { name: 'NORM.INV', cat: 'stat', desc: 'NORM.INV(probability, mean, stddev) - Inverse normal distribution' },
+    { name: 'T.DIST', cat: 'stat', desc: 'T.DIST(x, degrees_freedom, tails) - Student t-distribution' },
+    { name: 'POISSON.DIST', cat: 'stat', desc: 'POISSON.DIST(x, mean, cumulative) - Poisson distribution' },
+    { name: 'BINOM.DIST', cat: 'stat', desc: 'BINOM.DIST(successes, trials, probability, cumulative) - Binomial distribution' },
   ];
 
   function showInsertFunctionDialog(filterCat) {
@@ -2297,8 +2976,8 @@
       const path = result.path;
       if (/\.xlsx$/i.test(path)) {
         try {
-          const data = await Kernel32.ReadFile(path, { encoding: 'binary' });
-          loadXlsxWorkbook(data instanceof ArrayBuffer ? new Uint8Array(data) : data);
+          const data = await Kernel32.ReadAllBytes(path);
+          loadXlsxWorkbook(data);
         } catch (err) {
           await User32.MessageBox('Could not open file: ' + err.message, 'Spreadsheet', MB_OK);
           return;
@@ -2373,7 +3052,8 @@
   async function doSave() {
     if (!currentFilePath) { doSaveAs(); return; }
     if (/\.xlsx$/i.test(currentFilePath) || currentFileFormat === 'xlsx') {
-      await saveAsXlsx(currentFilePath);
+      if (await saveAsXlsx(currentFilePath))
+        setDirty(false);
       return;
     }
     const content = /\.tsv$/i.test(currentFilePath) ? toTSV() : toCSV();
@@ -2389,7 +3069,12 @@
       const path = result.path;
       if (/\.xlsx$/i.test(path)) {
         currentFileFormat = 'xlsx';
-        await saveAsXlsx(path);
+        if (await saveAsXlsx(path)) {
+          currentFilePath = path;
+          const parts = path.split('/');
+          currentFileName = parts[parts.length - 1] || 'Untitled';
+          setDirty(false);
+        }
       } else {
         currentFilePath = path;
         const parts = path.split('/');
@@ -3611,6 +4296,7 @@
       case 'exit': User32.DestroyWindow(); break;
       case 'undo': doUndo(); break;
       case 'redo': doRedo(); break;
+      case 'undo-history': showUndoHistory(); break;
       case 'cut': doCut(); break;
       case 'copy': doCopy(); break;
       case 'paste': doPaste('all'); break;
@@ -3810,6 +4496,7 @@
       case 'insert-chart-pie': drawChart('pie'); break;
       case 'insert-chart-scatter': drawChart('scatter'); break;
       case 'insert-chart-area': drawChart('area'); break;
+      case 'insert-chart-bubble': drawChart('bubble'); break;
       case 'chart-bar': showInsertChartDialog('bar'); break;
       case 'chart-line': showInsertChartDialog('line'); break;
       case 'chart-pie': showInsertChartDialog('pie'); break;
@@ -3820,6 +4507,10 @@
       case 'chart-stacked-bar': showInsertChartDialog('stacked-bar'); break;
       case 'chart-stacked-area': showInsertChartDialog('stacked-area'); break;
       case 'chart-combo': showInsertChartDialog('combo'); break;
+      case 'chart-waterfall': showInsertChartDialog('waterfall'); break;
+      case 'chart-treemap': showInsertChartDialog('treemap'); break;
+      case 'chart-funnel': showInsertChartDialog('funnel'); break;
+      case 'chart-bubble': showInsertChartDialog('bubble'); break;
       case 'sparkline-line': insertSparkline('line'); break;
       case 'sparkline-column': insertSparkline('column'); break;
       case 'sparkline-winloss': insertSparkline('win-loss'); break;
@@ -3842,7 +4533,18 @@
       case 'fn-cat-financial': showInsertFunctionDialog('financial'); break;
       case 'fn-cat-info': showInsertFunctionDialog('info'); break;
       case 'insert-hyperlink': showPrompt('Insert Hyperlink', 'URL:', 'https://').then(url => { if (url) { S().hyperlinks[cellKey(activeCell.col, activeCell.row)] = url; renderCellContent(activeCell.col, activeCell.row); setDirty(true); } }); break;
-      case 'insert-comment': showPrompt('Add Comment', 'Comment:', S().comments[cellKey(activeCell.col, activeCell.row)] || '').then(c => { if (c !== null) { S().comments[cellKey(activeCell.col, activeCell.row)] = c; rebuildGrid(); setDirty(true); } }); break;
+      case 'insert-comment': case 'add-comment': {
+        const ref = cellKey(activeCell.col, activeCell.row);
+        showPrompt('Add Comment', 'Comment:', '').then(c => {
+          if (c !== null && c.trim()) addCellComment(ref, c);
+        });
+        break;
+      }
+      case 'show-comments': {
+        const ref = cellKey(activeCell.col, activeCell.row);
+        showCommentPopup(ref);
+        break;
+      }
       case 'name-manager': case 'define-name': {
         showDialog('dlg-name-manager');
         const nmRefresh = () => {
@@ -4185,16 +4887,90 @@
         document.getElementById('fc-strikethrough').checked = !!fmt.strikethrough;
         document.getElementById('fc-fill-color').value = fmt.bgColor || '#ffffff';
         document.getElementById('fc-fill-none').onclick = () => { document.getElementById('fc-fill-color').value = '#ffffff'; };
+
+        // Font color
+        const fcFontColor = document.getElementById('fc-font-color');
+        if (fcFontColor) fcFontColor.value = fmt.color || '#000000';
+
+        // Protection tab
+        const fcLocked = document.getElementById('fc-locked');
+        const fcHidden = document.getElementById('fc-hidden');
+        if (fcLocked) fcLocked.checked = fmt.locked !== false; // default locked=true
+        if (fcHidden) fcHidden.checked = !!fmt.hidden;
+
         // Custom number format
         const fcCustomRow = document.getElementById('fc-custom-row');
+        const fcCustomCodesRow = document.getElementById('fc-custom-codes-row');
         const fcCustomInput = document.getElementById('fc-custom-code');
         if (fcCustomInput) fcCustomInput.value = fmt.customFormat || '';
         const fcNumFmt = document.getElementById('fc-numfmt');
+
+        // -- Sample preview --
+        const sampleVal = 1234.5;
+        const fcSampleValue = document.getElementById('fc-sample-value');
+        const updateSamplePreview = () => {
+          if (!fcSampleValue) return;
+          const previewFmt = {
+            numberFmt: fcNumFmt.value,
+            decimals: parseInt(document.getElementById('fc-decimals').value, 10),
+            customFormat: (fcNumFmt.value === 'custom' && fcCustomInput) ? fcCustomInput.value : undefined
+          };
+          try { fcSampleValue.textContent = formatDisplayValue(sampleVal, previewFmt); }
+          catch { fcSampleValue.textContent = String(sampleVal); }
+        };
+
         const toggleCustomRow = () => {
-          if (fcCustomRow) fcCustomRow.style.display = fcNumFmt.value === 'custom' ? '' : 'none';
+          const isCustom = fcNumFmt.value === 'custom';
+          if (fcCustomRow) fcCustomRow.style.display = isCustom ? '' : 'none';
+          if (fcCustomCodesRow) fcCustomCodesRow.style.display = isCustom ? '' : 'none';
+          updateSamplePreview();
         };
         fcNumFmt.onchange = toggleCustomRow;
+        document.getElementById('fc-decimals').oninput = updateSamplePreview;
+        if (fcCustomInput) fcCustomInput.oninput = updateSamplePreview;
         toggleCustomRow();
+
+        // -- Custom format code chips --
+        const codeChips = document.querySelectorAll('.fc-code-chip');
+        codeChips.forEach(chip => {
+          chip.onclick = () => {
+            if (fcCustomInput) {
+              fcCustomInput.value = chip.dataset.code;
+              updateSamplePreview();
+            }
+          };
+        });
+
+        // -- Font preview --
+        const fcFontPreviewText = document.getElementById('fc-font-preview-text');
+        const updateFontPreview = () => {
+          if (!fcFontPreviewText) return;
+          const family = document.getElementById('fc-font-family').value || 'inherit';
+          const size = parseInt(document.getElementById('fc-font-size').value, 10) || 11;
+          const bold = document.getElementById('fc-bold').checked;
+          const italic = document.getElementById('fc-italic').checked;
+          const underline = document.getElementById('fc-underline').checked;
+          const strike = document.getElementById('fc-strikethrough').checked;
+          const color = fcFontColor ? fcFontColor.value : '#000000';
+          fcFontPreviewText.style.fontFamily = family;
+          fcFontPreviewText.style.fontSize = Math.min(size * 1.5, 36) + 'px';
+          fcFontPreviewText.style.fontWeight = bold ? 'bold' : 'normal';
+          fcFontPreviewText.style.fontStyle = italic ? 'italic' : 'normal';
+          let td = [];
+          if (underline) td.push('underline');
+          if (strike) td.push('line-through');
+          fcFontPreviewText.style.textDecoration = td.length ? td.join(' ') : 'none';
+          fcFontPreviewText.style.color = color;
+        };
+        document.getElementById('fc-font-family').onchange = updateFontPreview;
+        document.getElementById('fc-font-size').oninput = updateFontPreview;
+        document.getElementById('fc-bold').onchange = updateFontPreview;
+        document.getElementById('fc-italic').onchange = updateFontPreview;
+        document.getElementById('fc-underline').onchange = updateFontPreview;
+        document.getElementById('fc-strikethrough').onchange = updateFontPreview;
+        if (fcFontColor) fcFontColor.oninput = updateFontPreview;
+        updateFontPreview();
+
         showDialog('dlg-format-cells').then(r => {
           if (r !== 'ok') return;
           const newFmt = {
@@ -4211,11 +4987,17 @@
             underline: document.getElementById('fc-underline').checked || undefined,
             strikethrough: document.getElementById('fc-strikethrough').checked || undefined,
           };
+          // Font color
+          if (fcFontColor && fcFontColor.value && fcFontColor.value !== '#000000')
+            newFmt.color = fcFontColor.value;
           // Custom format code
           if (newFmt.numberFmt === 'custom') {
             const customCode = document.getElementById('fc-custom-code');
             if (customCode && customCode.value.trim()) newFmt.customFormat = customCode.value.trim();
           }
+          // Protection
+          if (fcLocked) newFmt.locked = fcLocked.checked;
+          if (fcHidden) newFmt.hidden = fcHidden.checked;
           const fillColor = document.getElementById('fc-fill-color').value;
           if (fillColor && fillColor !== '#ffffff') newFmt.bgColor = fillColor;
           const bStyle = document.getElementById('fc-border-style').value;
@@ -4317,7 +5099,7 @@
     S, cellKey, parseKey, colName, colIndex, getCellValue,
     getSelectionRect, showDialog: SZ.Dialog.show, rebuildGrid,
     setFormat, getFormat, setDirty: () => { dirty = true; updateTitle(); },
-    getActiveCell: () => activeCell, gridScroll,
+    getActiveCell: () => activeCell, gridScroll, showPrompt,
   });
   XlsxEngine.init({
     S, cellKey, parseKey, colName, colIndex, getCellValue,
@@ -4401,8 +5183,8 @@
     (async () => {
       try {
         if (/\.xlsx$/i.test(cmd.path)) {
-          const data = await Kernel32.ReadFile(cmd.path, { encoding: 'binary' });
-          loadXlsxWorkbook(data instanceof ArrayBuffer ? new Uint8Array(data) : data);
+          const data = await Kernel32.ReadAllBytes(cmd.path);
+          loadXlsxWorkbook(data);
           currentFilePath = cmd.path;
           const parts = cmd.path.split('/');
           currentFileName = parts[parts.length - 1] || 'Untitled';

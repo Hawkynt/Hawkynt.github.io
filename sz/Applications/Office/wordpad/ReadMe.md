@@ -103,6 +103,7 @@ Modeled after Microsoft WordPad with visual and functional influences from Micro
 - [x] As a user, I can insert special characters from a symbol picker
 - [x] As a user, I can insert a horizontal rule
 - [x] As a user, I can insert a page break and see a visual page break indicator in the document
+- [x] As a user, I can see the document displayed as distinct pages with visual gaps between them in Print Layout mode (MS Word-style multi-page view) instead of a single scrolling area
 - [x] As a user, I can insert the current date and time
 - [x] As a user, I can insert mathematical equations using the equation editor
 - [x] As a user, I can select and highlight inserted images by clicking on them
@@ -131,7 +132,13 @@ Modeled after Microsoft WordPad with visual and functional influences from Micro
 
 ### View Options
 - [x] As a user, I can switch between Print Layout, Web Layout, and Outline views for document structure review
-- [x] As a user, I can toggle a ruler display
+- [x] As a user, I can toggle a ruler display with MS Word-style measurement marks (inch ticks at 1/8" intervals), margin handles, and indent markers
+- [x] As a user, I can drag margin handles on the horizontal ruler to adjust left and right page margins with 1/8" snapping
+- [x] As a user, I can drag indent markers (first-line, hanging, left, right) on the ruler to set paragraph indentation
+- [x] As a user, I can click on the ruler to add tab stops (left, center, right, decimal) at the clicked position
+- [x] As a user, I can cycle the tab stop type by clicking the tab selector button at the left of the ruler
+- [x] As a user, I can drag tab stop markers on the ruler to reposition them, or drag them off the ruler to remove
+- [x] As a user, I can toggle a vertical ruler that shows page height measurements
 - [x] As a user, I can toggle gridlines on the editor
 - [x] As a user, I can toggle a navigation pane that shows document headings
 - [x] As a user, I can click headings in the navigation pane to jump to that section

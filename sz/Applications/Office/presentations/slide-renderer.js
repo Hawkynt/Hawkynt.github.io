@@ -4,10 +4,10 @@
   const PresentationsApp = window.PresentationsApp || (window.PresentationsApp = {});
 
   // -----------------------------------------------------------------------
-  // Constants
+  // Constants (defaults -- overridden by presentation.slideWidth/slideHeight)
   // -----------------------------------------------------------------------
-  const CANVAS_W = 960;
-  const CANVAS_H = 540;
+  let CANVAS_W = 960;
+  let CANVAS_H = 540;
 
   const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -230,6 +230,26 @@
       svg.appendChild(path);
       return svg;
     }
+  };
+
+  // -----------------------------------------------------------------------
+  // Freeform shape builder -- uses element.points [{x,y},...] in 0..1 space
+  // -----------------------------------------------------------------------
+  const _buildFreeformSvg = (w, h, fill, points, closed) => {
+    const svg = _createSvgRoot(w, h);
+    if (!points || points.length < 2)
+      return svg;
+
+    const tag = closed ? 'polygon' : 'polyline';
+    const shape = document.createElementNS(SVG_NS, tag);
+    const pts = points.map(p => `${p.x * w},${p.y * h}`).join(' ');
+    shape.setAttribute('points', pts);
+    shape.setAttribute('fill', closed ? fill : 'none');
+    shape.setAttribute('stroke', fill);
+    shape.setAttribute('stroke-width', '2');
+    shape.setAttribute('stroke-linejoin', 'round');
+    svg.appendChild(shape);
+    return svg;
   };
 
   // -----------------------------------------------------------------------
@@ -516,6 +536,10 @@
     } else
       img.alt = '';
 
+    // P5: Apply crop clip-path
+    if (element.clipPath)
+      wrapper.style.clipPath = element.clipPath;
+
     wrapper.appendChild(img);
     return wrapper;
   };
@@ -623,15 +647,24 @@
     if (element.hyperlink && element.hyperlink.url)
       wrapper.classList.add('has-hyperlink');
 
-    const builder = SHAPE_BUILDERS[element.shapeType];
-    if (builder) {
-      const baseFill = element.fill && element.fill.type !== 'solid'
-        ? '#ccc' // placeholder, will be replaced by advanced fill
-        : (element.fillColor || '#4472C4');
-      const svg = builder(element.w, element.h, baseFill);
+    const baseFill = element.fill && element.fill.type !== 'solid'
+      ? '#ccc' // placeholder, will be replaced by advanced fill
+      : (element.fillColor || '#4472C4');
 
+    let svg = null;
+
+    // Freeform shapes use stored points instead of SHAPE_BUILDERS
+    if (element.shapeType === 'freeform' && element.points) {
+      svg = _buildFreeformSvg(element.w, element.h, baseFill, element.points, element.closed !== false);
+    } else {
+      const builder = SHAPE_BUILDERS[element.shapeType];
+      if (builder)
+        svg = builder(element.w, element.h, baseFill);
+    }
+
+    if (svg) {
       if (element.strokeColor && element.strokeColor !== 'transparent' && element.strokeWidth) {
-        const shapes = svg.querySelectorAll('rect, ellipse, polygon, path');
+        const shapes = svg.querySelectorAll('rect, ellipse, polygon, path, polyline');
         shapes.forEach(s => {
           s.setAttribute('stroke', element.strokeColor);
           s.setAttribute('stroke-width', element.strokeWidth);
@@ -640,7 +673,7 @@
 
       // Advanced fill (Feature 25)
       if (element.fill && element.fill.type !== 'solid') {
-        const shapeEls = svg.querySelectorAll('rect, ellipse, polygon, path');
+        const shapeEls = svg.querySelectorAll('rect, ellipse, polygon, path, polyline');
         _applyAdvancedFill(svg, shapeEls, element);
       }
 
@@ -672,6 +705,12 @@
       const isHeader = element.headerRow && r === 0;
 
       for (let c = 0; c < cols; ++c) {
+        const cellData = element.cells && element.cells[r] ? element.cells[r][c] : '';
+
+        // Skip null cells (consumed by a merged cell)
+        if (cellData === null)
+          continue;
+
         const td = document.createElement(isHeader ? 'th' : 'td');
         td.style.border = `${element.borderWidth || 1}px solid ${element.borderColor || '#8FAADC'}`;
         td.style.padding = '4px 6px';
@@ -690,11 +729,20 @@
           td.style.color = element.cellColor || '#000000';
         }
 
+        // Handle merged cells (object with colspan/rowspan)
+        if (cellData && typeof cellData === 'object') {
+          if (cellData.colspan > 1)
+            td.colSpan = cellData.colspan;
+          if (cellData.rowspan > 1)
+            td.rowSpan = cellData.rowspan;
+          td.textContent = cellData.text || '';
+        } else {
+          td.textContent = cellData || '';
+        }
+
         if (editable)
           td.contentEditable = 'true';
 
-        const cellData = element.cells && element.cells[r] ? (element.cells[r][c] || '') : '';
-        td.textContent = cellData;
         td.dataset.row = r;
         td.dataset.col = c;
         tr.appendChild(td);
@@ -715,6 +763,9 @@
     wrapper.className = 'slide-element el-video';
     wrapper.dataset.elementId = element.id;
     applyElementStyle(wrapper, element);
+
+    if (element.autoplay)
+      wrapper.dataset.autoplay = 'true';
 
     const video = document.createElement('video');
     video.src = element.src || '';
@@ -742,6 +793,9 @@
     wrapper.className = 'slide-element el-audio';
     wrapper.dataset.elementId = element.id;
     applyElementStyle(wrapper, element);
+    if (element.autoplay)
+      wrapper.dataset.autoplay = 'true';
+
     wrapper.style.background = '#f0f0f0';
     wrapper.style.borderRadius = '4px';
     wrapper.style.display = 'flex';
@@ -793,12 +847,14 @@
     wrapper.style.justifyContent = 'center';
     wrapper.style.background = element.fillColor || '#4472c4';
     wrapper.style.color = element.color || '#ffffff';
-    wrapper.style.borderRadius = '6px';
+    wrapper.style.borderRadius = (element.borderRadius != null ? (typeof element.borderRadius === 'string' ? element.borderRadius : (element.borderRadius >= 50 ? '50%' : element.borderRadius + 'px')) : '6px');
     wrapper.style.cursor = 'pointer';
     wrapper.style.fontSize = (element.fontSize || 14) + 'px';
     wrapper.style.fontWeight = 'bold';
     wrapper.style.border = '2px solid ' + (element.strokeColor || '#3a62a8');
     wrapper.style.userSelect = 'none';
+    if (element.clipPath)
+      wrapper.style.clipPath = element.clipPath;
 
     const label = document.createElement('span');
     label.style.pointerEvents = 'none';
@@ -913,20 +969,22 @@
       pathEl.setAttribute('stroke-dasharray', '2 4');
   };
 
-  const _buildConnectorDom = (element, slide) => {
+  const _buildConnectorDom = (element, slide, slideW, slideH) => {
+    const cw = slideW || CANVAS_W;
+    const ch = slideH || CANVAS_H;
     const wrapper = document.createElement('div');
     wrapper.className = 'slide-element el-connector';
     wrapper.dataset.elementId = element.id;
     wrapper.style.position = 'absolute';
     wrapper.style.left = '0';
     wrapper.style.top = '0';
-    wrapper.style.width = CANVAS_W + 'px';
-    wrapper.style.height = CANVAS_H + 'px';
+    wrapper.style.width = cw + 'px';
+    wrapper.style.height = ch + 'px';
     wrapper.style.overflow = 'visible';
     wrapper.style.pointerEvents = 'none';
 
     const svg = document.createElementNS(SVG_NS, 'svg');
-    svg.setAttribute('viewBox', '0 0 ' + CANVAS_W + ' ' + CANVAS_H);
+    svg.setAttribute('viewBox', '0 0 ' + cw + ' ' + ch);
     svg.setAttribute('width', '100%');
     svg.setAttribute('height', '100%');
     svg.style.position = 'absolute';
@@ -944,7 +1002,7 @@
     if (slide && element.startElementId) {
       const startEl = (slide.elements || []).find(e => e.id === element.startElementId);
       if (startEl) {
-        const anchor = element.startPoint || _autoSelectAnchor(startEl, element, slide, true);
+        const anchor = element.startPoint || _autoSelectAnchor(startEl, element, slide, true, cw, ch);
         const sp = _getConnectionPoint(startEl, anchor);
         sx = sp.x;
         sy = sp.y;
@@ -956,7 +1014,7 @@
     if (slide && element.endElementId) {
       const endEl = (slide.elements || []).find(e => e.id === element.endElementId);
       if (endEl) {
-        const anchor = element.endPoint || _autoSelectAnchor(endEl, element, slide, false);
+        const anchor = element.endPoint || _autoSelectAnchor(endEl, element, slide, false, cw, ch);
         const ep = _getConnectionPoint(endEl, anchor);
         ex = ep.x;
         ey = ep.y;
@@ -1028,7 +1086,7 @@
     return wrapper;
   };
 
-  const _autoSelectAnchor = (targetEl, connector, slide, isStart) => {
+  const _autoSelectAnchor = (targetEl, connector, slide, isStart, slideW, slideH) => {
     // Determine best anchor point by looking at the other endpoint
     const otherElId = isStart ? connector.endElementId : connector.startElementId;
     let otherCx, otherCy;
@@ -1040,8 +1098,10 @@
       }
     }
     if (otherCx == null) {
-      otherCx = isStart ? (connector.endX ?? CANVAS_W / 2) : (connector.startX ?? CANVAS_W / 2);
-      otherCy = isStart ? (connector.endY ?? CANVAS_H / 2) : (connector.startY ?? CANVAS_H / 2);
+      const aw = slideW || CANVAS_W;
+      const ah = slideH || CANVAS_H;
+      otherCx = isStart ? (connector.endX ?? aw / 2) : (connector.startX ?? aw / 2);
+      otherCy = isStart ? (connector.endY ?? ah / 2) : (connector.startY ?? ah / 2);
     }
 
     const cx = targetEl.x + targetEl.w / 2;
@@ -1187,6 +1247,26 @@
   };
 
   // -----------------------------------------------------------------------
+  // Build DOM for a single element by type
+  // -----------------------------------------------------------------------
+  const _buildElementDom = (el, editable, slide, slideW, slideH) => {
+    switch (el.type) {
+      case 'textbox': return _buildTextboxDom(el, editable);
+      case 'image': return _buildImageDom(el);
+      case 'shape': return _buildShapeDom(el);
+      case 'table': return _buildTableDom(el, editable);
+      case 'group': return _buildGroupDom(el, editable);
+      case 'video': return _buildVideoDom(el);
+      case 'audio': return _buildAudioDom(el);
+      case 'action-button': return _buildActionButtonDom(el);
+      case 'chart': return _buildChartDom(el);
+      case 'smartart': return _buildSmartArtDom(el);
+      case 'connector': return _buildConnectorDom(el, slide, slideW, slideH);
+      default: return null;
+    }
+  };
+
+  // -----------------------------------------------------------------------
   // Render a full slide into a container
   // -----------------------------------------------------------------------
   const renderSlide = (slide, container, options) => {
@@ -1196,11 +1276,13 @@
     const showGuides = !!opts.showGuides;
     const headerFooter = opts.headerFooter || null;
     const slideIndex = opts.slideIndex != null ? opts.slideIndex : 0;
+    const slideW = opts.slideWidth || CANVAS_W;
+    const slideH = opts.slideHeight || CANVAS_H;
 
     container.innerHTML = '';
     container.style.position = 'relative';
-    container.style.width = (CANVAS_W * scale) + 'px';
-    container.style.height = (CANVAS_H * scale) + 'px';
+    container.style.width = (slideW * scale) + 'px';
+    container.style.height = (slideH * scale) + 'px';
     container.style.overflow = 'hidden';
 
     if (scale !== 1) {
@@ -1212,8 +1294,8 @@
     const canvas = document.createElement('div');
     canvas.className = 'slide-canvas';
     canvas.style.position = 'relative';
-    canvas.style.width = CANVAS_W + 'px';
-    canvas.style.height = CANVAS_H + 'px';
+    canvas.style.width = slideW + 'px';
+    canvas.style.height = slideH + 'px';
     canvas.style.transformOrigin = '0 0';
 
     if (scale !== 1)
@@ -1233,50 +1315,28 @@
       canvas.style.backgroundColor = '#FFFFFF';
     }
 
-    // Elements
-    const elements = slide.elements || [];
-    for (let i = 0; i < elements.length; ++i) {
-      const el = elements[i];
-      let dom = null;
-
-      switch (el.type) {
-        case 'textbox':
-          dom = _buildTextboxDom(el, editable);
-          break;
-        case 'image':
-          dom = _buildImageDom(el);
-          break;
-        case 'shape':
-          dom = _buildShapeDom(el);
-          break;
-        case 'table':
-          dom = _buildTableDom(el, editable);
-          break;
-        case 'group':
-          dom = _buildGroupDom(el, editable);
-          break;
-        case 'video':
-          dom = _buildVideoDom(el);
-          break;
-        case 'audio':
-          dom = _buildAudioDom(el);
-          break;
-        case 'action-button':
-          dom = _buildActionButtonDom(el);
-          break;
-        case 'chart':
-          dom = _buildChartDom(el);
-          break;
-        case 'smartart':
-          dom = _buildSmartArtDom(el);
-          break;
-        case 'connector':
-          dom = _buildConnectorDom(el, slide);
-          break;
-      }
-
+    // Master elements (rendered as non-editable background layer)
+    const masterElements = opts.masterElements || [];
+    for (let i = 0; i < masterElements.length; ++i) {
+      const el = masterElements[i];
+      let dom = _buildElementDom(el, false, slide, slideW, slideH);
       if (dom) {
         dom.style.zIndex = i + 1;
+        dom.style.pointerEvents = 'none';
+        dom.style.opacity = String((el.opacity != null ? el.opacity : 1) * 0.85);
+        dom.classList.add('master-element-overlay');
+        canvas.appendChild(dom);
+      }
+    }
+
+    // Elements
+    const elements = slide.elements || [];
+    const baseZ = masterElements.length;
+    for (let i = 0; i < elements.length; ++i) {
+      const el = elements[i];
+      let dom = _buildElementDom(el, editable, slide, slideW, slideH);
+      if (dom) {
+        dom.style.zIndex = baseZ + i + 1;
         canvas.appendChild(dom);
       }
     }
@@ -1294,9 +1354,10 @@
   // -----------------------------------------------------------------------
   // Render a thumbnail (non-editable, small scale)
   // -----------------------------------------------------------------------
-  const renderThumbnail = (slide, container, theme) => {
-    const thumbScale = container.offsetWidth ? container.offsetWidth / CANVAS_W : 0.15;
-    renderSlide(slide, container, { editable: false, scale: thumbScale, showGuides: false });
+  const renderThumbnail = (slide, container, theme, slideWidth, slideHeight) => {
+    const sw = slideWidth || CANVAS_W;
+    const thumbScale = container.offsetWidth ? container.offsetWidth / sw : 0.15;
+    renderSlide(slide, container, { editable: false, scale: thumbScale, showGuides: false, slideWidth: slideWidth, slideHeight: slideHeight });
   };
 
   // -----------------------------------------------------------------------
@@ -1475,12 +1536,32 @@
     opacity: 1
   });
 
+  const createFreeform = (x, y, w, h, points, closed, fillColor) => ({
+    id: _generateId(),
+    type: 'shape',
+    x, y, w, h,
+    shapeType: 'freeform',
+    points: points || [],
+    closed: closed !== false,
+    fillColor: fillColor || '#4472C4',
+    strokeColor: '#4472C4',
+    strokeWidth: 2,
+    rotation: 0,
+    opacity: 1
+  });
+
+  const setCanvasSize = (w, h) => {
+    CANVAS_W = w;
+    CANVAS_H = h;
+  };
+
   PresentationsApp.SlideRenderer = {
     renderSlide,
     renderThumbnail,
     createTextbox,
     createImageElement,
     createShape,
+    createFreeform,
     createTable,
     createGroup,
     ungroupElement,
@@ -1492,8 +1573,9 @@
     getLayoutPlaceholders,
     hitTest,
     renderResizeHandles,
-    CANVAS_W,
-    CANVAS_H
+    setCanvasSize,
+    get CANVAS_W() { return CANVAS_W; },
+    get CANVAS_H() { return CANVAS_H; }
   };
 
 })();

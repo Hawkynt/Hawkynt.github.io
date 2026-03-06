@@ -708,6 +708,71 @@
     return result;
   }
 
+  // -----------------------------------------------------------------------
+  // Text Pane <-> Node Tree conversion
+  // -----------------------------------------------------------------------
+
+  function nodesToTextPane(nodes, level) {
+    level = level || 0;
+    let text = '';
+    for (const node of nodes) {
+      text += '  '.repeat(level) + (node.text || '') + '\n';
+      if (node.children && node.children.length)
+        text += nodesToTextPane(node.children, level + 1);
+    }
+    return text;
+  }
+
+  function parseTextPaneToNodes(text) {
+    const lines = text.split('\n');
+    const root = [];
+    const stack = [{ children: root, level: -1 }];
+    let idCounter = 0;
+
+    for (const line of lines) {
+      if (line.trim() === '')
+        continue;
+      const stripped = line.replace(/\t/g, '  ');
+      const leadingSpaces = stripped.match(/^( *)/)[1].length;
+      const level = Math.floor(leadingSpaces / 2);
+      const nodeText = line.trim();
+
+      const node = {
+        id: 'n-' + Date.now() + '-' + (++idCounter) + '-' + Math.random().toString(36).substr(2, 4),
+        text: nodeText
+      };
+
+      // Pop stack until we find the correct parent level
+      while (stack.length > 1 && stack[stack.length - 1].level >= level)
+        stack.pop();
+
+      const parent = stack[stack.length - 1];
+      if (!parent.children)
+        parent.children = [];
+      parent.children.push(node);
+
+      stack.push({ children: null, level, node });
+      // Set children ref so future children can attach
+      stack[stack.length - 1].children = node.children = [];
+    }
+
+    // Clean up empty children arrays
+    const _cleanEmpty = (nodes) => {
+      for (const n of nodes) {
+        if (n.children && n.children.length === 0)
+          delete n.children;
+        else if (n.children)
+          _cleanEmpty(n.children);
+      }
+    };
+    _cleanEmpty(root);
+    return root;
+  }
+
+  // -----------------------------------------------------------------------
+  // Node Editor Dialog (Text Pane style)
+  // -----------------------------------------------------------------------
+
   function showNodeEditorDialog(element, onSave) {
     const overlay = document.createElement('div');
     overlay.className = 'pp-dialog-overlay';
@@ -715,93 +780,103 @@
 
     const dlg = document.createElement('div');
     dlg.className = 'pp-dialog';
-    dlg.style.width = '460px';
-    dlg.style.maxHeight = '80vh';
+    dlg.style.width = '520px';
+    dlg.style.maxHeight = '85vh';
     dlg.style.overflowY = 'auto';
 
     const title = document.createElement('h3');
-    title.textContent = 'Edit SmartArt — ' + (DIAGRAM_TYPES[element.diagramType]?.label || element.diagramType);
+    title.textContent = 'Edit SmartArt \u2014 ' + (DIAGRAM_TYPES[element.diagramType]?.label || element.diagramType);
     title.style.marginBottom = '12px';
     dlg.appendChild(title);
 
-    // Flatten nodes for editing (hierarchy is special but still editable flat)
-    const flatNodes = _flattenNodes(element.nodes || []);
-    const nodeInputs = [];
+    // Instruction
+    const helpText = document.createElement('div');
+    helpText.style.cssText = 'font-size:11px;color:#666;margin-bottom:8px;';
+    helpText.textContent = 'Each line is a node. Use indentation (2 spaces) for hierarchy. Tab to indent, Shift+Tab to outdent.';
+    dlg.appendChild(helpText);
 
-    const listContainer = document.createElement('div');
-    listContainer.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin:8px 0;';
+    // Text Pane
+    const textPane = document.createElement('textarea');
+    textPane.className = 'smartart-text-pane';
+    textPane.value = nodesToTextPane(element.nodes || []);
+    textPane.spellcheck = false;
+    dlg.appendChild(textPane);
 
-    const rebuildList = () => {
-      listContainer.innerHTML = '';
-      nodeInputs.length = 0;
+    // Tab/Shift+Tab handling
+    textPane.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const start = textPane.selectionStart;
+        const end = textPane.selectionEnd;
+        const val = textPane.value;
 
-      for (let i = 0; i < flatNodes.length; ++i) {
-        const node = flatNodes[i];
-        const row = document.createElement('div');
-        row.style.cssText = 'display:flex;align-items:center;gap:6px;';
+        // Find line boundaries for the selection
+        const lineStart = val.lastIndexOf('\n', start - 1) + 1;
+        const lineEnd = val.indexOf('\n', end);
+        const endPos = lineEnd === -1 ? val.length : lineEnd;
+        const selectedLines = val.substring(lineStart, endPos);
+        const lines = selectedLines.split('\n');
 
-        const label = document.createElement('span');
-        label.style.cssText = 'font-size:11px;color:#666;min-width:20px;';
-        label.textContent = (i + 1) + '.';
-        row.appendChild(label);
+        let newLines;
+        if (e.shiftKey) {
+          // Outdent: remove up to 2 leading spaces from each line
+          newLines = lines.map(l => l.startsWith('  ') ? l.substring(2) : l);
+        } else {
+          // Indent: add 2 spaces to each line
+          newLines = lines.map(l => '  ' + l);
+        }
 
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.value = node.text || '';
-        input.style.cssText = 'flex:1;font-size:12px;padding:4px 6px;border:1px solid #ccc;border-radius:3px;';
-        input.placeholder = 'Node text...';
-        row.appendChild(input);
+        const newText = newLines.join('\n');
+        textPane.value = val.substring(0, lineStart) + newText + val.substring(endPos);
 
-        const removeBtn = document.createElement('button');
-        removeBtn.textContent = '\u2716';
-        removeBtn.title = 'Remove node';
-        removeBtn.style.cssText = 'padding:2px 6px;font-size:11px;border:1px solid #ccc;border-radius:3px;background:#f8f8f8;cursor:pointer;color:#c00;';
-        removeBtn.addEventListener('click', () => {
-          if (flatNodes.length <= 1)
-            return;
-          // Remove from flat list
-          flatNodes.splice(i, 1);
-          // Also remove from element.nodes (handles hierarchy)
-          _removeNodeById(element.nodes, node.id);
-          rebuildList();
-        });
-        row.appendChild(removeBtn);
+        // Restore selection
+        textPane.selectionStart = lineStart;
+        textPane.selectionEnd = lineStart + newText.length;
 
-        nodeInputs.push({ input, node });
-        listContainer.appendChild(row);
+        // Trigger live preview update
+        updatePreview();
+      }
+    });
+
+    // SVG Preview
+    const previewLabel = document.createElement('div');
+    previewLabel.style.cssText = 'font-size:11px;font-weight:bold;margin:10px 0 4px;';
+    previewLabel.textContent = 'Preview:';
+    dlg.appendChild(previewLabel);
+
+    const previewContainer = document.createElement('div');
+    previewContainer.style.cssText = 'border:1px solid #ddd;background:#fff;padding:8px;min-height:80px;text-align:center;';
+    dlg.appendChild(previewContainer);
+
+    const updatePreview = () => {
+      const parsedNodes = parseTextPaneToNodes(textPane.value);
+      const tempElement = {
+        id: element.id,
+        type: 'smartart',
+        diagramType: typeSel.value,
+        nodes: parsedNodes,
+        x: 0, y: 0,
+        w: element.w || 480,
+        h: element.h || 200
+      };
+      previewContainer.innerHTML = '';
+      try {
+        const svg = renderSmartArt(tempElement);
+        if (svg) {
+          svg.style.maxWidth = '100%';
+          svg.style.height = 'auto';
+          previewContainer.appendChild(svg);
+        }
+      } catch {
+        previewContainer.textContent = '(Preview unavailable)';
       }
     };
 
-    rebuildList();
-    dlg.appendChild(listContainer);
-
-    // Add node button
-    const addRow = document.createElement('div');
-    addRow.style.cssText = 'margin:6px 0;';
-    const addBtn = document.createElement('button');
-    addBtn.textContent = '+ Add Node';
-    addBtn.style.cssText = 'padding:4px 12px;font-size:12px;border:1px solid #4472c4;border-radius:3px;background:#4472c4;color:#fff;cursor:pointer;';
-    addBtn.addEventListener('click', () => {
-      const newNode = {
-        id: 'n-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
-        text: 'New Node'
-      };
-      flatNodes.push(newNode);
-      // Add to the root nodes list (for non-hierarchy, they are flat)
-      if (element.diagramType !== 'hierarchy')
-        element.nodes.push(newNode);
-      else {
-        // For hierarchy, add at root level
-        element.nodes.push(newNode);
-      }
-      rebuildList();
-    });
-    addRow.appendChild(addBtn);
-    dlg.appendChild(addRow);
+    textPane.addEventListener('input', updatePreview);
 
     // Diagram type changer
     const typeRow = document.createElement('div');
-    typeRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin:8px 0;padding-top:8px;border-top:1px solid #ddd;';
+    typeRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin:10px 0;padding-top:8px;border-top:1px solid #ddd;';
     typeRow.innerHTML = '<label style="font-size:12px;min-width:80px;">Diagram Type:</label>';
     const typeSel = document.createElement('select');
     typeSel.style.cssText = 'flex:1;font-size:12px;padding:3px;';
@@ -813,8 +888,12 @@
         opt.selected = true;
       typeSel.appendChild(opt);
     }
+    typeSel.addEventListener('change', updatePreview);
     typeRow.appendChild(typeSel);
     dlg.appendChild(typeRow);
+
+    // Initial preview
+    setTimeout(updatePreview, 0);
 
     // Buttons
     const buttons = document.createElement('div');
@@ -831,9 +910,9 @@
     okBtn.className = 'primary';
     okBtn.style.cssText = 'padding:6px 16px;border:1px solid #0078D7;border-radius:3px;background:#0078D7;color:#fff;cursor:pointer;';
     okBtn.addEventListener('click', () => {
-      // Apply text changes from inputs back to nodes
-      for (const ni of nodeInputs)
-        ni.node.text = ni.input.value;
+      // Parse text pane back to nodes
+      const parsedNodes = parseTextPaneToNodes(textPane.value);
+      element.nodes = parsedNodes;
 
       // Apply type change
       const newType = typeSel.value;
@@ -857,6 +936,9 @@
 
     overlay.appendChild(dlg);
     document.body.appendChild(overlay);
+
+    // Focus text pane
+    setTimeout(() => textPane.focus(), 50);
   }
 
   function _removeNodeById(nodes, nodeId) {

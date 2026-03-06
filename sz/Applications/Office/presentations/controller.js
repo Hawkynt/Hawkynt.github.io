@@ -47,6 +47,30 @@
     'blur', 'glitch', 'morph',
   ];
 
+  // P1: Equation Editor Templates
+  const EQUATION_TEMPLATES = {
+    fraction: { label: 'Fraction', html: '<div class="eq-fraction"><div class="eq-num">a</div><div class="eq-bar"></div><div class="eq-den">b</div></div>' },
+    sqrt: { label: 'Square Root', html: '<span class="eq-sqrt"><span class="eq-sqrt-content">x</span></span>' },
+    exponent: { label: 'Exponent', html: '<span>x<sup class="eq-sup">2</sup></span>' },
+    subscript: { label: 'Subscript', html: '<span>x<sub class="eq-sub">i</sub></span>' },
+    summation: { label: 'Summation', html: '<div class="eq-large-op"><div class="eq-limit-top">n</div><div class="eq-op">&sum;</div><div class="eq-limit-bot">i=0</div></div>' },
+    integral: { label: 'Integral', html: '<div class="eq-large-op"><div class="eq-limit-top">b</div><div class="eq-op">&int;</div><div class="eq-limit-bot">a</div></div><span>f(x)dx</span>' },
+    matrix: { label: 'Matrix', html: '<div class="eq-matrix"><div class="eq-matrix-row"><span>a</span><span>b</span></div><div class="eq-matrix-row"><span>c</span><span>d</span></div></div>' },
+    supSub: { label: 'Super/Subscript', html: '<span>x<sub class="eq-sub">i</sub><sup class="eq-sup">2</sup></span>' },
+    limit: { label: 'Limit', html: '<div class="eq-large-op"><div class="eq-op">lim</div><div class="eq-limit-bot">x&rarr;&infin;</div></div><span>f(x)</span>' },
+    quadratic: { label: 'Quadratic', html: '<span>x = </span><div class="eq-fraction"><div class="eq-num">-b &plusmn; <span class="eq-sqrt"><span class="eq-sqrt-content">b<sup class="eq-sup">2</sup> - 4ac</span></span></div><div class="eq-bar"></div><div class="eq-den">2a</div></div>' }
+  };
+
+  // P3: Transition Sound Effects
+  const TRANSITION_SOUNDS = {
+    none: null,
+    applause: { type: 'noise', duration: 1.2, gain: 0.3, filter: { type: 'bandpass', freq: 2000, q: 0.5 } },
+    chime: { type: 'sine', freq: 880, duration: 0.6, gain: 0.4, envelope: { attack: 0.01, decay: 0.5 } },
+    click: { type: 'square', freq: 1200, duration: 0.05, gain: 0.3, envelope: { attack: 0.001, decay: 0.04 } },
+    drumroll: { type: 'noise', duration: 1.5, gain: 0.25, filter: { type: 'lowpass', freq: 400, q: 1 }, tremolo: { freq: 15 } },
+    whoosh: { type: 'noise', duration: 0.5, gain: 0.3, filter: { type: 'bandpass', freq: 800, q: 2 }, sweep: { from: 200, to: 2000 } }
+  };
+
   // ===============================================================
   // State
   // ===============================================================
@@ -93,10 +117,31 @@
 
   // Feature 22: Master Slide Editing
   let masterViewActive = false;
+  let _masterViewSavedSlideIndex = 0;
 
   // Feature 27: Connector mode
   let connectorMode = false;
   let connectorStartElId = null;
+
+  // Freeform drawing mode
+  let freeformMode = false;
+  let freeformPoints = [];
+  let freeformPreviewEl = null;
+
+  // Outline view mode
+  let outlineViewActive = false;
+
+  // P2: Animation Painter
+  let animationPainterActive = false;
+  let copiedAnimations = null;
+
+  // P4: Eyedropper Color Picker
+  let eyedropperActive = false;
+  let eyedropperTarget = null; // 'fill', 'text', 'border'
+
+  // P5: Image Cropping
+  let cropMode = false;
+  let cropData = null; // { top, right, bottom, left } percentages
 
   // Double-click detection for text editing
   let _lastPointerDownElId = null;
@@ -233,6 +278,10 @@
     // Animation preset via 'anim-EFFECT'
     if (action.startsWith('anim-') && action !== 'anim-trigger' && action !== 'anim-duration') {
       const effect = action.slice('anim-'.length);
+      if (effect === 'custom-path') {
+        startCustomPathDrawing();
+        return;
+      }
       if (AnimationEngine && AnimationEngine.PRESETS[effect]) {
         addAnimationToSelected(effect);
         return;
@@ -371,6 +420,7 @@
 
       // Feature 22: Master Slide Editing
       case 'edit-master': toggleMasterView(); break;
+      case 'close-master-view': toggleMasterView(); break;
 
       // Feature 23: Charts
       case 'insert-chart': showInsertChartDialog(); break;
@@ -392,6 +442,9 @@
 
       // Feature 29: SmartArt
       case 'insert-smartart': showInsertSmartArtDialog(); break;
+
+      // Freeform shape drawing
+      case 'insert-freeform': startFreeformMode(); break;
 
       // Feature 30: Photo Album
       case 'photo-album': showPhotoAlbumDialog(); break;
@@ -420,6 +473,7 @@
 
       // Design
       case 'format-background': showFormatBackgroundDialog(); break;
+      case 'slide-size': showSlideSizeDialog(); break;
 
       // Transitions
       case 'apply-transition-all': applyTransitionToAll(); break;
@@ -433,13 +487,29 @@
       case 'view-normal': setView('normal'); break;
       case 'view-sorter': setView('sorter'); break;
       case 'view-notes': setView('notes'); break;
+      case 'view-outline': setView('outline'); break;
       case 'zoom-fit': zoomFit(); break;
+
+      // Notes printing
+      case 'print-notes': doExportPdfWithNotes(); break;
 
       // Layout, Shapes dropdowns & list formatting
       case 'show-layout-dropdown': showLayoutDropdown(); break;
       case 'show-shapes-dropdown': showShapesDropdown(); break;
       case 'bullets': toggleBullets(); break;
       case 'numbering': toggleNumbering(); break;
+
+      // P1: Equation Editor
+      case 'insert-equation': showEquationEditor(); break;
+
+      // P2: Animation Painter
+      case 'animation-painter': startAnimationPainter(); break;
+
+      // P4: Eyedropper Color Picker
+      case 'eyedropper': startEyedropper('fill'); break;
+
+      // P5: Image Cropping
+      case 'crop-image': startCropMode(); break;
     }
   }
 
@@ -575,7 +645,7 @@
 
       // Render thumbnail after DOM attach
       setTimeout(() => {
-        SlideRenderer.renderThumbnail(slide, content, presentation.theme);
+        SlideRenderer.renderThumbnail(slide, content, presentation.theme, presentation.slideWidth, presentation.slideHeight);
       }, 0);
 
       thumb.addEventListener('click', () => selectSlide(i));
@@ -773,11 +843,22 @@
   // ===============================================================
 
   function renderMainCanvas() {
+    // In master view, delegate to master canvas renderer
+    if (masterViewActive) {
+      _renderMasterCanvas();
+      return;
+    }
+
     const slide = getCurrentSlide();
     if (!slide) {
       slideCanvas.innerHTML = '';
       return;
     }
+
+    // Collect master elements to render as background layer
+    const masterElements = (presentation.slideMasters && presentation.slideMasters[0])
+      ? (presentation.slideMasters[0].elements || [])
+      : [];
 
     const scale = currentZoom / 100;
     SlideRenderer.renderSlide(slide, slideCanvas, {
@@ -785,7 +866,10 @@
       scale: scale,
       showGuides: true,
       headerFooter: presentation.headerFooter,
-      slideIndex: currentSlideIndex
+      slideIndex: currentSlideIndex,
+      masterElements: masterElements,
+      slideWidth: presentation.slideWidth || 960,
+      slideHeight: presentation.slideHeight || 540
     });
 
     // Feature 14: Render comment markers
@@ -905,6 +989,31 @@
         const items = [];
         if (element.type === 'image')
           items.push({ label: 'Edit Alt Text...', action: () => showAltTextDialog() }, { sep: true });
+
+        // Table cell operations
+        if (element.type === 'table') {
+          const clickedTd = e.target.closest('td, th');
+          const clickedRow = clickedTd ? parseInt(clickedTd.dataset.row, 10) : 0;
+          const clickedCol = clickedTd ? parseInt(clickedTd.dataset.col, 10) : 0;
+          const cellData = element.cells && element.cells[clickedRow] ? element.cells[clickedRow][clickedCol] : '';
+          const isMerged = cellData && typeof cellData === 'object' && (cellData.colspan > 1 || cellData.rowspan > 1);
+
+          items.push(
+            { label: 'Insert Row Above', action: () => tableInsertRow(element, clickedRow, 'above') },
+            { label: 'Insert Row Below', action: () => tableInsertRow(element, clickedRow, 'below') },
+            { label: 'Insert Column Left', action: () => tableInsertColumn(element, clickedCol, 'left') },
+            { label: 'Insert Column Right', action: () => tableInsertColumn(element, clickedCol, 'right') },
+            { sep: true },
+            { label: 'Delete Row', action: () => tableDeleteRow(element, clickedRow) },
+            { label: 'Delete Column', action: () => tableDeleteColumn(element, clickedCol) },
+            { sep: true },
+            { label: 'Merge Cells', action: () => tableMergeCells(element, clickedRow, clickedCol, Math.min(clickedRow + 1, element.rows - 1), Math.min(clickedCol + 1, element.cols - 1)) }
+          );
+          if (isMerged)
+            items.push({ label: 'Split Cell', action: () => tableSplitCell(element, clickedRow, clickedCol) });
+          items.push({ sep: true });
+        }
+
         items.push(
           { label: 'Cut', action: () => doCut() },
           { label: 'Copy', action: () => doCopy() },
@@ -947,17 +1056,48 @@
       });
     }
 
-    // Click on canvas background to deselect
+    // Click on canvas background to deselect (skip if freeform mode active)
     const canvasInner = slideCanvas.querySelector('.slide-canvas');
     if (canvasInner) {
       canvasInner.addEventListener('pointerdown', (e) => {
+        if (freeformMode)
+          return; // freeform overlay handles clicks
+
+        // P4: Eyedropper -- pick color from canvas background
+        if (eyedropperActive) {
+          pickColor(e.clientX, e.clientY);
+          return;
+        }
+
         if (e.target === canvasInner || e.target.classList.contains('slide-guides')) {
+          // P2: Cancel animation painter on background click
+          if (animationPainterActive) {
+            animationPainterActive = false;
+            copiedAnimations = null;
+            document.body.classList.remove('animation-painter-active');
+            const btn = document.querySelector('[data-action="animation-painter"]');
+            if (btn)
+              btn.classList.remove('rb-btn-active');
+          }
+
           selectedElements.clear();
           deactivateFormatPainter();
           renderMainCanvas();
           updateTableDesignTab();
           if (formatPanelVisible && selectedElements.size === 0)
             hideShapeFormatPanel();
+        }
+      });
+
+      // P4: Eyedropper -- show preview near cursor
+      canvasInner.addEventListener('pointermove', (e) => {
+        if (!eyedropperActive)
+          return;
+        const preview = document.querySelector('.eyedropper-preview');
+        if (preview) {
+          preview.style.display = 'block';
+          preview.style.left = (e.clientX + 20) + 'px';
+          preview.style.top = (e.clientY + 20) + 'px';
         }
       });
     }
@@ -980,6 +1120,23 @@
     // Feature 27: Connector mode
     if (connectorMode) {
       _handleConnectorClick(elId);
+      return;
+    }
+
+    // P2: Animation Painter -- apply copied animations to clicked element
+    if (animationPainterActive) {
+      const slide = getCurrentSlide();
+      if (slide) {
+        const targetEl = slide.elements.find(el => el.id === elId);
+        if (targetEl)
+          applyAnimationPaint(targetEl);
+      }
+      return;
+    }
+
+    // P4: Eyedropper -- pick color from clicked element
+    if (eyedropperActive) {
+      pickColor(e.clientX, e.clientY);
       return;
     }
 
@@ -1120,6 +1277,9 @@
     } else if (element.type === 'smartart') {
       // Open SmartArt node editor
       showSmartArtNodeEditor(element);
+    } else if (element.type === 'action-button') {
+      // Open action button settings dialog for editing
+      showInsertActionButtonDialog(element);
     }
   }
 
@@ -2732,33 +2892,148 @@
   // Feature 20: Action Buttons
   // ===============================================================
 
-  function showInsertActionButtonDialog() {
-    const actionType = prompt('Action type (next, prev, first, last, end, url):', 'next');
-    if (!actionType)
-      return;
-
-    const validActions = ['next', 'prev', 'first', 'last', 'end', 'url'];
-    if (!validActions.includes(actionType)) {
-      User32.MessageBox('Invalid action type. Use: ' + validActions.join(', '), 'Presentations', MB_OK);
+  function showInsertActionButtonDialog(existingElement) {
+    const overlay = document.getElementById('dlg-action-button');
+    if (!overlay) {
+      // Fallback: prompt-based insertion
+      const actionType = prompt('Action type (next, prev, first, last, end, url):', 'next');
+      if (!actionType)
+        return;
+      const validActions = ['next', 'prev', 'first', 'last', 'end', 'url'];
+      if (!validActions.includes(actionType))
+        return;
+      const slide = getCurrentSlide();
+      if (!slide)
+        return;
+      pushUndo();
+      const btn = SlideRenderer.createActionButton(400, 450, 120, 40, actionType);
+      if (actionType === 'url') {
+        const url = prompt('URL:', 'https://');
+        if (url)
+          btn.actionUrl = url;
+      }
+      slide.elements.push(btn);
+      selectedElements.clear();
+      selectedElements.add(btn.id);
+      renderMainCanvas();
+      markDirty();
       return;
     }
 
-    const slide = getCurrentSlide();
-    if (!slide)
-      return;
+    const actionTypeSelect = document.getElementById('ab-action-type');
+    const urlField = document.getElementById('ab-url-field');
+    const urlInput = document.getElementById('ab-url');
+    const labelInput = document.getElementById('ab-label');
+    const shapeSelect = document.getElementById('ab-shape');
 
-    pushUndo();
-    const btn = SlideRenderer.createActionButton(400, 450, 120, 40, actionType);
-    if (actionType === 'url') {
-      const url = prompt('URL:', 'https://');
-      if (url)
-        btn.actionUrl = url;
+    // Pre-populate if editing an existing action button
+    if (existingElement) {
+      if (actionTypeSelect)
+        actionTypeSelect.value = existingElement.action || 'next';
+      if (urlInput)
+        urlInput.value = existingElement.actionUrl || '';
+      if (labelInput)
+        labelInput.value = existingElement.label || '';
+      if (shapeSelect)
+        shapeSelect.value = existingElement.actionShape || 'rect';
+      if (urlField)
+        urlField.style.display = (existingElement.action === 'url') ? '' : 'none';
+    } else {
+      if (actionTypeSelect)
+        actionTypeSelect.value = 'next';
+      if (urlInput)
+        urlInput.value = '';
+      if (labelInput)
+        labelInput.value = '';
+      if (shapeSelect)
+        shapeSelect.value = 'rect';
+      if (urlField)
+        urlField.style.display = 'none';
     }
-    slide.elements.push(btn);
-    selectedElements.clear();
-    selectedElements.add(btn.id);
-    renderMainCanvas();
-    markDirty();
+
+    // Wire action type change to show/hide URL field
+    if (actionTypeSelect) {
+      actionTypeSelect.onchange = () => {
+        if (urlField)
+          urlField.style.display = actionTypeSelect.value === 'url' ? '' : 'none';
+      };
+    }
+
+    SZ.Dialog.show('dlg-action-button').then((result) => {
+      if (result !== 'ok')
+        return;
+
+      const actionType = actionTypeSelect ? actionTypeSelect.value : 'next';
+      const url = urlInput ? urlInput.value.trim() : '';
+      const label = labelInput ? labelInput.value.trim() : '';
+      const shape = shapeSelect ? shapeSelect.value : 'rect';
+
+      if (existingElement) {
+        // Editing existing action button
+        pushUndo();
+        existingElement.action = actionType;
+        existingElement.label = label || _getDefaultActionLabel(actionType);
+        existingElement.actionShape = shape;
+        if (actionType === 'url')
+          existingElement.actionUrl = url;
+        else
+          delete existingElement.actionUrl;
+        // Apply shape styling
+        _applyActionButtonShape(existingElement, shape);
+        renderMainCanvas();
+        markDirty();
+      } else {
+        // Inserting new action button
+        const slide = getCurrentSlide();
+        if (!slide)
+          return;
+        pushUndo();
+        const btn = SlideRenderer.createActionButton(400, 450, 120, 40, actionType);
+        btn.label = label || _getDefaultActionLabel(actionType);
+        btn.actionShape = shape;
+        if (actionType === 'url')
+          btn.actionUrl = url;
+        _applyActionButtonShape(btn, shape);
+        slide.elements.push(btn);
+        selectedElements.clear();
+        selectedElements.add(btn.id);
+        renderMainCanvas();
+        markDirty();
+      }
+    });
+  }
+
+  const _ACTION_LABELS = {
+    'next': '\u25B6 Next',
+    'prev': '\u25C0 Previous',
+    'first': '\u23EE First',
+    'last': '\u23ED Last',
+    'end': '\u23F9 End Show',
+    'url': '\uD83D\uDD17 Link',
+    'custom': '\u2699 Custom'
+  };
+
+  function _getDefaultActionLabel(actionType) {
+    return _ACTION_LABELS[actionType] || 'Action';
+  }
+
+  function _applyActionButtonShape(element, shape) {
+    switch (shape) {
+      case 'rounded-rect':
+        element.borderRadius = 12;
+        break;
+      case 'ellipse':
+        element.borderRadius = 50;
+        break;
+      case 'arrow-right':
+        element.borderRadius = 0;
+        element.clipPath = 'polygon(0 0, 75% 0, 100% 50%, 75% 100%, 0 100%)';
+        break;
+      default:
+        element.borderRadius = 6;
+        delete element.clipPath;
+        break;
+    }
   }
 
   // ===============================================================
@@ -2807,16 +3082,195 @@
 
   function toggleMasterView() {
     masterViewActive = !masterViewActive;
+    const banner = document.getElementById('master-view-banner');
 
     if (masterViewActive) {
       if (!presentation.slideMasters)
         presentation.slideMasters = [{ name: 'Default', background: null, elements: [], layouts: [] }];
 
-      // Show master elements on canvas
-      User32.MessageBox('Master view active. Edit elements that appear on all slides.\nClick "Edit Master" again to exit.', 'Master View', MB_OK);
+      // Save current slide index so we can restore it when exiting
+      _masterViewSavedSlideIndex = currentSlideIndex;
+      selectedElements.clear();
+
+      // Show the banner
+      if (banner)
+        banner.style.display = '';
+
+      // Switch slide panel to show master slide thumbnails
+      _renderMasterSlidePanel();
+
+      // Render master slide on the main canvas
+      _renderMasterCanvas();
+    } else {
+      // Restore normal view
+      if (banner)
+        banner.style.display = 'none';
+
+      currentSlideIndex = Math.min(_masterViewSavedSlideIndex, presentation.slides.length - 1);
+      selectedElements.clear();
+
+      // Re-render all thumbnails (master elements now included via renderSlide)
+      refreshSlidePanel();
+      renderMainCanvas();
+    }
+  }
+
+  function _renderMasterSlidePanel() {
+    slideThumbs.innerHTML = '';
+    const masters = presentation.slideMasters || [];
+
+    for (let i = 0; i < masters.length; ++i) {
+      const master = masters[i];
+      const thumb = document.createElement('div');
+      thumb.className = 'slide-thumb active';
+      thumb.dataset.masterIndex = i;
+
+      const number = document.createElement('span');
+      number.className = 'slide-thumb-number';
+      number.textContent = 'M' + (i + 1);
+      thumb.appendChild(number);
+
+      const content = document.createElement('div');
+      content.className = 'slide-thumb-content';
+      thumb.appendChild(content);
+
+      // Render thumbnail of master slide
+      setTimeout(() => {
+        const fakeSlide = {
+          background: master.background || { type: 'color', value: '#FFFFFF' },
+          elements: master.elements || []
+        };
+        SlideRenderer.renderThumbnail(fakeSlide, content, presentation.theme, presentation.slideWidth, presentation.slideHeight);
+      }, 0);
+
+      thumb.addEventListener('click', () => _renderMasterCanvas());
+      slideThumbs.appendChild(thumb);
+    }
+  }
+
+  function _renderMasterCanvas() {
+    const masters = presentation.slideMasters || [];
+    const master = masters[0];
+    if (!master)
+      return;
+
+    // Build a pseudo-slide from the master data
+    const masterSlide = {
+      background: master.background || { type: 'color', value: '#FFFFFF' },
+      elements: master.elements || [],
+      layout: 'blank'
+    };
+
+    const scale = currentZoom / 100;
+    SlideRenderer.renderSlide(masterSlide, slideCanvas, {
+      editable: true,
+      scale: scale,
+      showGuides: true,
+      slideIndex: 0
+    });
+
+    // Wire up canvas elements for editing (same as normal mode)
+    _wireMasterCanvasElements(masterSlide);
+  }
+
+  function _wireMasterCanvasElements(masterSlide) {
+    const elements = slideCanvas.querySelectorAll('.slide-element');
+    for (const domEl of elements) {
+      const elId = domEl.dataset.elementId;
+
+      if (selectedElements.has(elId)) {
+        domEl.classList.add('selected');
+        SlideRenderer.renderResizeHandles(domEl);
+      }
+
+      domEl.addEventListener('pointerdown', (e) => _handleMasterElementPointerDown(e, domEl, elId, masterSlide));
+      domEl.addEventListener('dblclick', (e) => handleElementDblClick(e, domEl, elId));
     }
 
-    renderMainCanvas();
+    // Click on empty canvas to deselect
+    const canvas = slideCanvas.querySelector('.slide-canvas') || slideCanvas;
+    canvas.addEventListener('pointerdown', (e) => {
+      if (e.target === canvas || e.target === slideCanvas) {
+        selectedElements.clear();
+        _renderMasterCanvas();
+      }
+    });
+  }
+
+  function _handleMasterElementPointerDown(e, domEl, elId, masterSlide) {
+    e.stopPropagation();
+
+    if (!e.shiftKey && !e.ctrlKey)
+      selectedElements.clear();
+    selectedElements.add(elId);
+    _renderMasterCanvas();
+
+    // Drag support for master elements
+    const element = masterSlide.elements.find(el => el.id === elId);
+    if (!element)
+      return;
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const origX = element.x;
+    const origY = element.y;
+    const scale = currentZoom / 100;
+
+    const onMove = (ev) => {
+      const dx = (ev.clientX - startX) / scale;
+      const dy = (ev.clientY - startY) / scale;
+      element.x = Math.round(origX + dx);
+      element.y = Math.round(origY + dy);
+      _renderMasterCanvas();
+    };
+
+    const onUp = () => {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      markDirty();
+    };
+
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+  }
+
+  function _addMasterElement(type) {
+    const masters = presentation.slideMasters;
+    if (!masters || !masters[0])
+      return;
+    const master = masters[0];
+    if (!master.elements)
+      master.elements = [];
+
+    pushUndo();
+    let element;
+    if (type === 'textbox')
+      element = SlideRenderer.createTextbox(100, 100, 400, 60, 'Master text');
+    else if (type === 'image')
+      element = SlideRenderer.createImageElement(100, 100, 200, 150, '');
+    else if (type === 'shape')
+      element = SlideRenderer.createShape(100, 100, 200, 150, 'rect', '#4472C4');
+    else
+      return;
+
+    master.elements.push(element);
+    selectedElements.clear();
+    selectedElements.add(element.id);
+    _renderMasterCanvas();
+    markDirty();
+  }
+
+  function _deleteMasterElement() {
+    const masters = presentation.slideMasters;
+    if (!masters || !masters[0] || !selectedElements.size)
+      return;
+    const master = masters[0];
+    pushUndo();
+    for (const elId of selectedElements)
+      master.elements = (master.elements || []).filter(el => el.id !== elId);
+    selectedElements.clear();
+    _renderMasterCanvas();
+    markDirty();
   }
 
   // ===============================================================
@@ -3769,6 +4223,77 @@
     const durationInput = document.getElementById('transition-duration');
     if (durationInput)
       durationInput.value = slide.transition.duration ?? 0.5;
+
+    // P3: Sync transition sound dropdown
+    const soundSelect = document.getElementById('transition-sound');
+    if (soundSelect)
+      soundSelect.value = getTransitionSoundForSlide(slide);
+  }
+
+  // ===============================================================
+  // Slide Size Dialog
+  // ===============================================================
+
+  function showSlideSizeDialog() {
+    const dlg = document.getElementById('dlg-slide-size');
+    if (!dlg)
+      return;
+
+    const presetSel = document.getElementById('ss-preset');
+    const widthInput = document.getElementById('ss-width');
+    const heightInput = document.getElementById('ss-height');
+
+    // Pre-fill with current values
+    widthInput.value = presentation.slideWidth || 960;
+    heightInput.value = presentation.slideHeight || 540;
+
+    // Detect current preset
+    const w = presentation.slideWidth || 960;
+    const h = presentation.slideHeight || 540;
+    if (w === 960 && h === 540)
+      presetSel.value = '16:9';
+    else if (w === 960 && h === 720)
+      presetSel.value = '4:3';
+    else if (w === 1280 && h === 720)
+      presetSel.value = '16:9-hd';
+    else
+      presetSel.value = 'custom';
+
+    presetSel.onchange = () => {
+      switch (presetSel.value) {
+        case '16:9': widthInput.value = 960; heightInput.value = 540; break;
+        case '4:3': widthInput.value = 960; heightInput.value = 720; break;
+        case '16:9-hd': widthInput.value = 1280; heightInput.value = 720; break;
+      }
+    };
+
+    widthInput.oninput = () => { presetSel.value = 'custom'; };
+    heightInput.oninput = () => { presetSel.value = 'custom'; };
+
+    dlg.style.display = 'flex';
+    dlg.querySelectorAll('[data-result]').forEach(btn => {
+      btn.onclick = () => {
+        dlg.style.display = 'none';
+        if (btn.dataset.result === 'ok') {
+          const newW = Math.max(320, Math.min(3840, parseInt(widthInput.value, 10) || 960));
+          const newH = Math.max(240, Math.min(2160, parseInt(heightInput.value, 10) || 540));
+          if (newW === presentation.slideWidth && newH === presentation.slideHeight)
+            return;
+          pushUndo();
+          presentation.slideWidth = newW;
+          presentation.slideHeight = newH;
+          // Update the slide-renderer's default canvas size
+          if (SlideRenderer.setCanvasSize)
+            SlideRenderer.setCanvasSize(newW, newH);
+          // Resize the slide canvas container
+          slideCanvas.style.width = newW + 'px';
+          slideCanvas.style.height = newH + 'px';
+          zoomFit();
+          refreshSlidePanel();
+          markDirty();
+        }
+      };
+    });
   }
 
   // ===============================================================
@@ -3845,12 +4370,15 @@
 
   function setView(view) {
     currentView = view;
+    outlineViewActive = view === 'outline';
 
-    document.body.classList.remove('view-normal', 'view-sorter', 'view-notes');
+    document.body.classList.remove('view-normal', 'view-sorter', 'view-notes', 'view-outline');
     document.body.classList.add('view-' + view);
 
     if (view === 'sorter')
       renderSorterView();
+    else if (view === 'outline')
+      renderOutlineView();
     else if (view === 'notes' || view === 'normal')
       refreshUI();
   }
@@ -3909,22 +4437,37 @@
       thumb.addEventListener('dragover', (e) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
+        // Show insertion indicator on left or right side
+        const rect = thumb.getBoundingClientRect();
+        const midX = rect.left + rect.width / 2;
+        thumb.classList.remove('drag-over-left', 'drag-over-right');
         thumb.classList.add('drag-over');
+        if (e.clientX < midX)
+          thumb.classList.add('drag-over-left');
+        else
+          thumb.classList.add('drag-over-right');
       });
 
       thumb.addEventListener('dragleave', () => {
-        thumb.classList.remove('drag-over');
+        thumb.classList.remove('drag-over', 'drag-over-left', 'drag-over-right');
       });
 
       thumb.addEventListener('drop', (e) => {
         e.preventDefault();
-        thumb.classList.remove('drag-over');
+        const insertBefore = thumb.classList.contains('drag-over-left');
+        thumb.classList.remove('drag-over', 'drag-over-left', 'drag-over-right');
         const fromIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
-        const toIndex = i;
+        let toIndex = insertBefore ? i : i;
         if (isNaN(fromIndex) || fromIndex === toIndex)
           return;
         pushUndo();
         const movedSlide = presentation.slides.splice(fromIndex, 1)[0];
+        // Adjust target if source was before target
+        if (fromIndex < toIndex)
+          --toIndex;
+        if (!insertBefore)
+          ++toIndex;
+        toIndex = Math.max(0, Math.min(presentation.slides.length, toIndex));
         presentation.slides.splice(toIndex, 0, movedSlide);
         currentSlideIndex = toIndex;
         renderSorterView();
@@ -3941,6 +4484,354 @@
 
       slideSorterEl.appendChild(wrapper);
     }
+  }
+
+  // ===============================================================
+  // Feature D: Outline View
+  // ===============================================================
+
+  function renderOutlineView() {
+    const outlinePanel = document.getElementById('outline-panel');
+    if (!outlinePanel)
+      return;
+
+    outlinePanel.innerHTML = '';
+
+    for (let i = 0; i < presentation.slides.length; ++i) {
+      const slide = presentation.slides[i];
+      const slideItem = document.createElement('div');
+      slideItem.className = 'outline-slide' + (i === currentSlideIndex ? ' active' : '');
+      slideItem.dataset.slideIndex = i;
+
+      // Slide heading
+      const heading = document.createElement('div');
+      heading.className = 'outline-slide-heading';
+      heading.contentEditable = 'true';
+
+      // Extract title from first textbox element
+      const titleEl = slide.elements.find(el => el.type === 'textbox');
+      heading.textContent = (titleEl && (titleEl.content || titleEl.placeholder)) || 'Slide ' + (i + 1);
+
+      heading.addEventListener('click', () => {
+        currentSlideIndex = i;
+        renderOutlineView();
+        renderMainCanvas();
+      });
+
+      heading.addEventListener('input', () => {
+        if (!titleEl)
+          return;
+        pushUndo();
+        titleEl.content = heading.textContent;
+        markDirty();
+      });
+
+      heading.addEventListener('blur', () => {
+        refreshSlidePanel();
+      });
+
+      const slideNum = document.createElement('span');
+      slideNum.className = 'outline-slide-number';
+      slideNum.textContent = (i + 1) + '.';
+      slideItem.appendChild(slideNum);
+      slideItem.appendChild(heading);
+
+      // Text elements as bullet points
+      const textEls = slide.elements.filter(el => el.type === 'textbox');
+      for (let j = 0; j < textEls.length; ++j) {
+        // Skip the first textbox (already used as heading)
+        if (j === 0)
+          continue;
+
+        const bullet = document.createElement('div');
+        bullet.className = 'outline-bullet';
+        bullet.contentEditable = 'true';
+        bullet.textContent = textEls[j].content || textEls[j].placeholder || '';
+
+        const capturedJ = j;
+        const capturedI = i;
+        bullet.addEventListener('input', () => {
+          pushUndo();
+          textEls[capturedJ].content = bullet.textContent;
+          markDirty();
+        });
+
+        bullet.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            // Create a new textbox bullet on the current slide
+            pushUndo();
+            const newTb = SlideRenderer.createTextbox(50, 100 + textEls.length * 40, 860, 30, '');
+            newTb.content = '';
+            presentation.slides[capturedI].elements.push(newTb);
+            markDirty();
+            renderOutlineView();
+            // Focus the new bullet
+            setTimeout(() => {
+              const newBullets = outlinePanel.querySelectorAll(`.outline-slide[data-slide-index="${capturedI}"] .outline-bullet`);
+              const lastBullet = newBullets[newBullets.length - 1];
+              if (lastBullet)
+                lastBullet.focus();
+            }, 50);
+          } else if (e.key === 'Tab') {
+            e.preventDefault();
+            // Tab demotes: indent level (visual only -- increase left padding)
+            if (e.shiftKey) {
+              const curPad = parseInt(bullet.style.paddingLeft || '24', 10);
+              bullet.style.paddingLeft = Math.max(24, curPad - 20) + 'px';
+            } else {
+              const curPad = parseInt(bullet.style.paddingLeft || '24', 10);
+              bullet.style.paddingLeft = Math.min(120, curPad + 20) + 'px';
+            }
+          }
+        });
+
+        slideItem.appendChild(bullet);
+      }
+
+      outlinePanel.appendChild(slideItem);
+    }
+  }
+
+  // ===============================================================
+  // Feature E: Freeform Shape Drawing
+  // ===============================================================
+
+  function startFreeformMode() {
+    freeformMode = true;
+    freeformPoints = [];
+    freeformPreviewEl = null;
+    slideCanvas.style.cursor = 'crosshair';
+
+    // Create overlay for drawing feedback
+    _createFreeformOverlay();
+  }
+
+  function _createFreeformOverlay() {
+    const existing = document.getElementById('freeform-overlay');
+    if (existing)
+      existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'freeform-overlay';
+    overlay.className = 'freeform-overlay';
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', '100%');
+    svg.setAttribute('height', '100%');
+    svg.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;';
+    overlay.appendChild(svg);
+
+    overlay.addEventListener('click', _handleFreeformClick);
+    overlay.addEventListener('dblclick', _handleFreeformDblClick);
+    overlay.addEventListener('mousemove', _handleFreeformMove);
+
+    const canvas = slideCanvas.querySelector('.slide-canvas');
+    if (canvas) {
+      canvas.style.position = 'relative';
+      canvas.appendChild(overlay);
+    }
+  }
+
+  function _handleFreeformClick(e) {
+    if (!freeformMode)
+      return;
+
+    e.stopPropagation();
+    e.preventDefault();
+
+    const canvas = slideCanvas.querySelector('.slide-canvas');
+    if (!canvas)
+      return;
+
+    const rect = canvas.getBoundingClientRect();
+    const scale = currentZoom / 100;
+    const x = (e.clientX - rect.left) / scale;
+    const y = (e.clientY - rect.top) / scale;
+
+    freeformPoints.push({ x, y });
+    _updateFreeformPreview();
+  }
+
+  function _handleFreeformDblClick(e) {
+    if (!freeformMode)
+      return;
+
+    e.stopPropagation();
+    e.preventDefault();
+
+    _completeFreeform();
+  }
+
+  function _handleFreeformMove(e) {
+    if (!freeformMode || freeformPoints.length < 1)
+      return;
+
+    const overlay = document.getElementById('freeform-overlay');
+    if (!overlay)
+      return;
+
+    const svg = overlay.querySelector('svg');
+    if (!svg)
+      return;
+
+    const canvas = slideCanvas.querySelector('.slide-canvas');
+    if (!canvas)
+      return;
+
+    const rect = canvas.getBoundingClientRect();
+    const scale = currentZoom / 100;
+    const mx = (e.clientX - rect.left) / scale;
+    const my = (e.clientY - rect.top) / scale;
+
+    // Redraw with temporary ghost line to cursor
+    _updateFreeformPreview(mx, my);
+  }
+
+  function _updateFreeformPreview(ghostX, ghostY) {
+    const overlay = document.getElementById('freeform-overlay');
+    if (!overlay)
+      return;
+
+    const svg = overlay.querySelector('svg');
+    if (!svg)
+      return;
+
+    svg.innerHTML = '';
+
+    if (freeformPoints.length < 1)
+      return;
+
+    const pts = freeformPoints.map(p => `${p.x},${p.y}`);
+    if (ghostX != null && ghostY != null)
+      pts.push(`${ghostX},${ghostY}`);
+
+    const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+    polyline.setAttribute('points', pts.join(' '));
+    polyline.setAttribute('fill', 'none');
+    polyline.setAttribute('stroke', '#4472c4');
+    polyline.setAttribute('stroke-width', '2');
+    polyline.setAttribute('stroke-dasharray', '5,3');
+    svg.appendChild(polyline);
+
+    // Draw vertex dots
+    for (const p of freeformPoints) {
+      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.setAttribute('cx', p.x);
+      circle.setAttribute('cy', p.y);
+      circle.setAttribute('r', '4');
+      circle.setAttribute('fill', '#4472c4');
+      svg.appendChild(circle);
+    }
+  }
+
+  function _completeFreeform() {
+    if (freeformPoints.length < 2) {
+      _cancelFreeformMode();
+      return;
+    }
+
+    const slide = getCurrentSlide();
+    if (!slide) {
+      _cancelFreeformMode();
+      return;
+    }
+
+    // Calculate bounding box
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of freeformPoints) {
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y > maxY) maxY = p.y;
+    }
+
+    const w = Math.max(maxX - minX, 10);
+    const h = Math.max(maxY - minY, 10);
+
+    // Normalize points to 0..1 space relative to bounding box
+    const normalizedPoints = freeformPoints.map(p => ({
+      x: (p.x - minX) / w,
+      y: (p.y - minY) / h
+    }));
+
+    pushUndo();
+    const fillColor = presentation.theme.colors.accent1 || '#4472c4';
+    const freeform = SlideRenderer.createFreeform(minX, minY, w, h, normalizedPoints, true, fillColor);
+    slide.elements.push(freeform);
+    selectedElements.clear();
+    selectedElements.add(freeform.id);
+    markDirty();
+
+    _cancelFreeformMode();
+    renderMainCanvas();
+  }
+
+  function _cancelFreeformMode() {
+    freeformMode = false;
+    freeformPoints = [];
+    slideCanvas.style.cursor = '';
+
+    const overlay = document.getElementById('freeform-overlay');
+    if (overlay)
+      overlay.remove();
+  }
+
+  // ===============================================================
+  // Feature B: Notes Page PDF Export
+  // ===============================================================
+
+  function doExportPdfWithNotes() {
+    if (!presentation || !presentation.slides.length)
+      return;
+
+    const container = document.getElementById('print-container');
+    if (!container)
+      return;
+
+    container.innerHTML = '';
+
+    for (let i = 0; i < presentation.slides.length; ++i) {
+      const slide = presentation.slides[i];
+      const page = document.createElement('div');
+      page.className = 'print-slide-page print-notes-page';
+
+      // Top half: slide thumbnail
+      const slideArea = document.createElement('div');
+      slideArea.className = 'print-notes-slide';
+      SlideRenderer.renderSlide(slide, slideArea, {
+        editable: false,
+        scale: 0.5,
+        showGuides: false,
+        headerFooter: presentation.headerFooter,
+        slideIndex: i,
+        slideWidth: presentation.slideWidth || 960,
+        slideHeight: presentation.slideHeight || 540
+      });
+      page.appendChild(slideArea);
+
+      // Bottom half: notes text
+      const notesArea = document.createElement('div');
+      notesArea.className = 'print-notes-text';
+
+      const notesHeading = document.createElement('div');
+      notesHeading.className = 'print-notes-heading';
+      notesHeading.textContent = 'Slide ' + (i + 1) + ' Notes';
+      notesArea.appendChild(notesHeading);
+
+      const notesContent = document.createElement('div');
+      notesContent.className = 'print-notes-content';
+      notesContent.textContent = slide.notes || '(No notes)';
+      notesArea.appendChild(notesContent);
+
+      page.appendChild(notesArea);
+      container.appendChild(page);
+    }
+
+    setTimeout(() => {
+      window.print();
+      setTimeout(() => { container.innerHTML = ''; }, 500);
+    }, 100);
   }
 
   // ===============================================================
@@ -4186,8 +5077,12 @@
     document.addEventListener('keydown', (e) => {
       // Escape
       if (e.key === 'Escape') {
-        if (SlideshowMode.isActive()) {
+        if (freeformMode) {
+          _cancelFreeformMode();
+        } else if (SlideshowMode.isActive()) {
           SlideshowMode.stopSlideshow();
+        } else if (connectorMode) {
+          _cancelConnectorMode();
         } else if (presFormatPainter && presFormatPainter.isActive) {
           deactivateFormatPainter();
         } else if (selectedElements.size) {
@@ -4566,6 +5461,7 @@
     selectedAnimationId = null;
     markDirty();
     refreshAnimationPane();
+    _refreshEffectOptionsMenu(null);
   }
 
   function updateSelectedAnimationTrigger() {
@@ -4770,6 +5666,75 @@
     }
     if (delayInput)
       delayInput.value = anim.delay || 0;
+
+    _refreshEffectOptionsMenu(anim);
+  }
+
+  function _refreshEffectOptionsMenu(anim) {
+    const menu = document.getElementById('effect-options-menu');
+    if (!menu)
+      return;
+
+    menu.innerHTML = '';
+
+    if (!anim || !AnimationEngine) {
+      menu.innerHTML = '<div style="padding:6px 12px;color:#999;font-size:11px;">Select an animation first</div>';
+      return;
+    }
+
+    const opts = AnimationEngine.getEffectOptions(anim.effect);
+    if (!opts) {
+      menu.innerHTML = '<div style="padding:6px 12px;color:#999;font-size:11px;">No options for this effect</div>';
+      return;
+    }
+
+    const dirArrows = {
+      'from-bottom': '\u2191', 'from-top': '\u2193', 'from-left': '\u2192', 'from-right': '\u2190',
+      'from-bottom-left': '\u2197', 'from-top-right': '\u2199',
+      'to-bottom': '\u2193', 'to-top': '\u2191', 'to-left': '\u2190', 'to-right': '\u2192'
+    };
+
+    if (opts.directions) {
+      for (const dir of opts.directions) {
+        const btn = document.createElement('button');
+        const arrow = dirArrows[dir] || '';
+        const current = (anim.effectOptions && anim.effectOptions.direction) || anim.direction;
+        const isActive = current === dir;
+        btn.textContent = arrow + ' ' + dir.replace(/-/g, ' ');
+        if (isActive)
+          btn.style.fontWeight = 'bold';
+        btn.addEventListener('click', () => _applyEffectOption(anim, 'direction', dir));
+        menu.appendChild(btn);
+      }
+    } else if (opts.options) {
+      for (const opt of opts.options) {
+        const btn = document.createElement('button');
+        const current = anim.effectOptions && anim.effectOptions.option;
+        const isActive = current === opt;
+        btn.textContent = opt.replace(/-/g, ' ');
+        if (isActive)
+          btn.style.fontWeight = 'bold';
+        btn.addEventListener('click', () => _applyEffectOption(anim, 'option', opt));
+        menu.appendChild(btn);
+      }
+    }
+  }
+
+  function _applyEffectOption(anim, key, value) {
+    if (!anim)
+      return;
+    pushUndo();
+    if (!anim.effectOptions)
+      anim.effectOptions = {};
+    anim.effectOptions[key] = value;
+
+    // Also set the legacy direction field for backward compatibility
+    if (key === 'direction')
+      anim.direction = value;
+
+    markDirty();
+    refreshAnimationPane();
+    _refreshEffectOptionsMenu(anim);
   }
 
   function _reorderAnimationInSlide(draggedAnimId, targetAnimId) {
@@ -5150,6 +6115,118 @@
   }
 
   // ===============================================================
+  // Table Cell Operations
+  // ===============================================================
+
+  function tableInsertRow(element, rowIndex, position) {
+    pushUndo();
+    const cols = element.cols || 0;
+    const newRow = Array.from({ length: cols }, () => '');
+    const targetIndex = position === 'above' ? rowIndex : rowIndex + 1;
+    element.cells.splice(targetIndex, 0, newRow);
+    ++element.rows;
+    renderMainCanvas();
+    refreshSlidePanel();
+    markDirty();
+  }
+
+  function tableInsertColumn(element, colIndex, position) {
+    pushUndo();
+    const targetIndex = position === 'left' ? colIndex : colIndex + 1;
+    for (const row of element.cells)
+      row.splice(targetIndex, 0, '');
+    ++element.cols;
+    renderMainCanvas();
+    refreshSlidePanel();
+    markDirty();
+  }
+
+  function tableDeleteRow(element, rowIndex) {
+    if (element.rows <= 1)
+      return;
+    pushUndo();
+    element.cells.splice(rowIndex, 1);
+    --element.rows;
+    renderMainCanvas();
+    refreshSlidePanel();
+    markDirty();
+  }
+
+  function tableDeleteColumn(element, colIndex) {
+    if (element.cols <= 1)
+      return;
+    pushUndo();
+    for (const row of element.cells)
+      row.splice(colIndex, 1);
+    --element.cols;
+    renderMainCanvas();
+    refreshSlidePanel();
+    markDirty();
+  }
+
+  function tableMergeCells(element, startRow, startCol, endRow, endCol) {
+    pushUndo();
+    // Collect text from all cells being merged
+    const texts = [];
+    for (let r = startRow; r <= endRow; ++r) {
+      for (let c = startCol; c <= endCol; ++c) {
+        const val = element.cells[r] && element.cells[r][c];
+        if (val && val !== null)
+          texts.push(val);
+      }
+    }
+
+    // Store merge info on the top-left cell
+    const mergedContent = texts.join(' ');
+    element.cells[startRow][startCol] = {
+      text: mergedContent,
+      colspan: endCol - startCol + 1,
+      rowspan: endRow - startRow + 1
+    };
+
+    // Mark merged-away cells as null
+    for (let r = startRow; r <= endRow; ++r) {
+      for (let c = startCol; c <= endCol; ++c) {
+        if (r === startRow && c === startCol)
+          continue;
+        element.cells[r][c] = null;
+      }
+    }
+
+    renderMainCanvas();
+    refreshSlidePanel();
+    markDirty();
+  }
+
+  function tableSplitCell(element, rowIndex, colIndex) {
+    pushUndo();
+    const cell = element.cells[rowIndex] && element.cells[rowIndex][colIndex];
+    if (!cell || typeof cell !== 'object' || (!cell.colspan && !cell.rowspan))
+      return;
+
+    const colspan = cell.colspan || 1;
+    const rowspan = cell.rowspan || 1;
+    const text = cell.text || '';
+
+    // Restore the top-left cell to plain text
+    element.cells[rowIndex][colIndex] = text;
+
+    // Restore null cells to empty strings
+    for (let r = rowIndex; r < rowIndex + rowspan && r < element.rows; ++r) {
+      for (let c = colIndex; c < colIndex + colspan && c < element.cols; ++c) {
+        if (r === rowIndex && c === colIndex)
+          continue;
+        if (element.cells[r])
+          element.cells[r][c] = '';
+      }
+    }
+
+    renderMainCanvas();
+    refreshSlidePanel();
+    markDirty();
+  }
+
+  // ===============================================================
   // Feature: Shape Format Panel (right sidebar)
   // ===============================================================
 
@@ -5445,6 +6522,551 @@
   }
 
   // ===============================================================
+  // P1: Equation Editor
+  // ===============================================================
+
+  function showEquationEditor() {
+    const overlay = document.getElementById('dlg-equation');
+    if (!overlay) {
+      // Fallback: insert a simple equation
+      insertEquation(EQUATION_TEMPLATES.fraction.html);
+      return;
+    }
+
+    // Populate template gallery
+    const gallery = overlay.querySelector('.eq-template-gallery');
+    if (gallery) {
+      gallery.innerHTML = '';
+      for (const [key, tmpl] of Object.entries(EQUATION_TEMPLATES)) {
+        const tile = document.createElement('button');
+        tile.className = 'eq-template-tile';
+        tile.title = tmpl.label;
+        tile.innerHTML = '<div class="eq-template-preview">' + tmpl.html + '</div><span>' + tmpl.label + '</span>';
+        tile.addEventListener('click', () => {
+          const preview = overlay.querySelector('#eq-preview');
+          if (preview)
+            preview.innerHTML = tmpl.html;
+        });
+        gallery.appendChild(tile);
+      }
+    }
+
+    // Wire symbol palette clicks
+    const symbols = overlay.querySelectorAll('.eq-symbol');
+    for (const sym of symbols) {
+      sym.onclick = () => {
+        const prev = overlay.querySelector('#eq-preview');
+        if (prev) {
+          // Insert symbol at cursor or append
+          prev.focus();
+          document.execCommand('insertText', false, sym.textContent);
+        }
+      };
+    }
+
+    // Reset preview
+    const preview = overlay.querySelector('#eq-preview');
+    if (preview)
+      preview.innerHTML = EQUATION_TEMPLATES.fraction.html;
+
+    SZ.Dialog.show('dlg-equation').then((result) => {
+      if (result !== 'ok')
+        return;
+      const previewEl = overlay.querySelector('#eq-preview');
+      if (previewEl && previewEl.innerHTML.trim())
+        insertEquation(previewEl.innerHTML);
+    });
+  }
+
+  function insertEquation(equationHtml) {
+    const slide = getCurrentSlide();
+    if (!slide)
+      return;
+    pushUndo();
+    const el = SlideRenderer.createTextbox(280, 200, 400, 120, '');
+    el.content = '<div class="slide-equation">' + equationHtml + '</div>';
+    el.backgroundColor = 'transparent';
+    el.borderColor = 'transparent';
+    el.fontSize = 24;
+    slide.elements.push(el);
+    selectedElements.clear();
+    selectedElements.add(el.id);
+    renderMainCanvas();
+    markDirty();
+  }
+
+  // ===============================================================
+  // P2: Animation Painter
+  // ===============================================================
+
+  function startAnimationPainter() {
+    const selected = getSelectedElements();
+    if (!selected.length) {
+      User32.MessageBox('Select an element with animations first.', 'Animation Painter', MB_OK);
+      return;
+    }
+
+    const sourceEl = selected[0];
+    if (!sourceEl.animations || !sourceEl.animations.length) {
+      User32.MessageBox('The selected element has no animations to copy.', 'Animation Painter', MB_OK);
+      return;
+    }
+
+    copiedAnimations = JSON.parse(JSON.stringify(sourceEl.animations));
+    animationPainterActive = true;
+    document.body.classList.add('animation-painter-active');
+
+    // Update button state
+    const btn = document.querySelector('[data-action="animation-painter"]');
+    if (btn)
+      btn.classList.add('rb-btn-active');
+  }
+
+  function applyAnimationPaint(targetElement) {
+    if (!copiedAnimations || !targetElement)
+      return;
+
+    pushUndo();
+    // Deep-clone with new IDs
+    targetElement.animations = copiedAnimations.map(a => {
+      const clone = JSON.parse(JSON.stringify(a));
+      clone.id = 'anim-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+      return clone;
+    });
+
+    // Deactivate painter
+    animationPainterActive = false;
+    copiedAnimations = null;
+    document.body.classList.remove('animation-painter-active');
+
+    const btn = document.querySelector('[data-action="animation-painter"]');
+    if (btn)
+      btn.classList.remove('rb-btn-active');
+
+    renderMainCanvas();
+    refreshAnimationPane();
+    markDirty();
+  }
+
+  // ===============================================================
+  // P3: Transition Sound Effects
+  // ===============================================================
+
+  function playTransitionSound(soundName) {
+    const params = TRANSITION_SOUNDS[soundName];
+    if (!params)
+      return;
+
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(params.gain || 0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + (params.duration || 0.5));
+    gain.connect(ctx.destination);
+
+    if (params.type === 'noise') {
+      // Generate white noise
+      const bufferSize = ctx.sampleRate * (params.duration || 0.5);
+      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; ++i)
+        data[i] = Math.random() * 2 - 1;
+
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+
+      let lastNode = source;
+
+      // Optional filter
+      if (params.filter) {
+        const filter = ctx.createBiquadFilter();
+        filter.type = params.filter.type || 'bandpass';
+        filter.frequency.setValueAtTime(params.filter.freq || 1000, ctx.currentTime);
+        filter.Q.setValueAtTime(params.filter.q || 1, ctx.currentTime);
+
+        // Optional sweep
+        if (params.sweep) {
+          filter.frequency.setValueAtTime(params.sweep.from, ctx.currentTime);
+          filter.frequency.exponentialRampToValueAtTime(params.sweep.to, ctx.currentTime + params.duration);
+        }
+
+        lastNode.connect(filter);
+        lastNode = filter;
+      }
+
+      // Optional tremolo
+      if (params.tremolo) {
+        const tremGain = ctx.createGain();
+        tremGain.gain.setValueAtTime(1, ctx.currentTime);
+        const lfo = ctx.createOscillator();
+        lfo.frequency.setValueAtTime(params.tremolo.freq || 15, ctx.currentTime);
+        const lfoGain = ctx.createGain();
+        lfoGain.gain.setValueAtTime(0.5, ctx.currentTime);
+        lfo.connect(lfoGain);
+        lfoGain.connect(tremGain.gain);
+        lfo.start();
+        lastNode.connect(tremGain);
+        lastNode = tremGain;
+      }
+
+      lastNode.connect(gain);
+      source.start();
+      source.stop(ctx.currentTime + params.duration);
+    } else {
+      // Oscillator-based sound
+      const osc = ctx.createOscillator();
+      osc.type = params.type || 'sine';
+      osc.frequency.setValueAtTime(params.freq || 440, ctx.currentTime);
+      osc.connect(gain);
+      osc.start();
+      osc.stop(ctx.currentTime + (params.duration || 0.5));
+    }
+
+    // Clean up after sound finishes
+    setTimeout(() => ctx.close().catch(() => {}), (params.duration || 0.5) * 1000 + 200);
+  }
+
+  function getTransitionSoundForSlide(slide) {
+    return (slide && slide.transition && slide.transition.sound) || 'none';
+  }
+
+  function setTransitionSoundForSlide(soundName) {
+    const slide = getCurrentSlide();
+    if (!slide)
+      return;
+    pushUndo();
+    if (typeof slide.transition !== 'object')
+      slide.transition = { type: slide.transition || 'fade', duration: 0.5 };
+    slide.transition.sound = soundName;
+    markDirty();
+  }
+
+  // ===============================================================
+  // P4: Eyedropper Color Picker
+  // ===============================================================
+
+  function startEyedropper(target) {
+    eyedropperTarget = target || 'fill';
+    eyedropperActive = true;
+    document.body.classList.add('eyedropper-active');
+
+    // Remove preview if exists
+    let preview = document.querySelector('.eyedropper-preview');
+    if (!preview) {
+      preview = document.createElement('div');
+      preview.className = 'eyedropper-preview';
+      document.body.appendChild(preview);
+    }
+    preview.style.display = 'none';
+  }
+
+  function stopEyedropper() {
+    eyedropperActive = false;
+    eyedropperTarget = null;
+    document.body.classList.remove('eyedropper-active');
+    const preview = document.querySelector('.eyedropper-preview');
+    if (preview && preview.parentNode)
+      preview.parentNode.removeChild(preview);
+  }
+
+  function pickColor(x, y) {
+    // Render the current slide canvas to an offscreen canvas and sample the pixel
+    const canvasEl = slideCanvas.querySelector('.slide-canvas');
+    if (!canvasEl)
+      return;
+
+    const sw = presentation.slideWidth || 960;
+    const sh = presentation.slideHeight || 540;
+    const scale = currentZoom / 100;
+
+    // Use html2canvas-like approach: render to a temporary canvas
+    const offscreen = document.createElement('canvas');
+    offscreen.width = sw;
+    offscreen.height = sh;
+    const octx = offscreen.getContext('2d');
+
+    // Get the computed background
+    const bgColor = window.getComputedStyle(canvasEl).backgroundColor;
+    octx.fillStyle = bgColor || '#ffffff';
+    octx.fillRect(0, 0, sw, sh);
+
+    // Sample the computed styles of elements at the point
+    // For a simpler approach, use getComputedStyle on the element under cursor
+    const rect = canvasEl.getBoundingClientRect();
+    const localX = (x - rect.left) / scale;
+    const localY = (y - rect.top) / scale;
+
+    // Find element under click position
+    const slide = getCurrentSlide();
+    if (!slide)
+      return null;
+
+    // Check elements in reverse z-order
+    let color = null;
+    for (let i = slide.elements.length - 1; i >= 0; --i) {
+      const el = slide.elements[i];
+      if (localX >= el.x && localX <= el.x + el.w && localY >= el.y && localY <= el.y + el.h) {
+        if (el.type === 'shape')
+          color = el.fillColor || '#4472c4';
+        else if (el.type === 'textbox')
+          color = el.backgroundColor && el.backgroundColor !== 'transparent' ? el.backgroundColor : el.color;
+        else if (el.type === 'image')
+          color = '#808080'; // approximate for images
+        break;
+      }
+    }
+
+    if (!color) {
+      // Clicked on background
+      if (slide.background) {
+        if (slide.background.type === 'color')
+          color = slide.background.value || '#ffffff';
+        else
+          color = '#ffffff';
+      } else
+        color = '#ffffff';
+    }
+
+    // Apply the picked color
+    applyEyedropperColor(color);
+    return color;
+  }
+
+  function applyEyedropperColor(color) {
+    const selected = getSelectedElements();
+    if (!selected.length) {
+      stopEyedropper();
+      return;
+    }
+
+    pushUndo();
+    for (const el of selected) {
+      switch (eyedropperTarget) {
+        case 'fill':
+          if (el.type === 'shape')
+            el.fillColor = color;
+          else if (el.type === 'textbox')
+            el.backgroundColor = color;
+          break;
+        case 'text':
+          if (el.type === 'textbox')
+            el.color = color;
+          break;
+        case 'border':
+          el.borderColor = color;
+          if (!el.borderWidth)
+            el.borderWidth = 2;
+          break;
+      }
+    }
+
+    stopEyedropper();
+    renderMainCanvas();
+    markDirty();
+  }
+
+  // ===============================================================
+  // P5: Image Cropping
+  // ===============================================================
+
+  function startCropMode() {
+    const selected = getSelectedElements();
+    if (!selected.length || selected[0].type !== 'image') {
+      User32.MessageBox('Select an image element first.', 'Crop Image', MB_OK);
+      return;
+    }
+
+    cropMode = true;
+    cropData = {
+      top: selected[0].cropTop || 0,
+      right: selected[0].cropRight || 0,
+      bottom: selected[0].cropBottom || 0,
+      left: selected[0].cropLeft || 0
+    };
+
+    renderCropOverlay(selected[0]);
+  }
+
+  function renderCropOverlay(element) {
+    // Remove existing overlay
+    cancelCrop(true); // silent cancel, just remove overlay
+
+    const domEl = slideCanvas.querySelector('[data-element-id="' + element.id + '"]');
+    if (!domEl)
+      return;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'crop-overlay';
+    overlay.id = 'crop-overlay';
+
+    // Crop mask regions
+    const maskTop = document.createElement('div');
+    maskTop.className = 'crop-mask crop-mask-top';
+    maskTop.style.height = cropData.top + '%';
+
+    const maskRight = document.createElement('div');
+    maskRight.className = 'crop-mask crop-mask-right';
+    maskRight.style.width = cropData.right + '%';
+
+    const maskBottom = document.createElement('div');
+    maskBottom.className = 'crop-mask crop-mask-bottom';
+    maskBottom.style.height = cropData.bottom + '%';
+
+    const maskLeft = document.createElement('div');
+    maskLeft.className = 'crop-mask crop-mask-left';
+    maskLeft.style.width = cropData.left + '%';
+
+    overlay.appendChild(maskTop);
+    overlay.appendChild(maskRight);
+    overlay.appendChild(maskBottom);
+    overlay.appendChild(maskLeft);
+
+    // 8 crop handles
+    const handlePositions = [
+      { name: 'nw', side: 'top-left' },
+      { name: 'n', side: 'top' },
+      { name: 'ne', side: 'top-right' },
+      { name: 'e', side: 'right' },
+      { name: 'se', side: 'bottom-right' },
+      { name: 's', side: 'bottom' },
+      { name: 'sw', side: 'bottom-left' },
+      { name: 'w', side: 'left' }
+    ];
+
+    for (const hp of handlePositions) {
+      const handle = document.createElement('div');
+      handle.className = 'crop-handle crop-handle-' + hp.name;
+      handle.dataset.cropHandle = hp.name;
+      handle.addEventListener('pointerdown', (e) => startCropHandleDrag(e, hp.name, element));
+      overlay.appendChild(handle);
+    }
+
+    // Buttons row
+    const actions = document.createElement('div');
+    actions.className = 'crop-actions';
+
+    const applyBtn = document.createElement('button');
+    applyBtn.textContent = 'Apply';
+    applyBtn.className = 'crop-apply-btn';
+    applyBtn.addEventListener('click', () => applyCrop(element));
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.className = 'crop-cancel-btn';
+    cancelBtn.addEventListener('click', () => cancelCrop());
+
+    actions.appendChild(applyBtn);
+    actions.appendChild(cancelBtn);
+    overlay.appendChild(actions);
+
+    domEl.style.position = 'relative';
+    domEl.appendChild(overlay);
+  }
+
+  function startCropHandleDrag(e, handleName, element) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const domEl = slideCanvas.querySelector('[data-element-id="' + element.id + '"]');
+    if (!domEl)
+      return;
+
+    const rect = domEl.getBoundingClientRect();
+
+    const onMove = (ev) => {
+      const px = ((ev.clientX - rect.left) / rect.width) * 100;
+      const py = ((ev.clientY - rect.top) / rect.height) * 100;
+
+      switch (handleName) {
+        case 'n': case 'nw': case 'ne':
+          cropData.top = Math.max(0, Math.min(py, 100 - cropData.bottom - 10));
+          break;
+      }
+      switch (handleName) {
+        case 's': case 'sw': case 'se':
+          cropData.bottom = Math.max(0, Math.min(100 - py, 100 - cropData.top - 10));
+          break;
+      }
+      switch (handleName) {
+        case 'w': case 'nw': case 'sw':
+          cropData.left = Math.max(0, Math.min(px, 100 - cropData.right - 10));
+          break;
+      }
+      switch (handleName) {
+        case 'e': case 'ne': case 'se':
+          cropData.right = Math.max(0, Math.min(100 - px, 100 - cropData.left - 10));
+          break;
+      }
+
+      updateCropMasks();
+    };
+
+    const onUp = () => {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+    };
+
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+  }
+
+  function updateCropMasks() {
+    const overlay = document.getElementById('crop-overlay');
+    if (!overlay)
+      return;
+
+    const maskTop = overlay.querySelector('.crop-mask-top');
+    const maskRight = overlay.querySelector('.crop-mask-right');
+    const maskBottom = overlay.querySelector('.crop-mask-bottom');
+    const maskLeft = overlay.querySelector('.crop-mask-left');
+
+    if (maskTop) maskTop.style.height = cropData.top + '%';
+    if (maskRight) maskRight.style.width = cropData.right + '%';
+    if (maskBottom) maskBottom.style.height = cropData.bottom + '%';
+    if (maskLeft) maskLeft.style.width = cropData.left + '%';
+  }
+
+  function applyCrop(element) {
+    if (!element || !cropData)
+      return;
+
+    pushUndo();
+    element.cropTop = cropData.top;
+    element.cropRight = cropData.right;
+    element.cropBottom = cropData.bottom;
+    element.cropLeft = cropData.left;
+
+    // Apply clip-path as inset
+    element.clipPath = 'inset(' +
+      cropData.top + '% ' +
+      cropData.right + '% ' +
+      cropData.bottom + '% ' +
+      cropData.left + '%)';
+
+    cropMode = false;
+    cropData = null;
+
+    // Remove overlay
+    const overlay = document.getElementById('crop-overlay');
+    if (overlay && overlay.parentNode)
+      overlay.parentNode.removeChild(overlay);
+
+    renderMainCanvas();
+    markDirty();
+  }
+
+  function cancelCrop(silent) {
+    cropMode = false;
+    cropData = null;
+
+    const overlay = document.getElementById('crop-overlay');
+    if (overlay && overlay.parentNode)
+      overlay.parentNode.removeChild(overlay);
+
+    if (!silent)
+      renderMainCanvas();
+  }
+
+  // ===============================================================
   // Refresh UI
   // ===============================================================
 
@@ -5461,6 +7083,8 @@
       syncShapeFormatPanel();
     if (Comments && Comments.isPanelVisible())
       Comments.refreshCommentsPanel(currentSlideIndex);
+    if (outlineViewActive)
+      renderOutlineView();
   }
 
   // ===============================================================
@@ -5529,7 +7153,8 @@
       },
       loop: false,
       autoAdvance: false,
-      autoAdvanceInterval: 5
+      autoAdvanceInterval: 5,
+      playTransitionSound: playTransitionSound
     });
 
     // Populate galleries
@@ -5538,6 +7163,14 @@
     wireTransitionDuration();
     wireBackgroundDialogTabs();
     wireFormatPainterDblClick();
+
+    // P3: Wire transition sound dropdown
+    const transSoundSelect = document.getElementById('transition-sound');
+    if (transSoundSelect) {
+      transSoundSelect.addEventListener('change', () => {
+        setTransitionSoundForSlide(transSoundSelect.value);
+      });
+    }
 
     // Feature: Table Design contextual tab
     wireTableDesignOptions();

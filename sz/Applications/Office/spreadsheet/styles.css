@@ -96,6 +96,32 @@ body {
   border: 1px solid var(--sz-color-button-shadow);
 }
 
+/* ==== Formula autocomplete ==== */
+.formula-autocomplete {
+  position: absolute;
+  z-index: 1000;
+  background: var(--sz-color-window, #fff);
+  border: 1px solid var(--sz-color-button-shadow, #999);
+  box-shadow: 0 2px 8px rgba(0,0,0,.18);
+  max-height: 200px;
+  overflow-y: auto;
+  font-size: 11px;
+  min-width: 240px;
+}
+.formula-ac-item {
+  padding: 4px 8px;
+  cursor: default;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.formula-ac-item:hover, .formula-ac-item.active {
+  background: var(--sz-color-highlight, #0078d4);
+  color: var(--sz-color-highlight-text, #fff);
+}
+.formula-ac-name { font-weight: bold; white-space: nowrap; }
+.formula-ac-desc { opacity: .7; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* ==== Grid container ==== */
 .grid-container {
   flex: 1;
@@ -238,6 +264,7 @@ body {
   height: 20px;
   max-height: 20px;
   position: relative;
+  user-select: none;
 }
 
 .grid-table tbody td.cell.wrap-text {
@@ -488,6 +515,72 @@ body {
 
 .fc-panel.active {
   display: block;
+}
+
+/* Format Cells sample preview */
+.fc-sample-preview {
+  border: 1px solid var(--sz-color-button-shadow);
+  background: var(--sz-color-window, #fff);
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+}
+
+.fc-sample-label {
+  font-size: 10px;
+  color: var(--sz-color-gray-text, #888);
+  min-width: 42px;
+}
+
+.fc-sample-value {
+  font-size: 13px;
+  font-weight: bold;
+  color: var(--sz-color-window-text, #000);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Custom format code chips */
+.fc-custom-code-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 4px 0 6px;
+}
+
+.fc-code-chip {
+  font-size: 10px;
+  font-family: Consolas, monospace;
+  padding: 2px 6px;
+  border: 1px solid var(--sz-color-button-shadow, #999);
+  background: var(--sz-color-button-face, #f0f0f0);
+  cursor: default;
+  border-radius: 2px;
+  user-select: none;
+}
+
+.fc-code-chip:hover {
+  background: var(--sz-color-highlight, #0078d4);
+  color: var(--sz-color-highlight-text, #fff);
+  border-color: var(--sz-color-highlight, #0078d4);
+}
+
+/* Font preview box */
+.fc-font-preview-box {
+  border: 1px solid var(--sz-color-button-shadow);
+  background: var(--sz-color-window, #fff);
+  padding: 12px;
+  margin-top: 8px;
+  text-align: center;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
 }
 
 /* ==== Find panel ==== */
@@ -1121,4 +1214,153 @@ body {
   }
   .ps-print-header { top: 0; }
   .ps-print-footer { bottom: 0; }
+}
+
+/* ── Undo History Dropdown ──────────────────────────────── */
+.undo-dropdown-wrap { display: inline-flex; }
+.qat-dropdown-arrow { padding: 0 2px; font-size: 8px; }
+.undo-history-popup {
+  position: absolute;
+  z-index: 5000;
+  background: var(--sz-color-window, #fff);
+  border: 1px solid var(--sz-color-button-shadow, #999);
+  box-shadow: 0 2px 8px rgba(0,0,0,.18);
+  max-height: 300px;
+  overflow-y: auto;
+  min-width: 200px;
+  font-size: 11px;
+}
+.undo-history-item {
+  padding: 4px 8px;
+  cursor: default;
+}
+.undo-history-item:hover, .undo-history-item.highlight {
+  background: var(--sz-color-highlight, #0078d4);
+  color: var(--sz-color-highlight-text, #fff);
+}
+.undo-history-footer {
+  padding: 4px 8px;
+  border-top: 1px solid var(--sz-color-button-shadow, #ccc);
+  font-size: 10px;
+  color: var(--sz-color-gray-text, #666);
+  text-align: center;
+}
+
+/* ── Sheet Tab Drag Reorder ──────────────────────────────────── */
+.sheet-tab[draggable] {
+  cursor: grab;
+}
+.sheet-tab[draggable]:active {
+  cursor: grabbing;
+}
+.sheet-tab.drag-over {
+  border-left: 3px solid var(--sz-color-highlight, #0078d4);
+}
+
+/* ── Cell Hyperlink (HYPERLINK formula) ──────────────────────── */
+.cell-hyperlink {
+  color: var(--sz-color-hot-tracking, #0066cc);
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: inherit;
+  font-family: inherit;
+}
+.cell-hyperlink:hover {
+  color: var(--sz-color-highlight, #0078d4);
+}
+.grid-table tbody td.cell.has-hyperlink-formula {
+  cursor: pointer;
+}
+
+/* ── Comment Popup & Threading ───────────────────────────────── */
+.comment-popup {
+  position: fixed;
+  z-index: 5500;
+  background: var(--sz-color-window, #fff);
+  border: 1px solid var(--sz-color-button-shadow, #999);
+  box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.2);
+  min-width: 260px;
+  max-width: 340px;
+  max-height: 400px;
+  overflow-y: auto;
+  font-size: 11px;
+}
+.comment-popup-header {
+  background: var(--sz-color-highlight, #0078d4);
+  color: var(--sz-color-highlight-text, #fff);
+  padding: 4px 8px;
+  font-weight: bold;
+  user-select: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.comment-popup-close {
+  cursor: default;
+  padding: 0 4px;
+  font-size: 14px;
+  line-height: 1;
+}
+.comment-popup-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+.comment-thread {
+  padding: 4px 0;
+}
+.comment-entry {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--sz-color-button-shadow, #e0e0e0);
+}
+.comment-entry:last-child {
+  border-bottom: none;
+}
+.comment-meta {
+  font-size: 9px;
+  color: var(--sz-color-gray-text, #888);
+  margin-bottom: 2px;
+}
+.comment-text {
+  font-size: 11px;
+  color: var(--sz-color-window-text, #000);
+  margin-bottom: 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.comment-actions {
+  display: flex;
+  gap: 6px;
+}
+.comment-action-btn {
+  font-size: 10px;
+  padding: 1px 6px;
+  border: 1px solid var(--sz-color-button-shadow, #999);
+  background: var(--sz-color-button-face, #f0f0f0);
+  cursor: default;
+  font-family: inherit;
+  color: var(--sz-color-button-text);
+}
+.comment-action-btn:hover {
+  background: var(--sz-color-button-light);
+  border-color: var(--sz-color-highlight);
+}
+.comment-reply {
+  margin-left: 16px;
+  padding: 4px 0;
+  border-left: 2px solid var(--sz-color-button-shadow, #ccc);
+  padding-left: 8px;
+  margin-top: 4px;
+}
+.comment-add-area {
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--sz-color-button-shadow, #e0e0e0);
+}
+.comment-add-input {
+  flex: 1;
+  padding: 2px 4px;
+  font-size: 11px;
+  font-family: inherit;
+  border: 1px solid var(--sz-color-button-shadow, #999);
+  outline: none;
 }
