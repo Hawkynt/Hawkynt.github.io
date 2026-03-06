@@ -3,6 +3,12 @@
 
   const SZ = window.SZ;
 
+  /* ── Expand 3-digit hex (#rgb) to 6-digit (#rrggbb) before appending alpha hex digits ── */
+  const _hexAlpha = (hex, alpha) => {
+    const h = hex.replace(/^#([0-9a-fA-F])([0-9a-fA-F])([0-9a-fA-F])$/, '#$1$1$2$2$3$3');
+    return h + alpha;
+  };
+
   /* ══════════════════════════════════════════════════════════════════
      CONSTANTS
      ══════════════════════════════════════════════════════════════════ */
@@ -902,13 +908,13 @@
     // Art area background gradient
     const artGrad = ctx.createLinearGradient(artX, artY, artX, artY + artH);
     artGrad.addColorStop(0, tc.grad1);
-    artGrad.addColorStop(1, cardObj.color + '30');
+    artGrad.addColorStop(1, _hexAlpha(cardObj.color, '30'));
     ctx.fillStyle = artGrad;
     ctx.fillRect(artX, artY, artW, artH);
 
     // Central illustration -- large type icon
     const iconInfo = TYPE_ICONS[cardObj.type];
-    ctx.fillStyle = cardObj.color + '60';
+    ctx.fillStyle = _hexAlpha(cardObj.color, '60');
     ctx.font = Math.floor(artH * 0.6) + 'px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -916,13 +922,13 @@
 
     // Combo element icon smaller in corner
     if (cc) {
-      ctx.fillStyle = cc.color + '80';
+      ctx.fillStyle = _hexAlpha(cc.color, '80');
       ctx.font = Math.floor(artH * 0.25) + 'px sans-serif';
       ctx.fillText(cc.symbol, artX + artW - 10, artY + artH - 8);
     }
 
     // Decorative border around art
-    ctx.strokeStyle = cardObj.color + '50';
+    ctx.strokeStyle = _hexAlpha(cardObj.color, '50');
     ctx.lineWidth = 1;
     ctx.strokeRect(artX, artY, artW, artH);
 
@@ -1610,7 +1616,7 @@
       // Combo element
       const comboIcon = COMBO_ICONS[card.combo];
       if (comboIcon) {
-        ctx.fillStyle = comboIcon.color + '90';
+        ctx.fillStyle = _hexAlpha(comboIcon.color, '90');
         ctx.font = '8px sans-serif';
         ctx.fillText(comboIcon.symbol + ' ' + card.combo, cx + cardW / 2, cy + 38);
       }
