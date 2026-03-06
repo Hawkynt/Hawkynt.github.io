@@ -132,6 +132,30 @@
     </div>
     <div class="ribbon-group-label">Tools</div>
   </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="toggle-bookmark" title="Toggle Bookmark (Ctrl+F2)">
+          <span class="rb-icon">&#128278;</span><span class="rb-label">Toggle Bookmark</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="next-bookmark" title="Next Bookmark (F2)">
+          <span class="rb-icon">&#8595;</span><span class="rb-label">Next Bookmark</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="prev-bookmark" title="Previous Bookmark (Shift+F2)">
+          <span class="rb-icon">&#8593;</span><span class="rb-label">Prev Bookmark</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="clear-bookmarks" title="Clear All Bookmarks">
+          <span class="rb-icon">&#10060;</span><span class="rb-label">Clear Bookmarks</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Bookmarks</div>
+  </div>
 </div>
 
 <!-- View Tab -->
@@ -147,6 +171,9 @@
         <label class="rb-check-label"><input type="checkbox" id="rb-show-line-endings"> Show Line Endings</label>
         <label class="rb-check-label"><input type="checkbox" id="rb-long-line-marker"> Long Line Marker</label>
         <label class="rb-check-label"><input type="checkbox" id="rb-highlight-current-line" checked> Highlight Current Line</label>
+      </div>
+      <div class="rb-stack">
+        <label class="rb-check-label"><input type="checkbox" id="rb-show-minimap"> Minimap</label>
       </div>
     </div>
     <div class="ribbon-group-label">Display</div>
@@ -253,6 +280,11 @@
     <textarea id="editor" class="editor-input" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
     <div class="long-line-marker" id="long-line-marker"></div>
   </div>
+  <div class="minimap hidden" id="minimap">
+    <canvas id="minimap-canvas" width="80" height="400"></canvas>
+    <div class="minimap-viewport" id="minimap-viewport"></div>
+  </div>
+  <div class="drop-overlay" id="drop-overlay">Drop file to open</div>
 </div>
 
 <!-- Status bar -->

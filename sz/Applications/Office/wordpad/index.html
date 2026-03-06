@@ -52,6 +52,7 @@
     <button class="ribbon-tab" data-tab="view">View</button>
     <button class="ribbon-tab" data-tab="review">Review</button>
     <button class="ribbon-tab ribbon-tab-contextual" data-tab="table-tools" id="tab-table-tools" style="display:none;color:#c44;font-weight:bold;">Table Tools</button>
+    <button class="ribbon-tab ribbon-tab-contextual" data-tab="picture-format" id="tab-picture-format" style="display:none;color:#48c;font-weight:bold;">Picture Format</button>
   </div>
 </div>
 
@@ -261,14 +262,8 @@
         </button>
       </div>
       <div class="rb-stack">
-        <button class="rb-btn rb-btn-sm" data-action="insert-shape-rect" title="Rectangle">
-          <span class="rb-icon">&#9645;</span><span class="rb-label">Rectangle</span>
-        </button>
-        <button class="rb-btn rb-btn-sm" data-action="insert-shape-circle" title="Circle">
-          <span class="rb-icon">&#9711;</span><span class="rb-label">Circle</span>
-        </button>
-        <button class="rb-btn rb-btn-sm" data-action="insert-shape-line" title="Line">
-          <span class="rb-icon">&#9473;</span><span class="rb-label">Line</span>
+        <button class="rb-btn rb-btn-sm" data-action="insert-shape" title="Shapes">
+          <span class="rb-icon">&#11045;</span><span class="rb-label">Shapes</span>
         </button>
       </div>
     </div>
@@ -410,6 +405,41 @@
       </button>
     </div>
     <div class="ribbon-group-label">Equations</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="insert-wordart" title="Word Art">
+        <span class="rb-icon rb-icon-lg">&#127912;</span>
+        <span class="rb-label">Word Art</span>
+      </button>
+      <button class="rb-btn rb-btn-lg" data-action="quick-tables" title="Quick Tables">
+        <span class="rb-icon rb-icon-lg">&#9638;</span>
+        <span class="rb-label">Quick<br>Tables</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Templates</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="insert-text-field" title="Text Input Field">
+          <span class="rb-icon">&#9113;</span><span class="rb-label">Text Field</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-checkbox-field" title="Checkbox Field">
+          <span class="rb-icon">&#9745;</span><span class="rb-label">Checkbox</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="insert-dropdown-field" title="Dropdown Field">
+          <span class="rb-icon">&#9662;</span><span class="rb-label">Dropdown</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Form Fields</div>
   </div>
 
 </div>
@@ -673,6 +703,18 @@
     <div class="ribbon-group-label">Preview</div>
   </div>
 
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="reading-mode" title="Reading Mode (F11)">
+        <span class="rb-icon rb-icon-lg">&#128214;</span>
+        <span class="rb-label">Reading<br>Mode</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Focus</div>
+  </div>
+
 </div>
 
 <!-- Review Tab -->
@@ -700,6 +742,9 @@
       </button>
       <button class="rb-btn rb-btn-sm" data-action="grammar-check" title="Grammar Check">
         <span class="rb-icon" style="color:green;">&#10003;</span><span class="rb-label">Grammar</span>
+      </button>
+      <button class="rb-btn rb-btn-sm" data-action="document-inspector" title="Document Inspector">
+        <span class="rb-icon">&#128270;</span><span class="rb-label">Inspector</span>
       </button>
     </div>
     <div class="ribbon-group-label">Proofing</div>
@@ -878,9 +923,43 @@
 
 </div>
 
-<!-- Ruler -->
+<!-- Picture Format Contextual Tab -->
+<div class="ribbon-panel" data-panel="picture-format" id="ribbon-picture-format">
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="img-shadow" title="Shadow"><span class="rb-icon">&#9646;</span><span class="rb-label">Shadow</span></button>
+        <button class="rb-btn rb-btn-sm" data-action="img-glow" title="Glow"><span class="rb-icon">&#10024;</span><span class="rb-label">Glow</span></button>
+        <button class="rb-btn rb-btn-sm" data-action="img-soft-edges" title="Soft Edges"><span class="rb-icon">&#9683;</span><span class="rb-label">Soft Edges</span></button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Effects</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <div class="rb-field"><label>Brightness:</label><input type="range" id="img-brightness" min="-100" max="100" value="0" style="width:80px;"></div>
+        <div class="rb-field"><label>Contrast:</label><input type="range" id="img-contrast" min="-100" max="100" value="0" style="width:80px;"></div>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="img-grayscale" title="Grayscale"><span class="rb-icon">&#9681;</span><span class="rb-label">Grayscale</span></button>
+        <button class="rb-btn rb-btn-sm" data-action="img-sepia" title="Sepia"><span class="rb-icon">&#9681;</span><span class="rb-label">Sepia</span></button>
+        <button class="rb-btn rb-btn-sm" data-action="img-reset" title="Reset"><span class="rb-icon">&#8634;</span><span class="rb-label">Reset</span></button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Adjust</div>
+  </div>
+
+</div>
+
+<!-- Horizontal Ruler -->
 <div class="ruler" id="ruler" style="display:none;">
-  <div class="ruler-inner"></div>
+  <div class="ruler-tab-selector" id="ruler-tab-selector" title="Click to cycle tab stop type: Left, Center, Right, Decimal">L</div>
+  <div class="ruler-inner" id="ruler-inner"></div>
 </div>
 
 <!-- Navigation Pane -->
@@ -897,6 +976,7 @@
 
 <!-- Editor Area -->
 <div class="editor-area" id="editor-area">
+  <div class="ruler-vertical" id="ruler-vertical"></div>
   <div class="editor-wrapper" id="editor-wrapper">
     <div class="editor" id="editor" contenteditable="true" spellcheck="true"></div>
   </div>
@@ -1421,6 +1501,24 @@
   </div>
 </div>
 
+<!-- Custom Margins dialog -->
+<div class="dialog-overlay" id="dlg-custom-margins">
+  <div class="dialog" style="min-width:360px;">
+    <div class="dialog-title">Custom Margins</div>
+    <div class="dialog-body">
+      <div class="wp-dlg-field"><label for="cm-top">Top:</label><input type="number" id="cm-top" min="0" max="5" step="0.1" value="1" style="width:70px;"> in</div>
+      <div class="wp-dlg-field"><label for="cm-bottom">Bottom:</label><input type="number" id="cm-bottom" min="0" max="5" step="0.1" value="1" style="width:70px;"> in</div>
+      <div class="wp-dlg-field"><label for="cm-left">Left:</label><input type="number" id="cm-left" min="0" max="5" step="0.1" value="1" style="width:70px;"> in</div>
+      <div class="wp-dlg-field"><label for="cm-right">Right:</label><input type="number" id="cm-right" min="0" max="5" step="0.1" value="1" style="width:70px;"> in</div>
+      <div class="wp-dlg-field"><label for="cm-gutter">Gutter:</label><input type="number" id="cm-gutter" min="0" max="3" step="0.1" value="0" style="width:70px;"> in</div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">OK</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- Manage Sources dialog -->
 <div class="wp-dialog-overlay" id="dlg-manage-sources" style="display:none">
   <div class="wp-dialog" style="width:520px">
@@ -1450,6 +1548,65 @@
     <div class="wp-dialog-buttons"><button class="wp-dlg-ok">Close</button></div>
   </div>
 </div>
+
+<!-- Word Art dialog -->
+<div class="dialog-overlay" id="dlg-wordart">
+  <div class="dialog" style="min-width:460px;">
+    <div class="dialog-title">Insert Word Art</div>
+    <div class="dialog-body">
+      <div class="fp-field">
+        <label for="wa-text">Text:</label>
+        <input type="text" id="wa-text" autocomplete="off" value="Word Art" placeholder="Enter text">
+      </div>
+      <div class="fp-field">
+        <label for="wa-size">Size (pt):</label>
+        <input type="number" id="wa-size" min="12" max="120" value="36" style="width:60px;">
+      </div>
+      <div class="fp-field">
+        <label for="wa-color">Color:</label>
+        <input type="color" id="wa-color" value="#0066cc">
+      </div>
+      <div class="wa-style-gallery" id="wa-style-gallery"></div>
+      <div class="wa-preview-container">
+        <div class="eq-section-label">Preview</div>
+        <div class="wa-preview" id="wa-preview"></div>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Insert</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Quick Tables dialog -->
+<div class="dialog-overlay" id="dlg-quick-table">
+  <div class="dialog" style="min-width:500px;">
+    <div class="dialog-title">Quick Tables</div>
+    <div class="dialog-body">
+      <div class="qt-gallery" id="qt-gallery"></div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="cancel">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Document Inspector dialog -->
+<div class="dialog-overlay" id="dlg-document-inspector">
+  <div class="dialog" style="min-width:400px;">
+    <div class="dialog-title">Document Inspector</div>
+    <div class="dialog-body">
+      <div class="di-stats" id="di-stats"></div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Reading Mode exit button -->
+<button class="reading-mode-exit" id="reading-mode-exit" style="display:none;">Exit Reading Mode</button>
 
 <script src="../../zoom-control.js"></script>
 <script src="../../shared/ribbon.js"></script>

@@ -6,9 +6,7 @@
   let enabled = true;
 
   const corrections = new Map([
-    ['teh', 'the'],
-    ['thier', 'their'],
-    ['adn', 'and'],
+    // ── Contractions ──────────────────────────────────────────────
     ['dont', "don't"],
     ['doesnt', "doesn't"],
     ['didnt', "didn't"],
@@ -28,6 +26,12 @@
     ['theyre', "they're"],
     ['weve', "we've"],
     ['youve', "you've"],
+    ['dosen', "doesn't"],
+
+    // ── Common misspellings ───────────────────────────────────────
+    ['teh', 'the'],
+    ['thier', 'their'],
+    ['adn', 'and'],
     ['recieve', 'receive'],
     ['occured', 'occurred'],
     ['seperate', 'separate'],
@@ -46,6 +50,208 @@
     ['ahve', 'have'],
     ['tihs', 'this'],
     ['jsut', 'just'],
+
+    // ── Extended misspellings ─────────────────────────────────────
+    ['abbout', 'about'],
+    ['abotu', 'about'],
+    ['abouta', 'about a'],
+    ['aboutit', 'about it'],
+    ['accross', 'across'],
+    ['acn', 'can'],
+    ['acommodate', 'accommodate'],
+    ['agian', 'again'],
+    ['ahppen', 'happen'],
+    ['allready', 'already'],
+    ['alot', 'a lot'],
+    ['amke', 'make'],
+    ['anbd', 'and'],
+    ['aobut', 'about'],
+    ['apperance', 'appearance'],
+    ['applyed', 'applied'],
+    ['arguement', 'argument'],
+    ['aslo', 'also'],
+    ['atthe', 'at the'],
+    ['awya', 'away'],
+    ['bakc', 'back'],
+    ['baout', 'about'],
+    ['bcak', 'back'],
+    ['beleive', 'believe'],
+    ['brekfast', 'breakfast'],
+    ['buisness', 'business'],
+    ['bve', 'be'],
+    ['cahnge', 'change'],
+    ['calender', 'calendar'],
+    ['challange', 'challenge'],
+    ['changeing', 'changing'],
+    ['cheif', 'chief'],
+    ['chnage', 'change'],
+    ['claer', 'clear'],
+    ['cmae', 'came'],
+    ['cna', 'can'],
+    ['colum', 'column'],
+    ['comeing', 'coming'],
+    ['commited', 'committed'],
+    ['completly', 'completely'],
+    ['concious', 'conscious'],
+    ['continueing', 'continuing'],
+    ['convience', 'convenience'],
+    ['coudl', 'could'],
+    ['cxan', 'can'],
+    ['decison', 'decision'],
+    ['defintion', 'definition'],
+    ['develope', 'develop'],
+    ['diffrent', 'different'],
+    ['disapoint', 'disappoint'],
+    ['doign', 'doing'],
+    ['donig', 'doing'],
+    ['eahc', 'each'],
+    ['enviroment', 'environment'],
+    ['esle', 'else'],
+    ['excercise', 'exercise'],
+    ['exmaple', 'example'],
+    ['experiance', 'experience'],
+    ['familar', 'familiar'],
+    ['finaly', 'finally'],
+    ['foriegn', 'foreign'],
+    ['fourty', 'forty'],
+    ['freind', 'friend'],
+    ['gerat', 'great'],
+    ['geting', 'getting'],
+    ['goign', 'going'],
+    ['goverment', 'government'],
+    ['grammer', 'grammar'],
+    ['happend', 'happened'],
+    ['haveing', 'having'],
+    ['hearign', 'hearing'],
+    ['heigth', 'height'],
+    ['helpfull', 'helpful'],
+    ['hismelf', 'himself'],
+    ['hsa', 'has'],
+    ['htey', 'they'],
+    ['htink', 'think'],
+    ['htis', 'this'],
+    ['ignorence', 'ignorance'],
+    ['immediatly', 'immediately'],
+    ['importent', 'important'],
+    ['independant', 'independent'],
+    ['infomation', 'information'],
+    ['intrest', 'interest'],
+    ['irregardless', 'regardless'],
+    ['judgement', 'judgment'],
+    ['knwo', 'know'],
+    ['konw', 'know'],
+    ['langauge', 'language'],
+    ['liek', 'like'],
+    ['lieing', 'lying'],
+    ['maby', 'maybe'],
+    ['maintainance', 'maintenance'],
+    ['makeing', 'making'],
+    ['managment', 'management'],
+    ['manualy', 'manually'],
+    ['milennium', 'millennium'],
+    ['minumum', 'minimum'],
+    ['mispell', 'misspell'],
+    ['mroe', 'more'],
+    ['nkow', 'know'],
+    ['nto', 'not'],
+    ['ocasion', 'occasion'],
+    ['occassion', 'occasion'],
+    ['ofr', 'for'],
+    ['ohter', 'other'],
+    ['omision', 'omission'],
+    ['onyl', 'only'],
+    ['oportunity', 'opportunity'],
+    ['otu', 'out'],
+    ['owrk', 'work'],
+    ['paralel', 'parallel'],
+    ['particulary', 'particularly'],
+    ['peice', 'piece'],
+    ['peopel', 'people'],
+    ['perfer', 'prefer'],
+    ['permanant', 'permanent'],
+    ['persue', 'pursue'],
+    ['planed', 'planned'],
+    ['posession', 'possession'],
+    ['potatos', 'potatoes'],
+    ['preceed', 'precede'],
+    ['preffer', 'prefer'],
+    ['privelege', 'privilege'],
+    ['probaly', 'probably'],
+    ['probelm', 'problem'],
+    ['profesional', 'professional'],
+    ['progam', 'program'],
+    ['prominant', 'prominent'],
+    ['publically', 'publicly'],
+    ['purposful', 'purposeful'],
+    ['questionaire', 'questionnaire'],
+    ['realy', 'really'],
+    ['reccomend', 'recommend'],
+    ['refered', 'referred'],
+    ['relevent', 'relevant'],
+    ['religous', 'religious'],
+    ['repitition', 'repetition'],
+    ['responsable', 'responsible'],
+    ['rythm', 'rhythm'],
+    ['safty', 'safety'],
+    ['scedule', 'schedule'],
+    ['sentance', 'sentence'],
+    ['shoudl', 'should'],
+    ['similer', 'similar'],
+    ['sinceerly', 'sincerely'],
+    ['snese', 'sense'],
+    ['speach', 'speech'],
+    ['strenght', 'strength'],
+    ['succesful', 'successful'],
+    ['suprise', 'surprise'],
+    ['thansk', 'thanks'],
+    ['theri', 'their'],
+    ['thet', 'that'],
+    ['throught', 'through'],
+    ['togather', 'together'],
+    ['tommorrow', 'tomorrow'],
+    ['tounge', 'tongue'],
+    ['truely', 'truly'],
+    ['tyhat', 'that'],
+    ['unforseen', 'unforeseen'],
+    ['unfortunatly', 'unfortunately'],
+    ['unnecesary', 'unnecessary'],
+    ['usally', 'usually'],
+    ['vaccum', 'vacuum'],
+    ['vegeterian', 'vegetarian'],
+    ['visable', 'visible'],
+    ['wendsday', 'Wednesday'],
+    ['whcih', 'which'],
+    ['wher', 'where'],
+    ['wiht', 'with'],
+    ['writting', 'writing'],
+    ['wroking', 'working'],
+    ['yera', 'year'],
+  ]);
+
+  // Auto-format symbol replacements (triggered after space)
+  const autoFormat = new Map([
+    ['(c)', '\u00A9'],       // (C)
+    ['(r)', '\u00AE'],       // (R)
+    ['(tm)', '\u2122'],      // TM
+    ['(p)', '\u00B6'],       // Pilcrow
+    ['(s)', '\u00A7'],       // Section
+    ['...', '\u2026'],       // Ellipsis
+    ['1/2', '\u00BD'],       // 1/2
+    ['1/4', '\u00BC'],       // 1/4
+    ['3/4', '\u00BE'],       // 3/4
+    ['1/3', '\u2153'],       // 1/3
+    ['2/3', '\u2154'],       // 2/3
+    ['+-', '\u00B1'],        // Plus-minus
+    ['!=', '\u2260'],        // Not equal
+    ['<=', '\u2264'],        // Less-equal
+    ['>=', '\u2265'],        // Greater-equal
+    ['->', '\u2192'],        // Right arrow
+    ['<-', '\u2190'],        // Left arrow
+    ['=>', '\u21D2'],        // Double right arrow
+    ['--', '\u2014'],        // Em dash
+    ['<<', '\u00AB'],        // Left guillemet
+    ['>>', '\u00BB'],        // Right guillemet
+    ['deg', '\u00B0'],       // Degree
   ]);
 
   // Smart quote pairs
@@ -110,6 +316,48 @@
       sel.removeAllRanges();
       sel.addRange(range);
       document.execCommand('insertText', false, corrected);
+      return;
+    }
+
+    // Auto-format symbol replacements (only on space trigger)
+    if (data === ' ' && autoFormat.has(lower)) {
+      const sym = autoFormat.get(lower);
+      const range = document.createRange();
+      range.setStart(node, wordStart);
+      range.setEnd(node, wordStart + word.length);
+      sel.removeAllRanges();
+      sel.addRange(range);
+      document.execCommand('insertText', false, sym);
+      return;
+    }
+
+    // URL auto-hyperlinking (on space trigger)
+    if (data === ' ' && /^(https?:\/\/|www\.)\S+$/i.test(word)) {
+      let href = word;
+      if (/^www\./i.test(href))
+        href = 'https://' + href;
+
+      const range = document.createRange();
+      range.setStart(node, wordStart);
+      range.setEnd(node, wordStart + word.length);
+      sel.removeAllRanges();
+      sel.addRange(range);
+
+      const anchor = document.createElement('a');
+      anchor.href = href;
+      anchor.textContent = word;
+      anchor.target = '_blank';
+      anchor.rel = 'noopener';
+
+      range.deleteContents();
+      range.insertNode(anchor);
+
+      // Place cursor after the link + the space
+      const afterRange = document.createRange();
+      afterRange.setStartAfter(anchor);
+      afterRange.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(afterRange);
       return;
     }
 

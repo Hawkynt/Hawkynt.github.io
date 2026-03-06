@@ -36,7 +36,10 @@
 <!-- Quick Access Toolbar -->
 <div class="qat" id="qat">
   <button class="qat-btn" data-action="save" title="Save (Ctrl+S)">&#128190;</button>
-  <button class="qat-btn" data-action="undo" title="Undo (Ctrl+Z)">&#8630;</button>
+  <div class="undo-dropdown-wrap">
+    <button class="qat-btn" data-action="undo" title="Undo (Ctrl+Z)">&#8630;</button>
+    <button class="qat-btn qat-dropdown-arrow" data-action="undo-history" title="Undo History">&#9660;</button>
+  </div>
   <button class="qat-btn" data-action="redo" title="Redo (Ctrl+Y)">&#8631;</button>
   <button class="qat-btn" data-action="print" title="Print (Ctrl+P)">&#128424;</button>
 </div>
@@ -343,6 +346,22 @@
           <span class="rb-icon">&#128202;</span><span class="rb-label">Combo</span>
         </button>
       </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="chart-waterfall" title="Waterfall Chart">
+          <span class="rb-icon">&#9621;</span><span class="rb-label">Waterfall</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="chart-treemap" title="Treemap Chart">
+          <span class="rb-icon">&#9638;</span><span class="rb-label">Treemap</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="chart-funnel" title="Funnel Chart">
+          <span class="rb-icon">&#9661;</span><span class="rb-label">Funnel</span>
+        </button>
+      </div>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="chart-bubble" title="Bubble Chart">
+          <span class="rb-icon">&#9679;</span><span class="rb-label">Bubble</span>
+        </button>
+      </div>
     </div>
     <div class="ribbon-group-label">More Charts</div>
   </div>
@@ -399,12 +418,15 @@
   <div class="ribbon-group">
     <div class="ribbon-group-content">
       <div class="rb-stack">
-        <button class="rb-btn rb-btn-sm" data-action="insert-comment" title="Comment/Note">
-          <span class="rb-icon">&#128172;</span><span class="rb-label">Comment</span>
+        <button class="rb-btn rb-btn-sm" data-action="insert-comment" title="Add Comment">
+          <span class="rb-icon">&#128172;</span><span class="rb-label">Add Comment</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="show-comments" title="Show Comments">
+          <span class="rb-icon">&#128488;</span><span class="rb-label">Show Comments</span>
         </button>
       </div>
     </div>
-    <div class="ribbon-group-label">Text</div>
+    <div class="ribbon-group-label">Comments</div>
   </div>
 
   <div class="ribbon-sep"></div>
@@ -833,6 +855,8 @@
   <div class="formula-separator"></div>
   <input type="text" class="formula-input" id="formula-input" spellcheck="false">
 </div>
+<div class="formula-autocomplete" id="formula-autocomplete" style="display:none;"></div>
+<div class="undo-history-popup" id="undo-history-popup" style="display:none;"></div>
 
 <!-- Grid -->
 <div class="grid-container" id="grid-container">
@@ -1169,8 +1193,13 @@
         <span class="fc-tab" data-fctab="font">Font</span>
         <span class="fc-tab" data-fctab="border">Border</span>
         <span class="fc-tab" data-fctab="fill">Fill</span>
+        <span class="fc-tab" data-fctab="protection">Protection</span>
       </div>
       <div class="fc-panel active" id="fcp-number">
+        <div class="fc-sample-preview" id="fc-sample-preview">
+          <span class="fc-sample-label">Sample:</span>
+          <span class="fc-sample-value" id="fc-sample-value">1234.5</span>
+        </div>
         <div class="fp-field"><label>Category:</label>
           <select id="fc-numfmt">
             <option value="general">General</option><option value="number">Number</option>
@@ -1185,6 +1214,23 @@
           <label>Format code:</label>
           <input type="text" id="fc-custom-code" style="width:200px;" placeholder="#,##0.00;[Red]-#,##0.00" autocomplete="off">
           <div style="font-size:9px;color:var(--sz-color-gray-text);margin-top:2px;">Sections: positive;negative;zero;text. Tokens: # 0 . , % E+0 @ "text" [Red] [>100]</div>
+        </div>
+        <div id="fc-custom-codes-row" style="display:none;">
+          <div style="font-size:10px;font-weight:bold;margin:6px 0 3px;">Common format codes:</div>
+          <div class="fc-custom-code-list" id="fc-custom-code-list">
+            <span class="fc-code-chip" data-code="0">0</span>
+            <span class="fc-code-chip" data-code="0.00">0.00</span>
+            <span class="fc-code-chip" data-code="#,##0">#,##0</span>
+            <span class="fc-code-chip" data-code="#,##0.00">#,##0.00</span>
+            <span class="fc-code-chip" data-code="$#,##0.00">$#,##0.00</span>
+            <span class="fc-code-chip" data-code="0%">0%</span>
+            <span class="fc-code-chip" data-code="0.00%">0.00%</span>
+            <span class="fc-code-chip" data-code="0.00E+00">0.00E+00</span>
+            <span class="fc-code-chip" data-code="yyyy-mm-dd">yyyy-mm-dd</span>
+            <span class="fc-code-chip" data-code="mm/dd/yyyy">mm/dd/yyyy</span>
+            <span class="fc-code-chip" data-code="hh:mm:ss">hh:mm:ss</span>
+            <span class="fc-code-chip" data-code="hh:mm AM/PM">hh:mm AM/PM</span>
+          </div>
         </div>
       </div>
       <div class="fc-panel" id="fcp-alignment">
@@ -1204,10 +1250,14 @@
           <select id="fc-font-family"><option value="">Default</option><option value="Arial, sans-serif">Arial</option><option value="Calibri, sans-serif">Calibri</option><option value="Consolas, monospace">Consolas</option><option value="Courier New, monospace">Courier New</option><option value="Georgia, serif">Georgia</option><option value="Tahoma, Verdana, sans-serif">Tahoma</option><option value="Times New Roman, serif">Times New Roman</option><option value="Verdana, sans-serif">Verdana</option></select>
         </div>
         <div class="fp-field"><label>Size:</label><input type="number" id="fc-font-size" min="6" max="72" value="11" style="width:60px;"></div>
+        <div class="fp-field"><label>Color:</label><input type="color" id="fc-font-color" value="#000000"></div>
         <label style="font-size:11px;"><input type="checkbox" id="fc-bold"> Bold</label>
         <label style="font-size:11px;"><input type="checkbox" id="fc-italic"> Italic</label>
         <label style="font-size:11px;"><input type="checkbox" id="fc-underline"> Underline</label>
         <label style="font-size:11px;"><input type="checkbox" id="fc-strikethrough"> Strikethrough</label>
+        <div class="fc-font-preview-box" id="fc-font-preview">
+          <span id="fc-font-preview-text">AaBbCcYyZz 123</span>
+        </div>
       </div>
       <div class="fc-panel" id="fcp-border">
         <div class="fp-field"><label>Style:</label>
@@ -1221,6 +1271,11 @@
       <div class="fc-panel" id="fcp-fill">
         <div class="fp-field"><label>Background:</label><input type="color" id="fc-fill-color" value="#ffffff"></div>
         <button class="ribbon-btn ribbon-btn-small" id="fc-fill-none" style="margin-top:6px;">No Fill</button>
+      </div>
+      <div class="fc-panel" id="fcp-protection">
+        <div style="font-size:11px;color:var(--sz-color-gray-text);margin-bottom:8px;">Protection settings only take effect when the sheet is protected (Review &gt; Protect Sheet).</div>
+        <label style="font-size:11px;display:block;margin-bottom:6px;"><input type="checkbox" id="fc-locked" checked> Locked &mdash; prevents editing when sheet protection is on</label>
+        <label style="font-size:11px;display:block;margin-bottom:6px;"><input type="checkbox" id="fc-hidden"> Hidden &mdash; hides formula in formula bar when sheet protection is on</label>
       </div>
     </div>
     <div class="dialog-buttons">
@@ -1236,6 +1291,14 @@
     <div class="dialog-title" id="chart-title">Chart</div>
     <div class="dialog-body" style="padding:8px;">
       <canvas id="chart-canvas" width="500" height="320"></canvas>
+      <details style="margin-top:6px;font-size:11px;" open>
+        <summary style="cursor:pointer;font-weight:bold;">Labels</summary>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
+          <div class="fp-field" style="flex:1;min-width:140px;"><label for="chart-opt-title">Title:</label><input type="text" id="chart-opt-title" style="width:100%;box-sizing:border-box;" placeholder="Chart Title"></div>
+          <div class="fp-field" style="flex:1;min-width:120px;"><label for="chart-opt-xlabel">X-Axis:</label><input type="text" id="chart-opt-xlabel" style="width:100%;box-sizing:border-box;" placeholder="X-Axis Label"></div>
+          <div class="fp-field" style="flex:1;min-width:120px;"><label for="chart-opt-ylabel">Y-Axis:</label><input type="text" id="chart-opt-ylabel" style="width:100%;box-sizing:border-box;" placeholder="Y-Axis Label"></div>
+        </div>
+      </details>
       <details style="margin-top:6px;font-size:11px;">
         <summary style="cursor:pointer;font-weight:bold;">Chart Options</summary>
         <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:4px;">
@@ -1876,6 +1939,117 @@
     </div>
     <div class="dialog-buttons">
       <button data-result="ok">Group</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Chart Data Range dialog -->
+<div class="dialog-overlay" id="dlg-chart-data-range">
+  <div class="dialog" style="min-width:300px;">
+    <div class="dialog-title">Change Data Range</div>
+    <div class="dialog-body">
+      <div class="fp-field"><label for="chart-range-input">Data range (e.g. A1:C5):</label></div>
+      <input type="text" id="chart-range-input" style="width:100%;box-sizing:border-box;" placeholder="A1:C5">
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok" data-default>OK</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Chart Type dialog -->
+<div class="dialog-overlay" id="dlg-chart-type">
+  <div class="dialog" style="min-width:300px;">
+    <div class="dialog-title">Change Chart Type</div>
+    <div class="dialog-body">
+      <div class="fp-field"><label for="chart-type-select">Chart type:</label></div>
+      <select id="chart-type-select" style="width:100%;font-size:12px;font-family:inherit;padding:3px;">
+        <option value="bar">Bar</option>
+        <option value="column">Column</option>
+        <option value="stacked-bar">Stacked Bar</option>
+        <option value="line">Line</option>
+        <option value="area">Area</option>
+        <option value="stacked-area">Stacked Area</option>
+        <option value="pie">Pie</option>
+        <option value="doughnut">Doughnut</option>
+        <option value="scatter">Scatter</option>
+        <option value="radar">Radar</option>
+        <option value="histogram">Histogram</option>
+        <option value="combo">Combo</option>
+        <option value="waterfall">Waterfall</option>
+        <option value="treemap">Treemap</option>
+        <option value="funnel">Funnel</option>
+        <option value="bubble">Bubble</option>
+      </select>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok" data-default>OK</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Chart Series Colors dialog -->
+<div class="dialog-overlay" id="dlg-chart-series-colors">
+  <div class="dialog" style="min-width:360px;">
+    <div class="dialog-title">Format Series Colors</div>
+    <div class="dialog-body">
+      <p style="font-size:11px;margin:0 0 8px;">Set colors for each data series:</p>
+      <div id="chart-colors-list" style="display:flex;flex-direction:column;gap:6px;max-height:240px;overflow-y:auto;"></div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok" data-default>OK</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Sparkline Insert dialog -->
+<div class="dialog-overlay" id="dlg-sparkline-insert">
+  <div class="dialog" style="min-width:300px;">
+    <div class="dialog-title">Insert Sparkline</div>
+    <div class="dialog-body">
+      <div class="fp-field"><label for="sparkline-range-input">Data range (e.g. A1:A10):</label></div>
+      <input type="text" id="sparkline-range-input" style="width:100%;box-sizing:border-box;" placeholder="A1:A10">
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok" data-default>OK</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Sparkline Quick Options (fallback) dialog -->
+<div class="dialog-overlay" id="dlg-sparkline-quick-options">
+  <div class="dialog" style="min-width:320px;">
+    <div class="dialog-title">Sparkline Options</div>
+    <div class="dialog-body">
+      <div class="fp-field">
+        <label for="spq-color-line">Line/Bar Color:</label>
+        <input type="color" id="spq-color-line" value="#4472c4">
+      </div>
+      <div class="fp-field">
+        <label for="spq-markers">Markers:</label>
+        <select id="spq-markers" style="font-size:11px;font-family:inherit;">
+          <option value="none">None</option>
+          <option value="all">All Points</option>
+          <option value="first">First Only</option>
+          <option value="last">Last Only</option>
+          <option value="high">High Only</option>
+          <option value="low">Low Only</option>
+          <option value="negative">Negative Only</option>
+          <option value="firstlast">First &amp; Last</option>
+          <option value="highlow">High &amp; Low</option>
+        </select>
+      </div>
+      <label style="display:block;margin:8px 0;">
+        <input type="checkbox" id="spq-axis-line"> Show axis line at zero
+      </label>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok" data-default>OK</button>
       <button data-result="cancel">Cancel</button>
     </div>
   </div>

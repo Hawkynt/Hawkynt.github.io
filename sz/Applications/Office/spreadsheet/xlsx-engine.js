@@ -31,14 +31,14 @@
     try {
       const wb = buildXlsxWorkbook();
       const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-      const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-      await _Kernel32.WriteFile(path, blob);
+      await _Kernel32.WriteFile(path, new Uint8Array(wbout));
     } catch (err) {
       await _User32.MessageBox('Could not save XLSX: ' + err.message, 'Spreadsheet', _MB_OK);
-      return;
+      return false;
     }
     if (typeof callback === 'function')
       callback();
+    return true;
   }
 
   function buildXlsxWorkbook() {

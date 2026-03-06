@@ -371,14 +371,88 @@
       case 'HLOOKUP': { const p = a(); const sv = _evalSub(p[0], deps, selfKey); const rows = _getRangeArray(p[1].trim(), deps, selfKey); const ri = _evalSubNum(p[2], deps, selfKey) - 1; if (!rows.length) return '"#N/A"'; for (let c = 0; c < rows[0].length; ++c) if (rows[0][c] == sv && ri < rows.length) return _cellValueToJS(rows[ri][c]); return '"#N/A"'; }
       case 'INDEX': { const p = a(); const rows = _getRangeArray(p[0].trim(), deps, selfKey); const ri = _evalSubNum(p[1], deps, selfKey) - 1; const ci = p.length > 2 ? _evalSubNum(p[2], deps, selfKey) - 1 : 0; return (rows[ri] && rows[ri][ci] !== undefined) ? _cellValueToJS(rows[ri][ci]) : '0'; }
       case 'MATCH': { const p = a(); const sv = _evalSub(p[0], deps, selfKey); const v = _collectRangeValues(p[1].trim(), deps, selfKey); for (let i = 0; i < v.length; ++i) if (v[i] == sv) return String(i + 1); return '"#N/A"'; }
-      case 'OFFSET': return '0';
+      case 'OFFSET': {
+        const p = a();
+        const baseRef = String(p[0]).trim().replace(/^["']|["']$/g, '');
+        const rowOff = _evalSubNum(p[1], deps, selfKey);
+        const colOff = _evalSubNum(p[2], deps, selfKey);
+        const h = p.length > 3 ? _evalSubNum(p[3], deps, selfKey) : 1;
+        const w = p.length > 4 ? _evalSubNum(p[4], deps, selfKey) : 1;
+
+        // Parse base reference -- could be a single cell or range
+        let baseCol, baseRow;
+        const singleMatch = baseRef.match(/^([A-Z]+)(\d+)$/i);
+        const rangeMatch = baseRef.match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/i);
+        if (rangeMatch) {
+          baseCol = _colIndex(rangeMatch[1].toUpperCase());
+          baseRow = parseInt(rangeMatch[2], 10) - 1;
+        } else if (singleMatch) {
+          baseCol = _colIndex(singleMatch[1].toUpperCase());
+          baseRow = parseInt(singleMatch[2], 10) - 1;
+        } else
+          return '0';
+
+        const newCol = baseCol + colOff;
+        const newRow = baseRow + rowOff;
+        if (newCol < 0 || newRow < 0) return '"#REF!"';
+
+        if (h === 1 && w === 1) {
+          const key = _cellKey(newCol, newRow);
+          if (key !== selfKey) deps.push(key);
+          return _cellValueToJS(_getCellValue(newCol, newRow));
+        }
+
+        // Multi-cell range -- build ref and resolve like SUM would
+        const endCol = newCol + w - 1;
+        const endRow = newRow + h - 1;
+        const rangeRef = _colName(newCol) + (newRow + 1) + ':' + _colName(endCol) + (endRow + 1);
+        const rangeVals = _collectRangeNumericValues(rangeRef, deps, selfKey);
+        return String(rangeVals.reduce((s, v) => s + v, 0));
+      }
       case 'INDIRECT': { const ref = _evalSubStr(args, deps, selfKey); const p = _parseKey(ref); if (!p) return '0'; deps.push(ref); return _cellValueToJS(_getCellValue(p.col, p.row)); }
       case 'CHOOSE': { const p = a(); const idx = _evalSubNum(p[0], deps, selfKey); return (idx >= 1 && idx < p.length) ? _cellValueToJS(_evalSub(p[idx], deps, selfKey)) : '0'; }
       case 'ROW': { if (!args.trim()) return String(_parseKey(selfKey)?.row + 1 || 0); const p = _parseKey(args.trim()); return String(p ? p.row + 1 : 0); }
       case 'COLUMN': { if (!args.trim()) return String(_parseKey(selfKey)?.col + 1 || 0); const p = _parseKey(args.trim()); return String(p ? p.col + 1 : 0); }
       case 'ROWS': { const rm = args.trim().match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/i); return String(rm ? Math.abs(parseInt(rm[4], 10) - parseInt(rm[2], 10)) + 1 : 1); }
       case 'COLUMNS': { const rm = args.trim().match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/i); return String(rm ? Math.abs(_colIndex(rm[3].toUpperCase()) - _colIndex(rm[1].toUpperCase())) + 1 : 1); }
-      case 'TRANSPOSE': return '0';
+      case 'TRANSPOSE': {
+        const p = a();
+        const rangeStr = String(p[0]).trim().replace(/^["']|["']$/g, '');
+        const rows = _getRangeArray(rangeStr, deps, selfKey);
+        if (!rows.length) return '0';
+
+        // Transpose the 2D array (swap rows and columns)
+        const numRows = rows.length;
+        const numCols = rows[0].length;
+        const transposed = [];
+        for (let c = 0; c < numCols; ++c) {
+          const row = [];
+          for (let r = 0; r < numRows; ++r)
+            row.push(rows[r][c] !== undefined ? rows[r][c] : '');
+          transposed.push(row);
+        }
+
+        // Determine which transposed cell to return based on calling cell position
+        if (selfKey) {
+          const selfParsed = _parseKey(selfKey);
+          if (selfParsed) {
+            const rangeMatch = rangeStr.match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/i);
+            if (rangeMatch) {
+              // The TRANSPOSE result starts at the calling cell's formula origin
+              // For single-cell evaluation, return top-left of transposed result
+              const relRow = 0;
+              const relCol = 0;
+              if (transposed[relRow] && transposed[relRow][relCol] !== undefined)
+                return _cellValueToJS(transposed[relRow][relCol]);
+            }
+          }
+        }
+
+        // Default: return top-left value of transposed result
+        if (transposed.length && transposed[0].length)
+          return _cellValueToJS(transposed[0][0]);
+        return '0';
+      }
 
       // ── Financial ──
       case 'PMT': { const p = a(); const r = _evalSubNum(p[0], deps, selfKey), n = _evalSubNum(p[1], deps, selfKey), pv = _evalSubNum(p[2], deps, selfKey); if (r === 0) return String(-pv / n); return String(-pv * r * Math.pow(1 + r, n) / (Math.pow(1 + r, n) - 1)); }
@@ -724,8 +798,165 @@
         }
       }
 
+      // ── Hyperlink ──
+      case 'HYPERLINK': {
+        const p = a();
+        const url = _evalSubStr(p[0], deps, selfKey);
+        const label = p.length > 1 ? _evalSubStr(p[1], deps, selfKey) : url;
+        return JSON.stringify({ type: 'hyperlink', url, label });
+      }
+
+      // ── Statistical Distributions ──
+      case 'NORM.DIST': case 'NORMDIST': {
+        const p = a();
+        const x = _evalSubNum(p[0], deps, selfKey);
+        const mean = _evalSubNum(p[1], deps, selfKey);
+        const stddev = _evalSubNum(p[2], deps, selfKey);
+        const cumulative = p.length > 3 ? _evalSub(p[3], deps, selfKey) : true;
+        if (stddev <= 0) return '"#NUM!"';
+        const z = (x - mean) / stddev;
+        if (cumulative && cumulative !== 0 && cumulative !== '0' && cumulative !== false && cumulative !== 'FALSE')
+          return String(_normalCDF(z));
+        // PDF
+        return String((1 / (stddev * Math.sqrt(2 * Math.PI))) * Math.exp(-0.5 * z * z));
+      }
+      case 'NORM.INV': case 'NORMINV': {
+        const p = a();
+        const prob = _evalSubNum(p[0], deps, selfKey);
+        const mean = _evalSubNum(p[1], deps, selfKey);
+        const stddev = _evalSubNum(p[2], deps, selfKey);
+        if (prob <= 0 || prob >= 1 || stddev <= 0) return '"#NUM!"';
+        return String(mean + stddev * _normalInvCDF(prob));
+      }
+      case 'T.DIST': case 'TDIST': {
+        const p = a();
+        const x = _evalSubNum(p[0], deps, selfKey);
+        const df = _evalSubNum(p[1], deps, selfKey);
+        const tails = p.length > 2 ? _evalSubNum(p[2], deps, selfKey) : 1;
+        if (df < 1) return '"#NUM!"';
+        const cdf = _tDistCDF(x, df);
+        if (tails === 2) return String(2 * (1 - _tDistCDF(Math.abs(x), df)));
+        return String(cdf);
+      }
+      case 'POISSON.DIST': case 'POISSONDIST': {
+        const p = a();
+        const x = Math.floor(_evalSubNum(p[0], deps, selfKey));
+        const mean = _evalSubNum(p[1], deps, selfKey);
+        const cumulative = p.length > 2 ? _evalSub(p[2], deps, selfKey) : false;
+        if (x < 0 || mean < 0) return '"#NUM!"';
+        if (cumulative && cumulative !== 0 && cumulative !== '0' && cumulative !== false && cumulative !== 'FALSE') {
+          let sum = 0;
+          for (let k = 0; k <= x; ++k)
+            sum += Math.exp(-mean + k * Math.log(mean) - _lnFactorial(k));
+          return String(sum);
+        }
+        return String(Math.exp(-mean + x * Math.log(mean) - _lnFactorial(x)));
+      }
+      case 'BINOM.DIST': case 'BINOMDIST': {
+        const p = a();
+        const successes = Math.floor(_evalSubNum(p[0], deps, selfKey));
+        const trials = Math.floor(_evalSubNum(p[1], deps, selfKey));
+        const prob = _evalSubNum(p[2], deps, selfKey);
+        const cumulative = p.length > 3 ? _evalSub(p[3], deps, selfKey) : false;
+        if (successes < 0 || trials < 0 || successes > trials || prob < 0 || prob > 1) return '"#NUM!"';
+        if (cumulative && cumulative !== 0 && cumulative !== '0' && cumulative !== false && cumulative !== 'FALSE') {
+          let sum = 0;
+          for (let k = 0; k <= successes; ++k)
+            sum += _binomPMF(k, trials, prob);
+          return String(sum);
+        }
+        return String(_binomPMF(successes, trials, prob));
+      }
+
       default: return '0';
     }
+  }
+
+  // ── Error function (erf) for normal distribution ─────────────────
+  function _erf(x) {
+    const a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741;
+    const a4 = -1.453152027, a5 = 1.061405429, p = 0.3275911;
+    const sign = x < 0 ? -1 : 1;
+    const t = 1 / (1 + p * Math.abs(x));
+    const y = 1 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
+    return sign * y;
+  }
+
+  function _normalCDF(z) {
+    return 0.5 * (1 + _erf(z / Math.SQRT2));
+  }
+
+  // Rational approximation for inverse normal CDF (Abramowitz & Stegun)
+  function _normalInvCDF(p) {
+    if (p <= 0) return -Infinity;
+    if (p >= 1) return Infinity;
+    if (p < 0.5) return -_rationalApproxInvNorm(Math.sqrt(-2 * Math.log(p)));
+    return _rationalApproxInvNorm(Math.sqrt(-2 * Math.log(1 - p)));
+  }
+
+  function _rationalApproxInvNorm(t) {
+    const c0 = 2.515517, c1 = 0.802853, c2 = 0.010328;
+    const d1 = 1.432788, d2 = 0.189269, d3 = 0.001308;
+    return t - (c0 + c1 * t + c2 * t * t) / (1 + d1 * t + d2 * t * t + d3 * t * t * t);
+  }
+
+  // Student's t-distribution CDF using regularized incomplete beta function
+  function _tDistCDF(x, df) {
+    const t2 = x * x;
+    const denom = df + t2;
+    const ibeta = _regIncBeta(df / 2, 0.5, df / denom);
+    return x >= 0 ? 1 - 0.5 * ibeta : 0.5 * ibeta;
+  }
+
+  // Regularized incomplete beta function (simple continued fraction approx)
+  function _regIncBeta(a, b, x) {
+    if (x <= 0) return 0;
+    if (x >= 1) return 1;
+    const lnBeta = _lnGamma(a) + _lnGamma(b) - _lnGamma(a + b);
+    const front = Math.exp(Math.log(x) * a + Math.log(1 - x) * b - lnBeta);
+    // Lentz's continued fraction
+    let f = 1, c = 1, d = 1 - (a + b) * x / (a + 1);
+    if (Math.abs(d) < 1e-30) d = 1e-30;
+    d = 1 / d;
+    f = d;
+    for (let m = 1; m <= 200; ++m) {
+      // even step
+      let num = m * (b - m) * x / ((a + 2 * m - 1) * (a + 2 * m));
+      d = 1 + num * d; if (Math.abs(d) < 1e-30) d = 1e-30; d = 1 / d;
+      c = 1 + num / c; if (Math.abs(c) < 1e-30) c = 1e-30;
+      f *= d * c;
+      // odd step
+      num = -(a + m) * (a + b + m) * x / ((a + 2 * m) * (a + 2 * m + 1));
+      d = 1 + num * d; if (Math.abs(d) < 1e-30) d = 1e-30; d = 1 / d;
+      c = 1 + num / c; if (Math.abs(c) < 1e-30) c = 1e-30;
+      const delta = d * c;
+      f *= delta;
+      if (Math.abs(delta - 1) < 1e-10) break;
+    }
+    return front * f / a;
+  }
+
+  // Log-gamma function (Stirling approximation)
+  function _lnGamma(z) {
+    if (z <= 0) return 0;
+    const coeffs = [76.18009172947146, -86.50532032941677, 24.01409824083091,
+      -1.231739572450155, 0.001208650973866179, -0.000005395239384953];
+    let x = z, y = z;
+    let tmp = x + 5.5;
+    tmp -= (x + 0.5) * Math.log(tmp);
+    let ser = 1.000000000190015;
+    for (let j = 0; j < 6; ++j) ser += coeffs[j] / ++y;
+    return -tmp + Math.log(2.5066282746310005 * ser / x);
+  }
+
+  function _lnFactorial(n) {
+    if (n <= 1) return 0;
+    return _lnGamma(n + 1);
+  }
+
+  function _binomPMF(k, n, p) {
+    const lnCoeff = _lnFactorial(n) - _lnFactorial(k) - _lnFactorial(n - k);
+    return Math.exp(lnCoeff + k * Math.log(p) + (n - k) * Math.log(1 - p));
   }
 
   function _formatNumberWithPattern(val, fmt) {

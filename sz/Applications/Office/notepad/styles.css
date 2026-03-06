@@ -428,6 +428,104 @@ body {
   min-height: 14px;
 }
 
+/* ==== Code Folding ==== */
+.fold-marker {
+  display: inline-block;
+  width: 12px;
+  font-size: 8px;
+  text-align: center;
+  cursor: default;
+  color: var(--sz-color-gray-text, #999);
+  vertical-align: middle;
+  margin-right: 2px;
+  user-select: none;
+}
+
+.fold-marker:hover {
+  color: var(--sz-color-highlight, #0078d7);
+}
+
+.fold-marker.collapsed {
+  color: var(--sz-color-highlight, #0078d7);
+}
+
+.fold-badge {
+  color: var(--sz-color-gray-text, #999);
+  background: rgba(128, 128, 128, 0.1);
+  border: 1px solid rgba(128, 128, 128, 0.3);
+  border-radius: 2px;
+  font-size: 0.85em;
+  padding: 0 4px;
+  margin-left: 4px;
+}
+
+.folded-content {
+  opacity: 0.3;
+}
+
+.line-number.folded-line {
+  opacity: 0.3;
+}
+
+/* ==== Bookmarks ==== */
+.bookmark-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--sz-color-highlight, #0078d7);
+  vertical-align: middle;
+  margin-right: 2px;
+}
+
+/* ==== Minimap ==== */
+.minimap {
+  flex-shrink: 0;
+  width: 80px;
+  position: relative;
+  background: var(--sz-color-button-face, #f4f4f4);
+  border-left: 1px solid var(--sz-color-button-shadow, #a0a0a0);
+  overflow: hidden;
+  cursor: default;
+}
+
+.minimap.hidden {
+  display: none;
+}
+
+.minimap canvas {
+  display: block;
+}
+
+.minimap-viewport {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: rgba(0, 120, 215, 0.15);
+  border: 1px solid rgba(0, 120, 215, 0.4);
+  pointer-events: none;
+}
+
+/* ==== Drop Overlay ==== */
+.drop-overlay {
+  display: none;
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 120, 215, 0.15);
+  border: 3px dashed var(--sz-color-highlight, #0078d7);
+  z-index: 100;
+  justify-content: center;
+  align-items: center;
+  font-size: 18px;
+  font-weight: bold;
+  color: var(--sz-color-highlight, #0078d7);
+  pointer-events: none;
+}
+
+.drop-overlay.visible {
+  display: flex;
+}
+
 /* ==== Print styles ==== */
 @media print {
   .qat,

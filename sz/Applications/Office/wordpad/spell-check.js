@@ -285,6 +285,73 @@
       }
     }
 
+    // 5. Passive voice detection
+    const passiveRe = /\b(is|are|was|were|be|been|being)\s+(\w+ed)\b/gi;
+    let pm;
+    while ((pm = passiveRe.exec(text)))
+      issues.push({ start: pm.index, end: pm.index + pm[0].length, message: 'Passive voice detected', suggestion: 'Consider active voice' });
+
+    // 6. Double negatives
+    const dnRe = /\b(not|never|no)\s+\w+\s+\b(no|not|never|none|nothing|nobody|nowhere|neither)\b/gi;
+    while ((pm = dnRe.exec(text)))
+      issues.push({ start: pm.index, end: pm.index + pm[0].length, message: 'Double negative', suggestion: 'Use a single negative' });
+
+    // 7. Run-on sentences (>40 words between periods)
+    const sentences = text.split(/[.!?]+/);
+    let sOff = 0;
+    for (const s of sentences) {
+      const wc = s.trim().split(/\s+/).filter(w => w).length;
+      if (wc > 40)
+        issues.push({ start: sOff, end: sOff + s.length, message: 'Very long sentence (' + wc + ' words)', suggestion: 'Consider breaking into shorter sentences' });
+      sOff += s.length + 1;
+    }
+
+    // 8. Commonly confused: its/it's
+    const itsRe = /\bits\s+(is|has|was|will|would|could|should|can|may|might|shall)\b/gi;
+    while ((pm = itsRe.exec(text)))
+      issues.push({ start: pm.index, end: pm.index + 3, message: '"its" should be "it\'s" before a verb', suggestion: "it's" });
+
+    // 9. Commonly confused: your/you're
+    const yourRe = /\byour\s+(is|are|was|were|will|would|could|should|going|doing|being)\b/gi;
+    while ((pm = yourRe.exec(text)))
+      issues.push({ start: pm.index, end: pm.index + 4, message: '"your" should be "you\'re"', suggestion: "you're" });
+
+    // 10. Commonly confused: then/than after comparatives
+    const thenRe = /\b(more|less|better|worse|bigger|smaller|greater|fewer|higher|lower|rather)\s+then\b/gi;
+    while ((pm = thenRe.exec(text)))
+      issues.push({ start: pm.index + pm[1].length + 1, end: pm.index + pm[1].length + 1 + 4, message: '"then" should be "than" after comparative', suggestion: 'than' });
+
+    // 11. Subject-verb disagreement
+    const svRe1 = /\b(he|she|it)\s+(are|were|have)\b/gi;
+    while ((pm = svRe1.exec(text)))
+      issues.push({ start: pm.index, end: pm.index + pm[0].length, message: 'Subject-verb disagreement', suggestion: pm[1] + (pm[2].toLowerCase() === 'are' ? ' is' : pm[2].toLowerCase() === 'were' ? ' was' : ' has') });
+
+    const svRe2 = /\b(they|we)\s+(is|was|has)\b/gi;
+    while ((pm = svRe2.exec(text)))
+      issues.push({ start: pm.index, end: pm.index + pm[0].length, message: 'Subject-verb disagreement', suggestion: pm[1] + (pm[2].toLowerCase() === 'is' ? ' are' : pm[2].toLowerCase() === 'was' ? ' were' : ' have') });
+
+    // 12. Redundant phrases
+    const redundant = [
+      [/\bin order to\b/gi, 'to'],
+      [/\bat this point in time\b/gi, 'now'],
+      [/\bdue to the fact that\b/gi, 'because'],
+      [/\bin the event that\b/gi, 'if'],
+      [/\bfor the purpose of\b/gi, 'to'],
+      [/\bin close proximity\b/gi, 'near'],
+      [/\bhas the ability to\b/gi, 'can'],
+      [/\buntil such time as\b/gi, 'until'],
+      [/\bin spite of the fact that\b/gi, 'although'],
+      [/\bon a daily basis\b/gi, 'daily']
+    ];
+    for (const [re, fix] of redundant)
+      while ((pm = re.exec(text)))
+        issues.push({ start: pm.index, end: pm.index + pm[0].length, message: 'Redundant phrase', suggestion: fix });
+
+    // 13. "the affect" -> "the effect"
+    const affectRe = /\bthe\s+affect\b/gi;
+    while ((pm = affectRe.exec(text)))
+      issues.push({ start: pm.index + pm[0].indexOf('a'), end: pm.index + pm[0].indexOf('a') + 6, message: '"affect" should be "effect" after article', suggestion: 'effect' });
+
     const filtered = [];
     for (const issue of issues) {
       const overlaps = filtered.some(f => (issue.start >= f.start && issue.start < f.end) || (issue.end > f.start && issue.end <= f.end));
