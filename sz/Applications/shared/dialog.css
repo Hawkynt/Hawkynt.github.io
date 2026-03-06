@@ -26,13 +26,11 @@
   color: var(--sz-color-highlight-text);
   padding: 4px 8px;
   font-weight: bold;
-  font-size: 11px;
   user-select: none;
 }
 
 .dialog-body {
   padding: 12px;
-  font-size: 11px;
 }
 
 .dialog-body p {
@@ -42,8 +40,6 @@
 .dialog-body input[type="text"],
 .dialog-body input[type="number"] {
   width: 100%;
-  padding: 2px 4px;
-  font-size: 11px;
   margin-top: 4px;
 }
 
@@ -56,7 +52,5 @@
 
 .dialog-buttons button {
   min-width: 72px;
-  padding: 3px 12px;
-  font-size: 11px;
   cursor: default;
 }
