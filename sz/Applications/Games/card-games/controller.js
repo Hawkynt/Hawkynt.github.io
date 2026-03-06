@@ -124,9 +124,17 @@
 
   function setupCanvas() {
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = CANVAS_W * dpr;
-    canvas.height = CANVAS_H * dpr;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const frame = canvas.parentElement;
+    const fw = frame.clientWidth || CANVAS_W;
+    const fh = frame.clientHeight || CANVAS_H;
+    const scale = Math.min(fw / CANVAS_W, fh / CANVAS_H);
+    const cssW = CANVAS_W * scale;
+    const cssH = CANVAS_H * scale;
+    canvas.style.width = cssW + 'px';
+    canvas.style.height = cssH + 'px';
+    canvas.width = Math.round(cssW * dpr);
+    canvas.height = Math.round(cssH * dpr);
+    ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
   }
 
   /* ══════════════════════════════════════════════════════════════════

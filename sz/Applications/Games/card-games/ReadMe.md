@@ -99,6 +99,10 @@ Card games collection featuring 69 game variants with AI opponents, hint mode, s
 
 **Texas Hold'em** — 4-player community card poker. 2 hole cards + 5 community cards (Flop/Turn/River). Betting rounds with Check/Bet/Call/Raise/Fold/All-In. Small/big blinds rotate. Best 5 of 7 hand ranking.
 
+**Faro** — Historic American frontier banking game. 13 betting positions (one per rank). Dealer draws 2 cards — first is loser, second is winner. Bet on ranks, even money payout. Splits give house half. Case keeper tracks remaining cards.
+
+**Red Dog** — Also called In-Between or Acey-Deucey. Two post cards dealt face-up. Bet whether the third card falls strictly between them. Spread determines payout: 1=5:1, 2=4:1, 3=2:1, 4+=1:1. Consecutive = push, pair + match = 11:1.
+
 ### Shedding (13 games)
 
 **Uno** — Match cards by color or number. Special cards: Skip, Reverse, Draw Two, Wild, Wild Draw Four. House rules: stacking, No Mercy (+6/+10), Zero rotate, Seven swap, Jump-In.
@@ -127,7 +131,7 @@ Card games collection featuring 69 game variants with AI opponents, hint mode, s
 
 **President** — 4-player climbing game. Play 1-4 cards of same rank, higher than previous play. 2s are highest, 4-of-a-kind clears. First out = President, last = Scum. Card exchange between ranks in subsequent rounds.
 
-### Trick-Taking (8 games)
+### Trick-Taking (11 games)
 
 **Skat** — German trick-taking game for 3 players. Full bidding phase with Declarer vs. Defenders and trick-based scoring.
 
@@ -145,7 +149,13 @@ Card games collection featuring 69 game variants with AI opponents, hint mode, s
 
 **Oh Hell** — 4-player trick-taking with variable hand sizes (1 up to 7 and back). Bid exact tricks — dealer restricted by "hook" rule. Score 10 + tricks bid for making exact bid.
 
-### Rummy (5 games)
+**Whist** — Classic 4-player partnership trick-taking, ancestor of Bridge. 13 cards each, last dealt card determines trump. Must follow suit. Each trick beyond 6 (the "book") scores 1 point. First partnership to 5 wins.
+
+**Pitch** — American trick-taking for 4 players. Bid 1-4 to name trump. Four scoring points per round: High, Low, Jack, Game. Bidder must make their bid or be "set". First to 11 wins.
+
+**Sixty-Six** — Austrian 2-player trick game (Schnapsen). 24-card deck (9-A). Two phases: open stock (no suit obligation) and closed (must follow suit + head). Marriages score 20/40. First to 66 trick points wins. Match to 7 game points.
+
+### Rummy (7 games)
 
 **Canasta** — Rummy-style game forming melds of 7 cards. Wild cards and red threes are bonus.
 
@@ -157,7 +167,11 @@ Card games collection featuring 69 game variants with AI opponents, hint mode, s
 
 **Tonk** — Quick knock rummy for 3 players. 5-card hands with instant "Tonk!" win at 49-50 points. Spread melds (sets/runs), knock/drop to end rounds early. Double penalty for failed drops.
 
-### Simple/Speed (9 games)
+**Rummy** — The original basic rummy for 3 players. Draw, form melds (sets and runs), lay off on existing melds, discard. First to empty hand wins. Penalty points for remaining cards (A=1, face=10). Lowest cumulative score wins.
+
+**Kalooki** — Jamaican rummy with jokers (54 cards). 9 cards each. Initial melds must total 51+ points. Jokers are wild (50 penalty if caught). "Kalooki" = going out in one turn for double penalty to opponents.
+
+### Simple/Speed (11 games)
 
 **War** — Flip cards simultaneously, highest wins. Ties trigger WAR: 3 face-down + 1 face-up. Win all 52 cards.
 
@@ -177,7 +191,11 @@ Card games collection featuring 69 game variants with AI opponents, hint mode, s
 
 **Sevens (Fan Tan)** — 4-player placement game. Build suit rows outward from 7s — play 6,5,4,3,2,A left or 8,9,10,J,Q,K right. Strategic blocking. First to empty hand wins.
 
-### European (5 games)
+**Spite & Malice** — Competitive patience for 2 players. Each player has a 20-card pay-off pile. Build shared center piles A-K. Play from hand, pay-off pile, or 4 personal discard piles. First to empty pay-off pile wins. Jokers are wild.
+
+**Beggar My Neighbor** — Classic children's game for 2 players (Strip Jack Naked). Deal all cards face-down. Take turns flipping. Face cards trigger payment obligations (A=4, K=3, Q=2, J=1). Purely luck-based but exciting.
+
+### European (9 games)
 
 **Schwimmen (31)** — German pub game for 4 players. Exchange cards from a center pool to get 31 in one suit or 3-of-a-kind. Knock to trigger final round. Lose lives when you have the lowest hand.
 
@@ -189,11 +207,19 @@ Card games collection featuring 69 game variants with AI opponents, hint mode, s
 
 **Cribbage** — 2-player pegging board game. Discard to crib, peg points during play (15s, 31s, pairs, runs), then score hands. Fifteens, pairs, runs, flushes, and nobs. First to 121 on the pegging board wins.
 
+**Piquet** — Classic 16th-century French 2-player game. 32-card deck (7-A). Talon exchange, then 3 declaration phases (Point, Sequence, Set) before trick play. Pique/Repique bonuses for dominating declarations. Capot bonus for winning all 12 tricks. First to 100 wins.
+
+**Bezique** — French 2-player meld + trick game. 64-card deck (two 32-card decks). Phase 1: open stock, no suit obligation, declare melds after winning tricks. Marriages (20/40), Bezique Q♠+J♦ (40), double bezique (500), trump sequence (250). Phase 2: must follow suit. First to 1000 wins.
+
+**Cassino** — Classic 2-player fishing game. Play cards to capture table cards by matching value or building sums. Builds can be stolen by opponents. Score for most cards, most spades, Big Cassino (10♦), Little Cassino (2♠), aces, and sweeps. First to 21 wins.
+
+**Pishti** — Turkish 2-player capture card game. Match top pile card rank to capture. Jacks capture any pile. "Pishti" bonus (10/20 pts) for capturing a single-card pile. Score for Jacks, Aces, 2♣, 10♦, most cards. First to 151 wins.
+
 ## Architecture
 
 - `index.html` — Entry point with SEO meta, menu bar, canvas, status bar, dialogs
 - `card-engine.js` — Unified rendering engine used by all 69 variants: card face/back drawing with bezier suit symbols and pip layouts, variable-size card support, rounded rectangles, buttons, hit testing, hint glow, deck creation (standard and custom rank sets), shuffle, animation system, particle effects, win animations, theme colors. Accepts both named suits (`'spades'`) and unicode (`'\u2660'`) transparently.
-- `controller.js` — Pure orchestrator: variant loading, 5-column menu, hint toggle with persistence, game lifecycle, host effects (deal animation, flip, glow, sparkle), postMessage bridge. Delegates all card drawing to card-engine.js.
+- `controller.js` — Pure orchestrator: variant loading, 6-column menu, hint toggle with persistence, game lifecycle, host effects (deal animation, flip, glow, sparkle), postMessage bridge. Delegates all card drawing to card-engine.js.
 - `blackjack-variant.js` — Blackjack variant module
 - `poker-variant.js` — Poker variant module
 - `baccarat-variant.js` — Baccarat casino variant module
@@ -221,18 +247,28 @@ Card games collection featuring 69 game variants with AI opponents, hint mode, s
 - `tripeaks-variant.js` — TriPeaks solitaire variant module
 - `fortythieves-variant.js` — Forty Thieves 2-deck solitaire variant module
 - `canfield-variant.js` — Canfield solitaire variant module
+- `clock-variant.js` — Clock Patience solitaire variant module
+- `bakersdozen-variant.js` — Baker's Dozen solitaire variant module
+- `accordion-variant.js` — Accordion solitaire variant module
+- `faro-variant.js` — Faro historic casino banking variant module
+- `reddog-variant.js` — Red Dog (In-Between) casino variant module
 - `hearts-variant.js` — Hearts trick-taking variant module
 - `spades-variant.js` — Spades trick-taking variant module
 - `euchre-variant.js` — Euchre trick-taking variant module
 - `pinochle-variant.js` — Pinochle melds + trick-taking variant module
 - `bridge-variant.js` — Contract Bridge partnership bidding + trick-taking variant module
 - `ohhell-variant.js` — Oh Hell variable-hand trick-taking variant module
+- `whist-variant.js` — Whist classic partnership trick-taking variant module
+- `pitch-variant.js` — Pitch (All Fours) American trick-taking variant module
+- `sixtysix-variant.js` — Sixty-Six (Schnapsen) Austrian trick-taking variant module
 - `crazy-eights-variant.js` — Crazy Eights shedding variant module
 - `maumau-variant.js` — Mau-Mau shedding variant module
 - `ginrummy-variant.js` — Gin Rummy variant module
 - `rummy500-variant.js` — Rummy 500 variant module
 - `phase10-variant.js` — Phase 10 variant module
 - `tonk-variant.js` — Tonk quick knock rummy variant module
+- `rummy-variant.js` — Straight Rummy classic meld and lay-off variant module
+- `kalooki-variant.js` — Kalooki Jamaican rummy with jokers variant module
 - `war-variant.js` — War simple card game variant module
 - `memory-variant.js` — Memory matching variant module
 - `gofish-variant.js` — Go Fish variant module
@@ -242,14 +278,20 @@ Card games collection featuring 69 game variants with AI opponents, hint mode, s
 - `cheat-variant.js` — Cheat (BS) bluffing variant module
 - `ratscrew-variant.js` — Egyptian Rat Screw speed/slap variant module
 - `sevens-variant.js` — Sevens (Fan Tan) placement variant module
+- `spitemalice-variant.js` — Spite & Malice competitive patience variant module
+- `beggar-variant.js` — Beggar My Neighbor children's card game variant module
 - `schwimmen-variant.js` — Schwimmen (31) variant module
 - `durak-variant.js` — Durak variant module
 - `briscola-variant.js` — Briscola Italian trump trick-taking variant module
 - `scopa-variant.js` — Scopa Italian fishing variant module
 - `cribbage-variant.js` — Cribbage pegging board scoring variant module
+- `piquet-variant.js` — Piquet classic French declaration game variant module
+- `bezique-variant.js` — Bezique French meld and trick game variant module
+- `cassino-variant.js` — Cassino classic fishing game variant module
+- `pishti-variant.js` — Pishti Turkish capture card game variant module
 - `styles.css` — Layout and theming
 - `icon.svg` — Desktop icon (cards + chips)
 
 ## SEO Keywords
 
-card games, poker, blackjack, baccarat, texas holdem, uno, uno flip, uno all wild, liars uno, uno extreme, uno party, dos, ono 99, 8-color duo, skip-bo, skat, canasta, doppelkopf, solitaire, freecell, spider solitaire, yukon, pyramid, golf solitaire, tripeaks, forty thieves, canfield, hearts, spades, euchre, pinochle, bridge, oh hell, gin rummy, rummy 500, phase 10, tonk, war, memory, go fish, old maid, snap, speed, cheat, egyptian rat screw, sevens, fan tan, schwimmen, durak, briscola, scopa, cribbage, president, browser card game, classic card games, AI card game, card game collection, hint mode, SynthelicZ, WebOS game, card animations
+card games, poker, blackjack, baccarat, texas holdem, faro, red dog, acey deucey, uno, uno flip, uno all wild, liars uno, uno extreme, uno party, dos, ono 99, 8-color duo, skip-bo, skat, canasta, doppelkopf, solitaire, freecell, spider solitaire, yukon, pyramid, golf solitaire, tripeaks, forty thieves, canfield, clock patience, bakers dozen, accordion solitaire, hearts, spades, euchre, pinochle, bridge, oh hell, whist, pitch, all fours, sixty-six, schnapsen, gin rummy, rummy 500, phase 10, tonk, rummy, kalooki, kaluki, war, memory, go fish, old maid, snap, speed, cheat, egyptian rat screw, sevens, fan tan, spite and malice, beggar my neighbor, schwimmen, durak, briscola, scopa, cribbage, piquet, bezique, cassino, pishti, president, browser card game, classic card games, AI card game, card game collection, hint mode, SynthelicZ, WebOS game, card animations

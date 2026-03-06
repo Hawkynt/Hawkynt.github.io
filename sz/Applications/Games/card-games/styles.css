@@ -20,9 +20,6 @@ body { display: flex; flex-direction: column; }
 
 canvas {
   display: block;
-  width: 900px;
-  height: 600px;
-  image-rendering: pixelated;
 }
 
 .status-bar {
