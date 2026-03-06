@@ -312,6 +312,7 @@
   /* ── Mouse state for mouse-only controls ── */
   let mouseX = 0, mouseY = 0;
   let mouseDown = false;
+  let mouseRightDown = false;
   let mouseActive = false;
 
   function canvasCoords(e) {
@@ -1511,12 +1512,14 @@
         ship.angle += turn;
       }
 
-      ship.thrusting = !!(keys['ArrowUp'] || keys['w'] || keys['W']);
-      if (ship.thrusting) {
-        ship.vx += Math.cos(ship.angle) * SHIP_THRUST;
-        ship.vy += Math.sin(ship.angle) * SHIP_THRUST;
+      /* Right-mouse thrust toward cursor */
+      if (mouseRightDown && mouseActive && ship) {
+        const thrustAngle = Math.atan2(mouseY - ship.y, mouseX - ship.x);
+        ship.vx += Math.cos(thrustAngle) * SHIP_THRUST;
+        ship.vy += Math.sin(thrustAngle) * SHIP_THRUST;
+        ship.thrusting = true;
 
-        const exhaust = ship.angle + Math.PI;
+        const exhaust = thrustAngle + Math.PI;
         const ex = ship.x + Math.cos(exhaust) * SHIP_SIZE * 0.8;
         const ey = ship.y + Math.sin(exhaust) * SHIP_SIZE * 0.8;
         const trailColors = ['#f80', '#ff0', '#fa0', '#f60'];
@@ -1527,6 +1530,24 @@
           size: 2 + Math.random() * 2.5,
           life: 0.45, decay: 0.04, shrink: 0.93
         });
+      } else {
+        ship.thrusting = !!(keys['ArrowUp'] || keys['w'] || keys['W']);
+        if (ship.thrusting) {
+          ship.vx += Math.cos(ship.angle) * SHIP_THRUST;
+          ship.vy += Math.sin(ship.angle) * SHIP_THRUST;
+
+          const exhaust = ship.angle + Math.PI;
+          const ex = ship.x + Math.cos(exhaust) * SHIP_SIZE * 0.8;
+          const ey = ship.y + Math.sin(exhaust) * SHIP_SIZE * 0.8;
+          const trailColors = ['#f80', '#ff0', '#fa0', '#f60'];
+          particles.trail(ex, ey, {
+            vx: Math.cos(exhaust) * 2 + (Math.random() - 0.5),
+            vy: Math.sin(exhaust) * 2 + (Math.random() - 0.5),
+            color: trailColors[Math.floor(Math.random() * trailColors.length)],
+            size: 2 + Math.random() * 2.5,
+            life: 0.45, decay: 0.04, shrink: 0.93
+          });
+        }
       }
 
       ship.vx *= SHIP_FRICTION;
@@ -3140,15 +3161,22 @@
   document.addEventListener('keyup', e => { keys[e.key] = false; });
 
   /* ── Click/Tap to start + mouse controls ── */
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
   canvas.addEventListener('pointerdown', (e) => {
     const pos = canvasCoords(e);
     mouseX = pos.x;
     mouseY = pos.y;
-    mouseDown = true;
     mouseActive = true;
 
-    /* Mode select: click a mode card to start */
-    if (modeSelectActive) {
+    const isRight = e.button === 2;
+    if (isRight)
+      mouseRightDown = true;
+    else
+      mouseDown = true;
+
+    /* Mode select: click a mode card to start (left only) */
+    if (!isRight && modeSelectActive) {
       const modes = ['classic', 'survival', 'zen', 'hardcore'];
       const cardH = 56 * uiS;
       const cardW = 280 * uiS;
@@ -3176,15 +3204,23 @@
       return;
     }
 
-    /* Game over / not active: show mode select */
-    if (!gameActive || gameOverFlag) {
+    /* Game over / not active: show mode select (left only) */
+    if (!isRight && (!gameActive || gameOverFlag)) {
       showModeSelect();
       return;
     }
 
-    /* In-game: shoot on click */
-    if (gameActive && !gamePaused && !gameOverFlag && !warpState)
-      shoot();
+    /* In-game left click: shoot; right click: small thrust toward mouse */
+    if (gameActive && !gamePaused && !gameOverFlag && !warpState) {
+      if (!isRight)
+        shoot();
+      else if (ship) {
+        /* Single right-click = small thrust impulse toward cursor */
+        const thrustAngle = Math.atan2(mouseY - ship.y, mouseX - ship.x);
+        ship.vx += Math.cos(thrustAngle) * SHIP_THRUST * 0.5;
+        ship.vy += Math.sin(thrustAngle) * SHIP_THRUST * 0.5;
+      }
+    }
   });
 
   canvas.addEventListener('pointermove', (e) => {
@@ -3194,8 +3230,11 @@
     mouseActive = true;
   });
 
-  canvas.addEventListener('pointerup', () => {
-    mouseDown = false;
+  canvas.addEventListener('pointerup', (e) => {
+    if (e.button === 2)
+      mouseRightDown = false;
+    else
+      mouseDown = false;
   });
 
   /* ============================== GAME LOOP ============================== */
