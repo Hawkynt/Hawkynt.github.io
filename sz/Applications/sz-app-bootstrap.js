@@ -909,4 +909,19 @@
 
   SZ.Dlls = Dlls;
 
+  // ── Disable browser context menu except in editable elements ────
+  document.addEventListener('contextmenu', (e) => {
+    if (!e.target.closest('input, textarea, [contenteditable]'))
+      e.preventDefault();
+  });
+
+  // ── Disable text selection except in editable elements ──────────
+  {
+    const style = document.createElement('style');
+    style.textContent =
+      'body { user-select: none; -webkit-user-select: none; }\n' +
+      'input, textarea, [contenteditable], [contenteditable] * { user-select: text; -webkit-user-select: text; }';
+    (document.head || document.documentElement).appendChild(style);
+  }
+
 })();
