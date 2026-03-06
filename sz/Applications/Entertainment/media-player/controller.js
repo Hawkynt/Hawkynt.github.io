@@ -8,6 +8,7 @@
   const VOLUME_STEP = 0.05;
   const VISUALIZER_BARS = 16;
   const STORAGE_KEY = 'sz-media-player-volume';
+  const MEDIA_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'wma', 'mp4', 'webm', 'ogv'];
 
   // -----------------------------------------------------------------------
   // DOM references
@@ -42,6 +43,10 @@
   const menuRepeat = document.getElementById('menu-repeat');
   const menuPlaylist = document.getElementById('menu-playlist');
   const menuCompact = document.getElementById('menu-compact');
+  const winampSkinInput = document.getElementById('winamp-skin-input');
+  const skinNameEl = document.getElementById('skin-name');
+  const winampContainer = document.getElementById('winamp-container');
+  const btnAddFolder = document.getElementById('btn-add-folder');
 
   // -----------------------------------------------------------------------
   // State
@@ -65,6 +70,10 @@
   let animFrameId = null;
   let shuffleOrder = [];
   let isSeeking = false;
+
+  // Winamp skin state
+  let winampSkin = null;    // WinampSkin instance
+  let winampRenderer = null; // WinampRenderer instance
 
   // -----------------------------------------------------------------------
   // Init volume from localStorage
@@ -102,6 +111,11 @@
     return type && type.startsWith('video/');
   }
 
+  function isMediaFile(name) {
+    const ext = name.split('.').pop().toLowerCase();
+    return MEDIA_EXTENSIONS.includes(ext);
+  }
+
   function saveVolume() {
     try {
       localStorage.setItem(STORAGE_KEY, String(volume));
@@ -124,6 +138,9 @@
       case 'open-url':
         showOpenUrlDialog();
         break;
+      case 'open-vfs-folder':
+        openVfsFolder();
+        break;
       case 'exit':
         SZ.Dlls.User32.DestroyWindow();
         break;
@@ -144,6 +161,7 @@
         menuShuffle.classList.toggle('checked', shuffleEnabled);
         if (shuffleEnabled)
           buildShuffleOrder();
+        syncWinampToggles();
         break;
       case 'repeat':
         cycleRepeatMode();
@@ -153,9 +171,16 @@
         menuPlaylist.classList.toggle('checked');
         break;
       case 'compact-mode':
-        compactMode = !compactMode;
-        menuCompact.classList.toggle('checked', compactMode);
-        displayArea.classList.toggle('compact', compactMode);
+        toggleCompactMode();
+        break;
+      case 'load-winamp-skin':
+        winampSkinInput.click();
+        break;
+      case 'select-winamp-skin':
+        showWinampSkinSelector();
+        break;
+      case 'clear-winamp-skin':
+        clearWinampSkin();
         break;
       case 'about':
         SZ.Dialog.show('dlg-about');
@@ -177,6 +202,7 @@
     const labels = { off: 'Repeat: Off', all: 'Repeat: All', one: 'Repeat: One' };
     menuRepeat.textContent = labels[repeatMode];
     menuRepeat.classList.toggle('checked', repeatMode !== 'off');
+    syncWinampToggles();
   }
 
   // -----------------------------------------------------------------------
@@ -515,6 +541,13 @@
     timeTotalEl.textContent = formatTime(duration);
     const pct = (duration > 0 && isFinite(duration)) ? (current / duration) * 100 : 0;
     seekFill.style.width = pct + '%';
+
+    // Sync Winamp renderer
+    if (winampRenderer && winampRenderer.active) {
+      winampRenderer.updateTime(current, duration);
+      if (duration > 0 && isFinite(duration))
+        winampRenderer.updatePosition(current / duration);
+    }
   }
 
   function seekToPosition(e) {
@@ -554,6 +587,10 @@
     const displayVol = isMuted ? 0 : volume;
     volumeFill.style.width = (displayVol * 100) + '%';
     btnMute.textContent = (isMuted || volume === 0) ? '\u{1F507}' : '\u{1F50A}';
+
+    // Sync Winamp renderer
+    if (winampRenderer && winampRenderer.active)
+      winampRenderer.updateVolume(displayVol);
   }
 
   function setVolume(v) {
@@ -829,10 +866,18 @@
   // -----------------------------------------------------------------------
   function updateStatusTrack(name) {
     statusTrack.textContent = name || 'No media loaded';
+
+    // Sync Winamp renderer scrolling title
+    if (winampRenderer && winampRenderer.active)
+      winampRenderer.setTitle(name || '');
   }
 
   function updateStatusState(state) {
     statusState.textContent = state;
+
+    // Sync Winamp renderer
+    if (winampRenderer && winampRenderer.active)
+      winampRenderer.updateStatus(state.toLowerCase());
   }
 
   // -----------------------------------------------------------------------
@@ -953,6 +998,277 @@
         loadTrack(0);
     }
   });
+
+  // -----------------------------------------------------------------------
+  // Compact mode with Winamp skin support
+  // -----------------------------------------------------------------------
+  function toggleCompactMode() {
+    compactMode = !compactMode;
+    menuCompact.classList.toggle('checked', compactMode);
+
+    if (compactMode && winampSkin && winampSkin.loaded)
+      activateWinampCompact();
+    else
+      deactivateWinampCompact();
+
+    displayArea.classList.toggle('compact', compactMode);
+  }
+
+  function activateWinampCompact() {
+    if (!winampRenderer)
+      winampRenderer = new SZ.WinampRenderer();
+
+    winampContainer.classList.remove('hidden');
+    winampRenderer.create(winampContainer);
+    winampRenderer.applySkin(winampSkin);
+
+    // Wire up callbacks
+    winampRenderer.onPlay = () => {
+      if (isStopped || !isPlaying) togglePlayPause();
+    };
+    winampRenderer.onPause = () => {
+      if (isPlaying) togglePlayPause();
+    };
+    winampRenderer.onStop = stopPlayback;
+    winampRenderer.onPrev = playPrevious;
+    winampRenderer.onNext = playNext;
+    winampRenderer.onEject = () => fileInput.click();
+    winampRenderer.onSeek = (frac) => {
+      if (activeMediaElement && isFinite(activeMediaElement.duration)) {
+        activeMediaElement.currentTime = frac * activeMediaElement.duration;
+        updateSeekUI(activeMediaElement.currentTime, activeMediaElement.duration);
+      }
+    };
+    winampRenderer.onVolume = (v) => setVolume(v);
+    winampRenderer.onShuffle = () => {
+      shuffleEnabled = !shuffleEnabled;
+      menuShuffle.classList.toggle('checked', shuffleEnabled);
+      if (shuffleEnabled) buildShuffleOrder();
+      syncWinampToggles();
+    };
+    winampRenderer.onRepeat = () => {
+      cycleRepeatMode();
+    };
+    winampRenderer.onClose = () => SZ.Dlls.User32.DestroyWindow();
+
+    // Sync current state to renderer
+    syncWinampToggles();
+    winampRenderer.updateVolume(isMuted ? 0 : volume);
+    if (isPlaying)
+      winampRenderer.updateStatus('playing');
+    else if (!isStopped)
+      winampRenderer.updateStatus('paused');
+    else
+      winampRenderer.updateStatus('stopped');
+
+    const track = currentIndex >= 0 ? playlist[currentIndex] : null;
+    if (track)
+      winampRenderer.setTitle(track.name);
+
+    if (activeMediaElement && isFinite(activeMediaElement.duration) && activeMediaElement.duration > 0) {
+      winampRenderer.updateTime(activeMediaElement.currentTime, activeMediaElement.duration);
+      winampRenderer.updatePosition(activeMediaElement.currentTime / activeMediaElement.duration);
+    }
+  }
+
+  function deactivateWinampCompact() {
+    winampContainer.classList.add('hidden');
+    if (winampRenderer) {
+      winampRenderer.destroy();
+    }
+  }
+
+  function syncWinampToggles() {
+    if (!winampRenderer || !winampRenderer.active)
+      return;
+    winampRenderer.updateShuffle(shuffleEnabled);
+    winampRenderer.updateRepeat(repeatMode);
+  }
+
+  // -----------------------------------------------------------------------
+  // Winamp skin loading
+  // -----------------------------------------------------------------------
+  async function loadWinampSkinFromBuffer(buffer, name) {
+    if (!SZ.WinampSkin)
+      return;
+
+    winampSkin = new SZ.WinampSkin();
+    const success = await winampSkin.load(buffer, name);
+    if (!success) {
+      winampSkin = null;
+      statusInfo.textContent = 'Failed to load skin';
+      return;
+    }
+
+    if (skinNameEl)
+      skinNameEl.textContent = winampSkin.name;
+    statusInfo.textContent = 'Skin: ' + winampSkin.name;
+
+    // If already in compact mode, refresh
+    if (compactMode) {
+      deactivateWinampCompact();
+      activateWinampCompact();
+    }
+  }
+
+  // File input handler for .wsz files
+  if (winampSkinInput) {
+    winampSkinInput.addEventListener('change', () => {
+      const file = winampSkinInput.files[0];
+      if (!file)
+        return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        loadWinampSkinFromBuffer(reader.result, file.name.replace(/\.wsz$/i, ''));
+      };
+      reader.readAsArrayBuffer(file);
+      winampSkinInput.value = '';
+    });
+  }
+
+  function clearWinampSkin() {
+    winampSkin = null;
+    if (skinNameEl)
+      skinNameEl.textContent = 'None';
+    if (compactMode) {
+      deactivateWinampCompact();
+      displayArea.classList.toggle('compact', true);
+    }
+    statusInfo.textContent = '';
+  }
+
+  // -----------------------------------------------------------------------
+  // Winamp skin selector dialog
+  // -----------------------------------------------------------------------
+  async function showWinampSkinSelector() {
+    // Try to list skins from VFS
+    const skinList = document.getElementById('skin-list');
+    if (skinList)
+      skinList.innerHTML = '<div style="padding:8px;color:#888;">Scanning for skins...</div>';
+
+    SZ.Dialog.show('dlg-skin-selector').then(async (result) => {
+      if (result !== 'ok')
+        return;
+
+      const selected = skinList?.querySelector('.skin-item.selected');
+      if (!selected)
+        return;
+
+      const skinPath = selected.dataset.path;
+      if (!skinPath)
+        return;
+
+      try {
+        const bytes = await SZ.Dlls.Kernel32.ReadAllBytes(skinPath);
+        await loadWinampSkinFromBuffer(bytes.buffer || bytes, skinPath.split('/').pop().replace(/\.wsz$/i, ''));
+      } catch (err) {
+        statusInfo.textContent = 'Failed to load skin: ' + err.message;
+      }
+    });
+
+    // Scan VFS for .wsz files
+    if (skinList) {
+      try {
+        const paths = ['/user/documents', '/user/desktop', '/apps'];
+        const skins = [];
+
+        for (const basePath of paths) {
+          try {
+            const entries = await SZ.Dlls.Kernel32.FindFirstFile(basePath, SZ.Dlls.Kernel32.SearchOption.BreadthFirst);
+            for (const entry of entries) {
+              const name = typeof entry === 'string' ? entry : (entry.name || '');
+              if (name.toLowerCase().endsWith('.wsz'))
+                skins.push({ name, path: basePath + '/' + name });
+            }
+          } catch (_) { /* path not accessible */ }
+        }
+
+        skinList.innerHTML = '';
+        if (skins.length === 0) {
+          skinList.innerHTML = '<div style="padding:8px;color:#888;">No .wsz skins found in VFS.<br>Use "Load Skin File..." to import one.</div>';
+        } else {
+          for (const skin of skins) {
+            const item = document.createElement('div');
+            item.className = 'skin-item';
+            item.textContent = skin.name;
+            item.dataset.path = skin.path;
+            item.addEventListener('click', () => {
+              skinList.querySelectorAll('.skin-item').forEach(s => s.classList.remove('selected'));
+              item.classList.add('selected');
+            });
+            item.addEventListener('dblclick', () => {
+              item.classList.add('selected');
+              SZ.Dialog.close('dlg-skin-selector', 'ok');
+            });
+            skinList.appendChild(item);
+          }
+        }
+      } catch (_) {
+        if (skinList)
+          skinList.innerHTML = '<div style="padding:8px;color:#888;">Could not scan VFS for skins.</div>';
+      }
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // VFS folder loading into playlist
+  // -----------------------------------------------------------------------
+  async function openVfsFolder() {
+    try {
+      const result = await SZ.Dlls.ComDlg32.BrowseForFolder({
+        title: 'Select folder to add to playlist',
+        initialDir: '/user/documents'
+      });
+
+      if (!result || result.cancelled || !result.path)
+        return;
+
+      statusInfo.textContent = 'Scanning folder...';
+      await addVfsFolder(result.path);
+      statusInfo.textContent = '';
+
+      if (currentIndex < 0 && playlist.length > 0)
+        loadTrack(0);
+    } catch (err) {
+      statusInfo.textContent = 'Folder scan failed: ' + err.message;
+    }
+  }
+
+  async function addVfsFolder(folderPath) {
+    try {
+      const entries = await SZ.Dlls.Kernel32.FindFirstFile(folderPath, SZ.Dlls.Kernel32.SearchOption.BreadthFirst);
+      const mediaFiles = [];
+
+      for (const entry of entries) {
+        const name = typeof entry === 'string' ? entry : (entry.name || '');
+        if (!name)
+          continue;
+        if (isMediaFile(name))
+          mediaFiles.push(name);
+      }
+
+      // Sort alphabetically
+      mediaFiles.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+
+      // Add each file to playlist
+      for (const fileName of mediaFiles) {
+        const fullPath = folderPath + '/' + fileName;
+        try {
+          const content = await SZ.Dlls.Kernel32.ReadUri(fullPath);
+          addVfsTrack(fullPath, content);
+        } catch (_) {
+          // Try without content -- use path as source
+          addVfsTrack(fullPath, null);
+        }
+      }
+    } catch (err) {
+      statusInfo.textContent = 'Scan error: ' + err.message;
+    }
+  }
+
+  // Playlist panel "Add Folder" button
+  if (btnAddFolder)
+    btnAddFolder.addEventListener('click', openVfsFolder);
 
   // -----------------------------------------------------------------------
   // Init
