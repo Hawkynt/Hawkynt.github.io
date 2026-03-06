@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Online media player for MP3, WAV, OGG, MP4, and WebM files">
+<meta name="description" content="Online media player for MP3, WAV, OGG, MP4, and WebM files with Winamp skin support">
 <meta name="robots" content="index,follow">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Media Player -- »SynthelicZ« Desktop">
-<meta property="og:description" content="Online media player for MP3, WAV, OGG, MP4, and WebM files">
+<meta property="og:description" content="Online media player for MP3, WAV, OGG, MP4, and WebM files with Winamp skin support">
 <meta property="og:url" content="https://hawkynt.github.io/sz/Applications/media-player/index.html">
 <link rel="canonical" href="https://hawkynt.github.io/sz/Applications/media-player/index.html">
 <script type="application/ld+json">
@@ -16,7 +16,7 @@
   "@type": "WebApplication",
   "name": "Media Player",
   "url": "https://hawkynt.github.io/sz/Applications/media-player/index.html",
-  "description": "Online media player for MP3, WAV, OGG, MP4, and WebM files",
+  "description": "Online media player for MP3, WAV, OGG, MP4, and WebM files with Winamp skin support",
   "applicationCategory": "MultimediaApplication",
   "operatingSystem": "Web Browser",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
@@ -30,7 +30,7 @@
 <script defer src="../../vision-renderer.js"></script>
 </head>
 <body>
-<noscript><p>Online media player for MP3, WAV, OGG, MP4, and WebM files. <a href="../../../index.html">Open »SynthelicZ« Desktop</a> to use this app.</p></noscript>
+<noscript><p>Online media player for MP3, WAV, OGG, MP4, and WebM files. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a> to use this app.</p></noscript>
 
 <!-- Menu Bar -->
 <div class="menu-bar" id="menu-bar">
@@ -39,6 +39,7 @@
     <div class="menu-dropdown">
       <div class="menu-entry" data-action="open-file">Open File(s)...<span class="shortcut">Ctrl+O</span></div>
       <div class="menu-entry" data-action="open-url">Open URL...</div>
+      <div class="menu-entry" data-action="open-vfs-folder">Open VFS Folder...</div>
       <div class="menu-separator"></div>
       <div class="menu-entry" data-action="exit">Exit</div>
     </div>
@@ -60,6 +61,10 @@
     <div class="menu-dropdown">
       <div class="menu-entry checkbox checked" data-action="toggle-playlist" id="menu-playlist">Show Playlist</div>
       <div class="menu-entry checkbox" data-action="compact-mode" id="menu-compact">Compact Mode</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="load-winamp-skin">Load Winamp Skin...</div>
+      <div class="menu-entry" data-action="select-winamp-skin">Select Skin from VFS...</div>
+      <div class="menu-entry" data-action="clear-winamp-skin">Clear Winamp Skin</div>
     </div>
   </div>
   <div class="menu-item" data-menu="help">
@@ -69,6 +74,9 @@
     </div>
   </div>
 </div>
+
+<!-- Winamp Compact Mode Container -->
+<div class="winamp-wrapper hidden" id="winamp-container"></div>
 
 <!-- Main Content -->
 <div class="main-content">
@@ -115,6 +123,7 @@
       <span>Playlist</span>
       <div class="playlist-actions">
         <button class="playlist-action-btn" id="btn-add-files" title="Add Files">+ Add</button>
+        <button class="playlist-action-btn" id="btn-add-folder" title="Add VFS Folder">+ Folder</button>
         <button class="playlist-action-btn" id="btn-remove-selected" title="Remove Selected">- Rem</button>
         <button class="playlist-action-btn" id="btn-clear-all" title="Clear All">Clear</button>
       </div>
@@ -128,10 +137,12 @@
   <span class="status-section" id="status-track">No media loaded</span>
   <span class="status-section" id="status-state">Stopped</span>
   <span class="status-section" id="status-info"></span>
+  <span class="status-section skin-label">Skin: <span id="skin-name">None</span></span>
 </div>
 
-<!-- Hidden file input -->
+<!-- Hidden file inputs -->
 <input type="file" class="hidden-input" id="file-input" accept="audio/*,video/*,.mp3,.wav,.ogg,.flac,.m4a,.mp4,.webm" multiple>
+<input type="file" class="hidden-input" id="winamp-skin-input" accept=".wsz,.zip">
 
 <!-- Hidden audio element -->
 <audio id="audio-player" preload="auto"></audio>
@@ -151,6 +162,21 @@
   </div>
 </div>
 
+<!-- Winamp Skin Selector Dialog -->
+<div class="dialog-overlay" id="dlg-skin-selector">
+  <div class="dialog" style="width: 320px;">
+    <div class="dialog-title">Select Winamp Skin</div>
+    <div class="dialog-body">
+      <p style="margin-bottom: 8px;">Available .wsz skins in the virtual file system:</p>
+      <div id="skin-list" class="skin-list"></div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Apply</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- About Dialog -->
 <div class="dialog-overlay" id="dlg-about">
   <div class="dialog">
@@ -159,6 +185,7 @@
       <p style="font-weight: bold; font-size: 13px; margin-bottom: 12px;">Media Player</p>
       <p>Audio and video player for &raquo;SynthelicZ&laquo;</p>
       <p style="margin-top: 8px; font-size: 10px; opacity: 0.5;">Supports MP3, WAV, OGG, FLAC, M4A, MP4, WebM</p>
+      <p style="margin-top: 4px; font-size: 10px; opacity: 0.5;">Winamp classic skin support (.wsz)</p>
       <p style="margin-top: 12px; font-size: 10px; opacity: 0.7;">&copy; 1995-2026 &raquo;SynthelicZ&laquo;</p>
     </div>
     <div class="dialog-buttons" style="justify-content: center;">
@@ -173,6 +200,7 @@
 <script src="../../../libs/formats/codec-pcm.js"></script>
 <script src="../../shared/menu.js"></script>
 <script src="../../shared/dialog.js"></script>
+<script src="winamp-skin.js"></script>
 <script src="controller.js"></script>
 </body>
 </html>

@@ -341,6 +341,11 @@ body {
   flex: 1;
 }
 
+.status-bar .skin-label {
+  font-size: 9px;
+  color: #666;
+}
+
 /* ---- Hidden elements ---- */
 .hidden-input {
   position: absolute;
@@ -348,4 +353,80 @@ body {
   height: 0;
   overflow: hidden;
   opacity: 0;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ---- Winamp compact mode ---- */
+.winamp-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0a0a14;
+  flex-shrink: 0;
+  padding: 4px;
+  border-bottom: 1px solid #333;
+}
+
+.winamp-wrapper.hidden {
+  display: none;
+}
+
+.winamp-skin {
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+  border: 1px solid #444;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  flex-shrink: 0;
+}
+
+/* Winamp button active state -- toggle background-position */
+.winamp-skin [class*="winamp-btn-"].active {
+  background-position: var(--active-pos) !important;
+}
+
+/* Use dataset for active states via CSS */
+.winamp-skin div.active[data-active-pos] {
+  background-position: attr(data-active-pos) !important;
+}
+
+/* ---- Skin selector dialog ---- */
+.skin-list {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #444;
+  background: #1a1a2e;
+  border-radius: 3px;
+}
+
+.skin-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.skin-list::-webkit-scrollbar-track {
+  background: #1a1a2e;
+}
+
+.skin-list::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 3px;
+}
+
+.skin-item {
+  padding: 4px 8px;
+  cursor: default;
+  font-size: 11px;
+  border-bottom: 1px solid #252540;
+}
+
+.skin-item:hover {
+  background: rgba(74,158,255,0.15);
+}
+
+.skin-item.selected {
+  background: rgba(74,158,255,0.3);
+  color: #fff;
 }
