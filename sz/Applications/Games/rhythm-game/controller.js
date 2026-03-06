@@ -353,6 +353,25 @@
   let consecutiveMisses = 0;                  // escalating screen shake on repeated misses
   let comboPulse = 0;                         // visual pulse for combo display (0..1, decays)
 
+  /* ── Neon glow colors (brighter saturated versions of lane colors) ── */
+  const NEON_COLORS = ['#ff2255', '#22ff66', '#2266ff', '#ffee22'];
+  const NEON_GLOW_COLORS = ['#ff0044', '#00ff44', '#0044ff', '#ffdd00'];
+
+  /* ── Screen flash (triggers on PERFECT hits) ── */
+  let screenFlashAlpha = 0;
+  let screenFlashColor = '#fff';
+
+  /* ── Background beat pulse ── */
+  let bgPulseIntensity = 0;
+  let bgPulsePhase = 0;
+
+  /* ── Note trail particle system (separate from main particles for layering) ── */
+  const trailParticles = new SZ.GameEffects.ParticleSystem();
+
+  /* ── Combo bounce (elastic scale for combo text) ── */
+  let comboBounce = 0;
+  let comboLastValue = 0;
+
   /* ══════════════════════════════════════════════════════════════════
      LANE HELPERS
      ══════════════════════════════════════════════════════════════════ */
@@ -422,7 +441,15 @@
     comboGlowIntensity = Math.min(1, combo / 30);
     comboPulse = 1;
 
+    // Combo bounce — elastic scale effect, stronger when combo changes
+    if (combo !== comboLastValue) {
+      comboBounce = 1;
+      comboLastValue = combo;
+    }
+
     const x = laneX(lane);
+    const neonColor = NEON_COLORS[lane];
+    const neonGlow = NEON_GLOW_COLORS[lane];
 
     // Judgment text — show multiplier too when > 1
     const multText = mult > 1 ? ` x${mult}` : '';
@@ -431,24 +458,40 @@
     // Lane flash on any hit
     laneFlash[lane] = 1;
 
-    // Particle effects scale with judgment rank
+    // Particle effects scale with judgment rank — neon explosion style
     if (judgment.rank === 'PERFECT') {
-      // Sparkle burst + standard burst for PERFECT
-      particles.sparkle(x, HIT_ZONE_Y, 12, { color: '#ff0', speed: 3 });
-      particles.burst(x, HIT_ZONE_Y, 15, { color: LANE_COLORS[lane], speed: 4, life: 0.7 });
-      // Expanding glow ring
-      glowRings.push({ x, y: HIT_ZONE_Y, radius: NOTE_RADIUS, maxRadius: 60, life: 1, color: '#ff0' });
+      // Screen flash on PERFECT
+      screenFlashAlpha = 0.35;
+      screenFlashColor = neonColor;
+
+      // Large neon sparkle burst + standard burst for PERFECT
+      particles.sparkle(x, HIT_ZONE_Y, 20, { color: '#ff0', speed: 5 });
+      particles.burst(x, HIT_ZONE_Y, 25, { color: neonColor, speed: 6, life: 0.9, gravity: 0.05 });
+      // Secondary ring of particles
+      particles.burst(x, HIT_ZONE_Y, 15, { color: neonGlow, speed: 3, life: 0.7, size: 4 });
+      // White core flash particles
+      particles.sparkle(x, HIT_ZONE_Y, 8, { color: '#fff', speed: 2, life: 0.4 });
+      // Expanding glow ring — double ring for PERFECT
+      glowRings.push({ x, y: HIT_ZONE_Y, radius: NOTE_RADIUS, maxRadius: 80, life: 1, color: '#ff0' });
+      glowRings.push({ x, y: HIT_ZONE_Y, radius: NOTE_RADIUS * 0.5, maxRadius: 50, life: 0.8, color: neonColor });
     } else if (judgment.rank === 'GREAT') {
-      particles.burst(x, HIT_ZONE_Y, 12, { color: LANE_COLORS[lane], speed: 3.5, life: 0.6 });
-      particles.sparkle(x, HIT_ZONE_Y, 5, { color: '#4f4', speed: 2 });
+      particles.burst(x, HIT_ZONE_Y, 18, { color: neonColor, speed: 4.5, life: 0.7, gravity: 0.03 });
+      particles.sparkle(x, HIT_ZONE_Y, 10, { color: '#4f4', speed: 3 });
+      particles.burst(x, HIT_ZONE_Y, 8, { color: neonGlow, speed: 2.5, life: 0.5 });
+      glowRings.push({ x, y: HIT_ZONE_Y, radius: NOTE_RADIUS, maxRadius: 55, life: 0.8, color: neonColor });
     } else {
-      particles.burst(x, HIT_ZONE_Y, 8, { color: LANE_COLORS[lane], speed: 2.5, life: 0.5 });
+      particles.burst(x, HIT_ZONE_Y, 12, { color: neonColor, speed: 3, life: 0.6, gravity: 0.04 });
+      particles.sparkle(x, HIT_ZONE_Y, 4, { color: neonGlow, speed: 2 });
     }
 
-    // Combo milestone notifications
+    // Combo milestone notifications — bigger explosions
     if (combo === 10 || combo === 30 || combo === 50 || combo === 100) {
       floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 60, `${combo} COMBO!`, { color: '#fa0', size: 28, decay: 0.012, vy: -2 });
-      particles.confetti(CANVAS_W / 2, CANVAS_H / 2, 20);
+      particles.confetti(CANVAS_W / 2, CANVAS_H / 2, 35);
+      // Extra neon burst at milestones
+      particles.sparkle(CANVAS_W / 2, CANVAS_H / 2, 25, { color: '#ff0', speed: 6 });
+      screenFlashAlpha = Math.min(screenFlashAlpha + 0.2, 0.5);
+      screenFlashColor = '#fa0';
     }
 
     playHitSound(judgment.rank);
@@ -467,8 +510,9 @@
     const shakeIntensity = Math.min(3 + consecutiveMisses * 1.5, 8);
     const shakeDuration = Math.min(150 + consecutiveMisses * 30, 300);
     screenShake.trigger(shakeIntensity, shakeDuration);
-    // Red flash particles on miss
-    particles.burst(x, HIT_ZONE_Y, 6, { color: '#f44', speed: 2, life: 0.3, gravity: 0.15 });
+    // Red neon flash particles on miss — gravity pulls them down
+    particles.burst(x, HIT_ZONE_Y, 10, { color: '#ff2244', speed: 3, life: 0.5, gravity: 0.2, size: 3 });
+    particles.sparkle(x, HIT_ZONE_Y, 4, { color: '#ff0000', speed: 1.5 });
     playMissSound();
     updateStatus();
   }
@@ -507,6 +551,12 @@
     consecutiveMisses = 0;
     comboPulse = 0;
     glowRings.length = 0;
+    screenFlashAlpha = 0;
+    bgPulseIntensity = 0;
+    bgPulsePhase = 0;
+    comboBounce = 0;
+    comboLastValue = 0;
+    trailParticles.clear();
     for (let i = 0; i < LANE_COUNT; ++i) laneFlash[i] = 0;
     state = STATE_PLAYING;
     startMusic(index);
@@ -550,6 +600,23 @@
     if (comboPulse > 0)
       comboPulse = Math.max(0, comboPulse - dt * 4);
 
+    // Decay combo bounce (elastic — fast decay)
+    if (comboBounce > 0)
+      comboBounce = Math.max(0, comboBounce - dt * 5);
+
+    // Decay screen flash
+    if (screenFlashAlpha > 0)
+      screenFlashAlpha = Math.max(0, screenFlashAlpha - dt * 4);
+
+    // Background beat pulse — sync with BPM
+    if (currentSong) {
+      const beatInterval = 60 / currentSong.bpm;
+      bgPulsePhase += dt / beatInterval;
+      // Pulse peaks at each beat
+      const beatFrac = bgPulsePhase % 1;
+      bgPulseIntensity = Math.pow(1 - beatFrac, 3) * 0.4;
+    }
+
     // Update glow rings
     for (let i = glowRings.length - 1; i >= 0; --i) {
       const ring = glowRings[i];
@@ -557,6 +624,29 @@
       ring.radius += dt * 120;
       if (ring.life <= 0 || ring.radius > ring.maxRadius)
         glowRings.splice(i, 1);
+    }
+
+    // Spawn trail particles behind active notes
+    for (const note of activeNotes) {
+      if (note.hit || note.missed) continue;
+      const elapsed = songTime - note.time;
+      const y = HIT_ZONE_Y + elapsed * NOTE_SPEED;
+      if (y < -NOTE_RADIUS * 2 || y > CANVAS_H + NOTE_RADIUS) continue;
+      const x = laneX(note.lane);
+      const neonColor = NEON_COLORS[note.lane];
+      // Emit trail particles upward (behind the note as it falls)
+      if (Math.random() < 0.6) {
+        trailParticles.trail(x + (Math.random() - 0.5) * NOTE_RADIUS * 0.8, y - NOTE_RADIUS * 0.5, {
+          vy: -1.5 - Math.random() * 1.5,
+          vx: (Math.random() - 0.5) * 0.8,
+          life: 0.35 + Math.random() * 0.25,
+          decay: 0.04,
+          size: 1.5 + Math.random() * 2,
+          shrink: 0.93,
+          color: neonColor,
+          gravity: -0.02
+        });
+      }
     }
 
     // Check for notes that scrolled past hit zone (missed)
@@ -585,105 +675,174 @@
      ══════════════════════════════════════════════════════════════════ */
 
   function drawLaneBackground() {
-    // Dark background
-    ctx.fillStyle = '#0a0a1a';
+    // Dark background with beat pulse
+    const pulseR = Math.round(10 + bgPulseIntensity * 30);
+    const pulseG = Math.round(10 + bgPulseIntensity * 12);
+    const pulseB = Math.round(26 + bgPulseIntensity * 50);
+    ctx.fillStyle = `rgb(${pulseR},${pulseG},${pulseB})`;
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
 
-    // Lane separators
+    // Subtle radial vignette pulse from center on beats
+    if (bgPulseIntensity > 0.02) {
+      const grad = ctx.createRadialGradient(CANVAS_W / 2, HIT_ZONE_Y, 0, CANVAS_W / 2, HIT_ZONE_Y, CANVAS_W * 0.7);
+      grad.addColorStop(0, `rgba(40,20,80,${bgPulseIntensity * 0.5})`);
+      grad.addColorStop(0.5, `rgba(20,10,50,${bgPulseIntensity * 0.3})`);
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    }
+
+    // Neon lane separators with glow
     for (let i = 0; i <= LANE_COUNT; ++i) {
       const x = LANE_START_X + i * laneWidth;
-      ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+      const laneIdx = Math.min(i, LANE_COUNT - 1);
+      const neonColor = NEON_GLOW_COLORS[laneIdx];
+
+      ctx.save();
+      ctx.strokeStyle = neonColor;
       ctx.lineWidth = 1;
+      ctx.globalAlpha = 0.15 + bgPulseIntensity * 0.15;
+      ctx.shadowColor = neonColor;
+      ctx.shadowBlur = 6 + bgPulseIntensity * 8;
       ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x, CANVAS_H);
       ctx.stroke();
+      ctx.restore();
     }
 
-    // Lane labels at bottom
+    // Subtle neon lane tint — each lane gets a faint colored underlay
+    for (let i = 0; i < LANE_COUNT; ++i) {
+      const lx = LANE_START_X + i * laneWidth;
+      ctx.save();
+      ctx.globalAlpha = 0.03 + bgPulseIntensity * 0.04;
+      ctx.fillStyle = NEON_COLORS[i];
+      ctx.fillRect(lx, 0, laneWidth, CANVAS_H);
+      ctx.restore();
+    }
+
+    // Lane labels at bottom with neon glow
     ctx.font = 'bold 16px sans-serif';
     ctx.textAlign = 'center';
     for (let i = 0; i < LANE_COUNT; ++i) {
-      ctx.fillStyle = LANE_COLORS[i];
-      ctx.globalAlpha = 0.4;
+      ctx.save();
+      ctx.fillStyle = NEON_COLORS[i];
+      ctx.globalAlpha = 0.5 + bgPulseIntensity * 0.3;
+      ctx.shadowColor = NEON_GLOW_COLORS[i];
+      ctx.shadowBlur = 8;
       ctx.fillText(LANE_LABELS[i], laneX(i), CANVAS_H - 15);
+      ctx.restore();
     }
-    ctx.globalAlpha = 1;
   }
 
   function drawHitZone() {
-    // Hit zone line
-    ctx.strokeStyle = '#fff';
+    // Hit zone line with neon glow
+    ctx.save();
+    ctx.strokeStyle = '#aaccff';
     ctx.lineWidth = 2;
+    ctx.shadowColor = '#4488ff';
+    ctx.shadowBlur = 12 + bgPulseIntensity * 10;
     ctx.beginPath();
     ctx.moveTo(LANE_START_X, HIT_ZONE_Y);
     ctx.lineTo(LANE_START_X + LANE_COUNT * laneWidth, HIT_ZONE_Y);
     ctx.stroke();
+    // Draw it twice for stronger glow
+    ctx.stroke();
+    ctx.restore();
 
-    // Hit zone circles per lane (with flash effect)
+    // Hit zone circles per lane (with neon flash effect)
     for (let i = 0; i < LANE_COUNT; ++i) {
       const x = laneX(i);
       const flash = laneFlash[i];
+      const neonColor = NEON_COLORS[i];
+      const neonGlow = NEON_GLOW_COLORS[i];
 
-      // Lane flash — bright column flash on hit
+      // Lane flash — bright neon column flash on hit
       if (flash > 0) {
         ctx.save();
-        ctx.globalAlpha = flash * 0.25;
-        ctx.fillStyle = LANE_COLORS[i];
+        // Neon column gradient
+        const colGrad = ctx.createLinearGradient(0, HIT_ZONE_Y - 200, 0, HIT_ZONE_Y);
+        colGrad.addColorStop(0, 'rgba(0,0,0,0)');
+        colGrad.addColorStop(1, neonColor);
+        ctx.globalAlpha = flash * 0.3;
+        ctx.fillStyle = colGrad;
         ctx.fillRect(LANE_START_X + i * laneWidth, 0, laneWidth, CANVAS_H);
         ctx.restore();
       }
 
-      ctx.strokeStyle = LANE_COLORS[i];
-      ctx.lineWidth = 2 + flash * 3;
-      ctx.globalAlpha = 0.5 + flash * 0.5;
+      // Neon glow circle at hit zone
+      ctx.save();
+      ctx.strokeStyle = neonColor;
+      ctx.lineWidth = 2 + flash * 4;
+      ctx.globalAlpha = 0.6 + flash * 0.4;
+      ctx.shadowColor = neonGlow;
+      ctx.shadowBlur = 10 + flash * 20;
       ctx.beginPath();
-      ctx.arc(x, HIT_ZONE_Y, NOTE_RADIUS + flash * 4, 0, Math.PI * 2);
+      ctx.arc(x, HIT_ZONE_Y, NOTE_RADIUS + flash * 5, 0, Math.PI * 2);
       ctx.stroke();
+      // Double-draw for stronger neon
+      ctx.stroke();
+      ctx.restore();
 
       // Filled glow on flash
-      if (flash > 0.3) {
-        ctx.fillStyle = LANE_COLORS[i];
-        ctx.globalAlpha = flash * 0.3;
+      if (flash > 0.2) {
+        ctx.save();
+        ctx.fillStyle = neonColor;
+        ctx.globalAlpha = flash * 0.35;
+        ctx.shadowColor = neonGlow;
+        ctx.shadowBlur = 15 + flash * 15;
         ctx.beginPath();
-        ctx.arc(x, HIT_ZONE_Y, NOTE_RADIUS, 0, Math.PI * 2);
+        ctx.arc(x, HIT_ZONE_Y, NOTE_RADIUS + flash * 2, 0, Math.PI * 2);
         ctx.fill();
+        ctx.restore();
       }
-      ctx.globalAlpha = 1;
     }
 
-    // Combo glow on hit zone — intensifies with longer streaks
+    // Combo glow on hit zone — neon intensifies with longer streaks
     if (comboGlowIntensity > 0) {
       ctx.save();
-      const glowAlpha = comboGlowIntensity * 0.6;
+      const glowAlpha = comboGlowIntensity * 0.7;
       ctx.globalAlpha = glowAlpha;
-      ctx.shadowColor = '#ff0';
-      ctx.shadowBlur = 15 + comboGlowIntensity * 20;
-      ctx.strokeStyle = '#ff0';
-      ctx.lineWidth = 3;
+      // Multi-color combo glow — shifts from yellow to magenta at high combos
+      const comboHue = combo >= 50 ? '#ff44ff' : combo >= 30 ? '#ffaa00' : '#ffff00';
+      ctx.shadowColor = comboHue;
+      ctx.shadowBlur = 20 + comboGlowIntensity * 30;
+      ctx.strokeStyle = comboHue;
+      ctx.lineWidth = 3 + comboGlowIntensity * 2;
       ctx.beginPath();
       ctx.moveTo(LANE_START_X, HIT_ZONE_Y);
       ctx.lineTo(LANE_START_X + LANE_COUNT * laneWidth, HIT_ZONE_Y);
       ctx.stroke();
+      ctx.stroke();
       ctx.restore();
     }
 
-    // Draw expanding glow rings (from PERFECT hits)
+    // Draw expanding glow rings (from PERFECT / GREAT hits) — neon style
     for (const ring of glowRings) {
       ctx.save();
-      ctx.globalAlpha = ring.life * 0.7;
+      ctx.globalAlpha = ring.life * 0.8;
       ctx.strokeStyle = ring.color;
-      ctx.lineWidth = 2 + ring.life * 3;
+      ctx.lineWidth = 2 + ring.life * 4;
       ctx.shadowColor = ring.color;
-      ctx.shadowBlur = 10 + ring.life * 15;
+      ctx.shadowBlur = 15 + ring.life * 25;
       ctx.beginPath();
       ctx.arc(ring.x, ring.y, ring.radius, 0, Math.PI * 2);
+      ctx.stroke();
+      // Inner bright line
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1;
+      ctx.globalAlpha = ring.life * 0.5;
+      ctx.beginPath();
+      ctx.arc(ring.x, ring.y, ring.radius * 0.9, 0, Math.PI * 2);
       ctx.stroke();
       ctx.restore();
     }
   }
 
   function drawNotes() {
+    // Draw trail particles behind notes (rendered under the notes)
+    trailParticles.draw(ctx);
+
     for (const note of activeNotes) {
       if (note.hit || note.missed) continue;
       const elapsed = songTime - note.time;
@@ -691,18 +850,57 @@
       if (y < -NOTE_RADIUS * 2 || y > CANVAS_H + NOTE_RADIUS) continue;
 
       const x = laneX(note.lane);
-      const color = LANE_COLORS[note.lane];
+      const neonColor = NEON_COLORS[note.lane];
+      const neonGlow = NEON_GLOW_COLORS[note.lane];
 
-      // Note body
-      ctx.fillStyle = color;
+      // Gradient trail streak above note (comet tail effect)
+      const trailLen = 40 + bgPulseIntensity * 20;
+      const trailGrad = ctx.createLinearGradient(x, y - trailLen, x, y);
+      trailGrad.addColorStop(0, 'rgba(0,0,0,0)');
+      trailGrad.addColorStop(0.5, neonGlow + '33');
+      trailGrad.addColorStop(1, neonColor + 'aa');
+      ctx.save();
+      ctx.fillStyle = trailGrad;
+      ctx.globalAlpha = 0.6;
+      ctx.beginPath();
+      ctx.moveTo(x - NOTE_RADIUS * 0.5, y);
+      ctx.lineTo(x - NOTE_RADIUS * 0.15, y - trailLen);
+      ctx.lineTo(x + NOTE_RADIUS * 0.15, y - trailLen);
+      ctx.lineTo(x + NOTE_RADIUS * 0.5, y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+
+      // Neon outer glow
+      ctx.save();
+      ctx.shadowColor = neonGlow;
+      ctx.shadowBlur = 12 + bgPulseIntensity * 8;
+
+      // Note body with neon color
+      ctx.fillStyle = neonColor;
       ctx.beginPath();
       ctx.arc(x, y, NOTE_RADIUS, 0, Math.PI * 2);
       ctx.fill();
 
-      // Note highlight
-      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      // Double-draw for stronger glow
       ctx.beginPath();
-      ctx.arc(x - 4, y - 4, NOTE_RADIUS * 0.5, 0, Math.PI * 2);
+      ctx.arc(x, y, NOTE_RADIUS, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Inner bright core
+      ctx.save();
+      ctx.fillStyle = '#fff';
+      ctx.globalAlpha = 0.35;
+      ctx.beginPath();
+      ctx.arc(x, y, NOTE_RADIUS * 0.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Note highlight (specular)
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      ctx.beginPath();
+      ctx.arc(x - 4, y - 5, NOTE_RADIUS * 0.35, 0, Math.PI * 2);
       ctx.fill();
     }
   }
@@ -817,37 +1015,59 @@
       ctx.save();
       ctx.textAlign = 'right';
 
-      // Pulse scale effect on the combo text
-      const pulseScale = 1 + comboPulse * 0.3;
+      // Elastic bounce + pulse scale effect
+      const bounceElastic = comboBounce > 0
+        ? Math.sin(comboBounce * Math.PI * 3) * comboBounce * 0.25
+        : 0;
+      const pulseScale = 1 + comboPulse * 0.4 + bounceElastic;
       const comboX = CANVAS_W - 30;
-      const comboY = 40;
+      const comboY = 42;
       ctx.translate(comboX, comboY);
       ctx.scale(pulseScale, pulseScale);
 
-      // Color shifts at milestones
-      const comboColor = combo >= 50 ? '#f4f' : combo >= 30 ? '#fa0' : combo >= 10 ? '#ff0' : '#fff';
+      // Color shifts at milestones — neon style
+      const comboColor = combo >= 50 ? '#ff44ff' : combo >= 30 ? '#ffaa00' : combo >= 10 ? '#ffee00' : '#ffffff';
+      const glowColor = combo >= 50 ? '#ff00ff' : combo >= 30 ? '#ff8800' : combo >= 10 ? '#ffdd00' : '#aaaaff';
+
+      // Neon glow — always on, stronger at high combos
+      ctx.shadowColor = glowColor;
+      ctx.shadowBlur = 12 + comboGlowIntensity * 25 + comboPulse * 10;
+
+      // Outline stroke for punch
+      ctx.font = 'bold 26px sans-serif';
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 4;
+      ctx.strokeText(`${combo} Combo`, 0, 0);
+
+      // Fill with neon color
       ctx.fillStyle = comboColor;
-      ctx.font = 'bold 24px sans-serif';
-
-      // Shadow glow for high combos
-      if (combo >= 10) {
-        ctx.shadowColor = comboColor;
-        ctx.shadowBlur = 8 + comboGlowIntensity * 12;
-      }
-
       ctx.fillText(`${combo} Combo`, 0, 0);
+
+      // Bright white core re-draw for extra neon pop
+      ctx.globalAlpha = 0.3 + comboPulse * 0.3;
+      ctx.fillStyle = '#fff';
+      ctx.fillText(`${combo} Combo`, 0, 0);
+      ctx.globalAlpha = 1;
+
       ctx.restore();
 
       const mult = getMultiplier();
       if (mult > 1) {
         ctx.save();
         ctx.textAlign = 'right';
-        const multColor = mult >= 4 ? '#f4f' : mult >= 3 ? '#fa0' : '#ff0';
+        const multColor = mult >= 4 ? '#ff44ff' : mult >= 3 ? '#ffaa00' : '#ffee00';
         ctx.fillStyle = multColor;
-        ctx.font = 'bold 16px sans-serif';
+        ctx.font = 'bold 18px sans-serif';
         ctx.shadowColor = multColor;
-        ctx.shadowBlur = 6;
-        ctx.fillText(`x${mult}`, CANVAS_W - 30, 62);
+        ctx.shadowBlur = 10 + comboPulse * 8;
+        // Slight scale on multiplier too
+        const multScale = 1 + comboPulse * 0.2;
+        ctx.translate(CANVAS_W - 30, 66);
+        ctx.scale(multScale, multScale);
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 3;
+        ctx.strokeText(`x${mult}`, 0, 0);
+        ctx.fillText(`x${mult}`, 0, 0);
         ctx.restore();
       }
     }
@@ -874,24 +1094,41 @@
     drawNotes();
     drawComboDisplay();
 
-    // Score display
+    // Score display with subtle neon glow
+    ctx.save();
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 18px sans-serif';
+    ctx.shadowColor = '#4488ff';
+    ctx.shadowBlur = 4;
     ctx.fillText(`Score: ${score}`, 20, 30);
+    ctx.restore();
 
-    // Song progress
+    // Song progress with neon bar
     if (currentSong && activeNotes.length > 0) {
       const lastTime = activeNotes[activeNotes.length - 1].time;
       const progress = Math.max(0, Math.min(1, songTime / lastTime));
-      ctx.fillStyle = '#333';
+      ctx.fillStyle = '#222';
       ctx.fillRect(20, CANVAS_H - 40, CANVAS_W - 40, 6);
-      ctx.fillStyle = '#88f';
+      ctx.save();
+      ctx.fillStyle = '#4488ff';
+      ctx.shadowColor = '#2266ff';
+      ctx.shadowBlur = 6;
       ctx.fillRect(20, CANVAS_H - 40, (CANVAS_W - 40) * progress, 6);
+      ctx.restore();
     }
 
     particles.draw(ctx);
     floatingText.draw(ctx);
+
+    // Screen flash overlay (triggers on PERFECT hits)
+    if (screenFlashAlpha > 0) {
+      ctx.save();
+      ctx.globalAlpha = screenFlashAlpha;
+      ctx.fillStyle = screenFlashColor;
+      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+      ctx.restore();
+    }
 
     if (state === STATE_PAUSED) drawPauseOverlay();
   }
@@ -909,6 +1146,7 @@
       updatePlaying(dt);
 
     particles.update();
+    trailParticles.update();
     screenShake.update(dt * 1000);
     floatingText.update();
 
@@ -1151,6 +1389,12 @@
     consecutiveMisses = 0;
     comboPulse = 0;
     glowRings.length = 0;
+    screenFlashAlpha = 0;
+    bgPulseIntensity = 0;
+    bgPulsePhase = 0;
+    comboBounce = 0;
+    comboLastValue = 0;
+    trailParticles.clear();
     for (let i = 0; i < LANE_COUNT; ++i) laneFlash[i] = 0;
     updateWindowTitle();
     updateStatus();
