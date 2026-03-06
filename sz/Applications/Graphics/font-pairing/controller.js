@@ -464,6 +464,35 @@
   new SZ.Ribbon({ onAction: handleMenuAction });
   SZ.Dialog.wireAll();
 
+  // ===== Zoom control (heading size) =====
+
+  const $statusPair = document.getElementById('status-pair');
+
+  const zoomCtrl = new SZ.ZoomControl(document.getElementById('status-zoom-ctrl'), {
+    min: 16, max: 72, step: 2,
+    value: state.headingSize,
+    formatLabel: v => v + 'px',
+    parseLabel: text => { const n = parseInt(text, 10); return isNaN(n) ? null : n; },
+    onChange: (v) => {
+      state.headingSize = v;
+      $slHeadingSize.value = v;
+      updatePreview();
+    }
+  });
+
+  function updateStatusBar() {
+    if ($statusPair)
+      $statusPair.textContent = state.headingFont + ' + ' + state.bodyFont;
+  }
+
+  // Patch updatePreview to also sync zoom and status bar
+  const _origUpdatePreview = updatePreview;
+  updatePreview = function() {
+    _origUpdatePreview();
+    zoomCtrl.value = state.headingSize;
+    updateStatusBar();
+  };
+
   // ===== Init =====
 
   function init() {

@@ -117,7 +117,7 @@
   const infoSize = document.getElementById('info-size');
   const infoDepth = document.getElementById('info-depth');
 
-  const ICON_ZOOM_LEVELS = [1, 2, 4, 8, 16, 32];
+  const ICON_ZOOM_LEVELS = [1, 2, 4, 8, 16, 32, 64, 128, 256];
 
   function _closestIconZoomIndex(z) {
     let best = 0;
@@ -314,7 +314,7 @@
     renderOverlayGrid();
 
     // Update zoom button states in View ribbon panel
-    const zoomMap = { 1: 'zoom-1', 4: 'zoom-4', 8: 'zoom-8', 16: 'zoom-16' };
+    const zoomMap = { 1: 'zoom-1', 4: 'zoom-4', 8: 'zoom-8', 16: 'zoom-16', 32: 'zoom-32', 64: 'zoom-64', 128: 'zoom-128', 256: 'zoom-256' };
     const viewPanel = document.getElementById('ribbon-view');
     if (viewPanel)
       viewPanel.querySelectorAll('[data-action^="zoom-"]').forEach(el => {
@@ -2049,7 +2049,7 @@
     if (!e.ctrlKey)
       return;
     e.preventDefault();
-    const levels = [1, 2, 4, 8, 16, 32];
+    const levels = [1, 2, 4, 8, 16, 32, 64, 128, 256];
     let idx = levels.indexOf(zoom);
     if (idx === -1) idx = 3;
     if (e.deltaY < 0)
@@ -3635,6 +3635,10 @@
       case 'zoom-4': setZoom(4); break;
       case 'zoom-8': setZoom(8); break;
       case 'zoom-16': setZoom(16); break;
+      case 'zoom-32': setZoom(32); break;
+      case 'zoom-64': setZoom(64); break;
+      case 'zoom-128': setZoom(128); break;
+      case 'zoom-256': setZoom(256); break;
       case 'zoom-fit': {
         const img = currentImage();
         if (img) {
@@ -3962,6 +3966,10 @@
       case '2': e.preventDefault(); setZoom(4); break;
       case '3': e.preventDefault(); setZoom(8); break;
       case '4': e.preventDefault(); setZoom(16); break;
+      case '5': e.preventDefault(); setZoom(32); break;
+      case '6': e.preventDefault(); setZoom(64); break;
+      case '7': e.preventDefault(); setZoom(128); break;
+      case '8': e.preventDefault(); setZoom(256); break;
     }
   });
 
