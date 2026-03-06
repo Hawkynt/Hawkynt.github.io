@@ -523,12 +523,17 @@
 
     // Handle held keys
     if (player.moveProgress >= 1) {
+      let moved = false;
       for (const key in keysDown) {
         if (keysDown[key] && DIRS[key]) {
           tryMovePlayer(DIRS[key].dx, DIRS[key].dy);
+          moved = true;
           break;
         }
       }
+      /* Mouse held: keep moving toward target tile */
+      if (!moved)
+        mouseMoveToward();
     }
 
     updateBoulderPhysics(dt);
@@ -1123,16 +1128,70 @@
     keysDown[e.key] = false;
   });
 
-  /* ── Click/Tap to start ── */
-  canvas.addEventListener('pointerdown', () => {
+  /* ── Mouse state for click-to-move ── */
+  let mouseHeld = false;
+  let mouseCol = -1, mouseRow = -1;
+
+  function canvasCoords(e) {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = (COLS * TILE_SIZE) / rect.width;
+    const scaleY = (ROWS * TILE_SIZE) / rect.height;
+    return {
+      col: Math.floor((e.clientX - rect.left) * scaleX / TILE_SIZE),
+      row: Math.floor((e.clientY - rect.top) * scaleY / TILE_SIZE)
+    };
+  }
+
+  function mouseMoveToward() {
+    if (!mouseHeld || state !== STATE_PLAYING || !player.alive) return;
+    if (player.moveProgress < 1) return;
+
+    const dx = mouseCol - player.col;
+    const dy = mouseRow - player.row;
+    if (dx === 0 && dy === 0) return;
+
+    /* Prefer the axis with the larger distance; break ties toward horizontal */
+    let mx = 0, my = 0;
+    if (Math.abs(dx) >= Math.abs(dy))
+      mx = dx > 0 ? 1 : -1;
+    else
+      my = dy > 0 ? 1 : -1;
+
+    tryMovePlayer(mx, my);
+  }
+
+  /* ── Click/Tap to start + mouse navigation ── */
+  canvas.addEventListener('pointerdown', (e) => {
     if (showTutorial) {
       ++tutorialPage;
       if (tutorialPage >= TUTORIAL_PAGES.length)
         showTutorial = false;
       return;
     }
-    if (state === STATE_READY || state === STATE_DEAD)
+    if (state === STATE_READY || state === STATE_DEAD) {
       resetGame();
+      return;
+    }
+
+    /* In-game: click-to-move */
+    if (state === STATE_PLAYING && player.alive) {
+      const pos = canvasCoords(e);
+      mouseCol = pos.col;
+      mouseRow = pos.row;
+      mouseHeld = true;
+      mouseMoveToward();
+    }
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    if (!mouseHeld) return;
+    const pos = canvasCoords(e);
+    mouseCol = pos.col;
+    mouseRow = pos.row;
+  });
+
+  canvas.addEventListener('pointerup', () => {
+    mouseHeld = false;
   });
 
   /* ── Menu bar ── */
