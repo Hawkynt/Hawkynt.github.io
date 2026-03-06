@@ -510,6 +510,13 @@
     // Check rune discovery — cast any element adjacent to rune
     checkRuneDiscovery(row, col, tx, ty);
 
+    // Direct cast on a hidden rune reveals it (counts as a move)
+    if (!acted && tile === T_RUNE) {
+      grid[row][col] = T_RUNE_ACTIVE;
+      revealRune(tx, ty);
+      acted = true;
+    }
+
     if (acted) {
       ++moves;
       checkLevelComplete();
@@ -685,9 +692,16 @@
         } else if (tile === T_EARTH_WALL) {
           ctx.fillText('🧱', x + TILE_SIZE / 2, y + TILE_SIZE / 2);
         } else if (tile === T_RUNE) {
-          // Hidden rune — subtle shimmer
-          ctx.fillStyle = 'rgba(200,128,255,0.15)';
-          ctx.fillRect(x + 8, y + 8, TILE_SIZE - 16, TILE_SIZE - 16);
+          // Hidden rune — pulsing shimmer to draw attention
+          const runePulse = 0.15 + 0.1 * Math.sin(performance.now() / 500);
+          ctx.fillStyle = `rgba(200,128,255,${runePulse})`;
+          ctx.fillRect(x + 6, y + 6, TILE_SIZE - 12, TILE_SIZE - 12);
+          // Small rune hint symbol
+          ctx.fillStyle = `rgba(200,128,255,${runePulse * 1.5})`;
+          ctx.font = '12px serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('?', x + TILE_SIZE / 2, y + TILE_SIZE / 2);
         } else if (tile === T_RUNE_ACTIVE) {
           // Discovered rune — draw rune with glow
           drawRuneGlow(x, y);
@@ -737,6 +751,8 @@
   }
 
   function isValidTarget(tile, element) {
+    // Hidden runes can be revealed by casting any element directly on them
+    if (tile === T_RUNE) return true;
     switch (element) {
       case ELEMENT_FIRE:  return tile === T_WOOD;
       case ELEMENT_WATER: return tile === T_CHANNEL;
@@ -817,8 +833,8 @@
     }
     if (woodCount > 0) objectives.push({ icon: '🔥', text: `Burn ${woodCount} wood`, done: false });
     if (channelCount > 0) objectives.push({ icon: '💧', text: `Fill ${channelCount} channel${channelCount > 1 ? 's' : ''}`, done: false });
-    if (runeCount > 0) objectives.push({ icon: 'ᚱ', text: `Find ${runeCount} rune${runeCount > 1 ? 's' : ''}`, done: false });
-    if (hasGoal) objectives.push({ icon: '⭐', text: 'Reach the goal', done: woodCount === 0 && channelCount === 0 && runeCount === 0 });
+    if (runeCount > 0) objectives.push({ icon: 'ᚱ', text: `Reveal ${runeCount} rune${runeCount > 1 ? 's' : ''} (cast on/near)`, done: false });
+    if (hasGoal) objectives.push({ icon: '⭐', text: 'Clear all to win (auto)', done: woodCount === 0 && channelCount === 0 && runeCount === 0 });
     // Mark completed objectives
     if (woodCount === 0 && objectives.some(o => o.icon === '🔥'))
       objectives.find(o => o.icon === '🔥').done = true;
@@ -1059,8 +1075,8 @@
       { icon: '~ ~', label: 'Channel', color: '#124', desc: 'Gap. Fill it with Water.' },
       { icon: '📦', label: 'Block', color: '#555', desc: 'Movable. Push it with Air.' },
       { icon: '🧱', label: 'Earth Wall', color: '#863', desc: 'You create these with Earth on empty tiles.' },
-      { icon: 'ᚱ', label: 'Hidden Rune', color: '#c8f', desc: 'Cast any element on an adjacent tile to reveal it.' },
-      { icon: '⭐', label: 'Goal', color: '#0f0', desc: 'Reach this after clearing all obstacles & runes.' }
+      { icon: 'ᚱ', label: 'Hidden Rune', color: '#c8f', desc: 'Cast any element ON it or on an adjacent tile to reveal it.' },
+      { icon: '⭐', label: 'Goal', color: '#0f0', desc: 'Level auto-completes when all obstacles & runes are cleared.' }
     ];
 
     ctx.font = '14px sans-serif';
@@ -1183,8 +1199,8 @@
       ctx.font = '12px sans-serif';
       const quickHelp = [
         'Select an element, then click a tile to cast it.',
-        'Clear all obstacles and hidden runes, then reach the golden star.',
-        'Fewer moves = more stars!'
+        'Clear all obstacles and reveal all hidden runes to complete the level.',
+        'Click on or next to shimmering tiles to reveal runes. Fewer moves = more stars!'
       ];
       for (let i = 0; i < quickHelp.length; ++i)
         ctx.fillText(quickHelp[i], CANVAS_W / 2, CANVAS_H / 2 - 38 + i * 16);
@@ -1517,9 +1533,9 @@
       case T_FILLED:     return 'Filled channel - water already here';
       case T_BLOCK:      return 'Block - push with Air [4/R]';
       case T_EARTH_WALL: return 'Earth wall - you created this';
-      case T_RUNE:       return 'Shimmer... cast nearby to reveal';
+      case T_RUNE:       return 'Hidden rune - cast any element here or nearby to reveal';
       case T_RUNE_ACTIVE:return 'Rune - discovered!';
-      case T_GOAL:       return 'Goal - clear all obstacles to complete';
+      case T_GOAL:       return 'Star goal - level completes automatically when all obstacles and runes are cleared';
       default:           return '';
     }
   }
