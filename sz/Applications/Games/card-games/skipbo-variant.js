@@ -304,6 +304,13 @@
     }
   }
 
+  function sortHand(hand) {
+    hand.sort((a, b) => {
+      if (a.type !== b.type) return a.type === 'number' ? -1 : 1;
+      return a.value - b.value;
+    });
+  }
+
   /* ══════════════════════════════════════════════════════════════════
      MODULE INTERFACE
      ══════════════════════════════════════════════════════════════════ */
@@ -435,6 +442,8 @@
 
     handlePointerMove() {},
     handlePointerUp() {},
+
+    sortPlayerHand() { sortHand(playerHand); },
 
     cleanup() {
       skipBoStockPiles = [[], []];

@@ -902,6 +902,19 @@
     return false;
   }
 
+  function sortHand(hand) {
+    const to = { number: 0, skip: 1, wild: 2 };
+    hand.sort((a, b) => {
+      const td = (to[a.type] ?? 2) - (to[b.type] ?? 2);
+      if (td !== 0) return td;
+      if (a.type === 'number' && b.type === 'number') {
+        if (a.color !== b.color) return String(a.color).localeCompare(String(b.color));
+        return a.number - b.number;
+      }
+      return 0;
+    });
+  }
+
   /* ================================================================
      MODULE INTERFACE
      ================================================================ */
@@ -965,6 +978,8 @@
         }
       }
     },
+
+    sortPlayerHand() { sortHand(hands[0]); },
 
     cleanup() {
       hands = [];
