@@ -259,6 +259,11 @@
 
   window.addEventListener('resize', resizeCanvas);
 
+  function canvasToGameX(clientX) {
+    const rect = canvas.getBoundingClientRect();
+    return (clientX - rect.left - gameOffsetX) / gameScale;
+  }
+
   /* ================================================================
    *  GAME EFFECTS
    * ================================================================ */
@@ -323,6 +328,9 @@
   let waveNameText = '';
 
   let keys = {};
+  let mouseGameX = -1;
+  let mouseDown = false;
+  let mouseActive = false;
   let lastTime = 0;
   let gameTime = 0;
   let alienFrame = 0;
@@ -1615,6 +1623,17 @@
       if (keys['ArrowRight'] || keys['KeyD'])
         player.x = Math.min(GAME_W - 10 - PLAYER_W, player.x + PLAYER_SPEED);
 
+      /* Mouse: move player toward cursor X */
+      if (mouseActive && mouseGameX >= 0) {
+        const targetX = mouseGameX - PLAYER_W / 2;
+        const dx = targetX - player.x;
+        if (Math.abs(dx) > 1) {
+          const step = Math.min(Math.abs(dx), PLAYER_SPEED);
+          player.x += Math.sign(dx) * step;
+        }
+        player.x = Math.max(10, Math.min(GAME_W - 10 - PLAYER_W, player.x));
+      }
+
       // Shooting
       if (playerShootCooldown > 0)
         playerShootCooldown -= dt;
@@ -1625,7 +1644,7 @@
         + (activePowerups.tripleShot > 0 ? 4 : 0);
       const nonDroneBullets = playerBullets.filter(b => !b.fromDrone).length;
 
-      if ((keys['Space'] || keys['ArrowUp']) && playerShootCooldown <= 0 && nonDroneBullets < maxBullets) {
+      if ((keys['Space'] || keys['ArrowUp'] || mouseDown) && playerShootCooldown <= 0 && nonDroneBullets < maxBullets) {
         const isLaser = activePowerups.laser > 0;
         const bw = isLaser ? LASER_W : BULLET_W;
 
@@ -2332,6 +2351,9 @@
 
   document.addEventListener('keydown', (e) => {
     keys[e.code] = true;
+    /* Keyboard input disables mouse movement to avoid conflicts */
+    if (e.code === 'ArrowLeft' || e.code === 'ArrowRight' || e.code === 'KeyA' || e.code === 'KeyD')
+      mouseActive = false;
 
     if (e.key === 'F2') {
       e.preventDefault();
@@ -2364,10 +2386,23 @@
     keys[e.code] = false;
   });
 
-  /* ── Click/Tap to start ── */
-  canvas.addEventListener('pointerdown', () => {
+  /* ── Click/Tap to start + mouse controls ── */
+  canvas.addEventListener('pointerdown', (e) => {
+    mouseGameX = canvasToGameX(e.clientX);
+    mouseDown = true;
+    mouseActive = true;
+
     if (gameState === 'idle' || gameState === 'gameover')
       newGame(gameMode || 'classic');
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    mouseGameX = canvasToGameX(e.clientX);
+    mouseActive = true;
+  });
+
+  canvas.addEventListener('pointerup', () => {
+    mouseDown = false;
   });
 
   /* ================================================================
