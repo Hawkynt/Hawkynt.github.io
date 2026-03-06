@@ -8,12 +8,10 @@
      CONSTANTS
      ══════════════════════════════════════════════════════════════════ */
 
+  const CE = SZ.CardEngine;
   const CANVAS_W = 900;
   const CANVAS_H = 600;
   const MAX_DT = 0.05;
-  const CARD_W = 70;
-  const CARD_H = 100;
-  const CARD_RADIUS = 6;
 
   /* ── Game states ── */
   const STATE_MENU = 'MENU';
@@ -25,24 +23,96 @@
   /* ── Storage ── */
   const STORAGE_PREFIX = 'sz-card-games';
   const STORAGE_HIGHSCORES = STORAGE_PREFIX + '-highscores';
+  const STORAGE_HINTS = STORAGE_PREFIX + '-hints';
   const MAX_HIGH_SCORES = 10;
 
-  /* ── Variant definitions (all 10 games) ── */
+  /* ── Hint mode ── */
+  let hintsEnabled = true;
+  try { const h = localStorage.getItem(STORAGE_HINTS); if (h !== null) hintsEnabled = h !== 'false'; } catch (_) {}
+
+  /* ── Variant definitions (all 69 games, grouped by category) ── */
   const VARIANTS = [
-    { id: 'poker',      name: 'Poker',       desc: 'Five-card draw with betting rounds',  module: 'poker-variant.js' },
-    { id: 'blackjack',  name: 'Blackjack',   desc: 'Get as close to 21 as you can',       module: 'blackjack-variant.js' },
-    { id: 'uno',        name: 'Uno',         desc: 'Match cards by color or number',       module: 'uno-variant.js' },
-    { id: 'skipbo',     name: 'Skip-Bo',     desc: 'Build sequential piles 1 to 12',      module: 'skipbo-variant.js' },
-    { id: 'skat',       name: 'Skat',        desc: 'German trick-taking card game',        module: 'skat-variant.js' },
-    { id: 'canasta',    name: 'Canasta',     desc: 'Form melds of seven cards',            module: 'canasta-variant.js' },
-    { id: 'doppelkopf', name: 'Doppelkopf',  desc: 'Hidden teams trick-taking game',      module: 'doppelkopf-variant.js' },
-    { id: 'solitaire',  name: 'Solitaire',   desc: 'Classic Klondike solitaire',           module: 'solitaire-variant.js' },
-    { id: 'freecell',   name: 'FreeCell',    desc: 'All cards face-up strategy',           module: 'freecell-variant.js' },
-    { id: 'spider',     name: 'Spider',      desc: 'Build runs of same-suit cards',        module: 'spider-variant.js' }
+    /* Solitaire (12) */
+    { id: 'solitaire',     name: 'Solitaire',       desc: 'Classic Klondike solitaire',            module: 'solitaire-variant.js' },
+    { id: 'freecell',      name: 'FreeCell',         desc: 'All cards face-up strategy',            module: 'freecell-variant.js' },
+    { id: 'spider',        name: 'Spider',           desc: 'Build runs of same-suit cards',         module: 'spider-variant.js' },
+    { id: 'yukon',         name: 'Yukon',            desc: 'Move any face-up card group freely',   module: 'yukon-variant.js' },
+    { id: 'pyramid',       name: 'Pyramid',          desc: 'Remove pairs summing to 13',            module: 'pyramid-variant.js' },
+    { id: 'golf',          name: 'Golf',             desc: 'Clear columns by playing \u00b11',      module: 'golf-variant.js' },
+    { id: 'tripeaks',      name: 'TriPeaks',         desc: 'Clear three overlapping peaks',         module: 'tripeaks-variant.js' },
+    { id: 'fortythieves',  name: 'Forty Thieves',    desc: '2-deck solitaire, single card moves',  module: 'fortythieves-variant.js' },
+    { id: 'canfield',      name: 'Canfield',         desc: 'Build up from a random start rank',    module: 'canfield-variant.js' },
+    { id: 'clock',         name: 'Clock',            desc: 'Deal into clock face, flip by rank',   module: 'clock-variant.js' },
+    { id: 'bakersdozen',   name: 'Baker\'s Dozen',   desc: '13 columns, no suit restriction',      module: 'bakersdozen-variant.js' },
+    { id: 'accordion',     name: 'Accordion',        desc: 'Compress row by suit or rank',         module: 'accordion-variant.js' },
+    /* Casino (6) */
+    { id: 'poker',         name: 'Poker',            desc: 'Five-card draw with betting rounds',    module: 'poker-variant.js' },
+    { id: 'blackjack',     name: 'Blackjack',        desc: 'Get as close to 21 as you can',        module: 'blackjack-variant.js' },
+    { id: 'baccarat',      name: 'Baccarat',         desc: 'Bet on Player, Banker, or Tie',        module: 'baccarat-variant.js' },
+    { id: 'holdem',        name: 'Texas Hold\'em',   desc: 'Community cards poker with blinds',    module: 'holdem-variant.js' },
+    { id: 'faro',          name: 'Faro',             desc: 'Bet on ranks, winner vs loser',        module: 'faro-variant.js' },
+    { id: 'reddog',        name: 'Red Dog',          desc: 'Bet the next card falls between',      module: 'reddog-variant.js' },
+    /* Shedding (13) */
+    { id: 'uno',           name: 'Uno',              desc: 'Match cards by color or number',        module: 'uno-variant.js' },
+    { id: 'unoflip',      name: 'Uno Flip',          desc: 'Double-sided light and dark cards',     module: 'unoflip-variant.js' },
+    { id: 'unowild',      name: 'Uno All Wild',      desc: 'Every card is a wild action card',      module: 'unowild-variant.js' },
+    { id: 'liarsuno',     name: 'Liar\'s Uno',       desc: 'Bluff and challenge face-down plays',   module: 'liarsuno-variant.js' },
+    { id: 'unoextreme',   name: 'Uno Extreme',       desc: 'Random card launcher draws',            module: 'unoextreme-variant.js' },
+    { id: 'unoparty',     name: 'Uno Party',          desc: '6-player party with special wilds',     module: 'unoparty-variant.js' },
+    { id: 'dos',          name: 'Dos',                desc: 'Number matching with two piles',        module: 'dos-variant.js' },
+    { id: 'ono99',        name: 'ONO 99',             desc: 'Running total \u2014 bust at 99',       module: 'ono99-variant.js' },
+    { id: 'duo',          name: '8-Color Duo',        desc: '8-color shedding card game',            module: 'duo-variant.js' },
+    { id: 'skipbo',        name: 'Skip-Bo',          desc: 'Build sequential piles 1 to 12',       module: 'skipbo-variant.js' },
+    { id: 'crazy-eights',  name: 'Crazy Eights',     desc: 'Match suit or rank, 8s are wild',      module: 'crazy-eights-variant.js' },
+    { id: 'maumau',        name: 'Mau-Mau',          desc: 'German shedding with action cards',    module: 'maumau-variant.js' },
+    { id: 'president',     name: 'President',        desc: 'Shed cards, rank President to Scum',   module: 'president-variant.js' },
+    /* Trick-Taking (11) */
+    { id: 'skat',          name: 'Skat',             desc: 'German trick-taking card game',         module: 'skat-variant.js' },
+    { id: 'doppelkopf',    name: 'Doppelkopf',       desc: 'Hidden teams trick-taking game',       module: 'doppelkopf-variant.js' },
+    { id: 'hearts',        name: 'Hearts',           desc: 'Avoid hearts and Queen of Spades',     module: 'hearts-variant.js' },
+    { id: 'spades',        name: 'Spades',           desc: 'Bid tricks, spades always trump',      module: 'spades-variant.js' },
+    { id: 'euchre',        name: 'Euchre',           desc: '2v2 trump trick-taking classic',       module: 'euchre-variant.js' },
+    { id: 'pinochle',      name: 'Pinochle',         desc: 'Melds and tricks with double deck',    module: 'pinochle-variant.js' },
+    { id: 'bridge',        name: 'Bridge',           desc: 'Partnership bidding and trick-taking', module: 'bridge-variant.js' },
+    { id: 'ohhell',        name: 'Oh Hell',          desc: 'Bid exact tricks with variable hands', module: 'ohhell-variant.js' },
+    { id: 'whist',         name: 'Whist',            desc: 'Classic partnership trick-taking',     module: 'whist-variant.js' },
+    { id: 'pitch',         name: 'Pitch',            desc: 'Bid to name trump, 4 point game',     module: 'pitch-variant.js' },
+    { id: 'sixtysix',      name: 'Sixty-Six',        desc: 'Austrian two-player trick game',      module: 'sixtysix-variant.js' },
+    /* Rummy (7) */
+    { id: 'canasta',       name: 'Canasta',          desc: 'Form melds of seven cards',             module: 'canasta-variant.js' },
+    { id: 'ginrummy',      name: 'Gin Rummy',        desc: 'Form melds, knock when ready',         module: 'ginrummy-variant.js' },
+    { id: 'rummy500',      name: 'Rummy 500',        desc: 'Draw, meld, and score to 500',         module: 'rummy500-variant.js' },
+    { id: 'phase10',       name: 'Phase 10',         desc: 'Complete 10 phase objectives',          module: 'phase10-variant.js' },
+    { id: 'tonk',          name: 'Tonk',             desc: 'Quick knock rummy, drop to win',       module: 'tonk-variant.js' },
+    { id: 'rummy',         name: 'Rummy',            desc: 'Classic meld and lay-off card game',   module: 'rummy-variant.js' },
+    { id: 'kalooki',       name: 'Kalooki',          desc: 'Jamaican rummy with wild jokers',      module: 'kalooki-variant.js' },
+    /* Simple/Speed (11) */
+    { id: 'war',           name: 'War',              desc: 'Flip and compare, highest wins',        module: 'war-variant.js' },
+    { id: 'memory',        name: 'Memory',           desc: 'Flip pairs face-down, match to win',   module: 'memory-variant.js' },
+    { id: 'gofish',        name: 'Go Fish',          desc: 'Ask for ranks, collect sets of 4',     module: 'gofish-variant.js' },
+    { id: 'oldmaid',       name: 'Old Maid',         desc: 'Don\'t get stuck with the Queen',      module: 'oldmaid-variant.js' },
+    { id: 'snap',          name: 'Snap',             desc: 'Quick reaction card matching',          module: 'snap-variant.js' },
+    { id: 'speed',         name: 'Speed',            desc: 'Race to empty your hand \u00b11 rank',  module: 'speed-variant.js' },
+    { id: 'cheat',         name: 'Cheat',            desc: 'Play face-down and bluff your rank',   module: 'cheat-variant.js' },
+    { id: 'ratscrew',      name: 'Rat Screw',        desc: 'Slap matching patterns to win cards',  module: 'ratscrew-variant.js' },
+    { id: 'sevens',        name: 'Sevens',           desc: 'Build suit rows outward from 7s',      module: 'sevens-variant.js' },
+    { id: 'spitemalice',   name: 'Spite & Malice',   desc: 'Competitive patience for two',         module: 'spitemalice-variant.js' },
+    { id: 'beggar',        name: 'Beggar Neighbor',   desc: 'Pay court cards or lose the pile',     module: 'beggar-variant.js' },
+    /* European (9) */
+    { id: 'schwimmen',     name: 'Schwimmen',        desc: 'German 31 \u2014 best hand in one suit', module: 'schwimmen-variant.js' },
+    { id: 'durak',         name: 'Durak',            desc: 'Russian attack and defense game',       module: 'durak-variant.js' },
+    { id: 'briscola',      name: 'Briscola',         desc: 'Italian trump trick-taking game',      module: 'briscola-variant.js' },
+    { id: 'scopa',         name: 'Scopa',            desc: 'Italian fishing \u2014 capture by sum', module: 'scopa-variant.js' },
+    { id: 'cribbage',      name: 'Cribbage',         desc: 'Pegging board scoring card game',      module: 'cribbage-variant.js' },
+    { id: 'piquet',        name: 'Piquet',           desc: 'Classic French declaration game',      module: 'piquet-variant.js' },
+    { id: 'bezique',       name: 'Bezique',          desc: 'French meld and trick game',           module: 'bezique-variant.js' },
+    { id: 'cassino',       name: 'Cassino',          desc: 'Capture table cards by value',         module: 'cassino-variant.js' },
+    { id: 'pishti',        name: 'Pishti',           desc: 'Turkish capture with Jack tricks',     module: 'pishti-variant.js' }
   ];
 
-  /* ── Menu button region ── */
+  /* ── Menu / Hint button regions ── */
   const MENU_BTN = { x: CANVAS_W - 82, y: 8, w: 72, h: 28 };
+  const HINT_BTN = { x: CANVAS_W - 164, y: 8, w: 72, h: 28 };
 
   /* ══════════════════════════════════════════════════════════════════
      CANVAS SETUP
@@ -118,6 +188,8 @@
     particles,
     floatingText,
     screenShake,
+    get hintsEnabled() { return hintsEnabled; },
+    hintTime: 0,
     getScore() { return score; },
     onScoreChanged(newScore) {
       score = newScore;
@@ -154,68 +226,6 @@
       chipSparkleTimer = 1.0;
     }
   };
-
-  /* ══════════════════════════════════════════════════════════════════
-     DRAWING HELPERS (for host-rendered UI: menu, buttons, overlays)
-     ══════════════════════════════════════════════════════════════════ */
-
-  function roundRect(x, y, w, h, r) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    ctx.lineTo(x + r, y + h);
-    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-    ctx.lineTo(x, y + r);
-    ctx.quadraticCurveTo(x, y, x + r, y);
-    ctx.closePath();
-  }
-
-  function drawButton(x, y, w, h, label, opts) {
-    const bg = (opts && opts.bg) || '#1a3a1a';
-    const border = (opts && opts.border) || '#4a4';
-    const textColor = (opts && opts.textColor) || '#fff';
-    const fontSize = (opts && opts.fontSize) || 14;
-    ctx.fillStyle = bg;
-    ctx.strokeStyle = border;
-    ctx.lineWidth = 2;
-    roundRect(x, y, w, h, 6);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = textColor;
-    ctx.font = 'bold ' + fontSize + 'px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(label, x + w / 2, y + h / 2);
-  }
-
-  function isInRect(mx, my, x, y, w, h) {
-    return mx >= x && mx <= x + w && my >= y && my <= y + h;
-  }
-
-  function drawCardBack(x, y, w, h) {
-    ctx.save();
-    ctx.fillStyle = '#246';
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 1;
-    roundRect(x, y, w, h, CARD_RADIUS);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = '#135';
-    roundRect(x + 4, y + 4, w - 8, h - 8, 3);
-    ctx.fill();
-    ctx.strokeStyle = '#369';
-    ctx.lineWidth = 0.5;
-    for (let dy = 8; dy < h - 8; dy += 8) {
-      ctx.beginPath();
-      ctx.moveTo(x + 4, y + dy);
-      ctx.lineTo(x + w - 4, y + dy);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
 
   /* ══════════════════════════════════════════════════════════════════
      CARD ANIMATIONS (shared host-side animation system)
@@ -256,7 +266,7 @@
       const ease = 1 - (1 - p) * (1 - p);
       const x = a.fromX + (a.toX - a.fromX) * ease;
       const y = a.fromY + (a.toY - a.fromY) * ease;
-      drawCardBack(x, y, CARD_W, CARD_H);
+      CE.drawCardBack(ctx, x, y);
     }
   }
 
@@ -267,7 +277,7 @@
       ctx.shadowColor = '#fc0';
       ctx.shadowBlur = 20 + 10 * Math.sin(g.t * 6);
       ctx.fillStyle = 'rgba(255, 200, 0, ' + alpha + ')';
-      roundRect(g.x - 3, g.y - 3, g.w + 6, g.h + 6, CARD_RADIUS + 2);
+      CE.drawRoundedRect(ctx, g.x - 3, g.y - 3, g.w + 6, g.h + 6, CE.CARD_RADIUS + 2);
       ctx.fill();
       ctx.restore();
     }
@@ -331,12 +341,20 @@
 
   function handleCanvasClick(mx, my) {
     if (state === STATE_MENU) {
+      const btnW = 94;
+      const btnH = 33;
+      const gapX = 6;
+      const gapY = 5;
+      const cols = 6;
+      const totalW = cols * btnW + (cols - 1) * gapX;
+      const startX = (CANVAS_W - totalW) / 2;
+      const startY = 100;
       for (let i = 0; i < VARIANTS.length; ++i) {
-        const col = i < 5 ? 0 : 1;
-        const row = i < 5 ? i : i - 5;
-        const bx = 234 + col * 222;
-        const by = 115 + row * 58;
-        if (isInRect(mx, my, bx, by, 210, 48)) {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        const bx = startX + col * (btnW + gapX);
+        const by = startY + row * (btnH + gapY);
+        if (CE.isInRect(mx, my, bx, by, btnW, btnH)) {
           selectGame(VARIANTS[i].id);
           return;
         }
@@ -356,8 +374,15 @@
 
     if (state !== STATE_PLAYING) return;
 
+    // Hint toggle hit test
+    if (CE.isInRect(mx, my, HINT_BTN.x, HINT_BTN.y, HINT_BTN.w, HINT_BTN.h)) {
+      hintsEnabled = !hintsEnabled;
+      try { localStorage.setItem(STORAGE_HINTS, String(hintsEnabled)); } catch (_) {}
+      return;
+    }
+
     // Menu button hit test
-    if (isInRect(mx, my, MENU_BTN.x, MENU_BTN.y, MENU_BTN.w, MENU_BTN.h)) {
+    if (CE.isInRect(mx, my, MENU_BTN.x, MENU_BTN.y, MENU_BTN.w, MENU_BTN.h)) {
       initGame();
       return;
     }
@@ -443,29 +468,40 @@
     ctx.fillStyle = '#aaa';
     ctx.fillText('Choose a game to play', CANVAS_W / 2, 82);
 
+    const btnW = 94;
+    const btnH = 33;
+    const gapX = 6;
+    const gapY = 5;
+    const cols = 6;
+    const totalW = cols * btnW + (cols - 1) * gapX;
+    const startX = (CANVAS_W - totalW) / 2;
+    const startY = 100;
+
     for (let i = 0; i < VARIANTS.length; ++i) {
-      const col = i < 5 ? 0 : 1;
-      const row = i < 5 ? i : i - 5;
-      const bx = 234 + col * 222;
-      const by = 115 + row * 58;
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const bx = startX + col * (btnW + gapX);
+      const by = startY + row * (btnH + gapY);
       ctx.fillStyle = '#1a3a1a';
       ctx.strokeStyle = '#4a4';
       ctx.lineWidth = 2;
-      roundRect(bx, by, 210, 48, 8);
+      CE.drawRoundedRect(ctx, bx, by, btnW, btnH, 8);
       ctx.fill();
       ctx.stroke();
       ctx.fillStyle = '#fff';
-      ctx.font = 'bold 15px sans-serif';
+      ctx.font = 'bold 10px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(VARIANTS[i].name, bx + 105, by + 19);
-      ctx.font = '10px sans-serif';
+      ctx.fillText(VARIANTS[i].name, bx + btnW / 2, by + 13);
+      ctx.font = '6.5px sans-serif';
       ctx.fillStyle = '#8a8';
-      ctx.fillText(VARIANTS[i].desc, bx + 105, by + 37);
+      ctx.fillText(VARIANTS[i].desc, bx + btnW / 2, by + 26);
     }
   }
 
   function drawMenuButton() {
-    drawButton(MENU_BTN.x, MENU_BTN.y, MENU_BTN.w, MENU_BTN.h, '\u2630 Menu', { bg: '#333', border: '#666', fontSize: 11 });
+    const hintLabel = hintsEnabled ? '\u2714 Hints' : '\u2610 Hints';
+    CE.drawButton(ctx, HINT_BTN.x, HINT_BTN.y, HINT_BTN.w, HINT_BTN.h, hintLabel, { bg: hintsEnabled ? '#2a5a2a' : '#333', border: '#666', fontSize: 11 });
+    CE.drawButton(ctx, MENU_BTN.x, MENU_BTN.y, MENU_BTN.w, MENU_BTN.h, '\u2630 Menu', { bg: '#333', border: '#666', fontSize: 11 });
   }
 
   function drawPauseOverlay() {
@@ -543,6 +579,7 @@
     if (state === STATE_PLAYING || state === STATE_ROUND_OVER) {
       updateAnimations(dt);
       tickAi(dt);
+      host.hintTime += dt;
     }
 
     particles.update();
