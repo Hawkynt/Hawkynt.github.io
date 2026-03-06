@@ -567,21 +567,29 @@
      ══════════════════════════════════════════════════════════════════ */
 
   function checkLevelComplete() {
-    let hasUnsolvedRune = false;
     let hasObstacles = false;
     let hasGoal = false;
+    const hiddenRunes = [];
 
-    for (let r = 0; r < grid.length; ++r) {
+    for (let r = 0; r < grid.length; ++r)
       for (let c = 0; c < grid[r].length; ++c) {
         const tile = grid[r][c];
-        if (tile === T_RUNE) hasUnsolvedRune = true;
+        if (tile === T_RUNE) hiddenRunes.push({ r, c });
         else if (tile === T_GOAL) hasGoal = true;
         else if (tile === T_WOOD || tile === T_CHANNEL) hasObstacles = true;
       }
+
+    if (hasObstacles || !hasGoal) return;
+
+    // Auto-reveal any remaining hidden runes when all obstacles are cleared
+    for (const { r, c } of hiddenRunes) {
+      grid[r][c] = T_RUNE_ACTIVE;
+      const rx = GRID_OFFSET_X + c * TILE_SIZE + TILE_SIZE / 2;
+      const ry = GRID_OFFSET_Y + r * TILE_SIZE + TILE_SIZE / 2;
+      revealRune(rx, ry);
     }
 
-    if (!hasUnsolvedRune && !hasObstacles && hasGoal)
-      completeLevel();
+    completeLevel();
   }
 
   function completeLevel() {
