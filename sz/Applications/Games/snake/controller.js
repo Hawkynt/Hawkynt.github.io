@@ -1632,7 +1632,20 @@
 
     if (gameActive && !gamePaused && !gameOverFlag && !waitingToStart) {
       updatePowerups(timestamp);
-      const interval = getMoveInterval();
+
+      /* Mouse-only steering: auto-queue direction toward cursor each tick */
+      if (mouseControlActive && inputQueue.length === 0) {
+        const mDir = mouseDirectionForSnake();
+        if (mDir) {
+          const ref = inputQueue.length > 0 ? inputQueue[inputQueue.length - 1] : direction;
+          if (!isOpposite(mDir, ref))
+            inputQueue.push(mDir);
+        }
+      }
+
+      const baseInterval = getMoveInterval();
+      /* Tron mode: 60 % speed for tighter curves */
+      const interval = isTron() ? Math.round(baseInterval * 0.6) : baseInterval;
       const elapsed = timestamp - lastMoveTime;
       if (elapsed >= interval) {
         moveSnake(timestamp);
@@ -1867,6 +1880,7 @@
       return;
 
     let qDir = null;
+    mouseControlActive = false; /* keyboard overrides mouse steering */
     switch (e.key) {
       case 'ArrowUp':    case 'w': case 'W': qDir = DIR.UP;    break;
       case 'ArrowDown':  case 's': case 'S': qDir = DIR.DOWN;  break;
@@ -1881,7 +1895,48 @@
     }
   });
 
-  /* ---- Touch / click controls ---- */
+  /* ---- Mouse / Touch controls ---- */
+  let mouseCanvasX = -1, mouseCanvasY = -1;
+  let mouseControlActive = false;
+
+  function canvasMouseCoords(e) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: (e.clientX - rect.left) / rect.width * canvasW,
+      y: (e.clientY - rect.top) / rect.height * canvasH
+    };
+  }
+
+  function mouseDirectionForSnake() {
+    if (!mouseControlActive || snake.length === 0) return null;
+    const head = snake[0];
+    const hx = head.x * CELL + CELL / 2;
+    const hy = head.y * CELL + CELL / 2;
+    const dx = mouseCanvasX - hx;
+    const dy = mouseCanvasY - hy;
+
+    /* Ignore if cursor is very close to center of head */
+    if (Math.abs(dx) < CELL * 0.4 && Math.abs(dy) < CELL * 0.4) return null;
+
+    /* Pick the perpendicular turn toward the cursor */
+    const ref = inputQueue.length > 0 ? inputQueue[inputQueue.length - 1] : direction;
+
+    let qDir;
+    if (Math.abs(dx) > Math.abs(dy))
+      qDir = dx > 0 ? DIR.RIGHT : DIR.LEFT;
+    else
+      qDir = dy > 0 ? DIR.DOWN : DIR.UP;
+
+    /* Don't queue reverse; prefer a perpendicular turn if the natural choice is a 180 */
+    if (isOpposite(qDir, ref)) {
+      if (Math.abs(dx) > Math.abs(dy))
+        qDir = dy >= 0 ? DIR.DOWN : DIR.UP;
+      else
+        qDir = dx >= 0 ? DIR.RIGHT : DIR.LEFT;
+    }
+    return qDir;
+  }
+
   {
     let touchStartX = 0, touchStartY = 0, touchId = null;
     const SWIPE_THRESHOLD = 20;
@@ -1894,6 +1949,19 @@
       touchStartX = e.clientX;
       touchStartY = e.clientY;
       touchId = e.pointerId;
+
+      /* Activate mouse control on click */
+      const pos = canvasMouseCoords(e);
+      mouseCanvasX = pos.x;
+      mouseCanvasY = pos.y;
+      mouseControlActive = true;
+    });
+
+    canvas.addEventListener('pointermove', (e) => {
+      const pos = canvasMouseCoords(e);
+      mouseCanvasX = pos.x;
+      mouseCanvasY = pos.y;
+      mouseControlActive = true;
     });
 
     canvas.addEventListener('pointerup', (e) => {
