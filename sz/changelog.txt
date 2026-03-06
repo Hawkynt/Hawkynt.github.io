@@ -1,3 +1,58 @@
+Main: 6.11
+by Hawkynt 04.03.2026
++ Spreadsheet: Page Up/Down navigation, Ctrl+Home/End jump, external clipboard paste, Ctrl+; date/time insertion
++ Spreadsheet: chart data binding (live update on cell change), chart context menu with edit/type/colors/legend/labels/delete, full chart options dialog
++ Presentations: speaker notes panel toggle, transition duration control sync, slide sorter drag-and-drop reordering, improved text placeholder editing with cursor placement
++ Wordpad: real-time word count in status bar with selection tracking, enhanced find/replace with live highlighting and match navigation, page break indicators in print layout mode, shape tools module (click/drag/resize shapes), equation editor API fix
++ Office: color palette "More Colors" launches SZ color picker app instead of native browser picker
++ Card games: Uno rewrite (black wild cards, color choice overlay, house rules settings with localStorage persistence), Skat rewrite (bidding phase, trick resolution, game-end detection, declarer/defender role display), green table gradient covers full diagonal, standalone Solitaire/FreeCell/Spider removed from manifest
++ Bomberman: sprite frame reset on direction change prevents frame mismatch
++ Cookie Clicker: fixed [object Object] tooltip, improved tooltip offset to avoid blocking upgrades
++ Cooking Game: 5-type powerup system (Time Freeze, Speed Boost, Precision, Double Tips, Restore Patience) with floating collectibles and active badges
++ Dome Keeper: canvas maximize, underground transition animation, Minecraft-style ore textures, dome grounded at surface, enemy spawn restricted to sides and sky
++ Endless Runner: click on lane moves sprite to that lane, click on current lane jumps
++ Fantasy Cards: mouse click to start game from menu
++ Fantasy Puzzle: canvas maximize to parent container, in-game instructions overlay
++ Tower Defense: fixed first-click crash (restricted tower placement to playing state only)
++ Physics Puzzle: canvas maximize, drag-to-move placed objects during building phase
++ Rhythm Game: mouse click to start and play lanes, combo system with pulsing display and color milestones, rank-scaled particle effects, lane flash and expanding glow rings, escalating screen shake on misses
++ Space Farming: canvas maximize, full tooltip system for crops/livestock/stats/buttons
++ Space Mining: mouse-only input mode (click-hold to fly toward cursor, auto-drill on asteroids, click station to sell)
++ Space Racing: gravity wells (planets/stars/black holes with inverse-square pull), wormhole portals with teleportation and particle effects, multi-layer parallax starfield with twinkling, thrust particles and speed trails
++ Mind-Bending Puzzle: canvas maximize to parent container
++ Asteroids: mouse-only controls (click to shoot, mouse aim, click mode cards to start)
+* Wordpad: style gallery preserves cursor position when applying styles (pointerdown prevention + selection save/restore)
+# Presentations: transition gallery uses SVG mini-thumbnails instead of plain text tiles, context menu z-index raised above slide preview
+
+Main: 6.10
+by Hawkynt 02.03.2026
++ Tutorial overlays for 12 games (Bomberman, Boulder Dash, Bubble Bobble, Platformer, Space Combat, Space Farming, Space Racing, Dome Keeper, Endless Runner, Physics Puzzle, Space Mining, Fantasy Puzzle) with H key toggle and localStorage persistence
++ Cookie Clicker: 6 new buildings (Shipment through Prism), 30+ new upgrades, 34+ new achievements, hover tooltip system with CPS preview and cost efficiency
++ Tower Defense: 4 new tower types (Poison, Tesla, Mortar, Flame), 3 new enemy types (Healer, Swarm, Shield), auto-wave mode, mouse-only controls, pre-wave warnings with path visualization
++ Fantasy Cards: detailed descriptions for all 55 cards, card type color coding, hover tooltip, How to Play tutorial, enhanced card rendering
++ Fantasy Puzzle: 4-page tutorial, valid move highlighting, objectives panel, level hints, tile hover tooltips
++ Rhythm Game: procedural Web Audio API music system with per-song melody/bass/hi-hat/kick, hit/miss sound effects
++ Space Mining: 3-layer parallax starfield, 5-upgrade shop, 5 powerup types, 4-page tutorial
++ Space Racing: 5 selectable ships with different stats, 4-category upgrade system, 5 unique AI personalities
++ Space Farming: drag selection system with per-tile highlights
++ Card Games Suite: shared card-engine.js, all 10 variants extracted to separate files
++ Dome Keeper: 49 visual improvements (mining animations, textured tiles, metallic dome, combat effects)
++ Presentations: ReadMe.md created
++ Wordpad: text editing context menu (Cut/Copy/Paste/Bold/Italic/Underline/Alignment)
++ Spreadsheet: cell context menu (Cut/Copy/Paste/Delete/Insert Row-Col/Sort)
+* Cooking Game: overhauled graphics, weighted recipe selection with streak prevention, procedural character sprites
+* Physics Puzzle: visual overhaul (sky gradient, metallic launcher, animated target, beveled structures, gradient objects)
+* Rhythm Game: reduced difficulty (57-75% wider timing windows, 35% slower notes, lower BPMs)
+* Space Racing: reduced AI difficulty (lower acceleration, reaction delay, random mistakes)
+# Presentations: fixed textfield editing (stale DOM references, content syncing)
+# Presentations/Wordpad/Spreadsheet: added missing context menus
+# Bomberman: fixed right-facing sprites (horizontal mirror instead of wrong columns)
+# Boulder Dash: fixed crystal transparency (cave background instead of opaque rectangles)
+# Flappy Bird: fixed parallax scrolling wrapping math
+# Space Combat: fixed wave 4 endless loop (swarm enemy double-counting)
+# Endless Runner: fixed obstacle timing, skyline wrap, guardrail scroll direction
+# Mind Puzzle: added solid-object collision detection and 8 object interaction handlers
+
 Main: 6.9
 by Hawkynt 23.02.2026
 + Snake app (classic grid-based game with smooth interpolation, particle effects, persistent high scores)
