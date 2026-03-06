@@ -4,6 +4,7 @@
 
   let _S, _cellKey, _parseKey, _colName, _colIndex, _getCellValue, _getSelectionRect, _showDialog, _rebuildGrid;
   let _setFormat, _getFormat, _setDirty, _getActiveCell, _gridScroll, _showPrompt;
+  let _showColorPalette, _getSwatchColor, _setSwatchColor, _wireSwatchPalette;
 
   function init(ctx) {
     _S = ctx.S;
@@ -21,6 +22,10 @@
     _getActiveCell = ctx.getActiveCell;
     _gridScroll = ctx.gridScroll;
     _showPrompt = ctx.showPrompt;
+    _showColorPalette = ctx.showColorPalette;
+    _getSwatchColor = ctx.getSwatchColor;
+    _setSwatchColor = ctx.setSwatchColor;
+    _wireSwatchPalette = ctx.wireSwatchPalette;
   }
 
   // ── Charts (Extended) ──────────────────────────────────────────────
@@ -1480,14 +1485,17 @@
       return;
     }
 
-    document.getElementById('sp-color-line').value = sp.colorLine || '#4472c4';
-    document.getElementById('sp-color-fill').value = sp.colorFill || '#4472c4';
-    document.getElementById('sp-color-high').value = sp.colorHigh || '#22863a';
-    document.getElementById('sp-color-low').value = sp.colorLow || '#cb2431';
-    document.getElementById('sp-color-first').value = sp.colorFirst || '#ffc000';
-    document.getElementById('sp-color-last').value = sp.colorLast || '#70ad47';
-    document.getElementById('sp-color-negative').value = sp.colorNegative || '#c00000';
-    document.getElementById('sp-color-marker').value = sp.colorMarker || sp.colorLine || '#4472c4';
+    _setSwatchColor(document.getElementById('sp-color-line'), sp.colorLine || '#4472c4');
+    _setSwatchColor(document.getElementById('sp-color-fill'), sp.colorFill || '#4472c4');
+    _setSwatchColor(document.getElementById('sp-color-high'), sp.colorHigh || '#22863a');
+    _setSwatchColor(document.getElementById('sp-color-low'), sp.colorLow || '#cb2431');
+    _setSwatchColor(document.getElementById('sp-color-first'), sp.colorFirst || '#ffc000');
+    _setSwatchColor(document.getElementById('sp-color-last'), sp.colorLast || '#70ad47');
+    _setSwatchColor(document.getElementById('sp-color-negative'), sp.colorNegative || '#c00000');
+    _setSwatchColor(document.getElementById('sp-color-marker'), sp.colorMarker || sp.colorLine || '#4472c4');
+    // Wire sparkline color swatches to palette
+    const spSwatchIds = ['sp-color-line','sp-color-fill','sp-color-high','sp-color-low','sp-color-first','sp-color-last','sp-color-negative','sp-color-marker'];
+    for (const id of spSwatchIds) { const el = document.getElementById(id); if (el) _wireSwatchPalette(el); }
 
     document.getElementById('sp-axis-min').value = sp.axisMin !== undefined ? sp.axisMin : '';
     document.getElementById('sp-axis-max').value = sp.axisMax !== undefined ? sp.axisMax : '';
@@ -1520,14 +1528,14 @@
     _showDialog(dlg.id).then((result) => {
       if (result !== 'ok') return;
 
-      sp.colorLine = document.getElementById('sp-color-line').value;
-      sp.colorFill = document.getElementById('sp-color-fill').value;
-      sp.colorHigh = document.getElementById('sp-color-high').value;
-      sp.colorLow = document.getElementById('sp-color-low').value;
-      sp.colorFirst = document.getElementById('sp-color-first').value;
-      sp.colorLast = document.getElementById('sp-color-last').value;
-      sp.colorNegative = document.getElementById('sp-color-negative').value;
-      sp.colorMarker = document.getElementById('sp-color-marker').value;
+      sp.colorLine = _getSwatchColor(document.getElementById('sp-color-line'));
+      sp.colorFill = _getSwatchColor(document.getElementById('sp-color-fill'));
+      sp.colorHigh = _getSwatchColor(document.getElementById('sp-color-high'));
+      sp.colorLow = _getSwatchColor(document.getElementById('sp-color-low'));
+      sp.colorFirst = _getSwatchColor(document.getElementById('sp-color-first'));
+      sp.colorLast = _getSwatchColor(document.getElementById('sp-color-last'));
+      sp.colorNegative = _getSwatchColor(document.getElementById('sp-color-negative'));
+      sp.colorMarker = _getSwatchColor(document.getElementById('sp-color-marker'));
 
       const axisMinVal = document.getElementById('sp-axis-min').value.trim();
       sp.axisMin = axisMinVal === '' ? undefined : parseFloat(axisMinVal);
@@ -1553,14 +1561,15 @@
 
     if (!colorInput || !markersSelect || !axisCheckbox) return;
 
-    colorInput.value = sp.colorLine || '#4472c4';
+    _setSwatchColor(colorInput, sp.colorLine || '#4472c4');
+    _wireSwatchPalette(colorInput);
     markersSelect.value = sp.markers || 'none';
     axisCheckbox.checked = !!sp.showAxis;
 
     const result = await _showDialog('dlg-sparkline-quick-options');
     if (result !== 'ok') return;
 
-    sp.colorLine = colorInput.value;
+    sp.colorLine = _getSwatchColor(colorInput);
     sp.markers = markersSelect.value;
     sp.showAxis = axisCheckbox.checked;
 

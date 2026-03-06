@@ -9,9 +9,22 @@
     #menuBar;
     #openMenu;
 
-    constructor({ onAction }) {
-      this.#onAction = onAction || (() => {});
-      this.#menuBar = document.querySelector('.menu-bar');
+    constructor(first, second) {
+      // Support both calling conventions:
+      //   new MenuBar({ onAction })                       -- single-arg config
+      //   new MenuBar(domElement, { actionName: fn, ... }) -- two-arg legacy
+      if (first instanceof HTMLElement || first instanceof Element) {
+        const handlers = second || {};
+        if (typeof handlers.onAction === 'function')
+          this.#onAction = handlers.onAction;
+        else
+          this.#onAction = (action) => { if (typeof handlers[action] === 'function') handlers[action](); };
+        this.#menuBar = first.classList.contains('menu-bar') ? first : first.closest('.menu-bar') || first;
+      } else {
+        const opts = first || {};
+        this.#onAction = opts.onAction || (() => {});
+        this.#menuBar = document.querySelector('.menu-bar');
+      }
       this.#openMenu = null;
       if (!this.#menuBar) return;
       this.#wire();
@@ -19,7 +32,7 @@
 
     #wire() {
       this.#menuBar.addEventListener('pointerdown', (e) => {
-        const entry = e.target.closest('.menu-entry');
+        const entry = e.target.closest('.menu-entry') || e.target.closest('[data-action]');
         if (entry) {
           const action = entry.dataset.action;
           this.closeMenus();

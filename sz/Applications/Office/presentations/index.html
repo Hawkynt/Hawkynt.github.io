@@ -66,6 +66,8 @@
     <div class="backstage-sep"></div>
     <button class="backstage-item" data-action="export-png">Export as PNG</button>
     <button class="backstage-item" data-action="export-pdf">Export as PDF</button>
+    <button class="backstage-item" data-action="export-notes">Export Notes</button>
+    <button class="backstage-item" data-action="print-outline">Print Outline</button>
     <button class="backstage-item" data-action="print">Print</button>
     <div class="backstage-sep"></div>
     <button class="backstage-item" data-action="about">About</button>
@@ -148,7 +150,7 @@
         <button class="rb-btn rb-fmt" data-action="underline" title="Underline (Ctrl+U)"><u>U</u></button>
         <div class="rb-sep-v"></div>
         <span class="rb-color-wrap" title="Font Color">
-          <input type="color" class="rb-color" id="rb-font-color" value="#000000">
+          <span class="color-swatch rb-color" id="rb-font-color" data-color="#000000" style="background:#000000;" title="Choose color"></span>
           <span class="rb-color-label" id="rb-font-color-swatch" style="background:#000000;">A</span>
         </span>
         <button class="rb-btn rb-fmt" data-action="eyedropper" title="Eyedropper (pick color from slide)">&#128065;</button>
@@ -212,6 +214,11 @@
           <hr>
           <button data-action="distribute-h">Distribute Horizontally</button>
           <button data-action="distribute-v">Distribute Vertically</button>
+          <hr>
+          <button data-action="lock-element">Lock Element</button>
+          <button data-action="unlock-element">Unlock Element</button>
+          <button data-action="lock-all">Lock All</button>
+          <button data-action="unlock-all">Unlock All</button>
         </div>
       </div>
     </div>
@@ -251,6 +258,11 @@
         <span class="rb-icon rb-icon-lg">&#128196;</span>
         <span class="rb-label">New Slide</span>
       </button>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="summary-zoom" title="Summary Zoom">
+          <span class="rb-icon">&#128269;</span><span class="rb-label">Summary Zoom</span>
+        </button>
+      </div>
     </div>
     <div class="ribbon-group-label">Slides</div>
   </div>
@@ -927,18 +939,18 @@
           </select>
           <div id="sfp-fill-solid" class="sfp-row">
             <label>Color:</label>
-            <input type="color" id="sfp-fill-color" value="#4472c4">
+            <span class="color-swatch" id="sfp-fill-color" data-color="#4472c4" style="background:#4472c4;" title="Choose color"></span>
           </div>
           <div id="sfp-fill-gradient" class="sfp-row" style="display:none;">
-            <label>From:</label><input type="color" id="sfp-grad-from" value="#4472c4">
-            <label>To:</label><input type="color" id="sfp-grad-to" value="#ffffff">
+            <label>From:</label><span class="color-swatch" id="sfp-grad-from" data-color="#4472c4" style="background:#4472c4;" title="Choose color"></span>
+            <label>To:</label><span class="color-swatch" id="sfp-grad-to" data-color="#ffffff" style="background:#ffffff;" title="Choose color"></span>
           </div>
         </div>
       </details>
       <details open>
         <summary>Line</summary>
         <div class="sfp-section">
-          <div class="sfp-row"><label>Color:</label><input type="color" id="sfp-line-color" value="#000000"></div>
+          <div class="sfp-row"><label>Color:</label><span class="color-swatch" id="sfp-line-color" data-color="#000000" style="background:#000000;" title="Choose color"></span></div>
           <div class="sfp-row"><label>Width:</label><input type="number" id="sfp-line-width" min="0" max="20" step="0.5" value="0" style="width:50px;font-size:11px;">px</div>
           <div class="sfp-row"><label>Dash:</label>
             <select id="sfp-line-dash" style="font-size:11px;">
@@ -1019,14 +1031,14 @@
       <button class="bg-type-tab" data-bg-type="image">Image</button>
     </div>
     <div class="bg-section active" id="bg-section-solid">
-      <label for="bg-color-input">Color:</label>
-      <input type="color" id="bg-color-input" value="#ffffff">
+      <label>Color:</label>
+      <span class="color-swatch" id="bg-color-input" data-color="#ffffff" style="background:#ffffff;" title="Choose color"></span>
     </div>
     <div class="bg-section" id="bg-section-gradient">
-      <label for="bg-gradient-1">Color 1:</label>
-      <input type="color" id="bg-gradient-1" value="#ffffff">
-      <label for="bg-gradient-2">Color 2:</label>
-      <input type="color" id="bg-gradient-2" value="#4472c4">
+      <label>Color 1:</label>
+      <span class="color-swatch" id="bg-gradient-1" data-color="#ffffff" style="background:#ffffff;" title="Choose color"></span>
+      <label>Color 2:</label>
+      <span class="color-swatch" id="bg-gradient-2" data-color="#4472c4" style="background:#4472c4;" title="Choose color"></span>
       <label for="bg-gradient-dir">Direction:</label>
       <select id="bg-gradient-dir">
         <option value="to bottom">Top to Bottom</option>
@@ -1244,6 +1256,24 @@
     </div>
   </div>
 </div>
+
+<!-- Rehearsal Summary Dialog (P1) -->
+<div class="pp-dialog-overlay" id="dlg-rehearse-summary" style="display:none">
+  <div class="pp-dialog" style="width:420px;max-width:95vw;">
+    <h3>Rehearsal Summary</h3>
+    <div id="rehearse-summary-body"></div>
+    <div class="pp-dlg-field" style="margin-top:8px;">
+      <label style="display:inline-flex;align-items:center;gap:4px;"><input type="checkbox" id="rs-use-timings" checked> Use rehearsed timings for auto-advance</label>
+    </div>
+    <div class="dlg-buttons">
+      <button data-result="cancel">Discard</button>
+      <button class="primary" data-result="ok" data-default>Save Timings</button>
+    </div>
+  </div>
+</div>
+
+<!-- Color palette popup -->
+<div class="color-palette" id="color-palette"></div>
 
 <!-- Hidden print container for PDF export -->
 <div id="print-container" class="print-container"></div>

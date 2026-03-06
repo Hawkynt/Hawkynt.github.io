@@ -155,6 +155,29 @@
   let notesEditor, slideCountEl, zoomStatusEl;
   let slideSorterEl;
 
+  // Color Palette (shared module)
+  let sharedColorPalette = null;
+
+  function showColorPalette(anchorEl, callback) {
+    if (sharedColorPalette)
+      sharedColorPalette.show(anchorEl, callback);
+  }
+
+  function hideColorPalette() {
+    if (sharedColorPalette)
+      sharedColorPalette.hide();
+  }
+
+  function _setSwatchColor(el, color) {
+    if (!el) return;
+    el.dataset.color = color;
+    el.style.backgroundColor = color;
+  }
+
+  function _getSwatchColor(el) {
+    return el ? (el.dataset.color || '#000000') : '#000000';
+  }
+
   // ===============================================================
   // Data Model
   // ===============================================================
@@ -510,6 +533,24 @@
 
       // P5: Image Cropping
       case 'crop-image': startCropMode(); break;
+
+      // P1: Slide Timer / Countdown (enhanced rehearsal)
+      // (already handled by 'rehearse-timings' above)
+
+      // P2: Slide Notes Export
+      case 'export-notes': doExportNotes(); break;
+
+      // P3: Presentation Outline Print
+      case 'print-outline': doPrintOutline(); break;
+
+      // P4: Summary Zoom
+      case 'summary-zoom': insertSummaryZoom(); break;
+
+      // P5: Element Locking
+      case 'lock-element': lockSelectedElements(true); break;
+      case 'unlock-element': lockSelectedElements(false); break;
+      case 'lock-all': lockAllElements(true); break;
+      case 'unlock-all': lockAllElements(false); break;
     }
   }
 
@@ -895,6 +936,19 @@
     for (const domEl of elements) {
       const elId = domEl.dataset.elementId;
 
+      // P5: Show lock state
+      {
+        const slide = getCurrentSlide();
+        const element = slide ? slide.elements.find(el => el.id === elId) : null;
+        if (element && element.locked) {
+          domEl.classList.add('locked');
+          const lockIcon = document.createElement('div');
+          lockIcon.className = 'lock-icon-overlay';
+          lockIcon.textContent = '\uD83D\uDD12';
+          domEl.appendChild(lockIcon);
+        }
+      }
+
       // Show selection state
       if (selectedElements.has(elId)) {
         domEl.classList.add('selected');
@@ -1023,7 +1077,19 @@
           { label: 'Delete', action: () => deleteSelectedElements() },
           { sep: true },
           { label: 'Bring to Front', action: () => changeZOrder('front') },
-          { label: 'Send to Back', action: () => changeZOrder('back') }
+          { label: 'Send to Back', action: () => changeZOrder('back') },
+          { sep: true }
+        );
+
+        // P5: Lock/Unlock options
+        if (element.locked) {
+          items.push({ label: 'Unlock Element', action: () => lockSelectedElements(false) });
+        } else {
+          items.push({ label: 'Lock Element', action: () => lockSelectedElements(true) });
+        }
+        items.push(
+          { label: 'Lock All Elements', action: () => lockAllElements(true) },
+          { label: 'Unlock All Elements', action: () => lockAllElements(false) }
         );
 
         for (const item of items) {
@@ -1137,6 +1203,22 @@
     // P4: Eyedropper -- pick color from clicked element
     if (eyedropperActive) {
       pickColor(e.clientX, e.clientY);
+      return;
+    }
+
+    // P5: Element Locking -- block interaction with locked elements
+    if (_isElementLocked(elId)) {
+      // Still allow selection, but no drag/resize/rotate
+      if (!e.shiftKey) {
+        selectedElements.clear();
+        selectedElements.add(elId);
+      } else {
+        if (selectedElements.has(elId))
+          selectedElements.delete(elId);
+        else
+          selectedElements.add(elId);
+      }
+      renderMainCanvas();
       return;
     }
 
@@ -1636,8 +1718,16 @@
     const slide = getCurrentSlide();
     if (!slide || !selectedElements.size)
       return;
+    // P5: Prevent deleting locked elements
+    const deletable = [...selectedElements].filter(id => {
+      const el = slide.elements.find(e => e.id === id);
+      return el && !el.locked;
+    });
+    if (!deletable.length)
+      return;
     pushUndo();
-    slide.elements = slide.elements.filter(el => !selectedElements.has(el.id));
+    const deleteSet = new Set(deletable);
+    slide.elements = slide.elements.filter(el => !deleteSet.has(el.id));
     selectedElements.clear();
     renderMainCanvas();
     markDirty();
@@ -2856,36 +2946,7 @@
   // ===============================================================
 
   function startRehearsalTimings() {
-    rehearsalActive = true;
-    rehearsalTimings = new Array(presentation.slides.length).fill(0);
-    rehearsalStartTime = Date.now();
-
-    // Start slideshow with timer overlay
-    SlideshowMode.startSlideshow(0);
-
-    // Add rehearsal timer overlay
-    setTimeout(() => {
-      const overlay = document.getElementById('slideshow-overlay');
-      if (!overlay)
-        return;
-
-      const timer = document.createElement('div');
-      timer.id = 'rehearsal-timer';
-      timer.style.cssText = 'position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:20;background:rgba(0,0,0,0.7);color:#fff;padding:8px 16px;border-radius:4px;font-family:Consolas,monospace;font-size:16px;';
-      timer.textContent = '00:00';
-      overlay.appendChild(timer);
-
-      const updateTimer = setInterval(() => {
-        if (!rehearsalActive) {
-          clearInterval(updateTimer);
-          return;
-        }
-        const elapsed = Math.floor((Date.now() - rehearsalStartTime) / 1000);
-        const min = Math.floor(elapsed / 60);
-        const sec = elapsed % 60;
-        timer.textContent = String(min).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
-      }, 1000);
-    }, 100);
+    startRehearsalTimingsEnhanced();
   }
 
   // ===============================================================
@@ -3576,10 +3637,11 @@
     const colorRow = document.createElement('div');
     colorRow.style.cssText = 'display:flex;align-items:center;gap:8px;';
     colorRow.innerHTML = '<label style="font-size:12px;min-width:80px;">Color:</label>';
-    const colorInput = document.createElement('input');
-    colorInput.type = 'color';
-    colorInput.value = connector.lineColor || '#666666';
-    colorInput.style.cssText = 'width:40px;height:24px;border:none;padding:0;';
+    const colorInput = document.createElement('span');
+    colorInput.className = 'color-swatch';
+    colorInput.dataset.color = connector.lineColor || '#666666';
+    colorInput.style.cssText = 'width:40px;height:24px;border:1px solid #999;border-radius:2px;cursor:pointer;background:' + (connector.lineColor || '#666666') + ';';
+    colorInput.addEventListener('click', () => showColorPalette(colorInput, (c) => _setSwatchColor(colorInput, c)));
     colorRow.appendChild(colorInput);
     form.appendChild(colorRow);
 
@@ -3654,7 +3716,7 @@
       pushUndo();
       connector.routeType = routeSel.value;
       connector.lineWidth = parseInt(widthInput.value, 10) || 2;
-      connector.lineColor = colorInput.value;
+      connector.lineColor = _getSwatchColor(colorInput);
       connector.lineDash = dashSel.value;
       connector.startArrow = startArrowSel.value;
       connector.endArrow = endArrowSel.value;
@@ -3860,10 +3922,11 @@
     const bgRow = document.createElement('div');
     bgRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin:6px 0;';
     bgRow.innerHTML = '<label style="font-size:12px;font-weight:bold;min-width:100px;">Background:</label>';
-    const bgColorInput = document.createElement('input');
-    bgColorInput.type = 'color';
-    bgColorInput.value = '#ffffff';
-    bgColorInput.style.cssText = 'width:40px;height:24px;border:none;padding:0;';
+    const bgColorInput = document.createElement('span');
+    bgColorInput.className = 'color-swatch';
+    bgColorInput.dataset.color = '#ffffff';
+    bgColorInput.style.cssText = 'width:40px;height:24px;border:1px solid #999;border-radius:2px;cursor:pointer;background:#ffffff;';
+    bgColorInput.addEventListener('click', () => showColorPalette(bgColorInput, (c) => _setSwatchColor(bgColorInput, c)));
     bgRow.appendChild(bgColorInput);
     dlg.appendChild(bgRow);
 
@@ -3892,7 +3955,7 @@
       const layout = layoutSel.value;
       const frame = frameSel.value;
       const caption = captionSel.value;
-      const bgColor = bgColorInput.value;
+      const bgColor = _getSwatchColor(bgColorInput);
 
       overlay.parentNode.removeChild(overlay);
       _createPhotoAlbum(images, layout, frame, caption, bgColor);
@@ -4329,7 +4392,7 @@
     const bgGradientDir = document.getElementById('bg-gradient-dir');
 
     if (bgColorInput && slide.background?.type === 'color')
-      bgColorInput.value = slide.background.value || '#ffffff';
+      _setSwatchColor(bgColorInput, slide.background.value || '#ffffff');
 
     SZ.Dialog.show('dlg-format-bg').then((result) => {
       if (result !== 'ok')
@@ -4340,10 +4403,10 @@
       const bgType = activeTab?.dataset.bgType || 'color';
 
       if (bgType === 'color') {
-        slide.background = { type: 'color', value: bgColorInput?.value || '#ffffff' };
+        slide.background = { type: 'color', value: _getSwatchColor(bgColorInput) };
       } else if (bgType === 'gradient') {
-        const c1 = bgGradient1?.value || '#ffffff';
-        const c2 = bgGradient2?.value || '#000000';
+        const c1 = _getSwatchColor(bgGradient1);
+        const c2 = _getSwatchColor(bgGradient2);
         const dir = bgGradientDir?.value || 'to bottom';
         slide.background = { type: 'gradient', value: 'linear-gradient(' + dir + ', ' + c1 + ', ' + c2 + ')' };
       } else if (bgType === 'image') {
@@ -4361,6 +4424,23 @@
   // ===============================================================
 
   function startSlideshow(fromIndex) {
+    // Re-init slideshow context with current UI settings
+    const ssAutoAdvance = document.getElementById('ss-auto-advance');
+    const ssInterval = document.getElementById('ss-interval');
+    const ssLoop = document.getElementById('ss-loop');
+    SlideshowMode.init({
+      getPresentation: () => presentation,
+      getCurrentSlideIndex: () => currentSlideIndex,
+      onExit: () => {
+        if (rehearsalActive)
+          rehearsalActive = false;
+        refreshUI();
+      },
+      loop: ssLoop ? ssLoop.checked : false,
+      autoAdvance: ssAutoAdvance ? ssAutoAdvance.checked : false,
+      autoAdvanceInterval: ssInterval ? parseFloat(ssInterval.value) || 5 : 5,
+      playTransitionSound: playTransitionSound
+    });
     SlideshowMode.startSlideshow(fromIndex);
   }
 
@@ -5385,12 +5465,17 @@
     const updatePreview = () => {
       if (!preview || !g1 || !g2 || !gDir)
         return;
-      preview.style.background = 'linear-gradient(' + (gDir.value || 'to bottom') + ', ' + (g1.value || '#fff') + ', ' + (g2.value || '#000') + ')';
+      preview.style.background = 'linear-gradient(' + (gDir.value || 'to bottom') + ', ' + (_getSwatchColor(g1)) + ', ' + (_getSwatchColor(g2)) + ')';
     };
 
-    if (g1) g1.addEventListener('input', updatePreview);
-    if (g2) g2.addEventListener('input', updatePreview);
+    // Wire bg dialog color swatches
+    if (g1) g1.addEventListener('click', () => showColorPalette(g1, (c) => { _setSwatchColor(g1, c); updatePreview(); }));
+    if (g2) g2.addEventListener('click', () => showColorPalette(g2, (c) => { _setSwatchColor(g2, c); updatePreview(); }));
     if (gDir) gDir.addEventListener('change', updatePreview);
+
+    // Wire solid bg color swatch
+    const bgSolid = document.getElementById('bg-color-input');
+    if (bgSolid) bgSolid.addEventListener('click', () => showColorPalette(bgSolid, (c) => _setSwatchColor(bgSolid, c)));
   }
 
   // ===============================================================
@@ -6298,19 +6383,17 @@
       _updateFillVisibility(fillType.value);
     }
 
-    if (fillColor)
-      fillColor.value = element.fillColor || element.backgroundColor || '#4472c4';
+    _setSwatchColor(fillColor, element.fillColor || element.backgroundColor || '#4472c4');
     if (gradFrom && element.fill)
-      gradFrom.value = element.fill.color1 || '#4472c4';
+      _setSwatchColor(gradFrom, element.fill.color1 || '#4472c4');
     if (gradTo && element.fill)
-      gradTo.value = element.fill.color2 || '#ffffff';
+      _setSwatchColor(gradTo, element.fill.color2 || '#ffffff');
 
     // Line
     const lineColor = document.getElementById('sfp-line-color');
     const lineWidth = document.getElementById('sfp-line-width');
     const lineDash = document.getElementById('sfp-line-dash');
-    if (lineColor)
-      lineColor.value = element.strokeColor || element.borderColor || '#000000';
+    _setSwatchColor(lineColor, element.strokeColor || element.borderColor || '#000000');
     if (lineWidth)
       lineWidth.value = element.strokeWidth || element.borderWidth || 0;
     if (lineDash)
@@ -6382,12 +6465,12 @@
         element.backgroundColor = 'transparent';
         element.fill = { type: 'none' };
       } else if (ft === 'gradient') {
-        element.fill = { type: 'gradient', color1: gradFrom?.value || '#4472c4', color2: gradTo?.value || '#ffffff', direction: 'to bottom' };
-        element.fillColor = gradFrom?.value || '#4472c4';
+        element.fill = { type: 'gradient', color1: _getSwatchColor(gradFrom), color2: _getSwatchColor(gradTo), direction: 'to bottom' };
+        element.fillColor = _getSwatchColor(gradFrom);
       } else {
-        element.fillColor = fillColor?.value || '#4472c4';
-        element.backgroundColor = fillColor?.value || '#4472c4';
-        element.fill = { type: 'solid', color: fillColor?.value || '#4472c4' };
+        element.fillColor = _getSwatchColor(fillColor);
+        element.backgroundColor = _getSwatchColor(fillColor);
+        element.fill = { type: 'solid', color: _getSwatchColor(fillColor) };
       }
     }
 
@@ -6396,7 +6479,7 @@
     const lineWidth = document.getElementById('sfp-line-width');
     const lineDash = document.getElementById('sfp-line-dash');
     if (lineColor)
-      element.strokeColor = element.borderColor = lineColor.value;
+      element.strokeColor = element.borderColor = _getSwatchColor(lineColor);
     if (lineWidth)
       element.strokeWidth = element.borderWidth = parseFloat(lineWidth.value) || 0;
     if (lineDash)
@@ -6449,13 +6532,27 @@
     if (closeBtn)
       closeBtn.addEventListener('click', () => hideShapeFormatPanel());
 
-    // Wire all inputs for instant apply
+    // Wire all non-color inputs for instant apply
     const inputs = panel.querySelectorAll('input, select, textarea');
     for (const input of inputs) {
-      const eventType = input.type === 'color' || input.tagName === 'SELECT' ? 'input' : 'change';
+      const eventType = input.tagName === 'SELECT' ? 'input' : 'change';
       input.addEventListener(eventType, () => _applyFormatPanelChange());
       if (input.type === 'number')
         input.addEventListener('input', () => _applyFormatPanelChange());
+    }
+
+    // Wire color swatches in format panel
+    const swatchIds = ['sfp-fill-color', 'sfp-grad-from', 'sfp-grad-to', 'sfp-line-color'];
+    for (const id of swatchIds) {
+      const swatch = document.getElementById(id);
+      if (swatch) {
+        swatch.addEventListener('click', () => {
+          showColorPalette(swatch, (color) => {
+            _setSwatchColor(swatch, color);
+            _applyFormatPanelChange();
+          });
+        });
+      }
     }
 
     // Fill type visibility toggle
@@ -7067,6 +7164,476 @@
   }
 
   // ===============================================================
+  // P1: Enhanced Rehearse Timings (Slide Timer / Countdown)
+  // ===============================================================
+
+  let _rehearseSlideStartTime = 0;
+  let _rehearseTimingsArray = [];
+  let _rehearseTimerInterval = null;
+
+  function startRehearsalTimingsEnhanced() {
+    rehearsalActive = true;
+    _rehearseTimingsArray = [];
+    _rehearseSlideStartTime = Date.now();
+
+    // Start slideshow
+    SlideshowMode.startSlideshow(0);
+
+    // Wait for overlay to appear then inject enhanced timer
+    setTimeout(() => {
+      const ssOverlay = document.getElementById('slideshow-overlay');
+      if (!ssOverlay)
+        return;
+
+      // Remove old rehearsal-timer if any
+      const oldTimer = document.getElementById('rehearsal-timer');
+      if (oldTimer && oldTimer.parentNode)
+        oldTimer.parentNode.removeChild(oldTimer);
+
+      const timerEl = document.createElement('div');
+      timerEl.id = 'rehearsal-timer';
+      timerEl.className = 'rehearsal-timer-overlay';
+      timerEl.innerHTML =
+        '<span class="rt-label">Slide</span><span class="rt-slide-time" id="rt-slide-time">00:00</span>' +
+        '<span class="rt-label">Total</span><span class="rt-total-time" id="rt-total-time">00:00</span>';
+      ssOverlay.appendChild(timerEl);
+
+      const totalStart = Date.now();
+      _rehearseSlideStartTime = totalStart;
+
+      // Track slide changes via MutationObserver on front container
+      let lastSlideIndex = 0;
+
+      _rehearseTimerInterval = setInterval(() => {
+        if (!rehearsalActive) {
+          clearInterval(_rehearseTimerInterval);
+          _rehearseTimerInterval = null;
+          return;
+        }
+
+        const now = Date.now();
+        const slideElapsed = Math.floor((now - _rehearseSlideStartTime) / 1000);
+        const totalElapsed = Math.floor((now - totalStart) / 1000);
+
+        const slideTimeEl = document.getElementById('rt-slide-time');
+        const totalTimeEl = document.getElementById('rt-total-time');
+
+        if (slideTimeEl)
+          slideTimeEl.textContent = _formatTimeMMSS(slideElapsed);
+        if (totalTimeEl)
+          totalTimeEl.textContent = _formatTimeMMSS(totalElapsed);
+
+        // Detect slide change by checking slideshow module's current index
+        const currentSsIndex = SlideshowMode.currentIndex;
+        if (currentSsIndex !== lastSlideIndex && currentSsIndex >= 0) {
+          // Record timing for previous slide
+          const elapsed = (now - _rehearseSlideStartTime) / 1000;
+          _rehearseTimingsArray[lastSlideIndex] = elapsed;
+          _rehearseSlideStartTime = now;
+          lastSlideIndex = currentSsIndex;
+        }
+      }, 200);
+
+      // Override the slideshow exit to capture final timing and show summary
+      const originalOnExit = SlideshowMode._originalOnExit;
+      // We patch by watching for overlay removal
+      const exitWatcher = setInterval(() => {
+        if (!document.getElementById('slideshow-overlay')) {
+          clearInterval(exitWatcher);
+          if (rehearsalActive)
+            _finishRehearsal(totalStart);
+        }
+      }, 200);
+    }, 150);
+  }
+
+  function _finishRehearsal(totalStart) {
+    const now = Date.now();
+    // Record final slide timing
+    const elapsed = (now - _rehearseSlideStartTime) / 1000;
+    const lastIdx = _rehearseTimingsArray.length;
+    if (lastIdx < presentation.slides.length)
+      _rehearseTimingsArray[lastIdx] = elapsed;
+
+    rehearsalActive = false;
+    if (_rehearseTimerInterval) {
+      clearInterval(_rehearseTimerInterval);
+      _rehearseTimerInterval = null;
+    }
+
+    // Fill any gaps with 0
+    for (let i = 0; i < presentation.slides.length; ++i) {
+      if (_rehearseTimingsArray[i] == null)
+        _rehearseTimingsArray[i] = 0;
+    }
+
+    const totalElapsed = (now - totalStart) / 1000;
+
+    // Show summary dialog
+    _showRehearsalSummary(_rehearseTimingsArray, totalElapsed);
+  }
+
+  function _formatTimeMMSS(seconds) {
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+  }
+
+  function _showRehearsalSummary(timings, totalElapsed) {
+    const body = document.getElementById('rehearse-summary-body');
+    if (!body)
+      return;
+
+    let html = '<table class="rehearsal-summary-table">';
+    html += '<tr><th>Slide</th><th>Time</th></tr>';
+    for (let i = 0; i < timings.length; ++i)
+      html += '<tr><td>Slide ' + (i + 1) + '</td><td>' + _formatTimeMMSS(timings[i]) + '</td></tr>';
+    html += '<tr class="total-row"><td>Total</td><td>' + _formatTimeMMSS(totalElapsed) + '</td></tr>';
+    html += '</table>';
+    body.innerHTML = html;
+
+    const useTimingsCheckbox = document.getElementById('rs-use-timings');
+    if (useTimingsCheckbox)
+      useTimingsCheckbox.checked = true;
+
+    if (SZ.Dialog) {
+      SZ.Dialog.show('dlg-rehearse-summary').then((result) => {
+        if (result === 'ok') {
+          const useTimings = useTimingsCheckbox ? useTimingsCheckbox.checked : false;
+          if (useTimings) {
+            pushUndo();
+            for (let i = 0; i < presentation.slides.length && i < timings.length; ++i) {
+              presentation.slides[i].rehearsedTiming = Math.round(timings[i] * 10) / 10;
+              presentation.slides[i].autoAdvance = true;
+              presentation.slides[i].autoAdvanceInterval = Math.max(1, Math.round(timings[i]));
+            }
+            markDirty();
+
+            // Update the auto-advance checkbox
+            const ssAutoAdvance = document.getElementById('ss-auto-advance');
+            if (ssAutoAdvance)
+              ssAutoAdvance.checked = true;
+          }
+        }
+      });
+    }
+  }
+
+  // ===============================================================
+  // P2: Slide Notes Export
+  // ===============================================================
+
+  function doExportNotes() {
+    if (!presentation || !presentation.slides.length)
+      return;
+
+    const slideW = presentation.slideWidth || 960;
+    const slideH = presentation.slideHeight || 540;
+    const thumbW = 400;
+    const thumbH = Math.round(thumbW * slideH / slideW);
+
+    let html = '<!DOCTYPE html><html><head><meta charset="UTF-8">';
+    html += '<title>Notes Pages - ' + _escapeHtml(currentFileName) + '</title>';
+    html += '<style>';
+    html += 'body { font-family: Calibri, Arial, sans-serif; margin: 0; padding: 20px; color: #333; }';
+    html += '.notes-page { page-break-after: always; margin-bottom: 30px; padding: 20px; border: 1px solid #ddd; }';
+    html += '.notes-page:last-child { page-break-after: auto; }';
+    html += '.notes-header { font-size: 14px; font-weight: bold; color: #666; margin-bottom: 10px; border-bottom: 2px solid #4472c4; padding-bottom: 4px; }';
+    html += '.notes-slide-title { font-size: 18px; font-weight: bold; margin-bottom: 10px; }';
+    html += '.notes-thumbnail { border: 1px solid #ccc; margin-bottom: 15px; background: #fff; max-width: 100%; display: block; }';
+    html += '.notes-text { font-size: 14px; line-height: 1.6; white-space: pre-wrap; min-height: 100px; border-top: 1px solid #eee; padding-top: 10px; }';
+    html += '.notes-text:empty::before { content: "(No speaker notes)"; color: #999; font-style: italic; }';
+    html += '@media print { body { padding: 0; } .notes-page { border: none; padding: 10px 0; } }';
+    html += '@page { size: portrait; margin: 1cm; }';
+    html += '</style></head><body>';
+
+    for (let i = 0; i < presentation.slides.length; ++i) {
+      const slide = presentation.slides[i];
+      const title = _extractSlideTitle(slide);
+
+      html += '<div class="notes-page">';
+      html += '<div class="notes-header">Slide ' + (i + 1) + ' of ' + presentation.slides.length + '</div>';
+      if (title)
+        html += '<div class="notes-slide-title">' + _escapeHtml(title) + '</div>';
+
+      // Render slide thumbnail to canvas
+      html += '<div class="notes-thumbnail" id="thumb-placeholder-' + i + '" style="width:' + thumbW + 'px;height:' + thumbH + 'px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;color:#999;font-size:12px;">';
+      html += 'Slide ' + (i + 1);
+      html += '</div>';
+
+      html += '<div class="notes-text">' + _escapeHtml(slide.notes || '') + '</div>';
+      html += '</div>';
+    }
+
+    html += '</body></html>';
+
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+
+      // Render actual thumbnails using canvas
+      setTimeout(() => {
+        for (let i = 0; i < presentation.slides.length; ++i) {
+          const slide = presentation.slides[i];
+          const placeholder = win.document.getElementById('thumb-placeholder-' + i);
+          if (!placeholder)
+            continue;
+
+          const container = win.document.createElement('div');
+          container.style.cssText = 'width:' + thumbW + 'px;height:' + thumbH + 'px;overflow:hidden;position:relative;';
+
+          try {
+            SlideRenderer.renderSlide(slide, container, {
+              editable: false,
+              scale: thumbW / slideW,
+              slideWidth: slideW,
+              slideHeight: slideH
+            });
+            placeholder.parentNode.replaceChild(container, placeholder);
+            container.className = 'notes-thumbnail';
+            container.style.border = '1px solid #ccc';
+          } catch (_) { /* thumbnail rendering is best-effort */ }
+        }
+      }, 100);
+    }
+  }
+
+  function _extractSlideTitle(slide) {
+    if (!slide || !slide.elements)
+      return '';
+    for (const el of slide.elements) {
+      if (el.type !== 'textbox')
+        continue;
+      const text = (el.content || el.placeholder || '').replace(/<[^>]*>/g, '').trim();
+      if (text && text !== 'Click to add title' && text !== 'Click to add subtitle' && text !== 'Click to add text')
+        return text;
+    }
+    return '';
+  }
+
+  function _escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  // ===============================================================
+  // P3: Presentation Outline Print
+  // ===============================================================
+
+  function doPrintOutline() {
+    if (!presentation || !presentation.slides.length)
+      return;
+
+    let html = '<!DOCTYPE html><html><head><meta charset="UTF-8">';
+    html += '<title>Outline - ' + _escapeHtml(currentFileName) + '</title>';
+    html += '<style>';
+    html += 'body { font-family: Calibri, Arial, sans-serif; margin: 20px 40px; color: #333; }';
+    html += 'h1 { font-size: 14px; color: #4472c4; border-bottom: 1px solid #4472c4; padding-bottom: 4px; margin-top: 24px; margin-bottom: 8px; }';
+    html += '.slide-heading { font-size: 18px; font-weight: bold; margin: 4px 0; }';
+    html += '.slide-subtitle { font-size: 14px; color: #666; margin: 2px 0 6px; }';
+    html += '.slide-body { font-size: 13px; line-height: 1.5; margin-left: 16px; }';
+    html += '.slide-body ul { margin: 4px 0; padding-left: 20px; }';
+    html += '.slide-body li { margin-bottom: 2px; }';
+    html += '@media print { body { margin: 1cm; } h1 { page-break-before: auto; } }';
+    html += '@page { size: portrait; margin: 1.5cm; }';
+    html += '</style></head><body>';
+    html += '<div style="font-size:20px;font-weight:bold;margin-bottom:20px;">' + _escapeHtml(currentFileName) + ' - Outline</div>';
+
+    for (let i = 0; i < presentation.slides.length; ++i) {
+      const slide = presentation.slides[i];
+      html += '<h1>Slide ' + (i + 1) + '</h1>';
+
+      const texts = _extractSlideTexts(slide);
+      let titleDone = false;
+
+      for (const textInfo of texts) {
+        const text = textInfo.text.trim();
+        if (!text)
+          continue;
+
+        if (!titleDone && textInfo.role === 'title') {
+          html += '<div class="slide-heading">' + _escapeHtml(text) + '</div>';
+          titleDone = true;
+        } else if (textInfo.role === 'subtitle' || textInfo.role === 'subtext') {
+          html += '<div class="slide-subtitle">' + _escapeHtml(text) + '</div>';
+        } else {
+          // Body text: split into lines and create bullet list
+          const lines = text.split('\n').filter(l => l.trim());
+          if (lines.length > 1) {
+            html += '<div class="slide-body"><ul>';
+            for (const line of lines)
+              html += '<li>' + _escapeHtml(line.trim()) + '</li>';
+            html += '</ul></div>';
+          } else if (lines.length === 1) {
+            if (!titleDone) {
+              html += '<div class="slide-heading">' + _escapeHtml(lines[0]) + '</div>';
+              titleDone = true;
+            } else
+              html += '<div class="slide-body">' + _escapeHtml(lines[0]) + '</div>';
+          }
+        }
+      }
+    }
+
+    html += '</body></html>';
+
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+    }
+  }
+
+  function _extractSlideTexts(slide) {
+    const results = [];
+    if (!slide || !slide.elements)
+      return results;
+
+    // Determine role from placeholder text or element position
+    for (const el of slide.elements) {
+      if (el.type !== 'textbox')
+        continue;
+
+      const rawContent = el.content || '';
+      const text = rawContent.replace(/<[^>]*>/g, '').trim();
+      const placeholder = (el.placeholder || '').toLowerCase();
+
+      let role = 'body';
+      if (placeholder.includes('title') || (el.fontSize && el.fontSize >= 28))
+        role = 'title';
+      else if (placeholder.includes('subtitle') || placeholder.includes('description') || placeholder.includes('subtext'))
+        role = 'subtitle';
+
+      // Skip empty placeholder-only text
+      if (!text || text === el.placeholder)
+        continue;
+
+      results.push({ text, role });
+    }
+
+    return results;
+  }
+
+  // ===============================================================
+  // P4: Summary Zoom
+  // ===============================================================
+
+  function insertSummaryZoom() {
+    if (!presentation || presentation.slides.length < 2) {
+      User32.MessageBox('Need at least 2 slides to create a Summary Zoom.', 'Presentations', 0);
+      return;
+    }
+
+    pushUndo();
+
+    const slideW = presentation.slideWidth || 960;
+    const slideH = presentation.slideHeight || 540;
+
+    // Create summary slide
+    const summarySlide = createNewSlide('blank', 0);
+    summarySlide.id = 'slide-summary-' + Date.now();
+
+    // Store zoom targets (indices of all existing slides, which will shift by +1 after insertion)
+    const targets = [];
+    for (let i = 0; i < presentation.slides.length; ++i)
+      targets.push(i + 1); // +1 because summary will be at index 0
+
+    // Add a title textbox
+    const titleEl = SlideRenderer.createTextbox(50, 20, slideW - 100, 60, '');
+    titleEl.content = 'Summary';
+    titleEl.fontSize = 32;
+    titleEl.fontWeight = 'bold';
+    titleEl.textAlign = 'center';
+    titleEl.color = presentation.theme ? (presentation.theme.colors.title || '#1f3864') : '#1f3864';
+    summarySlide.elements.push(titleEl);
+
+    // Calculate thumbnail grid layout
+    const count = targets.length;
+    const cols = Math.min(count, count <= 4 ? 2 : count <= 9 ? 3 : 4);
+    const rows = Math.ceil(count / cols);
+    const padding = 30;
+    const availW = slideW - padding * 2;
+    const availH = slideH - 100 - padding;
+    const cellW = Math.floor(availW / cols) - 10;
+    const cellH = Math.floor(availH / rows) - 10;
+    const thumbW = Math.min(cellW, Math.floor(cellH * slideW / slideH));
+    const thumbH = Math.floor(thumbW * slideH / slideW);
+
+    for (let i = 0; i < targets.length; ++i) {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = padding + col * (availW / cols) + (availW / cols - thumbW) / 2;
+      const y = 90 + row * (availH / rows) + (availH / rows - thumbH) / 2;
+
+      // Create a shape element to represent the zoom thumbnail
+      const zoomEl = SlideRenderer.createShape(Math.round(x), Math.round(y), thumbW, thumbH, 'rect', '#f0f0f0');
+      zoomEl.strokeColor = '#4472c4';
+      zoomEl.strokeWidth = 2;
+      zoomEl.zoomTarget = targets[i]; // store target slide index
+      zoomEl.isZoomThumbnail = true;
+      summarySlide.elements.push(zoomEl);
+
+      // Add a label textbox inside/below the zoom element
+      const labelEl = SlideRenderer.createTextbox(Math.round(x), Math.round(y + thumbH + 2), thumbW, 20, '');
+      labelEl.content = 'Slide ' + (targets[i] + 1);
+      labelEl.fontSize = 10;
+      labelEl.textAlign = 'center';
+      labelEl.color = '#666666';
+      summarySlide.elements.push(labelEl);
+    }
+
+    // Mark slide as summary zoom type
+    summarySlide.isSummaryZoom = true;
+    summarySlide.zoomTargets = targets;
+
+    // Insert at beginning
+    presentation.slides.unshift(summarySlide);
+    currentSlideIndex = 0;
+    selectedElements.clear();
+    refreshUI();
+    markDirty();
+  }
+
+  // ===============================================================
+  // P5: Element Locking
+  // ===============================================================
+
+  function lockSelectedElements(lock) {
+    const slide = getCurrentSlide();
+    if (!slide || !selectedElements.size)
+      return;
+    pushUndo();
+    for (const elId of selectedElements) {
+      const el = slide.elements.find(e => e.id === elId);
+      if (el)
+        el.locked = lock;
+    }
+    renderMainCanvas();
+    markDirty();
+  }
+
+  function lockAllElements(lock) {
+    const slide = getCurrentSlide();
+    if (!slide || !slide.elements.length)
+      return;
+    pushUndo();
+    for (const el of slide.elements)
+      el.locked = lock;
+    renderMainCanvas();
+    markDirty();
+  }
+
+  function _isElementLocked(elId) {
+    const slide = getCurrentSlide();
+    if (!slide)
+      return false;
+    const el = slide.elements.find(e => e.id === elId);
+    return el ? !!el.locked : false;
+  }
+
+  // ===============================================================
   // Refresh UI
   // ===============================================================
 
@@ -7110,6 +7677,37 @@
     new SZ.Ribbon({ onAction: handleAction });
     if (SZ.Dialog)
       SZ.Dialog.wireAll();
+
+    // Color palette (shared module)
+    const colorPaletteContainer = document.getElementById('color-palette');
+    if (colorPaletteContainer && SZ.ColorPalette)
+      sharedColorPalette = new SZ.ColorPalette(colorPaletteContainer, { storageKey: 'sz-presentations-recent-colors' });
+
+    // Wire ribbon font color swatch
+    const rbFontColorWrap = document.querySelector('.rb-color-wrap');
+    const rbFontColor = document.getElementById('rb-font-color');
+    const rbFontColorSwatch = document.getElementById('rb-font-color-swatch');
+    if (rbFontColorWrap && rbFontColor) {
+      rbFontColorWrap.addEventListener('click', () => {
+        showColorPalette(rbFontColorWrap, (color) => {
+          _setSwatchColor(rbFontColor, color);
+          if (rbFontColorSwatch)
+            rbFontColorSwatch.style.backgroundColor = color;
+          // Apply font color to selected element(s)
+          const slide = getCurrentSlide();
+          if (slide && selectedElements.size) {
+            pushUndo();
+            for (const elId of selectedElements) {
+              const el = slide.elements.find(e => e.id === elId);
+              if (el)
+                el.color = color;
+            }
+            renderMainCanvas();
+            markDirty();
+          }
+        });
+      });
+    }
 
     // Notes editor input
     if (notesEditor) {

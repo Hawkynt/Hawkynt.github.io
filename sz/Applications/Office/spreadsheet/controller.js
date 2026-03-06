@@ -1297,6 +1297,8 @@
       handle.className = 'fill-handle';
       activeTd.appendChild(handle);
     }
+    // S2: Quick Analysis button for multi-cell selections
+    showQuickAnalysis();
   }
 
   function updateToolbarState() {
@@ -1385,10 +1387,13 @@
       setTimeout(() => { if (acTarget === input) acHide(); }, 150);
     });
     statusCell.textContent = 'Edit';
+    // S5: Show calendar popup for date-formatted cells
+    if (isDateValue(col, row)) showCalendar(col, row, td);
   }
 
   function finishEditing(asArray) {
     if (!isEditing) return;
+    dismissCalendar();
     const td = getCellElement(activeCell.col, activeCell.row);
     if (!td) return;
     const input = td.querySelector('.cell-editor');
@@ -1430,6 +1435,8 @@
     const data = S().cellData[cellKey(activeCell.col, activeCell.row)];
     if (data && data.isArray) formulaInput.value = '{' + formulaInput.value + '}';
     statusCell.textContent = 'Ready';
+    // S3: Flash Fill pattern detection after editing
+    attemptFlashFill(activeCell.col, activeCell.row);
   }
 
   function spillArrayFormula(col, row) {
@@ -1454,6 +1461,7 @@
 
   function cancelEditing() {
     if (!isEditing) return;
+    dismissCalendar();
     isEditing = false;
     const td = getCellElement(activeCell.col, activeCell.row);
     if (!td) return;
@@ -1629,6 +1637,17 @@
   }
 
   function hideColorPalette() { sharedColorPalette.hide(); }
+
+  /** Read a color-swatch span's current color */
+  function getSwatchColor(el) { return el.dataset.color; }
+
+  /** Write a color to a color-swatch span */
+  function setSwatchColor(el, color) { el.dataset.color = color; el.style.backgroundColor = color; }
+
+  /** Wire a color-swatch span to open the shared palette on click */
+  function wireSwatchPalette(el, onChange) {
+    el.onclick = () => showColorPalette(el, (c) => { setSwatchColor(el, c); if (onChange) onChange(c); });
+  }
 
   // ── Format Painter (shared module) ─────────────────────────────────
   const spreadsheetFormatPainter = new SZ.FormatPainter({
@@ -1917,6 +1936,7 @@
         case 'b': e.preventDefault(); handleAction('bold'); return;
         case 'i': e.preventDefault(); handleAction('italic'); return;
         case 'u': e.preventDefault(); handleAction('underline'); return;
+        case 'e': e.preventDefault(); handleAction('flash-fill'); return;
         case 'f': e.preventDefault(); handleAction('find-replace'); return;
         case 'a': e.preventDefault(); handleAction('select-all'); return;
         case ';': {
@@ -1953,17 +1973,23 @@
     }
     switch (e.key) {
       case 'Escape':
+        if (flashFillGhosts.length) { e.preventDefault(); clearFlashFillGhosts(); break; }
         if (spreadsheetFormatPainter.isActive) {
           e.preventDefault();
           spreadsheetFormatPainter.deactivate();
         }
+        dismissCalendar();
         break;
       case 'ArrowUp': e.preventDefault(); e.shiftKey ? extendSelection(0, -1) : moveCursor(0, -1); break;
       case 'ArrowDown': e.preventDefault(); e.shiftKey ? extendSelection(0, 1) : moveCursor(0, 1); break;
       case 'ArrowLeft': e.preventDefault(); e.shiftKey ? extendSelection(-1, 0) : moveCursor(-1, 0); break;
       case 'ArrowRight': e.preventDefault(); e.shiftKey ? extendSelection(1, 0) : moveCursor(1, 0); break;
       case 'Tab': e.preventDefault(); moveCursor(e.shiftKey ? -1 : 1, 0); break;
-      case 'Enter': e.preventDefault(); moveCursor(0, 1); break;
+      case 'Enter':
+        e.preventDefault();
+        if (flashFillGhosts.length) { acceptFlashFill(); break; }
+        moveCursor(0, 1);
+        break;
       case 'PageUp': e.preventDefault(); moveCursor(0, -20); break;
       case 'PageDown': e.preventDefault(); moveCursor(0, 20); break;
       case 'Delete': e.preventDefault(); deleteSelection(); break;
@@ -3577,14 +3603,14 @@
       document.getElementById('cf-color').value = rule.color || '#ffcccc';
       if (rule.type === 'formula') {
         document.getElementById('cf-formula').value = rule.formula || '';
-        document.getElementById('cf-fmt-text-color').value = rule.fmtTextColor || '#000000';
-        document.getElementById('cf-fmt-bg-color').value = rule.fmtBgColor || '#ffcccc';
+        setSwatchColor(document.getElementById('cf-fmt-text-color'), rule.fmtTextColor || '#000000');
+        setSwatchColor(document.getElementById('cf-fmt-bg-color'), rule.fmtBgColor || '#ffcccc');
         document.getElementById('cf-fmt-bold').checked = !!rule.fmtBold;
         document.getElementById('cf-fmt-italic').checked = !!rule.fmtItalic;
       }
-      if (rule.colorMin) document.getElementById('cf-color-min').value = rule.colorMin;
-      if (rule.colorMid) document.getElementById('cf-color-mid').value = rule.colorMid;
-      if (rule.colorMax) document.getElementById('cf-color-max').value = rule.colorMax;
+      if (rule.colorMin) setSwatchColor(document.getElementById('cf-color-min'), rule.colorMin);
+      if (rule.colorMid) setSwatchColor(document.getElementById('cf-color-mid'), rule.colorMid);
+      if (rule.colorMax) setSwatchColor(document.getElementById('cf-color-max'), rule.colorMax);
       showDialog('dlg-cond-format').then(r => {
         if (r === 'ok') {
           const ruleType = cfRuleSel.value;
@@ -3597,14 +3623,14 @@
             stopIfTrue: rule.stopIfTrue,
           };
           if (ruleType === 'color-scale-2' || ruleType === 'color-scale-3') {
-            newRule.colorMin = document.getElementById('cf-color-min').value;
-            newRule.colorMid = document.getElementById('cf-color-mid').value;
-            newRule.colorMax = document.getElementById('cf-color-max').value;
+            newRule.colorMin = getSwatchColor(document.getElementById('cf-color-min'));
+            newRule.colorMid = getSwatchColor(document.getElementById('cf-color-mid'));
+            newRule.colorMax = getSwatchColor(document.getElementById('cf-color-max'));
           }
           if (ruleType === 'formula') {
             newRule.formula = document.getElementById('cf-formula').value;
-            newRule.fmtTextColor = document.getElementById('cf-fmt-text-color').value;
-            newRule.fmtBgColor = document.getElementById('cf-fmt-bg-color').value;
+            newRule.fmtTextColor = getSwatchColor(document.getElementById('cf-fmt-text-color'));
+            newRule.fmtBgColor = getSwatchColor(document.getElementById('cf-fmt-bg-color'));
             newRule.fmtBold = document.getElementById('cf-fmt-bold').checked;
             newRule.fmtItalic = document.getElementById('cf-fmt-italic').checked;
           }
@@ -4275,6 +4301,798 @@
 
   // ═══════════════════════════════════════════════════════════════
 
+  // ── S2: Quick Analysis Tool ──────────────────────────────────────
+  let qaBtn = null;
+  let qaPopup = null;
+
+  function showQuickAnalysis() {
+    removeQuickAnalysis();
+    const rect = getSelectionRect();
+    if (rect.c1 === rect.c2 && rect.r1 === rect.r2) return;
+
+    const lastTd = getCellElement(rect.c2, rect.r2);
+    if (!lastTd) return;
+
+    qaBtn = document.createElement('div');
+    qaBtn.className = 'quick-analysis-btn';
+    qaBtn.textContent = '\u26A1';
+    qaBtn.title = 'Quick Analysis';
+
+    const tdRect = lastTd.getBoundingClientRect();
+    const scrollRect = gridScroll.getBoundingClientRect();
+    qaBtn.style.left = (tdRect.right - scrollRect.left + gridScroll.scrollLeft + 2) + 'px';
+    qaBtn.style.top = (tdRect.bottom - scrollRect.top + gridScroll.scrollTop + 2) + 'px';
+
+    qaBtn.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      if (qaPopup) { removeQuickAnalysisPopup(); return; }
+      showQuickAnalysisPopup(rect, tdRect);
+    });
+
+    gridScroll.appendChild(qaBtn);
+  }
+
+  function removeQuickAnalysis() {
+    if (qaBtn) { qaBtn.remove(); qaBtn = null; }
+    removeQuickAnalysisPopup();
+  }
+
+  function removeQuickAnalysisPopup() {
+    if (qaPopup) { qaPopup.remove(); qaPopup = null; }
+  }
+
+  function showQuickAnalysisPopup(rect, anchorRect) {
+    removeQuickAnalysisPopup();
+
+    qaPopup = document.createElement('div');
+    qaPopup.className = 'quick-analysis-popup';
+
+    const tabs = [
+      { id: 'formatting', label: 'Formatting' },
+      { id: 'totals', label: 'Totals' },
+      { id: 'tables', label: 'Tables' },
+    ];
+
+    const tabBar = document.createElement('div');
+    tabBar.className = 'qa-tabs';
+    const panels = {};
+
+    for (const tab of tabs) {
+      const btn = document.createElement('button');
+      btn.className = 'qa-tab' + (tab.id === 'formatting' ? ' active' : '');
+      btn.textContent = tab.label;
+      btn.addEventListener('click', () => {
+        tabBar.querySelectorAll('.qa-tab').forEach(t => t.classList.remove('active'));
+        btn.classList.add('active');
+        for (const key in panels) panels[key].classList.toggle('active', key === tab.id);
+      });
+      tabBar.appendChild(btn);
+    }
+    qaPopup.appendChild(tabBar);
+
+    // Formatting panel
+    const fmtPanel = document.createElement('div');
+    fmtPanel.className = 'qa-panel active';
+    panels.formatting = fmtPanel;
+
+    const fmtOptions = [
+      { icon: '\u25B2', label: 'Top 10%', action: () => qaApplyTop10(rect) },
+      { icon: '\u2588', label: 'Data Bars', action: () => qaApplyDataBars(rect) },
+      { icon: '\u25A0', label: 'Color Scale', action: () => qaApplyColorScale(rect) },
+      { icon: '\u2714', label: 'Icon Set', action: () => qaApplyIconSet(rect) },
+    ];
+    for (const opt of fmtOptions) {
+      const el = document.createElement('div');
+      el.className = 'qa-option';
+      el.innerHTML = '<span class="qa-option-icon">' + opt.icon + '</span><span>' + opt.label + '</span>';
+      el.addEventListener('click', () => { opt.action(); removeQuickAnalysis(); });
+      fmtPanel.appendChild(el);
+    }
+    qaPopup.appendChild(fmtPanel);
+
+    // Totals panel
+    const totPanel = document.createElement('div');
+    totPanel.className = 'qa-panel';
+    panels.totals = totPanel;
+
+    const totOptions = [
+      { icon: '\u03A3', label: 'Sum', fn: 'SUM' },
+      { icon: 'x\u0305', label: 'Average', fn: 'AVERAGE' },
+      { icon: '#', label: 'Count', fn: 'COUNT' },
+    ];
+    for (const opt of totOptions) {
+      const el = document.createElement('div');
+      el.className = 'qa-option';
+      el.innerHTML = '<span class="qa-option-icon">' + opt.icon + '</span><span>' + opt.label + '</span>';
+      el.addEventListener('click', () => { qaInsertTotalRow(rect, opt.fn); removeQuickAnalysis(); });
+      totPanel.appendChild(el);
+    }
+    qaPopup.appendChild(totPanel);
+
+    // Tables panel
+    const tblPanel = document.createElement('div');
+    tblPanel.className = 'qa-panel';
+    panels.tables = tblPanel;
+
+    const tblEl = document.createElement('div');
+    tblEl.className = 'qa-option';
+    tblEl.innerHTML = '<span class="qa-option-icon">\u2630</span><span>Named Range</span>';
+    tblEl.addEventListener('click', () => { qaCreateNamedRange(rect); removeQuickAnalysis(); });
+    tblPanel.appendChild(tblEl);
+    qaPopup.appendChild(tblPanel);
+
+    const scrollRect = gridScroll.getBoundingClientRect();
+    qaPopup.style.left = Math.min(anchorRect.right - scrollRect.left + gridScroll.scrollLeft, gridScroll.scrollWidth - 340) + 'px';
+    qaPopup.style.top = (anchorRect.bottom - scrollRect.top + gridScroll.scrollTop + 26) + 'px';
+    gridScroll.appendChild(qaPopup);
+
+    const closePopup = (ev) => {
+      if (qaPopup && !qaPopup.contains(ev.target) && ev.target !== qaBtn) {
+        removeQuickAnalysisPopup();
+        document.removeEventListener('pointerdown', closePopup, true);
+      }
+    };
+    setTimeout(() => document.addEventListener('pointerdown', closePopup, true), 0);
+  }
+
+  function qaApplyTop10(rect) {
+    const allVals = [];
+    for (let r = rect.r1; r <= rect.r2; ++r)
+      for (let c = rect.c1; c <= rect.c2; ++c) {
+        const v = Number(getCellValue(c, r));
+        if (!isNaN(v)) allVals.push(v);
+      }
+    if (!allVals.length) return;
+    allVals.sort((a, b) => b - a);
+    const n = Math.max(1, Math.ceil(allVals.length * 0.1));
+    const threshold = allVals[Math.min(n, allVals.length) - 1];
+    S().conditionalRules.push({ ...rect, type: 'greater', value1: String(threshold - 0.0001), color: '#c6efce' });
+    rebuildGrid(); setDirty(true);
+  }
+
+  function qaApplyDataBars(rect) {
+    S().conditionalRules.push({ ...rect, type: 'data-bar', color: '#638ec6' });
+    rebuildGrid(); setDirty(true);
+  }
+
+  function qaApplyColorScale(rect) {
+    S().conditionalRules.push({ ...rect, type: 'color-scale-2', colorMin: '#f8696b', colorMax: '#63be7b' });
+    rebuildGrid(); setDirty(true);
+  }
+
+  function qaApplyIconSet(rect) {
+    S().conditionalRules.push({ ...rect, type: 'icon-3-arrows' });
+    rebuildGrid(); setDirty(true);
+  }
+
+  function qaInsertTotalRow(rect, fn) {
+    const targetRow = rect.r2 + 1;
+    if (targetRow > S().maxUsedRow) S().maxUsedRow = targetRow;
+    const actions = [];
+    for (let c = rect.c1; c <= rect.c2; ++c) {
+      const range = cellKey(c, rect.r1) + ':' + cellKey(c, rect.r2);
+      const formula = '=' + fn + '(' + range + ')';
+      const oldVal = getCellRaw(c, targetRow);
+      const oldFmt = Object.assign({}, getFormat(c, targetRow));
+      actions.push({ type: 'cell', col: c, row: targetRow, oldVal, newVal: formula, oldFmt, newFmt: Object.assign({}, oldFmt, { bold: true }) });
+      setCellData(c, targetRow, formula);
+      setFormat(c, targetRow, { bold: true });
+      recalcDependents(cellKey(c, targetRow));
+    }
+    if (actions.length) { pushUndo({ type: 'multi', actions }); setDirty(true); }
+    rebuildGrid();
+  }
+
+  function qaCreateNamedRange(rect) {
+    const rangeName = 'Range_' + cellKey(rect.c1, rect.r1) + '_' + cellKey(rect.c2, rect.r2);
+    const rangeRef = cellKey(rect.c1, rect.r1) + ':' + cellKey(rect.c2, rect.r2);
+    showPrompt('Create Named Range', 'Name:', rangeName).then(name => {
+      if (!name || !name.trim()) return;
+      S().namedRanges[name.trim()] = rangeRef;
+      setDirty(true);
+    });
+  }
+
+  // ── S3: Flash Fill ────────────────────────────────────────────────
+  let flashFillGhosts = [];
+
+  function attemptFlashFill(col, row) {
+    clearFlashFillGhosts();
+    if (col < 1) return;
+
+    const srcCol = col - 1;
+    const examples = [];
+    for (let r = 0; r <= row; ++r) {
+      const src = String(getCellValue(srcCol, r));
+      const out = String(getCellValue(col, r));
+      if (src && out) examples.push({ src, out, row: r });
+    }
+    if (examples.length < 2) return;
+
+    const pattern = detectFlashFillPattern(examples);
+    if (!pattern) return;
+
+    const ghostRows = [];
+    for (let r = row + 1; r < totalRows(); ++r) {
+      const src = String(getCellValue(srcCol, r));
+      if (!src) break;
+      const existing = getCellRaw(col, r);
+      if (existing) continue;
+      const predicted = applyFlashFillPattern(pattern, src);
+      if (predicted === null) break;
+      ghostRows.push({ col, row: r, value: predicted });
+    }
+    if (!ghostRows.length) return;
+
+    for (const ghost of ghostRows) {
+      const td = getCellElement(ghost.col, ghost.row);
+      if (td) {
+        td.textContent = ghost.value;
+        td.classList.add('flash-fill-ghost');
+        td.dataset.flashGhost = ghost.value;
+      }
+    }
+    flashFillGhosts = ghostRows;
+  }
+
+  function detectFlashFillPattern(examples) {
+    // Try substring extraction (LEFT, RIGHT, MID)
+    const patterns = [];
+
+    // Try: output is substring of input
+    const subResult = trySubstringPattern(examples);
+    if (subResult) return subResult;
+
+    // Try: case change (upper, lower, proper)
+    const caseResult = tryCasePattern(examples);
+    if (caseResult) return caseResult;
+
+    // Try: number extraction
+    const numResult = tryNumberExtract(examples);
+    if (numResult) return numResult;
+
+    // Try: concatenation/prefix/suffix
+    const concatResult = tryConcatPattern(examples);
+    if (concatResult) return concatResult;
+
+    return null;
+  }
+
+  function trySubstringPattern(examples) {
+    // Check if all outputs are a consistent substring of inputs
+    let startIdx = null, endLen = null;
+    for (const ex of examples) {
+      const idx = ex.src.indexOf(ex.out);
+      if (idx < 0) return null;
+      if (startIdx === null) { startIdx = idx; endLen = ex.out.length; }
+      else if (idx !== startIdx || ex.out.length !== endLen) {
+        // Try from end
+        break;
+      }
+    }
+    if (startIdx !== null) {
+      let consistent = true;
+      for (const ex of examples) {
+        const sub = ex.src.substring(startIdx, startIdx + endLen);
+        if (sub !== ex.out) { consistent = false; break; }
+      }
+      if (consistent) return { type: 'substring', start: startIdx, length: endLen };
+    }
+
+    // Try: first N chars
+    const firstLen = examples[0].out.length;
+    if (examples.every(ex => ex.src.substring(0, firstLen) === ex.out))
+      return { type: 'left', length: firstLen };
+
+    // Try: last N chars
+    if (examples.every(ex => ex.src.substring(ex.src.length - firstLen) === ex.out))
+      return { type: 'right', length: firstLen };
+
+    return null;
+  }
+
+  function tryCasePattern(examples) {
+    if (examples.every(ex => ex.out === ex.src.toUpperCase())) return { type: 'upper' };
+    if (examples.every(ex => ex.out === ex.src.toLowerCase())) return { type: 'lower' };
+    if (examples.every(ex => ex.out === ex.src.replace(/\b\w/g, c => c.toUpperCase()))) return { type: 'proper' };
+    return null;
+  }
+
+  function tryNumberExtract(examples) {
+    if (examples.every(ex => {
+      const nums = ex.src.match(/\d+/g);
+      return nums && nums.join('') === ex.out;
+    })) return { type: 'extract-numbers' };
+
+    if (examples.every(ex => {
+      const nums = ex.src.match(/\d+/g);
+      return nums && nums[0] === ex.out;
+    })) return { type: 'first-number' };
+
+    return null;
+  }
+
+  function tryConcatPattern(examples) {
+    // Try: prefix + source or source + suffix
+    const first = examples[0];
+    if (first.out.includes(first.src)) {
+      const prefix = first.out.substring(0, first.out.indexOf(first.src));
+      const suffix = first.out.substring(first.out.indexOf(first.src) + first.src.length);
+      if (examples.every(ex => ex.out === prefix + ex.src + suffix))
+        return { type: 'concat', prefix, suffix };
+    }
+
+    // Try split-based: if source contains a separator and output uses parts
+    for (const sep of [' ', ',', '-', '_', '.', '/']) {
+      const parts0 = first.src.split(sep);
+      if (parts0.length < 2) continue;
+
+      // Check if output is first part
+      if (examples.every(ex => ex.out === ex.src.split(sep)[0]))
+        return { type: 'split-first', sep };
+
+      // Check if output is last part
+      if (examples.every(ex => { const p = ex.src.split(sep); return ex.out === p[p.length - 1]; }))
+        return { type: 'split-last', sep };
+
+      // Check if output is parts rearranged (e.g., "Last, First" from "First Last")
+      if (parts0.length === 2) {
+        const rearranged = parts0[1] + ', ' + parts0[0];
+        if (first.out === rearranged) {
+          if (examples.every(ex => {
+            const p = ex.src.split(sep);
+            return p.length === 2 && ex.out === p[1] + ', ' + p[0];
+          })) return { type: 'swap-parts', sep, joiner: ', ' };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  function applyFlashFillPattern(pattern, src) {
+    switch (pattern.type) {
+      case 'substring': return src.substring(pattern.start, pattern.start + pattern.length);
+      case 'left': return src.substring(0, pattern.length);
+      case 'right': return src.substring(src.length - pattern.length);
+      case 'upper': return src.toUpperCase();
+      case 'lower': return src.toLowerCase();
+      case 'proper': return src.replace(/\b\w/g, c => c.toUpperCase());
+      case 'extract-numbers': { const m = src.match(/\d+/g); return m ? m.join('') : null; }
+      case 'first-number': { const m = src.match(/\d+/g); return m ? m[0] : null; }
+      case 'concat': return pattern.prefix + src + pattern.suffix;
+      case 'split-first': return src.split(pattern.sep)[0] || null;
+      case 'split-last': { const p = src.split(pattern.sep); return p[p.length - 1] || null; }
+      case 'swap-parts': {
+        const p = src.split(pattern.sep);
+        return p.length === 2 ? p[1] + pattern.joiner + p[0] : null;
+      }
+      default: return null;
+    }
+  }
+
+  function acceptFlashFill() {
+    if (!flashFillGhosts.length) return;
+    const actions = [];
+    for (const ghost of flashFillGhosts) {
+      const oldVal = getCellRaw(ghost.col, ghost.row);
+      const oldFmt = Object.assign({}, getFormat(ghost.col, ghost.row));
+      actions.push({ type: 'cell', col: ghost.col, row: ghost.row, oldVal, newVal: ghost.value, oldFmt, newFmt: Object.assign({}, oldFmt) });
+      setCellData(ghost.col, ghost.row, ghost.value);
+      recalcDependents(cellKey(ghost.col, ghost.row));
+    }
+    if (actions.length) { pushUndo({ type: 'multi', actions }); setDirty(true); }
+    clearFlashFillGhosts();
+    rebuildGrid();
+  }
+
+  function clearFlashFillGhosts() {
+    for (const ghost of flashFillGhosts) {
+      const td = getCellElement(ghost.col, ghost.row);
+      if (td) {
+        td.classList.remove('flash-fill-ghost');
+        delete td.dataset.flashGhost;
+        renderCellContent(ghost.col, ghost.row);
+      }
+    }
+    flashFillGhosts = [];
+  }
+
+  // ── S4: Get Data (Power Query Lite) ───────────────────────────────
+  let getDataParsed = null;
+
+  function showGetDataDialog() {
+    getDataParsed = null;
+    const preview = document.getElementById('gd-preview-section');
+    const loadBtn = document.getElementById('gd-load-btn');
+    preview.style.display = 'none';
+    loadBtn.disabled = true;
+
+    const csvPanel = document.getElementById('gd-csv-panel');
+    const htmlPanel = document.getElementById('gd-html-panel');
+    const delimRow = document.getElementById('gd-delimiter-row');
+    const fileInput = document.getElementById('gd-file-input');
+    const htmlInput = document.getElementById('gd-html-input');
+
+    const radios = document.querySelectorAll('input[name="gd-source"]');
+    for (const radio of radios)
+      radio.addEventListener('change', () => {
+        const val = document.querySelector('input[name="gd-source"]:checked').value;
+        csvPanel.style.display = (val === 'csv' || val === 'json') ? '' : 'none';
+        htmlPanel.style.display = val === 'html' ? '' : 'none';
+        delimRow.style.display = val === 'csv' ? '' : 'none';
+        fileInput.accept = val === 'csv' ? '.csv,.tsv,.txt' : val === 'json' ? '.json' : '.htm,.html';
+        preview.style.display = 'none';
+        loadBtn.disabled = true;
+        getDataParsed = null;
+      });
+
+    document.querySelector('input[name="gd-source"][value="csv"]').checked = true;
+    csvPanel.style.display = '';
+    htmlPanel.style.display = 'none';
+    delimRow.style.display = '';
+    fileInput.accept = '.csv,.tsv,.txt';
+
+    const dropArea = document.getElementById('gd-file-drop');
+    dropArea.textContent = 'Click to browse or drag & drop a file here';
+
+    dropArea.onclick = () => fileInput.click();
+    dropArea.ondragover = (e) => { e.preventDefault(); dropArea.style.borderColor = 'var(--sz-color-highlight)'; };
+    dropArea.ondragleave = () => { dropArea.style.borderColor = ''; };
+    dropArea.ondrop = (e) => {
+      e.preventDefault();
+      dropArea.style.borderColor = '';
+      if (e.dataTransfer.files.length) gdReadFile(e.dataTransfer.files[0]);
+    };
+
+    fileInput.value = '';
+    fileInput.onchange = () => {
+      if (fileInput.files.length) gdReadFile(fileInput.files[0]);
+    };
+
+    document.getElementById('gd-html-parse').onclick = () => {
+      const html = htmlInput.value;
+      if (!html.trim()) return;
+      gdParseHtml(html);
+    };
+
+    showDialog('dlg-get-data').then(r => {
+      if (r === 'ok' && getDataParsed && getDataParsed.length)
+        gdLoadData(getDataParsed);
+    });
+  }
+
+  function gdReadFile(file) {
+    const source = document.querySelector('input[name="gd-source"]:checked').value;
+    const reader = new FileReader();
+    reader.onload = () => {
+      document.getElementById('gd-file-drop').textContent = file.name;
+      if (source === 'csv') {
+        const delim = document.getElementById('gd-delimiter').value;
+        gdParseCsv(reader.result, delim);
+      } else if (source === 'json')
+        gdParseJson(reader.result);
+    };
+    reader.readAsText(file);
+  }
+
+  function gdParseCsv(text, delim) {
+    const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    if (lines.length && lines[lines.length - 1] === '') lines.pop();
+    const rows = lines.map(line => line.split(delim));
+    getDataParsed = rows;
+    gdShowPreview(rows);
+  }
+
+  function gdParseJson(text) {
+    try {
+      let data = JSON.parse(text);
+      if (!Array.isArray(data)) {
+        // Try to find an array property
+        for (const key of Object.keys(data))
+          if (Array.isArray(data[key])) { data = data[key]; break; }
+      }
+      if (!Array.isArray(data)) { data = [data]; }
+
+      // Flatten objects to columns
+      const headers = new Set();
+      for (const obj of data) {
+        if (typeof obj !== 'object' || obj === null) continue;
+        gdFlattenKeys(obj, '', headers);
+      }
+      const cols = [...headers];
+      const rows = [cols];
+      for (const obj of data) {
+        if (typeof obj !== 'object' || obj === null) { rows.push([String(obj)]); continue; }
+        const flat = {};
+        gdFlattenObj(obj, '', flat);
+        rows.push(cols.map(c => flat[c] !== undefined ? String(flat[c]) : ''));
+      }
+      getDataParsed = rows;
+      gdShowPreview(rows);
+    } catch (e) {
+      document.getElementById('gd-preview-info').textContent = 'Error: ' + e.message;
+      document.getElementById('gd-preview-section').style.display = '';
+    }
+  }
+
+  function gdFlattenKeys(obj, prefix, set) {
+    for (const key of Object.keys(obj)) {
+      const path = prefix ? prefix + '.' + key : key;
+      if (typeof obj[key] === 'object' && obj[key] !== null && !Array.isArray(obj[key]))
+        gdFlattenKeys(obj[key], path, set);
+      else
+        set.add(path);
+    }
+  }
+
+  function gdFlattenObj(obj, prefix, flat) {
+    for (const key of Object.keys(obj)) {
+      const path = prefix ? prefix + '.' + key : key;
+      if (typeof obj[key] === 'object' && obj[key] !== null && !Array.isArray(obj[key]))
+        gdFlattenObj(obj[key], path, flat);
+      else
+        flat[path] = Array.isArray(obj[key]) ? JSON.stringify(obj[key]) : obj[key];
+    }
+  }
+
+  function gdParseHtml(html) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const table = doc.querySelector('table');
+    if (!table) {
+      document.getElementById('gd-preview-info').textContent = 'No <table> element found.';
+      document.getElementById('gd-preview-section').style.display = '';
+      return;
+    }
+    const rows = [];
+    for (const tr of table.querySelectorAll('tr')) {
+      const cells = [];
+      for (const cell of tr.querySelectorAll('th, td'))
+        cells.push(cell.textContent.trim());
+      if (cells.length) rows.push(cells);
+    }
+    getDataParsed = rows;
+    gdShowPreview(rows);
+  }
+
+  function gdShowPreview(rows) {
+    const grid = document.getElementById('gd-preview-grid');
+    const info = document.getElementById('gd-preview-info');
+    const section = document.getElementById('gd-preview-section');
+    const loadBtn = document.getElementById('gd-load-btn');
+    grid.innerHTML = '';
+
+    if (!rows.length) {
+      info.textContent = 'No data found.';
+      section.style.display = '';
+      loadBtn.disabled = true;
+      return;
+    }
+
+    const hasHeader = document.getElementById('gd-first-row-header').checked;
+    const table = document.createElement('table');
+    const maxRows = Math.min(rows.length, 20);
+    const maxCols = Math.max(...rows.slice(0, maxRows).map(r => r.length));
+
+    if (hasHeader && rows.length > 0) {
+      const thead = document.createElement('thead');
+      const tr = document.createElement('tr');
+      for (let c = 0; c < maxCols; ++c) {
+        const th = document.createElement('th');
+        th.textContent = (rows[0] && rows[0][c]) || ('Col ' + (c + 1));
+        tr.appendChild(th);
+      }
+      thead.appendChild(tr);
+      table.appendChild(thead);
+    }
+
+    const tbody = document.createElement('tbody');
+    const startRow = hasHeader ? 1 : 0;
+    for (let r = startRow; r < maxRows; ++r) {
+      const tr = document.createElement('tr');
+      for (let c = 0; c < maxCols; ++c) {
+        const td = document.createElement('td');
+        td.textContent = (rows[r] && rows[r][c]) || '';
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    grid.appendChild(table);
+
+    info.textContent = rows.length + ' rows, ' + maxCols + ' columns' + (rows.length > 20 ? ' (showing first 20)' : '');
+    section.style.display = '';
+    loadBtn.disabled = false;
+  }
+
+  function gdLoadData(rows) {
+    const startCol = activeCell.col;
+    const startRow = activeCell.row;
+    const actions = [];
+    for (let r = 0; r < rows.length; ++r)
+      for (let c = 0; c < rows[r].length; ++c) {
+        const tc = startCol + c, tr = startRow + r;
+        const oldVal = getCellRaw(tc, tr);
+        const oldFmt = Object.assign({}, getFormat(tc, tr));
+        const newVal = rows[r][c];
+        actions.push({ type: 'cell', col: tc, row: tr, oldVal, newVal, oldFmt, newFmt: Object.assign({}, oldFmt) });
+        setCellData(tc, tr, newVal);
+        recalcDependents(cellKey(tc, tr));
+      }
+    if (actions.length) { pushUndo({ type: 'multi', actions }); setDirty(true); }
+    rebuildGrid();
+  }
+
+  // ── S5: Cell Dropdown Calendar ────────────────────────────────────
+  let calendarPopup = null;
+
+  function isDateValue(col, row) {
+    const fmt = getFormat(col, row);
+    if (fmt.numberFmt === 'date') return true;
+    const val = getCellValue(col, row);
+    if (typeof val === 'string' && val.trim()) {
+      const d = new Date(val);
+      if (!isNaN(d.getTime()) && /\d/.test(val) && /[-/]/.test(val)) return true;
+    }
+    if (typeof val === 'number') {
+      const raw = getCellRaw(col, row);
+      if (typeof raw === 'string' && raw.startsWith('=') && /DATE|TODAY|NOW|EDATE|EOMONTH/i.test(raw)) return true;
+    }
+    return false;
+  }
+
+  function showCalendar(col, row, td) {
+    dismissCalendar();
+
+    const currentVal = getCellValue(col, row);
+    let initDate = new Date();
+    if (currentVal) {
+      const d = new Date(currentVal);
+      if (!isNaN(d.getTime())) initDate = d;
+    }
+
+    let viewYear = initDate.getFullYear();
+    let viewMonth = initDate.getMonth();
+    const selectedDate = new Date(initDate);
+
+    calendarPopup = document.createElement('div');
+    calendarPopup.className = 'calendar-popup';
+
+    function render() {
+      calendarPopup.innerHTML = '';
+
+      // Header with nav
+      const header = document.createElement('div');
+      header.className = 'calendar-header';
+
+      const prevBtn = document.createElement('button');
+      prevBtn.className = 'calendar-nav';
+      prevBtn.textContent = '\u25C0';
+      prevBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        --viewMonth;
+        if (viewMonth < 0) { viewMonth = 11; --viewYear; }
+        render();
+      });
+
+      const nextBtn = document.createElement('button');
+      nextBtn.className = 'calendar-nav';
+      nextBtn.textContent = '\u25B6';
+      nextBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        ++viewMonth;
+        if (viewMonth > 11) { viewMonth = 0; ++viewYear; }
+        render();
+      });
+
+      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'];
+      const titleSpan = document.createElement('span');
+      titleSpan.textContent = monthNames[viewMonth] + ' ' + viewYear;
+
+      header.appendChild(prevBtn);
+      header.appendChild(titleSpan);
+      header.appendChild(nextBtn);
+      calendarPopup.appendChild(header);
+
+      // Day-of-week headers
+      const grid = document.createElement('div');
+      grid.className = 'calendar-grid';
+
+      const dayLabels = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+      for (const d of dayLabels) {
+        const dow = document.createElement('div');
+        dow.className = 'calendar-dow';
+        dow.textContent = d;
+        grid.appendChild(dow);
+      }
+
+      // Calendar days
+      const firstDay = new Date(viewYear, viewMonth, 1).getDay();
+      const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+      const daysInPrevMonth = new Date(viewYear, viewMonth, 0).getDate();
+      const today = new Date();
+
+      // Previous month fill
+      for (let i = firstDay - 1; i >= 0; --i) {
+        const dayEl = document.createElement('div');
+        dayEl.className = 'calendar-day other-month';
+        dayEl.textContent = daysInPrevMonth - i;
+        const prevM = viewMonth - 1 < 0 ? 11 : viewMonth - 1;
+        const prevY = viewMonth - 1 < 0 ? viewYear - 1 : viewYear;
+        const dayNum = daysInPrevMonth - i;
+        dayEl.addEventListener('click', (e) => { e.stopPropagation(); insertCalendarDate(col, row, prevY, prevM, dayNum); });
+        grid.appendChild(dayEl);
+      }
+
+      // Current month
+      for (let d = 1; d <= daysInMonth; ++d) {
+        const dayEl = document.createElement('div');
+        dayEl.className = 'calendar-day';
+        if (d === today.getDate() && viewMonth === today.getMonth() && viewYear === today.getFullYear())
+          dayEl.classList.add('today');
+        if (d === selectedDate.getDate() && viewMonth === selectedDate.getMonth() && viewYear === selectedDate.getFullYear())
+          dayEl.classList.add('selected');
+        dayEl.textContent = d;
+        const dayNum = d;
+        dayEl.addEventListener('click', (e) => { e.stopPropagation(); insertCalendarDate(col, row, viewYear, viewMonth, dayNum); });
+        grid.appendChild(dayEl);
+      }
+
+      // Next month fill
+      const totalCells = firstDay + daysInMonth;
+      const remaining = (7 - (totalCells % 7)) % 7;
+      const nextM = viewMonth + 1 > 11 ? 0 : viewMonth + 1;
+      const nextY = viewMonth + 1 > 11 ? viewYear + 1 : viewYear;
+      for (let d = 1; d <= remaining; ++d) {
+        const dayEl = document.createElement('div');
+        dayEl.className = 'calendar-day other-month';
+        dayEl.textContent = d;
+        const dayNum = d;
+        dayEl.addEventListener('click', (e) => { e.stopPropagation(); insertCalendarDate(col, row, nextY, nextM, dayNum); });
+        grid.appendChild(dayEl);
+      }
+
+      calendarPopup.appendChild(grid);
+    }
+
+    render();
+
+    // Position below the cell
+    const tdRect = td.getBoundingClientRect();
+    calendarPopup.style.left = tdRect.left + 'px';
+    calendarPopup.style.top = (tdRect.bottom + 2) + 'px';
+    document.body.appendChild(calendarPopup);
+
+    // Dismiss on click outside
+    const dismiss = (ev) => {
+      if (calendarPopup && !calendarPopup.contains(ev.target)) {
+        dismissCalendar();
+        document.removeEventListener('pointerdown', dismiss, true);
+      }
+    };
+    setTimeout(() => document.addEventListener('pointerdown', dismiss, true), 0);
+  }
+
+  function insertCalendarDate(col, row, year, month, day) {
+    const dateStr = (month + 1) + '/' + day + '/' + year;
+    const oldVal = getCellRaw(col, row);
+    const oldFmt = Object.assign({}, getFormat(col, row));
+    pushUndo({ type: 'cell', col, row, oldVal, newVal: dateStr, oldFmt, newFmt: Object.assign({}, oldFmt, { numberFmt: 'date' }) });
+    setCellData(col, row, dateStr);
+    setFormat(col, row, { numberFmt: 'date' });
+    recalcDependents(cellKey(col, row));
+    renderCellContent(col, row);
+    setDirty(true);
+    dismissCalendar();
+    if (isEditing) cancelEditing();
+  }
+
+  function dismissCalendar() {
+    if (calendarPopup) { calendarPopup.remove(); calendarPopup = null; }
+  }
+
   // ── Main action handler ────────────────────────────────────────────
   function handleAction(action) {
     if (Protection.isActionBlocked(action)) {
@@ -4736,14 +5554,14 @@
               color: document.getElementById('cf-color').value,
             };
             if (ruleType === 'color-scale-2' || ruleType === 'color-scale-3') {
-              rule.colorMin = document.getElementById('cf-color-min').value;
-              rule.colorMid = document.getElementById('cf-color-mid').value;
-              rule.colorMax = document.getElementById('cf-color-max').value;
+              rule.colorMin = getSwatchColor(document.getElementById('cf-color-min'));
+              rule.colorMid = getSwatchColor(document.getElementById('cf-color-mid'));
+              rule.colorMax = getSwatchColor(document.getElementById('cf-color-max'));
             }
             if (ruleType === 'formula') {
               rule.formula = document.getElementById('cf-formula').value;
-              rule.fmtTextColor = document.getElementById('cf-fmt-text-color').value;
-              rule.fmtBgColor = document.getElementById('cf-fmt-bg-color').value;
+              rule.fmtTextColor = getSwatchColor(document.getElementById('cf-fmt-text-color'));
+              rule.fmtBgColor = getSwatchColor(document.getElementById('cf-fmt-bg-color'));
               rule.fmtBold = document.getElementById('cf-fmt-bold').checked;
               rule.fmtItalic = document.getElementById('cf-fmt-italic').checked;
             }
@@ -4806,13 +5624,13 @@
           if (fontSize && fontSize !== 11) fmt.fontSize = fontSize;
           if (document.getElementById('ncs-bold').checked) fmt.bold = true;
           if (document.getElementById('ncs-italic').checked) fmt.italic = true;
-          const textColor = document.getElementById('ncs-text-color').value;
+          const textColor = getSwatchColor(document.getElementById('ncs-text-color'));
           if (textColor && textColor !== '#000000') fmt.textColor = textColor;
-          const bgColor = document.getElementById('ncs-bg-color').value;
+          const bgColor = getSwatchColor(document.getElementById('ncs-bg-color'));
           if (bgColor && bgColor !== '#ffffff') fmt.bgColor = bgColor;
           const borderStyle = document.getElementById('ncs-border-style').value;
           if (borderStyle && borderStyle !== 'none') {
-            const borderColor = document.getElementById('ncs-border-color').value;
+            const borderColor = getSwatchColor(document.getElementById('ncs-border-color'));
             fmt.borderAll = { style: borderStyle, color: borderColor };
           }
           customCellStyles.push({ name, fmt });
@@ -4885,12 +5703,12 @@
         document.getElementById('fc-italic').checked = !!fmt.italic;
         document.getElementById('fc-underline').checked = !!fmt.underline;
         document.getElementById('fc-strikethrough').checked = !!fmt.strikethrough;
-        document.getElementById('fc-fill-color').value = fmt.bgColor || '#ffffff';
-        document.getElementById('fc-fill-none').onclick = () => { document.getElementById('fc-fill-color').value = '#ffffff'; };
+        setSwatchColor(document.getElementById('fc-fill-color'), fmt.bgColor || '#ffffff');
+        document.getElementById('fc-fill-none').onclick = () => { setSwatchColor(document.getElementById('fc-fill-color'), '#ffffff'); };
 
         // Font color
         const fcFontColor = document.getElementById('fc-font-color');
-        if (fcFontColor) fcFontColor.value = fmt.color || '#000000';
+        if (fcFontColor) setSwatchColor(fcFontColor, fmt.color || '#000000');
 
         // Protection tab
         const fcLocked = document.getElementById('fc-locked');
@@ -4951,7 +5769,7 @@
           const italic = document.getElementById('fc-italic').checked;
           const underline = document.getElementById('fc-underline').checked;
           const strike = document.getElementById('fc-strikethrough').checked;
-          const color = fcFontColor ? fcFontColor.value : '#000000';
+          const color = fcFontColor ? getSwatchColor(fcFontColor) : '#000000';
           fcFontPreviewText.style.fontFamily = family;
           fcFontPreviewText.style.fontSize = Math.min(size * 1.5, 36) + 'px';
           fcFontPreviewText.style.fontWeight = bold ? 'bold' : 'normal';
@@ -4968,7 +5786,7 @@
         document.getElementById('fc-italic').onchange = updateFontPreview;
         document.getElementById('fc-underline').onchange = updateFontPreview;
         document.getElementById('fc-strikethrough').onchange = updateFontPreview;
-        if (fcFontColor) fcFontColor.oninput = updateFontPreview;
+        if (fcFontColor) wireSwatchPalette(fcFontColor, updateFontPreview);
         updateFontPreview();
 
         showDialog('dlg-format-cells').then(r => {
@@ -4988,8 +5806,8 @@
             strikethrough: document.getElementById('fc-strikethrough').checked || undefined,
           };
           // Font color
-          if (fcFontColor && fcFontColor.value && fcFontColor.value !== '#000000')
-            newFmt.color = fcFontColor.value;
+          if (fcFontColor && getSwatchColor(fcFontColor) && getSwatchColor(fcFontColor) !== '#000000')
+            newFmt.color = getSwatchColor(fcFontColor);
           // Custom format code
           if (newFmt.numberFmt === 'custom') {
             const customCode = document.getElementById('fc-custom-code');
@@ -4998,10 +5816,10 @@
           // Protection
           if (fcLocked) newFmt.locked = fcLocked.checked;
           if (fcHidden) newFmt.hidden = fcHidden.checked;
-          const fillColor = document.getElementById('fc-fill-color').value;
+          const fillColor = getSwatchColor(document.getElementById('fc-fill-color'));
           if (fillColor && fillColor !== '#ffffff') newFmt.bgColor = fillColor;
           const bStyle = document.getElementById('fc-border-style').value;
-          const bColor = document.getElementById('fc-border-color').value;
+          const bColor = getSwatchColor(document.getElementById('fc-border-color'));
           const bApply = document.getElementById('fc-border-apply').value;
           const border = { style: bStyle, color: bColor };
           if (bApply === 'all') newFmt.borderAll = border;
@@ -5085,6 +5903,8 @@
       case 'apply-theme': showThemeDialog(); break;
       case 'import-json': doImportJson(); break;
       case 'export-json': doExportJson(); break;
+      case 'get-data': showGetDataDialog(); break;
+      case 'flash-fill': acceptFlashFill(); break;
     }
   }
 
@@ -5100,6 +5920,7 @@
     getSelectionRect, showDialog: SZ.Dialog.show, rebuildGrid,
     setFormat, getFormat, setDirty: () => { dirty = true; updateTitle(); },
     getActiveCell: () => activeCell, gridScroll, showPrompt,
+    showColorPalette, getSwatchColor, setSwatchColor, wireSwatchPalette,
   });
   XlsxEngine.init({
     S, cellKey, parseKey, colName, colIndex, getCellValue,
@@ -5177,6 +5998,18 @@
   gridScroll.setAttribute('tabindex', '0');
   gridScroll.style.outline = 'none';
   gridScroll.focus();
+
+  // ── Wire color-swatch elements to open palette on click ───────────
+  const swatchIds = [
+    'cf-color-min', 'cf-color-mid', 'cf-color-max',
+    'cf-fmt-text-color', 'cf-fmt-bg-color',
+    'ncs-text-color', 'ncs-bg-color', 'ncs-border-color',
+    'fc-border-color', 'fc-fill-color',
+  ];
+  for (const id of swatchIds) {
+    const el = document.getElementById(id);
+    if (el) wireSwatchPalette(el);
+  }
 
   const cmd = Kernel32.GetCommandLine();
   if (cmd.path) {
