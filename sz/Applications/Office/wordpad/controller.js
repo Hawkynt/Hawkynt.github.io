@@ -30,6 +30,18 @@
   // Reading Mode state (W4)
   let readingMode = false;
 
+  // Mail Merge state (W2)
+  let mergeDataSource = [];
+  let mergeFields = ['FirstName', 'LastName', 'Company', 'Address', 'City', 'State', 'ZipCode', 'Email'];
+  let mergePreviewActive = false;
+  let mergePreviewIndex = 0;
+
+  // Macro Recorder state (W4)
+  let macroRecording = false;
+  let macroCurrentActions = [];
+  let macroSavedMacros = [];
+  let macroRecordingIndicator = null;
+
   const editor = document.getElementById('editor');
   const editorWrapper = document.getElementById('editor-wrapper');
 
@@ -93,6 +105,10 @@
   // ═══════════════════════════════════════════════════════════════
 
   function handleAction(action) {
+    // Macro recording hook
+    if (macroRecording && action !== 'macro-stop' && action !== 'macro-record')
+      macroCurrentActions.push(action);
+
     switch (action) {
       // File
       case 'new': doNew(); break;
@@ -258,6 +274,29 @@
       case 'insert-checkbox-field': insertFormField('checkbox'); break;
       case 'insert-dropdown-field': insertFormField('dropdown'); break;
 
+      // Table Styles Gallery (W1)
+      case 'table-styles': showTableStyleGallery(); break;
+
+      // Mail Merge (W2)
+      case 'merge-insert-field': showMergeFieldDialog(); break;
+      case 'merge-edit-data': showMergeDataDialog(); break;
+      case 'merge-preview': toggleMergePreview(); break;
+      case 'merge-prev-record': navigateMergeRecord(-1); break;
+      case 'merge-next-record': navigateMergeRecord(1); break;
+      case 'merge-finish': doFinishMerge(); break;
+
+      // Compare Documents (W3)
+      case 'compare-documents': showCompareDialog(); break;
+
+      // Macro Recorder (W4)
+      case 'macro-record': doMacroRecord(); break;
+      case 'macro-stop': doMacroStop(); break;
+      case 'macro-play': doMacroPlay(); break;
+      case 'macro-manager': showMacroManager(); break;
+
+      // Accessibility Checker (W5)
+      case 'check-accessibility': showAccessibilityChecker(); break;
+
       // Table Tools Contextual Tab actions
       case 'tbl-insert-row-above':
       case 'tbl-insert-row-below':
@@ -362,28 +401,35 @@
   }
 
   // ═══════════════════════════════════════════════════════════════
+  // Color Palette (shared module)
+  // ═══════════════════════════════════════════════════════════════
+
+  const sharedColorPalette = new SZ.ColorPalette(document.getElementById('color-palette'), { storageKey: 'sz-wordpad-recent-colors' });
+  function showColorPalette(anchorEl, callback) { sharedColorPalette.show(anchorEl, callback); }
+
+  // ═══════════════════════════════════════════════════════════════
   // Color Pickers
   // ═══════════════════════════════════════════════════════════════
 
-  const fontColorInput = document.getElementById('rb-font-color');
-  const fontColorSwatch = document.getElementById('rb-font-color-swatch');
-  const highlightColorInput = document.getElementById('rb-highlight-color');
-  const highlightSwatch = document.getElementById('rb-highlight-swatch');
+  const fontColorSwatch = document.getElementById('rb-font-color');
+  const highlightSwatch = document.getElementById('rb-highlight-color');
 
-  // Color inputs are visually hidden; open via parent click
-  fontColorSwatch.parentElement.addEventListener('click', () => fontColorInput.click());
-  highlightSwatch.parentElement.addEventListener('click', () => highlightColorInput.click());
-
-  fontColorInput.addEventListener('input', () => {
-    document.execCommand('foreColor', false, fontColorInput.value);
-    fontColorSwatch.style.background = fontColorInput.value;
-    editor.focus();
+  fontColorSwatch.parentElement.addEventListener('click', () => {
+    showColorPalette(fontColorSwatch, (color) => {
+      document.execCommand('foreColor', false, color);
+      fontColorSwatch.dataset.color = color;
+      fontColorSwatch.style.background = color;
+      editor.focus();
+    });
   });
 
-  highlightColorInput.addEventListener('input', () => {
-    document.execCommand('hiliteColor', false, highlightColorInput.value);
-    highlightSwatch.style.background = highlightColorInput.value;
-    editor.focus();
+  highlightSwatch.parentElement.addEventListener('click', () => {
+    showColorPalette(highlightSwatch, (color) => {
+      document.execCommand('hiliteColor', false, color);
+      highlightSwatch.dataset.color = color;
+      highlightSwatch.style.background = color;
+      editor.focus();
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════
@@ -533,7 +579,7 @@
     if (foreColor) {
       const hex = rgbToHex(foreColor);
       if (hex) {
-        fontColorInput.value = hex;
+        fontColorSwatch.dataset.color = hex;
         fontColorSwatch.style.background = hex;
       }
     }
@@ -1047,7 +1093,7 @@
   const spacingBeforeSelect = document.getElementById('rb-spacing-before');
   const spacingAfterSelect = document.getElementById('rb-spacing-after');
   const paraIndentSelect = document.getElementById('rb-para-indent');
-  const pageColorInput = document.getElementById('rb-page-color');
+  const pageColorSwatch = document.getElementById('rb-page-color');
 
   pageSizeSelect.addEventListener('change', () => { applyPageSetup(); updatePageBreakIndicators(); });
   pageOrientSelect.addEventListener('change', () => { applyPageSetup(); updatePageBreakIndicators(); });
@@ -1075,7 +1121,9 @@
     const marginKey = pageMarginsSelect.value;
 
     if (editorWrapper.classList.contains('print-layout')) {
-      editor.style.maxWidth = orient === 'landscape' ? size.h : size.w;
+      const pw = orient === 'landscape' ? size.h : size.w;
+      editor.style.width = pw;
+      editor.style.maxWidth = pw;
       editor.style.minHeight = orient === 'landscape' ? size.w : size.h;
     }
 
@@ -1151,9 +1199,12 @@
     editor.focus();
   }
 
-  pageColorInput.parentElement.addEventListener('click', () => pageColorInput.click());
-  pageColorInput.addEventListener('input', () => {
-    editor.style.backgroundColor = pageColorInput.value;
+  pageColorSwatch.addEventListener('click', () => {
+    showColorPalette(pageColorSwatch, (color) => {
+      pageColorSwatch.dataset.color = color;
+      pageColorSwatch.style.background = color;
+      editor.style.backgroundColor = color;
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════
@@ -1890,7 +1941,7 @@
     const alignSelect = document.getElementById('tp-align');
     const paddingInput = document.getElementById('tp-padding');
     const borderInput = document.getElementById('tp-border');
-    const borderColorInput = document.getElementById('tp-border-color');
+    const borderColorSwatch = document.getElementById('tp-border-color');
     const bandedCheck = document.getElementById('tp-banded');
     const headerRowCheck = document.getElementById('tp-header-row');
     const repeatHeaderCheck = document.getElementById('tp-repeat-header');
@@ -1912,7 +1963,9 @@
       const tdCs = window.getComputedStyle(firstTd);
       paddingInput.value = parseInt(tdCs.padding, 10) || 4;
       borderInput.value = parseInt(tdCs.borderWidth, 10) || 1;
-      borderColorInput.value = rgbToHex(tdCs.borderColor) || '#999999';
+      const resolvedColor = rgbToHex(tdCs.borderColor) || '#999999';
+      borderColorSwatch.dataset.color = resolvedColor;
+      borderColorSwatch.style.backgroundColor = resolvedColor;
     }
 
     bandedCheck.checked = table.classList.contains('wp-table-banded');
@@ -1923,10 +1976,13 @@
     const overlay = document.getElementById('dlg-table-props');
     overlay.style.display = 'flex';
 
+    borderColorSwatch.onclick = () => showColorPalette(borderColorSwatch, (c) => { borderColorSwatch.dataset.color = c; borderColorSwatch.style.backgroundColor = c; });
+
     const okBtn = overlay.querySelector('.wp-dlg-ok');
     const cancelBtn = overlay.querySelector('.wp-dlg-cancel');
 
     const applyHandler = () => {
+      borderColorSwatch.onclick = null;
       // Apply table properties
       table.style.width = widthInput.value + '%';
 
@@ -1944,7 +2000,7 @@
 
       const padding = paddingInput.value + 'px';
       const borderW = borderInput.value + 'px';
-      const borderColor = borderColorInput.value;
+      const borderColor = borderColorSwatch.dataset.color;
       for (const td of table.querySelectorAll('td, th')) {
         td.style.padding = padding;
         td.style.borderWidth = borderW;
@@ -1969,6 +2025,7 @@
     };
 
     const cancelHandler = () => {
+      borderColorSwatch.onclick = null;
       overlay.style.display = 'none';
       okBtn.removeEventListener('click', applyHandler);
       cancelBtn.removeEventListener('click', cancelHandler);
@@ -2434,16 +2491,20 @@
   function showPageBordersDialog() {
     document.getElementById('pb-style').value = 'none';
     document.getElementById('pb-width').value = '1';
-    document.getElementById('pb-color').value = '#000000';
+    const pbColorSwatch = document.getElementById('pb-color');
+    pbColorSwatch.dataset.color = '#000000';
+    pbColorSwatch.style.backgroundColor = '#000000';
     document.getElementById('pb-apply').value = 'document';
 
     const overlay = document.getElementById('dlg-page-borders');
+    pbColorSwatch.onclick = () => showColorPalette(pbColorSwatch, (c) => { pbColorSwatch.dataset.color = c; pbColorSwatch.style.backgroundColor = c; });
     awaitDialogResult(overlay, (result) => {
+      pbColorSwatch.onclick = null;
       if (result !== 'ok')
         return;
       const style = document.getElementById('pb-style').value;
       const width = parseInt(document.getElementById('pb-width').value, 10) || 1;
-      const color = document.getElementById('pb-color').value;
+      const color = pbColorSwatch.dataset.color;
       const applyTo = document.getElementById('pb-apply').value;
 
       const borderProps = style === 'none' ? null : { style, width, color };
@@ -2841,6 +2902,10 @@
     });
   }
 
+  const fpFmtColorSwatch = document.getElementById('fp-fmt-color');
+  if (fpFmtColorSwatch)
+    fpFmtColorSwatch.addEventListener('click', () => showColorPalette(fpFmtColorSwatch, (c) => { fpFmtColorSwatch.dataset.color = c; fpFmtColorSwatch.style.backgroundColor = c; }));
+
   function matchesFormatFilter(node) {
     if (!fpFormatAware || !fpFormatAware.checked) return true;
     // Walk up to the nearest element
@@ -2865,7 +2930,7 @@
       if (!actual.includes(wanted)) return false;
     }
     if (fmtColorEnabled && fmtColorEnabled.checked && fmtColor) {
-      const wanted = fmtColor.value.toLowerCase();
+      const wanted = (fmtColor.dataset.color || '#000000').toLowerCase();
       const actual = rgbToHex(cs.color);
       if (actual && actual.toLowerCase() !== wanted) return false;
     }
@@ -3365,7 +3430,7 @@
     const preview = document.getElementById('wa-preview');
     const textInput = document.getElementById('wa-text');
     const sizeInput = document.getElementById('wa-size');
-    const colorInput = document.getElementById('wa-color');
+    const colorSwatch = document.getElementById('wa-color');
 
     gallery.innerHTML = '';
     for (const style of WORDART_STYLES) {
@@ -3387,26 +3452,29 @@
 
     function refreshWordArtPreview() {
       preview.innerHTML = '';
-      const el = buildWordArtPreview(textInput.value, selectedWordArtStyle, parseInt(sizeInput.value, 10) || 36, colorInput.value);
+      const el = buildWordArtPreview(textInput.value, selectedWordArtStyle, parseInt(sizeInput.value, 10) || 36, colorSwatch.dataset.color);
       preview.appendChild(el);
     }
 
     textInput.value = 'Word Art';
     sizeInput.value = 36;
+    colorSwatch.dataset.color = '#0066cc';
+    colorSwatch.style.backgroundColor = '#0066cc';
     refreshWordArtPreview();
+
+    colorSwatch.onclick = () => showColorPalette(colorSwatch, (c) => { colorSwatch.dataset.color = c; colorSwatch.style.backgroundColor = c; refreshWordArtPreview(); });
 
     textInput.addEventListener('input', refreshWordArtPreview);
     sizeInput.addEventListener('input', refreshWordArtPreview);
-    colorInput.addEventListener('input', refreshWordArtPreview);
 
     const overlay = document.getElementById('dlg-wordart');
     awaitDialogResult(overlay, (result) => {
       textInput.removeEventListener('input', refreshWordArtPreview);
       sizeInput.removeEventListener('input', refreshWordArtPreview);
-      colorInput.removeEventListener('input', refreshWordArtPreview);
+      colorSwatch.onclick = null;
       if (result !== 'ok')
         return;
-      insertWordArt(textInput.value, selectedWordArtStyle, parseInt(sizeInput.value, 10) || 36, colorInput.value);
+      insertWordArt(textInput.value, selectedWordArtStyle, parseInt(sizeInput.value, 10) || 36, colorSwatch.dataset.color);
     });
   }
 
@@ -4991,10 +5059,877 @@
   });
 
   // ═══════════════════════════════════════════════════════════════
+  // W1 — Table Style Gallery
+  // ═══════════════════════════════════════════════════════════════
+
+  const TABLE_STYLE_PRESETS = [
+    { id: 'plain', name: 'Plain', headerBg: 'transparent', headerColor: 'inherit', headerBorder: 'none', cellBorder: 'none', rowBg: 'transparent', altRowBg: 'transparent' },
+    { id: 'grid', name: 'Grid', headerBg: 'transparent', headerColor: 'inherit', headerBorder: '1px solid #333', cellBorder: '1px solid #333', rowBg: 'transparent', altRowBg: 'transparent' },
+    { id: 'light-shading', name: 'Light Shading', headerBg: '#d6e4f0', headerColor: '#222', headerBorder: '1px solid #b0c4de', cellBorder: '1px solid #ddd', rowBg: '#fff', altRowBg: '#f0f5fa' },
+    { id: 'medium-shading', name: 'Medium Shading', headerBg: '#4472c4', headerColor: '#fff', headerBorder: '1px solid #3061a0', cellBorder: '1px solid #ccc', rowBg: '#fff', altRowBg: '#e8f0fe' },
+    { id: 'dark', name: 'Dark', headerBg: '#2e2e2e', headerColor: '#fff', headerBorder: '1px solid #111', cellBorder: '1px solid #555', rowBg: '#444', altRowBg: '#3a3a3a' },
+    { id: 'colorful-green', name: 'Colorful 1', headerBg: '#2e7d32', headerColor: '#fff', headerBorder: '1px solid #1b5e20', cellBorder: '1px solid #c8e6c9', rowBg: '#fff', altRowBg: '#e8f5e9' },
+    { id: 'colorful-orange', name: 'Colorful 2', headerBg: '#e65100', headerColor: '#fff', headerBorder: '1px solid #bf360c', cellBorder: '1px solid #ffe0b2', rowBg: '#fff', altRowBg: '#fff3e0' },
+    { id: 'colorful-purple', name: 'Colorful 3', headerBg: '#6a1b9a', headerColor: '#fff', headerBorder: '1px solid #4a148c', cellBorder: '1px solid #e1bee7', rowBg: '#fff', altRowBg: '#f3e5f5' },
+    { id: 'light-list', name: 'Light List', headerBg: 'transparent', headerColor: '#0d47a1', headerBorder: 'none', cellBorder: 'none', rowBg: 'transparent', altRowBg: 'transparent', special: 'light-list' },
+    { id: 'medium-list', name: 'Medium List', headerBg: 'transparent', headerColor: '#222', headerBorder: 'none', cellBorder: 'none', rowBg: 'transparent', altRowBg: '#f5f5f5', special: 'medium-list' },
+    { id: 'light-grid', name: 'Light Grid', headerBg: 'transparent', headerColor: 'inherit', headerBorder: '1px solid #bbb', cellBorder: '1px solid #ddd', rowBg: 'transparent', altRowBg: 'transparent' },
+    { id: 'medium-grid', name: 'Medium Grid', headerBg: '#e0e0e0', headerColor: '#222', headerBorder: '2px solid #999', cellBorder: '1px solid #bbb', rowBg: 'transparent', altRowBg: 'transparent' },
+  ];
+
+  function showTableStyleGallery() {
+    const sel = window.getSelection();
+    let table = null;
+    if (sel.rangeCount) {
+      let container = sel.focusNode;
+      if (container && container.nodeType === 3) container = container.parentElement;
+      if (container)
+        table = container.closest('table');
+    }
+    if (!table) {
+      // Try to find any table in the editor
+      table = editor.querySelector('table');
+    }
+
+    const gallery = document.getElementById('ts-gallery');
+    gallery.innerHTML = '';
+
+    for (const preset of TABLE_STYLE_PRESETS) {
+      const tile = document.createElement('div');
+      tile.className = 'ts-tile';
+
+      const name = document.createElement('div');
+      name.className = 'ts-tile-name';
+      name.textContent = preset.name;
+      tile.appendChild(name);
+
+      // Build a mini preview table
+      const preview = document.createElement('div');
+      preview.className = 'ts-tile-preview';
+      let previewHtml = '<table><tr>';
+      for (let c = 0; c < 3; ++c)
+        previewHtml += '<th style="padding:1px 3px;background:' + preset.headerBg + ';color:' + preset.headerColor + ';border:' + preset.headerBorder + ';font-size:7px;font-weight:bold;">H' + (c + 1) + '</th>';
+      previewHtml += '</tr>';
+      for (let r = 0; r < 2; ++r) {
+        const bg = r % 2 === 0 ? preset.rowBg : preset.altRowBg;
+        previewHtml += '<tr>';
+        for (let c = 0; c < 3; ++c)
+          previewHtml += '<td style="padding:1px 3px;background:' + bg + ';border:' + preset.cellBorder + ';font-size:7px;">...</td>';
+        previewHtml += '</tr>';
+      }
+      previewHtml += '</table>';
+      preview.innerHTML = previewHtml;
+      tile.appendChild(preview);
+
+      tile.addEventListener('click', () => {
+        if (!table) return;
+        applyTableStyle(table, preset);
+        const dlgOverlay = document.getElementById('dlg-table-styles');
+        if (dlgOverlay._dialogDone)
+          dlgOverlay._dialogDone(null);
+        else
+          dlgOverlay.classList.remove('visible');
+        markDirty();
+        editor.focus();
+      });
+
+      gallery.appendChild(tile);
+    }
+
+    if (!table) {
+      const notice = document.createElement('p');
+      notice.style.cssText = 'color:#c00;font-size:11px;margin:0 0 8px;';
+      notice.textContent = 'No table found. Place cursor inside a table first.';
+      gallery.insertBefore(notice, gallery.firstChild);
+    }
+
+    SZ.Dialog.show('dlg-table-styles');
+  }
+
+  function applyTableStyle(table, preset) {
+    table.style.borderCollapse = 'collapse';
+    table.style.width = '100%';
+
+    const rows = table.querySelectorAll('tr');
+    for (let i = 0; i < rows.length; ++i) {
+      const row = rows[i];
+      const isHeader = i === 0;
+      const cells = row.querySelectorAll('td, th');
+
+      if (isHeader) {
+        row.style.background = preset.headerBg;
+        row.style.color = preset.headerColor;
+        row.style.fontWeight = 'bold';
+      } else {
+        const bg = i % 2 === 0 ? preset.altRowBg : preset.rowBg;
+        row.style.background = bg;
+        row.style.color = preset.id === 'dark' ? '#eee' : '';
+        row.style.fontWeight = '';
+      }
+
+      for (const cell of cells) {
+        cell.style.border = isHeader ? preset.headerBorder : preset.cellBorder;
+        cell.style.padding = '4px 8px';
+
+        // Special style: light-list -- left border accent on first column
+        if (preset.special === 'light-list' && cell === cells[0] && !isHeader)
+          cell.style.borderLeft = '3px solid #0d47a1';
+
+        // Special style: medium-list -- thick bottom border on header
+        if (preset.special === 'medium-list' && isHeader)
+          cell.style.borderBottom = '3px solid #333';
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // W2 — Mail Merge Fields
+  // ═══════════════════════════════════════════════════════════════
+
+  function showMergeFieldDialog() {
+    const grid = document.getElementById('merge-field-grid');
+    grid.innerHTML = '';
+
+    for (const field of mergeFields) {
+      const btn = document.createElement('button');
+      btn.className = 'merge-field-btn';
+      btn.textContent = '{{' + field + '}}';
+      btn.title = 'Insert ' + field;
+      btn.addEventListener('click', () => {
+        const span = '<span class="merge-field" data-field="' + escapeHtml(field) + '" contenteditable="false">{{' + escapeHtml(field) + '}}</span>';
+        editor.focus();
+        document.execCommand('insertHTML', false, span);
+        markDirty();
+      });
+      grid.appendChild(btn);
+    }
+
+    SZ.Dialog.show('dlg-merge-fields');
+  }
+
+  function showMergeDataDialog() {
+    const textarea = document.getElementById('merge-csv-data');
+    // Build CSV from current data or provide sample
+    if (mergeDataSource.length) {
+      const headers = mergeFields.join(',');
+      const rows = mergeDataSource.map(record =>
+        mergeFields.map(f => '"' + (record[f] || '').replace(/"/g, '""') + '"').join(',')
+      );
+      textarea.value = headers + '\n' + rows.join('\n');
+    } else {
+      textarea.value = mergeFields.join(',') + '\n'
+        + 'John,Doe,Acme Corp,123 Main St,Springfield,IL,62701,john@example.com\n'
+        + 'Jane,Smith,Widgets Inc,456 Oak Ave,Chicago,IL,60601,jane@example.com\n'
+        + 'Bob,Johnson,Tech Ltd,789 Elm Dr,Peoria,IL,61602,bob@example.com';
+    }
+
+    awaitDialogResult(document.getElementById('dlg-merge-data'), (result) => {
+      if (result !== 'ok')
+        return;
+      const csv = textarea.value.trim();
+      if (!csv)
+        return;
+      parseMergeCSV(csv);
+    });
+  }
+
+  function parseMergeCSV(csv) {
+    const lines = csv.split('\n').map(l => l.trim()).filter(l => l);
+    if (lines.length < 2)
+      return;
+
+    // Simple CSV parse (handles quoted fields)
+    function parseLine(line) {
+      const result = [];
+      let current = '';
+      let inQuotes = false;
+      for (let i = 0; i < line.length; ++i) {
+        const ch = line[i];
+        if (ch === '"') {
+          if (inQuotes && line[i + 1] === '"') {
+            current += '"';
+            ++i;
+          } else
+            inQuotes = !inQuotes;
+        } else if (ch === ',' && !inQuotes) {
+          result.push(current.trim());
+          current = '';
+        } else
+          current += ch;
+      }
+      result.push(current.trim());
+      return result;
+    }
+
+    const headers = parseLine(lines[0]);
+    mergeFields = headers;
+    mergeDataSource = [];
+    for (let i = 1; i < lines.length; ++i) {
+      const values = parseLine(lines[i]);
+      const record = {};
+      for (let j = 0; j < headers.length; ++j)
+        record[headers[j]] = values[j] || '';
+      mergeDataSource.push(record);
+    }
+  }
+
+  function toggleMergePreview() {
+    mergePreviewActive = !mergePreviewActive;
+    const btn = document.getElementById('btn-merge-preview');
+    if (btn)
+      btn.classList.toggle('active', mergePreviewActive);
+
+    if (mergePreviewActive) {
+      if (!mergeDataSource.length) {
+        mergePreviewActive = false;
+        if (btn) btn.classList.remove('active');
+        return;
+      }
+      mergePreviewIndex = 0;
+      applyMergePreview();
+    } else
+      restoreMergeFields();
+  }
+
+  function navigateMergeRecord(delta) {
+    if (!mergePreviewActive || !mergeDataSource.length)
+      return;
+    mergePreviewIndex = (mergePreviewIndex + delta + mergeDataSource.length) % mergeDataSource.length;
+    applyMergePreview();
+  }
+
+  function applyMergePreview() {
+    const record = mergeDataSource[mergePreviewIndex];
+    if (!record)
+      return;
+    const fields = editor.querySelectorAll('.merge-field');
+    for (const span of fields) {
+      const fieldName = span.getAttribute('data-field');
+      const value = record[fieldName] || '';
+      span.textContent = value;
+      span.classList.add('merge-preview-value');
+      span.classList.remove('merge-field');
+    }
+    // Also handle already-previewed spans
+    const previewed = editor.querySelectorAll('.merge-preview-value');
+    for (const span of previewed) {
+      const fieldName = span.getAttribute('data-field');
+      const value = record[fieldName] || '';
+      span.textContent = value;
+    }
+  }
+
+  function restoreMergeFields() {
+    const previewed = editor.querySelectorAll('.merge-preview-value');
+    for (const span of previewed) {
+      const fieldName = span.getAttribute('data-field');
+      span.textContent = '{{' + fieldName + '}}';
+      span.classList.remove('merge-preview-value');
+      span.classList.add('merge-field');
+    }
+  }
+
+  function doFinishMerge() {
+    if (!mergeDataSource.length)
+      return;
+
+    // Restore fields first if previewing
+    if (mergePreviewActive)
+      restoreMergeFields();
+
+    const templateHtml = editor.innerHTML;
+    let mergedHtml = '';
+
+    for (let i = 0; i < mergeDataSource.length; ++i) {
+      const record = mergeDataSource[i];
+      let pageHtml = templateHtml;
+
+      // Replace merge field spans with actual values
+      for (const field of mergeFields) {
+        const spanRegex = new RegExp('<span[^>]*data-field="' + field + '"[^>]*>[^<]*</span>', 'gi');
+        pageHtml = pageHtml.replace(spanRegex, escapeHtml(record[field] || ''));
+        // Also replace plain {{Field}} text
+        pageHtml = pageHtml.replace(new RegExp('\\{\\{' + field + '\\}\\}', 'g'), escapeHtml(record[field] || ''));
+      }
+
+      mergedHtml += '<div style="page-break-after:always;margin-bottom:24px;padding-bottom:24px;border-bottom:2px dashed #999;">'
+        + '<p style="font-size:10px;color:#999;margin:0 0 8px;">--- Record ' + (i + 1) + ' of ' + mergeDataSource.length + ' ---</p>'
+        + pageHtml
+        + '</div>';
+    }
+
+    // Open merged result in a new overlay
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:#666;z-index:10000;overflow:auto;display:flex;flex-direction:column;align-items:center;padding:20px;';
+
+    const toolbar = document.createElement('div');
+    toolbar.style.cssText = 'position:sticky;top:0;z-index:1;background:#333;color:white;padding:8px 16px;display:flex;gap:12px;align-items:center;border-radius:4px;margin-bottom:16px;font-size:12px;';
+    toolbar.innerHTML = '<span>Merge Results (' + mergeDataSource.length + ' records)</span>';
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = 'Close';
+    closeBtn.style.cssText = 'background:#555;color:white;border:1px solid #777;padding:4px 16px;border-radius:3px;cursor:pointer;font-size:11px;';
+    closeBtn.addEventListener('click', () => overlay.remove());
+    toolbar.appendChild(closeBtn);
+    overlay.appendChild(toolbar);
+
+    const content = document.createElement('div');
+    content.style.cssText = 'background:white;padding:48px;max-width:8.5in;width:100%;box-sizing:border-box;box-shadow:0 2px 8px rgba(0,0,0,0.3);color:black;font-family:Calibri,Arial,sans-serif;font-size:11pt;';
+    content.innerHTML = mergedHtml;
+    overlay.appendChild(content);
+
+    document.body.appendChild(overlay);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // W3 — Compare Documents
+  // ═══════════════════════════════════════════════════════════════
+
+  function showCompareDialog() {
+    document.getElementById('compare-text').value = '';
+    awaitDialogResult(document.getElementById('dlg-compare'), (result) => {
+      if (result !== 'ok')
+        return;
+      const revisedText = document.getElementById('compare-text').value;
+      if (!revisedText.trim())
+        return;
+      runCompare(editor.innerText, revisedText);
+    });
+  }
+
+  function runCompare(originalText, revisedText) {
+    const originalLines = originalText.split('\n');
+    const revisedLines = revisedText.split('\n');
+
+    // LCS-based diff
+    const diff = computeDiff(originalLines, revisedLines);
+
+    // Build display
+    const originalPane = document.getElementById('compare-original');
+    const revisedPane = document.getElementById('compare-revised');
+    originalPane.innerHTML = '';
+    revisedPane.innerHTML = '';
+
+    let changeIndex = 0;
+    for (const entry of diff) {
+      if (entry.type === 'equal') {
+        const oLine = document.createElement('div');
+        oLine.textContent = entry.value;
+        originalPane.appendChild(oLine);
+
+        const rLine = document.createElement('div');
+        rLine.textContent = entry.value;
+        revisedPane.appendChild(rLine);
+      } else if (entry.type === 'delete') {
+        const oLine = document.createElement('div');
+        oLine.className = 'diff-del';
+        oLine.setAttribute('data-change-idx', changeIndex++);
+        oLine.textContent = entry.value;
+        originalPane.appendChild(oLine);
+
+        // Add empty spacer in revised pane
+        const spacer = document.createElement('div');
+        spacer.textContent = '\u00A0';
+        spacer.style.opacity = '0.3';
+        revisedPane.appendChild(spacer);
+      } else if (entry.type === 'add') {
+        // Add empty spacer in original pane
+        const spacer = document.createElement('div');
+        spacer.textContent = '\u00A0';
+        spacer.style.opacity = '0.3';
+        originalPane.appendChild(spacer);
+
+        const rLine = document.createElement('div');
+        rLine.className = 'diff-add';
+        rLine.setAttribute('data-change-idx', changeIndex++);
+        rLine.textContent = entry.value;
+        revisedPane.appendChild(rLine);
+      }
+    }
+
+    const totalChanges = changeIndex;
+    let currentChange = -1;
+    const statusEl = document.getElementById('compare-change-status');
+    statusEl.textContent = totalChanges + ' change(s) found';
+
+    function navigateChange(delta) {
+      if (totalChanges === 0)
+        return;
+      // Clear current highlight
+      for (const el of document.querySelectorAll('.diff-current'))
+        el.classList.remove('diff-current');
+
+      currentChange = (currentChange + delta + totalChanges) % totalChanges;
+      const targets = document.querySelectorAll('[data-change-idx="' + currentChange + '"]');
+      for (const t of targets) {
+        t.classList.add('diff-current');
+        t.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+      statusEl.textContent = 'Change ' + (currentChange + 1) + ' of ' + totalChanges;
+    }
+
+    document.getElementById('compare-prev-change').onclick = () => navigateChange(-1);
+    document.getElementById('compare-next-change').onclick = () => navigateChange(1);
+
+    SZ.Dialog.show('dlg-compare-result');
+  }
+
+  function computeDiff(oldLines, newLines) {
+    const m = oldLines.length;
+    const n = newLines.length;
+
+    // Build LCS table
+    const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+    for (let i = 1; i <= m; ++i)
+      for (let j = 1; j <= n; ++j)
+        dp[i][j] = oldLines[i - 1] === newLines[j - 1]
+          ? dp[i - 1][j - 1] + 1
+          : Math.max(dp[i - 1][j], dp[i][j - 1]);
+
+    // Backtrack to produce diff
+    const result = [];
+    let i = m, j = n;
+    while (i > 0 || j > 0) {
+      if (i > 0 && j > 0 && oldLines[i - 1] === newLines[j - 1]) {
+        result.unshift({ type: 'equal', value: oldLines[i - 1] });
+        --i;
+        --j;
+      } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+        result.unshift({ type: 'add', value: newLines[j - 1] });
+        --j;
+      } else {
+        result.unshift({ type: 'delete', value: oldLines[i - 1] });
+        --i;
+      }
+    }
+
+    return result;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // W4 — Macro Recorder
+  // ═══════════════════════════════════════════════════════════════
+
+  function doMacroRecord() {
+    if (macroRecording)
+      return;
+    macroRecording = true;
+    macroCurrentActions = [];
+
+    // Show recording indicator
+    macroRecordingIndicator = document.createElement('div');
+    macroRecordingIndicator.className = 'macro-recording-indicator';
+    macroRecordingIndicator.textContent = 'Recording Macro...';
+    document.body.appendChild(macroRecordingIndicator);
+
+    // Toggle button visibility
+    const recBtn = document.getElementById('btn-macro-record');
+    const stopBtn = document.getElementById('btn-macro-stop');
+    if (recBtn) recBtn.style.display = 'none';
+    if (stopBtn) stopBtn.style.display = '';
+  }
+
+  function doMacroStop() {
+    if (!macroRecording)
+      return;
+    macroRecording = false;
+
+    // Remove recording indicator
+    if (macroRecordingIndicator) {
+      macroRecordingIndicator.remove();
+      macroRecordingIndicator = null;
+    }
+
+    // Toggle button visibility
+    const recBtn = document.getElementById('btn-macro-record');
+    const stopBtn = document.getElementById('btn-macro-stop');
+    if (recBtn) recBtn.style.display = '';
+    if (stopBtn) stopBtn.style.display = 'none';
+
+    if (!macroCurrentActions.length)
+      return;
+
+    // Ask for macro name
+    const nameInput = document.getElementById('macro-name-input');
+    nameInput.value = 'Macro ' + (macroSavedMacros.length + 1);
+
+    awaitDialogResult(document.getElementById('dlg-macro-name'), (result) => {
+      if (result !== 'ok')
+        return;
+      const name = nameInput.value.trim();
+      if (!name)
+        return;
+      macroSavedMacros.push({ name, actions: [...macroCurrentActions] });
+      macroCurrentActions = [];
+    });
+  }
+
+  function doMacroPlay() {
+    if (macroRecording)
+      return;
+    if (!macroSavedMacros.length) {
+      showMacroManager();
+      return;
+    }
+
+    // If only one macro, play it directly
+    if (macroSavedMacros.length === 1) {
+      playMacro(macroSavedMacros[0]);
+      return;
+    }
+
+    // Show manager to select
+    showMacroManager();
+  }
+
+  function playMacro(macro) {
+    if (!macro || !macro.actions.length)
+      return;
+    // Disable recording during playback
+    const wasRecording = macroRecording;
+    macroRecording = false;
+
+    for (const action of macro.actions)
+      handleAction(action);
+
+    macroRecording = wasRecording;
+    editor.focus();
+  }
+
+  function showMacroManager() {
+    const list = document.getElementById('macro-list');
+    list.innerHTML = '';
+    let selectedIdx = -1;
+
+    function renderList() {
+      list.innerHTML = '';
+      if (!macroSavedMacros.length) {
+        list.innerHTML = '<div style="padding:8px;color:var(--sz-color-gray-text);font-size:10px;">No macros recorded yet.</div>';
+        return;
+      }
+
+      for (let i = 0; i < macroSavedMacros.length; ++i) {
+        const macro = macroSavedMacros[i];
+        const item = document.createElement('div');
+        item.className = 'macro-item' + (i === selectedIdx ? ' selected' : '');
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'macro-item-name';
+        nameSpan.textContent = macro.name;
+
+        const countSpan = document.createElement('span');
+        countSpan.className = 'macro-item-count';
+        countSpan.textContent = macro.actions.length + ' action(s)';
+
+        item.appendChild(nameSpan);
+        item.appendChild(countSpan);
+        item.addEventListener('click', () => {
+          selectedIdx = i;
+          renderList();
+        });
+        item.addEventListener('dblclick', () => {
+          const dlgOverlay = document.getElementById('dlg-macro-manager');
+          if (dlgOverlay._dialogDone)
+            dlgOverlay._dialogDone(null);
+          playMacro(macro);
+        });
+
+        list.appendChild(item);
+      }
+    }
+
+    renderList();
+
+    const runBtn = document.getElementById('macro-run-btn');
+    const deleteBtn = document.getElementById('macro-delete-btn');
+
+    const newRunBtn = runBtn.cloneNode(true);
+    runBtn.parentNode.replaceChild(newRunBtn, runBtn);
+    newRunBtn.addEventListener('click', () => {
+      if (selectedIdx >= 0 && selectedIdx < macroSavedMacros.length) {
+        const dlgOverlay = document.getElementById('dlg-macro-manager');
+        if (dlgOverlay._dialogDone)
+          dlgOverlay._dialogDone(null);
+        playMacro(macroSavedMacros[selectedIdx]);
+      }
+    });
+
+    const newDeleteBtn = deleteBtn.cloneNode(true);
+    deleteBtn.parentNode.replaceChild(newDeleteBtn, deleteBtn);
+    newDeleteBtn.addEventListener('click', () => {
+      if (selectedIdx >= 0 && selectedIdx < macroSavedMacros.length) {
+        macroSavedMacros.splice(selectedIdx, 1);
+        selectedIdx = -1;
+        renderList();
+      }
+    });
+
+    SZ.Dialog.show('dlg-macro-manager');
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // W5 — Accessibility Checker
+  // ═══════════════════════════════════════════════════════════════
+
+  function showAccessibilityChecker() {
+    const issues = runAccessibilityCheck();
+    renderAccessibilityResults(issues);
+    SZ.Dialog.show('dlg-accessibility').then((result) => {
+      if (result === 'ok') {
+        // Re-check was clicked
+        showAccessibilityChecker();
+      }
+    });
+  }
+
+  function runAccessibilityCheck() {
+    const issues = [];
+
+    // 1. Images without alt text
+    const images = editor.querySelectorAll('img');
+    for (const img of images) {
+      const alt = img.getAttribute('alt');
+      if (!alt || !alt.trim())
+        issues.push({
+          severity: 'error',
+          title: 'Image missing alt text',
+          desc: 'Screen readers cannot describe this image.',
+          element: img,
+          fix: 'add-alt'
+        });
+    }
+
+    // 2. Empty hyperlinks
+    const links = editor.querySelectorAll('a[href]');
+    for (const link of links) {
+      if (!link.textContent.trim())
+        issues.push({
+          severity: 'error',
+          title: 'Empty hyperlink',
+          desc: 'Link has no visible text for screen readers.',
+          element: link,
+          fix: 'fill-link'
+        });
+    }
+
+    // 3. Empty table headers
+    const ths = editor.querySelectorAll('th');
+    for (const th of ths) {
+      if (!th.textContent.trim())
+        issues.push({
+          severity: 'tip',
+          title: 'Empty table header',
+          desc: 'Table header cell has no text.',
+          element: th,
+          fix: 'fill-header'
+        });
+    }
+
+    // 4. Skipped heading levels
+    const headings = editor.querySelectorAll('h1, h2, h3, h4, h5, h6');
+    let lastLevel = 0;
+    for (const h of headings) {
+      const level = parseInt(h.tagName[1], 10);
+      if (lastLevel > 0 && level > lastLevel + 1)
+        issues.push({
+          severity: 'warning',
+          title: 'Skipped heading level',
+          desc: 'H' + level + ' follows H' + lastLevel + '. Consider using H' + (lastLevel + 1) + ' instead.',
+          element: h,
+          fix: null
+        });
+      lastLevel = level;
+    }
+
+    // 5. Low contrast text (check for light text on white or dark text on dark)
+    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_ELEMENT, null, false);
+    let el;
+    while (el = walker.nextNode()) {
+      if (!el.textContent.trim() || el.tagName === 'IMG' || el.closest('.watermark, .wp-watermark-image'))
+        continue;
+      if (!['P', 'SPAN', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LI', 'TD', 'TH', 'A', 'STRONG', 'EM', 'B', 'I'].includes(el.tagName))
+        continue;
+
+      const cs = window.getComputedStyle(el);
+      const fg = cs.color;
+      const bg = cs.backgroundColor;
+
+      // Only check if color was explicitly set (not inherited default)
+      if (!el.style.color)
+        continue;
+
+      const fgRgb = parseRgb(fg);
+      const bgRgb = parseRgb(bg) || { r: 255, g: 255, b: 255 }; // assume white bg if transparent
+
+      if (fgRgb) {
+        const ratio = contrastRatio(fgRgb, bgRgb);
+        if (ratio < 3)
+          issues.push({
+            severity: 'warning',
+            title: 'Low contrast text',
+            desc: 'Text may be hard to read (contrast ratio: ' + ratio.toFixed(1) + ':1).',
+            element: el,
+            fix: null
+          });
+      }
+    }
+
+    // 6. Missing document title
+    if (!docProperties.title || !docProperties.title.trim())
+      issues.push({
+        severity: 'tip',
+        title: 'No document title',
+        desc: 'Set a document title in File > Properties for accessibility.',
+        element: null,
+        fix: 'set-title'
+      });
+
+    return issues;
+  }
+
+  function parseRgb(str) {
+    if (!str)
+      return null;
+    const match = str.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (!match)
+      return null;
+    return { r: parseInt(match[1], 10), g: parseInt(match[2], 10), b: parseInt(match[3], 10) };
+  }
+
+  function luminance(rgb) {
+    const a = [rgb.r, rgb.g, rgb.b].map(v => {
+      v /= 255;
+      return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2];
+  }
+
+  function contrastRatio(fg, bg) {
+    const l1 = luminance(fg);
+    const l2 = luminance(bg);
+    const lighter = Math.max(l1, l2);
+    const darker = Math.min(l1, l2);
+    return (lighter + 0.05) / (darker + 0.05);
+  }
+
+  function renderAccessibilityResults(issues) {
+    const container = document.getElementById('a11y-results');
+    container.innerHTML = '';
+
+    if (!issues.length) {
+      container.innerHTML = '<div class="a11y-pass">No accessibility issues found.</div>';
+      return;
+    }
+
+    const categories = { error: [], warning: [], tip: [] };
+    for (const issue of issues)
+      categories[issue.severity].push(issue);
+
+    const labels = { error: 'Errors', warning: 'Warnings', tip: 'Tips' };
+    const icons = { error: '\u2716', warning: '\u26A0', tip: '\u2139' };
+
+    for (const [sev, list] of Object.entries(categories)) {
+      if (!list.length)
+        continue;
+
+      const cat = document.createElement('div');
+      cat.className = 'a11y-category';
+
+      const title = document.createElement('div');
+      title.className = 'a11y-category-title a11y-' + sev;
+      title.textContent = labels[sev] + ' (' + list.length + ')';
+      cat.appendChild(title);
+
+      for (const issue of list) {
+        const row = document.createElement('div');
+        row.className = 'a11y-issue';
+
+        const severity = document.createElement('span');
+        severity.className = 'a11y-severity ' + sev;
+        severity.textContent = icons[sev];
+        row.appendChild(severity);
+
+        const textDiv = document.createElement('div');
+        textDiv.className = 'a11y-issue-text';
+
+        const titleSpan = document.createElement('div');
+        titleSpan.textContent = issue.title;
+        titleSpan.style.fontWeight = 'bold';
+        textDiv.appendChild(titleSpan);
+
+        const desc = document.createElement('div');
+        desc.className = 'a11y-issue-desc';
+        desc.textContent = issue.desc;
+        textDiv.appendChild(desc);
+
+        row.appendChild(textDiv);
+
+        if (issue.fix) {
+          const fixBtn = document.createElement('button');
+          fixBtn.className = 'a11y-fix-btn';
+          fixBtn.textContent = 'Fix';
+          fixBtn.addEventListener('click', () => {
+            applyAccessibilityFix(issue);
+            // Refresh results
+            const refreshed = runAccessibilityCheck();
+            renderAccessibilityResults(refreshed);
+          });
+          row.appendChild(fixBtn);
+        }
+
+        // Click to scroll to element
+        if (issue.element) {
+          row.style.cursor = 'pointer';
+          row.addEventListener('click', (e) => {
+            if (e.target.closest('.a11y-fix-btn'))
+              return;
+            issue.element.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            // Flash the element
+            const orig = issue.element.style.outline;
+            issue.element.style.outline = '2px solid #c00';
+            setTimeout(() => { issue.element.style.outline = orig; }, 1500);
+          });
+        }
+
+        cat.appendChild(row);
+      }
+
+      container.appendChild(cat);
+    }
+  }
+
+  function applyAccessibilityFix(issue) {
+    if (issue.fix === 'add-alt' && issue.element) {
+      const alt = prompt('Enter alt text for this image:', '');
+      if (alt != null) {
+        issue.element.setAttribute('alt', alt);
+        markDirty();
+      }
+    } else if (issue.fix === 'fill-link' && issue.element) {
+      const text = prompt('Enter link text:', issue.element.getAttribute('href') || 'Link');
+      if (text != null) {
+        issue.element.textContent = text;
+        markDirty();
+      }
+    } else if (issue.fix === 'fill-header' && issue.element) {
+      const text = prompt('Enter header text:', 'Header');
+      if (text != null) {
+        issue.element.textContent = text;
+        markDirty();
+      }
+    } else if (issue.fix === 'set-title') {
+      const title = prompt('Enter document title:', docProperties.title || '');
+      if (title != null) {
+        docProperties.title = title;
+        document.title = title + ' - WordPad';
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
   // Module Initialization
   // ═══════════════════════════════════════════════════════════════
 
-  const ctx = { editor, editorWrapper, markDirty, escapeHtml, rgbToHex, User32, Kernel32, ComDlg32, showDialog: SZ.Dialog.show };
+  const ctx = { editor, editorWrapper, markDirty, escapeHtml, rgbToHex, User32, Kernel32, ComDlg32, showDialog: SZ.Dialog.show, showColorPalette };
   DocxEngine.init(ctx);
   RtfEngine.init(ctx);
   CommentsTracking.init(ctx);

@@ -526,6 +526,74 @@ body {
   display: flex;
 }
 
+/* ==== Stats grid (Text Statistics dialog) ==== */
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 16px;
+  font-size: 11px;
+  padding: 4px 0;
+}
+.stats-grid .stats-label { opacity: 0.7; }
+.stats-grid .stats-value { font-weight: bold; text-align: right; }
+
+/* ==== Auto-complete dropdown ==== */
+.ac-dropdown {
+  position: absolute;
+  z-index: 1000;
+  background: var(--sz-color-window, #fff);
+  border: 1px solid var(--sz-color-button-shadow, #a0a0a0);
+  box-shadow: 2px 2px 4px rgba(0,0,0,0.15);
+  max-height: 160px;
+  overflow-y: auto;
+  min-width: 120px;
+  font-family: 'Lucida Console', 'Courier New', Consolas, monospace;
+  font-size: 12px;
+}
+.ac-item {
+  padding: 2px 8px;
+  cursor: default;
+  white-space: nowrap;
+}
+.ac-item.selected, .ac-item:hover {
+  background: var(--sz-color-highlight, #0078d7);
+  color: var(--sz-color-highlight-text, #fff);
+}
+
+/* ==== Split View ==== */
+.editor-wrapper.split-active {
+  display: flex;
+  flex-direction: column;
+  --split-top: 50%;
+}
+.editor-wrapper.split-active > .editor-highlight,
+.editor-wrapper.split-active > .editor-input:not(.split-editor) {
+  height: var(--split-top) !important;
+  flex: none;
+  position: relative;
+}
+.split-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  min-height: 0;
+}
+.split-divider {
+  height: 5px;
+  background: var(--sz-color-button-face, #e0e0e0);
+  border-top: 1px solid var(--sz-color-button-shadow);
+  border-bottom: 1px solid var(--sz-color-button-shadow);
+  cursor: ns-resize;
+  flex-shrink: 0;
+  z-index: 10;
+}
+.split-editor {
+  flex: 1;
+  position: relative !important;
+  height: auto !important;
+}
+
 /* ==== Print styles ==== */
 @media print {
   .qat,

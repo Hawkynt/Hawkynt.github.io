@@ -174,7 +174,7 @@
     const tagSelect = document.getElementById('ms-tag');
     const fontInput = document.getElementById('ms-font');
     const sizeInput = document.getElementById('ms-size');
-    const colorInput = document.getElementById('ms-color');
+    const colorSwatch = document.getElementById('ms-color');
     const boldCheck = document.getElementById('ms-bold');
     const italicCheck = document.getElementById('ms-italic');
     const lineHeightInput = document.getElementById('ms-line-height');
@@ -190,7 +190,9 @@
     tagSelect.value = style ? style.tag : 'p';
     fontInput.value = style ? style.css.fontFamily.split(',')[0].trim() : 'Calibri';
     sizeInput.value = style ? parseInt(style.css.fontSize, 10) : 11;
-    colorInput.value = style ? style.css.color : '#000000';
+    const initColor = style ? style.css.color : '#000000';
+    colorSwatch.dataset.color = initColor;
+    colorSwatch.style.backgroundColor = initColor;
     boldCheck.checked = style ? style.css.fontWeight === 'bold' : false;
     italicCheck.checked = style ? style.css.fontStyle === 'italic' : false;
     lineHeightInput.value = style ? style.css.lineHeight : '1.15';
@@ -202,12 +204,18 @@
     updateBtn.style.display = isCustom ? '' : 'none';
     deleteBtn.style.display = isCustom ? '' : 'none';
 
+    colorSwatch.onclick = () => {
+      if (ctx && ctx.showColorPalette)
+        ctx.showColorPalette(colorSwatch, (c) => { colorSwatch.dataset.color = c; colorSwatch.style.backgroundColor = c; });
+    };
+
     SZ.Dialog.show('dlg-manage-styles').then((result) => {
+      colorSwatch.onclick = null;
       const css = {
         fontFamily: fontInput.value || 'Calibri, sans-serif',
         fontSize: (sizeInput.value || '11') + 'pt',
         fontWeight: boldCheck.checked ? 'bold' : 'normal',
-        color: colorInput.value || '#000000',
+        color: colorSwatch.dataset.color || '#000000',
         fontStyle: italicCheck.checked ? 'italic' : 'normal',
         lineHeight: lineHeightInput.value || '1.15'
       };

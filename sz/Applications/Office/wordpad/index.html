@@ -51,6 +51,7 @@
     <button class="ribbon-tab" data-tab="page-layout">Page Layout</button>
     <button class="ribbon-tab" data-tab="view">View</button>
     <button class="ribbon-tab" data-tab="review">Review</button>
+    <button class="ribbon-tab" data-tab="mailings">Mailings</button>
     <button class="ribbon-tab ribbon-tab-contextual" data-tab="table-tools" id="tab-table-tools" style="display:none;color:#c44;font-weight:bold;">Table Tools</button>
     <button class="ribbon-tab ribbon-tab-contextual" data-tab="picture-format" id="tab-picture-format" style="display:none;color:#48c;font-weight:bold;">Picture Format</button>
   </div>
@@ -127,12 +128,10 @@
         <button class="rb-btn rb-fmt" data-cmd="superscript" title="Superscript">X<sup>2</sup></button>
         <div class="rb-sep-v"></div>
         <span class="rb-color-wrap" title="Font Color">
-          <input type="color" class="rb-color" id="rb-font-color" value="#000000">
-          <span class="rb-color-label" id="rb-font-color-swatch" style="background:#000000;">A</span>
+          <span class="rb-color-label" id="rb-font-color" data-color="#000000" style="background:#000000;">A</span>
         </span>
         <span class="rb-color-wrap" title="Highlight Color">
-          <input type="color" class="rb-color" id="rb-highlight-color" value="#ffff00">
-          <span class="rb-color-label rb-highlight-swatch" id="rb-highlight-swatch" style="background:#ffff00;"></span>
+          <span class="rb-color-label rb-highlight-swatch" id="rb-highlight-color" data-color="#ffff00" style="background:#ffff00;"></span>
         </span>
         <div class="rb-sep-v"></div>
         <button class="rb-btn rb-fmt" data-action="clear-formatting" title="Clear Formatting">&#8709;</button>
@@ -526,7 +525,7 @@
       <div class="rb-stack">
         <div class="rb-field">
           <label>Color:</label>
-          <input type="color" class="rb-color" id="rb-page-color" value="#ffffff" title="Page Color">
+          <span class="color-swatch" id="rb-page-color" data-color="#ffffff" style="background:#ffffff;" title="Page Color"></span>
         </div>
         <button class="rb-btn rb-btn-sm" data-action="watermark" title="Watermark">
           <span class="rb-icon">&#128167;</span><span class="rb-label">Watermark</span>
@@ -715,6 +714,28 @@
     <div class="ribbon-group-label">Focus</div>
   </div>
 
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="macro-record" title="Record Macro" id="btn-macro-record">
+          <span class="rb-icon" style="color:#c00;">&#9679;</span><span class="rb-label">Record</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="macro-stop" title="Stop Recording" id="btn-macro-stop" style="display:none;">
+          <span class="rb-icon">&#9632;</span><span class="rb-label">Stop</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="macro-play" title="Play Macro">
+          <span class="rb-icon" style="color:#090;">&#9654;</span><span class="rb-label">Play</span>
+        </button>
+      </div>
+      <button class="rb-btn rb-btn-sm" data-action="macro-manager" title="Manage Macros">
+        <span class="rb-icon">&#128196;</span><span class="rb-label">Macros</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Macros</div>
+  </div>
+
 </div>
 
 <!-- Review Tab -->
@@ -826,6 +847,89 @@
     <div class="ribbon-group-label">Protect</div>
   </div>
 
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="compare-documents" title="Compare Documents">
+        <span class="rb-icon rb-icon-lg">&#8644;</span>
+        <span class="rb-label">Compare</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Compare</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="check-accessibility" title="Check Accessibility">
+        <span class="rb-icon rb-icon-lg">&#9855;</span>
+        <span class="rb-label">Check<br>Accessibility</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Accessibility</div>
+  </div>
+
+</div>
+
+<!-- Mailings Tab -->
+<div class="ribbon-panel" data-panel="mailings" id="ribbon-mailings">
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="merge-insert-field" title="Insert Merge Field">
+        <span class="rb-icon rb-icon-lg">&#10070;</span>
+        <span class="rb-label">Insert<br>Field</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Write &amp; Insert</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="merge-edit-data" title="Edit Data Source">
+        <span class="rb-icon rb-icon-lg">&#128451;</span>
+        <span class="rb-label">Edit Data<br>Source</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Data Source</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="merge-preview" title="Preview Results" id="btn-merge-preview">
+        <span class="rb-icon rb-icon-lg">&#128065;</span>
+        <span class="rb-label">Preview<br>Results</span>
+      </button>
+      <div class="rb-stack">
+        <button class="rb-btn rb-btn-sm" data-action="merge-prev-record" title="Previous Record">
+          <span class="rb-icon">&#9668;</span><span class="rb-label">Previous</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="merge-next-record" title="Next Record">
+          <span class="rb-icon">&#9658;</span><span class="rb-label">Next</span>
+        </button>
+      </div>
+    </div>
+    <div class="ribbon-group-label">Preview</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="merge-finish" title="Finish &amp; Merge">
+        <span class="rb-icon rb-icon-lg">&#9993;</span>
+        <span class="rb-label">Finish &amp;<br>Merge</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Finish</div>
+  </div>
+
 </div>
 
 <!-- Table Tools Contextual Tab -->
@@ -919,6 +1023,18 @@
       </button>
     </div>
     <div class="ribbon-group-label">Properties</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="table-styles" title="Table Styles Gallery">
+        <span class="rb-icon rb-icon-lg">&#9635;</span>
+        <span class="rb-label">Table<br>Styles</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Table Styles</div>
   </div>
 
 </div>
@@ -1036,7 +1152,7 @@
           Font: <input type="text" id="fp-fmt-font" style="width:70px;font-size:10px;padding:1px 3px;border:1px solid #999;border-radius:2px;" placeholder="any">
         </label>
         <label style="display:inline-flex;align-items:center;gap:2px;">
-          Color: <input type="color" id="fp-fmt-color" value="#000000" style="width:20px;height:16px;padding:0;border:1px solid #999;">
+          Color: <span class="color-swatch" id="fp-fmt-color" data-color="#000000" style="background:#000000;" title="Choose color"></span>
           <input type="checkbox" id="fp-fmt-color-enabled" title="Enable color filter">
         </label>
       </span>
@@ -1290,7 +1406,7 @@
       </div>
       <div class="fp-field"><label for="ms-font">Font:</label><input type="text" id="ms-font" value="Calibri" autocomplete="off"></div>
       <div class="fp-field"><label for="ms-size">Size (pt):</label><input type="number" id="ms-size" min="6" max="72" value="11" style="width:60px;"></div>
-      <div class="fp-field"><label for="ms-color">Color:</label><input type="color" id="ms-color" value="#000000"></div>
+      <div class="fp-field"><label for="ms-color">Color:</label><span class="color-swatch" id="ms-color" data-color="#000000" style="background:#000000;" title="Choose color"></span></div>
       <div class="fp-options">
         <label><input type="checkbox" id="ms-bold"> Bold</label>
         <label><input type="checkbox" id="ms-italic"> Italic</label>
@@ -1362,7 +1478,7 @@
       <div class="wp-dlg-field"><label>Width:</label>
         <select id="pb-width" style="flex:1;padding:2px 4px;font-size:11px;border:1px solid var(--sz-color-button-shadow);border-radius:2px;"><option value="1">1px</option><option value="2">2px</option><option value="3">3px</option><option value="4">4px</option></select>
       </div>
-      <div class="wp-dlg-field"><label>Color:</label><input type="color" id="pb-color" value="#000000"></div>
+      <div class="wp-dlg-field"><label>Color:</label><span class="color-swatch" id="pb-color" data-color="#000000" style="background:#000000;" title="Choose color"></span></div>
       <div class="wp-dlg-field"><label>Apply to:</label>
         <select id="pb-apply" style="flex:1;padding:2px 4px;font-size:11px;border:1px solid var(--sz-color-button-shadow);border-radius:2px;"><option value="document">Whole document</option><option value="section">This section</option><option value="first">First page only</option></select>
       </div>
@@ -1424,7 +1540,7 @@
       </div>
       <div class="wp-dlg-field"><label>Cell padding:</label><input type="number" id="tp-padding" min="0" max="20" value="4">px</div>
       <div class="wp-dlg-field"><label>Border width:</label><input type="number" id="tp-border" min="0" max="5" value="1">px</div>
-      <div class="wp-dlg-field"><label>Border color:</label><input type="color" id="tp-border-color" value="#999999"></div>
+      <div class="wp-dlg-field"><label>Border color:</label><span class="color-swatch" id="tp-border-color" data-color="#999999" style="background:#999999;" title="Choose color"></span></div>
       <div class="wp-dlg-field">
         <label><input type="checkbox" id="tp-banded"> Banded rows</label>
       </div>
@@ -1564,7 +1680,7 @@
       </div>
       <div class="fp-field">
         <label for="wa-color">Color:</label>
-        <input type="color" id="wa-color" value="#0066cc">
+        <span class="color-swatch" id="wa-color" data-color="#0066cc" style="background:#0066cc;" title="Choose color"></span>
       </div>
       <div class="wa-style-gallery" id="wa-style-gallery"></div>
       <div class="wa-preview-container">
@@ -1605,8 +1721,144 @@
   </div>
 </div>
 
+<!-- W1: Table Style Gallery Dialog -->
+<div class="dialog-overlay" id="dlg-table-styles">
+  <div class="dialog" style="min-width:520px;">
+    <div class="dialog-title">Table Styles</div>
+    <div class="dialog-body">
+      <p style="font-size:11px;margin:0 0 8px;">Select a style to apply to the current table:</p>
+      <div class="ts-gallery" id="ts-gallery"></div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="cancel">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- W2: Mail Merge - Insert Field Dialog -->
+<div class="dialog-overlay" id="dlg-merge-fields">
+  <div class="dialog" style="min-width:340px;">
+    <div class="dialog-title">Insert Merge Field</div>
+    <div class="dialog-body">
+      <p style="font-size:11px;margin:0 0 8px;">Click a field to insert it at the cursor:</p>
+      <div class="merge-field-grid" id="merge-field-grid"></div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="cancel">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- W2: Mail Merge - Edit Data Source Dialog -->
+<div class="dialog-overlay" id="dlg-merge-data">
+  <div class="dialog" style="min-width:560px;">
+    <div class="dialog-title">Edit Data Source</div>
+    <div class="dialog-body">
+      <p style="font-size:11px;margin:0 0 4px;">Enter CSV data (first row = headers):</p>
+      <textarea id="merge-csv-data" rows="10" style="width:100%;font-family:monospace;font-size:11px;border:1px solid #aaa;box-sizing:border-box;resize:vertical;"></textarea>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Apply</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- W3: Compare Documents Dialog -->
+<div class="dialog-overlay" id="dlg-compare">
+  <div class="dialog" style="min-width:400px;">
+    <div class="dialog-title">Compare Documents</div>
+    <div class="dialog-body">
+      <p style="font-size:11px;margin:0 0 8px;">Paste or type the second document text to compare against the current document:</p>
+      <textarea id="compare-text" rows="10" style="width:100%;font-size:11px;border:1px solid #aaa;box-sizing:border-box;resize:vertical;"></textarea>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Compare</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- W3: Compare Results Dialog -->
+<div class="dialog-overlay" id="dlg-compare-result">
+  <div class="dialog" style="min-width:700px;max-width:90vw;">
+    <div class="dialog-title">Compare Results</div>
+    <div class="dialog-body" style="max-height:60vh;overflow:auto;">
+      <div class="compare-toolbar" id="compare-toolbar">
+        <button class="rb-btn rb-btn-sm" id="compare-prev-change" title="Previous Change">&#9668; Prev</button>
+        <button class="rb-btn rb-btn-sm" id="compare-next-change" title="Next Change">Next &#9658;</button>
+        <span id="compare-change-status" style="font-size:11px;margin-left:8px;"></span>
+      </div>
+      <div class="compare-split" id="compare-split">
+        <div class="compare-pane">
+          <div class="compare-pane-title">Original</div>
+          <div class="compare-pane-body" id="compare-original"></div>
+        </div>
+        <div class="compare-pane">
+          <div class="compare-pane-title">Revised</div>
+          <div class="compare-pane-body" id="compare-revised"></div>
+        </div>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- W4: Macro Name Dialog -->
+<div class="dialog-overlay" id="dlg-macro-name">
+  <div class="dialog" style="min-width:300px;">
+    <div class="dialog-title">Save Macro</div>
+    <div class="dialog-body">
+      <div class="wp-dlg-field">
+        <label>Macro Name:</label>
+        <input type="text" id="macro-name-input" placeholder="MyMacro">
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Save</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- W4: Macro Manager Dialog -->
+<div class="dialog-overlay" id="dlg-macro-manager">
+  <div class="dialog" style="min-width:400px;">
+    <div class="dialog-title">Macro Manager</div>
+    <div class="dialog-body">
+      <div id="macro-list" style="min-height:80px;max-height:200px;overflow-y:auto;border:1px solid #ccc;margin-bottom:8px;"></div>
+      <div style="display:flex;gap:4px;">
+        <button class="rb-btn rb-btn-sm" id="macro-run-btn">Run</button>
+        <button class="rb-btn rb-btn-sm" id="macro-delete-btn">Delete</button>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- W5: Accessibility Checker Panel Dialog -->
+<div class="dialog-overlay" id="dlg-accessibility">
+  <div class="dialog" style="min-width:420px;max-width:520px;">
+    <div class="dialog-title">Accessibility Checker</div>
+    <div class="dialog-body" style="max-height:60vh;overflow-y:auto;">
+      <div id="a11y-results"></div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok" id="a11y-recheck">Re-check</button>
+      <button data-result="cancel">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- Reading Mode exit button -->
 <button class="reading-mode-exit" id="reading-mode-exit" style="display:none;">Exit Reading Mode</button>
+
+<!-- Color palette popup -->
+<div class="color-palette" id="color-palette"></div>
 
 <script src="../../zoom-control.js"></script>
 <script src="../../shared/ribbon.js"></script>
