@@ -1390,6 +1390,8 @@
       aiTick(dt);
     },
 
+    sortPlayerHand() { sortHand(playerHand); },
+
     cleanup() {
       playerHand = [];
       aiHand = [];

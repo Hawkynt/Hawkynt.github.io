@@ -1282,6 +1282,8 @@
       }
     },
 
+    sortPlayerHand() { sortHand(hands[0]); },
+
     cleanup() {
       hands = [[], [], [], []];
       kitty = [];
