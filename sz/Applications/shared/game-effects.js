@@ -150,6 +150,11 @@
         p.draw(ctx);
     }
 
+    emit(x, y, opts = {}) {
+      const count = opts.count ?? 5;
+      this.burst(x, y, count, opts);
+    }
+
     clear() { this.#particles.length = 0; }
   }
 

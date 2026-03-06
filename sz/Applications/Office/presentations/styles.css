@@ -1497,6 +1497,61 @@ body.view-notes .notes-editor {
   cursor: pointer;
 }
 
+/* Ribbon font color wrap */
+.rb-color-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 22px;
+  cursor: pointer;
+}
+
+.rb-color-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  font-weight: bold;
+  font-size: 12px;
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+/* Color swatch (replaces native <input type="color">) */
+.color-swatch {
+  display: inline-block;
+  width: 28px;
+  height: 20px;
+  border: 1px solid #999;
+  border-radius: 2px;
+  cursor: pointer;
+  vertical-align: middle;
+  box-sizing: border-box;
+}
+
+.color-swatch:hover {
+  border-color: #333;
+  box-shadow: 0 0 0 1px #333;
+}
+
+.rb-color-wrap .color-swatch {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+}
+
+.pp-dialog .color-swatch {
+  width: 100%;
+  height: 24px;
+  border-radius: 3px;
+}
+
 .sfp-row input[type="number"] {
   border: 1px solid #ccc;
   border-radius: 2px;
@@ -2001,4 +2056,107 @@ body.view-notes .notes-editor {
 
 .cropped-image {
   overflow: hidden;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   P1: Rehearse Timings - Timer Overlay & Summary Dialog
+   ══════════════════════════════════════════════════════════════ */
+
+.rehearsal-timer-overlay {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  background: rgba(0,0,0,0.75);
+  color: #fff;
+  padding: 8px 20px;
+  border-radius: 6px;
+  font-family: Consolas, monospace;
+  font-size: 16px;
+  user-select: none;
+}
+
+.rehearsal-timer-overlay .rt-slide-time {
+  color: #4fc3f7;
+}
+
+.rehearsal-timer-overlay .rt-total-time {
+  color: #a5d6a7;
+}
+
+.rehearsal-timer-overlay .rt-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  opacity: 0.7;
+  margin-right: 4px;
+}
+
+.rehearsal-summary-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin: 8px 0;
+}
+
+.rehearsal-summary-table th,
+.rehearsal-summary-table td {
+  padding: 4px 8px;
+  border: 1px solid #ddd;
+  text-align: center;
+}
+
+.rehearsal-summary-table th {
+  background: #4472c4;
+  color: #fff;
+  font-weight: bold;
+}
+
+.rehearsal-summary-table tr:nth-child(even) {
+  background: #f5f5f5;
+}
+
+.rehearsal-summary-table .total-row {
+  font-weight: bold;
+  background: #e8e8e8;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   P5: Element Locking
+   ══════════════════════════════════════════════════════════════ */
+
+.slide-element.locked {
+  cursor: default;
+}
+
+.slide-element.locked .resize-handles-overlay {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+.slide-element.locked .resize-handle,
+.slide-element.locked .rotation-handle {
+  pointer-events: none;
+  opacity: 0.3;
+}
+
+.lock-icon-overlay {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  background: rgba(0,0,0,0.5);
+  color: #fff;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  pointer-events: none;
+  z-index: 200;
+  line-height: 1;
 }

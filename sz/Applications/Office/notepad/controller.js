@@ -745,6 +745,120 @@
 
   rbZoomSlider.addEventListener('input', () => syncZoomSliders(parseInt(rbZoomSlider.value, 10)));
 
+  // =====================================================================
+  // Sort Lines
+  // =====================================================================
+  function showSortLines() {
+    SZ.Dialog.show('dlg-sort-lines').then((result) => {
+      if (result !== 'ok') return;
+      const sortType = document.querySelector('input[name="sort-type"]:checked').value;
+      const removeDupes = document.getElementById('sort-remove-dupes').checked;
+      const text = editor.value;
+      let lines = text.split('\n');
+
+      switch (sortType) {
+        case 'asc':
+          lines.sort();
+          break;
+        case 'desc':
+          lines.sort().reverse();
+          break;
+        case 'case-insensitive':
+          lines.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+          break;
+        case 'numeric':
+          lines.sort((a, b) => {
+            const na = parseFloat(a) || 0;
+            const nb = parseFloat(b) || 0;
+            return na - nb;
+          });
+          break;
+      }
+
+      if (removeDupes)
+        lines = [...new Set(lines)];
+
+      pushUndo();
+      editor.value = lines.join('\n');
+      editor.dispatchEvent(new Event('input'));
+      editor.focus();
+    });
+  }
+
+  // =====================================================================
+  // Convert Case
+  // =====================================================================
+  function convertCase(type) {
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+    const hasSelection = start !== end;
+    const text = hasSelection ? editor.value.substring(start, end) : editor.value;
+    let result;
+
+    switch (type) {
+      case 'uppercase':
+        result = text.toUpperCase();
+        break;
+      case 'lowercase':
+        result = text.toLowerCase();
+        break;
+      case 'title-case':
+        result = text.replace(/\b\w/g, c => c.toUpperCase());
+        break;
+      case 'sentence-case':
+        result = text.toLowerCase().replace(/(^|[.!?]\s+)\w/g, c => c.toUpperCase());
+        break;
+      case 'toggle-case':
+        result = text.split('').map(c => c === c.toUpperCase() ? c.toLowerCase() : c.toUpperCase()).join('');
+        break;
+      default:
+        return;
+    }
+
+    pushUndo();
+    if (hasSelection) {
+      editor.setRangeText(result, start, end, 'end');
+    } else {
+      const pos = editor.selectionStart;
+      editor.value = result;
+      editor.setSelectionRange(pos, pos);
+    }
+    editor.dispatchEvent(new Event('input'));
+    editor.focus();
+  }
+
+  // =====================================================================
+  // Text Statistics
+  // =====================================================================
+  function showTextStatistics() {
+    const text = editor.value;
+    const chars = text.length;
+    const charsNoSpaces = text.replace(/\s/g, '').length;
+    const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+    const lines = text.split('\n').length;
+    const sentences = (text.match(/[.!?]+\s/g) || []).length + (text.trim().length > 0 && !/[.!?]\s*$/.test(text) ? 1 : 0);
+    const paragraphs = text.trim() ? text.split(/\n\s*\n/).filter(p => p.trim()).length : 0;
+    const wordList = text.trim() ? text.trim().split(/\s+/) : [];
+    const avgWordLen = wordList.length ? (wordList.reduce((s, w) => s + w.length, 0) / wordList.length).toFixed(1) : '0';
+    const longestLine = Math.max(0, ...text.split('\n').map(l => l.length));
+    const uniqueWords = new Set(wordList.map(w => w.toLowerCase())).size;
+
+    const grid = document.getElementById('stats-grid');
+    grid.innerHTML = [
+      ['Characters', chars],
+      ['Characters (no spaces)', charsNoSpaces],
+      ['Words', words],
+      ['Lines', lines],
+      ['Sentences', sentences],
+      ['Paragraphs', paragraphs || 1],
+      ['Average Word Length', avgWordLen],
+      ['Longest Line', longestLine + ' chars'],
+      ['Unique Words', uniqueWords],
+    ].map(([label, value]) => '<span class="stats-label">' + label + '</span><span class="stats-value">' + value + '</span>').join('');
+
+    SZ.Dialog.show('dlg-text-statistics');
+  }
+
   function handleAction(action) {
     switch (action) {
       case 'new':
@@ -870,6 +984,19 @@
         break;
       case 'clear-bookmarks':
         clearBookmarks();
+        break;
+      case 'sort-lines':
+        showSortLines();
+        break;
+      case 'uppercase':
+      case 'lowercase':
+      case 'title-case':
+      case 'sentence-case':
+      case 'toggle-case':
+        convertCase(action);
+        break;
+      case 'text-statistics':
+        showTextStatistics();
         break;
       case 'about':
         showDialog('dlg-about');
@@ -1870,6 +1997,32 @@
   // Keyboard event handler
   // =====================================================================
   editor.addEventListener('keydown', (e) => {
+    // Auto-complete keyboard handling
+    if (acVisible) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        acSelectedIndex = Math.min(acSelectedIndex + 1, acItems.length - 1);
+        renderAutoComplete();
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        acSelectedIndex = Math.max(acSelectedIndex - 1, 0);
+        renderAutoComplete();
+        return;
+      }
+      if (e.key === 'Tab' || e.key === 'Enter') {
+        e.preventDefault();
+        acceptAutoComplete(acSelectedIndex);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        hideAutoComplete();
+        return;
+      }
+    }
+
     // Tab
     if (e.key === 'Tab') {
       handleTab(e);
@@ -2101,6 +2254,201 @@
   }
 
   // =====================================================================
+  // Split View
+  // =====================================================================
+  let splitViewActive = false;
+  let splitEditor = null;
+  const splitContainer = document.createElement('div');
+  splitContainer.className = 'split-container';
+
+  const splitDivider = document.createElement('div');
+  splitDivider.className = 'split-divider';
+
+  document.getElementById('rb-split-view').addEventListener('change', (e) => {
+    splitViewActive = e.target.checked;
+    toggleSplitView();
+    scheduleSaveSettings();
+  });
+
+  function toggleSplitView() {
+    const wrapper = document.querySelector('.editor-wrapper');
+
+    if (splitViewActive) {
+      // Disable minimap when split is active
+      if (showMinimap) {
+        showMinimap = false;
+        const minimapCheck = document.getElementById('rb-show-minimap');
+        if (minimapCheck) minimapCheck.checked = false;
+        renderMinimap();
+      }
+
+      // Create split editor
+      splitEditor = document.createElement('textarea');
+      splitEditor.className = 'editor-input split-editor' + (wordWrap ? ' word-wrap' : '');
+      splitEditor.spellcheck = false;
+      splitEditor.autocomplete = 'off';
+      splitEditor.value = editor.value;
+      splitEditor.style.fontSize = editor.style.fontSize || '';
+      splitEditor.style.fontFamily = editor.style.fontFamily || '';
+
+      splitContainer.innerHTML = '';
+      splitContainer.appendChild(splitDivider);
+      splitContainer.appendChild(splitEditor);
+      wrapper.appendChild(splitContainer);
+      wrapper.classList.add('split-active');
+
+      // Sync content between editors
+      splitEditor.addEventListener('input', () => {
+        editor.value = splitEditor.value;
+        pushUndo();
+        onContentChanged();
+      });
+
+      editor.addEventListener('input', syncSplitContent);
+
+      // Draggable divider
+      let dragging = false;
+      splitDivider.addEventListener('pointerdown', (e) => {
+        dragging = true;
+        splitDivider.setPointerCapture(e.pointerId);
+        e.preventDefault();
+      });
+      splitDivider.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        const rect = wrapper.getBoundingClientRect();
+        const pct = ((e.clientY - rect.top) / rect.height) * 100;
+        const clamped = Math.max(20, Math.min(80, pct));
+        wrapper.style.setProperty('--split-top', clamped + '%');
+      });
+      splitDivider.addEventListener('pointerup', () => { dragging = false; });
+      splitDivider.addEventListener('lostpointercapture', () => { dragging = false; });
+    } else {
+      wrapper.classList.remove('split-active');
+      if (splitContainer.parentNode)
+        splitContainer.parentNode.removeChild(splitContainer);
+      editor.removeEventListener('input', syncSplitContent);
+      splitEditor = null;
+    }
+  }
+
+  function syncSplitContent() {
+    if (splitEditor && splitEditor.value !== editor.value)
+      splitEditor.value = editor.value;
+  }
+
+  // =====================================================================
+  // Auto-Complete
+  // =====================================================================
+  let acVisible = false;
+  let acItems = [];
+  let acSelectedIndex = -1;
+  const acDropdown = document.createElement('div');
+  acDropdown.className = 'ac-dropdown';
+  acDropdown.style.display = 'none';
+  document.querySelector('.editor-wrapper').appendChild(acDropdown);
+
+  function getWordAtCursor() {
+    const text = editor.value;
+    const pos = editor.selectionStart;
+    let start = pos;
+    while (start > 0 && /\w/.test(text[start - 1]))
+      --start;
+    return { word: text.substring(start, pos), start };
+  }
+
+  function buildWordList() {
+    const text = editor.value;
+    const words = new Set();
+    const re = /\b\w{3,}\b/g;
+    let m;
+    while ((m = re.exec(text)) !== null)
+      words.add(m[0]);
+    return [...words];
+  }
+
+  function showAutoComplete() {
+    const { word, start } = getWordAtCursor();
+    if (word.length < 3) {
+      hideAutoComplete();
+      return;
+    }
+
+    const allWords = buildWordList();
+    const lower = word.toLowerCase();
+    const matches = allWords.filter(w => w.toLowerCase().startsWith(lower) && w.toLowerCase() !== lower).slice(0, 8);
+
+    if (matches.length === 0) {
+      hideAutoComplete();
+      return;
+    }
+
+    acItems = matches;
+    acSelectedIndex = 0;
+    renderAutoComplete();
+    positionAutoComplete();
+    acVisible = true;
+  }
+
+  function renderAutoComplete() {
+    acDropdown.innerHTML = acItems.map((item, i) =>
+      '<div class="ac-item' + (i === acSelectedIndex ? ' selected' : '') + '" data-index="' + i + '">' + escapeHtml(item) + '</div>'
+    ).join('');
+    acDropdown.style.display = 'block';
+
+    for (const el of acDropdown.querySelectorAll('.ac-item')) {
+      el.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        acceptAutoComplete(parseInt(el.dataset.index, 10));
+      });
+    }
+  }
+
+  function positionAutoComplete() {
+    const cs = getComputedStyle(editor);
+    const text = editor.value.substring(0, editor.selectionStart);
+    const lineHeight = parseFloat(cs.lineHeight) || 18.2;
+    const line = text.split('\n').length;
+    const top = (line) * lineHeight + 4 - editor.scrollTop;
+
+    const lastLine = text.split('\n').pop();
+    const charWidth = 7.8;
+    const left = lastLine.length * charWidth + 4 - editor.scrollLeft;
+
+    acDropdown.style.top = Math.min(top, editor.clientHeight - 100) + 'px';
+    acDropdown.style.left = Math.min(left, editor.clientWidth - 180) + 'px';
+  }
+
+  function acceptAutoComplete(index) {
+    if (index < 0 || index >= acItems.length) return;
+    const { word, start } = getWordAtCursor();
+    const replacement = acItems[index];
+    pushUndo();
+    editor.setRangeText(replacement, start, editor.selectionStart, 'end');
+    editor.dispatchEvent(new Event('input'));
+    hideAutoComplete();
+    editor.focus();
+  }
+
+  function hideAutoComplete() {
+    acDropdown.style.display = 'none';
+    acVisible = false;
+    acItems = [];
+    acSelectedIndex = -1;
+  }
+
+  let acTimeout = null;
+  editor.addEventListener('input', () => {
+    clearTimeout(acTimeout);
+    acTimeout = setTimeout(showAutoComplete, 200);
+  });
+
+  editor.addEventListener('blur', () => setTimeout(hideAutoComplete, 150));
+  document.addEventListener('pointerdown', (e) => {
+    if (acVisible && !acDropdown.contains(e.target))
+      hideAutoComplete();
+  });
+
+  // =====================================================================
   // Line Bookmarks
   // =====================================================================
   function toggleBookmark() {
@@ -2145,6 +2493,7 @@
         showLongLineMarker, highlightCurrentLine, autoIndent,
         autoCloseBrackets, tabWidth, tabsAsSpaces, longLineColumn,
         currentEncoding, baseFontSize, showMinimap, zoomLevel,
+        splitViewActive,
       };
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
     } catch {}
@@ -2176,6 +2525,7 @@
       if (s.baseFontSize != null) baseFontSize = s.baseFontSize;
       if (s.showMinimap != null) showMinimap = s.showMinimap;
       if (s.zoomLevel != null) zoomLevel = s.zoomLevel;
+      if (s.splitViewActive != null) splitViewActive = s.splitViewActive;
 
       const check = (id, val) => {
         const el = document.getElementById(id);
@@ -2190,6 +2540,7 @@
       check('rb-auto-indent', autoIndent);
       check('rb-auto-close-brackets', autoCloseBrackets);
       check('rb-show-minimap', showMinimap);
+      check('rb-split-view', splitViewActive);
 
       statusEnc.textContent = currentEncoding.toUpperCase();
       editor.style.tabSize = tabWidth;
@@ -2248,6 +2599,7 @@
   scheduleLineNumbers();
   updateLongLineMarker();
   renderMinimap();
+  if (splitViewActive) toggleSplitView();
 
   // Push initial undo state
   undoStack.push({

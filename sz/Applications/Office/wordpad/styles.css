@@ -63,18 +63,6 @@ body {
   cursor: default;
 }
 
-.rb-color {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-}
-
 .rb-color-label {
   display: flex;
   align-items: center;
@@ -87,11 +75,26 @@ body {
   text-shadow: 0 0 2px #000, 0 0 2px #000;
   border: 1px solid var(--sz-color-button-shadow);
   border-radius: 2px;
-  pointer-events: none;
+  cursor: default;
 }
 
 .rb-highlight-swatch {
   font-size: 0;
+}
+
+.color-swatch {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--sz-color-button-shadow);
+  border-radius: 2px;
+  cursor: default;
+  vertical-align: middle;
+}
+
+.color-swatch:hover {
+  border-color: var(--sz-color-window-text);
+  outline: 1px solid var(--sz-color-window);
 }
 
 /* ── Ruler ────────────────────────────────────────────────────── */
@@ -423,6 +426,7 @@ body {
 }
 
 .editor-wrapper.print-layout .editor {
+  width: 8.5in;
   max-width: 8.5in;
   min-height: 11in;
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
@@ -2962,6 +2966,297 @@ body.reading-mode .editor-wrapper.print-layout .editor {
   cursor: default;
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+   W1 — Table Style Gallery
+   ═══════════════════════════════════════════════════════════════════ */
+
+.ts-gallery {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.ts-tile {
+  border: 2px solid transparent;
+  border-radius: 4px;
+  padding: 4px;
+  cursor: default;
+  text-align: center;
+  background: var(--sz-color-window, #fff);
+  transition: border-color 0.15s;
+}
+
+.ts-tile:hover {
+  border-color: var(--sz-color-highlight, #0078d4);
+}
+
+.ts-tile-name {
+  font-size: 9px;
+  font-weight: bold;
+  margin-bottom: 4px;
+  color: var(--sz-color-window-text, #333);
+}
+
+.ts-tile-preview {
+  font-size: 7px;
+  line-height: 1.2;
+  overflow: hidden;
+  max-height: 48px;
+}
+
+.ts-tile-preview table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ts-tile-preview td,
+.ts-tile-preview th {
+  padding: 1px 2px;
+  font-size: 7px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   W2 — Mail Merge Fields
+   ═══════════════════════════════════════════════════════════════════ */
+
+.merge-field {
+  display: inline;
+  background: #e8d8ff;
+  border: 1px solid #b89cdb;
+  border-radius: 3px;
+  padding: 0 4px;
+  font-family: inherit;
+  font-size: inherit;
+  color: #5b2d8e;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.merge-field:hover {
+  background: #d6c0f0;
+  border-color: #8b5ec7;
+}
+
+.merge-field-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.merge-field-btn {
+  padding: 6px 14px;
+  font-size: 11px;
+  border: 1px solid #b89cdb;
+  background: #f5eeff;
+  color: #5b2d8e;
+  border-radius: 3px;
+  cursor: default;
+}
+
+.merge-field-btn:hover {
+  background: #e0d0f5;
+  border-color: #8b5ec7;
+}
+
+.merge-preview-value {
+  background: #d4edda;
+  border: 1px solid #a3d5b3;
+  border-radius: 3px;
+  padding: 0 4px;
+  color: #155724;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   W3 — Compare Documents
+   ═══════════════════════════════════════════════════════════════════ */
+
+.compare-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid #ddd;
+}
+
+.compare-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.compare-pane {
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.compare-pane-title {
+  font-size: 11px;
+  font-weight: bold;
+  padding: 4px 8px;
+  background: var(--sz-color-button-face, #f0f0f0);
+  border-bottom: 1px solid #ccc;
+}
+
+.compare-pane-body {
+  padding: 8px;
+  font-size: 11px;
+  font-family: monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-height: 100px;
+  max-height: 50vh;
+  overflow-y: auto;
+  line-height: 1.5;
+}
+
+.diff-add {
+  background: #d4edda;
+  color: #155724;
+}
+
+.diff-del {
+  background: #f8d7da;
+  color: #721c24;
+  text-decoration: line-through;
+}
+
+.diff-current {
+  outline: 2px solid #0078d4;
+  outline-offset: -1px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   W4 — Macro Recorder
+   ═══════════════════════════════════════════════════════════════════ */
+
+.macro-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 8px;
+  font-size: 11px;
+  border-bottom: 1px solid #eee;
+  cursor: default;
+}
+
+.macro-item:hover {
+  background: var(--sz-color-highlight, #cce5ff);
+  color: var(--sz-color-highlight-text, #000);
+}
+
+.macro-item.selected {
+  background: var(--sz-color-highlight, #0078d4);
+  color: var(--sz-color-highlight-text, #fff);
+}
+
+.macro-item-name {
+  font-weight: bold;
+}
+
+.macro-item-count {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.macro-recording-indicator {
+  position: fixed;
+  bottom: 28px;
+  right: 12px;
+  z-index: 9000;
+  background: #c00;
+  color: #fff;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: bold;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  pointer-events: none;
+  animation: macro-blink 1s ease-in-out infinite;
+}
+
+@keyframes macro-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   W5 — Accessibility Checker
+   ═══════════════════════════════════════════════════════════════════ */
+
+.a11y-category {
+  margin-bottom: 12px;
+}
+
+.a11y-category-title {
+  font-size: 12px;
+  font-weight: bold;
+  padding: 4px 0;
+  border-bottom: 1px solid #ddd;
+  margin-bottom: 4px;
+}
+
+.a11y-category-title.a11y-error { color: #c00; }
+.a11y-category-title.a11y-warning { color: #c80; }
+.a11y-category-title.a11y-tip { color: #08c; }
+
+.a11y-issue {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 4px;
+  font-size: 11px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.a11y-issue:hover {
+  background: #f5f5f5;
+}
+
+.a11y-severity {
+  font-size: 14px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.a11y-severity.error { color: #c00; }
+.a11y-severity.warning { color: #c80; }
+.a11y-severity.tip { color: #08c; }
+
+.a11y-issue-text {
+  flex: 1;
+}
+
+.a11y-issue-desc {
+  font-size: 10px;
+  color: #666;
+  margin-top: 2px;
+}
+
+.a11y-fix-btn {
+  font-size: 10px;
+  padding: 2px 8px;
+  border: 1px solid #aaa;
+  background: var(--sz-color-button-face, #f0f0f0);
+  color: var(--sz-color-button-text, #222);
+  border-radius: 2px;
+  cursor: default;
+  flex-shrink: 0;
+}
+
+.a11y-fix-btn:hover {
+  background: var(--sz-color-highlight, #0078d4);
+  color: var(--sz-color-highlight-text, #fff);
+}
+
+.a11y-pass {
+  text-align: center;
+  padding: 20px;
+  font-size: 14px;
+  color: #090;
+}
+
 @media print {
   .reading-mode-exit {
     display: none !important;
@@ -2969,5 +3264,8 @@ body.reading-mode .editor-wrapper.print-layout .editor {
   .wp-form-field {
     border-style: solid;
     border-color: #ccc;
+  }
+  .macro-recording-indicator {
+    display: none !important;
   }
 }

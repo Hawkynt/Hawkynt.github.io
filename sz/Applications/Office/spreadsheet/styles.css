@@ -688,15 +688,22 @@ body {
 }
 
 .color-swatch {
+  display: inline-block;
   width: 16px;
   height: 16px;
   border: 1px solid var(--sz-color-button-shadow);
   cursor: default;
+  vertical-align: middle;
 }
 
 .color-swatch:hover {
   border-color: var(--sz-color-window-text);
   outline: 1px solid var(--sz-color-window);
+}
+
+.fp-field .color-swatch {
+  width: 20px;
+  height: 20px;
 }
 
 /* ==== Cell styles grid ==== */
@@ -1363,4 +1370,210 @@ body {
   font-family: inherit;
   border: 1px solid var(--sz-color-button-shadow, #999);
   outline: none;
+}
+
+/* ── Quick Analysis Tool ─────────────────────────────────── */
+.quick-analysis-btn {
+  position: absolute;
+  z-index: 50;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--sz-color-button-shadow);
+  background: var(--sz-color-button-face);
+  cursor: default;
+  font-size: 12px;
+  line-height: 20px;
+  text-align: center;
+  box-shadow: 1px 1px 3px rgba(0,0,0,0.15);
+  color: var(--sz-color-highlight);
+  user-select: none;
+}
+.quick-analysis-btn:hover {
+  background: var(--sz-color-button-light);
+  border-color: var(--sz-color-highlight);
+}
+
+.quick-analysis-popup {
+  position: absolute;
+  z-index: 5000;
+  background: var(--sz-color-window);
+  border: 1px solid var(--sz-color-button-shadow);
+  box-shadow: 2px 2px 8px rgba(0,0,0,0.2);
+  min-width: 320px;
+  font-size: 11px;
+}
+.qa-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--sz-color-button-shadow);
+  background: var(--sz-color-button-face);
+}
+.qa-tab {
+  padding: 4px 12px;
+  cursor: default;
+  font-size: 11px;
+  border: none;
+  background: none;
+  font-family: inherit;
+  color: var(--sz-color-button-text);
+  border-bottom: 2px solid transparent;
+}
+.qa-tab:hover { background: var(--sz-color-button-light); }
+.qa-tab.active {
+  border-bottom-color: var(--sz-color-highlight);
+  font-weight: bold;
+  color: var(--sz-color-highlight);
+}
+.qa-panel { display: none; padding: 8px; }
+.qa-panel.active { display: block; }
+.qa-option {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 10px;
+  cursor: default;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  font-size: 10px;
+  min-width: 60px;
+  text-align: center;
+  gap: 2px;
+}
+.qa-option:hover {
+  border-color: var(--sz-color-highlight);
+  background: var(--sz-color-button-light);
+}
+.qa-option-icon { font-size: 16px; }
+
+/* ── Flash Fill Ghost Preview ────────────────────────────── */
+.grid-table tbody td.cell.flash-fill-ghost {
+  color: #999 !important;
+  font-style: italic;
+}
+
+/* ── Get Data Dialog ─────────────────────────────────────── */
+.gd-source-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.gd-source-tabs label {
+  font-size: 11px;
+  cursor: pointer;
+}
+.gd-preview-grid {
+  border: 1px solid var(--sz-color-button-shadow);
+  background: var(--sz-color-window);
+  max-height: 200px;
+  overflow: auto;
+  font-size: 11px;
+  margin-top: 8px;
+}
+.gd-preview-grid table {
+  border-collapse: collapse;
+  width: 100%;
+  table-layout: auto;
+}
+.gd-preview-grid th {
+  background: var(--sz-color-button-face);
+  border: 1px solid var(--sz-color-button-shadow);
+  padding: 2px 6px;
+  font-weight: bold;
+  font-size: 10px;
+  text-align: left;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+}
+.gd-preview-grid td {
+  border: 1px solid var(--sz-color-button-shadow);
+  padding: 2px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+}
+.gd-drop-area {
+  border: 2px dashed var(--sz-color-button-shadow);
+  padding: 16px;
+  text-align: center;
+  margin: 8px 0;
+  font-size: 11px;
+  color: var(--sz-color-gray-text);
+  cursor: pointer;
+}
+.gd-drop-area:hover {
+  border-color: var(--sz-color-highlight);
+  color: var(--sz-color-highlight);
+}
+.gd-delimiter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+/* ── Calendar Popup ──────────────────────────────────────── */
+.calendar-popup {
+  position: absolute;
+  z-index: 5500;
+  background: var(--sz-color-window);
+  border: 1px solid var(--sz-color-button-shadow);
+  box-shadow: 2px 2px 8px rgba(0,0,0,0.2);
+  padding: 4px;
+  font-size: 11px;
+  user-select: none;
+  min-width: 200px;
+}
+.calendar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 2px;
+  font-weight: bold;
+}
+.calendar-nav {
+  cursor: default;
+  padding: 0 6px;
+  font-size: 14px;
+  border: none;
+  background: none;
+  color: var(--sz-color-button-text);
+  font-family: inherit;
+}
+.calendar-nav:hover { color: var(--sz-color-highlight); }
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+  text-align: center;
+}
+.calendar-dow {
+  font-size: 9px;
+  font-weight: bold;
+  color: var(--sz-color-gray-text);
+  padding: 2px 0;
+}
+.calendar-day {
+  padding: 3px 2px;
+  cursor: default;
+  border: 1px solid transparent;
+  font-size: 11px;
+  min-width: 24px;
+}
+.calendar-day:hover {
+  background: var(--sz-color-button-light);
+  border-color: var(--sz-color-highlight);
+}
+.calendar-day.today {
+  font-weight: bold;
+  color: var(--sz-color-highlight);
+}
+.calendar-day.other-month {
+  color: var(--sz-color-gray-text);
+  opacity: 0.5;
+}
+.calendar-day.selected {
+  background: var(--sz-color-highlight);
+  color: var(--sz-color-highlight-text);
 }

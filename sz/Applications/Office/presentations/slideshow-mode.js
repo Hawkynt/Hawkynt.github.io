@@ -36,6 +36,9 @@
   let _animPlayer = null;
   let _animTimeline = null;
 
+  // P4: Summary Zoom return
+  let _summaryZoomReturnIndex = null;
+
   // Pen / Laser pointer state
   let _penActive = false;
   let _laserActive = false;
@@ -678,6 +681,24 @@
     }
 
     const slides = _getSlides();
+
+    // P4: Summary Zoom -- if we came from a summary slide and reach
+    // the next section's first slide (or end), return to summary
+    if (_summaryZoomReturnIndex != null) {
+      const summarySlide = slides[_summaryZoomReturnIndex];
+      if (summarySlide && summarySlide.isSummaryZoom && summarySlide.zoomTargets) {
+        const targets = summarySlide.zoomTargets;
+        const nextIndex = _currentIndex + 1;
+        // Check if next slide is a section start (another zoom target) or end of deck
+        if (nextIndex >= slides.length || targets.includes(nextIndex)) {
+          const returnIdx = _summaryZoomReturnIndex;
+          _summaryZoomReturnIndex = null;
+          _transitionTo(returnIdx, -1);
+          return;
+        }
+      }
+    }
+
     if (_currentIndex + 1 < slides.length)
       _transitionTo(_currentIndex + 1, 1);
     else if (_ctx?.loop)
@@ -998,6 +1019,18 @@
     if (e.target.closest('video') || e.target.closest('audio'))
       return;
 
+    // P4: Summary Zoom thumbnail clicks -- navigate to target slide
+    const zoomThumb = e.target.closest('.el-shape[data-zoom-target]');
+    if (zoomThumb) {
+      const targetIndex = parseInt(zoomThumb.dataset.zoomTarget, 10);
+      if (!isNaN(targetIndex) && targetIndex >= 0 && targetIndex < _getSlides().length) {
+        // Store the summary slide index so we can return after section
+        _summaryZoomReturnIndex = _currentIndex;
+        _transitionTo(targetIndex, 1);
+      }
+      return;
+    }
+
     // Feature 20: Action button clicks
     const actionBtn = e.target.closest('.el-action-button');
     if (actionBtn) {
@@ -1132,6 +1165,7 @@
 
     _active = false;
     _transitioning = false;
+    _summaryZoomReturnIndex = null;
 
     _clearAutoAdvance();
     _clearCursorTimer();
@@ -1185,5 +1219,6 @@
     startSlideshow,
     stopSlideshow,
     isActive,
+    get currentIndex() { return _currentIndex; },
   });
 })();

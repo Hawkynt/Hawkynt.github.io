@@ -547,6 +547,18 @@
 
   <div class="ribbon-group">
     <div class="ribbon-group-content">
+      <button class="rb-btn rb-btn-lg" data-action="get-data" title="Get Data (Import CSV, JSON, HTML)">
+        <span class="rb-icon rb-icon-lg">&#128230;</span>
+        <span class="rb-label">Get<br>Data</span>
+      </button>
+    </div>
+    <div class="ribbon-group-label">Get &amp; Transform</div>
+  </div>
+
+  <div class="ribbon-sep"></div>
+
+  <div class="ribbon-group">
+    <div class="ribbon-group-content">
       <button class="rb-btn rb-btn-lg" data-action="sort-asc" title="Sort Ascending">
         <span class="rb-icon rb-icon-lg">&#8593;</span>
         <span class="rb-label">Sort A-Z</span>
@@ -589,6 +601,9 @@
         </button>
         <button class="rb-btn rb-btn-sm" data-action="data-validation" title="Data Validation">
           <span class="rb-icon">&#10004;</span><span class="rb-label">Data Validation</span>
+        </button>
+        <button class="rb-btn rb-btn-sm" data-action="flash-fill" title="Flash Fill (Ctrl+E)">
+          <span class="rb-icon">&#9889;</span><span class="rb-label">Flash Fill</span>
         </button>
       </div>
     </div>
@@ -1030,17 +1045,17 @@
         </select>
       </div>
       <div id="cf-color-scale-row" style="display:none;">
-        <div class="fp-field"><label>Min color:</label><input type="color" id="cf-color-min" value="#f8696b"></div>
-        <div class="fp-field" id="cf-color-mid-row"><label>Mid color:</label><input type="color" id="cf-color-mid" value="#ffeb84"></div>
-        <div class="fp-field"><label>Max color:</label><input type="color" id="cf-color-max" value="#63be7b"></div>
+        <div class="fp-field"><label>Min color:</label><span class="color-swatch" id="cf-color-min" data-color="#f8696b" style="background:#f8696b;" title="Choose color"></span></div>
+        <div class="fp-field" id="cf-color-mid-row"><label>Mid color:</label><span class="color-swatch" id="cf-color-mid" data-color="#ffeb84" style="background:#ffeb84;" title="Choose color"></span></div>
+        <div class="fp-field"><label>Max color:</label><span class="color-swatch" id="cf-color-max" data-color="#63be7b" style="background:#63be7b;" title="Choose color"></span></div>
       </div>
       <div class="fp-field" id="cf-formula-row" style="display:none;">
         <label>Formula:</label>
         <input type="text" id="cf-formula" placeholder="=$B1>5" autocomplete="off">
       </div>
       <div id="cf-format-options-row" style="display:none;">
-        <div class="fp-field"><label>Font color:</label><input type="color" id="cf-fmt-text-color" value="#000000"></div>
-        <div class="fp-field"><label>Background:</label><input type="color" id="cf-fmt-bg-color" value="#ffcccc"></div>
+        <div class="fp-field"><label>Font color:</label><span class="color-swatch" id="cf-fmt-text-color" data-color="#000000" style="background:#000000;" title="Choose color"></span></div>
+        <div class="fp-field"><label>Background:</label><span class="color-swatch" id="cf-fmt-bg-color" data-color="#ffcccc" style="background:#ffcccc;" title="Choose color"></span></div>
         <label style="font-size:11px;"><input type="checkbox" id="cf-fmt-bold"> Bold</label>
         <label style="font-size:11px;"><input type="checkbox" id="cf-fmt-italic"> Italic</label>
       </div>
@@ -1099,11 +1114,11 @@
       </div>
       <div class="fp-field">
         <label for="ncs-text-color">Text color:</label>
-        <input type="color" id="ncs-text-color" value="#000000">
+        <span class="color-swatch" id="ncs-text-color" data-color="#000000" style="background:#000000;" title="Choose color"></span>
       </div>
       <div class="fp-field">
         <label for="ncs-bg-color">Background:</label>
-        <input type="color" id="ncs-bg-color" value="#ffffff">
+        <span class="color-swatch" id="ncs-bg-color" data-color="#ffffff" style="background:#ffffff;" title="Choose color"></span>
       </div>
       <div class="fp-field">
         <label for="ncs-border-style">Border:</label>
@@ -1115,7 +1130,7 @@
           <option value="dotted">Dotted</option>
           <option value="dashed">Dashed</option>
         </select>
-        <input type="color" id="ncs-border-color" value="#000000">
+        <span class="color-swatch" id="ncs-border-color" data-color="#000000" style="background:#000000;" title="Choose color"></span>
       </div>
     </div>
     <div class="dialog-buttons">
@@ -1250,7 +1265,7 @@
           <select id="fc-font-family"><option value="">Default</option><option value="Arial, sans-serif">Arial</option><option value="Calibri, sans-serif">Calibri</option><option value="Consolas, monospace">Consolas</option><option value="Courier New, monospace">Courier New</option><option value="Georgia, serif">Georgia</option><option value="Tahoma, Verdana, sans-serif">Tahoma</option><option value="Times New Roman, serif">Times New Roman</option><option value="Verdana, sans-serif">Verdana</option></select>
         </div>
         <div class="fp-field"><label>Size:</label><input type="number" id="fc-font-size" min="6" max="72" value="11" style="width:60px;"></div>
-        <div class="fp-field"><label>Color:</label><input type="color" id="fc-font-color" value="#000000"></div>
+        <div class="fp-field"><label>Color:</label><span class="color-swatch" id="fc-font-color" data-color="#000000" style="background:#000000;" title="Choose color"></span></div>
         <label style="font-size:11px;"><input type="checkbox" id="fc-bold"> Bold</label>
         <label style="font-size:11px;"><input type="checkbox" id="fc-italic"> Italic</label>
         <label style="font-size:11px;"><input type="checkbox" id="fc-underline"> Underline</label>
@@ -1263,13 +1278,13 @@
         <div class="fp-field"><label>Style:</label>
           <select id="fc-border-style"><option value="thin">Thin</option><option value="medium">Medium</option><option value="thick">Thick</option><option value="double">Double</option><option value="dotted">Dotted</option><option value="dashed">Dashed</option></select>
         </div>
-        <div class="fp-field"><label>Color:</label><input type="color" id="fc-border-color" value="#000000"></div>
+        <div class="fp-field"><label>Color:</label><span class="color-swatch" id="fc-border-color" data-color="#000000" style="background:#000000;" title="Choose color"></span></div>
         <div class="fp-field"><label>Apply to:</label>
           <select id="fc-border-apply"><option value="all">All Borders</option><option value="outline">Outline</option><option value="top">Top</option><option value="bottom">Bottom</option><option value="left">Left</option><option value="right">Right</option><option value="none">None</option></select>
         </div>
       </div>
       <div class="fc-panel" id="fcp-fill">
-        <div class="fp-field"><label>Background:</label><input type="color" id="fc-fill-color" value="#ffffff"></div>
+        <div class="fp-field"><label>Background:</label><span class="color-swatch" id="fc-fill-color" data-color="#ffffff" style="background:#ffffff;" title="Choose color"></span></div>
         <button class="ribbon-btn ribbon-btn-small" id="fc-fill-none" style="margin-top:6px;">No Fill</button>
       </div>
       <div class="fc-panel" id="fcp-protection">
@@ -2028,7 +2043,7 @@
     <div class="dialog-body">
       <div class="fp-field">
         <label for="spq-color-line">Line/Bar Color:</label>
-        <input type="color" id="spq-color-line" value="#4472c4">
+        <span class="color-swatch" id="spq-color-line" data-color="#4472c4" style="background:#4472c4;" title="Choose color"></span>
       </div>
       <div class="fp-field">
         <label for="spq-markers">Markers:</label>
@@ -2066,14 +2081,14 @@
         <button class="sp-tab" data-tab="markers" style="padding:3px 10px;cursor:default;font-size:11px;border:1px solid transparent;border-bottom:none;margin-bottom:-1px;font-family:inherit;">Markers</button>
       </div>
       <div class="sp-panel active" data-panel="color">
-        <div class="fp-field"><label for="sp-color-line">Line/Bar Color:</label><input type="color" id="sp-color-line" value="#4472c4"></div>
-        <div class="fp-field"><label for="sp-color-fill">Fill Color (area):</label><input type="color" id="sp-color-fill" value="#4472c4"></div>
-        <div class="fp-field"><label for="sp-color-high">High Point Color:</label><input type="color" id="sp-color-high" value="#22863a"></div>
-        <div class="fp-field"><label for="sp-color-low">Low Point Color:</label><input type="color" id="sp-color-low" value="#cb2431"></div>
-        <div class="fp-field"><label for="sp-color-first">First Point Color:</label><input type="color" id="sp-color-first" value="#ffc000"></div>
-        <div class="fp-field"><label for="sp-color-last">Last Point Color:</label><input type="color" id="sp-color-last" value="#70ad47"></div>
-        <div class="fp-field"><label for="sp-color-negative">Negative Color:</label><input type="color" id="sp-color-negative" value="#c00000"></div>
-        <div class="fp-field"><label for="sp-color-marker">Marker Color:</label><input type="color" id="sp-color-marker" value="#4472c4"></div>
+        <div class="fp-field"><label for="sp-color-line">Line/Bar Color:</label><span class="color-swatch" id="sp-color-line" data-color="#4472c4" style="background:#4472c4;" title="Choose color"></span></div>
+        <div class="fp-field"><label for="sp-color-fill">Fill Color (area):</label><span class="color-swatch" id="sp-color-fill" data-color="#4472c4" style="background:#4472c4;" title="Choose color"></span></div>
+        <div class="fp-field"><label for="sp-color-high">High Point Color:</label><span class="color-swatch" id="sp-color-high" data-color="#22863a" style="background:#22863a;" title="Choose color"></span></div>
+        <div class="fp-field"><label for="sp-color-low">Low Point Color:</label><span class="color-swatch" id="sp-color-low" data-color="#cb2431" style="background:#cb2431;" title="Choose color"></span></div>
+        <div class="fp-field"><label for="sp-color-first">First Point Color:</label><span class="color-swatch" id="sp-color-first" data-color="#ffc000" style="background:#ffc000;" title="Choose color"></span></div>
+        <div class="fp-field"><label for="sp-color-last">Last Point Color:</label><span class="color-swatch" id="sp-color-last" data-color="#70ad47" style="background:#70ad47;" title="Choose color"></span></div>
+        <div class="fp-field"><label for="sp-color-negative">Negative Color:</label><span class="color-swatch" id="sp-color-negative" data-color="#c00000" style="background:#c00000;" title="Choose color"></span></div>
+        <div class="fp-field"><label for="sp-color-marker">Marker Color:</label><span class="color-swatch" id="sp-color-marker" data-color="#4472c4" style="background:#4472c4;" title="Choose color"></span></div>
       </div>
       <div class="sp-panel" data-panel="axis" style="display:none;">
         <div class="fp-field"><label for="sp-axis-min">Custom Min:</label><input type="text" id="sp-axis-min" placeholder="auto" style="width:80px;"></div>
@@ -2109,6 +2124,48 @@
     </div>
     <div class="dialog-buttons">
       <button data-result="ok">OK</button>
+      <button data-result="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Get Data dialog -->
+<div class="dialog-overlay" id="dlg-get-data">
+  <div class="dialog" style="min-width:480px;max-width:560px;">
+    <div class="dialog-title">Get Data</div>
+    <div class="dialog-body">
+      <div class="gd-source-tabs">
+        <label><input type="radio" name="gd-source" value="csv" checked> CSV File</label>
+        <label><input type="radio" name="gd-source" value="json"> JSON File</label>
+        <label><input type="radio" name="gd-source" value="html"> HTML Table</label>
+      </div>
+      <div id="gd-csv-panel">
+        <div class="gd-drop-area" id="gd-file-drop">Click to browse or drag &amp; drop a file here</div>
+        <input type="file" id="gd-file-input" style="display:none;" accept=".csv,.tsv,.txt,.json,.htm,.html">
+        <div class="gd-delimiter-row" id="gd-delimiter-row">
+          <label>Delimiter:</label>
+          <select id="gd-delimiter" style="font-size:11px;font-family:inherit;">
+            <option value=",">,&ensp;Comma</option>
+            <option value="&#9;">Tab</option>
+            <option value=";">;&ensp;Semicolon</option>
+            <option value="|">|&ensp;Pipe</option>
+          </select>
+          <label><input type="checkbox" id="gd-first-row-header" checked> First row is header</label>
+        </div>
+      </div>
+      <div id="gd-html-panel" style="display:none;">
+        <label for="gd-html-input">Paste HTML containing a &lt;table&gt;:</label>
+        <textarea id="gd-html-input" rows="4" style="width:100%;box-sizing:border-box;font-size:11px;font-family:monospace;margin-top:4px;" placeholder="<table>...</table>"></textarea>
+        <button id="gd-html-parse" style="margin-top:4px;font-size:11px;font-family:inherit;">Parse Table</button>
+      </div>
+      <div id="gd-preview-section" style="display:none;">
+        <div style="font-weight:bold;font-size:10px;margin:8px 0 4px;">Preview:</div>
+        <div class="gd-preview-grid" id="gd-preview-grid"></div>
+        <div style="font-size:10px;color:var(--sz-color-gray-text);margin-top:4px;" id="gd-preview-info"></div>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok" id="gd-load-btn" disabled>Load</button>
       <button data-result="cancel">Cancel</button>
     </div>
   </div>

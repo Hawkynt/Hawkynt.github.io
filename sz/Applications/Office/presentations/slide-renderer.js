@@ -662,6 +662,10 @@
         svg = builder(element.w, element.h, baseFill);
     }
 
+    // P4: Summary Zoom -- add data attribute for zoom target
+    if (element.isZoomThumbnail && element.zoomTarget != null)
+      wrapper.dataset.zoomTarget = String(element.zoomTarget);
+
     if (svg) {
       if (element.strokeColor && element.strokeColor !== 'transparent' && element.strokeWidth) {
         const shapes = svg.querySelectorAll('rect, ellipse, polygon, path, polyline');
