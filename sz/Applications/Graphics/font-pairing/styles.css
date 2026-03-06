@@ -275,6 +275,23 @@ body {
 #pairs-list::-webkit-scrollbar-thumb { background: var(--sz-color-button-shadow); border: 2px solid var(--sz-color-button-face); }
 #pairs-list::-webkit-scrollbar-thumb:hover { background: var(--sz-color-gray-text); }
 
+/* ---- Status bar ---- */
+#status-bar {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 6px;
+  background: var(--sz-color-button-face);
+  border-top: 1px solid var(--sz-color-button-shadow);
+  font-size: 10px;
+  color: var(--sz-color-gray-text);
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.status-section { white-space: nowrap; }
+.status-spacer { flex: 1; }
+
 /* ---- Copy feedback ---- */
 .copy-flash {
   animation: flash-green 0.6s ease;
