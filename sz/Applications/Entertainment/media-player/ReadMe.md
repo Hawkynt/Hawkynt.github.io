@@ -1,6 +1,6 @@
 # Media Player
 
-An audio and video player with playlist management, audio visualization, transport controls, shuffle and repeat modes, and streaming URL support -- the all-in-one media hub for »SynthelicZ«.
+An audio and video player with playlist management, audio visualization, transport controls, shuffle and repeat modes, streaming URL support, and Winamp classic skin support -- the all-in-one media hub for »SynthelicZ«.
 
 ## Product Requirements
 
@@ -15,16 +15,20 @@ Media Player serves as the central audio and video playback application within t
 - Support for multiple audio formats (MP3, WAV, OGG, FLAC, M4A) and video formats (MP4, WebM)
 - Real-time audio frequency visualization via canvas
 - Compact and full view modes with toggleable playlist panel
+- Winamp classic skin support (.wsz files) in compact mode
+- Winamp skin selector for browsing and applying skins from the VFS
+- VFS folder loading with recursive scanning for bulk playlist population
 - Keyboard shortcuts for hands-free playback control
 
 ### Design Reference
-Modeled after the classic Windows Media Player and Winamp -- combining a visual display area with transport controls, a playlist sidebar, and audio visualization, all in a compact window that stays out of the way while playing music.
+Modeled after the classic Windows Media Player and Winamp -- combining a visual display area with transport controls, a playlist sidebar, and audio visualization, all in a compact window that stays out of the way while playing music. In compact mode with a Winamp skin loaded, the player renders the classic 275x116 pixel Winamp 2.x interface using BMP sprite sheets extracted from WSZ archive files.
 
 ### Technical Constraints
 - Runs inside an iframe within the »SynthelicZ« desktop shell
 - Pure HTML, CSS, and JavaScript with no external frameworks or build steps
 - Must function offline when opened from the file:// protocol
 - Themed via CSS custom properties injected by the »SynthelicZ« theme engine
+- WSZ files are parsed using a built-in minimal ZIP extractor (with DecompressionStream for deflate) or JSZip when available
 
 ## User Stories
 
@@ -50,6 +54,8 @@ Modeled after the classic Windows Media Player and Winamp -- combining a visual 
 - [x] As a user, I can click a playlist item to play it
 - [x] As a user, I can see the currently playing track highlighted in the playlist
 - [x] As a user, I can toggle the playlist panel on and off
+- [x] As a user, I can load entire VFS folders into the playlist with recursive scanning
+- [x] As a user, I can add VFS folders via the playlist panel "Folder" button
 - [ ] As a user, I can reorder tracks in the playlist by dragging
 - [ ] As a user, I can save and load playlists (M3U, PLS)
 - [ ] As a user, I can sort the playlist by name, duration, or date
@@ -65,6 +71,7 @@ Modeled after the classic Windows Media Player and Winamp -- combining a visual 
 - [x] As a user, I can open a streaming URL for network playback
 - [x] As a user, I can drag and drop files onto the player to add them
 - [x] As a user, I can open files from the virtual file system
+- [x] As a user, I can open an entire VFS folder (File > Open VFS Folder) with recursive subfolder scanning
 - [ ] As a user, I can open audio CDs or disc images
 - [ ] As a user, I can read and display embedded metadata (artist, album, track number)
 
@@ -78,8 +85,22 @@ Modeled after the classic Windows Media Player and Winamp -- combining a visual 
 ### View Modes
 - [x] As a user, I can switch to a compact mode that hides the display area
 - [x] As a user, I can toggle the playlist panel visibility
+- [x] As a user, I can see a Winamp-skinned compact player when a WSZ skin is loaded and compact mode is active
 - [ ] As a user, I can enter full-screen video mode
 - [ ] As a user, I can use a mini-player mode that floats on top of other windows
+
+### Winamp Skins
+- [x] As a user, I can load a Winamp skin (.wsz file) from my local machine via View > Load Winamp Skin
+- [x] As a user, I can browse and select Winamp skins stored in the VFS via View > Select Skin from VFS
+- [x] As a user, I can see the currently loaded skin name in the status bar
+- [x] As a user, I can clear the loaded skin via View > Clear Winamp Skin
+- [x] As a user, I can see the classic Winamp 2.x interface rendered with skin sprites in compact mode
+- [x] As a user, I can interact with the skinned transport buttons (play, pause, stop, prev, next, eject)
+- [x] As a user, I can use the skinned seek bar to navigate within a track
+- [x] As a user, I can use the skinned volume slider to adjust volume
+- [x] As a user, I can see the skinned shuffle and repeat toggle buttons reflecting the current state
+- [x] As a user, I can see scrolling track title text rendered with the skin's font sprite
+- [x] As a user, I can see time digits rendered with the skin's number sprites
 
 ### Keyboard Shortcuts
 - [x] As a user, I can use Space to toggle play/pause
@@ -94,3 +115,4 @@ Modeled after the classic Windows Media Player and Winamp -- combining a visual 
 - [x] As a user, I can see the format type of the current file in the status bar
 - [x] As a user, I can see track durations listed in the playlist
 - [x] As a user, I can double-click a playlist item to play it
+- [x] As a user, I can see the loaded Winamp skin name in the status bar
