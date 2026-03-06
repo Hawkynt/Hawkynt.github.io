@@ -37,8 +37,6 @@ body {
   padding: 4px 12px;
   border: 1px solid var(--sz-color-button-shadow);
   border-bottom: none;
-  background: var(--sz-color-button-face);
-  color: var(--sz-color-button-text);
   cursor: pointer;
   font-size: 12px;
   margin-right: -1px;
@@ -53,7 +51,7 @@ body {
 }
 
 .type-btn:hover:not(.active) {
-  background: var(--sz-color-button-highlight);
+  background: var(--sz-color-button-light);
 }
 
 /* ---- Preview ---- */
@@ -159,19 +157,8 @@ body {
 #stop-buttons button,
 #output-buttons button {
   padding: 3px 10px;
-  border: 2px outset;
-  border-color: var(--sz-color-button-highlight) var(--sz-color-button-shadow) var(--sz-color-button-shadow) var(--sz-color-button-highlight);
-  background: var(--sz-color-button-face);
-  color: var(--sz-color-button-text);
-  cursor: pointer;
   font-size: 11px;
   white-space: nowrap;
-}
-
-#stop-buttons button:active,
-#output-buttons button:active {
-  border-style: inset;
-  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
 }
 
 /* ---- Controls section ---- */
@@ -200,20 +187,10 @@ body {
 
 .type-controls input[type="number"] {
   width: 50px;
-  padding: 2px 4px;
-  border: 2px inset;
-  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
-  background: var(--sz-color-window);
-  color: var(--sz-color-window-text);
   font-size: 11px;
 }
 
 .type-controls select {
-  padding: 2px 4px;
-  border: 2px inset;
-  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
-  background: var(--sz-color-window);
-  color: var(--sz-color-window-text);
   font-size: 11px;
 }
 
@@ -246,17 +223,13 @@ body {
   padding: 0;
   border: 2px inset;
   border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
+  border-image: none;
   cursor: pointer;
   background: #ff0000;
 }
 
 #stop-hex {
   width: 65px;
-  padding: 2px 4px;
-  border: 2px inset;
-  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
-  background: var(--sz-color-window);
-  color: var(--sz-color-window-text);
   font-family: 'Lucida Console', Consolas, monospace;
   font-size: 11px;
 }
@@ -267,11 +240,6 @@ body {
 
 #stop-editor input[type="number"] {
   width: 50px;
-  padding: 2px 4px;
-  border: 2px inset;
-  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
-  background: var(--sz-color-window);
-  color: var(--sz-color-window-text);
   font-size: 11px;
 }
 
@@ -353,20 +321,9 @@ body {
 
 #btn-presets {
   padding: 3px 10px;
-  border: 2px outset;
-  border-color: var(--sz-color-button-highlight) var(--sz-color-button-shadow) var(--sz-color-button-shadow) var(--sz-color-button-highlight);
-  background: var(--sz-color-button-face);
-  color: var(--sz-color-button-text);
-  cursor: pointer;
   font-size: 11px;
   white-space: nowrap;
   width: 100%;
-}
-
-#btn-presets:active,
-#btn-presets.active {
-  border-style: inset;
-  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
 }
 
 #preset-dropdown {
@@ -440,8 +397,6 @@ body {
 }
 
 #btn-import.active {
-  border-style: inset;
-  border-color: var(--sz-color-button-shadow) var(--sz-color-button-highlight) var(--sz-color-button-highlight) var(--sz-color-button-shadow);
   background: var(--sz-color-highlight);
   color: var(--sz-color-highlight-text);
 }

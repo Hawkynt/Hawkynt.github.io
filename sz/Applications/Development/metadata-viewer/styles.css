@@ -328,15 +328,14 @@ html, body {
   font: inherit;
   font-size: 10px;
   padding: 2px 8px;
-  cursor: pointer;
   border: 1px dashed var(--sz-color-button-shadow, #aca899);
+  border-image: none;
   background: transparent;
-  color: var(--sz-color-button-text, #000);
   border-radius: 2px;
   opacity: 0.7;
 }
 
-.add-tag-btn:hover { opacity: 1; background: var(--sz-color-button-highlight, #fff); }
+.add-tag-btn:hover { opacity: 1; background: var(--sz-color-button-light, #fff); }
 
 .field-edit-input {
   width: 100%;
@@ -570,8 +569,8 @@ select.field-edit-input { width: auto; min-width: 120px; }
 
 /* Navigation toolbar */
 .disasm-toolbar { display: flex; flex-wrap: wrap; gap: 2px; padding: 2px; margin-bottom: 4px; align-items: center; font-size: 10px; background: var(--sz-color-button-face, #ece9d8); border: 1px solid var(--sz-color-button-shadow, #aca899); }
-.disasm-icon-btn { width: 22px; height: 22px; padding: 0; line-height: 22px; text-align: center; font-size: 11px; cursor: pointer; border: 1px solid transparent; background: transparent; color: var(--sz-color-window-text, #000); }
-.disasm-icon-btn:hover:not(:disabled) { border-color: var(--sz-color-button-shadow, #aca899); background: var(--sz-color-button-highlight, #fff); }
+.disasm-icon-btn { width: 22px; height: 22px; padding: 0; line-height: 22px; text-align: center; font-size: 11px; border: 1px solid transparent; background: transparent; color: inherit; border-image: none; }
+.disasm-icon-btn:hover:not(:disabled) { border-color: var(--sz-color-button-shadow, #aca899); background: var(--sz-color-button-light, #fff); }
 .disasm-icon-btn:active:not(:disabled) { background: var(--sz-color-button-shadow, #aca899); }
 .disasm-icon-btn:disabled { opacity: 0.3; cursor: default; }
 
@@ -620,15 +619,8 @@ select.field-edit-input { width: auto; min-width: 120px; }
   padding: 2px 8px;
   font: inherit;
   font-size: 10px;
-  cursor: pointer;
-  border: 1px solid var(--sz-color-button-shadow, #aca899);
-  background: var(--sz-color-button-face, #ece9d8);
-  color: var(--sz-color-button-text, #000);
-  border-radius: 2px;
   white-space: nowrap;
 }
-
-.action-btn:hover { background: var(--sz-color-button-highlight, #fff); }
 
 /* ===== Hash category headers ===== */
 
@@ -807,12 +799,7 @@ select.field-edit-input { width: auto; min-width: 120px; }
   padding: 1px 8px;
   font: inherit;
   font-size: 10px;
-  cursor: pointer;
-  border: 1px solid var(--sz-color-button-shadow, #aca899);
-  background: var(--sz-color-button-face, #ece9d8);
 }
-
-.geo-mdi-map-bar button:hover { background: var(--sz-color-button-highlight, #fff); }
 
 .geo-mdi-map-bar .geo-mdi-coord-display {
   color: var(--sz-color-gray-text, #808080);
@@ -932,12 +919,7 @@ select.field-edit-input { width: auto; min-width: 120px; }
   padding: 2px 14px;
   font: inherit;
   font-size: 10px;
-  cursor: pointer;
-  border: 1px solid var(--sz-color-button-shadow, #aca899);
-  background: var(--sz-color-button-face, #ece9d8);
 }
-
-.geo-mdi-buttons button:hover { background: var(--sz-color-button-highlight, #fff); }
 
 .geo-mdi-status { font-size: 9px; color: var(--sz-color-gray-text, #808080); font-style: italic; margin-top: 2px; }
 
