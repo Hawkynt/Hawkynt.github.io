@@ -492,7 +492,7 @@
   // -- ver --
   defCmd('ver', async (args, ctx) => {
     ctx.println('');
-    ctx.println('SynthelicZ [Version 2.0.2025]');
+    ctx.println('\xBBSynthelicZ\xAB [Version 2.0.2025]');
   });
 
   // -- vol --
@@ -2396,8 +2396,8 @@
     currentShell = shell;
     clearScreen();
     if (shell === 'cmd') {
-      println('SynthelicZ [Version 2.0.2025]');
-      println('(c) SynthelicZ Corporation. All rights reserved.');
+      println('\xBBSynthelicZ\xAB [Version 2.0.2025]');
+      println('(c) \xBBSynthelicZ\xAB Corporation. All rights reserved.');
       println('');
       setWindowTitle('Terminal - cmd.exe');
     } else {
