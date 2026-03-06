@@ -281,6 +281,16 @@
     _ctx.fillText(direction === 1 ? '\u21BB CW' : '\u21BA CCW', CANVAS_W / 2, CANVAS_H / 2 + 50);
   }
 
+  function sortHand(hand) {
+    hand.sort((a, b) => {
+      const an = typeof a.value === 'number' ? 0 : 1;
+      const bn = typeof b.value === 'number' ? 0 : 1;
+      if (an !== bn) return an - bn;
+      if (an === 0) return a.value - b.value;
+      return String(a.value).localeCompare(String(b.value));
+    });
+  }
+
   const module = {
     setup(ctx, canvas, W, H, host) {
       _ctx = ctx;
@@ -320,6 +330,8 @@
         if (aiTurnTimer >= AI_TURN_DELAY) { aiTurnTimer = 0; aiTurn(); }
       }
     },
+    sortPlayerHand() { sortHand(hands[0]); },
+
     cleanup() {
       hands = []; deck = []; discardPile = []; eliminated = [];
       runningTotal = 0; roundOver = false; gameOver = false; aiTurnTimer = 0;

@@ -549,6 +549,19 @@
       drawColorChoiceOverlay();
   }
 
+  function sortHand(hand) {
+    const co = { red: 0, blue: 1, green: 2, yellow: 3, purple: 4, orange: 5, pink: 6, teal: 7, wild: 8 };
+    const to = { number: 0, action: 1, wild: 2 };
+    hand.sort((a, b) => {
+      const cd = (co[a.color] ?? 8) - (co[b.color] ?? 8);
+      if (cd !== 0) return cd;
+      const td = (to[a.type] ?? 2) - (to[b.type] ?? 2);
+      if (td !== 0) return td;
+      const av = parseInt(a.value) || 0, bv = parseInt(b.value) || 0;
+      return av - bv || String(a.value).localeCompare(String(b.value));
+    });
+  }
+
   /* ================================================================
      MODULE INTERFACE
      ================================================================ */
@@ -635,6 +648,8 @@
 
     handlePointerMove() {},
     handlePointerUp() {},
+
+    sortPlayerHand() { sortHand(hands[0]); },
 
     cleanup() {
       hands = [];

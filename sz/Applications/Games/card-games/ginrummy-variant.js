@@ -843,6 +843,8 @@
     handlePointerMove() {},
     handlePointerUp() {},
 
+    sortPlayerHand() { sortHand(playerHand); },
+
     cleanup() {
       playerHand = [];
       aiHand = [];

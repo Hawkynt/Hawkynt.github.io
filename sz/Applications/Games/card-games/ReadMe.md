@@ -20,6 +20,7 @@ Card games collection featuring 69 game variants with AI opponents, hint mode, s
 - **69 Game Variants**: Solitaire, FreeCell, Spider, Yukon, Pyramid, Golf, TriPeaks, Forty Thieves, Canfield, Clock, Baker's Dozen, Accordion, Poker, Blackjack, Baccarat, Texas Hold'em, Faro, Red Dog, Uno, Uno Flip, Uno All Wild, Liar's Uno, Uno Extreme, Uno Party, Dos, ONO 99, 8-Color Duo, Skip-Bo, Crazy Eights, Mau-Mau, President, Skat, Doppelkopf, Hearts, Spades, Euchre, Pinochle, Bridge, Oh Hell, Whist, Pitch, Sixty-Six, Canasta, Gin Rummy, Rummy 500, Phase 10, Tonk, Rummy, Kalooki, War, Memory, Go Fish, Old Maid, Snap, Speed, Cheat, Egyptian Rat Screw, Sevens, Spite & Malice, Beggar My Neighbor, Schwimmen, Durak, Briscola, Scopa, Cribbage, Piquet, Bezique, Cassino, Pishti (loaded as on-demand variant modules)
 - **6-Column Menu**: Game selection screen displays all 69 variants in a 6-column grid layout
 - **Hint Mode**: Toggleable golden glow on playable cards — works across all game types (shedding, trick-taking, solitaire, rummy, etc.). Persists via localStorage.
+- **Auto-Sort Hand**: Toggleable option to automatically keep player's hand sorted by suit and rank (or color and value for Uno-style games). Shown as a canvas button for games that support it (42 variants). Persists via localStorage.
 - **Mouse-Only Play**: All games have clickable canvas buttons — no keyboard required
 - **Back to Menu**: Return to game selection via menu bar entry, canvas button, or F2
 - **Unified Card Engine**: All 69 variants share `card-engine.js` for card rendering (procedural bezier suit symbols, proper pip layouts for 2-10, face card center artwork for J/Q/K, diamond-pattern card backs), hit testing, buttons, deck creation, shuffle, animations, hint glow, and particles — zero duplicated drawing code
@@ -60,6 +61,7 @@ Card games collection featuring 69 game variants with AI opponents, hint mode, s
 | F2 | New game / Return to menu |
 | Escape | Pause / Resume |
 | ☰ Menu button | Return to game selection (top-right corner) |
+| ✔/☐ Sort button | Toggle auto-sort for player's hand (top-right, when supported) |
 
 ## Game Variants
 

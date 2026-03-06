@@ -1110,6 +1110,8 @@
     handlePointerMove() {},
     handlePointerUp() {},
 
+    sortPlayerHand() { sortHand(hands[0]); },
+
     cleanup() {
       hands = [[], [], []];
       stockPile = [];

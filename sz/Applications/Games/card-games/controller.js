@@ -24,11 +24,16 @@
   const STORAGE_PREFIX = 'sz-card-games';
   const STORAGE_HIGHSCORES = STORAGE_PREFIX + '-highscores';
   const STORAGE_HINTS = STORAGE_PREFIX + '-hints';
+  const STORAGE_AUTOSORT = STORAGE_PREFIX + '-autosort';
   const MAX_HIGH_SCORES = 10;
 
   /* ── Hint mode ── */
   let hintsEnabled = true;
   try { const h = localStorage.getItem(STORAGE_HINTS); if (h !== null) hintsEnabled = h !== 'false'; } catch (_) {}
+
+  /* ── Auto-sort hand ── */
+  let autoSortHand = false;
+  try { const s = localStorage.getItem(STORAGE_AUTOSORT); if (s !== null) autoSortHand = s !== 'false'; } catch (_) {}
 
   /* ── Variant definitions (all 69 games, grouped by category) ── */
   const VARIANTS = [
@@ -110,9 +115,10 @@
     { id: 'pishti',        name: 'Pishti',           desc: 'Turkish capture with Jack tricks',     module: 'pishti-variant.js' }
   ];
 
-  /* ── Menu / Hint button regions ── */
+  /* ── Menu / Hint / Sort button regions ── */
   const MENU_BTN = { x: CANVAS_W - 82, y: 8, w: 72, h: 28 };
   const HINT_BTN = { x: CANVAS_W - 164, y: 8, w: 72, h: 28 };
+  const SORT_BTN = { x: CANVAS_W - 246, y: 8, w: 72, h: 28 };
 
   /* ══════════════════════════════════════════════════════════════════
      CANVAS SETUP
@@ -197,6 +203,7 @@
     floatingText,
     screenShake,
     get hintsEnabled() { return hintsEnabled; },
+    get autoSortHand() { return autoSortHand; },
     hintTime: 0,
     getScore() { return score; },
     onScoreChanged(newScore) {
@@ -382,6 +389,14 @@
 
     if (state !== STATE_PLAYING) return;
 
+    // Sort toggle hit test (only when variant supports it)
+    if (activeVariantModule?.sortPlayerHand && CE.isInRect(mx, my, SORT_BTN.x, SORT_BTN.y, SORT_BTN.w, SORT_BTN.h)) {
+      autoSortHand = !autoSortHand;
+      try { localStorage.setItem(STORAGE_AUTOSORT, String(autoSortHand)); } catch (_) {}
+      if (autoSortHand) activeVariantModule.sortPlayerHand();
+      return;
+    }
+
     // Hint toggle hit test
     if (CE.isInRect(mx, my, HINT_BTN.x, HINT_BTN.y, HINT_BTN.w, HINT_BTN.h)) {
       hintsEnabled = !hintsEnabled;
@@ -507,6 +522,10 @@
   }
 
   function drawMenuButton() {
+    if (activeVariantModule?.sortPlayerHand) {
+      const sortLabel = autoSortHand ? '\u2714 Sort' : '\u2610 Sort';
+      CE.drawButton(ctx, SORT_BTN.x, SORT_BTN.y, SORT_BTN.w, SORT_BTN.h, sortLabel, { bg: autoSortHand ? '#2a5a2a' : '#333', border: '#666', fontSize: 11 });
+    }
     const hintLabel = hintsEnabled ? '\u2714 Hints' : '\u2610 Hints';
     CE.drawButton(ctx, HINT_BTN.x, HINT_BTN.y, HINT_BTN.w, HINT_BTN.h, hintLabel, { bg: hintsEnabled ? '#2a5a2a' : '#333', border: '#666', fontSize: 11 });
     CE.drawButton(ctx, MENU_BTN.x, MENU_BTN.y, MENU_BTN.w, MENU_BTN.h, '\u2630 Menu', { bg: '#333', border: '#666', fontSize: 11 });
@@ -587,6 +606,8 @@
     if (state === STATE_PLAYING || state === STATE_ROUND_OVER) {
       updateAnimations(dt);
       tickAi(dt);
+      if (autoSortHand && activeVariantModule?.sortPlayerHand)
+        activeVariantModule.sortPlayerHand();
       host.hintTime += dt;
     }
 

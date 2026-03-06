@@ -889,6 +889,8 @@
       tick(dt);
     },
 
+    sortPlayerHand() { sortHand(hands[0]); },
+
     cleanup() {
       hands = [[], [], [], []];
       discardPile = [];

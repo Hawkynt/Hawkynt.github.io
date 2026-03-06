@@ -752,6 +752,18 @@
   }
 
   /* ================================================================
+     HAND SORTING
+     ================================================================ */
+
+  function sortHand(hand) {
+    hand.sort((a, b) => {
+      const si = CE.SUITS.indexOf(a.suit) - CE.SUITS.indexOf(b.suit);
+      if (si !== 0) return si;
+      return a.value - b.value;
+    });
+  }
+
+  /* ================================================================
      MODULE INTERFACE
      ================================================================ */
 
@@ -833,6 +845,8 @@
         }
       }
     },
+
+    sortPlayerHand() { sortHand(playerHand); },
 
     cleanup() {
       playerHand = [];

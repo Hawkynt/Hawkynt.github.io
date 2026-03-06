@@ -681,6 +681,10 @@
       drawGapChoiceOverlay();
   }
 
+  function sortHand(hand) {
+    hand.sort((a, b) => String(a.value).localeCompare(String(b.value)));
+  }
+
   const module = {
     setup(ctx, canvas, W, H, host) {
       _ctx = ctx;
@@ -802,6 +806,8 @@
     },
 
     handlePointerUp() {},
+
+    sortPlayerHand() { sortHand(hands[0]); },
 
     cleanup() {
       hands = [[], [], [], []];

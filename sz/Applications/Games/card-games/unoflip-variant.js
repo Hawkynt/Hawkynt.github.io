@@ -483,6 +483,21 @@
       drawColorOverlay();
   }
 
+  function sortHand(hand) {
+    const lco = { red: 0, yellow: 1, green: 2, blue: 3, wild: 4 };
+    const dco = { pink: 0, teal: 1, orange: 2, purple: 3, wild: 4 };
+    const to = { number: 0, action: 1, wild: 2 };
+    hand.sort((a, b) => {
+      const co = activeSide === 'light' ? lco : dco;
+      const cd = (co[getColor(a)] ?? 4) - (co[getColor(b)] ?? 4);
+      if (cd !== 0) return cd;
+      const td = (to[getType(a)] ?? 2) - (to[getType(b)] ?? 2);
+      if (td !== 0) return td;
+      const av = parseInt(getValue(a)) || 0, bv = parseInt(getValue(b)) || 0;
+      return av - bv || String(getValue(a)).localeCompare(String(getValue(b)));
+    });
+  }
+
   let pendingWildIndex = -1;
 
   const module = {
@@ -563,6 +578,8 @@
         if (aiTurnTimer >= AI_TURN_DELAY) { aiTurnTimer = 0; aiTurn(); }
       }
     },
+    sortPlayerHand() { sortHand(hands[0]); },
+
     cleanup() {
       hands = []; deck = []; discardPile = [];
       roundOver = false; gameOver = false; aiTurnTimer = 0;
