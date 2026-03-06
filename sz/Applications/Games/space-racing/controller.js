@@ -3,6 +3,12 @@
 
   const SZ = window.SZ;
 
+  /* ── Expand 3-digit hex (#rgb) to 6-digit (#rrggbb) before appending alpha hex digits ── */
+  const _hexAlpha = (hex, alpha) => {
+    const h = hex.replace(/^#([0-9a-fA-F])([0-9a-fA-F])([0-9a-fA-F])$/, '#$1$1$2$2$3$3');
+    return h + alpha;
+  };
+
   /* ══════════════════════════════════════════════════════════════════
      CONSTANTS
      ══════════════════════════════════════════════════════════════════ */
@@ -1556,7 +1562,7 @@
         const pulse = 1 + 0.05 * Math.sin(globalTime * 1.5);
         // Atmosphere
         const grad = ctx.createRadialGradient(body.x, body.y, body.radius * 0.8, body.x, body.y, body.radius * 2 * pulse);
-        grad.addColorStop(0, body.color + '60');
+        grad.addColorStop(0, _hexAlpha(body.color, '60'));
         grad.addColorStop(1, 'rgba(0,0,0,0)');
         ctx.fillStyle = grad;
         ctx.beginPath();
@@ -1619,7 +1625,7 @@
       const grad = ctx.createRadialGradient(wh.x, wh.y, 0, wh.x, wh.y, WORMHOLE_RADIUS * pulse);
       grad.addColorStop(0, '#fff');
       grad.addColorStop(0.2, wh.color);
-      grad.addColorStop(0.7, wh.color + '40');
+      grad.addColorStop(0.7, _hexAlpha(wh.color, '40'));
       grad.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = grad;
       ctx.beginPath();
