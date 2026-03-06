@@ -18,9 +18,16 @@ A rhythm action game where you hit falling notes in time with music using the D/
 - **Mouse/Click Support**: Click songs to select and start, click lanes during gameplay, click to resume from pause or continue from results
 - **Final Grades**: S/A/B/C/D letter grades based on performance
 - **High Scores Per Song**: Persistent best scores for each track
-- **Visual Effects**: Lane flash on hit, expanding glow rings on Perfect hits, sparkle particle bursts, miss screen-shake (escalating on consecutive misses), floating accuracy text with multiplier display
-- **Particle Effects**: Rank-scaled particles (sparkle + burst for Perfect, burst + mini-sparkle for Great, standard burst for Good, red burst on Miss)
-- **Smooth Animations**: Time-based note scrolling, lane glow effects, combo glow on hit zone
+- **Neon Glow Effects**: Lane separators, hit zone circles, notes, and combo text all rendered with bright neon glow using canvas shadowBlur/shadowColor; double-draw technique for intensified glow
+- **Neon Particle Explosions**: Dramatic multi-layered particle bursts on hits -- PERFECT triggers sparkle + burst + secondary ring + white core flash; GREAT triggers burst + sparkle + glow ring; GOOD triggers burst + sparkle; all use neon colors matching the lane
+- **Screen Flash on Perfect Hits**: Full-screen neon-colored flash overlay on PERFECT judgments and combo milestones, fading out rapidly
+- **Pulsing Neon Combo Counter**: Combo text with elastic bounce animation, black outline stroke, neon glow shadow, and bright white core re-draw; multiplier display also scales on hit
+- **Note Trail Effects**: Each falling note has a gradient comet-tail streak above it plus a separate trail particle system emitting neon-colored particles that float upward behind notes
+- **Background Beat Pulse**: Background color/brightness pulses in sync with the song BPM, with a radial vignette pulse from the hit zone center; lane tints and separator glow also pulse with the beat
+- **Expanding Glow Rings**: Double-ring effect on PERFECT (outer yellow + inner neon lane color), single ring on GREAT, with inner bright white line for extra depth
+- **Visual Effects**: Neon lane flash column gradient on hit, neon-glowing hit zone line, escalating screen-shake on consecutive misses, floating accuracy text with multiplier display
+- **Particle Effects**: Rank-scaled neon particles with physics (gravity, friction, fade); red neon burst + sparkle on miss; extra confetti + sparkle burst at combo milestones
+- **Smooth Animations**: Time-based note scrolling, lane glow effects, BPM-synced combo glow on hit zone that shifts from yellow to magenta at high combos
 
 ## User Stories
 
@@ -42,12 +49,17 @@ A rhythm action game where you hit falling notes in time with music using the D/
 - [x] As a player, I can see persistent high scores per song via localStorage
 
 ### Visual Effects & Particles
-- [x] As a player, I can see lane flash effects on successful note hits
-- [x] As a player, I can see expanding glow rings on Perfect-rated hits
-- [x] As a player, I can see sparkle particle bursts on note hits, scaled by rating (sparkle+burst for Perfect, burst+mini-sparkle for Great, standard burst for Good, red burst on Miss)
+- [x] As a player, I can see neon glow effects on lane separators, hit zone circles, notes, and combo text using canvas shadowBlur
+- [x] As a player, I can see neon lane flash column gradients on successful note hits
+- [x] As a player, I can see expanding double glow rings on Perfect-rated hits (outer yellow + inner neon lane color)
+- [x] As a player, I can see dramatic multi-layered neon particle explosions on note hits, scaled by rating
+- [x] As a player, I can see a full-screen neon flash on Perfect hits and combo milestones
+- [x] As a player, I can see an elastic-bouncing pulsing neon combo counter with outline stroke and white core glow
+- [x] As a player, I can see gradient comet-tail trails and neon trail particles behind falling notes
+- [x] As a player, I can see the background pulse in sync with the song BPM (color shift, radial vignette, lane tint pulse)
 - [x] As a player, I can see screen-shake on misses that escalates on consecutive misses
 - [x] As a player, I can see floating accuracy text with multiplier display
-- [x] As a player, I can see smooth time-based note scrolling and lane glow effects
+- [x] As a player, I can see smooth time-based note scrolling and BPM-synced lane glow effects
 
 ### Audio
 - [x] As a player, I can hear procedural music via Web Audio API with unique melody, bass line, hi-hat, and kick drum per song
