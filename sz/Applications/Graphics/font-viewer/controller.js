@@ -641,6 +641,36 @@
     }
   });
 
+  // ===== Zoom control (font size) =====
+
+  const $statusFontName = document.getElementById('status-font-name');
+
+  const zoomCtrl = new SZ.ZoomControl(document.getElementById('status-zoom-ctrl'), {
+    min: 8, max: 120, step: 2,
+    value: fontSize,
+    formatLabel: v => v + 'px',
+    parseLabel: text => { const n = parseInt(text, 10); return isNaN(n) ? null : n; },
+    onChange: (v) => {
+      fontSize = v;
+      sizeSlider.value = v;
+      sizeNum.value = v;
+      updatePreview();
+    }
+  });
+
+  function updateStatusBar() {
+    if ($statusFontName)
+      $statusFontName.textContent = selectedFont || 'No font selected';
+  }
+
+  // Patch updatePreview to also sync zoom and status bar
+  const _origUpdatePreview = updatePreview;
+  updatePreview = function() {
+    _origUpdatePreview();
+    zoomCtrl.value = fontSize;
+    updateStatusBar();
+  };
+
   // ===== Init =====
 
   async function loadFontFile(path) {

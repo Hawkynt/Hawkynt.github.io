@@ -10,10 +10,11 @@ body {
 #app {
   display: grid;
   grid-template-columns: 200px 1fr;
-  grid-template-rows: 1fr auto;
+  grid-template-rows: 1fr auto auto;
   grid-template-areas:
     "sidebar main"
-    "sidebar info";
+    "sidebar info"
+    "status  status";
   flex: 1;
   min-height: 0;
 }
@@ -258,4 +259,22 @@ body {
   font-family: 'Lucida Console', 'Consolas', monospace;
   font-size: 9px;
 }
+
+/* ---- Status bar ---- */
+#status-bar {
+  grid-area: status;
+  display: flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 6px;
+  background: var(--sz-color-button-face);
+  border-top: 1px solid var(--sz-color-button-shadow);
+  font-size: 10px;
+  color: var(--sz-color-gray-text);
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.status-section { white-space: nowrap; }
+.status-spacer { flex: 1; }
 
