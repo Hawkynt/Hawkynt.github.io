@@ -3,7 +3,7 @@
   const SS = window.SpreadsheetApp || (window.SpreadsheetApp = {});
 
   let _S, _cellKey, _parseKey, _colName, _colIndex, _getCellValue, _getSelectionRect, _showDialog, _rebuildGrid;
-  let _setFormat, _getFormat, _setDirty, _getActiveCell, _gridScroll;
+  let _setFormat, _getFormat, _setDirty, _getActiveCell, _gridScroll, _showPrompt;
 
   function init(ctx) {
     _S = ctx.S;
@@ -20,6 +20,7 @@
     _setDirty = ctx.setDirty;
     _getActiveCell = ctx.getActiveCell;
     _gridScroll = ctx.gridScroll;
+    _showPrompt = ctx.showPrompt;
   }
 
   // ── Charts (Extended) ──────────────────────────────────────────────
@@ -361,10 +362,310 @@
           ctx.fillText(labels[i] || '', padding.left + i * groupWidth + groupWidth / 2, H - padding.bottom + 14);
         break;
       }
+
+      case 'waterfall': {
+        const vals = Array.isArray(data[0]) ? data[0] : data;
+        const catCount = vals.length;
+        const groupWidth = chartW / catCount;
+        const barWidth = groupWidth * 0.6;
+
+        // Compute cumulative running total and overall range
+        let cumulative = 0;
+        const segments = [];
+        for (let i = 0; i < catCount; ++i) {
+          const val = vals[i] || 0;
+          const start = cumulative;
+          cumulative += val;
+          segments.push({ start, end: cumulative, val });
+        }
+        const allEnds = segments.map(s => s.end);
+        const allStarts = segments.map(s => s.start);
+        const wfMin = Math.min(0, ...allEnds, ...allStarts);
+        const wfMax = Math.max(0, ...allEnds, ...allStarts);
+        const wfRange = wfMax - wfMin || 1;
+
+        const positiveColor = options.waterfallPositive || '#70ad47';
+        const negativeColor = options.waterfallNegative || '#c00000';
+        const totalColor = options.waterfallTotal || '#4472c4';
+
+        for (let i = 0; i < catCount; ++i) {
+          const seg = segments[i];
+          const isTotal = (options.waterfallTotals && options.waterfallTotals.includes(i)) || i === catCount - 1;
+          const y1 = padding.top + chartH - ((Math.max(seg.start, seg.end) - wfMin) / wfRange) * chartH;
+          const y2 = padding.top + chartH - ((Math.min(seg.start, seg.end) - wfMin) / wfRange) * chartH;
+          const barH = y2 - y1;
+          const x = padding.left + i * groupWidth + (groupWidth - barWidth) / 2;
+
+          if (isTotal)
+            ctx.fillStyle = totalColor;
+          else
+            ctx.fillStyle = seg.val >= 0 ? positiveColor : negativeColor;
+
+          ctx.fillRect(x, y1, barWidth, barH);
+
+          // Connector line from previous bar's end to this bar's start
+          if (i > 0 && !isTotal) {
+            const prevEnd = segments[i - 1].end;
+            const connY = padding.top + chartH - ((prevEnd - wfMin) / wfRange) * chartH;
+            ctx.strokeStyle = '#999';
+            ctx.lineWidth = 0.5;
+            ctx.setLineDash([2, 2]);
+            ctx.beginPath();
+            ctx.moveTo(x - (groupWidth - barWidth) / 2, connY);
+            ctx.lineTo(x, connY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
+
+          // Value label above/below bar
+          ctx.fillStyle = '#333';
+          ctx.font = '9px sans-serif';
+          ctx.textAlign = 'center';
+          const labelX = x + barWidth / 2;
+          const labelY = seg.val >= 0 ? y1 - 3 : y2 + 10;
+          ctx.fillText(String(seg.val), labelX, labelY);
+        }
+
+        ctx.fillStyle = '#666';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'center';
+        for (let i = 0; i < catCount; ++i)
+          ctx.fillText(labels[i] || '', padding.left + i * groupWidth + groupWidth / 2, H - padding.bottom + 14);
+        break;
+      }
+
+      case 'treemap': {
+        const vals = Array.isArray(data[0]) ? data[0] : data;
+        const items = vals.map((v, i) => ({ value: Math.abs(v || 0), label: labels[i] || '', color: colors[i % colors.length] }));
+        items.sort((a, b) => b.value - a.value);
+        const total = items.reduce((s, it) => s + it.value, 0) || 1;
+
+        // Squarified treemap layout
+        function layoutTreemap(items, x, y, w, h) {
+          const rects = [];
+          let remaining = [...items];
+          let totalVal = remaining.reduce((s, it) => s + it.value, 0);
+          let cx = x, cy = y, cw = w, ch = h;
+
+          while (remaining.length > 0) {
+            const isWide = cw >= ch;
+            const side = isWide ? ch : cw;
+            let row = [remaining[0]];
+            let rowSum = remaining[0].value;
+            remaining = remaining.slice(1);
+
+            // Try adding items to improve aspect ratio
+            while (remaining.length > 0) {
+              const testSum = rowSum + remaining[0].value;
+              const rowFrac = testSum / totalVal;
+              const rowSide = isWide ? cw * rowFrac : ch * rowFrac;
+              const worstCurrent = Math.max(...row.map(it => {
+                const itemSide = side * (it.value / rowSum);
+                const other = (isWide ? cw : ch) * (rowSum / totalVal);
+                return Math.max(itemSide / other, other / itemSide);
+              }));
+              const testRow = [...row, remaining[0]];
+              const worstTest = Math.max(...testRow.map(it => {
+                const itemSide = side * (it.value / testSum);
+                return Math.max(itemSide / rowSide, rowSide / itemSide);
+              }));
+              if (worstTest <= worstCurrent) {
+                row.push(remaining[0]);
+                rowSum = testSum;
+                remaining = remaining.slice(1);
+              } else
+                break;
+            }
+
+            const rowFrac = rowSum / totalVal;
+            if (isWide) {
+              const rowW = cw * rowFrac;
+              let iy = cy;
+              for (const it of row) {
+                const itH = ch * (it.value / rowSum);
+                rects.push({ x: cx, y: iy, w: rowW, h: itH, label: it.label, color: it.color, value: it.value });
+                iy += itH;
+              }
+              cx += rowW;
+              cw -= rowW;
+            } else {
+              const rowH = ch * rowFrac;
+              let ix = cx;
+              for (const it of row) {
+                const itW = cw * (it.value / rowSum);
+                rects.push({ x: ix, y: cy, w: itW, h: rowH, label: it.label, color: it.color, value: it.value });
+                ix += itW;
+              }
+              cy += rowH;
+              ch -= rowH;
+            }
+            totalVal -= rowSum;
+          }
+          return rects;
+        }
+
+        const rects = layoutTreemap(items, padding.left, padding.top, chartW, chartH);
+        for (const r of rects) {
+          ctx.fillStyle = r.color;
+          ctx.fillRect(r.x, r.y, r.w, r.h);
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(r.x, r.y, r.w, r.h);
+
+          // Draw label if rectangle is large enough
+          if (r.w > 30 && r.h > 14) {
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            const text = r.label + (r.w > 60 ? ' (' + r.value + ')' : '');
+            ctx.fillText(text, r.x + r.w / 2, r.y + r.h / 2, r.w - 4);
+          }
+        }
+        ctx.textBaseline = 'alphabetic';
+        break;
+      }
+
+      case 'bubble': {
+        // Bubble chart: expects data as array of series, each series is [xVals, yVals, sizeVals]
+        // Or flat data with 3 columns: X, Y, Size
+        let bubbleSeries = [];
+        if (Array.isArray(data[0]) && Array.isArray(data[0][0])) {
+          // Multiple series: [[xVals, yVals, sizeVals], ...]
+          bubbleSeries = data;
+        } else if (Array.isArray(data[0])) {
+          // Single series as 3 arrays: [xVals, yVals, sizeVals]
+          if (data.length >= 3) {
+            bubbleSeries = [[data[0], data[1], data[2]]];
+          } else if (data.length === 2) {
+            // 2 arrays: treat as x, y with uniform size
+            bubbleSeries = [[data[0], data[1], data[0].map(() => 1)]];
+          } else {
+            // Single array: index as x, values as y, uniform size
+            bubbleSeries = [[data[0].map((_, i) => i), data[0], data[0].map(() => 1)]];
+          }
+        } else {
+          // Flat data: use index as x, values as y, uniform size
+          bubbleSeries = [[data.map((_, i) => i), data, data.map(() => 1)]];
+        }
+
+        // Compute axis bounds across all series
+        let allX = [], allY = [], allSizes = [];
+        for (const series of bubbleSeries) {
+          const xs = series[0] || [], ys = series[1] || [], sizes = series[2] || [];
+          allX.push(...xs.filter(v => !isNaN(v)));
+          allY.push(...ys.filter(v => !isNaN(v)));
+          allSizes.push(...sizes.filter(v => !isNaN(v)));
+        }
+        if (!allX.length) allX = [0, 1];
+        if (!allY.length) allY = [0, 1];
+        if (!allSizes.length) allSizes = [1];
+
+        const bXMin = Math.min(...allX), bXMax = Math.max(...allX);
+        const bYMin = Math.min(...allY), bYMax = Math.max(...allY);
+        const bXRange = bXMax - bXMin || 1;
+        const bYRange = bYMax - bYMin || 1;
+        const sizeMin = Math.min(...allSizes), sizeMax = Math.max(...allSizes);
+        const sizeRange = sizeMax - sizeMin || 1;
+        const MIN_RADIUS = 4, MAX_RADIUS = Math.min(chartW, chartH) / 8;
+
+        // Draw grid lines
+        ctx.strokeStyle = '#eee';
+        ctx.lineWidth = 0.5;
+        for (let i = 0; i <= 5; ++i) {
+          const gy = padding.top + chartH - (chartH * i) / 5;
+          ctx.beginPath(); ctx.moveTo(padding.left, gy); ctx.lineTo(padding.left + chartW, gy); ctx.stroke();
+          const gx = padding.left + (chartW * i) / 5;
+          ctx.beginPath(); ctx.moveTo(gx, padding.top); ctx.lineTo(gx, padding.top + chartH); ctx.stroke();
+        }
+
+        // Draw bubbles per series
+        for (let s = 0; s < bubbleSeries.length; ++s) {
+          const xs = bubbleSeries[s][0] || [], ys = bubbleSeries[s][1] || [], sizes = bubbleSeries[s][2] || [];
+          const len = Math.min(xs.length, ys.length);
+          const baseColor = colors[s % colors.length];
+          ctx.fillStyle = baseColor + '99';
+          ctx.strokeStyle = baseColor;
+          ctx.lineWidth = 1;
+          for (let i = 0; i < len; ++i) {
+            const xVal = xs[i] || 0, yVal = ys[i] || 0, sVal = sizes[i] || sizeMin;
+            const px = padding.left + ((xVal - bXMin) / bXRange) * chartW;
+            const py = padding.top + chartH - ((yVal - bYMin) / bYRange) * chartH;
+            const radius = MIN_RADIUS + ((sVal - sizeMin) / sizeRange) * (MAX_RADIUS - MIN_RADIUS);
+            ctx.beginPath();
+            ctx.arc(px, py, radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+          }
+        }
+
+        // X axis labels
+        ctx.fillStyle = '#666';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'center';
+        for (let i = 0; i <= 5; ++i) {
+          const val = bXMin + (bXRange * i) / 5;
+          ctx.fillText(val.toFixed(val % 1 === 0 ? 0 : 1), padding.left + (chartW * i) / 5, H - padding.bottom + 14);
+        }
+
+        // Y axis labels
+        ctx.textAlign = 'right';
+        for (let i = 0; i <= 5; ++i) {
+          const val = bYMin + (bYRange * i) / 5;
+          const gy = padding.top + chartH - (chartH * i) / 5;
+          ctx.fillText(val.toFixed(val % 1 === 0 ? 0 : 1), padding.left - 6, gy + 4);
+        }
+        break;
+      }
+
+      case 'funnel': {
+        const vals = Array.isArray(data[0]) ? data[0] : data;
+        const catCount = vals.length;
+        const maxFunnelVal = Math.max(...vals.map(v => Math.abs(v || 0)), 1);
+        const rowH = chartH / catCount;
+
+        for (let i = 0; i < catCount; ++i) {
+          const val = Math.abs(vals[i] || 0);
+          const barW = (val / maxFunnelVal) * chartW;
+          const x = padding.left + (chartW - barW) / 2;
+          const y = padding.top + i * rowH;
+
+          ctx.fillStyle = colors[i % colors.length];
+          // Draw trapezoid shape
+          const nextVal = i < catCount - 1 ? Math.abs(vals[i + 1] || 0) : val * 0.5;
+          const nextBarW = (nextVal / maxFunnelVal) * chartW;
+          const topLeft = padding.left + (chartW - barW) / 2;
+          const topRight = topLeft + barW;
+          const botLeft = padding.left + (chartW - nextBarW) / 2;
+          const botRight = botLeft + nextBarW;
+
+          ctx.beginPath();
+          ctx.moveTo(topLeft, y);
+          ctx.lineTo(topRight, y);
+          ctx.lineTo(botRight, y + rowH);
+          ctx.lineTo(botLeft, y + rowH);
+          ctx.closePath();
+          ctx.fill();
+
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+
+          // Label
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 11px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          const labelText = (labels[i] || '') + ' (' + vals[i] + ')';
+          ctx.fillText(labelText, padding.left + chartW / 2, y + rowH / 2);
+        }
+        ctx.textBaseline = 'alphabetic';
+        break;
+      }
     }
 
-    // Y axis labels (skip for pie/doughnut/radar)
-    if (type !== 'pie' && type !== 'doughnut' && type !== 'radar') {
+    // Y axis labels (skip for pie/doughnut/radar/treemap/funnel)
+    if (type !== 'pie' && type !== 'doughnut' && type !== 'radar' && type !== 'treemap' && type !== 'funnel' && type !== 'bubble') {
       ctx.fillStyle = '#666';
       ctx.font = '10px sans-serif';
       ctx.textAlign = 'right';
@@ -754,37 +1055,86 @@
     for (const chart of _S().inlineCharts) renderInlineChart(chart);
   }
 
-  function _handleChartContextAction(chart, action) {
+  async function _handleChartContextAction(chart, action) {
     switch (action) {
       case 'edit':
         _showChartOptionsDialog(chart);
         break;
       case 'range': {
-        const r = prompt('Data range (e.g. A1:C5):', chart.sourceRange);
-        if (r) {
-          chart.sourceRange = r.trim();
-          renderInlineChart(chart);
-          _setDirty();
+        const rangeInput = document.getElementById('chart-range-input');
+        if (rangeInput) {
+          rangeInput.value = chart.sourceRange || '';
+          const result = await _showDialog('dlg-chart-data-range');
+          if (result === 'ok') {
+            const r = rangeInput.value.trim();
+            if (r) {
+              chart.sourceRange = r;
+              renderInlineChart(chart);
+              _setDirty();
+            }
+          }
         }
         break;
       }
       case 'type': {
-        const types = ['bar', 'column', 'line', 'pie', 'doughnut', 'scatter', 'area', 'radar', 'histogram', 'combo'];
-        const t = prompt('Chart type (' + types.join(', ') + '):', chart.type);
-        if (t && types.includes(t.trim().toLowerCase())) {
-          chart.type = t.trim().toLowerCase();
-          renderInlineChart(chart);
-          _setDirty();
+        const typeSelect = document.getElementById('chart-type-select');
+        if (typeSelect) {
+          typeSelect.value = chart.type || 'bar';
+          const result = await _showDialog('dlg-chart-type');
+          if (result === 'ok') {
+            const t = typeSelect.value;
+            if (t) {
+              chart.type = t;
+              renderInlineChart(chart);
+              _setDirty();
+            }
+          }
         }
         break;
       }
       case 'colors': {
-        const current = (chart.options.colors || ['#4472c4', '#ed7d31', '#70ad47', '#ffc000']).join(', ');
-        const c = prompt('Series colors (comma-separated hex):', current);
-        if (c) {
-          chart.options.colors = c.split(',').map(s => s.trim());
-          renderInlineChart(chart);
-          _setDirty();
+        const colorsList = document.getElementById('chart-colors-list');
+        if (colorsList) {
+          const currentColors = chart.options.colors || ['#4472c4', '#ed7d31', '#70ad47', '#ffc000', '#5b9bd5', '#c00000', '#7030a0', '#00b0f0'];
+          const fresh = getChartDataFromRange(chart.sourceRange);
+          const seriesCount = Array.isArray(fresh.data[0]) ? fresh.data.length : Math.max(fresh.data.length, 1);
+          const colorCount = Math.max(seriesCount, currentColors.length, 4);
+
+          colorsList.innerHTML = '';
+          for (let i = 0; i < colorCount; ++i) {
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:center;gap:8px;';
+            const label = document.createElement('label');
+            label.style.cssText = 'font-size:11px;min-width:70px;';
+            label.textContent = 'Series ' + (i + 1) + ':';
+            const picker = document.createElement('input');
+            picker.type = 'color';
+            picker.className = 'chart-color-picker';
+            picker.value = currentColors[i % currentColors.length] || '#4472c4';
+            const hexInput = document.createElement('input');
+            hexInput.type = 'text';
+            hexInput.className = 'chart-color-hex';
+            hexInput.style.cssText = 'width:70px;font-size:11px;font-family:monospace;';
+            hexInput.value = picker.value;
+            picker.addEventListener('input', () => { hexInput.value = picker.value; });
+            hexInput.addEventListener('change', () => {
+              const v = hexInput.value.trim();
+              if (/^#[0-9a-fA-F]{6}$/.test(v))
+                picker.value = v;
+            });
+            row.appendChild(label);
+            row.appendChild(picker);
+            row.appendChild(hexInput);
+            colorsList.appendChild(row);
+          }
+
+          const result = await _showDialog('dlg-chart-series-colors');
+          if (result === 'ok') {
+            const pickers = colorsList.querySelectorAll('.chart-color-hex');
+            chart.options.colors = Array.from(pickers, el => el.value.trim() || '#4472c4');
+            renderInlineChart(chart);
+            _setDirty();
+          }
         }
         break;
       }
@@ -1063,22 +1413,28 @@
     }
   }
 
-  function insertSparkline(type) {
-    const rangeStr = prompt('Data range for sparkline (e.g. A1:A10):');
-    if (!rangeStr) return;
-    const ac = _getActiveCell();
-    _setFormat(ac.col, ac.row, {
-      sparkline: {
-        type,
-        range: rangeStr.toUpperCase(),
-        colorLine: '#4472c4',
-        colorHigh: '#22863a',
-        colorLow: '#cb2431',
-        showMarkers: type === 'line',
-      }
-    });
-    _rebuildGrid();
-    _setDirty();
+  async function insertSparkline(type) {
+    const rangeInput = document.getElementById('sparkline-range-input');
+    if (rangeInput) {
+      rangeInput.value = '';
+      const result = await _showDialog('dlg-sparkline-insert');
+      if (result !== 'ok') return;
+      const rangeStr = rangeInput.value.trim();
+      if (!rangeStr) return;
+      const ac = _getActiveCell();
+      _setFormat(ac.col, ac.row, {
+        sparkline: {
+          type,
+          range: rangeStr.toUpperCase(),
+          colorLine: '#4472c4',
+          colorHigh: '#22863a',
+          colorLow: '#cb2431',
+          showMarkers: type === 'line',
+        }
+      });
+      _rebuildGrid();
+      _setDirty();
+    }
   }
 
   // ── Render Pivot Chart ───────────────────────────────────────
@@ -1190,15 +1546,23 @@
     });
   }
 
-  function _showSparklineOptionsFallback(col, row, sp) {
-    const newColor = prompt('Line/bar color (hex):', sp.colorLine || '#4472c4');
-    if (newColor !== null && newColor.trim()) sp.colorLine = newColor.trim();
+  async function _showSparklineOptionsFallback(col, row, sp) {
+    const colorInput = document.getElementById('spq-color-line');
+    const markersSelect = document.getElementById('spq-markers');
+    const axisCheckbox = document.getElementById('spq-axis-line');
 
-    const markersOpt = prompt('Markers (none/all/first/last/high/low/negative/firstlast/highlow):', sp.markers || 'none');
-    if (markersOpt !== null) sp.markers = markersOpt.trim();
+    if (!colorInput || !markersSelect || !axisCheckbox) return;
 
-    const axisOpt = prompt('Show axis line at zero? (yes/no):', sp.showAxis ? 'yes' : 'no');
-    if (axisOpt !== null) sp.showAxis = axisOpt.trim().toLowerCase() === 'yes';
+    colorInput.value = sp.colorLine || '#4472c4';
+    markersSelect.value = sp.markers || 'none';
+    axisCheckbox.checked = !!sp.showAxis;
+
+    const result = await _showDialog('dlg-sparkline-quick-options');
+    if (result !== 'ok') return;
+
+    sp.colorLine = colorInput.value;
+    sp.markers = markersSelect.value;
+    sp.showAxis = axisCheckbox.checked;
 
     _setFormat(col, row, { sparkline: sp });
     _rebuildGrid();

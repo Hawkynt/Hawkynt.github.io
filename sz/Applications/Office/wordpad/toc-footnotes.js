@@ -305,13 +305,117 @@
   // ═══════════════════════════════════════════════════════════════
 
   function insertMultiLevelList() {
-    const html = '<ol class="wp-multilevel">'
-      + '<li>First item</li>'
-      + '<li>Second item<ol><li>Sub-item 2.1</li><li>Sub-item 2.2</li></ol></li>'
-      + '<li>Third item</li>'
+    const html = '<ol class="wp-multilevel" data-ml-style="decimal">'
+      + '<li>Item 1</li>'
+      + '<li>Item 2</li>'
+      + '<li>Item 3</li>'
       + '</ol><p><br></p>';
     document.execCommand('insertHTML', false, html);
     _editor.focus();
+    _markDirty();
+  }
+
+  function _getListItemAtCursor() {
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return null;
+    let node = sel.focusNode;
+    if (node && node.nodeType === 3) node = node.parentElement;
+    if (!node) return null;
+    const li = node.closest('.wp-multilevel li');
+    return li;
+  }
+
+  function demoteListItem() {
+    const li = _getListItemAtCursor();
+    if (!li) return;
+    const parentOl = li.parentElement;
+    if (!parentOl) return;
+
+    // Determine current nesting depth - don't go beyond 3 levels
+    let depth = 0;
+    let el = parentOl;
+    while (el) {
+      if (el.matches && el.matches('ol'))
+        ++depth;
+      el = el.parentElement;
+    }
+    if (depth >= 3) return;
+
+    // Find or create a nested <ol> inside the previous sibling <li>
+    const prevLi = li.previousElementSibling;
+    if (!prevLi) return; // Cannot demote the first item in a list level
+
+    let childOl = prevLi.querySelector(':scope > ol');
+    if (!childOl) {
+      childOl = document.createElement('ol');
+      prevLi.appendChild(childOl);
+    }
+
+    childOl.appendChild(li);
+    _markDirty();
+
+    // Restore cursor to the item
+    const sel = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(li);
+    range.collapse(false);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  function promoteListItem() {
+    const li = _getListItemAtCursor();
+    if (!li) return;
+    const parentOl = li.parentElement;
+    if (!parentOl || !parentOl.matches('ol')) return;
+
+    // Must be nested (parent ol must be inside a li)
+    const parentLi = parentOl.parentElement;
+    if (!parentLi || !parentLi.matches('li')) return;
+
+    const grandparentOl = parentLi.parentElement;
+    if (!grandparentOl || !grandparentOl.matches('ol')) return;
+
+    // Move remaining siblings into a new ol staying at current level
+    const remaining = [];
+    let next = li.nextElementSibling;
+    while (next) {
+      remaining.push(next);
+      next = next.nextElementSibling;
+    }
+
+    if (remaining.length) {
+      let childOl = li.querySelector(':scope > ol');
+      if (!childOl) {
+        childOl = document.createElement('ol');
+        li.appendChild(childOl);
+      }
+      for (const r of remaining)
+        childOl.appendChild(r);
+    }
+
+    // Insert li after parentLi in grandparentOl
+    grandparentOl.insertBefore(li, parentLi.nextSibling);
+
+    // Clean up empty nested ol
+    if (!parentOl.children.length)
+      parentOl.remove();
+
+    _markDirty();
+
+    // Restore cursor
+    const sel = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(li);
+    range.collapse(false);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  function setMultilevelStyle(style) {
+    const lists = _editor.querySelectorAll('.wp-multilevel');
+    for (const list of lists)
+      list.dataset.mlStyle = style;
     _markDirty();
   }
 
@@ -351,6 +455,9 @@
     insertEndnote,
     renumberEndnotes,
     insertMultiLevelList,
+    promoteListItem,
+    demoteListItem,
+    setMultilevelStyle,
     insertColumnBreak,
   };
 })();

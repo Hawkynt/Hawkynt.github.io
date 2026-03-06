@@ -40,7 +40,27 @@
     // -- Motion Path --
     'motion-line': { category: 'motion-path', label: 'Line', defaultDuration: 1000 },
     'motion-arc': { category: 'motion-path', label: 'Arc', defaultDuration: 1000 },
+    'custom-path': { category: 'motion-path', label: 'Custom Path', defaultDuration: 2000 },
   };
+
+  // ===============================================================
+  // Effect Options Map
+  // ===============================================================
+
+  const EFFECT_OPTIONS = {
+    'fly-in': { directions: ['from-bottom', 'from-top', 'from-left', 'from-right', 'from-bottom-left', 'from-top-right'] },
+    'fly-out': { directions: ['to-bottom', 'to-top', 'to-left', 'to-right'] },
+    'wipe': { directions: ['from-bottom', 'from-top', 'from-left', 'from-right'] },
+    'zoom-in': { options: ['center', 'slide-center'] },
+    'zoom-out': { options: ['center', 'slide-center'] },
+    'spin': { options: ['clockwise', 'counter-clockwise'] },
+    'bounce': { options: ['bounce', 'no-bounce'] },
+    'grow-shrink': { options: ['both', 'horizontal', 'vertical'] }
+  };
+
+  function getEffectOptions(effectName) {
+    return EFFECT_OPTIONS[effectName] || null;
+  }
 
   // ===============================================================
   // CSS Keyframe Generation
@@ -69,12 +89,14 @@
         break;
 
       case 'fly-in': {
-        const dir = anim.direction || 'from-bottom';
+        const dir = (anim.effectOptions && anim.effectOptions.direction) || anim.direction || 'from-bottom';
         const translations = {
           'from-left': 'translateX(-120%)',
           'from-right': 'translateX(120%)',
           'from-top': 'translateY(-120%)',
-          'from-bottom': 'translateY(120%)'
+          'from-bottom': 'translateY(120%)',
+          'from-bottom-left': 'translate(-120%, 120%)',
+          'from-top-right': 'translate(120%, -120%)'
         };
         const t = translations[dir] || 'translateY(120%)';
         keyframes = '@keyframes ' + name + ' { from { transform: ' + t + '; opacity: 0; } to { transform: translate(0, 0); opacity: 1; } }';
@@ -83,7 +105,7 @@
       }
 
       case 'wipe': {
-        const dir = anim.direction || 'from-left';
+        const dir = (anim.effectOptions && anim.effectOptions.direction) || anim.direction || 'from-left';
         const clips = {
           'from-left': { from: 'inset(0 100% 0 0)', to: 'inset(0 0 0 0)' },
           'from-right': { from: 'inset(0 0 0 100%)', to: 'inset(0 0 0 0)' },
@@ -96,21 +118,32 @@
         break;
       }
 
-      case 'zoom-in':
-        keyframes = '@keyframes ' + name + ' { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }';
+      case 'zoom-in': {
+        const opt = (anim.effectOptions && anim.effectOptions.option) || 'center';
+        const origin = opt === 'slide-center' ? 'transform-origin: 50% 50%; ' : '';
+        keyframes = '@keyframes ' + name + ' { from { transform: scale(0); opacity: 0; ' + origin + '} to { transform: scale(1); opacity: 1; ' + origin + '} }';
         animCSS = name + ' ' + dur + 'ms ease-out ' + delay + 'ms both';
         break;
+      }
 
-      case 'bounce':
-        keyframes = '@keyframes ' + name + ' { '
-          + '0% { transform: scale(0); opacity: 0; } '
-          + '40% { transform: scale(1.15); opacity: 1; } '
-          + '60% { transform: scale(0.9); } '
-          + '75% { transform: scale(1.05); } '
-          + '90% { transform: scale(0.98); } '
-          + '100% { transform: scale(1); opacity: 1; } }';
+      case 'bounce': {
+        const opt = (anim.effectOptions && anim.effectOptions.option) || 'bounce';
+        if (opt === 'no-bounce') {
+          keyframes = '@keyframes ' + name + ' { '
+            + '0% { transform: scale(0); opacity: 0; } '
+            + '100% { transform: scale(1); opacity: 1; } }';
+        } else {
+          keyframes = '@keyframes ' + name + ' { '
+            + '0% { transform: scale(0); opacity: 0; } '
+            + '40% { transform: scale(1.15); opacity: 1; } '
+            + '60% { transform: scale(0.9); } '
+            + '75% { transform: scale(1.05); } '
+            + '90% { transform: scale(0.98); } '
+            + '100% { transform: scale(1); opacity: 1; } }';
+        }
         animCSS = name + ' ' + dur + 'ms ease-out ' + delay + 'ms both';
         break;
+      }
 
       case 'float-in':
         keyframes = '@keyframes ' + name + ' { from { transform: translateY(40px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }';
@@ -129,18 +162,34 @@
         animCSS = name + ' ' + dur + 'ms ease-in-out ' + delay + 'ms both';
         break;
 
-      case 'grow-shrink':
+      case 'grow-shrink': {
+        const opt = (anim.effectOptions && anim.effectOptions.option) || 'both';
+        let scaleFrom, scaleTo;
+        if (opt === 'horizontal') {
+          scaleFrom = 'scaleX(1)';
+          scaleTo = 'scaleX(1.3)';
+        } else if (opt === 'vertical') {
+          scaleFrom = 'scaleY(1)';
+          scaleTo = 'scaleY(1.3)';
+        } else {
+          scaleFrom = 'scale(1)';
+          scaleTo = 'scale(1.3)';
+        }
         keyframes = '@keyframes ' + name + ' { '
-          + '0% { transform: scale(1); } '
-          + '50% { transform: scale(1.3); } '
-          + '100% { transform: scale(1); } }';
+          + '0% { transform: ' + scaleFrom + '; } '
+          + '50% { transform: ' + scaleTo + '; } '
+          + '100% { transform: ' + scaleFrom + '; } }';
         animCSS = name + ' ' + dur + 'ms ease-in-out ' + delay + 'ms both';
         break;
+      }
 
-      case 'spin':
-        keyframes = '@keyframes ' + name + ' { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }';
+      case 'spin': {
+        const opt = (anim.effectOptions && anim.effectOptions.option) || 'clockwise';
+        const deg = opt === 'counter-clockwise' ? '-360deg' : '360deg';
+        keyframes = '@keyframes ' + name + ' { from { transform: rotate(0deg); } to { transform: rotate(' + deg + '); } }';
         animCSS = name + ' ' + dur + 'ms ease-in-out ' + delay + 'ms both';
         break;
+      }
 
       case 'color-change':
         keyframes = '@keyframes ' + name + ' { '
@@ -172,7 +221,7 @@
         break;
 
       case 'fly-out': {
-        const dir = anim.direction || 'to-bottom';
+        const dir = (anim.effectOptions && anim.effectOptions.direction) || anim.direction || 'to-bottom';
         const translations = {
           'to-left': 'translateX(-120%)',
           'to-right': 'translateX(120%)',
@@ -190,10 +239,13 @@
         animCSS = name + ' ' + dur + 'ms ease-in ' + delay + 'ms both';
         break;
 
-      case 'zoom-out':
-        keyframes = '@keyframes ' + name + ' { from { transform: scale(1); opacity: 1; } to { transform: scale(0); opacity: 0; } }';
+      case 'zoom-out': {
+        const opt = (anim.effectOptions && anim.effectOptions.option) || 'center';
+        const origin = opt === 'slide-center' ? 'transform-origin: 50% 50%; ' : '';
+        keyframes = '@keyframes ' + name + ' { from { transform: scale(1); opacity: 1; ' + origin + '} to { transform: scale(0); opacity: 0; ' + origin + '} }';
         animCSS = name + ' ' + dur + 'ms ease-in ' + delay + 'ms both';
         break;
+      }
 
       // -- Motion Path effects --
 
@@ -236,6 +288,23 @@
             break;
         }
         keyframes = '@keyframes ' + name + ' { 0% { transform: translate(0,0); } 50% { transform: ' + offsets.mid + '; } 100% { transform: ' + offsets.end + '; } }';
+        animCSS = name + ' ' + dur + 'ms ease-in-out ' + delay + 'ms both';
+        break;
+      }
+
+      case 'custom-path': {
+        const points = anim.motionPath || [];
+        if (points.length >= 2) {
+          const steps = points.length - 1;
+          const kfParts = [];
+          for (let i = 0; i <= steps; ++i) {
+            const pct = Math.round((i / steps) * 100);
+            kfParts.push(pct + '% { transform: translate(' + points[i].x + 'px, ' + points[i].y + 'px); }');
+          }
+          keyframes = '@keyframes ' + name + ' { ' + kfParts.join(' ') + ' }';
+        } else {
+          keyframes = '@keyframes ' + name + ' { from { transform: translate(0,0); } to { transform: translate(0,0); } }';
+        }
         animCSS = name + ' ' + dur + 'ms ease-in-out ' + delay + 'ms both';
         break;
       }
@@ -610,13 +679,15 @@
   PP.AnimationEngine = Object.freeze({
     init,
     PRESETS,
+    EFFECT_OPTIONS,
     generateKeyframes,
     buildTimeline,
     createPlayer,
     addAnimation,
     removeAnimation,
     reorderAnimation,
-    getAnimationsForSlide
+    getAnimationsForSlide,
+    getEffectOptions
   });
 
 })();
