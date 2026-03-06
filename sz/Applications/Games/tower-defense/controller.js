@@ -3,6 +3,12 @@
 
   const SZ = window.SZ;
 
+  /* ── Expand 3-digit hex (#rgb) to 6-digit (#rrggbb) before appending alpha hex digits ── */
+  const _hexAlpha = (hex, alpha) => {
+    const h = hex.replace(/^#([0-9a-fA-F])([0-9a-fA-F])([0-9a-fA-F])$/, '#$1$1$2$2$3$3');
+    return h + alpha;
+  };
+
   /* ══════════════════════════════════════════════════════════════════
      CONSTANTS
      ══════════════════════════════════════════════════════════════════ */
@@ -263,8 +269,8 @@
       const dy = Math.sign(y1 - y0);
       while (x0 !== x1 || y0 !== y1) {
         visit(x0, y0);
-        x0 += dx;
-        y0 += dy;
+        if (x0 !== x1) x0 += dx;
+        if (y0 !== y1) y0 += dy;
       }
     }
     const last = waypoints[waypoints.length - 1];
@@ -1084,7 +1090,7 @@
 
       // Glow under tower
       const glowGrad = ctx.createRadialGradient(0, 0, 2, 0, 0, 14 * tierScale);
-      glowGrad.addColorStop(0, def.color + '40');
+      glowGrad.addColorStop(0, _hexAlpha(def.color, '40'));
       glowGrad.addColorStop(1, 'transparent');
       ctx.fillStyle = glowGrad;
       ctx.fillRect(-16, -16, 32, 32);
@@ -1586,7 +1592,7 @@
     for (const p of projectiles) {
       // Trail
       if (p.trail.length > 1) {
-        ctx.strokeStyle = p.color + '40';
+        ctx.strokeStyle = _hexAlpha(p.color, '40');
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(p.trail[0].x, p.trail[0].y);
