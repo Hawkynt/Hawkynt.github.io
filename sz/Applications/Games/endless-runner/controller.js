@@ -22,9 +22,9 @@
   /* Player */
   const PLAYER_W = 30;
   const PLAYER_H = 50;
-  const JUMP_DURATION = 0.6;
+  const JUMP_DURATION = 0.7;
   const SLIDE_DURATION = 0.5;
-  const JUMP_HEIGHT = 80;
+  const JUMP_HEIGHT = 130;
 
   /* Speed */
   const BASE_SPEED = 8;
@@ -267,7 +267,7 @@
       if (!laneOverlap)
         continue;
 
-      if (obs.type === 'barrier-low' && isJumping)
+      if ((obs.type === 'barrier-low' || obs.type === 'barrier-high') && isJumping)
         continue;
       if (obs.type === 'barrier-high' && isSliding)
         continue;
