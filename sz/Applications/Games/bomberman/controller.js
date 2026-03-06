@@ -129,14 +129,24 @@
   const S_WALL = { x: 0, y: 0 };              // row 0 col 0 — grey stone wall
   const S_BOX = { x: 0, y: 13 * SP };         // row 13 col 0 — brown destructible block
 
-  // Character walk frames: [direction][frame] — 0=down 1=up 2=left 3=right
-  // Each character row has 10 cols with this actual layout:
-  //   cols 0,1=down  2,3=up  4,5=left(walk pair A)  6,7=left(walk pair B)  8,9=down(extras)
+  // Character frames: [direction] → { stand, walk: [frameA, frameB] }
+  // 0=down 1=up 2=left 3=right
+  // Each character row has 10 cols with 3-frame groups per direction:
+  //   cols 0,1,2=down (stand, walkA, walkB)
+  //   cols 3,4,5=left (stand, walkA, walkB)
+  //   cols 6,7,8=up   (stand, walkA, walkB)
   // There are NO dedicated right-facing sprites; right is drawn by flipping left.
   // Direction 3 (right) reuses the left sprite coords; the draw call mirrors them.
   function _buildCharFrames(startRow) {
-    const dirCols = [[0, 1], [2, 3], [4, 5], [4, 5]]; // right reuses left cols
-    return dirCols.map(cols => cols.map(c => ({ x: c * SP, y: startRow * SP })));
+    // [standCol, walkColA, walkColB] per direction: down, up, left, right
+    const dirCols = [[0, 1, 2], [6, 7, 8], [3, 4, 5], [3, 4, 5]];
+    return dirCols.map(cols => ({
+      stand: { x: cols[0] * SP, y: startRow * SP },
+      walk: [
+        { x: cols[1] * SP, y: startRow * SP },
+        { x: cols[2] * SP, y: startRow * SP }
+      ]
+    }));
   }
 
   const S_PLAYER = _buildCharFrames(15);             // row 15 — cyan/blue character
@@ -1350,8 +1360,9 @@
         ctx.restore();
         // Sprite (different character row per enemy type)
         // Facing 3 (right) uses the left-facing sprite horizontally flipped
-        const eFrames = S_ENEMY_ROWS[e.type] || S_ENEMY_ROWS.normal;
-        const s = eFrames[e.facing][e.walkFrame];
+        const eAllFrames = S_ENEMY_ROWS[e.type] || S_ENEMY_ROWS.normal;
+        const eDirFrames = eAllFrames[e.facing];
+        const s = e.moveProgress > 0 ? eDirFrames.walk[e.walkFrame] : eDirFrames.stand;
         if (e.facing === 3)
           drawSpriteFlippedH(s, e.x - TILE_SIZE / 2, e.y - TILE_SIZE / 2);
         else
@@ -1427,7 +1438,8 @@
       ctx.fill();
       ctx.restore();
       // Player sprite — facing 3 (right) uses the left-facing sprite flipped
-      const s = S_PLAYER[player.facing][player.walkFrame];
+      const pFrames = S_PLAYER[player.facing];
+      const s = player.moveProgress > 0 ? pFrames.walk[player.walkFrame] : pFrames.stand;
       if (player.facing === 3)
         drawSpriteFlippedH(s, player.x - TILE_SIZE / 2, player.y - TILE_SIZE / 2);
       else
