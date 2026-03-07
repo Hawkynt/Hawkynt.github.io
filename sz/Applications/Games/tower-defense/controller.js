@@ -125,6 +125,11 @@
       id: 'sniper', name: 'Sniper', cost: 180, damage: 80, range: 250, fireRate: 3.0,
       color: '#ddd', colorDark: '#888', projectileColor: '#fff', projectileSpeed: 900,
       desc: 'Long-range snipe'
+    },
+    {
+      id: 'spike', name: 'Spikes', cost: 30, damage: 3, range: 0, fireRate: 0,
+      color: '#999', colorDark: '#555', projectileColor: '#999', projectileSpeed: 0,
+      isFloorTrap: true, desc: 'Ground trap'
     }
   ];
 
@@ -204,6 +209,7 @@
   let towers = [];
   let enemies = [];
   let projectiles = [];
+  let floorEffects = [];
   let pathCells = new Set();
   let waveEnemies = [];
   let spawnTimer = 0;
@@ -339,6 +345,7 @@
     towers = [];
     enemies = [];
     projectiles = [];
+    floorEffects = [];
     selectedTower = null;
     gameSpeed = 1;
     waveEnemies = [];
@@ -370,9 +377,39 @@
     return true;
   }
 
+  function canPlaceSpike(col, row) {
+    if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return false;
+    if (!pathCells.has(`${col},${row}`)) return false; // spikes must go ON the path
+    // No duplicate spikes on same cell
+    for (const fe of floorEffects)
+      if (fe.col === col && fe.row === row && fe.type === 'spike') return false;
+    return true;
+  }
+
   function placeTower(col, row, typeIndex) {
     const def = TOWER_TYPES[typeIndex];
-    if (gold < def.cost || !canPlace(col, row)) return false;
+    if (gold < def.cost) return false;
+
+    // Spike traps are placed as floor effects on path cells
+    if (def.isFloorTrap) {
+      if (!canPlaceSpike(col, row)) return false;
+      gold -= def.cost;
+      const fx = col * CELL + CELL / 2;
+      const fy = row * CELL + CELL / 2;
+      floorEffects.push({
+        col, row,
+        x: fx, y: fy,
+        type: 'spike',
+        timer: Infinity, // permanent until sold
+        damage: def.damage,
+        cost: def.cost
+      });
+      particles.sparkle(fx, fy, 8, { color: '#999', speed: 2 });
+      floatingText.add(fx, fy - 16, `-${def.cost}g`, { color: '#fa0', font: 'bold 11px sans-serif' });
+      return true;
+    }
+
+    if (!canPlace(col, row)) return false;
 
     gold -= def.cost;
     const tower = {
@@ -560,6 +597,8 @@
     let closest = null;
     let bestDist = tower.range + 1;
     for (const enemy of enemies) {
+      if (enemy.hp <= 0)
+        continue;
       const dx = enemy.x - tower.x;
       const dy = enemy.y - tower.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
@@ -602,6 +641,10 @@
      ══════════════════════════════════════════════════════════════════ */
 
   function killEnemy(enemy, index) {
+    // Guard: if already removed from array, skip
+    if (index < 0 || index >= enemies.length || enemies[index] !== enemy)
+      return;
+
     particles.burst(enemy.x, enemy.y, 12, { color: enemy.color, speed: 3, life: 0.6 });
 
     gold += enemy.bounty;
@@ -641,6 +684,10 @@
     for (let i = enemies.length - 1; i >= 0; --i) {
       const e = enemies[i];
 
+      // Skip dead enemies (will be cleaned up in sweep)
+      if (e.hp <= 0)
+        continue;
+
       // DoT (damage over time)
       if (e.dotTimer > 0) {
         e.dotTimer -= dt;
@@ -660,7 +707,7 @@
         if (e.healCooldown <= 0) {
           e.healCooldown = 2;
           for (const other of enemies) {
-            if (other === e) continue;
+            if (other === e || other.hp <= 0) continue;
             const hdx = other.x - e.x;
             const hdy = other.y - e.y;
             if (Math.sqrt(hdx * hdx + hdy * hdy) < 60) {
@@ -797,7 +844,7 @@
     // Splash damage
     if (p.splash > 0) {
       for (const other of enemies) {
-        if (other === target) continue;
+        if (other === target || other.hp <= 0) continue;
         const sdx = other.x - target.x;
         const sdy = other.y - target.y;
         if (Math.sqrt(sdx * sdx + sdy * sdy) < p.splash) {
@@ -815,7 +862,7 @@
     // AoE cone (flame tower)
     if (p.aoe > 0) {
       for (const other of enemies) {
-        if (other === target) continue;
+        if (other === target || other.hp <= 0) continue;
         const adx = other.x - p.x;
         const ady = other.y - p.y;
         if (Math.sqrt(adx * adx + ady * ady) < p.aoe) {
@@ -837,7 +884,7 @@
         let bestDist = 80;
         let nextTarget = null;
         for (const other of enemies) {
-          if (hit.has(other)) continue;
+          if (hit.has(other) || other.hp <= 0) continue;
           const cdx = other.x - chainTarget.x;
           const cdy = other.y - chainTarget.y;
           const d = Math.sqrt(cdx * cdx + cdy * cdy);
@@ -857,6 +904,49 @@
         );
         chainTarget = nextTarget;
         --chainsLeft;
+      }
+    }
+
+    // Floor effect: Fire Tower projectile creates lava tile at impact
+    if (TOWER_TYPES[p.towerType]?.id === 'fire') {
+      const impactCol = Math.floor(target.x / CELL);
+      const impactRow = Math.floor(target.y / CELL);
+      if (pathCells.has(`${impactCol},${impactRow}`)) {
+        // Don't stack lava on same cell -- refresh timer instead
+        const existing = floorEffects.find(fe => fe.col === impactCol && fe.row === impactRow && fe.type === 'lava');
+        if (existing) {
+          existing.timer = 5 + Math.random() * 3;
+        } else {
+          floorEffects.push({
+            col: impactCol, row: impactRow,
+            x: impactCol * CELL + CELL / 2,
+            y: impactRow * CELL + CELL / 2,
+            type: 'lava',
+            timer: 5 + Math.random() * 3,
+            damage: Math.floor(p.dot * 0.6) || 8
+          });
+        }
+      }
+    }
+
+    // Floor effect: Ice Tower projectile creates ice tile at impact
+    if (TOWER_TYPES[p.towerType]?.id === 'ice') {
+      const impactCol = Math.floor(target.x / CELL);
+      const impactRow = Math.floor(target.y / CELL);
+      if (pathCells.has(`${impactCol},${impactRow}`)) {
+        const existing = floorEffects.find(fe => fe.col === impactCol && fe.row === impactRow && fe.type === 'ice');
+        if (existing) {
+          existing.timer = 5 + Math.random() * 3;
+        } else {
+          floorEffects.push({
+            col: impactCol, row: impactRow,
+            x: impactCol * CELL + CELL / 2,
+            y: impactRow * CELL + CELL / 2,
+            type: 'ice',
+            timer: 5 + Math.random() * 3,
+            damage: 0
+          });
+        }
       }
     }
   }
@@ -923,6 +1013,69 @@
     }
   }
 
+  function updateFloorEffects(dt) {
+    // Expire timed floor effects
+    for (let i = floorEffects.length - 1; i >= 0; --i) {
+      const fe = floorEffects[i];
+      if (fe.timer !== Infinity) {
+        fe.timer -= dt;
+        if (fe.timer <= 0) {
+          floorEffects.splice(i, 1);
+          continue;
+        }
+      }
+    }
+
+    // Apply floor effects to enemies standing on them
+    for (const e of enemies) {
+      if (e.hp <= 0)
+        continue;
+      const eCol = Math.floor(e.x / CELL);
+      const eRow = Math.floor(e.y / CELL);
+
+      for (const fe of floorEffects) {
+        if (fe.col !== eCol || fe.row !== eRow)
+          continue;
+
+        if (fe.type === 'lava') {
+          // Burn damage over time
+          e.hp -= fe.damage * dt;
+          // Apply burn DoT if not already burning
+          if (e.dotTimer <= 0) {
+            e.dotTimer = 1;
+            e.dotDamage = fe.damage;
+          }
+          // Lava particle effect on enemy
+          if (Math.random() < 0.2)
+            particles.sparkle(e.x + (Math.random() - 0.5) * 8, e.y + (Math.random() - 0.5) * 8, 1, { color: '#f60', speed: 1.5 });
+          if (e.hp <= 0) {
+            const idx = enemies.indexOf(e);
+            if (idx !== -1) killEnemy(e, idx);
+            break;
+          }
+        } else if (fe.type === 'ice') {
+          // Significant slow (50% speed reduction)
+          if (e.freezeTimer <= 0)
+            e.slowTimer = Math.max(e.slowTimer, 0.5);
+          // Ice particle effect on enemy
+          if (Math.random() < 0.15)
+            particles.sparkle(e.x + (Math.random() - 0.5) * 6, e.y + (Math.random() - 0.5) * 6, 1, { color: '#aef', speed: 0.8 });
+        } else if (fe.type === 'spike') {
+          // Constant small damage
+          e.hp -= fe.damage * dt;
+          // Spark on contact
+          if (Math.random() < 0.1)
+            particles.sparkle(e.x, e.y + e.radius, 1, { color: '#ccc', speed: 1 });
+          if (e.hp <= 0) {
+            const idx = enemies.indexOf(e);
+            if (idx !== -1) killEnemy(e, idx);
+            break;
+          }
+        }
+      }
+    }
+  }
+
   function updateBuildCountdown(dt) {
     if (state !== STATE_BUILD) return;
 
@@ -957,8 +1110,14 @@
       updateEnemies(scaledDt);
       updateTowers(scaledDt);
       updateProjectiles(scaledDt);
+      // Cleanup pass: remove any enemies that reached 0 hp from splash/AoE/chain
+      for (let i = enemies.length - 1; i >= 0; --i)
+        if (enemies[i].hp <= 0)
+          killEnemy(enemies[i], i);
+      updateFloorEffects(scaledDt);
     } else if (state === STATE_BUILD) {
       updateBuildCountdown(dt);
+      updateFloorEffects(dt); // Decay lava/ice tiles between waves
     }
   }
 
@@ -1013,13 +1172,13 @@
       const hrow = hoverCell.row;
       // Don't show hover on palette area
       if (hrow * CELL < PALETTE_Y) {
-        const valid = canPlace(hcol, hrow);
+        const def = TOWER_TYPES[selectedTowerType];
+        const valid = def.isFloorTrap ? canPlaceSpike(hcol, hrow) : canPlace(hcol, hrow);
         ctx.fillStyle = valid ? 'rgba(0,255,0,0.15)' : 'rgba(255,0,0,0.15)';
         ctx.fillRect(hcol * CELL, hrow * CELL, CELL, CELL);
 
-        // Show range preview when hovering with valid placement
-        if (valid) {
-          const def = TOWER_TYPES[selectedTowerType];
+        // Show range preview when hovering with valid placement (not for floor traps)
+        if (valid && def.range > 0) {
           ctx.strokeStyle = 'rgba(255,255,255,0.1)';
           ctx.lineWidth = 1;
           ctx.beginPath();
@@ -1545,6 +1704,8 @@
   /* ── Improved enemy drawing with distinct shapes ── */
   function drawEnemies() {
     for (const e of enemies) {
+      if (e.hp <= 0)
+        continue;
       const ex = e.x;
       const ey = e.y;
       const r = e.radius;
@@ -2257,11 +2418,100 @@
     }
   }
 
+  function drawFloorEffects() {
+    for (const fe of floorEffects) {
+      const fx = fe.col * CELL;
+      const fy = fe.row * CELL;
+      const cx = fe.x;
+      const cy = fe.y;
+
+      ctx.save();
+
+      if (fe.type === 'lava') {
+        // Pulsing orange/red lava tile
+        const pulse = 0.6 + 0.4 * Math.sin(animTime * 4 + fe.col * 0.7 + fe.row * 1.3);
+        const fadeAlpha = fe.timer < 1.5 ? fe.timer / 1.5 : 1;
+        ctx.globalAlpha = fadeAlpha;
+
+        const lavaGrad = ctx.createRadialGradient(cx, cy, 2, cx, cy, CELL / 2);
+        lavaGrad.addColorStop(0, `rgba(255, 200, 50, ${pulse * 0.8})`);
+        lavaGrad.addColorStop(0.4, `rgba(255, 100, 0, ${pulse * 0.6})`);
+        lavaGrad.addColorStop(0.8, `rgba(200, 40, 0, ${pulse * 0.4})`);
+        lavaGrad.addColorStop(1, 'rgba(100, 20, 0, 0)');
+        ctx.fillStyle = lavaGrad;
+        ctx.fillRect(fx, fy, CELL, CELL);
+
+        // Lava bubbles
+        if (Math.random() < 0.08)
+          particles.sparkle(cx + (Math.random() - 0.5) * CELL * 0.6, cy + (Math.random() - 0.5) * CELL * 0.6, 1, { color: '#fa0', speed: 0.8 });
+      } else if (fe.type === 'ice') {
+        // Light blue crystalline tile
+        const shimmer = 0.5 + 0.3 * Math.sin(animTime * 3 + fe.col + fe.row);
+        const fadeAlpha = fe.timer < 1.5 ? fe.timer / 1.5 : 1;
+        ctx.globalAlpha = fadeAlpha;
+
+        const iceGrad = ctx.createRadialGradient(cx, cy, 1, cx, cy, CELL / 2);
+        iceGrad.addColorStop(0, `rgba(200, 240, 255, ${shimmer * 0.7})`);
+        iceGrad.addColorStop(0.5, `rgba(100, 180, 255, ${shimmer * 0.5})`);
+        iceGrad.addColorStop(1, 'rgba(60, 120, 200, 0)');
+        ctx.fillStyle = iceGrad;
+        ctx.fillRect(fx, fy, CELL, CELL);
+
+        // Crystal cross pattern
+        ctx.strokeStyle = `rgba(200, 240, 255, ${shimmer * 0.4})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(cx, fy + 4);
+        ctx.lineTo(cx, fy + CELL - 4);
+        ctx.moveTo(fx + 4, cy);
+        ctx.lineTo(fx + CELL - 4, cy);
+        ctx.stroke();
+
+        // Diagonal crystal lines
+        ctx.beginPath();
+        ctx.moveTo(fx + 6, fy + 6);
+        ctx.lineTo(fx + CELL - 6, fy + CELL - 6);
+        ctx.moveTo(fx + CELL - 6, fy + 6);
+        ctx.lineTo(fx + 6, fy + CELL - 6);
+        ctx.stroke();
+      } else if (fe.type === 'spike') {
+        // Metallic grey spikes
+        ctx.fillStyle = 'rgba(100, 100, 110, 0.4)';
+        ctx.fillRect(fx + 2, fy + 2, CELL - 4, CELL - 4);
+
+        // Draw spike triangles in a grid pattern
+        ctx.fillStyle = '#aaa';
+        const spikePad = 5;
+        const spikeSize = 4;
+        for (let sx = 0; sx < 3; ++sx) {
+          for (let sy = 0; sy < 3; ++sy) {
+            const spx = fx + spikePad + sx * (CELL - spikePad * 2) / 2;
+            const spy = fy + spikePad + sy * (CELL - spikePad * 2) / 2;
+            ctx.beginPath();
+            ctx.moveTo(spx, spy - spikeSize);
+            ctx.lineTo(spx - spikeSize * 0.5, spy + spikeSize * 0.3);
+            ctx.lineTo(spx + spikeSize * 0.5, spy + spikeSize * 0.3);
+            ctx.closePath();
+            ctx.fill();
+          }
+        }
+
+        // Metallic highlight
+        ctx.strokeStyle = 'rgba(180, 180, 190, 0.3)';
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(fx + 3, fy + 3, CELL - 6, CELL - 6);
+      }
+
+      ctx.restore();
+    }
+  }
+
   function drawGame() {
     drawGrid();
 
     if (state !== STATE_READY) {
       drawPathVisualization();
+      drawFloorEffects();
       drawPreWaveWarning();
       drawTowers();
       drawEnemies();
@@ -2589,7 +2839,7 @@
       placeTower(col, row, selectedTowerType);
   });
 
-  /* ── Right click (context menu on tower) ── */
+  /* ── Right click (context menu on tower or spike) ── */
   canvas.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     const { x: mx, y: my } = getCanvasCoords(e);
@@ -2603,6 +2853,18 @@
         contextMenu = { x: mx, y: my, tower: t };
         return;
       }
+    }
+
+    // Check if right-clicking on a spike floor effect
+    const spike = floorEffects.find(fe => fe.col === col && fe.row === row && fe.type === 'spike');
+    if (spike) {
+      const refund = Math.floor(spike.cost * 0.5);
+      gold += refund;
+      floatingText.add(spike.x, spike.y - 16, `+${refund}g`, { color: '#8f8', font: 'bold 11px sans-serif' });
+      particles.burst(spike.x, spike.y, 6, { color: '#aaa', speed: 2, life: 0.3 });
+      const idx = floorEffects.indexOf(spike);
+      if (idx !== -1) floorEffects.splice(idx, 1);
+      return;
     }
 
     // Right-click on empty space closes context menu
