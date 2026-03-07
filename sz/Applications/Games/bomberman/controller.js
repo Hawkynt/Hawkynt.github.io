@@ -131,33 +131,35 @@
 
   // Character frames: [direction] → { stand, walk: [frameA, frameB] }
   // 0=down 1=up 2=left 3=right
-  // Each character row has 10 cols with 3-frame groups per direction:
-  //   cols 0,1,2=down (stand, walkA, walkB)
-  //   cols 3,4,5=left (stand, walkA, walkB)
-  //   cols 6,7,8=up   (stand, walkA, walkB)
-  // There are NO dedicated right-facing sprites; right is drawn by flipping left.
-  // Direction 3 (right) reuses the left sprite coords; the draw call mirrors them.
+  // Each character row has 10 cols laid out as:
+  //   col 0=stand top, col 1=stand bottom, cols 2-3=walk bottom,
+  //   col 4=stand right, cols 5-7=walk right, cols 8-9=walk top
+  // There are NO dedicated left-facing sprites; left is drawn by flipping right.
+  // Direction 2 (left) reuses the right sprite coords; the draw call mirrors them.
   function _buildCharFrames(startRow) {
-    // [standCol, walkColA, walkColB] per direction: down, up, left, right
-    const dirCols = [[0, 1, 2], [6, 7, 8], [3, 4, 5], [3, 4, 5]];
-    return dirCols.map(cols => ({
-      stand: { x: cols[0] * SP, y: startRow * SP },
-      walk: [
-        { x: cols[1] * SP, y: startRow * SP },
-        { x: cols[2] * SP, y: startRow * SP }
-      ]
-    }));
+    const y = startRow * SP;
+    return [
+      // dir 0 = down: stand=col1, walk=[col2, col3]
+      { stand: { x: 1 * SP, y }, walk: [{ x: 2 * SP, y }, { x: 3 * SP, y }] },
+      // dir 1 = up: stand=col0, walk=[col8, col9]
+      { stand: { x: 0 * SP, y }, walk: [{ x: 8 * SP, y }, { x: 9 * SP, y }] },
+      // dir 2 = left: same sprites as right, drawn flipped horizontally
+      { stand: { x: 4 * SP, y }, walk: [{ x: 5 * SP, y }, { x: 6 * SP, y }] },
+      // dir 3 = right: stand=col4, walk=[col5, col6]
+      { stand: { x: 4 * SP, y }, walk: [{ x: 5 * SP, y }, { x: 6 * SP, y }] }
+    ];
   }
 
-  const S_PLAYER = _buildCharFrames(15);             // row 15 — cyan/blue character
+  // Character rows (14-17): green mob, blue mob, mage mob, player
+  const S_PLAYER = _buildCharFrames(17);             // row 17 — player (last character row)
   const S_ENEMY_ROWS = {
-    slow: _buildCharFrames(14),    // row 14 — small creature sprites
-    normal: _buildCharFrames(16),  // row 16 — purple/brown character
-    fast: _buildCharFrames(17),    // row 17 — orange character
+    slow: _buildCharFrames(14),    // row 14 — green mob
+    normal: _buildCharFrames(15),  // row 15 — blue mob
+    fast: _buildCharFrames(16),    // row 16 — mage mob
     climber: _buildCharFrames(14),
-    chaser: _buildCharFrames(17),
-    tank: _buildCharFrames(16),
-    ghost: _buildCharFrames(16)
+    chaser: _buildCharFrames(16),
+    tank: _buildCharFrames(15),
+    ghost: _buildCharFrames(15)
   };
 
   // Bomb animation frames (row 18, cols 4–9: grey body + brown fuse)
@@ -1359,11 +1361,11 @@
         ctx.fill();
         ctx.restore();
         // Sprite (different character row per enemy type)
-        // Facing 3 (right) uses the left-facing sprite horizontally flipped
+        // Facing 2 (left) uses the right-facing sprite horizontally flipped
         const eAllFrames = S_ENEMY_ROWS[e.type] || S_ENEMY_ROWS.normal;
         const eDirFrames = eAllFrames[e.facing];
         const s = e.moveProgress > 0 ? eDirFrames.walk[e.walkFrame] : eDirFrames.stand;
-        if (e.facing === 3)
+        if (e.facing === 2)
           drawSpriteFlippedH(s, e.x - TILE_SIZE / 2, e.y - TILE_SIZE / 2);
         else
           drawSprite(s, e.x - TILE_SIZE / 2, e.y - TILE_SIZE / 2);
@@ -1437,10 +1439,10 @@
       ctx.ellipse(player.x, player.y + TILE_SIZE * 0.35, TILE_SIZE * 0.28, TILE_SIZE * 0.1, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
-      // Player sprite — facing 3 (right) uses the left-facing sprite flipped
+      // Player sprite — facing 2 (left) uses the right-facing sprite flipped
       const pFrames = S_PLAYER[player.facing];
       const s = player.moveProgress > 0 ? pFrames.walk[player.walkFrame] : pFrames.stand;
-      if (player.facing === 3)
+      if (player.facing === 2)
         drawSpriteFlippedH(s, player.x - TILE_SIZE / 2, player.y - TILE_SIZE / 2);
       else
         drawSprite(s, player.x - TILE_SIZE / 2, player.y - TILE_SIZE / 2);
