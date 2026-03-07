@@ -138,6 +138,7 @@
 
   /* Input */
   const keys = {};
+  let mouseDown = false;
 
   /* Entities */
   let bullets = [];
@@ -261,9 +262,22 @@
       : type === 'carrier' ? Math.floor(waveNumber / 5)
       : 0;
 
+    // Determine spawn edge and position if not explicitly provided
+    const edge = (extraProps && extraProps.spawnEdge) || (x != null ? 'top' : _pickSpawnEdge());
+    let spawnPos;
+    if (x != null && y != null)
+      spawnPos = { x, y };
+    else if (x != null)
+      spawnPos = { x, y: -20 - Math.random() * 40 };
+    else
+      spawnPos = _spawnPositionForEdge(edge);
+
+    // Pick path pattern for non-special types
+    const pattern = (extraProps && extraProps.pathPattern) || _pickPathPattern();
+
     const enemy = {
-      x: x ?? (30 + Math.random() * (CANVAS_W - 60)),
-      y: y ?? (-20 - Math.random() * 40),
+      x: spawnPos.x,
+      y: spawnPos.y,
       type,
       hp: def.hp + hpBonus,
       maxHp: def.hp + hpBonus,
@@ -278,8 +292,15 @@
         : type === 'dart' ? CANVAS_H + 50
         : type === 'minelayer' ? 40 + Math.random() * (CANVAS_H * 0.3)
         : 40 + Math.random() * (CANVAS_H * 0.4),
+      targetX: CANVAS_W / 2 + (Math.random() - 0.5) * (CANVAS_W * 0.6),
       spawnTimer: type === 'carrier' ? 3 + Math.random() * 2 : 0,
       hitTimer: 0,
+      // Spawn/path fields
+      spawnEdge: edge,
+      pathPattern: pattern,
+      pathTime: 0,
+      originX: spawnPos.x,
+      originY: spawnPos.y,
       // Cloaker fields
       cloakTimer: 0,
       visible: true,
@@ -295,6 +316,40 @@
       Object.assign(enemy, extraProps);
 
     return enemy;
+  }
+
+  /* ── Spawn edges ── */
+  const SPAWN_EDGES = ['top', 'left', 'right', 'bottom'];
+
+  /* ── Path patterns for enemy movement ── */
+  const PATH_PATTERNS = ['straight', 'sine', 'zigzag', 'arc', 'dive'];
+
+  function _pickSpawnEdge() {
+    // Top is most common; sides and bottom unlock at higher waves
+    if (waveNumber < 3)
+      return 'top';
+    const roll = Math.random();
+    if (roll < 0.4) return 'top';
+    if (roll < 0.6) return 'left';
+    if (roll < 0.8) return 'right';
+    return waveNumber >= 5 ? 'bottom' : 'top';
+  }
+
+  function _spawnPositionForEdge(edge) {
+    if (edge === 'top')
+      return { x: 30 + Math.random() * (CANVAS_W - 60), y: -20 - Math.random() * 40 };
+    if (edge === 'left')
+      return { x: -20 - Math.random() * 40, y: 30 + Math.random() * (CANVAS_H * 0.6) };
+    if (edge === 'right')
+      return { x: CANVAS_W + 20 + Math.random() * 40, y: 30 + Math.random() * (CANVAS_H * 0.6) };
+    // bottom
+    return { x: 30 + Math.random() * (CANVAS_W - 60), y: CANVAS_H + 20 + Math.random() * 40 };
+  }
+
+  function _pickPathPattern() {
+    if (waveNumber < 2)
+      return 'straight';
+    return PATH_PATTERNS[Math.floor(Math.random() * PATH_PATTERNS.length)];
   }
 
   /* ── Formation patterns ── */
@@ -883,6 +938,7 @@
     shieldHP = SHIELD_MAX_HP;
     currentWeapon = 'spread';
     fireCooldown = 0;
+    mouseDown = false;
     bullets = [];
     enemyBullets = [];
     enemies = [];
@@ -961,8 +1017,8 @@
     if (fireCooldown > 0)
       fireCooldown = Math.max(0, fireCooldown - dt);
 
-    // Auto-fire if holding key
-    if (keys['Space'] || keys['KeyZ'])
+    // Auto-fire if holding key or mouse button
+    if (keys['Space'] || keys['KeyZ'] || mouseDown)
       fireWeapon();
 
     // Streak decay
@@ -1303,20 +1359,90 @@
           e.x += Math.sin(e.movePhase) * e.speed * 0.3 * dt;
         }
       } else {
-        // Default wander: scout, fighter, bomber
-        if (e.y < e.targetY)
-          e.y += e.speed * dt;
-        else {
-          e.movePhase += dt * 2;
-          e.x += Math.sin(e.movePhase) * e.speed * 0.5 * dt;
+        // Default wander with path patterns: scout, fighter, bomber
+        e.pathTime += dt;
+        const edge = e.spawnEdge || 'top';
+        const pat = e.pathPattern || 'straight';
+
+        if (edge === 'top') {
+          if (e.y < e.targetY)
+            e.y += e.speed * dt;
+          else {
+            e.movePhase += dt * 2;
+            if (pat === 'sine')
+              e.x += Math.sin(e.movePhase) * e.speed * 0.8 * dt;
+            else if (pat === 'zigzag') {
+              const zigPeriod = Math.floor(e.pathTime * 2) % 2;
+              e.x += (zigPeriod === 0 ? 1 : -1) * e.speed * 0.5 * dt;
+            } else if (pat === 'arc') {
+              const arcAngle = e.movePhase * 0.5;
+              e.x += Math.cos(arcAngle) * e.speed * 0.4 * dt;
+              e.y += Math.sin(arcAngle) * e.speed * 0.15 * dt;
+            } else if (pat === 'dive') {
+              if (e.pathTime > 1.5 && e.pathTime < 3)
+                e.y += e.speed * 0.6 * dt;
+              else if (e.pathTime >= 3 && e.pathTime < 4)
+                e.y -= e.speed * 0.4 * dt;
+              e.x += Math.sin(e.movePhase) * e.speed * 0.3 * dt;
+            } else
+              e.x += Math.sin(e.movePhase) * e.speed * 0.5 * dt;
+          }
+        } else if (edge === 'left') {
+          if (e.x < (e.targetX || CANVAS_W * 0.4))
+            e.x += e.speed * dt;
+          else {
+            e.movePhase += dt * 2;
+            if (pat === 'sine')
+              e.y += Math.sin(e.movePhase) * e.speed * 0.8 * dt;
+            else if (pat === 'zigzag') {
+              const zigPeriod = Math.floor(e.pathTime * 2) % 2;
+              e.y += (zigPeriod === 0 ? 1 : -1) * e.speed * 0.5 * dt;
+            } else if (pat === 'arc') {
+              const arcAngle = e.movePhase * 0.5;
+              e.y += Math.cos(arcAngle) * e.speed * 0.4 * dt;
+              e.x += Math.sin(arcAngle) * e.speed * 0.15 * dt;
+            } else
+              e.y += Math.sin(e.movePhase) * e.speed * 0.5 * dt;
+          }
+        } else if (edge === 'right') {
+          if (e.x > (e.targetX || CANVAS_W * 0.6))
+            e.x -= e.speed * dt;
+          else {
+            e.movePhase += dt * 2;
+            if (pat === 'sine')
+              e.y += Math.sin(e.movePhase) * e.speed * 0.8 * dt;
+            else if (pat === 'zigzag') {
+              const zigPeriod = Math.floor(e.pathTime * 2) % 2;
+              e.y += (zigPeriod === 0 ? 1 : -1) * e.speed * 0.5 * dt;
+            } else if (pat === 'arc') {
+              const arcAngle = e.movePhase * 0.5;
+              e.y += Math.cos(arcAngle) * e.speed * 0.4 * dt;
+              e.x -= Math.sin(arcAngle) * e.speed * 0.15 * dt;
+            } else
+              e.y += Math.sin(e.movePhase) * e.speed * 0.5 * dt;
+          }
+        } else {
+          // bottom edge: move upward
+          if (e.y > (e.targetY || CANVAS_H * 0.6))
+            e.y -= e.speed * dt;
+          else {
+            e.movePhase += dt * 2;
+            if (pat === 'sine')
+              e.x += Math.sin(e.movePhase) * e.speed * 0.8 * dt;
+            else if (pat === 'zigzag') {
+              const zigPeriod = Math.floor(e.pathTime * 2) % 2;
+              e.x += (zigPeriod === 0 ? 1 : -1) * e.speed * 0.5 * dt;
+            } else
+              e.x += Math.sin(e.movePhase) * e.speed * 0.5 * dt;
+          }
         }
       }
 
       e.x = Math.max(e.size, Math.min(CANVAS_W - e.size, e.x));
       e.y = Math.max(-30, Math.min(CANVAS_H + 60, e.y));
 
-      // Enemy firing (type-specific)
-      if (e.canShoot && e.y > 20) {
+      // Enemy firing (type-specific) -- allow fire once on-screen
+      if (e.canShoot && e.x > 10 && e.x < CANVAS_W - 10 && e.y > 10 && e.y < CANVAS_H - 10) {
         e.fireTimer -= dt;
         if (e.fireTimer <= 0) {
           if (e.type === 'sniper') {
@@ -1352,8 +1478,8 @@
           return;
       }
 
-      // Remove enemies that drifted off bottom
-      if (e.y > CANVAS_H + 50) {
+      // Remove enemies that drifted off-screen (any edge, after reaching play area)
+      if (e.pathTime > 3 && (e.y > CANVAS_H + 50 || e.y < -60 || e.x < -60 || e.x > CANVAS_W + 60)) {
         enemies.splice(i, 1);
         --waveEnemiesLeft;
       }
@@ -2459,8 +2585,14 @@
       handleStart();
       return;
     }
-    if (state === STATE_PLAYING)
+    if (state === STATE_PLAYING) {
+      mouseDown = true;
       fireWeapon();
+    }
+  });
+
+  canvas.addEventListener('pointerup', function() {
+    mouseDown = false;
   });
 
   /* ── Resize ── */
