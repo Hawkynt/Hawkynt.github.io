@@ -24,10 +24,15 @@
   /* ── Palette layout constants ── */
   const PALETTE_H = 48;
   const PALETTE_Y = CANVAS_H - PALETTE_H;
-  const PALETTE_BTN_W = 72;
   const PALETTE_BTN_H = 38;
-  const PALETTE_BTN_GAP = 4;
+  const PALETTE_BTN_GAP = 2;
   const PALETTE_BTN_Y = PALETTE_Y + 5;
+  const PALETTE_HUD_RESERVED = 140; // space reserved for HUD buttons on the right
+
+  function getPaletteBtnW() {
+    const count = TOWER_TYPES.length;
+    return Math.floor((CANVAS_W - PALETTE_HUD_RESERVED - 8 - (count - 1) * PALETTE_BTN_GAP) / count);
+  }
 
   /* ── Right-side HUD buttons ── */
   const HUD_BTN_W = 64;
@@ -52,7 +57,7 @@
 
   /* ══════════════════════════════════════════════════════════════════
      TOWER DEFINITIONS
-     9 tower types with unique abilities
+     13 tower types with unique abilities
      ══════════════════════════════════════════════════════════════════ */
 
   const TOWER_TYPES = [
@@ -100,6 +105,26 @@
       id: 'flame', name: 'Flame', cost: 100, damage: 12, range: 60, fireRate: 0.3,
       color: '#f60', colorDark: '#a40', projectileColor: '#fa4', projectileSpeed: 400,
       aoe: 40, dot: 8, dotDuration: 2, desc: 'Close AoE + burn'
+    },
+    {
+      id: 'ice', name: 'Ice', cost: 130, damage: 15, range: 100, fireRate: 1.4,
+      color: '#8ef', colorDark: '#4ac', projectileColor: '#cff', projectileSpeed: 280,
+      freeze: 1.5, desc: 'Freezes enemies'
+    },
+    {
+      id: 'fire', name: 'Fire', cost: 110, damage: 8, range: 80, fireRate: 0.8,
+      color: '#f44', colorDark: '#a22', projectileColor: '#f88', projectileSpeed: 300,
+      splash: 35, dot: 20, dotDuration: 3, desc: 'AoE burn zone'
+    },
+    {
+      id: 'chainlightning', name: 'ChainLt', cost: 160, damage: 30, range: 130, fireRate: 1.3,
+      color: '#af0', colorDark: '#7a0', projectileColor: '#df4', projectileSpeed: 550,
+      chain: 3, desc: 'Chains to 3'
+    },
+    {
+      id: 'sniper', name: 'Sniper', cost: 180, damage: 80, range: 250, fireRate: 3.0,
+      color: '#ddd', colorDark: '#888', projectileColor: '#fff', projectileSpeed: 900,
+      desc: 'Long-range snipe'
     }
   ];
 
@@ -212,6 +237,16 @@
     const dpr = window.devicePixelRatio || 1;
     canvas.width = CANVAS_W * dpr;
     canvas.height = CANVAS_H * dpr;
+    // Scale canvas display to fill parent while keeping aspect ratio
+    const parent = canvas.parentElement || document.body;
+    const rect = parent.getBoundingClientRect();
+    const aspect = CANVAS_W / CANVAS_H;
+    let displayW = rect.width;
+    let displayH = rect.height;
+    if (displayW / displayH > aspect) displayW = displayH * aspect;
+    else displayH = displayW / aspect;
+    canvas.style.width = Math.floor(displayW) + 'px';
+    canvas.style.height = Math.floor(displayH) + 'px';
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
@@ -350,7 +385,9 @@
       range: def.range,
       fireRate: def.fireRate,
       fireCooldown: 0,
-      kills: 0
+      kills: 0,
+      hp: 100,
+      maxHp: 100
     };
     towers.push(tower);
     towerAngles.set(tower, 0);
@@ -383,7 +420,11 @@
 
   function sellTower(tower) {
     const def = TOWER_TYPES[tower.type];
-    const refund = Math.floor(def.cost * 0.6 * tower.tier);
+    // Calculate total investment: base cost + all upgrade costs
+    let totalInvested = def.cost;
+    for (let t = 1; t < tower.tier; ++t)
+      totalInvested += Math.floor(def.cost * UPGRADE_COST_MULT[t]);
+    const refund = Math.floor(totalInvested * 0.5);
     gold += refund;
     const idx = towers.indexOf(tower);
     if (idx !== -1) towers.splice(idx, 1);
@@ -400,7 +441,11 @@
   }
 
   function getSellValue(tower) {
-    return Math.floor(TOWER_TYPES[tower.type].cost * 0.6 * tower.tier);
+    const def = TOWER_TYPES[tower.type];
+    let totalInvested = def.cost;
+    for (let t = 1; t < tower.tier; ++t)
+      totalInvested += Math.floor(def.cost * UPGRADE_COST_MULT[t]);
+    return Math.floor(totalInvested * 0.5);
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -496,6 +541,7 @@
       x: pathPoints[0].x,
       y: pathPoints[0].y,
       slowTimer: 0,
+      freezeTimer: 0,
       dotTimer: 0,
       dotDamage: 0,
       isBoss: type === 'boss',
@@ -536,6 +582,7 @@
       color: def.projectileColor,
       splash: def.splash || 0,
       slow: def.slow || 0,
+      freeze: def.freeze ? def.freeze * (1 + (tower.tier - 1) * 0.2) : 0,
       chain: def.chain || 0,
       dot: def.dot ? Math.floor(def.dot * UPGRADE_DAMAGE_MULT[tower.tier - 1]) : 0,
       dotDuration: def.dotDuration || 0,
@@ -624,8 +671,16 @@
         }
       }
 
+      // Freeze effect (completely stops enemy)
+      if (e.freezeTimer > 0) {
+        e.freezeTimer -= dt;
+        e.speed = 0;
+        // Frozen visual particle
+        if (Math.random() < 0.15)
+          particles.sparkle(e.x + (Math.random() - 0.5) * 8, e.y + (Math.random() - 0.5) * 8, 1, { color: '#cff', speed: 0.5 });
+      }
       // Slow effect
-      if (e.slowTimer > 0) {
+      else if (e.slowTimer > 0) {
         e.slowTimer -= dt;
         e.speed = e.baseSpeed * 0.5;
       } else {
@@ -656,7 +711,45 @@
         e.x = cfrom.x + (cto.x - cfrom.x) * t;
         e.y = cfrom.y + (cto.y - cfrom.y) * t;
       }
+
+      // Boss and armored enemies deal splash damage to nearby towers
+      if (e.isBoss || e.type === 'armored') {
+        const splashRange = e.isBoss ? 50 : 30;
+        const splashDmg = e.isBoss ? 3 : 1;
+        for (const tower of towers) {
+          const tdx = tower.x - e.x;
+          const tdy = tower.y - e.y;
+          if (tdx * tdx + tdy * tdy < splashRange * splashRange) {
+            tower.hp -= splashDmg * dt;
+            if (tower.hp <= 0)
+              destroyTower(tower);
+          }
+        }
+      }
     }
+  }
+
+  function destroyTower(tower) {
+    const idx = towers.indexOf(tower);
+    if (idx === -1) return;
+    towers.splice(idx, 1);
+    towerAngles.delete(tower);
+    if (selectedTower === tower)
+      selectedTower = null;
+    particles.burst(tower.x, tower.y, 15, { color: '#f44', speed: 4, life: 0.5 });
+    floatingText.add(tower.x, tower.y - 16, 'DESTROYED!', { color: '#f44', font: 'bold 10px sans-serif' });
+    screenShake.trigger(4, 200);
+  }
+
+  function repairTower(tower) {
+    if (tower.hp >= tower.maxHp) return false;
+    const repairCost = Math.floor((tower.maxHp - tower.hp) * 0.3);
+    if (repairCost < 1 || gold < repairCost) return false;
+    gold -= repairCost;
+    tower.hp = tower.maxHp;
+    particles.sparkle(tower.x, tower.y, 8, { color: '#4f4', speed: 2 });
+    floatingText.add(tower.x, tower.y - 16, `Repaired -${repairCost}g`, { color: '#8f8', font: 'bold 9px sans-serif' });
+    return true;
   }
 
   function updateTowers(dt) {
@@ -683,6 +776,12 @@
       particles.sparkle(target.x, target.y, 4, { color: '#4ff', speed: 2 });
     } else {
       target.hp -= p.damage;
+    }
+
+    // Freeze (stronger than slow -- stops enemy completely)
+    if (p.freeze > 0) {
+      target.freezeTimer = p.freeze;
+      particles.sparkle(target.x, target.y, 6, { color: '#cff', speed: 1 });
     }
 
     // Slow
@@ -1313,6 +1412,111 @@
           ctx.fill();
           ctx.restore();
           break;
+
+        case 'ice':
+          // Snowflake-shaped base
+          ctx.beginPath();
+          for (let p = 0; p < 6; ++p) {
+            const a = (Math.PI / 3) * p - Math.PI / 6;
+            ctx.moveTo(0, 0);
+            ctx.lineTo(Math.cos(a) * baseSize, Math.sin(a) * baseSize);
+          }
+          ctx.strokeStyle = def.color;
+          ctx.lineWidth = 3;
+          ctx.stroke();
+          // Icy center
+          ctx.fillStyle = '#cff';
+          ctx.beginPath();
+          ctx.arc(0, 0, baseSize * 0.5, 0, Math.PI * 2);
+          ctx.fill();
+          // Rotating frost ring
+          ctx.save();
+          ctx.rotate(-animTime * 0.8);
+          ctx.strokeStyle = 'rgba(200,240,255,0.5)';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(0, 0, baseSize * 0.8, 0, Math.PI);
+          ctx.stroke();
+          ctx.restore();
+          break;
+
+        case 'fire':
+          // Circular fiery base
+          ctx.beginPath();
+          ctx.arc(0, 0, baseSize, 0, Math.PI * 2);
+          ctx.fill();
+          // Animated fire rings
+          for (let r = 0; r < 2; ++r) {
+            const firePhase = animTime * 6 + r * 1.5;
+            const fr = baseSize * (0.5 + 0.3 * Math.sin(firePhase));
+            ctx.strokeStyle = r === 0 ? '#f84' : '#fa4';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(0, 0, fr, firePhase, firePhase + Math.PI);
+            ctx.stroke();
+          }
+          break;
+
+        case 'chainlightning':
+          // Pentagon base
+          ctx.beginPath();
+          for (let p = 0; p < 5; ++p) {
+            const a = (Math.PI * 2 / 5) * p - Math.PI / 2;
+            if (p === 0) ctx.moveTo(Math.cos(a) * baseSize, Math.sin(a) * baseSize);
+            else ctx.lineTo(Math.cos(a) * baseSize, Math.sin(a) * baseSize);
+          }
+          ctx.closePath();
+          ctx.fill();
+          // Lightning arcs between vertices
+          ctx.strokeStyle = '#df4';
+          ctx.lineWidth = 1.5;
+          if (Math.random() < 0.5) {
+            const a1 = Math.random() * Math.PI * 2;
+            const a2 = a1 + 1.2 + Math.random();
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(a1) * baseSize * 0.9, Math.sin(a1) * baseSize * 0.9);
+            const mx = (Math.random() - 0.5) * baseSize;
+            const my = (Math.random() - 0.5) * baseSize;
+            ctx.lineTo(mx, my);
+            ctx.lineTo(Math.cos(a2) * baseSize * 0.9, Math.sin(a2) * baseSize * 0.9);
+            ctx.stroke();
+          }
+          break;
+
+        case 'sniper':
+          // Long thin rectangle base
+          ctx.fillRect(-baseSize * 0.6, -baseSize, baseSize * 1.2, baseSize * 2);
+          // Crosshair
+          ctx.save();
+          ctx.rotate(angle);
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(0, -baseSize); ctx.lineTo(0, baseSize);
+          ctx.moveTo(-baseSize, 0); ctx.lineTo(baseSize, 0);
+          ctx.stroke();
+          // Scope lens
+          ctx.strokeStyle = '#f44';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(0, 0, 4, 0, Math.PI * 2);
+          ctx.stroke();
+          // Long barrel
+          ctx.fillStyle = '#aaa';
+          ctx.fillRect(-1.5, -2, 20, 4);
+          ctx.restore();
+          break;
+      }
+
+      // Tower HP bar (shown only when damaged)
+      if (tower.hp < tower.maxHp) {
+        const hpBarW = baseSize * 2;
+        const hpBarH = 2;
+        const hpRatio = Math.max(0, tower.hp / tower.maxHp);
+        ctx.fillStyle = '#300';
+        ctx.fillRect(-baseSize, baseSize + 7, hpBarW, hpBarH);
+        ctx.fillStyle = hpRatio > 0.5 ? '#0c0' : hpRatio > 0.25 ? '#cc0' : '#c00';
+        ctx.fillRect(-baseSize, baseSize + 7, hpBarW * hpRatio, hpBarH);
       }
 
       // Tier pips (small dots)
@@ -1543,8 +1747,27 @@
 
       ctx.shadowBlur = 0;
 
+      // Freeze indicator
+      if (e.freezeTimer > 0) {
+        ctx.strokeStyle = 'rgba(200, 240, 255, 0.7)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, r + 2, 0, Math.PI * 2);
+        ctx.stroke();
+        // Icicle marks
+        ctx.fillStyle = 'rgba(200, 240, 255, 0.5)';
+        for (let ic = 0; ic < 4; ++ic) {
+          const ia = (Math.PI / 2) * ic;
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(ia) * (r + 1), Math.sin(ia) * (r + 1));
+          ctx.lineTo(Math.cos(ia) * (r + 5), Math.sin(ia) * (r + 5));
+          ctx.lineTo(Math.cos(ia + 0.3) * (r + 2), Math.sin(ia + 0.3) * (r + 2));
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
       // Slow indicator
-      if (e.slowTimer > 0) {
+      else if (e.slowTimer > 0) {
         ctx.strokeStyle = 'rgba(100, 170, 255, 0.5)';
         ctx.lineWidth = 1;
         ctx.beginPath();
@@ -1630,7 +1853,7 @@
     // Tower buttons
     for (let i = 0; i < TOWER_TYPES.length; ++i) {
       const def = TOWER_TYPES[i];
-      const bx = 4 + i * (PALETTE_BTN_W + PALETTE_BTN_GAP);
+      const bx = 4 + i * (getPaletteBtnW() + PALETTE_BTN_GAP);
       const by = PALETTE_BTN_Y;
       const selected = i === selectedTowerType;
       const canAfford = gold >= def.cost;
@@ -1640,11 +1863,11 @@
         ctx.fillStyle = 'rgba(255,255,255,0.15)';
         ctx.strokeStyle = def.color;
         ctx.lineWidth = 1.5;
-        ctx.fillRect(bx, by, PALETTE_BTN_W, PALETTE_BTN_H);
-        ctx.strokeRect(bx, by, PALETTE_BTN_W, PALETTE_BTN_H);
+        ctx.fillRect(bx, by, getPaletteBtnW(), PALETTE_BTN_H);
+        ctx.strokeRect(bx, by, getPaletteBtnW(), PALETTE_BTN_H);
       } else {
         ctx.fillStyle = 'rgba(40,40,40,0.8)';
-        ctx.fillRect(bx, by, PALETTE_BTN_W, PALETTE_BTN_H);
+        ctx.fillRect(bx, by, getPaletteBtnW(), PALETTE_BTN_H);
       }
 
       // Color swatch
@@ -1662,11 +1885,11 @@
       ctx.fillText(`${def.cost}g`, bx + 16, by + 12);
 
       // Hotkey number
-      if (i < 9) {
+      if (i < 10) {
         ctx.fillStyle = 'rgba(255,255,255,0.3)';
         ctx.font = '7px sans-serif';
         ctx.textAlign = 'right';
-        ctx.fillText(`${i + 1}`, bx + PALETTE_BTN_W - 3, by + 2);
+        ctx.fillText(i < 9 ? `${i + 1}` : '0', bx + getPaletteBtnW() - 3, by + 2);
       }
 
       // Brief description
@@ -1749,9 +1972,9 @@
 
     const def = TOWER_TYPES[selectedTower.type];
     const panelX = 4;
-    const panelY = PALETTE_Y - 58;
+    const panelH = selectedTower.hp < selectedTower.maxHp ? 72 : 54;
+    const panelY = PALETTE_Y - panelH - 4;
     const panelW = 160;
-    const panelH = 54;
 
     ctx.fillStyle = 'rgba(0,0,0,0.85)';
     ctx.fillRect(panelX, panelY, panelW, panelH);
@@ -1801,6 +2024,22 @@
     ctx.textAlign = 'center';
     ctx.fillText(`Sell +${sv}g`, panelX + 115, panelY + 35);
 
+    // Repair button (shown when tower is damaged)
+    if (selectedTower.hp < selectedTower.maxHp) {
+      const repairCost = Math.floor((selectedTower.maxHp - selectedTower.hp) * 0.3);
+      const canRepair = gold >= repairCost && repairCost > 0;
+      ctx.fillStyle = canRepair ? '#2a4a3a' : '#2a2a2a';
+      ctx.fillRect(panelX + 4, panelY + 50, 146, 16);
+      ctx.strokeStyle = canRepair ? '#4a8' : '#444';
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(panelX + 4, panelY + 50, 146, 16);
+      const hpPct = Math.floor(selectedTower.hp / selectedTower.maxHp * 100);
+      ctx.fillStyle = canRepair ? '#8f8' : '#666';
+      ctx.font = '8px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`Repair (${hpPct}% HP) -${repairCost}g`, panelX + 77, panelY + 55);
+    }
+
     ctx.textAlign = 'start';
     ctx.textBaseline = 'alphabetic';
   }
@@ -1812,7 +2051,12 @@
     const { x, y, tower } = contextMenu;
     const def = TOWER_TYPES[tower.type];
     const menuW = 110;
-    const menuH = tower.tier < MAX_TIER ? 52 : 34;
+    const hasUpgrade = tower.tier < MAX_TIER;
+    const hasDamage = tower.hp < tower.maxHp;
+    let menuH = 18; // info line always
+    if (hasUpgrade) menuH += 18;
+    menuH += 18; // sell
+    if (hasDamage) menuH += 18; // repair
 
     // Keep menu on screen
     const mx = Math.min(x, CANVAS_W - menuW - 4);
@@ -1833,7 +2077,7 @@
     let itemY = my + 2;
 
     // Upgrade option
-    if (tower.tier < MAX_TIER) {
+    if (hasUpgrade) {
       const uc = getUpgradeCost(tower);
       const canUp = gold >= uc;
       ctx.fillStyle = canUp ? '#8f8' : '#866';
@@ -1850,9 +2094,21 @@
     ctx.fillStyle = '#f88';
     ctx.font = '10px sans-serif';
     ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
     ctx.fillText(`Sell (+${sv}g)`, mx + 6, itemY + 2);
     contextMenu.sellY = itemY;
     itemY += 18;
+
+    // Repair option
+    if (hasDamage) {
+      const repairCost = Math.floor((tower.maxHp - tower.hp) * 0.3);
+      const canRepair = gold >= repairCost && repairCost > 0;
+      ctx.fillStyle = canRepair ? '#8f8' : '#866';
+      ctx.font = '10px sans-serif';
+      ctx.fillText(`Repair (${repairCost}g)`, mx + 6, itemY + 2);
+      contextMenu.repairY = itemY;
+      itemY += 18;
+    }
 
     // Info
     ctx.fillStyle = '#aaa';
@@ -1876,7 +2132,7 @@
       // Subtitle
       ctx.fillStyle = '#888';
       ctx.font = '12px sans-serif';
-      ctx.fillText('Strategic tower defense with 9 tower types and unique enemy varieties', CANVAS_W / 2, CANVAS_H / 2 - 50);
+      ctx.fillText(`Strategic tower defense with ${TOWER_TYPES.length} tower types and unique enemy varieties`, CANVAS_W / 2, CANVAS_H / 2 - 50);
 
       ctx.fillStyle = '#aaa';
       ctx.font = '14px sans-serif';
@@ -1890,16 +2146,17 @@
       ctx.font = '10px sans-serif';
       ctx.fillText('Towers:', CANVAS_W / 2, CANVAS_H / 2 + 70);
       const previewY = CANVAS_H / 2 + 85;
-      const totalW = TOWER_TYPES.length * 56;
+      const previewSpacing = Math.min(56, Math.floor((CANVAS_W - 40) / TOWER_TYPES.length));
+      const totalW = TOWER_TYPES.length * previewSpacing;
       const startX = CANVAS_W / 2 - totalW / 2;
       for (let i = 0; i < TOWER_TYPES.length; ++i) {
         const def = TOWER_TYPES[i];
-        const px = startX + i * 56;
+        const px = startX + i * previewSpacing;
         ctx.fillStyle = def.color;
-        ctx.fillRect(px + 18, previewY - 4, 8, 8);
+        ctx.fillRect(px + previewSpacing / 2 - 4, previewY - 4, 8, 8);
         ctx.fillStyle = '#999';
-        ctx.font = '8px sans-serif';
-        ctx.fillText(def.name, px + 10, previewY + 12);
+        ctx.font = '7px sans-serif';
+        ctx.fillText(def.name, px + 2, previewY + 12);
       }
 
       ctx.textAlign = 'start';
@@ -2073,7 +2330,7 @@
   }
 
   function toggleFastForward() {
-    gameSpeed = gameSpeed === 1 ? 2 : gameSpeed === 2 ? 3 : 1;
+    gameSpeed = gameSpeed === 1 ? 2 : gameSpeed === 2 ? 3 : gameSpeed === 3 ? 5 : gameSpeed === 5 ? 10 : 1;
   }
 
   function getCanvasCoords(e) {
@@ -2090,9 +2347,9 @@
 
     // Tower type buttons
     for (let i = 0; i < TOWER_TYPES.length; ++i) {
-      const bx = 4 + i * (PALETTE_BTN_W + PALETTE_BTN_GAP);
+      const bx = 4 + i * (getPaletteBtnW() + PALETTE_BTN_GAP);
       const by = PALETTE_BTN_Y;
-      if (mx >= bx && mx <= bx + PALETTE_BTN_W && my >= by && my <= by + PALETTE_BTN_H) {
+      if (mx >= bx && mx <= bx + getPaletteBtnW() && my >= by && my <= by + PALETTE_BTN_H) {
         selectedTowerType = i;
         return true;
       }
@@ -2139,9 +2396,9 @@
     if (state !== STATE_BUILD && state !== STATE_PLAYING) return false;
 
     const panelX = 4;
-    const panelY = PALETTE_Y - 58;
+    const panelH = selectedTower.hp < selectedTower.maxHp ? 72 : 54;
+    const panelY = PALETTE_Y - panelH - 4;
     const panelW = 160;
-    const panelH = 54;
 
     if (mx < panelX || mx > panelX + panelW || my < panelY || my > panelY + panelH)
       return false;
@@ -2158,13 +2415,19 @@
       return true;
     }
 
+    // Repair button area
+    if (selectedTower.hp < selectedTower.maxHp && mx >= panelX + 4 && mx <= panelX + 150 && my >= panelY + 50 && my <= panelY + 66) {
+      repairTower(selectedTower);
+      return true;
+    }
+
     return true; // Consumed by panel
   }
 
   /* ── Context menu click detection ── */
   function handleContextMenuClick(mx, my) {
     if (!contextMenu) return false;
-    const { mx: cmx, my: cmy, menuW, menuH, tower, upgradeY, sellY } = contextMenu;
+    const { mx: cmx, my: cmy, menuW, menuH, tower, upgradeY, sellY, repairY } = contextMenu;
 
     if (mx < cmx || mx > cmx + menuW || my < cmy || my > cmy + menuH) {
       contextMenu = null;
@@ -2181,6 +2444,13 @@
     // Sell
     if (sellY !== undefined && my >= sellY && my < sellY + 18) {
       sellTower(tower);
+      contextMenu = null;
+      return true;
+    }
+
+    // Repair
+    if (repairY !== undefined && my >= repairY && my < repairY + 18) {
+      repairTower(tower);
       contextMenu = null;
       return true;
     }
@@ -2218,11 +2488,15 @@
       return;
     }
 
-    // Tower type selection (1-9)
+    // Tower type selection (1-9, 0 for 10th)
     if (e.code >= 'Digit1' && e.code <= 'Digit9') {
       const idx = parseInt(e.code.charAt(5)) - 1;
       if (idx < TOWER_TYPES.length)
         selectedTowerType = idx;
+      return;
+    }
+    if (e.code === 'Digit0' && TOWER_TYPES.length > 9) {
+      selectedTowerType = 9;
       return;
     }
 
@@ -2235,6 +2509,12 @@
     // Sell selected tower
     if (e.code === 'KeyS' && selectedTower) {
       sellTower(selectedTower);
+      return;
+    }
+
+    // Repair selected tower
+    if (e.code === 'KeyR' && selectedTower) {
+      repairTower(selectedTower);
       return;
     }
 
@@ -2304,8 +2584,8 @@
     // Deselect tower when clicking empty space
     selectedTower = null;
 
-    // Try to place tower
-    if (state === STATE_BUILD)
+    // Try to place tower (allowed during build and playing phases)
+    if (state === STATE_BUILD || state === STATE_PLAYING)
       placeTower(col, row, selectedTowerType);
   });
 
