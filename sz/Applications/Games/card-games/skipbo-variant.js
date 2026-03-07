@@ -39,6 +39,7 @@
   const SB_DISCARD_X = 200;
   const SB_STOCK_X = 60;
   const SB_STOCK_Y = 340;
+  const SB_ENDTURN_BTN = { x: 590, y: 468, w: 100, h: 32 };
 
   /* ══════════════════════════════════════════════════════════════════
      DECK
@@ -128,6 +129,18 @@
     skipBoSelectedSource = null;
     skipBoPlayerTurn = false;
     return true;
+  }
+
+  function autoEndTurn() {
+    if (!skipBoPlayerTurn || roundOver || gameOver) return;
+    let cardIdx = skipBoSelectedSource === 'hand' ? skipBoSelectedCard : -1;
+    if (cardIdx < 0 || cardIdx >= playerHand.length)
+      cardIdx = playerHand.length - 1;
+    if (cardIdx < 0) return;
+    let bestD = 0, bestLen = skipBoDiscardPiles[0].length;
+    for (let d = 1; d < 4; ++d)
+      if (skipBoDiscardPiles[d].length < bestLen) { bestD = d; bestLen = skipBoDiscardPiles[d].length; }
+    skipBoDiscardTo(playerHand[cardIdx], 'hand', cardIdx, bestD);
   }
 
   function endSkipBoAiTurn() {
@@ -275,10 +288,11 @@
         _ctx.restore();
       }
     }
+    const handOrStockSelected = skipBoSelectedSource === 'hand' || skipBoSelectedSource === 'stock';
     _ctx.fillStyle = '#fff';
     _ctx.font = '11px sans-serif';
     _ctx.textAlign = 'center';
-    _ctx.fillText('Discard (click to end turn)', CANVAS_W / 2 + 30, SB_DISCARD_Y - 8);
+    _ctx.fillText('Discard Piles', SB_DISCARD_X + 150, SB_DISCARD_Y - 8);
     for (let d = 0; d < 4; ++d) {
       const x = SB_DISCARD_X + d * 80;
       if (skipBoDiscardPiles[d].length > 0)
@@ -292,15 +306,27 @@
         _ctx.font = '10px sans-serif';
         _ctx.fillText('D' + (d + 1), x + CE.CARD_W / 2, SB_DISCARD_Y + CE.CARD_H / 2);
       }
+      if (handOrStockSelected && skipBoPlayerTurn && !roundOver && !gameOver && skipBoSelectedSource !== 'discard') {
+        _ctx.save();
+        _ctx.strokeStyle = '#0f0';
+        _ctx.lineWidth = 2;
+        _ctx.shadowColor = '#0f0';
+        _ctx.shadowBlur = 6;
+        CE.drawRoundedRect(_ctx, x - 1, SB_DISCARD_Y - 1, CE.CARD_W + 2, CE.CARD_H + 2, CE.CARD_RADIUS + 1);
+        _ctx.stroke();
+        _ctx.restore();
+      }
     }
+    if (!roundOver && !gameOver && skipBoPlayerTurn && playerHand.length > 0)
+      CE.drawButton(_ctx, SB_ENDTURN_BTN.x, SB_ENDTURN_BTN.y, SB_ENDTURN_BTN.w, SB_ENDTURN_BTN.h, 'End Turn', { bg: '#825', border: '#c48', fontSize: 13 });
     if (!roundOver && !gameOver && skipBoPlayerTurn) {
       _ctx.fillStyle = '#aaa';
       _ctx.font = '11px sans-serif';
       _ctx.textAlign = 'center';
       if (skipBoSelectedSource)
-        _ctx.fillText('Click a build pile to play, or a discard pile to end turn', CANVAS_W / 2, CANVAS_H - 12);
+        _ctx.fillText('Click a build pile to play, or a discard pile / End Turn to end turn', CANVAS_W / 2, CANVAS_H - 12);
       else
-        _ctx.fillText('Click a hand card or stock pile to select, then click destination', CANVAS_W / 2, CANVAS_H - 12);
+        _ctx.fillText('Select a card, then click a build pile or discard pile. End Turn discards for you.', CANVAS_W / 2, CANVAS_H - 12);
     }
   }
 
@@ -334,6 +360,12 @@
         return;
       }
       if (!skipBoPlayerTurn) return;
+
+      // End Turn button
+      if (playerHand.length > 0 && CE.isInRect(mx, my, SB_ENDTURN_BTN.x, SB_ENDTURN_BTN.y, SB_ENDTURN_BTN.w, SB_ENDTURN_BTN.h)) {
+        autoEndTurn();
+        return;
+      }
 
       if (!skipBoSelectedSource) {
         for (let i = playerHand.length - 1; i >= 0; --i) {
