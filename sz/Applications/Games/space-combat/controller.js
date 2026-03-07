@@ -81,14 +81,18 @@
 
   /* Boss definitions */
   const BOSS_TYPES = [
-    { name: 'Commander',  baseHP: 50,  size: 40, color: '#ff4444', score: 2000,
-      attacks: ['aimedBurst', 'sweepArc'] },
-    { name: 'Destroyer',  baseHP: 100, size: 50, color: '#ff8800', score: 5000,
-      attacks: ['laserBeam', 'missileSalvo'] },
-    { name: 'Mothership', baseHP: 150, size: 60, color: '#44ff44', score: 10000,
-      attacks: ['spawnMinions', 'bulletRing'] },
-    { name: 'Dreadnought',baseHP: 200, size: 70, color: '#8844ff', score: 20000,
-      attacks: ['aimedBurst', 'sweepArc', 'laserBeam', 'bulletRing'] }
+    { name: 'Commander',  baseHP: 150,  size: 40, color: '#ff4444', score: 2000,
+      shieldHP: 40, shieldRegenDelay: 4, shieldRegenRate: 8,
+      attacks: ['aimedBurst', 'sweepArc', 'spiralBurst'] },
+    { name: 'Destroyer',  baseHP: 350, size: 50, color: '#ff8800', score: 5000,
+      shieldHP: 80, shieldRegenDelay: 5, shieldRegenRate: 10,
+      attacks: ['laserBeam', 'missileSalvo', 'crossBeams', 'mineDeployment'] },
+    { name: 'Mothership', baseHP: 600, size: 60, color: '#44ff44', score: 10000,
+      shieldHP: 120, shieldRegenDelay: 6, shieldRegenRate: 12,
+      attacks: ['spawnMinions', 'bulletRing', 'spiralBurst', 'mineDeployment'] },
+    { name: 'Dreadnought',baseHP: 1000, size: 70, color: '#8844ff', score: 20000,
+      shieldHP: 200, shieldRegenDelay: 4, shieldRegenRate: 15,
+      attacks: ['aimedBurst', 'sweepArc', 'laserBeam', 'bulletRing', 'spiralBurst', 'crossBeams', 'mineDeployment'] }
   ];
 
   /* States */
@@ -242,7 +246,7 @@
       return;
     }
 
-    const count = Math.min(3 + waveNumber * 2, 30);
+    const count = Math.min(3 + waveNumber * 2 + Math.floor(waveNumber / 5), 40);
     waveTotalEnemies = count;
     waveSpawnCount = 0;
     waveEnemiesLeft = count;
@@ -293,6 +297,54 @@
     return enemy;
   }
 
+  /* ── Formation patterns ── */
+  const FORMATION_PATTERNS = ['v', 'ring', 'line', 'diamond'];
+
+  function _getFormation(pattern, count, centerX, startY) {
+    const positions = [];
+    if (pattern === 'v') {
+      // V-formation: leader at front, wings spread back
+      for (let i = 0; i < count; ++i) {
+        const side = i % 2 === 0 ? 1 : -1;
+        const rank = Math.ceil(i / 2);
+        positions.push({
+          x: centerX + side * rank * 25,
+          y: startY - rank * 20
+        });
+      }
+    } else if (pattern === 'ring') {
+      // Ring formation: circular arrangement
+      for (let i = 0; i < count; ++i) {
+        const angle = (i / count) * Math.PI * 2;
+        positions.push({
+          x: centerX + Math.cos(angle) * 40,
+          y: startY + Math.sin(angle) * 30
+        });
+      }
+    } else if (pattern === 'line') {
+      // Line wave: horizontal spread
+      const spacing = Math.min(40, (CANVAS_W - 100) / count);
+      const startX = centerX - ((count - 1) * spacing) / 2;
+      for (let i = 0; i < count; ++i)
+        positions.push({
+          x: startX + i * spacing,
+          y: startY - Math.sin(i * 0.5) * 10
+        });
+    } else if (pattern === 'diamond') {
+      // Diamond formation
+      const half = Math.floor(count / 2);
+      for (let i = 0; i < count; ++i) {
+        const row = i <= half ? i : count - 1 - i;
+        const offset = (i <= half ? i - half / 2 : (count - 1 - i) - half / 2) * 30;
+        positions.push({
+          x: centerX + offset,
+          y: startY - i * 18
+        });
+      }
+    }
+    return positions;
+  }
+
   function spawnEnemy() {
     const pool = [];
     for (const [name, def] of Object.entries(ENEMY_TYPES))
@@ -311,12 +363,30 @@
         const enemy = _createEnemy(type, baseX + (s - count / 2) * 20, baseY - s * 15);
         enemy.swarmOffset = groupPhase + s * 0.5;
         enemies.push(enemy);
-        // First member uses the slot already counted in waveEnemiesLeft;
-        // only extra members beyond the first need to increment the counter
         if (s > 0)
           ++waveEnemiesLeft;
       }
-      // Only counted as one spawn from the wave counter
+      return;
+    }
+
+    // Formation spawning: higher waves use formation patterns more often
+    const useFormation = waveNumber >= 3 && Math.random() < Math.min(0.5, waveNumber * 0.05);
+    if (useFormation) {
+      // Select formation based on wave number for variety
+      const pattern = FORMATION_PATTERNS[waveNumber % FORMATION_PATTERNS.length];
+      // Pick count based on enemy type: lighter = more, heavier = fewer
+      const def = ENEMY_TYPES[type];
+      const formationCount = def.hp <= 2 ? 3 + Math.floor(Math.random() * 3)
+        : def.hp <= 4 ? 2 + Math.floor(Math.random() * 2)
+        : 2;
+      const centerX = 80 + Math.random() * (CANVAS_W - 160);
+      const positions = _getFormation(pattern, formationCount, centerX, -20);
+      for (let f = 0; f < positions.length; ++f) {
+        const enemy = _createEnemy(type, positions[f].x, positions[f].y);
+        enemies.push(enemy);
+        if (f > 0)
+          ++waveEnemiesLeft;
+      }
       return;
     }
 
@@ -495,7 +565,9 @@
     const bossIdx = Math.floor((waveNumber / 5 - 1) % BOSS_TYPES.length);
     const def = BOSS_TYPES[bossIdx];
     const cycle = Math.floor((waveNumber / 5 - 1) / BOSS_TYPES.length);
-    const hpScale = 1 + 0.3 * cycle;
+    const hpScale = 1 + 0.6 * cycle + 0.1 * cycle * cycle;
+    const shieldScale = 1 + 0.5 * cycle;
+    const maxShield = Math.floor((def.shieldHP || 0) * shieldScale);
     boss = {
       x: CANVAS_W / 2,
       y: -60,
@@ -511,7 +583,15 @@
       movePhase: 0,
       enraged: false,
       targetY: 80,
-      alive: true
+      alive: true,
+      // Shield mechanic
+      shield: maxShield,
+      maxShield,
+      shieldRegenDelay: def.shieldRegenDelay || 5,
+      shieldRegenRate: def.shieldRegenRate || 10,
+      shieldDownTimer: 0,
+      // Spiral burst tracking
+      spiralAngle: 0
     };
   }
 
@@ -529,12 +609,26 @@
 
     boss.x = Math.max(boss.size, Math.min(CANVAS_W - boss.size, boss.x));
 
+    // Shield regeneration
+    if (boss.maxShield > 0) {
+      if (boss.shield <= 0)
+        boss.shieldDownTimer += dt;
+      if (boss.shieldDownTimer >= boss.shieldRegenDelay && boss.shield < boss.maxShield) {
+        boss.shield = Math.min(boss.maxShield, boss.shield + boss.shieldRegenRate * dt);
+        if (boss.shield >= boss.maxShield)
+          floatingText.add(boss.x, boss.y - boss.size - 10, 'SHIELD RESTORED', { color: '#4af', decay: 0.02 });
+      }
+    }
+
     // Enrage at 50% HP
     if (!boss.enraged && boss.hp <= boss.maxHp * 0.5) {
       boss.enraged = true;
       screenShake.trigger(10, 500);
       floatingText.add(boss.x, boss.y + boss.size + 20, 'ENRAGED!', { color: '#f44', decay: 0.02 });
     }
+
+    // Spiral angle always advances for spiral burst pattern
+    boss.spiralAngle += dt * 3;
 
     const attackSpeed = boss.enraged ? 1.5 : 1;
     boss.attackTimer -= dt * attackSpeed;
@@ -566,7 +660,6 @@
             boss: true
           });
       } else if (attack === 'laserBeam') {
-        // Fire a column of bullets downward
         for (let i = 0; i < 5; ++i)
           enemyBullets.push({
             x: boss.x + (Math.random() - 0.5) * 20,
@@ -600,6 +693,58 @@
             boss: true
           });
         }
+      } else if (attack === 'spiralBurst') {
+        // Fire bullets in a rotating spiral pattern
+        const arms = boss.enraged ? 4 : 3;
+        const bulletsPerArm = 3;
+        for (let arm = 0; arm < arms; ++arm) {
+          const baseAngle = boss.spiralAngle + (arm / arms) * Math.PI * 2;
+          for (let b = 0; b < bulletsPerArm; ++b) {
+            const angle = baseAngle + b * 0.2;
+            const speed = ENEMY_BULLET_SPEED * (0.7 + b * 0.15);
+            enemyBullets.push({
+              x: boss.x, y: boss.y,
+              vx: Math.sin(angle) * speed,
+              vy: Math.cos(angle) * speed,
+              boss: true
+            });
+          }
+        }
+      } else if (attack === 'crossBeams') {
+        // Fire 4 beams in a cross pattern (cardinal directions) plus diagonals when enraged
+        const directions = [
+          { vx: 0, vy: 1 }, { vx: 0, vy: -1 },
+          { vx: 1, vy: 0 }, { vx: -1, vy: 0 }
+        ];
+        if (boss.enraged)
+          directions.push(
+            { vx: 0.707, vy: 0.707 }, { vx: -0.707, vy: 0.707 },
+            { vx: 0.707, vy: -0.707 }, { vx: -0.707, vy: -0.707 }
+          );
+        for (const dir of directions)
+          for (let i = 0; i < 4; ++i)
+            enemyBullets.push({
+              x: boss.x + dir.vx * i * 12,
+              y: boss.y + dir.vy * i * 12,
+              vx: dir.vx * ENEMY_BULLET_SPEED * 1.3,
+              vy: dir.vy * ENEMY_BULLET_SPEED * 1.3,
+              boss: true
+            });
+      } else if (attack === 'mineDeployment') {
+        // Deploy mines around the arena
+        const count = boss.enraged ? 6 : 4;
+        for (let i = 0; i < count; ++i) {
+          mines.push({
+            x: 50 + Math.random() * (CANVAS_W - 100),
+            y: boss.y + boss.size + 20 + Math.random() * (CANVAS_H * 0.4),
+            triggerRadius: 50,
+            damageRadius: 70,
+            armed: false,
+            armTimer: 1.0,
+            life: 10
+          });
+        }
+        particles.burst(boss.x, boss.y + boss.size, 10, { color: '#f80', speed: 3, life: 0.4, size: 2, decay: 0.03 });
       }
     }
 
@@ -664,6 +809,23 @@
       ctx.globalAlpha = 1;
     }
 
+    // Shield visual arc around boss
+    if (boss.maxShield > 0 && boss.shield > 0) {
+      const shieldRatio = boss.shield / boss.maxShield;
+      ctx.globalAlpha = 0.25 + 0.15 * Math.sin(Date.now() / 200);
+      ctx.strokeStyle = '#4af';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(boss.x, boss.y, boss.size + 12, 0, Math.PI * 2 * shieldRatio);
+      ctx.stroke();
+      // Shield shimmer fill
+      ctx.globalAlpha = 0.08 + 0.05 * Math.sin(Date.now() / 150);
+      ctx.fillStyle = '#4af';
+      ctx.beginPath();
+      ctx.arc(boss.x, boss.y, boss.size + 12, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
     ctx.restore();
 
     // HP bar at top of screen
@@ -673,17 +835,28 @@
     const barX = (CANVAS_W - barW) / 2;
     const barY = 10;
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillRect(barX - 2, barY - 2, barW + 4, barH + 4);
+    ctx.fillRect(barX - 2, barY - 2, barW + 4, barH + 4 + (boss.maxShield > 0 ? 8 : 0));
     ctx.fillStyle = '#400';
     ctx.fillRect(barX, barY, barW, barH);
     const hpRatio = boss.hp / boss.maxHp;
     ctx.fillStyle = hpRatio > 0.5 ? '#0f0' : hpRatio > 0.25 ? '#ff0' : '#f00';
     ctx.fillRect(barX, barY, barW * hpRatio, barH);
+    // Shield bar below HP bar
+    if (boss.maxShield > 0) {
+      const shieldBarY = barY + barH + 2;
+      const shieldBarH = 5;
+      ctx.fillStyle = '#024';
+      ctx.fillRect(barX, shieldBarY, barW, shieldBarH);
+      const shieldRatio = Math.max(0, boss.shield / boss.maxShield);
+      ctx.fillStyle = '#4af';
+      ctx.fillRect(barX, shieldBarY, barW * shieldRatio, shieldBarH);
+    }
     // Boss name label
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 12px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(boss.name + (boss.enraged ? ' [ENRAGED]' : ''), CANVAS_W / 2, barY + barH + 14);
+    const labelY = barY + barH + (boss.maxShield > 0 ? 20 : 14);
+    ctx.fillText(boss.name + (boss.enraged ? ' [ENRAGED]' : '') + (boss.shield > 0 ? ' [SHIELDED]' : ''), CANVAS_W / 2, labelY);
     ctx.restore();
   }
 
@@ -983,8 +1156,23 @@
       // Boss collision
       if (!bulletConsumed && boss && boss.alive && boss.y >= boss.targetY) {
         if (circleOverlap(b.x, b.y, bulletRadius, boss.x, boss.y, boss.size)) {
-          boss.hp -= b.damage;
-          particles.burst(b.x, b.y, 4, { color: '#fff', speed: 2, life: 0.2, size: 1, decay: 0.05 });
+          // Shield absorbs damage first
+          if (boss.shield > 0) {
+            const absorbed = Math.min(boss.shield, b.damage);
+            boss.shield -= absorbed;
+            const remaining = b.damage - absorbed;
+            if (remaining > 0)
+              boss.hp -= remaining;
+            particles.burst(b.x, b.y, 4, { color: '#4af', speed: 2, life: 0.2, size: 1, decay: 0.05 });
+            if (boss.shield <= 0) {
+              boss.shieldDownTimer = 0;
+              floatingText.add(boss.x, boss.y - boss.size - 10, 'SHIELD BROKEN!', { color: '#f44', decay: 0.02 });
+              screenShake.trigger(6, 300);
+            }
+          } else {
+            boss.hp -= b.damage;
+            particles.burst(b.x, b.y, 4, { color: '#fff', speed: 2, life: 0.2, size: 1, decay: 0.05 });
+          }
           screenShake.trigger(2, 80);
           if (!b.piercing)
             bulletConsumed = true;
