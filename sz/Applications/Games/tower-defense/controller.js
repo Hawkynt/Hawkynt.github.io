@@ -1128,8 +1128,8 @@
   function drawGrid() {
     // Background grass texture
     const bgGrad = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
-    bgGrad.addColorStop(0, '#0d1a0d');
-    bgGrad.addColorStop(1, '#0a140a');
+    bgGrad.addColorStop(0, '#1a3a1a');
+    bgGrad.addColorStop(1, '#153015');
     ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
 
@@ -1139,19 +1139,19 @@
       const px = c * CELL;
       const py = r * CELL;
       const pathGrad = ctx.createLinearGradient(px, py, px + CELL, py + CELL);
-      pathGrad.addColorStop(0, '#2a1a0a');
-      pathGrad.addColorStop(1, '#1e1208');
+      pathGrad.addColorStop(0, '#5c3d1f');
+      pathGrad.addColorStop(1, '#4a3018');
       ctx.fillStyle = pathGrad;
       ctx.fillRect(px, py, CELL, CELL);
 
       // Subtle path border
-      ctx.strokeStyle = 'rgba(80, 50, 20, 0.3)';
+      ctx.strokeStyle = 'rgba(120, 80, 40, 0.5)';
       ctx.lineWidth = 0.5;
       ctx.strokeRect(px + 0.5, py + 0.5, CELL - 1, CELL - 1);
     }
 
     // Grid lines
-    ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
     ctx.lineWidth = 0.5;
     for (let c = 0; c <= COLS; ++c) {
       ctx.beginPath();
@@ -1179,7 +1179,7 @@
 
         // Show range preview when hovering with valid placement (not for floor traps)
         if (valid && def.range > 0) {
-          ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+          ctx.strokeStyle = 'rgba(255,255,255,0.2)';
           ctx.lineWidth = 1;
           ctx.beginPath();
           ctx.arc(hcol * CELL + CELL / 2, hrow * CELL + CELL / 2, def.range, 0, Math.PI * 2);
@@ -1388,9 +1388,9 @@
           // Barrel
           ctx.save();
           ctx.rotate(angle);
-          ctx.fillStyle = '#742';
+          ctx.fillStyle = '#a64';
           ctx.fillRect(-3, -3, 16, 6);
-          ctx.fillStyle = '#555';
+          ctx.fillStyle = '#888';
           ctx.fillRect(10, -5, 6, 10); // muzzle
           ctx.restore();
           break;
@@ -1539,9 +1539,9 @@
           // Mortar tube (angled up)
           ctx.save();
           ctx.rotate(angle);
-          ctx.fillStyle = '#8a7560';
+          ctx.fillStyle = '#b09878';
           ctx.fillRect(-4, -4, 12, 8);
-          ctx.fillStyle = '#333';
+          ctx.fillStyle = '#666';
           ctx.beginPath();
           ctx.arc(8, 0, 4, 0, Math.PI * 2);
           ctx.fill();
@@ -1956,7 +1956,7 @@
       const barY = ey - r - 7;
       const hpRatio = Math.max(0, e.hp / e.maxHp);
 
-      ctx.fillStyle = '#300';
+      ctx.fillStyle = '#600';
       ctx.fillRect(barX, barY, barW, barH);
       ctx.fillStyle = hpRatio > 0.5 ? '#0c0' : hpRatio > 0.25 ? '#cc0' : '#c00';
       ctx.fillRect(barX, barY, barW * hpRatio, barH);
@@ -1964,7 +1964,7 @@
       // Shield bar (below health bar)
       if (e.isShielded && e.shieldHp > 0) {
         const shieldRatio = e.shieldHp / (e.maxHp * 0.4);
-        ctx.fillStyle = '#024';
+        ctx.fillStyle = '#048';
         ctx.fillRect(barX, barY + barH + 1, barW, 2);
         ctx.fillStyle = '#4ff';
         ctx.fillRect(barX, barY + barH + 1, barW * shieldRatio, 2);
@@ -2036,7 +2036,7 @@
       ctx.fillRect(bx + 3, by + 3, 10, 10);
 
       // Name and cost
-      ctx.fillStyle = canAfford ? (selected ? '#fff' : '#bbb') : '#666';
+      ctx.fillStyle = canAfford ? (selected ? '#fff' : '#bbb') : '#999';
       ctx.font = '8px sans-serif';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
@@ -2054,7 +2054,7 @@
       }
 
       // Brief description
-      ctx.fillStyle = selected ? '#aaa' : '#666';
+      ctx.fillStyle = selected ? '#aaa' : '#999';
       ctx.font = '7px sans-serif';
       ctx.textAlign = 'left';
       ctx.fillText(def.desc, bx + 16, by + 22);
@@ -2083,7 +2083,7 @@
     if (state === STATE_PLAYING) {
       const btnX = rightX - HUD_BTN_W - 68 - 4;
       const btnY = PALETTE_BTN_Y + 2;
-      ctx.fillStyle = gameSpeed > 1 ? '#5a5a2a' : '#2a2a2a';
+      ctx.fillStyle = gameSpeed > 1 ? '#5a5a2a' : '#444';
       ctx.strokeStyle = gameSpeed > 1 ? '#aa0' : '#666';
       ctx.lineWidth = 1;
       ctx.fillRect(btnX, btnY, HUD_BTN_W + 4, HUD_BTN_H);
@@ -2099,7 +2099,7 @@
     {
       const btnX = rightX - 64;
       const btnY = PALETTE_BTN_Y + 2;
-      ctx.fillStyle = autoWaveMode ? '#2a4a5a' : '#2a2a2a';
+      ctx.fillStyle = autoWaveMode ? '#2a4a5a' : '#444';
       ctx.strokeStyle = autoWaveMode ? '#4af' : '#666';
       ctx.lineWidth = 1;
       ctx.fillRect(btnX, btnY, 60, HUD_BTN_H);
@@ -2157,7 +2157,7 @@
     if (selectedTower.tier < MAX_TIER) {
       const uc = getUpgradeCost(selectedTower);
       const canUp = gold >= uc;
-      ctx.fillStyle = canUp ? '#2a5a2a' : '#3a2a2a';
+      ctx.fillStyle = canUp ? '#2a5a2a' : '#553a3a';
       ctx.fillRect(panelX + 4, panelY + 30, 70, 16);
       ctx.strokeStyle = canUp ? '#4a4' : '#644';
       ctx.lineWidth = 0.5;
@@ -2223,7 +2223,7 @@
     const mx = Math.min(x, CANVAS_W - menuW - 4);
     const my = Math.min(y, CANVAS_H - menuH - 4);
 
-    ctx.fillStyle = 'rgba(20, 20, 30, 0.95)';
+    ctx.fillStyle = 'rgba(30, 35, 50, 0.92)';
     ctx.fillRect(mx, my, menuW, menuH);
     ctx.strokeStyle = '#666';
     ctx.lineWidth = 1;
@@ -2370,7 +2370,7 @@
     // Top HUD -- Wave / gold / lives
     if (state === STATE_PLAYING || state === STATE_BUILD) {
       // Top bar background
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
       ctx.fillRect(0, 0, CANVAS_W, 22);
 
       ctx.font = '11px sans-serif';
@@ -2476,7 +2476,7 @@
         ctx.stroke();
       } else if (fe.type === 'spike') {
         // Metallic grey spikes
-        ctx.fillStyle = 'rgba(100, 100, 110, 0.4)';
+        ctx.fillStyle = 'rgba(120, 120, 130, 0.6)';
         ctx.fillRect(fx + 2, fy + 2, CELL - 4, CELL - 4);
 
         // Draw spike triangles in a grid pattern
@@ -2497,7 +2497,7 @@
         }
 
         // Metallic highlight
-        ctx.strokeStyle = 'rgba(180, 180, 190, 0.3)';
+        ctx.strokeStyle = 'rgba(200, 200, 210, 0.5)';
         ctx.lineWidth = 0.5;
         ctx.strokeRect(fx + 3, fy + 3, CELL - 6, CELL - 6);
       }
