@@ -1,69 +1,62 @@
 # Space Racing
 
-High-speed top-down spaceship racing with boost pads, hazards, AI opponents, and multiple tracks — built for the SynthelicZ Desktop.
+High-speed top-down spaceship racing with boost pads, hazards, AI opponents, ship selection, upgrades, and multiple tracks -- built for the SynthelicZ Desktop.
 
 ## User Stories
 
-### S-015 — Core Racing Gameplay
-As a player, I want to race spaceships through obstacle courses with boost pads, hazards, and AI opponents across multiple tracks, so that I experience high-speed space racing.
+### Ship Selection & Customization
+- [x] As a player, I can choose from 5 selectable ships (Star Falcon, etc.) with different speed, acceleration, handling, and boost stats so that I can pick a ship matching my playstyle
+- [x] As a player, I can see each ship's description and stat bars on the selection screen so that I can make an informed choice
+- [x] As a player, I can have my selected ship persisted across sessions so that I don't need to reselect each time
 
-**Acceptance Criteria:**
-- Ship accelerates with Up/W, steers with Left/Right or A/D, brakes with Down/S
-- Camera smoothly follows the player ship
-- 3+ AI opponents race competitively with pathfinding
-- 5+ tracks with different layouts
-- Lap counting and position tracking
-- Boost pads grant temporary speed increase
-- Hazards (asteroid debris, energy barriers) cause slowdown on collision
-- Race completion shows results with time and position
-- High scores persisted to localStorage
+### Upgrades
+- [x] As a player, I can earn credits based on my finishing position (500/300/150/50 for 1st-4th) so that I'm rewarded for racing well
+- [x] As a player, I can spend credits on 4 upgrade categories (Engine, Thrusters, Hull, Boost) with 5 levels each so that my ship improves over time
+- [x] As a player, I can have my credits and upgrade levels persisted to localStorage so that progress carries between sessions
+- [x] As a player, I can access the upgrade shop between races so that I can invest my earnings
 
-### S-016 — Visual Effects
-As a player, I want space racing to have speed-line effects, boost flame trails, collision sparks, and smooth camera following, so that racing feels fast and exciting.
+### Racing Gameplay
+- [x] As a player, I can accelerate with Up/W, steer with Left/Right or A/D, and brake with Down/S so that controls feel intuitive
+- [x] As a player, I can race against 3 AI opponents with distinct personalities (aggressive, defensive, balanced, erratic, calculated) so that races feel competitive
+- [x] As a player, I can see AI opponents with reduced difficulty (lower acceleration, reaction delay, random steering mistakes) so that races are fair
+- [x] As a player, I can race on 5+ distinct tracks with different layouts and checkpoints so that courses have variety
+- [x] As a player, I can complete 3 laps per race with position tracking so that races have structure
+- [x] As a player, I can see race results with time and position on completion so that I know how I performed
 
-**Acceptance Criteria:**
-- Speed-line effects at high velocity
-- Boost flame trails when hitting boost pads
-- Collision spark particles on hazard hits
-- Screen shake on crashes
-- Confetti particles for podium finishes
-- Floating text for lap times and position
-- Glow effects via shadowBlur
+### Track Features
+- [x] As a player, I can hit boost pads that grant temporary speed increases with flame trail effects so that I can gain advantages
+- [x] As a player, I can encounter hazard obstacles that slow me down with collision sparks and screen shake so that I must navigate carefully
+- [x] As a player, I can navigate around gravity wells that pull my ship off course so that I must plan my racing line strategically
+- [x] As a player, I can use wormhole portals that teleport my ship to another location on the track so that I can take shortcuts
 
-### Track Hazards & Features
-- [x] As a player, I want gravity wells on certain tracks that pull my ship off course so I must plan my racing line to avoid or use them strategically
-- [x] As a player, I want wormhole portals that teleport my ship to another location on the track for shortcut opportunities and surprise positioning changes
-- [x] As a player, I want a multi-layer parallax starfield background so that the sense of speed and depth is enhanced during racing
-- [x] As a player, I want visible thrust particles emitting from my ship's engines when accelerating so that speed feedback is visually clear
+### Visual Effects
+- [x] As a player, I can see a multi-layer parallax starfield background so that the sense of speed and depth is enhanced
+- [x] As a player, I can see visible thrust particles emitting from my ship's engines when accelerating so that speed feedback is clear
+- [x] As a player, I can see speed-line effects at high velocity so that racing feels fast
+- [x] As a player, I can see boost flame trails when hitting boost pads so that the speed boost is visually communicated
+- [x] As a player, I can see collision spark particles on hazard hits so that impacts are visible
+- [x] As a player, I can see confetti particles for podium finishes so that winning feels celebratory
+- [x] As a player, I can see floating text for lap times and position changes so that I get immediate racing feedback
+- [x] As a player, I can see smooth camera interpolation following my ship so that the view is stable
 
-### S-000 — Cross-cutting (OS Integration)
-- Window title updates via SetWindowText
-- WM_THEMECHANGED and WM_SIZE handling
-- Menu bar with Game (New/Pause/High Scores/Exit) and Help (Controls/About)
-- Dialog integration (high scores, controls, about)
-- F2 for new game, Escape for pause
+### Game Management
+- [x] As a player, I can see a tutorial overlay on first play explaining racing controls and mechanics so that I learn quickly
+- [x] As a player, I can toggle the tutorial with H key so that I can review it anytime
+- [x] As a player, I can have high scores persisted to localStorage so that I can track my best times
+- [x] As a player, I can pause/resume with Escape so that I can take breaks
+- [x] As a player, I can start a new race with F2 so that I can restart anytime
 
-## Features
+### Integration
+- [x] As a player, I can see a menu bar with Game (New, Pause, High Scores, Exit) and Help (Controls, About) so that all actions are discoverable
+- [x] As a player, I can use dialog windows for high scores, controls, and about info so that information is organized
+- [x] As a player, I can see the window title update with race information so that progress is visible in the taskbar
 
-- Top-down spaceship racing on canvas
-- **5 selectable ships** with different stats (speed, acceleration, handling, boost power, armor)
-- **4-category upgrade system** (Engine, Thrusters, Hull, Boost) with 5 levels each, earned through racing credits
-- **5 unique AI personalities** with distinct shapes, colors, and racing behavior (aggressive, defensive, balanced, erratic, calculated)
-- **Reduced AI difficulty** — lower acceleration, reaction delay, random steering mistakes for fairer races
-- 5+ distinct tracks with checkpoints and finish lines
-- Boost pads with flame trail effects
-- Hazard obstacles with collision sparks and screen shake
-- **Gravity wells** that pull ships off course, requiring strategic racing lines
-- **Wormhole portals** that teleport ships to other track locations for shortcuts
-- **Parallax starfield** with multi-layer depth for enhanced speed perception
-- **Thrust particles** emitting from ship engines during acceleration
-- Lap system with position tracking
-- Race results with confetti for podium finishes
-- Speed-line visual effects at high velocity
-- **Tutorial overlay** — 2-page guide shown on first play, toggled with H key, persisted via localStorage
-- Smooth camera interpolation following the player
-- High score persistence via localStorage
-- Full SZ Desktop integration (menus, dialogs, window messages)
+### Planned Features
+- [ ] As a player, I can hear engine sounds and background music so that the racing atmosphere is more immersive
+- [ ] As a player, I can race on procedurally generated tracks so that replayability is extended
+- [ ] As a player, I can use weapons or defensive items during races so that combat adds another layer of strategy
+- [ ] As a player, I can compete in a championship mode across multiple tracks so that there is a longer progression arc
+- [ ] As a player, I can see a replay of my best race so that I can review my performance
 
 ## Controls
 
@@ -76,16 +69,6 @@ As a player, I want space racing to have speed-line effects, boost flame trails,
 | F2 | New race |
 | Escape | Pause / Resume |
 | H | Toggle tutorial overlay |
-
-## Game Mechanics
-
-- **Acceleration**: Ship thrust increases speed in the facing direction with friction drag
-- **Steering**: Rotates the ship angle; tighter turns at lower speeds
-- **Boost Pads**: Temporary speed multiplier with flame trail particles
-- **Hazards**: Collision detection reduces speed and triggers sparks + screen shake
-- **Laps**: Cross checkpoints in order; complete all laps to finish the race
-- **AI**: Opponents follow waypoints with slight randomization for natural racing behavior
-- **Scoring**: Race time is the primary metric; position determines podium placement
 
 ## SEO Keywords
 

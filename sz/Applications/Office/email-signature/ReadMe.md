@@ -76,19 +76,55 @@ A split-pane interface with a form panel on the left (personal info, contact det
 
 ## User Stories
 
-- [x] As a user, I want to fill in my personal details so they appear in my email signature
-- [x] As a user, I want to choose from multiple signature templates so I can pick a style that matches my brand
-- [x] As a user, I want to upload a photo so my signature includes my headshot
-- [x] As a user, I want to choose a photo frame shape (circle, hexagon, etc.) so my photo looks distinctive
-- [x] As a user, I want to drag and drop a photo so uploading is easy
-- [x] As a user, I want to add social media links so recipients can find me online
-- [x] As a user, I want social media icons to appear automatically so links are visually recognizable
-- [x] As a user, I want to customize the accent color so the signature matches my brand colors
-- [x] As a user, I want to see a live preview in a mock email so I know exactly how it will look
-- [x] As a user, I want to copy the HTML signature to clipboard so I can paste it into my email client settings
-- [x] As a user, I want a plain-text version so I can use it in text-only contexts
-- [x] As a user, I want to export as an HTML file so I can save it for later
-- [x] As a user, I want the signature to use inline styles and tables so it works in all email clients
-- [x] As a user, I want to toggle social icon visibility so I can show or hide them as needed
-- [x] As a user, I want to toggle photo visibility so I can include or exclude it
-- [x] As a user, I want to reset all fields so I can start fresh
+### Personal Information
+- [x] As a user, I can fill in my name, job title, company, and department so that they appear in my email signature
+- [x] As a user, I can leave any field blank and the signature adapts so that only relevant information is shown
+
+### Contact Details
+- [x] As a user, I can enter my email address and see it rendered as a mailto: link so that recipients can click to email me
+- [x] As a user, I can enter my phone and mobile numbers with auto-formatted tel: links so that recipients can click to call
+- [x] As a user, I can enter my website URL with auto-prepended https:// so that the link works correctly
+
+### Templates
+- [x] As a user, I can choose from 4 signature templates (Classic Horizontal, Modern Vertical, Compact Minimal, Bold with Banner) so that I can pick a style that matches my brand
+- [x] As a user, I can switch templates via the form dropdown or ribbon radio buttons so that selection is convenient
+- [x] As a user, I can see the signature use inline styles and HTML tables so that it works in all email clients
+
+### Photo
+- [x] As a user, I can upload a photo via file browser, drag-and-drop, or SZ VFS file picker so that my signature includes my headshot
+- [x] As a user, I can choose from 7 photo frame shapes (circle, square, rounded, hexagon, hexagon flat, diamond, octagon) so that my photo looks distinctive
+- [x] As a user, I can see a live photo preview with the selected frame shape so that I know how it will look
+- [x] As a user, I can remove my photo so that I can exclude it from the signature
+- [x] As a user, I can toggle photo visibility from the View tab so that I can include or exclude it without deleting it
+
+### Social Media
+- [x] As a user, I can add links for 14 social media platforms (LinkedIn, Twitter/X, GitHub, Instagram, Facebook, YouTube, Mastodon, Discord, Stack Overflow, Dribbble, Behance, Medium, Twitch, TikTok) so that recipients can find me online
+- [x] As a user, I can see social media icons appear automatically from the Simple Icons CDN so that links are visually recognizable
+- [x] As a user, I can toggle social icon visibility from the View tab so that I can show or hide them as needed
+
+### Accent Color
+- [x] As a user, I can customize the accent color via a color picker or hex input so that the signature matches my brand colors
+- [x] As a user, I can use the SZ Desktop color-picker app integration so that I have a full-featured color selection
+
+### Live Preview
+- [x] As a user, I can see a live preview in a mock email interface so that I know exactly how the signature will look
+- [x] As a user, I can see the preview update on every input change so that feedback is instant
+
+### Export
+- [x] As a user, I can copy the HTML signature to clipboard (with text/html MIME type) so that I can paste it into my email client settings
+- [x] As a user, I can copy a plain-text version to clipboard so that I can use it in text-only contexts
+- [x] As a user, I can export as a complete HTML document file so that I can save it for later
+
+### User Interface
+- [x] As a user, I can use a Ribbon UI with Home, Template, and View tabs so that features are organized
+- [x] As a user, I can use a Quick Access Toolbar with Copy HTML and Copy Text buttons so that common actions are one click away
+- [x] As a user, I can resize the split pane with a draggable splitter so that I can allocate space between the form and preview
+- [x] As a user, I can reset all fields to start fresh so that I can create a new signature from scratch
+- [x] As a user, I can see an About dialog via the backstage menu so that I can learn about the application
+
+### Planned Features
+- [ ] As a user, I can save and load signature profiles so that I can maintain multiple signatures
+- [ ] As a user, I can preview the signature in dark mode so that I can see how it looks on dark email clients
+- [ ] As a user, I can add a company logo in addition to a personal photo so that I can include branding
+- [ ] As a user, I can add a custom disclaimer or legal text below the signature so that I meet compliance requirements
+- [ ] As a user, I can customize the font family used in the signature so that it matches my brand typography

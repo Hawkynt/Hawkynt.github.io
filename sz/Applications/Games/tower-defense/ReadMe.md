@@ -4,79 +4,80 @@ Path-based tower defense game for the SynthelicZ Desktop. Place towers along ene
 
 ## User Stories
 
-- **S-090**: As a player, I want to place defensive towers along paths to stop waves of enemies from reaching a goal, with different tower types, upgrades, and enemy varieties, so that I experience tower defense strategy.
-- **S-091**: As a player, I want tower defense to have projectile glow trails, enemy-death burst particles, tower-upgrade sparkle effects, and smooth enemy path-following animations, so that defense feels strategic and exciting.
-- **S-000**: Shared visual effects (ParticleSystem, ScreenShake, FloatingText).
+### Tower Placement & Types
+- [x] As a player, I can place 13 tower types (Arrow, Cannon, Frost, Lightning, Laser, Poison, Tesla, Mortar, Flame, Ice, Fire, Chain Lightning, Sniper, Spikes) so that I have diverse strategic options
+- [x] As a player, I can select tower types with number keys (1-9+) or by clicking the bottom palette so that placement is quick
+- [x] As a player, I can see each tower's cost, damage, range, fire rate, and special ability before placing so that I can make informed decisions
+- [x] As a player, I can place Cannon and Mortar towers for splash damage so that I can handle groups of enemies
+- [x] As a player, I can place Frost and Ice towers that slow or freeze enemies so that I can control enemy speed
+- [x] As a player, I can place Lightning, Tesla, and Chain Lightning towers that chain between enemies so that clustered enemies are punished
+- [x] As a player, I can place Poison and Fire towers for damage-over-time effects so that enemies take sustained damage
+- [x] As a player, I can place Sniper towers for long-range high-damage single-target shots so that I can pick off tough enemies
+- [x] As a player, I can place Spike traps on the path as ground traps so that enemies take damage while walking
+- [x] As a player, I can place Flame towers for short-range continuous area damage with burn effect so that chokepoints are covered
 
-## Features
+### Upgrades & Economy
+- [x] As a player, I can upgrade each tower through 3 tiers with increasing damage (1.4x/1.8x/2.4x) and range (1.1x/1.2x/1.35x) so that towers grow stronger
+- [x] As a player, I can press U to upgrade a selected tower so that upgrading is quick
+- [x] As a player, I can sell towers with S for a partial refund so that I can reconfigure my defense
+- [x] As a player, I can earn gold from killing enemies so that I can fund my tower purchases
+- [x] As a player, I can see construction sparkle effects when placing towers and upgrade sparkle effects when upgrading so that building feels satisfying
 
-- **9 Tower Types**: Arrow, Cannon (splash damage), Frost (slowing), Lightning (chain), Laser (high damage), Poison (damage-over-time), Tesla (area chain lightning), Mortar (long-range splash), Flame (short-range continuous)
-- **3-Tier Upgrade System**: Each tower upgrades through 3 tiers with increasing damage, range, and fire rate
-- **8 Enemy Types**: Normal, Fast, Armored, Flying, Boss, Healer (regenerates nearby enemies), Swarm (spawns in groups), Shield (absorbs damage for nearby enemies)
-- **Auto-wave mode** — toggle automatic wave sending without clicking to start each wave
-- **Mouse-only controls** — all actions available via mouse clicks, no keyboard required
-- **Pre-wave warnings** — animated countdown and path visualization before each wave starts
-- **Path visualization** — highlighted enemy path showing where enemies will walk
-- **Wave Spawner**: Escalating waves with increasing enemy count and scaling HP
-- **Economy**: Gold from kills, interest bonus between waves, tower selling for partial refund
-- **12 Maps**: Serpentine, Crossroads, Spiral, Zigzag, Diamond, Fortress, Canyon, Labyrinth, Twin Paths, Gauntlet, Wasteland, Final Stand
-- **Fast-Forward**: Toggle 1x/2x/3x game speed with Space
-- **Fixed first-click crash** — resolved a bug where clicking the canvas before the first wave caused a runtime error
-- **Visual Effects**: Projectile glow trails, enemy-death burst particles, tower-placement construction sparkle, upgrade sparkle, boss-kill screen shake, floating gold text, improved tower/enemy rendering
-- **Persistence**: High scores saved to localStorage
+### Enemies
+- [x] As a player, I can face 8 enemy types (Normal, Fast, Armored, Flying, Boss, Healer, Swarm, Shield) so that each wave requires different strategies
+- [x] As a player, I can face Healer enemies that regenerate HP of nearby enemies so that I must prioritize targets
+- [x] As a player, I can face Swarm enemies that spawn in groups of low-HP units so that I need area damage
+- [x] As a player, I can face Shield enemies that project a damage-absorbing shield for nearby enemies so that I must break formations
+- [x] As a player, I can face Boss enemies every 5 waves with very high HP so that I have periodic tough challenges
+
+### Waves & Progression
+- [x] As a player, I can face escalating waves with increasing enemy count and scaling HP so that difficulty builds gradually
+- [x] As a player, I can see pre-wave warnings with animated countdown and path visualization so that I can prepare for incoming enemies
+- [x] As a player, I can toggle auto-wave mode to automatically send the next wave so that I don't need to click between waves
+- [x] As a player, I can toggle fast-forward (1x/2x/3x game speed) with Space so that I can speed up slow waves
+- [x] As a player, I can see the path highlighted showing where enemies will walk so that I know where to place towers
+
+### Maps
+- [x] As a player, I can play on 12 maps (Serpentine, Crossroads, Spiral, Zigzag, Diamond, Fortress, Canyon, Labyrinth, Twin Paths, Gauntlet, Wasteland, Final Stand) so that each game feels different
+- [x] As a player, I can see each map has different starting gold, lives, and total waves so that maps have varying difficulty
+
+### Visual Effects
+- [x] As a player, I can see projectile glow trails so that shots look visually impressive
+- [x] As a player, I can see enemy-death burst particles so that kills feel satisfying
+- [x] As a player, I can see boss-kill screen shake so that defeating bosses feels impactful
+- [x] As a player, I can see floating gold text when earning bounties so that I get immediate income feedback
+- [x] As a player, I can see smooth enemy path-following animations so that movement looks fluid
+
+### Game Management
+- [x] As a player, I can use mouse-only controls for all actions (placing, selecting, upgrading, selling towers) so that no keyboard is required
+- [x] As a player, I can have high scores saved to localStorage so that I can track my best performances
+- [x] As a player, I can pause/resume with Escape so that I can take breaks
+- [x] As a player, I can start a new game with F2 so that I can restart anytime
+- [x] As a player, I can see a status bar showing wave number, gold, and lives so that I always know my state
+
+### Integration
+- [x] As a player, I can see a menu bar with Game (New, Pause, High Scores, Exit) and Help (Controls, About) so that all actions are discoverable
+- [x] As a player, I can use dialog windows for high scores, controls, and about info so that information is organized
+- [x] As a player, I can see the window title update with game state so that progress is visible in the taskbar
+
+### Planned Features
+- [ ] As a player, I can hear sound effects for tower firing, enemy deaths, and wave starts so that the game has audio feedback
+- [ ] As a player, I can create custom maps with a map editor so that I can design my own levels
+- [ ] As a player, I can play an endless mode that continues beyond the map's wave count so that I can test my limits
+- [ ] As a player, I can see tower synergy bonuses when placing complementary towers near each other so that placement strategy has more depth
+- [ ] As a player, I can face environmental hazards on certain maps (lava pools, ice patches) so that terrain adds another strategic layer
 
 ## Controls
 
 | Input | Action |
 |-------|--------|
 | Mouse Click | Place tower / Select tower |
-| 1-9 | Select tower type (Arrow, Cannon, Frost, Lightning, Laser, Poison, Tesla, Mortar, Flame) |
+| 1-9+ | Select tower type |
 | U | Upgrade selected tower |
 | S | Sell selected tower |
-| Space | Start wave / Fast-forward |
+| Space | Start wave / Fast-forward (1x/2x/3x) |
 | F2 | New game / Restart |
 | Escape | Pause / Resume |
-
-## Game Mechanics
-
-### Tower Properties
-
-| Tower | Cost | Damage | Range | Fire Rate | Special |
-|-------|------|--------|-------|-----------|---------|
-| Arrow | 50g | 10 | 120 | 0.8s | — |
-| Cannon | 80g | 35 | 90 | 1.5s | Splash 30px |
-| Frost | 70g | 8 | 100 | 1.0s | Slow 50% |
-| Lightning | 120g | 25 | 140 | 1.2s | Chain 2 |
-| Laser | 150g | 50 | 160 | 2.0s | — |
-| Poison | 90g | 5 | 110 | 1.0s | DoT 3s |
-| Tesla | 200g | 30 | 130 | 1.5s | Chain 3, AoE |
-| Mortar | 160g | 45 | 200 | 2.5s | Splash 50px |
-| Flame | 100g | 15 | 60 | 0.3s | Continuous |
-
-### Upgrades
-
-- **Tier 2**: 60% base cost, 1.4x damage, 1.1x range
-- **Tier 3**: 100% base cost, 1.8x damage, 1.2x range
-
-### Enemies
-
-- **Normal**: Balanced HP and speed
-- **Fast**: Low HP, high speed
-- **Armored**: High HP, slow speed
-- **Flying**: Low HP, medium speed
-- **Boss**: Very high HP, slow, appears every 5 waves
-- **Healer**: Regenerates HP of nearby enemies
-- **Swarm**: Low HP, spawns in groups of 3-5
-- **Shield**: Projects a damage-absorbing shield for nearby enemies
-
-## Architecture
-
-- IIFE pattern with `window.SZ` global namespace
-- Canvas-based rendering at 800×560
-- 25×17 grid, 32px cells
-- Path-following with linear interpolation between waypoints
-- OS integration via SZ.Dlls.User32 (SetWindowText, RegisterWindowProc)
-- Shared effects: ParticleSystem, ScreenShake, FloatingText
 
 ## SEO Keywords
 

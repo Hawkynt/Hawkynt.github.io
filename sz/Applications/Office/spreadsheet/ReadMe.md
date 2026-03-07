@@ -157,7 +157,6 @@ Modeled after Microsoft Excel and Google Sheets, with a ribbon-style toolbar org
 ### Undo/Redo
 - [x] As a user, I can undo changes (Ctrl+Z) up to 100 levels
 - [x] As a user, I can redo undone changes (Ctrl+Y)
-- [ ] As a user, I can see an undo history list
 
 ### User Interface
 - [x] As a user, I can use a ribbon toolbar organized into tabs (Home, Insert, Formulas, Data, Format)
@@ -187,3 +186,10 @@ Modeled after Microsoft Excel and Google Sheets, with a ribbon-style toolbar org
 - [x] As a user, I can use arrow keys and Tab/Enter for cell navigation
 - [x] As a user, I can use Ctrl+; to insert the current date
 - [x] As a user, I can use Ctrl+Shift+; to insert the current time
+
+### Planned Features
+- [ ] As a user, I can see an undo history list so that I can jump to a specific state
+- [ ] As a user, I can use pivot tables to summarize and analyze data sets
+- [ ] As a user, I can use sparklines (inline mini-charts) in cells to visualize trends
+- [ ] As a user, I can protect sheets and cells with a password so that formulas and data are locked from accidental editing
+- [ ] As a user, I can use Goal Seek to find input values that produce a desired formula result

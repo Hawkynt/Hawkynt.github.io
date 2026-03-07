@@ -95,44 +95,67 @@ Canvas-based game with two playfield sizes (small 480x560, large 1200x840) and H
 
 ## User Stories
 
-- As a player, I want to move the paddle with keyboard or mouse so I can control the ball
-- As a player, I want to break bricks by bouncing the ball into them so I can score points
-- As a player, I want the ball angle to change based on where it hits the paddle so I can aim
-- As a player, I want power-ups to drop from bricks so the gameplay has variety
-- As a player, I want a wide paddle power-up so I can catch the ball more easily
-- As a player, I want a multi-ball power-up so I can hit more bricks simultaneously
-- As a player, I want a slow-motion power-up so I have more time to react
-- As a player, I want a fire ball power-up so I can blast through multiple bricks
-- As a player, I want a laser power-up so I can shoot bricks directly
-- As a player, I want a barrier power-up so I get a safety net for one ball
-- As a player, I want different level layouts so each level feels fresh
-- As a player, I want glass bricks that shatter when hit for satisfying visual feedback
-- As a player, I want steel bricks that take 2 hits so some bricks feel more challenging
-- As a player, I want indestructible bricks as obstacles so I need to plan my shots
-- As a player, I want an electric forcefield paddle so the game looks visually striking
-- As a player, I want to see rich particle effects when bricks break so the game feels satisfying
-- As a player, I want combo scoring for rapid hits so skillful play is rewarded
-- As a player, I want the ball to speed up each level so the game gets progressively harder
-- As a player, I want to use pointer lock for mouse control so I can play without the cursor leaving the game
-- As a player, I want confetti when I complete a level so it feels rewarding
-- As a player, I want my high scores saved so I can track my best performances
-- As a player, I want to pause the game so I can take a break
-- As a player, I want smooth level transitions with brick entry animations
-- As a player, I want to choose between a small and large playfield so I can pick the experience I prefer
-- As a player, I want the large field to have more brick columns so it fills the wider space
-- As a player, I want to resize and maximize the game window so it fits my screen
-- As a player, I want the playfield to scale to the window size while keeping its aspect ratio so it always looks correct
-- As a player, I want a zen mode with infinite lives so I can relax without pressure
-- As a player, I want the ball to auto-launch in zen mode so I never have to press Space
-- As a player, I want zen mode to auto-launch after level transitions so gameplay is uninterrupted
-- As a player, I want the lives display to show an infinity symbol in zen mode so I know it is active
-- As a player, I want to toggle zen mode from the Game menu at any time during a session
-- As a player, I want a starfield background so the game has visual depth
-- As a player, I want a game-over chain explosion so remaining bricks blow up dramatically
-- As a player, I want a ball charge glow while it is attached to the paddle so I can see it powering up
-- As a player, I want pill-shaped power-up capsules with glow and pulsing so they are easy to spot
-- As a player, I want paddle impact sparks when the ball bounces so collisions feel impactful
-- As a player, I want a comet-style ball trail so the ball looks dynamic in motion
+### Core Gameplay
+- [x] As a player, I can move the paddle with Left/Right arrows, A/D keys, or mouse (pointer lock) so that I can control the ball
+- [x] As a player, I can break bricks by bouncing the ball into them so that I can score points
+- [x] As a player, I can aim the ball based on where it hits the paddle so that I have directional control
+- [x] As a player, I can launch the ball from the paddle with Space or mouse click so that I start each life on my terms
+- [x] As a player, I can earn combo multipliers (x2!, x3!, etc.) for rapid brick hits so that skillful play is rewarded with bonus scoring
+- [x] As a player, I can start with 3 lives and lose one when the ball falls past the paddle so that failure has consequences
+
+### Brick Types
+- [x] As a player, I can destroy normal gradient-shaded bricks in one hit so that basic bricks are straightforward
+- [x] As a player, I can see glass bricks shatter with a crystalline effect when the ball passes through without bouncing so that they feel unique
+- [x] As a player, I can hit steel bricks twice with crack overlays appearing at 1 HP so that some bricks require extra effort
+- [x] As a player, I can encounter indestructible bricks with pulsing purple borders as obstacles so that I need to plan shots around them
+
+### Power-Ups
+- [x] As a player, I can collect a Wide paddle power-up (W) that expands my paddle for 10 seconds so that I can catch the ball more easily
+- [x] As a player, I can collect a Multi-ball power-up (M) that spawns 2 extra balls per existing ball so that I can hit more bricks simultaneously
+- [x] As a player, I can collect a Slow power-up (S) that reduces ball speed to 60% for 10 seconds so that I have more time to react
+- [x] As a player, I can collect a Fire power-up (F) that lets the ball pass through bricks for 8 seconds with flame trail particles so that I can blast through rows
+- [x] As a player, I can collect a Laser power-up (L) that adds cannons to my paddle for 10 seconds so that I can shoot bricks directly
+- [x] As a player, I can collect a Barrier power-up (B) that creates an energy line at the bottom saving one ball so that I get a safety net
+- [x] As a player, I can see pill-shaped power-up capsules with inner glow and pulsing so that they are easy to spot
+
+### Level Design
+- [x] As a player, I can play through 12 hand-crafted levels with diverse brick patterns (Diamond, Fortress, Spiral, Heart, etc.) so that each level feels fresh
+- [x] As a player, I can play procedurally generated levels after the 12 designed ones are exhausted so that the game continues indefinitely
+- [x] As a player, I can see the ball speed up each level (4.5 base, +0.3/level, max 9) so that difficulty increases progressively
+- [x] As a player, I can see bricks cascade in row-by-row during level transitions with fade-in animation so that new levels load smoothly
+
+### Visual Effects
+- [x] As a player, I can see an electric forcefield paddle with jagged lightning arcs between metallic emitter nodes so that the game looks visually striking
+- [x] As a player, I can see a comet-style ball trail with white/blue gradient (or orange/yellow flame trail for Fire) so that the ball looks dynamic
+- [x] As a player, I can see rich particle bursts with type-specific effects (glass shards, steel sparks, colored bursts) when bricks break so that destruction is satisfying
+- [x] As a player, I can see screen shake on ball loss and steel brick hits so that impacts feel weighty
+- [x] As a player, I can see confetti and floating text on level completion so that finishing a level feels rewarding
+- [x] As a player, I can see a game-over chain explosion where remaining bricks blow up in random order so that the end is dramatic
+- [x] As a player, I can see an animated starfield background with twinkling stars so that the game has visual depth
+- [x] As a player, I can see a ball launch charge glow that pulses while attached to the paddle so that I know it is ready
+
+### Playfield and Display
+- [x] As a player, I can choose between a Small (480x560) and Large (1200x840) playfield from the View menu so that I can pick my preferred arena size
+- [x] As a player, I can resize and maximize the game window with the playfield scaling to fit while keeping aspect ratio so that it looks correct at any size
+- [x] As a player, I can see the large field have more brick columns so that it fills the wider space properly
+
+### Zen Mode
+- [x] As a player, I can toggle Zen Mode from the Game menu for infinite lives and auto-launching ball so that I can relax without pressure
+- [x] As a player, I can see the lives display show an infinity symbol in Zen Mode so that I know it is active
+- [x] As a player, I can have the ball auto-launch after loss and level transitions in Zen Mode so that gameplay is uninterrupted
+
+### UI and Integration
+- [x] As a player, I can access Game menu (New Game, Pause, High Scores, Exit), View menu (Small/Large), and Help menu (Controls, About) so that standard management is accessible
+- [x] As a player, I can pause and resume with P, restart with F2, and continue after game over with Enter so that game flow is controllable
+- [x] As a player, I can have my top 5 high scores saved to localStorage with a reset option so that my best runs are remembered
+- [x] As a player, I can use pointer lock for mouse control so that my cursor stays within the game
+
+### Planned Features
+- [ ] As a player, I can hear sound effects for brick destruction, power-up collection, and ball bouncing so that the game has audio feedback
+- [ ] As a player, I can see a preview of the next level layout so that I can prepare my strategy
+- [ ] As a player, I can encounter boss bricks that require special strategies to destroy so that certain levels have unique challenges
+- [ ] As a player, I can select from multiple paddle styles or ball skins so that I can personalize my appearance
+- [ ] As a player, I can see a tutorial overlay on first play explaining controls and brick types so that I learn the game quickly
 
 ## Known Limitations
 

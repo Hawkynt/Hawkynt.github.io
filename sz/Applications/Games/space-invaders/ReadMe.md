@@ -1,8 +1,6 @@
 # Space Invaders -- Enhanced Edition
 
-## Purpose
-
-Arcade game where the player defends Earth from waves of alien invaders across three game modes. Features 12 unique wave formations, 8 power-up types, boss fights with multi-phase attack patterns, combo scoring with multipliers, special enemy types (divers and shielded), a drone helper, and a starfield background. Part of the SynthelicZ Desktop game collection.
+Arcade game where the player defends Earth from waves of alien invaders across three game modes. Features 12 unique wave formations, 8 power-up types, boss fights with multi-phase attack patterns, combo scoring with multipliers, special enemy types, a drone helper, and a starfield background. Part of the SynthelicZ Desktop game collection.
 
 ## How It Works
 
@@ -15,157 +13,76 @@ Canvas-based game with proper aspect-ratio scaling. All game logic runs in a vir
 - **`styles.css`** -- Game layout and visual styling
 - **Shared modules** -- `menu.js`, `dialog.js`, `game-effects.js` (particles, screen shake, floating text, starfield, glow)
 
-## Features
-
-### Game Modes
-- **Classic** -- Progressive levels with boss fights every 5 levels
-- **Survival** -- Endless waves with no level transitions, faster difficulty ramp, more frequent power-ups
-- **Boss Rush** -- Boss fight every level with escort aliens, double power-up frequency
-
-### Wave Formations (12 unique patterns)
-- Classic Grid, V-Formation, Diamond Strike, Arrow Assault, Cross Attack, Zigzag, Fortress, Wings, Scatter, Phalanx (with special enemies), Diver Squadron, Shield Wall
-- Formations cycle per level; each announces its name on entry
-
-### Power-Up System (8 types)
-- **Triple Shot** (cyan) -- Fire 3 bullets in a spread pattern for 8 seconds
-- **Rapid Fire** (yellow) -- Reduced cooldown (100ms vs 300ms), increased max bullets for 6 seconds
-- **Shield** (blue) -- Blocks the next lethal hit (bullet or diver collision) for 5 seconds
-- **Laser** (magenta) -- Piercing shots that pass through all aliens for 4 seconds
-- **Slow-Mo** (light blue) -- Alien movement and shooting at 40% speed for 5 seconds
-- **Extra Life** (pink) -- Instantly grants +1 life
-- **Bomb** (orange) -- Instantly destroys all aliens on screen with massive explosion
-- **Drone** (green) -- Helper ship that follows the player and auto-fires for 10 seconds
-- Power-ups drop at 8% chance from regular aliens, 20% from special aliens, 100% from UFOs
-- Active power-up timers shown as HUD icons in the top-right corner
-- Power-ups can stack (e.g. Triple Shot + Rapid Fire + Laser simultaneously)
-- Collecting an already-active power-up refreshes its timer to full duration
-
-### Boss Fights
-- Boss appears as a large mothership with hull, cockpit, and engine glow
-- Health bar displayed at the top of the screen
-- Base HP: 15 + 5 per boss number (e.g. boss #3 = 30 HP)
-- Phase 1 attack patterns: Spread (5-bullet fan), Aimed (3 bullets at player), Rain (7 falling bullets)
-- Phase 2 (below 50% HP): Hull turns red, engines glow orange, faster movement and attacks, gains Spiral attack (8-bullet circle)
-- Boss entrance: WARNING flash, descend animation
-- Boss defeat: Multi-stage explosion cascade, confetti, screen shake, 3 power-up drops, score bonus (maxHP x 100)
-- Escort aliens spawn alongside boss in varied formations
-
-### Combo System
-- Each alien kill within 1.5 seconds of the last increments the combo counter
-- Score multiplier: x1 (0-2 kills), x2 (3-4), x3 (5-7), x4 (8-11), x5 (12+)
-- Visual indicator shows multiplier and timer bar at top of screen
-- Milestone announcements at x2, x3, x4, x5 thresholds
-- Floating text shows multiplied score during active combos
-
-### Special Enemy Types
-- **Diver aliens** (orange, 50 pts) -- Break from formation and swoop toward the player in a sine-wave pattern; leave particle trails; blocked by shield power-up
-- **Shielded aliens** (cyan, 40 pts) -- Surrounded by a translucent energy shield; require 2 hits (first hit breaks shield, second kills); higher power-up drop chance (20%)
-- Divers and shielded aliens appear in specific formations (Phalanx, Diver Squadron, Shield Wall) and can appear in any formation from level 3+
-
-### Visual Effects
-- Scrolling starfield background with twinkling stars
-- Particle explosions on alien/player/UFO/boss destruction
-- Screen flash on big events (bomb, boss hit, shield break, player death)
-- Screen shake on player death and boss defeat
-- Glow effect on all bullets, UFO, and boss ship
-- Bullet trail particles
-- Floating score text on UFO kills, combo milestones, boss hits
-- Confetti on level completion
-- Pulsing title text on mode selection screen
-- Energy shield bubble around shielded player (pulsing)
-- Drone helper ship with glow
-- Power-up icons with colored glow and bob animation
-
-### Gameplay
-- 3 lives per game
-- Player can have 2 bullets on screen (4 with rapid fire, 6 with triple shot)
-- Shoot cooldown: 300ms (100ms with rapid fire)
-- 4 destructible shield bunkers with pixel-accurate damage
-- Shields absorb both player and alien bullets
-- Aliens reaching player row causes instant death with 0 lives
-- UFO crosses top of screen every 10-25 seconds with random point value (50-300)
-- Alien movement speed increases as fewer remain
-- Alien shoot interval decreases per level (min 400ms)
-- Canvas scales to any window size with proper aspect ratio and letterboxing
-
-### Game Management
-- Game states: idle, playing, paused, dying, levelComplete, bossIntro, bossVictory, gameover
-- Mode selection on title screen with animated starfield
-- Death respawn after 2-second delay
-- Level completion celebration with confetti
-- High scores persisted to localStorage (top 10, with mode and level/wave tracking)
-- Status bar showing score, lives, and level/wave
-
-### Controls
-- Left/Right arrows or A/D for movement
-- Space or Up arrow to shoot
-- P to pause/resume
-- F2 for mode selection
-- 1/2/3 to select game mode
-- Enter to start with last used mode
-- Escape to close dialogs
-
-### Integration
-- Menu bar with Game menu (New Game, Pause, High Scores, Exit) and Help menu (Controls & Power-Ups, About)
-- SZ OS window management (close via menu)
-- Responsive canvas scaling with aspect-ratio preservation
-- Dialog system for high scores, controls, and about info
-
-## Planned Features
-
-- Sound effects and music
-- Touch/mobile controls
-- Custom wave editor
-- Online leaderboard
-- Achievement system
-
-## Known Bugs
-
-- None currently known
-
 ## User Stories
 
-- As a player, I want to choose between Classic, Survival, and Boss Rush modes so I can play the style I enjoy
-- As a player, I want power-ups to drop from destroyed aliens so gameplay stays fresh and exciting
-- As a player, I want a combo system so I'm rewarded for rapid kills
-- As a player, I want boss fights with multiple attack patterns so I have epic confrontations
-- As a player, I want special enemies (divers, shielded) so each wave feels different
-- As a player, I want a drone helper so I have extra firepower
-- As a player, I want the shield power-up to save me from one hit so I get a second chance
-- As a player, I want the bomb power-up to clear the screen when I'm overwhelmed
-- As a player, I want piercing laser shots so I can cut through dense formations
-- As a player, I want slow-motion to give me breathing room against tough waves
-- As a player, I want different wave formations so each level looks and plays differently
-- As a player, I want a starfield background so the game looks polished
-- As a player, I want screen shake and particle effects so the game feels impactful
-- As a player, I want the game to scale to any window size so I can play in any configuration
-- As a player, I want my high scores to track game mode so I can compare across modes
-- As a player, I want wave announcements so I know what formation I'm facing
-- As a player, I want fluid animations so the game feels smooth and polished
-- As a player, I want varied explosion effects so each destruction feels unique
-- As a player, I want bullet trail particles so shots feel dynamic
-- As a player, I want a pulsing animated title screen so the game feels alive before I start
-- As a player, I want a starfield background so the space setting feels immersive
-- As a player, I want screen flash on big events so explosions and power-ups feel impactful
-- As a player, I want confetti on level completion so clearing a wave feels celebratory
-- As a player, I want the boss to have a dramatic WARNING entrance so boss fights feel epic
-- As a player, I want the boss to have a multi-stage explosion on death so defeating it feels satisfying
-- As a player, I want power-ups to stack so I can combine abilities for overpowered moments
-- As a player, I want active power-up timers in the HUD so I know how long each lasts
-- As a player, I want the rapid fire power-up to also increase max bullets so the effect feels meaningful
-- As a player, I want triple shot combined with laser to pierce through entire formations
-- As a player, I want the drone to follow me and auto-fire so it feels like a real helper
-- As a player, I want the boss to change behavior at low health so the fight escalates
-- As a player, I want boss attack patterns to vary so each encounter requires different dodging
-- As a player, I want escort aliens during boss fights so the battlefield stays active
-- As a player, I want survival mode to seamlessly spawn the next wave so the action never stops
-- As a player, I want boss rush mode to have double power-up frequency so I can keep up with constant bosses
-- As a player, I want diver aliens to leave particle trails so I can track their swooping path
-- As a player, I want shielded aliens to have a visible energy bubble so I know they need two hits
-- As a player, I want the shield power-up bubble to pulse around my ship so I can see I'm protected
-- As a player, I want combo milestone announcements so I feel rewarded for kill streaks
-- As a player, I want the combo multiplier display to grow with higher combos so it feels escalating
-- As a player, I want aliens reaching my row to be an instant game over regardless of shield so there's real consequence
-- As a player, I want the canvas to maintain aspect ratio with letterboxing so the game looks correct at any size
-- As a player, I want 12 different formations so each level presents a new visual pattern
-- As a player, I want boss fights to drop 3 power-ups so defeating a boss feels highly rewarding
+### Game Modes
+- [x] As a player, I can choose between Classic, Survival, and Boss Rush modes so that I can play the style I enjoy
+- [x] As a player, I can play Classic mode with progressive levels and boss fights every 5 levels so that I have structured progression
+- [x] As a player, I can play Survival mode with endless waves and no level transitions so that the action never stops
+- [x] As a player, I can play Boss Rush mode with a boss every level and double power-up frequency so that I face constant epic fights
+
+### Wave Formations
+- [x] As a player, I can face 12 different wave formations (Classic Grid, V-Formation, Diamond Strike, Arrow Assault, Cross Attack, Zigzag, Fortress, Wings, Scatter, Phalanx, Diver Squadron, Shield Wall) so that each level looks and plays differently
+- [x] As a player, I can see wave formation names announced on entry so that I know what I'm facing
+
+### Power-ups
+- [x] As a player, I can collect 8 power-up types (Triple Shot, Rapid Fire, Shield, Laser, Slow-Mo, Extra Life, Bomb, Drone) so that gameplay stays fresh
+- [x] As a player, I can stack power-ups (e.g. Triple Shot + Rapid Fire + Laser simultaneously) so that I can combine abilities
+- [x] As a player, I can see active power-up timers as HUD icons in the top-right corner so that I know how long each lasts
+- [x] As a player, I can collect an already-active power-up to refresh its timer so that pickups are always useful
+- [x] As a player, I can use the Triple Shot for a 3-bullet spread pattern so that I cover more area
+- [x] As a player, I can use Rapid Fire for reduced cooldown and increased max bullets so that I output more damage
+- [x] As a player, I can use the Shield to block the next lethal hit so that I get a second chance
+- [x] As a player, I can use the Laser for piercing shots through all aliens so that I can cut through formations
+- [x] As a player, I can use Slow-Mo to reduce alien speed to 40% so that I get breathing room
+- [x] As a player, I can use the Bomb to instantly destroy all aliens on screen so that I can clear overwhelming waves
+- [x] As a player, I can use the Drone helper that follows me and auto-fires so that I have extra firepower
+
+### Boss Fights
+- [x] As a player, I can face bosses with a health bar and base HP that scales per boss number so that bosses grow tougher
+- [x] As a player, I can see bosses change behavior at low health (Phase 2 with red hull, faster attacks, Spiral attack) so that fights escalate
+- [x] As a player, I can see a dramatic WARNING entrance before boss fights so that they feel epic
+- [x] As a player, I can see multi-stage explosion cascades and confetti on boss defeat so that victory feels satisfying
+- [x] As a player, I can collect 3 power-up drops from defeated bosses so that boss kills are highly rewarding
+- [x] As a player, I can face escort aliens alongside bosses so that the battlefield stays active
+
+### Combo System
+- [x] As a player, I can build a combo counter by killing aliens within 1.5 seconds of each other so that rapid play is rewarded
+- [x] As a player, I can earn score multipliers (x1 through x5) based on combo length so that skilled play earns more points
+- [x] As a player, I can see combo milestone announcements at x2, x3, x4, x5 thresholds so that I feel rewarded for streaks
+
+### Special Enemies
+- [x] As a player, I can face diver aliens that swoop toward me in sine-wave patterns with particle trails so that I must dodge dynamic threats
+- [x] As a player, I can face shielded aliens with visible energy bubbles that require 2 hits to destroy so that I must adapt my strategy
+
+### Core Gameplay
+- [x] As a player, I can start with 3 lives and 4 destructible shield bunkers so that I have layered protection
+- [x] As a player, I can move left/right and shoot upward to destroy alien formations so that the gameplay is classic and intuitive
+- [x] As a player, I can see a UFO cross the top of the screen periodically with random point values so that I have bonus scoring opportunities
+- [x] As a player, I can experience aliens speeding up as fewer remain so that each wave builds tension
+- [x] As a player, I can lose instantly if aliens reach my row so that there is real consequence for letting them advance
+
+### Visual Effects
+- [x] As a player, I can see a scrolling starfield background with twinkling stars so that the space setting feels immersive
+- [x] As a player, I can see particle explosions and screen flash on big events so that impacts feel dramatic
+- [x] As a player, I can see screen shake on player death and boss defeat so that events feel impactful
+- [x] As a player, I can see bullet trail particles so that shots feel dynamic
+- [x] As a player, I can see confetti on level completion so that clearing a wave feels celebratory
+- [x] As a player, I can see a pulsing animated title screen so that the game feels alive before I start
+
+### Game Management
+- [x] As a player, I can see high scores persisted to localStorage (top 10, with mode and level/wave tracking) so that I can compare across modes
+- [x] As a player, I can pause/resume with P so that I can take breaks
+- [x] As a player, I can start a new game with F2 and select modes with 1/2/3 keys so that starting is quick
+- [x] As a player, I can see a status bar showing score, lives, and level/wave so that I always know my state
+- [x] As a player, I can see the canvas scale to any window size with proper aspect ratio and letterboxing so that the game looks correct at any size
+
+### Integration
+- [x] As a player, I can see a menu bar with Game (New Game, Pause, High Scores, Exit) and Help (Controls & Power-Ups, About) so that all actions are discoverable
+
+### Planned Features
+- [ ] As a player, I can hear sound effects and music so that the game has audio atmosphere
+- [ ] As a player, I can use touch/mobile controls so that the game works on touchscreen devices
+- [ ] As a player, I can create custom wave layouts with a wave editor so that I can design my own challenges
+- [ ] As a player, I can see an online leaderboard so that I can compete globally
+- [ ] As a player, I can earn achievements for milestones so that I have secondary objectives

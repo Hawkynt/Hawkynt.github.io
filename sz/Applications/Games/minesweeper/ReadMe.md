@@ -41,20 +41,20 @@ A faithful recreation of the classic Windows Minesweeper (winmine.exe) from Wind
 
 ### Core Gameplay
 
-- [x] As a user, I can left-click a cell to reveal it
-- [x] As a user, I can see the first click is always safe (mines are placed after the first click with a 3x3 safe zone)
-- [x] As a user, I can see numbers (1-8) indicating how many adjacent mines surround a revealed cell
-- [x] As a user, I can see empty cells auto-reveal recursively (flood fill) when they have no adjacent mines
-- [x] As a user, I can right-click a hidden cell to place a flag
-- [x] As a user, I can right-click a flagged cell to change it to a question mark (when marks are enabled)
-- [x] As a user, I can right-click a question mark cell to return it to hidden
-- [x] As a user, I can right-click a flagged cell to unflag it directly (when marks are disabled)
-- [x] As a user, I can chord (click both buttons or middle-click on a revealed number) to auto-reveal adjacent unflagged cells when the flag count matches the number
-- [x] As a user, I can see the game end in a loss when I reveal a mine, with the hit mine highlighted
-- [x] As a user, I can see all remaining mines revealed when I lose
-- [x] As a user, I can see incorrectly placed flags marked with an X when I lose
-- [x] As a user, I can win by revealing all non-mine cells
-- [x] As a user, I can see remaining mines auto-flagged when I win
+- [x] As a user, I can left-click a cell to reveal it so that I can uncover the minefield
+- [x] As a user, I can see the first click is always safe (mines are placed after the first click with a 3x3 safe zone) so that I never lose on the first move
+- [x] As a user, I can see numbers (1-8) indicating how many adjacent mines surround a revealed cell so that I can deduce mine locations
+- [x] As a user, I can see empty cells auto-reveal recursively (flood fill) when they have no adjacent mines so that large safe areas are cleared efficiently
+- [x] As a user, I can right-click a hidden cell to place a flag so that I can mark suspected mines
+- [x] As a user, I can right-click a flagged cell to change it to a question mark (when marks are enabled) so that I can mark uncertain cells
+- [x] As a user, I can right-click a question mark cell to return it to hidden so that I can cycle through cell states
+- [x] As a user, I can right-click a flagged cell to unflag it directly (when marks are disabled) so that I can quickly correct mistakes
+- [x] As a user, I can chord (click both buttons or middle-click on a revealed number) to auto-reveal adjacent unflagged cells when the flag count matches the number so that I can clear cells quickly
+- [x] As a user, I can see the game end in a loss when I reveal a mine, with the hit mine highlighted so that I know which mine I triggered
+- [x] As a user, I can see all remaining mines revealed when I lose so that I can see the full board
+- [x] As a user, I can see incorrectly placed flags marked with an X when I lose so that I can learn from my mistakes
+- [x] As a user, I can win by revealing all non-mine cells so that the game has a clear victory condition
+- [x] As a user, I can see remaining mines auto-flagged when I win so that the board appears complete
 
 ### Difficulty Levels
 
