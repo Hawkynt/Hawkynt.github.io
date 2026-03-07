@@ -84,19 +84,46 @@ Users select field types from a categorized list, configure the number of rows (
 
 ## User Stories
 
-- [x] As a developer, I want to generate fake person data so I can populate test databases
-- [x] As a developer, I want realistic email addresses and phone numbers so my test data looks authentic
-- [x] As a developer, I want valid-format credit card numbers (Luhn checksum) so I can test payment forms
-- [x] As a developer, I want UUID generation so I can create test data with unique identifiers
-- [x] As a developer, I want to choose how many rows to generate so I can create small or large datasets
-- [x] As a developer, I want JSON output so I can use mock data in API testing
-- [x] As a developer, I want CSV/TSV output so I can import mock data into spreadsheets
-- [x] As a developer, I want SQL INSERT statements so I can populate a database directly
-- [x] As a developer, I want XML output so I can test XML-based systems
-- [x] As a developer, I want to add and remove fields so I can customize the data schema
-- [x] As a developer, I want to reorder fields so the output matches my target schema
-- [x] As a developer, I want an auto-increment ID field so I can have sequential primary keys
-- [x] As a developer, I want to configure the SQL table name so the output matches my schema
-- [x] As a developer, I want to copy output to clipboard so I can paste it where needed
-- [x] As a developer, I want to export to a file so I can save large datasets
-- [x] As a developer, I want syntax highlighting so the output is easy to read
+### Data Generation
+- [x] As a developer, I can generate fake person data (first name, last name, full name, username, title) so that I can populate test databases
+- [x] As a developer, I can generate realistic contact data (email, phone, mobile) so that my test data looks authentic
+- [x] As a developer, I can generate address data (street, city, state, zip, country, full address) so that I can test location-based features
+- [x] As a developer, I can generate internet data (URL, domain, IPv4, IPv6, MAC address, user agent) so that I can test network-related features
+- [x] As a developer, I can generate business data (company name, job title, department, catch phrase) so that I can populate corporate test scenarios
+- [x] As a developer, I can generate finance data with valid-format credit card numbers (Luhn checksum), IBAN, BIC/SWIFT, currency, and price so that I can test payment forms
+- [x] As a developer, I can generate data types (UUID, boolean, integer, float, date, datetime, time, timestamp) so that I can create typed test data
+- [x] As a developer, I can generate text data (word, sentence, paragraph, Lorem Ipsum) so that I can fill content areas
+- [x] As a developer, I can generate color data (hex, RGB, HSL) so that I can test design-related features
+- [x] As a developer, I can generate file data (file name, extension, MIME type, file path) so that I can test file system features
+
+### Configuration
+- [x] As a developer, I can choose how many rows to generate (1 to 10,000) so that I can create small or large datasets
+- [x] As a developer, I can add and remove fields from a categorized dropdown so that I can customize the data schema
+- [x] As a developer, I can reorder fields (move up/down) so that the output matches my target schema
+- [x] As a developer, I can configure each field's label so that column names match my requirements
+- [x] As a developer, I can enable an auto-increment ID field so that I can have sequential primary keys
+- [x] As a developer, I can configure the SQL table name so that the output matches my database schema
+
+### Output Formats
+- [x] As a developer, I can generate JSON output so that I can use mock data in API testing
+- [x] As a developer, I can generate CSV output so that I can import mock data into spreadsheets
+- [x] As a developer, I can generate TSV output so that I can import data into tab-separated tools
+- [x] As a developer, I can generate SQL INSERT statements so that I can populate a database directly
+- [x] As a developer, I can generate XML output so that I can test XML-based systems
+
+### Export and Clipboard
+- [x] As a developer, I can copy output to clipboard so that I can paste it where needed
+- [x] As a developer, I can export to a file (via SZ VFS or browser download) so that I can save large datasets
+- [x] As a developer, I can see syntax highlighting on the output so that it is easy to read
+- [x] As a developer, I can see output size and row count in the status bar so that I know the result dimensions
+
+### User Interface
+- [x] As a developer, I can use a menu bar with File (New, Generate, Copy, Export, Exit), Edit (Select All), and Help (About) so that all operations are accessible
+- [x] As a developer, I can see an About dialog with application information so that I know the app version
+
+### Planned Features
+- [ ] As a developer, I can define custom field generators with a formula or pattern so that I can create domain-specific data
+- [ ] As a developer, I can save and load field configurations so that I can reuse schemas across sessions
+- [ ] As a developer, I can generate related data across tables (foreign keys) so that I can create relational test datasets
+- [ ] As a developer, I can set a seed for reproducible random data so that I can recreate the same dataset
+- [ ] As a developer, I can preview the first few rows before generating the full dataset so that I can verify the schema is correct
