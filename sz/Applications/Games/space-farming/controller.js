@@ -32,14 +32,19 @@
   const MAX_HIGH_SCORES = 5;
 
   /* ── Crop Definitions ── */
+  // weather affinity: 'any' = unaffected, 'solar' = boosted by solar flare,
+  //                   'cold-vulnerable' = damaged by meteor shower cold snap
   const CROPS = [
-    { name: 'Space Wheat',  icon: '🌾', color: '#da2', growTime: 8,  stages: 4, sellPrice: 10, seedCost: 5  },
-    { name: 'Star Fruit',   icon: '⭐', color: '#f80', growTime: 14, stages: 4, sellPrice: 25, seedCost: 12 },
-    { name: 'Nebula Berry',  icon: '🫐', color: '#a3f', growTime: 10, stages: 4, sellPrice: 15, seedCost: 8  },
-    { name: 'Lunar Lettuce', icon: '🥬', color: '#5d5', growTime: 6,  stages: 3, sellPrice: 8,  seedCost: 3  },
-    { name: 'Cosmic Corn',  icon: '🌽', color: '#ec3', growTime: 12, stages: 4, sellPrice: 20, seedCost: 10 },
-    { name: 'Crystal Melon', icon: '🍈', color: '#0da', growTime: 18, stages: 5, sellPrice: 40, seedCost: 20 },
-    { name: 'Solar Tomato',  icon: '🍅', color: '#e33', growTime: 9,  stages: 4, sellPrice: 12, seedCost: 6  }
+    { name: 'Space Wheat',   icon: '🌾', color: '#da2',  growTime: 8,  stages: 4, sellPrice: 10, seedCost: 5,  weatherAffinity: null },
+    { name: 'Star Fruit',    icon: '⭐', color: '#f80',  growTime: 14, stages: 4, sellPrice: 25, seedCost: 12, weatherAffinity: null },
+    { name: 'Nebula Berry',  icon: '🫐', color: '#a3f',  growTime: 10, stages: 4, sellPrice: 15, seedCost: 8,  weatherAffinity: null },
+    { name: 'Lunar Lettuce', icon: '🥬', color: '#5d5',  growTime: 6,  stages: 3, sellPrice: 8,  seedCost: 3,  weatherAffinity: null },
+    { name: 'Cosmic Corn',   icon: '🌽', color: '#ec3',  growTime: 12, stages: 4, sellPrice: 20, seedCost: 10, weatherAffinity: null },
+    { name: 'Crystal Melon', icon: '🍈', color: '#0da',  growTime: 18, stages: 5, sellPrice: 40, seedCost: 20, weatherAffinity: null },
+    { name: 'Solar Tomato',  icon: '🍅', color: '#e33',  growTime: 9,  stages: 4, sellPrice: 12, seedCost: 6,  weatherAffinity: null },
+    { name: 'Void Mushroom', icon: '🍄', color: '#728',  growTime: 11, stages: 4, sellPrice: 18, seedCost: 9,  weatherAffinity: 'any' },
+    { name: 'Plasma Pepper', icon: '🌶', color: '#f52',  growTime: 6,  stages: 3, sellPrice: 30, seedCost: 15, weatherAffinity: 'cold-vulnerable' },
+    { name: 'Astral Flower', icon: '🌸', color: '#8af',  growTime: 20, stages: 5, sellPrice: 55, seedCost: 28, weatherAffinity: 'solar' }
   ];
 
   /* ── Livestock Definitions ── */
@@ -62,6 +67,14 @@
   const TOOL_PLANT = 'plant';
   const TOOL_HARVEST = 'harvest';
   const TOOL_FEED = 'feed';
+
+  /* ── Upgrade Definitions ── */
+  const UPGRADES = [
+    { id: 'growSpeed',       name: 'Growth Boost',       icon: '🌱', maxLevel: 5, baseCost: 50,  costScale: 1.8, desc: 'Crops grow faster' },
+    { id: 'yieldMultiplier', name: 'Yield Multiplier',   icon: '📦', maxLevel: 5, baseCost: 80,  costScale: 2.0, desc: 'Harvest more per crop' },
+    { id: 'weatherResist',   name: 'Weather Shield',     icon: '🛡', maxLevel: 3, baseCost: 120, costScale: 2.5, desc: 'Reduce meteor damage chance' },
+    { id: 'autoHarvest',     name: 'Auto-Harvester',     icon: '🤖', maxLevel: 3, baseCost: 200, costScale: 3.0, desc: 'Auto-harvest mature crops' }
+  ];
 
   /* ══════════════════════════════════════════════════════════════════
      DOM
@@ -92,8 +105,10 @@
   let showTutorial = false;
   let tutorialPage = 0;
   const TUTORIAL_PAGES = [
-    { title: 'Welcome, Farmer!', lines: ['Grow crops and tend livestock on your', 'space station farm. Sell produce for credits!', '', 'Click a plot to plant, water, or harvest.', 'Press 1-7 to select crop type.', 'Press S to sell all produce.'] },
-    { title: 'Tips', lines: ['Buy livestock for passive income.', 'Watch for weather events: solar flares boost', 'growth, but meteor showers damage crops!', '', 'Upgrade your farm to grow faster and earn more.', 'Press H anytime to see this help again.'] }
+    { title: 'Welcome, Farmer!', lines: ['Grow crops and tend livestock on your', 'space station farm. Sell produce for credits!', '', 'Click a plot to plant, water, or harvest.', 'Press 1-0 to select crop type.', 'Press S to sell all produce.'] },
+    { title: 'Crops & Weather', lines: ['Void Mushroom grows in any weather.', 'Plasma Pepper is fast but cold-vulnerable.', 'Astral Flower benefits from solar flares.', '', 'Solar flares boost growth; meteor showers', 'damage unprotected crops!'] },
+    { title: 'Upgrades', lines: ['Press U or click the UPGRADES button', 'to open the upgrade shop.', '', 'Growth Boost, Yield Multiplier,', 'Weather Shield, Auto-Harvester.', 'Each has multiple levels. Invest wisely!'] },
+    { title: 'Tips', lines: ['Buy livestock for passive income.', 'Watch for weather visual effects:', 'golden glow = solar, red rain = meteors.', '', 'Drag-select multiple plots at once.', 'Press H anytime to see this help again.'] }
   ];
 
   let state = STATE_READY;
@@ -118,6 +133,17 @@
   let weatherInterval = 0;
   let weatherEffect = 0; // visual overlay alpha
   let overlayAlpha = 0;
+
+  // Weather visual particle arrays (persistent across frames)
+  let weatherParticles = [];
+
+  // Upgrade shop
+  let upgradeLevels = {}; // { upgradeId: level }
+  let showUpgradeShop = false;
+  let upgradeShopScroll = 0;
+
+  // Auto-harvest timer (ticks every second-ish based on upgrade level)
+  let autoHarvestTimer = 0;
 
   // High scores
   let highScores = [];
@@ -203,6 +229,52 @@
      GAME INIT / RESET
      ══════════════════════════════════════════════════════════════════ */
 
+  /* ── Upgrade Helpers ── */
+
+  function getUpgradeLevel(id) {
+    return upgradeLevels[id] || 0;
+  }
+
+  function getUpgradeCost(def, level) {
+    return Math.round(def.baseCost * Math.pow(def.costScale, level));
+  }
+
+  function getGrowthSpeedMultiplier() {
+    return 1 + getUpgradeLevel('growSpeed') * 0.25;
+  }
+
+  function getYieldMultiplier() {
+    const lvl = getUpgradeLevel('yieldMultiplier');
+    // level 1 = 1 extra 25% chance, level 5 = guaranteed double
+    return 1 + lvl * 0.2;
+  }
+
+  function getWeatherResistance() {
+    // 0..3 => 0%, 25%, 50%, 75% reduction in meteor damage chance
+    return getUpgradeLevel('weatherResist') * 0.25;
+  }
+
+  function getAutoHarvestInterval() {
+    const lvl = getUpgradeLevel('autoHarvest');
+    if (lvl <= 0) return 0; // disabled
+    // level 1 = every 5s, level 2 = every 3s, level 3 = every 1.5s
+    return [0, 5, 3, 1.5][lvl] || 0;
+  }
+
+  function purchaseUpgrade(upgradeIndex) {
+    if (state !== STATE_PLAYING) return;
+    const def = UPGRADES[upgradeIndex];
+    const curLevel = getUpgradeLevel(def.id);
+    if (curLevel >= def.maxLevel) return;
+    const cost = getUpgradeCost(def, curLevel);
+    if (credits < cost) return;
+
+    credits -= cost;
+    upgradeLevels[def.id] = curLevel + 1;
+    floatingText.add(canvasW / 2, canvasH / 2 - 30, `${def.icon} ${def.name} Lv${curLevel + 1}!`, { color: '#0ff', font: 'bold 14px sans-serif' });
+    particles.confetti(canvasW / 2, canvasH / 2, 15, { speed: 4 });
+  }
+
   function resetGame() {
     credits = 100;
     selectedCropIndex = 0;
@@ -210,6 +282,12 @@
     gameTime = 0;
     dayCount = 1;
     inventory = {};
+
+    // Reset upgrades
+    upgradeLevels = {};
+    showUpgradeShop = false;
+    upgradeShopScroll = 0;
+    autoHarvestTimer = 0;
 
     // Initialize empty farm grid
     farmGrid = [];
@@ -228,6 +306,7 @@
     weatherTimer = 0;
     weatherInterval = WEATHER_MIN_INTERVAL + Math.random() * (WEATHER_MAX_INTERVAL - WEATHER_MIN_INTERVAL);
     overlayAlpha = 0;
+    weatherParticles = [];
 
     state = STATE_PLAYING;
     updateWindowTitle();
@@ -251,10 +330,24 @@
       plantAnim: 1.0 // plantAnim scale bounce
     };
 
-    // Planting animation sparkle
+    // Planting animation: seed sparkle + water droplet splash
     const tx = GRID_OFFSET_X + col * TILE_SIZE + TILE_SIZE / 2;
     const ty = GRID_OFFSET_Y + row * TILE_SIZE + TILE_SIZE / 2;
     particles.sparkle(tx, ty, 6, { color: crop.color, speed: 2 });
+    // Water droplet splash effect
+    for (let i = 0; i < 5; ++i) {
+      const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 0.6;
+      const v = 1.5 + Math.random() * 2;
+      particles.trail(tx + (Math.random() - 0.5) * 10, ty, {
+        vx: Math.cos(angle) * v,
+        vy: Math.sin(angle) * v - 1,
+        color: '#4af',
+        life: 0.4 + Math.random() * 0.3,
+        size: 2 + Math.random() * 2,
+        gravity: 0.15,
+        decay: 0.03
+      });
+    }
     floatingText.add(tx, ty - 10, `-${crop.seedCost}cr`, { color: '#f88', font: 'bold 12px sans-serif' });
   }
 
@@ -267,17 +360,38 @@
     const maxStage = crop.stages - 1;
     if (cell.growthStage < maxStage) return; // not mature yet
 
-    // Harvest particle burst
     const tx = GRID_OFFSET_X + col * TILE_SIZE + TILE_SIZE / 2;
     const ty = GRID_OFFSET_Y + row * TILE_SIZE + TILE_SIZE / 2;
-    particles.burst(tx, ty, 12, { color: crop.color, speed: 3, life: 0.6 });
 
-    // Add to inventory
+    // Enhanced harvest: golden burst + crop-colored sparkle ring
+    particles.burst(tx, ty, 10, { color: '#fd0', speed: 3.5, life: 0.7, gravity: 0.05 });
+    particles.burst(tx, ty, 6, { color: crop.color, speed: 2, life: 0.5 });
+    // Rising golden sparkles
+    for (let i = 0; i < 4; ++i)
+      particles.trail(tx + (Math.random() - 0.5) * 16, ty, {
+        vx: (Math.random() - 0.5) * 1,
+        vy: -1.5 - Math.random() * 2,
+        color: '#ff0',
+        size: 2 + Math.random(),
+        life: 0.5 + Math.random() * 0.3,
+        decay: 0.03,
+        shape: 'star'
+      });
+
+    // Yield multiplier: chance for bonus crops
+    const yieldMul = getYieldMultiplier();
+    let harvestCount = 1;
+    const bonusChance = yieldMul - 1; // 0..1
+    if (bonusChance > 0 && Math.random() < bonusChance)
+      ++harvestCount;
+
     if (!inventory[crop.name])
       inventory[crop.name] = 0;
-    ++inventory[crop.name];
+    inventory[crop.name] += harvestCount;
 
-    floatingText.add(tx, ty - 10, `+1 ${crop.name}`, { color: '#0f0', font: 'bold 12px sans-serif' });
+    const label = harvestCount > 1 ? `+${harvestCount} ${crop.name}!` : `+1 ${crop.name}`;
+    const labelColor = harvestCount > 1 ? '#ff0' : '#0f0';
+    floatingText.add(tx, ty - 10, label, { color: labelColor, font: 'bold 12px sans-serif' });
 
     farmGrid[row][col] = null; // clear tile
   }
@@ -289,10 +403,13 @@
   function updateCrops(dt) {
     if (state !== STATE_PLAYING) return;
 
-    // Growth multiplier from weather
-    let growthBoost = 1;
+    // Base growth multiplier from weather
+    let weatherGrowthBoost = 1;
     if (weatherType === WEATHER_SOLAR_FLARE)
-      growthBoost = 2; // solarFlare boost growth
+      weatherGrowthBoost = 2; // solarFlare boosts growth
+
+    // Upgrade growth speed multiplier
+    const upgradeGrowthMul = getGrowthSpeedMultiplier();
 
     for (let r = 0; r < GRID_ROWS; ++r) {
       for (let c = 0; c < GRID_COLS; ++c) {
@@ -302,17 +419,36 @@
         const crop = CROPS[cell.cropIndex];
         const maxStage = crop.stages - 1;
 
+        // Per-crop weather affinity modifier
+        let cropWeatherMul = weatherGrowthBoost;
+        if (crop.weatherAffinity === 'any')
+          cropWeatherMul = Math.max(1, weatherGrowthBoost); // never penalized
+        else if (crop.weatherAffinity === 'solar' && weatherType === WEATHER_SOLAR_FLARE)
+          cropWeatherMul = 3; // extra solar bonus
+        else if (crop.weatherAffinity === 'cold-vulnerable' && weatherType === WEATHER_METEOR_SHOWER)
+          cropWeatherMul = 0.3; // growth slows in cold
+
         // Advance growth progress
-        cell.growthProgress += (dt / crop.growTime) * growthBoost;
+        cell.growthProgress += (dt / crop.growTime) * cropWeatherMul * upgradeGrowthMul;
 
         // Check stage advancement
         const newStage = Math.min(maxStage, Math.floor(cell.growthProgress * crop.stages));
         if (newStage > cell.growthStage) {
           cell.growthStage = newStage;
-          // Growth sparkle effect on stage change
+          // Enhanced growth particles: green sparkles rising
           const tx = GRID_OFFSET_X + c * TILE_SIZE + TILE_SIZE / 2;
           const ty = GRID_OFFSET_Y + r * TILE_SIZE + TILE_SIZE / 2;
           particles.sparkle(tx, ty, 4, { color: crop.color, speed: 1.5 });
+          for (let p = 0; p < 3; ++p)
+            particles.trail(tx + (Math.random() - 0.5) * 12, ty + 5, {
+              vx: (Math.random() - 0.5) * 0.5,
+              vy: -1 - Math.random() * 1.5,
+              color: '#4f4',
+              size: 1.5 + Math.random(),
+              life: 0.4 + Math.random() * 0.3,
+              decay: 0.03,
+              shape: 'star'
+            });
         }
 
         // Plant animation decay
@@ -320,6 +456,30 @@
           cell.plantAnim = Math.max(0, cell.plantAnim - dt * 3);
       }
     }
+
+    // Auto-harvest upgrade
+    const autoInterval = getAutoHarvestInterval();
+    if (autoInterval > 0) {
+      autoHarvestTimer += dt;
+      if (autoHarvestTimer >= autoInterval) {
+        autoHarvestTimer -= autoInterval;
+        autoHarvestOneCrop();
+      }
+    }
+  }
+
+  /** Auto-harvest the first mature crop found (one per tick). */
+  function autoHarvestOneCrop() {
+    for (let r = 0; r < GRID_ROWS; ++r)
+      for (let c = 0; c < GRID_COLS; ++c) {
+        const cell = farmGrid[r][c];
+        if (!cell) continue;
+        const crop = CROPS[cell.cropIndex];
+        if (cell.growthStage >= crop.stages - 1) {
+          harvestCrop(r, c);
+          return;
+        }
+      }
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -440,16 +600,54 @@
   }
 
   function triggerWeather() {
+    // Spawn persistent weather particles
+    weatherParticles = [];
+
     if (Math.random() < 0.5) {
       weatherType = WEATHER_SOLAR_FLARE;
-      floatingText.add(canvasW / 2, 30, 'SOLAR FLARE — Growth Boost!', { color: '#ff0', font: 'bold 14px sans-serif' });
+      floatingText.add(canvasW / 2, 30, 'SOLAR FLARE -- Growth Boost!', { color: '#ff0', font: 'bold 14px sans-serif' });
+      // Seed solar glow particles
+      for (let i = 0; i < 25; ++i)
+        weatherParticles.push({
+          x: Math.random() * canvasW,
+          y: Math.random() * canvasH,
+          size: 3 + Math.random() * 6,
+          speed: 0.3 + Math.random() * 0.5,
+          phase: Math.random() * TWO_PI,
+          drift: (Math.random() - 0.5) * 0.3
+        });
     } else {
       weatherType = WEATHER_METEOR_SHOWER;
-      floatingText.add(canvasW / 2, 30, 'METEOR SHOWER — Crop Damage!', { color: '#f44', font: 'bold 14px sans-serif' });
-      // meteorShower damage crops — destroy random crops
+      floatingText.add(canvasW / 2, 30, 'METEOR SHOWER -- Crop Damage!', { color: '#f44', font: 'bold 14px sans-serif' });
+
+      // Seed meteor rain particles
+      for (let i = 0; i < 40; ++i)
+        weatherParticles.push({
+          x: Math.random() * canvasW,
+          y: -Math.random() * canvasH,
+          vx: -1 - Math.random() * 2,
+          vy: 3 + Math.random() * 5,
+          size: 2 + Math.random() * 3,
+          trail: 8 + Math.random() * 12
+        });
+
+      // Meteor damage with weather resistance and affinity
+      const resist = getWeatherResistance();
+      const baseDamageChance = 0.2;
       for (let r = 0; r < GRID_ROWS; ++r) {
         for (let c = 0; c < GRID_COLS; ++c) {
-          if (farmGrid[r][c] && Math.random() < 0.2) {
+          const cell = farmGrid[r][c];
+          if (!cell) continue;
+          const crop = CROPS[cell.cropIndex];
+          // 'any' affinity crops are immune to meteor destruction
+          if (crop.weatherAffinity === 'any') continue;
+          // cold-vulnerable crops have higher damage chance
+          let damageChance = baseDamageChance;
+          if (crop.weatherAffinity === 'cold-vulnerable')
+            damageChance = 0.4;
+          // Apply weather resistance upgrade
+          damageChance *= (1 - resist);
+          if (Math.random() < damageChance) {
             const tx = GRID_OFFSET_X + c * TILE_SIZE + TILE_SIZE / 2;
             const ty = GRID_OFFSET_Y + r * TILE_SIZE + TILE_SIZE / 2;
             particles.burst(tx, ty, 8, { color: '#f44', speed: 3, life: 0.4 });
@@ -488,6 +686,7 @@
     updateCrops(dt);
     updateLivestock(dt);
     updateWeather(dt);
+    updateWeatherParticles();
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -517,6 +716,38 @@
           const progress = Math.min(1, cell.growthProgress);
           ctx.fillStyle = mature ? '#0f0' : crop.color;
           ctx.fillRect(x + 3, y + TILE_SIZE - 6, (TILE_SIZE - 6) * progress, 3);
+
+          // Special crop background effects
+          if (crop.weatherAffinity === 'any') {
+            // Void Mushroom: dark purple ambient glow
+            ctx.fillStyle = `rgba(90,30,120,${0.15 + 0.05 * Math.sin(gameTime * 2 + r * 3 + c)})`;
+            ctx.fillRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+          } else if (crop.weatherAffinity === 'cold-vulnerable') {
+            // Plasma Pepper: red/orange pulsing glow
+            const pulse = 0.1 + 0.08 * Math.sin(gameTime * 4 + c * 2);
+            ctx.fillStyle = `rgba(255,80,20,${pulse})`;
+            ctx.fillRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+            ctx.shadowBlur = 6;
+            ctx.shadowColor = '#f52';
+            ctx.fillStyle = 'transparent';
+            ctx.fillRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+            ctx.shadowBlur = 0;
+          } else if (crop.weatherAffinity === 'solar') {
+            // Astral Flower: blue/white sparkle shimmer
+            const shimmer = 0.08 + 0.06 * Math.sin(gameTime * 3 + r + c * 5);
+            ctx.fillStyle = `rgba(140,180,255,${shimmer})`;
+            ctx.fillRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+            // Tiny sparkle dots
+            const sparkleT = gameTime * 5 + r * 7 + c * 11;
+            const sx = x + TILE_SIZE / 2 + Math.sin(sparkleT) * 14;
+            const sy = y + TILE_SIZE / 2 + Math.cos(sparkleT * 1.3) * 10;
+            ctx.globalAlpha = 0.5 + 0.4 * Math.sin(sparkleT * 2);
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(sx, sy, 1.2, 0, TWO_PI);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+          }
 
           // Crop icon with plantAnim scale bounce
           const scale = cell.plantAnim > 0 ? 1 + Math.sin(cell.plantAnim * Math.PI) * 0.4 : 1;
@@ -571,38 +802,100 @@
     }
   }
 
-  function drawWeatherOverlay() {
-    if (weatherType === WEATHER_NONE) return;
+  function updateWeatherParticles() {
+    if (weatherType === WEATHER_NONE) {
+      weatherParticles = [];
+      return;
+    }
 
-    if (weatherType === WEATHER_SOLAR_FLARE) {
-      ctx.fillStyle = `rgba(255,200,0,${overlayAlpha * 0.5})`;
-      ctx.fillRect(0, 0, canvasW, canvasH);
-      // Sun rays
-      for (let i = 0; i < 5; ++i) {
-        const rx = Math.random() * canvasW;
-        const ry = Math.random() * canvasH;
-        ctx.beginPath();
-        ctx.arc(rx, ry, 2, 0, TWO_PI);
-        ctx.fillStyle = 'rgba(255,255,100,0.4)';
-        ctx.fill();
-      }
-    } else if (weatherType === WEATHER_METEOR_SHOWER) {
-      ctx.fillStyle = `rgba(255,50,50,${overlayAlpha * 0.3})`;
-      ctx.fillRect(0, 0, canvasW, canvasH);
-      // Falling meteors
-      for (let i = 0; i < 3; ++i) {
-        const mx = Math.random() * canvasW;
-        const my = Math.random() * canvasH;
-        ctx.beginPath();
-        ctx.arc(mx, my, 3, 0, TWO_PI);
-        ctx.fillStyle = '#f80';
-        ctx.shadowBlur = 6;
-        ctx.shadowColor = '#f80';
-        ctx.fill();
-        ctx.shadowBlur = 0;
+    for (let i = 0; i < weatherParticles.length; ++i) {
+      const wp = weatherParticles[i];
+      if (weatherType === WEATHER_SOLAR_FLARE) {
+        wp.phase += 0.02;
+        wp.x += wp.drift;
+        wp.y -= wp.speed * 0.3;
+        if (wp.y < -10) { wp.y = canvasH + 10; wp.x = Math.random() * canvasW; }
+        if (wp.x < -10) wp.x = canvasW + 10;
+        if (wp.x > canvasW + 10) wp.x = -10;
+      } else if (weatherType === WEATHER_METEOR_SHOWER) {
+        wp.x += wp.vx;
+        wp.y += wp.vy;
+        if (wp.y > canvasH + 20 || wp.x < -30) {
+          wp.x = Math.random() * canvasW + 100;
+          wp.y = -Math.random() * 60;
+        }
       }
     }
   }
+
+  function drawWeatherOverlay() {
+    if (weatherType === WEATHER_NONE) return;
+
+    ctx.save();
+
+    if (weatherType === WEATHER_SOLAR_FLARE) {
+      // Tinted golden overlay
+      ctx.fillStyle = `rgba(255,200,0,${overlayAlpha * 0.4})`;
+      ctx.fillRect(0, 0, canvasW, canvasH);
+
+      // Radial solar glow from top-center
+      const grad = ctx.createRadialGradient(canvasW / 2, -30, 10, canvasW / 2, -30, canvasH * 0.9);
+      grad.addColorStop(0, `rgba(255,240,100,${overlayAlpha * 0.6})`);
+      grad.addColorStop(0.4, `rgba(255,200,50,${overlayAlpha * 0.2})`);
+      grad.addColorStop(1, 'rgba(255,200,50,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, canvasW, canvasH);
+
+      // Floating golden orbs
+      for (let i = 0; i < weatherParticles.length; ++i) {
+        const wp = weatherParticles[i];
+        const alpha = 0.25 + 0.25 * Math.sin(wp.phase);
+        ctx.globalAlpha = alpha;
+        ctx.shadowBlur = wp.size * 2;
+        ctx.shadowColor = '#ffa';
+        ctx.fillStyle = '#ffe866';
+        ctx.beginPath();
+        ctx.arc(wp.x, wp.y, wp.size, 0, TWO_PI);
+        ctx.fill();
+      }
+    } else if (weatherType === WEATHER_METEOR_SHOWER) {
+      // Tinted reddish overlay
+      ctx.fillStyle = `rgba(180,30,20,${overlayAlpha * 0.25})`;
+      ctx.fillRect(0, 0, canvasW, canvasH);
+
+      // Meteor rain particles with trails
+      for (let i = 0; i < weatherParticles.length; ++i) {
+        const wp = weatherParticles[i];
+        ctx.globalAlpha = 0.7;
+        ctx.strokeStyle = '#f80';
+        ctx.lineWidth = wp.size * 0.7;
+        ctx.shadowBlur = 4;
+        ctx.shadowColor = '#f60';
+        ctx.beginPath();
+        ctx.moveTo(wp.x, wp.y);
+        ctx.lineTo(wp.x - wp.vx * (wp.trail / wp.vy) * 0.6, wp.y - wp.trail);
+        ctx.stroke();
+
+        // Bright head
+        ctx.globalAlpha = 0.9;
+        ctx.fillStyle = '#fe8';
+        ctx.shadowBlur = 6;
+        ctx.shadowColor = '#f80';
+        ctx.beginPath();
+        ctx.arc(wp.x, wp.y, wp.size * 0.5, 0, TWO_PI);
+        ctx.fill();
+      }
+    }
+
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  /* ── Crop bar layout ── */
+  const CROP_BTN_W = 48;
+  const CROP_BTN_GAP = 4;
+  const CROP_BAR_X = 8;
 
   function drawUI() {
     // Crop selection bar at bottom
@@ -611,33 +904,49 @@
     ctx.fillRect(0, barY, canvasW, 45);
 
     for (let i = 0; i < CROPS.length; ++i) {
-      const bx = 10 + i * 60;
+      const bx = CROP_BAR_X + i * (CROP_BTN_W + CROP_BTN_GAP);
       const selected = i === selectedCropIndex && selectedTool === TOOL_PLANT;
       ctx.fillStyle = selected ? '#444' : '#222';
-      ctx.fillRect(bx, barY + 4, 52, 37);
+      ctx.fillRect(bx, barY + 4, CROP_BTN_W, 37);
       if (selected) {
         ctx.strokeStyle = '#0f0';
         ctx.lineWidth = 2;
-        ctx.strokeRect(bx, barY + 4, 52, 37);
+        ctx.strokeRect(bx, barY + 4, CROP_BTN_W, 37);
       }
-      ctx.font = '16px sans-serif';
+      ctx.font = '14px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(CROPS[i].icon, bx + 16, barY + 26);
+      ctx.fillText(CROPS[i].icon, bx + 14, barY + 26);
       ctx.fillStyle = credits >= CROPS[i].seedCost ? '#aaa' : '#f44';
-      ctx.font = '9px sans-serif';
-      ctx.fillText(`${CROPS[i].seedCost}cr`, bx + 40, barY + 26);
+      ctx.font = '8px sans-serif';
+      ctx.fillText(`${CROPS[i].seedCost}cr`, bx + CROP_BTN_W - 10, barY + 26);
     }
 
     // Sell button
+    const sellBtnX = canvasW - 145;
     ctx.fillStyle = '#040';
-    ctx.fillRect(canvasW - 75, barY + 4, 65, 37);
+    ctx.fillRect(sellBtnX, barY + 4, 60, 37);
     ctx.strokeStyle = '#0a0';
     ctx.lineWidth = 1;
-    ctx.strokeRect(canvasW - 75, barY + 4, 65, 37);
+    ctx.strokeRect(sellBtnX, barY + 4, 60, 37);
     ctx.fillStyle = '#0f0';
-    ctx.font = 'bold 11px sans-serif';
+    ctx.font = 'bold 10px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('SELL ALL', canvasW - 42, barY + 26);
+    ctx.fillText('SELL ALL', sellBtnX + 30, barY + 26);
+
+    // Upgrades button
+    const upgBtnX = canvasW - 78;
+    ctx.fillStyle = showUpgradeShop ? '#333' : '#220';
+    ctx.fillRect(upgBtnX, barY + 4, 70, 37);
+    ctx.strokeStyle = '#cc0';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(upgBtnX, barY + 4, 70, 37);
+    ctx.fillStyle = '#ff0';
+    ctx.font = 'bold 10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('UPGRADES', upgBtnX + 35, barY + 20);
+    ctx.fillStyle = '#aa0';
+    ctx.font = '8px sans-serif';
+    ctx.fillText('(U)', upgBtnX + 35, barY + 34);
 
     // Livestock buy area
     ctx.fillStyle = '#aaa';
@@ -651,6 +960,91 @@
       ctx.fillStyle = '#bbb';
       ctx.fillText(`${LIVESTOCK[i].icon} ${LIVESTOCK[i].cost}cr`, 510, ly + 10);
     }
+  }
+
+  function drawUpgradeShop() {
+    if (!showUpgradeShop || state !== STATE_PLAYING) return;
+
+    const panelW = 280;
+    const panelH = 30 + UPGRADES.length * 52 + 10;
+    const px = Math.round((canvasW - panelW) / 2);
+    const py = Math.round((canvasH - panelH) / 2) - 20;
+
+    // Panel background
+    ctx.fillStyle = 'rgba(5,10,25,0.94)';
+    ctx.fillRect(px, py, panelW, panelH);
+    ctx.strokeStyle = '#cc0';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(px, py, panelW, panelH);
+
+    // Title
+    ctx.fillStyle = '#ff0';
+    ctx.font = 'bold 16px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Upgrade Shop', px + panelW / 2, py + 22);
+
+    // Upgrade rows
+    for (let i = 0; i < UPGRADES.length; ++i) {
+      const def = UPGRADES[i];
+      const curLevel = getUpgradeLevel(def.id);
+      const maxed = curLevel >= def.maxLevel;
+      const cost = maxed ? 0 : getUpgradeCost(def, curLevel);
+      const canAfford = credits >= cost;
+      const ry = py + 35 + i * 52;
+
+      // Row background
+      ctx.fillStyle = 'rgba(20,30,40,0.8)';
+      ctx.fillRect(px + 6, ry, panelW - 12, 46);
+
+      // Icon + name
+      ctx.font = '13px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#fff';
+      ctx.fillText(`${def.icon} ${def.name}`, px + 12, ry + 16);
+
+      // Level pips
+      ctx.font = '9px sans-serif';
+      ctx.fillStyle = '#888';
+      let pipStr = '';
+      for (let l = 0; l < def.maxLevel; ++l)
+        pipStr += l < curLevel ? '■ ' : '□ ';
+      ctx.fillText(pipStr + `Lv${curLevel}/${def.maxLevel}`, px + 12, ry + 30);
+
+      // Description
+      ctx.fillStyle = '#777';
+      ctx.font = '9px sans-serif';
+      ctx.fillText(def.desc, px + 12, ry + 42);
+
+      // Buy button area
+      const btnX = px + panelW - 66;
+      const btnY = ry + 6;
+      const btnW = 54;
+      const btnH = 22;
+      if (maxed) {
+        ctx.fillStyle = '#060';
+        ctx.fillRect(btnX, btnY, btnW, btnH);
+        ctx.fillStyle = '#0a0';
+        ctx.font = 'bold 10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('MAX', btnX + btnW / 2, btnY + 15);
+      } else {
+        ctx.fillStyle = canAfford ? '#220' : '#200';
+        ctx.fillRect(btnX, btnY, btnW, btnH);
+        ctx.strokeStyle = canAfford ? '#cc0' : '#a44';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(btnX, btnY, btnW, btnH);
+        ctx.fillStyle = canAfford ? '#ff0' : '#f66';
+        ctx.font = 'bold 9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${cost}cr`, btnX + btnW / 2, btnY + 15);
+      }
+    }
+
+    // Close hint
+    ctx.fillStyle = '#666';
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Press U or Esc to close', px + panelW / 2, py + panelH - 2);
   }
 
   function drawDragSelection() {
@@ -749,6 +1143,7 @@
       drawWeatherOverlay();
       drawUI();
       drawDragSelection();
+      drawUpgradeShop();
     }
 
     drawHUD();
@@ -802,8 +1197,11 @@
     if (mature)
       lines.push({ text: 'Ready to harvest! (click)', color: '#0f0' });
     else
-      lines.push({ text: 'Stage ' + (cell.growthStage + 1) + '/' + crop.stages + ' — ' + progress + '% grown', color: '#aaa' });
+      lines.push({ text: 'Stage ' + (cell.growthStage + 1) + '/' + crop.stages + ' -- ' + progress + '% grown', color: '#aaa' });
     lines.push({ text: 'Sell price: ' + crop.sellPrice + ' cr', color: '#da2' });
+    const yieldMul = getYieldMultiplier();
+    if (yieldMul > 1)
+      lines.push({ text: 'Yield bonus: ' + Math.round((yieldMul - 1) * 100) + '% chance double', color: '#ff0' });
     return lines;
   }
 
@@ -817,12 +1215,19 @@
 
   function buildCropBarTooltip(cropIndex) {
     const crop = CROPS[cropIndex];
-    return [
+    const lines = [
       { text: crop.icon + ' ' + crop.name, color: crop.color, bold: true },
       { text: 'Seed cost: ' + crop.seedCost + ' cr', color: '#aaa' },
       { text: 'Sell price: ' + crop.sellPrice + ' cr', color: '#da2' },
       { text: 'Grow time: ' + crop.growTime + 's — ' + crop.stages + ' stages', color: '#8cf' }
     ];
+    if (crop.weatherAffinity === 'any')
+      lines.push({ text: 'Grows in any weather, meteor-immune', color: '#a7f' });
+    else if (crop.weatherAffinity === 'solar')
+      lines.push({ text: 'Boosted by solar flares (3x growth)', color: '#8af' });
+    else if (crop.weatherAffinity === 'cold-vulnerable')
+      lines.push({ text: 'Vulnerable to meteor showers!', color: '#f88' });
+    return lines;
   }
 
   function buildSellButtonTooltip() {
@@ -918,14 +1323,25 @@
     // Check crop selection bar
     const barY = canvasH - 45;
     if (my >= barY && my <= canvasH) {
+      // Upgrades button
+      const upgBtnX = canvasW - 78;
+      if (mx >= upgBtnX && mx <= upgBtnX + 70) {
+        tooltipLines = [
+          { text: 'Upgrade Shop', color: '#ff0', bold: true },
+          { text: 'Buy permanent farm upgrades', color: '#aaa' },
+          { text: 'Shortcut: U', color: '#666' }
+        ];
+        return;
+      }
       // Sell button
-      if (mx >= canvasW - 75 && mx <= canvasW - 10) {
+      const sellBtnX = canvasW - 145;
+      if (mx >= sellBtnX && mx <= sellBtnX + 60) {
         tooltipLines = buildSellButtonTooltip();
         return;
       }
       // Crop buttons
-      const cropIdx = Math.floor((mx - 10) / 60);
-      if (cropIdx >= 0 && cropIdx < CROPS.length && mx >= 10 && mx <= 10 + CROPS.length * 60) {
+      const cropIdx = Math.floor((mx - CROP_BAR_X) / (CROP_BTN_W + CROP_BTN_GAP));
+      if (cropIdx >= 0 && cropIdx < CROPS.length && mx >= CROP_BAR_X && mx <= CROP_BAR_X + CROPS.length * (CROP_BTN_W + CROP_BTN_GAP)) {
         tooltipLines = buildCropBarTooltip(cropIdx);
         return;
       }
@@ -1102,6 +1518,10 @@
 
     if (e.code === 'Escape') {
       e.preventDefault();
+      if (showUpgradeShop) {
+        showUpgradeShop = false;
+        return;
+      }
       if (state === STATE_PLAYING)
         state = STATE_PAUSED;
       else if (state === STATE_PAUSED)
@@ -1109,15 +1529,23 @@
       return;
     }
 
-    // Number keys 1-7 to select crop
+    // Number keys 1-9, 0 to select crop
     if (state === STATE_PLAYING) {
       const num = parseInt(e.key);
-      if (num >= 1 && num <= CROPS.length) {
+      // 0 maps to crop index 9 (10th crop)
+      if (e.key === '0' && CROPS.length >= 10) {
+        selectedCropIndex = 9;
+        selectedTool = TOOL_PLANT;
+      } else if (num >= 1 && num <= CROPS.length) {
         selectedCropIndex = num - 1;
         selectedTool = TOOL_PLANT;
       }
       if (e.code === 'KeyS')
         sellAllProduce();
+      if (e.code === 'KeyU') {
+        showUpgradeShop = !showUpgradeShop;
+        return;
+      }
     }
   });
 
@@ -1192,6 +1620,30 @@
 
     const { x: mx, y: my } = pointerToCanvas(e);
 
+    // Check upgrade shop clicks first (it overlays everything)
+    if (showUpgradeShop) {
+      const panelW = 280;
+      const panelH = 30 + UPGRADES.length * 52 + 10;
+      const px = Math.round((canvasW - panelW) / 2);
+      const py = Math.round((canvasH - panelH) / 2) - 20;
+
+      if (mx >= px && mx <= px + panelW && my >= py && my <= py + panelH) {
+        // Check buy button clicks
+        for (let i = 0; i < UPGRADES.length; ++i) {
+          const btnX = px + panelW - 66;
+          const btnY = py + 35 + i * 52 + 6;
+          if (mx >= btnX && mx <= btnX + 54 && my >= btnY && my <= btnY + 22) {
+            purchaseUpgrade(i);
+            return;
+          }
+        }
+        return; // click inside panel but not on a button
+      }
+      // Click outside panel closes it
+      showUpgradeShop = false;
+      return;
+    }
+
     // Check if click is inside farm grid -- start drag
     const { col, row } = canvasToGrid(mx, my);
     if (isInsideGrid(col, row)) {
@@ -1205,17 +1657,27 @@
       return;
     }
 
-    // Check sell button click
+    // Check bottom bar buttons
     const barY = canvasH - 45;
-    if (mx >= canvasW - 75 && mx <= canvasW - 10 && my >= barY + 4 && my <= barY + 41) {
+
+    // Upgrades button
+    const upgBtnX = canvasW - 78;
+    if (mx >= upgBtnX && mx <= upgBtnX + 70 && my >= barY + 4 && my <= barY + 41) {
+      showUpgradeShop = !showUpgradeShop;
+      return;
+    }
+
+    // Sell button
+    const sellBtnX = canvasW - 145;
+    if (mx >= sellBtnX && mx <= sellBtnX + 60 && my >= barY + 4 && my <= barY + 41) {
       sellAllProduce();
       return;
     }
 
     // Check crop selection bar
     if (my >= barY && my <= canvasH) {
-      const cropIdx = Math.floor((mx - 10) / 60);
-      if (cropIdx >= 0 && cropIdx < CROPS.length) {
+      const cropIdx = Math.floor((mx - CROP_BAR_X) / (CROP_BTN_W + CROP_BTN_GAP));
+      if (cropIdx >= 0 && cropIdx < CROPS.length && mx >= CROP_BAR_X && mx <= CROP_BAR_X + CROPS.length * (CROP_BTN_W + CROP_BTN_GAP)) {
         selectedCropIndex = cropIdx;
         selectedTool = TOOL_PLANT;
       }
