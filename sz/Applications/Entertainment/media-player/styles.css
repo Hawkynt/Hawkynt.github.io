@@ -41,10 +41,6 @@ body {
   min-height: 120px;
 }
 
-.display-area.compact {
-  display: none;
-}
-
 .display-area canvas {
   position: absolute;
   top: 0;
@@ -360,6 +356,24 @@ body {
 }
 
 /* ---- Winamp compact mode ---- */
+
+/* When compact mode is active with a skin, hide everything except the winamp wrapper */
+body.winamp-compact .menu-bar,
+body.winamp-compact .main-content,
+body.winamp-compact .status-bar {
+  display: none !important;
+}
+
+body.winamp-compact {
+  background: #0a0a14;
+}
+
+body.winamp-compact .winamp-wrapper {
+  flex: 1;
+  border-bottom: none;
+  padding: 0;
+}
+
 .winamp-wrapper {
   display: flex;
   align-items: center;
@@ -381,6 +395,53 @@ body {
   border: 1px solid #444;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
   flex-shrink: 0;
+}
+
+body.winamp-compact .winamp-skin {
+  border: none;
+  box-shadow: none;
+}
+
+/* ---- Winamp context menu ---- */
+.winamp-context-menu {
+  position: fixed;
+  z-index: 9999;
+  background: #2a2a3e;
+  border: 1px solid #555;
+  border-radius: 3px;
+  box-shadow: 2px 4px 12px rgba(0, 0, 0, 0.6);
+  padding: 4px 0;
+  min-width: 160px;
+  font-size: 11px;
+  color: #e0e0e0;
+}
+
+.winamp-ctx-item {
+  position: relative;
+  padding: 4px 20px 4px 18px;
+  cursor: default;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.winamp-ctx-item:hover {
+  background: rgba(74, 158, 255, 0.3);
+  color: #fff;
+}
+
+.winamp-ctx-item.checked::before {
+  content: '\2713';
+  position: absolute;
+  left: 4px;
+  font-size: 10px;
+}
+
+.winamp-ctx-sep {
+  height: 1px;
+  background: #444;
+  margin: 3px 6px;
 }
 
 /* Winamp button active state -- toggle background-position */

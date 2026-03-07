@@ -26,6 +26,7 @@
     #opacity = 1.0;
     #rolledUpSavedHeight = null;
     #appId = null;
+    #skin = null;
 
     constructor({ id, title, icon, appId, datasource, width = 512, height = 412, resizable = true, minimizable = true, maximizable = true, skin = null }) {
       this.#id = id || `sz-win-${++_nextId}`;
@@ -114,6 +115,7 @@
         this.#savedRect = this.#captureRect();
       this.#state = 'maximized';
       this.#element.dataset.state = 'maximized';
+      this.#updateMaxRestoreButton();
     }
 
     restore() {
@@ -129,6 +131,7 @@
         this.resizeTo(this.#savedRect.width, this.#savedRect.height);
         this.#savedRect = null;
       }
+      this.#updateMaxRestoreButton();
       return prevState;
     }
 
@@ -170,6 +173,10 @@
     setOpacity(value) {
       this.#opacity = Math.max(0.1, Math.min(1.0, value));
       this.#element.style.opacity = this.#opacity < 1.0 ? String(this.#opacity) : '';
+    }
+
+    setFrameless(value) {
+      this.#element.classList.toggle('sz-frameless', !!value);
     }
 
     restart() {
@@ -237,6 +244,7 @@
     applySkin(skin) {
       if (!skin?.personality)
         return;
+      this.#skin = skin;
       this.#applySkinButtons(skin);
 
       // Enable sub-skin color tinting overlay when a non-default sub-skin is
@@ -415,11 +423,39 @@
       const code = actionMap[action];
       if (code == null)
         return null;
+      return this.#findSkinButtonByAction(titleButtons, code);
+    }
 
+    #updateMaxRestoreButton() {
+      const titleButtons = this.#skin?.titleButtons;
+      if (!titleButtons?.length)
+        return;
+      const btn = this.#titleBarEl.querySelector('.sz-title-buttons button[data-action="maximize"]');
+      if (!btn)
+        return;
+      // Collect base Action=22 buttons (exclude linkedto hover variants)
+      const maxEntries = [];
       for (const tb of titleButtons)
-        if (tb.action === code && tb.image)
-          return tb;
+        if (tb.action === 22 && tb.image && tb.linkedto == null)
+          maxEntries.push(tb);
+      if (maxEntries.length < 2)
+        return;
+      // First is maximize icon, second is restore icon
+      const entry = this.#state === 'maximized' ? maxEntries[1] : maxEntries[0];
+      btn.style.backgroundImage = `url('${entry.image}')`;
+      const b = btn;
+      const img = new Image();
+      img.onload = function() {
+        b.style.width = `${Math.floor(this.naturalWidth / 6)}px`;
+        b.style.height = `${this.naturalHeight}px`;
+      };
+      img.src = entry.image;
+    }
 
+    #findSkinButtonByAction(titleButtons, actionCode) {
+      for (const tb of titleButtons)
+        if (tb.action === actionCode && tb.image)
+          return tb;
       return null;
     }
 

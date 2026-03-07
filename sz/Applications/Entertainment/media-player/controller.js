@@ -1000,27 +1000,149 @@
   });
 
   // -----------------------------------------------------------------------
+  // Compact mode context menu
+  // -----------------------------------------------------------------------
+  let activeContextMenu = null;
+
+  function dismissContextMenu() {
+    if (activeContextMenu) {
+      activeContextMenu.remove();
+      activeContextMenu = null;
+    }
+  }
+
+  document.addEventListener('pointerdown', (e) => {
+    if (activeContextMenu && !e.target.closest('.winamp-context-menu'))
+      dismissContextMenu();
+  });
+
+  function showWinampContextMenu(x, y) {
+    dismissContextMenu();
+
+    const menu = document.createElement('div');
+    menu.className = 'winamp-context-menu';
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
+    document.body.appendChild(menu);
+    activeContextMenu = menu;
+
+    const addItem = (label, callback, checked) => {
+      const el = document.createElement('div');
+      el.className = 'winamp-ctx-item' + (checked ? ' checked' : '');
+      el.textContent = label;
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dismissContextMenu();
+        callback();
+      });
+      menu.appendChild(el);
+    };
+
+    const addSep = () => {
+      const sep = document.createElement('div');
+      sep.className = 'winamp-ctx-sep';
+      menu.appendChild(sep);
+    };
+
+    addItem(isPlaying ? 'Pause' : 'Play', togglePlayPause);
+    addItem('Stop', stopPlayback);
+    addItem('Previous', playPrevious);
+    addItem('Next', playNext);
+    addSep();
+    addItem('Shuffle', () => {
+      shuffleEnabled = !shuffleEnabled;
+      menuShuffle.classList.toggle('checked', shuffleEnabled);
+      if (shuffleEnabled) buildShuffleOrder();
+      syncWinampToggles();
+    }, shuffleEnabled);
+    addItem('Repeat: ' + ({ off: 'Off', all: 'All', one: 'One' }[repeatMode]), cycleRepeatMode, repeatMode !== 'off');
+    addSep();
+    addItem('Open File(s)...', () => fileInput.click());
+    addItem('Load Winamp Skin...', () => winampSkinInput.click());
+    addSep();
+    addItem('Normal Mode', toggleCompactMode);
+    addItem('Close', () => SZ.Dlls.User32.DestroyWindow());
+
+    // Keep menu in viewport
+    requestAnimationFrame(() => {
+      const rect = menu.getBoundingClientRect();
+      if (rect.right > window.innerWidth)
+        menu.style.left = Math.max(0, x - rect.width) + 'px';
+      if (rect.bottom > window.innerHeight)
+        menu.style.top = Math.max(0, y - rect.height) + 'px';
+    });
+  }
+
+  // -----------------------------------------------------------------------
   // Compact mode with Winamp skin support
   // -----------------------------------------------------------------------
+  let savedWindowSize = null;
+
   function toggleCompactMode() {
     compactMode = !compactMode;
     menuCompact.classList.toggle('checked', compactMode);
 
-    if (compactMode && winampSkin && winampSkin.loaded)
-      activateWinampCompact();
-    else
+    if (compactMode) {
+      if (winampSkin && winampSkin.loaded)
+        activateWinampCompact();
+      else
+        promptForSkinOrFallback();
+    } else {
       deactivateWinampCompact();
+    }
+  }
 
-    displayArea.classList.toggle('compact', compactMode);
+  function promptForSkinOrFallback() {
+    // No skin loaded -- prompt user to load one
+    SZ.Dlls.User32.MessageBox(
+      'No Winamp skin is loaded.\nWould you like to load a .wsz skin file now?',
+      'Compact Mode',
+      MB_YESNO | MB_ICONQUESTION
+    ).then((result) => {
+      if (result === IDYES) {
+        winampSkinInput.click();
+        // After loading, if compact mode still on and skin loaded, activate
+        const onSkinLoaded = () => {
+          winampSkinInput.removeEventListener('change', onSkinLoaded);
+          // Give loading time
+          setTimeout(() => {
+            if (compactMode && winampSkin && winampSkin.loaded)
+              activateWinampCompact();
+            else if (compactMode) {
+              // Still no skin -- revert compact mode
+              compactMode = false;
+              menuCompact.classList.remove('checked');
+            }
+          }, 500);
+        };
+        winampSkinInput.addEventListener('change', onSkinLoaded);
+      } else {
+        // Revert compact mode
+        compactMode = false;
+        menuCompact.classList.remove('checked');
+      }
+    }).catch(() => {
+      // Not inside OS -- try file input directly
+      winampSkinInput.click();
+      compactMode = false;
+      menuCompact.classList.remove('checked');
+    });
   }
 
   function activateWinampCompact() {
     if (!winampRenderer)
       winampRenderer = new SZ.WinampRenderer();
 
+    // Hide all UI and show only the Winamp skin
+    document.body.classList.add('winamp-compact');
     winampContainer.classList.remove('hidden');
     winampRenderer.create(winampContainer);
     winampRenderer.applySkin(winampSkin);
+
+    // Hide the window frame and resize to fit the Winamp skin exactly (275x116)
+    SZ.Dlls.User32.SetFrameless(true);
+    savedWindowSize = { width: window.innerWidth, height: window.innerHeight };
+    SZ.Dlls.User32.MoveWindow(275, 116);
 
     // Wire up callbacks
     winampRenderer.onPlay = () => {
@@ -1051,6 +1173,9 @@
     };
     winampRenderer.onClose = () => SZ.Dlls.User32.DestroyWindow();
 
+    // Right-click context menu on the Winamp skin
+    winampContainer.addEventListener('contextmenu', onWinampContextMenu);
+
     // Sync current state to renderer
     syncWinampToggles();
     winampRenderer.updateVolume(isMuted ? 0 : volume);
@@ -1071,10 +1196,26 @@
     }
   }
 
+  function onWinampContextMenu(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    showWinampContextMenu(e.clientX, e.clientY);
+  }
+
   function deactivateWinampCompact() {
+    dismissContextMenu();
+    winampContainer.removeEventListener('contextmenu', onWinampContextMenu);
+    document.body.classList.remove('winamp-compact');
     winampContainer.classList.add('hidden');
-    if (winampRenderer) {
+
+    if (winampRenderer)
       winampRenderer.destroy();
+
+    // Restore window frame and size
+    SZ.Dlls.User32.SetFrameless(false);
+    if (savedWindowSize) {
+      SZ.Dlls.User32.MoveWindow(savedWindowSize.width, savedWindowSize.height);
+      savedWindowSize = null;
     }
   }
 
@@ -1131,8 +1272,10 @@
     if (skinNameEl)
       skinNameEl.textContent = 'None';
     if (compactMode) {
+      // Exit compact mode since we have no skin
+      compactMode = false;
+      menuCompact.classList.remove('checked');
       deactivateWinampCompact();
-      displayArea.classList.toggle('compact', true);
     }
     statusInfo.textContent = '';
   }
