@@ -1,299 +1,211 @@
 # Card Games Suite
 
-Card games collection featuring 69 game variants with AI opponents, hint mode, smooth card animations, and stunning visual effects — running inside the SynthelicZ Desktop WebOS.
+A collection of 72 card game variants with AI opponents, hint mode, card style theming, smooth card animations, and visual effects -- running inside the SynthelicZ Desktop WebOS. Games span solitaire, casino, shedding, trick-taking, rummy, simple/speed, and European categories, all sharing a unified card engine for rendering, hit testing, and animations.
+
+## How It Works
+
+The suite is built on a modular variant architecture. A central `controller.js` manages the game lifecycle: displaying a 6-column menu of all 72 variants, loading variant modules on demand via dynamic `<script>` injection, and delegating gameplay to each variant's module. All variants share `card-engine.js` for procedural card rendering (bezier suit symbols, proper pip layouts, face card artwork, diamond-pattern backs), hit testing, button drawing, deck creation, shuffle, and animation. A `card-themes.js` module provides customizable table backgrounds, card back designs, and card face templates, all persisted via localStorage. Each variant implements its own rules engine, AI logic, and game flow while the controller provides shared visual effects (deal animation, flip transitions, winning glow, chip sparkle, floating text, screen shake).
 
 ## User Stories
 
-- **S-070**: As a player, I want to choose from 69 card game variants so that I have variety in a single app.
-- **S-071**: As a player, I want smooth card-deal animations, card-flip transitions, winning-hand glow effects, and chip sparkle particles so the games feel polished and satisfying.
-- **S-072**: As a player, I want clickable buttons for all game actions (Hit/Stand, Bet/Fold/Call/Raise, Knock, SNAP!, etc.) so I can play entirely with the mouse.
-- **S-073**: As a player, I want a "Back to Menu" option in both the menu bar and a canvas button so I can easily return to the game selection screen.
-- **S-074**: As a player, I want Skip-Bo to use a two-step selection model (click card, then click destination) with discard piles so gameplay matches the real card game rules.
-- [x] As a player, I want Uno to support house rules (stacking Draw Two/Wild Draw Four, jump-in on matching cards) so I can play with common variant rules.
-- [x] As a player, I want Uno black wild cards to prompt a color choice dialog so I can pick which color continues play.
-- [x] As a player, I want Skat to include a full bidding phase, proper role assignment (Declarer vs. Defenders), and accurate trick-based scoring so the game follows official Skat rules.
-- [x] As a player, I want the standalone Solitaire, FreeCell, and Spider Solitaire apps removed from the desktop in favor of their card-games suite variants so there is a single unified card game collection.
-- **S-000**: As the platform, all games integrate with the SZ Desktop via shared bootstrap, menu, dialog, and visual-effects libraries.
+### Game Selection
+- [x] As a player, I can browse 72 game variants organized in a 6-column grid menu with game names and short descriptions
+- [x] As a player, I can click any variant to load it on demand (variant JS files loaded dynamically)
+- [x] As a player, I can return to the game selection menu via the canvas Menu button, menu bar, or F2 key
+- [x] As a player, I can see all variants grouped by category: Solitaire (12), Casino (7), Shedding (13), Trick-Taking (11), Rummy (8), Simple/Speed (11), European (10)
 
-## Features
+### Hint System
+- [x] As a player, I can toggle hint mode to highlight playable cards with a golden glow effect
+- [x] As a player, I can see hints work across all game types: solitaire moves, shedding matches, trick-taking legal plays, rummy melds
+- [x] As a player, I can have my hint mode state persist via localStorage across sessions
 
-- **69 Game Variants**: Solitaire, FreeCell, Spider, Yukon, Pyramid, Golf, TriPeaks, Forty Thieves, Canfield, Clock, Baker's Dozen, Accordion, Poker, Blackjack, Baccarat, Texas Hold'em, Faro, Red Dog, Uno, Uno Flip, Uno All Wild, Liar's Uno, Uno Extreme, Uno Party, Dos, ONO 99, 8-Color Duo, Skip-Bo, Crazy Eights, Mau-Mau, President, Skat, Doppelkopf, Hearts, Spades, Euchre, Pinochle, Bridge, Oh Hell, Whist, Pitch, Sixty-Six, Canasta, Gin Rummy, Rummy 500, Phase 10, Tonk, Rummy, Kalooki, War, Memory, Go Fish, Old Maid, Snap, Speed, Cheat, Egyptian Rat Screw, Sevens, Spite & Malice, Beggar My Neighbor, Schwimmen, Durak, Briscola, Scopa, Cribbage, Piquet, Bezique, Cassino, Pishti (loaded as on-demand variant modules)
-- **6-Column Menu**: Game selection screen displays all 69 variants in a 6-column grid layout
-- **Hint Mode**: Toggleable golden glow on playable cards — works across all game types (shedding, trick-taking, solitaire, rummy, etc.). Persists via localStorage.
-- **Auto-Sort Hand**: Toggleable option to automatically keep player's hand sorted by suit and rank (or color and value for Uno-style games). Shown as a canvas button for games that support it (42 variants). Persists via localStorage.
-- **Mouse-Only Play**: All games have clickable canvas buttons — no keyboard required
-- **Back to Menu**: Return to game selection via menu bar entry, canvas button, or F2
-- **Unified Card Engine**: All 69 variants share `card-engine.js` for card rendering (procedural bezier suit symbols, proper pip layouts for 2-10, face card center artwork for J/Q/K, diamond-pattern card backs), hit testing, buttons, deck creation, shuffle, animations, hint glow, and particles — zero duplicated drawing code
-- **Modular Variant Architecture**: All 69 variants are separate JS files loaded on demand via `SZ.CardGames.registerVariant()`, sharing the card engine
-- **Drag-and-Drop**: Solitaire variants support full drag-and-drop card movement via pointermove/pointerup forwarding
-- **Scalable Card Rendering**: Card engine supports variable card dimensions — variants can draw scaled cards (e.g., 0.55x for AI hands) with proportionally scaled pips, text, and borders
-- **AI Opponents**: Per-variant AI that validates legal moves and plays strategically
-- **Rules Engine**: Variant-specific rules — hit/stand/bust in Blackjack, hand rankings in Poker, color/number matching in Uno, etc.
-- **Score Tracking**: Persistent high scores per variant via localStorage
-- **Card Deal Animation**: Cards slide smoothly from deck to player positions
-- **Card Flip Transition**: Scale-X flip animation reveals card face
-- **Winning Hand Glow**: Winning cards glow with golden radiance
-- **Chip Sparkle Effects**: Particle sparkles on chip stacks when winning
-- **Floating Text**: Score changes and game events shown as floating text
-- **Screen Shake**: Impact feedback on big wins or busts
+### Auto-Sort Hand
+- [x] As a player, I can toggle auto-sort to keep my hand sorted by suit and rank (or color and value for Uno-style games)
+- [x] As a player, I can see auto-sort as a togglable canvas button for the 42+ variants that support hand sorting
+- [x] As a player, I can have my auto-sort preference persist via localStorage
+
+### Card Style Theming
+- [x] As a player, I can choose from 6 table themes: Classic Green, Midnight Blue, Casino Red, Oak Table, White Marble, Royal Purple
+- [x] As a player, I can choose from multiple card back designs (Navy Diamonds, custom color, and more)
+- [x] As a player, I can choose from multiple card face templates (French standard and variants)
+- [x] As a player, I can have all theme choices persist via localStorage and apply immediately
+- [x] As a player, I can access the Card Style button on both the menu screen and during gameplay
+
+### Mouse-Only Play
+- [x] As a player, I can use clickable canvas buttons for every game action in all 72 games (Hit/Stand, Bet/Fold/Call/Raise, Knock, SNAP!, etc.)
+- [x] As a player, I can play any variant without a keyboard since all interactions work via pointer/click
+
+### Card Rendering Engine
+- [x] As a player, I can see cards procedurally drawn with bezier curve suit symbols (spades, hearts, diamonds, clubs)
+- [x] As a player, I can see multi-color rich suit pips with radial gradients, specular highlights, and thin outlines for French, 4-Color, and German templates (Minimal stays flat by design)
+- [x] As a player, I can see larger cards (80x110 vs previous 71x96) with proportionally scaled pips and margins
+- [x] As a player, I can see pip layouts follow standard playing card arrangements for ranks 2-10
+- [x] As a player, I can see face cards (J, Q, K) with center artwork
+- [x] As a player, I can see card backs with configurable designs (diamond patterns, solid colors, custom)
+- [x] As a player, I can see cards at variable dimensions with proportionally scaled pips, text, and borders (e.g., 0.55x for AI hands)
+- [x] As a player, I can click cards with pixel-accurate hit testing
+
+### Visual Effects
+- [x] As a player, I can see card deal animations with cards sliding smoothly from deck to player positions
+- [x] As a player, I can see card flip transitions with scale-X animation revealing the card face
+- [x] As a player, I can see winning hand glow with golden radiance on winning cards
+- [x] As a player, I can see chip sparkle effects with particle sparkles on chip stacks when winning
+- [x] As a player, I can see floating text for score changes and game events
+- [x] As a player, I can see screen shake as impact feedback on big wins or busts
+- [x] As a player, I can see confetti, bursts, and sparkle particle effects
+
+### Score and Persistence
+- [x] As a player, I can have my high scores tracked per variant via localStorage
+- [x] As a player, I can see my score displayed during gameplay and updated on game events
+
+### Solitaire Games (12)
+- [x] As a player, I can play Klondike Solitaire with drag-and-drop between tableau, waste, and foundations, with draw-1/draw-3 modes, undo, auto-complete, and win animation
+- [x] As a player, I can play FreeCell with all cards face-up, click-to-select or drag between 4 free cells, 4 foundations, and 8 tableau columns, with supermove support and undo
+- [x] As a player, I can play Spider Solitaire building same-suit runs King-to-Ace across 10 columns with 1/2/4 suit difficulty modes, drag-and-drop, undo, and scoring
+- [x] As a player, I can play Yukon moving any face-up card group regardless of sequence, with all 52 cards visible from the start
+- [x] As a player, I can play Pyramid removing pairs of exposed cards summing to 13 from a 28-card pyramid layout, with Kings removing alone
+- [x] As a player, I can play Golf clearing 7 columns by playing +/-1 rank onto a waste pile
+- [x] As a player, I can play TriPeaks clearing three overlapping peaks with +/-1 plays and streak bonuses
+- [x] As a player, I can play Forty Thieves (2-deck, 104 cards) with 10 tableau columns, single card moves, and 8 foundation piles
+- [x] As a player, I can play Canfield with a 13-card reserve, random foundation starter rank, and draw-3 stock
+- [x] As a player, I can play Clock Patience dealing 52 cards into 13 clock-face piles and flipping by rank
+- [x] As a player, I can play Baker's Dozen with 13 columns, Kings auto-moved to bottoms, no suit restriction for tableau builds
+- [x] As a player, I can play Accordion compressing all 52 cards into one pile by matching suit or rank at 1-left or 3-left positions
+
+### Casino Games (7)
+- [x] As a player, I can play Poker (five-card draw) with betting rounds, hand rankings from High Card to Royal Flush, and Bet/Fold/Call/Raise buttons
+- [x] As a player, I can play Blackjack hitting or standing to reach 21, with Ace as 1 or 11, and clickable Hit/Stand buttons
+- [x] As a player, I can play Baccarat betting on Player, Banker, or Tie with 8-deck shoe and standard drawing rules (Natural 8/9, Banker commission)
+- [x] As a player, I can play Texas Hold'em (4 players) with 2 hole cards + 5 community cards, Flop/Turn/River, and Check/Bet/Call/Raise/Fold/All-In
+- [x] As a player, I can play Faro with 13 betting positions per rank, dealer draws 2 cards (loser then winner), even money payout, and case keeper
+- [x] As a player, I can play Red Dog betting whether the third card falls between two post cards, with spread-based payouts (1=5:1, 2=4:1, 3=2:1, 4+=1:1)
+- [x] As a player, I can play Three Card Poker with Ante and Play bets plus Pair Plus bonus
+
+### Shedding Games (13)
+- [x] As a player, I can play Uno matching by color or number, with Skip, Reverse, Draw Two, Wild, Wild Draw Four, and house rules (stacking, No Mercy, Zero rotate, Seven swap, Jump-In)
+- [x] As a player, I can play Uno Flip with double-sided light/dark cards, Flip card reversing all cards globally, and dark-side actions (Skip Everyone, Draw Five, Wild Draw Color)
+- [x] As a player, I can play Uno All Wild with 112 all-wild action cards (Wild Draw Two, Wild Reverse, Wild Skip, Wild Forced Swap, Wild Targeted Draw Two, Wild Gap)
+- [x] As a player, I can play Liar's Uno playing face-down cards and bluffing, with "Liar!" challenges (caught lying = pick up pile, wrong challenge = draw 4)
+- [x] As a player, I can play Uno Extreme with random card launcher replacing manual drawing (0-3 cards per press) and Extreme Hit cards
+- [x] As a player, I can play Uno Party (6 players, 224-card double deck) with special Party Wilds: Everyone Draw, Trade Hands, Discard All, Pick Color
+- [x] As a player, I can play Dos with dual discard piles, single or two-card combo number matching, and color match bonuses
+- [x] As a player, I can play ONO 99 with a running total, busting at 99, and special cards (Hold, Reverse, Double Play, Minus-10)
+- [x] As a player, I can play 8-Color Duo with 8 colors (Red, Blue, Green, Yellow, Purple, Orange, Pink, Teal), 114 cards, and 8-color wild choice overlay
+- [x] As a player, I can play Skip-Bo building sequential piles 1-12 with two-step selection model and discard piles
+- [x] As a player, I can play Crazy Eights matching suit or rank, with 8s as wild and suit choice, and draw-if-stuck
+- [x] As a player, I can play Mau-Mau (German shedding) with action cards: 7=draw 2 (stackable), 8=skip, Jack=wild suit, Ace=extra turn
+- [x] As a player, I can play President (4 players) shedding by playing higher-ranked cards, with 2s highest, 4-of-a-kind clears, and President/Scum ranking with card exchange
+
+### Trick-Taking Games (11)
+- [x] As a player, I can play Skat (3 players) with full bidding phase, Declarer vs. Defenders roles, and trick-based scoring
+- [x] As a player, I can play Doppelkopf (4 players) with hidden teams determined by Queens of Clubs
+- [x] As a player, I can play Hearts (4 players) avoiding hearts (1 pt each) and Queen of Spades (13 pts), with 3-card passing and shoot-the-moon
+- [x] As a player, I can play Spades (4 players) bidding tricks with spades always trump, 10x points for making bid, bag penalties at 10 overtricks
+- [x] As a player, I can play Euchre (2v2 teams) with 24-card deck (9-A), trump selection, right/left bower system, first to 10 points
+- [x] As a player, I can play Pinochle (2v2 partnership) with 48-card double deck, bidding for trump, meld declarations, and 12 trick plays
+- [x] As a player, I can play Bridge (2v2 NS vs EW) with sequential auction bidding, declarer playing dummy's hand face-up, and simplified rubber bridge scoring
+- [x] As a player, I can play Oh Hell (4 players) with variable hand sizes (1 up to 7 and back), exact bid scoring (10 + tricks), and dealer hook rule
+- [x] As a player, I can play Whist (2v2 classic) with 13 cards each, last dealt card as trump, follow-suit rules, and first partnership to 5 wins
+- [x] As a player, I can play Pitch (4 players) bidding 1-4 to name trump, with four scoring points (High, Low, Jack, Game), first to 11
+- [x] As a player, I can play Sixty-Six (2-player Austrian) with 24-card deck, two phases (open stock/closed), marriages (20/40), first to 66 trick points, match to 7 game points
+
+### Rummy Games (8)
+- [x] As a player, I can play Canasta forming melds of 7 cards with wild cards and red three bonuses
+- [x] As a player, I can play Gin Rummy (2-player) drawing/discarding to form melds, knocking at deadwood <=10, or going gin for bonus
+- [x] As a player, I can play Rummy 500 (3 players) drawing, melding sets/runs, and laying off on existing melds, first to 500
+- [x] As a player, I can play Phase 10 completing 10 phase objectives in order with 108 custom cards (Wilds and Skips)
+- [x] As a player, I can play Tonk (3 players) with 5-card hands, instant Tonk at 49-50, spreading melds, and knock/drop with double penalty for failed drops
+- [x] As a player, I can play Rummy (3 players) drawing, forming sets/runs, laying off, with penalty points for remaining cards (A=1, face=10)
+- [x] As a player, I can play Kalooki (Jamaican rummy) with 54 cards including jokers, initial melds totaling 51+, and Kalooki (going out in one turn) for double penalty
+- [x] As a player, I can play Yaniv discarding combos and calling at 7 or less hand value
+
+### Simple/Speed Games (11)
+- [x] As a player, I can play War flipping cards simultaneously with ties triggering 3-face-down + 1-face-up wars
+- [x] As a player, I can play Memory matching 12 pairs in a 6x4 grid by flipping 2 cards per turn
+- [x] As a player, I can play Go Fish asking for ranks and collecting books of 4-of-a-kind
+- [x] As a player, I can play Old Maid discarding pairs and drawing from opponent, avoiding the unpaired Queen
+- [x] As a player, I can play Snap clicking "SNAP!" when consecutive cards match ranks
+- [x] As a player, I can play Speed (2-player) racing to empty hand by playing +/-1 from center piles, with AI on a timer
+- [x] As a player, I can play Cheat (4 players) playing 1-4 face-down cards claiming a rank, with "Cheat!" challenges
+- [x] As a player, I can play Egyptian Rat Screw (4 players) slapping on doubles, sandwiches, or top-bottom matches, with face card challenges (A=4, K=3, Q=2, J=1)
+- [x] As a player, I can play Sevens (4 players) building suit rows outward from 7s with strategic blocking
+- [x] As a player, I can play Spite and Malice (2 players) building shared center piles A-K from hand, pay-off pile, or 4 discard piles, with jokers wild
+- [x] As a player, I can play Beggar My Neighbor (2 players) flipping cards with face card payment obligations (A=4, K=3, Q=2, J=1)
+
+### European Games (10)
+- [x] As a player, I can play Schwimmen/31 (4 players) exchanging cards from a center pool to get 31 in one suit or 3-of-a-kind, with knock and life system
+- [x] As a player, I can play Durak (Russian) attacking and defending with higher same-suit or trump cards, with undefended cards picked up
+- [x] As a player, I can play Briscola (Italian 2-player) with 40-card deck, no follow-suit requirement, card values A=11/3=10/K=4/Q=3/J=2, scoring 61+ of 120
+- [x] As a player, I can play Scopa (Italian 2-player) capturing table cards by value sum, scoring for most cards, most diamonds, Sette Bello, Primiera, and scopas
+- [x] As a player, I can play Cribbage (2-player) with discard to crib, pegging (15s, 31s, pairs, runs), hand scoring, and first to 121 on the pegging board
+- [x] As a player, I can play Piquet (16th-century French 2-player) with 32-card deck, talon exchange, 3 declaration phases (Point, Sequence, Set), Pique/Repique bonuses, first to 100
+- [x] As a player, I can play Bezique (French 2-player) with 64-card deck, two-phase play (open stock/closed), marriages, bezique melds, first to 1000
+- [x] As a player, I can play Cassino (2-player) capturing table cards by value or building sums, scoring for most cards, most spades, Big/Little Cassino, aces, sweeps, first to 21
+- [x] As a player, I can play Pishti (Turkish 2-player) capturing by matching rank, Jacks capture any pile, Pishti bonus for single-card pile capture, first to 151
+- [x] As a player, I can play Belote (French trick-taking) with declarations
 
 ## Controls
 
 | Input | Action |
 |-------|--------|
-| Mouse Click | Select / play card |
+| Mouse Click | Select / play card, activate buttons |
 | Mouse Drag | Move cards (Solitaire, FreeCell, Spider) |
 | Hit / Stand buttons | Blackjack actions (clickable on canvas) |
 | Bet / Fold / Call / Raise buttons | Poker / Hold'em actions (clickable on canvas) |
 | Knock button | Gin Rummy / Schwimmen / Tonk knock action |
-| SNAP! / SLAP! button | Snap / Egyptian Rat Screw — click on matching patterns |
+| SNAP! / SLAP! button | Snap / Egyptian Rat Screw reaction action |
 | Swap / Swap All | Schwimmen card exchange actions |
 | Draw button | Draw from stock (Crazy Eights, Mau-Mau) |
 | Take / Done | Durak defender / attacker actions |
 | Play / Pass | President / Sevens card play actions |
 | Bid buttons | Bridge / Oh Hell bidding (clickable) |
-| Drop button | Tonk — drop to end round early |
+| Drop button | Tonk -- drop to end round early |
 | 1-7 | Play card from hand by position |
 | H / S | Hit / Stand keyboard shortcut (Blackjack) |
 | B / F / C / R | Bet / Fold / Call / Raise keyboard shortcut (Poker) |
-| Spacebar | Egyptian Rat Screw — quick slap |
+| Spacebar | Egyptian Rat Screw -- quick slap |
 | Ctrl+Z | Undo (Solitaire, FreeCell, Spider, Forty Thieves, Canfield) |
 | F2 | New game / Return to menu |
 | Escape | Pause / Resume |
-| ☰ Menu button | Return to game selection (top-right corner) |
-| ✔/☐ Sort button | Toggle auto-sort for player's hand (top-right, when supported) |
-
-## Game Variants
-
-### Solitaire (12 games)
-
-**Solitaire** — Classic Klondike solitaire. Drag-and-drop cards between tableau, waste, and foundations. Draw-1/Draw-3 modes, undo, auto-complete, win animation.
-
-**FreeCell** — All-cards-face-up strategy game. Click-to-select or drag cards between 4 free cells, 4 foundations, and 8 tableau columns. Supermove support, undo, win animation.
-
-**Spider Solitaire** — Build same-suit runs from King to Ace across 10 tableau columns. 1/2/4 suit difficulty modes. Drag-and-drop, undo, scoring, win animation.
-
-**Yukon** — Klondike variant where ANY face-up card group can be moved regardless of sequence. No stock pile — all 52 cards visible from the start. Build to foundations by suit A-K.
-
-**Pyramid** — Remove pairs of exposed cards that sum to 13 from a 28-card pyramid layout. Kings remove alone. Stock/waste cycle for additional cards.
-
-**Golf** — Clear 7 columns of 5 cards by playing onto a waste pile. Cards must be ±1 in rank. Quick, addictive solitaire variant.
-
-**TriPeaks** — Clear three overlapping peaks by playing exposed cards ±1 from the waste pile. Streak bonuses for consecutive plays without using stock.
-
-**Forty Thieves** — 2-deck (104-card) solitaire with 10 tableau columns of 4 face-up cards each. Build down by suit on tableau, single card moves only. 8 foundation piles build up by suit A-K. One of the hardest solitaires (~10% win rate).
-
-**Canfield** — 52-card solitaire with a 13-card reserve pile. Foundation starter rank determined by first card drawn. Build up by suit with wrapping (K→A→2...). Draw 3 from stock, alternating-color tableau builds.
-
-**Clock** — Clock Patience/Travelers. Deal all 52 cards into 13 piles of 4 arranged as a clock face (12 positions + center). Flip cards and place by rank — purely luck-based with beautiful circular layout.
-
-**Baker's Dozen** — 13 columns of 4 face-up cards. Kings auto-moved to column bottoms. Build down regardless of suit, no empty column fills. Build 4 foundations up by suit A-K. ~75% win rate.
-
-**Accordion** — All 52 cards in a row. Move cards onto 1-left or 3-left positions if matching suit or rank. Compress entire deck into one pile to win. Very difficult ~2% win rate.
-
-### Casino (6 games)
-
-**Poker** — Five-card draw with betting rounds. Hand rankings from High Card to Royal Flush. Clickable Bet/Fold/Call/Raise buttons.
-
-**Blackjack** — Hit or stand to get as close to 21 as possible without going bust. Ace counts as 1 or 11. Clickable Hit/Stand buttons.
-
-**Baccarat** — Bet on Player, Banker, or Tie. 8-deck shoe with standard baccarat drawing rules. Natural 8/9 wins instantly. Banker pays 1:1 minus 5% commission, Tie pays 8:1.
-
-**Texas Hold'em** — 4-player community card poker. 2 hole cards + 5 community cards (Flop/Turn/River). Betting rounds with Check/Bet/Call/Raise/Fold/All-In. Small/big blinds rotate. Best 5 of 7 hand ranking.
-
-**Faro** — Historic American frontier banking game. 13 betting positions (one per rank). Dealer draws 2 cards — first is loser, second is winner. Bet on ranks, even money payout. Splits give house half. Case keeper tracks remaining cards.
-
-**Red Dog** — Also called In-Between or Acey-Deucey. Two post cards dealt face-up. Bet whether the third card falls strictly between them. Spread determines payout: 1=5:1, 2=4:1, 3=2:1, 4+=1:1. Consecutive = push, pair + match = 11:1.
-
-### Shedding (13 games)
-
-**Uno** — Match cards by color or number. Special cards: Skip, Reverse, Draw Two, Wild, Wild Draw Four. House rules: stacking, No Mercy (+6/+10), Zero rotate, Seven swap, Jump-In.
-
-**Uno Flip** — Double-sided cards with light and dark sides. Flip card reverses all cards globally. Light side: Skip, Reverse, Draw One. Dark side: Skip Everyone, Reverse, Draw Five. Wild Draw Color on dark side.
-
-**Uno All Wild** — Every card is a wild action card. 112 cards with no color/number matching. Wild Draw Two, Wild Reverse, Wild Skip, Wild Forced Swap, Wild Targeted Draw Two, Wild Gap. Pure chaos.
-
-**Liar's Uno** — Bluffing variant where players can play face-down and claim any color/value. Other players can challenge with "Liar!" — caught lying means picking up the discard pile; wrong accusation means drawing 4.
-
-**Uno Extreme** — Random card launcher replaces manual drawing. Press the launcher when stuck — get 0-3 cards randomly. Extreme Hit cards target opponents to hit the launcher.
-
-**Uno Party** — Large group variant with 6 players and 224-card double deck. Special Party Wilds: Everyone Draw, Trade Hands, Discard All, Pick Color.
-
-**Dos** — Mattel's Uno sequel with dual discard piles and number matching. Play single cards or two-card combos that sum to a pile's number. Color match bonuses.
-
-**ONO 99** — Elimination card game with a running total. Play cards that add to the total — bust at 99 and you're out. Special cards: Hold, Reverse, Double Play, Minus-10.
-
-**8-Color Duo** — Custom shedding game with 8 colors (Red, Blue, Green, Yellow, Purple, Orange, Pink, Teal). 114 cards, match by color or number, 8-color wild choice overlay.
-
-**Skip-Bo** — Sequential card game — build piles from 1 to 12. Two-step selection model with discard piles.
-
-**Crazy Eights** — Match suit or rank of the discard pile. 8s are wild — play on anything and choose the new suit. Draw if stuck.
-
-**Mau-Mau** — German shedding game with action cards: 7 = draw 2 (stackable), 8 = skip, Jack = wild suit choice, Ace = extra turn.
-
-**President** — 4-player climbing game. Play 1-4 cards of same rank, higher than previous play. 2s are highest, 4-of-a-kind clears. First out = President, last = Scum. Card exchange between ranks in subsequent rounds.
-
-### Trick-Taking (11 games)
-
-**Skat** — German trick-taking game for 3 players. Full bidding phase with Declarer vs. Defenders and trick-based scoring.
-
-**Doppelkopf** — German trick-taking game with two hidden teams determined by Queens of Clubs.
-
-**Hearts** — 4-player trick-taking. Avoid hearts (1 point each) and Queen of Spades (13 points). Pass 3 cards each round. Shoot the moon for 0 points.
-
-**Spades** — 4-player trick-taking with bidding. Spades always trump. Make your bid for 10× points. Bag penalties at 10 overtricks.
-
-**Euchre** — 4-player (2v2 teams) trick-taking with trump selection. 24-card deck (9-A). Right and left bower system. First to 10 points wins.
-
-**Pinochle** — 4-player (2v2) partnership game with melding + trick-taking. 48-card double deck. Bid for trump, declare melds for points, then play 12 tricks.
-
-**Bridge** — 4-player partnership (NS vs EW) contract bidding and trick-taking. Sequential auction with level+strain bids. Declarer plays dummy's hand face-up. Simplified rubber bridge scoring with game/slam bonuses.
-
-**Oh Hell** — 4-player trick-taking with variable hand sizes (1 up to 7 and back). Bid exact tricks — dealer restricted by "hook" rule. Score 10 + tricks bid for making exact bid.
-
-**Whist** — Classic 4-player partnership trick-taking, ancestor of Bridge. 13 cards each, last dealt card determines trump. Must follow suit. Each trick beyond 6 (the "book") scores 1 point. First partnership to 5 wins.
-
-**Pitch** — American trick-taking for 4 players. Bid 1-4 to name trump. Four scoring points per round: High, Low, Jack, Game. Bidder must make their bid or be "set". First to 11 wins.
-
-**Sixty-Six** — Austrian 2-player trick game (Schnapsen). 24-card deck (9-A). Two phases: open stock (no suit obligation) and closed (must follow suit + head). Marriages score 20/40. First to 66 trick points wins. Match to 7 game points.
-
-### Rummy (7 games)
-
-**Canasta** — Rummy-style game forming melds of 7 cards. Wild cards and red threes are bonus.
-
-**Gin Rummy** — 2-player draw-and-discard. Form melds (sets of same rank, runs of same suit). Knock when deadwood ≤ 10, or go gin for bonus points.
-
-**Rummy 500** — Classic draw-and-meld rummy for 3 players. Pick up from discard pile, lay down sets/runs, lay off on existing melds. First to 500 points wins.
-
-**Phase 10** — Complete 10 specific phase objectives in order. 108 custom cards with Wilds and Skips. Phases include sets, runs, and color collections.
-
-**Tonk** — Quick knock rummy for 3 players. 5-card hands with instant "Tonk!" win at 49-50 points. Spread melds (sets/runs), knock/drop to end rounds early. Double penalty for failed drops.
-
-**Rummy** — The original basic rummy for 3 players. Draw, form melds (sets and runs), lay off on existing melds, discard. First to empty hand wins. Penalty points for remaining cards (A=1, face=10). Lowest cumulative score wins.
-
-**Kalooki** — Jamaican rummy with jokers (54 cards). 9 cards each. Initial melds must total 51+ points. Jokers are wild (50 penalty if caught). "Kalooki" = going out in one turn for double penalty to opponents.
-
-### Simple/Speed (11 games)
-
-**War** — Flip cards simultaneously, highest wins. Ties trigger WAR: 3 face-down + 1 face-up. Win all 52 cards.
-
-**Memory** — 24 cards (12 pairs) in a 6×4 grid, all face-down. Flip 2 per turn to find matching pairs.
-
-**Go Fish** — Ask opponent for ranks you hold. "Go Fish!" if they don't have any. Collect books of 4-of-a-kind.
-
-**Old Maid** — Remove one Queen, deal all cards. Discard pairs, draw from opponent. Don't get stuck with the unpaired Queen!
-
-**Snap** — Cards flip automatically. Click "SNAP!" when consecutive cards match ranks. Fastest reaction wins the pile.
-
-**Speed** — 2-player simultaneous card race. Play cards ±1 from center piles. AI opponent plays on a timer. First to empty hand wins.
-
-**Cheat (BS)** — 4-player bluffing game. Play 1-4 cards face-down claiming a specific rank. Other players can call "Cheat!" — wrong claims pick up the pile.
-
-**Egyptian Rat Screw** — 4-player speed/reaction game. Flip cards to center pile. Slap on doubles, sandwiches, or top-bottom matches. Face card challenges (A=4, K=3, Q=2, J=1 chances). False slaps penalized.
-
-**Sevens (Fan Tan)** — 4-player placement game. Build suit rows outward from 7s — play 6,5,4,3,2,A left or 8,9,10,J,Q,K right. Strategic blocking. First to empty hand wins.
-
-**Spite & Malice** — Competitive patience for 2 players. Each player has a 20-card pay-off pile. Build shared center piles A-K. Play from hand, pay-off pile, or 4 personal discard piles. First to empty pay-off pile wins. Jokers are wild.
-
-**Beggar My Neighbor** — Classic children's game for 2 players (Strip Jack Naked). Deal all cards face-down. Take turns flipping. Face cards trigger payment obligations (A=4, K=3, Q=2, J=1). Purely luck-based but exciting.
-
-### European (9 games)
-
-**Schwimmen (31)** — German pub game for 4 players. Exchange cards from a center pool to get 31 in one suit or 3-of-a-kind. Knock to trigger final round. Lose lives when you have the lowest hand.
-
-**Durak** — Russian attack/defense game. Attacker plays cards, defender must beat with higher same-suit or trump. Undefended cards are picked up. Last player holding cards is the Durak (fool).
-
-**Briscola** — Italian 2-player trump trick-taking game. 40-card deck (no 8s, 9s, 10s). No requirement to follow suit. Card values: A=11, 3=10, K=4, Q=3, J=2. Score 61+ of 120 total points to win.
-
-**Scopa** — Italian 2-player fishing game. Play cards to capture table cards by matching value sums. Score for most cards, most diamonds, 7 of diamonds (Sette Bello), best Primiera, and scopas (clearing the table).
-
-**Cribbage** — 2-player pegging board game. Discard to crib, peg points during play (15s, 31s, pairs, runs), then score hands. Fifteens, pairs, runs, flushes, and nobs. First to 121 on the pegging board wins.
-
-**Piquet** — Classic 16th-century French 2-player game. 32-card deck (7-A). Talon exchange, then 3 declaration phases (Point, Sequence, Set) before trick play. Pique/Repique bonuses for dominating declarations. Capot bonus for winning all 12 tricks. First to 100 wins.
-
-**Bezique** — French 2-player meld + trick game. 64-card deck (two 32-card decks). Phase 1: open stock, no suit obligation, declare melds after winning tricks. Marriages (20/40), Bezique Q♠+J♦ (40), double bezique (500), trump sequence (250). Phase 2: must follow suit. First to 1000 wins.
-
-**Cassino** — Classic 2-player fishing game. Play cards to capture table cards by matching value or building sums. Builds can be stolen by opponents. Score for most cards, most spades, Big Cassino (10♦), Little Cassino (2♠), aces, and sweeps. First to 21 wins.
-
-**Pishti** — Turkish 2-player capture card game. Match top pile card rank to capture. Jacks capture any pile. "Pishti" bonus (10/20 pts) for capturing a single-card pile. Score for Jacks, Aces, 2♣, 10♦, most cards. First to 151 wins.
+| Menu button | Return to game selection (top-right corner) |
+| Sort button | Toggle auto-sort for player's hand (top-right, when supported) |
+| Style button | Open card style theme picker |
+
+## Technical Details
+
+- Canvas size: 900x600 pixels with DPR scaling
+- Game loop uses requestAnimationFrame with delta-time capped at 50ms
+- Variant modules loaded on demand via dynamic `<script>` injection and `SZ.CardGames.registerVariant()` callback
+- Card engine accepts both named suits (`'spades'`) and unicode (`'\u2660'`) transparently
+- All card rendering is procedural (no image assets for cards)
+- Hit testing uses AABB rectangle checks with card-level precision
+- localStorage keys prefixed with `sz-card-games-` for high scores, hints, auto-sort, and theme settings
 
 ## Architecture
 
-- `index.html` — Entry point with SEO meta, menu bar, canvas, status bar, dialogs
-- `card-engine.js` — Unified rendering engine used by all 69 variants: card face/back drawing with bezier suit symbols and pip layouts, variable-size card support, rounded rectangles, buttons, hit testing, hint glow, deck creation (standard and custom rank sets), shuffle, animation system, particle effects, win animations, theme colors. Accepts both named suits (`'spades'`) and unicode (`'\u2660'`) transparently.
-- `controller.js` — Pure orchestrator: variant loading, 6-column menu, hint toggle with persistence, game lifecycle, host effects (deal animation, flip, glow, sparkle), postMessage bridge. Delegates all card drawing to card-engine.js.
-- `blackjack-variant.js` — Blackjack variant module
-- `poker-variant.js` — Poker variant module
-- `baccarat-variant.js` — Baccarat casino variant module
-- `holdem-variant.js` — Texas Hold'em community card poker variant module
-- `uno-variant.js` — Uno variant module (with house rules: No Mercy, Zero, Seven, Jump-In)
-- `unoflip-variant.js` — Uno Flip variant module (double-sided light/dark cards)
-- `unowild-variant.js` — Uno All Wild variant module (all wild action cards)
-- `liarsuno-variant.js` — Liar's Uno variant module (bluffing and challenges)
-- `unoextreme-variant.js` — Uno Extreme variant module (random launcher draws)
-- `unoparty-variant.js` — Uno Party variant module (6 players, party wilds)
-- `dos-variant.js` — Dos variant module (dual piles, number matching)
-- `ono99-variant.js` — ONO 99 variant module (running total, elimination)
-- `duo-variant.js` — 8-Color Duo variant module (8-color shedding)
-- `skipbo-variant.js` — Skip-Bo variant module
-- `president-variant.js` — President (Scum) climbing/shedding variant module
-- `skat-variant.js` — Skat variant module
-- `canasta-variant.js` — Canasta variant module
-- `doppelkopf-variant.js` — Doppelkopf variant module
-- `solitaire-variant.js` — Klondike solitaire variant module
-- `freecell-variant.js` — FreeCell variant module
-- `spider-variant.js` — Spider Solitaire variant module
-- `yukon-variant.js` — Yukon solitaire variant module
-- `pyramid-variant.js` — Pyramid solitaire variant module
-- `golf-variant.js` — Golf solitaire variant module
-- `tripeaks-variant.js` — TriPeaks solitaire variant module
-- `fortythieves-variant.js` — Forty Thieves 2-deck solitaire variant module
-- `canfield-variant.js` — Canfield solitaire variant module
-- `clock-variant.js` — Clock Patience solitaire variant module
-- `bakersdozen-variant.js` — Baker's Dozen solitaire variant module
-- `accordion-variant.js` — Accordion solitaire variant module
-- `faro-variant.js` — Faro historic casino banking variant module
-- `reddog-variant.js` — Red Dog (In-Between) casino variant module
-- `hearts-variant.js` — Hearts trick-taking variant module
-- `spades-variant.js` — Spades trick-taking variant module
-- `euchre-variant.js` — Euchre trick-taking variant module
-- `pinochle-variant.js` — Pinochle melds + trick-taking variant module
-- `bridge-variant.js` — Contract Bridge partnership bidding + trick-taking variant module
-- `ohhell-variant.js` — Oh Hell variable-hand trick-taking variant module
-- `whist-variant.js` — Whist classic partnership trick-taking variant module
-- `pitch-variant.js` — Pitch (All Fours) American trick-taking variant module
-- `sixtysix-variant.js` — Sixty-Six (Schnapsen) Austrian trick-taking variant module
-- `crazy-eights-variant.js` — Crazy Eights shedding variant module
-- `maumau-variant.js` — Mau-Mau shedding variant module
-- `ginrummy-variant.js` — Gin Rummy variant module
-- `rummy500-variant.js` — Rummy 500 variant module
-- `phase10-variant.js` — Phase 10 variant module
-- `tonk-variant.js` — Tonk quick knock rummy variant module
-- `rummy-variant.js` — Straight Rummy classic meld and lay-off variant module
-- `kalooki-variant.js` — Kalooki Jamaican rummy with jokers variant module
-- `war-variant.js` — War simple card game variant module
-- `memory-variant.js` — Memory matching variant module
-- `gofish-variant.js` — Go Fish variant module
-- `oldmaid-variant.js` — Old Maid variant module
-- `snap-variant.js` — Snap reaction game variant module
-- `speed-variant.js` — Speed simultaneous card race variant module
-- `cheat-variant.js` — Cheat (BS) bluffing variant module
-- `ratscrew-variant.js` — Egyptian Rat Screw speed/slap variant module
-- `sevens-variant.js` — Sevens (Fan Tan) placement variant module
-- `spitemalice-variant.js` — Spite & Malice competitive patience variant module
-- `beggar-variant.js` — Beggar My Neighbor children's card game variant module
-- `schwimmen-variant.js` — Schwimmen (31) variant module
-- `durak-variant.js` — Durak variant module
-- `briscola-variant.js` — Briscola Italian trump trick-taking variant module
-- `scopa-variant.js` — Scopa Italian fishing variant module
-- `cribbage-variant.js` — Cribbage pegging board scoring variant module
-- `piquet-variant.js` — Piquet classic French declaration game variant module
-- `bezique-variant.js` — Bezique French meld and trick game variant module
-- `cassino-variant.js` — Cassino classic fishing game variant module
-- `pishti-variant.js` — Pishti Turkish capture card game variant module
-- `styles.css` — Layout and theming
-- `icon.svg` — Desktop icon (cards + chips)
+- `index.html` -- Entry point with SEO meta, menu bar, canvas, status bar, dialogs
+- `card-engine.js` -- Unified rendering engine: card face/back drawing (80x110 cards) with bezier suit symbols and pip layouts, variable-size support, rounded rectangles, buttons, hit testing, hint glow, deck creation, shuffle, animation system, particle effects, win animations, theme colors
+- `card-themes.js` -- Customizable visual themes: 6 table backgrounds, multiple card back designs, card face templates (French/4-Color with gradient pips, German with gradient Bavarian shapes, Minimal flat), theme picker overlay with preview tiles, all persisted via localStorage
+- `controller.js` -- Orchestrator: variant loading, category-grouped fieldset menu (7 categories, alphabetically sorted, auto-shrinking labels), hint/sort toggles, game lifecycle, host effects (deal animation, flip, glow, sparkle), postMessage bridge
+- 72 variant files (`*-variant.js`) -- Each implements rules, AI, game flow, and rendering for one card game
+- `styles.css` -- Layout and theming
+- `icon.svg` -- Desktop icon (cards + chips)
+
+### Planned Features
+- [ ] As a player, I can select AI difficulty levels (easy, medium, hard) per variant so that I can adjust the challenge
+- [ ] As a player, I can use drag-and-drop for all card games (not just solitaire) so that interaction is more intuitive
+- [ ] As a player, I can hear sound effects for card dealing, flipping, and shuffling so that the games have audio feedback
+- [ ] As a player, I can see animated card dealing with physics-based motion so that deals look more realistic
+- [ ] As a player, I can view game statistics and win/loss records per variant so that I can track my progress across all games
+
+## Known Limitations
+
+- AI difficulty is fixed per variant; no adjustable difficulty levels
+- Drag-and-drop is only available for solitaire variants; other games use click-to-select
+- No multiplayer support; all opponents are AI-controlled
+- Card engine renders procedurally; no photorealistic card images
+- Some complex variants (Bridge bidding, Pinochle melds) use simplified rule sets compared to tournament play
 
 ## SEO Keywords
 
-card games, poker, blackjack, baccarat, texas holdem, faro, red dog, acey deucey, uno, uno flip, uno all wild, liars uno, uno extreme, uno party, dos, ono 99, 8-color duo, skip-bo, skat, canasta, doppelkopf, solitaire, freecell, spider solitaire, yukon, pyramid, golf solitaire, tripeaks, forty thieves, canfield, clock patience, bakers dozen, accordion solitaire, hearts, spades, euchre, pinochle, bridge, oh hell, whist, pitch, all fours, sixty-six, schnapsen, gin rummy, rummy 500, phase 10, tonk, rummy, kalooki, kaluki, war, memory, go fish, old maid, snap, speed, cheat, egyptian rat screw, sevens, fan tan, spite and malice, beggar my neighbor, schwimmen, durak, briscola, scopa, cribbage, piquet, bezique, cassino, pishti, president, browser card game, classic card games, AI card game, card game collection, hint mode, SynthelicZ, WebOS game, card animations
+card games, poker, blackjack, baccarat, texas holdem, three card poker, faro, red dog, acey deucey, uno, uno flip, uno all wild, liars uno, uno extreme, uno party, dos, ono 99, 8-color duo, skip-bo, skat, canasta, doppelkopf, solitaire, freecell, spider solitaire, yukon, pyramid, golf solitaire, tripeaks, forty thieves, canfield, clock patience, bakers dozen, accordion solitaire, hearts, spades, euchre, pinochle, bridge, oh hell, whist, pitch, all fours, sixty-six, schnapsen, gin rummy, rummy 500, phase 10, tonk, rummy, kalooki, kaluki, yaniv, war, memory, go fish, old maid, snap, speed, cheat, egyptian rat screw, sevens, fan tan, spite and malice, beggar my neighbor, schwimmen, durak, briscola, scopa, cribbage, piquet, bezique, cassino, pishti, belote, president, browser card game, classic card games, AI card game, card game collection, hint mode, card themes, SynthelicZ, WebOS game, card animations
