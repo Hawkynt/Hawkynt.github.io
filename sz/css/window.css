@@ -299,6 +299,31 @@
 }
 
 /* --------------------------------------------------------------------------
+   Frameless Window (app-requested, e.g. Winamp skin mode)
+   -------------------------------------------------------------------------- */
+
+.sz-window.sz-frameless {
+  grid-template-columns: 0px 0px 1fr 0px 0px;
+  grid-template-rows: 0px 1fr 0px;
+  min-width: 0;
+  min-height: 0;
+  filter: none;
+}
+
+.sz-window.sz-frameless .sz-frame-nw,
+.sz-window.sz-frameless .sz-frame-n,
+.sz-window.sz-frameless .sz-frame-ne,
+.sz-window.sz-frameless .sz-frame-w,
+.sz-window.sz-frameless .sz-frame-e,
+.sz-window.sz-frameless .sz-frame-sw,
+.sz-window.sz-frameless .sz-frame-s,
+.sz-window.sz-frameless .sz-frame-se,
+.sz-window.sz-frameless .sz-title-bar,
+.sz-window.sz-frameless .sz-resize-handle {
+  display: none;
+}
+
+/* --------------------------------------------------------------------------
    Always on Top indicator
    -------------------------------------------------------------------------- */
 
