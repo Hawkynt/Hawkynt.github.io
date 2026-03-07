@@ -35,7 +35,7 @@
   let autoSortHand = false;
   try { const s = localStorage.getItem(STORAGE_AUTOSORT); if (s !== null) autoSortHand = s !== 'false'; } catch (_) {}
 
-  /* ── Variant definitions (all 69 games, grouped by category) ── */
+  /* ── Variant definitions (all 72 games, grouped by category) ── */
   const VARIANTS = [
     /* Solitaire (12) */
     { id: 'solitaire',     name: 'Solitaire',       desc: 'Classic Klondike solitaire',            module: 'solitaire-variant.js' },
@@ -50,13 +50,14 @@
     { id: 'clock',         name: 'Clock',            desc: 'Deal into clock face, flip by rank',   module: 'clock-variant.js' },
     { id: 'bakersdozen',   name: 'Baker\'s Dozen',   desc: '13 columns, no suit restriction',      module: 'bakersdozen-variant.js' },
     { id: 'accordion',     name: 'Accordion',        desc: 'Compress row by suit or rank',         module: 'accordion-variant.js' },
-    /* Casino (6) */
+    /* Casino (7) */
     { id: 'poker',         name: 'Poker',            desc: 'Five-card draw with betting rounds',    module: 'poker-variant.js' },
     { id: 'blackjack',     name: 'Blackjack',        desc: 'Get as close to 21 as you can',        module: 'blackjack-variant.js' },
     { id: 'baccarat',      name: 'Baccarat',         desc: 'Bet on Player, Banker, or Tie',        module: 'baccarat-variant.js' },
     { id: 'holdem',        name: 'Texas Hold\'em',   desc: 'Community cards poker with blinds',    module: 'holdem-variant.js' },
     { id: 'faro',          name: 'Faro',             desc: 'Bet on ranks, winner vs loser',        module: 'faro-variant.js' },
     { id: 'reddog',        name: 'Red Dog',          desc: 'Bet the next card falls between',      module: 'reddog-variant.js' },
+    { id: 'threecard',     name: 'Three Card Poker', desc: 'Ante & Play with Pair Plus bonus',    module: 'threecard-variant.js' },
     /* Shedding (13) */
     { id: 'uno',           name: 'Uno',              desc: 'Match cards by color or number',        module: 'uno-variant.js' },
     { id: 'unoflip',      name: 'Uno Flip',          desc: 'Double-sided light and dark cards',     module: 'unoflip-variant.js' },
@@ -83,7 +84,7 @@
     { id: 'whist',         name: 'Whist',            desc: 'Classic partnership trick-taking',     module: 'whist-variant.js' },
     { id: 'pitch',         name: 'Pitch',            desc: 'Bid to name trump, 4 point game',     module: 'pitch-variant.js' },
     { id: 'sixtysix',      name: 'Sixty-Six',        desc: 'Austrian two-player trick game',      module: 'sixtysix-variant.js' },
-    /* Rummy (7) */
+    /* Rummy (8) */
     { id: 'canasta',       name: 'Canasta',          desc: 'Form melds of seven cards',             module: 'canasta-variant.js' },
     { id: 'ginrummy',      name: 'Gin Rummy',        desc: 'Form melds, knock when ready',         module: 'ginrummy-variant.js' },
     { id: 'rummy500',      name: 'Rummy 500',        desc: 'Draw, meld, and score to 500',         module: 'rummy500-variant.js' },
@@ -91,6 +92,7 @@
     { id: 'tonk',          name: 'Tonk',             desc: 'Quick knock rummy, drop to win',       module: 'tonk-variant.js' },
     { id: 'rummy',         name: 'Rummy',            desc: 'Classic meld and lay-off card game',   module: 'rummy-variant.js' },
     { id: 'kalooki',       name: 'Kalooki',          desc: 'Jamaican rummy with wild jokers',      module: 'kalooki-variant.js' },
+    { id: 'yaniv',         name: 'Yaniv',            desc: 'Discard combos, call at 7 or less',   module: 'yaniv-variant.js' },
     /* Simple/Speed (11) */
     { id: 'war',           name: 'War',              desc: 'Flip and compare, highest wins',        module: 'war-variant.js' },
     { id: 'memory',        name: 'Memory',           desc: 'Flip pairs face-down, match to win',   module: 'memory-variant.js' },
@@ -103,7 +105,7 @@
     { id: 'sevens',        name: 'Sevens',           desc: 'Build suit rows outward from 7s',      module: 'sevens-variant.js' },
     { id: 'spitemalice',   name: 'Spite & Malice',   desc: 'Competitive patience for two',         module: 'spitemalice-variant.js' },
     { id: 'beggar',        name: 'Beggar Neighbor',   desc: 'Pay court cards or lose the pile',     module: 'beggar-variant.js' },
-    /* European (9) */
+    /* European (10) */
     { id: 'schwimmen',     name: 'Schwimmen',        desc: 'German 31 \u2014 best hand in one suit', module: 'schwimmen-variant.js' },
     { id: 'durak',         name: 'Durak',            desc: 'Russian attack and defense game',       module: 'durak-variant.js' },
     { id: 'briscola',      name: 'Briscola',         desc: 'Italian trump trick-taking game',      module: 'briscola-variant.js' },
@@ -112,7 +114,8 @@
     { id: 'piquet',        name: 'Piquet',           desc: 'Classic French declaration game',      module: 'piquet-variant.js' },
     { id: 'bezique',       name: 'Bezique',          desc: 'French meld and trick game',           module: 'bezique-variant.js' },
     { id: 'cassino',       name: 'Cassino',          desc: 'Capture table cards by value',         module: 'cassino-variant.js' },
-    { id: 'pishti',        name: 'Pishti',           desc: 'Turkish capture with Jack tricks',     module: 'pishti-variant.js' }
+    { id: 'pishti',        name: 'Pishti',           desc: 'Turkish capture with Jack tricks',     module: 'pishti-variant.js' },
+    { id: 'belote',        name: 'Belote',           desc: 'French trick-taking with declarations', module: 'belote-variant.js' }
   ];
 
   /* ── Menu / Hint / Sort button regions ── */
