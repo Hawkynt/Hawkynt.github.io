@@ -1961,12 +1961,12 @@
       const pos = canvasMouseCoords(e);
       mouseCanvasX = pos.x;
       mouseCanvasY = pos.y;
-      mouseControlActive = true;
     });
 
     canvas.addEventListener('pointerup', (e) => {
       if (e.pointerId !== touchId) return;
       touchId = null;
+      mouseControlActive = false;
       if (!gameActive || gamePaused || gameOverFlag || waitingToStart) return;
 
       const dx = e.clientX - touchStartX;
