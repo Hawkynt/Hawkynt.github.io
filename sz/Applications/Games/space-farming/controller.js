@@ -14,10 +14,14 @@
 
   /* ── Grid ── */
   const GRID_COLS = 8;
-  const GRID_ROWS = 6;
-  const TILE_SIZE = 56;
+  const BASE_GRID_ROWS = 6;
+  const MAX_EXPANSION_ROWS = 3;
+  const BASE_TILE_SIZE = 56;
   const GRID_OFFSET_X = 30;
   const GRID_OFFSET_Y = 60;
+
+  /* ── Soil quality per expansion tier ── */
+  const SOIL_QUALITY_TIERS = [1.0, 0.8, 0.65, 0.5]; // original, 1st exp, 2nd, 3rd
 
   /* ── States ── */
   const STATE_READY = 'READY';
@@ -70,11 +74,20 @@
 
   /* ── Upgrade Definitions ── */
   const UPGRADES = [
-    { id: 'growSpeed',       name: 'Growth Boost',       icon: '🌱', maxLevel: 5, baseCost: 50,  costScale: 1.8, desc: 'Crops grow faster' },
-    { id: 'yieldMultiplier', name: 'Yield Multiplier',   icon: '📦', maxLevel: 5, baseCost: 80,  costScale: 2.0, desc: 'Harvest more per crop' },
+    { id: 'growSpeed',       name: 'Growth Boost',       icon: '🌱', maxLevel: 5, baseCost: 50,  costScale: 1.8, desc: 'Crops grow faster (+25%/lvl)' },
+    { id: 'yieldMultiplier', name: 'Yield Multiplier',   icon: '📦', maxLevel: 5, baseCost: 80,  costScale: 2.0, desc: 'Harvest more per crop (+20%/lvl)' },
     { id: 'weatherResist',   name: 'Weather Shield',     icon: '🛡', maxLevel: 3, baseCost: 120, costScale: 2.5, desc: 'Reduce meteor damage chance' },
-    { id: 'autoHarvest',     name: 'Auto-Harvester',     icon: '🤖', maxLevel: 3, baseCost: 200, costScale: 3.0, desc: 'Auto-harvest mature crops' }
+    { id: 'autoHarvest',     name: 'Auto-Harvester',     icon: '🤖', maxLevel: 3, baseCost: 200, costScale: 3.0, desc: 'Auto-harvest mature crops' },
+    { id: 'plotExpansion',   name: 'Plot Expansion',     icon: '🗺', maxLevel: 3, baseCost: 150, costScale: 2.2, desc: 'Add 1 extra row of farmland' },
+    { id: 'soilQuality',    name: 'Soil Quality',        icon: '🧪', maxLevel: 5, baseCost: 100, costScale: 1.9, desc: 'All tiles grow faster (+15%/lvl)' },
+    { id: 'marketAccess',   name: 'Market Access',       icon: '📈', maxLevel: 5, baseCost: 120, costScale: 2.0, desc: 'Sell prices +10% per level' },
+    { id: 'irrigation',     name: 'Irrigation System',   icon: '💧', maxLevel: 3, baseCost: 140, costScale: 2.3, desc: 'Reduce crop damage -15%/lvl (stacks w/ Shield)' }
   ];
+
+  /* ── Price Fluctuation ── */
+  const PRICE_CHANGE_INTERVAL = 60; // seconds between price shifts
+  const PRICE_MIN_MULT = 0.5;
+  const PRICE_MAX_MULT = 2.0;
 
   /* ══════════════════════════════════════════════════════════════════
      DOM
@@ -107,8 +120,9 @@
   const TUTORIAL_PAGES = [
     { title: 'Welcome, Farmer!', lines: ['Grow crops and tend livestock on your', 'space station farm. Sell produce for credits!', '', 'Click a plot to plant, water, or harvest.', 'Press 1-0 to select crop type.', 'Press S to sell all produce.'] },
     { title: 'Crops & Weather', lines: ['Void Mushroom grows in any weather.', 'Plasma Pepper is fast but cold-vulnerable.', 'Astral Flower benefits from solar flares.', '', 'Solar flares boost growth; meteor showers', 'damage unprotected crops!'] },
-    { title: 'Upgrades', lines: ['Press U or click the UPGRADES button', 'to open the upgrade shop.', '', 'Growth Boost, Yield Multiplier,', 'Weather Shield, Auto-Harvester.', 'Each has multiple levels. Invest wisely!'] },
-    { title: 'Tips', lines: ['Buy livestock for passive income.', 'Watch for weather visual effects:', 'golden glow = solar, red rain = meteors.', '', 'Drag-select multiple plots at once.', 'Press H anytime to see this help again.'] }
+    { title: 'Upgrades', lines: ['Press U or click UPGRADES to open the shop.', '', 'Growth Boost, Yield, Weather Shield, Auto-Harvest,', 'Plot Expansion (more rows!), Soil Quality,', 'Market Access (better prices), Irrigation.', 'Each has multiple levels. Invest wisely!'] },
+    { title: 'Market & Land', lines: ['Crop prices fluctuate every 60 seconds!', 'Green arrow = high price, red = low price.', 'Buy seeds when cheap, sell when prices are high.', '', 'New expansion rows have lower soil quality.', 'Upgrade Soil Quality to improve all tiles.'] },
+    { title: 'Controls', lines: ['Mouse wheel: zoom in/out (0.5x-2.0x).', 'Middle-click drag or Ctrl+drag: pan view.', 'Home key: reset zoom & pan.', '', 'Drag-select multiple plots at once.', 'Press H anytime to see this help again.'] }
   ];
 
   let state = STATE_READY;
@@ -118,11 +132,20 @@
   let gameTime = 0;
   let dayCount = 0;
 
+  // Effective grid rows (base + expansion)
+  let gridRows = BASE_GRID_ROWS;
+  // Per-tile soil quality (2D array matching farmGrid dimensions)
+  let soilQuality = [];
+
   // Farm grid: each cell is null or { cropIndex, growthProgress, growthStage, plantAnim }
   let farmGrid = [];
 
   // Livestock pens: array of { typeIndex, feedTimer, produceReady, x, y }
   let livestockPens = [];
+
+  // Price fluctuation: per-crop multiplier
+  let priceMultipliers = [];
+  let priceChangeTimer = 0;
 
   // Inventory: { cropName: count }
   let inventory = {};
@@ -150,6 +173,16 @@
 
   // Input
   const keys = {};
+
+  // Zoom & pan
+  let viewZoom = 1.0;
+  let viewPanX = 0;
+  let viewPanY = 0;
+  const VIEW_ZOOM_MIN = 0.5;
+  const VIEW_ZOOM_MAX = 2.0;
+  let isPanning = false;
+  let panLastX = 0;
+  let panLastY = 0;
 
   // Drag selection
   let isDragging = false;
@@ -240,7 +273,9 @@
   }
 
   function getGrowthSpeedMultiplier() {
-    return 1 + getUpgradeLevel('growSpeed') * 0.25;
+    const base = 1 + getUpgradeLevel('growSpeed') * 0.25;
+    const soil = 1 + getUpgradeLevel('soilQuality') * 0.15;
+    return base * soil;
   }
 
   function getYieldMultiplier() {
@@ -250,8 +285,31 @@
   }
 
   function getWeatherResistance() {
-    // 0..3 => 0%, 25%, 50%, 75% reduction in meteor damage chance
-    return getUpgradeLevel('weatherResist') * 0.25;
+    // Weather Shield: 0..3 => 0%, 25%, 50%, 75%
+    // Irrigation: 0..3 => 0%, 15%, 30%, 45%
+    // They stack multiplicatively: combined = 1 - (1 - shield) * (1 - irrigation)
+    const shield = getUpgradeLevel('weatherResist') * 0.25;
+    const irrigation = getUpgradeLevel('irrigation') * 0.15;
+    return 1 - (1 - shield) * (1 - irrigation);
+  }
+
+  function getMarketPriceMultiplier() {
+    return 1 + getUpgradeLevel('marketAccess') * 0.10;
+  }
+
+  function getTileSoilQuality(row) {
+    const baseQ = (row < BASE_GRID_ROWS) ? SOIL_QUALITY_TIERS[0] : SOIL_QUALITY_TIERS[row - BASE_GRID_ROWS + 1] || SOIL_QUALITY_TIERS[SOIL_QUALITY_TIERS.length - 1];
+    return Math.min(1.5, baseQ + getUpgradeLevel('soilQuality') * 0.15);
+  }
+
+  function getEffectiveSellPrice(crop) {
+    const cropIdx = CROPS.indexOf(crop);
+    const priceMult = (cropIdx >= 0 && cropIdx < priceMultipliers.length) ? priceMultipliers[cropIdx] : 1;
+    return Math.round(crop.sellPrice * getMarketPriceMultiplier() * priceMult);
+  }
+
+  function getEffectiveProduceValue(live) {
+    return Math.round(live.produceValue * getMarketPriceMultiplier());
   }
 
   function getAutoHarvestInterval() {
@@ -273,6 +331,19 @@
     upgradeLevels[def.id] = curLevel + 1;
     floatingText.add(canvasW / 2, canvasH / 2 - 30, `${def.icon} ${def.name} Lv${curLevel + 1}!`, { color: '#0ff', font: 'bold 14px sans-serif' });
     particles.confetti(canvasW / 2, canvasH / 2, 15, { speed: 4 });
+
+    // Plot Expansion: add a new row
+    if (def.id === 'plotExpansion')
+      expandGrid();
+  }
+
+  function expandGrid() {
+    const newRow = [];
+    for (let c = 0; c < GRID_COLS; ++c)
+      newRow.push(null);
+    farmGrid.push(newRow);
+    ++gridRows;
+    soilQuality.push(getTileSoilQuality(gridRows - 1));
   }
 
   function resetGame() {
@@ -289,13 +360,18 @@
     upgradeShopScroll = 0;
     autoHarvestTimer = 0;
 
-    // Initialize empty farm grid
+    // Reset grid to base size
+    gridRows = BASE_GRID_ROWS;
+
+    // Initialize empty farm grid with soil quality
     farmGrid = [];
-    for (let r = 0; r < GRID_ROWS; ++r) {
+    soilQuality = [];
+    for (let r = 0; r < gridRows; ++r) {
       const row = [];
       for (let c = 0; c < GRID_COLS; ++c)
         row.push(null); // empty tile
       farmGrid.push(row);
+      soilQuality.push(getTileSoilQuality(r));
     }
 
     // Start with no livestock
@@ -308,6 +384,18 @@
     overlayAlpha = 0;
     weatherParticles = [];
 
+    // Price fluctuation reset
+    priceMultipliers = [];
+    for (let i = 0; i < CROPS.length; ++i)
+      priceMultipliers.push(1.0);
+    priceChangeTimer = PRICE_CHANGE_INTERVAL;
+
+    // Zoom & pan reset
+    viewZoom = 1.0;
+    viewPanX = 0;
+    viewPanY = 0;
+    isPanning = false;
+
     state = STATE_PLAYING;
     updateWindowTitle();
   }
@@ -315,6 +403,20 @@
   /* ══════════════════════════════════════════════════════════════════
      FARM GRID OPERATIONS
      ══════════════════════════════════════════════════════════════════ */
+
+  function gridToScreen(col, row) {
+    const ts = BASE_TILE_SIZE * viewZoom;
+    return {
+      x: (GRID_OFFSET_X + col * BASE_TILE_SIZE) * viewZoom + viewPanX,
+      y: (GRID_OFFSET_Y + row * BASE_TILE_SIZE) * viewZoom + viewPanY,
+      size: ts
+    };
+  }
+
+  function gridCenterToScreen(col, row) {
+    const g = gridToScreen(col, row);
+    return { x: g.x + g.size / 2, y: g.y + g.size / 2 };
+  }
 
   function plantCrop(row, col) {
     if (state !== STATE_PLAYING) return;
@@ -331,8 +433,7 @@
     };
 
     // Planting animation: seed sparkle + water droplet splash
-    const tx = GRID_OFFSET_X + col * TILE_SIZE + TILE_SIZE / 2;
-    const ty = GRID_OFFSET_Y + row * TILE_SIZE + TILE_SIZE / 2;
+    const { x: tx, y: ty } = gridCenterToScreen(col, row);
     particles.sparkle(tx, ty, 6, { color: crop.color, speed: 2 });
     // Water droplet splash effect
     for (let i = 0; i < 5; ++i) {
@@ -360,8 +461,7 @@
     const maxStage = crop.stages - 1;
     if (cell.growthStage < maxStage) return; // not mature yet
 
-    const tx = GRID_OFFSET_X + col * TILE_SIZE + TILE_SIZE / 2;
-    const ty = GRID_OFFSET_Y + row * TILE_SIZE + TILE_SIZE / 2;
+    const { x: tx, y: ty } = gridCenterToScreen(col, row);
 
     // Enhanced harvest: golden burst + crop-colored sparkle ring
     particles.burst(tx, ty, 10, { color: '#fd0', speed: 3.5, life: 0.7, gravity: 0.05 });
@@ -411,7 +511,7 @@
     // Upgrade growth speed multiplier
     const upgradeGrowthMul = getGrowthSpeedMultiplier();
 
-    for (let r = 0; r < GRID_ROWS; ++r) {
+    for (let r = 0; r < gridRows; ++r) {
       for (let c = 0; c < GRID_COLS; ++c) {
         const cell = farmGrid[r][c];
         if (!cell) continue;
@@ -428,16 +528,18 @@
         else if (crop.weatherAffinity === 'cold-vulnerable' && weatherType === WEATHER_METEOR_SHOWER)
           cropWeatherMul = 0.3; // growth slows in cold
 
-        // Advance growth progress
-        cell.growthProgress += (dt / crop.growTime) * cropWeatherMul * upgradeGrowthMul;
+        // Soil quality for this row
+        const tileSoil = getTileSoilQuality(r);
+
+        // Advance growth progress (soil quality is multiplicative)
+        cell.growthProgress += (dt / crop.growTime) * cropWeatherMul * upgradeGrowthMul * tileSoil;
 
         // Check stage advancement
         const newStage = Math.min(maxStage, Math.floor(cell.growthProgress * crop.stages));
         if (newStage > cell.growthStage) {
           cell.growthStage = newStage;
           // Enhanced growth particles: green sparkles rising
-          const tx = GRID_OFFSET_X + c * TILE_SIZE + TILE_SIZE / 2;
-          const ty = GRID_OFFSET_Y + r * TILE_SIZE + TILE_SIZE / 2;
+          const { x: tx, y: ty } = gridCenterToScreen(c, r);
           particles.sparkle(tx, ty, 4, { color: crop.color, speed: 1.5 });
           for (let p = 0; p < 3; ++p)
             particles.trail(tx + (Math.random() - 0.5) * 12, ty + 5, {
@@ -470,7 +572,7 @@
 
   /** Auto-harvest the first mature crop found (one per tick). */
   function autoHarvestOneCrop() {
-    for (let r = 0; r < GRID_ROWS; ++r)
+    for (let r = 0; r < gridRows; ++r)
       for (let c = 0; c < GRID_COLS; ++c) {
         const cell = farmGrid[r][c];
         if (!cell) continue;
@@ -547,7 +649,7 @@
     for (const crop of CROPS) {
       const count = inventory[crop.name] || 0;
       if (count > 0) {
-        const earned = count * crop.sellPrice;
+        const earned = count * getEffectiveSellPrice(crop);
         credits += earned;
         totalEarned += earned;
         delete inventory[crop.name];
@@ -557,7 +659,7 @@
     for (const live of LIVESTOCK) {
       const count = inventory[live.produce] || 0;
       if (count > 0) {
-        const earned = count * live.produceValue;
+        const earned = count * getEffectiveProduceValue(live);
         credits += earned;
         totalEarned += earned;
         delete inventory[live.produce];
@@ -634,7 +736,7 @@
       // Meteor damage with weather resistance and affinity
       const resist = getWeatherResistance();
       const baseDamageChance = 0.2;
-      for (let r = 0; r < GRID_ROWS; ++r) {
+      for (let r = 0; r < gridRows; ++r) {
         for (let c = 0; c < GRID_COLS; ++c) {
           const cell = farmGrid[r][c];
           if (!cell) continue;
@@ -648,8 +750,7 @@
           // Apply weather resistance upgrade
           damageChance *= (1 - resist);
           if (Math.random() < damageChance) {
-            const tx = GRID_OFFSET_X + c * TILE_SIZE + TILE_SIZE / 2;
-            const ty = GRID_OFFSET_Y + r * TILE_SIZE + TILE_SIZE / 2;
+            const { x: tx, y: ty } = gridCenterToScreen(c, r);
             particles.burst(tx, ty, 8, { color: '#f44', speed: 3, life: 0.4 });
             farmGrid[r][c] = null; // destroy crop
           }
@@ -679,6 +780,26 @@
      UPDATE
      ══════════════════════════════════════════════════════════════════ */
 
+  /* ══════════════════════════════════════════════════════════════════
+     PRICE FLUCTUATION
+     ══════════════════════════════════════════════════════════════════ */
+
+  function updatePriceFluctuation(dt) {
+    if (state !== STATE_PLAYING) return;
+    priceChangeTimer -= dt;
+    if (priceChangeTimer <= 0) {
+      priceChangeTimer = PRICE_CHANGE_INTERVAL;
+      for (let i = 0; i < CROPS.length; ++i) {
+        // Drift toward 1.0 with random perturbation
+        const old = priceMultipliers[i] || 1;
+        const drift = (1 - old) * 0.3; // mean-reversion
+        const noise = (Math.random() - 0.5) * 0.6;
+        priceMultipliers[i] = Math.max(PRICE_MIN_MULT, Math.min(PRICE_MAX_MULT, old + drift + noise));
+      }
+      floatingText.add(canvasW / 2, 50, 'Market prices updated!', { color: '#8cf', font: 'bold 12px sans-serif' });
+    }
+  }
+
   function updateGame(dt) {
     if (state === STATE_PAUSED) return;
 
@@ -687,6 +808,7 @@
     updateLivestock(dt);
     updateWeather(dt);
     updateWeatherParticles();
+    updatePriceFluctuation(dt);
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -694,18 +816,45 @@
      ══════════════════════════════════════════════════════════════════ */
 
   function drawGrid() {
-    for (let r = 0; r < GRID_ROWS; ++r) {
+    const ts = BASE_TILE_SIZE * viewZoom;
+    for (let r = 0; r < gridRows; ++r) {
       for (let c = 0; c < GRID_COLS; ++c) {
-        const x = GRID_OFFSET_X + c * TILE_SIZE;
-        const y = GRID_OFFSET_Y + r * TILE_SIZE;
+        const x = (GRID_OFFSET_X + c * BASE_TILE_SIZE) * viewZoom + viewPanX;
+        const y = (GRID_OFFSET_Y + r * BASE_TILE_SIZE) * viewZoom + viewPanY;
         const cell = farmGrid[r][c];
 
-        // Draw soil tile
+        // Skip tiles fully off-screen
+        if (x + ts < 0 || x > canvasW || y + ts < 0 || y > canvasH - 45) continue;
+
+        // Draw soil tile with quality tint
+        const q = getTileSoilQuality(r);
         ctx.fillStyle = cell ? '#3a2a1a' : '#2a1a0a';
-        ctx.fillRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+        ctx.fillRect(x + 1, y + 1, ts - 2, ts - 2);
+
+        // Soil quality tint overlay: greener = better, yellower = worse
+        if (q >= 0.9) {
+          // Good soil: subtle green
+          const ga = Math.min(0.2, (q - 0.9) * 0.5);
+          ctx.fillStyle = `rgba(0,180,40,${ga})`;
+        } else {
+          // Poor soil: yellowish-brown
+          const ya = Math.min(0.25, (0.9 - q) * 0.4);
+          ctx.fillStyle = `rgba(180,160,40,${ya})`;
+        }
+        ctx.fillRect(x + 1, y + 1, ts - 2, ts - 2);
+
         ctx.strokeStyle = '#5a4a3a';
         ctx.lineWidth = 0.5;
-        ctx.strokeRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+        ctx.strokeRect(x + 1, y + 1, ts - 2, ts - 2);
+
+        // Show soil quality label on empty tiles when zoomed in enough
+        if (!cell && viewZoom >= 0.8) {
+          ctx.fillStyle = '#555';
+          ctx.font = `${Math.round(7 * viewZoom)}px sans-serif`;
+          ctx.textAlign = 'right';
+          ctx.textBaseline = 'bottom';
+          ctx.fillText(`${Math.round(q * 100)}%`, x + ts - 3, y + ts - 2);
+        }
 
         if (cell) {
           const crop = CROPS[cell.cropIndex];
@@ -715,36 +864,32 @@
           // Growth indicator bar
           const progress = Math.min(1, cell.growthProgress);
           ctx.fillStyle = mature ? '#0f0' : crop.color;
-          ctx.fillRect(x + 3, y + TILE_SIZE - 6, (TILE_SIZE - 6) * progress, 3);
+          ctx.fillRect(x + 3, y + ts - 6 * viewZoom, (ts - 6) * progress, 3 * viewZoom);
 
           // Special crop background effects
           if (crop.weatherAffinity === 'any') {
-            // Void Mushroom: dark purple ambient glow
             ctx.fillStyle = `rgba(90,30,120,${0.15 + 0.05 * Math.sin(gameTime * 2 + r * 3 + c)})`;
-            ctx.fillRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+            ctx.fillRect(x + 2, y + 2, ts - 4, ts - 4);
           } else if (crop.weatherAffinity === 'cold-vulnerable') {
-            // Plasma Pepper: red/orange pulsing glow
             const pulse = 0.1 + 0.08 * Math.sin(gameTime * 4 + c * 2);
             ctx.fillStyle = `rgba(255,80,20,${pulse})`;
-            ctx.fillRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+            ctx.fillRect(x + 2, y + 2, ts - 4, ts - 4);
             ctx.shadowBlur = 6;
             ctx.shadowColor = '#f52';
             ctx.fillStyle = 'transparent';
-            ctx.fillRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+            ctx.fillRect(x + 2, y + 2, ts - 4, ts - 4);
             ctx.shadowBlur = 0;
           } else if (crop.weatherAffinity === 'solar') {
-            // Astral Flower: blue/white sparkle shimmer
             const shimmer = 0.08 + 0.06 * Math.sin(gameTime * 3 + r + c * 5);
             ctx.fillStyle = `rgba(140,180,255,${shimmer})`;
-            ctx.fillRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
-            // Tiny sparkle dots
+            ctx.fillRect(x + 2, y + 2, ts - 4, ts - 4);
             const sparkleT = gameTime * 5 + r * 7 + c * 11;
-            const sx = x + TILE_SIZE / 2 + Math.sin(sparkleT) * 14;
-            const sy = y + TILE_SIZE / 2 + Math.cos(sparkleT * 1.3) * 10;
+            const sx = x + ts / 2 + Math.sin(sparkleT) * 14 * viewZoom;
+            const sy = y + ts / 2 + Math.cos(sparkleT * 1.3) * 10 * viewZoom;
             ctx.globalAlpha = 0.5 + 0.4 * Math.sin(sparkleT * 2);
             ctx.fillStyle = '#fff';
             ctx.beginPath();
-            ctx.arc(sx, sy, 1.2, 0, TWO_PI);
+            ctx.arc(sx, sy, 1.2 * viewZoom, 0, TWO_PI);
             ctx.fill();
             ctx.globalAlpha = 1;
           }
@@ -752,9 +897,9 @@
           // Crop icon with plantAnim scale bounce
           const scale = cell.plantAnim > 0 ? 1 + Math.sin(cell.plantAnim * Math.PI) * 0.4 : 1;
           ctx.save();
-          ctx.translate(x + TILE_SIZE / 2, y + TILE_SIZE / 2 - 4);
+          ctx.translate(x + ts / 2, y + ts / 2 - 4 * viewZoom);
           ctx.scale(scale, scale);
-          ctx.font = `${14 + cell.growthStage * 3}px sans-serif`;
+          ctx.font = `${Math.round((14 + cell.growthStage * 3) * viewZoom)}px sans-serif`;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.fillText(crop.icon, 0, 0);
@@ -765,7 +910,7 @@
             ctx.shadowBlur = 8;
             ctx.shadowColor = crop.color;
             ctx.fillStyle = 'transparent';
-            ctx.fillRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+            ctx.fillRect(x + 2, y + 2, ts - 4, ts - 4);
             ctx.shadowBlur = 0;
           }
         }
@@ -915,10 +1060,26 @@
       }
       ctx.font = '14px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(CROPS[i].icon, bx + 14, barY + 26);
+      ctx.fillText(CROPS[i].icon, bx + 14, barY + 18);
       ctx.fillStyle = credits >= CROPS[i].seedCost ? '#aaa' : '#f44';
       ctx.font = '8px sans-serif';
-      ctx.fillText(`${CROPS[i].seedCost}cr`, bx + CROP_BTN_W - 10, barY + 26);
+      ctx.fillText(`${CROPS[i].seedCost}cr`, bx + CROP_BTN_W - 10, barY + 18);
+
+      // Price multiplier indicator arrow
+      const pm = priceMultipliers[i] || 1;
+      if (pm > 1.05) {
+        ctx.fillStyle = '#0c0';
+        ctx.font = '9px sans-serif';
+        ctx.fillText('\u25B2' + pm.toFixed(1), bx + CROP_BTN_W / 2, barY + 38);
+      } else if (pm < 0.95) {
+        ctx.fillStyle = '#f44';
+        ctx.font = '9px sans-serif';
+        ctx.fillText('\u25BC' + pm.toFixed(1), bx + CROP_BTN_W / 2, barY + 38);
+      } else {
+        ctx.fillStyle = '#666';
+        ctx.font = '8px sans-serif';
+        ctx.fillText(pm.toFixed(1), bx + CROP_BTN_W / 2, barY + 38);
+      }
     }
 
     // Sell button
@@ -948,6 +1109,16 @@
     ctx.font = '8px sans-serif';
     ctx.fillText('(U)', upgBtnX + 35, barY + 34);
 
+    // Zoom indicator
+    if (Math.abs(viewZoom - 1.0) > 0.01) {
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(canvasW - 70, 4, 66, 18);
+      ctx.fillStyle = '#8cf';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`Zoom: ${Math.round(viewZoom * 100)}%`, canvasW - 37, 16);
+    }
+
     // Livestock buy area
     ctx.fillStyle = '#aaa';
     ctx.font = 'bold 11px sans-serif';
@@ -965,10 +1136,18 @@
   function drawUpgradeShop() {
     if (!showUpgradeShop || state !== STATE_PLAYING) return;
 
-    const panelW = 280;
-    const panelH = 30 + UPGRADES.length * 52 + 10;
+    const panelW = 300;
+    const ROW_H = 48;
+    const headerH = 30;
+    const footerH = 16;
+    const contentH = UPGRADES.length * ROW_H;
+    const maxVisH = canvasH - 60;
+    const panelH = Math.min(headerH + contentH + footerH, maxVisH);
     const px = Math.round((canvasW - panelW) / 2);
-    const py = Math.round((canvasH - panelH) / 2) - 20;
+    const py = Math.round((canvasH - panelH) / 2) - 10;
+    const scrollableH = panelH - headerH - footerH;
+    const maxScroll = Math.max(0, contentH - scrollableH);
+    upgradeShopScroll = Math.max(0, Math.min(maxScroll, upgradeShopScroll));
 
     // Panel background
     ctx.fillStyle = 'rgba(5,10,25,0.94)';
@@ -983,6 +1162,12 @@
     ctx.textAlign = 'center';
     ctx.fillText('Upgrade Shop', px + panelW / 2, py + 22);
 
+    // Clip content area
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(px, py + headerH, panelW, scrollableH);
+    ctx.clip();
+
     // Upgrade rows
     for (let i = 0; i < UPGRADES.length; ++i) {
       const def = UPGRADES[i];
@@ -990,43 +1175,46 @@
       const maxed = curLevel >= def.maxLevel;
       const cost = maxed ? 0 : getUpgradeCost(def, curLevel);
       const canAfford = credits >= cost;
-      const ry = py + 35 + i * 52;
+      const ry = py + headerH + i * ROW_H - upgradeShopScroll;
+
+      // Skip off-screen rows
+      if (ry + ROW_H < py + headerH || ry > py + headerH + scrollableH) continue;
 
       // Row background
       ctx.fillStyle = 'rgba(20,30,40,0.8)';
-      ctx.fillRect(px + 6, ry, panelW - 12, 46);
+      ctx.fillRect(px + 6, ry + 1, panelW - 12, ROW_H - 2);
 
       // Icon + name
-      ctx.font = '13px sans-serif';
+      ctx.font = '12px sans-serif';
       ctx.textAlign = 'left';
       ctx.fillStyle = '#fff';
-      ctx.fillText(`${def.icon} ${def.name}`, px + 12, ry + 16);
+      ctx.fillText(`${def.icon} ${def.name}`, px + 12, ry + 15);
 
       // Level pips
       ctx.font = '9px sans-serif';
       ctx.fillStyle = '#888';
       let pipStr = '';
       for (let l = 0; l < def.maxLevel; ++l)
-        pipStr += l < curLevel ? '■ ' : '□ ';
-      ctx.fillText(pipStr + `Lv${curLevel}/${def.maxLevel}`, px + 12, ry + 30);
+        pipStr += l < curLevel ? '\u25A0 ' : '\u25A1 ';
+      ctx.fillText(pipStr + `Lv${curLevel}/${def.maxLevel}`, px + 12, ry + 27);
 
       // Description
       ctx.fillStyle = '#777';
-      ctx.font = '9px sans-serif';
-      ctx.fillText(def.desc, px + 12, ry + 42);
+      ctx.font = '8px sans-serif';
+      ctx.fillText(def.desc, px + 12, ry + 39);
 
       // Buy button area
       const btnX = px + panelW - 66;
-      const btnY = ry + 6;
+      const btnY = ry + 5;
       const btnW = 54;
-      const btnH = 22;
+      const btnH = 20;
       if (maxed) {
         ctx.fillStyle = '#060';
         ctx.fillRect(btnX, btnY, btnW, btnH);
         ctx.fillStyle = '#0a0';
         ctx.font = 'bold 10px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('MAX', btnX + btnW / 2, btnY + 15);
+        ctx.fillText('MAX', btnX + btnW / 2, btnY + 14);
       } else {
         ctx.fillStyle = canAfford ? '#220' : '#200';
         ctx.fillRect(btnX, btnY, btnW, btnH);
@@ -1036,7 +1224,25 @@
         ctx.fillStyle = canAfford ? '#ff0' : '#f66';
         ctx.font = 'bold 9px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(`${cost}cr`, btnX + btnW / 2, btnY + 15);
+        ctx.fillText(`${cost}cr`, btnX + btnW / 2, btnY + 14);
+      }
+    }
+
+    ctx.restore();
+
+    // Scroll indicators
+    if (maxScroll > 0) {
+      if (upgradeShopScroll > 0) {
+        ctx.fillStyle = '#cc0';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('\u25B2', px + panelW - 14, py + headerH + 10);
+      }
+      if (upgradeShopScroll < maxScroll) {
+        ctx.fillStyle = '#cc0';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('\u25BC', px + panelW - 14, py + panelH - footerH - 4);
       }
     }
 
@@ -1044,44 +1250,42 @@
     ctx.fillStyle = '#666';
     ctx.font = '9px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('Press U or Esc to close', px + panelW / 2, py + panelH - 2);
+    ctx.fillText('Press U or Esc to close | Scroll for more', px + panelW / 2, py + panelH - 3);
   }
 
   function drawDragSelection() {
     if (!isDragging || !dragStartedOnGrid) return;
 
     const { r0, c0, r1, c1 } = getDragGridRect();
+    const ts = BASE_TILE_SIZE * viewZoom;
 
     // Highlight individual tiles within the selection
     for (let r = r0; r <= r1; ++r)
       for (let c = c0; c <= c1; ++c) {
-        const tx = GRID_OFFSET_X + c * TILE_SIZE;
-        const ty = GRID_OFFSET_Y + r * TILE_SIZE;
+        const tx = (GRID_OFFSET_X + c * BASE_TILE_SIZE) * viewZoom + viewPanX;
+        const ty = (GRID_OFFSET_Y + r * BASE_TILE_SIZE) * viewZoom + viewPanY;
         const cell = farmGrid[r][c];
 
         if (cell === null) {
-          // Empty tile -- will be planted (green highlight)
           ctx.fillStyle = 'rgba(0,200,0,0.2)';
-          ctx.fillRect(tx + 1, ty + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+          ctx.fillRect(tx + 1, ty + 1, ts - 2, ts - 2);
         } else {
           const crop = CROPS[cell.cropIndex];
           if (cell.growthStage >= crop.stages - 1) {
-            // Mature crop -- will be harvested (golden highlight)
             ctx.fillStyle = 'rgba(255,200,0,0.25)';
-            ctx.fillRect(tx + 1, ty + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+            ctx.fillRect(tx + 1, ty + 1, ts - 2, ts - 2);
           } else {
-            // Growing crop -- not actionable (red hint)
             ctx.fillStyle = 'rgba(255,50,50,0.12)';
-            ctx.fillRect(tx + 1, ty + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+            ctx.fillRect(tx + 1, ty + 1, ts - 2, ts - 2);
           }
         }
       }
 
     // Draw outer selection rectangle border
-    const rx = GRID_OFFSET_X + c0 * TILE_SIZE;
-    const ry = GRID_OFFSET_Y + r0 * TILE_SIZE;
-    const rw = (c1 - c0 + 1) * TILE_SIZE;
-    const rh = (r1 - r0 + 1) * TILE_SIZE;
+    const rx = (GRID_OFFSET_X + c0 * BASE_TILE_SIZE) * viewZoom + viewPanX;
+    const ry = (GRID_OFFSET_Y + r0 * BASE_TILE_SIZE) * viewZoom + viewPanY;
+    const rw = (c1 - c0 + 1) * ts;
+    const rh = (r1 - r0 + 1) * ts;
 
     ctx.strokeStyle = 'rgba(0,255,128,0.8)';
     ctx.lineWidth = 2;
@@ -1186,11 +1390,12 @@
      TOOLTIP
      ══════════════════════════════════════════════════════════════════ */
 
-  function buildCropTileTooltip(cell) {
+  function buildCropTileTooltip(cell, row) {
     const crop = CROPS[cell.cropIndex];
     const maxStage = crop.stages - 1;
     const mature = cell.growthStage >= maxStage;
     const progress = Math.min(100, Math.round(cell.growthProgress * 100));
+    const effPrice = getEffectiveSellPrice(crop);
     const lines = [
       { text: crop.icon + ' ' + crop.name, color: crop.color, bold: true }
     ];
@@ -1198,29 +1403,46 @@
       lines.push({ text: 'Ready to harvest! (click)', color: '#0f0' });
     else
       lines.push({ text: 'Stage ' + (cell.growthStage + 1) + '/' + crop.stages + ' -- ' + progress + '% grown', color: '#aaa' });
-    lines.push({ text: 'Sell price: ' + crop.sellPrice + ' cr', color: '#da2' });
+    lines.push({ text: 'Sell price: ' + effPrice + ' cr' + (effPrice !== crop.sellPrice ? ' (base ' + crop.sellPrice + ')' : ''), color: '#da2' });
+    const sq = getTileSoilQuality(row);
+    if (sq < 1.0)
+      lines.push({ text: 'Soil quality: ' + Math.round(sq * 100) + '% (slower growth)', color: '#ca4' });
+    else if (sq > 1.0)
+      lines.push({ text: 'Soil quality: ' + Math.round(sq * 100) + '% (faster growth)', color: '#4d4' });
     const yieldMul = getYieldMultiplier();
     if (yieldMul > 1)
       lines.push({ text: 'Yield bonus: ' + Math.round((yieldMul - 1) * 100) + '% chance double', color: '#ff0' });
     return lines;
   }
 
-  function buildEmptyTileTooltip() {
+  function buildEmptyTileTooltip(row) {
     const crop = CROPS[selectedCropIndex];
-    return [
+    const sq = getTileSoilQuality(row);
+    const lines = [
       { text: 'Empty plot', color: '#999', bold: true },
       { text: 'Click to plant ' + crop.icon + ' ' + crop.name + ' (' + crop.seedCost + ' cr)', color: '#aaa' }
     ];
+    if (sq < 1.0)
+      lines.push({ text: 'Soil quality: ' + Math.round(sq * 100) + '% (slower growth)', color: '#ca4' });
+    else if (sq > 1.0)
+      lines.push({ text: 'Soil quality: ' + Math.round(sq * 100) + '% (enhanced growth)', color: '#4d4' });
+    return lines;
   }
 
   function buildCropBarTooltip(cropIndex) {
     const crop = CROPS[cropIndex];
+    const effPrice = getEffectiveSellPrice(crop);
+    const pm = priceMultipliers[cropIndex] || 1;
     const lines = [
       { text: crop.icon + ' ' + crop.name, color: crop.color, bold: true },
       { text: 'Seed cost: ' + crop.seedCost + ' cr', color: '#aaa' },
-      { text: 'Sell price: ' + crop.sellPrice + ' cr', color: '#da2' },
-      { text: 'Grow time: ' + crop.growTime + 's — ' + crop.stages + ' stages', color: '#8cf' }
+      { text: 'Sell price: ' + effPrice + ' cr' + (effPrice !== crop.sellPrice ? ' (base ' + crop.sellPrice + ')' : ''), color: '#da2' }
     ];
+    if (pm > 1.05)
+      lines.push({ text: 'Market: ' + pm.toFixed(2) + 'x (high!)', color: '#0c0' });
+    else if (pm < 0.95)
+      lines.push({ text: 'Market: ' + pm.toFixed(2) + 'x (low)', color: '#f44' });
+    lines.push({ text: 'Grow time: ' + crop.growTime + 's -- ' + crop.stages + ' stages', color: '#8cf' });
     if (crop.weatherAffinity === 'any')
       lines.push({ text: 'Grows in any weather, meteor-immune', color: '#a7f' });
     else if (crop.weatherAffinity === 'solar')
@@ -1236,12 +1458,12 @@
     for (const crop of CROPS) {
       const count = inventory[crop.name] || 0;
       totalItems += count;
-      totalValue += count * crop.sellPrice;
+      totalValue += count * getEffectiveSellPrice(crop);
     }
     for (const live of LIVESTOCK) {
       const count = inventory[live.produce] || 0;
       totalItems += count;
-      totalValue += count * live.produceValue;
+      totalValue += count * getEffectiveProduceValue(live);
     }
     const lines = [
       { text: 'Sell All Produce', color: '#0f0', bold: true }
@@ -1259,7 +1481,7 @@
     return [
       { text: def.icon + ' ' + def.name, color: '#fff', bold: true },
       { text: 'Cost: ' + def.cost + ' cr', color: '#f88' },
-      { text: 'Produces: ' + def.produceIcon + ' ' + def.produce + ' (' + def.produceValue + ' cr)', color: '#da2' },
+      { text: 'Produces: ' + def.produceIcon + ' ' + def.produce + ' (' + getEffectiveProduceValue(def) + ' cr)', color: '#da2' },
       { text: 'Every ' + def.feedInterval + 's — click pen to collect', color: '#8cf' }
     ];
   }
@@ -1275,7 +1497,7 @@
       const remaining = Math.max(0, Math.ceil(pen.feedTimer));
       lines.push({ text: 'Next ' + def.produce + ' in ' + remaining + 's', color: '#aaa' });
     }
-    lines.push({ text: 'Value: ' + def.produceValue + ' cr each', color: '#da2' });
+    lines.push({ text: 'Value: ' + getEffectiveProduceValue(def) + ' cr each', color: '#da2' });
     return lines;
   }
 
@@ -1307,7 +1529,7 @@
     const { col, row } = canvasToGrid(mx, my);
     if (isInsideGrid(col, row)) {
       const cell = farmGrid[row][col];
-      tooltipLines = cell ? buildCropTileTooltip(cell) : buildEmptyTileTooltip();
+      tooltipLines = cell ? buildCropTileTooltip(cell, row) : buildEmptyTileTooltip(row);
       return;
     }
 
@@ -1546,6 +1768,10 @@
         showUpgradeShop = !showUpgradeShop;
         return;
       }
+      if (e.code === 'Home') {
+        resetView();
+        return;
+      }
     }
   });
 
@@ -1564,14 +1790,17 @@
   }
 
   function canvasToGrid(cx, cy) {
+    // Invert zoom/pan transform: screen -> world -> grid
+    const wx = (cx - viewPanX) / viewZoom;
+    const wy = (cy - viewPanY) / viewZoom;
     return {
-      col: Math.floor((cx - GRID_OFFSET_X) / TILE_SIZE),
-      row: Math.floor((cy - GRID_OFFSET_Y) / TILE_SIZE)
+      col: Math.floor((wx - GRID_OFFSET_X) / BASE_TILE_SIZE),
+      row: Math.floor((wy - GRID_OFFSET_Y) / BASE_TILE_SIZE)
     };
   }
 
   function isInsideGrid(col, row) {
-    return col >= 0 && col < GRID_COLS && row >= 0 && row < GRID_ROWS;
+    return col >= 0 && col < GRID_COLS && row >= 0 && row < gridRows;
   }
 
   /** Returns the grid-clamped selection rectangle { r0, c0, r1, c1 } from drag coordinates. */
@@ -1582,7 +1811,7 @@
       c0: Math.max(0, Math.min(a.col, b.col)),
       r0: Math.max(0, Math.min(a.row, b.row)),
       c1: Math.min(GRID_COLS - 1, Math.max(a.col, b.col)),
-      r1: Math.min(GRID_ROWS - 1, Math.max(a.row, b.row))
+      r1: Math.min(gridRows - 1, Math.max(a.row, b.row))
     };
   }
 
@@ -1618,21 +1847,37 @@
 
     if (state !== STATE_PLAYING) return;
 
+    // Middle mouse button or ctrl+left for panning
+    if (e.button === 1 || (e.button === 0 && e.ctrlKey)) {
+      e.preventDefault();
+      isPanning = true;
+      const { x, y } = pointerToCanvas(e);
+      panLastX = x;
+      panLastY = y;
+      canvas.setPointerCapture(e.pointerId);
+      return;
+    }
+
     const { x: mx, y: my } = pointerToCanvas(e);
 
     // Check upgrade shop clicks first (it overlays everything)
     if (showUpgradeShop) {
-      const panelW = 280;
-      const panelH = 30 + UPGRADES.length * 52 + 10;
+      const panelW = 300;
+      const ROW_H = 48;
+      const headerH = 30;
+      const footerH = 16;
+      const contentH = UPGRADES.length * ROW_H;
+      const maxVisH = canvasH - 60;
+      const panelH = Math.min(headerH + contentH + footerH, maxVisH);
       const px = Math.round((canvasW - panelW) / 2);
-      const py = Math.round((canvasH - panelH) / 2) - 20;
+      const py = Math.round((canvasH - panelH) / 2) - 10;
 
       if (mx >= px && mx <= px + panelW && my >= py && my <= py + panelH) {
         // Check buy button clicks
         for (let i = 0; i < UPGRADES.length; ++i) {
           const btnX = px + panelW - 66;
-          const btnY = py + 35 + i * 52 + 6;
-          if (mx >= btnX && mx <= btnX + 54 && my >= btnY && my <= btnY + 22) {
+          const btnY = py + headerH + i * ROW_H - upgradeShopScroll + 5;
+          if (mx >= btnX && mx <= btnX + 54 && my >= btnY && my <= btnY + 20) {
             purchaseUpgrade(i);
             return;
           }
@@ -1706,6 +1951,16 @@
   canvas.addEventListener('pointermove', (e) => {
     const { x, y } = pointerToCanvas(e);
 
+    // Panning
+    if (isPanning) {
+      viewPanX += x - panLastX;
+      viewPanY += y - panLastY;
+      clampPan();
+      panLastX = x;
+      panLastY = y;
+      return;
+    }
+
     // Tooltip tracking (always active)
     if (!isDragging)
       updateTooltip(x, y);
@@ -1721,7 +1976,15 @@
     tooltipLines = [];
   });
 
+  // Prevent context menu on middle-click
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
   canvas.addEventListener('pointerup', (e) => {
+    if (isPanning) {
+      isPanning = false;
+      canvas.releasePointerCapture(e.pointerId);
+      return;
+    }
     if (!isDragging) return;
     isDragging = false;
     dragStartedOnGrid = false;
@@ -1732,11 +1995,62 @@
   });
 
   canvas.addEventListener('pointercancel', (e) => {
+    if (isPanning) {
+      isPanning = false;
+      canvas.releasePointerCapture(e.pointerId);
+      return;
+    }
     if (!isDragging) return;
     isDragging = false;
     dragStartedOnGrid = false;
     canvas.releasePointerCapture(e.pointerId);
   });
+
+  /* ── Zoom & Pan helpers ── */
+
+  function clampPan() {
+    // Keep the grid at least partially visible
+    const ts = BASE_TILE_SIZE * viewZoom;
+    const gridW = GRID_COLS * ts;
+    const gridH = gridRows * ts;
+    const ox = GRID_OFFSET_X * viewZoom;
+    const oy = GRID_OFFSET_Y * viewZoom;
+
+    // Don't let the grid scroll entirely off-screen
+    const margin = 60;
+    viewPanX = Math.max(-gridW - ox + margin, Math.min(canvasW - ox - margin, viewPanX));
+    viewPanY = Math.max(-gridH - oy + margin, Math.min(canvasH - oy - margin - 45, viewPanY));
+  }
+
+  function resetView() {
+    viewZoom = 1.0;
+    viewPanX = 0;
+    viewPanY = 0;
+  }
+
+  canvas.addEventListener('wheel', (e) => {
+    if (state !== STATE_PLAYING) return;
+    e.preventDefault();
+
+    // Scroll upgrade shop if open
+    if (showUpgradeShop) {
+      upgradeShopScroll += e.deltaY > 0 ? 40 : -40;
+      return;
+    }
+
+    const { x: mx, y: my } = pointerToCanvas(e);
+
+    // Zoom toward cursor position
+    const oldZoom = viewZoom;
+    const zoomStep = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+    viewZoom = Math.max(VIEW_ZOOM_MIN, Math.min(VIEW_ZOOM_MAX, viewZoom * zoomStep));
+
+    // Adjust pan so the point under the cursor stays fixed
+    const zoomRatio = viewZoom / oldZoom;
+    viewPanX = mx - (mx - viewPanX) * zoomRatio;
+    viewPanY = my - (my - viewPanY) * zoomRatio;
+    clampPan();
+  }, { passive: false });
 
   /* ══════════════════════════════════════════════════════════════════
      MENU ACTIONS
