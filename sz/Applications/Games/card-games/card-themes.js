@@ -437,62 +437,73 @@
 
     switch (resolved) {
       case 'spades': {
-        // Gras / Laub (Leaf) -- narrow elongated blade-shaped leaf
-        const lw = s * 0.28;
-        const lh = s * 0.92;
+        // Gras / Laub (Leaf) -- broad Bavarian leaf, clearly not a diamond
+        const lw = s * 0.65;
+        const lh = s * 0.85;
 
         // Gradient for leaf body
-        const leafGrad = cx.createRadialGradient(0, 0, 0, 0, 0, lh);
+        const leafGrad = cx.createRadialGradient(0, -lh * 0.15, 0, 0, -lh * 0.15, lh);
         leafGrad.addColorStop(0, '#3cb043');
         leafGrad.addColorStop(1, '#1a6b1a');
 
-        // Main leaf blade
+        // Broad leaf body -- pointed tip at top, widest at upper-third,
+        // tapers to narrow stem attachment at bottom
         cx.beginPath();
         cx.moveTo(0, -lh);
-        cx.bezierCurveTo(-lw * 0.4, -lh * 0.7, -lw, -lh * 0.25, -lw, 0);
-        cx.bezierCurveTo(-lw, lh * 0.25, -lw * 0.5, lh * 0.7, 0, lh);
-        cx.bezierCurveTo(lw * 0.5, lh * 0.7, lw, lh * 0.25, lw, 0);
-        cx.bezierCurveTo(lw, -lh * 0.25, lw * 0.4, -lh * 0.7, 0, -lh);
+        cx.bezierCurveTo(-lw * 0.35, -lh * 0.95, -lw * 0.9, -lh * 0.5, -lw, -lh * 0.05);
+        cx.bezierCurveTo(-lw * 0.95, lh * 0.3, -lw * 0.4, lh * 0.58, 0, lh * 0.65);
+        cx.bezierCurveTo(lw * 0.4, lh * 0.58, lw * 0.95, lh * 0.3, lw, -lh * 0.05);
+        cx.bezierCurveTo(lw * 0.9, -lh * 0.5, lw * 0.35, -lh * 0.95, 0, -lh);
         cx.closePath();
         cx.fillStyle = leafGrad;
         cx.fill();
 
+        // Thin dark outline for definition
+        cx.strokeStyle = '#1a6b1a';
+        cx.lineWidth = 0.5;
+        cx.stroke();
+
         // Center vein (lighter green overlay)
         cx.beginPath();
         cx.moveTo(0, -lh * 0.85);
-        cx.lineTo(0, lh * 0.85);
+        cx.lineTo(0, lh * 0.6);
         cx.strokeStyle = '#90ee90';
-        cx.lineWidth = s * 0.06;
+        cx.lineWidth = s * 0.07;
         cx.globalAlpha = 0.5;
         cx.stroke();
         cx.globalAlpha = 1;
 
-        // Side veins (lighter green)
+        // Side veins -- curved, radiating outward from center vein
         cx.strokeStyle = '#90ee90';
         cx.lineWidth = s * 0.04;
         cx.globalAlpha = 0.4;
-        for (let i = -3; i <= 3; ++i) {
-          if (i === 0) continue;
-          const vy = i * lh * 0.22;
-          const dir = i < 0 ? -1 : 1;
+        const veinPairs = [
+          { vy: -lh * 0.55, reach: 0.75 },
+          { vy: -lh * 0.3,  reach: 0.9 },
+          { vy: -lh * 0.05, reach: 0.85 },
+          { vy:  lh * 0.2,  reach: 0.6 }
+        ];
+        for (const { vy, reach } of veinPairs) {
           cx.beginPath();
           cx.moveTo(0, vy);
-          cx.lineTo(lw * 0.7 * dir, vy - lh * 0.08);
+          cx.quadraticCurveTo(lw * reach * 0.5, vy - lh * 0.02, lw * reach, vy - lh * 0.08);
           cx.stroke();
           cx.beginPath();
           cx.moveTo(0, vy);
-          cx.lineTo(-lw * 0.7 * dir, vy - lh * 0.08);
+          cx.quadraticCurveTo(-lw * reach * 0.5, vy - lh * 0.02, -lw * reach, vy - lh * 0.08);
           cx.stroke();
         }
         cx.globalAlpha = 1;
 
-        // Short stem at bottom
+        // Stem at bottom
         cx.beginPath();
-        cx.moveTo(0, lh);
-        cx.lineTo(0, lh + s * 0.12);
+        cx.moveTo(0, lh * 0.65);
+        cx.lineTo(0, lh * 0.65 + s * 0.25);
         cx.strokeStyle = '#1a6b1a';
-        cx.lineWidth = s * 0.08;
+        cx.lineWidth = s * 0.1;
+        cx.lineCap = 'round';
         cx.stroke();
+        cx.lineCap = 'butt';
         break;
       }
       case 'hearts': {
