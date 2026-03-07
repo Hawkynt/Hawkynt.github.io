@@ -104,3 +104,8 @@ Modeled after the classic "About Windows" dialog (winver.exe) found in Windows X
 ### Advanced
 
 - [x] As a developer, I can pass an `autostart=1` parameter to the About app to automatically display the What's New tab on launch
+
+### Planned Features
+
+- [ ] As a user, I can see a list of installed apps and their versions in the System tab so that I have a full inventory
+- [ ] As a user, I can see the What's New tab highlight new entries since my last visit so that I can quickly find recent changes

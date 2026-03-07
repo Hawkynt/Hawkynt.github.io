@@ -1,62 +1,91 @@
 # Mind-Bending Puzzle
 
-A surreal spatial manipulation and reality-warping puzzle game inspired by Antichamber and The Witness. Explore 17 rooms with hidden rules, non-Euclidean geometry, perspective shifting, and reality-warp distortion effects.
+A surreal spatial manipulation and reality-warping puzzle game inspired by Antichamber and The Witness. Explore 17 rooms with hidden rules, non-Euclidean geometry, perspective shifting, and reality-warp distortion effects. Part of the SynthelicZ Desktop.
+
+## How It Works
+
+1. Move through rooms using Arrow Keys or WASD
+2. Interact with objects using E or Space
+3. Discover each room's hidden rule through experimentation
+4. Shift perspective with Q to cycle through Normal/Flipped/Rotated modes
+5. Pass through portals to trigger reality-warp effects and travel to unexpected rooms
+6. Progress is saved to localStorage
 
 ## User Stories
 
-- **S-080**: As a player, I want to solve mind-bending puzzles involving spatial manipulation, non-Euclidean geometry, and reality-warping mechanics, so that I experience Antichamber/Witness-style brain teasers.
-- **S-081**: As a player, I want mind-bending puzzle to have reality-warp distortion effects, solution-discovery glow, perspective-shift smooth transitions, and ambient particle atmospherics, so that puzzles feel surreal.
-- **S-000**: As a player, I want consistent OS integration (window title, theme changes, resize handling, menu bar, dialogs).
+### Core Gameplay
+- [x] As a user, I can move through 17 surreal puzzle rooms using Arrow Keys or WASD
+- [x] As a user, I can interact with doors and objects using E or Space
+- [x] As a user, I can discover each room's hidden rule through experimentation
+- [x] As a user, I can reset the current room with R
+- [x] As a user, I can see solid-object collision detection preventing walking through walls and platforms
 
-## Features
+### Interactive Objects (8 types)
+- [x] As a user, I can interact with fracture objects
+- [x] As a user, I can interact with echo objects
+- [x] As a user, I can interact with nexus orb objects
+- [x] As a user, I can interact with shadow objects
+- [x] As a user, I can interact with color tile objects
+- [x] As a user, I can interact with phantom bridge objects
+- [x] As a user, I can interact with clue objects that reveal room rules with glow effects
+- [x] As a user, I can interact with goal objects to complete rooms
 
-- 17 surreal puzzle rooms with unique hidden rules
-- **Solid-object collision detection** — player cannot walk through walls, platforms, and other solid objects
-- **8 interactive object types**: fracture, echo, nexus orb, shadow, color tile, phantom bridge, clue, goal — each with unique interaction handlers
-- Non-Euclidean geometry: doors lead to unexpected rooms
-- Perspective shifting with smooth morph transitions (smoothstep easing)
-- Reality-warp distortion effects (sine wave screen distortion)
-- Solution-discovery glow highlights with particle bursts
-- Ambient particle atmospherics in every room
-- Screen shake on warp and discovery events
-- Floating text feedback for player actions
-- Progress persistence via localStorage
-- High scores tracking (fastest completion times)
-- **Canvas maximize to parent container** — canvas fills the entire parent container on resize for full-window gameplay
-- Full SynthelicZ Desktop OS integration
+### Non-Euclidean Geometry
+- [x] As a user, I can walk through doors that lead to unexpected rooms (non-linear connections)
+- [x] As a user, I can experience rooms connecting in non-Euclidean ways (loops, skips)
+
+### Perspective Shifting
+- [x] As a user, I can cycle through perspective modes (Normal, Flipped, Rotated) with Q
+- [x] As a user, I can see smooth morph transitions between perspectives using smoothstep interpolation over 0.5 seconds
+
+### Visual Effects
+- [x] As a user, I can see reality-warp distortion effects (sine-wave screen distortion) when passing through portals
+- [x] As a user, I can see solution-discovery glow highlights with particle bursts
+- [x] As a user, I can see ambient particle atmospherics in every room
+- [x] As a user, I can see screen shake on warp and discovery events
+- [x] As a user, I can see floating text feedback for player actions
+
+### Persistence
+- [x] As a user, I can have my progress saved via localStorage
+- [x] As a user, I can see high scores tracking fastest completion times
+
+### OS Integration
+- [x] As a user, I can see the canvas maximize to the parent container for full-window gameplay
+- [x] As a user, I can use the menu bar and dialog system
+- [x] As a user, I can press F2 for new game, Escape for pause
+
+### Planned
+- [ ] As a user, I can hear sound effects for warps, discoveries, and perspective shifts
+- [ ] As a user, I can see a room map showing discovered connections
+- [ ] As a user, I can earn achievements for solving rooms under par moves
+- [ ] As a user, I can see a hint system revealing partial solutions for rooms I am stuck on
+- [ ] As a user, I can encounter additional room types with new interactive object mechanics
 
 ## Controls
 
 | Input | Action |
 |---|---|
 | Arrow Keys / WASD | Move player |
-| E / Space | Interact with doors & objects |
+| E / Space | Interact with doors and objects |
 | Q | Shift perspective |
 | R | Reset room |
 | F2 | New game / Restart |
 | Escape | Pause / Resume |
 
-## Game Mechanics
+## Technical Details
 
-### Hidden Rules
-Each room has a hidden rule the player must discover through experimentation. Walking into clue objects or passing through portals reveals the rule with a glow effect.
+- **Engine**: Vanilla JavaScript canvas 2D with IIFE pattern and `window.SZ` namespace
+- **Room system**: 17 rooms with unique layouts, hidden rules, and object placement
+- **Physics**: Solid-object collision detection for walls, platforms, and interactive objects
+- **Perspective**: 3 modes (Normal, Flipped, Rotated) with smoothstep morph transitions
+- **Effects**: SZ.GameEffects (ParticleSystem, ScreenShake, FloatingText)
+- **Persistence**: localStorage for progress and high scores
+- **OS integration**: SetWindowText, RegisterWindowProc (WM_SIZE, WM_THEMECHANGED)
 
-### Non-Euclidean Geometry
-Doors and portals connect rooms in non-linear ways. Walking through a door may lead to a room several indices away or even loop back to the same room from a different perspective.
+## Known Limitations
 
-### Perspective Shifting
-Press Q to cycle through perspective modes (Normal → Flipped → Rotated). Smooth transitions use smoothstep interpolation over 0.5 seconds.
-
-### Reality Warp
-Passing through portals triggers reality-warp distortion: sine-wave screen offset, particle bursts, and screen shake create a surreal transition effect.
-
-## Architecture
-
-- `index.html` — Entry point with SEO meta tags, JSON-LD, menu bar, canvas, dialogs
-- `controller.js` — IIFE game logic: room system, physics, effects, OS integration
-- `styles.css` — Layout and theming
-- `icon.svg` — 48×48 app icon
-- Shared dependencies: `menu.js`, `dialog.js`, `game-effects.js`
+- No sound effects
+- No room map or navigation guide
 
 ## SEO Keywords
 

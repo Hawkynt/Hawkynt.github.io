@@ -185,93 +185,99 @@ Dropped randomly from destroyed asteroids (5% large, 12% medium, 18% small), ene
 ## User Stories
 
 ### Core Gameplay
-- As a player, I want to steer my ship with arrow keys or WASD, thrust with inertia, and wrap around screen edges so movement feels smooth and arcade-authentic.
-- As a player, I want to shoot bullets with Space (hold for auto-fire) so I can destroy asteroids and enemies without mashing keys.
-- As a player, I want asteroids to split into smaller pieces when destroyed (large->2 medium->2 small) so each rock presents cascading threats.
-- As a player, I want a hyperspace teleport on Down/S with a cooldown so I have a last-resort escape from tight situations.
-- As a player, I want a brief invulnerability period after respawning so I am not instantly killed in a cluttered field.
+- [x] As a player, I can steer my ship with arrow keys or WASD, thrust with inertia, and wrap around screen edges so that movement feels smooth and arcade-authentic
+- [x] As a player, I can shoot bullets with Space (hold for auto-fire) so that I can destroy asteroids and enemies without mashing keys
+- [x] As a player, I can see asteroids split into smaller pieces when destroyed (large to 2 medium to 2 small) so that each rock presents cascading threats
+- [x] As a player, I can hyperspace teleport on Down/S with a cooldown so that I have a last-resort escape from tight situations
+- [x] As a player, I can benefit from a brief invulnerability period after respawning so that I am not instantly killed in a cluttered field
+- [x] As a player, I can control my ship with mouse aim and click-to-shoot as an alternative input method so that mouse-only play is supported
 
 ### Game Modes
-- As a player, I want to choose from 4 game modes (Classic, Survival, Zen, Hardcore) on a mode select screen so I can pick the experience that suits my mood.
-- As a player, I want Classic mode with 3 lives and progressive levels so I get the traditional arcade experience.
-- As a player, I want Survival mode with 1 life and endlessly spawning, accelerating asteroids so I can test my endurance.
-- As a player, I want Zen mode with infinite lives and a 3-minute timer so I can practice and score-attack without frustration.
-- As a player, I want Hardcore mode with 1 life, faster asteroids, and 2x score so I face a serious challenge with high reward.
+- [x] As a player, I can choose from 4 game modes (Classic, Survival, Zen, Hardcore) on a mode select screen so that I can pick the experience that suits my mood
+- [x] As a player, I can play Classic mode with 3 lives and progressive levels so that I get the traditional arcade experience
+- [x] As a player, I can play Survival mode with 1 life and endlessly spawning, accelerating asteroids so that I can test my endurance
+- [x] As a player, I can play Zen mode with infinite lives and a 3-minute timer so that I can practice and score-attack without frustration
+- [x] As a player, I can play Hardcore mode with 1 life, faster asteroids, and 2x score so that I face a serious challenge with high reward
 
 ### Field Sizes
-- As a player, I want to select a field size (Small/Medium/Large/Huge) on the mode select screen so I can choose my preferred arena scale.
-- As a player, I want my field size choice persisted to localStorage so it is remembered next time I play.
-- As a player, I want asteroid counts and star density to scale with field area so larger fields feel appropriately populated.
+- [x] As a player, I can select a field size (Small/Medium/Large/Huge) on the mode select screen so that I can choose my preferred arena scale
+- [x] As a player, I can have my field size choice persisted to localStorage so that it is remembered next time I play
+- [x] As a player, I can see asteroid counts and star density scale with field area so that larger fields feel appropriately populated
 
 ### Rock Types
-- As a player, I want Normal rocks (1 HP) from the start so the early game is approachable.
-- As a player, I want Iron rocks (2 HP, grey shimmer) appearing from level 3 so I face tougher targets that require multiple hits.
-- As a player, I want Crystal rocks (3 HP, blue glow and facets) appearing from level 6 so high-level play has durable, visually distinct obstacles.
-- As a player, I want Exploding rocks (2 HP, orange pulse) from level 9 that detonate in a large AoE on death, chain-reacting with nearby exploding rocks, so I must consider positioning before shooting.
-- As a player, I want Ice rocks (2 HP, frosted surface) from level 12 that leave a slow zone on death so destroyed ice asteroids create lingering terrain hazards.
-- As a player, I want Lava rocks (3 HP, magma cracks) from level 15 that leave fire trails while alive and spawn fire patches on death so they create dangerous areas over time.
-- As a player, I want Electric rocks (2 HP, crackling arcs) from level 18 that arc lightning to nearby objects and trigger an EMP on death disabling my powerups for 3 seconds so they introduce a high-risk tactical element.
-- As a player, I want child asteroids to inherit their parent's rock type when splitting so the type-specific challenge persists through the cascade.
-- As a player, I want HP pips displayed below multi-hit asteroids so I can see how much damage remains.
+- [x] As a player, I can face Normal rocks (1 HP) from the start so that the early game is approachable
+- [x] As a player, I can face Iron rocks (2 HP, grey shimmer) from level 3 so that I encounter tougher targets requiring multiple hits
+- [x] As a player, I can face Crystal rocks (3 HP, blue glow and facets) from level 6 so that high-level play has durable, visually distinct obstacles
+- [x] As a player, I can face Exploding rocks (2 HP, orange pulse) from level 9 that detonate in a large AoE and chain-react so that I must consider positioning before shooting
+- [x] As a player, I can face Ice rocks (2 HP, frosted surface) from level 12 that leave a slow zone on death so that destroyed ice asteroids create lingering terrain hazards
+- [x] As a player, I can face Lava rocks (3 HP, magma cracks) from level 15 that leave fire trails and spawn fire patches on death so that they create dangerous areas over time
+- [x] As a player, I can face Electric rocks (2 HP, crackling arcs) from level 18 that arc lightning and trigger an EMP on death disabling powerups for 3 seconds so that they introduce a high-risk tactical element
+- [x] As a player, I can see child asteroids inherit their parent's rock type when splitting so that the type-specific challenge persists through the cascade
+- [x] As a player, I can see HP pips displayed below multi-hit asteroids so that I can gauge remaining damage
 
 ### Zone Effects
-- As a player, I want ice zones (translucent blue circles) to slow all entities passing through so destroyed ice asteroids reshape the battlefield.
-- As a player, I want fire patches (flickering orange circles) to damage me on contact with a brief cooldown so lava hazards are dangerous but not instant-kill.
-- As a player, I want proximity mines (pulsing red dots with range indicators) to detonate when I or my bullets get too close so mine-layer enemies create persistent threats.
-- As a player, I want zones to visually fade as they expire so I can judge remaining duration at a glance.
+- [x] As a player, I can see ice zones (translucent blue circles) slow all entities passing through so that destroyed ice asteroids reshape the battlefield
+- [x] As a player, I can see fire patches (flickering orange circles) damage me on contact with a brief cooldown so that lava hazards are dangerous but not instant-kill
+- [x] As a player, I can see proximity mines (pulsing red dots with range indicators) detonate on proximity so that mine-layer enemies create persistent threats
+- [x] As a player, I can see zones visually fade as they expire so that I can judge remaining duration at a glance
 
 ### Enemy Ships
-- As a player, I want UFOs (large random-fire, small aimed-fire) from level 1 crossing the screen so I face a classic secondary threat.
-- As a player, I want Drone enemies (kamikaze swarms of 2-3) from level 5 that charge directly at me so I must react quickly to fast-moving threats.
-- As a player, I want Gunship enemies (3 HP, burst fire, strafing) from level 8 so I face a tougher, more aggressive shooter.
-- As a player, I want Mine-Layer enemies (2 HP, drops mines) from level 11 so the field becomes littered with proximity hazards.
-- As a player, I want Stealth enemies (2 HP, cloaking cycle) from level 14 that are only hittable when visible so I must time my shots.
-- As a player, I want Boss enemies (8+ HP, shield, multi-attack) every 5 levels starting at 10 that block asteroid spawning until defeated so I face memorable milestone encounters.
-- As a player, I want at most 3 non-boss enemies on screen at once so the game remains challenging but not overwhelming.
-- As a player, I want enemy type variety to scale with level so each session feels progressively more diverse.
+- [x] As a player, I can face UFOs (large random-fire, small aimed-fire) from level 1 so that I have a classic secondary threat
+- [x] As a player, I can face Drone enemies (kamikaze swarms) from level 5 that charge directly at me so that I must react quickly
+- [x] As a player, I can face Gunship enemies (3 HP, burst fire, strafing) from level 8 so that I face tougher shooters
+- [x] As a player, I can face Mine-Layer enemies (2 HP, drops mines) from level 11 so that the field becomes littered with proximity hazards
+- [x] As a player, I can face Stealth enemies (2 HP, cloaking cycle) from level 14 that are only hittable when visible so that I must time my shots
+- [x] As a player, I can face Boss enemies (8+ HP, shield, multi-attack) every 5 levels from level 10 so that I have memorable milestone encounters
+- [x] As a player, I can see at most 3 non-boss enemies on screen at once so that the game remains challenging but not overwhelming
 
 ### Ally Ships
-- As a player, I want a fighter ally to warp in every 5 levels (from level 5) with an "ALLY INCOMING!" announcement so I receive reinforcements as difficulty increases.
-- As a player, I want my ally to follow me at a distance, target the nearest asteroid or enemy, and fire autonomously so it provides meaningful combat support.
-- As a player, I want allies to be destructible (3 HP) so they are a valuable but temporary resource.
-- As a player, I want destroyed allies to drop a powerup so their loss at least yields a consolation reward.
-- As a player, I want at most 2 concurrent allies so assistance is significant without trivializing the game.
+- [x] As a player, I can receive a fighter ally every 5 levels (from level 5) with an "ALLY INCOMING!" announcement so that I get reinforcements as difficulty increases
+- [x] As a player, I can see my ally follow me, target the nearest threat, and fire autonomously so that it provides meaningful combat support
+- [x] As a player, I can see allies are destructible (3 HP) and drop a powerup on death so that they are valuable but temporary
+- [x] As a player, I can have at most 2 concurrent allies so that assistance is significant without trivializing the game
 
 ### Powerups
-- As a player, I want 8 powerup types (Shield, Triple Shot, Rapid Fire, Piercing, Spread Shot, Homing, Extra Life, Nuke) dropped from destroyed entities so gameplay variety increases over time.
-- As a player, I want duration powerups displayed as on-canvas HUD bars so I can see remaining time at a glance.
-- As a player, I want powerup collectibles to glow, spin, and fade out before despawning so they are visually clear and urgent.
-- As a player, I want the Nuke to destroy all on-screen asteroids and non-boss enemies so it serves as a powerful screen-clear.
-- As a player, I want the EMP from electric asteroid death to suppress all active duration powerups for 3 seconds (including shield protection, piercing, homing, and shot modifiers) with a visible HUD warning so I understand and can plan around the temporary vulnerability.
+- [x] As a player, I can collect 8 powerup types (Shield, Triple Shot, Rapid Fire, Piercing, Spread Shot, Homing, Extra Life, Nuke) so that gameplay variety increases over time
+- [x] As a player, I can see duration powerups displayed as on-canvas HUD bars so that I can track remaining time at a glance
+- [x] As a player, I can see powerup collectibles glow, spin, and fade out before despawning so that they are visually clear and urgent
+- [x] As a player, I can use the Nuke to destroy all on-screen asteroids and non-boss enemies so that it serves as a powerful screen-clear
+- [x] As a player, I can see the EMP from electric asteroid death suppress active duration powerups for 3 seconds with a HUD warning so that I can plan around the vulnerability
 
 ### Combo System
-- As a player, I want rapid kills within 1.5 seconds to build a combo multiplier (x2 through x8) so skillful play is rewarded with higher scores.
-- As a player, I want the combo HUD to show animated text with color progression so my streak feels exciting.
+- [x] As a player, I can build a combo multiplier (x2 through x8) by making rapid kills within 1.5 seconds so that skillful play is rewarded
+- [x] As a player, I can see the combo HUD with animated text and color progression so that my streak feels exciting
 
 ### Warp Transitions
-- As a player, I want a warp-speed star-streak animation between levels so level transitions feel dramatic.
-- As a player, I want "LEVEL X" text during warp and "BOSS FIGHT!" or "ALLY INCOMING!" announcements so I know what to expect next.
-- As a player, I want to remain invulnerable and controllable during warp so I can reposition safely.
+- [x] As a player, I can see a warp-speed star-streak animation between levels so that transitions feel dramatic
+- [x] As a player, I can see "LEVEL X", "BOSS FIGHT!", or "ALLY INCOMING!" announcements during warp so that I know what to expect next
+- [x] As a player, I can remain invulnerable and controllable during warp so that I can reposition safely
 
 ### Scoring and Progression
-- As a player, I want score to account for rock type multiplier, combo multiplier, and mode multiplier so all difficulty factors contribute to my final score.
-- As a player, I want high scores persisted to localStorage (top 5) with mode tracking and a reset option so my best runs are remembered.
-- As a player, I want a game over screen showing stats (asteroids destroyed, accuracy, max combo, powerups collected) so I can review my performance.
-- As a player, I want an extra life every 10,000 points in Classic mode so sustained play is rewarded.
+- [x] As a player, I can see score account for rock type, combo, and mode multipliers so that all difficulty factors contribute to my final score
+- [x] As a player, I can have high scores persisted to localStorage (top 5) with mode tracking and reset option so that my best runs are remembered
+- [x] As a player, I can see a game over screen with stats (asteroids destroyed, accuracy, max combo, powerups collected) so that I can review my performance
+- [x] As a player, I can earn an extra life every 10,000 points in Classic mode so that sustained play is rewarded
 
 ### Visuals and Feedback
-- As a player, I want each rock type to have a unique color palette, glow, and surface effect so I can instantly identify threats.
-- As a player, I want each enemy type to have a distinct silhouette and color so I can recognize their behavior on sight.
-- As a player, I want shockwave rings, screen flashes, and particle bursts on explosions so destruction feels impactful.
-- As a player, I want electric arcs rendered between nearby electric asteroids so the battlefield looks spectacular.
-- As a player, I want the boss's HP bar and shield aura to be clearly visible so I can track fight progress.
-- As a player, I want a dashed/dimmed shield bubble during EMP so I have a visual cue that my shield is suppressed.
+- [x] As a player, I can see each rock type with a unique color palette, glow, and surface effect so that I can instantly identify threats
+- [x] As a player, I can see each enemy type with a distinct silhouette and color so that I can recognize their behavior on sight
+- [x] As a player, I can see shockwave rings, screen flashes, and particle bursts on explosions so that destruction feels impactful
+- [x] As a player, I can see electric arcs rendered between nearby electric asteroids so that the battlefield looks spectacular
+- [x] As a player, I can see the boss's HP bar and shield aura so that I can track fight progress
+- [x] As a player, I can see a dashed/dimmed shield bubble during EMP so that I have a visual cue that my shield is suppressed
 
 ### Window and UI
-- As a player, I want the game window to be resizable and maximizable within SZ OS with the canvas scaling to fit so I can play at any window size.
-- As a player, I want a status bar showing score, lives, level/time/wave, and mode so key info is always visible.
-- As a player, I want a Controls dialog listing all keys, rock types, enemy types, powerups, and allies so I can learn the game without external docs.
-- As a player, I want menu bar access to New Game, Pause, High Scores, and Exit so standard game management is a click away.
+- [x] As a player, I can resize and maximize the game window within SZ OS with the canvas scaling to fit so that I can play at any window size
+- [x] As a player, I can see a status bar showing score, lives, level/time/wave, and mode so that key info is always visible
+- [x] As a player, I can access a Controls dialog listing all keys, rock types, enemy types, powerups, and allies so that I can learn the game without external docs
+- [x] As a player, I can access menu bar for New Game, Pause, High Scores, and Exit so that standard game management is a click away
+
+### Planned Features
+- [ ] As a player, I can hear sound effects for shooting, explosions, powerup collection, and warp so that the game has audio feedback
+- [ ] As a player, I can see powerup rarity scale by level so that later levels drop rarer powerups more often
+- [ ] As a player, I can see high scores separated by game mode so that each mode has its own leaderboard
+- [ ] As a player, I can see ally ships with improved AI (formations, coordination) so that allies feel more intelligent
+- [ ] As a player, I can face an EMP resistance mechanic for certain powerups so that electric rocks have more nuanced counterplay
 
 ## Known Limitations
 

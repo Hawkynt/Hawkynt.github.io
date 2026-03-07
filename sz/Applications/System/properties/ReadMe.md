@@ -60,14 +60,35 @@ A hosted app (class-based, runs directly in the window's content div rather than
 
 ## User Stories
 
-- [x] As a user, I want to see a file's name, path, and type so I know its basic info
-- [x] As a user, I want to see a file's size in human-readable format so I know how large it is
-- [x] As a user, I want to see when a file was last modified so I know how current it is
-- [x] As a user, I want to know if a file is stored in VFS or the object tree so I understand its location
-- [x] As a user, I want to see metadata tabs (EXIF, ID3, etc.) for supported file types so I can inspect metadata without opening a dedicated viewer
-- [x] As a user, I want the file type to be auto-detected from content so I see the real type, not just "File"
-- [x] As a user, I want to open the full metadata viewer from properties so I can do deep inspection
-- [x] As a user, I want to see folder contents summary (file/folder counts and total size) so I understand directory scope
-- [x] As a user, I want recursive totals for nested folders so I know the full subtree size
-- [x] As a user, I want a loading spinner while metadata loads so I know the app is working
-- [x] As a user, I want the properties window to look like a Windows property sheet so it feels native
+### General Tab
+- [x] As a user, I can see a file's name, path, and type so that I know its basic info
+- [x] As a user, I can see a file's size in human-readable format (B/KB/MB) so that I know how large it is
+- [x] As a user, I can see when a file was last modified so that I know how current it is
+- [x] As a user, I can see the storage location (VFS localStorage or SZ Object Tree) so that I understand where the file lives
+- [x] As a user, I can see the path formatted as SZ:\\ drive notation so that it matches the desktop convention
+
+### File Metadata
+- [x] As a user, I can see the file type auto-detected from content so that I see the real type, not just "File"
+- [x] As a user, I can see additional metadata tabs (EXIF, ID3, etc.) for supported file types so that I can inspect metadata without a dedicated viewer
+- [x] As a user, I can see metadata parsers loaded on demand so that the properties dialog stays fast
+- [x] As a user, I can see deep-inspection categories filtered out (Strings, Sections, Imports, etc.) so that Properties stays focused on summary metadata
+
+### Folder Metadata
+- [x] As a user, I can see direct item counts (files and folders) and direct size so that I know the immediate folder contents
+- [x] As a user, I can see total items and total size from a recursive directory walk so that I know the full subtree size
+- [x] As a user, I can see incremental rendering (direct counts first, then full walk) so that results appear progressively
+
+### User Interface
+- [x] As a user, I can see a tabbed interface with dynamically created tabs so that metadata is organized by category
+- [x] As a user, I can see the properties window styled like a Windows XP property sheet so that it feels native
+- [x] As a user, I can click "Open in Metadata Viewer" to launch the full metadata viewer for deep inspection so that I can switch to detailed analysis
+- [x] As a user, I can click "Close" to dismiss the dialog so that I can return to my work
+- [x] As a user, I can see a loading spinner while metadata is being fetched so that I know the app is working
+- [x] As a user, I can see the window title set to "{filename} - Properties" so that I know which file I am inspecting
+
+### Planned Features
+- [ ] As a user, I can edit metadata fields directly in the Properties dialog so that I can make quick changes without switching apps
+- [ ] As a user, I can see file permissions and attributes so that I can inspect access control
+- [ ] As a user, I can see a preview thumbnail in the General tab so that I can identify the file visually
+- [ ] As a user, I can see previous versions or modification history so that I can track changes
+- [ ] As a user, I can see checksum values (MD5, SHA-256) in the General tab so that I can verify file integrity

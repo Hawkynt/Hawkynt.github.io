@@ -31,39 +31,44 @@ A rhythm action game where you hit falling notes in time with music using the D/
 
 ## User Stories
 
-- **S-074**: As a player, I want to hit falling notes in time with background music tracks using keyboard keys, with scoring based on timing accuracy, so that I experience rhythm game flow.
-- **S-075**: As a player, I want rhythm game to have note-hit burst particles, perfect-streak glow effects, miss screen-shake, and smooth note-scroll animations, so that the rhythm experience feels electrifying.
-- **S-000**: As a player, I want the game to integrate with the SZ Desktop OS (window management, theming, menus, dialogs).
-
 ### Core Gameplay
-- [x] As a player, I can hit falling notes using the D/F/J/K keyboard keys across 4 lanes
-- [x] As a player, I can click on lanes with the mouse to hit notes as an alternative to keyboard controls
-- [x] As a player, I can select songs from a song selection screen using click or keyboard
-- [x] As a player, I can see timing accuracy feedback (Perfect, Great, Good, Miss) for each note hit
+- [x] As a user, I can hit falling notes using the D/F/J/K keyboard keys across 4 lanes so that I experience rhythm game flow
+- [x] As a user, I can click on lanes with the mouse to hit notes as an alternative to keyboard controls
+- [x] As a user, I can select songs from a song selection screen using click or keyboard so that I choose my preferred difficulty
+- [x] As a user, I can see timing accuracy feedback (Perfect, Great, Good, Miss) for each note hit so that I know how well I am performing
+- [x] As a user, I can pause the game with Escape and resume so that I can take breaks during songs
 
 ### Combo & Scoring
-- [x] As a player, I can build combos for score multipliers (x2/x3/x4) that reset on a miss
-- [x] As a player, I can see celebratory confetti and floating notifications at combo milestones (10, 30, 50, 100)
-- [x] As a player, I can see a pulsing combo display with color-coded milestones (white/yellow/orange/magenta)
-- [x] As a player, I can receive a final letter grade (S/A/B/C/D) based on my performance
-- [x] As a player, I can see persistent high scores per song via localStorage
+- [x] As a user, I can build combos for score multipliers (x2/x3/x4) that reset on a miss so that accuracy is rewarded
+- [x] As a user, I can see celebratory confetti and floating notifications at combo milestones (10, 30, 50, 100)
+- [x] As a user, I can see a pulsing combo display with color-coded milestones (white/yellow/orange/magenta)
+- [x] As a user, I can receive a final letter grade (S/A/B/C/D) based on my performance so that I have a clear goal to aim for
+- [x] As a user, I can see persistent high scores per song via localStorage so that I can track my improvement
+- [x] As a user, I can see a results screen after each song showing my grade, score, max combo, and hit breakdown
 
 ### Visual Effects & Particles
-- [x] As a player, I can see neon glow effects on lane separators, hit zone circles, notes, and combo text using canvas shadowBlur
-- [x] As a player, I can see neon lane flash column gradients on successful note hits
-- [x] As a player, I can see expanding double glow rings on Perfect-rated hits (outer yellow + inner neon lane color)
-- [x] As a player, I can see dramatic multi-layered neon particle explosions on note hits, scaled by rating
-- [x] As a player, I can see a full-screen neon flash on Perfect hits and combo milestones
-- [x] As a player, I can see an elastic-bouncing pulsing neon combo counter with outline stroke and white core glow
-- [x] As a player, I can see gradient comet-tail trails and neon trail particles behind falling notes
-- [x] As a player, I can see the background pulse in sync with the song BPM (color shift, radial vignette, lane tint pulse)
-- [x] As a player, I can see screen-shake on misses that escalates on consecutive misses
-- [x] As a player, I can see floating accuracy text with multiplier display
-- [x] As a player, I can see smooth time-based note scrolling and BPM-synced lane glow effects
+- [x] As a user, I can see neon glow effects on lane separators, hit zone circles, notes, and combo text using canvas shadowBlur
+- [x] As a user, I can see neon lane flash column gradients on successful note hits
+- [x] As a user, I can see expanding double glow rings on Perfect-rated hits (outer yellow + inner neon lane color)
+- [x] As a user, I can see dramatic multi-layered neon particle explosions on note hits, scaled by rating
+- [x] As a user, I can see a full-screen neon flash on Perfect hits and combo milestones
+- [x] As a user, I can see an elastic-bouncing pulsing neon combo counter with outline stroke and white core glow
+- [x] As a user, I can see gradient comet-tail trails and neon trail particles behind falling notes
+- [x] As a user, I can see the background pulse in sync with the song BPM (color shift, radial vignette, lane tint pulse)
+- [x] As a user, I can see screen-shake on misses that escalates on consecutive misses
+- [x] As a user, I can see floating accuracy text with multiplier display
+- [x] As a user, I can see smooth time-based note scrolling and BPM-synced lane glow effects
 
 ### Audio
-- [x] As a player, I can hear procedural music via Web Audio API with unique melody, bass line, hi-hat, and kick drum per song
-- [x] As a player, I can hear hit/miss sound effects providing audio feedback for timing accuracy
+- [x] As a user, I can hear procedural music via Web Audio API with unique melody, bass line, hi-hat, and kick drum per song
+- [x] As a user, I can hear hit/miss sound effects providing audio feedback for timing accuracy
+
+### Planned
+- [ ] As a user, I can import custom song files to play with my own music
+- [ ] As a user, I can adjust note scroll speed in settings for a personalized difficulty
+- [ ] As a user, I can see hold notes that require sustained key presses for long tones
+- [ ] As a user, I can play songs with increasing difficulty tiers that unlock as I achieve higher grades
+- [ ] As a user, I can see a practice mode that slows down specific sections of a song
 
 ## Controls
 

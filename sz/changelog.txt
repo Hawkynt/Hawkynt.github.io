@@ -1,3 +1,43 @@
+Main: 6.13
+by Hawkynt 07.03.2026
++ Window Manager: frameless window mode (apps can request window frame removal via SetFrameless API)
++ Window Manager: maximize button swaps to restore icon when window is maximized (uses skin Action=2 button image)
++ Media Player: Winamp compact mode now uses frameless window (no title bar or borders visible)
++ SEO: hidden structured content divs added to all 69 app HTML pages for search engine indexing
++ Documentation: all 70 app ReadMe.md files aligned with categorized user stories and feature checkboxes
+
+Main: 6.12
+by Hawkynt 07.03.2026
++ Notepad: Sort Lines (ascending/descending/case-insensitive/numeric with duplicate removal), Convert Case (UPPER/lower/Title/Sentence/tOGGLE), Text Statistics dialog, Auto-Complete dropdown from document words, Split View with synced panes and draggable splitter
++ Wordpad: Table Style Gallery (12 preset styles), Mail Merge Fields with preview and finish-merge, Compare Documents (LCS diff with side-by-side highlighting), Macro Recorder (record/stop/play/manage), Accessibility Checker (contrast, alt text, headings, empty links)
++ Spreadsheet: Quick Analysis Tool (formatting/charts/totals on selection), Flash Fill (pattern detection from examples), Power Query Lite / Get Data (CSV/JSON/HTML import with preview), Cell Dropdown Calendar for date-formatted cells
++ Presentations: Slide Timer / Rehearse Timings (per-slide and total elapsed with auto-advance), Slide Notes Export (formatted printable document), Presentation Outline Print (hierarchical text extraction), Summary Zoom (clickable thumbnail navigation slide), Element Locking (lock/unlock with visual indicators)
++ Office: all native color pickers replaced with SZ.ColorPalette across WordPad, Spreadsheet, and Presentations
++ shared modules: ParticleSystem.emit() method, MenuBar two-arg constructor pattern, Dialog.open()/alert()/data-dialog attribute support
++ Space Combat: boss shields, spiral burst/cross beam/mine attack patterns, formation spawning (V/ring/line/diamond), quadratic HP scaling per cycle, autofire on mouse hold, multi-edge enemy spawning (top/left/right/bottom), 5 path patterns (straight/sine/zigzag/arc/dive)
++ Tower Defense: 4 new tower types (Ice/Fire/Chain Lightning/Sniper), sell/bulldozer, tower damage and repair, build during waves, 10x speed toggle, floor effects (lava from fire tower, ice from ice tower, buildable spike traps)
++ Space Farming: upgrade shop (growth speed/yield/weather resistance/auto-harvest/plot expansion/soil quality/market access/irrigation), 3 new crops (Void Mushroom/Plasma Pepper/Astral Flower), weather visual effects, enhanced particle effects, land expansion with soil quality tiers, price fluctuation market, map zoom and pan
++ Dome Keeper: continuous rifle aiming with visible turret barrel, keyboard A/D aiming, gadget system with 4 primary gadgets (Shield Generator/Repellent Field/Orchard/Droneyard) and 6 mine chamber gadgets (Auto Cannon/Stun Laser/Blast Mining/Probe Scanner/Dome Armor/Condenser), two enemy types (ground walkers + airborne flyers), gradual difficulty scaling (wave 1 one-shots, armored wave 9+, shields wave 11+, bosses every 5 from wave 15), mouse click-to-move underground navigation with BFS pathfinding, increased wave interval to 40s
++ Space Racing: mouse steering (ship follows cursor while button pressed)
++ Bomberman: explosions destroy powerups with particle effects
+# ColorPalette: fixed callback never firing (hide() nulled callback before invocation)
+# Wordpad: text/highlight color now saves and restores selection before applying
+# Wordpad: table cell background color uses color palette instead of prompt()
+# Wordpad: shapes can be selected by clicking (dblclick enters text edit mode)
+# Presentations: element color callback captures selected elements at palette-open time
+# Wordpad: page width now fixed at 8.5in in print layout (no longer expands while typing)
+# Spreadsheet: text color picker fixed (container class removed, palette now visible)
+# Space Combat: boss now spawns correctly after wave 4
+# Snake: mouse control resets on pointer release (no longer follows mouse indefinitely)
+# Fantasy Puzzle: level auto-advances when only star and rune remain
+# Dome Keeper: dome grounded on surface, rifle manually aimable via click, turret angle clamped below horizontal to hit ground enemies, statusbar maximize fixed (flex layout)
+# Space Farming: status bar no longer floats mid-window when maximized
+# Mind-Bending Puzzle: status bar no longer floats mid-window when maximized
+# Space Racing: mouse control resets on pointer release, position display uses fractional checkpoint distance (no longer always shows 1st)
+# Tower Defense: playfield scales to window size, palette buttons no longer overlap, 0hp enemy bug fixed (dead enemies skipped in targeting/splash/chain, cleanup sweep added)
+# Bomberman: sprite sheet frame mapping rewritten (correct column/row assignments, left-facing flip fixed)
+- Removed 9 phantom game entries from manifest (fantasy-adventure, text-adventure, visual-novel, survival-horror, space-colony, space-trading, space-exploration, space-strategy, space-horror)
+
 Main: 6.11
 by Hawkynt 04.03.2026
 + Spreadsheet: Page Up/Down navigation, Ctrl+Home/End jump, external clipboard paste, Ctrl+; date/time insertion

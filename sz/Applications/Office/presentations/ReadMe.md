@@ -96,6 +96,13 @@ A PowerPoint-like presentation editor for the SynthelicZ Desktop. Create, edit, 
 ### Ribbon Interface
 - [x] As a user, I can access 7 ribbon tabs: Home, Insert, Design, Transitions, Animations, Review, View
 
+### Planned Features
+- [ ] As a user, I can collaborate with others in real time so that multiple people can edit simultaneously
+- [ ] As a user, I can record a narration for each slide so that the presentation plays back with audio
+- [ ] As a user, I can use a laser pointer tool during slideshow mode so that I can highlight areas on screen
+- [ ] As a user, I can embed video and audio media into slides so that multimedia presentations are possible
+- [ ] As a user, I can apply custom slide master layouts so that I can create reusable branded templates
+
 ## Controls
 
 | Input | Action |
