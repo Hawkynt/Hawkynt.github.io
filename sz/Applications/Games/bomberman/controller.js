@@ -613,6 +613,25 @@
           enemyKilledByExplosion(e, i);
         }
       }
+
+      // Check powerup destroyed by explosion/fire
+      for (let i = powerUps.length - 1; i >= 0; --i) {
+        const pu = powerUps[i];
+        if (pu.col === fire.col && pu.row === fire.row) {
+          const px = pu.col * TILE_SIZE + TILE_SIZE / 2;
+          const py = pu.row * TILE_SIZE + TILE_SIZE / 2;
+          const entry = powerUpEntry(pu.type);
+
+          // Destruction particles: colored burst matching the powerup
+          particles.burst(px, py, 12, { color: entry.color, speed: 4, life: 0.5, size: 2, decay: 0.03 });
+          particles.sparkle(px, py, 6, { color: '#fff', speed: 3, life: 0.3 });
+
+          // Flash text showing what was destroyed
+          floatingText.add(px, py, pu.type.replace('_', ' ').toUpperCase(), { color: '#f44', decay: 0.03 });
+
+          powerUps.splice(i, 1);
+        }
+      }
     }
   }
 
