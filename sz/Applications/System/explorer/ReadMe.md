@@ -306,3 +306,10 @@ Inspired by [FilePilot](https://filepilot.tech) -- a modern file manager with mu
 - [x] Copy JavaScript objects from object browser to VFS as files (.js, .json, .txt)
 - [x] Bulk rename preview with aligned columns (old name | → | new name)
 - [x] Copy as Path produces VFS-relative paths usable in Open/Save dialogs
+
+### Planned Features
+- [ ] As a user, I can compress selected files into an archive directly from the context menu so that I can create archives without opening the Archiver
+- [ ] As a user, I can see file content previews as tooltips on hover so that I can glance at file contents without selecting
+- [ ] As a user, I can use dual-pane Commander-style mode with synchronized navigation so that I can compare directories side by side
+- [ ] As a user, I can see a breadcrumb dropdown at each segment showing sibling directories so that I can navigate laterally
+- [ ] As a user, I can tag files with custom labels and filter by tag so that I can organize files beyond folder hierarchy

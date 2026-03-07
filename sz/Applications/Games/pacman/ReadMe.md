@@ -147,39 +147,58 @@ Canvas-based game rendered at 448x496 (28x31 tile grid, 16px tiles) with HiDPI s
 
 ## User Stories
 
-- As a player, I want to navigate Pac-Man through the maze so I can eat all the dots
-- As a player, I want four ghosts with different AI personalities so the game has strategic depth
-- As a player, I want power pellets to turn ghosts blue so I can eat them for bonus points
-- As a player, I want ghost eating points to escalate (200-1600) so I'm rewarded for chaining
-- As a player, I want eaten ghosts to return to the ghost house as eyes so they can respawn
-- As a player, I want a flashing warning before frightened mode ends so I know when to retreat
-- As a player, I want fruit to appear for bonus points so there are extra scoring opportunities
-- As a player, I want the maze to flash when I complete a level so it feels celebratory
-- As a player, I want tunnel wrapping so I can use the side passages as escape routes
-- As a player, I want queued directional input so I can plan turns in advance
-- As a player, I want my high scores saved so I can track my best performances
-- As a player, I want a "READY!" countdown so I can prepare before each life begins
-- As a player, I want a dying animation so life loss has visual feedback
-- As a player, I want the window to be resizable so I can play at any size
-- As a player, I want world themes to change every 4 levels so the game stays visually fresh
-- As a player, I want glowing walls and particle effects so the game looks modern and polished
-- As a player, I want dot chains to reward fast eating with visual celebrations
-- As a player, I want electric arcs when eating ghosts for dramatic impact
-- As a player, I want powerup items to spawn so I get temporary strategic advantages
-- As a player, I want a speed boost powerup so I can outrun ghosts when needed
-- As a player, I want a freeze powerup so I can safely navigate through ghosts
-- As a player, I want a score multiplier powerup so I can maximize my score
-- As a player, I want an extra life powerup as a rare survival bonus
-- As a player, I want a magnet powerup to vacuum nearby dots automatically
-- As a player, I want a phase powerup to walk through walls as a shortcut
-- As a player, I want active powerup effects shown in the status bar so I know what's active
-- As a player, I want difficulty to scale per level (ghost speed, frightened duration, Cruise Elroy) so later levels are challenging
-- As a player, I want intermission screens between worlds for a brief visual break
-- As a player, I want boss fights every 4 levels for an exciting challenge
-- As a player, I want bosses to have unique abilities so each fight feels different
-- As a player, I want a boss HP bar so I can track my progress during the fight
-- As a player, I want bosses to enter Phase 2 at half health for escalating tension
-- As a player, I want massive celebration effects when defeating a boss for a sense of accomplishment
+### Core Gameplay
+- [x] As a user, I can navigate Pac-Man through the maze so that I can eat all the dots
+- [x] As a user, I can encounter four ghosts with different AI personalities so that the game has strategic depth
+- [x] As a user, I can eat power pellets to turn ghosts blue so that I can eat them for bonus points
+- [x] As a user, I can see ghost eating points escalate (200-1600) so that I am rewarded for chaining
+- [x] As a user, I can see eaten ghosts return to the ghost house as eyes so that they can respawn
+- [x] As a user, I can see a flashing warning before frightened mode ends so that I know when to retreat
+- [x] As a user, I can eat fruit that appears for bonus points so that there are extra scoring opportunities
+- [x] As a user, I can see the maze flash when I complete a level so that it feels celebratory
+- [x] As a user, I can use tunnel wrapping on the side passages as escape routes
+- [x] As a user, I can queue directional input so that I can plan turns in advance
+- [x] As a user, I can start each life with a "READY!" countdown so that I can prepare
+
+### Progression & Difficulty
+- [x] As a user, I can see difficulty scale per level (ghost speed, frightened duration, Cruise Elroy) so that later levels are challenging
+- [x] As a user, I can see world themes change every 4 levels so that the game stays visually fresh
+- [x] As a user, I can watch intermission screens between worlds for a brief visual break
+
+### Powerup System
+- [x] As a user, I can collect powerup items that spawn on random empty tiles for temporary strategic advantages
+- [x] As a user, I can grab a speed boost powerup so that I can outrun ghosts when needed
+- [x] As a user, I can grab a freeze powerup so that I can safely navigate through ghosts
+- [x] As a user, I can grab a score multiplier powerup so that I can maximize my score
+- [x] As a user, I can grab an extra life powerup as a rare survival bonus
+- [x] As a user, I can grab a magnet powerup to vacuum nearby dots automatically
+- [x] As a user, I can grab a phase powerup to walk through walls as a shortcut
+- [x] As a user, I can see active powerup effects shown in the status bar so that I know what is active
+
+### Boss Encounters
+- [x] As a user, I can face boss fights every 4 levels for an exciting challenge
+- [x] As a user, I can see bosses with unique abilities so that each fight feels different
+- [x] As a user, I can see a boss HP bar so that I can track my progress during the fight
+- [x] As a user, I can see bosses enter Phase 2 at half health for escalating tension
+- [x] As a user, I can see massive celebration effects when defeating a boss for a sense of accomplishment
+
+### Visual Effects
+- [x] As a user, I can see glowing walls and particle effects so that the game looks modern and polished
+- [x] As a user, I can see dot chains reward fast eating with visual celebrations
+- [x] As a user, I can see electric arcs when eating ghosts for dramatic impact
+- [x] As a user, I can see a dying animation so that life loss has visual feedback
+
+### Persistence & OS Integration
+- [x] As a user, I can see my high scores saved so that I can track my best performances
+- [x] As a user, I can resize the window so that I can play at any size
+- [x] As a user, I can access the Game menu (New Game, Pause, High Scores, Exit) and Help menu (Controls, About)
+
+### Planned
+- [ ] As a user, I can hear sound effects for dot eating, ghost eating, death, and level completion
+- [ ] As a user, I can see a two-player alternating mode for competitive play
+- [ ] As a user, I can see bonus stages with unique maze layouts between worlds
+- [ ] As a user, I can customize control bindings in a settings dialog
+- [ ] As a user, I can see additional powerup types beyond the current six
 
 ## Known Limitations
 

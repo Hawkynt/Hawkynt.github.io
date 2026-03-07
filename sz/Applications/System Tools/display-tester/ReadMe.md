@@ -95,19 +95,78 @@ Presents a categorized test selector. Each test renders a full-area pattern on e
 
 ## User Stories
 
-- [x] As a user, I want to check for dead pixels by displaying solid colors so I can identify stuck pixels
-- [x] As a user, I want to test color accuracy with a color checker pattern so I can verify my display's color reproduction
-- [x] As a user, I want to detect color banding in gradients so I can evaluate bit depth
-- [x] As a user, I want to measure brightness uniformity so I can check for uneven backlighting
-- [x] As a user, I want to see my frame rate so I can verify my display's refresh rate
-- [x] As a user, I want a UFO test so I can judge motion clarity and response time
-- [x] As a user, I want to detect screen tearing so I can verify VSync is working
-- [x] As a user, I want to calibrate gamma using a reference pattern so I can set correct gamma
-- [x] As a user, I want RGB balance sliders so I can check neutral gray accuracy
-- [x] As a user, I want a sharpness test pattern so I can tune display sharpness settings
-- [x] As a user, I want to check for backlight bleed in a dark room so I can evaluate panel quality
-- [x] As a user, I want to identify my subpixel layout (RGB/BGR) so I can configure ClearType correctly
-- [x] As a user, I want to enter fullscreen so I can test without window chrome interference
-- [x] As a user, I want overscan detection so I can check if my TV is cutting off edges
-- [x] As a user, I want a screen ruler with credit card reference so I can determine my display's actual DPI
-- [x] As a user, I want all tests categorized so I can quickly find the one I need
+### Dead Pixel Tests
+- [x] As a user, I can display solid Red, Green, Blue, White, Black, and Cyan screens so that I can reveal stuck or dead pixels
+
+### Color Tests
+- [x] As a user, I can view an RGB gradient so that I can check color channel transitions
+- [x] As a user, I can view a grayscale gradient so that I can verify black-to-white smoothness
+- [x] As a user, I can view a color checker reference grid so that I can verify color accuracy against known patches
+- [x] As a user, I can view a gamma test pattern so that I can verify gamma accuracy
+- [x] As a user, I can view a color bleed test so that I can detect bleed between adjacent color areas
+- [x] As a user, I can view a banding detection gradient so that I can reveal color banding artifacts
+- [x] As a user, I can view a dithering detection pattern so that I can expose temporal or spatial dithering
+
+### Uniformity Tests
+- [x] As a user, I can display a full white screen so that I can check brightness evenness
+- [x] As a user, I can display a low gray screen so that I can check shadow uniformity
+- [x] As a user, I can see 5-point brightness measurement points so that I can check consistency across the display
+- [x] As a user, I can see an animated brightness sweep so that I can evaluate brightness transitions
+- [x] As a user, I can view a viewing angle test pattern so that I can test color shift at off-axis angles
+- [x] As a user, I can display a burn-in/retention test pattern so that I can detect image retention
+
+### FPS Tests
+- [x] As a user, I can see a real-time frame counter so that I can verify my display's refresh rate
+- [x] As a user, I can run a UFO test with smooth-scrolling objects so that I can judge motion clarity
+- [x] As a user, I can run a VSync tear test with fast-moving bars so that I can detect screen tearing
+
+### Motion Tests
+- [x] As a user, I can see a moving crosshair so that I can evaluate pursuit tracking
+- [x] As a user, I can see black/white flash frames so that I can evaluate response time
+- [x] As a user, I can run a pursuit camera test so that I can assess motion blur
+- [x] As a user, I can click to trigger an input lag flasher so that I can estimate input lag
+- [x] As a user, I can run a gray-to-gray transition test so that I can evaluate pixel response time
+- [x] As a user, I can see scrolling text so that I can evaluate text readability at speed
+
+### HDR Tests
+- [x] As a user, I can view an HDR gradient so that I can test extended range display capability
+- [x] As a user, I can view an HDR clipping test so that I can detect specular highlight clipping
+- [x] As a user, I can view simultaneous black/white areas so that I can measure contrast ratio
+- [x] As a user, I can view near-black gradients so that I can evaluate shadow detail visibility
+
+### Geometry Tests
+- [x] As a user, I can view a pixel grid so that I can check 1:1 scaling accuracy
+- [x] As a user, I can view a checkerboard pattern so that I can check sharpness
+- [x] As a user, I can view circles and lines so that I can detect geometric distortion
+- [x] As a user, I can view text at various font sizes so that I can evaluate text clarity
+- [x] As a user, I can view a circle/square test so that I can verify correct aspect ratio
+- [x] As a user, I can view RGB stripe patterns so that I can identify subpixel layout (RGB vs BGR)
+- [x] As a user, I can view moire patterns so that I can reveal aliasing artifacts
+
+### Calibration Tools
+- [x] As a user, I can calibrate gamma with an adjustable reference and stripe matching so that I can set correct gamma
+- [x] As a user, I can adjust per-channel RGB gain sliders so that I can achieve neutral gray balance
+- [x] As a user, I can view a sharpness pattern (Siemens star, line pairs, zone plate) so that I can tune sharpness settings
+- [x] As a user, I can view near-black and near-white adjustment patches so that I can calibrate contrast
+- [x] As a user, I can view 20 near-black patches so that I can fine-tune brightness
+- [x] As a user, I can view a full-screen grid with corner circles so that I can align a projector (keystone grid)
+- [x] As a user, I can view nested colored borders so that I can reveal display overscan
+- [x] As a user, I can view a full-screen reference with Kelvin selector so that I can assess color temperature
+- [x] As a user, I can view an RGB crosshair grid so that I can check for color misconvergence
+- [x] As a user, I can display a pure black screen so that I can evaluate backlight bleed in a dark room
+- [x] As a user, I can use a screen ruler with credit-card reference so that I can determine my display's actual DPI
+- [x] As a user, I can view fine stripe patterns so that I can adjust pixel clock and phase on analog displays
+
+### User Interface
+- [x] As a user, I can see all tests organized in a categorized card grid so that I can quickly find the test I need
+- [x] As a user, I can toggle test descriptions on and off so that I can see more tests at once
+- [x] As a user, I can enter fullscreen mode so that I can test without window chrome interference
+- [x] As a user, I can see the current test name, resolution, DPR, and FPS in the status bar so that I have context during testing
+- [x] As a user, I can use per-test interactive controls (sliders, selectors) so that I can adjust test parameters
+
+### Planned Features
+- [ ] As a user, I can save test results as a report so that I can document my display's performance
+- [ ] As a user, I can see side-by-side comparison of two test patterns so that I can evaluate differences
+- [ ] As a user, I can run an automated test suite that cycles through all patterns so that I can do a complete display check-up
+- [ ] As a user, I can see a response time measurement using photodiode simulation so that I can quantify pixel transition speed
+- [ ] As a user, I can print a physical test chart so that I can use it for offline reference

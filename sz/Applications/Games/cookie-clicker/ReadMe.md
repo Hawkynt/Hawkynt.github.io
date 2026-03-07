@@ -28,17 +28,47 @@ An idle/incremental game where you click a giant cookie to earn cookies, buy bui
 
 ## User Stories
 
-### S-076: Core Incremental Gameplay
-As a player, I want to click a cookie for points, purchase buildings that auto-generate cookies, buy upgrades that boost production, and prestige for permanent bonuses, so that I experience satisfying exponential growth and always have a meaningful next goal.
+### Core Gameplay
+- [x] As a player, I can click a large cookie with a spring squish animation to earn cookies so that I have an engaging primary interaction
+- [x] As a player, I can purchase 14 building types (Cursor through Prism) that auto-generate cookies per second so that production grows passively
+- [x] As a player, I can buy 55+ upgrades with click, building, and global multipliers so that I can boost production strategically
+- [x] As a player, I can prestige to earn heavenly chips (+1% CPS each) so that restarting provides permanent bonuses
+- [x] As a player, I can see building costs scale exponentially (baseCost x 1.15^owned) so that each purchase is a meaningful decision
 
-### S-077: Visual Feedback and Polish
-As a player, I want satisfying visual feedback for clicks, purchases, and milestones, so that every action feels impactful and progression is visually celebrated.
+### Visual Feedback
+- [x] As a player, I can see particle burst effects on clicks and purchases so that actions feel impactful
+- [x] As a player, I can see floating "+N" text on cookie clicks so that I know how much I earned
+- [x] As a player, I can see milestone confetti celebrations at 1M, 1B, 1T, 1Qa, 1Qi, and 1Sx cookies so that big milestones are celebrated
+- [x] As a player, I can see a smooth counter animation (lerp) for the cookie total so that numbers change fluidly
+- [x] As a player, I can see a purchase glow effect on buildings so that buying feels satisfying
 
-### S-078: Pre-Purchase Information
-As a player, I want to see what each building and upgrade will do before I buy it, including CPS increase, cost efficiency, and effect description, so that I can make informed spending decisions.
+### Information and Tooltips
+- [x] As a player, I can hover over buildings to see description, per-unit CPS, total CPS from type, CPS delta preview, and cost efficiency so that I can make informed purchases
+- [x] As a player, I can hover over upgrades to see description, effect, CPS/click delta preview, and cost efficiency so that I understand upgrade value
+- [x] As a player, I can hover over the cookie to see per-click value and total clicks so that I know my click stats
+- [x] As a player, I can see tooltips offset from buttons so that they do not block the items I am interacting with
 
-### S-079: Tooltip Usability
-As a player, I want tooltips to render correctly without visual glitches and to be offset so they do not block the upgrade or building buttons I am trying to interact with, so that I can read tooltip information without interference.
+### Progression and Achievements
+- [x] As a player, I can earn 60+ achievements across baking, clicking, building, CPS, prestige, and upgrade milestones so that I have many goals to pursue
+- [x] As a player, I can see per-building CPS contribution inline on each building row so that I know which buildings are most productive
+- [x] As a player, I can see per-click value displayed below CPS in the stats area so that I know my click power
+- [x] As a player, I can see large numbers formatted with suffixes (K, M, B, T, Qa, Qi, Sx, Sp, Oc, No, Dc) so that big numbers are readable
+
+### Persistence and Offline
+- [x] As a player, I can have my game auto-saved every 30 seconds and on window blur so that I never lose progress
+- [x] As a player, I can earn offline progress (capped at 8 hours, 50% efficiency) when returning to the game so that time away is not wasted
+- [x] As a player, I can scroll through the buildings panel with mouse wheel so that all 14 buildings are accessible
+
+### UI and Integration
+- [x] As a player, I can access the game through the SZ Desktop OS with menu bar, dialogs, and window title integration so that it fits the desktop environment
+- [x] As a player, I can start a new game with F2 or open the menu with Escape so that game management is accessible
+
+### Planned Features
+- [ ] As a player, I can hear sound effects for clicks, purchases, and achievements so that the game has audio feedback
+- [ ] As a player, I can see a golden cookie that appears randomly for bonus cookies so that there are surprise events
+- [ ] As a player, I can unlock seasonal content or special events so that the game has periodic variety
+- [ ] As a player, I can see detailed statistics tracking (total clicks, time played, buildings bought) so that I can review my history
+- [ ] As a player, I can export and import my save data so that I can back up my progress
 
 ## Controls
 

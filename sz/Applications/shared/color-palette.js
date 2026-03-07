@@ -88,7 +88,7 @@
       this.#containerEl.appendChild(this.#panelEl);
 
       document.addEventListener('pointerdown', (e) => {
-        if (this.#panelEl.classList.contains('visible') && !this.#panelEl.contains(e.target) && !e.target.closest('.ribbon-color-btn, .sz-color-trigger'))
+        if (this.#panelEl.classList.contains('visible') && !this.#panelEl.contains(e.target) && !e.target.closest('.ribbon-color-btn, .rb-color-btn, .sz-color-trigger, .rb-color-wrap'))
           this.hide();
       });
     }

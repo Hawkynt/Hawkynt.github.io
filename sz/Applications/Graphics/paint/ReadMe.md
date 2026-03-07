@@ -220,30 +220,43 @@ Each layer is an offscreen `<canvas>` at document resolution. The display canvas
 - [x] Delete -- Delete active layer
 - [x] Ctrl+1/2/3/4 -- Zoom 1x/2x/4x/8x
 
-### Additional Effects (Planned)
-- [ ] As a user, I can apply motion blur with configurable angle and distance
-- [ ] As a user, I can apply radial blur for zoom/spin effects
-- [ ] As a user, I can apply surface blur with radius and threshold controls
-- [ ] As a user, I can apply box blur with configurable radius
-- [ ] As a user, I can apply median filter for noise reduction
-- [ ] As a user, I can apply unsharp mask sharpening with amount, radius, and threshold
-- [ ] As a user, I can apply polar coordinate transformation for distortion effects
-- [ ] As a user, I can apply relief effect for embossed appearance
+### Additional Blur Effects
+- [x] As a user, I can apply motion blur with configurable angle and distance
+- [x] As a user, I can apply radial blur for zoom/spin effects
+- [x] As a user, I can apply surface blur with radius and threshold controls
+- [x] As a user, I can apply box blur with configurable radius
+- [x] As a user, I can apply median filter for noise reduction
+- [x] As a user, I can apply unsharp mask sharpening with amount, radius, and threshold
 
-### Auto-Correct (Planned)
-- [ ] As a user, I can auto-deskew scanned documents to straighten text
-- [ ] As a user, I can auto-rotate images to detect and snap to dominant orientation
-- [ ] As a user, I can apply auto-keystone correction for perspective warping
+### Distort Effects
+- [x] As a user, I can apply swirl distortion with configurable angle and radius
+- [x] As a user, I can apply spherize distortion with configurable amount
+- [x] As a user, I can apply ripple distortion with configurable amplitude and wavelength
+- [x] As a user, I can apply polar coordinate transformation
+- [x] As a user, I can apply frosted glass distortion with configurable amount
 
-## Planned Features
-- Undo history panel to jump to a specific state
-- Rotate by arbitrary angle
-- Custom color picker dialog
-- Ruler overlays along top and left edges
-- Dashed/dotted line styles
-- Text tool font/size/style options
-- Resize selection handles
-- Save/load custom color palettes
+### Stylize Effects
+- [x] As a user, I can apply oil paint effect with configurable radius and intensity
+- [x] As a user, I can apply posterize with configurable level count
+- [x] As a user, I can apply threshold to convert to black and white with configurable level
+- [x] As a user, I can apply solarize with configurable threshold
+- [x] As a user, I can apply relief effect for embossed appearance
+- [x] As a user, I can apply pencil sketch effect with configurable strength
+- [x] As a user, I can apply vignette with configurable amount and radius
+- [x] As a user, I can apply halftone with configurable dot size
+- [x] As a user, I can apply crystallize with configurable cell size
+
+### Auto-Correct
+- [x] As a user, I can auto-deskew scanned documents to straighten text
+- [x] As a user, I can auto-rotate images to detect and snap to dominant orientation
+- [x] As a user, I can apply auto-keystone correction for perspective warping
+
+### Aspirational Features
+- [ ] As a user, I want an undo history panel to jump to a specific state
+- [ ] As a user, I want to rotate by an arbitrary angle
+- [ ] As a user, I want a custom color picker dialog integration
+- [ ] As a user, I want ruler overlays along top and left edges
+- [ ] As a user, I want to be prompted to save unsaved changes before starting a new canvas
 
 ## Known Limitations
 - Layers flatten to a single background layer on file save (no native layered format)
