@@ -116,9 +116,10 @@
 
     #pick(color) {
       this.#addRecent(color);
+      const cb = this.#callback;
       this.hide();
-      if (this.#callback)
-        this.#callback(color);
+      if (cb)
+        cb(color);
     }
 
     #addRecent(color) {
