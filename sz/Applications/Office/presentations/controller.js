@@ -7689,16 +7689,16 @@
     const rbFontColorSwatch = document.getElementById('rb-font-color-swatch');
     if (rbFontColorWrap && rbFontColor) {
       rbFontColorWrap.addEventListener('click', () => {
+        const capturedSlide = getCurrentSlide();
+        const capturedIds = new Set(selectedElements);
         showColorPalette(rbFontColorWrap, (color) => {
           _setSwatchColor(rbFontColor, color);
           if (rbFontColorSwatch)
             rbFontColorSwatch.style.backgroundColor = color;
-          // Apply font color to selected element(s)
-          const slide = getCurrentSlide();
-          if (slide && selectedElements.size) {
+          if (capturedSlide && capturedIds.size) {
             pushUndo();
-            for (const elId of selectedElements) {
-              const el = slide.elements.find(e => e.id === elId);
+            for (const elId of capturedIds) {
+              const el = capturedSlide.elements.find(e => e.id === elId);
               if (el)
                 el.color = color;
             }
