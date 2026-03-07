@@ -22,11 +22,17 @@
   }
 
   function resolveSuitColor(suit) {
+    const CT = SZ.CardThemes;
+    if (CT) {
+      const tpl = CT.CARD_FACE_TEMPLATES[CT.activeTheme.cardFace];
+      if (tpl && tpl.suitColors)
+        return tpl.suitColors[resolveSuit(suit)] || '#000';
+    }
     return SUIT_COLORS[resolveSuit(suit)] || '#000';
   }
 
-  const CARD_W = 71;
-  const CARD_H = 96;
+  const CARD_W = 80;
+  const CARD_H = 110;
   const CARD_RADIUS = 5;
 
   const GREEN = '#1a7a2e';
@@ -119,6 +125,14 @@
    * ================================================================ */
 
   function drawSuitSymbol(cx, suit, x, y, size) {
+    const CT = SZ.CardThemes;
+    if (CT) {
+      const tpl = CT.CARD_FACE_TEMPLATES[CT.activeTheme.cardFace];
+      if (tpl && tpl.drawSuit) {
+        tpl.drawSuit(cx, suit, x, y, size);
+        return;
+      }
+    }
     const resolved = resolveSuit(suit);
     const hs = size / 2;
     cx.save();
@@ -195,15 +209,15 @@
     const color = resolveSuitColor(card.suit);
     const rankNum = (card.value != null ? card.value : RANKS.indexOf(card.rank)) + 1;
 
-    const pipLeft = x + 10;
-    const pipTop = y + 20;
-    const pipW = w - 20;
-    const pipH = h - 40;
+    const pipLeft = x + 12;
+    const pipTop = y + 24;
+    const pipW = w - 24;
+    const pipH = h - 48;
 
     cx.fillStyle = color;
 
     if (rankNum === 1) {
-      drawSuitSymbol(cx, card.suit, pipLeft + pipW * 0.5, pipTop + pipH * 0.5, 24);
+      drawSuitSymbol(cx, card.suit, pipLeft + pipW * 0.5, pipTop + pipH * 0.5, 28);
       return;
     }
 
@@ -211,7 +225,7 @@
     if (!layout)
       return;
 
-    const pipSize = 11;
+    const pipSize = 13;
 
     for (const [relX, relY] of layout) {
       const px = pipLeft + pipW * relX;
@@ -255,12 +269,20 @@
     cx.lineWidth = 0.5;
     cx.stroke();
 
+    let displayRank = card.rank;
+    const CT = SZ.CardThemes;
+    if (CT) {
+      const tpl = CT.CARD_FACE_TEMPLATES[CT.activeTheme.cardFace];
+      if (tpl && tpl.rankLabels && tpl.rankLabels[card.rank])
+        displayRank = tpl.rankLabels[card.rank];
+    }
+
     const fontSize = Math.round(24 * Math.min(scaleX, scaleY));
     cx.font = 'bold ' + fontSize + 'px serif';
     cx.fillStyle = color;
     cx.textAlign = 'center';
     cx.textBaseline = 'middle';
-    cx.fillText(card.rank, centerX, centerY - 4 * scaleY);
+    cx.fillText(displayRank, centerX, centerY - 4 * scaleY);
 
     cx.fillStyle = color;
     drawSuitSymbol(cx, card.suit, centerX, centerY + 16 * scaleY, 12 * Math.min(scaleX, scaleY));
@@ -275,7 +297,20 @@
     const ch = h || CARD_H;
     const cr = CARD_RADIUS * Math.min(cw / CARD_W, ch / CARD_H);
     drawRoundedRect(cx, x, y, cw, ch, cr);
-    cx.fillStyle = '#fff';
+
+    let cardBg = '#fff';
+    let displayRank = card.rank;
+    const CT = SZ.CardThemes;
+    if (CT) {
+      const tpl = CT.CARD_FACE_TEMPLATES[CT.activeTheme.cardFace];
+      if (tpl) {
+        if (tpl.cardBg) cardBg = tpl.cardBg;
+        if (tpl.rankLabels && tpl.rankLabels[card.rank])
+          displayRank = tpl.rankLabels[card.rank];
+      }
+    }
+
+    cx.fillStyle = cardBg;
     cx.fill();
     cx.strokeStyle = '#333';
     cx.lineWidth = 1;
@@ -291,7 +326,7 @@
     cx.fillStyle = color;
     cx.textAlign = 'left';
     cx.textBaseline = 'top';
-    cx.fillText(card.rank, x + 4 * sx, y + 4 * sy);
+    cx.fillText(displayRank, x + 4 * sx, y + 4 * sy);
 
     cx.fillStyle = color;
     drawSuitSymbol(cx, card.suit, x + 8 * sx, y + 24 * sy, 8 * ss);
@@ -303,7 +338,7 @@
     cx.fillStyle = color;
     cx.textAlign = 'left';
     cx.textBaseline = 'top';
-    cx.fillText(card.rank, 0, 0);
+    cx.fillText(displayRank, 0, 0);
     cx.restore();
 
     cx.save();
@@ -325,6 +360,14 @@
    * ================================================================ */
 
   function drawCardBack(cx, x, y, w, h) {
+    const CT = SZ.CardThemes;
+    if (CT) {
+      const design = CT.CARD_BACK_DESIGNS[CT.activeTheme.cardBack];
+      if (design) {
+        design.draw(cx, x, y, w || CARD_W, h || CARD_H);
+        return;
+      }
+    }
     const cw = w || CARD_W;
     const ch = h || CARD_H;
     const cr = CARD_RADIUS * Math.min(cw / CARD_W, ch / CARD_H);

@@ -118,10 +118,30 @@
     { id: 'belote',        name: 'Belote',           desc: 'French trick-taking with declarations', module: 'belote-variant.js' }
   ];
 
-  /* ── Menu / Hint / Sort button regions ── */
+  /* ── Category groupings for menu ── */
+  const CATEGORIES = [
+    { name: 'Solitaire',    color: '#2a6a2a', start: 0,  count: 12 },
+    { name: 'Casino',       color: '#6a2a2a', start: 12, count: 7 },
+    { name: 'Shedding',     color: '#2a2a6a', start: 19, count: 13 },
+    { name: 'Trick-Taking', color: '#5a3a1a', start: 32, count: 11 },
+    { name: 'Rummy',        color: '#4a1a4a', start: 43, count: 8 },
+    { name: 'Quick & Fun',  color: '#1a4a5a', start: 51, count: 11 },
+    { name: 'European',     color: '#5a1a2a', start: 62, count: 10 }
+  ];
+
+  const SORTED_CATS = CATEGORIES.map(cat => ({
+    name: cat.name,
+    color: cat.color,
+    games: VARIANTS.slice(cat.start, cat.start + cat.count)
+      .map((v, i) => ({ variant: v, index: cat.start + i }))
+      .sort((a, b) => a.variant.name.localeCompare(b.variant.name))
+  }));
+
+  /* ── Menu / Hint / Sort / Style button regions ── */
   const MENU_BTN = { x: CANVAS_W - 82, y: 8, w: 72, h: 28 };
   const HINT_BTN = { x: CANVAS_W - 164, y: 8, w: 72, h: 28 };
   const SORT_BTN = { x: CANVAS_W - 246, y: 8, w: 72, h: 28 };
+  const STYLE_BTN = { x: CANVAS_W - 328, y: 8, w: 72, h: 28 };
 
   /* ══════════════════════════════════════════════════════════════════
      CANVAS SETUP
@@ -238,6 +258,7 @@
     },
     addGlow(x, y, w, h, duration) {
       glowCards.push({ x, y, w, h, t: 0, duration: duration || 1.5 });
+      if (SZ.CardThemes) SZ.CardThemes.addShimmer(x, y, w, h, 'pulse');
     },
     triggerChipSparkle(x, y) {
       particles.sparkle(x, y, 20, { color: '#fa0', speed: 80, life: 0.8 });
@@ -252,9 +273,12 @@
   function updateAnimations(dt) {
     for (const a of dealAnimations) {
       a.t += dt;
-      if (a.t >= a.duration) {
+      if (a.t >= a.duration && !a.done) {
         a.done = true;
         a.card._dealing = false;
+        // Shimmer on face cards dealt face-up
+        if (SZ.CardThemes && a.card.faceUp && (a.card.rank === 'J' || a.card.rank === 'Q' || a.card.rank === 'K'))
+          SZ.CardThemes.addShimmer(a.toX, a.toY, CE.CARD_W, CE.CARD_H, 'sparkle');
       }
     }
     dealAnimations = dealAnimations.filter(a => !a.done);
@@ -358,22 +382,49 @@
      ══════════════════════════════════════════════════════════════════ */
 
   function handleCanvasClick(mx, my) {
+    // Settings panel intercepts all clicks when open
+    if (SZ.CardThemes?.settingsPanelOpen) {
+      SZ.CardThemes.handleSettingsClick(mx, my);
+      return;
+    }
+
     if (state === STATE_MENU) {
-      const btnW = 94;
-      const btnH = 33;
-      const gapX = 6;
-      const gapY = 5;
+      const btnW = 120;
+      const btnH = 26;
+      const gapX = 8;
+      const gapY = 3;
       const cols = 6;
       const totalW = cols * btnW + (cols - 1) * gapX;
-      const startX = (CANVAS_W - totalW) / 2;
-      const startY = 100;
-      for (let i = 0; i < VARIANTS.length; ++i) {
-        const col = i % cols;
-        const row = Math.floor(i / cols);
-        const bx = startX + col * (btnW + gapX);
-        const by = startY + row * (btnH + gapY);
-        if (CE.isInRect(mx, my, bx, by, btnW, btnH)) {
-          selectGame(VARIANTS[i].id);
+      const marginX = (CANVAS_W - totalW) / 2;
+      const fieldsetGap = 4;
+      const padTop = 10;
+      const padBot = 4;
+
+      let curY = 28;
+
+      for (const cat of SORTED_CATS) {
+        const rows = Math.ceil(cat.games.length / cols);
+        const innerH = rows * (btnH + gapY) - gapY;
+        const fieldH = padTop + innerH + padBot;
+
+        for (let i = 0; i < cat.games.length; ++i) {
+          const col = i % cols;
+          const row = Math.floor(i / cols);
+          const bx = marginX + col * (btnW + gapX);
+          const by = curY + padTop + row * (btnH + gapY);
+          if (CE.isInRect(mx, my, bx, by, btnW, btnH)) {
+            selectGame(cat.games[i].variant.id);
+            return;
+          }
+        }
+
+        curY += fieldH + fieldsetGap;
+      }
+
+      // Style button
+      if (SZ.CardThemes) {
+        if (CE.isInRect(mx, my, CANVAS_W / 2 - 48, curY, 96, 26)) {
+          SZ.CardThemes.settingsPanelOpen = true;
           return;
         }
       }
@@ -391,6 +442,12 @@
     }
 
     if (state !== STATE_PLAYING) return;
+
+    // Style button hit test
+    if (SZ.CardThemes && CE.isInRect(mx, my, STYLE_BTN.x, STYLE_BTN.y, STYLE_BTN.w, STYLE_BTN.h)) {
+      SZ.CardThemes.settingsPanelOpen = true;
+      return;
+    }
 
     // Sort toggle hit test (only when variant supports it)
     if (activeVariantModule?.sortPlayerHand && CE.isInRect(mx, my, SORT_BTN.x, SORT_BTN.y, SORT_BTN.w, SORT_BTN.h)) {
@@ -486,45 +543,91 @@
      ══════════════════════════════════════════════════════════════════ */
 
   function drawMenu() {
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 32px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Card Games Suite', CANVAS_W / 2, 55);
-    ctx.font = '14px sans-serif';
-    ctx.fillStyle = '#aaa';
-    ctx.fillText('Choose a game to play', CANVAS_W / 2, 82);
-
-    const btnW = 94;
-    const btnH = 33;
-    const gapX = 6;
-    const gapY = 5;
+    const btnW = 120;
+    const btnH = 26;
+    const gapX = 8;
+    const gapY = 3;
     const cols = 6;
     const totalW = cols * btnW + (cols - 1) * gapX;
-    const startX = (CANVAS_W - totalW) / 2;
-    const startY = 100;
+    const marginX = (CANVAS_W - totalW) / 2;
+    const fieldsetGap = 4;
+    const padTop = 10;
+    const padBot = 4;
 
-    for (let i = 0; i < VARIANTS.length; ++i) {
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      const bx = startX + col * (btnW + gapX);
-      const by = startY + row * (btnH + gapY);
-      ctx.fillStyle = '#1a3a1a';
-      ctx.strokeStyle = '#4a4';
-      ctx.lineWidth = 2;
-      CE.drawRoundedRect(ctx, bx, by, btnW, btnH, 8);
-      ctx.fill();
+    // Title
+    ctx.font = 'bold 20px sans-serif';
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText('Card Games Suite', CANVAS_W / 2, 4);
+
+    // Get table background color for legend masking
+    const CT = SZ.CardThemes;
+    const tableBg = CT ? (CT.TABLE_THEMES[CT.activeTheme.table]?.preview || '#1a4a1a') : '#1a4a1a';
+
+    let curY = 28;
+
+    for (const cat of SORTED_CATS) {
+      const rows = Math.ceil(cat.games.length / cols);
+      const innerH = rows * (btnH + gapY) - gapY;
+      const fieldH = padTop + innerH + padBot;
+
+      // Fieldset border (category color at ~40% opacity)
+      ctx.strokeStyle = cat.color + '66';
+      ctx.lineWidth = 1;
+      CE.drawRoundedRect(ctx, marginX - 4, curY, totalW + 8, fieldH, 4);
       ctx.stroke();
-      ctx.fillStyle = '#fff';
-      ctx.font = 'bold 10px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(VARIANTS[i].name, bx + btnW / 2, by + 13);
-      ctx.font = '6.5px sans-serif';
-      ctx.fillStyle = '#8a8';
-      ctx.fillText(VARIANTS[i].desc, bx + btnW / 2, by + 26);
+
+      // Legend: mask border behind text, then draw label
+      ctx.font = 'bold 11px sans-serif';
+      const legendW = ctx.measureText(cat.name).width;
+      const legendX = marginX + 8;
+      const legendY = curY - 6;
+      ctx.fillStyle = tableBg;
+      ctx.fillRect(legendX - 3, legendY, legendW + 6, 12);
+      ctx.fillStyle = cat.color;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(cat.name, legendX, legendY + 1);
+
+      // Game buttons
+      for (let i = 0; i < cat.games.length; ++i) {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        const bx = marginX + col * (btnW + gapX);
+        const by = curY + padTop + row * (btnH + gapY);
+
+        ctx.fillStyle = '#1a3a1a';
+        ctx.strokeStyle = '#4a4';
+        ctx.lineWidth = 1;
+        CE.drawRoundedRect(ctx, bx, by, btnW, btnH, 5);
+        ctx.fill();
+        ctx.stroke();
+
+        // Auto-shrink long names
+        let fontSize = 11;
+        ctx.font = 'bold ' + fontSize + 'px sans-serif';
+        while (ctx.measureText(cat.games[i].variant.name).width > btnW - 8 && fontSize > 8) {
+          --fontSize;
+          ctx.font = 'bold ' + fontSize + 'px sans-serif';
+        }
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(cat.games[i].variant.name, bx + btnW / 2, by + btnH / 2);
+      }
+
+      curY += fieldH + fieldsetGap;
     }
+
+    // Style button below last fieldset
+    if (SZ.CardThemes)
+      CE.drawButton(ctx, CANVAS_W / 2 - 48, curY, 96, 26, '\u2699 Card Style', { bg: '#333', border: '#666', fontSize: 11 });
   }
 
   function drawMenuButton() {
+    if (SZ.CardThemes)
+      CE.drawButton(ctx, STYLE_BTN.x, STYLE_BTN.y, STYLE_BTN.w, STYLE_BTN.h, '\u2699 Style', { bg: '#333', border: '#666', fontSize: 11 });
     if (activeVariantModule?.sortPlayerHand) {
       const sortLabel = autoSortHand ? '\u2714 Sort' : '\u2610 Sort';
       CE.drawButton(ctx, SORT_BTN.x, SORT_BTN.y, SORT_BTN.w, SORT_BTN.h, sortLabel, { bg: autoSortHand ? '#2a5a2a' : '#333', border: '#666', fontSize: 11 });
@@ -563,6 +666,14 @@
   }
 
   function drawTable() {
+    const CT = SZ.CardThemes;
+    if (CT) {
+      const theme = CT.TABLE_THEMES[CT.activeTheme.table];
+      if (theme) {
+        theme.draw(ctx, CANVAS_W, CANVAS_H);
+        return;
+      }
+    }
     const diag = Math.sqrt(CANVAS_W * CANVAS_W + CANVAS_H * CANVAS_H) / 2;
     const grad = ctx.createRadialGradient(CANVAS_W / 2, CANVAS_H / 2, 50, CANVAS_W / 2, CANVAS_H / 2, diag);
     grad.addColorStop(0, '#1a4a1a');
@@ -588,6 +699,7 @@
 
       drawDealAnimations();
       drawGlowEffects();
+      if (SZ.CardThemes) SZ.CardThemes.drawShimmers(ctx);
       particles.draw(ctx);
       floatingText.draw(ctx);
 
@@ -595,6 +707,8 @@
       if (state === STATE_PAUSED) drawPauseOverlay();
       if (state === STATE_ROUND_OVER || state === STATE_GAME_OVER) drawGameOverOverlay();
     }
+
+    if (SZ.CardThemes) SZ.CardThemes.drawSettingsPanel(ctx, CANVAS_W, CANVAS_H);
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -612,6 +726,7 @@
       if (autoSortHand && activeVariantModule?.sortPlayerHand)
         activeVariantModule.sortPlayerHand();
       host.hintTime += dt;
+      if (SZ.CardThemes) SZ.CardThemes.updateShimmers(dt);
     }
 
     particles.update();
@@ -742,6 +857,7 @@
   });
 
   setupCanvas();
+  if (SZ.CardThemes) SZ.CardThemes.loadTheme();
   initGame();
 
   lastTimestamp = 0;
