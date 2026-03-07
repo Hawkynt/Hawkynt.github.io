@@ -115,12 +115,19 @@
         deselectShape();
         return;
       }
-      // Ignore clicks on the inner text div
-      if (e.target.closest('.wp-shape-text'))
-        return;
       e.preventDefault();
       e.stopPropagation();
       selectShape(shape);
+    });
+
+    _editor.addEventListener('dblclick', (e) => {
+      const shape = e.target.closest('.wp-shape');
+      if (!shape) return;
+      const textDiv = shape.querySelector('.wp-shape-text');
+      if (!textDiv) return;
+      e.preventDefault();
+      e.stopPropagation();
+      textDiv.focus();
     });
 
     document.addEventListener('pointerdown', (e) => {

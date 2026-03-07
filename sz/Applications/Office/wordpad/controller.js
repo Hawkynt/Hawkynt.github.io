@@ -415,20 +415,32 @@
   const highlightSwatch = document.getElementById('rb-highlight-color');
 
   fontColorSwatch.parentElement.addEventListener('click', () => {
+    const sel = window.getSelection();
+    const savedRange = sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
     showColorPalette(fontColorSwatch, (color) => {
+      if (savedRange) {
+        sel.removeAllRanges();
+        sel.addRange(savedRange);
+      }
+      editor.focus();
       document.execCommand('foreColor', false, color);
       fontColorSwatch.dataset.color = color;
       fontColorSwatch.style.background = color;
-      editor.focus();
     });
   });
 
   highlightSwatch.parentElement.addEventListener('click', () => {
+    const sel = window.getSelection();
+    const savedRange = sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
     showColorPalette(highlightSwatch, (color) => {
+      if (savedRange) {
+        sel.removeAllRanges();
+        sel.addRange(savedRange);
+      }
+      editor.focus();
       document.execCommand('hiliteColor', false, color);
       highlightSwatch.dataset.color = color;
       highlightSwatch.style.background = color;
-      editor.focus();
     });
   });
 
@@ -1593,9 +1605,10 @@
         break;
       }
       case 'cell-bg': {
-        const color = prompt('Enter background color (hex or name):', cell.style.backgroundColor || '');
-        if (color !== null)
+        showColorPalette(cell, (color) => {
           cell.style.backgroundColor = color;
+          markDirty();
+        });
         break;
       }
       case 'table-borders': {
