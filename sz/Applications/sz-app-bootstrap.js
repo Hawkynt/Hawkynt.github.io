@@ -316,6 +316,10 @@
       _postToParent('sz:resize', { width, height });
     },
 
+    SetFrameless(value) {
+      _postToParent('sz:setFrameless', { value: !!value });
+    },
+
     PostMessage(type, data) {
       _postToParent(type, data);
     },
