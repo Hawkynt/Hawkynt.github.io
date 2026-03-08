@@ -1,7 +1,144 @@
+Main: 6.24
+by Hawkynt 08.03.2026
++ Dome Keeper: tech tree expanded from 48 to 104 nodes (Shield Regen, Damage Reflect, Emergency Shield, Ore Detector, Speed Mining, Tunnel Bore, Vein Miner, Double Jump, Wall Climb, Dash, Multi-Shot, Homing, Critical Hit, Explosive Rounds, and more)
+* Dome Keeper: underground grid widened from 30 to 110 columns (55 per side of dome), 4-8 gadget chambers
++ Dome Keeper: auto-collect loose resources when switching to underground view (within 1 tile of player)
++ Dome Keeper: ore vein pack-spawning with BFS flood fill (common 3-8 tiles, medium 2-5, rare 1-4, gems 1-3; deeper veins longer)
+
+Main: 6.23
+by Hawkynt 08.03.2026
+* Dome Keeper: tech tree uses strict grid layout (topological row + sequential column per branch, no overlap possible)
++ Dome Keeper: 10 depth tiers for underground terrain (Sand through Bedrock) with distinct colors and mining difficulty scaling (0.5x surface to 4.0x deep)
++ Dome Keeper: depth-based resource spawn curves (metals shallow/mid, gems deep/very deep)
++ Dome Keeper: persistent per-tile mining HP with visual crack overlay (partial progress preserved across visits)
+# Space Farming: auto-harvester now truly randomly selects mature crops each tick (was deterministic within cache window)
+# Space Farming: wind/solar credit income fires every 5s instead of 30s with fractional accumulators for visible realtime earnings
+# Space Farming: fertility percentage hidden on rock and water tiles
+# Space Farming: auto-planter L2 independently randomizes crop selection per tile from candidates within +/-0.15 market factor
+* Space Farming: plot expansion cycles L,R,T,B single strips (cost = strip tile count * 8cr)
++ Dome Keeper: hover tooltips for underground blocks (type, value, depth tier, mining difficulty, HP), enemies (type, HP, armor, shields, damage), and tech tree nodes (effect, cost breakdown, prerequisites)
+
+Main: 6.22
+by Hawkynt 08.03.2026
+# Dome Keeper: auto-laser ghost beam no longer persists on screen after enemies are killed (flash timer now decays unconditionally)
+* Dome Keeper: auto-laser turret repositioned to dome apex for symmetric coverage of both sides
+* Dome Keeper: dome arc stroke thickens with shield upgrade level (base 3 + 2 per level)
++ Dome Keeper: 11 new minable resources (copper, gold, tin, silver, lead, coal, quartz, redstone, diamond, emerald, ruby) with depth-based spawning
++ Dome Keeper: tech tree zoomable (mouse wheel, 0.3x-2.0x) and pannable (right-click drag)
++ Dome Keeper: expanded tech tree from 24 to 48 nodes with new abilities (Auto-Repair, Dome Expansion, Energy Shield, Magnet, Fortune, Silk Touch, Jetpack, Phase Shift, Echo Location, Chain Lightning, Freeze Ray, Plasma Cannon)
++ Dome Keeper: tiered resource costs for upgrades (basic=iron, mid=iron+copper+coal, advanced=silver+gold+cobalt, elite=diamonds+rubies+emeralds)
+* Space Farming: max zoom out increased from 0.5x to 0.1x for better visibility of large farms
+* Space Farming: wind and solar buildings always generate base credit income; surplus bonus added when energy bar is full
+# Space Farming: UI elements (building bar, crop bar, bottom bar) now receive clicks before the game grid (fixed click-through)
+* Space Farming: auto-planter L2 uses two-pass algorithm to collect all crops within +/-0.15 of best market factor for true diversification
+# Space Farming: fertility percentage no longer displayed on rock and water tiles
+
+Main: 6.21
+by Hawkynt 08.03.2026
++ Space Farming: rain weather event (1.5x crop growth, blue rain overlay with streaked particles)
++ Space Farming: thunderstorm weather event (2x crop growth, may destroy crops and kill livestock, lightning flashes, dark overlay)
++ Space Farming: hoe tool now supports click-and-drag to fertilize/convert multiple tiles at once
+* Space Farming: solar panel energy regen is day-dependent (0 at night, 2x in summer, 3x during solar flares)
+* Space Farming: wind turbine energy regen is environment-dependent (+50% at night, 2x in autumn, 3x during thunderstorms)
+* Space Farming: wind/solar buildings only generate credit income when energy bar is full (surplus energy sales)
+* Space Farming: plot expansion now adds a full ring (all 4 sides) per upgrade, cost based on tile count (8cr/tile)
+* Space Farming: auto-planter L2 diversifies among crops within +/-0.15 market factor tolerance
+* Space Farming: hoeing sand/desert tiles converts them to normal farmland
+* Space Farming: building icons now have dark circular backdrop for better visibility
+* Space Farming: particle effects and floating text scale with zoom level (skipped when zoomed out below 0.5x)
+* Space Farming: wind turbine base energy regen reduced (0.5/lvl, compensated by weather/time multipliers)
+
+Main: 6.20
+by Hawkynt 08.03.2026
+* Space Farming: solar panels and wind turbines generate energy significantly faster (doubled base regen, ~2x regen bonuses, ~1.3x max energy bonuses)
+* Space Farming: auto-harvester and auto-planter use cached Fisher-Yates shuffle arrays re-randomized every 60s for even distribution without per-tick overhead
+* Space Farming: clicking water tile with hoe now fertilizes all 8 surrounding tiles at once (was single-tile only)
+* Space Farming: livestock pens stay in place during plot expansion instead of being relocated to perimeter
+* Space Farming: upgrade shop no longer shows 99 level pips for Plot Expansion (shows compact "Lv N" instead)
+
+Main: 6.19
+by Hawkynt 08.03.2026
++ Space Farming: Auto-Collector building (300cr) auto-collects adjacent livestock produce, upgradeable L1-L6 (8s→1s interval)
++ Space Farming: livestock pens placed on grid perimeter tiles (outside farm grid), auto-relocate on expansion
++ Space Farming: livestock buy menu moved to dedicated popup panel (L key toggle) alongside bottom bar buttons
++ Space Farming: hoed plots now show visible furrow lines on the tile
+# Space Farming: weather/currency HUD tooltips were swapped (left area now shows weather, right shows credits)
+# Space Farming: plot expansion cost scaling reduced from 2.2x to 1.5x per level (150→225→338 instead of 150→330→726)
+# Space Farming: auto-planter L2 now randomly diversifies among crops with equal highest market factor
+# Space Farming: auto-harvester and auto-planter randomly choose spots instead of always picking top-left first
+
+Main: 6.18
+by Hawkynt 08.03.2026
+# Space Farming: menu bar and status bar no longer hidden on maximize/resize (added min-height:0 + overflow:hidden to game-frame, reset canvas before measuring parent)
+# 10 games: same flex resize fix applied (tower-defense, mind-puzzle, card-games, rhythm-game, cooking-game, fantasy-cards, illusion-puzzle, physics-puzzle, space-puzzle, space-invaders)
+
+Main: 6.17
+by Hawkynt 08.03.2026
++ Dome Keeper: upgrade tree dialog (U key) with 24 nodes across 4 branches (Dome/Mining/Movement/Weapon), Bezier curve connections, prerequisite system
++ Dome Keeper: different upgrades cost different resource combinations (iron only, iron+cobalt, iron+cobalt+water)
++ Space Farming: buildings upgradeable to L6 (5 upgrades) via right-click — range, efficiency, and bonuses scale with level
++ Space Farming: wind turbines now generate electricity (+15 max energy/level, +0.3 regen/level)
++ Space Farming: solar panel electricity scales with building level (up to +75 max energy, +1.5 regen at L6)
+# Space Farming: crops and buildings can no longer be placed on rock tiles
+# Space Farming: mature crop visual toned down (dimmer progress bar, subtle border instead of glow)
+# Space Farming: auto-planter L2 now plants crop with highest market factor (multiplier) not highest effective price
+
+Main: 6.16
+by Hawkynt 08.03.2026
++ Dome Keeper: 5 unlockable tools/gadgets (Drill, Blast Mining, Scanner, Reinforced Dome, Teleporter) with upgrade panel integration
++ Dome Keeper: keyboard shortcuts 1-5 for tool activation, HUD indicators for cooldowns and passive effects
++ Space Farming: energy system (100 base + 25/solar panel, auto-harvester consumes energy, regen via solar panels)
++ Space Farming: hoe tool (left-click near water fertilizes +0.2, right-click on crop uproots with 50% seed refund)
++ Space Farming: auto-planter building L1 (plants user-chosen crop) and L2 (plants highest market price crop)
++ Space Farming: directional land expansion alternating S/W/E/N each upgrade
++ Space Farming: WFC-inspired biome generation for new land (neighbor-weighted tile types)
++ Space Farming: silo tooltip shows storage capacity increase
++ Space Farming: estimated storage value shown in HUD
++ Space Farming: animal kill shows floating +10cr reward text, crop-damaging animals highlighted in red
+# Wordpad: font/highlight color no longer resets when pressing End/Home/arrow keys (ZWS sentinel re-injection)
+# Dome Keeper: laser nozzle clamped above ground on both sides (no more ground penetration or jumping)
+# Space Farming: plasma peppers now visible (fixed transparent fillStyle in glow effect, added emoji VS16)
+# Space Racing: AI opponents can now properly finish races and win (un-nerfed AI stats, fixed placement logic)
+
+Main: 6.15
+by Hawkynt 08.03.2026
++ Dome Keeper: time-based mining with depth scaling (deeper blocks take longer, tile type multipliers)
++ Dome Keeper: mining progress bar rendered above block being mined
++ Dome Keeper: Mining Tools upgrade (reduces mining time by 20% per level)
++ Dome Keeper: Move Speed upgrade (15% faster movement per level)
++ Dome Keeper: dropped resources when inventory full (persist on ground, picked up by walking over)
++ Dome Keeper: slower base movement (0.15s/tile vs 0.06s/tile) for more strategic feel
++ Space Farming: right-click drag panning (short right-click still removes buildings or kills animals)
++ Space Farming: buildings placeable on rock tiles (only water blocks building placement)
++ Space Farming: 5 new building types (Solar Panel, Wind Turbine, Compost Bin, Scarecrow, Fence)
++ Space Farming: unlimited plot expansion (maxLevel 99, was 3)
++ Space Farming: seasons system (Spring/Summer/Autumn/Winter cycling every 4 days with growth/harvest modifiers)
++ Space Farming: day/night cycle with visual overlay and phase-specific crops (Solar Vine, Lunar Moss)
++ Space Farming: inventory panel with silo-based storage caps (50 base + 50/silo), harvesting blocked when full
++ Space Farming: wild animal system (space mice eat crops, blocked by fences, scared by scarecrows, killable for credits)
++ Space Farming: 2 new crops (Solar Vine dayOnly, Lunar Moss nightOnly)
+# All 24 games: screen shake canvas positioning fixed (save/restore context around translate)
+
+Main: 6.14
+by Hawkynt 08.03.2026
++ Dome Keeper: underground expanded to 30x40 grid with scrolling camera that follows the player
++ Dome Keeper: turret nozzle moves along dome arc to hit ground enemies on both sides
++ Dome Keeper: resources scale with depth (cobalt richer deeper), 2-4 gadget chambers spread across map
++ Space Farming: tile type system (farmland, rock, water, sand) with natural clustering
++ Space Farming: per-tile fertility replaces row-based soil quality
++ Space Farming: building system with Sprinkler, Harvester, Greenhouse, and Silo
++ Space Farming: water adjacency growth bonus, sand growth penalty, greenhouse weather protection
++ Space Racing: ship now directly follows mouse cursor while button pressed (instant steering)
++ Tower Defense: brightened all graphics (terrain, towers, enemies, UI) for better visibility
+# Spreadsheet: font color, fill color, and tab color buttons now properly open color palette
+# Wordpad: text color no longer resets when moving cursor through differently colored text
+# Window Manager: maximize/restore button now correctly swaps to restore icon (uses second Action=22 base button)
+* versions.js: added 23 missing apps, removed 4 stale entries (freecell, solitaire, spider-solitaire, shared)
+
 Main: 6.13
 by Hawkynt 07.03.2026
 + Window Manager: frameless window mode (apps can request window frame removal via SetFrameless API)
-+ Window Manager: maximize button swaps to restore icon when window is maximized (uses skin Action=2 button image)
++ Window Manager: maximize button swaps to restore icon when window is maximized
 + Media Player: Winamp compact mode now uses frameless window (no title bar or borders visible)
 + SEO: hidden structured content divs added to all 69 app HTML pages for search engine indexing
 + Documentation: all 70 app ReadMe.md files aligned with categorized user stories and feature checkboxes
