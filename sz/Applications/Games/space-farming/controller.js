@@ -89,7 +89,7 @@
     { id: 'yieldMultiplier', name: 'Yield Multiplier',   icon: '📦', maxLevel: 5, baseCost: 80,  costScale: 2.0, desc: 'Harvest more per crop (+20%/lvl)' },
     { id: 'weatherResist',   name: 'Weather Shield',     icon: '🛡', maxLevel: 3, baseCost: 120, costScale: 2.5, desc: 'Reduce meteor damage chance' },
     { id: 'autoHarvest',     name: 'Auto-Harvester',     icon: '🤖', maxLevel: 3, baseCost: 200, costScale: 3.0, desc: 'Auto-harvest mature crops' },
-    { id: 'plotExpansion',   name: 'Plot Expansion',     icon: '🗺', maxLevel: 99, baseCost: 150, costScale: 1.5, desc: 'Expand farm outward by 1 ring' },
+    { id: 'plotExpansion',   name: 'Plot Expansion',     icon: '🗺', maxLevel: 99, baseCost: 150, costScale: 1.5, desc: 'Expand farm by 1 strip (L/R/T/B cycle)' },
     { id: 'soilQuality',    name: 'Soil Quality',        icon: '🧪', maxLevel: 5, baseCost: 100, costScale: 1.9, desc: 'All tiles grow faster (+15%/lvl)' },
     { id: 'marketAccess',   name: 'Market Access',       icon: '📈', maxLevel: 5, baseCost: 120, costScale: 2.0, desc: 'Sell prices +10% per level' },
     { id: 'irrigation',     name: 'Irrigation System',   icon: '💧', maxLevel: 3, baseCost: 140, costScale: 2.3, desc: 'Reduce crop damage -15%/lvl (stacks w/ Shield)' }
@@ -167,7 +167,7 @@
     { title: 'Buildings', lines: ['Press B or use the building bar to place buildings.', 'Sprinkler: +20% growth | Harvester: auto-harvest', 'Greenhouse: weather shield | Silo: +10% sell, +50 storage', 'Solar/Wind: income + energy | Auto-Planter: auto-plant', 'Right-click buildings to upgrade (up to L6)!', 'Shift+right-click to remove. Upgrades cost 50% of base.'] },
     { title: 'Crops & Weather', lines: ['Void Mushroom grows in any weather.', 'Plasma Pepper is fast but cold-vulnerable.', 'Astral Flower/Solar Vine grow best in sunlight.', 'Lunar Moss only grows at night!', 'Solar flares boost growth; meteor showers', 'damage unprotected crops!'] },
     { title: 'Upgrades', lines: ['Press U or click UPGRADES to open the shop.', '', 'Growth Boost, Yield, Weather Shield, Auto-Harvest,', 'Plot Expansion (more rows!), Soil Quality,', 'Market Access (better prices), Irrigation.', 'Each has multiple levels. Invest wisely!'] },
-    { title: 'Market & Land', lines: ['Crop prices fluctuate every 60 seconds!', 'Green arrow = high price, red = low price.', 'Buy seeds when cheap, sell when prices are high.', '', 'Land expands in 4 directions (S/W/E/N).', 'New terrain uses biome-aware generation.'] },
+    { title: 'Market & Land', lines: ['Crop prices fluctuate every 60 seconds!', 'Green arrow = high price, red = low price.', 'Buy seeds when cheap, sell when prices are high.', '', 'Land expands one strip at a time (L/R/T/B cycle).', 'New terrain uses biome-aware generation.'] },
     { title: 'Seasons & Day/Night', lines: ['Seasons change every 4 days:', 'Spring: +10% growth | Summer: +25% growth', 'Autumn: +15% harvest, -10% growth', 'Winter: -40% growth, no weather events', '', 'Day/night cycles affect some crops & visuals.'] },
     { title: 'Animals & Storage', lines: ['Wild space mice spawn and eat your crops!', 'Build Scarecrows and Fences to protect crops.', 'Right-click animals to kill them for 10cr.', 'Crop-threatening animals glow red!', 'Storage is limited: 50 + 50 per Silo.', 'Inventory shows estimated total value.'] },
     { title: 'Tools & Energy', lines: ['Press T to toggle the Hoe tool:', 'Left-click near water: boost fertility +0.2', 'Right-click on crop: uproot (50% seed refund)', '', 'Energy (blue bar) powers auto-harvesters.', 'Solar Panels & Wind Turbines add energy & regen.'] },
@@ -265,6 +265,9 @@
 
   let gridCols = GRID_COLS; // now mutable for east/west expansion
   let gridColOffset = 0; // tracks how many columns were added to the left (west)
+
+  // Expansion direction: cycles L(0), R(1), T(2), B(3)
+  let expansionDirection = 0;
 
   // Auto-planter timer
   let autoPlanterTimer = 0;
@@ -736,6 +739,12 @@
     return minInterval === Infinity ? 0 : minInterval;
   }
 
+  /** Number of tiles the next plot expansion strip will add. */
+  function getNextExpansionTileCount() {
+    // L(0), R(1) add a column (gridRows tiles); T(2), B(3) add a row (gridCols tiles)
+    return (expansionDirection < 2) ? gridRows : gridCols;
+  }
+
   function purchaseUpgrade(upgradeIndex) {
     if (state !== STATE_PLAYING) return;
     const def = UPGRADES[upgradeIndex];
@@ -744,8 +753,8 @@
 
     let cost;
     if (def.id === 'plotExpansion') {
-      // Price based on number of new tiles: full ring around current grid
-      const newTiles = 2 * gridRows + 2 * gridCols + 4;
+      // Price based on number of new tiles in the next strip
+      const newTiles = getNextExpansionTileCount();
       cost = newTiles * 8;
     } else
       cost = getUpgradeCost(def, curLevel);
@@ -817,85 +826,91 @@
   }
 
   function expandGrid() {
-    // Expand all 4 sides simultaneously — add a full ring around the grid
+    // Expand one strip at a time, cycling L(0), R(1), T(2), B(3)
+    const dir = expansionDirection;
 
-    // South: add row at bottom
-    const southRow = [];
-    const southType = [];
-    const southFert = [];
-    const southBuild = [];
-    for (let c = 0; c < gridCols; ++c) {
-      southRow.push(null);
-      southBuild.push(null);
-      const neighbors = getNeighborTypes(gridRows, c);
-      const tt = neighbors.length > 0 ? wfcTileType(neighbors) : TILE_FARMLAND;
-      southType.push(tt);
-      southFert.push(makeExpansionFertility(tt));
+    if (dir === 0) {
+      // LEFT: add column at left
+      for (let r = 0; r < gridRows; ++r) {
+        const neighbors = [];
+        if (tileTypes[r]?.[0] !== undefined) neighbors.push(tileTypes[r][0]);
+        if (r > 0 && tileTypes[r - 1]?.[0] !== undefined) neighbors.push(tileTypes[r - 1][0]);
+        const tt = neighbors.length > 0 ? wfcTileType(neighbors) : TILE_FARMLAND;
+        farmGrid[r].unshift(null);
+        tileTypes[r].unshift(tt);
+        tileFertility[r].unshift(makeExpansionFertility(tt));
+        if (hoedTiles[r]) hoedTiles[r].unshift(false);
+        buildings[r].unshift(null);
+      }
+      ++gridCols;
+      ++gridColOffset;
+      for (const animal of wildAnimals) ++animal.x;
+      for (const pen of livestockPens) ++pen.gridCol;
+    } else if (dir === 1) {
+      // RIGHT: add column at right
+      for (let r = 0; r < gridRows; ++r) {
+        const neighbors = [];
+        const lastC = gridCols - 1;
+        if (tileTypes[r]?.[lastC] !== undefined) neighbors.push(tileTypes[r][lastC]);
+        if (r > 0 && tileTypes[r - 1]?.[lastC] !== undefined) neighbors.push(tileTypes[r - 1][lastC]);
+        const tt = neighbors.length > 0 ? wfcTileType(neighbors) : TILE_FARMLAND;
+        farmGrid[r].push(null);
+        tileTypes[r].push(tt);
+        tileFertility[r].push(makeExpansionFertility(tt));
+        if (hoedTiles[r]) hoedTiles[r].push(false);
+        buildings[r].push(null);
+      }
+      ++gridCols;
+    } else if (dir === 2) {
+      // TOP: add row at top
+      const northRow = [];
+      const northType = [];
+      const northFert = [];
+      const northBuild = [];
+      for (let c = 0; c < gridCols; ++c) {
+        northRow.push(null);
+        northBuild.push(null);
+        const neighbors = [];
+        if (tileTypes[0]?.[c] !== undefined) neighbors.push(tileTypes[0][c]);
+        if (c > 0 && northType[c - 1] !== undefined) neighbors.push(northType[c - 1]);
+        const tt = neighbors.length > 0 ? wfcTileType(neighbors) : TILE_FARMLAND;
+        northType.push(tt);
+        northFert.push(makeExpansionFertility(tt));
+      }
+      farmGrid.unshift(northRow);
+      tileTypes.unshift(northType);
+      tileFertility.unshift(northFert);
+      hoedTiles.unshift(new Array(gridCols).fill(false));
+      buildings.unshift(northBuild);
+      ++gridRows;
+      soilQuality.unshift(getTileSoilQuality(0));
+      for (const animal of wildAnimals) ++animal.y;
+      for (const pen of livestockPens) ++pen.gridRow;
+    } else {
+      // BOTTOM: add row at bottom
+      const southRow = [];
+      const southType = [];
+      const southFert = [];
+      const southBuild = [];
+      for (let c = 0; c < gridCols; ++c) {
+        southRow.push(null);
+        southBuild.push(null);
+        const neighbors = getNeighborTypes(gridRows, c);
+        const tt = neighbors.length > 0 ? wfcTileType(neighbors) : TILE_FARMLAND;
+        southType.push(tt);
+        southFert.push(makeExpansionFertility(tt));
+      }
+      farmGrid.push(southRow);
+      tileTypes.push(southType);
+      tileFertility.push(southFert);
+      hoedTiles.push(new Array(gridCols).fill(false));
+      buildings.push(southBuild);
+      ++gridRows;
+      soilQuality.push(getTileSoilQuality(gridRows - 1));
     }
-    farmGrid.push(southRow);
-    tileTypes.push(southType);
-    tileFertility.push(southFert);
-    hoedTiles.push(new Array(gridCols).fill(false));
-    buildings.push(southBuild);
-    ++gridRows;
-    soilQuality.push(getTileSoilQuality(gridRows - 1));
 
-    // North: add row at top
-    const northRow = [];
-    const northType = [];
-    const northFert = [];
-    const northBuild = [];
-    for (let c = 0; c < gridCols; ++c) {
-      northRow.push(null);
-      northBuild.push(null);
-      const neighbors = [];
-      if (tileTypes[0]?.[c] !== undefined) neighbors.push(tileTypes[0][c]);
-      if (c > 0 && northType[c - 1] !== undefined) neighbors.push(northType[c - 1]);
-      const tt = neighbors.length > 0 ? wfcTileType(neighbors) : TILE_FARMLAND;
-      northType.push(tt);
-      northFert.push(makeExpansionFertility(tt));
-    }
-    farmGrid.unshift(northRow);
-    tileTypes.unshift(northType);
-    tileFertility.unshift(northFert);
-    hoedTiles.unshift(new Array(gridCols).fill(false));
-    buildings.unshift(northBuild);
-    ++gridRows;
-    soilQuality.unshift(getTileSoilQuality(0));
-    for (const animal of wildAnimals) ++animal.y;
-    for (const pen of livestockPens) ++pen.gridRow;
-
-    // West: add column at left (for each row including the new top/bottom)
-    for (let r = 0; r < gridRows; ++r) {
-      const neighbors = [];
-      if (tileTypes[r]?.[0] !== undefined) neighbors.push(tileTypes[r][0]);
-      if (r > 0 && tileTypes[r - 1]?.[0] !== undefined) neighbors.push(tileTypes[r - 1][0]);
-      const tt = neighbors.length > 0 ? wfcTileType(neighbors) : TILE_FARMLAND;
-      farmGrid[r].unshift(null);
-      tileTypes[r].unshift(tt);
-      tileFertility[r].unshift(makeExpansionFertility(tt));
-      if (hoedTiles[r]) hoedTiles[r].unshift(false);
-      buildings[r].unshift(null);
-    }
-    ++gridCols;
-    ++gridColOffset;
-    for (const animal of wildAnimals) ++animal.x;
-    for (const pen of livestockPens) ++pen.gridCol;
-
-    // East: add column at right
-    for (let r = 0; r < gridRows; ++r) {
-      const neighbors = [];
-      const lastC = gridCols - 1;
-      if (tileTypes[r]?.[lastC] !== undefined) neighbors.push(tileTypes[r][lastC]);
-      if (r > 0 && tileTypes[r - 1]?.[lastC] !== undefined) neighbors.push(tileTypes[r - 1][lastC]);
-      const tt = neighbors.length > 0 ? wfcTileType(neighbors) : TILE_FARMLAND;
-      farmGrid[r].push(null);
-      tileTypes[r].push(tt);
-      tileFertility[r].push(makeExpansionFertility(tt));
-      if (hoedTiles[r]) hoedTiles[r].push(false);
-      buildings[r].push(null);
-    }
-    ++gridCols;
+    // Advance direction: L -> R -> T -> B -> L -> ...
+    expansionDirection = (expansionDirection + 1) % 4;
 
     // Refresh shuffle cache since grid dimensions changed
     refreshShuffleCache();
@@ -922,6 +937,7 @@
     gridRows = BASE_GRID_ROWS;
     gridCols = GRID_COLS;
     gridColOffset = 0;
+    expansionDirection = 0;
 
     // Energy reset
     energy = 100;
@@ -1014,6 +1030,8 @@
 
     // Building income timer reset
     buildingIncomeTimer = 0;
+    buildingIncomeAccum = 0;
+    buildingIncomeSurplusAccum = 0;
 
     state = STATE_PLAYING;
     updateWindowTitle();
@@ -1342,19 +1360,20 @@
     }
   }
 
-  /** Auto-harvest a mature crop using cached shuffle order for even distribution. */
+  /** Auto-harvest a mature crop using randomized selection for even distribution. */
   function autoHarvestOneCrop() {
-    if (!cachedHarvestOrder.length)
-      refreshShuffleCache();
-    for (const { r, c } of cachedHarvestOrder) {
-      if (r >= gridRows || c >= gridCols) continue;
-      const cell = farmGrid[r]?.[c];
-      if (!cell) continue;
-      if (cell.growthStage >= CROPS[cell.cropIndex].stages - 1) {
-        harvestCrop(r, c);
-        return;
+    // Build list of all mature crop positions, then pick one at random
+    const matureTiles = [];
+    for (let r = 0; r < gridRows; ++r)
+      for (let c = 0; c < gridCols; ++c) {
+        const cell = farmGrid[r]?.[c];
+        if (!cell) continue;
+        if (cell.growthStage >= CROPS[cell.cropIndex].stages - 1)
+          matureTiles.push({ r, c });
       }
-    }
+    if (!matureTiles.length) return;
+    const pick = matureTiles[Math.floor(Math.random() * matureTiles.length)];
+    harvestCrop(pick.r, pick.c);
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -1895,9 +1914,10 @@
         const bdef = BUILDINGS[pBld.typeIndex];
         if (bdef.name !== 'Auto-Planter L1' && bdef.name !== 'Auto-Planter L2') continue;
 
-        // Determine which crop to plant
-        let cropIdx = selectedCropIndex;
-        if (bdef.name === 'Auto-Planter L2') {
+        // Determine crop candidates for L2 (diversification pool), or fixed crop for L1
+        const isL2 = bdef.name === 'Auto-Planter L2';
+        let l2Candidates = null;
+        if (isL2) {
           // Find the best market factor first
           let bestFactor = -Infinity;
           for (let ci = 0; ci < CROPS.length; ++ci) {
@@ -1906,16 +1926,14 @@
               bestFactor = factor;
           }
           // Collect all crops within 0.15 of the best for diversification
-          const candidates = [];
+          l2Candidates = [];
           for (let ci = 0; ci < CROPS.length; ++ci) {
             const factor = priceMultipliers[ci] || 1;
             if (bestFactor - factor <= 0.15)
-              candidates.push(ci);
+              l2Candidates.push(ci);
           }
-          cropIdx = candidates[Math.floor(Math.random() * candidates.length)];
         }
 
-        const crop = CROPS[cropIdx];
         const range = getBuildingRange(pBld);
 
         // Use cached plant order for even distribution across ticks
@@ -1935,6 +1953,11 @@
           plantable.push({ nr, nc });
         }
         for (const { nr, nc } of plantable) {
+          // Each tile independently picks a crop for L2 diversification
+          const cropIdx = isL2
+            ? l2Candidates[Math.floor(Math.random() * l2Candidates.length)]
+            : selectedCropIndex;
+          const crop = CROPS[cropIdx];
           if (credits < crop.seedCost) break;
           credits -= crop.seedCost;
           farmGrid[nr][nc] = {
@@ -1953,14 +1976,17 @@
   }
 
   /* ── Building Income (Solar Panel / Wind Turbine) ── */
+  const BUILDING_INCOME_INTERVAL = 5; // seconds between income ticks (short for visible feedback)
+  const BUILDING_INCOME_FRACTION = BUILDING_INCOME_INTERVAL / 30; // fraction of full cycle income per tick
+  let buildingIncomeAccum = 0; // fractional credit accumulator for base income
+  let buildingIncomeSurplusAccum = 0; // fractional credit accumulator for surplus
+
   function updateBuildingIncome(dt) {
     if (state !== STATE_PLAYING) return;
     buildingIncomeTimer += dt;
-    if (buildingIncomeTimer < 30) return; // every 30 seconds (1 cycle = 1 game day)
-    buildingIncomeTimer -= 30;
+    if (buildingIncomeTimer < BUILDING_INCOME_INTERVAL) return;
+    buildingIncomeTimer -= BUILDING_INCOME_INTERVAL;
 
-    let earned = 0;
-    let surplusBonus = 0;
     const energyFull = energy >= getEnergyMax();
     for (let r = 0; r < gridRows; ++r)
       for (let c = 0; c < gridCols; ++c) {
@@ -1968,18 +1994,26 @@
         if (!bld) continue;
         const bname = BUILDINGS[bld.typeIndex].name;
         if (bname === 'Solar Panel') {
-          earned += getSolarPanelIncome(bld);
+          const income = getSolarPanelIncome(bld) * BUILDING_INCOME_FRACTION;
+          buildingIncomeAccum += income;
           if (energyFull)
-            surplusBonus += getSolarPanelIncome(bld);
+            buildingIncomeSurplusAccum += income;
         } else if (bname === 'Wind Turbine') {
-          earned += getWindTurbineIncome(bld);
+          const income = getWindTurbineIncome(bld) * BUILDING_INCOME_FRACTION;
+          buildingIncomeAccum += income;
           if (energyFull)
-            surplusBonus += getWindTurbineIncome(bld);
+            buildingIncomeSurplusAccum += income;
         }
       }
 
-    if (earned > 0) {
-      const total = earned + surplusBonus;
+    // Only award whole credits; keep fractional remainder for next tick
+    const earned = Math.floor(buildingIncomeAccum);
+    const surplusBonus = Math.floor(buildingIncomeSurplusAccum);
+    buildingIncomeAccum -= earned;
+    buildingIncomeSurplusAccum -= surplusBonus;
+
+    const total = earned + surplusBonus;
+    if (total > 0) {
       credits += total;
       if (surplusBonus > 0)
         floatingText.add(canvasW / 2, 40, `+${total}cr (${earned}+${surplusBonus} surplus)`, { color: '#0ff', font: 'bold 12px sans-serif' });
@@ -2752,7 +2786,7 @@
       const maxed = curLevel >= def.maxLevel;
       let cost;
       if (def.id === 'plotExpansion') {
-        const newTiles = 2 * gridRows + 2 * gridCols + 4;
+        const newTiles = getNextExpansionTileCount();
         cost = maxed ? 0 : newTiles * 8;
       } else
         cost = maxed ? 0 : getUpgradeCost(def, curLevel);
