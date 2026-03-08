@@ -2353,6 +2353,8 @@
     particles.draw(ctx);
     floatingText.draw(ctx);
 
+    screenShake.restore(ctx);
+
     // HUD
     ctx.save();
     ctx.font = 'bold 18px sans-serif';
