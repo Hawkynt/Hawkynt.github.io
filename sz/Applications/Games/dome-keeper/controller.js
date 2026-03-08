@@ -18,9 +18,11 @@
 
   /* -- States -- */
   const STATE_READY = 'READY';
+  const STATE_GADGET_SELECT = 'GADGET_SELECT';
   const STATE_PLAYING = 'PLAYING';
   const STATE_PAUSED = 'PAUSED';
   const STATE_GAME_OVER = 'GAME_OVER';
+  const STATE_UPGRADE_DIALOG = 'UPGRADE_DIALOG';
 
   /* -- Storage -- */
   const STORAGE_PREFIX = 'sz-dome-keeper';
@@ -29,8 +31,8 @@
   const MAX_HIGH_SCORES = 5;
 
   /* -- Underground Grid -- */
-  const GRID_COLS = 14;
-  const GRID_ROWS = 10;
+  const GRID_COLS = 30;
+  const GRID_ROWS = 40;
   const TILE_SIZE = 40;
   const GRID_OFFSET_X = 70;
   const GRID_OFFSET_Y = 60;
@@ -41,43 +43,117 @@
   const TILE_IRON = 2;
   const TILE_WATER = 3;
   const TILE_COBALT = 4;
+  const TILE_GADGET = 5;
+  const TILE_COPPER = 6;
+  const TILE_GOLD = 7;
+  const TILE_TIN = 8;
+  const TILE_SILVER = 9;
+  const TILE_LEAD = 10;
+  const TILE_COAL = 11;
+  const TILE_QUARTZ = 12;
+  const TILE_REDSTONE = 13;
+  const TILE_DIAMOND = 14;
+  const TILE_EMERALD = 15;
+  const TILE_RUBY = 16;
 
   const TILE_COLORS = {
     [TILE_DIRT]: '#4a3a2a',
     [TILE_IRON]: '#888888',
     [TILE_WATER]: '#4488ff',
-    [TILE_COBALT]: '#4444aa'
+    [TILE_COBALT]: '#4444aa',
+    [TILE_COPPER]: '#b87333',
+    [TILE_GOLD]: '#ffd700',
+    [TILE_TIN]: '#d4d4d4',
+    [TILE_SILVER]: '#c0c0c0',
+    [TILE_LEAD]: '#666666',
+    [TILE_COAL]: '#333333',
+    [TILE_QUARTZ]: '#f0e6d3',
+    [TILE_REDSTONE]: '#cc0000',
+    [TILE_DIAMOND]: '#b9f2ff',
+    [TILE_EMERALD]: '#50c878',
+    [TILE_RUBY]: '#e0115f'
   };
 
   const TILE_HIGHLIGHT_COLORS = {
     [TILE_IRON]: '#bbbbbb',
     [TILE_WATER]: '#66aaff',
-    [TILE_COBALT]: '#6666cc'
+    [TILE_COBALT]: '#6666cc',
+    [TILE_COPPER]: '#d4944d',
+    [TILE_GOLD]: '#ffea50',
+    [TILE_TIN]: '#eeeeee',
+    [TILE_SILVER]: '#e0e0e0',
+    [TILE_LEAD]: '#999999',
+    [TILE_COAL]: '#555555',
+    [TILE_QUARTZ]: '#fff8ee',
+    [TILE_REDSTONE]: '#ff3333',
+    [TILE_DIAMOND]: '#dff8ff',
+    [TILE_EMERALD]: '#80e8a0',
+    [TILE_RUBY]: '#ff4488'
   };
 
   const TILE_SHADOW_COLORS = {
     [TILE_DIRT]: '#2a1a0a',
     [TILE_IRON]: '#555555',
     [TILE_WATER]: '#2266aa',
-    [TILE_COBALT]: '#222288'
+    [TILE_COBALT]: '#222288',
+    [TILE_COPPER]: '#7a4a1a',
+    [TILE_GOLD]: '#aa8800',
+    [TILE_TIN]: '#999999',
+    [TILE_SILVER]: '#888888',
+    [TILE_LEAD]: '#333333',
+    [TILE_COAL]: '#111111',
+    [TILE_QUARTZ]: '#b0a890',
+    [TILE_REDSTONE]: '#880000',
+    [TILE_DIAMOND]: '#6ab0c0',
+    [TILE_EMERALD]: '#2a7844',
+    [TILE_RUBY]: '#900030'
   };
 
   const TILE_VALUES = {
     [TILE_IRON]: 10,
     [TILE_WATER]: 20,
-    [TILE_COBALT]: 40
+    [TILE_COBALT]: 40,
+    [TILE_COPPER]: 12,
+    [TILE_TIN]: 15,
+    [TILE_COAL]: 8,
+    [TILE_LEAD]: 18,
+    [TILE_SILVER]: 25,
+    [TILE_GOLD]: 35,
+    [TILE_QUARTZ]: 30,
+    [TILE_REDSTONE]: 45,
+    [TILE_EMERALD]: 60,
+    [TILE_DIAMOND]: 80,
+    [TILE_RUBY]: 70
   };
 
   const TILE_LABELS = {
     [TILE_IRON]: 'iron',
     [TILE_WATER]: 'water',
-    [TILE_COBALT]: 'cobalt'
+    [TILE_COBALT]: 'cobalt',
+    [TILE_COPPER]: 'copper',
+    [TILE_GOLD]: 'gold',
+    [TILE_TIN]: 'tin',
+    [TILE_SILVER]: 'silver',
+    [TILE_LEAD]: 'lead',
+    [TILE_COAL]: 'coal',
+    [TILE_QUARTZ]: 'quartz',
+    [TILE_REDSTONE]: 'redstone',
+    [TILE_DIAMOND]: 'diamond',
+    [TILE_EMERALD]: 'emerald',
+    [TILE_RUBY]: 'ruby'
   };
+
+  // All resource tile types (used for detection in various places)
+  const RESOURCE_TILES = [
+    TILE_IRON, TILE_WATER, TILE_COBALT,
+    TILE_COPPER, TILE_GOLD, TILE_TIN, TILE_SILVER, TILE_LEAD, TILE_COAL,
+    TILE_QUARTZ, TILE_REDSTONE, TILE_DIAMOND, TILE_EMERALD, TILE_RUBY
+  ];
 
   /* -- Dome -- */
   const DOME_RADIUS = 80;
   let DOME_X = CANVAS_W / 2;
-  let DOME_Y = CANVAS_H - 80 - DOME_RADIUS; // sits ON the ground surface
+  let DOME_Y = CANVAS_H - 80; // dome center at ground line; arc draws upward
   const BASE_DOME_HP = 100;
 
   /* -- Weapon defaults -- */
@@ -87,8 +163,32 @@
   const BASE_CARRY_CAPACITY = 50;
 
   /* -- Waves -- */
-  const WAVE_INTERVAL = 25;
+  const WAVE_INTERVAL = 40;
   const BASE_ENEMIES_PER_WAVE = 3;
+
+  /* -- Mining time -- */
+  const BASE_MINE_TIME = 0.5; // seconds for surface blocks (row 0)
+  const TILE_MINE_MULTIPLIER = {
+    [TILE_DIRT]: 1.0,
+    [TILE_IRON]: 1.5,
+    [TILE_WATER]: 0.8,
+    [TILE_COBALT]: 2.0,
+    [TILE_GADGET]: 2.5,
+    [TILE_COPPER]: 1.4,
+    [TILE_TIN]: 1.3,
+    [TILE_COAL]: 1.0,
+    [TILE_LEAD]: 1.6,
+    [TILE_SILVER]: 1.8,
+    [TILE_GOLD]: 2.2,
+    [TILE_QUARTZ]: 1.7,
+    [TILE_REDSTONE]: 2.3,
+    [TILE_EMERALD]: 2.5,
+    [TILE_DIAMOND]: 3.0,
+    [TILE_RUBY]: 2.8
+  };
+
+  /* -- Movement -- */
+  const BASE_MOVE_INTERVAL = 0.15; // seconds per tile (base, before upgrades)
 
   /* -- Upgrade costs (resource units) -- */
   const UPGRADE_DEFS = [
@@ -96,8 +196,224 @@
     { name: 'Fire Rate', key: 'fireRate', baseCost: 25, perLevel: 15 },
     { name: 'Dome HP', key: 'domeHP', baseCost: 40, perLevel: 25 },
     { name: 'Drill Speed', key: 'drillSpeed', baseCost: 20, perLevel: 10 },
-    { name: 'Carry Capacity', key: 'carryCapacity', baseCost: 20, perLevel: 10 }
+    { name: 'Carry Capacity', key: 'carryCapacity', baseCost: 20, perLevel: 10 },
+    { name: 'Move Speed', key: 'moveSpeed', baseCost: 25, perLevel: 15 },
+    { name: 'Mining Tools', key: 'miningTools', baseCost: 35, perLevel: 20 }
   ];
+
+  /* -- Unlockable Gadgets/Tools -- */
+  const GADGET_DEFS = [
+    {
+      key: 'drill', name: 'Drill Gadget', icon: '\u26CF',
+      desc: 'Mines a column downward. 30% faster on consecutive same-column tiles.',
+      costIron: 25, costCobalt: 0, shortcut: '1'
+    },
+    {
+      key: 'blastTool', name: 'Blast Mining', icon: '\u{1F4A5}',
+      desc: 'Clears a 3x3 area. Costs 10 iron per blast. 5s cooldown.',
+      costIron: 30, costCobalt: 0, shortcut: '2'
+    },
+    {
+      key: 'scanner', name: 'Scanner', icon: '\u{1F50D}',
+      desc: 'Reveals resource types in a 3-tile radius around the miner.',
+      costIron: 35, costCobalt: 10, shortcut: '3'
+    },
+    {
+      key: 'reinforcedDome', name: 'Reinforced Dome', icon: '\u{1F6E1}',
+      desc: 'Dome takes 25% less damage from enemies. Passive.',
+      costIron: 50, costCobalt: 25, shortcut: '4'
+    },
+    {
+      key: 'teleporter', name: 'Teleporter', icon: '\u{1F300}',
+      desc: 'Instantly return to dome surface. 30s cooldown.',
+      costIron: 30, costCobalt: 15, shortcut: '5'
+    }
+  ];
+
+  const GADGET_TOOL_COOLDOWNS = {
+    blastTool: 5,   // seconds
+    teleporter: 30   // seconds
+  };
+
+  /* -- Upgrade Tree -- */
+  // Each node: id, name, icon, branch, costs per level [{iron, cobalt, water}],
+  //   maxLevel, prereqs (ids that must be maxed or at least level 1), upgradeKey (links to game stat)
+  // type: 'stat' = upgradeable stat, 'gadget' = unlockable tool/gadget (1 level)
+  const UPGRADE_TREE = [
+    // =============================================================
+    // === Dome Branch (10 nodes) ===
+    // =============================================================
+    { id: 'shield1', name: 'Shield Cap. L1', icon: '\u{1F6E1}', branch: 'dome',
+      costs: [{ iron: 20 }], maxLevel: 1, prereqs: [],
+      upgradeKey: 'domeHP', type: 'stat' },
+    { id: 'shield2', name: 'Shield Cap. L2', icon: '\u{1F6E1}', branch: 'dome',
+      costs: [{ iron: 35, cobalt: 10 }], maxLevel: 1, prereqs: ['shield1'],
+      upgradeKey: 'domeHP', type: 'stat' },
+    { id: 'shield3', name: 'Shield Cap. L3', icon: '\u{1F6E1}', branch: 'dome',
+      costs: [{ iron: 50, cobalt: 20, copper: 10 }], maxLevel: 1, prereqs: ['shield2'],
+      upgradeKey: 'domeHP', type: 'stat' },
+    { id: 'shield4', name: 'Shield Cap. L4', icon: '\u{1F6E1}', branch: 'dome',
+      costs: [{ iron: 60, silver: 15, cobalt: 25 }], maxLevel: 1, prereqs: ['shield3'],
+      upgradeKey: 'domeHP', type: 'stat' },
+    { id: 'shield5', name: 'Shield Cap. L5', icon: '\u{1F6E1}', branch: 'dome',
+      costs: [{ gold: 20, cobalt: 30, diamond: 5 }], maxLevel: 1, prereqs: ['shield4'],
+      upgradeKey: 'domeHP', type: 'stat' },
+    { id: 'shieldRecharge1', name: 'Shield Rech. L1', icon: '\u26A1', branch: 'dome',
+      costs: [{ iron: 25 }], maxLevel: 1, prereqs: [],
+      upgradeKey: 'shieldRecharge', type: 'stat' },
+    { id: 'shieldRecharge2', name: 'Shield Rech. L2', icon: '\u26A1', branch: 'dome',
+      costs: [{ iron: 40, cobalt: 15, water: 10 }], maxLevel: 1, prereqs: ['shieldRecharge1'],
+      upgradeKey: 'shieldRecharge', type: 'stat' },
+    { id: 'reinforcedDome', name: 'Reinforced Dome', icon: '\u{1F6E1}', branch: 'dome',
+      costs: [{ iron: 50, cobalt: 25, copper: 15 }], maxLevel: 1, prereqs: ['shield2'],
+      upgradeKey: 'reinforcedDome', type: 'gadget' },
+    { id: 'autoRepair', name: 'Auto-Repair', icon: '\u{1F527}', branch: 'dome',
+      costs: [{ iron: 40, copper: 20, coal: 15 }], maxLevel: 1, prereqs: ['shieldRecharge2'],
+      upgradeKey: 'autoRepair', type: 'gadget' },
+    { id: 'domeExpansion', name: 'Dome Expansion', icon: '\u{1F310}', branch: 'dome',
+      costs: [{ silver: 25, gold: 15, cobalt: 30 }], maxLevel: 1, prereqs: ['shield3'],
+      upgradeKey: 'domeExpansion', type: 'gadget' },
+    { id: 'energyShield', name: 'Energy Shield', icon: '\u26A1', branch: 'dome',
+      costs: [{ diamond: 10, ruby: 8, emerald: 10, gold: 20 }], maxLevel: 1, prereqs: ['shield4', 'domeExpansion'],
+      upgradeKey: 'energyShield', type: 'gadget' },
+
+    // =============================================================
+    // === Mining Branch (10 nodes) ===
+    // =============================================================
+    { id: 'mining1', name: 'Mining Tools L1', icon: '\u26CF', branch: 'mining',
+      costs: [{ iron: 15 }], maxLevel: 1, prereqs: [],
+      upgradeKey: 'miningTools', type: 'stat' },
+    { id: 'mining2', name: 'Mining Tools L2', icon: '\u26CF', branch: 'mining',
+      costs: [{ iron: 30, cobalt: 10 }], maxLevel: 1, prereqs: ['mining1'],
+      upgradeKey: 'miningTools', type: 'stat' },
+    { id: 'mining3', name: 'Mining Tools L3', icon: '\u26CF', branch: 'mining',
+      costs: [{ iron: 50, cobalt: 25, copper: 10 }], maxLevel: 1, prereqs: ['mining2'],
+      upgradeKey: 'miningTools', type: 'stat' },
+    { id: 'mining4', name: 'Mining Tools L4', icon: '\u26CF', branch: 'mining',
+      costs: [{ iron: 60, silver: 15, coal: 20 }], maxLevel: 1, prereqs: ['mining3'],
+      upgradeKey: 'miningTools', type: 'stat' },
+    { id: 'mining5', name: 'Mining Tools L5', icon: '\u26CF', branch: 'mining',
+      costs: [{ gold: 20, cobalt: 30, redstone: 10 }], maxLevel: 1, prereqs: ['mining4'],
+      upgradeKey: 'miningTools', type: 'stat' },
+    { id: 'carry1', name: 'Carry Cap. L1', icon: '\u{1F4E6}', branch: 'mining',
+      costs: [{ iron: 20 }], maxLevel: 1, prereqs: [],
+      upgradeKey: 'carryCapacity', type: 'stat' },
+    { id: 'carry2', name: 'Carry Cap. L2', icon: '\u{1F4E6}', branch: 'mining',
+      costs: [{ iron: 35, cobalt: 15, tin: 10 }], maxLevel: 1, prereqs: ['carry1'],
+      upgradeKey: 'carryCapacity', type: 'stat' },
+    { id: 'carry3', name: 'Carry Cap. L3', icon: '\u{1F4E6}', branch: 'mining',
+      costs: [{ iron: 50, silver: 10, lead: 15 }], maxLevel: 1, prereqs: ['carry2'],
+      upgradeKey: 'carryCapacity', type: 'stat' },
+    { id: 'drill', name: 'Drill Gadget', icon: '\u26CF', branch: 'mining',
+      costs: [{ iron: 25 }], maxLevel: 1, prereqs: ['mining1'],
+      upgradeKey: 'drill', type: 'gadget' },
+    { id: 'magnet', name: 'Magnet', icon: '\u{1F9F2}', branch: 'mining',
+      costs: [{ iron: 40, copper: 25, lead: 15 }], maxLevel: 1, prereqs: ['carry2'],
+      upgradeKey: 'magnet', type: 'gadget' },
+    { id: 'fortune', name: 'Fortune', icon: '\u2728', branch: 'mining',
+      costs: [{ gold: 15, silver: 20, quartz: 10 }], maxLevel: 1, prereqs: ['mining3'],
+      upgradeKey: 'fortune', type: 'gadget' },
+    { id: 'silkTouch', name: 'Silk Touch', icon: '\u{1F48E}', branch: 'mining',
+      costs: [{ diamond: 8, emerald: 10, ruby: 5, gold: 15 }], maxLevel: 1, prereqs: ['fortune', 'mining4'],
+      upgradeKey: 'silkTouch', type: 'gadget' },
+
+    // =============================================================
+    // === Movement Branch (10 nodes) ===
+    // =============================================================
+    { id: 'speed1', name: 'Move Speed L1', icon: '\u{1F3C3}', branch: 'movement',
+      costs: [{ iron: 15 }], maxLevel: 1, prereqs: [],
+      upgradeKey: 'moveSpeed', type: 'stat' },
+    { id: 'speed2', name: 'Move Speed L2', icon: '\u{1F3C3}', branch: 'movement',
+      costs: [{ iron: 25, cobalt: 8 }], maxLevel: 1, prereqs: ['speed1'],
+      upgradeKey: 'moveSpeed', type: 'stat' },
+    { id: 'speed3', name: 'Move Speed L3', icon: '\u{1F3C3}', branch: 'movement',
+      costs: [{ iron: 40, cobalt: 15, copper: 10 }], maxLevel: 1, prereqs: ['speed2'],
+      upgradeKey: 'moveSpeed', type: 'stat' },
+    { id: 'speed4', name: 'Move Speed L4', icon: '\u{1F3C3}', branch: 'movement',
+      costs: [{ iron: 55, silver: 12, coal: 15 }], maxLevel: 1, prereqs: ['speed3'],
+      upgradeKey: 'moveSpeed', type: 'stat' },
+    { id: 'speed5', name: 'Move Speed L5', icon: '\u{1F3C3}', branch: 'movement',
+      costs: [{ gold: 15, cobalt: 25, redstone: 8 }], maxLevel: 1, prereqs: ['speed4'],
+      upgradeKey: 'moveSpeed', type: 'stat' },
+    { id: 'teleporter', name: 'Teleporter', icon: '\u{1F300}', branch: 'movement',
+      costs: [{ iron: 30, cobalt: 15 }], maxLevel: 1, prereqs: ['speed1'],
+      upgradeKey: 'teleporter', type: 'gadget' },
+    { id: 'jetpack', name: 'Jetpack', icon: '\u{1F680}', branch: 'movement',
+      costs: [{ iron: 45, copper: 20, coal: 25 }], maxLevel: 1, prereqs: ['speed3'],
+      upgradeKey: 'jetpack', type: 'gadget' },
+    { id: 'phaseShift', name: 'Phase Shift', icon: '\u{1F47B}', branch: 'movement',
+      costs: [{ silver: 20, gold: 10, quartz: 15, cobalt: 20 }], maxLevel: 1, prereqs: ['speed4'],
+      upgradeKey: 'phaseShift', type: 'gadget' },
+    { id: 'echoLocation', name: 'Echo Location', icon: '\u{1F4E1}', branch: 'movement',
+      costs: [{ copper: 15, tin: 20, cobalt: 15 }], maxLevel: 1, prereqs: ['speed2'],
+      upgradeKey: 'echoLocation', type: 'gadget' },
+    { id: 'echoLocation2', name: 'Echo Loc. L2', icon: '\u{1F4E1}', branch: 'movement',
+      costs: [{ silver: 15, gold: 10, redstone: 8 }], maxLevel: 1, prereqs: ['echoLocation'],
+      upgradeKey: 'echoLocation', type: 'stat' },
+
+    // =============================================================
+    // === Weapon Branch (10 nodes) ===
+    // =============================================================
+    { id: 'fireRate1', name: 'Fire Rate L1', icon: '\u{1F525}', branch: 'weapon',
+      costs: [{ iron: 20 }], maxLevel: 1, prereqs: [],
+      upgradeKey: 'fireRate', type: 'stat' },
+    { id: 'fireRate2', name: 'Fire Rate L2', icon: '\u{1F525}', branch: 'weapon',
+      costs: [{ iron: 35, cobalt: 12 }], maxLevel: 1, prereqs: ['fireRate1'],
+      upgradeKey: 'fireRate', type: 'stat' },
+    { id: 'fireRate3', name: 'Fire Rate L3', icon: '\u{1F525}', branch: 'weapon',
+      costs: [{ iron: 50, copper: 15, coal: 10 }], maxLevel: 1, prereqs: ['fireRate2'],
+      upgradeKey: 'fireRate', type: 'stat' },
+    { id: 'fireRate4', name: 'Fire Rate L4', icon: '\u{1F525}', branch: 'weapon',
+      costs: [{ silver: 15, gold: 10, redstone: 12 }], maxLevel: 1, prereqs: ['fireRate3'],
+      upgradeKey: 'fireRate', type: 'stat' },
+    { id: 'damage1', name: 'Damage L1', icon: '\u2694', branch: 'weapon',
+      costs: [{ iron: 25 }], maxLevel: 1, prereqs: [],
+      upgradeKey: 'weaponDamage', type: 'stat' },
+    { id: 'damage2', name: 'Damage L2', icon: '\u2694', branch: 'weapon',
+      costs: [{ iron: 40, cobalt: 15 }], maxLevel: 1, prereqs: ['damage1'],
+      upgradeKey: 'weaponDamage', type: 'stat' },
+    { id: 'damage3', name: 'Damage L3', icon: '\u2694', branch: 'weapon',
+      costs: [{ iron: 60, cobalt: 30, copper: 15 }], maxLevel: 1, prereqs: ['damage2'],
+      upgradeKey: 'weaponDamage', type: 'stat' },
+    { id: 'damage4', name: 'Damage L4', icon: '\u2694', branch: 'weapon',
+      costs: [{ silver: 20, gold: 15, redstone: 10 }], maxLevel: 1, prereqs: ['damage3'],
+      upgradeKey: 'weaponDamage', type: 'stat' },
+    { id: 'damage5', name: 'Damage L5', icon: '\u2694', branch: 'weapon',
+      costs: [{ diamond: 8, ruby: 10, emerald: 8, gold: 20 }], maxLevel: 1, prereqs: ['damage4'],
+      upgradeKey: 'weaponDamage', type: 'stat' },
+    { id: 'drillSpeed1', name: 'Drill Speed L1', icon: '\u{1F529}', branch: 'weapon',
+      costs: [{ iron: 20 }], maxLevel: 1, prereqs: [],
+      upgradeKey: 'drillSpeed', type: 'stat' },
+    { id: 'drillSpeed2', name: 'Drill Speed L2', icon: '\u{1F529}', branch: 'weapon',
+      costs: [{ iron: 35, cobalt: 10, tin: 8 }], maxLevel: 1, prereqs: ['drillSpeed1'],
+      upgradeKey: 'drillSpeed', type: 'stat' },
+    { id: 'drillSpeed3', name: 'Drill Speed L3', icon: '\u{1F529}', branch: 'weapon',
+      costs: [{ iron: 50, silver: 10, coal: 15 }], maxLevel: 1, prereqs: ['drillSpeed2'],
+      upgradeKey: 'drillSpeed', type: 'stat' },
+    { id: 'blastTool', name: 'Blast Mining', icon: '\u{1F4A5}', branch: 'weapon',
+      costs: [{ iron: 30, coal: 10 }], maxLevel: 1, prereqs: ['damage1'],
+      upgradeKey: 'blastTool', type: 'gadget' },
+    { id: 'scanner', name: 'Scanner', icon: '\u{1F50D}', branch: 'weapon',
+      costs: [{ iron: 35, cobalt: 10 }], maxLevel: 1, prereqs: ['drillSpeed1'],
+      upgradeKey: 'scanner', type: 'gadget' },
+    { id: 'chainLightning', name: 'Chain Lightning', icon: '\u26A1', branch: 'weapon',
+      costs: [{ silver: 20, copper: 25, redstone: 15 }], maxLevel: 1, prereqs: ['damage3', 'fireRate2'],
+      upgradeKey: 'chainLightning', type: 'gadget' },
+    { id: 'freezeRay', name: 'Freeze Ray', icon: '\u2744', branch: 'weapon',
+      costs: [{ water: 30, quartz: 15, silver: 10 }], maxLevel: 1, prereqs: ['fireRate3'],
+      upgradeKey: 'freezeRay', type: 'gadget' },
+    { id: 'plasmaCannon', name: 'Plasma Cannon', icon: '\u{1F4A5}', branch: 'weapon',
+      costs: [{ diamond: 10, ruby: 12, redstone: 15, gold: 20 }], maxLevel: 1, prereqs: ['damage4', 'chainLightning'],
+      upgradeKey: 'plasmaCannon', type: 'gadget' }
+  ];
+
+  // Precompute node positions for the tree layout
+  // Layout: root at top center, 4 branches below
+  const TREE_BRANCH_ORDER = ['dome', 'mining', 'movement', 'weapon'];
+  const TREE_BRANCH_LABELS = { dome: 'DOME', mining: 'MINING', movement: 'MOVEMENT', weapon: 'WEAPON' };
+  const TREE_BRANCH_COLORS = { dome: '#4af', mining: '#fa0', movement: '#0f0', weapon: '#f44' };
+  const TREE_NODE_W = 120;
+  const TREE_NODE_H = 60;
 
   /* ======================================================================
      DOM
@@ -165,7 +481,9 @@
   let tutorialPage = 0;
   const TUTORIAL_PAGES = [
     { title: 'How to Play', lines: ['Defend your dome from alien waves on the surface', 'while mining resources underground!', '', 'Click/Tap = Fire weapon (surface) / Mine (underground)', 'Arrow Keys/WASD = Move drill underground', 'Space/Tab = Toggle surface / underground'] },
-    { title: 'Upgrades & Tips', lines: ['Press U to open the upgrade shop.', 'Upgrade weapon, dome armor, drill, fire rate.', '', 'Mine iron, water, and cobalt to fund upgrades.', 'Return to the surface before waves arrive!', 'Press H anytime to see this help again.'] }
+    { title: 'Upgrades & Tips', lines: ['Press U to open the upgrade shop.', 'Upgrade weapon, dome armor, drill, fire rate.', '', 'Mine resources (iron, copper, gold, gems...) for upgrades.', 'Return to the surface before waves arrive!', 'Press H anytime to see this help again.'] },
+    { title: 'Gadgets', lines: ['Choose a primary gadget at game start.', 'Find golden gadget chambers underground (2x2 tiles).', '', 'Press R to activate the Repellent Field.', 'Press B to use Blast Mining charges.', 'Gadgets from chambers activate on pickup!'] },
+    { title: 'Tools', lines: ['Unlock tools from the upgrade panel (click "Tools").', 'Press 1-5 to select/activate unlocked tools:', '', '1=Drill (fast column mining), 2=Blast (3x3 clear)', '3=Scanner (reveals nearby ores), 4=Reinforced Dome', '5=Teleporter (instant return to surface)'] }
   ];
 
   let state = STATE_READY;
@@ -176,7 +494,7 @@
   let domeHP = BASE_DOME_HP;
   let maxDomeHP = BASE_DOME_HP;
 
-  let resources = { iron: 0, water: 0, cobalt: 0 };
+  let resources = { iron: 0, water: 0, cobalt: 0, copper: 0, gold: 0, tin: 0, silver: 0, lead: 0, coal: 0, quartz: 0, redstone: 0, diamond: 0, emerald: 0, ruby: 0 };
   let carried = 0;
   let carryCapacity = BASE_CARRY_CAPACITY;
 
@@ -184,13 +502,22 @@
   let fireRate = BASE_FIRE_RATE;
   let fireCooldown = 0;
   let projectiles = [];
+  let aimX = 0, aimY = 0; // mouse aim position on surface
+  let fireRequested = false; // player clicked to fire
+  let turretAngle = -Math.PI / 2; // turret barrel angle (radians); default = straight up
+  let mouseAimX = -1, mouseAimY = -1; // continuous mouse position for turret aiming
+  const TURRET_BARREL_LENGTH = 20;
+  const TURRET_KEYBOARD_SPEED = 2.5; // radians per second
 
   let drillSpeed = BASE_DRILL_SPEED;
-  let drillX = 7;
+  let drillX = Math.floor(GRID_COLS / 2);
   let drillY = 0;
   let drillTimer = 0;
 
-  let upgradeLevels = { weaponDamage: 0, fireRate: 0, domeHP: 0, drillSpeed: 0, carryCapacity: 0 };
+  let cameraX = 0;
+  let cameraY = 0;
+
+  let upgradeLevels = { weaponDamage: 0, fireRate: 0, domeHP: 0, drillSpeed: 0, carryCapacity: 0, moveSpeed: 0, miningTools: 0 };
 
   let enemies = [];
   let waveNumber = 0;
@@ -200,6 +527,65 @@
 
   let undergroundGrid = [];
   let highScores = [];
+
+  /* ── Mining state ── */
+  let miningProgress = 0;          // accumulated time toward current mine
+  let miningDuration = 0;          // total time required for current mine
+  let miningTarget = null;         // {col, row, dx, dy} -- block being mined
+  let miningDir = null;            // {dx, dy} -- direction player is mining toward
+
+  /* ── Dropped resources ── */
+  let droppedResources = [];       // [{col, row, type, value, age}]
+
+  /* ── Mouse-based underground navigation ── */
+  let moveTarget = null;   // {col, row} -- destination tile
+  let movePath = null;     // [{col, row}, ...] -- BFS path steps
+  let movePathIndex = 0;   // current step index in path
+  let moveStepTimer = 0;   // timer for smooth stepping
+  let mineTarget = null;   // {col, row, dx, dy} -- queued mine after arrival
+  let moveStepInterval = BASE_MOVE_INTERVAL; // effective move interval (affected by upgrades)
+
+  /* ── Gadget System ── */
+  let primaryGadget = null; // 'shield'|'repellent'|'orchard'|'droneyard'
+  let primaryGadgetState = {};
+  let foundGadgets = [];    // gadgets picked up from mine chambers
+  let gadgetChambers = [];  // [{r, c, gadgetType, revealed: bool}]
+  let gadgetSelectHover = -1; // which card is hovered on selection screen
+
+  /* ── Unlockable Tool/Gadget System ── */
+  let unlockedTools = {};       // { drill: true, blastTool: true, ... }
+  let activeToolKey = null;     // currently selected tool key
+  let toolState = {};           // per-tool runtime state
+  let showToolPanel = false;    // whether tool unlock panel is visible in upgrade menu
+
+  /* ── Upgrade Dialog (full-screen tree) ── */
+  let upgradeTreeLevels = {};   // { nodeId: currentLevel }
+  let upgradeDialogHover = null; // hovered node id
+  let upgradeDialogScroll = 0;  // vertical scroll offset
+  let stateBeforeUpgradeDialog = null; // state to restore when closing dialog
+
+  /* ── Upgrade Dialog zoom & pan ── */
+  let upgradeZoom = 1.0;        // zoom scale factor
+  let upgradePanX = 0;          // pan offset X
+  let upgradePanY = 0;          // pan offset Y
+  let upgradePanning = false;   // right-click drag active
+  let upgradePanStartX = 0;     // drag start mouse X
+  let upgradePanStartY = 0;     // drag start mouse Y
+  let upgradePanBaseX = 0;      // pan offset at drag start
+  let upgradePanBaseY = 0;      // pan offset at drag start
+
+  const PRIMARY_GADGETS = [
+    { key: 'shield', name: 'Shield Generator', icon: '\u{1F6E1}', desc: ['Absorbs the first hit of each wave.', 'Recharges when a new wave starts.'] },
+    { key: 'repellent', name: 'Repellent Field', icon: '\u{1F300}', desc: ['Press R: slows all enemies to 40%', 'for 5 seconds (30s cooldown).'] },
+    { key: 'orchard', name: 'Orchard', icon: '\u{1F333}', desc: ['Every 20s grows a fruit that gives', '+30% mining speed for 10 seconds.'] },
+    { key: 'droneyard', name: 'Droneyard', icon: '\u{1F916}', desc: ['A drone auto-carries 10 resources', 'to surface every 15 seconds.'] }
+  ];
+
+  const MINE_GADGETS = ['autoCannon', 'stunLaser', 'blastMining', 'probeScanner', 'domeArmor', 'condenser'];
+  const MINE_GADGET_NAMES = {
+    autoCannon: 'Auto Cannon', stunLaser: 'Stun Laser', blastMining: 'Blast Mining',
+    probeScanner: 'Probe Scanner', domeArmor: 'Dome Armor', condenser: 'Condenser'
+  };
 
   const keys = {};
 
@@ -247,7 +633,7 @@
 
     // Recalculate derived layout values
     DOME_X = CANVAS_W / 2;
-    DOME_Y = CANVAS_H - 80 - DOME_RADIUS;
+    DOME_Y = CANVAS_H - 80;
     starfield.resize(CANVAS_W, CANVAS_H * 0.85);
   }
 
@@ -302,21 +688,94 @@
     undergroundGrid = [];
     for (let r = 0; r < GRID_ROWS; ++r) {
       const row = [];
+      // Depth factor: deeper rows have richer deposits
+      const depthFactor = r / GRID_ROWS; // 0 at top, ~1 at bottom
       for (let c = 0; c < GRID_COLS; ++c) {
-        const rand = Math.random();
-        if (rand < 0.12)
-          row.push(TILE_IRON);
-        else if (rand < 0.20)
-          row.push(TILE_WATER);
-        else if (rand < 0.25)
-          row.push(TILE_COBALT);
-        else
-          row.push(TILE_DIRT);
+        let rand = Math.random();
+        // Iron is more common near the surface, cobalt is richer deeper down
+        const ironChance = 0.10 - depthFactor * 0.03;     // 10% -> 7%
+        const waterChance = 0.06 + depthFactor * 0.03;     // 6% -> 9%
+        const cobaltChance = 0.02 + depthFactor * 0.08;    // 2% -> 10%
+
+        // New metals: appear at medium-to-deep depths
+        const copperChance = 0.04 - depthFactor * 0.01;    // 4% -> 3% (common metal)
+        const tinChance = 0.03 - depthFactor * 0.005;      // 3% -> 2.5%
+        const coalChance = 0.04;                            // 4% everywhere
+        const leadChance = depthFactor > 0.2 ? 0.025 : 0;  // 2.5% below 20% depth
+        const silverChance = depthFactor > 0.3 ? 0.02 + depthFactor * 0.02 : 0; // appears at 30% depth
+        const goldChance = depthFactor > 0.4 ? 0.01 + depthFactor * 0.02 : 0;   // appears at 40% depth
+
+        // Gems: deep only, rare
+        const quartzChance = depthFactor > 0.35 ? 0.015 : 0;
+        const redstoneChance = depthFactor > 0.5 ? 0.012 + depthFactor * 0.01 : 0;
+        const emeraldChance = depthFactor > 0.6 ? 0.008 + depthFactor * 0.005 : 0;
+        const diamondChance = depthFactor > 0.7 ? 0.005 + depthFactor * 0.005 : 0;
+        const rubyChance = depthFactor > 0.65 ? 0.006 + depthFactor * 0.004 : 0;
+
+        let cumulative = 0;
+        const chances = [
+          [ironChance, TILE_IRON],
+          [waterChance, TILE_WATER],
+          [cobaltChance, TILE_COBALT],
+          [copperChance, TILE_COPPER],
+          [tinChance, TILE_TIN],
+          [coalChance, TILE_COAL],
+          [leadChance, TILE_LEAD],
+          [silverChance, TILE_SILVER],
+          [goldChance, TILE_GOLD],
+          [quartzChance, TILE_QUARTZ],
+          [redstoneChance, TILE_REDSTONE],
+          [emeraldChance, TILE_EMERALD],
+          [diamondChance, TILE_DIAMOND],
+          [rubyChance, TILE_RUBY]
+        ];
+
+        let tile = TILE_DIRT;
+        for (const [chance, tileType] of chances) {
+          cumulative += chance;
+          if (rand < cumulative) {
+            tile = tileType;
+            break;
+          }
+        }
+        row.push(tile);
       }
       undergroundGrid.push(row);
     }
-    undergroundGrid[0][7] = TILE_EMPTY;
-    undergroundGrid[0][6] = TILE_EMPTY;
+    // Clear starting area around player spawn
+    const spawnCol = Math.floor(GRID_COLS / 2);
+    undergroundGrid[0][spawnCol] = TILE_EMPTY;
+    undergroundGrid[0][spawnCol - 1] = TILE_EMPTY;
+
+    // Place 2-4 gadget chambers (2x2 TILE_GADGET blocks) spread throughout the larger grid
+    gadgetChambers = [];
+    const chamberCount = 2 + Math.floor(Math.random() * 3); // 2, 3, or 4
+    for (let n = 0; n < chamberCount; ++n) {
+      let placed = false;
+      for (let attempt = 0; attempt < 80 && !placed; ++attempt) {
+        const cr = 2 + Math.floor(Math.random() * (GRID_ROWS - 3)); // rows 2..GRID_ROWS-2
+        const cc = 1 + Math.floor(Math.random() * (GRID_COLS - 3)); // cols 1..GRID_COLS-3
+        // Check no overlap with start area (rows 0-1, near spawn) or other chambers
+        let ok = true;
+        for (let dr = 0; dr < 2 && ok; ++dr)
+          for (let dc = 0; dc < 2 && ok; ++dc) {
+            if (cr + dr < 2 && cc + dc >= spawnCol - 2 && cc + dc <= spawnCol + 1) ok = false;
+            if (undergroundGrid[cr + dr][cc + dc] === TILE_GADGET) ok = false;
+          }
+        if (!ok) continue;
+        // Pick a random mine gadget for this chamber
+        const available = MINE_GADGETS.filter(g => !gadgetChambers.some(ch => ch.gadgetType === g));
+        const gadgetType = available.length > 0
+          ? available[Math.floor(Math.random() * available.length)]
+          : MINE_GADGETS[Math.floor(Math.random() * MINE_GADGETS.length)];
+        gadgetChambers.push({ r: cr, c: cc, gadgetType, revealed: false });
+        for (let dr = 0; dr < 2; ++dr)
+          for (let dc = 0; dc < 2; ++dc)
+            undergroundGrid[cr + dr][cc + dc] = TILE_GADGET;
+        placed = true;
+      }
+    }
+
     generateDirtNoise();
     generateOreSpeckles();
   }
@@ -326,7 +785,7 @@
      ====================================================================== */
 
   function resetGame() {
-    state = STATE_PLAYING;
+    state = STATE_GADGET_SELECT;
     currentView = VIEW_SURFACE;
     transitionProgress = 0;
     transitionTarget = null;
@@ -334,7 +793,7 @@
 
     domeHP = BASE_DOME_HP;
     maxDomeHP = BASE_DOME_HP;
-    resources = { iron: 0, water: 0, cobalt: 0 };
+    resources = { iron: 0, water: 0, cobalt: 0, copper: 0, gold: 0, tin: 0, silver: 0, lead: 0, coal: 0, quartz: 0, redstone: 0, diamond: 0, emerald: 0, ruby: 0 };
     carried = 0;
     carryCapacity = BASE_CARRY_CAPACITY;
 
@@ -342,19 +801,41 @@
     fireRate = BASE_FIRE_RATE;
     fireCooldown = 0;
     projectiles = [];
+    turretAngle = -Math.PI / 2;
+    mouseAimX = -1;
+    mouseAimY = -1;
 
     drillSpeed = BASE_DRILL_SPEED;
-    drillX = 7;
+    drillX = Math.floor(GRID_COLS / 2);
     drillY = 0;
     drillTimer = 0;
+    cameraX = 0;
+    cameraY = 0;
 
-    upgradeLevels = { weaponDamage: 0, fireRate: 0, domeHP: 0, drillSpeed: 0, carryCapacity: 0 };
+    upgradeLevels = { weaponDamage: 0, fireRate: 0, domeHP: 0, drillSpeed: 0, carryCapacity: 0, moveSpeed: 0, miningTools: 0 };
 
     enemies = [];
     waveNumber = 0;
-    waveTimer = 5;
+    waveTimer = 12;
     waveActive = false;
     score = 0;
+
+    // Reset navigation state
+    moveTarget = null;
+    movePath = null;
+    movePathIndex = 0;
+    moveStepTimer = 0;
+    mineTarget = null;
+    moveStepInterval = BASE_MOVE_INTERVAL;
+
+    // Reset mining state
+    miningProgress = 0;
+    miningDuration = 0;
+    miningTarget = null;
+    miningDir = null;
+
+    // Reset dropped resources
+    droppedResources = [];
 
     // Reset animation state
     animTime = 0;
@@ -370,8 +851,61 @@
     shieldImpacts = [];
     tileSparkleTimer = 0;
 
+    // Reset gadget state (clear auto-laser visuals so they never persist into a new game)
+    primaryGadget = null;
+    primaryGadgetState = {};
+    foundGadgets = [];
+
+    // Reset tool/gadget state
+    unlockedTools = {};
+    activeToolKey = null;
+    toolState = {
+      drillLastCol: -1,          // last column mined for drill combo
+      drillConsecutive: 0,       // consecutive same-column mines
+      blastToolCooldown: 0,      // cooldown timer for blast tool
+      scannerActive: false,      // whether scanner is passively active
+      teleporterCooldown: 0,     // cooldown timer for teleporter
+      autoRepairTimer: 0,        // auto-repair interval timer
+      jetpackCooldown: 0,        // jetpack cooldown timer
+      phaseShiftCooldown: 0,     // phase shift cooldown timer
+      echoLocationActive: false  // echo location passive
+    };
+    showToolPanel = false;
+    gadgetSelectHover = -1;
+
+    // Reset upgrade tree
+    upgradeTreeLevels = {};
+    for (const node of UPGRADE_TREE)
+      upgradeTreeLevels[node.id] = 0;
+    upgradeDialogHover = null;
+    upgradeDialogScroll = 0;
+    stateBeforeUpgradeDialog = null;
+    upgradeZoom = 1.0;
+    upgradePanX = 0;
+    upgradePanY = 0;
+    upgradePanning = false;
+
     generateUnderground();
     updateWindowTitle();
+  }
+
+  function startGameAfterGadgetSelect() {
+    state = STATE_PLAYING;
+    // Initialize primary gadget state
+    switch (primaryGadget) {
+      case 'shield':
+        primaryGadgetState = { active: true };
+        break;
+      case 'repellent':
+        primaryGadgetState = { active: false, duration: 0, cooldown: 0 };
+        break;
+      case 'orchard':
+        primaryGadgetState = { fruitTimer: 20, fruitReady: false, speedBoostTimer: 0 };
+        break;
+      case 'droneyard':
+        primaryGadgetState = { droneTimer: 15, droneY: 0, droneActive: false, dronePhase: 0 };
+        break;
+    }
   }
 
   /* ======================================================================
@@ -388,6 +922,9 @@
     transitionTarget = currentView === VIEW_SURFACE ? VIEW_UNDERGROUND : VIEW_SURFACE;
     transitionProgress = 0;
     transitionPhase = 'fade-out';
+
+    // Cancel any active mining when switching views
+    cancelMining();
 
     if (transitionTarget === VIEW_SURFACE && carried > 0) {
       floatingText.add(CANVAS_W / 2, CANVAS_H / 2, `+${carried} resources deposited`, { color: '#0f0', font: 'bold 14px sans-serif' });
@@ -406,6 +943,16 @@
       transitionProgress = 1;
       currentView = transitionTarget;
       transitionPhase = 'fade-in';
+
+      // Snap camera to player when entering underground
+      if (currentView !== VIEW_SURFACE) {
+        const targetCamX = drillX * TILE_SIZE - CANVAS_W / 2 + TILE_SIZE / 2;
+        const targetCamY = drillY * TILE_SIZE - CANVAS_H / 2 + TILE_SIZE / 2;
+        const maxCamX = GRID_COLS * TILE_SIZE - CANVAS_W;
+        const maxCamY = GRID_ROWS * TILE_SIZE - CANVAS_H;
+        cameraX = Math.max(0, Math.min(maxCamX, targetCamX));
+        cameraY = Math.max(0, Math.min(maxCamY, targetCamY));
+      }
     } else if (transitionPhase === 'fade-in' && transitionProgress >= 2) {
       // Done
       transitionProgress = 0;
@@ -505,12 +1052,12 @@
         const candidates = [];
         for (let r = 0; r < GRID_ROWS; ++r)
           for (let c = 0; c < GRID_COLS; ++c)
-            if (undergroundGrid[r][c] !== TILE_EMPTY && undergroundGrid[r][c] !== TILE_DIRT)
+            if (undergroundGrid[r][c] !== TILE_EMPTY && undergroundGrid[r][c] !== TILE_DIRT && undergroundGrid[r][c] !== TILE_GADGET)
               candidates.push({ r, c });
         if (candidates.length > 0) {
           const pick = candidates[Math.floor(Math.random() * candidates.length)];
-          const sx = GRID_OFFSET_X + pick.c * TILE_SIZE + Math.random() * TILE_SIZE;
-          const sy = GRID_OFFSET_Y + pick.r * TILE_SIZE + Math.random() * TILE_SIZE;
+          const sx = pick.c * TILE_SIZE + Math.random() * TILE_SIZE - cameraX;
+          const sy = pick.r * TILE_SIZE + Math.random() * TILE_SIZE - cameraY;
           particles.sparkle(sx, sy, 1, { color: TILE_HIGHLIGHT_COLORS[undergroundGrid[pick.r][pick.c]] || '#fff', speed: 0.5 });
         }
       }
@@ -529,6 +1076,8 @@
       }
       e.wobblePhase += dt * 4;
       e.legPhase += dt * 8;
+      if (e.type === 'flyer')
+        e.wingPhase = (e.wingPhase || 0) + dt * 12;
       e.eyeBlinkTimer -= dt;
       if (e.eyeBlinkTimer <= 0) {
         e.eyeBlinking = !e.eyeBlinking;
@@ -578,34 +1127,222 @@
   }
 
   /* ======================================================================
+     DAMAGE HELPER (shields)
+     ====================================================================== */
+
+  function applyDamageToEnemy(e, amount) {
+    if (e.shield > 0) {
+      const absorbed = Math.min(e.shield, amount);
+      e.shield -= absorbed;
+      amount -= absorbed;
+      particles.burst(e.x, e.y, 6, { color: '#4af', speed: 2, life: 0.3 });
+      if (e.shield <= 0) {
+        e.shield = 0;
+        floatingText.add(e.x, e.y - (e.size || 10) - 18, 'SHIELD BROKEN', { color: '#4af', font: 'bold 11px sans-serif' });
+        particles.burst(e.x, e.y, 15, { color: '#4af', speed: 3.5, life: 0.5 });
+        particles.sparkle(e.x, e.y, 8, { color: '#8cf', speed: 2 });
+      }
+    }
+    e.hp -= amount;
+  }
+
+  /* ======================================================================
+     PATHFINDING (BFS for underground navigation)
+     ====================================================================== */
+
+  function findPath(fromCol, fromRow, toCol, toRow) {
+    if (fromCol === toCol && fromRow === toRow) return [];
+    if (toCol < 0 || toCol >= GRID_COLS || toRow < 0 || toRow >= GRID_ROWS) return null;
+    if (undergroundGrid[toRow][toCol] !== TILE_EMPTY) return null;
+
+    const visited = [];
+    for (let r = 0; r < GRID_ROWS; ++r) {
+      visited.push([]);
+      for (let c = 0; c < GRID_COLS; ++c)
+        visited[r].push(false);
+    }
+
+    const prev = [];
+    for (let r = 0; r < GRID_ROWS; ++r) {
+      prev.push([]);
+      for (let c = 0; c < GRID_COLS; ++c)
+        prev[r].push(null);
+    }
+
+    const queue = [{ col: fromCol, row: fromRow }];
+    visited[fromRow][fromCol] = true;
+    const dirs = [{ dc: 0, dr: -1 }, { dc: 0, dr: 1 }, { dc: -1, dr: 0 }, { dc: 1, dr: 0 }];
+
+    while (queue.length > 0) {
+      const cur = queue.shift();
+      if (cur.col === toCol && cur.row === toRow) {
+        // Reconstruct path
+        const path = [];
+        let step = { col: toCol, row: toRow };
+        while (step.col !== fromCol || step.row !== fromRow) {
+          path.unshift(step);
+          step = prev[step.row][step.col];
+        }
+        return path;
+      }
+      for (const d of dirs) {
+        const nc = cur.col + d.dc;
+        const nr = cur.row + d.dr;
+        if (nc < 0 || nc >= GRID_COLS || nr < 0 || nr >= GRID_ROWS) continue;
+        if (visited[nr][nc]) continue;
+        if (undergroundGrid[nr][nc] !== TILE_EMPTY) continue;
+        visited[nr][nc] = true;
+        prev[nr][nc] = { col: cur.col, row: cur.row };
+        queue.push({ col: nc, row: nr });
+      }
+    }
+    return null; // no path found
+  }
+
+  function findAdjacentEmptyNear(targetCol, targetRow) {
+    // Find the closest empty tile adjacent to (targetCol, targetRow) that has a path from player
+    const dirs = [{ dc: 0, dr: -1 }, { dc: 0, dr: 1 }, { dc: -1, dr: 0 }, { dc: 1, dr: 0 }];
+    let bestPath = null;
+    let bestAdj = null;
+    for (const d of dirs) {
+      const ac = targetCol + d.dc;
+      const ar = targetRow + d.dr;
+      if (ac < 0 || ac >= GRID_COLS || ar < 0 || ar >= GRID_ROWS) continue;
+      if (undergroundGrid[ar][ac] !== TILE_EMPTY) continue;
+      const path = findPath(drillX, drillY, ac, ar);
+      if (path !== null && (bestPath === null || path.length < bestPath.length)) {
+        bestPath = path;
+        bestAdj = { col: ac, row: ar, dx: targetCol - ac, dy: targetRow - ar };
+      }
+    }
+    return bestAdj ? { path: bestPath, adj: bestAdj } : null;
+  }
+
+  /* ======================================================================
      ENEMY WAVES
      ====================================================================== */
 
   function spawnWave() {
     ++waveNumber;
     waveActive = true;
-    const count = BASE_ENEMIES_PER_WAVE + Math.floor(waveNumber * 1.5);
-    const hpMult = 1 + waveNumber * 0.3;
 
-    for (let i = 0; i < count; ++i) {
-      // Spawn only from left, right, or top -- never below the dome / underground
-      // Angle range: PI (left) through 1.5*PI (top) to 2*PI (right)
-      const angle = Math.PI + Math.random() * Math.PI;
-      const dist = 300 + Math.random() * 100;
+    // Recharge shield gadget at wave start
+    if (primaryGadget === 'shield') {
+      primaryGadgetState.active = true;
+      floatingText.add(DOME_X, DOME_Y - DOME_RADIUS - 30, 'Shield Recharged!', { color: '#4af', font: 'bold 12px sans-serif' });
+    }
+
+    const isBossWave = waveNumber >= 15 && waveNumber % 5 === 0;
+
+    // Gradual count ramp: 2 at wave 1, slowly increases, capped at 20
+    const baseCount = Math.min(20, 2 + Math.floor(waveNumber * 0.8));
+    // Flyer ratio: 0% for waves 1-4, ramps to ~40% by wave 10+
+    const flyerRatio = waveNumber <= 4 ? 0 : Math.min(0.4, (waveNumber - 4) * 0.07);
+    const flyerCount = Math.floor(baseCount * flyerRatio);
+    const walkerCount = baseCount - flyerCount;
+
+    // HP scaling: starts very low (8-10 for wave 1), gradually increases
+    const baseHP = 8 + (waveNumber - 1) * 3;
+    // Damage scaling: starts at 2-3, gradually increases
+    const baseDamage = 2 + Math.floor((waveNumber - 1) * 0.8);
+    // Speed scaling
+    const baseSpeed = 15 + Math.min(25, waveNumber * 2);
+
+    // Spawn ground walkers
+    for (let i = 0; i < walkerCount; ++i) {
+      // Ground walkers approach from left or right at ground level
+      const fromLeft = Math.random() < 0.5;
+      const spawnX = fromLeft ? -30 - Math.random() * 80 : CANVAS_W + 30 + Math.random() * 80;
+      const spawnY = DOME_Y + (Math.random() - 0.5) * 20;
+
+      const isArmored = waveNumber >= 9 && Math.random() < Math.min(0.35, (waveNumber - 8) * 0.07);
+      const hpMult = isArmored ? 2.0 : 1.0;
+      const spdMult = isArmored ? 0.75 : 1.0;
+      const sizeMult = isArmored ? 1.3 : 1.0;
+      const hp = (baseHP + Math.random() * 5) * hpMult;
+      const hasShield = waveNumber >= 11 && Math.random() < Math.min(0.3, (waveNumber - 10) * 0.05);
+      const shieldVal = hasShield ? Math.floor(hp * 0.5 + waveNumber) : 0;
+
       enemies.push({
-        x: DOME_X + Math.cos(angle) * dist,
-        y: DOME_Y + Math.sin(angle) * dist * 0.6,
-        hp: 20 * hpMult,
-        maxHP: 20 * hpMult,
-        speed: 25 + Math.random() * 15,
-        damage: 5 + waveNumber * 2,
+        type: 'ground',
+        x: spawnX,
+        y: spawnY,
+        hp: hp,
+        maxHP: hp,
+        speed: (baseSpeed + Math.random() * 10) * spdMult,
+        damage: baseDamage + Math.floor(Math.random() * 2),
         attackTimer: 0,
+        stunTimer: 0,
         wobblePhase: Math.random() * TWO_PI,
         legPhase: Math.random() * TWO_PI,
         eyeBlinkTimer: 2 + Math.random() * 3,
         eyeBlinking: false,
-        size: 10 + Math.random() * 4
+        size: (10 + Math.random() * 4) * sizeMult,
+        armored: isArmored,
+        shield: shieldVal,
+        maxShield: shieldVal,
+        boss: false
       });
+    }
+
+    // Spawn airborne flyers
+    for (let i = 0; i < flyerCount; ++i) {
+      // Flyers approach from upper hemisphere at any angle
+      const angle = Math.PI + Math.random() * Math.PI;
+      const dist = 300 + Math.random() * 100;
+      const flyerHP = (baseHP * 0.6 + Math.random() * 3);
+      const hasShield = waveNumber >= 11 && Math.random() < Math.min(0.2, (waveNumber - 10) * 0.04);
+      const shieldVal = hasShield ? Math.floor(flyerHP * 0.4 + waveNumber * 0.5) : 0;
+
+      enemies.push({
+        type: 'flyer',
+        x: DOME_X + Math.cos(angle) * dist,
+        y: DOME_Y + Math.sin(angle) * dist * 0.6,
+        hp: flyerHP,
+        maxHP: flyerHP,
+        speed: baseSpeed * 1.3 + Math.random() * 12,
+        damage: Math.max(1, baseDamage - 1),
+        attackTimer: 0,
+        stunTimer: 0,
+        wobblePhase: Math.random() * TWO_PI,
+        legPhase: Math.random() * TWO_PI,
+        wingPhase: Math.random() * TWO_PI,
+        eyeBlinkTimer: 2 + Math.random() * 3,
+        eyeBlinking: false,
+        size: 7 + Math.random() * 3,
+        armored: false,
+        shield: shieldVal,
+        maxShield: shieldVal,
+        boss: false
+      });
+    }
+
+    // Boss enemy every 5 waves starting at wave 15
+    if (isBossWave) {
+      const bossHP = baseHP * 8 + waveNumber * 5;
+      const bossShield = Math.floor(bossHP * 0.4);
+      const fromLeft = Math.random() < 0.5;
+      enemies.push({
+        type: 'ground',
+        x: fromLeft ? -60 : CANVAS_W + 60,
+        y: DOME_Y - 10,
+        hp: bossHP,
+        maxHP: bossHP,
+        speed: baseSpeed * 0.5,
+        damage: baseDamage * 3,
+        attackTimer: 0,
+        stunTimer: 0,
+        wobblePhase: Math.random() * TWO_PI,
+        legPhase: Math.random() * TWO_PI,
+        eyeBlinkTimer: 2 + Math.random() * 3,
+        eyeBlinking: false,
+        size: 22 + Math.random() * 4,
+        armored: true,
+        shield: bossShield,
+        maxShield: bossShield,
+        boss: true
+      });
+      floatingText.add(CANVAS_W / 2, 70, 'BOSS INCOMING!', { color: '#f00', font: 'bold 24px sans-serif' });
     }
 
     floatingText.add(CANVAS_W / 2, 40, `WAVE ${waveNumber}`, { color: '#f80', font: 'bold 20px sans-serif' });
@@ -620,17 +1357,41 @@
       const dy = DOME_Y - e.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
 
+      // Repellent field slows enemies
+      const speedMult = (primaryGadget === 'repellent' && primaryGadgetState.active) ? 0.4 : 1.0;
+      // Stun laser freezes targeted enemy
+      const isStunned = e.stunTimer > 0;
+      if (isStunned) {
+        e.stunTimer -= dt;
+        if (e.stunTimer < 0) e.stunTimer = 0;
+      }
+
       if (dist > DOME_RADIUS + 10) {
-        e.x += (dx / dist) * e.speed * dt;
-        e.y += (dy / dist) * e.speed * dt;
-      } else {
+        if (!isStunned) {
+          e.x += (dx / dist) * e.speed * speedMult * dt;
+          e.y += (dy / dist) * e.speed * speedMult * dt;
+        }
+      } else if (!isStunned) {
         e.attackTimer -= dt;
         if (e.attackTimer <= 0) {
           e.attackTimer = 1.0;
-          domeHP -= e.damage;
+
+          // Shield gadget absorbs first hit
+          if (primaryGadget === 'shield' && primaryGadgetState.active) {
+            primaryGadgetState.active = false;
+            floatingText.add(DOME_X, DOME_Y - DOME_RADIUS - 30, 'Shield Absorbed!', { color: '#4af', font: 'bold 14px sans-serif' });
+            particles.burst(e.x, e.y, 15, { color: '#4af', speed: 3, life: 0.5 });
+            spawnShieldImpact(e.x, e.y);
+            continue; // skip damage
+          }
+
+          let effectiveDmg = e.damage;
+          if (unlockedTools.reinforcedDome) effectiveDmg = Math.ceil(effectiveDmg * 0.75);
+          if (unlockedTools.energyShield) effectiveDmg = Math.ceil(effectiveDmg * 0.85);
+          domeHP -= effectiveDmg;
           domeHitFlash = 1.0;
           screenShake.trigger(8, 250);
-          floatingText.add(DOME_X + (Math.random() - 0.5) * 40, DOME_Y - 30, `-${e.damage} HP`, { color: '#f44', font: 'bold 14px sans-serif' });
+          floatingText.add(DOME_X + (Math.random() - 0.5) * 40, DOME_Y - 30, `-${effectiveDmg} HP`, { color: '#f44', font: 'bold 14px sans-serif' });
 
           // Shield impact flash
           spawnShieldImpact(e.x, e.y);
@@ -702,39 +1463,146 @@
 
   function updateWeapon(dt) {
     if (currentView !== VIEW_SURFACE) return;
-    if (enemies.length === 0) return;
+
+    // Turret aiming: track mouse position continuously
+    // Nozzle moves along dome arc — compute aim angle from dome center
+    // Upper semicircle only, clamped above ground so nozzle never dips into terrain
+    const TURRET_MIN_ANGLE = -Math.PI;
+    const TURRET_MAX_ANGLE = 0;
+    if (mouseAimX >= 0 && mouseAimY >= 0) {
+      const adx = mouseAimX - DOME_X;
+      const ady = mouseAimY - DOME_Y;
+      if (adx * adx + ady * ady > 4) {
+        if (ady < 0)
+          // Mouse is above ground — atan2 with negative ady always yields [-PI, 0]
+          turretAngle = Math.atan2(ady, adx);
+        // When mouse is below ground, don't change turret angle — avoids snapping
+      }
+    }
+
+    // Keyboard aiming: Left/Right or A/D rotate barrel
+    if (keys['ArrowLeft'] || keys['KeyA'])
+      turretAngle -= TURRET_KEYBOARD_SPEED * dt;
+    if (keys['ArrowRight'] || keys['KeyD'])
+      turretAngle += TURRET_KEYBOARD_SPEED * dt;
+
+    // Clamp turret to upper dome arc, above ground on both sides
+    if (turretAngle > TURRET_MAX_ANGLE) turretAngle = TURRET_MAX_ANGLE;
+    if (turretAngle < TURRET_MIN_ANGLE) turretAngle = TURRET_MIN_ANGLE;
+
+    // Nozzle position on dome arc
+    const nozzleR = DOME_RADIUS + 8;
+    const turretBaseX = DOME_X + Math.cos(turretAngle) * nozzleR;
+    const turretBaseY = DOME_Y + Math.sin(turretAngle) * nozzleR;
 
     fireCooldown -= dt;
-    if (fireCooldown <= 0) {
-      let nearest = null;
-      let nearDist = Infinity;
+
+    // Fire toward current turret aim direction on click
+    if (fireRequested && fireCooldown <= 0) {
+      fireRequested = false;
+      fireCooldown = 1.0 / fireRate;
+
+      // Project a far-off aim point along the turret angle
+      const aimDist = 400;
+      const farX = turretBaseX + Math.cos(turretAngle) * aimDist;
+      const farY = turretBaseY + Math.sin(turretAngle) * aimDist;
+
+      // Find enemy closest to the projected aim line
+      let target = null;
+      let bestDist = 40 * 40; // hit radius of 40px
       for (const e of enemies) {
-        const dx = e.x - DOME_X;
-        const dy = e.y - DOME_Y;
+        const dx = e.x - farX;
+        const dy = e.y - farY;
         const d = dx * dx + dy * dy;
-        if (d < nearDist) {
-          nearDist = d;
-          nearest = e;
+        if (d < bestDist) {
+          bestDist = d;
+          target = e;
         }
       }
 
-      if (nearest) {
-        fireCooldown = 1.0 / fireRate;
-        projectiles.push({
-          x: DOME_X,
-          y: DOME_Y - 20,
-          tx: nearest.x,
-          ty: nearest.y,
-          target: nearest,
-          life: 0.3,
-          maxLife: 0.3
-        });
-        nearest.hp -= weaponDamage;
-
-        // Muzzle flash at dome turret
-        particles.burst(DOME_X, DOME_Y - 25, 4, { color: '#faa', speed: 1.5, life: 0.15, size: 2 });
+      // Also check enemies near the aim line (not just the far point)
+      if (!target) {
+        let bestLineDist = 30;
+        for (const e of enemies) {
+          // Distance from enemy to the aim ray
+          const ex = e.x - turretBaseX;
+          const ey = e.y - turretBaseY;
+          const projLen = ex * Math.cos(turretAngle) + ey * Math.sin(turretAngle);
+          if (projLen < 0) continue; // behind turret
+          const perpDist = Math.abs(-ex * Math.sin(turretAngle) + ey * Math.cos(turretAngle));
+          if (perpDist < bestLineDist) {
+            bestLineDist = perpDist;
+            target = e;
+          }
+        }
       }
+
+      const tx = target ? target.x : farX;
+      const ty = target ? target.y : farY;
+
+      const muzzleX = turretBaseX + Math.cos(turretAngle) * TURRET_BARREL_LENGTH;
+      const muzzleY = turretBaseY + Math.sin(turretAngle) * TURRET_BARREL_LENGTH;
+
+      projectiles.push({
+        x: muzzleX,
+        y: muzzleY,
+        tx, ty,
+        target,
+        life: 0.3,
+        maxLife: 0.3
+      });
+
+      if (target) {
+        applyDamageToEnemy(target, weaponDamage);
+
+        // Chain Lightning: arc damage to 2 nearby enemies
+        if (unlockedTools.chainLightning) {
+          let chainCount = 0;
+          const chainDamage = Math.ceil(weaponDamage * 0.4);
+          for (const ce of enemies) {
+            if (ce === target || chainCount >= 2) break;
+            const cdx = ce.x - target.x;
+            const cdy = ce.y - target.y;
+            if (cdx * cdx + cdy * cdy < 80 * 80) {
+              applyDamageToEnemy(ce, chainDamage);
+              particles.burst(ce.x, ce.y, 4, { color: '#4af', speed: 2, life: 0.2 });
+              // Arc visual
+              projectiles.push({ x: target.x, y: target.y, tx: ce.x, ty: ce.y, life: 0.15, maxLife: 0.15 });
+              ++chainCount;
+            }
+          }
+        }
+
+        // Freeze Ray: slow enemies near target
+        if (unlockedTools.freezeRay) {
+          for (const ce of enemies) {
+            const cdx = ce.x - target.x;
+            const cdy = ce.y - target.y;
+            if (cdx * cdx + cdy * cdy < 60 * 60)
+              ce.stunTimer = Math.max(ce.stunTimer || 0, 0.8);
+          }
+        }
+
+        // Plasma Cannon: AoE damage around target
+        if (unlockedTools.plasmaCannon) {
+          const aoeDamage = Math.ceil(weaponDamage * 0.6);
+          for (const ce of enemies) {
+            if (ce === target) continue;
+            const cdx = ce.x - target.x;
+            const cdy = ce.y - target.y;
+            if (cdx * cdx + cdy * cdy < 70 * 70) {
+              applyDamageToEnemy(ce, aoeDamage);
+              particles.burst(ce.x, ce.y, 6, { color: '#f80', speed: 2, life: 0.3 });
+            }
+          }
+          particles.burst(target.x, target.y, 15, { color: '#f80', speed: 3, life: 0.4 });
+        }
+      }
+
+      particles.burst(muzzleX, muzzleY, 4, { color: '#faa', speed: 1.5, life: 0.15, size: 2 });
     }
+
+    fireRequested = false;
 
     for (let i = projectiles.length - 1; i >= 0; --i) {
       projectiles[i].life -= dt;
@@ -747,6 +1615,35 @@
      MINING
      ====================================================================== */
 
+  function cancelMining() {
+    miningTarget = null;
+    miningDir = null;
+    miningProgress = 0;
+    miningDuration = 0;
+  }
+
+  function getMiningTime(row, tile) {
+    const depthMultiplier = 1 + row * 0.05;
+    const tileMultiplier = TILE_MINE_MULTIPLIER[tile] || 1.0;
+    let time = BASE_MINE_TIME * depthMultiplier * tileMultiplier;
+
+    // Drill speed upgrade reduces mining time
+    const effectiveDrillSpeed = (primaryGadget === 'orchard' && primaryGadgetState.speedBoostTimer > 0)
+      ? drillSpeed * 0.7
+      : drillSpeed;
+    // drillSpeed starts at 0.3 and decreases with upgrades; normalize to a multiplier
+    time *= effectiveDrillSpeed / BASE_DRILL_SPEED;
+
+    // Mining tools upgrade: each level reduces time by 20%
+    time *= Math.pow(0.8, getEffectiveLevel('miningTools'));
+
+    // Drill Gadget: 30% faster when mining consecutive tiles in the same column
+    if (unlockedTools.drill && activeToolKey === 'drill' && toolState.drillConsecutive > 0)
+      time *= 0.7;
+
+    return time;
+  }
+
   function tryMine(dx, dy) {
     if (state !== STATE_PLAYING) return;
     if (currentView !== VIEW_UNDERGROUND) return;
@@ -758,23 +1655,50 @@
     const tile = undergroundGrid[ny][nx];
     if (tile === TILE_EMPTY) {
       // Movement dust
-      const cx = GRID_OFFSET_X + drillX * TILE_SIZE + TILE_SIZE / 2;
-      const cy = GRID_OFFSET_Y + drillY * TILE_SIZE + TILE_SIZE / 2;
+      cancelMining();
+      const cx = drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX;
+      const cy = drillY * TILE_SIZE + TILE_SIZE / 2 - cameraY;
       spawnDust(cx, cy);
       drillX = nx;
       drillY = ny;
+      // Pick up dropped resources at destination
+      pickUpDroppedResources();
       return;
     }
+
+    // If already mining the same block, ignore repeated starts
+    if (miningTarget && miningTarget.col === nx && miningTarget.row === ny)
+      return;
+
+    // Start mining a new block
+    cancelMining();
+    miningTarget = { col: nx, row: ny };
+    miningDir = { dx, dy };
+    miningProgress = 0;
+    miningDuration = getMiningTime(ny, tile);
+    lastMineDir = { dx, dy };
 
     // Trigger pickaxe swing animation
     pickaxeSwinging = true;
     pickaxeSwingTimer = PICKAXE_SWING_DURATION;
+  }
+
+  function completeMining() {
+    if (!miningTarget) return;
+
+    const nx = miningTarget.col;
+    const ny = miningTarget.row;
+    const dx = miningDir.dx;
+    const dy = miningDir.dy;
+    const tile = undergroundGrid[ny][nx];
+
+    // Trigger pickaxe swing animation on completion
+    pickaxeSwinging = true;
+    pickaxeSwingTimer = PICKAXE_SWING_DURATION;
     lastMineDir = { dx, dy };
 
-    drillTimer += drillSpeed;
-
-    const tx = GRID_OFFSET_X + nx * TILE_SIZE + TILE_SIZE / 2;
-    const ty = GRID_OFFSET_Y + ny * TILE_SIZE + TILE_SIZE / 2;
+    const tx = nx * TILE_SIZE + TILE_SIZE / 2 - cameraX;
+    const ty = ny * TILE_SIZE + TILE_SIZE / 2 - cameraY;
 
     // Rich mining particles
     const tileColor = TILE_COLORS[tile] || '#654';
@@ -803,12 +1727,33 @@
     // Stronger shake for mining
     screenShake.trigger(4, 120);
 
-    if (tile === TILE_IRON || tile === TILE_WATER || tile === TILE_COBALT) {
+    if (RESOURCE_TILES.includes(tile)) {
       const label = TILE_LABELS[tile];
-      const value = TILE_VALUES[tile];
-      resources[label] += value;
-      carried += value;
-      floatingText.add(tx, ty - 15, `+${value} ${label}`, { color: '#0f0', font: 'bold 12px sans-serif' });
+      let value = TILE_VALUES[tile];
+
+      // Fortune: 30% chance to double ore yield
+      if (unlockedTools.fortune && Math.random() < 0.3) {
+        value *= 2;
+        const tx2 = nx * TILE_SIZE + TILE_SIZE / 2 - cameraX;
+        const ty2 = ny * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+        floatingText.add(tx2, ty2 - 30, 'FORTUNE!', { color: '#ffd700', font: 'bold 12px sans-serif' });
+        particles.sparkle(tx2, ty2, 8, { color: '#ffd700', speed: 2 });
+      }
+
+      const fitsInInventory = Math.min(value, carryCapacity - carried);
+      const excess = value - fitsInInventory;
+
+      if (fitsInInventory > 0) {
+        resources[label] += fitsInInventory;
+        carried += fitsInInventory;
+        floatingText.add(tx, ty - 15, `+${fitsInInventory} ${label}`, { color: '#0f0', font: 'bold 12px sans-serif' });
+      }
+
+      // Drop excess resources on the ground
+      if (excess > 0) {
+        droppedResources.push({ col: nx, row: ny, type: tile, value: excess, age: 0 });
+        floatingText.add(tx, ty - 30, `${excess} ${label} dropped!`, { color: '#f80', font: 'bold 11px sans-serif' });
+      }
 
       // Resource reveal glow burst
       spawnResourceGlow(tx, ty, TILE_HIGHLIGHT_COLORS[tile] || '#fff');
@@ -818,9 +1763,351 @@
       screenShake.trigger(5, 150);
     }
 
+    // Gadget chamber tile -- grant the chamber's gadget
+    if (tile === TILE_GADGET) {
+      const chamber = gadgetChambers.find(ch => {
+        for (let dr = 0; dr < 2; ++dr)
+          for (let dc = 0; dc < 2; ++dc)
+            if (ch.r + dr === ny && ch.c + dc === nx) return true;
+        return false;
+      });
+      if (chamber) {
+        grantMineGadget(chamber.gadgetType, tx, ty);
+        // Clear remaining tiles of this chamber
+        for (let dr = 0; dr < 2; ++dr)
+          for (let dc = 0; dc < 2; ++dc)
+            if (undergroundGrid[chamber.r + dr][chamber.c + dc] === TILE_GADGET)
+              undergroundGrid[chamber.r + dr][chamber.c + dc] = TILE_EMPTY;
+      }
+    }
+
     undergroundGrid[ny][nx] = TILE_EMPTY;
     drillX = nx;
     drillY = ny;
+
+    // Track drill gadget consecutive column mining
+    if (unlockedTools.drill && activeToolKey === 'drill') {
+      if (dy === 1 && dx === 0 && nx === toolState.drillLastCol)
+        ++toolState.drillConsecutive;
+      else
+        toolState.drillConsecutive = 0;
+      toolState.drillLastCol = nx;
+    }
+
+    // Pick up dropped resources at destination
+    pickUpDroppedResources();
+
+    // Reveal adjacent gadget chambers
+    for (const ch of gadgetChambers) {
+      if (ch.revealed) continue;
+      for (let dr = 0; dr < 2; ++dr)
+        for (let dc = 0; dc < 2; ++dc) {
+          const cr = ch.r + dr, cc = ch.c + dc;
+          if (Math.abs(cr - ny) + Math.abs(cc - nx) === 1)
+            ch.revealed = true;
+        }
+    }
+
+    cancelMining();
+  }
+
+  function updateMining(dt) {
+    if (!miningTarget) return;
+    if (currentView !== VIEW_UNDERGROUND) {
+      cancelMining();
+      return;
+    }
+
+    // Check the block is still there (blast mining could clear it)
+    const tile = undergroundGrid[miningTarget.row][miningTarget.col];
+    if (tile === TILE_EMPTY) {
+      cancelMining();
+      return;
+    }
+
+    miningProgress += dt;
+
+    // Periodically retrigger pickaxe swing animation while mining
+    if (!pickaxeSwinging) {
+      pickaxeSwinging = true;
+      pickaxeSwingTimer = PICKAXE_SWING_DURATION;
+    }
+
+    // Emit small mining particles while in progress
+    if (Math.random() < dt * 8) {
+      const tx = miningTarget.col * TILE_SIZE + TILE_SIZE / 2 - cameraX;
+      const ty = miningTarget.row * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+      const tileColor = TILE_COLORS[tile] || '#654';
+      particles.trail(tx + (Math.random() - 0.5) * 10, ty + (Math.random() - 0.5) * 10, {
+        vx: -(miningDir.dx) * (0.5 + Math.random()),
+        vy: -(miningDir.dy) * (0.5 + Math.random()) - Math.random() * 0.5,
+        color: tileColor,
+        life: 0.2 + Math.random() * 0.2,
+        size: 1 + Math.random() * 2,
+        gravity: 0.05,
+        shape: 'square'
+      });
+    }
+
+    if (miningProgress >= miningDuration)
+      completeMining();
+  }
+
+  function pickUpDroppedResources() {
+    for (let i = droppedResources.length - 1; i >= 0; --i) {
+      const drop = droppedResources[i];
+      if (drop.col !== drillX || drop.row !== drillY) continue;
+
+      const canCarry = carryCapacity - carried;
+      if (canCarry <= 0) break;
+
+      const pickUp = Math.min(drop.value, canCarry);
+      const label = TILE_LABELS[drop.type];
+      resources[label] += pickUp;
+      carried += pickUp;
+      drop.value -= pickUp;
+
+      const tx = drop.col * TILE_SIZE + TILE_SIZE / 2 - cameraX;
+      const ty = drop.row * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+      floatingText.add(tx, ty - 15, `+${pickUp} ${label}`, { color: '#0f0', font: 'bold 11px sans-serif' });
+
+      if (drop.value <= 0)
+        droppedResources.splice(i, 1);
+    }
+  }
+
+  function grantMineGadget(type, tx, ty) {
+    foundGadgets.push(type);
+    const name = MINE_GADGET_NAMES[type] || type;
+    floatingText.add(tx, ty - 25, `GADGET: ${name}!`, { color: '#ffd700', font: 'bold 14px sans-serif' });
+    particles.burst(tx, ty, 25, { color: '#ffd700', speed: 3, life: 0.7 });
+    particles.sparkle(tx, ty, 15, { color: '#ffaa00', speed: 2 });
+    screenShake.trigger(8, 200);
+
+    switch (type) {
+      case 'domeArmor':
+        maxDomeHP += 50;
+        domeHP = Math.min(domeHP + 50, maxDomeHP);
+        floatingText.add(tx, ty - 45, '+50 Max HP!', { color: '#0f0', font: 'bold 12px sans-serif' });
+        break;
+      case 'blastMining':
+        primaryGadgetState.blastCharges = (primaryGadgetState.blastCharges || 0) + 2;
+        floatingText.add(tx, ty - 45, '+2 Blast Charges!', { color: '#f80', font: 'bold 12px sans-serif' });
+        break;
+      case 'probeScanner':
+        primaryGadgetState.probeTimer = 15;
+        primaryGadgetState.probePlayerR = drillY;
+        primaryGadgetState.probePlayerC = drillX;
+        floatingText.add(tx, ty - 45, 'Resources Revealed!', { color: '#ffd700', font: 'bold 12px sans-serif' });
+        break;
+      case 'autoCannon':
+        primaryGadgetState.autoCannonTimer = 0;
+        break;
+      case 'stunLaser':
+        primaryGadgetState.stunLaserTimer = 0;
+        primaryGadgetState.stunLaserTarget = null;
+        primaryGadgetState.stunLaserFlash = 0;
+        break;
+      case 'condenser':
+        primaryGadgetState.condenserTimer = 0;
+        break;
+    }
+  }
+
+  function useBlastMining() {
+    if (!foundGadgets.includes('blastMining')) return;
+    if ((primaryGadgetState.blastCharges || 0) <= 0) return;
+    if (state !== STATE_PLAYING || currentView !== VIEW_UNDERGROUND) return;
+
+    --primaryGadgetState.blastCharges;
+    floatingText.add(
+      drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX,
+      drillY * TILE_SIZE - 10 - cameraY,
+      `BLAST! (${primaryGadgetState.blastCharges} left)`,
+      { color: '#f80', font: 'bold 14px sans-serif' }
+    );
+
+    // Clear 3x3 area around player
+    for (let dr = -1; dr <= 1; ++dr)
+      for (let dc = -1; dc <= 1; ++dc) {
+        const r = drillY + dr, c = drillX + dc;
+        if (r < 0 || r >= GRID_ROWS || c < 0 || c >= GRID_COLS) continue;
+        const tile = undergroundGrid[r][c];
+        if (tile === TILE_EMPTY) continue;
+
+        const tx = c * TILE_SIZE + TILE_SIZE / 2 - cameraX;
+        const ty = r * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+
+        if (tile === TILE_GADGET) {
+          const chamber = gadgetChambers.find(ch => {
+            for (let dr2 = 0; dr2 < 2; ++dr2)
+              for (let dc2 = 0; dc2 < 2; ++dc2)
+                if (ch.r + dr2 === r && ch.c + dc2 === c) return true;
+            return false;
+          });
+          if (chamber) {
+            grantMineGadget(chamber.gadgetType, tx, ty);
+            for (let dr2 = 0; dr2 < 2; ++dr2)
+              for (let dc2 = 0; dc2 < 2; ++dc2)
+                undergroundGrid[chamber.r + dr2][chamber.c + dc2] = TILE_EMPTY;
+          }
+        } else if (RESOURCE_TILES.includes(tile)) {
+          const label = TILE_LABELS[tile];
+          const value = TILE_VALUES[tile];
+          const fitsInInventory = Math.min(value, carryCapacity - carried);
+          const excess = value - fitsInInventory;
+          if (fitsInInventory > 0) {
+            resources[label] += fitsInInventory;
+            carried += fitsInInventory;
+          }
+          if (excess > 0)
+            droppedResources.push({ col: c, row: r, type: tile, value: excess, age: 0 });
+        }
+        undergroundGrid[r][c] = TILE_EMPTY;
+
+        // Red explosive flash particles
+        particles.burst(tx, ty, 8, { color: '#f44', speed: 2.5, life: 0.4 });
+        spawnCrumble(tx, ty, TILE_COLORS[tile] || '#654');
+      }
+
+    // Big explosion effect
+    const cx = drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX;
+    const cy = drillY * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+    particles.burst(cx, cy, 30, { color: '#f80', speed: 4, life: 0.6 });
+    particles.burst(cx, cy, 15, { color: '#ff0', speed: 3, life: 0.4 });
+    screenShake.trigger(10, 300);
+  }
+
+  /* ======================================================================
+     TOOL ACTIONS
+     ====================================================================== */
+
+  function useBlastTool() {
+    if (!unlockedTools.blastTool) return;
+    if (toolState.blastToolCooldown > 0) return;
+    if (state !== STATE_PLAYING || currentView !== VIEW_UNDERGROUND) return;
+    if (resources.iron < 10) {
+      floatingText.add(
+        drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX,
+        drillY * TILE_SIZE - 10 - cameraY,
+        'Need 10 iron!', { color: '#f44', font: 'bold 12px sans-serif' }
+      );
+      return;
+    }
+
+    resources.iron -= 10;
+    toolState.blastToolCooldown = GADGET_TOOL_COOLDOWNS.blastTool;
+
+    floatingText.add(
+      drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX,
+      drillY * TILE_SIZE - 10 - cameraY,
+      'BLAST! (-10 iron)', { color: '#f80', font: 'bold 14px sans-serif' }
+    );
+
+    // Clear 3x3 area around player
+    for (let dr = -1; dr <= 1; ++dr)
+      for (let dc = -1; dc <= 1; ++dc) {
+        const r = drillY + dr, c = drillX + dc;
+        if (r < 0 || r >= GRID_ROWS || c < 0 || c >= GRID_COLS) continue;
+        const tile = undergroundGrid[r][c];
+        if (tile === TILE_EMPTY) continue;
+
+        const tx = c * TILE_SIZE + TILE_SIZE / 2 - cameraX;
+        const ty = r * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+
+        if (tile === TILE_GADGET) {
+          const chamber = gadgetChambers.find(ch => {
+            for (let dr2 = 0; dr2 < 2; ++dr2)
+              for (let dc2 = 0; dc2 < 2; ++dc2)
+                if (ch.r + dr2 === r && ch.c + dc2 === c) return true;
+            return false;
+          });
+          if (chamber) {
+            grantMineGadget(chamber.gadgetType, tx, ty);
+            for (let dr2 = 0; dr2 < 2; ++dr2)
+              for (let dc2 = 0; dc2 < 2; ++dc2)
+                undergroundGrid[chamber.r + dr2][chamber.c + dc2] = TILE_EMPTY;
+          }
+        } else if (RESOURCE_TILES.includes(tile)) {
+          const label = TILE_LABELS[tile];
+          const value = TILE_VALUES[tile];
+          const fitsInInventory = Math.min(value, carryCapacity - carried);
+          const excess = value - fitsInInventory;
+          if (fitsInInventory > 0) {
+            resources[label] += fitsInInventory;
+            carried += fitsInInventory;
+          }
+          if (excess > 0)
+            droppedResources.push({ col: c, row: r, type: tile, value: excess, age: 0 });
+        }
+        undergroundGrid[r][c] = TILE_EMPTY;
+        particles.burst(tx, ty, 8, { color: '#f44', speed: 2.5, life: 0.4 });
+        spawnCrumble(tx, ty, TILE_COLORS[tile] || '#654');
+      }
+
+    const cx = drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX;
+    const cy = drillY * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+    particles.burst(cx, cy, 30, { color: '#f80', speed: 4, life: 0.6 });
+    particles.burst(cx, cy, 15, { color: '#ff0', speed: 3, life: 0.4 });
+    screenShake.trigger(10, 300);
+  }
+
+  function useTeleporter() {
+    if (!unlockedTools.teleporter) return;
+    if (toolState.teleporterCooldown > 0) return;
+    if (state !== STATE_PLAYING || currentView !== VIEW_UNDERGROUND) return;
+
+    toolState.teleporterCooldown = GADGET_TOOL_COOLDOWNS.teleporter;
+
+    // Teleport particles at origin
+    const cx = drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX;
+    const cy = drillY * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+    particles.burst(cx, cy, 20, { color: '#a0f', speed: 3, life: 0.5 });
+    particles.sparkle(cx, cy, 10, { color: '#c4f', speed: 2 });
+    screenShake.trigger(6, 200);
+
+    // Cancel mining and movement
+    cancelMining();
+    clearMoveTarget();
+
+    // Deposit carried resources
+    if (carried > 0) {
+      floatingText.add(CANVAS_W / 2, CANVAS_H / 2, `+${carried} resources deposited`, { color: '#0f0', font: 'bold 14px sans-serif' });
+      carried = 0;
+    }
+
+    // Switch to surface
+    transitionTarget = VIEW_SURFACE;
+    transitionProgress = 0;
+    transitionPhase = 'fade-out';
+
+    floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 30, 'Teleported!', { color: '#a0f', font: 'bold 16px sans-serif' });
+  }
+
+  function selectTool(key) {
+    if (!unlockedTools[key]) return;
+    // Scanner and reinforcedDome are passive -- no selection needed
+    if (key === 'scanner' || key === 'reinforcedDome') return;
+    activeToolKey = activeToolKey === key ? null : key;
+  }
+
+  function unlockTool(idx) {
+    if (state !== STATE_PLAYING) return;
+    const def = GADGET_DEFS[idx];
+    if (unlockedTools[def.key]) return;
+    if (resources.iron < def.costIron || resources.cobalt < def.costCobalt) return;
+
+    resources.iron -= def.costIron;
+    resources.cobalt -= def.costCobalt;
+    unlockedTools[def.key] = true;
+
+    floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 30, `${def.name} Unlocked!`, { color: '#ffd700', font: 'bold 14px sans-serif' });
+    particles.sparkle(CANVAS_W / 2, CANVAS_H / 2, 15, { color: '#ffd700', speed: 2.5 });
+    screenShake.trigger(5, 150);
+
+    // Auto-select non-passive tools
+    if (def.key !== 'scanner' && def.key !== 'reinforcedDome')
+      activeToolKey = def.key;
   }
 
   /* ======================================================================
@@ -833,13 +2120,17 @@
   }
 
   function totalResources() {
-    return resources.iron + resources.water + resources.cobalt;
+    let total = 0;
+    for (const key in resources)
+      total += resources[key];
+    return total;
   }
 
   function spendResources(amount) {
     let remaining = amount;
-    for (const key of ['cobalt', 'water', 'iron']) {
-      const spend = Math.min(resources[key], remaining);
+    // Spend from most valuable first
+    for (const key of ['ruby', 'diamond', 'emerald', 'redstone', 'quartz', 'cobalt', 'gold', 'silver', 'lead', 'tin', 'copper', 'coal', 'water', 'iron']) {
+      const spend = Math.min(resources[key] || 0, remaining);
       resources[key] -= spend;
       remaining -= spend;
       if (remaining <= 0) break;
@@ -856,27 +2147,730 @@
     const def = UPGRADE_DEFS[idx];
     ++upgradeLevels[def.key];
 
-    switch (def.key) {
+    // Recalculate using effective level (legacy + tree combined)
+    applyStatUpgrade(def.key);
+
+    floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 30, `${def.name} Lv${getEffectiveLevel(def.key)}`, { color: '#4af', font: 'bold 14px sans-serif' });
+    particles.sparkle(CANVAS_W / 2, CANVAS_H / 2, 10, { color: '#4af', speed: 2 });
+  }
+
+  /* ======================================================================
+     UPGRADE TREE (full-screen dialog)
+     ====================================================================== */
+
+  function getTreeNodeLevel(id) {
+    return upgradeTreeLevels[id] || 0;
+  }
+
+  function isTreeNodeMaxed(id) {
+    const node = UPGRADE_TREE.find(n => n.id === id);
+    if (!node) return false;
+    return getTreeNodeLevel(id) >= node.maxLevel;
+  }
+
+  function arePrereqsMet(node) {
+    for (const pid of node.prereqs)
+      if (!isTreeNodeMaxed(pid))
+        return false;
+    return true;
+  }
+
+  function canAffordTreeNode(node) {
+    const lvl = getTreeNodeLevel(node.id);
+    if (lvl >= node.maxLevel) return false;
+    const cost = node.costs[Math.min(lvl, node.costs.length - 1)];
+    for (const key in cost)
+      if ((cost[key] || 0) > 0 && (resources[key] || 0) < cost[key])
+        return false;
+    return true;
+  }
+
+  function isTreeNodeAvailable(node) {
+    return !isTreeNodeMaxed(node.id) && arePrereqsMet(node);
+  }
+
+  function purchaseTreeNode(node) {
+    const lvl = getTreeNodeLevel(node.id);
+    if (lvl >= node.maxLevel) return;
+    if (!arePrereqsMet(node)) return;
+    const cost = node.costs[Math.min(lvl, node.costs.length - 1)];
+    // Check affordability for all resource types in the cost
+    for (const key in cost)
+      if ((cost[key] || 0) > 0 && (resources[key] || 0) < cost[key])
+        return;
+
+    // Deduct all costs
+    for (const key in cost)
+      if ((cost[key] || 0) > 0)
+        resources[key] -= cost[key];
+    upgradeTreeLevels[node.id] = lvl + 1;
+
+    // Apply the upgrade effect
+    if (node.type === 'gadget')
+      applyGadgetUnlock(node.upgradeKey);
+    else
+      applyStatUpgrade(node.upgradeKey);
+
+    floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 30, `${node.name} purchased!`, { color: '#ffd700', font: 'bold 14px sans-serif' });
+    particles.sparkle(CANVAS_W / 2, CANVAS_H / 2, 12, { color: '#ffd700', speed: 2.5 });
+    screenShake.trigger(4, 120);
+  }
+
+  // Passive gadgets that don't need selection
+  const PASSIVE_GADGETS = ['scanner', 'reinforcedDome', 'autoRepair', 'domeExpansion', 'energyShield', 'magnet', 'fortune', 'silkTouch', 'echoLocation', 'chainLightning', 'freezeRay', 'plasmaCannon'];
+
+  function applyGadgetUnlock(key) {
+    unlockedTools[key] = true;
+    // Apply immediate effects for certain gadgets
+    if (key === 'domeExpansion') {
+      maxDomeHP += 75;
+      domeHP = Math.min(domeHP + 75, maxDomeHP);
+    }
+    // Auto-select non-passive tools
+    if (!PASSIVE_GADGETS.includes(key))
+      activeToolKey = key;
+  }
+
+  function getEffectiveLevel(key) {
+    // Sum of tree-based levels AND legacy upgrade levels for this key
+    let treeLevels = 0;
+    for (const n of UPGRADE_TREE)
+      if (n.upgradeKey === key)
+        treeLevels += getTreeNodeLevel(n.id);
+    return treeLevels + (upgradeLevels[key] || 0);
+  }
+
+  function applyStatUpgrade(key) {
+    const totalLevels = getEffectiveLevel(key);
+
+    switch (key) {
       case 'weaponDamage':
-        weaponDamage = BASE_WEAPON_DAMAGE + upgradeLevels.weaponDamage * 5;
+        weaponDamage = BASE_WEAPON_DAMAGE + totalLevels * 5;
         break;
       case 'fireRate':
-        fireRate = BASE_FIRE_RATE + upgradeLevels.fireRate * 0.3;
+        fireRate = BASE_FIRE_RATE + totalLevels * 0.3;
         break;
       case 'domeHP':
-        maxDomeHP = BASE_DOME_HP + upgradeLevels.domeHP * 25;
+        maxDomeHP = BASE_DOME_HP + totalLevels * 25;
         domeHP = Math.min(domeHP + 25, maxDomeHP);
         break;
       case 'drillSpeed':
-        drillSpeed = Math.max(0.1, BASE_DRILL_SPEED - upgradeLevels.drillSpeed * 0.05);
+        drillSpeed = Math.max(0.1, BASE_DRILL_SPEED - totalLevels * 0.05);
         break;
       case 'carryCapacity':
-        carryCapacity = BASE_CARRY_CAPACITY + upgradeLevels.carryCapacity * 20;
+        carryCapacity = BASE_CARRY_CAPACITY + totalLevels * 20;
+        break;
+      case 'moveSpeed':
+        moveStepInterval = BASE_MOVE_INTERVAL * Math.pow(0.85, totalLevels);
+        break;
+      case 'miningTools':
+        // Applied dynamically in getMiningTime()
+        break;
+      case 'shieldRecharge':
+        // Passive: reduces shield gadget recharge conceptually (already tracked by level count)
+        break;
+      case 'echoLocation':
+        // Passive: extended scanner range (tracked by level count, applied in scanner code)
         break;
     }
+  }
 
-    floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 30, `${def.name} Lv${upgradeLevels[def.key]}`, { color: '#4af', font: 'bold 14px sans-serif' });
-    particles.sparkle(CANVAS_W / 2, CANVAS_H / 2, 10, { color: '#4af', speed: 2 });
+  // Compute positions for tree nodes for rendering
+  function computeTreeLayout() {
+    const nodes = [];
+    const margin = 20;
+    const branchGap = 10;
+    const availW = CANVAS_W - margin * 2;
+    const branchW = (availW - branchGap * (TREE_BRANCH_ORDER.length - 1)) / TREE_BRANCH_ORDER.length;
+    const startY = 100;
+    const rowH = TREE_NODE_H + 25;
+
+    for (let bi = 0; bi < TREE_BRANCH_ORDER.length; ++bi) {
+      const branch = TREE_BRANCH_ORDER[bi];
+      const branchX = margin + bi * (branchW + branchGap);
+      const branchCenterX = branchX + branchW / 2;
+      const branchNodes = UPGRADE_TREE.filter(n => n.branch === branch);
+
+      // Separate into chains: group by common prefix root
+      // Simple layout: arrange nodes in rows, splitting parallel paths side by side
+      const chains = buildBranchChains(branchNodes);
+
+      let maxCol = 0;
+      for (const chain of chains)
+        if (chain.col > maxCol) maxCol = chain.col;
+
+      const totalCols = maxCol + 1;
+      const colW = Math.min(TREE_NODE_W + 10, branchW / Math.max(1, totalCols));
+
+      for (const chain of chains) {
+        const nx = branchCenterX + (chain.col - (totalCols - 1) / 2) * colW - TREE_NODE_W / 2;
+        const ny = startY + chain.row * rowH - upgradeDialogScroll;
+        nodes.push({
+          node: chain.node,
+          x: nx,
+          y: ny,
+          w: TREE_NODE_W,
+          h: TREE_NODE_H,
+          branch
+        });
+      }
+    }
+    return nodes;
+  }
+
+  function buildBranchChains(branchNodes) {
+    // For each branch, arrange nodes in a tree-like layout
+    // Roots (no prereqs within this branch) go in row 0
+    // Children go in the row after their parent
+    const result = [];
+    const placed = new Set();
+    const nodeMap = {};
+    for (const n of branchNodes)
+      nodeMap[n.id] = n;
+
+    // Find roots: nodes whose prereqs are all outside this branch or empty
+    const roots = branchNodes.filter(n =>
+      n.prereqs.every(p => !nodeMap[p])
+    );
+
+    // BFS from roots
+    let col = 0;
+    for (const root of roots) {
+      placeChain(root, 0, col, nodeMap, placed, result, branchNodes);
+      ++col;
+    }
+    return result;
+  }
+
+  function placeChain(node, row, col, nodeMap, placed, result, allNodes) {
+    if (placed.has(node.id)) return;
+    placed.add(node.id);
+    result.push({ node, row, col });
+
+    // Find children: nodes in this branch that have this node as a prereq
+    const children = allNodes.filter(n =>
+      !placed.has(n.id) && n.prereqs.includes(node.id)
+    );
+
+    if (children.length === 1)
+      placeChain(children[0], row + 1, col, nodeMap, placed, result, allNodes);
+    else if (children.length > 1) {
+      // Split into columns
+      const startCol = col - Math.floor((children.length - 1) / 2);
+      for (let i = 0; i < children.length; ++i)
+        placeChain(children[i], row + 1, startCol + i, nodeMap, placed, result, allNodes);
+    }
+  }
+
+  function openUpgradeDialog() {
+    if (state !== STATE_PLAYING && state !== STATE_PAUSED) return;
+    stateBeforeUpgradeDialog = state;
+    state = STATE_UPGRADE_DIALOG;
+    upgradeDialogHover = null;
+    upgradeDialogScroll = 0;
+    upgradeZoom = 1.0;
+    upgradePanX = 0;
+    upgradePanY = 0;
+    upgradePanning = false;
+  }
+
+  function closeUpgradeDialog() {
+    state = stateBeforeUpgradeDialog || STATE_PLAYING;
+    stateBeforeUpgradeDialog = null;
+    upgradeDialogHover = null;
+  }
+
+  function drawUpgradeDialog() {
+    // Full-screen dark overlay
+    ctx.fillStyle = 'rgba(0,0,0,0.92)';
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+    // Title (fixed, not affected by zoom/pan)
+    ctx.save();
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = '#ffd700';
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 22px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('UPGRADE TREE', CANVAS_W / 2, 30);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+
+    // Resource bar at top (fixed)
+    const resY = 50;
+    ctx.fillStyle = 'rgba(20,25,40,0.9)';
+    ctx.fillRect(10, resY, CANVAS_W - 20, 28);
+    ctx.strokeStyle = '#3a4a6a';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(10, resY, CANVAS_W - 20, 28);
+
+    ctx.font = 'bold 10px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const resBarY = resY + 14;
+    let resBarX = 20;
+    for (const entry of RESOURCE_HUD_ENTRIES) {
+      if (resources[entry.key] <= 0 && entry.key !== 'iron' && entry.key !== 'water' && entry.key !== 'cobalt') continue;
+      ctx.fillStyle = entry.color;
+      ctx.fillText(`${entry.label}:${resources[entry.key]}`, resBarX, resBarY);
+      resBarX += ctx.measureText(`${entry.label}:${resources[entry.key]}`).width + 10;
+      if (resBarX > CANVAS_W - 140) break;
+    }
+
+    // Total upgrades stat
+    let totalPurchased = 0, totalAvailable = 0;
+    for (const n of UPGRADE_TREE) {
+      totalPurchased += getTreeNodeLevel(n.id);
+      totalAvailable += n.maxLevel;
+    }
+    ctx.fillStyle = '#aaa';
+    ctx.textAlign = 'right';
+    ctx.fillText(`Upgrades: ${totalPurchased}/${totalAvailable}`, CANVAS_W - 20, resBarY);
+
+    // Apply zoom & pan transform for tree content
+    ctx.save();
+    ctx.translate(upgradePanX, upgradePanY);
+    ctx.scale(upgradeZoom, upgradeZoom);
+
+    // Branch headers
+    const margin = 20;
+    const branchGap = 10;
+    const availW = CANVAS_W - margin * 2;
+    const branchW = (availW - branchGap * (TREE_BRANCH_ORDER.length - 1)) / TREE_BRANCH_ORDER.length;
+
+    for (let bi = 0; bi < TREE_BRANCH_ORDER.length; ++bi) {
+      const branch = TREE_BRANCH_ORDER[bi];
+      const bx = margin + bi * (branchW + branchGap);
+      const bcx = bx + branchW / 2;
+      ctx.fillStyle = TREE_BRANCH_COLORS[branch];
+      ctx.font = 'bold 12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(TREE_BRANCH_LABELS[branch], bcx, 92 - upgradeDialogScroll);
+    }
+
+    // Compute node layout
+    const layoutNodes = computeTreeLayout();
+
+    // Draw connection lines first
+    ctx.lineWidth = 2;
+    for (const ln of layoutNodes) {
+      const node = ln.node;
+      for (const pid of node.prereqs) {
+        const parent = layoutNodes.find(l => l.node.id === pid);
+        if (!parent) continue;
+        const fromX = parent.x + parent.w / 2;
+        const fromY = parent.y + parent.h;
+        const toX = ln.x + ln.w / 2;
+        const toY = ln.y;
+
+        const purchased = isTreeNodeMaxed(pid);
+        const childAvail = isTreeNodeAvailable(node);
+
+        if (purchased && childAvail)
+          ctx.strokeStyle = canAffordTreeNode(node) ? TREE_BRANCH_COLORS[ln.branch] : 'rgba(255,165,0,0.5)';
+        else if (purchased)
+          ctx.strokeStyle = 'rgba(100,200,100,0.3)';
+        else
+          ctx.strokeStyle = 'rgba(100,100,100,0.2)';
+
+        ctx.setLineDash(purchased ? [] : [4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(fromX, fromY);
+        // Curved connector
+        const midY = (fromY + toY) / 2;
+        ctx.bezierCurveTo(fromX, midY, toX, midY, toX, toY);
+        ctx.stroke();
+      }
+    }
+    ctx.setLineDash([]);
+
+    // Draw nodes
+    for (const ln of layoutNodes) {
+      const node = ln.node;
+      const x = ln.x, y = ln.y, w = ln.w, h = ln.h;
+      const lvl = getTreeNodeLevel(node.id);
+      const maxed = lvl >= node.maxLevel;
+      const prereqsMet = arePrereqsMet(node);
+      const affordable = canAffordTreeNode(node);
+      const available = prereqsMet && !maxed;
+      const isHover = upgradeDialogHover === node.id;
+
+      // Skip nodes that are fully off-screen
+      if (y + h < 50 || y > CANVAS_H) continue;
+
+      // Node background
+      let bgColor, borderColor, borderWidth;
+      if (maxed) {
+        bgColor = 'rgba(30,80,30,0.7)';
+        borderColor = '#0c0';
+        borderWidth = 2;
+      } else if (available && affordable) {
+        bgColor = isHover ? 'rgba(60,80,120,0.9)' : 'rgba(40,60,100,0.7)';
+        borderColor = isHover ? '#fff' : TREE_BRANCH_COLORS[ln.branch];
+        borderWidth = isHover ? 2.5 : 2;
+      } else if (available && !affordable) {
+        bgColor = 'rgba(40,40,40,0.7)';
+        borderColor = 'rgba(255,165,0,0.6)';
+        borderWidth = 1.5;
+      } else {
+        bgColor = 'rgba(25,25,25,0.6)';
+        borderColor = 'rgba(80,80,80,0.4)';
+        borderWidth = 1;
+      }
+
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = borderColor;
+      ctx.lineWidth = borderWidth;
+      if (!prereqsMet)
+        ctx.setLineDash([3, 3]);
+      ctx.strokeRect(x, y, w, h);
+      ctx.setLineDash([]);
+
+      // Icon
+      ctx.font = '16px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = maxed ? '#0f0' : (available ? '#fff' : '#555');
+      ctx.fillText(node.icon, x + 4, y + h / 2 - 6);
+
+      // Name
+      ctx.font = 'bold 9px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillStyle = maxed ? '#8f8' : (available ? '#ddd' : '#666');
+      ctx.fillText(node.name, x + 22, y + 14);
+
+      // Cost display
+      if (!maxed) {
+        const cost = node.costs[Math.min(lvl, node.costs.length - 1)];
+        const COST_ABBREV = { iron: 'Fe', water: 'H2O', cobalt: 'Co', copper: 'Cu', tin: 'Sn', coal: 'C', lead: 'Pb', silver: 'Ag', gold: 'Au', quartz: 'Qz', redstone: 'Rs', emerald: 'Em', diamond: 'Di', ruby: 'Rb' };
+        let costParts = [];
+        for (const key in cost)
+          if ((cost[key] || 0) > 0)
+            costParts.push(`${cost[key]}${COST_ABBREV[key] || key}`);
+        const costStr = costParts.join(' ');
+
+        ctx.font = '8px sans-serif';
+        ctx.fillStyle = affordable ? '#0f0' : '#a44';
+        ctx.fillText(costStr, x + 22, y + 27);
+      }
+
+      // Level indicator / checkmark
+      if (maxed) {
+        ctx.fillStyle = '#0f0';
+        ctx.font = 'bold 14px sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText('\u2714', x + w - 4, y + h / 2);
+      } else if (!prereqsMet) {
+        ctx.fillStyle = '#888';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText('\u{1F512}', x + w - 4, y + h / 2);
+      }
+
+      // Level bar at bottom
+      if (node.maxLevel > 1) {
+        const barX = x + 4;
+        const barY = y + h - 8;
+        const barW = w - 8;
+        const segW = barW / node.maxLevel;
+        for (let s = 0; s < node.maxLevel; ++s) {
+          ctx.fillStyle = s < lvl ? '#0c0' : '#222';
+          ctx.fillRect(barX + s * segW + 1, barY, segW - 2, 4);
+        }
+      } else {
+        // Single-level: thin indicator line
+        const barX = x + 4;
+        const barY = y + h - 6;
+        const barW = w - 8;
+        ctx.fillStyle = maxed ? '#0c0' : '#222';
+        ctx.fillRect(barX, barY, barW, 3);
+      }
+
+      // Type indicator
+      if (node.type === 'gadget') {
+        ctx.font = '7px sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillStyle = maxed ? '#8f8' : '#888';
+        ctx.fillText('GADGET', x + w - 4, y + h - 10);
+      }
+
+      // Hover tooltip
+      if (isHover && !maxed && available) {
+        ctx.fillStyle = '#ffd700';
+        ctx.font = 'bold 8px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Click to purchase', x + w / 2, y + h + 10);
+      }
+    }
+
+    // End zoom/pan transform
+    ctx.restore();
+
+    // Close hint (fixed, not affected by zoom/pan)
+    ctx.fillStyle = '#666';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(`Press U or Escape to close  |  Scroll=Zoom (${Math.round(upgradeZoom * 100)}%)  |  Right-drag=Pan`, CANVAS_W / 2, CANVAS_H - 10);
+  }
+
+  // Convert screen coords to tree-local coords (inverse zoom/pan)
+  function screenToTreeCoords(mx, my) {
+    return {
+      x: (mx - upgradePanX) / upgradeZoom,
+      y: (my - upgradePanY) / upgradeZoom
+    };
+  }
+
+  function handleUpgradeDialogClick(mx, my) {
+    const { x: tx, y: ty } = screenToTreeCoords(mx, my);
+    const layoutNodes = computeTreeLayout();
+    for (const ln of layoutNodes) {
+      if (tx >= ln.x && tx <= ln.x + ln.w && ty >= ln.y && ty <= ln.y + ln.h) {
+        const node = ln.node;
+        if (isTreeNodeAvailable(node) && canAffordTreeNode(node))
+          purchaseTreeNode(node);
+        return;
+      }
+    }
+  }
+
+  function handleUpgradeDialogHover(mx, my) {
+    const { x: tx, y: ty } = screenToTreeCoords(mx, my);
+    const layoutNodes = computeTreeLayout();
+    upgradeDialogHover = null;
+    for (const ln of layoutNodes) {
+      if (tx >= ln.x && tx <= ln.x + ln.w && ty >= ln.y && ty <= ln.y + ln.h) {
+        upgradeDialogHover = ln.node.id;
+        return;
+      }
+    }
+  }
+
+  /* ======================================================================
+     GADGET UPDATES
+     ====================================================================== */
+
+  function updateGadgets(dt) {
+    // -- Primary gadget updates --
+    if (primaryGadget === 'repellent') {
+      if (primaryGadgetState.active) {
+        primaryGadgetState.duration -= dt;
+        if (primaryGadgetState.duration <= 0) {
+          primaryGadgetState.active = false;
+          primaryGadgetState.cooldown = 30;
+        }
+      } else if (primaryGadgetState.cooldown > 0)
+        primaryGadgetState.cooldown -= dt;
+    }
+
+    if (primaryGadget === 'orchard') {
+      if (primaryGadgetState.speedBoostTimer > 0)
+        primaryGadgetState.speedBoostTimer -= dt;
+
+      if (!primaryGadgetState.fruitReady) {
+        primaryGadgetState.fruitTimer -= dt;
+        if (primaryGadgetState.fruitTimer <= 0)
+          primaryGadgetState.fruitReady = true;
+      }
+    }
+
+    if (primaryGadget === 'droneyard') {
+      primaryGadgetState.droneTimer -= dt;
+      if (primaryGadgetState.droneTimer <= 0) {
+        primaryGadgetState.droneTimer = 15;
+        // Auto-carry up to 10 resources from carried to deposited
+        if (carried > 0) {
+          const transfer = Math.min(carried, 10);
+          carried -= transfer;
+          floatingText.add(DOME_X - 40, DOME_Y - 40, `Drone: +${transfer} delivered`, { color: '#4af', font: 'bold 11px sans-serif' });
+        }
+      }
+      // Animate drone phase for visual bob
+      primaryGadgetState.dronePhase = (primaryGadgetState.dronePhase || 0) + dt * 3;
+    }
+
+    // -- Mine gadgets updates --
+    // Auto Cannon
+    if (foundGadgets.includes('autoCannon')) {
+      // Always decay flash so the beam never persists after enemies die or view switches
+      if (primaryGadgetState.autoCannonFlash > 0) {
+        primaryGadgetState.autoCannonFlash -= dt;
+        if (primaryGadgetState.autoCannonFlash <= 0) {
+          primaryGadgetState.autoCannonFlash = 0;
+          primaryGadgetState.autoCannonTarget = null;
+        }
+      }
+      if (enemies.length > 0) {
+        primaryGadgetState.autoCannonTimer = (primaryGadgetState.autoCannonTimer || 0) - dt;
+        if (primaryGadgetState.autoCannonTimer <= 0) {
+          primaryGadgetState.autoCannonTimer = 2;
+          // Find nearest enemy
+          let nearest = null, bestD = Infinity;
+          for (const e of enemies) {
+            const dx = e.x - DOME_X;
+            const dy = e.y - DOME_Y;
+            const d = dx * dx + dy * dy;
+            if (d < bestD) { bestD = d; nearest = e; }
+          }
+          if (nearest) {
+            applyDamageToEnemy(nearest, 5);
+            // Store last target for drawing
+            primaryGadgetState.autoCannonTarget = { x: nearest.x, y: nearest.y };
+            primaryGadgetState.autoCannonFlash = 0.3;
+            particles.burst(nearest.x, nearest.y, 6, { color: '#ff0', speed: 2, life: 0.3 });
+          }
+        }
+      }
+    }
+
+    // Stun Laser
+    if (foundGadgets.includes('stunLaser')) {
+      // Always decay flash so the beam never persists after enemies die or view switches
+      if (primaryGadgetState.stunLaserFlash > 0) {
+        primaryGadgetState.stunLaserFlash -= dt;
+        if (primaryGadgetState.stunLaserFlash <= 0) {
+          primaryGadgetState.stunLaserFlash = 0;
+          primaryGadgetState.stunLaserTarget = null;
+        }
+      }
+      if (enemies.length > 0) {
+        primaryGadgetState.stunLaserTimer = (primaryGadgetState.stunLaserTimer || 0) - dt;
+        if (primaryGadgetState.stunLaserTimer <= 0) {
+          primaryGadgetState.stunLaserTimer = 8;
+          let nearest = null, bestD = Infinity;
+          for (const e of enemies) {
+            const dx = e.x - DOME_X;
+            const dy = e.y - DOME_Y;
+            const d = dx * dx + dy * dy;
+            if (d < bestD) { bestD = d; nearest = e; }
+          }
+          if (nearest) {
+            nearest.stunTimer = 2;
+            primaryGadgetState.stunLaserTarget = { x: nearest.x, y: nearest.y };
+            primaryGadgetState.stunLaserFlash = 0.4;
+            floatingText.add(nearest.x, nearest.y - 20, 'STUNNED!', { color: '#4af', font: 'bold 11px sans-serif' });
+          }
+        }
+      }
+    }
+
+    // Probe Scanner timer
+    if (foundGadgets.includes('probeScanner') && primaryGadgetState.probeTimer > 0)
+      primaryGadgetState.probeTimer -= dt;
+
+    // Condenser
+    if (foundGadgets.includes('condenser')) {
+      primaryGadgetState.condenserTimer = (primaryGadgetState.condenserTimer || 0) - dt;
+      if (primaryGadgetState.condenserTimer <= 0) {
+        primaryGadgetState.condenserTimer = 30;
+        resources.water += 5;
+        floatingText.add(DOME_X + 40, DOME_Y - 20, '+5 water (condenser)', { color: '#6af', font: 'bold 11px sans-serif' });
+      }
+    }
+
+    // -- New gadget effects --
+
+    // Auto-Repair: slowly regenerate dome HP
+    if (unlockedTools.autoRepair && domeHP < maxDomeHP) {
+      toolState.autoRepairTimer = (toolState.autoRepairTimer || 0) - dt;
+      if (toolState.autoRepairTimer <= 0) {
+        toolState.autoRepairTimer = 5; // heal every 5 seconds
+        const heal = 2;
+        domeHP = Math.min(domeHP + heal, maxDomeHP);
+        floatingText.add(DOME_X + 30, DOME_Y - 20, `+${heal} HP`, { color: '#0f0', font: 'bold 9px sans-serif' });
+      }
+    }
+
+    // Energy Shield: absorb a percentage of damage (tracked passively via unlockedTools)
+
+    // Magnet: auto-collect dropped resources within 2 tiles
+    if (unlockedTools.magnet && currentView === VIEW_UNDERGROUND) {
+      for (let i = droppedResources.length - 1; i >= 0; --i) {
+        const drop = droppedResources[i];
+        const dist = Math.abs(drop.col - drillX) + Math.abs(drop.row - drillY);
+        if (dist > 2) continue;
+        const canCarry = carryCapacity - carried;
+        if (canCarry <= 0) break;
+        const pickUp = Math.min(drop.value, canCarry);
+        const label = TILE_LABELS[drop.type];
+        resources[label] += pickUp;
+        carried += pickUp;
+        drop.value -= pickUp;
+        if (drop.value <= 0)
+          droppedResources.splice(i, 1);
+      }
+    }
+
+    // Chain Lightning: when turret fires, extra damage arcs to nearby enemies (handled in weapon)
+    // Freeze Ray: slows enemies near projectile impacts (handled in weapon)
+    // Plasma Cannon: AoE damage on hit (handled in weapon)
+
+    // Jetpack cooldown
+    if (toolState.jetpackCooldown > 0)
+      toolState.jetpackCooldown = Math.max(0, toolState.jetpackCooldown - dt);
+
+    // Phase Shift cooldown
+    if (toolState.phaseShiftCooldown > 0)
+      toolState.phaseShiftCooldown = Math.max(0, toolState.phaseShiftCooldown - dt);
+
+    // -- Unlockable tool cooldowns --
+    if (toolState.blastToolCooldown > 0)
+      toolState.blastToolCooldown = Math.max(0, toolState.blastToolCooldown - dt);
+    if (toolState.teleporterCooldown > 0)
+      toolState.teleporterCooldown = Math.max(0, toolState.teleporterCooldown - dt);
+
+    // Scanner passive: always active when unlocked (echo location extends range)
+    toolState.scannerActive = !!unlockedTools.scanner;
+    toolState.echoLocationActive = !!unlockedTools.echoLocation;
+  }
+
+  /* ======================================================================
+     MOVEMENT (mouse-based underground navigation)
+     ====================================================================== */
+
+  function updateMovement(dt) {
+    if (currentView !== VIEW_UNDERGROUND) return;
+    // Block movement while mining
+    if (miningTarget) return;
+
+    if (!movePath || movePathIndex >= movePath.length) {
+      // Arrived at destination -- check queued mine action
+      if (mineTarget && movePath) {
+        tryMine(mineTarget.dx, mineTarget.dy);
+        mineTarget = null;
+      }
+      movePath = null;
+      moveTarget = null;
+      return;
+    }
+
+    moveStepTimer -= dt;
+    if (moveStepTimer <= 0) {
+      moveStepTimer = moveStepInterval;
+      const step = movePath[movePathIndex];
+      // Spawn dust at old position
+      const cx = drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX;
+      const cy = drillY * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+      spawnDust(cx, cy);
+      drillX = step.col;
+      drillY = step.row;
+      ++movePathIndex;
+      // Pick up dropped resources at new position
+      pickUpDroppedResources();
+    }
+  }
+
+  function clearMoveTarget() {
+    moveTarget = null;
+    movePath = null;
+    movePathIndex = 0;
+    moveStepTimer = 0;
+    mineTarget = null;
+    cancelMining();
   }
 
   /* ======================================================================
@@ -888,6 +2882,23 @@
 
     updateTransition(dt);
     updateAnimations(dt);
+    updateGadgets(dt);
+    updateMining(dt);
+    updateMovement(dt);
+
+    // Age dropped resources (for potential future use; they persist indefinitely)
+    for (const drop of droppedResources)
+      drop.age += dt;
+
+    // Center camera on player underground
+    if (currentView !== VIEW_SURFACE) {
+      const targetCamX = drillX * TILE_SIZE - CANVAS_W / 2 + TILE_SIZE / 2;
+      const targetCamY = drillY * TILE_SIZE - CANVAS_H / 2 + TILE_SIZE / 2;
+      const maxCamX = GRID_COLS * TILE_SIZE - CANVAS_W;
+      const maxCamY = GRID_ROWS * TILE_SIZE - CANVAS_H;
+      cameraX += (Math.max(0, Math.min(maxCamX, targetCamX)) - cameraX) * 0.15;
+      cameraY += (Math.max(0, Math.min(maxCamY, targetCamY)) - cameraY) * 0.15;
+    }
 
     if (!waveActive) {
       waveTimer -= dt;
@@ -982,7 +2993,9 @@
     }
     ctx.restore();
 
-    // Dome shield arc (main)
+    // Dome shield arc (main) -- thicker with more shield upgrades
+    const shieldLevel = getEffectiveLevel('domeHP');
+    const domeLineWidth = 3 + shieldLevel * 2;
     ctx.beginPath();
     ctx.arc(DOME_X, DOME_Y, DOME_RADIUS, Math.PI, 0);
     ctx.closePath();
@@ -991,17 +3004,17 @@
     domeGrad.addColorStop(0.5, `rgba(80,170,255,${0.8 + pulse})`);
     domeGrad.addColorStop(1, `rgba(40,120,255,${0.5 + pulse})`);
     ctx.strokeStyle = domeGrad;
-    ctx.lineWidth = 3;
-    ctx.shadowBlur = 20 + pulse * 10;
+    ctx.lineWidth = domeLineWidth;
+    ctx.shadowBlur = 20 + pulse * 10 + shieldLevel * 3;
     ctx.shadowColor = '#4af';
     ctx.stroke();
 
     // Second pass -- brighter inner line
     ctx.beginPath();
-    ctx.arc(DOME_X, DOME_Y, DOME_RADIUS - 1.5, Math.PI, 0);
+    ctx.arc(DOME_X, DOME_Y, DOME_RADIUS - domeLineWidth / 2, Math.PI, 0);
     ctx.strokeStyle = `rgba(140,200,255,${0.3 + pulse * 0.2})`;
-    ctx.lineWidth = 1;
-    ctx.shadowBlur = 8;
+    ctx.lineWidth = 1 + shieldLevel * 0.5;
+    ctx.shadowBlur = 8 + shieldLevel * 2;
     ctx.shadowColor = '#8cf';
     ctx.stroke();
     ctx.shadowBlur = 0;
@@ -1042,17 +3055,44 @@
       ctx.restore();
     }
 
-    // Dome turret (small weapon on top)
+    // Turret nozzle position on dome arc
+    const nozzleDrawR = DOME_RADIUS + 8;
+    const tbx = DOME_X + Math.cos(turretAngle) * nozzleDrawR;
+    const tby = DOME_Y + Math.sin(turretAngle) * nozzleDrawR;
+
+    // Dome turret base (small weapon mount at nozzle position)
+    ctx.save();
+    ctx.translate(tbx, tby);
+    ctx.rotate(turretAngle + Math.PI / 2);
     ctx.fillStyle = '#6a8ab0';
-    ctx.fillRect(DOME_X - 4, DOME_Y - DOME_RADIUS - 8, 8, 12);
-    const turretGrad = ctx.createLinearGradient(DOME_X - 4, DOME_Y - DOME_RADIUS - 8, DOME_X + 4, DOME_Y - DOME_RADIUS - 8);
+    ctx.fillRect(-4, -6, 8, 12);
+    const turretGrad = ctx.createLinearGradient(-4, 0, 4, 0);
     turretGrad.addColorStop(0, '#8ab0d0');
     turretGrad.addColorStop(1, '#4a6a8a');
     ctx.fillStyle = turretGrad;
-    ctx.fillRect(DOME_X - 3, DOME_Y - DOME_RADIUS - 6, 6, 8);
-    // Turret barrel
+    ctx.fillRect(-3, -4, 6, 8);
+    ctx.restore();
+
+    // Turret barrel (rotates with turretAngle)
+    ctx.save();
+    ctx.translate(tbx, tby);
+    ctx.rotate(turretAngle);
+    // Barrel body
     ctx.fillStyle = '#556';
-    ctx.fillRect(DOME_X - 1.5, DOME_Y - DOME_RADIUS - 14, 3, 8);
+    ctx.fillRect(0, -1.5, TURRET_BARREL_LENGTH, 3);
+    // Barrel highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.fillRect(0, -1.5, TURRET_BARREL_LENGTH, 1);
+    // Muzzle tip
+    ctx.fillStyle = '#778';
+    ctx.fillRect(TURRET_BARREL_LENGTH - 3, -2.5, 3, 5);
+    ctx.restore();
+
+    // Turret pivot dot
+    ctx.fillStyle = '#aac';
+    ctx.beginPath();
+    ctx.arc(tbx, tby, 3, 0, TWO_PI);
+    ctx.fill();
 
     // Dome HP bar with gradient
     const barW = 120;
@@ -1113,6 +3153,12 @@
   }
 
   function drawEnemy(e) {
+    if (e.type === 'flyer')
+      return drawFlyer(e);
+    return drawGroundEnemy(e);
+  }
+
+  function drawGroundEnemy(e) {
     const hpR = e.hp / e.maxHP;
     const sz = e.size || 10;
     const wobble = Math.sin(e.wobblePhase) * 1.5;
@@ -1128,8 +3174,8 @@
     ctx.fill();
 
     // Legs (4 little appendages)
-    ctx.strokeStyle = '#a33';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = e.armored ? '#664' : '#a33';
+    ctx.lineWidth = e.boss ? 3 : 2;
     // Left legs
     ctx.beginPath();
     ctx.moveTo(-sz * 0.4, sz * 0.3);
@@ -1149,41 +3195,75 @@
     ctx.lineTo(sz * 0.7, sz * 0.3 + legOffset);
     ctx.stroke();
 
-    // Body -- gradient sphere
+    // Body -- gradient sphere (armored = darker metallic, boss = thicker border)
     const bodyGrad = ctx.createRadialGradient(-sz * 0.15, -sz * 0.2, 1, 0, 0, sz);
-    bodyGrad.addColorStop(0, `rgba(240,80,80,${0.6 + hpR * 0.4})`);
-    bodyGrad.addColorStop(0.6, `rgba(180,40,40,${0.5 + hpR * 0.5})`);
-    bodyGrad.addColorStop(1, `rgba(100,20,20,${0.4 + hpR * 0.4})`);
+    if (e.armored) {
+      bodyGrad.addColorStop(0, `rgba(160,140,100,${0.6 + hpR * 0.4})`);
+      bodyGrad.addColorStop(0.6, `rgba(100,90,60,${0.5 + hpR * 0.5})`);
+      bodyGrad.addColorStop(1, `rgba(60,50,30,${0.4 + hpR * 0.4})`);
+    } else {
+      bodyGrad.addColorStop(0, `rgba(240,80,80,${0.6 + hpR * 0.4})`);
+      bodyGrad.addColorStop(0.6, `rgba(180,40,40,${0.5 + hpR * 0.5})`);
+      bodyGrad.addColorStop(1, `rgba(100,20,20,${0.4 + hpR * 0.4})`);
+    }
     ctx.beginPath();
     ctx.arc(0, 0, sz, 0, TWO_PI);
     ctx.fillStyle = bodyGrad;
     ctx.shadowBlur = 8;
-    ctx.shadowColor = `rgba(255,50,50,${0.3 + hpR * 0.4})`;
+    ctx.shadowColor = e.armored
+      ? `rgba(180,160,80,${0.3 + hpR * 0.4})`
+      : `rgba(255,50,50,${0.3 + hpR * 0.4})`;
     ctx.fill();
     ctx.shadowBlur = 0;
 
+    // Boss: thicker border ring
+    if (e.boss) {
+      ctx.strokeStyle = '#ff0';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(0, 0, sz + 2, 0, TWO_PI);
+      ctx.stroke();
+    }
+
     // Body highlight (specular)
-    ctx.fillStyle = 'rgba(255,180,180,0.3)';
+    ctx.fillStyle = e.armored ? 'rgba(220,210,170,0.3)' : 'rgba(255,180,180,0.3)';
     ctx.beginPath();
     ctx.ellipse(-sz * 0.25, -sz * 0.3, sz * 0.35, sz * 0.2, -0.3, 0, TWO_PI);
     ctx.fill();
 
+    // Boss: crown/horns
+    if (e.boss) {
+      ctx.fillStyle = '#ff0';
+      ctx.beginPath();
+      ctx.moveTo(-sz * 0.5, -sz * 0.85);
+      ctx.lineTo(-sz * 0.3, -sz * 1.3);
+      ctx.lineTo(-sz * 0.1, -sz * 0.85);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(sz * 0.1, -sz * 0.85);
+      ctx.lineTo(sz * 0.3, -sz * 1.3);
+      ctx.lineTo(sz * 0.5, -sz * 0.85);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(-sz * 0.2, -sz * 0.9);
+      ctx.lineTo(0, -sz * 1.45);
+      ctx.lineTo(sz * 0.2, -sz * 0.9);
+      ctx.fill();
+    }
+
     // Eyes
     const eyeH = e.eyeBlinking ? 0.5 : 3;
-    // Left eye
-    ctx.fillStyle = '#ff0';
+    ctx.fillStyle = e.boss ? '#f00' : '#ff0';
     ctx.beginPath();
     ctx.ellipse(-sz * 0.3, -sz * 0.15, 3, eyeH, 0, 0, TWO_PI);
     ctx.fill();
-    // Pupil
     if (!e.eyeBlinking) {
       ctx.fillStyle = '#200';
       ctx.beginPath();
       ctx.arc(-sz * 0.3, -sz * 0.15, 1.2, 0, TWO_PI);
       ctx.fill();
     }
-    // Right eye
-    ctx.fillStyle = '#ff0';
+    ctx.fillStyle = e.boss ? '#f00' : '#ff0';
     ctx.beginPath();
     ctx.ellipse(sz * 0.3, -sz * 0.15, 3, eyeH, 0, 0, TWO_PI);
     ctx.fill();
@@ -1202,12 +3282,129 @@
     ctx.quadraticCurveTo(0, sz * 0.4, sz * 0.25, sz * 0.25);
     ctx.stroke();
 
+    // Stun overlay
+    if (e.stunTimer > 0) {
+      ctx.fillStyle = `rgba(80,160,255,${0.25 + Math.sin(animTime * 10) * 0.1})`;
+      ctx.beginPath();
+      ctx.arc(0, 0, sz + 3, 0, TWO_PI);
+      ctx.fill();
+    }
+
     ctx.restore();
 
+    // Shield arc
+    if (e.shield > 0)
+      drawEnemyShield(e, wobble);
+
     // Enemy HP bar (improved)
+    drawEnemyHPBar(e, sz, wobble);
+  }
+
+  function drawFlyer(e) {
+    const hpR = e.hp / e.maxHP;
+    const sz = e.size || 7;
+    const bob = Math.sin(e.wobblePhase) * 4; // sinusoidal vertical bobbing
+
+    ctx.save();
+    ctx.translate(e.x, e.y + bob);
+
+    // Faint shadow far below (on ground)
+    ctx.fillStyle = 'rgba(0,0,0,0.1)';
+    ctx.beginPath();
+    ctx.ellipse(0, 40 - bob, sz * 0.5, 2, 0, 0, TWO_PI);
+    ctx.fill();
+
+    // Wings (flapping lines)
+    ctx.strokeStyle = '#806';
+    ctx.lineWidth = 2;
+    // Left wing
+    ctx.beginPath();
+    ctx.moveTo(-sz * 0.3, 0);
+    ctx.lineTo(-sz * 1.4, -sz * 0.3 + Math.sin(e.wingPhase || 0) * sz * 0.5);
+    ctx.lineTo(-sz * 0.9, sz * 0.2 + Math.sin(e.wingPhase || 0) * sz * 0.3);
+    ctx.stroke();
+    // Right wing
+    ctx.beginPath();
+    ctx.moveTo(sz * 0.3, 0);
+    ctx.lineTo(sz * 1.4, -sz * 0.3 + Math.sin((e.wingPhase || 0) + Math.PI) * sz * 0.5);
+    ctx.lineTo(sz * 0.9, sz * 0.2 + Math.sin((e.wingPhase || 0) + Math.PI) * sz * 0.3);
+    ctx.stroke();
+
+    // Body -- triangular/bat-like, purple/dark
+    const bodyGrad = ctx.createRadialGradient(0, -sz * 0.1, 1, 0, 0, sz);
+    bodyGrad.addColorStop(0, `rgba(160,60,180,${0.6 + hpR * 0.4})`);
+    bodyGrad.addColorStop(0.6, `rgba(100,30,120,${0.5 + hpR * 0.5})`);
+    bodyGrad.addColorStop(1, `rgba(50,15,60,${0.4 + hpR * 0.4})`);
+    ctx.beginPath();
+    ctx.moveTo(0, -sz * 0.9);
+    ctx.lineTo(-sz * 0.7, sz * 0.5);
+    ctx.lineTo(0, sz * 0.3);
+    ctx.lineTo(sz * 0.7, sz * 0.5);
+    ctx.closePath();
+    ctx.fillStyle = bodyGrad;
+    ctx.shadowBlur = 6;
+    ctx.shadowColor = `rgba(180,60,220,${0.3 + hpR * 0.4})`;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Body highlight
+    ctx.fillStyle = 'rgba(220,180,240,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(0, -sz * 0.3, sz * 0.25, sz * 0.15, 0, 0, TWO_PI);
+    ctx.fill();
+
+    // Glowing eyes (larger, more menacing)
+    const eyeH = e.eyeBlinking ? 0.3 : 2.5;
+    ctx.fillStyle = '#f0f';
+    ctx.shadowBlur = 4;
+    ctx.shadowColor = '#f0f';
+    ctx.beginPath();
+    ctx.ellipse(-sz * 0.2, -sz * 0.2, 2, eyeH, 0, 0, TWO_PI);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(sz * 0.2, -sz * 0.2, 2, eyeH, 0, 0, TWO_PI);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Stun overlay
+    if (e.stunTimer > 0) {
+      ctx.fillStyle = `rgba(80,160,255,${0.25 + Math.sin(animTime * 10) * 0.1})`;
+      ctx.beginPath();
+      ctx.arc(0, 0, sz + 3, 0, TWO_PI);
+      ctx.fill();
+    }
+
+    ctx.restore();
+
+    // Shield arc
+    if (e.shield > 0)
+      drawEnemyShield(e, bob);
+
+    // HP bar
+    drawEnemyHPBar(e, sz, bob);
+  }
+
+  function drawEnemyShield(e, vertOffset) {
+    const sz = e.size || 10;
+    const shieldR = e.shield / (e.maxShield || 1);
+    ctx.save();
+    ctx.translate(e.x, e.y + vertOffset);
+    ctx.strokeStyle = `rgba(80,160,255,${0.4 + shieldR * 0.4})`;
+    ctx.lineWidth = 2;
+    ctx.shadowBlur = 6;
+    ctx.shadowColor = '#4af';
+    ctx.beginPath();
+    ctx.arc(0, 0, sz + 5, -Math.PI * 0.8, Math.PI * 0.8);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
+  function drawEnemyHPBar(e, sz, vertOffset) {
+    const hpR = e.hp / e.maxHP;
     const barW = sz * 2 + 4;
     const barX = e.x - barW / 2;
-    const barY = e.y - sz - 10 + wobble;
+    const barY = e.y - sz - 10 + vertOffset;
     ctx.fillStyle = '#200';
     ctx.fillRect(barX, barY, barW, 4);
     const ehpGrad = ctx.createLinearGradient(barX, barY, barX + barW * hpR, barY);
@@ -1217,6 +3414,17 @@
     ctx.fillRect(barX, barY, barW * hpR, 4);
     ctx.fillStyle = 'rgba(255,255,255,0.15)';
     ctx.fillRect(barX, barY, barW * hpR, 2);
+
+    // Shield bar (drawn above HP bar if shield exists)
+    if (e.shield > 0 && e.maxShield > 0) {
+      const shieldR = e.shield / e.maxShield;
+      ctx.fillStyle = '#024';
+      ctx.fillRect(barX, barY - 5, barW, 3);
+      ctx.fillStyle = '#4af';
+      ctx.fillRect(barX, barY - 5, barW * shieldR, 3);
+      ctx.fillStyle = 'rgba(255,255,255,0.2)';
+      ctx.fillRect(barX, barY - 5, barW * shieldR, 1);
+    }
   }
 
   function drawProjectiles() {
@@ -1300,6 +3508,9 @@
     // Dome
     drawDome();
 
+    // Gadget visuals on surface
+    drawSurfaceGadgets();
+
     // Enemies
     for (const e of enemies)
       drawEnemy(e);
@@ -1339,7 +3550,7 @@
     ctx.fillStyle = '#555';
     ctx.font = '11px sans-serif';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillText('Press SPACE to go underground', CANVAS_W / 2, CANVAS_H - 10);
+    ctx.fillText('SPACE = underground  |  U = upgrade tree', CANVAS_W / 2, CANVAS_H - 10);
 
     // Upgrade panel
     drawUpgradePanel();
@@ -1365,11 +3576,16 @@
     ctx.fillStyle = vignetteGrad;
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
 
-    // Grid tiles
-    for (let r = 0; r < GRID_ROWS; ++r) {
-      for (let c = 0; c < GRID_COLS; ++c) {
-        const x = GRID_OFFSET_X + c * TILE_SIZE;
-        const y = GRID_OFFSET_Y + r * TILE_SIZE;
+    // Grid tiles (viewport culled)
+    const startCol = Math.max(0, Math.floor(cameraX / TILE_SIZE));
+    const endCol = Math.min(GRID_COLS, Math.ceil((cameraX + CANVAS_W) / TILE_SIZE));
+    const startRow = Math.max(0, Math.floor(cameraY / TILE_SIZE));
+    const endRow = Math.min(GRID_ROWS, Math.ceil((cameraY + CANVAS_H) / TILE_SIZE));
+
+    for (let r = startRow; r < endRow; ++r) {
+      for (let c = startCol; c < endCol; ++c) {
+        const x = c * TILE_SIZE - cameraX;
+        const y = r * TILE_SIZE - cameraY;
         const tile = undergroundGrid[r][c];
 
         if (tile === TILE_EMPTY) {
@@ -1379,6 +3595,9 @@
           emptyGrad.addColorStop(1, '#120e08');
           ctx.fillStyle = emptyGrad;
           ctx.fillRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+        } else if (tile === TILE_GADGET) {
+          // Gadget tiles rendered by drawUndergroundGadgets() -- draw dirt base here
+          drawTile(x, y, TILE_DIRT, r, c);
         } else {
           drawTile(x, y, tile, r, c);
         }
@@ -1389,6 +3608,9 @@
         ctx.strokeRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
       }
     }
+
+    // Gadget chamber overlays and probe highlights
+    drawUndergroundGadgets();
 
     // Resource reveal glows (drawn over tiles)
     for (const g of resourceGlows) {
@@ -1430,6 +3652,108 @@
       ctx.restore();
     }
 
+    // Draw dropped resources as small colored dots
+    for (const drop of droppedResources) {
+      const dx = drop.col * TILE_SIZE + TILE_SIZE / 2 - cameraX;
+      const dy = drop.row * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+      const dropColor = TILE_HIGHLIGHT_COLORS[drop.type] || '#fff';
+      const pulse = Math.sin(animTime * 4 + drop.col + drop.row) * 0.3 + 0.7;
+      ctx.save();
+      ctx.shadowBlur = 6;
+      ctx.shadowColor = dropColor;
+      ctx.fillStyle = dropColor;
+      ctx.globalAlpha = pulse;
+      // Draw a cluster of small dots
+      ctx.beginPath();
+      ctx.arc(dx - 4, dy - 2, 3, 0, TWO_PI);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(dx + 3, dy + 1, 2.5, 0, TWO_PI);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(dx, dy + 4, 2, 0, TWO_PI);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 1;
+      // Value label
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 8px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(String(drop.value), dx, dy - 6);
+      ctx.restore();
+    }
+
+    // Draw mining progress bar above the block being mined
+    if (miningTarget && miningDuration > 0) {
+      const mx = miningTarget.col * TILE_SIZE - cameraX;
+      const my = miningTarget.row * TILE_SIZE - cameraY;
+      const barW = TILE_SIZE - 8;
+      const barH = 5;
+      const barX = mx + 4;
+      const barY = my - barH - 3;
+      const progress = Math.min(miningProgress / miningDuration, 1);
+
+      // Bar background
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+      ctx.fillStyle = '#222';
+      ctx.fillRect(barX, barY, barW, barH);
+
+      // Bar fill (gradient from yellow to green as it completes)
+      const barGrad = ctx.createLinearGradient(barX, barY, barX + barW * progress, barY);
+      barGrad.addColorStop(0, '#da2');
+      barGrad.addColorStop(1, progress > 0.8 ? '#0c0' : '#fa0');
+      ctx.fillStyle = barGrad;
+      ctx.fillRect(barX, barY, barW * progress, barH);
+
+      // Bar highlight
+      ctx.fillStyle = 'rgba(255,255,255,0.2)';
+      ctx.fillRect(barX, barY, barW * progress, barH / 2);
+
+      // Bar border
+      ctx.strokeStyle = '#555';
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(barX, barY, barW, barH);
+    }
+
+    // Draw planned path dots
+    if (movePath && movePathIndex < movePath.length) {
+      ctx.fillStyle = 'rgba(100,200,255,0.3)';
+      for (let pi = movePathIndex; pi < movePath.length; ++pi) {
+        const step = movePath[pi];
+        const px = step.col * TILE_SIZE + TILE_SIZE / 2 - cameraX;
+        const py = step.row * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+        ctx.beginPath();
+        ctx.arc(px, py, 3, 0, TWO_PI);
+        ctx.fill();
+      }
+      // Draw dots connecting them
+      ctx.strokeStyle = 'rgba(100,200,255,0.15)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 5]);
+      ctx.beginPath();
+      const pathStartX = drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX;
+      const pathStartY = drillY * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+      ctx.moveTo(pathStartX, pathStartY);
+      for (let pi = movePathIndex; pi < movePath.length; ++pi) {
+        const step = movePath[pi];
+        ctx.lineTo(step.col * TILE_SIZE + TILE_SIZE / 2 - cameraX,
+                   step.row * TILE_SIZE + TILE_SIZE / 2 - cameraY);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Show mine target marker
+      if (mineTarget) {
+        ctx.strokeStyle = 'rgba(255,100,50,0.4)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(mineTarget.col * TILE_SIZE + 2 - cameraX,
+                       mineTarget.row * TILE_SIZE + 2 - cameraY,
+                       TILE_SIZE - 4, TILE_SIZE - 4);
+      }
+    }
+
     // Draw drill/player character
     drawPlayer();
 
@@ -1437,6 +3761,18 @@
     drawResourceHUD();
 
     // View toggle hint
+    // Blast charges hint
+    if (foundGadgets.includes('blastMining') && (primaryGadgetState.blastCharges || 0) > 0) {
+      ctx.fillStyle = '#f80';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'top';
+      ctx.fillText(`Blast [B]: ${primaryGadgetState.blastCharges}`, CANVAS_W - 10, CANVAS_H - 55);
+    }
+
+    // Tool HUD (underground)
+    drawToolHUDUnderground();
+
     ctx.textAlign = 'center';
     ctx.fillStyle = '#555';
     ctx.font = '11px sans-serif';
@@ -1526,7 +3862,18 @@
       const speckleColors = {
         [TILE_IRON]: ['#cccccc', '#aaaaaa', '#eeeeee', '#999999'],
         [TILE_WATER]: ['#66bbff', '#88ddff', '#4499dd', '#aaeeff'],
-        [TILE_COBALT]: ['#7777cc', '#9999ee', '#5555aa', '#aaaaff']
+        [TILE_COBALT]: ['#7777cc', '#9999ee', '#5555aa', '#aaaaff'],
+        [TILE_COPPER]: ['#d4944d', '#c08040', '#e0a060', '#a06020'],
+        [TILE_GOLD]: ['#ffea50', '#ffd700', '#ffe030', '#ffcc00'],
+        [TILE_TIN]: ['#eeeeee', '#d0d0d0', '#f4f4f4', '#c8c8c8'],
+        [TILE_SILVER]: ['#e0e0e0', '#c8c8c8', '#f0f0f0', '#b0b0b0'],
+        [TILE_LEAD]: ['#888888', '#666666', '#999999', '#555555'],
+        [TILE_COAL]: ['#444444', '#333333', '#555555', '#222222'],
+        [TILE_QUARTZ]: ['#fff8ee', '#f0e6d3', '#ffe8d0', '#e8dac0'],
+        [TILE_REDSTONE]: ['#ff3333', '#cc0000', '#ff5555', '#aa0000'],
+        [TILE_DIAMOND]: ['#dff8ff', '#b9f2ff', '#c8f0ff', '#a0e8ff'],
+        [TILE_EMERALD]: ['#80e8a0', '#50c878', '#60d888', '#40b868'],
+        [TILE_RUBY]: ['#ff4488', '#e0115f', '#ff2070', '#c00048']
       };
       const colors = speckleColors[tile] || ['#fff'];
       if (oreSpeckles[r] && oreSpeckles[r][c]) {
@@ -1631,8 +3978,8 @@
   }
 
   function drawPlayer() {
-    const px = GRID_OFFSET_X + drillX * TILE_SIZE;
-    const py = GRID_OFFSET_Y + drillY * TILE_SIZE;
+    const px = drillX * TILE_SIZE - cameraX;
+    const py = drillY * TILE_SIZE - cameraY;
     const cx = px + TILE_SIZE / 2;
     const cy = px + TILE_SIZE / 2; // intentionally kept but we use py below
     const bob = playerBob;
@@ -1775,29 +4122,59 @@
     ctx.restore();
   }
 
+  // Resource HUD display configuration
+  const RESOURCE_HUD_ENTRIES = [
+    { key: 'iron', label: 'Fe', color: '#bbb' },
+    { key: 'water', label: 'H2O', color: '#6af' },
+    { key: 'cobalt', label: 'Co', color: '#88c' },
+    { key: 'copper', label: 'Cu', color: '#d4944d' },
+    { key: 'tin', label: 'Sn', color: '#d4d4d4' },
+    { key: 'coal', label: 'C', color: '#888' },
+    { key: 'lead', label: 'Pb', color: '#999' },
+    { key: 'silver', label: 'Ag', color: '#e0e0e0' },
+    { key: 'gold', label: 'Au', color: '#ffd700' },
+    { key: 'quartz', label: 'Qz', color: '#f0e6d3' },
+    { key: 'redstone', label: 'Rs', color: '#ff3333' },
+    { key: 'emerald', label: 'Em', color: '#50c878' },
+    { key: 'diamond', label: 'Di', color: '#b9f2ff' },
+    { key: 'ruby', label: 'Rb', color: '#ff4488' }
+  ];
+
   function drawResourceHUD() {
-    // Resource panel background
+    // Only show resources the player has collected (non-zero) plus the base 3
+    const visibleEntries = RESOURCE_HUD_ENTRIES.filter(
+      (e, i) => i < 3 || resources[e.key] > 0
+    );
+    const lineH = 13;
+    const panelH = 6 + visibleEntries.length * lineH;
     const panelX = 5;
     const panelY = 5;
+
+    // Two-column layout if many resources
+    const useColumns = visibleEntries.length > 7;
+    const colEntries = useColumns ? Math.ceil(visibleEntries.length / 2) : visibleEntries.length;
+    const colPanelH = 6 + colEntries * lineH;
+    const colPanelW = useColumns ? 220 : 130;
+
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillRect(panelX, panelY, 130, 56);
+    ctx.fillRect(panelX, panelY, colPanelW, colPanelH);
     ctx.strokeStyle = '#333';
     ctx.lineWidth = 1;
-    ctx.strokeRect(panelX, panelY, 130, 56);
+    ctx.strokeRect(panelX, panelY, colPanelW, colPanelH);
 
-    ctx.font = 'bold 11px sans-serif';
+    ctx.font = 'bold 10px sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
 
-    // Iron
-    ctx.fillStyle = '#bbb';
-    ctx.fillText(`Iron: ${resources.iron}`, panelX + 6, panelY + 5);
-    // Water
-    ctx.fillStyle = '#6af';
-    ctx.fillText(`Water: ${resources.water}`, panelX + 6, panelY + 20);
-    // Cobalt
-    ctx.fillStyle = '#88c';
-    ctx.fillText(`Cobalt: ${resources.cobalt}`, panelX + 6, panelY + 35);
+    for (let i = 0; i < visibleEntries.length; ++i) {
+      const e = visibleEntries[i];
+      const col = useColumns ? Math.floor(i / colEntries) : 0;
+      const row = useColumns ? i % colEntries : i;
+      const x = panelX + 6 + col * 110;
+      const y = panelY + 3 + row * lineH;
+      ctx.fillStyle = e.color;
+      ctx.fillText(`${e.label}: ${resources[e.key]}`, x, y);
+    }
 
     // Carried indicator (right side)
     const carryX = CANVAS_W - 145;
@@ -1819,6 +4196,49 @@
     ctx.fillRect(carryX + 6, panelY + 20, 128 * carryRatio, 5);
   }
 
+  function drawToolHUDUnderground() {
+    // Show active/unlocked tools in the underground view
+    const anyUnlocked = GADGET_DEFS.some(d => unlockedTools[d.key]);
+    if (!anyUnlocked) return;
+
+    const hudX = CANVAS_W - 145;
+    let hudY = 42;
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    const toolCount = GADGET_DEFS.filter(d => unlockedTools[d.key]).length;
+    ctx.fillRect(hudX, hudY, 140, 6 + toolCount * 14);
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(hudX, hudY, 140, 6 + toolCount * 14);
+
+    hudY += 2;
+    ctx.font = 'bold 10px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+
+    for (const def of GADGET_DEFS) {
+      if (!unlockedTools[def.key]) continue;
+      const isActive = activeToolKey === def.key;
+      const isPassive = def.key === 'scanner' || def.key === 'reinforcedDome';
+
+      if (def.key === 'blastTool') {
+        ctx.fillStyle = toolState.blastToolCooldown > 0 ? '#555' : (isActive ? '#ffd700' : '#f80');
+        const cd = toolState.blastToolCooldown > 0 ? ` ${Math.ceil(toolState.blastToolCooldown)}s` : ' RDY';
+        ctx.fillText(`[2] ${def.icon} Blast${cd}`, hudX + 4, hudY);
+      } else if (def.key === 'teleporter') {
+        ctx.fillStyle = toolState.teleporterCooldown > 0 ? '#555' : '#a0f';
+        const cd = toolState.teleporterCooldown > 0 ? ` ${Math.ceil(toolState.teleporterCooldown)}s` : ' RDY';
+        ctx.fillText(`[5] ${def.icon} Teleport${cd}`, hudX + 4, hudY);
+      } else if (def.key === 'drill') {
+        ctx.fillStyle = isActive ? '#ffd700' : '#aaa';
+        ctx.fillText(`[1] ${def.icon} Drill${isActive ? ' SEL' : ''}`, hudX + 4, hudY);
+      } else if (isPassive) {
+        ctx.fillStyle = '#0f0';
+        ctx.fillText(`[${def.shortcut}] ${def.icon} ${def.name}`, hudX + 4, hudY);
+      }
+      hudY += 14;
+    }
+  }
+
   function parseHex(hex) {
     if (hex.length === 4)
       return [parseInt(hex[1] + hex[1], 16), parseInt(hex[2] + hex[2], 16), parseInt(hex[3] + hex[3], 16)];
@@ -1836,13 +4256,417 @@
   }
 
   /* ======================================================================
+     DRAWING -- GADGETS
+     ====================================================================== */
+
+  function drawSurfaceGadgets() {
+    // Shield Generator: blue arc around dome when active
+    if (primaryGadget === 'shield' && primaryGadgetState.active) {
+      ctx.save();
+      const shieldPulse = Math.sin(animTime * 4) * 0.15 + 0.85;
+      ctx.beginPath();
+      ctx.arc(DOME_X, DOME_Y, DOME_RADIUS + 6, Math.PI, 0);
+      ctx.strokeStyle = `rgba(80,180,255,${0.5 * shieldPulse})`;
+      ctx.lineWidth = 3;
+      ctx.shadowBlur = 15;
+      ctx.shadowColor = '#4af';
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(DOME_X, DOME_Y, DOME_RADIUS + 8, Math.PI + 0.2, -0.2);
+      ctx.strokeStyle = `rgba(120,200,255,${0.3 * shieldPulse})`;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+
+    // Repellent Field: expanding purple ring
+    if (primaryGadget === 'repellent' && primaryGadgetState.active) {
+      ctx.save();
+      const ringPulse = Math.sin(animTime * 6) * 0.2 + 0.8;
+      const ringRadius = DOME_RADIUS + 20 + Math.sin(animTime * 3) * 5;
+      ctx.beginPath();
+      ctx.arc(DOME_X, DOME_Y, ringRadius, 0, TWO_PI);
+      ctx.strokeStyle = `rgba(160,80,220,${0.6 * ringPulse})`;
+      ctx.lineWidth = 3;
+      ctx.shadowBlur = 12;
+      ctx.shadowColor = '#a0f';
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(DOME_X, DOME_Y, ringRadius + 5, 0, TWO_PI);
+      ctx.strokeStyle = `rgba(180,100,240,${0.25 * ringPulse})`;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+
+    // Orchard: small tree inside dome
+    if (primaryGadget === 'orchard') {
+      const treeX = DOME_X - 30;
+      const treeY = DOME_Y - 8;
+      // Trunk
+      ctx.fillStyle = '#654';
+      ctx.fillRect(treeX - 2, treeY - 15, 4, 15);
+      // Canopy
+      ctx.fillStyle = '#2a6';
+      ctx.beginPath();
+      ctx.arc(treeX, treeY - 18, 8, 0, TWO_PI);
+      ctx.fill();
+      ctx.fillStyle = '#3a8';
+      ctx.beginPath();
+      ctx.arc(treeX - 3, treeY - 16, 5, 0, TWO_PI);
+      ctx.fill();
+      // Fruit (glowing when ready)
+      if (primaryGadgetState.fruitReady) {
+        ctx.save();
+        const fruitGlow = Math.sin(animTime * 5) * 0.3 + 0.7;
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = '#ff0';
+        ctx.fillStyle = `rgba(255,200,50,${fruitGlow})`;
+        ctx.beginPath();
+        ctx.arc(treeX + 5, treeY - 15, 3, 0, TWO_PI);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.restore();
+      }
+    }
+
+    // Droneyard: small diamond drone flying
+    if (primaryGadget === 'droneyard') {
+      const dronePhase = primaryGadgetState.dronePhase || 0;
+      const droneY = DOME_Y - 50 + Math.sin(dronePhase) * 20;
+      const droneX = DOME_X + 35;
+      ctx.save();
+      ctx.translate(droneX, droneY);
+      ctx.rotate(Math.PI / 4);
+      ctx.fillStyle = '#8ac';
+      ctx.fillRect(-4, -4, 8, 8);
+      ctx.fillStyle = '#adf';
+      ctx.fillRect(-2, -2, 4, 4);
+      ctx.restore();
+      // Propeller lines
+      ctx.strokeStyle = 'rgba(150,200,255,0.4)';
+      ctx.lineWidth = 1;
+      const propLen = 5 + Math.sin(animTime * 20) * 2;
+      ctx.beginPath();
+      ctx.moveTo(droneX - propLen, droneY - 2);
+      ctx.lineTo(droneX + propLen, droneY - 2);
+      ctx.stroke();
+    }
+
+    // Auto Cannon: turret on top of dome (apex) so it can reach both sides
+    if (foundGadgets.includes('autoCannon')) {
+      const acX = DOME_X;
+      const acY = DOME_Y - DOME_RADIUS;
+      // Base
+      ctx.fillStyle = '#667';
+      ctx.fillRect(acX - 5, acY - 2, 10, 8);
+      // Barrel (points upward)
+      ctx.fillStyle = '#556';
+      ctx.fillRect(acX - 1.5, acY - 10, 3, 10);
+      // Muzzle flash
+      if (primaryGadgetState.autoCannonFlash > 0 && primaryGadgetState.autoCannonTarget) {
+        const t = primaryGadgetState.autoCannonTarget;
+        const alpha = primaryGadgetState.autoCannonFlash / 0.3;
+        ctx.strokeStyle = `rgba(255,255,0,${alpha})`;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(acX, acY - 10);
+        ctx.lineTo(t.x, t.y);
+        ctx.stroke();
+        ctx.strokeStyle = `rgba(255,200,0,${alpha * 0.4})`;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(acX, acY - 10);
+        ctx.lineTo(t.x, t.y);
+        ctx.stroke();
+      }
+    }
+
+    // Stun Laser: blue beam from dome to target
+    if (foundGadgets.includes('stunLaser') && primaryGadgetState.stunLaserFlash > 0 && primaryGadgetState.stunLaserTarget) {
+      const t = primaryGadgetState.stunLaserTarget;
+      const alpha = primaryGadgetState.stunLaserFlash / 0.4;
+      ctx.save();
+      ctx.strokeStyle = `rgba(80,160,255,${alpha})`;
+      ctx.lineWidth = 2;
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = '#4af';
+      ctx.beginPath();
+      ctx.moveTo(DOME_X, DOME_Y - DOME_RADIUS);
+      ctx.lineTo(t.x, t.y);
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(150,210,255,${alpha * 0.6})`;
+      ctx.lineWidth = 5;
+      ctx.shadowBlur = 15;
+      ctx.beginPath();
+      ctx.moveTo(DOME_X, DOME_Y - DOME_RADIUS);
+      ctx.lineTo(t.x, t.y);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+
+    // Reinforced Dome: extra thick dome arc
+    if (unlockedTools.reinforcedDome) {
+      ctx.save();
+      const armorPulse = Math.sin(animTime * 2) * 0.1 + 0.9;
+      ctx.beginPath();
+      ctx.arc(DOME_X, DOME_Y, DOME_RADIUS + 4, Math.PI, 0);
+      ctx.strokeStyle = `rgba(180,160,100,${0.35 * armorPulse})`;
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(DOME_X, DOME_Y, DOME_RADIUS + 3, Math.PI + 0.1, -0.1);
+      ctx.strokeStyle = `rgba(220,200,140,${0.2 * armorPulse})`;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Gadget HUD info (bottom-left, above hint text)
+    drawGadgetHUD();
+  }
+
+  function drawGadgetHUD() {
+    const hudX = 10;
+    let hudY = CANVAS_H - 55;
+
+    ctx.font = 'bold 10px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+
+    // Primary gadget status
+    if (primaryGadget === 'shield') {
+      ctx.fillStyle = primaryGadgetState.active ? '#4af' : '#555';
+      ctx.fillText('Shield: ' + (primaryGadgetState.active ? 'ACTIVE' : 'depleted'), hudX, hudY);
+      hudY -= 14;
+    } else if (primaryGadget === 'repellent') {
+      if (primaryGadgetState.active) {
+        ctx.fillStyle = '#a0f';
+        ctx.fillText(`Repellent: ${Math.ceil(primaryGadgetState.duration)}s`, hudX, hudY);
+      } else if (primaryGadgetState.cooldown > 0) {
+        ctx.fillStyle = '#555';
+        ctx.fillText(`Repellent [R]: ${Math.ceil(primaryGadgetState.cooldown)}s CD`, hudX, hudY);
+      } else {
+        ctx.fillStyle = '#a0f';
+        ctx.fillText('Repellent [R]: READY', hudX, hudY);
+      }
+      hudY -= 14;
+    } else if (primaryGadget === 'orchard') {
+      if (primaryGadgetState.speedBoostTimer > 0) {
+        ctx.fillStyle = '#0f0';
+        ctx.fillText(`Mining Boost: ${Math.ceil(primaryGadgetState.speedBoostTimer)}s`, hudX, hudY);
+      } else if (primaryGadgetState.fruitReady) {
+        ctx.fillStyle = '#ff0';
+        ctx.fillText('Orchard: Fruit ready! (click dome)', hudX, hudY);
+      } else {
+        ctx.fillStyle = '#2a6';
+        ctx.fillText(`Orchard: ${Math.ceil(primaryGadgetState.fruitTimer)}s`, hudX, hudY);
+      }
+      hudY -= 14;
+    } else if (primaryGadget === 'droneyard') {
+      ctx.fillStyle = '#8ac';
+      ctx.fillText(`Drone: ${Math.ceil(primaryGadgetState.droneTimer)}s`, hudX, hudY);
+      hudY -= 14;
+    }
+
+    // Blast charges
+    if (foundGadgets.includes('blastMining') && (primaryGadgetState.blastCharges || 0) > 0) {
+      ctx.fillStyle = '#f80';
+      ctx.fillText(`Blast [B]: ${primaryGadgetState.blastCharges} charges`, hudX, hudY);
+      hudY -= 14;
+    }
+
+    // Found gadget names
+    for (const g of foundGadgets) {
+      if (g === 'blastMining') continue; // shown above
+      ctx.fillStyle = '#aa8';
+      ctx.fillText(MINE_GADGET_NAMES[g] || g, hudX, hudY);
+      hudY -= 14;
+    }
+
+    // Unlockable tool indicators
+    for (const def of GADGET_DEFS) {
+      if (!unlockedTools[def.key]) continue;
+      const isActive = activeToolKey === def.key;
+      const isPassive = def.key === 'scanner' || def.key === 'reinforcedDome';
+
+      if (def.key === 'blastTool') {
+        if (toolState.blastToolCooldown > 0) {
+          ctx.fillStyle = '#555';
+          ctx.fillText(`${def.icon} Blast [2]: ${Math.ceil(toolState.blastToolCooldown)}s CD`, hudX, hudY);
+        } else {
+          ctx.fillStyle = isActive ? '#ffd700' : '#f80';
+          ctx.fillText(`${def.icon} Blast [2]: READY`, hudX, hudY);
+        }
+        hudY -= 14;
+      } else if (def.key === 'teleporter') {
+        if (toolState.teleporterCooldown > 0) {
+          ctx.fillStyle = '#555';
+          ctx.fillText(`${def.icon} Teleport [5]: ${Math.ceil(toolState.teleporterCooldown)}s CD`, hudX, hudY);
+        } else {
+          ctx.fillStyle = isActive ? '#ffd700' : '#a0f';
+          ctx.fillText(`${def.icon} Teleport [5]: READY`, hudX, hudY);
+        }
+        hudY -= 14;
+      } else if (def.key === 'drill') {
+        ctx.fillStyle = isActive ? '#ffd700' : '#aaa';
+        const combo = isActive && toolState.drillConsecutive > 0 ? ` (x${toolState.drillConsecutive} combo)` : '';
+        ctx.fillText(`${def.icon} Drill [1]${combo}`, hudX, hudY);
+        hudY -= 14;
+      } else if (isPassive) {
+        ctx.fillStyle = '#0f0';
+        ctx.fillText(`${def.icon} ${def.name} [${def.shortcut}]: ON`, hudX, hudY);
+        hudY -= 14;
+      }
+    }
+  }
+
+  function drawUndergroundGadgets() {
+    // Draw gadget chamber tiles
+    for (const ch of gadgetChambers) {
+      // Check if any tile of this chamber still exists
+      let anyLeft = false;
+      for (let dr = 0; dr < 2; ++dr)
+        for (let dc = 0; dc < 2; ++dc)
+          if (undergroundGrid[ch.r + dr] && undergroundGrid[ch.r + dr][ch.c + dc] === TILE_GADGET)
+            anyLeft = true;
+      if (!anyLeft) continue;
+
+      for (let dr = 0; dr < 2; ++dr)
+        for (let dc = 0; dc < 2; ++dc) {
+          if (undergroundGrid[ch.r + dr][ch.c + dc] !== TILE_GADGET) continue;
+          const x = (ch.c + dc) * TILE_SIZE - cameraX;
+          const y = (ch.r + dr) * TILE_SIZE - cameraY;
+
+          if (!ch.revealed) {
+            // Hidden: looks like dirt but with faint shimmer
+            drawTile(x, y, TILE_DIRT, ch.r + dr, ch.c + dc);
+            const shimmer = Math.sin(animTime * 3 + dr + dc) * 0.1 + 0.1;
+            ctx.fillStyle = `rgba(255,215,0,${shimmer})`;
+            ctx.fillRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+          } else {
+            // Revealed: golden glowing tile with "?" symbol
+            const pulse = Math.sin(animTime * 4) * 0.15 + 0.85;
+            const grad = ctx.createRadialGradient(x + TILE_SIZE / 2, y + TILE_SIZE / 2, 2, x + TILE_SIZE / 2, y + TILE_SIZE / 2, TILE_SIZE / 2);
+            grad.addColorStop(0, `rgba(255,215,0,${0.8 * pulse})`);
+            grad.addColorStop(0.6, `rgba(200,160,0,${0.6 * pulse})`);
+            grad.addColorStop(1, `rgba(140,110,0,${0.4 * pulse})`);
+            ctx.fillStyle = grad;
+            ctx.fillRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+
+            // Bevel
+            ctx.fillStyle = `rgba(255,240,150,${0.4 * pulse})`;
+            ctx.fillRect(x + 1, y + 1, TILE_SIZE - 2, 3);
+            ctx.fillStyle = `rgba(100,80,0,${0.5 * pulse})`;
+            ctx.fillRect(x + 1, y + TILE_SIZE - 4, TILE_SIZE - 2, 3);
+
+            // "?" symbol
+            ctx.fillStyle = `rgba(255,255,200,${pulse})`;
+            ctx.font = 'bold 18px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.shadowBlur = 6;
+            ctx.shadowColor = '#ffd700';
+            ctx.fillText('?', x + TILE_SIZE / 2, y + TILE_SIZE / 2);
+            ctx.shadowBlur = 0;
+
+            // Sparkle particles on border
+            if (Math.random() < 0.03)
+              particles.sparkle(
+                x + Math.random() * TILE_SIZE,
+                y + Math.random() * TILE_SIZE,
+                1,
+                { color: '#ffd700', speed: 0.5 }
+              );
+          }
+        }
+    }
+
+    // Probe Scanner: highlight resource tiles within 4 tiles of pickup location
+    if (foundGadgets.includes('probeScanner') && primaryGadgetState.probeTimer > 0) {
+      const fadeAlpha = Math.min(1, primaryGadgetState.probeTimer / 3); // fade out in last 3s
+      const probePulse = Math.sin(animTime * 5) * 0.3 + 0.7;
+      const pr = primaryGadgetState.probePlayerR || drillY;
+      const pc = primaryGadgetState.probePlayerC || drillX;
+      for (let r = 0; r < GRID_ROWS; ++r)
+        for (let c = 0; c < GRID_COLS; ++c) {
+          const tile = undergroundGrid[r][c];
+          if (!RESOURCE_TILES.includes(tile)) continue;
+          const dist = Math.abs(r - pr) + Math.abs(c - pc);
+          if (dist > 4) continue;
+          const x = c * TILE_SIZE - cameraX;
+          const y = r * TILE_SIZE - cameraY;
+          ctx.save();
+          ctx.strokeStyle = `rgba(255,215,0,${0.6 * probePulse * fadeAlpha})`;
+          ctx.lineWidth = 2;
+          ctx.shadowBlur = 8;
+          ctx.shadowColor = `rgba(255,215,0,${0.5 * fadeAlpha})`;
+          ctx.strokeRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+          ctx.shadowBlur = 0;
+          ctx.restore();
+        }
+    }
+
+    // Scanner gadget (unlockable tool): continuous passive reveal in 3-tile Manhattan radius
+    if (toolState.scannerActive) {
+      const scanPulse = Math.sin(animTime * 3) * 0.2 + 0.8;
+      for (let r = 0; r < GRID_ROWS; ++r)
+        for (let c = 0; c < GRID_COLS; ++c) {
+          const tile = undergroundGrid[r][c];
+          if (!RESOURCE_TILES.includes(tile)) continue;
+          const dist = Math.abs(r - drillY) + Math.abs(c - drillX);
+          const scanRange = 3 + (toolState.echoLocationActive ? 2 + getEffectiveLevel('echoLocation') : 0);
+          if (dist > scanRange) continue;
+          const x = c * TILE_SIZE - cameraX;
+          const y = r * TILE_SIZE - cameraY;
+
+          // Semi-transparent resource type indicator
+          const tileColor = TILE_HIGHLIGHT_COLORS[tile] || '#fff';
+          ctx.save();
+          ctx.strokeStyle = hexToRgba(tileColor, 0.5 * scanPulse);
+          ctx.lineWidth = 1.5;
+          ctx.shadowBlur = 6;
+          ctx.shadowColor = tileColor;
+          ctx.strokeRect(x + 3, y + 3, TILE_SIZE - 6, TILE_SIZE - 6);
+
+          // Small resource type label
+          ctx.fillStyle = hexToRgba(tileColor, 0.7 * scanPulse);
+          ctx.font = 'bold 8px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(TILE_LABELS[tile] || '', x + TILE_SIZE / 2, y + TILE_SIZE / 2);
+          ctx.shadowBlur = 0;
+          ctx.restore();
+        }
+
+      // Scanner radius ring around player
+      const playerScreenX = drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX;
+      const playerScreenY = drillY * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+      ctx.save();
+      ctx.strokeStyle = `rgba(0,255,200,${0.15 * scanPulse})`;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 6]);
+      ctx.beginPath();
+      const scanRingRange = 3 + (toolState.echoLocationActive ? 2 + getEffectiveLevel('echoLocation') : 0);
+      ctx.arc(playerScreenX, playerScreenY, (scanRingRange + 0.5) * TILE_SIZE, 0, TWO_PI);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+  }
+
+  /* ======================================================================
      DRAWING -- UPGRADE PANEL
      ====================================================================== */
 
   function drawUpgradePanel() {
     const px = CANVAS_W - 170;
     const py = 50;
-    const panelH = 30 + UPGRADE_DEFS.length * 24;
+    const toolSectionH = showToolPanel ? 22 + GADGET_DEFS.length * 22 : 18;
+    const panelH = 30 + UPGRADE_DEFS.length * 24 + toolSectionH;
 
     // Panel background with gradient
     const panelGrad = ctx.createLinearGradient(px, py, px, py + panelH);
@@ -1861,7 +4685,12 @@
     ctx.font = 'bold 11px sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillText('Upgrades (U)', px + 8, py + 16);
+    ctx.fillText('Upgrades', px + 8, py + 16);
+    ctx.fillStyle = '#ffd700';
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText('[U] Full Tree', px + 155, py + 16);
+    ctx.textAlign = 'left';
 
     // Separator line
     ctx.strokeStyle = '#334';
@@ -1885,10 +4714,73 @@
 
       ctx.fillStyle = canAfford ? '#ccc' : '#555';
       ctx.font = '10px sans-serif';
-      ctx.fillText(`${def.name} Lv${upgradeLevels[def.key]}`, px + 8, ly + 10);
+      ctx.fillText(`${def.name} Lv${getEffectiveLevel(def.key)}`, px + 8, ly + 10);
       ctx.fillStyle = canAfford ? '#0f0' : '#633';
       ctx.font = 'bold 10px sans-serif';
       ctx.fillText(`[${cost}]`, px + 118, ly + 10);
+    }
+
+    // -- Tool/Gadget section --
+    const toolY = py + 28 + UPGRADE_DEFS.length * 24 + 4;
+
+    // Separator
+    ctx.strokeStyle = '#334';
+    ctx.beginPath();
+    ctx.moveTo(px + 5, toolY - 2);
+    ctx.lineTo(px + 155, toolY - 2);
+    ctx.stroke();
+
+    // Section header (toggleable)
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 10px sans-serif';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(showToolPanel ? 'Tools (click to collapse)' : 'Tools (click to expand)', px + 8, toolY + 10);
+
+    if (showToolPanel) {
+      for (let i = 0; i < GADGET_DEFS.length; ++i) {
+        const def = GADGET_DEFS[i];
+        const ly = toolY + 16 + i * 22;
+        const isUnlocked = !!unlockedTools[def.key];
+        const canAfford = !isUnlocked && resources.iron >= def.costIron && resources.cobalt >= def.costCobalt;
+        const isActive = activeToolKey === def.key;
+        const isPassive = def.key === 'scanner' || def.key === 'reinforcedDome';
+
+        // Background highlight
+        if (isUnlocked) {
+          ctx.fillStyle = isActive ? 'rgba(255,215,0,0.12)' : 'rgba(40,100,40,0.1)';
+          ctx.fillRect(px + 2, ly - 2, 156, 20);
+        } else if (canAfford) {
+          ctx.fillStyle = 'rgba(60,120,200,0.08)';
+          ctx.fillRect(px + 2, ly - 2, 156, 20);
+        }
+
+        // Active border indicator
+        if (isActive) {
+          ctx.strokeStyle = '#ffd700';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(px + 2, ly - 2, 156, 20);
+        }
+
+        // Icon + Name
+        ctx.font = '10px sans-serif';
+        if (isUnlocked) {
+          ctx.fillStyle = isActive ? '#ffd700' : (isPassive ? '#0f0' : '#aaa');
+          const status = isPassive ? ' [ON]' : (isActive ? ' [SEL]' : '');
+          ctx.fillText(`[${def.shortcut}] ${def.icon} ${def.name}${status}`, px + 6, ly + 10);
+        } else {
+          ctx.fillStyle = canAfford ? '#ccc' : '#555';
+          ctx.fillText(`[${def.shortcut}] ${def.icon} ${def.name}`, px + 6, ly + 10);
+          // Cost display
+          let costText = `${def.costIron}Fe`;
+          if (def.costCobalt > 0)
+            costText += `+${def.costCobalt}Co`;
+          ctx.fillStyle = canAfford ? '#0f0' : '#633';
+          ctx.font = 'bold 9px sans-serif';
+          ctx.textAlign = 'right';
+          ctx.fillText(costText, px + 155, ly + 10);
+          ctx.textAlign = 'left';
+        }
+      }
     }
   }
 
@@ -1936,6 +4828,93 @@
       ctx.shadowColor = '#4af';
       ctx.stroke();
       ctx.shadowBlur = 0;
+
+      ctx.textAlign = 'start';
+    }
+
+    if (state === STATE_GADGET_SELECT) {
+      ctx.fillStyle = 'rgba(0,0,0,0.9)';
+      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+      // Title
+      ctx.save();
+      ctx.shadowBlur = 15;
+      ctx.shadowColor = '#ffd700';
+      ctx.fillStyle = '#ffd700';
+      ctx.font = 'bold 24px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Choose Your Gadget', CANVAS_W / 2, 50);
+      ctx.shadowBlur = 0;
+      ctx.restore();
+
+      // 4 cards
+      const cardW = 140;
+      const cardH = 160;
+      const gap = 15;
+      const totalW = PRIMARY_GADGETS.length * cardW + (PRIMARY_GADGETS.length - 1) * gap;
+      const startX = (CANVAS_W - totalW) / 2;
+      const cardY = (CANVAS_H - cardH) / 2;
+
+      for (let i = 0; i < PRIMARY_GADGETS.length; ++i) {
+        const g = PRIMARY_GADGETS[i];
+        const cx = startX + i * (cardW + gap);
+        const isHover = gadgetSelectHover === i;
+
+        // Card background
+        const cardGrad = ctx.createLinearGradient(cx, cardY, cx, cardY + cardH);
+        if (isHover) {
+          cardGrad.addColorStop(0, 'rgba(60,80,120,0.9)');
+          cardGrad.addColorStop(1, 'rgba(30,50,80,0.9)');
+        } else {
+          cardGrad.addColorStop(0, 'rgba(25,30,45,0.85)');
+          cardGrad.addColorStop(1, 'rgba(15,18,30,0.85)');
+        }
+        ctx.fillStyle = cardGrad;
+        ctx.fillRect(cx, cardY, cardW, cardH);
+
+        // Card border
+        ctx.strokeStyle = isHover ? '#ffd700' : '#3a4a6a';
+        ctx.lineWidth = isHover ? 2 : 1;
+        ctx.strokeRect(cx, cardY, cardW, cardH);
+
+        // Hover glow
+        if (isHover) {
+          ctx.save();
+          ctx.shadowBlur = 12;
+          ctx.shadowColor = '#ffd700';
+          ctx.strokeStyle = 'rgba(255,215,0,0.3)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(cx - 1, cardY - 1, cardW + 2, cardH + 2);
+          ctx.shadowBlur = 0;
+          ctx.restore();
+        }
+
+        // Icon
+        ctx.font = '32px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#fff';
+        ctx.fillText(g.icon, cx + cardW / 2, cardY + 35);
+
+        // Name
+        ctx.fillStyle = isHover ? '#ffd700' : '#ccc';
+        ctx.font = 'bold 12px sans-serif';
+        ctx.fillText(g.name, cx + cardW / 2, cardY + 70);
+
+        // Description lines
+        ctx.fillStyle = '#999';
+        ctx.font = '10px sans-serif';
+        for (let l = 0; l < g.desc.length; ++l)
+          ctx.fillText(g.desc[l], cx + cardW / 2, cardY + 92 + l * 14);
+
+        // Click hint
+        if (isHover) {
+          ctx.fillStyle = '#ffd700';
+          ctx.font = 'bold 10px sans-serif';
+          ctx.fillText('Click to select', cx + cardW / 2, cardY + cardH - 12);
+        }
+      }
 
       ctx.textAlign = 'start';
     }
@@ -2011,6 +4990,9 @@
 
     drawHUD();
 
+    if (state === STATE_UPGRADE_DIALOG)
+      drawUpgradeDialog();
+
     if (showTutorial)
       drawTutorialOverlay();
   }
@@ -2052,7 +5034,13 @@
     if (statusView) statusView.textContent = `View: ${currentView}`;
     if (statusWave) statusWave.textContent = `Wave: ${waveNumber}`;
     if (statusDome) statusDome.textContent = `Dome: ${Math.ceil(domeHP)}/${maxDomeHP}`;
-    if (statusResources) statusResources.textContent = `Fe:${resources.iron} H2O:${resources.water} Co:${resources.cobalt}`;
+    if (statusResources) {
+      let resParts = [];
+      for (const entry of RESOURCE_HUD_ENTRIES)
+        if (resources[entry.key] > 0)
+          resParts.push(`${entry.label}:${resources[entry.key]}`);
+      statusResources.textContent = resParts.join(' ') || 'Fe:0 H2O:0 Co:0';
+    }
   }
 
   /* ======================================================================
@@ -2081,6 +5069,7 @@
     drawGame();
     particles.draw(ctx);
     floatingText.draw(ctx);
+    screenShake.restore(ctx);
     ctx.restore();
 
     updateStatusBar();
@@ -2124,7 +5113,7 @@
     }
 
     if (e.key === 'h' || e.key === 'H') {
-      if (state === STATE_PLAYING || state === STATE_PAUSED || state === STATE_READY) {
+      if (state === STATE_PLAYING || state === STATE_PAUSED || state === STATE_READY || state === STATE_GADGET_SELECT) {
         showTutorial = !showTutorial;
         tutorialPage = 0;
         return;
@@ -2133,6 +5122,10 @@
 
     if (e.code === 'Escape') {
       e.preventDefault();
+      if (state === STATE_UPGRADE_DIALOG) {
+        closeUpgradeDialog();
+        return;
+      }
       if (state === STATE_PLAYING)
         state = STATE_PAUSED;
       else if (state === STATE_PAUSED)
@@ -2140,6 +5133,19 @@
       return;
     }
 
+    // U key: open/close upgrade dialog
+    if (e.code === 'KeyU') {
+      if (state === STATE_UPGRADE_DIALOG) {
+        closeUpgradeDialog();
+        return;
+      }
+      if (state === STATE_PLAYING && currentView === VIEW_SURFACE) {
+        openUpgradeDialog();
+        return;
+      }
+    }
+
+    if (state === STATE_UPGRADE_DIALOG) return; // block other keys while dialog is open
     if (state !== STATE_PLAYING) return;
 
     if (e.code === 'Space' || e.code === 'Tab') {
@@ -2148,19 +5154,55 @@
     }
 
     if (currentView === VIEW_UNDERGROUND) {
-      if (e.code === 'ArrowUp' || e.code === 'KeyW') tryMine(0, -1);
-      if (e.code === 'ArrowDown' || e.code === 'KeyS') tryMine(0, 1);
-      if (e.code === 'ArrowLeft' || e.code === 'KeyA') tryMine(-1, 0);
-      if (e.code === 'ArrowRight' || e.code === 'KeyD') tryMine(1, 0);
+      let newDx = 0, newDy = 0;
+      if (e.code === 'ArrowUp' || e.code === 'KeyW') { newDx = 0; newDy = -1; }
+      else if (e.code === 'ArrowDown' || e.code === 'KeyS') { newDx = 0; newDy = 1; }
+      else if (e.code === 'ArrowLeft' || e.code === 'KeyA') { newDx = -1; newDy = 0; }
+      else if (e.code === 'ArrowRight' || e.code === 'KeyD') { newDx = 1; newDy = 0; }
+
+      if (newDx !== 0 || newDy !== 0) {
+        // Cancel mining if direction changed
+        if (miningTarget && miningDir && (miningDir.dx !== newDx || miningDir.dy !== newDy))
+          cancelMining();
+        clearMoveTarget();
+        tryMine(newDx, newDy);
+      }
     }
 
-    if (e.code === 'KeyU') {
-      for (let i = 0; i < UPGRADE_DEFS.length; ++i) {
-        if (totalResources() >= getUpgradeCost(i)) {
-          applyUpgrade(i);
-          break;
-        }
+    // Repellent field activation
+    if (e.code === 'KeyR' && primaryGadget === 'repellent') {
+      if (!primaryGadgetState.active && primaryGadgetState.cooldown <= 0) {
+        primaryGadgetState.active = true;
+        primaryGadgetState.duration = 5;
+        floatingText.add(DOME_X, DOME_Y - DOME_RADIUS - 30, 'Repellent Field!', { color: '#a0f', font: 'bold 14px sans-serif' });
+        particles.burst(DOME_X, DOME_Y, 20, { color: '#a0f', speed: 3, life: 0.5 });
       }
+    }
+
+    // Blast mining activation
+    if (e.code === 'KeyB')
+      useBlastMining();
+
+    // Tool/Gadget shortcuts (1-5)
+    if (e.code === 'Digit1' || e.key === '1') {
+      if (unlockedTools.drill)
+        selectTool('drill');
+    }
+    if (e.code === 'Digit2' || e.key === '2') {
+      if (unlockedTools.blastTool)
+        useBlastTool();
+    }
+    if (e.code === 'Digit3' || e.key === '3') {
+      if (unlockedTools.scanner)
+        floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 20, 'Scanner active (passive)', { color: '#0f0', font: 'bold 11px sans-serif' });
+    }
+    if (e.code === 'Digit4' || e.key === '4') {
+      if (unlockedTools.reinforcedDome)
+        floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 20, 'Reinforced Dome active (passive)', { color: '#0f0', font: 'bold 11px sans-serif' });
+    }
+    if (e.code === 'Digit5' || e.key === '5') {
+      if (unlockedTools.teleporter)
+        useTeleporter();
     }
   });
 
@@ -2181,6 +5223,42 @@
       return;
     }
 
+    // Upgrade dialog click (left-click only; right-click is pan)
+    if (state === STATE_UPGRADE_DIALOG) {
+      if (e.button === 2) return; // right-click handled by pan listener
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = CANVAS_W / rect.width;
+      const scaleY = CANVAS_H / rect.height;
+      const mx = (e.clientX - rect.left) * scaleX;
+      const my = (e.clientY - rect.top) * scaleY;
+      handleUpgradeDialogClick(mx, my);
+      return;
+    }
+
+    // Gadget selection screen click
+    if (state === STATE_GADGET_SELECT) {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = CANVAS_W / rect.width;
+      const scaleY = CANVAS_H / rect.height;
+      const mx = (e.clientX - rect.left) * scaleX;
+      const my = (e.clientY - rect.top) * scaleY;
+
+      const cardW = 140, cardH = 160, gap = 15;
+      const totalW = PRIMARY_GADGETS.length * cardW + (PRIMARY_GADGETS.length - 1) * gap;
+      const startX = (CANVAS_W - totalW) / 2;
+      const cardY = (CANVAS_H - cardH) / 2;
+
+      for (let i = 0; i < PRIMARY_GADGETS.length; ++i) {
+        const cx = startX + i * (cardW + gap);
+        if (mx >= cx && mx <= cx + cardW && my >= cardY && my <= cardY + cardH) {
+          primaryGadget = PRIMARY_GADGETS[i].key;
+          startGameAfterGadgetSelect();
+          return;
+        }
+      }
+      return;
+    }
+
     if (state !== STATE_PLAYING) return;
 
     const rect = canvas.getBoundingClientRect();
@@ -2190,26 +5268,182 @@
     const my = (e.clientY - rect.top) * scaleY;
 
     if (currentView === VIEW_UNDERGROUND) {
-      const col = Math.floor((mx - GRID_OFFSET_X) / TILE_SIZE);
-      const row = Math.floor((my - GRID_OFFSET_Y) / TILE_SIZE);
+      const col = Math.floor((mx + cameraX) / TILE_SIZE);
+      const row = Math.floor((my + cameraY) / TILE_SIZE);
       if (col >= 0 && col < GRID_COLS && row >= 0 && row < GRID_ROWS) {
         const ddx = col - drillX;
         const ddy = row - drillY;
-        if (Math.abs(ddx) + Math.abs(ddy) === 1)
-          tryMine(ddx, ddy);
-        else if (ddx === 0 && ddy === 0)
+        if (ddx === 0 && ddy === 0) {
           toggleView();
+        } else if (undergroundGrid[row][col] === TILE_EMPTY) {
+          // Click on empty tile: move there via pathfinding
+          const path = findPath(drillX, drillY, col, row);
+          if (path && path.length > 0) {
+            clearMoveTarget();
+            moveTarget = { col, row };
+            movePath = path;
+            movePathIndex = 0;
+            moveStepTimer = 0;
+            mineTarget = null;
+          }
+        } else if (Math.abs(ddx) + Math.abs(ddy) === 1) {
+          // Adjacent non-empty tile: mine directly
+          clearMoveTarget();
+          tryMine(ddx, ddy);
+        } else {
+          // Non-adjacent non-empty tile: pathfind to adjacent empty, then queue mine
+          const result = findAdjacentEmptyNear(col, row);
+          if (result) {
+            clearMoveTarget();
+            moveTarget = { col: result.adj.col, row: result.adj.row };
+            movePath = result.path;
+            movePathIndex = 0;
+            moveStepTimer = 0;
+            mineTarget = { col: col, row: row, dx: result.adj.dx, dy: result.adj.dy };
+          }
+        }
       }
     } else {
+      // Orchard: clicking near the dome tree when fruit is ready
+      if (primaryGadget === 'orchard' && primaryGadgetState.fruitReady) {
+        const treeX = DOME_X - 30, treeY = DOME_Y - 15;
+        if (Math.abs(mx - treeX) < 20 && Math.abs(my - treeY) < 25) {
+          primaryGadgetState.fruitReady = false;
+          primaryGadgetState.fruitTimer = 20;
+          primaryGadgetState.speedBoostTimer = 10;
+          floatingText.add(treeX, treeY - 20, '+30% Mining Speed!', { color: '#0f0', font: 'bold 12px sans-serif' });
+          particles.sparkle(treeX, treeY - 15, 8, { color: '#ff0', speed: 2 });
+          return;
+        }
+      }
+
+      // Surface view: check upgrade panel first, then fire weapon
       const px = CANVAS_W - 170;
       const py = 50;
       if (mx >= px && mx <= px + 160) {
+        // Check upgrade rows
         for (let i = 0; i < UPGRADE_DEFS.length; ++i) {
           const ly = py + 28 + i * 24;
           if (my >= ly && my <= ly + 24) {
             applyUpgrade(i);
             return;
           }
+        }
+
+        // Check tool section header (toggle expand/collapse)
+        const toolHeaderY = py + 28 + UPGRADE_DEFS.length * 24 + 4;
+        if (my >= toolHeaderY - 4 && my <= toolHeaderY + 14) {
+          showToolPanel = !showToolPanel;
+          return;
+        }
+
+        // Check tool rows (when panel is expanded)
+        if (showToolPanel) {
+          for (let i = 0; i < GADGET_DEFS.length; ++i) {
+            const ly = toolHeaderY + 16 + i * 22;
+            if (my >= ly - 2 && my <= ly + 20) {
+              const def = GADGET_DEFS[i];
+              if (unlockedTools[def.key]) {
+                // Already unlocked -- select/activate it
+                if (def.key === 'blastTool')
+                  useBlastTool();
+                else if (def.key === 'teleporter')
+                  useTeleporter();
+                else
+                  selectTool(def.key);
+              } else
+                unlockTool(i);
+              return;
+            }
+          }
+        }
+      }
+      // Fire weapon toward current turret aim direction
+      fireRequested = true;
+    }
+  });
+
+  /* -- Scroll/zoom for upgrade dialog -- */
+  canvas.addEventListener('wheel', (e) => {
+    if (state === STATE_UPGRADE_DIALOG) {
+      e.preventDefault();
+      // Zoom with mouse wheel
+      const zoomDelta = e.deltaY > 0 ? -0.1 : 0.1;
+      const oldZoom = upgradeZoom;
+      upgradeZoom = Math.max(0.3, Math.min(2.0, upgradeZoom + zoomDelta));
+      // Adjust pan to zoom toward mouse position
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = CANVAS_W / rect.width;
+      const scaleY = CANVAS_H / rect.height;
+      const mx = (e.clientX - rect.left) * scaleX;
+      const my = (e.clientY - rect.top) * scaleY;
+      const zoomRatio = upgradeZoom / oldZoom;
+      upgradePanX = mx - (mx - upgradePanX) * zoomRatio;
+      upgradePanY = my - (my - upgradePanY) * zoomRatio;
+    }
+  }, { passive: false });
+
+  /* -- Right-click pan for upgrade dialog -- */
+  canvas.addEventListener('contextmenu', (e) => {
+    if (state === STATE_UPGRADE_DIALOG)
+      e.preventDefault();
+  });
+
+  canvas.addEventListener('pointerdown', (e) => {
+    if (state === STATE_UPGRADE_DIALOG && e.button === 2) {
+      e.preventDefault();
+      upgradePanning = true;
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = CANVAS_W / rect.width;
+      const scaleY = CANVAS_H / rect.height;
+      upgradePanStartX = (e.clientX - rect.left) * scaleX;
+      upgradePanStartY = (e.clientY - rect.top) * scaleY;
+      upgradePanBaseX = upgradePanX;
+      upgradePanBaseY = upgradePanY;
+      canvas.setPointerCapture(e.pointerId);
+    }
+  });
+
+  canvas.addEventListener('pointerup', (e) => {
+    if (upgradePanning && e.button === 2) {
+      upgradePanning = false;
+      canvas.releasePointerCapture(e.pointerId);
+    }
+  });
+
+  /* -- Continuous mouse tracking for turret aim + gadget selection hover -- */
+  canvas.addEventListener('pointermove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = CANVAS_W / rect.width;
+    const scaleY = CANVAS_H / rect.height;
+    mouseAimX = (e.clientX - rect.left) * scaleX;
+    mouseAimY = (e.clientY - rect.top) * scaleY;
+
+    // Right-click drag panning in upgrade dialog
+    if (upgradePanning && state === STATE_UPGRADE_DIALOG) {
+      upgradePanX = upgradePanBaseX + (mouseAimX - upgradePanStartX);
+      upgradePanY = upgradePanBaseY + (mouseAimY - upgradePanStartY);
+      return;
+    }
+
+    // Track hover on upgrade dialog
+    if (state === STATE_UPGRADE_DIALOG) {
+      handleUpgradeDialogHover(mouseAimX, mouseAimY);
+      return;
+    }
+
+    // Track hover on gadget selection screen
+    if (state === STATE_GADGET_SELECT) {
+      const cardW = 140, cardH = 160, gap = 15;
+      const totalW = PRIMARY_GADGETS.length * cardW + (PRIMARY_GADGETS.length - 1) * gap;
+      const startX = (CANVAS_W - totalW) / 2;
+      const cardY = (CANVAS_H - cardH) / 2;
+      gadgetSelectHover = -1;
+      for (let i = 0; i < PRIMARY_GADGETS.length; ++i) {
+        const cx = startX + i * (cardW + gap);
+        if (mouseAimX >= cx && mouseAimX <= cx + cardW && mouseAimY >= cardY && mouseAimY <= cardY + cardH) {
+          gadgetSelectHover = i;
+          break;
         }
       }
     }
