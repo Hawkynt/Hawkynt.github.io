@@ -1,9 +1,15 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+html, body {
+  height: 100%;
+}
+
 body {
   overflow: hidden;
   background: #0a0a1a;
   font-family: 'Segoe UI', system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
 }
 
 .game-frame {
@@ -11,12 +17,13 @@ body {
   justify-content: center;
   align-items: center;
   flex: 1;
+  min-height: 0;
 }
 
-canvas {
+.game-frame canvas {
   display: block;
-  width: 700px;
-  height: 500px;
+  width: 100%;
+  height: 100%;
   background: #0a0a1a;
 }
 

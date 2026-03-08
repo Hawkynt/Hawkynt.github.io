@@ -139,6 +139,10 @@ The player must immediately understand:
 - [x] As a player, I can move the miner with WASD/Arrow keys to dig adjacent tiles so that mining uses keyboard controls
 - [x] As a player, I can click tiles to navigate underground via BFS pathfinding so that mouse-based navigation is also supported
 - [x] As a player, I can mine different tile types (dirt, hard rock, ore) requiring different mining times so that not all tiles are equal
+- [x] As a player, I see a progress bar while mining a block that shows how long until it breaks so that mining feels deliberate
+- [x] As a player, deeper blocks take longer to mine (depth scaling) so that deep mining requires commitment
+- [x] As a player, excess resources drop on the ground when my inventory is full so that I can return for them later
+- [x] As a player, I can pick up dropped resources by walking over them so that nothing is permanently lost
 - [x] As a player, I can see mining debris particles, dust clouds, and floating text on tile destruction so that mining has visual feedback
 - [x] As a player, I can see an animated miner with pickaxe swing, idle bob, and directional facing so that the character feels alive
 
@@ -161,12 +165,41 @@ The player must immediately understand:
 - [x] As a player, I can upgrade dome HP so that my dome survives longer
 - [x] As a player, I can upgrade drill speed so that I mine tiles faster
 - [x] As a player, I can upgrade carry capacity so that I can haul more resources per trip
+- [x] As a player, I can upgrade move speed so that underground traversal becomes faster
+- [x] As a player, I can upgrade mining tools so that blocks break faster
+
+### Upgrade Tree Dialog
+- [x] As a player, I can press U on the surface to open a full-screen upgrade tree overlay so that I see all available upgrades organized as a branching node graph
+- [x] As a player, I can see four upgrade branches (Dome, Mining, Movement, Weapon) arranged as visual trees with parent-child node connections so that upgrade paths are clear
+- [x] As a player, I can see each upgrade node with name, icon, cost (in iron/cobalt/water), current level, and max level so that I know exactly what each upgrade offers and costs
+- [x] As a player, I can see available (affordable + prerequisites met) upgrades highlighted with bright borders and full opacity so that purchasable upgrades stand out
+- [x] As a player, I can see locked upgrades (prerequisites not met) grayed out with a lock icon and dashed border so that I understand the prerequisite chain
+- [x] As a player, I can see purchased/maxed upgrades with green checkmarks and green borders so that completed upgrades are visually distinct
+- [x] As a player, I can see affordable but prerequisite-locked upgrades with orange borders so that I know which upgrades I could buy if only the chain were met
+- [x] As a player, I can click an available upgrade node to purchase it with specific resource costs (iron, cobalt, water) so that upgrades use differentiated resource requirements
+- [x] As a player, I can press U or Escape to close the upgrade dialog so that returning to gameplay is quick
+- [x] As a player, the game pauses while the upgrade dialog is open so that I can plan upgrades without time pressure
+- [x] As a player, I can see my current iron, cobalt, and water totals at the top of the dialog along with total upgrades purchased vs available so that resource planning is informed
+- [x] As a player, I can scroll the upgrade tree if it extends beyond the screen so that all nodes remain accessible
+- [x] As a player, I can still use the quick upgrade panel in the corner for basic upgrades or press U for the comprehensive tree view so that both quick and detailed upgrade paths are available
+- [x] As a player, I can see that basic upgrades cost iron only, advanced upgrades cost iron + cobalt, and elite/gadget upgrades cost iron + cobalt + water so that deeper resource types are more valuable
 
 ### Gadget System
 - [x] As a player, I can select one of four primary gadgets at game start (Shield Generator, Repellent Field, Orchard, Droneyard) so that each run has a unique strategic tool
 - [x] As a player, I can discover 6 mine gadgets hidden in 2x2 golden chambers underground (Auto Cannon, Stun Laser, Blast Mining, Probe Scanner, Dome Armor, Condenser) so that exploration is rewarded with permanent run bonuses
 - [x] As a player, I can press B to use Blast Mining charges to destroy a 3x3 area so that I can quickly clear large sections
 - [x] As a player, I can press R to activate Repellent Field to slow all enemies to 40% for 5 seconds so that I have an emergency defense tool
+
+### Unlockable Tool/Gadget System
+- [x] As a player, I can unlock 5 tools from the upgrade panel's "Tools" section by spending iron and cobalt so that I gain new tactical abilities during a run
+- [x] As a player, I can unlock the Drill Gadget (25 iron) and press 1 to select it, giving 30% faster mining when digging consecutive tiles in the same column downward, so that deep vertical mining is efficient
+- [x] As a player, I can unlock Blast Mining tool (30 iron) and press 2 to clear a 3x3 area around the miner at the cost of 10 iron per use with a 5-second cooldown, so that I can quickly excavate large sections
+- [x] As a player, I can unlock the Scanner (35 iron + 10 cobalt) which passively reveals resource types within a 3-tile radius around the miner, so that I can plan mining routes efficiently
+- [x] As a player, I can unlock Reinforced Dome (50 iron + 25 cobalt) which passively reduces all dome damage by 25%, so that my dome survives longer against tough waves
+- [x] As a player, I can unlock the Teleporter (30 iron + 15 cobalt) and press 5 to instantly return to the dome surface with a 30-second cooldown, so that I can escape dangerous situations underground
+- [x] As a player, I can press number keys 1-5 to select or activate unlocked tools so that tool access is quick and intuitive
+- [x] As a player, I can see active tool indicators in both the surface and underground HUD so that I always know which tools are available and their cooldown status
+- [x] As a player, I can click tools in the upgrade panel to unlock, select, or activate them so that mouse-based tool management is supported
 
 ### Visual Effects
 - [x] As a player, I can see dome hit feedback with screen shake, flash, and shield impact arcs so that dome damage is immediately obvious
@@ -176,7 +209,7 @@ The player must immediately understand:
 - [x] As a player, I can see animated enemy sprites with damage flash effects so that enemies react visually to hits
 
 ### Tutorial and Persistence
-- [x] As a player, I can see a 3-page tutorial on first launch explaining movement, upgrades, and gadgets so that I understand the game loop quickly
+- [x] As a player, I can see a 4-page tutorial on first launch explaining movement, upgrades, gadgets, and tools so that I understand the game loop quickly
 - [x] As a player, I can press H to toggle the tutorial overlay at any time so that I can review instructions
 - [x] As a player, I can have my tutorial completion and high scores (top 5) persisted via localStorage so that my progress is remembered
 
@@ -189,7 +222,7 @@ The player must immediately understand:
 ### Planned Features
 - [ ] As a player, I can face a distinct tank enemy type (slow, high HP, high damage) so that there are more diverse ground threats
 - [ ] As a player, I can upgrade weapon range so that my turret can hit enemies from farther away
-- [ ] As a player, I can upgrade miner move speed so that underground traversal is faster
+- [x] As a player, I can upgrade miner move speed so that underground traversal is faster
 - [ ] As a player, I can encounter multiple mine biomes with distinct tile types and aesthetics so that runs have visual variety
 - [ ] As a player, I can play seeded runs for reproducible mine layouts so that I can share and compare specific runs
 
@@ -530,13 +563,73 @@ Each wave increases challenge through a combination of:
 
 ### Access
 
-* Upgrade menu opened with **U**
-* Accessible at the dome
-* May be allowed only on surface or at dome location; choose one and enforce it
+* **Quick panel**: small upgrade panel in the top-right corner of the surface view, click to purchase basic upgrades with generic resource costs
+* **Full upgrade tree**: press **U** on the surface to open a full-screen overlay showing a branching upgrade tree with 4 branches
+* Game pauses while the upgrade tree dialog is open
+* Press **U** or **Escape** to close the dialog
 
 For clarity in v1:
 
 * Upgrades may only be purchased while the player is on the surface and not in transition.
+
+### Upgrade Tree (Full Dialog)
+
+The upgrade tree organizes all upgrades into four branches displayed as a visual node graph:
+
+#### Dome Branch (defense)
+
+| Node             | Cost              | Prereqs      | Effect           |
+| ---------------- | ----------------- | ------------ | ---------------- |
+| Shield Cap. L1   | 20 Fe             | --           | +25 Max Dome HP  |
+| Shield Cap. L2   | 35 Fe + 10 Co     | Shield L1    | +25 Max Dome HP  |
+| Shield Cap. L3   | 50 Fe + 20 Co     | Shield L2    | +25 Max Dome HP  |
+| Shield Rech. L1  | 25 Fe             | --           | Shield recharge  |
+| Shield Rech. L2  | 40 Fe + 15 Co     | Rech. L1     | Shield recharge  |
+| Reinforced Dome  | 50 Fe + 25 Co     | Shield L2    | -25% dome damage |
+
+#### Mining Branch
+
+| Node             | Cost              | Prereqs      | Effect           |
+| ---------------- | ----------------- | ------------ | ---------------- |
+| Mining Tools L1  | 15 Fe             | --           | -20% mine time   |
+| Mining Tools L2  | 30 Fe + 10 Co     | Mining L1    | -20% mine time   |
+| Mining Tools L3  | 50 Fe + 25 Co     | Mining L2    | -20% mine time   |
+| Carry Cap. L1    | 20 Fe             | --           | +20 carry        |
+| Carry Cap. L2    | 35 Fe + 15 Co     | Carry L1     | +20 carry        |
+| Drill Gadget     | 25 Fe             | Mining L1    | 30% column bonus |
+
+#### Movement Branch
+
+| Node             | Cost              | Prereqs      | Effect           |
+| ---------------- | ----------------- | ------------ | ---------------- |
+| Move Speed L1    | 15 Fe             | --           | 15% faster       |
+| Move Speed L2    | 25 Fe + 8 Co      | Speed L1     | 15% faster       |
+| Move Speed L3    | 40 Fe + 15 Co     | Speed L2     | 15% faster       |
+| Teleporter       | 30 Fe + 15 Co     | Speed L1     | Instant return   |
+
+#### Weapon Branch
+
+| Node             | Cost              | Prereqs      | Effect           |
+| ---------------- | ----------------- | ------------ | ---------------- |
+| Fire Rate L1     | 20 Fe             | --           | +0.3 fire rate   |
+| Fire Rate L2     | 35 Fe + 12 Co     | Fire L1      | +0.3 fire rate   |
+| Damage L1        | 25 Fe             | --           | +5 damage        |
+| Damage L2        | 40 Fe + 15 Co     | Damage L1    | +5 damage        |
+| Damage L3        | 60 Fe + 30 Co     | Damage L2    | +5 damage        |
+| Drill Speed L1   | 20 Fe             | --           | Faster mining    |
+| Drill Speed L2   | 35 Fe + 10 Co     | Drill L1     | Faster mining    |
+| Blast Mining     | 30 Fe             | Damage L1    | 3x3 area clear   |
+| Scanner          | 35 Fe + 10 Co     | Drill Spd L1 | Passive reveal   |
+
+### Resource Costs by Tier
+
+* **Basic upgrades** (L1 nodes): cost iron only
+* **Advanced upgrades** (L2+ nodes): cost iron + cobalt
+* **Elite/Gadget upgrades**: cost iron + cobalt (+ water for future elite nodes)
+
+### Quick Upgrade Panel (Legacy)
+
+The small corner panel offers generic per-stat upgrades using pooled resources:
 
 ### Upgrade Categories
 
@@ -559,15 +652,18 @@ For clarity in v1:
 
 ### Upgrade Rules
 
-* Upgrades have escalating cost
-* Some later upgrades require Water or Cobalt in addition to Iron
+* Tree upgrades use specific resource costs (iron, cobalt, water)
+* Quick panel upgrades use pooled generic resource costs
+* Both systems stack -- tree and panel levels combine for stat effects
+* Prerequisites must be met in the tree before child nodes unlock
 * Purchased upgrades apply immediately
-* Upgrade menu clearly shows:
+* Upgrade tree clearly shows:
 
-  * current level
-  * next effect
-  * resource cost
-  * whether affordable
+  * current level and max level per node
+  * specific resource cost per node
+  * whether affordable (bright border)
+  * whether prerequisites are met (lock icon if not)
+  * purchased status (green checkmark)
 
 ### Example Progression Structure
 
@@ -614,6 +710,24 @@ Six gadgets are hidden in 2x2 golden chambers scattered underground. Walking ove
 * Chambers appear as golden `TILE_GADGET` tiles when revealed
 * Walking into the chamber picks up the gadget with a notification
 
+### Unlockable Tools (Implemented)
+
+Five tools can be unlocked from the upgrade panel's "Tools" section during gameplay by spending iron and cobalt:
+
+| Tool             | Key | Cost              | Effect                                                              |
+| ---------------- | --- | ----------------- | ------------------------------------------------------------------- |
+| Drill Gadget     | 1   | 25 iron           | Select to mine. 30% faster when mining consecutive same-column tiles downward |
+| Blast Mining     | 2   | 30 iron           | Clears 3x3 area around miner. Costs 10 iron per use, 5s cooldown   |
+| Scanner          | 3   | 35 iron + 10 Co   | Passive: reveals resource types within 3-tile radius around miner   |
+| Reinforced Dome  | 4   | 50 iron + 25 Co   | Passive: dome takes 25% less damage from all enemies                |
+| Teleporter       | 5   | 30 iron + 15 Co   | Instantly return to dome surface. Deposits carried resources. 30s cooldown |
+
+* Tools are unlocked permanently for the current run
+* Active tools (Drill) are selected/deselected by pressing their key or clicking in the panel
+* Passive tools (Scanner, Reinforced Dome) activate immediately on unlock
+* Activation tools (Blast Mining, Teleporter) fire on key press and have cooldowns
+* Tool status is shown in both surface and underground HUDs
+
 ---
 
 ## 8.11 HUD and UI
@@ -640,10 +754,11 @@ Six gadgets are hidden in 2x2 golden chambers scattered underground. Walking ove
 
 ### Tutorial Overlay (Implemented)
 
-* Three-page guide shown on first launch:
+* Four-page guide shown on first launch:
   1. **How to Play**: basic movement, mining, and view toggle controls
   2. **Upgrades & Tips**: upgrade shop, resource types, wave preparation
   3. **Gadgets**: primary gadget selection, mine gadget chambers, activation keys
+  4. **Tools**: unlockable tools from upgrade panel, keyboard shortcuts 1-5
 * Toggle with **H**
 * Persist completion / dismissal with localStorage
 
@@ -778,9 +893,14 @@ Readable pixel-art or stylized 2D rendering with bright effects over a dark sci-
 | Mouse Move (surface)         | Continuously aim turret barrel toward cursor          |
 | Left/Right or A/D (surface)  | Keyboard turret rotation                             |
 | Space / Tab                  | Toggle surface / underground                         |
-| U                            | Open upgrade menu                                    |
+| U                            | Open/close full-screen upgrade tree dialog (surface) |
 | R                            | Activate Repellent Field gadget (if available)        |
 | B                            | Use Blast Mining charge (if available)                |
+| 1                            | Select Drill Gadget tool (if unlocked)               |
+| 2                            | Activate Blast Mining tool (if unlocked)             |
+| 3                            | Scanner status (passive, if unlocked)                |
+| 4                            | Reinforced Dome status (passive, if unlocked)        |
+| 5                            | Activate Teleporter (if unlocked)                    |
 | Escape                       | Pause / Resume                                       |
 | H                            | Toggle tutorial overlay                              |
 | F2                           | Start new run / restart from menu or game over       |
@@ -925,23 +1045,74 @@ Not:
 * 3 resource types (iron, water, cobalt) with depth-based rarity
 * 2 base enemy types (ground walker, airborne flyer) with armored/shielded variants
 * Boss enemies every 5 waves from wave 15
-* 5 upgrades (weapon damage, fire rate, dome HP, drill speed, carry capacity)
+* 7 upgrades (weapon damage, fire rate, dome HP, drill speed, carry capacity, move speed, mining tools) via quick panel
+* Full-screen upgrade tree dialog with 24 nodes across 4 branches (Dome, Mining, Movement, Weapon), branching prerequisites, specific iron/cobalt/water costs
 * 4 primary gadgets (Shield Generator, Repellent Field, Orchard, Droneyard)
 * 6 mine gadgets found in 2x2 underground chambers (Auto Cannon, Stun Laser, Blast Mining, Probe Scanner, Dome Armor, Condenser)
-* 3-page tutorial with localStorage persistence
+* 5 unlockable tools integrated into upgrade tree (Drill Gadget, Blast Mining, Scanner, Reinforced Dome, Teleporter)
+* 4-page tutorial with localStorage persistence
 * Local high scores (top 5)
 * Full visual feedback (particles, screen shake, floating text, glow effects, starfield)
 * BFS pathfinding for mouse-based underground navigation
 * Gadget selection screen at game start
+* Keyboard shortcuts 1-5 for tool selection/activation
 
 ## 14.2 Planned Content
 
 * Tank enemy type (distinct from boss)
 * Weapon range upgrade
-* Move speed upgrade for underground traversal
 * Multiple mine themes / biomes
 * Challenge modifiers / elite wave modifiers
 * Seeded runs for reproducible gameplay
+
+### Planned Additional Gadgets (inspired by original Dome Keeper)
+
+**Surface Gadgets:**
+* Buzz Saw — continuous damage to nearby monsters on the dome surface
+* Shockwave Hammer — manual shockwave creation with stun effect
+* Missile Launcher — target-seeking manual combat ability
+* Spire — destroys incoming enemy projectiles
+
+**Mine/Cellar Gadgets:**
+* Drillbert — autonomous creature that drills straight lines
+* Drilling Rig — deep mining with optional side driller, breaks bedrock
+* Furnace — produces smoke that delays monster attacks
+* Iron Worms — portable extractors for efficient iron harvesting
+* Lift — automated resource transport via orbs
+* Mushroom Farm — produces speed and mining buff mushrooms
+* Resource Converter — converts between water and iron
+* Teleporter — two-way portal between dome and mine
+
+**Keeper Suit Gadgets:**
+* Prospecting Meter — HUD meter showing distance to nearest resources
+* Resource Packer — compresses multiple resources into bundles
+* Suit Blaster — explosive mining from the player's suit
+
+**Primary Gadget Upgrade Trees (branching, mutually exclusive choices):**
+
+* Shield:
+  * Electro Blast / Invulnerability / Reflection active abilities
+  * Shield Strength line (40 → 60 → 80 → 100 HP absorb)
+* Repellent:
+  * Wither line (weakens enemies, reducing damage dealt)
+  * Debilitate line (slows monsters, increasing wave delay)
+  * Overcharge Repellent (use water to boost repellent strength)
+* Orchard:
+  * Fruit line (Fruit 1 → 2 → 3: increased buff duration, mining strength, growth speed)
+  * Snare Roots line (traps medium monsters) OR Vine Canopy line (projectile shield on dome)
+  * Overcharge Orchard (use water to boost orchard battle ability)
+* Droneyard:
+  * Battle Grid (defensive formation) or Parasitic Drones
+  * Transport Drone line (speed, carry capacity)
+  * Combat Drone line (damage, fire rate)
+
+**Mine Gadget Upgrade Trees:**
+* Auto Cannon: rapid fire vs. shotgun configurations
+* Stun Laser: duration vs. chain stun
+* Blast Mining: charge capacity, explosion radius
+* Probe Scanner: range vs. duration
+* Dome Armor: HP amount vs. regen rate
+* Condenser: yield vs. speed
 
 ---
 
@@ -1028,22 +1199,30 @@ These decisions have been resolved and implemented:
 * Smooth scene transition animation (fade-out/fade-in)
 * Destructible underground tile grid (14x10)
 * Three resources (iron, water, cobalt) with depth-based rarity
-* Resource hauling and dome deposit mechanic with carry capacity
+* Resource hauling and dome deposit mechanic with carry capacity and overflow drops
 * Timed enemy waves (40s interval) with gradual difficulty scaling
 * Manual-aim dome turret weapon with mouse tracking and aim-assist
 * Two enemy types (ground walker, airborne flyer) with armored/shielded/boss variants
 * Gradual difficulty: one-shot wave 1, armored wave 9+, shielded wave 11+, bosses wave 15+
-* 5 upgrades: weapon damage, fire rate, dome HP, drill speed, carry capacity
+* 7 upgrades: weapon damage, fire rate, dome HP, drill speed, carry capacity, move speed, mining tools
+* Full-screen upgrade tree dialog (U key) with 4 branches (Dome, Mining, Movement, Weapon), 24 nodes, branching prerequisites, specific resource costs (iron/cobalt/water), visual node graph with connection lines, hover highlights, and scroll support
+* Quick upgrade panel in corner for fast purchases + full tree for comprehensive planning
+* Game pauses during upgrade dialog; close with U or Escape
 * Gadget selection screen at game start (4 primary gadgets)
 * 6 mine gadgets found in hidden 2x2 underground chambers
+* 5 unlockable tools integrated into upgrade tree (Drill Gadget, Blast Mining, Scanner, Reinforced Dome, Teleporter)
+* Keyboard shortcuts 1-5 for tool selection and activation
+* Tool HUD indicators on both surface and underground views
 * BFS pathfinding for mouse-based underground navigation
 * Animated miner with pickaxe swing, idle bob, and directional facing
 * Animated enemy sprites with legs, wings, eye blinking, and damage flash
 * Dome hit feedback with screen shake, flash, and shield impact arcs
+* Time-based mining with depth and tile-type scaling, visible progress bar
+* Dropped resources on the ground when inventory is full, picked up by walking over
 * Laser glow, impact sparks, mining debris particles, dust clouds, floating text
 * Resource reveal glow and ambient tile sparkles underground
 * Surface parallax starfield background
-* Three-page tutorial with localStorage persistence
+* Four-page tutorial with localStorage persistence
 * Pause, restart, and local high scores (top 5)
 * Responsive canvas scaling in desktop container (fills parent via flexbox)
 * OS integration: window title updates, WM_SIZE/WM_THEMECHANGED handling
@@ -1066,7 +1245,9 @@ This is deployment/publishing scope, not core game design scope. Separate it unl
 
 ---
 
-## 21. Appendix: Implemented Upgrade Table
+## 21. Appendix: Implemented Upgrade Tables
+
+### Quick Panel Upgrades (legacy, pooled resource costs)
 
 | Category | Upgrade        | Base Cost | Per Level | Effect                       |
 | -------- | -------------- | --------: | --------: | ---------------------------- |
@@ -1075,10 +1256,41 @@ This is deployment/publishing scope, not core game design scope. Separate it unl
 | Dome     | Dome HP        |        40 |        25 | Increases maximum dome HP     |
 | Mining   | Drill Speed    |        20 |        10 | Faster tile mining            |
 | Mining   | Carry Capacity |        20 |        10 | Carry more resource units     |
+| Mining   | Move Speed     |        25 |        15 | 15% faster movement per level |
+| Mining   | Mining Tools   |        35 |        20 | 20% faster mining per level   |
+
+### Upgrade Tree (specific resource costs, branching prerequisites)
+
+| Branch   | Node            | Iron | Cobalt | Water | Prereqs        | Type   | Effect                          |
+| -------- | --------------- | ---: | -----: | ----: | -------------- | ------ | ------------------------------- |
+| Dome     | Shield Cap. L1  |   20 |      0 |     0 | --             | stat   | +25 Max Dome HP                 |
+| Dome     | Shield Cap. L2  |   35 |     10 |     0 | Shield L1      | stat   | +25 Max Dome HP                 |
+| Dome     | Shield Cap. L3  |   50 |     20 |     0 | Shield L2      | stat   | +25 Max Dome HP                 |
+| Dome     | Shield Rech. L1 |   25 |      0 |     0 | --             | stat   | Shield recharge bonus           |
+| Dome     | Shield Rech. L2 |   40 |     15 |     0 | Rech. L1       | stat   | Shield recharge bonus           |
+| Dome     | Reinforced Dome |   50 |     25 |     0 | Shield L2      | gadget | -25% dome damage                |
+| Mining   | Mining Tools L1 |   15 |      0 |     0 | --             | stat   | -20% mine time                  |
+| Mining   | Mining Tools L2 |   30 |     10 |     0 | Mining L1      | stat   | -20% mine time                  |
+| Mining   | Mining Tools L3 |   50 |     25 |     0 | Mining L2      | stat   | -20% mine time                  |
+| Mining   | Carry Cap. L1   |   20 |      0 |     0 | --             | stat   | +20 carry capacity              |
+| Mining   | Carry Cap. L2   |   35 |     15 |     0 | Carry L1       | stat   | +20 carry capacity              |
+| Mining   | Drill Gadget    |   25 |      0 |     0 | Mining L1      | gadget | 30% faster column mining        |
+| Movement | Move Speed L1   |   15 |      0 |     0 | --             | stat   | 15% faster movement             |
+| Movement | Move Speed L2   |   25 |      8 |     0 | Speed L1       | stat   | 15% faster movement             |
+| Movement | Move Speed L3   |   40 |     15 |     0 | Speed L2       | stat   | 15% faster movement             |
+| Movement | Teleporter      |   30 |     15 |     0 | Speed L1       | gadget | Instant surface return          |
+| Weapon   | Fire Rate L1    |   20 |      0 |     0 | --             | stat   | +0.3 fire rate                  |
+| Weapon   | Fire Rate L2    |   35 |     12 |     0 | Fire L1        | stat   | +0.3 fire rate                  |
+| Weapon   | Damage L1       |   25 |      0 |     0 | --             | stat   | +5 weapon damage                |
+| Weapon   | Damage L2       |   40 |     15 |     0 | Damage L1      | stat   | +5 weapon damage                |
+| Weapon   | Damage L3       |   60 |     30 |     0 | Damage L2      | stat   | +5 weapon damage                |
+| Weapon   | Drill Speed L1  |   20 |      0 |     0 | --             | stat   | Faster tile mining              |
+| Weapon   | Drill Speed L2  |   35 |     10 |     0 | Drill Spd L1   | stat   | Faster tile mining              |
+| Weapon   | Blast Mining    |   30 |      0 |     0 | Damage L1      | gadget | 3x3 area blast (10 Fe per use)  |
+| Weapon   | Scanner         |   35 |     10 |     0 | Drill Spd L1   | gadget | Passive 3-tile ore reveal       |
 
 ### Planned Upgrades
 
 | Category | Upgrade    | Status      |
 | -------- | ---------- | ----------- |
 | Weapon   | Range      | Not yet     |
-| Mining   | Move Speed | Not yet     |
