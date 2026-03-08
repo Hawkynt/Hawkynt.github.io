@@ -11,6 +11,8 @@ body {
   justify-content: center;
   align-items: center;
   flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 canvas {
