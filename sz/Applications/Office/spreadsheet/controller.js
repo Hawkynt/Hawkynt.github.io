@@ -5146,8 +5146,7 @@
       case 'italic': toggleFormat('italic'); break;
       case 'underline': toggleFormat('underline'); break;
       case 'strikethrough': toggleFormat('strikethrough'); break;
-      case 'font-color': showColorPalette(document.getElementById('btn-font-color'), (c) => { applyFormatToSelection('textColor', c); document.getElementById('font-color-ind').style.backgroundColor = c; }); break;
-      case 'bg-color': showColorPalette(document.getElementById('btn-bg-color'), (c) => { applyFormatToSelection('bgColor', c); document.getElementById('bg-color-ind').style.backgroundColor = c; }); break;
+      // font-color and bg-color are wired directly below (not via data-action)
       case 'align-left': applyFormatToSelection('align', 'left'); break;
       case 'align-center': applyFormatToSelection('align', 'center'); break;
       case 'align-right': applyFormatToSelection('align', 'right'); break;
@@ -5852,7 +5851,7 @@
       case 'row-hide': S().hiddenRows.add(activeCell.row); rebuildGrid(); break;
       case 'row-unhide': S().hiddenRows.clear(); rebuildGrid(); break;
       case 'sheet-rename': showPrompt('Rename Sheet', 'New name:', S().name).then(n => { if (n && n.trim()) { S().name = n.trim(); renderSheetTabs(); setDirty(true); } }); break;
-      case 'sheet-tab-color': showColorPalette(sheetTabsEl, (c) => { S().tabColor = c; renderSheetTabs(); }); break;
+      // sheet-tab-color is wired directly below (not via data-action)
       case 'freeze-panes': S().freezeRow = activeCell.row; S().freezeCol = activeCell.col; rebuildGrid(); setDirty(true); break;
       case 'unfreeze-panes': S().freezeRow = 0; S().freezeCol = 0; rebuildGrid(); setDirty(true); break;
       case 'borders-all': applyFormatToSelection('borderAll', { style: 'thin', color: '#000000' }); break;
@@ -6010,6 +6009,23 @@
     const el = document.getElementById(id);
     if (el) wireSwatchPalette(el);
   }
+
+  // Wire ribbon font-color, bg-color, and tab-color buttons
+  const fontColorInd = document.getElementById('font-color-ind');
+  const bgColorInd = document.getElementById('bg-color-ind');
+  if (fontColorInd)
+    document.getElementById('btn-font-color').addEventListener('click', () =>
+      showColorPalette(fontColorInd, (c) => { applyFormatToSelection('textColor', c); setSwatchColor(fontColorInd, c); })
+    );
+  if (bgColorInd)
+    document.getElementById('btn-bg-color').addEventListener('click', () =>
+      showColorPalette(bgColorInd, (c) => { applyFormatToSelection('bgColor', c); setSwatchColor(bgColorInd, c); })
+    );
+  const tabColorBtn = document.getElementById('btn-tab-color');
+  if (tabColorBtn)
+    tabColorBtn.addEventListener('click', () =>
+      showColorPalette(tabColorBtn, (c) => { S().tabColor = c; renderSheetTabs(); })
+    );
 
   const cmd = Kernel32.GetCommandLine();
   if (cmd.path) {
