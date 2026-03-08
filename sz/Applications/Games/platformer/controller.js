@@ -947,6 +947,7 @@
 
     ctx.restore(); // end camera transform
 
+    screenShake.restore(ctx);
     ctx.restore(); // end shake
 
     // HUD
