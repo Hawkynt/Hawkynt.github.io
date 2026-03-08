@@ -1064,6 +1064,8 @@
     particles.draw(ctx);
     floatingText.draw(ctx);
 
+    screenShake.restore(ctx);
+
     // HUD — distance
     ctx.save();
     ctx.font = 'bold 24px sans-serif';

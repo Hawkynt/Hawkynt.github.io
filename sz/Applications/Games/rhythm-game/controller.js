@@ -1121,6 +1121,8 @@
     particles.draw(ctx);
     floatingText.draw(ctx);
 
+    screenShake.restore(ctx);
+
     // Screen flash overlay (triggers on PERFECT hits)
     if (screenFlashAlpha > 0) {
       ctx.save();

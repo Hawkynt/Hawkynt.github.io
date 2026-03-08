@@ -1463,6 +1463,7 @@
 
     particles.draw(ctx);
     floatingText.draw(ctx);
+    screenShake.restore(ctx);
     ctx.restore();
 
     const overlayTitle = isTron() ? 'TRON' : isMaze() ? 'DUNGEON' : isZen() ? 'ZEN' : 'SNAKE';

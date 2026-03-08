@@ -2161,6 +2161,7 @@
 
     /* Intermission renders its own scene */
     if (gameState === 'intermission') {
+      screenShake.restore(ctx);
       ctx.restore();
       drawIntermission();
       return;
@@ -2169,6 +2170,7 @@
     /* Boss intro overlay */
     if (gameState === 'bossIntro') {
       drawMaze();
+      screenShake.restore(ctx);
       ctx.restore();
       drawBossIntro();
       return;
@@ -2220,6 +2222,7 @@
     particles.draw(ctx);
     floatingText.draw(ctx);
 
+    screenShake.restore(ctx);
     ctx.restore();
 
     /* Draw boss health bar outside shake transform */

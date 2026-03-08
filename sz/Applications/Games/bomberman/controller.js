@@ -1487,6 +1487,8 @@
     particles.draw(ctx);
     floatingText.draw(ctx);
 
+    screenShake.restore(ctx);
+
     // HUD overlay
     if (state === STATE_READY) {
       ctx.save();

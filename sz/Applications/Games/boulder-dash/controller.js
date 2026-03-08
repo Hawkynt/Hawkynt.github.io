@@ -956,6 +956,7 @@
     particles.draw(ctx);
     floatingText.draw(ctx);
 
+    screenShake.restore(ctx);
     ctx.restore();
 
     // HUD overlay

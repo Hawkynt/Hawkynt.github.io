@@ -1517,6 +1517,7 @@
     ctx.fillStyle = '#fff';
     ctx.fillText(hudText, CANVAS_W - 14, COUNTER_Y - 18);
 
+    screenShake.restore(ctx);
     ctx.restore();
 
     drawPowerups();

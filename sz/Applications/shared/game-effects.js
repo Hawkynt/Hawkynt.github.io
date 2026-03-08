@@ -186,7 +186,12 @@
     }
 
     apply(ctx) {
+      ctx.save();
       ctx.translate(this.#offsetX, this.#offsetY);
+    }
+
+    restore(ctx) {
+      ctx.restore();
     }
 
     get active() { return this.#elapsed < this.#duration; }

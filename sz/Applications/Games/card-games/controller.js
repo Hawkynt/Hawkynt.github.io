@@ -702,6 +702,7 @@
       if (SZ.CardThemes) SZ.CardThemes.drawShimmers(ctx);
       particles.draw(ctx);
       floatingText.draw(ctx);
+      screenShake.restore(ctx);
 
       if (state === STATE_PLAYING) drawMenuButton();
       if (state === STATE_PAUSED) drawPauseOverlay();
