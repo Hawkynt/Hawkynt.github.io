@@ -42,6 +42,10 @@
   let macroSavedMacros = [];
   let macroRecordingIndicator = null;
 
+  // Explicit color overrides -- set by the color picker, persist until the user picks a new color or clears formatting
+  let pendingFontColor = null;
+  let pendingHighlightColor = null;
+
   const editor = document.getElementById('editor');
   const editorWrapper = document.getElementById('editor-wrapper');
 
@@ -92,6 +96,121 @@
   editor.addEventListener('input', () => {
     markDirty();
     updateStatusBar();
+  });
+
+  // ── Pending-color enforcement ──────────────────────────────────
+  // When the user explicitly picks a font/highlight color via the color picker
+  // with a collapsed cursor, the chosen color is stored in pendingFontColor /
+  // pendingHighlightColor.  The ZWS span inserted at pick-time works only as
+  // long as the cursor stays inside it.  Navigation keys (End, Home, arrows,
+  // Page Up/Down) move the cursor out of that span, so subsequent typing would
+  // revert to the surrounding color.
+  //
+  // Fix: after any cursor-movement key, re-inject a ZWS span at the new cursor
+  // position so the browser's native contentEditable typing inherits the color.
+  // The previous ZWS-only spans are cleaned up to avoid DOM clutter.
+
+  const _NAVIGATION_KEYS = new Set([
+    'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
+    'Home', 'End', 'PageUp', 'PageDown'
+  ]);
+
+  /** Remove any ZWS-only spans (leftover color sentinels) from the editor,
+   *  skipping the one the caret currently sits in (if any). */
+  function _cleanupZwsSpans() {
+    const sel = window.getSelection();
+    const caretNode = sel.rangeCount ? sel.focusNode : null;
+    for (const span of Array.from(editor.querySelectorAll('span'))) {
+      if (span.textContent !== '\u200B' || span.querySelector('*'))
+        continue;
+      // Don't remove the span the caret is currently inside
+      if (caretNode && (span === caretNode || span.contains(caretNode)))
+        continue;
+      span.remove();
+    }
+  }
+
+  /**
+   * If a pending color is active and the cursor is collapsed, ensure the caret
+   * sits inside a span styled with the pending color so that subsequent typing
+   * inherits it.  Returns true if a sentinel was (re)inserted.
+   */
+  function _ensurePendingColorAtCaret() {
+    if (!pendingFontColor && !pendingHighlightColor)
+      return false;
+
+    const sel = window.getSelection();
+    if (!sel.rangeCount || !sel.isCollapsed)
+      return false;
+
+    // Check if cursor is already inside a correctly-styled element
+    let node = sel.focusNode;
+    if (node && node.nodeType === 3)
+      node = node.parentElement;
+    if (node) {
+      let fontMatch = !pendingFontColor; // no pending = trivially matched
+      let hlMatch = !pendingHighlightColor;
+
+      if (pendingFontColor) {
+        const tmp = document.createElement('span');
+        tmp.style.color = pendingFontColor;
+        editor.appendChild(tmp);
+        fontMatch = window.getComputedStyle(node).color === window.getComputedStyle(tmp).color;
+        tmp.remove();
+      }
+      if (pendingHighlightColor) {
+        const tmp = document.createElement('span');
+        tmp.style.backgroundColor = pendingHighlightColor;
+        editor.appendChild(tmp);
+        hlMatch = window.getComputedStyle(node).backgroundColor === window.getComputedStyle(tmp).backgroundColor;
+        tmp.remove();
+      }
+      if (fontMatch && hlMatch)
+        return false; // already correct
+    }
+
+    // Insert a new ZWS sentinel at the caret position
+    const span = document.createElement('span');
+    if (pendingFontColor)
+      span.style.color = pendingFontColor;
+    if (pendingHighlightColor)
+      span.style.backgroundColor = pendingHighlightColor;
+    span.textContent = '\u200B';
+
+    const range = sel.getRangeAt(0);
+    range.insertNode(span);
+    range.setStart(span, 1);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    return true;
+  }
+
+  editor.addEventListener('keydown', (e) => {
+    if (!_NAVIGATION_KEYS.has(e.key))
+      return;
+    if (!pendingFontColor && !pendingHighlightColor)
+      return;
+
+    // Let the browser process the navigation first, then re-inject sentinel
+    requestAnimationFrame(() => {
+      _cleanupZwsSpans();
+      _ensurePendingColorAtCaret();
+    });
+  });
+
+  // Also handle mouse clicks that move the caret while a pending color is active
+  editor.addEventListener('pointerup', () => {
+    if (!pendingFontColor && !pendingHighlightColor)
+      return;
+
+    requestAnimationFrame(() => {
+      const sel = window.getSelection();
+      if (sel.isCollapsed) {
+        _cleanupZwsSpans();
+        _ensurePendingColorAtCaret();
+      }
+    });
   });
 
   // Update status bar on selection change to show selected word count
@@ -418,12 +537,27 @@
     const sel = window.getSelection();
     const savedRange = sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
     showColorPalette(fontColorSwatch, (color) => {
+      editor.focus();
       if (savedRange) {
         sel.removeAllRanges();
         sel.addRange(savedRange);
       }
-      editor.focus();
-      document.execCommand('foreColor', false, color);
+      if (savedRange && !savedRange.collapsed) {
+        document.execCommand('foreColor', false, color);
+        pendingFontColor = color; // remember so typing at other positions keeps this color
+      } else if (sel.rangeCount) {
+        // Collapsed cursor: insert a styled zero-width space so subsequent typing inherits the color
+        const span = document.createElement('span');
+        span.style.color = color;
+        span.textContent = '\u200B';
+        const range = sel.getRangeAt(0);
+        range.insertNode(span);
+        range.setStart(span, 1);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        pendingFontColor = color; // remember for cursor-movement resilience
+      }
       fontColorSwatch.dataset.color = color;
       fontColorSwatch.style.background = color;
     });
@@ -433,12 +567,26 @@
     const sel = window.getSelection();
     const savedRange = sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
     showColorPalette(highlightSwatch, (color) => {
+      editor.focus();
       if (savedRange) {
         sel.removeAllRanges();
         sel.addRange(savedRange);
       }
-      editor.focus();
-      document.execCommand('hiliteColor', false, color);
+      if (savedRange && !savedRange.collapsed) {
+        document.execCommand('hiliteColor', false, color);
+        pendingHighlightColor = color;
+      } else if (sel.rangeCount) {
+        const span = document.createElement('span');
+        span.style.backgroundColor = color;
+        span.textContent = '\u200B';
+        const range = sel.getRangeAt(0);
+        range.insertNode(span);
+        range.setStart(span, 1);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        pendingHighlightColor = color;
+      }
       highlightSwatch.dataset.color = color;
       highlightSwatch.style.background = color;
     });
@@ -586,16 +734,6 @@
       }
     }
 
-    // Fore color
-    const foreColor = document.queryCommandValue('foreColor');
-    if (foreColor) {
-      const hex = rgbToHex(foreColor);
-      if (hex) {
-        fontColorSwatch.dataset.color = hex;
-        fontColorSwatch.style.background = hex;
-      }
-    }
-
   }
 
   function rgbToHex(color) {
@@ -622,6 +760,8 @@
   function doClearFormatting() {
     document.execCommand('removeFormat', false, null);
     document.execCommand('formatBlock', false, '<p>');
+    pendingFontColor = null;
+    pendingHighlightColor = null;
     editor.focus();
     updateRibbonState();
   }
@@ -2968,6 +3108,8 @@
     editor.innerHTML = html;
     savedContent = editor.innerHTML;
     dirty = false;
+    pendingFontColor = null;
+    pendingHighlightColor = null;
     updateTitle();
     updateStatusBar();
     updateRibbonState();
@@ -2993,6 +3135,8 @@
     currentFileName = 'Untitled';
     currentFileFormat = 'docx';
     dirty = false;
+    pendingFontColor = null;
+    pendingHighlightColor = null;
     updateTitle();
     updateStatusBar();
     editor.focus();

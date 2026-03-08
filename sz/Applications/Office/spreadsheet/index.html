@@ -125,11 +125,11 @@
         <button id="btn-underline" class="rb-btn rb-fmt" data-action="underline" title="Underline (Ctrl+U)"><u>U</u></button>
         <button id="btn-strikethrough" class="rb-btn rb-fmt" data-action="strikethrough" title="Strikethrough"><s>S</s></button>
         <span class="rb-sep-v"></span>
-        <button id="btn-font-color" class="rb-btn rb-fmt rb-color-btn" data-action="font-color" title="Font Color">
-          <b>A</b><span class="rb-color-ind" id="font-color-ind" style="background:#c00000;"></span>
+        <button id="btn-font-color" class="rb-btn rb-fmt rb-color-btn" title="Font Color">
+          <b>A</b><span class="rb-color-ind" id="font-color-ind" style="background:#c00000;" data-color="#c00000"></span>
         </button>
-        <button id="btn-bg-color" class="rb-btn rb-fmt rb-color-btn" data-action="bg-color" title="Fill Color">
-          <span style="font-size:12px;">&#9608;</span><span class="rb-color-ind" id="bg-color-ind" style="background:#ffff00;"></span>
+        <button id="btn-bg-color" class="rb-btn rb-fmt rb-color-btn" title="Fill Color">
+          <span style="font-size:12px;">&#9608;</span><span class="rb-color-ind" id="bg-color-ind" style="background:#ffff00;" data-color="#ffff00"></span>
         </button>
       </div>
     </div>
@@ -741,7 +741,7 @@
         <button class="rb-btn rb-btn-sm" data-action="sheet-rename" title="Rename Sheet">
           <span class="rb-icon">&#128196;</span><span class="rb-label">Rename Sheet</span>
         </button>
-        <button class="rb-btn rb-btn-sm" data-action="sheet-tab-color" title="Tab Color">
+        <button id="btn-tab-color" class="rb-btn rb-btn-sm" title="Tab Color">
           <span class="rb-icon">&#127912;</span><span class="rb-label">Tab Color</span>
         </button>
         <div class="rb-dropdown">
