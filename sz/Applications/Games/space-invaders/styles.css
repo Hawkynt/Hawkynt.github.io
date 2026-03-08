@@ -19,6 +19,7 @@ body {
   padding: 5px;
   background: var(--sz-color-button-face);
   flex: 1;
+  min-height: 0;
   display: flex;
   overflow: hidden;
 }
