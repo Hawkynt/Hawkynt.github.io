@@ -31,7 +31,7 @@
   const MAX_HIGH_SCORES = 5;
 
   /* -- Underground Grid -- */
-  const GRID_COLS = 30;
+  const GRID_COLS = 110;
   const GRID_ROWS = 40;
   const TILE_SIZE = 40;
   const GRID_OFFSET_X = 70;
@@ -143,12 +143,70 @@
     [TILE_RUBY]: 'ruby'
   };
 
+  const TILE_DISPLAY_NAMES = {
+    [TILE_EMPTY]: 'Empty',
+    [TILE_DIRT]: 'Dirt',
+    [TILE_IRON]: 'Iron Ore',
+    [TILE_WATER]: 'Water Crystal',
+    [TILE_COBALT]: 'Cobalt',
+    [TILE_GADGET]: 'Gadget Chamber',
+    [TILE_COPPER]: 'Copper Ore',
+    [TILE_GOLD]: 'Gold Vein',
+    [TILE_TIN]: 'Tin Ore',
+    [TILE_SILVER]: 'Silver Deposit',
+    [TILE_LEAD]: 'Lead Ore',
+    [TILE_COAL]: 'Coal',
+    [TILE_QUARTZ]: 'Quartz',
+    [TILE_REDSTONE]: 'Redstone',
+    [TILE_DIAMOND]: 'Diamond',
+    [TILE_EMERALD]: 'Emerald',
+    [TILE_RUBY]: 'Ruby'
+  };
+
   // All resource tile types (used for detection in various places)
   const RESOURCE_TILES = [
     TILE_IRON, TILE_WATER, TILE_COBALT,
     TILE_COPPER, TILE_GOLD, TILE_TIN, TILE_SILVER, TILE_LEAD, TILE_COAL,
     TILE_QUARTZ, TILE_REDSTONE, TILE_DIAMOND, TILE_EMERALD, TILE_RUBY
   ];
+
+  /* -- Depth-based dirt tiers (10 levels) -- */
+  // Each tier: { name, base, highlight, shadow } colors
+  const DEPTH_TIERS = [
+    { name: 'Sand',        base: '#c2a55a', highlight: '#d4bb78', shadow: '#8a7438' },  // 0-10%
+    { name: 'Loose Soil',  base: '#8b6c42', highlight: '#a88558', shadow: '#5e4628' },  // 10-20%
+    { name: 'Dirt',        base: '#4a3a2a', highlight: '#6a5540', shadow: '#2a1a0a' },  // 20-30% (original)
+    { name: 'Packed Dirt', base: '#3d2e1e', highlight: '#584630', shadow: '#221508' },  // 30-40%
+    { name: 'Clay',        base: '#6b3a2a', highlight: '#885040', shadow: '#3e1e12' },  // 40-50%
+    { name: 'Gravel',      base: '#5a5040', highlight: '#706858', shadow: '#3a3228' },  // 50-60%
+    { name: 'Soft Stone',  base: '#7a7a7a', highlight: '#949494', shadow: '#505050' },  // 60-70%
+    { name: 'Stone',       base: '#5a5a5a', highlight: '#707070', shadow: '#383838' },  // 70-80%
+    { name: 'Hard Stone',  base: '#3e3e3e', highlight: '#525252', shadow: '#222222' },  // 80-90%
+    { name: 'Bedrock',     base: '#1e1e1e', highlight: '#303030', shadow: '#0a0a0a' }   // 90-100%
+  ];
+
+  // Get depth tier index (0-9) for a given row
+  function getDepthTier(row) {
+    const t = Math.floor((row / GRID_ROWS) * DEPTH_TIERS.length);
+    return Math.min(t, DEPTH_TIERS.length - 1);
+  }
+
+  // Get depth-based colors for dirt at a given row
+  function getDepthDirtColors(row) {
+    return DEPTH_TIERS[getDepthTier(row)];
+  }
+
+  // Depth-based mining time multiplier: 0.5 at surface, ~4.0 at bottom
+  function getDepthMineMultiplier(row) {
+    return 0.5 + (row / GRID_ROWS) * 3.5;
+  }
+
+  // Get the display color for any tile, accounting for depth-based dirt
+  function getTileBaseColor(tile, row) {
+    if (tile === TILE_DIRT)
+      return getDepthDirtColors(row).base;
+    return TILE_COLORS[tile] || '#654';
+  }
 
   /* -- Dome -- */
   const DOME_RADIUS = 80;
@@ -241,8 +299,9 @@
   // type: 'stat' = upgradeable stat, 'gadget' = unlockable tool/gadget (1 level)
   const UPGRADE_TREE = [
     // =============================================================
-    // === Dome Branch (10 nodes) ===
+    // === Dome Branch (25 nodes) ===
     // =============================================================
+    // -- Shield Capacity chain (7 levels) --
     { id: 'shield1', name: 'Shield Cap. L1', icon: '\u{1F6E1}', branch: 'dome',
       costs: [{ iron: 20 }], maxLevel: 1, prereqs: [],
       upgradeKey: 'domeHP', type: 'stat' },
@@ -258,28 +317,74 @@
     { id: 'shield5', name: 'Shield Cap. L5', icon: '\u{1F6E1}', branch: 'dome',
       costs: [{ gold: 20, cobalt: 30, diamond: 5 }], maxLevel: 1, prereqs: ['shield4'],
       upgradeKey: 'domeHP', type: 'stat' },
+    { id: 'shield6', name: 'Shield Cap. L6', icon: '\u{1F6E1}', branch: 'dome',
+      costs: [{ gold: 30, diamond: 10, ruby: 5 }], maxLevel: 1, prereqs: ['shield5'],
+      upgradeKey: 'domeHP', type: 'stat' },
+    { id: 'shield7', name: 'Shield Cap. L7', icon: '\u{1F6E1}', branch: 'dome',
+      costs: [{ diamond: 15, ruby: 12, emerald: 10 }], maxLevel: 1, prereqs: ['shield6'],
+      upgradeKey: 'domeHP', type: 'stat' },
+    // -- Shield Recharge chain (4 levels) --
     { id: 'shieldRecharge1', name: 'Shield Rech. L1', icon: '\u26A1', branch: 'dome',
       costs: [{ iron: 25 }], maxLevel: 1, prereqs: [],
       upgradeKey: 'shieldRecharge', type: 'stat' },
     { id: 'shieldRecharge2', name: 'Shield Rech. L2', icon: '\u26A1', branch: 'dome',
       costs: [{ iron: 40, cobalt: 15, water: 10 }], maxLevel: 1, prereqs: ['shieldRecharge1'],
       upgradeKey: 'shieldRecharge', type: 'stat' },
+    { id: 'shieldRecharge3', name: 'Shield Rech. L3', icon: '\u26A1', branch: 'dome',
+      costs: [{ iron: 55, silver: 12, water: 20 }], maxLevel: 1, prereqs: ['shieldRecharge2'],
+      upgradeKey: 'shieldRecharge', type: 'stat' },
+    { id: 'shieldRecharge4', name: 'Shield Rech. L4', icon: '\u26A1', branch: 'dome',
+      costs: [{ gold: 15, quartz: 20, cobalt: 25 }], maxLevel: 1, prereqs: ['shieldRecharge3'],
+      upgradeKey: 'shieldRecharge', type: 'stat' },
+    // -- Gadgets --
     { id: 'reinforcedDome', name: 'Reinforced Dome', icon: '\u{1F6E1}', branch: 'dome',
       costs: [{ iron: 50, cobalt: 25, copper: 15 }], maxLevel: 1, prereqs: ['shield2'],
       upgradeKey: 'reinforcedDome', type: 'gadget' },
-    { id: 'autoRepair', name: 'Auto-Repair', icon: '\u{1F527}', branch: 'dome',
+    { id: 'autoRepair', name: 'Auto-Repair L1', icon: '\u{1F527}', branch: 'dome',
       costs: [{ iron: 40, copper: 20, coal: 15 }], maxLevel: 1, prereqs: ['shieldRecharge2'],
       upgradeKey: 'autoRepair', type: 'gadget' },
+    { id: 'autoRepair2', name: 'Auto-Repair L2', icon: '\u{1F527}', branch: 'dome',
+      costs: [{ silver: 20, gold: 10, cobalt: 20 }], maxLevel: 1, prereqs: ['autoRepair'],
+      upgradeKey: 'autoRepairSpeed', type: 'stat' },
+    { id: 'autoRepair3', name: 'Auto-Repair L3', icon: '\u{1F527}', branch: 'dome',
+      costs: [{ gold: 25, quartz: 15, diamond: 5 }], maxLevel: 1, prereqs: ['autoRepair2'],
+      upgradeKey: 'autoRepairSpeed', type: 'stat' },
     { id: 'domeExpansion', name: 'Dome Expansion', icon: '\u{1F310}', branch: 'dome',
       costs: [{ silver: 25, gold: 15, cobalt: 30 }], maxLevel: 1, prereqs: ['shield3'],
       upgradeKey: 'domeExpansion', type: 'gadget' },
     { id: 'energyShield', name: 'Energy Shield', icon: '\u26A1', branch: 'dome',
       costs: [{ diamond: 10, ruby: 8, emerald: 10, gold: 20 }], maxLevel: 1, prereqs: ['shield4', 'domeExpansion'],
       upgradeKey: 'energyShield', type: 'gadget' },
+    // -- New dome abilities --
+    { id: 'damageReflect', name: 'Damage Reflect', icon: '\u{1F4A2}', branch: 'dome',
+      costs: [{ silver: 18, copper: 25, redstone: 10 }], maxLevel: 1, prereqs: ['reinforcedDome'],
+      upgradeKey: 'damageReflect', type: 'gadget' },
+    { id: 'damageReflect2', name: 'Reflect L2', icon: '\u{1F4A2}', branch: 'dome',
+      costs: [{ gold: 20, redstone: 15, ruby: 5 }], maxLevel: 1, prereqs: ['damageReflect'],
+      upgradeKey: 'damageReflect', type: 'stat' },
+    { id: 'emergencyShield', name: 'Emergency Shield', icon: '\u{1F6E1}', branch: 'dome',
+      costs: [{ diamond: 12, emerald: 15, ruby: 10, gold: 25 }], maxLevel: 1, prereqs: ['energyShield', 'shieldRecharge4'],
+      upgradeKey: 'emergencyShield', type: 'gadget' },
+    { id: 'shieldRegen1', name: 'Shield Regen L1', icon: '\u{1F49A}', branch: 'dome',
+      costs: [{ iron: 30, water: 15 }], maxLevel: 1, prereqs: ['shieldRecharge1'],
+      upgradeKey: 'shieldRegen', type: 'stat' },
+    { id: 'shieldRegen2', name: 'Shield Regen L2', icon: '\u{1F49A}', branch: 'dome',
+      costs: [{ iron: 50, water: 25, cobalt: 15 }], maxLevel: 1, prereqs: ['shieldRegen1'],
+      upgradeKey: 'shieldRegen', type: 'stat' },
+    { id: 'shieldRegen3', name: 'Shield Regen L3', icon: '\u{1F49A}', branch: 'dome',
+      costs: [{ silver: 15, water: 35, quartz: 10 }], maxLevel: 1, prereqs: ['shieldRegen2'],
+      upgradeKey: 'shieldRegen', type: 'stat' },
+    { id: 'fortifiedBase', name: 'Fortified Base', icon: '\u{1F3F0}', branch: 'dome',
+      costs: [{ gold: 30, cobalt: 35, diamond: 8 }], maxLevel: 1, prereqs: ['shield5', 'reinforcedDome'],
+      upgradeKey: 'fortifiedBase', type: 'gadget' },
+    { id: 'lastStand', name: 'Last Stand', icon: '\u{1F4AA}', branch: 'dome',
+      costs: [{ ruby: 15, diamond: 10, emerald: 12 }], maxLevel: 1, prereqs: ['emergencyShield'],
+      upgradeKey: 'lastStand', type: 'gadget' },
 
     // =============================================================
-    // === Mining Branch (10 nodes) ===
+    // === Mining Branch (27 nodes) ===
     // =============================================================
+    // -- Mining Tools chain (7 levels) --
     { id: 'mining1', name: 'Mining Tools L1', icon: '\u26CF', branch: 'mining',
       costs: [{ iron: 15 }], maxLevel: 1, prereqs: [],
       upgradeKey: 'miningTools', type: 'stat' },
@@ -295,6 +400,13 @@
     { id: 'mining5', name: 'Mining Tools L5', icon: '\u26CF', branch: 'mining',
       costs: [{ gold: 20, cobalt: 30, redstone: 10 }], maxLevel: 1, prereqs: ['mining4'],
       upgradeKey: 'miningTools', type: 'stat' },
+    { id: 'mining6', name: 'Mining Tools L6', icon: '\u26CF', branch: 'mining',
+      costs: [{ gold: 30, redstone: 15, emerald: 8 }], maxLevel: 1, prereqs: ['mining5'],
+      upgradeKey: 'miningTools', type: 'stat' },
+    { id: 'mining7', name: 'Mining Tools L7', icon: '\u26CF', branch: 'mining',
+      costs: [{ diamond: 12, ruby: 10, redstone: 20 }], maxLevel: 1, prereqs: ['mining6'],
+      upgradeKey: 'miningTools', type: 'stat' },
+    // -- Carry Capacity chain (5 levels) --
     { id: 'carry1', name: 'Carry Cap. L1', icon: '\u{1F4E6}', branch: 'mining',
       costs: [{ iron: 20 }], maxLevel: 1, prereqs: [],
       upgradeKey: 'carryCapacity', type: 'stat' },
@@ -304,6 +416,13 @@
     { id: 'carry3', name: 'Carry Cap. L3', icon: '\u{1F4E6}', branch: 'mining',
       costs: [{ iron: 50, silver: 10, lead: 15 }], maxLevel: 1, prereqs: ['carry2'],
       upgradeKey: 'carryCapacity', type: 'stat' },
+    { id: 'carry4', name: 'Carry Cap. L4', icon: '\u{1F4E6}', branch: 'mining',
+      costs: [{ gold: 15, cobalt: 20, tin: 20 }], maxLevel: 1, prereqs: ['carry3'],
+      upgradeKey: 'carryCapacity', type: 'stat' },
+    { id: 'carry5', name: 'Carry Cap. L5', icon: '\u{1F4E6}', branch: 'mining',
+      costs: [{ gold: 25, diamond: 5, lead: 20 }], maxLevel: 1, prereqs: ['carry4'],
+      upgradeKey: 'carryCapacity', type: 'stat' },
+    // -- Gadgets --
     { id: 'drill', name: 'Drill Gadget', icon: '\u26CF', branch: 'mining',
       costs: [{ iron: 25 }], maxLevel: 1, prereqs: ['mining1'],
       upgradeKey: 'drill', type: 'gadget' },
@@ -316,10 +435,45 @@
     { id: 'silkTouch', name: 'Silk Touch', icon: '\u{1F48E}', branch: 'mining',
       costs: [{ diamond: 8, emerald: 10, ruby: 5, gold: 15 }], maxLevel: 1, prereqs: ['fortune', 'mining4'],
       upgradeKey: 'silkTouch', type: 'gadget' },
+    // -- New mining abilities --
+    { id: 'oreDetector', name: 'Ore Detector', icon: '\u{1F4E1}', branch: 'mining',
+      costs: [{ iron: 30, copper: 15, cobalt: 10 }], maxLevel: 1, prereqs: ['mining2'],
+      upgradeKey: 'oreDetector', type: 'gadget' },
+    { id: 'oreDetector2', name: 'Ore Detect L2', icon: '\u{1F4E1}', branch: 'mining',
+      costs: [{ silver: 15, quartz: 12, cobalt: 20 }], maxLevel: 1, prereqs: ['oreDetector'],
+      upgradeKey: 'oreDetector', type: 'stat' },
+    { id: 'speedMining1', name: 'Speed Mining L1', icon: '\u{1F4A8}', branch: 'mining',
+      costs: [{ iron: 35, coal: 20 }], maxLevel: 1, prereqs: ['mining2'],
+      upgradeKey: 'speedMining', type: 'stat' },
+    { id: 'speedMining2', name: 'Speed Mining L2', icon: '\u{1F4A8}', branch: 'mining',
+      costs: [{ iron: 55, silver: 10, coal: 25 }], maxLevel: 1, prereqs: ['speedMining1'],
+      upgradeKey: 'speedMining', type: 'stat' },
+    { id: 'speedMining3', name: 'Speed Mining L3', icon: '\u{1F4A8}', branch: 'mining',
+      costs: [{ gold: 15, redstone: 12, cobalt: 20 }], maxLevel: 1, prereqs: ['speedMining2'],
+      upgradeKey: 'speedMining', type: 'stat' },
+    { id: 'autoMine', name: 'Auto-Mine', icon: '\u{1F916}', branch: 'mining',
+      costs: [{ gold: 20, cobalt: 25, copper: 30 }], maxLevel: 1, prereqs: ['mining4', 'speedMining2'],
+      upgradeKey: 'autoMine', type: 'gadget' },
+    { id: 'tunnelBore', name: 'Tunnel Bore', icon: '\u{1F6A7}', branch: 'mining',
+      costs: [{ gold: 25, redstone: 15, diamond: 5, cobalt: 30 }], maxLevel: 1, prereqs: ['mining5', 'drill'],
+      upgradeKey: 'tunnelBore', type: 'gadget' },
+    { id: 'magnetRange1', name: 'Magnet Range L1', icon: '\u{1F9F2}', branch: 'mining',
+      costs: [{ silver: 15, copper: 20, lead: 10 }], maxLevel: 1, prereqs: ['magnet'],
+      upgradeKey: 'magnetRange', type: 'stat' },
+    { id: 'magnetRange2', name: 'Magnet Range L2', icon: '\u{1F9F2}', branch: 'mining',
+      costs: [{ gold: 15, quartz: 10, lead: 20 }], maxLevel: 1, prereqs: ['magnetRange1'],
+      upgradeKey: 'magnetRange', type: 'stat' },
+    { id: 'fortuneL2', name: 'Fortune L2', icon: '\u2728', branch: 'mining',
+      costs: [{ gold: 25, emerald: 10, ruby: 8 }], maxLevel: 1, prereqs: ['fortune'],
+      upgradeKey: 'fortune', type: 'stat' },
+    { id: 'veinMiner', name: 'Vein Miner', icon: '\u{1F48E}', branch: 'mining',
+      costs: [{ diamond: 10, ruby: 8, emerald: 12, gold: 20 }], maxLevel: 1, prereqs: ['silkTouch', 'tunnelBore'],
+      upgradeKey: 'veinMiner', type: 'gadget' },
 
     // =============================================================
-    // === Movement Branch (10 nodes) ===
+    // === Movement Branch (25 nodes) ===
     // =============================================================
+    // -- Move Speed chain (7 levels) --
     { id: 'speed1', name: 'Move Speed L1', icon: '\u{1F3C3}', branch: 'movement',
       costs: [{ iron: 15 }], maxLevel: 1, prereqs: [],
       upgradeKey: 'moveSpeed', type: 'stat' },
@@ -335,6 +489,13 @@
     { id: 'speed5', name: 'Move Speed L5', icon: '\u{1F3C3}', branch: 'movement',
       costs: [{ gold: 15, cobalt: 25, redstone: 8 }], maxLevel: 1, prereqs: ['speed4'],
       upgradeKey: 'moveSpeed', type: 'stat' },
+    { id: 'speed6', name: 'Move Speed L6', icon: '\u{1F3C3}', branch: 'movement',
+      costs: [{ gold: 25, redstone: 12, emerald: 5 }], maxLevel: 1, prereqs: ['speed5'],
+      upgradeKey: 'moveSpeed', type: 'stat' },
+    { id: 'speed7', name: 'Move Speed L7', icon: '\u{1F3C3}', branch: 'movement',
+      costs: [{ diamond: 8, ruby: 8, emerald: 8 }], maxLevel: 1, prereqs: ['speed6'],
+      upgradeKey: 'moveSpeed', type: 'stat' },
+    // -- Gadgets --
     { id: 'teleporter', name: 'Teleporter', icon: '\u{1F300}', branch: 'movement',
       costs: [{ iron: 30, cobalt: 15 }], maxLevel: 1, prereqs: ['speed1'],
       upgradeKey: 'teleporter', type: 'gadget' },
@@ -350,10 +511,48 @@
     { id: 'echoLocation2', name: 'Echo Loc. L2', icon: '\u{1F4E1}', branch: 'movement',
       costs: [{ silver: 15, gold: 10, redstone: 8 }], maxLevel: 1, prereqs: ['echoLocation'],
       upgradeKey: 'echoLocation', type: 'stat' },
+    { id: 'echoLocation3', name: 'Echo Loc. L3', icon: '\u{1F4E1}', branch: 'movement',
+      costs: [{ gold: 20, quartz: 15, redstone: 12 }], maxLevel: 1, prereqs: ['echoLocation2'],
+      upgradeKey: 'echoLocation', type: 'stat' },
+    // -- New movement abilities --
+    { id: 'doubleJump', name: 'Double Jump', icon: '\u{1F998}', branch: 'movement',
+      costs: [{ iron: 35, copper: 20, cobalt: 12 }], maxLevel: 1, prereqs: ['speed2'],
+      upgradeKey: 'doubleJump', type: 'gadget' },
+    { id: 'wallClimb', name: 'Wall Climb', icon: '\u{1F9D7}', branch: 'movement',
+      costs: [{ iron: 45, cobalt: 20, tin: 15 }], maxLevel: 1, prereqs: ['speed3', 'doubleJump'],
+      upgradeKey: 'wallClimb', type: 'gadget' },
+    { id: 'dash', name: 'Dash', icon: '\u{1F4A8}', branch: 'movement',
+      costs: [{ silver: 15, copper: 20, coal: 15 }], maxLevel: 1, prereqs: ['speed3'],
+      upgradeKey: 'dash', type: 'gadget' },
+    { id: 'dash2', name: 'Dash L2', icon: '\u{1F4A8}', branch: 'movement',
+      costs: [{ gold: 12, redstone: 10, cobalt: 18 }], maxLevel: 1, prereqs: ['dash'],
+      upgradeKey: 'dash', type: 'stat' },
+    { id: 'undergroundRadar', name: 'Ground Radar', icon: '\u{1F4E1}', branch: 'movement',
+      costs: [{ silver: 20, copper: 25, quartz: 10 }], maxLevel: 1, prereqs: ['echoLocation'],
+      upgradeKey: 'undergroundRadar', type: 'gadget' },
+    { id: 'undergroundRadar2', name: 'Radar L2', icon: '\u{1F4E1}', branch: 'movement',
+      costs: [{ gold: 18, quartz: 15, redstone: 10 }], maxLevel: 1, prereqs: ['undergroundRadar'],
+      upgradeKey: 'undergroundRadar', type: 'stat' },
+    { id: 'teleportCooldown1', name: 'Teleport CDR L1', icon: '\u{1F300}', branch: 'movement',
+      costs: [{ silver: 12, cobalt: 15, copper: 10 }], maxLevel: 1, prereqs: ['teleporter'],
+      upgradeKey: 'teleportCooldown', type: 'stat' },
+    { id: 'teleportCooldown2', name: 'Teleport CDR L2', icon: '\u{1F300}', branch: 'movement',
+      costs: [{ gold: 15, quartz: 12, redstone: 8 }], maxLevel: 1, prereqs: ['teleportCooldown1'],
+      upgradeKey: 'teleportCooldown', type: 'stat' },
+    { id: 'jetpackFuel1', name: 'Jetpack Fuel L1', icon: '\u{1F680}', branch: 'movement',
+      costs: [{ copper: 25, coal: 30, cobalt: 15 }], maxLevel: 1, prereqs: ['jetpack'],
+      upgradeKey: 'jetpackFuel', type: 'stat' },
+    { id: 'jetpackFuel2', name: 'Jetpack Fuel L2', icon: '\u{1F680}', branch: 'movement',
+      costs: [{ gold: 15, coal: 35, redstone: 10 }], maxLevel: 1, prereqs: ['jetpackFuel1'],
+      upgradeKey: 'jetpackFuel', type: 'stat' },
+    { id: 'phaseShift2', name: 'Phase Shift L2', icon: '\u{1F47B}', branch: 'movement',
+      costs: [{ gold: 20, quartz: 20, diamond: 5 }], maxLevel: 1, prereqs: ['phaseShift'],
+      upgradeKey: 'phaseShift', type: 'stat' },
 
     // =============================================================
-    // === Weapon Branch (10 nodes) ===
+    // === Weapon Branch (27 nodes) ===
     // =============================================================
+    // -- Fire Rate chain (6 levels) --
     { id: 'fireRate1', name: 'Fire Rate L1', icon: '\u{1F525}', branch: 'weapon',
       costs: [{ iron: 20 }], maxLevel: 1, prereqs: [],
       upgradeKey: 'fireRate', type: 'stat' },
@@ -366,6 +565,13 @@
     { id: 'fireRate4', name: 'Fire Rate L4', icon: '\u{1F525}', branch: 'weapon',
       costs: [{ silver: 15, gold: 10, redstone: 12 }], maxLevel: 1, prereqs: ['fireRate3'],
       upgradeKey: 'fireRate', type: 'stat' },
+    { id: 'fireRate5', name: 'Fire Rate L5', icon: '\u{1F525}', branch: 'weapon',
+      costs: [{ gold: 20, redstone: 15, ruby: 5 }], maxLevel: 1, prereqs: ['fireRate4'],
+      upgradeKey: 'fireRate', type: 'stat' },
+    { id: 'fireRate6', name: 'Fire Rate L6', icon: '\u{1F525}', branch: 'weapon',
+      costs: [{ diamond: 8, ruby: 10, redstone: 18 }], maxLevel: 1, prereqs: ['fireRate5'],
+      upgradeKey: 'fireRate', type: 'stat' },
+    // -- Damage chain (7 levels) --
     { id: 'damage1', name: 'Damage L1', icon: '\u2694', branch: 'weapon',
       costs: [{ iron: 25 }], maxLevel: 1, prereqs: [],
       upgradeKey: 'weaponDamage', type: 'stat' },
@@ -381,6 +587,13 @@
     { id: 'damage5', name: 'Damage L5', icon: '\u2694', branch: 'weapon',
       costs: [{ diamond: 8, ruby: 10, emerald: 8, gold: 20 }], maxLevel: 1, prereqs: ['damage4'],
       upgradeKey: 'weaponDamage', type: 'stat' },
+    { id: 'damage6', name: 'Damage L6', icon: '\u2694', branch: 'weapon',
+      costs: [{ diamond: 12, ruby: 12, gold: 25 }], maxLevel: 1, prereqs: ['damage5'],
+      upgradeKey: 'weaponDamage', type: 'stat' },
+    { id: 'damage7', name: 'Damage L7', icon: '\u2694', branch: 'weapon',
+      costs: [{ diamond: 15, ruby: 15, emerald: 12 }], maxLevel: 1, prereqs: ['damage6'],
+      upgradeKey: 'weaponDamage', type: 'stat' },
+    // -- Drill Speed chain (5 levels) --
     { id: 'drillSpeed1', name: 'Drill Speed L1', icon: '\u{1F529}', branch: 'weapon',
       costs: [{ iron: 20 }], maxLevel: 1, prereqs: [],
       upgradeKey: 'drillSpeed', type: 'stat' },
@@ -390,6 +603,13 @@
     { id: 'drillSpeed3', name: 'Drill Speed L3', icon: '\u{1F529}', branch: 'weapon',
       costs: [{ iron: 50, silver: 10, coal: 15 }], maxLevel: 1, prereqs: ['drillSpeed2'],
       upgradeKey: 'drillSpeed', type: 'stat' },
+    { id: 'drillSpeed4', name: 'Drill Speed L4', icon: '\u{1F529}', branch: 'weapon',
+      costs: [{ gold: 12, redstone: 10, cobalt: 20 }], maxLevel: 1, prereqs: ['drillSpeed3'],
+      upgradeKey: 'drillSpeed', type: 'stat' },
+    { id: 'drillSpeed5', name: 'Drill Speed L5', icon: '\u{1F529}', branch: 'weapon',
+      costs: [{ gold: 20, diamond: 5, redstone: 15 }], maxLevel: 1, prereqs: ['drillSpeed4'],
+      upgradeKey: 'drillSpeed', type: 'stat' },
+    // -- Gadgets --
     { id: 'blastTool', name: 'Blast Mining', icon: '\u{1F4A5}', branch: 'weapon',
       costs: [{ iron: 30, coal: 10 }], maxLevel: 1, prereqs: ['damage1'],
       upgradeKey: 'blastTool', type: 'gadget' },
@@ -404,8 +624,103 @@
       upgradeKey: 'freezeRay', type: 'gadget' },
     { id: 'plasmaCannon', name: 'Plasma Cannon', icon: '\u{1F4A5}', branch: 'weapon',
       costs: [{ diamond: 10, ruby: 12, redstone: 15, gold: 20 }], maxLevel: 1, prereqs: ['damage4', 'chainLightning'],
-      upgradeKey: 'plasmaCannon', type: 'gadget' }
+      upgradeKey: 'plasmaCannon', type: 'gadget' },
+    // -- New weapon abilities --
+    { id: 'multiShot', name: 'Multi-Shot', icon: '\u{1F4AB}', branch: 'weapon',
+      costs: [{ silver: 18, copper: 20, coal: 15 }], maxLevel: 1, prereqs: ['fireRate2', 'damage2'],
+      upgradeKey: 'multiShot', type: 'gadget' },
+    { id: 'multiShot2', name: 'Multi-Shot L2', icon: '\u{1F4AB}', branch: 'weapon',
+      costs: [{ gold: 15, redstone: 12, cobalt: 20 }], maxLevel: 1, prereqs: ['multiShot'],
+      upgradeKey: 'multiShot', type: 'stat' },
+    { id: 'homingShots', name: 'Homing Shots', icon: '\u{1F3AF}', branch: 'weapon',
+      costs: [{ gold: 20, quartz: 15, redstone: 12 }], maxLevel: 1, prereqs: ['damage3', 'fireRate3'],
+      upgradeKey: 'homingShots', type: 'gadget' },
+    { id: 'turretSpeed1', name: 'Turret Speed L1', icon: '\u{1F504}', branch: 'weapon',
+      costs: [{ iron: 25, copper: 15 }], maxLevel: 1, prereqs: ['fireRate1'],
+      upgradeKey: 'turretSpeed', type: 'stat' },
+    { id: 'turretSpeed2', name: 'Turret Speed L2', icon: '\u{1F504}', branch: 'weapon',
+      costs: [{ iron: 40, cobalt: 15, tin: 10 }], maxLevel: 1, prereqs: ['turretSpeed1'],
+      upgradeKey: 'turretSpeed', type: 'stat' },
+    { id: 'turretSpeed3', name: 'Turret Speed L3', icon: '\u{1F504}', branch: 'weapon',
+      costs: [{ silver: 15, gold: 10, redstone: 8 }], maxLevel: 1, prereqs: ['turretSpeed2'],
+      upgradeKey: 'turretSpeed', type: 'stat' },
+    { id: 'criticalHit', name: 'Critical Hit', icon: '\u{1F4A5}', branch: 'weapon',
+      costs: [{ gold: 18, redstone: 15, cobalt: 20 }], maxLevel: 1, prereqs: ['damage3'],
+      upgradeKey: 'criticalHit', type: 'gadget' },
+    { id: 'criticalHit2', name: 'Critical L2', icon: '\u{1F4A5}', branch: 'weapon',
+      costs: [{ gold: 25, ruby: 8, redstone: 18 }], maxLevel: 1, prereqs: ['criticalHit'],
+      upgradeKey: 'criticalHit', type: 'stat' },
+    { id: 'explosiveRounds', name: 'Explosive Rounds', icon: '\u{1F4A3}', branch: 'weapon',
+      costs: [{ diamond: 8, ruby: 10, redstone: 20, gold: 15 }], maxLevel: 1, prereqs: ['plasmaCannon', 'criticalHit'],
+      upgradeKey: 'explosiveRounds', type: 'gadget' },
+    { id: 'freezeRay2', name: 'Freeze Ray L2', icon: '\u2744', branch: 'weapon',
+      costs: [{ water: 40, quartz: 20, diamond: 5 }], maxLevel: 1, prereqs: ['freezeRay'],
+      upgradeKey: 'freezeRay', type: 'stat' },
+    { id: 'chainLightning2', name: 'Chain Light. L2', icon: '\u26A1', branch: 'weapon',
+      costs: [{ gold: 20, redstone: 18, emerald: 8 }], maxLevel: 1, prereqs: ['chainLightning'],
+      upgradeKey: 'chainLightning', type: 'stat' }
   ];
+
+  // Upgrade effect descriptions (keyed by upgradeKey)
+  const UPGRADE_EFFECT_DESC = {
+    domeHP: '+25 max dome HP per level',
+    shieldRecharge: 'Shield gadget recharges faster',
+    shieldRegen: '+1 HP/5s passive dome regen per level',
+    reinforcedDome: 'Dome takes 25% less damage (passive)',
+    autoRepair: 'Dome regenerates +2 HP every 5s',
+    autoRepairSpeed: 'Auto-repair heals faster per level',
+    domeExpansion: '+75 max dome HP, instant heal',
+    energyShield: 'Dome takes 15% less damage (stacks with Reinforced)',
+    damageReflect: 'Reflects 15% damage back to attackers per level',
+    emergencyShield: '3s invincibility when dome drops below 15% HP (60s CD)',
+    fortifiedBase: 'Dome takes 10% less damage, +50 max HP',
+    lastStand: 'Survive one lethal hit with 1 HP (once per wave)',
+    miningTools: '-20% mining time per level',
+    carryCapacity: '+20 carry capacity per level',
+    drill: 'Mines a column downward, 30% faster on consecutive tiles',
+    magnet: 'Auto-collect dropped resources within 2 tiles',
+    magnetRange: '+1 magnet range per level',
+    fortune: '30% chance to double ore yield (+10% per extra level)',
+    silkTouch: 'Preserves full resource value when mining',
+    oreDetector: 'Highlights nearby ores through walls (+range per level)',
+    speedMining: '-10% mining time per level (stacks with tools)',
+    autoMine: 'Auto-mines adjacent blocks when idle for 2s',
+    tunnelBore: 'Mine 3 blocks in a line in the direction you face',
+    veinMiner: 'Mining an ore mines the entire connected vein',
+    moveSpeed: '15% faster movement per level',
+    teleporter: 'Instantly return to surface (30s cooldown)',
+    teleportCooldown: '-5s teleporter cooldown per level',
+    jetpack: 'Fly upward through empty tiles',
+    jetpackFuel: '+50% jetpack duration per level',
+    phaseShift: 'Pass through a single block once (+uses per level)',
+    echoLocation: 'Extends scanner range by +2 tiles per level',
+    doubleJump: 'Jump up 2 empty tiles vertically at once',
+    wallClimb: 'Move up adjacent to solid walls without empty space',
+    dash: 'Quick-move 3 empty tiles in one direction (+range per level)',
+    undergroundRadar: 'Reveals wider area around player (+range per level)',
+    fireRate: '+0.3 shots/sec per level',
+    weaponDamage: '+5 damage per level',
+    drillSpeed: '-0.05s drill interval per level',
+    blastTool: 'Clears a 3x3 area (costs 10 iron, 5s cooldown)',
+    scanner: 'Reveals resources in 3-tile radius (passive)',
+    chainLightning: 'Shots arc to 2 nearby enemies for 40% damage (+1 arc/level)',
+    freezeRay: 'Shots stun enemies in 60px radius for 0.8s (+0.3s/level)',
+    plasmaCannon: 'Shots deal 60% AoE damage in 70px radius',
+    multiShot: 'Fire 2 projectiles per shot (+1 per level)',
+    homingShots: 'Projectiles track nearest enemy automatically',
+    turretSpeed: '+30% turret rotation speed per level',
+    criticalHit: '15% chance to deal 2.5x damage (+5% per level)',
+    explosiveRounds: 'All shots explode on impact for 40% AoE'
+  };
+
+  // Mining difficulty label from depth multiplier
+  function getMiningDifficultyLabel(depthMult) {
+    if (depthMult < 1.2) return 'Very Easy';
+    if (depthMult < 1.8) return 'Easy';
+    if (depthMult < 2.4) return 'Medium';
+    if (depthMult < 3.0) return 'Hard';
+    return 'Very Hard';
+  }
 
   // Precompute node positions for the tree layout
   // Layout: root at top center, 4 branches below
@@ -528,6 +843,10 @@
   let undergroundGrid = [];
   let highScores = [];
 
+  /* ── Persistent tile mining HP ── */
+  let tileHP = [];                   // 2D array [row][col] of remaining mining HP (null = full)
+  let tileMaxHP = [];                // 2D array [row][col] of max mining HP
+
   /* ── Mining state ── */
   let miningProgress = 0;          // accumulated time toward current mine
   let miningDuration = 0;          // total time required for current mine
@@ -563,6 +882,17 @@
   let upgradeDialogHover = null; // hovered node id
   let upgradeDialogScroll = 0;  // vertical scroll offset
   let stateBeforeUpgradeDialog = null; // state to restore when closing dialog
+
+  /* ── Tooltip ── */
+  const tooltip = {
+    lines: [],
+    x: 0,
+    y: 0,
+    visible: false,
+    delayTimer: 0,
+    lastHoverKey: ''  // identity of what we are hovering; resets delay when it changes
+  };
+  const TOOLTIP_DELAY = 0.2; // seconds before tooltip appears
 
   /* ── Upgrade Dialog zoom & pan ── */
   let upgradeZoom = 1.0;        // zoom scale factor
@@ -684,72 +1014,147 @@
      UNDERGROUND GRID GENERATION
      ====================================================================== */
 
+  // Vein spawn configuration per ore type
+  // seedChance: probability that a scan point spawns a vein of this type
+  // minLen/maxLen: base vein length range
+  // depthLenBonus: multiplier added to maxLen per unit of depth (0..1)
+  const VEIN_CONFIG = {
+    // Common ores: veins of 3-8, longer at depth
+    [TILE_IRON]:     { seedChance: 0.055, minLen: 3, maxLen: 8, depthLenBonus: 3 },
+    [TILE_COPPER]:   { seedChance: 0.028, minLen: 3, maxLen: 7, depthLenBonus: 2 },
+    [TILE_TIN]:      { seedChance: 0.020, minLen: 3, maxLen: 6, depthLenBonus: 2 },
+    [TILE_COAL]:     { seedChance: 0.028, minLen: 3, maxLen: 8, depthLenBonus: 3 },
+    // Medium ores: veins of 2-5, longer at depth
+    [TILE_LEAD]:     { seedChance: 0.018, minLen: 2, maxLen: 5, depthLenBonus: 2 },
+    [TILE_SILVER]:   { seedChance: 0.015, minLen: 2, maxLen: 5, depthLenBonus: 2 },
+    [TILE_GOLD]:     { seedChance: 0.014, minLen: 2, maxLen: 5, depthLenBonus: 2 },
+    [TILE_WATER]:    { seedChance: 0.032, minLen: 2, maxLen: 5, depthLenBonus: 2 },
+    [TILE_COBALT]:   { seedChance: 0.022, minLen: 2, maxLen: 5, depthLenBonus: 3 },
+    // Rare ores: veins of 1-4
+    [TILE_QUARTZ]:   { seedChance: 0.014, minLen: 1, maxLen: 4, depthLenBonus: 1 },
+    [TILE_REDSTONE]: { seedChance: 0.016, minLen: 1, maxLen: 4, depthLenBonus: 1 },
+    // Gems: veins of 1-3, short but valuable
+    [TILE_DIAMOND]:  { seedChance: 0.010, minLen: 1, maxLen: 3, depthLenBonus: 1 },
+    [TILE_EMERALD]:  { seedChance: 0.012, minLen: 1, maxLen: 3, depthLenBonus: 1 },
+    [TILE_RUBY]:     { seedChance: 0.011, minLen: 1, maxLen: 3, depthLenBonus: 1 }
+  };
+
+  // Depth-based ore availability: which ores can spawn at a given depth factor (0..1)
+  function getOreSpawnChance(d, tileType) {
+    const ramp = (start, end) => d < start ? 0 : d > end ? 1 : (d - start) / (end - start);
+    const bell = (center, width) => Math.max(0, 1 - Math.pow((d - center) / width, 2));
+    switch (tileType) {
+      case TILE_IRON:     return 0.4 + 0.6 * bell(0.2, 0.3) - 0.2 * ramp(0.6, 1.0);
+      case TILE_COPPER:   return 0.1 + 0.9 * bell(0.25, 0.3);
+      case TILE_TIN:      return 0.05 + 0.95 * bell(0.3, 0.3);
+      case TILE_COAL:     return 0.1 + 0.9 * bell(0.35, 0.35);
+      case TILE_LEAD:     return bell(0.45, 0.25);
+      case TILE_SILVER:   return ramp(0.2, 0.5) * (1 - 0.4 * ramp(0.8, 1.0));
+      case TILE_WATER:    return 0.3 + 0.7 * bell(0.4, 0.35);
+      case TILE_COBALT:   return ramp(0.2, 0.5) + 0.5 * ramp(0.5, 0.9);
+      case TILE_GOLD:     return ramp(0.35, 0.7) * (1 - 0.3 * ramp(0.9, 1.0));
+      case TILE_QUARTZ:   return ramp(0.3, 0.65);
+      case TILE_REDSTONE: return ramp(0.55, 0.85);
+      case TILE_EMERALD:  return ramp(0.6, 0.9);
+      case TILE_DIAMOND:  return ramp(0.65, 0.95);
+      case TILE_RUBY:     return ramp(0.63, 0.92);
+      default: return 0;
+    }
+  }
+
+  // Grow a vein from a seed point using random walk / BFS flood
+  function growVein(grid, seedR, seedC, tileType, targetLen) {
+    const placed = [];
+    const frontier = [{ r: seedR, c: seedC }];
+    const visited = new Set();
+    visited.add(seedR * GRID_COLS + seedC);
+
+    while (placed.length < targetLen && frontier.length > 0) {
+      // Pick a random frontier cell
+      const idx = Math.floor(Math.random() * frontier.length);
+      const { r, c } = frontier[idx];
+      frontier.splice(idx, 1);
+
+      // Only place on dirt tiles (don't overwrite other ores or gadgets)
+      if (grid[r][c] !== TILE_DIRT) continue;
+
+      grid[r][c] = tileType;
+      placed.push({ r, c });
+
+      // Add neighbors to frontier (4-directional)
+      const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+      for (const [dr, dc] of dirs) {
+        const nr = r + dr;
+        const nc = c + dc;
+        if (nr < 0 || nr >= GRID_ROWS || nc < 0 || nc >= GRID_COLS) continue;
+        const key = nr * GRID_COLS + nc;
+        if (visited.has(key)) continue;
+        visited.add(key);
+        frontier.push({ r: nr, c: nc });
+      }
+    }
+    return placed.length;
+  }
+
   function generateUnderground() {
+    // Step 1: Fill entire grid with dirt
     undergroundGrid = [];
     for (let r = 0; r < GRID_ROWS; ++r) {
       const row = [];
-      // Depth factor: deeper rows have richer deposits
-      const depthFactor = r / GRID_ROWS; // 0 at top, ~1 at bottom
-      for (let c = 0; c < GRID_COLS; ++c) {
-        let rand = Math.random();
-        // Iron is more common near the surface, cobalt is richer deeper down
-        const ironChance = 0.10 - depthFactor * 0.03;     // 10% -> 7%
-        const waterChance = 0.06 + depthFactor * 0.03;     // 6% -> 9%
-        const cobaltChance = 0.02 + depthFactor * 0.08;    // 2% -> 10%
-
-        // New metals: appear at medium-to-deep depths
-        const copperChance = 0.04 - depthFactor * 0.01;    // 4% -> 3% (common metal)
-        const tinChance = 0.03 - depthFactor * 0.005;      // 3% -> 2.5%
-        const coalChance = 0.04;                            // 4% everywhere
-        const leadChance = depthFactor > 0.2 ? 0.025 : 0;  // 2.5% below 20% depth
-        const silverChance = depthFactor > 0.3 ? 0.02 + depthFactor * 0.02 : 0; // appears at 30% depth
-        const goldChance = depthFactor > 0.4 ? 0.01 + depthFactor * 0.02 : 0;   // appears at 40% depth
-
-        // Gems: deep only, rare
-        const quartzChance = depthFactor > 0.35 ? 0.015 : 0;
-        const redstoneChance = depthFactor > 0.5 ? 0.012 + depthFactor * 0.01 : 0;
-        const emeraldChance = depthFactor > 0.6 ? 0.008 + depthFactor * 0.005 : 0;
-        const diamondChance = depthFactor > 0.7 ? 0.005 + depthFactor * 0.005 : 0;
-        const rubyChance = depthFactor > 0.65 ? 0.006 + depthFactor * 0.004 : 0;
-
-        let cumulative = 0;
-        const chances = [
-          [ironChance, TILE_IRON],
-          [waterChance, TILE_WATER],
-          [cobaltChance, TILE_COBALT],
-          [copperChance, TILE_COPPER],
-          [tinChance, TILE_TIN],
-          [coalChance, TILE_COAL],
-          [leadChance, TILE_LEAD],
-          [silverChance, TILE_SILVER],
-          [goldChance, TILE_GOLD],
-          [quartzChance, TILE_QUARTZ],
-          [redstoneChance, TILE_REDSTONE],
-          [emeraldChance, TILE_EMERALD],
-          [diamondChance, TILE_DIAMOND],
-          [rubyChance, TILE_RUBY]
-        ];
-
-        let tile = TILE_DIRT;
-        for (const [chance, tileType] of chances) {
-          cumulative += chance;
-          if (rand < cumulative) {
-            tile = tileType;
-            break;
-          }
-        }
-        row.push(tile);
-      }
+      for (let c = 0; c < GRID_COLS; ++c)
+        row.push(TILE_DIRT);
       undergroundGrid.push(row);
     }
+
+    // Step 2: Spawn ore veins from seed points
+    // Scan the grid at every cell; each cell has a chance to seed a vein
+    // The ore type picked depends on depth probabilities
+    const oreTypes = [
+      TILE_IRON, TILE_COPPER, TILE_TIN, TILE_COAL,
+      TILE_LEAD, TILE_SILVER, TILE_WATER, TILE_COBALT,
+      TILE_GOLD, TILE_QUARTZ,
+      TILE_REDSTONE, TILE_EMERALD, TILE_DIAMOND, TILE_RUBY
+    ];
+
+    for (let r = 0; r < GRID_ROWS; ++r) {
+      const d = r / GRID_ROWS; // depth factor 0..1
+      for (let c = 0; c < GRID_COLS; ++c) {
+        // Only seed on dirt tiles (skip already placed veins)
+        if (undergroundGrid[r][c] !== TILE_DIRT) continue;
+
+        // For each ore type, check if this cell seeds a vein
+        for (const oreType of oreTypes) {
+          const cfg = VEIN_CONFIG[oreType];
+          const depthWeight = getOreSpawnChance(d, oreType);
+          if (depthWeight <= 0) continue;
+
+          // Effective seed chance scaled by depth availability
+          // Divide by average vein length to keep overall density similar
+          const avgLen = (cfg.minLen + cfg.maxLen) / 2;
+          const effectiveChance = (cfg.seedChance * depthWeight) / avgLen;
+
+          if (Math.random() < effectiveChance) {
+            // Determine vein length: base range + depth bonus
+            const depthBonus = Math.floor(d * cfg.depthLenBonus);
+            const minL = cfg.minLen;
+            const maxL = cfg.maxLen + depthBonus;
+            const targetLen = minL + Math.floor(Math.random() * (maxL - minL + 1));
+            growVein(undergroundGrid, r, c, oreType, targetLen);
+            break; // only one vein type per seed point
+          }
+        }
+      }
+    }
+
     // Clear starting area around player spawn
     const spawnCol = Math.floor(GRID_COLS / 2);
     undergroundGrid[0][spawnCol] = TILE_EMPTY;
     undergroundGrid[0][spawnCol - 1] = TILE_EMPTY;
+    undergroundGrid[0][spawnCol + 1] = TILE_EMPTY;
 
-    // Place 2-4 gadget chambers (2x2 TILE_GADGET blocks) spread throughout the larger grid
+    // Place 4-8 gadget chambers (2x2 TILE_GADGET blocks) spread throughout the larger grid
     gadgetChambers = [];
-    const chamberCount = 2 + Math.floor(Math.random() * 3); // 2, 3, or 4
+    const chamberCount = 4 + Math.floor(Math.random() * 5); // 4, 5, 6, 7, or 8
     for (let n = 0; n < chamberCount; ++n) {
       let placed = false;
       for (let attempt = 0; attempt < 80 && !placed; ++attempt) {
@@ -776,8 +1181,41 @@
       }
     }
 
+    // Initialize persistent tile mining HP arrays
+    initTileHP();
+
     generateDirtNoise();
     generateOreSpeckles();
+  }
+
+  // Get intrinsic tile hardness (independent of player upgrades)
+  function getTileHardness(row, tile) {
+    const depthMultiplier = getDepthMineMultiplier(row);
+    const tileMultiplier = TILE_MINE_MULTIPLIER[tile] || 1.0;
+    return BASE_MINE_TIME * depthMultiplier * tileMultiplier;
+  }
+
+  // Initialize (or reinitialize) the per-tile mining HP arrays
+  function initTileHP() {
+    tileHP = [];
+    tileMaxHP = [];
+    for (let r = 0; r < GRID_ROWS; ++r) {
+      const hpRow = [];
+      const maxRow = [];
+      for (let c = 0; c < GRID_COLS; ++c) {
+        const tile = undergroundGrid[r][c];
+        if (tile === TILE_EMPTY) {
+          hpRow.push(0);
+          maxRow.push(0);
+        } else {
+          const hp = getTileHardness(r, tile);
+          hpRow.push(hp);
+          maxRow.push(hp);
+        }
+      }
+      tileHP.push(hpRow);
+      tileMaxHP.push(maxRow);
+    }
   }
 
   /* ======================================================================
@@ -834,6 +1272,10 @@
     miningTarget = null;
     miningDir = null;
 
+    // Reset persistent tile HP (will be re-initialized in generateUnderground)
+    tileHP = [];
+    tileMaxHP = [];
+
     // Reset dropped resources
     droppedResources = [];
 
@@ -884,6 +1326,9 @@
     upgradePanX = 0;
     upgradePanY = 0;
     upgradePanning = false;
+
+    // Reset tooltip
+    clearTooltip();
 
     generateUnderground();
     updateWindowTitle();
@@ -952,6 +1397,25 @@
         const maxCamY = GRID_ROWS * TILE_SIZE - CANVAS_H;
         cameraX = Math.max(0, Math.min(maxCamX, targetCamX));
         cameraY = Math.max(0, Math.min(maxCamY, targetCamY));
+
+        // Auto-collect loose resources at or near the player position
+        for (let i = droppedResources.length - 1; i >= 0; --i) {
+          const drop = droppedResources[i];
+          const dist = Math.abs(drop.col - drillX) + Math.abs(drop.row - drillY);
+          if (dist > 1) continue;
+          const canCarry = carryCapacity - carried;
+          if (canCarry <= 0) break;
+          const pickUp = Math.min(drop.value, canCarry);
+          const label = TILE_LABELS[drop.type];
+          resources[label] += pickUp;
+          carried += pickUp;
+          drop.value -= pickUp;
+          const tx = drop.col * TILE_SIZE + TILE_SIZE / 2 - cameraX;
+          const ty = drop.row * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+          floatingText.add(tx, ty - 15, `+${pickUp} ${label}`, { color: '#0f0', font: 'bold 11px sans-serif' });
+          if (drop.value <= 0)
+            droppedResources.splice(i, 1);
+        }
       }
     } else if (transitionPhase === 'fade-in' && transitionProgress >= 2) {
       // Done
@@ -1616,6 +2080,13 @@
      ====================================================================== */
 
   function cancelMining() {
+    // Save partial progress to the tile's HP array so it persists
+    if (miningTarget && miningDuration > 0 && miningProgress > 0) {
+      const r = miningTarget.row;
+      const c = miningTarget.col;
+      if (tileMaxHP[r] && tileMaxHP[r][c] > 0)
+        tileHP[r][c] = tileMaxHP[r][c] * (1 - Math.min(miningProgress / miningDuration, 0.99));
+    }
     miningTarget = null;
     miningDir = null;
     miningProgress = 0;
@@ -1623,7 +2094,7 @@
   }
 
   function getMiningTime(row, tile) {
-    const depthMultiplier = 1 + row * 0.05;
+    const depthMultiplier = getDepthMineMultiplier(row);
     const tileMultiplier = TILE_MINE_MULTIPLIER[tile] || 1.0;
     let time = BASE_MINE_TIME * depthMultiplier * tileMultiplier;
 
@@ -1670,12 +2141,18 @@
     if (miningTarget && miningTarget.col === nx && miningTarget.row === ny)
       return;
 
-    // Start mining a new block
+    // Start mining a new block (save progress of previous target first)
     cancelMining();
     miningTarget = { col: nx, row: ny };
     miningDir = { dx, dy };
-    miningProgress = 0;
     miningDuration = getMiningTime(ny, tile);
+
+    // Restore partial progress from persistent tile HP
+    if (tileMaxHP[ny] && tileMaxHP[ny][nx] > 0 && tileHP[ny][nx] < tileMaxHP[ny][nx])
+      miningProgress = miningDuration * (1 - tileHP[ny][nx] / tileMaxHP[ny][nx]);
+    else
+      miningProgress = 0;
+
     lastMineDir = { dx, dy };
 
     // Trigger pickaxe swing animation
@@ -1701,7 +2178,7 @@
     const ty = ny * TILE_SIZE + TILE_SIZE / 2 - cameraY;
 
     // Rich mining particles
-    const tileColor = TILE_COLORS[tile] || '#654';
+    const tileColor = getTileBaseColor(tile, ny);
 
     // Directional rock debris (chunks fly opposite to mining direction)
     for (let p = 0; p < 6; ++p)
@@ -1776,12 +2253,18 @@
         // Clear remaining tiles of this chamber
         for (let dr = 0; dr < 2; ++dr)
           for (let dc = 0; dc < 2; ++dc)
-            if (undergroundGrid[chamber.r + dr][chamber.c + dc] === TILE_GADGET)
+            if (undergroundGrid[chamber.r + dr][chamber.c + dc] === TILE_GADGET) {
               undergroundGrid[chamber.r + dr][chamber.c + dc] = TILE_EMPTY;
+              if (tileHP[chamber.r + dr]) tileHP[chamber.r + dr][chamber.c + dc] = 0;
+              if (tileMaxHP[chamber.r + dr]) tileMaxHP[chamber.r + dr][chamber.c + dc] = 0;
+            }
       }
     }
 
     undergroundGrid[ny][nx] = TILE_EMPTY;
+    // Reset tile HP on clear
+    if (tileHP[ny]) tileHP[ny][nx] = 0;
+    if (tileMaxHP[ny]) tileMaxHP[ny][nx] = 0;
     drillX = nx;
     drillY = ny;
 
@@ -1827,6 +2310,14 @@
 
     miningProgress += dt;
 
+    // Update persistent tile HP in real-time for visual crack overlay
+    const mr = miningTarget.row;
+    const mc = miningTarget.col;
+    if (tileMaxHP[mr] && tileMaxHP[mr][mc] > 0) {
+      const ratio = Math.min(miningProgress / miningDuration, 1);
+      tileHP[mr][mc] = tileMaxHP[mr][mc] * (1 - ratio);
+    }
+
     // Periodically retrigger pickaxe swing animation while mining
     if (!pickaxeSwinging) {
       pickaxeSwinging = true;
@@ -1837,7 +2328,7 @@
     if (Math.random() < dt * 8) {
       const tx = miningTarget.col * TILE_SIZE + TILE_SIZE / 2 - cameraX;
       const ty = miningTarget.row * TILE_SIZE + TILE_SIZE / 2 - cameraY;
-      const tileColor = TILE_COLORS[tile] || '#654';
+      const tileColor = getTileBaseColor(tile, miningTarget.row);
       particles.trail(tx + (Math.random() - 0.5) * 10, ty + (Math.random() - 0.5) * 10, {
         vx: -(miningDir.dx) * (0.5 + Math.random()),
         vy: -(miningDir.dy) * (0.5 + Math.random()) - Math.random() * 0.5,
@@ -1964,10 +2455,12 @@
             droppedResources.push({ col: c, row: r, type: tile, value: excess, age: 0 });
         }
         undergroundGrid[r][c] = TILE_EMPTY;
+        if (tileHP[r]) tileHP[r][c] = 0;
+        if (tileMaxHP[r]) tileMaxHP[r][c] = 0;
 
         // Red explosive flash particles
         particles.burst(tx, ty, 8, { color: '#f44', speed: 2.5, life: 0.4 });
-        spawnCrumble(tx, ty, TILE_COLORS[tile] || '#654');
+        spawnCrumble(tx, ty, getTileBaseColor(tile, r));
       }
 
     // Big explosion effect
@@ -2041,8 +2534,10 @@
             droppedResources.push({ col: c, row: r, type: tile, value: excess, age: 0 });
         }
         undergroundGrid[r][c] = TILE_EMPTY;
+        if (tileHP[r]) tileHP[r][c] = 0;
+        if (tileMaxHP[r]) tileMaxHP[r][c] = 0;
         particles.burst(tx, ty, 8, { color: '#f44', speed: 2.5, life: 0.4 });
-        spawnCrumble(tx, ty, TILE_COLORS[tile] || '#654');
+        spawnCrumble(tx, ty, getTileBaseColor(tile, r));
       }
 
     const cx = drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX;
@@ -2217,7 +2712,7 @@
   }
 
   // Passive gadgets that don't need selection
-  const PASSIVE_GADGETS = ['scanner', 'reinforcedDome', 'autoRepair', 'domeExpansion', 'energyShield', 'magnet', 'fortune', 'silkTouch', 'echoLocation', 'chainLightning', 'freezeRay', 'plasmaCannon'];
+  const PASSIVE_GADGETS = ['scanner', 'reinforcedDome', 'autoRepair', 'domeExpansion', 'energyShield', 'magnet', 'fortune', 'silkTouch', 'echoLocation', 'chainLightning', 'freezeRay', 'plasmaCannon', 'damageReflect', 'emergencyShield', 'fortifiedBase', 'lastStand', 'oreDetector', 'autoMine', 'tunnelBore', 'veinMiner', 'doubleJump', 'wallClimb', 'dash', 'undergroundRadar', 'multiShot', 'homingShots', 'criticalHit', 'explosiveRounds'];
 
   function applyGadgetUnlock(key) {
     unlockedTools[key] = true;
@@ -2275,91 +2770,113 @@
     }
   }
 
-  // Compute positions for tree nodes for rendering
+  // Compute positions for tree nodes using a strict grid layout.
+  // Each branch gets a vertical column section; within a branch nodes are
+  // placed on a grid where row = topological depth (max prerequisite row + 1)
+  // and columns are assigned left-to-right per row. A fixed cell size
+  // guarantees no two nodes can ever overlap.
   function computeTreeLayout() {
     const nodes = [];
     const margin = 20;
-    const branchGap = 10;
-    const availW = CANVAS_W - margin * 2;
-    const branchW = (availW - branchGap * (TREE_BRANCH_ORDER.length - 1)) / TREE_BRANCH_ORDER.length;
+    const branchGap = 16;
     const startY = 100;
-    const rowH = TREE_NODE_H + 25;
+    const cellW = 140;   // horizontal cell pitch
+    const cellH = 80;    // vertical cell pitch
 
-    for (let bi = 0; bi < TREE_BRANCH_ORDER.length; ++bi) {
-      const branch = TREE_BRANCH_ORDER[bi];
-      const branchX = margin + bi * (branchW + branchGap);
-      const branchCenterX = branchX + branchW / 2;
+    // First pass: determine how many columns each branch needs so we can
+    // allocate horizontal space proportionally.
+    const branchGrids = []; // per-branch: { branch, gridNodes: [{node, row, col}], maxCol, maxRow }
+
+    for (const branch of TREE_BRANCH_ORDER) {
       const branchNodes = UPGRADE_TREE.filter(n => n.branch === branch);
+      const nodeMap = {};
+      for (const n of branchNodes)
+        nodeMap[n.id] = n;
 
-      // Separate into chains: group by common prefix root
-      // Simple layout: arrange nodes in rows, splitting parallel paths side by side
-      const chains = buildBranchChains(branchNodes);
+      // --- Row assignment via topological depth ---
+      const rowOf = {};
+      const assignRow = (n) => {
+        if (rowOf[n.id] !== undefined) return rowOf[n.id];
+        let maxParent = -1;
+        for (const pid of n.prereqs)
+          if (nodeMap[pid])
+            maxParent = Math.max(maxParent, assignRow(nodeMap[pid]));
+        rowOf[n.id] = maxParent + 1;
+        return rowOf[n.id];
+      };
+      for (const n of branchNodes) assignRow(n);
 
-      let maxCol = 0;
-      for (const chain of chains)
-        if (chain.col > maxCol) maxCol = chain.col;
+      // --- Column assignment ---
+      // Group nodes by row, then assign columns left-to-right.
+      // To produce a visually pleasing tree we sort each row's nodes so that
+      // nodes sharing a common parent stay adjacent, ordered by their parent's
+      // column (assigned in the previous row).
+      const byRow = {};
+      let maxRow = 0;
+      for (const n of branchNodes) {
+        const r = rowOf[n.id];
+        if (!byRow[r]) byRow[r] = [];
+        byRow[r].push(n);
+        if (r > maxRow) maxRow = r;
+      }
 
-      const totalCols = maxCol + 1;
-      const colW = Math.min(TREE_NODE_W + 10, branchW / Math.max(1, totalCols));
+      const colOf = {};
+      let globalMaxCol = 0;
+      for (let r = 0; r <= maxRow; ++r) {
+        const rowNodes = byRow[r];
+        if (!rowNodes) continue;
 
-      for (const chain of chains) {
-        const nx = branchCenterX + (chain.col - (totalCols - 1) / 2) * colW - TREE_NODE_W / 2;
-        const ny = startY + chain.row * rowH - upgradeDialogScroll;
+        // Sort: by minimum parent column (so children cluster under parents),
+        // then by definition order for stability.
+        rowNodes.sort((a, b) => {
+          const aParentCol = Math.min(...a.prereqs.filter(p => nodeMap[p]).map(p => colOf[p] ?? 0), Infinity);
+          const bParentCol = Math.min(...b.prereqs.filter(p => nodeMap[p]).map(p => colOf[p] ?? 0), Infinity);
+          const apc = aParentCol === Infinity ? 0 : aParentCol;
+          const bpc = bParentCol === Infinity ? 0 : bParentCol;
+          if (apc !== bpc) return apc - bpc;
+          return branchNodes.indexOf(a) - branchNodes.indexOf(b);
+        });
+
+        for (let c = 0; c < rowNodes.length; ++c) {
+          colOf[rowNodes[c].id] = c;
+          if (c > globalMaxCol) globalMaxCol = c;
+        }
+      }
+
+      const gridNodes = branchNodes.map(n => ({ node: n, row: rowOf[n.id], col: colOf[n.id] }));
+      branchGrids.push({ branch, gridNodes, maxCol: globalMaxCol, maxRow });
+    }
+
+    // Second pass: compute pixel positions.
+    // Distribute branches across the available width, each getting space
+    // proportional to its column count (minimum 1 column).
+    const totalCols = branchGrids.reduce((s, bg) => s + bg.maxCol + 1, 0);
+    const totalBranchGaps = (TREE_BRANCH_ORDER.length - 1) * branchGap;
+    const availW = CANVAS_W - margin * 2 - totalBranchGaps;
+    const colUnit = availW / Math.max(1, totalCols);
+
+    let curX = margin;
+    for (const bg of branchGrids) {
+      const branchCols = bg.maxCol + 1;
+      const branchPixelW = branchCols * Math.max(colUnit, cellW);
+      const branchCenterX = curX + branchPixelW / 2;
+
+      for (const gn of bg.gridNodes) {
+        const nx = branchCenterX + (gn.col - (branchCols - 1) / 2) * cellW - TREE_NODE_W / 2;
+        const ny = startY + gn.row * cellH - upgradeDialogScroll;
         nodes.push({
-          node: chain.node,
+          node: gn.node,
           x: nx,
           y: ny,
           w: TREE_NODE_W,
           h: TREE_NODE_H,
-          branch
+          branch: bg.branch
         });
       }
+
+      curX += branchPixelW + branchGap;
     }
     return nodes;
-  }
-
-  function buildBranchChains(branchNodes) {
-    // For each branch, arrange nodes in a tree-like layout
-    // Roots (no prereqs within this branch) go in row 0
-    // Children go in the row after their parent
-    const result = [];
-    const placed = new Set();
-    const nodeMap = {};
-    for (const n of branchNodes)
-      nodeMap[n.id] = n;
-
-    // Find roots: nodes whose prereqs are all outside this branch or empty
-    const roots = branchNodes.filter(n =>
-      n.prereqs.every(p => !nodeMap[p])
-    );
-
-    // BFS from roots
-    let col = 0;
-    for (const root of roots) {
-      placeChain(root, 0, col, nodeMap, placed, result, branchNodes);
-      ++col;
-    }
-    return result;
-  }
-
-  function placeChain(node, row, col, nodeMap, placed, result, allNodes) {
-    if (placed.has(node.id)) return;
-    placed.add(node.id);
-    result.push({ node, row, col });
-
-    // Find children: nodes in this branch that have this node as a prereq
-    const children = allNodes.filter(n =>
-      !placed.has(n.id) && n.prereqs.includes(node.id)
-    );
-
-    if (children.length === 1)
-      placeChain(children[0], row + 1, col, nodeMap, placed, result, allNodes);
-    else if (children.length > 1) {
-      // Split into columns
-      const startCol = col - Math.floor((children.length - 1) / 2);
-      for (let i = 0; i < children.length; ++i)
-        placeChain(children[i], row + 1, startCol + i, nodeMap, placed, result, allNodes);
-    }
   }
 
   function openUpgradeDialog() {
@@ -2368,10 +2885,36 @@
     state = STATE_UPGRADE_DIALOG;
     upgradeDialogHover = null;
     upgradeDialogScroll = 0;
-    upgradeZoom = 1.0;
-    upgradePanX = 0;
-    upgradePanY = 0;
     upgradePanning = false;
+
+    // Auto-fit zoom: compute the bounding box of all nodes and scale to fit
+    const layout = computeTreeLayout();
+    if (layout.length) {
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const ln of layout) {
+        if (ln.x < minX) minX = ln.x;
+        if (ln.x + ln.w > maxX) maxX = ln.x + ln.w;
+        if (ln.y < minY) minY = ln.y;
+        if (ln.y + ln.h > maxY) maxY = ln.y + ln.h;
+      }
+      const treeW = maxX - minX + 40; // padding
+      const treeH = maxY - minY + 40;
+      const headerH = 85; // space reserved for title + resource bar
+      const footerH = 25; // space for close hint
+      const fitZoomX = CANVAS_W / treeW;
+      const fitZoomY = (CANVAS_H - headerH - footerH) / treeH;
+      upgradeZoom = Math.min(fitZoomX, fitZoomY, 1.0);
+      upgradeZoom = Math.max(upgradeZoom, 0.3);
+      // Center the tree
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+      upgradePanX = CANVAS_W / 2 - centerX * upgradeZoom;
+      upgradePanY = (headerH + (CANVAS_H - headerH - footerH) / 2) - centerY * upgradeZoom;
+    } else {
+      upgradeZoom = 1.0;
+      upgradePanX = 0;
+      upgradePanY = 0;
+    }
   }
 
   function closeUpgradeDialog() {
@@ -2433,25 +2976,25 @@
     ctx.translate(upgradePanX, upgradePanY);
     ctx.scale(upgradeZoom, upgradeZoom);
 
-    // Branch headers
-    const margin = 20;
-    const branchGap = 10;
-    const availW = CANVAS_W - margin * 2;
-    const branchW = (availW - branchGap * (TREE_BRANCH_ORDER.length - 1)) / TREE_BRANCH_ORDER.length;
+    // Compute node layout
+    const layoutNodes = computeTreeLayout();
 
-    for (let bi = 0; bi < TREE_BRANCH_ORDER.length; ++bi) {
-      const branch = TREE_BRANCH_ORDER[bi];
-      const bx = margin + bi * (branchW + branchGap);
-      const bcx = bx + branchW / 2;
+    // Branch headers -- derive center X from actual laid-out nodes
+    for (const branch of TREE_BRANCH_ORDER) {
+      const bNodes = layoutNodes.filter(ln => ln.branch === branch);
+      if (!bNodes.length) continue;
+      let minX = Infinity, maxX = -Infinity;
+      for (const ln of bNodes) {
+        if (ln.x < minX) minX = ln.x;
+        if (ln.x + ln.w > maxX) maxX = ln.x + ln.w;
+      }
+      const bcx = (minX + maxX) / 2;
       ctx.fillStyle = TREE_BRANCH_COLORS[branch];
       ctx.font = 'bold 12px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(TREE_BRANCH_LABELS[branch], bcx, 92 - upgradeDialogScroll);
     }
-
-    // Compute node layout
-    const layoutNodes = computeTreeLayout();
 
     // Draw connection lines first
     ctx.lineWidth = 2;
@@ -3602,6 +4145,34 @@
           drawTile(x, y, tile, r, c);
         }
 
+        // Draw crack overlay for partially-mined tiles
+        if (tile !== TILE_EMPTY && tileHP[r] && tileMaxHP[r] && tileMaxHP[r][c] > 0) {
+          const hpRatio = tileHP[r][c] / tileMaxHP[r][c];
+          if (hpRatio < 0.99) {
+            const damage = 1 - hpRatio; // 0 = pristine, 1 = about to break
+            // Darken overlay proportional to damage
+            ctx.fillStyle = `rgba(0,0,0,${damage * 0.4})`;
+            ctx.fillRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+            // Draw crack lines that grow with damage
+            ctx.strokeStyle = `rgba(0,0,0,${0.2 + damage * 0.5})`;
+            ctx.lineWidth = 0.8 + damage * 1.2;
+            const seed = r * GRID_COLS + c;
+            const cx = x + TILE_SIZE / 2;
+            const cy = y + TILE_SIZE / 2;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + (seed % 13 - 6) * damage, cy + (seed % 11 - 5) * damage);
+            ctx.lineTo(cx + (seed % 17 - 8) * damage, cy + (seed % 9 - 4) * damage * 1.5);
+            ctx.stroke();
+            if (damage > 0.4) {
+              ctx.beginPath();
+              ctx.moveTo(cx - 3, cy + 2);
+              ctx.lineTo(cx + (seed % 7 - 3) * damage * 1.3, cy - (seed % 5 + 2) * damage);
+              ctx.stroke();
+            }
+          }
+        }
+
         // Grid lines
         ctx.strokeStyle = '#2a2010';
         ctx.lineWidth = 0.5;
@@ -3802,9 +4373,18 @@
   }
 
   function drawTile(x, y, tile, r, c) {
-    const baseColor = TILE_COLORS[tile] || '#3a2a1a';
-    const shadowColor = TILE_SHADOW_COLORS[tile] || '#1a0f05';
-    const highlightColor = TILE_HIGHLIGHT_COLORS[tile];
+    // Depth-based colors for dirt tiles
+    let baseColor, shadowColor, highlightColor;
+    if (tile === TILE_DIRT) {
+      const tier = getDepthDirtColors(r);
+      baseColor = tier.base;
+      shadowColor = tier.shadow;
+      highlightColor = tier.highlight;
+    } else {
+      baseColor = TILE_COLORS[tile] || '#3a2a1a';
+      shadowColor = TILE_SHADOW_COLORS[tile] || '#1a0f05';
+      highlightColor = TILE_HIGHLIGHT_COLORS[tile];
+    }
     const bevel = 3; // bevel thickness in pixels
 
     // Main tile fill (flat base)
@@ -5027,6 +5607,247 @@
   }
 
   /* ======================================================================
+     TOOLTIP SYSTEM
+     ====================================================================== */
+
+  function updateTooltipHover(dt) {
+    if (!tooltip.visible && tooltip.lines.length > 0) {
+      tooltip.delayTimer += dt;
+      if (tooltip.delayTimer >= TOOLTIP_DELAY)
+        tooltip.visible = true;
+    }
+  }
+
+  function clearTooltip() {
+    tooltip.lines = [];
+    tooltip.visible = false;
+    tooltip.delayTimer = 0;
+    tooltip.lastHoverKey = '';
+  }
+
+  function setTooltip(x, y, lines, hoverKey) {
+    if (hoverKey !== tooltip.lastHoverKey) {
+      tooltip.delayTimer = 0;
+      tooltip.visible = false;
+      tooltip.lastHoverKey = hoverKey;
+    }
+    tooltip.lines = lines;
+    tooltip.x = x;
+    tooltip.y = y;
+  }
+
+  function drawTooltip() {
+    if (!tooltip.visible || tooltip.lines.length === 0) return;
+
+    const padding = 8;
+    const lineH = 16;
+    const fontSize = 11;
+    ctx.font = `${fontSize}px sans-serif`;
+
+    // Measure max line width
+    let maxW = 0;
+    for (const line of tooltip.lines) {
+      const w = ctx.measureText(line).width;
+      if (w > maxW) maxW = w;
+    }
+
+    const boxW = maxW + padding * 2;
+    const boxH = tooltip.lines.length * lineH + padding * 2 - 4;
+
+    // Position near cursor, clamped to canvas
+    let bx = tooltip.x + 14;
+    let by = tooltip.y + 14;
+    if (bx + boxW > CANVAS_W - 4) bx = tooltip.x - boxW - 6;
+    if (by + boxH > CANVAS_H - 4) by = tooltip.y - boxH - 6;
+    if (bx < 4) bx = 4;
+    if (by < 4) by = 4;
+
+    // Background: semi-transparent dark rounded rectangle
+    ctx.save();
+    ctx.fillStyle = 'rgba(10, 12, 20, 0.92)';
+    ctx.strokeStyle = 'rgba(120, 140, 180, 0.5)';
+    ctx.lineWidth = 1;
+    const r = 5;
+    ctx.beginPath();
+    ctx.moveTo(bx + r, by);
+    ctx.lineTo(bx + boxW - r, by);
+    ctx.arcTo(bx + boxW, by, bx + boxW, by + r, r);
+    ctx.lineTo(bx + boxW, by + boxH - r);
+    ctx.arcTo(bx + boxW, by + boxH, bx + boxW - r, by + boxH, r);
+    ctx.lineTo(bx + r, by + boxH);
+    ctx.arcTo(bx, by + boxH, bx, by + boxH - r, r);
+    ctx.lineTo(bx, by + r);
+    ctx.arcTo(bx, by, bx + r, by, r);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Text
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    for (let i = 0; i < tooltip.lines.length; ++i) {
+      const line = tooltip.lines[i];
+      // First line is bold (title)
+      if (i === 0) {
+        ctx.font = `bold ${fontSize}px sans-serif`;
+        ctx.fillStyle = '#fff';
+      } else {
+        ctx.font = `${fontSize}px sans-serif`;
+        // Color-code lines starting with special markers
+        if (line.startsWith('\u2714'))       // checkmark
+          ctx.fillStyle = '#8f8';
+        else if (line.startsWith('\u2718'))   // X mark
+          ctx.fillStyle = '#f88';
+        else if (line.startsWith('\u26A0'))   // warning
+          ctx.fillStyle = '#fa0';
+        else
+          ctx.fillStyle = '#ccc';
+      }
+      ctx.fillText(line, bx + padding, by + padding + i * lineH);
+    }
+    ctx.restore();
+  }
+
+  // Build tooltip content for an underground tile
+  function buildTileTooltip(col, row) {
+    const tile = undergroundGrid[row][col];
+    if (tile === TILE_EMPTY) return null;
+
+    const lines = [];
+    const displayName = TILE_DISPLAY_NAMES[tile] || 'Unknown';
+    const depthTier = DEPTH_TIERS[getDepthTier(row)];
+    const depthMult = getDepthMineMultiplier(row);
+
+    if (tile === TILE_DIRT) {
+      lines.push(depthTier.name);
+      lines.push('Depth tier: ' + depthTier.name);
+      lines.push('Mining: ' + getMiningDifficultyLabel(depthMult));
+    } else if (tile === TILE_GADGET) {
+      lines.push('Gadget Chamber');
+      const chamber = gadgetChambers.find(ch => {
+        for (let dr = 0; dr < 2; ++dr)
+          for (let dc = 0; dc < 2; ++dc)
+            if (ch.r + dr === row && ch.c + dc === col) return true;
+        return false;
+      });
+      if (chamber && chamber.revealed)
+        lines.push('Mine to discover a gadget');
+      else
+        lines.push('Hidden - mine nearby to reveal');
+      lines.push('Mining: ' + getMiningDifficultyLabel(depthMult));
+    } else {
+      lines.push(displayName);
+      if (TILE_VALUES[tile])
+        lines.push('Value: ' + TILE_VALUES[tile] + ' resources');
+      lines.push('Depth: ' + depthTier.name);
+      lines.push('Mining: ' + getMiningDifficultyLabel(depthMult));
+    }
+
+    // Partial mining status
+    if (tileHP[row] && tileMaxHP[row] && tileMaxHP[row][col] > 0) {
+      const hpRatio = tileHP[row][col] / tileMaxHP[row][col];
+      if (hpRatio < 0.99) {
+        const pct = Math.round(hpRatio * 100);
+        lines.push('Remaining: ' + pct + '%');
+      }
+    }
+
+    return lines;
+  }
+
+  // Build tooltip content for an enemy
+  function buildEnemyTooltip(e) {
+    const lines = [];
+    let typeName;
+    if (e.boss)
+      typeName = 'Boss';
+    else if (e.type === 'flyer')
+      typeName = 'Flyer';
+    else
+      typeName = 'Walker';
+
+    lines.push(typeName + (e.armored ? ' (Armored)' : ''));
+    lines.push('HP: ' + Math.ceil(e.hp) + ' / ' + Math.ceil(e.maxHP));
+    if (e.shield > 0)
+      lines.push('Shield: ' + Math.ceil(e.shield) + ' / ' + Math.ceil(e.maxShield));
+    else if (e.maxShield > 0)
+      lines.push('\u2718 Shield broken');
+    if (e.armored)
+      lines.push('\u26A0 Armored: 2x HP, 0.75x speed');
+    lines.push('Damage: ' + e.damage + ' per hit');
+    if (e.stunTimer > 0)
+      lines.push('\u26A0 Stunned: ' + e.stunTimer.toFixed(1) + 's');
+
+    return lines;
+  }
+
+  // Build tooltip content for an upgrade tree node
+  function buildUpgradeNodeTooltip(node) {
+    const lines = [];
+    const lvl = getTreeNodeLevel(node.id);
+    const maxed = lvl >= node.maxLevel;
+
+    lines.push(node.icon + ' ' + node.name);
+
+    // Effect description
+    const effectDesc = UPGRADE_EFFECT_DESC[node.upgradeKey];
+    if (effectDesc)
+      lines.push(effectDesc);
+
+    // Type
+    lines.push('Type: ' + (node.type === 'gadget' ? 'Gadget (unlock)' : 'Stat upgrade'));
+
+    // Level
+    if (maxed)
+      lines.push('\u2714 Purchased');
+    else
+      lines.push('Level: ' + lvl + ' / ' + node.maxLevel);
+
+    // Cost
+    if (!maxed) {
+      const cost = node.costs[Math.min(lvl, node.costs.length - 1)];
+      const COST_NAMES = {
+        iron: 'Iron', water: 'Water', cobalt: 'Cobalt', copper: 'Copper',
+        tin: 'Tin', coal: 'Coal', lead: 'Lead', silver: 'Silver',
+        gold: 'Gold', quartz: 'Quartz', redstone: 'Redstone',
+        emerald: 'Emerald', diamond: 'Diamond', ruby: 'Ruby'
+      };
+      let costParts = [];
+      for (const key in cost)
+        if ((cost[key] || 0) > 0) {
+          const have = resources[key] || 0;
+          const need = cost[key];
+          const mark = have >= need ? '\u2714' : '\u2718';
+          costParts.push(mark + ' ' + (COST_NAMES[key] || key) + ': ' + have + '/' + need);
+        }
+      if (costParts.length > 0) {
+        lines.push('--- Cost ---');
+        for (const cp of costParts)
+          lines.push(cp);
+      }
+    }
+
+    // Prerequisites
+    if (node.prereqs.length > 0) {
+      const unmet = [];
+      for (const pid of node.prereqs) {
+        if (!isTreeNodeMaxed(pid)) {
+          const prereqNode = UPGRADE_TREE.find(n => n.id === pid);
+          if (prereqNode)
+            unmet.push('\u2718 ' + prereqNode.name);
+        }
+      }
+      if (unmet.length > 0) {
+        lines.push('--- Prerequisites ---');
+        for (const u of unmet)
+          lines.push(u);
+      }
+    }
+
+    return lines;
+  }
+
+  /* ======================================================================
      STATUS BAR
      ====================================================================== */
 
@@ -5058,6 +5879,7 @@
     // Always update animations (even on title/pause/game-over for visual polish)
     animTime += state !== STATE_PLAYING ? dt : 0;
     updateGame(dt);
+    updateTooltipHover(dt);
 
     particles.update();
     screenShake.update(dt * 1000);
@@ -5071,6 +5893,9 @@
     floatingText.draw(ctx);
     screenShake.restore(ctx);
     ctx.restore();
+
+    // Draw tooltip outside screen shake so it stays stable
+    drawTooltip();
 
     updateStatusBar();
 
@@ -5411,7 +6236,7 @@
     }
   });
 
-  /* -- Continuous mouse tracking for turret aim + gadget selection hover -- */
+  /* -- Continuous mouse tracking for turret aim + gadget selection hover + tooltips -- */
   canvas.addEventListener('pointermove', (e) => {
     const rect = canvas.getBoundingClientRect();
     const scaleX = CANVAS_W / rect.width;
@@ -5423,12 +6248,23 @@
     if (upgradePanning && state === STATE_UPGRADE_DIALOG) {
       upgradePanX = upgradePanBaseX + (mouseAimX - upgradePanStartX);
       upgradePanY = upgradePanBaseY + (mouseAimY - upgradePanStartY);
+      clearTooltip();
       return;
     }
 
-    // Track hover on upgrade dialog
+    // Track hover on upgrade dialog + tooltip
     if (state === STATE_UPGRADE_DIALOG) {
       handleUpgradeDialogHover(mouseAimX, mouseAimY);
+      // Build tooltip for hovered upgrade node
+      if (upgradeDialogHover) {
+        const node = UPGRADE_TREE.find(n => n.id === upgradeDialogHover);
+        if (node) {
+          const ttLines = buildUpgradeNodeTooltip(node);
+          setTooltip(mouseAimX, mouseAimY, ttLines, 'node:' + node.id);
+        } else
+          clearTooltip();
+      } else
+        clearTooltip();
       return;
     }
 
@@ -5446,7 +6282,45 @@
           break;
         }
       }
+      clearTooltip();
+      return;
     }
+
+    // Tooltip detection for playing state
+    if (state === STATE_PLAYING) {
+      if (currentView === VIEW_UNDERGROUND) {
+        // Underground: detect tile under mouse
+        const col = Math.floor((mouseAimX + cameraX) / TILE_SIZE);
+        const row = Math.floor((mouseAimY + cameraY) / TILE_SIZE);
+        if (col >= 0 && col < GRID_COLS && row >= 0 && row < GRID_ROWS && undergroundGrid[row][col] !== TILE_EMPTY) {
+          const ttLines = buildTileTooltip(col, row);
+          if (ttLines)
+            setTooltip(mouseAimX, mouseAimY, ttLines, 'tile:' + col + ',' + row);
+          else
+            clearTooltip();
+        } else
+          clearTooltip();
+      } else if (currentView === VIEW_SURFACE) {
+        // Surface: detect enemy under mouse
+        let foundEnemy = false;
+        for (const e of enemies) {
+          const sz = e.size || 10;
+          const dx = mouseAimX - e.x;
+          const dy = mouseAimY - e.y;
+          if (dx * dx + dy * dy < (sz + 8) * (sz + 8)) {
+            const ttLines = buildEnemyTooltip(e);
+            // Use enemy position as identity since enemies don't have IDs
+            setTooltip(mouseAimX, mouseAimY, ttLines, 'enemy:' + Math.round(e.x) + ',' + Math.round(e.y));
+            foundEnemy = true;
+            break;
+          }
+        }
+        if (!foundEnemy)
+          clearTooltip();
+      } else
+        clearTooltip();
+    } else
+      clearTooltip();
   });
 
   /* ======================================================================
