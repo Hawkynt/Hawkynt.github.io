@@ -17,6 +17,7 @@ High-speed top-down spaceship racing with boost pads, hazards, AI opponents, shi
 
 ### Racing Gameplay
 - [x] As a player, I can accelerate with Up/W, steer with Left/Right or A/D, and brake with Down/S so that controls feel intuitive
+- [x] As a player, I can steer with the mouse (ship follows cursor while button pressed, auto-accelerates) so that mouse-only play is supported
 - [x] As a player, I can race against 3 AI opponents with distinct personalities (aggressive, defensive, balanced, erratic, calculated) so that races feel competitive
 - [x] As a player, I can see AI opponents with reduced difficulty (lower acceleration, reaction delay, random steering mistakes) so that races are fair
 - [x] As a player, I can race on 5+ distinct tracks with different layouts and checkpoints so that courses have variety
@@ -66,6 +67,7 @@ High-speed top-down spaceship racing with boost pads, hazards, AI opponents, shi
 | Down / S | Brake / Reverse |
 | Left / A | Steer left |
 | Right / D | Steer right |
+| Mouse (hold button) | Ship follows cursor, auto-accelerates |
 | F2 | New race |
 | Escape | Pause / Resume |
 | H | Toggle tutorial overlay |
