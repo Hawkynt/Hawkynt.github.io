@@ -7,8 +7,8 @@
      CONSTANTS
      ====================================================================== */
 
-  let CANVAS_W = 700;
-  let CANVAS_H = 500;
+  const CANVAS_W = 1400;
+  const CANVAS_H = 1000;
   const MAX_DT = 0.05;
   const TWO_PI = Math.PI * 2;
 
@@ -32,10 +32,10 @@
 
   /* -- Underground Grid -- */
   const GRID_COLS = 110;
-  const GRID_ROWS = 40;
+  const GRID_ROWS = 80;
   const TILE_SIZE = 40;
-  const GRID_OFFSET_X = 70;
-  const GRID_OFFSET_Y = 60;
+  const GRID_OFFSET_X = 140;
+  const GRID_OFFSET_Y = 120;
 
   /* -- Tile Types -- */
   const TILE_EMPTY = 0;
@@ -143,6 +143,23 @@
     [TILE_RUBY]: 'ruby'
   };
 
+  const TILE_ICONS = {
+    [TILE_IRON]: '\u2699',      // ⚙
+    [TILE_WATER]: '\u{1F4A7}',  // 💧
+    [TILE_COBALT]: '\u{1F48E}', // 💎 (blue gem)
+    [TILE_COPPER]: '\u{1FA99}', // 🪙
+    [TILE_GOLD]: '\u{1F451}',   // 👑
+    [TILE_TIN]: '\u{1F52A}',    // 🔪
+    [TILE_SILVER]: '\u2B50',    // ⭐
+    [TILE_LEAD]: '\u26D3',      // ⛓
+    [TILE_COAL]: '\u{1F525}',   // 🔥
+    [TILE_QUARTZ]: '\u{1F52E}', // 🔮
+    [TILE_REDSTONE]: '\u2764',  // ❤
+    [TILE_DIAMOND]: '\u{1F4A0}',// 💠
+    [TILE_EMERALD]: '\u{1F49A}',// 💚
+    [TILE_RUBY]: '\u2763'       // ❣
+  };
+
   const TILE_DISPLAY_NAMES = {
     [TILE_EMPTY]: 'Empty',
     [TILE_DIRT]: 'Dirt',
@@ -161,6 +178,23 @@
     [TILE_DIAMOND]: 'Diamond',
     [TILE_EMERALD]: 'Emerald',
     [TILE_RUBY]: 'Ruby'
+  };
+
+  const ORE_SPECKLE_COLORS = {
+    [TILE_IRON]: ['#cccccc', '#aaaaaa', '#eeeeee', '#999999'],
+    [TILE_WATER]: ['#66bbff', '#88ddff', '#4499dd', '#aaeeff'],
+    [TILE_COBALT]: ['#7777cc', '#9999ee', '#5555aa', '#aaaaff'],
+    [TILE_COPPER]: ['#d4944d', '#c08040', '#e0a060', '#a06020'],
+    [TILE_GOLD]: ['#ffea50', '#ffd700', '#ffe030', '#ffcc00'],
+    [TILE_TIN]: ['#eeeeee', '#d0d0d0', '#f4f4f4', '#c8c8c8'],
+    [TILE_SILVER]: ['#e0e0e0', '#c8c8c8', '#f0f0f0', '#b0b0b0'],
+    [TILE_LEAD]: ['#888888', '#666666', '#999999', '#555555'],
+    [TILE_COAL]: ['#444444', '#333333', '#555555', '#222222'],
+    [TILE_QUARTZ]: ['#fff8ee', '#f0e6d3', '#ffe8d0', '#e8dac0'],
+    [TILE_REDSTONE]: ['#ff3333', '#cc0000', '#ff5555', '#aa0000'],
+    [TILE_DIAMOND]: ['#dff8ff', '#b9f2ff', '#c8f0ff', '#a0e8ff'],
+    [TILE_EMERALD]: ['#80e8a0', '#50c878', '#60d888', '#40b868'],
+    [TILE_RUBY]: ['#ff4488', '#e0115f', '#ff2070', '#c00048']
   };
 
   // All resource tile types (used for detection in various places)
@@ -209,9 +243,9 @@
   }
 
   /* -- Dome -- */
-  const DOME_RADIUS = 80;
-  let DOME_X = CANVAS_W / 2;
-  let DOME_Y = CANVAS_H - 80; // dome center at ground line; arc draws upward
+  const DOME_RADIUS = 100;
+  const DOME_X = CANVAS_W / 2;
+  const DOME_Y = CANVAS_H - 100; // dome center at ground line; arc draws upward
   const BASE_DOME_HP = 100;
 
   /* -- Weapon defaults -- */
@@ -727,8 +761,8 @@
   const TREE_BRANCH_ORDER = ['dome', 'mining', 'movement', 'weapon'];
   const TREE_BRANCH_LABELS = { dome: 'DOME', mining: 'MINING', movement: 'MOVEMENT', weapon: 'WEAPON' };
   const TREE_BRANCH_COLORS = { dome: '#4af', mining: '#fa0', movement: '#0f0', weapon: '#f44' };
-  const TREE_NODE_W = 120;
-  const TREE_NODE_H = 60;
+  const TREE_NODE_W = 240;
+  const TREE_NODE_H = 120;
 
   /* ======================================================================
      DOM
@@ -749,7 +783,7 @@
   const particles = new SZ.GameEffects.ParticleSystem();
   const screenShake = new SZ.GameEffects.ScreenShake();
   const floatingText = new SZ.GameEffects.FloatingText();
-  const starfield = new SZ.GameEffects.Starfield(CANVAS_W, CANVAS_H * 0.85, 80);
+  const starfield = new SZ.GameEffects.Starfield(CANVAS_W, CANVAS_H * 0.85, 160);
 
   /* ======================================================================
      ANIMATION STATE
@@ -821,7 +855,7 @@
   let fireRequested = false; // player clicked to fire
   let turretAngle = -Math.PI / 2; // turret barrel angle (radians); default = straight up
   let mouseAimX = -1, mouseAimY = -1; // continuous mouse position for turret aiming
-  const TURRET_BARREL_LENGTH = 20;
+  const TURRET_BARREL_LENGTH = 40;
   const TURRET_KEYBOARD_SPEED = 2.5; // radians per second
 
   let drillSpeed = BASE_DRILL_SPEED;
@@ -898,6 +932,7 @@
   let upgradeZoom = 1.0;        // zoom scale factor
   let upgradePanX = 0;          // pan offset X
   let upgradePanY = 0;          // pan offset Y
+  let upgradeViewCustomized = false; // true once user manually zooms/pans
   let upgradePanning = false;   // right-click drag active
   let upgradePanStartX = 0;     // drag start mouse X
   let upgradePanStartY = 0;     // drag start mouse Y
@@ -949,22 +984,12 @@
      ====================================================================== */
 
   function setupCanvas() {
-    const parent = canvas.parentElement || document.body;
-    const rect = parent.getBoundingClientRect();
-    CANVAS_W = Math.floor(rect.width) || 700;
-    CANVAS_H = Math.floor(rect.height) || 500;
-
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = CANVAS_W * dpr;
-    canvas.height = CANVAS_H * dpr;
-    canvas.style.width = CANVAS_W + 'px';
-    canvas.style.height = CANVAS_H + 'px';
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-    // Recalculate derived layout values
-    DOME_X = CANVAS_W / 2;
-    DOME_Y = CANVAS_H - 80;
-    starfield.resize(CANVAS_W, CANVAS_H * 0.85);
+    // Fixed internal resolution -- CSS (width:100%; height:100%) scales the
+    // canvas to fill the client area. This avoids per-element scaling, keeps
+    // tile count constant, and all mouse handlers already translate coordinates
+    // via CANVAS_W/rect.width.
+    canvas.width = CANVAS_W;
+    canvas.height = CANVAS_H;
   }
 
   /* ======================================================================
@@ -1326,6 +1351,7 @@
     upgradePanX = 0;
     upgradePanY = 0;
     upgradePanning = false;
+    upgradeViewCustomized = false;
 
     // Reset tooltip
     clearTooltip();
@@ -1372,7 +1398,7 @@
     cancelMining();
 
     if (transitionTarget === VIEW_SURFACE && carried > 0) {
-      floatingText.add(CANVAS_W / 2, CANVAS_H / 2, `+${carried} resources deposited`, { color: '#0f0', font: 'bold 14px sans-serif' });
+      floatingText.add(CANVAS_W / 2, CANVAS_H / 2, `+${carried} resources deposited`, { color: '#0f0', font: 'bold 28px sans-serif' });
       carried = 0;
     }
   }
@@ -1412,7 +1438,7 @@
           drop.value -= pickUp;
           const tx = drop.col * TILE_SIZE + TILE_SIZE / 2 - cameraX;
           const ty = drop.row * TILE_SIZE + TILE_SIZE / 2 - cameraY;
-          floatingText.add(tx, ty - 15, `+${pickUp} ${label}`, { color: '#0f0', font: 'bold 11px sans-serif' });
+          floatingText.add(tx, ty - 30, `+${pickUp} ${label}`, { color: '#0f0', font: 'bold 22px sans-serif' });
           if (drop.value <= 0)
             droppedResources.splice(i, 1);
         }
@@ -1512,10 +1538,14 @@
       tileSparkleTimer -= dt;
       if (tileSparkleTimer <= 0) {
         tileSparkleTimer = 0.3 + Math.random() * 0.4;
-        // Pick a random resource tile
+        // Pick a random visible resource tile
         const candidates = [];
-        for (let r = 0; r < GRID_ROWS; ++r)
-          for (let c = 0; c < GRID_COLS; ++c)
+        const spkR0 = Math.max(0, Math.floor(cameraY / TILE_SIZE));
+        const spkR1 = Math.min(GRID_ROWS, Math.ceil((cameraY + CANVAS_H) / TILE_SIZE));
+        const spkC0 = Math.max(0, Math.floor(cameraX / TILE_SIZE));
+        const spkC1 = Math.min(GRID_COLS, Math.ceil((cameraX + CANVAS_W) / TILE_SIZE));
+        for (let r = spkR0; r < spkR1; ++r)
+          for (let c = spkC0; c < spkC1; ++c)
             if (undergroundGrid[r][c] !== TILE_EMPTY && undergroundGrid[r][c] !== TILE_DIRT && undergroundGrid[r][c] !== TILE_GADGET)
               candidates.push({ r, c });
         if (candidates.length > 0) {
@@ -1558,13 +1588,13 @@
     const pieces = [];
     for (let i = 0; i < 8; ++i)
       pieces.push({
-        x: tx + (Math.random() - 0.5) * 10,
-        y: ty + (Math.random() - 0.5) * 10,
+        x: tx + (Math.random() - 0.5) * 20,
+        y: ty + (Math.random() - 0.5) * 20,
         vx: (Math.random() - 0.5) * 3,
         vy: -Math.random() * 2 - 1,
         rot: Math.random() * TWO_PI,
         rotV: (Math.random() - 0.5) * 0.3,
-        size: 2 + Math.random() * 4,
+        size: 4 + Math.random() * 8,
         color: color
       });
     crumbleEffects.push({ x: tx, y: ty, pieces, life: 0.6 });
@@ -1573,16 +1603,16 @@
   function spawnDust(tx, ty) {
     for (let i = 0; i < 3; ++i)
       dustClouds.push({
-        x: tx + (Math.random() - 0.5) * 15,
-        y: ty + (Math.random() - 0.5) * 5,
+        x: tx + (Math.random() - 0.5) * 30,
+        y: ty + (Math.random() - 0.5) * 10,
         alpha: 0.4 + Math.random() * 0.2,
-        radius: 3 + Math.random() * 4,
+        radius: 6 + Math.random() * 8,
         expandRate: 0.5 + Math.random() * 0.3
       });
   }
 
   function spawnResourceGlow(tx, ty, color) {
-    resourceGlows.push({ x: tx, y: ty, color, life: 1.0, radius: 5 });
+    resourceGlows.push({ x: tx, y: ty, color, life: 1.0, radius: 10 });
   }
 
   function spawnShieldImpact(ex, ey) {
@@ -1602,7 +1632,7 @@
       particles.burst(e.x, e.y, 6, { color: '#4af', speed: 2, life: 0.3 });
       if (e.shield <= 0) {
         e.shield = 0;
-        floatingText.add(e.x, e.y - (e.size || 10) - 18, 'SHIELD BROKEN', { color: '#4af', font: 'bold 11px sans-serif' });
+        floatingText.add(e.x, e.y - (e.size || 20) - 36, 'SHIELD BROKEN', { color: '#4af', font: 'bold 22px sans-serif' });
         particles.burst(e.x, e.y, 15, { color: '#4af', speed: 3.5, life: 0.5 });
         particles.sparkle(e.x, e.y, 8, { color: '#8cf', speed: 2 });
       }
@@ -1693,7 +1723,7 @@
     // Recharge shield gadget at wave start
     if (primaryGadget === 'shield') {
       primaryGadgetState.active = true;
-      floatingText.add(DOME_X, DOME_Y - DOME_RADIUS - 30, 'Shield Recharged!', { color: '#4af', font: 'bold 12px sans-serif' });
+      floatingText.add(DOME_X, DOME_Y - DOME_RADIUS - 60, 'Shield Recharged!', { color: '#4af', font: 'bold 24px sans-serif' });
     }
 
     const isBossWave = waveNumber >= 15 && waveNumber % 5 === 0;
@@ -1716,8 +1746,8 @@
     for (let i = 0; i < walkerCount; ++i) {
       // Ground walkers approach from left or right at ground level
       const fromLeft = Math.random() < 0.5;
-      const spawnX = fromLeft ? -30 - Math.random() * 80 : CANVAS_W + 30 + Math.random() * 80;
-      const spawnY = DOME_Y + (Math.random() - 0.5) * 20;
+      const spawnX = fromLeft ? -60 - Math.random() * 160 : CANVAS_W + 60 + Math.random() * 160;
+      const spawnY = DOME_Y + (Math.random() - 0.5) * 40;
 
       const isArmored = waveNumber >= 9 && Math.random() < Math.min(0.35, (waveNumber - 8) * 0.07);
       const hpMult = isArmored ? 2.0 : 1.0;
@@ -1741,7 +1771,7 @@
         legPhase: Math.random() * TWO_PI,
         eyeBlinkTimer: 2 + Math.random() * 3,
         eyeBlinking: false,
-        size: (10 + Math.random() * 4) * sizeMult,
+        size: (20 + Math.random() * 8) * sizeMult,
         armored: isArmored,
         shield: shieldVal,
         maxShield: shieldVal,
@@ -1753,7 +1783,7 @@
     for (let i = 0; i < flyerCount; ++i) {
       // Flyers approach from upper hemisphere at any angle
       const angle = Math.PI + Math.random() * Math.PI;
-      const dist = 300 + Math.random() * 100;
+      const dist = 600 + Math.random() * 200;
       const flyerHP = (baseHP * 0.6 + Math.random() * 3);
       const hasShield = waveNumber >= 11 && Math.random() < Math.min(0.2, (waveNumber - 10) * 0.04);
       const shieldVal = hasShield ? Math.floor(flyerHP * 0.4 + waveNumber * 0.5) : 0;
@@ -1773,7 +1803,7 @@
         wingPhase: Math.random() * TWO_PI,
         eyeBlinkTimer: 2 + Math.random() * 3,
         eyeBlinking: false,
-        size: 7 + Math.random() * 3,
+        size: 14 + Math.random() * 6,
         armored: false,
         shield: shieldVal,
         maxShield: shieldVal,
@@ -1788,8 +1818,8 @@
       const fromLeft = Math.random() < 0.5;
       enemies.push({
         type: 'ground',
-        x: fromLeft ? -60 : CANVAS_W + 60,
-        y: DOME_Y - 10,
+        x: fromLeft ? -120 : CANVAS_W + 120,
+        y: DOME_Y - 20,
         hp: bossHP,
         maxHP: bossHP,
         speed: baseSpeed * 0.5,
@@ -1800,16 +1830,16 @@
         legPhase: Math.random() * TWO_PI,
         eyeBlinkTimer: 2 + Math.random() * 3,
         eyeBlinking: false,
-        size: 22 + Math.random() * 4,
+        size: 44 + Math.random() * 8,
         armored: true,
         shield: bossShield,
         maxShield: bossShield,
         boss: true
       });
-      floatingText.add(CANVAS_W / 2, 70, 'BOSS INCOMING!', { color: '#f00', font: 'bold 24px sans-serif' });
+      floatingText.add(CANVAS_W / 2, 140, 'BOSS INCOMING!', { color: '#f00', font: 'bold 48px sans-serif' });
     }
 
-    floatingText.add(CANVAS_W / 2, 40, `WAVE ${waveNumber}`, { color: '#f80', font: 'bold 20px sans-serif' });
+    floatingText.add(CANVAS_W / 2, 80, `WAVE ${waveNumber}`, { color: '#f80', font: 'bold 40px sans-serif' });
     updateWindowTitle();
   }
 
@@ -1843,7 +1873,7 @@
           // Shield gadget absorbs first hit
           if (primaryGadget === 'shield' && primaryGadgetState.active) {
             primaryGadgetState.active = false;
-            floatingText.add(DOME_X, DOME_Y - DOME_RADIUS - 30, 'Shield Absorbed!', { color: '#4af', font: 'bold 14px sans-serif' });
+            floatingText.add(DOME_X, DOME_Y - DOME_RADIUS - 60, 'Shield Absorbed!', { color: '#4af', font: 'bold 28px sans-serif' });
             particles.burst(e.x, e.y, 15, { color: '#4af', speed: 3, life: 0.5 });
             spawnShieldImpact(e.x, e.y);
             continue; // skip damage
@@ -1855,7 +1885,7 @@
           domeHP -= effectiveDmg;
           domeHitFlash = 1.0;
           screenShake.trigger(8, 250);
-          floatingText.add(DOME_X + (Math.random() - 0.5) * 40, DOME_Y - 30, `-${effectiveDmg} HP`, { color: '#f44', font: 'bold 14px sans-serif' });
+          floatingText.add(DOME_X + (Math.random() - 0.5) * 80, DOME_Y - 60, `-${effectiveDmg} HP`, { color: '#f44', font: 'bold 28px sans-serif' });
 
           // Shield impact flash
           spawnShieldImpact(e.x, e.y);
@@ -1909,7 +1939,7 @@
             gravity: 0.12,
             shape: 'square'
           });
-        floatingText.add(e.x, e.y - 15, `+${10 + waveNumber * 5}`, { color: '#ff0', font: 'bold 12px sans-serif' });
+        floatingText.add(e.x, e.y - 30, `+${10 + waveNumber * 5}`, { color: '#ff0', font: 'bold 24px sans-serif' });
         enemies.splice(i, 1);
       }
     }
@@ -1917,7 +1947,7 @@
     if (waveActive && enemies.length === 0) {
       waveActive = false;
       waveTimer = WAVE_INTERVAL;
-      floatingText.add(CANVAS_W / 2, 40, 'WAVE CLEAR!', { color: '#0f0', font: 'bold 18px sans-serif' });
+      floatingText.add(CANVAS_W / 2, 80, 'WAVE CLEAR!', { color: '#0f0', font: 'bold 36px sans-serif' });
     }
   }
 
@@ -1955,7 +1985,7 @@
     if (turretAngle < TURRET_MIN_ANGLE) turretAngle = TURRET_MIN_ANGLE;
 
     // Nozzle position on dome arc
-    const nozzleR = DOME_RADIUS + 8;
+    const nozzleR = DOME_RADIUS + 16;
     const turretBaseX = DOME_X + Math.cos(turretAngle) * nozzleR;
     const turretBaseY = DOME_Y + Math.sin(turretAngle) * nozzleR;
 
@@ -1973,7 +2003,7 @@
 
       // Find enemy closest to the projected aim line
       let target = null;
-      let bestDist = 40 * 40; // hit radius of 40px
+      let bestDist = 80 * 80; // hit radius of 80px
       for (const e of enemies) {
         const dx = e.x - farX;
         const dy = e.y - farY;
@@ -1986,7 +2016,7 @@
 
       // Also check enemies near the aim line (not just the far point)
       if (!target) {
-        let bestLineDist = 30;
+        let bestLineDist = 60;
         for (const e of enemies) {
           // Distance from enemy to the aim ray
           const ex = e.x - turretBaseX;
@@ -2027,7 +2057,7 @@
             if (ce === target || chainCount >= 2) break;
             const cdx = ce.x - target.x;
             const cdy = ce.y - target.y;
-            if (cdx * cdx + cdy * cdy < 80 * 80) {
+            if (cdx * cdx + cdy * cdy < 160 * 160) {
               applyDamageToEnemy(ce, chainDamage);
               particles.burst(ce.x, ce.y, 4, { color: '#4af', speed: 2, life: 0.2 });
               // Arc visual
@@ -2042,7 +2072,7 @@
           for (const ce of enemies) {
             const cdx = ce.x - target.x;
             const cdy = ce.y - target.y;
-            if (cdx * cdx + cdy * cdy < 60 * 60)
+            if (cdx * cdx + cdy * cdy < 120 * 120)
               ce.stunTimer = Math.max(ce.stunTimer || 0, 0.8);
           }
         }
@@ -2054,7 +2084,7 @@
             if (ce === target) continue;
             const cdx = ce.x - target.x;
             const cdy = ce.y - target.y;
-            if (cdx * cdx + cdy * cdy < 70 * 70) {
+            if (cdx * cdx + cdy * cdy < 140 * 140) {
               applyDamageToEnemy(ce, aoeDamage);
               particles.burst(ce.x, ce.y, 6, { color: '#f80', speed: 2, life: 0.3 });
             }
@@ -2213,7 +2243,7 @@
         value *= 2;
         const tx2 = nx * TILE_SIZE + TILE_SIZE / 2 - cameraX;
         const ty2 = ny * TILE_SIZE + TILE_SIZE / 2 - cameraY;
-        floatingText.add(tx2, ty2 - 30, 'FORTUNE!', { color: '#ffd700', font: 'bold 12px sans-serif' });
+        floatingText.add(tx2, ty2 - 60, 'FORTUNE!', { color: '#ffd700', font: 'bold 24px sans-serif' });
         particles.sparkle(tx2, ty2, 8, { color: '#ffd700', speed: 2 });
       }
 
@@ -2223,13 +2253,13 @@
       if (fitsInInventory > 0) {
         resources[label] += fitsInInventory;
         carried += fitsInInventory;
-        floatingText.add(tx, ty - 15, `+${fitsInInventory} ${label}`, { color: '#0f0', font: 'bold 12px sans-serif' });
+        floatingText.add(tx, ty - 30, `+${fitsInInventory} ${label}`, { color: '#0f0', font: 'bold 24px sans-serif' });
       }
 
       // Drop excess resources on the ground
       if (excess > 0) {
         droppedResources.push({ col: nx, row: ny, type: tile, value: excess, age: 0 });
-        floatingText.add(tx, ty - 30, `${excess} ${label} dropped!`, { color: '#f80', font: 'bold 11px sans-serif' });
+        floatingText.add(tx, ty - 60, `${excess} ${label} dropped!`, { color: '#f80', font: 'bold 22px sans-serif' });
       }
 
       // Resource reveal glow burst
@@ -2360,7 +2390,7 @@
 
       const tx = drop.col * TILE_SIZE + TILE_SIZE / 2 - cameraX;
       const ty = drop.row * TILE_SIZE + TILE_SIZE / 2 - cameraY;
-      floatingText.add(tx, ty - 15, `+${pickUp} ${label}`, { color: '#0f0', font: 'bold 11px sans-serif' });
+      floatingText.add(tx, ty - 30, `+${pickUp} ${label}`, { color: '#0f0', font: 'bold 22px sans-serif' });
 
       if (drop.value <= 0)
         droppedResources.splice(i, 1);
@@ -2370,7 +2400,7 @@
   function grantMineGadget(type, tx, ty) {
     foundGadgets.push(type);
     const name = MINE_GADGET_NAMES[type] || type;
-    floatingText.add(tx, ty - 25, `GADGET: ${name}!`, { color: '#ffd700', font: 'bold 14px sans-serif' });
+    floatingText.add(tx, ty - 50, `GADGET: ${name}!`, { color: '#ffd700', font: 'bold 28px sans-serif' });
     particles.burst(tx, ty, 25, { color: '#ffd700', speed: 3, life: 0.7 });
     particles.sparkle(tx, ty, 15, { color: '#ffaa00', speed: 2 });
     screenShake.trigger(8, 200);
@@ -2379,17 +2409,17 @@
       case 'domeArmor':
         maxDomeHP += 50;
         domeHP = Math.min(domeHP + 50, maxDomeHP);
-        floatingText.add(tx, ty - 45, '+50 Max HP!', { color: '#0f0', font: 'bold 12px sans-serif' });
+        floatingText.add(tx, ty - 90, '+50 Max HP!', { color: '#0f0', font: 'bold 24px sans-serif' });
         break;
       case 'blastMining':
         primaryGadgetState.blastCharges = (primaryGadgetState.blastCharges || 0) + 2;
-        floatingText.add(tx, ty - 45, '+2 Blast Charges!', { color: '#f80', font: 'bold 12px sans-serif' });
+        floatingText.add(tx, ty - 90, '+2 Blast Charges!', { color: '#f80', font: 'bold 24px sans-serif' });
         break;
       case 'probeScanner':
         primaryGadgetState.probeTimer = 15;
         primaryGadgetState.probePlayerR = drillY;
         primaryGadgetState.probePlayerC = drillX;
-        floatingText.add(tx, ty - 45, 'Resources Revealed!', { color: '#ffd700', font: 'bold 12px sans-serif' });
+        floatingText.add(tx, ty - 90, 'Resources Revealed!', { color: '#ffd700', font: 'bold 24px sans-serif' });
         break;
       case 'autoCannon':
         primaryGadgetState.autoCannonTimer = 0;
@@ -2415,7 +2445,7 @@
       drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX,
       drillY * TILE_SIZE - 10 - cameraY,
       `BLAST! (${primaryGadgetState.blastCharges} left)`,
-      { color: '#f80', font: 'bold 14px sans-serif' }
+      { color: '#f80', font: 'bold 28px sans-serif' }
     );
 
     // Clear 3x3 area around player
@@ -2483,7 +2513,7 @@
       floatingText.add(
         drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX,
         drillY * TILE_SIZE - 10 - cameraY,
-        'Need 10 iron!', { color: '#f44', font: 'bold 12px sans-serif' }
+        'Need 10 iron!', { color: '#f44', font: 'bold 24px sans-serif' }
       );
       return;
     }
@@ -2494,7 +2524,7 @@
     floatingText.add(
       drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX,
       drillY * TILE_SIZE - 10 - cameraY,
-      'BLAST! (-10 iron)', { color: '#f80', font: 'bold 14px sans-serif' }
+      'BLAST! (-10 iron)', { color: '#f80', font: 'bold 28px sans-serif' }
     );
 
     // Clear 3x3 area around player
@@ -2567,7 +2597,7 @@
 
     // Deposit carried resources
     if (carried > 0) {
-      floatingText.add(CANVAS_W / 2, CANVAS_H / 2, `+${carried} resources deposited`, { color: '#0f0', font: 'bold 14px sans-serif' });
+      floatingText.add(CANVAS_W / 2, CANVAS_H / 2, `+${carried} resources deposited`, { color: '#0f0', font: 'bold 28px sans-serif' });
       carried = 0;
     }
 
@@ -2576,7 +2606,7 @@
     transitionProgress = 0;
     transitionPhase = 'fade-out';
 
-    floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 30, 'Teleported!', { color: '#a0f', font: 'bold 16px sans-serif' });
+    floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 60, 'Teleported!', { color: '#a0f', font: 'bold 32px sans-serif' });
   }
 
   function selectTool(key) {
@@ -2596,7 +2626,7 @@
     resources.cobalt -= def.costCobalt;
     unlockedTools[def.key] = true;
 
-    floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 30, `${def.name} Unlocked!`, { color: '#ffd700', font: 'bold 14px sans-serif' });
+    floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 60, `${def.name} Unlocked!`, { color: '#ffd700', font: 'bold 28px sans-serif' });
     particles.sparkle(CANVAS_W / 2, CANVAS_H / 2, 15, { color: '#ffd700', speed: 2.5 });
     screenShake.trigger(5, 150);
 
@@ -2645,7 +2675,7 @@
     // Recalculate using effective level (legacy + tree combined)
     applyStatUpgrade(def.key);
 
-    floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 30, `${def.name} Lv${getEffectiveLevel(def.key)}`, { color: '#4af', font: 'bold 14px sans-serif' });
+    floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 60, `${def.name} Lv${getEffectiveLevel(def.key)}`, { color: '#4af', font: 'bold 28px sans-serif' });
     particles.sparkle(CANVAS_W / 2, CANVAS_H / 2, 10, { color: '#4af', speed: 2 });
   }
 
@@ -2706,7 +2736,7 @@
     else
       applyStatUpgrade(node.upgradeKey);
 
-    floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 30, `${node.name} purchased!`, { color: '#ffd700', font: 'bold 14px sans-serif' });
+    floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 60, `${node.name} purchased!`, { color: '#ffd700', font: 'bold 28px sans-serif' });
     particles.sparkle(CANVAS_W / 2, CANVAS_H / 2, 12, { color: '#ffd700', speed: 2.5 });
     screenShake.trigger(4, 120);
   }
@@ -2777,11 +2807,11 @@
   // guarantees no two nodes can ever overlap.
   function computeTreeLayout() {
     const nodes = [];
-    const margin = 20;
-    const branchGap = 16;
-    const startY = 100;
-    const cellW = 140;   // horizontal cell pitch
-    const cellH = 80;    // vertical cell pitch
+    const margin = 40;
+    const branchGap = 32;
+    const startY = 200;
+    const cellW = 280;   // horizontal cell pitch
+    const cellH = 160;    // vertical cell pitch
 
     // First pass: determine how many columns each branch needs so we can
     // allocate horizontal space proportionally.
@@ -2887,33 +2917,34 @@
     upgradeDialogScroll = 0;
     upgradePanning = false;
 
-    // Auto-fit zoom: compute the bounding box of all nodes and scale to fit
-    const layout = computeTreeLayout();
-    if (layout.length) {
-      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-      for (const ln of layout) {
-        if (ln.x < minX) minX = ln.x;
-        if (ln.x + ln.w > maxX) maxX = ln.x + ln.w;
-        if (ln.y < minY) minY = ln.y;
-        if (ln.y + ln.h > maxY) maxY = ln.y + ln.h;
+    // Only auto-fit on first open; preserve user's zoom/pan after manual interaction
+    if (!upgradeViewCustomized) {
+      const layout = computeTreeLayout();
+      if (layout.length) {
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        for (const ln of layout) {
+          if (ln.x < minX) minX = ln.x;
+          if (ln.x + ln.w > maxX) maxX = ln.x + ln.w;
+          if (ln.y < minY) minY = ln.y;
+          if (ln.y + ln.h > maxY) maxY = ln.y + ln.h;
+        }
+        const treeW = maxX - minX + 80; // padding
+        const treeH = maxY - minY + 80;
+        const headerH = 170; // space reserved for title + resource bar
+        const footerH = 50; // space for close hint
+        const fitZoomX = CANVAS_W / treeW;
+        const fitZoomY = (CANVAS_H - headerH - footerH) / treeH;
+        upgradeZoom = Math.min(fitZoomX, fitZoomY, 1.0);
+        upgradeZoom = Math.max(upgradeZoom, 0.3);
+        const centerX = (minX + maxX) / 2;
+        const centerY = (minY + maxY) / 2;
+        upgradePanX = CANVAS_W / 2 - centerX * upgradeZoom;
+        upgradePanY = (headerH + (CANVAS_H - headerH - footerH) / 2) - centerY * upgradeZoom;
+      } else {
+        upgradeZoom = 1.0;
+        upgradePanX = 0;
+        upgradePanY = 0;
       }
-      const treeW = maxX - minX + 40; // padding
-      const treeH = maxY - minY + 40;
-      const headerH = 85; // space reserved for title + resource bar
-      const footerH = 25; // space for close hint
-      const fitZoomX = CANVAS_W / treeW;
-      const fitZoomY = (CANVAS_H - headerH - footerH) / treeH;
-      upgradeZoom = Math.min(fitZoomX, fitZoomY, 1.0);
-      upgradeZoom = Math.max(upgradeZoom, 0.3);
-      // Center the tree
-      const centerX = (minX + maxX) / 2;
-      const centerY = (minY + maxY) / 2;
-      upgradePanX = CANVAS_W / 2 - centerX * upgradeZoom;
-      upgradePanY = (headerH + (CANVAS_H - headerH - footerH) / 2) - centerY * upgradeZoom;
-    } else {
-      upgradeZoom = 1.0;
-      upgradePanX = 0;
-      upgradePanY = 0;
     }
   }
 
@@ -2933,32 +2964,33 @@
     ctx.shadowBlur = 15;
     ctx.shadowColor = '#ffd700';
     ctx.fillStyle = '#ffd700';
-    ctx.font = 'bold 22px sans-serif';
+    ctx.font = 'bold 44px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('UPGRADE TREE', CANVAS_W / 2, 30);
+    ctx.fillText('UPGRADE TREE', CANVAS_W / 2, 60);
     ctx.shadowBlur = 0;
     ctx.restore();
 
     // Resource bar at top (fixed)
-    const resY = 50;
+    const resY = 100;
     ctx.fillStyle = 'rgba(20,25,40,0.9)';
-    ctx.fillRect(10, resY, CANVAS_W - 20, 28);
+    ctx.fillRect(20, resY, CANVAS_W - 40, 56);
     ctx.strokeStyle = '#3a4a6a';
     ctx.lineWidth = 1;
-    ctx.strokeRect(10, resY, CANVAS_W - 20, 28);
+    ctx.strokeRect(20, resY, CANVAS_W - 40, 56);
 
-    ctx.font = 'bold 10px sans-serif';
+    ctx.font = 'bold 20px sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    const resBarY = resY + 14;
-    let resBarX = 20;
+    const resBarY = resY + 28;
+    let resBarX = 40;
     for (const entry of RESOURCE_HUD_ENTRIES) {
       if (resources[entry.key] <= 0 && entry.key !== 'iron' && entry.key !== 'water' && entry.key !== 'cobalt') continue;
       ctx.fillStyle = entry.color;
-      ctx.fillText(`${entry.label}:${resources[entry.key]}`, resBarX, resBarY);
-      resBarX += ctx.measureText(`${entry.label}:${resources[entry.key]}`).width + 10;
-      if (resBarX > CANVAS_W - 140) break;
+      const resText = `${entry.icon} ${entry.label}:${resources[entry.key]}`;
+      ctx.fillText(resText, resBarX, resBarY);
+      resBarX += ctx.measureText(resText).width + 20;
+      if (resBarX > CANVAS_W - 280) break;
     }
 
     // Total upgrades stat
@@ -2969,7 +3001,7 @@
     }
     ctx.fillStyle = '#aaa';
     ctx.textAlign = 'right';
-    ctx.fillText(`Upgrades: ${totalPurchased}/${totalAvailable}`, CANVAS_W - 20, resBarY);
+    ctx.fillText(`Upgrades: ${totalPurchased}/${totalAvailable}`, CANVAS_W - 40, resBarY);
 
     // Apply zoom & pan transform for tree content
     ctx.save();
@@ -2990,14 +3022,14 @@
       }
       const bcx = (minX + maxX) / 2;
       ctx.fillStyle = TREE_BRANCH_COLORS[branch];
-      ctx.font = 'bold 12px sans-serif';
+      ctx.font = 'bold 24px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(TREE_BRANCH_LABELS[branch], bcx, 92 - upgradeDialogScroll);
     }
 
     // Draw connection lines first
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 4;
     for (const ln of layoutNodes) {
       const node = ln.node;
       for (const pid of node.prereqs) {
@@ -3018,7 +3050,7 @@
         else
           ctx.strokeStyle = 'rgba(100,100,100,0.2)';
 
-        ctx.setLineDash(purchased ? [] : [4, 4]);
+        ctx.setLineDash(purchased ? [] : [8, 8]);
         ctx.beginPath();
         ctx.moveTo(fromX, fromY);
         // Curved connector
@@ -3068,84 +3100,85 @@
       ctx.strokeStyle = borderColor;
       ctx.lineWidth = borderWidth;
       if (!prereqsMet)
-        ctx.setLineDash([3, 3]);
+        ctx.setLineDash([6, 6]);
       ctx.strokeRect(x, y, w, h);
       ctx.setLineDash([]);
 
       // Icon
-      ctx.font = '16px sans-serif';
+      ctx.font = '32px sans-serif';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = maxed ? '#0f0' : (available ? '#fff' : '#555');
-      ctx.fillText(node.icon, x + 4, y + h / 2 - 6);
+      ctx.fillText(node.icon, x + 8, y + h / 2 - 12);
 
       // Name
-      ctx.font = 'bold 9px sans-serif';
+      ctx.font = 'bold 18px sans-serif';
       ctx.textAlign = 'left';
       ctx.fillStyle = maxed ? '#8f8' : (available ? '#ddd' : '#666');
-      ctx.fillText(node.name, x + 22, y + 14);
+      ctx.fillText(node.name, x + 44, y + 28);
 
       // Cost display
       if (!maxed) {
         const cost = node.costs[Math.min(lvl, node.costs.length - 1)];
         const COST_ABBREV = { iron: 'Fe', water: 'H2O', cobalt: 'Co', copper: 'Cu', tin: 'Sn', coal: 'C', lead: 'Pb', silver: 'Ag', gold: 'Au', quartz: 'Qz', redstone: 'Rs', emerald: 'Em', diamond: 'Di', ruby: 'Rb' };
+        const COST_ICONS = { iron: '\u2699', water: '\u{1F4A7}', cobalt: '\u{1F48E}', copper: '\u{1FA99}', tin: '\u{1F52A}', coal: '\u{1F525}', lead: '\u26D3', silver: '\u2B50', gold: '\u{1F451}', quartz: '\u{1F52E}', redstone: '\u2764', emerald: '\u{1F49A}', diamond: '\u{1F4A0}', ruby: '\u2763' };
         let costParts = [];
         for (const key in cost)
           if ((cost[key] || 0) > 0)
-            costParts.push(`${cost[key]}${COST_ABBREV[key] || key}`);
+            costParts.push(`${cost[key]}${COST_ICONS[key] || ''}${COST_ABBREV[key] || key}`);
         const costStr = costParts.join(' ');
 
-        ctx.font = '8px sans-serif';
+        ctx.font = '16px sans-serif';
         ctx.fillStyle = affordable ? '#0f0' : '#a44';
-        ctx.fillText(costStr, x + 22, y + 27);
+        ctx.fillText(costStr, x + 44, y + 54);
       }
 
       // Level indicator / checkmark
       if (maxed) {
         ctx.fillStyle = '#0f0';
-        ctx.font = 'bold 14px sans-serif';
+        ctx.font = 'bold 28px sans-serif';
         ctx.textAlign = 'right';
-        ctx.fillText('\u2714', x + w - 4, y + h / 2);
+        ctx.fillText('\u2714', x + w - 8, y + h / 2);
       } else if (!prereqsMet) {
         ctx.fillStyle = '#888';
-        ctx.font = '12px sans-serif';
+        ctx.font = '24px sans-serif';
         ctx.textAlign = 'right';
-        ctx.fillText('\u{1F512}', x + w - 4, y + h / 2);
+        ctx.fillText('\u{1F512}', x + w - 8, y + h / 2);
       }
 
       // Level bar at bottom
       if (node.maxLevel > 1) {
-        const barX = x + 4;
-        const barY = y + h - 8;
-        const barW = w - 8;
+        const barX = x + 8;
+        const barY = y + h - 16;
+        const barW = w - 16;
         const segW = barW / node.maxLevel;
         for (let s = 0; s < node.maxLevel; ++s) {
           ctx.fillStyle = s < lvl ? '#0c0' : '#222';
-          ctx.fillRect(barX + s * segW + 1, barY, segW - 2, 4);
+          ctx.fillRect(barX + s * segW + 2, barY, segW - 4, 8);
         }
       } else {
         // Single-level: thin indicator line
-        const barX = x + 4;
-        const barY = y + h - 6;
-        const barW = w - 8;
+        const barX = x + 8;
+        const barY = y + h - 12;
+        const barW = w - 16;
         ctx.fillStyle = maxed ? '#0c0' : '#222';
-        ctx.fillRect(barX, barY, barW, 3);
+        ctx.fillRect(barX, barY, barW, 6);
       }
 
       // Type indicator
       if (node.type === 'gadget') {
-        ctx.font = '7px sans-serif';
+        ctx.font = '14px sans-serif';
         ctx.textAlign = 'right';
         ctx.fillStyle = maxed ? '#8f8' : '#888';
-        ctx.fillText('GADGET', x + w - 4, y + h - 10);
+        ctx.fillText('GADGET', x + w - 8, y + h - 20);
       }
 
       // Hover tooltip
       if (isHover && !maxed && available) {
         ctx.fillStyle = '#ffd700';
-        ctx.font = 'bold 8px sans-serif';
+        ctx.font = 'bold 16px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('Click to purchase', x + w / 2, y + h + 10);
+        ctx.fillText('Click to purchase', x + w / 2, y + h + 20);
       }
     }
 
@@ -3154,10 +3187,10 @@
 
     // Close hint (fixed, not affected by zoom/pan)
     ctx.fillStyle = '#666';
-    ctx.font = '11px sans-serif';
+    ctx.font = '22px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillText(`Press U or Escape to close  |  Scroll=Zoom (${Math.round(upgradeZoom * 100)}%)  |  Right-drag=Pan`, CANVAS_W / 2, CANVAS_H - 10);
+    ctx.fillText(`Press U or Escape to close  |  Scroll=Zoom (${Math.round(upgradeZoom * 100)}%)  |  Right-drag=Pan`, CANVAS_W / 2, CANVAS_H - 20);
   }
 
   // Convert screen coords to tree-local coords (inverse zoom/pan)
@@ -3229,7 +3262,7 @@
         if (carried > 0) {
           const transfer = Math.min(carried, 10);
           carried -= transfer;
-          floatingText.add(DOME_X - 40, DOME_Y - 40, `Drone: +${transfer} delivered`, { color: '#4af', font: 'bold 11px sans-serif' });
+          floatingText.add(DOME_X - 80, DOME_Y - 80, `Drone: +${transfer} delivered`, { color: '#4af', font: 'bold 22px sans-serif' });
         }
       }
       // Animate drone phase for visual bob
@@ -3295,7 +3328,7 @@
             nearest.stunTimer = 2;
             primaryGadgetState.stunLaserTarget = { x: nearest.x, y: nearest.y };
             primaryGadgetState.stunLaserFlash = 0.4;
-            floatingText.add(nearest.x, nearest.y - 20, 'STUNNED!', { color: '#4af', font: 'bold 11px sans-serif' });
+            floatingText.add(nearest.x, nearest.y - 40, 'STUNNED!', { color: '#4af', font: 'bold 22px sans-serif' });
           }
         }
       }
@@ -3311,7 +3344,7 @@
       if (primaryGadgetState.condenserTimer <= 0) {
         primaryGadgetState.condenserTimer = 30;
         resources.water += 5;
-        floatingText.add(DOME_X + 40, DOME_Y - 20, '+5 water (condenser)', { color: '#6af', font: 'bold 11px sans-serif' });
+        floatingText.add(DOME_X + 80, DOME_Y - 40, '+5 water (condenser)', { color: '#6af', font: 'bold 22px sans-serif' });
       }
     }
 
@@ -3324,7 +3357,7 @@
         toolState.autoRepairTimer = 5; // heal every 5 seconds
         const heal = 2;
         domeHP = Math.min(domeHP + heal, maxDomeHP);
-        floatingText.add(DOME_X + 30, DOME_Y - 20, `+${heal} HP`, { color: '#0f0', font: 'bold 9px sans-serif' });
+        floatingText.add(DOME_X + 60, DOME_Y - 40, `+${heal} HP`, { color: '#0f0', font: 'bold 18px sans-serif' });
       }
     }
 
@@ -3429,9 +3462,12 @@
     updateMining(dt);
     updateMovement(dt);
 
-    // Age dropped resources (for potential future use; they persist indefinitely)
-    for (const drop of droppedResources)
-      drop.age += dt;
+    // Age dropped resources; despawn after 120s
+    for (let i = droppedResources.length - 1; i >= 0; --i) {
+      droppedResources[i].age += dt;
+      if (droppedResources[i].age > 120)
+        droppedResources.splice(i, 1);
+    }
 
     // Center camera on player underground
     if (currentView !== VIEW_SURFACE) {
@@ -3458,7 +3494,7 @@
      ====================================================================== */
 
   function drawGroundLayer() {
-    const groundY = CANVAS_H - 80;
+    const groundY = DOME_Y;
 
     // Multi-layer ground gradient
     const groundGrad = ctx.createLinearGradient(0, groundY, 0, CANVAS_H);
@@ -3466,11 +3502,11 @@
     groundGrad.addColorStop(0.3, '#2a1a0a');
     groundGrad.addColorStop(1, '#1a0f05');
     ctx.fillStyle = groundGrad;
-    ctx.fillRect(0, groundY, CANVAS_W, 80);
+    ctx.fillRect(0, groundY, CANVAS_W, CANVAS_H - groundY);
 
     // Ground highlight edge
     ctx.strokeStyle = '#5a4a2a';
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(0, groundY);
     ctx.lineTo(CANVAS_W, groundY);
@@ -3478,24 +3514,24 @@
 
     // Grass tufts along the ground line
     ctx.strokeStyle = '#2a5a1a';
-    ctx.lineWidth = 1.5;
-    for (let gx = 5; gx < CANVAS_W; gx += 12 + Math.sin(gx * 0.3) * 5) {
+    ctx.lineWidth = 3;
+    for (let gx = 10; gx < CANVAS_W; gx += 24 + Math.sin(gx * 0.3) * 10) {
       const tiltSeed = Math.sin(gx * 0.7 + animTime * 0.8);
-      const h = 4 + Math.abs(Math.sin(gx * 0.5)) * 6;
+      const h = 8 + Math.abs(Math.sin(gx * 0.5)) * 12;
       ctx.beginPath();
       ctx.moveTo(gx, groundY);
-      ctx.quadraticCurveTo(gx + tiltSeed * 3, groundY - h * 0.6, gx + tiltSeed * 2, groundY - h);
+      ctx.quadraticCurveTo(gx + tiltSeed * 6, groundY - h * 0.6, gx + tiltSeed * 4, groundY - h);
       ctx.stroke();
     }
 
     // Pebble/rock details on the ground surface
     ctx.fillStyle = '#4a3a20';
     const pebbleSeed = 42;
-    for (let px = 20; px < CANVAS_W; px += 35 + ((px * pebbleSeed) % 20)) {
-      const py = groundY + 5 + ((px * 7) % 15);
-      const pr = 1 + ((px * 3) % 3);
+    for (let px = 40; px < CANVAS_W; px += 70 + ((px * pebbleSeed) % 40)) {
+      const py = groundY + 10 + ((px * 7) % 30);
+      const pr = 2 + ((px * 3) % 6);
       ctx.beginPath();
-      ctx.ellipse(px, py, pr * 1.5, pr, 0, 0, TWO_PI);
+      ctx.ellipse(px, py, pr * 1.5, pr * 1, 0, 0, TWO_PI);
       ctx.fill();
     }
   }
@@ -3524,9 +3560,9 @@
     ctx.arc(DOME_X, DOME_Y, DOME_RADIUS - 1, Math.PI, 0);
     ctx.closePath();
     ctx.clip();
-    ctx.strokeStyle = `rgba(80,160,255,${0.06 + pulse * 0.03})`;
-    ctx.lineWidth = 0.5;
-    const hexSize = 12;
+    ctx.strokeStyle = `rgba(100,180,255,${0.25 + pulse * 0.12})`;
+    ctx.lineWidth = 2;
+    const hexSize = 24;
     const hexH = hexSize * Math.sqrt(3);
     for (let hy = DOME_Y - DOME_RADIUS; hy < DOME_Y + 10; hy += hexH) {
       for (let hx = DOME_X - DOME_RADIUS; hx < DOME_X + DOME_RADIUS; hx += hexSize * 3) {
@@ -3567,7 +3603,7 @@
     ctx.moveTo(DOME_X - DOME_RADIUS, DOME_Y);
     ctx.lineTo(DOME_X + DOME_RADIUS, DOME_Y);
     ctx.strokeStyle = '#4af';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 4;
     ctx.stroke();
 
     // Dome hit flash overlay
@@ -3588,9 +3624,9 @@
       ctx.save();
       ctx.beginPath();
       const arcSpan = 0.3 * il;
-      ctx.arc(DOME_X, DOME_Y, DOME_RADIUS + 2, ia - arcSpan, ia + arcSpan);
+      ctx.arc(DOME_X, DOME_Y, DOME_RADIUS + 4, ia - arcSpan, ia + arcSpan);
       ctx.strokeStyle = `rgba(100,200,255,${il * 0.8})`;
-      ctx.lineWidth = 4 * il;
+      ctx.lineWidth = 8 * il;
       ctx.shadowBlur = 15 * il;
       ctx.shadowColor = '#4af';
       ctx.stroke();
@@ -3599,7 +3635,7 @@
     }
 
     // Turret nozzle position on dome arc
-    const nozzleDrawR = DOME_RADIUS + 8;
+    const nozzleDrawR = DOME_RADIUS + 16;
     const tbx = DOME_X + Math.cos(turretAngle) * nozzleDrawR;
     const tby = DOME_Y + Math.sin(turretAngle) * nozzleDrawR;
 
@@ -3608,12 +3644,12 @@
     ctx.translate(tbx, tby);
     ctx.rotate(turretAngle + Math.PI / 2);
     ctx.fillStyle = '#6a8ab0';
-    ctx.fillRect(-4, -6, 8, 12);
-    const turretGrad = ctx.createLinearGradient(-4, 0, 4, 0);
+    ctx.fillRect(-8, -12, 16, 24);
+    const turretGrad = ctx.createLinearGradient(-8, 0, 8, 0);
     turretGrad.addColorStop(0, '#8ab0d0');
     turretGrad.addColorStop(1, '#4a6a8a');
     ctx.fillStyle = turretGrad;
-    ctx.fillRect(-3, -4, 6, 8);
+    ctx.fillRect(-6, -8, 12, 16);
     ctx.restore();
 
     // Turret barrel (rotates with turretAngle)
@@ -3622,30 +3658,30 @@
     ctx.rotate(turretAngle);
     // Barrel body
     ctx.fillStyle = '#556';
-    ctx.fillRect(0, -1.5, TURRET_BARREL_LENGTH, 3);
+    ctx.fillRect(0, -3, TURRET_BARREL_LENGTH, 6);
     // Barrel highlight
     ctx.fillStyle = 'rgba(255,255,255,0.15)';
-    ctx.fillRect(0, -1.5, TURRET_BARREL_LENGTH, 1);
+    ctx.fillRect(0, -3, TURRET_BARREL_LENGTH, 2);
     // Muzzle tip
     ctx.fillStyle = '#778';
-    ctx.fillRect(TURRET_BARREL_LENGTH - 3, -2.5, 3, 5);
+    ctx.fillRect(TURRET_BARREL_LENGTH - 6, -5, 6, 10);
     ctx.restore();
 
     // Turret pivot dot
     ctx.fillStyle = '#aac';
     ctx.beginPath();
-    ctx.arc(tbx, tby, 3, 0, TWO_PI);
+    ctx.arc(tbx, tby, 6, 0, TWO_PI);
     ctx.fill();
 
     // Dome HP bar with gradient
-    const barW = 120;
-    const barH = 10;
+    const barW = 240;
+    const barH = 20;
     const barX = DOME_X - barW / 2;
-    const barY = DOME_Y + 22;
+    const barY = DOME_Y + 44;
 
     // Bar background
     ctx.fillStyle = '#1a1a1a';
-    ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+    ctx.fillRect(barX - 2, barY - 2, barW + 4, barH + 4);
     ctx.fillStyle = '#333';
     ctx.fillRect(barX, barY, barW, barH);
 
@@ -3674,10 +3710,10 @@
 
     // HP text
     ctx.fillStyle = '#ddd';
-    ctx.font = 'bold 10px sans-serif';
+    ctx.font = 'bold 20px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillText(`${Math.ceil(domeHP)}/${maxDomeHP}`, DOME_X, barY + barH + 3);
+    ctx.fillText(`${Math.ceil(domeHP)}/${maxDomeHP}`, DOME_X, barY + barH + 6);
   }
 
   function drawHexagon(cx, cy, size) {
@@ -3704,8 +3740,8 @@
   function drawGroundEnemy(e) {
     const hpR = e.hp / e.maxHP;
     const sz = e.size || 10;
-    const wobble = Math.sin(e.wobblePhase) * 1.5;
-    const legOffset = Math.sin(e.legPhase) * 3;
+    const wobble = Math.sin(e.wobblePhase) * 3;
+    const legOffset = Math.sin(e.legPhase) * 6;
 
     ctx.save();
     ctx.translate(e.x, e.y + wobble);
@@ -3713,12 +3749,12 @@
     // Shadow on ground
     ctx.fillStyle = 'rgba(0,0,0,0.2)';
     ctx.beginPath();
-    ctx.ellipse(0, sz + 2, sz * 0.8, 3, 0, 0, TWO_PI);
+    ctx.ellipse(0, sz + 4, sz * 0.8, 6, 0, 0, TWO_PI);
     ctx.fill();
 
     // Legs (4 little appendages)
     ctx.strokeStyle = e.armored ? '#664' : '#a33';
-    ctx.lineWidth = e.boss ? 3 : 2;
+    ctx.lineWidth = e.boss ? 6 : 4;
     // Left legs
     ctx.beginPath();
     ctx.moveTo(-sz * 0.4, sz * 0.3);
@@ -3762,9 +3798,9 @@
     // Boss: thicker border ring
     if (e.boss) {
       ctx.strokeStyle = '#ff0';
-      ctx.lineWidth = 2.5;
+      ctx.lineWidth = 5;
       ctx.beginPath();
-      ctx.arc(0, 0, sz + 2, 0, TWO_PI);
+      ctx.arc(0, 0, sz + 4, 0, TWO_PI);
       ctx.stroke();
     }
 
@@ -3795,31 +3831,31 @@
     }
 
     // Eyes
-    const eyeH = e.eyeBlinking ? 0.5 : 3;
+    const eyeH = e.eyeBlinking ? 1 : 6;
     ctx.fillStyle = e.boss ? '#f00' : '#ff0';
     ctx.beginPath();
-    ctx.ellipse(-sz * 0.3, -sz * 0.15, 3, eyeH, 0, 0, TWO_PI);
+    ctx.ellipse(-sz * 0.3, -sz * 0.15, 6, eyeH, 0, 0, TWO_PI);
     ctx.fill();
     if (!e.eyeBlinking) {
       ctx.fillStyle = '#200';
       ctx.beginPath();
-      ctx.arc(-sz * 0.3, -sz * 0.15, 1.2, 0, TWO_PI);
+      ctx.arc(-sz * 0.3, -sz * 0.15, 2.4, 0, TWO_PI);
       ctx.fill();
     }
     ctx.fillStyle = e.boss ? '#f00' : '#ff0';
     ctx.beginPath();
-    ctx.ellipse(sz * 0.3, -sz * 0.15, 3, eyeH, 0, 0, TWO_PI);
+    ctx.ellipse(sz * 0.3, -sz * 0.15, 6, eyeH, 0, 0, TWO_PI);
     ctx.fill();
     if (!e.eyeBlinking) {
       ctx.fillStyle = '#200';
       ctx.beginPath();
-      ctx.arc(sz * 0.3, -sz * 0.15, 1.2, 0, TWO_PI);
+      ctx.arc(sz * 0.3, -sz * 0.15, 2.4, 0, TWO_PI);
       ctx.fill();
     }
 
     // Mouth (angry slit)
     ctx.strokeStyle = '#300';
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(-sz * 0.25, sz * 0.25);
     ctx.quadraticCurveTo(0, sz * 0.4, sz * 0.25, sz * 0.25);
@@ -3829,7 +3865,7 @@
     if (e.stunTimer > 0) {
       ctx.fillStyle = `rgba(80,160,255,${0.25 + Math.sin(animTime * 10) * 0.1})`;
       ctx.beginPath();
-      ctx.arc(0, 0, sz + 3, 0, TWO_PI);
+      ctx.arc(0, 0, sz + 6, 0, TWO_PI);
       ctx.fill();
     }
 
@@ -3846,7 +3882,7 @@
   function drawFlyer(e) {
     const hpR = e.hp / e.maxHP;
     const sz = e.size || 7;
-    const bob = Math.sin(e.wobblePhase) * 4; // sinusoidal vertical bobbing
+    const bob = Math.sin(e.wobblePhase) * 8; // sinusoidal vertical bobbing
 
     ctx.save();
     ctx.translate(e.x, e.y + bob);
@@ -3854,12 +3890,12 @@
     // Faint shadow far below (on ground)
     ctx.fillStyle = 'rgba(0,0,0,0.1)';
     ctx.beginPath();
-    ctx.ellipse(0, 40 - bob, sz * 0.5, 2, 0, 0, TWO_PI);
+    ctx.ellipse(0, 80 - bob, sz * 0.5, 4, 0, 0, TWO_PI);
     ctx.fill();
 
     // Wings (flapping lines)
     ctx.strokeStyle = '#806';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 4;
     // Left wing
     ctx.beginPath();
     ctx.moveTo(-sz * 0.3, 0);
@@ -3897,15 +3933,15 @@
     ctx.fill();
 
     // Glowing eyes (larger, more menacing)
-    const eyeH = e.eyeBlinking ? 0.3 : 2.5;
+    const eyeH = e.eyeBlinking ? 0.6 : 5;
     ctx.fillStyle = '#f0f';
     ctx.shadowBlur = 4;
     ctx.shadowColor = '#f0f';
     ctx.beginPath();
-    ctx.ellipse(-sz * 0.2, -sz * 0.2, 2, eyeH, 0, 0, TWO_PI);
+    ctx.ellipse(-sz * 0.2, -sz * 0.2, 4, eyeH, 0, 0, TWO_PI);
     ctx.fill();
     ctx.beginPath();
-    ctx.ellipse(sz * 0.2, -sz * 0.2, 2, eyeH, 0, 0, TWO_PI);
+    ctx.ellipse(sz * 0.2, -sz * 0.2, 4, eyeH, 0, 0, TWO_PI);
     ctx.fill();
     ctx.shadowBlur = 0;
 
@@ -3913,7 +3949,7 @@
     if (e.stunTimer > 0) {
       ctx.fillStyle = `rgba(80,160,255,${0.25 + Math.sin(animTime * 10) * 0.1})`;
       ctx.beginPath();
-      ctx.arc(0, 0, sz + 3, 0, TWO_PI);
+      ctx.arc(0, 0, sz + 6, 0, TWO_PI);
       ctx.fill();
     }
 
@@ -3933,11 +3969,11 @@
     ctx.save();
     ctx.translate(e.x, e.y + vertOffset);
     ctx.strokeStyle = `rgba(80,160,255,${0.4 + shieldR * 0.4})`;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 4;
     ctx.shadowBlur = 6;
     ctx.shadowColor = '#4af';
     ctx.beginPath();
-    ctx.arc(0, 0, sz + 5, -Math.PI * 0.8, Math.PI * 0.8);
+    ctx.arc(0, 0, sz + 10, -Math.PI * 0.8, Math.PI * 0.8);
     ctx.stroke();
     ctx.shadowBlur = 0;
     ctx.restore();
@@ -3945,28 +3981,28 @@
 
   function drawEnemyHPBar(e, sz, vertOffset) {
     const hpR = e.hp / e.maxHP;
-    const barW = sz * 2 + 4;
+    const barW = sz * 2 + 8;
     const barX = e.x - barW / 2;
-    const barY = e.y - sz - 10 + vertOffset;
+    const barY = e.y - sz - 20 + vertOffset;
     ctx.fillStyle = '#200';
-    ctx.fillRect(barX, barY, barW, 4);
+    ctx.fillRect(barX, barY, barW, 8);
     const ehpGrad = ctx.createLinearGradient(barX, barY, barX + barW * hpR, barY);
     ehpGrad.addColorStop(0, '#f66');
     ehpGrad.addColorStop(1, '#f44');
     ctx.fillStyle = ehpGrad;
-    ctx.fillRect(barX, barY, barW * hpR, 4);
+    ctx.fillRect(barX, barY, barW * hpR, 8);
     ctx.fillStyle = 'rgba(255,255,255,0.15)';
-    ctx.fillRect(barX, barY, barW * hpR, 2);
+    ctx.fillRect(barX, barY, barW * hpR, 4);
 
     // Shield bar (drawn above HP bar if shield exists)
     if (e.shield > 0 && e.maxShield > 0) {
       const shieldR = e.shield / e.maxShield;
       ctx.fillStyle = '#024';
-      ctx.fillRect(barX, barY - 5, barW, 3);
+      ctx.fillRect(barX, barY - 10, barW, 6);
       ctx.fillStyle = '#4af';
-      ctx.fillRect(barX, barY - 5, barW * shieldR, 3);
+      ctx.fillRect(barX, barY - 10, barW * shieldR, 6);
       ctx.fillStyle = 'rgba(255,255,255,0.2)';
-      ctx.fillRect(barX, barY - 5, barW * shieldR, 1);
+      ctx.fillRect(barX, barY - 10, barW * shieldR, 2);
     }
   }
 
@@ -3977,17 +4013,17 @@
       // Electric arc effect using shared helper
       SZ.GameEffects.drawElectricArc(ctx, p.x, p.y, p.tx, p.ty, {
         segments: 8,
-        jitter: 6 * alpha,
+        jitter: 12 * alpha,
         color: `rgba(255,120,120,${alpha})`,
         glowColor: `rgba(255,60,60,${alpha * 0.5})`,
-        width: 1.5 * alpha,
-        glowWidth: 4 * alpha
+        width: 3 * alpha,
+        glowWidth: 8 * alpha
       });
 
       // Impact flash
       ctx.beginPath();
-      ctx.arc(p.tx, p.ty, 6 * alpha, 0, TWO_PI);
-      const impactGrad = ctx.createRadialGradient(p.tx, p.ty, 0, p.tx, p.ty, 6 * alpha);
+      ctx.arc(p.tx, p.ty, 12 * alpha, 0, TWO_PI);
+      const impactGrad = ctx.createRadialGradient(p.tx, p.ty, 0, p.tx, p.ty, 12 * alpha);
       impactGrad.addColorStop(0, `rgba(255,220,150,${alpha})`);
       impactGrad.addColorStop(0.5, `rgba(255,100,50,${alpha * 0.6})`);
       impactGrad.addColorStop(1, `rgba(255,50,50,0)`);
@@ -4010,13 +4046,13 @@
 
   function drawSurface() {
     // Sky gradient (deeper, richer)
-    const skyGrad = ctx.createLinearGradient(0, 0, 0, CANVAS_H - 80);
+    const skyGrad = ctx.createLinearGradient(0, 0, 0, DOME_Y);
     skyGrad.addColorStop(0, '#050520');
     skyGrad.addColorStop(0.4, '#0a0a30');
     skyGrad.addColorStop(0.7, '#101040');
     skyGrad.addColorStop(1, '#1a1a50');
     ctx.fillStyle = skyGrad;
-    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H - 80);
+    ctx.fillRect(0, 0, CANVAS_W, DOME_Y);
 
     // Starfield
     starfield.draw(ctx);
@@ -4024,24 +4060,24 @@
     // Distant mountains silhouette
     ctx.fillStyle = '#0f0f2a';
     ctx.beginPath();
-    ctx.moveTo(0, CANVAS_H - 80);
+    ctx.moveTo(0, DOME_Y);
     for (let mx = 0; mx <= CANVAS_W; mx += 2) {
-      const h = 20 + Math.sin(mx * 0.008) * 25 + Math.sin(mx * 0.02 + 1) * 12 + Math.sin(mx * 0.05 + 2) * 5;
-      ctx.lineTo(mx, CANVAS_H - 80 - h);
+      const h = 40 + Math.sin(mx * 0.008) * 50 + Math.sin(mx * 0.02 + 1) * 24 + Math.sin(mx * 0.05 + 2) * 10;
+      ctx.lineTo(mx, DOME_Y - h);
     }
-    ctx.lineTo(CANVAS_W, CANVAS_H - 80);
+    ctx.lineTo(CANVAS_W, DOME_Y);
     ctx.closePath();
     ctx.fill();
 
     // Near hills
     ctx.fillStyle = '#151530';
     ctx.beginPath();
-    ctx.moveTo(0, CANVAS_H - 80);
+    ctx.moveTo(0, DOME_Y);
     for (let mx = 0; mx <= CANVAS_W; mx += 2) {
-      const h = 8 + Math.sin(mx * 0.015 + 3) * 12 + Math.sin(mx * 0.04) * 6;
-      ctx.lineTo(mx, CANVAS_H - 80 - h);
+      const h = 16 + Math.sin(mx * 0.015 + 3) * 24 + Math.sin(mx * 0.04) * 12;
+      ctx.lineTo(mx, DOME_Y - h);
     }
-    ctx.lineTo(CANVAS_W, CANVAS_H - 80);
+    ctx.lineTo(CANVAS_W, DOME_Y);
     ctx.closePath();
     ctx.fill();
 
@@ -4063,37 +4099,37 @@
 
     // Wave info with styled text
     ctx.fillStyle = '#bbb';
-    ctx.font = 'bold 12px sans-serif';
+    ctx.font = 'bold 24px sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     if (waveActive) {
       ctx.fillStyle = '#f88';
-      ctx.fillText(`Wave ${waveNumber}`, 10, 14);
+      ctx.fillText(`Wave ${waveNumber}`, 20, 28);
       ctx.fillStyle = '#aaa';
-      ctx.font = '11px sans-serif';
-      ctx.fillText(`${enemies.length} enemies remaining`, 10, 30);
+      ctx.font = '22px sans-serif';
+      ctx.fillText(`${enemies.length} enemies remaining`, 20, 60);
     } else {
-      ctx.fillText(`Next wave in ${Math.ceil(waveTimer)}s`, 10, 14);
+      ctx.fillText(`Next wave in ${Math.ceil(waveTimer)}s`, 20, 28);
       // Timer bar
       const timerRatio = waveTimer / WAVE_INTERVAL;
       ctx.fillStyle = '#333';
-      ctx.fillRect(10, 32, 100, 4);
+      ctx.fillRect(20, 64, 200, 8);
       ctx.fillStyle = '#f80';
-      ctx.fillRect(10, 32, 100 * (1 - timerRatio), 4);
+      ctx.fillRect(20, 64, 200 * (1 - timerRatio), 8);
     }
 
     // Score with glow
     ctx.textAlign = 'right';
     ctx.fillStyle = '#dd8';
-    ctx.font = 'bold 13px sans-serif';
-    ctx.fillText(`Score: ${score}`, CANVAS_W - 10, 14);
+    ctx.font = 'bold 26px sans-serif';
+    ctx.fillText(`Score: ${score}`, CANVAS_W - 20, 28);
 
     // View toggle hint
     ctx.textAlign = 'center';
     ctx.fillStyle = '#555';
-    ctx.font = '11px sans-serif';
+    ctx.font = '22px sans-serif';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillText('SPACE = underground  |  U = upgrade tree', CANVAS_W / 2, CANVAS_H - 10);
+    ctx.fillText('SPACE = underground  |  U = upgrade tree', CANVAS_W / 2, CANVAS_H - 20);
 
     // Upgrade panel
     drawUpgradePanel();
@@ -4104,19 +4140,8 @@
      ====================================================================== */
 
   function drawUnderground() {
-    // Dark cavern background with subtle gradient
-    const caveBg = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
-    caveBg.addColorStop(0, '#0c0806');
-    caveBg.addColorStop(0.5, '#0a0604');
-    caveBg.addColorStop(1, '#060402');
-    ctx.fillStyle = caveBg;
-    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-
-    // Subtle vignette
-    const vignetteGrad = ctx.createRadialGradient(CANVAS_W / 2, CANVAS_H / 2, 100, CANVAS_W / 2, CANVAS_H / 2, CANVAS_W * 0.7);
-    vignetteGrad.addColorStop(0, 'rgba(0,0,0,0)');
-    vignetteGrad.addColorStop(1, 'rgba(0,0,0,0.4)');
-    ctx.fillStyle = vignetteGrad;
+    // Dark cavern background (flat fill for performance)
+    ctx.fillStyle = '#0a0604';
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
 
     // Grid tiles (viewport culled)
@@ -4132,11 +4157,8 @@
         const tile = undergroundGrid[r][c];
 
         if (tile === TILE_EMPTY) {
-          // Empty cave space with depth
-          const emptyGrad = ctx.createLinearGradient(x, y, x, y + TILE_SIZE);
-          emptyGrad.addColorStop(0, '#1a1510');
-          emptyGrad.addColorStop(1, '#120e08');
-          ctx.fillStyle = emptyGrad;
+          // Empty cave space (flat fill for performance)
+          ctx.fillStyle = '#140f0a';
           ctx.fillRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
         } else if (tile === TILE_GADGET) {
           // Gadget tiles rendered by drawUndergroundGadgets() -- draw dirt base here
@@ -4223,36 +4245,24 @@
       ctx.restore();
     }
 
-    // Draw dropped resources as small colored dots
+    // Draw dropped resources as small colored dots (viewport-culled)
     for (const drop of droppedResources) {
       const dx = drop.col * TILE_SIZE + TILE_SIZE / 2 - cameraX;
       const dy = drop.row * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+      if (dx < -TILE_SIZE || dx > CANVAS_W + TILE_SIZE || dy < -TILE_SIZE || dy > CANVAS_H + TILE_SIZE) continue;
       const dropColor = TILE_HIGHLIGHT_COLORS[drop.type] || '#fff';
       const pulse = Math.sin(animTime * 4 + drop.col + drop.row) * 0.3 + 0.7;
-      ctx.save();
-      ctx.shadowBlur = 6;
-      ctx.shadowColor = dropColor;
       ctx.fillStyle = dropColor;
       ctx.globalAlpha = pulse;
-      // Draw a cluster of small dots
-      ctx.beginPath();
-      ctx.arc(dx - 4, dy - 2, 3, 0, TWO_PI);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(dx + 3, dy + 1, 2.5, 0, TWO_PI);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(dx, dy + 4, 2, 0, TWO_PI);
-      ctx.fill();
-      ctx.shadowBlur = 0;
+      ctx.fillRect(dx - 10, dy - 8, 8, 8);
+      ctx.fillRect(dx + 2, dy - 2, 7, 7);
+      ctx.fillRect(dx - 4, dy + 4, 6, 6);
       ctx.globalAlpha = 1;
-      // Value label
       ctx.fillStyle = '#fff';
-      ctx.font = 'bold 8px sans-serif';
+      ctx.font = 'bold 16px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'bottom';
-      ctx.fillText(String(drop.value), dx, dy - 6);
-      ctx.restore();
+      ctx.fillText(String(drop.value), dx, dy - 12);
     }
 
     // Draw mining progress bar above the block being mined
@@ -4301,7 +4311,7 @@
       }
       // Draw dots connecting them
       ctx.strokeStyle = 'rgba(100,200,255,0.15)';
-      ctx.lineWidth = 1;
+      ctx.lineWidth = 2;
       ctx.setLineDash([3, 5]);
       ctx.beginPath();
       const pathStartX = drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX;
@@ -4318,7 +4328,7 @@
       // Show mine target marker
       if (mineTarget) {
         ctx.strokeStyle = 'rgba(255,100,50,0.4)';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 4;
         ctx.strokeRect(mineTarget.col * TILE_SIZE + 2 - cameraX,
                        mineTarget.row * TILE_SIZE + 2 - cameraY,
                        TILE_SIZE - 4, TILE_SIZE - 4);
@@ -4335,10 +4345,10 @@
     // Blast charges hint
     if (foundGadgets.includes('blastMining') && (primaryGadgetState.blastCharges || 0) > 0) {
       ctx.fillStyle = '#f80';
-      ctx.font = 'bold 10px sans-serif';
+      ctx.font = 'bold 20px sans-serif';
       ctx.textAlign = 'right';
       ctx.textBaseline = 'top';
-      ctx.fillText(`Blast [B]: ${primaryGadgetState.blastCharges}`, CANVAS_W - 10, CANVAS_H - 55);
+      ctx.fillText(`Blast [B]: ${primaryGadgetState.blastCharges}`, CANVAS_W - 20, CANVAS_H - 110);
     }
 
     // Tool HUD (underground)
@@ -4346,9 +4356,9 @@
 
     ctx.textAlign = 'center';
     ctx.fillStyle = '#555';
-    ctx.font = '11px sans-serif';
+    ctx.font = '22px sans-serif';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillText('Press SPACE to return to surface', CANVAS_W / 2, CANVAS_H - 10);
+    ctx.fillText('Press SPACE to return to surface', CANVAS_W / 2, CANVAS_H - 20);
   }
 
   // Pre-generate deterministic ore speckle positions per tile
@@ -4405,16 +4415,11 @@
     ctx.fillRect(x + 1, y + TILE_SIZE - 1 - bevel, TILE_SIZE - 2, bevel);
 
     // Right bevel (medium shadow)
-    const [br, bg, bb] = parseHex(shadowColor.startsWith('#') ? shadowColor : '#1a0f05');
-    ctx.fillStyle = `rgb(${Math.min(255, br + 15)},${Math.min(255, bg + 15)},${Math.min(255, bb + 15)})`;
+    ctx.fillStyle = lightenColor(shadowColor.startsWith('#') ? shadowColor : '#1a0f05', 15);
     ctx.fillRect(x + TILE_SIZE - 1 - bevel, y + 1 + bevel, bevel, TILE_SIZE - 2 - bevel * 2);
 
-    // Inner face gradient (subtle depth)
-    const innerGrad = ctx.createLinearGradient(x, y + bevel, x, y + TILE_SIZE - bevel);
-    innerGrad.addColorStop(0, lightenColor(baseColor, 10));
-    innerGrad.addColorStop(0.5, baseColor);
-    innerGrad.addColorStop(1, shadowColor);
-    ctx.fillStyle = innerGrad;
+    // Inner face (flat fill for performance -- avoids per-tile gradient creation)
+    ctx.fillStyle = baseColor;
     ctx.fillRect(x + 1 + bevel, y + 1 + bevel, TILE_SIZE - 2 - bevel * 2, TILE_SIZE - 2 - bevel * 2);
 
     // Dirt texture noise dots
@@ -4438,122 +4443,64 @@
 
     // === Ore-specific decorations ===
     if (tile !== TILE_DIRT) {
-      // Colored ore speckles (Minecraft-style scattered dots)
-      const speckleColors = {
-        [TILE_IRON]: ['#cccccc', '#aaaaaa', '#eeeeee', '#999999'],
-        [TILE_WATER]: ['#66bbff', '#88ddff', '#4499dd', '#aaeeff'],
-        [TILE_COBALT]: ['#7777cc', '#9999ee', '#5555aa', '#aaaaff'],
-        [TILE_COPPER]: ['#d4944d', '#c08040', '#e0a060', '#a06020'],
-        [TILE_GOLD]: ['#ffea50', '#ffd700', '#ffe030', '#ffcc00'],
-        [TILE_TIN]: ['#eeeeee', '#d0d0d0', '#f4f4f4', '#c8c8c8'],
-        [TILE_SILVER]: ['#e0e0e0', '#c8c8c8', '#f0f0f0', '#b0b0b0'],
-        [TILE_LEAD]: ['#888888', '#666666', '#999999', '#555555'],
-        [TILE_COAL]: ['#444444', '#333333', '#555555', '#222222'],
-        [TILE_QUARTZ]: ['#fff8ee', '#f0e6d3', '#ffe8d0', '#e8dac0'],
-        [TILE_REDSTONE]: ['#ff3333', '#cc0000', '#ff5555', '#aa0000'],
-        [TILE_DIAMOND]: ['#dff8ff', '#b9f2ff', '#c8f0ff', '#a0e8ff'],
-        [TILE_EMERALD]: ['#80e8a0', '#50c878', '#60d888', '#40b868'],
-        [TILE_RUBY]: ['#ff4488', '#e0115f', '#ff2070', '#c00048']
-      };
-      const colors = speckleColors[tile] || ['#fff'];
+      const colors = ORE_SPECKLE_COLORS[tile] || ['#fff'];
       if (oreSpeckles[r] && oreSpeckles[r][c]) {
         for (const dot of oreSpeckles[r][c]) {
           const ci = Math.floor(dot.brightness * colors.length) % colors.length;
           ctx.fillStyle = colors[ci];
-          // Square speckles like Minecraft ore pixels
           const sz = dot.size;
           ctx.fillRect(x + dot.ox - sz / 2, y + dot.oy - sz / 2, sz, sz);
-          // Tiny highlight on top-left of each speckle
-          ctx.fillStyle = 'rgba(255,255,255,0.25)';
-          ctx.fillRect(x + dot.ox - sz / 2, y + dot.oy - sz / 2, sz, 1);
-          ctx.fillRect(x + dot.ox - sz / 2, y + dot.oy - sz / 2, 1, sz);
-          // Tiny shadow on bottom-right of each speckle
-          ctx.fillStyle = 'rgba(0,0,0,0.3)';
-          ctx.fillRect(x + dot.ox - sz / 2, y + dot.oy + sz / 2 - 1, sz, 1);
-          ctx.fillRect(x + dot.ox + sz / 2 - 1, y + dot.oy - sz / 2, 1, sz);
         }
       }
 
-      // Glowing edge around resource tiles
-      ctx.save();
+      // Glowing edge around resource tiles (no shadowBlur for performance)
       const glowPulse = Math.sin(animTime * 3 + r * 0.5 + c * 0.7) * 0.3 + 0.3;
-      ctx.shadowBlur = 8 + glowPulse * 4;
-      ctx.shadowColor = baseColor;
       ctx.strokeStyle = highlightColor || baseColor;
-      ctx.lineWidth = 1;
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = 0.5 + glowPulse;
       ctx.strokeRect(x + 3, y + 3, TILE_SIZE - 6, TILE_SIZE - 6);
-      ctx.shadowBlur = 0;
-      ctx.restore();
+      ctx.globalAlpha = 1;
 
-      // Resource-specific animated details
-      if (tile === TILE_IRON) {
-        // Metallic streaks
-        ctx.fillStyle = 'rgba(200,200,200,0.15)';
-        ctx.fillRect(x + 8, y + 10, 2, 20);
-        ctx.fillRect(x + 18, y + 6, 2, 15);
-        ctx.fillRect(x + 28, y + 12, 2, 18);
-        // Sparkle dots
-        const sp = Math.sin(animTime * 4 + r + c) * 0.5 + 0.5;
-        ctx.fillStyle = `rgba(255,255,255,${sp * 0.4})`;
-        ctx.beginPath();
-        ctx.arc(x + 14, y + 14, 1.5, 0, TWO_PI);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(x + 26, y + 22, 1, 0, TWO_PI);
-        ctx.fill();
-      } else if (tile === TILE_WATER) {
-        // Wavy ripple lines
-        ctx.strokeStyle = 'rgba(100,180,255,0.3)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        for (let wx = x + 5; wx < x + TILE_SIZE - 5; wx += 2) {
-          const wy = y + TILE_SIZE / 2 + Math.sin((wx - x) * 0.3 + animTime * 4) * 3;
-          if (wx === x + 5)
-            ctx.moveTo(wx, wy);
-          else
-            ctx.lineTo(wx, wy);
+      // Resource-specific animated details (only near player to save draw calls)
+      const nearPlayer = Math.abs(r - drillY) + Math.abs(c - drillX) <= 6;
+      if (nearPlayer) {
+        if (tile === TILE_IRON) {
+          ctx.fillStyle = 'rgba(200,200,200,0.15)';
+          ctx.fillRect(x + 8, y + 10, 3, 20);
+          ctx.fillRect(x + 18, y + 6, 3, 15);
+          ctx.fillRect(x + 28, y + 12, 3, 18);
+        } else if (tile === TILE_WATER) {
+          ctx.strokeStyle = 'rgba(100,180,255,0.3)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          for (let wx = x + 5; wx < x + TILE_SIZE - 5; wx += 4) {
+            const wy = y + TILE_SIZE / 2 + Math.sin((wx - x) * 0.3 + animTime * 4) * 3;
+            if (wx === x + 5)
+              ctx.moveTo(wx, wy);
+            else
+              ctx.lineTo(wx, wy);
+          }
+          ctx.stroke();
+        } else if (tile === TILE_COBALT) {
+          ctx.fillStyle = 'rgba(100,100,200,0.2)';
+          ctx.beginPath();
+          ctx.moveTo(x + 12, y + 8);
+          ctx.lineTo(x + 20, y + 5);
+          ctx.lineTo(x + 28, y + 14);
+          ctx.lineTo(x + 22, y + 20);
+          ctx.closePath();
+          ctx.fill();
         }
-        ctx.stroke();
-        // Bubble
-        const bubbleY = y + 10 + Math.sin(animTime * 2 + c) * 4;
-        ctx.fillStyle = 'rgba(150,200,255,0.3)';
-        ctx.beginPath();
-        ctx.arc(x + 20, bubbleY, 2, 0, TWO_PI);
-        ctx.fill();
-      } else if (tile === TILE_COBALT) {
-        // Crystal facets
-        ctx.fillStyle = 'rgba(100,100,200,0.2)';
-        ctx.beginPath();
-        ctx.moveTo(x + 12, y + 8);
-        ctx.lineTo(x + 20, y + 5);
-        ctx.lineTo(x + 28, y + 14);
-        ctx.lineTo(x + 22, y + 20);
-        ctx.closePath();
-        ctx.fill();
-        ctx.beginPath();
-        ctx.moveTo(x + 10, y + 22);
-        ctx.lineTo(x + 18, y + 18);
-        ctx.lineTo(x + 24, y + 30);
-        ctx.lineTo(x + 14, y + 32);
-        ctx.closePath();
-        ctx.fill();
-        // Crystal glint
-        const glint = Math.sin(animTime * 5 + r * 2 + c) * 0.5 + 0.5;
-        ctx.fillStyle = `rgba(180,180,255,${glint * 0.5})`;
-        ctx.beginPath();
-        ctx.arc(x + 18, y + 12, 1.5, 0, TWO_PI);
-        ctx.fill();
       }
 
-      // Label
-      ctx.fillStyle = '#fff';
-      ctx.font = 'bold 9px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.shadowBlur = 3;
-      ctx.shadowColor = '#000';
-      ctx.fillText(TILE_LABELS[tile] || '', x + TILE_SIZE / 2, y + TILE_SIZE / 2 + 10);
-      ctx.shadowBlur = 0;
+      // Resource icon
+      const tIcon = TILE_ICONS[tile];
+      if (tIcon) {
+        ctx.font = '16px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(tIcon, x + TILE_SIZE / 2, y + TILE_SIZE / 2 + 8);
+      }
     }
   }
 
@@ -4567,8 +4514,8 @@
     // Selection highlight (animated border)
     const selPulse = Math.sin(animTime * 5) * 0.3 + 0.7;
     ctx.strokeStyle = `rgba(255,255,0,${selPulse})`;
-    ctx.lineWidth = 2;
-    ctx.setLineDash([4, 3]);
+    ctx.lineWidth = 4;
+    ctx.setLineDash([8, 6]);
     ctx.strokeRect(px, py, TILE_SIZE, TILE_SIZE);
     ctx.setLineDash([]);
 
@@ -4578,28 +4525,29 @@
 
     ctx.save();
     ctx.translate(bodyX, bodyY);
+    ctx.scale(0.5, 0.5);
 
     // Mining helmet (top arc)
     ctx.fillStyle = '#da2';
     ctx.beginPath();
-    ctx.arc(0, -4, 8, Math.PI, 0);
+    ctx.arc(0, -8, 16, Math.PI, 0);
     ctx.fill();
     // Helmet highlight
     ctx.fillStyle = '#fc4';
     ctx.beginPath();
-    ctx.arc(-2, -6, 3, Math.PI, 0);
+    ctx.arc(-4, -12, 6, Math.PI, 0);
     ctx.fill();
     // Headlamp
     ctx.fillStyle = '#ff8';
     ctx.beginPath();
-    ctx.arc(0, -8, 2.5, 0, TWO_PI);
+    ctx.arc(0, -16, 5, 0, TWO_PI);
     ctx.fill();
     // Headlamp glow
     ctx.save();
     ctx.shadowBlur = 10;
     ctx.shadowColor = '#ff8';
     ctx.beginPath();
-    ctx.arc(0, -8, 2, 0, TWO_PI);
+    ctx.arc(0, -16, 4, 0, TWO_PI);
     ctx.fillStyle = 'rgba(255,255,128,0.3)';
     ctx.fill();
     ctx.restore();
@@ -4607,117 +4555,117 @@
     // Face
     ctx.fillStyle = '#d8a060';
     ctx.beginPath();
-    ctx.arc(0, 0, 6, 0, TWO_PI);
+    ctx.arc(0, 0, 12, 0, TWO_PI);
     ctx.fill();
 
     // Eyes
     ctx.fillStyle = '#333';
     ctx.beginPath();
-    ctx.arc(-2.5, -1, 1.2, 0, TWO_PI);
+    ctx.arc(-5, -2, 2.4, 0, TWO_PI);
     ctx.fill();
     ctx.beginPath();
-    ctx.arc(2.5, -1, 1.2, 0, TWO_PI);
+    ctx.arc(5, -2, 2.4, 0, TWO_PI);
     ctx.fill();
 
     // Mouth
     ctx.strokeStyle = '#733';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.arc(0, 2, 2.5, 0.2, Math.PI - 0.2);
+    ctx.arc(0, 4, 5, 0.2, Math.PI - 0.2);
     ctx.stroke();
 
     // Body/suit
     ctx.fillStyle = '#36a';
-    ctx.fillRect(-5, 6, 10, 8);
+    ctx.fillRect(-10, 12, 20, 16);
 
     // Arms (one holds pickaxe)
     ctx.strokeStyle = '#d8a060';
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = 5;
     // Left arm
     ctx.beginPath();
-    ctx.moveTo(-5, 8);
-    ctx.lineTo(-9, 14);
+    ctx.moveTo(-10, 16);
+    ctx.lineTo(-18, 28);
     ctx.stroke();
     // Right arm (holding pickaxe, animated)
     ctx.beginPath();
-    ctx.moveTo(5, 8);
+    ctx.moveTo(10, 16);
     if (pickaxeSwinging) {
       const swingDir = lastMineDir.dx !== 0 ? lastMineDir.dx : lastMineDir.dy;
-      ctx.lineTo(5 + Math.cos(-pickaxeAngle * swingDir) * 8, 8 + Math.sin(pickaxeAngle) * 4);
+      ctx.lineTo(10 + Math.cos(-pickaxeAngle * swingDir) * 16, 16 + Math.sin(pickaxeAngle) * 8);
     } else
-      ctx.lineTo(9, 14);
+      ctx.lineTo(18, 28);
     ctx.stroke();
 
     // Pickaxe in right hand
     ctx.save();
     if (pickaxeSwinging) {
       const swingAngle = pickaxeAngle * (lastMineDir.dx >= 0 ? 1 : -1);
-      ctx.translate(7, 10);
+      ctx.translate(14, 20);
       ctx.rotate(-0.5 + swingAngle * 1.5);
     } else {
-      ctx.translate(9, 13);
+      ctx.translate(18, 26);
       ctx.rotate(-0.3);
     }
     // Handle
     ctx.strokeStyle = '#854';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 4;
     ctx.beginPath();
     ctx.moveTo(0, 0);
-    ctx.lineTo(8, -6);
+    ctx.lineTo(16, -12);
     ctx.stroke();
     // Pick head
     ctx.fillStyle = '#999';
     ctx.beginPath();
-    ctx.moveTo(8, -6);
-    ctx.lineTo(13, -8);
-    ctx.lineTo(10, -4);
+    ctx.moveTo(16, -12);
+    ctx.lineTo(26, -16);
+    ctx.lineTo(20, -8);
     ctx.closePath();
     ctx.fill();
     ctx.beginPath();
-    ctx.moveTo(8, -6);
-    ctx.lineTo(5, -10);
-    ctx.lineTo(6, -5);
+    ctx.moveTo(16, -12);
+    ctx.lineTo(10, -20);
+    ctx.lineTo(12, -10);
     ctx.closePath();
     ctx.fill();
     ctx.restore();
 
     // Legs
     ctx.strokeStyle = '#248';
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = 5;
     const legAnim = pickaxeSwinging ? Math.sin(animTime * 15) * 1 : 0;
     ctx.beginPath();
-    ctx.moveTo(-3, 14);
-    ctx.lineTo(-4 + legAnim, 20);
+    ctx.moveTo(-6, 28);
+    ctx.lineTo(-8 + legAnim * 2, 40);
     ctx.stroke();
     ctx.beginPath();
-    ctx.moveTo(3, 14);
-    ctx.lineTo(4 - legAnim, 20);
+    ctx.moveTo(6, 28);
+    ctx.lineTo(8 - legAnim * 2, 40);
     ctx.stroke();
 
     // Boots
     ctx.fillStyle = '#543';
-    ctx.fillRect(-6 + legAnim, 18, 5, 3);
-    ctx.fillRect(2 - legAnim, 18, 5, 3);
+    ctx.fillRect(-12 + legAnim * 2, 36, 10, 6);
+    ctx.fillRect(4 - legAnim * 2, 36, 10, 6);
 
     ctx.restore();
   }
 
   // Resource HUD display configuration
   const RESOURCE_HUD_ENTRIES = [
-    { key: 'iron', label: 'Fe', color: '#bbb' },
-    { key: 'water', label: 'H2O', color: '#6af' },
-    { key: 'cobalt', label: 'Co', color: '#88c' },
-    { key: 'copper', label: 'Cu', color: '#d4944d' },
-    { key: 'tin', label: 'Sn', color: '#d4d4d4' },
-    { key: 'coal', label: 'C', color: '#888' },
-    { key: 'lead', label: 'Pb', color: '#999' },
-    { key: 'silver', label: 'Ag', color: '#e0e0e0' },
-    { key: 'gold', label: 'Au', color: '#ffd700' },
-    { key: 'quartz', label: 'Qz', color: '#f0e6d3' },
-    { key: 'redstone', label: 'Rs', color: '#ff3333' },
-    { key: 'emerald', label: 'Em', color: '#50c878' },
-    { key: 'diamond', label: 'Di', color: '#b9f2ff' },
-    { key: 'ruby', label: 'Rb', color: '#ff4488' }
+    { key: 'iron', label: 'Fe', color: '#bbb', icon: '\u2699' },
+    { key: 'water', label: 'H2O', color: '#6af', icon: '\u{1F4A7}' },
+    { key: 'cobalt', label: 'Co', color: '#88c', icon: '\u{1F48E}' },
+    { key: 'copper', label: 'Cu', color: '#d4944d', icon: '\u{1FA99}' },
+    { key: 'tin', label: 'Sn', color: '#d4d4d4', icon: '\u{1F52A}' },
+    { key: 'coal', label: 'C', color: '#888', icon: '\u{1F525}' },
+    { key: 'lead', label: 'Pb', color: '#999', icon: '\u26D3' },
+    { key: 'silver', label: 'Ag', color: '#e0e0e0', icon: '\u2B50' },
+    { key: 'gold', label: 'Au', color: '#ffd700', icon: '\u{1F451}' },
+    { key: 'quartz', label: 'Qz', color: '#f0e6d3', icon: '\u{1F52E}' },
+    { key: 'redstone', label: 'Rs', color: '#ff3333', icon: '\u2764' },
+    { key: 'emerald', label: 'Em', color: '#50c878', icon: '\u{1F49A}' },
+    { key: 'diamond', label: 'Di', color: '#b9f2ff', icon: '\u{1F4A0}' },
+    { key: 'ruby', label: 'Rb', color: '#ff4488', icon: '\u2763' }
   ];
 
   function drawResourceHUD() {
@@ -4725,16 +4673,16 @@
     const visibleEntries = RESOURCE_HUD_ENTRIES.filter(
       (e, i) => i < 3 || resources[e.key] > 0
     );
-    const lineH = 13;
+    const lineH = 26;
     const panelH = 6 + visibleEntries.length * lineH;
-    const panelX = 5;
-    const panelY = 5;
+    const panelX = 10;
+    const panelY = 10;
 
     // Two-column layout if many resources
     const useColumns = visibleEntries.length > 7;
     const colEntries = useColumns ? Math.ceil(visibleEntries.length / 2) : visibleEntries.length;
     const colPanelH = 6 + colEntries * lineH;
-    const colPanelW = useColumns ? 220 : 130;
+    const colPanelW = useColumns ? 440 : 260;
 
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
     ctx.fillRect(panelX, panelY, colPanelW, colPanelH);
@@ -4742,7 +4690,7 @@
     ctx.lineWidth = 1;
     ctx.strokeRect(panelX, panelY, colPanelW, colPanelH);
 
-    ctx.font = 'bold 10px sans-serif';
+    ctx.font = 'bold 20px sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
 
@@ -4750,30 +4698,30 @@
       const e = visibleEntries[i];
       const col = useColumns ? Math.floor(i / colEntries) : 0;
       const row = useColumns ? i % colEntries : i;
-      const x = panelX + 6 + col * 110;
+      const x = panelX + 12 + col * 220;
       const y = panelY + 3 + row * lineH;
       ctx.fillStyle = e.color;
-      ctx.fillText(`${e.label}: ${resources[e.key]}`, x, y);
+      ctx.fillText(`${e.icon} ${e.label}: ${resources[e.key]}`, x, y);
     }
 
     // Carried indicator (right side)
-    const carryX = CANVAS_W - 145;
+    const carryX = CANVAS_W - 290;
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillRect(carryX, panelY, 140, 30);
+    ctx.fillRect(carryX, panelY, 280, 60);
     ctx.strokeStyle = '#333';
     ctx.lineWidth = 1;
-    ctx.strokeRect(carryX, panelY, 140, 30);
+    ctx.strokeRect(carryX, panelY, 280, 60);
 
     ctx.fillStyle = '#cc8';
-    ctx.font = 'bold 11px sans-serif';
-    ctx.fillText(`Carried: ${carried}/${carryCapacity}`, carryX + 6, panelY + 5);
+    ctx.font = 'bold 22px sans-serif';
+    ctx.fillText(`\u{1F392} Carried: ${carried}/${carryCapacity}`, carryX + 12, panelY + 10);
 
     // Carry capacity bar
     const carryRatio = Math.min(carried / carryCapacity, 1);
     ctx.fillStyle = '#333';
-    ctx.fillRect(carryX + 6, panelY + 20, 128, 5);
+    ctx.fillRect(carryX + 12, panelY + 40, 256, 10);
     ctx.fillStyle = carryRatio >= 1 ? '#f44' : '#da2';
-    ctx.fillRect(carryX + 6, panelY + 20, 128 * carryRatio, 5);
+    ctx.fillRect(carryX + 12, panelY + 40, 256 * carryRatio, 10);
   }
 
   function drawToolHUDUnderground() {
@@ -4781,17 +4729,17 @@
     const anyUnlocked = GADGET_DEFS.some(d => unlockedTools[d.key]);
     if (!anyUnlocked) return;
 
-    const hudX = CANVAS_W - 145;
-    let hudY = 42;
+    const hudX = CANVAS_W - 290;
+    let hudY = 84;
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
     const toolCount = GADGET_DEFS.filter(d => unlockedTools[d.key]).length;
-    ctx.fillRect(hudX, hudY, 140, 6 + toolCount * 14);
+    ctx.fillRect(hudX, hudY, 280, 12 + toolCount * 28);
     ctx.strokeStyle = '#333';
     ctx.lineWidth = 1;
-    ctx.strokeRect(hudX, hudY, 140, 6 + toolCount * 14);
+    ctx.strokeRect(hudX, hudY, 280, 12 + toolCount * 28);
 
     hudY += 2;
-    ctx.font = 'bold 10px sans-serif';
+    ctx.font = 'bold 20px sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
 
@@ -4803,19 +4751,19 @@
       if (def.key === 'blastTool') {
         ctx.fillStyle = toolState.blastToolCooldown > 0 ? '#555' : (isActive ? '#ffd700' : '#f80');
         const cd = toolState.blastToolCooldown > 0 ? ` ${Math.ceil(toolState.blastToolCooldown)}s` : ' RDY';
-        ctx.fillText(`[2] ${def.icon} Blast${cd}`, hudX + 4, hudY);
+        ctx.fillText(`[2] ${def.icon} Blast${cd}`, hudX + 8, hudY);
       } else if (def.key === 'teleporter') {
         ctx.fillStyle = toolState.teleporterCooldown > 0 ? '#555' : '#a0f';
         const cd = toolState.teleporterCooldown > 0 ? ` ${Math.ceil(toolState.teleporterCooldown)}s` : ' RDY';
-        ctx.fillText(`[5] ${def.icon} Teleport${cd}`, hudX + 4, hudY);
+        ctx.fillText(`[5] ${def.icon} Teleport${cd}`, hudX + 8, hudY);
       } else if (def.key === 'drill') {
         ctx.fillStyle = isActive ? '#ffd700' : '#aaa';
-        ctx.fillText(`[1] ${def.icon} Drill${isActive ? ' SEL' : ''}`, hudX + 4, hudY);
+        ctx.fillText(`[1] ${def.icon} Drill${isActive ? ' SEL' : ''}`, hudX + 8, hudY);
       } else if (isPassive) {
         ctx.fillStyle = '#0f0';
-        ctx.fillText(`[${def.shortcut}] ${def.icon} ${def.name}`, hudX + 4, hudY);
+        ctx.fillText(`[${def.shortcut}] ${def.icon} ${def.name}`, hudX + 8, hudY);
       }
-      hudY += 14;
+      hudY += 28;
     }
   }
 
@@ -4825,9 +4773,14 @@
     return [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
   }
 
+  const _lightenCache = {};
   function lightenColor(hex, amount) {
+    const key = hex + '|' + amount;
+    if (_lightenCache[key]) return _lightenCache[key];
     const [r, g, b] = parseHex(hex);
-    return `rgb(${Math.min(255, r + amount)},${Math.min(255, g + amount)},${Math.min(255, b + amount)})`;
+    const result = `rgb(${Math.min(255, r + amount)},${Math.min(255, g + amount)},${Math.min(255, b + amount)})`;
+    _lightenCache[key] = result;
+    return result;
   }
 
   function hexToRgba(hex, alpha) {
@@ -4845,16 +4798,16 @@
       ctx.save();
       const shieldPulse = Math.sin(animTime * 4) * 0.15 + 0.85;
       ctx.beginPath();
-      ctx.arc(DOME_X, DOME_Y, DOME_RADIUS + 6, Math.PI, 0);
+      ctx.arc(DOME_X, DOME_Y, DOME_RADIUS + 12, Math.PI, 0);
       ctx.strokeStyle = `rgba(80,180,255,${0.5 * shieldPulse})`;
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 6;
       ctx.shadowBlur = 15;
       ctx.shadowColor = '#4af';
       ctx.stroke();
       ctx.beginPath();
-      ctx.arc(DOME_X, DOME_Y, DOME_RADIUS + 8, Math.PI + 0.2, -0.2);
+      ctx.arc(DOME_X, DOME_Y, DOME_RADIUS + 16, Math.PI + 0.2, -0.2);
       ctx.strokeStyle = `rgba(120,200,255,${0.3 * shieldPulse})`;
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 3;
       ctx.stroke();
       ctx.shadowBlur = 0;
       ctx.restore();
@@ -4864,16 +4817,16 @@
     if (primaryGadget === 'repellent' && primaryGadgetState.active) {
       ctx.save();
       const ringPulse = Math.sin(animTime * 6) * 0.2 + 0.8;
-      const ringRadius = DOME_RADIUS + 20 + Math.sin(animTime * 3) * 5;
+      const ringRadius = DOME_RADIUS + 40 + Math.sin(animTime * 3) * 10;
       ctx.beginPath();
       ctx.arc(DOME_X, DOME_Y, ringRadius, 0, TWO_PI);
       ctx.strokeStyle = `rgba(160,80,220,${0.6 * ringPulse})`;
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 6;
       ctx.shadowBlur = 12;
       ctx.shadowColor = '#a0f';
       ctx.stroke();
       ctx.beginPath();
-      ctx.arc(DOME_X, DOME_Y, ringRadius + 5, 0, TWO_PI);
+      ctx.arc(DOME_X, DOME_Y, ringRadius + 10, 0, TWO_PI);
       ctx.strokeStyle = `rgba(180,100,240,${0.25 * ringPulse})`;
       ctx.lineWidth = 1;
       ctx.stroke();
@@ -4883,19 +4836,19 @@
 
     // Orchard: small tree inside dome
     if (primaryGadget === 'orchard') {
-      const treeX = DOME_X - 30;
-      const treeY = DOME_Y - 8;
+      const treeX = DOME_X - 60;
+      const treeY = DOME_Y - 16;
       // Trunk
       ctx.fillStyle = '#654';
-      ctx.fillRect(treeX - 2, treeY - 15, 4, 15);
+      ctx.fillRect(treeX - 4, treeY - 30, 8, 30);
       // Canopy
       ctx.fillStyle = '#2a6';
       ctx.beginPath();
-      ctx.arc(treeX, treeY - 18, 8, 0, TWO_PI);
+      ctx.arc(treeX, treeY - 36, 16, 0, TWO_PI);
       ctx.fill();
       ctx.fillStyle = '#3a8';
       ctx.beginPath();
-      ctx.arc(treeX - 3, treeY - 16, 5, 0, TWO_PI);
+      ctx.arc(treeX - 6, treeY - 32, 10, 0, TWO_PI);
       ctx.fill();
       // Fruit (glowing when ready)
       if (primaryGadgetState.fruitReady) {
@@ -4905,7 +4858,7 @@
         ctx.shadowColor = '#ff0';
         ctx.fillStyle = `rgba(255,200,50,${fruitGlow})`;
         ctx.beginPath();
-        ctx.arc(treeX + 5, treeY - 15, 3, 0, TWO_PI);
+        ctx.arc(treeX + 10, treeY - 30, 6, 0, TWO_PI);
         ctx.fill();
         ctx.shadowBlur = 0;
         ctx.restore();
@@ -4915,23 +4868,23 @@
     // Droneyard: small diamond drone flying
     if (primaryGadget === 'droneyard') {
       const dronePhase = primaryGadgetState.dronePhase || 0;
-      const droneY = DOME_Y - 50 + Math.sin(dronePhase) * 20;
-      const droneX = DOME_X + 35;
+      const droneY = DOME_Y - 100 + Math.sin(dronePhase) * 40;
+      const droneX = DOME_X + 70;
       ctx.save();
       ctx.translate(droneX, droneY);
       ctx.rotate(Math.PI / 4);
       ctx.fillStyle = '#8ac';
-      ctx.fillRect(-4, -4, 8, 8);
+      ctx.fillRect(-8, -8, 16, 16);
       ctx.fillStyle = '#adf';
-      ctx.fillRect(-2, -2, 4, 4);
+      ctx.fillRect(-4, -4, 8, 8);
       ctx.restore();
       // Propeller lines
       ctx.strokeStyle = 'rgba(150,200,255,0.4)';
-      ctx.lineWidth = 1;
-      const propLen = 5 + Math.sin(animTime * 20) * 2;
+      ctx.lineWidth = 2;
+      const propLen = 10 + Math.sin(animTime * 20) * 4;
       ctx.beginPath();
-      ctx.moveTo(droneX - propLen, droneY - 2);
-      ctx.lineTo(droneX + propLen, droneY - 2);
+      ctx.moveTo(droneX - propLen, droneY - 4);
+      ctx.lineTo(droneX + propLen, droneY - 4);
       ctx.stroke();
     }
 
@@ -4941,24 +4894,24 @@
       const acY = DOME_Y - DOME_RADIUS;
       // Base
       ctx.fillStyle = '#667';
-      ctx.fillRect(acX - 5, acY - 2, 10, 8);
+      ctx.fillRect(acX - 10, acY - 4, 20, 16);
       // Barrel (points upward)
       ctx.fillStyle = '#556';
-      ctx.fillRect(acX - 1.5, acY - 10, 3, 10);
+      ctx.fillRect(acX - 3, acY - 20, 6, 20);
       // Muzzle flash
       if (primaryGadgetState.autoCannonFlash > 0 && primaryGadgetState.autoCannonTarget) {
         const t = primaryGadgetState.autoCannonTarget;
         const alpha = primaryGadgetState.autoCannonFlash / 0.3;
         ctx.strokeStyle = `rgba(255,255,0,${alpha})`;
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.moveTo(acX, acY - 10);
+        ctx.moveTo(acX, acY - 20);
         ctx.lineTo(t.x, t.y);
         ctx.stroke();
         ctx.strokeStyle = `rgba(255,200,0,${alpha * 0.4})`;
-        ctx.lineWidth = 4;
+        ctx.lineWidth = 8;
         ctx.beginPath();
-        ctx.moveTo(acX, acY - 10);
+        ctx.moveTo(acX, acY - 20);
         ctx.lineTo(t.x, t.y);
         ctx.stroke();
       }
@@ -4970,7 +4923,7 @@
       const alpha = primaryGadgetState.stunLaserFlash / 0.4;
       ctx.save();
       ctx.strokeStyle = `rgba(80,160,255,${alpha})`;
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 4;
       ctx.shadowBlur = 10;
       ctx.shadowColor = '#4af';
       ctx.beginPath();
@@ -4978,7 +4931,7 @@
       ctx.lineTo(t.x, t.y);
       ctx.stroke();
       ctx.strokeStyle = `rgba(150,210,255,${alpha * 0.6})`;
-      ctx.lineWidth = 5;
+      ctx.lineWidth = 10;
       ctx.shadowBlur = 15;
       ctx.beginPath();
       ctx.moveTo(DOME_X, DOME_Y - DOME_RADIUS);
@@ -4993,14 +4946,14 @@
       ctx.save();
       const armorPulse = Math.sin(animTime * 2) * 0.1 + 0.9;
       ctx.beginPath();
-      ctx.arc(DOME_X, DOME_Y, DOME_RADIUS + 4, Math.PI, 0);
+      ctx.arc(DOME_X, DOME_Y, DOME_RADIUS + 8, Math.PI, 0);
       ctx.strokeStyle = `rgba(180,160,100,${0.35 * armorPulse})`;
-      ctx.lineWidth = 4;
+      ctx.lineWidth = 8;
       ctx.stroke();
       ctx.beginPath();
-      ctx.arc(DOME_X, DOME_Y, DOME_RADIUS + 3, Math.PI + 0.1, -0.1);
+      ctx.arc(DOME_X, DOME_Y, DOME_RADIUS + 6, Math.PI + 0.1, -0.1);
       ctx.strokeStyle = `rgba(220,200,140,${0.2 * armorPulse})`;
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 3;
       ctx.stroke();
       ctx.restore();
     }
@@ -5010,10 +4963,10 @@
   }
 
   function drawGadgetHUD() {
-    const hudX = 10;
-    let hudY = CANVAS_H - 55;
+    const hudX = 20;
+    let hudY = CANVAS_H - 110;
 
-    ctx.font = 'bold 10px sans-serif';
+    ctx.font = 'bold 20px sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
 
@@ -5021,7 +4974,7 @@
     if (primaryGadget === 'shield') {
       ctx.fillStyle = primaryGadgetState.active ? '#4af' : '#555';
       ctx.fillText('Shield: ' + (primaryGadgetState.active ? 'ACTIVE' : 'depleted'), hudX, hudY);
-      hudY -= 14;
+      hudY -= 28;
     } else if (primaryGadget === 'repellent') {
       if (primaryGadgetState.active) {
         ctx.fillStyle = '#a0f';
@@ -5033,7 +4986,7 @@
         ctx.fillStyle = '#a0f';
         ctx.fillText('Repellent [R]: READY', hudX, hudY);
       }
-      hudY -= 14;
+      hudY -= 28;
     } else if (primaryGadget === 'orchard') {
       if (primaryGadgetState.speedBoostTimer > 0) {
         ctx.fillStyle = '#0f0';
@@ -5045,18 +4998,18 @@
         ctx.fillStyle = '#2a6';
         ctx.fillText(`Orchard: ${Math.ceil(primaryGadgetState.fruitTimer)}s`, hudX, hudY);
       }
-      hudY -= 14;
+      hudY -= 28;
     } else if (primaryGadget === 'droneyard') {
       ctx.fillStyle = '#8ac';
       ctx.fillText(`Drone: ${Math.ceil(primaryGadgetState.droneTimer)}s`, hudX, hudY);
-      hudY -= 14;
+      hudY -= 28;
     }
 
     // Blast charges
     if (foundGadgets.includes('blastMining') && (primaryGadgetState.blastCharges || 0) > 0) {
       ctx.fillStyle = '#f80';
       ctx.fillText(`Blast [B]: ${primaryGadgetState.blastCharges} charges`, hudX, hudY);
-      hudY -= 14;
+      hudY -= 28;
     }
 
     // Found gadget names
@@ -5064,7 +5017,7 @@
       if (g === 'blastMining') continue; // shown above
       ctx.fillStyle = '#aa8';
       ctx.fillText(MINE_GADGET_NAMES[g] || g, hudX, hudY);
-      hudY -= 14;
+      hudY -= 28;
     }
 
     // Unlockable tool indicators
@@ -5081,7 +5034,7 @@
           ctx.fillStyle = isActive ? '#ffd700' : '#f80';
           ctx.fillText(`${def.icon} Blast [2]: READY`, hudX, hudY);
         }
-        hudY -= 14;
+        hudY -= 28;
       } else if (def.key === 'teleporter') {
         if (toolState.teleporterCooldown > 0) {
           ctx.fillStyle = '#555';
@@ -5090,16 +5043,16 @@
           ctx.fillStyle = isActive ? '#ffd700' : '#a0f';
           ctx.fillText(`${def.icon} Teleport [5]: READY`, hudX, hudY);
         }
-        hudY -= 14;
+        hudY -= 28;
       } else if (def.key === 'drill') {
         ctx.fillStyle = isActive ? '#ffd700' : '#aaa';
         const combo = isActive && toolState.drillConsecutive > 0 ? ` (x${toolState.drillConsecutive} combo)` : '';
         ctx.fillText(`${def.icon} Drill [1]${combo}`, hudX, hudY);
-        hudY -= 14;
+        hudY -= 28;
       } else if (isPassive) {
         ctx.fillStyle = '#0f0';
         ctx.fillText(`${def.icon} ${def.name} [${def.shortcut}]: ON`, hudX, hudY);
-        hudY -= 14;
+        hudY -= 28;
       }
     }
   }
@@ -5130,11 +5083,7 @@
           } else {
             // Revealed: golden glowing tile with "?" symbol
             const pulse = Math.sin(animTime * 4) * 0.15 + 0.85;
-            const grad = ctx.createRadialGradient(x + TILE_SIZE / 2, y + TILE_SIZE / 2, 2, x + TILE_SIZE / 2, y + TILE_SIZE / 2, TILE_SIZE / 2);
-            grad.addColorStop(0, `rgba(255,215,0,${0.8 * pulse})`);
-            grad.addColorStop(0.6, `rgba(200,160,0,${0.6 * pulse})`);
-            grad.addColorStop(1, `rgba(140,110,0,${0.4 * pulse})`);
-            ctx.fillStyle = grad;
+            ctx.fillStyle = `rgba(200,160,0,${0.7 * pulse})`;
             ctx.fillRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
 
             // Bevel
@@ -5145,13 +5094,10 @@
 
             // "?" symbol
             ctx.fillStyle = `rgba(255,255,200,${pulse})`;
-            ctx.font = 'bold 18px sans-serif';
+            ctx.font = 'bold 36px sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.shadowBlur = 6;
-            ctx.shadowColor = '#ffd700';
             ctx.fillText('?', x + TILE_SIZE / 2, y + TILE_SIZE / 2);
-            ctx.shadowBlur = 0;
 
             // Sparkle particles on border
             if (Math.random() < 0.03)
@@ -5171,55 +5117,47 @@
       const probePulse = Math.sin(animTime * 5) * 0.3 + 0.7;
       const pr = primaryGadgetState.probePlayerR || drillY;
       const pc = primaryGadgetState.probePlayerC || drillX;
-      for (let r = 0; r < GRID_ROWS; ++r)
-        for (let c = 0; c < GRID_COLS; ++c) {
+      const probeR0 = Math.max(0, pr - 4), probeR1 = Math.min(GRID_ROWS, pr + 5);
+      const probeC0 = Math.max(0, pc - 4), probeC1 = Math.min(GRID_COLS, pc + 5);
+      for (let r = probeR0; r < probeR1; ++r)
+        for (let c = probeC0; c < probeC1; ++c) {
           const tile = undergroundGrid[r][c];
           if (!RESOURCE_TILES.includes(tile)) continue;
-          const dist = Math.abs(r - pr) + Math.abs(c - pc);
-          if (dist > 4) continue;
+          if (Math.abs(r - pr) + Math.abs(c - pc) > 4) continue;
           const x = c * TILE_SIZE - cameraX;
           const y = r * TILE_SIZE - cameraY;
-          ctx.save();
           ctx.strokeStyle = `rgba(255,215,0,${0.6 * probePulse * fadeAlpha})`;
           ctx.lineWidth = 2;
-          ctx.shadowBlur = 8;
-          ctx.shadowColor = `rgba(255,215,0,${0.5 * fadeAlpha})`;
           ctx.strokeRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
-          ctx.shadowBlur = 0;
-          ctx.restore();
         }
     }
 
     // Scanner gadget (unlockable tool): continuous passive reveal in 3-tile Manhattan radius
     if (toolState.scannerActive) {
       const scanPulse = Math.sin(animTime * 3) * 0.2 + 0.8;
-      for (let r = 0; r < GRID_ROWS; ++r)
-        for (let c = 0; c < GRID_COLS; ++c) {
+      const scanRange = 3 + (toolState.echoLocationActive ? 2 + getEffectiveLevel('echoLocation') : 0);
+      const scanR0 = Math.max(0, drillY - scanRange), scanR1 = Math.min(GRID_ROWS, drillY + scanRange + 1);
+      const scanC0 = Math.max(0, drillX - scanRange), scanC1 = Math.min(GRID_COLS, drillX + scanRange + 1);
+      for (let r = scanR0; r < scanR1; ++r)
+        for (let c = scanC0; c < scanC1; ++c) {
           const tile = undergroundGrid[r][c];
           if (!RESOURCE_TILES.includes(tile)) continue;
-          const dist = Math.abs(r - drillY) + Math.abs(c - drillX);
-          const scanRange = 3 + (toolState.echoLocationActive ? 2 + getEffectiveLevel('echoLocation') : 0);
-          if (dist > scanRange) continue;
+          if (Math.abs(r - drillY) + Math.abs(c - drillX) > scanRange) continue;
           const x = c * TILE_SIZE - cameraX;
           const y = r * TILE_SIZE - cameraY;
 
           // Semi-transparent resource type indicator
           const tileColor = TILE_HIGHLIGHT_COLORS[tile] || '#fff';
-          ctx.save();
           ctx.strokeStyle = hexToRgba(tileColor, 0.5 * scanPulse);
           ctx.lineWidth = 1.5;
-          ctx.shadowBlur = 6;
-          ctx.shadowColor = tileColor;
           ctx.strokeRect(x + 3, y + 3, TILE_SIZE - 6, TILE_SIZE - 6);
 
-          // Small resource type label
+          // Small resource type icon
           ctx.fillStyle = hexToRgba(tileColor, 0.7 * scanPulse);
-          ctx.font = 'bold 8px sans-serif';
+          ctx.font = '16px sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.fillText(TILE_LABELS[tile] || '', x + TILE_SIZE / 2, y + TILE_SIZE / 2);
-          ctx.shadowBlur = 0;
-          ctx.restore();
+          ctx.fillText(TILE_ICONS[tile] || '', x + TILE_SIZE / 2, y + TILE_SIZE / 2);
         }
 
       // Scanner radius ring around player
@@ -5243,83 +5181,83 @@
      ====================================================================== */
 
   function drawUpgradePanel() {
-    const px = CANVAS_W - 170;
-    const py = 50;
-    const toolSectionH = showToolPanel ? 22 + GADGET_DEFS.length * 22 : 18;
-    const panelH = 30 + UPGRADE_DEFS.length * 24 + toolSectionH;
+    const px = CANVAS_W - 340;
+    const py = 100;
+    const toolSectionH = showToolPanel ? 44 + GADGET_DEFS.length * 44 : 36;
+    const panelH = 60 + UPGRADE_DEFS.length * 48 + toolSectionH;
 
     // Panel background with gradient
     const panelGrad = ctx.createLinearGradient(px, py, px, py + panelH);
     panelGrad.addColorStop(0, 'rgba(10,15,30,0.7)');
     panelGrad.addColorStop(1, 'rgba(5,8,20,0.8)');
     ctx.fillStyle = panelGrad;
-    ctx.fillRect(px, py, 160, panelH);
+    ctx.fillRect(px, py, 320, panelH);
 
     // Border
     ctx.strokeStyle = '#3a4a6a';
     ctx.lineWidth = 1;
-    ctx.strokeRect(px, py, 160, panelH);
+    ctx.strokeRect(px, py, 320, panelH);
 
     // Header
     ctx.fillStyle = '#4af';
-    ctx.font = 'bold 11px sans-serif';
+    ctx.font = 'bold 22px sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillText('Upgrades', px + 8, py + 16);
+    ctx.fillText('Upgrades', px + 16, py + 32);
     ctx.fillStyle = '#ffd700';
-    ctx.font = '9px sans-serif';
+    ctx.font = '18px sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText('[U] Full Tree', px + 155, py + 16);
+    ctx.fillText('[U] Full Tree', px + 310, py + 32);
     ctx.textAlign = 'left';
 
     // Separator line
     ctx.strokeStyle = '#334';
     ctx.beginPath();
-    ctx.moveTo(px + 5, py + 22);
-    ctx.lineTo(px + 155, py + 22);
+    ctx.moveTo(px + 10, py + 44);
+    ctx.lineTo(px + 310, py + 44);
     ctx.stroke();
 
     const total = totalResources();
     for (let i = 0; i < UPGRADE_DEFS.length; ++i) {
       const def = UPGRADE_DEFS[i];
       const cost = getUpgradeCost(i);
-      const ly = py + 28 + i * 24;
+      const ly = py + 56 + i * 48;
       const canAfford = total >= cost;
 
       // Hover-like highlight for affordable upgrades
       if (canAfford) {
         ctx.fillStyle = 'rgba(60,120,200,0.08)';
-        ctx.fillRect(px + 2, ly - 2, 156, 22);
+        ctx.fillRect(px + 4, ly - 4, 312, 44);
       }
 
       ctx.fillStyle = canAfford ? '#ccc' : '#555';
-      ctx.font = '10px sans-serif';
-      ctx.fillText(`${def.name} Lv${getEffectiveLevel(def.key)}`, px + 8, ly + 10);
+      ctx.font = '20px sans-serif';
+      ctx.fillText(`${def.name} Lv${getEffectiveLevel(def.key)}`, px + 16, ly + 20);
       ctx.fillStyle = canAfford ? '#0f0' : '#633';
-      ctx.font = 'bold 10px sans-serif';
-      ctx.fillText(`[${cost}]`, px + 118, ly + 10);
+      ctx.font = 'bold 20px sans-serif';
+      ctx.fillText(`[${cost}]`, px + 236, ly + 20);
     }
 
     // -- Tool/Gadget section --
-    const toolY = py + 28 + UPGRADE_DEFS.length * 24 + 4;
+    const toolY = py + 56 + UPGRADE_DEFS.length * 48 + 8;
 
     // Separator
     ctx.strokeStyle = '#334';
     ctx.beginPath();
-    ctx.moveTo(px + 5, toolY - 2);
-    ctx.lineTo(px + 155, toolY - 2);
+    ctx.moveTo(px + 10, toolY - 4);
+    ctx.lineTo(px + 310, toolY - 4);
     ctx.stroke();
 
     // Section header (toggleable)
     ctx.fillStyle = '#ffd700';
-    ctx.font = 'bold 10px sans-serif';
+    ctx.font = 'bold 20px sans-serif';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillText(showToolPanel ? 'Tools (click to collapse)' : 'Tools (click to expand)', px + 8, toolY + 10);
+    ctx.fillText(showToolPanel ? 'Tools (click to collapse)' : 'Tools (click to expand)', px + 16, toolY + 20);
 
     if (showToolPanel) {
       for (let i = 0; i < GADGET_DEFS.length; ++i) {
         const def = GADGET_DEFS[i];
-        const ly = toolY + 16 + i * 22;
+        const ly = toolY + 32 + i * 44;
         const isUnlocked = !!unlockedTools[def.key];
         const canAfford = !isUnlocked && resources.iron >= def.costIron && resources.cobalt >= def.costCobalt;
         const isActive = activeToolKey === def.key;
@@ -5328,36 +5266,36 @@
         // Background highlight
         if (isUnlocked) {
           ctx.fillStyle = isActive ? 'rgba(255,215,0,0.12)' : 'rgba(40,100,40,0.1)';
-          ctx.fillRect(px + 2, ly - 2, 156, 20);
+          ctx.fillRect(px + 4, ly - 4, 312, 40);
         } else if (canAfford) {
           ctx.fillStyle = 'rgba(60,120,200,0.08)';
-          ctx.fillRect(px + 2, ly - 2, 156, 20);
+          ctx.fillRect(px + 4, ly - 4, 312, 40);
         }
 
         // Active border indicator
         if (isActive) {
           ctx.strokeStyle = '#ffd700';
           ctx.lineWidth = 1;
-          ctx.strokeRect(px + 2, ly - 2, 156, 20);
+          ctx.strokeRect(px + 4, ly - 4, 312, 40);
         }
 
         // Icon + Name
-        ctx.font = '10px sans-serif';
+        ctx.font = '20px sans-serif';
         if (isUnlocked) {
           ctx.fillStyle = isActive ? '#ffd700' : (isPassive ? '#0f0' : '#aaa');
           const status = isPassive ? ' [ON]' : (isActive ? ' [SEL]' : '');
-          ctx.fillText(`[${def.shortcut}] ${def.icon} ${def.name}${status}`, px + 6, ly + 10);
+          ctx.fillText(`[${def.shortcut}] ${def.icon} ${def.name}${status}`, px + 12, ly + 20);
         } else {
           ctx.fillStyle = canAfford ? '#ccc' : '#555';
-          ctx.fillText(`[${def.shortcut}] ${def.icon} ${def.name}`, px + 6, ly + 10);
+          ctx.fillText(`[${def.shortcut}] ${def.icon} ${def.name}`, px + 12, ly + 20);
           // Cost display
           let costText = `${def.costIron}Fe`;
           if (def.costCobalt > 0)
             costText += `+${def.costCobalt}Co`;
           ctx.fillStyle = canAfford ? '#0f0' : '#633';
-          ctx.font = 'bold 9px sans-serif';
+          ctx.font = 'bold 18px sans-serif';
           ctx.textAlign = 'right';
-          ctx.fillText(costText, px + 155, ly + 10);
+          ctx.fillText(costText, px + 310, ly + 20);
           ctx.textAlign = 'left';
         }
       }
@@ -5378,32 +5316,32 @@
       ctx.shadowBlur = 20;
       ctx.shadowColor = '#4af';
       ctx.fillStyle = '#4af';
-      ctx.font = 'bold 32px sans-serif';
+      ctx.font = 'bold 64px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('DOME KEEPER', CANVAS_W / 2, CANVAS_H / 2 - 60);
+      ctx.fillText('DOME KEEPER', CANVAS_W / 2, CANVAS_H / 2 - 120);
       ctx.shadowBlur = 0;
       ctx.restore();
 
       // Subtitle
       ctx.fillStyle = '#aaa';
-      ctx.font = '14px sans-serif';
+      ctx.font = '28px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('Defend your dome. Mine resources. Upgrade.', CANVAS_W / 2, CANVAS_H / 2 - 15);
+      ctx.fillText('Defend your dome. Mine resources. Upgrade.', CANVAS_W / 2, CANVAS_H / 2 - 30);
 
       // Pulsing start prompt
       const startPulse = Math.sin(animTime * 3) * 0.3 + 0.7;
       ctx.fillStyle = `rgba(170,170,170,${startPulse})`;
-      ctx.font = '14px sans-serif';
-      ctx.fillText('Tap or press F2 to Start', CANVAS_W / 2, CANVAS_H / 2 + 20);
+      ctx.font = '28px sans-serif';
+      ctx.fillText('Tap or press F2 to Start', CANVAS_W / 2, CANVAS_H / 2 + 40);
 
       // Decorative dome outline
       ctx.beginPath();
-      ctx.arc(CANVAS_W / 2, CANVAS_H / 2 + 100, 50, Math.PI, 0);
+      ctx.arc(CANVAS_W / 2, CANVAS_H / 2 + 200, 100, Math.PI, 0);
       ctx.closePath();
       ctx.strokeStyle = `rgba(80,160,255,${0.2 + Math.sin(animTime * 2) * 0.1})`;
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 4;
       ctx.shadowBlur = 10;
       ctx.shadowColor = '#4af';
       ctx.stroke();
@@ -5421,17 +5359,17 @@
       ctx.shadowBlur = 15;
       ctx.shadowColor = '#ffd700';
       ctx.fillStyle = '#ffd700';
-      ctx.font = 'bold 24px sans-serif';
+      ctx.font = 'bold 48px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('Choose Your Gadget', CANVAS_W / 2, 50);
+      ctx.fillText('Choose Your Gadget', CANVAS_W / 2, 100);
       ctx.shadowBlur = 0;
       ctx.restore();
 
       // 4 cards
-      const cardW = 140;
-      const cardH = 160;
-      const gap = 15;
+      const cardW = 280;
+      const cardH = 320;
+      const gap = 30;
       const totalW = PRIMARY_GADGETS.length * cardW + (PRIMARY_GADGETS.length - 1) * gap;
       const startX = (CANVAS_W - totalW) / 2;
       const cardY = (CANVAS_H - cardH) / 2;
@@ -5471,28 +5409,28 @@
         }
 
         // Icon
-        ctx.font = '32px sans-serif';
+        ctx.font = '64px sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillStyle = '#fff';
-        ctx.fillText(g.icon, cx + cardW / 2, cardY + 35);
+        ctx.fillText(g.icon, cx + cardW / 2, cardY + 70);
 
         // Name
         ctx.fillStyle = isHover ? '#ffd700' : '#ccc';
-        ctx.font = 'bold 12px sans-serif';
-        ctx.fillText(g.name, cx + cardW / 2, cardY + 70);
+        ctx.font = 'bold 24px sans-serif';
+        ctx.fillText(g.name, cx + cardW / 2, cardY + 140);
 
         // Description lines
         ctx.fillStyle = '#999';
-        ctx.font = '10px sans-serif';
+        ctx.font = '20px sans-serif';
         for (let l = 0; l < g.desc.length; ++l)
-          ctx.fillText(g.desc[l], cx + cardW / 2, cardY + 92 + l * 14);
+          ctx.fillText(g.desc[l], cx + cardW / 2, cardY + 184 + l * 28);
 
         // Click hint
         if (isHover) {
           ctx.fillStyle = '#ffd700';
-          ctx.font = 'bold 10px sans-serif';
-          ctx.fillText('Click to select', cx + cardW / 2, cardY + cardH - 12);
+          ctx.font = 'bold 20px sans-serif';
+          ctx.fillText('Click to select', cx + cardW / 2, cardY + cardH - 24);
         }
       }
 
@@ -5506,16 +5444,16 @@
       ctx.shadowBlur = 10;
       ctx.shadowColor = '#ff0';
       ctx.fillStyle = '#ff0';
-      ctx.font = 'bold 32px sans-serif';
+      ctx.font = 'bold 64px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('PAUSED', CANVAS_W / 2, CANVAS_H / 2);
       ctx.shadowBlur = 0;
       ctx.restore();
       ctx.fillStyle = '#aaa';
-      ctx.font = '13px sans-serif';
+      ctx.font = '26px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('Press Escape to resume', CANVAS_W / 2, CANVAS_H / 2 + 30);
+      ctx.fillText('Press Escape to resume', CANVAS_W / 2, CANVAS_H / 2 + 60);
       ctx.textAlign = 'start';
     }
 
@@ -5528,21 +5466,21 @@
       ctx.shadowBlur = 20;
       ctx.shadowColor = '#f44';
       ctx.fillStyle = '#f44';
-      ctx.font = 'bold 28px sans-serif';
+      ctx.font = 'bold 56px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('DOME DESTROYED', CANVAS_W / 2, CANVAS_H / 2 - 30);
+      ctx.fillText('DOME DESTROYED', CANVAS_W / 2, CANVAS_H / 2 - 60);
       ctx.shadowBlur = 0;
       ctx.restore();
 
       ctx.fillStyle = '#ccc';
-      ctx.font = '16px sans-serif';
+      ctx.font = '32px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(`Wave: ${waveNumber} -- Score: ${score}`, CANVAS_W / 2, CANVAS_H / 2 + 10);
+      ctx.fillText(`Wave: ${waveNumber} -- Score: ${score}`, CANVAS_W / 2, CANVAS_H / 2 + 20);
 
       const restartPulse = Math.sin(animTime * 3) * 0.3 + 0.7;
       ctx.fillStyle = `rgba(204,204,204,${restartPulse})`;
-      ctx.fillText('Tap or press F2 to play again', CANVAS_W / 2, CANVAS_H / 2 + 40);
+      ctx.fillText('Tap or press F2 to play again', CANVAS_W / 2, CANVAS_H / 2 + 80);
       ctx.textAlign = 'start';
     }
   }
@@ -5581,29 +5519,29 @@
     ctx.fillStyle = 'rgba(0,0,0,0.8)';
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
     const page = TUTORIAL_PAGES[tutorialPage] || TUTORIAL_PAGES[0];
-    const cx = CANVAS_W / 2, pw = 400, ph = 220, px = cx - pw / 2, py = (CANVAS_H - ph) / 2;
+    const cx = CANVAS_W / 2, pw = 800, ph = 440, px = cx - pw / 2, py = (CANVAS_H - ph) / 2;
     ctx.fillStyle = 'rgba(15,10,5,0.95)';
     ctx.fillRect(px, py, pw, ph);
     ctx.strokeStyle = '#c80';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 4;
     ctx.strokeRect(px, py, pw, ph);
     ctx.fillStyle = '#666';
-    ctx.font = '10px sans-serif';
+    ctx.font = '20px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('Page ' + (tutorialPage + 1) + ' / ' + TUTORIAL_PAGES.length, cx, py + ph - 12);
+    ctx.fillText('Page ' + (tutorialPage + 1) + ' / ' + TUTORIAL_PAGES.length, cx, py + ph - 24);
     ctx.fillStyle = '#c80';
-    ctx.font = 'bold 18px sans-serif';
-    ctx.fillText(page.title, cx, py + 30);
+    ctx.font = 'bold 36px sans-serif';
+    ctx.fillText(page.title, cx, py + 60);
     ctx.fillStyle = '#ccc';
-    ctx.font = '13px sans-serif';
+    ctx.font = '26px sans-serif';
     for (let i = 0; i < page.lines.length; ++i)
-      ctx.fillText(page.lines[i], cx, py + 58 + i * 22);
+      ctx.fillText(page.lines[i], cx, py + 116 + i * 44);
     ctx.fillStyle = '#888';
-    ctx.font = '11px sans-serif';
+    ctx.font = '22px sans-serif';
     if (tutorialPage < TUTORIAL_PAGES.length - 1)
-      ctx.fillText('Click / Space / Right = Next  |  Esc = Close', cx, py + ph - 28);
+      ctx.fillText('Click / Space / Right = Next  |  Esc = Close', cx, py + ph - 56);
     else
-      ctx.fillText('Click / Space = Start!  |  Press H for help anytime', cx, py + ph - 28);
+      ctx.fillText('Click / Space = Start!  |  Press H for help anytime', cx, py + ph - 56);
   }
 
   /* ======================================================================
@@ -5639,9 +5577,9 @@
   function drawTooltip() {
     if (!tooltip.visible || tooltip.lines.length === 0) return;
 
-    const padding = 8;
-    const lineH = 16;
-    const fontSize = 11;
+    const padding = 16;
+    const lineH = 32;
+    const fontSize = 22;
     ctx.font = `${fontSize}px sans-serif`;
 
     // Measure max line width
@@ -5655,19 +5593,19 @@
     const boxH = tooltip.lines.length * lineH + padding * 2 - 4;
 
     // Position near cursor, clamped to canvas
-    let bx = tooltip.x + 14;
-    let by = tooltip.y + 14;
-    if (bx + boxW > CANVAS_W - 4) bx = tooltip.x - boxW - 6;
-    if (by + boxH > CANVAS_H - 4) by = tooltip.y - boxH - 6;
-    if (bx < 4) bx = 4;
-    if (by < 4) by = 4;
+    let bx = tooltip.x + 28;
+    let by = tooltip.y + 28;
+    if (bx + boxW > CANVAS_W - 8) bx = tooltip.x - boxW - 12;
+    if (by + boxH > CANVAS_H - 8) by = tooltip.y - boxH - 12;
+    if (bx < 8) bx = 8;
+    if (by < 8) by = 8;
 
     // Background: semi-transparent dark rounded rectangle
     ctx.save();
     ctx.fillStyle = 'rgba(10, 12, 20, 0.92)';
     ctx.strokeStyle = 'rgba(120, 140, 180, 0.5)';
     ctx.lineWidth = 1;
-    const r = 5;
+    const r = 10;
     ctx.beginPath();
     ctx.moveTo(bx + r, by);
     ctx.lineTo(bx + boxW - r, by);
@@ -5736,7 +5674,8 @@
         lines.push('Hidden - mine nearby to reveal');
       lines.push('Mining: ' + getMiningDifficultyLabel(depthMult));
     } else {
-      lines.push(displayName);
+      const icon = TILE_ICONS[tile] || '';
+      lines.push((icon ? icon + ' ' : '') + displayName);
       if (TILE_VALUES[tile])
         lines.push('Value: ' + TILE_VALUES[tile] + ' resources');
       lines.push('Depth: ' + depthTier.name);
@@ -5813,12 +5752,14 @@
         emerald: 'Emerald', diamond: 'Diamond', ruby: 'Ruby'
       };
       let costParts = [];
+      const TT_ICONS = { iron: '\u2699', water: '\u{1F4A7}', cobalt: '\u{1F48E}', copper: '\u{1FA99}', tin: '\u{1F52A}', coal: '\u{1F525}', lead: '\u26D3', silver: '\u2B50', gold: '\u{1F451}', quartz: '\u{1F52E}', redstone: '\u2764', emerald: '\u{1F49A}', diamond: '\u{1F4A0}', ruby: '\u2763' };
       for (const key in cost)
         if ((cost[key] || 0) > 0) {
           const have = resources[key] || 0;
           const need = cost[key];
           const mark = have >= need ? '\u2714' : '\u2718';
-          costParts.push(mark + ' ' + (COST_NAMES[key] || key) + ': ' + have + '/' + need);
+          const ico = TT_ICONS[key] || '';
+          costParts.push(mark + ' ' + ico + (COST_NAMES[key] || key) + ': ' + have + '/' + need);
         }
       if (costParts.length > 0) {
         lines.push('--- Cost ---');
@@ -5859,7 +5800,7 @@
       let resParts = [];
       for (const entry of RESOURCE_HUD_ENTRIES)
         if (resources[entry.key] > 0)
-          resParts.push(`${entry.label}:${resources[entry.key]}`);
+          resParts.push(`${entry.icon}${entry.label}:${resources[entry.key]}`);
       statusResources.textContent = resParts.join(' ') || 'Fe:0 H2O:0 Co:0';
     }
   }
@@ -5999,7 +5940,7 @@
       if (!primaryGadgetState.active && primaryGadgetState.cooldown <= 0) {
         primaryGadgetState.active = true;
         primaryGadgetState.duration = 5;
-        floatingText.add(DOME_X, DOME_Y - DOME_RADIUS - 30, 'Repellent Field!', { color: '#a0f', font: 'bold 14px sans-serif' });
+        floatingText.add(DOME_X, DOME_Y - DOME_RADIUS - 60, 'Repellent Field!', { color: '#a0f', font: 'bold 28px sans-serif' });
         particles.burst(DOME_X, DOME_Y, 20, { color: '#a0f', speed: 3, life: 0.5 });
       }
     }
@@ -6019,11 +5960,11 @@
     }
     if (e.code === 'Digit3' || e.key === '3') {
       if (unlockedTools.scanner)
-        floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 20, 'Scanner active (passive)', { color: '#0f0', font: 'bold 11px sans-serif' });
+        floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 40, 'Scanner active (passive)', { color: '#0f0', font: 'bold 22px sans-serif' });
     }
     if (e.code === 'Digit4' || e.key === '4') {
       if (unlockedTools.reinforcedDome)
-        floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 20, 'Reinforced Dome active (passive)', { color: '#0f0', font: 'bold 11px sans-serif' });
+        floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 40, 'Reinforced Dome active (passive)', { color: '#0f0', font: 'bold 22px sans-serif' });
     }
     if (e.code === 'Digit5' || e.key === '5') {
       if (unlockedTools.teleporter)
@@ -6068,7 +6009,7 @@
       const mx = (e.clientX - rect.left) * scaleX;
       const my = (e.clientY - rect.top) * scaleY;
 
-      const cardW = 140, cardH = 160, gap = 15;
+      const cardW = 280, cardH = 320, gap = 30;
       const totalW = PRIMARY_GADGETS.length * cardW + (PRIMARY_GADGETS.length - 1) * gap;
       const startX = (CANVAS_W - totalW) / 2;
       const cardY = (CANVAS_H - cardH) / 2;
@@ -6131,33 +6072,33 @@
     } else {
       // Orchard: clicking near the dome tree when fruit is ready
       if (primaryGadget === 'orchard' && primaryGadgetState.fruitReady) {
-        const treeX = DOME_X - 30, treeY = DOME_Y - 15;
-        if (Math.abs(mx - treeX) < 20 && Math.abs(my - treeY) < 25) {
+        const treeX = DOME_X - 60, treeY = DOME_Y - 30;
+        if (Math.abs(mx - treeX) < 40 && Math.abs(my - treeY) < 50) {
           primaryGadgetState.fruitReady = false;
           primaryGadgetState.fruitTimer = 20;
           primaryGadgetState.speedBoostTimer = 10;
-          floatingText.add(treeX, treeY - 20, '+30% Mining Speed!', { color: '#0f0', font: 'bold 12px sans-serif' });
+          floatingText.add(treeX, treeY - 40, '+30% Mining Speed!', { color: '#0f0', font: 'bold 24px sans-serif' });
           particles.sparkle(treeX, treeY - 15, 8, { color: '#ff0', speed: 2 });
           return;
         }
       }
 
       // Surface view: check upgrade panel first, then fire weapon
-      const px = CANVAS_W - 170;
-      const py = 50;
-      if (mx >= px && mx <= px + 160) {
+      const px = CANVAS_W - 340;
+      const py = 100;
+      if (mx >= px && mx <= px + 320) {
         // Check upgrade rows
         for (let i = 0; i < UPGRADE_DEFS.length; ++i) {
-          const ly = py + 28 + i * 24;
-          if (my >= ly && my <= ly + 24) {
+          const ly = py + 56 + i * 48;
+          if (my >= ly && my <= ly + 48) {
             applyUpgrade(i);
             return;
           }
         }
 
         // Check tool section header (toggle expand/collapse)
-        const toolHeaderY = py + 28 + UPGRADE_DEFS.length * 24 + 4;
-        if (my >= toolHeaderY - 4 && my <= toolHeaderY + 14) {
+        const toolHeaderY = py + 56 + UPGRADE_DEFS.length * 48 + 8;
+        if (my >= toolHeaderY - 8 && my <= toolHeaderY + 28) {
           showToolPanel = !showToolPanel;
           return;
         }
@@ -6165,8 +6106,8 @@
         // Check tool rows (when panel is expanded)
         if (showToolPanel) {
           for (let i = 0; i < GADGET_DEFS.length; ++i) {
-            const ly = toolHeaderY + 16 + i * 22;
-            if (my >= ly - 2 && my <= ly + 20) {
+            const ly = toolHeaderY + 32 + i * 44;
+            if (my >= ly - 4 && my <= ly + 40) {
               const def = GADGET_DEFS[i];
               if (unlockedTools[def.key]) {
                 // Already unlocked -- select/activate it
@@ -6205,6 +6146,7 @@
       const zoomRatio = upgradeZoom / oldZoom;
       upgradePanX = mx - (mx - upgradePanX) * zoomRatio;
       upgradePanY = my - (my - upgradePanY) * zoomRatio;
+      upgradeViewCustomized = true;
     }
   }, { passive: false });
 
@@ -6225,6 +6167,7 @@
       upgradePanStartY = (e.clientY - rect.top) * scaleY;
       upgradePanBaseX = upgradePanX;
       upgradePanBaseY = upgradePanY;
+      upgradeViewCustomized = true;
       canvas.setPointerCapture(e.pointerId);
     }
   });
@@ -6270,7 +6213,7 @@
 
     // Track hover on gadget selection screen
     if (state === STATE_GADGET_SELECT) {
-      const cardW = 140, cardH = 160, gap = 15;
+      const cardW = 280, cardH = 320, gap = 30;
       const totalW = PRIMARY_GADGETS.length * cardW + (PRIMARY_GADGETS.length - 1) * gap;
       const startX = (CANVAS_W - totalW) / 2;
       const cardY = (CANVAS_H - cardH) / 2;

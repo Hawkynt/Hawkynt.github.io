@@ -69,15 +69,15 @@
   const NUM_OPPONENTS = 3;
   const CHECKPOINT_RADIUS = 40;
 
-  /* ── AI (nerfed) ── */
-  const AI_BASE_ACCEL = 200;
-  const AI_BASE_TURN_SPEED = 2.0;
+  /* ── AI ── */
+  const AI_BASE_ACCEL = 270;
+  const AI_BASE_TURN_SPEED = 2.6;
   const AI_SPEED_VARIANCE = 0.18;
-  const AI_REACTION_DELAY = 0.25;
-  const AI_MISTAKE_CHANCE = 0.008;
-  const AI_MISTAKE_DURATION = 0.6;
+  const AI_REACTION_DELAY = 0.18;
+  const AI_MISTAKE_CHANCE = 0.005;
+  const AI_MISTAKE_DURATION = 0.4;
   const AI_BRAKE_ON_TURN_THRESHOLD = 1.2;
-  const AI_BRAKE_FACTOR = 0.6;
+  const AI_BRAKE_FACTOR = 0.65;
 
   /* ── Credits ── */
   const CREDITS_1ST = 500;
@@ -455,6 +455,9 @@
   // Input
   const keys = {};
   let keyJustPressed = {};
+  let mouseX = -1, mouseY = -1;
+  let mouseDown = false;
+  let mouseControlActive = false;
 
   /* ══════════════════════════════════════════════════════════════════
      CANVAS SETUP
@@ -833,8 +836,19 @@
     if (keys['ArrowRight'] || keys['KeyD'])
       ship.angle += turnSpeed * dt;
 
+    // Mouse steering: ship follows mouse cursor while button pressed
+    // Use screen-space coordinates so camera smoothing lag doesn't offset the angle
+    if (mouseControlActive && mouseDown && mouseX >= 0) {
+      const shipScreenX = ship.x - camX;
+      const shipScreenY = ship.y - camY;
+      const mx = mouseX - shipScreenX;
+      const my = mouseY - shipScreenY;
+      if (mx * mx + my * my > 25)
+        ship.angle = Math.atan2(my, mx);
+    }
+
     // Acceleration / braking
-    if (keys['ArrowUp'] || keys['KeyW']) {
+    if (keys['ArrowUp'] || keys['KeyW'] || (mouseControlActive && mouseDown)) {
       ship.vx += Math.cos(ship.angle) * accel * dt;
       ship.vy += Math.sin(ship.angle) * accel * dt;
     }
@@ -953,7 +967,7 @@
 
       // Clamp speed
       ai.speed = Math.sqrt(ai.vx * ai.vx + ai.vy * ai.vy);
-      const aiMax = BASE_MAX_SPEED * ai.speedFactor * 0.82;
+      const aiMax = BASE_MAX_SPEED * ai.speedFactor * 0.93;
       if (ai.speed > aiMax) {
         const ratio = aiMax / ai.speed;
         ai.vx *= ratio;
@@ -1028,12 +1042,17 @@
       }
     }
 
-    // Calculate position/placement
+    // Calculate position/placement using checkpoint progress + fractional distance
     let place = 1;
-    const playerProgress = playerLap * track.checkpoints.length + playerCheckpoint;
+    const cpCount = track.checkpoints.length;
+    const playerNextCP = track.checkpoints[playerCheckpoint];
+    const playerDistToNext = Math.sqrt((playerNextCP.x - ship.x) ** 2 + (playerNextCP.y - ship.y) ** 2);
+    const playerProgress = playerLap * cpCount + playerCheckpoint - playerDistToNext / 1000;
     for (let i = 0; i < opponents.length; ++i) {
       const ai = opponents[i];
-      const aiProgress = ai.lap * track.checkpoints.length + ai.checkpoint;
+      const aiNextCP = track.checkpoints[ai.checkpoint];
+      const aiDistToNext = Math.sqrt((aiNextCP.x - ai.x) ** 2 + (aiNextCP.y - ai.y) ** 2);
+      const aiProgress = ai.lap * cpCount + ai.checkpoint - aiDistToNext / 1000;
       if (aiProgress > playerProgress)
         ++place;
     }
@@ -1044,11 +1063,22 @@
     raceFinished = true;
     state = STATE_RACE_OVER;
 
-    // Determine final placement
+    // Determine final placement: count AIs that finished before the player,
+    // plus AIs that were ahead in race progress (same or higher lap+checkpoint)
+    const cpCount = track.checkpoints.length;
+    const playerProgress = playerLap * cpCount + playerCheckpoint;
     let finalPlace = 1;
-    for (let i = 0; i < opponents.length; ++i)
-      if (opponents[i].finished && opponents[i].finishTime < raceTime)
+    for (let i = 0; i < opponents.length; ++i) {
+      const ai = opponents[i];
+      if (ai.finished && ai.finishTime <= raceTime) {
         ++finalPlace;
+        continue;
+      }
+      // AI that hasn't officially finished but was further ahead in progress
+      const aiProgress = ai.lap * cpCount + ai.checkpoint;
+      if (aiProgress > playerProgress)
+        ++finalPlace;
+    }
 
     playerPlace = finalPlace;
 
@@ -2213,6 +2243,7 @@
     drawGame();
     particles.draw(ctx);
     floatingText.draw(ctx);
+    screenShake.restore(ctx);
     ctx.restore();
 
     updateStatusBar();
@@ -2231,6 +2262,7 @@
     if (keys[e.code]) return; // Ignore key repeat
     keys[e.code] = true;
     keyJustPressed[e.code] = true;
+    mouseControlActive = false; // keyboard overrides mouse steering
 
     /* Tutorial navigation */
     if (showTutorial) {
@@ -2341,8 +2373,8 @@
     keys[e.code] = false;
   });
 
-  /* ── Click/Tap to start ── */
-  canvas.addEventListener('pointerdown', () => {
+  /* ── Click/Tap to start + mouse steering ── */
+  canvas.addEventListener('pointerdown', (e) => {
     if (showTutorial) {
       ++tutorialPage;
       if (tutorialPage >= TUTORIAL_PAGES.length)
@@ -2353,7 +2385,25 @@
       if (state === STATE_RACE_OVER)
         currentTrackIndex = (currentTrackIndex + 1) % TRACK_DEFS.length;
       resetGame();
+      return;
     }
+    mouseDown = true;
+    mouseControlActive = true;
+    const rect = canvas.getBoundingClientRect();
+    mouseX = (e.clientX - rect.left) / rect.width * CANVAS_W;
+    mouseY = (e.clientY - rect.top) / rect.height * CANVAS_H;
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    if (!mouseControlActive) return;
+    const rect = canvas.getBoundingClientRect();
+    mouseX = (e.clientX - rect.left) / rect.width * CANVAS_W;
+    mouseY = (e.clientY - rect.top) / rect.height * CANVAS_H;
+  });
+
+  canvas.addEventListener('pointerup', () => {
+    mouseDown = false;
+    mouseControlActive = false;
   });
 
   /* ══════════════════════════════════════════════════════════════════
