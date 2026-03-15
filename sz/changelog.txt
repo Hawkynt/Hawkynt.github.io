@@ -1,9 +1,23 @@
+Main: 6.25
+by Hawkynt 14.03.2026
+- Dome Keeper: removed ore text labels from underground tiles (replaced with resource-type emoji icons)
+# Dome Keeper: miner character scaled to fit within tile bounds (was overflowing the 40x40 tile box)
+# Dome Keeper: upgrade tree zoom/pan state remembered between opens (no longer resets to auto-fit every time)
++ Dome Keeper: resource mini-icons (emoji) shown in resource HUD, upgrade tree costs, tooltips, scanner overlay, carried bag, and status bar
+* Dome Keeper: dome hexagon pattern brightened and thickened for better visibility
+* Dome Keeper: underground rendering optimized -- scanner/probe loops bounded to nearby tiles instead of full 8800-tile grid, sparkle candidates limited to viewport, removed all per-tile shadowBlur/createRadialGradient calls, stripped per-speckle highlight/shadow (saves ~40 fillRect/ore tile), ore animations limited to 6-tile radius around player, dropped resources viewport-culled and use flat rects instead of arcs+shadowBlur, dropped resources despawn after 120s
+
 Main: 6.24
 by Hawkynt 08.03.2026
 + Dome Keeper: tech tree expanded from 48 to 104 nodes (Shield Regen, Damage Reflect, Emergency Shield, Ore Detector, Speed Mining, Tunnel Bore, Vein Miner, Double Jump, Wall Climb, Dash, Multi-Shot, Homing, Critical Hit, Explosive Rounds, and more)
 * Dome Keeper: underground grid widened from 30 to 110 columns (55 per side of dome), 4-8 gadget chambers
 + Dome Keeper: auto-collect loose resources when switching to underground view (within 1 tile of player)
 + Dome Keeper: ore vein pack-spawning with BFS flood fill (common 3-8 tiles, medium 2-5, rare 1-4, gems 1-3; deeper veins longer)
+# Dome Keeper: fixed resize -- fixed internal resolution with CSS scaling to fill client area (no more displaced enemies or clipped starfield)
+* Dome Keeper: internal resolution doubled to 1400x1000 for sharper visuals (all pixel values, fonts, UI, effects scaled accordingly)
+* Dome Keeper: underground depth doubled to 80 rows for deeper mining
+* Dome Keeper: dome hex pattern enlarged and brightened for better visibility
+* Dome Keeper: underground rendering optimized (removed per-tile gradient creation, cached color computations, flat fills, hoisted ore speckle colors)
 
 Main: 6.23
 by Hawkynt 08.03.2026
