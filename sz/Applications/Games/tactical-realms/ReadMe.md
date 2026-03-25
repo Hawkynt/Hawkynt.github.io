@@ -9,8 +9,8 @@ A tactical RPG / dungeon-crawler for the SZ Desktop, inspired by **Shining Force
 | Attribute | Value |
 |-----------|-------|
 | **Platform** | SZ Desktop (browser-based OS) |
-| **Rendering** | HTML5 Canvas, 940x660 internal resolution |
-| **Input** | Mouse-only (tablet-compatible, no keyboard required) |
+| **Rendering** | HTML5 Canvas, 1280x720 internal resolution |
+| **Input** | Mouse + keyboard (WASD/arrows for overworld; mouse for combat and menus) |
 | **Save** | localStorage (auto-save on every state transition, versioned format with migration) |
 | **Session length** | 15-45 minutes per dungeon run |
 | **Hosting mode** | `iframe` (standalone HTML page inside SZ window) |
@@ -32,23 +32,208 @@ All core engine modules implemented with 162 passing browser-based tests.
 | State Machine | `state-machine.js` | Done | 38 tests |
 | Save Crypto | `save-crypto.js` | Done | 10 tests |
 | Save Manager | `save-manager.js` | Done | 12 tests |
-| Input Handler | `input-handler.js` | Done | 12 tests |
-| Renderer | `renderer.js` | Done | 21 tests |
+| Input Handler | `input-handler.js` | Done | 15 tests |
+| Renderer | `renderer.js` | Done | 24 tests |
 | Controller | `controller.js` | Done | -- |
 | Integration | `tests/test-integration.js` | Done | 8 tests |
 | Entry Point | `index.html`, `styles.css` | Done | -- |
 | Manifest | `Applications/manifest.js` | Done | -- |
 | Icon | `icon.svg` | Done | -- |
 
+### Phase 2: Character System -- DONE
+
+D&D 3e-style character system with race/class data tables, stat calculations, daily roster generation, party selection UI, and character cards. Total: 269 passing tests (107 new).
+
+| Module | File | Status | Tests |
+|--------|------|--------|-------|
+| Character Data & Factory | `character.js` | Done | 56 tests |
+| Roster & Party Selection | `roster.js` | Done | 30 tests |
+| Character Card Rendering | `renderer.js` (extended) | Done | -- |
+| Real Character Select UI | `controller.js` (updated) | Done | -- |
+| Headless Test Runner | `tests/headless-runner.js` | Done | -- |
+
+**Features:**
+- 8 races (6 free + 2 seasonal): Human, Elf, Dwarf, Halfling, Half-Orc, Gnome, Tiefling (autumn), Dragonborn (summer)
+- 10 classes (7 free + 3 premium/seasonal): Fighter, Wizard, Cleric, Rogue, Ranger, Paladin, Barbarian, Bard (spring), Warlock (autumn), Sorcerer (winter)
+- d20-style ability modifiers, BAB/save progressions, size bonuses
+- Deterministic daily roster rotation (6-8 characters per day)
+- Daily stat variance with bonus stat from time rotation
+- Party selection (1-4 characters) with seasonal lock indicators
+- Character stat cards with ability scores, HP/MP bars, AC/BAB/Speed/Init
+- Save/load preserves party data via serialization
+
+### Phase 3: Combat Engine -- DONE
+
+Grid-based tactical combat with bidirectional A* pathfinding, path caching with partial-reuse stitching, multi-unit cooperative pathfinding, formation movement, d20 attack resolution, initiative/turn order, flanking, enemy AI, Shining Force full-screen battle scenes, smooth combat movement animation, free movement within move range, click-to-approach-and-attack, flee from combat (with floating text feedback), biome-aware terrain rendering, overworld combat overlay, character portraits, spell casting system (41 spells across 5 levels, 9 schools, class-restricted, MP cost), AoE spells (7 spells with blast radius, distance-based damage falloff), double-click to move+wait, right-click context menu on units, and a playable combat loop. Total: 683 passing tests.
+
+| Module | File | Status | Tests |
+|--------|------|--------|-------|
+| Terrain Types | `terrain.js` | Done | 25 tests |
+| Combat Grid | `combat-grid.js` | Done | 35 tests |
+| Pathfinding (A*) | `pathfinding.js` | Done | 28 tests |
+| D20 Resolution | `d20-engine.js` | Done | 34 tests |
+| Combat Unit | `combat-unit.js` | Done | 32 tests |
+| Enemy AI | `enemy-ai.js` | Done | 13 tests |
+| Combat Engine | `combat-engine.js` | Done | 71 tests |
+| Spell Data & Utilities | `spells.js` | Done | 44 tests |
+| Combat Rendering | `renderer.js` (extended) | Done | -- |
+| Combat Controller | `controller.js` (updated) | Done | -- |
+| Integration | `tests/test-integration.js` (extended) | Done | 6 new tests |
+
+**Features:**
+- 13 terrain types (5 active + 8 data-only): Plains, Forest, Mountain, Ruins, Dungeon Floor, Water, Swamp, Desert, Snow, Lava, Bridge, Road, Cave
+- Movement costs, cover AC bonuses, attack modifiers per terrain
+- Combat grid (configurable size) with seeded terrain generation by biome
+- Bidirectional weighted A* pathfinding with terrain costs, enemy blocking, ally traversal
+- Unidirectional A* for short paths, bidirectional for long-distance overworld paths
+- LRU path cache (128 entries) with partial-reuse stitching for repeated pathfinding queries
+- Multi-unit cooperative pathfinding (sequential with tile reservation, priority by distance)
+- Formation movement: LINE, WEDGE, SQUARE, COLUMN with direction-aware slot offsets, graceful degradation on blocked slots
+- Dijkstra flood fill for movement range display
+- d20 attack rolls with natural 20 auto-hit, natural 1 auto-miss
+- Critical hit threat/confirm system (threat range, confirm roll, damage multiplier)
+- Initiative roll + sort with DEX tiebreak and random tiebreak
+- Flanking detection (cardinal N/S and E/W, requires ally on opposite side)
+- 42 enemy templates with XP/gold rewards (+ leveled Leader/Champion variants):
+  - **Tier 0 (CR 1/4-1/2)**: Giant Rat (AC 12, 1d3, 10xp/2g), Kobold (AC 13, 1d4, 15xp/5g), Stirge (AC 14, 1d4, 15xp/2g), Cockatrice (AC 12, 1d4, 20xp/5g), Zombie (AC 8, 1d6, 20xp/5g)
+  - **Tier 1**: Goblin (AC 14, 1d4, 25xp/10g), Wolf (AC 13, 1d6, 20xp/5g), Gnoll (AC 14, 1d8, 35xp/15g), Lizardfolk (AC 15, 1d6, 30xp/10g)
+  - **Tier 2**: Skeleton (AC 13, 1d6, 30xp/15g), Giant Spider (AC 14, 1d6, 35xp/10g), Bandit (AC 15, 1d8, 40xp/25g), Dire Wolf (AC 14, 1d8, 45xp/10g), Hobgoblin (AC 16, 1d8, 40xp/20g), Bugbear (AC 14, 2d6, 50xp/20g), Worg (AC 13, 1d8, 40xp/8g), Harpy (AC 12, 1d6, 45xp/15g)
+  - **Tier 3**: Orc (AC 14, 1d10, 50xp/20g), Troll (AC 13, 2d8, 80xp/30g), Dark Mage (AC 12, 2d6, 60xp/40g), Ghoul (AC 13, 1d8, 55xp/20g), Basilisk (AC 15, 2d6, 70xp/30g), Wight (AC 15, 1d8, 65xp/35g), Gargoyle (AC 15, 1d8, 60xp/25g), Owlbear (AC 13, 2d6, 70xp/20g), Manticore (AC 14, 2d6, 70xp/25g), Phase Spider (AC 15, 1d8, 65xp/20g)
+  - **Tier 4**: Wraith (AC 16, 1d8, 70xp/35g), Ogre (AC 14, 2d6, 65xp/25g), Minotaur (AC 14, 2d8, 90xp/40g), Hill Giant (AC 13, 2d10, 120xp/50g), Fire Elemental (AC 13, 2d6, 110xp/30g)
+  - **Tier 5**: Vampire Spawn (AC 16, 1d10, 100xp/50g), Wyvern (AC 13, 2d8, 100xp/35g), Demon (AC 16, 2d8, 150xp/60g), Devil (AC 17, 2d8+spells, 150xp/65g), Mind Flayer (AC 17, 2d8+spells, 180xp/80g)
+  - **Tier 6**: Lich (AC 18, 2d8+spells, 150xp/80g), Dragon Wyrmling (AC 17, 2d10, 200xp/100g)
+  - **Tier 7**: Young Dragon (AC 18, 2d12, 250xp/120g), Death Knight (AC 20, 2d10+spells, 280xp/100g), Frost Giant (AC 15, 3d8, 230xp/90g)
+- Simple aggressive AI: target nearest (prefer low HP), move toward, attack if adjacent
+- Attack animations: slash effects, damage floats, attacker flash, timed sequential enemy turns
+- Shining Force full-screen battle scenes: 2-second animated fight sequence with character sprites, name plates, HP bars, d20 roll display, attack/spell effects, hit/miss/critical/fumble results, damage numbers
+- Pulsing blue movement range tiles: sinusoidal alpha animation for movement range highlights
+- Free movement within move range: click tiles to visually reposition before committing; right-click cancels back to original position
+- Smart action buttons: Attack and Cast only shown when valid targets are reachable (not disabled)
+- Turn order bar, action menu (Move/Attack/Wait/Flee/Undo/Cancel), combat log
+- Unit tokens with faction colors, HP bars, active unit indicator
+- Terrain/unit tooltip on hover
+- Victory (all enemies dead) / Defeat (all party dead) with transition screens
+- Phase-aware input: movement tile selection, attack target selection, right-click undo
+- Smooth combat movement animation: step-by-step tile interpolation (0.08s per tile) for both player and enemy movement
+- Click-to-approach-and-attack: clicking an enemy auto-paths to nearest adjacent tile and opens attack menu
+- Flee from combat: DEX check vs DC 12, success returns to overworld, failure loses turn; floating text feedback shows roll result
+- Double-click to move+wait: double-click a valid movement tile to move there and immediately end turn
+- Right-click context menu: right-click a unit to see all valid attacks and spells usable on that target; click menu item to execute
+- AoE spells: 7 spells with blast radius (burning_hands, grease, fireball, web, mass_healing_word, fear, ice_storm); distance-based damage falloff; hover shows blast radius preview with white edge borders and inner equidistant bands; can target empty tiles if enemies are within radius
+- Biome-aware terrain rendering: overworld spritesheet for field/forest/mountain encounters, dungeon sheet for dungeon/ruins/cave
+- Character portraits on selection cards: class-based sprites from dungeon tilemap
+- Enhanced combat tile size (44px) for better readability at 1280x720 resolution
+- Spell casting system: 41 spells across 5 levels (L0 cantrips through L4), 9 arcane schools, class-restricted spell access
+- Cast button in action menu for caster units, spell menu with MP costs and range indicators
+- Spell targeting: purple highlights for enemy targets, green for ally heal/buff targets
+- Spell resolution with cut-in screen showing spell name, MP stats, damage/heal results
+- Arcane circle + sparkle spell effect animation
+- Dark Mage enemies can cast spells (arcane_bolt, chill_touch, hex)
+
+### MVP Integration -- DONE
+
+Complete playable gameplay loop from title screen to combat and back. Total: 886 passing tests.
+
+| Feature | Status |
+|---------|--------|
+| Infinite overworld | Done -- chunk-based procedural generation, noise terrain, no map boundaries |
+| Overworld map module | Done -- `overworld-map.js` with 55 tests (37 base + 8 pathfinding + 5 road priority + 5 extractTileRect) |
+| A* click-to-walk | Done -- click anywhere reachable, weighted A* (roads preferred, locations avoided), smooth multi-tile walking |
+| Keyboard movement | Done -- Arrow keys / WASD with smooth tile-to-tile animation |
+| Smooth movement animation | Done -- lerp interpolation, camera follows visual position |
+| Walk path visualization | Done -- highlighted tiles show planned path |
+| Random encounters | Done -- encounter chance by terrain (forest 12%, grass 6%, road 2%), 8 enemy tiers scaling with distance, overworld overlay combat, leader variants |
+| Procedural locations | Done -- 48 location types (41 dungeons, 4 towns, 3 camps) placed at regular intervals |
+| Starting area | Done -- Home Camp at origin, nearby dungeon/town/wolf den, connected by roads |
+| Water/sand/mountain terrain | Done -- water and mountains impassable, sand passable |
+| Camera centering on player | Done |
+| Party HP persistence | Done -- HP tracked across combats, synced on victory/defeat |
+| Camp rest (heal party) | Done |
+| Town inn (heal party) | Done |
+| Named dungeon encounters | Done -- each procedural dungeon has unique enemy pool, difficulty, biome |
+| XP and gold rewards | Done -- enemies award XP (split among survivors) and gold, tracked per character/party |
+| Level-up system | Done -- XP thresholds (level * 100), auto level-up on victory, HP/BAB/saves/MP recalculated |
+| Overworld party status panel | Done -- shows character levels, HP, gold |
+| Camp/town party HP display | Done |
+| Auto-heal on defeat retreat | Done |
+| Victory screen rewards | Done -- shows XP earned, gold earned, XP progress per character, level-up announcements |
+| Road-priority pathfinding | Done -- roads cost 0.5 (preferred), forest 1.5, sand 1.2; dungeons/towns/camps avoided unless target |
+| Bidirectional A* | Done -- overworld uses bidirectional weighted A* with LRU path cache (128 entries), cache invalidated on player move |
+| Multi-unit pathfinding | Done -- cooperative sequential A* with tile reservation, shortest-distance-first priority |
+| Formation movement | Done -- 4 types (LINE, WEDGE, SQUARE, COLUMN), direction-aware offsets, graceful degradation on blocked slots |
+| Combat attack animations | Done -- slash effects, floating damage numbers, attacker flash, timed sequential enemy turns |
+| Battle scenes | Done -- full-screen Shining Force fight sequence with character sprites, HP bars, d20 rolls, damage numbers (2s) |
+| Combat UX polish | Done -- pulsing movement tiles, smart action buttons, free movement, full-screen battle scenes |
+| Smooth combat movement | Done -- step-by-step tile interpolation (0.08s/tile) for player and enemy movement, teleport bug fixed |
+| Click-to-approach-and-attack | Done -- clicking enemy auto-paths to nearest adjacent tile and attacks |
+| Flee from combat | Done -- DEX check vs DC 12, success returns to overworld, failure loses turn, floating text feedback |
+| Double-click move+wait | Done -- double-click valid move tile to move and end turn |
+| Right-click context menu | Done -- right-click unit shows valid attack/spell actions, click item executes |
+| AoE spells | Done -- 7 AoE spells with blast radius, damage falloff, hover preview, empty tile targeting |
+| Biome-aware combat backgrounds | Done -- overworld spritesheet for field/forest encounters, dungeon for dungeon/ruins/cave |
+| Character portraits | Done -- class-based sprites from dungeon tilemap on selection cards |
+| Path cache stitching | Done -- partial reuse of cached paths when start or goal overlaps existing waypoints |
+| Asset loading infrastructure | Done -- AssetLoader class with sprite drawing support |
+| Free art assets (Kenney CC0) | Done -- Tiny Dungeon (party, terrain), Roguelike/RPG Pack (overworld), 1-Bit Pack (42 unique enemy sprites) |
+| Sprite rendering | Done -- overworld tilemap sprites (9 terrain types), combat grid terrain, unit tokens, player sprite (with fallback to colored rectangles) |
+| Overworld sprites | Done -- overworld tilemap renders terrain sprites instead of flat colors (margin-aware spriteRectM) |
+| Enemy sprites complete | Done -- all 42 enemy types mapped to unique Kenney 1-Bit Pack sprites (multi-sheet system with `rect.sheet` property); tints preserved for visual differentiation |
+| Title screen polish | Done -- animated mosaic background, glowing title text, floating sparkle particles |
+| Victory/Defeat screens | Done -- gradient backgrounds, party character sprites, XP bar animation, vignette effects |
+| Dungeon generation | Done -- BSP dungeon generator with multi-floor support, fog of war, room features |
+| Viewport scaling | Done -- CSS flex layout, menu/status bars don't overlap canvas |
+| Dungeon Generator | Done -- `dungeon-gen.js` with BSP dungeon floors, fog of war, room features, 31 tests |
+| Asset Loader Tests | Done -- `tests/test-asset-loader.js` sprite rect + overworld/enemy sprite mapping tests |
+| Sprite margin fix | Done -- `SPRITE_MARGIN` and `K1B_MARGIN` corrected to 0 (dungeon 192px/12=16px, kenney1bit 784px/49=16px: no inter-tile gaps); `OVERWORLD_MARGIN` stays 1 (968px = 57×16 + 56×1); fixes all dungeon + kenney1bit sprite positions |
+| Overworld autotiling | Done -- `autotile.js` 4-bit cardinal bitmask autotiling for smooth terrain boundaries; WATER transitions (9 tile variants: 4 edges, 4 corners, center), 29 tests |
+| Debug console | Done -- premium-gated devtools API for testing (party, economy, combat, overworld), 16 tests |
+| Sprite tinting system | Done -- offscreen canvas tint compositing with cache (sprite + `source-atop` tint → cached canvas); CORS fallback to layer-by-layer drawing; 31 ENEMY_TINTS + 2 PARTY_TINTS for visual differentiation |
+| 23 new enemy types | Done -- Kobold, Zombie, Stirge, Gnoll, Bugbear, Worg, Lizardfolk, Harpy, Cockatrice, Basilisk, Wight, Gargoyle, Owlbear, Manticore, Phase Spider, Hill Giant, Mind Flayer, Young Dragon, Death Knight, Fire Elemental, Frost Giant, Demon, Devil |
+| Mob leveling system | Done -- D&D 3.5e SRD-accurate monster advancement: `CREATURE_TYPES` registry (12 types) drives hit die size (d6-d12), BAB progression (full/medium/poor), and save progression (good/poor) per creature type; `levelUpTemplate(id, extraHD)` adds HP using racial HD + CON, recalculates BAB from total HD, +1 ability per 4 HD threshold, tracks CR; `templateToCharacter` calculates saves from creature type good/poor progressions + ability mods; Leader/Champion name variants; scaled XP/gold rewards |
+| Leader variants in encounters | Done -- 25% chance first enemy in pack (tier 1+, 2+ enemies) is a leveled-up leader with 1-4 extra HD |
+| 21 new dungeon location types | Done -- Gnoll Camp, Kobold Warren, Bugbear Den, Lizardfolk Village, Basilisk Lair, Harpy Nest, Zombie Graveyard, Worg Hunting Grounds, Gargoyle Perch, Owlbear Territory, Manticore Peak, Phase Spider Web, Giant's Keep, Elemental Rift, Mind Flayer Colony, Dragon Hoard, Death Knight's Tomb, Frozen Fortress, Demon Gate, Infernal Pit |
+| 8-tier encounter pools | Done -- expanded from 7 to 8 tiers with new enemies distributed across all tiers |
+| Dimension terrain registry | Done -- `DIMENSION_TERRAIN_SPRITES` maps 6 dimensions (material, feywild, shadowfell, nine_hells, underdark, abyss) to different overworld tile indices; renderer accepts `dimension` parameter |
+| Multi-resolution asset pipeline | Done -- `SHEET_REGISTRY` centralizes spritesheet metadata (tileSize, margin, cols, path); `sheetRect()` generates rects from any registered sheet; `resolveSprite()` provides HD-first lookup with 16x16 fallback; tint cache key includes sheet ID; renderer uses `resolveSprite()` for all sprite lookups; `tools/pack-sprites.js` offline packer for future 32x32 content |
+
+**Gameplay Loop:**
+1. Title Screen → New Game
+2. Character Select → pick 1-4 party members from daily roster
+3. Overworld → explore infinite procedural world with arrow keys/WASD or click anywhere to auto-walk (roads preferred, locations avoided)
+4. Enter dungeon (named location) → encounter from dungeon-specific enemy pool and biome
+5. Random encounters in wilderness → combat overlays on overworld map (forest/grass trigger combat with terrain-scaled enemies, encounters interrupt auto-walk)
+6. Combat → freely explore move range (click tiles to reposition, right-click to reset, double-click to move+end turn), click enemies to auto-approach and attack with full-screen Shining Force battle scene (character sprites, d20 roll, hit/miss/crit, damage numbers), cast spells (cantrips through L4, MP cost, school-restricted, AoE blast radius with hover preview), right-click units for context menu of valid actions; flee option (DEX vs DC 12, floating text feedback). Cannot enter locations during combat.
+7. Victory → earn XP + gold → check for level-ups → Camp → Rest to heal → Return to Overworld
+8. Defeat → retreat to Camp (auto-heal) or Title Screen
+
+**Art Assets (all CC0 or free commercial):**
+- `assets/dungeon-tilemap.png` -- Kenney Tiny Dungeon (132 tiles: terrain, party characters, items) [CC0]
+- `assets/overworld-tilemap.png` -- Kenney Roguelike/RPG Pack (1,767 tiles: terrain, buildings, trees) [CC0]
+- `assets/kenney-1bit/` -- Kenney 1-Bit Pack (1,078 tiles: 42 unique enemy/creature sprites) [CC0]
+- `assets/kenney-dungeon/` -- Full Tiny Dungeon pack with individual tiles [CC0]
+- `assets/kenney-rpg/` -- Full Roguelike/RPG pack with spritesheet [CC0]
+- `assets/kenney-chars/` -- Roguelike Characters pack (modular character parts) [CC0]
+- `assets/dcss/` -- (planned) DCSS 32x32 Tiles packed spritesheets (6000+ tiles: monsters, terrain, players, items) [CC0]
+
+**Planned 32x32 Asset Packs (not yet integrated):**
+- **DCSS 32x32 Tiles** (CC0, 6000+ tiles) -- monsters, dungeon terrain, player characters, items, spell effects
+- **32rogues** (free commercial, 220+ sprites) -- supplemental humanoids, animals, items
+- **Clockwork Raven Icons** (free commercial, 648+ icons at 32x32) -- weapons, armor, spells
+
 ### Planned Phases
 
-- **Phase 2**: Character system (races, classes, stats, d20 mechanics)
-- **Phase 3**: Combat engine (grid-based tactical battles, turn order, terrain)
-- **Phase 4**: Dungeon generation (procedural floors, encounters, loot)
-- **Phase 5**: Overworld generation (procedural map, towns, zone types)
-- **Phase 6**: Content systems (equipment, spells, monsters, NPCs)
-- **Phase 7**: Paper-doll sprites (layered canvas rendering)
-- **Phase 8**: UI polish (menus, tooltips, animations, sound)
+- ~~**Phase 1**: Core engine~~ DONE (162 tests)
+- ~~**Phase 2**: Character system~~ DONE (107 tests)
+- ~~**Phase 3**: Combat engine~~ DONE (360 tests)
+- ~~**Combat UX Improvements**: Battle scenes, free movement, overworld combat, pulsing tiles~~ DONE (19 tests)
+- ~~**Combat UX Phase 2**: Flee feedback, double-click move+wait, right-click context menu, AoE spells~~ DONE (20 tests)
+- ~~**MVP Integration**: Overworld + gameplay loop~~ DONE (15 tests)
+- ~~**Visual & Content Overhaul**: Overworld sprites, enemy sprites + 8 new templates, UI screen polish, BSP dungeon generation~~ DONE (63 tests)
+- ~~**Tileset & Enemy Expansion**: Sprite tinting, 23 new enemies, mob leveling (Leader/Champion), 21 new locations, dimension terrain registry~~ DONE (39 tests)
+- **Phase 5**: Content depth (equipment, advanced spells [saves/concentration/metamagic], monsters, companions, NPCs)
+- **Phase 6**: Prestige classes & post-20 progression
+- **Phase 7**: Time-gated content & quests
+- **Phase 8**: Polish & audio
 
 ---
 
@@ -3559,7 +3744,7 @@ The game uses a scrollable, zoomable viewport with a fog-of-war minimap. All int
 
 | Property | Value |
 |----------|-------|
-| **Base resolution** | 940×660 internal canvas |
+| **Base resolution** | 1280×720 internal canvas |
 | **Default zoom** | 1.0× (32px per tile → ~29×20 visible tiles) |
 | **Zoom range** | 0.25× (zoomed out, 4× area visible) to 2.0× (zoomed in, close-up detail) |
 | **Zoom step** | 0.1× per mouse wheel notch, smooth interpolation over 150ms |
@@ -3644,7 +3829,7 @@ The game provides both a **corner minimap** (always visible) and a **full-screen
 | Property | Value |
 |----------|-------|
 | **Toggle** | Click map icon in HUD or press [M] |
-| **Size** | Fills entire 940×660 canvas |
+| **Size** | Fills entire 1280×720 canvas |
 | **Tile size** | 2 pixels per tile (covers ~470×330 tile area) |
 | **Zoom** | Mouse wheel zooms the map view independently (1px to 4px per tile) |
 | **Pan** | Right-click drag pans, same as main viewport |
@@ -5661,6 +5846,59 @@ Scenario: Dragonborn locked in winter without entitlement
 | AC1 | The main quest chain and standard dungeons are always accessible |
 | AC2 | Premium content is additive (new options, not gates) |
 | AC3 | No equipment or power level is exclusive to premium (can be earned through play) |
+
+---
+
+### 5.13b Debug Console (Premium-Gated)
+
+A browser devtools API for testing the game engine. Gated behind a `localStorage` premium flag so normal players cannot access it.
+
+**Access**: `SZ.TacticalRealms.Debug` in the browser console.
+
+#### Activation
+
+```js
+SZ.TacticalRealms.Debug.enablePremium()   // unlock
+SZ.TacticalRealms.Debug.disablePremium()  // re-lock
+```
+
+#### Commands
+
+| Command | Purpose |
+|---------|---------|
+| `help()` | Print all available commands |
+| `partyInfo()` | Show party, HP, XP, gold |
+| `combatInfo()` | Show combat state/units/phase/log |
+| `listSpells()` | List all spell IDs |
+| `listClasses()` | List all classes |
+| `listRaces()` | List all races |
+| `listEnemyTemplates()` | List enemy template keys |
+| `setLevel(idx, level)` | Rebuild character at new level |
+| `setClass(idx, classId)` | Change class |
+| `setRace(idx, raceId)` | Change race |
+| `setHp(idx, hp)` | Set party HP |
+| `setMp(idx, mp)` | Set combat unit MP |
+| `setStats(idx, overrides)` | Override stat values `{str:18,...}` |
+| `giveSpell(idx, spellId)` | Add spell to character |
+| `removeSpell(idx, spellId)` | Remove spell from character |
+| `setGold(n)` | Set gold amount |
+| `addGold(n)` | Add gold |
+| `addXp(idx, n)` | Add XP (auto level-up) |
+| `killAllEnemies()` | Kill all enemy units |
+| `healAll()` | Heal entire party to max HP |
+| `spawnEnemy(templateId)` | Spawn enemy on combat grid |
+| `teleport(col, row)` | Move player on overworld |
+| `unlockAllSeasons()` | Unlock all seasonal content |
+
+#### Architecture
+
+The Controller registers a closured accessor object with the Debug module during `init()`. This provides getter/setter closures over the Controller's private `#` fields without making any state public. The Debug module stores this accessor and uses it for all operations.
+
+#### Files
+
+- **`debug-console.js`** -- Debug module (IIFE, `TR.Debug`)
+- **`controller.js`** -- Registers accessor in `init()`; `_debugAllSeasons` checks in character select
+- **`combat-engine.js`** -- Exports `CombatEngine.templateToCharacter` static for `spawnEnemy`
 
 ---
 
@@ -8540,49 +8778,62 @@ Some achievements unlock cosmetic rewards:
 
 ### Module Structure (IIFE + window.SZ)
 
+**Implemented files** (20 JS modules + HTML/CSS/SVG):
+
 ```
 Applications/Games/tactical-realms/
-  index.html              Entry point (canvas + UI)
+  index.html              Entry point (canvas + UI, script load order)
   styles.css              Game UI styles
   icon.svg                App icon for SZ desktop
-  controller.js           Main game loop, state machine
-  renderer.js             Canvas rendering engine
-  d20-engine.js           D&D 3e d20 system: attack rolls, saves, ability checks, CR math
-  combat.js               Tactical combat system (d20 resolution, initiative, AoO, flanking)
-  dungeon-gen.js          BSP dungeon generation
-  overworld-gen.js        Chunk-based infinite overworld (WFC + simplex noise)
-  chunk-manager.js        Chunk LRU cache, lazy generation, boundary stitching, async pre-gen
-  chunk-scheduler.js      Async generation queue, idle-time scheduling, move-prediction
-  wfc-solver.js           Wave Function Collapse tile solver
-  noise.js                Simplex noise (multi-frequency biome generation)
-  dimension.js            Planar dimension definitions, portal logic, dimension-specific rules
-  character.js            Character/class/race/d20 stat definitions, BAB/save/HD tables
-  progression.js          D&D 3e progression tables (levels 1-100), BAB, saves, spell slots
-  sprite-engine.js        Paper-doll sprite compositing (3 directions, canvas flip for 4th)
-  visual-variation.js     Enemy palette swap, size variation, equipment/marking overlays
-  equipment.js            Loot generation, affix system, dimensional loot tables
-  enemy-ai.js             Enemy behavior patterns (8 AI types), spawn behavior
-  enemy-registry.js       120+ monster definitions, CR stat blocks, dimensional variants
-  mob-spawner.js          Perception-based encounter spawning/despawning, mob pooling (1024 max)
-  spell-system.js         D&D 3e SRD spell compendium, 8 schools, spell levels 0-9
-  terrain.js              Terrain type definitions and d20 modifiers (cover, concealment, per-dimension)
-  vision-light.js         Vision types, light levels, fog of war, light source management
-  companion.js            Companion creature system
-  time-rotation.js        Date-seeded content rotation
-  prestige.js             Prestige class definitions and promotion logic
-  entitlement.js          EntitlementService stub
-  save-manager.js         Invisible localStorage persistence (dual-buffer, versioned, migration)
-  save-crypto.js          AES-GCM encryption, HKDF chain derivation, one-time key ring
-  assets/                 Sprites, tilesets, portraits (managed by Asset Forge)
-  ReadMe.md               This document (PRD)
+  controller.js           Main game loop, state machine, input routing, walk path, combat anim
+  renderer.js             Canvas rendering engine (overworld, combat, UI, cut-ins, sprites)
+  input-handler.js        Mouse/keyboard input abstraction, screen-to-tile conversion
+  prng.js                 Seeded PRNG (mulberry32), hash code, random utilities
+  time-rotation.js        Date-seeded content rotation (daily/weekly/monthly/seasonal)
+  state-machine.js        Generic finite state machine with transition validation
+  save-crypto.js          AES-GCM encryption, HKDF key derivation, key ring
+  save-manager.js         localStorage persistence (dual-buffer, versioned, auto-save)
+  character.js            D&D 3e character system (8 races, 10 classes, stats, leveling)
+  roster.js               Daily roster generation, party selection, serialization
+  terrain.js              13 terrain type definitions (movement cost, cover, attack mods)
+  combat-grid.js          Grid data model (terrain, unit placement, neighbors, generation)
+  pathfinding.js          A* pathfinding, Dijkstra flood fill for movement range
+  d20-engine.js           d20 attack resolution (rolls, crits, flanking, initiative)
+  combat-unit.js          Mutable combat wrapper (HP, MP, position, turn state, spells)
+  spells.js               Spell compendium (41 spells, 5 levels, 9 schools, class access, targeting)
+  enemy-ai.js             Simple aggressive AI (nearest target, move toward, attack)
+  combat-engine.js        Combat orchestrator (phases, turn order, 42 enemy templates, CREATURE_TYPES registry, SRD monster advancement, spell casting)
+  debug-console.js        Premium-gated debug API for testing (party, economy, combat, overworld)
+  overworld-map.js        Infinite procedural overworld (chunks, locations, roads, A* pathfinding)
+  asset-loader.js         Sprite/tilemap loading, SHEET_REGISTRY, sheetRect(), resolveSprite()
+  autotile.js             4-bit cardinal bitmask autotiling for overworld terrain transitions
+  assets/                 CC0 art: Kenney Tiny Dungeon, Roguelike/RPG Pack, 1-Bit Pack, Characters
+  assets/dcss/            32x32 packed spritesheets (populated in future phases)
+  assets/dcss/src/        Raw individual PNGs from DCSS (gitignored, not committed)
+  tools/pack-sprites.js   Offline Node.js spritesheet packer (sharp, dev-only)
+  ReadMe.md               This document (PRD + implementation status)
+```
+
+**Planned files** (not yet implemented):
+
+```
+  dungeon-gen.js          BSP dungeon generation (Phase 4)
+  spell-system.js         Advanced spells: AoE patterns, saves, concentration, metamagic (Phase 5)
+  equipment.js            Loot/affix system (Phase 5)
+  companion.js            Companion creatures (Phase 5)
+  prestige.js             Prestige classes (Phase 6)
 ```
 
 ### Rendering
 
-- HTML5 Canvas 2D context at 940x660
+- HTML5 Canvas 2D context at 1280x720
 - Double-buffered rendering (offscreen canvas for compositing)
 - Tile-based renderer with camera offset for scrolling
+- Combat tile size: 44px (overworld: 32px) for readability at higher resolution
+- Smooth movement animation with step-by-step tile interpolation
 - Paper-doll sprite compositing via `drawImage()` layering
+- Biome-aware terrain rendering (overworld vs dungeon spritesheet selection)
+- Multi-resolution asset pipeline: `SHEET_REGISTRY` centralizes sheet metadata, `resolveSprite()` provides HD-first (32x32) lookup with 16x16 fallback, tint cache key includes sheet ID
 - 60 FPS game loop via `requestAnimationFrame`
 
 ### Game State Machine
@@ -8624,9 +8875,14 @@ const GameState = {
 
 ### Pathfinding
 
-- A* for movement range calculation on tactical grid
-- Djikstra for overworld road network generation
-- BFS for fog-of-war reveal radius
+- **Combat grid**: Unidirectional A* with terrain costs; bidirectional A* available; Dijkstra flood fill for movement range
+- **Combat multi-unit**: Cooperative sequential A* with tile reservation; formation-aware movement (LINE/WEDGE/SQUARE/COLUMN)
+- **Overworld**: Bidirectional weighted A* (road 0.5, grass 1.0, sand 1.2, forest 1.5); LRU cache (128 entries) invalidated on move
+- **Road generation**: Dijkstra shortest-path connecting procedural locations
+- **Path cache**: LRU eviction, keyed by start+goal+faction; `PathCache` class in `pathfinding.js`, separate instance in `overworld-map.js`
+- **Path cache stitching**: Partial reuse of cached paths when new query overlaps existing waypoints; spatial index (8-tile bucket grid) finds nearby cached waypoints, bridges short gaps (≤8 tiles) with A*, splices prefix/suffix from cached paths to avoid full recomputation
+- **Formations**: 4 types with direction-aware slot offsets; graceful fallback via BFS nearest-free-tile when slots blocked
+- Cardinal-only movement in both combat and overworld
 
 ---
 
@@ -9020,164 +9276,123 @@ All game logic is headless (no DOM/Canvas dependency) and tested via pure functi
 
 ### Test Runner
 
-Since this project runs on `file://` with no build tools, tests use a minimal custom runner:
+Since this project runs on `file://` with no build tools, tests use a minimal custom runner. Run `node tests/headless-runner.js` from the command line or open `tests/runner.html` in a browser.
+
+**867 tests passing** across 23 test files:
 
 ```
 Applications/Games/tactical-realms/
   tests/
-    runner.html            Test runner page (open in browser)
-    runner.js              Discovers and executes test functions
-    test-character.js      Character system tests
-    test-combat.js         Combat system tests
-    test-damage.js         Damage formula tests
-    test-dungeon-gen.js    Dungeon generation tests
-    test-overworld-gen.js  Overworld generation tests
-    test-equipment.js      Equipment and loot tests
-    test-enemy-ai.js       Enemy AI tests
-    test-spell-system.js   Spell system tests
-    test-terrain.js        Terrain modifier tests
-    test-companion.js      Companion system tests
-    test-time-rotation.js  Time rotation tests
-    test-entitlement.js    Entitlement service tests
-    test-save-manager.js   Save/load tests
-    test-pathfinding.js    A* and BFS tests
-    test-state-machine.js  Game state transitions
-    test-proficiency.js    Weapon proficiency system tests
-    test-spellbook.js      Spell learning, scrolls, trainers
-    test-consumables.js    Potions, scrolls, bombs, consumable items
-    test-shop.js           Shop stock generation, buy/sell, trainer
-    test-requirements.js   Equipment tier requirements, stat checks
-    test-prestige.js       Prestige promotion, abilities, veteran path
-    test-save-crypto.js    AES-GCM encrypt/decrypt, HMAC chain, tamper detection, key derivation
-    test-save-migration.js Save versioning, migration architecture, corruption recovery
-    test-quest-system.js   Quest prerequisites, generation, chains, secret discovery
-    test-audio.js          Audio layer precedence, SFX pool eviction, ambient pause/resume
-    test-boss-ai.js        Boss multi-turn AI, cooldowns, phase transitions, combos
-    test-vision-light.js   Vision types, fog of war, light source stacking, dungeon light levels
-    test-durability.js     Item durability loss, repair, broken item behavior
-    test-cover.js          Cover system (half/three-quarter/full), directional cover
-    test-morale.js         Morale system, fleeing behavior, respawn rules
-    test-portal.js         Portal discovery, return portal mechanics, dimension transitions
-    test-inventory.js      Drag-and-drop, encumbrance, sorting, filtering, stack management
-    test-npc-dialogue.js   Dialogue tree traversal, conditional responses, quest accept/decline
-    test-leaderboard.js    Metric tracking, monthly reset, difficulty separation
-    test-integration.js    Cross-module integration tests
+    runner.html              Browser test runner page
+    runner.js                Test framework (describe/it/assert, flat scope)
+    headless-runner.js       Node.js headless runner (jsdom)
+    test-prng.js             PRNG tests (22)
+    test-time-rotation.js    Time rotation tests (27)
+    test-state-machine.js    State machine tests (45)
+    test-save-crypto.js      Save encryption tests (11)
+    test-save-manager.js     Save persistence tests (14)
+    test-input-handler.js    Input handler tests (16)
+    test-renderer.js         Renderer tests (39)
+    test-character.js        Character system tests (100)
+    test-roster.js           Roster/party tests (32)
+    test-terrain.js          Terrain type tests (25)
+    test-combat-grid.js      Combat grid tests (55)
+    test-pathfinding.js      A* + BiDir A* + cache + stitching + multi-unit + formation tests (105)
+    test-d20-engine.js       d20 resolution tests (47)
+    test-spells.js           Spell data & utility tests (44)
+    test-combat-unit.js      Combat unit tests (42)
+    test-enemy-ai.js         Enemy AI tests (61)
+    test-combat-engine.js    Combat engine tests (129)
+    test-overworld-map.js    Overworld map tests (59)
+    test-asset-loader.js     Asset loader + sprite mapping tests (72)
+    test-autotile.js         Autotile bitmask tests (29)
+    test-dungeon-gen.js      Dungeon generation tests (31)
+    test-debug-console.js    Debug console tests (16)
+    test-integration.js      Cross-module integration tests (18)
 ```
 
 Tests follow the naming convention: `testModuleName_behaviorDescription_expectedOutcome`
 
+**Note:** The test runner uses flat `describe()` scope — nested `describe()` blocks do not inherit `beforeEach` from parent scopes.
+
 ### Test Categories & Module Coverage
 
-#### Unit Tests (per module)
+#### Implemented Unit Tests (886 tests across 23 files)
 
-| Module | Key Test Scenarios | Mocking Boundary |
-|--------|-------------------|------------------|
-| `character.js` | Stat block generation, race/class modifiers, daily variance, stat floor (min 1), level-up stat allocation, XP thresholds, HP/MP scaling on level up, spell failure chance by armor, equipment requirement checking (level + stat), proficiency integration | Mock: PRNG (inject seeded), Date |
-| `proficiency.js` | Use counter increments on attack, rank promotion at thresholds (10/30/60/100/150), attack and threat range bonuses per rank, technique unlock at Trained/Skilled/Expert, Master passive activation, Untrained penalty (−4 attack), Cannot-Use penalty (half damage, no XP), starting proficiency by class | Mock: none (pure logic) |
-| `spellbook.js` | Learn spell adds to known list, cannot learn duplicate, scroll study consumes scroll + gold, Wizard free scroll study, non-class-school scroll rejection, cantrip damage scaling by level, metamagic cost calculation (Sorcerer only), spell tier gated by character level, half-caster learn rate | Mock: none (pure data) |
-| `consumables.js` | Potion HP restoration capped at max HP, MP restoration capped at max MP, buff duration countdown, Revive Tonic 25% HP, Phoenix Down full HP, revive only targets KO'd allies, scroll consumption after use, bomb AoE friendly fire, smoke bomb prevents boss flee, torch fog extension, lockpick auto-success, trap kit placement | Mock: CombatGrid (for AoE) |
-| `shop.js` | Stock generation seeded by date + shop ID, equipment tier capped by party level, town shops +1 tier over camp, scroll premium pricing (1.5x), sell price = 50% buy, legendary cannot be sold, trainer spell list filtered by class, weapon training adds +10 uses, insufficient gold rejection | Mock: PRNG (seeded), Date |
-| `combat.js` | Turn order by Initiative roll (d20+DEX mod, tie-break DEX), movement range with terrain costs, d20 attack resolution (attack roll vs AC), flanking detection (+2 attack), AoO check, retreat logic, victory/defeat detection | Mock: PRNG (d20 rolls), CombatUnit stats |
-| `dungeon-gen.js` | BSP splits produce valid rooms (>= 4x4), all rooms connected, exactly 1 staircase per floor, room type distribution, boss room on final floor, at least 1 shrine per dungeon, floor count matches difficulty tier, retreat staircase in first room, enemy tier matches dungeon tier, loot quality scales with tier and floor, XP diminishing returns formula | Mock: PRNG (seeded) |
-| `overworld-gen.js` | Town connectivity (all towns reachable), >= 3 dungeon entrances across >= 2 difficulty tiers, biome coverage (<= 40% per biome), starting position on road adjacent to town + Tier I dungeon, Poisson disc spacing for POIs, difficulty zones concentric from start, road encounter rate = 0%, off-road rate = 5-15% by biome, dungeon info tooltip data matches tier, multiple paths of different difficulty from each town | Mock: PRNG (seeded) |
-| `equipment.js` | Rarity drop rates sum to 100%, affix count matches rarity, no duplicate affixes on one item, set bonus activation/deactivation, gold math (buy/sell), two-handed blocks shield, stat never negative | Mock: PRNG (loot rolls) |
-| `enemy-ai.js` | Aggressive targets lowest HP, Defensive holds until provoked, Ambush reveals on proximity, Support prioritizes healing, Spellcaster maintains distance, special ability cooldowns | Mock: CombatGrid, Unit positions |
-| `spell-system.js` | MP cost deducted, insufficient MP prevents cast, AoE pattern tile calculation, friendly fire in AoE, heal cannot exceed max HP, class spell access restriction, spell tier unlock by level | Mock: none (pure data) |
-| `terrain.js` | All 13 terrain modifiers correct, movement cost > 0, Bridge disables flanking, lava 5 DMG/turn, modifier application in damage formula | Mock: none (pure data) |
-| `companion.js` | Companion stats scale with owner level, companion KO persists until camp, minor item equip, companion in turn order, companion revival at camp | Mock: Character level |
-| `time-rotation.js` | Same seed = same output, daily roster 6-8 chars, daily bonus stat changes daily, weekly boss deterministic, monthly seed changes on 1st, seasonal availability, holiday window detection, Easter/CNY date calculation, no consecutive duplicate bonus stats, **date wrap edge cases**: Dec 31 → Jan 1 year rollover (seed changes correctly), Feb 28 → Mar 1 (non-leap), Feb 29 → Mar 1 (leap year), month rollover (Jan 31 → Feb 1 triggers monthly reset), ISO week 52 → week 1 (boss rotation wraps), holiday window spanning year boundary (Christmas Dec 20 → Jan 2), timezone-independent UTC seeding | Mock: Date.now() |
-| `entitlement.js` | Stub returns true for all content, isSeasonallyFree correct for all seasons, premium content gated when not entitled and not in season, interface contract: async isEntitled/getEntitlements | Mock: Date |
-| `save-manager.js` | Encrypt/decrypt roundtrip preserves all data, save size under 200 KB (encrypted), AES-GCM decryption rejects tampered ciphertext, HMAC chain detects block reordering, dual-buffer A/B rotation on every save, active pointer flip is atomic, corrupted active buffer falls back to inactive buffer, hasSave() detects existing buffer, getSummary() returns metadata from encrypted header, deleteSave() erases all 3 keys (a, b, active), auto-save on all state transitions per trigger table, fresh salt/IV per save (no replay) | Mock: localStorage, crypto.subtle |
-| `save-crypto.js` | Encrypt/decrypt roundtrip produces identical plaintext, different salt/IV per encrypt call, tampered ciphertext throws on decrypt, block reordering breaks HMAC, key derivation produces consistent results for same inputs, all 256 key ring entries produce valid keys, pepper change breaks old saves (version-locked), fallback to basic obfuscation when crypto.subtle unavailable | Mock: crypto.subtle (or real if available) |
-| `prestige.js` | 3 paths per base class, promotion requires level 20 + stat 15 + gold + quest, promoted character gains prestige abilities at milestones, veteran path gives generic abilities, prestige equipment tier T7-T10 requires prestige, capstone at level 100, promotion is irreversible, serialization roundtrip | Mock: none (pure logic) |
-| `save-migration.js` | Migration architecture: `migrateSave()` runs sequential version upgrades, unknown future version rejects load with "Game update required", migrated save re-encrypted at current version with new salt/IV, pepper mismatch triggers migration attempt for older versions, migration never deletes fields, migration preserves all existing data. **No actual migrations exist yet (v1 is initial release)** — tests validate the migration framework itself, not specific migrations. | Mock: localStorage, crypto.subtle |
-| `controller.js` (state machine) | All 10 states have valid transitions, invalid transitions rejected, COMBAT requires alive party + enemies, DEFEAT only from COMBAT, CAMP triggers auto-save, TOWN triggers auto-save, LOAD_GAME validates checksum, TOWN only reachable from OVERWORLD, state transitions are atomic, auto-save fires before new state renders | Mock: none (pure logic) |
+| Module | Tests | Key Scenarios | Mocking |
+|--------|-------|---------------|---------|
+| `prng.js` | 22 | Deterministic sequences, distribution, hash code, range utilities | None (pure) |
+| `time-rotation.js` | 27 | Date seeding, seasonal availability, holiday windows, date wrapping | Date injection |
+| `state-machine.js` | 45 | Valid/invalid transitions, guards, 10 game states, atomic transitions | None (pure) |
+| `save-crypto.js` | 11 | AES-GCM roundtrip, tamper detection, key derivation, fallback | crypto.subtle |
+| `save-manager.js` | 14 | Dual-buffer persistence, auto-save, corruption recovery, deletion | localStorage |
+| `input-handler.js` | 16 | Mouse/keyboard events, screen-to-tile conversion, modifier keys | Fake canvas |
+| `renderer.js` | 39 | Camera offset, tile coords, drawing primitives, text measurement, battle scenes, combat grid | Fake canvas 2D |
+| `character.js` | 100 | 8 races, 10 classes, stat generation, level-up, HP/MP scaling, BAB/saves, XP thresholds, daily variance | PRNG (seeded) |
+| `roster.js` | 32 | Daily rotation, party selection, serialization, seasonal locks | PRNG + Date |
+| `terrain.js` | 25 | 13 terrain types frozen, movement costs, cover bonuses, attack mods, all fields present | None (pure) |
+| `combat-grid.js` | 55 | Grid construction, bounds, terrain queries, unit placement/removal/move, neighbors (cardinal), biome generation, serialization | PRNG (seeded) |
+| `pathfinding.js` | 105 | Unidirectional + bidirectional A* (optimal cost parity, obstacles, terrain weights, large grids), LRU path cache (hit/miss/eviction/invalidation/faction key, partial-reuse stitching), multi-unit cooperative (collision avoidance, priority ordering, corridor), formations (LINE/WEDGE/SQUARE/COLUMN, direction, degradation), Dijkstra flood fill, performance <10ms | None (pure) |
+| `d20-engine.js` | 47 | Initiative roll/sort/tiebreak, attack roll hit/miss/nat20/nat1, damage rolls, critical threat/confirm/multiplier, flanking N/S + E/W, adjacency | PRNG (seeded) |
+| `spells.js` | 44 | Spell data integrity (unique IDs, frozen, all fields), MP costs by level, school assignments, class-school mapping, spells-known tables, spell assignment, range checking, target filtering | None (pure) |
+| `combat-unit.js` | 42 | HP damage/heal/floor/cap, isAlive, speedTiles, turn reset, move/undo, dexMod/strMod, serialization, MP tracking, spell list, canCastSpell (cantrip/known/MP), MP serialization | None (pure) |
+| `enemy-ai.js` | 61 | Target nearest (prefer low HP), move toward, attack if adjacent, wait when blocked, deterministic behavior, spell-casting AI | PRNG + grid |
+| `combat-engine.js` | 129 | Init (grid, placement, initiative), turn flow, attack resolution (hit/miss/flank/crit/kill), AI turn, victory/defeat, 42 enemy templates with D&D creature types, CREATURE_TYPES registry (12 types), SRD-accurate monster advancement (levelUpTemplate), creature-type-based saves (templateToCharacter), spell phases, spell selection/targeting/resolution, MP spending, spell assignment to casters | PRNG (seeded) |
+| `overworld-map.js` | 59 | Chunk generation, terrain types, location placement, road networks, A* pathfinding (road preference, location avoidance), encounter pools, distance scaling | PRNG (seeded) |
+| `asset-loader.js` | 72 | Sprite rects (margin-aware), sheet bounds validation (dungeon 192×176, k1b 784×352, overworld 968×526), enemy/party sprites, tints, dimension terrain sprites, SHEET_REGISTRY, sheetRect(), resolveSprite() | None (pure) |
+| `autotile.js` | 29 | Cardinal bitmask computation, autotile rect lookup, WATER transitions | None (pure) |
+| `dungeon-gen.js` | 31 | BSP room generation, corridors, fog of war, room features | PRNG (seeded) |
+| `debug-console.js` | 16 | Premium-gated devtools API, party/economy/combat commands | None |
+| `test-integration.js` | 18 | Full combat loop, flanking scenario, defeat scenario, multi-round, state machine transitions, save roundtrip | Multiple modules |
 
 #### Pathfinding Tests
 
-| Algorithm | Test Scenarios |
-|-----------|---------------|
-| A* | Shortest path on uniform grid, terrain cost variations, obstacle avoidance, unreachable target returns empty, diagonal vs cardinal movement (cardinal only), performance < 10ms on 16x12 grid |
-| Dijkstra | All-pairs shortest path for road networks, disconnected graph detection |
-| BFS | Fog reveal radius 2 from position, edge cases at map boundaries |
+| Context | Algorithm | Test Scenarios |
+|---------|-----------|---------------|
+| Combat grid | Unidirectional A* | Shortest path, terrain costs, obstacle avoidance, no path, enemy blocking, performance <10ms |
+| Combat grid | Bidirectional A* | Optimal cost matches unidirectional, obstacles, weighted terrain, long-distance, ally traversal |
+| Combat grid | Path Cache | LRU eviction, hit/miss stats, invalidation, faction-aware keys, null caching, partial-reuse stitching (spatial index, bridge limit, prefix/suffix splice) |
+| Combat grid | Multi-Unit | Collision avoidance at goals, priority by distance, tight corridor, impossible paths |
+| Combat grid | Formations | 4 types (LINE/WEDGE/SQUARE/COLUMN), direction-aware slots, blocked slot degradation |
+| Combat grid | Dijkstra | Movement range flood fill, terrain costs, budget limits, ally traversal |
+| Overworld | Bidirectional A* | Road preference (0.5 cost), location avoidance, dungeon/town as target, LRU cache |
+| Overworld | Dijkstra | Road network generation between procedural locations |
 
-#### Integration Tests
+#### Integration Tests (15 tests)
 
-| Test | Modules Involved | Scenario |
-|------|-----------------|----------|
-| Combat-to-Progression | Combat, Progression, Character | After combat victory, XP is distributed to surviving members and level-up triggers stat allocation |
-| Dungeon-to-Combat | Dungeon, Combat, Enemy AI | Entering a room with enemies transitions to combat with correct enemy composition |
-| TimeRotation-to-Character | TimeRotation, Character, Entitlement | Daily rotation generates a valid roster respecting seasonal availability |
-| Equipment-to-Sprite | Equipment, Character, SpriteEngine | Equipping an item updates the paper-doll composite |
-| SaveManager roundtrip | SaveManager, Progression, Character, Equipment | Save state, modify nothing, load state: all data matches |
-| Full dungeon run | All modules | Title -> Select party -> Enter dungeon -> Complete floor -> Combat -> Victory -> Camp -> Save |
-| Proficiency-to-Combat | Character, Combat, Proficiency | Attacking with a weapon increments proficiency; rank-up mid-combat adds technique to action menu |
-| SpellLearning-to-Combat | Character, SpellBook, Combat | Learning a spell at camp makes it available in the next combat's spell list |
-| Shop-to-Equipment | Shop, Equipment, Character | Buying an item adds it to inventory; equipping checks tier requirements |
-| Consumable-in-Combat | Equipment, Combat | Using a potion in combat heals the target and removes the potion from inventory |
-| ScrollStudy-at-Camp | Character, Equipment, SpellBook | Caster studies scroll at camp, spell is permanently learned, scroll consumed |
-| ArmorSpellFailure | Character, Equipment, Combat | Caster in heavy armor has chance to fail spells, MP wasted, turn lost |
-| LevelUp-full-flow | Progression, Character, SpellBook, Proficiency | XP gain triggers level-up: stat points, spell learning, HP/MP growth, equipment tier unlock |
-| Prestige-promotion-flow | Character, Prestige, Progression, Equipment | Level 20 character visits town → completes quest → promotes → gains prestige ability at 21 → equips T7 gear at 30 |
-| Prestige-in-combat | Character, Prestige, Combat | Prestige abilities appear in combat action menu and deal correct effects |
-| Veteran-vs-prestige | Character, Prestige, Progression | Level 30 veteran and level 30 prestige have different abilities; veteran cannot equip T7+ |
-| Save-full-roundtrip | SaveManager, All contexts | Save complete game state → clear memory → load save → all data matches (including prestige, proficiency, spellbook, quest progress) |
-| Save-migration-chain | SaveManager, Character | Create v1 save → close game → update to v3 → load → migration runs → prestige fields added → game works |
-| Save-corruption-recovery | SaveManager | Corrupt autosave → load → backup used → toast message shown → game continues |
-| AutoSave-state-transitions | SaveManager, Controller | Walk through TITLE → SELECT → OVERWORLD → TOWN → DUNGEON → COMBAT → VICTORY → CAMP, verify autosave fires at each non-combat transition |
-| Town-promotion-hall | Overworld, Prestige, Character | Navigate to town on overworld → enter town → access promotion hall → promote → verify prestige in save |
-| Post-20-XP-scaling | Progression, Character | Verify XP curve from level 20 to 25: each level requires quadratic scaling amount, stat points are +1 not +2 |
-| Dungeon-difficulty-scouting | Overworld, Dungeon | Hover over entrance → verify tooltip matches dungeon tier data (skulls, level, floors, loot) |
-| Risk-reward-underleveled | Overworld, Dungeon, Combat | Level 5 party enters Tier IV dungeon → enemies one-shot party → death penalty applied |
-| Risk-reward-overleveled-xp | Overworld, Dungeon, Progression | Level 30 party farms Tier I dungeon → XP reduced to 10% (diminishing returns) |
-| Strategic-retreat | Dungeon, Overworld, SaveManager | Clear floors 1-2 → retreat at floor 3 staircase → XP kept, floor 3 loot lost, return to overworld |
-| Party-wipe-consequences | Combat, Progression, SaveManager | Full party death → gold halved, dungeon loot lost, characters keep levels, defeat state saved |
-| Overworld-encounter-rate | Overworld, Combat | Road travel has 0% encounters; off-road Swamp travel triggers encounters at ~12% per step |
-| Difficulty-zone-progression | Overworld, Dungeon | Starting town connects to Tier I/II dungeons; outer biomes connect to Tier IV/V dungeons |
+| Test | Modules | Scenario |
+|------|---------|----------|
+| Full combat loop | CombatEngine, D20, AI, Grid | Init combat → move → attack → enemy turn → victory |
+| Flanking scenario | CombatEngine, D20, Grid | Two allies flanking enemy → +2 attack bonus applied |
+| Defeat scenario | CombatEngine, D20, AI | All party members killed → defeat detected |
+| Multi-round combat | CombatEngine, D20, AI | Multiple rounds with initiative cycling |
+| State transitions | StateMachine, Controller | TITLE → CHARACTER_SELECT → OVERWORLD → COMBAT → VICTORY → CAMP |
+| Save roundtrip | SaveManager, SaveCrypto | Save party state → reload → all data matches |
 
-#### Edge Case Tests
+#### Planned Tests (future phases)
 
-| Category | Test Cases |
-|----------|-----------|
-| Boundary values | Level 1 (min), Level 20 (prestige eligible), Level 100 (cap), 0 HP (KO), 0 MP (no spells), 0 Gold (can't buy), inventory full |
-| Stat extremes | All stats at minimum (1), maximum stat stacking (race + class + equipment + level), negative modifier clamped to 1 |
-| Grid boundaries | Movement at map edge, AoE pattern at grid corner, flanking at grid boundary, unit at (0,0) and (max,max) |
-| Empty/null states | Empty inventory, no equipped items, no companions, empty dungeon floor (only entrance and exit) |
-| Date boundaries | Dec 31 -> Jan 1 (year rollover), month boundary, leap year Feb 29, timezone edge (23:59 UTC -> 00:00 UTC) |
-| Concurrent state | Lava damage kills unit before their turn, companion KO during combat, boss phase change mid-attack |
-| Save edge cases | Tampered ciphertext in localStorage (AES-GCM rejects), missing buffer key, save during combat (should be prevented), exceeding storage quota, active buffer tampered with valid inactive buffer (fallback), both buffers tampered (show error), future version save (reject), migration chain with missing intermediate version, "New Game" deletes all 3 keys, permadeath enforced (defeat state encrypted -- no hex editing), hasSave() after deleteSave() returns false, active pointer corrupted ("a"/"b" neither -- try both), replay attack (old save copied back -- salt/IV mismatch with game state timeline), HMAC chain detects block reordering, crash during buffer write (other buffer intact), Web Crypto API unavailable on file:// (graceful fallback to basic obfuscation) |
-| Prestige edges | Promote at exactly level 20 (min), promote at level 100 (already capped), promote with stat exactly at 15 (should work), promote with stat at 14 (should fail), promote at camp (should fail -- town only), promote twice (should fail), veteran at level 100 gets "Veteran's Resolve", prestige quest progress across sessions, T7 equip without prestige (should fail), level 21 prestige ability unlock |
-| XP scaling edges | XP for level 21 matches formula (5550), XP for level 100 matches formula (109000), cumulative XP at 100 matches (3742600), stat points at level 21 are +1 not +2, HP growth diminishes post-20 |
-| Proficiency edges | Already at Master rank (no further advancement), Cannot-Use weapon (0 XP gain), rank-up exactly on threshold, switching weapons mid-combat |
-| Spell learning edges | Spellbook full (max known), learning duplicate spell rejected, non-caster trying to study scroll, scroll tier exceeds character level |
-| Consumable edges | Potion heal exceeds max HP (capped), using last potion, revive when no ally is KO'd (grayed out), bomb friendly fire kills party member |
-| Equipment requirement edges | Level 1 trying T6 gear, stat exactly at requirement threshold (should work), stat 1 below threshold (should fail), two-handed weapon + shield conflict |
-| Shop edges | 0 gold attempting to buy, selling last item, shop stock on seed collision (same day different shop), legendary sell prevention |
-| Armor spell failure | 0% failure (cloth), 100% failure (theoretical stacking), non-caster in full plate (no penalty), caster swaps armor mid-combat |
-| Risk-reward edges | Level 1 party enters Tier VI dungeon (instant death expected), level 100 party in Tier I dungeon (10% XP minimum), XP diminishing returns at exactly 10 level delta (floor to 10%), retreat on floor 1 (keep nothing, lose nothing), party wipe with 0 gold (stays at 0), party wipe with 1 gold (rounds to 0), dungeon entrance with party level exactly matching recommended range (no warning), road encounter rate exactly 0.0, off-road encounter rate at biome boundary (uses entering biome's rate) |
+| Module | Phase | Key Scenarios |
+|--------|-------|---------------|
+| `dungeon-gen.js` | 4 | BSP room generation, room connectivity, staircase placement, boss rooms |
+| `equipment.js` | 5 | Rarity drops, affix system, set bonuses, buy/sell prices |
+| `spell-system.js` | 5 | AoE patterns, spell saves, concentration, metamagic (basic spell data/casting already implemented in `spells.js`) |
+| `companion.js` | 5 | Stat scaling, KO persistence, camp revival |
+| `prestige.js` | 6 | Promotion requirements, ability unlocks, capstone at level 100 |
 
-#### Performance Tests
+#### Performance Budgets
 
-| Test | Budget | Measurement |
-|------|--------|-------------|
-| A* pathfinding on 16x12 grid | < 10 ms | `performance.now()` delta |
-| BSP dungeon generation (7 floors) | < 50 ms | `performance.now()` delta |
-| Overworld generation | < 100 ms | `performance.now()` delta |
-| Paper-doll composite (8 layers) | < 5 ms | `performance.now()` delta |
-| Combat turn order calculation (20 units) | < 2 ms | `performance.now()` delta |
-| Save serialization | < 10 ms | `performance.now()` delta |
-| Save encryption (AES-GCM + PBKDF2) | < 50 ms | `performance.now()` delta |
-| Save decryption + HMAC verification | < 50 ms | `performance.now()` delta |
-| Save migration (post-decrypt) | < 10 ms | `performance.now()` delta |
-| Save data size (primary) | < 200 KB | `JSON.stringify().length` |
-| Save data size (primary + backup + settings) | < 500 KB | Sum of all localStorage keys |
-| XP formula computation (level 1-100) | < 1 ms | `performance.now()` delta |
+| Test | Budget |
+|------|--------|
+| A* pathfinding on 16x12 grid | < 10 ms |
+| Overworld A* path (100 tiles) | < 50 ms |
+| Combat turn order (20 units) | < 2 ms |
+| Save encryption (AES-GCM) | < 50 ms |
+| Save data size | < 200 KB |
 
 #### Regression Policy
 
 - Every bug fix gets a regression test reproducing the original failure
-- Tests are named `testModuleName_regressionBugId_description`
-- Bug ID references the issue tracker or commit hash
+- Tests named `testModuleName_regressionBugId_description`
 
 ### TDD Workflow Per Module
 
@@ -9229,382 +9444,131 @@ Green:  Add validation -> PASS
 | Diff coverage (per change) | >= 90% |
 | Mutation testing (killed mutants) | >= 60% |
 
-### BDD Scenario Index
-
-All Gherkin scenarios in this document are executable specifications. They map to test functions as follows:
-
-| Scenario Location | Test File | Naming Pattern |
-|-------------------|-----------|----------------|
-| US-CHAR-* | `test-character.js` | `testCharacter_scenarioName` |
-| US-SPRITE-* | `test-sprite.js` | `testSprite_scenarioName` |
-| US-OW-* | `test-overworld-gen.js` | `testOverworld_scenarioName` |
-| US-DUN-* | `test-dungeon-gen.js` | `testDungeon_scenarioName` |
-| US-COMBAT-* | `test-combat.js` | `testCombat_scenarioName` |
-| US-MAGIC-* | `test-spell-system.js` | `testSpell_scenarioName` |
-| US-EQUIP-* | `test-equipment.js` | `testEquipment_scenarioName` |
-| US-TERRAIN-* | `test-terrain.js` | `testTerrain_scenarioName` |
-| US-ENEMY-* | `test-enemy-ai.js` | `testEnemyAi_scenarioName` |
-| US-COMP-* | `test-companion.js` | `testCompanion_scenarioName` |
-| US-TIME-* | `test-time-rotation.js` | `testTimeRotation_scenarioName` |
-| US-PROG-* | `test-save-manager.js` + `test-integration.js` | `testProgression_scenarioName` |
-| US-BOSS-* | `test-combat.js` (boss section) | `testBoss_scenarioName` |
-| US-ENT-* | `test-entitlement.js` | `testEntitlement_scenarioName` |
-| US-CHAR-10..14 (proficiency) | `test-proficiency.js` | `testProficiency_scenarioName` |
-| US-CHAR-11..13 (spells) | `test-spellbook.js` | `testSpellbook_scenarioName` |
-| US-MAGIC-06..08 (scrolls/meta) | `test-spellbook.js` + `test-consumables.js` | `testScroll_scenarioName` |
-| US-EQUIP-09..13 (tiers/consumables) | `test-requirements.js` + `test-consumables.js` | `testRequirement_scenarioName` |
-| US-PROG-09..12 (shop/train/craft) | `test-shop.js` | `testShop_scenarioName` |
-| US-PRESTIGE-* | `test-prestige.js` | `testPrestige_scenarioName` |
-| US-SAVE-* | `test-save-manager.js` + `test-save-migration.js` + `test-save-crypto.js` | `testSave_scenarioName` |
-| US-OW-05..06 (risk/retreat) | `test-overworld-gen.js` | `testOverworld_scenarioName` |
-| US-DUN-09..10 (permadeath/risk) | `test-dungeon-gen.js` + `test-integration.js` | `testDungeon_scenarioName` |
-
 ---
 
-## 10. Planned Implementation Phases
+## 10. Implementation Phases
 
-### Phase 1 -- Core Engine
-- [ ] Canvas rendering loop and state machine (10 states including TOWN and LOAD_GAME)
-- [ ] Tile-based map renderer with camera
-- [ ] Mouse input handler (click, hover, drag)
-- [ ] Seeded PRNG and time-rotation system
-- [ ] Invisible localStorage persistence: dual-buffer encrypted saves (AES-GCM, PBKDF2, HMAC), versioned schema, migration chain
-- [ ] SaveCrypto module: one-time key ring (256 keys), random salt/IV per save, pepper per build, Web Crypto API
-- [ ] Auto-save on every state transition (trigger table), dual-buffer A/B rotation (feels like a server -- no save/load UI)
-- [ ] Corruption and tamper detection: decrypt → verify block digests → verify HMAC chain → fallback to other buffer
-- [ ] Storage quota monitoring and compression fallback
-- [ ] Permadeath enforcement: defeat state is saved, no save-scumming possible
-- [ ] Test runner setup with first passing test
-- [ ] State machine transition tests (100% branch coverage, all 10 states)
-- [ ] PRNG determinism tests
-- [ ] Save roundtrip tests, checksum tests, migration chain tests, corruption recovery tests
+### Phase 1 -- Core Engine (DONE, 162 tests)
+- [x] Canvas rendering loop and state machine (10 states)
+- [x] Tile-based map renderer with camera and double-buffering
+- [x] Mouse + keyboard input handler
+- [x] Seeded PRNG (mulberry32) and time-rotation system
+- [x] Encrypted localStorage persistence (AES-GCM, dual-buffer, auto-save)
+- [x] SaveCrypto module (key ring, salt/IV, tamper detection)
+- [x] Test runner (browser + Node.js headless via jsdom)
 
-### Phase 2 -- Characters & Sprites
-- [ ] Race and class definitions with stat generation
-- [ ] Paper-doll sprite compositing engine
-- [ ] Character select screen with daily roster
-- [ ] Walking animation system (4-direction)
-- [ ] Weapon proficiency tracker with rank promotions
-- [ ] Spell book entity with learn/study methods
-- [ ] Starting proficiency by class initialization
-- [ ] Unit tests: stat block generation, variance bounds, stat floor
-- [ ] Unit tests: daily roster size (6-8), determinism per date
-- [ ] Unit tests: proficiency rank thresholds, attack/threat range bonuses, Cannot-Use penalty
-- [ ] Unit tests: spell learning, scroll study, cantrip scaling, metamagic cost
+### Phase 2 -- Character System (DONE, 107 new tests)
+- [x] 8 races, 10 classes with D&D 3e stat generation
+- [x] Daily roster rotation (6-8 characters)
+- [x] Party selection (1-4 characters)
+- [x] Level-up system with XP thresholds, HP/MP/BAB/save recalculation
+- [x] Seasonal lock indicators (Tiefling, Dragonborn, Bard, Warlock, Sorcerer)
 
-### Phase 3 -- Combat System
-- [ ] Tactical grid placement and rendering
-- [ ] Turn order calculation and management
-- [ ] Movement with A* pathfinding and range display
-- [ ] Attack system with damage calculation (including proficiency bonuses)
-- [ ] Weapon technique actions unlocked by proficiency rank
-- [ ] Spell casting with MP cost, AoE targeting, and armor spell failure
-- [ ] Cantrip casting (0 MP, level-scaled damage)
-- [ ] Consumable item usage in combat (potions, scrolls, bombs)
-- [ ] Revive mechanics (Tonic, Phoenix Down)
-- [ ] Shining Force-style attack cut-in screen
-- [ ] Terrain bonus application
-- [ ] Flanking and elevation mechanics
-- [ ] Proficiency use-counter increments on weapon attacks
-- [ ] Unit tests: d20 attack resolution (attack roll vs AC, proficiency bonus, enhancement bonus)
-- [ ] Unit tests: Initiative roll (d20 + DEX mod, tiebreak)
-- [ ] Unit tests: movement range with terrain costs
-- [ ] Unit tests: flanking geometry
-- [ ] Unit tests: weapon technique effects (Riposte counter bonus, Cleave multi-hit, etc.)
-- [ ] Unit tests: spell failure by armor type (0%/10%/30%/35%/40%/25% per Armor Tiers table)
-- [ ] Unit tests: consumable effects (heal cap, buff duration, revive target validation)
-- [ ] Integration test: combat encounter flow (start -> turns -> victory/defeat)
-- [ ] Integration test: proficiency rank-up mid-combat adds technique to menu
+### Phase 3 -- Combat Engine (DONE, 360 new tests)
+- [x] Combat grid with 13 terrain types
+- [x] Bidirectional weighted A* + unidirectional A* + Dijkstra movement range
+- [x] LRU path cache (128 entries, faction-aware keys, invalidation, partial-reuse stitching)
+- [x] Multi-unit cooperative pathfinding (sequential with tile reservation)
+- [x] Formation movement (LINE, WEDGE, SQUARE, COLUMN with direction-aware offsets)
+- [x] d20 attack resolution (hit/miss/crit, nat 20/1)
+- [x] Initiative + turn order with DEX tiebreak
+- [x] Flanking detection (cardinal N/S, E/W)
+- [x] 11 enemy templates across 4 tiers
+- [x] Simple aggressive AI
+- [x] Attack cut-in screens (attacker/defender stats, d20 roll, result)
+- [x] Attack animations (slash, damage floats, sequential enemy turns)
+- [x] Victory/defeat detection with transition screens
+- [x] Smooth combat movement animation (step-by-step tile interpolation, 0.08s/tile)
+- [x] Click-to-approach-and-attack (auto-path to nearest adjacent tile, then attack)
+- [x] Flee from combat (DEX check vs DC 12)
+- [x] Biome-aware terrain rendering (overworld vs dungeon spritesheets)
+- [x] Character portraits on selection cards (class-based dungeon tilemap sprites)
+- [x] Enhanced combat tile size (44px) and 1280x720 resolution
+- [x] Spell casting system (41 spells, L0-L4, 9 schools, class-restricted, MP cost)
+- [x] Spell UI: Cast button, spell menu, target highlighting (purple/green), spell effect animation
+- [x] Spell cut-in screens with spell name, MP stats, damage/heal results
+- [x] Dark Mage enemies cast spells in combat
 
-### Phase 4 -- Dungeon Generation
-- [ ] BSP room generation algorithm
-- [ ] Corridor connection
-- [ ] Room type placement and features
-- [ ] Fog of war system
+### MVP Integration (DONE, 15 new tests)
+- [x] Infinite procedural overworld (chunk-based, noise terrain)
+- [x] Bidirectional A* click-to-walk with weighted terrain, path cache (roads preferred, locations avoided)
+- [x] Keyboard movement (WASD/arrows) with smooth interpolation
+- [x] Random encounters scaling with distance (5 tiers)
+- [x] 21 procedural location types (14 dungeons, 4 towns, 3 camps)
+- [x] Road network connecting locations
+- [x] XP/gold rewards, level-up on victory
+- [x] Camp rest / town inn healing
+- [x] CC0 sprite assets (Kenney Tiny Dungeon, Roguelike/RPG Pack)
+- [x] Sprite margin fix (SPRITE_MARGIN/K1B_MARGIN→0 for dungeon + kenney1bit; OVERWORLD_MARGIN=1 correct)
+- [x] Offscreen canvas tint compositing with CORS fallback (fixes source-atop tinting terrain bleed)
+- [x] Overworld autotiling (4-bit cardinal bitmask, WATER transitions with 9 tile variants)
+
+### Phase 4 -- Dungeon Generation (next)
+- [ ] BSP room generation with corridors
 - [ ] Multi-floor progression with stairs
+- [ ] Fog of war
+- [ ] Room types (treasure, shrine, trap, boss)
 - [ ] Object interaction (chests, barrels, levers)
-- [ ] Unit tests: BSP invariants (room size, connectivity, staircase count)
-- [ ] Unit tests: fog of war reveal radius
-- [ ] Integration test: dungeon -> combat transition
 
-### Phase 5 -- Overworld Generation
-- [ ] Biome placement with seeded Voronoi
-- [ ] Road network generation
-- [ ] Town and dungeon entrance placement
-- [ ] Overworld navigation with transitions
-- [ ] Points of interest and exploration
-- [ ] Unit tests: connectivity invariant (all towns reachable)
-- [ ] Unit tests: biome coverage (< 40% per biome)
-- [ ] Unit tests: minimum dungeon entrances (>= 3)
+### Phase 5 -- Content Depth
+- [ ] Equipment/loot system with affixes and tiers
+- [ ] Spell system (MP cost, AoE, class restrictions)
+- [ ] Consumable items (potions, scrolls, bombs)
+- [ ] Shop/trainer system
+- [ ] Companion creatures
+- [ ] Boss encounters with phase transitions
+- [ ] NPC dialogue system
 
-### Phase 6 -- Content Depth
-- [ ] Full spell system (9 schools, AoE patterns, scrolls, cantrips, metamagic)
-- [ ] Equipment/loot generation with affixes, tiers, and stat requirements
-- [ ] Consumable item system (potions, scrolls, bombs, torches, etc.)
-- [ ] Shop system with tiered stock, daily rotation, and trainers
-- [ ] Crafting system (Rogue trap kits, Ranger rations)
-- [ ] Spell learning: level-up choices, scroll study, trainer purchase, tomes
-- [ ] Enemy bestiary (all 5 tiers)
-- [ ] Companion creature system (10 companions: AI modes, stat scaling, combat integration, death/revival, equipment slot)
-- [ ] Boss encounters with phase transitions (50 bosses across 6 CR tiers, multi-turn tactical AI, combo state machine, reaction system)
-- [ ] Boss loot tables (50 boss-specific loot tables with unique drops)
-- [ ] Camp hub with shop, trainer, party management, quests, rest mechanic, camp NPCs, camp interface layout
-- [ ] NPC dialogue system (dialogue tree structure, 7 NPC types, faction reputation)
-- [ ] Unit tests: spell AoE patterns, MP deduction, friendly fire, scroll consumable
-- [ ] Unit tests: loot rarity distribution, affix rules, set bonuses, equipment tier requirements
-- [ ] Unit tests: consumable effects (heal, buff, revive, bomb AoE, torch duration)
-- [ ] Unit tests: shop stock generation, buy/sell math, trainer spell filtering
-- [ ] Unit tests: all 5 AI patterns, special abilities, cooldowns
-- [ ] Unit tests: boss phase transitions at HP thresholds
-- [ ] Integration test: full dungeon run (title to camp)
-- [ ] Integration test: shop purchase -> equip -> combat with new gear
-- [ ] Integration test: spell scroll study -> learned spell available in combat
-
-### Phase 6b -- Prestige & Post-20 Progression
-- [ ] Prestige class definitions (3 paths per base class, 30 total)
-- [ ] PrestigeRegistry with path lookups and requirement checks
-- [ ] Town Promotion Hall UI (show paths, requirements, promote button)
-- [ ] Prestige quest system (per-path unlock quests, account-wide completion)
-- [ ] Post-20 XP scaling formula implementation
-- [ ] Prestige ability progression (10 milestones per path)
-- [ ] Veteran path for non-promoted characters (generic abilities)
-- [ ] T7-T10 prestige equipment tiers with prestige requirement checks
-- [ ] Spell Levels 5-6 for prestige caster paths
-- [ ] Prestige serialization in save data
-- [ ] Unit tests: promotion requirements (level, stat, gold, quest)
-- [ ] Unit tests: XP formula matches table for all milestone levels
-- [ ] Unit tests: prestige abilities unlock at correct levels
-- [ ] Unit tests: veteran vs prestige abilities differ
-- [ ] Unit tests: T7+ equip requires prestige, fails for veteran
-- [ ] Integration test: full promotion flow (town → quest → promote → ability → save)
-- [ ] Integration test: prestige abilities in combat
+### Phase 6 -- Prestige & Progression
+- [ ] Prestige classes (3 paths per base class, 30 total)
+- [ ] Post-20 XP scaling
+- [ ] T7-T10 prestige equipment tiers
 
 ### Phase 7 -- Time-Gated Content
-- [ ] Daily/weekly/monthly rotation implementation
-- [ ] Seasonal race/class availability
-- [ ] Holiday event detection and content
-- [ ] Daily challenge dungeon
-- [ ] Weekly quest system (seeded generation, quest chains)
-- [ ] Quest prerequisite system (item possession, yearly events, day-of-week, class, race, faction, boss/dungeon gates)
-- [ ] Quest log UI (lock icons, prerequisite tooltips, secret "???" prereqs)
-- [ ] EntitlementService stub
-- [ ] Unit tests: all rotation seeds (daily, weekly, monthly, seasonal)
-- [ ] Unit tests: holiday date ranges, Easter/CNY calculation
-- [ ] Unit tests: entitlement stub, seasonal free windows
-- [ ] Unit tests: date boundary rollover (Dec 31 -> Jan 1)
+- [ ] Quest system with prerequisites
+- [ ] Daily challenge dungeons
+- [ ] Holiday events
 
 ### Phase 8 -- Polish & Audio
-- [ ] Audio system (Web Audio API): ambient music with pause/resume, battle music with dynamic event layers, result stings
-- [ ] SFX system: combat SFX (12 weapon types), spell SFX (9 schools), UI SFX, movement SFX, ambient environment loops
-- [ ] Audio crossfade and priority-based channel pooling (12 channels)
-- [ ] UI polish (menus, tooltips, transitions)
-- [ ] Tutorial / how-to-play overlay (8-step first-run tutorial, scripted combat, tooltip system)
-- [ ] Performance optimization (viewport culling, sprite caching)
-- [ ] Balance pass on all stats, costs, and drop rates
-- [ ] Manifest entry and SZ Desktop integration
-- [ ] Performance tests: all budgets met
-- [ ] Full regression suite green
-- [ ] Coverage targets met (>= 90% statement, >= 80% branch)
+- [ ] Web Audio API music/SFX
+- [ ] Tutorial/onboarding
+- [ ] Performance optimization
+- [ ] SZ Desktop manifest integration
 
-### Phase 9 -- Asset Forge Pipeline (Tooling)
+### Phase 9 -- Asset Forge Pipeline (Tooling, future)
 
-The game requires thousands of unique art assets. Since all assets are sourced from **free internet resources** or **generated via image generation networks** (DALL-E, Stable Diffusion, Midjourney, etc.), a dedicated **Asset Forge** tool automates the generation, slicing, verification, and cataloging pipeline.
-
-#### Asset Forge Tool Architecture
-
-The Asset Forge is a **standalone Node.js CLI tool** (separate from the game) that runs locally. It does NOT ship with the game.
-
-```
-tools/asset-forge/
-  forge.js              CLI entry point
-  generators/
-    prompt-builder.js   Constructs image generation prompts from asset manifest
-    api-client.js       Adapter for image generation APIs (DALL-E, SD WebUI, etc.)
-  slicers/
-    grid-slicer.js      Splits sprite sheets by 32×32 grid
-    animation-slicer.js Extracts animation frames from strips
-    tileset-slicer.js   Handles tileset auto-tiling rules (47-tile Wang set)
-  verifiers/
-    frame-validator.js  Checks for blank frames, size mismatches, transparency errors
-    animation-preview.js Renders animated GIF preview for each sprite set
-    palette-checker.js  Validates sprite matches dimension palette (hue range, saturation)
-    alignment-checker.js Overlays paper-doll layers and checks anchor point alignment
-    style-scorer.js     Compares style consistency against reference sheet
-  catalog/
-    manifest.json       Master asset manifest (every required asset, status, metadata)
-    manifest-schema.js  JSON Schema for manifest validation
-  output/
-    previews/           Generated preview GIFs for visual inspection
-    reports/            HTML reports with pass/fail per asset
-  package.json
-  README.md
-```
-
-#### Asset Manifest Schema
-
-Every required asset is tracked in `manifest.json`:
-
-```json
-{
-  "assetId": "char-body-human-front",
-  "category": "character-body",
-  "dimension": "all",
-  "race": "human",
-  "direction": "front",
-  "frameCount": 5,
-  "tileSize": [32, 32],
-  "status": "verified",
-  "generationPrompt": "pixel art, 32x32, human male warrior body, front-facing, 5 frames walk cycle, transparent background, Shining Force II style",
-  "sourceFile": "assets/characters/bodies/human-front.png",
-  "generatedAt": "2026-03-15T10:30:00Z",
-  "verifiedAt": "2026-03-15T10:31:00Z",
-  "verificationScore": 0.92,
-  "issues": []
-}
-```
-
-Status flow: `missing` → `generating` → `generated` → `slicing` → `sliced` → `verifying` → `verified` → `approved` (manual sign-off)
-
-#### Pipeline Stages
-
-**Stage 1: Prompt Generation**
-- Read `manifest.json` for all assets with status `missing`
-- Construct image-gen prompts from templates:
-  ```
-  Template: "pixel art, {tileSize}, {race} {class} {direction}, {frameCount} frames {animation}, transparent background, {styleguide}"
-  ```
-- Style guide reference: "Shining Force II Sega Genesis, muted earth tones, clean pixel edges, no anti-aliasing"
-- Dimension-specific palette constraints appended (e.g., "Feywild: saturated greens and purples")
-
-Example prompts by category:
-
-| Category | Example Prompt |
-|----------|---------------|
-| Character body | "pixel art sprite sheet, 32x32, human male body, front-facing idle + 4-frame walk cycle, transparent background, Shining Force II Sega Genesis style, muted earth tones, clean pixel edges, no anti-aliasing, no outline glow" |
-| Class clothing | "pixel art overlay, 32x32, wizard robes blue/silver, front-facing, 5 frames matching walk cycle, transparent background, layer must align with human body anchor, Shining Force II style" |
-| Enemy sprite | "pixel art sprite sheet, 32x32, goblin warrior with rusty sword, front-facing 4-frame idle cycle, green skin, leather scraps, menacing pose, transparent background, SNES RPG style, max 24 colors" |
-| Boss sprite | "pixel art sprite sheet, 48x48, ancient red dragon, front-facing, 6-frame animation (idle + wing flap + breath), red/gold/black palette, imposing scale, transparent background, Shining Force II boss style, max 32 colors" |
-| Terrain tile | "pixel art tileset, 32x32, grass plains tile, top-down perspective, seamless edges, 3 variants (short grass, tall grass, flowers), muted green/brown palette, Shining Force overworld style" |
-| Spell effect | "pixel art animation strip, 32x32, fireball explosion, 8 frames, orange/red/yellow expanding burst, transparent background, SNES RPG magic effect, max 16 colors" |
-| Portrait | "pixel art portrait, 64x64, dwarf cleric female, stern expression, holy symbol necklace, braided beard, Shining Force II character select style, warm lighting, detailed face" |
-| Feywild tile | "pixel art tileset, 32x32, enchanted forest floor, top-down, glowing mushrooms, crystal grass, saturated greens and purples, magical atmosphere, seamless edges" |
-
-**Stage 2: Image Generation**
-- Submit prompts to configured API (supports multiple backends):
-  - DALL-E 3 via OpenAI API
-  - Stable Diffusion via local WebUI API
-  - Midjourney via Discord webhook (fallback)
-- Save raw output to `output/raw/`
-- Log prompt + seed + model for reproducibility
-- Batch mode: generate up to 50 assets in parallel
-
-**Stage 3: Automated Slicing**
-- **Grid slicer**: Cut sprite sheet into 32×32 cells, left-to-right, top-to-bottom
-- **Animation slicer**: Extract N frames from horizontal strip based on manifest `frameCount`
-- **Tileset slicer**: For terrain tiles, generate 47-tile Wang blob set from 5-tile template using edge-matching rules
-- **Paper-doll slicer**: Split layered output into separate layers (body, clothing, weapon, etc.) if generated as composite
-- Output individual frames as PNG with transparent background
-- Naming convention: `{assetId}-frame-{N}.png`
-
-**Stage 4: Automated Verification**
-
-| Check | Pass Criteria | Tool |
-|-------|--------------|------|
-| **Frame dimensions** | Every frame is exactly `tileSize` pixels | frame-validator |
-| **Blank frame detection** | No frame is >95% transparent (empty) | frame-validator |
-| **Color count** | Frames use ≤ 32 unique colors (pixel art constraint) | palette-checker |
-| **Palette consistency** | All frames in a set share ≥ 80% of their palette | palette-checker |
-| **Dimension palette** | Hue range matches target dimension (±15° from reference) | palette-checker |
-| **Animation smoothness** | Frame-to-frame pixel change is 5-40% (not too static, not too jumpy) | animation-preview |
-| **Anchor alignment** | Paper-doll layers line up within ±2px of reference anchor points | alignment-checker |
-| **Style consistency** | Perceptual hash distance from reference sheet < 0.3 | style-scorer |
-| **Transparency** | Background is fully transparent (no stray opaque pixels outside sprite) | frame-validator |
-
-**Stage 5: Preview Generation**
-- Render each verified sprite set as an animated GIF (150ms/frame)
-- Side-by-side preview for all 3 directions (front, back, side)
-- Paper-doll composite preview: stack all layers for a given race/class/equipment combo
-- Walking cycle preview on terrain background
-- Generate HTML report: thumbnail grid of all assets with pass/fail badges
-
-**Stage 6: Manual Approval**
-- Review HTML report in browser
-- Click-to-approve or click-to-reject with notes
-- Rejected assets return to `missing` status with notes for prompt refinement
-- Approved assets move to `approved` and are copied to `assets/` game folder
-
-#### Asset Count Estimates
-
-| Category | Count | Notes |
-|----------|-------|-------|
-| Character bodies | 8 races × 3 directions × 5 frames = **120 sheets** | Paper-doll base layer |
-| Class clothing | 10 classes × 3 directions × 5 frames = **150 sheets** | Overlay layer |
-| Weapon sprites | 10 categories × 6 tiers × 3 directions = **180 sheets** | Paper-doll weapon layer |
-| Armor sprites | 6 armor types × 6 tiers × 3 directions = **108 sheets** | Paper-doll armor layer |
-| Shield sprites | 6 types × 6 tiers × 3 directions = **108 sheets** | Paper-doll shield layer |
-| Helmet sprites | 6 types × 6 tiers × 3 directions = **108 sheets** | Paper-doll helmet layer |
-| Boots sprites | 6 types × 6 tiers × 3 directions = **108 sheets** | Paper-doll boots layer |
-| Enemy sprites | 120+ types × 3 directions × 4 frames = **1,440+ sheets** | Each enemy needs idle+walk |
-| Companion sprites | 10 creatures × 3 directions × 4 frames = **120 sheets** | Smaller scale (0.75x) |
-| Boss sprites | 50 bosses × 3 directions × 6 frames = **900 sheets** | Larger, multi-phase |
-| Terrain tilesets | 12 dimensions × ~14 tile types × 3 variants = **~500 tiles** | 32×32 each |
-| Spell effects | 60+ spells × 6-12 frames = **~500 animation strips** | Particle sequences |
-| UI elements | Buttons, panels, icons, portraits = **~300 assets** | Various sizes |
-| Portraits | 80 race/class combos × 2 (normal + prestige) = **160 portraits** | 64×64 |
-| **Total estimate** | **~4,500+ individual asset files** | |
-
-#### UI Auto-Testing (Screenshot Regression)
-
-In addition to asset generation, the Asset Forge includes a **UI screenshot regression** module:
-
-1. **Capture**: Headless browser renders each game screen (title, character select, overworld, dungeon, combat, camp, shop, etc.) at 940×660 and saves as PNG
-2. **Baseline**: First run establishes golden screenshots per screen
-3. **Diff**: Subsequent runs compare against golden screenshots using perceptual hash + pixel-level diff
-4. **Report**: HTML report shows side-by-side (expected vs actual) with highlighted differences
-5. **Threshold**: Pixel diff > 2% flags as regression; > 10% flags as broken
-6. **Trigger**: Runs automatically after any CSS, renderer, or skin change
-
-```
-tools/asset-forge/ui-test/
-  capture.js          Headless browser screenshot capture
-  diff.js             Perceptual hash + pixel diff
-  golden/             Baseline screenshots
-  reports/            Diff reports (HTML)
-```
-
-- [ ] CLI: `node forge.js generate --category character-body --race human`
-- [ ] CLI: `node forge.js slice --input raw/human-front.png --grid 32x32 --frames 5`
-- [ ] CLI: `node forge.js verify --category all` (batch verification)
-- [ ] CLI: `node forge.js preview --output previews/` (generate all GIFs)
-- [ ] CLI: `node forge.js report` (generate HTML report)
-- [ ] CLI: `node forge.js ui-test --baseline` (capture golden screenshots)
-- [ ] CLI: `node forge.js ui-test --diff` (compare against golden)
-- [ ] Manifest schema validation on every run
-- [ ] Integration with game build: fail if any `missing` or `rejected` assets exist
+Planned standalone Node.js CLI tool for automated asset generation, slicing, and verification. Not yet implemented. See `assets/` for currently bundled CC0 sprite packs.
 
 ---
 
 ## 11. Known Limitations
 
+### Current (implemented features)
+
+- **No diagonal movement**: Both combat and overworld use cardinal-only movement (4-directional)
+- **Overworld autotiling partial**: Only WATER has 4-bit cardinal bitmask transition tiles (9 variants); GRASS, SAND, FOREST, MOUNTAIN use single center tiles (no edge/corner transitions in Kenney tileset for these types)
+- **Simple enemy AI**: Enemies always target nearest party member (prefer low HP); no defensive, ambush, or support patterns
+- **No ranged weapon attacks**: Physical combat is melee-only; no bows or thrown weapons (spells provide ranged options)
+- **Basic spell system**: 41 spells implemented (L0-L4) but no AoE patterns, spell saves, concentration, counterspelling, or metamagic yet
+- **No items in combat**: No potions, scrolls, or consumables usable during battle
+- **No equipment system**: Characters have stats but no equippable gear
+- **Death = 0 HP**: No death/dying rules, no resurrection; 0 HP means permanently dead for the combat
+- **No status conditions**: No poison, paralysis, sleep, etc.; attacks deal only HP damage
+- **No dungeon generation**: Dungeons are single-encounter locations; no multi-floor exploration
 - **Browser-only**: No native executable; runs in SZ Desktop iframe
-- **No multiplayer**: Single-player only; all content rotation is date-deterministic
-- **Canvas performance ceiling**: Complex scenes (many sprites, effects) may drop below 60 FPS on older hardware
-- **localStorage size limit**: ~5-10 MB per origin; save data must stay under 200 KB per slot with compression fallback
-- **No server-side persistence**: Save data lives in the browser; clearing browser data or localStorage loses progress permanently. Auto-save + backup mitigates crashes but not data wipes
-- **No real entitlement backend**: Stub returns "all unlocked"; real monetization requires a backend service
-- **Pixel art asset volume**: ~4,000+ individual asset files across 12 dimensions, 120+ enemy types, and full paper-doll layering. Asset Forge pipeline mitigates but requires AI generation quality control
-- **Infinite world memory**: LRU cache of 64 chunks; WFC generation must stay under 4ms/chunk or fall back to noise-only
-- **WFC boundary stitching**: Generating chunks out-of-order may create suboptimal transitions at boundaries if neighbors generate later
-- **120+ enemy types**: Each needs unique sprites, AI tuning, and balance testing; dimensional variants multiply the visual asset count further
-- **D&D SRD licensing**: Spell/monster names inspired by D&D 3e SRD (OGL content); avoid Wizards of the Coast product identity terms
-- **Holiday date calculation**: Easter and Chinese New Year dates require algorithmic computation (lunisolar calendar)
-- **Mouse-only constraint**: No keyboard shortcuts; all interaction must be click/hover/drag accessible
-- **Balance at high levels**: Levels 50-100 require extensive playtesting to ensure prestige abilities don't trivialize content or create must-pick paths
-- **30 prestige paths**: Each path needs 10 unique abilities; total of 300 prestige abilities to design and balance
+- **localStorage persistence only**: Clearing browser data loses all progress; no export/import
+- **Canvas performance ceiling**: Complex scenes with many sprites may drop below 60 FPS on older hardware
+- **Client-side crypto limits**: Save encryption key ring is in the JS bundle; anti-tamper is a deterrent, not absolute security
+- **Web Crypto API on file://**: `crypto.subtle` may not be available on `file://` in all browsers; fallback to basic obfuscation provided
+- **Mouse + keyboard input**: Originally mouse-only design; keyboard (WASD/arrows) added for overworld but combat remains mouse-only
+- **No opportunity attacks**: Moving through enemy threat zones does not provoke free attacks; planned for future implementation (requires per-unit reaction tracking and path-scanning)
+
+### Future (planned features not yet built)
+
+- **120+ enemy types needed**: Currently 11 templates; full bestiary requires sprites, AI tuning, and balance work
+- **D&D SRD licensing**: Content inspired by D&D 3e SRD (OGL); must avoid Wizards of the Coast product identity terms
+- **Balance at high levels**: Levels 50-100 with prestige classes require extensive playtesting
 - **Save migration complexity**: Each schema change requires a forward-only migration function; no rollback support
-- **Client-side crypto limits**: Key ring is in the JS bundle; a dedicated reverse engineer can extract keys. Anti-tamper is a deterrent, not absolute security (appropriate for a single-player game)
-- **Web Crypto API availability**: `crypto.subtle` may not be available on `file://` in all browsers; fallback to basic obfuscation needed
-- **Encryption performance**: PBKDF2 + AES-GCM adds ~50ms to each save/load cycle; acceptable for state transitions but prohibits per-frame saves
 
 ---
 
