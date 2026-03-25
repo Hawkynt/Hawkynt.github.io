@@ -102,37 +102,39 @@ class AbcConverter {
   ]);
 
   // Convert a Bar to ABC notation
+  // Percussion notes absorb trailing rests (drums don't sustain), so
+  // [c]z3 becomes [c]4 (quarter note) and [c]z[ng]z becomes [c]2[ng]2
+  // (two eighth notes).  This produces cleaner, more readable notation.
   barToAbc = (bar) => {
-    let result = "";
-    let lastSymbol = "z";
-    let symbolCount = 0;
-
+    // Collect symbols for all 16 slots
+    const slots = [];
     for (let i = 0; i < AbcConverter._beatIndexes.length; ++i) {
       const drumBit = bar.bits[AbcConverter._beatIndexes[i]];
-      const currentSymbol = AbcConverter.drumBitToSymbol(drumBit);
-
-      if (lastSymbol === currentSymbol) {
-        ++symbolCount;
-      } else {
-        if (symbolCount >= 1) {
-          if (symbolCount === 1)
-            result += lastSymbol;
-          else
-            result += lastSymbol + symbolCount;
-        }
-
-        if (i % 4 === 0)
-          result += " ";
-
-        lastSymbol = currentSymbol;
-        symbolCount = 1;
-      }
+      slots.push(AbcConverter.drumBitToSymbol(drumBit));
     }
 
-    if (symbolCount === 1)
-      result += lastSymbol;
-    else
-      result += lastSymbol + symbolCount;
+    // Run-length encode consecutive identical symbols
+    const runs = [];
+    for (let i = 0; i < slots.length; ++i)
+      if (runs.length > 0 && runs[runs.length - 1].symbol === slots[i])
+        ++runs[runs.length - 1].duration;
+      else
+        runs.push({ symbol: slots[i], duration: 1, slot: i });
+
+    // Absorb trailing rests into preceding notes
+    for (let i = runs.length - 1; i > 0; --i)
+      if (runs[i].symbol === 'z' && runs[i - 1].symbol !== 'z') {
+        runs[i - 1].duration += runs[i].duration;
+        runs.splice(i, 1);
+      }
+
+    // Build ABC string with quarter-note spacing
+    let result = '';
+    for (const run of runs) {
+      if (run.slot % 4 === 0)
+        result += ' ';
+      result += run.duration === 1 ? run.symbol : `${run.symbol}${run.duration}`;
+    }
 
     return result;
   };
