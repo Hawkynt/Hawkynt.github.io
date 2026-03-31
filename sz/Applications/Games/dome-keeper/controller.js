@@ -2022,7 +2022,7 @@
           const ex = e.x - turretBaseX;
           const ey = e.y - turretBaseY;
           const projLen = ex * Math.cos(turretAngle) + ey * Math.sin(turretAngle);
-          if (projLen < 0) continue; // behind turret
+          if (projLen < -nozzleR) continue; // skip only enemies truly behind dome center
           const perpDist = Math.abs(-ex * Math.sin(turretAngle) + ey * Math.cos(turretAngle));
           if (perpDist < bestLineDist) {
             bestLineDist = perpDist;

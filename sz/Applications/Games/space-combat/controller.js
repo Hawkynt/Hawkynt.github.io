@@ -1268,6 +1268,8 @@
       if (e.hitTimer > 0)
         e.hitTimer -= dt;
 
+      e.pathTime += dt;
+
       // Type-specific movement AI
       if (e.type === 'dart') {
         // Dive toward player
@@ -1302,7 +1304,11 @@
             canShoot: false,
             fireTimer: 99, movePhase: Math.random() * Math.PI * 2,
             targetY: e.y + 40 + Math.random() * 80,
-            spawnTimer: 0, hitTimer: 0
+            targetX: CANVAS_W / 2 + (Math.random() - 0.5) * (CANVAS_W * 0.6),
+            spawnTimer: 0, hitTimer: 0,
+            pathTime: 0, spawnEdge: 'top', pathPattern: 'straight',
+            originX: e.x, originY: e.y + e.size,
+            cloakTimer: 0, visible: true, mineDropTimer: 0, swarmOffset: 0, shieldActive: false
           });
           ++waveEnemiesLeft;
         }
@@ -1360,7 +1366,6 @@
         }
       } else {
         // Default wander with path patterns: scout, fighter, bomber
-        e.pathTime += dt;
         const edge = e.spawnEdge || 'top';
         const pat = e.pathPattern || 'straight';
 
@@ -1438,6 +1443,13 @@
         }
       }
 
+      // Remove enemies that drifted off-screen (any edge, after reaching play area)
+      if (e.pathTime > 3 && (e.y > CANVAS_H + 50 || e.y < -60 || e.x < -60 || e.x > CANVAS_W + 60)) {
+        enemies.splice(i, 1);
+        --waveEnemiesLeft;
+        continue;
+      }
+
       e.x = Math.max(e.size, Math.min(CANVAS_W - e.size, e.x));
       e.y = Math.max(-30, Math.min(CANVAS_H + 60, e.y));
 
@@ -1478,11 +1490,6 @@
           return;
       }
 
-      // Remove enemies that drifted off-screen (any edge, after reaching play area)
-      if (e.pathTime > 3 && (e.y > CANVAS_H + 50 || e.y < -60 || e.x < -60 || e.x > CANVAS_W + 60)) {
-        enemies.splice(i, 1);
-        --waveEnemiesLeft;
-      }
     }
 
     // Update upgrades
