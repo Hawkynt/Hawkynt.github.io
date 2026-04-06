@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Tactical Realms -- A tactical RPG / dungeon-crawler for the SZ Desktop">
+<meta name="robots" content="index,follow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Tactical Realms -- \u00BBSynthelicZ\u00AB Desktop">
+<meta property="og:description" content="Tactical Realms -- A tactical RPG / dungeon-crawler for the SZ Desktop">
+<meta property="og:url" content="https://hawkynt.github.io/sz/Applications/Games/tactical-realms/index.html">
+<link rel="canonical" href="https://hawkynt.github.io/sz/Applications/Games/tactical-realms/index.html">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Tactical Realms",
+  "url": "https://hawkynt.github.io/sz/Applications/Games/tactical-realms/index.html",
+  "description": "Tactical RPG / dungeon-crawler with grid-based combat, procedural dungeons, and time-gated content rotation",
+  "applicationCategory": "GameApplication",
+  "operatingSystem": "Web Browser",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<title>Tactical Realms</title>
+<script src="../../sz-app-bootstrap.js"></script>
+<link rel="stylesheet" href="../../shared/menu.css">
+<link rel="stylesheet" href="../../shared/dialog.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<noscript><p>Tactical Realms -- A tactical RPG / dungeon-crawler. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a> to use this app.</p></noscript>
+
+<!-- Menu Bar -->
+<div class="menu-bar" id="menuBar">
+  <div class="menu-item" data-menu="game">Game
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="new">New Game</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="combat-history">Combat History</div>
+      <div class="menu-separator"></div>
+      <div class="menu-entry" data-action="exit">Exit</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="help">Help
+    <div class="menu-dropdown">
+      <div class="menu-entry" data-action="about">About Tactical Realms</div>
+    </div>
+  </div>
+</div>
+
+<!-- Game Area -->
+<div class="game-frame">
+  <div class="canvas-wrap" id="canvasWrap">
+    <canvas id="gameCanvas"></canvas>
+    <!-- Combat Log Panel — selectable/copyable HTML overlay -->
+    <div id="combatLogPanel" class="combat-log-panel" hidden>
+    <div class="combat-log-header">
+      <span>Combat Log</span>
+      <button id="combatLogCopy" type="button" title="Copy all to clipboard">&#x1F4CB;</button>
+    </div>
+    <pre id="combatLogText" class="combat-log-text"></pre>
+  </div>
+  </div><!-- /canvas-wrap -->
+</div>
+
+<!-- Status Bar -->
+<div class="status-bar">
+  <div class="status-cell" id="statusState">State: TITLE</div>
+  <div class="status-cell" id="statusPos">Pos: (0, 0)</div>
+  <button id="btnCombatHistory" class="status-btn" type="button" hidden>History</button>
+</div>
+
+<!-- Combat History Dialog -->
+<div class="dialog-overlay" id="dlg-combat-history" hidden>
+  <div class="dialog" style="width:80%;max-width:700px;max-height:80vh;display:flex;flex-direction:column">
+    <div class="dialog-title">Combat History</div>
+    <div class="dialog-body" style="flex:1;overflow-y:auto;padding:0">
+      <div id="combatHistoryList" style="font-family:monospace;font-size:12px;white-space:pre-wrap;padding:8px"></div>
+    </div>
+    <div class="dialog-buttons">
+      <button id="combatHistoryCopyAll" type="button">Copy All</button>
+      <button data-result="ok" type="button">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- About Dialog -->
+<div class="dialog-overlay" id="dlg-about" hidden>
+  <div class="dialog">
+    <div class="dialog-title">About Tactical Realms</div>
+    <div class="dialog-body">
+      <strong>Tactical Realms</strong><br><br>
+      A tactical RPG / dungeon-crawler inspired by Shining Force combat and the D&amp;D Forgotten Realms setting.<br><br>
+      Grid-based tactical battles, procedurally generated overworlds and dungeons, time-gated content rotation, and mouse-only play.<br><br>
+      Part of the &raquo;SynthelicZ&laquo; Desktop.
+    </div>
+    <div class="dialog-buttons">
+      <button data-result="ok" type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<div id="seo-content" style="position:absolute;left:-9999px;overflow:hidden;width:1px;height:1px">
+<h1>Tactical Realms - Tactical RPG / Dungeon Crawler</h1>
+<p>A grid-based tactical RPG with Shining Force-style combat, D&amp;D Forgotten Realms setting, procedurally generated dungeons, daily content rotation, and mouse-only play.</p>
+<h2>Features</h2>
+<ul>
+<li>Grid-based tactical combat with terrain bonuses and flanking</li>
+<li>Procedurally generated overworld and dungeon maps</li>
+<li>8 D&amp;D races and 8 classes with d20 mechanics</li>
+<li>Daily character roster rotation and seasonal content</li>
+<li>Encrypted save system with auto-save</li>
+<li>Mouse-only input for accessibility</li>
+</ul>
+</div>
+<script>document.getElementById('seo-content')?.remove();</script>
+
+<script src="../../shared/menu.js"></script>
+<script src="../../shared/dialog.js"></script>
+<!-- Core modules -->
+<script defer src="prng.js"></script>
+<script defer src="time-rotation.js"></script>
+<script defer src="state-machine.js"></script>
+<script defer src="save-crypto.js"></script>
+<script defer src="save-manager.js"></script>
+<script defer src="input-handler.js"></script>
+<script defer src="sprite-compositor.js"></script>
+<script defer src="renderer.js"></script>
+
+<!-- Shared enums (loaded before all data files) -->
+<script defer src="data/enums.js"></script>
+
+<!-- Data files: races & monsters -->
+<script defer src="data/races-core.js"></script>
+<script defer src="data/races-expanded.js"></script>
+<script defer src="data/races-psionic.js"></script>
+<script defer src="data/races-campaign.js"></script>
+<script defer src="data/monsters-aberrations.js"></script>
+<script defer src="data/monsters-animals.js"></script>
+<script defer src="data/monsters-constructs.js"></script>
+<script defer src="data/monsters-dragons.js"></script>
+<script defer src="data/monsters-elementals.js"></script>
+<script defer src="data/monsters-fey.js"></script>
+<script defer src="data/monsters-fiends.js"></script>
+<script defer src="data/monsters-giants.js"></script>
+<script defer src="data/monsters-humanoids.js"></script>
+<script defer src="data/monsters-magical-beasts.js"></script>
+<script defer src="data/monsters-oozes-plants.js"></script>
+<script defer src="data/monsters-undead.js"></script>
+<script defer src="data/monsters-misc.js"></script>
+<script defer src="creature-registry.js"></script>
+
+<!-- Data files: classes -->
+<script defer src="data/classes-core.js"></script>
+<script defer src="data/classes-complete.js"></script>
+<script defer src="data/classes-psionic.js"></script>
+<script defer src="data/classes-incarnum.js"></script>
+<script defer src="data/classes-tome.js"></script>
+<script defer src="data/classes-campaign.js"></script>
+<script defer src="data/prestige-core.js"></script>
+<script defer src="data/prestige-complete.js"></script>
+<script defer src="data/prestige-campaign.js"></script>
+<script defer src="data/prestige-supplements.js"></script>
+<script defer src="class-registry.js"></script>
+
+<!-- Data files: skills, feats, conditions -->
+<script defer src="data/skills.js"></script>
+<script defer src="data/conditions.js"></script>
+<script defer src="data/feats-general.js"></script>
+<script defer src="data/feats-combat.js"></script>
+<script defer src="data/feats-magic.js"></script>
+<script defer src="data/feats-class.js"></script>
+<script defer src="data/feats-racial.js"></script>
+<script defer src="skill-registry.js"></script>
+<script defer src="feat-registry.js"></script>
+
+<!-- Engine modules: bonus stacking, conditions, action economy -->
+<script defer src="bonus-stacking.js"></script>
+<script defer src="condition-engine.js"></script>
+<script defer src="action-economy.js"></script>
+
+<!-- Character & roster (depends on registries) -->
+<script defer src="character.js"></script>
+<script defer src="roster.js"></script>
+
+<!-- Data files: terrain, biomes, planes -->
+<script defer src="data/terrain-types.js"></script>
+<script defer src="data/biomes.js"></script>
+<script defer src="data/planes.js"></script>
+<script defer src="terrain-registry.js"></script>
+<script defer src="plane-registry.js"></script>
+<script defer src="portal.js"></script>
+<script defer src="data/spell-terrain-effects.js"></script>
+<script defer src="passability.js"></script>
+<script defer src="terrain.js"></script>
+
+<!-- Combat grid & pathfinding -->
+<script defer src="combat-grid.js"></script>
+<script defer src="pathfinding.js"></script>
+<script defer src="d20-engine.js"></script>
+<script defer src="combat-unit.js"></script>
+<script defer src="enemy-ai.js"></script>
+
+<!-- Data files: spells -->
+<script defer src="data/spells-0.js"></script>
+<script defer src="data/spells-1.js"></script>
+<script defer src="data/spells-2.js"></script>
+<script defer src="data/spells-3.js"></script>
+<script defer src="data/spells-4.js"></script>
+<script defer src="data/spells-5.js"></script>
+<script defer src="data/spells-6.js"></script>
+<script defer src="data/spells-7.js"></script>
+<script defer src="data/spells-8.js"></script>
+<script defer src="data/spells-9.js"></script>
+<script defer src="data/spells-psionic.js"></script>
+<script defer src="data/spells-campaign.js"></script>
+<script defer src="spell-registry.js"></script>
+<script defer src="spells.js"></script>
+
+<!-- Data files: items -->
+<script defer src="data/weapons-simple.js"></script>
+<script defer src="data/weapons-martial.js"></script>
+<script defer src="data/weapons-exotic.js"></script>
+<script defer src="data/armor.js"></script>
+<script defer src="data/items-mundane.js"></script>
+<script defer src="data/items-potions.js"></script>
+<script defer src="data/items-scrolls.js"></script>
+<script defer src="data/items-wondrous.js"></script>
+<script defer src="data/items-rings.js"></script>
+<script defer src="data/items-rods-staves.js"></script>
+<script defer src="data/items-artifacts.js"></script>
+<script defer src="data/items-materials.js"></script>
+<script defer src="data/item-enchantments.js"></script>
+<script defer src="item-registry.js"></script>
+<script defer src="items.js"></script>
+<script defer src="shop.js"></script>
+
+<!-- Data files: creature types, enemy/boss templates -->
+<script defer src="data/creature-types.js"></script>
+<script defer src="data/enemy-templates.js"></script>
+<script defer src="data/boss-templates.js"></script>
+
+<!-- Combat engine & game systems -->
+<script defer src="combat-history.js"></script>
+<script defer src="combat-engine.js"></script>
+<script defer src="asset-loader.js"></script>
+<script defer src="data/creature-sprites.js"></script>
+<script defer src="sprite-resolver.js"></script>
+<script defer src="autotile.js"></script>
+<script defer src="overworld-map.js"></script>
+<script defer src="dungeon-gen.js"></script>
+<script defer src="combat-ui.js"></script>
+<script defer src="debug-console.js"></script>
+<script defer src="controller.js"></script>
+</body>
+</html>

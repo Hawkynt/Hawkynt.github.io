@@ -1,0 +1,13 @@
+# Reference PDFs -- local only, not committed
+*.pdf
+
+# Book markdowns in subdirectories -- local only (converted from PDFs)
+core/*.md
+monsters/*.md
+classes/*.md
+forgotten-realms/*.md
+supplements/*.md
+eberron/*.md
+
+# Cleanup utility
+cleanup.js

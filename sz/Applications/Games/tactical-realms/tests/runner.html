@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Tactical Realms -- Test Runner</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Consolas', 'Courier New', monospace; background: #1e1e1e; color: #d4d4d4; padding: 20px; }
+  h1 { margin-bottom: 4px; font-size: 18px; color: #569cd6; }
+  h2 { margin-bottom: 16px; font-size: 13px; color: #808080; font-weight: normal; }
+  h3 { font-size: 14px; color: #dcdcaa; margin: 12px 0 4px; }
+  #test-summary { padding: 10px 14px; margin-bottom: 16px; border-radius: 4px; font-size: 14px; font-weight: bold; }
+  #test-summary.running { background: #2d2d2d; color: #cccccc; }
+  #test-summary.pass { background: #1b3a1b; color: #4ec94e; }
+  #test-summary.fail { background: #3a1b1b; color: #f44747; }
+  .suite { margin-bottom: 8px; }
+  .test { padding: 2px 8px; font-size: 13px; }
+  .test.pass { color: #4ec94e; }
+  .test.fail { color: #f44747; }
+  .test.skip { color: #cca700; }
+  .error-detail { margin: 2px 0 6px 24px; padding: 6px 10px; background: #2d1b1b; color: #f88; border-left: 3px solid #f44747; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+</style>
+</head>
+<body>
+
+<h1>Tactical Realms -- Test Runner</h1>
+<h2>Phase 1-3: Core Engine + Character System + Combat Engine Tests</h2>
+<div id="test-summary" class="running">Loading...</div>
+<div id="test-output"></div>
+
+<!-- Test framework -->
+<script src="runner.js"></script>
+
+<!-- Modules under test -->
+<script src="../prng.js"></script>
+<script src="../time-rotation.js"></script>
+<script src="../state-machine.js"></script>
+<script src="../save-crypto.js"></script>
+<script src="../save-manager.js"></script>
+<script src="../input-handler.js"></script>
+<script src="../sprite-compositor.js"></script>
+<script src="../renderer.js"></script>
+<script src="../character.js"></script>
+<script src="../roster.js"></script>
+<script src="../terrain.js"></script>
+<script src="../combat-grid.js"></script>
+<script src="../pathfinding.js"></script>
+<script src="../d20-engine.js"></script>
+<script src="../combat-unit.js"></script>
+<script src="../enemy-ai.js"></script>
+<script src="../spells.js"></script>
+<script src="../combat-engine.js"></script>
+<script src="../asset-loader.js"></script>
+<script src="../sprite-resolver.js"></script>
+<script src="../overworld-map.js"></script>
+
+<!-- Test suites -->
+<script src="test-prng.js"></script>
+<script src="test-time-rotation.js"></script>
+<script src="test-state-machine.js"></script>
+<script src="test-save-crypto.js"></script>
+<script src="test-save-manager.js"></script>
+<script src="test-input-handler.js"></script>
+<script src="test-renderer.js"></script>
+<script src="test-character.js"></script>
+<script src="test-roster.js"></script>
+<script src="test-terrain.js"></script>
+<script src="test-combat-grid.js"></script>
+<script src="test-pathfinding.js"></script>
+<script src="test-d20-engine.js"></script>
+<script src="test-combat-unit.js"></script>
+<script src="test-enemy-ai.js"></script>
+<script src="test-combat-engine.js"></script>
+<script src="test-spells.js"></script>
+<script src="test-overworld-map.js"></script>
+<script src="test-sprite-resolver.js"></script>
+<script src="test-sprite-compositor.js"></script>
+<script src="test-integration.js"></script>
+
+<!-- Run -->
+<script>
+  document.addEventListener('DOMContentLoaded', () => window.TestRunner.runAll());
+</script>
+
+</body>
+</html>

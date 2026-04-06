@@ -98,14 +98,8 @@
         assert.ok(TR.ENEMY_SPRITES[id], `missing sprite for ${id}`);
     });
 
-    it('all 23 Phase B new enemies have unique tint entries', () => {
-      const expected = [
-        'kobold', 'zombie', 'stirge', 'gnoll', 'bugbear', 'worg', 'lizardfolk', 'harpy',
-        'cockatrice', 'basilisk', 'wight', 'gargoyle', 'owlbear', 'manticore', 'phase_spider',
-        'hill_giant', 'mind_flayer', 'young_dragon', 'death_knight', 'fire_elemental',
-        'frost_giant', 'demon', 'devil',
-      ];
-      for (const id of expected)
+    it('all 42 enemies have tint entries', () => {
+      for (const id of Object.keys(TR.ENEMY_SPRITES))
         assert.ok(TR.ENEMY_TINTS[id], `missing tint for ${id}`);
     });
 
@@ -147,11 +141,10 @@
       assert.equal(TR.PLAYER_SPRITE.h, 16);
     });
 
-    it('ASSET_MANIFEST has dungeon, overworld, and kenney1bit entries', () => {
+    it('ASSET_MANIFEST has dungeon and overworld entries', () => {
       assert.ok(TR.ASSET_MANIFEST);
       assert.ok(TR.ASSET_MANIFEST.dungeon);
       assert.ok(TR.ASSET_MANIFEST.overworld);
-      assert.ok(TR.ASSET_MANIFEST.kenney1bit);
     });
   });
 
@@ -162,10 +155,10 @@
       assert.ok(Object.isFrozen(TR.ENEMY_TINTS));
     });
 
-    it('ENEMY_TINTS has entries for all duplicate-sprite enemies', () => {
-      const expected = ['dire_wolf', 'vampire_spawn', 'lich', 'hobgoblin', 'minotaur', 'ghoul', 'wyvern', 'dragon_wyrmling'];
-      for (const id of expected)
+    it('ENEMY_TINTS has entries for all 42 enemies', () => {
+      for (const id of Object.keys(TR.ENEMY_SPRITES))
         assert.ok(TR.ENEMY_TINTS[id], `missing tint for ${id}`);
+      assert.equal(Object.keys(TR.ENEMY_TINTS).length, 42);
     });
 
     it('all ENEMY_TINTS values are rgba strings', () => {
@@ -250,43 +243,33 @@
     });
   });
 
-  describe('AssetLoader — Kenney 1-Bit Constants', () => {
-
-    it('K1B_COLS equals 49', () => {
-      assert.equal(TR.K1B_COLS, 49);
-    });
-
-    it('K1B_MARGIN equals 0', () => {
-      assert.equal(TR.K1B_MARGIN, 0);
-    });
-  });
 
   describe('AssetLoader — Sprite Sheet Margin Correctness', () => {
 
-    it('dungeon sprites use zero margin (192px / 12 cols = 16px per tile)', () => {
+    it('dungeon sprites use 1px margin (203px = 12x16 + 11x1, step=17)', () => {
       const fighter = TR.PARTY_SPRITES.fighter;
       assert.equal(fighter.w, 16);
-      assert.equal(fighter.x % 16, 0, 'fighter x should be 16px-aligned');
-      assert.equal(fighter.y % 16, 0, 'fighter y should be 16px-aligned');
+      assert.equal(fighter.x % 17, 0, 'fighter x should be 17px-aligned');
+      assert.equal(fighter.y % 17, 0, 'fighter y should be 17px-aligned');
     });
 
-    it('kenney1bit sprites use zero margin (784px / 49 cols = 16px per tile)', () => {
+    it('enemy sprites use dungeon sheet 1px margin (17px-aligned)', () => {
       const goblin = TR.ENEMY_SPRITES.goblin;
       assert.equal(goblin.w, 16);
-      assert.equal(goblin.x % 16, 0, 'goblin x should be 16px-aligned');
-      assert.equal(goblin.y % 16, 0, 'goblin y should be 16px-aligned');
+      assert.equal(goblin.x % 17, 0, 'goblin x should be 17px-aligned');
+      assert.equal(goblin.y % 17, 0, 'goblin y should be 17px-aligned');
     });
 
-    it('dungeon sprite fighter at index 88 maps to col=4 row=7 at (64,112)', () => {
+    it('dungeon sprite fighter at index 88 maps to col=4 row=7 at (68,119)', () => {
       const f = TR.PARTY_SPRITES.fighter;
-      assert.equal(f.x, 64);
-      assert.equal(f.y, 112);
+      assert.equal(f.x, 68);
+      assert.equal(f.y, 119);
     });
 
-    it('kenney1bit goblin at index 37 maps to col=37 row=0 at (592,0)', () => {
+    it('dungeon goblin at index 86 maps to col=2 row=7 at (34,119)', () => {
       const g = TR.ENEMY_SPRITES.goblin;
-      assert.equal(g.x, 592);
-      assert.equal(g.y, 0);
+      assert.equal(g.x, 34);
+      assert.equal(g.y, 119);
     });
 
     it('overworld sprites use 1px margin (968px = 57×16 + 56×1)', () => {
@@ -296,24 +279,24 @@
       assert.ok(forest.x >= 0 && forest.y >= 0);
     });
 
-    it('all dungeon party sprites fit within 192×176 sheet bounds', () => {
+    it('all dungeon party sprites fit within 203×186 sheet bounds', () => {
       for (const [id, rect] of Object.entries(TR.PARTY_SPRITES)) {
-        assert.ok(rect.x + rect.w <= 192, `${id} x+w exceeds 192px dungeon width`);
-        assert.ok(rect.y + rect.h <= 176, `${id} y+h exceeds 176px dungeon height`);
+        assert.ok(rect.x + rect.w <= 203, `${id} x+w exceeds 203px dungeon width`);
+        assert.ok(rect.y + rect.h <= 186, `${id} y+h exceeds 186px dungeon height`);
       }
     });
 
-    it('all kenney1bit enemy sprites fit within 784×352 sheet bounds', () => {
+    it('all enemy sprites fit within 203×186 dungeon sheet bounds', () => {
       for (const [id, rect] of Object.entries(TR.ENEMY_SPRITES)) {
-        assert.ok(rect.x + rect.w <= 784, `${id} x+w exceeds 784px k1b width`);
-        assert.ok(rect.y + rect.h <= 352, `${id} y+h exceeds 352px k1b height`);
+        assert.ok(rect.x + rect.w <= 203, `${id} x+w exceeds 203px dungeon width`);
+        assert.ok(rect.y + rect.h <= 186, `${id} y+h exceeds 186px dungeon height`);
       }
     });
 
-    it('all dungeon combat terrain sprites fit within 192×176 sheet bounds', () => {
+    it('all dungeon combat terrain sprites fit within 203×186 sheet bounds', () => {
       for (const [id, rect] of Object.entries(TR.COMBAT_TERRAIN_SPRITES)) {
-        assert.ok(rect.x + rect.w <= 192, `${id} x+w exceeds 192px dungeon width`);
-        assert.ok(rect.y + rect.h <= 176, `${id} y+h exceeds 176px dungeon height`);
+        assert.ok(rect.x + rect.w <= 203, `${id} x+w exceeds 203px dungeon width`);
+        assert.ok(rect.y + rect.h <= 186, `${id} y+h exceeds 186px dungeon height`);
       }
     });
 
@@ -332,27 +315,33 @@
         }
     });
 
-    it('all dungeon item sprites fit within 192×176 sheet bounds', () => {
+    it('all dungeon item sprites fit within 203×186 sheet bounds', () => {
       for (const [id, rect] of Object.entries(TR.ITEM_SPRITES)) {
-        assert.ok(rect.x + rect.w <= 192, `${id} x+w exceeds 192px dungeon width`);
-        assert.ok(rect.y + rect.h <= 176, `${id} y+h exceeds 176px dungeon height`);
+        assert.ok(rect.x + rect.w <= 203, `${id} x+w exceeds 203px dungeon width`);
+        assert.ok(rect.y + rect.h <= 186, `${id} y+h exceeds 186px dungeon height`);
       }
     });
   });
 
-  describe('AssetLoader — Multi-Sheet Enemy Sprites', () => {
+  describe('AssetLoader — Enemy Sprite Archetypes', () => {
 
-    it('all 42 enemy sprites have sheet property set to kenney1bit', () => {
+    it('enemy sprites use dungeon sheet (no sheet property)', () => {
       for (const [id, rect] of Object.entries(TR.ENEMY_SPRITES))
-        assert.equal(rect.sheet, 'kenney1bit', `${id} should use kenney1bit sheet`);
+        assert.equal(rect.sheet, undefined, `${id} should not have a sheet property`);
     });
 
-    it('all 42 enemy sprites have unique tile indices', () => {
-      const seen = new Map();
+    it('enemies sharing an archetype sprite are differentiated by tints', () => {
+      const byPosition = new Map();
       for (const [id, rect] of Object.entries(TR.ENEMY_SPRITES)) {
         const key = `${rect.x},${rect.y}`;
-        assert.ok(!seen.has(key), `${id} shares tile position ${key} with ${seen.get(key)}`);
-        seen.set(key, id);
+        if (!byPosition.has(key))
+          byPosition.set(key, []);
+        byPosition.get(key).push(id);
+      }
+      for (const [key, ids] of byPosition) {
+        if (ids.length > 1)
+          for (const id of ids)
+            assert.ok(TR.ENEMY_TINTS[id], `${id} shares archetype ${key} but has no tint`);
       }
     });
 
@@ -369,8 +358,8 @@
       assert.ok(Object.isFrozen(TR.SHEET_REGISTRY));
     });
 
-    it('has all 3 existing sheet entries', () => {
-      const ids = ['dungeon', 'overworld', 'kenney1bit'];
+    it('has all 2 existing sheet entries', () => {
+      const ids = ['dungeon', 'overworld'];
       for (const id of ids)
         assert.ok(TR.SHEET_REGISTRY[id], `missing sheet ${id}`);
     });
@@ -384,10 +373,10 @@
       }
     });
 
-    it('dungeon metadata is 16px/0/12', () => {
+    it('dungeon metadata is 16px/1/12', () => {
       const d = TR.SHEET_REGISTRY.dungeon;
       assert.equal(d.tileSize, 16);
-      assert.equal(d.margin, 0);
+      assert.equal(d.margin, 1);
       assert.equal(d.cols, 12);
     });
 
@@ -396,13 +385,6 @@
       assert.equal(o.tileSize, 16);
       assert.equal(o.margin, 1);
       assert.equal(o.cols, 57);
-    });
-
-    it('kenney1bit metadata is 16px/0/49', () => {
-      const k = TR.SHEET_REGISTRY.kenney1bit;
-      assert.equal(k.tileSize, 16);
-      assert.equal(k.margin, 0);
-      assert.equal(k.cols, 49);
     });
 
     it('each entry is frozen', () => {
@@ -425,15 +407,6 @@
       assert.equal(rect.w, 16);
       assert.equal(rect.h, 16);
       assert.equal(rect.sheet, 'dungeon');
-    });
-
-    it('returns correct rect for kenney1bit index 37', () => {
-      const rect = TR.sheetRect(37, 'kenney1bit');
-      assert.equal(rect.x, 592);
-      assert.equal(rect.y, 0);
-      assert.equal(rect.w, 16);
-      assert.equal(rect.h, 16);
-      assert.equal(rect.sheet, 'kenney1bit');
     });
 
     it('returns correct rect for overworld index 57 (second row)', () => {

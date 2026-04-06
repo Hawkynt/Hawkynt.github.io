@@ -1,0 +1,227 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  background: var(--sz-color-app-workspace, #2b2b3a);
+  overflow: hidden;
+  font-family: var(--sz-font-family, Tahoma, Verdana, sans-serif);
+  font-size: var(--sz-font-size, 12px);
+  display: flex;
+  flex-direction: column;
+}
+
+.game-frame {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  background: #000;
+}
+
+/* Inner wrapper to anchor canvas + floating combat HUD together */
+.game-frame .canvas-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+#gameCanvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  cursor: default;
+}
+
+.status-bar {
+  display: flex;
+  gap: 1px;
+  padding: 2px 4px;
+  background: var(--sz-color-button-face, #d4d0c8);
+  border-top: 1px solid var(--sz-color-button-shadow, #808080);
+  color: var(--sz-color-button-text, #000);
+  font-size: 11px;
+  min-height: 20px;
+}
+
+.status-bar .status-cell {
+  flex: 1;
+  padding: 1px 6px;
+  border: 1px inset var(--sz-color-button-face, #d4d0c8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-bar .status-cell:first-child { flex: 2; }
+
+.status-bar .status-btn {
+  padding: 0 8px;
+  font-size: 11px;
+  cursor: pointer;
+  background: var(--sz-color-button-face, #d4d0c8);
+  border: 1px outset var(--sz-color-button-face, #d4d0c8);
+  color: var(--sz-color-button-text, #000);
+}
+.status-bar .status-btn:hover { background: var(--sz-color-button-highlight, #e0dcd0); }
+
+/* === Floating Window System (combat HUD overlays) === */
+.fwin[hidden] { display: none !important; }
+.fwin {
+  position: absolute;
+  z-index: 20;
+  background: rgba(10, 12, 18, 0.85);
+  border: 1px solid #555;
+  border-radius: 3px;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  font-family: monospace;
+  font-size: 12px;
+  color: #bbb;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+}
+.fwin-titlebar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 8px;
+  background: rgba(30, 35, 50, 0.95);
+  border-bottom: 1px solid #444;
+  color: #aaa;
+  font-size: 11px;
+  cursor: move;
+  flex-shrink: 0;
+  user-select: none;
+}
+.fwin-btns { display: flex; gap: 2px; }
+.fwin-btns button {
+  padding: 0 5px;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  color: #888;
+  border-radius: 2px;
+}
+.fwin-btns button:hover { background: #444; color: #fff; border-color: #555; }
+.fwin-body {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+.fwin-body pre {
+  margin: 0;
+  padding: 4px 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+  cursor: text;
+  color: #bbb;
+  font-size: 11px;
+  line-height: 1.35;
+}
+.fwin-body pre::selection { background: #448; }
+.fwin-resize-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 12px;
+  height: 12px;
+  cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 50%, #555 50%);
+  border-radius: 0 0 3px 0;
+}
+.fwin-resize-handle[hidden] { display: none; }
+
+/* --- Action bar (horizontal buttons) --- */
+.fwin-actions {
+  background: rgba(10, 12, 18, 0.75);
+  border-radius: 4px;
+  padding: 4px;
+}
+.fwin-action-row {
+  display: flex;
+  gap: 4px;
+}
+.fwin-action-btn {
+  padding: 6px 14px;
+  font-family: monospace;
+  font-size: 12px;
+  cursor: pointer;
+  background: rgba(40, 50, 70, 0.9);
+  border: 1px solid #666;
+  color: #ddd;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+.fwin-action-btn:hover:not(.disabled) { background: rgba(60, 75, 100, 0.95); color: #fff; border-color: #888; }
+.fwin-action-btn.disabled { opacity: 0.4; cursor: default; }
+
+/* --- Active character overlay (top center) --- */
+.fwin-active-char {
+  background: rgba(10, 12, 18, 0.8);
+  border-radius: 4px;
+  padding: 4px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.fwin-ac-stat { color: #aaa; font-size: 11px; }
+.fwin-ac-hpbar {
+  width: 60px;
+  height: 5px;
+  background: #300;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.fwin-ac-hpbar div { height: 100%; border-radius: 2px; transition: width 0.2s; }
+
+/* --- Initiative bar (bottom horizontal) --- */
+.combat-init-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 32px;
+  background: rgba(10, 12, 18, 0.85);
+  border-top: 1px solid #444;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  z-index: 15;
+}
+.combat-init-bar[hidden] { display: none !important; }
+.init-unit {
+  padding: 2px 6px;
+  font-size: 11px;
+  font-family: monospace;
+  border-radius: 2px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.init-party { background: rgba(60, 100, 180, 0.4); color: #6af; }
+.init-enemy { background: rgba(180, 60, 60, 0.4); color: #f88; }
+.init-dead { background: rgba(40, 40, 40, 0.4); color: #555; text-decoration: line-through; }
+.init-active { outline: 2px solid #ffd700; font-weight: bold; }
+.init-sep {
+  padding: 2px 8px;
+  font-size: 10px;
+  color: #666;
+  border-left: 1px solid #444;
+  border-right: 1px solid #444;
+  flex-shrink: 0;
+}
+
+/* --- Legacy combat log panel (kept for non-combat history dialog) --- */
+.combat-log-panel[hidden] { display: none !important; }
