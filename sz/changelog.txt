@@ -1,3 +1,7 @@
+Main: 6.26
+by Hawkynt 15.03.2026
++ Tactical Realms: PRD and game folder (Shining Force-style tactical RPG with D&D Forgotten Realms setting, paper-doll sprites, procedural dungeons/overworld, time-gated content rotation, 40+ enemy bestiary, companion creatures, holiday events, entitlement system stub)
+
 Main: 6.25
 by Hawkynt 14.03.2026
 - Dome Keeper: removed ore text labels from underground tiles (replaced with resource-type emoji icons)

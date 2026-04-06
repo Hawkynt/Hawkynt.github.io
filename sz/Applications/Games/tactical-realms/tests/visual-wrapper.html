@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html><head><title>Visual Test Wrapper</title></head>
+<body style="margin:0;padding:0;overflow:hidden">
+<iframe id="game" src="/Applications/Games/tactical-realms/index.html" style="width:1300px;height:780px;border:none"></iframe>
+<script>
+// Respond to theme requests from the game iframe so it doesn't hang
+window.addEventListener('message', e => {
+  if (e.data && e.data.type === 'sz:getTheme')
+    e.source.postMessage({ type: 'sz:themeCSS', css: '' }, '*');
+});
+</script>
+</body>
+</html>

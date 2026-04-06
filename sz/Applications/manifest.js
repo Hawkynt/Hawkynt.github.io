@@ -1002,6 +1002,20 @@
         singleton: false,
         category: 'Office',
         fileTypes: ['pptx']
+      },
+      {
+        id: 'tactical-realms',
+        title: 'Tactical Realms',
+        icon: 'Games/tactical-realms/icon.svg',
+        type: 'iframe',
+        entry: 'Games/tactical-realms/index.html',
+        width: 940,
+        height: 700,
+        resizable: true,
+        minimizable: true,
+        maximizable: true,
+        singleton: true,
+        category: 'Games'
       }
     ]
   };
