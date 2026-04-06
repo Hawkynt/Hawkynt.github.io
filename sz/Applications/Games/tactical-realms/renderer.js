@@ -17,10 +17,7 @@
     #tileSize;
     #camera;
     #assets;
-    #tintCache;
-    #tintStage;
-    #tintStageCtx;
-    #corsBlocked;
+    #compositor;
 
     constructor(canvas, { width, height, tileSize } = {}) {
       this.#width = width || DEFAULT_WIDTH;
@@ -28,10 +25,7 @@
       this.#tileSize = tileSize || DEFAULT_TILE_SIZE;
       this.#camera = { x: 0, y: 0 };
       this.#assets = null;
-      this.#tintCache = new Map();
-      this.#tintStage = null;
-      this.#tintStageCtx = null;
-      this.#corsBlocked = false;
+      this.#compositor = new TR.SpriteCompositor(1024);
 
       if (canvas) {
         this.#canvas = canvas;
@@ -63,65 +57,37 @@
     get assets() { return this.#assets; }
     get bufCtx() { return this.#bufCtx; }
 
-    #ensureTintStage(size) {
-      if (this.#tintStage && this.#tintStage.width >= size && this.#tintStage.height >= size)
-        return;
-      if (typeof OffscreenCanvas !== 'undefined')
-        this.#tintStage = new OffscreenCanvas(size, size);
-      else {
-        this.#tintStage = document.createElement('canvas');
-        this.#tintStage.width = size;
-        this.#tintStage.height = size;
-      }
-      this.#tintStageCtx = this.#tintStage.getContext('2d');
-    }
+    get compositor() { return this.#compositor; }
 
     #drawTintedSprite(ctx, img, rect, dx, dy, destSize, tint) {
-      const cacheKey = `${rect.sheet||'dungeon'},${rect.x},${rect.y},${rect.w},${rect.h},${destSize},${tint}`;
-      const cached = this.#tintCache.get(cacheKey);
-      if (cached) {
-        ctx.drawImage(cached, dx, dy);
-        return;
-      }
+      this.#compositor.drawComposite(ctx, [{ img, rect, tint }], destSize, dx, dy);
+    }
 
-      if (!this.#corsBlocked) {
-        try {
-          this.#ensureTintStage(destSize);
-          const stage = this.#tintStageCtx;
-          stage.clearRect(0, 0, destSize, destSize);
-          stage.imageSmoothingEnabled = false;
-          stage.drawImage(img, rect.x, rect.y, rect.w, rect.h, 0, 0, destSize, destSize);
-          stage.globalCompositeOperation = 'source-atop';
-          stage.fillStyle = tint;
-          stage.fillRect(0, 0, destSize, destSize);
-          stage.globalCompositeOperation = 'source-over';
-
-          if (typeof OffscreenCanvas !== 'undefined') {
-            const cache = new OffscreenCanvas(destSize, destSize);
-            cache.getContext('2d').drawImage(this.#tintStage, 0, 0);
-            this.#tintCache.set(cacheKey, cache);
-          } else {
-            const cache = document.createElement('canvas');
-            cache.width = destSize;
-            cache.height = destSize;
-            cache.getContext('2d').drawImage(this.#tintStage, 0, 0);
-            this.#tintCache.set(cacheKey, cache);
-          }
-
-          ctx.drawImage(this.#tintStage, 0, 0, destSize, destSize, dx, dy, destSize, destSize);
-          return;
-        } catch (_) {
-          this.#corsBlocked = true;
-        }
-      }
-
+    #drawCreatureSprite(ctx, creatureId, category, dx, dy, destSize, animType, direction, frame) {
+      const resolver = TR.spriteResolver;
+      if (!resolver)
+        return false;
+      const sprite = resolver.resolve(creatureId, category,
+        animType || 'stand', direction || 'down', frame || 0);
+      if (!sprite)
+        return false;
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, dx, dy, destSize, destSize);
-      ctx.save();
-      ctx.globalCompositeOperation = 'source-atop';
-      ctx.fillStyle = tint;
-      ctx.fillRect(dx, dy, destSize, destSize);
-      ctx.restore();
+      if (sprite.flip) {
+        ctx.save();
+        ctx.translate(dx + destSize, dy);
+        ctx.scale(-1, 1);
+        dx = 0; dy = 0;
+      }
+      if (sprite.tint)
+        this.#drawTintedSprite(ctx, sprite.img,
+          { x: sprite.srcX, y: sprite.srcY, w: sprite.srcW, h: sprite.srcH },
+          dx, dy, destSize, sprite.tint);
+      else
+        ctx.drawImage(sprite.img, sprite.srcX, sprite.srcY, sprite.srcW, sprite.srcH,
+          dx, dy, destSize, destSize);
+      if (sprite.flip)
+        ctx.restore();
+      return true;
     }
 
     get camera() {
@@ -193,8 +159,6 @@
           const sy = r * ts - cy;
           ctx.fillStyle = this.#tileColor(tile);
           ctx.fillRect(sx, sy, ts, ts);
-          ctx.strokeStyle = 'rgba(0,0,0,0.15)';
-          ctx.strokeRect(sx, sy, ts, ts);
         }
       }
     }
@@ -222,8 +186,12 @@
 
       const TILE_NAMES = ['VOID', 'GRASS', 'FOREST', 'MOUNTAIN', 'DUNGEON', 'TOWN', 'ROAD', 'CAMP', 'WATER', 'SAND'];
 
+      // Tiles that need a GRASS base layer drawn underneath (overlay-on-grass)
+      const NEEDS_BASE = { 2: true, 3: true, 4: true, 5: true, 7: true };
+
       const computeBitmask = TR.computeBitmask;
       const getAutotileRect = TR.getAutotileRect;
+      const getAutotileSheet = TR.getAutotileSheet;
 
       ctx.imageSmoothingEnabled = false;
       for (let r = startRow; r <= endRow; ++r)
@@ -233,15 +201,27 @@
           const sy = r * ts - cy;
           let drawn = false;
           if (sheetImg && tile > 0 && tile < TILE_NAMES.length) {
+            // Draw grass base layer for overlay tiles (forest, mountain, etc.)
+            if (NEEDS_BASE[tile] && spriteMap) {
+              const baseRect = spriteMap.GRASS;
+              if (baseRect)
+                ctx.drawImage(sheetImg, baseRect.x, baseRect.y, baseRect.w, baseRect.h, sx, sy, ts, ts);
+            }
             let rect = null;
+            let srcImg = sheetImg;
             if (computeBitmask && getAutotileRect) {
               const mask = computeBitmask(c, r, tileGetter, tile);
               rect = getAutotileRect(tile, mask);
+              if (rect && getAutotileSheet) {
+                const genSheet = getAutotileSheet(tile);
+                if (genSheet)
+                  srcImg = genSheet;
+              }
             }
             if (!rect && spriteMap)
               rect = spriteMap[TILE_NAMES[tile]];
             if (rect) {
-              ctx.drawImage(sheetImg, rect.x, rect.y, rect.w, rect.h, sx, sy, ts, ts);
+              ctx.drawImage(srcImg, rect.x, rect.y, rect.w, rect.h, sx, sy, ts, ts);
               drawn = true;
             }
           }
@@ -249,8 +229,6 @@
             ctx.fillStyle = this.#tileColor(tile);
             ctx.fillRect(sx, sy, ts, ts);
           }
-          ctx.strokeStyle = 'rgba(0,0,0,0.12)';
-          ctx.strokeRect(sx, sy, ts, ts);
         }
     }
 
@@ -402,15 +380,13 @@
 
       const assets = this.#assets;
       const classId = character.class;
-      const rect = classId ? TR.resolveSprite(classId, 'party') : null;
-      const portraitSheet = (rect && rect.sheet) || 'dungeon';
-      if (assets && assets.ready && assets.has(portraitSheet) && rect) {
-        const img = assets.get(portraitSheet);
-        const portraitSize = 48;
-        const px = cx - portraitSize / 2;
-        const py = cy;
-        ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, px, py, portraitSize, portraitSize);
+      const portraitSize = 48;
+      const px = cx - portraitSize / 2;
+      const py = cy;
+      let portraitDrawn = false;
+      if (assets && assets.ready)
+        portraitDrawn = this.#drawCreatureSprite(ctx, classId, 'party', px, py, portraitSize);
+      if (portraitDrawn) {
         ctx.strokeStyle = borderColor;
         ctx.strokeRect(px, py, portraitSize, portraitSize);
         cy += portraitSize + 6;
@@ -510,29 +486,49 @@
           const sx = offsetX + c * tileSize;
           const sy = offsetY + r * tileSize;
           let drawn = false;
+
           if (t) {
-            const rect = TR.resolveSprite ? TR.resolveSprite(t.id, 'combat_terrain') : (TR.COMBAT_TERRAIN_SPRITES && TR.COMBAT_TERRAIN_SPRITES[t.id]);
-            if (rect) {
-              const rSheet = (rect.sheet) || 'dungeon';
-              const useSheet = rSheet === sheetId ? sheetImg : (assets && assets.has(rSheet) ? assets.get(rSheet) : null);
-              if (useSheet) {
-                ctx.drawImage(useSheet, rect.x, rect.y, rect.w, rect.h, sx, sy, tileSize, tileSize);
-                drawn = true;
-              } else if (sheetImg) {
-                ctx.drawImage(sheetImg, rect.x, rect.y, rect.w, rect.h, sx, sy, tileSize, tileSize);
-                drawn = true;
-              } else if (dungeonImg) {
-                ctx.drawImage(dungeonImg, rect.x, rect.y, rect.w, rect.h, sx, sy, tileSize, tileSize);
+            const terrainLayers = TR.TERRAIN_LAYERS && TR.TERRAIN_LAYERS[t.id];
+            if (terrainLayers) {
+              const layers = [];
+              for (const def of terrainLayers) {
+                const rect = TR.resolveSprite ? TR.resolveSprite(def.sprite, 'combat_terrain') : null;
+                if (!rect)
+                  continue;
+                const lSheet = rect.sheet || 'dungeon';
+                const img = assets && assets.has(lSheet) ? assets.get(lSheet) : null;
+                if (img)
+                  layers.push({ img, rect, tint: def.tint || null });
+              }
+              if (layers.length > 0) {
+                this.#compositor.drawComposite(ctx, layers, tileSize, sx, sy);
                 drawn = true;
               }
             }
+
+            if (!drawn) {
+              const rect = TR.resolveSprite ? TR.resolveSprite(t.id, 'combat_terrain') : (TR.COMBAT_TERRAIN_SPRITES && TR.COMBAT_TERRAIN_SPRITES[t.id]);
+              if (rect) {
+                const rSheet = (rect.sheet) || 'dungeon';
+                const useSheet = rSheet === sheetId ? sheetImg : (assets && assets.has(rSheet) ? assets.get(rSheet) : null);
+                if (useSheet) {
+                  ctx.drawImage(useSheet, rect.x, rect.y, rect.w, rect.h, sx, sy, tileSize, tileSize);
+                  drawn = true;
+                } else if (sheetImg) {
+                  ctx.drawImage(sheetImg, rect.x, rect.y, rect.w, rect.h, sx, sy, tileSize, tileSize);
+                  drawn = true;
+                } else if (dungeonImg) {
+                  ctx.drawImage(dungeonImg, rect.x, rect.y, rect.w, rect.h, sx, sy, tileSize, tileSize);
+                  drawn = true;
+                }
+              }
+            }
           }
+
           if (!drawn) {
             ctx.fillStyle = t ? t.color : '#333';
             ctx.fillRect(sx, sy, tileSize, tileSize);
           }
-          ctx.strokeStyle = 'rgba(0,0,0,0.25)';
-          ctx.strokeRect(sx, sy, tileSize, tileSize);
         }
     }
 
@@ -555,27 +551,12 @@
         ctx.lineWidth = 1;
       }
 
-      const TR = (window.SZ && window.SZ.TacticalRealms) || {};
-      const assets = this.#assets;
       let spriteDrawn = false;
 
-      if (assets && assets.ready && !dead) {
-        const category = unit.faction === 'party' ? 'party' : 'enemy';
+      if (!dead) {
         const classId = unit.character ? unit.character.class : null;
-        const rect = classId ? TR.resolveSprite(classId, category) : null;
-        const sheetId = (rect && rect.sheet) || 'dungeon';
-        const img = assets.has(sheetId) ? assets.get(sheetId) : null;
-        if (img && rect) {
-          const tintMap = unit.faction === 'party' ? TR.PARTY_TINTS : TR.ENEMY_TINTS;
-          const tint = tintMap && classId ? tintMap[classId] : null;
-          const spriteW = tileSize - 4;
-          ctx.imageSmoothingEnabled = false;
-          if (tint)
-            this.#drawTintedSprite(ctx, img, rect, dx + 2, dy + 2, spriteW, tint);
-          else
-            ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, dx + 2, dy + 2, spriteW, spriteW);
-          spriteDrawn = true;
-        }
+        const category = unit.faction === 'party' ? 'party' : 'enemy';
+        spriteDrawn = this.#drawCreatureSprite(ctx, classId, category, dx + 2, dy + 2, tileSize - 4);
       }
 
       if (!spriteDrawn) {
@@ -637,28 +618,9 @@
         ctx.lineWidth = 1;
       }
 
-      const TR = (window.SZ && window.SZ.TacticalRealms) || {};
-      const assets = this.#assets;
-      let spriteDrawn = false;
-
-      if (assets && assets.ready) {
-        const category = unit.faction === 'party' ? 'party' : 'enemy';
-        const classId = unit.character ? unit.character.class : null;
-        const rect = classId ? TR.resolveSprite(classId, category) : null;
-        const sheetId = (rect && rect.sheet) || 'dungeon';
-        const img = assets.has(sheetId) ? assets.get(sheetId) : null;
-        if (img && rect) {
-          const tintMap = unit.faction === 'party' ? TR.PARTY_TINTS : TR.ENEMY_TINTS;
-          const tint = tintMap && classId ? tintMap[classId] : null;
-          const spriteW = tileSize - 4;
-          ctx.imageSmoothingEnabled = false;
-          if (tint)
-            this.#drawTintedSprite(ctx, img, rect, dx + 2, dy + 2, spriteW, tint);
-          else
-            ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, dx + 2, dy + 2, spriteW, spriteW);
-          spriteDrawn = true;
-        }
-      }
+      const classId = unit.character ? unit.character.class : null;
+      const category = unit.faction === 'party' ? 'party' : 'enemy';
+      let spriteDrawn = this.#drawCreatureSprite(ctx, classId, category, dx + 2, dy + 2, tileSize - 4);
 
       if (!spriteDrawn) {
         ctx.fillStyle = unit.faction === 'party' ? '#4488cc' : '#cc4444';
@@ -854,6 +816,8 @@
         return;
       const ctx = this.#bufCtx;
       ctx.font = '13px monospace';
+      ctx.textBaseline = 'alphabetic';
+      ctx.textAlign = 'left';
       const lineH = 18;
       const pad = 8;
       let maxW = 0;
@@ -893,6 +857,8 @@
       ctx.strokeRect(mx, my, menuW, h);
 
       ctx.font = '13px monospace';
+      ctx.textBaseline = 'alphabetic';
+      ctx.textAlign = 'left';
       for (let i = 0; i < items.length; ++i) {
         const iy = my + padY + i * itemH;
         if (i === hoverIndex) {
@@ -1223,27 +1189,10 @@
       const atkX = -spriteSize + slide * (w * 0.22 + spriteSize);
       const defX = w - slide * (w * 0.22);
 
-      const TR = (window.SZ && window.SZ.TacticalRealms) || {};
-      const assets = this.#assets;
       const drawCharSprite = (unit, cx, cy, tint) => {
-        let drawn = false;
-        if (assets && assets.ready) {
-          const category = unit.faction === 'party' ? 'party' : 'enemy';
-          const classId = unit.character ? unit.character.class : null;
-          const rect = classId ? TR.resolveSprite(classId, category) : null;
-          const sheetId = (rect && rect.sheet) || 'dungeon';
-          const img = assets.has(sheetId) ? assets.get(sheetId) : null;
-          if (img && rect) {
-            const tintMap = unit.faction === 'party' ? TR.PARTY_TINTS : TR.ENEMY_TINTS;
-            const spriteTint = tintMap && classId ? tintMap[classId] : null;
-            ctx.imageSmoothingEnabled = false;
-            if (spriteTint)
-              this.#drawTintedSprite(ctx, img, rect, cx, cy, spriteSize, spriteTint);
-            else
-              ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, cx, cy, spriteSize, spriteSize);
-            drawn = true;
-          }
-        }
+        const classId = unit.character ? unit.character.class : null;
+        const category = unit.faction === 'party' ? 'party' : 'enemy';
+        const drawn = this.#drawCreatureSprite(ctx, classId, category, cx, cy, spriteSize);
         if (!drawn) {
           ctx.fillStyle = tint;
           ctx.beginPath();
@@ -1390,7 +1339,7 @@
       const ctx = this.#bufCtx;
       const w = this.#width;
       const h = this.#height;
-      const p = Math.min(1, Math.max(0, progress));
+      const p = Math.max(0, progress);
 
       const grad = ctx.createLinearGradient(0, 0, 0, h);
       grad.addColorStop(0, '#0a0a1e');
@@ -1483,22 +1432,15 @@
       ctx.fillText('VICTORY', midX, 120);
       ctx.restore();
 
-      const TR = (window.SZ && window.SZ.TacticalRealms) || {};
-      const assets = this.#assets;
-      if (party && party.length > 0 && assets && assets.ready) {
+      if (party && party.length > 0) {
         const spriteSize = 48;
         const totalW = party.length * spriteSize + (party.length - 1) * 12;
         const startX = midX - totalW / 2;
-        ctx.imageSmoothingEnabled = false;
         for (let i = 0; i < party.length; ++i) {
           const classId = party[i].class;
-          const rect = classId && TR.resolveSprite ? TR.resolveSprite(classId, 'party') : null;
-          const victorySheet = (rect && rect.sheet) || 'dungeon';
-          const img = assets.has(victorySheet) ? assets.get(victorySheet) : null;
           const dx = startX + i * (spriteSize + 12);
-          if (rect && img)
-            ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, dx, 150, spriteSize, spriteSize);
-          else {
+          const drawn = this.#drawCreatureSprite(ctx, classId, 'party', dx, 150, spriteSize);
+          if (!drawn) {
             ctx.fillStyle = '#4488cc';
             ctx.beginPath();
             ctx.arc(dx + spriteSize / 2, 150 + spriteSize / 2, spriteSize * 0.4, 0, Math.PI * 2);

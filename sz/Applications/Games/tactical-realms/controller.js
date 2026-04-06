@@ -3,7 +3,7 @@
   const SZ = window.SZ || (window.SZ = {});
   const TR = SZ.TacticalRealms || (SZ.TacticalRealms = {});
 
-  const { GameState, StateMachine, PRNG, TimeRotation, Renderer, InputHandler, SaveManager, SaveCrypto, Character, Roster, RACES, CLASSES, CombatEngine, CombatPhase, CombatUnit, CombatGrid, Terrain, D20, Pathfinding, AssetLoader, OverworldMap, OverworldTile, Spells } = TR;
+  const { GameState, StateMachine, PRNG, TimeRotation, Renderer, InputHandler, SaveManager, SaveCrypto, Character, Roster, RACES, CLASSES, CombatEngine, CombatPhase, CombatUnit, CombatGrid, Terrain, D20, Pathfinding, AssetLoader, OverworldMap, OverworldTile, Spells, Shop, ShopType, Items, CombatUI } = TR;
 
   const CANVAS_W = 1280;
   const CANVAS_H = 720;
@@ -14,6 +14,7 @@
 
   const MENU_ACTIONS = {
     'new'() { controller && controller.newGame(); },
+    'combat-history'() { controller?.showCombatHistory(); },
     'exit'() { window.parent.postMessage({ type: 'sz:close' }, '*'); },
     'about'() {
       if (SZ.Dialog)
@@ -84,6 +85,9 @@
     #contextMenuHover;
     #screenTime;
     #dimension;
+    #inventory;
+    #shopStock;
+    #shopType;
 
     constructor() {
       this.#sm = null;
@@ -143,6 +147,9 @@
       this.#contextMenuHover = -1;
       this.#screenTime = 0;
       this.#dimension = 'material';
+      this.#inventory = [];
+      this.#shopStock = null;
+      this.#shopType = null;
     }
 
     async init() {
@@ -154,6 +161,25 @@
       this.#input = new InputHandler(canvas, { width: CANVAS_W, height: CANVAS_H, tileSize: TILE_SIZE });
       this.#saveManager = new SaveManager({ crypto: new SaveCrypto() });
       this.#timeRotation = new TimeRotation();
+
+      // Scale canvas to fill window while maintaining 16:9 aspect ratio
+      const gameFrame = document.querySelector('.game-frame');
+      if (gameFrame) {
+        const aspect = CANVAS_W / CANVAS_H;
+        const resizeCanvas = () => {
+          const fw = gameFrame.clientWidth || CANVAS_W;
+          const fh = gameFrame.clientHeight || CANVAS_H;
+          let w, h;
+          if (fw / fh > aspect) { h = fh; w = Math.floor(h * aspect); }
+          else { w = fw; h = Math.floor(w / aspect); }
+          canvas.style.width = Math.max(320, w) + 'px';
+          canvas.style.height = Math.max(180, h) + 'px';
+        };
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        // Re-run after layout settles (SZ desktop may inject styles after load)
+        requestAnimationFrame(resizeCanvas);
+      }
       this.#prng = PRNG.fromDate(this.#timeRotation.dailySeed());
 
       this.#sm = new StateMachine(GameState.TITLE);
@@ -170,11 +196,24 @@
       };
 
       this.#setupMenu();
+      this.#setupCombatLogPanel();
+
+      // Initialize floating combat UI
+      const canvasWrap = document.getElementById('canvasWrap');
+      if (canvasWrap && CombatUI) {
+        this._combatUI = new CombatUI(canvasWrap);
+        this._combatUI.onAction = (action) => this.#onCombatUIAction(action);
+        this._combatUI.hide();
+      }
 
       if (AssetLoader) {
         const loader = new AssetLoader();
         loader.loadAll().then(() => {
           this.#renderer.assets = loader;
+          if (TR.generateTerrainTransitions)
+            TR.generateTerrainTransitions(loader.get('overworld'));
+          if (TR.SpriteResolver)
+            TR.spriteResolver = new TR.SpriteResolver(loader);
         });
       }
 
@@ -187,6 +226,7 @@
           getPartyHp: () => this.#partyHp,
           getPartyXp: () => this.#partyXp,
           getGold: () => this.#gold,
+          getInventory: () => this.#inventory,
           getPlayerPos: () => this.#playerPos,
           getOverworldMap: () => this.#overworldMap,
           getCombatEngine: () => this.#combatEngine,
@@ -198,20 +238,205 @@
           setPartyHp: (v) => { this.#partyHp = v; },
           setPartyXp: (v) => { this.#partyXp = v; },
           setGold: (v) => { this.#gold = v; },
+          setInventory: (v) => { this.#inventory = v; },
           setPlayerPos: (v) => { this.#playerPos = v; },
           setRoster: (v) => { this.#roster = v; },
         });
     }
 
     #setupMenu() {
-      document.querySelectorAll('.menu-entry[data-action]').forEach(el => {
-        el.addEventListener('click', () => {
-          const action = el.dataset.action;
-          if (MENU_ACTIONS[action])
-            MENU_ACTIONS[action]();
-          document.querySelectorAll('.menu-dropdown').forEach(d => d.style.display = 'none');
+      if (SZ.MenuBar)
+        new SZ.MenuBar({ onAction: (action) => { if (MENU_ACTIONS[action]) MENU_ACTIONS[action](); } });
+    }
+
+    #setupCombatLogPanel() {
+      this._combatLogPanel = document.getElementById('combatLogPanel');
+      this._combatLogText = document.getElementById('combatLogText');
+      this._combatLogLastLen = 0;
+      this._historyBtn = document.getElementById('btnCombatHistory');
+      const copyBtn = document.getElementById('combatLogCopy');
+      if (copyBtn)
+        copyBtn.addEventListener('click', () => {
+          if (this._combatLogText)
+            navigator.clipboard?.writeText(this._combatLogText.textContent).catch(() => {});
         });
+      if (this._historyBtn)
+        this._historyBtn.addEventListener('click', () => this.#showCombatHistory());
+      const historyCopyAll = document.getElementById('combatHistoryCopyAll');
+      if (historyCopyAll)
+        historyCopyAll.addEventListener('click', () => {
+          if (TR.CombatHistory)
+            navigator.clipboard?.writeText(TR.CombatHistory.formatAll()).catch(() => {});
+        });
+    }
+
+    #updateCombatLogPanel() {
+      if (!this._combatLogPanel || !this._combatLogText) return;
+      const eng = this.#combatEngine;
+      const inCombat = this.#sm.current === GameState.COMBAT;
+      if (!eng || !inCombat) {
+        this._combatLogPanel.hidden = true;
+        return;
+      }
+      this._combatLogPanel.hidden = false;
+      const log = eng.combatLog;
+      if (log.length !== this._combatLogLastLen) {
+        this._combatLogText.textContent = log.join('\n');
+        this._combatLogLastLen = log.length;
+        this._combatLogText.scrollTop = this._combatLogText.scrollHeight;
+      }
+    }
+
+    #showCombatLogPanel() {
+      if (this._combatLogPanel)
+        this._combatLogPanel.hidden = false;
+    }
+
+    #hideCombatLogPanel() {
+      if (this._combatLogPanel)
+        this._combatLogPanel.hidden = true;
+      this._combatLogLastLen = 0;
+    }
+
+    #archiveCombatLog() {
+      if (!TR.CombatHistory || !this.#combatEngine) return;
+      const eng = this.#combatEngine;
+      TR.CombatHistory.archive(eng.combatLog, {
+        location: this.#overworldCombat ? 'Overworld' : 'Dungeon',
+        biome: this.#combatBiome || 'unknown',
+        outcome: eng.phase === CombatPhase.VICTORY ? 'victory' : eng.phase === CombatPhase.DEFEAT ? 'defeat' : 'incomplete',
+        rounds: eng.round || 0,
+        partySize: eng.units.filter(u => u.faction === 'party').length,
+        enemyCount: eng.units.filter(u => u.faction === 'enemy').length,
       });
+    }
+
+    #showCombatHistory() {
+      const dlg = document.getElementById('dlg-combat-history');
+      const list = document.getElementById('combatHistoryList');
+      if (!dlg || !list) return;
+
+      const CH = TR.CombatHistory;
+      if (!CH || CH.count === 0) {
+        list.innerHTML = '<p style="padding:12px;color:#888">No combat history this session.</p>';
+      } else {
+        // Build a clickable table of all combats
+        const combats = CH.getAll();
+        let html = '<table style="width:100%;border-collapse:collapse;font-size:12px;font-family:monospace">';
+        html += '<tr style="background:#2a2e3a;color:#aaa"><th style="padding:4px 8px;text-align:left">#</th><th style="text-align:left;padding:4px">Time</th><th style="text-align:left;padding:4px">Location</th><th style="text-align:left;padding:4px">Result</th><th style="text-align:right;padding:4px 8px">Rounds</th></tr>';
+        for (const c of combats) {
+          const color = c.outcome === 'victory' ? '#4a4' : c.outcome === 'defeat' ? '#a44' : '#aa4';
+          html += `<tr class="ch-row" data-combat-id="${c.id}" style="cursor:pointer;border-bottom:1px solid #333">`;
+          html += `<td style="padding:4px 8px;color:#888">${c.id}</td>`;
+          html += `<td style="padding:4px">${c.timestamp}</td>`;
+          html += `<td style="padding:4px">${c.location} (${c.biome})</td>`;
+          html += `<td style="padding:4px;color:${color}">${c.outcome}</td>`;
+          html += `<td style="padding:4px 8px;text-align:right">${c.rounds}</td>`;
+          html += '</tr>';
+        }
+        html += '</table>';
+        html += '<pre id="combatHistoryDetail" style="display:none;padding:8px;border-top:1px solid #444;white-space:pre-wrap;color:#bbb;user-select:text;cursor:text;max-height:300px;overflow-y:auto"></pre>';
+        list.innerHTML = html;
+
+        // Wire row clicks to show combat log detail
+        list.querySelectorAll('.ch-row').forEach(row => {
+          row.addEventListener('click', () => {
+            const id = +row.dataset.combatId;
+            const combat = CH.get(id - 1);
+            const detail = list.querySelector('#combatHistoryDetail');
+            if (detail && combat) {
+              detail.textContent = CH.formatLog(combat);
+              detail.style.display = 'block';
+              detail.scrollIntoView({ behavior: 'smooth' });
+            }
+          });
+          row.addEventListener('pointerenter', () => row.style.background = 'rgba(80,120,200,0.2)');
+          row.addEventListener('pointerleave', () => row.style.background = '');
+        });
+      }
+
+      // Use shared Dialog API to show the overlay
+      if (SZ.Dialog)
+        SZ.Dialog.show('dlg-combat-history');
+      else {
+        dlg.hidden = false;
+        dlg.classList.add('visible');
+      }
+    }
+
+    #updateHistoryButton() {
+      if (!this._historyBtn) return;
+      const inCombat = this.#sm.current === GameState.COMBAT;
+      this._historyBtn.hidden = !TR.CombatHistory || TR.CombatHistory.count === 0;
+    }
+
+    showCombatHistory() { this.#showCombatHistory(); }
+
+    #onCombatUIAction(action) {
+      if (!this.#combatEngine) return;
+      const eng = this.#combatEngine;
+      const unit = eng.currentUnit;
+      if (!unit || unit.faction !== 'party') return;
+
+      if (action === 'Attack') this.#onCombatAction('attack');
+      else if (action === 'Cast' || action === 'Back') this.#onCombatAction('cast');
+      else if (action === 'Wait') this.#onCombatAction('wait');
+      else if (action === 'Flee') this.#onCombatAction('flee');
+      else if (action === 'Undo Move') this.#onCombatAction('undo');
+      else if (action === 'Cancel') this.#onCombatAction('cancel');
+      else if (action.startsWith('spell:')) this.#onCombatAction(action);
+    }
+
+    #onCombatAction(type) {
+      if (!this.#combatEngine) return;
+      const eng = this.#combatEngine;
+      if (type === 'attack') {
+        this.#spellMenuOpen = false;
+        this.#commitTentativeMove();
+        eng.selectAttack();
+      } else if (type === 'cast') {
+        this.#spellMenuOpen = !this.#spellMenuOpen;
+        if (this.#spellMenuOpen && this._combatUI)
+          this.#showSpellButtons();
+      } else if (type === 'wait') {
+        this.#spellMenuOpen = false;
+        this.#commitTentativeMove();
+        eng.selectWait();
+        eng.nextTurn();
+        eng.startTurn();
+        if (eng.currentUnit && eng.currentUnit.faction === 'enemy')
+          this.#processEnemyTurns();
+      } else if (type === 'flee') {
+        this.#spellMenuOpen = false;
+        this.#attemptFlee();
+      } else if (type === 'undo') {
+        this.#spellMenuOpen = false;
+        this.#combatTentativePos = null;
+        this.#combatOriginalPos = null;
+        eng.undoMove();
+      } else if (type === 'cancel') {
+        this.#spellMenuOpen = false;
+        eng.cancelTarget();
+      } else if (type.startsWith('spell:')) {
+        const spellId = type.substring(6);
+        this.#spellMenuOpen = false;
+        this.#commitTentativeMove();
+        eng.selectSpell(spellId);
+      }
+    }
+
+    #showSpellButtons() {
+      if (!this._combatUI || !this.#combatEngine) return;
+      const unit = this.#combatEngine.currentUnit;
+      if (!unit) return;
+      const spellBtns = this.#getSpellMenuButtons(unit);
+      const buttons = spellBtns.map(s => ({
+        label: s.label,
+        disabled: s.disabled,
+        action: `spell:${s.spellId}`,
+      }));
+      buttons.push({ label: 'Back', disabled: false, action: 'cast' });
+      this._combatUI.updateActions(buttons);
     }
 
     async newGame() {
@@ -373,7 +598,8 @@
           const enemies = [];
           for (let i = 0; i < enemyCount; ++i)
             enemies.push({ templateId: this.#prng.pick(pool) });
-          this.#startCombat(enemies, biome);
+          const aiTier = TR.EnemyAI ? TR.EnemyAI.difficultyToAiTier(loc.difficulty || 1) : 0;
+          this.#startCombat(enemies, biome, aiTier);
           return;
         }
       }
@@ -381,14 +607,16 @@
       const chance = this.#overworldMap.encounterChance(col, row);
       if (chance > 0 && this.#prng.next() < chance) {
         this.#walkPath = null;
-        const enemies = this.#overworldMap.encounterEnemies(col, row, this.#prng);
+        const avgLevel = this.#party.length > 0 ? Math.round(this.#party.reduce((s, c) => s + c.level, 0) / this.#party.length) : 1;
+        const enemies = this.#overworldMap.encounterEnemies(col, row, this.#prng, avgLevel);
         const biome = this.#overworldMap.encounterBiome(col, row);
         this.#encounterMsg = 'Ambush!';
         this.#encounterTimer = 0.5;
         this.#overworldCombat = true;
         this.#overworldCombatOrigin = { col, row };
         this.#sm.transition(GameState.COMBAT);
-        this.#startOverworldCombat(enemies, biome);
+        const aiTier = this.#overworldMap.encounterAiTier(col, row);
+        this.#startOverworldCombat(enemies, biome, aiTier);
       }
     }
 
@@ -526,20 +754,32 @@
         }
       }
 
-      const assets = this.#renderer.assets;
-      const playerSprite = (TR.resolveSprite && TR.resolveSprite('paladin', 'party')) || TR.PLAYER_SPRITE;
-      const playerSheet = (playerSprite && playerSprite.sheet) || 'dungeon';
-      let drawnSprite = false;
       const px = visualCol * ts;
       const py = visualRow * ts;
-      if (assets && assets.ready && assets.has(playerSheet) && playerSprite) {
-        drawnSprite = assets.drawSprite(
-          this.#renderer.bufCtx,
-          playerSheet, playerSprite,
-          px - this.#renderer.camera.x + 2,
-          py - this.#renderer.camera.y + 2,
-          ts - 4
-        );
+      const camX = this.#renderer.camera.x;
+      const camY = this.#renderer.camera.y;
+      let drawnSprite = false;
+      if (TR.spriteResolver) {
+        const sprite = TR.spriteResolver.resolve('paladin', 'party');
+        if (sprite) {
+          const ctx = this.#renderer.bufCtx;
+          ctx.imageSmoothingEnabled = false;
+          if (sprite.tint)
+            this.#renderer.compositor.drawComposite(ctx,
+              [{ img: sprite.img, rect: { x: sprite.srcX, y: sprite.srcY, w: sprite.srcW, h: sprite.srcH }, tint: sprite.tint }],
+              ts - 4, px - camX + 2, py - camY + 2);
+          else
+            ctx.drawImage(sprite.img, sprite.srcX, sprite.srcY, sprite.srcW, sprite.srcH,
+              px - camX + 2, py - camY + 2, ts - 4, ts - 4);
+          drawnSprite = true;
+        }
+      }
+      if (!drawnSprite) {
+        const assets = this.#renderer.assets;
+        const playerSprite = (TR.resolveSprite && TR.resolveSprite('paladin', 'party')) || TR.PLAYER_SPRITE;
+        const playerSheet = (playerSprite && playerSprite.sheet) || 'dungeon';
+        if (assets && assets.ready && assets.has(playerSheet) && playerSprite)
+          drawnSprite = assets.drawSprite(this.#renderer.bufCtx, playerSheet, playerSprite, px - camX + 2, py - camY + 2, ts - 4);
       }
       if (!drawnSprite)
         this.#renderer.drawRect(px + 4, py + 4, ts - 8, ts - 8, '#ff4444');
@@ -612,6 +852,12 @@
 
     #renderTown() {
       this.#renderer.drawPanel(0, 0, CANVAS_W, CANVAS_H, { bg: '#1e1a14' });
+
+      if (this.#shopStock) {
+        this.#renderShop();
+        return;
+      }
+
       this.#renderer.drawScreenText(CANVAS_W / 2, 54, 'TOWN', { color: '#c8a84e', font: 'bold 36px serif', align: 'center' });
       this.#renderer.drawScreenText(CANVAS_W / 2, 86, 'Visit town facilities', { color: '#888', font: '16px monospace', align: 'center' });
 
@@ -630,9 +876,44 @@
         }
       }
 
-      const labels = ['Shop', 'Inn (Heal Party)', 'Promotion Hall', 'Leave Town'];
+      this.#renderer.drawScreenText(CANVAS_W / 2, 190, `Gold: ${this.#gold}  |  Inventory: ${this.#inventory.length} items`, { color: '#aaa', font: '13px monospace', align: 'center' });
+
+      const labels = ['Weaponsmith', 'Armorer', 'General Store', 'Inn (Heal Party)', 'Leave Town'];
       for (let i = 0; i < labels.length; ++i)
-        this.#renderer.drawButton(520, 210 + i * 60, 240, 44, labels[i], { bg: i === 1 ? '#2a4a2a' : '#333', font: '15px monospace' });
+        this.#renderer.drawButton(520, 210 + i * 50, 240, 40, labels[i], { bg: i === 3 ? '#2a4a2a' : '#333', font: '14px monospace' });
+    }
+
+    #renderShop() {
+      const cfg = Shop && ShopType ? TR.SHOP_CONFIGS[this.#shopType] : null;
+      const title = cfg ? cfg.name : 'Shop';
+      this.#renderer.drawScreenText(CANVAS_W / 2, 36, title, { color: '#c8a84e', font: 'bold 28px serif', align: 'center' });
+      this.#renderer.drawScreenText(CANVAS_W / 2, 60, `Gold: ${this.#gold}`, { color: '#daa520', font: 'bold 14px monospace', align: 'center' });
+
+      // Shop stock on left
+      this.#renderer.drawScreenText(200, 90, 'For Sale', { color: '#8a8', font: 'bold 16px monospace', align: 'center' });
+      const stock = this.#shopStock || [];
+      for (let i = 0; i < stock.length; ++i) {
+        const item = stock[i];
+        const y = 110 + i * 36;
+        const price = Shop ? Shop.buyPrice(item) : item.value;
+        const canBuy = this.#gold >= price;
+        this.#renderer.drawPanel(40, y, 320, 30, { bg: '#1a1a1a' });
+        this.#renderer.drawScreenText(50, y + 20, item.name, { color: canBuy ? '#ccc' : '#666', font: '12px monospace', align: 'left' });
+        this.#renderer.drawScreenText(340, y + 20, `${price}g`, { color: canBuy ? '#daa520' : '#644', font: '12px monospace', align: 'right' });
+      }
+
+      // Inventory on right
+      this.#renderer.drawScreenText(800, 90, 'Inventory', { color: '#88a', font: 'bold 16px monospace', align: 'center' });
+      for (let i = 0; i < this.#inventory.length && i < 14; ++i) {
+        const item = this.#inventory[i];
+        const y = 110 + i * 36;
+        const sell = Shop ? Shop.sellPrice(item) : Math.floor(item.value * 0.5);
+        this.#renderer.drawPanel(600, y, 380, 30, { bg: '#1a1a1a' });
+        this.#renderer.drawScreenText(610, y + 20, `${item.name}${item.quantity > 1 ? ' x' + item.quantity : ''}`, { color: '#ccc', font: '12px monospace', align: 'left' });
+        this.#renderer.drawScreenText(960, y + 20, `Sell: ${sell}g`, { color: '#a86', font: '12px monospace', align: 'right' });
+      }
+
+      this.#renderer.drawButton(CANVAS_W / 2 - 80, CANVAS_H - 60, 160, 40, 'Back', { bg: '#444', font: '15px monospace' });
     }
 
     #renderCombat() {
@@ -670,8 +951,27 @@
       const menuX = ox + gridPxW + 20;
       const logY = oy + eng.grid.rows * ts + 12;
 
-      this.#renderer.drawTurnOrderBar(eng.turnOrder, eng.units, eng.turnIndex, 0, 0, CANVAS_W);
-      this.#renderer.drawScreenText(CANVAS_W - 100, 17, `Round ${eng.round}`, { color: '#aaa', font: '13px monospace', align: 'left' });
+      // HUD drawn via HTML floating windows (CombatUI), not canvas
+      if (this._combatUI) {
+        this._combatUI.updateActiveChar(eng.currentUnit);
+        this._combatUI.updateLog(eng.combatLog);
+        this._combatUI.updateInitBar(eng.turnOrder, eng.turnIndex, eng.round, (id) => eng.unitById(id));
+
+        // Reset spell menu when turn changes
+        const curId = eng.currentUnit?.id || '';
+        if (this._lastActiveUnitId !== curId) {
+          this._lastActiveUnitId = curId;
+          this.#spellMenuOpen = false;
+        }
+
+        // Update action buttons (skip when spell menu is open to preserve spell list)
+        if (!this.#spellMenuOpen) {
+          const actionBtns = this.#getActionButtons();
+          this._combatUI.updateActions(actionBtns.map(b => ({
+            label: b.label, disabled: b.disabled, action: b.label
+          })));
+        }
+      }
 
       const phase = eng.phase;
       if (phase === CombatPhase.AWAITING_MOVE && eng.moveRange) {
@@ -764,21 +1064,7 @@
       for (const f of this.#combatFloats)
         this.#renderer.drawScreenText(f.x, f.y, f.text, { color: f.color, font: 'bold 16px monospace', align: 'center' });
 
-      const actionBtns = this.#getActionButtons();
-      this.#renderer.drawActionMenu(actionBtns, menuX, oy, this.#combatActionHover);
-
-      const activeUnit = eng.currentUnit;
-      if (this.#spellMenuOpen && activeUnit && activeUnit.spells && activeUnit.spells.length > 0) {
-        const spellBtns = this.#getSpellMenuButtons(activeUnit);
-        const smY = oy + actionBtns.length * 44 + 10;
-        this.#renderer.drawSpellMenu(spellBtns, menuX, smY, this.#spellMenuHover);
-        if (activeUnit)
-          this.#renderer.drawUnitInfoPanel(menuX, smY + spellBtns.length * 32 + 16, activeUnit);
-      } else if (activeUnit) {
-        this.#renderer.drawUnitInfoPanel(menuX, oy + actionBtns.length * 44 + 30, activeUnit);
-      }
-
-      this.#renderer.drawCombatLog(eng.combatLog, 0, logY, CANVAS_W, CANVAS_H - logY);
+      // Canvas-rendered panels removed — now handled by CombatUI HTML overlays
 
       if (this.#combatHoverTile && eng.grid.inBounds(this.#combatHoverTile.col, this.#combatHoverTile.row)) {
         const ht = this.#combatHoverTile;
@@ -886,11 +1172,17 @@
       return buttons;
     }
 
-    #startCombat(enemies, biome) {
-      const prng = this.#prng.fork('combat-' + Date.now());
+    #startCombat(enemies, biome, aiTier) {
+      if (TR.spriteResolver)
+        TR.spriteResolver.preloadCreatures(enemies.map(e => e.templateId));
+
+      const prng = PRNG.random();
       this.#combatEngine = new CombatEngine(prng);
-      const gridCols = 12;
-      const gridRows = 10;
+      if (aiTier != null) this.#combatEngine.setAiTier(aiTier);
+      // Vary combat grid size by encounter
+      const enemyCount = enemies.length;
+      const gridCols = enemyCount >= 4 ? 14 : aiTier >= 3 ? 16 : 12;
+      const gridRows = enemyCount >= 4 ? 12 : aiTier >= 3 ? 14 : 10;
       biome = biome || 'plains';
       this.#combatBiome = biome;
 
@@ -898,24 +1190,35 @@
         const hp = this.#partyHp ? this.#partyHp[i] : c.maxHp;
         if (hp >= c.maxHp)
           return c;
-        return Object.freeze({ ...c, hp: Math.max(1, hp) });
+        return Object.freeze({ ...c, hp });
       });
 
       this.#combatEngine.initCombat(partyWithHp, enemies, gridCols, gridRows, biome);
       this.#combatEngine.startTurn();
-      this.#combatTileSize = Math.min(COMBAT_TILE_SIZE, Math.floor((CANVAS_W - 260) / gridCols), Math.floor((CANVAS_H - 180) / gridRows));
-      this.#combatOffsetX = 12;
-      this.#combatOffsetY = 50;
+      // Tiles fill the canvas: reserve 36px top (active char) + 36px bottom (init bar)
+      const availW = CANVAS_W - 8;
+      const availH = CANVAS_H - 72;
+      this.#combatTileSize = Math.min(Math.floor(availW / gridCols), Math.floor(availH / gridRows));
+      const gridPxW = gridCols * this.#combatTileSize;
+      const gridPxH = gridRows * this.#combatTileSize;
+      this.#combatOffsetX = Math.floor((CANVAS_W - gridPxW) / 2);
+      this.#combatOffsetY = 36 + Math.floor((availH - gridPxH) / 2);
       this.#combatMovePath = null;
       this.#combatMoveUnit = null;
+
+      if (this._combatUI) this._combatUI.show();
 
       if (this.#combatEngine.currentUnit && this.#combatEngine.currentUnit.faction === 'enemy')
         this.#processEnemyTurns();
     }
 
-    #startOverworldCombat(enemies, biome) {
-      const prng = this.#prng.fork('combat-' + Date.now());
+    #startOverworldCombat(enemies, biome, aiTier) {
+      if (TR.spriteResolver)
+        TR.spriteResolver.preloadCreatures(enemies.map(e => e.templateId));
+
+      const prng = PRNG.random();
       this.#combatEngine = new CombatEngine(prng);
+      if (aiTier != null) this.#combatEngine.setAiTier(aiTier);
       const gridCols = 14;
       const gridRows = 12;
       biome = biome || 'plains';
@@ -925,7 +1228,7 @@
         const hp = this.#partyHp ? this.#partyHp[i] : c.maxHp;
         if (hp >= c.maxHp)
           return c;
-        return Object.freeze({ ...c, hp: Math.max(1, hp) });
+        return Object.freeze({ ...c, hp });
       });
 
       const origin = this.#overworldCombatOrigin || this.#playerPos;
@@ -935,9 +1238,12 @@
 
       this.#combatEngine.initCombatWithGrid(partyWithHp, enemies, grid, biome, partyGridPos);
       this.#combatEngine.startTurn();
+      // Overworld combat uses the overworld tile size since background is the actual map
       this.#combatTileSize = TILE_SIZE;
       this.#combatOffsetX = 0;
       this.#combatOffsetY = 0;
+
+      if (this._combatUI) this._combatUI.show();
       this.#combatMovePath = null;
       this.#combatMoveUnit = null;
 
@@ -981,7 +1287,11 @@
         }
       }
 
-      this.#lastRewards = { xp: rewards.xp, xpEach, gold: rewards.gold, levelUps };
+      if (Items && rewards.loot)
+        for (const item of rewards.loot)
+          this.#inventory = Items.addToInventory(this.#inventory, item);
+
+      this.#lastRewards = { xp: rewards.xp, xpEach, gold: rewards.gold, levelUps, loot: rewards.loot || [] };
     }
 
     #restParty() {
@@ -1246,6 +1556,12 @@
         }
       }
 
+      if (this.#lastRewards && this.#lastRewards.loot && this.#lastRewards.loot.length > 0) {
+        const lootNames = this.#lastRewards.loot.map(i => i.name).join(', ');
+        this.#renderer.drawScreenText(CANVAS_W / 2, y, `Loot: ${lootNames}`, { color: '#8cf', font: '14px monospace', align: 'center' });
+        y += 24;
+      }
+
       this.#renderer.drawScreenText(CANVAS_W / 2, y, `Gold: ${this.#gold}`, { color: '#aaa', font: '15px monospace', align: 'center' });
       y += 26;
 
@@ -1331,6 +1647,8 @@
             this.#partyXp = data.state.partyXp.slice();
           if (typeof data.state.gold === 'number')
             this.#gold = data.state.gold;
+          if (Items && Array.isArray(data.state.inventory))
+            this.#inventory = Items.deserializeInventory(data.state.inventory);
           const target = data.state.lastState || GameState.OVERWORLD;
           if (this.#sm.canTransition(target))
             this.#sm.transition(target);
@@ -1390,6 +1708,7 @@
           this.#partyHp = this.#party.map(c => c.maxHp);
           this.#partyXp = this.#party.map(() => 0);
           this.#gold = 0;
+          this.#inventory = [];
           this.#lastRewards = null;
           this.#overworldMap = new OverworldMap(this.#prng.state);
           this.#playerPos = { col: 0, row: 0 };
@@ -1434,16 +1753,74 @@
     }
 
     #onClickTown(e) {
+      if (this.#shopStock) {
+        this.#onClickShop(e);
+        return;
+      }
+
       const buttons = [
-        { x: 520, y: 210, w: 240, h: 44 },
-        { x: 520, y: 270, w: 240, h: 44 },
-        { x: 520, y: 330, w: 240, h: 44 },
-        { x: 520, y: 390, w: 240, h: 44 },
+        { x: 520, y: 210, w: 240, h: 40 },
+        { x: 520, y: 260, w: 240, h: 40 },
+        { x: 520, y: 310, w: 240, h: 40 },
+        { x: 520, y: 360, w: 240, h: 40 },
+        { x: 520, y: 410, w: 240, h: 40 },
       ];
-      if (this.#hitButton(e, buttons[1]))
-        this.#restParty();
+      if (this.#hitButton(e, buttons[0]))
+        this.#openShop(ShopType.WEAPONSMITH);
+      else if (this.#hitButton(e, buttons[1]))
+        this.#openShop(ShopType.ARMORER);
+      else if (this.#hitButton(e, buttons[2]))
+        this.#openShop(ShopType.GENERAL);
       else if (this.#hitButton(e, buttons[3]))
+        this.#restParty();
+      else if (this.#hitButton(e, buttons[4]))
         this.#sm.transition(GameState.OVERWORLD);
+    }
+
+    #openShop(type) {
+      if (!Shop) return;
+      const avgLevel = this.#party ? Math.floor(this.#party.reduce((s, c) => s + c.level, 0) / this.#party.length) : 1;
+      this.#shopType = type;
+      this.#shopStock = Shop.generateStock(new PRNG(Date.now()), type, avgLevel);
+    }
+
+    #onClickShop(e) {
+      // Back button
+      const back = { x: CANVAS_W / 2 - 80, y: CANVAS_H - 60, w: 160, h: 40 };
+      if (this.#hitButton(e, back)) {
+        this.#shopStock = null;
+        this.#shopType = null;
+        return;
+      }
+
+      const stock = this.#shopStock || [];
+
+      // Buy from stock
+      for (let i = 0; i < stock.length; ++i) {
+        const btn = { x: 40, y: 110 + i * 36, w: 320, h: 30 };
+        if (this.#hitButton(e, btn)) {
+          const result = Shop.buyItem(stock, stock[i].id, this.#gold);
+          if (result) {
+            this.#gold = result.newGold;
+            this.#shopStock = result.newStock;
+            this.#inventory = Items.addToInventory(this.#inventory, result.item);
+          }
+          return;
+        }
+      }
+
+      // Sell from inventory
+      for (let i = 0; i < this.#inventory.length && i < 14; ++i) {
+        const btn = { x: 600, y: 110 + i * 36, w: 380, h: 30 };
+        if (this.#hitButton(e, btn)) {
+          const result = Shop.sellItem(this.#inventory, this.#inventory[i].id, this.#gold);
+          if (result) {
+            this.#gold = result.newGold;
+            this.#inventory = result.newInventory;
+          }
+          return;
+        }
+      }
     }
 
     #onClickCombat(e) {
@@ -1478,17 +1855,23 @@
       if (phase === CombatPhase.VICTORY) {
         const btn = { x: CANVAS_W / 2 - 80, y: CANVAS_H / 2 + 14, w: 160, h: 40 };
         if (this.#hitButton(e, btn)) {
+          this.#archiveCombatLog();
+          this.#hideCombatLogPanel();
           this.#syncPartyHpFromCombat();
           this.#distributeRewards();
           this.#sm.transition(GameState.VICTORY);
+          this.#updateHistoryButton();
         }
         return;
       }
       if (phase === CombatPhase.DEFEAT) {
         const btn = { x: CANVAS_W / 2 - 80, y: CANVAS_H / 2 + 14, w: 160, h: 40 };
         if (this.#hitButton(e, btn)) {
+          this.#archiveCombatLog();
+          this.#hideCombatLogPanel();
           this.#syncPartyHpFromCombat();
           this.#sm.transition(GameState.DEFEAT);
+          this.#updateHistoryButton();
         }
         return;
       }
@@ -1753,8 +2136,17 @@
       const fy = oy + pos.row * ts;
 
       if (total >= dc) {
-        eng.combatLog.push(`${unit.name} flees! (d20=${roll}+${dexMod}=${total} vs DC ${dc} - SUCCESS)`);
+        eng.combatLog.push(`${unit.logName} flees! (d20=${roll}+${dexMod}=${total} vs DC ${dc} - SUCCESS)`);
         this.#combatFloats.push({ x: fx, y: fy, text: 'Fled!', color: '#4c4', timer: 1.0 });
+        // Map the fleeing unit's combat grid position back to overworld coordinates
+        if (this.#overworldCombatOrigin && eng.grid) {
+          const gridCenterCol = Math.floor(eng.grid.cols / 2);
+          const gridCenterRow = Math.floor(eng.grid.rows / 2);
+          const unitPos = this.#combatTentativePos || unit.position;
+          const newCol = this.#overworldCombatOrigin.col - gridCenterCol + unitPos.col;
+          const newRow = this.#overworldCombatOrigin.row - gridCenterRow + unitPos.row;
+          this.#playerPos = { col: newCol, row: newRow };
+        }
         this.#combatTentativePos = null;
         this.#combatOriginalPos = null;
         this.#combatMoveStart = null;
@@ -1767,7 +2159,7 @@
       } else {
         const modStr = dexMod >= 0 ? `+${dexMod}` : `${dexMod}`;
         this.#combatFloats.push({ x: fx, y: fy, text: `Flee failed! (${roll}${modStr}=${total} vs DC ${dc})`, color: '#c44', timer: 1.5 });
-        eng.combatLog.push(`${unit.name} fails to flee! (d20=${roll}+${dexMod}=${total} vs DC ${dc} - FAIL)`);
+        eng.combatLog.push(`${unit.logName} fails to flee! (d20=${roll}+${dexMod}=${total} vs DC ${dc} - FAIL)`);
         eng.selectWait();
         eng.nextTurn();
         eng.startTurn();
@@ -1802,6 +2194,39 @@
       }
 
       if (eng.phase === CombatPhase.AWAITING_MOVE) {
+        const unit = eng.currentUnit;
+        if (!unit || unit.faction !== 'party' || this.#combatAnim || this.#combatMovePath)
+          return;
+
+        const ts = this.#combatTileSize;
+        const ox = this.#combatOffsetX;
+        const oy = this.#combatOffsetY;
+        const gridCol = Math.floor((e.x - ox) / ts);
+        const gridRow = Math.floor((e.y - oy) / ts);
+        const effectivePos = this.#combatTentativePos || unit.position;
+
+        if (eng.grid.inBounds(gridCol, gridRow)) {
+          const targetId = eng.grid.unitAt(gridCol, gridRow);
+          if (targetId) {
+            const target = eng.unitById(targetId);
+            if (target && target.isAlive) {
+              const items = this.#buildContextMenuItems(eng, unit, target, effectivePos);
+              if (items.length > 0) {
+                this.#contextMenu = { x: e.x, y: e.y, targetId: target.id, items };
+                this.#contextMenuHover = -1;
+                return;
+              }
+            }
+          } else {
+            const items = this.#buildAoeContextMenuItems(eng, unit, effectivePos, gridCol, gridRow);
+            if (items.length > 0) {
+              this.#contextMenu = { x: e.x, y: e.y, targetId: null, targetTile: { col: gridCol, row: gridRow }, items };
+              this.#contextMenuHover = -1;
+              return;
+            }
+          }
+        }
+
         if (this.#combatTentativePos && this.#combatOriginalPos) {
           const from = this.#combatTentativePos;
           const to = this.#combatOriginalPos;
@@ -1818,39 +2243,6 @@
           }
           this.#combatTentativePos = null;
           this.#combatOriginalPos = null;
-          return;
-        }
-
-        const unit = eng.currentUnit;
-        if (!unit || unit.faction !== 'party' || this.#combatAnim || this.#combatMovePath)
-          return;
-
-        const ts = this.#combatTileSize;
-        const ox = this.#combatOffsetX;
-        const oy = this.#combatOffsetY;
-        const gridCol = Math.floor((e.x - ox) / ts);
-        const gridRow = Math.floor((e.y - oy) / ts);
-        if (!eng.grid.inBounds(gridCol, gridRow))
-          return;
-
-        const targetId = eng.grid.unitAt(gridCol, gridRow);
-        const effectivePos = this.#combatTentativePos || unit.position;
-
-        if (targetId) {
-          const target = eng.unitById(targetId);
-          if (!target || !target.isAlive)
-            return;
-          const items = this.#buildContextMenuItems(eng, unit, target, effectivePos);
-          if (items.length > 0) {
-            this.#contextMenu = { x: e.x, y: e.y, targetId: target.id, items };
-            this.#contextMenuHover = -1;
-          }
-        } else {
-          const items = this.#buildAoeContextMenuItems(eng, unit, effectivePos, gridCol, gridRow);
-          if (items.length > 0) {
-            this.#contextMenu = { x: e.x, y: e.y, targetId: null, targetTile: { col: gridCol, row: gridRow }, items };
-            this.#contextMenuHover = -1;
-          }
         }
       }
     }
@@ -2082,6 +2474,11 @@
 
     async #onTransition(e) {
       this.#screenTime = 0;
+      if (e.to !== GameState.COMBAT) {
+        this.#hideCombatLogPanel();
+        if (this._combatUI) this._combatUI.hide();
+      }
+      this.#updateHistoryButton();
       if (e.autoSave) {
         try {
           await this.#saveManager.save({
@@ -2092,6 +2489,7 @@
             partyHp: this.#partyHp ? this.#partyHp.slice() : null,
             partyXp: this.#partyXp ? this.#partyXp.slice() : null,
             gold: this.#gold,
+            inventory: Items ? Items.serializeInventory(this.#inventory) : [],
             timestamp: Date.now()
           });
         } catch (err) {
