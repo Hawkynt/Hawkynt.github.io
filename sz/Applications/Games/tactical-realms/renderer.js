@@ -194,18 +194,23 @@
       const getAutotileSheet = TR.getAutotileSheet;
 
       ctx.imageSmoothingEnabled = false;
+      // Floor camera offsets to integer pixels to prevent sub-pixel gaps between tiles
+      const fcx = Math.floor(cx);
+      const fcy = Math.floor(cy);
+      // Draw tiles 1px wider/taller to overlap and hide hairline seams
+      const tsDraw = ts + 1;
       for (let r = startRow; r <= endRow; ++r)
         for (let c = startCol; c <= endCol; ++c) {
           const tile = tileGetter(c, r);
-          const sx = c * ts - cx;
-          const sy = r * ts - cy;
+          const sx = c * ts - fcx;
+          const sy = r * ts - fcy;
           let drawn = false;
           if (sheetImg && tile > 0 && tile < TILE_NAMES.length) {
             // Draw grass base layer for overlay tiles (forest, mountain, etc.)
             if (NEEDS_BASE[tile] && spriteMap) {
               const baseRect = spriteMap.GRASS;
               if (baseRect)
-                ctx.drawImage(sheetImg, baseRect.x, baseRect.y, baseRect.w, baseRect.h, sx, sy, ts, ts);
+                ctx.drawImage(sheetImg, baseRect.x, baseRect.y, baseRect.w, baseRect.h, sx, sy, tsDraw, tsDraw);
             }
             let rect = null;
             let srcImg = sheetImg;
@@ -221,13 +226,13 @@
             if (!rect && spriteMap)
               rect = spriteMap[TILE_NAMES[tile]];
             if (rect) {
-              ctx.drawImage(srcImg, rect.x, rect.y, rect.w, rect.h, sx, sy, ts, ts);
+              ctx.drawImage(srcImg, rect.x, rect.y, rect.w, rect.h, sx, sy, tsDraw, tsDraw);
               drawn = true;
             }
           }
           if (!drawn) {
             ctx.fillStyle = this.#tileColor(tile);
-            ctx.fillRect(sx, sy, ts, ts);
+            ctx.fillRect(sx, sy, tsDraw, tsDraw);
           }
         }
     }
