@@ -318,24 +318,24 @@
 
       const CH = TR.CombatHistory;
       if (!CH || CH.count === 0) {
-        list.innerHTML = '<p style="padding:12px;color:#888">No combat history this session.</p>';
+        list.innerHTML = '<p style="padding:20px;color:#99a;font-size:14px;text-align:center">No combat history this session.</p>';
       } else {
         // Build a clickable table of all combats
         const combats = CH.getAll();
-        let html = '<table style="width:100%;border-collapse:collapse;font-size:12px;font-family:monospace">';
-        html += '<tr style="background:#2a2e3a;color:#aaa"><th style="padding:4px 8px;text-align:left">#</th><th style="text-align:left;padding:4px">Time</th><th style="text-align:left;padding:4px">Location</th><th style="text-align:left;padding:4px">Result</th><th style="text-align:right;padding:4px 8px">Rounds</th></tr>';
+        let html = '<table style="width:100%;border-collapse:collapse;font-size:13px;font-family:monospace">';
+        html += '<tr style="background:#2a3050;color:#bbd"><th style="padding:6px 10px;text-align:left">#</th><th style="text-align:left;padding:6px">Time</th><th style="text-align:left;padding:6px">Location</th><th style="text-align:left;padding:6px">Result</th><th style="text-align:right;padding:6px 10px">Rounds</th></tr>';
         for (const c of combats) {
           const color = c.outcome === 'victory' ? '#4a4' : c.outcome === 'defeat' ? '#a44' : '#aa4';
           html += `<tr class="ch-row" data-combat-id="${c.id}" style="cursor:pointer;border-bottom:1px solid #333">`;
-          html += `<td style="padding:4px 8px;color:#888">${c.id}</td>`;
-          html += `<td style="padding:4px">${c.timestamp}</td>`;
-          html += `<td style="padding:4px">${c.location} (${c.biome})</td>`;
-          html += `<td style="padding:4px;color:${color}">${c.outcome}</td>`;
-          html += `<td style="padding:4px 8px;text-align:right">${c.rounds}</td>`;
+          html += `<td style="padding:6px 10px;color:#99a">${c.id}</td>`;
+          html += `<td style="padding:6px;color:#ccc">${c.timestamp}</td>`;
+          html += `<td style="padding:6px;color:#ccc">${c.location} (${c.biome})</td>`;
+          html += `<td style="padding:6px;color:${color};font-weight:bold">${c.outcome}</td>`;
+          html += `<td style="padding:6px 10px;text-align:right;color:#ccc">${c.rounds}</td>`;
           html += '</tr>';
         }
         html += '</table>';
-        html += '<pre id="combatHistoryDetail" style="display:none;padding:8px;border-top:1px solid #444;white-space:pre-wrap;color:#bbb;user-select:text;cursor:text;max-height:300px;overflow-y:auto"></pre>';
+        html += '<pre id="combatHistoryDetail" style="display:none;padding:10px;margin:8px;border:1px solid #445;border-radius:3px;background:#151825;white-space:pre-wrap;color:#ccc;user-select:text;cursor:text;max-height:300px;overflow-y:auto;font-size:12px;line-height:1.4"></pre>';
         list.innerHTML = html;
 
         // Wire row clicks to show combat log detail
@@ -2275,27 +2275,64 @@
       return items;
     }
 
+    // Find the closest tile in moveRange that satisfies a predicate, returning {col,row,cost} or null
+    #findClosestReachableTile(eng, unit, effectivePos, predicate) {
+      const moveRange = Pathfinding.movementRange(eng.grid, effectivePos, unit.speedTiles, unit.faction);
+      let best = null;
+      let bestCost = Infinity;
+      for (const [key, cost] of moveRange) {
+        const [c, r] = key.split(',').map(Number);
+        if (eng.grid.isOccupied(c, r) && !(c === effectivePos.col && r === effectivePos.row))
+          continue;
+        if (predicate(c, r) && cost < bestCost) {
+          bestCost = cost;
+          best = { col: c, row: r, cost };
+        }
+      }
+      return best;
+    }
+
     #buildContextMenuItems(eng, unit, target, effectivePos) {
       const items = [];
+      const tPos = target.position;
+      const isEnemy = target.faction !== unit.faction;
 
-      if (target.faction !== unit.faction && D20.isAdjacent(effectivePos, target.position))
-        items.push({ label: 'Attack', action: 'attack' });
+      // --- Melee Attack ---
+      if (isEnemy) {
+        if (D20.isAdjacent(effectivePos, tPos)) {
+          items.push({ label: 'Attack', action: 'attack' });
+        } else {
+          // Can we walk to an adjacent tile?
+          const walkTo = this.#findClosestReachableTile(eng, unit, effectivePos,
+            (c, r) => D20.isAdjacent({ col: c, row: r }, tPos));
+          if (walkTo)
+            items.push({ label: `Attack (move ${walkTo.cost})`, action: 'attack', walkTo });
+        }
+      }
 
+      // --- Spells ---
       if (Spells && unit.spells) {
         for (const spellId of unit.spells) {
           const spell = Spells.byId(spellId);
           if (!spell || !unit.canCastSpell(spell))
             continue;
-          if (spell.target === 'enemy' && target.faction === unit.faction)
-            continue;
-          if (spell.target === 'ally' && target.faction !== unit.faction)
-            continue;
-          if (spell.target === 'self' && target.id !== unit.id)
-            continue;
-          if (!Spells.isInRange(effectivePos.col, effectivePos.row, target.position.col, target.position.row, spell.range))
-            continue;
+          if (spell.target === 'enemy' && !isEnemy) continue;
+          if (spell.target === 'ally' && isEnemy) continue;
+          if (spell.target === 'self' && target.id !== unit.id) continue;
+
+          const range = typeof spell.range === 'number' ? spell.range : 4;
           const aoeTag = (spell.aoe && spell.aoe > 0) ? ' (AoE)' : '';
-          items.push({ label: `${spell.name}${aoeTag}`, action: 'spell', spellId: spell.id });
+
+          if (Spells.isInRange(effectivePos.col, effectivePos.row, tPos.col, tPos.row, range)) {
+            // Already in range
+            items.push({ label: `${spell.name}${aoeTag}`, action: 'spell', spellId: spell.id });
+          } else {
+            // Can we walk into range?
+            const walkTo = this.#findClosestReachableTile(eng, unit, effectivePos,
+              (c, r) => Spells.isInRange(c, r, tPos.col, tPos.row, range));
+            if (walkTo)
+              items.push({ label: `${spell.name}${aoeTag} (move ${walkTo.cost})`, action: 'spell', spellId: spell.id, walkTo });
+          }
         }
       }
 
@@ -2316,34 +2353,61 @@
         return;
       }
 
-      const target = eng.unitById(targetId);
-      if (!target || !target.isAlive)
-        return;
-
-      if (item.action === 'attack') {
-        eng.selectAttack();
-        const pos = target.position;
-        const attackerId = eng.currentUnit.id;
-        const result = eng.selectTarget(pos.col, pos.row);
-        if (result)
-          this.#startAttackAnim(attackerId, targetId, result);
-      } else if (item.action === 'spell' && item.spellId) {
-        const spell = Spells ? Spells.byId(item.spellId) : null;
-        if (!spell)
+      const executeAction = () => {
+        const target = eng.unitById(targetId);
+        if (!target || !target.isAlive)
           return;
-        const caster = eng.currentUnit;
-        if (spell.aoe && spell.aoe > 0) {
-          eng.selectSpell(item.spellId);
-          const result = eng.selectAoeSpellTarget(target.position.col, target.position.row);
+
+        if (item.action === 'attack') {
+          eng.selectAttack();
+          const pos = target.position;
+          const attackerId = eng.currentUnit.id;
+          const result = eng.selectTarget(pos.col, pos.row);
           if (result)
-            this.#startAoeSpellAnim(caster, result);
-        } else {
-          eng.selectSpell(item.spellId);
-          const result = eng.selectSpellTarget(target.position.col, target.position.row);
-          if (result)
-            this.#startSpellAnim(caster, target, result);
+            this.#startAttackAnim(attackerId, targetId, result);
+        } else if (item.action === 'spell' && item.spellId) {
+          const spell = Spells ? Spells.byId(item.spellId) : null;
+          if (!spell)
+            return;
+          const caster = eng.currentUnit;
+          if (spell.aoe && spell.aoe > 0) {
+            eng.selectSpell(item.spellId);
+            const result = eng.selectAoeSpellTarget(target.position.col, target.position.row);
+            if (result)
+              this.#startAoeSpellAnim(caster, result);
+          } else {
+            eng.selectSpell(item.spellId);
+            const result = eng.selectSpellTarget(target.position.col, target.position.row);
+            if (result)
+              this.#startSpellAnim(caster, target, result);
+          }
+        }
+      };
+
+      // Auto-walk with smooth animation before executing action
+      if (item.walkTo) {
+        const unit = eng.currentUnit;
+        if (!unit) return;
+        const prevPos = { ...unit.position };
+        // Move on grid immediately (for pathfinding/collision)
+        eng.grid.moveUnit(unit.id, item.walkTo.col, item.walkTo.row);
+        unit.setPosition(item.walkTo.col, item.walkTo.row);
+        unit.endMove();
+        eng.combatLog.push(`${unit.logName} moves to (${item.walkTo.col},${item.walkTo.row})`);
+        // Animate the walk, then execute the action on arrival
+        const path = Pathfinding.findPath(eng.grid, prevPos, item.walkTo, unit.faction);
+        if (path && path.length > 1) {
+          this.#combatMoveStart = { ...prevPos };
+          this.#combatMovePath = path.slice(1);
+          this.#combatMoveUnit = unit.id;
+          this.#combatMoveIdx = 0;
+          this.#combatMoveProgress = 0;
+          this.#combatMoveCallback = executeAction;
+          return;
         }
       }
+
+      executeAction();
     }
 
     #onDoubleClick(e) {

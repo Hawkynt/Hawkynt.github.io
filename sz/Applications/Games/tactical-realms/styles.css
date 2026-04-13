@@ -223,5 +223,51 @@ html, body {
   flex-shrink: 0;
 }
 
-/* --- Legacy combat log panel (kept for non-combat history dialog) --- */
+/* --- Legacy combat log panel --- */
 .combat-log-panel[hidden] { display: none !important; }
+
+/* --- Combat History Dialog --- */
+.combat-history-dlg {
+  width: 90% !important;
+  max-width: 800px !important;
+  max-height: 80vh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  background: #1e2230 !important;
+  color: #ddd !important;
+  border: 2px solid #556 !important;
+}
+.combat-history-dlg .dialog-title {
+  background: #2a3550 !important;
+  color: #eee !important;
+}
+.combat-history-dlg .dialog-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 !important;
+  background: #1e2230 !important;
+}
+.combat-history-dlg .dialog-buttons {
+  background: #252a3a !important;
+  border-top: 1px solid #445 !important;
+  padding: 8px !important;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+.combat-history-dlg .dialog-buttons button {
+  background: #3a4260 !important;
+  color: #eee !important;
+  border: 1px solid #667 !important;
+  padding: 6px 16px !important;
+  cursor: pointer;
+  font-size: 13px;
+}
+.combat-history-dlg .dialog-buttons button:hover {
+  background: #4a5580 !important;
+}
+/* Table rows */
+.ch-row { cursor: pointer; }
+.ch-row:hover { background: rgba(80,120,200,0.2) !important; }
+.ch-row td { color: #ccc; }
