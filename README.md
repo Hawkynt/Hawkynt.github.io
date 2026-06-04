@@ -1,21 +1,28 @@
 # »SynthelicZ« Project Collection
 
-![License](https://img.shields.io/github/license/Hawkynt/Hawkynt.github.io)
-![Language](https://img.shields.io/github/languages/top/Hawkynt/Hawkynt.github.io?color=purple)
-[![Last Commit](https://img.shields.io/github/last-commit/Hawkynt/Hawkynt.github.io?branch=main)![Activity](https://img.shields.io/github/commit-activity/y/Hawkynt/Hawkynt.github.io?branch=main)](https://github.com/Hawkynt/Hawkynt.github.io/commits/main)
-[![GitHub release](https://img.shields.io/github/v/release/Hawkynt/Hawkynt.github.io)](https://github.com/Hawkynt/Hawkynt.github.io/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/Hawkynt/Hawkynt.github.io/total)](https://github.com/Hawkynt/Hawkynt.github.io/releases)
+[![License](https://img.shields.io/github/license/Hawkynt/Hawkynt.github.io)](https://github.com/Hawkynt/Hawkynt.github.io/blob/main/LICENSE)
+[![Language](https://img.shields.io/github/languages/top/Hawkynt/Hawkynt.github.io?color=8957D5)](https://github.com/Hawkynt/Hawkynt.github.io)
 
-Welcome to the »SynthelicZ« repository - a comprehensive collection of educational software projects, cryptographic tools, and historical development archives.
+[![CI](https://github.com/Hawkynt/Hawkynt.github.io/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Hawkynt/Hawkynt.github.io/actions/workflows/ci.yml)
+![Last Commit](https://img.shields.io/github/last-commit/Hawkynt/Hawkynt.github.io?branch=main)
+![Activity](https://img.shields.io/github/commit-activity/m/Hawkynt/Hawkynt.github.io)
 
-## 🚀 Featured Projects
+[![Stars](https://img.shields.io/github/stars/Hawkynt/Hawkynt.github.io?color=FFD700)](https://github.com/Hawkynt/Hawkynt.github.io/stargazers)
+[![Forks](https://img.shields.io/github/forks/Hawkynt/Hawkynt.github.io?color=008080)](https://github.com/Hawkynt/Hawkynt.github.io/network/members)
+[![Issues](https://img.shields.io/github/issues/Hawkynt/Hawkynt.github.io)](https://github.com/Hawkynt/Hawkynt.github.io/issues)
+![Code Size](https://img.shields.io/github/languages/code-size/Hawkynt/Hawkynt.github.io?color=4CAF50)
+![Repo Size](https://img.shields.io/github/repo-size/Hawkynt/Hawkynt.github.io?color=FF9800)
+
+> The »SynthelicZ« website — a collection of educational software projects, cryptographic tools and historical development archives, live at [hawkynt.github.io](https://hawkynt.github.io), built to run on anything from Lynx and IE5 to current browsers.
+
+## ✨ Featured Projects
 
 ### 🔐 [Cipher Collection](./Cipher/)
 A modern web-based cryptographic toolkit featuring classical and contemporary encryption algorithms.
 
 **Features:**
 - Dark-themed responsive interface with legacy browser support
-- 12+ cipher implementations (Caesar, ROT variants, BASE64, Blowfish, TEA, AES, etc.)
+- A broad range of cipher implementations (Caesar, ROT variants, BASE64, Blowfish, TEA, AES, etc.)
 - Built-in test suite with official test vectors
 - Hex display for binary data visualization
 - Cross-browser compatibility (IE5 to modern browsers)
@@ -133,14 +140,14 @@ This repository demonstrates a commitment to:
 ## 🔍 Notable Features
 
 ### Cipher Collection Highlights
-- **12+ Encryption Algorithms** implemented from scratch
+- **Numerous Encryption Algorithms** implemented from scratch
 - **Official Test Vectors** from RFC standards and cryptographic competitions
 - **Hex Visualization** for binary data inspection
 - **Real-time Validation** comparing expected vs actual outputs
 - **Educational Interface** with detailed algorithm descriptions
 
 ### Historical Archive
-- **11+ Years** of development history preserved
+- **Years** of development history preserved
 - **Screenshots and Documentation** for every major project
 - **Evolution of UI Design** from command-line to modern web interfaces
 - **Technology Timeline** showing adaptation to new platforms and frameworks
@@ -152,13 +159,19 @@ This repository demonstrates a commitment to:
 3. **Innovation** - Demonstrate creative solutions to technical challenges
 4. **Accessibility** - Ensure tools work across maximum range of devices and browsers
 
-## 📄 License
+## ❤️ Support
 
-This project is open source. See [LICENSE](./LICENSE) for details.
+If this project saves you time or money, consider supporting its development:
+
+[![GitHub Sponsors](https://img.shields.io/badge/GitHub-Sponsor-EA4AAA?logo=githubsponsors)](https://github.com/sponsors/Hawkynt)
+[![PayPal](https://img.shields.io/badge/PayPal-Donate-00457C?logo=paypal)](https://www.paypal.me/hawkynt)
+
+## 📜 License
+
+Licensed under LGPL-3.0-or-later — see [LICENSE](LICENSE).
 
 ---
 
 **About »SynthelicZ«**  
 A collection of educational software projects focusing on cryptography, algorithms, and historical software preservation. Developed with emphasis on cross-platform compatibility and educational value.
 
-*Last updated: 2025*

@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_call: {}
+
+# Static website (GitHub Pages serves the repo directly — no build step). The
+# real check (minimum-viable CI) is a syntax pass over every JavaScript source;
+# HTML validation is advisory because the site intentionally carries
+# legacy-era markup (IE5/Lynx compatibility is a feature).
+
+# Force JavaScript-based actions to run on Node 24 instead of the deprecated
+# Node 20 ahead of the 2026-06-16 hard cutover.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Syntax-check every JavaScript source
+        run: |
+          status=0
+          count=0
+          while IFS= read -r -d '' f; do
+            count=$((count + 1))
+            if ! node --check "$f" 2>err.log; then
+              echo "::error file=$f::JavaScript syntax check failed"
+              cat err.log
+              status=1
+            fi
+          done < <(find . -path ./.git -prune -o -name '*.js' -print0)
+          if [ "$count" -eq 0 ]; then
+            echo "::error::no .js files found — nothing was checked"
+            exit 1
+          fi
+          echo "$count file(s) syntax-checked."
+          exit $status
+
+      # Advisory: the site deliberately serves legacy markup (IE5/Lynx-era
+      # fallbacks), which modern validators flag — never block on it.
+      - name: Validate HTML
+        continue-on-error: true
+        run: npx --yes html-validate "**/*.html" || true
