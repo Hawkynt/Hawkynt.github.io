@@ -2,7 +2,6 @@
 
 [![License](https://img.shields.io/github/license/Hawkynt/Hawkynt.github.io)](https://github.com/Hawkynt/Hawkynt.github.io/blob/main/LICENSE)
 [![Language](https://img.shields.io/github/languages/top/Hawkynt/Hawkynt.github.io?color=8957D5)](https://github.com/Hawkynt/Hawkynt.github.io)
-[![Release](https://img.shields.io/badge/Release-hawkynt.github.io-2EA44F)](https://hawkynt.github.io)
 
 [![CI](https://github.com/Hawkynt/Hawkynt.github.io/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Hawkynt/Hawkynt.github.io/actions/workflows/ci.yml)
 ![Last Commit](https://img.shields.io/github/last-commit/Hawkynt/Hawkynt.github.io?branch=main)
@@ -13,6 +12,8 @@
 [![Issues](https://img.shields.io/github/issues/Hawkynt/Hawkynt.github.io)](https://github.com/Hawkynt/Hawkynt.github.io/issues)
 ![Code Size](https://img.shields.io/github/languages/code-size/Hawkynt/Hawkynt.github.io?color=4CAF50)
 ![Repo Size](https://img.shields.io/github/repo-size/Hawkynt/Hawkynt.github.io?color=FF9800)
+
+[![Release](https://img.shields.io/badge/Release-hawkynt.github.io-blue)](https://hawkynt.github.io)
 
 > The »SynthelicZ« website — a collection of educational software projects, cryptographic tools and historical development archives, live at [hawkynt.github.io](https://hawkynt.github.io), built to run on anything from Lynx and IE5 to current browsers.
 
