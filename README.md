@@ -2,6 +2,7 @@
 
 [![License](https://img.shields.io/github/license/Hawkynt/Hawkynt.github.io)](https://github.com/Hawkynt/Hawkynt.github.io/blob/main/LICENSE)
 [![Language](https://img.shields.io/github/languages/top/Hawkynt/Hawkynt.github.io?color=8957D5)](https://github.com/Hawkynt/Hawkynt.github.io)
+[![Website](https://img.shields.io/website?url=https%3A%2F%2Fhawkynt.github.io&label=hawkynt.github.io)](https://hawkynt.github.io)
 
 [![CI](https://github.com/Hawkynt/Hawkynt.github.io/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Hawkynt/Hawkynt.github.io/actions/workflows/ci.yml)
 ![Last Commit](https://img.shields.io/github/last-commit/Hawkynt/Hawkynt.github.io?branch=main)
