@@ -155,6 +155,16 @@
           [], // Round-trip test
           "Long repetitive sequence - maximum LZP efficiency",
           "https://github.com/mathieuchartier/mcm"
+        ),
+        new TestCase(
+          // Binary/random sample - stresses the multi-order context selection
+          // (order 1, 2 and 3 models disagree often on non-repetitive data),
+          // which previously caused encoder/decoder to pick different
+          // "predicted" bytes for the same control bit (model desync).
+          [0x00, 0x40, 0x80, 0xC0, 0xFF, 0x01, 0x7F, 0x3C, 0x00, 0x40, 0x99, 0x21, 0xE4, 0x5A, 0x00, 0x40],
+          [], // Round-trip test
+          "Binary/random sample - context selection desync stress test",
+          "https://github.com/mathieuchartier/mcm"
         )
       ];
 
@@ -256,6 +266,33 @@
       return (value&OpCodes.Shl8(1, position)) !== 0;
     }
 
+    /**
+     * Determine the predicted byte for the position right after history[0..length),
+     * using the first context size (in this.contextSizes order) that has a
+     * recorded prediction. This exact routine is used identically on both the
+     * compress and decompress sides - the compressor uses it to decide what
+     * byte the decoder would predict (and only sets the "predicted" bit when
+     * that guess is actually correct), and the decompressor uses it to
+     * reconstruct the same guess when the bit says it was correct. Without a
+     * single shared, order-deterministic rule, the two sides can pick
+     * different context orders and silently diverge (the model desyncs).
+     * @param {Array<number>} history - already-processed bytes (input prefix on
+     *   encode, decoded output so far on decode)
+     * @param {number} length - number of valid bytes in `history` to consider
+     * @param {Array<number>} contextModels - hash table mapping context hash -> predicted byte
+     * @returns {number} predicted byte value, or -1 if no context predicts anything
+     */
+    _predictFromContext(history, length, contextModels) {
+      for (const ctxSize of this.contextSizes) {
+        if (length < ctxSize) continue;
+        const context = history.slice(length - ctxSize, length);
+        const hash = this._computeHash(context, ctxSize);
+        const predicted = contextModels[hash];
+        if (predicted !== -1) return predicted;
+      }
+      return -1;
+    }
+
 
     /**
      * Compress data using MCM algorithm
@@ -287,26 +324,18 @@
 
       while (pos < input.length) {
         const currentByte = input[pos];
-        let predicted = false;
 
-        // Try to predict using different context sizes
-        for (let ctxSize of this.contextSizes) {
-          if (pos < ctxSize) continue;
+        // Determine the prediction using the exact same deterministic rule the
+        // decoder will use (see _predictFromContext) - only mark the byte as
+        // "predicted" if that specific guess is correct, never if some other
+        // context order would have guessed right.
+        const predictedByte = this._predictFromContext(input, pos, contextModels);
 
-          const context = input.slice(pos - ctxSize, pos);
-          const hash = this._computeHash(context, ctxSize);
-          const predictedByte = contextModels[hash];
-
-          if (predictedByte === currentByte) {
-            // Successful prediction - set control bit
-            controlByte = this._setBit(controlByte, bitPos);
-            predicted = true;
-            break;
-          }
-        }
-
-        if (!predicted) {
-          // Prediction failed - output literal
+        if (predictedByte === currentByte) {
+          // Successful prediction - set control bit
+          controlByte = this._setBit(controlByte, bitPos);
+        } else {
+          // Prediction failed (or no context available yet) - output literal
           pendingData.push(currentByte);
         }
 
@@ -374,21 +403,9 @@
 
           let byte;
           if (isPredicted) {
-            // Prediction - get predicted byte from context models
-            let predictedByte = -1;
-
-            // Try different context sizes
-            for (let ctxSize of this.contextSizes) {
-              if (result.length < ctxSize) continue;
-
-              const context = result.slice(result.length - ctxSize);
-              const hash = this._computeHash(context, ctxSize);
-              predictedByte = contextModels[hash];
-
-              if (predictedByte !== -1) {
-                break;
-              }
-            }
+            // Prediction - reconstruct the exact same guess the encoder made
+            // (see _predictFromContext for why this must be the identical rule)
+            const predictedByte = this._predictFromContext(result, result.length, contextModels);
 
             if (predictedByte === -1) {
               throw new Error('Prediction failed - corrupted data');
