@@ -217,18 +217,18 @@ function renderAlgorithm(algorithm, meta) {
   if (vulnerabilities.length) {
     lines.push('### Known vulnerabilities');
     lines.push('');
-    lines.push('| Issue | Details |');
-    lines.push('| --- | --- |');
+    lines.push('| Issue | Description | Mitigation |');
+    lines.push('| --- | --- | --- |');
     for (const vulnerability of vulnerabilities) {
       const name = isUrl(vulnerability.uri)
         ? `[${cell(vulnerability.text)}](${vulnerability.uri.trim()})`
         : cell(vulnerability.text);
-      // Both the mitigation field and a non-URI third argument carry prose.
-      const details = [vulnerability.mitigation, isUrl(vulnerability.uri) ? null : vulnerability.uri]
+      // Guard against prose ever landing in the URI slot again.
+      const description = [vulnerability.description, isUrl(vulnerability.uri) ? null : vulnerability.uri]
         .map(escapeText)
         .filter(Boolean)
         .join(' — ');
-      lines.push(`| ${name} | ${cell(details) || '—'} |`);
+      lines.push(`| ${name} | ${cell(description) || '—'} | ${cell(escapeText(vulnerability.mitigation)) || '—'} |`);
     }
     lines.push('');
   } else {
