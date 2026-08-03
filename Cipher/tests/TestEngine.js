@@ -91,24 +91,15 @@
             return result;
         }
 
-        // Load algorithm file
+        // Load algorithm file (a cached no-op if it was already pulled in as a
+        // dependency of an earlier file — registration attribution handles that)
         const AlgorithmFramework = global.AlgorithmFramework;
-        const algorithmsBefore = AlgorithmFramework.Algorithms.length;
-
-        // Get expected algorithm name from filename
-        const expectedName = _getExpectedAlgorithmName(filePath);
-
-        // Check if algorithm is already registered (loaded as dependency by another file)
-        const alreadyRegistered = AlgorithmFramework.Algorithms.filter(a =>
-            a.name && expectedName &&
-            (a.name.toLowerCase() === expectedName.toLowerCase() ||
-             a.name.toLowerCase().replace(/[-_\s]/g, '') === expectedName.toLowerCase().replace(/[-_\s]/g, ''))
-        );
-
         const resolvedPath = path.resolve(filePath);
+        const normalizedPath = resolvedPath.toLowerCase();
+        const alreadyLoaded = Object.keys(require.cache || {})
+            .some(key => key.toLowerCase() === normalizedPath);
 
-        // Only try to load if not already registered
-        if (alreadyRegistered.length === 0) {
+        if (!alreadyLoaded) {
             try {
                 require(resolvedPath);
             } catch (error) {
@@ -117,24 +108,16 @@
             }
         }
 
-        // Check for newly registered algorithms
-        const algorithmsAfter = AlgorithmFramework.Algorithms.length;
-        const registeredCount = algorithmsAfter - algorithmsBefore;
+        // Algorithms belong to the file whose code called RegisterAlgorithm
+        const sources = global.__algorithmSources;
+        const registeredAlgorithms = AlgorithmFramework.Algorithms.filter(a =>
+            sources && sources.get(a) === normalizedPath
+        );
 
-        let registeredAlgorithms;
-
-        if (registeredCount === 0 && alreadyRegistered.length > 0) {
-            // Algorithm was already registered from previous load (dependency)
+        if (registeredAlgorithms.length > 0) {
             result.interface.passed = true;
-            registeredAlgorithms = alreadyRegistered;
-            result.interface.algorithms = registeredAlgorithms.map(a => a.name);
-        } else if (registeredCount > 0) {
-            // New algorithm(s) registered
-            result.interface.passed = true;
-            registeredAlgorithms = AlgorithmFramework.Algorithms.slice(algorithmsBefore);
             result.interface.algorithms = registeredAlgorithms.map(a => a.name);
         } else {
-            // No registrations and not already registered
             result.interface.error = 'No algorithms registered';
             return result;
         }
@@ -450,6 +433,21 @@
             global.AlgorithmFramework = require(AlgorithmFrameworkPath);
         }
 
+        // Attribute every registration to the source file performing it, so a file
+        // loaded early as another file's dependency still gets credited for its
+        // algorithms when it is tested later (require() is a cached no-op then).
+        if (!global.__algorithmSources) {
+            global.__algorithmSources = new Map(); // Algorithm object -> lowercased absolute source path
+            const AF = global.AlgorithmFramework;
+            const originalRegister = AF.RegisterAlgorithm;
+            AF.RegisterAlgorithm = function(algorithm) {
+                const result = originalRegister(algorithm);
+                const sourceFile = _callerAlgorithmFile();
+                if (sourceFile) global.__algorithmSources.set(algorithm, sourceFile);
+                return result;
+            };
+        }
+
         // Load DummyBlockCipher for mode testing
         if (!global.DummyBlockCipher) {
             try {
@@ -490,38 +488,28 @@
     }
 
     /**
-     * Extract expected algorithm name from filename
-     * Maps common filename patterns to likely algorithm names
+     * Find the first stack frame belonging to an algorithm file (skips the
+     * framework, this engine, and shared env helpers). Returns a lowercased
+     * absolute path or null.
      */
-    function _getExpectedAlgorithmName(filePath) {
-        if (!filePath || !isNode) return null;
-
-        const filename = path.basename(filePath, '.js');
-
-        // Map filename patterns to expected algorithm names
-        const nameMap = {
-            'sha1': 'SHA-1',
-            'sha256': 'SHA-256',
-            'sha224': 'SHA-224',
-            'sha384': 'SHA-384',
-            'sha512': 'SHA-512',
-            'sha3': 'SHA-3',
-            'md5': 'MD5',
-            'aes': 'Rijndael (AES)',
-            'rijndael': 'Rijndael (AES)',
-            '3des': '3DES (Triple DES)',
-            'des': 'DES',
-            'rc4': 'RC4',
-            'rc2': 'RC2',
-            'blowfish': 'Blowfish',
-            'twofish': 'Twofish',
-            'serpent': 'Serpent',
-            'gost28147mac': 'GOST 28147-89 MAC',
-            'cbcmac': 'CBC-MAC',
-            'dmac': 'DMAC'
-        };
-
-        return nameMap[filename.toLowerCase()] || filename;
+    function _callerAlgorithmFile() {
+        const skip = ['algorithmframework.js', 'testengine.js', 'universal-cipher-env.js'];
+        const stack = (new Error().stack || '').split('\n');
+        for (const line of stack) {
+            let s = line.trim();
+            if (!s.startsWith('at ')) continue;
+            s = s.slice(3);
+            const par = s.indexOf('(');
+            if (par >= 0) s = s.slice(par + 1).replace(/\)$/, '');
+            const parts = s.split(':');
+            if (parts.length < 3) continue;
+            const file = parts.slice(0, -2).join(':');
+            if (!file.endsWith('.js')) continue; // node:internal frames etc.
+            const lower = path.resolve(file).toLowerCase();
+            if (skip.some(name => lower.endsWith(name))) continue;
+            return lower;
+        }
+        return null;
     }
 
     function _validateMetadata(algorithm) {
