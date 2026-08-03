@@ -96,10 +96,14 @@
           text: "All literals - no matches (ABCD)",
           uri: "https://github.com/inikep/lizard/blob/lizard/doc/lizard_Block_format.md",
           input: OpCodes.AnsiToBytes("ABCD"),
-          // Token: 0x03 = 0000 0011 = 3-bit literal length (4 = 3+1 adjusted encoding)
+          // Token: 0x40 = 0100 0000 = 4 literals, no match (terminal sequence)
           // Followed by 4 literal bytes: A B C D
-          // Note: Actual Lizard has more complex encoding with streams
-          expected: OpCodes.AnsiToBytes("ABCD") // Simplified: very short inputs often stored as-is
+          // Note: Actual Lizard has more complex encoding with streams.
+          // Below-MIN_MATCH inputs must still carry a token - the
+          // decompressor always expects one as the first byte of a
+          // sequence, so raw untokenized passthrough (as this vector
+          // previously expected) cannot round-trip.
+          expected: [0x40, 0x41, 0x42, 0x43, 0x44]
         },
         {
           text: "Simple repetition - AAAAA (5 A's)",
@@ -113,9 +117,12 @@
           text: "Pattern ABCABC (6 bytes with 3-byte match)",
           uri: "https://github.com/inikep/lizard/blob/lizard/doc/lizard_Block_format.md",
           input: OpCodes.AnsiToBytes("ABCABC"),
-          // Token: 0x30 = 00110 000 = 3 literals, match length 0 (MIN_MATCH=4)
-          // But match is only 3 bytes, so actually stored as literals
-          expected: OpCodes.AnsiToBytes("ABCABC") // Too short for effective compression
+          // Token: 0x60 = 0110 0000 = 6 literals, no match (terminal sequence)
+          // The only repeat is 3 bytes long (below MIN_MATCH=4), so nothing
+          // is matchable and the whole input goes out as one tokenized
+          // literal run - see the ABCD vector above for why it needs a
+          // token at all.
+          expected: [0x60, 0x41, 0x42, 0x43, 0x41, 0x42, 0x43]
         },
         {
           text: "Long repetition - AAAAAAAA (8 A's)",
@@ -134,6 +141,34 @@
           // Literals: A B C D
           // Offset: 0x0004 (little-endian)
           expected: [0x40, 0x41, 0x42, 0x43, 0x44, 0x04, 0x00]
+        },
+        {
+          text: "Single byte input (regression: below-MIN_MATCH inputs used to be returned as untokenized raw bytes, which the decoder misreads as a bogus token)",
+          uri: "https://github.com/inikep/lizard/blob/lizard/doc/lizard_Block_format.md",
+          input: OpCodes.AnsiToBytes("A")
+          // Round-trip only
+        },
+        {
+          text: "Highly repetitive - 300x 'a' (regression: the trailing literal run used to be written without a token at all)",
+          uri: "https://github.com/inikep/lizard/blob/lizard/doc/lizard_Block_format.md",
+          input: new Array(300).fill(0x61)
+          // Round-trip only
+        },
+        {
+          text: "Alternating pattern - 200x 'ab'",
+          uri: "https://github.com/inikep/lizard/blob/lizard/doc/lizard_Block_format.md",
+          input: (() => { const a = []; for (let i = 0; i < 400; ++i) a.push(i % 2 ? 0x62 : 0x61); return a; })()
+          // Round-trip only
+        },
+        {
+          text: "Binary/pseudo-random sample",
+          uri: "https://github.com/inikep/lizard/blob/lizard/doc/lizard_Block_format.md",
+          input: (() => {
+            let seed = 0x5A5A5A5A, a = [];
+            for (let i = 0; i < 512; ++i) { seed = OpCodes.AndN(seed * 1103515245 + 12345, 0x7fffffff); a.push(OpCodes.AndN(seed, 0xFF)); }
+            return a;
+          })()
+          // Round-trip only
         }
       ];
     }
@@ -214,11 +249,18 @@
       if (inputLength === 0)
         return [];
 
-      // Very small inputs (less than MIN_MATCH): cannot compress effectively
-      if (inputLength <= this.MIN_MATCH)
-        return [...input];
-
       const output = [];
+
+      // Very small inputs (less than MIN_MATCH): cannot compress effectively,
+      // but the whole input must still go out as a properly tokenized
+      // literal-only sequence - the decompressor always starts by reading a
+      // token byte (literal-length in the high nibble), so raw untokenized
+      // passthrough bytes get misread as a bogus token and corrupted.
+      if (inputLength <= this.MIN_MATCH) {
+        this._writeFinalLiteralSequence(output, input, 0, inputLength);
+        return output;
+      }
+
       let ip = 0;  // Input position
       let anchor = 0;  // Start of current literal run
       const hashTable = new Int32Array(this.HASH_SIZE_U32);
@@ -286,15 +328,42 @@
         }
       }
 
-      // Final literal sequence (required by format)
+      // Final literal sequence (required by format). Per the LZ4/Lizard
+      // block format, the very last sequence in a block is a token
+      // followed only by its literal bytes - no offset/match-length bytes
+      // follow, since the decompressor recognizes end-of-block by running
+      // out of input right after copying the literals. Previously these
+      // trailing bytes were appended raw with no token at all, which the
+      // decompressor - which always expects a token as the first byte of
+      // every sequence - would misinterpret as the start of a bogus new
+      // sequence, corrupting or truncating the result.
       const finalLiterals = inputLength - anchor;
-      if (finalLiterals > 0) {
-        // Last 16 bytes are always literals per specification
-        for (let i = 0; i < finalLiterals; ++i)
-          output.push(OpCodes.ToByte(input[anchor + i]));
-      }
+      this._writeFinalLiteralSequence(output, input, anchor, finalLiterals);
 
       return output;
+    }
+
+    // Writes a token (literal-length field only, low nibble unused/zero)
+    // plus extended-length bytes and the literal bytes themselves, with no
+    // trailing offset/match-length - the terminal sequence of a block.
+    _writeFinalLiteralSequence(output, input, literalStart, literalCount) {
+      if (literalCount === 0)
+        return;
+
+      const litField = Math.min(literalCount, 15);
+      output.push(OpCodes.ToByte(OpCodes.Shl8(litField, 4)));
+
+      if (literalCount >= 15) {
+        let len = literalCount - 15;
+        while (len >= 255) {
+          output.push(255);
+          len -= 255;
+        }
+        output.push(OpCodes.ToByte(len));
+      }
+
+      for (let i = 0; i < literalCount; ++i)
+        output.push(OpCodes.ToByte(input[literalStart + i]));
     }
 
     _hash(data, pos) {
