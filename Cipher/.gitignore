@@ -1,1 +1,4 @@
 /.agent.tmp
+
+# Generated test artifacts (transpiler validation output projects)
+/tests/transpiler-validation-output/
