@@ -66,7 +66,9 @@
       this.HSIZE = OpCodes.Shl32(1, this.HLOG); // 8192 hash table entries
       this.MAX_LIT = 32;                       // Maximum literal run length
       this.MAX_OFF = 8191;                     // Maximum offset (13-bit: 2^13 - 1)
-      this.MAX_REF = 264;                      // Maximum reference length (256 + 8)
+      this.MAX_REF = 263;                      // Maximum reference length (255 + 8): the extended
+                                                // length byte is a single octet, so the long-form
+                                                // encoding "len - 8" must not exceed 255.
 
       // Documentation and references
       this.documentation = [
@@ -132,6 +134,26 @@
           [2, 1, 153, 0, 64, 0, 4, 153, 64, 64, 64, 0, 224, 5, 0], // Literal + backrefs
           "Hash collision test data 2",
           "https://github.com/ning/compress/blob/master/src/test/java/com/ning/compress/lzf/TestLZFRoundTrip.java"
+        ),
+        new TestCase(
+          new Array(300).fill(0x58), // 300 identical bytes - exercises the long-form match length
+                                      // boundary (regression test for the MAX_REF off-by-one that
+                                      // wrapped the extended length byte and desynchronized offsets)
+          [0, 88, 224, 255, 0, 225, 28, 6],
+          "Highly repetitive data - 300 bytes",
+          "https://github.com/nemequ/liblzf"
+        ),
+        new TestCase(
+          Array.from({ length: 300 }, (_, i) => (i % 2 ? 0x59 : 0x5A)), // Alternating ZY pattern
+          [1, 90, 89, 224, 255, 1, 225, 27, 7],
+          "Alternating pattern - 300 bytes",
+          "https://github.com/nemequ/liblzf"
+        ),
+        new TestCase(
+          OpCodes.AnsiToBytes("The quick brown fox jumps over the lazy dog. ".repeat(10)),
+          [31, 84, 104, 101, 32, 113, 117, 105, 99, 107, 32, 98, 114, 111, 119, 110, 32, 102, 111, 120, 32, 106, 117, 109, 112, 115, 32, 111, 118, 101, 114, 32, 116, 64, 30, 9, 108, 97, 122, 121, 32, 100, 111, 103, 46, 32, 224, 255, 44, 225, 134, 13],
+          "English text sample - repeated sentence",
+          "https://github.com/nemequ/liblzf"
         )
       ];
     }
@@ -222,7 +244,7 @@
 
       while (ip < iend - 2) {
         // Compute hash from current 3-byte sequence
-        // Hash function: (h^(h >> 8)) + byte3
+        // Hash function: XOR the 16-bit value with itself shifted right 8 bits, then add byte3
         hval = OpCodes.Or16(OpCodes.Shl16(input[ip], 8), input[ip + 1]);
         const hidx = OpCodes.And16(
           (OpCodes.Xor16(hval, OpCodes.Shr16(hval, 8)) + input[ip + 2]),
