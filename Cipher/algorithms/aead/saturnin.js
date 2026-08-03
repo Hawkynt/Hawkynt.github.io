@@ -528,8 +528,12 @@ class SaturninCTRCascadeAlgorithm extends AeadAlgorithm {
 
     this.documentation = [
       new LinkItem("Official Specification", "https://project.inria.fr/saturnin/"),
-      new LinkItem("NIST LWC Submission", "https://csrc.nist.gov/Projects/lightweight-cryptography"),
-      new LinkItem("Reference Implementation", "https://github.com/rweather/lwc-finalists")
+      new LinkItem("NIST LWC Submission", "https://csrc.nist.gov/Projects/lightweight-cryptography")
+    ];
+
+    this.references = [
+      new LinkItem("rweather/lightweight-crypto C Reference Implementation", "https://github.com/rweather/lightweight-crypto/blob/master/src/individual/Saturnin/saturnin.c"),
+      new LinkItem("Saturnin Project Site (reference package)", "https://project.inria.fr/saturnin/")
     ];
 
     // Test vectors generated from this implementation
@@ -742,8 +746,12 @@ class SaturninShortAlgorithm extends AeadAlgorithm {
 
     this.documentation = [
       new LinkItem("Official Specification", "https://project.inria.fr/saturnin/"),
-      new LinkItem("NIST LWC Submission", "https://csrc.nist.gov/Projects/lightweight-cryptography"),
-      new LinkItem("Reference Implementation", "https://github.com/rweather/lwc-finalists")
+      new LinkItem("NIST LWC Submission", "https://csrc.nist.gov/Projects/lightweight-cryptography")
+    ];
+
+    this.references = [
+      new LinkItem("rweather/lightweight-crypto C Reference Implementation", "https://github.com/rweather/lightweight-crypto/blob/master/src/individual/Saturnin/saturnin.c"),
+      new LinkItem("Saturnin Project Site (reference package)", "https://project.inria.fr/saturnin/")
     ];
 
     // Test vectors generated from this implementation

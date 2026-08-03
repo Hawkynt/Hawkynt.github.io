@@ -189,6 +189,10 @@
         new LinkItem("Bouncy Castle Implementation", "https://github.com/bcgit/bc-java/blob/master/core/src/main/java/org/bouncycastle/crypto/digests/Haraka256Digest.java")
       ];
 
+      this.references = [
+        new LinkItem("Official Haraka reference implementation (Kölbl et al.)", "https://github.com/kste/haraka")
+      ];
+
       // Official test vectors from Appendix B, Haraka-256 v2, IACR ePrint 2016/098
       this.tests = [
         new TestCase(
@@ -335,6 +339,10 @@
         new LinkItem("IACR ePrint Archive", "https://eprint.iacr.org/2016/098.pdf"),
         new LinkItem("Reference Implementation", "https://github.com/kste/haraka"),
         new LinkItem("Bouncy Castle Implementation", "https://github.com/bcgit/bc-java/blob/master/core/src/main/java/org/bouncycastle/crypto/digests/Haraka512Digest.java")
+      ];
+
+      this.references = [
+        new LinkItem("Official Haraka reference implementation (Kölbl et al.)", "https://github.com/kste/haraka")
       ];
 
       // Official test vectors from Appendix B, Haraka-512 v2, IACR ePrint 2016/098

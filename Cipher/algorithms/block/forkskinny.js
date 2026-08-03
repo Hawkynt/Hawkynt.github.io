@@ -49,23 +49,25 @@
     let y;
 
     // Mix the bits
-    x = (~x) >>> 0;
-    x ^= (((x >>> 2) & (x >>> 3)) & 0x11111111) >>> 0;
-    y = (((x << 5) & (x << 1)) & 0x20202020) >>> 0;
-    x ^= ((((x << 5) & (x << 4)) & 0x40404040) ^ y) >>> 0;
-    y = (((x << 2) & (x << 1)) & 0x80808080) >>> 0;
-    x ^= ((((x >>> 2) & (x << 1)) & 0x02020202) ^ y) >>> 0;
-    y = (((x >>> 5) & (x << 1)) & 0x04040404) >>> 0;
-    x ^= ((((x >>> 1) & (x >>> 2)) & 0x08080808) ^ y) >>> 0;
-    x = (~x) >>> 0;
+    x = OpCodes.Not32(x);
+    x = OpCodes.Xor32(x, OpCodes.And32(OpCodes.And32(OpCodes.Shr32(x, 2), OpCodes.Shr32(x, 3)), 0x11111111));
+    y = OpCodes.And32(OpCodes.And32(OpCodes.Shl32(x, 5), OpCodes.Shl32(x, 1)), 0x20202020);
+    x = OpCodes.Xor32(x, OpCodes.Xor32(OpCodes.And32(OpCodes.And32(OpCodes.Shl32(x, 5), OpCodes.Shl32(x, 4)), 0x40404040), y));
+    y = OpCodes.And32(OpCodes.And32(OpCodes.Shl32(x, 2), OpCodes.Shl32(x, 1)), 0x80808080);
+    x = OpCodes.Xor32(x, OpCodes.Xor32(OpCodes.And32(OpCodes.And32(OpCodes.Shr32(x, 2), OpCodes.Shl32(x, 1)), 0x02020202), y));
+    y = OpCodes.And32(OpCodes.And32(OpCodes.Shr32(x, 5), OpCodes.Shl32(x, 1)), 0x04040404);
+    x = OpCodes.Xor32(x, OpCodes.Xor32(OpCodes.And32(OpCodes.And32(OpCodes.Shr32(x, 1), OpCodes.Shr32(x, 2)), 0x08080808), y));
+    x = OpCodes.Not32(x);
 
     // Permutation: [2 7 6 1 3 0 4 5]
-    x = (((x & 0x08080808) << 1) |
-         ((x & 0x32323232) << 2) |
-         ((x & 0x01010101) << 5) |
-         ((x & 0x80808080) >>> 6) |
-         ((x & 0x40404040) >>> 4) |
-         ((x & 0x04040404) >>> 2)) >>> 0;
+    x = OpCodes.ToUint32(
+      OpCodes.Shl32(OpCodes.And32(x, 0x08080808), 1) |
+      OpCodes.Shl32(OpCodes.And32(x, 0x32323232), 2) |
+      OpCodes.Shl32(OpCodes.And32(x, 0x01010101), 5) |
+      OpCodes.Shr32(OpCodes.And32(x, 0x80808080), 6) |
+      OpCodes.Shr32(OpCodes.And32(x, 0x40404040), 4) |
+      OpCodes.Shr32(OpCodes.And32(x, 0x04040404), 2)
+    );
 
     return x;
   }
@@ -75,40 +77,46 @@
     let y;
 
     // Mix the bits
-    x = (~x) >>> 0;
-    y = (((x >>> 1) & (x >>> 3)) & 0x01010101) >>> 0;
-    x ^= ((((x >>> 2) & (x >>> 3)) & 0x10101010) ^ y) >>> 0;
-    y = (((x >>> 6) & (x >>> 1)) & 0x02020202) >>> 0;
-    x ^= ((((x >>> 1) & (x >>> 2)) & 0x08080808) ^ y) >>> 0;
-    y = (((x << 2) & (x << 1)) & 0x80808080) >>> 0;
-    x ^= ((((x >>> 1) & (x << 2)) & 0x04040404) ^ y) >>> 0;
-    y = (((x << 5) & (x << 1)) & 0x20202020) >>> 0;
-    x ^= ((((x << 4) & (x << 5)) & 0x40404040) ^ y) >>> 0;
-    x = (~x) >>> 0;
+    x = OpCodes.Not32(x);
+    y = OpCodes.And32(OpCodes.And32(OpCodes.Shr32(x, 1), OpCodes.Shr32(x, 3)), 0x01010101);
+    x = OpCodes.Xor32(x, OpCodes.Xor32(OpCodes.And32(OpCodes.And32(OpCodes.Shr32(x, 2), OpCodes.Shr32(x, 3)), 0x10101010), y));
+    y = OpCodes.And32(OpCodes.And32(OpCodes.Shr32(x, 6), OpCodes.Shr32(x, 1)), 0x02020202);
+    x = OpCodes.Xor32(x, OpCodes.Xor32(OpCodes.And32(OpCodes.And32(OpCodes.Shr32(x, 1), OpCodes.Shr32(x, 2)), 0x08080808), y));
+    y = OpCodes.And32(OpCodes.And32(OpCodes.Shl32(x, 2), OpCodes.Shl32(x, 1)), 0x80808080);
+    x = OpCodes.Xor32(x, OpCodes.Xor32(OpCodes.And32(OpCodes.And32(OpCodes.Shr32(x, 1), OpCodes.Shl32(x, 2)), 0x04040404), y));
+    y = OpCodes.And32(OpCodes.And32(OpCodes.Shl32(x, 5), OpCodes.Shl32(x, 1)), 0x20202020);
+    x = OpCodes.Xor32(x, OpCodes.Xor32(OpCodes.And32(OpCodes.And32(OpCodes.Shl32(x, 4), OpCodes.Shl32(x, 5)), 0x40404040), y));
+    x = OpCodes.Not32(x);
 
     // Permutation: [5 3 0 4 6 7 2 1]
-    x = (((x & 0x01010101) << 2) |
-         ((x & 0x04040404) << 4) |
-         ((x & 0x02020202) << 6) |
-         ((x & 0x20202020) >>> 5) |
-         ((x & 0xC8C8C8C8) >>> 2) |
-         ((x & 0x10101010) >>> 1)) >>> 0;
+    x = OpCodes.ToUint32(
+      OpCodes.Shl32(OpCodes.And32(x, 0x01010101), 2) |
+      OpCodes.Shl32(OpCodes.And32(x, 0x04040404), 4) |
+      OpCodes.Shl32(OpCodes.And32(x, 0x02020202), 6) |
+      OpCodes.Shr32(OpCodes.And32(x, 0x20202020), 5) |
+      OpCodes.Shr32(OpCodes.And32(x, 0xC8C8C8C8), 2) |
+      OpCodes.Shr32(OpCodes.And32(x, 0x10101010), 1)
+    );
 
     return x;
   }
 
   // LFSR2 for TK2 (forward direction)
   function skinny128_LFSR2(x) {
-    const _x = x >>> 0;
-    return (((_x << 1) & 0xFEFEFEFE) ^
-            (((_x >>> 7) ^ (_x >>> 5)) & 0x01010101)) >>> 0;
+    const _x = OpCodes.ToUint32(x);
+    return OpCodes.Xor32(
+      OpCodes.And32(OpCodes.Shl32(_x, 1), 0xFEFEFEFE),
+      OpCodes.And32(OpCodes.Xor32(OpCodes.Shr32(_x, 7), OpCodes.Shr32(_x, 5)), 0x01010101)
+    );
   }
 
   // LFSR3 for TK3 (forward direction)
   function skinny128_LFSR3(x) {
-    const _x = x >>> 0;
-    return (((_x >>> 1) & 0x7F7F7F7F) ^
-            (((_x << 7) ^ (_x << 1)) & 0x80808080)) >>> 0;
+    const _x = OpCodes.ToUint32(x);
+    return OpCodes.Xor32(
+      OpCodes.And32(OpCodes.Shr32(_x, 1), 0x7F7F7F7F),
+      OpCodes.And32(OpCodes.Xor32(OpCodes.Shl32(_x, 7), OpCodes.Shl32(_x, 1)), 0x80808080)
+    );
   }
 
   // Inverse LFSR2 (LFSR3 is inverse of LFSR2)
@@ -127,14 +135,18 @@
     const row3 = tk[3];
     tk[2] = tk[0];
     tk[3] = tk[1];
-    const row3_rot = ((row3 << 16) | (row3 >>> 16)) >>> 0;
-    tk[0] = (((row2 >>> 8) & 0x000000FF) |
-             ((row2 << 16) & 0x00FF0000) |
-             (row3_rot & 0xFF00FF00)) >>> 0;
-    tk[1] = (((row2 >>> 16) & 0x000000FF) |
-             (row2 & 0xFF000000) |
-             ((row3_rot << 8) & 0x0000FF00) |
-             (row3_rot & 0x00FF0000)) >>> 0;
+    const row3_rot = OpCodes.RotL32(row3, 16);
+    tk[0] = OpCodes.ToUint32(
+      OpCodes.And32(OpCodes.Shr32(row2, 8), 0x000000FF) |
+      OpCodes.And32(OpCodes.Shl32(row2, 16), 0x00FF0000) |
+      OpCodes.And32(row3_rot, 0xFF00FF00)
+    );
+    tk[1] = OpCodes.ToUint32(
+      OpCodes.And32(OpCodes.Shr32(row2, 16), 0x000000FF) |
+      OpCodes.And32(row2, 0xFF000000) |
+      OpCodes.And32(OpCodes.Shl32(row3_rot, 8), 0x0000FF00) |
+      OpCodes.And32(row3_rot, 0x00FF0000)
+    );
   }
 
   // Inverse permute tweakey PT' = [8, 9, 10, 11, 12, 13, 14, 15, 2, 0, 4, 7, 6, 3, 5, 1]
@@ -143,14 +155,18 @@
     const row1 = tk[1];
     tk[0] = tk[2];
     tk[1] = tk[3];
-    tk[2] = (((row0 >>> 16) & 0x000000FF) |
-             ((row0 << 8) & 0x0000FF00) |
-             ((row1 << 16) & 0x00FF0000) |
-             (row1 & 0xFF000000)) >>> 0;
-    tk[3] = (((row0 >>> 16) & 0x0000FF00) |
-             ((row0 << 16) & 0xFF000000) |
-             ((row1 >>> 16) & 0x000000FF) |
-             ((row1 << 8) & 0x00FF0000)) >>> 0;
+    tk[2] = OpCodes.ToUint32(
+      OpCodes.And32(OpCodes.Shr32(row0, 16), 0x000000FF) |
+      OpCodes.And32(OpCodes.Shl32(row0, 8), 0x0000FF00) |
+      OpCodes.And32(OpCodes.Shl32(row1, 16), 0x00FF0000) |
+      OpCodes.And32(row1, 0xFF000000)
+    );
+    tk[3] = OpCodes.ToUint32(
+      OpCodes.And32(OpCodes.Shr32(row0, 16), 0x0000FF00) |
+      OpCodes.And32(OpCodes.Shl32(row0, 16), 0xFF000000) |
+      OpCodes.And32(OpCodes.Shr32(row1, 16), 0x000000FF) |
+      OpCodes.And32(OpCodes.Shl32(row1, 8), 0x00FF0000)
+    );
   }
 
   // ForkSkinny-128-256 state
@@ -188,8 +204,8 @@
 
       // XOR round constant and subkey
       const rc = RC[round];
-      s0 ^= (state.TK1[0] ^ state.TK2[0] ^ (rc & 0x0F) ^ 0x00020000) >>> 0;
-      s1 ^= (state.TK1[1] ^ state.TK2[1] ^ (rc >>> 4)) >>> 0;
+      s0 = OpCodes.Xor32(s0, OpCodes.Xor32(state.TK1[0], OpCodes.Xor32(state.TK2[0], OpCodes.Xor32(OpCodes.And32(rc, 0x0F), 0x00020000))));
+      s1 = OpCodes.Xor32(s1, OpCodes.Xor32(state.TK1[1], OpCodes.Xor32(state.TK2[1], OpCodes.Shr32(rc, 4))));
       s2 ^= 0x02;
 
       // Shift rows (left rotate to move cells right)
@@ -200,7 +216,7 @@
       // Mix columns
       s1 ^= s2;
       s2 ^= s0;
-      const temp = (s3 ^ s2) >>> 0;
+      const temp = OpCodes.Xor32(s3, s2);
       s3 = s2;
       s2 = s1;
       s1 = s0;
@@ -238,7 +254,7 @@
       s0 = s1;
       s1 = s2;
       s2 = s3;
-      s3 = (temp ^ s2) >>> 0;
+      s3 = OpCodes.Xor32(temp, s2);
       s2 ^= s0;
       s1 ^= s2;
 
@@ -249,8 +265,8 @@
 
       // XOR round constant and subkey
       const rc = RC[round - 1];
-      s0 ^= (state.TK1[0] ^ state.TK2[0] ^ (rc & 0x0F) ^ 0x00020000) >>> 0;
-      s1 ^= (state.TK1[1] ^ state.TK2[1] ^ (rc >>> 4)) >>> 0;
+      s0 = OpCodes.Xor32(s0, OpCodes.Xor32(state.TK1[0], OpCodes.Xor32(state.TK2[0], OpCodes.Xor32(OpCodes.And32(rc, 0x0F), 0x00020000))));
+      s1 = OpCodes.Xor32(s1, OpCodes.Xor32(state.TK1[1], OpCodes.Xor32(state.TK2[1], OpCodes.Shr32(rc, 4))));
       s2 ^= 0x02;
 
       // Apply inverse S-box
@@ -328,8 +344,8 @@
 
       // XOR round constant and subkey
       const rc = RC[round];
-      s0 ^= (state.TK1[0] ^ state.TK2[0] ^ state.TK3[0] ^ (rc & 0x0F) ^ 0x00020000) >>> 0;
-      s1 ^= (state.TK1[1] ^ state.TK2[1] ^ state.TK3[1] ^ (rc >>> 4)) >>> 0;
+      s0 = OpCodes.Xor32(s0, OpCodes.Xor32(state.TK1[0], OpCodes.Xor32(state.TK2[0], OpCodes.Xor32(state.TK3[0], OpCodes.Xor32(OpCodes.And32(rc, 0x0F), 0x00020000)))));
+      s1 = OpCodes.Xor32(s1, OpCodes.Xor32(state.TK1[1], OpCodes.Xor32(state.TK2[1], OpCodes.Xor32(state.TK3[1], OpCodes.Shr32(rc, 4)))));
       s2 ^= 0x02;
 
       // Shift rows
@@ -340,7 +356,7 @@
       // Mix columns
       s1 ^= s2;
       s2 ^= s0;
-      const temp = (s3 ^ s2) >>> 0;
+      const temp = OpCodes.Xor32(s3, s2);
       s3 = s2;
       s2 = s1;
       s1 = s0;
@@ -384,7 +400,7 @@
       s0 = s1;
       s1 = s2;
       s2 = s3;
-      s3 = (temp ^ s2) >>> 0;
+      s3 = OpCodes.Xor32(temp, s2);
       s2 ^= s0;
       s1 ^= s2;
 
@@ -395,8 +411,8 @@
 
       // XOR round constant and subkey
       const rc = RC[round - 1];
-      s0 ^= (state.TK1[0] ^ state.TK2[0] ^ state.TK3[0] ^ (rc & 0x0F) ^ 0x00020000) >>> 0;
-      s1 ^= (state.TK1[1] ^ state.TK2[1] ^ state.TK3[1] ^ (rc >>> 4)) >>> 0;
+      s0 = OpCodes.Xor32(s0, OpCodes.Xor32(state.TK1[0], OpCodes.Xor32(state.TK2[0], OpCodes.Xor32(state.TK3[0], OpCodes.Xor32(OpCodes.And32(rc, 0x0F), 0x00020000)))));
+      s1 = OpCodes.Xor32(s1, OpCodes.Xor32(state.TK1[1], OpCodes.Xor32(state.TK2[1], OpCodes.Xor32(state.TK3[1], OpCodes.Shr32(rc, 4)))));
       s2 ^= 0x02;
 
       // Apply inverse S-box
@@ -502,9 +518,13 @@
       this.SupportedBlockSizes = [new KeySize(16, 16, 1)];
 
       this.documentation = [
+        new LinkItem("ForkAE NIST LWC Submission Specification", "https://csrc.nist.gov/CSRC/media/Projects/Lightweight-Cryptography/documents/round-1/spec-doc/forkae-spec.pdf"),
         new LinkItem("ForkAE Official Website", "https://www.esat.kuleuven.be/cosic/forkae/"),
-        new LinkItem("Reference Implementation", "https://github.com/rweather/lightweight-crypto"),
         new LinkItem("NIST Lightweight Crypto", "https://csrc.nist.gov/projects/lightweight-cryptography")
+      ];
+
+      this.references = [
+        new LinkItem("Reference Implementation", "https://github.com/rweather/lightweight-crypto")
       ];
 
       // Test vectors from reference implementation
@@ -776,7 +796,12 @@
       this.SupportedBlockSizes = [new KeySize(16, 16, 1)];
 
       this.documentation = [
+        new LinkItem("ForkAE NIST LWC Submission Specification", "https://csrc.nist.gov/CSRC/media/Projects/Lightweight-Cryptography/documents/round-1/spec-doc/forkae-spec.pdf"),
         new LinkItem("ForkAE Official Website", "https://www.esat.kuleuven.be/cosic/forkae/"),
+        new LinkItem("NIST Lightweight Crypto", "https://csrc.nist.gov/projects/lightweight-cryptography")
+      ];
+
+      this.references = [
         new LinkItem("Reference Implementation", "https://github.com/rweather/lightweight-crypto")
       ];
 

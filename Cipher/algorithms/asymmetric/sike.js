@@ -97,7 +97,11 @@
         new global.AlgorithmFramework.LinkItem('SIKE Specification (Historical)', 'https://sike.org/'),
         new global.AlgorithmFramework.LinkItem('Breaking Attack Paper', 'https://eprint.iacr.org/2022/975')
       ];
-      
+
+      this.references = [
+        new global.AlgorithmFramework.LinkItem('Microsoft PQCrypto-SIKE Reference Implementation', 'https://github.com/microsoft/PQCrypto-SIKE')
+      ];
+
       this.knownVulnerabilities = [
         new global.AlgorithmFramework.Vulnerability(
           'Complete Break - Key Recovery',

@@ -177,8 +177,11 @@
           "NIST LWC Project",
           "https://csrc.nist.gov/projects/lightweight-cryptography"
         ),
+      ];
+
+      this.references = [
         new LinkItem(
-          "C Reference Implementation",
+          "rweather/lightweight-crypto C Reference Implementation",
           "https://github.com/rweather/lightweight-crypto"
         )
       ];

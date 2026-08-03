@@ -72,6 +72,10 @@
         new LinkItem("Error Correction Tutorial", "https://www.electronicshub.org/error-correction-and-detection-codes/")
       ];
 
+      this.references = [
+        new LinkItem("liquid-dsp rep3 Repetition Code Implementation", "https://github.com/jgaeddert/liquid-dsp/blob/master/src/fec/src/fec_rep3.c")
+      ];
+
       // Test vectors based on majority voting truth table
       this.tests = [
         new TestCase(

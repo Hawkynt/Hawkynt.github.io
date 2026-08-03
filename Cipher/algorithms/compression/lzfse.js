@@ -74,6 +74,7 @@
 
         // Documentation and references
         this.documentation = [
+          new LinkItem("LZFSE GitHub Repository (Apple reference implementation)", "https://github.com/lzfse/lzfse"),
           new LinkItem("LZFSE Wikipedia", "https://en.wikipedia.org/wiki/LZFSE"),
           new LinkItem("Apple Developer Documentation", "https://developer.apple.com/documentation/compression/compression_lzfse")
         ];
@@ -95,7 +96,7 @@
             input: input,
             expected: compressed,
             text: description,
-            uri: this.documentation[0].url
+            uri: this.documentation[0].uri
           });
         };
 
@@ -105,11 +106,16 @@
         };
 
         // Add standard round-trip tests
-        this.addRoundTripTest(OpCodes.AnsiToBytes("A"), "Single character literal");
-        this.addRoundTripTest(OpCodes.AnsiToBytes("Hello"), "Simple text - mostly literals");
-        this.addRoundTripTest(OpCodes.AnsiToBytes("AAAA"), "Run-length pattern - LZ77 compression");
-        this.addRoundTripTest(OpCodes.AnsiToBytes("abcabc"), "Repeating pattern - dictionary match");
-        this.addRoundTripTest(OpCodes.AnsiToBytes("The quick brown fox"), "Natural text with some repetition");
+        // NOTE: This educational implementation is a length-prefixed store/retrieve
+        // stub, not Apple's real LZ77 + Finite State Entropy engine. These vectors
+        // are self-computed round-trip verification vectors produced by this
+        // implementation itself (no external LZFSE authority produced these exact
+        // bytes); the uri references Apple's real LZFSE reference implementation for context.
+        this.addRoundTripTest(OpCodes.AnsiToBytes("A"), "Self-computed round-trip verification vector - single character literal");
+        this.addRoundTripTest(OpCodes.AnsiToBytes("Hello"), "Self-computed round-trip verification vector - simple text, mostly literals");
+        this.addRoundTripTest(OpCodes.AnsiToBytes("AAAA"), "Self-computed round-trip verification vector - run-length pattern");
+        this.addRoundTripTest(OpCodes.AnsiToBytes("abcabc"), "Self-computed round-trip verification vector - repeating pattern");
+        this.addRoundTripTest(OpCodes.AnsiToBytes("The quick brown fox"), "Self-computed round-trip verification vector - natural text with some repetition");
 
         // For test suite compatibility
         this.testVectors = this.tests;

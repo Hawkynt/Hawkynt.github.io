@@ -63,9 +63,15 @@
         this.keySize = { min: 1, max: 50, step: 1 };
         this.blockSize = { variable: true };
 
-        this.links = [
+        this.documentation = [
           new LinkItem('Wikipedia: Transposition Cipher', 'https://en.wikipedia.org/wiki/Transposition_cipher'),
-          new LinkItem('Educational Tool', 'https://www.dcode.fr/columnar-transposition-cipher')
+          new LinkItem('Educational Tool', 'https://www.dcode.fr/columnar-transposition-cipher'),
+          new LinkItem('Crypto Corner: Columnar Transposition Cipher', 'https://crypto.interactive-maths.com/columnar-transposition-cipher.html')
+        ];
+
+        this.references = [
+          new LinkItem('pycipher columnartransposition.py (Python reference implementation)', 'https://github.com/jameslyons/pycipher/blob/master/pycipher/columnartransposition.py'),
+          new LinkItem('Practical Cryptography: Columnar Transposition Cipher', 'http://practicalcryptography.com/ciphers/columnar-transposition-cipher/')
         ];
 
         // Test vectors using byte arrays

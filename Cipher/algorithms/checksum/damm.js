@@ -57,6 +57,10 @@
         new LinkItem("Check Digit Systems", "https://www.nayuki.io/page/java-checksum-algorithms")
       ];
 
+      this.references = [
+        new LinkItem("python-stdnum Damm algorithm implementation", "https://github.com/arthurdejong/python-stdnum/blob/master/stdnum/damm.py")
+      ];
+
       this.notes = [
         "Uses single quasigroup operation table",
         "Totally anti-symmetric quasigroup of order 10",

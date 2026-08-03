@@ -83,6 +83,10 @@
         new LinkItem("Rivest's Spritz Page", "https://people.csail.mit.edu/rivest/Spritz/")
       ];
 
+      this.references = [
+        new LinkItem("jedisct1/spritz C Reference Implementation", "https://github.com/jedisct1/spritz")
+      ];
+
       // Security vulnerabilities
       this.knownVulnerabilities = [
         new Vulnerability(

@@ -57,6 +57,10 @@
         new LinkItem("Checksum Comparison", "https://www.gnu.org/software/coreutils/manual/html_node/sum-invocation.html")
       ];
 
+      this.references = [
+        new LinkItem("GNU coreutils sum.c (bsd_sum_stream)", "https://github.com/coreutils/coreutils/blob/master/src/sum.c")
+      ];
+
       this.notes = [
         "Algorithm: rotate right, then add byte",
         "Rotation provides better bit mixing than simple sum",

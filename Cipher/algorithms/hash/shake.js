@@ -238,7 +238,7 @@
           capacity: 512,    // 2 × 256 (security level) in bits
           rate: 136,        // (1600 - 512) / 8 = 136 bytes (1088 bits)
           securityLevel: 256,
-          securityStatus: null,  // Safe default per CLAUDE.md guidelines
+          securityStatus: null,  // Safe default per the project guidelines guidelines
           tests: [
             {
               text: "SHAKE256: Empty, 64 bytes (Crypto++)",

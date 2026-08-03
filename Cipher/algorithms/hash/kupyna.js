@@ -123,6 +123,12 @@
 
   // ===== SHARED TRANSFORMATION FUNCTIONS =====
 
+  // Conditional swap of two 64-bit BigInt words under a bitmask (bit-parallel permutation step)
+  function swapMask64(a, b, mask) {
+    const d = OpCodes.AndN(OpCodes.XorN(a, b), mask);
+    return [OpCodes.XorN(a, d), OpCodes.XorN(b, d)];
+  }
+
   // SubBytes transformation using 4 S-boxes
   function subBytes(s, numColumns) {
     for (let col = 0; col < numColumns; ++col) {
@@ -144,29 +150,28 @@
     for (let i = 0; i < 8; ++i) {
       words[i] = 0n;
       for (let j = 0; j < 8; ++j) {
-        words[i] |= BigInt(OpCodes.AndN(s[i][j], 0xFF)) << BigInt(j * 8);
+        words[i] = OpCodes.OrN(words[i], OpCodes.ShiftLn(BigInt(OpCodes.AndN(s[i][j], 0xFF)), j * 8));
       }
     }
 
     let c0 = words[0], c1 = words[1], c2 = words[2], c3 = words[3];
     let c4 = words[4], c5 = words[5], c6 = words[6], c7 = words[7];
-    let d;
 
     // Bit-parallel permutation for 512-bit state
-    d = (c0 ^ c4) & 0xFFFFFFFF00000000n; c0 ^= d; c4 ^= d;
-    d = (c1 ^ c5) & 0x00FFFFFFFF000000n; c1 ^= d; c5 ^= d;
-    d = (c2 ^ c6) & 0x0000FFFFFFFF0000n; c2 ^= d; c6 ^= d;
-    d = (c3 ^ c7) & 0x000000FFFFFFFF00n; c3 ^= d; c7 ^= d;
+    [c0, c4] = swapMask64(c0, c4, 0xFFFFFFFF00000000n);
+    [c1, c5] = swapMask64(c1, c5, 0x00FFFFFFFF000000n);
+    [c2, c6] = swapMask64(c2, c6, 0x0000FFFFFFFF0000n);
+    [c3, c7] = swapMask64(c3, c7, 0x000000FFFFFFFF00n);
 
-    d = (c0 ^ c2) & 0xFFFF0000FFFF0000n; c0 ^= d; c2 ^= d;
-    d = (c1 ^ c3) & 0x00FFFF0000FFFF00n; c1 ^= d; c3 ^= d;
-    d = (c4 ^ c6) & 0xFFFF0000FFFF0000n; c4 ^= d; c6 ^= d;
-    d = (c5 ^ c7) & 0x00FFFF0000FFFF00n; c5 ^= d; c7 ^= d;
+    [c0, c2] = swapMask64(c0, c2, 0xFFFF0000FFFF0000n);
+    [c1, c3] = swapMask64(c1, c3, 0x00FFFF0000FFFF00n);
+    [c4, c6] = swapMask64(c4, c6, 0xFFFF0000FFFF0000n);
+    [c5, c7] = swapMask64(c5, c7, 0x00FFFF0000FFFF00n);
 
-    d = (c0 ^ c1) & 0xFF00FF00FF00FF00n; c0 ^= d; c1 ^= d;
-    d = (c2 ^ c3) & 0xFF00FF00FF00FF00n; c2 ^= d; c3 ^= d;
-    d = (c4 ^ c5) & 0xFF00FF00FF00FF00n; c4 ^= d; c5 ^= d;
-    d = (c6 ^ c7) & 0xFF00FF00FF00FF00n; c6 ^= d; c7 ^= d;
+    [c0, c1] = swapMask64(c0, c1, 0xFF00FF00FF00FF00n);
+    [c2, c3] = swapMask64(c2, c3, 0xFF00FF00FF00FF00n);
+    [c4, c5] = swapMask64(c4, c5, 0xFF00FF00FF00FF00n);
+    [c6, c7] = swapMask64(c6, c7, 0xFF00FF00FF00FF00n);
 
     words[0] = c0; words[1] = c1; words[2] = c2; words[3] = c3;
     words[4] = c4; words[5] = c5; words[6] = c6; words[7] = c7;
@@ -174,7 +179,7 @@
     // Convert back to byte representation
     for (let i = 0; i < 8; ++i) {
       for (let j = 0; j < 8; ++j) {
-        s[i][j] = Number((words[i] >> BigInt(j * 8)) & 0xFFn);
+        s[i][j] = Number(OpCodes.AndN(OpCodes.ShiftRn(words[i], j * 8), 0xFFn));
       }
     }
   }
@@ -186,7 +191,7 @@
     for (let i = 0; i < 16; ++i) {
       words[i] = 0n;
       for (let j = 0; j < 8; ++j) {
-        words[i] |= BigInt(OpCodes.AndN(s[i][j], 0xFF)) << BigInt(j * 8);
+        words[i] = OpCodes.OrN(words[i], OpCodes.ShiftLn(BigInt(OpCodes.AndN(s[i][j], 0xFF)), j * 8));
       }
     }
 
@@ -194,44 +199,43 @@
     let c04 = words[4], c05 = words[5], c06 = words[6], c07 = words[7];
     let c08 = words[8], c09 = words[9], c10 = words[10], c11 = words[11];
     let c12 = words[12], c13 = words[13], c14 = words[14], c15 = words[15];
-    let d;
 
     // Bit-parallel permutation for 1024-bit state
-    d = (c00 ^ c08) & 0xFF00000000000000n; c00 ^= d; c08 ^= d;
-    d = (c01 ^ c09) & 0xFF00000000000000n; c01 ^= d; c09 ^= d;
-    d = (c02 ^ c10) & 0xFFFF000000000000n; c02 ^= d; c10 ^= d;
-    d = (c03 ^ c11) & 0xFFFFFF0000000000n; c03 ^= d; c11 ^= d;
-    d = (c04 ^ c12) & 0xFFFFFFFF00000000n; c04 ^= d; c12 ^= d;
-    d = (c05 ^ c13) & 0x00FFFFFFFF000000n; c05 ^= d; c13 ^= d;
-    d = (c06 ^ c14) & 0x00FFFFFFFFFF0000n; c06 ^= d; c14 ^= d;
-    d = (c07 ^ c15) & 0x00FFFFFFFFFFFF00n; c07 ^= d; c15 ^= d;
+    [c00, c08] = swapMask64(c00, c08, 0xFF00000000000000n);
+    [c01, c09] = swapMask64(c01, c09, 0xFF00000000000000n);
+    [c02, c10] = swapMask64(c02, c10, 0xFFFF000000000000n);
+    [c03, c11] = swapMask64(c03, c11, 0xFFFFFF0000000000n);
+    [c04, c12] = swapMask64(c04, c12, 0xFFFFFFFF00000000n);
+    [c05, c13] = swapMask64(c05, c13, 0x00FFFFFFFF000000n);
+    [c06, c14] = swapMask64(c06, c14, 0x00FFFFFFFFFF0000n);
+    [c07, c15] = swapMask64(c07, c15, 0x00FFFFFFFFFFFF00n);
 
-    d = (c00 ^ c04) & 0x00FFFFFF00000000n; c00 ^= d; c04 ^= d;
-    d = (c01 ^ c05) & 0xFFFFFFFFFF000000n; c01 ^= d; c05 ^= d;
-    d = (c02 ^ c06) & 0xFF00FFFFFFFF0000n; c02 ^= d; c06 ^= d;
-    d = (c03 ^ c07) & 0xFF0000FFFFFFFF00n; c03 ^= d; c07 ^= d;
-    d = (c08 ^ c12) & 0x00FFFFFF00000000n; c08 ^= d; c12 ^= d;
-    d = (c09 ^ c13) & 0xFFFFFFFFFF000000n; c09 ^= d; c13 ^= d;
-    d = (c10 ^ c14) & 0xFF00FFFFFFFF0000n; c10 ^= d; c14 ^= d;
-    d = (c11 ^ c15) & 0xFF0000FFFFFFFF00n; c11 ^= d; c15 ^= d;
+    [c00, c04] = swapMask64(c00, c04, 0x00FFFFFF00000000n);
+    [c01, c05] = swapMask64(c01, c05, 0xFFFFFFFFFF000000n);
+    [c02, c06] = swapMask64(c02, c06, 0xFF00FFFFFFFF0000n);
+    [c03, c07] = swapMask64(c03, c07, 0xFF0000FFFFFFFF00n);
+    [c08, c12] = swapMask64(c08, c12, 0x00FFFFFF00000000n);
+    [c09, c13] = swapMask64(c09, c13, 0xFFFFFFFFFF000000n);
+    [c10, c14] = swapMask64(c10, c14, 0xFF00FFFFFFFF0000n);
+    [c11, c15] = swapMask64(c11, c15, 0xFF0000FFFFFFFF00n);
 
-    d = (c00 ^ c02) & 0xFFFF0000FFFF0000n; c00 ^= d; c02 ^= d;
-    d = (c01 ^ c03) & 0x00FFFF0000FFFF00n; c01 ^= d; c03 ^= d;
-    d = (c04 ^ c06) & 0xFFFF0000FFFF0000n; c04 ^= d; c06 ^= d;
-    d = (c05 ^ c07) & 0x00FFFF0000FFFF00n; c05 ^= d; c07 ^= d;
-    d = (c08 ^ c10) & 0xFFFF0000FFFF0000n; c08 ^= d; c10 ^= d;
-    d = (c09 ^ c11) & 0x00FFFF0000FFFF00n; c09 ^= d; c11 ^= d;
-    d = (c12 ^ c14) & 0xFFFF0000FFFF0000n; c12 ^= d; c14 ^= d;
-    d = (c13 ^ c15) & 0x00FFFF0000FFFF00n; c13 ^= d; c15 ^= d;
+    [c00, c02] = swapMask64(c00, c02, 0xFFFF0000FFFF0000n);
+    [c01, c03] = swapMask64(c01, c03, 0x00FFFF0000FFFF00n);
+    [c04, c06] = swapMask64(c04, c06, 0xFFFF0000FFFF0000n);
+    [c05, c07] = swapMask64(c05, c07, 0x00FFFF0000FFFF00n);
+    [c08, c10] = swapMask64(c08, c10, 0xFFFF0000FFFF0000n);
+    [c09, c11] = swapMask64(c09, c11, 0x00FFFF0000FFFF00n);
+    [c12, c14] = swapMask64(c12, c14, 0xFFFF0000FFFF0000n);
+    [c13, c15] = swapMask64(c13, c15, 0x00FFFF0000FFFF00n);
 
-    d = (c00 ^ c01) & 0xFF00FF00FF00FF00n; c00 ^= d; c01 ^= d;
-    d = (c02 ^ c03) & 0xFF00FF00FF00FF00n; c02 ^= d; c03 ^= d;
-    d = (c04 ^ c05) & 0xFF00FF00FF00FF00n; c04 ^= d; c05 ^= d;
-    d = (c06 ^ c07) & 0xFF00FF00FF00FF00n; c06 ^= d; c07 ^= d;
-    d = (c08 ^ c09) & 0xFF00FF00FF00FF00n; c08 ^= d; c09 ^= d;
-    d = (c10 ^ c11) & 0xFF00FF00FF00FF00n; c10 ^= d; c11 ^= d;
-    d = (c12 ^ c13) & 0xFF00FF00FF00FF00n; c12 ^= d; c13 ^= d;
-    d = (c14 ^ c15) & 0xFF00FF00FF00FF00n; c14 ^= d; c15 ^= d;
+    [c00, c01] = swapMask64(c00, c01, 0xFF00FF00FF00FF00n);
+    [c02, c03] = swapMask64(c02, c03, 0xFF00FF00FF00FF00n);
+    [c04, c05] = swapMask64(c04, c05, 0xFF00FF00FF00FF00n);
+    [c06, c07] = swapMask64(c06, c07, 0xFF00FF00FF00FF00n);
+    [c08, c09] = swapMask64(c08, c09, 0xFF00FF00FF00FF00n);
+    [c10, c11] = swapMask64(c10, c11, 0xFF00FF00FF00FF00n);
+    [c12, c13] = swapMask64(c12, c13, 0xFF00FF00FF00FF00n);
+    [c14, c15] = swapMask64(c14, c15, 0xFF00FF00FF00FF00n);
 
     words[0] = c00; words[1] = c01; words[2] = c02; words[3] = c03;
     words[4] = c04; words[5] = c05; words[6] = c06; words[7] = c07;
@@ -241,33 +245,39 @@
     // Convert back to byte representation
     for (let i = 0; i < 16; ++i) {
       for (let j = 0; j < 8; ++j) {
-        s[i][j] = Number((words[i] >> BigInt(j * 8)) & 0xFFn);
+        s[i][j] = Number(OpCodes.AndN(OpCodes.ShiftRn(words[i], j * 8), 0xFFn));
       }
     }
-  }
-
-  // 64-bit rotation helper (right rotation)
-  function rotate64(n, x) {
-    return ((x >> n) | (x << (64n - n))) & 0xFFFFFFFFFFFFFFFFn;
   }
 
   // Single column mixing (Galois Field multiplication)
   function mixColumn(c) {
     // Multiply elements by 'x' in GF(2^8) with polynomial 0x1D
-    const x1 = ((c & 0x7F7F7F7F7F7F7F7Fn) << 1n) ^ (((c & 0x8080808080808080n) >> 7n) * 0x1Dn);
+    const x1 = OpCodes.XorN(
+      OpCodes.ShiftLn(OpCodes.AndN(c, 0x7F7F7F7F7F7F7F7Fn), 1),
+      OpCodes.ShiftRn(OpCodes.AndN(c, 0x8080808080808080n), 7) * 0x1Dn
+    );
 
-    let u = rotate64(8n, c) ^ c;
-    u ^= rotate64(16n, u);
-    u ^= rotate64(48n, c);
+    // Use RIGHT rotation (matches Bouncy Castle's rotate() function)
+    let u = OpCodes.XorN(OpCodes.RotR64n(c, 8), c);
+    u = OpCodes.XorN(u, OpCodes.RotR64n(u, 16));
+    u = OpCodes.XorN(u, OpCodes.RotR64n(c, 48));
 
-    let v = u ^ c ^ x1;
+    let v = OpCodes.XorN(OpCodes.XorN(u, c), x1);
 
     // Multiply by 'x^2'
-    v = ((v & 0x3F3F3F3F3F3F3F3Fn) << 2n) ^
-        (((v & 0x8080808080808080n) >> 6n) * 0x1Dn) ^
-        (((v & 0x4040404040404040n) >> 6n) * 0x1Dn);
+    v = OpCodes.XorN(
+      OpCodes.XorN(
+        OpCodes.ShiftLn(OpCodes.AndN(v, 0x3F3F3F3F3F3F3F3Fn), 2),
+        OpCodes.ShiftRn(OpCodes.AndN(v, 0x8080808080808080n), 6) * 0x1Dn
+      ),
+      OpCodes.ShiftRn(OpCodes.AndN(v, 0x4040404040404040n), 6) * 0x1Dn
+    );
 
-    return (u ^ rotate64(32n, v) ^ rotate64(40n, x1) ^ rotate64(48n, x1)) & 0xFFFFFFFFFFFFFFFFn;
+    return OpCodes.XorN(
+      OpCodes.XorN(u, OpCodes.RotR64n(v, 32)),
+      OpCodes.XorN(OpCodes.RotR64n(x1, 40), OpCodes.RotR64n(x1, 48))
+    );
   }
 
   // MixColumns transformation
@@ -276,7 +286,7 @@
       // Pack column into 64-bit BigInt word (little-endian)
       let c = 0n;
       for (let i = 0; i < 8; ++i) {
-        c |= BigInt(OpCodes.AndN(s[col][i], 0xFF)) << BigInt(i * 8);
+        c = OpCodes.OrN(c, OpCodes.ShiftLn(BigInt(OpCodes.AndN(s[col][i], 0xFF)), i * 8));
       }
 
       // MixColumn operation (circulant matrix in GF(2^8))
@@ -284,7 +294,7 @@
 
       // Unpack back to bytes
       for (let i = 0; i < 8; ++i) {
-        s[col][i] = Number((mixed >> BigInt(i * 8)) & 0xFFn);
+        s[col][i] = Number(OpCodes.AndN(OpCodes.ShiftRn(mixed, i * 8), 0xFFn));
       }
     }
   }
@@ -353,25 +363,25 @@
     Q(s) {
       for (let round = 0; round < this.numRounds; ++round) {
         // AddRoundConstantsQ
-        let rc = (BigInt(((this.numColumns - 1) << 4) ^ round) << 56n) | 0x00F0F0F0F0F0F0F3n;
+        let rc = OpCodes.OrN(OpCodes.ShiftLn(BigInt(OpCodes.XorN(OpCodes.Shl32(this.numColumns - 1, 4), round)), 56), 0x00F0F0F0F0F0F0F3n);
 
         for (let col = 0; col < this.numColumns; ++col) {
           // Convert column to 64-bit BigInt
           let word = 0n;
           for (let i = 0; i < 8; ++i) {
-            word |= BigInt(OpCodes.AndN(s[col][i], 0xFF)) << BigInt(i * 8);
+            word = OpCodes.OrN(word, OpCodes.ShiftLn(BigInt(OpCodes.AndN(s[col][i], 0xFF)), i * 8));
           }
 
           // Add constant
-          word = (word + rc) & 0xFFFFFFFFFFFFFFFFn;
+          word = OpCodes.AndN(word + rc, 0xFFFFFFFFFFFFFFFFn);
 
           // Convert back to bytes
           for (let i = 0; i < 8; ++i) {
-            s[col][i] = Number((word >> BigInt(i * 8)) & 0xFFn);
+            s[col][i] = Number(OpCodes.AndN(OpCodes.ShiftRn(word, i * 8), 0xFFn));
           }
 
           // Decrement constant
-          rc = (rc - 0x1000000000000000n) & 0xFFFFFFFFFFFFFFFFn;
+          rc = OpCodes.AndN(rc - 0x1000000000000000n, 0xFFFFFFFFFFFFFFFFn);
         }
 
         this.shiftRows(s);
@@ -539,7 +549,7 @@
       this.year = 2014;
       this.category = CategoryType.HASH;
       this.subCategory = "National Standard";
-      this.securityStatus = SecurityStatus.SECURE;
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
       this.complexity = ComplexityType.ADVANCED;
       this.country = CountryCode.UA;
 
@@ -550,14 +560,14 @@
 
       // Documentation and references
       this.documentation = [
-        new LinkItem("DSTU 7564:2014 Standard", "https://www.tc26.ru/en/standard/dstu-7564-2014/"),
-        new LinkItem("ISO/IEC 10118-3:2018", "https://www.iso.org/standard/67116.html"),
+        new LinkItem("DSTU 7564:2014 Standard (Ukrainian)", "https://usts.kiev.ua/wp-content/uploads/2020/07/dstu-7564-2014.pdf"),
+        new LinkItem("A New Standard of Ukraine: The Kupyna Hash Function (Oliynykov et al., IACR ePrint 2015/885)", "https://eprint.iacr.org/2015/885"),
         new LinkItem("Kupyna Reference Implementation", "https://github.com/Roman-Oliynykov/Kupyna-reference")
       ];
 
       this.references = [
         new LinkItem("Wikipedia: Kupyna", "https://en.wikipedia.org/wiki/Kupyna"),
-        new LinkItem("NIST Cryptographic Hash Algorithm", "https://csrc.nist.gov/projects/hash-functions")
+        new LinkItem("Bouncy Castle DSTU7564Digest Reference Implementation", "https://github.com/bcgit/bc-java/blob/main/core/src/main/java/org/bouncycastle/crypto/digests/DSTU7564Digest.java")
       ];
 
       // Test vectors from Bouncy Castle test suite
@@ -643,7 +653,7 @@
       this.year = 2014;
       this.category = CategoryType.HASH;
       this.subCategory = "National Standard";
-      this.securityStatus = SecurityStatus.SECURE;
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
       this.complexity = ComplexityType.ADVANCED;
       this.country = CountryCode.UA;
 
@@ -654,14 +664,14 @@
 
       // Documentation and references
       this.documentation = [
-        new LinkItem("DSTU 7564:2014 Standard", "https://www.tc26.ru/en/standard/dstu-7564-2014/"),
-        new LinkItem("ISO/IEC 10118-3:2018", "https://www.iso.org/standard/67116.html"),
+        new LinkItem("DSTU 7564:2014 Standard (Ukrainian)", "https://usts.kiev.ua/wp-content/uploads/2020/07/dstu-7564-2014.pdf"),
+        new LinkItem("A New Standard of Ukraine: The Kupyna Hash Function (Oliynykov et al., IACR ePrint 2015/885)", "https://eprint.iacr.org/2015/885"),
         new LinkItem("Kupyna Reference Implementation", "https://github.com/Roman-Oliynykov/Kupyna-reference")
       ];
 
       this.references = [
         new LinkItem("Wikipedia: Kupyna", "https://en.wikipedia.org/wiki/Kupyna"),
-        new LinkItem("NIST Cryptographic Hash Algorithm", "https://csrc.nist.gov/projects/hash-functions")
+        new LinkItem("Bouncy Castle DSTU7564Digest Reference Implementation", "https://github.com/bcgit/bc-java/blob/main/core/src/main/java/org/bouncycastle/crypto/digests/DSTU7564Digest.java")
       ];
 
       // Test vectors from Bouncy Castle test suite

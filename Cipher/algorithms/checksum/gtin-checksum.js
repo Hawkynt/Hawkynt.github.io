@@ -57,6 +57,10 @@
         new LinkItem("GTIN Validation", "https://www.gs1.org/services/check-digit-calculator")
       ];
 
+      this.references = [
+        new LinkItem("python-stdnum EAN/GTIN implementation", "https://github.com/arthurdejong/python-stdnum/blob/master/stdnum/ean.py")
+      ];
+
       this.notes = [
         "GTIN-8: 8 digits (EAN-8, RCN-8)",
         "GTIN-12: 12 digits (UPC-A)",

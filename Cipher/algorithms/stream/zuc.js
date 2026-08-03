@@ -96,6 +96,10 @@
         new LinkItem("3GPP Security Algorithms", "https://www.3gpp.org/technologies/keywords-acronyms/100-the-3gpp-security-algorithms")
       ];
 
+      this.references = [
+        new LinkItem("GmSSL C Reference Implementation (ZUC/128-EEA3/128-EIA3)", "https://github.com/guanzhi/GmSSL")
+      ];
+
       // Security status notes
       this.knownVulnerabilities = [];
 

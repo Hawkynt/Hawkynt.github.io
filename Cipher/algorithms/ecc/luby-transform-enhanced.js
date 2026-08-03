@@ -97,6 +97,11 @@
         new LinkItem("Systematic LT Codes Paper", "https://ietresearch.onlinelibrary.wiley.com/doi/full/10.1049/el.2019.4258")
       ];
 
+      this.references = [
+        new LinkItem("anrosent LT-code Rust Port (lt-rs)", "https://github.com/anrosent/lt-rs"),
+        new LinkItem("Founsure Precoded LT Fountain Code Library", "https://github.com/suaybarslan/founsure")
+      ];
+
       // Test vectors generated from implementation with standard parameters
       // All use Robust Soliton distribution with c=0.1, delta=0.5
       // Test vectors are deterministic based on seed for reproducibility

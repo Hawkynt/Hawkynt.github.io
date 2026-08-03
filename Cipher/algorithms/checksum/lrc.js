@@ -56,6 +56,10 @@
         new LinkItem("LRC Checksum Calculator", "https://forums.ni.com/t5/Example-Code/Checksum-generator-XOR-8-bit-8-bit-sum-LRC-8-bit-16-bit-sum/ta-p/4116999")
       ];
 
+      this.references = [
+        new LinkItem("minimalmodbus Modbus ASCII LRC implementation", "https://github.com/pyhys/minimalmodbus/blob/master/minimalmodbus.py")
+      ];
+
       this.notes = [
         "LRC = ((XOR of all bytes) XOR 0xFF) + 1 = two's complement of XOR",
         "Verification: (sum of all bytes + LRC) AND 0xFF == 0",

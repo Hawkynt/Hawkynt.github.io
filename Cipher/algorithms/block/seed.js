@@ -284,7 +284,7 @@
       // Required metadata
       this.name = "SEED";
       this.description = "Korean block cipher standardized in RFC 4269 and TTAS.KO-12.0004. Features 128-bit blocks and keys with 16-round Feistel structure and complex S-box operations for high security.";
-      this.inventor = "Korea Internet & Security Agency (KISA)";
+      this.inventor = "Korea Internet and Security Agency (KISA)";
       this.year = 1998;
       this.category = CategoryType.BLOCK;
       this.subCategory = "Block Cipher";

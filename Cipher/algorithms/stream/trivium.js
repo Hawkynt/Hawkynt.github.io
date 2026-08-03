@@ -93,6 +93,10 @@
         new LinkItem("Trivium: A Stream Cipher Construction", "https://www.esat.kuleuven.be/cosic/publications/article-1137.pdf")
       ];
 
+      this.references = [
+        new LinkItem("Public-Domain Trivium Reference Implementation (matches designer's reference output)", "https://github.com/cbouilla/trivium")
+      ];
+
       // Security status notes
       this.knownVulnerabilities = [];
 

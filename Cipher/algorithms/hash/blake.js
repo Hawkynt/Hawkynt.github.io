@@ -614,6 +614,10 @@ if (!global.OpCodes && typeof require !== 'undefined') {
         new LinkItem("Noble Hashes Implementation", "https://github.com/paulmillr/noble-hashes")
       ];
 
+      this.references = [
+        new LinkItem("BLAKE reference implementation (Jean-Philippe Aumasson)", "https://github.com/veorq/BLAKE")
+      ];
+
       this.tests = [
         {
           text: "Empty string vector",
@@ -668,6 +672,10 @@ if (!global.OpCodes && typeof require !== 'undefined') {
         new LinkItem("BLAKE Paper", "https://www.aumasson.jp/blake/blake.pdf"),
         new LinkItem("SHA-3 Competition", "https://csrc.nist.gov/projects/hash-functions/sha-3-project"),
         new LinkItem("Noble Hashes Implementation", "https://github.com/paulmillr/noble-hashes")
+      ];
+
+      this.references = [
+        new LinkItem("BLAKE reference implementation (Jean-Philippe Aumasson)", "https://github.com/veorq/BLAKE")
       ];
 
       this.tests = [
@@ -732,6 +740,10 @@ if (!global.OpCodes && typeof require !== 'undefined') {
         new LinkItem("Noble Hashes Implementation", "https://github.com/paulmillr/noble-hashes")
       ];
 
+      this.references = [
+        new LinkItem("BLAKE reference implementation (Jean-Philippe Aumasson)", "https://github.com/veorq/BLAKE")
+      ];
+
       this.tests = [
         {
           text: "Empty string vector",
@@ -780,6 +792,10 @@ if (!global.OpCodes && typeof require !== 'undefined') {
         new LinkItem("BLAKE Paper", "https://www.aumasson.jp/blake/blake.pdf"),
         new LinkItem("SHA-3 Competition", "https://csrc.nist.gov/projects/hash-functions/sha-3-project"),
         new LinkItem("Noble Hashes Implementation", "https://github.com/paulmillr/noble-hashes")
+      ];
+
+      this.references = [
+        new LinkItem("BLAKE reference implementation (Jean-Philippe Aumasson)", "https://github.com/veorq/BLAKE")
       ];
 
       this.tests = [

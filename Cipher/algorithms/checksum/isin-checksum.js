@@ -57,6 +57,10 @@
         new LinkItem("ISIN Organization", "https://www.isin.org/")
       ];
 
+      this.references = [
+        new LinkItem("python-stdnum ISIN implementation", "https://github.com/arthurdejong/python-stdnum/blob/master/stdnum/isin.py")
+      ];
+
       this.notes = [
         "Format: CC123456789D (2 country + 9 ID + 1 check)",
         "Country codes: ISO 3166-1 alpha-2 (e.g., US, GB, DE)",

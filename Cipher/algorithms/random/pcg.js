@@ -134,10 +134,10 @@
 
       // PCG constants (from Abseil pcg64_2018_engine)
       // Multiplier: 0x2360ed051fc65da4 4385df649fccf645 (128-bit)
-      this.MULTIPLIER = (0x2360ed051fc65da4n << 64n) | 0x4385df649fccf645n;
+      this.MULTIPLIER = OpCodes.OrN(OpCodes.ShiftLn(0x2360ed051fc65da4n, 64n), 0x4385df649fccf645n);
 
       // Default increment: 0x5851f42d4c957f2d 14057b7ef767814f (128-bit, must be odd)
-      this.DEFAULT_INCREMENT = (0x5851f42d4c957f2dn << 64n) | 0x14057b7ef767814fn;
+      this.DEFAULT_INCREMENT = OpCodes.OrN(OpCodes.ShiftLn(0x5851f42d4c957f2dn, 64n), 0x14057b7ef767814fn);
 
       this._ready = false;
     }
@@ -172,7 +172,7 @@
       this._state = (tmp + increment) * this.MULTIPLIER + increment;
 
       // Mask to 128 bits
-      const mask128 = (1n << 128n) - 1n;
+      const mask128 = OpCodes.ShiftLn(1n, 128n) - 1n;
       this._state = OpCodes.AndN(this._state, mask128);
 
       this._ready = true;
@@ -222,7 +222,7 @@
       state = state * this.MULTIPLIER + increment;
 
       // Mask to 128 bits
-      const mask128 = (1n << 128n) - 1n;
+      const mask128 = OpCodes.ShiftLn(1n, 128n) - 1n;
       state = OpCodes.AndN(state, mask128);
 
       this._state = state;

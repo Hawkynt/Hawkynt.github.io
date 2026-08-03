@@ -57,6 +57,10 @@
         new LinkItem("ABA Routing Number Lookup", "https://www.routingnumbers.org/")
       ];
 
+      this.references = [
+        new LinkItem("python-stdnum US RTN implementation", "https://github.com/arthurdejong/python-stdnum/blob/master/stdnum/us/rtn.py")
+      ];
+
       this.notes = [
         "Format: 9 digits (8 data + 1 check)",
         "First 4 digits: Federal Reserve routing symbol",

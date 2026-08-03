@@ -57,6 +57,10 @@
         new LinkItem("Serial Protocol Checksums", "https://en.wikibooks.org/wiki/Algorithm_Implementation/Checksums")
       ];
 
+      this.references = [
+        new LinkItem("pynmea2 XOR checksum implementation", "https://github.com/Knio/pynmea2/blob/master/pynmea2/nmea.py")
+      ];
+
       this.notes = [
         "Very simple: XOR all bytes together",
         "Used in NMEA GPS sentences (between $ and *)",

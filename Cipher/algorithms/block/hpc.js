@@ -65,25 +65,25 @@
 
   // Permutation tables
   const Perma = [
-    0x243F6A8885A308D3n^0n,   0x13198A2E03707344n^1n,
-    0xA4093822299F31D0n^2n,   0x082EFA98EC4E6C89n^3n,
-    0x452821E638D01377n^4n,   0xBE5466CF34E90C6Cn^5n,
-    0xC0AC29B7C97C50DDn^6n,   0x9216D5D98979FB1Bn^7n,
-    0xB8E1AFED6A267E96n^8n,   0xA458FEA3F4933D7En^9n,
-    0x0D95748F728EB658n^10n,  0x7B54A41DC25A59B5n^11n,
-    0xCA417918B8DB38EFn^12n,  0xB3EE1411636FBC2An^13n,
-    0x61D809CCFB21A991n^14n,  0x487CAC605DEC8032n^15n
+    OpCodes.XorN(0x243F6A8885A308D3n, 0n),   OpCodes.XorN(0x13198A2E03707344n, 1n),
+    OpCodes.XorN(0xA4093822299F31D0n, 2n),   OpCodes.XorN(0x082EFA98EC4E6C89n, 3n),
+    OpCodes.XorN(0x452821E638D01377n, 4n),   OpCodes.XorN(0xBE5466CF34E90C6Cn, 5n),
+    OpCodes.XorN(0xC0AC29B7C97C50DDn, 6n),   OpCodes.XorN(0x9216D5D98979FB1Bn, 7n),
+    OpCodes.XorN(0xB8E1AFED6A267E96n, 8n),   OpCodes.XorN(0xA458FEA3F4933D7En, 9n),
+    OpCodes.XorN(0x0D95748F728EB658n, 10n),  OpCodes.XorN(0x7B54A41DC25A59B5n, 11n),
+    OpCodes.XorN(0xCA417918B8DB38EFn, 12n),  OpCodes.XorN(0xB3EE1411636FBC2An, 13n),
+    OpCodes.XorN(0x61D809CCFB21A991n, 14n),  OpCodes.XorN(0x487CAC605DEC8032n, 15n)
   ];
 
   const Permai = [
-    0xA4093822299F31D0n^2n,   0x61D809CCFB21A991n^14n,
-    0x487CAC605DEC8032n^15n,  0x243F6A8885A308D3n^0n,
-    0x13198A2E03707344n^1n,   0x7B54A41DC25A59B5n^11n,
-    0xB8E1AFED6A267E96n^8n,   0x452821E638D01377n^4n,
-    0x0D95748F728EB658n^10n,  0x082EFA98EC4E6C89n^3n,
-    0xB3EE1411636FBC2An^13n,  0x9216D5D98979FB1Bn^7n,
-    0xBE5466CF34E90C6Cn^5n,   0xC0AC29B7C97C50DDn^6n,
-    0xA458FEA3F4933D7En^9n,   0xCA417918B8DB38EFn^12n
+    OpCodes.XorN(0xA4093822299F31D0n, 2n),   OpCodes.XorN(0x61D809CCFB21A991n, 14n),
+    OpCodes.XorN(0x487CAC605DEC8032n, 15n),  OpCodes.XorN(0x243F6A8885A308D3n, 0n),
+    OpCodes.XorN(0x13198A2E03707344n, 1n),   OpCodes.XorN(0x7B54A41DC25A59B5n, 11n),
+    OpCodes.XorN(0xB8E1AFED6A267E96n, 8n),   OpCodes.XorN(0x452821E638D01377n, 4n),
+    OpCodes.XorN(0x0D95748F728EB658n, 10n),  OpCodes.XorN(0x082EFA98EC4E6C89n, 3n),
+    OpCodes.XorN(0xB3EE1411636FBC2An, 13n),  OpCodes.XorN(0x9216D5D98979FB1Bn, 7n),
+    OpCodes.XorN(0xBE5466CF34E90C6Cn, 5n),   OpCodes.XorN(0xC0AC29B7C97C50DDn, 6n),
+    OpCodes.XorN(0xA458FEA3F4933D7En, 9n),   OpCodes.XorN(0xCA417918B8DB38EFn, 12n)
   ];
 
   const Permb = [
@@ -126,7 +126,7 @@
   // ========================[ UTILITY FUNCTIONS ]========================
 
   function mask64(value) {
-    return value&0xFFFFFFFFFFFFFFFFn;
+    return OpCodes.AndN(value, 0xFFFFFFFFFFFFFFFFn);
   }
 
   function rotL64(value, positions) {
@@ -151,11 +151,11 @@
     let result = 0n;
     const byteCount = Math.ceil(bitSize / 8);
     for (let i = 0; i < byteCount && i < bytes.length; ++i) {
-      result |= BigInt(bytes[i]) << BigInt(i * 8);
+      result |= OpCodes.ShiftLn(BigInt(bytes[i]), BigInt(i * 8));
     }
     // Apply bit mask if not byte-aligned
     if (bitSize % 8 !== 0) {
-      const mask = (1n << BigInt(bitSize)) - 1n;
+      const mask = (OpCodes.ShiftLn(1n, BigInt(bitSize))) - 1n;
       result &= mask;
     }
     return result;
@@ -166,7 +166,7 @@
     const byteCount = Math.ceil(bitSize / 8);
     const bytes = new Array(byteCount).fill(0);
     for (let i = 0; i < byteCount; ++i) {
-      bytes[i] = Number((value >> BigInt(i * 8))&0xFFn);
+      bytes[i] = Number(OpCodes.AndN((OpCodes.ShiftRn(value, BigInt(i * 8))), 0xFFn));
     }
     return bytes;
   }
@@ -177,12 +177,12 @@
     const state = new Array(HPC_ROUND_COUNT).fill(0n);
 
     const byteLimit = bitSize <= 512 ? Math.ceil(bitSize / 8) : 64;
-    const wordLimit = (byteLimit - 1)&~7;
+    const wordLimit = OpCodes.AndN((byteLimit - 1), ~7);
 
     let byteIdx = 0;
     for (let w = 0; w < wordCount && byteIdx < wordLimit; ++w) {
       for (let b = 0; b < 8 && byteIdx < wordLimit; ++b, ++byteIdx) {
-        state[w] |= BigInt(bytes[byteIdx] || 0) << BigInt(b * 8);
+        state[w] |= OpCodes.ShiftLn(BigInt(bytes[byteIdx] || 0), BigInt(b * 8));
       }
     }
 
@@ -190,7 +190,7 @@
     if (bitSize < 512 && byteIdx < byteLimit) {
       const lastWordIdx = Math.min(wordCount - 1, Math.floor((bitSize + 63) / 64) - 1);
       for (let b = 0; b < 8 && byteIdx < byteLimit; ++b, ++byteIdx) {
-        state[lastWordIdx] |= BigInt(bytes[byteIdx] || 0) << BigInt(b * 8);
+        state[lastWordIdx] |= OpCodes.ShiftLn(BigInt(bytes[byteIdx] || 0), BigInt(b * 8));
       }
     }
 
@@ -198,7 +198,7 @@
     if (bitSize < 512) {
       const lastWordIdx = Math.floor((bitSize + 63) / 64) - 1;
       if (lastWordIdx >= 0 && lastWordIdx < HPC_ROUND_COUNT) {
-        const mask = (((1n << BigInt((bitSize - 1) % 64)) - 1n) << 1n)|1n;
+        const mask = (OpCodes.ShiftLn(((OpCodes.ShiftLn(1n, BigInt((bitSize - 1) % 64))) - 1n), 1n))|1n;
         state[lastWordIdx] &= mask;
       }
     }
@@ -210,13 +210,13 @@
   function unpackStateToBytes(state, bitSize) {
     const byteLimit = bitSize <= 512 ? Math.ceil(bitSize / 8) : 64;
     const bytes = new Array(byteLimit).fill(0);
-    const wordLimit = (byteLimit - 1)&~7;
+    const wordLimit = OpCodes.AndN((byteLimit - 1), ~7);
     const lastWord64 = bitSize <= 64 ? 1 : (bitSize <= 128 ? 2 : HPC_ROUND_COUNT);
 
     let byteIdx = 0;
     for (let w = 0; w < HPC_ROUND_COUNT && byteIdx < wordLimit; ++w) {
       for (let sh = 0; sh < 64 && byteIdx < wordLimit; sh += 8, ++byteIdx) {
-        bytes[byteIdx] = Number((state[w] >> BigInt(sh))&0xFFn);
+        bytes[byteIdx] = Number(OpCodes.AndN((OpCodes.ShiftRn(state[w], BigInt(sh))), 0xFFn));
       }
     }
 
@@ -224,7 +224,7 @@
     if (byteIdx < byteLimit) {
       const lastWordIdx = lastWord64 - 1;
       for (let sh = 0; sh < 64 && byteIdx < byteLimit; sh += 8, ++byteIdx) {
-        bytes[byteIdx] = Number((state[lastWordIdx] >> BigInt(sh))&0xFFn);
+        bytes[byteIdx] = Number(OpCodes.AndN((OpCodes.ShiftRn(state[lastWordIdx], BigInt(sh))), 0xFFn));
       }
     }
 
@@ -243,7 +243,7 @@
 
     // Expand using recurrence relation
     for (let i = 3; i < HPC_KX_SIZE; ++i) {
-      KX[i] = mask64(KX[i-1] + (KX[i-2]^rotR64(KX[i-3], 23)));
+      KX[i] = mask64(KX[i-1] + (OpCodes.XorN(KX[i-2], rotR64(KX[i-3], 23))));
     }
 
     // Incorporate key material
@@ -255,14 +255,14 @@
       const endByte = keyOffset + Math.floor(iterationKeyBits / 8);
 
       // XOR key bytes into KX
-      for (let sh = 0, i = 0; keyOffset < endByte; ++keyOffset, sh = (sh + 8)&63, ++i) {
-        KX[Math.floor(i / 8)] ^= BigInt(keyBytes[keyOffset]) << BigInt(sh);
+      for (let sh = 0, i = 0; keyOffset < endByte; ++keyOffset, sh = OpCodes.AndN((sh + 8), 63), ++i) {
+        KX[Math.floor(i / 8)] ^= OpCodes.ShiftLn(BigInt(keyBytes[keyOffset]), BigInt(sh));
       }
 
       // Handle leftover bits
-      if (iterationKeyBits&7) {
-        const leftoverBits = iterationKeyBits&7;
-        const v = (BigInt(keyBytes[keyOffset++])&((1n << BigInt(leftoverBits)) - 1n)) << BigInt((iterationKeyBits - leftoverBits)&63);
+      if (OpCodes.AndN(iterationKeyBits, 7)) {
+        const leftoverBits = OpCodes.AndN(iterationKeyBits, 7);
+        const v = OpCodes.ShiftLn((OpCodes.AndN(BigInt(keyBytes[keyOffset++]), ((OpCodes.ShiftLn(1n, BigInt(leftoverBits))) - 1n))), BigInt(OpCodes.AndN((iterationKeyBits - leftoverBits), 63)));
         KX[Math.floor((iterationKeyBits + 8 - 1) / 64)] ^= v;
       }
 
@@ -272,24 +272,24 @@
 
       for (let pass = 0; pass < HPC_STIR_PASSES + backup; ++pass) {
         for (let ki = 0; ki < HPC_KX_SIZE; ++ki) {
-          s0 = mask64(s0^mask64((KX[ki]^KX[(ki + 83)&255]) + KX[Number(s0&0xFFn)]));
+          s0 = mask64(OpCodes.XorN(s0, mask64((OpCodes.XorN(KX[ki], KX[OpCodes.AndN((ki + 83), 255)])) + KX[Number(OpCodes.AndN(s0, 0xFFn))])));
           s2 = mask64(s2 + KX[ki]); // Wagner fix
           s1 = mask64(s1 + s0);
-          s3 = mask64(s3^s2);
+          s3 = mask64(OpCodes.XorN(s3, s2));
           s5 = mask64(s5 - s4);
-          s7 = mask64(s7^s6);
-          s3 = mask64(s3 + ((s0 >> 13n)));
-          s4 = mask64(s4^((s1 << 11n)));
-          s5 = mask64(s5^(s3 << (s1&31n)));
-          s6 = mask64(s6 + ((s2 >> 17n)));
+          s7 = mask64(OpCodes.XorN(s7, s6));
+          s3 = mask64(s3 + ((OpCodes.ShiftRn(s0, 13n))));
+          s4 = mask64(OpCodes.XorN(s4, ((OpCodes.ShiftLn(s1, 11n)))));
+          s5 = mask64(OpCodes.XorN(s5, (OpCodes.ShiftLn(s3, (OpCodes.AndN(s1, 31n))))));
+          s6 = mask64(s6 + ((OpCodes.ShiftRn(s2, 17n))));
           s7 = mask64(s7|mask64(s3 + s4));
           s2 = mask64(s2 - s5);
-          s0 = mask64(s0 - (s6^BigInt(ki)));
-          s1 = mask64(s1^mask64(s5 + HPC_PI19));
-          s2 = mask64(s2 + (s7 >> BigInt(pass)));
-          s2 = mask64(s2^s1);
+          s0 = mask64(s0 - (OpCodes.XorN(s6, BigInt(ki))));
+          s1 = mask64(OpCodes.XorN(s1, mask64(s5 + HPC_PI19)));
+          s2 = mask64(s2 + (OpCodes.ShiftRn(s7, BigInt(pass))));
+          s2 = mask64(OpCodes.XorN(s2, s1));
           s4 = mask64(s4 - s3);
-          s6 = mask64(s6^s5);
+          s6 = mask64(OpCodes.XorN(s6, s5));
           s0 = mask64(s0 + s7);
           KX[ki] = mask64(s2 + s6);
         }
@@ -304,23 +304,23 @@
   // ========================[ FIBONACCI FOLD ]========================
 
   function fibFold(N0, N1) {
-    let n = mask64(N0 + ((N1 >> 25n)));
+    let n = mask64(N0 + ((OpCodes.ShiftRn(N1, 25n))));
     let n1 = mask64(N1 + (n < N0 ? 1n : 0n));
 
-    n = mask64(n^(((n1 << 9n))|((n >> 55n))));
-    n1 = mask64(n1^((n1 >> 55n)));
+    n = mask64(OpCodes.XorN(n, (((OpCodes.ShiftLn(n1, 9n)))|((OpCodes.ShiftRn(n, 55n))))));
+    n1 = mask64(OpCodes.XorN(n1, ((OpCodes.ShiftRn(n1, 55n)))));
 
-    n = mask64(n + (((n1 << 30n))|((n >> 34n))));
-    n = mask64(n^((n >> 21n)));
-    n = mask64(n + ((n >> 13n)));
-    n = mask64(n^((n >> 8n)));
-    n = mask64(n + ((n >> 5n)));
-    n = mask64(n^((n >> 3n)));
-    n = mask64(n + ((n >> 2n)));
-    n = mask64(n^((n >> 1n)));
-    n = mask64(n + ((n >> 1n)));
+    n = mask64(n + (((OpCodes.ShiftLn(n1, 30n)))|((OpCodes.ShiftRn(n, 34n)))));
+    n = mask64(OpCodes.XorN(n, ((OpCodes.ShiftRn(n, 21n)))));
+    n = mask64(n + ((OpCodes.ShiftRn(n, 13n))));
+    n = mask64(OpCodes.XorN(n, ((OpCodes.ShiftRn(n, 8n)))));
+    n = mask64(n + ((OpCodes.ShiftRn(n, 5n))));
+    n = mask64(OpCodes.XorN(n, ((OpCodes.ShiftRn(n, 3n)))));
+    n = mask64(n + ((OpCodes.ShiftRn(n, 2n))));
+    n = mask64(OpCodes.XorN(n, ((OpCodes.ShiftRn(n, 1n)))));
+    n = mask64(n + ((OpCodes.ShiftRn(n, 1n))));
 
-    return Number(n&1n);
+    return Number(OpCodes.AndN(n, 1n));
   }
 
   // ========================[ TINY CIPHER (0-35 bits) ]========================
@@ -342,17 +342,17 @@
 
       if (blockSize === 1) {
         // 1 bit
-        s0 = (s0 ^ BigInt(fibFold(tmp[0], tmp[1])));
+        s0 = (OpCodes.XorN(s0, BigInt(fibFold(tmp[0], tmp[1]))));
       } else if (blockSize === 2 || blockSize === 3) {
         // 2-3 bits
         for (let ri = 0; ri < 2; ++ri) {
           let t = tmp[ri];
           for (let bi = 0; bi < 64; bi += (OpCodes.Shl32(blockSize, 1))) {
-            s0 = mask64(s0^t);
-            t >>= BigInt(blockSize);
+            s0 = mask64(OpCodes.XorN(s0, t));
+            t = OpCodes.ShiftRn(t, BigInt(blockSize));
             s0 = mask64(s0 + t);
-            s0 = mask64(((s0 << 1n))|((s0&mask) >> BigInt(blockSize - 1)));
-            t >>= BigInt(blockSize);
+            s0 = mask64(((OpCodes.ShiftLn(s0, 1n)))|(OpCodes.ShiftRn((OpCodes.AndN(s0, mask)), BigInt(blockSize - 1))));
+            t = OpCodes.ShiftRn(t, BigInt(blockSize));
           }
         }
       } else {
@@ -360,20 +360,20 @@
         for (let ri = 0; ri < 2; ++ri) {
           let t = tmp[ri];
           for (let bi = 0; bi < 64; bi += 8) {
-            s0 = mask64(s0^t);
-            t >>= 4n;
-            s0 = ((PERM1 >> (s0&15n << 2n))&15n);
+            s0 = mask64(OpCodes.XorN(s0, t));
+            t = OpCodes.ShiftRn(t, 4n);
+            s0 = (OpCodes.AndN((OpCodes.ShiftRn(PERM1, (s0&OpCodes.ShiftLn(15n, 2n)))), 15n));
             s0 = mask64(s0 + t);
-            s0 = ((PERM2 >> (s0&15n << 2n))&15n);
-            t >>= 4n;
+            s0 = (OpCodes.AndN((OpCodes.ShiftRn(PERM2, (s0&OpCodes.ShiftLn(15n, 2n)))), 15n));
+            t = OpCodes.ShiftRn(t, 4n);
           }
         }
       }
     } else if (blockSize === 5 || blockSize === 6) {
       // 5-6 bits: use Long cipher as subcipher
-      const tmpBs = 96 << (blockSize - 4);
+      const tmpBs = OpCodes.Shl32(96, (blockSize - 4));
       const tmp = new Array(HPC_ROUND_COUNT).fill(0n);
-      const bsBase = tmpBs&0xFF;
+      const bsBase = OpCodes.AndN(tmpBs, 0xFF);
       const l64 = (OpCodes.Shr32(tmpBs, 6)) - 1;
 
       for (let i = 0; i < (OpCodes.Shr32(tmpBs, 6)) - 1; ++i) {
@@ -389,33 +389,33 @@
       }
       tmp[(OpCodes.Shr32(tmpBs, 6)) - 1] = mask64(tmp[HPC_ROUND_COUNT - 1] + KX[bsBase + (OpCodes.Shl32(HPC_ROUND_COUNT, 1)) - 1]);
 
-      const pmask = (mask&0xFFn)^15n;
+      const pmask = OpCodes.XorN((OpCodes.AndN(mask, 0xFFn)), 15n);
 
       for (let ri = 0; ri < (OpCodes.Shr32(tmpBs, 6)); ++ri) {
         let t = tmp[ri];
         for (let bi = 0; bi < (7 - (blockSize - 5)); ++bi) {
-          s0 = mask64(s0^t);
-          s0 = (s0&pmask)|(((PERM1 >> (s0&15n << 2n))&15n));
-          s0 = mask64(s0^((s0 >> 3n)));
-          t >>= BigInt(blockSize);
+          s0 = mask64(OpCodes.XorN(s0, t));
+          s0 = (OpCodes.AndN(s0, pmask))|((OpCodes.AndN((OpCodes.ShiftRn(PERM1, (s0&OpCodes.ShiftLn(15n, 2n)))), 15n)));
+          s0 = mask64(OpCodes.XorN(s0, ((OpCodes.ShiftRn(s0, 3n)))));
+          t = OpCodes.ShiftRn(t, BigInt(blockSize));
           s0 = mask64(s0 + t);
-          s0 = (s0&pmask)|(((PERM2 >> (s0&15n << 2n))&15n));
-          t >>= BigInt(blockSize - 1);
+          s0 = (OpCodes.AndN(s0, pmask))|((OpCodes.AndN((OpCodes.ShiftRn(PERM2, (s0&OpCodes.ShiftLn(15n, 2n)))), 15n)));
+          t = OpCodes.ShiftRn(t, BigInt(blockSize - 1));
         }
       }
     } else {
       // 7-35 bits
-      const LBH = (blockSize + 1) >> 1;
+      const LBH = OpCodes.Shr32((blockSize + 1), 1);
 
       const tmp = [
-        mask64((spice[0]^KX[(OpCodes.Shl32(blockSize, 2)) + 16]) + KX[0] + BigInt(backup)),
-        mask64((spice[1]^KX[(OpCodes.Shl32(blockSize, 2)) + 17]) + KX[1]),
-        mask64((spice[2]^KX[(OpCodes.Shl32(blockSize, 2)) + 18]) + KX[2]),
-        mask64((spice[3]^KX[(OpCodes.Shl32(blockSize, 2)) + 19]) + KX[3]),
-        mask64((spice[4]^KX[(OpCodes.Shl32(blockSize, 2)) + 20]) + KX[4]),
-        mask64((spice[5]^KX[(OpCodes.Shl32(blockSize, 2)) + 21]) + KX[5]),
-        mask64((spice[6]^KX[(OpCodes.Shl32(blockSize, 2)) + 22]) + KX[6]),
-        mask64((spice[7]^KX[(OpCodes.Shl32(blockSize, 2)) + 23]) + KX[7]),
+        mask64((OpCodes.XorN(spice[0], KX[(OpCodes.Shl32(blockSize, 2)) + 16])) + KX[0] + BigInt(backup)),
+        mask64((OpCodes.XorN(spice[1], KX[(OpCodes.Shl32(blockSize, 2)) + 17])) + KX[1]),
+        mask64((OpCodes.XorN(spice[2], KX[(OpCodes.Shl32(blockSize, 2)) + 18])) + KX[2]),
+        mask64((OpCodes.XorN(spice[3], KX[(OpCodes.Shl32(blockSize, 2)) + 19])) + KX[3]),
+        mask64((OpCodes.XorN(spice[4], KX[(OpCodes.Shl32(blockSize, 2)) + 20])) + KX[4]),
+        mask64((OpCodes.XorN(spice[5], KX[(OpCodes.Shl32(blockSize, 2)) + 21])) + KX[5]),
+        mask64((OpCodes.XorN(spice[6], KX[(OpCodes.Shl32(blockSize, 2)) + 22])) + KX[6]),
+        mask64((OpCodes.XorN(spice[7], KX[(OpCodes.Shl32(blockSize, 2)) + 23])) + KX[7]),
         0n, 0n
       ];
       const zspice = new Array(HPC_ROUND_COUNT).fill(0n);
@@ -429,8 +429,8 @@
       tmp[8] = tmp[9] = tmp[7];
 
       for (let ri = 0; ri < HPC_ROUND_COUNT; ++ri) {
-        tmp[8] = mask64(tmp[8] + (((tmp[8] << 21n) + (tmp[8] >> 13n))^(tmp[ri] + KX[ri + 16])));
-        tmp[9] = mask64(tmp[9]^tmp[8]);
+        tmp[8] = mask64(tmp[8] + (OpCodes.XorN(((OpCodes.ShiftLn(tmp[8], 21n)) + (OpCodes.ShiftRn(tmp[8], 13n))), (tmp[ri] + KX[ri + 16]))));
+        tmp[9] = mask64(OpCodes.XorN(tmp[9], tmp[8]));
       }
 
       if (blockSize < 16) {
@@ -438,14 +438,14 @@
           let t = tmp[ri];
           for (let bi = 0; bi < 64; bi += (OpCodes.Shl32(blockSize, 1))) {
             s0 = mask64(s0 + t);
-            s0 = mask64(s0^(KX[(16 * ri) + Number(s0&15n)] << 4n));
-            s0 = mask64(((s0&mask) >> 4n)|(s0 << BigInt(blockSize - 4)));
-            s0 = mask64(s0^((s0&mask) >> BigInt(LBH)));
-            s0 = mask64(s0^(t >> BigInt(blockSize)));
-            s0 = mask64(s0 + (s0 << BigInt(LBH + 2)));
-            s0 = mask64(s0^Perma[Number(s0&15n)]);
-            s0 = mask64(s0 + (s0 << BigInt(LBH)));
-            t >>= BigInt(OpCodes.Shl32(blockSize, 1));
+            s0 = mask64(OpCodes.XorN(s0, (OpCodes.ShiftLn(KX[(16 * ri) + Number(OpCodes.AndN(s0, 15n))], 4n))));
+            s0 = mask64((OpCodes.ShiftRn((OpCodes.AndN(s0, mask)), 4n))|(OpCodes.ShiftLn(s0, BigInt(blockSize - 4))));
+            s0 = mask64(OpCodes.XorN(s0, (OpCodes.ShiftRn((OpCodes.AndN(s0, mask)), BigInt(LBH)))));
+            s0 = mask64(OpCodes.XorN(s0, (OpCodes.ShiftRn(t, BigInt(blockSize)))));
+            s0 = mask64(s0 + (OpCodes.ShiftLn(s0, BigInt(LBH + 2))));
+            s0 = mask64(OpCodes.XorN(s0, Perma[Number(OpCodes.AndN(s0, 15n))]));
+            s0 = mask64(s0 + (OpCodes.ShiftLn(s0, BigInt(LBH))));
+            t = OpCodes.ShiftRn(t, BigInt(OpCodes.Shl32(blockSize, 1)));
           }
         }
       } else {
@@ -453,9 +453,9 @@
           let t = tmp[ri];
           for (let bi = 0; bi < 64; bi += blockSize) {
             s0 = mask64(s0 + t);
-            s0 = mask64(s0^(KX[Number(s0&0xFFn)] << 8n));
-            s0 = mask64(((s0&mask) >> 8n)|(s0 << BigInt(blockSize - 8)));
-            t >>= BigInt(blockSize);
+            s0 = mask64(OpCodes.XorN(s0, (OpCodes.ShiftLn(KX[Number(OpCodes.AndN(s0, 0xFFn))], 8n))));
+            s0 = mask64((OpCodes.ShiftRn((OpCodes.AndN(s0, mask)), 8n))|(OpCodes.ShiftLn(s0, BigInt(blockSize - 8))));
+            t = OpCodes.ShiftRn(t, BigInt(blockSize));
           }
         }
       }
@@ -479,33 +479,33 @@
       tmp[1] = mask64(tmp[1] + KX[137]);
 
       if (blockSize === 1) {
-        s0 = (s0 ^ BigInt(fibFold(tmp[0], tmp[1])));
+        s0 = (OpCodes.XorN(s0, BigInt(fibFold(tmp[0], tmp[1]))));
       } else if (blockSize === 2 || blockSize === 3) {
         for (let ri = 2; ri-- > 0; ) {
           const t = tmp[ri];
           for (let bi = Math.ceil(64 / (OpCodes.Shl32(blockSize, 1))); bi-- > 0; ) {
-            const v = (t >> BigInt(bi * (OpCodes.Shl32(blockSize, 1))))&((1n << BigInt(OpCodes.Shl32(blockSize, 1))) - 1n);
-            s0 = mask64(((s0&mask) >> 1n)|(s0 << BigInt(blockSize - 1)));
-            s0 = mask64(s0 - (v >> BigInt(blockSize)));
-            s0 = mask64(s0^v);
+            const v = OpCodes.AndN((OpCodes.ShiftRn(t, BigInt(bi * (OpCodes.Shl32(blockSize, 1))))), ((OpCodes.ShiftLn(1n, BigInt(OpCodes.Shl32(blockSize, 1)))) - 1n));
+            s0 = mask64((OpCodes.ShiftRn((OpCodes.AndN(s0, mask)), 1n))|(OpCodes.ShiftLn(s0, BigInt(blockSize - 1))));
+            s0 = mask64(s0 - (OpCodes.ShiftRn(v, BigInt(blockSize))));
+            s0 = mask64(OpCodes.XorN(s0, v));
           }
         }
       } else {
         for (let ri = 2; ri-- > 0; ) {
           const t = tmp[ri];
           for (let bi = 64; bi > 0; bi -= 8) {
-            const v = (t >> BigInt(bi - 8))&0xFFn;
-            s0 = ((PERM2I >> (s0&15n << 2n))&15n);
-            s0 = mask64(s0 - ((v >> 4n)));
-            s0 = ((PERM1I >> (s0&15n << 2n))&15n);
-            s0 = mask64(s0^v);
+            const v = OpCodes.AndN((OpCodes.ShiftRn(t, BigInt(bi - 8))), 0xFFn);
+            s0 = (OpCodes.AndN((OpCodes.ShiftRn(PERM2I, (s0&OpCodes.ShiftLn(15n, 2n)))), 15n));
+            s0 = mask64(s0 - ((OpCodes.ShiftRn(v, 4n))));
+            s0 = (OpCodes.AndN((OpCodes.ShiftRn(PERM1I, (s0&OpCodes.ShiftLn(15n, 2n)))), 15n));
+            s0 = mask64(OpCodes.XorN(s0, v));
           }
         }
       }
     } else if (blockSize === 5 || blockSize === 6) {
-      const tmpBs = 96 << (blockSize - 4);
+      const tmpBs = OpCodes.Shl32(96, (blockSize - 4));
       const tmp = new Array(HPC_ROUND_COUNT).fill(0n);
-      const bsBase = tmpBs&0xFF;
+      const bsBase = OpCodes.AndN(tmpBs, 0xFF);
       const l64 = (OpCodes.Shr32(tmpBs, 6)) - 1;
 
       for (let i = 0; i < (OpCodes.Shr32(tmpBs, 6)) - 1; ++i) {
@@ -521,31 +521,31 @@
       }
       tmp[(OpCodes.Shr32(tmpBs, 6)) - 1] = mask64(tmp[HPC_ROUND_COUNT - 1] + KX[bsBase + (OpCodes.Shl32(HPC_ROUND_COUNT, 1)) - 1]);
 
-      const pmask = (mask&0xFFn)^15n;
+      const pmask = OpCodes.XorN((OpCodes.AndN(mask, 0xFFn)), 15n);
 
       for (let ri = (OpCodes.Shr32(tmpBs, 6)); ri-- > 0; ) {
         const t = tmp[ri];
         for (let bi = (7 - (blockSize - 5)); bi-- > 0; ) {
-          const v = (t >> BigInt(bi * ((OpCodes.Shl32(blockSize, 1)) - 1)))&((1n << BigInt((OpCodes.Shl32(blockSize, 1)) - 1)) - 1n);
-          s0 = (s0&pmask)|(((PERM2I >> (s0&15n << 2n))&15n));
-          s0 = mask64(s0 - (v >> BigInt(blockSize)));
-          s0 = mask64(s0^((s0&mask) >> 3n));
-          s0 = (s0&pmask)|(((PERM1I >> (s0&15n << 2n))&15n));
-          s0 = mask64(s0^v);
+          const v = OpCodes.AndN((OpCodes.ShiftRn(t, BigInt(bi * ((OpCodes.Shl32(blockSize, 1)) - 1)))), ((OpCodes.ShiftLn(1n, BigInt((OpCodes.Shl32(blockSize, 1)) - 1))) - 1n));
+          s0 = (OpCodes.AndN(s0, pmask))|((OpCodes.AndN((OpCodes.ShiftRn(PERM2I, (s0&OpCodes.ShiftLn(15n, 2n)))), 15n)));
+          s0 = mask64(s0 - (OpCodes.ShiftRn(v, BigInt(blockSize))));
+          s0 = mask64(OpCodes.XorN(s0, (OpCodes.ShiftRn((OpCodes.AndN(s0, mask)), 3n))));
+          s0 = (OpCodes.AndN(s0, pmask))|((OpCodes.AndN((OpCodes.ShiftRn(PERM1I, (s0&OpCodes.ShiftLn(15n, 2n)))), 15n)));
+          s0 = mask64(OpCodes.XorN(s0, v));
         }
       }
     } else {
-      const LBH = (blockSize + 1) >> 1;
+      const LBH = OpCodes.Shr32((blockSize + 1), 1);
 
       const tmp = [
-        mask64((spice[0]^KX[(OpCodes.Shl32(blockSize, 2)) + 16]) + KX[0] + BigInt(backup)),
-        mask64((spice[1]^KX[(OpCodes.Shl32(blockSize, 2)) + 17]) + KX[1]),
-        mask64((spice[2]^KX[(OpCodes.Shl32(blockSize, 2)) + 18]) + KX[2]),
-        mask64((spice[3]^KX[(OpCodes.Shl32(blockSize, 2)) + 19]) + KX[3]),
-        mask64((spice[4]^KX[(OpCodes.Shl32(blockSize, 2)) + 20]) + KX[4]),
-        mask64((spice[5]^KX[(OpCodes.Shl32(blockSize, 2)) + 21]) + KX[5]),
-        mask64((spice[6]^KX[(OpCodes.Shl32(blockSize, 2)) + 22]) + KX[6]),
-        mask64((spice[7]^KX[(OpCodes.Shl32(blockSize, 2)) + 23]) + KX[7]),
+        mask64((OpCodes.XorN(spice[0], KX[(OpCodes.Shl32(blockSize, 2)) + 16])) + KX[0] + BigInt(backup)),
+        mask64((OpCodes.XorN(spice[1], KX[(OpCodes.Shl32(blockSize, 2)) + 17])) + KX[1]),
+        mask64((OpCodes.XorN(spice[2], KX[(OpCodes.Shl32(blockSize, 2)) + 18])) + KX[2]),
+        mask64((OpCodes.XorN(spice[3], KX[(OpCodes.Shl32(blockSize, 2)) + 19])) + KX[3]),
+        mask64((OpCodes.XorN(spice[4], KX[(OpCodes.Shl32(blockSize, 2)) + 20])) + KX[4]),
+        mask64((OpCodes.XorN(spice[5], KX[(OpCodes.Shl32(blockSize, 2)) + 21])) + KX[5]),
+        mask64((OpCodes.XorN(spice[6], KX[(OpCodes.Shl32(blockSize, 2)) + 22])) + KX[6]),
+        mask64((OpCodes.XorN(spice[7], KX[(OpCodes.Shl32(blockSize, 2)) + 23])) + KX[7]),
         0n, 0n
       ];
       const zspice = new Array(HPC_ROUND_COUNT).fill(0n);
@@ -559,22 +559,22 @@
       tmp[8] = tmp[9] = tmp[7];
 
       for (let ri = 0; ri < HPC_ROUND_COUNT; ++ri) {
-        tmp[8] = mask64(tmp[8] + (((tmp[8] << 21n) + (tmp[8] >> 13n))^(tmp[ri] + KX[ri + 16])));
-        tmp[9] = mask64(tmp[9]^tmp[8]);
+        tmp[8] = mask64(tmp[8] + (OpCodes.XorN(((OpCodes.ShiftLn(tmp[8], 21n)) + (OpCodes.ShiftRn(tmp[8], 13n))), (tmp[ri] + KX[ri + 16]))));
+        tmp[9] = mask64(OpCodes.XorN(tmp[9], tmp[8]));
       }
 
       if (blockSize < 16) {
         for (let ri = HPC_ROUND_COUNT + 2; ri-- > 0; ) {
           const t = tmp[ri];
           for (let bi = Math.ceil(64 / (OpCodes.Shl32(blockSize, 1))); bi-- > 0; ) {
-            const v = (t >> BigInt(bi * (OpCodes.Shl32(blockSize, 1))))&((1n << BigInt(OpCodes.Shl32(blockSize, 1))) - 1n);
-            s0 = mask64(s0 - (s0 << BigInt(LBH)));
-            s0 = mask64(s0^Permai[Number(s0&15n)]);
-            s0 = mask64(s0 - (s0 << BigInt(LBH + 2)));
-            s0 = mask64(s0^(v >> BigInt(blockSize)));
-            s0 = mask64(s0^((s0&mask) >> BigInt(LBH)));
-            s0 = mask64(((s0 << 4n))|((s0&mask) >> BigInt(blockSize - 4)));
-            s0 = mask64(s0^(KX[(16 * ri) + Number(s0&15n)] << 4n));
+            const v = OpCodes.AndN((OpCodes.ShiftRn(t, BigInt(bi * (OpCodes.Shl32(blockSize, 1))))), ((OpCodes.ShiftLn(1n, BigInt(OpCodes.Shl32(blockSize, 1)))) - 1n));
+            s0 = mask64(s0 - (OpCodes.ShiftLn(s0, BigInt(LBH))));
+            s0 = mask64(OpCodes.XorN(s0, Permai[Number(OpCodes.AndN(s0, 15n))]));
+            s0 = mask64(s0 - (OpCodes.ShiftLn(s0, BigInt(LBH + 2))));
+            s0 = mask64(OpCodes.XorN(s0, (OpCodes.ShiftRn(v, BigInt(blockSize)))));
+            s0 = mask64(OpCodes.XorN(s0, (OpCodes.ShiftRn((OpCodes.AndN(s0, mask)), BigInt(LBH)))));
+            s0 = mask64(((OpCodes.ShiftLn(s0, 4n)))|(OpCodes.ShiftRn((OpCodes.AndN(s0, mask)), BigInt(blockSize - 4))));
+            s0 = mask64(OpCodes.XorN(s0, (OpCodes.ShiftLn(KX[(16 * ri) + Number(OpCodes.AndN(s0, 15n))], 4n))));
             s0 = mask64(s0 - v);
           }
         }
@@ -582,9 +582,9 @@
         for (let ri = HPC_ROUND_COUNT + 2; ri-- > 0; ) {
           let t = tmp[ri];
           for (let bi = Math.ceil(64 / blockSize); bi-- > 0; ) {
-            s0 = mask64(((s0 << 8n))|((s0&mask) >> BigInt(blockSize - 8)));
-            s0 = mask64(s0^(KX[Number(s0&0xFFn)] << 8n));
-            s0 = mask64(s0 - (t >> BigInt(bi * blockSize)));
+            s0 = mask64(((OpCodes.ShiftLn(s0, 8n)))|(OpCodes.ShiftRn((OpCodes.AndN(s0, mask)), BigInt(blockSize - 8))));
+            s0 = mask64(OpCodes.XorN(s0, (OpCodes.ShiftLn(KX[Number(OpCodes.AndN(s0, 0xFFn))], 8n))));
+            s0 = mask64(s0 - (OpCodes.ShiftRn(t, BigInt(bi * blockSize))));
           }
         }
       }
@@ -596,48 +596,48 @@
   // ========================[ SHORT CIPHER (36-64 bits) ]========================
 
   function shortEncrypt(state, spice, KX, blockSize, mask, backup) {
-    const LBH = (blockSize + 1) >> 1;
-    const LBQ = (LBH + 1) >> 1;
-    const LBT = ((blockSize + LBQ) >> 2) + 2;
+    const LBH = OpCodes.Shr32((blockSize + 1), 1);
+    const LBQ = OpCodes.Shr32((LBH + 1), 1);
+    const LBT = (OpCodes.Shr32((blockSize + LBQ), 2)) + 2;
     const GAP = 64 - blockSize;
 
     let s0 = state[0];
 
     for (let ri = 0; ri < HPC_ROUND_COUNT; ++ri) {
-      let k = mask64(KX[Number(s0&0xFFn)] + spice[ri]);
+      let k = mask64(KX[Number(OpCodes.AndN(s0, 0xFFn))] + spice[ri]);
       let t;
 
-      s0 = mask64(s0 + ((k << 8n)));
-      s0 = mask64(s0^((k >> BigInt(GAP))&~0xFFn));
-      s0 = mask64(s0 + (s0 << BigInt(LBH + ri)));
-      t = spice[ri^7];
-      s0 = mask64(s0^t);
-      s0 = mask64(s0 - (t >> BigInt(GAP + ri)));
-      s0 = mask64(s0 + ((t >> 13n)));
+      s0 = mask64(s0 + ((OpCodes.ShiftLn(k, 8n))));
+      s0 = mask64(OpCodes.XorN(s0, (OpCodes.AndN((OpCodes.ShiftRn(k, BigInt(GAP))), ~0xFFn))));
+      s0 = mask64(s0 + (OpCodes.ShiftLn(s0, BigInt(LBH + ri))));
+      t = spice[OpCodes.XorN(ri, 7)];
+      s0 = mask64(OpCodes.XorN(s0, t));
+      s0 = mask64(s0 - (OpCodes.ShiftRn(t, BigInt(GAP + ri))));
+      s0 = mask64(s0 + ((OpCodes.ShiftRn(t, 13n))));
       s0 &= mask;
 
-      s0 = mask64(s0^(s0 >> BigInt(LBH)));
-      t = s0&0xFFn;
-      k = mask64(KX[Number(t)]^spice[ri^4]);
-      k = mask64(KX[Number((t + BigInt(3 * ri) + 1n)&0xFFn)] + rotR64(k, 23));
-      s0 = mask64(s0^((k << 8n)));
-      s0 = mask64(s0 - ((k >> BigInt(GAP))&~0xFFn));
-      s0 = mask64(s0 - (s0 << BigInt(LBH)));
-      t = mask64(spice[ri^1]^(HPC_PI19 + BigInt(blockSize)));
-      s0 = mask64(s0 + ((t << 3n)));
-      s0 = mask64(s0^(t >> BigInt(GAP + 2)));
+      s0 = mask64(OpCodes.XorN(s0, (OpCodes.ShiftRn(s0, BigInt(LBH)))));
+      t = OpCodes.AndN(s0, 0xFFn);
+      k = mask64(OpCodes.XorN(KX[Number(t)], spice[OpCodes.XorN(ri, 4)]));
+      k = mask64(KX[Number(OpCodes.AndN((t + BigInt(3 * ri) + 1n), 0xFFn))] + rotR64(k, 23));
+      s0 = mask64(OpCodes.XorN(s0, ((OpCodes.ShiftLn(k, 8n)))));
+      s0 = mask64(s0 - (OpCodes.AndN((OpCodes.ShiftRn(k, BigInt(GAP))), ~0xFFn)));
+      s0 = mask64(s0 - (OpCodes.ShiftLn(s0, BigInt(LBH))));
+      t = mask64(OpCodes.XorN(spice[OpCodes.XorN(ri, 1)], (HPC_PI19 + BigInt(blockSize))));
+      s0 = mask64(s0 + ((OpCodes.ShiftLn(t, 3n))));
+      s0 = mask64(OpCodes.XorN(s0, (OpCodes.ShiftRn(t, BigInt(GAP + 2)))));
       s0 = mask64(s0 - t);
       s0 &= mask;
 
-      s0 = mask64(s0^(s0 >> BigInt(LBQ)));
-      s0 = mask64(s0 + Permb[Number(s0&15n)]);
-      t = spice[ri^2];
-      s0 = mask64(s0^(t >> BigInt(GAP + 4)));
-      s0 = mask64(s0 + (s0 << BigInt(LBT + Number(s0&15n))));
+      s0 = mask64(OpCodes.XorN(s0, (OpCodes.ShiftRn(s0, BigInt(LBQ)))));
+      s0 = mask64(s0 + Permb[Number(OpCodes.AndN(s0, 15n))]);
+      t = spice[OpCodes.XorN(ri, 2)];
+      s0 = mask64(OpCodes.XorN(s0, (OpCodes.ShiftRn(t, BigInt(GAP + 4)))));
+      s0 = mask64(s0 + (OpCodes.ShiftLn(s0, BigInt(LBT + Number(OpCodes.AndN(s0, 15n))))));
       s0 = mask64(s0 + t);
       s0 &= mask;
 
-      s0 = mask64(s0^(s0 >> BigInt(LBH)));
+      s0 = mask64(OpCodes.XorN(s0, (OpCodes.ShiftRn(s0, BigInt(LBH)))));
       s0 &= mask;
     }
 
@@ -645,47 +645,47 @@
   }
 
   function shortDecrypt(state, spice, KX, blockSize, mask, backup) {
-    const LBH = (blockSize + 1) >> 1;
-    const LBQ = (LBH + 1) >> 1;
-    const LBT = ((blockSize + LBQ) >> 2) + 2;
+    const LBH = OpCodes.Shr32((blockSize + 1), 1);
+    const LBQ = OpCodes.Shr32((LBH + 1), 1);
+    const LBT = (OpCodes.Shr32((blockSize + LBQ), 2)) + 2;
     const GAP = 64 - blockSize;
 
     let s0 = state[0];
 
     for (let ri = HPC_ROUND_COUNT; ri-- > 0; ) {
-      let k, t = spice[ri^2];
+      let k, t = spice[OpCodes.XorN(ri, 2)];
 
-      s0 = mask64(s0^(s0 >> BigInt(LBH)));
+      s0 = mask64(OpCodes.XorN(s0, (OpCodes.ShiftRn(s0, BigInt(LBH)))));
       s0 = mask64(s0 - t);
-      k = s0 << BigInt(LBT + Number(s0&15n));
-      s0 = mask64(s0 - ((s0 - k) << BigInt(LBT + Number(s0&15n))));
-      s0 = mask64(s0^(t >> BigInt(GAP + 4)));
-      s0 = mask64(s0 - Permbi[Number(s0&15n)]);
+      k = OpCodes.ShiftLn(s0, BigInt(LBT + Number(OpCodes.AndN(s0, 15n))));
+      s0 = mask64(s0 - (OpCodes.ShiftLn((s0 - k), BigInt(LBT + Number(OpCodes.AndN(s0, 15n))))));
+      s0 = mask64(OpCodes.XorN(s0, (OpCodes.ShiftRn(t, BigInt(GAP + 4)))));
+      s0 = mask64(s0 - Permbi[Number(OpCodes.AndN(s0, 15n))]);
       s0 &= mask;
 
-      s0 = mask64(s0^(s0 >> BigInt(LBQ)));
-      s0 = mask64(s0^(s0 >> BigInt(OpCodes.Shl32(LBQ, 1))));
-      t = mask64(spice[ri^1]^(HPC_PI19 + BigInt(blockSize)));
+      s0 = mask64(OpCodes.XorN(s0, (OpCodes.ShiftRn(s0, BigInt(LBQ)))));
+      s0 = mask64(OpCodes.XorN(s0, (OpCodes.ShiftRn(s0, BigInt(OpCodes.Shl32(LBQ, 1))))));
+      t = mask64(OpCodes.XorN(spice[OpCodes.XorN(ri, 1)], (HPC_PI19 + BigInt(blockSize))));
       s0 = mask64(s0 + t);
-      s0 = mask64(s0^(t >> BigInt(GAP + 2)));
-      s0 = mask64(s0 - ((t << 3n)));
-      s0 = mask64(s0 + (s0 << BigInt(LBH)));
-      t = s0&0xFFn;
-      k = mask64(KX[Number(t)]^spice[ri^4]);
-      k = mask64(KX[Number((t + BigInt(3 * ri) + 1n)&0xFFn)] + rotR64(k, 23));
-      s0 = mask64(s0 + ((k >> BigInt(GAP))&~0xFFn));
-      s0 = mask64(s0^((k << 8n)));
+      s0 = mask64(OpCodes.XorN(s0, (OpCodes.ShiftRn(t, BigInt(GAP + 2)))));
+      s0 = mask64(s0 - ((OpCodes.ShiftLn(t, 3n))));
+      s0 = mask64(s0 + (OpCodes.ShiftLn(s0, BigInt(LBH))));
+      t = OpCodes.AndN(s0, 0xFFn);
+      k = mask64(OpCodes.XorN(KX[Number(t)], spice[OpCodes.XorN(ri, 4)]));
+      k = mask64(KX[Number(OpCodes.AndN((t + BigInt(3 * ri) + 1n), 0xFFn))] + rotR64(k, 23));
+      s0 = mask64(s0 + (OpCodes.AndN((OpCodes.ShiftRn(k, BigInt(GAP))), ~0xFFn)));
+      s0 = mask64(OpCodes.XorN(s0, ((OpCodes.ShiftLn(k, 8n)))));
       s0 &= mask;
 
-      s0 = mask64(s0^(s0 >> BigInt(LBH)));
-      t = spice[ri^7];
-      s0 = mask64(s0 - ((t >> 13n)));
-      s0 = mask64(s0 + (t >> BigInt(GAP + ri)));
-      s0 = mask64(s0^t);
-      s0 = mask64(s0 - (s0 << BigInt(LBH + ri)));
-      k = mask64(KX[Number(s0&0xFFn)] + spice[ri]);
-      s0 = mask64(s0^((k >> BigInt(GAP))&~0xFFn));
-      s0 = mask64(s0 - ((k << 8n)));
+      s0 = mask64(OpCodes.XorN(s0, (OpCodes.ShiftRn(s0, BigInt(LBH)))));
+      t = spice[OpCodes.XorN(ri, 7)];
+      s0 = mask64(s0 - ((OpCodes.ShiftRn(t, 13n))));
+      s0 = mask64(s0 + (OpCodes.ShiftRn(t, BigInt(GAP + ri))));
+      s0 = mask64(OpCodes.XorN(s0, t));
+      s0 = mask64(s0 - (OpCodes.ShiftLn(s0, BigInt(LBH + ri))));
+      k = mask64(KX[Number(OpCodes.AndN(s0, 0xFFn))] + spice[ri]);
+      s0 = mask64(OpCodes.XorN(s0, (OpCodes.AndN((OpCodes.ShiftRn(k, BigInt(GAP))), ~0xFFn))));
+      s0 = mask64(s0 - ((OpCodes.ShiftLn(k, 8n))));
       s0 &= mask;
     }
 
@@ -698,50 +698,50 @@
     let s0 = state[0], s1 = state[1];
 
     for (let ri = 0; ri < HPC_ROUND_COUNT; ++ri) {
-      let k = KX[Number(s0&0xFFn)];
+      let k = KX[Number(OpCodes.AndN(s0, 0xFFn))];
       let t, kk;
 
       s1 = mask64(s1 + k);
-      s0 = mask64(s0^((k << 8n)));
-      s1 = mask64(s1^s0);
+      s0 = mask64(OpCodes.XorN(s0, ((OpCodes.ShiftLn(k, 8n)))));
+      s1 = mask64(OpCodes.XorN(s1, s0));
       s1 &= mask;
 
-      s0 = mask64(s0 - ((s1 >> 11n)));
-      s0 = mask64(s0^((s1 << 2n)));
-      s0 = mask64(s0 - spice[ri^4]);
-      s0 = mask64(s0 + mask64(((s0 << 32n))^(HPC_PI19 + BigInt(blockSize))));
-      s0 = mask64(s0^((s0 >> 17n)));
-      s0 = mask64(s0^((s0 >> 34n)));
+      s0 = mask64(s0 - ((OpCodes.ShiftRn(s1, 11n))));
+      s0 = mask64(OpCodes.XorN(s0, ((OpCodes.ShiftLn(s1, 2n)))));
+      s0 = mask64(s0 - spice[OpCodes.XorN(ri, 4)]);
+      s0 = mask64(s0 + mask64(OpCodes.XorN(((OpCodes.ShiftLn(s0, 32n))), (HPC_PI19 + BigInt(blockSize)))));
+      s0 = mask64(OpCodes.XorN(s0, ((OpCodes.ShiftRn(s0, 17n)))));
+      s0 = mask64(OpCodes.XorN(s0, ((OpCodes.ShiftRn(s0, 34n)))));
       t = spice[ri];
-      s0 = mask64(s0^t);
-      s0 = mask64(s0 + ((t << 5n)));
-      t >>= 4n;
+      s0 = mask64(OpCodes.XorN(s0, t));
+      s0 = mask64(s0 + ((OpCodes.ShiftLn(t, 5n))));
+      t = OpCodes.ShiftRn(t, 4n);
       s1 = mask64(s1 + t);
-      s0 = mask64(s0^t);
-      s0 = mask64(s0 + (s0 << BigInt(22 + Number(s0&31n))));
-      s0 = mask64(s0^((s0 >> 23n)));
-      s0 = mask64(s0 - spice[ri^7]);
+      s0 = mask64(OpCodes.XorN(s0, t));
+      s0 = mask64(s0 + (OpCodes.ShiftLn(s0, BigInt(22 + Number(OpCodes.AndN(s0, 31n))))));
+      s0 = mask64(OpCodes.XorN(s0, ((OpCodes.ShiftRn(s0, 23n)))));
+      s0 = mask64(s0 - spice[OpCodes.XorN(ri, 7)]);
 
-      t = s0&0xFFn;
+      t = OpCodes.AndN(s0, 0xFFn);
       k = KX[Number(t)];
-      kk = KX[Number((t + BigInt(3 * ri) + 1n)&0xFFn)];
+      kk = KX[Number(OpCodes.AndN((t + BigInt(3 * ri) + 1n), 0xFFn))];
 
-      s1 = mask64(s1^k);
-      s0 = mask64(s0^((kk << 8n)));
-      kk = mask64(kk^k);
-      s1 = mask64(s1 + ((kk >> 5n)));
-      s0 = mask64(s0 - ((kk << 12n)));
-      s0 = mask64(s0^(kk&~0xFFn));
+      s1 = mask64(OpCodes.XorN(s1, k));
+      s0 = mask64(OpCodes.XorN(s0, ((OpCodes.ShiftLn(kk, 8n)))));
+      kk = mask64(OpCodes.XorN(kk, k));
+      s1 = mask64(s1 + ((OpCodes.ShiftRn(kk, 5n))));
+      s0 = mask64(s0 - ((OpCodes.ShiftLn(kk, 12n))));
+      s0 = mask64(OpCodes.XorN(s0, (OpCodes.AndN(kk, ~0xFFn))));
       s1 = mask64(s1 + s0);
       s1 &= mask;
 
-      s0 = mask64(s0 + ((s1 << 3n)));
-      s0 = mask64(s0^spice[ri^2]);
+      s0 = mask64(s0 + ((OpCodes.ShiftLn(s1, 3n))));
+      s0 = mask64(OpCodes.XorN(s0, spice[OpCodes.XorN(ri, 2)]));
       s0 = mask64(s0 + KX[blockSize + ri + 16]);
-      s0 = mask64(s0 + ((s0 << 22n)));
-      s0 = mask64(s0^((s1 >> 4n)));
-      s0 = mask64(s0 + spice[ri^1]);
-      s0 = mask64(s0^(s0 >> BigInt(ri + 33)));
+      s0 = mask64(s0 + ((OpCodes.ShiftLn(s0, 22n))));
+      s0 = mask64(OpCodes.XorN(s0, ((OpCodes.ShiftRn(s1, 4n)))));
+      s0 = mask64(s0 + spice[OpCodes.XorN(ri, 1)]);
+      s0 = mask64(OpCodes.XorN(s0, (OpCodes.ShiftRn(s0, BigInt(ri + 33)))));
     }
 
     state[0] = s0;
@@ -754,49 +754,49 @@
     for (let ri = HPC_ROUND_COUNT; ri-- > 0; ) {
       let k, t, kk;
 
-      s0 = mask64(s0^(s0 >> BigInt(ri + 33)));
-      s0 = mask64(s0 - spice[ri^1]);
-      s0 = mask64(s0^((s1 >> 4n)));
-      t = mask64(s0 - ((s0 << 22n)));
-      s0 = mask64(s0 - ((t << 22n)));
+      s0 = mask64(OpCodes.XorN(s0, (OpCodes.ShiftRn(s0, BigInt(ri + 33)))));
+      s0 = mask64(s0 - spice[OpCodes.XorN(ri, 1)]);
+      s0 = mask64(OpCodes.XorN(s0, ((OpCodes.ShiftRn(s1, 4n)))));
+      t = mask64(s0 - ((OpCodes.ShiftLn(s0, 22n))));
+      s0 = mask64(s0 - ((OpCodes.ShiftLn(t, 22n))));
       s0 = mask64(s0 - KX[blockSize + ri + 16]);
-      s0 = mask64(s0^spice[ri^2]);
-      s0 = mask64(s0 - ((s1 << 3n)));
+      s0 = mask64(OpCodes.XorN(s0, spice[OpCodes.XorN(ri, 2)]));
+      s0 = mask64(s0 - ((OpCodes.ShiftLn(s1, 3n))));
       s1 = mask64(s1 - s0);
 
-      t = s0&0xFFn;
+      t = OpCodes.AndN(s0, 0xFFn);
       k = KX[Number(t)];
-      kk = mask64(KX[Number((t + BigInt(3 * ri) + 1n)&0xFFn)]^k);
+      kk = mask64(OpCodes.XorN(KX[Number(OpCodes.AndN((t + BigInt(3 * ri) + 1n), 0xFFn))], k));
 
-      s0 = mask64(s0^(kk&~0xFFn));
-      s0 = mask64(s0 + ((kk << 12n)));
-      s1 = mask64(s1 - ((kk >> 5n)));
-      kk = mask64(kk^k);
-      s0 = mask64(s0^((kk << 8n)));
-      s1 = mask64(s1^k);
+      s0 = mask64(OpCodes.XorN(s0, (OpCodes.AndN(kk, ~0xFFn))));
+      s0 = mask64(s0 + ((OpCodes.ShiftLn(kk, 12n))));
+      s1 = mask64(s1 - ((OpCodes.ShiftRn(kk, 5n))));
+      kk = mask64(OpCodes.XorN(kk, k));
+      s0 = mask64(OpCodes.XorN(s0, ((OpCodes.ShiftLn(kk, 8n)))));
+      s1 = mask64(OpCodes.XorN(s1, k));
 
-      s0 = mask64(s0 + spice[ri^7]);
-      s0 = mask64(s0^((s0 >> 23n)));
-      s0 = mask64(s0^((s0 >> 46n)));
-      t = s0 << BigInt(22 + Number(s0&31n));
-      s0 = mask64(s0 - ((s0 - t) << BigInt(22 + Number(s0&31n))));
-      t = spice[ri] >> 4n;
-      s0 = mask64(s0^t);
+      s0 = mask64(s0 + spice[OpCodes.XorN(ri, 7)]);
+      s0 = mask64(OpCodes.XorN(s0, ((OpCodes.ShiftRn(s0, 23n)))));
+      s0 = mask64(OpCodes.XorN(s0, ((OpCodes.ShiftRn(s0, 46n)))));
+      t = OpCodes.ShiftLn(s0, BigInt(22 + Number(OpCodes.AndN(s0, 31n))));
+      s0 = mask64(s0 - (OpCodes.ShiftLn((s0 - t), BigInt(22 + Number(OpCodes.AndN(s0, 31n))))));
+      t = OpCodes.ShiftRn(spice[ri], 4n);
+      s0 = mask64(OpCodes.XorN(s0, t));
       s1 = mask64(s1 - t);
       t = spice[ri];
-      s0 = mask64(s0 - ((t << 5n)));
-      s0 = mask64(s0^t);
-      s0 = mask64(s0^((s0 >> 17n)));
+      s0 = mask64(s0 - ((OpCodes.ShiftLn(t, 5n))));
+      s0 = mask64(OpCodes.XorN(s0, t));
+      s0 = mask64(OpCodes.XorN(s0, ((OpCodes.ShiftRn(s0, 17n)))));
       t = mask64(s0 - (HPC_PI19 + BigInt(blockSize)));
-      s0 = mask64(s0 - (((t << 32n))^(HPC_PI19 + BigInt(blockSize))));
-      s0 = mask64(s0 + spice[ri^4]);
+      s0 = mask64(s0 - (OpCodes.XorN(((OpCodes.ShiftLn(t, 32n))), (HPC_PI19 + BigInt(blockSize)))));
+      s0 = mask64(s0 + spice[OpCodes.XorN(ri, 4)]);
       s1 &= mask;
 
-      s0 = mask64(s0^((s1 << 2n)));
-      s0 = mask64(s0 + ((s1 >> 11n)));
-      s1 = mask64(s1^s0);
-      k = KX[Number(s0&0xFFn)];
-      s0 = mask64(s0^((k << 8n)));
+      s0 = mask64(OpCodes.XorN(s0, ((OpCodes.ShiftLn(s1, 2n)))));
+      s0 = mask64(s0 + ((OpCodes.ShiftRn(s1, 11n))));
+      s1 = mask64(OpCodes.XorN(s1, s0));
+      k = KX[Number(OpCodes.AndN(s0, 0xFFn))];
+      s0 = mask64(OpCodes.XorN(s0, ((OpCodes.ShiftLn(k, 8n)))));
       s1 = mask64(s1 - k);
       s1 &= mask;
     }
@@ -812,33 +812,33 @@
     let s4 = state[4], s5 = state[5], s6 = state[6], s7 = state[7];
 
     for (let ri = 0; ri < HPC_ROUND_COUNT; ++ri) {
-      let t = s0&0xFFn;
+      let t = OpCodes.AndN(s0, 0xFFn);
       let k = KX[Number(t)];
-      let kk = KX[Number((t + BigInt(3 * ri) + 1n)&0xFFn)];
+      let kk = KX[Number(OpCodes.AndN((t + BigInt(3 * ri) + 1n), 0xFFn))];
 
       s1 = mask64(s1 + k);
-      s0 = mask64(s0^((kk << 8n)));
-      kk = mask64(kk^k);
-      s1 = mask64(s1 + ((kk >> 5n)));
-      s0 = mask64(s0 - ((kk << 12n)));
+      s0 = mask64(OpCodes.XorN(s0, ((OpCodes.ShiftLn(kk, 8n)))));
+      kk = mask64(OpCodes.XorN(kk, k));
+      s1 = mask64(s1 + ((OpCodes.ShiftRn(kk, 5n))));
+      s0 = mask64(s0 - ((OpCodes.ShiftLn(kk, 12n))));
       s7 = mask64(s7 + kk);
-      s7 = mask64(s7^s0);
+      s7 = mask64(OpCodes.XorN(s7, s0));
       s7 &= mask;
 
       s1 = mask64(s1 + s7);
-      s1 = mask64(s1^((s7 << 13n)));
-      s0 = mask64(s0 - ((s7 >> 11n)));
+      s1 = mask64(OpCodes.XorN(s1, ((OpCodes.ShiftLn(s7, 13n)))));
+      s0 = mask64(s0 - ((OpCodes.ShiftRn(s7, 11n))));
       s0 = mask64(s0 + spice[ri]);
-      s1 = mask64(s1^spice[ri^1]);
-      s0 = mask64(s0 + (s1 << BigInt(ri + 9)));
-      s1 = mask64(s1 + mask64(((s0 >> 3n))^(HPC_PI19 + BigInt(blockSize))));
-      s0 = mask64(s0^((s1 >> 4n)));
-      s0 = mask64(s0 + spice[ri^2]);
-      t = spice[ri^4];
+      s1 = mask64(OpCodes.XorN(s1, spice[OpCodes.XorN(ri, 1)]));
+      s0 = mask64(s0 + (OpCodes.ShiftLn(s1, BigInt(ri + 9))));
+      s1 = mask64(s1 + mask64(OpCodes.XorN(((OpCodes.ShiftRn(s0, 3n))), (HPC_PI19 + BigInt(blockSize)))));
+      s0 = mask64(OpCodes.XorN(s0, ((OpCodes.ShiftRn(s1, 4n)))));
+      s0 = mask64(s0 + spice[OpCodes.XorN(ri, 2)]);
+      t = spice[OpCodes.XorN(ri, 4)];
       s1 = mask64(s1 + t);
-      s1 = mask64(s1^((t >> 3n)));
-      s1 = mask64(s1 - ((t << 5n)));
-      s0 = mask64(s0^s1);
+      s1 = mask64(OpCodes.XorN(s1, ((OpCodes.ShiftRn(t, 3n)))));
+      s1 = mask64(s1 - ((OpCodes.ShiftLn(t, 5n))));
+      s0 = mask64(OpCodes.XorN(s0, s1));
 
       if (blockSize > 192) {
         if (blockSize > 256) {
@@ -846,44 +846,44 @@
             if (blockSize > 384) {
               if (blockSize > 448) {
                 s6 = mask64(s6 + s0);
-                s6 = mask64(s6^((s3 << 11n)));
-                s1 = mask64(s1 + ((s6 >> 13n)));
-                s6 = mask64(s6 + ((s5 << 7n)));
-                s4 = mask64(s4^s6);
+                s6 = mask64(OpCodes.XorN(s6, ((OpCodes.ShiftLn(s3, 11n)))));
+                s1 = mask64(s1 + ((OpCodes.ShiftRn(s6, 13n))));
+                s6 = mask64(s6 + ((OpCodes.ShiftLn(s5, 7n))));
+                s4 = mask64(OpCodes.XorN(s4, s6));
               }
-              s5 = mask64(s5^s1);
-              s5 = mask64(s5 + ((s4 << 15n)));
-              s0 = mask64(s0 - ((s5 >> 7n)));
-              s5 = mask64(s5^((s3 >> 9n)));
-              s2 = mask64(s2^s5);
+              s5 = mask64(OpCodes.XorN(s5, s1));
+              s5 = mask64(s5 + ((OpCodes.ShiftLn(s4, 15n))));
+              s0 = mask64(s0 - ((OpCodes.ShiftRn(s5, 7n))));
+              s5 = mask64(OpCodes.XorN(s5, ((OpCodes.ShiftRn(s3, 9n)))));
+              s2 = mask64(OpCodes.XorN(s2, s5));
             }
             s4 = mask64(s4 - s2);
-            s4 = mask64(s4^((s1 >> 10n)));
-            s0 = mask64(s0^((s4 << 3n)));
-            s4 = mask64(s4 - ((s2 << 6n)));
+            s4 = mask64(OpCodes.XorN(s4, ((OpCodes.ShiftRn(s1, 10n)))));
+            s0 = mask64(OpCodes.XorN(s0, ((OpCodes.ShiftLn(s4, 3n)))));
+            s4 = mask64(s4 - ((OpCodes.ShiftLn(s2, 6n))));
             s3 = mask64(s3 + s4);
           }
-          s3 = mask64(s3^s2);
-          s3 = mask64(s3 - ((s0 >> 7n)));
-          s2 = mask64(s2^((s3 << 15n)));
-          s3 = mask64(s3^((s1 << 5n)));
+          s3 = mask64(OpCodes.XorN(s3, s2));
+          s3 = mask64(s3 - ((OpCodes.ShiftRn(s0, 7n))));
+          s2 = mask64(OpCodes.XorN(s2, ((OpCodes.ShiftLn(s3, 15n)))));
+          s3 = mask64(OpCodes.XorN(s3, ((OpCodes.ShiftLn(s1, 5n)))));
           s1 = mask64(s1 + s3);
         }
-        s2 = mask64(s2^s1);
-        s2 = mask64(s2 + ((s0 << 13n)));
-        s1 = mask64(s1 - ((s2 >> 5n)));
-        s2 = mask64(s2 - ((s1 >> 8n)));
-        s0 = mask64(s0^s2);
+        s2 = mask64(OpCodes.XorN(s2, s1));
+        s2 = mask64(s2 + ((OpCodes.ShiftLn(s0, 13n))));
+        s1 = mask64(s1 - ((OpCodes.ShiftRn(s2, 5n))));
+        s2 = mask64(s2 - ((OpCodes.ShiftRn(s1, 8n))));
+        s0 = mask64(OpCodes.XorN(s0, s2));
       }
 
-      s1 = mask64(s1^KX[Number((BigInt(blockSize) + BigInt(OpCodes.Shl32(ri, 5)) + 17n)&0xFFn)]);
-      s1 = mask64(s1 + ((s0 << 19n)));
-      s0 = mask64(s0 - ((s1 >> 27n)));
-      s1 = mask64(s1^spice[ri^7]);
+      s1 = mask64(OpCodes.XorN(s1, KX[Number(OpCodes.AndN((BigInt(blockSize) + BigInt(OpCodes.Shl32(ri, 5)) + 17n), 0xFFn))]));
+      s1 = mask64(s1 + ((OpCodes.ShiftLn(s0, 19n))));
+      s0 = mask64(s0 - ((OpCodes.ShiftRn(s1, 27n))));
+      s1 = mask64(OpCodes.XorN(s1, spice[OpCodes.XorN(ri, 7)]));
       s7 = mask64(s7 - s1);
-      s0 = mask64(s0 + (s1&((s1 >> 5n))));
-      s1 = mask64(s1^(s0 >> (s0&31n)));
-      s0 = mask64(s0^KX[Number(s1&0xFFn)]);
+      s0 = mask64(s0 + (OpCodes.AndN(s1, ((OpCodes.ShiftRn(s1, 5n))))));
+      s1 = mask64(OpCodes.XorN(s1, (OpCodes.ShiftRn(s0, (OpCodes.AndN(s0, 31n))))));
+      s0 = mask64(OpCodes.XorN(s0, KX[Number(OpCodes.AndN(s1, 0xFFn))]));
     }
 
     state[0] = s0; state[1] = s1; state[2] = s2; state[3] = s3;
@@ -897,50 +897,50 @@
     for (let ri = HPC_ROUND_COUNT; ri-- > 0; ) {
       let t, k, kk;
 
-      s0 = mask64(s0^KX[Number(s1&0xFFn)]);
-      s1 = mask64(s1^(s0 >> (s0&31n)));
-      s0 = mask64(s0 - (s1&((s1 >> 5n))));
+      s0 = mask64(OpCodes.XorN(s0, KX[Number(OpCodes.AndN(s1, 0xFFn))]));
+      s1 = mask64(OpCodes.XorN(s1, (OpCodes.ShiftRn(s0, (OpCodes.AndN(s0, 31n))))));
+      s0 = mask64(s0 - (OpCodes.AndN(s1, ((OpCodes.ShiftRn(s1, 5n))))));
       s7 = mask64(s7 + s1);
       s7 &= mask;
 
-      s1 = mask64(s1^spice[ri^7]);
-      s0 = mask64(s0 + ((s1 >> 27n)));
-      s1 = mask64(s1 - ((s0 << 19n)));
-      s1 = mask64(s1^KX[Number((BigInt(blockSize) + BigInt(OpCodes.Shl32(ri, 5)) + 17n)&0xFFn)]);
+      s1 = mask64(OpCodes.XorN(s1, spice[OpCodes.XorN(ri, 7)]));
+      s0 = mask64(s0 + ((OpCodes.ShiftRn(s1, 27n))));
+      s1 = mask64(s1 - ((OpCodes.ShiftLn(s0, 19n))));
+      s1 = mask64(OpCodes.XorN(s1, KX[Number(OpCodes.AndN((BigInt(blockSize) + BigInt(OpCodes.Shl32(ri, 5)) + 17n), 0xFFn))]));
 
       if (blockSize > 192) {
-        s0 = mask64(s0^s2);
-        s2 = mask64(s2 + ((s1 >> 8n)));
-        s1 = mask64(s1 + ((s2 >> 5n)));
-        s2 = mask64(s2 - ((s0 << 13n)));
-        s2 = mask64(s2^s1);
+        s0 = mask64(OpCodes.XorN(s0, s2));
+        s2 = mask64(s2 + ((OpCodes.ShiftRn(s1, 8n))));
+        s1 = mask64(s1 + ((OpCodes.ShiftRn(s2, 5n))));
+        s2 = mask64(s2 - ((OpCodes.ShiftLn(s0, 13n))));
+        s2 = mask64(OpCodes.XorN(s2, s1));
 
         if (blockSize > 256) {
           s1 = mask64(s1 - s3);
-          s3 = mask64(s3^((s1 << 5n)));
-          s2 = mask64(s2^((s3 << 15n)));
-          s3 = mask64(s3 + ((s0 >> 7n)));
-          s3 = mask64(s3^s2);
+          s3 = mask64(OpCodes.XorN(s3, ((OpCodes.ShiftLn(s1, 5n)))));
+          s2 = mask64(OpCodes.XorN(s2, ((OpCodes.ShiftLn(s3, 15n)))));
+          s3 = mask64(s3 + ((OpCodes.ShiftRn(s0, 7n))));
+          s3 = mask64(OpCodes.XorN(s3, s2));
 
           if (blockSize > 320) {
             s3 = mask64(s3 - s4);
-            s4 = mask64(s4 + ((s2 << 6n)));
-            s0 = mask64(s0^((s4 << 3n)));
-            s4 = mask64(s4^((s1 >> 10n)));
+            s4 = mask64(s4 + ((OpCodes.ShiftLn(s2, 6n))));
+            s0 = mask64(OpCodes.XorN(s0, ((OpCodes.ShiftLn(s4, 3n)))));
+            s4 = mask64(OpCodes.XorN(s4, ((OpCodes.ShiftRn(s1, 10n)))));
             s4 = mask64(s4 + s2);
 
             if (blockSize > 384) {
-              s2 = mask64(s2^s5);
-              s5 = mask64(s5^((s3 >> 9n)));
-              s0 = mask64(s0 + ((s5 >> 7n)));
-              s5 = mask64(s5 - ((s4 << 15n)));
-              s5 = mask64(s5^s1);
+              s2 = mask64(OpCodes.XorN(s2, s5));
+              s5 = mask64(OpCodes.XorN(s5, ((OpCodes.ShiftRn(s3, 9n)))));
+              s0 = mask64(s0 + ((OpCodes.ShiftRn(s5, 7n))));
+              s5 = mask64(s5 - ((OpCodes.ShiftLn(s4, 15n))));
+              s5 = mask64(OpCodes.XorN(s5, s1));
 
               if (blockSize > 448) {
-                s4 = mask64(s4^s6);
-                s6 = mask64(s6 - ((s5 << 7n)));
-                s1 = mask64(s1 - ((s6 >> 13n)));
-                s6 = mask64(s6^((s3 << 11n)));
+                s4 = mask64(OpCodes.XorN(s4, s6));
+                s6 = mask64(s6 - ((OpCodes.ShiftLn(s5, 7n))));
+                s1 = mask64(s1 - ((OpCodes.ShiftRn(s6, 13n))));
+                s6 = mask64(OpCodes.XorN(s6, ((OpCodes.ShiftLn(s3, 11n)))));
                 s6 = mask64(s6 - s0);
               }
             }
@@ -948,31 +948,31 @@
         }
       }
 
-      s0 = mask64(s0^s1);
-      t = spice[ri^4];
-      s1 = mask64(s1 + ((t << 5n)));
-      s1 = mask64(s1^((t >> 3n)));
+      s0 = mask64(OpCodes.XorN(s0, s1));
+      t = spice[OpCodes.XorN(ri, 4)];
+      s1 = mask64(s1 + ((OpCodes.ShiftLn(t, 5n))));
+      s1 = mask64(OpCodes.XorN(s1, ((OpCodes.ShiftRn(t, 3n)))));
       s1 = mask64(s1 - t);
-      s0 = mask64(s0 - spice[ri^2]);
-      s0 = mask64(s0^((s1 >> 4n)));
-      s1 = mask64(s1 - mask64(((s0 >> 3n))^(HPC_PI19 + BigInt(blockSize))));
-      s0 = mask64(s0 - (s1 << BigInt(ri + 9)));
-      s1 = mask64(s1^spice[ri^1]);
+      s0 = mask64(s0 - spice[OpCodes.XorN(ri, 2)]);
+      s0 = mask64(OpCodes.XorN(s0, ((OpCodes.ShiftRn(s1, 4n)))));
+      s1 = mask64(s1 - mask64(OpCodes.XorN(((OpCodes.ShiftRn(s0, 3n))), (HPC_PI19 + BigInt(blockSize)))));
+      s0 = mask64(s0 - (OpCodes.ShiftLn(s1, BigInt(ri + 9))));
+      s1 = mask64(OpCodes.XorN(s1, spice[OpCodes.XorN(ri, 1)]));
       s0 = mask64(s0 - spice[ri]);
-      s0 = mask64(s0 + ((s7 >> 11n)));
-      s1 = mask64(s1^((s7 << 13n)));
+      s0 = mask64(s0 + ((OpCodes.ShiftRn(s7, 11n))));
+      s1 = mask64(OpCodes.XorN(s1, ((OpCodes.ShiftLn(s7, 13n)))));
       s1 = mask64(s1 - s7);
 
-      t = s0&0xFFn;
+      t = OpCodes.AndN(s0, 0xFFn);
       k = KX[Number(t)];
-      kk = mask64(KX[Number((t + BigInt(3 * ri) + 1n)&0xFFn)]^k);
+      kk = mask64(OpCodes.XorN(KX[Number(OpCodes.AndN((t + BigInt(3 * ri) + 1n), 0xFFn))], k));
 
-      s7 = mask64(s7^s0);
+      s7 = mask64(OpCodes.XorN(s7, s0));
       s7 = mask64(s7 - kk);
-      s0 = mask64(s0 + ((kk << 12n)));
-      s1 = mask64(s1 - ((kk >> 5n)));
-      kk = mask64(kk^k);
-      s0 = mask64(s0^((kk << 8n)));
+      s0 = mask64(s0 + ((OpCodes.ShiftLn(kk, 12n))));
+      s1 = mask64(s1 - ((OpCodes.ShiftRn(kk, 5n))));
+      kk = mask64(OpCodes.XorN(kk, k));
+      s0 = mask64(OpCodes.XorN(s0, ((OpCodes.ShiftLn(kk, 8n)))));
       s1 = mask64(s1 - k);
     }
 
@@ -983,63 +983,63 @@
   // ========================[ EXTENDED STIR (for Extended cipher) ]========================
 
   function extendedStir(s, spice, KX, ri, mask) {
-    let t = s[0]&0xFFn;
+    let t = OpCodes.AndN(s[0], 0xFFn);
     let k = KX[Number(t)];
-    let kk = KX[Number((t + BigInt(OpCodes.Shl32(ri, 2)) + 1n)&0xFFn)];
+    let kk = KX[Number(OpCodes.AndN((t + BigInt(OpCodes.Shl32(ri, 2)) + 1n), 0xFFn))];
     let tt;
 
     s[3] = mask64(s[3] + s[7]);
-    s[5] = mask64(s[5]^s[7]);
+    s[5] = mask64(OpCodes.XorN(s[5], s[7]));
     s[1] = mask64(s[1] + k);
-    s[2] = mask64(s[2]^k);
+    s[2] = mask64(OpCodes.XorN(s[2], k));
     s[4] = mask64(s[4] + kk);
-    s[6] = mask64(s[6]^kk);
-    s[4] = mask64(s[4]^s[1]);
+    s[6] = mask64(OpCodes.XorN(s[6], kk));
+    s[4] = mask64(OpCodes.XorN(s[4], s[1]));
     s[5] = mask64(s[5] + s[2]);
-    s[0] = mask64(s[0]^(s[5] >> 13n));
-    s[1] = mask64(s[1] - (s[6] >> 22n));
-    s[2] = mask64(s[2]^(s[7] << 7n));
-    s[7] = mask64(s[7]^(s[6] << 9n));
+    s[0] = mask64(OpCodes.XorN(s[0], (OpCodes.ShiftRn(s[5], 13n))));
+    s[1] = mask64(s[1] - (OpCodes.ShiftRn(s[6], 22n)));
+    s[2] = mask64(OpCodes.XorN(s[2], (OpCodes.ShiftLn(s[7], 7n))));
+    s[7] = mask64(OpCodes.XorN(s[7], (OpCodes.ShiftLn(s[6], 9n))));
     s[7] = mask64(s[7] + s[0]);
     s[4] = mask64(s[4] - s[0]);
 
-    t = s[1]&31n;
-    tt = s[1] >> t;
-    s[6] = mask64(s[6]^tt);
+    t = OpCodes.AndN(s[1], 31n);
+    tt = OpCodes.ShiftRn(s[1], t);
+    s[6] = mask64(OpCodes.XorN(s[6], tt));
     s[7] = mask64(s[7] + tt);
 
-    tt = s[2] << t;
+    tt = OpCodes.ShiftLn(s[2], t);
     s[3] = mask64(s[3] + tt);
-    s[5] = mask64(s[5]^tt);
-    tt = s[4] >> t;
+    s[5] = mask64(OpCodes.XorN(s[5], tt));
+    tt = OpCodes.ShiftRn(s[4], t);
     s[2] = mask64(s[2] - tt);
     s[5] = mask64(s[5] + tt);
 
     if (ri === 1) {
       s[0] = mask64(s[0] + spice[0]);
-      s[1] = mask64(s[1]^spice[1]);
+      s[1] = mask64(OpCodes.XorN(s[1], spice[1]));
       s[2] = mask64(s[2] - spice[2]);
-      s[3] = mask64(s[3]^spice[3]);
+      s[3] = mask64(OpCodes.XorN(s[3], spice[3]));
       s[4] = mask64(s[4] + spice[4]);
-      s[5] = mask64(s[5]^spice[5]);
+      s[5] = mask64(OpCodes.XorN(s[5], spice[5]));
       s[6] = mask64(s[6] - spice[6]);
-      s[7] = mask64(s[7]^spice[7]);
+      s[7] = mask64(OpCodes.XorN(s[7], spice[7]));
     }
 
     s[7] = mask64(s[7] - s[3]);
     s[7] &= mask;
-    s[1] = mask64(s[1]^(s[7] >> 11n));
+    s[1] = mask64(OpCodes.XorN(s[1], (OpCodes.ShiftRn(s[7], 11n))));
     s[6] = mask64(s[6] + s[3]);
-    s[0] = mask64(s[0]^s[6]);
+    s[0] = mask64(OpCodes.XorN(s[0], s[6]));
 
-    t = mask64(s[2]^s[5]);
+    t = mask64(OpCodes.XorN(s[2], s[5]));
     s[3] = mask64(s[3] - t);
     t &= 0x5555555555555555n;
-    s[2] = mask64(s[2]^t);
-    s[5] = mask64(s[5]^t);
+    s[2] = mask64(OpCodes.XorN(s[2], t));
+    s[5] = mask64(OpCodes.XorN(s[5], t));
     s[0] = mask64(s[0] + t);
 
-    t = s[4] << 9n;
+    t = OpCodes.ShiftLn(s[4], 9n);
     s[6] = mask64(s[6] - t);
     s[1] = mask64(s[1] + t);
   }
@@ -1047,64 +1047,64 @@
   function extendedStirInverse(s, spice, KX, ri, mask) {
     let t, tt, k, kk;
 
-    t = s[4] << 9n;
+    t = OpCodes.ShiftLn(s[4], 9n);
     s[1] = mask64(s[1] - t);
     s[6] = mask64(s[6] + t);
 
-    t = mask64(s[2]^s[5]);
+    t = mask64(OpCodes.XorN(s[2], s[5]));
     s[3] = mask64(s[3] + t);
     t &= 0x5555555555555555n;
-    s[2] = mask64(s[2]^t);
-    s[5] = mask64(s[5]^t);
+    s[2] = mask64(OpCodes.XorN(s[2], t));
+    s[5] = mask64(OpCodes.XorN(s[5], t));
     s[0] = mask64(s[0] - t);
 
-    s[0] = mask64(s[0]^s[6]);
+    s[0] = mask64(OpCodes.XorN(s[0], s[6]));
     s[6] = mask64(s[6] - s[3]);
-    s[1] = mask64(s[1]^(s[7] >> 11n));
+    s[1] = mask64(OpCodes.XorN(s[1], (OpCodes.ShiftRn(s[7], 11n))));
     s[7] = mask64(s[7] + s[3]);
 
     if (ri === 1) {
       s[0] = mask64(s[0] - spice[0]);
-      s[1] = mask64(s[1]^spice[1]);
+      s[1] = mask64(OpCodes.XorN(s[1], spice[1]));
       s[2] = mask64(s[2] + spice[2]);
-      s[3] = mask64(s[3]^spice[3]);
+      s[3] = mask64(OpCodes.XorN(s[3], spice[3]));
       s[4] = mask64(s[4] - spice[4]);
-      s[5] = mask64(s[5]^spice[5]);
+      s[5] = mask64(OpCodes.XorN(s[5], spice[5]));
       s[6] = mask64(s[6] + spice[6]);
-      s[7] = mask64(s[7]^spice[7]);
+      s[7] = mask64(OpCodes.XorN(s[7], spice[7]));
     }
 
-    t = s[1]&31n;
-    tt = s[4] >> t;
+    t = OpCodes.AndN(s[1], 31n);
+    tt = OpCodes.ShiftRn(s[4], t);
     s[5] = mask64(s[5] - tt);
     s[2] = mask64(s[2] + tt);
-    tt = s[2] << t;
-    s[5] = mask64(s[5]^tt);
+    tt = OpCodes.ShiftLn(s[2], t);
+    s[5] = mask64(OpCodes.XorN(s[5], tt));
     s[3] = mask64(s[3] - tt);
 
-    tt = s[1] >> t;
-    s[6] = mask64(s[6]^tt);
+    tt = OpCodes.ShiftRn(s[1], t);
+    s[6] = mask64(OpCodes.XorN(s[6], tt));
     s[7] = mask64(s[7] - tt);
 
     s[4] = mask64(s[4] + s[0]);
     s[7] = mask64(s[7] - s[0]);
-    s[7] = mask64(s[7]^(s[6] << 9n));
+    s[7] = mask64(OpCodes.XorN(s[7], (OpCodes.ShiftLn(s[6], 9n))));
     s[7] &= mask;
-    s[2] = mask64(s[2]^(s[7] << 7n));
-    s[1] = mask64(s[1] + (s[6] >> 22n));
-    s[0] = mask64(s[0]^(s[5] >> 13n));
+    s[2] = mask64(OpCodes.XorN(s[2], (OpCodes.ShiftLn(s[7], 7n))));
+    s[1] = mask64(s[1] + (OpCodes.ShiftRn(s[6], 22n)));
+    s[0] = mask64(OpCodes.XorN(s[0], (OpCodes.ShiftRn(s[5], 13n))));
     s[5] = mask64(s[5] - s[2]);
-    s[4] = mask64(s[4]^s[1]);
+    s[4] = mask64(OpCodes.XorN(s[4], s[1]));
 
-    t = s[0]&0xFFn;
+    t = OpCodes.AndN(s[0], 0xFFn);
     k = KX[Number(t)];
-    kk = KX[Number((t + BigInt(OpCodes.Shl32(ri, 2)) + 1n)&0xFFn)];
+    kk = KX[Number(OpCodes.AndN((t + BigInt(OpCodes.Shl32(ri, 2)) + 1n), 0xFFn))];
 
-    s[6] = mask64(s[6]^kk);
+    s[6] = mask64(OpCodes.XorN(s[6], kk));
     s[4] = mask64(s[4] - kk);
-    s[2] = mask64(s[2]^k);
+    s[2] = mask64(OpCodes.XorN(s[2], k));
     s[1] = mask64(s[1] - k);
-    s[5] = mask64(s[5]^s[7]);
+    s[5] = mask64(OpCodes.XorN(s[5], s[7]));
     s[3] = mask64(s[3] - s[7]);
   }
 
@@ -1132,17 +1132,17 @@
     for (let i = HPC_ROUND_COUNT; i < LWD; ++i) {
       const j = i * 8;
       const lmask = (i === LWD - 1) ? mask : 0xFFFFFFFFFFFFFFFFn;
-      const byteLimit = (lmask !== 0xFFFFFFFFFFFFFFFFn) ? Math.ceil((blockSize&63) / 8) : 8;
+      const byteLimit = (lmask !== 0xFFFFFFFFFFFFFFFFn) ? Math.ceil((OpCodes.AndN(blockSize, 63)) / 8) : 8;
 
       state[7] = 0n;
       for (let bi = 0; bi < byteLimit; ++bi) {
-        state[7] |= BigInt(plaintext[j + bi] || 0) << BigInt(bi * 8);
+        state[7] |= OpCodes.ShiftLn(BigInt(plaintext[j + bi] || 0), BigInt(bi * 8));
       }
 
       extendedStir(state, spice, KX, 0, lmask);
 
       for (let bi = 0; bi < byteLimit; ++bi) {
-        ciphertext[j + bi] = Number((state[7] >> BigInt(bi * 8))&0xFFn);
+        ciphertext[j + bi] = Number(OpCodes.AndN((OpCodes.ShiftRn(state[7], BigInt(bi * 8))), 0xFFn));
       }
     }
 
@@ -1157,22 +1157,22 @@
     const s7Copy2 = state[7];
 
     // Second pass
-    for (let q = 1; q !== 0; q = ((q * 5) + 1)&qmask) {
+    for (let q = 1; q !== 0; q = OpCodes.AndN(((q * 5) + 1), qmask)) {
       if (q < HPC_ROUND_COUNT || q >= LWD) continue;
 
       const j = q * 8;
       const lmask = (q === LWD - 1) ? mask : 0xFFFFFFFFFFFFFFFFn;
-      const byteLimit = (lmask !== 0xFFFFFFFFFFFFFFFFn) ? Math.ceil((blockSize&63) / 8) : 8;
+      const byteLimit = (lmask !== 0xFFFFFFFFFFFFFFFFn) ? Math.ceil((OpCodes.AndN(blockSize, 63)) / 8) : 8;
 
       state[7] = 0n;
       for (let bi = 0; bi < byteLimit; ++bi) {
-        state[7] |= BigInt(ciphertext[j + bi] || 0) << BigInt(bi * 8);
+        state[7] |= OpCodes.ShiftLn(BigInt(ciphertext[j + bi] || 0), BigInt(bi * 8));
       }
 
       extendedStir(state, spice, KX, 0, lmask);
 
       for (let bi = 0; bi < byteLimit; ++bi) {
-        ciphertext[j + bi] = Number((state[7] >> BigInt(bi * 8))&0xFFn);
+        ciphertext[j + bi] = Number(OpCodes.AndN((OpCodes.ShiftRn(state[7], BigInt(bi * 8))), 0xFFn));
       }
     }
 
@@ -1197,22 +1197,22 @@
 
     // Third pass
     qmask = (OpCodes.Shr32(qmask, 1)) + 1;
-    for (let q = 2; q !== 1; q = (OpCodes.Shl32(q, 1))^((q&qmask) ? swz : 0)) {
+    for (let q = 2; q !== 1; q = OpCodes.XorN((OpCodes.Shl32(q, 1)), ((OpCodes.AndN(q, qmask)) ? swz : 0))) {
       if (q < HPC_ROUND_COUNT || q >= LWD) continue;
 
       const j = q * 8;
       const lmask = (q === LWD - 1) ? mask : 0xFFFFFFFFFFFFFFFFn;
-      const byteLimit = (lmask !== 0xFFFFFFFFFFFFFFFFn) ? Math.ceil((blockSize&63) / 8) : 8;
+      const byteLimit = (lmask !== 0xFFFFFFFFFFFFFFFFn) ? Math.ceil((OpCodes.AndN(blockSize, 63)) / 8) : 8;
 
       state[7] = 0n;
       for (let bi = 0; bi < byteLimit; ++bi) {
-        state[7] |= BigInt(ciphertext[j + bi] || 0) << BigInt(bi * 8);
+        state[7] |= OpCodes.ShiftLn(BigInt(ciphertext[j + bi] || 0), BigInt(bi * 8));
       }
 
       extendedStir(state, spice, KX, 0, lmask);
 
       for (let bi = 0; bi < byteLimit; ++bi) {
-        ciphertext[j + bi] = Number((state[7] >> BigInt(bi * 8))&0xFFn);
+        ciphertext[j + bi] = Number(OpCodes.AndN((OpCodes.ShiftRn(state[7], BigInt(bi * 8))), 0xFFn));
       }
     }
 
@@ -1252,23 +1252,23 @@
     const s7Copy = state[7];
 
     // Third pass inverse
-    swz >>= 1;
-    for (let q = swz; q !== 1; q = (OpCodes.Shr32(q, 1))^((q&1) ? swz : 0)) {
+    swz = OpCodes.Shr32(swz, 1);
+    for (let q = swz; q !== 1; q = OpCodes.XorN((OpCodes.Shr32(q, 1)), ((OpCodes.AndN(q, 1)) ? swz : 0))) {
       if (q < HPC_ROUND_COUNT || q >= LWD) continue;
 
       const j = q * 8;
       const lmask = (q === LWD - 1) ? mask : 0xFFFFFFFFFFFFFFFFn;
-      const byteLimit = (lmask !== 0xFFFFFFFFFFFFFFFFn) ? Math.ceil((blockSize&63) / 8) : 8;
+      const byteLimit = (lmask !== 0xFFFFFFFFFFFFFFFFn) ? Math.ceil((OpCodes.AndN(blockSize, 63)) / 8) : 8;
 
       state[7] = 0n;
       for (let bi = 0; bi < byteLimit; ++bi) {
-        state[7] |= BigInt(ciphertext[j + bi] || 0) << BigInt(bi * 8);
+        state[7] |= OpCodes.ShiftLn(BigInt(ciphertext[j + bi] || 0), BigInt(bi * 8));
       }
 
       extendedStirInverse(state, spice, KX, 0, lmask);
 
       for (let bi = 0; bi < byteLimit; ++bi) {
-        plaintext[j + bi] = Number((state[7] >> BigInt(bi * 8))&0xFFn);
+        plaintext[j + bi] = Number(OpCodes.AndN((OpCodes.ShiftRn(state[7], BigInt(bi * 8))), 0xFFn));
       }
     }
 
@@ -1283,22 +1283,22 @@
     const s7Copy2 = state[7];
 
     // Second pass inverse
-    for (let q = (0x33333333&qmask); q !== 0; q = ((q - 1) * 0xcccccccd)&qmask) {
+    for (let q = (OpCodes.AndN(0x33333333, qmask)); q !== 0; q = OpCodes.AndN(((q - 1) * 0xcccccccd), qmask)) {
       if (q < HPC_ROUND_COUNT || q >= LWD) continue;
 
       const j = q * 8;
       const lmask = (q === LWD - 1) ? mask : 0xFFFFFFFFFFFFFFFFn;
-      const byteLimit = (lmask !== 0xFFFFFFFFFFFFFFFFn) ? Math.ceil((blockSize&63) / 8) : 8;
+      const byteLimit = (lmask !== 0xFFFFFFFFFFFFFFFFn) ? Math.ceil((OpCodes.AndN(blockSize, 63)) / 8) : 8;
 
       state[7] = 0n;
       for (let bi = 0; bi < byteLimit; ++bi) {
-        state[7] |= BigInt(plaintext[j + bi] || 0) << BigInt(bi * 8);
+        state[7] |= OpCodes.ShiftLn(BigInt(plaintext[j + bi] || 0), BigInt(bi * 8));
       }
 
       extendedStirInverse(state, spice, KX, 0, lmask);
 
       for (let bi = 0; bi < byteLimit; ++bi) {
-        plaintext[j + bi] = Number((state[7] >> BigInt(bi * 8))&0xFFn);
+        plaintext[j + bi] = Number(OpCodes.AndN((OpCodes.ShiftRn(state[7], BigInt(bi * 8))), 0xFFn));
       }
     }
 
@@ -1316,17 +1316,17 @@
     for (let i = LWD - 1; i >= HPC_ROUND_COUNT; --i) {
       const j = i * 8;
       const lmask = (i === LWD - 1) ? mask : 0xFFFFFFFFFFFFFFFFn;
-      const byteLimit = (lmask !== 0xFFFFFFFFFFFFFFFFn) ? Math.ceil((blockSize&63) / 8) : 8;
+      const byteLimit = (lmask !== 0xFFFFFFFFFFFFFFFFn) ? Math.ceil((OpCodes.AndN(blockSize, 63)) / 8) : 8;
 
       state[7] = 0n;
       for (let bi = 0; bi < byteLimit; ++bi) {
-        state[7] |= BigInt(plaintext[j + bi] || 0) << BigInt(bi * 8);
+        state[7] |= OpCodes.ShiftLn(BigInt(plaintext[j + bi] || 0), BigInt(bi * 8));
       }
 
       extendedStirInverse(state, spice, KX, 0, lmask);
 
       for (let bi = 0; bi < byteLimit; ++bi) {
-        plaintext[j + bi] = Number((state[7] >> BigInt(bi * 8))&0xFFn);
+        plaintext[j + bi] = Number(OpCodes.AndN((OpCodes.ShiftRn(state[7], BigInt(bi * 8))), 0xFFn));
       }
     }
 
@@ -1367,6 +1367,11 @@
       this.documentation = [
         new LinkItem("HPC Reference Implementation", "https://github.com/iscgar/hasty-pudding"),
         new LinkItem("AES Submission Package", "https://csrc.nist.gov/projects/cryptographic-algorithm-validation-program")
+      ];
+
+      this.references = [
+        new LinkItem("cryptospecs HPC Reference Source (hpc.c)", "https://github.com/stamparm/cryptospecs/blob/master/symmetrical/sources/hpc.c"),
+        new LinkItem("neilsagarwal HPC Implementation (Python)", "https://github.com/neilsagarwal/hpc")
       ];
 
       // Official NIST test vectors (15-bit and 64-bit blocks)
@@ -1548,7 +1553,7 @@
       const spice = new Array(HPC_ROUND_COUNT).fill(0n);
       if (this._tweak) {
         for (let i = 0; i < Math.min(this._tweak.length, 64); ++i) {
-          spice[Math.floor(i / 8)] |= BigInt(this._tweak[i]) << BigInt((i % 8) * 8);
+          spice[Math.floor(i / 8)] |= OpCodes.ShiftLn(BigInt(this._tweak[i]), BigInt((i % 8) * 8));
         }
       }
 
@@ -1556,7 +1561,7 @@
       const state = packBytesToState(this.inputBuffer, blockSizeBits);
 
       // Calculate mask for last word
-      const mask = (((1n << BigInt((blockSizeBits - 1) % 64)) - 1n) << 1n)|1n;
+      const mask = (OpCodes.ShiftLn(((OpCodes.ShiftLn(1n, BigInt((blockSizeBits - 1) % 64))) - 1n), 1n))|1n;
       const backup = 0;
 
       // Encryption and decryption have different KX addition/subtraction order
@@ -1566,7 +1571,7 @@
           state[0] = mask64(state[0] + BigInt(i));
 
           for (let j = 0; j < HPC_ROUND_COUNT; ++j) {
-            state[j] = mask64(state[j] + this._KX[cipherId - 1][(blockSizeBits + j)&0xff]);
+            state[j] = mask64(state[j] + this._KX[cipherId - 1][OpCodes.AndN((blockSizeBits + j), 0xff)]);
           }
 
           if (blockSizeBits < 512) {
@@ -1600,7 +1605,7 @@
 
           // Add post-KX
           for (let j = 0; j < HPC_ROUND_COUNT; ++j) {
-            state[j] = mask64(state[j] + this._KX[cipherId - 1][(blockSizeBits + HPC_ROUND_COUNT + j)&0xff]);
+            state[j] = mask64(state[j] + this._KX[cipherId - 1][OpCodes.AndN((blockSizeBits + HPC_ROUND_COUNT + j), 0xff)]);
           }
 
           if (blockSizeBits < 512) {
@@ -1615,7 +1620,7 @@
         for (let i = backup + 1; i-- > 0; ) {
           // Subtract post-KX (which was added AFTER encryption)
           for (let j = 0; j < HPC_ROUND_COUNT; ++j) {
-            state[j] = mask64(state[j] - this._KX[cipherId - 1][(blockSizeBits + HPC_ROUND_COUNT + j)&0xff]);
+            state[j] = mask64(state[j] - this._KX[cipherId - 1][OpCodes.AndN((blockSizeBits + HPC_ROUND_COUNT + j), 0xff)]);
           }
 
           if (blockSizeBits < 512) {
@@ -1649,7 +1654,7 @@
 
           // Subtract pre-KX (which was added BEFORE encryption)
           for (let j = 0; j < HPC_ROUND_COUNT; ++j) {
-            state[j] = mask64(state[j] - this._KX[cipherId - 1][(blockSizeBits + j)&0xff]);
+            state[j] = mask64(state[j] - this._KX[cipherId - 1][OpCodes.AndN((blockSizeBits + j), 0xff)]);
           }
 
           state[0] = mask64(state[0] - BigInt(i));

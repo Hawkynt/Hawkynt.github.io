@@ -137,13 +137,13 @@
       const x = data&0xFF;
 
       // Rearrange bits and absorb into state (from C reference)
-      this.x[0] = (this.x[0]^(OpCodes.Shl32(x, 1)&0x00000002)) >>> 0;
-      this.x[1] = (this.x[1]^(x&0x00000008)) >>> 0;
+      this.x[0] = OpCodes.Xor32(this.x[0], OpCodes.And32(OpCodes.Shl32(x, 1), 0x00000002));
+      this.x[1] = OpCodes.Xor32(this.x[1], OpCodes.And32(x, 0x00000008));
       this.x[2] = OpCodes.Xor32(this.x[2], 0x00000001); // 9th padding bit is always 1
-      this.x[4] = (this.x[4]^((OpCodes.Shl32(x, 6)&0x00000100)^(OpCodes.Shl32(x, 1)&0x00000040))) >>> 0;
-      this.x[5] = (this.x[5]^(OpCodes.Shl32(x, 15)&0x00010000)) >>> 0;
-      this.x[6] = (this.x[6]^(OpCodes.Shr32(x, 1)&0x00000020)) >>> 0;
-      this.x[7] = (this.x[7]^((OpCodes.Shl32(x, 21)&0x02000000)^(OpCodes.Shl32(x, 3)&0x00000400))) >>> 0;
+      this.x[4] = OpCodes.Xor32(this.x[4], OpCodes.Xor32(OpCodes.And32(OpCodes.Shl32(x, 6), 0x00000100), OpCodes.And32(OpCodes.Shl32(x, 1), 0x00000040)));
+      this.x[5] = OpCodes.Xor32(this.x[5], OpCodes.And32(OpCodes.Shl32(x, 15), 0x00010000));
+      this.x[6] = OpCodes.Xor32(this.x[6], OpCodes.And32(OpCodes.Shr32(x, 1), 0x00000020));
+      this.x[7] = OpCodes.Xor32(this.x[7], OpCodes.Xor32(OpCodes.And32(OpCodes.Shl32(x, 21), 0x02000000), OpCodes.And32(OpCodes.Shl32(x, 3), 0x00000400)));
     }
 
     /**
@@ -165,14 +165,14 @@
       x = OpCodes.Shl32((x&0x00010020), 1)|leftRotate5(x&0x12000000)|OpCodes.Shr32((x&0x00100000), 20)|OpCodes.Shr32((x&0x00200000), 12)|OpCodes.Shl32((x&0x00000400), 21)|OpCodes.Shr32((x&0x00800000), 8)|OpCodes.Shr32((x&0x00000040), 1);
 
       // Integrate rearranged bits into state
-      this.x[0] = (this.x[0]^(y&0x40428816)) >>> 0;
-      this.x[1] = (this.x[1]^(y&0x00000008)) >>> 0;
-      this.x[2] = (this.x[2]^(y&0x80000041)) >>> 0;
-      this.x[3] = (this.x[3]^(x&0x00008000)) >>> 0;
-      this.x[4] = (this.x[4]^((y&0x00001300)^(x&0x00000041))) >>> 0;
-      this.x[5] = (this.x[5]^((y&0x21010020)^(x&0x40000200))) >>> 0;
-      this.x[6] = (this.x[6]^((y&0x00280000)^(x&0x80000020))) >>> 0;
-      this.x[7] = (this.x[7]^((y&0x02000400)^(x&0x00020002))) >>> 0;
+      this.x[0] = OpCodes.Xor32(this.x[0], OpCodes.And32(y, 0x40428816));
+      this.x[1] = OpCodes.Xor32(this.x[1], OpCodes.And32(y, 0x00000008));
+      this.x[2] = OpCodes.Xor32(this.x[2], OpCodes.And32(y, 0x80000041));
+      this.x[3] = OpCodes.Xor32(this.x[3], OpCodes.And32(x, 0x00008000));
+      this.x[4] = OpCodes.Xor32(this.x[4], OpCodes.Xor32(OpCodes.And32(y, 0x00001300), OpCodes.And32(x, 0x00000041)));
+      this.x[5] = OpCodes.Xor32(this.x[5], OpCodes.Xor32(OpCodes.And32(y, 0x21010020), OpCodes.And32(x, 0x40000200)));
+      this.x[6] = OpCodes.Xor32(this.x[6], OpCodes.Xor32(OpCodes.And32(y, 0x00280000), OpCodes.And32(x, 0x80000020)));
+      this.x[7] = OpCodes.Xor32(this.x[7], OpCodes.Xor32(OpCodes.And32(y, 0x02000400), OpCodes.And32(x, 0x00020002)));
     }
 
     /**
@@ -192,38 +192,38 @@
       // P1
       x = this.x[1];
       x = (x&0x00000008)|OpCodes.Shl32((x&0x00004000), 5)|OpCodes.Shl32((x&0x00000004), 8)|OpCodes.Shr32((x&0x10000000), 22)|OpCodes.Shl32((x&0x00000001), 28)|OpCodes.Shr32((x&0x00001000), 3);
-      y = (y^(x&0x10080648)) >>> 0;
+      y = OpCodes.Xor32(y, OpCodes.And32(x, 0x10080648));
 
       // P2
       x = this.x[2];
       x = OpCodes.Shl32((x&0x00000200), 2)|OpCodes.Shl32((x&0x10000000), 3)|OpCodes.Shl32((x&0x00000001), 8)|OpCodes.Shl32((x&0x00000040), 9)|OpCodes.Shr32((x&0x80000000), 18)|OpCodes.Shr32((x&0x00020000), 16)|OpCodes.Shl32((x&0x00000010), 18)|OpCodes.Shl32((x&0x00000008), 22)|OpCodes.Shr32((x&0x01000000), 3);
-      y = (y^(x&0x8260a902)) >>> 0;
+      y = OpCodes.Xor32(y, OpCodes.And32(x, 0x8260a902));
 
       // P3
       x = this.x[3];
       x = OpCodes.Shl32((x&0x00200000), 6)|OpCodes.Shl32((x&0x00008000), 8)|OpCodes.Shr32((x&0x02000000), 23)|OpCodes.Shr32((x&0x08000000), 22)|OpCodes.Shr32((x&0x01000000), 6);
-      y = (y^(x&0x08840024)) >>> 0;
+      y = OpCodes.Xor32(y, OpCodes.And32(x, 0x08840024));
 
       // P4 (with duplicated bit 20)
       x = this.x[4];
-      y = (y^(OpCodes.Shl32(x, 20)&0x00100000)) >>> 0;
+      y = OpCodes.Xor32(y, OpCodes.And32(OpCodes.Shl32(x, 20), 0x00100000));
       x = OpCodes.Shl32((x&0x00040000), 5)|OpCodes.Shl32((x&0x00000200), 9)|OpCodes.Shl32((x&0x00001000), 15)|OpCodes.Shl32((x&0x00000002), 19)|OpCodes.Shr32((x&0x00000100), 6)|OpCodes.Shr32((x&0x00000040), 1);
-      y = (y^(x&0x08940024)) >>> 0;
+      y = OpCodes.Xor32(y, OpCodes.And32(x, 0x08940024));
 
       // P5
       x = this.x[5];
       x = OpCodes.Shl32((x&0x00000004), 11)|OpCodes.Shl32((x&0x00000200), 12)|OpCodes.Shr32((x&0x00010000), 15)|OpCodes.Shr32((x&0x01000000), 13)|OpCodes.Shr32((x&0x08000000), 12)|OpCodes.Shr32((x&0x20000000), 7)|OpCodes.Shl32((x&0x00000020), 26)|OpCodes.Shr32((x&0x40000000), 5);
-      y = (y^(x&0x8260a802)) >>> 0;
+      y = OpCodes.Xor32(y, OpCodes.And32(x, 0x8260a802));
 
       // P6
       x = this.x[6];
       x = (x&0x00080000)|OpCodes.Shl32((x&0x00000020), 1)|OpCodes.Shr32((x&0x40000000), 27)|OpCodes.Shl32((x&0x00000002), 7)|OpCodes.Shr32((x&0x80000000), 21)|OpCodes.Shr32((x&0x00200000), 12);
-      y = (y^(x&0x00080748)) >>> 0;
+      y = OpCodes.Xor32(y, OpCodes.And32(x, 0x00080748));
 
       // P7
       x = this.x[7];
       x = OpCodes.Shr32((x&0x02000000), 21)|OpCodes.Shr32((x&0x80000000), 19)|OpCodes.Shl32((x&0x00010000), 14)|OpCodes.Shl32((x&0x00000800), 18)|OpCodes.Shl32((x&0x00000008), 23)|leftRotate27(x&0x20400002)|OpCodes.Shr32((x&0x00040000), 4)|OpCodes.Shr32((x&0x00000400), 3)|OpCodes.Shr32((x&0x00020000), 1);
-      y = (y^(x&0x75035090)) >>> 0;
+      y = OpCodes.Xor32(y, OpCodes.And32(x, 0x75035090));
 
       // XOR with bit 8
       return OpCodes.Xor32(y, this.x[8]);
@@ -366,9 +366,16 @@
           "NIST LWC Submission",
           "https://csrc.nist.gov/projects/lightweight-cryptography/round-2-candidates"
         ),
+      ];
+
+      this.references = [
         new LinkItem(
-          "C Reference Implementation",
+          "rweather/lightweight-crypto C Reference Implementation",
           "https://github.com/rweather/lightweight-crypto"
+        ),
+        new LinkItem(
+          "pmassolino/hw-subterranean (designer-affiliated, incl. Python reference)",
+          "https://github.com/pmassolino/hw-subterranean"
         )
       ];
 

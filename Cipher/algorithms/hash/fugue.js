@@ -7,8 +7,8 @@
  * Fugue is an AES-inspired hash function using a wide-pipe design
  * with four variants: Fugue-224, Fugue-256, Fugue-384, Fugue-512
  *
- * Implementation based on sphlib reference by Thomas Pornin
- * Test vectors from NIST SHA-3 competition submission
+ * Implementation ported from the sphlib reference by Thomas Pornin.
+ * Test vectors reproduced from sphlib's NIST-style short message KAT data.
  * (c)2006-2025 Hawkynt
  */
 
@@ -56,7 +56,9 @@ if (!global.OpCodes && typeof require !== 'undefined') {
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           HashFunctionAlgorithm, IHashFunctionInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
-  // Initialization Vectors for each Fugue variant
+  // Initialization Vectors for each Fugue variant. Per the reference, the
+  // state is zero everywhere except the LAST iv.length words, which hold
+  // the IV.
   const IV224 = new Uint32Array([
     0xf4c9120d, 0x6286f757, 0xee39e01c, 0xe074e3cb,
     0xa1127c62, 0x9a43d215, 0xbd8d679a
@@ -265,138 +267,114 @@ if (!global.OpCodes && typeof require !== 'undefined') {
     0xb03df6b0, 0x54b74b54, 0xbb0cdabb, 0x16625816
   ]);
 
-  // SMIX operation - AES-inspired substitution and mix
+  // TIX2/TIX3/TIX4 - message-injection transforms for the Fugue-2/3/4
+  // families (2, 3, and 4 SMIX blocks per round, respectively).
+  function TIX2(S, q, i00, i01, i08, i10, i24) {
+    S[i10] = OpCodes.Xor32(S[i10], S[i00]);
+    S[i00] = q;
+    S[i08] = OpCodes.Xor32(S[i08], S[i00]);
+    S[i01] = OpCodes.Xor32(S[i01], S[i24]);
+  }
+
+  function TIX3(S, q, i00, i01, i04, i08, i16, i27, i30) {
+    S[i16] = OpCodes.Xor32(S[i16], S[i00]);
+    S[i00] = q;
+    S[i08] = OpCodes.Xor32(S[i08], S[i00]);
+    S[i01] = OpCodes.Xor32(S[i01], S[i27]);
+    S[i04] = OpCodes.Xor32(S[i04], S[i30]);
+  }
+
+  function TIX4(S, q, i00, i01, i04, i07, i08, i22, i24, i27, i30) {
+    S[i22] = OpCodes.Xor32(S[i22], S[i00]);
+    S[i00] = q;
+    S[i08] = OpCodes.Xor32(S[i08], S[i00]);
+    S[i01] = OpCodes.Xor32(S[i01], S[i24]);
+    S[i04] = OpCodes.Xor32(S[i04], S[i27]);
+    S[i07] = OpCodes.Xor32(S[i07], S[i30]);
+  }
+
+  // CMIX30/CMIX36 - column mixing for the 30-word and 36-word states.
+  function CMIX30(S, i00, i01, i02, i04, i05, i06, i15, i16, i17) {
+    S[i00] = OpCodes.Xor32(S[i00], S[i04]);
+    S[i01] = OpCodes.Xor32(S[i01], S[i05]);
+    S[i02] = OpCodes.Xor32(S[i02], S[i06]);
+    S[i15] = OpCodes.Xor32(S[i15], S[i04]);
+    S[i16] = OpCodes.Xor32(S[i16], S[i05]);
+    S[i17] = OpCodes.Xor32(S[i17], S[i06]);
+  }
+
+  function CMIX36(S, i00, i01, i02, i04, i05, i06, i18, i19, i20) {
+    S[i00] = OpCodes.Xor32(S[i00], S[i04]);
+    S[i01] = OpCodes.Xor32(S[i01], S[i05]);
+    S[i02] = OpCodes.Xor32(S[i02], S[i06]);
+    S[i18] = OpCodes.Xor32(S[i18], S[i04]);
+    S[i19] = OpCodes.Xor32(S[i19], S[i05]);
+    S[i20] = OpCodes.Xor32(S[i20], S[i06]);
+  }
+
+  // SMIX - AES-inspired substitution and diagonal byte-mix operation.
   function SMIX(S, i0, i1, i2, i3) {
-    const x0 = S[i0];
-    const x1 = S[i1];
-    const x2 = S[i2];
-    const x3 = S[i3];
+    const x0 = S[i0], x1 = S[i1], x2 = S[i2], x3 = S[i3];
 
     let c0 = 0, c1 = 0, c2 = 0, c3 = 0;
     let r0 = 0, r1 = 0, r2 = 0, r3 = 0;
     let tmp;
 
-    // Process x0
-    tmp = mixtab0[x0 >>> 24];
-    c0 ^= tmp;
-    tmp = mixtab1[(x0 >>> 16) & 0xFF];
-    c0 ^= tmp;
-    r1 ^= tmp;
-    tmp = mixtab2[(x0 >>> 8) & 0xFF];
-    c0 ^= tmp;
-    r2 ^= tmp;
-    tmp = mixtab3[x0 & 0xFF];
-    c0 ^= tmp;
-    r3 ^= tmp;
+    tmp = mixtab0[OpCodes.GetByte(x0, 3)]; c0 = OpCodes.Xor32(c0, tmp);
+    tmp = mixtab1[OpCodes.GetByte(x0, 2)]; c0 = OpCodes.Xor32(c0, tmp); r1 = OpCodes.Xor32(r1, tmp);
+    tmp = mixtab2[OpCodes.GetByte(x0, 1)]; c0 = OpCodes.Xor32(c0, tmp); r2 = OpCodes.Xor32(r2, tmp);
+    tmp = mixtab3[OpCodes.GetByte(x0, 0)]; c0 = OpCodes.Xor32(c0, tmp); r3 = OpCodes.Xor32(r3, tmp);
 
-    // Process x1
-    tmp = mixtab0[x1 >>> 24];
-    c1 ^= tmp;
-    r0 ^= tmp;
-    tmp = mixtab1[(x1 >>> 16) & 0xFF];
-    c1 ^= tmp;
-    tmp = mixtab2[(x1 >>> 8) & 0xFF];
-    c1 ^= tmp;
-    r2 ^= tmp;
-    tmp = mixtab3[x1 & 0xFF];
-    c1 ^= tmp;
-    r3 ^= tmp;
+    tmp = mixtab0[OpCodes.GetByte(x1, 3)]; c1 = OpCodes.Xor32(c1, tmp); r0 = OpCodes.Xor32(r0, tmp);
+    tmp = mixtab1[OpCodes.GetByte(x1, 2)]; c1 = OpCodes.Xor32(c1, tmp);
+    tmp = mixtab2[OpCodes.GetByte(x1, 1)]; c1 = OpCodes.Xor32(c1, tmp); r2 = OpCodes.Xor32(r2, tmp);
+    tmp = mixtab3[OpCodes.GetByte(x1, 0)]; c1 = OpCodes.Xor32(c1, tmp); r3 = OpCodes.Xor32(r3, tmp);
 
-    // Process x2
-    tmp = mixtab0[x2 >>> 24];
-    c2 ^= tmp;
-    r0 ^= tmp;
-    tmp = mixtab1[(x2 >>> 16) & 0xFF];
-    c2 ^= tmp;
-    r1 ^= tmp;
-    tmp = mixtab2[(x2 >>> 8) & 0xFF];
-    c2 ^= tmp;
-    tmp = mixtab3[x2 & 0xFF];
-    c2 ^= tmp;
-    r3 ^= tmp;
+    tmp = mixtab0[OpCodes.GetByte(x2, 3)]; c2 = OpCodes.Xor32(c2, tmp); r0 = OpCodes.Xor32(r0, tmp);
+    tmp = mixtab1[OpCodes.GetByte(x2, 2)]; c2 = OpCodes.Xor32(c2, tmp); r1 = OpCodes.Xor32(r1, tmp);
+    tmp = mixtab2[OpCodes.GetByte(x2, 1)]; c2 = OpCodes.Xor32(c2, tmp);
+    tmp = mixtab3[OpCodes.GetByte(x2, 0)]; c2 = OpCodes.Xor32(c2, tmp); r3 = OpCodes.Xor32(r3, tmp);
 
-    // Process x3
-    tmp = mixtab0[x3 >>> 24];
-    c3 ^= tmp;
-    r0 ^= tmp;
-    tmp = mixtab1[(x3 >>> 16) & 0xFF];
-    c3 ^= tmp;
-    r1 ^= tmp;
-    tmp = mixtab2[(x3 >>> 8) & 0xFF];
-    c3 ^= tmp;
-    r2 ^= tmp;
-    tmp = mixtab3[x3 & 0xFF];
-    c3 ^= tmp;
+    tmp = mixtab0[OpCodes.GetByte(x3, 3)]; c3 = OpCodes.Xor32(c3, tmp); r0 = OpCodes.Xor32(r0, tmp);
+    tmp = mixtab1[OpCodes.GetByte(x3, 2)]; c3 = OpCodes.Xor32(c3, tmp); r1 = OpCodes.Xor32(r1, tmp);
+    tmp = mixtab2[OpCodes.GetByte(x3, 1)]; c3 = OpCodes.Xor32(c3, tmp); r2 = OpCodes.Xor32(r2, tmp);
+    tmp = mixtab3[OpCodes.GetByte(x3, 0)]; c3 = OpCodes.Xor32(c3, tmp);
 
-    S[i0] = c0;
-    S[i1] = c1;
-    S[i2] = c2;
-    S[i3] = c3;
-    S[i0] ^= r0;
-    S[i1] ^= r1;
-    S[i2] ^= r2;
-    S[i3] ^= r3;
+    // Diagonal byte gather: each output word takes one byte lane from
+    // (c_i ^ r_i), with the r contribution rotated by one byte per output
+    // word (reference sph_fugue SMIX macro).
+    S[i0] = OpCodes.Pack32BE(
+      OpCodes.Xor32(OpCodes.GetByte(c0, 3), OpCodes.GetByte(r0, 3)),
+      OpCodes.Xor32(OpCodes.GetByte(c1, 2), OpCodes.GetByte(r1, 2)),
+      OpCodes.Xor32(OpCodes.GetByte(c2, 1), OpCodes.GetByte(r2, 1)),
+      OpCodes.Xor32(OpCodes.GetByte(c3, 0), OpCodes.GetByte(r3, 0))
+    );
+    S[i1] = OpCodes.Pack32BE(
+      OpCodes.Xor32(OpCodes.GetByte(c1, 3), OpCodes.GetByte(r0, 2)),
+      OpCodes.Xor32(OpCodes.GetByte(c2, 2), OpCodes.GetByte(r1, 1)),
+      OpCodes.Xor32(OpCodes.GetByte(c3, 1), OpCodes.GetByte(r2, 0)),
+      OpCodes.Xor32(OpCodes.GetByte(c0, 0), OpCodes.GetByte(r3, 3))
+    );
+    S[i2] = OpCodes.Pack32BE(
+      OpCodes.Xor32(OpCodes.GetByte(c2, 3), OpCodes.GetByte(r0, 1)),
+      OpCodes.Xor32(OpCodes.GetByte(c3, 2), OpCodes.GetByte(r1, 0)),
+      OpCodes.Xor32(OpCodes.GetByte(c0, 1), OpCodes.GetByte(r2, 3)),
+      OpCodes.Xor32(OpCodes.GetByte(c1, 0), OpCodes.GetByte(r3, 2))
+    );
+    S[i3] = OpCodes.Pack32BE(
+      OpCodes.Xor32(OpCodes.GetByte(c3, 3), OpCodes.GetByte(r0, 0)),
+      OpCodes.Xor32(OpCodes.GetByte(c0, 2), OpCodes.GetByte(r1, 3)),
+      OpCodes.Xor32(OpCodes.GetByte(c1, 1), OpCodes.GetByte(r2, 2)),
+      OpCodes.Xor32(OpCodes.GetByte(c2, 0), OpCodes.GetByte(r3, 1))
+    );
   }
 
-  // ROR operation - Rotate state right by n positions
+  // ROR - rotate the whole state array right by n words (reference ROR macro).
   function ROR(S, n, stateSize) {
-    const tmp = new Uint32Array(n);
-    for (let i = 0; i < n; ++i) {
-      tmp[i] = S[stateSize - n + i];
-    }
-    for (let i = stateSize - 1; i >= n; --i) {
-      S[i] = S[i - n];
-    }
-    for (let i = 0; i < n; ++i) {
-      S[i] = tmp[i];
-    }
-  }
-
-  // TIX2 - Input transformation for Fugue-2 (224/256-bit variants)
-  function TIX2(S, q, i00, i01, i08, i10, i24) {
-    S[i10] ^= S[i00];
-    S[i00] = q;
-    S[i08] ^= S[i00];
-    S[i01] ^= S[i24];
-  }
-
-  // TIX3 - Input transformation for Fugue-3 (384-bit variant)
-  function TIX3(S, q, i00, i01, i04, i08, i16, i27, i30) {
-    S[i16] ^= S[i00];
-    S[i00] = q;
-    S[i08] ^= S[i00];
-    S[i01] ^= S[i27];
-    S[i04] ^= S[i30];
-  }
-
-  // TIX4 - Input transformation for Fugue-4 (512-bit variant)
-  function TIX4(S, q, i00, i01, i04, i07, i08, i22, i24, i27, i30) {
-    S[i22] ^= S[i00];
-    S[i00] = q;
-    S[i08] ^= S[i00];
-    S[i01] ^= S[i24];
-    S[i04] ^= S[i27];
-    S[i07] ^= S[i30];
-  }
-
-  // CMIX30 - Column mixing for 30-word state
-  function CMIX30(S, i00, i01, i02, i04, i05, i06, i15, i16, i17) {
-    S[i00] ^= S[i04];
-    S[i01] ^= S[i05];
-    S[i02] ^= S[i06];
-    S[i15] ^= S[i04];
-    S[i16] ^= S[i05];
-    S[i17] ^= S[i06];
-  }
-
-  // CMIX36 - Column mixing for 36-word state
-  function CMIX36(S, i00, i01, i02, i04, i05, i06, i18, i19, i20) {
-    S[i00] ^= S[i04];
-    S[i01] ^= S[i05];
-    S[i02] ^= S[i06];
-    S[i18] ^= S[i04];
-    S[i19] ^= S[i05];
-    S[i20] ^= S[i06];
+    const tmp = new Array(n);
+    for (let i = 0; i < n; ++i) tmp[i] = S[stateSize - n + i];
+    for (let i = stateSize - 1; i >= n; --i) S[i] = S[i - n];
+    for (let i = 0; i < n; ++i) S[i] = tmp[i];
   }
 
   // Base Fugue hash function class
@@ -412,7 +390,7 @@ if (!global.OpCodes && typeof require !== 'undefined') {
 
       this.variant = variant;
       this.name = `Fugue-${variant}`;
-      this.description = `Fugue-${variant} is an AES-inspired cryptographic hash function with ${variant}-bit output. Submitted to NIST SHA-3 competition (2008-2012). Uses wide-pipe design with columnar state transformation. Educational implementation only.`;
+      this.description = `Fugue-${variant} is an AES-inspired cryptographic hash function with ${variant}-bit output, submitted to the NIST SHA-3 competition (2008-2012). It uses a wide-pipe columnar state (30 or 36 32-bit words) mixed via AES-derived S-box tables (SMIX), with message words injected through TIX/CMIX transforms. It did not advance to the SHA-3 final round.`;
       this.inventor = 'Shai Halevi, William E. Hall, Charanjit S. Jutla (IBM Research)';
       this.year = 2008;
       this.category = CategoryType.HASH;
@@ -424,12 +402,19 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       this.SupportedOutputSizes = [new KeySize(variant / 8, variant / 8, 1)];
 
       this.documentation = [
-        new LinkItem('sphlib Reference Implementation', 'https://github.com/pornin/sphlib/blob/master/c/fugue.c'),
-        new LinkItem('Fugue Specification (SHA-3 Submission)', 'https://csrc.nist.gov/projects/hash-functions/sha-3-project'),
-        new LinkItem('Fugue 2.0 Paper', 'https://researcher.watson.ibm.com/researcher/files/us-shalevi/fugue.pdf')
+        new LinkItem('sphlib Reference Implementation (fugue.c)', 'https://github.com/pornin/sphlib/blob/master/c/fugue.c'),
+        new LinkItem('NIST SHA-3 Competition', 'https://csrc.nist.gov/projects/hash-functions/sha-3-project'),
+        new LinkItem('Fugue 2.0 Paper (IBM Research)', 'https://researcher.watson.ibm.com/researcher/files/us-shalevi/fugue.pdf')
       ];
 
-      // Test vectors from sphlib (NIST SHA-3 submission vectors)
+      this.references = [
+        new LinkItem('sphlib by Thomas Pornin (reference C implementation)', 'https://github.com/pornin/sphlib')
+      ];
+
+      // Test vectors reproduced from sphlib's NIST-style short message test
+      // data (c/test_fugue.c, message index 0 = empty message and index 8 =
+      // one byte 0xCC, the standard NIST ShortMsgKAT entries reused by
+      // sphlib for all SHA-3 round-2 candidates).
       this.tests = this._getTestVectors(variant);
     }
 
@@ -437,64 +422,56 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       const vectors = [];
 
       if (variant === 224) {
-        // Empty string test
         vectors.push({
-          text: 'NIST Test Vector: empty string',
+          text: 'sphlib NIST-style test vector (0-bit / empty message) - Fugue-224',
           uri: 'https://github.com/pornin/sphlib/blob/master/c/test_fugue.c',
-          input: OpCodes.AnsiToBytes(''),
+          input: [],
           expected: OpCodes.Hex8ToBytes('E2CD30D51A913C4ED2388A141F90CAA4914DE43010849E7B8A7A9CCD')
         });
-        // "abc" test
         vectors.push({
-          text: 'NIST Test Vector: "abc"',
+          text: 'sphlib NIST-style test vector (8-bit message 0xCC) - Fugue-224',
           uri: 'https://github.com/pornin/sphlib/blob/master/c/test_fugue.c',
-          input: OpCodes.AnsiToBytes('abc'),
-          expected: OpCodes.Hex8ToBytes('961467B3195C979C89989BAF45A239D0D785488D1B8E3DCFA5C5D72F')
+          input: [0xCC],
+          expected: OpCodes.Hex8ToBytes('34602EA95B2B9936B9A04BA14B5DC463988DF90B1A46F90DD716B60F')
         });
       } else if (variant === 256) {
-        // Empty string test
         vectors.push({
-          text: 'NIST Test Vector: empty string',
+          text: 'sphlib NIST-style test vector (0-bit / empty message) - Fugue-256',
           uri: 'https://github.com/pornin/sphlib/blob/master/c/test_fugue.c',
-          input: OpCodes.AnsiToBytes(''),
+          input: [],
           expected: OpCodes.Hex8ToBytes('D6EC528980C130AAD1D1ACD28B9DD8DBDEAE0D79EDED1FCA72C2AF9F37C2246F')
         });
-        // "abc" test
         vectors.push({
-          text: 'NIST Test Vector: "abc"',
+          text: 'sphlib NIST-style test vector (8-bit message 0xCC) - Fugue-256',
           uri: 'https://github.com/pornin/sphlib/blob/master/c/test_fugue.c',
-          input: OpCodes.AnsiToBytes('abc'),
-          expected: OpCodes.Hex8ToBytes('62C7C83D5EE85C4B016E7B74DB181883F5AE440F1154CA86BE1D5EFC8DA1F605')
+          input: [0xCC],
+          expected: OpCodes.Hex8ToBytes('B894EB2DF58162F6C48D495F156E73BD086DD13DB407EE38781177BB23D129BB')
         });
       } else if (variant === 384) {
-        // Empty string test
         vectors.push({
-          text: 'NIST Test Vector: empty string',
+          text: 'sphlib NIST-style test vector (0-bit / empty message) - Fugue-384',
           uri: 'https://github.com/pornin/sphlib/blob/master/c/test_fugue.c',
-          input: OpCodes.AnsiToBytes(''),
-          expected: OpCodes.Hex8ToBytes('33A4DC9746D1A08C439FEE0773BA20FADF3C7B290B7C3498DBA3E7F0873840D62EC56F81D58E0039E56CCEF3DA3FE8F8')
+          input: [],
+          expected: OpCodes.Hex8ToBytes('466D05F6812B58B8628E53816B2A99D173B804A964DE971829159C3791AC8B524EEBBF5FC73BA40EA8EEA446D5424A30')
         });
-        // "abc" test
         vectors.push({
-          text: 'NIST Test Vector: "abc"',
+          text: 'sphlib NIST-style test vector (8-bit message 0xCC) - Fugue-384',
           uri: 'https://github.com/pornin/sphlib/blob/master/c/test_fugue.c',
-          input: OpCodes.AnsiToBytes('abc'),
-          expected: OpCodes.Hex8ToBytes('FC9F4B14CFAD43DE941CF433EA0C4385DB1B72F66A5C94509E9F9C9C800D1BC12B00F65AD734C2E6133B6CFEE698E7D5')
+          input: [0xCC],
+          expected: OpCodes.Hex8ToBytes('436868CD6804B803DAC432ED561BB40F91F624A10F2A368702359841CFDA6909115628CA4977B3F8063A3B87FC7A0984')
         });
       } else if (variant === 512) {
-        // Empty string test
         vectors.push({
-          text: 'NIST Test Vector: empty string',
+          text: 'sphlib NIST-style test vector (0-bit / empty message) - Fugue-512',
           uri: 'https://github.com/pornin/sphlib/blob/master/c/test_fugue.c',
-          input: OpCodes.AnsiToBytes(''),
-          expected: OpCodes.Hex8ToBytes('735D6BB7CE00FFB738C0E06EB7C1198E0427819D5D45FBE87AB42CD4F0AABF0A1EB5D3F52DA6A27EBD5543C9EAFD77EE8DFE6AD47CAFA8A22F39D60D9BA9FBEC')
+          input: [],
+          expected: OpCodes.Hex8ToBytes('3124F0CBB5A1C2FB3CE747ADA63ED2AB3BCD74795CEF2B0E805D5319FCC360B4617B6A7EB631D66F6D106ED0724B56FA8C1110F9B8DF1C6898E7CA3C2DFCCF79')
         });
-        // "abc" test
         vectors.push({
-          text: 'NIST Test Vector: "abc"',
+          text: 'sphlib NIST-style test vector (8-bit message 0xCC) - Fugue-512',
           uri: 'https://github.com/pornin/sphlib/blob/master/c/test_fugue.c',
-          input: OpCodes.AnsiToBytes('abc'),
-          expected: OpCodes.Hex8ToBytes('1E3EFFC5330FDB0B1F4DEAE7BC5B254D6D54C62AE09E3CD13AFCE59AB4F6CF4FAA49CD0E1746BE6EB8C1BCA21A9D575C4DF93DB5F09F2B61992C5DA0C27ACA40')
+          input: [0xCC],
+          expected: OpCodes.Hex8ToBytes('2EF4115479B060FC64A4D6F6913A39E326AFC81DEB4E39D71C573DF5ED132200E7C784BAB1804930CAD16847F16CBDA59A865BBD928EBC17D33689FEF233C10B')
         });
       }
 
@@ -519,7 +496,7 @@ if (!global.OpCodes && typeof require !== 'undefined') {
   /**
  * Fugue cipher instance implementing Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IHashFunctionInstance}
  */
 
   class FugueInstance extends IHashFunctionInstance {
@@ -532,32 +509,40 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       this.bitCountLow = 0;
       this.bitCountHigh = 0;
 
-      // Determine state size based on variant
+      // Determine state size and family (k) based on variant.
       if (variant === 224 || variant === 256) {
         this.stateSize = 30;
-        this.k = 2; // Fugue-2 family
+        this.k = 2;      // Fugue-2 family: 5 round-shift states, rcm = 6
+        this.numCases = 5;
+        this.rcm = 6;
       } else if (variant === 384) {
         this.stateSize = 36;
-        this.k = 3; // Fugue-3 family
+        this.k = 3;      // Fugue-3 family: 4 round-shift states, rcm = 9
+        this.numCases = 4;
+        this.rcm = 9;
       } else if (variant === 512) {
         this.stateSize = 36;
-        this.k = 4; // Fugue-4 family
+        this.k = 4;      // Fugue-4 family: 3 round-shift states, rcm = 12
+        this.numCases = 3;
+        this.rcm = 12;
       }
 
-      this.state = new Uint32Array(this.stateSize);
+      this.state = new Array(this.stateSize);
       this._reset();
     }
 
     _reset() {
-      // Initialize state with variant-specific IV
+      // Initialize state: zero everywhere except the last iv.length words,
+      // which hold the variant's IV (reference fugue_init).
       let iv;
       if (this.variant === 224) iv = IV224;
       else if (this.variant === 256) iv = IV256;
       else if (this.variant === 384) iv = IV384;
       else if (this.variant === 512) iv = IV512;
 
+      const zeroLen = this.stateSize - iv.length;
       for (let i = 0; i < this.stateSize; ++i) {
-        this.state[i] = i < iv.length ? iv[i] : 0;
+        this.state[i] = i < zeroLen ? 0 : iv[i - zeroLen];
       }
 
       this.partial = 0;
@@ -568,9 +553,8 @@ if (!global.OpCodes && typeof require !== 'undefined') {
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed data to hasher for processing
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
@@ -579,50 +563,52 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       let offset = 0;
       let len = data.length;
 
-      // Update bit count
-      const bitsAdded = len * 8;
-      this.bitCountLow = (this.bitCountLow + bitsAdded) >>> 0;
-      if (this.bitCountLow < bitsAdded) {
-        this.bitCountHigh = (this.bitCountHigh + 1) >>> 0;
+      // Update running bit count (counts every byte ever fed, matching the
+      // reference INCR_COUNTER, which runs unconditionally per core() call).
+      const bitsAdded = OpCodes.ToUint32(OpCodes.Shl32(len, 3));
+      const newLow = OpCodes.ToUint32(this.bitCountLow + bitsAdded);
+      if (newLow < bitsAdded) {
+        this.bitCountHigh = OpCodes.ToUint32(this.bitCountHigh + 1);
       }
+      this.bitCountLow = newLow;
+      this.bitCountHigh = OpCodes.ToUint32(this.bitCountHigh + OpCodes.Shr32(len, 29));
 
-      // Handle partial word from previous Feed()
+      // Handle partial word left over from a previous Feed() call.
       if (this.partialLen < 4) {
         let count = 4 - this.partialLen;
         if (len < count) count = len;
         this.partialLen += count;
         while (count-- > 0) {
-          this.partial = ((this.partial << 8) | data[offset++]) >>> 0;
+          this.partial = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(this.partial, 8), data[offset++]));
           len--;
         }
         if (len === 0) return;
       }
 
-      // Process the accumulated partial word
+      // Process the just-completed word, then advance the round-shift state
+      // to the value the NEXT word will use (matching the reference, which
+      // always advances round_shift immediately after finishing a case).
       this._processWord(this.partial, this.roundShift);
+      this.roundShift = (this.roundShift + 1) % this.numCases;
 
-      // Process complete 4-byte words
       while (len > 4) {
-        const word = OpCodes.Pack32BE(
-          data[offset], data[offset + 1], data[offset + 2], data[offset + 3]
-        );
+        const word = OpCodes.Pack32BE(data[offset], data[offset + 1], data[offset + 2], data[offset + 3]);
         offset += 4;
         len -= 4;
 
-        this.roundShift = (this.roundShift + 1) % (this.k === 2 ? 6 : (this.k === 3 ? 9 : 12));
         this._processWord(word, this.roundShift);
+        this.roundShift = (this.roundShift + 1) % this.numCases;
       }
 
-      // Save remaining bytes as partial word
+      // Save remaining bytes (0..4 of them) as the new partial word.
       this.partial = 0;
       this.partialLen = len;
       while (len-- > 0) {
-        this.partial = ((this.partial << 8) | data[offset++]) >>> 0;
+        this.partial = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(this.partial, 8), data[offset++]));
       }
     }
 
     _processWord(word, shift) {
-      // Process one 32-bit word using round-dependent transformation
       if (this.k === 2) {
         this._fugue2Round(word, shift);
       } else if (this.k === 3) {
@@ -632,9 +618,9 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       }
     }
 
+    // Fugue-2 round (224/256-bit variants): 5 round-shift states.
     _fugue2Round(q, shift) {
       const S = this.state;
-      // Fugue-2 has 6 different round types (shift = 0..5)
       switch (shift) {
         case 0:
           TIX2(S, q, 0, 1, 8, 10, 24);
@@ -671,79 +657,132 @@ if (!global.OpCodes && typeof require !== 'undefined') {
           CMIX30(S, 0, 1, 2, 4, 5, 6, 15, 16, 17);
           SMIX(S, 0, 1, 2, 3);
           break;
-        case 5:
-          TIX2(S, q, 0, 1, 8, 10, 24);
-          CMIX30(S, 27, 28, 29, 1, 2, 3, 12, 13, 14);
-          SMIX(S, 27, 28, 29, 0);
-          CMIX30(S, 24, 25, 26, 28, 29, 0, 9, 10, 11);
+      }
+    }
+
+    // Fugue-3 round (384-bit variant): 4 round-shift states.
+    _fugue3Round(q, shift) {
+      const S = this.state;
+      switch (shift) {
+        case 0:
+          TIX3(S, q, 0, 1, 4, 8, 16, 27, 30);
+          CMIX36(S, 33, 34, 35, 1, 2, 3, 15, 16, 17);
+          SMIX(S, 33, 34, 35, 0);
+          CMIX36(S, 30, 31, 32, 34, 35, 0, 12, 13, 14);
+          SMIX(S, 30, 31, 32, 33);
+          CMIX36(S, 27, 28, 29, 31, 32, 33, 9, 10, 11);
+          SMIX(S, 27, 28, 29, 30);
+          break;
+        case 1:
+          TIX3(S, q, 27, 28, 31, 35, 7, 18, 21);
+          CMIX36(S, 24, 25, 26, 28, 29, 30, 6, 7, 8);
           SMIX(S, 24, 25, 26, 27);
+          CMIX36(S, 21, 22, 23, 25, 26, 27, 3, 4, 5);
+          SMIX(S, 21, 22, 23, 24);
+          CMIX36(S, 18, 19, 20, 22, 23, 24, 0, 1, 2);
+          SMIX(S, 18, 19, 20, 21);
+          break;
+        case 2:
+          TIX3(S, q, 18, 19, 22, 26, 34, 9, 12);
+          CMIX36(S, 15, 16, 17, 19, 20, 21, 33, 34, 35);
+          SMIX(S, 15, 16, 17, 18);
+          CMIX36(S, 12, 13, 14, 16, 17, 18, 30, 31, 32);
+          SMIX(S, 12, 13, 14, 15);
+          CMIX36(S, 9, 10, 11, 13, 14, 15, 27, 28, 29);
+          SMIX(S, 9, 10, 11, 12);
+          break;
+        case 3:
+          TIX3(S, q, 9, 10, 13, 17, 25, 0, 3);
+          CMIX36(S, 6, 7, 8, 10, 11, 12, 24, 25, 26);
+          SMIX(S, 6, 7, 8, 9);
+          CMIX36(S, 3, 4, 5, 7, 8, 9, 21, 22, 23);
+          SMIX(S, 3, 4, 5, 6);
+          CMIX36(S, 0, 1, 2, 4, 5, 6, 18, 19, 20);
+          SMIX(S, 0, 1, 2, 3);
           break;
       }
     }
 
-    _fugue3Round(q, shift) {
-      const S = this.state;
-      // Fugue-3 has 9 different round types (shift = 0..8)
-      // Simplified implementation - following sphlib pattern
-      TIX3(S, q, 0, 1, 4, 8, 16, 27, 30);
-      ROR(S, 3, 36);
-      CMIX36(S, 0, 1, 2, 4, 5, 6, 18, 19, 20);
-      SMIX(S, 0, 1, 2, 3);
-    }
-
+    // Fugue-4 round (512-bit variant): 3 round-shift states.
     _fugue4Round(q, shift) {
       const S = this.state;
-      // Fugue-4 has 12 different round types (shift = 0..11)
-      // Simplified implementation - following sphlib pattern
-      TIX4(S, q, 0, 1, 4, 7, 8, 22, 24, 27, 30);
-      ROR(S, 3, 36);
-      CMIX36(S, 0, 1, 2, 4, 5, 6, 18, 19, 20);
-      SMIX(S, 0, 1, 2, 3);
+      switch (shift) {
+        case 0:
+          TIX4(S, q, 0, 1, 4, 7, 8, 22, 24, 27, 30);
+          CMIX36(S, 33, 34, 35, 1, 2, 3, 15, 16, 17);
+          SMIX(S, 33, 34, 35, 0);
+          CMIX36(S, 30, 31, 32, 34, 35, 0, 12, 13, 14);
+          SMIX(S, 30, 31, 32, 33);
+          CMIX36(S, 27, 28, 29, 31, 32, 33, 9, 10, 11);
+          SMIX(S, 27, 28, 29, 30);
+          CMIX36(S, 24, 25, 26, 28, 29, 30, 6, 7, 8);
+          SMIX(S, 24, 25, 26, 27);
+          break;
+        case 1:
+          TIX4(S, q, 24, 25, 28, 31, 32, 10, 12, 15, 18);
+          CMIX36(S, 21, 22, 23, 25, 26, 27, 3, 4, 5);
+          SMIX(S, 21, 22, 23, 24);
+          CMIX36(S, 18, 19, 20, 22, 23, 24, 0, 1, 2);
+          SMIX(S, 18, 19, 20, 21);
+          CMIX36(S, 15, 16, 17, 19, 20, 21, 33, 34, 35);
+          SMIX(S, 15, 16, 17, 18);
+          CMIX36(S, 12, 13, 14, 16, 17, 18, 30, 31, 32);
+          SMIX(S, 12, 13, 14, 15);
+          break;
+        case 2:
+          TIX4(S, q, 12, 13, 16, 19, 20, 34, 0, 3, 6);
+          CMIX36(S, 9, 10, 11, 13, 14, 15, 27, 28, 29);
+          SMIX(S, 9, 10, 11, 12);
+          CMIX36(S, 6, 7, 8, 10, 11, 12, 24, 25, 26);
+          SMIX(S, 6, 7, 8, 9);
+          CMIX36(S, 3, 4, 5, 7, 8, 9, 21, 22, 23);
+          SMIX(S, 3, 4, 5, 6);
+          CMIX36(S, 0, 1, 2, 4, 5, 6, 18, 19, 20);
+          SMIX(S, 0, 1, 2, 3);
+          break;
+      }
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Get hash result
+   * @returns {uint8[]} Digest bytes
    */
 
     Result() {
-      const S = new Uint32Array(this.stateSize);
+      // Build the 16-byte close block: [pad-completed word | bitCountHigh |
+      // bitCountLow | unused], matching the reference CLOSE_ENTRY layout.
+      const buf = new Array(16).fill(0);
+      OpCodes.Unpack32BE(this.bitCountHigh).forEach((b, i) => { buf[4 + i] = b; });
+      OpCodes.Unpack32BE(this.bitCountLow).forEach((b, i) => { buf[8 + i] = b; });
 
-      // Prepare final padding block
-      const buf = new Uint8Array(16);
-      // Write bit count
-      OpCodes.Unpack32BE(this.bitCountHigh).forEach((b, i) => buf[4 + i] = b);
-      OpCodes.Unpack32BE(this.bitCountLow).forEach((b, i) => buf[8 + i] = b);
-
-      let plen = this.partialLen;
-      if (plen === 0) {
-        plen = 4;
-      } else if (plen < 4) {
-        // Pad partial word
-        this.partial <<= (4 - plen) * 8;
-        OpCodes.Unpack32BE(this.partial).forEach((b, i) => buf[i] = b);
-        plen = 4;
+      const leftoverLen = this.partialLen;
+      let startIdx;
+      if (leftoverLen === 0) {
+        // No pending bytes: the pad word is entirely absent (reference
+        // skips it when the message ends exactly on a word boundary).
+        startIdx = 4;
+      } else {
+        // Complete the pending word with zero padding (ub = 0, n = 0).
+        this.partial = OpCodes.ToUint32(OpCodes.Shl32(this.partial, (4 - leftoverLen) * 8));
+        OpCodes.Unpack32BE(this.partial).forEach((b, i) => { buf[i] = b; });
+        startIdx = 0;
       }
 
-      // Process final block
-      for (let i = plen; i < 16; i += 4) {
+      // Process exactly the words at [startIdx, 12): 2 words when no pad
+      // word is present, 3 words otherwise.
+      for (let i = startIdx; i < 12; i += 4) {
         const word = OpCodes.Pack32BE(buf[i], buf[i + 1], buf[i + 2], buf[i + 3]);
         this._processWord(word, this.roundShift);
-        this.roundShift = (this.roundShift + 1) % (this.k === 2 ? 6 : (this.k === 3 ? 9 : 12));
+        this.roundShift = (this.roundShift + 1) % this.numCases;
       }
 
-      // Copy state with round shift adjustment
-      const rcm = this.k === 2 ? 6 : (this.k === 3 ? 9 : 12);
-      const rms = this.roundShift * 3;
-      for (let i = 0; i < rms; ++i) {
-        S[i] = this.state[this.stateSize - rms + i];
-      }
-      for (let i = rms; i < this.stateSize; ++i) {
-        S[i] = this.state[i - rms];
-      }
+      // Rotate the state right by (round_shift * rcm) words.
+      const rms = this.roundShift * this.rcm;
+      const S = new Array(this.stateSize);
+      for (let i = 0; i < rms; ++i) S[i] = this.state[this.stateSize - rms + i];
+      for (let i = rms; i < this.stateSize; ++i) S[i] = this.state[i - rms];
 
-      // Finalization rounds
+      // Finalization rounds.
       if (this.k === 2) {
         this._fugue2Finalize(S);
       } else if (this.k === 3) {
@@ -752,7 +791,7 @@ if (!global.OpCodes && typeof require !== 'undefined') {
         this._fugue4Finalize(S);
       }
 
-      // Extract output
+      // Extract output.
       const output = [];
       const outIndices = this.k === 2 ? [1, 2, 3, 4, 15, 16, 17, 18] :
                          this.k === 3 ? [1, 2, 3, 4, 12, 13, 14, 15, 24, 25, 26, 27] :
@@ -760,109 +799,102 @@ if (!global.OpCodes && typeof require !== 'undefined') {
 
       const outputWords = this.variant / 32;
       for (let i = 0; i < outputWords; ++i) {
-        const bytes = OpCodes.Unpack32BE(S[outIndices[i]]);
-        output.push(...bytes);
+        output.push(...OpCodes.Unpack32BE(S[outIndices[i]]));
       }
 
-      // Reset for next hash
+      // Reset for next hash.
       this._reset();
 
       return output;
     }
 
     _fugue2Finalize(S) {
-      // 10 rounds of ROR+CMIX30+SMIX
       for (let i = 0; i < 10; ++i) {
         ROR(S, 3, 30);
         CMIX30(S, 0, 1, 2, 4, 5, 6, 15, 16, 17);
         SMIX(S, 0, 1, 2, 3);
       }
 
-      // 13 rounds of alternating XOR+ROR+SMIX
       for (let i = 0; i < 13; ++i) {
-        S[4] ^= S[0];
-        S[15] ^= S[0];
+        S[4] = OpCodes.Xor32(S[4], S[0]);
+        S[15] = OpCodes.Xor32(S[15], S[0]);
         ROR(S, 15, 30);
         SMIX(S, 0, 1, 2, 3);
-        S[4] ^= S[0];
-        S[16] ^= S[0];
+        S[4] = OpCodes.Xor32(S[4], S[0]);
+        S[16] = OpCodes.Xor32(S[16], S[0]);
         ROR(S, 14, 30);
         SMIX(S, 0, 1, 2, 3);
       }
-      S[4] ^= S[0];
-      S[15] ^= S[0];
+      S[4] = OpCodes.Xor32(S[4], S[0]);
+      S[15] = OpCodes.Xor32(S[15], S[0]);
     }
 
     _fugue3Finalize(S) {
-      // 18 rounds of ROR+CMIX36+SMIX
       for (let i = 0; i < 18; ++i) {
         ROR(S, 3, 36);
         CMIX36(S, 0, 1, 2, 4, 5, 6, 18, 19, 20);
         SMIX(S, 0, 1, 2, 3);
       }
 
-      // 13 rounds of triple XOR+ROR+SMIX
       for (let i = 0; i < 13; ++i) {
-        S[4] ^= S[0];
-        S[12] ^= S[0];
-        S[24] ^= S[0];
+        S[4] = OpCodes.Xor32(S[4], S[0]);
+        S[12] = OpCodes.Xor32(S[12], S[0]);
+        S[24] = OpCodes.Xor32(S[24], S[0]);
         ROR(S, 12, 36);
         SMIX(S, 0, 1, 2, 3);
-        S[4] ^= S[0];
-        S[13] ^= S[0];
-        S[24] ^= S[0];
+        S[4] = OpCodes.Xor32(S[4], S[0]);
+        S[13] = OpCodes.Xor32(S[13], S[0]);
+        S[24] = OpCodes.Xor32(S[24], S[0]);
         ROR(S, 12, 36);
         SMIX(S, 0, 1, 2, 3);
-        S[4] ^= S[0];
-        S[13] ^= S[0];
-        S[25] ^= S[0];
+        S[4] = OpCodes.Xor32(S[4], S[0]);
+        S[13] = OpCodes.Xor32(S[13], S[0]);
+        S[25] = OpCodes.Xor32(S[25], S[0]);
         ROR(S, 11, 36);
         SMIX(S, 0, 1, 2, 3);
       }
-      S[4] ^= S[0];
-      S[12] ^= S[0];
-      S[24] ^= S[0];
+      S[4] = OpCodes.Xor32(S[4], S[0]);
+      S[12] = OpCodes.Xor32(S[12], S[0]);
+      S[24] = OpCodes.Xor32(S[24], S[0]);
     }
 
     _fugue4Finalize(S) {
-      // 32 rounds of ROR+CMIX36+SMIX
       for (let i = 0; i < 32; ++i) {
         ROR(S, 3, 36);
         CMIX36(S, 0, 1, 2, 4, 5, 6, 18, 19, 20);
         SMIX(S, 0, 1, 2, 3);
       }
 
-      // 13 rounds of quadruple XOR+ROR+SMIX
       for (let i = 0; i < 13; ++i) {
-        S[4] ^= S[0];
-        S[9] ^= S[0];
-        S[18] ^= S[0];
-        S[27] ^= S[0];
+        S[4] = OpCodes.Xor32(S[4], S[0]);
+        S[9] = OpCodes.Xor32(S[9], S[0]);
+        S[18] = OpCodes.Xor32(S[18], S[0]);
+        S[27] = OpCodes.Xor32(S[27], S[0]);
         ROR(S, 9, 36);
         SMIX(S, 0, 1, 2, 3);
-        S[4] ^= S[0];
-        S[10] ^= S[0];
-        S[18] ^= S[0];
-        S[27] ^= S[0];
+        S[4] = OpCodes.Xor32(S[4], S[0]);
+        S[10] = OpCodes.Xor32(S[10], S[0]);
+        S[18] = OpCodes.Xor32(S[18], S[0]);
+        S[27] = OpCodes.Xor32(S[27], S[0]);
         ROR(S, 9, 36);
         SMIX(S, 0, 1, 2, 3);
-        S[4] ^= S[0];
-        S[10] ^= S[0];
-        S[19] ^= S[0];
-        S[27] ^= S[0];
+        S[4] = OpCodes.Xor32(S[4], S[0]);
+        S[10] = OpCodes.Xor32(S[10], S[0]);
+        S[19] = OpCodes.Xor32(S[19], S[0]);
+        S[27] = OpCodes.Xor32(S[27], S[0]);
         ROR(S, 9, 36);
         SMIX(S, 0, 1, 2, 3);
-        S[4] ^= S[0];
-        S[10] ^= S[0];
-        S[19] ^= S[0];
-        S[28] ^= S[0];
+        S[4] = OpCodes.Xor32(S[4], S[0]);
+        S[10] = OpCodes.Xor32(S[10], S[0]);
+        S[19] = OpCodes.Xor32(S[19], S[0]);
+        S[28] = OpCodes.Xor32(S[28], S[0]);
         ROR(S, 8, 36);
         SMIX(S, 0, 1, 2, 3);
       }
-      S[4] ^= S[0];
-      S[9] ^= S[0];
-      S[18] ^= S[0];
-      S[27] ^= S[0];
+      S[4] = OpCodes.Xor32(S[4], S[0]);
+      S[9] = OpCodes.Xor32(S[9], S[0]);
+      S[18] = OpCodes.Xor32(S[18], S[0]);
+      S[27] = OpCodes.Xor32(S[27], S[0]);
     }
   }
 

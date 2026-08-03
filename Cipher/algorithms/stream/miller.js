@@ -57,6 +57,11 @@ class Miller extends StreamCipherAlgorithm {
       new LinkItem("Line Codes", "https://en.wikipedia.org/wiki/Line_code")
     ];
 
+    this.references = [
+      new LinkItem("sigrok Miller/Modified Miller Protocol Decoder", "https://github.com/sigrokproject/libsigrokdecode/blob/master/decoders/miller/pd.py"),
+      new LinkItem("sigrok Miller Decoder Documentation", "https://sigrok.org/wiki/Protocol_decoder:Miller")
+    ];
+
     this.tests = [
       {
         text: "Miller Encoding Test Vector",

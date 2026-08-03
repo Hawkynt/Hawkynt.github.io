@@ -89,6 +89,11 @@
         new LinkItem("Applied Cryptography: RC4 Analysis", "https://www.schneier.com/academic/paperfiles/paper-rc4.pdf")
       ];
 
+      this.references = [
+        new LinkItem("OpenSSL RC4 Implementation", "https://github.com/openssl/openssl/blob/master/crypto/rc4/rc4_enc.c"),
+        new LinkItem("Crypto++ ARC4 Implementation", "https://github.com/weidai11/cryptopp/blob/master/arc4.cpp")
+      ];
+
       // Security vulnerabilities (CRITICAL)
       this.knownVulnerabilities = [
         new Vulnerability(

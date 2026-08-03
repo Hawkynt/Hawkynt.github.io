@@ -57,6 +57,10 @@
         new LinkItem("SWIFT IBAN Registry", "https://www.swift.com/standards/data-standards/iban")
       ];
 
+      this.references = [
+        new LinkItem("python-stdnum IBAN implementation", "https://github.com/arthurdejong/python-stdnum/blob/master/stdnum/iban.py")
+      ];
+
       this.notes = [
         "Format: CC12BBBBSSSSAAAA... (Country, Check, Bank, Branch, Account)",
         "Algorithm: Move first 4 chars to end, replace letters with numbers (A=10...Z=35)",

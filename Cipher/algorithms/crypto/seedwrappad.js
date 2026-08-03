@@ -50,57 +50,15 @@
   // Default AIV (Alternative Initial Value) for RFC 5649
   const DEFAULT_AIV = [0xA6, 0x59, 0x59, 0xA6];
 
-  // Helper function to get SEED algorithm (lazy loading with auto-load)
+  // Helper function to get SEED algorithm (registry-first, plain require fallback)
   function getSEEDAlgorithm() {
     let seed = AlgorithmFramework.Find('SEED');
-
-    // If not found, try to load it
-    if (!seed) {
-      const errors = [];
-      try {
-        // Attempt to load SEED using multiple path strategies
-        if (typeof require !== 'undefined') {
-          const path = require('path');
-          // Try from project root (go up from tests/ if needed)
-          let baseDir = path.dirname(require.main.filename);
-          // If we're in tests directory, go up one level
-          if (baseDir.endsWith('tests')) {
-            baseDir = path.dirname(baseDir);
-          }
-          const seedPath = path.join(baseDir, 'algorithms', 'block', 'seed.js');
-
-          // Clear require cache to force re-registration
-          delete require.cache[require.resolve(seedPath)];
-
-          require(seedPath);
-          seed = AlgorithmFramework.Find('SEED');
-        }
-      } catch (e) {
-        errors.push('Strategy 1 failed: ' + e.message);
-        // Try relative path as fallback
-        try {
-          if (typeof require !== 'undefined') {
-            const path = require('path');
-            const relativePath = '../block/seed.js';
-            const resolvedPath = path.resolve(__dirname, relativePath);
-
-            // Clear require cache
-            if (require.cache[resolvedPath]) {
-              delete require.cache[resolvedPath];
-            }
-
-            require(relativePath);
-            seed = AlgorithmFramework.Find('SEED');
-          }
-        } catch (e2) {
-          errors.push('Strategy 2 failed: ' + e2.message);
-        }
-      }
-
-      if (!seed) {
-        throw new Error('SEED algorithm not found. Errors: ' + errors.join('; '));
-      }
+    if (!seed && typeof require !== 'undefined') {
+      try { require('../block/seed.js'); } catch (e) { /* not found — error below */ }
+      seed = AlgorithmFramework.Find('SEED');
     }
+    if (!seed)
+      throw new Error("SEED not available — load algorithms/block/seed.js first");
     return seed;
   }
 
@@ -137,10 +95,34 @@
         new LinkItem("BouncyCastle SEEDEngine", "https://github.com/bcgit/bc-java/blob/master/core/src/main/java/org/bouncycastle/crypto/engines/SEEDEngine.java")
       ];
 
-      // NOTE: Authentic test vectors needed from official sources
-      // RFC 5649 does not provide SEED-specific test vectors
-      // Acceptable sources: KISA (Korea Internet&Security Agency), BouncyCastle validated outputs
-      this.tests = [];
+      // No published official SEED-KWP test vectors were found (RFC 5649 only defines vectors for AES;
+      // KISA/TTA and NIST CAVP do not publish SEED-specific KWP KATs; a targeted search of the bc-java
+      // source tree found only SEEDEngine.java/SEEDWrapEngine.java (RFC 3394, unpadded) alongside the
+      // generic RFC5649WrapEngine, with no bundled SEED-KWP test vectors).
+      // These are self-consistency vectors: the RFC 3394/5649 wrap/unwrap loop implemented below is
+      // structurally identical to this repository's aeswrappad.js, which reproduces RFC 5649 Section 6
+      // official AES-KWP vectors bit-for-bit; the SEED primitive itself is independently verified
+      // against the RFC 4269 known-answer tests in algorithms/block/seed.js. Plaintext size mirrors the
+      // RFC 5649 Section 6 examples (7-octet and 20-octet key data) with SEED (fixed 128-bit key)
+      // substituted for AES. Vectors were computed with this repository's own SEEDKeyWrapPad
+      // implementation and confirmed to round-trip (wrap then unwrap recovers the original plaintext
+      // exactly).
+      this.tests = [
+        {
+          text: "Self-consistency vector (RFC 5649 wrap structure, sized like RFC 5649 §6.2, with SEED substituted for AES; no official SEED-KWP KAT exists) — single-block case (7-octet key data)",
+          uri: "https://www.rfc-editor.org/rfc/rfc5649.txt",
+          input: OpCodes.Hex8ToBytes("466f7250617369"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          expected: OpCodes.Hex8ToBytes("47e20ac2284005f3dbdf0b2ee509a460")
+        },
+        {
+          text: "Self-consistency vector (RFC 5649 wrap structure, sized like RFC 5649 §6.1, with SEED substituted for AES; no official SEED-KWP KAT exists) — multi-block case (20-octet key data, general RFC 3394 loop)",
+          uri: "https://www.rfc-editor.org/rfc/rfc5649.txt",
+          input: OpCodes.Hex8ToBytes("c37b7e6492584340bed12207808941155068f738"),
+          key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
+          expected: OpCodes.Hex8ToBytes("938241514e0bf5f5ead58fe8eb09a93fa101fefc47e2f90de121a3765644226a")
+        }
+      ];
     }
 
     /**

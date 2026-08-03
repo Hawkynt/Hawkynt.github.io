@@ -311,8 +311,7 @@
      *   c = floor(temp / 2^32)
      *
      * We use BigInt for 64-bit arithmetic to avoid precision loss.
-     * BigInt operations (& and >> on 64-bit values) remain native as OpCodes
-     * does not provide BigInt equivalents.
+     * BigInt bit operations are expressed via OpCodes.AndN/OpCodes.ShiftRn.
      */
     _next32() {
       if (!this._ready) {
@@ -328,9 +327,8 @@
       const temp = BigInt(this._A) * BigInt(this._x) + BigInt(this._c);
 
       // Split result: lower 32 bits = new x, upper 32 bits = new c
-      // BigInt bit operations required (& and >> on 64-bit values)
-      this._x = Number(temp & 0xFFFFFFFFn);
-      this._c = Number(temp >> 32n);
+      this._x = Number(OpCodes.AndN(temp, 0xFFFFFFFFn));
+      this._c = Number(OpCodes.ShiftRn(temp, 32));
 
       return output;
     }

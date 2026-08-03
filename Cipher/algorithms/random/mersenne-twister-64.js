@@ -44,16 +44,16 @@
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           RandomGenerationAlgorithm, IRandomGeneratorInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
-  // NOTE: This implementation uses native BigInt operations (>>, <<, ^, &, |) instead of OpCodes
-  // because JavaScript's OpCodes library is designed for 32-bit operations, while MT19937-64
-  // requires native 64-bit arithmetic. BigInt is the standard JavaScript way to handle 64-bit
-  // integers, and its operators are essential for this algorithm's correctness.
+  // NOTE: This implementation uses native BigInt 64-bit words for MT19937-64's state and
+  // tempering, since 64-bit arithmetic cannot be represented with JavaScript's 32-bit numbers.
+  // All shift/mask/xor operations on those BigInt words go through OpCodes.ShiftLn/ShiftRn/
+  // AndN/XorN (the BigInt equivalents of OpCodes' 32-bit primitives) instead of raw operators.
 
   // Helper function to convert BigInt to little-endian byte array
   function BigIntToBytes64LE(value) {
     const bytes = [];
     for (let i = 0; i < 8; ++i) {
-      bytes.push(Number((value >> (BigInt(i) * 8n))&0xFFn));
+      bytes.push(Number(OpCodes.AndN(OpCodes.ShiftRn(value, i * 8), 0xFFn)));
     }
     return bytes;
   }
@@ -62,7 +62,7 @@
   function BytesToBigInt64LE(bytes) {
     let value = 0n;
     for (let i = 0; i < Math.min(bytes.length, 8); ++i) {
-      value |= BigInt(bytes[i]&0xFF) << (BigInt(i) * 8n);
+      value |= OpCodes.ShiftLn(BigInt(OpCodes.And32(bytes[i], 0xFF)), i * 8);
     }
     return value;
   }
@@ -244,9 +244,9 @@
       for (this._index = 1; this._index < NN; ++this._index) {
         // mt[i] = (6364136223846793005ULL * (mt[i-1]^(mt[i-1] >> 62)) + i)
         const prev = this._state[this._index - 1];
-        const xored = prev^(prev >> 62n);
+        const xored = OpCodes.XorN(prev, OpCodes.ShiftRn(prev, 62));
         const mult = INIT_MULTIPLIER * xored;
-        this._state[this._index] = (mult + BigInt(this._index))&0xFFFFFFFFFFFFFFFFn;
+        this._state[this._index] = OpCodes.AndN(mult + BigInt(this._index), 0xFFFFFFFFFFFFFFFFn);
       }
 
       // Reset index to trigger twist on first generation
@@ -278,12 +278,12 @@
       let x = this._state[this._index++];
 
       // Tempering transformations (exact sequence from reference implementation)
-      x = x^((x >> 29n)&TEMPER_MASK_1);
-      x = x^((x << 17n)&TEMPER_MASK_2);
-      x = x^((x << 37n)&TEMPER_MASK_3);
-      x = x^(x >> 43n);
+      x = OpCodes.XorN(x, OpCodes.AndN(OpCodes.ShiftRn(x, 29), TEMPER_MASK_1));
+      x = OpCodes.XorN(x, OpCodes.AndN(OpCodes.ShiftLn(x, 17), TEMPER_MASK_2));
+      x = OpCodes.XorN(x, OpCodes.AndN(OpCodes.ShiftLn(x, 37), TEMPER_MASK_3));
+      x = OpCodes.XorN(x, OpCodes.ShiftRn(x, 43));
 
-      return x&0xFFFFFFFFFFFFFFFFn;
+      return OpCodes.AndN(x, 0xFFFFFFFFFFFFFFFFn);
     }
 
     /**
@@ -295,20 +295,20 @@
 
       // First loop: i from 0 to NN-MM-1
       for (i = 0; i < NN - MM; ++i) {
-        const x = (this._state[i]&UPPER_MASK)|(this._state[i + 1]&LOWER_MASK);
-        this._state[i] = this._state[i + MM]^(x >> 1n)^this._mag01[Number(x&1n)];
+        const x = OpCodes.OrN(OpCodes.AndN(this._state[i], UPPER_MASK), OpCodes.AndN(this._state[i + 1], LOWER_MASK));
+        this._state[i] = OpCodes.XorN(OpCodes.XorN(this._state[i + MM], OpCodes.ShiftRn(x, 1)), this._mag01[Number(OpCodes.AndN(x, 1n))]);
       }
 
       // Second loop: i from NN-MM to NN-2
       for (; i < NN - 1; ++i) {
-        const x = (this._state[i]&UPPER_MASK)|(this._state[i + 1]&LOWER_MASK);
-        this._state[i] = this._state[i + (MM - NN)]^(x >> 1n)^this._mag01[Number(x&1n)];
+        const x = OpCodes.OrN(OpCodes.AndN(this._state[i], UPPER_MASK), OpCodes.AndN(this._state[i + 1], LOWER_MASK));
+        this._state[i] = OpCodes.XorN(OpCodes.XorN(this._state[i + (MM - NN)], OpCodes.ShiftRn(x, 1)), this._mag01[Number(OpCodes.AndN(x, 1n))]);
       }
 
       // Final element
       {
-        const x = (this._state[NN - 1]&UPPER_MASK)|(this._state[0]&LOWER_MASK);
-        this._state[NN - 1] = this._state[MM - 1]^(x >> 1n)^this._mag01[Number(x&1n)];
+        const x = OpCodes.OrN(OpCodes.AndN(this._state[NN - 1], UPPER_MASK), OpCodes.AndN(this._state[0], LOWER_MASK));
+        this._state[NN - 1] = OpCodes.XorN(OpCodes.XorN(this._state[MM - 1], OpCodes.ShiftRn(x, 1)), this._mag01[Number(OpCodes.AndN(x, 1n))]);
       }
 
       this._index = 0;
@@ -338,7 +338,7 @@
         const value = this._next64();
         // Output in little-endian format (LSB first)
         for (let j = 0; j < 8; ++j) {
-          output.push(Number((value >> (BigInt(j) * 8n))&0xFFn));
+          output.push(Number(OpCodes.AndN(OpCodes.ShiftRn(value, j * 8), 0xFFn)));
         }
       }
 
@@ -347,7 +347,7 @@
       if (remainingBytes > 0) {
         const value = this._next64();
         for (let i = 0; i < remainingBytes; ++i) {
-          output.push(Number((value >> (BigInt(i) * 8n))&0xFFn));
+          output.push(Number(OpCodes.AndN(OpCodes.ShiftRn(value, i * 8), 0xFFn)));
         }
       }
 

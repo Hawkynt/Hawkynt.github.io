@@ -81,6 +81,11 @@ class HierocryptL1 extends BlockCipherAlgorithm {
       new LinkItem("Wikipedia Article", "https://en.wikipedia.org/wiki/Hierocrypt")
     ];
 
+    this.references = [
+      new LinkItem("NESSIE Submission Archive (reference code package)", "https://www.cosic.esat.kuleuven.be/nessie/workshop/submissions.html"),
+      new LinkItem("embeddedsw.net libObfuscate Hierocrypt Implementation", "https://embeddedsw.net/Cipher_Reference_Home.html")
+    ];
+
     // NOTE: Test vectors need verification against official NESSIE test vectors
     // The specification PDF was inaccessible during implementation
     // These test vectors are derived from this implementation and demonstrate

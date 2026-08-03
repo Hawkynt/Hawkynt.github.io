@@ -103,6 +103,10 @@
         new LinkItem("BouncyCastle Test Vectors", "https://github.com/bcgit/bc-java/blob/main/core/src/test/java/org/bouncycastle/crypto/test/VMPCMacTest.java")
       ];
 
+      this.references = [
+        new LinkItem("BouncyCastle .NET VmpcMac Implementation", "https://github.com/bcgit/bc-csharp/blob/master/crypto/src/crypto/macs/VMPCMac.cs")
+      ];
+
       // Security notes
       this.knownVulnerabilities = [
         new Vulnerability(

@@ -589,6 +589,11 @@
         )
       ];
 
+      this.references = [
+        new LinkItem("Official Pyjamask Reference Implementation", "https://github.com/pyjamask-cipher/pyjamask-reference-implementation"),
+        new LinkItem("Pyjamask Cipher Project Site", "https://pyjamask-cipher.github.io/")
+      ];
+
       // Official test vectors from NIST LWC KAT file
       this.tests = [
         {

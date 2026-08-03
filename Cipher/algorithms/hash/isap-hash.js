@@ -97,6 +97,10 @@
         )
       ];
 
+      this.references = [
+        new LinkItem("ISAP Code Package (official reference implementation)", "https://github.com/isap-lwc/isap-code-package")
+      ];
+
       // Test vectors from NIST LWC official ISAP Hash test file
       // Reference: BouncyCastle crypto/test/data/crypto/isap/LWC_HASH_KAT_256.txt
       this.tests = [

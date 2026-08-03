@@ -56,6 +56,10 @@ class UnicornA extends BlockCipherAlgorithm {
       new LinkItem("CRYPTREC Report", "https://www.cryptrec.go.jp/en/")
     ];
 
+    this.references = [
+      new LinkItem("embeddedsw.net libObfuscate CIPHERUNICORN-A Implementation", "https://embeddedsw.net/Cipher_Reference_Home.html")
+    ];
+
     this.tests = [
       {
         text: "CIPHERUNICORN-A Test Vector 1",

@@ -143,6 +143,11 @@
         new LinkItem("Quantum Error Correction Tutorial", "https://arxiv.org/abs/0904.2557")
       ];
 
+      this.references = [
+        new LinkItem("Five-Qubit Stabilizer Code Implementation (Qiskit)", "https://github.com/bernwo/five-qubit-code"),
+        new LinkItem("Qiskit StabilizerState Implementation", "https://github.com/Qiskit/qiskit/blob/main/qiskit/quantum_info/states/stabilizerstate.py")
+      ];
+
       // Test vectors for [[5,1,3]] code (classical representation)
       // Using simplified encoding: logical 0 → 00000, logical 1 → 11111
       // Format: array of bits representing qubits

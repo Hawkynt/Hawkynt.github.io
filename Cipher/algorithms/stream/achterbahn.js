@@ -86,6 +86,11 @@
         new LinkItem("Wikipedia: Achterbahn", "https://en.wikipedia.org/wiki/Achterbahn_(cipher)")
       ];
 
+      this.references = [
+        new LinkItem("Achterbahn-128/80 C Reference Implementation (Gammel, Göttfert, Kniffler)", "https://github.com/crocs-muni/CryptoStreams/blob/master/streams/stream_ciphers/estream/achterbahn/achterbahn-128-80.cpp"),
+        new LinkItem("SUPERCOP Benchmarking Suite (includes eSTREAM submission sources)", "https://bench.cr.yp.to/supercop.html")
+      ];
+
       // Security vulnerabilities (CRITICAL)
       this.knownVulnerabilities = [
         new Vulnerability(

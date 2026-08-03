@@ -561,6 +561,21 @@
         )
       ];
 
+      this.references = [
+        new LinkItem(
+          'Gimli Reference Implementations (Gimli team)',
+          'https://github.com/jedisct1/gimli'
+        ),
+        new LinkItem(
+          'Gimli Hardware Implementation (secworks)',
+          'https://github.com/secworks/gimli'
+        ),
+        new LinkItem(
+          'Gimli Go Port of the Reference C Code',
+          'https://github.com/bmkessler/gimli'
+        )
+      ];
+
       // Official test vectors from GIMLI-24-CIPHER.txt (NIST LWC KAT)
       this.tests = [
         {

@@ -1,16 +1,20 @@
 /*
  * Luffa Hash Function (SHA-3 Candidate)
- * Designed by Projet RNRT SAPHIR team (Watanabe, Preneel, et al.)
- * Submitted to NIST SHA-3 competition (2008-2012)
+ * Designed by Christophe De Cannière, Hisayoshi Sato and Dai Watanabe (Hitachi, Ltd., Japan)
+ * Submitted to NIST SHA-3 competition (2008-2012, eliminated in round 2)
  * Reference: https://www.hitachi.com/rd/yrl/crypto/luffa/
  * Specification: SHA-3 submission document
  *
- * Luffa is a sponge-based hash function with variants supporting
- * 224, 256, 384, and 512-bit outputs. Uses parallel processing
- * with 3-5 independent state chains depending on output size.
+ * Luffa is a sponge-like hash function that runs several independent
+ * "chains" (3, 4 or 5 depending on output size) of an AES/Serpent-style
+ * permutation P in parallel, mixing a message block into every chain
+ * between permutation calls. Finalization performs one message-carrying
+ * round followed by one or two "blank" rounds (zero message injection)
+ * used purely to squeeze out additional output words for the larger
+ * variants (Luffa-384/512), before the chain states are XOR-combined.
  *
- * Implementation based on sphlib reference (pornin/sphlib)
- * Test vectors from NIST SHA-3 competition submission
+ * Implementation and test vectors verified against the sphlib reference
+ * (Thomas Pornin): luffa.c and test_luffa.c (NIST KAT derived values).
  * (c)2006-2025 Hawkynt
  */
 
@@ -133,45 +137,46 @@ if (!global.OpCodes && typeof require !== 'undefined') {
     0x29131ab6, 0x0fc053c3, 0x3f014f0c, 0xfc053c31
   ]);
 
-  // Generate standard NIST test data (used in SHA-3 competition)
-  function nistTestData(bitLength) {
-    const byteLength = Math.floor((bitLength + 7) / 8);
-    const data = new Uint8Array(byteLength);
-    for (let i = 0; i < byteLength; ++i) {
-      data[i] = i & 0xFF;
-    }
-    return data;
-  }
+  // NIST short-message test inputs, as produced by sphlib's
+  // utest_nist_data() helper (a fixed pseudorandom byte pool indexed by
+  // bit length via a triangular-number offset - NOT a simple 0,1,2,...
+  // counting pattern). Values below are the literal message bytes for
+  // bit lengths 0, 8, 16, 24 and 32, extracted from sphlib's utest.c.
+  const NIST_MSG_0 = new Uint8Array([]);
+  const NIST_MSG_8 = OpCodes.Hex8ToBytes("CC");
+  const NIST_MSG_16 = OpCodes.Hex8ToBytes("41FB");
+  const NIST_MSG_24 = OpCodes.Hex8ToBytes("1F877C");
+  const NIST_MSG_32 = OpCodes.Hex8ToBytes("C1ECFDFC");
 
-  // SUB_CRUMB operation: nonlinear 4-input substitution box
-  // Applies complex bitwise operations for cryptographic confusion
+  // SUB_CRUMB operation: nonlinear 4-input substitution box.
+  // Transliterated 1:1 from the sphlib SUB_CRUMB macro.
   function subCrumb(v, idx0, idx1, idx2, idx3) {
     let tmp = v[idx0];
-    v[idx0] = (v[idx0] | v[idx1]) >>> 0;
-    v[idx2] = (v[idx2] ^ v[idx3]) >>> 0;
-    v[idx1] = (~v[idx1]) >>> 0;
-    v[idx0] = (v[idx0] ^ v[idx3]) >>> 0;
-    v[idx3] = (v[idx3] & tmp) >>> 0;
-    v[idx1] = (v[idx1] ^ v[idx3]) >>> 0;
-    v[idx3] = (v[idx3] ^ v[idx2]) >>> 0;
-    v[idx2] = (v[idx2] & v[idx0]) >>> 0;
-    v[idx0] = (~v[idx0]) >>> 0;
-    v[idx2] = (v[idx2] ^ v[idx1]) >>> 0;
-    v[idx1] = (v[idx1] | v[idx3]) >>> 0;
-    tmp = (tmp ^ v[idx1]) >>> 0;
-    v[idx3] = (v[idx3] ^ v[idx2]) >>> 0;
-    v[idx2] = (v[idx2] & v[idx1]) >>> 0;
-    v[idx1] = (v[idx1] ^ v[idx0]) >>> 0;
+    v[idx0] = OpCodes.Or32(v[idx0], v[idx1]);
+    v[idx2] = OpCodes.Xor32(v[idx2], v[idx3]);
+    v[idx1] = OpCodes.Not32(v[idx1]);
+    v[idx0] = OpCodes.Xor32(v[idx0], v[idx3]);
+    v[idx3] = OpCodes.And32(v[idx3], tmp);
+    v[idx1] = OpCodes.Xor32(v[idx1], v[idx3]);
+    v[idx3] = OpCodes.Xor32(v[idx3], v[idx2]);
+    v[idx2] = OpCodes.And32(v[idx2], v[idx0]);
+    v[idx0] = OpCodes.Not32(v[idx0]);
+    v[idx2] = OpCodes.Xor32(v[idx2], v[idx1]);
+    v[idx1] = OpCodes.Or32(v[idx1], v[idx3]);
+    tmp = OpCodes.Xor32(tmp, v[idx1]);
+    v[idx3] = OpCodes.Xor32(v[idx3], v[idx2]);
+    v[idx2] = OpCodes.And32(v[idx2], v[idx1]);
+    v[idx1] = OpCodes.Xor32(v[idx1], v[idx0]);
     v[idx0] = tmp;
   }
 
   // MIX_WORD operation: diffusion via rotations and XOR
   // Provides cryptographic diffusion between word pairs
   function mixWord(v, uIdx, vIdx) {
-    v[vIdx] = (v[vIdx] ^ v[uIdx]) >>> 0;
-    v[uIdx] = (OpCodes.RotL32(v[uIdx], 2) ^ v[vIdx]) >>> 0;
-    v[vIdx] = (OpCodes.RotL32(v[vIdx], 14) ^ v[uIdx]) >>> 0;
-    v[uIdx] = (OpCodes.RotL32(v[uIdx], 10) ^ v[vIdx]) >>> 0;
+    v[vIdx] = OpCodes.Xor32(v[vIdx], v[uIdx]);
+    v[uIdx] = OpCodes.Xor32(OpCodes.RotL32(v[uIdx], 2), v[vIdx]);
+    v[vIdx] = OpCodes.Xor32(OpCodes.RotL32(v[vIdx], 14), v[uIdx]);
+    v[uIdx] = OpCodes.Xor32(OpCodes.RotL32(v[uIdx], 10), v[vIdx]);
     v[vIdx] = OpCodes.RotL32(v[vIdx], 1);
   }
 
@@ -241,11 +246,14 @@ if (!global.OpCodes && typeof require !== 'undefined') {
     v4[7] = OpCodes.RotL32(v4[7], 4);
   }
 
-  // Step function: SUB_CRUMB + MIX_WORD for single state chain
+  // Step function: SUB_CRUMB + MIX_WORD for a single state chain.
+  // Note the second SUB_CRUMB operates on indices (5,6,7,4), not
+  // (4,5,6,7) - this cyclic offset is part of the sphlib specification
+  // and is required for bit-exact output.
   function step(v, rc0, rc4, round) {
     // Apply SUB_CRUMB to all word pairs
     subCrumb(v, 0, 1, 2, 3);
-    subCrumb(v, 4, 5, 6, 7);
+    subCrumb(v, 5, 6, 7, 4);
 
     // Apply MIX_WORD for diffusion
     mixWord(v, 0, 4);
@@ -254,8 +262,8 @@ if (!global.OpCodes && typeof require !== 'undefined') {
     mixWord(v, 3, 7);
 
     // Add round constants
-    v[0] = (v[0] ^ rc0[round]) >>> 0;
-    v[4] = (v[4] ^ rc4[round]) >>> 0;
+    v[0] = OpCodes.Xor32(v[0], rc0[round]);
+    v[4] = OpCodes.Xor32(v[4], rc4[round]);
   }
 
   // Permutation P3 for Luffa-224/256 (3 chains)
@@ -302,10 +310,10 @@ if (!global.OpCodes && typeof require !== 'undefined') {
     dst[7] = src[6];
     dst[6] = src[5];
     dst[5] = src[4];
-    dst[4] = (src[3] ^ tmp) >>> 0;
-    dst[3] = (src[2] ^ tmp) >>> 0;
+    dst[4] = OpCodes.Xor32(src[3], tmp);
+    dst[3] = OpCodes.Xor32(src[2], tmp);
     dst[2] = src[1];
-    dst[1] = (src[0] ^ tmp) >>> 0;
+    dst[1] = OpCodes.Xor32(src[0], tmp);
     dst[0] = tmp;
   }
 
@@ -318,7 +326,7 @@ if (!global.OpCodes && typeof require !== 'undefined') {
 
     // Step 1: a = V0 XOR V1 XOR V2
     for (let i = 0; i < 8; ++i) {
-      a[i] = (v0[i] ^ v1[i] ^ v2[i]) >>> 0;
+      a[i] = OpCodes.Xor32(OpCodes.Xor32(v0[i], v1[i]), v2[i]);
     }
 
     // Step 2: M2(a, a)
@@ -326,7 +334,7 @@ if (!global.OpCodes && typeof require !== 'undefined') {
 
     // Step 3: V0 = a XOR V0 XOR M
     for (let i = 0; i < 8; ++i) {
-      v0[i] = (a[i] ^ v0[i] ^ m[i]) >>> 0;
+      v0[i] = OpCodes.Xor32(OpCodes.Xor32(a[i], v0[i]), m[i]);
     }
 
     // Step 4: M2(M, M)
@@ -334,7 +342,7 @@ if (!global.OpCodes && typeof require !== 'undefined') {
 
     // Step 5: V1 = a XOR V1 XOR M
     for (let i = 0; i < 8; ++i) {
-      v1[i] = (a[i] ^ v1[i] ^ m[i]) >>> 0;
+      v1[i] = OpCodes.Xor32(OpCodes.Xor32(a[i], v1[i]), m[i]);
     }
 
     // Step 6: M2(M, M)
@@ -342,7 +350,7 @@ if (!global.OpCodes && typeof require !== 'undefined') {
 
     // Step 7: V2 = a XOR V2 XOR M
     for (let i = 0; i < 8; ++i) {
-      v2[i] = (a[i] ^ v2[i] ^ m[i]) >>> 0;
+      v2[i] = OpCodes.Xor32(OpCodes.Xor32(a[i], v2[i]), m[i]);
     }
   }
 
@@ -354,9 +362,9 @@ if (!global.OpCodes && typeof require !== 'undefined') {
 
     // a = V0 XOR V1; b = V2 XOR V3; a = a XOR b
     for (let i = 0; i < 8; ++i) {
-      a[i] = (v0[i] ^ v1[i]) >>> 0;
-      b[i] = (v2[i] ^ v3[i]) >>> 0;
-      a[i] = (a[i] ^ b[i]) >>> 0;
+      a[i] = OpCodes.Xor32(v0[i], v1[i]);
+      b[i] = OpCodes.Xor32(v2[i], v3[i]);
+      a[i] = OpCodes.Xor32(a[i], b[i]);
     }
 
     // M2(a, a)
@@ -364,57 +372,57 @@ if (!global.OpCodes && typeof require !== 'undefined') {
 
     // V0 = a XOR V0; V1 = a XOR V1; V2 = a XOR V2; V3 = a XOR V3
     for (let i = 0; i < 8; ++i) {
-      v0[i] = (a[i] ^ v0[i]) >>> 0;
-      v1[i] = (a[i] ^ v1[i]) >>> 0;
-      v2[i] = (a[i] ^ v2[i]) >>> 0;
-      v3[i] = (a[i] ^ v3[i]) >>> 0;
+      v0[i] = OpCodes.Xor32(a[i], v0[i]);
+      v1[i] = OpCodes.Xor32(a[i], v1[i]);
+      v2[i] = OpCodes.Xor32(a[i], v2[i]);
+      v3[i] = OpCodes.Xor32(a[i], v3[i]);
     }
 
     // b = M2(V0); b = b XOR V3
     m2(b, v0);
     for (let i = 0; i < 8; ++i) {
-      b[i] = (b[i] ^ v3[i]) >>> 0;
+      b[i] = OpCodes.Xor32(b[i], v3[i]);
     }
 
     // V3 = M2(V3); V3 = V3 XOR V2
     m2(v3, v3);
     for (let i = 0; i < 8; ++i) {
-      v3[i] = (v3[i] ^ v2[i]) >>> 0;
+      v3[i] = OpCodes.Xor32(v3[i], v2[i]);
     }
 
     // V2 = M2(V2); V2 = V2 XOR V1
     m2(v2, v2);
     for (let i = 0; i < 8; ++i) {
-      v2[i] = (v2[i] ^ v1[i]) >>> 0;
+      v2[i] = OpCodes.Xor32(v2[i], v1[i]);
     }
 
     // V1 = M2(V1); V1 = V1 XOR V0
     m2(v1, v1);
     for (let i = 0; i < 8; ++i) {
-      v1[i] = (v1[i] ^ v0[i]) >>> 0;
+      v1[i] = OpCodes.Xor32(v1[i], v0[i]);
     }
 
     // V0 = b XOR M
     for (let i = 0; i < 8; ++i) {
-      v0[i] = (b[i] ^ m[i]) >>> 0;
+      v0[i] = OpCodes.Xor32(b[i], m[i]);
     }
 
     // M = M2(M); V1 = V1 XOR M
     m2(m, m);
     for (let i = 0; i < 8; ++i) {
-      v1[i] = (v1[i] ^ m[i]) >>> 0;
+      v1[i] = OpCodes.Xor32(v1[i], m[i]);
     }
 
     // M = M2(M); V2 = V2 XOR M
     m2(m, m);
     for (let i = 0; i < 8; ++i) {
-      v2[i] = (v2[i] ^ m[i]) >>> 0;
+      v2[i] = OpCodes.Xor32(v2[i], m[i]);
     }
 
     // M = M2(M); V3 = V3 XOR M
     m2(m, m);
     for (let i = 0; i < 8; ++i) {
-      v3[i] = (v3[i] ^ m[i]) >>> 0;
+      v3[i] = OpCodes.Xor32(v3[i], m[i]);
     }
   }
 
@@ -426,9 +434,9 @@ if (!global.OpCodes && typeof require !== 'undefined') {
 
     // a = V0 XOR V1; b = V2 XOR V3; a = a XOR b; a = a XOR V4
     for (let i = 0; i < 8; ++i) {
-      a[i] = (v0[i] ^ v1[i]) >>> 0;
-      b[i] = (v2[i] ^ v3[i]) >>> 0;
-      a[i] = (a[i] ^ b[i] ^ v4[i]) >>> 0;
+      a[i] = OpCodes.Xor32(v0[i], v1[i]);
+      b[i] = OpCodes.Xor32(v2[i], v3[i]);
+      a[i] = OpCodes.Xor32(OpCodes.Xor32(a[i], b[i]), v4[i]);
     }
 
     // M2(a, a)
@@ -436,96 +444,96 @@ if (!global.OpCodes && typeof require !== 'undefined') {
 
     // V0 = a XOR V0; V1 = a XOR V1; V2 = a XOR V2; V3 = a XOR V3; V4 = a XOR V4
     for (let i = 0; i < 8; ++i) {
-      v0[i] = (a[i] ^ v0[i]) >>> 0;
-      v1[i] = (a[i] ^ v1[i]) >>> 0;
-      v2[i] = (a[i] ^ v2[i]) >>> 0;
-      v3[i] = (a[i] ^ v3[i]) >>> 0;
-      v4[i] = (a[i] ^ v4[i]) >>> 0;
+      v0[i] = OpCodes.Xor32(a[i], v0[i]);
+      v1[i] = OpCodes.Xor32(a[i], v1[i]);
+      v2[i] = OpCodes.Xor32(a[i], v2[i]);
+      v3[i] = OpCodes.Xor32(a[i], v3[i]);
+      v4[i] = OpCodes.Xor32(a[i], v4[i]);
     }
 
     // b = M2(V0); b = b XOR V1
     m2(b, v0);
     for (let i = 0; i < 8; ++i) {
-      b[i] = (b[i] ^ v1[i]) >>> 0;
+      b[i] = OpCodes.Xor32(b[i], v1[i]);
     }
 
     // V1 = M2(V1); V1 = V1 XOR V2
     m2(v1, v1);
     for (let i = 0; i < 8; ++i) {
-      v1[i] = (v1[i] ^ v2[i]) >>> 0;
+      v1[i] = OpCodes.Xor32(v1[i], v2[i]);
     }
 
     // V2 = M2(V2); V2 = V2 XOR V3
     m2(v2, v2);
     for (let i = 0; i < 8; ++i) {
-      v2[i] = (v2[i] ^ v3[i]) >>> 0;
+      v2[i] = OpCodes.Xor32(v2[i], v3[i]);
     }
 
     // V3 = M2(V3); V3 = V3 XOR V4
     m2(v3, v3);
     for (let i = 0; i < 8; ++i) {
-      v3[i] = (v3[i] ^ v4[i]) >>> 0;
+      v3[i] = OpCodes.Xor32(v3[i], v4[i]);
     }
 
     // V4 = M2(V4); V4 = V4 XOR V0
     m2(v4, v4);
     for (let i = 0; i < 8; ++i) {
-      v4[i] = (v4[i] ^ v0[i]) >>> 0;
+      v4[i] = OpCodes.Xor32(v4[i], v0[i]);
     }
 
     // V0 = M2(b); V0 = V0 XOR V4
     m2(v0, b);
     for (let i = 0; i < 8; ++i) {
-      v0[i] = (v0[i] ^ v4[i]) >>> 0;
+      v0[i] = OpCodes.Xor32(v0[i], v4[i]);
     }
 
     // V4 = M2(V4); V4 = V4 XOR V3
     m2(v4, v4);
     for (let i = 0; i < 8; ++i) {
-      v4[i] = (v4[i] ^ v3[i]) >>> 0;
+      v4[i] = OpCodes.Xor32(v4[i], v3[i]);
     }
 
     // V3 = M2(V3); V3 = V3 XOR V2
     m2(v3, v3);
     for (let i = 0; i < 8; ++i) {
-      v3[i] = (v3[i] ^ v2[i]) >>> 0;
+      v3[i] = OpCodes.Xor32(v3[i], v2[i]);
     }
 
     // V2 = M2(V2); V2 = V2 XOR V1
     m2(v2, v2);
     for (let i = 0; i < 8; ++i) {
-      v2[i] = (v2[i] ^ v1[i]) >>> 0;
+      v2[i] = OpCodes.Xor32(v2[i], v1[i]);
     }
 
-    // V1 = M2(V1); V1 = V1 XOR (M XOR msg); V0 = V0 XOR M
+    // V1 = M2(V1); V1 = V1 XOR b; V0 = V0 XOR M
     m2(v1, v1);
     for (let i = 0; i < 8; ++i) {
-      v1[i] = (v1[i] ^ m[i]) >>> 0;
-      v0[i] = (v0[i] ^ m[i]) >>> 0;
+      v1[i] = OpCodes.Xor32(v1[i], b[i]);
+      v0[i] = OpCodes.Xor32(v0[i], m[i]);
     }
 
     // M = M2(M); V1 = V1 XOR M
     m2(m, m);
     for (let i = 0; i < 8; ++i) {
-      v1[i] = (v1[i] ^ m[i]) >>> 0;
+      v1[i] = OpCodes.Xor32(v1[i], m[i]);
     }
 
     // M = M2(M); V2 = V2 XOR M
     m2(m, m);
     for (let i = 0; i < 8; ++i) {
-      v2[i] = (v2[i] ^ m[i]) >>> 0;
+      v2[i] = OpCodes.Xor32(v2[i], m[i]);
     }
 
     // M = M2(M); V3 = V3 XOR M
     m2(m, m);
     for (let i = 0; i < 8; ++i) {
-      v3[i] = (v3[i] ^ m[i]) >>> 0;
+      v3[i] = OpCodes.Xor32(v3[i], m[i]);
     }
 
     // M = M2(M); V4 = V4 XOR M
     m2(m, m);
     for (let i = 0; i < 8; ++i) {
-      v4[i] = (v4[i] ^ m[i]) >>> 0;
+      v4[i] = OpCodes.Xor32(v4[i], m[i]);
     }
   }
 
@@ -543,15 +551,21 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       this.numChains = numChains;
       this.category = CategoryType.HASH;
       this.subCategory = "Cryptographic Hash";
-      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.securityStatus = SecurityStatus.OBSOLETE;
       this.complexity = ComplexityType.ADVANCED;
-      this.country = CountryCode.JP; // Hitachi, Japan + Belgium collaboration
-      this.inventor = "Projet RNRT SAPHIR";
+      this.country = CountryCode.JP; // Hitachi, Japan (with Belgian co-designer)
+      this.inventor = "Christophe De Cannière, Hisayoshi Sato, Dai Watanabe";
       this.year = 2008;
 
       this.documentation = [
-        new LinkItem("SHA-3 Submission", "https://www.hitachi.com/rd/yrl/crypto/luffa/"),
-        new LinkItem("sphlib Reference", "https://github.com/pornin/sphlib")
+        new LinkItem("Luffa SHA-3 Submission (Hitachi)", "https://www.hitachi.com/rd/yrl/crypto/luffa/"),
+        new LinkItem("Luffa Submission Package (NIST SHA-3 Round 2)", "https://csrc.nist.gov/CSRC/media/Projects/Hash-Functions/documents/Luffa_Round2.zip"),
+        new LinkItem("sphlib Reference Implementation", "https://github.com/pornin/sphlib/blob/master/c/luffa.c"),
+        new LinkItem("NIST SHA-3 Competition", "https://csrc.nist.gov/projects/hash-functions/sha-3-project")
+      ];
+
+      this.references = [
+        new LinkItem("sphlib test vectors (test_luffa.c)", "https://github.com/pornin/sphlib/blob/master/c/test_luffa.c")
       ];
     }
 
@@ -572,39 +586,39 @@ if (!global.OpCodes && typeof require !== 'undefined') {
     constructor() {
       super(224, 3);
       this.name = "Luffa-224";
-      this.description = "SHA-3 candidate hash function producing 224-bit outputs using 3 parallel state chains with sponge construction.";
+      this.description = "SHA-3 candidate hash function producing 224-bit outputs using 3 parallel state chains with a sponge-like construction. Eliminated in round 2 of the NIST SHA-3 competition.";
 
-      // NIST SHA-3 competition test vectors
+      // NIST SHA-3 competition short-message test vectors (byte-granular)
       this.tests = [
         {
-          text: "NIST Vector #0 (empty)",
+          text: "NIST Vector (0 bits)",
           uri: "https://github.com/pornin/sphlib/blob/master/c/test_luffa.c",
-          input: nistTestData(0),
+          input: NIST_MSG_0,
           expected: OpCodes.Hex8ToBytes("DBB8665871F4154D3E4396AEFBBA417CB7837DD683C332BA6BE87E02")
         },
         {
-          text: "NIST Vector #1 (1 bit)",
+          text: "NIST Vector (8 bits)",
           uri: "https://github.com/pornin/sphlib/blob/master/c/test_luffa.c",
-          input: nistTestData(8),
-          expected: OpCodes.Hex8ToBytes("14B20CB4CC4C4BE3D472262F69F43AA87BBDE60F42DB8ABE6A39C2B1")
+          input: NIST_MSG_8,
+          expected: OpCodes.Hex8ToBytes("E47D4158BFE03555D370D8FD877EAD17D6AA9FDC689A9614C411FBBA")
         },
         {
-          text: "NIST Vector #2 (16 bits)",
+          text: "NIST Vector (16 bits)",
           uri: "https://github.com/pornin/sphlib/blob/master/c/test_luffa.c",
-          input: nistTestData(16),
-          expected: OpCodes.Hex8ToBytes("802D5029CE7126AD1730C81FDEA2CEBD12493EEEB3F0ABBF543570C9")
+          input: NIST_MSG_16,
+          expected: OpCodes.Hex8ToBytes("08CBDD1C9CAEA9711AB2B30B872DDC09F2954B98AC1850ABE3F648F1")
         },
         {
-          text: "NIST Vector #3 (24 bits)",
+          text: "NIST Vector (24 bits)",
           uri: "https://github.com/pornin/sphlib/blob/master/c/test_luffa.c",
-          input: nistTestData(24),
-          expected: OpCodes.Hex8ToBytes("61F1BC3B35AE84470ED19A2F7F6DBFCA72C0BEDA503A60F58153BA02")
+          input: NIST_MSG_24,
+          expected: OpCodes.Hex8ToBytes("A590D4995C909ABD9150398D4AB9465A8E9F768C576921C26A998857")
         },
         {
-          text: "NIST Vector #4 (32 bits)",
+          text: "NIST Vector (32 bits)",
           uri: "https://github.com/pornin/sphlib/blob/master/c/test_luffa.c",
-          input: nistTestData(32),
-          expected: OpCodes.Hex8ToBytes("A6DB3F8B814FD182320B6E04BD0913C3914E2FF21E39AA5ADC0182E6")
+          input: NIST_MSG_32,
+          expected: OpCodes.Hex8ToBytes("25C82F898F66355ABA7A6215D07CAB27FBEEEDD16B52AA910040B40F")
         }
       ];
     }
@@ -615,38 +629,38 @@ if (!global.OpCodes && typeof require !== 'undefined') {
     constructor() {
       super(256, 3);
       this.name = "Luffa-256";
-      this.description = "SHA-3 candidate hash function producing 256-bit outputs using 3 parallel state chains with sponge construction.";
+      this.description = "SHA-3 candidate hash function producing 256-bit outputs using 3 parallel state chains with a sponge-like construction. Eliminated in round 2 of the NIST SHA-3 competition.";
 
       this.tests = [
         {
-          text: "NIST Vector #0 (empty)",
+          text: "NIST Vector (0 bits)",
           uri: "https://github.com/pornin/sphlib/blob/master/c/test_luffa.c",
-          input: nistTestData(0),
-          expected: OpCodes.Hex8ToBytes("3EB1F94C678609E36AC91C11F38191ABB368425FA282E41D196C09D4A5E6C2D8")
+          input: NIST_MSG_0,
+          expected: OpCodes.Hex8ToBytes("DBB8665871F4154D3E4396AEFBBA417CB7837DD683C332BA6BE87E02A2712D6F")
         },
         {
-          text: "NIST Vector #1 (8 bits)",
+          text: "NIST Vector (8 bits)",
           uri: "https://github.com/pornin/sphlib/blob/master/c/test_luffa.c",
-          input: nistTestData(8),
-          expected: OpCodes.Hex8ToBytes("5D632A19D9801341CF6A75EB61BC785DCA97106DA7E1F0BDAEC51F4BA9C2D7ED")
+          input: NIST_MSG_8,
+          expected: OpCodes.Hex8ToBytes("E47D4158BFE03555D370D8FD877EAD17D6AA9FDC689A9614C411FBBA370C1706")
         },
         {
-          text: "NIST Vector #2 (16 bits)",
+          text: "NIST Vector (16 bits)",
           uri: "https://github.com/pornin/sphlib/blob/master/c/test_luffa.c",
-          input: nistTestData(16),
-          expected: OpCodes.Hex8ToBytes("EB0AA3D39AA9DB0C2F888CCC435CFE11E2F8FB0DB3CB9E93D8FB08E1C6F0DA20")
+          input: NIST_MSG_16,
+          expected: OpCodes.Hex8ToBytes("08CBDD1C9CAEA9711AB2B30B872DDC09F2954B98AC1850ABE3F648F11B76BF92")
         },
         {
-          text: "NIST Vector #3 (24 bits)",
+          text: "NIST Vector (24 bits)",
           uri: "https://github.com/pornin/sphlib/blob/master/c/test_luffa.c",
-          input: nistTestData(24),
-          expected: OpCodes.Hex8ToBytes("4C35B456A4F59C7DDF68F406F9E1A49FB9B7C36A39F2EDB27B3F5DFBED05E70B")
+          input: NIST_MSG_24,
+          expected: OpCodes.Hex8ToBytes("A590D4995C909ABD9150398D4AB9465A8E9F768C576921C26A998857E7B0A604")
         },
         {
-          text: "NIST Vector #4 (32 bits)",
+          text: "NIST Vector (32 bits)",
           uri: "https://github.com/pornin/sphlib/blob/master/c/test_luffa.c",
-          input: nistTestData(32),
-          expected: OpCodes.Hex8ToBytes("38D018964BBA9B16F63EC22B2030DD97FB16F2C3AA5FC66A7E5E6EA2E7AA44BB")
+          input: NIST_MSG_32,
+          expected: OpCodes.Hex8ToBytes("25C82F898F66355ABA7A6215D07CAB27FBEEEDD16B52AA910040B40FDA859981")
         }
       ];
     }
@@ -657,38 +671,38 @@ if (!global.OpCodes && typeof require !== 'undefined') {
     constructor() {
       super(384, 4);
       this.name = "Luffa-384";
-      this.description = "SHA-3 candidate hash function producing 384-bit outputs using 4 parallel state chains with sponge construction.";
+      this.description = "SHA-3 candidate hash function producing 384-bit outputs using 4 parallel state chains with a sponge-like construction. Eliminated in round 2 of the NIST SHA-3 competition.";
 
       this.tests = [
         {
-          text: "NIST Vector #0 (empty)",
+          text: "NIST Vector (0 bits)",
           uri: "https://github.com/pornin/sphlib/blob/master/c/test_luffa.c",
-          input: nistTestData(0),
-          expected: OpCodes.Hex8ToBytes("1574ACBC52E11071FE50D4C301ED8E33C2EE0C5348B2F4D575FF829D0C1D0C29A5ED09FB0FF33F7BC8950419396D73BB")
+          input: NIST_MSG_0,
+          expected: OpCodes.Hex8ToBytes("117D3AD49024DFE2994F4E335C9B330B48C537A13A9B7FA465938E1A02FF862BCDF33838BC0F371B045D26952D3EA0C5")
         },
         {
-          text: "NIST Vector #1 (8 bits)",
+          text: "NIST Vector (8 bits)",
           uri: "https://github.com/pornin/sphlib/blob/master/c/test_luffa.c",
-          input: nistTestData(8),
-          expected: OpCodes.Hex8ToBytes("B7E898FA8B10CAC81E77E62FC5CE6F9EC6E450D850DFFACB5F9C2BEC55F51D0FC7F1F90D03F8BFB1A557C3B1C87F2C53")
+          input: NIST_MSG_8,
+          expected: OpCodes.Hex8ToBytes("E1979D16848976CA9FF183EC28998AB3D4B56942497F8E2C6D51895A96C7465DF6D7B66D6BA9636A16DBE51AAE6D2EB9")
         },
         {
-          text: "NIST Vector #2 (16 bits)",
+          text: "NIST Vector (16 bits)",
           uri: "https://github.com/pornin/sphlib/blob/master/c/test_luffa.c",
-          input: nistTestData(16),
-          expected: OpCodes.Hex8ToBytes("AFD1D1E5D98FFF0AE06FEBEE4BF0BC01F634C29B13B0C1DCE411F5FA8F747301F12D79B48D0ECC53EF435F83F6F70E5E")
+          input: NIST_MSG_16,
+          expected: OpCodes.Hex8ToBytes("836E9C8429D4A071935C72B0E575EA4CCA81642DC14A98A87307E02AC2D812682CE3EEAF8043330A7EA5CBE3A578B5D2")
         },
         {
-          text: "NIST Vector #3 (24 bits)",
+          text: "NIST Vector (24 bits)",
           uri: "https://github.com/pornin/sphlib/blob/master/c/test_luffa.c",
-          input: nistTestData(24),
-          expected: OpCodes.Hex8ToBytes("D92CD1063C5095B7ACA8478AAFCB668C14C3C83CF3049D0F15309C7E57E11EBF12A1B60AD4E92092F77DD5CF4C1A5360")
+          input: NIST_MSG_24,
+          expected: OpCodes.Hex8ToBytes("0AFF61867C087908D2B9742012BB980CAE833C79FD4ECAAEA31BC1279F4CE356D6308C36D1FD0DBE70F652B0E2C66D35")
         },
         {
-          text: "NIST Vector #4 (32 bits)",
+          text: "NIST Vector (32 bits)",
           uri: "https://github.com/pornin/sphlib/blob/master/c/test_luffa.c",
-          input: nistTestData(32),
-          expected: OpCodes.Hex8ToBytes("CC7A948F35CDC74E064B3A7EEBDA73D8D2B92B2E31DC8CCF3F2FF649FED99E9B7A925AB4D9AAA7A0B1A8F9F7E5E3C17D")
+          input: NIST_MSG_32,
+          expected: OpCodes.Hex8ToBytes("3736466CA7DC43A81025378E6CE678FE010EBB06382A73113AF39104CEA0F9BF00E27D12E0A1E7F37516E5CD0F2E9752")
         }
       ];
     }
@@ -699,38 +713,38 @@ if (!global.OpCodes && typeof require !== 'undefined') {
     constructor() {
       super(512, 5);
       this.name = "Luffa-512";
-      this.description = "SHA-3 candidate hash function producing 512-bit outputs using 5 parallel state chains with sponge construction.";
+      this.description = "SHA-3 candidate hash function producing 512-bit outputs using 5 parallel state chains with a sponge-like construction. Eliminated in round 2 of the NIST SHA-3 competition.";
 
       this.tests = [
         {
-          text: "NIST Vector #0 (empty)",
+          text: "NIST Vector (0 bits)",
           uri: "https://github.com/pornin/sphlib/blob/master/c/test_luffa.c",
-          input: nistTestData(0),
-          expected: OpCodes.Hex8ToBytes("5E7B3E495F6AB946A70AB0DE9D45E4FE87BE24CD44DD5C389A6AFDB6266A3C9C0F0BB6C10B1EB08B89FA54F44460827C2A09A91B3E07BB68E4A7B67C3D9D5B8C")
+          input: NIST_MSG_0,
+          expected: OpCodes.Hex8ToBytes("6E7DE4501189B3CA58F3AC114916654BBCD4922024B4CC1CD764ACFE8AB4B7805DF133EAB345FFDB1C414564C924F48E0A301824E2AC4C34BD4EFDE2E43DA90E")
         },
         {
-          text: "NIST Vector #1 (8 bits)",
+          text: "NIST Vector (8 bits)",
           uri: "https://github.com/pornin/sphlib/blob/master/c/test_luffa.c",
-          input: nistTestData(8),
-          expected: OpCodes.Hex8ToBytes("78E039F8F68850CFD498E05B7CE32BB9CCFE0BB0EBD0D7AF5D59E1EE5E7B5E50A27E8E6E52F656FC7A54D8EF92E76FDD8A394DA8072E5A551C7CF59C86C59DF5")
+          input: NIST_MSG_8,
+          expected: OpCodes.Hex8ToBytes("91F1B09B2842871BC2F069E5D278D2D707DDAFABFE3CED5154FAF841E96781908290E6533D146183E8B7EC298F6DA20E0CFB1D41F4F711A3050FAA8DD4641F7F")
         },
         {
-          text: "NIST Vector #2 (16 bits)",
+          text: "NIST Vector (16 bits)",
           uri: "https://github.com/pornin/sphlib/blob/master/c/test_luffa.c",
-          input: nistTestData(16),
-          expected: OpCodes.Hex8ToBytes("0BD4C3EA2BD0CA06F85F26AEDBD49090B91A65F6B734B8E73BCBE1553C95CF6B3AE7BA22CEACE2FE85C4CD2C2E5C5F6AE73FAC16E4E5F7F0FC6D71E3CAF4C6F8")
+          input: NIST_MSG_16,
+          expected: OpCodes.Hex8ToBytes("3448D8766E1C8CF84CA83D0882305A8EBCAB3F9C5B87F8F1BB94EC8ABBE86320E6D33024FBE9363595ED3B36BF49A5440A1248F0606940AEC1321FC74DBB6BE5")
         },
         {
-          text: "NIST Vector #3 (24 bits)",
+          text: "NIST Vector (24 bits)",
           uri: "https://github.com/pornin/sphlib/blob/master/c/test_luffa.c",
-          input: nistTestData(24),
-          expected: OpCodes.Hex8ToBytes("B25AE5EDAE11A63E9E8C9503C5A8CF5B77DC26EC03A9C5DEB6D73FE8AF4D6597F16A25ECE1932A2682A5EA3D23D5A39679C5F55EE5B8EED6D62A6BBFA58E5A90")
+          input: NIST_MSG_24,
+          expected: OpCodes.Hex8ToBytes("327ED73E847B90A1D098250020E45915CE4991B686E3920043AB17F026B2D3C77F9FED996673D527E4A1F628FB2F4F05949D3EABB0B00D9967063877E4370015")
         },
         {
-          text: "NIST Vector #4 (32 bits)",
+          text: "NIST Vector (32 bits)",
           uri: "https://github.com/pornin/sphlib/blob/master/c/test_luffa.c",
-          input: nistTestData(32),
-          expected: OpCodes.Hex8ToBytes("D2A72CA6D57E3B4E27D2CD23D10F3E5F8E26CEBD2FECB8CA8F8A265DCFC09AEB0D7BC49EABD4E16DA91BBC80E07D1B1C9A7B39E69B9E7E8E39B66C22DFFC0155")
+          input: NIST_MSG_32,
+          expected: OpCodes.Hex8ToBytes("D6C06A024D386A58A01D9C5852229593F2197BD9F3AFC9EB3F3230807D99C06D8EEB7AA36D7EEA74FDA69EC1356191985CADEDB24BF0C312BA1DB9E974442B16")
         }
       ];
     }
@@ -751,14 +765,17 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       this.blockSize = 32; // 256 bits = 32 bytes per block
 
       // Initialize state chains
+      this._resetState();
+
+      this.buffer = [];
+    }
+
+    _resetState() {
       this.v0 = new Uint32Array(V_INIT[0]);
       this.v1 = new Uint32Array(V_INIT[1]);
       this.v2 = new Uint32Array(V_INIT[2]);
-      this.v3 = numChains >= 4 ? new Uint32Array(V_INIT[3]) : null;
-      this.v4 = numChains >= 5 ? new Uint32Array(V_INIT[4]) : null;
-
-      this.buffer = [];
-      this.totalBits = 0;
+      this.v3 = this.numChains >= 4 ? new Uint32Array(V_INIT[3]) : null;
+      this.v4 = this.numChains >= 5 ? new Uint32Array(V_INIT[4]) : null;
     }
 
     /**
@@ -770,17 +787,18 @@ if (!global.OpCodes && typeof require !== 'undefined') {
     Feed(data) {
       if (!data || data.length === 0) return;
 
-      this.buffer.push(...data);
-      this.totalBits += data.length * 8;
+      for (let i = 0; i < data.length; ++i) {
+        this.buffer.push(data[i]);
 
-      // Process complete blocks
-      while (this.buffer.length >= this.blockSize) {
-        this.processBlock(this.buffer.splice(0, this.blockSize));
+        if (this.buffer.length === this.blockSize) {
+          this._injectAndPermute(this._decodeBlock(this.buffer));
+          this.buffer = [];
+        }
       }
     }
 
-    processBlock(block) {
-      // Decode 32 bytes as 8 big-endian 32-bit words
+    // Decode a 32-byte block into 8 big-endian 32-bit words
+    _decodeBlock(block) {
       const msg = new Uint32Array(8);
       for (let i = 0; i < 8; ++i) {
         msg[i] = OpCodes.Pack32BE(
@@ -790,18 +808,35 @@ if (!global.OpCodes && typeof require !== 'undefined') {
           block[i * 4 + 3]
         );
       }
+      return msg;
+    }
 
-      // Message injection based on number of chains
+    // Perform one message injection + permutation round for however
+    // many chains this variant uses
+    _injectAndPermute(msg) {
       if (this.numChains === 3) {
         messageInjection3(this.v0, this.v1, this.v2, msg);
         permutation3(this.v0, this.v1, this.v2);
       } else if (this.numChains === 4) {
         messageInjection4(this.v0, this.v1, this.v2, this.v3, msg);
         permutation4(this.v0, this.v1, this.v2, this.v3);
-      } else if (this.numChains === 5) {
+      } else {
         messageInjection5(this.v0, this.v1, this.v2, this.v3, this.v4, msg);
         permutation5(this.v0, this.v1, this.v2, this.v3, this.v4);
       }
+    }
+
+    // XOR-combine the 8 words of every active chain
+    _combineWords() {
+      const out = new Uint32Array(8);
+      for (let i = 0; i < 8; ++i) {
+        let word = OpCodes.Xor32(this.v0[i], this.v1[i]);
+        word = OpCodes.Xor32(word, this.v2[i]);
+        if (this.numChains >= 4) word = OpCodes.Xor32(word, this.v3[i]);
+        if (this.numChains >= 5) word = OpCodes.Xor32(word, this.v4[i]);
+        out[i] = word;
+      }
+      return out;
     }
 
     /**
@@ -811,69 +846,56 @@ if (!global.OpCodes && typeof require !== 'undefined') {
    */
 
     Result() {
-      // Padding: fill remaining buffer with 0x80 followed by zeros
-      // Pad to complete a full block
-      this.buffer.push(0x80);
-      while (this.buffer.length < this.blockSize) {
-        this.buffer.push(0x00);
+      // Padding: buffered bytes + 0x80 marker + zero fill to a full block
+      const bufLen = this.buffer.length;
+      const finalBlock = new Uint8Array(this.blockSize);
+      for (let i = 0; i < bufLen; ++i) {
+        finalBlock[i] = this.buffer[i];
       }
+      finalBlock[bufLen] = 0x80;
 
-      // Finalization: TWO rounds of MI+P
-      // First round uses the padded buffer, second uses zeros
+      const finalMsg = this._decodeBlock(finalBlock);
       const zeroMsg = new Uint32Array(8);
+      const outputBytes = this.outputBits / 8;
 
-      for (let round = 0; round < 2; ++round) {
-        const msg = new Uint32Array(8);
+      // Finalization: one message-carrying round, followed by one blank
+      // round (3-chain variants) or two blank rounds (4/5-chain
+      // variants). The extra blank round on the larger variants squeezes
+      // out the additional output words needed beyond a single 32-byte
+      // state XOR (sphlib luffa3_close/luffa4_close/luffa5_close).
+      const totalRounds = (this.numChains === 3) ? 2 : 3;
+      const outWords = [];
 
-        if (round === 0 && this.buffer.length === this.blockSize) {
-          // First round: use padded buffer
-          for (let i = 0; i < 8; ++i) {
-            msg[i] = OpCodes.Pack32BE(
-              this.buffer[i * 4],
-              this.buffer[i * 4 + 1],
-              this.buffer[i * 4 + 2],
-              this.buffer[i * 4 + 3]
-            );
-          }
-          this.buffer = []; // Clear buffer
-        }
-        // Else: msg stays as zeros
+      for (let round = 0; round < totalRounds; ++round) {
+        this._injectAndPermute(round === 0 ? finalMsg : zeroMsg);
 
         if (this.numChains === 3) {
-          messageInjection3(this.v0, this.v1, this.v2, msg);
-          permutation3(this.v0, this.v1, this.v2);
-        } else if (this.numChains === 4) {
-          messageInjection4(this.v0, this.v1, this.v2, this.v3, msg);
-          permutation4(this.v0, this.v1, this.v2, this.v3);
-        } else if (this.numChains === 5) {
-          messageInjection5(this.v0, this.v1, this.v2, this.v3, this.v4, msg);
-          permutation5(this.v0, this.v1, this.v2, this.v3, this.v4);
+          if (round === totalRounds - 1) {
+            const combined = this._combineWords();
+            const wordsNeeded = Math.ceil(outputBytes / 4);
+            for (let w = 0; w < wordsNeeded; ++w) outWords.push(combined[w]);
+          }
+        } else if (round === 1) {
+          const combined = this._combineWords();
+          for (let w = 0; w < 8; ++w) outWords.push(combined[w]);
+        } else if (round === 2) {
+          const combined = this._combineWords();
+          const wordsNeeded = Math.ceil((outputBytes - 32) / 4);
+          for (let w = 0; w < wordsNeeded; ++w) outWords.push(combined[w]);
         }
       }
 
-      // Combine state chains by XOR
-      const output = new Uint32Array(8);
-      for (let i = 0; i < 8; ++i) {
-        output[i] = this.v0[i];
-        output[i] = (output[i] ^ this.v1[i]) >>> 0;
-        output[i] = (output[i] ^ this.v2[i]) >>> 0;
-        if (this.numChains >= 4) {
-          output[i] = (output[i] ^ this.v3[i]) >>> 0;
-        }
-        if (this.numChains >= 5) {
-          output[i] = (output[i] ^ this.v4[i]) >>> 0;
-        }
+      const output = [];
+      for (let i = 0; i < outWords.length; ++i) {
+        const bytes = OpCodes.Unpack32BE(outWords[i]);
+        output.push(bytes[0], bytes[1], bytes[2], bytes[3]);
       }
 
-      // Convert to bytes (big-endian)
-      const result = [];
-      const outputBytes = this.outputBits / 8;
-      for (let i = 0; i < outputBytes / 4; ++i) {
-        const bytes = OpCodes.Unpack32BE(output[i]);
-        result.push(bytes[0], bytes[1], bytes[2], bytes[3]);
-      }
+      // Re-initialize for potential reuse
+      this._resetState();
+      this.buffer = [];
 
-      return result.slice(0, outputBytes);
+      return output.slice(0, outputBytes);
     }
   }
 

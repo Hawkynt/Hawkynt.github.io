@@ -78,6 +78,10 @@ class Dragon extends StreamCipherAlgorithm {
       new LinkItem("Cryptanalysis of Dragon", "https://eprint.iacr.org/2006/151.pdf")
     ];
 
+    this.references = [
+      new LinkItem("eSTREAM Benchmark Suite (includes official Dragon reference C submission)", "https://cr.yp.to/streamciphers/timings.html")
+    ];
+
     this.vulnerabilities = [
       new Vulnerability("Distinguishing Attack", "Multiple cryptanalytic attacks discovered during eSTREAM evaluation"),
       new Vulnerability("Key Recovery", "Practical attacks on the cipher structure")

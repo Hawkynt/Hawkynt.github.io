@@ -92,6 +92,11 @@
         new LinkItem("Network Coding Survey", "https://ieeexplore.ieee.org/document/5439036")
       ];
 
+      this.references = [
+        new LinkItem("oclib Online Codes Implementation", "https://github.com/vesselinux/oclib"),
+        new LinkItem("Google gofountain Online Code Implementation", "https://github.com/google/gofountain/blob/master/online.go")
+      ];
+
       // Vulnerabilities
       this.vulnerabilities = [
         new Vulnerability(

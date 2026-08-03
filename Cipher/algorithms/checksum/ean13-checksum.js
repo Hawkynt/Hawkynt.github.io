@@ -57,6 +57,10 @@
         new LinkItem("Barcode Generator", "https://www.gs1.org/services/barcodes/generator")
       ];
 
+      this.references = [
+        new LinkItem("python-stdnum EAN implementation", "https://github.com/arthurdejong/python-stdnum/blob/master/stdnum/ean.py")
+      ];
+
       this.notes = [
         "Format: 13 digits (12 data + 1 check)",
         "Country/company code: 7-9 digits",

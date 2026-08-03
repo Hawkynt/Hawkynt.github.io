@@ -196,6 +196,10 @@
         new LinkItem("Reference Implementation (Skinny-C)", "https://github.com/rweather/skinny-c")
       ];
 
+      this.references = [
+        new LinkItem("Skinny-C MANTIS Source (mantis-cipher.c)", "https://github.com/rweather/skinny-c/blob/master/src/mantis-cipher.c")
+      ];
+
       // Test vectors from skinny-c reference implementation
       // User-provided test vector (b72209464676ba25 for all-zero input) has NOT been verified
       //  against official sources and is not included until verification is possible.

@@ -58,6 +58,10 @@
         new LinkItem("Sum Checksums Explained", "https://stackoverflow.com/questions/71162153/")
       ];
 
+      this.references = [
+        new LinkItem("GNU coreutils sum.c reference implementation", "https://github.com/coreutils/coreutils/blob/master/src/sum.c")
+      ];
+
       this.tests = [
         new TestCase(
           [0x01, 0x02, 0x03, 0x04],
@@ -151,6 +155,10 @@
 
       this.documentation = [
         new LinkItem("Checksum Algorithms", "https://en.wikipedia.org/wiki/Checksum")
+      ];
+
+      this.references = [
+        new LinkItem("GNU coreutils sum.c reference implementation", "https://github.com/coreutils/coreutils/blob/master/src/sum.c")
       ];
 
       this.tests = [
@@ -249,6 +257,10 @@
 
       this.documentation = [
         new LinkItem("Checksum Algorithms", "https://en.wikipedia.org/wiki/Checksum")
+      ];
+
+      this.references = [
+        new LinkItem("GNU coreutils sum.c reference implementation", "https://github.com/coreutils/coreutils/blob/master/src/sum.c")
       ];
 
       this.tests = [

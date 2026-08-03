@@ -88,6 +88,11 @@
         new LinkItem("Bluetooth E0 Specification", "https://www.bluetooth.com/specifications/")
       ];
 
+      this.references = [
+        new LinkItem("E0 Reference C Implementation (adelmas/e0)", "https://github.com/adelmas/e0"),
+        new LinkItem("KNOB Attack E0 Implementation", "https://github.com/francozappa/knob/tree/master/e0")
+      ];
+
       // Known vulnerabilities
       this.knownVulnerabilities = [
         new Vulnerability(

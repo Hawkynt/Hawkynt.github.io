@@ -120,8 +120,15 @@
           "NIST Lightweight Cryptography Project",
           "https://csrc.nist.gov/projects/lightweight-cryptography"
         ),
+      ];
+
+      this.references = [
         new LinkItem(
-          "Reference Implementation (C)",
+          "rweather/TinyJAMBU Official-Author-Adjacent Reference (C)",
+          "https://github.com/rweather/TinyJAMBU"
+        ),
+        new LinkItem(
+          "rweather/lwc-finalists C Reference (embedded-optimized)",
           "https://github.com/rweather/lwc-finalists"
         )
       ];

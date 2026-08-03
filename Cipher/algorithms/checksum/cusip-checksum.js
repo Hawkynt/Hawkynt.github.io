@@ -57,6 +57,10 @@
         new LinkItem("SEC EDGAR Search", "https://www.sec.gov/edgar/searchedgar/companysearch.html")
       ];
 
+      this.references = [
+        new LinkItem("python-stdnum CUSIP implementation", "https://github.com/arthurdejong/python-stdnum/blob/master/stdnum/cusip.py")
+      ];
+
       this.notes = [
         "Format: 6 issuer ID + 2 issue ID + 1 check digit",
         "Character values: 0-9 = numeric, A-Z = 10-35, * = 36, @ = 37, # = 38",

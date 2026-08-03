@@ -97,7 +97,11 @@
         new global.AlgorithmFramework.LinkItem('Original SQIsign Paper', 'https://eprint.iacr.org/2020/1240'),
         new global.AlgorithmFramework.LinkItem('NIST Round 2 Specification', 'https://csrc.nist.gov/projects/pqc-dig-sig')
       ];
-      
+
+      this.references = [
+        new global.AlgorithmFramework.LinkItem('Official SQIsign Reference Implementation', 'https://github.com/SQISign/the-sqisign')
+      ];
+
       this.knownVulnerabilities = [
         new global.AlgorithmFramework.Vulnerability(
           'Side-Channel Attacks',

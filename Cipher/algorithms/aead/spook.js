@@ -459,6 +459,12 @@
         new LinkItem("NIST LWC Submission", "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/spook-spec-round2.pdf")
       ];
 
+      // Reference implementations
+      this.references = [
+        new LinkItem("Spook Official Reference Implementations", "https://www.spook.dev/implementations.html"),
+        new LinkItem("Spook High-End Software Implementations (uclcrypto/spook-he, GitHub)", "https://github.com/uclcrypto/spook-he")
+      ];
+
       // Test vectors from NIST LWC KAT files
       this.tests = this._getTestVectors();
     }
@@ -496,6 +502,102 @@
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           ad: OpCodes.Hex8ToBytes(""),
           expected: OpCodes.Hex8ToBytes("2848C938FCE8CD25C243326E56778432AB")
+        });
+      } else if (this.variant === 'su' && this.shadowSize === 384) {
+        // Spook-128-384-su test vectors
+        // Source: Spook reference implementation v1.0.1, crypto_aead/spook128su384v1/LWC_AEAD_KAT_128_128.txt
+        vectors.push({
+          text: "Spook reference KAT #1 - Empty PT, Empty AD",
+          uri: "https://www.spook.dev/assets/spook-ref-implem-v1.0.1.zip (crypto_aead/spook128su384v1/LWC_AEAD_KAT_128_128.txt)",
+          input: OpCodes.Hex8ToBytes(""),
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          ad: OpCodes.Hex8ToBytes(""),
+          expected: OpCodes.Hex8ToBytes("FC48E447519B6B75D2BCBF63040F5A18")
+        });
+
+        vectors.push({
+          text: "Spook reference KAT #2 - Empty PT, 1-byte AD",
+          uri: "https://www.spook.dev/assets/spook-ref-implem-v1.0.1.zip (crypto_aead/spook128su384v1/LWC_AEAD_KAT_128_128.txt)",
+          input: OpCodes.Hex8ToBytes(""),
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          ad: OpCodes.Hex8ToBytes("00"),
+          expected: OpCodes.Hex8ToBytes("00B0214E9F2A7FBE2CE22EBE42337867")
+        });
+
+        vectors.push({
+          text: "Spook reference KAT #34 - 1-byte PT, Empty AD",
+          uri: "https://www.spook.dev/assets/spook-ref-implem-v1.0.1.zip (crypto_aead/spook128su384v1/LWC_AEAD_KAT_128_128.txt)",
+          input: OpCodes.Hex8ToBytes("00"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          ad: OpCodes.Hex8ToBytes(""),
+          expected: OpCodes.Hex8ToBytes("C844F77B117566B8C9DBEA56D38BEAA1B1")
+        });
+      } else if (this.variant === 'mu' && this.shadowSize === 512) {
+        // Spook-128-512-mu test vectors
+        // Source: Spook reference implementation v1.0.1, crypto_aead/spook128mu512v1/LWC_AEAD_KAT_256_128.txt
+        vectors.push({
+          text: "Spook reference KAT #1 - Empty PT, Empty AD",
+          uri: "https://www.spook.dev/assets/spook-ref-implem-v1.0.1.zip (crypto_aead/spook128mu512v1/LWC_AEAD_KAT_256_128.txt)",
+          input: OpCodes.Hex8ToBytes(""),
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          ad: OpCodes.Hex8ToBytes(""),
+          expected: OpCodes.Hex8ToBytes("2EF04011DD3048E837440A3022718522")
+        });
+
+        vectors.push({
+          text: "Spook reference KAT #2 - Empty PT, 1-byte AD",
+          uri: "https://www.spook.dev/assets/spook-ref-implem-v1.0.1.zip (crypto_aead/spook128mu512v1/LWC_AEAD_KAT_256_128.txt)",
+          input: OpCodes.Hex8ToBytes(""),
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          ad: OpCodes.Hex8ToBytes("00"),
+          expected: OpCodes.Hex8ToBytes("080E0CEB34E942238BE8C87E91E6F8A5")
+        });
+
+        vectors.push({
+          text: "Spook reference KAT #34 - 1-byte PT, Empty AD",
+          uri: "https://www.spook.dev/assets/spook-ref-implem-v1.0.1.zip (crypto_aead/spook128mu512v1/LWC_AEAD_KAT_256_128.txt)",
+          input: OpCodes.Hex8ToBytes("00"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          ad: OpCodes.Hex8ToBytes(""),
+          expected: OpCodes.Hex8ToBytes("59652011CF0BFAD1D4544FD4B40D820CE8")
+        });
+      } else if (this.variant === 'mu' && this.shadowSize === 384) {
+        // Spook-128-384-mu test vectors
+        // Source: Spook reference implementation v1.0.1, crypto_aead/spook128mu384v1/LWC_AEAD_KAT_256_128.txt
+        vectors.push({
+          text: "Spook reference KAT #1 - Empty PT, Empty AD",
+          uri: "https://www.spook.dev/assets/spook-ref-implem-v1.0.1.zip (crypto_aead/spook128mu384v1/LWC_AEAD_KAT_256_128.txt)",
+          input: OpCodes.Hex8ToBytes(""),
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          ad: OpCodes.Hex8ToBytes(""),
+          expected: OpCodes.Hex8ToBytes("F415781FC0DD665660200DA92DA17D2A")
+        });
+
+        vectors.push({
+          text: "Spook reference KAT #2 - Empty PT, 1-byte AD",
+          uri: "https://www.spook.dev/assets/spook-ref-implem-v1.0.1.zip (crypto_aead/spook128mu384v1/LWC_AEAD_KAT_256_128.txt)",
+          input: OpCodes.Hex8ToBytes(""),
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          ad: OpCodes.Hex8ToBytes("00"),
+          expected: OpCodes.Hex8ToBytes("F7C7B3FC3752534A734908386D3C29DF")
+        });
+
+        vectors.push({
+          text: "Spook reference KAT #34 - 1-byte PT, Empty AD",
+          uri: "https://www.spook.dev/assets/spook-ref-implem-v1.0.1.zip (crypto_aead/spook128mu384v1/LWC_AEAD_KAT_256_128.txt)",
+          input: OpCodes.Hex8ToBytes("00"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          ad: OpCodes.Hex8ToBytes(""),
+          expected: OpCodes.Hex8ToBytes("26BDA1F2538E0859C6B17555D63F61E8C1")
         });
       }
 

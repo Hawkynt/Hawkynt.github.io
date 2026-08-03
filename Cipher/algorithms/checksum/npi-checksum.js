@@ -57,6 +57,10 @@
         new LinkItem("HIPAA NPI Requirements", "https://www.cms.gov/Regulations-and-Guidance/Administrative-Simplification/NationalProvIdentStand")
       ];
 
+      this.references = [
+        new LinkItem("python-stdnum US NPI implementation", "https://github.com/arthurdejong/python-stdnum/blob/master/stdnum/us/npi.py")
+      ];
+
       this.notes = [
         "Format: 10 digits (9 data + 1 check)",
         "All NPIs: First digit is always '1' or '2'",

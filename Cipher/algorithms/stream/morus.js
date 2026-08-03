@@ -64,6 +64,12 @@ class MORUS extends StreamCipherAlgorithm {
       new LinkItem("CAESAR Competition", "https://competitions.cr.yp.to/")
     ];
 
+    this.references = [
+      new LinkItem("MORUS Reference Implementation (Designers)", "https://www3.ntu.edu.sg/home/wuhj/research/caesar/finalist_code/morusv2_code.zip"),
+      new LinkItem("Hongjun Wu CAESAR Research Page", "https://www3.ntu.edu.sg/home/wuhj/research/caesar/caesar.html"),
+      new LinkItem("MORUS-1280-256 Go Port (derived from reference code)", "https://github.com/Yawning/morus")
+    ];
+
     this.vulnerabilities = [
       new Vulnerability("State Recovery", "Potential state recovery in certain configurations"),
       new Vulnerability("Not Standardized", "CAESAR finalist but not standardized - use for research only")

@@ -83,6 +83,10 @@
         new LinkItem("Wikipedia: SNOW", "https://en.wikipedia.org/wiki/SNOW")
       ];
 
+      this.references = [
+        new LinkItem("CryptoMobile C Reference (ETSI/SAGE-derived)", "https://github.com/mitshell/CryptoMobile")
+      ];
+
       // Security notes
       this.knownVulnerabilities = [
         new Vulnerability(

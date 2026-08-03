@@ -385,6 +385,17 @@
         )
       ];
 
+      this.references = [
+        new LinkItem(
+          "DryGASCON Reference Implementation (defines GASCON permutation)",
+          "https://github.com/sebastien-riou/DryGASCON"
+        ),
+        new LinkItem(
+          "NIST LWC Round 2 Submission Package",
+          "https://csrc.nist.gov/projects/lightweight-cryptography/round-2-candidates"
+        )
+      ];
+
       this.tests = [
         {
           text: "GASCON-128: Empty message, empty AAD (Count 1)",
@@ -857,6 +868,13 @@
         new LinkItem(
           "DryGASCON Specification",
           "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/finalist-round/updated-spec-doc/drygascon-spec-final.pdf"
+        )
+      ];
+
+      this.references = [
+        new LinkItem(
+          "NIST LWC Round 2 Submission Package (Reference C)",
+          "https://csrc.nist.gov/projects/lightweight-cryptography/round-2-candidates"
         )
       ];
 

@@ -273,6 +273,10 @@
         )
       ];
 
+      this.references = [
+        new LinkItem("Official SPARKLE/Esch reference implementation (cryptolu team)", "https://github.com/cryptolu/sparkle")
+      ];
+
       // Official NIST LWC test vectors from Esch384.txt
       this.tests = [
         {

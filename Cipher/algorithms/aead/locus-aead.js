@@ -531,6 +531,17 @@
         )
       ];
 
+      this.references = [
+        new LinkItem(
+          "LOTUS-AEAD and LOCUS-AEAD NIST LWC Round 1 Submission Package (Reference C Code)",
+          "https://csrc.nist.gov/CSRC/media/Projects/Lightweight-Cryptography/documents/round-1/submissions/lotus-locus.zip"
+        ),
+        new LinkItem(
+          "LOTUS/LOCUS Official Project Page (ISI Kolkata)",
+          "https://www.isical.ac.in/~lightweight/lotus/"
+        )
+      ];
+
       // Test vectors from NIST LOCUS-AEAD.txt
       this.tests = [
         {

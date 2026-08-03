@@ -56,6 +56,10 @@ class SC2000 extends BlockCipherAlgorithm {
       new LinkItem("SC2000 Specification", "https://www.fujitsu.com/global/about/research/external-activities/crypto/sc2000.html")
     ];
 
+    this.references = [
+      new LinkItem("embeddedsw.net libObfuscate SC2000 Implementation", "https://embeddedsw.net/Cipher_Reference_Home.html")
+    ];
+
     this.tests = [
       {
         text: "SC2000 Test Vector 1",

@@ -131,6 +131,17 @@
         )
       ];
 
+      this.references = [
+        new LinkItem(
+          "BouncyCastle TupleHash implementation",
+          "https://github.com/bcgit/bc-java/blob/main/core/src/main/java/org/bouncycastle/crypto/digests/TupleHash.java"
+        ),
+        new LinkItem(
+          "XKCP - eXtended Keccak Code Package",
+          "https://github.com/XKCP/XKCP"
+        )
+      ];
+
       // Official NIST test vectors from SP 800-185 (via BouncyCastle)
       this.tests = [
         {
@@ -215,6 +226,17 @@
         new LinkItem(
           "NIST Test Vectors",
           "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/KMAC_samples.pdf"
+        )
+      ];
+
+      this.references = [
+        new LinkItem(
+          "BouncyCastle TupleHash implementation",
+          "https://github.com/bcgit/bc-java/blob/main/core/src/main/java/org/bouncycastle/crypto/digests/TupleHash.java"
+        ),
+        new LinkItem(
+          "XKCP - eXtended Keccak Code Package",
+          "https://github.com/XKCP/XKCP"
         )
       ];
 

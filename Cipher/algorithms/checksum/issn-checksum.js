@@ -57,6 +57,10 @@
         new LinkItem("ISSN Portal", "https://portal.issn.org/")
       ];
 
+      this.references = [
+        new LinkItem("python-stdnum ISSN implementation", "https://github.com/arthurdejong/python-stdnum/blob/master/stdnum/issn.py")
+      ];
+
       this.notes = [
         "Format: 8 digits, often written as XXXX-XXXX",
         "Position 8: Check digit (0-9 or X for 10)",

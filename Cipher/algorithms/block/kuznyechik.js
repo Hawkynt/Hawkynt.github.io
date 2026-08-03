@@ -278,6 +278,11 @@
         new LinkItem("Wikipedia - Kuznyechik", "https://en.wikipedia.org/wiki/Kuznyechik")
       ];
 
+      this.references = [
+        new LinkItem("Botan Kuznyechik Implementation", "https://github.com/randombit/botan/blob/master/src/lib/block/kuznyechik/kuznyechik.cpp"),
+        new LinkItem("gost-engine Reference Implementation (OpenSSL)", "https://github.com/gost-engine/engine")
+      ];
+
       // Official test vectors from RFC 7801 Sections 5.4, 5.5, 5.6
       this.tests = [
         {

@@ -190,20 +190,12 @@
 
       this._key = [...keyBytes];
 
-      // Load AES algorithm from framework for proper encryption
+      // Load AES algorithm from framework for proper encryption (registry-first, plain require fallback)
       let aesAlgorithm = AlgorithmFramework.Find("Rijndael (AES)") || AlgorithmFramework.Find("AES");
 
-      // Try to load AES dynamically if not found
       if (!aesAlgorithm && typeof require !== 'undefined') {
-        try {
-          // Load rijndael.js which will self-register with AlgorithmFramework
-          const rijndaelPath = require.resolve('../block/rijndael.js');
-          delete require.cache[rijndaelPath]; // Clear cache to force reload
-          require('../block/rijndael.js');
-          aesAlgorithm = AlgorithmFramework.Find("Rijndael (AES)") || AlgorithmFramework.Find("AES");
-        } catch (loadError) {
-          // Fall back to built-in AES
-        }
+        try { require('../block/rijndael.js'); } catch (loadError) { /* fall back to built-in AES */ }
+        aesAlgorithm = AlgorithmFramework.Find("Rijndael (AES)") || AlgorithmFramework.Find("AES");
       }
 
       if (aesAlgorithm) {

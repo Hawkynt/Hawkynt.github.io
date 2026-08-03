@@ -68,8 +68,11 @@
       this.SupportedBlockSizes = [new KeySize(1, 65536, 1)];
 
       this.documentation = [
-        new LinkItem("Wheeler: A Bulk Data Encryption Algorithm", "https://www.cl.cam.ac.uk/techreports/UCAM-CL-TR-249.pdf"),
-        new LinkItem("Crypto++ WAKE Implementation", "https://github.com/weidai11/cryptopp/blob/master/wake.cpp")
+        new LinkItem("Wheeler: A Bulk Data Encryption Algorithm", "https://www.cl.cam.ac.uk/techreports/UCAM-CL-TR-249.pdf")
+      ];
+
+      this.references = [
+        new LinkItem("Crypto++ WAKE Implementation (from Wheeler's original paper)", "https://github.com/weidai11/cryptopp/blob/master/wake.cpp")
       ];
     }
 

@@ -62,7 +62,7 @@
   function simeck64Round(x, y, rcBit) {
     const rotl5 = OpCodes.RotL32(x, 5);
     const rotl1 = OpCodes.RotL32(x, 1);
-    y = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(y, (rotl5&x)), rotl1), 0xFFFFFFFE), (rcBit&1)) >>> 0;
+    y = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(y, (rotl5&x)), rotl1), 0xFFFFFFFE), (rcBit&1)));
     return y;
   }
 
@@ -160,7 +160,7 @@
 
   // Load 24-bit word (big-endian)
   function loadWord24BE(bytes, offset) {
-    return ((OpCodes.Shl32(bytes[offset], 16))|(OpCodes.Shl32(bytes[offset + 1], 8))|bytes[offset + 2]) >>> 0;
+    return OpCodes.ToUint32((OpCodes.Shl32(bytes[offset], 16))|(OpCodes.Shl32(bytes[offset + 1], 8))|bytes[offset + 2]);
   }
 
   // Store 24-bit word (big-endian)
@@ -174,7 +174,7 @@
   function simeck48Round(x, y, rcBit) {
     const rotl5 = ((OpCodes.Shl32(x, 5))|(OpCodes.Shr32(x, 19)))&0x00FFFFFF;
     const rotl1 = ((OpCodes.Shl32(x, 1))|(OpCodes.Shr32(x, 23)))&0x00FFFFFF;
-    y = ((OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(y, (rotl5&x)), rotl1), 0x00FFFFFE), (rcBit&1)))&0x00FFFFFF) >>> 0;
+    y = OpCodes.ToUint32((OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(y, (rotl5&x)), rotl1), 0x00FFFFFE), (rcBit&1)))&0x00FFFFFF);
     return y;
   }
 
@@ -265,14 +265,17 @@
 
       this.documentation = [
         new LinkItem("SpoC Specification", "https://uwaterloo.ca/communications-security-lab/lwc/spoc"),
-        new LinkItem("NIST LWC Round 2 Package", "https://csrc.nist.gov/projects/lightweight-cryptography/round-2-candidates"),
-        new LinkItem("C Reference Implementation", "https://github.com/rweather/lightweight-crypto")
+        new LinkItem("NIST LWC Round 2 Package", "https://csrc.nist.gov/projects/lightweight-cryptography/round-2-candidates")
+      ];
+
+      this.references = [
+        new LinkItem("rweather/lightweight-crypto C Reference Implementation", "https://github.com/rweather/lightweight-crypto")
       ];
 
       this.tests = [
         {
           text: "NIST LWC KAT Vector #1 - Empty plaintext and AD",
-          uri: "X:/Coding/Working Copies/Hawkynt.git/Hawkynt.github.io/Cipher/Reference Sources/c-cpp-source/academic/lightweight-crypto/test/kat/SpoC-128.txt",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SpoC-128.txt",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           input: OpCodes.Hex8ToBytes(""),
@@ -281,7 +284,7 @@
         },
         {
           text: "NIST LWC KAT Vector #2 - Empty plaintext with single AD byte",
-          uri: "X:/Coding/Working Copies/Hawkynt.git/Hawkynt.github.io/Cipher/Reference Sources/c-cpp-source/academic/lightweight-crypto/test/kat/SpoC-128.txt",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SpoC-128.txt",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           input: OpCodes.Hex8ToBytes(""),
@@ -290,7 +293,7 @@
         },
         {
           text: "NIST LWC KAT Vector #34 - Single plaintext byte, empty AD",
-          uri: "X:/Coding/Working Copies/Hawkynt.git/Hawkynt.github.io/Cipher/Reference Sources/c-cpp-source/academic/lightweight-crypto/test/kat/SpoC-128.txt",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SpoC-128.txt",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           input: OpCodes.Hex8ToBytes("00"),
@@ -299,7 +302,7 @@
         },
         {
           text: "NIST LWC KAT Vector #35 - Single plaintext byte with single AD byte",
-          uri: "X:/Coding/Working Copies/Hawkynt.git/Hawkynt.github.io/Cipher/Reference Sources/c-cpp-source/academic/lightweight-crypto/test/kat/SpoC-128.txt",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SpoC-128.txt",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           input: OpCodes.Hex8ToBytes("00"),
@@ -580,14 +583,17 @@
 
       this.documentation = [
         new LinkItem("SpoC Specification", "https://uwaterloo.ca/communications-security-lab/lwc/spoc"),
-        new LinkItem("NIST LWC Round 2 Package", "https://csrc.nist.gov/projects/lightweight-cryptography/round-2-candidates"),
-        new LinkItem("C Reference Implementation", "https://github.com/rweather/lightweight-crypto")
+        new LinkItem("NIST LWC Round 2 Package", "https://csrc.nist.gov/projects/lightweight-cryptography/round-2-candidates")
+      ];
+
+      this.references = [
+        new LinkItem("rweather/lightweight-crypto C Reference Implementation", "https://github.com/rweather/lightweight-crypto")
       ];
 
       this.tests = [
         {
           text: "NIST LWC KAT Vector #1 - Empty plaintext and AD",
-          uri: "X:/Coding/Working Copies/Hawkynt.git/Hawkynt.github.io/Cipher/Reference Sources/c-cpp-source/academic/lightweight-crypto/test/kat/SpoC-64.txt",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SpoC-64.txt",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           input: OpCodes.Hex8ToBytes(""),
@@ -596,7 +602,7 @@
         },
         {
           text: "NIST LWC KAT Vector #2 - Empty plaintext with single AD byte",
-          uri: "X:/Coding/Working Copies/Hawkynt.git/Hawkynt.github.io/Cipher/Reference Sources/c-cpp-source/academic/lightweight-crypto/test/kat/SpoC-64.txt",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SpoC-64.txt",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           input: OpCodes.Hex8ToBytes(""),
@@ -605,7 +611,7 @@
         },
         {
           text: "NIST LWC KAT Vector #34 - Single plaintext byte, empty AD",
-          uri: "X:/Coding/Working Copies/Hawkynt.git/Hawkynt.github.io/Cipher/Reference Sources/c-cpp-source/academic/lightweight-crypto/test/kat/SpoC-64.txt",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SpoC-64.txt",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           input: OpCodes.Hex8ToBytes("00"),

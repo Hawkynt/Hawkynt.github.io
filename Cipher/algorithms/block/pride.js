@@ -39,7 +39,7 @@
   if (!OpCodes) throw new Error('OpCodes dependency is required');
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          BlockCipherAlgorithm, IBlockCipherInstance, LinkItem, KeySize } = AlgorithmFramework;
+          BlockCipherAlgorithm, IBlockCipherInstance, LinkItem, KeySize, Vulnerability } = AlgorithmFramework;
 
   // S-box (4-bit to 4-bit substitution) - involution property
   const SBOX = [0x0, 0x4, 0x8, 0xF, 0x1, 0x5, 0xE, 0x9, 0x2, 0x7, 0xA, 0xC, 0xB, 0xD, 0x6, 0x3];
@@ -129,7 +129,7 @@
   function bytesToInt(bytes) {
     let result = 0n;
     for (let i = 0; i < 8; ++i) {
-      result = (result << 8n) | BigInt(bytes[i]);
+      result = OpCodes.OrN(OpCodes.ShiftLn(result, 8n), BigInt(bytes[i]));
     }
     return result;
   }
@@ -139,8 +139,8 @@
     // Manual unpacking since OpCodes.Unpack64BE doesn't support BigInt
     const result = new Array(8);
     for (let i = 7; i >= 0; --i) {
-      result[i] = Number(value & 0xFFn);
-      value >>= 8n;
+      result[i] = Number(OpCodes.AndN(value, 0xFFn));
+      value = OpCodes.ShiftRn(value, 8n);
     }
     return result;
   }
@@ -151,9 +151,9 @@
   function applyPermutation(state, perm) {
     let result = 0n;
     for (let i = 0; i < 64; ++i) {
-      const bitValue = (state >> BigInt(i)) & 1n;
+      const bitValue = OpCodes.AndN(OpCodes.ShiftRn(state, BigInt(i)), 1n);
       const outPos = perm[i];
-      result |= bitValue << BigInt(outPos);
+      result |= OpCodes.ShiftLn(bitValue, BigInt(outPos));
     }
     return result;
   }
@@ -162,9 +162,9 @@
   function applySbox(state) {
     let result = 0n;
     for (let i = 0; i < 16; ++i) {
-      const nibble = Number((state >> BigInt(i * 4)) & 0xFn);
+      const nibble = Number(OpCodes.AndN(OpCodes.ShiftRn(state, BigInt(i * 4)), 0xFn));
       const sboxed = SBOX[nibble];
-      result |= BigInt(sboxed) << BigInt(i * 4);
+      result |= OpCodes.ShiftLn(BigInt(sboxed), BigInt(i * 4));
     }
     return result;
   }
@@ -178,13 +178,13 @@
 
     for (let seg = 0; seg < 4; ++seg) {
       // Extract 16-bit segment (4 nibbles)
-      const input = Number((state >> BigInt(seg * 16)) & 0xFFFFn);
+      const input = Number(OpCodes.AndN(OpCodes.ShiftRn(state, BigInt(seg * 16)), 0xFFFFn));
 
       // Apply matrix multiplication
       const output = matrixMult(matrices[seg], input);
 
       // Pack result back
-      result |= BigInt(output) << BigInt(seg * 16);
+      result |= OpCodes.ShiftLn(BigInt(output), BigInt(seg * 16));
     }
 
     return result;
@@ -197,13 +197,13 @@
 
     for (let seg = 0; seg < 4; ++seg) {
       // Extract 16-bit segment (4 nibbles)
-      const input = Number((state >> BigInt(seg * 16)) & 0xFFFFn);
+      const input = Number(OpCodes.AndN(OpCodes.ShiftRn(state, BigInt(seg * 16)), 0xFFFFn));
 
       // Apply inverse matrix multiplication
       const output = matrixMult(invMatrices[seg], input);
 
       // Pack result back
-      result |= BigInt(output) << BigInt(seg * 16);
+      result |= OpCodes.ShiftLn(BigInt(output), BigInt(seg * 16));
     }
 
     return result;
@@ -265,6 +265,19 @@
         new LinkItem("PRIDE Specification (ePrint Archive)", "https://eprint.iacr.org/2014/453"),
         new LinkItem("CRYPTO 2014 Paper", "https://link.springer.com/chapter/10.1007/978-3-662-44371-2_2"),
         new LinkItem("pypride Reference Implementation", "https://github.com/obfusk/pypride")
+      ];
+
+      this.references = [
+        new LinkItem("Differential Analysis on Block Cipher PRIDE", "https://eprint.iacr.org/2014/525"),
+        new LinkItem("Cryptanalysis of Full PRIDE Block Cipher", "https://eprint.iacr.org/2014/987")
+      ];
+
+      this.knownVulnerabilities = [
+        new Vulnerability(
+          "Related-key differential attack",
+          "Full 20-round PRIDE is breakable under the related-key model using related-key differential characteristics derived from its key schedule",
+          "Do not reuse related keys; treat as broken under the related-key model and educational-only"
+        )
       ];
 
       this.tests = [

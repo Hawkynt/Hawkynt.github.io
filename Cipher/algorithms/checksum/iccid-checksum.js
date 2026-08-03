@@ -57,6 +57,10 @@
         new LinkItem("SIM Card Numbering", "https://www.gsma.com/aboutus/wp-content/uploads/2014/12/ts.06-v5.0.pdf")
       ];
 
+      this.references = [
+        new LinkItem("python-stdnum Luhn implementation (used for ICCID check digit)", "https://github.com/arthurdejong/python-stdnum/blob/master/stdnum/luhn.py")
+      ];
+
       this.notes = [
         "Format: 89 CC II... (18-20 digits)",
         "89: Major industry identifier (Telecom)",

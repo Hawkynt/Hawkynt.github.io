@@ -200,9 +200,12 @@
         new LinkItem(
           "Sparkle Project Website",
           "https://sparkle-lwc.github.io/"
-        ),
+        )
+      ];
+
+      this.references = [
         new LinkItem(
-          "GitHub Reference Implementation",
+          "Official Sparkle/Esch reference implementation (cryptolu/sparkle)",
           "https://github.com/cryptolu/sparkle"
         )
       ];

@@ -360,6 +360,10 @@
         new LinkItem("GitHub Reference Implementation", "https://github.com/rweather/lightweight-crypto")
       ];
 
+      this.references = [
+        new LinkItem("NIST LWC Round 2 Submission Package (Reference C)", "https://csrc.nist.gov/projects/lightweight-cryptography/round-2-candidates")
+      ];
+
       // Official NIST LWC test vectors (Known Answer Tests)
       this.tests = [
         {

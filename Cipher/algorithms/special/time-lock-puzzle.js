@@ -69,6 +69,10 @@
           new LinkItem("RSW96: Time-lock puzzles and timed-release Crypto", "https://people.csail.mit.edu/rivest/pubs/RSW96.pdf")
         ];
 
+        this.references = [
+          new LinkItem("Time-Lock Puzzle Reference Implementation (RSW)", "https://github.com/drummerjolev/time-lock-puzzle")
+        ];
+
         this.tests = [
           {
             text: 'Educational Time-Lock Puzzle with short delay',

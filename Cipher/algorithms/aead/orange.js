@@ -57,20 +57,7 @@
   // ===== PHOTON-256 PERMUTATION =====
   // Implementation based on bit-sliced approach from reference code
 
-  const D = 8;
-  const Dq = 3;
-  const Dr = 7;
-  const DSquare = 64;
   const ROUND = 12;
-  const STATE_INBYTES = 32;
-  const PHOTON256_STATE_SIZE = 32;
-
-  // PHOTON permutation round constants
-  const photon256_rc = [
-    0x96d2f0e1, 0xb4f0d2c3, 0xf0b49687, 0x692d0f1e,
-    0x5a1e3c2d, 0x3c785a4b, 0xe1a58796, 0x4b0f2d3c,
-    0x1e5a7869, 0xa5e1c3d2, 0xd296b4a5, 0x2d694b5a
-  ];
 
   // PHOTON S-box (4-bit)
   const sbox = [12, 5, 6, 11, 9, 0, 10, 13, 3, 14, 15, 8, 4, 7, 1, 2];
@@ -87,255 +74,7 @@
     [ 15,  1, 13, 10,  5, 10,  2,  3 ]
   ];
 
-  // Bit permutation helper
-  function bitPermuteStep(y, mask, shift) {
-    const t = OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(y, shift), y), mask);
-    return OpCodes.XorN(OpCodes.XorN(y, t), OpCodes.Shl32(t, shift));
-  }
-
-  // Convert to bit-sliced form
-  function photon256ToSliced(out, input) {
-    let t0, t1, t2, t3;
-
-    // Load and convert first 16 bytes
-    t0 = OpCodes.Unpack32LE(input.slice(0, 4));
-    t1 = OpCodes.Unpack32LE(input.slice(4, 8));
-    t2 = OpCodes.Unpack32LE(input.slice(8, 12));
-    t3 = OpCodes.Unpack32LE(input.slice(12, 16));
-
-    // Bit permutation for slicing
-    t0 = bitPermuteStep(t0, 0x0a0a0a0a, 3);
-    t0 = bitPermuteStep(t0, 0x00cc00cc, 6);
-    t0 = bitPermuteStep(t0, 0x0000f0f0, 12);
-    t0 = bitPermuteStep(t0, 0x0000ff00, 8);
-
-    t1 = bitPermuteStep(t1, 0x0a0a0a0a, 3);
-    t1 = bitPermuteStep(t1, 0x00cc00cc, 6);
-    t1 = bitPermuteStep(t1, 0x0000f0f0, 12);
-    t1 = bitPermuteStep(t1, 0x0000ff00, 8);
-
-    t2 = bitPermuteStep(t2, 0x0a0a0a0a, 3);
-    t2 = bitPermuteStep(t2, 0x00cc00cc, 6);
-    t2 = bitPermuteStep(t2, 0x0000f0f0, 12);
-    t2 = bitPermuteStep(t2, 0x0000ff00, 8);
-
-    t3 = bitPermuteStep(t3, 0x0a0a0a0a, 3);
-    t3 = bitPermuteStep(t3, 0x00cc00cc, 6);
-    t3 = bitPermuteStep(t3, 0x0000f0f0, 12);
-    t3 = bitPermuteStep(t3, 0x0000ff00, 8);
-
-    out[0] = (t0 & 0x000000FF) | ((t1 << 8) & 0x0000FF00) |
-             ((t2 << 16) & 0x00FF0000) | ((t3 << 24) & 0xFF000000);
-    out[1] = ((t0 >>> 8) & 0x000000FF) | (t1 & 0x0000FF00) |
-             ((t2 << 8) & 0x00FF0000) | ((t3 << 16) & 0xFF000000);
-    out[2] = ((t0 >>> 16) & 0x000000FF) | ((t1 >>> 8) & 0x0000FF00) |
-             (t2 & 0x00FF0000) | ((t3 << 8) & 0xFF000000);
-    out[3] = ((t0 >>> 24) & 0x000000FF) | ((t1 >>> 16) & 0x0000FF00) |
-             ((t2 >>> 8) & 0x00FF0000) | (t3 & 0xFF000000);
-
-    // Load and convert second 16 bytes
-    t0 = OpCodes.Unpack32LE(input.slice(16, 20));
-    t1 = OpCodes.Unpack32LE(input.slice(20, 24));
-    t2 = OpCodes.Unpack32LE(input.slice(24, 28));
-    t3 = OpCodes.Unpack32LE(input.slice(28, 32));
-
-    t0 = bitPermuteStep(t0, 0x0a0a0a0a, 3);
-    t0 = bitPermuteStep(t0, 0x00cc00cc, 6);
-    t0 = bitPermuteStep(t0, 0x0000f0f0, 12);
-    t0 = bitPermuteStep(t0, 0x0000ff00, 8);
-
-    t1 = bitPermuteStep(t1, 0x0a0a0a0a, 3);
-    t1 = bitPermuteStep(t1, 0x00cc00cc, 6);
-    t1 = bitPermuteStep(t1, 0x0000f0f0, 12);
-    t1 = bitPermuteStep(t1, 0x0000ff00, 8);
-
-    t2 = bitPermuteStep(t2, 0x0a0a0a0a, 3);
-    t2 = bitPermuteStep(t2, 0x00cc00cc, 6);
-    t2 = bitPermuteStep(t2, 0x0000f0f0, 12);
-    t2 = bitPermuteStep(t2, 0x0000ff00, 8);
-
-    t3 = bitPermuteStep(t3, 0x0a0a0a0a, 3);
-    t3 = bitPermuteStep(t3, 0x00cc00cc, 6);
-    t3 = bitPermuteStep(t3, 0x0000f0f0, 12);
-    t3 = bitPermuteStep(t3, 0x0000ff00, 8);
-
-    out[4] = (t0 & 0x000000FF) | ((t1 << 8) & 0x0000FF00) |
-             ((t2 << 16) & 0x00FF0000) | ((t3 << 24) & 0xFF000000);
-    out[5] = ((t0 >>> 8) & 0x000000FF) | (t1 & 0x0000FF00) |
-             ((t2 << 8) & 0x00FF0000) | ((t3 << 16) & 0xFF000000);
-    out[6] = ((t0 >>> 16) & 0x000000FF) | ((t1 >>> 8) & 0x0000FF00) |
-             (t2 & 0x00FF0000) | ((t3 << 8) & 0xFF000000);
-    out[7] = ((t0 >>> 24) & 0x000000FF) | ((t1 >>> 16) & 0x0000FF00) |
-             ((t2 >>> 8) & 0x00FF0000) | (t3 & 0xFF000000);
-  }
-
-  // Convert from bit-sliced form
-  function photon256FromSliced(out, input) {
-    // Input is a byte array, need to extract nibbles properly
-    const tempBytes = new Uint8Array(input);
-
-    // First 16 bytes
-    let x0 = ((tempBytes[0] & 0xFF)) |
-             ((tempBytes[4] & 0xFF) << 8) |
-             ((tempBytes[8] & 0xFF) << 16) |
-             ((tempBytes[12] & 0xFF) << 24);
-    let x1 = ((tempBytes[1] & 0xFF)) |
-             ((tempBytes[5] & 0xFF) << 8) |
-             ((tempBytes[9] & 0xFF) << 16) |
-             ((tempBytes[13] & 0xFF) << 24);
-    let x2 = ((tempBytes[2] & 0xFF)) |
-             ((tempBytes[6] & 0xFF) << 8) |
-             ((tempBytes[10] & 0xFF) << 16) |
-             ((tempBytes[14] & 0xFF) << 24);
-    let x3 = ((tempBytes[3] & 0xFF)) |
-             ((tempBytes[7] & 0xFF) << 8) |
-             ((tempBytes[11] & 0xFF) << 16) |
-             ((tempBytes[15] & 0xFF) << 24);
-
-    x0 = bitPermuteStep(x0, 0x00aa00aa, 7);
-    x0 = bitPermuteStep(x0, 0x0000cccc, 14);
-    x0 = bitPermuteStep(x0, 0x00f000f0, 4);
-    x0 = bitPermuteStep(x0, 0x0000ff00, 8);
-
-    x1 = bitPermuteStep(x1, 0x00aa00aa, 7);
-    x1 = bitPermuteStep(x1, 0x0000cccc, 14);
-    x1 = bitPermuteStep(x1, 0x00f000f0, 4);
-    x1 = bitPermuteStep(x1, 0x0000ff00, 8);
-
-    x2 = bitPermuteStep(x2, 0x00aa00aa, 7);
-    x2 = bitPermuteStep(x2, 0x0000cccc, 14);
-    x2 = bitPermuteStep(x2, 0x00f000f0, 4);
-    x2 = bitPermuteStep(x2, 0x0000ff00, 8);
-
-    x3 = bitPermuteStep(x3, 0x00aa00aa, 7);
-    x3 = bitPermuteStep(x3, 0x0000cccc, 14);
-    x3 = bitPermuteStep(x3, 0x00f000f0, 4);
-    x3 = bitPermuteStep(x3, 0x0000ff00, 8);
-
-    out.set(OpCodes.Pack32LE(x0), 0);
-    out.set(OpCodes.Pack32LE(x1), 4);
-    out.set(OpCodes.Pack32LE(x2), 8);
-    out.set(OpCodes.Pack32LE(x3), 12);
-
-    // Second 16 bytes
-    x0 = ((input[16] & 0xFF)) |
-         ((input[20] & 0xFF) << 8) |
-         ((input[24] & 0xFF) << 16) |
-         ((input[28] & 0xFF) << 24);
-    x1 = ((input[17] & 0xFF)) |
-         ((input[21] & 0xFF) << 8) |
-         ((input[25] & 0xFF) << 16) |
-         ((input[29] & 0xFF) << 24);
-    x2 = ((input[18] & 0xFF)) |
-         ((input[22] & 0xFF) << 8) |
-         ((input[26] & 0xFF) << 16) |
-         ((input[30] & 0xFF) << 24);
-    x3 = ((input[19] & 0xFF)) |
-         ((input[23] & 0xFF) << 8) |
-         ((input[27] & 0xFF) << 16) |
-         ((input[31] & 0xFF) << 24);
-
-    x0 = bitPermuteStep(x0, 0x00aa00aa, 7);
-    x0 = bitPermuteStep(x0, 0x0000cccc, 14);
-    x0 = bitPermuteStep(x0, 0x00f000f0, 4);
-    x0 = bitPermuteStep(x0, 0x0000ff00, 8);
-
-    x1 = bitPermuteStep(x1, 0x00aa00aa, 7);
-    x1 = bitPermuteStep(x1, 0x0000cccc, 14);
-    x1 = bitPermuteStep(x1, 0x00f000f0, 4);
-    x1 = bitPermuteStep(x1, 0x0000ff00, 8);
-
-    x2 = bitPermuteStep(x2, 0x00aa00aa, 7);
-    x2 = bitPermuteStep(x2, 0x0000cccc, 14);
-    x2 = bitPermuteStep(x2, 0x00f000f0, 4);
-    x2 = bitPermuteStep(x2, 0x0000ff00, 8);
-
-    x3 = bitPermuteStep(x3, 0x00aa00aa, 7);
-    x3 = bitPermuteStep(x3, 0x0000cccc, 14);
-    x3 = bitPermuteStep(x3, 0x00f000f0, 4);
-    x3 = bitPermuteStep(x3, 0x0000ff00, 8);
-
-    out.set(OpCodes.Pack32LE(x0), 16);
-    out.set(OpCodes.Pack32LE(x1), 20);
-    out.set(OpCodes.Pack32LE(x2), 24);
-    out.set(OpCodes.Pack32LE(x3), 28);
-  }
-
-  // GF(16) field multiplication
-  function photon256FieldMultiply(a, x) {
-    let result = 0;
-    let t;
-
-    if (a & 1) result ^= x;
-    t = x >>> 24;
-    x = ((x << 8) ^ t ^ (t << 8)) >>> 0;
-
-    if (a & 2) result ^= x;
-    t = x >>> 24;
-    x = ((x << 8) ^ t ^ (t << 8)) >>> 0;
-
-    if (a & 4) result ^= x;
-    t = x >>> 24;
-    x = ((x << 8) ^ t ^ (t << 8)) >>> 0;
-
-    if (a & 8) result ^= x;
-
-    return result >>> 0;
-  }
-
-  // Read row from bit-sliced state (little-endian)
-  function readRow(bytes, row) {
-    if (row < 4) {
-      return ((bytes[row]) |
-              (bytes[row + 4] << 8) |
-              (bytes[row + 8] << 16) |
-              (bytes[row + 12] << 24)) >>> 0;
-    } else {
-      return ((bytes[row + 12]) |
-              (bytes[row + 16] << 8) |
-              (bytes[row + 20] << 16) |
-              (bytes[row + 24] << 24)) >>> 0;
-    }
-  }
-
-  // Write row to bit-sliced state (little-endian)
-  function writeRow(bytes, row, value) {
-    if (row < 4) {
-      bytes[row] = value & 0xFF;
-      bytes[row + 4] = (value >>> 8) & 0xFF;
-      bytes[row + 8] = (value >>> 16) & 0xFF;
-      bytes[row + 12] = (value >>> 24) & 0xFF;
-    } else {
-      bytes[row + 12] = value & 0xFF;
-      bytes[row + 16] = (value >>> 8) & 0xFF;
-      bytes[row + 20] = (value >>> 16) & 0xFF;
-      bytes[row + 24] = (value >>> 24) & 0xFF;
-    }
-  }
-
-  // PHOTON-256 S-box in bit-sliced form
-  function photon256SboxBitsliced(words) {
-    let t1, t2;
-
-    // Apply S-box transformation
-    words[1] ^= words[2];
-    words[3] ^= (words[2] & words[1]);
-    t1 = words[3];
-    words[3] = (words[3] & words[1]) ^ words[2];
-    t2 = words[3];
-    words[3] ^= words[0];
-    words[3] = (~words[3]) >>> 0;
-    words[2] = words[3];
-    t2 |= words[0];
-    words[0] ^= t1;
-    words[1] ^= words[0];
-    words[2] |= words[1];
-    words[2] ^= t1;
-    words[1] ^= t2;
-    words[3] ^= words[1];
-  }
-
-  // PHOTON-256 permutation - simplified nibble-based approach
+  // PHOTON-256 permutation - nibble-based approach
   function photon256Permute(state) {
     // Convert byte array to 2D nibble array (8x8)
     const state2d = new Array(8);
@@ -344,7 +83,7 @@
     }
 
     for (let i = 0; i < 64; ++i) {
-      state2d[i >>> 3][i & 7] = ((state[i >>> 1] & 0xFF) >>> (4 * (i & 1))) & 0xf;
+      state2d[OpCodes.Shr32(i, 3)][OpCodes.AndN(i, 7)] = OpCodes.AndN(OpCodes.Shr32(OpCodes.AndN(state[OpCodes.Shr32(i, 1)], 0xFF), 4 * OpCodes.AndN(i, 1)), 0xf);
     }
 
     // 12 rounds of PHOTON permutation
@@ -495,6 +234,17 @@
         new LinkItem(
           "ORANGE Specification",
           "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/orange-spec-round2.pdf"
+        )
+      ];
+
+      this.references = [
+        new LinkItem(
+          "ORANGE Reference Software Package (ISI Kolkata)",
+          "https://www.isical.ac.in/~lightweight/Orange/ORANGE.tar.gz"
+        ),
+        new LinkItem(
+          "rweather lightweight-crypto ORANGE Source",
+          "https://github.com/rweather/lightweight-crypto/tree/master/src/individual/ORANGE"
         )
       ];
 

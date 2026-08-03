@@ -251,6 +251,10 @@
         new LinkItem("Paper: On the Security of Hash Function Combiners", "https://eprint.iacr.org/2004/175"),
         new LinkItem("Botan Implementation", "https://botan.randombit.net/")
       ];
+
+      this.references = [
+        new LinkItem("Botan Comb4P hash combiner implementation", "https://github.com/randombit/botan/blob/master/src/lib/hash/comb4p/comb4p.cpp")
+      ];
     }
 
     /**

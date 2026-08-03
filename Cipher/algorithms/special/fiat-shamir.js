@@ -71,6 +71,10 @@
           new LinkItem("FS86: How to prove yourself: practical solutions to identification and signature problems", "https://link.springer.com/chapter/10.1007/3-540-47721-7_12")
         ];
 
+        this.references = [
+          new LinkItem("Fiat-Shamir Zero-Knowledge Protocol Implementation", "https://github.com/ivansarno/FiatShamirProtocol")
+        ];
+
         this.tests = [
           {
             text: 'Educational Fiat-Shamir proof verification with deterministic parameters',

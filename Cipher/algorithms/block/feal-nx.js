@@ -111,6 +111,7 @@
       // Test vectors from official GitHub reference implementation
       // Source: https://github.com/zilijonas/FEAL-NX/blob/master/test-vectors.txt
       this.tests = [
+
         new TestCase(
           OpCodes.Hex8ToBytes("0000000100020003"), // input
           OpCodes.Hex8ToBytes("0309E94066035E24"), // expected

@@ -478,6 +478,10 @@
         new LinkItem("NIST LWC Round 2", "https://csrc.nist.gov/Projects/lightweight-cryptography")
       ];
 
+      this.references = [
+        new LinkItem("rweather/lightweight-crypto C Reference Implementation", "https://github.com/rweather/lightweight-crypto")
+      ];
+
       // Test vectors from NIST KAT (WAGE.txt)
       this.tests = [
         {

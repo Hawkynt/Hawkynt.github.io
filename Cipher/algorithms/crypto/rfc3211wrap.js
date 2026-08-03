@@ -87,32 +87,22 @@
     return bytes;
   }
 
-  // Helper to get cipher algorithm by name
+  // Helper to get cipher algorithm by name (registry-first, plain require fallback)
   function getCipherAlgorithm(cipherName) {
     let cipher = AlgorithmFramework.Find(cipherName);
 
     if (!cipher && typeof require !== 'undefined') {
-      // Try to load the cipher
-      try {
-        const path = require('path');
-        const cipherPaths = {
-          'DES': '../block/des.js',
-          'Triple DES': '../block/3des.js',
-          '3DES (Triple DES)': '../block/3des.js',
-          'Rijndael (AES)': '../block/rijndael.js'
-        };
+      const cipherPaths = {
+        'DES': '../block/des.js',
+        'Triple DES': '../block/3des.js',
+        '3DES (Triple DES)': '../block/3des.js',
+        'Rijndael (AES)': '../block/rijndael.js'
+      };
 
-        const relativePath = cipherPaths[cipherName];
-        if (relativePath) {
-          const resolvedPath = path.resolve(__dirname, relativePath);
-          if (require.cache[resolvedPath]) {
-            delete require.cache[resolvedPath];
-          }
-          require(relativePath);
-          cipher = AlgorithmFramework.Find(cipherName);
-        }
-      } catch (e) {
-        // Ignore and return null
+      const relativePath = cipherPaths[cipherName];
+      if (relativePath) {
+        try { require(relativePath); } catch (e) { /* not found — return null below */ }
+        cipher = AlgorithmFramework.Find(cipherName);
       }
     }
 

@@ -219,6 +219,11 @@
         )
       ];
 
+      this.references = [
+        new LinkItem("Official Ascon C reference implementation", "https://github.com/ascon/ascon-c"),
+        new LinkItem("Ascon Python reference implementation", "https://github.com/ascon/ascon-python")
+      ];
+
       // Official test vectors from ASCON-HASH.txt
       this.tests = [
         {
@@ -313,6 +318,11 @@
         )
       ];
 
+      this.references = [
+        new LinkItem("Official Ascon C reference implementation", "https://github.com/ascon/ascon-c"),
+        new LinkItem("Ascon Python reference implementation", "https://github.com/ascon/ascon-python")
+      ];
+
       // Official NIST LWC test vectors
       this.tests = [
         {
@@ -404,6 +414,11 @@
           "CAESAR Competition",
           "https://competitions.cr.yp.to/caesar.html"
         )
+      ];
+
+      this.references = [
+        new LinkItem("Official Ascon C reference implementation", "https://github.com/ascon/ascon-c"),
+        new LinkItem("Ascon Python reference implementation", "https://github.com/ascon/ascon-python")
       ];
 
       // Official test vectors from ASCON-XOF.txt

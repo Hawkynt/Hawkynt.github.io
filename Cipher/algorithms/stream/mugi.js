@@ -33,8 +33,25 @@
     securityStatus: global.AlgorithmFramework ? global.AlgorithmFramework.SecurityStatus.EDUCATIONAL : 'educational',
     securityNotes: 'MUGI is a Japanese stream cipher designed for efficient software implementation. This educational version demonstrates the basic principles.',
 
+    documentation: [
+      {text: 'Hitachi MUGI Specification and Self-Evaluation Report', uri: 'https://www.hitachi.com/rd/yrl/crypto/mugi/'},
+      {text: 'MUGI - Wikipedia', uri: 'https://en.wikipedia.org/wiki/MUGI'},
+      {text: 'ISO/IEC 18033-4:2011 Encryption algorithms - Part 4: Stream ciphers', uri: 'https://www.iso.org/standard/54531.html'}
+    ],
+
+    // No maintained public reference-implementation repository for MUGI is known to exist;
+    // the most authoritative available sources are Hitachi's own specification document
+    // (which includes the reference algorithm description) and the CRYPTREC evaluation
+    // report, which documents and benchmarks an ANSI-C reference implementation.
+    references: [
+      {text: 'Hitachi MUGI Specification Ver. 1.2 (reference algorithm description, PDF)', uri: 'https://www.hitachi.com/rd/yrl/crypto/mugi/mugi_spe.pdf'},
+      {text: 'CRYPTREC Evaluation of the MUGI Pseudorandom Number Generator (ANSI-C reference implementation benchmark)', uri: 'https://www.cryptrec.go.jp/exreport/cryptrec-ex-1035-2002.pdf'}
+    ],
+
     // Test vectors with actual implementation output
     tests: [{
+      text: 'Self-computed vector: output of this simplified educational MUGI-inspired construction, verified for self-consistency (not an official Hitachi MUGI test vector - this implementation approximates MUGI\'s design principles rather than the exact ISO/IEC 18033-4 algorithm)',
+      uri: 'https://www.hitachi.com/rd/yrl/crypto/mugi/',
       input: OpCodes.Hex8ToBytes('0001020304050607'),
       key: OpCodes.Hex8ToBytes('00010203040506070809101112131415'),
       expected: OpCodes.Hex8ToBytes('519970858a85daaa') // Generated from implementation

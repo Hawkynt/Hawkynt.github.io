@@ -61,6 +61,10 @@
         new LinkItem("Modulo Checksums", "https://www.geeksforgeeks.org/check-digit/")
       ];
 
+      this.references = [
+        new LinkItem("python-stdnum generic checksum utilities", "https://github.com/arthurdejong/python-stdnum/blob/master/stdnum/util.py")
+      ];
+
       this.notes = [
         "Algorithm: sum all digits, result mod 10",
         "Check digit: (10 - sum mod 10) mod 10",
@@ -178,6 +182,10 @@
         new LinkItem("ISBN Check Digit", "https://en.wikipedia.org/wiki/International_Standard_Book_Number"),
         new LinkItem("Modulo 11 Algorithm", "https://www.geeksforgeeks.org/program-check-isbn/"),
         new LinkItem("Check Digit Systems", "https://en.wikipedia.org/wiki/Check_digit")
+      ];
+
+      this.references = [
+        new LinkItem("python-stdnum ISBN-10 modulo-11 check digit implementation", "https://github.com/arthurdejong/python-stdnum/blob/master/stdnum/isbn.py")
       ];
 
       this.notes = [
@@ -317,6 +325,10 @@
         new LinkItem("ISO 7064:1983 Standard", "https://en.wikipedia.org/wiki/ISO_7064"),
         new LinkItem("IBAN Validation", "https://en.wikipedia.org/wiki/International_Bank_Account_Number"),
         new LinkItem("Modulo 97 Algorithm", "https://www.geeksforgeeks.org/iban-validator/")
+      ];
+
+      this.references = [
+        new LinkItem("python-stdnum ISO 7064 mod 97-10 implementation", "https://github.com/arthurdejong/python-stdnum/blob/master/stdnum/iso7064/mod_97_10.py")
       ];
 
       this.notes = [

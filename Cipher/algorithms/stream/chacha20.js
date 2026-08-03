@@ -57,6 +57,12 @@ class ChaCha20 extends StreamCipherAlgorithm {
       new LinkItem("Bernstein: ChaCha, a variant of Salsa20", "https://cr.yp.to/chacha/chacha-20080128.pdf")
     ];
 
+    this.references = [
+      new LinkItem("Bernstein's Original ChaCha20 Reference Implementation (eSTREAM submission)", "https://cr.yp.to/streamciphers/timings/estreambench/submissions/salsa20/chacha20/ref/chacha.c"),
+      new LinkItem("libsodium ChaCha20 Reference Implementation", "https://github.com/jedisct1/libsodium/blob/master/src/libsodium/crypto_stream/chacha20/ref/chacha20_ref.c"),
+      new LinkItem("OpenSSL ChaCha20 Implementation", "https://github.com/openssl/openssl/blob/master/crypto/chacha/chacha_enc.c")
+    ];
+
     this.tests = [
       {
         text: "RFC 7539 ChaCha20 Test Vector 1 - Block 0",

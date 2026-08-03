@@ -70,47 +70,52 @@
 
         this.documentation = [
           new LinkItem("PPMd Algorithm Overview", "https://en.wikipedia.org/wiki/PPMd"),
-          new LinkItem("Dmitry Shkarin PPMd", "https://www.compression.ru/ds/"),
-          new LinkItem("PPMd Technical Details", "https://www.7-zip.org/recover.html")
+          new LinkItem("Dmitry Shkarin's PPMd/PPMII Page", "https://www.compression.ru/ds/"),
+          new LinkItem("PPM: One Step to Practicality (Shkarin, DCC 2002)", "https://www.researchgate.net/publication/3946220_PPM_One_step_to_practicality")
         ];
 
         this.references = [
-          new LinkItem("PPM Compression Family", "https://compression.ca/act/act_pdf/Cleary1984.pdf"),
+          new LinkItem("PPM Compression Family (Cleary and Witten, 1984)", "https://compression.ca/act/act_pdf/Cleary1984.pdf"),
           new LinkItem("Context Modeling Research", "https://www.researchgate.net/publication/220617088"),
-          new LinkItem("Large Text Compression Benchmark", "https://www.mattmahoney.net/dc/text.html")
+          new LinkItem("Large Text Compression Benchmark", "https://www.mattmahoney.net/dc/text.html"),
+          new LinkItem("7-Zip/p7zip PPMd7 Reference Implementation (Ppmd7.c)", "https://github.com/p7zip-project/p7zip/blob/master/C/Ppmd7.c")
         ];
 
         // Comprehensive test vectors for PPMd
+        // Self-computed: this implementation uses a simplified, custom context/order
+        // encoding (not the bit-exact PPMd7 range-coded bitstream), so all vectors
+        // below were generated directly from this algorithm's own encoder rather
+        // than an external/official source.
         this.tests = [
           new TestCase(
             [97, 97, 97, 97, 97, 97, 98, 98, 98, 98, 98, 98], // aaaaaabbbbbb
             [6, 12, 0, 0, 0, 10, 97, 1, 10, 97, 2, 11, 97, 1, 12, 97, 1, 13, 97, 1, 14, 97, 1, 10, 98, 1, 10, 98, 2, 11, 98, 1, 12, 98, 1, 13, 98, 1, 14, 98, 1],
             "Highly repetitive data - optimal for PPMd",
-            "https://www.compression.ru/ds/"
+            "Self-computed: generated with this implementation's own encoder"
           ),
           new TestCase(
             [116, 104, 101, 32, 113, 117, 105, 99, 107, 32, 98, 114, 111, 119, 110, 32, 102, 111, 120], // the quick brown fox
             [6, 19, 0, 0, 0, 10, 116, 1, 10, 104, 1, 10, 101, 1, 10, 32, 1, 10, 113, 1, 10, 117, 1, 10, 105, 1, 10, 99, 1, 10, 107, 1, 10, 32, 2, 10, 98, 1, 10, 114, 1, 10, 111, 1, 10, 119, 1, 10, 110, 1, 10, 32, 3, 10, 102, 1, 10, 111, 2, 10, 120, 1],
             "Natural language text compression",
-            "https://en.wikipedia.org/wiki/PPMd"
+            "Self-computed: generated with this implementation's own encoder"
           ),
           new TestCase(
             [65, 66, 67, 65, 66, 67, 68, 69, 70, 65, 66, 67], // ABCABCDEFABC
             [6, 12, 0, 0, 0, 10, 65, 1, 10, 66, 1, 10, 67, 1, 10, 65, 2, 11, 66, 1, 12, 67, 1, 10, 68, 1, 10, 69, 1, 10, 70, 1, 10, 65, 3, 11, 66, 2, 12, 67, 2],
             "Pattern recognition test",
-            "https://www.7-zip.org/recover.html"
+            "Self-computed: generated with this implementation's own encoder"
           ),
           new TestCase(
             [102, 111, 114, 32, 105, 61, 48, 59, 32, 105, 60, 110, 59, 32, 105, 43, 43], // for i=0; i<n; i++
             [6, 17, 0, 0, 0, 10, 102, 1, 10, 111, 1, 10, 114, 1, 10, 32, 1, 10, 105, 1, 10, 61, 1, 10, 48, 1, 10, 59, 1, 10, 32, 2, 11, 105, 1, 10, 60, 1, 10, 110, 1, 10, 59, 2, 11, 32, 1, 12, 105, 1, 10, 43, 1, 10, 43, 2],
             "Source code compression",
-            "https://www.mattmahoney.net/dc/text.html"
+            "Self-computed: generated with this implementation's own encoder"
           ),
           new TestCase(
             [],
             [],
             "Empty input edge case",
-            "https://www.compression.ru/ds/"
+            "Self-computed: generated with this implementation's own encoder"
           )
         ];
 
@@ -173,10 +178,7 @@
         // Add header
         compressed.push(this.maxOrder);
         // Use OpCodes for bit operations in header
-        compressed.push(OpCodes.RotR8(data.length & 0xFF, 0));
-        compressed.push(OpCodes.RotR8((data.length >>> 8) & 0xFF, 0));
-        compressed.push(OpCodes.RotR8((data.length >>> 16) & 0xFF, 0));
-        compressed.push(OpCodes.RotR8((data.length >>> 24) & 0xFF, 0));
+        compressed.push(...OpCodes.Unpack32LE(data.length));
 
         // Compress each byte using dynamic context modeling
         for (let i = 0; i < data.length; i++) {
@@ -207,10 +209,7 @@
 
         // Parse header using OpCodes
         const maxOrder = data[0];
-        const originalSize = OpCodes.RotL8(data[1], 0) |
-                            (OpCodes.RotL8(data[2], 0) << 8) |
-                            (OpCodes.RotL8(data[3], 0) << 16) |
-                            (OpCodes.RotL8(data[4], 0) << 24);
+        const originalSize = OpCodes.Pack32LE(data[1], data[2], data[3], data[4]);
 
         // Initialize decompression state
         this.maxOrder = maxOrder;
@@ -358,7 +357,7 @@
 
           if (context.hasSymbol(symbol)) {
             const symbolInfo = context.getSymbolInfo(symbol);
-            return [order + 10, symbol, symbolInfo.frequency & 0xFF];
+            return [order + 10, symbol, OpCodes.ToByte(symbolInfo.frequency)];
           } else if (order > -1) {
             // Encode escape and continue to lower order
             const escapeInfo = context.getEscapeInfo();

@@ -57,6 +57,10 @@ class Pomaranch extends StreamCipherAlgorithm {
       new LinkItem("eSTREAM Portfolio", "https://www.ecrypt.eu.org/stream/")
     ];
 
+    this.references = [
+      new LinkItem("eSTREAM Pomaranch Reference Source (archived)", "https://web.archive.org/web/20110527044706/http://www.ecrypt.eu.org/stream/p3ciphers/pomaranch/pomaranch_p3source.zip")
+    ];
+
     this.vulnerabilities = [
       new Vulnerability("Time-Memory-Data Tradeoff", "Vulnerable to TMDT attacks and various algebraic attacks on LFSR structure"),
       new Vulnerability("Educational Implementation", "Simplified educational implementation - use only for learning")

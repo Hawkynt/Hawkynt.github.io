@@ -92,6 +92,12 @@
         new LinkItem("Grain-128-AEAD Specification", "https://grain-128aead.github.io/grain-aead-v2.pdf")
       ];
 
+      this.references = [
+        new LinkItem("Official C Reference Implementation", "https://github.com/Grain-128AEAD/Grain-128AEAD-sw-ref"),
+        new LinkItem("Official VHDL Hardware Implementation", "https://github.com/Grain-128AEAD/Grain-128AEAD-VHDL"),
+        new LinkItem("Bouncy Castle Grain128AEAD Engine (this implementation follows it)", "https://github.com/bcgit/bc-java")
+      ];
+
       // Known vulnerabilities
       this.knownVulnerabilities = [];
 

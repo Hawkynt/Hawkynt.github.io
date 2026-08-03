@@ -57,6 +57,10 @@
         new LinkItem("IMEI Calculator", "https://www.imei.info/calc/")
       ];
 
+      this.references = [
+        new LinkItem("python-stdnum IMEI implementation", "https://github.com/arthurdejong/python-stdnum/blob/master/stdnum/imei.py")
+      ];
+
       this.notes = [
         "Format: AA-BBBBBB-CCCCCC-D (TAC-FAC-SNR-CD)",
         "TAC: Type Allocation Code (8 digits)",

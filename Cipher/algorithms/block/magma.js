@@ -160,6 +160,11 @@
         new LinkItem("Wikipedia - GOST (block cipher)", "https://en.wikipedia.org/wiki/GOST_(block_cipher)")
       ];
 
+      this.references = [
+        new LinkItem("gost-engine Reference Implementation (gost89.c)", "https://github.com/gost-engine/engine/blob/master/gost89.c"),
+        new LinkItem("Botan GOST-28147-89 (Magma) Implementation", "https://github.com/randombit/botan/blob/master/src/lib/block/gost_28147/gost_28147.cpp")
+      ];
+
       // Official test vectors from RFC 8891 Sections 5.1, 5.2
       this.tests = [
         {

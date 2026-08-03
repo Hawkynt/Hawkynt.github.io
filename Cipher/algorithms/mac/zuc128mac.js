@@ -92,6 +92,10 @@
         new LinkItem("3GPP Security Algorithms", "https://www.3gpp.org/technologies/keywords-acronyms/100-the-3gpp-security-algorithms")
       ];
 
+      this.references = [
+        new LinkItem("GmSSL ZUC/128-EIA3 Implementation", "https://github.com/guanzhi/GmSSL/blob/master/src/zuc.c")
+      ];
+
       // Official 3GPP test vectors from GSMA specification
       this.tests = [
         {

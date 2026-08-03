@@ -113,6 +113,14 @@
     0x64, 0x6d, 0xdc, 0xf0, 0x59, 0xa9, 0x4c, 0x17, 0x7f, 0x91, 0xb8, 0xc9, 0x57, 0x1b, 0xe0, 0x61
   ]);
 
+  // ===== SHARED HELPERS =====
+
+  // Conditional swap of two 64-bit BigInt words under a bitmask (bit-parallel permutation step)
+  function swapMask64(a, b, mask) {
+    const d = OpCodes.AndN(OpCodes.XorN(a, b), mask);
+    return [OpCodes.XorN(a, d), OpCodes.XorN(b, d)];
+  }
+
   // ===== DSTU7564 ALGORITHM CLASS =====
   /**
  * DSTU7564 - Cryptographic hash function
@@ -131,7 +139,7 @@
       this.year = 2015;
       this.category = CategoryType.HASH;
       this.subCategory = "Hash Function";
-      this.securityStatus = SecurityStatus.SECURE;
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
       this.complexity = ComplexityType.ADVANCED;
       this.country = CountryCode.UA;
 
@@ -146,11 +154,11 @@
       this.documentation = [
         new LinkItem(
           "DSTU 7564:2014 Specification (Ukrainian)",
-          "http://dstszi.kmu.gov.ua/dstszi/control/uk/publish/article?art_id=165943&cat_id=38837"
+          "https://usts.kiev.ua/wp-content/uploads/2020/07/dstu-7564-2014.pdf"
         ),
         new LinkItem(
-          "ISO/IEC 10118-3:2018 Amendment (includes Kupyna)",
-          "https://www.iso.org/standard/67116.html"
+          "A New Standard of Ukraine: The Kupyna Hash Function (Oliynykov et al., IACR ePrint 2015/885)",
+          "https://eprint.iacr.org/2015/885"
         ),
         new LinkItem(
           "Bouncy Castle Reference Implementation",
@@ -160,6 +168,11 @@
           "Official C Reference Implementation",
           "https://github.com/Roman-Oliynykov/Kupyna-reference"
         )
+      ];
+
+      this.references = [
+        new LinkItem("Official Kupyna reference implementation (Roman Oliynykov)", "https://github.com/Roman-Oliynykov/Kupyna-reference"),
+        new LinkItem("Bouncy Castle Java reference implementation (DSTU7564Digest)", "https://github.com/bcgit/bc-java/blob/main/core/src/main/java/org/bouncycastle/crypto/digests/DSTU7564Digest.java")
       ];
 
       // Official test vectors from Bouncy Castle test suite
@@ -394,7 +407,7 @@
 
       // Write 96-bit length as little-endian
       for (let i = 0; i < 12; ++i) {
-        this.buf[this.bufOff++] = Number((totalBits >> BigInt(i * 8))&0xFFn);
+        this.buf[this.bufOff++] = Number(OpCodes.AndN(OpCodes.ShiftRn(totalBits, i * 8), 0xFFn));
       }
 
       this.processBlock(this.buf, 0);
@@ -407,7 +420,7 @@
       this.P(this.tempState1);
 
       for (let col = 0; col < this.columns; ++col) {
-        this.state[col] ^= this.tempState1[col];
+        this.state[col] = OpCodes.XorN(this.state[col], this.tempState1[col]);
       }
 
       // Extract output
@@ -418,7 +431,7 @@
         const word = this.state[col];
         // Pack as little-endian
         for (let i = 0; i < 8; ++i) {
-          output.push(Number((word >> BigInt(i * 8))&0xFFn));
+          output.push(Number(OpCodes.AndN(OpCodes.ShiftRn(word, i * 8), 0xFFn)));
         }
       }
 
@@ -440,10 +453,10 @@
         // Read 8 bytes as little-endian 64-bit word
         let word = 0n;
         for (let i = 0; i < 8; ++i) {
-          word |= BigInt(OpCodes.And32(input[pos++], 0xFF)) << BigInt(i * 8);
+          word = OpCodes.OrN(word, OpCodes.ShiftLn(BigInt(OpCodes.And32(input[pos++], 0xFF)), i * 8));
         }
 
-        this.tempState1[col] = this.state[col]^word;
+        this.tempState1[col] = OpCodes.XorN(this.state[col], word);
         this.tempState2[col] = word;
       }
 
@@ -451,7 +464,7 @@
       this.Q(this.tempState2);
 
       for (let col = 0; col < this.columns; ++col) {
-        this.state[col] ^= this.tempState1[col]^this.tempState2[col];
+        this.state[col] = OpCodes.XorN(this.state[col], OpCodes.XorN(this.tempState1[col], this.tempState2[col]));
       }
     }
 
@@ -460,7 +473,7 @@
       for (let round = 0; round < this.rounds; ++round) {
         // AddRoundConstants
         for (let col = 0; col < this.columns; ++col) {
-          s[col] ^= BigInt(round + col * 0x10);
+          s[col] = OpCodes.XorN(s[col], BigInt(round + col * 0x10));
         }
 
         this.shiftRows(s);
@@ -473,11 +486,11 @@
     Q(s) {
       for (let round = 0; round < this.rounds; ++round) {
         // AddRoundConstantsQ - matches Bouncy Castle exactly
-        let rc = (BigInt(OpCodes.Xor32((this.columns - 1) << 4, round)) << 56n)|0x00F0F0F0F0F0F0F3n;
+        let rc = OpCodes.OrN(OpCodes.ShiftLn(BigInt(OpCodes.Xor32(OpCodes.Shl32(this.columns - 1, 4), round)), 56), 0x00F0F0F0F0F0F0F3n);
 
         for (let col = 0; col < this.columns; ++col) {
-          s[col] = (s[col] + rc)&0xFFFFFFFFFFFFFFFFn;
-          rc = (rc - 0x1000000000000000n)&0xFFFFFFFFFFFFFFFFn;
+          s[col] = OpCodes.AndN(s[col] + rc, 0xFFFFFFFFFFFFFFFFn);
+          rc = OpCodes.AndN(rc - 0x1000000000000000n, 0xFFFFFFFFFFFFFFFFn);
         }
 
         this.shiftRows(s);
@@ -492,22 +505,21 @@
         // NB_512 case
         let c0 = s[0], c1 = s[1], c2 = s[2], c3 = s[3];
         let c4 = s[4], c5 = s[5], c6 = s[6], c7 = s[7];
-        let d;
 
-        d = (c0^c4)&0xFFFFFFFF00000000n; c0 ^= d; c4 ^= d;
-        d = (c1^c5)&0x00FFFFFFFF000000n; c1 ^= d; c5 ^= d;
-        d = (c2^c6)&0x0000FFFFFFFF0000n; c2 ^= d; c6 ^= d;
-        d = (c3^c7)&0x000000FFFFFFFF00n; c3 ^= d; c7 ^= d;
+        [c0, c4] = swapMask64(c0, c4, 0xFFFFFFFF00000000n);
+        [c1, c5] = swapMask64(c1, c5, 0x00FFFFFFFF000000n);
+        [c2, c6] = swapMask64(c2, c6, 0x0000FFFFFFFF0000n);
+        [c3, c7] = swapMask64(c3, c7, 0x000000FFFFFFFF00n);
 
-        d = (c0^c2)&0xFFFF0000FFFF0000n; c0 ^= d; c2 ^= d;
-        d = (c1^c3)&0x00FFFF0000FFFF00n; c1 ^= d; c3 ^= d;
-        d = (c4^c6)&0xFFFF0000FFFF0000n; c4 ^= d; c6 ^= d;
-        d = (c5^c7)&0x00FFFF0000FFFF00n; c5 ^= d; c7 ^= d;
+        [c0, c2] = swapMask64(c0, c2, 0xFFFF0000FFFF0000n);
+        [c1, c3] = swapMask64(c1, c3, 0x00FFFF0000FFFF00n);
+        [c4, c6] = swapMask64(c4, c6, 0xFFFF0000FFFF0000n);
+        [c5, c7] = swapMask64(c5, c7, 0x00FFFF0000FFFF00n);
 
-        d = (c0^c1)&0xFF00FF00FF00FF00n; c0 ^= d; c1 ^= d;
-        d = (c2^c3)&0xFF00FF00FF00FF00n; c2 ^= d; c3 ^= d;
-        d = (c4^c5)&0xFF00FF00FF00FF00n; c4 ^= d; c5 ^= d;
-        d = (c6^c7)&0xFF00FF00FF00FF00n; c6 ^= d; c7 ^= d;
+        [c0, c1] = swapMask64(c0, c1, 0xFF00FF00FF00FF00n);
+        [c2, c3] = swapMask64(c2, c3, 0xFF00FF00FF00FF00n);
+        [c4, c5] = swapMask64(c4, c5, 0xFF00FF00FF00FF00n);
+        [c6, c7] = swapMask64(c6, c7, 0xFF00FF00FF00FF00n);
 
         s[0] = c0; s[1] = c1; s[2] = c2; s[3] = c3;
         s[4] = c4; s[5] = c5; s[6] = c6; s[7] = c7;
@@ -517,43 +529,42 @@
         let c04 = s[4],  c05 = s[5],  c06 = s[6],  c07 = s[7];
         let c08 = s[8],  c09 = s[9],  c10 = s[10], c11 = s[11];
         let c12 = s[12], c13 = s[13], c14 = s[14], c15 = s[15];
-        let d;
 
-        d = (c00^c08)&0xFF00000000000000n; c00 ^= d; c08 ^= d;
-        d = (c01^c09)&0xFF00000000000000n; c01 ^= d; c09 ^= d;
-        d = (c02^c10)&0xFFFF000000000000n; c02 ^= d; c10 ^= d;
-        d = (c03^c11)&0xFFFFFF0000000000n; c03 ^= d; c11 ^= d;
-        d = (c04^c12)&0xFFFFFFFF00000000n; c04 ^= d; c12 ^= d;
-        d = (c05^c13)&0x00FFFFFFFF000000n; c05 ^= d; c13 ^= d;
-        d = (c06^c14)&0x00FFFFFFFFFF0000n; c06 ^= d; c14 ^= d;
-        d = (c07^c15)&0x00FFFFFFFFFFFF00n; c07 ^= d; c15 ^= d;
+        [c00, c08] = swapMask64(c00, c08, 0xFF00000000000000n);
+        [c01, c09] = swapMask64(c01, c09, 0xFF00000000000000n);
+        [c02, c10] = swapMask64(c02, c10, 0xFFFF000000000000n);
+        [c03, c11] = swapMask64(c03, c11, 0xFFFFFF0000000000n);
+        [c04, c12] = swapMask64(c04, c12, 0xFFFFFFFF00000000n);
+        [c05, c13] = swapMask64(c05, c13, 0x00FFFFFFFF000000n);
+        [c06, c14] = swapMask64(c06, c14, 0x00FFFFFFFFFF0000n);
+        [c07, c15] = swapMask64(c07, c15, 0x00FFFFFFFFFFFF00n);
 
-        d = (c00^c04)&0x00FFFFFF00000000n; c00 ^= d; c04 ^= d;
-        d = (c01^c05)&0xFFFFFFFFFF000000n; c01 ^= d; c05 ^= d;
-        d = (c02^c06)&0xFF00FFFFFFFF0000n; c02 ^= d; c06 ^= d;
-        d = (c03^c07)&0xFF0000FFFFFFFF00n; c03 ^= d; c07 ^= d;
-        d = (c08^c12)&0x00FFFFFF00000000n; c08 ^= d; c12 ^= d;
-        d = (c09^c13)&0xFFFFFFFFFF000000n; c09 ^= d; c13 ^= d;
-        d = (c10^c14)&0xFF00FFFFFFFF0000n; c10 ^= d; c14 ^= d;
-        d = (c11^c15)&0xFF0000FFFFFFFF00n; c11 ^= d; c15 ^= d;
+        [c00, c04] = swapMask64(c00, c04, 0x00FFFFFF00000000n);
+        [c01, c05] = swapMask64(c01, c05, 0xFFFFFFFFFF000000n);
+        [c02, c06] = swapMask64(c02, c06, 0xFF00FFFFFFFF0000n);
+        [c03, c07] = swapMask64(c03, c07, 0xFF0000FFFFFFFF00n);
+        [c08, c12] = swapMask64(c08, c12, 0x00FFFFFF00000000n);
+        [c09, c13] = swapMask64(c09, c13, 0xFFFFFFFFFF000000n);
+        [c10, c14] = swapMask64(c10, c14, 0xFF00FFFFFFFF0000n);
+        [c11, c15] = swapMask64(c11, c15, 0xFF0000FFFFFFFF00n);
 
-        d = (c00^c02)&0xFFFF0000FFFF0000n; c00 ^= d; c02 ^= d;
-        d = (c01^c03)&0x00FFFF0000FFFF00n; c01 ^= d; c03 ^= d;
-        d = (c04^c06)&0xFFFF0000FFFF0000n; c04 ^= d; c06 ^= d;
-        d = (c05^c07)&0x00FFFF0000FFFF00n; c05 ^= d; c07 ^= d;
-        d = (c08^c10)&0xFFFF0000FFFF0000n; c08 ^= d; c10 ^= d;
-        d = (c09^c11)&0x00FFFF0000FFFF00n; c09 ^= d; c11 ^= d;
-        d = (c12^c14)&0xFFFF0000FFFF0000n; c12 ^= d; c14 ^= d;
-        d = (c13^c15)&0x00FFFF0000FFFF00n; c13 ^= d; c15 ^= d;
+        [c00, c02] = swapMask64(c00, c02, 0xFFFF0000FFFF0000n);
+        [c01, c03] = swapMask64(c01, c03, 0x00FFFF0000FFFF00n);
+        [c04, c06] = swapMask64(c04, c06, 0xFFFF0000FFFF0000n);
+        [c05, c07] = swapMask64(c05, c07, 0x00FFFF0000FFFF00n);
+        [c08, c10] = swapMask64(c08, c10, 0xFFFF0000FFFF0000n);
+        [c09, c11] = swapMask64(c09, c11, 0x00FFFF0000FFFF00n);
+        [c12, c14] = swapMask64(c12, c14, 0xFFFF0000FFFF0000n);
+        [c13, c15] = swapMask64(c13, c15, 0x00FFFF0000FFFF00n);
 
-        d = (c00^c01)&0xFF00FF00FF00FF00n; c00 ^= d; c01 ^= d;
-        d = (c02^c03)&0xFF00FF00FF00FF00n; c02 ^= d; c03 ^= d;
-        d = (c04^c05)&0xFF00FF00FF00FF00n; c04 ^= d; c05 ^= d;
-        d = (c06^c07)&0xFF00FF00FF00FF00n; c06 ^= d; c07 ^= d;
-        d = (c08^c09)&0xFF00FF00FF00FF00n; c08 ^= d; c09 ^= d;
-        d = (c10^c11)&0xFF00FF00FF00FF00n; c10 ^= d; c11 ^= d;
-        d = (c12^c13)&0xFF00FF00FF00FF00n; c12 ^= d; c13 ^= d;
-        d = (c14^c15)&0xFF00FF00FF00FF00n; c14 ^= d; c15 ^= d;
+        [c00, c01] = swapMask64(c00, c01, 0xFF00FF00FF00FF00n);
+        [c02, c03] = swapMask64(c02, c03, 0xFF00FF00FF00FF00n);
+        [c04, c05] = swapMask64(c04, c05, 0xFF00FF00FF00FF00n);
+        [c06, c07] = swapMask64(c06, c07, 0xFF00FF00FF00FF00n);
+        [c08, c09] = swapMask64(c08, c09, 0xFF00FF00FF00FF00n);
+        [c10, c11] = swapMask64(c10, c11, 0xFF00FF00FF00FF00n);
+        [c12, c13] = swapMask64(c12, c13, 0xFF00FF00FF00FF00n);
+        [c14, c15] = swapMask64(c14, c15, 0xFF00FF00FF00FF00n);
 
         s[0] = c00; s[1] = c01; s[2] = c02; s[3] = c03;
         s[4] = c04; s[5] = c05; s[6] = c06; s[7] = c07;
@@ -566,8 +577,8 @@
     subBytes(s) {
       for (let i = 0; i < this.columns; ++i) {
         const u = s[i];
-        const lo = Number(u&0xFFFFFFFFn);
-        const hi = Number((u >> 32n)&0xFFFFFFFFn);
+        const lo = Number(OpCodes.AndN(u, 0xFFFFFFFFn));
+        const hi = Number(OpCodes.AndN(OpCodes.ShiftRn(u, 32), 0xFFFFFFFFn));
 
         // Process low 32 bits
         const t0 = S0[OpCodes.And32(lo, 0xFF)];
@@ -583,7 +594,7 @@
         const t7 = S3[OpCodes.Shr32(hi, 24)];
         const newHi = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.And32(t4, 0xFF), OpCodes.Shl32(OpCodes.And32(t5, 0xFF), 8)), OpCodes.Shl32(OpCodes.And32(t6, 0xFF), 16)), OpCodes.Shl32(t7, 24));
 
-        s[i] = (BigInt(OpCodes.ToDWord(newLo))&0xFFFFFFFFn)|(BigInt(OpCodes.ToDWord(newHi)) << 32n);
+        s[i] = OpCodes.OrN(OpCodes.AndN(BigInt(OpCodes.ToDWord(newLo)), 0xFFFFFFFFn), OpCodes.ShiftLn(BigInt(OpCodes.ToDWord(newHi)), 32));
       }
     }
 
@@ -597,19 +608,31 @@
     // Mix single column using GF(2^8) arithmetic
     mixColumn(c) {
       // Multiply elements by 'x' in GF(2^8) with polynomial 0x1D
-      const x1 = ((c&0x7F7F7F7F7F7F7F7Fn) << 1n)^(((c&0x8080808080808080n) >> 7n) * 0x1Dn);
+      const x1 = OpCodes.XorN(
+        OpCodes.ShiftLn(OpCodes.AndN(c, 0x7F7F7F7F7F7F7F7Fn), 1),
+        OpCodes.ShiftRn(OpCodes.AndN(c, 0x8080808080808080n), 7) * 0x1Dn
+      );
 
       // Use RIGHT rotation to match Bouncy Castle's rotate() function
-      let u = OpCodes.RotR64n(c, 8)^c;
-      u ^= OpCodes.RotR64n(u, 16);
-      u ^= OpCodes.RotR64n(c, 48);
+      let u = OpCodes.XorN(OpCodes.RotR64n(c, 8), c);
+      u = OpCodes.XorN(u, OpCodes.RotR64n(u, 16));
+      u = OpCodes.XorN(u, OpCodes.RotR64n(c, 48));
 
-      let v = u^c^x1;
+      let v = OpCodes.XorN(OpCodes.XorN(u, c), x1);
 
       // Multiply elements by 'x^2'
-      v = ((v&0x3F3F3F3F3F3F3F3Fn) << 2n)^(((v&0x8080808080808080n) >> 6n) * 0x1Dn)^(((v&0x4040404040404040n) >> 6n) * 0x1Dn);
+      v = OpCodes.XorN(
+        OpCodes.XorN(
+          OpCodes.ShiftLn(OpCodes.AndN(v, 0x3F3F3F3F3F3F3F3Fn), 2),
+          OpCodes.ShiftRn(OpCodes.AndN(v, 0x8080808080808080n), 6) * 0x1Dn
+        ),
+        OpCodes.ShiftRn(OpCodes.AndN(v, 0x4040404040404040n), 6) * 0x1Dn
+      );
 
-      return u^OpCodes.RotR64n(v, 32)^OpCodes.RotR64n(x1, 40)^OpCodes.RotR64n(x1, 48);
+      return OpCodes.XorN(
+        OpCodes.XorN(u, OpCodes.RotR64n(v, 32)),
+        OpCodes.XorN(OpCodes.RotR64n(x1, 40), OpCodes.RotR64n(x1, 48))
+      );
     }
   }
 

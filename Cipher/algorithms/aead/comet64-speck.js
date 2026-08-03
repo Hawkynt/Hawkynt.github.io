@@ -355,6 +355,10 @@
         new LinkItem("SPECK Specification", "https://eprint.iacr.org/2013/404.pdf")
       ];
 
+      this.references = [
+        new LinkItem("NIST LWC Round 2 Submission Package (Reference C)", "https://csrc.nist.gov/projects/lightweight-cryptography/round-2-candidates")
+      ];
+
       // Official NIST LWC test vectors (Known Answer Tests)
       this.tests = [
         {

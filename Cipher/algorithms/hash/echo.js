@@ -48,7 +48,7 @@
 
       // Required metadata
       this.name = "ECHO";
-      this.description = "ECHO is a cryptographic hash function submitted to the NIST SHA-3 competition. It uses AES-like round functions with a wide-pipe construction operating on a large internal state.";
+      this.description = "ECHO is an AES-based cryptographic hash function submitted to the NIST SHA-3 competition (Round 2). It processes a 512-bit (small variants) or 1024-bit (large variants) state through 8 or 10 double-AES-round permutations, with a counter mixed into the AES round keys. It did not advance to the SHA-3 final round.";
       this.inventor = "Ryad Benadjila, Olivier Billet, Henri Gilbert, Gilles Macario-Rat, Thomas Peyrin, Matt Robshaw, Yannick Seurin";
       this.year = 2008;
       this.category = CategoryType.HASH;
@@ -67,51 +67,83 @@
 
       // Documentation
       this.documentation = [
-        new LinkItem("ECHO Specification v2.0", "https://crypto.orange-labs.fr/ECHO/"),
+        new LinkItem("ECHO Specification v2.0 (SHA-3 Round 2 submission)", "https://crypto.orange-labs.fr/ECHO/"),
         new LinkItem("NIST SHA-3 Competition", "https://csrc.nist.gov/projects/hash-functions/sha-3-project"),
-        new LinkItem("sphlib Reference Implementation", "https://github.com/pornin/sphlib")
+        new LinkItem("sphlib Reference Implementation (echo.c)", "https://github.com/pornin/sphlib/blob/master/c/echo.c")
       ];
 
       this.references = [
+        new LinkItem("sphlib by Thomas Pornin (reference C implementation)", "https://github.com/pornin/sphlib"),
         new LinkItem("ECHO: A Low-Latency AEAD Mode", "https://eprint.iacr.org/2010/003")
       ];
 
-      // Test vectors from sphlib NIST test suite
+      // Test vectors reproduced from sphlib's NIST-style short-message test data
+      // (c/test_echo.c, using message index 0 = empty message and index 8 = one
+      // byte 0xCC, the standard NIST ShortMsgKAT entries reused by sphlib for all
+      // SHA-3 round-2 candidates).
       this.tests = [
-        // ECHO-256 test vectors
-        {
-          text: "NIST vector #0 (0 bits) - ECHO-256",
-          uri: "https://github.com/pornin/sphlib/blob/master/c/test_echo.c",
-          input: [],
-          outputSize: 32,
-          expected: OpCodes.Hex8ToBytes("3f4d42c8276522f6e60547e852c39c888d2b6f0c8747a0950ec57c9b5e0545f0")
-        },
-
         // ECHO-224 test vectors
         {
-          text: "NIST vector #0 (0 bits) - ECHO-224",
+          text: "sphlib NIST-style test vector (0-bit / empty message) - ECHO-224",
           uri: "https://github.com/pornin/sphlib/blob/master/c/test_echo.c",
           input: [],
           outputSize: 28,
           expected: OpCodes.Hex8ToBytes("17da087595166f733fff7cdb0bca6438f303d0e00c48b5e7a3075905")
         },
+        {
+          text: "sphlib NIST-style test vector (8-bit message 0xCC) - ECHO-224",
+          uri: "https://github.com/pornin/sphlib/blob/master/c/test_echo.c",
+          input: [0xCC],
+          outputSize: 28,
+          expected: OpCodes.Hex8ToBytes("34d81c434b63c8fbcf023b6417af87d906942ebd7b56c1d7b08baddc")
+        },
+
+        // ECHO-256 test vectors
+        {
+          text: "sphlib NIST-style test vector (0-bit / empty message) - ECHO-256",
+          uri: "https://github.com/pornin/sphlib/blob/master/c/test_echo.c",
+          input: [],
+          outputSize: 32,
+          expected: OpCodes.Hex8ToBytes("4496cd09d425999aefa75189ee7fd3c97362aa9e4ca898328002d20a4b519788")
+        },
+        {
+          text: "sphlib NIST-style test vector (8-bit message 0xCC) - ECHO-256",
+          uri: "https://github.com/pornin/sphlib/blob/master/c/test_echo.c",
+          input: [0xCC],
+          outputSize: 32,
+          expected: OpCodes.Hex8ToBytes("01c382b5b9d7d10ec36c98785c27eaccfb2f772a7e58b6b97bf62212b8584ae5")
+        },
 
         // ECHO-384 test vectors
         {
-          text: "NIST vector #0 (0 bits) - ECHO-384",
+          text: "sphlib NIST-style test vector (0-bit / empty message) - ECHO-384",
           uri: "https://github.com/pornin/sphlib/blob/master/c/test_echo.c",
           input: [],
           outputSize: 48,
-          expected: OpCodes.Hex8ToBytes("1bb3f6be58666de69f54ab7c23b7bb88da9e5e78e0e2f5cc0ca6c880ca91a665f3bef9bf677b8f7fb9e1fb7b62cf8b25")
+          expected: OpCodes.Hex8ToBytes("134040763f840559b84b7a1ae5d6d64fc3659821a789cc64a7f1444c09ee7f81a54d72beee8273bae5ef18ec43aa5f34")
+        },
+        {
+          text: "sphlib NIST-style test vector (8-bit message 0xCC) - ECHO-384",
+          uri: "https://github.com/pornin/sphlib/blob/master/c/test_echo.c",
+          input: [0xCC],
+          outputSize: 48,
+          expected: OpCodes.Hex8ToBytes("90875a2649cab90018ff8aecd334482c92b15d76b378574eeaacd3b7598020db11e2c7480614eea8793de3daf2093f73")
         },
 
         // ECHO-512 test vectors
         {
-          text: "NIST vector #0 (0 bits) - ECHO-512",
+          text: "sphlib NIST-style test vector (0-bit / empty message) - ECHO-512",
           uri: "https://github.com/pornin/sphlib/blob/master/c/test_echo.c",
           input: [],
           outputSize: 64,
-          expected: OpCodes.Hex8ToBytes("89d42c9d857bdaed6818c1925c635d1bf1a5a05c8eeba6d012cdeed6698c2e0fd4f5e6b03e93f71f3d5f891c8c7ff3b64b95727e07cdd3fbe0ba388f39239c95")
+          expected: OpCodes.Hex8ToBytes("158f58cc79d300a9aa292515049275d051a28ab931726d0ec44bdd9faef4a702c36db9e7922fff077402236465833c5cc76af4efc352b4b44c7fa15aa0ef234e")
+        },
+        {
+          text: "sphlib NIST-style test vector (8-bit message 0xCC) - ECHO-512",
+          uri: "https://github.com/pornin/sphlib/blob/master/c/test_echo.c",
+          input: [0xCC],
+          outputSize: 64,
+          expected: OpCodes.Hex8ToBytes("dfce37ca6f32ba4c3a72e77bca20e511a39b31a6075815f083db2ecfd5c32cfd6a4e0dd9bd51921199758edd2fe8ed0fa31e06aa821c7030653d15408e8728dd")
         }
       ];
     }
@@ -123,7 +155,7 @@
    */
 
     CreateInstance(isInverse = false) {
-      if (isInverse) return null;
+      if (isInverse) return null; // Hash functions have no inverse
       return new ECHOInstance(this);
     }
   }
@@ -131,7 +163,7 @@
   /**
  * ECHO cipher instance implementing Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IHashFunctionInstance}
  */
 
   class ECHOInstance extends IHashFunctionInstance {
@@ -158,9 +190,8 @@
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed data to hasher for processing
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
@@ -169,9 +200,8 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Get hash result
+   * @returns {uint8[]} Digest bytes
    */
 
     Result() {
@@ -180,393 +210,324 @@
       const result = hasher.finalize();
 
       this.inputBuffer = [];
-      return Array.from(result);
+      return result;
     }
   }
 
   // ===== ECHO HASHER CORE IMPLEMENTATION =====
+  //
+  // Faithful port of the sphlib reference implementation (c/echo.c, 32-bit /
+  // "not SPH_ECHO_64" code path by Thomas Pornin), operating on a matrix of
+  // sixteen 128-bit "cells" (W[0..15]), each cell made of four 32-bit words.
+  // The first stateCells (4 for the 224/256-bit variants, 8 for 384/512-bit)
+  // cells hold the running chaining value V; the remaining cells are loaded
+  // from the message block for each compression call.
 
   class ECHOHasher {
     constructor(outputBits) {
       this.outputBits = outputBits;
-
-      // Determine state size
-      // Small: 224/256-bit output uses 64-byte (512-bit) state
-      // Big: 384/512-bit output uses 128-byte (1024-bit) state
       this.isSmall = (outputBits <= 256);
-      this.stateSize = this.isSmall ? 64 : 128; // bytes
-      this.blockSize = this.isSmall ? 192 : 128; // bytes (input block)
+      this.stateCells = this.isSmall ? 4 : 8;     // chaining-value cells
+      this.blockSize = this.isSmall ? 192 : 128;  // message bytes per block
       this.rounds = this.isSmall ? 8 : 10;
+      this.outWords = outputBits / 32;
 
-      // State: 4x4 matrix of 32-bit words (16 cells of 4 words each for small, 8 words for big)
-      // Small: W[16][4] = 256 bytes total
-      // Big: W[16][4] = 256 bytes total (but we use first 64 or 128 for chaining value)
-      this.state = new Array(this.stateSize).fill(0);
-
-      // Counter (128-bit)
-      this.counter = [0, 0, 0, 0]; // 4x 32-bit words
-
+      this.V = null;   // chaining value: stateCells x 4 32-bit words
+      this.C = null;   // 128-bit counter split into four 32-bit words
       this.buffer = [];
-      this.totalBytes = 0;
 
-      this.initializeState();
+      this._resetState();
     }
 
-    initializeState() {
-      // Initialize state with output length
-      this.state.fill(0);
+    _resetState() {
+      this.V = [];
+      for (let i = 0; i < this.stateCells; ++i) {
+        this.V.push([OpCodes.ToUint32(this.outputBits), 0, 0, 0]);
+      }
+      this.C = [0, 0, 0, 0];
+      this.buffer = [];
+    }
 
-      // Set hash output size in the last bytes (big-endian)
-      this.state[this.stateSize - 2] = (this.outputBits >>> 8) & 0xFF;
-      this.state[this.stateSize - 1] = this.outputBits & 0xFF;
+    // Increment an arbitrary 128-bit little-endian counter (array of four
+    // 32-bit words) by the given amount, propagating carries.
+    _incrWords(words, amount) {
+      const newLow = OpCodes.ToUint32(words[0] + amount);
+      const carried = newLow < OpCodes.ToUint32(amount);
+      words[0] = newLow;
+      if (carried) {
+        words[1] = OpCodes.ToUint32(words[1] + 1);
+        if (words[1] === 0) {
+          words[2] = OpCodes.ToUint32(words[2] + 1);
+          if (words[2] === 0) {
+            words[3] = OpCodes.ToUint32(words[3] + 1);
+          }
+        }
+      }
     }
 
     update(data) {
       if (!data || data.length === 0) return;
-      if (!Array.isArray(data)) {
-        data = Array.from(data);
-      }
+      if (!Array.isArray(data)) data = Array.from(data);
 
-      this.buffer.push(...data);
-      this.totalBytes += data.length;
+      let offset = 0;
+      let len = data.length;
 
-      // Process complete blocks
-      while (this.buffer.length >= this.blockSize) {
-        const block = this.buffer.splice(0, this.blockSize);
-        this.compress(block);
+      while (len > 0) {
+        const space = this.blockSize - this.buffer.length;
+        const chunkLen = len < space ? len : space;
+        for (let i = 0; i < chunkLen; ++i) this.buffer.push(data[offset + i]);
+        offset += chunkLen;
+        len -= chunkLen;
+
+        if (this.buffer.length === this.blockSize) {
+          // The counter is advanced BEFORE compressing: the AES round-key
+          // counter used inside this compression call starts at the total
+          // bit count including the block about to be processed.
+          this._incrWords(this.C, this.blockSize * 8);
+          this._compress(this.buffer);
+          this.buffer = [];
+        }
       }
     }
 
     finalize() {
-      // Pad with 0x80 followed by zeros
-      this.buffer.push(0x80);
+      const bufSize = this.blockSize;
+      const ptr = this.buffer.length;
+      const elen = ptr * 8; // bits contained in the trailing partial block
 
-      // Pad to block size minus 18 bytes (16 for length, 2 for output size)
-      const paddingTarget = this.blockSize - 18;
-      while (this.buffer.length < paddingTarget) {
-        this.buffer.push(0x00);
+      this._incrWords(this.C, elen);
+
+      // Capture the (post-increment) total message bit-length as a 128-bit
+      // little-endian counter; this is embedded into the padding block
+      // regardless of what happens to the running counter afterwards.
+      const lenBytes = [];
+      for (let i = 0; i < 4; ++i) lenBytes.push(...OpCodes.Unpack32LE(this.C[i]));
+
+      // If this final block carries no message bits at all (exact multiple
+      // of the block size), the running counter resets to zero.
+      if (elen === 0) this.C = [0, 0, 0, 0];
+
+      let buf = this.buffer.slice();
+      buf.push(0x80); // single padding bit (byte-aligned input only)
+      while (buf.length < bufSize) buf.push(0);
+
+      if (ptr > bufSize - 18) {
+        // Not enough room left for the 18-byte trailer: compress this
+        // padding-only block first, then start a fresh all-zero block.
+        this._compress(buf);
+        this.C = [0, 0, 0, 0];
+        buf = new Array(bufSize).fill(0);
       }
 
-      // Append message length in bits (128-bit big-endian)
-      const totalBits = this.totalBytes * 8;
-      // High 64 bits (always zero for our purposes)
-      for (let i = 0; i < 8; ++i) {
-        this.buffer.push(0x00);
-      }
-      // Low 64 bits (big-endian)
-      for (let i = 7; i >= 0; --i) {
-        this.buffer.push((totalBits >>> (i * 8)) & 0xFF);
-      }
+      const sizeBytes = OpCodes.Unpack32LE(OpCodes.ToUint32(this.outputBits));
+      buf[bufSize - 18] = sizeBytes[0];
+      buf[bufSize - 17] = sizeBytes[1];
+      for (let i = 0; i < 16; ++i) buf[bufSize - 16 + i] = lenBytes[i];
 
-      // Append output size (16-bit big-endian)
-      this.buffer.push((this.outputBits >>> 8) & 0xFF);
-      this.buffer.push(this.outputBits & 0xFF);
+      this._compress(buf);
 
-      // Process final block
-      if (this.buffer.length === this.blockSize) {
-        this.compress(this.buffer);
+      const output = [];
+      for (let k = 0; k < this.outWords; ++k) {
+        const cell = Math.floor(k / 4);
+        const word = k % 4;
+        output.push(...OpCodes.Unpack32LE(this.V[cell][word]));
       }
 
-      // Extract output from final state (last bytes)
-      const outputBytes = this.outputBits / 8;
-      return this.state.slice(this.stateSize - outputBytes);
+      this._resetState();
+      return output;
     }
 
-    compress(block) {
-      // ECHO compression: W = state matrix (4x4 of 128-bit cells)
-      // Each cell contains 4x 32-bit words (16 bytes)
-      const W = new Array(16);
-      for (let i = 0; i < 16; ++i) {
-        W[i] = new Array(4);
+    _compress(block) {
+      // Build the 16-cell x 4-word working matrix W.
+      const W = [];
+      for (let i = 0; i < 16; ++i) W.push([0, 0, 0, 0]);
+
+      for (let i = 0; i < this.stateCells; ++i) {
+        W[i][0] = this.V[i][0];
+        W[i][1] = this.V[i][1];
+        W[i][2] = this.V[i][2];
+        W[i][3] = this.V[i][3];
       }
 
-      // Copy chaining value to first part of W
-      if (this.isSmall) {
-        // Small: first 4 cells (64 bytes) from state
-        for (let i = 0; i < 4; ++i) {
-          for (let j = 0; j < 4; ++j) {
-            const idx = i * 16 + j * 4;
-            W[i][j] = OpCodes.Pack32LE(
-              this.state[idx], this.state[idx + 1],
-              this.state[idx + 2], this.state[idx + 3]
-            );
-          }
-        }
-        // Load 192-byte message block into remaining 12 cells
-        for (let i = 0; i < 12; ++i) {
-          for (let j = 0; j < 4; ++j) {
-            const idx = i * 16 + j * 4;
-            W[i + 4][j] = OpCodes.Pack32LE(
-              block[idx], block[idx + 1],
-              block[idx + 2], block[idx + 3]
-            );
-          }
-        }
-      } else {
-        // Big: first 8 cells (128 bytes) from state
-        for (let i = 0; i < 8; ++i) {
-          for (let j = 0; j < 4; ++j) {
-            const idx = i * 16 + j * 4;
-            W[i][j] = OpCodes.Pack32LE(
-              this.state[idx], this.state[idx + 1],
-              this.state[idx + 2], this.state[idx + 3]
-            );
-          }
-        }
-        // Load 128-byte message block into remaining 8 cells
-        for (let i = 0; i < 8; ++i) {
-          for (let j = 0; j < 4; ++j) {
-            const idx = i * 16 + j * 4;
-            W[i + 8][j] = OpCodes.Pack32LE(
-              block[idx], block[idx + 1],
-              block[idx + 2], block[idx + 3]
-            );
-          }
-        }
+      const msgCells = 16 - this.stateCells;
+      for (let u = 0; u < msgCells; ++u) {
+        const cell = this.stateCells + u;
+        const base = u * 16;
+        W[cell][0] = OpCodes.Pack32LE(block[base], block[base + 1], block[base + 2], block[base + 3]);
+        W[cell][1] = OpCodes.Pack32LE(block[base + 4], block[base + 5], block[base + 6], block[base + 7]);
+        W[cell][2] = OpCodes.Pack32LE(block[base + 8], block[base + 9], block[base + 10], block[base + 11]);
+        W[cell][3] = OpCodes.Pack32LE(block[base + 12], block[base + 13], block[base + 14], block[base + 15]);
       }
 
-      // Initialize round key counter
-      const K = this.counter.slice();
+      const K = [this.C[0], this.C[1], this.C[2], this.C[3]];
 
-      // Apply rounds
       for (let round = 0; round < this.rounds; ++round) {
-        // SubBytes: Two AES rounds per ECHO round
-        this.bigSubWords(W, K);
+        // SubWords: two keyed/unkeyed AES rounds per cell, counter-derived
+        // round key incremented once per cell (16 times per ECHO round).
+        for (let n = 0; n < 16; ++n) {
+          const Y = [0, 0, 0, 0];
+          this._aesRound(W[n], K, Y);
+          this._aesRoundNoKey(Y, W[n]);
+          this._incrWords(K, 1);
+        }
 
-        // ShiftRows
-        this.bigShiftRows(W);
+        // ShiftRows: row 0 fixed, row 1 shifted by 1, row 2 by 2, row 3 by 3
+        // cells, where cell index = row + 4*column (column-major 4x4 grid).
+        this._shiftRow(W, 1, 5, 9, 13);
+        this._shiftRow(W, 2, 6, 10, 14);
+        this._shiftRow(W, 2, 6, 10, 14);
+        this._shiftRow(W, 3, 7, 11, 15);
+        this._shiftRow(W, 3, 7, 11, 15);
+        this._shiftRow(W, 3, 7, 11, 15);
 
-        // MixColumns
-        this.bigMixColumns(W);
+        // MixColumns over each column of 4 cells.
+        this._mixColumn(W, 0, 1, 2, 3);
+        this._mixColumn(W, 4, 5, 6, 7);
+        this._mixColumn(W, 8, 9, 10, 11);
+        this._mixColumn(W, 12, 13, 14, 15);
       }
 
-      // Finalization: XOR result with input block and chaining value
+      // Finalization: fold the post-round matrix and message block back
+      // into the chaining value.
       if (this.isSmall) {
-        // XOR first 4 cells with block bytes 0-63 and 64-127
-        for (let i = 0; i < 4; ++i) {
-          for (let j = 0; j < 4; ++j) {
-            const idx = i * 4 + j;
-            const b1 = OpCodes.Pack32LE(
-              block[idx * 4], block[idx * 4 + 1],
-              block[idx * 4 + 2], block[idx * 4 + 3]
-            );
-            const b2 = OpCodes.Pack32LE(
-              block[64 + idx * 4], block[64 + idx * 4 + 1],
-              block[64 + idx * 4 + 2], block[64 + idx * 4 + 3]
-            );
-            const b3 = OpCodes.Pack32LE(
-              block[128 + idx * 4], block[128 + idx * 4 + 1],
-              block[128 + idx * 4 + 2], block[128 + idx * 4 + 3]
-            );
-            W[i][j] ^= b1 ^ b2 ^ b3;
-          }
+        for (let u = 0; u < 16; ++u) {
+          const c = Math.floor(u / 4);
+          const w = u % 4;
+          const m1 = OpCodes.Pack32LE(block[u * 4], block[u * 4 + 1], block[u * 4 + 2], block[u * 4 + 3]);
+          const m2 = OpCodes.Pack32LE(block[64 + u * 4], block[64 + u * 4 + 1], block[64 + u * 4 + 2], block[64 + u * 4 + 3]);
+          const m3 = OpCodes.Pack32LE(block[128 + u * 4], block[128 + u * 4 + 1], block[128 + u * 4 + 2], block[128 + u * 4 + 3]);
+
+          let v = this.V[c][w];
+          v = OpCodes.Xor32(v, m1);
+          v = OpCodes.Xor32(v, m2);
+          v = OpCodes.Xor32(v, m3);
+          v = OpCodes.Xor32(v, W[c][w]);
+          v = OpCodes.Xor32(v, W[c + 4][w]);
+          v = OpCodes.Xor32(v, W[c + 8][w]);
+          v = OpCodes.Xor32(v, W[c + 12][w]);
+          this.V[c][w] = v;
         }
       } else {
-        // XOR first 8 cells with block bytes
-        for (let i = 0; i < 8; ++i) {
-          for (let j = 0; j < 4; ++j) {
-            const idx = i * 4 + j;
-            const b = OpCodes.Pack32LE(
-              block[idx * 4], block[idx * 4 + 1],
-              block[idx * 4 + 2], block[idx * 4 + 3]
-            );
-            W[i][j] ^= b;
-          }
-        }
-      }
+        for (let u = 0; u < 32; ++u) {
+          const c = Math.floor(u / 4);
+          const w = u % 4;
+          const m = OpCodes.Pack32LE(block[u * 4], block[u * 4 + 1], block[u * 4 + 2], block[u * 4 + 3]);
 
-      // Update state from final W
-      const stateCells = this.isSmall ? 4 : 8;
-      for (let i = 0; i < stateCells; ++i) {
-        for (let j = 0; j < 4; ++j) {
-          const bytes = OpCodes.Unpack32LE(W[i][j]);
-          const idx = i * 16 + j * 4;
-          this.state[idx] = bytes[0];
-          this.state[idx + 1] = bytes[1];
-          this.state[idx + 2] = bytes[2];
-          this.state[idx + 3] = bytes[3];
-        }
-      }
-
-      // Increment counter
-      this.incrCounter(this.blockSize * 8);
-    }
-
-    bigSubWords(W, K) {
-      // Apply two AES rounds to each cell
-      for (let i = 0; i < 16; ++i) {
-        // First AES round with key
-        const X = W[i];
-        const Y = new Array(4);
-
-        this.aesRound(X, K, Y);
-
-        // Second AES round without key
-        this.aesRoundNoKey(Y, X);
-
-        // Increment counter
-        K[0] = (K[0] + 1) >>> 0;
-        if (K[0] === 0) {
-          K[1] = (K[1] + 1) >>> 0;
-          if (K[1] === 0) {
-            K[2] = (K[2] + 1) >>> 0;
-            if (K[2] === 0) {
-              K[3] = (K[3] + 1) >>> 0;
-            }
-          }
+          let v = this.V[c][w];
+          v = OpCodes.Xor32(v, m);
+          v = OpCodes.Xor32(v, W[c][w]);
+          v = OpCodes.Xor32(v, W[c + 8][w]);
+          this.V[c][w] = v;
         }
       }
     }
 
-    aesRound(input, key, output) {
-      // AES round: SubBytes + ShiftRows + MixColumns + AddRoundKey
-      const T0 = AES_T0;
-      const T1 = AES_T1;
-      const T2 = AES_T2;
-      const T3 = AES_T3;
-
-      output[0] = (T0[(input[0] >>> 0) & 0xFF] ^
-                   T1[(input[1] >>> 8) & 0xFF] ^
-                   T2[(input[2] >>> 16) & 0xFF] ^
-                   T3[(input[3] >>> 24) & 0xFF] ^
-                   key[0]) >>> 0;
-
-      output[1] = (T0[(input[1] >>> 0) & 0xFF] ^
-                   T1[(input[2] >>> 8) & 0xFF] ^
-                   T2[(input[3] >>> 16) & 0xFF] ^
-                   T3[(input[0] >>> 24) & 0xFF] ^
-                   key[1]) >>> 0;
-
-      output[2] = (T0[(input[2] >>> 0) & 0xFF] ^
-                   T1[(input[3] >>> 8) & 0xFF] ^
-                   T2[(input[0] >>> 16) & 0xFF] ^
-                   T3[(input[1] >>> 24) & 0xFF] ^
-                   key[2]) >>> 0;
-
-      output[3] = (T0[(input[3] >>> 0) & 0xFF] ^
-                   T1[(input[0] >>> 8) & 0xFF] ^
-                   T2[(input[1] >>> 16) & 0xFF] ^
-                   T3[(input[2] >>> 24) & 0xFF] ^
-                   key[3]) >>> 0;
+    _shiftRow(W, a, b, c, d) {
+      const tmp = W[a];
+      W[a] = W[b];
+      W[b] = W[c];
+      W[c] = W[d];
+      W[d] = tmp;
     }
 
-    aesRoundNoKey(input, output) {
-      // AES round without AddRoundKey
-      const T0 = AES_T0;
-      const T1 = AES_T1;
-      const T2 = AES_T2;
-      const T3 = AES_T3;
+    _aesRound(input, key, output) {
+      const T0 = AES_T0, T1 = AES_T1, T2 = AES_T2, T3 = AES_T3;
 
-      output[0] = (T0[(input[0] >>> 0) & 0xFF] ^
-                   T1[(input[1] >>> 8) & 0xFF] ^
-                   T2[(input[2] >>> 16) & 0xFF] ^
-                   T3[(input[3] >>> 24) & 0xFF]) >>> 0;
+      output[0] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(
+        T0[OpCodes.GetByte(input[0], 0)],
+        T1[OpCodes.GetByte(input[1], 1)]),
+        T2[OpCodes.GetByte(input[2], 2)]),
+        T3[OpCodes.GetByte(input[3], 3)]),
+        key[0]);
 
-      output[1] = (T0[(input[1] >>> 0) & 0xFF] ^
-                   T1[(input[2] >>> 8) & 0xFF] ^
-                   T2[(input[3] >>> 16) & 0xFF] ^
-                   T3[(input[0] >>> 24) & 0xFF]) >>> 0;
+      output[1] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(
+        T0[OpCodes.GetByte(input[1], 0)],
+        T1[OpCodes.GetByte(input[2], 1)]),
+        T2[OpCodes.GetByte(input[3], 2)]),
+        T3[OpCodes.GetByte(input[0], 3)]),
+        key[1]);
 
-      output[2] = (T0[(input[2] >>> 0) & 0xFF] ^
-                   T1[(input[3] >>> 8) & 0xFF] ^
-                   T2[(input[0] >>> 16) & 0xFF] ^
-                   T3[(input[1] >>> 24) & 0xFF]) >>> 0;
+      output[2] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(
+        T0[OpCodes.GetByte(input[2], 0)],
+        T1[OpCodes.GetByte(input[3], 1)]),
+        T2[OpCodes.GetByte(input[0], 2)]),
+        T3[OpCodes.GetByte(input[1], 3)]),
+        key[2]);
 
-      output[3] = (T0[(input[3] >>> 0) & 0xFF] ^
-                   T1[(input[0] >>> 8) & 0xFF] ^
-                   T2[(input[1] >>> 16) & 0xFF] ^
-                   T3[(input[2] >>> 24) & 0xFF]) >>> 0;
+      output[3] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(
+        T0[OpCodes.GetByte(input[3], 0)],
+        T1[OpCodes.GetByte(input[0], 1)]),
+        T2[OpCodes.GetByte(input[1], 2)]),
+        T3[OpCodes.GetByte(input[2], 3)]),
+        key[3]);
     }
 
-    bigShiftRows(W) {
-      // ECHO ShiftRows operates on the 4x4 matrix of cells
-      // Row 0: no shift
-      // Row 1: shift left by 1
-      this.shiftRow(W, 1, 4, 8, 12);
-      // Row 2: shift left by 2
-      this.shiftRow(W, 2, 6, 10, 14);
-      this.shiftRow(W, 2, 6, 10, 14); // Shift twice
-      // Row 3: shift left by 3
-      this.shiftRow(W, 3, 7, 11, 15);
-      this.shiftRow(W, 3, 7, 11, 15);
-      this.shiftRow(W, 3, 7, 11, 15);
+    _aesRoundNoKey(input, output) {
+      const T0 = AES_T0, T1 = AES_T1, T2 = AES_T2, T3 = AES_T3;
+
+      output[0] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(
+        T0[OpCodes.GetByte(input[0], 0)],
+        T1[OpCodes.GetByte(input[1], 1)]),
+        T2[OpCodes.GetByte(input[2], 2)]),
+        T3[OpCodes.GetByte(input[3], 3)]);
+
+      output[1] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(
+        T0[OpCodes.GetByte(input[1], 0)],
+        T1[OpCodes.GetByte(input[2], 1)]),
+        T2[OpCodes.GetByte(input[3], 2)]),
+        T3[OpCodes.GetByte(input[0], 3)]);
+
+      output[2] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(
+        T0[OpCodes.GetByte(input[2], 0)],
+        T1[OpCodes.GetByte(input[3], 1)]),
+        T2[OpCodes.GetByte(input[0], 2)]),
+        T3[OpCodes.GetByte(input[1], 3)]);
+
+      output[3] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(
+        T0[OpCodes.GetByte(input[3], 0)],
+        T1[OpCodes.GetByte(input[0], 1)]),
+        T2[OpCodes.GetByte(input[1], 2)]),
+        T3[OpCodes.GetByte(input[2], 3)]);
     }
 
-    shiftRow(W, a, b, c, d) {
-      // Rotate cells in a row
-      for (let n = 0; n < 4; ++n) {
-        const tmp = W[a][n];
-        W[a][n] = W[b][n];
-        W[b][n] = W[c][n];
-        W[c][n] = W[d][n];
-        W[d][n] = tmp;
-      }
+    // Multiply every byte lane of a 32-bit word by x (0x02) in GF(2^8),
+    // in parallel - the AES-style "xtime" step used by ECHO's MixColumns.
+    _gfMulX(word) {
+      const b0 = OpCodes.GF256Mul(OpCodes.GetByte(word, 0), 2);
+      const b1 = OpCodes.GF256Mul(OpCodes.GetByte(word, 1), 2);
+      const b2 = OpCodes.GF256Mul(OpCodes.GetByte(word, 2), 2);
+      const b3 = OpCodes.GF256Mul(OpCodes.GetByte(word, 3), 2);
+      return OpCodes.Pack32LE(b0, b1, b2, b3);
     }
 
-    bigMixColumns(W) {
-      // Apply MixColumns to each column of the 4x4 cell matrix
-      this.mixColumn(W, 0, 1, 2, 3);
-      this.mixColumn(W, 4, 5, 6, 7);
-      this.mixColumn(W, 8, 9, 10, 11);
-      this.mixColumn(W, 12, 13, 14, 15);
-    }
-
-    mixColumn(W, ia, ib, ic, id) {
-      // MixColumns on 4 cells (each cell has 4 words)
-      // Uses GF(256) multiplication similar to AES
+    _mixColumn(W, ia, ib, ic, id) {
       for (let n = 0; n < 4; ++n) {
         const a = W[ia][n];
         const b = W[ib][n];
         const c = W[ic][n];
         const d = W[id][n];
 
-        // Compute xor combinations
-        const ab = a ^ b;
-        const bc = b ^ c;
-        const cd = c ^ d;
+        const ab = OpCodes.Xor32(a, b);
+        const bc = OpCodes.Xor32(b, c);
+        const cd = OpCodes.Xor32(c, d);
 
-        // Multiply by x in GF(256) using bytewise operations
-        const abx = this.gfMulX(ab);
-        const bcx = this.gfMulX(bc);
-        const cdx = this.gfMulX(cd);
+        const abx = this._gfMulX(ab);
+        const bcx = this._gfMulX(bc);
+        const cdx = this._gfMulX(cd);
 
-        // Apply MDS matrix multiplication
-        W[ia][n] = (abx ^ bc ^ d) >>> 0;
-        W[ib][n] = (bcx ^ a ^ cd) >>> 0;
-        W[ic][n] = (cdx ^ ab ^ d) >>> 0;
-        W[id][n] = (abx ^ bcx ^ cdx ^ ab ^ c) >>> 0;
-      }
-    }
-
-    gfMulX(x) {
-      // Multiply by x in GF(256) bytewise (each byte separately)
-      // Formula: ((x & 0x80808080) >> 7) * 27 ^ ((x & 0x7F7F7F7F) << 1)
-      const high = (x & 0x80808080) >>> 7;
-      const low = (x & 0x7F7F7F7F) << 1;
-
-      // Multiply high bits by 27 (0x1B) for each byte that had bit 7 set
-      const mult = (high * 27) & 0xFFFFFFFF;
-
-      return (mult ^ low) >>> 0;
-    }
-
-    incrCounter(bits) {
-      // Increment 128-bit counter by bit count
-      this.counter[0] = (this.counter[0] + bits) >>> 0;
-      if (this.counter[0] < bits) {
-        this.counter[1] = (this.counter[1] + 1) >>> 0;
-        if (this.counter[1] === 0) {
-          this.counter[2] = (this.counter[2] + 1) >>> 0;
-          if (this.counter[2] === 0) {
-            this.counter[3] = (this.counter[3] + 1) >>> 0;
-          }
-        }
+        W[ia][n] = OpCodes.Xor32(OpCodes.Xor32(abx, bc), d);
+        W[ib][n] = OpCodes.Xor32(OpCodes.Xor32(bcx, a), cd);
+        W[ic][n] = OpCodes.Xor32(OpCodes.Xor32(cdx, ab), d);
+        W[id][n] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(abx, bcx), cdx), ab), c);
       }
     }
   }
 
-  // AES T-tables for fast AES round implementation
-  const AES_T0 = new Uint32Array([
+  // Standard AES combined SubBytes+MixColumns table (Te0, MSB-first byte
+  // convention). ECHO's AES round macros index bytes LSB-first, so the
+  // table actually used for lookups (AES_T0 below) is the byte-reversed
+  // form of this table.
+  const AES_TE0 = new Uint32Array([
     0xc66363a5, 0xf87c7c84, 0xee777799, 0xf67b7b8d, 0xfff2f20d, 0xd66b6bbd, 0xde6f6fb1, 0x91c5c554,
     0x60303050, 0x02010103, 0xce6767a9, 0x562b2b7d, 0xe7fefe19, 0xb5d7d762, 0x4dababe6, 0xec76769a,
     0x8fcaca45, 0x1f82829d, 0x89c9c940, 0xfa7d7d87, 0xeffafa15, 0xb25959eb, 0x8e4747c9, 0xfbf0f00b,
@@ -601,15 +562,21 @@
     0x824141c3, 0x299999b0, 0x5a2d2d77, 0x1e0f0f11, 0x7bb0b0cb, 0xa85454fc, 0x6dbbbbd6, 0x2c16163a
   ]);
 
+  // AES_T0 is the byte-swapped form of AES_TE0, matching the LSB-first byte
+  // indexing used by ECHO's AES round macros (sphlib's AES0_LE table).
+  // AES_T1..AES_T3 are then obtained from AES_T0 by rotation, exactly as
+  // sphlib's AES1_LE..AES3_LE relate to AES0_LE.
+  const AES_T0 = new Uint32Array(256);
   const AES_T1 = new Uint32Array(256);
   const AES_T2 = new Uint32Array(256);
   const AES_T3 = new Uint32Array(256);
 
-  // Generate T1, T2, T3 from T0 by rotation
   for (let i = 0; i < 256; ++i) {
-    AES_T1[i] = OpCodes.RotL32(AES_T0[i], 8);
-    AES_T2[i] = OpCodes.RotL32(AES_T0[i], 16);
-    AES_T3[i] = OpCodes.RotL32(AES_T0[i], 24);
+    const swapped = OpCodes.Pack32LE.apply(null, OpCodes.Unpack32BE(AES_TE0[i]));
+    AES_T0[i] = swapped;
+    AES_T1[i] = OpCodes.RotL32(swapped, 8);
+    AES_T2[i] = OpCodes.RotL32(swapped, 16);
+    AES_T3[i] = OpCodes.RotL32(swapped, 24);
   }
 
   // Register algorithm
