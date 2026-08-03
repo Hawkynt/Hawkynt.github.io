@@ -2,3 +2,7 @@
 
 # Generated test artifacts (transpiler validation output projects)
 /tests/transpiler-validation-output/
+
+# Generated algorithm reference (built from the implementations by
+# tools/generate-algorithm-docs.js, published by CI - never checked in)
+/docs/algorithms/

@@ -50,3 +50,25 @@ jobs:
       - name: Validate HTML
         continue-on-error: true
         run: npx --yes html-validate "**/*.html" || true
+
+  # The algorithm reference is derived entirely from the implementations, so it
+  # is built on every run and published as an artifact rather than committed —
+  # a generated tree in the history would only ever go stale between runs.
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build the algorithm reference
+        working-directory: Cipher
+        run: node tools/generate-algorithm-docs.js
+
+      - name: Publish the algorithm reference
+        uses: actions/upload-artifact@v4
+        with:
+          name: algorithm-reference
+          path: Cipher/docs/algorithms
+          if-no-files-found: error
