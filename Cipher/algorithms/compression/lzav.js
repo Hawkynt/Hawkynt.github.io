@@ -97,6 +97,26 @@
           uri: "https://github.com/avaneev/lzav",
           input: OpCodes.AnsiToBytes("Hello World!")
           // Round-trip only
+        },
+        {
+          text: "Highly repetitive - 300x 'a' (exercises self-referential matches and match-length wrap-around)",
+          uri: "https://github.com/avaneev/lzav",
+          input: new Array(300).fill(0x61)
+          // Round-trip only
+        },
+        {
+          text: "Alternating pattern - 200x 'ab' (exercises match/literal-run boundary handling)",
+          uri: "https://github.com/avaneev/lzav",
+          input: (() => { const a = []; for (let i = 0; i < 400; ++i) a.push(i % 2 ? 0x62 : 0x61); return a; })()
+        },
+        {
+          text: "Binary/pseudo-random sample (exercises literal bytes with the high bit set)",
+          uri: "https://github.com/avaneev/lzav",
+          input: (() => {
+            let seed = 0x2A2A2A2A, a = [];
+            for (let i = 0; i < 256; ++i) { seed = OpCodes.AndN(seed * 1103515245 + 12345, 0x7fffffff); a.push(OpCodes.AndN(seed, 0xFF)); }
+            return a;
+          })()
         }
       ];
     }
@@ -134,7 +154,8 @@
       // LZAV parameters (educational simplified version)
       this.HASH_TABLE_SIZE = 8192; // 8K hash table
       this.MIN_MATCH = 4;          // 4-byte minimum match
-      this.MAX_MATCH = 255;        // Maximum match length
+      this.MAX_MATCH = 0x7F;       // Maximum match length - 7 bits (top bit of the
+                                    // token byte is reserved for the match/literal-run flag)
       this.WINDOW_SIZE = 32768;    // 32KB window (simplified from 8MB)
     }
 
@@ -182,6 +203,20 @@
       const output = [];
       const hashTable = new Array(this.HASH_TABLE_SIZE).fill(-1);
       let pos = 0;
+      let litStart = 0;
+
+      // Flush any pending literal bytes [litStart, end) as one or more
+      // count-prefixed literal runs (run length 1..127, top bit clear so it
+      // can never be confused with a match token).
+      const flushLiterals = (end) => {
+        let start = litStart;
+        while (start < end) {
+          const chunk = Math.min(this.MAX_MATCH, end - start);
+          output.push(OpCodes.ToByte(chunk));
+          for (let i = 0; i < chunk; i++) output.push(input[start + i]);
+          start += chunk;
+        }
+      };
 
       while (pos < input.length) {
         let bestLen = 0;
@@ -192,7 +227,7 @@
           const hash = this._hash(input, pos);
           const matchPos = hashTable[hash];
 
-          if (matchPos >= 0 && matchPos < pos) {
+          if (matchPos >= 0 && matchPos < pos && (pos - matchPos) <= this.WINDOW_SIZE) {
             const maxLen = Math.min(this.MAX_MATCH, input.length - pos);
             let len = 0;
 
@@ -212,17 +247,19 @@
 
         if (bestLen >= this.MIN_MATCH) {
           // Encode match: [0x80|length] [distance_low] [distance_high]
+          flushLiterals(pos);
           output.push(OpCodes.ToByte(OpCodes.OrN(0x80, bestLen)));
           const [low, high] = OpCodes.Unpack16LE(bestDist);
           output.push(low);
           output.push(high);
           pos += bestLen;
+          litStart = pos;
         } else {
-          // Encode literal
-          output.push(input[pos]);
           pos++;
         }
       }
+
+      flushLiterals(input.length);
 
       return output;
     }
@@ -236,21 +273,25 @@
 
         if (OpCodes.AndN(byte, 0x80) === 0x80) {
           // Match reference
-          if (pos + 1 >= input.length) break;
-
           const length = OpCodes.AndN(byte, 0x7F);
           const distLow = input[pos++];
           const distHigh = input[pos++];
           const distance = OpCodes.Pack16LE(distLow, distHigh);
 
-          // Copy from history
+          // Copy from history. sourcePos is recomputed every iteration
+          // (rather than offset by i) because output.length itself already
+          // advances by one on every push - this is what makes overlapping
+          // self-referential copies (distance < length) work correctly.
           for (let i = 0; i < length; i++) {
             const sourcePos = output.length - distance;
-            output.push(output[sourcePos + i]);
+            output.push(output[sourcePos]);
           }
         } else {
-          // Literal
-          output.push(byte);
+          // Literal run: byte itself is the run length (never 0)
+          const runLength = byte;
+          for (let i = 0; i < runLength; i++) {
+            output.push(input[pos++]);
+          }
         }
       }
 
