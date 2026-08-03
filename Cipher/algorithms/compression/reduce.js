@@ -70,6 +70,7 @@
   // ===== ALGORITHM IMPLEMENTATION =====
 
   const DLE = 0x90;
+  const DLE_LITERAL_MARKER = 255; // reserved count value: "one literal DLE byte", never produced as a run-chunk count (chunk is capped at 256, so count never exceeds 254)
   const MAX_FOLLOWER_SET = 32;
 
   // ----- Bit-level stream helpers (MSB-first) -----
@@ -136,6 +137,37 @@
     return bits;
   }
 
+  // Deterministic pseudo-random byte generator used only to build reproducible
+  // binary test vectors below (no crypto dependency, no external randomness).
+  // A classic 32-bit LCG, masked to 31 bits with OpCodes.And32 (equivalent to
+  // the textbook "& 0x7fffffff" step, without writing a raw bit operator here).
+  function pseudoRandomBytes(seed, count) {
+    let s = seed;
+    const out = [];
+    for (let i = 0; i < count; i++) {
+      s = OpCodes.And32(s * 1103515245 + 12345, 0x7fffffff);
+      out.push(s % 256);
+    }
+    return out;
+  }
+
+  // Mixed text/binary generator: mostly a short ASCII cycle with pseudo-random
+  // bytes interspersed, so both the DLE run-length pre-pass and the follower-set
+  // stage see realistic non-repetitive structure alongside binary noise.
+  function pseudoRandomMixedBytes(seed, count) {
+    let s = seed;
+    const out = [];
+    for (let i = 0; i < count; i++) {
+      if (i % 11 < 6) {
+        out.push(0x61 + (i % 5));
+      } else {
+        s = OpCodes.And32(s * 1103515245 + 12345, 0x7fffffff);
+        out.push(s % 256);
+      }
+    }
+    return out;
+  }
+
   /**
  * ReduceCompression - PKZIP "Reducing" (RLE + probabilistic follower sets)
  * @class
@@ -191,6 +223,25 @@
             uri: "https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT",
             input: OpCodes.AsciiToBytes("the quick brown fox"),
             expected: [0,0,0,19,0,0,0,19,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,13,197,137,152,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,92,129,107,0,18,0,91,192,5,148,22,48,1,32,0,0,72,2,119,120,0,23,80,91,192,5,160,22,144,1,110,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,116,0,4,4,64]
+          },
+          {
+            // Regression vector: pseudo-random binary bytes reliably contain
+            // 3-byte runs (birthday-bound over the RLE stage), which is
+            // exactly the case that collided with the "literal DLE" marker
+            // before the DLE_LITERAL_MARKER fix (see _rleEncode header note).
+            text: "Pseudo-random binary sample (300 bytes, deterministic LCG)",
+            uri: "https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT",
+            input: pseudoRandomBytes(0x2468ace0, 300),
+            expected: [0,0,1,44,0,0,0,208,18,64,1,0,224,20,0,80,1,64,9,0,224,20,0,80,1,64,0,0,1,64,0,0,1,64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,0,0,0,0,0,0,12,2,1,224,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,0,0,0,0,0,0,12,3,2,64,0,0,0,0,0,0,0,0,0,0,0,40,16,8,0,44,4,20,24,28,12,60,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,192,0,0,0,129,64,16,10,0,1,18,68,98,8,4,129,24,130,129,8,132,34,18,153,140,128,17,146,2,25,68,97,5,34,73,8,1,50,8,200,134,64,8,96,10,0,100,2,0,4,4,145,0,9,40,8,18,128,66,32,4,112,72,0,144,9,0,128,128,146,0,32,6,80,2,37,0,130,2,9,0]
+          },
+          {
+            // Regression vector: mostly ASCII with pseudo-random binary bytes
+            // interspersed (including runs of exactly 3 identical bytes),
+            // covering the same collision in a realistic mixed-content file.
+            text: "Mixed text/binary sample (300 bytes, deterministic LCG)",
+            uri: "https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT",
+            input: pseudoRandomMixedBytes(0x2468ace0, 300),
+            expected: [0,0,1,44,0,0,1,25,34,65,1,140,1,133,136,225,148,38,36,0,217,25,88,64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,5,144,0,0,0,0,0,32,1,145,150,1,133,137,225,140,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,70,40,0,4,0,216,192,32,3,100,0,64,9,148,0,54,24,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,9,140,0,0,0,0,0,0,8,3,0,0,0,0,0,0,0,0,0,0,0,0,12,4,0,8,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,9,140,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,64,0,8,32,0,4,129,32,48,0,73,20,64,1,80,196,8,0,18,0,138,0,2,140,152,40,0,37,8,208,0,18,104,0,2,128,32,0,160,66,0,2,64,10,0,9,18,21,0,4,144,20,0,20,8,0,4,130,36,80,0,88,33,2,128,2,80,19,0,0,144,19,96,0,41,144,0,9,0,128,1,64,132,0,5,0,38,0,5,8,132,48,0,84,19,92,0,18,104,0,2,64,145,48,0,40,144,224]
           }
         ];
       }
@@ -223,11 +274,23 @@
       // ----- Stage 1: DLE-escaped run-length pre-pass -----
 
       // Unambiguous DLE run-length encoder:
-      //  - a literal DLE byte in the source is always written as DLE,0x00
+      //  - a literal DLE byte in the source is always written as DLE,0xFF
+      //    (DLE_LITERAL_MARKER) - a fixed sentinel that the run-chunk branch
+      //    below can never itself produce, so the decoder never has to guess
+      //    which of the two DLE,count producers wrote a given pair
       //  - a run of length >=3 of any other byte v is written as v, then one
-      //    or more (DLE, count) pairs, each pair repeating v (count+2) times
-      //    (count in 0..255, so each pair covers a run-chunk of 2..257)
+      //    or more (DLE, count) pairs, each pair repeating v (count+2) times;
+      //    count is kept in 0..254 (chunk in 2..256) precisely so it can
+      //    never collide with the reserved DLE_LITERAL_MARKER value
       //  - runs shorter than 3 are written literally (no escaping needed)
+      //
+      // Note: an earlier version of this encoder used count===0 for the
+      // "literal DLE" marker, which collided with the legitimate 2-byte-run
+      // chunk (chunk=2 => count=chunk-2=0) produced by the second branch.
+      // Random/binary input hits the DLE byte value (0x90) roughly once
+      // every 256 bytes, and 2-byte runs of an arbitrary byte are common, so
+      // that collision reliably desynchronized the decoder on binary data
+      // even though it never showed up on the empty/repetitive/text vectors.
       _rleEncode(data) {
         const out = [];
         let i = 0;
@@ -237,7 +300,7 @@
           while (i + run < data.length && data[i + run] === v) run++;
 
           if (v === DLE) {
-            for (let k = 0; k < run; k++) { out.push(DLE); out.push(0); }
+            for (let k = 0; k < run; k++) { out.push(DLE); out.push(DLE_LITERAL_MARKER); }
             i += run;
             continue;
           }
@@ -251,7 +314,7 @@
           out.push(v);
           let remaining = run - 1;
           while (remaining > 0) {
-            const chunk = Math.min(remaining, 257);
+            const chunk = Math.min(remaining, 256);
             out.push(DLE);
             out.push(chunk - 2);
             remaining -= chunk;
@@ -272,7 +335,7 @@
             last = b;
           } else {
             const count = data[i++];
-            if (count === 0) {
+            if (count === DLE_LITERAL_MARKER) {
               out.push(DLE);
               last = DLE;
             } else {
