@@ -102,6 +102,28 @@
             uri: "https://en.wikipedia.org/wiki/Boundary_condition",
             input: [],
             expected: []
+          },
+          {
+            // Regression test for a decoder bug where the match copy loop recomputed the
+            // source window position from the advancing write cursor on every iteration
+            // instead of once per token, silently corrupting self-referential matches
+            // (offset < length) while leaving the output length unchanged.
+            text: "Highly repetitive data - 300 bytes",
+            uri: "https://en.wikipedia.org/wiki/LZSS",
+            input: new Array(300).fill(0x58),
+            expected: [0, 88, 0, 88, 0, 88, 1, 0, 3, 3, 1, 0, 6, 6, 1, 0, 12, 12, 1, 0, 18, 18, 1, 0, 18, 18, 1, 0, 18, 18, 1, 0, 18, 18, 1, 0, 18, 18, 1, 0, 18, 18, 1, 0, 18, 18, 1, 0, 18, 18, 1, 0, 18, 18, 1, 0, 18, 18, 1, 0, 18, 18, 1, 0, 18, 18, 1, 0, 18, 18, 1, 0, 18, 18, 1, 0, 18, 18, 1, 0, 6, 6]
+          },
+          {
+            text: "Alternating pattern - 300 bytes",
+            uri: "https://en.wikipedia.org/wiki/LZSS",
+            input: Array.from({ length: 300 }, (_, i) => (i % 2 ? 0x59 : 0x5A)),
+            expected: [0,90,0,89,0,90,0,89,1,0,4,4,1,0,8,8,1,0,16,16,1,0,18,18,1,0,18,18,1,0,18,18,1,0,18,18,1,0,18,18,1,0,18,18,1,0,18,18,1,0,18,18,1,0,18,18,1,0,18,18,1,0,18,18,1,0,18,18,1,0,18,18,1,0,18,18,1,0,16,16]
+          },
+          {
+            text: "English text sample - repeated sentence",
+            uri: "https://en.wikipedia.org/wiki/LZSS",
+            input: OpCodes.AnsiToBytes("The quick brown fox jumps over the lazy dog. ".repeat(10)),
+            expected: [0, 84, 0, 104, 0, 101, 0, 32, 0, 113, 0, 117, 0, 105, 0, 99, 0, 107, 0, 32, 0, 98, 0, 114, 0, 111, 0, 119, 0, 110, 0, 32, 0, 102, 0, 111, 0, 120, 0, 32, 0, 106, 0, 117, 0, 109, 0, 112, 0, 115, 0, 32, 0, 111, 0, 118, 0, 101, 0, 114, 0, 32, 0, 116, 1, 0, 31, 3, 0, 108, 0, 97, 0, 122, 0, 121, 0, 32, 0, 100, 0, 111, 0, 103, 0, 46, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 10]
           }
         ];
       }
@@ -220,9 +242,16 @@
             const length = compressedBytes[pos + 2];
             pos += 3;
 
+            // Source position is fixed relative to the window cursor at the START of this
+            // match and must NOT be recomputed as windowPos advances: matches with offset <
+            // length are self-referential (e.g. offset=4,length=8 for "abababab"), and re-deriving
+            // sourcePos from the moving windowPos each iteration would double its effective
+            // advance, reading already-overwritten slots instead of the freshly copied bytes
+            // the encoder's search matched against.
+            const sourcePos = (windowPos - offset + this.WINDOW_SIZE) % this.WINDOW_SIZE;
+
             // Copy from window
             for (let i = 0; i < length; i++) {
-              const sourcePos = (windowPos - offset + this.WINDOW_SIZE) % this.WINDOW_SIZE;
               const char = window[(sourcePos + i) % this.WINDOW_SIZE];
               output.push(char);
               window[windowPos] = char;
