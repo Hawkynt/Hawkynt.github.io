@@ -82,19 +82,19 @@
         new LinkItem("Linux Kernel ftape LZRW3", "http://courses.cs.tau.ac.il/os/orish/src/drivers/char/ftape/compressor/lzrw3.c")
       ];
 
-      // Test vectors - validated through round-trip compression/decompression
-      // LZRW3 transmits hash table indices, making output deterministic
+      // Test vectors - generated from this implementation and confirmed to round-trip;
+      // LZRW3 transmits hash table indices, making output deterministic for a given hash function
       // Format: 16-bit control word (big-endian) + items (literal bytes or 16-bit hash+length words)
       this.tests = [
         new TestCase(
           OpCodes.AnsiToBytes("ABCD"),
-          [0, 0, 65, 66, 67, 68], // Placeholder - will be generated
+          [0, 0, 65, 66, 67, 68],
           "No repetition - all literals",
           "Round-trip validated"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("ABCABCABCABC"), // 12 bytes: ABC repeated 4 times
-          [0, 0, 65, 66, 67, 65, 66, 67, 65, 66, 67, 65, 66, 67], // Placeholder
+          [0, 8, 65, 66, 67, 101, 99],
           "Pattern repetition - ABC repeated 4 times",
           "Round-trip validated"
         ),
@@ -106,7 +106,7 @@
         ),
         new TestCase(
           OpCodes.AnsiToBytes("AAAAAAAAAAAAAAAA"), // 16 A's
-          [0, 0, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65], // Placeholder
+          [0, 8, 65, 65, 65, 165, 81],
           "High repetition - 16 identical characters",
           "Round-trip validated"
         ),
@@ -114,6 +114,27 @@
           OpCodes.AnsiToBytes(""), // Empty input
           [], // Empty output is deterministic
           "Edge case - empty input",
+          "Round-trip validated"
+        ),
+        new TestCase(
+          new Array(300).fill(0x58), // 300 identical bytes - spans many 16-item groups, exercising
+                                      // the deferred hash-table insertion queue across group boundaries
+                                      // (regression test for the former group-batched update scheme,
+                                      // which desynchronized the encoder/decoder hash tables)
+          [255, 248, 88, 88, 88, 253, 216, 253, 216, 253, 216, 253, 216, 253, 216, 253, 216, 253, 216, 253, 216, 253, 216, 253, 216, 253, 216, 253, 216, 253, 216, 0, 15, 253, 216, 253, 216, 253, 216, 109, 216],
+          "Highly repetitive data - 300 bytes",
+          "Round-trip validated"
+        ),
+        new TestCase(
+          Array.from({ length: 300 }, (_, i) => (i % 2 ? 0x59 : 0x5A)), // Alternating ZY pattern
+          [255, 240, 90, 89, 90, 89, 255, 202, 255, 202, 255, 202, 255, 202, 255, 202, 255, 202, 255, 202, 255, 202, 255, 202, 255, 202, 255, 202, 255, 202, 0, 31, 255, 202, 255, 202, 255, 202, 255, 202, 95, 202],
+          "Alternating pattern - 300 bytes",
+          "Round-trip validated"
+        ),
+        new TestCase(
+          OpCodes.AnsiToBytes("The quick brown fox jumps over the lazy dog. ".repeat(10)),
+          [0, 0, 84, 104, 101, 32, 113, 117, 105, 99, 107, 32, 98, 114, 111, 119, 110, 32, 0, 0, 102, 111, 120, 32, 106, 117, 109, 112, 115, 32, 111, 118, 101, 114, 32, 116, 240, 1, 14, 112, 108, 97, 122, 121, 32, 100, 111, 103, 46, 32, 84, 14, 112, 246, 57, 250, 115, 242, 151, 255, 253, 241, 192, 116, 14, 112, 250, 106, 249, 98, 248, 5, 245, 40, 248, 160, 250, 106, 249, 98, 248, 5, 245, 40, 248, 160, 250, 106, 249, 98, 248, 5, 0, 31, 245, 40, 248, 160, 250, 106, 249, 98, 248, 5, 32],
+          "English text sample - repeated sentence",
           "Round-trip validated"
         )
       ];
@@ -188,9 +209,26 @@
     }
 
     /**
+     * Commit queued hash-table insertions whose 3-byte window is now fully
+     * materialized in `data` (i.e. every candidate p with p+2 < currentPos).
+     * Both compressor and decompressor call this with the same rule so their
+     * hash tables stay byte-for-byte identical at every point in the stream -
+     * a match token may only reference a hash entry that the decompressor
+     * could have produced from bytes it has already emitted.
+     */
+    _flushPending(pending, hashTable, data, currentPos) {
+      while (pending.length > 0 && pending[0] + 2 < currentPos) {
+        const p = pending.shift();
+        hashTable[this._hash(data[p], data[p + 1], data[p + 2])] = p;
+      }
+    }
+
+    /**
      * Compress data using LZRW3 algorithm
      * Key difference from LZRW1: transmits hash table indices instead of byte offsets
-     * Hash table updates happen AFTER processing each 16-item group for synchronization
+     * Hash table insertions are deferred behind a queue and only committed once their
+     * 3-byte window is fully available, so the decompressor can reproduce the exact
+     * same table contents from already-emitted output (see _flushPending).
      */
     _compress() {
       const input = this.inputBuffer;
@@ -199,8 +237,8 @@
       // Hash table stores positions of 3-byte sequences
       const hashTable = new Array(this.algorithm.HASH_TABLE_SIZE).fill(-1);
 
-      // Track hash updates to apply after group processing
-      const groupHashUpdates = [];
+      // Queue of positions awaiting hash-table insertion (see _flushPending)
+      const pending = [];
 
       let pos = 0;
 
@@ -211,9 +249,9 @@
         let controlWord = 0;
         let itemsInGroup = 0;
 
-        groupHashUpdates.length = 0; // Clear group updates
-
         while (itemsInGroup < this.algorithm.ITEMS_PER_GROUP && pos < input.length) {
+          this._flushPending(pending, hashTable, input, pos);
+
           let matchFound = false;
           let matchLength = 0;
           let matchHashIndex = 0;
@@ -247,8 +285,8 @@
               }
             }
 
-            // Defer hash table update until end of group
-            groupHashUpdates.push({ hash: hashValue, pos: pos });
+            // Queue this position's hash entry - inserted only once its window is available
+            pending.push(pos);
           }
 
           if (matchFound) {
@@ -278,12 +316,6 @@
         // Write 16-bit control word (big-endian)
         result[controlWordPos] = OpCodes.AndN(OpCodes.Shr16(controlWord, 8), 0xFF);
         result[controlWordPos + 1] = OpCodes.AndN(controlWord, 0xFF);
-
-        // Apply all hash table updates for this group
-        for (let i = 0; i < groupHashUpdates.length; i++) {
-          const update = groupHashUpdates[i];
-          hashTable[update.hash] = update.pos;
-        }
       }
 
       this.inputBuffer = [];
@@ -292,7 +324,10 @@
 
     /**
      * Decompress LZRW3 compressed data
-     * Maintains synchronized hash table with group-based updates matching compressor
+     * Mirrors the compressor's deferred hash-table insertion exactly (see _flushPending):
+     * a position's 3-byte window only becomes an eligible hash entry once it is fully
+     * present in the already-reconstructed output, which keeps this table byte-for-byte
+     * identical to the compressor's table at every point in the stream.
      */
     _decompress() {
       const input = this.inputBuffer;
@@ -302,8 +337,8 @@
       // Hash table for decompression (must match compressor's table)
       const hashTable = new Array(this.algorithm.HASH_TABLE_SIZE).fill(-1);
 
-      // Track hash updates to apply after group processing
-      const groupHashUpdates = [];
+      // Queue of positions awaiting hash-table insertion (see _flushPending)
+      const pending = [];
 
       while (pos < input.length) {
         // Read 16-bit control word (big-endian)
@@ -311,10 +346,10 @@
         const controlWord = OpCodes.Pack16BE(input[pos], input[pos + 1]);
         pos += 2;
 
-        groupHashUpdates.length = 0; // Clear group updates
-
         // Process up to 16 items based on control word
         for (let i = 0; i < this.algorithm.ITEMS_PER_GROUP && pos < input.length; i++) {
+          this._flushPending(pending, hashTable, result, result.length);
+
           const isCopyItem = OpCodes.AndN(controlWord, OpCodes.Shl16(1, i)) !== 0;
 
           if (isCopyItem) {
@@ -339,14 +374,8 @@
                 result.push(result[copyStart + j]);
               }
 
-              // Defer hash table update for first 3 bytes of copied phrase
-              if (result.length >= phraseStart + this.algorithm.MIN_MATCH_LENGTH) {
-                const p0 = result[phraseStart];
-                const p1 = result[phraseStart + 1];
-                const p2 = result[phraseStart + 2];
-                const updateHash = this._hash(p0, p1, p2);
-                groupHashUpdates.push({ hash: updateHash, pos: phraseStart });
-              }
+              // Queue this phrase's hash entry - inserted only once its window is available
+              pending.push(phraseStart);
             } else {
               // Invalid hash index - should not happen with valid compressed data
               throw new Error(`LZRW3 decompression error: invalid hash index ${hashIndex}`);
@@ -357,22 +386,9 @@
             const bytePos = result.length;
             result.push(input[pos++]);
 
-            // Defer hash table update when we have 3+ bytes in result
-            if (result.length >= this.algorithm.MIN_MATCH_LENGTH) {
-              const updatePos = result.length - this.algorithm.MIN_MATCH_LENGTH;
-              const p0 = result[updatePos];
-              const p1 = result[updatePos + 1];
-              const p2 = result[updatePos + 2];
-              const updateHash = this._hash(p0, p1, p2);
-              groupHashUpdates.push({ hash: updateHash, pos: updatePos });
-            }
+            // Queue this position's hash entry - inserted only once its window is available
+            pending.push(bytePos);
           }
-        }
-
-        // Apply all hash table updates for this group
-        for (let i = 0; i < groupHashUpdates.length; i++) {
-          const update = groupHashUpdates[i];
-          hashTable[update.hash] = update.pos;
         }
       }
 
