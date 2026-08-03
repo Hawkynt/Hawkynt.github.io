@@ -381,6 +381,17 @@
         )
       ];
 
+      this.references = [
+        new LinkItem(
+          "Deoxys-II Reference Implementation (Oasis Protocol, Go)",
+          "https://github.com/oasisprotocol/deoxysii"
+        ),
+        new LinkItem(
+          "Deoxys-II JavaScript Implementation (Oasis Protocol)",
+          "https://github.com/oasisprotocol/deoxysii-js"
+        )
+      ];
+
       // Official test vectors from RustCrypto Deoxys implementation
       this.tests = [
         {
@@ -497,6 +508,17 @@
         new LinkItem(
           "CAESAR Submission v1.43",
           "https://competitions.cr.yp.to/round3/deoxysv141.pdf"
+        )
+      ];
+
+      this.references = [
+        new LinkItem(
+          "Deoxys-II Reference Implementation (Oasis Protocol, Go)",
+          "https://github.com/oasisprotocol/deoxysii"
+        ),
+        new LinkItem(
+          "Deoxys-II JavaScript Implementation (Oasis Protocol)",
+          "https://github.com/oasisprotocol/deoxysii-js"
         )
       ];
 

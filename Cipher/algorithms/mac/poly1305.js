@@ -73,14 +73,28 @@
       ];
       this.NeedsKey = true;
 
-      // Test vectors from RFC 7539
+      // Documentation
+      this.documentation = [
+        new LinkItem('RFC 8439: ChaCha20 and Poly1305 for IETF Protocols', 'https://datatracker.ietf.org/doc/html/rfc8439'),
+        new LinkItem('D.J. Bernstein: The Poly1305-AES message-authentication code', 'https://cr.yp.to/mac.html'),
+        new LinkItem('D.J. Bernstein: Poly1305-AES Specification (PDF)', 'https://cr.yp.to/mac/poly1305-20050329.pdf')
+      ];
+
+      // Reference implementations
+      this.references = [
+        new LinkItem('poly1305-donna - Andrew Moon Reference Implementation (GitHub)', 'https://github.com/floodyberry/poly1305-donna'),
+        new LinkItem('libsodium crypto_onetimeauth/poly1305 Implementation', 'https://github.com/jedisct1/libsodium/tree/master/src/libsodium/crypto_onetimeauth/poly1305'),
+        new LinkItem('RFC 8439 Appendix A.3: Poly1305 Reference Code', 'https://datatracker.ietf.org/doc/html/rfc8439#appendix-A.3')
+      ];
+
+      // Test vectors from RFC 8439 (obsoletes RFC 7539)
       this.tests = [
-        // Test Case 1: RFC 7539 Section 2.5.2
+        // Test Case 1: RFC 8439 Section 2.5.2
         new TestCase(
           OpCodes.Hex8ToBytes("43727970746f6772617068696320466f72756d2052657365617263682047726f7570"),
           OpCodes.Hex8ToBytes("a8061dc1305136c6c22b8baf0c0127a9"),
-          "RFC 7539 Section 2.5.2 - Cryptographic Forum Research Group",
-          "https://tools.ietf.org/html/rfc7539"
+          "RFC 8439 Section 2.5.2 - Cryptographic Forum Research Group",
+          "https://datatracker.ietf.org/doc/html/rfc8439#section-2.5.2"
         )
       ];
 

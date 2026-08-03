@@ -49,57 +49,15 @@
   // Default IV for RFC 3394
   const DEFAULT_IV = [0xA6, 0xA6, 0xA6, 0xA6, 0xA6, 0xA6, 0xA6, 0xA6];
 
-  // Helper function to get Rijndael algorithm (lazy loading with auto-load)
+  // Helper function to get Rijndael algorithm (registry-first, plain require fallback)
   function getRijndaelAlgorithm() {
     let rijndael = AlgorithmFramework.Find('Rijndael (AES)');
-
-    // If not found, try to load it
-    if (!rijndael) {
-      const errors = [];
-      try {
-        // Attempt to load Rijndael using multiple path strategies
-        if (typeof require !== 'undefined') {
-          const path = require('path');
-          // Try from project root (go up from tests/ if needed)
-          let baseDir = path.dirname(require.main.filename);
-          // If we're in tests directory, go up one level
-          if (baseDir.endsWith('tests')) {
-            baseDir = path.dirname(baseDir);
-          }
-          const rijndaelPath = path.join(baseDir, 'algorithms', 'block', 'rijndael.js');
-
-          // Clear require cache to force re-registration
-          delete require.cache[require.resolve(rijndaelPath)];
-
-          require(rijndaelPath);
-          rijndael = AlgorithmFramework.Find('Rijndael (AES)');
-        }
-      } catch (e) {
-        errors.push('Strategy 1 failed: ' + e.message);
-        // Try relative path as fallback
-        try {
-          if (typeof require !== 'undefined') {
-            const path = require('path');
-            const relativePath = '../block/rijndael.js';
-            const resolvedPath = path.resolve(__dirname, relativePath);
-
-            // Clear require cache
-            if (require.cache[resolvedPath]) {
-              delete require.cache[resolvedPath];
-            }
-
-            require(relativePath);
-            rijndael = AlgorithmFramework.Find('Rijndael (AES)');
-          }
-        } catch (e2) {
-          errors.push('Strategy 2 failed: ' + e2.message);
-        }
-      }
-
-      if (!rijndael) {
-        throw new Error('Rijndael (AES) algorithm not found. Errors: ' + errors.join('; '));
-      }
+    if (!rijndael && typeof require !== 'undefined') {
+      try { require('../block/rijndael.js'); } catch (e) { /* not found — error below */ }
+      rijndael = AlgorithmFramework.Find('Rijndael (AES)');
     }
+    if (!rijndael)
+      throw new Error("Rijndael (AES) not available — load algorithms/block/rijndael.js first");
     return rijndael;
   }
 

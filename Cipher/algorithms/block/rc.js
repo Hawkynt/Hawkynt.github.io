@@ -126,6 +126,7 @@
 
       // Official test vectors from RFC 2268
       this.tests = [
+
         {
           text: "RFC 2268 Test Vector #1: 8-byte all-zero key, 63-bit effective",
           uri: "https://www.rfc-editor.org/rfc/rfc2268.txt",

@@ -437,6 +437,11 @@ if (!global.OpCodes && typeof require !== 'undefined') {
         new LinkItem("Noble Hashes Implementation", "https://github.com/paulmillr/noble-hashes")
       ];
 
+      this.references = [
+        new LinkItem("Bouncy Castle KMAC Implementation", "https://github.com/bcgit/bc-java/blob/main/core/src/main/java/org/bouncycastle/crypto/macs/KMAC.java"),
+        new LinkItem("PyCryptodome KMAC128 Implementation", "https://github.com/Legrandin/pycryptodome/blob/master/lib/Crypto/Hash/KMAC128.py")
+      ];
+
       this.tests = [
         {
           text: "KMAC128 Sample #1 from NIST SP 800-185",
@@ -487,6 +492,11 @@ if (!global.OpCodes && typeof require !== 'undefined') {
         new LinkItem("NIST SP 800-185", "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-185.pdf"),
         new LinkItem("KMAC Specification", "https://csrc.nist.gov/publications/detail/sp/800-185/final"),
         new LinkItem("Noble Hashes Implementation", "https://github.com/paulmillr/noble-hashes")
+      ];
+
+      this.references = [
+        new LinkItem("Bouncy Castle KMAC Implementation", "https://github.com/bcgit/bc-java/blob/main/core/src/main/java/org/bouncycastle/crypto/macs/KMAC.java"),
+        new LinkItem("PyCryptodome KMAC256 Implementation", "https://github.com/Legrandin/pycryptodome/blob/master/lib/Crypto/Hash/KMAC256.py")
       ];
 
       this.tests = [

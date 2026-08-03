@@ -57,6 +57,11 @@ class FROG extends BlockCipherAlgorithm {
       new LinkItem("FROG AES Submission", "https://www.cosic.esat.kuleuven.be/nessie/workshop/submissions/frog.pdf")
     ];
 
+    this.references = [
+      new LinkItem("Brian Gladman FROG C Reference (Applied Cryptography source code archive)", "https://www.schneier.com/books/applied-cryptography-source/"),
+      new LinkItem("embeddedsw.net libObfuscate FROG Implementation", "https://embeddedsw.net/Cipher_Reference_Home.html")
+    ];
+
     this.tests = [
       {
         text: "FROG Test Vector 1",

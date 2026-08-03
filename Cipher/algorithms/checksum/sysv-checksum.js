@@ -57,6 +57,10 @@
         new LinkItem("System V Documentation", "https://docs.oracle.com/cd/E19253-01/816-5165/sum-1/index.html")
       ];
 
+      this.references = [
+        new LinkItem("GNU coreutils sum.c (sysv_sum_file) reference implementation", "https://github.com/coreutils/coreutils/blob/master/src/sum.c")
+      ];
+
       this.notes = [
         "Algorithm: Sum all bytes, result mod 2^16",
         "Output: 16-bit checksum (0-65535)",

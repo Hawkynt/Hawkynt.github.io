@@ -78,6 +78,11 @@ let LuciferAlgorithm, LuciferInstance;
       new LinkItem("Sorkin 1984 Specification", "https://www.tandfonline.com/doi/abs/10.1080/0161-118491858746")
     ];
 
+    this.references = [
+      new LinkItem("cryptospecs LUCIFER Reference Source (lucifer.c)", "https://github.com/stamparm/cryptospecs/blob/master/symmetrical/sources/lucifer.c"),
+      new LinkItem("lucifer-go Implementation", "https://github.com/robwaddell/lucifer-go")
+    ];
+
     // Algorithm-specific metadata
     this.SupportedKeySizes = [
       new KeySize(16, 16, 0) // Fixed 128-bit key

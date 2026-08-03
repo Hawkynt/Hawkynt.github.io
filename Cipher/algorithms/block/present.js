@@ -526,8 +526,8 @@
         const roundKey64 = OpCodes.ShiftRn(key, BigInt(16)); // Shift right by 16 to get top 64 bits
 
         // Split into high and low 32-bit words
-        const roundKeyHigh = Number((OpCodes.ShiftRn(roundKey64, BigInt(32))) & BigInt(0xFFFFFFFF));
-        const roundKeyLow = Number(roundKey64 & BigInt(0xFFFFFFFF));
+        const roundKeyHigh = Number(OpCodes.AndN(OpCodes.ShiftRn(roundKey64, BigInt(32)), BigInt(0xFFFFFFFF)));
+        const roundKeyLow = Number(OpCodes.AndN(roundKey64, BigInt(0xFFFFFFFF)));
 
         roundKeys[round - 1] = {
           high: OpCodes.ToUint32(roundKeyHigh),
@@ -537,25 +537,25 @@
         // Update key state for next round (if not last round)
         if (round < this.algorithm.ROUNDS) {
           // Step 1: Rotate left by 61 positions
-          const mask = (BigInt(1) << BigInt(19)) - BigInt(1); // 2^19 - 1
-          const leftPart = key >> BigInt(19);
-          const rightPart = (key & mask) << BigInt(61);
+          const mask = OpCodes.ShiftLn(BigInt(1), BigInt(19)) - BigInt(1); // 2^19 - 1
+          const leftPart = OpCodes.ShiftRn(key, BigInt(19));
+          const rightPart = OpCodes.ShiftLn(OpCodes.AndN(key, mask), BigInt(61));
           key = rightPart + leftPart;
 
           // Step 2: Apply S-box to leftmost 4 bits (bits 79-76)
-          const topNibble = Number(key >> BigInt(76));
+          const topNibble = Number(OpCodes.ShiftRn(key, BigInt(76)));
           const sboxValue = BigInt(this.algorithm.SBOX[topNibble]);
 
           // Replace top 4 bits
-          const bottomPart = key & ((BigInt(1) << BigInt(76)) - BigInt(1));
-          key = (sboxValue << BigInt(76)) + bottomPart;
+          const bottomPart = OpCodes.AndN(key, OpCodes.ShiftLn(BigInt(1), BigInt(76)) - BigInt(1));
+          key = OpCodes.ShiftLn(sboxValue, BigInt(76)) + bottomPart;
 
           // Step 3: XOR bits with round counter at position 15
-          const counterValue = BigInt(round) << BigInt(15);
-          key = key ^ counterValue;
+          const counterValue = OpCodes.ShiftLn(BigInt(round), BigInt(15));
+          key = OpCodes.XorN(key, counterValue);
 
           // Ensure key stays within 80-bit range
-          key = key & ((BigInt(1) << BigInt(80)) - BigInt(1));
+          key = OpCodes.AndN(key, OpCodes.ShiftLn(BigInt(1), BigInt(80)) - BigInt(1));
         }
       }
 
@@ -569,38 +569,38 @@
       // Convert 128-bit key to BigInt for proper bit manipulation
       let keyState = 0n;
       for (let i = 0; i < 16; i++) {
-        keyState = (keyState << 8n) | BigInt(keyBytes[i]);
+        keyState = OpCodes.OrN(OpCodes.ShiftLn(keyState, 8n), BigInt(keyBytes[i]));
       }
 
       // Generate 32 round keys (0-indexed for consistency with encryption loop)
       for (let round = 0; round < this.algorithm.ROUNDS; round++) {
         // Extract leftmost 64 bits as round key
-        const roundKey = keyState >> 64n;
+        const roundKey = OpCodes.ShiftRn(keyState, 64n);
 
         // Convert BigInt round key to high/low 32-bit words
-        const high = Number((roundKey >> 32n) & 0xFFFFFFFFn);
-        const low = Number(roundKey & 0xFFFFFFFFn);
+        const high = Number(OpCodes.AndN(OpCodes.ShiftRn(roundKey, 32n), 0xFFFFFFFFn));
+        const low = Number(OpCodes.AndN(roundKey, 0xFFFFFFFFn));
 
         roundKeys[round] = { high: OpCodes.ToUint32(high), low: OpCodes.ToUint32(low) };
 
         // Update key state for next round (if not last round)
         if (round < this.algorithm.ROUNDS - 1) {
           // Step 1: Rotate key left by 61 positions
-          keyState = ((keyState << 61n) | (keyState >> 67n)) & ((1n << 128n) - 1n);
+          keyState = OpCodes.RotL128n(keyState, 61);
 
           // Step 2: Apply S-box to bits 127-124 (leftmost 4 bits)
-          const leftmost4 = Number(keyState >> 124n) & 0xF;
+          const leftmost4 = OpCodes.AndN(Number(OpCodes.ShiftRn(keyState, 124n)), 0xF);
           const sboxed1 = BigInt(this.algorithm.SBOX[leftmost4]);
-          keyState = (keyState & ((1n << 124n) - 1n)) | (sboxed1 << 124n);
+          keyState = OpCodes.OrN(OpCodes.AndN(keyState, OpCodes.ShiftLn(1n, 124n) - 1n), OpCodes.ShiftLn(sboxed1, 124n));
 
           // Step 3: Apply S-box to bits 123-120
-          const bits123_120 = Number((keyState >> 120n) & 0xFn);
+          const bits123_120 = Number(OpCodes.AndN(OpCodes.ShiftRn(keyState, 120n), 0xFn));
           const sboxed2 = BigInt(this.algorithm.SBOX[bits123_120]);
-          keyState = (keyState & ~(0xFn << 120n)) | (sboxed2 << 120n);
+          keyState = OpCodes.OrN(OpCodes.AndN(keyState, ~OpCodes.ShiftLn(0xFn, 120n)), OpCodes.ShiftLn(sboxed2, 120n));
 
           // Step 4: XOR round counter with bits 66-62 (use 1-indexed round counter)
-          const roundCounter = BigInt((round + 1) & 0x1F);
-          keyState = keyState ^ (roundCounter << 62n);
+          const roundCounter = BigInt(OpCodes.AndN(round + 1, 0x1F));
+          keyState = OpCodes.XorN(keyState, OpCodes.ShiftLn(roundCounter, 62n));
         }
       }
 

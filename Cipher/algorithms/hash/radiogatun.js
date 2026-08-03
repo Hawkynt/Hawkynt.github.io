@@ -310,6 +310,10 @@
         new LinkItem("RadioGatún Homepage", "https://keccak.team/radiogatun.html")
       ];
 
+      this.references = [
+        new LinkItem("RadioGatún official reference code and test vectors", "https://radiogatun.noekeon.org/")
+      ];
+
       // Test vectors from official RadioGatún specification and implementations
       this.tests = [
         {

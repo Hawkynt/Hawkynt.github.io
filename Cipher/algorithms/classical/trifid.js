@@ -70,6 +70,10 @@
         new LinkItem('Delastelle Ciphers', 'http://practicalcryptography.com/ciphers/classical-era/trifid/')
       ];
 
+      this.references = [
+        new LinkItem('CrypTool 2 Trifid Cipher Plugin (open-source reference implementation)', 'https://github.com/CrypToolProject/CrypTool-2')
+      ];
+
       // Test vectors in plain format (recommended)
       this.tests = [
         {

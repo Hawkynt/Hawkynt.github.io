@@ -95,7 +95,7 @@
             input: input,
             expected: compressed,
             text: description,
-            uri: this.documentation[0].url
+            uri: this.documentation[0].uri
           });
         };
 
@@ -105,12 +105,17 @@
         };
 
         // Add standard round-trip tests
-        this.addRoundTripTest([], "Empty input");
-        this.addRoundTripTest(OpCodes.AnsiToBytes("A"), "Single character - neural network initialization");
-        this.addRoundTripTest(OpCodes.AnsiToBytes("AB"), "Two characters - context model building");
-        this.addRoundTripTest(OpCodes.AnsiToBytes("AAA"), "Repeated character - LSTM learning");
-        this.addRoundTripTest(OpCodes.AnsiToBytes("ABAB"), "Alternating pattern - context prediction");
-        this.addRoundTripTest(OpCodes.AnsiToBytes("Hello World"), "Natural text - multi-model mixing");
+        // NOTE: This educational implementation is a length-prefixed store/retrieve
+        // stub, not the real CMIX neural context-mixing engine. These vectors are
+        // self-computed round-trip verification vectors produced by this
+        // implementation itself (no external CMIX authority produced these exact
+        // bytes); the uri references the real CMIX reference implementation for context.
+        this.addRoundTripTest([], "Self-computed round-trip verification vector - empty input");
+        this.addRoundTripTest(OpCodes.AnsiToBytes("A"), "Self-computed round-trip verification vector - single character");
+        this.addRoundTripTest(OpCodes.AnsiToBytes("AB"), "Self-computed round-trip verification vector - two characters");
+        this.addRoundTripTest(OpCodes.AnsiToBytes("AAA"), "Self-computed round-trip verification vector - repeated character");
+        this.addRoundTripTest(OpCodes.AnsiToBytes("ABAB"), "Self-computed round-trip verification vector - alternating pattern");
+        this.addRoundTripTest(OpCodes.AnsiToBytes("Hello World"), "Self-computed round-trip verification vector - natural text");
 
         // For test suite compatibility
         this.testVectors = this.tests;

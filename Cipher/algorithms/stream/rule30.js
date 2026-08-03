@@ -83,6 +83,10 @@
         new LinkItem("Wolfram's Original Paper", "https://www.stephenwolfram.com/publications/cellular-automata-irreversibility/")
       ];
 
+      this.references = [
+        new LinkItem("Rule 30 Cellular Automaton Encryption PoC (Android)", "https://github.com/glureau/android-wolfram-R30-poc")
+      ];
+
       // Security vulnerabilities
       this.knownVulnerabilities = [
         new Vulnerability(

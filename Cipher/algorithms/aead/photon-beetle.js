@@ -204,6 +204,11 @@
         new LinkItem("NIST LWC Project", "https://csrc.nist.gov/Projects/lightweight-cryptography")
       ];
 
+      this.references = [
+        new LinkItem("Official PHOTON-Beetle Reference Software", "https://github.com/PHOTON-Beetle/Software"),
+        new LinkItem("rweather/lwc-finalists C Reference (embedded-optimized)", "https://github.com/rweather/lwc-finalists")
+      ];
+
       // Constants
       this.KEY_SIZE = 16;      // 128 bits
       this.NONCE_SIZE = 16;    // 128 bits (N in spec)

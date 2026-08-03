@@ -57,6 +57,10 @@
         new LinkItem("Barcode Standards", "https://www.gs1.org/standards/id-keys/gtin")
       ];
 
+      this.references = [
+        new LinkItem("python-stdnum EAN implementation", "https://github.com/arthurdejong/python-stdnum/blob/master/stdnum/ean.py")
+      ];
+
       this.notes = [
         "Format: 8 digits (7 data + 1 check)",
         "Country/company code: 2-3 digits",

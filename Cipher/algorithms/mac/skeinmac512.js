@@ -63,7 +63,7 @@
     x = BigInt(x)&mask;
     xor = BigInt(xor)&mask;
     n = OpCodes.And32(Number(n), 63);
-    return (((x << BigInt(n))|(x >> BigInt(64 - n)))^xor)&mask;
+    return OpCodes.XorN(OpCodes.RotL64n(x, n), xor);
   }
 
   // Threefish-512 encryption
@@ -193,8 +193,8 @@
   const PARAM_TYPE_OUTPUT = 63;
 
   // UBI tweak structure
-  const T1_FINAL = 1n << 63n;
-  const T1_FIRST = 1n << 62n;
+  const T1_FINAL = OpCodes.ShiftLn(1n, 63);
+  const T1_FIRST = OpCodes.ShiftLn(1n, 62);
 
   class SkeinUBI {
     constructor(blockSize) {
@@ -207,7 +207,7 @@
 
     reset(type) {
       this.tweak[0] = 0n;
-      this.tweak[1] = BigInt(type) << 56n; // Type in bits 120-125
+      this.tweak[1] = OpCodes.ShiftLn(BigInt(type), 56); // Type in bits 120-125
       this.tweak[1] |= T1_FIRST; // Set first flag
       this.currentOffset = 0;
     }
@@ -235,7 +235,11 @@
       // Convert current block to 64-bit words (little-endian)
       for (let i = 0; i < 8; i++) {
         const offset = i * 8;
-        this.message[i] = BigInt(this.currentBlock[offset])|(BigInt(this.currentBlock[offset + 1]) << 8n)|(BigInt(this.currentBlock[offset + 2]) << 16n)|(BigInt(this.currentBlock[offset + 3]) << 24n)|(BigInt(this.currentBlock[offset + 4]) << 32n)|(BigInt(this.currentBlock[offset + 5]) << 40n)|(BigInt(this.currentBlock[offset + 6]) << 48n)|(BigInt(this.currentBlock[offset + 7]) << 56n);
+        let word = 0n;
+        for (let j = 0; j < 8; j++) {
+          word = OpCodes.OrN(word, OpCodes.ShiftLn(BigInt(this.currentBlock[offset + j]), j * 8));
+        }
+        this.message[i] = word;
       }
 
       // Encrypt message with Threefish using current chain as key
@@ -310,9 +314,9 @@
       config[5] = 0;    // Version (MSB)
 
       // Output length in bits (little-endian 64-bit)
-      const outBits = BigInt(this.outputBits);
+      const lengthBytes = OpCodes.EncodeMsgLength64LE(this.outputBits);
       for (let i = 0; i < 8; i++) {
-        config[8 + i] = Number((outBits >> BigInt(i * 8))&0xFFn);
+        config[8 + i] = lengthBytes[i];
       }
 
       this.ubi.reset(PARAM_TYPE_CONFIG);
@@ -350,7 +354,7 @@
         const word = outputWords[i];
         const bytesToWrite = Math.min(8, outputBytes - i * 8);
         for (let j = 0; j < bytesToWrite; j++) {
-          result[i * 8 + j] = Number((word >> BigInt(j * 8))&0xFFn);
+          result[i * 8 + j] = Number(OpCodes.AndN(OpCodes.ShiftRn(word, j * 8), 0xFFn));
         }
       }
 
@@ -370,7 +374,7 @@
       this.year = 2008;
       this.category = CategoryType.MAC;
       this.subCategory = "Hash-based MAC";
-      this.securityStatus = SecurityStatus.SECURE;
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
       this.complexity = ComplexityType.ADVANCED;
       this.country = CountryCode.US;
 
@@ -378,13 +382,14 @@
       this.SupportedOutputSizes = [64]; // Default 512 bits, but supports variable
 
       this.documentation = [
-        new LinkItem("Skein 1.3 Specification", "https://www.schneier.com/academic/skein/skein1.3.pdf"),
-        new LinkItem("NIST SHA-3 Competition", "https://csrc.nist.gov/projects/hash-functions/sha-3-project")
+        new LinkItem("The Skein Hash Function Family, Version 1.3", "https://www.schneier.com/wp-content/uploads/2015/01/skein.pdf"),
+        new LinkItem("NIST SHA-3 Competition", "https://csrc.nist.gov/projects/hash-functions/sha-3-project"),
+        new LinkItem("Skein (hash function) Overview", "https://en.wikipedia.org/wiki/Skein_(hash_function)")
       ];
 
       this.references = [
         new LinkItem("Bouncy Castle SkeinMac", "https://github.com/bcgit/bc-lts-java/blob/main/core/src/main/java/org/bouncycastle/crypto/macs/SkeinMac.java"),
-        new LinkItem("Skein Test Vectors", "https://www.schneier.com/academic/skein/skein_golden_kat.txt")
+        new LinkItem("Skein3Fish Reference Implementation (C/Java/Go)", "https://github.com/wernerd/Skein3Fish")
       ];
 
       // Official test vectors from Skein 1.3 NIST submission (skein_golden_kat.txt)

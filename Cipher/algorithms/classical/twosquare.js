@@ -70,6 +70,10 @@
         new LinkItem('Classical Cryptography Guide', 'http://practicalcryptography.com/ciphers/classical-era/two-square/')
       ];
 
+      this.references = [
+        new LinkItem('Two-Square (Double Playfair) Cipher Reference Implementation (Python)', 'https://github.com/scottmilton1/two-square-cipher')
+      ];
+
       // Test vectors in plain format (recommended)
       this.tests = [
         {

@@ -63,6 +63,10 @@
         new LinkItem("Specification (PDF)", "https://cs.ru.nl/~joan/papers/Subterranean-2.pdf")
       ];
 
+      this.references = [
+        new LinkItem("Rhys Weatherley's Lightweight Cryptography Primitives - Subterranean implementation", "https://github.com/rweather/lightweight-crypto")
+      ];
+
       // Official test vectors from NIST LWC Known Answer Tests
       this.tests = [
         {

@@ -211,6 +211,11 @@
         )
       ];
 
+      this.references = [
+        new LinkItem("XKCP (eXtended Keccak Code Package) — Official Xoodyak Reference", "https://github.com/XKCP/XKCP"),
+        new LinkItem("rweather/lwc-finalists C Reference (embedded-optimized)", "https://github.com/rweather/lwc-finalists")
+      ];
+
       // Official NIST LWC test vectors from KAT file
       this.tests = [
         {

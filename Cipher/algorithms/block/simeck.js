@@ -79,6 +79,11 @@
         new LinkItem("Crypto++ SIMECK Implementation", "https://github.com/weidai11/cryptopp/blob/master/simeck.cpp")
       ];
 
+      this.references = [
+        new LinkItem("Bo Zhu Simeck Reference Implementation (C/Python)", "https://github.com/bozhu/Simeck"),
+        new LinkItem("DFA_Simeck Implementation (C)", "https://github.com/dple/DFA_Simeck")
+      ];
+
       // Crypto++ test vectors from TestVectors/simeck.txt
       this.tests = [
         {
@@ -366,6 +371,11 @@
       this.documentation = [
         new LinkItem("The Simeck Family of Lightweight Block Ciphers", "https://eprint.iacr.org/2015/612.pdf"),
         new LinkItem("Crypto++ SIMECK Implementation", "https://github.com/weidai11/cryptopp/blob/master/simeck.cpp")
+      ];
+
+      this.references = [
+        new LinkItem("Bo Zhu Simeck Reference Implementation (C/Python)", "https://github.com/bozhu/Simeck"),
+        new LinkItem("DFA_Simeck Implementation (C)", "https://github.com/dple/DFA_Simeck")
       ];
 
       // Crypto++ test vectors from TestVectors/simeck.txt

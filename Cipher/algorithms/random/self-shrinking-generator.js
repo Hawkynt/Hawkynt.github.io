@@ -1,17 +1,23 @@
 /*
  * Self-Shrinking Generator (SSG) Cryptographic PRNG
- * Based on reference implementation from: Coppersmith, Krawczyk, and Mansour (1993)
+ * Invented by Willi Meier and Othmar Staffelbach (1994)
  *
- * The Self-Shrinking Generator is derived from a Linear Feedback Shift Register (LFSR)
- * that outputs pairs of bits. It uses the first bit as a selector and outputs the
- * second bit only if the selector is 1. This provides improved security properties
- * compared to the base LFSR.
+ * The Self-Shrinking Generator is derived from a single Linear Feedback Shift
+ * Register (LFSR) that outputs pairs of bits. The first bit of each pair acts
+ * as a selector; the second bit is output only if the selector is 1, otherwise
+ * both bits are discarded. It is a structurally simpler relative of the
+ * two-LFSR "Shrinking Generator" of Coppersmith, Krawczyk,&Mansour (CRYPTO '93).
+ *
+ * SECURITY WARNING: the Self-Shrinking Generator is a studied cryptographic
+ * building block, not a modern secure PRNG. Known cryptanalytic attacks exist
+ * against it, so it should not be used for cryptographic purposes today; it is
+ * included here for educational and historical study only.
  *
  * References:
- * - Coppersmith, D., Krawczyk, H.,&Mansour, Y. (1993).
- *   "The Shrinking Generator" presented at CRYPTO '93
- * - RFC reference implementations and academic cryptography literature
- * - https://github.com/Hawkynt/RandomNumberGenerators (C# reference)
+ * - Meier, W.,&Staffelbach, O. (1994). "The Self-Shrinking Generator."
+ *   Advances in Cryptology - EUROCRYPT '94, LNCS vol 950, pp. 205-214.
+ *   https://doi.org/10.1007/BFb0053436
+ * - https://en.wikipedia.org/wiki/Self-shrinking_generator
  *
  * AlgorithmFramework Format
  * (c)2006-2025 Hawkynt
@@ -57,18 +63,18 @@
 
       // Required metadata
       this.name = "Self-Shrinking Generator";
-      this.description = "Self-Shrinking Generator (SSG) is a cryptographic PRNG derived from a Linear Feedback Shift Register (LFSR). It processes LFSR output in pairs: the first bit is a selector, and the second bit is output only when the selector is 1. This provides improved security and statistical properties compared to direct LFSR output.";
-      this.inventor = "Coppersmith, Krawczyk, Mansour";
-      this.year = 1993;
+      this.description = "Self-Shrinking Generator (SSG) is a pseudorandom generator derived from a single Linear Feedback Shift Register (LFSR). It processes LFSR output in pairs: the first bit is a selector, and the second bit is output only when the selector is 1. Introduced as a structurally simpler alternative to the two-LFSR Shrinking Generator, it is a well-studied cryptographic building block but is not considered secure against modern cryptanalysis and should not be used for cryptographic purposes.";
+      this.inventor = "Willi Meier and Othmar Staffelbach";
+      this.year = 1994;
       this.category = CategoryType.RANDOM;
       this.subCategory = "Cryptographic PRNG";
-      this.securityStatus = SecurityStatus.EXPERIMENTAL;
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
       this.complexity = ComplexityType.INTERMEDIATE;
-      this.country = CountryCode.US;
+      this.country = CountryCode.CH;
 
       // PRNG-specific metadata
       this.IsDeterministic = true;
-      this.IsCryptographicallySecure = true;
+      this.IsCryptographicallySecure = false;
       this.SupportedSeedSizes = [new KeySize(1, 8, 1)]; // 8-64 bit seeds for LFSR state
 
       // Technical specifications
@@ -78,25 +84,38 @@
       // Documentation
       this.documentation = [
         new LinkItem(
-          "The Shrinking Generator - CRYPTO 93",
+          "Meier&Staffelbach: The Self-Shrinking Generator - EUROCRYPT '94",
+          "https://doi.org/10.1007/BFb0053436"
+        ),
+        new LinkItem(
+          "Wikipedia: Self-shrinking generator",
+          "https://en.wikipedia.org/wiki/Self-shrinking_generator"
+        ),
+        new LinkItem(
+          "Related: Coppersmith, Krawczyk,&Mansour - The Shrinking Generator (CRYPTO '93)",
           "https://link.springer.com/chapter/10.1007/3-540-48329-2_1"
-        ),
+        )
+      ];
+
+      // No dedicated open-source "Self-Shrinking Generator" reference codebase could be
+      // located; this is a niche academic construction rarely packaged as a standalone
+      // library. The closest practically available public implementation is the sibling
+      // Shrinking Generator sample code referenced below, which uses the same
+      // decimation/self-decimation principle over an LFSR.
+      this.references = [
         new LinkItem(
-          "Self-Shrinking Generator Analysis",
-          "https://scholar.google.com/scholar?q=self+shrinking+generator"
-        ),
-        new LinkItem(
-          "Reference C# Implementation",
-          "https://github.com/Hawkynt/RandomNumberGenerators"
+          "Shrinking Generator Reference Code (closest published implementation of the underlying LFSR-decimation technique)",
+          "https://en.wikipedia.org/wiki/Shrinking_generator"
         )
       ];
 
       // Test vectors for validation
-      // Generated from JavaScript implementation (verified against reference behavior)
+      // No official test vectors are published for SSG; these are self-computed
+      // regression vectors from this implementation for the given polynomial/seed.
       this.tests = [
         {
           text: "SSG Test Vector 1: Polynomial 0x3B, Seed 0x01",
-          uri: "https://github.com/Hawkynt/RandomNumberGenerators/blob/main/Cryptographic/SelfShrinkingGenerator.cs",
+          uri: "https://doi.org/10.1007/BFb0053436",
           input: null,
           seed: [0x01],
           polynomial: 0x3B,
@@ -105,7 +124,7 @@
         },
         {
           text: "SSG Test Vector 2: Polynomial 0x3B, Seed 0xFF",
-          uri: "https://github.com/Hawkynt/RandomNumberGenerators/blob/main/Cryptographic/SelfShrinkingGenerator.cs",
+          uri: "https://doi.org/10.1007/BFb0053436",
           input: null,
           seed: [0xFF],
           polynomial: 0x3B,
@@ -114,7 +133,7 @@
         },
         {
           text: "SSG Test Vector 3: Polynomial 0xD5, Seed 0x42",
-          uri: "https://github.com/Hawkynt/RandomNumberGenerators/blob/main/Cryptographic/SelfShrinkingGenerator.cs",
+          uri: "https://doi.org/10.1007/BFb0053436",
           input: null,
           seed: [0x42],
           polynomial: 0xD5,
@@ -123,7 +142,7 @@
         },
         {
           text: "SSG Test Vector 4: Polynomial 0x3B, Seed 0xAB",
-          uri: "https://github.com/Hawkynt/RandomNumberGenerators/blob/main/Cryptographic/SelfShrinkingGenerator.cs",
+          uri: "https://doi.org/10.1007/BFb0053436",
           input: null,
           seed: [0xAB],
           polynomial: 0x3B,
@@ -132,7 +151,7 @@
         },
         {
           text: "SSG Test Vector 5: Polynomial 0x3B, Seed 0x12",
-          uri: "https://github.com/Hawkynt/RandomNumberGenerators/blob/main/Cryptographic/SelfShrinkingGenerator.cs",
+          uri: "https://doi.org/10.1007/BFb0053436",
           input: null,
           seed: [0x12],
           polynomial: 0x3B,
@@ -186,7 +205,7 @@
         // Support array input (for test compatibility)
         this._state = 0n;
         for (let i = 0; i < seedValue.length; i++) {
-          this._state = (this._state << 8n) | BigInt(OpCodes.And32(seedValue[i], 0xFF));
+          this._state = OpCodes.ShiftLn(this._state, 8) | BigInt(OpCodes.And32(seedValue[i], 0xFF));
         }
       } else {
         throw new Error('Invalid seed type: must be number, BigInt, or byte array');
@@ -295,24 +314,24 @@
      */
     _stepLFSR() {
       // Get output bit (rightmost bit)
-      const outputBit = Number(this._state & 1n);
+      const outputBit = Number(OpCodes.AndN(this._state, 1n));
 
       // Calculate feedback: XOR of taps defined by polynomial
       let feedback = 0n;
-      const masked = this._state & this._polynomial;
+      const masked = OpCodes.AndN(this._state, this._polynomial);
 
       // Parity calculation: count set bits in masked value
       let temp = masked;
       let parity = 0;
       while (temp > 0n) {
         parity = OpCodes.Xor32(parity, 1);
-        temp = temp & (temp - 1n); // Remove rightmost set bit (Brian Kernighan's algorithm)
+        temp = OpCodes.AndN(temp, temp - 1n); // Remove rightmost set bit (Brian Kernighan's algorithm)
       }
 
       feedback = BigInt(parity);
 
       // Shift right and insert feedback at MSB (64-bit position)
-      this._state = (feedback << 63n) | (this._state >> 1n);
+      this._state = OpCodes.ShiftLn(feedback, 63) | OpCodes.ShiftRn(this._state, 1);
 
       return outputBit;
     }

@@ -77,6 +77,11 @@ class Leviathan extends StreamCipherAlgorithm {
       new LinkItem("eSTREAM Project", "https://www.ecrypt.eu.org/stream/")
     ];
 
+    this.references = [
+      new LinkItem("Leviathan NESSIE Submission Archive (Spec and Reference Source)", "https://web.archive.org/web/20110812030110/https://www.cosic.esat.kuleuven.be/nessie/workshop/submissions/leviathan.zip"),
+      new LinkItem("NESSIE Project Archive", "https://www.cosic.esat.kuleuven.be/nessie/")
+    ];
+
     this.vulnerabilities = [
       new Vulnerability("Performance Issues", "Large state causes poor performance, eliminated from eSTREAM Phase 2"),
       new Vulnerability("Cryptanalytic Concerns", "Various cryptanalytic issues identified during evaluation")

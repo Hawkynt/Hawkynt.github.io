@@ -89,6 +89,11 @@
         new LinkItem("Dismantling MIFARE Classic", "https://www.cs.ru.nl/~flaviog/publications/mifare.pdf")
       ];
 
+      this.references = [
+        new LinkItem("crapto1 Reference Library (Proxmark3)", "https://github.com/RfidResearchGroup/proxmark3/tree/master/common/crapto1"),
+        new LinkItem("mfcuk crypto1 Implementation", "https://github.com/nfc-tools/mfcuk/blob/master/src/crapto1.c")
+      ];
+
       // Known vulnerabilities
       this.knownVulnerabilities = [
         new Vulnerability(

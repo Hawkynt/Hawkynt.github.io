@@ -93,6 +93,11 @@
         new LinkItem("Qualcomm RaptorQ Implementation", "https://github.com/openrq-team/OpenRQ")
       ];
 
+      this.references = [
+        new LinkItem("libRaptorQ C++11 RFC 6330 Implementation", "https://github.com/LucaFulchir/libRaptorQ"),
+        new LinkItem("go-raptorq RFC 6330 Implementation", "https://github.com/harmony-one/go-raptorq")
+      ];
+
       // RFC 6330 test vectors generated from reference implementation
       this.tests = [
         new TestCase(

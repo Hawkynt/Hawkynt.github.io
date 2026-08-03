@@ -46,7 +46,7 @@
   const DIGESTLEN = 32;                    // Default digest length (256 bits)
   const STRENGTH = 128;                    // Security strength (128 bits)
   const ROUNDS = 12;                       // Keccak-p rounds
-  const RATE_BYTES = (1600 - (STRENGTH << 1)) >> 3;  // Rate = 168 bytes
+  const RATE_BYTES = OpCodes.Shr32(1600 - OpCodes.Shl32(STRENGTH, 1), 3);  // Rate = 168 bytes
 
   // Keccak round constants (24 total, we use the last 12 for Kangaroo12)
   const KECCAK_RC = Object.freeze([
@@ -87,7 +87,7 @@
     result[n] = n;
 
     for (let i = 0; i < n; i++) {
-      result[i] = OpCodes.Shr32(strLen, 8 * (n - i - 1)) & 0xFF;
+      result[i] = OpCodes.ToByte(OpCodes.Shr32(strLen, 8 * (n - i - 1)));
     }
 
     return result;
@@ -101,13 +101,13 @@
    */
   function pack64LE(bytes, offset) {
     return (
-      (BigInt(bytes[offset + 7]) << 56n) |
-      (BigInt(bytes[offset + 6]) << 48n) |
-      (BigInt(bytes[offset + 5]) << 40n) |
-      (BigInt(bytes[offset + 4]) << 32n) |
-      (BigInt(bytes[offset + 3]) << 24n) |
-      (BigInt(bytes[offset + 2]) << 16n) |
-      (BigInt(bytes[offset + 1]) << 8n) |
+      OpCodes.ShiftLn(BigInt(bytes[offset + 7]), 56) |
+      OpCodes.ShiftLn(BigInt(bytes[offset + 6]), 48) |
+      OpCodes.ShiftLn(BigInt(bytes[offset + 5]), 40) |
+      OpCodes.ShiftLn(BigInt(bytes[offset + 4]), 32) |
+      OpCodes.ShiftLn(BigInt(bytes[offset + 3]), 24) |
+      OpCodes.ShiftLn(BigInt(bytes[offset + 2]), 16) |
+      OpCodes.ShiftLn(BigInt(bytes[offset + 1]), 8) |
       BigInt(bytes[offset])
     );
   }
@@ -119,14 +119,27 @@
    * @param {number} offset - Starting offset
    */
   function unpack64LE(value, bytes, offset) {
-    bytes[offset] = Number(value & 0xFFn);
-    bytes[offset + 1] = Number((value >> 8n) & 0xFFn);
-    bytes[offset + 2] = Number((value >> 16n) & 0xFFn);
-    bytes[offset + 3] = Number((value >> 24n) & 0xFFn);
-    bytes[offset + 4] = Number((value >> 32n) & 0xFFn);
-    bytes[offset + 5] = Number((value >> 40n) & 0xFFn);
-    bytes[offset + 6] = Number((value >> 48n) & 0xFFn);
-    bytes[offset + 7] = Number((value >> 56n) & 0xFFn);
+    bytes[offset] = Number(OpCodes.AndN(value, 0xFFn));
+    bytes[offset + 1] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 8), 0xFFn));
+    bytes[offset + 2] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 16), 0xFFn));
+    bytes[offset + 3] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 24), 0xFFn));
+    bytes[offset + 4] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 32), 0xFFn));
+    bytes[offset + 5] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 40), 0xFFn));
+    bytes[offset + 6] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 48), 0xFFn));
+    bytes[offset + 7] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 56), 0xFFn));
+  }
+
+  /**
+   * XOR five 64-bit BigInt lanes together (Keccak theta parity)
+   * @param {BigInt} a - Lane 1
+   * @param {BigInt} b - Lane 2
+   * @param {BigInt} c - Lane 3
+   * @param {BigInt} d - Lane 4
+   * @param {BigInt} e - Lane 5
+   * @returns {BigInt} Combined XOR of all five lanes
+   */
+  function xor5(a, b, c, d, e) {
+    return OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(a, b), c), d), e);
   }
 
   // ===== KECCAK SPONGE IMPLEMENTATION =====
@@ -136,7 +149,7 @@
    */
   class KangarooSponge {
     constructor(strength, rounds) {
-      this.rateBytes = (1600 - (strength << 1)) >> 3;
+      this.rateBytes = OpCodes.Shr32(1600 - OpCodes.Shl32(strength, 1), 3);
       this.rounds = rounds;
       this.state = new Array(25).fill(0n);
       this.queue = new Array(this.rateBytes).fill(0);
@@ -181,7 +194,7 @@
     }
 
     absorbBlock(data, off) {
-      const count = this.rateBytes >> 3;
+      const count = OpCodes.Shr32(this.rateBytes, 3);
       let offset = off;
       for (let i = 0; i < count; i++) {
         this.state[i] ^= pack64LE(data, offset);
@@ -234,7 +247,7 @@
     }
 
     extract() {
-      const count = this.rateBytes >> 3;
+      const count = OpCodes.Shr32(this.rateBytes, 3);
       for (let i = 0; i < count; i++) {
         unpack64LE(this.state[i], this.queue, i * 8);
       }
@@ -247,17 +260,17 @@
 
       for (let round = 0; round < this.rounds; round++) {
         // Theta
-        const c0 = A[0] ^ A[5] ^ A[10] ^ A[15] ^ A[20];
-        const c1 = A[1] ^ A[6] ^ A[11] ^ A[16] ^ A[21];
-        const c2 = A[2] ^ A[7] ^ A[12] ^ A[17] ^ A[22];
-        const c3 = A[3] ^ A[8] ^ A[13] ^ A[18] ^ A[23];
-        const c4 = A[4] ^ A[9] ^ A[14] ^ A[19] ^ A[24];
+        const c0 = xor5(A[0], A[5], A[10], A[15], A[20]);
+        const c1 = xor5(A[1], A[6], A[11], A[16], A[21]);
+        const c2 = xor5(A[2], A[7], A[12], A[17], A[22]);
+        const c3 = xor5(A[3], A[8], A[13], A[18], A[23]);
+        const c4 = xor5(A[4], A[9], A[14], A[19], A[24]);
 
-        const d0 = OpCodes.RotL64n(c1, 1) ^ c4;
-        const d1 = OpCodes.RotL64n(c2, 1) ^ c0;
-        const d2 = OpCodes.RotL64n(c3, 1) ^ c1;
-        const d3 = OpCodes.RotL64n(c4, 1) ^ c2;
-        const d4 = OpCodes.RotL64n(c0, 1) ^ c3;
+        const d0 = OpCodes.XorN(OpCodes.RotL64n(c1, 1), c4);
+        const d1 = OpCodes.XorN(OpCodes.RotL64n(c2, 1), c0);
+        const d2 = OpCodes.XorN(OpCodes.RotL64n(c3, 1), c1);
+        const d3 = OpCodes.XorN(OpCodes.RotL64n(c4, 1), c2);
+        const d4 = OpCodes.XorN(OpCodes.RotL64n(c0, 1), c3);
 
         A[0] ^= d0; A[5] ^= d0; A[10] ^= d0; A[15] ^= d0; A[20] ^= d0;
         A[1] ^= d1; A[6] ^= d1; A[11] ^= d1; A[16] ^= d1; A[21] ^= d1;
@@ -300,11 +313,11 @@
           const a3 = A[y + 3];
           const a4 = A[y + 4];
 
-          A[y] = a0 ^ (~a1 & a2);
-          A[y + 1] = a1 ^ (~a2 & a3);
-          A[y + 2] = a2 ^ (~a3 & a4);
-          A[y + 3] = a3 ^ (~a4 & a0);
-          A[y + 4] = a4 ^ (~a0 & a1);
+          A[y] = OpCodes.XorN(a0, OpCodes.AndN(~a1, a2));
+          A[y + 1] = OpCodes.XorN(a1, OpCodes.AndN(~a2, a3));
+          A[y + 2] = OpCodes.XorN(a2, OpCodes.AndN(~a3, a4));
+          A[y + 3] = OpCodes.XorN(a3, OpCodes.AndN(~a4, a0));
+          A[y + 4] = OpCodes.XorN(a4, OpCodes.AndN(~a0, a1));
         }
 
         // Iota
@@ -351,8 +364,8 @@
 
       this.documentation = [
         new LinkItem(
-          "KangarooTwelve Draft Specification",
-          "https://tools.ietf.org/html/draft-viguier-kangarootwelve-04"
+          "RFC 9861: KangarooTwelve and TurboSHAKE",
+          "https://www.rfc-editor.org/rfc/rfc9861"
         ),
         new LinkItem(
           "Official Website",
@@ -360,12 +373,19 @@
         )
       ];
 
-      // Test vectors from https://tools.ietf.org/html/draft-viguier-kangarootwelve-04
+      this.references = [
+        new LinkItem(
+          "XKCP (eXtended Keccak Code Package) - Reference Implementation",
+          "https://github.com/XKCP/XKCP"
+        )
+      ];
+
+      // Test vectors from RFC 9861 (KangarooTwelve and TurboSHAKE), Section 5
       this.tests = [
         // Empty input
         {
           text: "KangarooTwelve Test Vector #1 - Empty input (32 bytes)",
-          uri: "https://tools.ietf.org/html/draft-viguier-kangarootwelve-04",
+          uri: "https://www.rfc-editor.org/rfc/rfc9861",
           input: OpCodes.Hex8ToBytes(""),
           outputSize: 32,
           expected: OpCodes.Hex8ToBytes("1AC2D450FC3B4205D19DA7BFCA1B37513C0803577AC7167F06FE2CE1F0EF39E5")
@@ -373,7 +393,7 @@
         // Empty input (64 bytes)
         {
           text: "KangarooTwelve Test Vector #2 - Empty input (64 bytes)",
-          uri: "https://tools.ietf.org/html/draft-viguier-kangarootwelve-04",
+          uri: "https://www.rfc-editor.org/rfc/rfc9861",
           input: OpCodes.Hex8ToBytes(""),
           outputSize: 64,
           expected: OpCodes.Hex8ToBytes("1AC2D450FC3B4205D19DA7BFCA1B37513C0803577AC7167F06FE2CE1F0EF39E54269C056B8C82E48276038B6D292966CC07A3D4645272E31FF38508139EB0A71")
@@ -381,7 +401,7 @@
         // 1 byte (pattern)
         {
           text: "KangarooTwelve Test Vector #4 - 1 byte pattern",
-          uri: "https://tools.ietf.org/html/draft-viguier-kangarootwelve-04",
+          uri: "https://www.rfc-editor.org/rfc/rfc9861",
           input: buildStandardBuffer(1),
           outputSize: 32,
           expected: OpCodes.Hex8ToBytes("2BDA92450E8B147F8A7CB629E784A058EFCA7CF7D8218E02D345DFAA65244A1F")
@@ -389,7 +409,7 @@
         // 17 bytes (pattern)
         {
           text: "KangarooTwelve Test Vector #5 - 17 bytes pattern",
-          uri: "https://tools.ietf.org/html/draft-viguier-kangarootwelve-04",
+          uri: "https://www.rfc-editor.org/rfc/rfc9861",
           input: buildStandardBuffer(17),
           outputSize: 32,
           expected: OpCodes.Hex8ToBytes("6BF75FA2239198DB4772E36478F8E19B0F371205F6A9A93A273F51DF37122888")
@@ -397,7 +417,7 @@
         // 17^2 = 289 bytes (pattern)
         {
           text: "KangarooTwelve Test Vector #6 - 289 bytes pattern",
-          uri: "https://tools.ietf.org/html/draft-viguier-kangarootwelve-04",
+          uri: "https://www.rfc-editor.org/rfc/rfc9861",
           input: buildStandardBuffer(17 * 17),
           outputSize: 32,
           expected: OpCodes.Hex8ToBytes("0C315EBCDEDBF61426DE7DCF8FB725D1E74675D7F5327A5067F367B108ECB67C")
@@ -405,7 +425,7 @@
         // 17^3 = 4913 bytes (pattern)
         {
           text: "KangarooTwelve Test Vector #7 - 4913 bytes pattern",
-          uri: "https://tools.ietf.org/html/draft-viguier-kangarootwelve-04",
+          uri: "https://www.rfc-editor.org/rfc/rfc9861",
           input: buildStandardBuffer(17 * 17 * 17),
           outputSize: 32,
           expected: OpCodes.Hex8ToBytes("CB552E2EC77D9910701D578B457DDF772C12E322E4EE7FE417F92C758F0D59D0")
@@ -413,7 +433,7 @@
         // 17^4 = 83521 bytes (pattern)
         {
           text: "KangarooTwelve Test Vector #8 - 83521 bytes pattern",
-          uri: "https://tools.ietf.org/html/draft-viguier-kangarootwelve-04",
+          uri: "https://www.rfc-editor.org/rfc/rfc9861",
           input: buildStandardBuffer(17 * 17 * 17 * 17),
           outputSize: 32,
           expected: OpCodes.Hex8ToBytes("8701045E22205345FF4DDA05555CBB5C3AF1A771C2B89BAEF37DB43D9998B9FE")
@@ -421,7 +441,7 @@
         // 17^5 = 1419857 bytes (pattern)
         {
           text: "KangarooTwelve Test Vector #9 - 1419857 bytes pattern",
-          uri: "https://tools.ietf.org/html/draft-viguier-kangarootwelve-04",
+          uri: "https://www.rfc-editor.org/rfc/rfc9861",
           input: buildStandardBuffer(17 * 17 * 17 * 17 * 17),
           outputSize: 32,
           expected: OpCodes.Hex8ToBytes("844D610933B1B9963CBDEB5AE3B6B05CC7CBD67CEEDF883EB678A0A8E0371682")
@@ -429,7 +449,7 @@
         // 17^6 = 24137569 bytes (pattern)
         {
           text: "KangarooTwelve Test Vector #10 - 24137569 bytes pattern",
-          uri: "https://tools.ietf.org/html/draft-viguier-kangarootwelve-04",
+          uri: "https://www.rfc-editor.org/rfc/rfc9861",
           input: buildStandardBuffer(17 * 17 * 17 * 17 * 17 * 17),
           outputSize: 32,
           expected: OpCodes.Hex8ToBytes("3C390782A8A4E89FA6367F72FEAAF13255C8D95878481D3CD8CE85F58E880AF8")
@@ -437,7 +457,7 @@
         // Empty input with 1 byte personalization
         {
           text: "KangarooTwelve Test Vector #11 - Empty input, 1 byte personalization",
-          uri: "https://tools.ietf.org/html/draft-viguier-kangarootwelve-04",
+          uri: "https://www.rfc-editor.org/rfc/rfc9861",
           input: OpCodes.Hex8ToBytes(""),
           personalization: buildStandardBuffer(1),
           outputSize: 32,
@@ -446,7 +466,7 @@
         // 1 byte 0xFF with 41 byte personalization
         {
           text: "KangarooTwelve Test Vector #12 - 1 byte 0xFF, 41 bytes personalization",
-          uri: "https://tools.ietf.org/html/draft-viguier-kangarootwelve-04",
+          uri: "https://www.rfc-editor.org/rfc/rfc9861",
           input: new Array(1).fill(0xFF),
           personalization: buildStandardBuffer(41),
           outputSize: 32,
@@ -455,7 +475,7 @@
         // 3 bytes 0xFF with 41^2 = 1681 bytes personalization
         {
           text: "KangarooTwelve Test Vector #13 - 3 bytes 0xFF, 1681 bytes personalization",
-          uri: "https://tools.ietf.org/html/draft-viguier-kangarootwelve-04",
+          uri: "https://www.rfc-editor.org/rfc/rfc9861",
           input: new Array(3).fill(0xFF),
           personalization: buildStandardBuffer(41 * 41),
           outputSize: 32,
@@ -464,7 +484,7 @@
         // 7 bytes 0xFF with 41^3 = 68921 bytes personalization
         {
           text: "KangarooTwelve Test Vector #14 - 7 bytes 0xFF, 68921 bytes personalization",
-          uri: "https://tools.ietf.org/html/draft-viguier-kangarootwelve-04",
+          uri: "https://www.rfc-editor.org/rfc/rfc9861",
           input: new Array(7).fill(0xFF),
           personalization: buildStandardBuffer(41 * 41 * 41),
           outputSize: 32,
@@ -496,7 +516,7 @@
 
       this.treeSponge = new KangarooSponge(STRENGTH, ROUNDS);
       this.leafSponge = new KangarooSponge(STRENGTH, ROUNDS);
-      this.chainLen = STRENGTH >> 2; // 32 bytes for K12
+      this.chainLen = OpCodes.Shr32(STRENGTH, 2); // 32 bytes for K12
 
       this._outputSize = DIGESTLEN;
       this._personalization = null;

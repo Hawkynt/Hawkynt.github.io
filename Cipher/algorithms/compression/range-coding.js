@@ -94,7 +94,7 @@
             input: input,
             expected: compressed,
             text: description,
-            uri: this.documentation[0].url
+            uri: this.documentation[0].uri
           });
         };
 
@@ -104,12 +104,17 @@
         };
 
         // Add comprehensive round-trip tests
-        this.addRoundTripTest([], "Empty input - round-trip test");
-        this.addRoundTripTest(OpCodes.AnsiToBytes("A"), "Single character");
-        this.addRoundTripTest(OpCodes.AnsiToBytes("AA"), "Repeated characters");
-        this.addRoundTripTest(OpCodes.AnsiToBytes("AB"), "Two different characters");
-        this.addRoundTripTest(OpCodes.AnsiToBytes("ABC"), "Three different characters");
-        this.addRoundTripTest(OpCodes.AnsiToBytes("Hello"), "Hello string");
+        // NOTE: This educational implementation is a length-prefixed store/retrieve
+        // stub, not a real range coder. These vectors are self-computed round-trip
+        // verification vectors produced by this implementation itself (no external
+        // range-coding authority produced these exact bytes); the uri references
+        // the Range Encoding overview for context on the real algorithm.
+        this.addRoundTripTest([], "Self-computed round-trip verification vector - empty input");
+        this.addRoundTripTest(OpCodes.AnsiToBytes("A"), "Self-computed round-trip verification vector - single character");
+        this.addRoundTripTest(OpCodes.AnsiToBytes("AA"), "Self-computed round-trip verification vector - repeated characters");
+        this.addRoundTripTest(OpCodes.AnsiToBytes("AB"), "Self-computed round-trip verification vector - two different characters");
+        this.addRoundTripTest(OpCodes.AnsiToBytes("ABC"), "Self-computed round-trip verification vector - three different characters");
+        this.addRoundTripTest(OpCodes.AnsiToBytes("Hello"), "Self-computed round-trip verification vector - Hello string");
 
         // For test suite compatibility
         this.testVectors = this.tests;

@@ -248,122 +248,87 @@
         throw new Error("Output length must be at least 1 byte");
       }
 
-      // Get HMAC function for the specified hash algorithm
-      const hmacFunc = this._getHMACFunction();
-      const hmacOutputBytes = this._getHMACOutputSize();
+      const hashName = this._normalizeHashName(this._hashAlgorithm);
 
-      // Step 1: Extract - PRK = HMAC(salt, secret)
-      // If salt is empty, use string of zeros of hash length
+      // Step 1 (Randomness Extraction, SP 800-56C section 4):
+      //   K_DK (PRK) = HMAC-hash(salt, Z)
+      // If salt is empty, use a string of zeros equal to the HMAC output length.
+      const hmacOutputBytes = this._hmacOutputSize(hashName);
       const actualSalt = (this._salt && this._salt.length > 0)
         ? this._salt
         : new Array(hmacOutputBytes).fill(0);
 
-      const prk = hmacFunc(actualSalt, this._keyInput);
+      const prk = this._hmac(actualSalt, this._keyInput, hashName);
 
-      // Step 2: Expand - Similar to HKDF expand but with label instead of info
-      // T(0) = empty string
-      // T(i) = HMAC(PRK, T(i-1) || label || i)
-      // Output = T(1) || T(2) || ... || T(n) (truncated to outputLength)
+      // Step 2 (Key Expansion, SP 800-56C section 4 via SP 800-108 Counter Mode):
+      //   K(i) = HMAC-hash(K_DK, [i]_32 || FixedInfo || 0x00 || [L]_32)
+      //   Output = K(1) || K(2) || ... || K(n), truncated to outputLength bytes
+      const numBlocks = Math.ceil(this._outputLength / prk.length);
 
-      const numBlocks = Math.ceil(this._outputLength / hmacOutputBytes);
-
-      if (numBlocks > 255) {
+      if (numBlocks > 0xFFFFFFFF) {
         throw new Error("Output length too large for SP800-56C");
       }
 
-      const output = [];
-      let previousBlock = [];
+      const outputBits = OpCodes.Unpack32BE(OpCodes.ToUint32(this._outputLength * 8));
+      const label = this._label || [];
 
+      let output = [];
       for (let i = 1; i <= numBlocks; i++) {
-        const blockInput = [];
-
-        // Add T(i-1)
-        if (previousBlock.length > 0) {
-          blockInput.push(...previousBlock);
-        }
-
-        // Add label
-        if (this._label && this._label.length > 0) {
-          blockInput.push(...this._label);
-        }
-
-        // Add counter (single byte)
-        blockInput.push(i);
-
-        // Compute T(i) = HMAC(PRK, T(i-1) || label || i)
-        const blockHash = hmacFunc(prk, blockInput);
-        output.push(...blockHash);
-        previousBlock = blockHash;
+        const counterBytes = OpCodes.Unpack32BE(OpCodes.ToUint32(i));
+        const blockInput = OpCodes.ConcatArrays([counterBytes, label, [0x00], outputBits]);
+        const blockOutput = this._hmac(prk, blockInput, hashName);
+        output = OpCodes.ConcatArrays([output, blockOutput]);
       }
 
       // Truncate to requested output length
       return output.slice(0, this._outputLength);
     }
 
-    // Get HMAC function for the specified hash algorithm
-    _getHMACFunction() {
-      const hashAlgo = this._hashAlgorithm.toUpperCase();
-
-      if (hashAlgo === 'SHA-256' || hashAlgo === 'SHA256') {
-        return (key, message) => this._hmacSHA256(key, message);
-      } else if (hashAlgo === 'SHA-512' || hashAlgo === 'SHA512') {
-        return (key, message) => this._hmacSHA512(key, message);
-      } else if (hashAlgo === 'SHA-1' || hashAlgo === 'SHA1') {
-        return (key, message) => this._hmacSHA1(key, message);
-      } else {
-        throw new Error(`Unsupported hash algorithm: ${this._hashAlgorithm}`);
+    // Normalize hash algorithm aliases to the AlgorithmFramework-registered names
+    _normalizeHashName(hashAlgo) {
+      const name = (hashAlgo || 'SHA-256').toUpperCase();
+      const hashMap = {
+        'SHA-1': 'SHA-1', 'SHA1': 'SHA-1',
+        'SHA-256': 'SHA-256', 'SHA256': 'SHA-256',
+        'SHA-512': 'SHA-512', 'SHA512': 'SHA-512'
+      };
+      const resolved = hashMap[name];
+      if (!resolved) {
+        throw new Error(`Unsupported hash algorithm: ${hashAlgo}`);
       }
+      return resolved;
     }
 
-    // Get HMAC output size for the selected hash
-    _getHMACOutputSize() {
-      const hashAlgo = this._hashAlgorithm.toUpperCase();
-      if (hashAlgo === 'SHA-256' || hashAlgo === 'SHA256') return 32;
-      if (hashAlgo === 'SHA-512' || hashAlgo === 'SHA512') return 64;
-      if (hashAlgo === 'SHA-1' || hashAlgo === 'SHA1') return 20;
-      return 32;  // Default to SHA-256 output size
+    // HMAC output size for the selected hash, in bytes
+    _hmacOutputSize(hashName) {
+      if (hashName === 'SHA-512') return 64;
+      if (hashName === 'SHA-1') return 20;
+      return 32; // SHA-256
     }
 
-    // Implementation of HMAC-SHA256
-    _hmacSHA256(key, message) {
-      return this._hmacCompute(key, message, 'SHA-256');
-    }
+    // Compute HMAC-hash(key, message) using the registered HMAC algorithm
+    // Registry-first: Find() is checked before require() falls back to loading the module
+    _hmac(key, message, hashName) {
+      let hmacAlgorithm = AlgorithmFramework.Find('HMAC');
 
-    // Implementation of HMAC-SHA512
-    _hmacSHA512(key, message) {
-      return this._hmacCompute(key, message, 'SHA-512');
-    }
-
-    // Implementation of HMAC-SHA1
-    _hmacSHA1(key, message) {
-      return this._hmacCompute(key, message, 'SHA-1');
-    }
-
-    // Generic HMAC computation
-    _hmacCompute(key, message, hashName) {
-      // Try using Node.js crypto if available
-      if (typeof require !== 'undefined') {
+      if (!hmacAlgorithm && typeof require !== 'undefined') {
         try {
-          const crypto = require('crypto');
-          const hmac = crypto.createHmac(
-            hashName.replace('-', '').toLowerCase(),
-            Buffer.from(key)
-          );
-          hmac.update(Buffer.from(message));
-          return Array.from(hmac.digest());
+          require('../mac/hmac.js');
         } catch (e) {
-          // Fall through to alternate implementation
+          // Ignore load errors, handled by the check below
         }
+        hmacAlgorithm = AlgorithmFramework.Find('HMAC');
       }
 
-      // Check if we have HMAC in OpCodes
-      if (OpCodes && OpCodes.HMAC) {
-        return OpCodes.HMAC(key, message, hashName);
+      if (!hmacAlgorithm) {
+        throw new Error('HMAC algorithm not available - required for SP800-56C key derivation');
       }
 
-      throw new Error(
-        `Cannot compute HMAC: No crypto library available (requires Node.js crypto or Web Crypto API)`
-      );
+      const hmacInstance = hmacAlgorithm.CreateInstance(false);
+      hmacInstance.key = key;
+      hmacInstance.hashFunction = hashName;
+      hmacInstance.Feed(message);
+      return hmacInstance.Result();
     }
   }
 

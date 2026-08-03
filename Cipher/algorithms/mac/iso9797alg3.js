@@ -54,27 +54,11 @@
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           MacAlgorithm, IMacInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
-  // Load DES dependency (required for E-D-E pattern)
+  // Load DES dependency (required for E-D-E pattern), registry-first
   // In browser/production: DES should already be loaded
-  // In Node.js/testing: Load DES from relative path
-  if (typeof module !== 'undefined' && typeof require !== 'undefined') {
-    try {
-      const path = require('path');
-      const desPath = path.resolve(__dirname, '..', 'block', 'des.js');
-
-      // Clear require cache for DES to ensure it re-registers with AlgorithmFramework
-      // This is necessary when the test framework clears the algorithm registry
-      try {
-        delete require.cache[require.resolve(desPath)];
-      } catch (e) {
-        // Ignore if path doesn't resolve
-      }
-
-      require(desPath);
-    } catch (e) {
-      // Silently fail - DES might already be loaded or path might be different
-      // Error will be thrown later if DES is actually missing
-    }
+  // In Node.js/testing: Load DES from relative path only if not already registered
+  if (typeof require !== 'undefined' && !AlgorithmFramework.Find('DES')) {
+    try { require('../block/des.js'); } catch (e) { /* DES might not be found; error thrown later when actually needed */ }
   }
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -90,7 +74,7 @@
       this.year = 1999;
       this.category = CategoryType.MAC;
       this.subCategory = "Block Cipher MAC";
-      this.securityStatus = SecurityStatus.SECURE;
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
       this.complexity = ComplexityType.INTERMEDIATE;
       this.country = CountryCode.INT;
 

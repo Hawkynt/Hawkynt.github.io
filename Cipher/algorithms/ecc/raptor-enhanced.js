@@ -131,7 +131,7 @@
     constructor() {
       super();
 
-      // Required metadata (EXACT compliance with CLAUDE.md)
+      // Required metadata (EXACT compliance with the project guidelines)
       this.name = "Raptor (Enhanced)";
       this.description = "Enhanced systematic rateless fountain code achieving near-optimal overhead with linear-time encoding and decoding. Two-stage architecture combines LDPC pre-coding with LT codes using RFC 5053 standardized parameters. Supports systematic mode, inactivation decoding, and configurable redundancy levels. Used in 3GPP MBMS, DVB-H mobile broadcasting, and reliable multicast protocols.";
       this.inventor = "Amin Shokrollahi";
@@ -159,6 +159,11 @@
         new LinkItem("Raptor Codes (IEEE)", "https://ieeexplore.ieee.org/document/1490914"),
         new LinkItem("3GPP TS 26.346 - MBMS with Raptor", "https://www.3gpp.org/dynareport/26346.htm"),
         new LinkItem("Raptor Code - Wikipedia", "https://en.wikipedia.org/wiki/Raptor_code")
+      ];
+
+      this.references = [
+        new LinkItem("freeRaptor RFC 5053 (R10) Implementation", "https://github.com/obolo/freeRaptor"),
+        new LinkItem("RaptorCodes_Cplusplus Encoder/Decoder", "https://github.com/ywu40/RaptorCodes_Cplusplus")
       ];
 
       // Test vectors based on RFC 5053 parameters

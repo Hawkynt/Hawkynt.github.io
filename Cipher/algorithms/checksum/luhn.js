@@ -57,6 +57,10 @@
         new LinkItem("Credit Card Validation", "https://www.creditcardvalidator.org/articles/luhn-algorithm")
       ];
 
+      this.references = [
+        new LinkItem("python-stdnum Luhn implementation", "https://github.com/arthurdejong/python-stdnum/blob/master/stdnum/luhn.py")
+      ];
+
       this.notes = [
         "Algorithm: From right to left, double every second digit",
         "If doubled digit > 9, subtract 9 (equivalent to adding digits: 16→1+6=7)",

@@ -59,6 +59,10 @@
         new LinkItem("TCP/IP Checksum Calculation", "https://www.rfc-editor.org/rfc/rfc1624.html")
       ];
 
+      this.references = [
+        new LinkItem("Linux kernel Internet checksum implementation", "https://github.com/torvalds/linux/blob/master/lib/checksum.c")
+      ];
+
       this.notes = [
         "Algorithm: sum 16-bit words, add carry back (end-around carry), then NOT",
         "Used in: IPv4, TCP, UDP, ICMP headers",
@@ -202,6 +206,10 @@
         new LinkItem("Serial Protocol Checksums", "https://www.lammertbies.nl/comm/info/serial-checksum")
       ];
 
+      this.references = [
+        new LinkItem("IntelHex library record checksum implementation", "https://github.com/python-intelhex/intelhex/blob/master/intelhex/__init__.py")
+      ];
+
       this.notes = [
         "Algorithm: sum all bytes, then negate (two's complement)",
         "Two's complement: (~sum + 1) AND 0xFF",
@@ -313,6 +321,10 @@
       this.documentation = [
         new LinkItem("Two's Complement on Wikipedia", "https://en.wikipedia.org/wiki/Two%27s_complement"),
         new LinkItem("Checksum Algorithms", "https://en.wikipedia.org/wiki/Checksum")
+      ];
+
+      this.references = [
+        new LinkItem("IntelHex library record checksum implementation", "https://github.com/python-intelhex/intelhex/blob/master/intelhex/__init__.py")
       ];
 
       this.notes = [

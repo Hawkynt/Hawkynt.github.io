@@ -74,15 +74,15 @@
 
     // Round 1: x = (x*x + y) mod 2^64, then swap upper/lower 32 bits
     x = ((x * x)&MASK64) + y&MASK64;
-    x = OpCodes.OrN((x >> 32n), (x << 32n))&MASK64;
+    x = OpCodes.RotL64n(x, 32);
 
     // Round 2: x = (x*x + z) mod 2^64, then swap upper/lower 32 bits
     x = ((x * x)&MASK64) + z&MASK64;
-    x = OpCodes.OrN((x >> 32n), (x << 32n))&MASK64;
+    x = OpCodes.RotL64n(x, 32);
 
     // Round 3: x = (x*x + y) mod 2^64, output upper 32 bits
     x = ((x * x)&MASK64) + y&MASK64;
-    return Number((x >> 32n)&0xFFFFFFFFn);
+    return Number(OpCodes.AndN(OpCodes.ShiftRn(x, 32), 0xFFFFFFFFn));
   }
 
   /**
@@ -101,19 +101,19 @@
 
     // Round 1
     x = ((x * x)&MASK64) + y&MASK64;
-    x = OpCodes.OrN((x >> 32n), (x << 32n))&MASK64;
+    x = OpCodes.RotL64n(x, 32);
 
     // Round 2
     x = ((x * x)&MASK64) + z&MASK64;
-    x = OpCodes.OrN((x >> 32n), (x << 32n))&MASK64;
+    x = OpCodes.RotL64n(x, 32);
 
     // Round 3
     x = ((x * x)&MASK64) + y&MASK64;
-    x = OpCodes.OrN((x >> 32n), (x << 32n))&MASK64;
+    x = OpCodes.RotL64n(x, 32);
 
     // Round 4: output upper 32 bits
     x = ((x * x)&MASK64) + z&MASK64;
-    return Number((x >> 32n)&0xFFFFFFFFn);
+    return Number(OpCodes.AndN(OpCodes.ShiftRn(x, 32), 0xFFFFFFFFn));
   }
 
   class SquaresAlgorithm extends RandomGenerationAlgorithm {
@@ -289,7 +289,7 @@
       // Parse as little-endian 64-bit BigInt
       this._key = 0n;
       for (let i = 0; i < 8; ++i) {
-        this._key = OpCodes.OrN(this._key, BigInt(keyBytes[i]) << BigInt(i * 8));
+        this._key = OpCodes.OrN(this._key, OpCodes.ShiftLn(BigInt(keyBytes[i]), i * 8));
       }
 
       this._ready = true;
@@ -321,7 +321,7 @@
       // Parse as little-endian 64-bit BigInt
       this._counter = 0n;
       for (let i = 0; i < 8; ++i) {
-        this._counter = OpCodes.OrN(this._counter, BigInt(seedBytes[i]) << BigInt(i * 8));
+        this._counter = OpCodes.OrN(this._counter, OpCodes.ShiftLn(BigInt(seedBytes[i]), i * 8));
       }
 
       // Clear buffer when counter changes

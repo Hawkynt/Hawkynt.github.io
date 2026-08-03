@@ -56,6 +56,11 @@ class Hierocrypt3 extends BlockCipherAlgorithm {
       new LinkItem("NESSIE Specification", "https://www.cryptrec.go.jp/en/cryptrec_03_spec_cypherlist_files/PDF/08_02espec.pdf")
     ];
 
+    this.references = [
+      new LinkItem("embeddedsw.net libObfuscate Hierocrypt-3 Implementation", "https://embeddedsw.net/Cipher_Reference_Home.html"),
+      new LinkItem("NESSIE Submission Archive (reference code package)", "https://www.cosic.esat.kuleuven.be/nessie/workshop/submissions.html")
+    ];
+
     this.tests = [
       {
         text: "Hierocrypt-3 Test Vector 1",

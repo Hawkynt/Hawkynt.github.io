@@ -187,6 +187,17 @@
           "https://www.nist.gov/news-events/news/2023/02/nist-standardizes-ascon-cryptography-protecting-iot-devices"
         )
       ];
+
+      this.references = [
+        new LinkItem(
+          "Ascon Reference C Implementation",
+          "https://github.com/ascon/ascon-c"
+        ),
+        new LinkItem(
+          "pyascon (Python Reference Implementation)",
+          "https://github.com/meichlseder/pyascon"
+        )
+      ];
     }
 
     /**

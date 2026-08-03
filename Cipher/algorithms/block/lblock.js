@@ -153,6 +153,11 @@
         new LinkItem("ACNS 2011 Paper (Springer)", "https://link.springer.com/chapter/10.1007/978-3-642-21554-4_19")
       ];
 
+      this.references = [
+        new LinkItem("openluopworld Lightweight Block Ciphers - LBlock (C)", "https://github.com/openluopworld/block-ciphers"),
+        new LinkItem("kmarquet/bloc LBlock Implementation (C)", "https://github.com/kmarquet/bloc/blob/master/LBlock/LBlock.c")
+      ];
+
       // Test vectors from kmarquet/bloc reference C implementation
       // Note: Verified against https://github.com/kmarquet/bloc/blob/master/LBlock/LBlock.c
       this.tests = [

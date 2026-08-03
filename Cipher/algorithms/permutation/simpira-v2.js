@@ -225,6 +225,10 @@
         new LinkItem("Reference Implementation", "https://mouha.be/wp-content/uploads/simpira_v2.zip")
       ];
 
+      this.references = [
+        new LinkItem("Simpira Implementation (SPHINCS optimized code)", "https://github.com/kste/sphincs/blob/master/arm/simpira/simpira.c")
+      ];
+
       // Test vectors from reference implementation or derived
       this.tests = [
         new TestCase(

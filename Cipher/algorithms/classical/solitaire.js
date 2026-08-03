@@ -70,17 +70,30 @@
         new LinkItem('Cryptonomicon Reference', 'https://en.wikipedia.org/wiki/Solitaire_(cipher)')
       ];
 
+      // Reference implementations
+      this.references = [
+        new LinkItem("Schneier's Solitaire (Pontifex) Algorithm Description", 'https://www.schneier.com/academic/solitaire/'),
+        new LinkItem('kisom/solitaire - Pontifex Reference Implementation (C, GitHub)', 'https://github.com/kisom/solitaire/blob/master/src/pontifex.c')
+      ];
+
       // Convert test vectors to new format (strings to byte arrays)
+      // These vectors do NOT match Bruce Schneier's official worked examples (e.g. an
+      // unkeyed deck encrypting "AAAAAAAAAA" to "EXKYIZSGEH" per schneier.com/academic/solitaire/)
+      // because this file implements a simplified educational keystream (not the real
+      // 5-step card algorithm). They are self-computed against this implementation for
+      // self-consistency/round-trip verification only.
       this.tests = [
         new TestCase(
-          OpCodes.AnsiToBytes('HELLO'), 
+          OpCodes.AnsiToBytes('HELLO'),
           OpCodes.AnsiToBytes('IFMMP'),
-          'Basic Solitaire example using simplified educational implementation'
+          'Self-computed vector using this simplified educational implementation (does not match Schneier\'s official Solitaire test vectors)',
+          'https://www.schneier.com/academic/solitaire/'
         ),
         new TestCase(
           OpCodes.AnsiToBytes('WORLD'),
           OpCodes.AnsiToBytes('XPSME'),
-          'Another Solitaire example using simplified educational implementation'
+          'Self-computed vector using this simplified educational implementation (does not match Schneier\'s official Solitaire test vectors)',
+          'https://www.schneier.com/academic/solitaire/'
         )
       ];
 

@@ -405,6 +405,11 @@
         new LinkItem("Keccak Team", "https://keccak.team/")
       ];
 
+      this.references = [
+        new LinkItem("Keccak Code Package - Ketje Reference (Ketjev2.h/.c implements Ketje Jr/Sr)", "https://github.com/KeccakTeam/KeccakCodePackage/tree/a41913ea276b9033605a36d497df076c0a527640/lib/high/Ketje"),
+        new LinkItem("KeccakTools - Ketje Reference and Cryptanalysis Code (Keccak team)", "https://github.com/KeccakTeam/KeccakTools/blob/master/Sources/Ketjev2.cpp")
+      ];
+
       this.SupportsDetached = false;
     }
 

@@ -205,6 +205,13 @@
         )
       ];
 
+      this.references = [
+        new LinkItem(
+          "XKCP - eXtended Keccak Code Package (Xoodyak reference implementation)",
+          "https://github.com/XKCP/XKCP"
+        )
+      ];
+
       // Official NIST LWC test vectors
       this.tests = [
         {

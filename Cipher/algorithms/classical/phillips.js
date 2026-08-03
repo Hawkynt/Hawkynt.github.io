@@ -66,20 +66,35 @@
 
       // Documentation
       this.documentation = [
-        new LinkItem('Phillips Cipher Information', 'https://cryptii.com/pipes/phillips-cipher')
+        new LinkItem('CryptoCrack: Phillips Cipher User Guide', 'https://sites.google.com/site/cryptocrackprogram/user-guide/cipher-types/substitution/phillips'),
+        new LinkItem('CWU Kryptos Challenge: Phillips Cipher (PDF)', 'https://www.cwu.edu/academics/math/_documents/kryptos-challenges/cwu-kryptos-challenge-phillips-cipher.pdf')
+      ];
+
+      // Reference implementations/tools (no open-source reference code is publicly available for
+      // this WWI-era cipher; these are the most authoritative interactive implementations)
+      this.references = [
+        new LinkItem('dcode.fr: Phillips Cipher (online encoder/decoder)', 'https://www.dcode.fr/phillips-cipher'),
+        new LinkItem('CryptoPrograms: Phillips Cipher Generator', 'https://www.cryptoprograms.com/substitution-create/phillips')
       ];
 
       // Convert test vectors to new format (strings to byte arrays)
+      // No official published test vectors are available for this WWI-era cipher; these
+      // vectors are self-computed against this implementation's single-square Polybius
+      // coordinate encoding (row/column, 1-indexed) for self-consistency/round-trip checking.
+      // Note: this implementation is simplified and does not implement the full 8-grid
+      // shifting-square scheme of the historical Phillips cipher described in the references above.
       this.tests = [
         new TestCase(
-          OpCodes.AnsiToBytes('HELLO'), 
+          OpCodes.AnsiToBytes('HELLO'),
           OpCodes.AnsiToBytes('23 15 31 31 34'),
-          'Basic Phillips example using standard Polybius square'
+          'Self-computed vector (standard Polybius square, self-consistency check - not an official Phillips cipher test vector)',
+          'https://sites.google.com/site/cryptocrackprogram/user-guide/cipher-types/substitution/phillips'
         ),
         new TestCase(
           OpCodes.AnsiToBytes('WORLD'),
           OpCodes.AnsiToBytes('52 34 42 31 14'),
-          'Another Phillips example using standard Polybius square'
+          'Self-computed vector (standard Polybius square, self-consistency check - not an official Phillips cipher test vector)',
+          'https://sites.google.com/site/cryptocrackprogram/user-guide/cipher-types/substitution/phillips'
         )
       ];
 

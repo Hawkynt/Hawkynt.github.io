@@ -127,6 +127,11 @@
                      "https://github.com/randombit/botan/blob/master/src/lib/block/lion/lion.cpp")
       ];
 
+      this.references = [
+        new LinkItem("lioness-rs (LIONESS wide-block cipher, Anderson-Biham construction)", "https://github.com/burdges/lioness-rs"),
+        new LinkItem("pylioness (LIONESS wide-block cipher, Anderson-Biham construction)", "https://github.com/applied-mixnetworks/pylioness")
+      ];
+
       // Botan test vectors
       this.tests = [
         {

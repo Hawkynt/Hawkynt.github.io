@@ -254,6 +254,11 @@
         )
       ];
 
+      this.references = [
+        new LinkItem("rweather lightweight-crypto reference implementation (GIMLI-24-HASH)", "https://github.com/rweather/lightweight-crypto"),
+        new LinkItem("Official GIMLI website with reference C code", "https://gimli.cr.yp.to/")
+      ];
+
       // Official test vectors from GIMLI-24-HASH.txt
       this.tests = [
         {

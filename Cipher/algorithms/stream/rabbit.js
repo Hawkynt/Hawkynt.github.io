@@ -57,6 +57,11 @@ class Rabbit extends StreamCipherAlgorithm {
       new LinkItem("eSTREAM Portfolio", "https://www.ecrypt.eu.org/stream/")
     ];
 
+    this.references = [
+      new LinkItem("Cryptico Rabbit Reference Source (eSTREAM archive)", "https://web.archive.org/web/20240708120501/https://www.ecrypt.eu.org/stream/p3ciphers/rabbit/rabbit_p3source.zip"),
+      new LinkItem("Crypto++ Rabbit Implementation", "https://github.com/weidai11/cryptopp/blob/master/rabbit.cpp")
+    ];
+
     this.tests = [
       {
         text: "RFC 4503 Test Vector 1 (All-zero key)",

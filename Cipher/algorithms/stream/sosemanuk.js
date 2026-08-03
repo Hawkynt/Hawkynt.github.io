@@ -91,6 +91,10 @@
         new LinkItem("Wikipedia: SOSEMANUK", "https://en.wikipedia.org/wiki/SOSEMANUK")
       ];
 
+      this.references = [
+        new LinkItem("libestream C Reference (eSTREAM Profile 1 ciphers)", "https://github.com/lvella/libestream")
+      ];
+
       // Security status notes
       this.knownVulnerabilities = [];
 

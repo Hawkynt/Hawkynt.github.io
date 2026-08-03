@@ -54,7 +54,7 @@
     x = OpCodes.Xor32(x, OpCodes.Xor32((((OpCodes.Shr32(x, 1))&(OpCodes.Shr32(x, 2)))&0x08080808), y));
     x = OpCodes.ToUint32((~x));
 
-    x = (((OpCodes.Shl32(x&0x08080808, 1)))|((OpCodes.Shl32(x&0x32323232, 2)))|((OpCodes.Shl32(x&0x01010101, 5)))|((OpCodes.Shr32(x&0x80808080, 6)))|((OpCodes.Shr32(x&0x40404040, 4)))|((OpCodes.Shr32(x&0x04040404, 2))))>>>0;
+    x = OpCodes.ToUint32(((OpCodes.Shl32(x&0x08080808, 1)))|((OpCodes.Shl32(x&0x32323232, 2)))|((OpCodes.Shl32(x&0x01010101, 5)))|((OpCodes.Shr32(x&0x80808080, 6)))|((OpCodes.Shr32(x&0x40404040, 4)))|((OpCodes.Shr32(x&0x04040404, 2))));
 
     return x;
   }
@@ -87,9 +87,9 @@
     const row3 = tk[idx + 1];
     const row3_rotated = OpCodes.RotL32(row3, 16);
 
-    tk[idx] = (((OpCodes.Shr32(row2, 8))&0x000000FF)|((OpCodes.Shl32(row2, 16))&0x00FF0000)|(row3_rotated&0xFF00FF00))>>>0;
+    tk[idx] = OpCodes.ToUint32(((OpCodes.Shr32(row2, 8))&0x000000FF)|((OpCodes.Shl32(row2, 16))&0x00FF0000)|(row3_rotated&0xFF00FF00));
 
-    tk[idx + 1] = (((OpCodes.Shr32(row2, 16))&0x000000FF)|(row2&0xFF000000)|((OpCodes.Shl32(row3_rotated, 8))&0x0000FF00)|(row3_rotated&0x00FF0000))>>>0;
+    tk[idx + 1] = OpCodes.ToUint32(((OpCodes.Shr32(row2, 16))&0x000000FF)|(row2&0xFF000000)|((OpCodes.Shl32(row3_rotated, 8))&0x0000FF00)|(row3_rotated&0x00FF0000));
   }
 
   /**
@@ -122,8 +122,8 @@
       s1 = skinny128_sbox(s1);
       s2 = skinny128_sbox(s2);
       s3 = skinny128_sbox(s3);
-      s0 = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, TK1[0]), TK2[0]), (rc&0x0F)))>>>0;
-      s1 = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s1, TK1[1]), TK2[1]), (OpCodes.Shr32(rc, 4))))>>>0;
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, TK1[0]), TK2[0]), (rc&0x0F)));
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s1, TK1[1]), TK2[1]), (OpCodes.Shr32(rc, 4))));
       s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, 0x02));
       s1 = OpCodes.RotL32(s1, 8);
       s2 = OpCodes.RotL32(s2, 16);
@@ -142,8 +142,8 @@
       s0 = skinny128_sbox(s0);
       s1 = skinny128_sbox(s1);
       s2 = skinny128_sbox(s2);
-      s3 = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s3, TK1[2]), TK2[2]), (rc&0x0F)))>>>0;
-      s0 = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, TK1[3]), TK2[3]), (OpCodes.Shr32(rc, 4))))>>>0;
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s3, TK1[2]), TK2[2]), (rc&0x0F)));
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, TK1[3]), TK2[3]), (OpCodes.Shr32(rc, 4))));
       s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, 0x02));
       s0 = OpCodes.RotL32(s0, 8);
       s1 = OpCodes.RotL32(s1, 16);
@@ -162,8 +162,8 @@
       s3 = skinny128_sbox(s3);
       s0 = skinny128_sbox(s0);
       s1 = skinny128_sbox(s1);
-      s2 = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s2, TK1[0]), TK2[0]), (rc&0x0F)))>>>0;
-      s3 = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s3, TK1[1]), TK2[1]), (OpCodes.Shr32(rc, 4))))>>>0;
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s2, TK1[0]), TK2[0]), (rc&0x0F)));
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s3, TK1[1]), TK2[1]), (OpCodes.Shr32(rc, 4))));
       s0 = OpCodes.ToUint32(OpCodes.Xor32(s0, 0x02));
       s3 = OpCodes.RotL32(s3, 8);
       s0 = OpCodes.RotL32(s0, 16);
@@ -182,8 +182,8 @@
       s2 = skinny128_sbox(s2);
       s3 = skinny128_sbox(s3);
       s0 = skinny128_sbox(s0);
-      s1 = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s1, TK1[2]), TK2[2]), (rc&0x0F)))>>>0;
-      s2 = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s2, TK1[3]), TK2[3]), (OpCodes.Shr32(rc, 4))))>>>0;
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s1, TK1[2]), TK2[2]), (rc&0x0F)));
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s2, TK1[3]), TK2[3]), (OpCodes.Shr32(rc, 4))));
       s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, 0x02));
       s2 = OpCodes.RotL32(s2, 8);
       s3 = OpCodes.RotL32(s3, 16);
@@ -243,8 +243,8 @@
       s1 = skinny128_sbox(s1);
       s2 = skinny128_sbox(s2);
       s3 = skinny128_sbox(s3);
-      s0 = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, TK1[0]), TK2[0]), TK3[0]), (rc&0x0F)))>>>0;
-      s1 = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s1, TK1[1]), TK2[1]), TK3[1]), (OpCodes.Shr32(rc, 4))))>>>0;
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, TK1[0]), TK2[0]), TK3[0]), (rc&0x0F)));
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s1, TK1[1]), TK2[1]), TK3[1]), (OpCodes.Shr32(rc, 4))));
       s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, 0x02));
       s1 = OpCodes.RotL32(s1, 8);
       s2 = OpCodes.RotL32(s2, 16);
@@ -266,8 +266,8 @@
       s0 = skinny128_sbox(s0);
       s1 = skinny128_sbox(s1);
       s2 = skinny128_sbox(s2);
-      s3 = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s3, TK1[2]), TK2[2]), TK3[2]), (rc&0x0F)))>>>0;
-      s0 = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, TK1[3]), TK2[3]), TK3[3]), (OpCodes.Shr32(rc, 4))))>>>0;
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s3, TK1[2]), TK2[2]), TK3[2]), (rc&0x0F)));
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, TK1[3]), TK2[3]), TK3[3]), (OpCodes.Shr32(rc, 4))));
       s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, 0x02));
       s0 = OpCodes.RotL32(s0, 8);
       s1 = OpCodes.RotL32(s1, 16);
@@ -289,8 +289,8 @@
       s3 = skinny128_sbox(s3);
       s0 = skinny128_sbox(s0);
       s1 = skinny128_sbox(s1);
-      s2 = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s2, TK1[0]), TK2[0]), TK3[0]), (rc&0x0F)))>>>0;
-      s3 = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s3, TK1[1]), TK2[1]), TK3[1]), (OpCodes.Shr32(rc, 4))))>>>0;
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s2, TK1[0]), TK2[0]), TK3[0]), (rc&0x0F)));
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s3, TK1[1]), TK2[1]), TK3[1]), (OpCodes.Shr32(rc, 4))));
       s0 = OpCodes.ToUint32(OpCodes.Xor32(s0, 0x02));
       s3 = OpCodes.RotL32(s3, 8);
       s0 = OpCodes.RotL32(s0, 16);
@@ -312,8 +312,8 @@
       s2 = skinny128_sbox(s2);
       s3 = skinny128_sbox(s3);
       s0 = skinny128_sbox(s0);
-      s1 = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s1, TK1[2]), TK2[2]), TK3[2]), (rc&0x0F)))>>>0;
-      s2 = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s2, TK1[3]), TK2[3]), TK3[3]), (OpCodes.Shr32(rc, 4))))>>>0;
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s1, TK1[2]), TK2[2]), TK3[2]), (rc&0x0F)));
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s2, TK1[3]), TK2[3]), TK3[3]), (OpCodes.Shr32(rc, 4))));
       s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, 0x02));
       s2 = OpCodes.RotL32(s2, 8);
       s3 = OpCodes.RotL32(s3, 16);
@@ -371,8 +371,13 @@
       this.SupportedOutputSizes = [{ minSize: 32, maxSize: 32, stepSize: 1 }];
 
       this.documentation = [
-        new LinkItem("SKINNY Specification", "https://eprint.iacr.org/2016/660.pdf"),
-        new LinkItem("Reference Implementation", "https://github.com/rweather/lightweight-crypto")
+        new LinkItem("SKINNY-AEAD and SKINNY-Hash Specification (NIST LWC Round 2)", "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/SKINNY-spec-round2.pdf"),
+        new LinkItem("The SKINNY Family of Block Ciphers and its Low-Latency Variant MANTIS (Beierle et al., CRYPTO 2016)", "https://eprint.iacr.org/2016/660.pdf"),
+        new LinkItem("SKINNY Family Homepage", "https://sites.google.com/site/skinnycipher/home")
+      ];
+
+      this.references = [
+        new LinkItem("Reference Implementation (Southern Storm lightweight-crypto)", "https://github.com/rweather/lightweight-crypto")
       ];
 
       // Official test vectors from SKINNY-tk2-HASH.txt
@@ -569,8 +574,13 @@
       this.SupportedOutputSizes = [{ minSize: 32, maxSize: 32, stepSize: 1 }];
 
       this.documentation = [
-        new LinkItem("SKINNY Specification", "https://eprint.iacr.org/2016/660.pdf"),
-        new LinkItem("Reference Implementation", "https://github.com/rweather/lightweight-crypto")
+        new LinkItem("SKINNY-AEAD and SKINNY-Hash Specification (NIST LWC Round 2)", "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/SKINNY-spec-round2.pdf"),
+        new LinkItem("The SKINNY Family of Block Ciphers and its Low-Latency Variant MANTIS (Beierle et al., CRYPTO 2016)", "https://eprint.iacr.org/2016/660.pdf"),
+        new LinkItem("SKINNY Family Homepage", "https://sites.google.com/site/skinnycipher/home")
+      ];
+
+      this.references = [
+        new LinkItem("Reference Implementation (Southern Storm lightweight-crypto)", "https://github.com/rweather/lightweight-crypto")
       ];
 
       // Official test vectors from SKINNY-tk3-HASH.txt

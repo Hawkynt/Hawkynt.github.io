@@ -33,8 +33,25 @@
     securityStatus: 'educational',
     securityNotes: 'Block cipher adapted for educational stream cipher demonstration. Original E2 was an AES candidate.',
 
+    documentation: [
+      {text: 'E2 (cipher) - Wikipedia', uri: 'https://en.wikipedia.org/wiki/E2_(cipher)'},
+      {text: 'E2 - A Candidate Cipher for AES (NTT, First AES Candidate Conference, 1998)', uri: 'https://pdfs.semanticscholar.org/d97c/e39b4bec4d467a1b0c45cdd0fa49a058c964.pdf'},
+      {text: 'NIST AES Development Archive (Round 1 candidates)', uri: 'https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/archived-crypto-projects/aes-development'}
+    ],
+
+    // No live public reference-implementation repository for E2 is known to exist (NTT's
+    // original 1998 submission archive at info.isl.ntt.co.jp/e2/ is no longer reachable);
+    // the most authoritative surviving sources are NTT's own archive index and the official
+    // AES-conference paper on E2 software implementation technique, cited below.
+    references: [
+      {text: 'NTT Social Informatics Laboratories - Encryption Archive (E2 submission)', uri: 'https://info.isl.ntt.co.jp/crypt/eng/archive/'},
+      {text: 'Optimized Software Implementations of E2 (Aoki and Ueda, NIST AES Candidate Conference, 1999)', uri: 'https://csrc.nist.rip/encryption/aes/round1/conf2/papers/aoki.pdf'}
+    ],
+
     // Test vectors with actual implementation output
     tests: [{
+      text: 'Self-computed vector: output of this educational E2-based keystream construction, verified for self-consistency (not an official NTT E2 test vector - this implementation is a simplified stream-cipher adaptation, not the original E2 Feistel block cipher)',
+      uri: 'https://en.wikipedia.org/wiki/E2_(cipher)',
       input: OpCodes.Hex8ToBytes('0001020304050607'),
       key: OpCodes.Hex8ToBytes('00010203040506070809101112131415'),
       expected: OpCodes.Hex8ToBytes('1a1b18191e1f1c1d') // Generated from implementation
