@@ -2,9 +2,9 @@
 
 *Production-ready cryptographic algorithms with bit-perfect test vector validation*
 
-[![Algorithms](https://img.shields.io/badge/Algorithms-358-blue.svg)](https://hawkynt.github.io/Cipher/)
-[![Working](https://img.shields.io/badge/Working-358%20(100%25)-brightgreen.svg)](https://hawkynt.github.io/Cipher/)
-[![Categories](https://img.shields.io/badge/Categories-15-green.svg)](https://hawkynt.github.io/Cipher/)
+[![Algorithms](https://img.shields.io/badge/Algorithms-1039-blue.svg)](https://hawkynt.github.io/Cipher/)
+[![Working](https://img.shields.io/badge/Working-1039%20(100%25)-brightgreen.svg)](https://hawkynt.github.io/Cipher/)
+[![Categories](https://img.shields.io/badge/Categories-19-green.svg)](https://hawkynt.github.io/Cipher/)
 ![License](https://img.shields.io/github/license/Hawkynt/Hawkynt.github.io/Cipher/)
 
 ---
@@ -36,7 +36,7 @@ Cipher Tools is a **professional-grade cryptographic implementation library** fe
 
 ### 🌟 What Makes This Special
 
-- **358 Production Implementations** - Professional-grade cryptographic library with 100% test vector validation
+- **1039 Production Implementations** - Professional-grade cryptographic library with 100% test vector validation
 - **Bit-Perfect Test Vector Validation** - Every algorithm verified against official NIST, RFC, and academic test vectors
 - **Professional Code Quality** - Production-ready implementations suitable for real-world encryption libraries
 - **Algorithm Chaining System** - Upload → Compress → Cipher → Cipher → Download workflows
@@ -229,21 +229,23 @@ Cipher Tools is a **professional-grade cryptographic implementation library** fe
 
 ### Complete Algorithm Coverage
 
-The library includes **358 fully-implemented cryptographic algorithms** across 15 categories. For the complete breakdown by category, see the [Algorithm Categories & Color Coding](#-algorithm-categories--color-coding) section above and the [Directory Structure](#directory-structure-updated-2025) section below.
+The library includes **1039 fully-implemented cryptographic algorithms** across 19 categories. For the complete breakdown by category, see the [Algorithm Categories & Color Coding](#-algorithm-categories--color-coding) section above and the [Directory Structure](#directory-structure-updated-2025) section below.
 
 **Key Highlights:**
-- **68 Block Ciphers** including AES, DES, 3DES, Blowfish, Twofish, Serpent, Tnepres, ARIA, Camellia, CAST, IDEA, RC5, RC6, SEED, TEA, XTEA, Threefish, SM4, SIMECK, HIGHT, Shark, and many more
-- **49 Compression Algorithms** including Huffman, LZ77, LZ78, LZW, LZSS, LZO, LZMA, Brotli, Snappy, RLE, BWT, and arithmetic coding variants
-- **48 Stream Ciphers** including ChaCha20, Salsa20, RC4, SEAL, A5/1, A5/2, Grain, Trivium, SOSEMANUK, ZUC, MICKEY, Rabbit, HC-128, and others
-- **35 Hash Functions** including SHA-1, SHA-2 family, SHA-3/Keccak, BLAKE2/BLAKE3, MD5, MD4, MD2, RIPEMD variants, Whirlpool, Tiger, xxHash, CityHash, SipHash, and more
-- **26 Cipher Modes** including ECB, CBC, CTR, GCM, CCM, XTS, OCB, EAX, and other standard and authenticated modes
+- **232 Block Ciphers** including AES, DES, 3DES, Blowfish, Twofish, Serpent, Tnepres, ARIA, Camellia, CAST, IDEA, RC5, RC6, SEED, TEA, XTEA, Threefish, SM4, SIMECK, HIGHT, Shark, and many more
+- **78 Compression Algorithms** including Huffman, LZ77, LZ78, LZW, LZSS, LZO, LZMA, Brotli, Snappy, RLE, BWT, and arithmetic coding variants
+- **96 Stream Ciphers** including ChaCha20, Salsa20, RC4, SEAL, A5/1, A5/2, Grain, Trivium, SOSEMANUK, ZUC, MICKEY, Rabbit, HC-128, and others
+- **115 Hash Functions** including SHA-1, SHA-2 family, SHA-3/Keccak, BLAKE2/BLAKE3, MD5, MD4, MD2, RIPEMD variants, Whirlpool, Tiger, xxHash, CityHash, SipHash, and more
+- **27 Cipher Modes** including ECB, CBC, CTR, GCM, CCM, XTS, OCB, EAX, and other standard and authenticated modes
 - **26 Classical Ciphers** including Caesar, Vigenère, Playfair, Enigma, Hill, Rail Fence, and historical substitution/transposition ciphers
-- **20 Asymmetric Algorithms** including RSA, ECC, ElGamal, Diffie-Hellman, and post-quantum candidates
+- **31 Asymmetric Algorithms** including RSA, ECC, ElGamal, Diffie-Hellman, and post-quantum candidates
 - **20 Encoding Schemes** including Base64, Base32, Base58, Hex, PEM, URL encoding, and specialized encodings
-- **13 Checksum Functions** including CRC variants, Adler-32, Fletcher checksums, and parity checks
-- **12 Padding Schemes** including PKCS#7, PKCS#5, ISO standards, OAEP, PSS, and zero padding
-- **12 Special Purpose** algorithms including format-preserving encryption, key wrapping, and cryptographic constructions
-- **6 MAC Functions** including HMAC, CMAC, Poly1305, VMAC, GMAC, and OMAC
+- **74 Checksum Functions** including CRC variants, Adler-32, Fletcher checksums, and parity checks
+- **13 Padding Schemes** including PKCS#7, PKCS#5, ISO standards, OAEP, PSS, and zero padding
+- **27 Special Purpose** algorithms including format-preserving encryption, key wrapping, and cryptographic constructions
+- **29 MAC Functions** including HMAC, CMAC, Poly1305, VMAC, GMAC, and OMAC
+
+**DarkCrypt cipher suite:** the library also covers the cipher set of the DarkCrypt Total Commander plugin (Alexander Myasnikov, "Zarya" project). 201 algorithms carry test vectors verified against that implementation, including 175 dedicated block, stream and hash implementations for variants that differ from their published counterparts or have no public specification at all. See <https://totalcmd.net/plugring/darkcrypttc.html>.
 - **4 Key Derivation Functions** including PBKDF2, HKDF, Argon2, and Scrypt
 - **4 Error Correction Codes** including Reed-Solomon, BCH, LDPC, and Hamming codes
 - **1 Post-Quantum** implementation (Kyber/Dilithium framework)
@@ -273,7 +275,7 @@ Each algorithm is evaluated for metadata completeness across five key areas:
 
 ### 📊 Current Compliance Status
 
-The project maintains comprehensive metadata for all 358 algorithms. Each algorithm includes:
+The project maintains comprehensive metadata for all 1039 algorithms. Each algorithm includes:
 
 **Core Metadata** (100% coverage):
 - Algorithm name and description
@@ -668,7 +670,7 @@ node tests/TestSuite.js --filter "NIST"
   ✓ Round-trip test - PASSED
   ✓ OpCodes compliance - PASSED
 
-Summary: 355 algorithms tested, 355 passed (100%)
+Summary: 882 algorithm files tested (1039 registered algorithms)
 ```
 
 **Exit Codes:**
