@@ -393,6 +393,28 @@
 
       this.tests = [
         {
+          text: "DarkCrypt SQUARE vector 1/zero",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("3c00428f8abbc0b84f057cc19c26f8cf")
+        },
+        {
+          text: "DarkCrypt SQUARE vector 2/incr",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          expected: OpCodes.Hex8ToBytes("7c3491d94994e70f0ec2e7a5ccb5a14f")
+        },
+        {
+          text: "DarkCrypt SQUARE vector 3/incr2",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("101112131415161718191a1b1c1d1e1f"),
+          key: OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f10"),
+          expected: OpCodes.Hex8ToBytes("a12e77f0b46ea52b188fcf806e2fcdc6")
+        },
+
+        {
           text: "Square Known Answer Test #1",
           uri: "https://github.com/weidai11/cryptopp/blob/master/TestData/squareva.dat",
           input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),

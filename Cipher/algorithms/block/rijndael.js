@@ -158,6 +158,50 @@
 
       this.tests = [
         {
+          text: "DarkCrypt Rijndael-128/256 vector 1/zero",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("dc95c078a2408989ad48a21492842087")
+        },
+        {
+          text: "DarkCrypt Rijndael-128/256 vector 2/incr",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
+          expected: OpCodes.Hex8ToBytes("5a6e045708fb7196f02e553d02c3a692")
+        },
+        {
+          text: "DarkCrypt Rijndael-128/256 vector 3/incr2",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("101112131415161718191a1b1c1d1e1f"),
+          key: OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"),
+          expected: OpCodes.Hex8ToBytes("08e0f42a19819e93d8788c5efe8c1b95")
+        },
+
+        {
+          text: "DarkCrypt AES-256 vector 1/zero",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("dc95c078a2408989ad48a21492842087")
+        },
+        {
+          text: "DarkCrypt AES-256 vector 2/incr",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
+          expected: OpCodes.Hex8ToBytes("5a6e045708fb7196f02e553d02c3a692")
+        },
+        {
+          text: "DarkCrypt AES-256 vector 3/incr2",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("101112131415161718191a1b1c1d1e1f"),
+          key: OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"),
+          expected: OpCodes.Hex8ToBytes("08e0f42a19819e93d8788c5efe8c1b95")
+        },
+
+        {
           text: "FIPS 197 C.1 AES-128 ECB",
           uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197.pdf",
           input: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),

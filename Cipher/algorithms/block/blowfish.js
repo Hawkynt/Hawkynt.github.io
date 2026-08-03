@@ -98,6 +98,28 @@
       // Test vectors from Bruce Schneier's official sources
       this.tests = [
         {
+          text: "DarkCrypt Blowfish-448 vector 1/zero",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("4ef997456198dd78")
+        },
+        {
+          text: "DarkCrypt Blowfish-448 vector 2/incr",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("0001020304050607"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f3031323334353637"),
+          expected: OpCodes.Hex8ToBytes("373c66bba50eb9cc")
+        },
+        {
+          text: "DarkCrypt Blowfish-448 vector 3/incr2",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("1011121314151617"),
+          key: OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738"),
+          expected: OpCodes.Hex8ToBytes("c8ab0874262536bd")
+        },
+
+        {
           text: "Blowfish Official Test Vector #1 - All Zeros",
           uri: "https://www.schneier.com/academic/blowfish/vectors.txt",
           input: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
