@@ -79,7 +79,14 @@
           new LinkItem("Predictive Coding", "https://en.wikipedia.org/wiki/Predictive_coding")
         ];
 
-        // Test vectors that match the actual implementation output
+        // Test vectors that match the actual implementation output.
+        // Wire format: [contextSize(1)] [length:uint32-LE(4)] then groups of
+        // [controlByte(1)] [literal bytes for the unset bits in that byte...],
+        // repeated every up to 8 symbols. controlByte bit i = 1 means symbol i
+        // was correctly predicted from context (no literal byte stored); bit
+        // i = 0 means a literal byte follows. This bitmap is what makes the
+        // format unambiguous: a raw literal byte value (0-255) is never placed
+        // where a prediction-confidence code could also appear.
         this.tests = [
           new TestCase(
             [],
@@ -89,21 +96,41 @@
           ),
           new TestCase(
             [65], // "A"
-            [4, 1, 0, 0, 0, 65], // Context size + length + data
+            [4, 1, 0, 0, 0, 0, 65], // header + controlByte(0, no prediction yet) + literal 'A'
             "Single byte - baseline",
             "https://en.wikipedia.org/wiki/Neural_network"
           ),
           new TestCase(
             [65, 65], // "AA"
-            [4, 2, 0, 0, 0, 65, 65], // Context + length + both bytes (no prediction yet)
+            [4, 2, 0, 0, 0, 0, 65, 65], // header + controlByte(0) + both literal bytes
             "Simple repetition - learning",
             "https://en.wikipedia.org/wiki/Prediction_by_partial_matching"
           ),
           new TestCase(
             [97, 98, 99, 97], // "abca"
-            [4, 4, 0, 0, 0, 97, 98, 99, 97], // Context + length + all bytes
+            [4, 4, 0, 0, 0, 0, 97, 98, 99, 97], // header + controlByte(0) + all four literal bytes
             "Pattern recognition - context",
             "https://compression.ru/download/articles/context/cm_1.pdf"
+          ),
+          new TestCase(
+            new Array(24).fill(0x61), // Repetitive run
+            [4, 24, 0, 0, 0, 0, 97, 97, 97, 97, 97, 97, 97, 97, 0, 97, 97, 97, 97, 97, 97, 97, 97, 0, 97, 97, 97, 97, 97, 97, 97, 97],
+            "Repetitive run (24 bytes)",
+            "https://en.wikipedia.org/wiki/Adaptive_compression"
+          ),
+          new TestCase(
+            (() => { const a = []; for (let i = 0; i < 16; i++) a.push(i % 2 ? 0x62 : 0x61); return a; })(), // Alternating pattern
+            [4, 16, 0, 0, 0, 0, 97, 98, 97, 98, 97, 98, 97, 98, 0, 97, 98, 97, 98, 97, 98, 97, 98],
+            "Alternating pattern (16 bytes)",
+            "https://en.wikipedia.org/wiki/Predictive_coding"
+          ),
+          new TestCase(
+            // Binary/random sample - includes byte values 0-7 as literals,
+            // which the old confidence-code format could not represent
+            [64, 128, 192, 0, 0, 0, 64, 128, 128, 0, 0, 0, 0, 0, 0, 0],
+            [4, 16, 0, 0, 0, 0, 64, 128, 192, 0, 0, 0, 64, 128, 0, 128, 0, 0, 0, 0, 0, 0, 0],
+            "Binary/random sample (16 bytes) - catches confidence-code/literal collision",
+            "https://en.wikipedia.org/wiki/Neural_network"
           )
         ];
 
@@ -161,6 +188,15 @@
         return result;
       }
 
+      // Prediction correctness is signalled out-of-band via an 8-symbol control-
+      // byte bitmap (bit=1: prediction was correct, no literal byte follows;
+      // bit=0: prediction failed, a raw literal byte follows), mirroring the
+      // scheme in mcm.js. The previous format stored a "confidence code" (0-7)
+      // directly in the byte stream in place of a correctly-predicted byte, but
+      // literal byte VALUES 0-7 are indistinguishable from that code with
+      // nothing to tell them apart - any literal byte <= 7 was silently
+      // misdecoded as a prediction-confidence marker instead of its real value.
+
       _compress(data) {
         if (!data || data.length === 0) {
           return [this.contextSize, 0, 0, 0, 0];
@@ -178,27 +214,40 @@
         this.statistics.totalPredictions = 0;
         this.statistics.correctPredictions = 0;
 
+        let controlByte = 0;
+        let bitPos = 0;
+        const pendingLiterals = [];
+
         // Process data with simplified neural prediction
         for (let i = 0; i < data.length; i++) {
           const currentByte = data[i];
 
-          // Predict next byte based on context
+          // Predict next byte based on context (both sides compute this the
+          // same way from the same context state, so it is always safe to use
+          // as the reconstruction whenever the control bit says it was correct)
           const prediction = this._predictByte();
 
-          if (i === 0 || prediction !== currentByte) {
-            // Store actual byte if it's first byte or prediction failed
-            compressed.push(currentByte);
-          } else {
-            // Store prediction confidence code (0-7 for successful predictions)
-            const confidence = Math.min(7, this.statistics.correctPredictions % 8);
-            compressed.push(confidence);
+          if (prediction === currentByte) {
+            controlByte = OpCodes.Or8(controlByte, OpCodes.Shl8(1, bitPos));
             this.statistics.correctPredictions++;
+          } else {
+            pendingLiterals.push(currentByte);
           }
 
-          // Update context window and neural weights
+          // Update context window and neural weights - using the same
+          // (actual, prediction) pair the decoder will reconstruct
           this._updateContext(currentByte);
           this._adaptWeights(currentByte, prediction);
           this.statistics.totalPredictions++;
+
+          bitPos++;
+          if (bitPos === 8 || i === data.length - 1) {
+            compressed.push(controlByte);
+            compressed.push(...pendingLiterals);
+            controlByte = 0;
+            bitPos = 0;
+            pendingLiterals.length = 0;
+          }
         }
 
         return compressed;
@@ -225,26 +274,37 @@
 
         const decompressed = [];
 
-        // Decode bytes using neural predictions
-        for (let i = 0; i < originalLength && offset < data.length; i++) {
-          const encodedValue = data[offset++];
+        while (decompressed.length < originalLength && offset < data.length) {
+          const controlByte = data[offset++];
 
-          let decodedByte;
-          if (i === 0 || encodedValue > 7) {
-            // Actual byte value
-            decodedByte = encodedValue;
-          } else {
-            // Prediction confidence code - use predicted value
-            decodedByte = this._predictByte();
-            this.statistics.correctPredictions++;
+          for (let bitPos = 0; bitPos < 8 && decompressed.length < originalLength; bitPos++) {
+            // Always compute the prediction from the current context, exactly
+            // as the encoder did, BEFORE consulting the bit or advancing state -
+            // this is what previously diverged: the old code only computed a
+            // prediction when the bit said "predicted", and even then passed
+            // the wrong (actual, actual) pair into _adaptWeights instead of
+            // (actual, prediction), so the weights drifted out of sync with the
+            // encoder from the very first literal byte onward.
+            const prediction = this._predictByte();
+            const isPredicted = OpCodes.And8(controlByte, OpCodes.Shl8(1, bitPos)) !== 0;
+
+            let byte;
+            if (isPredicted) {
+              byte = prediction;
+              this.statistics.correctPredictions++;
+            } else {
+              if (offset >= data.length) break;
+              byte = data[offset++];
+            }
+
+            decompressed.push(byte);
+
+            // Update context and adapt weights using the same (actual,
+            // prediction) pair the encoder used for this symbol
+            this._updateContext(byte);
+            this._adaptWeights(byte, prediction);
+            this.statistics.totalPredictions++;
           }
-
-          decompressed.push(decodedByte);
-
-          // Update context and adapt weights
-          this._updateContext(decodedByte);
-          this._adaptWeights(decodedByte, decodedByte);
-          this.statistics.totalPredictions++;
         }
 
         return decompressed;
