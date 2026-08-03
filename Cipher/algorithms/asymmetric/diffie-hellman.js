@@ -143,21 +143,18 @@
       ];
 
       this.knownVulnerabilities = [
-        new Vulnerability(
-          "Man-in-the-Middle Attack",
+        new Vulnerability("Man-in-the-Middle Attack",
+          '',
           "Use authenticated DH (e.g., with digital signatures) or key confirmation",
-          "https://en.wikipedia.org/wiki/Diffie%E2%80%93Hellman_key_exchange#Security"
-        ),
-        new Vulnerability(
-          "Small Subgroup Attack",
+          "https://en.wikipedia.org/wiki/Diffie%E2%80%93Hellman_key_exchange#Security"),
+        new Vulnerability("Small Subgroup Attack",
+          '',
           "Validate received public keys are within valid range [2, p-2]",
-          "https://tools.ietf.org/rfc/rfc2631.txt"
-        ),
-        new Vulnerability(
-          "Logjam Attack",
+          "https://tools.ietf.org/rfc/rfc2631.txt"),
+        new Vulnerability("Logjam Attack",
+          '',
           "Use 2048-bit or larger groups, avoid export-grade parameters",
-          "https://weakdh.org/"
-        )
+          "https://weakdh.org/")
       ];
 
       // Test vectors from RFC 3526 with educational key exchange demonstration

@@ -103,11 +103,10 @@
       ];
 
       this.knownVulnerabilities = [
-        new global.AlgorithmFramework.Vulnerability(
-          'Complete Break - Key Recovery',
+        new global.AlgorithmFramework.Vulnerability('Complete Break - Key Recovery',
+          '',
           'Castryck-Decru attack enables polynomial-time key recovery.',
-          'https://eprint.iacr.org/2022/975'
-        )
+          'https://eprint.iacr.org/2022/975')
       ];
       
       // Educational test vectors

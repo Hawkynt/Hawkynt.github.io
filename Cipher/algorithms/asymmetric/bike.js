@@ -103,16 +103,14 @@
       ];
 
       this.knownVulnerabilities = [
-        new global.AlgorithmFramework.Vulnerability(
-          'Decoding Failure Attacks',
+        new global.AlgorithmFramework.Vulnerability('Decoding Failure Attacks',
+          '',
           'Use proper rejection sampling and side-channel protections',
-          'https://bikesuite.org/'
-        ),
-        new global.AlgorithmFramework.Vulnerability(
-          'Timing Attacks',
+          'https://bikesuite.org/'),
+        new global.AlgorithmFramework.Vulnerability('Timing Attacks',
+          '',
           'Implement constant-time decoding algorithms',
-          'https://bikesuite.org/'
-        )
+          'https://bikesuite.org/')
       ];
       
       // Educational test vectors

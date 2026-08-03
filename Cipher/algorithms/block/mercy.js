@@ -99,8 +99,8 @@
         new Vulnerability(
           "Differential Cryptanalysis",
           "Broken by Scott Fluhrer at FSE 2001 with differential attack across all six rounds",
-          "https://www.iacr.org/archive/fse2001/",
-          2001
+          "",
+          "https://www.iacr.org/archive/fse2001/"
         )
       ];
 

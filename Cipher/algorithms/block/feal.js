@@ -103,8 +103,10 @@
 
       // Known vulnerabilities - FEAL is completely broken
       this.knownVulnerabilities = [
-        new LinkItem("Differential Cryptanalysis", "https://en.wikipedia.org/wiki/Differential_cryptanalysis", 
-                     "FEAL-8 can be broken with differential cryptanalysis using only a few hundred chosen plaintexts")
+        new Vulnerability("Differential Cryptanalysis",
+          "FEAL-8 can be broken with differential cryptanalysis using only a few hundred chosen plaintexts",
+          '',
+          "https://en.wikipedia.org/wiki/Differential_cryptanalysis")
       ];
 
       // Test vectors

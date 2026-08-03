@@ -101,7 +101,7 @@
       ];
 
       this.knownVulnerabilities = [
-        new Vulnerability("Educational Implementation", "https://github.com/norx/norx", "This is a simplified educational implementation", "Use official reference implementation for any serious applications")
+        new Vulnerability("Educational Implementation", "This is a simplified educational implementation", "Use official reference implementation for any serious applications", "https://github.com/norx/norx")
       ];
 
       // Test vectors

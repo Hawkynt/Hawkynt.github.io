@@ -224,12 +224,15 @@
      */
     class Vulnerability extends LinkItem {
       /**
-       * @param {string} type - Vulnerability type
+       * @param {string} type - Vulnerability type (short name)
+       * @param {string} description - What the weakness is
        * @param {string} mitigation - Mitigation strategy
        * @param {string} uri - Reference URI
        */
-      constructor(type, mitigation, uri = '') {
+      constructor(type, description = '', mitigation = '', uri = '') {
         super(type, uri)
+        /** @type {string} */
+        this.description = description
         /** @type {string} */
         this.mitigation = mitigation
       }

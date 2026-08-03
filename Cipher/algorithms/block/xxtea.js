@@ -95,8 +95,8 @@
 
       // Known vulnerabilities
       this.knownVulnerabilities = [
-        new AlgorithmFramework.Vulnerability("Limited standardization", "https://www.schneier.com/academic/", "Not widely standardized or analyzed compared to modern ciphers", "Use standardized ciphers like AES for production security applications"),
-        new AlgorithmFramework.Vulnerability("Variable block complexity", "https://eprint.iacr.org/", "Variable block sizes may introduce implementation complexities and edge cases", "Careful implementation and testing required for security-critical applications")
+        new AlgorithmFramework.Vulnerability("Limited standardization", "Not widely standardized or analyzed compared to modern ciphers", "Use standardized ciphers like AES for production security applications", "https://www.schneier.com/academic/"),
+        new AlgorithmFramework.Vulnerability("Variable block complexity", "Variable block sizes may introduce implementation complexities and edge cases", "Careful implementation and testing required for security-critical applications", "https://eprint.iacr.org/")
       ];
 
       // Test vectors from verified Crypt-XXTEA implementation

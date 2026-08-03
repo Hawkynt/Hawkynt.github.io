@@ -100,8 +100,8 @@
       ];
 
       this.knownVulnerabilities = [
-        new Vulnerability("Structural Weakness", "https://www.schneier.com/academic/archives/1999/05/cryptanalysis_of_mag.html", "MAGENTA has significant structural weaknesses", "Educational cipher - not recommended for production use"),
-        new Vulnerability("Low Round Count", "https://csrc.nist.gov/archive/aes/round1/conf1/papers/jacobson.pdf", "Only 6-8 rounds insufficient for security", "Failed AES candidate due to vulnerabilities")
+        new Vulnerability("Structural Weakness", "MAGENTA has significant structural weaknesses", "Educational cipher - not recommended for production use", "https://www.schneier.com/academic/archives/1999/05/cryptanalysis_of_mag.html"),
+        new Vulnerability("Low Round Count", "Only 6-8 rounds insufficient for security", "Failed AES candidate due to vulnerabilities", "https://csrc.nist.gov/archive/aes/round1/conf1/papers/jacobson.pdf")
       ];
 
       // Test vectors

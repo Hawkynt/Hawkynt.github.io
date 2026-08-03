@@ -258,16 +258,14 @@
       ];
 
       this.knownVulnerabilities = [
-        new Vulnerability(
-          "Small Subgroup Attack",
+        new Vulnerability("Small Subgroup Attack",
+          '',
           "Ensure prime p is a safe prime (p = 2q + 1 where q is prime) to prevent small subgroup attacks",
-          "https://link.springer.com/chapter/10.1007/3-540-68339-9_3"
-        ),
-        new Vulnerability(
-          "Chosen Ciphertext Attack",
+          "https://link.springer.com/chapter/10.1007/3-540-68339-9_3"),
+        new Vulnerability("Chosen Ciphertext Attack",
+          '',
           "Basic ElGamal is not CCA-secure. Use OAEP or other padding schemes for production",
-          "https://link.springer.com/chapter/10.1007/BFb0053428"
-        )
+          "https://link.springer.com/chapter/10.1007/BFb0053428")
       ];
 
       // Test vectors - educational demonstration

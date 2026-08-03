@@ -872,8 +872,8 @@
       ];
 
       this.knownVulnerabilities = [
-        new Vulnerability("AES Competition Result", "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/archived-crypto-projects/aes-development", "Not selected as AES - Rijndael chosen for better performance and analysis", "Use AES (Rijndael) for standardized symmetric encryption"),
-        new Vulnerability("Limited adoption", "https://www.schneier.com/academic/", "Less analyzed than AES due to limited real-world deployment", "Prefer widely-analyzed algorithms like AES for security-critical applications")
+        new Vulnerability("AES Competition Result", "Not selected as AES - Rijndael chosen for better performance and analysis", "Use AES (Rijndael) for standardized symmetric encryption", "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/archived-crypto-projects/aes-development"),
+        new Vulnerability("Limited adoption", "Less analyzed than AES due to limited real-world deployment", "Prefer widely-analyzed algorithms like AES for security-critical applications", "https://www.schneier.com/academic/")
       ];
 
       this.tests = [

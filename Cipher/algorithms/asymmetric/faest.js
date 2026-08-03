@@ -108,11 +108,10 @@
       ];
 
       this.knownVulnerabilities = [
-        new global.AlgorithmFramework.Vulnerability(
-          'Side-Channel Attacks',
+        new global.AlgorithmFramework.Vulnerability('Side-Channel Attacks',
+          '',
           'Implement constant-time AES operations',
-          'https://faest.info/'
-        )
+          'https://faest.info/')
       ];
       
       // Educational test vectors

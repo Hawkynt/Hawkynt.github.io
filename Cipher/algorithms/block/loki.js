@@ -96,8 +96,8 @@
       ];
 
       this.knownVulnerabilities = [
-        new AlgorithmFramework.Vulnerability("Differential Cryptanalysis", "https://link.springer.com/chapter/10.1007/3-540-55844-4_19", "Vulnerable to differential attacks due to weak S-box design", "Use LOKI97 or modern ciphers instead"),
-        new AlgorithmFramework.Vulnerability("Linear Cryptanalysis", "https://link.springer.com/chapter/10.1007/3-540-55844-4_19", "Linear approximations break the cipher faster than brute force", "Historical cipher - do not use for any security purpose")
+        new AlgorithmFramework.Vulnerability("Differential Cryptanalysis", "Vulnerable to differential attacks due to weak S-box design", "Use LOKI97 or modern ciphers instead", "https://link.springer.com/chapter/10.1007/3-540-55844-4_19"),
+        new AlgorithmFramework.Vulnerability("Linear Cryptanalysis", "Linear approximations break the cipher faster than brute force", "Historical cipher - do not use for any security purpose", "https://link.springer.com/chapter/10.1007/3-540-55844-4_19")
       ];
 
       // Test vectors (using working educational values)
@@ -418,7 +418,7 @@
       ];
 
       this.knownVulnerabilities = [
-        new AlgorithmFramework.Vulnerability("Related-Key Attacks", "https://link.springer.com/chapter/10.1007/3-540-57220-1_66", "Vulnerable to certain classes of related-key differential attacks", "Use LOKI97 or modern ciphers for any security application")
+        new AlgorithmFramework.Vulnerability("Related-Key Attacks", "Vulnerable to certain classes of related-key differential attacks", "Use LOKI97 or modern ciphers for any security application", "https://link.springer.com/chapter/10.1007/3-540-57220-1_66")
       ];
 
       // Test vectors (using working educational values)
@@ -751,7 +751,7 @@
       ];
 
       this.knownVulnerabilities = [
-        new AlgorithmFramework.Vulnerability("Square Attack", "https://link.springer.com/chapter/10.1007/BFb0052363", "Vulnerable to Square attack on reduced rounds", "Educational cipher - not recommended for production use")
+        new AlgorithmFramework.Vulnerability("Square Attack", "Vulnerable to Square attack on reduced rounds", "Educational cipher - not recommended for production use", "https://link.springer.com/chapter/10.1007/BFb0052363")
       ];
 
       // Test vectors (using working educational values)

@@ -40,7 +40,7 @@
 
   // Extract framework components
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          MacAlgorithm, IMacInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
+          MacAlgorithm, IMacInstance, TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   // ===== CONSTANTS =====
   // CRITICAL PRECISION FIX: Use BigInt for all 64-bit constants to avoid precision loss
@@ -190,8 +190,8 @@
 
       // Known vulnerabilities
       this.knownVulnerabilities = [
-        new LinkItem("Nonce Reuse", "Using the same nonce with the same key completely breaks security"),
-        new LinkItem("Side-Channel Attacks", "Implementation must use constant-time operations to prevent timing attacks")
+        new Vulnerability("Nonce Reuse", "Using the same nonce with the same key completely breaks security"),
+        new Vulnerability("Side-Channel Attacks", "Implementation must use constant-time operations to prevent timing attacks")
       ];
 
       // Authentic test vectors from Crypto++ TestVectors/vmac.txt

@@ -128,7 +128,7 @@
       ];
 
       this.knownVulnerabilities = [
-        new Vulnerability("Lattice Reduction", "Use sufficiently large parameters to resist known lattice reduction techniques", "https://en.wikipedia.org/wiki/Lattice_reduction"),
+        new Vulnerability("Lattice Reduction", '', "Use sufficiently large parameters to resist known lattice reduction techniques", "https://en.wikipedia.org/wiki/Lattice_reduction"),
         new Vulnerability("Hybrid Attacks", "Careful parameter selection and security analysis against hybrid attack models")
       ];
 

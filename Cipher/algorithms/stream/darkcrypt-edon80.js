@@ -106,11 +106,10 @@
       ];
 
       this.knownVulnerabilities = [
-        new Vulnerability(
-          "Key-recovery distinguishing attack",
+        new Vulnerability("Key-recovery distinguishing attack",
+          '',
           "Not recommended for new designs; Edon80 was not selected for the final eSTREAM portfolio.",
-          "https://link.springer.com/chapter/10.1007/978-3-540-76900-2_35"
-        )
+          "https://link.springer.com/chapter/10.1007/978-3-540-76900-2_35")
       ];
 
       // Test vectors: 80-bit key (bytes 0..9), zero IV.

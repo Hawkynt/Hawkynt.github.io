@@ -124,7 +124,7 @@
       ];
 
       this.knownVulnerabilities = [
-        new Vulnerability("Direct Attack", "Use sufficiently large field size and parameters to resist direct algebraic attacks", "https://en.wikipedia.org/wiki/Multivariate_cryptography"),
+        new Vulnerability("Direct Attack", '', "Use sufficiently large field size and parameters to resist direct algebraic attacks", "https://en.wikipedia.org/wiki/Multivariate_cryptography"),
         new Vulnerability("Reconciliation Attack", "Careful parameter selection to avoid reconciliation-based attacks on Oil and Vinegar structure")
       ];
 

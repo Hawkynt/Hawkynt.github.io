@@ -97,8 +97,8 @@
       ];
 
       this.knownVulnerabilities = [
-        new Vulnerability("Variable Output Rate", "https://link.springer.com/chapter/10.1007/3-540-48329-2_3", "Output rate varies irregularly which can leak information about internal state", "Use output buffering to mask timing variations"),
-        new Vulnerability("Known Polynomial Attack", "https://www.researchgate.net/publication/277919628_Cryptanalysing_the_Shrinking_Generator", "If LFSR feedback polynomials are known, attacks require less than A*S bits of output", "Keep feedback polynomials secret and use strong polynomial selection")
+        new Vulnerability("Variable Output Rate", "Output rate varies irregularly which can leak information about internal state", "Use output buffering to mask timing variations", "https://link.springer.com/chapter/10.1007/3-540-48329-2_3"),
+        new Vulnerability("Known Polynomial Attack", "If LFSR feedback polynomials are known, attacks require less than A*S bits of output", "Keep feedback polynomials secret and use strong polynomial selection", "https://www.researchgate.net/publication/277919628_Cryptanalysing_the_Shrinking_Generator")
       ];
 
       // Test vectors - generated from implementation with known configurations

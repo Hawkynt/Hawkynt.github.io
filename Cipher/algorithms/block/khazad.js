@@ -658,7 +658,7 @@ const rawRoundConstants = [
       ];
 
       this.knownVulnerabilities = [
-        new Vulnerability("Reduced-round cryptanalysis", "https://www.cosic.esat.kuleuven.be/nessie/", "Known attacks on reduced rounds highlight limited security margin.", "Use only for educational purposes.")
+        new Vulnerability("Reduced-round cryptanalysis", "Known attacks on reduced rounds highlight limited security margin.", "Use only for educational purposes.", "https://www.cosic.esat.kuleuven.be/nessie/")
       ];
 
       this.tests = [

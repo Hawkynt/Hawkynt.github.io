@@ -96,7 +96,7 @@
       ];
 
       this.knownVulnerabilities = [
-        new Vulnerability("Endianness Confusion", "https://www.cl.cam.ac.uk/~rja14/serpent.html", "Tnepres resulted from byte order confusion in original AES submission. Use Serpent for production.", "Use corrected Serpent cipher instead of Tnepres")
+        new Vulnerability("Endianness Confusion", "Tnepres resulted from byte order confusion in original AES submission. Use Serpent for production.", "Use corrected Serpent cipher instead of Tnepres", "https://www.cl.cam.ac.uk/~rja14/serpent.html")
       ];
 
       // Test vectors from BouncyCastle TnepresTest.java
