@@ -2198,184 +2198,16 @@ class CipherController {
     }
     
     /**
-     * Initialize the chain builder
+     * Initialize the chain builder model and render its default nodes
      */
     initializeChainBuilder() {
-        // Check if ChainBuilder class is available
-        if (typeof ChainBuilder !== 'undefined') {
-            DebugConfig.log('🔗 ChainBuilder class found, initializing...');
-            this.chainBuilder = new ChainBuilder();
-            this.populateAlgorithmPalette();
-        } else {
-            DebugConfig.log('⚠️ ChainBuilder class not found, creating minimal implementation...');
-            this.createMinimalChainBuilder();
-        }
-    }
-    
-    /**
-     * Create minimal chain builder if the full one isn't available
-     */
-    createMinimalChainBuilder() {
-        this.chainBuilder = {
-            nodes: new Map(),
-            connections: new Map(),
-            
-            addNode: function(id, nodeData) {
-                this.nodes.set(id, nodeData);
-            },
-            
-            addConnection: function(id, connectionData) {
-                this.connections.set(id, connectionData);
-            },
-            
-            clear: function() {
-                this.nodes.clear();
-                this.connections.clear();
-            }
-        };
-        
-        // Add default input/output nodes
-        this.chainBuilder.addNode('input_default', {
-            id: 'input_default',
-            type: 'input',
-            title: 'Data Input',
-            x: 50,
-            y: 100,
-            inputs: [],
-            outputs: ['data'],
-            parameters: []
-        });
-        
-        this.chainBuilder.addNode('output_default', {
-            id: 'output_default',
-            type: 'output', 
-            title: 'Result Output',
-            x: 400,
-            y: 100,
-            inputs: ['result'],
-            outputs: [],
-            parameters: []
-        });
-        
+        this.chainBuilder = new ChainBuilder();
         this.populateAlgorithmPalette();
-        
-        // Create a demo chain to show expected functionality
-        this.createDemoChain();
-        
-        DebugConfig.log('✅ Minimal chain builder created');
-    }
-    
-    /**
-     * Create a demo chain showing CBC(AES(PADDING(data)))
-     */
-    createDemoChain() {
-        if (!this.chainBuilder) return;
-        
-        const algorithms = this.getAllAlgorithms();
-        
-        // Find AES algorithm
-        const aesAlgorithm = algorithms.find(a => 
-            a.name.includes('AES') || 
-            a.name.includes('Rijndael')
-        );
-        
-        // Find CBC mode if available
-        const cbcAlgorithm = algorithms.find(a => 
-            a.name.includes('CBC')
-        );
-        
-        // Add PADDING node
-        this.chainBuilder.addNode('padding_1', {
-            id: 'padding_1',
-            type: 'padding',
-            title: 'PKCS7 Padding',
-            algorithm: null,
-            x: 120,
-            y: 100,
-            inputs: ['data'],
-            outputs: ['padded_data'],
-            parameters: []
-        });
-        
-        // Connect input to padding
-        this.chainBuilder.addConnection('conn_input_padding', {
-            from: 'input_default',
-            to: 'padding_1',
-            fromPort: 0,
-            toPort: 0
-        });
-        
-        // Add AES node if available
-        if (aesAlgorithm) {
-            this.chainBuilder.addNode('aes_1', {
-                id: 'aes_1',
-                type: 'algorithm',
-                title: aesAlgorithm.name,
-                algorithm: aesAlgorithm,
-                x: 200,
-                y: 100,
-                inputs: ['padded_data'],
-                outputs: ['encrypted_blocks'],
-                parameters: ['key']
-            });
-            
-            // Connect padding to AES
-            this.chainBuilder.addConnection('conn_padding_aes', {
-                from: 'padding_1',
-                to: 'aes_1',
-                fromPort: 0,
-                toPort: 0
-            });
-            
-            // Add CBC mode if available
-            if (cbcAlgorithm) {
-                this.chainBuilder.addNode('cbc_1', {
-                    id: 'cbc_1',
-                    type: 'mode',
-                    title: 'CBC Mode',
-                    algorithm: cbcAlgorithm,
-                    x: 300,
-                    y: 100,
-                    inputs: ['encrypted_blocks'],
-                    outputs: ['ciphertext'],
-                    parameters: ['iv']
-                });
-                
-                // Connect AES to CBC
-                this.chainBuilder.addConnection('conn_aes_cbc', {
-                    from: 'aes_1',
-                    to: 'cbc_1',
-                    fromPort: 0,
-                    toPort: 0
-                });
-                
-                // Connect CBC to output
-                this.chainBuilder.addConnection('conn_cbc_output', {
-                    from: 'cbc_1',
-                    to: 'output_default',
-                    fromPort: 0,
-                    toPort: 0
-                });
-            } else {
-                // Connect AES directly to output if no CBC
-                this.chainBuilder.addConnection('conn_aes_output', {
-                    from: 'aes_1',
-                    to: 'output_default',
-                    fromPort: 0,
-                    toPort: 0
-                });
-            }
-        } else {
-            // Connect padding directly to output if no AES
-            this.chainBuilder.addConnection('conn_padding_output', {
-                from: 'padding_1',
-                to: 'output_default',
-                fromPort: 0,
-                toPort: 0
-            });
+
+        // Render the model's default input/output nodes
+        for (const node of this.chainBuilder.nodes.values()) {
+            this.renderNodeOnCanvas(node);
         }
-        
-        DebugConfig.log('🏗️ Demo chain created with', this.chainBuilder.nodes.size, 'nodes');
     }
     
     /**
@@ -4831,22 +4663,23 @@ class CipherController {
      */
     createNodeOnCanvas(algorithmData, x, y) {
         if (!this.chainBuilder) return;
-        
+
+        if (typeof this.nodeCounter !== 'number') this.nodeCounter = 0;
         this.nodeCounter++;
         const nodeId = `node_${this.nodeCounter}`;
-        
+
         // Find the algorithm object
         const algorithms = this.getAllAlgorithms();
         const algorithm = algorithms.find(a => a.name === algorithmData.algorithm);
-        
+
         if (!algorithm) {
             DebugConfig.error('Algorithm not found:', algorithmData.algorithm);
             return;
         }
-        
-        // Create node data
-        const nodeData = {
-            id: nodeId,
+
+        // Store the node in the model, then render the model's copy so property
+        // edits and execution operate on the same object
+        const nodeData = this.chainBuilder.addNode(nodeId, {
             type: 'algorithm',
             title: algorithm.name,
             algorithm: algorithm,
@@ -4855,17 +4688,12 @@ class CipherController {
             inputs: ['input'],
             outputs: ['output'],
             parameters: this.getAlgorithmParameters(algorithm)
-        };
-        
-        // Add to chain builder
-        this.chainBuilder.addNode(nodeId, nodeData);
-        
-        // Create visual representation on canvas
+        });
+
         this.renderNodeOnCanvas(nodeData);
-        
-        // Update statistics
+        this.redrawConnections();
         this.updateChainStats();
-        
+
         DebugConfig.log('Created node:', nodeId, nodeData);
     }
     
@@ -4878,38 +4706,46 @@ class CipherController {
         
         // Create node element
         const nodeEl = document.createElement('div');
-        nodeEl.className = 'chain-node';
+        nodeEl.className = `chain-node node-${nodeData.type}`;
         nodeEl.setAttribute('data-node-id', nodeData.id);
         nodeEl.style.position = 'absolute';
         nodeEl.style.left = nodeData.x + 'px';
         nodeEl.style.top = nodeData.y + 'px';
-        
-        // Node structure
+
+        // Endpoint nodes (input/output) are fixed parts of every chain
+        const removable = nodeData.type === 'algorithm';
+
         nodeEl.innerHTML = `
             <div class="node-header">
                 <span class="node-title">${nodeData.title}</span>
-                <button class="node-remove" onclick="window.cipherController.removeNode('${nodeData.id}')">&times;</button>
+                ${removable ? `<button class="node-remove" onclick="window.cipherController.removeNode('${nodeData.id}')">&times;</button>` : ''}
             </div>
             <div class="node-body">
                 <div class="node-inputs">
-                    ${nodeData.inputs.map((input, index) => 
+                    ${nodeData.inputs.map((input, index) =>
                         `<div class="node-port input-port" data-port="${index}" data-type="input">${input}</div>`
                     ).join('')}
                 </div>
                 <div class="node-outputs">
-                    ${nodeData.outputs.map((output, index) => 
+                    ${nodeData.outputs.map((output, index) =>
                         `<div class="node-port output-port" data-port="${index}" data-type="output">${output}</div>`
                     ).join('')}
                 </div>
             </div>
         `;
-        
+
         // Make the node draggable on the canvas
         this.makeNodeDraggable(nodeEl);
-        
+
         // Add click handlers for connecting nodes
         this.setupNodeConnections(nodeEl);
-        
+
+        // Select node to edit its properties
+        nodeEl.addEventListener('click', (e) => {
+            if (e.target.classList.contains('node-port') || e.target.classList.contains('node-remove')) return;
+            this.selectChainNode(nodeData.id);
+        });
+
         canvas.appendChild(nodeEl);
     }
     
@@ -4950,6 +4786,9 @@ class CipherController {
                 nodeData.x = parseFloat(nodeEl.style.left);
                 nodeData.y = parseFloat(nodeEl.style.top);
             }
+
+            // Keep connection lines attached while dragging
+            this.redrawConnections();
         });
         
         document.addEventListener('mouseup', () => {
@@ -5050,17 +4889,71 @@ class CipherController {
     }
     
     /**
-     * Draw a visual connection line between nodes
+     * (Re)draw all connection lines as SVG paths on the canvas.
+     * Called after any change to connections or node positions.
      */
-    drawConnection(connectionData) {
-        // This would typically use SVG or Canvas for drawing lines
-        // For now, we'll log that the connection was made
-        DebugConfig.log('Drawing connection line between:', connectionData.from, 'and', connectionData.to);
-        
-        // In a full implementation, we would:
-        // 1. Get the positions of the from and to ports
-        // 2. Draw an SVG line or use Canvas to connect them
-        // 3. Store the connection visually for later updates
+    drawConnection() {
+        this.redrawConnections();
+    }
+
+    redrawConnections() {
+        const canvas = document.getElementById('chain-canvas');
+        if (!canvas || !this.chainBuilder) return;
+
+        let svg = document.getElementById('chain-connection-svg');
+        if (!svg) {
+            svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.id = 'chain-connection-svg';
+            svg.style.position = 'absolute';
+            svg.style.inset = '0';
+            svg.style.width = '100%';
+            svg.style.height = '100%';
+            svg.style.pointerEvents = 'none';
+            canvas.insertBefore(svg, canvas.firstChild);
+        }
+        svg.innerHTML = '';
+
+        const canvasRect = canvas.getBoundingClientRect();
+
+        for (const conn of this.chainBuilder.connections.values()) {
+            const fromPos = this._portCenter(conn.from, 'output', conn.fromPort, canvasRect);
+            const toPos = this._portCenter(conn.to, 'input', conn.toPort, canvasRect);
+            if (!fromPos || !toPos) continue;
+
+            const dx = Math.max(40, Math.abs(toPos.x - fromPos.x) * 0.5);
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('class', 'connection-line');
+            path.setAttribute('d',
+                `M ${fromPos.x} ${fromPos.y} C ${fromPos.x + dx} ${fromPos.y}, ${toPos.x - dx} ${toPos.y}, ${toPos.x} ${toPos.y}`);
+            path.setAttribute('fill', 'none');
+            path.style.pointerEvents = 'stroke';
+            path.style.cursor = 'pointer';
+
+            // Click a line to remove that connection
+            const connId = conn.id;
+            path.addEventListener('click', () => {
+                this.chainBuilder.removeConnection(connId);
+                this.redrawConnections();
+                this.updateChainStats();
+            });
+
+            svg.appendChild(path);
+        }
+    }
+
+    _portCenter(nodeId, portType, portIndex, canvasRect) {
+        const nodeEl = document.querySelector(`[data-node-id="${nodeId}"]`);
+        if (!nodeEl) return null;
+
+        const ports = nodeEl.querySelectorAll(`.node-port[data-type="${portType}"]`);
+        const port = ports[portIndex || 0];
+        if (!port) return null;
+
+        const rect = port.getBoundingClientRect();
+        return {
+            x: rect.left + rect.width / 2 - canvasRect.left,
+            y: rect.top + rect.height / 2 - canvasRect.top
+        };
     }
     
     /**
@@ -5068,26 +4961,22 @@ class CipherController {
      */
     removeNode(nodeId) {
         if (!this.chainBuilder) return;
-        
-        // Remove from chain builder
-        this.chainBuilder.nodes.delete(nodeId);
-        
-        // Remove visual element
+
+        // Model removes the node and its connections (endpoints are protected)
+        if (!this.chainBuilder.removeNode(nodeId)) return;
+
         const nodeEl = document.querySelector(`[data-node-id="${nodeId}"]`);
         if (nodeEl) {
             nodeEl.remove();
         }
-        
-        // Remove associated connections
-        for (const [connId, conn] of this.chainBuilder.connections) {
-            if (conn.from === nodeId || conn.to === nodeId) {
-                this.chainBuilder.connections.delete(connId);
-            }
+
+        if (this.selectedChainNodeId === nodeId) {
+            this.selectChainNode(null);
         }
-        
-        // Update statistics
+
+        this.redrawConnections();
         this.updateChainStats();
-        
+
         DebugConfig.log('Removed node:', nodeId);
     }
     
@@ -5132,14 +5021,16 @@ class CipherController {
             const nodes = canvas.querySelectorAll('.chain-node');
             nodes.forEach(node => node.remove());
         }
-        
+
         if (this.chainBuilder) {
-            this.chainBuilder.nodes.clear();
-            this.chainBuilder.connections.clear();
-            // Re-add default nodes
-            this.createMinimalChainBuilder();
+            this.chainBuilder.clear();
+            for (const node of this.chainBuilder.nodes.values()) {
+                this.renderNodeOnCanvas(node);
+            }
         }
-        
+
+        this.selectChainNode(null);
+        this.redrawConnections();
         this.updateChainStats();
         DebugConfig.log('✅ Canvas cleared');
     }
@@ -5281,30 +5172,273 @@ class CipherController {
      */
     executeChain() {
         DebugConfig.log('🚀 Executing algorithm chain...');
-        
+
         if (!this.chainBuilder) {
             alert('Chain builder not initialized');
             return;
         }
-        
+
         try {
-            // Get chain expression
             const chainExpression = this.buildChainExpression();
-            DebugConfig.log('Chain expression:', chainExpression);
-            
-            // Display chain expression
             this.displayChainExpression(chainExpression);
-            
-            // Execute if we have valid chain
-            if (chainExpression && chainExpression !== 'data') {
-                const result = this.executeChainExpression(chainExpression);
-                DebugConfig.log('Chain execution result:', result);
+
+            const order = this.chainBuilder.getExecutionOrder();
+            const inputNode = order[0];
+            const outputNode = order[order.length - 1];
+
+            let data = this._chainInputBytes(inputNode);
+            const steps = [{ title: 'Input', bytes: data.length }];
+
+            for (const node of order) {
+                if (node.type !== 'algorithm') continue;
+                data = this._runChainNode(node, data);
+                steps.push({ title: node.title, bytes: data.length });
             }
-            
+
+            outputNode.properties.result = data;
+            this._renderChainResult(outputNode, steps);
+            this.selectChainNode(outputNode.id);
+
+            DebugConfig.log('Chain executed:', steps);
         } catch (error) {
             DebugConfig.error('Chain execution error:', error);
             alert('Chain execution failed: ' + error.message);
         }
+    }
+
+    /**
+     * Bytes for the input node, from its properties (text, hex or loaded file)
+     */
+    _chainInputBytes(inputNode) {
+        const props = inputNode.properties || {};
+
+        if (props.fileBytes && props.fileBytes.length) {
+            return Array.from(props.fileBytes);
+        }
+
+        const raw = props.data || '';
+        if (!raw.length) {
+            throw new Error('Input node has no data — select the Input node and enter text/hex or load a file');
+        }
+
+        if (props.format === 'hex') {
+            return this._parseHexBytes(raw, 'input data');
+        }
+
+        // UTF-8 encode text input
+        return Array.from(new TextEncoder().encode(raw));
+    }
+
+    /**
+     * Execute one algorithm node via the Feed/Result pattern
+     */
+    _runChainNode(node, data) {
+        const algorithm = node.algorithm;
+        if (!algorithm) throw new Error(`Node "${node.title}" has no algorithm attached`);
+
+        const props = node.properties || {};
+        const instance = algorithm.CreateInstance(!!props.inverse);
+        if (!instance) {
+            throw new Error(`"${algorithm.name}" does not support ${props.inverse ? 'the inverse (decrypt) direction' : 'this direction'}`);
+        }
+
+        // Key: user-provided, or generated on demand for keyed algorithms
+        if (props.key) {
+            instance.key = this._parseHexBytes(props.key, `${node.title} key`);
+        } else if (algorithm.SupportedKeySizes && algorithm.SupportedKeySizes.length) {
+            const generated = this._randomBytes(algorithm.SupportedKeySizes[0].minSize);
+            props.key = this._bytesToHex(generated);
+            instance.key = generated;
+            DebugConfig.log(`Generated random key for ${node.title}: ${props.key}`);
+        }
+
+        if (props.iv) instance.iv = this._parseHexBytes(props.iv, `${node.title} IV`);
+        if (props.nonce) instance.nonce = this._parseHexBytes(props.nonce, `${node.title} nonce`);
+
+        instance.Feed(data);
+        const result = instance.Result();
+        if (!result) throw new Error(`"${algorithm.name}" returned no result`);
+        return Array.from(result);
+    }
+
+    _parseHexBytes(hex, what) {
+        const clean = String(hex).replace(/[\s:,-]/g, '');
+        if (!clean.length || clean.length % 2 !== 0 || /[^0-9a-fA-F]/.test(clean)) {
+            throw new Error(`Invalid hex for ${what}`);
+        }
+        const bytes = [];
+        for (let i = 0; i < clean.length; i += 2) {
+            bytes.push(parseInt(clean.substr(i, 2), 16));
+        }
+        return bytes;
+    }
+
+    _bytesToHex(bytes) {
+        return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    _randomBytes(count) {
+        const bytes = new Uint8Array(count);
+        if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+            crypto.getRandomValues(bytes);
+        } else {
+            for (let i = 0; i < count; i++) bytes[i] = Math.floor(Math.random() * 256);
+        }
+        return Array.from(bytes);
+    }
+
+    /**
+     * Show the execution result in the properties panel and enable download
+     */
+    _renderChainResult(outputNode, steps) {
+        const container = document.getElementById('properties-content');
+        if (!container) return;
+
+        const result = outputNode.properties.result || [];
+        const hex = this._bytesToHex(result);
+        let text;
+        try {
+            text = new TextDecoder('utf-8', { fatal: true }).decode(new Uint8Array(result));
+        } catch (e) {
+            text = null; // not valid UTF-8, hex only
+        }
+
+        const stepsHtml = steps.map(s => `${s.title} (${s.bytes} B)`).join(' → ');
+
+        let resultEl = document.getElementById('chain-result');
+        if (!resultEl) {
+            resultEl = document.createElement('div');
+            resultEl.id = 'chain-result';
+            resultEl.className = 'status-panel';
+            container.appendChild(resultEl);
+        }
+
+        resultEl.innerHTML = `
+            <strong>Result (${result.length} bytes):</strong><br>
+            <div style="font-size:11px; color:#888; margin:4px 0;">${stepsHtml}</div>
+            <code style="font-size:11px; word-break:break-all; display:block; max-height:120px; overflow:auto;">${hex || '(empty)'}</code>
+            ${text !== null ? `<div style="font-size:11px; margin-top:4px;">as text: <code style="word-break:break-all;">${this._escapeHtml(text)}</code></div>` : ''}
+            <button class="btn btn-primary btn-small" style="margin-top:8px;" id="chain-download-result">⬇️ Download</button>
+        `;
+
+        document.getElementById('chain-download-result').addEventListener('click', () => {
+            const blob = new Blob([new Uint8Array(result)], { type: 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'chain-result.bin';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+    }
+
+    _escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, c => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    }
+
+    /**
+     * Select a node on the chain canvas and show its editable properties
+     */
+    selectChainNode(nodeId) {
+        this.selectedChainNodeId = nodeId;
+
+        document.querySelectorAll('#chain-canvas .chain-node').forEach(el => {
+            el.classList.toggle('selected', el.getAttribute('data-node-id') === nodeId);
+        });
+
+        this.renderNodeProperties(nodeId ? this.chainBuilder.nodes.get(nodeId) : null);
+    }
+
+    renderNodeProperties(node) {
+        const container = document.getElementById('properties-content');
+        if (!container) return;
+
+        // Preserve the last execution result block if present
+        const resultEl = document.getElementById('chain-result');
+        container.innerHTML = '';
+        if (resultEl) container.appendChild(resultEl);
+
+        if (!node) return;
+
+        const panel = document.createElement('div');
+        panel.className = 'status-panel';
+        panel.id = 'node-properties';
+
+        const props = node.properties || (node.properties = {});
+
+        if (node.type === 'input') {
+            panel.innerHTML = `
+                <strong>Input Node</strong><br>
+                <label style="font-size:12px;">Format:
+                    <select id="prop-input-format">
+                        <option value="text" ${props.format !== 'hex' ? 'selected' : ''}>Text (UTF-8)</option>
+                        <option value="hex" ${props.format === 'hex' ? 'selected' : ''}>Hex</option>
+                    </select>
+                </label><br>
+                <textarea id="prop-input-data" rows="4" style="width:100%; margin-top:4px;"
+                    placeholder="Enter input data...">${this._escapeHtml(props.data || '')}</textarea>
+                <div style="margin-top:4px;">
+                    <input type="file" id="prop-input-file" style="font-size:11px;">
+                    ${props.fileBytes ? `<div style="font-size:11px; color:#888;">Loaded file: ${props.fileName} (${props.fileBytes.length} B) <button id="prop-input-clear-file" class="btn btn-small">✕</button></div>` : ''}
+                </div>
+            `;
+            container.appendChild(panel);
+
+            panel.querySelector('#prop-input-format').addEventListener('change', e => { props.format = e.target.value; });
+            panel.querySelector('#prop-input-data').addEventListener('input', e => { props.data = e.target.value; });
+            panel.querySelector('#prop-input-file').addEventListener('change', e => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                    props.fileBytes = new Uint8Array(reader.result);
+                    props.fileName = file.name;
+                    this.renderNodeProperties(node);
+                };
+                reader.readAsArrayBuffer(file);
+            });
+            const clearBtn = panel.querySelector('#prop-input-clear-file');
+            if (clearBtn) clearBtn.addEventListener('click', () => {
+                delete props.fileBytes;
+                delete props.fileName;
+                this.renderNodeProperties(node);
+            });
+            return;
+        }
+
+        if (node.type === 'output') {
+            panel.innerHTML = `
+                <strong>Output Node</strong><br>
+                <div style="font-size:12px; color:#888;">Run "Execute Chain" — the result appears here with a download button.</div>
+            `;
+            container.appendChild(panel);
+            return;
+        }
+
+        // Algorithm node: key/iv/nonce/inverse as applicable
+        const needsKey = !!(node.algorithm && node.algorithm.SupportedKeySizes && node.algorithm.SupportedKeySizes.length);
+        panel.innerHTML = `
+            <strong>${this._escapeHtml(node.title)}</strong><br>
+            ${needsKey ? `
+                <label style="font-size:12px;">Key (hex, empty = random):</label>
+                <input type="text" id="prop-node-key" style="width:100%;" value="${this._escapeHtml(props.key || '')}" placeholder="e.g. 000102...">` : ''}
+            <label style="font-size:12px;">IV (hex, optional):</label>
+            <input type="text" id="prop-node-iv" style="width:100%;" value="${this._escapeHtml(props.iv || '')}">
+            <label style="font-size:12px;">Nonce (hex, optional):</label>
+            <input type="text" id="prop-node-nonce" style="width:100%;" value="${this._escapeHtml(props.nonce || '')}">
+            <label style="font-size:12px;"><input type="checkbox" id="prop-node-inverse" ${props.inverse ? 'checked' : ''}> Inverse (decrypt/decode)</label>
+        `;
+        container.appendChild(panel);
+
+        const keyEl = panel.querySelector('#prop-node-key');
+        if (keyEl) keyEl.addEventListener('input', e => { props.key = e.target.value; });
+        panel.querySelector('#prop-node-iv').addEventListener('input', e => { props.iv = e.target.value; });
+        panel.querySelector('#prop-node-nonce').addEventListener('input', e => { props.nonce = e.target.value; });
+        panel.querySelector('#prop-node-inverse').addEventListener('change', e => { props.inverse = e.target.checked; });
     }
     
     /**
@@ -5404,21 +5538,6 @@ class CipherController {
         }
     }
     
-    /**
-     * Execute the chain expression (simplified version)
-     */
-    executeChainExpression(expression) {
-        // This is a simplified execution - in a full implementation,
-        // we'd parse the expression and execute the actual algorithms
-        DebugConfig.log('Executing chain:', expression);
-        
-        // For now, just return the expression as a demonstration
-        return {
-            expression: expression,
-            status: 'simulated',
-            result: 'Chain execution would run here'
-        };
-    }
 
     /**
      * Run tests and switch to test vectors tab using TestEngine
