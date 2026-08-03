@@ -73,8 +73,35 @@
         new LinkItem("LibTomCrypt Implementation", "https://github.com/libtom/libtomcrypt/blob/develop/src/ciphers/kasumi.c")
       ];
 
+      this.references = [
+        new LinkItem("ETSI TS 135 202 - KASUMI Specification (C reference code in annex)", "https://www.etsi.org/deliver/etsi_ts/135200_135299/135202/07.00.00_60/ts_135202v070000p.pdf"),
+        new LinkItem("ETSI TS 135 201 - f8/f9 Specification (C reference code in annex)", "https://www.etsi.org/deliver/etsi_ts/135200_135299/135201/09.00.00_60/ts_135201v090000p.pdf")
+      ];
+
       // Test vectors from LibTomCrypt (official reference implementation)
       this.tests = [
+        {
+          text: "DarkCrypt KASUMI-128 vector 1/zero",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("f54cfbf75f3b5699")
+        },
+        {
+          text: "DarkCrypt KASUMI-128 vector 2/incr",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("0001020304050607"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          expected: OpCodes.Hex8ToBytes("bb6b2e0c88ad7c37")
+        },
+        {
+          text: "DarkCrypt KASUMI-128 vector 3/incr2",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("1011121314151617"),
+          key: OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f10"),
+          expected: OpCodes.Hex8ToBytes("455a65f01cfe4adc")
+        },
+
         {
           text: "LibTomCrypt Vector #1: Single bit key (bit 0)",
           uri: "https://github.com/libtom/libtomcrypt/blob/develop/src/ciphers/kasumi.c",

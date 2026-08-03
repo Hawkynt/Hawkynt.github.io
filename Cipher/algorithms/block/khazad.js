@@ -663,6 +663,28 @@ const rawRoundConstants = [
 
       this.tests = [
         {
+          text: "DarkCrypt KHAZAD vector 1/zero",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("2325d00f3e76a22d")
+        },
+        {
+          text: "DarkCrypt KHAZAD vector 2/incr",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("0001020304050607"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          expected: OpCodes.Hex8ToBytes("9c4c292a989175fc")
+        },
+        {
+          text: "DarkCrypt KHAZAD vector 3/incr2",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("1011121314151617"),
+          key: OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f10"),
+          expected: OpCodes.Hex8ToBytes("cb57cca64cd59aff")
+        },
+
+        {
           text: "LibTomCrypt Test 0",
           uri: "https://github.com/libtom/libtomcrypt/blob/develop/src/ciphers/khazad.c",
           input: OpCodes.Hex8ToBytes("0000000000000000"),

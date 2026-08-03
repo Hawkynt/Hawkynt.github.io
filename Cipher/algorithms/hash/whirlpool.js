@@ -218,6 +218,12 @@
           uri: "https://www.iso.org/standard/39876.html",
           input: [97, 98, 99], // "abc"
           expected: OpCodes.Hex8ToBytes("4e2448a4c6f486bb16b6562c73b4020bf3043e3a731bce721ae1b303d97e6d4c7181eebdb6c57e277d0e34957114cbd6c797fc9d95d8b582d225292076d4eef5")
+        },
+        {
+          text: "DarkCrypt Whirlpool - 64-byte incrementing message (00..3F)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),
+          expected: OpCodes.Hex8ToBytes("5c3c6f524c8ae1e7a4f76b84977b1560e78eb568e2fd8d72699ad79186481bd42b53ab39a0b741d9c098a4ecb01f3eccf3844cf1b73a9355ee5d496a2a1fb5b3")
         }
       ];
     }

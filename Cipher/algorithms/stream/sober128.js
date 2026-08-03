@@ -234,8 +234,11 @@
       // Documentation links
       this.documentation = [
         new LinkItem("SOBER-128 Specification", "https://www.ecrypt.eu.org/stream/sobere.html"),
-        new LinkItem("LibTomCrypt Reference Implementation", "https://github.com/libtom/libtomcrypt"),
         new LinkItem("eSTREAM Portfolio", "https://www.ecrypt.eu.org/stream/")
+      ];
+
+      this.references = [
+        new LinkItem("LibTomCrypt Reference Implementation (based on Qualcomm's s128fast.c)", "https://github.com/libtom/libtomcrypt")
       ];
 
       // Official LibTomCrypt test vectors
@@ -247,6 +250,22 @@
           key: OpCodes.AnsiToBytes("test key 128bits"),
           iv: new Uint8Array([0x00, 0x00, 0x00, 0x00]),
           expected: OpCodes.Hex8ToBytes("43500ccf89919f1daa377495f4b458c240378bbb")
+        },
+        {
+          text: "DarkCrypt keystream, incremental key",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: new Array(128).fill(0),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          iv: new Array(16).fill(0),
+          expected: OpCodes.Hex8ToBytes("f0348280f75f4051b97a4ba5c6535204a344e639110df57ff515c3af11776f87e9fc8e9a661ef4e9272c0e71d891b997ba63ba2392a1da420a336f54733e0197c280386ee9b035c9d78ca0c1884025e9649047b791d74de0557abefabd7eaf1c722acf3bc83600023531bee7aa750779f4405a3b9ab14ed2e732d71a476a729f")
+        },
+        {
+          text: "DarkCrypt incremental plaintext, incremental key",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          iv: new Array(16).fill(0),
+          expected: OpCodes.Hex8ToBytes("f0358083f35a4656b17341aeca5e5c0bb355f42a0518e368ed0cd9b40d6a7198c9ddacb9423bd2ce0f05245af4bc97b88a528810a694ec75320a556f4f033fa8")
         }
       ];
     }

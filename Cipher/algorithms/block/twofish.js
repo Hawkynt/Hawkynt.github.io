@@ -169,6 +169,28 @@
       // Test vectors from official Twofish specification
       this.tests = [
         {
+          text: "DarkCrypt Twofish vector 1/zero",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("57ff739d4dc92c1bd7fc01700cc8216f")
+        },
+        {
+          text: "DarkCrypt Twofish vector 2/incr",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
+          expected: OpCodes.Hex8ToBytes("8ef0272c42db838bcf7b07af0ec30f38")
+        },
+        {
+          text: "DarkCrypt Twofish vector 3/incr2",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("101112131415161718191a1b1c1d1e1f"),
+          key: OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"),
+          expected: OpCodes.Hex8ToBytes("36b0770fe4c470de19f63edf1a73e707")
+        },
+
+        {
           text: "Twofish ECB 128-bit Key Test Vector",
           uri: "https://www.schneier.com/code/ecb_ival.txt",
           input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),

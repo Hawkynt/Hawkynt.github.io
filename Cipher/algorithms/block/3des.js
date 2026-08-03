@@ -115,6 +115,28 @@
       // Test vectors using OpCodes byte arrays
       this.tests = [
         {
+          text: "DarkCrypt DES-EDE vector 1/zero",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("8ca64de9c1b123a7")
+        },
+        {
+          text: "DarkCrypt DES-EDE vector 2/incr",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("0001020304050607"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f1011121314151617"),
+          expected: OpCodes.Hex8ToBytes("58ed248f77f6b19e")
+        },
+        {
+          text: "DarkCrypt DES-EDE vector 3/incr2",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("1011121314151617"),
+          key: OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f101112131415161718"),
+          expected: OpCodes.Hex8ToBytes("bcbdf997a68ca618")
+        },
+
+        {
           text: "3DES EDE2 mode - educational test vector",
           uri: "https://csrc.nist.gov/publications/detail/fips/46/3/archive/1999-10-25",
           input: OpCodes.Hex8ToBytes("0123456789abcdef"),
@@ -365,44 +387,16 @@
       return result;
     }
 
-    // Load DES algorithm using multiple fallback strategies
+    // Load DES algorithm (registry-first, plain require fallback)
     _loadDESAlgorithm() {
-      // Strategy 1: Try to require DES directly (works in Node.js/TestSuite)
-      if (typeof require !== 'undefined') {
-        try {
-          // Try relative path first
-          const desPath = require.resolve('./des.js');
-          delete require.cache[desPath]; // Clear cache to ensure fresh load
-          require(desPath);
-        } catch (e1) {
-          try {
-            // Try alternative path
-            require('../../algorithms/block/des.js');
-          } catch (e2) {
-            // Require failed, will fall back to registry lookup
-          }
-        }
+      let des = AlgorithmFramework.Find('DES');
+      if (!des && typeof require !== 'undefined') {
+        try { require('./des.js'); } catch (e) { /* not found — error below */ }
+        des = AlgorithmFramework.Find('DES');
       }
-
-      // Strategy 2: Look up in AlgorithmFramework registry (works in browser/web UI)
-      const framework = (typeof AlgorithmFramework !== 'undefined') ? AlgorithmFramework :
-                       (typeof global !== 'undefined' && global.AlgorithmFramework) ? global.AlgorithmFramework :
-                       (typeof window !== 'undefined' && window.AlgorithmFramework) ? window.AlgorithmFramework : null;
-
-      if (framework) {
-        const algorithms = framework.Algorithms || [];
-        const desAlgorithm = algorithms.find(alg => alg.name === 'DES');
-        if (desAlgorithm) {
-          return desAlgorithm;
-        }
-      }
-
-      // Strategy 3: Final fallback - detailed error with helpful message
-      throw new Error(
-        "DES algorithm not found. 3DES requires DES to be available. " +
-        "In Node.js environments, ensure DES is required before 3DES. " +
-        "In browser environments, ensure des.js is loaded before 3des.js in index.html."
-      );
+      if (!des)
+        throw new Error("DES not available — load algorithms/block/des.js first");
+      return des;
     }
   }
 

@@ -199,6 +199,28 @@
 
       this.tests = [
         {
+          text: "DarkCrypt CRYPTON-256 vector 1/zero",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("ec62e539bb6bbc811a60c06faccb7ec8")
+        },
+        {
+          text: "DarkCrypt CRYPTON-256 vector 2/incr",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
+          expected: OpCodes.Hex8ToBytes("f492525dec52b41aa180a2477d8c3e7b")
+        },
+        {
+          text: "DarkCrypt CRYPTON-256 vector 3/incr2",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("101112131415161718191a1b1c1d1e1f"),
+          key: OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"),
+          expected: OpCodes.Hex8ToBytes("1ed972824b3cc0fce3f2ebc503db4424")
+        },
+
+        {
           text: "NIST IR 6391 sample - 128-bit key",
           uri: "https://nvlpubs.nist.gov/nistpubs/Legacy/IR/nistir6391.pdf",
           input: OpCodes.Hex8ToBytes("00112233445566778899AABBCCDDEEFF"),

@@ -131,6 +131,20 @@
           input: OpCodes.AnsiToBytes("TEST"),
           key: OpCodes.AnsiToBytes("KEY"),
           expected: OpCodes.Hex8ToBytes("2BB0E377")
+        },
+        {
+          text: "DarkCrypt Caracachs: keystream from 128 zero bytes, 32-byte incrementing key",
+          uri: "https://totalcmd.net/plugring/darkcryptTC.html",
+          input: new Array(128).fill(0),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
+          expected: OpCodes.Hex8ToBytes("dff1188b8eb116c923c9ef6207d49e1b830697daf9feaff1b7a2c2371a603fe443932d7dd18728c632ab9c93e7fb242db329afff9fb0c08fcda7b420f9da6aa9a1c1c4cbf751b2f598e8f8ffcc9994ad6feccfa9fce199958e0d9a1740e81a5567bdf9e896d152ff64ebeac2c2d34472e3f37f8890001667fe8e595fc3e1409b")
+        },
+        {
+          text: "DarkCrypt Caracachs: encryption of 64 incrementing bytes, 32-byte incrementing key",
+          uri: "https://totalcmd.net/plugring/darkcryptTC.html",
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
+          expected: OpCodes.Hex8ToBytes("dff0f9d6f3fd6ac6f16505a9014715ef09ee717696ae6c1ea602ffd327fee2a0dbe25d5086cf84a4685f0b3cf24ed0de9e82f7844c52eacba7c7aec58afea1fc")
         }
       ];
     }

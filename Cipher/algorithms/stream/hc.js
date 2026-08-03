@@ -61,6 +61,11 @@ class HCAlgorithm extends StreamCipherAlgorithm {
       new LinkItem("eSTREAM Portfolio", "https://www.ecrypt.eu.org/stream/")
     ];
 
+    this.references = [
+      new LinkItem(`Hongjun Wu HC-${variant} Reference Implementation`, config.refUrl),
+      new LinkItem(`Crypto++ HC-${variant} Implementation`, config.refLibUrl)
+    ];
+
     this.vulnerabilities = config.vulnerabilities;
     this.tests = config.tests;
 
@@ -79,6 +84,8 @@ class HCAlgorithm extends StreamCipherAlgorithm {
         description: "eSTREAM Profile 1 finalist with table-based design. Uses two 512-word tables with complex update functions for high-speed software encryption. Designed by Hongjun Wu.",
         specUrl: "https://www.ecrypt.eu.org/stream/p3ciphers/hc/hc128_p3.pdf",
         wikiUrl: "https://en.wikipedia.org/wiki/HC-128",
+        refUrl: "https://personal.ntu.edu.sg/wuhj/research/hc/hc128_ref.h",
+        refLibUrl: "https://github.com/weidai11/cryptopp/blob/master/hc128.h",
         tableSize: 512,
         initSteps: 1024,
         hasXYArrays: true,
@@ -104,6 +111,8 @@ class HCAlgorithm extends StreamCipherAlgorithm {
         description: "eSTREAM Phase 3 finalist with large table-based design. Uses two 1024-word tables with nonlinear update functions for high-speed software encryption. Designed by Hongjun Wu.",
         specUrl: "https://www.ecrypt.eu.org/stream/p3ciphers/hc/hc256_p3.pdf",
         wikiUrl: "https://en.wikipedia.org/wiki/HC-256",
+        refUrl: "https://personal.ntu.edu.sg/wuhj/research/hc/hc256_ref.h",
+        refLibUrl: "https://github.com/weidai11/cryptopp/blob/master/hc256.h",
         tableSize: 1024,
         initSteps: 4096,
         hasXYArrays: false,
@@ -130,6 +139,22 @@ class HCAlgorithm extends StreamCipherAlgorithm {
             iv: OpCodes.Hex8ToBytes("0D74DB42A91077DE45AC137AE148AF16B9C6B1F8E9C1A86A6B17F1B9A6C3C8F7"),
             input: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
             expected: OpCodes.Hex8ToBytes("2EC868D5779C5F522A5E2A9530A675EC359DD8D08845F57064562FE0C5927EA4")
+          },
+          {
+            text: "DarkCrypt keystream, incremental key",
+            uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+            key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
+            iv: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
+            input: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+            expected: OpCodes.Hex8ToBytes("7cb997d6e1b46dd7c0a9629b441c377114d6c18f230291fa7ef0b039aedcc9aaa4ae05ba13f3931e3f8373aa320a8bcf28e825b2084d0fa486be52c92c3c6f1487f9af5c886705dcbd33d08c62e59c814a719c6b0372f44948d5130aaf20289bc3dc704d2ffa09ce7989d5afc977695afa6c82dd92a9a01cdc5de373127cc4e1")
+          },
+          {
+            text: "DarkCrypt incremental plaintext, incremental key",
+            uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+            key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
+            iv: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
+            input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),
+            expected: OpCodes.Hex8ToBytes("7cb895d5e5b16bd0c8a068904811397e04c7d39c371787ed66e9aa22b2c1d7b5848f279937d6b53917aa59811e27a5e018d917813c783993be8768f21001512b")
           }
         ]
       }

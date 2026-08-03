@@ -87,6 +87,11 @@
         new LinkItem("eSTREAM Portfolio", "https://www.ecrypt.eu.org/stream/")
       ];
 
+      this.references = [
+        new LinkItem("Bouncy Castle Grainv1Engine Reference Implementation", "https://github.com/bcgit/bc-java/blob/main/core/src/main/java/org/bouncycastle/crypto/engines/Grainv1Engine.java"),
+        new LinkItem("eSTREAM Grain Portfolio Page", "https://www.ecrypt.eu.org/stream/e2-grain.html")
+      ];
+
       // Known vulnerabilities
       this.knownVulnerabilities = [];
 
@@ -465,6 +470,11 @@
         new LinkItem("Bouncy Castle Reference Implementation", "https://github.com/bcgit/bc-java/blob/main/core/src/main/java/org/bouncycastle/crypto/engines/Grain128Engine.java")
       ];
 
+      this.references = [
+        new LinkItem("CryptoStreams Grain-128 Implementation", "https://github.com/crocs-muni/CryptoStreams/blob/master/streams/stream_ciphers/estream/grain/grain-128.cpp"),
+        new LinkItem("Grain-128AEAD Designer Team Site", "https://grain-128aead.github.io/")
+      ];
+
       // Test vectors from Bouncy Castle test suite
       this.tests = [
         {
@@ -482,6 +492,22 @@
           key: OpCodes.Hex8ToBytes("0123456789abcdef123456789abcdef0"),
           iv: OpCodes.Hex8ToBytes("0123456789abcdef12345678"),
           expected: OpCodes.Hex8ToBytes("afb5babfa8de896b4b9c6acaf7c4fbfd")
+        },
+        {
+          text: "DarkCrypt Grain - 128-byte keystream (key=00..0F, IV=0)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: new Array(128).fill(0),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          iv: OpCodes.Hex8ToBytes("000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("969eae24e41b22689ea73c99e83b78ecd9d37afeb4c2ab9ff760f75865b971d0d5d096bc45717cf6087ad03125823dc9c9e4225cfe6ccb648a04b13062503e2bbc0fbb260a7d7e25a8638b20cca5500779b0597d61339f693ddb29c970d43c03fe48a4e1f1ef2c43466a7189713981bf510c7c113c58752076ae9f15323a589a")
+        },
+        {
+          text: "DarkCrypt Grain - enc of 00..3F (key=00..0F, IV=0)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          iv: OpCodes.Hex8ToBytes("000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("969fac27e01e246f96ae3692e43676e3c9c268eda0d7bd88ef79ed4379a46fcff5f1b49f61545ad12053fa1a09af13e6f9d5106fca59fd53b23d8b0b5e6d0014")
         }
       ];
 

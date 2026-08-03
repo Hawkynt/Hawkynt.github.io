@@ -73,6 +73,28 @@
 
       this.tests = [
         {
+          text: "DarkCrypt SKIP32 vector 1/zero",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("00000000"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("b8e4fea5")
+        },
+        {
+          text: "DarkCrypt SKIP32 vector 2/incr",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("00010203"),
+          key: OpCodes.Hex8ToBytes("00010203040506070809"),
+          expected: OpCodes.Hex8ToBytes("0af04ffa")
+        },
+        {
+          text: "DarkCrypt SKIP32 vector 3/incr2",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("10111213"),
+          key: OpCodes.Hex8ToBytes("0102030405060708090a"),
+          expected: OpCodes.Hex8ToBytes("a4b9eea6")
+        },
+
+        {
           text: "node-skip32 test vector",
           uri: "https://github.com/femto113/node-skip32",
           input: OpCodes.Hex8ToBytes("00000001"),

@@ -79,25 +79,44 @@
     0xf7, 0xe4, 0x79, 0x96, 0xa2, 0xfc, 0x6d, 0xb2, 0x6b, 0x03, 0xe1, 0x2e, 0x7d, 0x14, 0x95, 0x1d
   ]);
 
-  // Pre-computed CON constants from RFC 6114 Appendix C (Table 7)
-  // CON_128[0..59] for 128-bit keys
-  const CON_128 = Object.freeze([
-    0xf56b7aeb, 0x994a8a42, 0x96a4bd75, 0xfa854521,
-    0x735b768a, 0x1f7abac4, 0xd5bc3b45, 0xb99d5d62,
-    0x52d73592, 0x3ef636e5, 0xc57a1ac9, 0xa95b9b72,
-    0x5ab42554, 0x369555ed, 0x1553ba9a, 0x7972b2a2,
-    0xe6b85d4d, 0x8a995951, 0x4b550696, 0x2774b4fc,
-    0xc9bb034b, 0xa59a5a7e, 0x88cc81a5, 0xe4ed2d3f,
-    0x7c6f68e2, 0x104e8ecb, 0xd2263471, 0xbe07c765,
-    0x511a3208, 0x3d3bfbe6, 0x1084b134, 0x7ca565a7,
-    0x304bf0aa, 0x5c6aaa87, 0xf4347855, 0x9815d543,
-    0x4213141a, 0x2e32f2f5, 0xcd180a0d, 0xa139f97a,
-    0x5e852d36, 0x32a464e9, 0xc353169b, 0xaf72b274,
-    0x8db88b4d, 0xe199593a, 0x7ed56d96, 0x12f434c9,
-    0xd37b36cb, 0xbf5a9a64, 0x85ac9b65, 0xe98d4d32,
-    0x7adf6582, 0x16fe3ecd, 0xd17e32c1, 0xbd5f9f66,
-    0x50b63150, 0x3c9757e7, 0x1052b098, 0x7c73b3a7
-  ]);
+  // CON constant generation - RFC 6114 Section 6.6
+  // P(16) = 0xb7e1 (fractional part of e-2), Q(16) = 0x243f (fractional part of pi-3)
+  // T_k[i] evolves in GF(2^16) defined by the primitive polynomial
+  // z^16 + z^15 + z^13 + z^11 + z^5 + z^4 + 1 (0x1a831); each step multiplies
+  // by the multiplicative inverse of z (division by 2 in the field).
+  const CON_P16 = 0xb7e1;
+  const CON_Q16 = 0x243f;
+
+  // Divide a GF(2^16) element by z (multiply by the inverse of 2) under the
+  // CLEFIA constant-generation polynomial: reduce with the low 16 bits of the
+  // primitive polynomial (0xa831) whenever the constant term is set.
+  function gf16DivZ(t) {
+    return OpCodes.AndN(t, 1) ? OpCodes.OrN(OpCodes.Shr16(OpCodes.XorN(t, 0xa831), 1), 0x8000) : OpCodes.Shr16(t, 1);
+  }
+
+  // Generate `count` pairs of 32-bit CON words from the given 16-bit IV,
+  // per RFC 6114 Section 6.6 (Table 4-9 lists the resulting constants).
+  function generateCON(iv, count) {
+    const con = new Array(count * 2);
+    let t = OpCodes.AndN(iv, 0xFFFF);
+    for (let i = 0; i < count; i++) {
+      const notT = OpCodes.AndN(OpCodes.XorN(t, 0xFFFF), 0xFFFF);
+      const hi0 = OpCodes.AndN(OpCodes.XorN(t, CON_P16), 0xFFFF);
+      const lo0 = OpCodes.RotL16(notT, 1);
+      const hi1 = OpCodes.AndN(OpCodes.XorN(notT, CON_Q16), 0xFFFF);
+      const lo1 = OpCodes.RotL16(t, 8);
+      con[i * 2] = OpCodes.Or32(OpCodes.Shl32(hi0, 16), lo0);
+      con[i * 2 + 1] = OpCodes.Or32(OpCodes.Shl32(hi1, 16), lo1);
+      t = gf16DivZ(t);
+    }
+    return con;
+  }
+
+  // CON_128/192/256 - RFC 6114 Appendix C (Tables 7-9), generated rather than
+  // hardcoded so the constants are provably derived from the spec algorithm.
+  const CON_128 = Object.freeze(generateCON(0x428a, 30));
+  const CON_192 = Object.freeze(generateCON(0x7137, 42));
+  const CON_256 = Object.freeze(generateCON(0xb5c0, 46));
 
   // CLEFIA-specific GF(2^8) multiplication
   // Uses irreducible polynomial z^8 + z^4 + z^3 + z^2 + 1 (0x1d)
@@ -152,12 +171,53 @@
         new LinkItem("ISO/IEC 29192-2:2012", "https://www.iso.org/standard/56552.html")
       ];
 
+      this.references = [
+        new LinkItem("Sony CLEFIA Reference Code (clefia_ref.c)", "https://www.sony.net/Products/cryptography/clefia/download/data/clefia_ref.c"),
+        new LinkItem("go-clefia (port of Sony reference C code)", "https://github.com/dgryski/go-clefia")
+      ];
+
       this.tests = [
+        {
+          text: "DarkCrypt CLEFIA vector 1/zero",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("c75294761d52fb97ab7955d877164213")
+        },
+        {
+          text: "DarkCrypt CLEFIA vector 2/incr",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
+          expected: OpCodes.Hex8ToBytes("3a92f62a3f938146d9ca6303f5b3d790")
+        },
+        {
+          text: "DarkCrypt CLEFIA vector 3/incr2",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("101112131415161718191a1b1c1d1e1f"),
+          key: OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"),
+          expected: OpCodes.Hex8ToBytes("eee2469ffc539734e5f93330cc6d8523")
+        },
+
         {
           input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
           key: OpCodes.Hex8ToBytes("ffeeddccbbaa99887766554433221100"),
           expected: OpCodes.Hex8ToBytes("de2bf2fd9b74aacdf1298555459494fd"),
           text: "RFC 6114 Appendix A - CLEFIA-128 test vector",
+          uri: "https://www.rfc-editor.org/rfc/rfc6114.html#appendix-A"
+        },
+        {
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          key: OpCodes.Hex8ToBytes("ffeeddccbbaa99887766554433221100f0e0d0c0b0a09080"),
+          expected: OpCodes.Hex8ToBytes("e2482f649f028dc480dda184fde181ad"),
+          text: "RFC 6114 Appendix A - CLEFIA-192 test vector",
+          uri: "https://www.rfc-editor.org/rfc/rfc6114.html#appendix-A"
+        },
+        {
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          key: OpCodes.Hex8ToBytes("ffeeddccbbaa99887766554433221100f0e0d0c0b0a090807060504030201000"),
+          expected: OpCodes.Hex8ToBytes("a1397814289de80c10da46d1fa48b38a"),
+          text: "RFC 6114 Appendix A - CLEFIA-256 test vector",
           uri: "https://www.rfc-editor.org/rfc/rfc6114.html#appendix-A"
         }
       ];
@@ -263,29 +323,31 @@
 
     _setupKey() {
       const keyLen = this._key.length;
-      const r = keyLen === 16 ? 9 : keyLen === 24 ? 11 : 13;  // Number of key schedule iterations
+      if (keyLen === 16) {
+        this._setupKey128();
+      } else {
+        this._setupKey192Or256(keyLen);
+      }
+    }
 
-      // Generate CON constants (32-bit words)
-      const conWords = this._genCon(keyLen);
+    // 128-bit key schedule - RFC 6114 Section 6.3
+    // L <- GFN_{4,12}(CON_128[0..23], K); WK0..3 <- K; 9 iterations produce 36 round keys (18 rounds)
+    _setupKey128() {
+      const conWords = this._genCon(16);
+      const gfnRounds = 12;
+      const L = this._gfn([...this._key], conWords, gfnRounds, 4);
 
-      // Generate intermediate key L using GFN4 - RFC 6114 Section 2.3
-      // For 128-bit keys: L = GFN4(K, CON_128[0..23], 12)
-      const gfnRounds = keyLen === 16 ? 12 : keyLen === 24 ? 10 : 14;
-      const L = this._gfn4([...this._key], conWords, gfnRounds);
-
-      // Whitening keys from original key - RFC 6114 Section 2.4
+      // Whitening keys from original key - RFC 6114 Section 6.3
       this.wk = [];
       for (let i = 0; i < 4; i++) {
-        this.wk[i] = [];
-        for (let j = 0; j < 4; j++) {
-          this.wk[i][j] = this._key[(i * 4 + j) % keyLen];
-        }
+        this.wk[i] = this._key.slice(i * 4, i * 4 + 4);
       }
 
       // Round keys derived from L - RFC 6114 Section 6.3
-      // For 128-bit keys: 9 iterations generating 4 RK each = 36 round keys for 18 rounds
+      // 9 iterations generating 4 RK each = 36 round keys for 18 rounds
       this.rk = [];
-      const conStartIdx = gfnRounds * 2;  // Start after GFN4 constants (in CON word array)
+      const r = 9;
+      const conStartIdx = gfnRounds * 2;  // Start after GFN_{4,12} constants (in CON word array)
 
       for (let i = 0; i < r; i++) {
         // Step 1: T <- L XOR CON (4 CON words = 16 bytes)
@@ -298,9 +360,9 @@
           }
         }
 
-        // Step 2: For 128-bit keys, XOR temp with key on ODD iterations (1, 3, 5, 7)
+        // Step 2: XOR temp with key on ODD iterations (1, 3, 5, 7)
         // RFC 6114 Section 6.3: "if i is odd: T <- T XOR K"
-        if (keyLen === 16 && (i % 2) === 1) {
+        if ((i % 2) === 1) {
           for (let j = 0; j < 16; j++) {
             temp[j] ^= this._key[j];
           }
@@ -315,6 +377,77 @@
 
         // Step 4: L <- Sigma(L) - Apply AFTER extracting keys
         // Sony reference: ClefiaDoubleSwap(lk) is called after rk assignment
+        this._sigma(L);
+      }
+    }
+
+    // 192/256-bit key schedule - RFC 6114 Section 6.4/6.5
+    // KL|KR <- padded key (192-bit pads KR with the bitwise complement of K0|K1);
+    // LL|LR <- GFN_{8,10}(CON_k[0..39], KL|KR); WK0..3 <- KL XOR KR.
+    // 11 (192-bit) or 13 (256-bit) iterations alternate LL/LR, producing 44/52
+    // round keys for 22/26 rounds.
+    _setupKey192Or256(keyLen) {
+      const conWords = this._genCon(keyLen);
+
+      const kl = this._key.slice(0, 16);
+      let kr;
+      if (keyLen === 24) {
+        // KR <- K4 | K5 | ~K0 | ~K1 (bitwise complement of the first two key words)
+        kr = this._key.slice(16, 24)
+          .concat(this._key.slice(0, 4).map(b => OpCodes.AndN(OpCodes.XorN(b, 0xFF), 0xFF)))
+          .concat(this._key.slice(4, 8).map(b => OpCodes.AndN(OpCodes.XorN(b, 0xFF), 0xFF)));
+      } else {
+        kr = this._key.slice(16, 32);
+      }
+
+      const gfnRounds = 10;
+      const gfnOut = this._gfn(kl.concat(kr), conWords, gfnRounds, 8);
+      const LL = gfnOut.slice(0, 16);
+      const LR = gfnOut.slice(16, 32);
+
+      // Whitening keys - RFC 6114 Section 6.4/6.5: WK0|WK1|WK2|WK3 <- KL XOR KR
+      this.wk = [];
+      for (let i = 0; i < 4; i++) {
+        this.wk[i] = [];
+        for (let j = 0; j < 4; j++) {
+          this.wk[i][j] = OpCodes.XorN(kl[i * 4 + j], kr[i * 4 + j]);
+        }
+      }
+
+      // Round keys derived from LL/LR, alternating every two iterations
+      this.rk = [];
+      const r = keyLen === 24 ? 11 : 13;
+      const conStartIdx = gfnRounds * 4;  // Start after GFN_{8,10} constants (in CON word array)
+
+      for (let i = 0; i < r; i++) {
+        const useLL = (i % 4) === 0 || (i % 4) === 1;
+        const L = useLL ? LL : LR;
+        const otherKey = useLL ? kr : kl;
+
+        // Step 1: T <- L XOR CON (4 CON words = 16 bytes)
+        const temp = new Array(16);
+        for (let j = 0; j < 4; j++) {
+          const conWord = conWords[conStartIdx + i * 4 + j];
+          const conBytes = OpCodes.Unpack32BE(conWord);
+          for (let k = 0; k < 4; k++) {
+            temp[j * 4 + k] = OpCodes.XorN(L[j * 4 + k], conBytes[k]);
+          }
+        }
+
+        // Step 2: XOR temp with the complementary key half on ODD iterations
+        if ((i % 2) === 1) {
+          for (let j = 0; j < 16; j++) {
+            temp[j] ^= otherKey[j];
+          }
+        }
+
+        // Step 3: Extract 4 round keys (4 bytes each) from the 16-byte temp
+        this.rk[i * 4] = temp.slice(0, 4);
+        this.rk[i * 4 + 1] = temp.slice(4, 8);
+        this.rk[i * 4 + 2] = temp.slice(8, 12);
+        this.rk[i * 4 + 3] = temp.slice(12, 16);
+
+        // Step 4: L <- Sigma(L) - mutates LL or LR in place for the next round
         this._sigma(L);
       }
     }
@@ -352,59 +485,55 @@
       }
     }
 
-    // Return pre-computed CON constants from RFC 6114 Appendix C
-    // Returns array of 32-bit words (not bytes)
+    // Return the generated CON constants for the given key length (in bytes)
+    // Returns array of 32-bit words (not bytes) - RFC 6114 Appendix C
     _genCon(keyLen) {
-      if (keyLen === 16) {
-        return CON_128;
-      }
-      // TODO: Add CON_192 and CON_256 constants for other key sizes
-      throw new Error(`CON constants not yet implemented for key size ${keyLen}`);
+      if (keyLen === 16) return CON_128;
+      if (keyLen === 24) return CON_192;
+      return CON_256;
     }
 
-    // GFN4 - Generalized Feistel Network with 4 branches
-    // RFC 6114 Section 4.1: GFN_{4,r}
-    // Input: byte array (16 bytes)
-    // conWords: array of 32-bit words to use as round keys
+    // GFN_{d,r} - Generalized Feistel Network with d branches (d=4 or d=8)
+    // RFC 6114 Section 4.1: GFN_{4,r} is used to derive L for 128-bit keys;
+    // GFN_{8,10} is used to derive LL|LR for 192/256-bit keys.
+    // x: byte array (d*4 bytes)
+    // conWords: array of 32-bit words to use as round keys (d/2 per round)
     // r: number of rounds
-    // Output: byte array (16 bytes)
-    _gfn4(x, conWords, r) {
+    // Output: byte array (d*4 bytes)
+    _gfn(x, conWords, r, d) {
       // Convert input bytes to 32-bit words (big-endian per RFC 6114)
-      let t0 = OpCodes.Pack32BE(x[0], x[1], x[2], x[3]);
-      let t1 = OpCodes.Pack32BE(x[4], x[5], x[6], x[7]);
-      let t2 = OpCodes.Pack32BE(x[8], x[9], x[10], x[11]);
-      let t3 = OpCodes.Pack32BE(x[12], x[13], x[14], x[15]);
+      const t = new Array(d);
+      for (let branch = 0; branch < d; branch++) {
+        t[branch] = OpCodes.Pack32BE(x[branch * 4], x[branch * 4 + 1], x[branch * 4 + 2], x[branch * 4 + 3]);
+      }
 
+      const half = d / 2;  // CON words (and F-function applications) consumed per round
       for (let i = 0; i < r; i++) {
-        // Each round uses 2 CON words: conWords[2i] and conWords[2i+1]
-        // Convert 32-bit words to byte arrays for F0/F1
-        const rk0 = OpCodes.Unpack32BE(conWords[i * 2]);
-        const rk1 = OpCodes.Unpack32BE(conWords[i * 2 + 1]);
+        for (let branch = 0; branch < half; branch++) {
+          // Each pair of branches (T_{2b}, T_{2b+1}) is updated with F0 (even b) or F1 (odd b)
+          const rk = OpCodes.Unpack32BE(conWords[i * half + branch]);
+          const srcIdx = branch * 2;
+          const dstIdx = branch * 2 + 1;
+          const fOut = (branch % 2) === 0 ? this._f0(t[srcIdx], rk) : this._f1(t[srcIdx], rk);
+          t[dstIdx] = OpCodes.Xor32(t[dstIdx], fOut);
+        }
 
-        // T1 <- T1 XOR F0(RK_{2i}, T0)
-        t1 ^= this._f0(t0, rk0);
-
-        // T3 <- T3 XOR F1(RK_{2i+1}, T2)
-        t3 ^= this._f1(t2, rk1);
-
-        // Rotate: T0|T1|T2|T3 <- T1|T2|T3|T0
-        // Skip rotation on last round (Sony reference line 197: if(r) check)
+        // Rotate: T0|T1|...|T_{d-1} <- T1|...|T_{d-1}|T0
+        // Skip rotation on last round (equivalent to the RFC's post-loop un-rotate)
         if (i < r - 1) {
-          const tmp = t0;
-          t0 = t1;
-          t1 = t2;
-          t2 = t3;
-          t3 = tmp;
+          const tmp = t[0];
+          for (let branch = 0; branch < d - 1; branch++) {
+            t[branch] = t[branch + 1];
+          }
+          t[d - 1] = tmp;
         }
       }
 
-      // Output: T0|T1|T2|T3 (no post-rotation needed)
       // Convert 32-bit words back to bytes (big-endian per RFC 6114)
       const result = [];
-      result.push(...OpCodes.Unpack32BE(t0));
-      result.push(...OpCodes.Unpack32BE(t1));
-      result.push(...OpCodes.Unpack32BE(t2));
-      result.push(...OpCodes.Unpack32BE(t3));
+      for (let branch = 0; branch < d; branch++) {
+        result.push(...OpCodes.Unpack32BE(t[branch]));
+      }
       return result;
     }
 

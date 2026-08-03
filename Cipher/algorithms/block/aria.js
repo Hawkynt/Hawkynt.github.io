@@ -85,6 +85,28 @@
       // Test vectors from RFC 5794 (official)
       this.tests = [
         {
+          text: "DarkCrypt ARIA vector 1/zero",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("c20857dd9106ddde286ec59fa98d77cc")
+        },
+        {
+          text: "DarkCrypt ARIA vector 2/incr",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
+          expected: OpCodes.Hex8ToBytes("7a859561ff6f42df04a242bfea4fe9dc")
+        },
+        {
+          text: "DarkCrypt ARIA vector 3/incr2",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("101112131415161718191a1b1c1d1e1f"),
+          key: OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"),
+          expected: OpCodes.Hex8ToBytes("7570fa11eef8439511faeeaed33d511d")
+        },
+
+        {
           text: 'RFC 5794 ARIA-128 Test Vector',
           uri: 'https://tools.ietf.org/rfc/rfc5794.txt',
           input: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),

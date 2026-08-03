@@ -101,6 +101,28 @@
       // Test vectors from RFC 3713 - Official IETF standard
       this.tests = [
         {
+          text: "DarkCrypt Camellia vector 1/zero",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("396154111adefc500cf6e5c99038bc17")
+        },
+        {
+          text: "DarkCrypt Camellia vector 2/incr",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
+          expected: OpCodes.Hex8ToBytes("5f77dc44e5e6701e8755c1fa176e2434")
+        },
+        {
+          text: "DarkCrypt Camellia vector 3/incr2",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("101112131415161718191a1b1c1d1e1f"),
+          key: OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"),
+          expected: OpCodes.Hex8ToBytes("959eae4726473536932172ad26025b2a")
+        },
+
+        {
           text: 'RFC 3713 Camellia-128 Test Vector',
           uri: 'https://tools.ietf.org/rfc/rfc3713.txt',
           input: OpCodes.Hex8ToBytes('0123456789abcdeffedcba9876543210'),

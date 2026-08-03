@@ -191,47 +191,47 @@
   // Shared CAST F-functions (used by both CAST-128 and CAST-256)
   // Per RFC 2144/2612: F1 uses addition, F2 uses XOR, F3 uses subtraction
   function CAST_F1(x, km, kr, S1, S2, S3, S4) {
-    x = (km + x) >>> 0;
-    x = OpCodes.RotL32(x, kr & 0x1f);
+    x = OpCodes.ToUint32(km + x);
+    x = OpCodes.RotL32(x, OpCodes.And32(kr, 0x1f));
 
-    const a = (x >>> 24) & 0xFF;
-    const b = (x >>> 16) & 0xFF;
-    const c = (x >>> 8) & 0xFF;
-    const d = x & 0xFF;
+    const a = OpCodes.GetByte(x, 3);
+    const b = OpCodes.GetByte(x, 2);
+    const c = OpCodes.GetByte(x, 1);
+    const d = OpCodes.GetByte(x, 0);
 
-    let result = S1[a] ^ S2[b];
-    result = (result - S3[c]) >>> 0;
-    result = (result + S4[d]) >>> 0;
+    let result = OpCodes.Xor32(S1[a], S2[b]);
+    result = OpCodes.ToUint32(result - S3[c]);
+    result = OpCodes.ToUint32(result + S4[d]);
     return result;
   }
 
   function CAST_F2(x, km, kr, S1, S2, S3, S4) {
-    x = (x ^ km) >>> 0;
-    x = OpCodes.RotL32(x, kr & 0x1f);
+    x = OpCodes.Xor32(x, km);
+    x = OpCodes.RotL32(x, OpCodes.And32(kr, 0x1f));
 
-    const a = (x >>> 24) & 0xFF;
-    const b = (x >>> 16) & 0xFF;
-    const c = (x >>> 8) & 0xFF;
-    const d = x & 0xFF;
+    const a = OpCodes.GetByte(x, 3);
+    const b = OpCodes.GetByte(x, 2);
+    const c = OpCodes.GetByte(x, 1);
+    const d = OpCodes.GetByte(x, 0);
 
-    let result = (S1[a] - S2[b]) >>> 0;
-    result = (result + S3[c]) >>> 0;
-    result = result ^ S4[d];
-    return result >>> 0;
+    let result = OpCodes.ToUint32(S1[a] - S2[b]);
+    result = OpCodes.ToUint32(result + S3[c]);
+    result = OpCodes.Xor32(result, S4[d]);
+    return result;
   }
 
   function CAST_F3(x, km, kr, S1, S2, S3, S4) {
-    x = (km - x) >>> 0;
-    x = OpCodes.RotL32(x, kr & 0x1f);
+    x = OpCodes.ToUint32(km - x);
+    x = OpCodes.RotL32(x, OpCodes.And32(kr, 0x1f));
 
-    const a = (x >>> 24) & 0xFF;
-    const b = (x >>> 16) & 0xFF;
-    const c = (x >>> 8) & 0xFF;
-    const d = x & 0xFF;
+    const a = OpCodes.GetByte(x, 3);
+    const b = OpCodes.GetByte(x, 2);
+    const c = OpCodes.GetByte(x, 1);
+    const d = OpCodes.GetByte(x, 0);
 
-    let result = (S1[a] + S2[b]) >>> 0;
-    result = result ^ S3[c];
-    result = (result - S4[d]) >>> 0;
+    let result = OpCodes.ToUint32(S1[a] + S2[b]);
+    result = OpCodes.Xor32(result, S3[c]);
+    result = OpCodes.ToUint32(result - S4[d]);
     return result;
   }
 
@@ -261,7 +261,7 @@
       this.SupportedBlockSizes = [new KeySize(8, 8, 0)];
 
       this.documentation = [
-        new LinkItem('RFC 2144 - The CAST-128 Encryption Algorithm', 'https://tools.ietf.org/rfc/rfc2144.txt'),
+        new LinkItem('RFC 2144 - The CAST-128 Encryption Algorithm', 'https://www.rfc-editor.org/rfc/rfc2144.txt'),
         new LinkItem('CAST-128 Security Analysis', 'https://www.schneier.com/academic/archives/1998/09/cryptanalysis_of_cas.html')
       ];
 
@@ -273,24 +273,45 @@
       this.tests = [
         {
           text: "RFC 2144 official test vector - 128-bit key",
-          uri: "https://tools.ietf.org/rfc/rfc2144.txt",
+          uri: "https://www.rfc-editor.org/rfc/rfc2144.txt",
           input: OpCodes.Hex8ToBytes("0123456789ABCDEF"),
           key: OpCodes.Hex8ToBytes("0123456712345678234567893456789A"),
           expected: OpCodes.Hex8ToBytes("238B4FE5847E44B2")
         },
         {
           text: "RFC 2144 official test vector - 80-bit key",
-          uri: "https://tools.ietf.org/rfc/rfc2144.txt",
+          uri: "https://www.rfc-editor.org/rfc/rfc2144.txt",
           input: OpCodes.Hex8ToBytes("0123456789ABCDEF"),
           key: OpCodes.Hex8ToBytes("01234567123456782345"),
           expected: OpCodes.Hex8ToBytes("EB6A711A2C02271B")
         },
         {
           text: "RFC 2144 official test vector - 40-bit key",
-          uri: "https://tools.ietf.org/rfc/rfc2144.txt",
+          uri: "https://www.rfc-editor.org/rfc/rfc2144.txt",
           input: OpCodes.Hex8ToBytes("0123456789ABCDEF"),
           key: OpCodes.Hex8ToBytes("0123456712"),
           expected: OpCodes.Hex8ToBytes("7AC816D16E9B302E")
+        },
+        {
+          text: "DarkCrypt Cast128 — zero key/plaintext",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("13c502b354d53871")
+        },
+        {
+          text: "DarkCrypt Cast128 — incrementing key/plaintext",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("0001020304050607"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          expected: OpCodes.Hex8ToBytes("20b42d77a79ebae5")
+        },
+        {
+          text: "DarkCrypt Cast128 — shifted incrementing key/plaintext",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("1011121314151617"),
+          key: OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f10"),
+          expected: OpCodes.Hex8ToBytes("06613472ef700f8e")
         }
       ];
     }
@@ -570,7 +591,7 @@
 
       // Copy key into x array (as BYTES, not words!)
       for (let i = 0; i < key.length; ++i) {
-        x[i] = key[i] & 0xFF;
+        x[i] = OpCodes.ToByte(key[i]);
       }
 
       // Pad with zeros if necessary
@@ -597,165 +618,165 @@
       let x8B = IntsTo32bits(x, 0x8);
       let xCF = IntsTo32bits(x, 0xC);
 
-      let z03 = (x03 ^ this.S5[x[0xD]] ^ this.S6[x[0xF]] ^ this.S7[x[0xC]] ^ this.S8[x[0xE]] ^ this.S7[x[0x8]]) >>> 0;
+      let z03 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(x03, this.S5[x[0xD]]), this.S6[x[0xF]]), this.S7[x[0xC]]), this.S8[x[0xE]]), this.S7[x[0x8]]);
       Bits32ToInts(z03, z, 0x0);
-      let z47 = (x8B ^ this.S5[z[0x0]] ^ this.S6[z[0x2]] ^ this.S7[z[0x1]] ^ this.S8[z[0x3]] ^ this.S8[x[0xA]]) >>> 0;
+      let z47 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(x8B, this.S5[z[0x0]]), this.S6[z[0x2]]), this.S7[z[0x1]]), this.S8[z[0x3]]), this.S8[x[0xA]]);
       Bits32ToInts(z47, z, 0x4);
-      let z8B = (xCF ^ this.S5[z[0x7]] ^ this.S6[z[0x6]] ^ this.S7[z[0x5]] ^ this.S8[z[0x4]] ^ this.S5[x[0x9]]) >>> 0;
+      let z8B = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(xCF, this.S5[z[0x7]]), this.S6[z[0x6]]), this.S7[z[0x5]]), this.S8[z[0x4]]), this.S5[x[0x9]]);
       Bits32ToInts(z8B, z, 0x8);
-      let zCF = (x47 ^ this.S5[z[0xA]] ^ this.S6[z[0x9]] ^ this.S7[z[0xB]] ^ this.S8[z[0x8]] ^ this.S6[x[0xB]]) >>> 0;
+      let zCF = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(x47, this.S5[z[0xA]]), this.S6[z[0x9]]), this.S7[z[0xB]]), this.S8[z[0x8]]), this.S6[x[0xB]]);
       Bits32ToInts(zCF, z, 0xC);
 
-      this.Km[1] = (this.S5[z[0x8]] ^ this.S6[z[0x9]] ^ this.S7[z[0x7]] ^ this.S8[z[0x6]] ^ this.S5[z[0x2]]) >>> 0;
-      this.Km[2] = (this.S5[z[0xA]] ^ this.S6[z[0xB]] ^ this.S7[z[0x5]] ^ this.S8[z[0x4]] ^ this.S6[z[0x6]]) >>> 0;
-      this.Km[3] = (this.S5[z[0xC]] ^ this.S6[z[0xD]] ^ this.S7[z[0x3]] ^ this.S8[z[0x2]] ^ this.S7[z[0x9]]) >>> 0;
-      this.Km[4] = (this.S5[z[0xE]] ^ this.S6[z[0xF]] ^ this.S7[z[0x1]] ^ this.S8[z[0x0]] ^ this.S8[z[0xC]]) >>> 0;
+      this.Km[1] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.S5[z[0x8]], this.S6[z[0x9]]), this.S7[z[0x7]]), this.S8[z[0x6]]), this.S5[z[0x2]]);
+      this.Km[2] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.S5[z[0xA]], this.S6[z[0xB]]), this.S7[z[0x5]]), this.S8[z[0x4]]), this.S6[z[0x6]]);
+      this.Km[3] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.S5[z[0xC]], this.S6[z[0xD]]), this.S7[z[0x3]]), this.S8[z[0x2]]), this.S7[z[0x9]]);
+      this.Km[4] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.S5[z[0xE]], this.S6[z[0xF]]), this.S7[z[0x1]]), this.S8[z[0x0]]), this.S8[z[0xC]]);
 
       z03 = IntsTo32bits(z, 0x0);
       z47 = IntsTo32bits(z, 0x4);
       z8B = IntsTo32bits(z, 0x8);
       zCF = IntsTo32bits(z, 0xC);
-      x03 = (z8B ^ this.S5[z[0x5]] ^ this.S6[z[0x7]] ^ this.S7[z[0x4]] ^ this.S8[z[0x6]] ^ this.S7[z[0x0]]) >>> 0;
+      x03 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(z8B, this.S5[z[0x5]]), this.S6[z[0x7]]), this.S7[z[0x4]]), this.S8[z[0x6]]), this.S7[z[0x0]]);
       Bits32ToInts(x03, x, 0x0);
-      x47 = (z03 ^ this.S5[x[0x0]] ^ this.S6[x[0x2]] ^ this.S7[x[0x1]] ^ this.S8[x[0x3]] ^ this.S8[z[0x2]]) >>> 0;
+      x47 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(z03, this.S5[x[0x0]]), this.S6[x[0x2]]), this.S7[x[0x1]]), this.S8[x[0x3]]), this.S8[z[0x2]]);
       Bits32ToInts(x47, x, 0x4);
-      x8B = (z47 ^ this.S5[x[0x7]] ^ this.S6[x[0x6]] ^ this.S7[x[0x5]] ^ this.S8[x[0x4]] ^ this.S5[z[0x1]]) >>> 0;
+      x8B = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(z47, this.S5[x[0x7]]), this.S6[x[0x6]]), this.S7[x[0x5]]), this.S8[x[0x4]]), this.S5[z[0x1]]);
       Bits32ToInts(x8B, x, 0x8);
-      xCF = (zCF ^ this.S5[x[0xA]] ^ this.S6[x[0x9]] ^ this.S7[x[0xB]] ^ this.S8[x[0x8]] ^ this.S6[z[0x3]]) >>> 0;
+      xCF = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(zCF, this.S5[x[0xA]]), this.S6[x[0x9]]), this.S7[x[0xB]]), this.S8[x[0x8]]), this.S6[z[0x3]]);
       Bits32ToInts(xCF, x, 0xC);
 
-      this.Km[5] = (this.S5[x[0x3]] ^ this.S6[x[0x2]] ^ this.S7[x[0xC]] ^ this.S8[x[0xD]] ^ this.S5[x[0x8]]) >>> 0;
-      this.Km[6] = (this.S5[x[0x1]] ^ this.S6[x[0x0]] ^ this.S7[x[0xE]] ^ this.S8[x[0xF]] ^ this.S6[x[0xD]]) >>> 0;
-      this.Km[7] = (this.S5[x[0x7]] ^ this.S6[x[0x6]] ^ this.S7[x[0x8]] ^ this.S8[x[0x9]] ^ this.S7[x[0x3]]) >>> 0;
-      this.Km[8] = (this.S5[x[0x5]] ^ this.S6[x[0x4]] ^ this.S7[x[0xA]] ^ this.S8[x[0xB]] ^ this.S8[x[0x7]]) >>> 0;
+      this.Km[5] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.S5[x[0x3]], this.S6[x[0x2]]), this.S7[x[0xC]]), this.S8[x[0xD]]), this.S5[x[0x8]]);
+      this.Km[6] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.S5[x[0x1]], this.S6[x[0x0]]), this.S7[x[0xE]]), this.S8[x[0xF]]), this.S6[x[0xD]]);
+      this.Km[7] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.S5[x[0x7]], this.S6[x[0x6]]), this.S7[x[0x8]]), this.S8[x[0x9]]), this.S7[x[0x3]]);
+      this.Km[8] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.S5[x[0x5]], this.S6[x[0x4]]), this.S7[x[0xA]]), this.S8[x[0xB]]), this.S8[x[0x7]]);
 
       x03 = IntsTo32bits(x, 0x0);
       x47 = IntsTo32bits(x, 0x4);
       x8B = IntsTo32bits(x, 0x8);
       xCF = IntsTo32bits(x, 0xC);
-      z03 = (x03 ^ this.S5[x[0xD]] ^ this.S6[x[0xF]] ^ this.S7[x[0xC]] ^ this.S8[x[0xE]] ^ this.S7[x[0x8]]) >>> 0;
+      z03 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(x03, this.S5[x[0xD]]), this.S6[x[0xF]]), this.S7[x[0xC]]), this.S8[x[0xE]]), this.S7[x[0x8]]);
       Bits32ToInts(z03, z, 0x0);
-      z47 = (x8B ^ this.S5[z[0x0]] ^ this.S6[z[0x2]] ^ this.S7[z[0x1]] ^ this.S8[z[0x3]] ^ this.S8[x[0xA]]) >>> 0;
+      z47 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(x8B, this.S5[z[0x0]]), this.S6[z[0x2]]), this.S7[z[0x1]]), this.S8[z[0x3]]), this.S8[x[0xA]]);
       Bits32ToInts(z47, z, 0x4);
-      z8B = (xCF ^ this.S5[z[0x7]] ^ this.S6[z[0x6]] ^ this.S7[z[0x5]] ^ this.S8[z[0x4]] ^ this.S5[x[0x9]]) >>> 0;
+      z8B = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(xCF, this.S5[z[0x7]]), this.S6[z[0x6]]), this.S7[z[0x5]]), this.S8[z[0x4]]), this.S5[x[0x9]]);
       Bits32ToInts(z8B, z, 0x8);
-      zCF = (x47 ^ this.S5[z[0xA]] ^ this.S6[z[0x9]] ^ this.S7[z[0xB]] ^ this.S8[z[0x8]] ^ this.S6[x[0xB]]) >>> 0;
+      zCF = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(x47, this.S5[z[0xA]]), this.S6[z[0x9]]), this.S7[z[0xB]]), this.S8[z[0x8]]), this.S6[x[0xB]]);
       Bits32ToInts(zCF, z, 0xC);
 
-      this.Km[9] = (this.S5[z[0x3]] ^ this.S6[z[0x2]] ^ this.S7[z[0xC]] ^ this.S8[z[0xD]] ^ this.S5[z[0x9]]) >>> 0;
-      this.Km[10] = (this.S5[z[0x1]] ^ this.S6[z[0x0]] ^ this.S7[z[0xE]] ^ this.S8[z[0xF]] ^ this.S6[z[0xC]]) >>> 0;
-      this.Km[11] = (this.S5[z[0x7]] ^ this.S6[z[0x6]] ^ this.S7[z[0x8]] ^ this.S8[z[0x9]] ^ this.S7[z[0x2]]) >>> 0;
-      this.Km[12] = (this.S5[z[0x5]] ^ this.S6[z[0x4]] ^ this.S7[z[0xA]] ^ this.S8[z[0xB]] ^ this.S8[z[0x6]]) >>> 0;
+      this.Km[9] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.S5[z[0x3]], this.S6[z[0x2]]), this.S7[z[0xC]]), this.S8[z[0xD]]), this.S5[z[0x9]]);
+      this.Km[10] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.S5[z[0x1]], this.S6[z[0x0]]), this.S7[z[0xE]]), this.S8[z[0xF]]), this.S6[z[0xC]]);
+      this.Km[11] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.S5[z[0x7]], this.S6[z[0x6]]), this.S7[z[0x8]]), this.S8[z[0x9]]), this.S7[z[0x2]]);
+      this.Km[12] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.S5[z[0x5]], this.S6[z[0x4]]), this.S7[z[0xA]]), this.S8[z[0xB]]), this.S8[z[0x6]]);
 
       z03 = IntsTo32bits(z, 0x0);
       z47 = IntsTo32bits(z, 0x4);
       z8B = IntsTo32bits(z, 0x8);
       zCF = IntsTo32bits(z, 0xC);
-      x03 = (z8B ^ this.S5[z[0x5]] ^ this.S6[z[0x7]] ^ this.S7[z[0x4]] ^ this.S8[z[0x6]] ^ this.S7[z[0x0]]) >>> 0;
+      x03 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(z8B, this.S5[z[0x5]]), this.S6[z[0x7]]), this.S7[z[0x4]]), this.S8[z[0x6]]), this.S7[z[0x0]]);
       Bits32ToInts(x03, x, 0x0);
-      x47 = (z03 ^ this.S5[x[0x0]] ^ this.S6[x[0x2]] ^ this.S7[x[0x1]] ^ this.S8[x[0x3]] ^ this.S8[z[0x2]]) >>> 0;
+      x47 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(z03, this.S5[x[0x0]]), this.S6[x[0x2]]), this.S7[x[0x1]]), this.S8[x[0x3]]), this.S8[z[0x2]]);
       Bits32ToInts(x47, x, 0x4);
-      x8B = (z47 ^ this.S5[x[0x7]] ^ this.S6[x[0x6]] ^ this.S7[x[0x5]] ^ this.S8[x[0x4]] ^ this.S5[z[0x1]]) >>> 0;
+      x8B = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(z47, this.S5[x[0x7]]), this.S6[x[0x6]]), this.S7[x[0x5]]), this.S8[x[0x4]]), this.S5[z[0x1]]);
       Bits32ToInts(x8B, x, 0x8);
-      xCF = (zCF ^ this.S5[x[0xA]] ^ this.S6[x[0x9]] ^ this.S7[x[0xB]] ^ this.S8[x[0x8]] ^ this.S6[z[0x3]]) >>> 0;
+      xCF = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(zCF, this.S5[x[0xA]]), this.S6[x[0x9]]), this.S7[x[0xB]]), this.S8[x[0x8]]), this.S6[z[0x3]]);
       Bits32ToInts(xCF, x, 0xC);
 
-      this.Km[13] = (this.S5[x[0x8]] ^ this.S6[x[0x9]] ^ this.S7[x[0x7]] ^ this.S8[x[0x6]] ^ this.S5[x[0x3]]) >>> 0;
-      this.Km[14] = (this.S5[x[0xA]] ^ this.S6[x[0xB]] ^ this.S7[x[0x5]] ^ this.S8[x[0x4]] ^ this.S6[x[0x7]]) >>> 0;
-      this.Km[15] = (this.S5[x[0xC]] ^ this.S6[x[0xD]] ^ this.S7[x[0x3]] ^ this.S8[x[0x2]] ^ this.S7[x[0x8]]) >>> 0;
-      this.Km[16] = (this.S5[x[0xE]] ^ this.S6[x[0xF]] ^ this.S7[x[0x1]] ^ this.S8[x[0x0]] ^ this.S8[x[0xD]]) >>> 0;
+      this.Km[13] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.S5[x[0x8]], this.S6[x[0x9]]), this.S7[x[0x7]]), this.S8[x[0x6]]), this.S5[x[0x3]]);
+      this.Km[14] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.S5[x[0xA]], this.S6[x[0xB]]), this.S7[x[0x5]]), this.S8[x[0x4]]), this.S6[x[0x7]]);
+      this.Km[15] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.S5[x[0xC]], this.S6[x[0xD]]), this.S7[x[0x3]]), this.S8[x[0x2]]), this.S7[x[0x8]]);
+      this.Km[16] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.S5[x[0xE]], this.S6[x[0xF]]), this.S7[x[0x1]]), this.S8[x[0x0]]), this.S8[x[0xD]]);
 
       // Generate rotation keys Kr (uses separate z/x transformations from Km)
       x03 = IntsTo32bits(x, 0x0);
       x47 = IntsTo32bits(x, 0x4);
       x8B = IntsTo32bits(x, 0x8);
       xCF = IntsTo32bits(x, 0xC);
-      z03 = (x03 ^ this.S5[x[0xD]] ^ this.S6[x[0xF]] ^ this.S7[x[0xC]] ^ this.S8[x[0xE]] ^ this.S7[x[0x8]]) >>> 0;
+      z03 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(x03, this.S5[x[0xD]]), this.S6[x[0xF]]), this.S7[x[0xC]]), this.S8[x[0xE]]), this.S7[x[0x8]]);
       Bits32ToInts(z03, z, 0x0);
-      z47 = (x8B ^ this.S5[z[0x0]] ^ this.S6[z[0x2]] ^ this.S7[z[0x1]] ^ this.S8[z[0x3]] ^ this.S8[x[0xA]]) >>> 0;
+      z47 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(x8B, this.S5[z[0x0]]), this.S6[z[0x2]]), this.S7[z[0x1]]), this.S8[z[0x3]]), this.S8[x[0xA]]);
       Bits32ToInts(z47, z, 0x4);
-      z8B = (xCF ^ this.S5[z[0x7]] ^ this.S6[z[0x6]] ^ this.S7[z[0x5]] ^ this.S8[z[0x4]] ^ this.S5[x[0x9]]) >>> 0;
+      z8B = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(xCF, this.S5[z[0x7]]), this.S6[z[0x6]]), this.S7[z[0x5]]), this.S8[z[0x4]]), this.S5[x[0x9]]);
       Bits32ToInts(z8B, z, 0x8);
-      zCF = (x47 ^ this.S5[z[0xA]] ^ this.S6[z[0x9]] ^ this.S7[z[0xB]] ^ this.S8[z[0x8]] ^ this.S6[x[0xB]]) >>> 0;
+      zCF = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(x47, this.S5[z[0xA]]), this.S6[z[0x9]]), this.S7[z[0xB]]), this.S8[z[0x8]]), this.S6[x[0xB]]);
       Bits32ToInts(zCF, z, 0xC);
 
-      this.Kr[1] = ((this.S5[z[0x8]] ^ this.S6[z[0x9]] ^ this.S7[z[0x7]] ^ this.S8[z[0x6]] ^ this.S5[z[0x2]]) & 0x1f);
-      this.Kr[2] = ((this.S5[z[0xA]] ^ this.S6[z[0xB]] ^ this.S7[z[0x5]] ^ this.S8[z[0x4]] ^ this.S6[z[0x6]]) & 0x1f);
-      this.Kr[3] = ((this.S5[z[0xC]] ^ this.S6[z[0xD]] ^ this.S7[z[0x3]] ^ this.S8[z[0x2]] ^ this.S7[z[0x9]]) & 0x1f);
-      this.Kr[4] = ((this.S5[z[0xE]] ^ this.S6[z[0xF]] ^ this.S7[z[0x1]] ^ this.S8[z[0x0]] ^ this.S8[z[0xC]]) & 0x1f);
+      this.Kr[1] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.S5[z[0x8]], this.S6[z[0x9]]), this.S7[z[0x7]]), this.S8[z[0x6]]), this.S5[z[0x2]]), 0x1f);
+      this.Kr[2] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.S5[z[0xA]], this.S6[z[0xB]]), this.S7[z[0x5]]), this.S8[z[0x4]]), this.S6[z[0x6]]), 0x1f);
+      this.Kr[3] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.S5[z[0xC]], this.S6[z[0xD]]), this.S7[z[0x3]]), this.S8[z[0x2]]), this.S7[z[0x9]]), 0x1f);
+      this.Kr[4] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.S5[z[0xE]], this.S6[z[0xF]]), this.S7[z[0x1]]), this.S8[z[0x0]]), this.S8[z[0xC]]), 0x1f);
 
       z03 = IntsTo32bits(z, 0x0);
       z47 = IntsTo32bits(z, 0x4);
       z8B = IntsTo32bits(z, 0x8);
       zCF = IntsTo32bits(z, 0xC);
-      x03 = (z8B ^ this.S5[z[0x5]] ^ this.S6[z[0x7]] ^ this.S7[z[0x4]] ^ this.S8[z[0x6]] ^ this.S7[z[0x0]]) >>> 0;
+      x03 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(z8B, this.S5[z[0x5]]), this.S6[z[0x7]]), this.S7[z[0x4]]), this.S8[z[0x6]]), this.S7[z[0x0]]);
       Bits32ToInts(x03, x, 0x0);
-      x47 = (z03 ^ this.S5[x[0x0]] ^ this.S6[x[0x2]] ^ this.S7[x[0x1]] ^ this.S8[x[0x3]] ^ this.S8[z[0x2]]) >>> 0;
+      x47 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(z03, this.S5[x[0x0]]), this.S6[x[0x2]]), this.S7[x[0x1]]), this.S8[x[0x3]]), this.S8[z[0x2]]);
       Bits32ToInts(x47, x, 0x4);
-      x8B = (z47 ^ this.S5[x[0x7]] ^ this.S6[x[0x6]] ^ this.S7[x[0x5]] ^ this.S8[x[0x4]] ^ this.S5[z[0x1]]) >>> 0;
+      x8B = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(z47, this.S5[x[0x7]]), this.S6[x[0x6]]), this.S7[x[0x5]]), this.S8[x[0x4]]), this.S5[z[0x1]]);
       Bits32ToInts(x8B, x, 0x8);
-      xCF = (zCF ^ this.S5[x[0xA]] ^ this.S6[x[0x9]] ^ this.S7[x[0xB]] ^ this.S8[x[0x8]] ^ this.S6[z[0x3]]) >>> 0;
+      xCF = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(zCF, this.S5[x[0xA]]), this.S6[x[0x9]]), this.S7[x[0xB]]), this.S8[x[0x8]]), this.S6[z[0x3]]);
       Bits32ToInts(xCF, x, 0xC);
 
-      this.Kr[5] = ((this.S5[x[0x3]] ^ this.S6[x[0x2]] ^ this.S7[x[0xC]] ^ this.S8[x[0xD]] ^ this.S5[x[0x8]]) & 0x1f);
-      this.Kr[6] = ((this.S5[x[0x1]] ^ this.S6[x[0x0]] ^ this.S7[x[0xE]] ^ this.S8[x[0xF]] ^ this.S6[x[0xD]]) & 0x1f);
-      this.Kr[7] = ((this.S5[x[0x7]] ^ this.S6[x[0x6]] ^ this.S7[x[0x8]] ^ this.S8[x[0x9]] ^ this.S7[x[0x3]]) & 0x1f);
-      this.Kr[8] = ((this.S5[x[0x5]] ^ this.S6[x[0x4]] ^ this.S7[x[0xA]] ^ this.S8[x[0xB]] ^ this.S8[x[0x7]]) & 0x1f);
+      this.Kr[5] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.S5[x[0x3]], this.S6[x[0x2]]), this.S7[x[0xC]]), this.S8[x[0xD]]), this.S5[x[0x8]]), 0x1f);
+      this.Kr[6] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.S5[x[0x1]], this.S6[x[0x0]]), this.S7[x[0xE]]), this.S8[x[0xF]]), this.S6[x[0xD]]), 0x1f);
+      this.Kr[7] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.S5[x[0x7]], this.S6[x[0x6]]), this.S7[x[0x8]]), this.S8[x[0x9]]), this.S7[x[0x3]]), 0x1f);
+      this.Kr[8] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.S5[x[0x5]], this.S6[x[0x4]]), this.S7[x[0xA]]), this.S8[x[0xB]]), this.S8[x[0x7]]), 0x1f);
 
       x03 = IntsTo32bits(x, 0x0);
       x47 = IntsTo32bits(x, 0x4);
       x8B = IntsTo32bits(x, 0x8);
       xCF = IntsTo32bits(x, 0xC);
-      z03 = (x03 ^ this.S5[x[0xD]] ^ this.S6[x[0xF]] ^ this.S7[x[0xC]] ^ this.S8[x[0xE]] ^ this.S7[x[0x8]]) >>> 0;
+      z03 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(x03, this.S5[x[0xD]]), this.S6[x[0xF]]), this.S7[x[0xC]]), this.S8[x[0xE]]), this.S7[x[0x8]]);
       Bits32ToInts(z03, z, 0x0);
-      z47 = (x8B ^ this.S5[z[0x0]] ^ this.S6[z[0x2]] ^ this.S7[z[0x1]] ^ this.S8[z[0x3]] ^ this.S8[x[0xA]]) >>> 0;
+      z47 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(x8B, this.S5[z[0x0]]), this.S6[z[0x2]]), this.S7[z[0x1]]), this.S8[z[0x3]]), this.S8[x[0xA]]);
       Bits32ToInts(z47, z, 0x4);
-      z8B = (xCF ^ this.S5[z[0x7]] ^ this.S6[z[0x6]] ^ this.S7[z[0x5]] ^ this.S8[z[0x4]] ^ this.S5[x[0x9]]) >>> 0;
+      z8B = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(xCF, this.S5[z[0x7]]), this.S6[z[0x6]]), this.S7[z[0x5]]), this.S8[z[0x4]]), this.S5[x[0x9]]);
       Bits32ToInts(z8B, z, 0x8);
-      zCF = (x47 ^ this.S5[z[0xA]] ^ this.S6[z[0x9]] ^ this.S7[z[0xB]] ^ this.S8[z[0x8]] ^ this.S6[x[0xB]]) >>> 0;
+      zCF = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(x47, this.S5[z[0xA]]), this.S6[z[0x9]]), this.S7[z[0xB]]), this.S8[z[0x8]]), this.S6[x[0xB]]);
       Bits32ToInts(zCF, z, 0xC);
 
-      this.Kr[9] = ((this.S5[z[0x3]] ^ this.S6[z[0x2]] ^ this.S7[z[0xC]] ^ this.S8[z[0xD]] ^ this.S5[z[0x9]]) & 0x1f);
-      this.Kr[10] = ((this.S5[z[0x1]] ^ this.S6[z[0x0]] ^ this.S7[z[0xE]] ^ this.S8[z[0xF]] ^ this.S6[z[0xC]]) & 0x1f);
-      this.Kr[11] = ((this.S5[z[0x7]] ^ this.S6[z[0x6]] ^ this.S7[z[0x8]] ^ this.S8[z[0x9]] ^ this.S7[z[0x2]]) & 0x1f);
-      this.Kr[12] = ((this.S5[z[0x5]] ^ this.S6[z[0x4]] ^ this.S7[z[0xA]] ^ this.S8[z[0xB]] ^ this.S8[z[0x6]]) & 0x1f);
+      this.Kr[9] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.S5[z[0x3]], this.S6[z[0x2]]), this.S7[z[0xC]]), this.S8[z[0xD]]), this.S5[z[0x9]]), 0x1f);
+      this.Kr[10] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.S5[z[0x1]], this.S6[z[0x0]]), this.S7[z[0xE]]), this.S8[z[0xF]]), this.S6[z[0xC]]), 0x1f);
+      this.Kr[11] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.S5[z[0x7]], this.S6[z[0x6]]), this.S7[z[0x8]]), this.S8[z[0x9]]), this.S7[z[0x2]]), 0x1f);
+      this.Kr[12] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.S5[z[0x5]], this.S6[z[0x4]]), this.S7[z[0xA]]), this.S8[z[0xB]]), this.S8[z[0x6]]), 0x1f);
 
       z03 = IntsTo32bits(z, 0x0);
       z47 = IntsTo32bits(z, 0x4);
       z8B = IntsTo32bits(z, 0x8);
       zCF = IntsTo32bits(z, 0xC);
-      x03 = (z8B ^ this.S5[z[0x5]] ^ this.S6[z[0x7]] ^ this.S7[z[0x4]] ^ this.S8[z[0x6]] ^ this.S7[z[0x0]]) >>> 0;
+      x03 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(z8B, this.S5[z[0x5]]), this.S6[z[0x7]]), this.S7[z[0x4]]), this.S8[z[0x6]]), this.S7[z[0x0]]);
       Bits32ToInts(x03, x, 0x0);
-      x47 = (z03 ^ this.S5[x[0x0]] ^ this.S6[x[0x2]] ^ this.S7[x[0x1]] ^ this.S8[x[0x3]] ^ this.S8[z[0x2]]) >>> 0;
+      x47 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(z03, this.S5[x[0x0]]), this.S6[x[0x2]]), this.S7[x[0x1]]), this.S8[x[0x3]]), this.S8[z[0x2]]);
       Bits32ToInts(x47, x, 0x4);
-      x8B = (z47 ^ this.S5[x[0x7]] ^ this.S6[x[0x6]] ^ this.S7[x[0x5]] ^ this.S8[x[0x4]] ^ this.S5[z[0x1]]) >>> 0;
+      x8B = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(z47, this.S5[x[0x7]]), this.S6[x[0x6]]), this.S7[x[0x5]]), this.S8[x[0x4]]), this.S5[z[0x1]]);
       Bits32ToInts(x8B, x, 0x8);
-      xCF = (zCF ^ this.S5[x[0xA]] ^ this.S6[x[0x9]] ^ this.S7[x[0xB]] ^ this.S8[x[0x8]] ^ this.S6[z[0x3]]) >>> 0;
+      xCF = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(zCF, this.S5[x[0xA]]), this.S6[x[0x9]]), this.S7[x[0xB]]), this.S8[x[0x8]]), this.S6[z[0x3]]);
       Bits32ToInts(xCF, x, 0xC);
 
-      this.Kr[13] = ((this.S5[x[0x8]] ^ this.S6[x[0x9]] ^ this.S7[x[0x7]] ^ this.S8[x[0x6]] ^ this.S5[x[0x3]]) & 0x1f);
-      this.Kr[14] = ((this.S5[x[0xA]] ^ this.S6[x[0xB]] ^ this.S7[x[0x5]] ^ this.S8[x[0x4]] ^ this.S6[x[0x7]]) & 0x1f);
-      this.Kr[15] = ((this.S5[x[0xC]] ^ this.S6[x[0xD]] ^ this.S7[x[0x3]] ^ this.S8[x[0x2]] ^ this.S7[x[0x8]]) & 0x1f);
-      this.Kr[16] = ((this.S5[x[0xE]] ^ this.S6[x[0xF]] ^ this.S7[x[0x1]] ^ this.S8[x[0x0]] ^ this.S8[x[0xD]]) & 0x1f);
+      this.Kr[13] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.S5[x[0x8]], this.S6[x[0x9]]), this.S7[x[0x7]]), this.S8[x[0x6]]), this.S5[x[0x3]]), 0x1f);
+      this.Kr[14] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.S5[x[0xA]], this.S6[x[0xB]]), this.S7[x[0x5]]), this.S8[x[0x4]]), this.S6[x[0x7]]), 0x1f);
+      this.Kr[15] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.S5[x[0xC]], this.S6[x[0xD]]), this.S7[x[0x3]]), this.S8[x[0x2]]), this.S7[x[0x8]]), 0x1f);
+      this.Kr[16] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.S5[x[0xE]], this.S6[x[0xF]]), this.S7[x[0x1]]), this.S8[x[0x0]]), this.S8[x[0xD]]), 0x1f);
     }
 
     // CAST-128 specific F-functions (different from CAST-256!)
     _F1(D, Kmi, Kri) {
-      let I = (Kmi + D) >>> 0;
+      let I = OpCodes.ToUint32(Kmi + D);
       I = OpCodes.RotL32(I, Kri);
-      return (((this.S1[(I >>> 24) & 0xFF] ^ this.S2[(I >>> 16) & 0xFF]) - this.S3[(I >>> 8) & 0xFF]) + this.S4[I & 0xFF]) >>> 0;
+      return OpCodes.ToUint32((OpCodes.Xor32(this.S1[OpCodes.GetByte(I, 3)], this.S2[OpCodes.GetByte(I, 2)]) - this.S3[OpCodes.GetByte(I, 1)]) + this.S4[OpCodes.GetByte(I, 0)]);
     }
 
     _F2(D, Kmi, Kri) {
-      let I = (Kmi ^ D) >>> 0;
+      let I = OpCodes.Xor32(Kmi, D);
       I = OpCodes.RotL32(I, Kri);
-      return (((this.S1[(I >>> 24) & 0xFF] - this.S2[(I >>> 16) & 0xFF]) + this.S3[(I >>> 8) & 0xFF]) ^ this.S4[I & 0xFF]) >>> 0;
+      return OpCodes.Xor32(OpCodes.ToUint32((this.S1[OpCodes.GetByte(I, 3)] - this.S2[OpCodes.GetByte(I, 2)]) + this.S3[OpCodes.GetByte(I, 1)]), this.S4[OpCodes.GetByte(I, 0)]);
     }
 
     _F3(D, Kmi, Kri) {
-      let I = (Kmi - D) >>> 0;
+      let I = OpCodes.ToUint32(Kmi - D);
       I = OpCodes.RotL32(I, Kri);
-      return (((this.S1[(I >>> 24) & 0xFF] + this.S2[(I >>> 16) & 0xFF]) ^ this.S3[(I >>> 8) & 0xFF]) - this.S4[I & 0xFF]) >>> 0;
+      return OpCodes.ToUint32(OpCodes.Xor32(OpCodes.ToUint32(this.S1[OpCodes.GetByte(I, 3)] + this.S2[OpCodes.GetByte(I, 2)]), this.S3[OpCodes.GetByte(I, 1)]) - this.S4[OpCodes.GetByte(I, 0)]);
     }
 
     _encryptBlock(blockIndex, block) {
@@ -771,11 +792,11 @@
 
         // Select F function based on round number (1-based)
         if (i === 1 || i === 4 || i === 7 || i === 10 || i === 13 || i === 16) {
-          Ri = (Lp ^ this._F1(Rp, this.Km[i], this.Kr[i])) >>> 0;
+          Ri = OpCodes.Xor32(Lp, this._F1(Rp, this.Km[i], this.Kr[i]));
         } else if (i === 2 || i === 5 || i === 8 || i === 11 || i === 14) {
-          Ri = (Lp ^ this._F2(Rp, this.Km[i], this.Kr[i])) >>> 0;
+          Ri = OpCodes.Xor32(Lp, this._F2(Rp, this.Km[i], this.Kr[i]));
         } else {
-          Ri = (Lp ^ this._F3(Rp, this.Km[i], this.Kr[i])) >>> 0;
+          Ri = OpCodes.Xor32(Lp, this._F3(Rp, this.Km[i], this.Kr[i]));
         }
       }
 
@@ -798,11 +819,11 @@
 
         // Select F function based on round number (1-based)
         if (i === 1 || i === 4 || i === 7 || i === 10 || i === 13 || i === 16) {
-          Ri = (Lp ^ this._F1(Rp, this.Km[i], this.Kr[i])) >>> 0;
+          Ri = OpCodes.Xor32(Lp, this._F1(Rp, this.Km[i], this.Kr[i]));
         } else if (i === 2 || i === 5 || i === 8 || i === 11 || i === 14) {
-          Ri = (Lp ^ this._F2(Rp, this.Km[i], this.Kr[i])) >>> 0;
+          Ri = OpCodes.Xor32(Lp, this._F2(Rp, this.Km[i], this.Kr[i]));
         } else {
-          Ri = (Lp ^ this._F3(Rp, this.Km[i], this.Kr[i])) >>> 0;
+          Ri = OpCodes.Xor32(Lp, this._F3(Rp, this.Km[i], this.Kr[i]));
         }
       }
 
@@ -839,7 +860,7 @@
       this.SupportedBlockSizes = [new KeySize(16, 16, 1)];
 
       this.documentation = [
-        new LinkItem("RFC 2612 - CAST-256 Specification", "https://tools.ietf.org/rfc/rfc2612.txt"),
+        new LinkItem("RFC 2612 - CAST-256 Specification", "https://www.rfc-editor.org/rfc/rfc2612.txt"),
         new LinkItem("NIST AES Candidate Submission", "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/archived-crypto-projects/aes-development"),
         new LinkItem("CAST Algorithm Family", "https://www.iacr.org/cryptodb/data/paper.php?pubkey=789")
       ];
@@ -1012,9 +1033,9 @@
       for (let i = 0; i < 24; ++i) {
         for (let j = 0; j < 8; ++j) {
           Tm[i * 8 + j] = tempCm;
-          tempCm = (tempCm + Mm) >>> 0;
+          tempCm = OpCodes.ToUint32(tempCm + Mm);
           Tr[i * 8 + j] = tempCr;
-          tempCr = (tempCr + Mr) & 0x1f;
+          tempCr = OpCodes.And32(tempCr + Mr, 0x1f);
         }
       }
 
@@ -1059,10 +1080,10 @@
         workingKey[0] ^= CAST_F1(workingKey[1], Tm[i2 + 6], Tr[i2 + 6], this.S1, this.S2, this.S3, this.S4);
         workingKey[7] ^= CAST_F2(workingKey[0], Tm[i2 + 7], Tr[i2 + 7], this.S1, this.S2, this.S3, this.S4);
 
-        kr[i * 4] = workingKey[0] & 0x1f;
-        kr[i * 4 + 1] = workingKey[2] & 0x1f;
-        kr[i * 4 + 2] = workingKey[4] & 0x1f;
-        kr[i * 4 + 3] = workingKey[6] & 0x1f;
+        kr[i * 4] = OpCodes.And32(workingKey[0], 0x1f);
+        kr[i * 4 + 1] = OpCodes.And32(workingKey[2], 0x1f);
+        kr[i * 4 + 2] = OpCodes.And32(workingKey[4], 0x1f);
+        kr[i * 4 + 3] = OpCodes.And32(workingKey[6], 0x1f);
 
         km[i * 4] = workingKey[7];
         km[i * 4 + 1] = workingKey[5];

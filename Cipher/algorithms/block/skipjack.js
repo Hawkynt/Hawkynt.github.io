@@ -105,6 +105,28 @@
       // Test vectors verified with BouncyCastle reference implementation
       this.tests = [
         {
+          text: "DarkCrypt Skipjack vector 1/zero",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("aaae8ede6764143d")
+        },
+        {
+          text: "DarkCrypt Skipjack vector 2/incr",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("0001020304050607"),
+          key: OpCodes.Hex8ToBytes("00010203040506070809"),
+          expected: OpCodes.Hex8ToBytes("f62e83484fe30190")
+        },
+        {
+          text: "DarkCrypt Skipjack vector 3/incr2",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("1011121314151617"),
+          key: OpCodes.Hex8ToBytes("0102030405060708090a"),
+          expected: OpCodes.Hex8ToBytes("20ab989c85456b03")
+        },
+
+        {
           text: "Skipjack test vector - all zeros key and plaintext",
           uri: "Verified with BouncyCastle implementation",
           input: OpCodes.Hex8ToBytes("0000000000000000"),

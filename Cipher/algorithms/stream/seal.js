@@ -67,6 +67,11 @@
         new LinkItem("Crypto++ SEAL Implementation", "https://github.com/weidai11/cryptopp/blob/master/seal.cpp")
       ];
 
+      this.references = [
+        new LinkItem("Crypto++ seal.cpp (reference SEAL 3.0 implementation)", "https://github.com/weidai11/cryptopp/blob/master/seal.cpp"),
+        new LinkItem("Crypto++ seal.h (SEAL 3.0 class definitions)", "https://github.com/weidai11/cryptopp/blob/master/seal.h")
+      ];
+
       this.knownVulnerabilities = [
         {
           type: 'Theoretical Attack',
@@ -121,8 +126,77 @@
           }
         ];
       } else {
-        // LE variant - not tested in Crypto++ TestVectors/seal.txt
-        this.tests = [];
+        // Crypto++ TestVectors/seal.txt only ships a SEAL-3.0-BE vector (single
+        // "Name: SEAL-3.0-BE" entry, verified 2026-07-02 against the current
+        // github.com/weidai11/cryptopp master). Crypto++'s SEAL_Policy<B> template
+        // (seal.cpp) computes the same 32-bit words a/b/c/d for both endiannesses;
+        // B only selects CRYPTOPP_KEYSTREAM_OUTPUT_WORD's byte order when writing
+        // each word out. This LE vector is therefore derived from the official
+        // BE vector above by reversing the byte order of each 4-byte word group,
+        // using the identical key/iv/input - a mechanical, provably-equivalent
+        // transform, not a guess. It was cross-checked against running this file's
+        // own isBigEndian=false _generateKeystream() path with the same key/iv,
+        // and the two outputs match byte-for-byte.
+        this.tests = [
+          {
+            text: "Derived from Crypto++ SEAL-3.0-BE Test Vector via 32-bit word byte-order transform (LE variant shares identical internal computation)",
+            uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/seal.txt",
+            input: new Array(1024).fill(0x00),
+            key: OpCodes.Hex8ToBytes("67452301efcdab8998badcfe10325476c3d2e1f0"),
+            iv: OpCodes.Hex8ToBytes("013577af"),
+            expected: OpCodes.Hex8ToBytes(
+              "9505a0379cc4849b051ebea40f537306fd97b05fbd3fa1f6cdde2c6c7ceefd81" +
+              "e7c3bd2aff9a20648322a100855067ef534b63c1e6599028d95eaba7eb010c48" +
+              "9a56644c232ace8df50eedfec35a6f8f124541f7c4aebc7da4b1b6bc87c2bd59" +
+              "2305ba58e1c321f7c73d4354ef023f35ad077b48e4f59e3090c16c4e57fdf526" +
+              "ec32cc071fc0b912eb8bc5e0a73ee72f3f09249e63169105be216ba7dece18ab" +
+              "545c27173ecd8fd17922f34cf8227b34fb191175552fd956ece411d5854033c1" +
+              "453449e7c3ae2d5a541c82f19080cbb437d8b853608641de8bdffe0a6ed52dd7" +
+              "c1453722baed769f34b5e9011fd0666668bd7f67fd1050fa68b0b87da00da929" +
+              "75841be86a94706a6de1056c112e5a22b16b58af1fd2b1c5e5f84953f441eee3" +
+              "49552d2386bcd154b85447062dc91d6c00e39d7a4aebd8869cdb867cb9130f38" +
+              "5b1ce1520abef189e7c6526b73da53a07ffdc5593202c75008ff6ad84617ffc5" +
+              "4d07bdd3c66fad79becbe057fcc4025d313c5de52e64f4fe51f738d71c2f0f43" +
+              "ef53e4f654b9de6ec652ec0c4286d497e041e1015adf3d6ca9a164aa967e2484" +
+              "7f1ecfd29923bcb24a9f361911d1f90b64bed8d02186aeafe6625f4df1e8254f" +
+              "0e68123e62ad70c1a9bdcb34cc53df38fe2aa1170540eba1cb652a1276dbbe42" +
+              "db29f0ed1bc80f9128ddf38140ed1f346437ce6485e54885b7eb4a2df9163092" +
+              "ae07cbaf0018c17b06a017e2ff530b2faa71d4a8136aca787164f5b773671089" +
+              "6f1d310af057ffe4aa589a5fb696267453ecb3cbaac2a09dd2606addd5263ca3" +
+              "4834348aaf2a91edc66885b9efb11cae1ad8afae457c3e6ee42b8e0ff918ccc6" +
+              "6c1c8a5e270a1959a612e998d0e7c1141b4be7f782568eaf992f44f586fa248b" +
+              "73f6e5d1922c2e007abf8edb269d1cbbf463977abbf754bd66447cf03fbfc0da" +
+              "6a66f5fa082fa543f56de7128edad4f94a6dbcd171349bb2beb4ac8f07e911bc" +
+              "390e9bfe6977de37c50c5bfcd5503e2bb4b9027eaa492902c58b69f37360698f" +
+              "422a97ec70e9ae5cd1d36408e00e13660b32519d9bbc519dc775a54a42627889" +
+              "e1d99806d16f42f69f2ca341514ec2559874e2491cac3530013b83443ed6ae79" +
+              "1ab6b2a2017054fa7c5ce55558123434e70f7b4fadc5633dde8d71881dac0030" +
+              "e20a05b4e6320061c4ee89b3a2a15289e51600ed61d9cc25baca0667d507ed89" +
+              "faec154fb791bcab04592cc8d4830fbc7f9988488ffe11aab83c33a7316eb1c5" +
+              "803c23521df7c9fbfafee89e7e7ad650343db9457840ba6985d51ebb628e7a9e" +
+              "f5ac6bb2a67f50388de143bdf2aad7678da6aa7b92a33c2357e233cefaf3ddd5" +
+              "14956aeff686d630afafe95e7706ee6a929810b4a2fb412ba205ef021246617d" +
+              "b1beae5dc817d647a0db42dff8fb1db9ee0558ab95e47798fb351088242c34b7"
+            )
+          }
+        ];
+      }
+
+      if (isBigEndian) {
+        this.tests.push({
+          text: "DarkCrypt Seal3lib KERNEL vector (SEAL 3.0, key=00..13, iv=00000000)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: new Array(128).fill(0x00),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f10111213"),
+          iv: OpCodes.Hex8ToBytes("00000000"),
+          expected: OpCodes.Hex8ToBytes(
+            "ea180e1c72b8bc5d0bb53bc0e6f2eba6e19436e7cbcaca18fe01dbcc4407fe6" +
+            "15748a47ad2f6aec393a0efa009bd4ce1a45a669a584ab53bb54069740c7dc4" +
+            "85654817d3974ed3f5ee3cd373916d0f3bd1dd0544166cbc5fc30a4a0078aea" +
+            "d7be56fd8bc11e81e8498c6354ee2fbe43431a1223527e11a3ef739954d9732" +
+            "edfc"
+          )
+        });
       }
     }
 
