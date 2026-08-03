@@ -99,6 +99,7 @@
       this.isStatic = false;
       this.isAsync = false;
       this.isGenerator = false;
+      this.kind = 'method';        // 'method', 'get', or 'set'
       this.parameters = [];        // JavaScriptParameter[]
       this.body = null;            // JavaScriptBlock
       this.jsDoc = null;
@@ -233,6 +234,14 @@
       this.variableName = variableName;
       this.collection = collection; // JavaScriptExpression
       this.body = body;             // JavaScriptBlock
+      // Set when this node actually represents a `for (x in y)` loop (IL
+      // type 'ForInStatement') rather than a real for-of loop. for-in
+      // enumerates an object's *keys* (works on any object, including plain
+      // `{}` dictionaries) while for-of iterates *values* off an iterable's
+      // Symbol.iterator — a plain object has none, so emitting a for-in
+      // loop as `for (const k of obj)` throws "obj is not iterable" instead
+      // of enumerating its keys.
+      this.isForIn = false;
     }
   }
 
@@ -431,6 +440,13 @@
       this.target = target;         // JavaScriptExpression or null for simple call
       this.methodName = methodName;
       this.arguments = args;        // JavaScriptExpression[]
+      // Set instead of target/methodName to call an arbitrary callee
+      // expression directly — `(calleeExpression)(args)` — rather than a
+      // `target.methodName(args)` member call or a bare `methodName(args)`
+      // named-identifier call. Needed for IIFEs: `(function(){...})()` /
+      // `(() => {...})()`, where the callee is a function *value*, not a
+      // named reference.
+      this.calleeExpression = null;
     }
   }
 
@@ -486,6 +502,13 @@
       this.parameters = parameters; // JavaScriptParameter[]
       this.body = body;             // JavaScriptBlock or JavaScriptExpression
       this.isAsync = false;
+      // Set when this node actually represents a `function(...) {...}`
+      // expression (IL type 'FunctionExpression') rather than a real arrow
+      // function. Function expressions bind their own `this`/`arguments`;
+      // emitting them as arrows silently rebinds `this` to the enclosing
+      // scope, which is wrong whenever the body references `this` (e.g. an
+      // object-literal `Feed: function(data) { this._x = ...; }` method).
+      this.isFunctionExpression = false;
     }
   }
 

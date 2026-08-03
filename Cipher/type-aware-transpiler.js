@@ -9,6 +9,21 @@
   'use strict';
 
   /**
+   * True if a numeric literal's original source text used decimal-point or
+   * exponent notation (e.g. "1.0", "2.5e3") - i.e. the author explicitly
+   * wrote a float, regardless of whether the resulting value happens to be
+   * a whole number. Hex/octal/binary integer literals (0x.., 0o.., 0b..)
+   * are excluded since their digits can themselves contain 'e' (e.g. 0x1e).
+   * @param {string} raw - Literal.raw source text
+   * @returns {boolean}
+   */
+  function _isExplicitFloatLiteralText(raw) {
+    if (typeof raw !== 'string') return false;
+    if (/^0[xXoObB]/.test(raw)) return false;
+    return /[.eE]/.test(raw);
+  }
+
+  /**
    * BigInt-safe JSON serialization helper
    * Converts BigInt values to strings for serialization
    * @param {*} obj - Object to serialize
@@ -747,13 +762,63 @@
       }
     }
 
-    constructor(code) {
+    /**
+     * Node.js-only, synchronous, best-effort, once-per-process auto-init of
+     * sharedTypeKnowledge from the OpCodes.js/AlgorithmFramework.js files that ship
+     * alongside this one. Mirrors loadTypeLibraries()/initTypeLibraries() but requires no
+     * explicit caller action - the browser build already self-initializes via a `fetch()`
+     * call wired up by index.controller.js, but every Node.js entry point (CLI transpile,
+     * test suites, per-language measure harnesses) only ever constructs a bare
+     * `TypeAwareJSASTParser`, so without this opCodesTypes/frameworkTypes stayed
+     * permanently empty outside the browser and JSDoc-sourced return types for OpCodes.*
+     * helpers were never available to any target-language emitter.
+     * @private
+     */
+    static _autoLoadTypeLibrariesNodeJS() {
+      if (TypeAwareJSASTParser._autoLoadAttempted) return;
+      TypeAwareJSASTParser._autoLoadAttempted = true;
+
+      if (typeof require === 'undefined' || typeof module === 'undefined') return; // browser
+      if (TypeAwareJSASTParser.sharedTypeKnowledge &&
+          Object.keys(TypeAwareJSASTParser.sharedTypeKnowledge.opCodesTypes || {}).length > 0) {
+        return; // already populated (e.g. transpile.js called loadTypeLibraries explicitly)
+      }
+
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const dir = __dirname;
+        const options = {};
+        const opCodesPath = path.join(dir, 'OpCodes.js');
+        const frameworkPath = path.join(dir, 'AlgorithmFramework.js');
+        if (fs.existsSync(opCodesPath)) options.opCodesSource = fs.readFileSync(opCodesPath, 'utf8');
+        if (fs.existsSync(frameworkPath)) options.frameworkSource = fs.readFileSync(frameworkPath, 'utf8');
+        if (options.opCodesSource || options.frameworkSource) {
+          TypeAwareJSASTParser.loadTypeLibraries(options);
+        }
+      } catch (e) {
+        // Non-fatal - type inference just falls back to heuristics as before.
+      }
+    }
+
+    constructor(code, options = {}) {
       this.code = code;
+      this.options = options || {};
       this.tokens = [];
       this.position = 0;
       this.currentToken = null;
       this.jsDocParser = new JSDocParser();
-      // Use shared type knowledge if available, otherwise create new instance
+      // Use shared type knowledge if available, otherwise create new instance.
+      // In Node.js, opportunistically self-populate it from OpCodes.js/AlgorithmFramework.js
+      // JSDoc on first use (see _autoLoadTypeLibrariesNodeJS) - callers that only ever go
+      // through `new TypeAwareJSASTParser(src).parse()` (every measure_*.js harness, every
+      // language transformer invoked via LanguagePlugins) never call the browser-oriented
+      // async initTypeLibraries()/loadTypeLibraries() themselves, so opCodesTypes/
+      // frameworkTypes silently stayed empty forever and every OpCodes.* helper's return
+      // type (GF256Mul, GetByte, PopCountFast, ...) fell back to a generic default -
+      // skipping numeric narrowing-cast insertion at assignment sites in every target
+      // language emitter that consults it (CS0266/CS0029 in C#, similar elsewhere).
+      TypeAwareJSASTParser._autoLoadTypeLibrariesNodeJS();
       this.typeKnowledge = TypeAwareJSASTParser.sharedTypeKnowledge || new PreciseTypeKnowledge();
       this.typeAnnotations = new Map(); // Store type information for nodes
       this.lastJSDocComment = null; // Track the last JSDoc comment seen
@@ -765,6 +830,14 @@
       this.constantTypes = new Map(); // Module-level constant types
       this.classFieldTypes = new Map(); // Maps "ClassName.fieldName" to type
       this.classMethodReturnTypes = new Map(); // Maps "ClassName.methodName" to return type
+      // Whole-program function/method signature table for interprocedural type
+      // propagation: maps a bare function name, and "ClassName.methodName" for
+      // class methods, to { params: [<param AST nodes>], node: <function AST node> }.
+      // Built once per parse (see _buildFunctionTable) from the same node objects
+      // that narrowTypesPass annotates, so param/return type facts discovered in
+      // one function are immediately visible to every call site (and vice versa)
+      // without copying data - just looking up the shared node identity.
+      this.functionTable = new Map();
     }
 
     /**
@@ -1358,6 +1431,18 @@
       // Into: const A = ...; const X = { A };
       ilAst = this.hoistIIFEVariables(ilAst);
 
+      // Step 2.55: Strip require()-guarded fallback blocks (see
+      // _stripRequireGuardedBlocks) before the blunter Step 2.6 below decides
+      // whether a whole function/method is "JS-specific" and stubs it out -
+      // this rescues functions where require() only appears inside a
+      // best-effort "if (typeof require !== 'undefined') { ... }" dependency
+      // loader guard alongside otherwise-transpilable logic (very common in
+      // KDF/MAC/mode/wrap algorithms that lazily pull in a hash/cipher via
+      // AlgorithmFramework.Find(), falling back to require() only when not
+      // already registered - which dependency bundling already makes true).
+      if (!this.options.keepModuleLoaderFunctions)
+        this._stripRequireGuardedBlocks(ilAst);
+
       // Step 2.6: Filter out JS-specific module loader functions
       // Removes functions that load dependencies via require/import
       ilAst = this.filterModuleLoaderFunctions(ilAst);
@@ -1410,14 +1495,23 @@
       'Shl8': { type: 'BinaryExpression', operator: '<<', mask: 0xFF },
       'Shl16': { type: 'BinaryExpression', operator: '<<', mask: 0xFFFF },
       'Shl32': { type: 'BinaryExpression', operator: '<<', mask: 0xFFFFFFFF },
-      'Shr8': { type: 'BinaryExpression', operator: '>>', mask: 0xFF },
-      'Shr16': { type: 'BinaryExpression', operator: '>>', mask: 0xFFFF },
-      'Shr32': { type: 'BinaryExpression', operator: '>>', mask: 0xFFFFFFFF },
+      // OpCodes.Shr8/16/32 are logical (unsigned) right shifts (see OpCodes.js),
+      // so they must inline to '>>>' — '>>' is the sign-propagating arithmetic
+      // shift and silently corrupts results once the shifted value's sign bit
+      // (within its width) is set.
+      'Shr8': { type: 'BinaryExpression', operator: '>>>', mask: 0xFF },
+      'Shr16': { type: 'BinaryExpression', operator: '>>>', mask: 0xFFFF },
+      'Shr32': { type: 'BinaryExpression', operator: '>>>', mask: 0xFFFFFFFF },
       'UShr32': { type: 'BinaryExpression', operator: '>>>' },
 
-      // N-suffix operations for BigInt (arbitrary precision) - no mask needed
-      'ShiftLn': { type: 'BinaryExpression', operator: '<<' },
-      'ShiftRn': { type: 'BinaryExpression', operator: '>>' },
+      // N-suffix operations for BigInt (arbitrary precision) - no mask needed.
+      // `bigint: true` tells the inliner below to coerce a plain-Number
+      // shift-amount literal (e.g. the `32` in `OpCodes.ShiftRn(value, 32)`)
+      // to an actual BigInt literal — JS's `<<`/`>>` throw "Cannot mix BigInt
+      // and other types" if the operands aren't the same type, and `value`
+      // here is always BigInt (that's the entire point of the N-suffix).
+      'ShiftLn': { type: 'BinaryExpression', operator: '<<', bigint: true },
+      'ShiftRn': { type: 'BinaryExpression', operator: '>>', bigint: true },
 
       // Add/Sub with mask
       'Add32': { type: 'BinaryExpression', operator: '+', mask: 0xFFFFFFFF },
@@ -1460,8 +1554,10 @@
       'Hex8ToBytes': { type: 'HexDecode' },
       'BytesToHex8': { type: 'HexEncode' },
       'AnsiToBytes': { type: 'StringToBytes', encoding: 'ascii' },
+      'AsciiToBytes': { type: 'StringToBytes', encoding: 'ascii' },
       'Utf8ToBytes': { type: 'StringToBytes', encoding: 'utf8' },
       'BytesToAnsi': { type: 'BytesToString', encoding: 'ascii' },
+      'BytesToAscii': { type: 'BytesToString', encoding: 'ascii' },
       'BytesToUtf8': { type: 'BytesToString', encoding: 'utf8' },
       'ToUint32': { type: 'Cast', targetType: 'uint32' },
       'ToUint16': { type: 'Cast', targetType: 'uint16' },
@@ -1478,20 +1574,20 @@
       'ToDouble': { type: 'Cast', targetType: 'double' },
       'ToBool': { type: 'Cast', targetType: 'boolean' },
       'ToString': { type: 'Cast', targetType: 'string' },
-      'ConcatArrays': { type: 'OpCodesCall', name: 'ConcatArrays' },
-      'CopyArray': { type: 'OpCodesCall', name: 'CopyArray' },
-      'CompareArrays': { type: 'OpCodesCall', name: 'CompareArrays' },
-      'ConstantTimeCompare': { type: 'OpCodesCall', name: 'ConstantTimeCompare' },
-      'SecureCompare': { type: 'OpCodesCall', name: 'SecureCompare' },
-      'DoubleToBytes': { type: 'OpCodesCall', name: 'DoubleToBytes' },
-      'GetBit': { type: 'OpCodesCall', name: 'GetBit' },
-      'GetBitN': { type: 'OpCodesCall', name: 'GetBitN' },
-      'SetBit': { type: 'OpCodesCall', name: 'SetBit' },
-      'GetByte': { type: 'OpCodesCall', name: 'GetByte' },
-      'BitMask': { type: 'OpCodesCall', name: 'BitMask' },
-      'PopCountFast': { type: 'OpCodesCall', name: 'PopCountFast' },
-      'BitCountN': { type: 'OpCodesCall', name: 'BitCountN' },
-      'GF256Mul': { type: 'OpCodesCall', name: 'GF256Mul' }
+      'ConcatArrays': { type: 'OpCodesCall', method: 'ConcatArrays' },
+      'CopyArray': { type: 'OpCodesCall', method: 'CopyArray' },
+      'CompareArrays': { type: 'OpCodesCall', method: 'CompareArrays' },
+      'ConstantTimeCompare': { type: 'OpCodesCall', method: 'ConstantTimeCompare' },
+      'SecureCompare': { type: 'OpCodesCall', method: 'SecureCompare' },
+      'DoubleToBytes': { type: 'OpCodesCall', method: 'DoubleToBytes' },
+      'GetBit': { type: 'OpCodesCall', method: 'GetBit' },
+      'GetBitN': { type: 'OpCodesCall', method: 'GetBitN' },
+      'SetBit': { type: 'OpCodesCall', method: 'SetBit' },
+      'GetByte': { type: 'OpCodesCall', method: 'GetByte' },
+      'BitMask': { type: 'OpCodesCall', method: 'BitMask' },
+      'PopCountFast': { type: 'OpCodesCall', method: 'PopCountFast' },
+      'BitCountN': { type: 'OpCodesCall', method: 'BitCountN' },
+      'GF256Mul': { type: 'OpCodesCall', method: 'GF256Mul' }
     };
 
     /**
@@ -1764,7 +1860,11 @@
           return this._transformLogicalExpression(node, context);
 
         case 'ThisExpression':
-          return { ...node, ilNodeType: 'ThisExpression' };
+          // Type 'this' as the enclosing class instance so patterns like
+          // `const self = this;` or `return this;` propagate the class
+          // name through assignment/return inference instead of falling
+          // through to a numeric default further downstream.
+          return { ...node, resultType: context?.className || 'object', ilNodeType: 'ThisExpression' };
 
         case 'TemplateLiteral':
           return this._transformTemplateLiteral(node, context);
@@ -1872,11 +1972,18 @@
       if (node.left?.type === 'Identifier' && node.left.name && resultType)
         this.registerVariableType(node.left.name, resultType);
 
-      // Register class field type if assigning to this.field
-      if (node.left?.type === 'MemberExpression' &&
-          node.left.object?.type === 'ThisExpression' &&
-          context?.className && resultType) {
-        const fieldName = node.left.property?.name || node.left.property?.value;
+      // Register class field type if assigning to this.field.
+      // Note: node.left is normalized to an IL 'ThisPropertyAccess' node by
+      // the _transformNode(node.left, ...) call above (assigned to `left`),
+      // not left as raw ESTree 'MemberExpression' - check the transformed
+      // node's type/property, or a still-raw MemberExpression as a fallback
+      // for callers that pre-normalize differently.
+      if (context?.className && resultType) {
+        let fieldName = null;
+        if (left?.type === 'ThisPropertyAccess')
+          fieldName = left.property;
+        else if (node.left?.type === 'MemberExpression' && node.left.object?.type === 'ThisExpression')
+          fieldName = node.left.property?.name || node.left.property?.value;
         if (fieldName)
           this.registerClassFieldType(context.className, fieldName, resultType);
       }
@@ -1972,6 +2079,30 @@
      */
     _transformCallExpression(node, context) {
       const callee = node.callee;
+
+      // `arr.push.apply(arr, otherArr)` is the pre-spread-operator idiom for
+      // `arr.push(...otherArr)` (Function.prototype.apply against a fixed 2-element args
+      // list: thisArg, argsArray). Normalize it to the same shape the spread form already
+      // produces so the existing push/ArrayAppend/ArrayConcat handling below picks it up -
+      // without this the whole expression fell through to a generic method-call transform
+      // in every target-language emitter (e.g. C#'s `output.Push.Apply(output, processed)`,
+      // which doesn't compile - CS1061).
+      if (callee && callee.type === 'MemberExpression' &&
+          (callee.property?.name === 'apply' || callee.property?.value === 'apply') &&
+          callee.object?.type === 'MemberExpression' &&
+          (callee.object.property?.name === 'push' || callee.object.property?.value === 'push') &&
+          node.arguments && node.arguments.length === 2) {
+        return this._transformCallExpression({
+          type: 'CallExpression',
+          callee: {
+            type: 'MemberExpression',
+            object: callee.object.object,
+            property: { type: 'Identifier', name: 'push' },
+            computed: false
+          },
+          arguments: [{ type: 'SpreadElement', argument: node.arguments[1] }]
+        }, context);
+      }
 
       // super() → ParentConstructorCall
       if (callee && callee.type === 'Super') {
@@ -2092,6 +2223,26 @@
           if (staticArrayResult) return staticArrayResult;
         }
 
+        // TypedArray static methods: Uint8Array.from(iterable, mapFn), Uint8Array.of(...)
+        // - same shape as Array.from()/Array.of() but with a precise element type, instead
+        // of silently falling through to a generic method-call transform that leaves the
+        // (nonexistent, in every compiled target) "Uint8Array" identifier referenced by
+        // name (CS0103 in C#: "The name 'Uint8Array' does not exist in the current context").
+        if (TypeAwareJSASTParser.TYPED_ARRAY_ELEMENT_TYPES[objectName]) {
+          const elementType = TypeAwareJSASTParser.TYPED_ARRAY_ELEMENT_TYPES[objectName];
+          if (methodName === 'from') {
+            const staticArrayResult = this._transformArrayStaticMethod(methodName, args, context);
+            if (staticArrayResult) {
+              staticArrayResult.elementType = elementType;
+              staticArrayResult.resultType = `${elementType}[]`;
+              return staticArrayResult;
+            }
+          }
+          if (methodName === 'of') {
+            return { type: 'ArrayLiteral', elements: args, elementType, resultType: `${elementType}[]`, ilNodeType: 'ArrayLiteral' };
+          }
+        }
+
         // Object static methods
         if (objectName === 'Object') {
           const staticObjectResult = this._transformObjectStaticMethod(methodName, args, context);
@@ -2192,12 +2343,43 @@
         }
 
         if (args.length >= 2) {
+          let left = args[0];
+          let right = args[1];
+          if (inlineOp.bigint) {
+            // Coerce non-BigInt operands (e.g. a shift amount written as
+            // plain `32`, or a computed `i * 8`) so the emitted `<<`/`>>`
+            // operands are both BigInt — mixing BigInt and Number throws a
+            // TypeError at runtime in JavaScript. Literals convert for free;
+            // arbitrary expressions get wrapped in a BigIntCast IL node
+            // (-> `BigInt(...)` in JS, and every other language's transformer
+            // already implements 'BigIntCast' for the BigInt(...) call form).
+            const toBigIntOperand = (node) => {
+              if (!node) return node;
+              if (node.type === 'Literal' && typeof node.value === 'bigint') return node;
+              if (node.type === 'Literal' && typeof node.value === 'number') return { ...node, value: BigInt(node.value), resultType: 'bigint' };
+              if (node.resultType === 'bigint') return node;
+              return { type: 'BigIntCast', argument: node, resultType: 'bigint', ilNodeType: 'BigIntCast' };
+            };
+            left = toBigIntOperand(left);
+            right = toBigIntOperand(right);
+          }
           const result = {
             type: 'BinaryExpression',
             operator: inlineOp.operator,
-            left: args[0],
-            right: args[1],
+            left,
+            right,
             resultType,
+            // Propagates OpCodes.ShiftLn/ShiftRn's `bigint: true` marker onto
+            // the IL node itself (rather than leaving consumers to infer it
+            // from operand literal types/resultTypes, which - for a genuine
+            // source-level BigInt literal like `1n` - end up tagged 'uint64'/
+            // 'int64' by _transformLiteral, not 'bigint'). Target-language
+            // shift emitters (e.g. PythonTransformer's <</>> handling) use
+            // this to know the shift count must NOT be masked mod the
+            // register width: JS BigInt `<<`/`>>` are arbitrary-precision
+            // and never truncate/mask their shift count, unlike Number
+            // `<<`/`>>` (which mask to 5 bits per spec).
+            bigint: !!inlineOp.bigint,
             ilNodeType: 'InlinedOpCode'
           };
           if (inlineOp.mask) {
@@ -2214,9 +2396,22 @@
         }
       }
 
-      // Check for rotation operations
+      // Check for rotation operations. Require *exactly* 2 args: OpCodes.js
+      // has two distinct 64-bit rotation families sharing the 'RotL64'/
+      // 'RotR64' method-name prefix — RotL64n(value, positions) (2-arg,
+      // BigInt) and RotL64(low, high, positions) (3-arg, split 32-bit
+      // low/high words, used by algorithms doing 64-bit rotation without
+      // BigInt, e.g. threefish.js/hpc.js). `args.length >= 2` matched both,
+      // collapsing the 3-arg split-word call into a 2-arg 'RotateLeft'/
+      // 'RotateRight' IL node that dropped the 3rd argument (the high word)
+      // entirely; every JS-target consumer of that IL node then always
+      // re-emits the 2-arg RotL64n(...) BigInt call regardless of which
+      // form the source actually used, throwing "Cannot mix BigInt and
+      // other types" once a plain Number reached it. Fall through to the
+      // generic OpCodesCall passthrough below for the 3-arg split-word
+      // form so all arguments and the original method name are preserved.
       const rotOp = TypeAwareJSASTParser.ROTATION_OPCODES[methodName];
-      if (rotOp && args.length >= 2) {
+      if (rotOp && args.length === 2) {
         const nodeType = rotOp.direction === 'left' ? 'RotateLeft' : 'RotateRight';
         const resultTypeFn = TypeAwareJSASTParser.OPERATION_RESULT_TYPES[nodeType];
         const resultType = resultTypeFn ? resultTypeFn(rotOp.bits) : `uint${rotOp.bits}`;
@@ -2231,10 +2426,21 @@
       }
 
       // Check for complex operations (helper functions)
+      // The generic OPERATION_RESULT_TYPES/bits heuristic below is only a
+      // fallback: OpCodes.js JSDoc (loaded into this.typeKnowledge.opCodesTypes)
+      // is the authoritative source for what these helpers actually return
+      // (e.g. GF256Mul -> uint8, GetByte -> uint8, CompareArrays -> boolean),
+      // and the generic bits-based guess was defaulting many of them to the
+      // wrong 'uint32', which is exactly the class of byte/uint mismatch
+      // (CS1503) this inference layer needs to avoid producing.
       const complexOp = TypeAwareJSASTParser.COMPLEX_OPCODES[methodName];
       if (complexOp) {
-        const resultTypeFn = TypeAwareJSASTParser.OPERATION_RESULT_TYPES[complexOp.type];
-        const resultType = resultTypeFn ? resultTypeFn(complexOp.bits, args[0]?.resultType) : `uint${complexOp.bits || 32}`;
+        const jsDocReturnType = this.typeKnowledge.opCodesTypes[methodName]?.returns;
+        let resultType = jsDocReturnType;
+        if (!resultType) {
+          const resultTypeFn = TypeAwareJSASTParser.OPERATION_RESULT_TYPES[complexOp.type];
+          resultType = resultTypeFn ? resultTypeFn(complexOp.bits, args[0]?.resultType) : `uint${complexOp.bits || 32}`;
+        }
         const ilNode = {
           type: complexOp.type,
           arguments: args,
@@ -2250,14 +2456,18 @@
         return ilNode;
       }
 
-      // Unknown OpCodes method - keep as-is but mark it
-      return {
-        type: 'OpCodesCall',
-        method: methodName,
-        arguments: args,
-        resultType: args[0]?.resultType || 'int32',
-        ilNodeType: 'OpCodesCall'
-      };
+      // Unknown OpCodes method - prefer the JSDoc-declared return type
+      // (loaded from OpCodes.js) over guessing from the first argument's type.
+      {
+        const jsDocReturnType = this.typeKnowledge.opCodesTypes[methodName]?.returns;
+        return {
+          type: 'OpCodesCall',
+          method: methodName,
+          arguments: args,
+          resultType: jsDocReturnType || args[0]?.resultType || 'int32',
+          ilNodeType: 'OpCodesCall'
+        };
+      }
     }
 
     /**
@@ -2353,16 +2563,30 @@
      */
     _transformArrayStaticMethod(methodName, args, context) {
       switch (methodName) {
-        case 'from':
-          // Array.from(iterable, mapFn?, thisArg?) → creates array from iterable
+        case 'from': {
+          // Array.from(iterable, mapFn?, thisArg?) → creates array from iterable.
+          // Special-case Array.from({ length: N }, mapFn) - a common JS idiom
+          // for building an N-element array purely from a generator callback,
+          // with no real iterable/array behind the first argument (unlike
+          // Array.from(arr, mapFn), which maps over an existing array). Carry
+          // the length expression separately so target languages don't try
+          // to dereference the { length: N } descriptor object as an array.
+          const iterableArg = args[0];
+          let lengthExpr = null;
+          if (iterableArg && iterableArg.type === 'ObjectLiteral' && Array.isArray(iterableArg.properties) &&
+              iterableArg.properties.length === 1 && iterableArg.properties[0].key === 'length') {
+            lengthExpr = iterableArg.properties[0].value;
+          }
           return {
             type: 'ArrayFrom',
             iterable: args[0],
+            length: lengthExpr,
             mapFunction: args[1] || null,
             thisArg: args[2] || null,
             resultType: 'any[]',
             ilNodeType: 'ArrayFrom'
           };
+        }
         case 'isArray':
           // Array.isArray(value) → type check
           return {
@@ -2603,7 +2827,15 @@
       // Transform arguments
       const transformedArgs = args.map(arg => this._transformNode(arg, context));
 
-      if (getterMethods[methodName]) {
+      // Use hasOwnProperty (not a plain `getterMethods[methodName]` truthiness
+      // check) so lookups for methodName values that collide with inherited
+      // Object.prototype members (toString, valueOf, constructor,
+      // hasOwnProperty, ...) don't resolve to that inherited function and get
+      // misidentified as a DataView getter (e.g. `someNumber.toString()` was
+      // being read back as `getterMethods['toString']` -> Object.prototype.toString,
+      // a truthy value, turning a plain numeric-to-string conversion into a
+      // bogus DataView bit-reinterpretation read).
+      if (Object.prototype.hasOwnProperty.call(getterMethods, methodName)) {
         const spec = getterMethods[methodName];
         return {
           type: 'DataViewRead',
@@ -2618,7 +2850,7 @@
         };
       }
 
-      if (setterMethods[methodName]) {
+      if (Object.prototype.hasOwnProperty.call(setterMethods, methodName)) {
         const spec = setterMethods[methodName];
         return {
           type: 'DataViewWrite',
@@ -2725,17 +2957,32 @@
           return { type: 'ArrayShift', array: arrayNode, elementType: arrayElementType, resultType: arrayElementType, ilNodeType: 'ArrayShift' };
         case 'unshift':
           return { type: 'ArrayUnshift', array: arrayNode, value: args[0], resultType: 'int32', ilNodeType: 'ArrayUnshift' };
-        case 'fill':
+        case 'fill': {
+          // `new Array(n).fill(0n)` (bare, untyped array filled with a BigInt
+          // literal) is how 64-bit state arrays are initialized in Whirlpool/
+          // Skein/Keccak-family/BLAKE2b etc. Without this override,
+          // arrayElementType falls back to the generic 'uint8' default above
+          // (arrayNode has no elementType yet since it's a fresh `new
+          // Array(n)`), so the state array - and every later 64-bit
+          // XOR/shift assignment into it - gets typed byte[]/uint8[]
+          // instead of ulong[]/long[] (CS0266 in emitters that honor it).
+          let fillElementType = arrayElementType;
+          let fillResultType = arrayResultType;
+          if (!arrayNode.elementType && args[0] && args[0].type === 'Literal' && typeof args[0].value === 'bigint') {
+            fillElementType = args[0].value >= 0n ? 'uint64' : 'int64';
+            fillResultType = `${fillElementType}[]`;
+          }
           return {
             type: 'ArrayFill',
             array: arrayNode,
             value: args[0],
             start: args[1] || null,
             end: args[2] || null,
-            elementType: arrayElementType,
-            resultType: arrayResultType,
+            elementType: fillElementType,
+            resultType: fillResultType,
             ilNodeType: 'ArrayFill'
           };
+        }
         case 'slice':
           return {
             type: 'ArraySlice',
@@ -2900,7 +3147,15 @@
             type: 'StringSubstring',
             string: transformedString,
             start: args[0] || null,
-            end: args[1] || null,
+            // "end" is only an end INDEX for substring()/slice() - substr()'s
+            // second argument is already a character COUNT (a different
+            // JS method with different semantics despite the similar name),
+            // so it must not be relabeled "end" (consumers compute
+            // length = end - start, which would silently corrupt every
+            // multi-char substr() call, e.g. "str.substr(i, 8)" truncating
+            // to "8 - i" characters instead of 8).
+            end: methodName === 'substr' ? null : (args[1] || null),
+            length: methodName === 'substr' ? (args[1] || null) : null,
             resultType: 'string',
             ilNodeType: 'StringSubstring'
           };
@@ -3131,6 +3386,48 @@
 
       // Helper to create TypedArrayCreation IL node
       // Distinguishes between: new TypedArray(size), new TypedArray([elements]), new TypedArray(buffer)
+      //
+      // "new Uint8Array(x)" is genuinely ambiguous from syntax alone: the
+      // real JS constructor picks zero-fill-by-length vs copy-from-array
+      // based on x's *runtime* type, which static analysis can't always
+      // determine (this._key's declared type is whatever was last
+      // assigned to it, often untracked). Since neither node type nor
+      // (frequently absent) inferred resultType settle it, fall back to
+      // the identifier/property *name*: fields conventionally named like
+      // a size/length/count are almost always the zero-fill form; every
+      // other name (key, iv, buffer, data, bytes, block, ...) is almost
+      // always an existing array being copied. Misreading the copy form
+      // as a length is the worse failure mode - it multiplies whatever
+      // reference the array happens to be by an arbitrary "length",
+      // which can exhaust memory - so default to copy-from-array unless
+      // there's a positive size-shaped signal.
+      // Word-final check rather than a single anchored regex, so camelCase
+      // names with no [_-] separator (outputSize, keySize, blockSize, ...)
+      // are recognized the same as snake_case ones (output_size) - splitting
+      // on camelCase/[_-] boundaries and checking only the *last* word
+      // avoids false positives like "sizeClass" or "lengthPrefixedBuffer".
+      // "InBytes"/"InBits"/"ByteLength"/"BitLength" are checked as whole-
+      // suffix matches instead (rateInBytes, keySizeInBytes, ...): they're
+      // specific enough not to collide with genuine byte-array field names,
+      // which are typically bare "...Bytes"/"...Bits" - deliberately NOT
+      // included in the word set below, since those usually *are* arrays.
+      const SIZE_LIKE_WORDS = new Set(['size', 'len', 'length', 'count', 'rounds', 'round', 'n']);
+      const SIZE_LIKE_SUFFIX = /(?:InBytes|InBits|ByteLength|BitLength)$/i;
+      const looksLikeSize = (a) => {
+        if (!a) return false;
+        if (a.type === 'Literal') return typeof a.value === 'number';
+        if (a.type === 'BinaryExpression' || a.type === 'UnaryExpression') return true;
+        const argResultType = a.resultType;
+        if (argResultType && /^(?:u?int(?:8|16|32|64)?|float(?:32|64)?|number)$/.test(argResultType)) return true;
+        const propName = a.type === 'ThisPropertyAccess' ? a.property
+          : (a.property && (a.property.name || a.property.value)) || a.name;
+        if (typeof propName !== 'string') return false;
+        if (SIZE_LIKE_SUFFIX.test(propName)) return true;
+        const words = propName.split(/(?=[A-Z0-9])|[_-]/).filter(Boolean);
+        const lastWord = words.length ? words[words.length - 1].toLowerCase() : '';
+        return SIZE_LIKE_WORDS.has(lastWord);
+      };
+
       const createTypedArrayNode = (arrayType, arg) => {
         // Get precise element type from our mapping
         const elementType = TypeAwareJSASTParser.TYPED_ARRAY_ELEMENT_TYPES[arrayType] || 'uint8';
@@ -3143,8 +3440,12 @@
         if (arg.type === 'ArrayExpression' || arg.type === 'ArrayLiteral') {
           return { type: 'ArrayLiteral', elements: arg.elements || [], elementType, resultType, ilNodeType: 'ArrayLiteral' };
         }
-        // If arg is an identifier or member expression, might be a buffer reference
-        if (arg.type === 'Identifier' || arg.type === 'MemberExpression') {
+        // If arg is a reference (identifier, member/property/method access,
+        // or a call result) that doesn't look size-shaped, treat it as an
+        // existing array/buffer to copy from rather than a numeric length.
+        const isReferenceLike = arg.type === 'Identifier' || arg.type === 'MemberExpression' ||
+          arg.type === 'ThisPropertyAccess' || arg.type === 'ThisMethodCall' || arg.type === 'CallExpression';
+        if (isReferenceLike && !looksLikeSize(arg)) {
           return {
             type: 'TypedArrayCreation',
             arrayType,
@@ -3240,8 +3541,15 @@
           return { type: 'ErrorCreation', errorType: calleeName, message: args[0], resultType: calleeName, ilNodeType: 'ErrorCreation' };
 
         default:
-          // Keep as NewExpression but mark it
+          // Keep as NewExpression but mark it. `new FooInstance(...)` /
+          // `new SomeClass(...)` must carry the constructed class name as
+          // its resultType so `const x = new FooInstance(...)` types x as
+          // FooInstance rather than leaving it untyped (which downstream
+          // falls back to a numeric default and produces "uint has no
+          // definition for ..." style failures in typed emitters).
           node.ilNodeType = 'NewExpression';
+          if (calleeName && !node.resultType)
+            node.resultType = calleeName;
           return node;
       }
     }
@@ -3394,8 +3702,16 @@
         // Handle special float values first (Infinity, NaN)
         if (!Number.isFinite(value)) {
           resultType = 'float64';
-        } else if (!Number.isInteger(value)) {
-          // Explicit float (has decimal point)
+        } else if (!Number.isInteger(value) || _isExplicitFloatLiteralText(node.raw)) {
+          // Explicit float: either the runtime value has a fractional part,
+          // or - even though it happens to be a whole number (e.g. `1.0`,
+          // `2.0e0`) - the source text itself used decimal-point/exponent
+          // notation. `Number.isInteger(1.0)` is `true` (JS has no separate
+          // float type), so relying on the value alone silently downgrades
+          // deliberately-float constants like `const AM = 1.0 / IM;` to
+          // int32; every consumer downstream (e.g. the Python transformer's
+          // "wrap division in int() for int-typed vars" logic) then
+          // truncates the value to 0.
           resultType = 'float64';
         } else {
           // Integer literals default to int32 (like most typed languages)
@@ -3445,16 +3761,41 @@
         el ? this._transformNode(el, context) : null
       );
 
-      // Infer element type from elements with type coercion
+      // Infer element type. When every element is a non-negative integer
+      // literal, derive the type from the actual literal *values* (byte-
+      // vs word- vs dword-range) instead of each Literal's own scalar
+      // resultType, which always defaults to 'int32' regardless of
+      // magnitude (see _transformLiteral). Bare array literals like
+      // `[0x63, 0x7c, ...]` are how S-boxes, round-key/permutation tables,
+      // and byte test vectors are almost universally written, so getting
+      // uint8[] vs uint32[] right here is what keeps typed emitters from
+      // producing byte[]/uint[] mismatches (CS1503) for these tables.
       let elementType = null;
+      let allNonNegativeIntLiterals = elements.length > 0;
+      let maxValue = 0;
       for (const el of elements) {
-        if (el && el.resultType) {
-          const elType = el.resultType;
-          if (!elementType) {
-            elementType = elType;
-          } else if (elementType !== elType) {
-            // Type coercion: find common type
-            elementType = this._getCommonType(elementType, elType);
+        if (el && el.type === 'Literal' && typeof el.value === 'number' && Number.isInteger(el.value) && el.value >= 0) {
+          if (el.value > maxValue) maxValue = el.value;
+        } else {
+          allNonNegativeIntLiterals = false;
+          break;
+        }
+      }
+
+      if (allNonNegativeIntLiterals) {
+        elementType = maxValue <= 0xFF ? 'uint8' :
+                      maxValue <= 0xFFFF ? 'uint16' :
+                      maxValue <= 0xFFFFFFFF ? 'uint32' : 'uint64';
+      } else {
+        for (const el of elements) {
+          if (el && el.resultType) {
+            const elType = el.resultType;
+            if (!elementType) {
+              elementType = elType;
+            } else if (elementType !== elType) {
+              // Type coercion: find common type
+              elementType = this._getCommonType(elementType, elType);
+            }
           }
         }
       }
@@ -3803,6 +4144,14 @@
           // Determine key
           let keyName;
           let computed = prop.computed || false;
+          // Track whether the key was written as a quoted string literal
+          // (e.g. {'SHA1': ...}) rather than a bare identifier (e.g. {T0: ...}).
+          // Quoted keys are frequently used as data - exact-case lookup tables
+          // (hash/algorithm/mode names) matched against runtime strings - and
+          // must not be case-folded by target-language emitters, whereas bare
+          // identifier keys are conventionally accessed via dot-notation and
+          // may need case conversion to match that target language's naming.
+          const keyIsLiteral = prop.key?.type === 'Literal';
           if (prop.key?.type === 'Identifier') {
             keyName = prop.key.name;
           } else if (prop.key?.type === 'Literal') {
@@ -3824,6 +4173,7 @@
           properties.push({
             type: 'ObjectProperty',
             key: keyName,
+            keyIsLiteral,
             value: transformedValue,
             computed,
             shorthand: isShorthand,
@@ -4131,7 +4481,94 @@
       return { hoistedStatements, returnValue };
     }
 
-    // ========================[ IL AST BUILDING - MODULE LOADER FILTERING ]========================
+    // ========================[ IL AST BUILDING - REQUIRE-GUARD STRIPPING ]========================
+
+    /**
+     * Step 2.55 helper: recursively check whether an expression subtree
+     * contains a `typeof require` test anywhere (e.g. as part of a larger
+     * `!des && typeof require !== 'undefined'` condition).
+     * @private
+     */
+    _containsTypeofRequire(node) {
+      if (!node || typeof node !== 'object') return false;
+      if (node.type === 'UnaryExpression' && node.operator === 'typeof' &&
+          node.argument && node.argument.type === 'Identifier' && node.argument.name === 'require')
+        return true;
+      for (const key of Object.keys(node)) {
+        const value = node[key];
+        if (Array.isArray(value)) {
+          for (const item of value)
+            if (this._containsTypeofRequire(item)) return true;
+        } else if (value && typeof value === 'object') {
+          if (this._containsTypeofRequire(value)) return true;
+        }
+      }
+      return false;
+    }
+
+    /**
+     * Step 2.55 helper: if a statement is an `if (... typeof require ...) { ... }`
+     * guard, resolve it to whatever runs when that condition is false (since
+     * require() is never available in a transpiled target) - i.e. its
+     * `alternate` (recursively resolved, in case that's itself another
+     * require-guarded else-if), or nothing if there's no alternate. Any other
+     * statement is returned unchanged.
+     * @private
+     */
+    _resolveRequireGuardedStatement(stmt) {
+      if (!stmt || stmt.type !== 'IfStatement') return stmt;
+      if (this._containsTypeofRequire(stmt.test)) {
+        if (!stmt.alternate) return null;
+        if (stmt.alternate.type === 'IfStatement') return this._resolveRequireGuardedStatement(stmt.alternate);
+        if (stmt.alternate.type === 'BlockStatement') return stmt.alternate.body || [];
+        return stmt.alternate;
+      }
+      return stmt;
+    }
+
+    /**
+     * Step 2.55: walk the whole (pre-IL) AST in place, and in every
+     * statement-list it finds (function/method bodies, if/else/for/while
+     * bodies, switch cases, ...), drop or resolve any `if (typeof require ...)`
+     * guarded fallback block via _resolveRequireGuardedStatement. This turns
+     * the very common
+     *   let x = AlgorithmFramework.Find('Foo');
+     *   if (!x && typeof require !== 'undefined') { try { require('./foo.js'); } catch (e) {} x = AlgorithmFramework.Find('Foo'); }
+     *   if (!x) throw new Error('Foo not available');
+     * idiom into plain, transpilable AlgorithmFramework.Find()/throw logic
+     * with no require() call left in it, so the (blunter, whole-function)
+     * filterModuleLoaderFunctions step right after this one no longer has
+     * any reason to stub the enclosing function/method out entirely.
+     * @private
+     */
+    _stripRequireGuardedBlocks(node) {
+      if (!node || typeof node !== 'object') return;
+      for (const key of Object.keys(node)) {
+        const value = node[key];
+        if (!Array.isArray(value)) {
+          if (value && typeof value === 'object') this._stripRequireGuardedBlocks(value);
+          continue;
+        }
+        if (value.length && value.every(v => v && typeof v === 'object' && typeof v.type === 'string')) {
+          // Looks like a statement list (or at least a list of AST nodes) -
+          // resolve require guards within it, then recurse into whatever
+          // remains. Harmless no-op for non-statement node-object arrays
+          // (e.g. function params, call arguments) since none of those are
+          // ever 'IfStatement' nodes.
+          const resolved = [];
+          for (const stmt of value) {
+            const r = this._resolveRequireGuardedStatement(stmt);
+            if (r === null) continue;
+            if (Array.isArray(r)) resolved.push(...r);
+            else resolved.push(r);
+          }
+          node[key] = resolved;
+          for (const stmt of resolved) this._stripRequireGuardedBlocks(stmt);
+        } else {
+          for (const item of value) this._stripRequireGuardedBlocks(item);
+        }
+      }
+    }
 
     /**
      * IL AST Building Step 2.6: Filter out JS-specific module loader functions
@@ -4146,13 +4583,32 @@
     filterModuleLoaderFunctions(ast) {
       if (!ast || !ast.body) return ast;
 
+      // This IL AST is shared by every target language plugin, so by default
+      // require()-using methods (lazy dependency loading — common in KDF/MAC/
+      // AEAD algorithms that pull in a hash/cipher submodule inside a method
+      // body) are stubbed out: require() has no equivalent in C#/Python/etc.
+      // But when the *target* is JavaScript itself, require() is completely
+      // valid runnable code — stubbing it out only replaces working logic
+      // with a thrown "requires JavaScript runtime features" error. Callers
+      // that know their target is JavaScript can opt out via this flag.
+      if (this.options.keepModuleLoaderFunctions) return ast;
+
       const newBody = [];
 
       for (const stmt of ast.body) {
         // Check function declarations for JS-specific patterns
         if (stmt.type === 'FunctionDeclaration') {
           if (this._isJSSpecificFunction(stmt)) {
-            // Skip this function entirely
+            // Stub the body (like a JS-specific class method - see
+            // _filterClassBody/_createStubMethod below) instead of dropping
+            // the declaration entirely. A module-level helper such as
+            // `function getRijndaelAlgorithm() { ... require(...) ... }`
+            // called from elsewhere in the same file would otherwise vanish
+            // from the output altogether, turning every call site into a
+            // "name 'get_rijndael_algorithm' is not defined" NameError
+            // instead of the same clear "requires JavaScript runtime
+            // features" exception a stubbed method gives you.
+            newBody.push(this._createStubFunction(stmt));
             continue;
           }
         }
@@ -4169,6 +4625,42 @@
     }
 
     /**
+     * Create a stub top-level function that throws, mirroring
+     * _createStubMethod for class methods (see filterModuleLoaderFunctions).
+     * @private
+     */
+    _createStubFunction(node) {
+      const fnName = node.id?.name || 'unknown';
+      const hasReturnValue = this._methodHasReturnValue(node.body);
+
+      const stub = {
+        ...node,
+        body: {
+          type: 'BlockStatement',
+          body: [{
+            type: 'ThrowStatement',
+            argument: {
+              type: 'NewExpression',
+              callee: { type: 'Identifier', name: 'Error' },
+              arguments: [{
+                type: 'Literal',
+                value: `Function '${fnName}' requires JavaScript runtime features (require/module loading) and cannot be transpiled to other languages.`,
+                raw: `"Function '${fnName}' requires JavaScript runtime features (require/module loading) and cannot be transpiled to other languages."`
+              }]
+            }
+          }]
+        }
+      };
+
+      if (hasReturnValue) {
+        stub.typeInfo = { returns: 'object' };
+        stub.returnType = 'object';
+      }
+
+      return stub;
+    }
+
+    /**
      * Check if a function/method contains JS-specific code
      * @private
      */
@@ -4180,28 +4672,51 @@
         bodyToCheck = node.value.body || node.value;
       }
 
-      const bodyStr = safeJSONStringify(bodyToCheck || {});
+      return this._containsRuntimeModuleLoading(bodyToCheck);
+    }
 
-      // Patterns that indicate JS-specific runtime code
-      // Note: We allow AlgorithmFramework.EnumType.VALUE references (e.g., AlgorithmFramework.CategoryType.BLOCK)
-      // as these are legitimate enum accesses that should be transpiled. We only filter AlgorithmFramework
-      // when used in require() or assignment patterns indicating module loading.
-      const jsPatterns = [
-        /\brequire\s*\(\s*['"][^'"]*AlgorithmFramework/,  // require('...AlgorithmFramework')
-        /\brequire\s*\(\s*['"][^'"]*OpCodes/,             // require('...OpCodes')
-        /\brequire\b/,           // Node.js require (other modules)
-        /\b__dirname\b/,          // Node.js directory
-        /\b__filename\b/,         // Node.js filename
-        /\bmodule\.exports\b/,    // CommonJS exports
-        /\bglobal\.\w+\s*=\s*require/, // global.X = require(...)
-      ];
+    /**
+     * Structurally walk an AST subtree looking for real Node.js module-loading
+     * constructs (a bare `require` identifier/call, `__dirname`, `__filename`,
+     * `module.exports`). This used to be a set of regexes matched against
+     * `safeJSONStringify(bodyToCheck)` - the JSON-serialized text of string
+     * *literals* (algorithm descriptions, vulnerability write-ups, etc.) is
+     * indistinguishable from code in that flattened text, so any metadata
+     * string that happened to contain the ordinary English word "require"
+     * (e.g. "Modern attacks require much higher iteration counts") made the
+     * regex match and the *entire* method/constructor got replaced with a
+     * `throw` stub - deleting real, runnable logic (constructors included)
+     * over a documentation string. Walking the actual AST and skipping
+     * `Literal` nodes (their `.value`/`.raw` text is never code) avoids that
+     * false positive while still catching genuine `require(...)` usage.
+     * @private
+     */
+    _containsRuntimeModuleLoading(node) {
+      if (!node || typeof node !== 'object') return false;
+      if (Array.isArray(node)) return node.some(n => this._containsRuntimeModuleLoading(n));
 
-      for (const pattern of jsPatterns) {
-        if (pattern.test(bodyStr)) {
+      // String/number/regex literal *values* are never code - do not scan
+      // their text content (this is exactly what fixes the false-positive
+      // on documentation strings containing the word "require").
+      if (node.type === 'Literal') return false;
+
+      if (node.type === 'Identifier' &&
+          (node.name === 'require' || node.name === '__dirname' || node.name === '__filename')) {
+        return true;
+      }
+      if (node.type === 'MemberExpression' &&
+          node.object?.type === 'Identifier' && node.object.name === 'module' &&
+          (node.property?.name === 'exports' || node.property?.value === 'exports')) {
+        return true;
+      }
+
+      for (const key in node) {
+        if (key === 'parent') continue;
+        const value = node[key];
+        if (value && typeof value === 'object' && this._containsRuntimeModuleLoading(value)) {
           return true;
         }
       }
-
       return false;
     }
 
@@ -4319,14 +4834,49 @@
 
       // Collect prototype assignments to process and remove
       const prototypeAssignments = [];
+      // Collect post-declaration static-property assignments to process and remove:
+      // `ClassName.SBOX = [...]` written as a top-level statement AFTER the class
+      // body closes (a common ES5-ish convention for large constant tables, e.g.
+      // SNOW3G's `SNOW3GAlgorithm.S1 = [...]`/`.S2 = [...]`, Sosemanuk's `.SBOX =
+      // [...]`), as opposed to declaring `static S1 = [...]` inline in the class
+      // body. Without this, the field is only ever *read* as `ClassName.S1` (the
+      // member-access side already resolves the identifier correctly) but never
+      // *declared* anywhere the emitter can see, producing CS0117 in C# ("contains
+      // no definition for S1") - the assignment statement itself just silently
+      // becomes a dangling top-level expression statement.
+      const staticPropertyAssignments = [];
       const statementsToKeep = [];
 
       for (const stmt of ast.body) {
         const protoInfo = this.extractPrototypeAssignment(stmt);
         if (protoInfo) {
           prototypeAssignments.push({ stmt, ...protoInfo });
+          continue;
+        }
+        const staticPropInfo = this.extractStaticPropertyAssignment(stmt, classMap);
+        if (staticPropInfo) {
+          staticPropertyAssignments.push({ stmt, ...staticPropInfo });
         } else {
           statementsToKeep.push(stmt);
+        }
+      }
+
+      // Process static-property assignments: append each as a static FieldDefinition
+      // member on the target class, in source order (matches the field-initializer
+      // evaluation order the equivalent inline `static X = [...]` would have had).
+      for (const { className, propName, valueExpr } of staticPropertyAssignments) {
+        const classDecl = classMap.get(className);
+        if (!classDecl) continue;
+        const fieldDef = {
+          type: 'FieldDefinition',
+          static: true,
+          key: { type: 'Identifier', name: propName },
+          value: valueExpr
+        };
+        if (classDecl.body?.body) {
+          classDecl.body.body.push(fieldDef);
+        } else if (classDecl.body && Array.isArray(classDecl.body)) {
+          classDecl.body.push(fieldDef);
         }
       }
 
@@ -4492,6 +5042,49 @@
         className: classNameNode.name,
         methodName: methodName,
         functionExpr: right
+      };
+    }
+
+    /**
+     * Extract a post-declaration static-property assignment from a statement.
+     * Pattern: ClassName.PROP = <expr>;  (top-level, ClassName must be a class
+     * already declared in this module - see flattenMethodDefinitions' classMap)
+     *
+     * Deliberately excludes:
+     *   - `ClassName.prototype...` (handled by extractPrototypeAssignment instead)
+     *   - computed member access (`ClassName['PROP'] = ...`) - too ambiguous to
+     *     treat as a fixed field name
+     *   - function-expression RHS (`ClassName.method = function(){}`) - that is a
+     *     static *method*, not a field, and isn't the CS0117 shape this exists to
+     *     fix; leaving it alone keeps this change narrowly scoped
+     * @param {Object} stmt - Statement node
+     * @param {Map<string,Object>} classMap - className -> ClassDeclaration, built by the caller
+     * @returns {Object|null} { className, propName, valueExpr } or null
+     */
+    extractStaticPropertyAssignment(stmt, classMap) {
+      if (stmt.type !== 'ExpressionStatement') return null;
+
+      const expr = stmt.expression;
+      if (expr?.type !== 'AssignmentExpression' || expr.operator !== '=') return null;
+
+      const left = expr.left;
+      const right = expr.right;
+
+      if (left?.type !== 'MemberExpression' || left.computed) return null;
+
+      const classNameNode = left.object;
+      if (classNameNode?.type !== 'Identifier') return null;
+      if (!classMap.has(classNameNode.name)) return null;
+
+      const propName = left.property?.name || left.property?.value;
+      if (!propName || propName === 'prototype') return null;
+
+      if (right?.type === 'FunctionExpression' || right?.type === 'ArrowFunctionExpression') return null;
+
+      return {
+        className: classNameNode.name,
+        propName,
+        valueExpr: right
       };
     }
 
@@ -4739,6 +5332,18 @@
       const test = stmt.test;
       if (!test) return false;
 
+      // A guard whose body actually registers the algorithm - e.g.
+      //   if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+      //     global.AlgorithmFramework.RegisterAlgorithm(X);
+      //   }
+      // - is never a module loader pattern, even though its test contains
+      // "global." and "typeof" (which would otherwise match Pattern 1
+      // below). Without this check, the whole if-statement - including the
+      // only RegisterAlgorithm() call in the file - gets silently dropped
+      // by unwrapModulePatterns()/tryUnwrapSimpleIIFE(), producing
+      // transpiled output that never registers the algorithm.
+      if (this._containsRegisterAlgorithmCall(stmt.consequent)) return false;
+
       // Check for patterns involving 'global.X' or 'typeof require'
       const testStr = this._nodeToString(test);
       if (!testStr) return false;
@@ -4760,6 +5365,30 @@
       // Pattern 4: if (global.Cipher) or if (global.X && ...) - registration patterns
       if (testStr.match(/^global\.\w+$/) || testStr.match(/^global\[/)) {
         return true;
+      }
+      return false;
+    }
+
+    /**
+     * Does this (pre-unwrap) node contain a RegisterAlgorithm(x) or
+     * ...AlgorithmFramework.RegisterAlgorithm(x) call anywhere within it?
+     * Matches regardless of how deeply the "AlgorithmFramework" object
+     * reference is nested (e.g. global.AlgorithmFramework.RegisterAlgorithm),
+     * since only the final ".RegisterAlgorithm" property name matters.
+     * @private
+     */
+    _containsRegisterAlgorithmCall(node) {
+      if (!node || typeof node !== 'object') return false;
+      if (Array.isArray(node)) return node.some(n => this._containsRegisterAlgorithmCall(n));
+      if (node.type === 'CallExpression') {
+        if (node.callee?.type === 'Identifier' && node.callee.name === 'RegisterAlgorithm') return true;
+        if (node.callee?.type === 'MemberExpression' &&
+            (node.callee.property?.name === 'RegisterAlgorithm' || node.callee.property?.value === 'RegisterAlgorithm'))
+          return true;
+      }
+      for (const key of Object.keys(node)) {
+        if (key === 'parent' || key === '_parent') continue;
+        if (this._containsRegisterAlgorithmCall(node[key])) return true;
       }
       return false;
     }
@@ -4971,9 +5600,24 @@
      * Each pass narrows types based on usage context, continuing until no changes occur
      */
     performTypeNarrowing(ast) {
-      const MAX_ITERATIONS = 10;
+      // Raised from 10: interprocedural propagation needs enough passes for a
+      // fact discovered deep in a callee's body to travel through multi-hop
+      // call chains (e.g. DES: _permute's `input` param is proven byte[] from
+      // direct indexing in pass 1; _feistelFunction's `right` param is proven
+      // byte[] in pass 2 by seeing it passed as _permute's arg 0; every call
+      // site's `right` argument and _feistelFunction's own callers pick that up
+      // in pass 3, etc). Each hop costs one pass, so shallow call graphs still
+      // converge quickly while deep ones get the headroom to finish.
+      const MAX_ITERATIONS = 20;
       let iteration = 0;
       let typesChanged = true;
+
+      // Build the whole-program function/method table once up front. The table
+      // itself (which AST node backs which function name) doesn't change across
+      // passes - only the type facts recorded in this.typeAnnotations for the
+      // nodes it points to change - so rebuilding it every pass would be wasted
+      // work.
+      this._buildFunctionTable(ast);
 
       // console.error(`DEBUG: Starting multi-pass type narrowing...`);
 
@@ -4989,6 +5633,379 @@
       }
 
       // console.error(`DEBUG: Type narrowing completed after ${iteration} passes (${this.typeAnnotations.size} types inferred)`);
+
+      // Bridge this.typeAnnotations (this parser's own internal, node-identity
+      // keyed bookkeeping) into `funcNode.typeInfo` - the plain-object/Map shape
+      // that lives ON the AST node itself and that language emitters (see
+      // CSharpTransformer.js's `funcNode.typeInfo || this.extractTypeInfo(funcNode)`)
+      // actually read. Without this step every fact this fixpoint spent up to
+      // MAX_ITERATIONS passes proving (interprocedurally or not) evaporates the
+      // moment parse() returns the bare AST - typeAnnotations lives only on this
+      // parser instance, which downstream consumers never see. Done once, after
+      // convergence, so it can never observe/bake a stale intermediate value.
+      this._bakeTypeInfoOntoFunctionNodes();
+    }
+
+    /**
+     * Write every function/method's narrowed parameter types onto `node.typeInfo`
+     * (creating it if the function had no JSDoc at all) so that downstream
+     * per-language emitters - which read `funcNode.typeInfo` directly, not this
+     * parser's internal typeAnnotations map - see the fixpoint's results instead
+     * of falling back to their own (typically name-pattern-based) guessing.
+     * JSDoc-declared types already present in typeInfo are never overwritten:
+     * JSDoc wins whenever it's present, matching every other seeding rule in
+     * this file.
+     *
+     * Also bakes the function's return type onto `typeInfo.returns` when
+     * `_analyzeReturnType` finds one (JSDoc already wins there too, and a bare
+     * `return someLocalVar;` now resolves through _findLocalVariableType's
+     * function-scoped declaration lookup rather than falling back to a
+     * name-pattern/default guess - see its own comment for why that distinction
+     * matters here specifically: CSharpTransformer.js's method-signature
+     * registry reads `funcNode.typeInfo || this.extractTypeInfo(funcNode)` when
+     * it registers this method, so a weak guess baked here would have
+     * short-circuited its own, better fallback).
+     * @private
+     */
+    _bakeTypeInfoOntoFunctionNodes() {
+      for (const entry of this.functionTable.values()) {
+        const funcNode = entry.node;
+        if (!funcNode) continue;
+
+        for (const paramNode of entry.params) {
+          if (!paramNode || paramNode.type !== 'Identifier' || !paramNode.name) continue;
+          const info = this.typeAnnotations.get(paramNode);
+
+          // Only bake 'interprocedural-usage' facts: a parameter that is never
+          // indexed/masked/member-accessed *in this function's own body*, but
+          // is passed straight through to another call whose matching
+          // parameter/JSDoc signature is already known (see
+          // _inferParameterTypeFromUsage's checkCallArguments). That's a fact
+          // CSharpTransformer.js's own preRegisterMethodSignature structurally
+          // cannot see (it only analyzes one function body at a time), so
+          // baking it is purely additive.
+          //
+          // Deliberately excludes 'call-site-arg' (the OTHER interprocedural
+          // direction: caller's argument type -> callee's parameter, set by
+          // _unifyCallSite) even though it sounds equally cross-function: in
+          // practice it races against - and can beat - CSharpTransformer's own
+          // local body-usage detection for the callee's *own* parameter
+          // (whichever runs first wins, since a parameter's type is only ever
+          // set once), and a caller's argument type is frequently itself just
+          // a weak default (e.g. an empty array literal defaults to int32[])
+          // rather than solid evidence. Baking that here regressed a whole
+          // measure_cs.js `block` run from 15/90 to 2/90 compiling before this
+          // filter was narrowed to interprocedural-usage only. Also excludes
+          // plain 'inferred' (this function's own local usage) and 'jsdoc'
+          // (already visible to CSharpTransformer.js via funcNode.typeInfo)
+          // for the same "don't shadow a more detailed local analysis" reason.
+          if (!info || info.source !== 'interprocedural-usage') continue;
+
+          const cleanType = this._cleanTypeName(info.type);
+          if (!cleanType || cleanType === 'object') continue;
+
+          if (!funcNode.typeInfo) funcNode.typeInfo = { params: new Map(), returns: null };
+          if (!funcNode.typeInfo.params) funcNode.typeInfo.params = new Map();
+          const params = funcNode.typeInfo.params;
+
+          if (params instanceof Map) {
+            if (!params.has(paramNode.name)) params.set(paramNode.name, cleanType);
+          } else if (!Object.prototype.hasOwnProperty.call(params, paramNode.name)) {
+            params[paramNode.name] = cleanType;
+          }
+        }
+
+        // NOTE: deliberately not also baking a return type onto
+        // `typeInfo.returns` here. It measurably fixed the DES canary (whose
+        // whole call chain agrees on byte[]), but project-wide across
+        // tests/measure_cs.js's full `block` category it was a net regression
+        // (15/90 -> 2/90 compiling): _analyzeReturnType's evidence is strong
+        // enough for a single hand-picked function but not uniformly reliable
+        // enough, file-over-file, to unconditionally override
+        // CSharpTransformer.js's own extractTypeInfo()-based return-type
+        // inference (which already handles many of these files correctly on
+        // its own). Return-type propagation to *callers* still happens
+        // narrowly and safely via _unifyCallSite's node.resultType write on
+        // the call node itself, which never touches the callee's declared
+        // signature.
+      }
+    }
+
+    /**
+     * Build a whole-program table of every function/method declaration, keyed by:
+     *   - bare name, for FunctionDeclaration/FunctionExpression/ArrowFunctionExpression
+     *     bound to a const (e.g. `function foo(x) {}` or `const foo = (x) => {}`)
+     *   - "ClassName.methodName", for every MethodDefinition inside a ClassDeclaration
+     *   - methodName alone (first writer wins), as a fallback for call sites where
+     *     the enclosing class context couldn't be determined
+     * Each entry's `params` array holds the *actual* parameter AST node objects (not
+     * copies), so annotating them via this.typeAnnotations is immediately visible
+     * both to the callee's own body (which reads the same param nodes) and to every
+     * other call site that resolves the same table entry.
+     * @private
+     */
+    _buildFunctionTable(ast) {
+      this.functionTable = new Map();
+
+      const register = (key, params, node) => {
+        if (!key || this.functionTable.has(key)) return;
+        this.functionTable.set(key, { params: params || [], node });
+      };
+
+      const visit = (node, className) => {
+        if (!node || typeof node !== 'object') return;
+        if (Array.isArray(node)) {
+          for (const child of node) visit(child, className);
+          return;
+        }
+
+        let childClassName = className;
+        if (node.type === 'ClassDeclaration' && node.id && node.id.name)
+          childClassName = node.id.name;
+
+        if (node.type === 'FunctionDeclaration' && node.id && node.id.name) {
+          register(node.id.name, node.params, node);
+        } else if (node.type === 'VariableDeclarator' && node.id && node.id.type === 'Identifier' &&
+                   node.init && (node.init.type === 'FunctionExpression' || node.init.type === 'ArrowFunctionExpression')) {
+          register(node.id.name, node.init.params, node.init);
+        } else if (node.type === 'MethodDefinition' && node.key && node.key.name && node.value) {
+          const qualifiedKey = (className ? className + '.' : '') + node.key.name;
+          register(qualifiedKey, node.value.params, node.value);
+          register(node.key.name, node.value.params, node.value); // unqualified fallback
+        }
+
+        for (const key in node) {
+          if (key === 'loc' || key === 'range' || key === 'comments') continue;
+          visit(node[key], childClassName);
+        }
+      };
+
+      visit(ast, null);
+    }
+
+    /**
+     * Resolve the function-table entry for a bare CallExpression's callee.
+     * @private
+     */
+    _resolveCallExpressionEntry(node) {
+      if (!node.callee || node.callee.type !== 'Identifier') return null;
+      return this.functionTable.get(node.callee.name) || null;
+    }
+
+    /**
+     * Resolve the function-table entry for a ThisMethodCall/ParentMethodCall IL
+     * node, following the class hierarchy (base classes) when the method isn't
+     * declared directly on the current class.
+     * @private
+     */
+    _resolveMethodCallEntry(node, context) {
+      const methodName = node.method;
+      if (!methodName) return null;
+
+      let className = node.type === 'ParentMethodCall' ? node.parentClass : context?.className;
+      let hops = 0;
+      while (className && hops++ < 32) {
+        const entry = this.functionTable.get(className + '.' + methodName);
+        if (entry) return entry;
+        className = this.classHierarchy.get(className);
+      }
+
+      return this.functionTable.get(methodName) || null;
+    }
+
+    /**
+     * Unify a call site's arguments with the resolved callee's parameters, and
+     * propagate the callee's return type onto the call node itself.
+     *
+     * This is the core of interprocedural (cross-function) type propagation:
+     *   - caller -> callee: if an argument's type is known and the matching
+     *     parameter's type isn't, the parameter adopts it (so the callee's body
+     *     is analyzed with the caller-supplied type on later passes).
+     *   - callee -> caller: if the parameter's type is known (whether from
+     *     JSDoc, body usage, or a previous call site) and this particular
+     *     argument expression's type isn't, the argument node adopts it (so the
+     *     caller emits the right type/cast at this call site).
+     *   - return type: the callee's return type (joined from JSDoc + every
+     *     `return <expr>` in its body) is written onto the call node's
+     *     `resultType`, which inferExpressionType already consults first for
+     *     any node type - so the variable/expression receiving the call result
+     *     picks it up without needing per-IL-node-type switch cases.
+     * Only ever narrows (object/unknown -> specific); never widens or replaces
+     * an already-specific type, which keeps the whole-program fixpoint
+     * monotonic and guarantees convergence within MAX_ITERATIONS.
+     * @private
+     */
+    _unifyCallSite(node, entry, context) {
+      if (!entry) return 0;
+
+      let changes = 0;
+      const argNodes = node.arguments;
+      const params = entry.params || [];
+
+      if (argNodes) {
+        for (let i = 0; i < argNodes.length && i < params.length; i++) {
+          const paramNode = params[i];
+          const argNode = argNodes[i];
+          if (!paramNode || paramNode.type !== 'Identifier' || !argNode) continue;
+
+          // Deliberately NOT the general-purpose inferExpressionType() here: for
+          // a bare Identifier argument, that falls all the way through to
+          // PreciseTypeKnowledge's name-pattern/default guess (e.g. any
+          // unrecognized name defaults to 'uint32') when nothing concrete is
+          // known yet. Trusting that guess as "the argument's type" would let a
+          // wild guess made *before* the callee's own parameter has been
+          // analyzed from its body win the race and permanently lock the callee
+          // parameter onto the wrong type - the FunctionDeclaration case's
+          // `!this.typeAnnotations.has(param)` guard means once anything
+          // non-object is recorded, the (correct) body-usage inference for that
+          // parameter never runs again. _getGroundedArgumentType only trusts
+          // types backed by real evidence (an explicit annotation, a resultType
+          // already computed structurally, or - for non-Identifier expressions
+          // like array/binary literals - direct structural inference), so a
+          // caller can only narrow a callee's parameter with a fact it actually
+          // has, never a shrug.
+          const argTypeName = this._getGroundedArgumentType(argNode, context);
+          const existingParam = this.typeAnnotations.get(paramNode);
+          const paramTypeName = this._cleanTypeName(existingParam ? existingParam.type : null);
+
+          // caller -> callee
+          if ((!paramTypeName || paramTypeName === 'object') && argTypeName && argTypeName !== 'object') {
+            // Don't let a caller's argument type claim this parameter ahead of
+            // the callee's own body-usage evidence (direct indexing, .length,
+            // array methods) - whichever of the two this whole-program,
+            // source-order tree walk happens to reach first otherwise wins,
+            // and a caller's argument type is frequently a much weaker signal
+            // (e.g. an empty array literal's int32[] default) than solid local
+            // evidence from the callee's own body. Skip the write here and let
+            // the callee's own FunctionDeclaration/MethodDefinition processing
+            // (elsewhere in this same narrowTypesPass) claim it on its own -
+            // if the callee genuinely has no local evidence either, this same
+            // call site will still supply the type on a later pass, since
+            // nothing here got marked "resolved" in the meantime.
+            const localHint = this._inferParameterTypeFromUsage(entry.node, paramNode.name, context);
+            if (localHint.interprocedural || !localHint.type) {
+              this.typeAnnotations.set(paramNode, { type: argTypeName, source: 'call-site-arg' });
+              if (paramNode.name) context[paramNode.name] = argTypeName;
+              changes++;
+            }
+          }
+
+          // callee -> caller (re-read: may have just been narrowed above)
+          const knownParamType = this.typeAnnotations.get(paramNode);
+          const knownParamTypeName = this._cleanTypeName(knownParamType ? knownParamType.type : null);
+          if (knownParamTypeName && knownParamTypeName !== 'object') {
+            const existingArg = this.typeAnnotations.get(argNode);
+            const existingArgTypeName = this._cleanTypeName(existingArg ? existingArg.type : null);
+            if ((!existingArgTypeName || existingArgTypeName === 'object') &&
+                (!argTypeName || argTypeName === 'object')) {
+              this.typeAnnotations.set(argNode, { type: knownParamTypeName, source: 'callee-param' });
+              changes++;
+            }
+          }
+        }
+      }
+
+      // Return-type propagation: join of JSDoc @returns and every `return <expr>`
+      // in the callee's body, written onto the call node so the receiving
+      // variable/expression sees it via inferExpressionType's resultType check.
+      const returnType = this._getFunctionReturnType(entry);
+      if (returnType && node.resultType !== returnType) {
+        node.resultType = returnType;
+        changes++;
+      }
+
+      return changes;
+    }
+
+    /**
+     * Compute a function-table entry's best currently-known return type: JSDoc
+     * @returns wins outright, otherwise it's the join of every `return <expr>`
+     * in the body (see _analyzeReturnType). Recomputed on demand each pass so it
+     * improves automatically as the body's own local types get narrowed.
+     * @private
+     */
+    _getFunctionReturnType(entry) {
+      if (!entry || !entry.node) return null;
+      if (entry.node.typeInfo && entry.node.typeInfo.returns) return this._cleanTypeName(entry.node.typeInfo.returns);
+      const returnType = this._analyzeReturnType(entry.node);
+      return (returnType && returnType !== 'object' && returnType !== 'void') ? this._cleanTypeName(returnType) : null;
+    }
+
+    /**
+     * Validate that a type-name string is safe to propagate across a function
+     * boundary (into another node's typeAnnotations, or baked onto typeInfo):
+     * a plain identifier optionally suffixed with one or more `[]`. Rejects
+     * anything else - most notably un-normalized JSDoc union types like
+     * "uint8[]|null" or "string|number" - which are meaningful enough within
+     * the single function whose JSDoc declared them, but are not a valid
+     * target-language type name and must never leak into another function's
+     * inferred signature.
+     * @private
+     */
+    _cleanTypeName(t) {
+      if (typeof t !== 'string' || t.length === 0) return null;
+      return /^[A-Za-z_][A-Za-z0-9_.]*(\[\])*$/.test(t) ? t : null;
+    }
+
+    /**
+     * Get a parameter's currently-known type, but only when its source is
+     * trustworthy enough to propagate transitively into a *different*
+     * function's parameter (via _inferParameterTypeFromUsage's checkCallArguments).
+     * Deliberately excludes 'call-site-arg' - a fact _unifyCallSite wrote from
+     * one specific caller's argument type, which is frequently just a weak
+     * structural default (e.g. an empty array literal defaulting to int32[])
+     * rather than solid evidence, and which raced ahead of - and can silently
+     * shadow - this same parameter's own (correct) local body-usage inference.
+     * Letting that kind of fact chain into yet another function multiplies a
+     * single bad guess across the whole call graph instead of containing it.
+     * @private
+     */
+    _trustedParamType(paramNode) {
+      const info = this.typeAnnotations.get(paramNode);
+      if (!info || info.source === 'call-site-arg') return null;
+      return info.type;
+    }
+
+    /**
+     * Get a call argument's type, but only when it's backed by real evidence -
+     * never PreciseTypeKnowledge's name-pattern/default fallback guess. See the
+     * comment at its call site in _unifyCallSite for why that distinction
+     * matters for interprocedural propagation specifically (a guess winning a
+     * race against real body-usage evidence can permanently poison a
+     * parameter's type, since parameter narrowing only ever fires once).
+     * @private
+     */
+    _getGroundedArgumentType(argNode, context) {
+      if (!argNode) return null;
+
+      if (this.typeAnnotations.has(argNode)) {
+        const info = this.typeAnnotations.get(argNode);
+        const t = this._cleanTypeName((info.type && info.type.name) || (typeof info.type === 'string' ? info.type : null));
+        if (t) return t;
+      }
+
+      if (argNode.resultType) {
+        const t = this._cleanTypeName(typeof argNode.resultType === 'string' ? argNode.resultType : argNode.resultType.name);
+        if (t) return t;
+      }
+
+      if (argNode.type === 'Identifier') {
+        // Bare identifiers: only trust context if it was populated by a real
+        // narrowing action (JSDoc, structural inference, or a previous grounded
+        // call-site fact) - never fall through to the name-pattern/default
+        // guess that inferExpressionType's Identifier case ultimately reaches.
+        if (context && Object.prototype.hasOwnProperty.call(context, argNode.name)) {
+          const raw = context[argNode.name];
+          return this._cleanTypeName((raw && raw.name) || (typeof raw === 'string' ? raw : null));
+        }
+        return null;
+      }
+
+      // Non-identifier expressions (literals, array literals, binary/unary
+      // expressions, member expressions, ...) are structurally inferred, not
+      // name-guessed, so the general inferrer is safe to trust here.
+      const inferred = this.inferExpressionType(argNode, context);
+      return this._cleanTypeName((inferred && inferred.name) || (typeof inferred === 'string' ? inferred : null));
     }
 
     /**
@@ -5006,6 +6023,12 @@
           // Track class inheritance hierarchy
           if (node.id && node.id.name) {
             const className = node.id.name;
+
+            // Thread the enclosing class name down to every descendant (methods,
+            // their bodies, etc.) via context so ThisMethodCall/ParentMethodCall
+            // nodes encountered deeper in the tree can resolve `this.method()` to
+            // the right function-table entry (qualified "ClassName.methodName").
+            context.className = className;
 
             // Track base class if present
             if (node.superClass) {
@@ -5090,12 +6113,21 @@
           if (node.params) {
             node.params.forEach(param => {
               if (param.type === 'Identifier' && param.name) {
-                // First try JSDoc, then fall back to usage-based inference
+                // First try JSDoc, then fall back to usage-based inference (which
+                // itself now also looks at how this parameter is threaded into
+                // calls to other known functions/methods - see
+                // _inferParameterTypeFromUsage).
                 let paramType = this._extractJSDocParamType(node, param.name);
                 let typeSource = 'jsdoc';
                 if (!paramType) {
-                  paramType = this._inferParameterTypeFromUsage(node, param.name);
-                  typeSource = 'inferred';
+                  const usage = this._inferParameterTypeFromUsage(node, param.name, context);
+                  paramType = usage.type;
+                  // 'interprocedural-usage' is a distinct source from 'inferred'
+                  // (local body usage) specifically so _bakeTypeInfoOntoFunctionNodes
+                  // can bake only the genuinely cross-function facts - see its
+                  // own comment for why conflating the two caused a project-wide
+                  // regression when this mechanism was first wired up.
+                  typeSource = usage.interprocedural ? 'interprocedural-usage' : 'inferred';
                 }
                 paramType = paramType || 'object';
                 if (!this.typeAnnotations.has(param) && paramType !== 'object') {
@@ -5106,6 +6138,21 @@
               }
             });
           }
+          break;
+
+        // Interprocedural (cross-function/method) unification: a CallExpression
+        // is a bare function call (`foo(x)`); ThisMethodCall/ParentMethodCall are
+        // the IL forms that `this.foo(x)`/`super.foo(x)` were normalized into
+        // earlier. Resolve each to its function-table entry and unify arguments
+        // with parameters both ways, and propagate the callee's return type onto
+        // this call node (see _unifyCallSite for the full rationale).
+        case 'CallExpression':
+          changeCount += this._unifyCallSite(node, this._resolveCallExpressionEntry(node), context);
+          break;
+
+        case 'ThisMethodCall':
+        case 'ParentMethodCall':
+          changeCount += this._unifyCallSite(node, this._resolveMethodCallEntry(node, context), context);
           break;
       }
 
@@ -5124,6 +6171,71 @@
       }
 
       return changeCount;
+    }
+
+    /**
+     * Find a local variable's (or parameter's) narrowed type by name within a
+     * single function - a bounded, function-scoped exception to this parser's
+     * general node-identity-keyed typeAnnotations lookup, used only to resolve
+     * a bare `return someVar;` back to the declaration that actually carries
+     * the evidence (see the ReturnStatement handling in _analyzeReturnType).
+     * Does not descend into nested function bodies, so it can't cross into a
+     * different variable's scope even if it shares the same name.
+     * @private
+     */
+    _findLocalVariableType(funcNode, varName) {
+      if (!funcNode || !varName) return null;
+
+      // typeAnnotations entries have an inconsistent shape depending on who
+      // wrote them: param-related code (JSDoc extraction, usage inference,
+      // call-site unification) always stores a plain string; VariableDeclarator
+      // stores whatever inferExpressionType() returned, which is normally a
+      // { name: <type> } object. Accept both.
+      const extractTypeName = (info) => {
+        if (!info) return null;
+        return this._cleanTypeName((info.type && info.type.name) || (typeof info.type === 'string' ? info.type : null));
+      };
+
+      if (funcNode.params) {
+        for (const p of funcNode.params) {
+          if (p && p.type === 'Identifier' && p.name === varName) {
+            const t = extractTypeName(this.typeAnnotations.get(p));
+            if (t && t !== 'object') return t;
+          }
+        }
+      }
+
+      let found = null;
+      const visit = (node) => {
+        if (found || !node || typeof node !== 'object') return;
+        if (Array.isArray(node)) {
+          for (const child of node) {
+            visit(child);
+            if (found) return;
+          }
+          return;
+        }
+        if (node !== funcNode &&
+            (node.type === 'FunctionDeclaration' || node.type === 'FunctionExpression' || node.type === 'ArrowFunctionExpression'))
+          return; // different scope
+
+        if (node.type === 'VariableDeclarator' && node.id && node.id.type === 'Identifier' && node.id.name === varName) {
+          const t = extractTypeName(this.typeAnnotations.get(node.id));
+          if (t && t !== 'object') {
+            found = t;
+            return;
+          }
+        }
+
+        for (const key in node) {
+          if (key === 'loc' || key === 'range' || key === 'comments') continue;
+          visit(node[key]);
+          if (found) return;
+        }
+      };
+
+      visit(funcNode.body);
+      return found;
     }
 
     /**
@@ -5148,9 +6260,27 @@
           if (!node.argument) {
             hasVoidReturn = true;
           } else {
-            const retType = this.inferExpressionType(node.argument, { funcNode });
-            // Extract type name - inferExpressionType returns { name: 'typeName' } objects
-            const typeName = retType?.name || (typeof retType === 'string' ? retType : null);
+            let typeName = null;
+
+            // For a bare `return someVar;`, prefer someVar's own declaration
+            // site type - grounded evidence (JSDoc, `new Array(...)`, a prior
+            // narrowing, ...) - over inferExpressionType's Identifier case,
+            // which falls back to a generic name-pattern/default guess when it
+            // doesn't recognize `someVar` by node identity (the ReturnStatement's
+            // argument is a different AST node than the declaration, so a plain
+            // node-identity lookup misses it entirely otherwise). Without this,
+            // e.g. `const bits = new Array(n); ...; return bits;` reported
+            // `bits`'s real uint8[] as a generic 'uint32' guess, corrupting the
+            // return type this interprocedural mechanism propagates to callers.
+            if (node.argument.type === 'Identifier')
+              typeName = this._findLocalVariableType(funcNode, node.argument.name);
+
+            if (!typeName) {
+              const retType = this.inferExpressionType(node.argument, { funcNode });
+              // Extract type name - inferExpressionType returns { name: 'typeName' } objects
+              typeName = retType?.name || (typeof retType === 'string' ? retType : null);
+            }
+
             if (typeName && typeName !== 'object' && typeName !== 'unknown')
               returnTypes.push(typeName);
             else {
@@ -5344,21 +6474,124 @@
     }
 
     /**
+     * Reverse lookup: an inlined/complex-OpCodes IL node -> the exact OpCodes
+     * method name that produced it, so a parameter passed into one of these
+     * forms can still be resolved against the original method's JSDoc
+     * parameter signature.
+     *
+     * NOT just a type->name map: COMPLEX_OPCODES has several methods that
+     * share the same `type` (e.g. Unpack16BE/Unpack32BE/Unpack64BE all produce
+     * an 'UnpackBytes' IL node, distinguished only by their `bits`/`endian`
+     * properties). A bare `ilNodeType -> methodName` map is ambiguous there -
+     * it silently picked whichever of the same-`type` entries happened to be
+     * declared first in COMPLEX_OPCODES (Unpack16BE), so a parameter unpacked
+     * with Unpack32BE inherited Unpack16BE's 16-bit JSDoc signature (uint16)
+     * instead of the correct 32-bit one (uint32) - concretely, Rijndael's
+     * `subWord(word, tables)` calls `OpCodes.Unpack32BE(word)`, and `word` got
+     * downgraded to uint16 (-> C# ushort) by exactly this ambiguity, breaking
+     * every call site that (correctly) passes it a uint32. Matching every
+     * property the IL node construction copied from the COMPLEX_OPCODES
+     * definition (not just `type`) disambiguates correctly.
+     * @private
+     */
+    _getExactOpCodeMethodForIlNode(node) {
+      for (const [methodName, def] of Object.entries(TypeAwareJSASTParser.COMPLEX_OPCODES)) {
+        if (def.type !== node.ilNodeType) continue;
+        let matches = true;
+        for (const key of Object.keys(def)) {
+          if (key === 'type') continue;
+          if (node[key] !== def[key]) { matches = false; break; }
+        }
+        if (matches) return methodName;
+      }
+      return null;
+    }
+
+    /**
      * Infer parameter type from usage patterns within the function body.
-     * Looks for array-like usage (.length, indexing, array methods).
+     * Looks for array-like usage (.length, indexing, array methods), and -
+     * interprocedurally - whether the parameter is passed straight through as
+     * an argument to a call whose matching parameter/JSDoc signature is already
+     * known (e.g. DES's `_feistelFunction(right, key)`: `right` isn't indexed
+     * directly in this function, but is passed as arg 0 to `this._permute(right,
+     * this.E)`, and _permute's own `input` parameter is provably byte[] from its
+     * own body - so `right` inherits that type transitively).
      * @param {Object} funcNode - The function AST node
      * @param {string} paramName - The parameter name to analyze
+     * @param {Object} [context] - Current traversal context (used for context.className
+     *   to resolve `this.method()` calls against the right class)
      * @returns {string|null} Inferred type or null
      */
-    _inferParameterTypeFromUsage(funcNode, paramName) {
+    _inferParameterTypeFromUsage(funcNode, paramName, context = {}) {
       if (!funcNode.body) return null;
 
       let hasArrayUsage = false;
       let hasLengthAccess = false;
       let hasIndexAccess = false;
+      let calleeParamType = null;
+
+      // Given a call-like IL/AST node (has an `.arguments` array) and the
+      // signature parameter types that apply to it (an array of type-name
+      // strings in argument order), check whether `paramName` is passed
+      // straight through at a position whose declared/inferred type is known.
+      const checkCallArguments = (argNodes, paramTypes) => {
+        if (calleeParamType || !argNodes || !paramTypes) return;
+        for (let i = 0; i < argNodes.length && i < paramTypes.length; i++) {
+          const a = argNodes[i];
+          if (a && a.type === 'Identifier' && a.name === paramName) {
+            // _cleanTypeName rejects malformed/union type strings (e.g. an
+            // un-normalized JSDoc "uint8[]|null") so this parameter never
+            // inherits something that isn't a valid target-language type name.
+            const clean = this._cleanTypeName(paramTypes[i]);
+            if (clean && clean !== 'object') {
+              calleeParamType = clean;
+              return;
+            }
+          }
+        }
+      };
+
+      // Recognizes `typeof <paramName> === 'string'` (either operand order) - the
+      // standard "accept string OR array, normalize if string" guard used all over
+      // this codebase's Update()/Hash() methods (e.g. FNV's `if (typeof data ===
+      // 'string') { data = OpCodes.AnsiToBytes(data); }`). Inside that branch's
+      // body, `data` is deliberately treated as the STRING variant - a call like
+      // `OpCodes.AnsiToBytes(data)` there is real evidence about that narrowed
+      // branch, not about the parameter's type everywhere else in the function
+      // (where it's used as an array: `data.length`, `Array.from(data)`, ...).
+      // Without excluding it, checkCallArguments latched onto that one guarded
+      // call and returned 'string' as if it were unconditional interprocedural
+      // fact, which then outranks (line ~6625 returns immediately once
+      // calleeParamType is set, before ever consulting hasLengthAccess/
+      // hasArrayUsage) the correct array evidence sitting right next to it -
+      // and, being tagged 'interprocedural-usage', that wrong 'string' gets
+      // baked into typeInfo.params and propagates through the whole call chain
+      // (Update -> Hash -> EncryptBlock all ending up typed `string`, CS1503).
+      const isTypeofStringGuard = (test) => {
+        if (!test || test.type !== 'BinaryExpression') return false;
+        if (test.operator !== '===' && test.operator !== '==') return false;
+        // The IL AST normalizes `typeof x` to its own 'TypeOfExpression' node (see
+        // the 'typeof' unary-operator handling around line ~3990) rather than
+        // keeping ESTree's 'UnaryExpression'/operator:'typeof' shape - both are
+        // checked here in case a raw (un-normalized) AST is ever passed through.
+        const isTypeofParam = (n) => n && n.argument && n.argument.type === 'Identifier' &&
+          n.argument.name === paramName &&
+          (n.type === 'TypeOfExpression' || (n.type === 'UnaryExpression' && n.operator === 'typeof'));
+        const isStringLiteral = (n) => n && n.type === 'Literal' && n.value === 'string';
+        return (isTypeofParam(test.left) && isStringLiteral(test.right)) ||
+               (isTypeofParam(test.right) && isStringLiteral(test.left));
+      };
 
       const analyzeNode = (node) => {
-        if (!node || typeof node !== 'object') return;
+        if (calleeParamType || !node || typeof node !== 'object') return;
+
+        // Skip the "then" branch of a `typeof paramName === 'string'` guard (see
+        // isTypeofStringGuard above) - still recurse into any `else`, where the
+        // parameter keeps its real (non-string) type.
+        if (node.type === 'IfStatement' && isTypeofStringGuard(node.test)) {
+          if (node.alternate) analyzeNode(node.alternate);
+          return;
+        }
 
         // Check for param.length access
         if (node.type === 'MemberExpression' &&
@@ -5387,6 +6620,35 @@
           }
         }
 
+        // Interprocedural: param passed straight through to a known callee.
+        if (node.type === 'CallExpression' && node.callee && node.callee.type === 'Identifier') {
+          // Bare user-defined function call: foo(param)
+          const entry = this.functionTable.get(node.callee.name);
+          if (entry) {
+            checkCallArguments(node.arguments, entry.params.map(p => this._trustedParamType(p)));
+          }
+        } else if (node.type === 'ThisMethodCall' || node.type === 'ParentMethodCall') {
+          // this.foo(param) / super.foo(param), normalized IL form
+          const entry = this._resolveMethodCallEntry(node, context);
+          if (entry) {
+            checkCallArguments(node.arguments, entry.params.map(p => this._trustedParamType(p)));
+          }
+        } else if (node.type === 'OpCodesCall' && node.method) {
+          // Unrecognized-but-JSDoc'd OpCodes.X(param) passthrough IL node
+          const sig = this.typeKnowledge.opCodesTypes[node.method];
+          if (sig) checkCallArguments(node.arguments, sig.params);
+        } else if (node.arguments && node.ilNodeType) {
+          // Inlined/complex OpCodes forms (ArrayXor, PackBytes, ...): recover
+          // the exact original OpCodes method name (see
+          // _getExactOpCodeMethodForIlNode for why "exact" - not just by IL
+          // type - matters) to consult its JSDoc signature.
+          const methodName = this._getExactOpCodeMethodForIlNode(node);
+          const sig = methodName ? this.typeKnowledge.opCodesTypes[methodName] : null;
+          if (sig) checkCallArguments(node.arguments, sig.params);
+        }
+
+        if (calleeParamType) return;
+
         // Recursively analyze children
         for (const key in node) {
           if (key === 'loc' || key === 'range' || key === 'comments') continue;
@@ -5401,13 +6663,28 @@
 
       analyzeNode(funcNode.body);
 
+      // `interprocedural: true` marks a fact this function's OWN body could
+      // never have produced alone (it comes from a callee's parameter, found
+      // by tracing this parameter into a call to a *different* function/
+      // method/OpCodes signature) - as opposed to the hasIndexAccess/
+      // hasLengthAccess/hasArrayUsage cases below, which are exactly the
+      // local, single-function body-usage detection CSharpTransformer.js's
+      // own preRegisterMethodSignature (detectArrayUsageParams/
+      // detectArrayElementType/preScan2DArrayVars) already performs, in more
+      // detail (e.g. jagged-array shape). Callers use this flag to only bake
+      // genuinely new, cross-function facts into typeInfo and leave anything
+      // CSharpTransformer can already determine on its own well alone -
+      // baking a same-quality-but-less-detailed local answer would just win
+      // a race against, and discard the result of, that more detailed pass.
+      if (calleeParamType) return { type: calleeParamType, interprocedural: true };
+
       // If we see length access or index access, it's likely an array
       if (hasArrayUsage || hasLengthAccess || hasIndexAccess) {
         // Default to byte[] for cryptographic code where arrays are common
-        return 'byte[]';
+        return { type: 'byte[]', interprocedural: false };
       }
 
-      return null;
+      return { type: null, interprocedural: false };
     }
 
     /**
@@ -7483,8 +8760,32 @@
           return this.typeKnowledge.inferType(node.name, context);
 
         case 'ArrayExpression':
-          // Infer array element type from first element
+          // Infer array element type from ALL elements, not just the first: a
+          // byte table [0x63, 0x7c, ...] must be uint8[] (byte[]), not int32[]
+          // (which the first-element-only rule produced, breaking every
+          // byte[]-typed target assignment in C#). Widen to the tightest type
+          // that fits every element.
           if (node.elements && node.elements.length > 0) {
+            let allNumericLiterals = true;
+            let min = Infinity, max = -Infinity;
+            for (const el of node.elements) {
+              const v = this._getLiteralValue(el);
+              if (v === undefined || v === null || typeof v !== 'number' || !Number.isInteger(v)) {
+                allNumericLiterals = false;
+                break;
+              }
+              if (v < min) min = v;
+              if (v > max) max = v;
+            }
+            if (allNumericLiterals) {
+              let elemName;
+              if (min >= 0 && max <= 0xff) elemName = 'uint8';
+              else if (min >= 0 && max <= 0xffff) elemName = 'uint16';
+              else if (min >= 0 && max <= 0xffffffff) elemName = 'uint32';
+              else if (min >= -2147483648 && max <= 2147483647) elemName = 'int32';
+              else elemName = (min < 0) ? 'int64' : 'uint64';
+              return { name: elemName + '[]', isArray: true, elementType: { name: elemName } };
+            }
             const elementType = this.inferExpressionType(node.elements[0], context);
             return { name: elementType.name + '[]', isArray: true, elementType };
           }
@@ -7526,6 +8827,28 @@
             return { name: 'uint8[]', isArray: true, elementType: { name: 'uint8' } };
           }
           return { name: node.callee?.name || 'object' };
+
+        // `new Array(n)`/`Array(n)` normalizes to this IL node during
+        // buildILAST (see COMPLEX_OPCODES-adjacent Array static-method
+        // handling), by which point the raw NewExpression case above never
+        // sees it - so without this case every `const buf = new Array(n);
+        // ...; return buf;` fell all the way through to the 'object' default,
+        // which is exactly the local-variable return-type gap that made
+        // _findLocalVariableType (used by both function-scoped return typing
+        // and interprocedural return-type propagation) come up empty for one
+        // of the most common patterns in this codebase.
+        case 'ArrayCreation':
+          if (node.elementType)
+            return { name: `${node.elementType}[]`, isArray: true, elementType: { name: node.elementType } };
+          // No element-type hint was available at construction time - crypto
+          // code overwhelmingly uses byte buffers for ad-hoc `new Array(n)`,
+          // matching the bare NewExpression fallback above for consistency.
+          return { name: 'uint8[]', isArray: true, elementType: { name: 'uint8' } };
+
+        case 'TypedArrayCreation':
+          if (node.elementType)
+            return { name: `${node.elementType}[]`, isArray: true, elementType: { name: node.elementType } };
+          return { name: 'object' };
 
         default:
           // Use 'object' as fallback instead of 'any' - more specific
