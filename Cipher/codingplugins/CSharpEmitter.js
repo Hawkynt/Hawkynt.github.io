@@ -9,6 +9,10 @@
 (function(global) {
   'use strict';
 
+  // Integer types where a constant-literal cast needs `unchecked(...)` protection -
+  // see emitCast's comment for why.
+  const INTEGER_CAST_TARGET_TYPES = new Set(['sbyte', 'byte', 'short', 'ushort', 'int', 'uint', 'long', 'ulong']);
+
   // Load CSharpAST if available
   let CSharpAST;
   if (typeof require !== 'undefined') {
@@ -222,9 +226,13 @@
       }
 
       let decl = node.accessModifier;
-      if (node.isStatic) decl += ' static';
+      // `const` is implicitly static in C# - combining it with an explicit `static`
+      // modifier is a syntax error (CS0106), so skip `static` whenever `const` applies.
       if (node.isConst) decl += ' const';
-      else if (node.isReadOnly) decl += ' readonly';
+      else {
+        if (node.isStatic) decl += ' static';
+        if (node.isReadOnly) decl += ' readonly';
+      }
       decl += ` ${node.type.toString()} ${node.name}`;
 
       if (node.initializer) {
@@ -450,6 +458,14 @@
           if (node.initializer.initializer) {
             init += ` = ${this.emit(node.initializer.initializer)}`;
           }
+          // Additional comma-separated declarators of the SAME type (e.g. JS's
+          // `for (let a = 0, b = 1; ...)`) - see CSharpFor.extraDeclarators.
+          if (node.extraDeclarators && node.extraDeclarators.length > 0) {
+            for (const extra of node.extraDeclarators) {
+              init += `, ${extra.name}`;
+              if (extra.initializer) init += ` = ${this.emit(extra.initializer)}`;
+            }
+          }
         } else {
           init = this.emit(node.initializer);
         }
@@ -461,6 +477,12 @@
       let code = this.line(`for (${init}; ${cond}; ${incr})`);
       code += this.emit(node.body);
       return code;
+    }
+
+    // Comma-separated expression list - only ever constructed for a for-statement's
+    // incrementor clause (see CSharpCommaExpression's doc comment / transformForStatement).
+    emitCommaExpression(node) {
+      return node.expressions.map(e => this.emit(e)).join(', ');
     }
 
     emitForEach(node) {
@@ -648,13 +670,67 @@
       return `${this.emit(node.target)} ${node.operator} ${this.emit(node.value)}`;
     }
 
+    // True when `target`'s own emitted code needs wrapping in parentheses before a
+    // tighter-binding suffix (`.Member`, `[index]`, `.Method(...)`) is appended -
+    // otherwise that suffix silently attaches to only PART of target's expression
+    // instead of its whole computed value. Shared by emitMemberAccess/
+    // emitElementAccess/emitMethodCall (all three have the identical problem for the
+    // identical set of looser-binding node types) - see emitMemberAccess's own doc
+    // comment for the Cast/Conditional cases this was written for. A BinaryExpression
+    // (covers every C# binary AND logical operator - `+`, `^`, `&&`, `||`, etc., which
+    // all share this one AST node type - see CSharpBinaryExpression) has the exact
+    // same lower-precedence issue: `a || b.Length` parses as `a || (b.Length)`, not
+    // `(a || b).Length` - e.g. `(str.Match(...) || Array.Empty<byte>()).Length` (a
+    // transformed JS `(x.match(/re/g) || []).length`) previously emitted the `.Length`
+    // bound to only the empty-array fallback on the right (CS0019: `||` on `Match`
+    // and `int`).
+    // An Assignment binds more loosely still (lowest of all): `a = b.Select(...)
+    // .ToArray()` parses its ENTIRE right-hand side as the assignment's value, so
+    // chaining a further `.Select(...)`/`.Member`/`[i]` onto an assignment used as a
+    // call/member-access TARGET (e.g. a JS `.reverse()` call's mutate-and-return-self
+    // semantics reassigning the local before it's spread into another call, as in
+    // block/baseking.js's `this.diffusion([...template.reverse()])`) silently
+    // extends the assignment's own RHS to include that suffix instead of applying the
+    // suffix to the assignment's resulting value - corrupting the (still uint[]-
+    // declared) target variable with the suffix's byte[] result (CS0029).
+    _targetNeedsParens(target) {
+      return target.nodeType === 'Cast' || target.nodeType === 'Conditional' || target.nodeType === 'BinaryExpression' || target.nodeType === 'Assignment';
+    }
+
     emitMemberAccess(node) {
-      return `${this.emit(node.target)}.${node.member}`;
+      // A cast binds more loosely than member access - `(T)x.Member` parses as
+      // `(T)(x.Member)`, not `((T)x).Member` (same issue emitMethodCall already guards
+      // against for `.Method()` targets). Needed e.g. when downcasting a base-typed
+      // `this.Algorithm` to read a field only the concrete subclass declares:
+      // `((TwofishAlgorithm)this.Algorithm).GMDS0`.
+      // A ternary `?:` binds even more loosely than a cast, and has the identical
+      // problem: `cond ? a : b.Member` parses as `cond ? a : (b.Member)`, not
+      // `(cond ? a : b).Member` - e.g. a `const result = isInverse ? this.Decompress(x)
+      // : this.Compress(x);` whose declared type needed a widening cast (see
+      // castIfNeeded's array branch/buildParameterConversion) wraps the WHOLE
+      // conditional in `.Select(...)`, but without these parens that Select silently
+      // attached to only the alternate branch instead (CS0029 - the OTHER, unwrapped
+      // branch still mismatches the declared type). See _targetNeedsParens' own doc
+      // comment for the (identically-problematic) BinaryExpression case.
+      let targetCode = this.emit(node.target);
+      if (this._targetNeedsParens(node.target)) {
+        targetCode = `(${targetCode})`;
+      }
+      return `${targetCode}.${node.member}`;
     }
 
     emitElementAccess(node) {
       const index = this.emit(node.index).replace(/[\r\n]+/g, '').replace(/\s+/g, ' ').trim();
-      return `${this.emit(node.target)}[${index}]`;
+      // Same cast/ternary/binary-binds-more-loosely-than-indexing issue as
+      // emitMemberAccess above (see _targetNeedsParens): `(T)x[i]` parses as
+      // `(T)(x[i])`, `cond ? a : b[i]` parses as `cond ? a : (b[i])`, and `a || b[i]`
+      // parses as `a || (b[i])` - none of `((T)x)[i]`/`(cond ? a : b)[i]`/`(a ||
+      // b)[i]`.
+      let targetCode = this.emit(node.target);
+      if (this._targetNeedsParens(node.target)) {
+        targetCode = `(${targetCode})`;
+      }
+      return `${targetCode}[${index}]`;
     }
 
     emitRange(node) {
@@ -673,10 +749,15 @@
     emitMethodCall(node) {
       let code = '';
       if (node.target) {
-        // Wrap casts in parentheses when used as method call target
-        // e.g., (char)x.ToString() should be ((char)x).ToString()
+        // Wrap casts, ternaries, and binary/logical expressions (see
+        // _targetNeedsParens/emitMemberAccess's identical, more fully commented guard)
+        // in parentheses when used as a method call target - e.g.
+        // (char)x.ToString() should be ((char)x).ToString(), `(cond ? a :
+        // b).Select(...)` needs the same protection or the Select binds to only the
+        // alternate branch `b` instead of the whole conditional, and `(a ||
+        // b).Select(...)` needs it too or Select binds to only `b`.
         let targetCode = this.emit(node.target);
-        if (node.target.nodeType === 'Cast') {
+        if (this._targetNeedsParens(node.target)) {
           targetCode = `(${targetCode})`;
         }
         code += `${targetCode}.`;
@@ -737,8 +818,19 @@
     emitObjectInitializer(node) {
       if (node.isDictionary) {
         // Dictionary<K,V> collection initializer syntax: { { "key", value }, ... }
+        // The key can be an arbitrary JS object-literal property name (e.g. a
+        // punctuation character like `"` in a Morse-code lookup table) - emit it
+        // through the same escaping rules as a normal string literal, otherwise an
+        // unescaped quote/backslash in the key breaks out of the C# string literal
+        // (CS8997 "unterminated string literal" and cascading syntax errors).
+        const escapeKey = (name) => String(name)
+          .replace(/\\/g, '\\\\')
+          .replace(/"/g, '\\"')
+          .replace(/\n/g, '\\n')
+          .replace(/\r/g, '\\r')
+          .replace(/\t/g, '\\t');
         const entries = node.assignments.map(a =>
-          `{ "${a.name}", ${this.emit(a.value)} }`
+          `{ "${escapeKey(a.name)}", ${this.emit(a.value)} }`
         );
         return `{ ${entries.join(', ')} }`;
       } else {
@@ -788,8 +880,14 @@
             .replace(/\{/g, '{{')
             .replace(/\}/g, '}}');
         } else {
-          // Expression part - emit and wrap in braces
-          result += '{' + this.emit(part) + '}';
+          // Expression part - emit and wrap in braces. A bare `cond ? a : b` ternary
+          // directly inside a `$"..."` interpolation hole is a hard compile error
+          // (CS8361) - the `:` is parsed as ending the interpolation's format-specifier
+          // section, not as part of the conditional operator. Parenthesize it (C#'s
+          // documented workaround) rather than emit invalid syntax whenever the source
+          // JS used a template-literal-embedded ternary (e.g. `` `...${x ? a : b}...` ``).
+          const emitted = part.nodeType === 'Conditional' ? `(${this.emit(part)})` : this.emit(part);
+          result += '{' + emitted + '}';
         }
       }
       result += '"';
@@ -797,7 +895,38 @@
     }
 
     emitCast(node) {
-      return `(${node.type.toString()})(${this.emit(node.expression)})`;
+      const rendered = `(${node.type.toString()})(${this.emit(node.expression)})`;
+      // ANY cast to an integral type whose operand happens to be a COMPILE-TIME
+      // CONSTANT is checked for overflow unconditionally by the C# compiler -
+      // independent of any surrounding checked/unchecked context - and rejected
+      // with CS0221 ("Der Konstantenwert ... kann nicht in ... konvertiert werden
+      // ... verwenden Sie zum Außerkraftsetzen die unchecked-Syntax") the moment the
+      // constant's value doesn't fit the target type. This bites in more shapes than
+      // it might look like at first: a plain literal (`(int)(0xFFFFFFFF)`, e.g.
+      // ISAP's `uint`-range hex mask coerced into `int`); a NEGATED literal (`(byte)
+      // (-1)`, e.g. ecc/alamouti-code.js's Alamouti-matrix test vectors - negative
+      // numbers are never their own literal token, the parser always builds them as
+      // a UnaryExpression wrapping the positive literal); a reference to a `const`
+      // field (`(byte)(CHACHA_CONST_0)` / `(uint)(T2)`, e.g. random/chacha.js's
+      // 32-bit magic constants and random/well.js's negative tempering constants -
+      // both declared `public const int ... = <value>;` elsewhere in the same
+      // class); `double`/`float`'s own `PositiveInfinity`/`NegativeInfinity`/`NaN`
+      // const members; or an arbitrary constant SUB-EXPRESSION built from any of the
+      // above (e.g. block/hpc.js's `(int)(0xFFFFFFFFFFFFFF00UL)`-shaped mask). A
+      // non-constant cast (the operand is a genuine runtime variable/expression)
+      // never hits this rule in the first place, and `unchecked(...)` is a
+      // documented no-op there (C#'s default arithmetic context is already
+      // unchecked at runtime) - so rather than re-deriving "is this operand actually
+      // a compile-time constant" per-shape (a full constant-folding evaluator, only
+      // ever right up to the next shape nobody thought of yet), it's simplest AND
+      // safe to wrap every integral-target cast in `unchecked(...)` unconditionally:
+      // harmless for the non-constant case, and exactly what the compiler's own
+      // CS0221 message suggests for every constant case, matching JS's own silent
+      // wraparound numeric semantics besides.
+      if (INTEGER_CAST_TARGET_TYPES.has(node.type?.name)) {
+        return `unchecked(${rendered})`;
+      }
+      return rendered;
     }
 
     emitConditional(node) {
