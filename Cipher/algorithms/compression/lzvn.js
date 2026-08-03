@@ -128,6 +128,28 @@
             [5, 97, 98, 99, 100, 101, 102, 227, 0, 6],
             "Structured pattern with clear repetition",
             "https://blog.yossarian.net/2021/06/01/Playing-with-Apples-weird-compression-formats"
+          ),
+          new TestCase(
+            new Array(300).fill(0x61),
+            undefined,
+            "Highly repetitive - 300x 'a' (regression: matches longer than the 18-byte opcode limit used to be silently dropped)",
+            "https://github.com/lzfse/lzfse"
+          ),
+          new TestCase(
+            (() => { const a = []; for (let i = 0; i < 400; ++i) a.push(i % 2 ? 0x62 : 0x61); return a; })(),
+            undefined,
+            "Alternating pattern - 200x 'ab'",
+            "https://github.com/lzfse/lzfse"
+          ),
+          new TestCase(
+            (() => {
+              let seed = 0x76543210, a = [];
+              for (let i = 0; i < 256; ++i) { seed = OpCodes.AndN(seed * 1103515245 + 12345, 0x7fffffff); a.push(OpCodes.AndN(seed, 0xFF)); }
+              return a;
+            })(),
+            undefined,
+            "Binary/pseudo-random sample",
+            "https://github.com/lzfse/lzfse"
           )
         ];
 
@@ -148,7 +170,15 @@
 
         // LZVN parameters (based on Apple's implementation)
         this.MIN_MATCH_LENGTH = 3; // Minimum match length
-        this.MAX_MATCH_LENGTH = 271; // Maximum match length
+        // This simplified encoder/decoder only implements the short-match
+        // opcode (1110LLLL + 16-bit distance), which can express lengths
+        // 3..18 (a 4-bit field, +3). Matches longer than that were
+        // previously found by _findMatch but silently dropped by
+        // _outputMatch (its length<=18 guard produced nothing), while pos
+        // still advanced past the full match - permanently losing those
+        // bytes. Capping the search here keeps every accepted match
+        // encodable.
+        this.MAX_MATCH_LENGTH = 18; // Maximum match length (short-match opcode only)
         this.MIN_DISTANCE = 1; // Minimum match distance
         this.MAX_DISTANCE = 65535; // Maximum match distance (16-bit)
         this.HASH_BITS = 12; // Hash table size (4K entries)
