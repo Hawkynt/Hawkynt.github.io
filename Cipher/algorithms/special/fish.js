@@ -85,16 +85,14 @@
 
       // Known vulnerabilities
       this.knownVulnerabilities = [
-        new Vulnerability(
-          "Known Plaintext Attack",
+        new Vulnerability("Known Plaintext Attack",
+          '',
           "Ross Anderson demonstrated successful cryptanalysis with few thousand bits of known plaintext",
-          "https://www.cl.cam.ac.uk/~rja14/Papers/fish.pdf"
-        ),
-        new Vulnerability(
-          "Statistical Weaknesses",
+          "https://www.cl.cam.ac.uk/~rja14/Papers/fish.pdf"),
+        new Vulnerability("Statistical Weaknesses",
+          '',
           "Lagged Fibonacci generators have inherent statistical weaknesses exploitable in cryptanalysis",
-          "https://en.wikipedia.org/wiki/FISH_(cipher)#Security"
-        )
+          "https://en.wikipedia.org/wiki/FISH_(cipher)#Security")
       ];
 
       // Test vectors using OpCodes byte arrays

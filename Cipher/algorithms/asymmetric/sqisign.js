@@ -103,16 +103,14 @@
       ];
 
       this.knownVulnerabilities = [
-        new global.AlgorithmFramework.Vulnerability(
-          'Side-Channel Attacks',
+        new global.AlgorithmFramework.Vulnerability('Side-Channel Attacks',
+          '',
           'Use constant-time isogeny computations and side-channel resistant implementations',
-          'https://eprint.iacr.org/2020/1240'
-        ),
-        new global.AlgorithmFramework.Vulnerability(
-          'Quantum Cryptanalysis',
+          'https://eprint.iacr.org/2020/1240'),
+        new global.AlgorithmFramework.Vulnerability('Quantum Cryptanalysis',
+          '',
           'Monitor quantum computing advances and increase parameter sizes if necessary',
-          'https://eprint.iacr.org/2020/1240'
-        )
+          'https://eprint.iacr.org/2020/1240')
       ];
       
       // Educational test vectors

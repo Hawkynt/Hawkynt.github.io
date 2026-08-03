@@ -134,7 +134,7 @@
       ];
 
       this.knownVulnerabilities = [
-        new Vulnerability("Information Set Decoding", "Use sufficiently large code parameters to resist known ISD algorithms", "https://en.wikipedia.org/wiki/Information_set_decoding"),
+        new Vulnerability("Information Set Decoding", '', "Use sufficiently large code parameters to resist known ISD algorithms", "https://en.wikipedia.org/wiki/Information_set_decoding"),
         new Vulnerability("Structural Attacks", "Random code generation and careful parameter selection")
       ];
 

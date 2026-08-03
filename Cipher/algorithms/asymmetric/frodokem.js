@@ -119,8 +119,8 @@
       ];
 
       this.knownVulnerabilities = [
-        new LinkItem("Lattice Reduction", "Vulnerable to lattice reduction attacks if LWE parameters are insufficient. Use conservative parameters with sufficient noise and dimension."),
-        new LinkItem("Timing Attacks", "Variable-time operations can leak information about secret keys. Implement constant-time operations and protect against side-channels.")
+        new Vulnerability("Lattice Reduction", "Vulnerable to lattice reduction attacks if LWE parameters are insufficient. Use conservative parameters with sufficient noise and dimension."),
+        new Vulnerability("Timing Attacks", "Variable-time operations can leak information about secret keys. Implement constant-time operations and protect against side-channels.")
       ];
 
       // Test vectors - educational implementation with NIST-based parameters

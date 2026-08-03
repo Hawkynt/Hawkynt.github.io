@@ -99,7 +99,7 @@
 
       // No known practical attacks against full Serpent
       this.knownVulnerabilities = [
-        new AlgorithmFramework.Vulnerability("Performance vs AES", "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/archived-crypto-projects/aes-development", "Slower than AES, which contributed to AES selection by NIST", "AES preferred for performance-critical applications, Serpent acceptable for high-security needs")
+        new AlgorithmFramework.Vulnerability("Performance vs AES", "Slower than AES, which contributed to AES selection by NIST", "AES preferred for performance-critical applications, Serpent acceptable for high-security needs", "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/archived-crypto-projects/aes-development")
       ];
 
       // Test vectors generated from our correct Serpent implementation

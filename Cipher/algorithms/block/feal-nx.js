@@ -104,8 +104,10 @@
 
       // Known vulnerabilities
       this.knownVulnerabilities = [
-        new LinkItem("Differential Cryptanalysis", "https://en.wikipedia.org/wiki/Differential_cryptanalysis",
-                     "FEAL-NX can be broken with differential cryptanalysis for N <= 31 rounds. Requires N > 31 for security against known attacks.")
+        new Vulnerability("Differential Cryptanalysis",
+          "FEAL-NX can be broken with differential cryptanalysis for N <= 31 rounds. Requires N > 31 for security against known attacks.",
+          '',
+          "https://en.wikipedia.org/wiki/Differential_cryptanalysis")
       ];
 
       // Test vectors from official GitHub reference implementation

@@ -129,7 +129,7 @@
       ];
 
       this.knownVulnerabilities = [
-        new AlgorithmFramework.Vulnerability("Educational Implementation", "https://eprint.iacr.org/", "Simplified implementation may not reflect full security of original design", "Use only for educational purposes and cryptographic research")
+        new AlgorithmFramework.Vulnerability("Educational Implementation", "Simplified implementation may not reflect full security of original design", "Use only for educational purposes and cryptographic research", "https://eprint.iacr.org/")
       ];
 
       // Test vectors
@@ -392,7 +392,7 @@
       ];
 
       this.knownVulnerabilities = [
-        new AlgorithmFramework.Vulnerability("Educational Implementation", "https://eprint.iacr.org/", "Simplified implementation may not capture full security properties of original design", "Use only for educational purposes and cryptographic research")
+        new AlgorithmFramework.Vulnerability("Educational Implementation", "Simplified implementation may not capture full security properties of original design", "Use only for educational purposes and cryptographic research", "https://eprint.iacr.org/")
       ];
 
       // Test vectors

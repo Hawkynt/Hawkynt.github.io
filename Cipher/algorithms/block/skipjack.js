@@ -97,9 +97,9 @@
 
       // Known vulnerabilities
       this.knownVulnerabilities = [
-        new AlgorithmFramework.Vulnerability("NIST Withdrawal", "https://csrc.nist.gov/publications/detail/sp/800-17/archive/1998-02-01", "NIST approval withdrawn in 2015. Not approved for new cryptographic protection", "Use modern standardized ciphers like AES"),
-        new AlgorithmFramework.Vulnerability("Differential Cryptanalysis", "https://www.schneier.com/academic/archives/1998/09/cryptanalysis_of_ski.html", "Vulnerable to differential attacks with reduced complexity", "Algorithm is deprecated - do not use for any security applications"),
-        new AlgorithmFramework.Vulnerability("Related-key attacks", "https://eprint.iacr.org/", "Weak key schedule allows related-key attacks", "Historical and educational interest only")
+        new AlgorithmFramework.Vulnerability("NIST Withdrawal", "NIST approval withdrawn in 2015. Not approved for new cryptographic protection", "Use modern standardized ciphers like AES", "https://csrc.nist.gov/publications/detail/sp/800-17/archive/1998-02-01"),
+        new AlgorithmFramework.Vulnerability("Differential Cryptanalysis", "Vulnerable to differential attacks with reduced complexity", "Algorithm is deprecated - do not use for any security applications", "https://www.schneier.com/academic/archives/1998/09/cryptanalysis_of_ski.html"),
+        new AlgorithmFramework.Vulnerability("Related-key attacks", "Weak key schedule allows related-key attacks", "Historical and educational interest only", "https://eprint.iacr.org/")
       ];
 
       // Test vectors verified with BouncyCastle reference implementation

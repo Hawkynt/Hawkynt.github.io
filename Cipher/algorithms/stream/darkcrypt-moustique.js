@@ -57,7 +57,7 @@
   if (!OpCodes) throw new Error('OpCodes dependency is required');
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          StreamCipherAlgorithm, IAlgorithmInstance, LinkItem, KeySize } = AlgorithmFramework;
+          StreamCipherAlgorithm, IAlgorithmInstance, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   // ===== CCSR cell-width table (Figure 3 / Table 1 of the Moustique spec) =====
   // Cells 1..88 hold a single bit each. Cells 89..96 are progressively wider,
@@ -286,7 +286,7 @@
       ];
 
       this.knownVulnerabilities = [
-        new LinkItem("Cryptanalysis of the Self-Synchronizing Stream Cipher Moustique (Käsper, Rijmen, Bjørstad, Rechberger, Robshaw, Sekar)", "https://www.iacr.org/archive/asiacrypt2008/53500204/53500204.pdf")
+        new Vulnerability("Cryptanalysis of the Self-Synchronizing Stream Cipher Moustique (Käsper, Rijmen, Bjørstad, Rechberger, Robshaw, Sekar)", '', '', "https://www.iacr.org/archive/asiacrypt2008/53500204/53500204.pdf")
       ];
 
       // Test vector generated from the original implementation of Moustique

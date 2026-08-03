@@ -102,8 +102,8 @@
         new Vulnerability(
           "Differential Cryptanalysis",
           "Broken by Vincent Rijmen and Bart Preneel at FSE '94 (same workshop). 32 rounds weaker than 16 rounds of DES.",
-          "https://link.springer.com/chapter/10.1007/3-540-60590-8_27",
-          1994
+          "",
+          "https://link.springer.com/chapter/10.1007/3-540-60590-8_27"
         )
       ];
 
