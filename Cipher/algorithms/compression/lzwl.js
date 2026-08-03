@@ -164,6 +164,29 @@
           uri: "https://en.wikipedia.org/wiki/LZWL",
           input: OpCodes.AnsiToBytes("the quick brown fox jumps over the lazy dog. the quick brown fox."),
           expected: [0, 3, 116, 104, 101, 0, 1, 32, 0, 5, 113, 117, 105, 99, 107, 1, 0, 1, 0, 5, 98, 114, 111, 119, 110, 1, 0, 1, 0, 3, 102, 111, 120, 1, 0, 1, 0, 5, 106, 117, 109, 112, 115, 1, 0, 1, 0, 1, 111, 0, 3, 118, 101, 114, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 4, 108, 97, 122, 121, 1, 0, 1, 0, 3, 100, 111, 103, 0, 1, 46, 1, 0, 12, 1, 0, 1, 1, 0, 2, 1, 0, 3, 1, 0, 5, 1, 0, 18]
+        },
+        {
+          // Regression test: a strictly alternating "ab" pattern forces the
+          // syllable splitter to emit single-vowel/consonant-onset syllables
+          // ("a", then "ba" repeated) whose dictionary phrases immediately
+          // re-occur, which used to hit the classic LZW "KwKwK" case (a code
+          // referencing the dictionary entry that is still pending
+          // registration) and crash the decompressor with "Cannot read
+          // properties of undefined (reading 'bytes')".
+          text: "Alternating 'ab' pattern (64 bytes, exercises the KwKwK dictionary case)",
+          uri: "https://en.wikipedia.org/wiki/LZWL",
+          input: (function() { const a = []; for (let i = 0; i < 64; ++i) a.push(i % 2 === 0 ? 0x61 : 0x62); return a; })(),
+          expected: [0, 1, 97, 0, 2, 98, 97, 1, 0, 1, 1, 0, 2, 1, 0, 3, 1, 0, 4, 1, 0, 5, 1, 0, 6, 1, 0, 7, 1, 0, 1, 0, 3, 98, 97, 98]
+        },
+        {
+          // Regression test: pseudo-random bytes have no consonant/vowel
+          // structure, so most of them fall through the splitter's
+          // single-byte-token path. This exercises the same dictionary
+          // machinery on non-text input.
+          text: "Pseudo-random binary sample (128 bytes, no syllable structure)",
+          uri: "https://en.wikipedia.org/wiki/LZWL",
+          input: [193, 103, 129, 152, 240, 33, 24, 215, 128, 45, 22, 142, 12, 157, 3, 192, 4, 51, 59, 3, 157, 43, 27, 244, 6, 113, 140, 143, 233, 231, 28, 28, 138, 247, 226, 238, 240, 38, 226, 227, 35, 53, 231, 89, 133, 124, 9, 151, 67, 229, 246, 122, 203, 86, 115, 112, 158, 1, 192, 126, 215, 249, 75, 141, 55, 69, 218, 77, 45, 155, 60, 15, 93, 97, 215, 105, 214, 178, 244, 37, 147, 242, 172, 235, 241, 219, 18, 77, 24, 42, 90, 134, 42, 43, 14, 218, 36, 84, 17, 201, 185, 43, 70, 35, 243, 110, 206, 235, 242, 82, 59, 210, 97, 23, 124, 170, 139, 21, 235, 101, 204, 143, 136, 227, 248, 94, 70, 64],
+          expected: [0, 1, 193, 0, 1, 103, 0, 1, 129, 0, 1, 152, 0, 1, 240, 0, 1, 33, 0, 1, 24, 0, 1, 215, 0, 1, 128, 0, 1, 45, 0, 1, 22, 0, 1, 142, 0, 1, 12, 0, 1, 157, 0, 1, 3, 0, 1, 192, 0, 1, 4, 0, 1, 51, 0, 1, 59, 1, 0, 14, 1, 0, 13, 0, 1, 43, 0, 1, 27, 0, 1, 244, 0, 1, 6, 0, 1, 113, 0, 1, 140, 0, 1, 143, 0, 1, 233, 0, 1, 231, 0, 1, 28, 1, 0, 30, 0, 1, 138, 0, 1, 247, 0, 1, 226, 0, 1, 238, 1, 0, 4, 0, 1, 38, 1, 0, 34, 0, 1, 227, 0, 1, 35, 0, 1, 53, 1, 0, 29, 0, 1, 89, 0, 1, 133, 0, 1, 124, 0, 1, 9, 0, 1, 151, 0, 1, 67, 0, 1, 229, 0, 1, 246, 0, 1, 122, 0, 1, 203, 0, 3, 86, 115, 112, 0, 1, 158, 0, 1, 1, 1, 0, 15, 0, 1, 126, 1, 0, 7, 0, 1, 249, 0, 1, 75, 0, 1, 141, 0, 1, 55, 0, 1, 69, 0, 1, 218, 0, 1, 77, 1, 0, 9, 0, 1, 155, 0, 1, 60, 0, 1, 15, 0, 1, 93, 0, 1, 97, 1, 0, 7, 0, 1, 105, 0, 1, 214, 0, 1, 178, 1, 0, 23, 0, 1, 37, 0, 1, 147, 0, 1, 242, 0, 1, 172, 0, 1, 235, 0, 1, 241, 0, 1, 219, 0, 1, 18, 1, 0, 65, 1, 0, 6, 0, 1, 42, 0, 1, 90, 0, 1, 134, 1, 0, 87, 1, 0, 21, 0, 1, 14, 1, 0, 64, 0, 1, 36, 0, 1, 84, 0, 1, 17, 0, 1, 201, 0, 1, 185, 1, 0, 21, 0, 1, 70, 1, 0, 40, 0, 1, 243, 0, 1, 110, 0, 1, 206, 1, 0, 81, 1, 0, 79, 0, 1, 82, 1, 0, 18, 0, 1, 210, 1, 0, 71, 0, 1, 23, 1, 0, 45, 0, 1, 170, 0, 1, 139, 0, 1, 21, 1, 0, 81, 0, 1, 101, 0, 1, 204, 1, 0, 27, 0, 1, 136, 1, 0, 39, 0, 1, 248, 0, 1, 94, 1, 0, 100, 0, 1, 64]
         }
       ];
     }
@@ -258,6 +281,19 @@
           const code = OpCodes.Pack16BE(input[pos], input[pos + 1]);
           pos += 2;
           refEntry = dict[code];
+
+          if (refEntry === undefined) {
+            // Classic LZW "KwKwK" case: the referenced code is exactly the
+            // one about to be created from the still-pending registration
+            // (phrase P immediately followed by another occurrence of P's
+            // own first syllable). Synthesize it from the pending parent
+            // instead of the not-yet-registered dictionary slot.
+            refEntry = {
+              bytes: concatBytes(pendingParent.bytes, pendingParent.firstSyllable),
+              firstSyllable: pendingParent.firstSyllable
+            };
+          }
+
           curBytes = refEntry.bytes;
           curFirstSyl = refEntry.firstSyllable;
         }
