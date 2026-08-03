@@ -71,13 +71,18 @@
       this.securityStatus = SecurityStatus.EDUCATIONAL;
       this.complexity = this.config.complexity;
       this.country = CountryCode.INTERNATIONAL;
+      this.checksumSize = 8; // Single check digit (0-9, or 'X'=10 for ISBN-10), fits in a byte
 
       // Documentation and references
       this.documentation = [
         new LinkItem("ISO 2108 Standard", "https://www.iso.org/standard/36563.html"),
         new LinkItem("ISBN User's Manual", "https://www.isbn-international.org/content/user-manual"),
-        new LinkItem("Library of Congress ISBN", "https://www.loc.gov/publish/isbn/")
+        new LinkItem("Library of Congress ISBN", "https://www.loc.gov/publish/isbn/"),
+        new LinkItem("ISBN on Wikipedia", "https://en.wikipedia.org/wiki/International_Standard_Book_Number")
       ];
+
+      // Algorithm notes
+      this.notes = this.config.notes;
 
       this.references = [
         new LinkItem("International ISBN Agency", "https://www.isbn-international.org/"),
@@ -106,24 +111,33 @@
           description: 'ISBN-10 checksum using modulo 11 with weighted positions and possible X check digit',
           year: 1970,
           complexity: ComplexityType.INTERMEDIATE,
+          notes: [
+            "Format: 10 digits (9 data + 1 check)",
+            "Weights: 1,2,3,4,5,6,7,8,9 applied left to right (equivalently 10,9,...,2 read right to left)",
+            "Algorithm: check digit d10 chosen so that sum(i=1..10, i * digit_i) ≡ 0 (mod 11)",
+            "Check digit: 0 if remainder is 0, 'X' (=10) if remainder is 1, otherwise 11 minus the remainder",
+            "Example: 0-306-40615-9 (Structured Computer Organization, Tanenbaum)",
+            "Superseded by ISBN-13 in 2007",
+            "Detects: all single-digit errors and most transposition errors"
+          ],
           tests: [
             new TestCase(
               [0, 3, 0, 6, 4, 0, 6, 1, 5, 9], // Valid ISBN-10: 0-306-40615-9
               [1], // Valid
               "Valid ISBN-10: 0-306-40615-9",
-              "Educational test vector"
+              "https://en.wikipedia.org/wiki/International_Standard_Book_Number"
             ),
             new TestCase(
               [0, 3, 0, 6, 4, 0, 6, 1, 5, 3], // Invalid ISBN-10
               [0], // Invalid
               "Invalid ISBN-10: 0-306-40615-3",
-              "Educational test vector"
+              "https://en.wikipedia.org/wiki/International_Standard_Book_Number"
             ),
             new TestCase(
               [0, 1, 9, 6, 0, 5, 6, 8, 8, 3], // Valid ISBN-10: 0-19-605688-3
               [1], // Valid
               "Valid ISBN-10: 0-19-605688-3",
-              "Educational test vector"
+              "https://en.wikipedia.org/wiki/International_Standard_Book_Number"
             )
           ]
         },
@@ -131,24 +145,35 @@
           description: 'ISBN-13 checksum using modulo 10 (EAN-13 based) for modern book identification',
           year: 2007,
           complexity: ComplexityType.BEGINNER,
+          notes: [
+            "Format: 13 digits (12 data + 1 check)",
+            "Prefix: 978 (Bookland) or 979 (additional capacity)",
+            "Weights: alternating 1,3,1,3,... from left to right",
+            "Algorithm: sum(digit * weight) mod 10",
+            "Check digit: (10 - sum mod 10) mod 10",
+            "Example: 978-0-306-40615-7",
+            "Compatible with the EAN-13/GTIN-13 barcode system",
+            "Supersedes ISBN-10 since 2007",
+            "Detects: all single-digit errors and most adjacent transposition errors"
+          ],
           tests: [
             new TestCase(
               [9, 7, 8, 0, 3, 0, 6, 4, 0, 6, 1, 5, 7], // Valid ISBN-13: 978-0-306-40615-7
               [1], // Valid
               "Valid ISBN-13: 978-0-306-40615-7",
-              "Educational test vector"
+              "https://en.wikipedia.org/wiki/International_Standard_Book_Number"
             ),
             new TestCase(
               [9, 7, 8, 0, 3, 0, 6, 4, 0, 6, 1, 5, 3], // Invalid ISBN-13
               [0], // Invalid
               "Invalid ISBN-13: 978-0-306-40615-3",
-              "Educational test vector"
+              "https://en.wikipedia.org/wiki/International_Standard_Book_Number"
             ),
             new TestCase(
               [9, 7, 9, 0, 1, 9, 6, 0, 5, 6, 8, 8, 2], // Valid ISBN-13: 979-0-19-605688-2
               [1], // Valid
               "Valid ISBN-13: 979-0-19-605688-2",
-              "Educational test vector"
+              "https://en.wikipedia.org/wiki/International_Standard_Book_Number"
             )
           ]
         }
