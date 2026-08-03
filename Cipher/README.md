@@ -229,6 +229,8 @@ Cipher Tools is a **professional-grade cryptographic implementation library** fe
 
 ### Complete Algorithm Coverage
 
+**📚 Algorithm reference** — one markdown page per algorithm covering its parameters, security status, known vulnerabilities, references and test vectors. The pages are derived from the implementations, so they cannot drift: build them locally with `node tools/generate-algorithm-docs.js` (written to `docs/algorithms/`, starting at `docs/algorithms/README.md`), or download the `algorithm-reference` artifact that CI builds on every run. The generated tree is deliberately not checked in.
+
 The library includes **1039 fully-implemented cryptographic algorithms** across 19 categories. For the complete breakdown by category, see the [Algorithm Categories & Color Coding](#-algorithm-categories--color-coding) section above and the [Directory Structure](#directory-structure-updated-2025) section below.
 
 **Key Highlights:**
