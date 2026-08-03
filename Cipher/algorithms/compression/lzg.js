@@ -189,6 +189,38 @@
           ],
           "Single byte",
           "https://github.com/mbitsnbites/liblzg"
+        ),
+
+        // Round-trip only - long matches fall between LENGTH_DECODE_LUT
+        // entries and require floor-rounding the length code (regression
+        // test for over-long decompressed output).
+        new TestCase(
+          new Array(300).fill(0x61),
+          undefined,
+          "Highly repetitive - 300x 'a' (exercises long match length quantization)",
+          "https://github.com/mbitsnbites/liblzg"
+        ),
+        new TestCase(
+          (() => { const a = []; for (let i = 0; i < 400; ++i) a.push(i % 2 ? 0x62 : 0x61); return a; })(),
+          undefined,
+          "Alternating pattern - 200x 'ab'",
+          "https://github.com/mbitsnbites/liblzg"
+        ),
+        new TestCase(
+          (() => {
+            let seed = 0x13572468, a = [];
+            for (let i = 0; i < 256; ++i) { seed = OpCodes.AndN(seed * 1103515245 + 12345, 0x7fffffff); a.push(OpCodes.AndN(seed, 0xFF)); }
+            return a;
+          })(),
+          undefined,
+          "Binary/pseudo-random sample",
+          "https://github.com/mbitsnbites/liblzg"
+        ),
+        new TestCase(
+          [...OpCodes.AnsiToBytes("ABCDEFGH"), ...OpCodes.AnsiToBytes("ABC"), ...OpCodes.AnsiToBytes("ZZZZZZZZZZZZZZZZZZZZ")],
+          undefined,
+          "M3 offset=8/length=3 collision (regression: that exact pair encodes a 0x00 data byte, which used to be indistinguishable from the escaped-marker-literal sentinel)",
+          "https://github.com/mbitsnbites/liblzg"
         )
       ];
     }
@@ -283,9 +315,13 @@
         const match = this._findMatch(input, pos, 2048);
 
         if (match.length >= 3 && match.offset > 0) {
-          // Encode as back-reference
-          this._encodeMatch(result, match, markers);
-          pos += match.length;
+          // Encode as back-reference. The length actually consumed is
+          // whatever _encodeMatch could represent (LENGTH_DECODE_LUT only
+          // has specific values), which may be less than the raw match
+          // length found - pos must advance by that encoded amount, not
+          // the raw one, or compressor/decompressor desync.
+          const encodedLength = this._encodeMatch(result, match, markers);
+          pos += encodedLength;
         } else {
           // Encode as literal
           const byte = input[pos];
@@ -483,22 +519,33 @@
       return { length: bestLength, offset: bestOffset };
     }
 
-    _encodeMatch(result, match, markers) {
-      // Select marker and encoding based on offset and length
-      const offset = match.offset;
-      const length = match.length;
-
-      // Find length code
-      let lengthCode = 0;
+    // Find the largest LENGTH_DECODE_LUT entry that does not exceed the
+    // requested length (floor, not ceiling). LENGTH_DECODE_LUT has gaps
+    // above 29 (30..34 -> 35, 36..47 -> 48, etc.), so a match whose raw
+    // length falls in a gap can only be represented by a *shorter*
+    // encodable length; rounding up instead would make the decoder copy
+    // more bytes than the compressor actually verified matched, producing
+    // over-long, corrupted output.
+    _floorLengthCode(length) {
+      let code = 0;
       for (let i = 0; i < LENGTH_DECODE_LUT.length; ++i) {
-        if (LENGTH_DECODE_LUT[i] >= length) {
-          lengthCode = i;
-          break;
-        }
+        if (LENGTH_DECODE_LUT[i] <= length) code = i;
+        else break;
       }
+      return code;
+    }
+
+    _encodeMatch(result, match, markers) {
+      // Select marker and encoding based on offset and length.
+      // Returns the number of source bytes actually represented by the
+      // emitted token (<= match.length, since length codes are quantized).
+      const offset = match.offset;
+      const rawLength = match.length;
 
       if (offset >= 2056) {
         // M1: Distant copy
+        const lengthCode = this._floorLengthCode(rawLength);
+        const encodedLength = LENGTH_DECODE_LUT[lengthCode];
         const adjustedOffset = offset - 2056;
         result.push(markers[MARKER_M1]);
         const byte1 = OpCodes.OrN(
@@ -508,17 +555,31 @@
         const byte2 = OpCodes.AndN(OpCodes.Shr32(adjustedOffset, 8), 0xFF);
         const byte3 = OpCodes.AndN(adjustedOffset, 0xFF);
         result.push(byte1, byte2, byte3);
-      } else if (offset >= 8 && length >= 3) {
-        if (length <= 6 && offset < 72) {
-          // M3: Short copy
+        return encodedLength;
+      } else if (offset >= 8 && rawLength >= 3) {
+        // M3's data byte combines Shl8(offset-8, 2) with (length-3) via OR,
+        // which comes out to 0x00 exactly when offset===8 and length===3.
+        // The decoder treats any
+        // data byte of 0x00 immediately after a marker as "this marker
+        // byte was actually an escaped literal" (see the byte1===0 check
+        // in _decompress) - so that one specific (offset, length) pair is
+        // indistinguishable from an escaped literal and must not use M3.
+        // M2 can represent it unambiguously instead.
+        const isM3EscapeCollision = offset === 8 && rawLength === 3;
+        if (rawLength <= 6 && offset < 72 && !isM3EscapeCollision) {
+          // M3: Short copy - length is stored directly (2 bits, exact, no LUT)
+          const encodedLength = Math.min(rawLength, 6);
           result.push(markers[MARKER_M3]);
           const byte = OpCodes.OrN(
             OpCodes.Shl8(offset - 8, 2),
-            length - 3
+            encodedLength - 3
           );
           result.push(byte);
+          return encodedLength;
         } else {
           // M2: Medium copy
+          const lengthCode = this._floorLengthCode(rawLength);
+          const encodedLength = LENGTH_DECODE_LUT[lengthCode];
           const adjustedOffset = offset - 8;
           result.push(markers[MARKER_M2]);
           const byte1 = OpCodes.OrN(
@@ -527,16 +588,22 @@
           );
           const byte2 = OpCodes.AndN(adjustedOffset, 0xFF);
           result.push(byte1, byte2);
+          return encodedLength;
         }
       } else if (offset >= 1 && offset <= 8) {
         // M4: Near copy
+        const lengthCode = this._floorLengthCode(rawLength);
+        const encodedLength = LENGTH_DECODE_LUT[lengthCode];
         result.push(markers[MARKER_M4]);
         const byte = OpCodes.OrN(
           OpCodes.AndN(lengthCode, 0x1F),
           OpCodes.Shl8(OpCodes.AndN(offset - 1, 0x07), 5)
         );
         result.push(byte);
+        return encodedLength;
       }
+
+      return 0;
     }
 
     _createHeader(decodedSize, encodedSize, method) {
