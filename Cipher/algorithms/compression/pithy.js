@@ -146,6 +146,28 @@
             result.push(...Array.from({length: 65}, (_, i) => i&0xFF));
             return result;
           })()
+        },
+        {
+          text: "Highly repetitive - 300x 'a' (regression: copy-length field 63+extraBytes overflowed the 6-bit field and corrupted the tag byte)",
+          uri: "https://github.com/johnezang/pithy/blob/master/pithy.c",
+          // Round-trip test only
+          input: new Array(300).fill(0x61)
+        },
+        {
+          text: "Alternating pattern - 200x 'ab'",
+          uri: "https://github.com/johnezang/pithy/blob/master/pithy.c",
+          // Round-trip test only
+          input: (() => { const a = []; for (let i = 0; i < 400; ++i) a.push(i % 2 ? 0x62 : 0x61); return a; })()
+        },
+        {
+          text: "Binary/pseudo-random sample",
+          uri: "https://github.com/johnezang/pithy/blob/master/pithy.c",
+          // Round-trip test only
+          input: (() => {
+            let seed = 0x0BADF00D, a = [];
+            for (let i = 0; i < 512; ++i) { seed = OpCodes.AndN(seed * 1103515245 + 12345, 0x7fffffff); a.push(OpCodes.AndN(seed, 0xFF)); }
+            return a;
+          })()
         }
       ];
     }
@@ -358,26 +380,39 @@
             copyOffset = OpCodes.Or32(OpCodes.Shl32(offsetHigh, 8), offsetLow);
           } else if (tagType === PITHY_COPY_2_BYTE) {
             // 2-byte offset
-            copyLen = OpCodes.Shr32(tag, 2) + 1;
-            if (copyLen >= 64) {
-              // Extended copy length
-              const extraBytes = copyLen - 63;
+            const lenField = OpCodes.Shr32(tag, 2);
+            if (lenField < 63) {
+              copyLen = lenField + 1;
+            } else {
+              // Extended copy length: field 63 is a fixed sentinel followed
+              // by a chain of 255-continuation bytes (see _emitCopy). This
+              // must not pack the extra-byte count into the tag field
+              // itself the way the encoder briefly did - 63+extraBytes
+              // does not fit the field's 6 available bits (max 63) once
+              // extraBytes >= 1, so it silently overflowed into the 2-bit
+              // type field of the *next* tag byte's worth of range and
+              // corrupted the stream once a match needed continuation
+              // bytes at all.
               copyLen = 64;
-              for (let i = 0; i < extraBytes; i++) {
-                copyLen += OpCodes.Shl32(input[ip++], i * 8);
-              }
+              let b;
+              do {
+                b = input[ip++];
+                copyLen += b;
+              } while (b === 255);
             }
             copyOffset = OpCodes.Or32(input[ip++], OpCodes.Shl32(input[ip++], 8));
           } else { // PITHY_COPY_3_BYTE
             // 3-byte offset
-            copyLen = OpCodes.Shr32(tag, 2) + 1;
-            if (copyLen >= 64) {
-              // Extended copy length
-              const extraBytes = copyLen - 63;
+            const lenField = OpCodes.Shr32(tag, 2);
+            if (lenField < 63) {
+              copyLen = lenField + 1;
+            } else {
               copyLen = 64;
-              for (let i = 0; i < extraBytes; i++) {
-                copyLen += OpCodes.Shl32(input[ip++], i * 8);
-              }
+              let b;
+              do {
+                b = input[ip++];
+                copyLen += b;
+              } while (b === 255);
             }
             copyOffset = OpCodes.Or32(OpCodes.Or32(input[ip++], OpCodes.Shl32(input[ip++], 8)), OpCodes.Shl32(input[ip++], 16));
           }
@@ -460,24 +495,23 @@
             const tag = OpCodes.Or32(OpCodes.Shl32(chunkLen - 1, 2), PITHY_COPY_2_BYTE);
             output.push(tag);
           } else {
-            // Extended length
-            const lenMinusBase = chunkLen - 64;
-            let extraBytes = 0;
-            let temp = lenMinusBase;
-
-            do {
-              extraBytes++;
-              temp = OpCodes.Shr32(temp, 8);
-            } while (temp > 0);
-
-            const tag = OpCodes.Or32(OpCodes.Shl32(63 + extraBytes, 2), PITHY_COPY_2_BYTE);
+            // Extended length: field is a *fixed* sentinel (63), never
+            // 63+extraBytes - the field only has 6 bits (max value 63), so
+            // packing the extra-byte count into it overflows into the
+            // 2-bit type field of the byte as soon as extraBytes >= 1,
+            // corrupting the tag. The actual length instead follows as a
+            // chain of 255-continuation bytes, terminated by a byte < 255
+            // (mirrors the literal-length and Lizard/LZ4 match-length
+            // extension already used elsewhere in this codebase).
+            const tag = OpCodes.Or32(OpCodes.Shl32(63, 2), PITHY_COPY_2_BYTE);
             output.push(tag);
 
-            temp = lenMinusBase;
-            for (let i = 0; i < extraBytes; i++) {
-              output.push(OpCodes.And32(temp, 0xFF));
-              temp = OpCodes.Shr32(temp, 8);
+            let rem = chunkLen - 64;
+            while (rem >= 255) {
+              output.push(255);
+              rem -= 255;
             }
+            output.push(OpCodes.And32(rem, 0xFF));
           }
 
           output.push(OpCodes.And32(offset, 0xFF));
@@ -488,24 +522,16 @@
             const tag = OpCodes.Or32(OpCodes.Shl32(chunkLen - 1, 2), PITHY_COPY_3_BYTE);
             output.push(tag);
           } else {
-            // Extended length
-            const lenMinusBase = chunkLen - 64;
-            let extraBytes = 0;
-            let temp = lenMinusBase;
-
-            do {
-              extraBytes++;
-              temp = OpCodes.Shr32(temp, 8);
-            } while (temp > 0);
-
-            const tag = OpCodes.Or32(OpCodes.Shl32(63 + extraBytes, 2), PITHY_COPY_3_BYTE);
+            // Extended length (see the 2-byte-offset branch above)
+            const tag = OpCodes.Or32(OpCodes.Shl32(63, 2), PITHY_COPY_3_BYTE);
             output.push(tag);
 
-            temp = lenMinusBase;
-            for (let i = 0; i < extraBytes; i++) {
-              output.push(OpCodes.And32(temp, 0xFF));
-              temp = OpCodes.Shr32(temp, 8);
+            let rem = chunkLen - 64;
+            while (rem >= 255) {
+              output.push(255);
+              rem -= 255;
             }
+            output.push(OpCodes.And32(rem, 0xFF));
           }
 
           output.push(OpCodes.And32(offset, 0xFF));
