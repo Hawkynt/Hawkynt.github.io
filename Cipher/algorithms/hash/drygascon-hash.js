@@ -677,6 +677,10 @@
         )
       ];
 
+      this.references = [
+        new LinkItem("Official DryGASCON reference implementation (Sébastien Riou)", "https://github.com/sebastien-riou/DryGASCON")
+      ];
+
       // Official test vectors from DryGASCON128-HASH.txt
       this.tests = [
         {
@@ -884,6 +888,10 @@
           "DryGASCON Specification",
           "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/finalist-round/updated-spec-doc/drygascon-spec-final.pdf"
         )
+      ];
+
+      this.references = [
+        new LinkItem("Official DryGASCON reference implementation (Sébastien Riou)", "https://github.com/sebastien-riou/DryGASCON")
       ];
 
       // Official test vectors from DryGASCON256-HASH.txt

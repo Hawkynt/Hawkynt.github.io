@@ -181,7 +181,7 @@
         let val = 0n;
         for (let j = 0; j < 8; j++) {
           const product = KalynaGF256Mul(MDS[j][i], sb);
-          val |= BigInt(product) << BigInt(j * 8);
+          val |= OpCodes.ShiftLn(BigInt(product), j * 8);
         }
         T[i][b] = val;
       }
@@ -763,7 +763,7 @@
     const evenBytes = new Array(16);
     for (let i = 0; i < 2; i++) {
       for (let j = 0; j < 8; j++) {
-        evenBytes[i * 8 + j] = Number((evenkey[i] >> BigInt(j * 8))&0xFFn);
+        evenBytes[i * 8 + j] = Number(OpCodes.ShiftRn(evenkey[i], j * 8)&0xFFn);
       }
     }
 
@@ -779,7 +779,7 @@
     for (let i = 0; i < 2; i++) {
       let word = 0n;
       for (let j = 0; j < 8; j++) {
-        word |= BigInt(oddBytes[i * 8 + j]) << BigInt(j * 8);
+        word |= OpCodes.ShiftLn(BigInt(oddBytes[i * 8 + j]), j * 8);
       }
       oddkey[i] = word;
     }
@@ -813,9 +813,9 @@
   // G0128: T-table transformation WITHOUT key (Crypto++ line 173-179)
   function G0128(x) {
     const y = new Array(2);
-    y[0] = T[0][Number(x[0]&0xFFn)]^T[1][Number((x[0] >> 8n)&0xFFn)]^T[2][Number((x[0] >> 16n)&0xFFn)]^T[3][Number((x[0] >> 24n)&0xFFn)]^T[4][Number((x[1] >> 32n)&0xFFn)]^T[5][Number((x[1] >> 40n)&0xFFn)]^T[6][Number((x[1] >> 48n)&0xFFn)]^T[7][Number((x[1] >> 56n)&0xFFn)];
+    y[0] = T[0][Number(x[0]&0xFFn)]^T[1][Number(OpCodes.ShiftRn(x[0], 8)&0xFFn)]^T[2][Number(OpCodes.ShiftRn(x[0], 16)&0xFFn)]^T[3][Number(OpCodes.ShiftRn(x[0], 24)&0xFFn)]^T[4][Number(OpCodes.ShiftRn(x[1], 32)&0xFFn)]^T[5][Number(OpCodes.ShiftRn(x[1], 40)&0xFFn)]^T[6][Number(OpCodes.ShiftRn(x[1], 48)&0xFFn)]^T[7][Number(OpCodes.ShiftRn(x[1], 56)&0xFFn)];
 
-    y[1] = T[0][Number(x[1]&0xFFn)]^T[1][Number((x[1] >> 8n)&0xFFn)]^T[2][Number((x[1] >> 16n)&0xFFn)]^T[3][Number((x[1] >> 24n)&0xFFn)]^T[4][Number((x[0] >> 32n)&0xFFn)]^T[5][Number((x[0] >> 40n)&0xFFn)]^T[6][Number((x[0] >> 48n)&0xFFn)]^T[7][Number((x[0] >> 56n)&0xFFn)];
+    y[1] = T[0][Number(x[1]&0xFFn)]^T[1][Number(OpCodes.ShiftRn(x[1], 8)&0xFFn)]^T[2][Number(OpCodes.ShiftRn(x[1], 16)&0xFFn)]^T[3][Number(OpCodes.ShiftRn(x[1], 24)&0xFFn)]^T[4][Number(OpCodes.ShiftRn(x[0], 32)&0xFFn)]^T[5][Number(OpCodes.ShiftRn(x[0], 40)&0xFFn)]^T[6][Number(OpCodes.ShiftRn(x[0], 48)&0xFFn)]^T[7][Number(OpCodes.ShiftRn(x[0], 56)&0xFFn)];
 
     return y;
   }
@@ -823,9 +823,9 @@
   // G128: T-table transformation with key XOR (Crypto++ line 373-379)
   function G128(x, k) {
     const y = new Array(2);
-    y[0] = k[0]^T[0][Number(x[0]&0xFFn)]^T[1][Number((x[0] >> 8n)&0xFFn)]^T[2][Number((x[0] >> 16n)&0xFFn)]^T[3][Number((x[0] >> 24n)&0xFFn)]^T[4][Number((x[1] >> 32n)&0xFFn)]^T[5][Number((x[1] >> 40n)&0xFFn)]^T[6][Number((x[1] >> 48n)&0xFFn)]^T[7][Number((x[1] >> 56n)&0xFFn)];
+    y[0] = k[0]^T[0][Number(x[0]&0xFFn)]^T[1][Number(OpCodes.ShiftRn(x[0], 8)&0xFFn)]^T[2][Number(OpCodes.ShiftRn(x[0], 16)&0xFFn)]^T[3][Number(OpCodes.ShiftRn(x[0], 24)&0xFFn)]^T[4][Number(OpCodes.ShiftRn(x[1], 32)&0xFFn)]^T[5][Number(OpCodes.ShiftRn(x[1], 40)&0xFFn)]^T[6][Number(OpCodes.ShiftRn(x[1], 48)&0xFFn)]^T[7][Number(OpCodes.ShiftRn(x[1], 56)&0xFFn)];
 
-    y[1] = k[1]^T[0][Number(x[1]&0xFFn)]^T[1][Number((x[1] >> 8n)&0xFFn)]^T[2][Number((x[1] >> 16n)&0xFFn)]^T[3][Number((x[1] >> 24n)&0xFFn)]^T[4][Number((x[0] >> 32n)&0xFFn)]^T[5][Number((x[0] >> 40n)&0xFFn)]^T[6][Number((x[0] >> 48n)&0xFFn)]^T[7][Number((x[0] >> 56n)&0xFFn)];
+    y[1] = k[1]^T[0][Number(x[1]&0xFFn)]^T[1][Number(OpCodes.ShiftRn(x[1], 8)&0xFFn)]^T[2][Number(OpCodes.ShiftRn(x[1], 16)&0xFFn)]^T[3][Number(OpCodes.ShiftRn(x[1], 24)&0xFFn)]^T[4][Number(OpCodes.ShiftRn(x[0], 32)&0xFFn)]^T[5][Number(OpCodes.ShiftRn(x[0], 40)&0xFFn)]^T[6][Number(OpCodes.ShiftRn(x[0], 48)&0xFFn)]^T[7][Number(OpCodes.ShiftRn(x[0], 56)&0xFFn)];
 
     return y;
   }
@@ -834,10 +834,10 @@
   function GL128(x, k) {
     const y = new Array(2);
     y[0] = (k[0] + (
-           T[0][Number(x[0]&0xFFn)]^T[1][Number((x[0] >> 8n)&0xFFn)]^T[2][Number((x[0] >> 16n)&0xFFn)]^T[3][Number((x[0] >> 24n)&0xFFn)]^T[4][Number((x[1] >> 32n)&0xFFn)]^T[5][Number((x[1] >> 40n)&0xFFn)]^T[6][Number((x[1] >> 48n)&0xFFn)]^T[7][Number((x[1] >> 56n)&0xFFn)]))&0xFFFFFFFFFFFFFFFFn;
+           T[0][Number(x[0]&0xFFn)]^T[1][Number(OpCodes.ShiftRn(x[0], 8)&0xFFn)]^T[2][Number(OpCodes.ShiftRn(x[0], 16)&0xFFn)]^T[3][Number(OpCodes.ShiftRn(x[0], 24)&0xFFn)]^T[4][Number(OpCodes.ShiftRn(x[1], 32)&0xFFn)]^T[5][Number(OpCodes.ShiftRn(x[1], 40)&0xFFn)]^T[6][Number(OpCodes.ShiftRn(x[1], 48)&0xFFn)]^T[7][Number(OpCodes.ShiftRn(x[1], 56)&0xFFn)]))&0xFFFFFFFFFFFFFFFFn;
 
     y[1] = (k[1] + (
-           T[0][Number(x[1]&0xFFn)]^T[1][Number((x[1] >> 8n)&0xFFn)]^T[2][Number((x[1] >> 16n)&0xFFn)]^T[3][Number((x[1] >> 24n)&0xFFn)]^T[4][Number((x[0] >> 32n)&0xFFn)]^T[5][Number((x[0] >> 40n)&0xFFn)]^T[6][Number((x[0] >> 48n)&0xFFn)]^T[7][Number((x[0] >> 56n)&0xFFn)]))&0xFFFFFFFFFFFFFFFFn;
+           T[0][Number(x[1]&0xFFn)]^T[1][Number(OpCodes.ShiftRn(x[1], 8)&0xFFn)]^T[2][Number(OpCodes.ShiftRn(x[1], 16)&0xFFn)]^T[3][Number(OpCodes.ShiftRn(x[1], 24)&0xFFn)]^T[4][Number(OpCodes.ShiftRn(x[0], 32)&0xFFn)]^T[5][Number(OpCodes.ShiftRn(x[0], 40)&0xFFn)]^T[6][Number(OpCodes.ShiftRn(x[0], 48)&0xFFn)]^T[7][Number(OpCodes.ShiftRn(x[0], 56)&0xFFn)]))&0xFFFFFFFFFFFFFFFFn;
 
     return y;
   }
@@ -847,9 +847,9 @@
   // Result: IT[S[byte]] = IMDS * IS[S[byte]] = IMDS * byte (since IS[S[x]] = x)
   function IMC128(x) {
     const y = new Array(2);
-    y[0] = IT[0][S[0][Number(x[0]&0xFFn)]]^IT[1][S[1][Number((x[0] >> 8n)&0xFFn)]]^IT[2][S[2][Number((x[0] >> 16n)&0xFFn)]]^IT[3][S[3][Number((x[0] >> 24n)&0xFFn)]]^IT[4][S[0][Number((x[0] >> 32n)&0xFFn)]]^IT[5][S[1][Number((x[0] >> 40n)&0xFFn)]]^IT[6][S[2][Number((x[0] >> 48n)&0xFFn)]]^IT[7][S[3][Number((x[0] >> 56n)&0xFFn)]];
+    y[0] = IT[0][S[0][Number(x[0]&0xFFn)]]^IT[1][S[1][Number(OpCodes.ShiftRn(x[0], 8)&0xFFn)]]^IT[2][S[2][Number(OpCodes.ShiftRn(x[0], 16)&0xFFn)]]^IT[3][S[3][Number(OpCodes.ShiftRn(x[0], 24)&0xFFn)]]^IT[4][S[0][Number(OpCodes.ShiftRn(x[0], 32)&0xFFn)]]^IT[5][S[1][Number(OpCodes.ShiftRn(x[0], 40)&0xFFn)]]^IT[6][S[2][Number(OpCodes.ShiftRn(x[0], 48)&0xFFn)]]^IT[7][S[3][Number(OpCodes.ShiftRn(x[0], 56)&0xFFn)]];
 
-    y[1] = IT[0][S[0][Number(x[1]&0xFFn)]]^IT[1][S[1][Number((x[1] >> 8n)&0xFFn)]]^IT[2][S[2][Number((x[1] >> 16n)&0xFFn)]]^IT[3][S[3][Number((x[1] >> 24n)&0xFFn)]]^IT[4][S[0][Number((x[1] >> 32n)&0xFFn)]]^IT[5][S[1][Number((x[1] >> 40n)&0xFFn)]]^IT[6][S[2][Number((x[1] >> 48n)&0xFFn)]]^IT[7][S[3][Number((x[1] >> 56n)&0xFFn)]];
+    y[1] = IT[0][S[0][Number(x[1]&0xFFn)]]^IT[1][S[1][Number(OpCodes.ShiftRn(x[1], 8)&0xFFn)]]^IT[2][S[2][Number(OpCodes.ShiftRn(x[1], 16)&0xFFn)]]^IT[3][S[3][Number(OpCodes.ShiftRn(x[1], 24)&0xFFn)]]^IT[4][S[0][Number(OpCodes.ShiftRn(x[1], 32)&0xFFn)]]^IT[5][S[1][Number(OpCodes.ShiftRn(x[1], 40)&0xFFn)]]^IT[6][S[2][Number(OpCodes.ShiftRn(x[1], 48)&0xFFn)]]^IT[7][S[3][Number(OpCodes.ShiftRn(x[1], 56)&0xFFn)]];
 
     return y;
   }
@@ -857,9 +857,9 @@
   // IG128: Inverse G with key XOR (Crypto++ line 293-299)
   function IG128(x, k) {
     const y = new Array(2);
-    y[0] = k[0]^IT[0][Number(x[0]&0xFFn)]^IT[1][Number((x[0] >> 8n)&0xFFn)]^IT[2][Number((x[0] >> 16n)&0xFFn)]^IT[3][Number((x[0] >> 24n)&0xFFn)]^IT[4][Number((x[1] >> 32n)&0xFFn)]^IT[5][Number((x[1] >> 40n)&0xFFn)]^IT[6][Number((x[1] >> 48n)&0xFFn)]^IT[7][Number((x[1] >> 56n)&0xFFn)];
+    y[0] = k[0]^IT[0][Number(x[0]&0xFFn)]^IT[1][Number(OpCodes.ShiftRn(x[0], 8)&0xFFn)]^IT[2][Number(OpCodes.ShiftRn(x[0], 16)&0xFFn)]^IT[3][Number(OpCodes.ShiftRn(x[0], 24)&0xFFn)]^IT[4][Number(OpCodes.ShiftRn(x[1], 32)&0xFFn)]^IT[5][Number(OpCodes.ShiftRn(x[1], 40)&0xFFn)]^IT[6][Number(OpCodes.ShiftRn(x[1], 48)&0xFFn)]^IT[7][Number(OpCodes.ShiftRn(x[1], 56)&0xFFn)];
 
-    y[1] = k[1]^IT[0][Number(x[1]&0xFFn)]^IT[1][Number((x[1] >> 8n)&0xFFn)]^IT[2][Number((x[1] >> 16n)&0xFFn)]^IT[3][Number((x[1] >> 24n)&0xFFn)]^IT[4][Number((x[0] >> 32n)&0xFFn)]^IT[5][Number((x[0] >> 40n)&0xFFn)]^IT[6][Number((x[0] >> 48n)&0xFFn)]^IT[7][Number((x[0] >> 56n)&0xFFn)];
+    y[1] = k[1]^IT[0][Number(x[1]&0xFFn)]^IT[1][Number(OpCodes.ShiftRn(x[1], 8)&0xFFn)]^IT[2][Number(OpCodes.ShiftRn(x[1], 16)&0xFFn)]^IT[3][Number(OpCodes.ShiftRn(x[1], 24)&0xFFn)]^IT[4][Number(OpCodes.ShiftRn(x[0], 32)&0xFFn)]^IT[5][Number(OpCodes.ShiftRn(x[0], 40)&0xFFn)]^IT[6][Number(OpCodes.ShiftRn(x[0], 48)&0xFFn)]^IT[7][Number(OpCodes.ShiftRn(x[0], 56)&0xFFn)];
 
     return y;
   }
@@ -871,10 +871,10 @@
 
     // Pack inverse S-box bytes with XOR, then subtract key (Crypto++ line 335-336)
     // CRITICAL: Parentheses ensure all XORs complete before subtraction
-    y[0] = ((BigInt(IS[0][Number(x[0]&0xFFn)])^(BigInt(IS[1][Number((x[0] >> 8n)&0xFFn)]) << 8n)^(BigInt(IS[2][Number((x[0] >> 16n)&0xFFn)]) << 16n)^(BigInt(IS[3][Number((x[0] >> 24n)&0xFFn)]) << 24n)^(BigInt(IS[0][Number((x[1] >> 32n)&0xFFn)]) << 32n)^(BigInt(IS[1][Number((x[1] >> 40n)&0xFFn)]) << 40n)^(BigInt(IS[2][Number((x[1] >> 48n)&0xFFn)]) << 48n)^(BigInt(IS[3][Number((x[1] >> 56n)&0xFFn)]) << 56n)) -
+    y[0] = ((BigInt(IS[0][Number(x[0]&0xFFn)])^OpCodes.ShiftLn(BigInt(IS[1][Number(OpCodes.ShiftRn(x[0], 8)&0xFFn)]), 8)^OpCodes.ShiftLn(BigInt(IS[2][Number(OpCodes.ShiftRn(x[0], 16)&0xFFn)]), 16)^OpCodes.ShiftLn(BigInt(IS[3][Number(OpCodes.ShiftRn(x[0], 24)&0xFFn)]), 24)^OpCodes.ShiftLn(BigInt(IS[0][Number(OpCodes.ShiftRn(x[1], 32)&0xFFn)]), 32)^OpCodes.ShiftLn(BigInt(IS[1][Number(OpCodes.ShiftRn(x[1], 40)&0xFFn)]), 40)^OpCodes.ShiftLn(BigInt(IS[2][Number(OpCodes.ShiftRn(x[1], 48)&0xFFn)]), 48)^OpCodes.ShiftLn(BigInt(IS[3][Number(OpCodes.ShiftRn(x[1], 56)&0xFFn)]), 56)) -
             k[0])&0xFFFFFFFFFFFFFFFFn;
 
-    y[1] = ((BigInt(IS[0][Number(x[1]&0xFFn)])^(BigInt(IS[1][Number((x[1] >> 8n)&0xFFn)]) << 8n)^(BigInt(IS[2][Number((x[1] >> 16n)&0xFFn)]) << 16n)^(BigInt(IS[3][Number((x[1] >> 24n)&0xFFn)]) << 24n)^(BigInt(IS[0][Number((x[0] >> 32n)&0xFFn)]) << 32n)^(BigInt(IS[1][Number((x[0] >> 40n)&0xFFn)]) << 40n)^(BigInt(IS[2][Number((x[0] >> 48n)&0xFFn)]) << 48n)^(BigInt(IS[3][Number((x[0] >> 56n)&0xFFn)]) << 56n)) -
+    y[1] = ((BigInt(IS[0][Number(x[1]&0xFFn)])^OpCodes.ShiftLn(BigInt(IS[1][Number(OpCodes.ShiftRn(x[1], 8)&0xFFn)]), 8)^OpCodes.ShiftLn(BigInt(IS[2][Number(OpCodes.ShiftRn(x[1], 16)&0xFFn)]), 16)^OpCodes.ShiftLn(BigInt(IS[3][Number(OpCodes.ShiftRn(x[1], 24)&0xFFn)]), 24)^OpCodes.ShiftLn(BigInt(IS[0][Number(OpCodes.ShiftRn(x[0], 32)&0xFFn)]), 32)^OpCodes.ShiftLn(BigInt(IS[1][Number(OpCodes.ShiftRn(x[0], 40)&0xFFn)]), 40)^OpCodes.ShiftLn(BigInt(IS[2][Number(OpCodes.ShiftRn(x[0], 48)&0xFFn)]), 48)^OpCodes.ShiftLn(BigInt(IS[3][Number(OpCodes.ShiftRn(x[0], 56)&0xFFn)]), 56)) -
             k[1])&0xFFFFFFFFFFFFFFFFn;
 
     return y;
@@ -997,7 +997,7 @@
           rkeys[(round + 1) * 2 + 1] = oddkey[1];
         }
 
-        constant = constant << 1n; // BigInt shift for round constant
+        constant = OpCodes.ShiftLn(constant, 1); // BigInt shift for round constant
       }
 
       // For decryption: apply IMC128 to round keys 2,4,6,8,10,12,14,16,18 (Crypto++ line 486-490)
@@ -1060,7 +1060,7 @@
           k[3] = t;
         }
 
-        constant = constant << 1n; // BigInt shift for round constant
+        constant = OpCodes.ShiftLn(constant, 1); // BigInt shift for round constant
       }
 
       // For decryption: apply IMC128 to round keys (for 256-bit)
@@ -1083,7 +1083,7 @@
       for (let i = 0; i < 2; i++) {
         let word = 0n;
         for (let j = 0; j < 8; j++) {
-          word |= BigInt(plaintext[i * 8 + j]) << BigInt(j * 8);
+          word |= OpCodes.ShiftLn(BigInt(plaintext[i * 8 + j]), j * 8);
         }
         msg[i] = word;
       }
@@ -1092,7 +1092,7 @@
       for (let i = 0; i < keyWords.length; i++) {
         let word = 0n;
         for (let j = 0; j < 8; j++) {
-          word |= BigInt(key[i * 8 + j]) << BigInt(j * 8);
+          word |= OpCodes.ShiftLn(BigInt(key[i * 8 + j]), j * 8);
         }
         keyWords[i] = word;
       }
@@ -1136,7 +1136,7 @@
       const output = new Array(16);
       for (let i = 0; i < 2; i++) {
         for (let j = 0; j < 8; j++) {
-          output[i * 8 + j] = Number((t1[i] >> BigInt(j * 8))&0xFFn);
+          output[i * 8 + j] = Number(OpCodes.ShiftRn(t1[i], j * 8)&0xFFn);
         }
       }
       return output;
@@ -1148,7 +1148,7 @@
       for (let i = 0; i < 2; i++) {
         let word = 0n;
         for (let j = 0; j < 8; j++) {
-          word |= BigInt(ciphertext[i * 8 + j]) << BigInt(j * 8);
+          word |= OpCodes.ShiftLn(BigInt(ciphertext[i * 8 + j]), j * 8);
         }
         msg[i] = word;
       }
@@ -1157,7 +1157,7 @@
       for (let i = 0; i < keyWords.length; i++) {
         let word = 0n;
         for (let j = 0; j < 8; j++) {
-          word |= BigInt(key[i * 8 + j]) << BigInt(j * 8);
+          word |= OpCodes.ShiftLn(BigInt(key[i * 8 + j]), j * 8);
         }
         keyWords[i] = word;
       }
@@ -1203,7 +1203,7 @@
       const output = new Array(16);
       for (let i = 0; i < 2; i++) {
         for (let j = 0; j < 8; j++) {
-          output[i * 8 + j] = Number((t1[i] >> BigInt(j * 8))&0xFFn);
+          output[i * 8 + j] = Number(OpCodes.ShiftRn(t1[i], j * 8)&0xFFn);
         }
       }
       return output;

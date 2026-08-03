@@ -226,6 +226,11 @@
         new LinkItem("SAC 2012 Paper", "https://link.springer.com/chapter/10.1007/978-3-642-35999-6_22")
       ];
 
+      this.references = [
+        new LinkItem("openluopworld Lightweight Block Ciphers - TWINE (C)", "https://github.com/openluopworld/block-ciphers"),
+        new LinkItem("go-twine Implementation", "https://github.com/dgryski/go-twine")
+      ];
+
       // Test vectors from NEC specification (Table 1 of the paper)
       this.tests = [
         {

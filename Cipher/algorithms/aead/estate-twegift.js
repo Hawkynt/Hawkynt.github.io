@@ -94,7 +94,7 @@
 
   function bitPermuteStep(value, mask, shift) {
     const t = ((OpCodes.Shr32(value, shift))^value)&mask;
-    return ((value^t)^(OpCodes.Shl32(t, shift))) >>> 0;
+    return OpCodes.ToUint32((value^t)^(OpCodes.Shl32(t, shift)));
   }
 
   function perm3Inner(x) {
@@ -285,7 +285,7 @@
       w3 = w2;
       w2 = w1;
       w1 = w0;
-      w0 = (OpCodes.Shr32((temp&0xFFFC0000), 2)|OpCodes.Shl32((temp&0x00030000), 14)|OpCodes.Shl32((temp&0x00000FFF), 4)|OpCodes.Shr32((temp&0x0000F000), 12)) >>> 0;
+      w0 = OpCodes.ToUint32(OpCodes.Shr32((temp&0xFFFC0000), 2)|OpCodes.Shl32((temp&0x00030000), 14)|OpCodes.Shl32((temp&0x00000FFF), 4)|OpCodes.Shr32((temp&0x0000F000), 12));
     }
 
     // Pack result and convert to nibbles
@@ -459,6 +459,13 @@
         new LinkItem(
           "Reference Implementation",
           "https://github.com/rweather/lightweight-crypto"
+        )
+      ];
+
+      this.references = [
+        new LinkItem(
+          "NIST LWC Round 2 Submission Package (Reference C)",
+          "https://csrc.nist.gov/projects/lightweight-cryptography/round-2-candidates"
         )
       ];
 

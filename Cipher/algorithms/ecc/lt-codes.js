@@ -90,6 +90,11 @@
         new LinkItem("Fountain Codes Tutorial", "https://en.wikipedia.org/wiki/Fountain_code")
       ];
 
+      this.references = [
+        new LinkItem("LT-code Reference Implementation (Python)", "https://github.com/anrosent/LT-code"),
+        new LinkItem("Google gofountain Luby Transform Implementation (Go)", "https://github.com/google/gofountain/blob/master/luby.go")
+      ];
+
       // Test vectors generated from reference implementation
       this.tests = [
         new TestCase(

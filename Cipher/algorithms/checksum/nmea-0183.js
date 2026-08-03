@@ -57,6 +57,10 @@
         new LinkItem("GPS Sentence Parsing", "http://aprs.gids.nl/nmea/")
       ];
 
+      this.references = [
+        new LinkItem("pynmea2 NMEA checksum implementation", "https://github.com/Knio/pynmea2/blob/master/pynmea2/nmea.py")
+      ];
+
       this.notes = [
         "Sentence format: $<data>*<checksum>",
         "Checksum: XOR of all bytes between $ and *",

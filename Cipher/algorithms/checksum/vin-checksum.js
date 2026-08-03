@@ -57,6 +57,10 @@
         new LinkItem("NHTSA VIN Decoder", "https://www.nhtsa.gov/vin-decoder")
       ];
 
+      this.references = [
+        new LinkItem("vininfo - VIN parsing and checksum verification library", "https://github.com/idlesign/vininfo")
+      ];
+
       this.notes = [
         "Format: 17 alphanumeric characters (excludes I, O, Q to avoid confusion with 1, 0)",
         "Position 9: Check digit (0-9 or X for 10)",

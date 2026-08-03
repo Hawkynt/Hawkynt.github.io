@@ -91,6 +91,11 @@
         new LinkItem("LDPC and Fountain Codes", "https://www.cambridge.org/core/books/modern-coding-theory/")
       ];
 
+      this.references = [
+        new LinkItem("Google gofountain Raptor Implementation (RFC 5053)", "https://github.com/google/gofountain/blob/master/raptor.go"),
+        new LinkItem("Raptor-Codes-rfc5053 C++ Implementation", "https://github.com/RabbitNick/Raptor-Codes-rfc5053")
+      ];
+
       // Test vectors generated from reference implementation
       this.tests = [
         new TestCase(

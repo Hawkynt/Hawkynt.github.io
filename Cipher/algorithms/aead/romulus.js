@@ -88,12 +88,17 @@
   // SKINNY-128 tweakey permutation
   const SKINNY_TWEAKEY_P = new Uint8Array([9, 15, 8, 13, 10, 14, 12, 11, 0, 1, 2, 3, 4, 5, 6, 7]);
 
-  // SKINNY-128 round constants (40 rounds for SKINNY-128-384)
+  // SKINNY-128 round constants (62-entry LFSR sequence per reference skinny_reference.c;
+  // SKINNY-128-256 consumes 48 of these via direct table lookup, SKINNY-128-384 regenerates
+  // its own 56 via an equivalent runtime LFSR below)
   const SKINNY_RC = new Uint8Array([
     0x01, 0x03, 0x07, 0x0F, 0x1F, 0x3E, 0x3D, 0x3B, 0x37, 0x2F,
     0x1E, 0x3C, 0x39, 0x33, 0x27, 0x0E, 0x1D, 0x3A, 0x35, 0x2B,
     0x16, 0x2C, 0x18, 0x30, 0x21, 0x02, 0x05, 0x0B, 0x17, 0x2E,
-    0x1C, 0x38, 0x31, 0x23, 0x06, 0x0D, 0x1B, 0x36, 0x2D, 0x1A
+    0x1C, 0x38, 0x31, 0x23, 0x06, 0x0D, 0x1B, 0x36, 0x2D, 0x1A,
+    0x34, 0x29, 0x12, 0x24, 0x08, 0x11, 0x22, 0x04, 0x09, 0x13,
+    0x26, 0x0C, 0x19, 0x32, 0x25, 0x0A, 0x15, 0x2A, 0x14, 0x28,
+    0x10, 0x20
   ]);
 
   /**
@@ -510,15 +515,13 @@
 
       // Initialize state
       const state = new Uint8Array(16);
-      const cnt = new Uint8Array(7);
-      cnt[0] = 0x01;
+      let cnt = this._newCounter();
 
       // Process associated data
       this._processAD(state, cnt);
 
       // Reset counter for message processing
-      for (let i = 0; i < 7; ++i) cnt[i] = 0;
-      cnt[0] = 0x01;
+      cnt = this._newCounter();
 
       // Process message
       let ptOff = 0;
@@ -573,15 +576,13 @@
       const pt = new Uint8Array(ct.length - 16);
 
       const state = new Uint8Array(16);
-      const cnt = new Uint8Array(7);
-      cnt[0] = 0x01;
+      let cnt = this._newCounter();
 
       // Process associated data
       this._processAD(state, cnt);
 
       // Reset counter
-      for (let i = 0; i < 7; ++i) cnt[i] = 0;
-      cnt[0] = 0x01;
+      cnt = this._newCounter();
 
       // Process ciphertext
       let ctOff = 0;
@@ -693,31 +694,69 @@
       }
     }
 
-    _skinny_encrypt(state, cnt, domain) {
+    /**
+   * Build the SKINNY tweakey per Romulus' compose_tweakey, which differs by variant:
+   * - N1 (SKINNY-128-384, 56-bit single counter): TK1 = CNT(7)||D||zero(8), TK2 = T(16), TK3 = Key(16)
+   * - N2 (SKINNY-128-384, dual 24-bit counters): TK1 = CNT1(3)||D||T(12), TK2 = Key(16), TK3 = CNT2(3)||zero(13)
+   * - N3 (SKINNY-128-256, single 24-bit counter): TK1 = CNT(3)||D||T(12), TK2 = Key(16)
+   * where T is either the nonce (nonce_encryption) or the AD's even-block continuation bytes.
+   */
+    _buildTweakey(cnt, domain, tData) {
       const tweakey = new Uint8Array(this.useSkinny384 ? 48 : 32);
+      const t = this.nonceSize;
 
-      // Build tweakey: CNT || domain || nonce || key
-      for (let i = 0; i < 7; ++i) {
+      if (this.variant === 1) {
+        // TK1: CNT(7) || domain || zero(8)
+        for (let i = 0; i < 7; ++i) {
+          tweakey[i] = cnt[i];
+        }
+        tweakey[7] = domain;
+        for (let i = 8; i < 16; ++i) {
+          tweakey[i] = 0;
+        }
+
+        // TK2: T (nonce or AD continuation)
+        for (let i = 0; i < t; ++i) {
+          tweakey[16 + i] = i < tData.length ? tData[i] : 0;
+        }
+
+        // TK3: Key
+        for (let i = 0; i < 16; ++i) {
+          tweakey[32 + i] = this._key[i];
+        }
+
+        return tweakey;
+      }
+
+      // N2/N3: TK1: CNT(3) || domain || T
+      for (let i = 0; i < 3; ++i) {
         tweakey[i] = cnt[i];
       }
-      tweakey[7] = domain;
-
-      for (let i = 8; i < 16; ++i) {
-        tweakey[i] = 0;
+      tweakey[3] = domain;
+      for (let i = 0; i < t; ++i) {
+        tweakey[4 + i] = i < tData.length ? tData[i] : 0;
       }
 
-      for (let i = 0; i < this.nonceSize; ++i) {
-        tweakey[16 + i] = this._nonce[i];
-      }
-
-      for (let i = this.nonceSize; i < 16; ++i) {
-        tweakey[16 + i] = 0;
-      }
-
-      const keyOffset = this.useSkinny384 ? 32 : 16;
+      // TK2: Key
       for (let i = 0; i < 16; ++i) {
-        tweakey[keyOffset + i] = this._key[i];
+        tweakey[16 + i] = this._key[i];
       }
+
+      // TK3 (N2 only): second LFSR counter || zero padding
+      if (this.variant === 2) {
+        for (let i = 0; i < 3; ++i) {
+          tweakey[32 + i] = this._cnt2[i];
+        }
+        for (let i = 35; i < 48; ++i) {
+          tweakey[i] = 0;
+        }
+      }
+
+      return tweakey;
+    }
+
+    _skinny_encrypt(state, cnt, domain) {
+      const tweakey = this._buildTweakey(cnt, domain, this._nonce);
 
       if (this.useSkinny384) {
         skinny128_384_encrypt(state, tweakey);
@@ -727,28 +766,7 @@
     }
 
     _skinny_encrypt_with_tk2(state, cnt, tk2Data, domain) {
-      const tweakey = new Uint8Array(this.useSkinny384 ? 48 : 32);
-
-      // TK1: CNT || domain || padding || tk2Data
-      for (let i = 0; i < 7; ++i) {
-        tweakey[i] = cnt[i];
-      }
-      tweakey[7] = domain;
-
-      for (let i = 8; i < 16; ++i) {
-        tweakey[i] = i - 8 < tk2Data.length ? tk2Data[i - 8] : 0;
-      }
-
-      // TK2: Nonce or zero
-      for (let i = 0; i < 16; ++i) {
-        tweakey[16 + i] = i < this.nonceSize ? this._nonce[i] : 0;
-      }
-
-      // TK3 (for 384) or continuation (for 256): Key
-      const keyOffset = this.useSkinny384 ? 32 : 16;
-      for (let i = 0; i < 16; ++i) {
-        tweakey[keyOffset + i] = this._key[i];
-      }
+      const tweakey = this._buildTweakey(cnt, domain, tk2Data);
 
       if (this.useSkinny384) {
         skinny128_384_encrypt(state, tweakey);
@@ -757,11 +775,42 @@
       }
     }
 
+    /**
+   * Allocate and reset a fresh Romulus counter for the current variant.
+   * N1 uses a single 56-bit (7-byte) LFSR counter.
+   * N2 uses dual 24-bit (3-byte) LFSR counters (CNT2 advances only when CNT1 wraps).
+   * N3 uses a single 24-bit (3-byte) LFSR counter.
+   * @returns {Uint8Array} Freshly reset primary counter
+   */
+
+    _newCounter() {
+      if (this.variant === 1) {
+        const cnt = new Uint8Array(7);
+        cnt[0] = 0x01;
+        return cnt;
+      }
+
+      const cnt = new Uint8Array(3);
+      cnt[0] = 0x01;
+
+      if (this.variant === 2) {
+        this._cnt2 = new Uint8Array(3);
+        this._cnt2[0] = 0x01;
+      }
+
+      return cnt;
+    }
+
     _lfsr_update(cnt) {
       if (this.variant === 1) {
         lfsr_gf56(cnt);
-      } else {
-        lfsr_gf24(cnt);
+        return;
+      }
+
+      lfsr_gf24(cnt);
+
+      if (this.variant === 2 && cnt[0] === 0x01 && cnt[1] === 0x00 && cnt[2] === 0x00) {
+        lfsr_gf24(this._cnt2);
       }
     }
   }
@@ -789,6 +838,11 @@
         new LinkItem("Romulus Official Site", "https://romulusae.github.io/romulus/"),
         new LinkItem("NIST LWC Finalist", "https://csrc.nist.gov/Projects/lightweight-cryptography"),
         new LinkItem("Romulus Specification", "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/finalist-round/updated-spec-doc/romulus-spec-final.pdf")
+      ];
+
+      this.references = [
+        new LinkItem("Romulus Reference Implementation (romulusae/romulus, GitHub)", "https://github.com/romulusae/romulus"),
+        new LinkItem("NIST LWC Finalist Submissions Archive", "https://csrc.nist.gov/Projects/lightweight-cryptography/finalists")
       ];
 
       this.tests = [
@@ -838,7 +892,40 @@
         new LinkItem("Romulus Official Site", "https://romulusae.github.io/romulus/")
       ];
 
-      this.tests = [];
+      this.references = [
+        new LinkItem("Romulus Reference Implementation (romulusae/romulus, GitHub)", "https://github.com/romulusae/romulus"),
+        new LinkItem("NIST LWC Finalist Submissions Archive", "https://csrc.nist.gov/Projects/lightweight-cryptography/finalists")
+      ];
+
+      this.tests = [
+        {
+          text: "Romulus-N2 NIST LWC KAT Count=1 (empty message, empty AD)",
+          uri: "https://github.com/romulusae/romulus/blob/master/Implementations/software/ref/Previous%20Romulus%20versions/Romulus-N2/LWC_AEAD_KAT_128_96.txt",
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
+          associatedData: [],
+          input: [],
+          expected: OpCodes.Hex8ToBytes("C543F9D547B68FFCA08FABBD9983997E")
+        },
+        {
+          text: "Romulus-N2 NIST LWC KAT Count=102 (3-byte message, 2-byte AD)",
+          uri: "https://github.com/romulusae/romulus/blob/master/Implementations/software/ref/Previous%20Romulus%20versions/Romulus-N2/LWC_AEAD_KAT_128_96.txt",
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
+          associatedData: OpCodes.Hex8ToBytes("0001"),
+          input: OpCodes.Hex8ToBytes("000102"),
+          expected: OpCodes.Hex8ToBytes("FDC95789049E490F4E0E6531C709B46B5A7322")
+        },
+        {
+          text: "Romulus-N2 NIST LWC KAT Count=545 (16-byte message, 16-byte AD)",
+          uri: "https://github.com/romulusae/romulus/blob/master/Implementations/software/ref/Previous%20Romulus%20versions/Romulus-N2/LWC_AEAD_KAT_128_96.txt",
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
+          associatedData: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          expected: OpCodes.Hex8ToBytes("DF0CA1114F2E0051AC6E347F45D177822623D7A63D33E083B1E5CE9C6028BD94")
+        }
+      ];
     }
 
     /**
@@ -875,7 +962,40 @@
         new LinkItem("Romulus Official Site", "https://romulusae.github.io/romulus/")
       ];
 
-      this.tests = [];
+      this.references = [
+        new LinkItem("Romulus Reference Implementation (romulusae/romulus, GitHub)", "https://github.com/romulusae/romulus"),
+        new LinkItem("NIST LWC Finalist Submissions Archive", "https://csrc.nist.gov/Projects/lightweight-cryptography/finalists")
+      ];
+
+      this.tests = [
+        {
+          text: "Romulus-N3 NIST LWC KAT Count=1 (empty message, empty AD)",
+          uri: "https://github.com/romulusae/romulus/blob/master/Implementations/software/ref/Previous%20Romulus%20versions/Romulus-N3/LWC_AEAD_KAT_128_96.txt",
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
+          associatedData: [],
+          input: [],
+          expected: OpCodes.Hex8ToBytes("8F13641C9EB6C1307C40947E0326D8F2")
+        },
+        {
+          text: "Romulus-N3 NIST LWC KAT Count=102 (3-byte message, 2-byte AD)",
+          uri: "https://github.com/romulusae/romulus/blob/master/Implementations/software/ref/Previous%20Romulus%20versions/Romulus-N3/LWC_AEAD_KAT_128_96.txt",
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
+          associatedData: OpCodes.Hex8ToBytes("0001"),
+          input: OpCodes.Hex8ToBytes("000102"),
+          expected: OpCodes.Hex8ToBytes("FE9D36B78AF5CC41D79B956C2A41AB44F9FCA1")
+        },
+        {
+          text: "Romulus-N3 NIST LWC KAT Count=545 (16-byte message, 16-byte AD)",
+          uri: "https://github.com/romulusae/romulus/blob/master/Implementations/software/ref/Previous%20Romulus%20versions/Romulus-N3/LWC_AEAD_KAT_128_96.txt",
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
+          associatedData: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          expected: OpCodes.Hex8ToBytes("0F47F3B0C630FE59005875D996FA1207ECA4083541524376886CD1DB30016B2C")
+        }
+      ];
     }
 
     /**

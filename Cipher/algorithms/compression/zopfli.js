@@ -236,10 +236,13 @@
       this.implementation = "Self-contained educational JavaScript (no external dependencies)";
 
       this.documentation = [
-        new LinkItem("Official Zopfli Repository", "https://github.com/google/zopfli"),
         new LinkItem("Zopfli Announcement (2013)", "https://opensource.googleblog.com/2013/02/compress-data-more-densely-with-zopfli.html"),
         new LinkItem("RFC 1951 - Deflate Format", "https://datatracker.ietf.org/doc/html/rfc1951"),
         new LinkItem("Zopfli Wikipedia", "https://en.wikipedia.org/wiki/Zopfli")
+      ];
+
+      this.references = [
+        new LinkItem("Official Google Zopfli Repository (C reference implementation)", "https://github.com/google/zopfli")
       ];
 
       this.notes = [

@@ -114,6 +114,10 @@
         )
       ];
 
+      this.references = [
+        new LinkItem("PHOTON-Beetle/Software (official reference implementation)", "https://github.com/PHOTON-Beetle/Software")
+      ];
+
       // Official NIST LWC test vectors
       this.tests = [
         {

@@ -70,6 +70,10 @@
         new LinkItem('Ancient Cryptography', 'http://practicalcryptography.com/ciphers/classical-era/scytale/')
       ];
 
+      this.references = [
+        new LinkItem('CrypTool 2 Scytale Plugin (open-source reference implementation)', 'https://github.com/CrypToolProject/CrypTool-2')
+      ];
+
       // Test vectors in plain format (recommended)
       this.tests = [
         {

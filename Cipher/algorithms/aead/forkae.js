@@ -417,8 +417,12 @@
 
       this.documentation = [
         new LinkItem("ForkAE Official Website", "https://www.esat.kuleuven.be/cosic/forkae/"),
-        new LinkItem("NIST Lightweight Crypto", "https://csrc.nist.gov/projects/lightweight-cryptography"),
-        new LinkItem("Reference Implementation", "https://github.com/rweather/lightweight-crypto")
+        new LinkItem("NIST Lightweight Crypto", "https://csrc.nist.gov/projects/lightweight-cryptography")
+      ];
+
+      this.references = [
+        new LinkItem("Reference C Implementation (rweather/lightweight-crypto)", "https://github.com/rweather/lightweight-crypto"),
+        new LinkItem("ForkAE NIST LWC Round 2 Submission Package", "https://csrc.nist.gov/Projects/lightweight-cryptography/round-2-candidates")
       ];
 
       // Official NIST test vectors

@@ -230,6 +230,21 @@
         )
       ];
 
+      this.references = [
+        new LinkItem(
+          "ISAP Official Code Package (reference implementation)",
+          "https://github.com/isap-lwc/isap-code-package"
+        ),
+        new LinkItem(
+          "ISAP C++ Implementation (itzmeanjan)",
+          "https://github.com/itzmeanjan/isap"
+        ),
+        new LinkItem(
+          "NIST LWC Finalists Implementations (rweather)",
+          "https://github.com/rweather/lwc-finalists"
+        )
+      ];
+
       // Test vectors from NIST LWC official KAT file
       // Reference: isapa128av20_LWC_AEAD_KAT_128_128.txt
       this.tests = [

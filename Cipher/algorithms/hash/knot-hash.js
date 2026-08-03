@@ -676,6 +676,10 @@
         )
       ];
 
+      this.references = [
+        new LinkItem("rweather/lightweight-crypto (KNOT reference implementation)", "https://github.com/rweather/lightweight-crypto")
+      ];
+
       // Official test vectors from NIST LWC KAT
       this.tests = [
         {
@@ -763,6 +767,10 @@
           "KNOT Official Website",
           "https://www.knotcipher.com/"
         )
+      ];
+
+      this.references = [
+        new LinkItem("rweather/lightweight-crypto (KNOT reference implementation)", "https://github.com/rweather/lightweight-crypto")
       ];
 
       this.tests = [
@@ -877,6 +885,10 @@
         )
       ];
 
+      this.references = [
+        new LinkItem("rweather/lightweight-crypto (KNOT reference implementation)", "https://github.com/rweather/lightweight-crypto")
+      ];
+
       this.tests = [
         {
           text: "KNOT-HASH-384-384: Empty message (NIST KAT Count=1)",
@@ -987,6 +999,10 @@
           "KNOT Official Website",
           "https://www.knotcipher.com/"
         )
+      ];
+
+      this.references = [
+        new LinkItem("rweather/lightweight-crypto (KNOT reference implementation)", "https://github.com/rweather/lightweight-crypto")
       ];
 
       this.tests = [

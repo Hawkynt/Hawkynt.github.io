@@ -114,42 +114,49 @@
       //
       // For production applications, use well-documented PRNGs like XorShift128+,
       // PCG, or xoshiro256** which have extensive validation and test suites.
+      // uri points to the XorShift family reference: the original Gutbrod (1995)
+      // Ranshi specification is not publicly available in detail (see NOTE below
+      // and in the file header), so no authoritative Ranshi test suite exists.
+      // Every vector below is self-computed against this implementation's own
+      // shift-XOR state machine, for regression/consistency testing only.
+      const ranshiReferenceUri = this.documentation[2].uri; // "Related: XorShift Family"
+
       this.tests = [
         {
-          text: "Seed 1: First 20 bytes - Implementation consistency test",
-          uri: null,
+          text: "Self-computed regression vector - seed 1, first 20 bytes (implementation consistency test)",
+          uri: ranshiReferenceUri,
           input: null,
           seed: OpCodes.Hex8ToBytes("00000001"),
           outputSize: 20,
           expected: OpCodes.Hex8ToBytes("00042021040806019DCCA8C51255994F8EF917D1")
         },
         {
-          text: "Seed 0x12345678: First 32 bytes - Deterministic output verification",
-          uri: null,
+          text: "Self-computed regression vector - seed 0x12345678, first 32 bytes (deterministic output verification)",
+          uri: ranshiReferenceUri,
           input: null,
           seed: OpCodes.Hex8ToBytes("12345678"),
           outputSize: 32,
           expected: OpCodes.Hex8ToBytes("87985AA5155B24A34820F4C481B3AC98703A078829A8E24D89CA4F1DC5186E29")
         },
         {
-          text: "Seed 0xAAAAAAAA: First 24 bytes - Pattern detection test",
-          uri: null,
+          text: "Self-computed regression vector - seed 0xAAAAAAAA, first 24 bytes (pattern detection test)",
+          uri: ranshiReferenceUri,
           input: null,
           seed: OpCodes.Hex8ToBytes("AAAAAAAA"),
           outputSize: 24,
           expected: OpCodes.Hex8ToBytes("000D3FF5598A4D8C174377B14F18060BB4F17D07F16BC54F")
         },
         {
-          text: "Seed 0xFFFFFFFF: First 16 bytes - All-ones seed test",
-          uri: null,
+          text: "Self-computed regression vector - seed 0xFFFFFFFF, first 16 bytes (all-ones seed test)",
+          uri: ranshiReferenceUri,
           input: null,
           seed: OpCodes.Hex8ToBytes("FFFFFFFF"),
           outputSize: 16,
           expected: OpCodes.Hex8ToBytes("0003E01FFC07FDFF74BB9843F1CC88DA")
         },
         {
-          text: "Seed 1 with skip: Outputs 11-15 - Long-term state verification",
-          uri: null,
+          text: "Self-computed regression vector - seed 1 with skip, outputs 11-15 (long-term state verification)",
+          uri: ranshiReferenceUri,
           input: null,
           seed: OpCodes.Hex8ToBytes("00000001"),
           outputSize: 20,

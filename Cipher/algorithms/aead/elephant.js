@@ -742,6 +742,11 @@
         new LinkItem("NIST LWC Finalist Specification", "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/finalist-round/updated-spec-doc/elephant-spec-final.pdf")
       ];
 
+      this.references = [
+        new LinkItem("Rhys Weatherley Reference C Implementation", "https://github.com/rweather/lightweight-crypto"),
+        new LinkItem("Elephant C++ Implementation (itzmeanjan)", "https://github.com/itzmeanjan/elephant")
+      ];
+
       this.knownVulnerabilities = [];
 
       // NIST LWC test vectors
@@ -826,6 +831,11 @@
         new LinkItem("NIST LWC Finalist Specification", "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/finalist-round/updated-spec-doc/elephant-spec-final.pdf")
       ];
 
+      this.references = [
+        new LinkItem("Rhys Weatherley Reference C Implementation", "https://github.com/rweather/lightweight-crypto"),
+        new LinkItem("Elephant C++ Implementation (itzmeanjan)", "https://github.com/itzmeanjan/elephant")
+      ];
+
       this.knownVulnerabilities = [];
 
       this.tests = [
@@ -889,6 +899,11 @@
       this.documentation = [
         new LinkItem("Elephant Official Site", "https://www.esat.kuleuven.be/cosic/elephant/"),
         new LinkItem("NIST LWC Finalist Specification", "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/finalist-round/updated-spec-doc/elephant-spec-final.pdf")
+      ];
+
+      this.references = [
+        new LinkItem("Rhys Weatherley Reference C Implementation", "https://github.com/rweather/lightweight-crypto"),
+        new LinkItem("Elephant C++ Implementation (itzmeanjan)", "https://github.com/itzmeanjan/elephant")
       ];
 
       this.knownVulnerabilities = [];

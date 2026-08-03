@@ -132,7 +132,10 @@
         this.year = 2011;
         this.securityStatus = SecurityStatus.EXPERIMENTAL;
       } else {
-        this.name = this.variant;
+        // Suffix distinguishes these counter-based PRNGs from the ChaCha stream
+        // cipher of the same round count (algorithms/stream/chacha20.js) — the
+        // framework requires globally unique algorithm names.
+        this.name = `${this.variant} (PRNG)`;
         this.description = `ChaCha stream cipher variant with ${rounds} rounds designed by Daniel J. Bernstein. Counter-based PRNG providing excellent statistical properties and high performance. ${rounds === 8 ? 'Used as default PRNG in Go programming language runtime.' : rounds === 20 ? 'Original specification with maximum security margin.' : 'Balanced variant offering good performance and quality.'}`;
         this.inventor = 'Daniel J. Bernstein';
         this.year = 2008;
@@ -176,8 +179,8 @@
             'https://en.wikipedia.org/wiki/Salsa20#ChaCha_variant'
           ),
           new LinkItem(
-            'RFC 7539: ChaCha20 and Poly1305 for IETF Protocols',
-            'https://tools.ietf.org/html/rfc7539'
+            'RFC 8439: ChaCha20 and Poly1305 for IETF Protocols',
+            'https://www.rfc-editor.org/rfc/rfc8439.html'
           )
         ];
       }
@@ -278,11 +281,11 @@
           }
         ];
       } else {
-        // ChaCha20 test vectors from RFC 7539
+        // ChaCha20 test vectors from RFC 8439
         return [
           {
             text: 'ChaCha20 zero key and nonce (32-byte key): First 16 bytes',
-            uri: 'https://tools.ietf.org/html/rfc7539',
+            uri: 'https://www.rfc-editor.org/rfc/rfc8439.html',
             input: null,
             seed: OpCodes.Hex8ToBytes('0000000000000000000000000000000000000000000000000000000000000000'),
             nonce: OpCodes.Hex8ToBytes('0000000000000000'),
@@ -362,7 +365,7 @@
       // Parse as little-endian 64-bit
       this._nonce = 0n;
       for (let i = 0; i < 8; i++) {
-        this._nonce = this._nonce | (BigInt(nonceBytes[i]) << BigInt(i * 8));
+        this._nonce = OpCodes.OrN(this._nonce, OpCodes.ShiftLn(BigInt(nonceBytes[i]), i * 8));
       }
 
       this._resetState();
@@ -372,8 +375,8 @@
       const result = new Array(8);
       let n = this._nonce;
       for (let i = 0; i < 8; i++) {
-        result[i] = Number(OpCodes.And32(n, 0xFFn));
-        n >>= 8n;
+        result[i] = Number(OpCodes.AndN(n, 0xFFn));
+        n = OpCodes.ShiftRn(n, 8);
       }
       return result;
     }
@@ -391,7 +394,7 @@
       // Parse as little-endian 64-bit
       this._counter = 0n;
       for (let i = 0; i < 8; i++) {
-        this._counter = this._counter | (BigInt(counterBytes[i]) << BigInt(i * 8));
+        this._counter = OpCodes.OrN(this._counter, OpCodes.ShiftLn(BigInt(counterBytes[i]), i * 8));
       }
 
       this._resetState();
@@ -401,8 +404,8 @@
       const result = new Array(8);
       let c = this._counter;
       for (let i = 0; i < 8; i++) {
-        result[i] = Number(c & 0xFFn);
-        c >>= 8n;
+        result[i] = Number(OpCodes.AndN(c, 0xFFn));
+        c = OpCodes.ShiftRn(c, 8);
       }
       return result;
     }
@@ -475,12 +478,12 @@
         }
 
         // Counter (2 words = 64 bits)
-        state[12] = Number(this._counter & 0xFFFFFFFFn);
-        state[13] = Number(this._counter >> 32n);
+        state[12] = Number(OpCodes.AndN(this._counter, 0xFFFFFFFFn));
+        state[13] = Number(OpCodes.ShiftRn(this._counter, 32));
 
         // Nonce (2 words = 64 bits)
-        state[14] = Number(this._nonce & 0xFFFFFFFFn);
-        state[15] = Number(this._nonce >> 32n);
+        state[14] = Number(OpCodes.AndN(this._nonce, 0xFFFFFFFFn));
+        state[15] = Number(OpCodes.ShiftRn(this._nonce, 32));
       }
 
       return state;

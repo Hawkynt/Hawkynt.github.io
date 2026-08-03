@@ -92,23 +92,23 @@
       var y;
 
       // Mix the bits
-      x = (~x) >>> 0;
-      x ^= (((x >>> 2) & (x >>> 3)) & 0x11111111);
-      y = (((x << 5) & (x << 1)) & 0x20202020);
-      x ^= (((x << 5) & (x << 4)) & 0x40404040) ^ y;
-      y = (((x << 2) & (x << 1)) & 0x80808080);
-      x ^= (((x >>> 2) & (x << 1)) & 0x02020202) ^ y;
-      y = (((x >>> 5) & (x << 1)) & 0x04040404);
-      x ^= (((x >>> 1) & (x >>> 2)) & 0x08080808) ^ y;
-      x = (~x) >>> 0;
+      x = OpCodes.Not32(x);
+      x = OpCodes.Xor32(x, (((OpCodes.Shr32(x, 2))&(OpCodes.Shr32(x, 3)))&0x11111111));
+      y = (((OpCodes.Shl32(x, 5))&(OpCodes.Shl32(x, 1)))&0x20202020);
+      x = OpCodes.Xor32(x, OpCodes.Xor32((((OpCodes.Shl32(x, 5))&(OpCodes.Shl32(x, 4)))&0x40404040), y));
+      y = (((OpCodes.Shl32(x, 2))&(OpCodes.Shl32(x, 1)))&0x80808080);
+      x = OpCodes.Xor32(x, OpCodes.Xor32((((OpCodes.Shr32(x, 2))&(OpCodes.Shl32(x, 1)))&0x02020202), y));
+      y = (((OpCodes.Shr32(x, 5))&(OpCodes.Shl32(x, 1)))&0x04040404);
+      x = OpCodes.Xor32(x, OpCodes.Xor32((((OpCodes.Shr32(x, 1))&(OpCodes.Shr32(x, 2)))&0x08080808), y));
+      x = OpCodes.Not32(x);
 
       // Final permutation for each byte: [2 7 6 1 3 0 4 5]
-      x = (((x & 0x08080808) << 1) |
-           ((x & 0x32323232) << 2) |
-           ((x & 0x01010101) << 5) |
-           ((x & 0x80808080) >>> 6) |
-           ((x & 0x40404040) >>> 4) |
-           ((x & 0x04040404) >>> 2)) >>> 0;
+      x = (OpCodes.Shl32((x&0x08080808), 1)|
+           OpCodes.Shl32((x&0x32323232), 2)|
+           OpCodes.Shl32((x&0x01010101), 5)|
+           OpCodes.Shr32((x&0x80808080), 6)|
+           OpCodes.Shr32((x&0x40404040), 4)|
+           OpCodes.Shr32((x&0x04040404), 2));
 
       return x;
     }
@@ -118,37 +118,39 @@
       var y;
 
       // Mix the bits
-      x = (~x) >>> 0;
-      y = (((x >>> 1) & (x >>> 3)) & 0x01010101);
-      x ^= (((x >>> 2) & (x >>> 3)) & 0x10101010) ^ y;
-      y = (((x >>> 6) & (x >>> 1)) & 0x02020202);
-      x ^= (((x >>> 1) & (x >>> 2)) & 0x08080808) ^ y;
-      y = (((x << 2) & (x << 1)) & 0x80808080);
-      x ^= (((x >>> 1) & (x << 2)) & 0x04040404) ^ y;
-      y = (((x << 5) & (x << 1)) & 0x20202020);
-      x ^= (((x << 4) & (x << 5)) & 0x40404040) ^ y;
-      x = (~x) >>> 0;
+      x = OpCodes.Not32(x);
+      y = (((OpCodes.Shr32(x, 1))&(OpCodes.Shr32(x, 3)))&0x01010101);
+      x = OpCodes.Xor32(x, OpCodes.Xor32((((OpCodes.Shr32(x, 2))&(OpCodes.Shr32(x, 3)))&0x10101010), y));
+      y = (((OpCodes.Shr32(x, 6))&(OpCodes.Shr32(x, 1)))&0x02020202);
+      x = OpCodes.Xor32(x, OpCodes.Xor32((((OpCodes.Shr32(x, 1))&(OpCodes.Shr32(x, 2)))&0x08080808), y));
+      y = (((OpCodes.Shl32(x, 2))&(OpCodes.Shl32(x, 1)))&0x80808080);
+      x = OpCodes.Xor32(x, OpCodes.Xor32((((OpCodes.Shr32(x, 1))&(OpCodes.Shl32(x, 2)))&0x04040404), y));
+      y = (((OpCodes.Shl32(x, 5))&(OpCodes.Shl32(x, 1)))&0x20202020);
+      x = OpCodes.Xor32(x, OpCodes.Xor32((((OpCodes.Shl32(x, 4))&(OpCodes.Shl32(x, 5)))&0x40404040), y));
+      x = OpCodes.Not32(x);
 
       // Final permutation for each byte: [5 3 0 4 6 7 2 1]
-      x = (((x & 0x01010101) << 2) |
-           ((x & 0x04040404) << 4) |
-           ((x & 0x02020202) << 6) |
-           ((x & 0x20202020) >>> 5) |
-           ((x & 0xC8C8C8C8) >>> 2) |
-           ((x & 0x10101010) >>> 1)) >>> 0;
+      x = (OpCodes.Shl32((x&0x01010101), 2)|
+           OpCodes.Shl32((x&0x04040404), 4)|
+           OpCodes.Shl32((x&0x02020202), 6)|
+           OpCodes.Shr32((x&0x20202020), 5)|
+           OpCodes.Shr32((x&0xC8C8C8C8), 2)|
+           OpCodes.Shr32((x&0x10101010), 1));
 
       return x;
     }
 
     // LFSR operations for tweakey schedule
     function skinny128_LFSR2(x) {
-      return (((x << 1) & 0xFEFEFEFE) ^
-              (((x >>> 7) ^ (x >>> 5)) & 0x01010101)) >>> 0;
+      var shifted = (OpCodes.Shl32(x, 1))&0xFEFEFEFE;
+      var feedback = (OpCodes.Xor32(OpCodes.Shr32(x, 7), OpCodes.Shr32(x, 5)))&0x01010101;
+      return OpCodes.Xor32(shifted, feedback);
     }
 
     function skinny128_LFSR3(x) {
-      return (((x >>> 1) & 0x7F7F7F7F) ^
-              (((x << 7) ^ (x << 1)) & 0x80808080)) >>> 0;
+      var shifted = (OpCodes.Shr32(x, 1))&0x7F7F7F7F;
+      var feedback = (OpCodes.Xor32(OpCodes.Shl32(x, 7), OpCodes.Shl32(x, 1)))&0x80808080;
+      return OpCodes.Xor32(shifted, feedback);
     }
 
     function skinny128_inv_LFSR2(x) {
@@ -165,14 +167,14 @@
       var row3 = tk[3];
       tk[2] = tk[0];
       tk[3] = tk[1];
-      row3 = ((row3 << 16) | (row3 >>> 16)) >>> 0;
-      tk[0] = (((row2 >>> 8) & 0x000000FF) |
-               ((row2 << 16) & 0x00FF0000) |
-               (row3 & 0xFF00FF00)) >>> 0;
-      tk[1] = (((row2 >>> 16) & 0x000000FF) |
-               (row2 & 0xFF000000) |
-               ((row3 << 8) & 0x0000FF00) |
-               (row3 & 0x00FF0000)) >>> 0;
+      row3 = OpCodes.RotL32(row3, 16);
+      tk[0] = ((OpCodes.Shr32(row2, 8))&0x000000FF)|
+              ((OpCodes.Shl32(row2, 16))&0x00FF0000)|
+              (row3&0xFF00FF00);
+      tk[1] = ((OpCodes.Shr32(row2, 16))&0x000000FF)|
+              (row2&0xFF000000)|
+              ((OpCodes.Shl32(row3, 8))&0x0000FF00)|
+              (row3&0x00FF0000);
     }
 
     // Inverse tweakey permutation
@@ -181,14 +183,14 @@
       var row1 = tk[1];
       tk[0] = tk[2];
       tk[1] = tk[3];
-      tk[2] = (((row0 >>> 16) & 0x000000FF) |
-               ((row0 << 8) & 0x0000FF00) |
-               ((row1 << 16) & 0x00FF0000) |
-               (row1 & 0xFF000000)) >>> 0;
-      tk[3] = (((row0 >>> 16) & 0x0000FF00) |
-               ((row0 << 16) & 0xFF000000) |
-               ((row1 >>> 16) & 0x000000FF) |
-               ((row1 << 8) & 0x00FF0000)) >>> 0;
+      tk[2] = ((OpCodes.Shr32(row0, 16))&0x000000FF)|
+              ((OpCodes.Shl32(row0, 8))&0x0000FF00)|
+              ((OpCodes.Shl32(row1, 16))&0x00FF0000)|
+              (row1&0xFF000000);
+      tk[3] = ((OpCodes.Shr32(row0, 16))&0x0000FF00)|
+              ((OpCodes.Shl32(row0, 16))&0xFF000000)|
+              ((OpCodes.Shr32(row1, 16))&0x000000FF)|
+              ((OpCodes.Shl32(row1, 8))&0x00FF0000);
     }
 
     // Helper for byte rotations in row shifting
@@ -245,11 +247,9 @@
 
         // XOR round constant and subkey
         rc = RC[round];
-        s0 ^= state.TK1[0] ^ state.TK2[0] ^ (rc & 0x0F) ^ 0x00020000;
-        s1 ^= state.TK1[1] ^ state.TK2[1] ^ (rc >>> 4);
-        s2 ^= 0x02;
-        s0 >>>= 0;
-        s1 >>>= 0;
+        s0 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, state.TK1[0]), state.TK2[0]), (rc&0x0F)), 0x00020000);
+        s1 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s1, state.TK1[1]), state.TK2[1]), OpCodes.Shr32(rc, 4));
+        s2 = OpCodes.Xor32(s2, 0x02);
 
         // Shift rows (rotate cells right in row words)
         s1 = leftRotate8(s1);
@@ -257,9 +257,9 @@
         s3 = leftRotate24(s3);
 
         // Mix columns
-        s1 ^= s2;
-        s2 ^= s0;
-        temp = (s3 ^ s2) >>> 0;
+        s1 = OpCodes.Xor32(s1, s2);
+        s2 = OpCodes.Xor32(s2, s0);
+        temp = OpCodes.Xor32(s3, s2);
         s3 = s2;
         s2 = s1;
         s1 = s0;
@@ -298,9 +298,9 @@
         s0 = s1;
         s1 = s2;
         s2 = s3;
-        s3 = (temp ^ s2) >>> 0;
-        s2 ^= s0;
-        s1 ^= s2;
+        s3 = OpCodes.Xor32(temp, s2);
+        s2 = OpCodes.Xor32(s2, s0);
+        s1 = OpCodes.Xor32(s1, s2);
 
         // Inverse shift rows
         s1 = rightRotate8(s1);
@@ -310,11 +310,9 @@
         // XOR round constant and subkey
         --first;
         rc = RC[first];
-        s0 ^= state.TK1[0] ^ state.TK2[0] ^ (rc & 0x0F) ^ 0x00020000;
-        s1 ^= state.TK1[1] ^ state.TK2[1] ^ (rc >>> 4);
-        s2 ^= 0x02;
-        s0 >>>= 0;
-        s1 >>>= 0;
+        s0 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, state.TK1[0]), state.TK2[0]), (rc&0x0F)), 0x00020000);
+        s1 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s1, state.TK1[1]), state.TK2[1]), OpCodes.Shr32(rc, 4));
+        s2 = OpCodes.Xor32(s2, 0x02);
 
         // Apply inverse S-box
         s0 = skinny128_inv_sbox(s0);
@@ -426,10 +424,10 @@
 
       if (output_left) {
         // Generate left output block (apply branching constant first)
-        state.S[0] = (state.S[0] ^ 0x08040201) >>> 0;
-        state.S[1] = (state.S[1] ^ 0x82412010) >>> 0;
-        state.S[2] = (state.S[2] ^ 0x28140a05) >>> 0;
-        state.S[3] = (state.S[3] ^ 0x8844a251) >>> 0;
+        state.S[0] = OpCodes.Xor32(state.S[0], 0x08040201);
+        state.S[1] = OpCodes.Xor32(state.S[1], 0x82412010);
+        state.S[2] = OpCodes.Xor32(state.S[2], 0x28140a05);
+        state.S[3] = OpCodes.Xor32(state.S[3], 0x8844a251);
 
         forkskinny_128_256_rounds(state,
           FORKSKINNY_128_256_ROUNDS_BEFORE + FORKSKINNY_128_256_ROUNDS_AFTER,
@@ -497,10 +495,10 @@
         FORKSKINNY_128_256_ROUNDS_BEFORE + FORKSKINNY_128_256_ROUNDS_AFTER);
 
       // Remove branching constant
-      state.S[0] = (state.S[0] ^ 0x08040201) >>> 0;
-      state.S[1] = (state.S[1] ^ 0x82412010) >>> 0;
-      state.S[2] = (state.S[2] ^ 0x28140a05) >>> 0;
-      state.S[3] = (state.S[3] ^ 0x8844a251) >>> 0;
+      state.S[0] = OpCodes.Xor32(state.S[0], 0x08040201);
+      state.S[1] = OpCodes.Xor32(state.S[1], 0x82412010);
+      state.S[2] = OpCodes.Xor32(state.S[2], 0x28140a05);
+      state.S[3] = OpCodes.Xor32(state.S[3], 0x8844a251);
 
       // Roll tweakey back
       forkskinny_128_256_reverse_tk(state, FORKSKINNY_128_256_ROUNDS_AFTER);
@@ -555,11 +553,11 @@
     function paef_set_counter(tweakey, counter, domain) {
       // Counter occupies last COUNTER_SIZE bytes of tweakey
       // Domain (3 bits) is in upper bits of counter field
-      var combined = (counter | (domain << (COUNTER_SIZE * 8 - 3))) >>> 0;
+      var combined = counter | OpCodes.Shl32(domain, COUNTER_SIZE * 8 - 3);
 
       for (var i = 0; i < COUNTER_SIZE; ++i) {
-        tweakey[16 + NONCE_SIZE + COUNTER_SIZE - 1 - i] = combined & 0xFF;
-        combined >>>= 8;
+        tweakey[16 + NONCE_SIZE + COUNTER_SIZE - 1 - i] = combined&0xFF;
+        combined = OpCodes.Shr32(combined, 8);
       }
     }
 
@@ -593,15 +591,20 @@
 
       this.documentation = [
         new LinkItem("ForkAE Official Website", "https://www.esat.kuleuven.be/cosic/forkae/"),
-        new LinkItem("NIST LWC Submission", "https://csrc.nist.gov/projects/lightweight-cryptography"),
-        new LinkItem("ForkSkinny Specification", "https://eprint.iacr.org/2019/1004.pdf")
+        new LinkItem("ForkAE NIST LWC Round 2 Submission Specification", "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/forkae-spec-round2.pdf"),
+        new LinkItem("NIST Lightweight Cryptography Project", "https://csrc.nist.gov/projects/lightweight-cryptography"),
+        new LinkItem("Forkcipher: A New Primitive for Authenticated Encryption of Very Short Messages", "https://eprint.iacr.org/2019/1004")
+      ];
+
+      this.references = [
+        new LinkItem("Reference C Implementation (rweather/lightweight-crypto)", "https://github.com/rweather/lightweight-crypto")
       ];
 
       this.tests = [
         // Test vectors from NIST KAT file PAEF-ForkSkinny-128-192.txt
         {
           text: "Empty PT, Empty AD",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/forkae-spec-round2.pdf",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405"),
           associatedData: [],
@@ -610,7 +613,7 @@
         },
         {
           text: "Empty PT, 1-byte AD",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/forkae-spec-round2.pdf",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405"),
           associatedData: OpCodes.Hex8ToBytes("00"),
@@ -619,7 +622,7 @@
         },
         {
           text: "Empty PT, 2-byte AD",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/forkae-spec-round2.pdf",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405"),
           associatedData: OpCodes.Hex8ToBytes("0001"),
@@ -628,7 +631,7 @@
         },
         {
           text: "Empty PT, 16-byte AD",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/forkae-spec-round2.pdf",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405"),
           associatedData: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
@@ -637,7 +640,7 @@
         },
         {
           text: "1-byte PT, Empty AD",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/forkae-spec-round2.pdf",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405"),
           associatedData: [],
@@ -646,7 +649,7 @@
         },
         {
           text: "1-byte PT, 1-byte AD",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/forkae-spec-round2.pdf",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405"),
           associatedData: OpCodes.Hex8ToBytes("00"),
@@ -655,7 +658,7 @@
         },
         {
           text: "16-byte PT, Empty AD",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/forkae-spec-round2.pdf",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405"),
           associatedData: [],
@@ -664,7 +667,7 @@
         },
         {
           text: "16-byte PT, 16-byte AD",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/forkae-spec-round2.pdf",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405"),
           associatedData: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
@@ -779,7 +782,7 @@
       var counter;
 
       // Check data limits (2^17 bytes = 128KB for PAEF-128-192)
-      var dataLimit = (1 << 17);
+      var dataLimit = 131072; // 2^17 bytes = 128KB
       if (adlen > dataLimit || mlen > dataLimit) {
         throw new Error("Data length exceeds PAEF-ForkSkinny-128-192 limit");
       }
@@ -860,9 +863,7 @@
         forkskinny_128_256_encrypt(tweakey, cipherBlock, authBlock, m.slice(mPos, mPos + BLOCK_SIZE));
 
         // XOR accumulated tag with ciphertext for final block
-        for (var i = 0; i < BLOCK_SIZE; ++i) {
-          cipherBlock[i] = (cipherBlock[i] ^ tag[i]) & 0xFF;
-        }
+        cipherBlock = OpCodes.XorArrays(cipherBlock, tag);
         c.push.apply(c, cipherBlock);
         c.push.apply(c, authBlock); // Append authentication tag from right output
       } else {
@@ -882,9 +883,7 @@
         forkskinny_128_256_encrypt(tweakey, cipherBlock, authBlock, paddedBlock);
 
         // XOR accumulated tag with ciphertext
-        for (var i = 0; i < BLOCK_SIZE; ++i) {
-          cipherBlock[i] = (cipherBlock[i] ^ tag[i]) & 0xFF;
-        }
+        cipherBlock = OpCodes.XorArrays(cipherBlock, tag);
         c.push.apply(c, cipherBlock);
 
         // Append only mlen bytes of authentication tag from right output
@@ -913,7 +912,7 @@
       var counter;
 
       // Check data limits
-      var dataLimit = (1 << 17);
+      var dataLimit = 131072; // 2^17 bytes = 128KB
       if (adlen > dataLimit || clen > dataLimit) {
         throw new Error("Data length exceeds PAEF-ForkSkinny-128-192 limit");
       }
@@ -997,10 +996,7 @@
         paef_set_counter(tweakey, counter, 5);
 
         // XOR tag with ciphertext first
-        var temp = new Array(BLOCK_SIZE);
-        for (var i = 0; i < BLOCK_SIZE; ++i) {
-          temp[i] = (c[cPos + i] ^ tag[i]) & 0xFF;
-        }
+        var temp = OpCodes.XorArrays(c.slice(cPos, cPos + BLOCK_SIZE), tag);
 
         var plainBlock = new Array(BLOCK_SIZE);
         forkskinny_128_256_decrypt(tweakey, plainBlock, block, temp);
@@ -1015,10 +1011,7 @@
         m.push.apply(m, plainBlock);
       } else {
         // Partial last block
-        var temp = new Array(BLOCK_SIZE);
-        for (var i = 0; i < BLOCK_SIZE; ++i) {
-          temp[i] = (c[cPos + i] ^ tag[i]) & 0xFF;
-        }
+        var temp = OpCodes.XorArrays(c.slice(cPos, cPos + BLOCK_SIZE), tag);
 
         paef_set_counter(tweakey, counter, 7);
         var block2 = new Array(BLOCK_SIZE);

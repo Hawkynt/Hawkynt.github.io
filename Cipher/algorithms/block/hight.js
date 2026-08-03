@@ -171,6 +171,11 @@
         new LinkItem("Crypto++ HIGHT Implementation", "https://github.com/weidai11/cryptopp/blob/master/hight.cpp")
       ];
 
+      this.references = [
+        new LinkItem("openluopworld Lightweight Block Ciphers - HIGHT (C)", "https://github.com/openluopworld/block-ciphers"),
+        new LinkItem("kmarquet/bloc Reference Implementations (C)", "https://github.com/kmarquet/bloc")
+      ];
+
       // Crypto++ test vectors from TestVectors/hight.txt
       this.tests = [
         {

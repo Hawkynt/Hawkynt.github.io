@@ -58,14 +58,14 @@
   // SSbi(x, i) constructs 8-bit S-boxes from 4-bit Sb1 using bit permutations
   function SSbi(x, i) {
     // Extract individual bits (MSB to LSB)
-    const x0 = (x >>> 7) & 1;
-    const x1 = (x >>> 6) & 1;
-    const x2 = (x >>> 5) & 1;
-    const x3 = (x >>> 4) & 1;
-    const x4 = (x >>> 3) & 1;
-    const x5 = (x >>> 2) & 1;
-    const x6 = (x >>> 1) & 1;
-    const x7 = x & 1;
+    const x0 = OpCodes.And8(OpCodes.Shr8(x, 7), 1);
+    const x1 = OpCodes.And8(OpCodes.Shr8(x, 6), 1);
+    const x2 = OpCodes.And8(OpCodes.Shr8(x, 5), 1);
+    const x3 = OpCodes.And8(OpCodes.Shr8(x, 4), 1);
+    const x4 = OpCodes.And8(OpCodes.Shr8(x, 3), 1);
+    const x5 = OpCodes.And8(OpCodes.Shr8(x, 2), 1);
+    const x6 = OpCodes.And8(OpCodes.Shr8(x, 1), 1);
+    const x7 = OpCodes.And8(x, 1);
 
     let a0, a1, a2, a3;  // First group
     let b0, b1, b2, b3;  // Second group
@@ -90,22 +90,22 @@
     }
 
     // Apply Sb1 to each 4-bit group
-    const aVal = (a0 << 3) | (a1 << 2) | (a2 << 1) | a3;
-    const bVal = (b0 << 3) | (b1 << 2) | (b2 << 1) | b3;
+    const aVal = OpCodes.Shl8(a0, 3) | OpCodes.Shl8(a1, 2) | OpCodes.Shl8(a2, 1) | a3;
+    const bVal = OpCodes.Shl8(b0, 3) | OpCodes.Shl8(b1, 2) | OpCodes.Shl8(b2, 1) | b3;
 
     const n0 = SB1[bVal];
     const n1 = SB1[aVal];
 
     // Extract output bits from Sb1 results
-    const n0_0 = (n0 >>> 3) & 1;
-    const n0_1 = (n0 >>> 2) & 1;
-    const n0_2 = (n0 >>> 1) & 1;
-    const n0_3 = n0 & 1;
+    const n0_0 = OpCodes.And8(OpCodes.Shr8(n0, 3), 1);
+    const n0_1 = OpCodes.And8(OpCodes.Shr8(n0, 2), 1);
+    const n0_2 = OpCodes.And8(OpCodes.Shr8(n0, 1), 1);
+    const n0_3 = OpCodes.And8(n0, 1);
 
-    const n1_0 = (n1 >>> 3) & 1;
-    const n1_1 = (n1 >>> 2) & 1;
-    const n1_2 = (n1 >>> 1) & 1;
-    const n1_3 = n1 & 1;
+    const n1_0 = OpCodes.And8(OpCodes.Shr8(n1, 3), 1);
+    const n1_1 = OpCodes.And8(OpCodes.Shr8(n1, 2), 1);
+    const n1_2 = OpCodes.And8(OpCodes.Shr8(n1, 1), 1);
+    const n1_3 = OpCodes.And8(n1, 1);
 
     let y0, y1, y2, y3, y4, y5, y6, y7;
 
@@ -129,8 +129,8 @@
     }
 
     // Combine output bits into 8-bit value
-    return (y0 << 7) | (y1 << 6) | (y2 << 5) | (y3 << 4) |
-           (y4 << 3) | (y5 << 2) | (y6 << 1) | y7;
+    return OpCodes.Shl8(y0, 7) | OpCodes.Shl8(y1, 6) | OpCodes.Shl8(y2, 5) | OpCodes.Shl8(y3, 4) |
+           OpCodes.Shl8(y4, 3) | OpCodes.Shl8(y5, 2) | OpCodes.Shl8(y6, 1) | y7;
   }
 
   // Pre-compute 8-bit S-box lookup tables for Midori128
@@ -178,10 +178,10 @@
       // [1 0 1 1] × [b]
       // [1 1 0 1]   [c]
       // [1 1 1 0]   [d]
-      result[baseIdx] = b ^ c ^ d;
-      result[baseIdx + 1] = a ^ c ^ d;
-      result[baseIdx + 2] = a ^ b ^ d;
-      result[baseIdx + 3] = a ^ b ^ c;
+      result[baseIdx] = OpCodes.Xor8(OpCodes.Xor8(b, c), d);
+      result[baseIdx + 1] = OpCodes.Xor8(OpCodes.Xor8(a, c), d);
+      result[baseIdx + 2] = OpCodes.Xor8(OpCodes.Xor8(a, b), d);
+      result[baseIdx + 3] = OpCodes.Xor8(OpCodes.Xor8(a, b), c);
     }
 
     return result;
@@ -248,16 +248,16 @@
     const k0 = new Array(16);
     const k1 = new Array(16);
     for (let i = 0; i < 8; ++i) {
-      k0[2 * i] = (key[i] >>> 4) & 0x0F;
-      k0[2 * i + 1] = key[i] & 0x0F;
-      k1[2 * i] = (key[i + 8] >>> 4) & 0x0F;
-      k1[2 * i + 1] = key[i + 8] & 0x0F;
+      k0[2 * i] = OpCodes.And8(OpCodes.Shr8(key[i], 4), 0x0F);
+      k0[2 * i + 1] = OpCodes.And8(key[i], 0x0F);
+      k1[2 * i] = OpCodes.And8(OpCodes.Shr8(key[i + 8], 4), 0x0F);
+      k1[2 * i + 1] = OpCodes.And8(key[i + 8], 0x0F);
     }
 
     // Whitening key WK = K0 XOR K1
     const wk = new Array(16);
     for (let i = 0; i < 16; ++i) {
-      wk[i] = k0[i] ^ k1[i];
+      wk[i] = OpCodes.Xor8(k0[i], k1[i]);
     }
     roundKeys.push(wk);
 
@@ -271,7 +271,7 @@
         const col = Math.floor(i / 4);
         const row = i % 4;
         const bit = rConst[row][col];
-        rk[i] = baseKey[i] ^ bit;
+        rk[i] = OpCodes.Xor8(baseKey[i], bit);
       }
       roundKeys.push(rk);
     }
@@ -297,7 +297,7 @@
         const bit = rConst[row][col];
 
         // XOR the key byte with the round constant bit (LSB only)
-        rk[i] = key[i] ^ bit;
+        rk[i] = OpCodes.Xor8(key[i], bit);
       }
       roundKeys.push(rk);
     }
@@ -333,6 +333,10 @@
       this.documentation = [
         new LinkItem("Midori Specification (ePrint Archive)", "https://eprint.iacr.org/2015/1142"),
         new LinkItem("ASIACRYPT 2015 Paper", "https://link.springer.com/chapter/10.1007/978-3-662-48800-3_17")
+      ];
+
+      this.references = [
+        new LinkItem("tomirio619 Midori Reference Implementation (Python/VHDL)", "https://github.com/tomirio619/Midori")
       ];
 
       // Test vectors - NOTE: Official test vectors from ePrint 2015/1142 require exact
@@ -453,8 +457,8 @@
       // Convert block to 16 nibbles (4×4 state)
       let state = new Array(16);
       for (let i = 0; i < 8; ++i) {
-        state[2 * i] = (block[i] >>> 4) & 0x0F;
-        state[2 * i + 1] = block[i] & 0x0F;
+        state[2 * i] = OpCodes.And8(OpCodes.Shr8(block[i], 4), 0x0F);
+        state[2 * i + 1] = OpCodes.And8(block[i], 0x0F);
       }
 
       // Pre-whitening: XOR with WK (roundKeys[0])
@@ -512,7 +516,7 @@
       // Convert nibbles back to bytes
       const result = new Array(8);
       for (let i = 0; i < 8; ++i) {
-        result[i] = ((state[2 * i] & 0x0F) << 4) | (state[2 * i + 1] & 0x0F);
+        result[i] = OpCodes.Shl8(OpCodes.And8(state[2 * i], 0x0F), 4) | OpCodes.And8(state[2 * i + 1], 0x0F);
       }
 
       return result;
@@ -547,6 +551,10 @@
       this.documentation = [
         new LinkItem("Midori Specification (ePrint Archive)", "https://eprint.iacr.org/2015/1142"),
         new LinkItem("ASIACRYPT 2015 Paper", "https://link.springer.com/chapter/10.1007/978-3-662-48800-3_17")
+      ];
+
+      this.references = [
+        new LinkItem("tomirio619 Midori Reference Implementation (Python/VHDL)", "https://github.com/tomirio619/Midori")
       ];
 
       // Test vectors - NOTE: Official test vectors from ePrint 2015/1142 require exact
@@ -676,7 +684,7 @@
       // We store in linear array but must track column-major semantics
       let state = new Array(16);
       for (let i = 0; i < 16; ++i) {
-        state[i] = block[i] & 0xFF;
+        state[i] = OpCodes.And8(block[i], 0xFF);
       }
 
       if (this.isInverse) {

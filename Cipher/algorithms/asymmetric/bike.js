@@ -97,7 +97,11 @@
         new global.AlgorithmFramework.LinkItem('BIKE Suite Official Site', 'https://bikesuite.org/'),
         new global.AlgorithmFramework.LinkItem('NIST PQC Submission', 'https://csrc.nist.gov/projects/post-quantum-cryptography')
       ];
-      
+
+      this.references = [
+        new global.AlgorithmFramework.LinkItem('BIKE Additional Implementation (AWS Labs)', 'https://github.com/awslabs/bike-kem')
+      ];
+
       this.knownVulnerabilities = [
         new global.AlgorithmFramework.Vulnerability(
           'Decoding Failure Attacks',

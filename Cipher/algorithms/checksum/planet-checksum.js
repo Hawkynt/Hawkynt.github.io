@@ -57,6 +57,10 @@
         new LinkItem("Postal Barcodes", "https://postalpro.usps.com/mailing/barcode-systems")
       ];
 
+      this.references = [
+        new LinkItem("tc-lib-barcode PLANET implementation", "https://github.com/tecnickcom/tc-lib-barcode/blob/main/src/Type/Linear/Planet.php")
+      ];
+
       this.notes = [
         "Format: 12 or 14 digits + 1 check digit",
         "Used for: Business reply mail, tracking",

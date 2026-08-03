@@ -58,6 +58,11 @@ class Phelix extends StreamCipherAlgorithm {
       new LinkItem("Schneier on Security", "https://www.schneier.com/academic/archives/2005/01/phelix.html")
     ];
 
+    this.references = [
+      new LinkItem("Phelix Reference Source Code (Designers)", "https://www.schneier.com/wp-content/uploads/2016/02/phelix.zip"),
+      new LinkItem("Phelix x86-64 Assembler Implementation", "https://www.schneier.com/wp-content/uploads/2005/01/phelix-x86-64.s")
+    ];
+
     this.vulnerabilities = [
       new Vulnerability("Key Recovery Attack", "Wu and Preneel showed key recovery with 2^37 operations when nonces are reused"),
       new Vulnerability("Educational Implementation", "Simplified educational implementation - use only for learning")

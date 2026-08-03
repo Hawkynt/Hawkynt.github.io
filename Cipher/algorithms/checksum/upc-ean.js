@@ -57,6 +57,10 @@
         new LinkItem("GS1 Standards", "https://www.gs1.org/standards/barcodes")
       ];
 
+      this.references = [
+        new LinkItem("python-stdnum EAN/UPC implementation", "https://github.com/arthurdejong/python-stdnum/blob/master/stdnum/ean.py")
+      ];
+
       this.notes = [
         "Algorithm: Alternating weights 3,1,3,1... from right to left",
         "Sum = Σ(digit × weight), check = (10 - sum % 10) % 10",

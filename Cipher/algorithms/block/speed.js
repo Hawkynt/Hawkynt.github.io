@@ -56,6 +56,11 @@ class SPEED extends BlockCipherAlgorithm {
       new LinkItem("SPEED Cipher Paper", "https://link.springer.com/chapter/10.1007/3-540-63594-7_68")
     ];
 
+    this.references = [
+      new LinkItem("Yuliang Zheng SPEED C Reference (Applied Cryptography source code archive)", "https://www.schneier.com/books/applied-cryptography-source/"),
+      new LinkItem("embeddedsw.net libObfuscate SPEED Implementation", "https://embeddedsw.net/Cipher_Reference_Home.html")
+    ];
+
     this.tests = [
       {
         text: "SPEED Test Vector 1",

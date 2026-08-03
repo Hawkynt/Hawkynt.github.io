@@ -63,14 +63,14 @@
   function split64(value) {
     const bigValue = BigInt(value);
     return {
-      high: Number((bigValue >> 32n)&0xffffffffn),
+      high: Number(OpCodes.AndN(OpCodes.ShiftRn(bigValue, 32n), 0xffffffffn)),
       low: Number(bigValue&0xffffffffn)
     };
   }
 
   // Convert {high32, low32} to 64-bit BigInt (PRECISION-CRITICAL)
   function join64(high, low) {
-    return (BigInt(OpCodes.ToUint32(high)) << 32n)|BigInt(OpCodes.ToUint32(low));
+    return OpCodes.ShiftLn(BigInt(OpCodes.ToUint32(high)), 32n)|BigInt(OpCodes.ToUint32(low));
   }
 
   // Convert 8-byte array (big-endian) to {high32, low32} representation
@@ -101,7 +101,7 @@
 
     // Split result into four 32-bit parts
     const low64 = product&M64;
-    const high64 = product >> 64n;
+    const high64 = OpCodes.ShiftRn(product, 64n);
 
     const low = split64(low64);
     const high = split64(high64);
@@ -132,13 +132,13 @@
     const b_high = join64(bh_h, bh_l);
 
     // Build 128-bit values
-    const a = (a_high << 64n)|a_low;
-    const b = (b_high << 64n)|b_low;
+    const a = OpCodes.ShiftLn(a_high, 64n)|a_low;
+    const b = OpCodes.ShiftLn(b_high, 64n)|b_low;
     const sum = a + b;
 
     // Split back into 32-bit parts
     const low64 = sum&M64;
-    const high64 = (sum >> 64n)&M64;
+    const high64 = OpCodes.AndN(OpCodes.ShiftRn(sum, 64n), M64);
 
     const low = split64(low64);
     const high = split64(high64);
@@ -178,7 +178,7 @@
       this.documentation = [
         new LinkItem("VMAC Draft Specification", "https://tools.ietf.org/html/draft-krovetz-vmac-01"),
         new LinkItem("Fastcrypto VMAC Page", "https://www.fastcrypto.org/vmac/"),
-        new LinkItem("VMAC Paper (FSE 2006)", "https://www.iacr.org/archive/fse2006/40470135/40470135.pdf")
+        new LinkItem("Message Authentication on 64-bit Architectures (Krovetz, FSE 2006)", "http://krovetz.net/csus/papers/vmac.pdf")
       ];
 
       // Reference links
@@ -382,18 +382,12 @@
         throw new Error("Key not set");
       }
 
-      // Get AES algorithm
+      // Get AES algorithm (registry-first, plain require fallback)
       let aesAlgorithm = AlgorithmFramework.Find("Rijndael (AES)") || AlgorithmFramework.Find("AES");
 
       if (!aesAlgorithm && typeof require !== 'undefined') {
-        try {
-          const rijndaelPath = require.resolve('../block/rijndael.js');
-          delete require.cache[rijndaelPath];
-          require('../block/rijndael.js');
-          aesAlgorithm = AlgorithmFramework.Find("Rijndael (AES)") || AlgorithmFramework.Find("AES");
-        } catch (loadError) {
-          // Ignore
-        }
+        try { require('../block/rijndael.js'); } catch (loadError) { /* ignore */ }
+        aesAlgorithm = AlgorithmFramework.Find("Rijndael (AES)") || AlgorithmFramework.Find("AES");
       }
 
       if (!aesAlgorithm) {
@@ -590,7 +584,7 @@
     // Reference: vmac.cpp lines 708-721 (word128 version)
     _polyStep(ah, al, kh, kl, mh, ml) {
       // Build 127-bit accumulator from high/low parts
-      const a = (BigInt(ah) << 64n)|BigInt(al);
+      const a = OpCodes.ShiftLn(BigInt(ah), 64n)|BigInt(al);
       const k_high = BigInt(kh);
       const k_low = BigInt(kl);
       const a_high = BigInt(ah);
@@ -610,26 +604,26 @@
       const t1 = a * k_low;                    // a * kl
       const t2_init = a_high * k_low;          // (a>>64) * kl
       const t3 = a * k_high;                   // a * kh
-      const t4_init = a_high * (k_high << 1n); // (a>>64) * (2*kh)
+      const t4_init = a_high * OpCodes.ShiftLn(k_high, 1n); // (a>>64) * (2*kh)
 
       let t2 = t2_init + t3;                   // ah*kl + a*kh
       let t4 = t4_init + t1;                   // ah*2kh + a*kl
-      t2 += (t4 >> 64n);                       // Add carry from t4
+      t2 += OpCodes.ShiftRn(t4, 64n);           // Add carry from t4
 
       // Build result: high 63 bits from t2, low 64 bits from t4
       const result_high = t2&M63;
       const result_low = t4&M64;
-      let result = (result_high << 64n)|result_low;
+      let result = OpCodes.ShiftLn(result_high, 64n)|result_low;
 
       // Add message (masked to 126 bits)
       const m_high = BigInt(mh);
       const m_low = BigInt(ml);
-      const m = ((m_high&M62) << 64n)|m_low;  // m126 mask
+      const m = OpCodes.ShiftLn(OpCodes.AndN(m_high, M62), 64n)|m_low;  // m126 mask
       result += m;
 
       // Return as high/low parts
       return {
-        high: (result >> 64n)&M63,
+        high: OpCodes.AndN(OpCodes.ShiftRn(result, 64n), M63),
         low: result&M64
       };
     }
@@ -647,27 +641,27 @@
       const z = 0n;
 
       // Fully reduce (p1,p2)+(len,0) mod p127
-      let t = p1 >> 63n;
+      let t = OpCodes.ShiftRn(p1, 63n);
       p1 &= M63;
       // ADD128(p1, p2, len, t)
       p2 += t;
-      p1 += len + (p2 >> 64n);
+      p1 += len + OpCodes.ShiftRn(p2, 64n);
       p2 &= M64;
 
       // At this point, (p1,p2) is at most 2^127+(len << 64)
       t = ((p1 > M63) ? 1n : 0n) + (((p1 === M63) && (p2 === M64)) ? 1n : 0n);
       // ADD128(p1, p2, z, t)
       p2 += t;
-      p1 += (p2 >> 64n);
+      p1 += OpCodes.ShiftRn(p2, 64n);
       p2 &= M64;
       p1 &= M63;
 
       // Compute (p1,p2)/(2^64-2^32) and (p1,p2)%(2^64-2^32)
-      t = p1 + (p2 >> 32n);
-      t += (t >> 32n);
+      t = p1 + OpCodes.ShiftRn(p2, 32n);
+      t += OpCodes.ShiftRn(t, 32n);
       t += ((t&0xffffffffn) > 0xfffffffen) ? 1n : 0n;
-      p1 += (t >> 32n);
-      p2 += (p1 << 32n);
+      p1 += OpCodes.ShiftRn(t, 32n);
+      p2 += OpCodes.ShiftLn(p1, 32n);
       p2 &= M64; // Keep p2 in 64-bit range
 
       // Compute (p1+k1)%p64 and (p2+k2)%p64
@@ -681,23 +675,23 @@
 
       // Compute (p1+k1)*(p2+k2)%p64
       const prod = p1 * p2;
-      let rh = prod >> 64n;
+      let rh = OpCodes.ShiftRn(prod, 64n);
       let rl = prod&M64;
 
       // Reduction mod p64:
-      t = rh >> 56n;
+      t = OpCodes.ShiftRn(rh, 56n);
       // ADD128(t, rl, z, rh)
       rl += rh;
-      t += (rl >> 64n);
+      t += OpCodes.ShiftRn(rl, 64n);
       rl &= M64;
 
-      rh = (rh << 8n)&M64;
+      rh = OpCodes.AndN(OpCodes.ShiftLn(rh, 8n), M64);
       // ADD128(t, rl, z, rh)
       rl += rh;
-      t += (rl >> 64n);
+      t += OpCodes.ShiftRn(rl, 64n);
       rl &= M64;
 
-      t += (t << 8n);
+      t += OpCodes.ShiftLn(t, 8n);
       rl += t;
       const rl_wrapped = (rl < t);
       rl &= M64;
@@ -771,12 +765,12 @@
             const nhLow = nhResult.low;
 
             // Add to polynomial key: simple 128-bit addition
-            const nhValue = (nhHigh << 64n)|nhLow;
-            const kValue = (kh << 64n)|kl;
+            const nhValue = OpCodes.ShiftLn(nhHigh, 64n)|nhLow;
+            const kValue = OpCodes.ShiftLn(kh, 64n)|kl;
             const sum = nhValue + kValue;
 
             // Extract high and low parts (no additional masking needed here)
-            polyHigh = (sum >> 64n);
+            polyHigh = OpCodes.ShiftRn(sum, 64n);
             polyLow = sum&M64;
           } else {
             // Subsequent blocks: polynomial step

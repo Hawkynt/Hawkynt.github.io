@@ -321,6 +321,11 @@
         new LinkItem("Reference Implementation", "https://github.com/rweather/lightweight-crypto")
       ];
 
+      this.references = [
+        new LinkItem("GIFT-COFB Optimized Implementation (Adomnicai, co-designer)", "https://github.com/aadomn/gift"),
+        new LinkItem("Official GIFT Reference Implementation", "https://github.com/giftcipher/gift")
+      ];
+
       // Known vulnerabilities
       this.knownVulnerabilities = [];
 

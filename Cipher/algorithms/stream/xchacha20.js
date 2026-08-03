@@ -92,7 +92,11 @@
       {text: 'draft-irtf-cfrg-xchacha', uri: 'https://tools.ietf.org/html/draft-irtf-cfrg-xchacha'},
       {text: 'ChaCha20 RFC 7539', uri: 'https://tools.ietf.org/html/rfc7539'}
     ],
-    
+
+    references: [
+      {text: 'libsodium XChaCha20 Reference Implementation', uri: 'https://github.com/jedisct1/libsodium'}
+    ],
+
     tests: [
       {
         text: 'XChaCha20 Basic Test',

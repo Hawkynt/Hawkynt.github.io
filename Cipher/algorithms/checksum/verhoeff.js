@@ -57,6 +57,10 @@
         new LinkItem("Verhoeff Calculator", "https://planetcalc.com/2464/")
       ];
 
+      this.references = [
+        new LinkItem("python-stdnum Verhoeff implementation", "https://github.com/arthurdejong/python-stdnum/blob/master/stdnum/verhoeff.py")
+      ];
+
       this.notes = [
         "Uses three mathematical tables: multiplication, permutation, inverse",
         "Based on dihedral group D5 (symmetries of pentagon)",

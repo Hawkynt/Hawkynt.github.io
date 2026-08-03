@@ -102,7 +102,11 @@
         new global.AlgorithmFramework.LinkItem('FAEST Official Site', 'https://faest.info/'),
         new global.AlgorithmFramework.LinkItem('NIST Submission', 'https://csrc.nist.gov/projects/pqc-dig-sig')
       ];
-      
+
+      this.references = [
+        new global.AlgorithmFramework.LinkItem('FAEST Reference Implementation', 'https://github.com/faest-sign/faest-ref')
+      ];
+
       this.knownVulnerabilities = [
         new global.AlgorithmFramework.Vulnerability(
           'Side-Channel Attacks',

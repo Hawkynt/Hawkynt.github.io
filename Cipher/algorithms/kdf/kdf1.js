@@ -420,7 +420,7 @@
       }
 
       // Concatenate: secret || salt (no label in KDF1 from test vectors)
-      const input = OpCodes.ConcatArrays(secret, salt);
+      const input = OpCodes.ConcatArrays([secret, salt]);
 
       // Compute hash
       const hash = this.hashData(input, hashFunction);
@@ -434,7 +434,7 @@
         ? String.fromCharCode(...hashFunction)
         : hashFunction;
 
-      // Map hash names to algorithm names
+      // Map hash names to AlgorithmFramework-registered algorithm names
       const hashMap = {
         'SHA-1': 'SHA-1',
         'SHA1': 'SHA-1',
@@ -452,59 +452,33 @@
       return this.performHash(data, actualHashName);
     }
 
+    // Compute a hash using the registered AlgorithmFramework hash algorithm.
+    // Registry-first: Find() is checked before require() falls back to loading the module.
     performHash(data, hashFunction) {
-      if (hashFunction === 'SHA-1') {
-        return this.sha1(data);
-      } else if (hashFunction === 'SHA-256') {
-        return this.sha256(data);
-      } else if (hashFunction === 'SHA-512') {
-        return this.sha512(data);
-      } else {
-        throw new Error('Hash function not available: ' + hashFunction);
-      }
-    }
+      const hashFileNames = {
+        'SHA-1': '../hash/sha1.js',
+        'SHA-256': '../hash/sha256.js',
+        'SHA-512': '../hash/sha512.js'
+      };
 
-    // Hash computation using Node.js crypto
-    sha1(message) {
-      try {
-        if (typeof require !== 'undefined') {
-          const crypto = require('crypto');
-          const hash = crypto.createHash('sha1');
-          const msgBuffer = Array.isArray(message) ? Buffer.from(message) : Buffer.from(String(message), 'utf8');
-          return Array.from(hash.update(msgBuffer).digest());
-        }
-      } catch (e) {
-        // Fallback
-      }
-      throw new Error('SHA-1 hash computation requires Node.js crypto module');
-    }
+      let hashAlgorithm = AlgorithmFramework.Find(hashFunction);
 
-    sha256(message) {
-      try {
-        if (typeof require !== 'undefined') {
-          const crypto = require('crypto');
-          const hash = crypto.createHash('sha256');
-          const msgBuffer = Array.isArray(message) ? Buffer.from(message) : Buffer.from(String(message), 'utf8');
-          return Array.from(hash.update(msgBuffer).digest());
+      if (!hashAlgorithm && typeof require !== 'undefined' && hashFileNames[hashFunction]) {
+        try {
+          require(hashFileNames[hashFunction]);
+        } catch (e) {
+          // Ignore load errors, handled by the check below
         }
-      } catch (e) {
-        // Fallback
+        hashAlgorithm = AlgorithmFramework.Find(hashFunction);
       }
-      throw new Error('SHA-256 hash computation requires Node.js crypto module');
-    }
 
-    sha512(message) {
-      try {
-        if (typeof require !== 'undefined') {
-          const crypto = require('crypto');
-          const hash = crypto.createHash('sha512');
-          const msgBuffer = Array.isArray(message) ? Buffer.from(message) : Buffer.from(String(message), 'utf8');
-          return Array.from(hash.update(msgBuffer).digest());
-        }
-      } catch (e) {
-        // Fallback
+      if (!hashAlgorithm) {
+        throw new Error('Hash algorithm ' + hashFunction + ' not available. Ensure hash algorithms are loaded before KDF1.');
       }
-      throw new Error('SHA-512 hash computation requires Node.js crypto module');
+
+      const hashInstance = hashAlgorithm.CreateInstance(false);
+      hashInstance.Feed(data);
+      return hashInstance.Result();
     }
   }
 
@@ -634,7 +608,7 @@
       const counterBytes = OpCodes.Unpack32BE(uint32Counter);
 
       // Concatenate arrays: secret || counter || salt
-      return OpCodes.ConcatArrays(secret, counterBytes, salt);
+      return OpCodes.ConcatArrays([secret, counterBytes, salt]);
     }
 
     hashData(data, hashFunction) {
@@ -642,7 +616,7 @@
         ? String.fromCharCode(...hashFunction)
         : hashFunction;
 
-      // Map hash names to algorithm names
+      // Map hash names to AlgorithmFramework-registered algorithm names
       const hashMap = {
         'SHA-1': 'SHA-1',
         'SHA1': 'SHA-1',
@@ -660,59 +634,33 @@
       return this.performHash(data, actualHashName);
     }
 
+    // Compute a hash using the registered AlgorithmFramework hash algorithm.
+    // Registry-first: Find() is checked before require() falls back to loading the module.
     performHash(data, hashFunction) {
-      if (hashFunction === 'SHA-1') {
-        return this.sha1(data);
-      } else if (hashFunction === 'SHA-256') {
-        return this.sha256(data);
-      } else if (hashFunction === 'SHA-512') {
-        return this.sha512(data);
-      } else {
-        throw new Error('Hash function not available: ' + hashFunction);
-      }
-    }
+      const hashFileNames = {
+        'SHA-1': '../hash/sha1.js',
+        'SHA-256': '../hash/sha256.js',
+        'SHA-512': '../hash/sha512.js'
+      };
 
-    // Hash computation using Node.js crypto
-    sha1(message) {
-      try {
-        if (typeof require !== 'undefined') {
-          const crypto = require('crypto');
-          const hash = crypto.createHash('sha1');
-          const msgBuffer = Array.isArray(message) ? Buffer.from(message) : Buffer.from(String(message), 'utf8');
-          return Array.from(hash.update(msgBuffer).digest());
-        }
-      } catch (e) {
-        // Fallback
-      }
-      throw new Error('SHA-1 hash computation requires Node.js crypto module');
-    }
+      let hashAlgorithm = AlgorithmFramework.Find(hashFunction);
 
-    sha256(message) {
-      try {
-        if (typeof require !== 'undefined') {
-          const crypto = require('crypto');
-          const hash = crypto.createHash('sha256');
-          const msgBuffer = Array.isArray(message) ? Buffer.from(message) : Buffer.from(String(message), 'utf8');
-          return Array.from(hash.update(msgBuffer).digest());
+      if (!hashAlgorithm && typeof require !== 'undefined' && hashFileNames[hashFunction]) {
+        try {
+          require(hashFileNames[hashFunction]);
+        } catch (e) {
+          // Ignore load errors, handled by the check below
         }
-      } catch (e) {
-        // Fallback
+        hashAlgorithm = AlgorithmFramework.Find(hashFunction);
       }
-      throw new Error('SHA-256 hash computation requires Node.js crypto module');
-    }
 
-    sha512(message) {
-      try {
-        if (typeof require !== 'undefined') {
-          const crypto = require('crypto');
-          const hash = crypto.createHash('sha512');
-          const msgBuffer = Array.isArray(message) ? Buffer.from(message) : Buffer.from(String(message), 'utf8');
-          return Array.from(hash.update(msgBuffer).digest());
-        }
-      } catch (e) {
-        // Fallback
+      if (!hashAlgorithm) {
+        throw new Error('Hash algorithm ' + hashFunction + ' not available. Ensure hash algorithms are loaded before KDF1.');
       }
-      throw new Error('SHA-512 hash computation requires Node.js crypto module');
+
+      const hashInstance = hashAlgorithm.CreateInstance(false);
+      hashInstance.Feed(data);
+      return hashInstance.Result();
     }
   }
 

@@ -207,6 +207,13 @@
         )
       ];
 
+      this.references = [
+        new LinkItem(
+          "NIST LWC Round 2 Submission Package (Reference C)",
+          "https://csrc.nist.gov/projects/lightweight-cryptography/round-2-candidates"
+        )
+      ];
+
       // Official test vectors from NIST LWC KAT
       this.tests = [
         {

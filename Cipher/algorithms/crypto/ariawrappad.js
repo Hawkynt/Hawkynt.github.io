@@ -50,57 +50,15 @@
   // Default AIV (Alternative Initial Value) for RFC 5649
   const DEFAULT_AIV = [0xA6, 0x59, 0x59, 0xA6];
 
-  // Helper function to get ARIA algorithm (lazy loading with auto-load)
+  // Helper function to get ARIA algorithm (registry-first, plain require fallback)
   function getARIAAlgorithm() {
     let aria = AlgorithmFramework.Find('ARIA');
-
-    // If not found, try to load it
-    if (!aria) {
-      const errors = [];
-      try {
-        // Attempt to load ARIA using multiple path strategies
-        if (typeof require !== 'undefined') {
-          const path = require('path');
-          // Try from project root (go up from tests/ if needed)
-          let baseDir = path.dirname(require.main.filename);
-          // If we're in tests directory, go up one level
-          if (baseDir.endsWith('tests')) {
-            baseDir = path.dirname(baseDir);
-          }
-          const ariaPath = path.join(baseDir, 'algorithms', 'block', 'aria.js');
-
-          // Clear require cache to force re-registration
-          delete require.cache[require.resolve(ariaPath)];
-
-          require(ariaPath);
-          aria = AlgorithmFramework.Find('ARIA');
-        }
-      } catch (e) {
-        errors.push('Strategy 1 failed: ' + e.message);
-        // Try relative path as fallback
-        try {
-          if (typeof require !== 'undefined') {
-            const path = require('path');
-            const relativePath = '../block/aria.js';
-            const resolvedPath = path.resolve(__dirname, relativePath);
-
-            // Clear require cache
-            if (require.cache[resolvedPath]) {
-              delete require.cache[resolvedPath];
-            }
-
-            require(relativePath);
-            aria = AlgorithmFramework.Find('ARIA');
-          }
-        } catch (e2) {
-          errors.push('Strategy 2 failed: ' + e2.message);
-        }
-      }
-
-      if (!aria) {
-        throw new Error('ARIA algorithm not found. Errors: ' + errors.join('; '));
-      }
+    if (!aria && typeof require !== 'undefined') {
+      try { require('../block/aria.js'); } catch (e) { /* not found — error below */ }
+      aria = AlgorithmFramework.Find('ARIA');
     }
+    if (!aria)
+      throw new Error("ARIA not available — load algorithms/block/aria.js first");
     return aria;
   }
 
@@ -137,10 +95,33 @@
         new LinkItem("BouncyCastle AriaWrapPadEngine", "https://github.com/bcgit/bc-csharp/blob/master/crypto/src/crypto/engines/AriaWrapPadEngine.cs")
       ];
 
-      // NOTE: Authentic test vectors needed from official sources
-      // RFC 5649 does not provide ARIA-specific test vectors
-      // Acceptable sources: NIST CAVP, Korean cryptographic standards, BouncyCastle validated outputs
-      this.tests = [];
+      // No published official ARIA-KWP test vectors were found (RFC 5649 only defines vectors for
+      // AES; NIST CAVP, KISA/TTA, and BouncyCastle do not publish ARIA-specific KWP KATs; a targeted
+      // search of the bc-java/bc-csharp source trees found only the generic RFC5649WrapEngine/
+      // AriaWrapPadEngine subclass with no bundled ARIA test vectors).
+      // These are self-consistency vectors: the RFC 3394/5649 wrap/unwrap loop implemented below is
+      // structurally identical to this repository's aeswrappad.js, which reproduces RFC 5649 Section 6
+      // official AES-KWP vectors bit-for-bit; the ARIA primitive itself is independently verified
+      // against the RFC 5794 known-answer tests in algorithms/block/aria.js. Plaintext/key sizes mirror
+      // the RFC 5649 Section 6 examples (7-octet and 20-octet key data) with ARIA substituted for AES.
+      // Vectors were computed with this repository's own ARIAKeyWrapPad implementation and confirmed
+      // to round-trip (wrap then unwrap recovers the original plaintext exactly).
+      this.tests = [
+        {
+          text: "Self-consistency vector (RFC 5649 wrap structure, sized like RFC 5649 §6.2, with ARIA-128 substituted for AES; no official ARIA-KWP KAT exists) — single-block case (7-octet key data)",
+          uri: "https://www.rfc-editor.org/rfc/rfc5649.txt",
+          input: OpCodes.Hex8ToBytes("466f7250617369"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          expected: OpCodes.Hex8ToBytes("ff5df3faba86bd7802800f420b6bb16a")
+        },
+        {
+          text: "Self-consistency vector (RFC 5649 wrap structure, sized like RFC 5649 §6.1, with ARIA-192 substituted for AES; no official ARIA-KWP KAT exists) — multi-block case (20-octet key data, general RFC 3394 loop)",
+          uri: "https://www.rfc-editor.org/rfc/rfc5649.txt",
+          input: OpCodes.Hex8ToBytes("c37b7e6492584340bed12207808941155068f738"),
+          key: OpCodes.Hex8ToBytes("5840df6e29b02af1ab493b705bf16ea1ae8338f4dcc176a8"),
+          expected: OpCodes.Hex8ToBytes("f8e2e399e9f9f5679651a57413ec81067acd1e72521d96cd794a83c44865f38d")
+        }
+      ];
     }
 
     /**

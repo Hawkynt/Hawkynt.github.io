@@ -84,6 +84,11 @@
         new LinkItem("Voyager Implementation", "https://sourceforge.isae.fr/projects/simplified-communications-schemes-of-voyager-i-probe/wiki/Golay_Code_Implementation_%E2%80%93_Encoding")
       ];
 
+      this.references = [
+        new LinkItem("Wireshark Golay Decoder Implementation", "https://github.com/wireshark/wireshark/blob/master/epan/golay.c"),
+        new LinkItem("ArduPilot SiK Radio Golay Implementation", "https://github.com/ArduPilot/SiK/blob/master/Firmware/radio/golay.c")
+      ];
+
       // Test vectors (systematic encoding: data in upper 12 bits, parity in lower 11 bits)
       this.tests = [
         new TestCase(

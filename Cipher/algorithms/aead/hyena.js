@@ -134,22 +134,22 @@
 
     // Rearrange bytes
     const output = new Uint8Array(16);
-    output[0] = OpCodes.ToByte(s0);
-    output[1] = OpCodes.ToByte(s1);
-    output[2] = OpCodes.ToByte(s2);
-    output[3] = OpCodes.ToByte(s3);
-    output[4] = OpCodes.ToByte(s0 >> 8);
-    output[5] = OpCodes.ToByte(s1 >> 8);
-    output[6] = OpCodes.ToByte(s2 >> 8);
-    output[7] = OpCodes.ToByte(s3 >> 8);
-    output[8] = OpCodes.ToByte(s0 >> 16);
-    output[9] = OpCodes.ToByte(s1 >> 16);
-    output[10] = OpCodes.ToByte(s2 >> 16);
-    output[11] = OpCodes.ToByte(s3 >> 16);
-    output[12] = OpCodes.ToByte(s0 >> 24);
-    output[13] = OpCodes.ToByte(s1 >> 24);
-    output[14] = OpCodes.ToByte(s2 >> 24);
-    output[15] = OpCodes.ToByte(s3 >> 24);
+    output[0] = OpCodes.GetByte(s0, 0);
+    output[1] = OpCodes.GetByte(s1, 0);
+    output[2] = OpCodes.GetByte(s2, 0);
+    output[3] = OpCodes.GetByte(s3, 0);
+    output[4] = OpCodes.GetByte(s0, 1);
+    output[5] = OpCodes.GetByte(s1, 1);
+    output[6] = OpCodes.GetByte(s2, 1);
+    output[7] = OpCodes.GetByte(s3, 1);
+    output[8] = OpCodes.GetByte(s0, 2);
+    output[9] = OpCodes.GetByte(s1, 2);
+    output[10] = OpCodes.GetByte(s2, 2);
+    output[11] = OpCodes.GetByte(s3, 2);
+    output[12] = OpCodes.GetByte(s0, 3);
+    output[13] = OpCodes.GetByte(s1, 3);
+    output[14] = OpCodes.GetByte(s2, 3);
+    output[15] = OpCodes.GetByte(s3, 3);
 
     return output;
   }
@@ -661,6 +661,11 @@
         new LinkItem("HYENA Specification", "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/hyena-spec-round2.pdf"),
         new LinkItem("Reference Implementation", "https://github.com/rweather/lightweight-crypto"),
         new LinkItem("GIFT Cipher", "https://giftcipher.github.io/gift/")
+      ];
+
+      this.references = [
+        new LinkItem("HYENA Reference Software Package (ISI Kolkata)", "https://www.isical.ac.in/~lightweight/hyena/hyena.zip"),
+        new LinkItem("rweather lightweight-crypto HYENA Source", "https://github.com/rweather/lightweight-crypto/tree/master/src/individual/HYENA")
       ];
 
       // Known vulnerabilities

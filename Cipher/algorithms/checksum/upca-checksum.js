@@ -57,6 +57,10 @@
         new LinkItem("UPC History", "https://www.smithsonianmag.com/innovation/history-of-bar-code-180956704/")
       ];
 
+      this.references = [
+        new LinkItem("python-stdnum EAN/UPC-A implementation", "https://github.com/arthurdejong/python-stdnum/blob/master/stdnum/ean.py")
+      ];
+
       this.notes = [
         "Format: 12 digits (11 data + 1 check)",
         "Number system digit: 1 digit (0-9)",

@@ -57,6 +57,10 @@
         new LinkItem("SEDOL Masterfile", "https://www.lseg.com/en/data-indices-analytics/sedol")
       ];
 
+      this.references = [
+        new LinkItem("python-stdnum SEDOL implementation", "https://github.com/arthurdejong/python-stdnum/blob/master/stdnum/gb/sedol.py")
+      ];
+
       this.notes = [
         "Format: 6 alphanumeric + 1 check digit",
         "Character values: 0-9 = numeric value, A-Z = 10-35 (excluding vowels)",

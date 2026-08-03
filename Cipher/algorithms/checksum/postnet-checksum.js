@@ -57,6 +57,10 @@
         new LinkItem("Postal Barcodes", "https://postalpro.usps.com/mailing/barcode-systems")
       ];
 
+      this.references = [
+        new LinkItem("tc-lib-barcode POSTNET implementation", "https://github.com/tecnickcom/tc-lib-barcode/blob/main/src/Type/Linear/Postnet.php")
+      ];
+
       this.notes = [
         "Format: 5, 9, or 11 digits + 1 check digit",
         "ZIP: 5 digits (12345)",

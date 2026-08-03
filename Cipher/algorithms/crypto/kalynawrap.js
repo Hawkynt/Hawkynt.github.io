@@ -82,8 +82,12 @@
       ];
 
       this.documentation = [
-        new LinkItem("DSTU 7624:2014 Standard", "https://www.dstu.gov.ua/"),
-        new LinkItem("Bouncy Castle Implementation", "https://github.com/bcgit/bc-java/blob/master/core/src/main/java/org/bouncycastle/crypto/engines/DSTU7624WrapEngine.java")
+        new LinkItem("DSTU 7624:2014 Standard", "https://www.dstu.gov.ua/")
+      ];
+
+      this.references = [
+        new LinkItem("Bouncy Castle DSTU7624WrapEngine.java Implementation", "https://github.com/bcgit/bc-java/blob/master/core/src/main/java/org/bouncycastle/crypto/engines/DSTU7624WrapEngine.java"),
+        new LinkItem("Kalyna Official Reference Implementation (underlying cipher)", "https://github.com/Roman-Oliynykov/Kalyna-reference")
       ];
 
       // Test vectors from Bouncy Castle DSTU7624Test.java

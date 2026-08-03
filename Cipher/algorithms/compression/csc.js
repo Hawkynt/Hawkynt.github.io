@@ -96,7 +96,7 @@
             input: input,
             expected: compressed,
             text: description,
-            uri: this.documentation[0].url
+            uri: this.documentation[0].uri
           });
         };
 
@@ -118,16 +118,21 @@
         };
 
         // Add comprehensive round-trip tests
-        this.addRoundTripTest([], "Empty input - round-trip test");
-        this.addRoundTripTest(OpCodes.AnsiToBytes("A"), "Single character");
-        this.addRoundTripTest(OpCodes.AnsiToBytes("AA"), "Repeated characters");
-        this.addRoundTripTest(OpCodes.AnsiToBytes("AB"), "Two different characters");
-        this.addRoundTripTest(OpCodes.AnsiToBytes("ABC"), "Three characters sequence");
-        this.addRoundTripTest(OpCodes.AnsiToBytes("ABAB"), "Alternating pattern");
-        this.addRoundTripTest(OpCodes.AnsiToBytes("AAAA"), "Four repeated characters");
-        this.addRoundTripTest(OpCodes.AnsiToBytes("Hello"), "Hello string");
-        this.addRoundTripTest(OpCodes.AnsiToBytes("Hello World"), "Hello World text");
-        this.addRoundTripTest(OpCodes.AnsiToBytes("ABCDEFGHIJKLMNOPQRSTUVWXYZ"), "Alphabet sequence");
+        // NOTE: This educational implementation is a simplified LZ77 + literal
+        // encoder, not the real CSC dictionary/range-coder engine. These vectors
+        // are self-computed round-trip verification vectors produced by this
+        // implementation itself (no external CSC authority produced these exact
+        // bytes); the uri references the real CSC reference implementation for context.
+        this.addRoundTripTest([], "Self-computed round-trip verification vector - empty input");
+        this.addRoundTripTest(OpCodes.AnsiToBytes("A"), "Self-computed round-trip verification vector - single character");
+        this.addRoundTripTest(OpCodes.AnsiToBytes("AA"), "Self-computed round-trip verification vector - repeated characters");
+        this.addRoundTripTest(OpCodes.AnsiToBytes("AB"), "Self-computed round-trip verification vector - two different characters");
+        this.addRoundTripTest(OpCodes.AnsiToBytes("ABC"), "Self-computed round-trip verification vector - three characters sequence");
+        this.addRoundTripTest(OpCodes.AnsiToBytes("ABAB"), "Self-computed round-trip verification vector - alternating pattern");
+        this.addRoundTripTest(OpCodes.AnsiToBytes("AAAA"), "Self-computed round-trip verification vector - four repeated characters");
+        this.addRoundTripTest(OpCodes.AnsiToBytes("Hello"), "Self-computed round-trip verification vector - Hello string");
+        this.addRoundTripTest(OpCodes.AnsiToBytes("Hello World"), "Self-computed round-trip verification vector - Hello World text");
+        this.addRoundTripTest(OpCodes.AnsiToBytes("ABCDEFGHIJKLMNOPQRSTUVWXYZ"), "Self-computed round-trip verification vector - alphabet sequence");
 
         // For test suite compatibility
         this.testVectors = this.tests;

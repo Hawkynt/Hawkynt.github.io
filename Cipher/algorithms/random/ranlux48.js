@@ -19,8 +19,7 @@
  * Period: approximately 10^171
  *
  * NOTE: This implementation uses JavaScript BigInt for 48-bit arithmetic.
- * Native bit operations on BigInt (&, >>) are required and cannot be replaced
- * with OpCodes functions which operate on 32-bit integers.
+ * BigInt bit operations are expressed via OpCodes.AndN/OpCodes.ShiftRn.
  *
  * AlgorithmFramework Format
  * (c)2006-2025 Hawkynt
@@ -281,7 +280,7 @@
         }
 
         // Modulo 2^48
-        this._state[i] = sum&MASK_48BIT;
+        this._state[i] = OpCodes.AndN(sum, MASK_48BIT);
       }
 
       // Initialize carry: 1 if last state element is 0, otherwise 0
@@ -329,7 +328,7 @@
       }
 
       // Update state and get result
-      this._state[this._index] = xi&MASK_48BIT;
+      this._state[this._index] = OpCodes.AndN(xi, MASK_48BIT);
       const result = this._state[this._index];
 
       // Advance index (circular)
@@ -388,12 +387,12 @@
       for (let i = 0; i < fullValues; ++i) {
         const value = this._next48();
         // Output in little-endian format (6 bytes)
-        output.push(Number(value&0xFFn));
-        output.push(Number((value >> 8n)&0xFFn));
-        output.push(Number((value >> 16n)&0xFFn));
-        output.push(Number((value >> 24n)&0xFFn));
-        output.push(Number((value >> 32n)&0xFFn));
-        output.push(Number((value >> 40n)&0xFFn));
+        output.push(Number(OpCodes.AndN(value, 0xFFn)));
+        output.push(Number(OpCodes.AndN(OpCodes.ShiftRn(value, 8), 0xFFn)));
+        output.push(Number(OpCodes.AndN(OpCodes.ShiftRn(value, 16), 0xFFn)));
+        output.push(Number(OpCodes.AndN(OpCodes.ShiftRn(value, 24), 0xFFn)));
+        output.push(Number(OpCodes.AndN(OpCodes.ShiftRn(value, 32), 0xFFn)));
+        output.push(Number(OpCodes.AndN(OpCodes.ShiftRn(value, 40), 0xFFn)));
       }
 
       // Handle remaining bytes (if length not multiple of 6)
@@ -401,7 +400,7 @@
       if (remainingBytes > 0) {
         const value = this._next48();
         for (let i = 0; i < remainingBytes; ++i) {
-          output.push(Number((value >> BigInt(i * 8))&0xFFn));
+          output.push(Number(OpCodes.AndN(OpCodes.ShiftRn(value, i * 8), 0xFFn)));
         }
       }
 

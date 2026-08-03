@@ -90,27 +90,44 @@
         new LinkItem("Erasure Codes Overview", "https://en.wikipedia.org/wiki/Erasure_code")
       ];
 
+      // No dedicated open-source implementation of the original 1997 Luby/Mitzenmacher/
+      // Shokrollahi/Spielman/Stemann Tornado code construction could be located; the
+      // closest available open-source code is an irregular-graph LDPC encoder/decoder,
+      // the architectural family Tornado codes belong to.
+      this.references = [
+        new LinkItem("LDPC Encoder/Decoder (irregular-graph code family)", "https://github.com/tavildar/LDPC")
+      ];
+
       // Test vectors with 8-bit symbols
+      // NOTE: These are self-computed round-trip verification vectors produced by
+      // this educational implementation's own seeded graph construction and XOR
+      // check-symbol generation (no official Tornado Code test suite exists);
+      // the uri references the original Luby/Mitzenmacher/Shokrollahi/Spielman/
+      // Stemann paper describing the real algorithm.
       this.tests = [
         new TestCase(
           [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], // All zeros source
           [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], // All zeros output + checks
-          "Tornado encoding with all-zero symbols"
+          "Self-computed round-trip verification vector - Tornado encoding with all-zero symbols",
+          "https://www.icsi.berkeley.edu/pubs/theory/luby98practical.pdf"
         ),
         new TestCase(
           [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08], // Sequential pattern
           [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x03, 0x00, 0x00], // Source + check symbols
-          "Tornado encoding with sequential pattern"
+          "Self-computed round-trip verification vector - Tornado encoding with sequential pattern",
+          "https://www.icsi.berkeley.edu/pubs/theory/luby98practical.pdf"
         ),
         new TestCase(
           [0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55], // Alternating bits
           [0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xFF, 0xAA, 0x00, 0x00], // Source + checks
-          "Tornado encoding with alternating bit pattern"
+          "Self-computed round-trip verification vector - Tornado encoding with alternating bit pattern",
+          "https://www.icsi.berkeley.edu/pubs/theory/luby98practical.pdf"
         ),
         new TestCase(
           [0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0], // Random-like pattern
           [0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0, 0x1A, 0x00, 0x00], // Source + recovery
-          "Tornado full recovery with arbitrary pattern"
+          "Self-computed round-trip verification vector - Tornado full recovery with arbitrary pattern",
+          "https://www.icsi.berkeley.edu/pubs/theory/luby98practical.pdf"
         )
       ];
 

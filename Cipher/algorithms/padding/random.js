@@ -83,12 +83,16 @@
       ];
 
       // Educational test vectors (note: random padding varies)
+      // NOTE: Random padding has no formal spec (not an IETF/NIST standard), and
+      // this vector is self-computed against this implementation with
+      // isDeterministic:true (all-zero "random" bytes) purely for repeatable
+      // regression testing; the uri points to a general overview of padding schemes.
       this.tests = [
         {
           input:OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e11739317"), // 15 bytes
           expected:OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393170000000000000000000000000000000000"), // Example padded to 32 bytes (15 + 17)
-          text:"Random padding example (output varies)",
-          uri:"",
+          text:"Self-computed regression vector - deterministic (zero-byte) padding example, real random padding output varies",
+          uri:"https://en.wikipedia.org/wiki/Padding_(cryptography)#Random_padding",
           isDeterministic:true,
         }
       ];

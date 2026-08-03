@@ -77,6 +77,10 @@
         new LinkItem("Wikipedia MurmurHash", "https://en.wikipedia.org/wiki/MurmurHash")
       ];
 
+      this.references = [
+        new LinkItem("smhasher (MurmurHash3.cpp reference implementation)", "https://github.com/aappleby/smhasher")
+      ];
+
       // Test vectors (official MurmurHash3 test vectors with seed 0)
       this.tests = [
         {

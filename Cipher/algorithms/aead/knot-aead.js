@@ -421,6 +421,11 @@
         new LinkItem("Reference Implementation", "https://github.com/rweather/lightweight-crypto")
       ];
 
+      this.references = [
+        new LinkItem("KNOT NIST LWC Round 2 Submission Package (Reference C Code)", "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/submissions-rnd2/knot.zip"),
+        new LinkItem("NIST LWC Round 2 Candidates", "https://csrc.nist.gov/projects/lightweight-cryptography/round-2-candidates")
+      ];
+
       // Known vulnerabilities
       this.knownVulnerabilities = [];
 
@@ -872,6 +877,11 @@
         new LinkItem("NIST LWC Project", "https://csrc.nist.gov/Projects/lightweight-cryptography"),
         new LinkItem("KNOT Specification", "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/finalist-round/updated-spec-doc/knot-spec-final.pdf"),
         new LinkItem("Reference Implementation", "https://github.com/rweather/lightweight-crypto")
+      ];
+
+      this.references = [
+        new LinkItem("KNOT NIST LWC Round 2 Submission Package (Reference C Code)", "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/submissions-rnd2/knot.zip"),
+        new LinkItem("NIST LWC Round 2 Candidates", "https://csrc.nist.gov/projects/lightweight-cryptography/round-2-candidates")
       ];
 
       // Known vulnerabilities

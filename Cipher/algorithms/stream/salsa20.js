@@ -58,6 +58,10 @@ class Salsa20 extends StreamCipherAlgorithm {
       new LinkItem("eSTREAM Portfolio", "https://www.ecrypt.eu.org/stream/")
     ];
 
+    this.references = [
+      new LinkItem("Official Reference Implementation (D.J. Bernstein, public domain)", "https://cr.yp.to/snuffle/salsa20/ref/salsa20.c")
+    ];
+
     this.tests = [
       {
         text: "eSTREAM Salsa20 Set 1, Vector 0 (128-bit key)",

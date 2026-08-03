@@ -369,6 +369,10 @@ if (!global.OpCodes && typeof require !== 'undefined') {
         new LinkItem("NIST SHA-3 Competition", "https://csrc.nist.gov/projects/hash-functions/sha-3-project")
       ];
 
+      this.references = [
+        new LinkItem("CubeHash reference implementation (Daniel J. Bernstein)", "https://cubehash.cr.yp.to/software.html")
+      ];
+
       // Test vectors for CubeHash16+16/32+16-256
       // Verified against reference implementation
       this.tests = [

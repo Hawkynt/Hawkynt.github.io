@@ -42,7 +42,7 @@ class Shacal2 extends BlockCipherAlgorithm {
     this.year = 2000;
     this.category = CategoryType.BLOCK;
     this.subCategory = "Block Cipher";
-    this.securityStatus = SecurityStatus.SECURE;
+    this.securityStatus = SecurityStatus.EDUCATIONAL;
     this.complexity = ComplexityType.INTERMEDIATE;
     this.country = CountryCode.FR;
 
@@ -153,11 +153,11 @@ class Shacal2Instance extends IBlockCipherInstance {
   }
 
   _Ch(x, y, z) {
-    return OpCodes.Xor32((x&y), (OpCodes.ToUint32(~x)&z));
+    return OpCodes.Xor32(OpCodes.And32(x, y), OpCodes.And32(OpCodes.ToUint32(~x), z));
   }
 
   _Maj(x, y, z) {
-    return OpCodes.Xor32(OpCodes.Xor32((x&y), (x&z)), (y&z));
+    return OpCodes.Xor32(OpCodes.Xor32(OpCodes.And32(x, y), OpCodes.And32(x, z)), OpCodes.And32(y, z));
   }
 
   _Sigma0(x) {
@@ -182,37 +182,37 @@ class Shacal2Instance extends IBlockCipherInstance {
 
     for (let r = 0; r < 64; r += 8) {
       // Unrolled 8 rounds
-      H = (H + this._Sigma1(E) + this._Ch(E, F, G) + this.RK[r]) >>> 0;
+      H = OpCodes.ToUint32(H + this._Sigma1(E) + this._Ch(E, F, G) + this.RK[r]);
       D = OpCodes.ToUint32((D + H));
-      H = (H + this._Sigma0(A) + this._Maj(A, B, C)) >>> 0;
+      H = OpCodes.ToUint32(H + this._Sigma0(A) + this._Maj(A, B, C));
 
-      G = (G + this._Sigma1(D) + this._Ch(D, E, F) + this.RK[r+1]) >>> 0;
+      G = OpCodes.ToUint32(G + this._Sigma1(D) + this._Ch(D, E, F) + this.RK[r+1]);
       C = OpCodes.ToUint32((C + G));
-      G = (G + this._Sigma0(H) + this._Maj(H, A, B)) >>> 0;
+      G = OpCodes.ToUint32(G + this._Sigma0(H) + this._Maj(H, A, B));
 
-      F = (F + this._Sigma1(C) + this._Ch(C, D, E) + this.RK[r+2]) >>> 0;
+      F = OpCodes.ToUint32(F + this._Sigma1(C) + this._Ch(C, D, E) + this.RK[r+2]);
       B = OpCodes.ToUint32((B + F));
-      F = (F + this._Sigma0(G) + this._Maj(G, H, A)) >>> 0;
+      F = OpCodes.ToUint32(F + this._Sigma0(G) + this._Maj(G, H, A));
 
-      E = (E + this._Sigma1(B) + this._Ch(B, C, D) + this.RK[r+3]) >>> 0;
+      E = OpCodes.ToUint32(E + this._Sigma1(B) + this._Ch(B, C, D) + this.RK[r+3]);
       A = OpCodes.ToUint32((A + E));
-      E = (E + this._Sigma0(F) + this._Maj(F, G, H)) >>> 0;
+      E = OpCodes.ToUint32(E + this._Sigma0(F) + this._Maj(F, G, H));
 
-      D = (D + this._Sigma1(A) + this._Ch(A, B, C) + this.RK[r+4]) >>> 0;
+      D = OpCodes.ToUint32(D + this._Sigma1(A) + this._Ch(A, B, C) + this.RK[r+4]);
       H = OpCodes.ToUint32((H + D));
-      D = (D + this._Sigma0(E) + this._Maj(E, F, G)) >>> 0;
+      D = OpCodes.ToUint32(D + this._Sigma0(E) + this._Maj(E, F, G));
 
-      C = (C + this._Sigma1(H) + this._Ch(H, A, B) + this.RK[r+5]) >>> 0;
+      C = OpCodes.ToUint32(C + this._Sigma1(H) + this._Ch(H, A, B) + this.RK[r+5]);
       G = OpCodes.ToUint32((G + C));
-      C = (C + this._Sigma0(D) + this._Maj(D, E, F)) >>> 0;
+      C = OpCodes.ToUint32(C + this._Sigma0(D) + this._Maj(D, E, F));
 
-      B = (B + this._Sigma1(G) + this._Ch(G, H, A) + this.RK[r+6]) >>> 0;
+      B = OpCodes.ToUint32(B + this._Sigma1(G) + this._Ch(G, H, A) + this.RK[r+6]);
       F = OpCodes.ToUint32((F + B));
-      B = (B + this._Sigma0(C) + this._Maj(C, D, E)) >>> 0;
+      B = OpCodes.ToUint32(B + this._Sigma0(C) + this._Maj(C, D, E));
 
-      A = (A + this._Sigma1(F) + this._Ch(F, G, H) + this.RK[r+7]) >>> 0;
+      A = OpCodes.ToUint32(A + this._Sigma1(F) + this._Ch(F, G, H) + this.RK[r+7]);
       E = OpCodes.ToUint32((E + A));
-      A = (A + this._Sigma0(B) + this._Maj(B, C, D)) >>> 0;
+      A = OpCodes.ToUint32(A + this._Sigma0(B) + this._Maj(B, C, D));
     }
 
     return [
@@ -234,44 +234,44 @@ class Shacal2Instance extends IBlockCipherInstance {
     // Reverse rounds with rotated register order (matches Botan implementation)
     for (let r = 0; r < 64; r += 8) {
       // Round 7 reverse (B,C,D,->E, F,G,H,->A)
-      A = (A - this._Sigma0(B) - this._Maj(B, C, D)) >>> 0;
+      A = OpCodes.ToUint32(A - this._Sigma0(B) - this._Maj(B, C, D));
       E = OpCodes.ToUint32((E - A));
-      A = (A - this._Sigma1(F) - this._Ch(F, G, H) - this.RK[63-r]) >>> 0;
+      A = OpCodes.ToUint32(A - this._Sigma1(F) - this._Ch(F, G, H) - this.RK[63-r]);
 
       // Round 6 reverse (C,D,E,->F, G,H,A,->B)
-      B = (B - this._Sigma0(C) - this._Maj(C, D, E)) >>> 0;
+      B = OpCodes.ToUint32(B - this._Sigma0(C) - this._Maj(C, D, E));
       F = OpCodes.ToUint32((F - B));
-      B = (B - this._Sigma1(G) - this._Ch(G, H, A) - this.RK[62-r]) >>> 0;
+      B = OpCodes.ToUint32(B - this._Sigma1(G) - this._Ch(G, H, A) - this.RK[62-r]);
 
       // Round 5 reverse (D,E,F,->G, H,A,B,->C)
-      C = (C - this._Sigma0(D) - this._Maj(D, E, F)) >>> 0;
+      C = OpCodes.ToUint32(C - this._Sigma0(D) - this._Maj(D, E, F));
       G = OpCodes.ToUint32((G - C));
-      C = (C - this._Sigma1(H) - this._Ch(H, A, B) - this.RK[61-r]) >>> 0;
+      C = OpCodes.ToUint32(C - this._Sigma1(H) - this._Ch(H, A, B) - this.RK[61-r]);
 
       // Round 4 reverse (E,F,G,->H, A,B,C,->D)
-      D = (D - this._Sigma0(E) - this._Maj(E, F, G)) >>> 0;
+      D = OpCodes.ToUint32(D - this._Sigma0(E) - this._Maj(E, F, G));
       H = OpCodes.ToUint32((H - D));
-      D = (D - this._Sigma1(A) - this._Ch(A, B, C) - this.RK[60-r]) >>> 0;
+      D = OpCodes.ToUint32(D - this._Sigma1(A) - this._Ch(A, B, C) - this.RK[60-r]);
 
       // Round 3 reverse (F,G,H,->A, B,C,D,->E)
-      E = (E - this._Sigma0(F) - this._Maj(F, G, H)) >>> 0;
+      E = OpCodes.ToUint32(E - this._Sigma0(F) - this._Maj(F, G, H));
       A = OpCodes.ToUint32((A - E));
-      E = (E - this._Sigma1(B) - this._Ch(B, C, D) - this.RK[59-r]) >>> 0;
+      E = OpCodes.ToUint32(E - this._Sigma1(B) - this._Ch(B, C, D) - this.RK[59-r]);
 
       // Round 2 reverse (G,H,A,->B, C,D,E,->F)
-      F = (F - this._Sigma0(G) - this._Maj(G, H, A)) >>> 0;
+      F = OpCodes.ToUint32(F - this._Sigma0(G) - this._Maj(G, H, A));
       B = OpCodes.ToUint32((B - F));
-      F = (F - this._Sigma1(C) - this._Ch(C, D, E) - this.RK[58-r]) >>> 0;
+      F = OpCodes.ToUint32(F - this._Sigma1(C) - this._Ch(C, D, E) - this.RK[58-r]);
 
       // Round 1 reverse (H,A,B,->C, D,E,F,->G)
-      G = (G - this._Sigma0(H) - this._Maj(H, A, B)) >>> 0;
+      G = OpCodes.ToUint32(G - this._Sigma0(H) - this._Maj(H, A, B));
       C = OpCodes.ToUint32((C - G));
-      G = (G - this._Sigma1(D) - this._Ch(D, E, F) - this.RK[57-r]) >>> 0;
+      G = OpCodes.ToUint32(G - this._Sigma1(D) - this._Ch(D, E, F) - this.RK[57-r]);
 
       // Round 0 reverse (A,B,C,->D, E,F,G,->H)
-      H = (H - this._Sigma0(A) - this._Maj(A, B, C)) >>> 0;
+      H = OpCodes.ToUint32(H - this._Sigma0(A) - this._Maj(A, B, C));
       D = OpCodes.ToUint32((D - H));
-      H = (H - this._Sigma1(E) - this._Ch(E, F, G) - this.RK[56-r]) >>> 0;
+      H = OpCodes.ToUint32(H - this._Sigma1(E) - this._Ch(E, F, G) - this.RK[56-r]);
     }
 
     return [

@@ -77,6 +77,11 @@
         new LinkItem("3GPP TS 55.216 - A5/1 Algorithm Specification", "https://www.3gpp.org/DynaReport/55216.htm")
       ];
 
+      this.references = [
+        new LinkItem("Pedagogical A5/1 and A5/2 Reference Implementation (Briceno, Goldberg, Wagner)", "https://cryptome.org/gsm-a512.htm"),
+        new LinkItem("libosmocore A5/1-A5/4 Reimplementation", "https://github.com/osmocom/libosmocore/blob/master/src/gsm/a5.c")
+      ];
+
       this.vulnerabilities = [
         new Vulnerability("Time-Memory Tradeoff Attack", "Practical real-time key recovery attacks demonstrated by Biryukov-Shamir-Wagner"),
         new Vulnerability("Correlation Attack", "Exploits linear properties of LFSRs to recover internal state")
@@ -337,6 +342,11 @@
         new LinkItem("Wikipedia: A5/2", "https://en.wikipedia.org/wiki/A5/2"),
         new LinkItem("ETSI TS 155 226 - A5 Encryption Algorithms", "https://www.etsi.org/deliver/etsi_ts/155200_155299/155226/"),
         new LinkItem("Instant Ciphertext-Only Cryptanalysis of GSM", "https://www.cs.technion.ac.il/users/wwwb/cgi-bin/tr-get.cgi/2003/CS/CS-2003-07.pdf")
+      ];
+
+      this.references = [
+        new LinkItem("Pedagogical A5/1 and A5/2 Reference Implementation (Briceno, Goldberg, Wagner)", "https://cryptome.org/gsm-a512.htm"),
+        new LinkItem("libosmocore A5/1-A5/4 Reimplementation", "https://github.com/osmocom/libosmocore/blob/master/src/gsm/a5.c")
       ];
 
       this.vulnerabilities = [
@@ -658,6 +668,11 @@
         new LinkItem("Wikipedia: A5/3", "https://en.wikipedia.org/wiki/A5/3"),
         new LinkItem("3GPP TS 55.216 - A5/3 Specification", "https://www.3gpp.org/DynaReport/55216.htm"),
         new LinkItem("KASUMI Specification", "https://www.3gpp.org/ftp/Specs/archive/35_series/35.202/")
+      ];
+
+      this.references = [
+        new LinkItem("CryptoMobile - KASUMI Reference C Implementation (ETSI/SAGE)", "https://github.com/mitshell/CryptoMobile"),
+        new LinkItem("libosmocore KASUMI Implementation", "https://github.com/osmocom/libosmocore/blob/master/src/gsm/kasumi.c")
       ];
 
       this.vulnerabilities = [

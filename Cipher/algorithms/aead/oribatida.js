@@ -74,28 +74,28 @@
   // ===== 48-BIT HELPER FUNCTIONS (for SimP-192) =====
 
   function load48BE(bytes, offset) {
-    return (BigInt(bytes[offset]) << 40n)|(BigInt(bytes[offset + 1]) << 32n)|(BigInt(bytes[offset + 2]) << 24n)|(BigInt(bytes[offset + 3]) << 16n)|(BigInt(bytes[offset + 4]) << 8n)|BigInt(bytes[offset + 5]);
+    return OpCodes.ShiftLn(BigInt(bytes[offset]), 40)|OpCodes.ShiftLn(BigInt(bytes[offset + 1]), 32)|OpCodes.ShiftLn(BigInt(bytes[offset + 2]), 24)|OpCodes.ShiftLn(BigInt(bytes[offset + 3]), 16)|OpCodes.ShiftLn(BigInt(bytes[offset + 4]), 8)|BigInt(bytes[offset + 5]);
   }
 
   function store48BE(bytes, offset, value) {
-    bytes[offset] = Number((value >> 40n)&0xFFn);
-    bytes[offset + 1] = Number((value >> 32n)&0xFFn);
-    bytes[offset + 2] = Number((value >> 24n)&0xFFn);
-    bytes[offset + 3] = Number((value >> 16n)&0xFFn);
-    bytes[offset + 4] = Number((value >> 8n)&0xFFn);
-    bytes[offset + 5] = Number(value&0xFFn);
+    bytes[offset] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 40), 0xFFn));
+    bytes[offset + 1] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 32), 0xFFn));
+    bytes[offset + 2] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 24), 0xFFn));
+    bytes[offset + 3] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 16), 0xFFn));
+    bytes[offset + 4] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 8), 0xFFn));
+    bytes[offset + 5] = Number(OpCodes.AndN(value, 0xFFn));
   }
 
   function rotl48(value, positions) {
     positions = positions % 48;
-    const mask = (1n << 48n) - 1n;
-    return ((value << BigInt(positions))|(value >> BigInt(48 - positions)))&mask;
+    const mask = 0x0000FFFFFFFFFFFFn;
+    return OpCodes.AndN(OpCodes.ShiftLn(value, positions)|OpCodes.ShiftRn(value, 48 - positions), mask);
   }
 
   function rotr48(value, positions) {
     positions = positions % 48;
-    const mask = (1n << 48n) - 1n;
-    return ((value >> BigInt(positions))|(value << BigInt(48 - positions)))&mask;
+    const mask = 0x0000FFFFFFFFFFFFn;
+    return OpCodes.AndN(OpCodes.ShiftRn(value, positions)|OpCodes.ShiftLn(value, 48 - positions), mask);
   }
 
   // ===== 64-BIT HELPER FUNCTIONS (for SimP-256) =====
@@ -103,32 +103,30 @@
   function rotl64(value, positions) {
     positions = positions % 64;
     if (positions === 0) return value;
-    const mask = (1n << 64n) - 1n;
-    return ((value << BigInt(positions))|(value >> BigInt(64 - positions)))&mask;
+    return OpCodes.RotL64n(value, positions);
   }
 
   function rotr64(value, positions) {
     positions = positions % 64;
     if (positions === 0) return value;
-    const mask = (1n << 64n) - 1n;
-    return ((value >> BigInt(positions))|(value << BigInt(64 - positions)))&mask;
+    return OpCodes.RotR64n(value, positions);
   }
 
   function load64BE(bytes, offset) {
     return (
-      (BigInt(bytes[offset]) << 56n)|(BigInt(bytes[offset + 1]) << 48n)|(BigInt(bytes[offset + 2]) << 40n)|(BigInt(bytes[offset + 3]) << 32n)|(BigInt(bytes[offset + 4]) << 24n)|(BigInt(bytes[offset + 5]) << 16n)|(BigInt(bytes[offset + 6]) << 8n)|BigInt(bytes[offset + 7])
+      OpCodes.ShiftLn(BigInt(bytes[offset]), 56)|OpCodes.ShiftLn(BigInt(bytes[offset + 1]), 48)|OpCodes.ShiftLn(BigInt(bytes[offset + 2]), 40)|OpCodes.ShiftLn(BigInt(bytes[offset + 3]), 32)|OpCodes.ShiftLn(BigInt(bytes[offset + 4]), 24)|OpCodes.ShiftLn(BigInt(bytes[offset + 5]), 16)|OpCodes.ShiftLn(BigInt(bytes[offset + 6]), 8)|BigInt(bytes[offset + 7])
     );
   }
 
   function store64BE(bytes, offset, value) {
-    bytes[offset] = Number((value >> 56n)&0xFFn);
-    bytes[offset + 1] = Number((value >> 48n)&0xFFn);
-    bytes[offset + 2] = Number((value >> 40n)&0xFFn);
-    bytes[offset + 3] = Number((value >> 32n)&0xFFn);
-    bytes[offset + 4] = Number((value >> 24n)&0xFFn);
-    bytes[offset + 5] = Number((value >> 16n)&0xFFn);
-    bytes[offset + 6] = Number((value >> 8n)&0xFFn);
-    bytes[offset + 7] = Number(value&0xFFn);
+    bytes[offset] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 56), 0xFFn));
+    bytes[offset + 1] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 48), 0xFFn));
+    bytes[offset + 2] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 40), 0xFFn));
+    bytes[offset + 3] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 32), 0xFFn));
+    bytes[offset + 4] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 24), 0xFFn));
+    bytes[offset + 5] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 16), 0xFFn));
+    bytes[offset + 6] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 8), 0xFFn));
+    bytes[offset + 7] = Number(OpCodes.AndN(value, 0xFFn));
   }
 
   // ===== SimP-192 PERMUTATION (48-bit words, 26 rounds) =====
@@ -168,7 +166,7 @@
           let t1 = x3^(rotl48(x2, 1)&rotl48(x2, 8))^rotl48(x2, 2)^x1;
           let t0 = x1^rotr48(x0, 3)^rotr48(x0, 4)^0x0000FFFFFFFFFFFCn^(z&1n);
 
-          z = (z >> 1n)|(z << 61n); // Rotate round constant
+          z = OpCodes.ShiftRn(z, 1)|OpCodes.ShiftLn(z, 61); // Rotate round constant
 
           // Truncate to 48 bits
           t0 &= 0x0000FFFFFFFFFFFFn;
@@ -184,7 +182,7 @@
           x1 = t0;
           x3 = t1;
 
-          z = (z >> 1n)|(z << 61n); // Rotate round constant
+          z = OpCodes.ShiftRn(z, 1)|OpCodes.ShiftLn(z, 61); // Rotate round constant
         }
 
         // Swap words for all steps except the last
@@ -262,7 +260,7 @@
           let t1 = x3^(rotl64(x2, 1)&rotl64(x2, 8))^rotl64(x2, 2)^x1;
           let t0 = x1^rotr64(x0, 3)^rotr64(x0, 4)^0xFFFFFFFFFFFFFFFCn^(z&1n);
 
-          z = (z >> 1n)|(z << 61n); // Rotate round constant
+          z = OpCodes.ShiftRn(z, 1)|OpCodes.ShiftLn(z, 61); // Rotate round constant
 
           // Second round of pair
           x2 = x2^(rotl64(t1, 1)&rotl64(t1, 8))^rotl64(t1, 2)^x0;
@@ -271,7 +269,7 @@
           x1 = t0;
           x3 = t1;
 
-          z = (z >> 1n)|(z << 61n); // Rotate round constant
+          z = OpCodes.ShiftRn(z, 1)|OpCodes.ShiftLn(z, 61); // Rotate round constant
         }
 
         // Swap words for all steps except the last
@@ -361,7 +359,7 @@
 
       this.name = "Oribatida-192-96";
       this.description = "Lightweight AEAD cipher based on SimP-192 permutation (reduced-round Simon-96-96). Features 128-bit keys, 64-bit nonces, and 96-bit tags with masked ciphertext generation. Optimized for constrained environments.";
-      this.inventor = "Zhenzhen Bao, Avik Chakraborti, Nilanjan Datta, Jian Guo, Mridul Nandi, Thomas Peyrin, Kan Yasuda";
+      this.inventor = "Arghya Bhattacharjee, Eik List, Cuauhtemoc Mancillas López, Mridul Nandi";
       this.year = 2019;
       this.category = CategoryType.AEAD;
       this.subCategory = "Lightweight Cryptography";
@@ -381,11 +379,22 @@
         ),
         new LinkItem(
           "NIST LWC Round 2 Submission",
-          "https://csrc.nist.gov/Projects/lightweight-cryptography/finalists"
+          "https://csrc.nist.gov/projects/lightweight-cryptography/round-2-candidates"
         ),
         new LinkItem(
-          "SimP Permutation Specification",
-          "https://eprint.iacr.org/2019/1492.pdf"
+          "Oribatida Specification (NIST LWC Round 2)",
+          "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/oribatida-spec-round2.pdf"
+        )
+      ];
+
+      this.references = [
+        new LinkItem(
+          "Oribatida Reference Software Package (ISI Kolkata)",
+          "https://www.isical.ac.in/~lightweight/oribatida/oribatida_v1.zip"
+        ),
+        new LinkItem(
+          "rweather lightweight-crypto Oribatida Source",
+          "https://github.com/rweather/lightweight-crypto/tree/master/src/individual/Oribatida"
         )
       ];
 
@@ -793,7 +802,7 @@
 
       this.name = "Oribatida-256-64";
       this.description = "Lightweight AEAD cipher based on SimP-256 permutation (reduced-round Simon-128-128). Features 128-bit keys, 128-bit nonces, and 128-bit tags with masked ciphertext generation. The '64' indicates 64-bit security level.";
-      this.inventor = "Zhenzhen Bao, Avik Chakraborti, Nilanjan Datta, Jian Guo, Mridul Nandi, Thomas Peyrin, Kan Yasuda";
+      this.inventor = "Arghya Bhattacharjee, Eik List, Cuauhtemoc Mancillas López, Mridul Nandi";
       this.year = 2019;
       this.category = CategoryType.AEAD;
       this.subCategory = "Lightweight Cryptography";
@@ -813,11 +822,22 @@
         ),
         new LinkItem(
           "NIST LWC Round 2 Submission",
-          "https://csrc.nist.gov/Projects/lightweight-cryptography/finalists"
+          "https://csrc.nist.gov/projects/lightweight-cryptography/round-2-candidates"
         ),
         new LinkItem(
-          "SimP Permutation Specification",
-          "https://eprint.iacr.org/2019/1492.pdf"
+          "Oribatida Specification (NIST LWC Round 2)",
+          "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/oribatida-spec-round2.pdf"
+        )
+      ];
+
+      this.references = [
+        new LinkItem(
+          "Oribatida Reference Software Package (ISI Kolkata)",
+          "https://www.isical.ac.in/~lightweight/oribatida/oribatida_v1.zip"
+        ),
+        new LinkItem(
+          "rweather lightweight-crypto Oribatida Source",
+          "https://github.com/rweather/lightweight-crypto/tree/master/src/individual/Oribatida"
         )
       ];
 
