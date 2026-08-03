@@ -61,6 +61,11 @@
   const MAX_MATCH = 257;
   const NUM_CHARS = 256;
 
+  // Token tags - every encoded token starts with one of these so a literal
+  // byte's value can never be mistaken for match control data.
+  const TAG_LITERAL = 0;
+  const TAG_MATCH = 1;
+
   // Position slots (simplified for educational implementation)
   const NUM_POSITION_SLOTS = 50;
   const NUM_PRIMARY_LENGTHS = 7;
@@ -132,32 +137,56 @@
         new LinkItem("LZX Technical Analysis", "http://xavprods.free.fr/lzx/")
       ];
 
-      // Educational test vectors demonstrating LZX compression behavior
-      // Format: Simplified LZX with literal bytes and (distance, length) match codes
+      // Educational test vectors demonstrating LZX compression behavior.
+      // Wire format: a stream of tagged tokens:
+      //   TAG_LITERAL(0), byte
+      //   TAG_MATCH(1), distanceHigh, distanceLow, adjustedLength (length - MIN_MATCH)
+      // The tag always precedes the payload, so a literal byte's value can never be
+      // mistaken for match control data (the previous format guessed based on
+      // whether a byte pair "looked like" a plausible distance/length, which any
+      // pair of literal bytes could satisfy by coincidence).
       this.tests = [
         new TestCase(
           OpCodes.AnsiToBytes("HELLO"), // Simple literal sequence
-          [72, 69, 76, 76, 79], // All literals: H E L L O
+          [0, 72, 0, 69, 0, 76, 0, 76, 0, 79], // All literals: H E L L O
           "Literal-only sequence - no compression",
           "Educational test vector - literal encoding"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("AAAA"), // Repeated character
-          [65, 1, 3], // 'A' literal, then (distance=1, length=3) match
+          [0, 65, 1, 0, 1, 1], // 'A' literal, then (distance=1, adjustedLength=1 -> length=3) match
           "Repeated character compression",
           "Educational test vector - simple repetition"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("ABCABC"), // Pattern repetition
-          [65, 66, 67, 3, 3], // 'ABC' literals, then (distance=3, length=3) match
+          [0, 65, 0, 66, 0, 67, 1, 0, 3, 1], // 'ABC' literals, then (distance=3, adjustedLength=1 -> length=3) match
           "Pattern repetition - ABCABC",
           "Educational test vector - pattern matching"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("ABCDABCD"), // Longer pattern
-          [65, 66, 67, 68, 4, 4], // 'ABCD' literals, then (distance=4, length=4) match
+          [0, 65, 0, 66, 0, 67, 0, 68, 1, 0, 4, 2], // 'ABCD' literals, then (distance=4, adjustedLength=2 -> length=4) match
           "Longer pattern repetition",
           "Educational test vector - extended matching"
+        ),
+        new TestCase(
+          new Array(24).fill(0x61), // Repetitive run
+          [0, 97, 1, 0, 1, 21], // 'a' literal, then a single self-referential (distance=1, length=23) match
+          "Repetitive run (24 bytes) - self-referential overlapping match",
+          "Educational test vector - overlapping copy"
+        ),
+        new TestCase(
+          (() => { const a = []; for (let i = 0; i < 16; i++) a.push(i % 2 ? 0x62 : 0x61); return a; })(), // Alternating pattern
+          [0, 97, 0, 98, 1, 0, 2, 12],
+          "Alternating pattern (16 bytes)",
+          "Educational test vector - alternating pattern"
+        ),
+        new TestCase(
+          [64, 128, 192, 0, 0, 0, 64, 128, 128, 0, 0, 0, 0, 0, 0, 0], // Binary/random sample
+          [0, 64, 0, 128, 0, 192, 0, 0, 1, 0, 1, 0, 1, 0, 6, 0, 0, 128, 1, 0, 6, 1, 1, 0, 3, 2],
+          "Binary/random sample (16 bytes) - catches ambiguous framing and truncated distance",
+          "Educational test vector - binary sample"
         )
       ];
     }
@@ -233,6 +262,16 @@
 
     // ===== COMPRESSION =====
 
+    // Every token is prefixed with an explicit tag byte (TAG_LITERAL / TAG_MATCH).
+    // The previous format wrote literal bytes raw and tried to tell them apart from
+    // (distance, length) match pairs with a heuristic ("does the next byte look like
+    // a plausible length, and is the first byte a plausible distance?") - that is
+    // fundamentally ambiguous, since any two literal bytes can satisfy it by
+    // coincidence. It also truncated distance/length with "% 256", corrupting any
+    // match farther away than 255 bytes or longer than 255 bytes. The tag makes the
+    // framing unambiguous; distance is a full 16-bit field (covers the whole
+    // DEFAULT_WINDOW_SIZE) and length is stored as length-MIN_MATCH so MAX_MATCH
+    // (257) still fits one byte.
     _compress() {
       const output = [];
       let pos = 0;
@@ -241,9 +280,11 @@
         const match = this._findBestMatch(pos);
 
         if (match && match.length >= MIN_MATCH) {
-          // Encode match as (distance, length)
-          output.push(match.distance % 256);
-          output.push(match.length % 256);
+          // Encode match as tag, distance(2 bytes BE), adjustedLength(1 byte)
+          const distanceBytes = OpCodes.Unpack16BE(match.distance);
+          output.push(TAG_MATCH);
+          output.push(distanceBytes[0], distanceBytes[1]);
+          output.push(OpCodes.ToByte(match.length - MIN_MATCH));
 
           // Update LRU positions
           this._updateRecentPositions(match.distance);
@@ -251,6 +292,7 @@
           pos += match.length;
         } else {
           // Encode literal byte
+          output.push(TAG_LITERAL);
           output.push(this.inputBuffer[pos]);
           pos++;
         }
@@ -324,35 +366,30 @@
       let pos = 0;
 
       while (pos < this.inputBuffer.length) {
-        const byte1 = this.inputBuffer[pos++];
+        const tag = this.inputBuffer[pos++];
 
-        if (pos < this.inputBuffer.length) {
-          const byte2 = this.inputBuffer[pos];
+        if (tag === TAG_MATCH) {
+          if (pos + 2 >= this.inputBuffer.length) break;
 
-          // Check if this looks like a match code (heuristic)
-          // If byte2 looks like a length and we have enough history
-          if (byte2 >= MIN_MATCH && byte2 <= MAX_MATCH &&
-              output.length >= byte1 && byte1 > 0) {
-            // Decode as match: (distance, length)
-            const distance = byte1;
-            const length = byte2;
-            pos++;
+          const distance = OpCodes.Pack16BE(this.inputBuffer[pos], this.inputBuffer[pos + 1]);
+          const length = this.inputBuffer[pos + 2] + MIN_MATCH;
+          pos += 3;
 
-            // Copy from history
-            const copyStart = output.length - distance;
-            for (let i = 0; i < length; ++i) {
-              output.push(output[copyStart + i]);
-            }
-
-            // Update LRU positions
-            this._updateRecentPositions(distance);
-          } else {
-            // Decode as literal
-            output.push(byte1);
+          // Copy from history (self-referential/overlapping runs resolve
+          // correctly since output grows one byte at a time)
+          for (let i = 0; i < length; ++i) {
+            output.push(output[output.length - distance]);
           }
+
+          // Update LRU positions
+          this._updateRecentPositions(distance);
+        } else if (tag === TAG_LITERAL) {
+          if (pos >= this.inputBuffer.length) break;
+
+          output.push(this.inputBuffer[pos++]);
         } else {
-          // Last byte is always literal
-          output.push(byte1);
+          // Unknown tag - stop rather than misinterpret the stream
+          break;
         }
       }
 
