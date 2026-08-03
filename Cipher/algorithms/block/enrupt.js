@@ -95,10 +95,10 @@
 
       // Known vulnerabilities
       this.knownVulnerabilities = [
-        new AlgorithmFramework.Vulnerability("Collision Attack", "https://link.springer.com/article/10.1007/s00145-010-9058-x", "Practical collision attack with 2^40 time complexity", "DO NOT USE - Algorithm is cryptographically broken"),
-        new AlgorithmFramework.Vulnerability("Preimage Attack", "https://eprint.iacr.org/2008/467", "Meet-in-the-middle preimage attack with 2^480 complexity against EnRUPT-512 hash", "DO NOT USE - Algorithm is cryptographically broken"),
-        new AlgorithmFramework.Vulnerability("Chosen Plaintext Attack", "https://eprint.iacr.org/2010/517", "Related-key chosen plaintext attack with 2^15 queries against block cipher", "DO NOT USE - Algorithm is cryptographically broken"),
-        new AlgorithmFramework.Vulnerability("Related-Key Attacks", "https://eprint.iacr.org/2010/517", "Fast related-key attacks stemming from weak key schedule properties", "DO NOT USE - Severe key schedule vulnerabilities")
+        new AlgorithmFramework.Vulnerability("Collision Attack", "Practical collision attack with 2^40 time complexity", "DO NOT USE - Algorithm is cryptographically broken", "https://link.springer.com/article/10.1007/s00145-010-9058-x"),
+        new AlgorithmFramework.Vulnerability("Preimage Attack", "Meet-in-the-middle preimage attack with 2^480 complexity against EnRUPT-512 hash", "DO NOT USE - Algorithm is cryptographically broken", "https://eprint.iacr.org/2008/467"),
+        new AlgorithmFramework.Vulnerability("Chosen Plaintext Attack", "Related-key chosen plaintext attack with 2^15 queries against block cipher", "DO NOT USE - Algorithm is cryptographically broken", "https://eprint.iacr.org/2010/517"),
+        new AlgorithmFramework.Vulnerability("Related-Key Attacks", "Fast related-key attacks stemming from weak key schedule properties", "DO NOT USE - Severe key schedule vulnerabilities", "https://eprint.iacr.org/2010/517")
       ];
 
       // Test vectors - Since EnRUPT is broken and no official test vectors exist,

@@ -601,8 +601,8 @@
 
       // Known vulnerabilities
       this.knownVulnerabilities = [
-        new Vulnerability("Collision Attack", "Practical collision attacks demonstrated by Wang et al. in 2004. Can generate two different messages with same MD5 hash.", "https://eprint.iacr.org/2004/199.pdf"),
-        new Vulnerability("Chosen-prefix Collision", "Attackers can create collisions with chosen prefixes, enabling sophisticated attacks.", "https://www.win.tue.nl/hashclash/rogue-ca/"),
+        new Vulnerability("Collision Attack", '', "Practical collision attacks demonstrated by Wang et al. in 2004. Can generate two different messages with same MD5 hash.", "https://eprint.iacr.org/2004/199.pdf"),
+        new Vulnerability("Chosen-prefix Collision", '', "Attackers can create collisions with chosen prefixes, enabling sophisticated attacks.", "https://www.win.tue.nl/hashclash/rogue-ca/"),
         new Vulnerability("Rainbow Table Attack", "Common passwords vulnerable to precomputed rainbow table attacks.", "")
       ];
 

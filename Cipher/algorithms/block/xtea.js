@@ -99,8 +99,8 @@
 
       // Known vulnerabilities
       this.knownVulnerabilities = [
-        new AlgorithmFramework.Vulnerability("Limited analysis", "https://www.schneier.com/academic/", "Less cryptanalysis compared to modern ciphers, potential unknown weaknesses exist", "Use modern standardized ciphers like AES for production applications"),
-        new AlgorithmFramework.Vulnerability("Related-key attacks", "https://eprint.iacr.org/", "While improved over TEA, XTEA may still be vulnerable to certain related-key attacks", "Avoid key reuse and use proper key management practices")
+        new AlgorithmFramework.Vulnerability("Limited analysis", "Less cryptanalysis compared to modern ciphers, potential unknown weaknesses exist", "Use modern standardized ciphers like AES for production applications", "https://www.schneier.com/academic/"),
+        new AlgorithmFramework.Vulnerability("Related-key attacks", "While improved over TEA, XTEA may still be vulnerable to certain related-key attacks", "Avoid key reuse and use proper key management practices", "https://eprint.iacr.org/")
       ];
 
       // Test vectors from various sources

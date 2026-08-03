@@ -384,11 +384,10 @@
       ];
 
       this.knownVulnerabilities = [
-        new Vulnerability(
-          "Square attack",
+        new Vulnerability("Square attack",
+          '',
           "Algorithm is for historical/educational purposes only - use AES instead",
-          "https://link.springer.com/chapter/10.1007/BFb0052343"
-        )
+          "https://link.springer.com/chapter/10.1007/BFb0052343")
       ];
 
       this.tests = [

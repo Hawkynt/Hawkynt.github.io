@@ -44,7 +44,7 @@
 
   // Extract framework components
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          HashFunctionAlgorithm, IHashFunctionInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
+          HashFunctionAlgorithm, IHashFunctionInstance, TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   // ===== SM3 PERMUTATION FUNCTIONS =====
 
@@ -126,7 +126,7 @@
 
       // Known vulnerabilities
       this.knownVulnerabilities = [
-        new LinkItem("No known practical attacks", "SM3 is considered secure for current cryptographic use")
+        new Vulnerability("No known practical attacks", "SM3 is considered secure for current cryptographic use")
       ];
 
       // Authentic test vectors from Crypto++ TestVectors/sm3.txt

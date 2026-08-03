@@ -146,12 +146,18 @@
 
       // Known vulnerabilities - BassOmatic is completely broken
       this.knownVulnerabilities = [
-        new LinkItem("Differential Cryptanalysis", "https://en.wikipedia.org/wiki/Differential_cryptanalysis",
-                     "Eli Biham demonstrated vulnerability to differential cryptanalysis at CRYPTO 1991"),
-        new LinkItem("Last Bit Encryption Flaw", "https://crypto.stackexchange.com/questions/61948/",
-                     "Conceptual error prevented the last bit of each byte from being properly encrypted"),
-        new LinkItem("Non-uniform Key Space", "https://www.algorithmhalloffame.org/algorithms/block-ciphers/bassomatic/",
-                     "Control bits create non-uniform key space with key-dependent algorithm variations")
+        new Vulnerability("Differential Cryptanalysis",
+          "Eli Biham demonstrated vulnerability to differential cryptanalysis at CRYPTO 1991",
+          '',
+          "https://en.wikipedia.org/wiki/Differential_cryptanalysis"),
+        new Vulnerability("Last Bit Encryption Flaw",
+          "Conceptual error prevented the last bit of each byte from being properly encrypted",
+          '',
+          "https://crypto.stackexchange.com/questions/61948/"),
+        new Vulnerability("Non-uniform Key Space",
+          "Control bits create non-uniform key space with key-dependent algorithm variations",
+          '',
+          "https://www.algorithmhalloffame.org/algorithms/block-ciphers/bassomatic/")
       ];
 
       // Test vectors - CRITICAL NOTE: no official/authentic BassOmatic KAT

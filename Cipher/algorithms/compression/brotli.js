@@ -1095,16 +1095,14 @@
       ];
 
       this.vulnerabilities = [
-        new Vulnerability(
-          "Compression Bomb (Decompression Bomb)",
+        new Vulnerability("Compression Bomb (Decompression Bomb)",
+          '',
           "Maliciously crafted Brotli streams with high compression ratios can decompress to extremely large outputs, causing memory exhaustion. Always validate and limit decompressed output size before decompression.",
-          "https://en.wikipedia.org/wiki/Zip_bomb"
-        ),
-        new Vulnerability(
-          "Memory Exhaustion via Window Size",
+          "https://en.wikipedia.org/wiki/Zip_bomb"),
+        new Vulnerability("Memory Exhaustion via Window Size",
+          '',
           "Attackers can specify large window sizes (up to 16MB) causing excessive memory allocation. Limit window size for untrusted input.",
-          "https://datatracker.ietf.org/doc/html/rfc7932#section-9.1"
-        )
+          "https://datatracker.ietf.org/doc/html/rfc7932#section-9.1")
       ];
     }
 

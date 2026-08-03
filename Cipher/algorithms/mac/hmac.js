@@ -89,8 +89,8 @@
 
       // Known vulnerabilities
       this.knownVulnerabilities = [
-        new LinkItem("Weak Hash Function", "Use modern hash functions like SHA-256 or SHA-512 instead of MD5 or SHA-1"),
-        new LinkItem("Key Reuse", "Use unique keys for different applications and contexts")
+        new Vulnerability("Weak Hash Function", "Use modern hash functions like SHA-256 or SHA-512 instead of MD5 or SHA-1"),
+        new Vulnerability("Key Reuse", "Use unique keys for different applications and contexts")
       ];
 
       // Test vectors from Botan test suite

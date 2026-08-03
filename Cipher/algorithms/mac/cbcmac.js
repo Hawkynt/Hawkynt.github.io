@@ -98,11 +98,10 @@
 
       // Vulnerabilities
       this.vulnerabilities = [
-        new Vulnerability(
-          "Variable Length Extension Attack",
+        new Vulnerability("Variable Length Extension Attack",
+          '',
           "CBC-MAC is insecure for variable-length messages without additional protection. An attacker can forge MACs by extending messages.",
-          "https://en.wikipedia.org/wiki/CBC-MAC#Security"
-        )
+          "https://en.wikipedia.org/wiki/CBC-MAC#Security")
       ];
 
       // Test vectors from BouncyCastle MacTest.java

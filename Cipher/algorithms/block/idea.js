@@ -99,7 +99,7 @@
 
       // Known vulnerabilities
       this.knownVulnerabilities = [
-        new AlgorithmFramework.Vulnerability("Patent History", "https://patents.google.com/patent/US5214703A", "Algorithm was patented until 2011, limiting adoption. Patent-free since 2011.", "Use AES for new applications requiring standardized algorithms")
+        new AlgorithmFramework.Vulnerability("Patent History", "Algorithm was patented until 2011, limiting adoption. Patent-free since 2011.", "Use AES for new applications requiring standardized algorithms", "https://patents.google.com/patent/US5214703A")
       ];
 
       // Test vectors from NESSIE IDEA ECB test vectors

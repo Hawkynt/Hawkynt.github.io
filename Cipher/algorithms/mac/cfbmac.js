@@ -281,11 +281,10 @@
 
       // Known vulnerabilities
       this.knownVulnerabilities = [
-        new Vulnerability(
-          "Length Extension",
+        new Vulnerability("Length Extension",
+          '',
           "CFB-MAC is vulnerable to message length extension attacks. Use CMAC or HMAC for production.",
-          "https://csrc.nist.gov/publications/detail/sp/800-38b/final"
-        )
+          "https://csrc.nist.gov/publications/detail/sp/800-38b/final")
       ];
     }
 
