@@ -488,16 +488,17 @@
 
       // Parameters
       if (node.params) {
-        for (const param of node.params) {
-          const paramName = this.toCamelCase(param.name);
+        node.params.forEach((param, index) => {
+          const rawName = this._paramName(param, index);
+          const paramName = this.toCamelCase(rawName);
           const paramType = param.typeAnnotation ?
             this.mapType(param.typeAnnotation) :
-            this.inferTypeFromName(param.name);
+            this.inferTypeFromName(rawName);
           const basicParam = new BasicParameter(paramName, paramType);
           func.parameters.push(basicParam);
 
-          this.registerVariableType(param.name, paramType);
-        }
+          this.registerVariableType(rawName, paramType);
+        });
       }
 
       // Body
@@ -506,6 +507,27 @@
       }
 
       targetModule.functions.push(func);
+    }
+
+    /**
+     * Resolve a usable parameter name from any parameter node shape
+     * (plain Identifier, default value, rest, or destructuring pattern).
+     * Basic has no destructuring, so patterns fall back to a positional name.
+     */
+    _paramName(param, index) {
+      if (!param) return `arg${index || 0}`;
+      switch (param.type) {
+        case 'Identifier':
+          return param.name;
+        case 'AssignmentPattern': // (x = default)
+          return this._paramName(param.left, index);
+        case 'RestElement': // (...rest)
+          return this._paramName(param.argument, index);
+        case 'ObjectPattern':
+        case 'ArrayPattern':
+        default:
+          return param.name || `arg${index || 0}`;
+      }
     }
 
     /**
@@ -632,12 +654,13 @@
 
       // Parameters
       if (node.value && node.value.params) {
-        for (const param of node.value.params) {
-          const paramName = this.toCamelCase(param.name);
-          const paramType = this.inferTypeFromName(param.name);
+        node.value.params.forEach((param, index) => {
+          const rawName = this._paramName(param, index);
+          const paramName = this.toCamelCase(rawName);
+          const paramType = this.inferTypeFromName(rawName);
           func.parameters.push(new BasicParameter(paramName, paramType));
-          this.registerVariableType(param.name, paramType);
-        }
+          this.registerVariableType(rawName, paramType);
+        });
       }
 
       // Body - transform and replace This/Me references with self
@@ -763,12 +786,13 @@
 
       // Parameters
       if (node.value.params) {
-        for (const param of node.value.params) {
-          const paramName = this.toCamelCase(param.name);
-          const paramType = this.inferTypeFromName(param.name);
+        node.value.params.forEach((param, index) => {
+          const rawName = this._paramName(param, index);
+          const paramName = this.toCamelCase(rawName);
+          const paramType = this.inferTypeFromName(rawName);
           ctor.parameters.push(new BasicParameter(paramName, paramType));
-          this.registerVariableType(param.name, paramType);
-        }
+          this.registerVariableType(rawName, paramType);
+        });
       }
 
       const body = new BasicBlock();
@@ -860,12 +884,13 @@
 
       // Parameters
       if (node.value && node.value.params) {
-        for (const param of node.value.params) {
-          const paramName = this.toCamelCase(param.name);
-          const paramType = this.inferTypeFromName(param.name);
+        node.value.params.forEach((param, index) => {
+          const rawName = this._paramName(param, index);
+          const paramName = this.toCamelCase(rawName);
+          const paramType = this.inferTypeFromName(rawName);
           method.parameters.push(new BasicParameter(paramName, paramType));
-          this.registerVariableType(param.name, paramType);
-        }
+          this.registerVariableType(rawName, paramType);
+        });
       }
 
       // Body

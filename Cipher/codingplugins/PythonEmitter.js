@@ -234,6 +234,15 @@
     }
 
     emitParameterDecl(node) {
+      // `*name` catch-all rest parameter (JS `...rest`, or a synthetic
+      // arity-tolerance catch-all appended by the transformer so a JS
+      // call site passing more positional arguments than the callee
+      // declares - legal in JS, a hard TypeError in Python - silently
+      // absorbs the extras instead of crashing). Rest parameters can't
+      // carry a type hint or default value in Python.
+      if (node.isRest) {
+        return `*${node.name}`;
+      }
       let param = node.name;
       // Type annotation (only if addTypeHints is enabled)
       if (this.addTypeHints && node.type) {
@@ -299,6 +308,11 @@
 
       const expr = this.emit(node.expression);
       return this.line(expr);
+    }
+
+    emitDelete(node) {
+      // `del target` (maps from JavaScript's `delete obj.prop` / `delete obj[key]`)
+      return `del ${this.emit(node.target)}`;
     }
 
     emitReturn(node) {
@@ -642,8 +656,18 @@
       let left = this.emit(node.left);
       let right = this.emit(node.right);
 
+      // Node types whose Python precedence is lower than every binary operator
+      // (ternary `x if c else y` and `lambda: ...`) - always need parens when
+      // used as an operand of any binary expression, or Python re-associates
+      // the binary op into one of the ternary/lambda's branches, e.g.
+      // `a.index(x) if x in a else -1 == -1` parses as
+      // `a.index(x) if x in a else (-1 == -1)`, not `(...) == -1`.
+      const ALWAYS_PARENTHESIZE = new Set(['Conditional', 'ConditionalExpression', 'Lambda']);
+
       // Add parentheses to left operand if needed
-      if (node.left && node.left.nodeType === 'BinaryExpression') {
+      if (node.left && ALWAYS_PARENTHESIZE.has(node.left.nodeType)) {
+        left = `(${left})`;
+      } else if (node.left && node.left.nodeType === 'BinaryExpression') {
         const leftOp = node.left.operator;
         const leftPrecedence = this.getOperatorPrecedence(leftOp);
 
@@ -662,7 +686,9 @@
       }
 
       // Add parentheses to right operand if needed
-      if (node.right && node.right.nodeType === 'BinaryExpression') {
+      if (node.right && ALWAYS_PARENTHESIZE.has(node.right.nodeType)) {
+        right = `(${right})`;
+      } else if (node.right && node.right.nodeType === 'BinaryExpression') {
         const rightOp = node.right.operator;
         const rightPrecedence = this.getOperatorPrecedence(rightOp);
 
@@ -746,7 +772,15 @@
       // We need to mask to 32-bit to match JavaScript behavior
       // IMPORTANT: Wrap entire expression in parens to preserve precedence in larger expressions
       // e.g., (~x) + 1 should become ((~int(x)) & 0xFFFFFFFF) + 1, not (~int(x)) & (0xFFFFFFFF + 1)
+      //
+      // EXCEPTION: `~` on a 64-bit/BigInt-typed operand (flagged by the
+      // transformer as node.isBigInt - e.g. `~seed64` in the MSWS/xoshiro/
+      // splitmix64-family PRNGs) must NOT be truncated to 32 bits. JS BigInt
+      // `~x` is arbitrary-precision two's complement (-x-1), identical to
+      // Python's `~x`; masking to 0xFFFFFFFF here would silently drop the
+      // upper 32 bits of 64-bit PRNG/hash state.
       if (op === '~') {
+        if (node.isBigInt) return `(~int(${operand}))`;
         return `((~int(${operand})) & 0xFFFFFFFF)`;
       }
 
@@ -755,6 +789,28 @@
       const wordOperators = ['not', 'await'];
       if (wordOperators.includes(op)) {
         return `${op} ${operand}`;
+      }
+
+      // Arithmetic unary +/- bind TIGHTER in Python than every binary operator
+      // except ** (unlike `not`, whose operand production already covers the
+      // full comparison/bitwise expression, so it never needs this). A JS
+      // source that explicitly parenthesizes a lower-precedence operand -
+      // e.g. WAGE's `omega()`: `-(x & 0x01)` - loses that grouping if we just
+      // concatenate the operand's own (paren-free) text: `-x & 1` in Python
+      // parses as `(-x) & 1`, not `-(x & 1)`. For x=1 that's `(-1) & 1 == 1`
+      // vs. the correct `-(1 & 1) == -1` - opposite sign, corrupting every
+      // caller (WAGE's whole permutation state silently diverges from the
+      // very first round). Restore the grouping whenever the operand is a
+      // binary/logical/ternary/lambda expression with lower precedence than
+      // unary +/- (every binary operator except **, which already binds
+      // tighter than unary and round-trips fine unparenthesized).
+      if ((op === '-' || op === '+') && node.operand) {
+        const operandType = node.operand.nodeType;
+        const needsParens = operandType === 'BinaryExpression' && node.operand.operator !== '**'
+          ? true
+          : (operandType === 'LogicalExpression' || operandType === 'Conditional' ||
+             operandType === 'ConditionalExpression' || operandType === 'Lambda');
+        if (needsParens) return `${op}(${operand})`;
       }
 
       return `${op}${operand}`;
@@ -780,7 +836,28 @@
     }
 
     emitSubscript(node) {
-      const obj = this.emit(node.object);
+      let obj = this.emit(node.object);
+
+      // Same grouping rule as emitMemberAccess (see its comment) but for
+      // `X[i]`/`X[a:b]` instead of `X.attr`: Python's subscript operator
+      // binds tighter than +, *, comparisons, boolean/ternary/lambda, so an
+      // unparenthesized `A * B[0:M]` (the transformed form of JS's chained
+      // `A.repeat(N).substring(0, M)`, where `.repeat` produces a
+      // BinaryExpression `A * N` that then becomes this subscript's own
+      // `node.object`) parses as `A * (B[0:M])` - slicing just the repeat
+      // count, not the repeated string - instead of the intended
+      // `(A * N)[0:M]`. diffie-hellman.js's educational private-key
+      // generator hit exactly this via 'algo1234...'.repeat(n).substring(a,b),
+      // raising "'int' object is not subscriptable" (math.ceil(...) has no
+      // __getitem__) instead of silently producing the wrong slice - lucky
+      // only in that it crashed loudly rather than corrupting output.
+      const needsParens = node.object?.nodeType === 'BinaryExpression' ||
+                          node.object?.nodeType === 'UnaryExpression' ||
+                          node.object?.nodeType === 'Conditional' ||
+                          node.object?.nodeType === 'ConditionalExpression' ||
+                          node.object?.nodeType === 'LogicalExpression' ||
+                          node.object?.nodeType === 'Lambda';
+      if (needsParens) obj = `(${obj})`;
 
       // Handle index specially - if it's an assignment, emit as expression to avoid line formatting
       // Check multiple ways since some nodes might not have proper nodeType set
@@ -833,7 +910,15 @@
     }
 
     emitCall(node) {
-      const func = this.emit(node.func);
+      let func = this.emit(node.func);
+      // Wrap in parentheses if the callee is a complex expression that needs grouping
+      // (e.g. calling an inline lambda immediately: (lambda: x)(y))
+      const needsParens = node.func?.nodeType === 'Lambda' ||
+                          node.func?.nodeType === 'Conditional' ||
+                          node.func?.nodeType === 'ConditionalExpression' ||
+                          node.func?.nodeType === 'BinaryExpression' ||
+                          node.func?.nodeType === 'LogicalExpression';
+      if (needsParens) func = `(${func})`;
       const args = node.args.map(a => this.emit(a));
       const kwargs = node.kwargs.map(kw => `${kw.name}=${this.emit(kw.value)}`);
       const allArgs = [...args, ...kwargs];
@@ -842,10 +927,12 @@
 
     emitList(node) {
       const elements = node.elements.map(e => this.emit(e));
-      // Use list() for empty lists so overridden list class takes effect (JSArray)
+      // Wrap every array literal in JSArray so index assignment past the
+      // current end auto-extends like JavaScript arrays do (arr[i] = x),
+      // instead of raising IndexError like a plain Python list.
       if (elements.length === 0)
-        return 'list()';
-      return `[${elements.join(', ')}]`;
+        return 'JSArray()';
+      return `JSArray([${elements.join(', ')}])`;
     }
 
     emitDict(node) {
@@ -909,17 +996,36 @@
     }
 
     emitSlice(node) {
-      // Check for division in slice indices and wrap with int() if needed
-      // Python slice indices must be integers, JavaScript truncates floats
+      // Python slice indices must be plain integers (or None); JavaScript
+      // silently truncates any non-integer slice/array-index argument to an
+      // integer instead. Wrapping with int() catches not just an in-place
+      // division (the original, narrower check below) but also a bound
+      // that's just a bare variable/property reference whose *value*
+      // happens to be a float because it was computed from a division
+      // several statements earlier (e.g. plotkin-code.js's `prevK = prevN /
+      // 2 + 1; ...data.slice(0, prevK)` - prevK is a plain Identifier at
+      // the slice call site, so the old syntactic "does THIS expression
+      // contain a /" check never looked at the assignment that produced
+      // it, leaving a float slice bound that raises "slice indices must be
+      // integers" in Python where JS silently coerced it). int() on an
+      // already-int value is a harmless no-op, so wrap any non-literal
+      // bound unconditionally rather than trying to prove it's unsafe first.
+      const needsIntGuard = (boundNode) => {
+        if (!boundNode) return false;
+        // None and already-int literals don't need (and for None, can't
+        // take) an int() wrapper.
+        if (boundNode.nodeType === 'Literal' && (boundNode.literalType === 'int' || boundNode.literalType === 'None')) return false;
+        return true;
+      };
       let start = node.start ? this.emit(node.start) : '';
       let stop = node.stop ? this.emit(node.stop) : '';
       let step = node.step ? this.emit(node.step) : '';
 
-      if (start && this._containsDivisionOperator(node.start))
+      if (start && needsIntGuard(node.start))
         start = `int(${start})`;
-      if (stop && this._containsDivisionOperator(node.stop))
+      if (stop && needsIntGuard(node.stop))
         stop = `int(${stop})`;
-      if (step && this._containsDivisionOperator(node.step))
+      if (step && needsIntGuard(node.step))
         step = `int(${step})`;
 
       const stepPart = step ? `:${step}` : '';

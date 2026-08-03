@@ -131,6 +131,8 @@
       this.baseClass = options.baseClass || null;
       this.useModernClass = options.useModernClass || false; // class keyword vs Moo
       this.fields = [];         // PerlField[] for modern class or has declarations
+      this.staticFields = [];   // PerlField[] with isStatic true - emitted as $ClassName::name package vars, not per-instance hash keys
+      this.staticInitStatements = []; // Statements from an ES2022 "static { ... }" initializer block, run once after staticFields
       this.methods = [];        // PerlSub[]
       this.docComment = null;
     }
@@ -147,6 +149,7 @@
       this.defaultValue = defaultValue;
       this.isReadOnly = false;  // For ro/rw in Moo
       this.isRequired = false;
+      this.isStatic = false;    // ES2022 "static NAME = ..." class field - see PerlClass.staticFields
     }
   }
 
@@ -191,6 +194,23 @@
       super('Block');
       this.statements = statements;
     }
+
+    // See PerlCall's toString() doc comment for why this exists: a handful
+    // of call sites build a "do { stmt; stmt; ... }" Perl expression via a
+    // JS template literal (e.g. PerlTransformer.js's TypedArrayCreation
+    // case's "new PerlCall('do', [block])", used as the source argument of
+    // a "new TypedArray(existingArray)" copy-or-zero-fill check) - PerlCall's
+    // own toString() recurses into String(arg) for each argument, which
+    // needs THIS class to stringify sensibly too whenever such a "do{}"
+    // block ends up nested inside another template-literal interpolation
+    // (e.g. TypedArraySubarray's tied-array-view construction). Without
+    // this, the block rendered as the default Object.prototype.toString()
+    // text "[object Object]" - e.g. kdf/argon2.js's "new
+    // Uint8Array(V).subarray(0, 32)" (a TypedArrayCreation immediately
+    // .subarray()'d) silently produced un-runnable Perl.
+    toString() {
+      return `{ ${this.statements.map(s => String(s)).join(' ')} }`;
+    }
   }
 
   /**
@@ -205,6 +225,16 @@
       this.initializer = initializer; // PerlExpression or null
       this.type = null;             // PerlType for type comments
     }
+
+    // See PerlBlock's toString() doc comment - needed for the same
+    // "do{}"-nested-in-a-template-literal scenario (a PerlVarDeclaration is
+    // typically the first statement inside such a block).
+    toString() {
+      const target = `${this.sigil}${this.name}`;
+      return this.initializer != null
+        ? `${this.declarator} ${target} = ${this.initializer};`
+        : `${this.declarator} ${target};`;
+    }
   }
 
   /**
@@ -214,6 +244,14 @@
     constructor(expression) {
       super('ExpressionStatement');
       this.expression = expression;
+    }
+
+    // See PerlBlock's toString() doc comment - needed for the same
+    // "do{}"-nested-in-a-template-literal scenario (a PerlExpressionStatement
+    // is typically the last statement inside such a block, providing the
+    // do-block's value).
+    toString() {
+      return `${this.expression};`;
     }
   }
 
@@ -371,6 +409,13 @@
       if (this.literalType === 'undef') return 'undef';
       if (this.literalType === 'string') return `${this.stringDelimiter}${this.value}${this.stringDelimiter}`;
       if (this.literalType === 'hex') return `0x${this.value.toString(16).toUpperCase()}`;
+      // See PerlEmitter.js's emitLiteral() doc comment: a large
+      // integer-valued double must round-trip through BigInt, not
+      // JS's default (lossy, double-round-trip-only) decimal String().
+      if (typeof this.value === 'bigint') return this.value.toString();
+      if (typeof this.value === 'number' && Number.isFinite(this.value) && Number.isInteger(this.value)) {
+        return BigInt(this.value).toString();
+      }
       return String(this.value);
     }
   }
@@ -467,10 +512,22 @@
       this.accessType = accessType; // '->', '{key}', '[index]'
     }
 
+    // Mirrors PerlEmitter.js's emitMemberAccess (see PerlCall's toString()
+    // doc comment for why a duplicate, simplified copy of the real emit
+    // logic exists here at all). Previously handled only '->'/'{key}' (and
+    // even '{key}' was missing the leading "->", e.g. hash/lsh.js's
+    // "OpCodes::u64mul" package-qualified sub reference - accessType '::' -
+    // fell through to the "default" branch below, which assumed bare
+    // array-index syntax ("OpCodes[u64mul]", not even valid Perl for a
+    // package call) whenever this node ended up nested inside another
+    // node's template-literal interpolation (e.g. as a PerlArraySlice's
+    // start/end bound).
     toString() {
+      if (this.accessType === '::') return `${this.object}::${this.member}`;
       if (this.accessType === '->') return `${this.object}->${this.member}`;
-      if (this.accessType === '{key}') return `${this.object}{${this.member}}`;
-      return `${this.object}[${this.member}]`;
+      if (this.accessType === '{key}') return `${this.object}->{${this.member}}`;
+      if (this.accessType === '[index]') return `${this.object}->[${this.member}]`;
+      return `${this.object}->${this.member}`;
     }
   }
 
@@ -504,6 +561,43 @@
       this.args = args;         // Array of PerlExpression
       this.isMethodCall = false;
     }
+
+    // A handful of call sites (e.g. PerlTransformer.js's DataViewRead
+    // handling) build a raw Perl code STRING via a JS template literal
+    // that interpolates other (already-transformed) PerlNode sub-
+    // expressions directly - e.g. `unpack('${fmt}', substr(${view},
+    // ${offset}, ${size}))`. That only works because most PerlNode
+    // subclasses define toString() specifically to support it (see
+    // PerlBinaryExpression/PerlMemberAccess/PerlSubscript/PerlLiteral/...
+    // above) - this class (and PerlArray/PerlHash below) didn't, so
+    // whenever one of THIS node type ended up nested inside such an
+    // interpolation (e.g. a call expression used as a DataView read
+    // offset), JS's default Object.prototype.toString() silently produced
+    // the literal text "[object Object]" in the generated Perl source
+    // instead of real code - a syntax-breaking bug with no error at
+    // generation time, only a confusing runtime failure. Deliberately a
+    // plain approximation, not a full mirror of PerlEmitter.js's real
+    // emitCall (method-call "->"  prefixing, List::Util block-call syntax,
+    // etc.) - good enough for its role as a nested-expression fallback.
+    toString() {
+      // "do { ... }" is special Perl syntax (executes a block, returning
+      // its last statement's value) - NOT an ordinary function call, so it
+      // takes a bare block, never parenthesized args. Mirrors
+      // PerlEmitter.js's real emitCall 'do'-block special case exactly
+      // (see its matching comment) - without this, a "do{}" block nested
+      // inside another node's template-literal interpolation (e.g.
+      // TypedArraySubarray's tied-array-view construction wrapping a
+      // TypedArrayCreation "new PerlCall('do', [block])" copy-or-zero-fill
+      // check) rendered as the generic "do({ ... })" call-with-parens
+      // shape instead - invalid Perl syntax ("do" doesn't take a
+      // parenthesized BLOCK argument the way a normal sub call does).
+      if (this.callee === 'do' && this.args.length === 1 && this.args[0] instanceof PerlBlock) {
+        return `do ${this.args[0]}`;
+      }
+      const calleeStr = this.callee === null || this.callee === undefined ? ''
+        : (typeof this.callee === 'string' ? this.callee : String(this.callee));
+      return `${calleeStr}(${this.args.map(a => String(a)).join(', ')})`;
+    }
   }
 
   /**
@@ -514,6 +608,11 @@
       super('Array');
       this.elements = elements;
     }
+
+    // See PerlCall's toString() doc comment for why this exists.
+    toString() {
+      return `[${this.elements.map(e => String(e)).join(', ')}]`;
+    }
   }
 
   /**
@@ -523,6 +622,11 @@
     constructor(pairs = []) {
       super('Hash');
       this.pairs = pairs;       // [{key, value}]
+    }
+
+    // See PerlCall's toString() doc comment for why this exists.
+    toString() {
+      return `{${this.pairs.map(p => `${p.key} => ${p.value}`).join(', ')}}`;
     }
   }
 
@@ -579,6 +683,36 @@
       this.condition = condition;
       this.consequent = consequent;
       this.alternate = alternate;
+    }
+
+    // Mirrors PerlEmitter.js's emitConditional() exactly - needed because a
+    // handful of transform-time helpers (e.g. PerlTransformer.js's
+    // _buildExactBigIntExpr/BigInt '%'-of-arithmetic rewrite) build a raw
+    // Math::BigInt method-call string via JS template-literal interpolation
+    // ("`...->bmod(${modRight})`") instead of going through the emitter's
+    // node-type dispatch. Template interpolation calls .toString() on
+    // whatever node lands there; every operand-shaped node used this way
+    // already defined one (PerlBinaryExpression, PerlIdentifier, PerlLiteral,
+    // PerlGrouped, PerlCall, PerlMemberAccess, ...) except this one - a
+    // BigInt modulus dividend that happens to contain a polymorphic
+    // "x.length" (see transformExpression's 'ArrayLength' case, which
+    // returns exactly this ternary shape when it can't statically prove
+    // string-vs-array) silently interpolated as the default
+    // Object.prototype.toString() text "[object Object]" instead of real
+    // Perl code - e.g. aead/chacha20-poly1305.js's "(16 - aad.length % 16)
+    // % 16" AAD-padding calculation died with a syntax/runtime error
+    // instead of computing anything.
+    // Parenthesized (unlike emitConditional's bare "cond ? a : b"): Perl's
+    // "?:" binds far more loosely than arithmetic/string operators, so a
+    // template-literal interpolation site that drops this ternary in as an
+    // *operand* of a surrounding expression (e.g. "(A - ${ternary}) % 16")
+    // - the exact scenario described above - would otherwise silently
+    // regroup as "(A - cond) ? x : (y % 16)" instead of "A - (cond ? x :
+    // y) % 16". Extra parens are always safe/no-op when this ternary is
+    // instead emitted at statement level (assignment RHS, return value,
+    // ...), so parenthesizing unconditionally costs nothing there.
+    toString() {
+      return `(${this.condition} ? ${this.consequent} : ${this.alternate})`;
     }
   }
 

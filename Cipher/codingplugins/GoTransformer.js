@@ -2725,9 +2725,10 @@ func bitCountN(v interface{}) int { switch x := v.(type) { case uint32: return p
       if (node.value && node.value.params) {
         for (let i = 0; i < node.value.params.length; ++i) {
           const param = node.value.params[i];
+          const paramName = this._paramName(param, i);
           const paramType = this.inferParameterType(param, node.value.body, 'constructor', i);
-          func.parameters.push(new GoParameter(param.name, paramType));
-          this.variableTypes.set(param.name, paramType);
+          func.parameters.push(new GoParameter(paramName, paramType));
+          this.variableTypes.set(paramName, paramType);
         }
       }
 
@@ -3398,9 +3399,10 @@ func bitCountN(v interface{}) int { switch x := v.(type) { case uint32: return p
       if (funcNode.params) {
         for (let i = 0; i < funcNode.params.length; ++i) {
           const param = funcNode.params[i];
+          const paramName = this._paramName(param, i);
           const paramType = this.inferParameterType(param, funcNode.body, methodName, i);
-          func.parameters.push(new GoParameter(param.name, paramType));
-          this.variableTypes.set(param.name, paramType);
+          func.parameters.push(new GoParameter(paramName, paramType));
+          this.variableTypes.set(paramName, paramType);
         }
       }
 
@@ -3461,9 +3463,10 @@ func bitCountN(v interface{}) int { switch x := v.(type) { case uint32: return p
       if (node.value && node.value.params) {
         for (let i = 0; i < node.value.params.length; ++i) {
           const param = node.value.params[i];
+          const paramName = this._paramName(param, i);
           // Use original method name for call site lookup (e.g., _encryptWords)
           const paramType = this.inferParameterType(param, node.value.body, originalMethodName, i);
-          func.parameters.push(new GoParameter(param.name, paramType));
+          func.parameters.push(new GoParameter(paramName, paramType));
 
           // Register parameter type for body transformation
           this.variableTypes.set(param.name, paramType);
@@ -3658,8 +3661,21 @@ func bitCountN(v interface{}) int { switch x := v.(type) { case uint32: return p
       return elementType;
     }
 
+    // Resolve a usable parameter name from any parameter node shape
+    // (Identifier, default value, rest, or destructuring pattern). Go has no
+    // destructuring, so patterns fall back to a positional name.
+    _paramName(param, index) {
+      if (!param) return `p${index >= 0 ? index : 0}`;
+      switch (param.type) {
+        case 'Identifier': return param.name;
+        case 'AssignmentPattern': return this._paramName(param.left, index);
+        case 'RestElement': return this._paramName(param.argument, index);
+        default: return param.name || `p${index >= 0 ? index : 0}`;
+      }
+    }
+
     inferParameterType(param, bodyNode, methodName = null, paramIndex = -1) {
-      const name = param.name;
+      const name = this._paramName(param, paramIndex);
 
       // FIRST: Check for typeof usage - this indicates polymorphic parameter (string|array|etc)
       // Must be checked before call site inference since typeof implies dynamic typing
@@ -4145,11 +4161,12 @@ func bitCountN(v interface{}) int { switch x := v.(type) { case uint32: return p
       if (node.params) {
         for (let i = 0; i < node.params.length; ++i) {
           const param = node.params[i];
+          const paramName = this._paramName(param, i);
           const paramType = this.inferParameterType(param, node.body, node.id.name, i);
-          func.parameters.push(new GoParameter(param.name, paramType));
+          func.parameters.push(new GoParameter(paramName, paramType));
 
           // Register parameter type for body transformation
-          this.variableTypes.set(param.name, paramType);
+          this.variableTypes.set(paramName, paramType);
         }
       }
 
@@ -7557,11 +7574,12 @@ func bitCountN(v interface{}) int { switch x := v.(type) { case uint32: return p
       // Transform to anonymous function
       const params = [];
       if (node.params) {
-        for (const param of node.params) {
+        node.params.forEach((param, i) => {
+          const paramName = this._paramName(param, i);
           // Use pre-set variable type (e.g., from typed reduce callbacks) or default to interface{}
-          const paramType = this.variableTypes.get(param.name) || GoType.Interface();
-          params.push(new GoParameter(param.name, paramType));
-        }
+          const paramType = this.variableTypes.get(paramName) || GoType.Interface();
+          params.push(new GoParameter(paramName, paramType));
+        });
       }
 
       const results = this.inferFunctionReturnType(node);

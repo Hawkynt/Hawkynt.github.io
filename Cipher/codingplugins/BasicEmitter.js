@@ -86,6 +86,9 @@
      * Adds underscore suffix to avoid conflicts
      */
     escapeReservedWord(name) {
+      if (typeof name !== 'string' || name.length === 0)
+        return name || '';
+
       if (this.variant !== 'FREEBASIC')
         return name;
 

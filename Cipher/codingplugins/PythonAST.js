@@ -164,6 +164,10 @@
       this.name = name;
       this.type = type;             // PythonType or null
       this.defaultValue = defaultValue; // PythonExpression or null
+      this.isRest = false;          // true for a `*name` catch-all (JS `...rest` or a
+                                     // synthetic arity-tolerance catch-all - see
+                                     // PythonTransformer's transformParameter /
+                                     // _ensureVarArgsTolerance)
     }
   }
 
@@ -299,6 +303,17 @@
    */
   class PythonPass extends PythonNode {
     constructor() { super('Pass'); }
+  }
+
+  /**
+   * Delete statement: del target
+   * (maps from JavaScript's `delete obj.prop` / `delete obj[key]`)
+   */
+  class PythonDelete extends PythonNode {
+    constructor(target) {
+      super('Delete');
+      this.target = target;
+    }
   }
 
   // ========================[ EXPRESSIONS ]========================
@@ -612,6 +627,7 @@
     PythonTryExcept,
     PythonExceptClause,
     PythonPass,
+    PythonDelete,
 
     // Expressions
     PythonLiteral,

@@ -179,6 +179,8 @@
 
       let decl = '';
       if (node.isStatic) decl += 'static ';
+      if (node.kind === 'get') decl += 'get ';
+      else if (node.kind === 'set') decl += 'set ';
       if (node.isAsync) decl += 'async ';
       if (node.isGenerator) decl += '*';
 
@@ -286,6 +288,20 @@
     }
 
     emitExpressionStatement(node) {
+      // A statement that *starts* with `{` is parsed as a block statement,
+      // not an expression — so a destructuring *assignment* (as opposed to
+      // a `const`/`let` destructuring declaration) used as a bare statement,
+      // e.g. `{ a, b } = someCall();`, must be parenthesized:
+      // `({ a, b } = someCall());`. Without this, the emitted `{` opens what
+      // JS parses as a block, `a: v[0]` inside it looks like a label
+      // statement, and the next `,` is a syntax error ("Unexpected token
+      // ':'"/"Unexpected token ','") — this was breaking every algorithm
+      // using object-destructuring assignment as a standalone statement
+      // (e.g. blake.js's `{ a: v[0], ... } = G1s_32(...)`).
+      const expr = node.expression;
+      if (expr && expr.nodeType === 'Assignment' && expr.target && expr.target.nodeType === 'ObjectLiteral') {
+        return this.line(`(${this.emit(expr)});`);
+      }
       return this.line(`${this.emit(node.expression)};`);
     }
 
@@ -366,7 +382,11 @@
     }
 
     emitForOf(node) {
-      let code = this.line(`for (const ${node.variableName} of ${this.emit(node.collection)}) {`);
+      // See JavaScriptAST's JavaScriptForOf.isForIn: this node doubles up
+      // for both `for...of` (iterate values) and `for...in` (enumerate keys)
+      // — pick the right keyword instead of always emitting `of`.
+      const keyword = node.isForIn ? 'in' : 'of';
+      let code = this.line(`for (const ${node.variableName} ${keyword} ${this.emit(node.collection)}) {`);
       this.indentLevel++;
       code += this.emit(node.body);
       this.indentLevel--;
@@ -501,46 +521,169 @@
       return node.name;
     }
 
+    // ========================[ OPERATOR PRECEDENCE ]========================
+    // Standard ECMA-262 binary/logical operator precedence table. Higher number
+    // binds tighter. Used to re-insert only the parentheses that are actually
+    // required to preserve semantics (minimal reparenthesization), since the
+    // AST itself carries no source-text parens/grouping information.
+
+    static OPERATOR_PRECEDENCE = {
+      '??': 4,
+      '||': 5,
+      '&&': 6,
+      '|': 7,
+      '^': 8,
+      '&': 9,
+      '==': 10, '!=': 10, '===': 10, '!==': 10,
+      '<': 11, '>': 11, '<=': 11, '>=': 11, 'instanceof': 11, 'in': 11,
+      '<<': 12, '>>': 12, '>>>': 12,
+      '+': 13, '-': 13,
+      '*': 14, '/': 14, '%': 14,
+      '**': 15
+    };
+
+    static RIGHT_ASSOCIATIVE_OPERATORS = new Set(['**']);
+    static LOGICAL_OR_AND = new Set(['||', '&&']);
+
+    /**
+     * Precedence of an expression node, for deciding whether it needs parens
+     * when nested inside a parent expression. Atomic/postfix constructs
+     * (literals, identifiers, calls, member access, parenthesized, etc.) sit
+     * at the top of the table and never need extra parens as a child.
+     */
+    getPrecedence(node) {
+      if (!node) return 21;
+      switch (node.nodeType) {
+        case 'SequenceExpression':
+          return 1;
+        case 'Assignment':
+        case 'YieldExpression':
+        case 'ArrowFunction':
+          return 2;
+        case 'Conditional':
+          return 3;
+        case 'BinaryExpression': {
+          const p = JavaScriptEmitter.OPERATOR_PRECEDENCE[node.operator];
+          return p !== undefined ? p : 21;
+        }
+        case 'UnaryExpression':
+          // Prefix unary/update (!x, -x, ++x) vs. postfix update (x++)
+          return node.isPrefix ? 16 : 17;
+        case 'AwaitExpression':
+          return 16;
+        default:
+          // Calls, new, member/element access, literals, identifiers, this/super,
+          // array/object literals, template literals, parenthesized expressions,
+          // etc. are all atomic at the top of the precedence table.
+          return 21;
+      }
+    }
+
+    /**
+     * Emit a child expression of a binary-ish parent, wrapping it in
+     * parentheses when its own precedence is lower than the parent's (or
+     * equal in a way that would change associativity/meaning if left bare).
+     */
+    emitOperand(child, parentPrecedence, isRightOperand, parentRightAssociative) {
+      const code = this.emit(child);
+      const childPrecedence = this.getPrecedence(child);
+
+      const needsParens = parentRightAssociative
+        ? (isRightOperand ? childPrecedence < parentPrecedence : childPrecedence <= parentPrecedence)
+        : (isRightOperand ? childPrecedence <= parentPrecedence : childPrecedence < parentPrecedence);
+
+      return needsParens ? `(${code})` : code;
+    }
+
     emitBinaryExpression(node) {
-      const left = this.emit(node.left);
-      const right = this.emit(node.right);
-      return `${left} ${node.operator} ${right}`;
+      const parentPrecedence = this.getPrecedence(node);
+      const rightAssociative = JavaScriptEmitter.RIGHT_ASSOCIATIVE_OPERATORS.has(node.operator);
+
+      let leftCode = this.emitOperand(node.left, parentPrecedence, false, rightAssociative);
+      let rightCode = this.emitOperand(node.right, parentPrecedence, true, rightAssociative);
+
+      // ES2020 grammar forbids mixing '??' with an unparenthesized '||'/'&&'
+      // operand (and vice versa), even though the precedence numbers above
+      // would not otherwise call for parens.
+      if (node.operator === '??') {
+        if (node.left?.nodeType === 'BinaryExpression' && JavaScriptEmitter.LOGICAL_OR_AND.has(node.left.operator))
+          leftCode = `(${this.emit(node.left)})`;
+        if (node.right?.nodeType === 'BinaryExpression' && JavaScriptEmitter.LOGICAL_OR_AND.has(node.right.operator))
+          rightCode = `(${this.emit(node.right)})`;
+      } else if (JavaScriptEmitter.LOGICAL_OR_AND.has(node.operator)) {
+        if (node.left?.nodeType === 'BinaryExpression' && node.left.operator === '??')
+          leftCode = `(${this.emit(node.left)})`;
+        if (node.right?.nodeType === 'BinaryExpression' && node.right.operator === '??')
+          rightCode = `(${this.emit(node.right)})`;
+      }
+
+      // '**' cannot take an unparenthesized unary expression as its left operand
+      // (`-2 ** 2` is a SyntaxError in JavaScript; `(-2) ** 2` is required).
+      if (node.operator === '**' && node.left?.nodeType === 'UnaryExpression' && node.left.isPrefix)
+        leftCode = `(${this.emit(node.left)})`;
+
+      return `${leftCode} ${node.operator} ${rightCode}`;
     }
 
     emitUnaryExpression(node) {
-      const operand = this.emit(node.operand);
+      const parentPrecedence = this.getPrecedence(node);
+      const operand = this.emitOperand(node.operand, parentPrecedence, false, false);
 
       if (node.operator === 'typeof' || node.operator === 'void' || node.operator === 'delete') {
         return `${node.operator} ${operand}`;
       }
 
       if (node.isPrefix) {
-        return `${node.operator}${operand}`;
+        // Avoid token-gluing ambiguity: -(-x) must not print as --x (decrement),
+        // and +(+x) must not print as ++x (increment).
+        const needsGap = (node.operator === '-' && operand.startsWith('-')) ||
+                          (node.operator === '+' && operand.startsWith('+'));
+        return needsGap ? `${node.operator} ${operand}` : `${node.operator}${operand}`;
       }
       return `${operand}${node.operator}`;
     }
 
     emitAssignment(node) {
-      return `${this.emit(node.target)} ${node.operator} ${this.emit(node.value)}`;
+      const parentPrecedence = this.getPrecedence(node);
+      const target = this.emit(node.target);
+      const value = this.emitOperand(node.value, parentPrecedence, true, true);
+      return `${target} ${node.operator} ${value}`;
+    }
+
+    /**
+     * Emit the target/callee of a member access, element access, or method call,
+     * wrapping it in parentheses if it is not already an atomic (postfix-level)
+     * expression — e.g. `(a + b).toString()` needs the parens the AST doesn't
+     * otherwise record.
+     */
+    emitCalleeExpression(target) {
+      const code = this.emit(target);
+      return this.getPrecedence(target) < 21 ? `(${code})` : code;
     }
 
     emitMemberAccess(node) {
       const op = node.isOptional ? '?.' : '.';
-      return `${this.emit(node.target)}${op}${node.member}`;
+      return `${this.emitCalleeExpression(node.target)}${op}${node.member}`;
     }
 
     emitElementAccess(node) {
-      return `${this.emit(node.target)}[${this.emit(node.index)}]`;
+      return `${this.emitCalleeExpression(node.target)}[${this.emit(node.index)}]`;
     }
 
     emitCall(node) {
+      const args = node.arguments.map(a => this.emit(a));
+      if (node.calleeExpression) {
+        // Direct call of a callee *value* (IIFE): `(calleeExpression)(args)`.
+        // Always parenthesize — required when the callee is itself a
+        // function/arrow expression (`(function(){...})()`), and harmless
+        // (if redundant) for any other expression shape.
+        return `(${this.emit(node.calleeExpression)})(${args.join(', ')})`;
+      }
       let code = '';
       if (node.target) {
-        code += `${this.emit(node.target)}.`;
+        code += `${this.emitCalleeExpression(node.target)}.`;
       }
       code += node.methodName;
-
-      const args = node.arguments.map(a => this.emit(a));
       code += `(${args.join(', ')})`;
       return code;
     }
@@ -571,6 +714,20 @@
         }
         // Quote key if it's not a valid identifier
         const key = this.formatObjectKey(p.key);
+        // Accessor property (`get key() {...}` / `set key(v) {...}`): emit
+        // real getter/setter syntax instead of a plain `key: function(){}`
+        // property — two properties sharing the same literal key name
+        // (one for the getter, one for the setter) would otherwise silently
+        // collide, with only the last one surviving on the object.
+        if ((p.kind === 'get' || p.kind === 'set') && p.value && p.value.nodeType === 'ArrowFunction') {
+          const params = `(${p.value.parameters.map(pm => this.emitParameterDecl(pm)).join(', ')})`;
+          let body = ' {' + this.newline;
+          this.indentLevel++;
+          body += this.emit(p.value.body);
+          this.indentLevel--;
+          body += this.indent() + '}';
+          return `${p.kind} ${key}${params}${body}`;
+        }
         return `${key}: ${this.emit(p.value)}`;
       });
       return `{ ${props.join(', ')} }`;
@@ -582,10 +739,18 @@
      * @returns {string} Properly formatted key
      */
     formatObjectKey(key) {
+      // Keys aren't always strings (e.g. `{0: 'x'}` carries a numeric key) —
+      // coerce up front so `.replace()` below never hits a non-string.
+      key = String(key);
       // Check if key is a valid JavaScript identifier
       // Valid identifiers: start with letter, _, or $; contain only letters, digits, _, $
       const validIdentifier = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/;
       if (validIdentifier.test(key)) {
+        return key;
+      }
+      // Numeric keys (`{0: 'x'}` -> "0") are valid unquoted object-literal
+      // keys in JavaScript too, distinct from identifier syntax.
+      if (/^(?:0|[1-9][0-9]*)$/.test(key)) {
         return key;
       }
       // Quote the key, escaping any special characters
@@ -599,10 +764,34 @@
     }
 
     emitConditional(node) {
-      return `${this.emit(node.condition)} ? ${this.emit(node.trueExpression)} : ${this.emit(node.falseExpression)}`;
+      const parentPrecedence = this.getPrecedence(node);
+      // The condition (test) must bind at least as tightly as the conditional
+      // itself; the branches accept anything down to (and including)
+      // assignment-level expressions, only a bare comma expression needs parens.
+      const condition = this.emitOperand(node.condition, parentPrecedence, false, false);
+      const trueCode = this.getPrecedence(node.trueExpression) < 2 ? `(${this.emit(node.trueExpression)})` : this.emit(node.trueExpression);
+      const falseCode = this.getPrecedence(node.falseExpression) < 2 ? `(${this.emit(node.falseExpression)})` : this.emit(node.falseExpression);
+      return `${condition} ? ${trueCode} : ${falseCode}`;
     }
 
     emitArrowFunction(node) {
+      // A node originating from a real `function(...) {...}` expression
+      // (as opposed to an actual arrow function) must keep `function`
+      // syntax: arrows don't bind their own `this`/`arguments`, so emitting
+      // e.g. an object-literal method `Feed: function(data) { this._x = ...; }`
+      // as `Feed: data => { this._x = ...; }` silently rebinds `this` to
+      // whatever's in scope where the object literal is constructed —
+      // `undefined` here — turning `this._x` into a crash or no-op.
+      if (node.isFunctionExpression) {
+        const params = `(${node.parameters.map(p => this.emitParameterDecl(p)).join(', ')})`;
+        let body = ' {' + this.newline;
+        this.indentLevel++;
+        body += this.emit(node.body);
+        this.indentLevel--;
+        body += this.indent() + '}';
+        return `function ${params}${body}`;
+      }
+
       let params;
       if (node.parameters.length === 1) {
         params = node.parameters[0].name;
@@ -617,6 +806,13 @@
         body += this.emit(node.body);
         this.indentLevel--;
         body += this.indent() + '}';
+      } else if (node.body.nodeType === 'ObjectLiteral') {
+        // An arrow function whose expression body is an object literal must be
+        // parenthesized: `x => { a: 1 }` parses `{ a: 1 }` as a block
+        // containing the labeled statement `a: 1`, not an object — silently
+        // turning the arrow into a function that returns undefined (or, if the
+        // "labels" aren't valid statements, a syntax error).
+        body = `(${this.emit(node.body)})`;
       } else {
         body = this.emit(node.body);
       }

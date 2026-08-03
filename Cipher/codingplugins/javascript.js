@@ -187,7 +187,34 @@ class JavaScriptPlugin extends LanguagePlugin {
       });
 
       // Emit JavaScript code from JavaScript AST
-      const code = emitter.emit(jsAst);
+      let code = emitter.emit(jsAst);
+
+      // When a standalone runnable file is requested (test harness generation,
+      // round-tripping, etc.), prepend the real runtime the emitted class
+      // depends on: AlgorithmFramework.js (Algorithm/Instance base classes,
+      // RegisterAlgorithm, enums, ...) and OpCodes.js (bit-twiddling helpers).
+      // JavaScript is both the source and target language here, so the actual
+      // production sources are embedded verbatim instead of reimplemented stubs
+      // — this can never drift from real framework/OpCodes semantics.
+      if (mergedOptions.generateTestHarness) {
+        const nl = mergedOptions.lineEnding || mergedOptions.newline || '\n';
+        // Give the emitted class code its own function scope, mirroring the
+        // isolation the original source's UMD factory function provided.
+        // type-aware-transpiler.js's UMD-unwrapping flattens the factory
+        // function's body to top-level statements in the IL AST — safe on
+        // its own, but once concatenated ahead of/after the embedded
+        // AlgorithmFramework.js/OpCodes.js prelude below, a flattened
+        // top-level `const`/`let` that happens to share a name with an
+        // ambient identifier the prelude itself references directly (e.g. an
+        // algorithm falling back to its own `const global = ...` lookup)
+        // creates a same-scope temporal-dead-zone: the *prelude's* earlier
+        // reference to that bare name now throws ReferenceError, even though
+        // the two were never in the same scope in the original source.
+        // Re-wrapping restores that isolation without touching the shared
+        // parser/unwrapper.
+        code = '(function () {' + nl + code + nl + '})();' + nl;
+        code = this._buildStandalonePrelude() + nl + code;
+      }
 
       // Collect dependencies
       const dependencies = this._collectDependencies(ast, mergedOptions);
@@ -202,6 +229,94 @@ class JavaScriptPlugin extends LanguagePlugin {
     }
   }
 
+
+  /**
+   * Build the standalone runtime prelude embedded ahead of generated class code
+   * so a transpiled algorithm can run under plain Node without any other files
+   * on disk. Embeds the real, always-correct AlgorithmFramework.js/OpCodes.js
+   * sources verbatim (both are self-contained UMD modules with no cross-file
+   * dependencies), rather than hand-written reimplemented stubs — since
+   * JavaScript is both the source and target language here, the real sources
+   * are directly runnable and can never drift from actual framework semantics.
+   * @private
+   */
+  _buildStandalonePrelude() {
+    if (this._standalonePrelude) return this._standalonePrelude;
+
+    const fs = require('fs');
+    const path = require('path');
+    const rootDir = path.join(__dirname, '..');
+    const opCodesPath = path.join(rootDir, 'OpCodes.js');
+    const frameworkPath = path.join(rootDir, 'AlgorithmFramework.js');
+
+    let opCodesSrc = '';
+    let frameworkSrc = '';
+    try { opCodesSrc = fs.readFileSync(opCodesPath, 'utf8'); } catch (e) { /* embedded as empty; runtime will surface a clear ReferenceError if actually used */ }
+    try { frameworkSrc = fs.readFileSync(frameworkPath, 'utf8'); } catch (e) { /* same */ }
+
+    // Discover AlgorithmFramework's real export surface at generation time
+    // (rather than hand-listing names) so the destructuring below can never
+    // drift from AlgorithmFramework.js itself.
+    let exportNames = [];
+    try {
+      const frameworkExports = require(frameworkPath);
+      exportNames = Object.keys(frameworkExports).filter(name => name !== 'default');
+    } catch (e) {
+      exportNames = [];
+    }
+    const frameworkDestructure = exportNames.length
+      ? `const { ${exportNames.join(', ')} } = AlgorithmFramework;`
+      : '// AlgorithmFramework exports could not be discovered at generation time';
+
+    // JavaScriptTransformer fully qualifies every OpCodes helper call as
+    // OpCodes.Method(...) (pack/unpack, rotations, XorArrays, Hex8ToBytes,
+    // ...) rather than emitting bare short names like rotl32(...)/pack32BE(...).
+    // Bare top-level const/function names were tried first but collided with
+    // algorithm source files that declare their own same-named local helpers
+    // (very common for 64-bit rotate/pack helpers in hash algorithms),
+    // producing "Identifier has already been declared" at load time. Fully
+    // qualifying against the embedded OpCodes object below sidesteps that
+    // entirely. The one exception is bytes->hex, which OpCodes.js has no
+    // method for — it is polyfilled directly onto the real OpCodes object
+    // (a property, not a bare identifier, so it carries the same no-collision
+    // guarantee) rather than reimplemented as a free-standing helper.
+    const opCodesPolyfills = [
+      "if (typeof OpCodes.BytesToHex !== 'function') {",
+      "  OpCodes.BytesToHex = function (bytes) {",
+      "    let s = '';",
+      "    for (let i = 0; i < bytes.length; i++) s += (bytes[i] & 0xFF).toString(16).padStart(2, '0');",
+      "    return s;",
+      "  };",
+      '}'
+    ].join('\n');
+
+    this._standalonePrelude = [
+      '// ==== embedded runtime: OpCodes.js (verbatim, self-contained) ====',
+      opCodesSrc,
+      '// ==== embedded runtime: AlgorithmFramework.js (verbatim, self-contained) ====',
+      frameworkSrc,
+      '// ==== standalone execution bindings ====',
+      frameworkDestructure,
+      opCodesPolyfills,
+      ''
+    ].join('\n');
+
+    return this._standalonePrelude;
+  }
+
+  /**
+   * Public accessor for the standalone runtime prelude (see
+   * _buildStandalonePrelude). Used by TranspilerValidationSuite.js's
+   * cipher-mode bundling to splice bundled dependency-cipher class code
+   * between the shared prelude and the mode's own class code, so the
+   * dependency's bare RegisterAlgorithm/BlockCipherAlgorithm/etc identifiers
+   * resolve against the single prelude instance instead of duplicating it
+   * (duplicating the prelude would re-run AlgorithmFramework.js's UMD wrapper
+   * a second time, silently dropping the first copy's algorithm registry).
+   */
+  GetStandalonePrelude() {
+    return this._buildStandalonePrelude();
+  }
 
   /**
    * Collect required dependencies

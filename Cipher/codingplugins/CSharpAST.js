@@ -84,6 +84,20 @@
       return new CSharpType('Dictionary', { isGeneric: true, genericArguments: [keyType, valueType] });
     }
 
+    // Delegate types for local helper closures (JS `const f = (a, b) => {...}` assigned
+    // to a local variable and invoked later in the same method - common in a few block
+    // ciphers, e.g. CAST-128's bit-packing helpers). Without a real signature these
+    // previously fell through to a bare, non-generic `Action`, which doesn't compile
+    // when the closure takes arguments and/or returns a value (CS1593).
+    static Func(paramTypes, returnType) {
+      return new CSharpType('Func', { isGeneric: true, genericArguments: [...paramTypes, returnType] });
+    }
+
+    static Action(paramTypes = []) {
+      if (!paramTypes || paramTypes.length === 0) return new CSharpType('Action');
+      return new CSharpType('Action', { isGeneric: true, genericArguments: paramTypes });
+    }
+
     static Tuple(elements) {
       return new CSharpType('tuple', { isTuple: true, tupleElements: elements });
     }
@@ -344,6 +358,11 @@
     constructor() {
       super('For');
       this.initializer = null;          // CSharpVariableDeclaration or CSharpExpression
+      this.extraDeclarators = null;     // Array<{name, initializer}> - additional comma-separated
+                                         // declarators of the SAME type as `initializer` (e.g. JS's
+                                         // `for (let a = 0, b = 1; ...)`), emitted as
+                                         // `for (int a = 0, b = 1; ...)`. null/empty for the common
+                                         // single-declarator case.
       this.condition = null;            // CSharpExpression
       this.incrementor = null;          // CSharpExpression
       this.body = null;                 // CSharpBlock
@@ -765,6 +784,21 @@
   }
 
   /**
+   * Comma-separated expression list, valid ONLY in a C# for-statement's
+   * initializer/incrementor clause (e.g. `for (...; ...; a++, b++)`) - NOT a
+   * general expression (unlike JS's comma operator, C# has no comma operator
+   * outside that one grammar position). Callers must only place this where
+   * that syntax is legal - see transformForStatement's `node.update`
+   * SequenceExpression handling, the one caller that constructs this.
+   */
+  class CSharpCommaExpression extends CSharpNode {
+    constructor(expressions) {
+      super('CommaExpression');
+      this.expressions = expressions;   // CSharpExpression[]
+    }
+  }
+
+  /**
    * Tuple expression ((a, b, c))
    */
   class CSharpTupleExpression extends CSharpNode {
@@ -861,6 +895,7 @@
     CSharpAsExpression,
     CSharpParenthesized,
     CSharpTupleExpression,
+    CSharpCommaExpression,
 
     // Documentation
     CSharpXmlDoc
