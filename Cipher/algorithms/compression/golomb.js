@@ -83,7 +83,15 @@
           new LinkItem("Information Theory Foundations", "https://web.stanford.edu/class/ee376a/")
         ];
 
-        // Test vectors - from Golomb coding research and specifications
+        // Test vectors - from Golomb coding research and specifications.
+        // Wire format: [parameter(1)] [bitCount:uint32-BE(4)] [packed bits...].
+        // The bit count field is 4 bytes wide (not 1) because a single byte
+        // overflows for any input that encodes to more than 255 bits - which
+        // happens quickly since Golomb coding is only compact for values that
+        // follow a geometric distribution with the chosen parameter M. Applying
+        // it to arbitrary byte values (uniform 0-255) with a small M such as 2
+        // is a domain mismatch: the code correctly round-trips, it just expands
+        // heavily, since the unary quotient grows with the byte value.
         this.tests = [
           {
             text: "Empty input",
@@ -95,31 +103,49 @@
             text: "Golomb parameter m=2, input=0",
             uri: "https://en.wikipedia.org/wiki/Golomb_coding",
             input: [0],
-            expected: [2, 2, 0]
+            expected: [2, 0, 0, 0, 2, 0]
           },
           {
             text: "Golomb parameter m=2, input=3",
             uri: "https://rosettacode.org/wiki/Rice_coding",
             input: [3],
-            expected: [2, 3, 160]
+            expected: [2, 0, 0, 0, 3, 160]
           },
           {
             text: "Sequential integers 0-4",
             uri: "https://unix4lyfe.org/rice-coding/",
             input: [0, 1, 2, 3, 4],
-            expected: [2, 14, 25, 112]
+            expected: [2, 0, 0, 0, 14, 25, 112]
           },
           {
             text: "Geometric distribution pattern",
             uri: "https://en.wikipedia.org/wiki/Golomb_coding",
             input: [0, 0, 1, 0, 2, 1, 0, 3],
-            expected: [2, 18, 4, 137, 64]
+            expected: [2, 0, 0, 0, 18, 4, 137, 64]
           },
           {
             text: "Powers of 2 sequence",
             uri: "https://en.wikipedia.org/wiki/Rice_coding",
             input: [1, 2, 4, 8],
-            expected: [2, 15, 102, 120]
+            expected: [2, 0, 0, 0, 15, 102, 120]
+          },
+          {
+            text: "Repetitive run (10 bytes) - exceeds 255 encoded bits, catches truncated bit-count field",
+            uri: "https://en.wikipedia.org/wiki/Golomb_coding",
+            input: [97, 97, 97, 97, 97, 97, 97, 97, 97, 97],
+            expected: [2, 0, 0, 1, 244, 255, 255, 255, 255, 255, 255, 127, 255, 255, 255, 255, 255, 223, 255, 255, 255, 255, 255, 247, 255, 255, 255, 255, 255, 253, 255, 255, 255, 255, 255, 255, 127, 255, 255, 255, 255, 255, 223, 255, 255, 255, 255, 255, 247, 255, 255, 255, 255, 255, 253, 255, 255, 255, 255, 255, 255, 127, 255, 255, 255, 255, 255, 208]
+          },
+          {
+            text: "Alternating pattern (16 bytes) - long unary runs from two distinct byte values",
+            uri: "https://en.wikipedia.org/wiki/Golomb_coding",
+            input: [97, 98, 97, 98, 97, 98, 97, 98, 97, 98, 97, 98, 97, 98, 97, 98],
+            expected: [2, 0, 0, 3, 40, 255, 255, 255, 255, 255, 255, 127, 255, 255, 255, 255, 255, 231, 255, 255, 255, 255, 255, 251, 255, 255, 255, 255, 255, 255, 63, 255, 255, 255, 255, 255, 223, 255, 255, 255, 255, 255, 249, 255, 255, 255, 255, 255, 254, 255, 255, 255, 255, 255, 255, 207, 255, 255, 255, 255, 255, 247, 255, 255, 255, 255, 255, 254, 127, 255, 255, 255, 255, 255, 191, 255, 255, 255, 255, 255, 243, 255, 255, 255, 255, 255, 253, 255, 255, 255, 255, 255, 255, 159, 255, 255, 255, 255, 255, 239, 255, 255, 255, 255, 255, 252]
+          },
+          {
+            text: "Binary/random sample (16 bytes) - non-geometric distribution stress test",
+            uri: "https://en.wikipedia.org/wiki/Golomb_coding",
+            input: [64, 128, 192, 0, 0, 0, 64, 128, 128, 0, 0, 0, 0, 0, 0, 0],
+            expected: [2, 0, 0, 1, 128, 255, 255, 255, 255, 63, 255, 255, 255, 255, 255, 255, 255, 207, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 240, 15, 255, 255, 255, 243, 255, 255, 255, 255, 255, 255, 255, 252, 255, 255, 255, 255, 255, 255, 255, 255, 0, 0]
           }
         ];
       }
@@ -193,26 +219,24 @@
           this._encodeValue(bitBuffer, value);
         }
 
-        // Store bit count in second byte, then encoded bits
+        // Store bit count as a 4-byte big-endian field (a single byte overflows
+        // for any input producing more than 255 encoded bits), then the bits.
         const bits = bitBuffer.getBytes();
-        if (bits.length > 0) {
-          output.push(OpCodes.ToByte(bitBuffer.getBitCount())); // Lower 8 bits of bit count
-          output.push(...bits);
-        } else {
-          output.push(0); // No bits encoded
-        }
+        const bitCountBytes = OpCodes.Unpack32BE(bitBuffer.getBitCount());
+        output.push(...bitCountBytes);
+        output.push(...bits);
 
         return output;
       }
 
       _decode(data) {
-        if (data.length < 3) {
+        if (data.length < 5) {
           return [];
         }
 
         // Read parameter and bit count
         const parameter = data[0];
-        const bitCount = data[1];
+        const bitCount = OpCodes.Pack32BE(data[1], data[2], data[3], data[4]);
         this.SetParameter(parameter);
 
         if (bitCount === 0) {
@@ -223,7 +247,7 @@
         const bitBuffer = new BitBuffer();
 
         // Load encoded data into bit buffer
-        for (let i = 2; i < data.length; i++) {
+        for (let i = 5; i < data.length; i++) {
           bitBuffer.addByte(data[i]);
         }
 
