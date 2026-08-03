@@ -146,6 +146,28 @@
 
       this.tests = [
         {
+          text: "DarkCrypt SAFER+ vector 1/zero",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("c2260176260a0cde10dee1b5b4bbd475")
+        },
+        {
+          text: "DarkCrypt SAFER+ vector 2/incr",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
+          expected: OpCodes.Hex8ToBytes("7fbc212996ece9ca2c4d5bd88fa0b3d9")
+        },
+        {
+          text: "DarkCrypt SAFER+ vector 3/incr2",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("101112131415161718191a1b1c1d1e1f"),
+          key: OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"),
+          expected: OpCodes.Hex8ToBytes("14be170dc95dad900927e2a2208000cb")
+        },
+
+        {
           text: "SAFER+: 128-bit key (LibTomCrypt)",
           uri: "https://github.com/libtom/libtomcrypt/blob/develop/src/ciphers/safer/saferp.c",
           key: OpCodes.Hex8ToBytes("2923be84e16cd6ae529049f1f1bbe9eb"),

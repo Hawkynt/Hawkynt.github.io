@@ -317,6 +317,28 @@
       // Test vectors
       this.tests = [
         {
+          text: "DarkCrypt Anubis-tweaked-256 vector 1/zero",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("e5391940ae209c9ed3f26bb9b272d084")
+        },
+        {
+          text: "DarkCrypt Anubis-tweaked-256 vector 2/incr",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
+          expected: OpCodes.Hex8ToBytes("25167975ba15a98c648d6f5e4e8bdb39")
+        },
+        {
+          text: "DarkCrypt Anubis-tweaked-256 vector 3/incr2",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("101112131415161718191a1b1c1d1e1f"),
+          key: OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"),
+          expected: OpCodes.Hex8ToBytes("c093290cd5240a55042f5550ee8403ca")
+        },
+
+        {
           text: "LibTomCrypt Tweaked Vector - 128-bit key (0x80 prefix)",
           uri: "https://github.com/libtom/libtomcrypt/blob/develop/src/ciphers/anubis.c",
           input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),

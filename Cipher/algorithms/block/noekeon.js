@@ -94,6 +94,28 @@
       // Test vectors from NESSIE
       this.tests = [
         {
+          text: "DarkCrypt Noekeon-direct vector 1/zero",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("b1656851699e29fa24b70148503d2dfc")
+        },
+        {
+          text: "DarkCrypt Noekeon-direct vector 2/incr",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          expected: OpCodes.Hex8ToBytes("22c082f55d7f6d861b11c36911be694f")
+        },
+        {
+          text: "DarkCrypt Noekeon-direct vector 3/incr2",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("101112131415161718191a1b1c1d1e1f"),
+          key: OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f10"),
+          expected: OpCodes.Hex8ToBytes("430da53ef5a353427d3b42f75880f41e")
+        },
+
+        {
           text: "NOEKEON Zero Test Vector",
           uri: "https://gro.noekeon.org/",
           input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),

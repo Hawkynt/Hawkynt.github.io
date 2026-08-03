@@ -90,9 +90,13 @@
 
       // Documentation links
       this.documentation = [
-        new LinkItem("BouncyCastle VMPC-KSA3 Implementation", "https://github.com/bcgit/bc-java/blob/main/core/src/main/java/org/bouncycastle/crypto/engines/VMPCKSA3Engine.java"),
         new LinkItem("VMPC Specification", "http://www.vmpcfunction.com/vmpc.pdf"),
         new LinkItem("eSTREAM Project", "https://www.ecrypt.eu.org/stream/")
+      ];
+
+      this.references = [
+        new LinkItem("BouncyCastle VMPCKSA3Engine.java Implementation", "https://github.com/bcgit/bc-java/blob/main/core/src/main/java/org/bouncycastle/crypto/engines/VMPCKSA3Engine.java"),
+        new LinkItem("Author's Own C/Pascal/Assembler Implementations", "http://www.vmpcfunction.com/cipher.htm")
       ];
 
       // Security notes
@@ -178,6 +182,22 @@
             "C90491155540762EEFA898548254F5DDAD39F5C5E084DDF509A4942F7417AC3B" +
             "6092BDF9CA01C9EA78B429056E797C3DCA87AABE1CF6B7D91114068E1DAEC35A"
           )
+        },
+        {
+          text: "DarkCrypt Vmpcksa3 - 128-byte keystream (key=00..3F, IV=00)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: new Array(128).fill(0),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),
+          iv: [0],
+          expected: OpCodes.Hex8ToBytes("c3797e46d1b54a9707eee65f959e3dbe9e7ddcb58fe52cc08b499ce32827b33753b92509203fc78da3639ff47e3ea74612981d425acb95408f907696b5b17247946099f1182c64615ca2cff19700af9ebc8da907047b650e864edf5d24bf7fcf5f650e2df707046a574f9be149152233c1daf7b5f6e1fa817d375ee1d1049d26")
+        },
+        {
+          text: "DarkCrypt Vmpcksa3 - enc of 00..3F (key=00..3F, IV=00)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),
+          iv: [0],
+          expected: OpCodes.Hex8ToBytes("c3787c45d5b04c900fe7ec54999333b18e6ccea69bf03ad7935086f8343aad287398072a041ae1aa8b4ab5df5213896922a92f716efea377b7a94cad898c4c78")
         }
       ];
     }
