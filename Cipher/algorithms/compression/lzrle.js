@@ -123,6 +123,34 @@
           [0x11, 0x00, 0x00], // Just end marker
           "Empty input",
           "https://docs.kernel.org/staging/lzo.html"
+        ),
+        new TestCase(
+          new Array(300).fill(0x41),
+          undefined,
+          "Highly repetitive non-zero run (300x 'A') - regression: match/zero-run length quantization used to silently drop bytes",
+          "https://docs.kernel.org/staging/lzo.html"
+        ),
+        new TestCase(
+          new Array(300).fill(0x00),
+          undefined,
+          "Long zero run (300x 0x00) not aligned to the X*8+4 quantum",
+          "https://docs.kernel.org/staging/lzo.html"
+        ),
+        new TestCase(
+          (() => { const a = []; for (let i = 0; i < 400; ++i) a.push(i % 2 ? 0x62 : 0x61); return a; })(),
+          undefined,
+          "Alternating pattern - 200x 'ab'",
+          "https://docs.kernel.org/staging/lzo.html"
+        ),
+        new TestCase(
+          (() => {
+            let seed = 0x1234ABCD, a = [];
+            for (let i = 0; i < 512; ++i) { seed = OpCodes.AndN(seed * 1103515245 + 12345, 0x7fffffff); a.push(OpCodes.AndN(seed, 0xFF)); }
+            return a;
+          })(),
+          undefined,
+          "Binary/pseudo-random sample",
+          "https://docs.kernel.org/staging/lzo.html"
         )
       ];
     }
@@ -209,8 +237,13 @@
           if (pos > literalStart) {
             this._encodeLiterals(output, input, literalStart, pos - literalStart);
           }
-          this._encodeZeroRun(output, zeroRun);
-          pos += zeroRun;
+          // _encodeZeroRun can only exactly represent lengths of the form
+          // X*8+4; it returns how much of the run it actually encoded
+          // (<= zeroRun), and pos must advance by exactly that amount -
+          // any left-over zero bytes fall through to the next iteration
+          // and get picked up as another run (or as literals).
+          const encodedRun = this._encodeZeroRun(output, zeroRun);
+          pos += encodedRun;
           literalStart = pos;
           continue;
         }
@@ -298,11 +331,20 @@
         if (OpCodes.And8(opcode, 0xF0) === 0x00) {
           let literalCount = OpCodes.And8(opcode, 0x0F);
 
-          // Extended length encoding
+          // Extended length encoding: chain of 255-continuation bytes
+          // (matches _encodeLiterals). A single extra byte can only
+          // represent counts up to 15+255=270; runs longer than that need
+          // to keep chaining, exactly like the literal/match extensions
+          // used elsewhere in this codebase.
           if (literalCount === 0 && pos < input.length) {
-            literalCount = input[pos++];
-            if (literalCount === 0) break; // Another form of end
-            literalCount += 15;
+            let total = 0;
+            let b;
+            do {
+              if (pos >= input.length) { b = 0; break; }
+              b = input[pos++];
+              total += b;
+            } while (b === 255);
+            literalCount = total + 15;
           }
 
           // Copy literals
@@ -322,7 +364,18 @@
 
           if (offset === 0) break; // End marker alternative
 
-          const length = OpCodes.And8(opcode, 0x0F) + 3;
+          const lengthCode = OpCodes.And8(opcode, 0x0F);
+          let length = lengthCode + 3;
+
+          // Extended length encoding (see _encodeMatch)
+          if (lengthCode === 15) {
+            let b;
+            do {
+              if (pos >= input.length) { b = 0; break; }
+              b = input[pos++];
+              length += b;
+            } while (b === 255);
+          }
 
           // Copy match
           for (let i = 0; i < length; ++i) {
@@ -385,11 +438,21 @@
 
     _encodeZeroRun(output, runLength) {
       // LZO-RLE format: opcode 0x11, distance 0xBFFF, then X byte
-      // Run length = ((OpCodes.Shl32(X, 3))|(0 0 0 0 0 L L L)) + 4
-      // Solving: runLength = (OpCodes.Shl32(X, 3)) + 4, so X = (runLength - 4) >> 3
-
-      const X = OpCodes.Shr8(runLength - 4, 3);
-      output.push(0x11, 0xFF, 0xBF, OpCodes.And8(X, 0xFF));
+      // Run length = Shl8(X, 3) + 4, so X = Shr8(runLength - 4, 3)
+      //
+      // This is a floor/truncating division: Shr8(runLength - 4, 3) discards
+      // the remainder whenever (runLength - 4) isn't a multiple of 8, so
+      // runLength values like 5, 6 or 13 cannot be represented exactly by
+      // a single X byte. Previously the caller advanced pos by the full,
+      // un-quantized runLength while only the floored value was actually
+      // encoded, silently dropping the remainder bytes from the stream.
+      // Returning the exact number of bytes represented (<= runLength)
+      // lets the caller advance correctly and pick up any remainder on
+      // the next iteration.
+      const X = OpCodes.And8(OpCodes.Shr8(runLength - 4, 3), 0xFF);
+      const encodedLength = OpCodes.Shl8(X, 3) + 4;
+      output.push(0x11, 0xFF, 0xBF, X);
+      return encodedLength;
     }
 
     _encodeLiterals(output, input, startPos, count) {
@@ -400,7 +463,14 @@
         output.push(count);
       } else {
         output.push(0x00);
-        output.push(OpCodes.And8(count - 15, 0xFF));
+        // Extended length: chain of 255-continuation bytes (not a single
+        // byte) so runs longer than 15+255=270 bytes don't wrap silently.
+        let rem = count - 15;
+        while (rem >= 255) {
+          output.push(255);
+          rem -= 255;
+        }
+        output.push(OpCodes.And8(rem, 0xFF));
       }
 
       // Copy literal bytes
@@ -411,15 +481,32 @@
 
     _encodeMatch(output, offset, length) {
       // Simplified match encoding using opcode 0x10-0x1F
-      // Opcode: 0x1L where L = (length - 3)&0x0F
-      // Followed by 16-bit big-endian offset
+      // Opcode: 0x1L where L = min(length - 3, 15)
+      // Followed by 16-bit big-endian offset, then (if L saturated at 15)
+      // a chain of 255-continuation extension bytes for the remainder.
+      //
+      // Previously lengthCode was clamped to 15 (max representable) but
+      // pos was advanced by the full, unclamped match length - any bytes
+      // beyond what a single opcode nibble could express were matched
+      // during compression but never actually written to the output at
+      // all, silently truncating the compressed stream.
 
-      const lengthCode = Math.min(length - 3, 15);
+      const rawLenField = length - this.minMatchLength;
+      const lengthCode = Math.min(rawLenField, 15);
       output.push(OpCodes.Or8(0x10, lengthCode));
 
       // Big-endian offset
       const [high, low] = OpCodes.Unpack16BE(offset);
       output.push(high, low);
+
+      if (lengthCode === 15) {
+        let rem = rawLenField - 15;
+        while (rem >= 255) {
+          output.push(255);
+          rem -= 255;
+        }
+        output.push(OpCodes.And8(rem, 0xFF));
+      }
     }
 
   }
