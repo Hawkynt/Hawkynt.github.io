@@ -101,6 +101,24 @@
             uri: "https://en.wikipedia.org/wiki/Lempel%E2%80%93Ziv%E2%80%93Oberhumer",
             input: [65, 66, 67, 68, 69, 70, 71, 72],
             expected: [8, 65, 66, 67, 68, 69, 70, 71, 72, 17, 0, 0]
+          },
+          {
+            text: "Repetitive run (24 bytes) - catches literals dropped between/around matches",
+            uri: "http://www.oberhumer.com/opensource/lzo/lzodoc.html",
+            input: new Array(24).fill(0x61),
+            expected: [1, 97, 31, 0, 1, 18, 0, 1, 17, 0, 0]
+          },
+          {
+            text: "Alternating pattern (16 bytes)",
+            uri: "http://www.oberhumer.com/opensource/lzo/lzodoc.html",
+            input: [97, 98, 97, 98, 97, 98, 97, 98, 97, 98, 97, 98, 97, 98, 97, 98],
+            expected: [2, 97, 98, 27, 0, 2, 17, 0, 0]
+          },
+          {
+            text: "Binary/random sample (16 bytes)",
+            uri: "http://www.oberhumer.com/opensource/lzo/lzodoc.html",
+            input: [64, 128, 192, 0, 0, 0, 64, 128, 128, 0, 0, 0, 0, 0, 0, 0],
+            expected: [10, 64, 128, 192, 0, 0, 0, 64, 128, 128, 0, 19, 0, 1, 17, 0, 0]
           }
         ];
       }
@@ -120,7 +138,10 @@
         // LZO Parameters (based on miniLZO characteristics)
         this.LOOK_AHEAD = 264;         // Look-ahead buffer size
         this.MIN_MATCH = 3;            // Minimum match length
-        this.MAX_MATCH = 264;          // Maximum match length
+        // Maximum match length: the wire format below packs (length - 3) into
+        // the low 4 bits of a 0x10-0x1F match opcode, so it can only encode
+        // lengths 3..18 - matches longer than that are simply never searched for.
+        this.MAX_MATCH = 18;
         this.MAX_OFFSET = 0xBFFF;      // Maximum offset for matches
         this.HASH_SIZE = 16384;        // Hash table size (14-bit)
       }
@@ -154,39 +175,43 @@
         const output = [];
         const hashTable = new Array(this.HASH_SIZE).fill(-1);
         let inputPos = 0;
+        let literalStart = 0; // Start of the pending (not yet flushed) literal run
 
         while (inputPos < input.length) {
           // Try to find a match
           const match = this._findMatch(input, inputPos, hashTable);
 
           if (match.length >= this.MIN_MATCH && match.offset <= this.MAX_OFFSET) {
-            // Encode literals before match (if any)
-            if (match.literalRun > 0) {
-              this._encodeLiterals(output, input, inputPos - match.literalRun, match.literalRun);
+            // Flush any literal bytes accumulated since the last match
+            const literalRun = inputPos - literalStart;
+            if (literalRun > 0) {
+              this._encodeLiterals(output, input, literalStart, literalRun);
             }
 
             // Encode match
             this._encodeMatch(output, match.offset, match.length);
-            inputPos += match.length;
 
             // Update hash table for matched positions
-            for (let i = inputPos - match.length; i < inputPos; i++) {
+            for (let i = inputPos; i < inputPos + match.length; i++) {
               if (i + 2 < input.length) {
                 const hash = this._hash(input, i);
                 hashTable[hash] = i;
               }
             }
+
+            inputPos += match.length;
+            literalStart = inputPos;
           } else {
-            // Single literal
+            // No match at this position - extend the pending literal run
             this._updateHash(hashTable, input, inputPos);
             inputPos++;
           }
         }
 
-        // Handle remaining literals
-        const remainingLiterals = inputPos - this._getLastMatchEnd();
+        // Flush any trailing literal bytes that never reached a match
+        const remainingLiterals = inputPos - literalStart;
         if (remainingLiterals > 0) {
-          this._encodeLiterals(output, input, inputPos - remainingLiterals, remainingLiterals);
+          this._encodeLiterals(output, input, literalStart, remainingLiterals);
         }
 
         // Add end marker
@@ -252,10 +277,9 @@
       _findMatch(input, pos, hashTable) {
         let bestOffset = 0;
         let bestLength = 0;
-        let literalRun = 0;
 
         if (pos + 2 >= input.length) {
-          return { offset: 0, length: 0, literalRun: 0 };
+          return { offset: 0, length: 0 };
         }
 
         const hash = this._hash(input, pos);
@@ -267,7 +291,7 @@
             let length = 0;
             const maxLength = Math.min(this.MAX_MATCH, input.length - pos);
 
-            while (length < maxLength && 
+            while (length < maxLength &&
                    input[candidate + length] === input[pos + length]) {
               length++;
             }
@@ -279,7 +303,7 @@
           }
         }
 
-        return { offset: bestOffset, length: bestLength, literalRun: literalRun };
+        return { offset: bestOffset, length: bestLength };
       }
 
       _hash(input, pos) {
@@ -316,11 +340,6 @@
           output.push(high);
           output.push(low);
         }
-      }
-
-      _getLastMatchEnd() {
-        // Simplified - would need to track match positions in real implementation
-        return 0;
       }
     }
 
