@@ -4,19 +4,21 @@
  * (c)2006-2025 Hawkynt
  *
  * PKWARE's "Imploding" method combines an LZ77-style sliding dictionary
- * match finder with static Shannon-Fano entropy coding. Three independent
- * Shannon-Fano trees are used: one for literal bytes, one for match
- * lengths, and one for the high bits of match distances; the low bits of
- * a distance are sent as raw bits. Each tree is transmitted as a canonical
- * code-length table (a run-length list of "how many consecutive symbols
- * share this bit length") so the decoder can rebuild the same codes.
- *
- * Note: PKWARE packs each code-length run into a single byte (high nibble
- * = run length - 1, low nibble = bit length - 1) and derives the distance
- * low-bit width from an 8K/4K window flag. This implementation keeps the
- * same two-tree/three-tree run-length table structure and 8K-window,
- * 6-tree-bits/7-raw-bits distance split described in APPNOTE.TXT, but uses
- * a simpler two-byte (run, length) pair per table entry for robustness.
+ * match finder (8K window, minimum match length 3, distance split into a
+ * raw low part and a Huffman-coded high part) with three canonical Huffman
+ * trees - literal, match length, and distance high bits - built from a
+ * classic frequency-merge (every symbol, including unused ones, gets a
+ * length so all 256/64/64 alphabet slots are always codeable). Each tree is
+ * transmitted as a run-length list of code lengths (one byte per run: low
+ * nibble = length-1, high nibble = run-count-1) directly inside the same
+ * LSB-first bit stream as the token data - there is no separate byte-aligned
+ * header section for the trees. Canonical codes are bit-reversed before
+ * being packed, so that reading the LSB-first stream front-to-back yields
+ * the same prefix-free traversal as the MSB-first canonical assignment.
+ * A literal/match flag bit precedes every token; for a match, the raw
+ * distance low bits come first, then the Huffman-coded distance high
+ * symbol, then the Huffman-coded length symbol (with an 8-bit raw extension
+ * when the length code saturates at 63).
  *
  * Reference:
  *   PKWARE, Inc., ".ZIP File Format Specification" (APPNOTE.TXT), section
@@ -68,43 +70,39 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
-  const WINDOW_SIZE = 8192;
-  const MIN_MATCH = 3;
-  const DIST_LOW_BITS = 7; // 8K window: 6 tree bits + 7 raw bits = 13 bits
+  const USE_LITERAL_TREE = true;
+  const USE_8K_DICTIONARY = true;
+  const LITERAL_SYMBOLS = 256;
   const LENGTH_SYMBOLS = 64;
   const DISTANCE_SYMBOLS = 64;
-  const LITERAL_SYMBOLS = 256;
-  const MAX_MATCH = MIN_MATCH + 63 + 255; // length code 63 + extended byte
 
-  // ----- Bit-level stream helpers (MSB-first) -----
+  // ----- Bit-level stream helpers (LSB-first) -----
 
   class BitWriter {
     constructor() {
       this.bytes = [];
       this.cur = 0;
-      this.nbits = 0;
+      this.bitPos = 0;
     }
 
-    writeBit(bit) {
-      this.cur = OpCodes.Or32(OpCodes.Shl32(this.cur, 1), OpCodes.And32(bit, 1));
-      this.nbits++;
-      if (this.nbits === 8) {
-        this.bytes.push(OpCodes.ToByte(this.cur));
-        this.cur = 0;
-        this.nbits = 0;
+    writeBits(value, count) {
+      for (let i = 0; i < count; ++i) {
+        const bit = OpCodes.AndN(OpCodes.Shr32(value, i), 1);
+        if (bit === 1) this.cur = OpCodes.OrN(this.cur, OpCodes.Shl32(1, this.bitPos));
+        ++this.bitPos;
+        if (this.bitPos === 8) {
+          this.bytes.push(this.cur);
+          this.cur = 0;
+          this.bitPos = 0;
+        }
       }
     }
 
-    writeBits(value, width) {
-      for (let i = width - 1; i >= 0; i--) this.writeBit(OpCodes.And32(OpCodes.Shr32(value, i), 1));
-    }
-
     finish() {
-      if (this.nbits > 0) {
-        this.cur = OpCodes.Shl32(this.cur, 8 - this.nbits);
-        this.bytes.push(OpCodes.ToByte(this.cur));
+      if (this.bitPos > 0) {
+        this.bytes.push(this.cur);
         this.cur = 0;
-        this.nbits = 0;
+        this.bitPos = 0;
       }
       return this.bytes;
     }
@@ -117,80 +115,173 @@
     }
 
     readBit() {
-      const byteIndex = Math.floor(this.pos / 8);
-      const bitIndex = 7 - (this.pos % 8);
-      const byteVal = byteIndex < this.bytes.length ? this.bytes[byteIndex] : 0;
-      this.pos++;
-      return OpCodes.And32(OpCodes.Shr32(byteVal, bitIndex), 1);
+      const byteIdx = Math.floor(this.pos / 8);
+      if (byteIdx >= this.bytes.length) { ++this.pos; return 0; }
+      const bitIdx = this.pos % 8;
+      ++this.pos;
+      return OpCodes.AndN(OpCodes.Shr32(this.bytes[byteIdx], bitIdx), 1);
     }
 
-    readBits(width) {
-      let value = 0;
-      for (let i = 0; i < width; i++) value = OpCodes.Or32(OpCodes.Shl32(value, 1), this.readBit());
-      return value;
+    readBits(count) {
+      let result = 0;
+      for (let i = 0; i < count; ++i) result = OpCodes.OrN(result, OpCodes.Shl32(this.readBit(), i));
+      return result;
     }
   }
 
-  // ----- Canonical Shannon-Fano code construction -----
+  // ----- 4-ary min-heap priority queue, mirroring .NET's PriorityQueue<,> -----
+  // (arity 4, array-backed, sift-up/sift-down) so ties between equal-priority
+  // nodes resolve identically to CompressionWorkbench's Huffman merge order.
 
-  // Recursively splits the symbol list (sorted by descending frequency at
-  // each step) into two halves of the most nearly-equal total frequency,
-  // assigning one extra bit of depth per split, until every symbol is alone.
-  function buildShannonFanoLengths(freqs, alphabetSize) {
-    const lengths = new Array(alphabetSize).fill(0);
-    const present = [];
-    for (let s = 0; s < alphabetSize; s++) if (freqs[s] > 0) present.push({ sym: s, freq: freqs[s] });
+  class MinHeap4 {
+    constructor() { this.nodes = []; }
+    get count() { return this.nodes.length; }
 
-    if (present.length === 0) return lengths;
-    if (present.length === 1) { lengths[present[0].sym] = 1; return lengths; }
+    enqueue(element, priority) {
+      const nodeIndex = this.nodes.length;
+      this.nodes.push(null);
+      this._moveUp({ element: element, priority: priority }, nodeIndex);
+    }
 
-    const recurse = (list, depth) => {
-      if (list.length === 1) { lengths[list[0].sym] = depth; return; }
-      list.sort((a, b) => b.freq - a.freq || a.sym - b.sym);
-      const total = list.reduce((s, x) => s + x.freq, 0);
-      let bestIdx = 1, bestDiff = Infinity, cum = 0;
-      for (let i = 0; i < list.length - 1; i++) {
-        cum += list[i].freq;
-        const diff = Math.abs(2 * cum - total);
-        if (diff < bestDiff) { bestDiff = diff; bestIdx = i + 1; }
+    dequeue() {
+      const root = this.nodes[0];
+      const lastIndex = this.nodes.length - 1;
+      if (lastIndex > 0) {
+        const lastNode = this.nodes[lastIndex];
+        this.nodes.pop();
+        this._moveDown(lastNode, 0);
+      } else {
+        this.nodes.pop();
       }
-      recurse(list.slice(0, bestIdx), depth + 1);
-      recurse(list.slice(bestIdx), depth + 1);
-    };
+      return root;
+    }
 
-    recurse(present, 0);
+    _parentIndex(i) { return OpCodes.Shr32(i - 1, 2); }
+    _firstChildIndex(i) { return OpCodes.Shl32(i, 2) + 1; }
+
+    _moveUp(node, nodeIndex) {
+      while (nodeIndex > 0) {
+        const parentIndex = this._parentIndex(nodeIndex);
+        const parent = this.nodes[parentIndex];
+        if (node.priority < parent.priority) {
+          this.nodes[nodeIndex] = parent;
+          nodeIndex = parentIndex;
+        } else break;
+      }
+      this.nodes[nodeIndex] = node;
+    }
+
+    _moveDown(node, nodeIndex) {
+      const size = this.nodes.length;
+      let i;
+      while ((i = this._firstChildIndex(nodeIndex)) < size) {
+        let minChild = this.nodes[i];
+        let minChildIndex = i;
+        const upperBound = Math.min(i + 4, size);
+        for (let c = i + 1; c < upperBound; ++c) {
+          const next = this.nodes[c];
+          if (next.priority < minChild.priority) { minChild = next; minChildIndex = c; }
+        }
+        if (node.priority <= minChild.priority) break;
+        this.nodes[nodeIndex] = minChild;
+        nodeIndex = minChildIndex;
+      }
+      this.nodes[nodeIndex] = node;
+    }
+  }
+
+  // ----- Canonical Huffman code-length / code construction -----
+
+  function buildCodeLengths(freq, numSymbols) {
+    if (numSymbols === 1) return [1];
+
+    const nodes = [];
+    const pq = new MinHeap4();
+    for (let i = 0; i < numSymbols; ++i) {
+      const f = Math.max(freq[i], 1);
+      nodes.push({ freq: f, sym: i, left: -1, right: -1 });
+      pq.enqueue(i, f);
+    }
+
+    while (pq.count > 1) {
+      const a = pq.dequeue();
+      const b = pq.dequeue();
+      const combined = a.priority + b.priority;
+      const newIdx = nodes.length;
+      nodes.push({ freq: combined, sym: -1, left: a.element, right: b.element });
+      pq.enqueue(newIdx, combined);
+    }
+
+    const root = pq.dequeue().element;
+    const lengths = new Array(numSymbols).fill(0);
+
+    const walk = (idx, depth) => {
+      const node = nodes[idx];
+      if (node.sym >= 0) { lengths[node.sym] = Math.max(depth, 1); return; }
+      walk(node.left, depth + 1);
+      walk(node.right, depth + 1);
+    };
+    walk(root, 0);
+
+    let maxLen = 0;
+    for (let i = 0; i < numSymbols; ++i) if (lengths[i] > maxLen) maxLen = lengths[i];
+    if (maxLen > 16) {
+      let bits = 1;
+      while (OpCodes.Shl32(1, bits) < numSymbols) ++bits;
+      for (let i = 0; i < numSymbols; ++i) lengths[i] = bits;
+    }
+
     return lengths;
   }
 
-  // Assigns canonical (uniquely decodable, sorted-by-length-then-symbol) bit
-  // patterns for a set of code lengths, matching the standard technique used
-  // to serialize Huffman/Shannon-Fano trees compactly.
-  function assignCanonicalCodes(lengths, alphabetSize) {
-    const order = [];
-    for (let s = 0; s < alphabetSize; s++) if (lengths[s] > 0) order.push(s);
-    order.sort((a, b) => lengths[a] - lengths[b] || a - b);
+  function reverseBits(value, count) {
+    let result = 0;
+    for (let i = 0; i < count; ++i) {
+      result = OpCodes.OrN(OpCodes.Shl32(result, 1), OpCodes.AndN(value, 1));
+      value = OpCodes.Shr32(value, 1);
+    }
+    return result;
+  }
 
-    const codes = new Array(alphabetSize).fill(null);
-    let code = 0, prevLen = 0;
-    for (const s of order) {
-      const len = lengths[s];
-      code = OpCodes.Shl32(code, len - prevLen);
-      codes[s] = { code: code, len: len };
-      code++;
-      prevLen = len;
+  // Canonical assignment (MSB-first code order), then each code is
+  // bit-reversed so it reads correctly from the LSB-first stream.
+  function buildCodes(codeLengths, numSymbols) {
+    let maxLen = 0;
+    for (let i = 0; i < numSymbols; ++i) if (codeLengths[i] > maxLen) maxLen = codeLengths[i];
+    if (maxLen === 0) maxLen = 1;
+
+    const blCount = new Array(maxLen + 1).fill(0);
+    for (let i = 0; i < numSymbols; ++i) if (codeLengths[i] > 0) ++blCount[codeLengths[i]];
+
+    const nextCode = new Array(maxLen + 1).fill(0);
+    let code = 0;
+    for (let b = 1; b <= maxLen; ++b) {
+      code = OpCodes.Shl32(code + blCount[b - 1], 1);
+      nextCode[b] = code;
+    }
+
+    const codes = new Array(numSymbols);
+    for (let sym = 0; sym < numSymbols; ++sym) {
+      const len = codeLengths[sym];
+      if (len === 0) { codes[sym] = { code: 0, bits: 0 }; continue; }
+      const raw = nextCode[len]++;
+      codes[sym] = { code: reverseBits(raw, len), bits: len };
     }
     return codes;
   }
 
   class DecodeTrie {
-    constructor(codes, alphabetSize) {
+    constructor(codes, numSymbols) {
       this.root = { sym: -1, c0: null, c1: null };
-      for (let s = 0; s < alphabetSize; s++) {
+      for (let s = 0; s < numSymbols; ++s) {
         const entry = codes[s];
-        if (!entry) continue;
+        if (!entry || entry.bits === 0) continue;
         let node = this.root;
-        for (let i = entry.len - 1; i >= 0; i--) {
-          const bit = OpCodes.And32(OpCodes.Shr32(entry.code, i), 1);
+        // Codes were bit-reversed for LSB-first transmission, so walking the
+        // trie bit-by-bit as each bit is *read* means consuming the reversed
+        // code's bits from bit 0 upward - i.e. in the same order they were written.
+        for (let i = 0; i < entry.bits; ++i) {
+          const bit = OpCodes.AndN(OpCodes.Shr32(entry.code, i), 1);
           if (bit === 0) {
             if (!node.c0) node.c0 = { sym: -1, c0: null, c1: null };
             node = node.c0;
@@ -205,42 +296,42 @@
 
     decode(reader) {
       let node = this.root;
-      while (node.sym === -1) {
-        node = reader.readBit() === 0 ? node.c0 : node.c1;
-      }
+      while (node.sym === -1) node = reader.readBit() === 0 ? node.c0 : node.c1;
       return node.sym;
     }
   }
 
-  // ----- Code-length table (run-length) serialization -----
+  // ----- Code-length table (run-length) serialization, inline in the bitstream -----
 
-  function writeLengthTable(out, lengths) {
-    const pairs = [];
+  function writeSfTree(writer, lengths, numSymbols) {
+    const runs = [];
     let i = 0;
-    while (i < lengths.length) {
-      let run = 1;
-      while (i + run < lengths.length && lengths[i + run] === lengths[i] && run < 256) run++;
-      pairs.push([run - 1, lengths[i]]);
-      i += run;
+    while (i < numSymbols) {
+      const len = lengths[i];
+      let count = 1;
+      while (i + count < numSymbols && lengths[i + count] === len && count < 16) ++count;
+      runs.push([len > 0 ? len - 1 : 0, count]);
+      i += count;
     }
-    out.push(OpCodes.ToByte(pairs.length - 1));
-    for (const p of pairs) { out.push(OpCodes.ToByte(p[0])); out.push(OpCodes.ToByte(p[1])); }
+    writer.writeBits(runs.length - 1, 8);
+    for (const [adjLen, count] of runs) writer.writeBits(OpCodes.OrN(adjLen, OpCodes.Shl32(count - 1, 4)), 8);
   }
 
-  function readLengthTable(data, pos, alphabetSize) {
-    const pairCount = data[pos++] + 1;
-    const lengths = [];
-    for (let i = 0; i < pairCount; i++) {
-      const run = data[pos++] + 1;
-      const len = data[pos++];
-      for (let k = 0; k < run; k++) lengths.push(len);
+  function readSfTree(reader, numSymbols) {
+    const numEntries = reader.readBits(8) + 1;
+    const lengths = new Array(numSymbols).fill(0);
+    let idx = 0;
+    for (let i = 0; i < numEntries && idx < numSymbols; ++i) {
+      const val = reader.readBits(8);
+      const len = OpCodes.AndN(val, 0x0F) + 1;
+      const count = OpCodes.Shr32(val, 4) + 1;
+      for (let j = 0; j < count && idx < numSymbols; ++j) lengths[idx++] = len;
     }
-    while (lengths.length < alphabetSize) lengths.push(0);
-    return { lengths: lengths, pos: pos };
+    return lengths;
   }
 
   /**
- * ImplodeCompression - PKWARE "Imploding" (LZ77 + Shannon-Fano) algorithm
+ * ImplodeCompression - PKWARE "Imploding" (LZ77 + canonical Huffman) algorithm
  * @class
  * @extends {CompressionAlgorithm}
  */
@@ -251,7 +342,7 @@
 
         // Required metadata
         this.name = "Implode";
-        this.description = "PKWARE DCL/ZIP method 6 (Imploding): an 8K sliding-dictionary LZ77 matcher (minimum match length 3) whose literal, length, and distance symbols are entropy-coded with three independent static Shannon-Fano trees.";
+        this.description = "PKWARE DCL/ZIP method 6 (Imploding): an 8K sliding-dictionary LZ77 matcher (minimum match length 3) whose literal, length, and distance-high symbols are entropy-coded with three canonical Huffman trees (a raw distance-low field is sent separately).";
         this.inventor = "PKWARE, Inc.";
         this.year = 1989;
         this.category = CategoryType.COMPRESSION;
@@ -272,28 +363,36 @@
           new LinkItem("LZ77 - Wikipedia", "https://en.wikipedia.org/wiki/LZ77_and_LZ78")
         ];
 
-        // Test vectors - self-computed round-trip verification vectors produced by
-        // this implementation (the exact bit layout is implementation-defined;
-        // see the file header note on simplifications versus PKWARE's packed
-        // nibble table format).
         this.tests = [
           {
             text: "Empty input",
-            uri: "https://en.wikipedia.org/wiki/Boundary_condition",
+            uri: "https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT",
             input: [],
-            expected: []
+            expected: [0, 0, 0, 0, 3]
           },
           {
-            text: "Repetitive input - 'AAAAAAAAAAAAAAAA'",
+            text: "Single byte",
             uri: "https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT",
-            input: OpCodes.AsciiToBytes("AAAAAAAAAAAAAAAA"),
-            expected: [0,0,0,16,2,64,0,0,1,189,0,2,11,0,0,1,50,0,1,0,1,62,0,128,0]
+            input: [0x41],
+            expected: [1,0,0,0,3,15,247,247,247,247,247,247,247,247,247,247,247,247,247,247,247,247,3,245,245,245,245,3,245,245,245,245,5,1]
           },
           {
-            text: "Text sample - 'abcabcabcabc'",
+            text: "256 repeated bytes",
             uri: "https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT",
-            input: OpCodes.AsciiToBytes("abcabcabcabc"),
-            expected: [0,0,0,12,3,96,0,0,1,1,2,155,0,2,5,0,0,1,56,0,1,0,1,62,0,183,1,0]
+            input: new Array(256).fill(0x61),
+            expected: [0,1,0,0,3,15,247,247,247,247,247,247,247,247,247,247,247,247,247,247,247,247,3,245,245,245,245,3,245,245,245,245,13,1,128,191,23]
+          },
+          {
+            text: "Text sample repeated 4x",
+            uri: "https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT",
+            input: OpCodes.AsciiToBytes("the quick brown fox jumps over the lazy dog. ".repeat(4)),
+            expected: [180,0,0,0,3,43,55,8,167,24,215,5,24,247,39,24,119,8,183,24,39,24,247,7,6,135,5,23,6,23,6,247,87,8,7,8,247,247,103,8,23,8,39,8,55,8,247,247,247,199,3,245,245,245,245,6,4,245,5,22,245,245,181,157,90,132,4,58,132,181,108,210,58,208,56,52,216,165,93,160,89,176,107,160,85,88,219,246,29,3,193,206,33,161,1,30,0,182,105,212,189,91,160,105,176,121,54,13,0,97,129,63,8]
+          },
+          {
+            text: "All 256 byte values",
+            uri: "https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT",
+            input: Array.from({ length: 256 }, (_, i) => i),
+            expected: [0,1,0,0,3,15,247,247,247,247,247,247,247,247,247,247,247,247,247,247,247,247,3,245,245,245,245,3,245,245,245,245,1,2,6,10,28,36,104,176,224,33,66,134,10,29,38,108,184,240,17,34,70,138,28,37,106,180,232,49,98,198,138,29,39,110,188,248,9,18,38,74,156,36,105,178,228,41,82,166,74,157,38,109,186,244,25,50,102,202,156,37,107,182,236,57,114,230,202,157,39,111,190,252,5,10,22,42,92,164,104,177,226,37,74,150,42,93,166,108,185,242,21,42,86,170,92,165,106,181,234,53,106,214,170,93,167,110,189,250,13,26,54,106,220,164,105,179,230,45,90,182,106,221,166,109,187,246,29,58,118,234,220,165,107,183,238,61,122,246,234,221,167,111,191,254,3,6,14,26,60,100,232,176,225,35,70,142,26,61,102,236,184,241,19,38,78,154,60,101,234,180,233,51,102,206,154,61,103,238,188,249,11,22,46,90,188,100,233,178,229,43,86,174,90,189,102,237,186,245,27,54,110,218,188,101,235,182,237,59,118,238,218,189,103,239,190,253,7,14,30,58,124,228,232,177,227,39,78,158,58,125,230,236,185,243,23,46,94,186,124,229,234,181,235,55,110,222,186,125,231,238,189,251,15,30,62,122,252,228,233,179,231,47,94,190,122,253,230,237,187,247,31,62,126,250,252,229,235,183,239,63,126,254,250,253,231,239,191,255]
           }
         ];
       }
@@ -316,32 +415,31 @@
       }
 
       Result() {
-        if (this.inputBuffer.length === 0) return [];
-
-        const result = this.isInverse ? this._decompress(this.inputBuffer) : this._compress(this.inputBuffer);
+        const data = this.inputBuffer;
         this.inputBuffer = [];
-        return result;
+        return this.isInverse ? this._decompress(data) : this._compress(data);
       }
 
       // ----- LZ77 parse over the sliding dictionary -----
 
-      _parse(data) {
+      _parse(data, windowSize, minMatchLen, maxMatchLen) {
         const tokens = [];
         let i = 0;
         while (i < data.length) {
-          const start = Math.max(0, i - WINDOW_SIZE);
           let bestLen = 0, bestDist = 0;
-          for (let j = i - 1; j >= start; j--) {
+          const searchStart = Math.max(0, i - windowSize);
+          for (let j = searchStart; j < i; ++j) {
             let len = 0;
-            const maxLen = Math.min(MAX_MATCH, data.length - i);
-            while (len < maxLen && data[j + len] === data[i + len]) len++;
-            if (len > bestLen) { bestLen = len; bestDist = i - j; }
+            const maxLen = Math.min(data.length - i, maxMatchLen);
+            const span = i - j;
+            while (len < maxLen && data[j + (len % span)] === data[i + len]) ++len;
+            if (len > bestLen && len >= minMatchLen) { bestLen = len; bestDist = i - j - 1; }
           }
-          if (bestLen >= MIN_MATCH) {
-            tokens.push({ type: 1, len: bestLen, dist: bestDist });
+          if (bestLen >= minMatchLen) {
+            tokens.push({ isLit: false, lit: 0, len: bestLen, dist: bestDist });
             i += bestLen;
           } else {
-            tokens.push({ type: 0, byte: data[i] });
+            tokens.push({ isLit: true, lit: data[i], len: 0, dist: 0 });
             i += 1;
           }
         }
@@ -350,115 +448,141 @@
 
       // ----- Compression -----
 
-      _compress(data) {
-        const tokens = this._parse(data);
+      _encode(data, useLiteralTree, use8kDictionary) {
+        const distanceBits = use8kDictionary ? 7 : 6;
+        const minMatchLen = useLiteralTree ? 3 : 2;
+        const windowSize = use8kDictionary ? 8192 : 4096;
+        const maxMatchLen = Math.min(data.length, 63 + 255 + minMatchLen);
 
-        const litFreq = new Array(LITERAL_SYMBOLS).fill(0);
-        const lenFreq = new Array(LENGTH_SYMBOLS).fill(0);
-        const distFreq = new Array(DISTANCE_SYMBOLS).fill(0);
+        const tokens = this._parse(data, windowSize, minMatchLen, 63 + 255 + minMatchLen);
+
+        const literalFreq = new Array(LITERAL_SYMBOLS).fill(0);
+        const lengthFreq = new Array(LENGTH_SYMBOLS).fill(0);
+        const distanceFreq = new Array(DISTANCE_SYMBOLS).fill(0);
 
         for (const t of tokens) {
-          if (t.type === 0) {
-            litFreq[t.byte]++;
+          if (t.isLit) {
+            literalFreq[t.lit]++;
           } else {
-            const rawLen = t.len - MIN_MATCH;
-            const lenCode = Math.min(rawLen, 63);
-            lenFreq[lenCode]++;
-            const distVal = t.dist - 1;
-            const distCode = OpCodes.Shr32(distVal, DIST_LOW_BITS);
-            distFreq[distCode]++;
+            const lenCode = Math.min(t.len - minMatchLen, 63);
+            const distHigh = OpCodes.Shr32(t.dist, distanceBits);
+            lengthFreq[lenCode]++;
+            if (distHigh < 64) distanceFreq[distHigh]++;
           }
         }
 
-        const litLengths = buildShannonFanoLengths(litFreq, LITERAL_SYMBOLS);
-        const lenLengths = buildShannonFanoLengths(lenFreq, LENGTH_SYMBOLS);
-        const distLengths = buildShannonFanoLengths(distFreq, DISTANCE_SYMBOLS);
+        const literalLengths = useLiteralTree ? buildCodeLengths(literalFreq, LITERAL_SYMBOLS) : null;
+        const lengthLengths = buildCodeLengths(lengthFreq, LENGTH_SYMBOLS);
+        const distanceLengths = buildCodeLengths(distanceFreq, DISTANCE_SYMBOLS);
 
-        const litCodes = assignCanonicalCodes(litLengths, LITERAL_SYMBOLS);
-        const lenCodes = assignCanonicalCodes(lenLengths, LENGTH_SYMBOLS);
-        const distCodes = assignCanonicalCodes(distLengths, DISTANCE_SYMBOLS);
-
-        const header = [];
-        { const _src = OpCodes.Unpack32BE(data.length); for (let _i = 0; _i < _src.length; _i++) header.push(_src[_i]); }
-        writeLengthTable(header, litLengths);
-        writeLengthTable(header, lenLengths);
-        writeLengthTable(header, distLengths);
+        const literalCodes = useLiteralTree ? buildCodes(literalLengths, LITERAL_SYMBOLS) : null;
+        const lengthCodes = buildCodes(lengthLengths, LENGTH_SYMBOLS);
+        const distanceCodes = buildCodes(distanceLengths, DISTANCE_SYMBOLS);
 
         const writer = new BitWriter();
+
+        if (useLiteralTree) writeSfTree(writer, literalLengths, LITERAL_SYMBOLS);
+        writeSfTree(writer, lengthLengths, LENGTH_SYMBOLS);
+        writeSfTree(writer, distanceLengths, DISTANCE_SYMBOLS);
+
         for (const t of tokens) {
-          if (t.type === 0) {
-            writer.writeBit(1);
-            const c = litCodes[t.byte];
-            writer.writeBits(c.code, c.len);
+          if (t.isLit) {
+            writer.writeBits(1, 1);
+            if (useLiteralTree) {
+              const c = literalCodes[t.lit];
+              writer.writeBits(c.code, c.bits);
+            } else {
+              writer.writeBits(t.lit, 8);
+            }
           } else {
-            writer.writeBit(0);
+            writer.writeBits(0, 1);
+            const distLow = OpCodes.AndN(t.dist, OpCodes.Shl32(1, distanceBits) - 1);
+            const distHigh = OpCodes.Shr32(t.dist, distanceBits);
+            const lenCode = Math.min(t.len - minMatchLen, 63);
 
-            const distVal = t.dist - 1;
-            const distCode = OpCodes.Shr32(distVal, DIST_LOW_BITS);
-            const distLow = OpCodes.And32(distVal, OpCodes.Shl32(1, DIST_LOW_BITS) - 1);
-            const dc = distCodes[distCode];
-            writer.writeBits(dc.code, dc.len);
-            writer.writeBits(distLow, DIST_LOW_BITS);
-
-            const rawLen = t.len - MIN_MATCH;
-            const lenCode = Math.min(rawLen, 63);
-            const lc = lenCodes[lenCode];
-            writer.writeBits(lc.code, lc.len);
-            if (lenCode === 63) writer.writeBits(rawLen - 63, 8);
+            writer.writeBits(distLow, distanceBits);
+            const dc = distanceCodes[distHigh < 64 ? distHigh : 0];
+            writer.writeBits(dc.code, dc.bits);
+            const lc = lengthCodes[lenCode];
+            writer.writeBits(lc.code, lc.bits);
+            if (lenCode === 63) {
+              const extra = Math.min(t.len - minMatchLen - 63, 255);
+              writer.writeBits(extra, 8);
+            }
           }
         }
 
-        return header.concat(writer.finish());
+        return writer.finish();
+      }
+
+      _compress(data) {
+        const body = data.length === 0 ? [] : this._encode(data, USE_LITERAL_TREE, USE_8K_DICTIONARY);
+        const output = [];
+        const len32 = OpCodes.ToUint32(data.length);
+        output.push(OpCodes.AndN(len32, 0xFF));
+        output.push(OpCodes.AndN(OpCodes.Shr32(len32, 8), 0xFF));
+        output.push(OpCodes.AndN(OpCodes.Shr32(len32, 16), 0xFF));
+        output.push(OpCodes.AndN(OpCodes.Shr32(len32, 24), 0xFF));
+        output.push(OpCodes.OrN(USE_LITERAL_TREE ? 1 : 0, USE_8K_DICTIONARY ? 2 : 0));
+        for (let i = 0; i < body.length; ++i) output.push(body[i]);
+        return output;
       }
 
       // ----- Decompression -----
 
-      _decompress(data) {
-        if (data.length < 4) return [];
-        const originalLength = OpCodes.Pack32BE(data[0], data[1], data[2], data[3]);
-        if (originalLength === 0) return [];
+      _decode(compressed, originalSize, hasLiteralTree, is8kDictionary) {
+        const distanceBits = is8kDictionary ? 7 : 6;
+        const minMatchLen = hasLiteralTree ? 3 : 2;
 
-        let pos = 4;
-        const lit = readLengthTable(data, pos, LITERAL_SYMBOLS); pos = lit.pos;
-        const len = readLengthTable(data, pos, LENGTH_SYMBOLS); pos = len.pos;
-        const dist = readLengthTable(data, pos, DISTANCE_SYMBOLS); pos = dist.pos;
+        const reader = new BitReader(compressed);
 
-        const litCodes = assignCanonicalCodes(lit.lengths, LITERAL_SYMBOLS);
-        const lenCodes = assignCanonicalCodes(len.lengths, LENGTH_SYMBOLS);
-        const distCodes = assignCanonicalCodes(dist.lengths, DISTANCE_SYMBOLS);
+        let literalTrie = null;
+        if (hasLiteralTree) {
+          const literalLengths = readSfTree(reader, LITERAL_SYMBOLS);
+          literalTrie = new DecodeTrie(buildCodes(literalLengths, LITERAL_SYMBOLS), LITERAL_SYMBOLS);
+        }
+        const lengthLengths = readSfTree(reader, LENGTH_SYMBOLS);
+        const lengthTrie = new DecodeTrie(buildCodes(lengthLengths, LENGTH_SYMBOLS), LENGTH_SYMBOLS);
+        const distanceLengths = readSfTree(reader, DISTANCE_SYMBOLS);
+        const distanceTrie = new DecodeTrie(buildCodes(distanceLengths, DISTANCE_SYMBOLS), DISTANCE_SYMBOLS);
 
-        const litTrie = new DecodeTrie(litCodes, LITERAL_SYMBOLS);
-        const lenTrie = new DecodeTrie(lenCodes, LENGTH_SYMBOLS);
-        const distTrie = new DecodeTrie(distCodes, DISTANCE_SYMBOLS);
-
-        const reader = new BitReader(data.slice(pos));
         const out = [];
-
-        while (out.length < originalLength) {
+        while (out.length < originalSize) {
           const flag = reader.readBit();
           if (flag === 1) {
-            out.push(litTrie.decode(reader));
+            const b = hasLiteralTree ? literalTrie.decode(reader) : reader.readBits(8);
+            out.push(b);
           } else {
-            const distCode = distTrie.decode(reader);
-            const distLow = reader.readBits(DIST_LOW_BITS);
-            const distVal = OpCodes.Or32(OpCodes.Shl32(distCode, DIST_LOW_BITS), distLow);
-            const distance = distVal + 1;
+            const distLow = reader.readBits(distanceBits);
+            const distHigh = distanceTrie.decode(reader);
+            const distance = OpCodes.OrN(OpCodes.Shl32(distHigh, distanceBits), distLow);
 
-            let lenCode = lenTrie.decode(reader);
-            let rawLen = lenCode;
-            if (lenCode === 63) {
-              const extra = reader.readBits(8);
-              rawLen = 63 + extra;
-            }
-            const matchLen = rawLen + MIN_MATCH;
+            const lenCode = lengthTrie.decode(reader);
+            let length = lenCode + minMatchLen;
+            if (lenCode === 63) length += reader.readBits(8);
 
-            for (let k = 0; k < matchLen; k++) {
-              out.push(out[out.length - distance]);
+            const srcPos = out.length - distance - 1;
+            for (let k = 0; k < length && out.length < originalSize; ++k) {
+              const src = srcPos + k;
+              out.push(src >= 0 && src < out.length ? out[src] : 0);
             }
           }
         }
 
-        return out.slice(0, originalLength);
+        return out;
+      }
+
+      _decompress(data) {
+        if (data.length < 5) throw new Error('Implode: input smaller than 5-byte header');
+        const size = OpCodes.OrN(
+          OpCodes.OrN(OpCodes.OrN(data[0], OpCodes.Shl32(data[1], 8)), OpCodes.Shl32(data[2], 16)),
+          OpCodes.Shl32(data[3], 24)
+        );
+        const flags = data[4];
+        if (size === 0) return [];
+        const hasLiteralTree = OpCodes.AndN(flags, 1) !== 0;
+        const is8kDictionary = OpCodes.AndN(flags, 2) !== 0;
+        return this._decode(data.slice(5), size, hasLiteralTree, is8kDictionary);
       }
     }
 
