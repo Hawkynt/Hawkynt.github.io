@@ -16,11 +16,11 @@
  *   <End Marker>         := 110000000                 (9 bits; a "match" whose
  *                                                       7-bit offset is zero)
  *
- * Length is coded with a nested nibble/escape scheme (RFC 1974 section 2.5.5):
- *   00 = 2, 01 = 3, 10 = 4, 11 escapes to a further 2 bits:
- *   00 = 5, 01 = 6, 10 = 7, 11 escapes to a further 4 bits (base 8):
- *   0000..1110 = 8..22, 1111 escapes to a further 4 bits (base 23), and so on
- *   (each all-ones nibble extends the code by another 4-bit tier, base += 15).
+ * Length is coded as a 2-bit code (00=2, 01=3, 10=4) with 11 escaping
+ * straight to an unbounded nibble tier: length = 5 + nibble, and a nibble
+ * of 1111 means "add 15 and read another nibble" (matching the reference
+ * CompressionWorkbench encoder rather than RFC 1974's own nested 2+2+4-bit
+ * tiering, which reserves a middle tier for lengths 5-7).
  *
  * The sliding window covers the last 2 KB of data, matching the 11-bit
  * maximum offset.
@@ -66,9 +66,16 @@
 
   // ===== FORMAT CONSTANTS =====
 
-  const WINDOW_SIZE = 2048;    // last 2 KB of history (11-bit offset)
   const MIN_MATCH = 2;
-  const MAX_MATCH = 2048;      // practical cap; length code has no hard limit
+  const MAX_OFFSET = 2047;     // 11-bit maximum offset (last 2 KB of history)
+  const MAX_SHORT_LENGTH = 4;  // longest length reachable without the escape code
+  const HASH_BITS = 14;
+  const HASH_SIZE = OpCodes.Shl32(1, HASH_BITS);
+  const CHAIN_LIMIT = 128;     // hash-chain search depth cap (matches the reference encoder)
+
+  function hashAt(data, pos) {
+    return OpCodes.And32(OpCodes.Xor32(OpCodes.Shl32(data[pos], 6), data[pos + 1]), HASH_SIZE - 1);
+  }
 
   // ===== BIT-LEVEL STREAM HELPERS (MSB first) =====
 
@@ -134,42 +141,33 @@
 
   function writeLength(bw, length) {
     if (length <= 4) {
+      // Lengths 2-4: 2-bit code (00=2, 01=3, 10=4).
       bw.writeBits(length - 2, 2);
       return;
     }
-    if (length <= 7) {
-      bw.writeBits(3, 2);
-      bw.writeBits(length - 5, 2);
-      return;
-    }
 
+    // Length 5+: 2-bit escape (11), then (length-5) as a nibble; a nibble
+    // of 15 means "add 15 and read another nibble" (unbounded tier).
     bw.writeBits(3, 2);
-    bw.writeBits(3, 2);
-
-    let base = 8;
-    for (;;) {
-      if (length < base + 15) {
-        bw.writeBits(length - base, 4);
-        return;
-      }
+    let remaining = length - 5;
+    while (remaining >= 15) {
       bw.writeBits(15, 4);
-      base += 15;
+      remaining -= 15;
     }
+    bw.writeBits(remaining, 4);
   }
 
   function readLength(br) {
-    let v = br.readBits(2);
+    const v = br.readBits(2);
     if (v < 3) return 2 + v;
 
-    v = br.readBits(2);
-    if (v < 3) return 5 + v;
-
-    let base = 8;
-    for (;;) {
-      v = br.readBits(4);
-      if (v < 15) return base + v;
-      base += 15;
-    }
+    let length = 5;
+    let nibble;
+    do {
+      nibble = br.readBits(4);
+      length += nibble;
+    } while (nibble === 15);
+    return length;
   }
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -203,19 +201,19 @@
           text: "Empty input",
           uri: "https://www.rfc-editor.org/rfc/rfc1974",
           input: [],
-          expected: [0xC0, 0x00]
+          expected: [0x00, 0x00, 0x00, 0x00]
         },
         {
           text: "Highly repetitive input (40 'A' bytes)",
           uri: "https://www.rfc-editor.org/rfc/rfc1974",
           input: new Array(40).fill(0x41),
-          expected: [32, 224, 127, 252, 112, 0]
+          expected: [40, 0, 0, 0, 32, 144, 112, 63, 249, 224, 0]
         },
         {
           text: "Text sample",
           uri: "https://www.rfc-editor.org/rfc/rfc1974",
           input: OpCodes.AnsiToBytes("the quick brown fox jumps over the lazy dog. the quick brown fox."),
-          expected: [58, 26, 12, 162, 3, 137, 212, 210, 99, 53, 136, 12, 71, 35, 121, 220, 220, 32, 51, 27, 207, 2, 3, 81, 212, 218, 112, 57, 136, 13, 231, 99, 41, 200, 65, 159, 141, 134, 19, 209, 228, 64, 100, 55, 153, 197, 216, 236, 214, 251, 139, 176, 0]
+          expected: [65, 0, 0, 0, 58, 26, 12, 162, 3, 137, 212, 210, 99, 53, 136, 12, 71, 35, 121, 220, 220, 32, 51, 27, 207, 2, 3, 81, 212, 218, 112, 57, 136, 13, 231, 99, 41, 200, 65, 159, 141, 134, 19, 209, 228, 64, 100, 55, 153, 197, 216, 236, 53, 189, 11, 176, 0]
         }
       ];
     }
@@ -244,26 +242,70 @@
     }
 
     _compress(input) {
-      const bw = new BitWriter();
       const n = input.length;
+      const header = OpCodes.Unpack32LE(n);
+      if (n === 0) return header;
+
+      const bw = new BitWriter();
+      const hashHead = new Int32Array(HASH_SIZE).fill(-1);
+      const hashPrev = new Int32Array(n);
       let pos = 0;
 
       while (pos < n) {
-        const match = this._findMatch(input, pos);
+        // Find best match using a hash chain (mirrors the reference encoder
+        // exactly, including its chain-length cap and hash function, so
+        // encoder decisions on ties/limits match byte-for-byte).
+        let bestLen = 0, bestOff = 0;
 
-        if (match.length >= MIN_MATCH) {
+        if (pos >= MIN_MATCH && pos + MIN_MATCH <= n) {
+          const hash = hashAt(input, pos);
+          let chainLen = 0;
+          let idx = hashHead[hash];
+          const minPos = Math.max(0, pos - MAX_OFFSET);
+          const maxLen = Math.min(n - pos, 255 + MAX_SHORT_LENGTH);
+
+          while (idx >= minPos && chainLen < CHAIN_LIMIT) {
+            let len = 0;
+            while (len < maxLen && input[idx + len] === input[pos + len]) len++;
+
+            if (len >= MIN_MATCH && len > bestLen) {
+              bestLen = len;
+              bestOff = pos - idx;
+            }
+
+            chainLen++;
+            idx = hashPrev[idx];
+          }
+        }
+
+        // Update the hash chain for the current position.
+        if (pos + 2 <= n) {
+          const h = hashAt(input, pos);
+          hashPrev[pos] = hashHead[h];
+          hashHead[h] = pos;
+        }
+
+        if (bestLen >= MIN_MATCH) {
           bw.writeBit(1);
 
-          if (match.distance <= 127) {
+          if (bestOff <= 127) {
             bw.writeBit(1);
-            bw.writeBits(match.distance, 7);
+            bw.writeBits(bestOff, 7);
           } else {
             bw.writeBit(0);
-            bw.writeBits(match.distance, 11);
+            bw.writeBits(bestOff, 11);
           }
 
-          writeLength(bw, match.length);
-          pos += match.length;
+          writeLength(bw, bestLen);
+
+          // Update the hash chain for positions skipped by the match.
+          for (let j = 1; j < bestLen && pos + j + 2 <= n; j++) {
+            const h = hashAt(input, pos + j);
+            hashPrev[pos + j] = hashHead[h];
+            hashHead[h] = pos + j;
+          }
+
+          pos += bestLen;
         } else {
           bw.writeBit(0);
           bw.writeBits(input[pos], 8);
@@ -276,11 +318,14 @@
       bw.writeBit(1);
       bw.writeBits(0, 7);
 
-      return bw.finish();
+      return header.concat(bw.finish());
     }
 
     _decompress(input) {
-      const br = new BitReader(input);
+      const originalSize = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
+      if (originalSize === 0) return [];
+
+      const br = new BitReader(input.slice(4));
       const output = [];
 
       for (;;) {
@@ -310,28 +355,6 @@
       return output;
     }
 
-    _findMatch(input, pos) {
-      const n = input.length;
-      const maxLen = Math.min(MAX_MATCH, n - pos);
-      let bestLen = 0;
-      let bestDist = 0;
-
-      if (maxLen < MIN_MATCH) return { length: 0, distance: 0 };
-
-      const windowStart = Math.max(0, pos - WINDOW_SIZE);
-
-      for (let cand = windowStart; cand < pos; ++cand) {
-        let len = 0;
-        while (len < maxLen && input[cand + len] === input[pos + len]) ++len;
-
-        if (len > bestLen) {
-          bestLen = len;
-          bestDist = pos - cand;
-        }
-      }
-
-      return { length: bestLen, distance: bestDist };
-    }
   }
 
   // ===== REGISTRATION =====
