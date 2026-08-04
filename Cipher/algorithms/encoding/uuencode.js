@@ -122,8 +122,14 @@
         ),
         new TestCase(
           OpCodes.AnsiToBytes("Test"),
-          OpCodes.AnsiToBytes("5&5S="),
-          "UUencode four character 'Test' test",
+          [53, 38, 53, 83, 61, 32],
+          "UUencode four character 'Test' test - full 3-byte group ('Tes') plus a 1-byte tail group ('t') encoded as its full 2 characters",
+          "https://pubs.opengroup.org/onlinepubs/9699919799/utilities/uuencode.html"
+        ),
+        new TestCase(
+          new Array(128).fill(0x61),
+          [56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,37,65,56,54,36],
+          "UUencode 128-byte regression test - final group is a 2-byte tail, not the whole input, so the old data.length-based tail check silently dropped its 3rd character",
           "https://pubs.opengroup.org/onlinepubs/9699919799/utilities/uuencode.html"
         )
       ];
@@ -216,11 +222,16 @@
         const char3 = OpCodes.AndN(OpCodes.Shr32(combined, 6), 0x3F) + 0x20;
         const char4 = OpCodes.AndN(combined, 0x3F) + 0x20;
 
+        // A 1-byte group always needs 2 output characters (8 data bits need
+        // two 6-bit symbols) and a 2-byte group always needs 3 (16 data
+        // bits need three 6-bit symbols) - regardless of whether this
+        // group happens to be the only group in the whole input. The old
+        // conditions additionally required data.length itself to equal 1
+        // or 2, so a partial *trailing* group of a longer, multi-group
+        // input silently lost its last character(s).
         result.push(char1);
-        if (groupSize > 1 || (groupSize === 1 && data.length === 1)) {
-          result.push(char2);
-        }
-        if (groupSize > 2 || (groupSize === 2 && data.length === 2)) {
+        result.push(char2);
+        if (groupSize >= 2) {
           result.push(char3);
         }
         if (groupSize === 3) {
