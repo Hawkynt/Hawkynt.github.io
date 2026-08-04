@@ -116,6 +116,12 @@
             uri: "http://www.oberhumer.com/opensource/ucl/",
             input: OpCodes.AnsiToBytes("Lorem ipsum dolor sit amet"),
             roundTripOnly: true
+          },
+          {
+            text: "Large repetitive block (1200x 'A') - regression for match-length overflow beyond one length code (127+MIN_MATCH)",
+            uri: "https://github.com/korczis/ucl",
+            input: new Array(1200).fill(0x41),
+            roundTripOnly: true
           }
         ];
       }
@@ -135,14 +141,19 @@
 
         // NRV2B-inspired parameters (simplified for educational purposes)
         this.MIN_MATCH = 3;            // Minimum match length
-        this.MAX_MATCH = 273;          // Maximum match length (simplified)
+        // The wire format encodes match length as a single length code byte
+        // (0-127) plus MIN_MATCH, so the longest representable match is
+        // 127 + MIN_MATCH. Searching for matches longer than that would make
+        // the compressor advance the input past what the length code can
+        // describe, desynchronizing encoder and decoder.
+        this.MAX_MATCH = 127 + this.MIN_MATCH; // Maximum encodable match length (130)
         this.MAX_OFFSET = 8192;        // Maximum offset for matches
         this.HASH_SIZE = 8192;         // Hash table size
       }
 
       Feed(data) {
         if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {
