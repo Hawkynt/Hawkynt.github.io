@@ -118,6 +118,31 @@
             [4, 2, 0, 0, 0, 65, 11, 0, 66, 5, 0, 3, 0, 0, 0, 212, 6, 0, 0],
             "Skewed distribution AAB - natural pattern",
             "https://encode.su/threads/2648-Asymmetric-Numeral-Systems"
+          ),
+          // Regression: the encoder wrote [reversed renormalization bytes][state],
+          // but the decoder reads the initial state from the *front* of the
+          // stream, so any input long/skewed enough to trigger at least one
+          // byte-wise renormalization decoded to garbage. This 8-byte input
+          // triggers exactly one renormalization byte during encoding.
+          new TestCase(
+            [65, 66, 65, 66, 65, 66, 65, 66],
+            [4, 2, 0, 0, 0, 65, 8, 0, 66, 8, 0, 8, 0, 0, 0, 2, 1, 0, 0, 168],
+            "Regression - renormalization byte ordering (8-byte alternating input)",
+            "https://github.com/rygorous/ryg_rans"
+          ),
+          // Regression: with more than probScale (16 by default) distinct
+          // symbols, every symbol needs frequency >= 1 but there weren't
+          // enough frequency slots to go around; the remainder-reduction loop
+          // that tries to shrink over-allocated frequencies down to fit could
+          // never find any more capacity to reduce and spun forever. The
+          // fix dynamically grows probBits so probScale >= distinct symbol
+          // count (up to 8 bits / 256 symbols, the max possible for a byte
+          // alphabet), and the chosen probBits is carried in the header.
+          new TestCase(
+            [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19],
+            [5,20,0,0,0,0,2,0,1,2,0,2,2,0,3,2,0,4,2,0,5,2,0,6,2,0,7,2,0,8,2,0,9,2,0,10,2,0,11,2,0,12,1,0,13,1,0,14,1,0,15,1,0,16,1,0,17,1,0,18,1,0,19,1,0,20,0,0,0,0,1,0,0,66,134,203,15,83,150,121,122,124,221,31],
+            "Regression - 20 distinct symbols exceeding default probScale (was an infinite loop)",
+            "https://github.com/rygorous/ryg_rans"
           )
         ];
 
@@ -151,7 +176,7 @@
 
       Feed(data) {
         if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {
@@ -172,9 +197,9 @@
           result.push(this.probBits);
           // Use OpCodes for 32-bit packing
           const bytes = OpCodes.Unpack32LE(0); // symbolCount = 0
-          result.push(...bytes);
+          for (let _i = 0; _i < bytes.length; _i++) result.push(bytes[_i]);
           const dataLenBytes = OpCodes.Unpack32LE(0); // dataLength = 0
-          result.push(...dataLenBytes);
+          for (let _i = 0; _i < dataLenBytes.length; _i++) result.push(dataLenBytes[_i]);
           return result;
         }
 
@@ -189,24 +214,24 @@
         // Store symbol count using OpCodes
         const symbolCount = model.symbols.length;
         const symbolCountBytes = OpCodes.Unpack32LE(symbolCount);
-        compressed.push(...symbolCountBytes);
+        for (let _i = 0; _i < symbolCountBytes.length; _i++) compressed.push(symbolCountBytes[_i]);
 
         // Store probability model
         for (const symbolInfo of model.symbols) {
           compressed.push(symbolInfo.symbol);
           const freqBytes = OpCodes.Unpack16LE(symbolInfo.freq);
-          compressed.push(...freqBytes);
+          for (let _i = 0; _i < freqBytes.length; _i++) compressed.push(freqBytes[_i]);
         }
 
         // Store data length using OpCodes
         const dataLenBytes = OpCodes.Unpack32LE(data.length);
-        compressed.push(...dataLenBytes);
+        for (let _i = 0; _i < dataLenBytes.length; _i++) compressed.push(dataLenBytes[_i]);
 
         // Encode data using rANS
         const encodedData = this._encodeRANS(data, model);
 
         // Store encoded data
-        compressed.push(...encodedData);
+        for (let _i = 0; _i < encodedData.length; _i++) compressed.push(encodedData[_i]);
 
         return compressed;
       }
@@ -218,6 +243,11 @@
 
         // Parse header
         const probBits = data[offset++];
+        // The encoder picks probBits dynamically (see _buildProbabilityModel) so
+        // it can exceed the algorithm's default; derive probScale from the
+        // header value actually used for this stream, not the instance default.
+        this.probBits = probBits;
+        this.probScale = OpCodes.Shl32(1, probBits);
 
         // Parse symbol count using OpCodes
         const symbolCountBytes = data.slice(offset, offset + 4);
@@ -271,6 +301,26 @@
 
         // Sort symbols for consistent ordering
         const sortedSymbols = Array.from(freqMap.keys()).sort((a, b) => a - b);
+
+        // Every distinct symbol needs a frequency of at least 1, so probScale
+        // must be able to hold at least as many slots as there are distinct
+        // symbols - otherwise no integer assignment can sum to probScale while
+        // keeping every symbol's frequency >= 1, and the remainder-reduction
+        // loop below would spin forever trying to remove more than it can.
+        // Bump probBits (and thus probScale) up from the configured default
+        // until that holds; for a byte stream this converges at probBits=8
+        // (probScale=256) at the latest, since a byte alphabet has at most
+        // 256 distinct values. The chosen probBits is written to the stream
+        // header so the decoder derives the same probScale.
+        let probBits = this.probBits;
+        let probScale = this.probScale;
+        while (probScale < sortedSymbols.length) {
+          probBits++;
+          probScale = OpCodes.Shl32(1, probBits);
+        }
+        this.probBits = probBits;
+        this.probScale = probScale;
+
         const symbols = [];
         let totalFreq = 0;
 
@@ -278,25 +328,37 @@
         for (const symbol of sortedSymbols) {
           const count = freqMap.get(symbol);
           // Use simple proportional scaling
-          let freq = Math.max(1, Math.floor((count * this.probScale) / data.length));
+          let freq = Math.max(1, Math.floor((count * probScale) / data.length));
           symbols.push({ symbol, freq, count });
           totalFreq += freq;
         }
 
-        // Distribute remainder to maintain exact probability scale
-        let remainder = this.probScale - totalFreq;
+        // Distribute remainder to maintain exact probability scale.
+        // Growing: always makes progress (unconditional freq++), so it is
+        // bounded by the initial remainder.
+        let remainder = probScale - totalFreq;
         let i = 0;
-        while (remainder > 0 && i < symbols.length) {
-          symbols[i].freq++;
+        while (remainder > 0) {
+          symbols[i % symbols.length].freq++;
           remainder--;
-          i = (i + 1) % symbols.length;
+          i++;
         }
-        while (remainder < 0 && i < symbols.length) {
-          if (symbols[i].freq > 1) {
-            symbols[i].freq--;
+
+        // Shrinking: total reducible capacity (sum of freq-1) is guaranteed
+        // to be >= the amount that needs removing, because probScale >=
+        // symbols.length (see above). The iteration cap is a defensive
+        // backstop that guarantees termination even if that invariant were
+        // ever violated by a future change, instead of looping forever.
+        const maxReductionSteps = symbols.length * (-remainder + 1) + symbols.length;
+        let steps = 0;
+        while (remainder < 0 && steps < maxReductionSteps) {
+          const s = symbols[i % symbols.length];
+          if (s.freq > 1) {
+            s.freq--;
             remainder++;
           }
-          i = (i + 1) % symbols.length;
+          i++;
+          steps++;
         }
 
         // Build cumulative frequencies
@@ -306,7 +368,7 @@
           cumFreq += symbolInfo.freq;
         }
 
-        return { symbols, totalFreq: this.probScale };
+        return { symbols, totalFreq: probScale };
       }
 
       /**
@@ -360,8 +422,16 @@
             throw new Error(`Symbol ${symbol} not found in model`);
           }
 
-          // Renormalize if needed - simpler bounds
-          while (state >= (this.ransL * this.probScale)) {
+          // Renormalize if needed. The threshold must depend on the current
+          // symbol's frequency (classic rANS byte renormalization, see ryg_rans
+          // rans_byte.h RansEncPutSymbol: take L, shift right by probBits,
+          // shift the result left by 8, then multiply by freq) - a
+          // frequency-independent constant threshold lets state grow outside
+          // the range the decoder's fixed-width modulo extraction
+          // (state % probScale) assumes, desyncing the decode after the first
+          // few symbols of unequal-frequency data.
+          const xMax = OpCodes.Shl32(OpCodes.Shr32(this.ransL, this.probBits), 8) * symbolInfo.freq;
+          while (state >= xMax) {
             output.push(OpCodes.ToByte(state));
             state = OpCodes.Shr32(state, 8);
           }
@@ -371,14 +441,18 @@
                   symbolInfo.cumFreq + (state % symbolInfo.freq);
         }
 
-        // Reverse the renormalization bytes first
+        // Symbols were encoded last-to-first, so the renormalization bytes
+        // were emitted in the reverse of the order the decoder needs to
+        // consume them; reversing restores forward (decode-time) order.
         output.reverse();
 
-        // Then append the final state (don't reverse this)
+        // The decoder reads the initial state from the *front* of the stream
+        // (matching classic rANS byte-stream layout, e.g. ryg_rans
+        // RansDecInit/RansEncFlush) and only then reads renormalization bytes
+        // as it decodes each symbol - so the 4-byte final state must be
+        // written before the renormalization bytes, not after them.
         const stateBytes = OpCodes.Unpack32LE(OpCodes.ToUint32(state));
-        output.push(...stateBytes);
-
-        return output;
+        return stateBytes.concat(output);
       }
 
       /**
