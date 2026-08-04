@@ -7,8 +7,28 @@
  * Created by Markus F.X.J. Oberhumer (same author as LZO)
  * Used in UPX (Ultimate Packer for eXecutables)
  *
- * NOTE: This is an educational simplification demonstrating NRV2B concepts.
- * For production use, see the official UCL library at www.oberhumer.com/opensource/ucl/
+ * NRV2B LE32, matching the reference CompressionWorkbench encoder/decoder
+ * (Compression.Core.Dictionary.Nrv2b) byte-for-byte. Bits are packed into
+ * 32-bit little-endian words and consumed MSB-first; literal and
+ * match-offset bytes are inlined into the byte stream between bit-word
+ * refills, in the order the decoder consumes them.
+ *
+ *   <Stream>   := <size:4 LE> [<bare NRV2B LE32 stream>]
+ *   control bit 1 -> one literal byte follows
+ *   control bit 0 -> a back-reference:
+ *     offset varint: v = 1; repeat { v = v*2 + dataBit; } until stopBit == 1
+ *       if v == 2: reuse the previous match's offset
+ *       else: byte = nextByte(); distance = (v - 3) * 256 + byte + 1; remember it
+ *     length: if readBit() == 0: m_len = 1
+ *             else if readBit() == 0: m_len = 2
+ *             else: m_len = varint + 2                          (>= 4)
+ *     if distance > 0xD00: m_len += 1     (far-match bonus)
+ *     emitted bytes = m_len + 2
+ *
+ * References:
+ * - Official UCL Homepage: http://www.oberhumer.com/opensource/ucl/
+ * - UCL source (ucl/src/n2b_d.c): https://github.com/korczis/ucl/blob/master/src/n2b_d.c
+ * - UPX Homepage: https://upx.github.io/
  */
 
 (function (root, factory) {
@@ -44,298 +64,394 @@
 
   // Extract framework components
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
-          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
-          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
-          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
-          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
-          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
-          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+          CompressionAlgorithm, IAlgorithmInstance, LinkItem } = AlgorithmFramework;
+
+  // ===== FORMAT CONSTANTS =====
+
+  const MIN_EMITTED_LEN = 3;
+  const MAX_OFFSET = 0xFFFFFF;
+  const OFFSET_LARGE_THRESHOLD = 0xD00;
+  const HASH_BITS = 16;
+  const HASH_SIZE = OpCodes.Shl32(1, HASH_BITS);
+  const CHAIN_LIMIT = 64;
+
+  function hash3(data, pos) {
+    const h1 = OpCodes.Shl32(data[pos], 8);
+    const h2 = OpCodes.Shl32(data[pos + 1], 4);
+    const h3 = data[pos + 2];
+    return OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(h1, h2), h3), HASH_SIZE - 1);
+  }
+
+  function highestSetBitIndex(value) {
+    let index = -1, v = value;
+    while (v > 0) { v = OpCodes.Shr32(v, 1); index++; }
+    return index;
+  }
+
+  // NRV2B length encoding has a gap at m_len=3 (emitted size 5 when offset <=
+  // 0xD00, 6 otherwise). Snap any proposed length landing in the gap to the
+  // next-lower encodable length so the encoder never tries to emit an
+  // unrepresentable size.
+  function snapToEncodable(proposed, offset) {
+    const effective = offset > OFFSET_LARGE_THRESHOLD ? proposed - 1 : proposed;
+    const mLen = effective - 2;
+    if (mLen === 3) return offset > OFFSET_LARGE_THRESHOLD ? 5 : 4;
+    return proposed;
+  }
+
+  // ── Bit-word encoder (32-bit LE words, MSB-first bit order) ───────────────
+  //
+  // A literal/offset byte must occupy the file position the decoder will be
+  // at when it calls ReadByte, which happens right after a specific bit is
+  // consumed. Since bits are buffered in 32-bit words, the byte's "epoch"
+  // (which word's pending list it belongs to) is fixed by queuing the byte
+  // BEFORE writing any bit whose flush could roll over to the next word.
+
+  class Nrv2bEncoder {
+    constructor() {
+      this.bytes = [];
+      this.pendingBytes = [];
+      this.bitWord = 0;
+      this.bitsUsed = 0;
+    }
+
+    writeBit(bit) {
+      this.bitWord = OpCodes.Or32(OpCodes.Shl32(this.bitWord, 1), bit ? 1 : 0);
+      this.bitsUsed++;
+      if (this.bitsUsed === 32) this._flushWord();
+    }
+
+    // For value >= 2, emit (data, continue=0) pairs from msb-1 down to bit 0,
+    // with the trailing continue bit set to 1.
+    writeVarInt(value) {
+      const msb = highestSetBitIndex(value);
+      for (let i = msb - 1; i >= 0; i--) {
+        this.writeBit(OpCodes.And32(OpCodes.Shr32(value, i), 1));
+        this.writeBit(i === 0 ? 1 : 0);
+      }
+    }
+
+    // Writes all varint bits except the final continue bit; the caller
+    // writes the trailing continue=1 bit after queuing any pending byte, so
+    // the byte's epoch lines up with the word containing that final bit.
+    writeVarIntExceptFinalContinue(value) {
+      const msb = highestSetBitIndex(value);
+      for (let i = msb - 1; i >= 1; i--) {
+        this.writeBit(OpCodes.And32(OpCodes.Shr32(value, i), 1));
+        this.writeBit(0);
+      }
+      this.writeBit(OpCodes.And32(value, 1));
+    }
+
+    emitLiteral(value) {
+      this.pendingBytes.push(value);
+      this.writeBit(1);
+    }
+
+    emitMatch(offset, length, reuseLast) {
+      this.writeBit(0); // match flag
+
+      if (reuseLast) {
+        this.writeVarInt(2);
+      } else {
+        const adjusted = offset - 1;
+        const v = OpCodes.Shr32(adjusted, 8) + 3;
+        this.writeVarIntExceptFinalContinue(v);
+        this.pendingBytes.push(OpCodes.And32(adjusted, 0xFF));
+        this.writeBit(1); // final continue bit
+      }
+
+      let emitted = length;
+      if (offset > OFFSET_LARGE_THRESHOLD) emitted--;
+      const mLen = emitted - 2;
+      if (mLen === 1) {
+        this.writeBit(0);
+      } else if (mLen === 2) {
+        this.writeBit(1);
+        this.writeBit(0);
+      } else {
+        if (mLen < 4) throw new Error("NRV2B: unencodable match length 3 (encoder didn't snap).");
+        this.writeBit(1);
+        this.writeBit(1);
+        this.writeVarInt(mLen - 2);
+      }
+    }
+
+    finish() {
+      if (this.bitsUsed > 0) {
+        this.bitWord = OpCodes.Shl32(this.bitWord, 32 - this.bitsUsed);
+        this._flushWord();
+      } else if (this.pendingBytes.length > 0) {
+        this._flushWord();
+      }
+      return this.bytes;
+    }
+
+    _flushWord() {
+      const w = OpCodes.Unpack32LE(this.bitWord);
+      for (let i = 0; i < 4; i++) this.bytes.push(w[i]);
+      for (let i = 0; i < this.pendingBytes.length; i++) this.bytes.push(this.pendingBytes[i]);
+      this.pendingBytes.length = 0;
+      this.bitWord = 0;
+      this.bitsUsed = 0;
+    }
+  }
+
+  // ── Bit-word decoder ────────────────────────────────────────────────────
+
+  class Nrv2bDecoder {
+    constructor(data) {
+      this.data = data;
+      this.pos = 0;
+      this.bitWord = 0;
+      this.bitsLeft = 0;
+      this._refillWord();
+    }
+
+    readBit() {
+      if (this.bitsLeft === 0) this._refillWord();
+      const bit = OpCodes.And32(OpCodes.Shr32(this.bitWord, 31), 1);
+      this.bitWord = OpCodes.Shl32(this.bitWord, 1);
+      this.bitsLeft--;
+      return bit;
+    }
+
+    readByte() {
+      if (this.pos >= this.data.length) throw new Error("NRV2B: unexpected end of byte stream.");
+      return this.data[this.pos++];
+    }
+
+    readVarInt() {
+      let v = 1;
+      for (;;) {
+        v = OpCodes.Or32(OpCodes.Shl32(v, 1), this.readBit());
+        if (this.readBit() === 1) return v;
+      }
+    }
+
+    _refillWord() {
+      // Mirrors the reference decoder's RefillWord exactly, including its
+      // zero-padding of a short/absent final word.
+      const take = Math.min(4, this.data.length - this.pos);
+      const pad = [0, 0, 0, 0];
+      if (take > 0) for (let i = 0; i < take; i++) pad[i] = this.data[this.pos + i];
+      this.pos += take;
+      this.bitWord = OpCodes.Pack32LE(pad[0], pad[1], pad[2], pad[3]);
+      this.bitsLeft = 32;
+    }
+  }
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
-    class UCLCompression extends CompressionAlgorithm {
-      constructor() {
-        super();
+  class UCLCompression extends CompressionAlgorithm {
+    constructor() {
+      super();
 
-        // Required metadata
-        this.name = "UCL (NRV2B)";
-        this.description = "Universal Compression Library implementing NRV2B algorithm. LZ77-based compression with bit-aligned encoding, offering better compression than LZO while maintaining fast decompression speed. Used extensively in UPX executable packer.";
-        this.inventor = "Markus F.X.J. Oberhumer";
-        this.year = 2004;
-        this.category = CategoryType.COMPRESSION;
-        this.subCategory = "Dictionary-based";
-        this.securityStatus = SecurityStatus.EDUCATIONAL;
-        this.complexity = ComplexityType.INTERMEDIATE;
-        this.country = CountryCode.AT; // Austria
+      // Required metadata
+      this.name = "UCL (NRV2B)";
+      this.description = "Universal Compression Library implementing NRV2B algorithm. LZ77-based compression with a bit-packed 32-bit little-endian stream, offering better compression than LZO while maintaining fast decompression speed. Used extensively in UPX executable packer.";
+      this.inventor = "Markus F.X.J. Oberhumer";
+      this.year = 2004;
+      this.category = CategoryType.COMPRESSION;
+      this.subCategory = "Dictionary-based";
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.INTERMEDIATE;
+      this.country = CountryCode.AT; // Austria
 
-        // Documentation and references
-        this.documentation = [
-          new LinkItem("Official UCL Homepage", "http://www.oberhumer.com/opensource/ucl/"),
-          new LinkItem("UCL Wikipedia", "https://en.wikipedia.org/wiki/UCL_(data_compression_software)"),
-          new LinkItem("UPX Homepage", "https://upx.github.io/")
-        ];
+      // Documentation and references
+      this.documentation = [
+        new LinkItem("Official UCL Homepage", "http://www.oberhumer.com/opensource/ucl/"),
+        new LinkItem("UCL Wikipedia", "https://en.wikipedia.org/wiki/UCL_(data_compression_software)"),
+        new LinkItem("UPX Homepage", "https://upx.github.io/")
+      ];
 
-        this.references = [
-          new LinkItem("UCL Source Code Repository", "https://github.com/korczis/ucl"),
-          new LinkItem("NRV2B Decompression Implementation", "https://github.com/korczis/ucl/blob/master/src/n2b_d.c"),
-          new LinkItem("UPX Source Code", "https://github.com/upx/upx"),
-          new LinkItem("Educational NRV Implementation", "https://github.com/pts/pts-decompress-nrv")
-        ];
+      this.references = [
+        new LinkItem("UCL Source Code Repository", "https://github.com/korczis/ucl"),
+        new LinkItem("NRV2B Decompression Implementation", "https://github.com/korczis/ucl/blob/master/src/n2b_d.c"),
+        new LinkItem("UPX Source Code", "https://github.com/upx/upx"),
+        new LinkItem("Educational NRV Implementation", "https://github.com/pts/pts-decompress-nrv")
+      ];
 
-        // Test vectors - Educational round-trip tests
-        // Note: Authentic NRV2B test vectors require the full UCL library
-        // This educational implementation uses round-trip verification
-        this.tests = [
-          {
-            text: "Empty input - Educational test",
-            uri: "https://github.com/korczis/ucl",
-            input: [],
-            expected: []
-          },
-          {
-            text: "Single byte 'A' - Educational round-trip",
-            uri: "https://github.com/korczis/ucl/blob/master/src/n2b_d.c",
-            input: OpCodes.AnsiToBytes("A"),
-            roundTripOnly: true
-          },
-          {
-            text: "Hello World - Educational round-trip",
-            uri: "http://www.oberhumer.com/opensource/ucl/",
-            input: OpCodes.AnsiToBytes("Hello World"),
-            roundTripOnly: true
-          },
-          {
-            text: "Repeated pattern AAABBBCCC - Educational round-trip",
-            uri: "https://github.com/korczis/ucl",
-            input: OpCodes.AnsiToBytes("AAABBBCCC"),
-            roundTripOnly: true
-          },
-          {
-            text: "Lorem ipsum text - Educational round-trip",
-            uri: "http://www.oberhumer.com/opensource/ucl/",
-            input: OpCodes.AnsiToBytes("Lorem ipsum dolor sit amet"),
-            roundTripOnly: true
-          },
-          {
-            text: "Large repetitive block (1200x 'A') - regression for match-length overflow beyond one length code (127+MIN_MATCH)",
-            uri: "https://github.com/korczis/ucl",
-            input: new Array(1200).fill(0x41),
-            roundTripOnly: true
-          }
-        ];
-      }
-
-      CreateInstance(isInverse = false) {
-        return new UCLInstance(this, isInverse);
-      }
+      // Test vectors (byte-for-byte against the reference NRV2B LE32 encoder)
+      this.tests = [
+        {
+          text: "Empty input",
+          uri: "https://github.com/korczis/ucl",
+          input: [],
+          expected: [0, 0, 0, 0]
+        },
+        {
+          text: "Single byte 'A'",
+          uri: "https://github.com/korczis/ucl/blob/master/src/n2b_d.c",
+          input: OpCodes.AnsiToBytes("A"),
+          roundTripOnly: true
+        },
+        {
+          text: "Hello World",
+          uri: "http://www.oberhumer.com/opensource/ucl/",
+          input: OpCodes.AnsiToBytes("Hello World"),
+          roundTripOnly: true
+        },
+        {
+          text: "Repeated pattern AAABBBCCC",
+          uri: "https://github.com/korczis/ucl",
+          input: OpCodes.AnsiToBytes("AAABBBCCC"),
+          roundTripOnly: true
+        },
+        {
+          text: "Lorem ipsum text",
+          uri: "http://www.oberhumer.com/opensource/ucl/",
+          input: OpCodes.AnsiToBytes("Lorem ipsum dolor sit amet"),
+          roundTripOnly: true
+        },
+        {
+          text: "Large repetitive block (1200x 'A') - regression for match-length overflow",
+          uri: "https://github.com/korczis/ucl",
+          input: new Array(1200).fill(0x41),
+          roundTripOnly: true
+        }
+      ];
     }
 
-    // UCL NRV2B compression instance
-    // Educational simplified implementation demonstrating core concepts
-    class UCLInstance extends IAlgorithmInstance {
-      constructor(algorithm, isInverse = false) {
-        super(algorithm);
-        this.isInverse = isInverse;
-        this.inputBuffer = [];
+    CreateInstance(isInverse = false) {
+      return new UCLInstance(this, isInverse);
+    }
+  }
 
-        // NRV2B-inspired parameters (simplified for educational purposes)
-        this.MIN_MATCH = 3;            // Minimum match length
-        // The wire format encodes match length as a single length code byte
-        // (0-127) plus MIN_MATCH, so the longest representable match is
-        // 127 + MIN_MATCH. Searching for matches longer than that would make
-        // the compressor advance the input past what the length code can
-        // describe, desynchronizing encoder and decoder.
-        this.MAX_MATCH = 127 + this.MIN_MATCH; // Maximum encodable match length (130)
-        this.MAX_OFFSET = 8192;        // Maximum offset for matches
-        this.HASH_SIZE = 8192;         // Hash table size
-      }
+  // UCL NRV2B compression instance
+  class UCLInstance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this.inputBuffer = [];
+    }
 
-      Feed(data) {
-        if (!data || data.length === 0) return;
-        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
-      }
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
+    }
 
-      Result() {
-        if (this.inputBuffer.length === 0) {
-          return [];
-        }
+    Result() {
+      const result = this.isInverse ? this._decompress(this.inputBuffer) : this._compress(this.inputBuffer);
+      this.inputBuffer = [];
+      return result;
+    }
 
-        if (this.isInverse) {
-          const result = this._decompress(new Uint8Array(this.inputBuffer));
-          this.inputBuffer = [];
-          return Array.from(result);
-        } else {
-          const result = this._compress(new Uint8Array(this.inputBuffer));
-          this.inputBuffer = [];
-          return Array.from(result);
-        }
-      }
+    _compress(input) {
+      const n = input.length;
+      const header = OpCodes.Unpack32LE(n);
+      if (n === 0) return header;
 
-      _compress(input) {
-        if (input.length === 0) {
-          return new Uint8Array(0);
-        }
+      const enc = new Nrv2bEncoder();
+      const head = new Int32Array(HASH_SIZE).fill(-1);
+      const prev = new Int32Array(n);
 
-        // Simplified LZ77-style compression (educational)
-        const output = [];
-        const hashTable = new Map();
-        let inputPos = 0;
+      let lastMatchOffset = 0;
+      let pos = 0;
 
-        while (inputPos < input.length) {
-          const match = this._findBestMatch(input, inputPos, hashTable);
+      while (pos < n) {
+        let bestLen = 0, bestOff = 0;
 
-          if (match && match.length >= this.MIN_MATCH) {
-            // Encode match: flag byte (0x00-0x7F for match), then offset (2 bytes), then length
-            const lengthCode = Math.min(match.length - this.MIN_MATCH, 127);
-            output.push(lengthCode); // Match flag + length
+        if (pos + MIN_EMITTED_LEN <= n) {
+          const h = hash3(input, pos);
+          let chainLen = 0;
+          const minPos = Math.max(0, pos - MAX_OFFSET);
+          let idx = head[h];
 
-            // Encode offset using OpCodes
-            const offsetBytes = OpCodes.Unpack16BE(match.offset);
-            output.push(offsetBytes[0], offsetBytes[1]);
-
-            // Update hash table for all positions in match
-            for (let i = 0; i < match.length; i++) {
-              this._updateHash(hashTable, input, inputPos + i);
-            }
-
-            inputPos += match.length;
-          } else {
-            // Encode literal: flag byte (0x80-0xFF), then the literal byte
-            output.push(0x80); // Literal flag
-            output.push(input[inputPos]);
-
-            this._updateHash(hashTable, input, inputPos);
-            inputPos++;
-          }
-        }
-
-        // End marker
-        output.push(0xFF, 0xFF); // End of stream marker
-
-        return new Uint8Array(output);
-      }
-
-      _decompress(input) {
-        if (input.length === 0) {
-          return new Uint8Array(0);
-        }
-
-        const output = [];
-        let inputPos = 0;
-
-        while (inputPos < input.length) {
-          const flag = input[inputPos];
-          inputPos += 1;
-
-          if (inputPos > input.length) break;
-
-          // Check for end marker
-          if (flag === 0xFF) {
-            if (inputPos < input.length && input[inputPos] === 0xFF) {
-              break; // End of stream
-            }
-          }
-
-          if (OpCodes.AndN(flag, 0x80, 8) !== 0) {
-            // Literal byte
-            if (inputPos >= input.length) break;
-            output.push(input[inputPos]);
-            inputPos += 1;
-          } else {
-            // Match reference
-            if (inputPos + 1 >= input.length) break;
-
-            const offset = OpCodes.Pack16BE(input[inputPos], input[inputPos + 1]);
-            inputPos += 2;
-
-            const length = flag + this.MIN_MATCH;
-
-            // Copy match using OpCodes operations
-            for (let i = 0; i < length; i++) {
-              const sourcePos = output.length - offset;
-              if (sourcePos >= 0 && sourcePos < output.length) {
-                output.push(output[sourcePos]);
-              } else {
-                break; // Safety check
+          while (idx >= minPos && chainLen < CHAIN_LIMIT) {
+            const off = pos - idx;
+            if (off <= MAX_OFFSET && input[idx] === input[pos]) {
+              const maxLen = Math.min(n - pos, 1024);
+              let len = 0;
+              while (len < maxLen && input[idx + len] === input[pos + len]) len++;
+              if (len >= MIN_EMITTED_LEN && len > bestLen) {
+                bestLen = len;
+                bestOff = off;
               }
             }
+            idx = prev[idx];
+            chainLen++;
           }
+          prev[pos] = head[h];
+          head[h] = pos;
         }
 
-        return new Uint8Array(output);
-      }
+        // Large offsets require length >= 4 because the decoder's offset-threshold
+        // length bump steals one byte from the encoded m_len (length 3 would need
+        // encoded m_len=0, which isn't part of the encoding). Reject such short
+        // matches with far offsets.
+        if (bestLen >= MIN_EMITTED_LEN && !(bestOff > OFFSET_LARGE_THRESHOLD && bestLen < 4)) {
+          bestLen = snapToEncodable(bestLen, bestOff);
+          const reuseLast = bestOff === lastMatchOffset;
+          enc.emitMatch(bestOff, bestLen, reuseLast);
+          lastMatchOffset = bestOff;
 
-      _findBestMatch(input, pos, hashTable) {
-        if (pos + this.MIN_MATCH > input.length) {
-          return null;
-        }
-
-        const hash = this._hash(input, pos);
-        const candidates = hashTable.get(hash) || [];
-
-        let bestMatch = null;
-        let bestLength = this.MIN_MATCH - 1;
-
-        for (const candidatePos of candidates) {
-          if (candidatePos >= pos) continue;
-
-          const offset = pos - candidatePos;
-          if (offset > this.MAX_OFFSET) continue;
-
-          let length = 0;
-          const maxLength = Math.min(this.MAX_MATCH, input.length - pos);
-
-          while (length < maxLength && input[candidatePos + length] === input[pos + length]) {
-            length += 1;
+          for (let j = 1; j < bestLen && pos + j + MIN_EMITTED_LEN <= n; j++) {
+            const h = hash3(input, pos + j);
+            prev[pos + j] = head[h];
+            head[h] = pos + j;
           }
-
-          if (length > bestLength) {
-            bestLength = length;
-            bestMatch = { offset: offset, length: length };
-          }
-        }
-
-        return bestMatch;
-      }
-
-      _hash(input, pos) {
-        if (pos + 2 >= input.length) {
-          return OpCodes.AndN(input[pos], this.HASH_SIZE - 1, 16);
-        }
-
-        // 3-byte hash using OpCodes
-        const h1 = OpCodes.Shl16(input[pos], 8);
-        const h2 = OpCodes.Shl16(input[pos + 1], 4);
-        const h3 = input[pos + 2];
-        const combined = OpCodes.XorN(OpCodes.XorN(h1, h2, 16), h3, 16);
-        return OpCodes.AndN(combined, this.HASH_SIZE - 1, 16);
-      }
-
-      _updateHash(hashTable, input, pos) {
-        if (pos + this.MIN_MATCH - 1 >= input.length) return;
-
-        const hash = this._hash(input, pos);
-        if (!hashTable.has(hash)) {
-          hashTable.set(hash, []);
-        }
-
-        const list = hashTable.get(hash);
-
-        // Keep hash chains limited to prevent memory issues
-        if (list.length < 64) {
-          list.push(pos);
+          pos += bestLen;
         } else {
-          // Replace oldest entry (FIFO)
-          list.shift();
-          list.push(pos);
+          enc.emitLiteral(input[pos]);
+          pos++;
         }
       }
+
+      return header.concat(enc.finish());
     }
+
+    _decompress(input) {
+      if (input.length < 4) throw new Error("NRV2B: input smaller than 4-byte header.");
+      const targetSize = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
+      if (targetSize < 0) throw new Error("NRV2B: negative decompressed size.");
+      if (targetSize === 0) return [];
+
+      const dec = new Nrv2bDecoder(input.slice(4));
+      const output = new Array(targetSize);
+      let lastMatchOffset = 0;
+      let op = 0;
+
+      while (op < targetSize) {
+        while (dec.readBit() === 1) {
+          output[op++] = dec.readByte();
+          if (op >= targetSize) return output;
+        }
+
+        const mOff = dec.readVarInt();
+
+        let finalOff;
+        if (mOff === 2) {
+          if (lastMatchOffset === 0) throw new Error("NRV2B: reuse-last-offset before any match emitted.");
+          finalOff = lastMatchOffset;
+        } else {
+          const b = dec.readByte();
+          const raw = OpCodes.Or32(OpCodes.Shl32(mOff - 3, 8), b);
+          if (raw === 0xFFFFFFFF) break;
+          finalOff = raw + 1;
+          lastMatchOffset = finalOff;
+        }
+
+        let mLen;
+        if (dec.readBit() === 0) mLen = 1;
+        else if (dec.readBit() === 0) mLen = 2;
+        else mLen = dec.readVarInt() + 2;
+
+        if (finalOff > OFFSET_LARGE_THRESHOLD) mLen++;
+        if (finalOff > op) throw new Error("NRV2B: offset points before start of output.");
+
+        const src = op - finalOff;
+        const totalToEmit = mLen + 2;
+        for (let i = 0; i < totalToEmit && op < targetSize; i++) output[op++] = output[src + i];
+      }
+
+      return output;
+    }
+  }
 
   // ===== REGISTRATION =====
 
-    const algorithmInstance = new UCLCompression();
+  const algorithmInstance = new UCLCompression();
   if (!AlgorithmFramework.Find(algorithmInstance.name)) {
     RegisterAlgorithm(algorithmInstance);
   }
