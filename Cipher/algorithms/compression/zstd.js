@@ -452,6 +452,546 @@
     return out;
   }
 
+  // ===== ENCODER SUPPORT: BIT WRITER, FSE/HUFFMAN ENCODE, LZ77 MATCHER =====
+  //
+  // Builds genuine Compressed_Block output: an LZ77 hash-chain match finder
+  // feeding FSE-coded sequences (Predefined_Mode tables only - RFC 8878
+  // 3.1.1.3.2.1.1 Table 20, no table transmission needed) and a length-limited
+  // Huffman code for the literals section (direct weight description only,
+  // RFC 8878 4.2.1.1). All three encoders share the same trick: RFC 8878's
+  // Huffman/FSE bitstreams are read *backward* (BwdBitCursor above, "first bit
+  // added is last bit read"); the mirror-image encoding technique is to
+  // process symbols in REVERSE output order, feeding each one's bits directly
+  // (no separate reversal pass needed) into a plain forward-growing bit
+  // writer - this exact call order/bit-layout combination was verified
+  // independently (encode->our BwdBitCursor-based decode round trip) before
+  // being wired in here.
+
+  // Forward-growing ("low bit first") bit writer: bit 0 of the first value
+  // written lands at absolute bit 0, later values are appended at increasing
+  // bit positions - the mirror of getBitsLE's reading convention, matching
+  // libzstd's BIT_addBits/BIT_flushBits (which RFC 8878's backward-reading
+  // bitstreams are defined against). FSE state values and Huffman codes stay
+  // small (well under 2^20), but the running accumulator can transiently need
+  // more than 32 bits of headroom, so - like the "large literals-header"
+  // fields noted above - this uses plain multiply/divide/modulo rather than
+  // OpCodes' 32-bit-truncating shifts.
+  class LowBitWriter {
+    constructor() { this.bytes = []; this.acc = 0; this.bitPos = 0; }
+    addBits(value, nbBits) {
+      if (nbBits === 0) return;
+      this.acc += value * Math.pow(2, this.bitPos);
+      this.bitPos += nbBits;
+      while (this.bitPos >= 8) {
+        this.bytes.push(this.acc % 256);
+        this.acc = Math.floor(this.acc / 256);
+        this.bitPos -= 8;
+      }
+    }
+    finish() {
+      if (this.bitPos > 0) this.bytes.push(this.acc % 256);
+      return this.bytes;
+    }
+  }
+
+  // ----- FSE encode table (mirrors libzstd's FSE_buildCTable: RFC 8878 4.1's
+  // spread/position assignment run twice - once to place symbols, once to
+  // derive the per-symbol (deltaNbBits, deltaFindState) transform used by
+  // FSE_encodeSymbol) -----
+  function buildFseEncodeTable(normCounts, maxSymbolValue, accuracyLog) {
+    const tableSize = OpCodes.Shl32(1, accuracyLog);
+    const spread = new Array(tableSize);
+    let highThreshold = tableSize - 1;
+    for (let s = 0; s <= maxSymbolValue; ++s) {
+      if (normCounts[s] === -1) { spread[highThreshold] = s; highThreshold--; }
+    }
+    const tableMask = tableSize - 1;
+    const step = OpCodes.Add32(OpCodes.Add32(OpCodes.Shr32(tableSize, 1), OpCodes.Shr32(tableSize, 3)), 3);
+    let position = 0;
+    for (let s = 0; s <= maxSymbolValue; ++s) {
+      const freq = normCounts[s] > 0 ? normCounts[s] : 0;
+      for (let i = 0; i < freq; ++i) {
+        spread[position] = s;
+        position = OpCodes.And32(position + step, tableMask);
+        while (position > highThreshold) position = OpCodes.And32(position + step, tableMask);
+      }
+    }
+
+    const cumul = new Array(maxSymbolValue + 2).fill(0);
+    {
+      let total = 0;
+      for (let s = 0; s <= maxSymbolValue; ++s) {
+        cumul[s] = total;
+        const c = normCounts[s];
+        total += (c === -1 || c === 1) ? 1 : (c > 0 ? c : 0);
+      }
+      cumul[maxSymbolValue + 1] = total;
+    }
+
+    const stateTable = new Array(tableSize);
+    const localCumul = cumul.slice();
+    for (let u = 0; u < tableSize; ++u) {
+      const s = spread[u];
+      stateTable[localCumul[s]++] = tableSize + u;
+    }
+
+    const symbolTT = new Array(maxSymbolValue + 1);
+    for (let s = 0; s <= maxSymbolValue; ++s) {
+      const c = normCounts[s];
+      if (c === 0) {
+        symbolTT[s] = { deltaNbBits: OpCodes.Shl32(accuracyLog + 1, 16) - tableSize, deltaFindState: 0 };
+      } else if (c === -1 || c === 1) {
+        symbolTT[s] = { deltaNbBits: OpCodes.Shl32(accuracyLog, 16) - tableSize, deltaFindState: cumul[s] - 1 };
+      } else {
+        const maxBitsOut = accuracyLog - highBitPos(c - 1);
+        const minStatePlus = OpCodes.Shl32(c, maxBitsOut);
+        symbolTT[s] = { deltaNbBits: OpCodes.Shl32(maxBitsOut, 16) - minStatePlus, deltaFindState: cumul[s] - c };
+      }
+    }
+
+    return { accuracyLog, tableSize, stateTable, symbolTT };
+  }
+
+  // FSE_initCState2: seeds a state directly from the LAST symbol of a run
+  // (no bits produced - this becomes the accuracyLog-bit value written by
+  // the FINAL flush, which decode reads FIRST as its initial state).
+  function fseInitCState2(ct, symbol) {
+    const tt = ct.symbolTT[symbol];
+    const nbBitsOut = OpCodes.Shr32(tt.deltaNbBits + 32768, 16);
+    const value = OpCodes.Shl32(nbBitsOut, 16) - tt.deltaNbBits;
+    return ct.stateTable[OpCodes.Shr32(value, nbBitsOut) + tt.deltaFindState];
+  }
+
+  // FSE_encodeSymbol: transitions the running state backward through the
+  // symbol stream, appending the bits this transition needs directly to
+  // `writer` (call order == write order, see LowBitWriter comment above).
+  function fseEncodeSymbol(writer, ct, statePtr, symbol) {
+    const tt = ct.symbolTT[symbol];
+    const nbBitsOut = OpCodes.Shr32(statePtr.value + tt.deltaNbBits, 16);
+    const lowBits = nbBitsOut > 0 ? OpCodes.And32(statePtr.value, OpCodes.Shl32(1, nbBitsOut) - 1) : 0;
+    writer.addBits(lowBits, nbBitsOut);
+    statePtr.value = ct.stateTable[OpCodes.Shr32(statePtr.value, nbBitsOut) + tt.deltaFindState];
+  }
+
+  // RFC 8878 3.1.1.3.2: FSE-encode one block's sequences using Predefined_Mode
+  // tables for LL/OF/ML. Processes sequences from LAST to FIRST (FSE's "first
+  // encoded = last decoded" property, verified independently against
+  // _decodeSequencesSection's exact read order: init reads LL,OF,ML; per
+  // sequence extra bits read OF,ML,LL; per-sequence state updates read
+  // LL,ML,OF) so every call below is the deliberate mirror of a specific
+  // decoder read, in reverse.
+  function encodeSequencesFSE(seqs) {
+    const n = seqs.length;
+    const writer = new LowBitWriter();
+
+    const stateLL = { value: 0 }, stateOF = { value: 0 }, stateML = { value: 0 };
+    stateLL.value = fseInitCState2(LL_ENC_TABLE, seqs[n - 1].llCode);
+    stateOF.value = fseInitCState2(OF_ENC_TABLE, seqs[n - 1].ofCode);
+    stateML.value = fseInitCState2(ML_ENC_TABLE, seqs[n - 1].mlCode);
+
+    for (let i = n - 1; i >= 0; --i) {
+      if (i < n - 1) {
+        fseEncodeSymbol(writer, OF_ENC_TABLE, stateOF, seqs[i].ofCode);
+        fseEncodeSymbol(writer, ML_ENC_TABLE, stateML, seqs[i].mlCode);
+        fseEncodeSymbol(writer, LL_ENC_TABLE, stateLL, seqs[i].llCode);
+      }
+      writer.addBits(seqs[i].llExtraValue, seqs[i].llExtraBits);
+      writer.addBits(seqs[i].mlExtraValue, seqs[i].mlExtraBits);
+      writer.addBits(seqs[i].ofExtraValue, seqs[i].ofExtraBits);
+    }
+
+    writer.addBits(OpCodes.And32(stateML.value, ML_ENC_TABLE.tableSize - 1), ML_DEFAULT_ACCLOG);
+    writer.addBits(OpCodes.And32(stateOF.value, OF_ENC_TABLE.tableSize - 1), OF_DEFAULT_ACCLOG);
+    writer.addBits(OpCodes.And32(stateLL.value, LL_ENC_TABLE.tableSize - 1), LL_DEFAULT_ACCLOG);
+    writer.addBits(1, 1); // end-mark sentinel bit (RFC 8878 4.1)
+    return writer.finish();
+  }
+
+  // Predefined_Mode encode tables are fixed - build them once.
+  const LL_ENC_TABLE = buildFseEncodeTable(LL_DEFAULT_NORM, LL_DEFAULT_NORM.length - 1, LL_DEFAULT_ACCLOG);
+  const OF_ENC_TABLE = buildFseEncodeTable(OF_DEFAULT_NORM, OF_DEFAULT_NORM.length - 1, OF_DEFAULT_ACCLOG);
+  const ML_ENC_TABLE = buildFseEncodeTable(ML_DEFAULT_NORM, ML_DEFAULT_NORM.length - 1, ML_DEFAULT_ACCLOG);
+
+  // Find the LL/ML code covering `value` (baseline tables are monotonic and
+  // gap-free, so the highest code whose baseline doesn't exceed value is it).
+  function findLengthCode(baselineTable, extraBitsTable, value) {
+    for (let code = baselineTable.length - 1; code >= 0; --code) {
+      if (value >= baselineTable[code]) {
+        return { code, extraBits: extraBitsTable[code], extraValue: value - baselineTable[code] };
+      }
+    }
+    throw new Error('Zstd: value below minimum baseline');
+  }
+
+  // RFC 8878 3.1.1.5 repeat-offset rules, run forward (as an encoder needs):
+  // given the real match distance and whether this sequence's literals length
+  // is zero (which shifts what "repeat offset 1" even means), choose the
+  // cheapest legal Offset_Code and mutate the recent-offsets history exactly
+  // as the decoder's inverse logic would. Verified independently against
+  // _decodeSequencesSection's offset-resolution branch.
+  function resolveSequenceOffset(rep, realOffset, literalsLength) {
+    const ll0 = literalsLength === 0;
+    let ofCode, extraBits = 0, extraValue = 0;
+    if (ll0 && realOffset === rep[1]) { ofCode = 0; }
+    else if (!ll0 && realOffset === rep[0]) { ofCode = 0; }
+    else if (ll0 && realOffset === rep[2]) { ofCode = 1; extraBits = 1; extraValue = 0; }
+    else if (!ll0 && realOffset === rep[1]) { ofCode = 1; extraBits = 1; extraValue = 0; }
+    else if (ll0 && rep[0] > 1 && realOffset === rep[0] - 1) { ofCode = 1; extraBits = 1; extraValue = 1; }
+    else if (!ll0 && realOffset === rep[2]) { ofCode = 1; extraBits = 1; extraValue = 1; }
+    else {
+      const offsetValue = realOffset + 3;
+      ofCode = highBitPos(offsetValue);
+      extraBits = ofCode;
+      extraValue = offsetValue - OpCodes.Shl32(1, ofCode);
+    }
+
+    if (ofCode >= 2) {
+      rep[2] = rep[1]; rep[1] = rep[0]; rep[0] = realOffset;
+    } else if (ofCode === 1) {
+      const selector = 1 + (ll0 ? 1 : 0) + extraValue;
+      let temp;
+      if (selector === 1) temp = rep[1];
+      else if (selector === 3) temp = rep[0] - 1;
+      else temp = rep[2];
+      if (temp === 0) temp = -1;
+      const newRep2 = (selector === 1) ? rep[2] : rep[1];
+      rep[2] = newRep2; rep[1] = rep[0]; rep[0] = temp;
+    } else if (ll0) {
+      const old1 = rep[1]; rep[1] = rep[0]; rep[0] = old1;
+    }
+
+    return { ofCode, extraBits, extraValue };
+  }
+
+  // ----- Length-limited Huffman code construction (package-merge / "coin
+  // collector's" algorithm, RFC 8878 4.2.1's Max_Number_of_Bits=11 constraint)
+  // -----
+  // Produces optimal code lengths bounded by maxLen; for n>=2 symbols the
+  // result is always Kraft-complete (verified independently: every symbol is
+  // covered and sum(2^-length) is exactly 1, even for pathological
+  // Fibonacci-weighted inputs that would need depth >11 unbounded).
+  function packageMergeLengths(weights, maxLen) {
+    const n = weights.length;
+    if (n === 1) { const m = new Map(); m.set(weights[0].symbol, 1); return m; }
+    const base = weights.slice().sort((a, b) => a.weight - b.weight).map(w => ({ weight: w.weight, symbols: [w.symbol] }));
+    let prevLevel = base;
+    for (let level = 2; level <= maxLen; ++level) {
+      const packages = [];
+      for (let i = 0; i + 1 < prevLevel.length; i += 2) {
+        packages.push({ weight: prevLevel[i].weight + prevLevel[i + 1].weight, symbols: prevLevel[i].symbols.concat(prevLevel[i + 1].symbols) });
+      }
+      prevLevel = packages.concat(base).sort((a, b) => a.weight - b.weight);
+    }
+    const selected = prevLevel.slice(0, 2 * (n - 1));
+    const lengthCount = new Map();
+    for (const item of selected) for (const s of item.symbols) lengthCount.set(s, (lengthCount.get(s) || 0) + 1);
+    return lengthCount;
+  }
+
+  // Huffman encode table: mirrors buildHuffmanTable's canonical assignment
+  // (same rank/position bookkeeping) but records one {codeBits, nbBits} pair
+  // per symbol instead of a flat decode-lookup array.
+  function buildHuffmanEncodeTable(weights) {
+    const numSymbols = weights.length;
+    let weightTotal = 0;
+    for (let i = 0; i < numSymbols; ++i) if (weights[i] > 0) weightTotal += OpCodes.Shr32(OpCodes.Shl32(1, weights[i]), 1);
+    const maxBits = highBitPos(weightTotal);
+    const rankCount = new Array(maxBits + 1).fill(0);
+    for (let i = 0; i < numSymbols; ++i) rankCount[weights[i]]++;
+    const rankStart = new Array(maxBits + 2).fill(0);
+    { let next = 0; for (let w = 0; w <= maxBits; ++w) { rankStart[w] = next; next += rankCount[w]; } }
+    const symbolsByRank = new Array(numSymbols);
+    { const cursor = rankStart.slice(); for (let sym = 0; sym < numSymbols; ++sym) { const w = weights[sym]; symbolsByRank[cursor[w]++] = sym; } }
+    const codes = new Array(numSymbols);
+    let symbolIdx = rankCount[0], pos = 0;
+    for (let w = 1; w <= maxBits; ++w) {
+      const count = rankCount[w];
+      const length = OpCodes.Shl32(1, w - 1);
+      const nbBits = maxBits + 1 - w;
+      for (let s = 0; s < count; ++s) {
+        const sym = symbolsByRank[symbolIdx + s];
+        codes[sym] = { codeBits: pos / length, nbBits };
+        pos += length;
+      }
+      symbolIdx += count;
+    }
+    return { maxBits, codes };
+  }
+
+  // Builds a length-limited Huffman code for one block's literal bytes.
+  // Returns null when entropy coding isn't applicable (fewer than 2 distinct
+  // byte values - RLE/raw already optimal) or, defensively, if the resulting
+  // weights somehow fail the Kraft-completeness check (falls back to Raw
+  // rather than ever emit a non-conformant tree description).
+  function buildLiteralHuffman(literalBytes) {
+    const counts = new Array(256).fill(0);
+    for (let i = 0; i < literalBytes.length; ++i) counts[literalBytes[i]]++;
+    let maxSymbolValue = -1;
+    const symbolWeights = [];
+    for (let s = 0; s < 256; ++s) if (counts[s] > 0) { symbolWeights.push({ symbol: s, weight: counts[s] }); maxSymbolValue = s; }
+    if (symbolWeights.length < 2) return null;
+
+    const lengthMap = packageMergeLengths(symbolWeights, HUF_MAX_BITS);
+    let maxLenUsed = 0;
+    for (const w of symbolWeights) { const len = lengthMap.get(w.symbol); if (len > maxLenUsed) maxLenUsed = len; }
+
+    const outWeights = new Array(maxSymbolValue + 1).fill(0);
+    for (const w of symbolWeights) outWeights[w.symbol] = maxLenUsed + 1 - lengthMap.get(w.symbol);
+
+    let weightTotal = 0;
+    for (let s = 0; s <= maxSymbolValue; ++s) if (outWeights[s] > 0) weightTotal += OpCodes.Shr32(OpCodes.Shl32(1, outWeights[s]), 1);
+    if (weightTotal !== OpCodes.Shl32(1, maxLenUsed)) return null;
+
+    return { maxSymbolValue, weights: outWeights, encTable: buildHuffmanEncodeTable(outWeights) };
+  }
+
+  // Single-stream Huffman literal bitstream: symbols in reverse output order,
+  // appended directly (see LowBitWriter comment).
+  function encodeHuffmanStream(literalBytes, encTable) {
+    const writer = new LowBitWriter();
+    for (let i = literalBytes.length - 1; i >= 0; --i) {
+      const c = encTable.codes[literalBytes[i]];
+      writer.addBits(c.codeBits, c.nbBits);
+    }
+    writer.addBits(1, 1);
+    return writer.finish();
+  }
+
+  // RFC 8878 4.2.1.1 direct weight representation: Header_Byte = 127 +
+  // Number_of_Symbols, then each symbol's weight as a 4-bit nibble (high
+  // nibble first). Only legal when Number_of_Symbols <= 128.
+  function writeHuffmanTreeDescriptionDirect(weights) {
+    const numSymbols = weights.length;
+    const bytes = [OpCodes.AndN(127 + numSymbols, 0xFF)];
+    for (let i = 0; i < numSymbols; i += 2) {
+      const hi = weights[i];
+      const lo = (i + 1 < numSymbols) ? weights[i + 1] : 0;
+      bytes.push(OpCodes.Or32(OpCodes.Shl32(hi, 4), lo));
+    }
+    return bytes;
+  }
+
+  // Raw_Literals_Block / RLE_Literals_Block header (RFC 8878 3.1.1.3.1.1):
+  // picks the smallest Size_Format that can hold regenSize.
+  function buildRawOrRleLiteralsHeader(blockType, regenSize) {
+    if (regenSize <= 31) {
+      return [OpCodes.Or32(blockType, OpCodes.Shl32(regenSize, 3))];
+    } else if (regenSize <= 4095) {
+      const b0 = OpCodes.Or32(OpCodes.Or32(blockType, OpCodes.Shl32(1, 2)), OpCodes.Shl32(OpCodes.AndN(regenSize, 0xF), 4));
+      const b1 = OpCodes.AndN(Math.floor(regenSize / 16), 0xFF);
+      return [b0, b1];
+    }
+    const b0 = OpCodes.Or32(OpCodes.Or32(blockType, OpCodes.Shl32(3, 2)), OpCodes.Shl32(OpCodes.AndN(regenSize, 0xF), 4));
+    const b1 = OpCodes.AndN(Math.floor(regenSize / 16), 0xFF);
+    const b2 = OpCodes.AndN(Math.floor(regenSize / 4096), 0xFF);
+    return [b0, b1, b2];
+  }
+
+  // Builds the smallest legal Literals_Section for one block's literal bytes,
+  // choosing among RLE / single-stream Huffman-Compressed / Raw. Huffman-
+  // Compressed is only attempted when it's legal for this decoder's header
+  // grammar: single-stream mode's 3-byte header caps BOTH regenSize and
+  // compSize at 1023, and the direct tree-weight representation caps
+  // Number_of_Symbols (maxSymbolValue+1) at 128 - outside those bounds this
+  // falls back to Raw_Literals_Block, still leaving FSE-coded sequences to do
+  // the compression work for that block.
+  function buildLiteralsSection(literalBytes) {
+    const regenSize = literalBytes.length;
+
+    let rleCandidate = null;
+    if (regenSize > 1) {
+      let allSame = true;
+      for (let i = 1; i < regenSize; ++i) if (literalBytes[i] !== literalBytes[0]) { allSame = false; break; }
+      if (allSame) rleCandidate = buildRawOrRleLiteralsHeader(1, regenSize).concat([literalBytes[0]]);
+    }
+
+    const rawCandidate = buildRawOrRleLiteralsHeader(0, regenSize).concat(literalBytes);
+
+    let hufCandidate = null;
+    if (regenSize >= 2 && regenSize < 1024) {
+      const huf = buildLiteralHuffman(literalBytes);
+      if (huf && huf.maxSymbolValue <= 127) {
+        const treeDesc = writeHuffmanTreeDescriptionDirect(huf.weights);
+        const stream = encodeHuffmanStream(literalBytes, huf.encTable);
+        const compSize = treeDesc.length + stream.length;
+        if (compSize < 1024) {
+          const raw24 = 2 + regenSize * 16 + compSize * 16384; // blockType=2 (Compressed), Size_Format=0
+          const header = [OpCodes.AndN(raw24, 0xFF), OpCodes.AndN(Math.floor(raw24 / 256), 0xFF), OpCodes.AndN(Math.floor(raw24 / 65536), 0xFF)];
+          hufCandidate = header.concat(treeDesc).concat(stream);
+        }
+      }
+    }
+
+    let best = rawCandidate;
+    if (rleCandidate && rleCandidate.length < best.length) best = rleCandidate;
+    if (hufCandidate && hufCandidate.length < best.length) best = hufCandidate;
+    return best;
+  }
+
+  // ===== LZ77 MATCH FINDING =====
+
+  const MAX_MATCH_LEN = 100000;                          // stays under ML table's representable range
+  const LZ_HASH_BITS = 16;
+  const LZ_CHAIN_DEPTH = 64;
+  const LITERAL_RUN_CAP = MAX_BLOCK_SIZE - MAX_MATCH_LEN; // forces a literal-only token before a single
+                                                           // run could overflow a block's regen-size budget
+
+  // Hash-chain match finder (3-byte hash, matching Zstd's minimum match
+  // length), modeled after crush.js's HashTable but sized for whole-file
+  // (up to window-size) back-references rather than a fixed ring buffer,
+  // since Zstd's Single_Segment framing lets matches reach any earlier
+  // position in the same frame.
+  class Lz77Matcher {
+    constructor(data) {
+      this.data = data;
+      const hashSize = OpCodes.Shl32(1, LZ_HASH_BITS);
+      this.hashMask = hashSize - 1;
+      this.head = new Array(hashSize).fill(-1);
+      this.prev = new Array(data.length).fill(-1);
+    }
+    _hash(pos) {
+      const d = this.data;
+      const h = OpCodes.Xor32(OpCodes.Shl32(d[pos], 9), OpCodes.Xor32(OpCodes.Shl32(d[pos + 1], 5), d[pos + 2]));
+      return OpCodes.And32(h, this.hashMask);
+    }
+    insert(pos) {
+      if (pos + 2 >= this.data.length) return;
+      const h = this._hash(pos);
+      this.prev[pos] = this.head[h];
+      this.head[h] = pos;
+    }
+    findMatch(pos, maxLen) {
+      const d = this.data;
+      if (pos + 2 >= d.length) return null;
+      const h = this._hash(pos);
+      let candidate = this.head[h];
+      let bestLen = 0, bestOffset = 0, chain = 0;
+      while (candidate >= 0 && chain < LZ_CHAIN_DEPTH) {
+        let len = 0;
+        while (len < maxLen && d[candidate + len] === d[pos + len]) len++;
+        if (len > bestLen) {
+          bestLen = len; bestOffset = pos - candidate;
+          if (len >= maxLen) break;
+        }
+        candidate = this.prev[candidate];
+        chain++;
+      }
+      if (bestLen < 3) return null;
+      // Predefined OF table caps codes at 28 (OF_DEFAULT_NORM.length-1); reject
+      // matches that would need a larger code (defensive bound, far beyond any
+      // practical input size here).
+      if (highBitPos(bestOffset + 3) > OF_DEFAULT_NORM.length - 1) return null;
+      // Economic-viability check: a sequence costs a roughly-fixed overhead
+      // (three FSE state transitions plus the offset's own extra bits, all
+      // Predefined-Mode so there's no per-symbol table cost) regardless of
+      // match length, while literal bytes cost ~8 bits each. Reject matches
+      // whose length can't plausibly pay for their own encoding - otherwise
+      // greedy matching on data with only sparse, distant accidental repeats
+      // (e.g. a handful of 3-byte coincidences in otherwise-random bytes)
+      // spends more bits than it saves. Purely a selection heuristic: it can
+      // only make the matcher more conservative, never change how a chosen
+      // match is encoded or decoded.
+      const minProfitable = Math.max(3, Math.ceil((18 + highBitPos(bestOffset + 3) + 1) / 8));
+      if (bestLen < minProfitable) return null;
+      return { length: bestLen, offset: bestOffset };
+    }
+  }
+
+  // Produces a flat token list {literalStart, literalLength, matchLength,
+  // offset} spanning the whole input; matchLength===0 marks a literal-only
+  // token (no match found, or a forced cut once a run reaches
+  // LITERAL_RUN_CAP so no single token can ever overflow a block).
+  function tokenize(data) {
+    const tokens = [];
+    const n = data.length;
+    if (n === 0) return tokens;
+    const matcher = new Lz77Matcher(data);
+    let literalStart = 0, pos = 0;
+    while (pos < n) {
+      const remaining = n - pos;
+      const match = remaining >= 3 ? matcher.findMatch(pos, Math.min(MAX_MATCH_LEN, remaining)) : null;
+      if (match) {
+        tokens.push({ literalStart, literalLength: pos - literalStart, matchLength: match.length, offset: match.offset });
+        const end = pos + match.length;
+        for (let i = pos; i < end; ++i) matcher.insert(i);
+        pos = end;
+        literalStart = pos;
+      } else {
+        matcher.insert(pos);
+        pos++;
+        if (pos - literalStart >= LITERAL_RUN_CAP) {
+          tokens.push({ literalStart, literalLength: pos - literalStart, matchLength: 0, offset: 0 });
+          literalStart = pos;
+        }
+      }
+    }
+    if (pos > literalStart) tokens.push({ literalStart, literalLength: pos - literalStart, matchLength: 0, offset: 0 });
+    return tokens;
+  }
+
+  // Groups tokens into blocks no larger than MAX_BLOCK_SIZE regen bytes,
+  // never mixing literal-only tokens (matchLength===0, destined for an
+  // nbSeq=0 block) with real-match tokens in the same group - each token's
+  // own regen size is already bounded (LITERAL_RUN_CAP / MAX_MATCH_LEN), so
+  // grouping never needs to split a token mid-way.
+  function groupTokensIntoBlocks(tokens) {
+    const groups = [];
+    let cur = [], curSize = 0, curIsLiteralOnly = null;
+    for (const t of tokens) {
+      const isLiteralOnly = t.matchLength === 0;
+      const size = t.literalLength + t.matchLength;
+      if (cur.length > 0 && (curIsLiteralOnly !== isLiteralOnly || curSize + size > MAX_BLOCK_SIZE)) {
+        groups.push(cur); cur = []; curSize = 0;
+      }
+      cur.push(t); curSize += size; curIsLiteralOnly = isLiteralOnly;
+    }
+    if (cur.length > 0) groups.push(cur);
+    return groups;
+  }
+
+  // Builds the Compressed_Block PAYLOAD (Literals_Section + Sequences_Section,
+  // not including the 3-byte block header) for one group of tokens, using and
+  // mutating a WORKING COPY of the recent-offsets so the caller can discard it
+  // without side effects if Raw/RLE turns out smaller for this block.
+  function buildCompressedBlockCandidate(data, tokens, repWorking) {
+    const literalBytes = [];
+    const realSeqs = [];
+    for (const t of tokens) {
+      for (let i = 0; i < t.literalLength; ++i) literalBytes.push(data[t.literalStart + i]);
+      if (t.matchLength > 0) realSeqs.push(t);
+    }
+
+    const literalsSection = buildLiteralsSection(literalBytes);
+
+    if (realSeqs.length === 0) {
+      return literalsSection.concat([0]); // Sequences_Section header byte 0 = nbSeq 0
+    }
+
+    const seqs = new Array(realSeqs.length);
+    for (let i = 0; i < realSeqs.length; ++i) {
+      const t = realSeqs[i];
+      const ll = findLengthCode(LL_BASELINE, LL_EXTRABITS, t.literalLength);
+      const ml = findLengthCode(ML_BASELINE, ML_EXTRABITS, t.matchLength);
+      const of = resolveSequenceOffset(repWorking, t.offset, t.literalLength);
+      seqs[i] = {
+        llCode: ll.code, llExtraBits: ll.extraBits, llExtraValue: ll.extraValue,
+        mlCode: ml.code, mlExtraBits: ml.extraBits, mlExtraValue: ml.extraValue,
+        ofCode: of.ofCode, ofExtraBits: of.extraBits, ofExtraValue: of.extraValue
+      };
+    }
+
+    const nbSeq = seqs.length;
+    let nbSeqHeader;
+    if (nbSeq < 128) nbSeqHeader = [nbSeq];
+    else if (nbSeq <= 32511) nbSeqHeader = [128 + Math.floor(nbSeq / 256), OpCodes.AndN(nbSeq, 0xFF)];
+    else { const v = nbSeq - 32512; nbSeqHeader = [255, OpCodes.AndN(v, 0xFF), Math.floor(v / 256)]; }
+
+    const modesByte = 0; // Predefined_Mode for LL, OF and ML (RFC 8878 3.1.1.3.2.1.1)
+    const sequencesSection = nbSeqHeader.concat([modesByte]).concat(encodeSequencesFSE(seqs));
+
+    return literalsSection.concat(sequencesSection);
+  }
+
   // ===== ALGORITHM IMPLEMENTATION =====
 
   class ZstdCompression extends CompressionAlgorithm {
@@ -460,7 +1000,7 @@
 
       // Required metadata
       this.name = "Zstandard";
-      this.description = "Zstandard (Zstd), RFC 8878. Encodes standard-compliant frames using Raw/RLE blocks; decodes full frames produced by real Zstd encoders, including Huffman-coded literals (raw/RLE/compressed/treeless) and FSE-coded sequences (predefined/RLE/FSE-compressed/repeat distribution tables) with repeat-offset resolution.";
+      this.description = "Zstandard (Zstd), RFC 8878. Encoder performs genuine LZ77 compression: a hash-chain match finder produces sequences that are FSE-coded (Predefined_Mode distribution tables) with correct repeat-offset resolution, and literals are Huffman-coded (single-stream, direct tree-weight description) where the literals-section header grammar allows it; each block independently falls back to RLE or Raw when that would be smaller, or when Huffman/FSE isn't applicable (e.g. literal alphabets spanning byte values >=128, or literal counts >=1024, use Raw_Literals so FSE-coded sequences still carry the compression). Decoder reads full frames produced by real Zstd encoders, including Huffman-coded literals (raw/RLE/compressed/treeless) and FSE-coded sequences (predefined/RLE/FSE-compressed/repeat distribution tables) with repeat-offset resolution.";
       this.inventor = "Yann Collet";
       this.year = 2016;
       this.category = CategoryType.COMPRESSION;
@@ -1044,32 +1584,52 @@
       }
 
       // Split into blocks no larger than MAX_BLOCK_SIZE; only the final block
-      // sets Last_Block. Each block independently picks RLE (fully repetitive
-      // chunk) or raw.
-      let offset = 0;
-      while (offset < len) {
-        const chunkSize = Math.min(MAX_BLOCK_SIZE, len - offset);
-        const chunk = data.slice(offset, offset + chunkSize);
-        const isLast = (offset + chunkSize === len) ? 1 : 0;
-        const isRepetitive = this._isRepetitive(chunk);
+      // sets Last_Block. Each block independently picks the smallest of
+      // Raw_Block, RLE_Block or a genuine Compressed_Block (LZ77 sequences,
+      // FSE-coded via Predefined_Mode, with Huffman-coded literals where the
+      // literals-section header grammar allows it - see buildLiteralsSection).
+      // Recent-offsets (repOffsets) persist across blocks within the frame
+      // exactly like the decoder's `state.repOffsets`, and are only committed
+      // when a block is actually emitted as Compressed - a block that falls
+      // back to Raw/RLE leaves them untouched, since the decoder never
+      // applies sequence updates for those block types either.
+      const tokens = tokenize(data);
+      const groups = groupTokensIntoBlocks(tokens);
+      const repOffsets = [1, 4, 8];
 
-        if (isRepetitive && chunk.length > 1) {
-          // RLE block
-          const blockHeader = OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(chunk.length, 3), OpCodes.Shl32(BLOCK_TYPE_RLE, 1)), isLast);
-          result.push(OpCodes.AndN(blockHeader, 0xFF));
-          result.push(OpCodes.AndN(OpCodes.Shr32(blockHeader, 8), 0xFF));
-          result.push(OpCodes.AndN(OpCodes.Shr32(blockHeader, 16), 0xFF));
-          result.push(chunk[0]); // The repeated byte
-        } else {
-          // Raw block
-          const blockHeader = OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(chunk.length, 3), OpCodes.Shl32(BLOCK_TYPE_RAW, 1)), isLast);
-          result.push(OpCodes.AndN(blockHeader, 0xFF));
-          result.push(OpCodes.AndN(OpCodes.Shr32(blockHeader, 8), 0xFF));
-          result.push(OpCodes.AndN(OpCodes.Shr32(blockHeader, 16), 0xFF));
-          for (let _i = 0; _i < chunk.length; _i++) result.push(chunk[_i]);
+      let cursor = 0;
+      for (let gi = 0; gi < groups.length; ++gi) {
+        const groupTokens = groups[gi];
+        const isLast = (gi === groups.length - 1) ? 1 : 0;
+        let regenSize = 0;
+        for (const t of groupTokens) regenSize += t.literalLength + t.matchLength;
+        const rawBytes = data.slice(cursor, cursor + regenSize);
+        cursor += regenSize;
+
+        const repCandidate = repOffsets.slice();
+        const compressedPayload = buildCompressedBlockCandidate(data, groupTokens, repCandidate);
+
+        // Block_Size in the header means "regenerated size" for RLE but "payload
+        // byte count" for Raw/Compressed (RFC 8878 3.1.1.2) - track both fields
+        // per candidate rather than assuming they're the same.
+        const candidates = [
+          { type: BLOCK_TYPE_RAW, payload: rawBytes, headerSize: rawBytes.length },
+          { type: BLOCK_TYPE_COMPRESSED, payload: compressedPayload, headerSize: compressedPayload.length }
+        ];
+        if (this._isRepetitive(rawBytes) && rawBytes.length > 1) candidates.push({ type: BLOCK_TYPE_RLE, payload: [rawBytes[0]], headerSize: rawBytes.length });
+
+        let chosen = candidates[0];
+        for (let ci = 1; ci < candidates.length; ++ci) if (candidates[ci].payload.length < chosen.payload.length) chosen = candidates[ci];
+
+        if (chosen.type === BLOCK_TYPE_COMPRESSED) {
+          repOffsets[0] = repCandidate[0]; repOffsets[1] = repCandidate[1]; repOffsets[2] = repCandidate[2];
         }
 
-        offset += chunkSize;
+        const blockHeader = OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(chosen.headerSize, 3), OpCodes.Shl32(chosen.type, 1)), isLast);
+        result.push(OpCodes.AndN(blockHeader, 0xFF));
+        result.push(OpCodes.AndN(OpCodes.Shr32(blockHeader, 8), 0xFF));
+        result.push(OpCodes.AndN(OpCodes.Shr32(blockHeader, 16), 0xFF));
+        for (let _i = 0; _i < chosen.payload.length; ++_i) result.push(chosen.payload[_i]);
       }
 
       this.inputBuffer = [];
