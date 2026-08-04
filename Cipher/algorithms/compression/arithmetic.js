@@ -162,25 +162,45 @@
    */
 
     Result() {
-      if (this.inputBuffer.length === 0) {
-        return [];
-      }
-
       if (this.isInverse) {
+        // A compressed stream always carries at least the header, so an
+        // empty buffer here is not a valid compressed empty message.
+        if (this.inputBuffer.length === 0) return [];
         return this._decompress();
-      } else {
-        return this._compress();
       }
 
+      // Compressing empty input still emits the header (matches
+      // CompressionWorkbench, which never skips the container).
+      return this._compress();
     }
 
     _compress() {
-      // Create fresh encoder for this compression
-      const encoder = new ArithmeticEncoder();
-      const compressedBits = encoder.encode(this.inputBuffer);
+      const data = this.inputBuffer;
+      this.inputBuffer = [];
 
-      // Convert bits to bytes for output
-      const output = [];
+      // Static (two-pass) order-0 model: count exact symbol frequencies over
+      // the whole message first and transmit them in the header, capped at
+      // 65535 so each entry fits a 16-bit field. Both encoder and decoder
+      // then use this frozen table -- nothing is updated while coding.
+      const freq = new Array(256).fill(0);
+      for (let i = 0; i < data.length; i++) freq[data[i]]++;
+      const freqTable = freq.map(f => Math.min(f, 65535));
+
+      // Header: 4-byte LE original length, then 256 x 2-byte LE frequencies.
+      const output = OpCodes.Unpack32LE(OpCodes.ToUint32(data.length));
+      for (let i = 0; i < 256; i++) {
+        const fb = OpCodes.Unpack16LE(freqTable[i]);
+        output.push(fb[0], fb[1]);
+      }
+
+      if (data.length === 0) return output;
+
+      const { cumFreq, totalFreq } = buildCumulativeFrequencies(freqTable);
+
+      const encoder = new ArithmeticEncoder(cumFreq, totalFreq);
+      const compressedBits = encoder.encode(data);
+
+      // Convert bits to bytes for output (MSB first)
       for (let i = 0; i < compressedBits.length; i += 8) {
         let byte = 0;
         for (let j = 0; j < 8 && i + j < compressedBits.length; j++) {
@@ -191,44 +211,67 @@
         output.push(byte);
       }
 
-      // Clear input buffer
-      this.inputBuffer = [];
-
       return output;
 
     }
 
     _decompress() {
-      // Convert bytes to bits
+      const data = this.inputBuffer;
+      this.inputBuffer = [];
+
+      // Header: 4-byte LE original length.
+      const originalSize = OpCodes.Pack32LE(data[0], data[1], data[2], data[3]);
+      let offset = 4;
+
+      if (originalSize === 0) return [];
+
+      // Header: 256 x 2-byte LE frequency table.
+      const freqTable = new Array(256);
+      for (let i = 0; i < 256; i++) {
+        freqTable[i] = OpCodes.Pack16LE(data[offset], data[offset + 1]);
+        offset += 2;
+      }
+
+      const { cumFreq, totalFreq } = buildCumulativeFrequencies(freqTable);
+
+      // Convert the remaining bytes to bits.
       const bits = [];
-      for (let i = 0; i < this.inputBuffer.length; i++) {
+      for (let i = offset; i < data.length; i++) {
         for (let j = 7; j >= 0; j--) {
-          bits.push(OpCodes.GetBit(this.inputBuffer[i], j));
+          bits.push(OpCodes.GetBit(data[i], j));
         }
       }
 
       // Create fresh decoder for this decompression
-      const decoder = new ArithmeticDecoder();
-      const decompressedBytes = decoder.decode(bits);
-
-      // Clear input buffer
-      this.inputBuffer = [];
-
-      return decompressedBytes;
+      const decoder = new ArithmeticDecoder(cumFreq, totalFreq);
+      return decoder.decode(bits, originalSize);
 
     }
   }
 
   // ===== ARITHMETIC CODING IMPLEMENTATION =====
 
+  const EOF_SYMBOL = 256;
+  const NUM_SYMBOLS = 257; // 256 byte values + 1 EOF
+
+  // Builds the cumulative-frequency boundary table (length NUM_SYMBOLS + 1)
+  // from a static 256-entry frequency table. The EOF symbol is always given
+  // a hardcoded frequency of 1, appended after the real byte frequencies.
+  function buildCumulativeFrequencies(freqTable) {
+    const cumFreq = new Array(NUM_SYMBOLS + 1).fill(0);
+    for (let i = 0; i < 256; i++) cumFreq[i + 1] = cumFreq[i] + freqTable[i];
+    cumFreq[NUM_SYMBOLS] = cumFreq[256] + 1;
+    return { cumFreq, totalFreq: cumFreq[NUM_SYMBOLS] };
+  }
+
   class ArithmeticEncoder {
-    constructor() {
+    constructor(cumFreq, totalFreq) {
       this.low = 0;
       this.high = 0xFFFFFFFF;
       this.followBits = 0;
       this.bits = [];
-      this.frequencies = null;
-      this.totalFreq = 0;
+      this.cumFreq = cumFreq;
+      this.totalFreq = totalFreq;
       this.BITS = 32;
       this.QUARTER = 0x40000000;
       this.HALF = 0x80000000;
@@ -236,28 +279,17 @@
     }
 
     encode(data) {
-      if (data.length === 0) return [];
-
-      // Adaptive order-0 model: both encoder and decoder start from the
-      // same uniform table and update it identically after every symbol,
-      // so no frequency header needs to be transmitted.
-      this._resetModel();
-
-      // Reset encoder state
+      // Static order-0 model: the frequency table was already built once,
+      // over the whole message, by the caller -- nothing is updated here.
       this.low = 0;
       this.high = 0xFFFFFFFF;
       this.followBits = 0;
       this.bits = [];
 
-      // Encode each symbol, updating the shared model after each one
-      for (const byte of data) {
-        this._encodeSymbol(byte);
-        this._updateModel(byte);
-      }
+      for (const byte of data) this._encodeSymbol(byte);
 
       // Encode EOF symbol
-      this._encodeSymbol(256);
-      this._updateModel(256);
+      this._encodeSymbol(EOF_SYMBOL);
 
       // Flush remaining bits
       this._flush();
@@ -265,29 +297,14 @@
       return this.bits;
     }
 
-    _resetModel() {
-      this.frequencies = new Array(257).fill(1); // 256 bytes + EOF
-      this.totalFreq = 257;
-    }
-
-    _updateModel(symbol) {
-      this.frequencies[symbol]++;
-      this.totalFreq++;
-    }
-
     _encodeSymbol(symbol) {
-      // Calculate cumulative frequency ranges
-      let cumFreq = 0;
-      for (let i = 0; i < symbol; i++) {
-        cumFreq += this.frequencies[i];
-      }
-
-      const symbolFreq = this.frequencies[symbol];
+      const symLow = this.cumFreq[symbol];
+      const symHigh = this.cumFreq[symbol + 1];
       const range = this.high - this.low + 1;
 
       // Update bounds
-      this.high = this.low + Math.floor((range * (cumFreq + symbolFreq)) / this.totalFreq) - 1;
-      this.low = this.low + Math.floor((range * cumFreq) / this.totalFreq);
+      this.high = this.low + Math.floor((range * symHigh) / this.totalFreq) - 1;
+      this.low = this.low + Math.floor((range * symLow) / this.totalFreq);
 
       // Output bits and rescale
       while (true) {
@@ -329,12 +346,12 @@
   }
 
   class ArithmeticDecoder {
-    constructor() {
+    constructor(cumFreq, totalFreq) {
       this.low = 0;
       this.high = 0xFFFFFFFF;
       this.value = 0;
-      this.frequencies = null;
-      this.totalFreq = 0;
+      this.cumFreq = cumFreq;
+      this.totalFreq = totalFreq;
       this.BITS = 32;
       this.QUARTER = 0x40000000;
       this.HALF = 0x80000000;
@@ -343,14 +360,9 @@
       this.bitIndex = 0;
     }
 
-    decode(bits) {
-      if (bits.length === 0) return [];
-
-      // Same adaptive order-0 model as the encoder: identical uniform
-      // starting table, updated identically after every symbol so no
-      // frequency header needs to be transmitted.
-      this._resetModel();
-
+    decode(bits, originalSize) {
+      // Static order-0 model: the frequency table was already built once,
+      // from the header, by the caller -- nothing is updated here.
       this.low = 0;
       this.high = 0xFFFFFFFF;
       this.value = 0;
@@ -365,45 +377,29 @@
       }
 
       const symbols = [];
-      while (true) {
+      while (symbols.length < originalSize) {
         const symbol = this._decodeSymbol();
-        this._updateModel(symbol);
-        if (symbol === 256) break; // EOF
+        if (symbol === EOF_SYMBOL) break;
         symbols.push(symbol);
       }
 
       return symbols;
     }
 
-    _resetModel() {
-      this.frequencies = new Array(257).fill(1);
-      this.totalFreq = 257;
-    }
-
-    _updateModel(symbol) {
-      this.frequencies[symbol]++;
-      this.totalFreq++;
-    }
-
     _decodeSymbol() {
       const range = this.high - this.low + 1;
-      const scaled = Math.floor(((this.value - this.low + 1) * this.totalFreq - 1) / range);
+      const target = Math.floor(((this.value - this.low + 1) * this.totalFreq - 1) / range);
 
-      // Find the symbol whose cumulative frequency range covers `scaled`
-      let cumFreq = 0;
+      // Find the symbol whose cumulative frequency range covers `target`
       let symbol = 0;
-      for (symbol = 0; symbol < 257; symbol++) {
-        if (cumFreq + this.frequencies[symbol] > scaled) break;
-        cumFreq += this.frequencies[symbol];
-      }
+      while (symbol < NUM_SYMBOLS && this.cumFreq[symbol + 1] <= target) symbol++;
 
-      const symbolFreq = this.frequencies[symbol];
+      const symLow = this.cumFreq[symbol];
+      const symHigh = this.cumFreq[symbol + 1];
 
-      // Narrow [low, high] to this symbol's sub-interval -- this step was
-      // previously missing, which is why the decoder never tracked the
-      // encoder's interval and desynced after the very first symbol.
-      this.high = this.low + Math.floor((range * (cumFreq + symbolFreq)) / this.totalFreq) - 1;
-      this.low = this.low + Math.floor((range * cumFreq) / this.totalFreq);
+      // Narrow [low, high] to this symbol's sub-interval.
+      this.high = this.low + Math.floor((range * symHigh) / this.totalFreq) - 1;
+      this.low = this.low + Math.floor((range * symLow) / this.totalFreq);
 
       // Renormalize low/high/value together, consuming bits as needed
       while (true) {
