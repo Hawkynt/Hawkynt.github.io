@@ -3,25 +3,31 @@
  * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
  *
- * BriefLZ is a small and fast LZ77-based compression using gamma2 universal codes.
- * Created by Joergen Ibsen, it achieves good compression ratios with minimal code footprint.
+ * BriefLZ is a small and fast LZ77-based compression algorithm created by
+ * Joergen Ibsen. This implementation is a byte-for-byte port of the
+ * CompressionWorkbench (C#) clean-room BriefLZ building block, so it is
+ * NOT bit-compatible with the original Ibsen `blz` container format (which
+ * additionally wraps the stream in a checksummed header) - only round trips
+ * against this port (and CompressionWorkbench's own building block) are
+ * guaranteed.
  *
- * Format:
+ * Wire format:
  * - 4-byte little-endian header holding the original (uncompressed) length.
- *   The reference BriefLZ depack routine is only 61 LOC because it relies on
- *   the caller supplying the depacked size out-of-band; this implementation
- *   is self-contained (Feed/Result round trip with no side channel), so the
- *   length is stored as an explicit header instead - matching the convention
- *   used by nrv2d.js/nrv2e.js elsewhere in this repository.
- * - Bit stream with 16-bit tags (little-endian)
- * - Initial virtual state: tag=0x4000, bits_left=1 (first bit=0 for first literal)
- * - Gamma2-encoded match lengths (actual_length = gamma_value + 2)
- * - Gamma2-encoded match offsets (actual_offset = ((gamma_value-2) * 256) + byte + 1)
- * - Literal bytes for unmatched data
+ *   If that length is 0, the header is the entire output (no body follows).
+ * - A byte-oriented bit stream, MSB-first within each byte, with one tag
+ *   bit per token:
+ *   - 0: literal token - the next 8 bits (MSB-first) are a raw byte.
+ *   - 1: match token - followed by two Elias-gamma coded values: the match
+ *     length (encoded as length - MinMatch + 1, MinMatch = 3) and the match
+ *     offset (the raw back-reference distance, >= 1).
+ *   The final partial byte is zero-padded (MSB side) after the last token.
+ * - Matches are found with a hash chain over a 3-byte Knuth-style
+ *   multiplicative hash, resolved greedily (longest match at each
+ *   position, no lazy/optimal parsing).
  *
  * References:
  * - Original C implementation: https://github.com/jibsen/brieflz
- * - Decompression is 61 LOC in C (103 bytes in x86 machine code)
+ * - Elias gamma coding: https://en.wikipedia.org/wiki/Elias_gamma_coding
  */
 
 (function (root, factory) {
@@ -59,327 +65,176 @@
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           CompressionAlgorithm, IAlgorithmInstance, TestCase, LinkItem } = AlgorithmFramework;
 
-  // ===== GAMMA2 ENCODING/DECODING UTILITIES =====
+  // ===== ALGORITHM CONSTANTS =====
 
-  /**
-   * Gamma2 lookup table for fast decoding (same as BriefLZ reference)
-   * Format: [value, bits_consumed]
-   * Entry with bits_consumed=0 means need more bits (continue with bit-by-bit)
-   */
-  const GAMMA_LOOKUP = [
-    // 00xxxxxx = 2 (64 entries)
-    [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2],
-    [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2],
-    [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2],
-    [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2],
-    [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2],
-    [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2],
-    [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2],
-    [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2],
+  const MIN_MATCH = 3;
+  const MAX_MATCH = 2147483647 - MIN_MATCH; // gamma coding has no practical upper bound
+  const HASH_BITS = 16;
+  const HASH_SIZE = 65536; // 2^HASH_BITS
+  const MAX_CHAIN_STEPS = 128;
+  const MAX_WINDOW = 1048576; // 2^20
 
-    // 0100xxxx = 4 (16 entries)
-    [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4],
-    [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4],
+  // ===== BIT STREAM (byte-oriented, MSB-first) =====
 
-    // 010100xx = 8 (4 entries)
-    [8, 6], [8, 6], [8, 6], [8, 6],
+  class GammaBitWriter {
+    constructor() {
+      this.bytes = [];
+      this.current = 0;
+      this.bitCount = 0;
+    }
 
-    // 01010100 = 16, 01010101 = 16+, 01010110 = 17, 01010111 = 17+
-    [16, 8], [16, 0], [17, 8], [17, 0],
+    writeBit(bit) {
+      this.current = OpCodes.Or32(OpCodes.Shl32(this.current, 1), bit ? 1 : 0);
+      this.bitCount++;
 
-    // 010110xx = 9 (4 entries)
-    [9, 6], [9, 6], [9, 6], [9, 6],
+      if (this.bitCount === 8) {
+        this.bytes.push(OpCodes.And32(this.current, 0xFF));
+        this.current = 0;
+        this.bitCount = 0;
+      }
+    }
 
-    // 01011100 = 18, 01011101 = 18+, 01011110 = 19, 01011111 = 19+
-    [18, 8], [18, 0], [19, 8], [19, 0],
+    writeByteBits(value) {
+      // MSB-first: bit 7 down to bit 0
+      for (let i = 7; i >= 0; i--)
+        this.writeBit(OpCodes.And32(OpCodes.Shr32(value, i), 1));
+    }
 
-    // 0110xxxx = 5 (16 entries)
-    [5, 4], [5, 4], [5, 4], [5, 4], [5, 4], [5, 4], [5, 4], [5, 4],
-    [5, 4], [5, 4], [5, 4], [5, 4], [5, 4], [5, 4], [5, 4], [5, 4],
+    writeGamma(value) {
+      // Elias-gamma, MSB-first, value >= 1.
+      // bits = position of the highest set bit (floor(log2(value)))
+      let bits = 0;
+      let v = value;
+      while (v > 1) {
+        v = OpCodes.Shr32(v, 1);
+        bits++;
+      }
 
-    // 011100xx = 10 (4 entries)
-    [10, 6], [10, 6], [10, 6], [10, 6],
+      for (let i = 0; i < bits; i++)
+        this.writeBit(0);
 
-    // 01110100 = 20, 01110101 = 20+, 01110110 = 21, 01110111 = 21+
-    [20, 8], [20, 0], [21, 8], [21, 0],
+      for (let i = bits; i >= 0; i--)
+        this.writeBit(OpCodes.And32(OpCodes.Shr32(value, i), 1));
+    }
 
-    // 011110xx = 11 (4 entries)
-    [11, 6], [11, 6], [11, 6], [11, 6],
+    getBytes() {
+      if (this.bitCount > 0) {
+        const shift = 8 - this.bitCount;
+        this.bytes.push(OpCodes.And32(OpCodes.Shl32(this.current, shift), 0xFF));
+        this.current = 0;
+        this.bitCount = 0;
+      }
 
-    // 01111100 = 22, 01111101 = 22+, 01111110 = 23, 01111111 = 23+
-    [22, 8], [22, 0], [23, 8], [23, 0],
+      return this.bytes;
+    }
+  }
 
-    // 10xxxxxx = 3 (64 entries)
-    [3, 2], [3, 2], [3, 2], [3, 2], [3, 2], [3, 2], [3, 2], [3, 2],
-    [3, 2], [3, 2], [3, 2], [3, 2], [3, 2], [3, 2], [3, 2], [3, 2],
-    [3, 2], [3, 2], [3, 2], [3, 2], [3, 2], [3, 2], [3, 2], [3, 2],
-    [3, 2], [3, 2], [3, 2], [3, 2], [3, 2], [3, 2], [3, 2], [3, 2],
-    [3, 2], [3, 2], [3, 2], [3, 2], [3, 2], [3, 2], [3, 2], [3, 2],
-    [3, 2], [3, 2], [3, 2], [3, 2], [3, 2], [3, 2], [3, 2], [3, 2],
-    [3, 2], [3, 2], [3, 2], [3, 2], [3, 2], [3, 2], [3, 2], [3, 2],
-    [3, 2], [3, 2], [3, 2], [3, 2], [3, 2], [3, 2], [3, 2], [3, 2],
-
-    // 1100xxxx = 6 (16 entries)
-    [6, 4], [6, 4], [6, 4], [6, 4], [6, 4], [6, 4], [6, 4], [6, 4],
-    [6, 4], [6, 4], [6, 4], [6, 4], [6, 4], [6, 4], [6, 4], [6, 4],
-
-    // 110100xx = 12 (4 entries)
-    [12, 6], [12, 6], [12, 6], [12, 6],
-
-    // 11010100 = 24, 11010101 = 24+, 11010110 = 25, 11010111 = 25+
-    [24, 8], [24, 0], [25, 8], [25, 0],
-
-    // 110110xx = 13 (4 entries)
-    [13, 6], [13, 6], [13, 6], [13, 6],
-
-    // 11011100 = 26, 11011101 = 26+, 11011110 = 27, 11011111 = 27+
-    [26, 8], [26, 0], [27, 8], [27, 0],
-
-    // 1110xxxx = 7 (16 entries)
-    [7, 4], [7, 4], [7, 4], [7, 4], [7, 4], [7, 4], [7, 4], [7, 4],
-    [7, 4], [7, 4], [7, 4], [7, 4], [7, 4], [7, 4], [7, 4], [7, 4],
-
-    // 111100xx = 14 (4 entries)
-    [14, 6], [14, 6], [14, 6], [14, 6],
-
-    // 11110100 = 28, 11110101 = 28+, 11110110 = 29, 11110111 = 29+
-    [28, 8], [28, 0], [29, 8], [29, 0],
-
-    // 111110xx = 15 (4 entries)
-    [15, 6], [15, 6], [15, 6], [15, 6],
-
-    // 11111100 = 30, 11111101 = 30+, 11111110 = 31, 11111111 = 31+
-    [30, 8], [30, 0], [31, 8], [31, 0]
-  ];
-
-  // ===== BIT STREAM DECOMPRESSION =====
-
-  class BitStreamReader {
+  class GammaBitReader {
     constructor(data) {
       this.data = data;
       this.pos = 0;
-      // Initialize to one bit left in tag; that bit is zero (a literal)
-      this.tag = 0x4000;
-      this.bitsLeft = 1;
-    }
-
-    getBit() {
-      // Check if tag is empty (decrement happens FIRST in C code)
-      if (this.bitsLeft === 0) {
-        // Load next tag (little-endian 16-bit)
-        if (this.pos + 1 >= this.data.length) {
-          return 0; // Safety
-        }
-        this.tag = OpCodes.OrN(this.data[this.pos], OpCodes.Shl16(this.data[this.pos + 1], 8));
-        this.pos += 2;
-        this.bitsLeft = 16;
-      }
-
-      // Decrement bits left
-      this.bitsLeft--;
-
-      // Shift bit out of tag (MSB first) - check if bit 15 is set
-      // Bit 15 is set if value >= 0x8000 (32768)
-      const bit = (this.tag >= OpCodes.Shl16(1, 15)) ? 1 : 0;
-      this.tag = OpCodes.Shl16(this.tag, 1);
-
-      return bit;
-    }
-
-    getGamma() {
-      let result = 1;
-
-      // Try lookup table optimization if we have 8+ bits
-      if (this.bitsLeft >= 8) {
-        const top8 = OpCodes.Shr16(this.tag, 8);
-        const [value, shift] = GAMMA_LOOKUP[top8];
-
-        if (shift > 0) {
-          this.tag = OpCodes.Shl16(this.tag, shift);
-          this.bitsLeft -= shift;
-          return value;
-        }
-
-        // Shift consumed 8 bits from lookup but need more: the 8 consumed bits
-        // already encode the first 4 gamma value/continue pairs, so resume the
-        // bit-by-bit loop below from that partial value instead of restarting
-        // at 1 (restarting would silently drop the high bits of the result).
-        this.tag = OpCodes.Shl16(this.tag, 8);
-        this.bitsLeft -= 8;
-        result = value;
-      }
-
-      // Gamma2 decoding: read bits until terminating 0
-      do {
-        result = OpCodes.Shl32(result, 1) + this.getBit();
-      } while (this.getBit());
-
-      return result;
-    }
-
-    getByte() {
-      if (this.pos >= this.data.length) {
-        return 0;
-      }
-      return this.data[this.pos++];
-    }
-  }
-
-  // ===== BIT STREAM COMPRESSION =====
-
-  class BitStreamWriter {
-    constructor() {
-      this.output = [];
-      this.tag = 0;
+      this.current = 0;
       this.bitCount = 0;
-      this.tagPos = -1;
-      this.isFirstBit = true; // First bit is virtual (handled by decompressor init)
     }
 
-    putBit(bit) {
-      // Skip the virtual first bit (decompressor starts with it set to 0)
-      if (this.isFirstBit) {
-        this.isFirstBit = false;
-        if (bit === 0) {
-          return; // Don't output virtual first literal bit
-        }
-        // If first bit is 1, we need to output tags now
-      }
-
-      // Start new tag if needed
+    readBit() {
       if (this.bitCount === 0) {
-        this.tagPos = this.output.length;
-        this.output.push(0, 0); // Reserve space for 16-bit tag
-        this.tag = 0;
+        this.current = this.pos < this.data.length ? this.data[this.pos++] : 0;
+        this.bitCount = 8;
       }
 
-      // Add bit to tag (MSB first)
-      const bitValue = bit ? 1 : 0;
-      this.tag = OpCodes.Shl16(this.tag, 1) + bitValue; // OR equivalent for adding single bit
-      this.bitCount++;
-
-      // Flush tag if full
-      if (this.bitCount === 16) {
-        this.flushTag();
-      }
+      this.bitCount--;
+      return OpCodes.And32(OpCodes.Shr32(this.current, this.bitCount), 1);
     }
 
-    putGamma(value) {
-      // Encode value in gamma2 format
-      // Format: interleaved bits from value's binary (minus leading 1) with continue flags
-      // Decoder: result=1; do { result=(OpCodes.Shl32(result, 1))+bit } while(getBit())
+    readByteBits() {
+      let value = 0;
+      for (let i = 0; i < 8; i++)
+        value = OpCodes.Or32(OpCodes.Shl32(value, 1), this.readBit());
 
-      // Find bit length (position of MSB)
-      let bitLen = 0;
-      let v = value;
-      while (v > 0) {
-        bitLen++;
-        v = OpCodes.Shr32(v, 1);
-      }
-
-      // Output bits from MSB-1 down to LSB, each with continue flag
-      for (let i = bitLen - 2; i >= 0; i--) {
-        const bit = OpCodes.Shr32(value, i) - OpCodes.Shl32(OpCodes.Shr32(value, i + 1), 1); // Extract single bit
-        this.putBit(bit);
-
-        // Continue flag: 1 if more bits, 0 if last
-        this.putBit(i > 0 ? 1 : 0);
-      }
+      return value;
     }
 
-    putByte(byte) {
-      // Ensure byte is in 0-255 range
-      this.output.push(byte % 256);
-    }
+    readGamma() {
+      let zeros = 0;
+      while (this.readBit() === 0)
+        zeros++;
 
-    flushTag() {
-      if (this.bitCount > 0) {
-        // Pad remaining bits with zeros (shift left to fill 16 bits)
-        const shift = 16 - this.bitCount;
-        this.tag = OpCodes.Shl16(this.tag, shift);
+      let value = 1;
+      for (let i = 0; i < zeros; i++)
+        value = OpCodes.Or32(OpCodes.Shl32(value, 1), this.readBit());
 
-        // Write tag to reserved position (little-endian: low byte first)
-        this.output[this.tagPos] = this.tag % 256;           // Low byte
-        this.output[this.tagPos + 1] = OpCodes.Shr16(this.tag, 8); // High byte
-
-        this.bitCount = 0;
-        this.tag = 0;
-      }
-    }
-
-    getOutput() {
-      this.flushTag();
-      return this.output;
+      return value;
     }
   }
 
-  // ===== HASH CHAIN MATCH FINDER =====
+  // ===== HASH-CHAIN MATCH FINDER =====
 
   /**
-   * Hash-chain match finder: a 3-byte-hash head table plus a per-position
-   * "previous occurrence" chain, the standard structure for this LZ77
-   * family (see also crush.js in this repository). Replaces an O(window)
-   * per-position linear scan with an O(chain-depth) walk, and the walk is
-   * itself bounded by a max-depth limit so a degenerate chain (e.g. a
-   * long run of one repeated byte) cannot go quadratic. The walk also
-   * stops as soon as a match reaches the maximum encodable length, since
-   * no longer candidate can improve on that.
+   * 3-byte Knuth-style multiplicative hash of data[pos..pos+2], matching
+   * CompressionWorkbench's BriefLZ building block exactly: combine the
+   * three bytes into a 24-bit big-endian value (byte0 shifted up 16,
+   * byte1 shifted up 8, byte2 as-is, OR'd together), multiply unsigned
+   * 32-bit by 2654435761, then take the top HASH_BITS bits of the product
+   * (logical right shift by 32 - HASH_BITS).
    */
+  function hash3(data, pos) {
+    const triple = OpCodes.Or32(
+      OpCodes.Or32(OpCodes.Shl32(data[pos], 16), OpCodes.Shl32(data[pos + 1], 8)),
+      data[pos + 2]
+    );
+    const product = OpCodes.Mul32(triple, 2654435761);
+    return OpCodes.Shr32(product, 32 - HASH_BITS);
+  }
 
-  class HashChain {
-    constructor(windowSize) {
-      this.windowSize = windowSize;
-      this.hashSize = 65536; // 2^16 hash entries
-      this.head = new Int32Array(this.hashSize).fill(-1);
-      this.prev = new Int32Array(windowSize).fill(-1);
-    }
+  function insertHash(data, pos, hashHead, chain) {
+    const h = hash3(data, pos);
+    chain[pos] = hashHead[h];
+    hashHead[h] = pos;
+  }
 
-    _hash(data, pos) {
-      const h = OpCodes.Shl32(data[pos], 8) +
-                OpCodes.Shl32(data[pos + 1], 4) +
-                OpCodes.Shr32(data[pos + 2], 4);
-      return h % this.hashSize;
-    }
+  /**
+   * Hash-chain search: `chain` is indexed BY POSITION (one slot per input
+   * byte, not a fixed hash-size prev array). Walk stops after
+   * MAX_CHAIN_STEPS candidates, or once a `prev >= candidate` link is seen
+   * (defensive cycle guard), or once the maximum encodable length for this
+   * position is reached.
+   */
+  function findMatch(data, pos, hashHead, chain) {
+    const length = data.length;
 
-    insert(data, pos) {
-      if (pos + 2 >= data.length) return; // Not enough bytes to hash
-      const h = this._hash(data, pos);
-      const idx = pos % this.windowSize;
-      this.prev[idx] = this.head[h];
-      this.head[h] = pos;
-    }
+    if (pos + MIN_MATCH > length)
+      return { length: 0, offset: 0 };
 
-    find(data, pos, maxLen, maxChainDepth) {
-      if (maxLen < 1 || pos + 2 >= data.length) {
-        return { length: 0, distance: 0 };
+    const h = hash3(data, pos);
+    let candidate = hashHead[h];
+    const minPos = Math.max(0, pos - MAX_WINDOW);
+    const maxLen = Math.min(MAX_MATCH, length - pos);
+    let bestLen = 0;
+    let bestOff = 0;
+    let steps = MAX_CHAIN_STEPS;
+
+    while (candidate >= minPos && steps-- > 0) {
+      if (data[candidate + bestLen] === data[pos + bestLen] || bestLen === 0) {
+        let len = 0;
+        while (len < maxLen && data[candidate + len] === data[pos + len])
+          len++;
+
+        if (len > bestLen) {
+          bestLen = len;
+          bestOff = pos - candidate;
+          if (len >= maxLen)
+            break;
+        }
       }
 
-      const h = this._hash(data, pos);
-      const windowStart = Math.max(0, pos - this.windowSize);
-      let chainPos = this.head[h];
-      let chainDepth = 0;
-      let bestLength = 0;
-      let bestDistance = 0;
-
-      while (chainPos >= windowStart && chainPos < pos && chainDepth < maxChainDepth) {
-        let length = 0;
-        while (length < maxLen && data[chainPos + length] === data[pos + length]) {
-          length++;
-        }
-
-        if (length > bestLength) {
-          bestLength = length;
-          bestDistance = pos - chainPos;
-          if (length >= maxLen) break; // Cannot do better than the max encodable length
-        }
-
-        const idx = chainPos % this.windowSize;
-        chainPos = this.prev[idx];
-        chainDepth++;
-      }
-
-      return { length: bestLength, distance: bestDistance };
+      const prev = chain[candidate];
+      if (prev >= candidate)
+        break;
+      candidate = prev;
     }
+
+    return bestLen >= MIN_MATCH ? { length: bestLen, offset: bestOff } : { length: 0, offset: 0 };
   }
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -390,7 +245,7 @@
 
       // Required metadata
       this.name = "BriefLZ";
-      this.description = "Small fast Lempel-Ziv compression using gamma2 universal codes. Achieves good compression ratios with minimal code footprint (61 LOC decompression in C). Places itself between entropy-encoded and pure LZ77 approaches.";
+      this.description = "Byte-for-byte port of CompressionWorkbench's clean-room BriefLZ building block: byte-oriented LZ77 with a single tag bit per token (0=literal, 1=match) and Elias-gamma coded match length/offset, matched via a 3-byte multiplicative hash chain. Not bit-compatible with the original Ibsen blz container format (which adds a checksummed header) - only this port's own round trip and CompressionWorkbench's building block are guaranteed to interoperate.";
       this.inventor = "Joergen Ibsen";
       this.year = 2002;
       this.category = CategoryType.COMPRESSION;
@@ -399,17 +254,11 @@
       this.complexity = ComplexityType.INTERMEDIATE;
       this.country = CountryCode.DK; // Denmark
 
-      // Algorithm parameters
-      this.WINDOW_SIZE = 65536;      // 64KB sliding window
-      this.MIN_MATCH_LENGTH = 4;     // Minimum match length (gamma2 minimum is 2, so len=gamma+2=4)
-      this.MAX_MATCH_LENGTH = 255;   // Practical maximum
-      this.MAX_CHAIN_DEPTH = 1024;   // Bound on hash-chain walk depth per position
-
       // Documentation and references
       this.documentation = [
         new LinkItem("BriefLZ GitHub Repository", "https://github.com/jibsen/brieflz"),
         new LinkItem("BriefLZ Format Description", "https://www.ibsensoftware.com/"),
-        new LinkItem("Universal Codes - Wikipedia", "https://en.wikipedia.org/wiki/Universal_code_(data_compression)")
+        new LinkItem("Elias Gamma Coding - Wikipedia", "https://en.wikipedia.org/wiki/Elias_gamma_coding")
       ];
 
       this.references = [
@@ -418,62 +267,55 @@
         new LinkItem("Gamma Coding", "https://en.wikipedia.org/wiki/Elias_gamma_coding")
       ];
 
-      // Test vectors based on actual BriefLZ format
-      // Format: 4-byte LE original-length header, then first literal is free
-      // (virtual bit=0), then tags start.
+      // Test vectors: 4-byte LE original-length header, then a byte-oriented
+      // MSB-first bit stream of tag bits / literal bytes / gamma-coded
+      // match length+offset pairs. Expected outputs were generated by this
+      // implementation and cross-verified against the CompressionWorkbench
+      // (C#) BB_BriefLz building block byte-for-byte.
       this.tests = [
+        {
+          text: "Empty input",
+          uri: "https://github.com/jibsen/brieflz",
+          input: [],
+          expected: [0x00, 0x00, 0x00, 0x00]
+        },
         {
           text: "Single literal byte",
           uri: "https://github.com/jibsen/brieflz",
           input: OpCodes.AnsiToBytes("A"),
-          expected: [0x01, 0x00, 0x00, 0x00, 0x41] // header(len=1), A (first bit is virtual 0)
+          expected: [0x01, 0x00, 0x00, 0x00, 0x20, 0x80]
         },
         {
           text: "Two literal bytes",
           uri: "https://github.com/jibsen/brieflz",
           input: OpCodes.AnsiToBytes("AB"),
-          expected: [0x02, 0x00, 0x00, 0x00, 0x41, 0x00, 0x00, 0x42] // header, A, tag 0x0000, B
+          expected: [0x02, 0x00, 0x00, 0x00, 0x20, 0x90, 0x80]
         },
         {
           text: "Three literal bytes",
           uri: "https://github.com/jibsen/brieflz",
           input: OpCodes.AnsiToBytes("ABC"),
-          expected: [0x03, 0x00, 0x00, 0x00, 0x41, 0x00, 0x00, 0x42, 0x43] // header, A, tag (0,0 for B,C), B, C
+          expected: [0x03, 0x00, 0x00, 0x00, 0x20, 0x90, 0x88, 0x60]
         },
         {
-          text: "Four A's - minimum match not viable",
+          text: "256 repeated bytes - exercises long matches and multi-bit gamma codes",
           uri: "https://github.com/jibsen/brieflz",
-          input: OpCodes.AnsiToBytes("AAAA"),
-          // Match length must be >= 4 (gamma minimum 2, offset by 2), which requires
-          // 1 literal + a match of 3 remaining bytes - not viable, so all literals.
-          expected: [0x04, 0x00, 0x00, 0x00, 0x41, 0x00, 0x00, 0x41, 0x41, 0x41]
+          input: Array(256).fill(0x61)
         },
         {
-          text: "Five A's - viable match",
-          uri: "https://github.com/jibsen/brieflz",
-          input: OpCodes.AnsiToBytes("AAAAA"),
-          // A (literal at pos 0), then match at pos 1: length=4, distance=1
-          expected: [0x05, 0x00, 0x00, 0x00, 0x41, 0x00, 0x80, 0x00] // header, A, tag 0x8000 (LE), offset byte 0x00
-        },
-        {
-          // Regression: previously this decompressed to ~10x the input length because
-          // decompression had no reliable way to know the original size (see file header).
-          text: "Regression - repeated byte round-trips to exact length (was 10x oversized)",
-          uri: "https://github.com/jibsen/brieflz",
-          input: Array(128).fill(0x61)
-        },
-        {
-          // Regression: gamma2 codes needing more than 8 bits (e.g. long match lengths)
-          // were decoded from a lookup-table fast path that discarded the partial
-          // accumulated value and restarted from 1, corrupting every subsequent symbol.
-          text: "Regression - long repeated run exercises multi-byte gamma2 codes",
+          text: "1024 repeated bytes - exercises long matches and multi-bit gamma codes",
           uri: "https://github.com/jibsen/brieflz",
           input: Array(1024).fill(0x61)
         },
         {
-          text: "Regression - all 256 byte values",
+          text: "All 256 byte values 0..255",
           uri: "https://github.com/jibsen/brieflz",
           input: (function() { const a = []; for (let i = 0; i < 256; ++i) a.push(i); return a; })()
+        },
+        {
+          text: "Repeated phrase - exercises literals and matches together",
+          uri: "https://github.com/jibsen/brieflz",
+          input: OpCodes.AnsiToBytes("the quick brown fox jumps over the lazy dog. the quick brown fox jumps over the lazy dog. the quick brown fox jumps over the lazy dog. the quick brown fox jumps over the lazy dog. ")
         }
       ];
     }
@@ -526,15 +368,16 @@
    */
 
     Result() {
-      if (this.inputBuffer.length === 0) {
-        return [];
+      if (this.isInverse) {
+        if (this.inputBuffer.length === 0) {
+          return [];
+        }
+        return this._decompress();
       }
 
-      if (this.isInverse) {
-        return this._decompress();
-      } else {
-        return this._compress();
-      }
+      // Compression always emits at least the 4-byte length header, even
+      // for empty input (matching the CompressionWorkbench reference).
+      return this._compress();
     }
 
     _decompress() {
@@ -543,40 +386,33 @@
         return [];
       }
 
-      // Read the 4-byte little-endian original-length header (see file header comment).
+      // Read the 4-byte little-endian original-length header.
       const targetSize = OpCodes.Pack32LE(
         this.inputBuffer[0], this.inputBuffer[1], this.inputBuffer[2], this.inputBuffer[3]
       );
-      const bs = new BitStreamReader(this.inputBuffer.slice(4));
+
+      if (targetSize === 0) {
+        this.inputBuffer = [];
+        return [];
+      }
+
+      const reader = new GammaBitReader(this.inputBuffer.slice(4));
       const output = [];
 
       while (output.length < targetSize) {
-        const bit = bs.getBit();
+        const tag = reader.readBit();
 
-        if (bit === 1) {
-          // Match: read length and offset
-          const len = bs.getGamma() + 2;
-          const off = bs.getGamma() - 2;
-          const offset = OpCodes.Shl32(off, 8) + bs.getByte() + 1;
-
-          // Copy match
-          const startPos = output.length - offset;
-          if (startPos < 0) break; // Invalid offset
-
-          for (let i = 0; i < len; i++) {
-            output.push(output[startPos + i]);
-            if (output.length >= targetSize) break; // Stop at exact size
-          }
+        if (tag === 0) {
+          output.push(reader.readByteBits());
         } else {
-          // Literal
-          const byte = bs.getByte();
-          if (byte === undefined) break;
-          output.push(byte);
-        }
+          const len = reader.readGamma() + MIN_MATCH - 1;
+          const off = reader.readGamma();
 
-        // Stop if we reached target size
-        if (output.length >= targetSize) {
-          break;
+          if (off <= 0 || off > output.length)
+            throw new Error("BriefLZ: match offset " + off + " invalid at position " + output.length + ".");
+
+          for (let i = 0; i < len && output.length < targetSize; i++)
+            output.push(output[output.length - off]);
         }
       }
 
@@ -585,51 +421,46 @@
     }
 
     _compress() {
-      const originalLength = this.inputBuffer.length;
-      const writer = new BitStreamWriter();
-      const chain = new HashChain(this.algorithm.WINDOW_SIZE);
+      const src = this.inputBuffer;
+      const originalLength = src.length;
+      const header = OpCodes.Unpack32LE(originalLength);
+
+      if (originalLength === 0) {
+        this.inputBuffer = [];
+        return header;
+      }
+
+      const writer = new GammaBitWriter();
+      const hashHead = new Int32Array(HASH_SIZE).fill(-1);
+      const chain = new Int32Array(originalLength);
+
       let pos = 0;
+      while (pos < originalLength) {
+        const match = findMatch(src, pos, hashHead, chain);
 
-      while (pos < this.inputBuffer.length) {
-        // Find longest match via the hash chain (bounded walk, see HashChain above)
-        const match = this._findMatch(chain, pos);
+        if (match.length >= MIN_MATCH) {
+          writer.writeBit(1);
+          writer.writeGamma(match.length - MIN_MATCH + 1);
+          writer.writeGamma(match.offset);
 
-        if (match.length >= this.algorithm.MIN_MATCH_LENGTH) {
-          // Output match
-          writer.putBit(1);
-          writer.putGamma(match.length - 2);
+          const end = Math.min(pos + match.length, originalLength - 2);
+          for (let i = pos; i < end; i++)
+            insertHash(src, i, hashHead, chain);
 
-          const distMinus1 = match.distance - 1;
-          const off = OpCodes.Shr32(distMinus1, 8);
-          writer.putGamma(off + 2);
-          writer.putByte(distMinus1 % 256); // Low byte
-
-          // Register every position the match covers so future matches can
-          // start mid-run (required for repeated-byte / repeated-pattern data).
-          const matchEnd = pos + match.length;
-          for (; pos < matchEnd; pos++) {
-            chain.insert(this.inputBuffer, pos);
-          }
+          pos += match.length;
         } else {
-          // Output literal
-          writer.putBit(0);
-          writer.putByte(this.inputBuffer[pos]);
-          chain.insert(this.inputBuffer, pos);
+          writer.writeBit(0);
+          writer.writeByteBits(src[pos]);
+
+          if (pos < originalLength - 2)
+            insertHash(src, pos, hashHead, chain);
+
           pos++;
         }
       }
 
       this.inputBuffer = [];
-      return OpCodes.Unpack32LE(originalLength).concat(writer.getOutput());
-    }
-
-    _findMatch(chain, pos) {
-      const maxLen = Math.min(
-        this.algorithm.MAX_MATCH_LENGTH,
-        this.inputBuffer.length - pos
-      );
-
-      return chain.find(this.inputBuffer, pos, maxLen, this.algorithm.MAX_CHAIN_DEPTH);
+      return header.concat(writer.getBytes());
     }
   }
 
