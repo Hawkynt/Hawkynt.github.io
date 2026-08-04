@@ -1,40 +1,27 @@
 /*
- * Zopfli Compression Algorithm - Self-Contained JavaScript Implementation
- * Based on Google's Zopfli (2013)
+ * Zopfli Compression Algorithm Implementation (RFC 1951 DEFLATE, optimal parsing)
+ * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
  *
- * SELF-CONTAINED EDUCATIONAL IMPLEMENTATION
- * ==========================================
- * This is a complete from-scratch implementation based on the Zopfli algorithm
- * using LZ77 + Huffman with iterative optimization.
- *
- * WHAT IS ZOPFLI:
- * - Deflate optimizer that creates smaller gzip/zlib files (5-15% better than gzip)
- * - Very slow compression (100x slower than gzip) but standard-compatible decompression
- * - Uses iterative entropy modeling and optimal Huffman/LZ77 selection
- * - Created by Lode Vandevenne and Jyrki Alakuijala at Google (2013)
- *
- * THIS IMPLEMENTATION:
- * - Self-contained: NO external dependencies (implements own LZ77+Huffman)
- * - Educational quality focusing on algorithm understanding
- * - Simplified iterations (15 vs 15-1000 in official)
- * - Based on RFC 1951 (Deflate) specification and Zopfli reference implementation
- *
- * REFERENCE SOURCES:
- * - https://github.com/google/zopfli (Official C implementation)
- * - RFC 1951: DEFLATE Compressed Data Format Specification
- * - Reference Sources/javascript-source/node-modules/node/deps/zlib/
+ * Zopfli is an iterative-optimal DEFLATE encoder: it repeatedly re-parses the
+ * input with a shortest-path search driven by the previous iteration's Huffman
+ * code lengths, then splits the result into cost-minimizing blocks. The output
+ * is standard RFC 1951 DEFLATE - smaller than greedy/lazy DEFLATE on typical
+ * inputs, but decodable by any conforming DEFLATE reader (including zlib).
  */
 
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
+    // AMD
     define(['../../AlgorithmFramework', '../../OpCodes'], factory);
   } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
     module.exports = factory(
       require('../../AlgorithmFramework'),
       require('../../OpCodes')
     );
   } else {
+    // Browser/Worker global
     factory(root.AlgorithmFramework, root.OpCodes);
   }
 }((function() {
@@ -57,161 +44,921 @@
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           CompressionAlgorithm, IAlgorithmInstance, TestCase, LinkItem } = AlgorithmFramework;
 
-  // ===== HUFFMAN CODING (for compression) =====
+  // ===== RFC 1951 CONSTANTS (shared shape with algorithms/compression/deflate.js) =====
 
-  class HuffmanEncoder {
-    // Build Huffman tree from frequency table
-    static buildTree(frequencies) {
-      const nodes = [];
+  const LENGTH_CODES = [
+    {base: 3, extra: 0}, {base: 4, extra: 0}, {base: 5, extra: 0}, {base: 6, extra: 0},
+    {base: 7, extra: 0}, {base: 8, extra: 0}, {base: 9, extra: 0}, {base: 10, extra: 0},
+    {base: 11, extra: 1}, {base: 13, extra: 1}, {base: 15, extra: 1}, {base: 17, extra: 1},
+    {base: 19, extra: 2}, {base: 23, extra: 2}, {base: 27, extra: 2}, {base: 31, extra: 2},
+    {base: 35, extra: 3}, {base: 43, extra: 3}, {base: 51, extra: 3}, {base: 59, extra: 3},
+    {base: 67, extra: 4}, {base: 83, extra: 4}, {base: 99, extra: 4}, {base: 115, extra: 4},
+    {base: 131, extra: 5}, {base: 163, extra: 5}, {base: 195, extra: 5}, {base: 227, extra: 5},
+    {base: 258, extra: 0}
+  ];
 
-      // Create leaf nodes for each symbol with non-zero frequency
-      for (let i = 0; i < frequencies.length; i++) {
-        if (frequencies[i] > 0) {
-          nodes.push({ symbol: i, freq: frequencies[i], left: null, right: null });
-        }
-      }
+  const DISTANCE_CODES = [
+    {base: 1, extra: 0}, {base: 2, extra: 0}, {base: 3, extra: 0}, {base: 4, extra: 0},
+    {base: 5, extra: 1}, {base: 7, extra: 1}, {base: 9, extra: 2}, {base: 13, extra: 2},
+    {base: 17, extra: 3}, {base: 25, extra: 3}, {base: 33, extra: 4}, {base: 49, extra: 4},
+    {base: 65, extra: 5}, {base: 97, extra: 5}, {base: 129, extra: 6}, {base: 193, extra: 6},
+    {base: 257, extra: 7}, {base: 385, extra: 7}, {base: 513, extra: 8}, {base: 769, extra: 8},
+    {base: 1025, extra: 9}, {base: 1537, extra: 9}, {base: 2049, extra: 10}, {base: 3073, extra: 10},
+    {base: 4097, extra: 11}, {base: 6145, extra: 11}, {base: 8193, extra: 12}, {base: 12289, extra: 12},
+    {base: 16385, extra: 13}, {base: 24577, extra: 13}
+  ];
 
-      if (nodes.length === 0) return null;
-      if (nodes.length === 1) {
-        // Special case: only one symbol
-        return { symbol: nodes[0].symbol, freq: nodes[0].freq, left: null, right: null };
-      }
+  const FIXED_LITERAL_LENGTHS = (() => {
+    const lengths = new Array(288);
+    for (let i = 0; i <= 143; ++i) lengths[i] = 8;
+    for (let i = 144; i <= 255; ++i) lengths[i] = 9;
+    for (let i = 256; i <= 279; ++i) lengths[i] = 7;
+    for (let i = 280; i <= 287; ++i) lengths[i] = 8;
+    return lengths;
+  })();
 
-      // Build tree bottom-up
-      while (nodes.length > 1) {
-        // Sort by frequency (ascending)
-        nodes.sort((a, b) => a.freq - b.freq);
+  const FIXED_DISTANCE_LENGTHS = new Array(30).fill(5);
 
-        // Take two lowest frequency nodes
-        const left = nodes.shift();
-        const right = nodes.shift();
+  const LIT_LEN_ALPHABET_SIZE = 286;
+  const DIST_ALPHABET_SIZE = 30;
+  const CL_ALPHABET_SIZE = 19;
+  const MAX_CODE_BITS = 15;
+  const MAX_CL_CODE_BITS = 7;
+  const END_OF_BLOCK = 256;
+  const WINDOW_SIZE = 32768;
+  const MAX_MATCH = 258;
+  const MIN_MATCH = 3;
+  const MAX_ITERATIONS = 15;
+  const MAX_SPLIT_BLOCKS = 15;
+  const CODE_LENGTH_ORDER = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
 
-        // Create parent node
-        const parent = {
-          symbol: -1,
-          freq: left.freq + right.freq,
-          left: left,
-          right: right
-        };
+  // ===== BIT STREAM HELPERS (LSB-first, matches RFC 1951) =====
 
-        nodes.push(parent);
-      }
-
-      return nodes[0];
+  class BitStream {
+    constructor() {
+      this.bytes = [];
+      this.bitBuffer = 0;
+      this.bitCount = 0;
     }
 
-    // Generate codes from tree
-    static generateCodes(root) {
-      const codes = {};
+    writeBits(value, numBits) {
+      this.bitBuffer = OpCodes.ToUint32(OpCodes.OrN(this.bitBuffer, OpCodes.Shl32(value, this.bitCount)));
+      this.bitCount += numBits;
 
-      if (!root) return codes;
-
-      // Special case: single symbol
-      if (root.left === null && root.right === null) {
-        codes[root.symbol] = '0';
-        return codes;
+      while (this.bitCount >= 8) {
+        this.bytes.push(OpCodes.AndN(this.bitBuffer, 0xFF));
+        this.bitBuffer = OpCodes.Shr32(this.bitBuffer, 8);
+        this.bitCount -= 8;
       }
-
-      function traverse(node, code) {
-        if (node.left === null && node.right === null) {
-          codes[node.symbol] = code;
-          return;
-        }
-
-        if (node.left) traverse(node.left, code + '0');
-        if (node.right) traverse(node.right, code + '1');
-      }
-
-      traverse(root, '');
-      return codes;
     }
 
-    // Encode data using Huffman codes
-    static encode(data, codes) {
-      let result = '';
-      for (let i = 0; i < data.length; i++) {
-        result += codes[data[i]] || '';
+    // Write Huffman code in reversed bit order (RFC 1951 requirement)
+    writeHuffmanCode(code, length) {
+      let reversed = 0;
+      for (let i = 0; i < length; ++i) {
+        const bit = OpCodes.AndN(OpCodes.Shr16(code, i), 1);
+        reversed = OpCodes.AndN(OpCodes.OrN(reversed, OpCodes.Shl16(bit, length - 1 - i)), 0xFFFF);
       }
-      return result;
+      this.writeBits(reversed, length);
+    }
+
+    flush() {
+      if (this.bitCount > 0) {
+        this.bytes.push(OpCodes.AndN(this.bitBuffer, 0xFF));
+        this.bitBuffer = 0;
+        this.bitCount = 0;
+      }
+      return this.bytes;
     }
   }
 
-  // ===== LZ77 COMPRESSION =====
-
-  class LZ77Encoder {
-    constructor(windowSize = 32768, lookaheadSize = 258) {
-      this.windowSize = windowSize;
-      this.lookaheadSize = lookaheadSize;
-      this.minMatchLength = 3;
+  class BitReader {
+    constructor(bytes) {
+      this.bytes = bytes;
+      this.bytePos = 0;
+      this.bitBuffer = 0;
+      this.bitCount = 0;
     }
 
-    // Find longest match in sliding window
-    findLongestMatch(data, pos) {
-      const windowStart = Math.max(0, pos - this.windowSize);
-      let bestLength = 0;
-      let bestDistance = 0;
-
-      // Search window for matches
-      for (let i = windowStart; i < pos; i++) {
-        let length = 0;
-
-        // Count matching bytes
-        while (length < this.lookaheadSize &&
-               pos + length < data.length &&
-               data[i + length] === data[pos + length]) {
-          length++;
+    readBits(numBits) {
+      while (this.bitCount < numBits) {
+        if (this.bytePos >= this.bytes.length) {
+          throw new Error('Unexpected end of compressed data');
         }
+        this.bitBuffer = OpCodes.ToUint32(OpCodes.OrN(this.bitBuffer, OpCodes.Shl32(this.bytes[this.bytePos++], this.bitCount)));
+        this.bitCount += 8;
+      }
 
-        // Update best match
-        if (length >= this.minMatchLength && length > bestLength) {
-          bestLength = length;
-          bestDistance = pos - i;
+      const mask = OpCodes.ToUint32(OpCodes.Shl32(1, numBits) - 1);
+      const value = OpCodes.AndN(this.bitBuffer, mask);
+      this.bitBuffer = OpCodes.Shr32(this.bitBuffer, numBits);
+      this.bitCount -= numBits;
+      return value;
+    }
+
+    alignToByte() {
+      this.bitBuffer = 0;
+      this.bitCount = 0;
+    }
+
+    hasMore() {
+      return this.bytePos < this.bytes.length || this.bitCount > 0;
+    }
+  }
+
+  // ===== CANONICAL HUFFMAN TREE (RFC 1951 code assignment, used for both directions) =====
+
+  class HuffmanTree {
+    constructor() {
+      this.root = null;
+    }
+
+    static buildFromLengths(lengths) {
+      const tree = new HuffmanTree();
+      const maxLen = Math.max(...lengths.filter(l => l > 0));
+      if (maxLen === 0) return tree;
+
+      const blCount = new Array(maxLen + 1).fill(0);
+      for (const len of lengths) {
+        if (len > 0) blCount[len]++;
+      }
+
+      const nextCode = new Array(maxLen + 1);
+      let code = 0;
+      blCount[0] = 0;
+
+      for (let bits = 1; bits <= maxLen; ++bits) {
+        code = OpCodes.Shl16(code + blCount[bits - 1], 1);
+        nextCode[bits] = code;
+      }
+
+      const codes = new Array(lengths.length);
+      for (let n = 0; n < lengths.length; ++n) {
+        const len = lengths[n];
+        if (len !== 0) {
+          codes[n] = {code: nextCode[len], length: len};
+          nextCode[len]++;
         }
       }
 
-      return { length: bestLength, distance: bestDistance };
-    }
+      tree.root = {};
+      for (let symbol = 0; symbol < codes.length; ++symbol) {
+        if (!codes[symbol]) continue;
 
-    // Compress data using LZ77
-    compress(data) {
-      const tokens = [];
-      let pos = 0;
+        let node = tree.root;
+        const {code, length} = codes[symbol];
 
-      while (pos < data.length) {
-        const match = this.findLongestMatch(data, pos);
+        for (let i = length - 1; i >= 0; --i) {
+          const bit = OpCodes.AndN(OpCodes.Shr16(code, i), 1);
+          const key = bit ? 'one' : 'zero';
 
-        if (match.length > 0) {
-          // Emit (length, distance) pair
-          tokens.push({ type: 'match', length: match.length, distance: match.distance });
-          pos += match.length;
-        } else {
-          // Emit literal
-          tokens.push({ type: 'literal', value: data[pos] });
-          pos++;
-        }
-      }
-
-      return tokens;
-    }
-
-    // Decompress LZ77 tokens
-    static decompress(tokens) {
-      const output = [];
-
-      for (const token of tokens) {
-        if (token.type === 'literal') {
-          output.push(token.value);
-        } else if (token.type === 'match') {
-          // Copy from output buffer
-          const start = output.length - token.distance;
-          for (let i = 0; i < token.length; i++) {
-            output.push(output[start + i]);
+          if (i === 0) {
+            node[key] = {symbol: symbol};
+          } else {
+            if (!node[key]) node[key] = {};
+            node = node[key];
           }
         }
       }
 
-      return output;
+      tree.codes = codes;
+      return tree;
     }
+
+    decode(bitReader) {
+      let node = this.root;
+      if (!node) throw new Error('Invalid Huffman tree');
+
+      while (node.symbol === undefined) {
+        const bit = bitReader.readBits(1);
+        node = bit ? node.one : node.zero;
+        if (!node) throw new Error('Invalid Huffman code');
+      }
+
+      return node.symbol;
+    }
+
+    encode(symbol) {
+      if (!this.codes || !this.codes[symbol]) {
+        throw new Error(`No Huffman code for symbol ${symbol}`);
+      }
+      return this.codes[symbol];
+    }
+  }
+
+  // ===== HUFFMAN TREE FROM FREQUENCIES (binary min-heap construction, matching
+  // CompressionWorkbench's HuffmanTree.BuildFromFrequencies tie-break exactly) =====
+
+  function compareFrequencyNodes(a, b) {
+    if (a.frequency !== b.frequency) return a.frequency < b.frequency ? -1 : 1;
+    return a.symbol - b.symbol;
+  }
+
+  class FrequencyMinHeap {
+    constructor() {
+      this.items = [];
+    }
+
+    get count() {
+      return this.items.length;
+    }
+
+    insert(item) {
+      this.items.push(item);
+      this._siftUp(this.items.length - 1);
+    }
+
+    extractMin() {
+      const min = this.items[0];
+      const last = this.items.length - 1;
+      this.items[0] = this.items[last];
+      this.items.pop();
+      if (this.items.length > 0) this._siftDown(0);
+      return min;
+    }
+
+    _siftUp(index) {
+      while (index > 0) {
+        const parent = OpCodes.Shr32(index - 1, 1);
+        if (compareFrequencyNodes(this.items[index], this.items[parent]) < 0) {
+          const tmp = this.items[index];
+          this.items[index] = this.items[parent];
+          this.items[parent] = tmp;
+          index = parent;
+        } else break;
+      }
+    }
+
+    _siftDown(index) {
+      const count = this.items.length;
+      for (;;) {
+        const left = 2 * index + 1;
+        const right = 2 * index + 2;
+        let smallest = index;
+        if (left < count && compareFrequencyNodes(this.items[left], this.items[smallest]) < 0) smallest = left;
+        if (right < count && compareFrequencyNodes(this.items[right], this.items[smallest]) < 0) smallest = right;
+        if (smallest !== index) {
+          const tmp = this.items[index];
+          this.items[index] = this.items[smallest];
+          this.items[smallest] = tmp;
+          index = smallest;
+        } else break;
+      }
+    }
+  }
+
+  function buildHuffmanTreeFromFrequencies(frequencies) {
+    const heap = new FrequencyMinHeap();
+    for (let i = 0; i < frequencies.length; ++i)
+      if (frequencies[i] > 0) heap.insert({symbol: i, frequency: frequencies[i], left: null, right: null});
+
+    if (heap.count === 0) throw new Error('At least one symbol must have a non-zero frequency.');
+
+    if (heap.count === 1) {
+      const single = heap.extractMin();
+      return {symbol: -1, left: single, right: {symbol: -2, frequency: 0, left: null, right: null}, frequency: single.frequency};
+    }
+
+    while (heap.count > 1) {
+      const left = heap.extractMin();
+      const right = heap.extractMin();
+      heap.insert({symbol: -1, left: left, right: right, frequency: left.frequency + right.frequency});
+    }
+
+    return heap.extractMin();
+  }
+
+  function assignHuffmanLengths(node, depth, lengths) {
+    if (node.left === null && node.right === null) {
+      if (node.symbol >= 0 && node.symbol < lengths.length) lengths[node.symbol] = depth;
+      return;
+    }
+
+    if (node.left) assignHuffmanLengths(node.left, depth + 1, lengths);
+    if (node.right) assignHuffmanLengths(node.right, depth + 1, lengths);
+  }
+
+  function getHuffmanCodeLengths(root, maxSymbol) {
+    const lengths = new Array(maxSymbol).fill(0);
+    assignHuffmanLengths(root, 0, lengths);
+    return lengths;
+  }
+
+  function limitHuffmanCodeLengths(codeLengths, maxLength) {
+    const needsAdjustment = codeLengths.some(len => len > maxLength);
+    if (!needsAdjustment) return;
+
+    const symbols = [];
+    for (let i = 0; i < codeLengths.length; ++i)
+      if (codeLengths[i] > 0) symbols.push({symbol: i, length: codeLengths[i]});
+
+    for (let i = 0; i < symbols.length; ++i)
+      if (symbols[i].length > maxLength) symbols[i].length = maxLength;
+
+    const kraftMax = OpCodes.Shl32(1, maxLength);
+
+    for (;;) {
+      let kraftSum = 0;
+      for (let i = 0; i < symbols.length; ++i) kraftSum += OpCodes.Shl32(1, maxLength - symbols[i].length);
+      if (kraftSum <= kraftMax) break;
+
+      let shortestIdx = -1;
+      let shortestLen = Infinity;
+      for (let i = 0; i < symbols.length; ++i)
+        if (symbols[i].length < maxLength && symbols[i].length < shortestLen) {
+          shortestLen = symbols[i].length;
+          shortestIdx = i;
+        }
+
+      if (shortestIdx < 0) break;
+      ++symbols[shortestIdx].length;
+    }
+
+    for (;;) {
+      let kraftSum = 0;
+      for (let i = 0; i < symbols.length; ++i) kraftSum += OpCodes.Shl32(1, maxLength - symbols[i].length);
+      const excess = kraftMax - kraftSum;
+      if (excess <= 0) break;
+
+      let longestIdx = -1;
+      let longestLen = 0;
+      for (let i = 0; i < symbols.length; ++i)
+        if (symbols[i].length > longestLen) {
+          longestLen = symbols[i].length;
+          longestIdx = i;
+        }
+
+      if (longestIdx < 0 || longestLen <= 1) break;
+
+      const added = OpCodes.Shl32(1, maxLength - longestLen);
+      if (added <= excess) symbols[longestIdx].length = longestLen - 1;
+      else break;
+    }
+
+    codeLengths.fill(0);
+    for (let i = 0; i < symbols.length; ++i) codeLengths[symbols[i].symbol] = symbols[i].length;
+  }
+
+  function buildHuffmanCodeLengths(frequencies, alphabetSize, maxBits) {
+    const root = buildHuffmanTreeFromFrequencies(frequencies);
+    const lengths = getHuffmanCodeLengths(root, alphabetSize);
+    limitHuffmanCodeLengths(lengths, maxBits);
+    return lengths;
+  }
+
+  function runLengthEncodeCodeLengths(lengths) {
+    const result = [];
+    let i = 0;
+
+    while (i < lengths.length) {
+      const value = lengths[i];
+
+      if (value === 0) {
+        let zeroCount = 1;
+        while (i + zeroCount < lengths.length && lengths[i + zeroCount] === 0) ++zeroCount;
+
+        let count = zeroCount;
+        while (count > 0) {
+          if (count >= 11) {
+            const run = Math.min(count, 138);
+            result.push([18, 7, run - 11]);
+            count -= run;
+          } else if (count >= 3) {
+            result.push([17, 3, count - 3]);
+            count = 0;
+          } else {
+            result.push([0, 0, 0]);
+            --count;
+          }
+        }
+
+        i += zeroCount;
+      } else {
+        result.push([value, 0, 0]);
+        ++i;
+
+        let repeatCount = 0;
+        while (i + repeatCount < lengths.length && lengths[i + repeatCount] === value) ++repeatCount;
+
+        let count = repeatCount;
+        while (count >= 3) {
+          const run = Math.min(count, 6);
+          result.push([16, 2, run - 3]);
+          count -= run;
+        }
+        while (count > 0) {
+          result.push([value, 0, 0]);
+          --count;
+        }
+
+        i += repeatCount;
+      }
+    }
+
+    return result;
+  }
+
+  function getLengthCode(length) {
+    for (let i = 0; i < LENGTH_CODES.length; ++i) {
+      const info = LENGTH_CODES[i];
+      const maxLen = i < LENGTH_CODES.length - 1 ? LENGTH_CODES[i + 1].base - 1 : info.base;
+      if (length <= maxLen) return 257 + i;
+    }
+    return 285;
+  }
+
+  function getDistanceCode(distance) {
+    for (let i = 0; i < DISTANCE_CODES.length; ++i) {
+      const info = DISTANCE_CODES[i];
+      const maxDist = i < DISTANCE_CODES.length - 1 ?
+        DISTANCE_CODES[i + 1].base - 1 : OpCodes.ToUint32(info.base + OpCodes.Shl32(1, info.extra) - 1);
+      if (distance <= maxDist) return i;
+    }
+    return 29;
+  }
+
+  // ===== ZOPFLI HASH CHAIN (returns every achievable match length at each
+  // position, matching CompressionWorkbench's ZopfliHashChain.FindAllMatches) =====
+
+  class ZopfliHashChain {
+    constructor(windowSize) {
+      this.windowSize = windowSize;
+      this.hashBits = 15;
+      this.hashSize = OpCodes.Shl32(1, this.hashBits);
+      this.hashMask = this.hashSize - 1;
+      this.head = new Int32Array(this.hashSize).fill(-1);
+      this.prev = new Int32Array(windowSize);
+    }
+
+    _hash(data, pos) {
+      const h = OpCodes.XorN(OpCodes.XorN(OpCodes.Shl32(data[pos], 10), OpCodes.Shl32(data[pos + 1], 5)), data[pos + 2]);
+      return OpCodes.AndN(h, this.hashMask);
+    }
+
+    findAllMatches(data, position, maxDistance, maxLength) {
+      const result = [];
+      if (position + 2 >= data.length) return result;
+
+      const hash = this._hash(data, position);
+      let candidate = this.head[hash];
+      const windowStart = Math.max(0, position - maxDistance);
+      const chainDepth = this._computeChainDepth(data, position);
+      let chainCount = 0;
+
+      const effectiveMaxLen = Math.min(maxLength, data.length - position);
+      const bestDistByLen = new Array(effectiveMaxLen + 1).fill(-1);
+      const mask = this.windowSize - 1;
+
+      while (candidate >= windowStart && chainCount < chainDepth) {
+        const distance = position - candidate;
+        const limit = Math.min(effectiveMaxLen, data.length - candidate);
+
+        let length = 0;
+        while (length < limit && data[candidate + length] === data[position + length]) ++length;
+
+        if (length >= MIN_MATCH)
+          for (let l = MIN_MATCH; l <= length; ++l)
+            if (bestDistByLen[l] < 0 || distance < bestDistByLen[l]) bestDistByLen[l] = distance;
+
+        candidate = this.prev[OpCodes.AndN(candidate, mask)];
+        if (candidate <= windowStart) break;
+        ++chainCount;
+      }
+
+      this.prev[OpCodes.AndN(position, mask)] = this.head[hash];
+      this.head[hash] = position;
+
+      for (let l = MIN_MATCH; l <= effectiveMaxLen; ++l)
+        if (bestDistByLen[l] >= 0) result.push({distance: bestDistByLen[l], length: l});
+
+      return result;
+    }
+
+    _computeChainDepth(data, position) {
+      const windowLen = Math.min(64, data.length - position);
+      if (windowLen <= 0) return 512;
+
+      const seen = new Array(256).fill(false);
+      let unique = 0;
+      for (let i = 0; i < windowLen; ++i) {
+        const dataByte = data[position + i];
+        if (seen[dataByte]) continue;
+        seen[dataByte] = true;
+        ++unique;
+      }
+
+      const diversity = unique / windowLen;
+      if (diversity < 0.1) return 2048;
+      if (diversity > 0.6) return 128;
+      return 512;
+    }
+  }
+
+  // ===== OPTIMAL PARSER (forward-DP shortest path over the current Huffman cost model) =====
+
+  function getLitLenCost(symbol, litLenLengths, unseenPenalty) {
+    return (symbol < litLenLengths.length && litLenLengths[symbol] > 0) ? litLenLengths[symbol] : unseenPenalty;
+  }
+
+  function getMatchCost(length, distance, litLenLengths, distLengths, unseenPenalty) {
+    const lengthCode = getLengthCode(length);
+    const lengthIdx = lengthCode - 257;
+
+    let cost = 0;
+    cost += (lengthCode < litLenLengths.length && litLenLengths[lengthCode] > 0) ? litLenLengths[lengthCode] : unseenPenalty;
+    cost += LENGTH_CODES[lengthIdx].extra;
+
+    const distCode = getDistanceCode(distance);
+    cost += (distCode < distLengths.length && distLengths[distCode] > 0) ? distLengths[distCode] : unseenPenalty;
+    cost += DISTANCE_CODES[distCode].extra;
+
+    return cost;
+  }
+
+  function optimalParse(data, hashChain, litLenLengths, distLengths) {
+    if (data.length === 0) return [];
+
+    const length = data.length;
+    const dpCost = new Float64Array(length + 1).fill(Number.MAX_VALUE);
+    const dpLength = new Uint16Array(length + 1);
+    const dpDistance = new Uint16Array(length + 1);
+    dpCost[0] = 0;
+
+    const UNSEEN_PENALTY = 15.0;
+
+    for (let i = 0; i < length; ++i) {
+      if (dpCost[i] >= Number.MAX_VALUE) continue;
+
+      const litCost = getLitLenCost(data[i], litLenLengths, UNSEEN_PENALTY);
+      const newLitCost = dpCost[i] + litCost;
+      if (newLitCost < dpCost[i + 1]) {
+        dpCost[i + 1] = newLitCost;
+        dpLength[i + 1] = 1;
+        dpDistance[i + 1] = 0;
+      }
+
+      const matches = hashChain.findAllMatches(data, i, WINDOW_SIZE, MAX_MATCH);
+      for (const match of matches) {
+        const dest = i + match.length;
+        if (dest > length) continue;
+
+        const matchCost = getMatchCost(match.length, match.distance, litLenLengths, distLengths, UNSEEN_PENALTY);
+        const newCost = dpCost[i] + matchCost;
+        if (!(newCost < dpCost[dest])) continue;
+
+        dpCost[dest] = newCost;
+        dpLength[dest] = match.length;
+        dpDistance[dest] = match.distance;
+      }
+    }
+
+    const symbols = [];
+    let pos = length;
+    while (pos > 0) {
+      const len = dpLength[pos];
+      const dist = dpDistance[pos];
+      if (dist === 0) {
+        symbols.push({isLiteral: true, literal: data[pos - 1]});
+        pos -= 1;
+      } else {
+        symbols.push({isLiteral: false, length: len, distance: dist});
+        pos -= len;
+      }
+    }
+
+    symbols.reverse();
+    return symbols;
+  }
+
+  // ===== BLOCK SPLITTER (DP over candidate cut points minimizing estimated bit cost) =====
+
+  function estimateBlockBits(symbols) {
+    if (symbols.length === 0) return 0;
+
+    const litLenFreqs = new Array(LIT_LEN_ALPHABET_SIZE).fill(0);
+    const distFreqs = new Array(DIST_ALPHABET_SIZE).fill(0);
+    for (const sym of symbols) {
+      if (sym.isLiteral) ++litLenFreqs[sym.literal];
+      else {
+        ++litLenFreqs[getLengthCode(sym.length)];
+        ++distFreqs[getDistanceCode(sym.distance)];
+      }
+    }
+    litLenFreqs[END_OF_BLOCK] = 1;
+    if (!distFreqs.some(f => f > 0)) distFreqs[0] = 1;
+
+    const litLenLengths = buildHuffmanCodeLengths(litLenFreqs, LIT_LEN_ALPHABET_SIZE, MAX_CODE_BITS);
+    const distLengths = buildHuffmanCodeLengths(distFreqs, DIST_ALPHABET_SIZE, MAX_CODE_BITS);
+
+    let bits = 3 + 5 + 5 + 4;
+
+    let hlit = litLenLengths.length;
+    while (hlit > 257 && litLenLengths[hlit - 1] === 0) --hlit;
+    let hdist = distLengths.length;
+    while (hdist > 1 && distLengths[hdist - 1] === 0) --hdist;
+
+    bits += (hlit + hdist) * 3.0;
+
+    for (const sym of symbols) {
+      if (sym.isLiteral) bits += litLenLengths[sym.literal];
+      else {
+        const lengthCode = getLengthCode(sym.length);
+        bits += litLenLengths[lengthCode];
+        bits += LENGTH_CODES[lengthCode - 257].extra;
+        const distCode = getDistanceCode(sym.distance);
+        bits += distLengths[distCode];
+        bits += DISTANCE_CODES[distCode].extra;
+      }
+    }
+
+    bits += litLenLengths[END_OF_BLOCK];
+    return bits;
+  }
+
+  function splitBlocks(symbols, maxBlocks) {
+    if (symbols.length < 1024 || maxBlocks <= 1) return [{start: 0, end: symbols.length}];
+
+    const interval = Math.max(Math.floor(symbols.length / (maxBlocks * 3)), 128);
+    const candidates = [0];
+    for (let i = interval; i < symbols.length; i += interval) candidates.push(i);
+    candidates.push(symbols.length);
+
+    const n = candidates.length;
+    const cost = [];
+    for (let i = 0; i < n; ++i) {
+      cost.push(new Array(n).fill(0));
+      for (let j = i + 1; j < n; ++j) cost[i][j] = estimateBlockBits(symbols.slice(candidates[i], candidates[j]));
+    }
+
+    const dp = new Array(n).fill(Number.MAX_VALUE);
+    const prev = new Array(n).fill(0);
+    dp[0] = 0;
+
+    for (let j = 1; j < n; ++j)
+      for (let i = 0; i < j; ++i) {
+        if (dp[i] >= Number.MAX_VALUE) continue;
+        const total = dp[i] + cost[i][j];
+        if (!(total < dp[j])) continue;
+        dp[j] = total;
+        prev[j] = i;
+      }
+
+    const splitPoints = [];
+    let idx = n - 1;
+    while (idx > 0) {
+      splitPoints.push(idx);
+      idx = prev[idx];
+    }
+    splitPoints.push(0);
+    splitPoints.reverse();
+
+    while (splitPoints.length - 1 > maxBlocks) {
+      let bestMergeCost = Number.MAX_VALUE;
+      let bestMergeIdx = 1;
+
+      for (let i = 1; i < splitPoints.length - 1; ++i) {
+        const a = splitPoints[i - 1];
+        const b = splitPoints[i];
+        const c = splitPoints[i + 1];
+        const delta = cost[a][c] - (cost[a][b] + cost[b][c]);
+        if (!(delta < bestMergeCost)) continue;
+        bestMergeCost = delta;
+        bestMergeIdx = i;
+      }
+
+      splitPoints.splice(bestMergeIdx, 1);
+    }
+
+    const result = [];
+    for (let i = 0; i < splitPoints.length - 1; ++i)
+      result.push({start: candidates[splitPoints[i]], end: candidates[splitPoints[i + 1]]});
+
+    return result;
+  }
+
+  // ===== ITERATIVE OPTIMAL PARSE + BLOCK SPLIT ORCHESTRATOR (ZopfliDeflate.CompressOptimal) =====
+
+  function computeSymbolHash(symbols) {
+    let hash = 0n;
+    for (const sym of symbols) {
+      const litLen = sym.isLiteral ? sym.literal : sym.length;
+      const distance = sym.isLiteral ? 0 : sym.distance;
+      hash = BigInt.asIntN(64, hash * 31n + BigInt(litLen));
+      hash = BigInt.asIntN(64, hash * 31n + BigInt(distance));
+    }
+    return hash;
+  }
+
+  function compressOptimal(data) {
+    if (data.length === 0)
+      return [{symbols: [], litLenLengths: FIXED_LITERAL_LENGTHS, distLengths: FIXED_DISTANCE_LENGTHS}];
+
+    let litLenLengths = FIXED_LITERAL_LENGTHS;
+    let distLengths = FIXED_DISTANCE_LENGTHS;
+    let bestSymbols = [];
+    let prevHash = 0n;
+
+    for (let iteration = 0; iteration < MAX_ITERATIONS; ++iteration) {
+      const hashChain = new ZopfliHashChain(WINDOW_SIZE);
+      const symbols = optimalParse(data, hashChain, litLenLengths, distLengths);
+      bestSymbols = symbols;
+
+      const litLenFreqs = new Array(LIT_LEN_ALPHABET_SIZE).fill(0);
+      const distFreqs = new Array(DIST_ALPHABET_SIZE).fill(0);
+      for (const sym of symbols) {
+        if (sym.isLiteral) ++litLenFreqs[sym.literal];
+        else {
+          ++litLenFreqs[getLengthCode(sym.length)];
+          ++distFreqs[getDistanceCode(sym.distance)];
+        }
+      }
+      litLenFreqs[END_OF_BLOCK] = 1;
+      if (!distFreqs.some(f => f > 0)) distFreqs[0] = 1;
+
+      litLenLengths = buildHuffmanCodeLengths(litLenFreqs, LIT_LEN_ALPHABET_SIZE, MAX_CODE_BITS);
+      if (litLenLengths.length < 288) {
+        const padded = new Array(288).fill(0);
+        for (let i = 0; i < litLenLengths.length; ++i) padded[i] = litLenLengths[i];
+        litLenLengths = padded;
+      }
+      distLengths = buildHuffmanCodeLengths(distFreqs, DIST_ALPHABET_SIZE, MAX_CODE_BITS);
+
+      const currentHash = computeSymbolHash(symbols);
+      if (currentHash === prevHash && iteration > 0) break;
+      prevHash = currentHash;
+    }
+
+    const blocks = splitBlocks(bestSymbols, MAX_SPLIT_BLOCKS);
+    const result = [];
+
+    for (const {start, end} of blocks) {
+      const blockSymbols = bestSymbols.slice(start, end);
+
+      const blockLitLenFreqs = new Array(LIT_LEN_ALPHABET_SIZE).fill(0);
+      const blockDistFreqs = new Array(DIST_ALPHABET_SIZE).fill(0);
+      for (const sym of blockSymbols) {
+        if (sym.isLiteral) ++blockLitLenFreqs[sym.literal];
+        else {
+          ++blockLitLenFreqs[getLengthCode(sym.length)];
+          ++blockDistFreqs[getDistanceCode(sym.distance)];
+        }
+      }
+      blockLitLenFreqs[END_OF_BLOCK] = 1;
+      if (!blockDistFreqs.some(f => f > 0)) blockDistFreqs[0] = 1;
+
+      const blockLitLenLengths = buildHuffmanCodeLengths(blockLitLenFreqs, LIT_LEN_ALPHABET_SIZE, MAX_CODE_BITS);
+      const blockDistLengths = buildHuffmanCodeLengths(blockDistFreqs, DIST_ALPHABET_SIZE, MAX_CODE_BITS);
+
+      result.push({symbols: blockSymbols, litLenLengths: blockLitLenLengths, distLengths: blockDistLengths});
+    }
+
+    return result;
+  }
+
+  // ===== BLOCK EMISSION (uncompressed/static/dynamic selection by exact bit cost,
+  // matching DeflateCompressor.EmitOptimalBlocks) =====
+
+  function estimateStaticSize(tokens) {
+    let bits = 3;
+    for (const token of tokens) {
+      if (token.isLiteral) bits += FIXED_LITERAL_LENGTHS[token.literal];
+      else {
+        const lengthCode = getLengthCode(token.length);
+        bits += FIXED_LITERAL_LENGTHS[lengthCode];
+        bits += LENGTH_CODES[lengthCode - 257].extra;
+        const distCode = getDistanceCode(token.distance);
+        bits += FIXED_DISTANCE_LENGTHS[distCode];
+        bits += DISTANCE_CODES[distCode].extra;
+      }
+    }
+    bits += FIXED_LITERAL_LENGTHS[END_OF_BLOCK];
+    return bits;
+  }
+
+  function estimateDynamicSize(litLenFreqs, distFreqs, tokens) {
+    const litLenLengths = buildHuffmanCodeLengths(litLenFreqs, LIT_LEN_ALPHABET_SIZE, MAX_CODE_BITS);
+    if (!distFreqs.some(f => f > 0)) distFreqs[0] = 1;
+    const distLengths = buildHuffmanCodeLengths(distFreqs, DIST_ALPHABET_SIZE, MAX_CODE_BITS);
+
+    let bits = 3 + 5 + 5 + 4;
+
+    let hlit = litLenLengths.length;
+    while (hlit > 257 && litLenLengths[hlit - 1] === 0) --hlit;
+    let hdist = distLengths.length;
+    while (hdist > 1 && distLengths[hdist - 1] === 0) --hdist;
+
+    const combined = new Array(hlit + hdist);
+    for (let i = 0; i < hlit; ++i) combined[i] = litLenLengths[i];
+    for (let i = 0; i < hdist; ++i) combined[hlit + i] = distLengths[i];
+    const rle = runLengthEncodeCodeLengths(combined);
+
+    const clFreqs = new Array(CL_ALPHABET_SIZE).fill(0);
+    for (const [symbol] of rle) ++clFreqs[symbol];
+    if (!clFreqs.some(f => f > 0)) clFreqs[0] = 1;
+    const clLengths = buildHuffmanCodeLengths(clFreqs, CL_ALPHABET_SIZE, MAX_CL_CODE_BITS);
+
+    let hclen = CL_ALPHABET_SIZE;
+    while (hclen > 4 && clLengths[CODE_LENGTH_ORDER[hclen - 1]] === 0) --hclen;
+    bits += hclen * 3;
+
+    for (const [symbol, extraBits] of rle) bits += clLengths[symbol] + extraBits;
+
+    for (const token of tokens) {
+      if (token.isLiteral) bits += litLenLengths[token.literal];
+      else {
+        const lengthCode = getLengthCode(token.length);
+        bits += litLenLengths[lengthCode];
+        bits += LENGTH_CODES[lengthCode - 257].extra;
+        const distCode = getDistanceCode(token.distance);
+        bits += distLengths[distCode];
+        bits += DISTANCE_CODES[distCode].extra;
+      }
+    }
+    bits += litLenLengths[END_OF_BLOCK];
+    return bits;
+  }
+
+  function writeTokens(stream, tokens, literalTree, distanceTree) {
+    for (const token of tokens) {
+      if (token.isLiteral) {
+        const {code, length} = literalTree.encode(token.literal);
+        stream.writeHuffmanCode(code, length);
+      } else {
+        const lengthCode = getLengthCode(token.length);
+        const lengthInfo = LENGTH_CODES[lengthCode - 257];
+        const {code: lenCode, length: lenCodeLen} = literalTree.encode(lengthCode);
+        stream.writeHuffmanCode(lenCode, lenCodeLen);
+        if (lengthInfo.extra > 0) stream.writeBits(token.length - lengthInfo.base, lengthInfo.extra);
+
+        const distCode = getDistanceCode(token.distance);
+        const distInfo = DISTANCE_CODES[distCode];
+        const {code: distC, length: distCodeLen} = distanceTree.encode(distCode);
+        stream.writeHuffmanCode(distC, distCodeLen);
+        if (distInfo.extra > 0) stream.writeBits(token.distance - distInfo.base, distInfo.extra);
+      }
+    }
+  }
+
+  function emitStaticHuffmanBlock(stream, tokens, isFinal) {
+    const literalTree = HuffmanTree.buildFromLengths(FIXED_LITERAL_LENGTHS);
+    const distanceTree = HuffmanTree.buildFromLengths(FIXED_DISTANCE_LENGTHS);
+
+    stream.writeBits(isFinal ? 1 : 0, 1);
+    stream.writeBits(1, 2); // BTYPE = 01 (static Huffman)
+
+    writeTokens(stream, tokens, literalTree, distanceTree);
+
+    const {code, length} = literalTree.encode(END_OF_BLOCK);
+    stream.writeHuffmanCode(code, length);
+  }
+
+  function emitDynamicHuffmanBlock(stream, litLenFreqs, distFreqs, tokens, isFinal) {
+    if (!distFreqs.some(f => f > 0)) distFreqs[0] = 1;
+
+    const litLenLengths = buildHuffmanCodeLengths(litLenFreqs, LIT_LEN_ALPHABET_SIZE, MAX_CODE_BITS);
+    const distLengths = buildHuffmanCodeLengths(distFreqs, DIST_ALPHABET_SIZE, MAX_CODE_BITS);
+
+    let hlit = litLenLengths.length;
+    while (hlit > 257 && litLenLengths[hlit - 1] === 0) --hlit;
+    let hdist = distLengths.length;
+    while (hdist > 1 && distLengths[hdist - 1] === 0) --hdist;
+
+    const combined = new Array(hlit + hdist);
+    for (let i = 0; i < hlit; ++i) combined[i] = litLenLengths[i];
+    for (let i = 0; i < hdist; ++i) combined[hlit + i] = distLengths[i];
+    const rleSymbols = runLengthEncodeCodeLengths(combined);
+
+    const clFreqs = new Array(CL_ALPHABET_SIZE).fill(0);
+    for (const [symbol] of rleSymbols) ++clFreqs[symbol];
+    if (!clFreqs.some(f => f > 0)) clFreqs[0] = 1;
+    const clLengths = buildHuffmanCodeLengths(clFreqs, CL_ALPHABET_SIZE, MAX_CL_CODE_BITS);
+
+    let hclen = CL_ALPHABET_SIZE;
+    while (hclen > 4 && clLengths[CODE_LENGTH_ORDER[hclen - 1]] === 0) --hclen;
+
+    const clTree = HuffmanTree.buildFromLengths(clLengths);
+
+    stream.writeBits(isFinal ? 1 : 0, 1);
+    stream.writeBits(2, 2); // BTYPE = 10 (dynamic Huffman)
+    stream.writeBits(hlit - 257, 5);
+    stream.writeBits(hdist - 1, 5);
+    stream.writeBits(hclen - 4, 4);
+
+    for (let i = 0; i < hclen; ++i) stream.writeBits(clLengths[CODE_LENGTH_ORDER[i]], 3);
+
+    for (const [symbol, extraBits, extraValue] of rleSymbols) {
+      const {code, length} = clTree.encode(symbol);
+      stream.writeHuffmanCode(code, length);
+      if (extraBits > 0) stream.writeBits(extraValue, extraBits);
+    }
+
+    const literalTree = HuffmanTree.buildFromLengths(litLenLengths.slice(0, hlit));
+    const distanceTree = HuffmanTree.buildFromLengths(distLengths.slice(0, hdist));
+
+    writeTokens(stream, tokens, literalTree, distanceTree);
+
+    const {code, length} = literalTree.encode(END_OF_BLOCK);
+    stream.writeHuffmanCode(code, length);
   }
 
   // ===== ZOPFLI COMPRESSION ALGORITHM =====
@@ -220,8 +967,9 @@
     constructor() {
       super();
 
+      // Required metadata
       this.name = "Zopfli";
-      this.description = "Advanced Deflate optimizer developed by Google in 2013. Self-contained JavaScript implementation using iterative LZ77+Huffman optimization. Produces highly compressed files (5-15% smaller than gzip) at the cost of very slow compression. This educational implementation demonstrates the core Zopfli algorithm without external dependencies.";
+      this.description = "Iterative-optimal DEFLATE encoder from Google (2013). Repeatedly re-parses the input using a shortest-path search over the previous iteration's Huffman code lengths, then splits the result into cost-minimizing blocks. Output is standard RFC 1951 DEFLATE, decodable by any conforming reader.";
       this.inventor = "Lode Vandevenne, Jyrki Alakuijala (Google)";
       this.year = 2013;
       this.category = CategoryType.COMPRESSION;
@@ -230,11 +978,7 @@
       this.complexity = ComplexityType.EXPERT;
       this.country = CountryCode.US;
 
-      this.compressionRatio = "Typically 5-15% better than gzip (educational implementation: ~10-30% for repetitive data)";
-      this.compressionSpeed = "Very slow (100x slower than gzip) - optimized for maximum compression";
-      this.decompressionSpeed = "Fast (standard LZ77+Huffman decompression)";
-      this.implementation = "Self-contained educational JavaScript (no external dependencies)";
-
+      // Documentation and references
       this.documentation = [
         new LinkItem("Zopfli Announcement (2013)", "https://opensource.googleblog.com/2013/02/compress-data-more-densely-with-zopfli.html"),
         new LinkItem("RFC 1951 - Deflate Format", "https://datatracker.ietf.org/doc/html/rfc1951"),
@@ -245,73 +989,29 @@
         new LinkItem("Official Google Zopfli Repository (C reference implementation)", "https://github.com/google/zopfli")
       ];
 
-      this.notes = [
-        "SELF-CONTAINED IMPLEMENTATION - No external dependencies",
-        "PURE JAVASCRIPT - Complete LZ77 + Huffman implementation from scratch",
-        "",
-        "ALGORITHM DETAILS:",
-        "  - LZ77 sliding window compression (32KB window)",
-        "  - Huffman encoding for optimal bit representation",
-        "  - Iterative optimization (15 iterations for better compression)",
-        "  - Block-based processing for large data",
-        "",
-        "ZOPFLI OPTIMIZATIONS:",
-        "  - Multiple encoding iterations to find better LZ77 matches",
-        "  - Frequency-based Huffman tree optimization",
-        "  - Greedy vs optimal match selection",
-        "",
-        "WHEN TO USE ZOPFLI:",
-        "  ✓ Static assets (CSS, JS) for web servers",
-        "  ✓ Software distribution packages",
-        "  ✓ Any scenario where compression time doesn't matter",
-        "  ✗ NOT for real-time compression",
-        "  ✗ NOT for frequently-changing content",
-        "",
-        "EDUCATIONAL VS PRODUCTION:",
-        "  - This implementation: ~300 lines, 15 iterations, educational quality",
-        "  - Official Zopfli: ~8,000 lines C, 15-1000 iterations, production quality",
-        "  - Official achieves 5-15% better compression through advanced optimization",
-        "",
-        "BASED ON:",
-        "  - RFC 1951 (DEFLATE Compressed Data Format)",
-        "  - Google Zopfli reference implementation (github.com/google/zopfli)",
-        "  - Reference Sources: node/deps/zlib"
-      ];
-
-      // Test vectors
+      // Test vectors - Round-trip compression tests (Zopfli output varies with
+      // iteration/block-splitting heuristics, so exact bytes aren't pinned here)
       this.tests = [
-        {
-          text: "Zopfli - Empty input",
-          uri: "https://github.com/google/zopfli",
-          input: [],
-          expected: []
-        },
-        {
-          text: "Zopfli - Single byte literal",
-          uri: "https://github.com/google/zopfli/tree/master/test",
-          input: OpCodes.AnsiToBytes("A"),
-          expected: [0, 65] // Type 0 (literal) + byte 65 ('A')
-        },
-        {
-          text: "Zopfli - Repeated data with LZ77 match",
-          uri: "https://github.com/google/zopfli",
-          input: OpCodes.AnsiToBytes("AAAAAAAAAA"),
-          expected: [0, 65, 1, 9, 1, 0] // Literal 'A' + match (length=9, dist=1)
-        },
-        {
-          text: "Zopfli Round-trip - Simple text",
-          uri: "https://github.com/google/zopfli/tree/master/test",
-          input: OpCodes.AnsiToBytes("Hello, World!")
-          // No expected - round-trip only test (format may vary)
-        }
+        new TestCase(
+          OpCodes.AnsiToBytes("hello"),
+          [],
+          "Zopfli RFC 1951 round-trip - hello",
+          "https://datatracker.ietf.org/doc/html/rfc1951"
+        ),
+        new TestCase(
+          OpCodes.AnsiToBytes("AAAA"),
+          [],
+          "Zopfli RFC 1951 round-trip - AAAA",
+          "https://datatracker.ietf.org/doc/html/rfc1951"
+        ),
+        new TestCase(
+          OpCodes.AnsiToBytes("ABCABCABC"),
+          [],
+          "Zopfli RFC 1951 round-trip - ABCABCABC",
+          "https://datatracker.ietf.org/doc/html/rfc1951"
+        )
       ];
     }
-
-    /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
-   */
 
     CreateInstance(isInverse = false) {
       return new ZopfliInstance(this, isInverse);
@@ -319,187 +1019,171 @@
   }
 
   /**
- * Zopfli cipher instance implementing Feed/Result pattern
- * @class
- * @extends {IBlockCipherInstance}
- */
-
-  class ZopfliInstance extends IAlgorithmInstance {
-    /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
-   * @param {boolean} [isInverse=false] - Decryption mode flag
+   * Zopfli cipher instance implementing Feed/Result pattern
+   * @class
+   * @extends {IAlgorithmInstance}
    */
-
+  class ZopfliInstance extends IAlgorithmInstance {
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
       this.inputBuffer = [];
-
-      // Zopfli parameters
-      this.numIterations = 15; // Official Zopfli default
-      this.windowSize = 32768; // 32KB sliding window
-      this.lookaheadSize = 258; // Maximum match length
     }
-
-    /**
-   * Feed data to cipher for processing
-   * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
-   */
 
     Feed(data) {
       if (!data || data.length === 0) return;
       this.inputBuffer.push(...data);
     }
 
-    /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
-   */
-
     Result() {
-      if (this.inputBuffer.length === 0) {
-        this.inputBuffer = [];
-        return [];
-      }
+      // Like DEFLATE, an empty input is not a no-op for compression: RFC 1951
+      // still requires a minimal final block. Decompression of a genuinely
+      // empty buffer has nothing to read and legitimately yields [].
+      if (this.isInverse && this.inputBuffer.length === 0) return [];
 
-      try {
-        let result;
+      const result = this.isInverse ?
+        this._decompress(this.inputBuffer) :
+        this._compress(this.inputBuffer);
 
-        if (this.isInverse) {
-          // Decompression
-          result = this.decompress(this.inputBuffer);
-        } else {
-          // Compression
-          result = this.compress(this.inputBuffer);
-        }
-
-        this.inputBuffer = [];
-        return result;
-      } catch (error) {
-        this.inputBuffer = [];
-        throw new Error(`Zopfli ${this.isInverse ? 'decompression' : 'compression'} failed: ${error.message}`);
-      }
-    }
-
-    compress(data) {
-      // Initialize LZ77 encoder
-      const lz77 = new LZ77Encoder(this.windowSize, this.lookaheadSize);
-
-      // Phase 1: LZ77 compression (with multiple iterations for Zopfli optimization)
-      let bestTokens = lz77.compress(data);
-      let bestSize = this.estimateCompressedSize(bestTokens);
-
-      // Zopfli-style iterative optimization
-      for (let iteration = 1; iteration < this.numIterations; iteration++) {
-        const tokens = lz77.compress(data);
-        const size = this.estimateCompressedSize(tokens);
-
-        if (size < bestSize) {
-          bestTokens = tokens;
-          bestSize = size;
-        }
-      }
-
-      // Phase 2: Huffman encoding
-      const frequencies = this.calculateFrequencies(bestTokens);
-      const tree = HuffmanEncoder.buildTree(frequencies);
-      const codes = HuffmanEncoder.generateCodes(tree);
-
-      // Phase 3: Encode tokens using Huffman codes
-      const encoded = this.encodeTokens(bestTokens, codes);
-
-      return encoded;
-    }
-
-    decompress(data) {
-      // Decode Huffman-encoded data back to tokens
-      const tokens = this.decodeData(data);
-
-      // Decompress LZ77 tokens
-      const result = LZ77Encoder.decompress(tokens);
-
+      this.inputBuffer = [];
       return result;
     }
 
-    // Calculate frequencies for Huffman encoding
-    calculateFrequencies(tokens) {
-      const freq = new Array(286).fill(0); // 256 literals + 30 length codes
+    // ===== COMPRESSION =====
 
-      for (const token of tokens) {
-        if (token.type === 'literal') {
-          freq[token.value]++;
-        } else if (token.type === 'match') {
-          // Use simplified length encoding
-          const lengthCode = Math.min(285, 257 + Math.floor(token.length / 3));
-          freq[lengthCode]++;
+    _compress(data) {
+      const stream = new BitStream();
+      const blocks = compressOptimal(data);
+
+      for (let i = 0; i < blocks.length; ++i) {
+        const {symbols} = blocks[i];
+        const isLastBlock = i === blocks.length - 1;
+
+        const tokens = symbols.map(sym => sym.isLiteral ?
+          {isLiteral: true, literal: sym.literal} :
+          {isLiteral: false, distance: sym.distance, length: sym.length});
+
+        const litLenFreqs = new Array(LIT_LEN_ALPHABET_SIZE).fill(0);
+        const distFreqs = new Array(DIST_ALPHABET_SIZE).fill(0);
+        for (const sym of symbols) {
+          if (sym.isLiteral) ++litLenFreqs[sym.literal];
+          else {
+            ++litLenFreqs[getLengthCode(sym.length)];
+            ++distFreqs[getDistanceCode(sym.distance)];
+          }
         }
+        litLenFreqs[END_OF_BLOCK] = 1;
+
+        const staticSize = estimateStaticSize(tokens);
+        const dynamicSize = estimateDynamicSize(litLenFreqs.slice(), distFreqs.slice(), tokens);
+
+        if (staticSize <= dynamicSize) emitStaticHuffmanBlock(stream, tokens, isLastBlock);
+        else emitDynamicHuffmanBlock(stream, litLenFreqs, distFreqs, tokens, isLastBlock);
       }
 
-      return freq;
+      return stream.flush();
     }
 
-    // Estimate compressed size (for iterative optimization)
-    estimateCompressedSize(tokens) {
-      let size = 0;
+    // ===== DECOMPRESSION (standard RFC 1951 reader) =====
 
-      for (const token of tokens) {
-        if (token.type === 'literal') {
-          size += 8; // Literal takes ~8 bits
-        } else if (token.type === 'match') {
-          size += 12; // Match takes ~12 bits (length + distance)
-        }
-      }
-
-      return size;
-    }
-
-    // Encode tokens using Huffman codes
-    encodeTokens(tokens, codes) {
+    _decompress(data) {
+      const reader = new BitReader(data);
       const output = [];
 
-      // Simple encoding: store token type and data
-      for (const token of tokens) {
-        if (token.type === 'literal') {
-          output.push(0); // Type: literal
-          output.push(token.value);
-        } else if (token.type === 'match') {
-          output.push(1); // Type: match
-          output.push(token.length);
-          const [low, high] = OpCodes.Unpack16LE(token.distance);
-          output.push(low);
-          output.push(high);
+      while (reader.hasMore()) {
+        const bfinal = reader.readBits(1);
+        const btype = reader.readBits(2);
+
+        if (btype === 0) {
+          reader.alignToByte();
+          const len = reader.readBits(16);
+          const nlen = reader.readBits(16);
+
+          if (OpCodes.XorN(len, nlen) !== 0xFFFF) {
+            throw new Error('Invalid uncompressed block length');
+          }
+
+          for (let i = 0; i < len; ++i) output.push(reader.readBits(8));
+        } else if (btype === 1 || btype === 2) {
+          let literalTree, distanceTree;
+
+          if (btype === 1) {
+            literalTree = HuffmanTree.buildFromLengths(FIXED_LITERAL_LENGTHS);
+            distanceTree = HuffmanTree.buildFromLengths(FIXED_DISTANCE_LENGTHS);
+          } else {
+            const trees = this._readDynamicTrees(reader);
+            literalTree = trees.literal;
+            distanceTree = trees.distance;
+          }
+
+          while (true) {
+            const symbol = literalTree.decode(reader);
+
+            if (symbol === END_OF_BLOCK) {
+              break;
+            } else if (symbol < 256) {
+              output.push(symbol);
+            } else {
+              const lengthCode = symbol - 257;
+              const lengthInfo = LENGTH_CODES[lengthCode];
+              let length = lengthInfo.base;
+              if (lengthInfo.extra > 0) length += reader.readBits(lengthInfo.extra);
+
+              const distCode = distanceTree.decode(reader);
+              const distInfo = DISTANCE_CODES[distCode];
+              let distance = distInfo.base;
+              if (distInfo.extra > 0) distance += reader.readBits(distInfo.extra);
+
+              const startPos = output.length - distance;
+              for (let i = 0; i < length; ++i) output.push(output[startPos + i]);
+            }
+          }
+        } else {
+          throw new Error('Invalid block type');
         }
+
+        if (bfinal) break;
       }
 
       return output;
     }
 
-    // Decode data back to tokens
-    decodeData(data) {
-      const tokens = [];
-      let i = 0;
+    _readDynamicTrees(reader) {
+      const hlit = reader.readBits(5) + 257;
+      const hdist = reader.readBits(5) + 1;
+      const hclen = reader.readBits(4) + 4;
 
-      while (i < data.length) {
-        const type = data[i++];
+      const codeLengthLengths = new Array(19).fill(0);
+      for (let i = 0; i < hclen; ++i) codeLengthLengths[CODE_LENGTH_ORDER[i]] = reader.readBits(3);
 
-        if (type === 0) {
-          // Literal
-          const value = data[i++];
-          tokens.push({ type: 'literal', value: value });
-        } else if (type === 1) {
-          // Match
-          const length = data[i++];
-          const distLow = data[i++];
-          const distHigh = data[i++];
-          const distance = OpCodes.Pack16LE(distLow, distHigh);
-          tokens.push({ type: 'match', length: length, distance: distance });
+      const codeLengthTree = HuffmanTree.buildFromLengths(codeLengthLengths);
+
+      const lengths = [];
+      while (lengths.length < hlit + hdist) {
+        const symbol = codeLengthTree.decode(reader);
+
+        if (symbol < 16) {
+          lengths.push(symbol);
+        } else if (symbol === 16) {
+          const repeat = reader.readBits(2) + 3;
+          const value = lengths[lengths.length - 1] || 0;
+          for (let i = 0; i < repeat; ++i) lengths.push(value);
+        } else if (symbol === 17) {
+          const repeat = reader.readBits(3) + 3;
+          for (let i = 0; i < repeat; ++i) lengths.push(0);
+        } else if (symbol === 18) {
+          const repeat = reader.readBits(7) + 11;
+          for (let i = 0; i < repeat; ++i) lengths.push(0);
         }
       }
 
-      return tokens;
+      const literalLengths = lengths.slice(0, hlit);
+      const distanceLengths = lengths.slice(hlit, hlit + hdist);
+
+      return {
+        literal: HuffmanTree.buildFromLengths(literalLengths),
+        distance: HuffmanTree.buildFromLengths(distanceLengths)
+      };
     }
   }
 
@@ -509,6 +1193,8 @@
   if (!AlgorithmFramework.Find(algorithmInstance.name)) {
     RegisterAlgorithm(algorithmInstance);
   }
+
+  // ===== EXPORTS =====
 
   return { ZopfliCompression, ZopfliInstance };
 }));
