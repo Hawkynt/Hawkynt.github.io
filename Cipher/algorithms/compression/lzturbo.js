@@ -138,6 +138,18 @@
           // Token: 0x5F = 0101 1111 = 5 literals, 15=end flag
           // Literals: H e l l o
           expected: [0x5F, 0x48, 0x65, 0x6C, 0x6C, 0x6F]
+        },
+        {
+          // Regression: matchField is Math.min(matchLength, 14), so matchLength
+          // (raw match length - MIN_MATCH) === 14 exactly also maps to matchField
+          // 14. The encoder used to only emit the extra length byte when
+          // matchLength >= 15, so the decoder (which always reads an extra byte
+          // when matchField === 14) desynchronized and produced over-long output.
+          // 19 'A's = 1 literal + a match of raw length 18 (== MIN_MATCH + 14).
+          text: "Regression - match length exactly at extension boundary (raw length 18)",
+          uri: "Educational test vector",
+          input: OpCodes.AnsiToBytes("AAAAAAAAAAAAAAAAAAA"),
+          expected: [0x1E, 0x41, 0x01, 0x00, 0x00]
         }
       ];
     }
@@ -190,7 +202,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -336,8 +348,11 @@
       output.push(OpCodes.ToByte(offset));
       output.push(OpCodes.ToByte(OpCodes.Shr16(offset, 8)));
 
-      // Extended match length if needed
-      if (matchLength >= 15) {
+      // Extended match length if needed. Must match the decoder's test
+      // (matchField === 14), i.e. matchLength >= 14, not >= 15: matchField
+      // is Math.min(matchLength, 14), so matchLength === 14 also maps to
+      // matchField 14 and therefore also needs (a possibly zero) extra byte.
+      if (matchLength >= 14) {
         let extraLen = matchLength - 14;
         while (extraLen >= 255) {
           output.push(255);
