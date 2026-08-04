@@ -84,30 +84,31 @@
         ];
 
         // Test vectors with expected compressed output.
-        // Wire format: a varint symbol count (OpCodes BitStream.writeVarInt),
-        // followed by the bit-packed unary codes (byte b -> n = b+1 -> (n-1)
-        // ones then a zero), MSB-first, zero-padded to a byte boundary.
+        // Wire format (matches CompressionWorkbench's BB_Unary building block):
+        // a 4-byte little-endian symbol count, followed by the bit-packed unary
+        // codes (byte b encoded directly as b ones then a terminating zero),
+        // MSB-first, zero-padded to a byte boundary.
         this.tests = [
           {
             text: "Small values - optimal for unary",
             uri: "https://en.wikipedia.org/wiki/Unary_coding",
             input: [1, 2, 3, 4], // Small numbers
-            expected: global.OpCodes.Hex8ToBytes("04B778") // Compressed form
+            expected: [4, 0, 0, 0, 183, 120]
           },
           {
             text: "Single small value",
             uri: "Educational test",
-            input: [5], // Single number: 11110
-            expected: global.OpCodes.Hex8ToBytes("01F8") // Compressed form
+            input: [5], // Single number: 11111 0
+            expected: [1, 0, 0, 0, 248]
           },
           {
             text: "Mixed small values",
             uri: "Educational test",
             input: [1, 3, 2, 1], // Various small numbers
-            expected: global.OpCodes.Hex8ToBytes("04BB40") // Compressed form
+            expected: [4, 0, 0, 0, 187, 64]
           },
           {
-            text: "Large repetitive block (1024x 0x61) - regression for symbol-count header overflow beyond a 16-bit bit-length field",
+            text: "Large repetitive block (1024x 0x61) - regression for symbol-count header overflow",
             uri: "https://en.wikipedia.org/wiki/Unary_coding",
             input: new Array(1024).fill(0x61),
             roundTripOnly: true
@@ -133,10 +134,6 @@
       }
 
       Result() {
-        if (this.inputBuffer.length === 0) {
-          return [];
-        }
-
         if (this.isInverse) {
           return this._decompress();
         } else {
@@ -145,24 +142,17 @@
       }
 
       _compress() {
-        // Header: number of symbols, as a self-delimiting varint (OpCodes
-        // BitStream.writeVarInt), so the decoder knows exactly how many
-        // codewords to decode and never has to guess where end-of-stream
-        // padding bits stop. A fixed-width header would eventually wrap
-        // around for large/high-value inputs (unary blows up to N+1 bits
-        // per byte of value N), silently truncating the decode.
+        // Header: 4-byte little-endian symbol count, so the decoder knows
+        // exactly how many codewords to decode and never has to guess where
+        // end-of-stream padding bits stop.
         const bitStream = OpCodes.CreateBitStream();
-        bitStream.writeVarInt(this.inputBuffer.length);
+        bitStream.writeUint32LE(this.inputBuffer.length);
 
-        // Encode each byte value b (0-255) as the unary code for n = b + 1:
-        // (n-1) ones followed by a terminating zero. Every byte therefore
-        // maps to a distinct, self-terminating, prefix-free codeword (unlike
-        // an ad-hoc "encode 0 as two zero bits" special case, which collides
-        // with the codeword for the value below it and makes the stream not
-        // uniquely decodable).
+        // Encode each byte value b (0-255) directly as b one-bits followed
+        // by a terminating zero-bit. Every byte maps to a distinct,
+        // self-terminating, prefix-free codeword.
         for (const byte of this.inputBuffer) {
-          const ones = byte; // n - 1 ones, where n = byte + 1
-          for (let i = 0; i < ones; i++) bitStream.writeBit(1);
+          for (let i = 0; i < byte; i++) bitStream.writeBit(1);
           bitStream.writeBit(0);
         }
 
@@ -175,18 +165,18 @@
       }
 
       _decompress() {
-        if (this.inputBuffer.length === 0) {
+        if (this.inputBuffer.length < 4) {
+          this.inputBuffer = [];
           return [];
         }
 
         const bitStream = OpCodes.CreateBitStream(this.inputBuffer);
-        const symbolCount = bitStream.readVarInt();
+        const symbolCount = OpCodes.Pack32LE(bitStream.readByte(), bitStream.readByte(), bitStream.readByte(), bitStream.readByte());
 
         const result = [];
         while (result.length < symbolCount) {
           let ones = 0;
-          while (bitStream.hasMoreBits() && bitStream.readBit() === 1) ones++;
-          // n = ones + 1 was encoded from byte = n - 1, i.e. byte = ones
+          while (bitStream.readBit() === 1) ones++;
           result.push(ones);
         }
 
