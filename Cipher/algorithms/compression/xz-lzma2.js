@@ -1,10 +1,14 @@
 /*
- * XZ/LZMA2 Compression Algorithm Implementation (Educational Version)
+ * LZMA2-style Toy LZ77 Compression Algorithm Implementation (Educational Version)
  * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
- * 
- * XZ/LZMA2 - Improved LZMA with better parallelization and incompressible data handling
- * Standard compression format for Linux distributions and software packages
+ *
+ * NOT compatible with XZ Utils, the .xz container format, or real LZMA2. This is a
+ * from-scratch, byte-tagged literal/match LZ77 scheme loosely inspired by LZMA2's
+ * chunked-processing idea (splitting input into independently handled blocks and
+ * choosing per-block whether to "compress" or store raw). It implements none of the
+ * real LZMA2 range coder, control-byte chunk format, or the .xz container/CRC/filters,
+ * and cannot decode real .xz/LZMA2 streams nor produce output any real xz tool can read.
  */
 
 
@@ -62,8 +66,8 @@
         super();
 
         // Required metadata
-        this.name = "XZ/LZMA2";
-        this.description = "Improved LZMA2 compression with better parallel processing and incompressible data handling. Standard format for Linux distributions, achieving 30% better compression than gzip.";
+        this.name = "LZMA2-style (custom LZ77 tagging, not .xz compatible)";
+        this.description = "Educational, from-scratch byte-tagged literal/match LZ77 compressor loosely inspired by LZMA2's chunked-processing idea. NOT compatible with XZ Utils, the .xz container format, or real LZMA2 — it implements no range coder, no real LZMA2 chunk/control-byte format, and no .xz container/CRC/filters, so it cannot read real .xz/LZMA2 data and its output cannot be read by real xz tools.";
         this.inventor = "Lasse Collin, Igor Pavlov";
         this.year = 2009;
         this.category = CategoryType.COMPRESSION;
@@ -85,25 +89,9 @@
           new LinkItem("GeeksforGeeks XZ Tutorial", "https://www.geeksforgeeks.org/linux-unix/xz-lossless-data-compression-tool-in-linux-with-examples/")
         ];
 
-        // Test vectors - actual XZ/LZMA2 compressed outputs with round-trip validation
-        const testInput1 = OpCodes.AnsiToBytes("A");
-        const testExpected1 = [0,0,0,1,0,0,0,1,1,0,0,0,1,0,0,0,1,65];
-
-        const testInput2 = OpCodes.AnsiToBytes("Hello");
-        const testExpected2 = [0,0,0,5,0,0,0,1,2,0,0,0,5,0,0,0,10,1,72,1,101,1,108,1,108,1,111];
-
-        const testInput3 = OpCodes.AnsiToBytes("AAAAAAAAAA");
-        const testExpected3 = [0,0,0,10,0,0,0,1,2,0,0,0,10,0,0,0,6,1,65,2,9,0,1];
-
-        const testInput4 = OpCodes.AnsiToBytes("ABCABCABC");
-        const testExpected4 = [0,0,0,9,0,0,0,1,2,0,0,0,9,0,0,0,10,1,65,1,66,1,67,2,6,0,3];
-
-        const testInput5 = OpCodes.AnsiToBytes("Hello World! This is a test of LZMA2 compression.");
-        const testExpected5 = [0,0,0,49,0,0,0,1,2,0,0,0,49,0,0,0,96,1,72,1,101,1,108,1,108,1,111,1,32,1,87,1,111,1,114,1,108,1,100,1,33,1,32,1,84,1,104,1,105,1,115,1,32,2,3,0,3,1,97,1,32,1,116,1,101,1,115,1,116,1,32,1,111,1,102,1,32,1,76,1,90,1,77,1,65,1,50,1,32,1,99,1,111,1,109,1,112,1,114,1,101,1,115,1,115,1,105,1,111,1,110,1,46];
-
-        const testInput6 = OpCodes.AnsiToBytes("The quick brown fox jumps over the lazy dog");
-        const testExpected6 = [0,0,0,43,0,0,0,1,2,0,0,0,43,0,0,0,84,1,84,1,104,1,101,1,32,1,113,1,117,1,105,1,99,1,107,1,32,1,98,1,114,1,111,1,119,1,110,1,32,1,102,1,111,1,120,1,32,1,106,1,117,1,109,1,112,1,115,1,32,1,111,1,118,1,101,1,114,1,32,1,116,2,3,0,31,1,108,1,97,1,122,1,121,1,32,1,100,1,111,1,103];
-
+        // Test vectors - round-trip validation only. This is a self-generated toy format
+        // (not the real .xz/LZMA2 format), so hand-guessed exact output bytes would not be
+        // meaningful; only "compress then decompress reproduces the input" is asserted.
         this.tests = [
           new TestCase(
             [],
@@ -111,42 +99,42 @@
             "Empty input",
             "https://en.wikipedia.org/wiki/XZ_Utils"
           ),
-          {
-            input: testInput1,
-            expected: testExpected1,
-            text: "Single character - uncompressed chunk",
-            uri: "https://tukaani.org/xz/"
-          },
-          {
-            input: testInput2,
-            expected: testExpected2,
-            text: "Short text with literals",
-            uri: "https://tukaani.org/xz/xz-file-format.txt"
-          },
-          {
-            input: testInput3,
-            expected: testExpected3,
-            text: "Repeated pattern - LZMA2 compression active",
-            uri: "https://en.wikipedia.org/wiki/LZMA"
-          },
-          {
-            input: testInput4,
-            expected: testExpected4,
-            text: "Repeating sequence - dictionary efficiency",
-            uri: "https://linux.die.net/man/1/xz"
-          },
-          {
-            input: testInput5,
-            expected: testExpected5,
-            text: "Natural text - mixed compression modes",
-            uri: "https://www.geeksforgeeks.org/linux-unix/xz-lossless-data-compression-tool-in-linux-with-examples/"
-          },
-          {
-            input: testInput6,
-            expected: testExpected6,
-            text: "Pangram text - demonstrates LZMA2 analysis",
-            uri: "https://tukaani.org/xz/xz-file-format.txt"
-          }
+          new TestCase(
+            OpCodes.AnsiToBytes("A"),
+            [],
+            "Single character round-trip",
+            "https://tukaani.org/xz/"
+          ),
+          new TestCase(
+            OpCodes.AnsiToBytes("Hello"),
+            [],
+            "Short text with literals round-trip",
+            "https://tukaani.org/xz/xz-file-format.txt"
+          ),
+          new TestCase(
+            OpCodes.AnsiToBytes("AAAAAAAAAA"),
+            [],
+            "Repeated pattern round-trip",
+            "https://en.wikipedia.org/wiki/LZMA"
+          ),
+          new TestCase(
+            OpCodes.AnsiToBytes("ABCABCABC"),
+            [],
+            "Repeating sequence round-trip",
+            "https://linux.die.net/man/1/xz"
+          ),
+          new TestCase(
+            OpCodes.AnsiToBytes("Hello World! This is a test of LZMA2 compression."),
+            [],
+            "Natural text round-trip",
+            "https://www.geeksforgeeks.org/linux-unix/xz-lossless-data-compression-tool-in-linux-with-examples/"
+          ),
+          new TestCase(
+            OpCodes.AnsiToBytes("The quick brown fox jumps over the lazy dog"),
+            [],
+            "Pangram text round-trip",
+            "https://tukaani.org/xz/xz-file-format.txt"
+          )
         ];
 
         // For test suite compatibility
@@ -167,14 +155,14 @@
         // LZMA2 parameters
         this.DICTIONARY_SIZE = 1024 * 1024; // 1MB dictionary (adjustable)
         this.MIN_MATCH_LENGTH = 2; // Minimum match length
-        this.MAX_MATCH_LENGTH = 273; // Maximum match length
+        this.MAX_MATCH_LENGTH = 255; // Maximum match length (must fit the single-byte length field written by _compressChunk)
         this.CHUNK_SIZE = 2048; // Chunk size for LZMA2 processing
         this.COMPRESSION_THRESHOLD = 0.95; // When to use uncompressed chunks
       }
 
       Feed(data) {
         if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {
@@ -233,7 +221,7 @@
         for (const chunk of chunks) {
           if (chunk.type === 'compressed') {
             const decompressed = this._decompressChunk(chunk.data);
-            output.push(...decompressed);
+            for (let _i = 0; _i < decompressed.length; _i++) output.push(decompressed[_i]);
           } else {
             // Uncompressed chunk
             output.push(...chunk.data);
