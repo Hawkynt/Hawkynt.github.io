@@ -89,38 +89,41 @@
         ];
 
         // Test vectors with proper Fibonacci/Zeckendorf coding representations
-        // (as byte arrays). Fibonacci coding only represents positive integers
-        // (n >= 1), so each byte value b (0..255) is encoded as Zeckendorf(b+1);
-        // the decoder subtracts 1 back out. Without this shift, byte 0 and
-        // byte 1 would both encode to "11" and be indistinguishable on decode.
+        // (as byte arrays). Wire format (matches CompressionWorkbench's
+        // BB_Fibonacci building block): a 4-byte little-endian original
+        // length, followed by the coded bitstream. Fibonacci coding only
+        // represents positive integers (n >= 1), so each byte value b
+        // (0..255) is encoded as Zeckendorf(b+1); the decoder subtracts 1
+        // back out. Without this shift, byte 0 and byte 1 would both encode
+        // to "11" and be indistinguishable on decode.
         this.tests = [
           new TestCase(
             [1], // byte value 1 -> Zeckendorf(2) = "011"
-            global.OpCodes.Hex8ToBytes("60"), // Fibonacci code "011" padded to byte
+            [1, 0, 0, 0, 0x60], // length header + Fibonacci code "011" padded to byte
             "Fibonacci coding of byte value 1 (Zeckendorf 2)",
             "https://en.wikipedia.org/wiki/Fibonacci_coding"
           ),
           new TestCase(
             [2], // byte value 2 -> Zeckendorf(3) = "0011"
-            global.OpCodes.Hex8ToBytes("30"), // Fibonacci code "0011" padded to byte
+            [1, 0, 0, 0, 0x30], // length header + Fibonacci code "0011" padded to byte
             "Fibonacci coding of byte value 2 (Zeckendorf 3)",
             "https://en.wikipedia.org/wiki/Fibonacci_coding"
           ),
           new TestCase(
             [6], // byte value 6 -> Zeckendorf(7) = F₄+F₂ = 5+2 -> "01011"
-            global.OpCodes.Hex8ToBytes("58"), // Fibonacci code "01011" padded to byte
+            [1, 0, 0, 0, 0x58], // length header + Fibonacci code "01011" padded to byte
             "Fibonacci coding of byte value 6 (Zeckendorf 7 = 5+2)",
             "https://cp-algorithms.com/algebra/fibonacci-numbers.html"
           ),
           new TestCase(
             [8], // byte value 8 -> Zeckendorf(9) = F₆+F₁ = 8+1 -> "100011"
-            global.OpCodes.Hex8ToBytes("8C"), // Fibonacci code "100011" padded to byte
+            [1, 0, 0, 0, 0x8C], // length header + Fibonacci code "100011" padded to byte
             "Fibonacci coding of byte value 8 (Zeckendorf 9 = 8+1)",
             "https://cp-algorithms.com/algebra/fibonacci-numbers.html"
           ),
           new TestCase(
             [11], // byte value 11 -> Zeckendorf(12) = F₆+F₃ = 8+3 -> "101011"
-            global.OpCodes.Hex8ToBytes("AC"), // Fibonacci code "101011" padded to byte
+            [1, 0, 0, 0, 0xAC], // length header + Fibonacci code "101011" padded to byte
             "Fibonacci coding of byte value 11 (Zeckendorf 12 = 8+3)",
             "https://www.geeksforgeeks.org/fibonacci-coding/"
           ),
@@ -167,160 +170,73 @@
       }
 
       Result() {
-        if (this.inputBuffer.length === 0) {
-          return [];
-        }
-
-        if (this.isInverse) {
-          return this._decompress();
-        } else {
-          return this._compress();
-        }
+        const result = this.isInverse ? this._decompress() : this._compress();
+        this.inputBuffer = [];
+        return result;
       }
 
+      // Wire format (matches CompressionWorkbench's BB_Fibonacci building
+      // block): a 4-byte little-endian original length, followed by the
+      // Fibonacci/Zeckendorf-coded bitstream (each codeword's Fibonacci
+      // digits least-significant-first, terminated by an extra 1-bit, all
+      // packed MSB-first into bytes). Fibonacci coding only represents
+      // positive integers (n >= 1), so bytes (0..255) are shifted to
+      // (1..256) before encoding; without this shift, byte 0 and byte 1
+      // would both encode to "11" and be indistinguishable on decode.
       _compress() {
-        let bitString = '';
-
-        // Fibonacci/Zeckendorf coding only represents positive integers
-        // (n >= 1), so bytes (0..255) are shifted to (1..256) before
-        // encoding. Without this shift, byte 0 (special-cased to "11")
-        // and byte 1 (which _encodeFibonacci also produces as "11") would
-        // collide onto the same codeword and be indistinguishable.
-        for (const byte of this.inputBuffer) {
-          bitString += this._encodeFibonacci(byte + 1);
-        }
-
-        // Convert bit string to bytes
-        const bytes = this._bitStringToBytes(bitString);
-
-        // Clear input buffer
-        this.inputBuffer = [];
-
-        return bytes;
+        const bitStream = OpCodes.CreateBitStream();
+        bitStream.writeUint32LE(this.inputBuffer.length);
+        for (const byte of this.inputBuffer) this._encodeFibonacci(bitStream, byte + 1);
+        return bitStream.toArray();
       }
 
       _decompress() {
-        // Convert bytes to bit string
-        const bitString = this._bytesToBitString(this.inputBuffer);
+        if (this.inputBuffer.length < 4) return [];
 
-        // Decode Fibonacci codes
+        const bitStream = OpCodes.CreateBitStream(this.inputBuffer);
+        const uncompressedSize = OpCodes.Pack32LE(bitStream.readByte(), bitStream.readByte(), bitStream.readByte(), bitStream.readByte());
+        if (uncompressedSize === 0) return [];
+
         const result = [];
-        let i = 0;
+        let prevBit = 0, sum = 0, fibIndex = 0;
 
-        while (i < bitString.length - 1) {
-          const { value, nextIndex } = this._decodeFibonacci(bitString, i);
-          if (nextIndex === -1) break; // Invalid code
-          result.push(value - 1); // undo the +1 shift applied at encode time
-          i = nextIndex;
+        while (result.length < uncompressedSize) {
+          const bit = bitStream.readBit();
+
+          if (bit === 1 && prevBit === 1) {
+            // "11" terminator found -- emit symbol (undo the +1 encode shift).
+            result.push(sum - 1);
+            sum = 0;
+            fibIndex = 0;
+            prevBit = 0;
+          } else {
+            if (bit === 1) sum += this.fibNumbers[fibIndex];
+            fibIndex++;
+            prevBit = bit;
+          }
         }
-
-        // Clear input buffer
-        this.inputBuffer = [];
 
         return result;
       }
 
-      _encodeFibonacci(num) {
-        if (num <= 0) return '11'; // Special case for 0
-
-        // Find Fibonacci representation using greedy algorithm
+      // Greedy Zeckendorf decomposition of a positive integer into
+      // non-consecutive Fibonacci numbers, written least-significant-digit
+      // first, followed by a terminating 1-bit.
+      _encodeFibonacci(bitStream, num) {
         const bits = [];
         let remaining = num;
+        let maxBitSet = -1;
 
-        // Work backwards from largest Fibonacci number
         for (let i = this.fibNumbers.length - 1; i >= 0; i--) {
           if (this.fibNumbers[i] <= remaining) {
             bits[i] = 1;
             remaining -= this.fibNumbers[i];
-          } else {
-            bits[i] = 0;
+            if (i > maxBitSet) maxBitSet = i;
           }
         }
 
-        // Find the highest bit set to determine minimum length
-        let maxBitSet = -1;
-        for (let i = 0; i < bits.length; i++) {
-          if (bits[i] === 1) {
-            maxBitSet = i;
-          }
-        }
-
-        // Build bit string from least significant to most significant + terminator
-        let result = '';
-        for (let i = 0; i <= maxBitSet; i++) {
-          result += (bits[i] || 0).toString();
-        }
-
-        // Add terminating 1
-        result += '1';
-
-        return result;
-      }
-
-      _decodeFibonacci(bitString, startIndex) {
-        let i = startIndex;
-        let prevBit = '0';
-        let fibBits = '';
-
-        // Read until we find "11" terminator
-        while (i < bitString.length) {
-          const currentBit = bitString[i];
-          fibBits += currentBit;
-
-          if (prevBit === '1' && currentBit === '1') {
-            // Found terminator "11", decode the number
-            const value = this._fibBitsToNumber(fibBits.slice(0, -1)); // Remove last '1'
-            return { value, nextIndex: i + 1 };
-          }
-
-          prevBit = currentBit;
-          i++;
-        }
-
-        return { value: 0, nextIndex: -1 }; // Invalid code
-      }
-
-      _fibBitsToNumber(bits) {
-        if (bits.length === 0) return 0;
-
-        let result = 0;
-        // Process bits from left to right (most significant first in Fibonacci coding)
-        for (let i = 0; i < bits.length && i < this.fibNumbers.length; i++) {
-          if (bits[i] === '1') {
-            result += this.fibNumbers[i];
-          }
-        }
-
-        return result;
-      }
-
-      _bitStringToBytes(bitString) {
-        const bytes = [];
-
-        // Pad to multiple of 8 bits
-        while (bitString.length % 8 !== 0) {
-          bitString += '0';
-        }
-
-        // Convert each 8-bit group to a byte
-        for (let i = 0; i < bitString.length; i += 8) {
-          const byteStr = bitString.substr(i, 8);
-          const byteVal = parseInt(byteStr, 2);
-          bytes.push(byteVal);
-        }
-
-        return bytes;
-      }
-
-      _bytesToBitString(bytes) {
-        let bitString = '';
-
-        for (const byte of bytes) {
-          // Convert each byte to 8-bit binary string
-          bitString += byte.toString(2).padStart(8, '0');
-        }
-
-        return bitString;
+        for (let i = 0; i <= maxBitSet; i++) bitStream.writeBit(bits[i] || 0);
+        bitStream.writeBit(1); // terminator
       }
     }
 
