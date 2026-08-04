@@ -1,5 +1,5 @@
 /*
- * RAR (Classic Block Coder) Compression Algorithm Implementation
+ * RAR-style LZ77+Huffman (documented subset) Compression Algorithm Implementation
  * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
  *
@@ -12,18 +12,23 @@
  * combines LZSS-style matching with Huffman entropy coding - separate from
  * RAR3's optional PPMII mode, which this file does not implement.
  *
- * This is a documented-subset, from-scratch reimplementation built only from
- * those coarse public facts: an LZ77 parser feeding a single Huffman tree
- * over a 257+26-symbol alphabet (256 literals, one end-of-block symbol, 26
- * match-length codes with a base/extra-bit growth pattern), a fixed 1MB
- * (20-bit) match window matching the documented RAR 2.0 dictionary size, and
- * a minimum match length of 2 bytes. Match distances are transmitted as raw
- * fixed-width fields rather than RAR's multiple internal Huffman tables
- * (main/distance/align/low-distance trees) or its repeat-distance slots -
- * those internals are not part of any source consulted here. The Huffman
- * table is transmitted as an explicit (symbol, frequency) list so the
- * decoder can rebuild an identical tree. This is not a byte-exact or
- * wire-compatible clone of any real RAR archive.
+ * This file does NOT read or produce archives in the real RAR format. It is
+ * one instance of the generic LZ77 + single-Huffman-tree engine this
+ * repository shares across ace-archiver.js, arj.js, rar.js and sqx.js, built
+ * only from those coarse public facts: an LZ77 parser feeding a single
+ * Huffman tree over a 257+26-symbol alphabet (256 literals, one end-of-block
+ * symbol, 26 match-length codes with a base/extra-bit growth pattern), a
+ * fixed 1MB (20-bit) match window matching the documented RAR 2.0 dictionary
+ * size, and a minimum match length of 2 bytes. Match distances are
+ * transmitted as raw fixed-width fields rather than RAR's multiple internal
+ * Huffman tables (main/distance/align/low-distance trees) or its
+ * repeat-distance slots - those internals are not part of any source
+ * consulted here. The Huffman table is transmitted as an explicit (symbol,
+ * frequency) list so the decoder can rebuild an identical tree. This is not
+ * a byte-exact or wire-compatible clone of any real RAR archive. The real
+ * RAR format - with its four version-specific coders (RAR1/2/3/5), real
+ * Huffman main/distance/align/low-distance trees and filters - is
+ * implemented in the sibling CompressionWorkbench (C#) project.
  *
  * References:
  * - Wikipedia, "RAR (file format)"
@@ -329,8 +334,8 @@
     constructor() {
       super();
 
-      this.name = "RAR";
-      this.description = "Classic RAR2/RAR3-era block coder: LZSS-style matching with Huffman entropy coding (excludes RAR3's optional PPMII mode). Documented-subset reimplementation built only from coarse public facts (up to 1MB/4MB dictionary sizes); RAR's internal multi-tree/repeat-distance structure is proprietary and not reproduced.";
+      this.name = "RAR-style LZ77+Huffman (documented subset)";
+      this.description = "Shared generic LZ77 + single-Huffman-tree compression engine (also used by the ACE-style, ARJ-style and SQX-style entries in this repository), parameterized here with a fixed 1MB window and raw fixed-width distance fields to approximate the coarse, publicly documented facts about the classic (pre-RAR5) RAR block coder (LZSS-style matching with Huffman entropy coding; excludes RAR3's optional PPMII mode). It does NOT read or produce archives in the real RAR format - RAR's internal multi-tree/repeat-distance structure is proprietary and not reproduced. The real RAR format is implemented in the sibling CompressionWorkbench (C#) project.";
       this.inventor = "Eugene Roshal";
       this.year = 1993;
       this.category = CategoryType.COMPRESSION;

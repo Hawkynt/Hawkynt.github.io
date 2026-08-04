@@ -1,5 +1,5 @@
 /*
- * ACE Archiver Compression Algorithm Implementation
+ * ACE-style LZ77+Huffman (documented subset) Compression Algorithm Implementation
  * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
  *
@@ -12,18 +12,22 @@
  * length codes, a dictionary size selectable between 1KB and 4MB (10 to 22
  * bits), and up to four "repeated offset" slots reused from LZMA-style coders.
  *
- * This is a documented-subset, from-scratch reimplementation: an LZ77 parser
- * feeding a single adaptive Huffman tree over a 257+26-symbol alphabet
- * (256 literals, one end-of-block symbol, 26 length codes with the same
- * base/extra-bit growth pattern reported for ACE's length table), a fixed
- * 64KB (16-bit) match window - one representative point within ACE's
+ * This file does NOT read or produce archives in the real ACE format. It is
+ * one instance of the generic LZ77 + single-Huffman-tree engine this
+ * repository shares across ace-archiver.js, arj.js, rar.js and sqx.js: an
+ * LZ77 parser feeding a single adaptive Huffman tree over a 257+26-symbol
+ * alphabet (256 literals, one end-of-block symbol, 26 length codes with the
+ * same base/extra-bit growth pattern reported for ACE's length table), a
+ * fixed 64KB (16-bit) match window - one representative point within ACE's
  * documented 10-22 bit dictionary range - and a minimum match length of 2
  * bytes. Match distances are transmitted as raw fixed-width fields rather
  * than a second Huffman tree, and the repeated-offset optimization is not
  * implemented; both are documented limitations, not oversights. The Huffman
  * table itself is transmitted as an explicit (symbol, frequency) list so the
  * decoder can rebuild an identical tree, rather than ACE's own compressed
- * tree-description encoding.
+ * tree-description encoding. The real ACE format - including its bit-reader
+ * plus PIC and sound filters - is implemented in the sibling
+ * CompressionWorkbench (C#) project.
  *
  * References:
  * - Wikipedia, "ACE (compression format)"
@@ -331,8 +335,8 @@
     constructor() {
       super();
 
-      this.name = "ACE Archiver";
-      this.description = "eSKASoft ACE archiver's LZ77 + Huffman compression method. Sliding-window match finder feeding a single adaptive Huffman tree over literals, an end-of-block marker and 26 match-length codes. Documented-subset reimplementation: fixed 64KB window, no repeated-offset optimization, raw (non-Huffman-coded) distance field.";
+      this.name = "ACE-style LZ77+Huffman (documented subset)";
+      this.description = "Shared generic LZ77 + single-Huffman-tree compression engine (also used by the ARJ-style, RAR-style and SQX-style entries in this repository), parameterized here with a fixed 64KB window, minimum match length 2, and raw fixed-width distance fields to approximate eSKASoft ACE archiver's publicly documented characteristics. It does NOT read or produce archives in the real ACE format - no repeated-offset optimization, and distances are raw fields rather than a second Huffman tree. The real ACE format is implemented in the sibling CompressionWorkbench (C#) project.";
       this.inventor = "Marcel Lemke (eSKASoft)";
       this.year = 1998;
       this.category = CategoryType.COMPRESSION;
