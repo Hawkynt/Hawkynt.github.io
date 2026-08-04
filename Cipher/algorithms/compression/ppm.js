@@ -111,6 +111,28 @@
             [4, 19, 0, 0, 0, 10, 65, 10, 65, 11, 65, 12, 65, 13, 65, 14, 65, 14, 65, 14, 65, 14, 65, 14, 65, 14, 65, 14, 65, 14, 65, 14, 65, 14, 65, 14, 65, 14, 65, 14, 65, 14, 65],
             "Single character repeated",
             "https://en.wikipedia.org/wiki/Prediction_by_partial_matching"
+          ),
+          // Round-trip regression vectors: decode used to treat any
+          // symbolByte === 255 as an (unreachable) escape marker, which
+          // collided with the literal byte value 255 and corrupted
+          // decoding whenever the data actually contained that byte.
+          new TestCase(
+            Array.from({ length: 256 }, (_, i) => i), // All 256 distinct byte values
+            [],
+            "All byte values 0-255 round-trip test",
+            "Regression test for byte-255/escape-marker collision"
+          ),
+          new TestCase(
+            [243, 204, 191, 171, 157, 143, 229, 84, 239, 176, 155, 208, 176, 245, 186, 148, 128, 53, 183, 104, 65, 66, 101, 148, 122, 107, 131, 193, 65, 79, 229, 58, 50, 25, 21, 210, 49, 167, 70, 138, 6, 12, 191, 33, 67, 124, 161, 122, 65, 2, 92, 207, 37, 32, 136, 248, 127, 146, 78, 207, 243, 126, 146, 223, 64, 161, 46, 129, 181, 68, 211, 17, 148, 194, 96, 50, 211, 110, 202, 53, 74, 159, 228, 247, 145, 4, 228, 234, 16, 151, 188, 109, 81, 80, 49, 126, 162, 199, 101, 196, 235, 27, 109, 184, 20, 77, 129, 64, 148, 182, 146, 41, 134, 77, 32, 59, 197, 71, 158, 152, 231, 94, 231, 211, 103, 220, 144, 238, 137, 222, 237, 151, 177, 197, 92, 12, 97, 179, 107, 212, 167, 137, 88, 210, 78, 173, 228, 175, 149, 232, 107, 45, 28, 202, 239, 242, 91, 73, 66, 24, 35, 92, 185, 245, 62, 213, 13, 182, 15, 242, 254, 12, 86, 213, 178, 168, 213, 115, 176, 57, 95, 201, 101, 121, 187, 228, 195, 32, 44, 252, 179, 230, 150, 179, 164, 143, 191, 97, 136, 46, 25, 154, 214, 6, 155, 31, 129, 253, 3, 119, 59, 68, 187, 102, 43, 112, 143, 202, 179, 185, 32, 38, 37, 249, 29, 52, 47, 246, 60, 190, 166, 152, 5, 144, 25, 213, 107, 191, 85, 158, 64, 228, 200, 90, 18, 120, 76, 172, 148, 46, 222, 67, 185, 14, 135, 164, 72, 186, 30, 245, 198, 193, 63, 169, 164, 83, 85, 104, 24, 107, 159, 230, 18, 235, 247, 15, 205, 167, 128, 28, 145, 40, 49, 185, 0, 198, 197, 208, 211, 50, 157, 56, 249, 159, 97, 19, 92, 178, 139, 196], // Pseudo-random (splitmix32) 300-byte sample
+            [],
+            "Pseudo-random data round-trip test",
+            "Regression test for byte-255/escape-marker collision"
+          ),
+          new TestCase(
+            Array.from({ length: 128 }, (_, i) => i % 2 ? 0x55 : 0xAA), // Alternating 0xAA/0x55
+            [],
+            "Alternating pattern round-trip test",
+            "Regression test for byte-255/escape-marker collision"
           )
         ];
 
@@ -135,7 +157,7 @@
 
       Feed(data) {
         if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {
@@ -172,7 +194,7 @@
         for (let i = 0; i < data.length; i++) {
           const symbol = data[i];
           const encodedData = this._encodeSymbol(symbol);
-          compressed.push(...encodedData);
+          for (let _i = 0; _i < encodedData.length; _i++) compressed.push(encodedData[_i]);
 
           // Update model with new symbol
           this._updateModel(symbol);
@@ -322,16 +344,19 @@
 
         const symbolByte = bytes[offset++];
 
-        if (symbolByte === 255) {
-          // Escape symbol - continue to next lower order
-          return this._decodeSymbol(bytes, offset);
-        } else {
-          // Regular symbol
-          return {
-            symbol: symbolByte,
-            nextOffset: offset
-          };
-        }
+        // Note: _encodeSymbol() never actually writes an escape marker to
+        // the stream -- when a context misses, the escape byte it builds
+        // is discarded and encoding simply falls through to the next
+        // lower order until order -1 (which always contains the full
+        // alphabet) supplies a match. So every [orderByte, symbolByte]
+        // pair in the stream already IS the literal decoded symbol; a
+        // "symbolByte === 255 means escape" check here was ambiguous
+        // with the legitimate data byte 255 and corrupted the stream
+        // (and everything after it) whenever real data contained 255.
+        return {
+          symbol: symbolByte,
+          nextOffset: offset
+        };
       }
 
       /**
