@@ -3,39 +3,23 @@
  * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
  *
- * NRV2E is the third "Not Really Vanished" LZ77 variant in Markus F.X.J.
- * Oberhumer's UCL (Universal Compression Library), alongside NRV2B and NRV2D
- * (see nrv2d.js for the sibling variant and the shared bit-stream shape: an
- * MSB-first stream alternating literal runs with back-references, using an
- * exponential-Golomb-coded offset with a single-symbol repeat-offset
- * shortcut). NRV2E's distinguishing feature is that its match-length code
- * depends on whether the offset was a fresh one or a repeat of the previous
- * match's offset, giving very cheap 1-bit lengths for repeat-offset matches.
+ * NRV2E LE32, matching the reference CompressionWorkbench encoder/decoder
+ * (Compression.Core.Dictionary.Nrv2e) byte-for-byte. Structurally identical
+ * to NRV2D (see nrv2d.js) in its offset varint (3 bits/iteration, length's
+ * leading bit folded into the offset byte's inverted low bit) and the 0x500
+ * far-offset bump; the two differ only in the match-length suffix, which is
+ * cheapest for NRV2E when the offset repeats the previous match:
  *
- * Bit stream (this implementation, reconstructed from published descriptions
- * of the UCL decompressors, not from Oberhumer's source code):
- *   control bit = 1            -> one literal byte follows
- *   control bit = 0            -> a back-reference follows:
- *     offset:  off = 1; repeat { off = off*2 + valueBit; } until stopBit == 1
- *              if off == 2:  reuse the previous match's offset
- *              else:         distance = (off - 3) * 256 + nextByte(); remember it
- *     length:  if the offset was reused:
- *                length = nextBit() + 2                        (2 or 3)
- *              else:
- *                bit = nextBit();
- *                if bit == 1: length = nextBit() + 3            (3 or 4)
- *                else:        val = 1; repeat { val = val*2 + valueBit; }
- *                             until stopBit == 1; length = val + 3  (>= 5)
- *              if distance > 0x500: length += 1  (far-match bonus)
- *
- * Because this reconstruction does not carry the original block length out of
- * band the way UCL's block API does, the compressed stream is prefixed with a
- * 4-byte little-endian original length so decompression is self-contained.
+ *   <Stream>   := <size:4 LE> [<bare NRV2E LE32 stream>]
+ *   length: if m_len_initial == 1: m_len = 1 + readBit()      (1 or 2)
+ *           else if readBit() == 1: m_len = 3 + readBit()     (3 or 4)
+ *           else: m_len = NRV2B-style varint + 3               (>= 5)
+ *   if distance > 0x500: m_len += 1     (far-match bonus)
+ *   emitted bytes = m_len + 1
  *
  * References:
  * - UCL homepage: http://www.oberhumer.com/opensource/ucl/
- * - UCL source mirror (decompressor structure studied, not copied):
- *   https://github.com/korczis/ucl/blob/master/src/n2e_d.c
+ * - UCL source (ucl/src/n2e_d.c): https://github.com/korczis/ucl/blob/master/src/n2e_d.c
  * - UPX (uses UCL's NRV algorithms): https://upx.github.io/
  */
 
@@ -73,92 +57,190 @@
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           CompressionAlgorithm, IAlgorithmInstance, LinkItem } = AlgorithmFramework;
 
-  const OFFSET_BASE = 3;
-  const FAR_OFFSET_THRESHOLD = 0x500;
-  const WINDOW_SIZE = 0x3FFFF;
-  const MAX_MATCH = 2048;
+  const MIN_EMITTED_LEN = 3;
+  const MAX_OFFSET = 0xFFFFFF;
+  const OFFSET_LARGE_THRESHOLD = 0x500;
+  const HASH_BITS = 16;
+  const HASH_SIZE = OpCodes.Shl32(1, HASH_BITS);
+  const CHAIN_LIMIT = 64;
 
-  // ===== BIT-LEVEL STREAM HELPERS (MSB first) =====
+  function hash3(data, pos) {
+    const h1 = OpCodes.Shl32(data[pos], 8);
+    const h2 = OpCodes.Shl32(data[pos + 1], 4);
+    const h3 = data[pos + 2];
+    return OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(h1, h2), h3), HASH_SIZE - 1);
+  }
 
-  class BitWriter {
+  function highestSetBitIndex(value) {
+    let index = -1, v = value;
+    while (v > 0) { v = OpCodes.Shr32(v, 1); index++; }
+    return index;
+  }
+
+  // ── Bit-word encoder (32-bit LE words, MSB-first bit order) ───────────────
+  //
+  // A literal/offset byte must occupy the file position the decoder will be
+  // at when it calls ReadByte, which happens right after a specific bit is
+  // consumed. Since bits are buffered in 32-bit words, the byte's "epoch"
+  // (which word's pending list it belongs to) is fixed by queuing the byte
+  // BEFORE writing any bit whose flush could roll over to the next word.
+
+  class Nrv2eEncoder {
     constructor() {
       this.bytes = [];
-      this.cur = 0;
-      this.nBits = 0;
+      this.pendingBytes = [];
+      this.bitWord = 0;
+      this.bitsUsed = 0;
     }
 
     writeBit(bit) {
-      this.cur = OpCodes.Or32(OpCodes.Shl32(this.cur, 1), bit ? 1 : 0);
-      this.nBits++;
-      if (this.nBits === 8) {
-        this.bytes.push(OpCodes.And32(this.cur, 0xFF));
-        this.cur = 0;
-        this.nBits = 0;
+      this.bitWord = OpCodes.Or32(OpCodes.Shl32(this.bitWord, 1), bit ? 1 : 0);
+      this.bitsUsed++;
+      if (this.bitsUsed === 32) this._flushWord();
+    }
+
+    // NRV2B-style varint: for value >= 2, emit (data, continue=0) pairs from
+    // msb-1 down to bit 0, with the trailing continue bit set to 1.
+    writeVarInt(value) {
+      const msb = highestSetBitIndex(value);
+      for (let i = msb - 1; i >= 0; i--) {
+        this.writeBit(OpCodes.And32(OpCodes.Shr32(value, i), 1));
+        this.writeBit(i === 0 ? 1 : 0);
       }
     }
 
-    writeBits(value, count) {
-      for (let i = count - 1; i >= 0; --i)
-        this.writeBit(OpCodes.And32(OpCodes.Shr32(value, i), 1));
+    emitLiteral(value) {
+      this.pendingBytes.push(value);
+      this.writeBit(1);
+    }
+
+    // Emits the NRV2D/E offset-varint bit pattern that decodes to
+    // targetVarintValue, queuing offsetByte immediately before the final
+    // break bit so its word-epoch matches the bit-word the decoder is
+    // consuming when it calls ReadByte for the offset byte.
+    _emitOffsetVarint(targetVarintValue, offsetByte) {
+      const iterations = [[OpCodes.And32(targetVarintValue, 1), 1, null]]; // iter k (break)
+      let mOffPre = OpCodes.Shr32(targetVarintValue, 1);
+      while (mOffPre > 1) {
+        const c = OpCodes.And32(mOffPre, 1);
+        const mOffAfterA = OpCodes.Shr32(mOffPre, 1) + 1;
+        const a = OpCodes.And32(mOffAfterA, 1);
+        iterations.push([a, 0, c]);
+        mOffPre = OpCodes.Shr32(mOffAfterA, 1);
+      }
+      if (mOffPre !== 1)
+        throw new Error("NRV2E varint encoder: failed to walk back to initial m_off=1.");
+      iterations.reverse();
+
+      const bits = [];
+      for (const [a, b, c] of iterations) {
+        bits.push(a);
+        bits.push(b);
+        if (c !== null) bits.push(c);
+      }
+
+      for (let i = 0; i < bits.length - 1; i++) this.writeBit(bits[i]);
+      this.pendingBytes.push(offsetByte);
+      this.writeBit(bits[bits.length - 1]);
+    }
+
+    emitMatch(offset, length, reuseLast) {
+      this.writeBit(0); // match flag
+
+      // UCL emits (m_len + 1) bytes; +1 more if offset > 0x500.
+      let bumpedLen = length - 1;
+      if (offset > OFFSET_LARGE_THRESHOLD) bumpedLen--;
+      if (bumpedLen < 1) throw new Error("NRV2E: match too short to encode.");
+      const mLen = bumpedLen;
+
+      // m_len=1 -> init=1, X=0 ("10"); m_len=2 -> init=1, X=1 ("11");
+      // m_len=3 -> init=0, Y=1, Z=0 ("010"); m_len=4 -> init=0, Y=1, Z=1 ("011");
+      // m_len>=5 -> init=0, Y=0, varint(m_len-3).
+      let mLenInitial;
+      const suffixBits = [];
+      let varintValue = null;
+      if (mLen === 1) {
+        mLenInitial = 1; suffixBits.push(0);
+      } else if (mLen === 2) {
+        mLenInitial = 1; suffixBits.push(1);
+      } else if (mLen === 3) {
+        mLenInitial = 0; suffixBits.push(1); suffixBits.push(0);
+      } else if (mLen === 4) {
+        mLenInitial = 0; suffixBits.push(1); suffixBits.push(1);
+      } else {
+        mLenInitial = 0; suffixBits.push(0);
+        varintValue = mLen - 3;
+      }
+
+      if (reuseLast) {
+        this.writeBit(0); // offset varint value 2: A=0
+        this.writeBit(1); // B (break)
+        this.writeBit(mLenInitial);
+      } else {
+        const rawPre = OpCodes.Or32(OpCodes.Shl32(offset - 1, 1), 1 - mLenInitial);
+        const byteVal = OpCodes.And32(rawPre, 0xFF);
+        const varintForOff = OpCodes.Shr32(rawPre, 8) + 3;
+        this._emitOffsetVarint(varintForOff, byteVal);
+      }
+
+      for (const bit of suffixBits) this.writeBit(bit);
+      if (varintValue !== null) this.writeVarInt(varintValue);
     }
 
     finish() {
-      if (this.nBits > 0) {
-        this.cur = OpCodes.Shl32(this.cur, 8 - this.nBits);
-        this.bytes.push(OpCodes.And32(this.cur, 0xFF));
-        this.cur = 0;
-        this.nBits = 0;
+      if (this.bitsUsed > 0) {
+        this.bitWord = OpCodes.Shl32(this.bitWord, 32 - this.bitsUsed);
+        this._flushWord();
+      } else if (this.pendingBytes.length > 0) {
+        this._flushWord();
       }
       return this.bytes;
     }
+
+    _flushWord() {
+      const w = OpCodes.Unpack32LE(this.bitWord);
+      for (let i = 0; i < 4; i++) this.bytes.push(w[i]);
+      for (let i = 0; i < this.pendingBytes.length; i++) this.bytes.push(this.pendingBytes[i]);
+      this.pendingBytes.length = 0;
+      this.bitWord = 0;
+      this.bitsUsed = 0;
+    }
   }
 
-  class BitReader {
-    constructor(bytes) {
-      this.bytes = bytes;
+  // ── Bit-word decoder ────────────────────────────────────────────────────
+
+  class Nrv2eDecoder {
+    constructor(data) {
+      this.data = data;
       this.pos = 0;
-      this.cur = 0;
-      this.nBits = 0;
+      this.bitWord = 0;
+      this.bitsLeft = 0;
+      this._refillWord();
     }
 
     readBit() {
-      if (this.nBits === 0) {
-        this.cur = this.pos < this.bytes.length ? this.bytes[this.pos++] : 0;
-        this.nBits = 8;
-      }
-      this.nBits--;
-      return OpCodes.And32(OpCodes.Shr32(this.cur, this.nBits), 1);
+      if (this.bitsLeft === 0) this._refillWord();
+      const bit = OpCodes.And32(OpCodes.Shr32(this.bitWord, 31), 1);
+      this.bitWord = OpCodes.Shl32(this.bitWord, 1);
+      this.bitsLeft--;
+      return bit;
     }
 
-    readBits(count) {
-      let value = 0;
-      for (let i = 0; i < count; ++i)
-        value = OpCodes.Or32(OpCodes.Shl32(value, 1), this.readBit());
-      return value;
+    readByte() {
+      if (this.pos >= this.data.length) throw new Error("NRV2E: unexpected end of byte stream.");
+      return this.data[this.pos++];
     }
-  }
 
-  // ===== GOLOMB-STYLE OFFSET CODE (shared shape for the whole NRV family) =====
-
-  function writeGolomb(bw, value) {
-    let bitLen = 0;
-    let v = value;
-    while (v > 1) { bitLen++; v = OpCodes.Shr32(v, 1); }
-
-    for (let i = bitLen - 1; i >= 0; --i) {
-      bw.writeBit(OpCodes.And32(OpCodes.Shr32(value, i), 1));
-      bw.writeBit(i === 0 ? 1 : 0);
+    _refillWord() {
+      // Mirrors the reference decoder's RefillWord exactly, including its
+      // zero-padding of a short/absent final word.
+      const take = Math.min(4, this.data.length - this.pos);
+      const pad = [0, 0, 0, 0];
+      if (take > 0) for (let i = 0; i < take; i++) pad[i] = this.data[this.pos + i];
+      this.pos += take;
+      this.bitWord = OpCodes.Pack32LE(pad[0], pad[1], pad[2], pad[3]);
+      this.bitsLeft = 32;
     }
-  }
-
-  function readGolomb(br) {
-    let value = 1;
-    let stop;
-    do {
-      value = OpCodes.Or32(OpCodes.Shl32(value, 1), br.readBit());
-      stop = br.readBit();
-    } while (stop === 0);
-    return value;
   }
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -199,13 +281,13 @@
           text: "Highly repetitive input (64 'A' bytes)",
           uri: "http://www.oberhumer.com/opensource/ucl/",
           input: new Array(64).fill(0x41),
-          expected: [64, 0, 0, 0, 160, 208, 88, 18, 139]
+          expected: [64, 0, 0, 0, 0, 0, 22, 181, 65, 1]
         },
         {
           text: "Text sample",
           uri: "http://www.oberhumer.com/opensource/ucl/",
           input: OpCodes.AnsiToBytes("the quick brown fox jumps over the lazy dog. the quick brown fox."),
-          expected: [65, 0, 0, 0, 186, 90, 44, 178, 11, 141, 214, 211, 99, 181, 200, 44, 87, 43, 125, 222, 221, 32, 179, 91, 239, 18, 11, 85, 214, 219, 112, 185, 200, 45, 247, 107, 45, 202, 64, 199, 251, 101, 134, 245, 121, 144, 89, 45, 246, 121, 115, 14, 44, 181, 12, 184]
+          expected: [65, 0, 0, 0, 254, 255, 255, 255, 116, 104, 101, 32, 113, 117, 105, 99, 107, 32, 98, 114, 111, 119, 110, 32, 102, 111, 120, 32, 106, 117, 109, 112, 115, 32, 111, 118, 101, 114, 32, 184, 216, 251, 239, 61, 108, 97, 122, 121, 32, 100, 111, 103, 46, 27, 89, 46]
         }
       ];
     }
@@ -238,131 +320,125 @@
       const header = OpCodes.Unpack32LE(n);
       if (n === 0) return header;
 
-      const bw = new BitWriter();
-      let lastOffset = 1;
+      const enc = new Nrv2eEncoder();
+      const head = new Int32Array(HASH_SIZE).fill(-1);
+      const prev = new Int32Array(n);
+
+      let lastMatchOffset = 0;
       let pos = 0;
 
       while (pos < n) {
-        const match = this._findMatch(input, pos, lastOffset);
+        let bestLen = 0, bestOff = 0;
 
-        if (match.length >= 2) {
-          bw.writeBit(0);
+        if (pos + MIN_EMITTED_LEN <= n) {
+          const h = hash3(input, pos);
+          let chainLen = 0;
+          const minPos = Math.max(0, pos - MAX_OFFSET);
+          let idx = head[h];
 
-          const reuse = match.distance === lastOffset;
-          if (reuse) {
-            writeGolomb(bw, 2);
-          } else {
-            const rawOff = OpCodes.Shr32(match.distance, 8) + OFFSET_BASE;
-            writeGolomb(bw, rawOff);
-            bw.writeBits(OpCodes.And32(match.distance, 0xFF), 8);
-            lastOffset = match.distance;
+          while (idx >= minPos && chainLen < CHAIN_LIMIT) {
+            const off = pos - idx;
+            if (off <= MAX_OFFSET && input[idx] === input[pos]) {
+              const maxLen = Math.min(n - pos, 1024);
+              let len = 0;
+              while (len < maxLen && input[idx + len] === input[pos + len]) len++;
+              if (len >= MIN_EMITTED_LEN && len > bestLen) {
+                bestLen = len;
+                bestOff = off;
+              }
+            }
+            idx = prev[idx];
+            chainLen++;
           }
+          prev[pos] = head[h];
+          head[h] = pos;
+        }
 
-          const bonus = match.distance > FAR_OFFSET_THRESHOLD ? 1 : 0;
-          const encLen = match.length - bonus;
+        // NRV2E length encoding is gap-free (min emitted length is 2 for
+        // small offsets, 3 for offsets > 0x500); reject too-short matches
+        // for far offsets so we never try to encode an unrepresentable length.
+        if (bestLen >= MIN_EMITTED_LEN && !(bestOff > OFFSET_LARGE_THRESHOLD && bestLen < 3)) {
+          const reuseLast = bestOff === lastMatchOffset;
+          enc.emitMatch(bestOff, bestLen, reuseLast);
+          lastMatchOffset = bestOff;
 
-          if (reuse) {
-            bw.writeBit(encLen - 2);
-          } else if (encLen === 3 || encLen === 4) {
-            bw.writeBit(1);
-            bw.writeBit(encLen - 3);
-          } else {
-            bw.writeBit(0);
-            writeGolomb(bw, encLen - 3);
+          for (let j = 1; j < bestLen && pos + j + MIN_EMITTED_LEN <= n; j++) {
+            const h = hash3(input, pos + j);
+            prev[pos + j] = head[h];
+            head[h] = pos + j;
           }
-
-          pos += match.length;
+          pos += bestLen;
         } else {
-          bw.writeBit(1);
-          bw.writeBits(input[pos], 8);
-          pos += 1;
+          enc.emitLiteral(input[pos]);
+          pos++;
         }
       }
 
-      return header.concat(bw.finish());
+      return header.concat(enc.finish());
     }
 
     _decompress(input) {
-      if (input.length < 4) return [];
-      const size = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
-      if (size === 0) return [];
+      if (input.length < 4) throw new Error("NRV2E: input smaller than 4-byte header.");
+      const targetSize = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
+      if (targetSize < 0) throw new Error("NRV2E: negative decompressed size.");
+      if (targetSize === 0) return [];
 
-      const br = new BitReader(input.slice(4));
-      const output = [];
-      let lastOffset = 1;
+      const dec = new Nrv2eDecoder(input.slice(4));
+      const output = new Array(targetSize);
+      let lastMatchOffset = 1; // UCL initialises last_m_off = 1.
+      let op = 0;
 
-      while (output.length < size) {
-        const bit = br.readBit();
-
-        if (bit === 1) {
-          output.push(br.readBits(8));
-          continue;
+      while (op < targetSize) {
+        while (dec.readBit() === 1) {
+          output[op++] = dec.readByte();
+          if (op >= targetSize) return output;
         }
 
-        const off = readGolomb(br);
-        let distance;
-        const reuse = off === 2;
+        // Offset varint: reads (data, continue, [extra-data]) per iteration.
+        let mOff = 1;
+        for (;;) {
+          mOff = OpCodes.Or32(OpCodes.Shl32(mOff, 1), dec.readBit());
+          if (mOff > MAX_OFFSET + 3) throw new Error("NRV2E: lookbehind overrun.");
+          if (dec.readBit() === 1) break;
+          mOff = OpCodes.Or32(OpCodes.Shl32(mOff - 1, 1), dec.readBit());
+        }
 
-        if (reuse) {
-          distance = lastOffset;
+        let finalOff, mLen;
+        if (mOff === 2) {
+          finalOff = lastMatchOffset;
+          mLen = dec.readBit();
         } else {
-          distance = OpCodes.Shl32(off - OFFSET_BASE, 8) + br.readBits(8);
-          lastOffset = distance;
+          const b = dec.readByte();
+          let raw = OpCodes.Or32(OpCodes.Shl32(mOff - 3, 8), b);
+          // Low bit of raw becomes m_len's first bit (inverted).
+          mLen = 1 - OpCodes.And32(raw, 1);
+          raw = OpCodes.Shr32(raw, 1);
+          finalOff = raw + 1;
+          lastMatchOffset = finalOff;
         }
 
-        let length;
-        if (reuse) {
-          length = br.readBit() + 2;
-        } else if (br.readBit() === 1) {
-          length = br.readBit() + 3;
+        // NRV2E length: m_len in {1,2} via 1+X; {3,4} via 3+Z; or varint+3 for >= 5.
+        if (mLen !== 0) {
+          mLen = 1 + dec.readBit();
+        } else if (dec.readBit() === 1) {
+          mLen = 3 + dec.readBit();
         } else {
-          length = readGolomb(br) + 3;
+          mLen = 1;
+          do {
+            mLen = OpCodes.Or32(OpCodes.Shl32(mLen, 1), dec.readBit());
+          } while (dec.readBit() === 0);
+          mLen += 3;
         }
-        if (distance > FAR_OFFSET_THRESHOLD) length += 1;
 
-        const start = output.length - distance;
-        for (let k = 0; k < length && output.length < size; ++k) output.push(output[start + k]);
+        if (finalOff > OFFSET_LARGE_THRESHOLD) mLen++;
+        if (finalOff > op) throw new Error("NRV2E: offset points before start of output.");
+
+        const src = op - finalOff;
+        const totalToEmit = mLen + 1;
+        for (let i = 0; i < totalToEmit && op < targetSize; i++) output[op++] = output[src + i];
       }
 
       return output;
-    }
-
-    _findMatch(input, pos, lastOffset) {
-      const n = input.length;
-      const maxLen = Math.min(MAX_MATCH, n - pos);
-      let bestLen = 0;
-      let bestDist = 0;
-
-      if (maxLen < 2) return { length: 0, distance: 0 };
-
-      const windowStart = Math.max(0, pos - WINDOW_SIZE);
-
-      for (let cand = windowStart; cand < pos; ++cand) {
-        let len = 0;
-        while (len < maxLen && input[cand + len] === input[pos + len]) ++len;
-        if (len < 2) continue;
-
-        const distance = pos - cand;
-        const bonus = distance > FAR_OFFSET_THRESHOLD ? 1 : 0;
-        const encLen = len - bonus;
-        const isReuse = distance === lastOffset;
-
-        // Repeat-offset matches only carry a 1-bit length code (2 or 3);
-        // fresh-offset matches need an encoded length of at least 3.
-        if (isReuse) {
-          if (encLen < 2 || encLen > 3) continue;
-        } else {
-          if (encLen < 3) continue;
-        }
-
-        const better = len > bestLen || (len === bestLen && isReuse && bestDist !== lastOffset);
-        if (better) {
-          bestLen = len;
-          bestDist = distance;
-        }
-      }
-
-      return { length: bestLen, distance: bestDist };
     }
   }
 
