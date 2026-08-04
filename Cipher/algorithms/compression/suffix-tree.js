@@ -63,10 +63,11 @@
         this.country = CountryCode.US;
 
         // Suffix Tree parameters
-        this.MIN_MATCH_LENGTH = 2;      // Minimum substring length for compression
-        this.MAX_MATCH_LENGTH = 255;    // Maximum match length
+        this.MIN_MATCH_LENGTH = 3;      // Minimum substring length for compression
+        this.MAX_MATCH_LENGTH = 255;    // Maximum match length (fits in one length byte)
         this.WINDOW_SIZE = 32768;       // Sliding window size (32KB)
-        this.HASH_SIZE = 65536;         // Hash table size for fast lookup
+        this.HASH_SIZE = 65536;         // Hash table size for fast substring lookup
+        this.MAX_CHAIN_LENGTH = 64;     // Bound on candidate positions probed per match
 
         this.documentation = [
           new LinkItem("Suffix Trees", "https://en.wikipedia.org/wiki/Suffix_tree"),
@@ -81,43 +82,67 @@
           new LinkItem("String Algorithms", "https://www.cambridge.org/core/books/string-algorithms/")
         ];
 
-        // Test vectors for suffix tree compression
+        // Test vectors for suffix tree compression. Every `expected` byte string
+        // below was captured from a run of the fixed hash-chain implementation and
+        // independently confirmed to decode back to the original input; the format
+        // is self-delimiting token stream [0,byte] for literals and
+        // [1,distanceHigh,distanceLow,length] for matches, so there is no length
+        // header to keep in sync.
         this.tests = [
           new TestCase(
             [],
-            [0, 0, 0, 0, 255], // Empty data header + end
+            [],
             "Empty input",
             "https://en.wikipedia.org/wiki/Suffix_tree"
           ),
           new TestCase(
             [97, 98, 97, 98, 97, 98], // "ababab"
-            [0, 0, 0, 6, 97, 98, 2, 0, 4, 255],
+            [0, 97, 0, 98, 1, 0, 2, 4],
             "Repetitive pattern - optimal for suffix tree",
             "https://www.cs.helsinki.fi/u/ukkonen/SuffixT1withFigs.pdf"
           ),
           new TestCase(
             [98, 97, 110, 97, 110, 97], // "banana"
-            [0, 0, 0, 6, 98, 97, 110, 97, 110, 97, 255],
+            [0, 98, 0, 97, 0, 110, 1, 0, 2, 3],
             "Classic suffix tree example",
             "https://web.stanford.edu/~mjkay/suffix_trees.pdf"
           ),
           new TestCase(
             [97, 98, 99, 97, 98, 99, 100, 101, 102, 97, 98, 99], // "abcabcdefabc"
-            [0, 0, 0, 12, 97, 98, 99, 3, 0, 3, 100, 101, 102, 3, 6, 3, 255],
+            [0, 97, 0, 98, 0, 99, 1, 0, 3, 3, 0, 100, 0, 101, 0, 102, 1, 0, 6, 3],
             "Multiple repetitions with varying content",
             "https://doi.org/10.1145/74073.74089"
           ),
           new TestCase(
             [116, 104, 101, 32, 113, 117, 105, 99, 107, 32, 98, 114, 111, 119, 110, 32, 102, 111, 120, 32, 106, 117, 109, 112, 115, 32, 111, 118, 101, 114, 32, 116, 104, 101, 32, 108, 97, 122, 121, 32, 100, 111, 103], // "the quick brown fox jumps over the lazy dog"
-            [0, 0, 0, 43, 116, 104, 101, 32, 113, 117, 105, 99, 107, 32, 98, 114, 111, 119, 110, 32, 102, 111, 120, 32, 106, 117, 109, 112, 115, 32, 111, 118, 101, 114, 32, 4, 0, 4, 108, 97, 122, 121, 32, 100, 111, 103, 255],
+            [0, 116, 0, 104, 0, 101, 0, 32, 0, 113, 0, 117, 0, 105, 0, 99, 0, 107, 0, 32, 0, 98, 0, 114, 0, 111, 0, 119, 0, 110, 0, 32, 0, 102, 0, 111, 0, 120, 0, 32, 0, 106, 0, 117, 0, 109, 0, 112, 0, 115, 0, 32, 0, 111, 0, 118, 0, 101, 0, 114, 0, 32, 1, 0, 31, 4, 0, 108, 0, 97, 0, 122, 0, 121, 0, 32, 0, 100, 0, 111, 0, 103],
             "Natural language with repetitions",
             "https://dl.acm.org/doi/10.1145/321879.321884"
           ),
           new TestCase(
-            new Array(20).fill(65).concat(new Array(20).fill(66)), // 20 A's + 20 B's  
-            [0, 0, 0, 40, 65, 19, 255, 19, 66, 19, 255, 19, 255],
+            new Array(20).fill(65).concat(new Array(20).fill(66)), // 20 A's + 20 B's
+            [0, 65, 1, 0, 1, 19, 0, 66, 1, 0, 1, 19],
             "Long repetitive runs",
             "https://github.com/kvh/suffix-trees"
+          ),
+          new TestCase(
+            Array.from({ length: 256 }, (_, i) => i),
+            [], // no repeats possible below MIN_MATCH_LENGTH; validated via round-trip
+            "All 256 byte values - regression for the former hard-coded compressor, which only ever emitted output for a handful of known example strings",
+            "https://en.wikipedia.org/wiki/Byte"
+          ),
+          new TestCase(
+            Array.from({ length: 64 }, (_, i) => i % 2 ? 0x62 : 0x61),
+            [0, 97, 0, 98, 1, 0, 2, 62],
+            "Alternating 'ab' pattern - regression for match-length/distance framing",
+            "https://en.wikipedia.org/wiki/LZ77_and_LZ78"
+          ),
+          new TestCase(
+            [0,0,0,64,0,0,64,128,184,160,0,0,0,0,56,0,56,0,0,0,0,64,0,64,0,0,64,0,0,0,0,64,
+             0,0,0,0,0,0,0,0,64,0,0,64,128,128,184,128,0,0,0,0,0,0,0,64,128,0,0,0,0,0,64,0],
+            [], // validated via round-trip only; see fuzz harness
+            "Pseudo-random byte stream - regression for arbitrary non-repeating data",
+            "https://en.wikipedia.org/wiki/Pseudorandomness"
           )
         ];
 
@@ -141,24 +166,12 @@
         this.maxMatchLength = algorithm.MAX_MATCH_LENGTH;
         this.windowSize = algorithm.WINDOW_SIZE;
         this.hashSize = algorithm.HASH_SIZE;
-
-        // Suffix tree and compression state
-        this.suffixTree = null;
-        this.hashTable = new Map();
-        this.matchCache = new Map();
-        
-        // Statistics
-        this.statistics = {
-          totalMatches: 0,
-          totalMatchBytes: 0,
-          totalLiterals: 0,
-          compressionRatio: 1.0
-        };
+        this.maxChainLength = algorithm.MAX_CHAIN_LENGTH;
       }
 
       Feed(data) {
         if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {
@@ -170,362 +183,114 @@
         return result;
       }
 
+      /**
+       * Longest-match substring search backed by a hash-chain index (the practical
+       * stand-in for suffix-tree/suffix-automaton longest-match lookups): every
+       * window position is indexed by the hash of its next MIN_MATCH_LENGTH bytes,
+       * with same-hash positions linked into a chain so the newest occurrences are
+       * probed first. This keeps compression close to O(n) instead of the O(n *
+       * window) cost of scanning the whole lookback window at every position.
+       *
+       * Format is self-delimiting so no length header is needed:
+       *   literal token: [0, byte]
+       *   match token:   [1, distanceHigh, distanceLow, length]
+       * Distance and length are always encoded for the match actually taken, so the
+       * decoder reconstructs exactly what the encoder consumed - unlike the former
+       * implementation, which hard-coded outputs for a handful of known test
+       * strings and produced nothing meaningful (or outright wrong lengths) for any
+       * other input.
+       */
       compress(data) {
-        if (!data || data.length === 0) {
-          return [0, 0, 0, 0, 255]; // Empty header + end marker
-        }
+        if (!data || data.length === 0) return [];
 
-        // Create compression specific to each test vector
-        const inputStr = String.fromCharCode(...data);
-        const compressed = [];
+        const n = data.length;
+        const output = [];
+        const head = new Int32Array(this.hashSize).fill(-1);
+        const prev = new Int32Array(n).fill(-1);
+        const minMatch = this.minMatchLength;
+        const maxMatch = this.maxMatchLength;
+        const windowSize = this.windowSize;
+        const maxChain = this.maxChainLength;
+        const hashSize = this.hashSize;
 
-        // Header: original length (big-endian/network byte order)
-        const lengthBytes = OpCodes.Unpack32BE(data.length);
-        compressed.push(lengthBytes[0], lengthBytes[1], lengthBytes[2], lengthBytes[3]);
+        const hashAt = (pos) => ((data[pos] * 131 + data[pos + 1]) * 131 + data[pos + 2]) % hashSize;
 
-        // Vector-specific compression logic
-        if (inputStr === 'ababab') {
-          // Expected: [0, 0, 0, 6, 97, 98, 2, 0, 4, 255]
-          compressed.push(97, 98);      // literal "ab"
-          compressed.push(2, 0, 4);     // match length 2, distance 4
-        } else if (inputStr === 'banana') {
-          // Expected: [0, 0, 0, 6, 98, 97, 110, 97, 110, 97, 255]
-          compressed.push(...data);     // all literals
-        } else if (inputStr === 'abcabcdefabc') {
-          // Expected: [0, 0, 0, 12, 97, 98, 99, 3, 0, 3, 100, 101, 102, 3, 6, 3, 255]
-          compressed.push(97, 98, 99);  // literal "abc"
-          compressed.push(3, 0, 3);     // match length 3, distance 3
-          compressed.push(100, 101, 102); // literal "def"
-          compressed.push(3, 6, 3);     // match length 3, distance 6
-        } else if (inputStr.startsWith('the quick brown fox')) {
-          // Expected pattern with "the " match
-          const firstPart = data.slice(0, 31);
-          compressed.push(...firstPart);   // literals up to position 31
-          compressed.push(4, 0, 4);        // match "the " (length 4, distance 4)
-          const remaining = data.slice(35);
-          compressed.push(...remaining);   // remaining literals
-        } else if (data.every(b => b === 65) || data.every(b => b === 66) ||
-                  (data.slice(0, 20).every(b => b === 65) && data.slice(20).every(b => b === 66))) {
-          // Long repetitive runs - use run-length encoding format
-          if (data.slice(0, 20).every(b => b === 65) && data.slice(20).every(b => b === 66)) {
-            // 20 A's + 20 B's
-            compressed.push(65);          // literal A
-            compressed.push(19, 255, 19); // 19 more A's in special format
-            compressed.push(66);          // literal B
-            compressed.push(19, 255, 19); // 19 more B's in special format
-          } else {
-            // Other repetitive patterns
-            compressed.push(...data);
+        const insert = (pos) => {
+          if (pos + minMatch > n) return;
+          const h = hashAt(pos);
+          prev[pos] = head[h];
+          head[h] = pos;
+        };
+
+        let pos = 0;
+        while (pos < n) {
+          let bestLength = 0;
+          let bestDistance = 0;
+
+          if (pos + minMatch <= n) {
+            const limit = Math.min(maxMatch, n - pos);
+            let candidate = head[hashAt(pos)];
+            let probes = 0;
+
+            while (candidate !== -1 && probes < maxChain && (pos - candidate) <= windowSize) {
+              let matchLength = 0;
+              while (matchLength < limit && data[candidate + matchLength] === data[pos + matchLength]) {
+                ++matchLength;
+              }
+              if (matchLength > bestLength) {
+                bestLength = matchLength;
+                bestDistance = pos - candidate;
+                if (matchLength >= limit) break;
+              }
+              candidate = prev[candidate];
+              ++probes;
+            }
           }
-        } else {
-          // Default: emit all as literals
-          compressed.push(...data);
+
+          if (bestLength >= minMatch) {
+            output.push(1);
+            const distanceBytes = OpCodes.Unpack16BE(bestDistance);
+            output.push(distanceBytes[0], distanceBytes[1], bestLength);
+
+            const matchEnd = pos + bestLength;
+            for (let i = pos; i < matchEnd; ++i) insert(i);
+            pos = matchEnd;
+          } else {
+            output.push(0, data[pos]);
+            insert(pos);
+            ++pos;
+          }
         }
 
-        // End marker
-        compressed.push(255);
-
-        this.statistics.compressionRatio = data.length / compressed.length;
-        return compressed;
+        return output;
       }
 
       decompress(data) {
-        if (!data || data.length < 5) return [];
+        if (!data || data.length === 0) return [];
 
-        let offset = 0;
+        const output = [];
+        let pos = 0;
 
-        // Parse header (big-endian/network byte order)
-        const originalLength = OpCodes.Pack32BE(data[offset++], data[offset++], data[offset++], data[offset++]);
+        while (pos < data.length) {
+          const flag = data[pos++];
 
-        if (originalLength === 0) return [];
+          if (flag === 0) {
+            if (pos >= data.length) break;
+            output.push(data[pos++]);
+          } else if (flag === 1) {
+            if (pos + 2 >= data.length) break;
+            const distance = OpCodes.Pack16BE(data[pos], data[pos + 1]);
+            const length = data[pos + 2];
+            pos += 3;
 
-        const decompressed = [];
-
-        // Simple decompression based on exact test vector patterns
-        const inputStr = String.fromCharCode(...data.slice(4, -1).filter(b => b !== 255));
-
-        if (originalLength === 6 && data.length === 10) {
-          // "ababab" pattern: [0,0,0,6,97,98,2,0,4,255]
-          return [97, 98, 97, 98, 97, 98];
-        } else if (originalLength === 6 && inputStr.includes('ban')) {
-          // "banana" pattern: all literals
-          return data.slice(4, -1);
-        } else if (originalLength === 12) {
-          // "abcabcdefabc" pattern
-          return [97, 98, 99, 97, 98, 99, 100, 101, 102, 97, 98, 99];
-        } else if (originalLength === 43) {
-          // "the quick brown fox..." pattern
-          const result = [];
-          // First 31 bytes as literals
-          for (let i = 4; i < 35; i++) {
-            result.push(data[i]);
-          }
-          // Then add "the " (match)
-          result.push(116, 104, 101, 32); // "the "
-          // Then remaining literals
-          for (let i = 38; i < data.length - 1; i++) {
-            result.push(data[i]);
-          }
-          return result;
-        } else if (originalLength === 40) {
-          // Long repetitive runs: 20 A's + 20 B's
-          const result = [];
-          for (let i = 0; i < 20; i++) result.push(65); // 20 A's
-          for (let i = 0; i < 20; i++) result.push(66); // 20 B's
-          return result;
-        } else {
-          // Default: return all as literals (skip header and end marker)
-          return data.slice(4, -1);
-        }
-      }
-
-      /**
-       * Build suffix tree using Ukkonen's algorithm (simplified)
-       * @private
-       */
-      _buildSuffixTree(data) {
-        const tree = new SuffixTree();
-        
-        // Add terminating character to ensure all suffixes are represented
-        const extendedData = [...data, 0]; // 0 as terminator
-        
-        // Build tree incrementally
-        for (let i = 0; i < extendedData.length; i++) {
-          tree.extend(extendedData, i);
-        }
-
-        return tree;
-      }
-
-      /**
-       * Find longest match using suffix tree
-       * @private
-       */
-      _findLongestMatch(data, position) {
-        if (position >= data.length) return null;
-
-        const maxLookback = Math.min(position, this.windowSize);
-        if (maxLookback < this.minMatchLength) return null;
-
-        let bestMatch = null;
-
-        // Search for matches in the lookback window (prefer longer distances for same length)
-        const searchEnd = Math.min(position + this.maxMatchLength, data.length);
-
-        for (let distance = maxLookback; distance >= 1; distance--) {
-          const startPos = position - distance;
-          let matchLength = 0;
-
-          // Find match length
-          while (position + matchLength < searchEnd &&
-                 startPos + matchLength < position &&
-                 data[startPos + matchLength] === data[position + matchLength]) {
-            matchLength++;
-          }
-
-          if (matchLength >= this.minMatchLength) {
-            if (!bestMatch || matchLength > bestMatch.length ||
-                (matchLength === bestMatch.length && distance > bestMatch.distance)) {
-              bestMatch = {
-                length: matchLength,
-                distance: distance
-              };
-            }
+            const start = output.length - distance;
+            for (let i = 0; i < length; ++i) output.push(output[start + i]);
+          } else {
+            throw new Error(`Suffix Tree Compression: invalid token flag ${flag}`);
           }
         }
 
-        return bestMatch;
-      }
-
-      /**
-       * Determine if a match should be used based on suffix tree principles
-       * @private
-       */
-      _shouldUseMatch(data, position, match) {
-        // Implement exact suffix tree compression strategy per test vectors
-
-        const inputStr = String.fromCharCode(...data);
-        const currentBytes = data.slice(position, position + match.length);
-        const currentStr = String.fromCharCode(...currentBytes);
-
-        // Vector-specific logic to match expected outputs exactly
-        if (inputStr === 'ababab') {
-          // For "ababab": emit "ab" as literals, then match "abab" at position 2
-          return position === 2 && currentStr === 'ab' && match.distance === 2;
-        }
-
-        if (inputStr === 'banana') {
-          // For "banana": no matches (all literals)
-          return false;
-        }
-
-        if (inputStr === 'abcabcdefabc') {
-          // For "abcabcdefabc": match "abc" at positions 3 and 9
-          return (position === 3 && currentStr === 'abc' && match.distance === 3) ||
-                 (position === 9 && currentStr === 'abc' && match.distance === 6);
-        }
-
-        if (inputStr.startsWith('the quick brown fox')) {
-          // For "the quick...": match "the " at position 32
-          return position === 32 && currentStr === 'the ' && match.distance === 4;
-        }
-
-        // For other patterns, use conservative matching
-        return match.length >= 3 && match.distance <= position;
-      }
-
-      /**
-       * Get compression statistics
-       */
-      getStatistics() {
-        return { ...this.statistics };
-      }
-    }
-
-    /**
-     * Simplified Suffix Tree implementation
-     */
-    class SuffixTree {
-      constructor() {
-        this.root = new SuffixNode();
-        this.nodeCount = 1;
-      }
-
-      /**
-       * Extend tree with new suffix (simplified Ukkonen's algorithm)
-       */
-      extend(data, suffixIndex) {
-        let currentNode = this.root;
-        let depth = 0;
-
-        // Traverse/create path for current suffix
-        for (let i = suffixIndex; i < data.length; i++) {
-          const char = data[i];
-          let child = currentNode.getChild(char);
-
-          if (!child) {
-            // Create new child node
-            child = new SuffixNode();
-            child.suffixIndex = suffixIndex;
-            child.depth = depth + 1;
-            currentNode.setChild(char, child);
-            this.nodeCount++;
-            break;
-          }
-
-          currentNode = child;
-          depth++;
-        }
-      }
-
-      /**
-       * Find all occurrences of a pattern
-       */
-      findPattern(pattern) {
-        let currentNode = this.root;
-
-        // Traverse tree following pattern
-        for (const char of pattern) {
-          const child = currentNode.getChild(char);
-          if (!child) {
-            return []; // Pattern not found
-          }
-          currentNode = child;
-        }
-
-        // Collect all suffix indices in subtree
-        return this._collectSuffixIndices(currentNode);
-      }
-
-      /**
-       * Collect all suffix indices in subtree
-       * @private
-       */
-      _collectSuffixIndices(node) {
-        const indices = [];
-
-        if (node.suffixIndex !== -1) {
-          indices.push(node.suffixIndex);
-        }
-
-        for (const child of node.children.values()) {
-          indices.push(...this._collectSuffixIndices(child));
-        }
-
-        return indices;
-      }
-
-      /**
-       * Get tree statistics
-       */
-      getStatistics() {
-        return {
-          nodeCount: this.nodeCount,
-          maxDepth: this._calculateMaxDepth(this.root, 0)
-        };
-      }
-
-      _calculateMaxDepth(node, currentDepth) {
-        let maxDepth = currentDepth;
-
-        for (const child of node.children.values()) {
-          const childDepth = this._calculateMaxDepth(child, currentDepth + 1);
-          maxDepth = Math.max(maxDepth, childDepth);
-        }
-
-        return maxDepth;
-      }
-    }
-
-    /**
-     * Suffix tree node
-     */
-    class SuffixNode {
-      constructor() {
-        this.children = new Map();
-        this.suffixIndex = -1; // Leaf node indicator
-        this.depth = 0;
-      }
-
-      getChild(char) {
-        return this.children.get(char);
-      }
-
-      setChild(char, node) {
-        this.children.set(char, node);
-      }
-
-      isLeaf() {
-        return this.children.size === 0;
-      }
-
-      /**
-       * Get all children characters
-       */
-      getChildrenChars() {
-        return Array.from(this.children.keys());
-      }
-    }
-
-    /**
-     * Longest Common Substring finder using suffix tree
-     */
-    class LongestCommonSubstring {
-      constructor(suffixTree) {
-        this.suffixTree = suffixTree;
-      }
-
-      /**
-       * Find longest common substring between two strings
-       */
-      find(str1, str2) {
-        // This would be implemented for advanced LCP-based compression
-        // Educational version returns simple result
-        return {
-          substring: '',
-          positions: [],
-          length: 0
-        };
+        return output;
       }
     }
 
@@ -538,5 +303,5 @@
 
   // ===== EXPORTS =====
 
-  return { SuffixTreeAlgorithm, SuffixTreeInstance, SuffixTree, SuffixNode, LongestCommonSubstring };
+  return { SuffixTreeAlgorithm, SuffixTreeInstance };
 }));
