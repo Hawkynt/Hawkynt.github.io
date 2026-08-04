@@ -88,37 +88,62 @@
           new LinkItem("Fibonacci Applications", "https://www.mathsisfun.com/numbers/fibonacci-sequence.html")
         ];
 
-        // Test vectors with proper Fibonacci coding representations (as byte arrays)
+        // Test vectors with proper Fibonacci/Zeckendorf coding representations
+        // (as byte arrays). Fibonacci coding only represents positive integers
+        // (n >= 1), so each byte value b (0..255) is encoded as Zeckendorf(b+1);
+        // the decoder subtracts 1 back out. Without this shift, byte 0 and
+        // byte 1 would both encode to "11" and be indistinguishable on decode.
         this.tests = [
           new TestCase(
-            [1], // Number 1
-            global.OpCodes.Hex8ToBytes("C0"), // Fibonacci code "11" padded to byte
-            "Fibonacci coding of number 1",
-            "https://en.wikipedia.org/wiki/Fibonacci_coding"
-          ),
-          new TestCase(
-            [2], // Number 2  
+            [1], // byte value 1 -> Zeckendorf(2) = "011"
             global.OpCodes.Hex8ToBytes("60"), // Fibonacci code "011" padded to byte
-            "Fibonacci coding of number 2",
+            "Fibonacci coding of byte value 1 (Zeckendorf 2)",
             "https://en.wikipedia.org/wiki/Fibonacci_coding"
           ),
           new TestCase(
-            [6], // Number 6 = F₅ + F₂ = 5 + 1
-            global.OpCodes.Hex8ToBytes("98"), // Fibonacci code "10011" padded to byte
-            "Fibonacci coding of number 6 (5+1)",
+            [2], // byte value 2 -> Zeckendorf(3) = "0011"
+            global.OpCodes.Hex8ToBytes("30"), // Fibonacci code "0011" padded to byte
+            "Fibonacci coding of byte value 2 (Zeckendorf 3)",
+            "https://en.wikipedia.org/wiki/Fibonacci_coding"
+          ),
+          new TestCase(
+            [6], // byte value 6 -> Zeckendorf(7) = F₄+F₂ = 5+2 -> "01011"
+            global.OpCodes.Hex8ToBytes("58"), // Fibonacci code "01011" padded to byte
+            "Fibonacci coding of byte value 6 (Zeckendorf 7 = 5+2)",
             "https://cp-algorithms.com/algebra/fibonacci-numbers.html"
           ),
           new TestCase(
-            [8], // Number 8 = F₆
-            global.OpCodes.Hex8ToBytes("0C"), // Fibonacci code "000011" padded to byte
-            "Fibonacci coding of number 8",
+            [8], // byte value 8 -> Zeckendorf(9) = F₆+F₁ = 8+1 -> "100011"
+            global.OpCodes.Hex8ToBytes("8C"), // Fibonacci code "100011" padded to byte
+            "Fibonacci coding of byte value 8 (Zeckendorf 9 = 8+1)",
             "https://cp-algorithms.com/algebra/fibonacci-numbers.html"
           ),
           new TestCase(
-            [11], // Number 11 = F₇ + F₅ = 8 + 3
-            global.OpCodes.Hex8ToBytes("2C"), // Fibonacci code "001011" padded to byte  
-            "Fibonacci coding of number 11 (8+3)",
+            [11], // byte value 11 -> Zeckendorf(12) = F₆+F₃ = 8+3 -> "101011"
+            global.OpCodes.Hex8ToBytes("AC"), // Fibonacci code "101011" padded to byte
+            "Fibonacci coding of byte value 11 (Zeckendorf 12 = 8+3)",
             "https://www.geeksforgeeks.org/fibonacci-coding/"
+          ),
+          // Round-trip regression vectors: previously byte 0 and byte 1
+          // collided onto the same "11" codeword and any message mixing
+          // both (or containing byte 0 at all) failed to round-trip.
+          new TestCase(
+            Array.from({ length: 256 }, (_, i) => i), // All 256 distinct byte values
+            [],
+            "All byte values 0-255 round-trip test",
+            "Regression test for byte 0/1 codeword collision"
+          ),
+          new TestCase(
+            [243, 204, 191, 171, 157, 143, 229, 84, 239, 176, 155, 208, 176, 245, 186, 148, 128, 53, 183, 104, 65, 66, 101, 148, 122, 107, 131, 193, 65, 79, 229, 58, 50, 25, 21, 210, 49, 167, 70, 138, 6, 12, 191, 33, 67, 124, 161, 122, 65, 2, 92, 207, 37, 32, 136, 248, 127, 146, 78, 207, 243, 126, 146, 223, 64, 161, 46, 129, 181, 68, 211, 17, 148, 194, 96, 50, 211, 110, 202, 53, 74, 159, 228, 247, 145, 4, 228, 234, 16, 151, 188, 109, 81, 80, 49, 126, 162, 199, 101, 196, 235, 27, 109, 184, 20, 77, 129, 64, 148, 182, 146, 41, 134, 77, 32, 59, 197, 71, 158, 152, 231, 94, 231, 211, 103, 220, 144, 238, 137, 222, 237, 151, 177, 197, 92, 12, 97, 179, 107, 212, 167, 137, 88, 210, 78, 173, 228, 175, 149, 232, 107, 45, 28, 202, 239, 242, 91, 73, 66, 24, 35, 92, 185, 245, 62, 213, 13, 182, 15, 242, 254, 12, 86, 213, 178, 168, 213, 115, 176, 57, 95, 201, 101, 121, 187, 228, 195, 32, 44, 252, 179, 230, 150, 179, 164, 143, 191, 97, 136, 46, 25, 154, 214, 6, 155, 31, 129, 253, 3, 119, 59, 68, 187, 102, 43, 112, 143, 202, 179, 185, 32, 38, 37, 249, 29, 52, 47, 246, 60, 190, 166, 152, 5, 144, 25, 213, 107, 191, 85, 158, 64, 228, 200, 90, 18, 120, 76, 172, 148, 46, 222, 67, 185, 14, 135, 164, 72, 186, 30, 245, 198, 193, 63, 169, 164, 83, 85, 104, 24, 107, 159, 230, 18, 235, 247, 15, 205, 167, 128, 28, 145, 40, 49, 185, 0, 198, 197, 208, 211, 50, 157, 56, 249, 159, 97, 19, 92, 178, 139, 196], // Pseudo-random (splitmix32) 300-byte sample
+            [],
+            "Pseudo-random data round-trip test",
+            "Regression test for byte 0/1 codeword collision"
+          ),
+          new TestCase(
+            Array.from({ length: 128 }, (_, i) => i % 2 ? 0x55 : 0xAA), // Alternating 0xAA/0x55
+            [],
+            "Alternating pattern round-trip test",
+            "Regression test for byte 0/1 codeword collision"
           )
         ];
       }
@@ -138,7 +163,7 @@
 
       Feed(data) {
         if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {
@@ -156,14 +181,13 @@
       _compress() {
         let bitString = '';
 
-        // Encode each byte using Fibonacci coding
+        // Fibonacci/Zeckendorf coding only represents positive integers
+        // (n >= 1), so bytes (0..255) are shifted to (1..256) before
+        // encoding. Without this shift, byte 0 (special-cased to "11")
+        // and byte 1 (which _encodeFibonacci also produces as "11") would
+        // collide onto the same codeword and be indistinguishable.
         for (const byte of this.inputBuffer) {
-          if (byte === 0) {
-            // Special case: 0 is encoded as "11" 
-            bitString += '11';
-          } else {
-            bitString += this._encodeFibonacci(byte);
-          }
+          bitString += this._encodeFibonacci(byte + 1);
         }
 
         // Convert bit string to bytes
@@ -186,7 +210,7 @@
         while (i < bitString.length - 1) {
           const { value, nextIndex } = this._decodeFibonacci(bitString, i);
           if (nextIndex === -1) break; // Invalid code
-          result.push(value);
+          result.push(value - 1); // undo the +1 shift applied at encode time
           i = nextIndex;
         }
 
