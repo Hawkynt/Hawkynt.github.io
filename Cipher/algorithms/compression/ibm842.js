@@ -8,17 +8,15 @@
  * software fallback in the Linux kernel (lib/842, crypto/842.c, drivers/crypto/nx).
  * Data is processed in 8-byte chunks; each chunk is emitted as a 5-bit template
  * opcode followed by a mix of literal fields and back-references into three
- * separate ring-buffer dictionaries that hold recently seen 2-, 4- and 8-byte
- * values (a hash/value dictionary, not an LZ77 sliding-window offset).
+ * separate ring-buffer dictionaries that hold the 256 most recently seen 2-, 4-
+ * and 8-byte values (a hash/value dictionary, not an LZ77 sliding-window offset).
  *
- * This implementation reproduces the documented block structure (5-bit MSB-first
- * template opcode, 8/9/8-bit dictionary indices for the 2/4/8-byte ring buffers,
- * a 3-bit length field for the final partial-chunk "short data" tail template)
- * and a representative subset of the full 26-entry template table sufficient for
- * a self-consistent, always-invertible encoder/decoder pair: full-literal, full
- * 8-byte reference, two 4-byte references, four 2-byte references, and the two
- * 4+4 literal/reference mixes. The complete permutation table (all 26 templates)
- * and the optional OP_REPEAT/OP_ZEROS run-length templates from the reference
+ * This implementation reproduces the eight core chunk templates - full 8-byte
+ * reference, two 4-byte references, 4-byte+two 2-byte references (both orders),
+ * four 2-byte references, 4-byte reference+4 literal bytes (both orders), and
+ * full 8-byte literal - plus a 5-bit end-of-stream marker and a trailing
+ * zero-padded literal chunk for input lengths that are not a multiple of 8.
+ * The optional OP_REPEAT/OP_ZEROS run-length templates from the reference
  * decoder are not implemented; this is a documented subset, not a byte-exact
  * clone of the hardware/kernel bitstream.
  *
@@ -127,58 +125,70 @@
     }
   }
 
-  // ===== TEMPLATE OPCODES (5-bit, subset of the 26-entry reference table) =====
+  // ===== TEMPLATE OPCODES (5-bit) =====
+  // Mirrors CompressionWorkbench's Ibm842BuildingBlock template numbering.
 
-  const TPL_LIT8       = 0;  // 8 literal bytes
-  const TPL_REF8        = 1;  // one 8-byte dictionary reference
-  const TPL_REF4_REF4   = 2;  // two 4-byte dictionary references
-  const TPL_REF2x4      = 3;  // four 2-byte dictionary references
-  const TPL_REF4_LIT4   = 4;  // 4-byte reference + 4 literal bytes
-  const TPL_LIT4_REF4   = 5;  // 4 literal bytes + 4-byte reference
-  const TPL_END         = 6;  // end of stream
-  const TPL_SHORT       = 7;  // tail template: 3-bit length (1..7) + literal bytes
+  const OP_D8         = 0x00; // one 8-byte dictionary reference
+  const OP_D4D4        = 0x01; // two 4-byte dictionary references
+  const OP_D4D2D2       = 0x02; // 4-byte ref + two 2-byte refs (covering bytes 4..8)
+  const OP_D2D2D4       = 0x03; // two 2-byte refs (covering bytes 0..4) + 4-byte ref
+  const OP_D2D2D2D2      = 0x04; // four 2-byte dictionary references
+  const OP_D4L4         = 0x05; // 4-byte ref + 4 literal bytes
+  const OP_L4D4         = 0x06; // 4 literal bytes + 4-byte ref
+  const OP_L8          = 0x07; // 8 literal bytes
+  const OP_END         = 0x1F; // end of stream
 
   const OPCODE_BITS = 5;
-  const IDX2_BITS = 8;   // 256-entry 2-byte dictionary
-  const IDX4_BITS = 9;   // 512-entry 4-byte dictionary
-  const IDX8_BITS = 8;   // 256-entry 8-byte dictionary
-  const SHORT_LEN_BITS = 3;
+  const IDX_BITS = 8; // all three ring buffers hold 256 entries
 
-  const DICT2_SIZE = OpCodes.Shl32(1, IDX2_BITS);
-  const DICT4_SIZE = OpCodes.Shl32(1, IDX4_BITS);
-  const DICT8_SIZE = OpCodes.Shl32(1, IDX8_BITS);
+  const DICT2_SIZE = 256;
+  const DICT4_SIZE = 256;
+  const DICT8_SIZE = 256;
 
-  // Ring-buffer value dictionary shared shape for the 2/4/8-byte tables
+  // Big-endian field readers built from arithmetic only (no raw bit operators).
+  function be16(bytes, offset) {
+    return OpCodes.OrN(OpCodes.Shl32(bytes[offset], 8), bytes[offset + 1]);
+  }
+
+  function be32(bytes, offset) {
+    return OpCodes.ToUint32(OpCodes.OrN(
+      OpCodes.OrN(OpCodes.Shl32(bytes[offset], 24), OpCodes.Shl32(bytes[offset + 1], 16)),
+      OpCodes.OrN(OpCodes.Shl32(bytes[offset + 2], 8), bytes[offset + 3])
+    ));
+  }
+
+  // 8-byte values only need to support equality/keying, so they are represented
+  // as a "hi:lo" string built from two 32-bit big-endian halves.
+  function be64Key(bytes, offset) {
+    return be32(bytes, offset) + ':' + be32(bytes, offset + 4);
+  }
+
+  // Ring-buffer value dictionary: maps recently-seen N-byte values to their
+  // circular slot index, evicting the value that previously occupied a slot
+  // when it is overwritten (mirrors the reference's Dictionary+reverse-array
+  // eviction, including that a duplicate value inserted at a later slot can
+  // shadow an older slot holding the same value).
   class RingDict {
-    constructor(size, width) {
+    constructor(size) {
       this.size = size;
-      this.width = width;
-      this.slots = new Array(size).fill(null);
+      this.forward = new Map(); // value -> slot index
+      this.reverse = new Array(size).fill(undefined); // slot index -> value
       this.next = 0;
     }
 
-    find(bytes, offset) {
-      for (let i = 0; i < this.size; ++i) {
-        const slot = this.slots[i];
-        if (!slot) continue;
-        let match = true;
-        for (let j = 0; j < this.width; ++j) {
-          if (slot[j] !== bytes[offset + j]) { match = false; break; }
-        }
-        if (match) return i;
-      }
-      return -1;
+    find(value) {
+      const idx = this.forward.get(value);
+      return idx === undefined ? -1 : idx;
     }
 
-    insert(bytes, offset) {
-      const value = new Array(this.width);
-      for (let j = 0; j < this.width; ++j) value[j] = bytes[offset + j];
-      this.slots[this.next] = value;
+    insert(value) {
+      const slot = this.next;
+      const old = this.reverse[slot];
+      if (old !== undefined) this.forward.delete(old);
+      this.reverse[slot] = value;
+      this.forward.set(value, slot);
       this.next = (this.next + 1) % this.size;
-    }
-
-    get(index) {
-      return this.slots[index];
+      return slot;
     }
   }
 
@@ -189,7 +199,7 @@
       super();
 
       this.name = "IBM 842";
-      this.description = "Fixed-block dictionary compression built for IBM POWER hardware accelerators. Encodes data in 8-byte chunks as a template opcode selecting a mix of literal bytes and back-references into 2/4/8-byte ring-buffer dictionaries. This implementation covers a representative subset of the documented template table.";
+      this.description = "Fixed-block dictionary compression built for IBM POWER hardware accelerators. Encodes data in 8-byte chunks as a template opcode selecting a mix of literal bytes and back-references into 2/4/8-byte ring-buffer dictionaries. This implementation covers the eight core chunk templates plus end-of-stream and padded-tail handling.";
       this.inventor = "IBM Corporation";
       this.year = 2010;
       this.category = CategoryType.COMPRESSION;
@@ -213,19 +223,31 @@
           text: "Empty input",
           uri: "https://en.wikipedia.org/wiki/842_(compression_algorithm)",
           input: [],
-          expected: [48]
+          expected: [0, 0, 0, 0]
         },
         {
-          text: "Single byte tail-only chunk",
+          text: "Single byte",
           uri: "https://en.wikipedia.org/wiki/842_(compression_algorithm)",
-          input: [65],
-          expected: [56, 65, 48]
+          input: [0x41],
+          expected: [1, 0, 0, 0, 58, 8, 0, 0, 0, 0, 0, 0, 7, 192]
         },
         {
-          text: "Repeated 8-byte pattern (dictionary hits)",
+          text: "256 repeated bytes",
           uri: "https://github.com/torvalds/linux/tree/master/lib/842",
-          input: [1,2,3,4,5,6,7,8, 1,2,3,4,5,6,7,8, 1,2,3,4,5,6,7,8],
-          expected: [0,8,16,24,32,40,48,56,64,64,2,0,96]
+          input: new Array(256).fill(0x61),
+          expected: [0, 1, 0, 0, 59, 11, 11, 11, 11, 11, 11, 11, 8, 0, 0, 2, 0, 32, 1, 128, 16, 0, 160, 6, 0, 56, 2, 0, 18, 0, 160, 5, 128, 48, 1, 160, 14, 0, 120, 4, 0, 34, 1, 32, 9, 128, 80, 2, 160, 22, 0, 184, 6, 0, 50, 1, 160, 13, 128, 112, 3, 160, 30, 248]
+        },
+        {
+          text: "Text sample repeated 4x",
+          uri: "https://en.wikipedia.org/wiki/842_(compression_algorithm)",
+          input: OpCodes.AsciiToBytes("the quick brown fox jumps over the lazy dog. ".repeat(4)),
+          expected: [180, 0, 0, 0, 59, 163, 67, 41, 3, 139, 171, 75, 25, 218, 200, 24, 156, 155, 221, 219, 136, 14, 204, 222, 240, 64, 212, 234, 218, 224, 119, 50, 6, 247, 102, 87, 34, 7, 67, 180, 50, 144, 54, 48, 189, 60, 144, 29, 145, 189, 156, 184, 129, 209, 161, 148, 228, 14, 46, 173, 44, 109, 100, 12, 71, 114, 111, 119, 110, 32, 102, 111, 120, 57, 3, 83, 171, 107, 131, 153, 3, 121, 157, 153, 92, 136, 0, 14, 216, 194, 244, 242, 64, 200, 222, 206, 114, 226, 7, 70, 134, 82, 7, 23, 82, 1, 130, 2, 131, 16, 28, 32, 36, 40, 129, 97, 129, 161, 194, 11, 17, 18, 32, 152, 160, 169, 225, 15, 70, 6, 70, 136, 54, 56, 58, 60, 65, 242, 2, 18, 34, 17, 146, 18, 150, 144, 184, 160, 164, 168, 237, 236, 229, 196, 0, 0, 0, 0, 31]
+        },
+        {
+          text: "All 256 byte values",
+          uri: "https://en.wikipedia.org/wiki/842_(compression_algorithm)",
+          input: Array.from({ length: 256 }, (_, i) => i),
+          expected: [0, 1, 0, 0, 56, 0, 8, 16, 24, 32, 40, 48, 57, 194, 2, 66, 130, 195, 3, 67, 131, 206, 32, 34, 36, 38, 40, 42, 44, 46, 113, 129, 145, 161, 177, 193, 209, 225, 243, 144, 16, 145, 17, 146, 18, 147, 19, 156, 160, 164, 168, 172, 176, 180, 184, 188, 230, 6, 38, 70, 102, 134, 166, 198, 231, 56, 57, 58, 59, 60, 61, 62, 63, 58, 2, 10, 18, 26, 34, 42, 50, 57, 210, 18, 82, 146, 211, 19, 83, 147, 206, 160, 162, 164, 166, 168, 170, 172, 174, 117, 133, 149, 165, 181, 197, 213, 229, 243, 176, 48, 177, 49, 178, 50, 179, 51, 157, 161, 165, 169, 173, 177, 181, 185, 188, 238, 14, 46, 78, 110, 142, 174, 206, 231, 120, 121, 122, 123, 124, 125, 126, 127, 60, 4, 12, 20, 28, 36, 44, 52, 57, 226, 34, 98, 162, 227, 35, 99, 163, 207, 33, 35, 37, 39, 41, 43, 45, 46, 121, 137, 153, 169, 185, 201, 217, 233, 243, 208, 80, 209, 81, 210, 82, 211, 83, 158, 162, 166, 170, 174, 178, 182, 186, 188, 246, 22, 54, 86, 118, 150, 182, 214, 231, 184, 185, 186, 187, 188, 189, 190, 191, 62, 6, 14, 22, 30, 38, 46, 54, 57, 242, 50, 114, 178, 243, 51, 115, 179, 207, 161, 163, 165, 167, 169, 171, 173, 174, 125, 141, 157, 173, 189, 205, 221, 237, 243, 240, 112, 241, 113, 242, 114, 243, 115, 159, 163, 167, 171, 175, 179, 183, 187, 188, 254, 30, 62, 94, 126, 158, 190, 222, 231, 248, 249, 250, 251, 252, 253, 254, 255, 248]
         }
       ];
     }
@@ -256,145 +278,197 @@
     }
 
     _compress(input) {
+      const n = input.length;
+      const out = [];
+      const len32 = OpCodes.ToUint32(n);
+      out.push(OpCodes.AndN(len32, 0xFF));
+      out.push(OpCodes.AndN(OpCodes.Shr32(len32, 8), 0xFF));
+      out.push(OpCodes.AndN(OpCodes.Shr32(len32, 16), 0xFF));
+      out.push(OpCodes.AndN(OpCodes.Shr32(len32, 24), 0xFF));
+
+      if (n === 0) return out;
+
       const writer = new BitWriter842();
-      const dict2 = new RingDict(DICT2_SIZE, 2);
-      const dict4 = new RingDict(DICT4_SIZE, 4);
-      const dict8 = new RingDict(DICT8_SIZE, 8);
+      const dict2 = new RingDict(DICT2_SIZE);
+      const dict4 = new RingDict(DICT4_SIZE);
+      const dict8 = new RingDict(DICT8_SIZE);
 
       let pos = 0;
-      const fullChunks = Math.floor(input.length / 8);
+      while (pos < n) {
+        const remaining = n - pos;
 
-      for (let c = 0; c < fullChunks; ++c) {
-        this._encodeChunk(input, pos, writer, dict2, dict4, dict8);
-        this._updateDictionaries(input, pos, dict2, dict4, dict8);
-        pos += 8;
+        if (remaining >= 8) {
+          const v8 = be64Key(input, pos);
+          const v4a = be32(input, pos), v4b = be32(input, pos + 4);
+          const v2a = be16(input, pos), v2b = be16(input, pos + 2);
+          const v2c = be16(input, pos + 4), v2d = be16(input, pos + 6);
+
+          const i8 = dict8.find(v8);
+          const i4a = dict4.find(v4a), i4b = dict4.find(v4b);
+          const i2a = dict2.find(v2a), i2b = dict2.find(v2b);
+          const i2c = dict2.find(v2c), i2d = dict2.find(v2d);
+
+          if (i8 >= 0) {
+            writer.writeBits(OP_D8, OPCODE_BITS);
+            writer.writeBits(i8, IDX_BITS);
+          } else if (i4a >= 0 && i4b >= 0) {
+            writer.writeBits(OP_D4D4, OPCODE_BITS);
+            writer.writeBits(i4a, IDX_BITS);
+            writer.writeBits(i4b, IDX_BITS);
+          } else if (i4a >= 0 && i2c >= 0 && i2d >= 0) {
+            writer.writeBits(OP_D4D2D2, OPCODE_BITS);
+            writer.writeBits(i4a, IDX_BITS);
+            writer.writeBits(i2c, IDX_BITS);
+            writer.writeBits(i2d, IDX_BITS);
+          } else if (i2a >= 0 && i2b >= 0 && i4b >= 0) {
+            writer.writeBits(OP_D2D2D4, OPCODE_BITS);
+            writer.writeBits(i2a, IDX_BITS);
+            writer.writeBits(i2b, IDX_BITS);
+            writer.writeBits(i4b, IDX_BITS);
+          } else if (i2a >= 0 && i2b >= 0 && i2c >= 0 && i2d >= 0) {
+            writer.writeBits(OP_D2D2D2D2, OPCODE_BITS);
+            writer.writeBits(i2a, IDX_BITS);
+            writer.writeBits(i2b, IDX_BITS);
+            writer.writeBits(i2c, IDX_BITS);
+            writer.writeBits(i2d, IDX_BITS);
+          } else if (i4a >= 0) {
+            writer.writeBits(OP_D4L4, OPCODE_BITS);
+            writer.writeBits(i4a, IDX_BITS);
+            for (let j = 4; j < 8; ++j) writer.writeBits(input[pos + j], 8);
+          } else if (i4b >= 0) {
+            writer.writeBits(OP_L4D4, OPCODE_BITS);
+            for (let j = 0; j < 4; ++j) writer.writeBits(input[pos + j], 8);
+            writer.writeBits(i4b, IDX_BITS);
+          } else {
+            writer.writeBits(OP_L8, OPCODE_BITS);
+            for (let j = 0; j < 8; ++j) writer.writeBits(input[pos + j], 8);
+          }
+
+          dict8.insert(v8);
+          dict4.insert(v4a);
+          dict4.insert(v4b);
+          dict2.insert(v2a);
+          dict2.insert(v2b);
+          dict2.insert(v2c);
+          dict2.insert(v2d);
+
+          pos += 8;
+        } else {
+          // Trailing partial chunk: literal template, zero-padded to 8 bytes.
+          // The reference does not update the dictionaries for this tail chunk.
+          writer.writeBits(OP_L8, OPCODE_BITS);
+          for (let j = 0; j < 8; ++j) writer.writeBits(j < remaining ? input[pos + j] : 0, 8);
+          pos += remaining;
+        }
       }
 
-      const remaining = input.length - pos;
-      if (remaining > 0) {
-        writer.writeBits(TPL_SHORT, OPCODE_BITS);
-        writer.writeBits(remaining - 1, SHORT_LEN_BITS);
-        for (let i = 0; i < remaining; ++i) writer.writeBits(input[pos + i], 8);
-      }
-
-      writer.writeBits(TPL_END, OPCODE_BITS);
-      return writer.flush();
-    }
-
-    _encodeChunk(input, pos, writer, dict2, dict4, dict8) {
-      const ref8 = dict8.find(input, pos);
-      if (ref8 >= 0) {
-        writer.writeBits(TPL_REF8, OPCODE_BITS);
-        writer.writeBits(ref8, IDX8_BITS);
-        return;
-      }
-
-      const ref4a = dict4.find(input, pos);
-      const ref4b = dict4.find(input, pos + 4);
-      if (ref4a >= 0 && ref4b >= 0) {
-        writer.writeBits(TPL_REF4_REF4, OPCODE_BITS);
-        writer.writeBits(ref4a, IDX4_BITS);
-        writer.writeBits(ref4b, IDX4_BITS);
-        return;
-      }
-
-      const r2 = [dict2.find(input, pos), dict2.find(input, pos + 2), dict2.find(input, pos + 4), dict2.find(input, pos + 6)];
-      if (r2[0] >= 0 && r2[1] >= 0 && r2[2] >= 0 && r2[3] >= 0) {
-        writer.writeBits(TPL_REF2x4, OPCODE_BITS);
-        for (let i = 0; i < 4; ++i) writer.writeBits(r2[i], IDX2_BITS);
-        return;
-      }
-
-      if (ref4a >= 0) {
-        writer.writeBits(TPL_REF4_LIT4, OPCODE_BITS);
-        writer.writeBits(ref4a, IDX4_BITS);
-        for (let i = 4; i < 8; ++i) writer.writeBits(input[pos + i], 8);
-        return;
-      }
-
-      if (ref4b >= 0) {
-        writer.writeBits(TPL_LIT4_REF4, OPCODE_BITS);
-        for (let i = 0; i < 4; ++i) writer.writeBits(input[pos + i], 8);
-        writer.writeBits(ref4b, IDX4_BITS);
-        return;
-      }
-
-      writer.writeBits(TPL_LIT8, OPCODE_BITS);
-      for (let i = 0; i < 8; ++i) writer.writeBits(input[pos + i], 8);
-    }
-
-    _updateDictionaries(bytes, pos, dict2, dict4, dict8) {
-      dict2.insert(bytes, pos);
-      dict2.insert(bytes, pos + 2);
-      dict2.insert(bytes, pos + 4);
-      dict2.insert(bytes, pos + 6);
-      dict4.insert(bytes, pos);
-      dict4.insert(bytes, pos + 4);
-      dict8.insert(bytes, pos);
+      writer.writeBits(OP_END, OPCODE_BITS);
+      const body = writer.flush();
+      for (let i = 0; i < body.length; ++i) out.push(body[i]);
+      return out;
     }
 
     _decompress(input) {
-      const reader = new BitReader842(input);
-      const dict2 = new RingDict(DICT2_SIZE, 2);
-      const dict4 = new RingDict(DICT4_SIZE, 4);
-      const dict8 = new RingDict(DICT8_SIZE, 8);
-      const output = [];
+      if (input.length < 4) return [];
+      const originalSize = OpCodes.OrN(
+        OpCodes.OrN(OpCodes.OrN(input[0], OpCodes.Shl32(input[1], 8)), OpCodes.Shl32(input[2], 16)),
+        OpCodes.Shl32(input[3], 24)
+      );
+      if (originalSize === 0) return [];
 
-      for (;;) {
+      const reader = new BitReader842(input.slice(4));
+
+      // Reverse dictionaries: slot index -> value (no reverse-lookup needed).
+      const dict2 = new Array(DICT2_SIZE);
+      const dict4 = new Array(DICT4_SIZE);
+      const dict8 = new Array(DICT8_SIZE);
+      let dict2Next = 0, dict4Next = 0, dict8Next = 0;
+
+      const result = [];
+
+      const put16 = (chunk, offset, value) => {
+        chunk[offset] = OpCodes.AndN(OpCodes.Shr32(value, 8), 0xFF);
+        chunk[offset + 1] = OpCodes.AndN(value, 0xFF);
+      };
+      const put32 = (chunk, offset, value) => {
+        chunk[offset] = OpCodes.AndN(OpCodes.Shr32(value, 24), 0xFF);
+        chunk[offset + 1] = OpCodes.AndN(OpCodes.Shr32(value, 16), 0xFF);
+        chunk[offset + 2] = OpCodes.AndN(OpCodes.Shr32(value, 8), 0xFF);
+        chunk[offset + 3] = OpCodes.AndN(value, 0xFF);
+      };
+
+      while (result.length < originalSize) {
         const op = reader.readBits(OPCODE_BITS);
+        if (op === OP_END) break;
 
-        if (op === TPL_END) break;
+        const chunk = new Array(8).fill(0);
 
-        if (op === TPL_SHORT) {
-          const len = reader.readBits(SHORT_LEN_BITS) + 1;
-          for (let i = 0; i < len; ++i) output.push(reader.readBits(8));
-          continue;
-        }
-
-        const chunk = new Array(8);
-
-        if (op === TPL_REF8) {
-          const idx = reader.readBits(IDX8_BITS);
-          const value = dict8.get(idx);
-          if (!value) throw new Error('842: invalid 8-byte dictionary reference');
-          for (let i = 0; i < 8; ++i) chunk[i] = value[i];
-        } else if (op === TPL_REF4_REF4) {
-          const idxA = reader.readBits(IDX4_BITS);
-          const idxB = reader.readBits(IDX4_BITS);
-          const a = dict4.get(idxA), b = dict4.get(idxB);
-          if (!a || !b) throw new Error('842: invalid 4-byte dictionary reference');
-          for (let i = 0; i < 4; ++i) { chunk[i] = a[i]; chunk[4 + i] = b[i]; }
-        } else if (op === TPL_REF2x4) {
+        if (op === OP_D8) {
+          const idx = reader.readBits(IDX_BITS);
+          const value = dict8[idx];
+          if (value === undefined) throw new Error('842: invalid 8-byte dictionary reference');
+          const [hi, lo] = value.split(':').map(Number);
+          put32(chunk, 0, hi);
+          put32(chunk, 4, lo);
+        } else if (op === OP_D4D4) {
+          const ia = reader.readBits(IDX_BITS), ib = reader.readBits(IDX_BITS);
+          if (dict4[ia] === undefined || dict4[ib] === undefined) throw new Error('842: invalid 4-byte dictionary reference');
+          put32(chunk, 0, dict4[ia]);
+          put32(chunk, 4, dict4[ib]);
+        } else if (op === OP_D4D2D2) {
+          const ia = reader.readBits(IDX_BITS), ic = reader.readBits(IDX_BITS), id = reader.readBits(IDX_BITS);
+          if (dict4[ia] === undefined || dict2[ic] === undefined || dict2[id] === undefined) throw new Error('842: invalid dictionary reference');
+          put32(chunk, 0, dict4[ia]);
+          put16(chunk, 4, dict2[ic]);
+          put16(chunk, 6, dict2[id]);
+        } else if (op === OP_D2D2D4) {
+          const ia = reader.readBits(IDX_BITS), ib = reader.readBits(IDX_BITS), ic = reader.readBits(IDX_BITS);
+          if (dict2[ia] === undefined || dict2[ib] === undefined || dict4[ic] === undefined) throw new Error('842: invalid dictionary reference');
+          put16(chunk, 0, dict2[ia]);
+          put16(chunk, 2, dict2[ib]);
+          put32(chunk, 4, dict4[ic]);
+        } else if (op === OP_D2D2D2D2) {
+          const idx = [reader.readBits(IDX_BITS), reader.readBits(IDX_BITS), reader.readBits(IDX_BITS), reader.readBits(IDX_BITS)];
           for (let g = 0; g < 4; ++g) {
-            const idx = reader.readBits(IDX2_BITS);
-            const value = dict2.get(idx);
-            if (!value) throw new Error('842: invalid 2-byte dictionary reference');
-            chunk[g * 2] = value[0];
-            chunk[g * 2 + 1] = value[1];
+            if (dict2[idx[g]] === undefined) throw new Error('842: invalid 2-byte dictionary reference');
+            put16(chunk, g * 2, dict2[idx[g]]);
           }
-        } else if (op === TPL_REF4_LIT4) {
-          const idx = reader.readBits(IDX4_BITS);
-          const a = dict4.get(idx);
-          if (!a) throw new Error('842: invalid 4-byte dictionary reference');
-          for (let i = 0; i < 4; ++i) chunk[i] = a[i];
-          for (let i = 4; i < 8; ++i) chunk[i] = reader.readBits(8);
-        } else if (op === TPL_LIT4_REF4) {
-          for (let i = 0; i < 4; ++i) chunk[i] = reader.readBits(8);
-          const idx = reader.readBits(IDX4_BITS);
-          const b = dict4.get(idx);
-          if (!b) throw new Error('842: invalid 4-byte dictionary reference');
-          for (let i = 0; i < 4; ++i) chunk[4 + i] = b[i];
-        } else if (op === TPL_LIT8) {
-          for (let i = 0; i < 8; ++i) chunk[i] = reader.readBits(8);
+        } else if (op === OP_D4L4) {
+          const ia = reader.readBits(IDX_BITS);
+          if (dict4[ia] === undefined) throw new Error('842: invalid 4-byte dictionary reference');
+          put32(chunk, 0, dict4[ia]);
+          for (let j = 4; j < 8; ++j) chunk[j] = reader.readBits(8);
+        } else if (op === OP_L4D4) {
+          for (let j = 0; j < 4; ++j) chunk[j] = reader.readBits(8);
+          const ib = reader.readBits(IDX_BITS);
+          if (dict4[ib] === undefined) throw new Error('842: invalid 4-byte dictionary reference');
+          put32(chunk, 4, dict4[ib]);
+        } else if (op === OP_L8) {
+          for (let j = 0; j < 8; ++j) chunk[j] = reader.readBits(8);
         } else {
           throw new Error(`842: unsupported template opcode ${op}`);
         }
 
-        for (let i = 0; i < 8; ++i) output.push(chunk[i]);
-        this._updateDictionaries(chunk, 0, dict2, dict4, dict8);
+        // Update dictionaries from the decoded chunk (mirrors the reference,
+        // which always refreshes them - harmless for the padded tail chunk
+        // since no further chunks follow it).
+        const v8 = be64Key(chunk, 0);
+        const v4a = be32(chunk, 0), v4b = be32(chunk, 4);
+        const v2a = be16(chunk, 0), v2b = be16(chunk, 2), v2c = be16(chunk, 4), v2d = be16(chunk, 6);
+
+        dict8[dict8Next] = v8; dict8Next = (dict8Next + 1) % DICT8_SIZE;
+        dict4[dict4Next] = v4a; dict4Next = (dict4Next + 1) % DICT4_SIZE;
+        dict4[dict4Next] = v4b; dict4Next = (dict4Next + 1) % DICT4_SIZE;
+        dict2[dict2Next] = v2a; dict2Next = (dict2Next + 1) % DICT2_SIZE;
+        dict2[dict2Next] = v2b; dict2Next = (dict2Next + 1) % DICT2_SIZE;
+        dict2[dict2Next] = v2c; dict2Next = (dict2Next + 1) % DICT2_SIZE;
+        dict2[dict2Next] = v2d; dict2Next = (dict2Next + 1) % DICT2_SIZE;
+
+        const toAdd = Math.min(8, originalSize - result.length);
+        for (let j = 0; j < toAdd; ++j) result.push(chunk[j]);
       }
 
-      return output;
+      return result;
     }
   }
 
