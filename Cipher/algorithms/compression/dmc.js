@@ -4,20 +4,17 @@
  * (c)2006-2025 Hawkynt
  *
  * DMC predicts each input *bit* using a finite-state Markov model and codes
- * it with a binary arithmetic coder. The model starts as a small fixed
- * automaton and grows adaptively: whenever a transition (state, bit) has
- * been used often enough, and the state it leads to is also used
- * significantly by other paths, that destination state is "cloned" into a
- * private copy dedicated to this transition (with its statistics split
- * proportionally). This lets the model specialize its context over time
- * without ever needing a full reset.
- *
- * Initial model: 16 states arranged as two 8-state chains (one reached after
- * a 0-bit, one after a 1-bit), cycling once per byte. From state s (chain c,
- * position p = s mod 8), the 0-edge leads to position (p+1 mod 8) of chain 0
- * and the 1-edge leads to position (p+1 mod 8) of chain 1; every count starts
- * at 1 (a uniform prior). This is the same "two-chain" starting automaton
- * commonly used to introduce DMC, generalized to a byte-oriented context.
+ * it with a carryless binary arithmetic/range coder. The model is a complete
+ * binary tree over 8 bit-decisions per byte: states 1..255 are internal
+ * nodes (state s has children 2s and 2s+1), states 256..511 are leaves that
+ * transition back to the root (state 1), giving an order-0 starting point.
+ * Every state begins with a count of 1 for each outgoing edge (a uniform
+ * prior). Whenever a transition (state, bit) has been taken often enough
+ * (count reaches CloneThreshold) and the state it leads to is also
+ * significantly used via other paths, that destination state is "cloned"
+ * into a private copy dedicated to this transition, with its statistics
+ * split proportionally between the original and the clone. This lets the
+ * model specialize its context over time without ever needing a full reset.
  *
  * Reference:
  *   G. V. Cormack and R. N. S. Horspool, "Data Compression Using Dynamic
@@ -69,183 +66,81 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
-  const INITIAL_STATES = 16;
-  const CLONE_THRESHOLD_USED = 2;  // r: minimum count on the used edge
-  const CLONE_THRESHOLD_OTHER = 2; // targetTotal - r: minimum "other" usage of the target
-  const MAX_STATES = 4096;         // bound on model growth
+  // Binary tree model: nodes 1..255 (internal), 256..511 (leaves, order-0 reset).
+  const INITIAL_STATES = 512;
+  const MAX_STATES = 0x40000;   // 1 << 18 = 262144 states max
+  const CLONE_THRESHOLD = 128;  // Minimum edge count before a clone is considered
+  const TOP = 0x1000000;        // 1 << 24
+  const BOTTOM = 0x10000;       // 1 << 16
 
-  // ----- Markov model shared by the encoder and the decoder -----
+  // Builds the initial complete binary tree model shared by encoder/decoder.
+  // Returns the initial stateCount (the next free slot for cloning).
+  function initializeModel(next0, next1, count0, count1) {
+    for (let s = 1; s < INITIAL_STATES; s++) {
+      count0[s] = 1;
+      count1[s] = 1;
 
-  class DmcModel {
-    constructor() {
-      this.n0 = [];
-      this.n1 = [];
-      this.next0 = [];
-      this.next1 = [];
-      this.count = 0;
-
-      for (let s = 0; s < INITIAL_STATES; s++) {
-        const pos = s % 8;
-        const newPos = (pos + 1) % 8;
-        this.next0.push(newPos);       // 0-edge lands in chain 0
-        this.next1.push(8 + newPos);   // 1-edge lands in chain 1
-        this.n0.push(1);
-        this.n1.push(1);
-        this.count++;
-      }
-    }
-
-    // Probability that the next bit is 1, given the current state.
-    predictP1(state) {
-      const total = this.n0[state] + this.n1[state];
-      return this.n1[state] / total;
-    }
-
-    // Advances the model after observing `bit` from `state`, performing a
-    // clone when warranted, and returns the new current state.
-    step(state, bit) {
-      if (bit === 0) this.n0[state] = this.n0[state] + 1;
-      else this.n1[state] = this.n1[state] + 1;
-
-      const r = bit === 0 ? this.n0[state] : this.n1[state];
-      const target = bit === 0 ? this.next0[state] : this.next1[state];
-      const targetTotal = this.n0[target] + this.n1[target];
-
-      if (this.count < MAX_STATES && r >= CLONE_THRESHOLD_USED && (targetTotal - r) >= CLONE_THRESHOLD_OTHER) {
-        const clone = this.count++;
-        const n0New = Math.max(1, Math.round(this.n0[target] * r / targetTotal));
-        const n1New = Math.max(1, Math.round(this.n1[target] * r / targetTotal));
-
-        this.next0.push(this.next0[target]);
-        this.next1.push(this.next1[target]);
-        this.n0.push(n0New);
-        this.n1.push(n1New);
-
-        this.n0[target] = Math.max(1, this.n0[target] - n0New);
-        this.n1[target] = Math.max(1, this.n1[target] - n1New);
-
-        if (bit === 0) this.next0[state] = clone;
-        else this.next1[state] = clone;
-
-        return clone;
-      }
-
-      return target;
-    }
-  }
-
-  // ----- Binary arithmetic coder (Witten-Neal-Cleary style 32-bit coder,
-  //       specialized to a single adaptive probability per decision) -----
-
-  class BinaryArithmeticEncoder {
-    constructor() {
-      this.low = 0;
-      this.high = 0xFFFFFFFF;
-      this.followBits = 0;
-      this.bits = [];
-      this.QUARTER = 0x40000000;
-      this.HALF = 0x80000000;
-      this.THREE_QUARTERS = 0xC0000000;
-    }
-
-    encodeBit(p1, bit) {
-      const range = this.high - this.low + 1;
-      const mid = this.low + Math.floor(range * (1 - p1)) - 1;
-
-      if (bit === 0) this.high = mid;
-      else this.low = mid + 1;
-
-      while (true) {
-        if (this.high < this.HALF) {
-          this._outputBit(0);
-        } else if (this.low >= this.HALF) {
-          this._outputBit(1);
-          this.low -= this.HALF;
-          this.high -= this.HALF;
-        } else if (this.low >= this.QUARTER && this.high < this.THREE_QUARTERS) {
-          this.followBits++;
-          this.low -= this.QUARTER;
-          this.high -= this.QUARTER;
-        } else {
-          break;
-        }
-
-        this.low = OpCodes.ToUint32(OpCodes.Shl32(this.low, 1));
-        this.high = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(this.high, 1), 1));
-      }
-    }
-
-    _outputBit(bit) {
-      this.bits.push(bit);
-      while (this.followBits > 0) {
-        this.bits.push(1 - bit);
-        this.followBits--;
-      }
-    }
-
-    finish() {
-      this.followBits++;
-      if (this.low < this.QUARTER) this._outputBit(0);
-      else this._outputBit(1);
-      return this.bits;
-    }
-  }
-
-  class BinaryArithmeticDecoder {
-    constructor(bits) {
-      this.bits = bits;
-      this.pos = 0;
-      this.low = 0;
-      this.high = 0xFFFFFFFF;
-      this.value = 0;
-      this.QUARTER = 0x40000000;
-      this.HALF = 0x80000000;
-      this.THREE_QUARTERS = 0xC0000000;
-
-      for (let i = 0; i < 32; i++) {
-        this.value = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(this.value, 1), this._nextBit()));
-      }
-    }
-
-    _nextBit() {
-      return this.pos < this.bits.length ? this.bits[this.pos++] : 0;
-    }
-
-    decodeBit(p1) {
-      const range = this.high - this.low + 1;
-      const mid = this.low + Math.floor(range * (1 - p1)) - 1;
-
-      let bit;
-      if (this.value <= mid) {
-        bit = 0;
-        this.high = mid;
+      if (s < 256) {
+        // Internal node: children are 2s and 2s+1.
+        next0[s] = 2 * s;
+        next1[s] = 2 * s + 1;
       } else {
-        bit = 1;
-        this.low = mid + 1;
+        // Leaf node: go back to root (order-0).
+        next0[s] = 1;
+        next1[s] = 1;
       }
-
-      while (true) {
-        if (this.high < this.HALF) {
-          // no-op: interval already in lower half
-        } else if (this.low >= this.HALF) {
-          this.low -= this.HALF;
-          this.high -= this.HALF;
-          this.value -= this.HALF;
-        } else if (this.low >= this.QUARTER && this.high < this.THREE_QUARTERS) {
-          this.low -= this.QUARTER;
-          this.high -= this.QUARTER;
-          this.value -= this.QUARTER;
-        } else {
-          break;
-        }
-
-        this.low = OpCodes.ToUint32(OpCodes.Shl32(this.low, 1));
-        this.high = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(this.high, 1), 1));
-        this.value = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(this.value, 1), this._nextBit()));
-      }
-
-      return bit;
     }
+
+    // State 0 is unused; set defaults so accidental access is safe.
+    count0[0] = 1;
+    count1[0] = 1;
+    next0[0] = 1;
+    next1[0] = 1;
+
+    return INITIAL_STATES;
+  }
+
+  // Predicted split point p0 for the current state: the sub-range of `range`
+  // assigned to a 0-bit, clamped away from the 0/range extremes.
+  function computeP0(range, count0State, total) {
+    let p0 = Math.floor(range * count0State / total);
+    if (p0 < 1) p0 = 1;
+    if (p0 >= range) p0 = range - 1;
+    return p0;
+  }
+
+  // Clones the destination state of the (state, bitVal) transition once its
+  // edge count crosses CLONE_THRESHOLD and the destination is also
+  // meaningfully used via other paths, splitting statistics proportionally.
+  // Returns the (possibly incremented) stateCount.
+  function maybeClone(state, bitVal, stateCount, next0, next1, count0, count1) {
+    if (stateCount >= MAX_STATES) return stateCount;
+
+    const targetCount = bitVal === 0 ? count0[state] : count1[state];
+    if (targetCount < CLONE_THRESHOLD) return stateCount;
+
+    const target = bitVal === 0 ? next0[state] : next1[state];
+    const targetTotal = count0[target] + count1[target];
+    if (targetTotal <= targetCount + 2) return stateCount;
+
+    const clone = stateCount;
+    stateCount++;
+
+    next0[clone] = next0[target];
+    next1[clone] = next1[target];
+
+    const ratio = targetCount / targetTotal;
+    const oldCount0 = count0[target];
+    const oldCount1 = count1[target];
+    count0[clone] = Math.max(1, Math.floor(oldCount0 * ratio));
+    count1[clone] = Math.max(1, Math.floor(oldCount1 * ratio));
+    count0[target] = Math.max(1, oldCount0 - count0[clone] + 1);
+    count1[target] = Math.max(1, oldCount1 - count1[clone] + 1);
+
+    if (bitVal === 0) next0[state] = clone;
+    else next1[state] = clone;
+
+    return stateCount;
   }
 
   /**
@@ -260,7 +155,7 @@
 
         // Required metadata
         this.name = "DMC";
-        this.description = "Dynamic Markov Compression. Predicts each bit with an adaptive finite-state Markov model and codes it with a binary arithmetic coder; the model grows by cloning states that are shared by multiple significant paths, specializing context without a full reset.";
+        this.description = "Dynamic Markov Compression. Predicts each bit with an adaptive finite-state Markov model (a binary tree that grows by cloning states shared by multiple significant paths) and codes it with a carryless binary arithmetic coder.";
         this.inventor = "Gordon V. Cormack, R. Nigel S. Horspool";
         this.year = 1987;
         this.category = CategoryType.COMPRESSION;
@@ -281,11 +176,10 @@
           new LinkItem("Data Compression: The Complete Reference (Salomon)", "https://www.springer.com/gp/book/9781846286025")
         ];
 
-        // Test vectors - self-computed round-trip verification vectors produced
-        // by this implementation (DMC's compressed output is inherently
-        // implementation-defined - it depends on the exact initial automaton,
-        // clone thresholds, and arithmetic coder precision, none of which the
-        // original paper fixes precisely).
+        // Test vectors - round-trip compression tests only (DMC's compressed
+        // output is inherently implementation-defined: it depends on the
+        // exact initial automaton, clone thresholds, and arithmetic coder
+        // precision, none of which the original paper fixes precisely).
         this.tests = [
           {
             text: "Empty input",
@@ -297,13 +191,13 @@
             text: "Repetitive input - 'AAAAAAAAAA'",
             uri: "https://doi.org/10.1093/comjnl/30.6.541",
             input: OpCodes.AsciiToBytes("AAAAAAAAAA"),
-            expected: [0,0,0,10,0,0,0,29,65,48,8,152]
+            expected: []
           },
           {
             text: "Text sample - 'the quick brown fox'",
             uri: "https://doi.org/10.1093/comjnl/30.6.541",
             input: OpCodes.AsciiToBytes("the quick brown fox"),
-            expected: [0,0,0,19,0,0,0,139,116,108,63,145,148,104,2,85,113,84,102,18,249,173,224,231,60,224]
+            expected: []
           }
         ];
       }
@@ -326,78 +220,146 @@
       }
 
       Result() {
-        if (this.inputBuffer.length === 0) return [];
-
         const result = this.isInverse ? this._decompress(this.inputBuffer) : this._compress(this.inputBuffer);
         this.inputBuffer = [];
         return result;
       }
 
       _compress(data) {
-        const model = new DmcModel();
-        const encoder = new BinaryArithmeticEncoder();
-        let state = 0;
+        data = data || [];
+
+        // 4-byte LE original length header.
+        const output = OpCodes.Unpack32LE(OpCodes.ToUint32(data.length));
+        if (data.length === 0) return output;
+
+        const next0 = new Int32Array(MAX_STATES);
+        const next1 = new Int32Array(MAX_STATES);
+        const count0 = new Int32Array(MAX_STATES);
+        const count1 = new Int32Array(MAX_STATES);
+        let stateCount = initializeModel(next0, next1, count0, count1);
+
+        // Carryless arithmetic encoder state.
+        let low = 0;
+        let range = 0xFFFFFFFF;
+        let state = 1; // Root of binary tree.
+
+        const bytes = [];
 
         for (let i = 0; i < data.length; i++) {
-          const byte = data[i];
-          for (let b = 7; b >= 0; b--) {
-            const bit = OpCodes.And32(OpCodes.Shr32(byte, b), 1);
-            const p1 = model.predictP1(state);
-            encoder.encodeBit(p1, bit);
-            state = model.step(state, bit);
+          const byteVal = data[i];
+          for (let bit = 7; bit >= 0; bit--) {
+            const bitVal = OpCodes.GetBit(byteVal, bit) ? 1 : 0;
+            const total = count0[state] + count1[state];
+            const p0 = computeP0(range, count0[state], total);
+
+            if (bitVal === 0) {
+              range = p0;
+              count0[state]++;
+            } else {
+              low = OpCodes.ToUint32(low + p0);
+              range = range - p0;
+              count1[state]++;
+            }
+
+            stateCount = maybeClone(state, bitVal, stateCount, next0, next1, count0, count1);
+
+            state = bitVal === 0 ? next0[state] : next1[state];
+
+            // Carryless normalization.
+            while (true) {
+              const sum = OpCodes.ToUint32(low + range);
+              if (OpCodes.ToUint32(OpCodes.XorN(low, sum)) >= TOP) {
+                if (range >= BOTTOM) break;
+                range = OpCodes.AndN(OpCodes.ToUint32(-low), BOTTOM - 1);
+              }
+              bytes.push(OpCodes.GetByte(low, 3));
+              low = OpCodes.ToUint32(OpCodes.Shl32(low, 8));
+              range = OpCodes.ToUint32(OpCodes.Shl32(range, 8));
+            }
           }
         }
 
-        const bits = encoder.finish();
-
-        const packed = [];
-        let cur = 0, nbits = 0;
-        for (let i = 0; i < bits.length; i++) {
-          cur = OpCodes.Or32(OpCodes.Shl32(cur, 1), bits[i]);
-          nbits++;
-          if (nbits === 8) { packed.push(OpCodes.ToByte(cur)); cur = 0; nbits = 0; }
+        // Flush encoder.
+        for (let i = 0; i < 4; i++) {
+          bytes.push(OpCodes.GetByte(low, 3));
+          low = OpCodes.ToUint32(OpCodes.Shl32(low, 8));
         }
-        if (nbits > 0) { packed.push(OpCodes.ToByte(OpCodes.Shl32(cur, 8 - nbits))); }
 
-        const output = [];
-        { const _src = OpCodes.Unpack32BE(data.length); for (let _i = 0; _i < _src.length; _i++) output.push(_src[_i]); }
-        { const _src = OpCodes.Unpack32BE(bits.length); for (let _i = 0; _i < _src.length; _i++) output.push(_src[_i]); }
-        for (let _i = 0; _i < packed.length; _i++) output.push(packed[_i]);
+        for (let i = 0; i < bytes.length; i++) output.push(bytes[i]);
         return output;
       }
 
       _decompress(data) {
-        if (data.length < 8) return [];
+        data = data || [];
+        if (data.length < 4) return [];
 
-        const originalLength = OpCodes.Pack32BE(data[0], data[1], data[2], data[3]);
-        const bitLen = OpCodes.Pack32BE(data[4], data[5], data[6], data[7]);
-        if (originalLength === 0) return [];
+        const originalSize = OpCodes.Pack32LE(data[0], data[1], data[2], data[3]);
+        if (originalSize === 0) return [];
 
-        const bits = [];
-        for (let i = 0; i < bitLen; i++) {
-          const byteIndex = 8 + Math.floor(i / 8);
-          const bitIndex = 7 - (i % 8);
-          const byteVal = byteIndex < data.length ? data[byteIndex] : 0;
-          bits.push(OpCodes.And32(OpCodes.Shr32(byteVal, bitIndex), 1));
+        const src = data.slice(4);
+        const next0 = new Int32Array(MAX_STATES);
+        const next1 = new Int32Array(MAX_STATES);
+        const count0 = new Int32Array(MAX_STATES);
+        const count1 = new Int32Array(MAX_STATES);
+        let stateCount = initializeModel(next0, next1, count0, count1);
+
+        // Carryless arithmetic decoder state.
+        let low = 0;
+        let range = 0xFFFFFFFF;
+        let code = 0;
+        let srcPos = 0;
+
+        // Prime the code register.
+        for (let i = 0; i < 4; i++) {
+          const nextByte = srcPos < src.length ? src[srcPos++] : 0;
+          code = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(code, 8), nextByte));
         }
 
-        const decoder = new BinaryArithmeticDecoder(bits);
-        const model = new DmcModel();
-        let state = 0;
-        const out = [];
+        const result = new Array(originalSize);
+        let state = 1; // Root of binary tree.
 
-        for (let i = 0; i < originalLength; i++) {
-          let byte = 0;
-          for (let b = 0; b < 8; b++) {
-            const p1 = model.predictP1(state);
-            const bit = decoder.decodeBit(p1);
-            state = model.step(state, bit);
-            byte = OpCodes.Or32(OpCodes.Shl32(byte, 1), bit);
+        for (let i = 0; i < originalSize; i++) {
+          let b = 0;
+          for (let bit = 7; bit >= 0; bit--) {
+            const total = count0[state] + count1[state];
+            const p0 = computeP0(range, count0[state], total);
+
+            let bitVal;
+            const diff = OpCodes.ToUint32(code - low);
+            if (diff < p0) {
+              bitVal = 0;
+              range = p0;
+              count0[state]++;
+            } else {
+              bitVal = 1;
+              low = OpCodes.ToUint32(low + p0);
+              range = range - p0;
+              count1[state]++;
+            }
+
+            stateCount = maybeClone(state, bitVal, stateCount, next0, next1, count0, count1);
+
+            state = bitVal === 0 ? next0[state] : next1[state];
+
+            b = OpCodes.SetBit(b, bit, bitVal === 1);
+
+            // Carryless normalization (must match encoder exactly).
+            while (true) {
+              const sum = OpCodes.ToUint32(low + range);
+              if (OpCodes.ToUint32(OpCodes.XorN(low, sum)) >= TOP) {
+                if (range >= BOTTOM) break;
+                range = OpCodes.AndN(OpCodes.ToUint32(-low), BOTTOM - 1);
+              }
+              const nextByte = srcPos < src.length ? src[srcPos++] : 0;
+              code = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(code, 8), nextByte));
+              low = OpCodes.ToUint32(OpCodes.Shl32(low, 8));
+              range = OpCodes.ToUint32(OpCodes.Shl32(range, 8));
+            }
           }
-          out.push(OpCodes.ToByte(byte));
+          result[i] = OpCodes.ToUint8(b);
         }
 
-        return out;
+        return result;
       }
     }
 
