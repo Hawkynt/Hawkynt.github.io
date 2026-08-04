@@ -231,26 +231,21 @@ Cipher Tools is a **professional-grade cryptographic implementation library** fe
 
 **📚 Algorithm reference** — one markdown page per algorithm covering its parameters, security status, known vulnerabilities, references and test vectors. The pages are derived from the implementations, so they cannot drift: build them locally with `node tools/generate-algorithm-docs.js` (written to `docs/algorithms/`, starting at `docs/algorithms/README.md`), or download the `algorithm-reference` artifact that CI builds on every run. The generated tree is deliberately not checked in.
 
-The library includes **1039 fully-implemented cryptographic algorithms** across 19 categories. For the complete breakdown by category, see the [Algorithm Categories & Color Coding](#-algorithm-categories--color-coding) section above and the [Directory Structure](#directory-structure-updated-2025) section below.
+The library includes **1077 fully-implemented cryptographic algorithms** across 19 categories. For the complete breakdown by category, see the [Algorithm Categories & Color Coding](#-algorithm-categories--color-coding) section above and the [Directory Structure](#directory-structure-updated-2025) section below.
 
 **Key Highlights:**
-- **232 Block Ciphers** including AES, DES, 3DES, Blowfish, Twofish, Serpent, Tnepres, ARIA, Camellia, CAST, IDEA, RC5, RC6, SEED, TEA, XTEA, Threefish, SM4, SIMECK, HIGHT, Shark, and many more
-- **78 Compression Algorithms** including Huffman, LZ77, LZ78, LZW, LZSS, LZO, LZMA, Brotli, Snappy, RLE, BWT, and arithmetic coding variants
-- **96 Stream Ciphers** including ChaCha20, Salsa20, RC4, SEAL, A5/1, A5/2, Grain, Trivium, SOSEMANUK, ZUC, MICKEY, Rabbit, HC-128, and others
-- **115 Hash Functions** including SHA-1, SHA-2 family, SHA-3/Keccak, BLAKE2/BLAKE3, MD5, MD4, MD2, RIPEMD variants, Whirlpool, Tiger, xxHash, CityHash, SipHash, and more
-- **27 Cipher Modes** including ECB, CBC, CTR, GCM, CCM, XTS, OCB, EAX, and other standard and authenticated modes
-- **26 Classical Ciphers** including Caesar, Vigenère, Playfair, Enigma, Hill, Rail Fence, and historical substitution/transposition ciphers
-- **31 Asymmetric Algorithms** including RSA, ECC, ElGamal, Diffie-Hellman, and post-quantum candidates
-- **20 Encoding Schemes** including Base64, Base32, Base58, Hex, PEM, URL encoding, and specialized encodings
-- **74 Checksum Functions** including CRC variants, Adler-32, Fletcher checksums, and parity checks
-- **13 Padding Schemes** including PKCS#7, PKCS#5, ISO standards, OAEP, PSS, and zero padding
-- **27 Special Purpose** algorithms including format-preserving encryption, key wrapping, and cryptographic constructions
-- **29 MAC Functions** including HMAC, CMAC, Poly1305, VMAC, GMAC, and OMAC
-
-**DarkCrypt cipher suite:** the library also covers the cipher set of the DarkCrypt Total Commander plugin (Alexander Myasnikov, "Zarya" project). 201 algorithms carry test vectors verified against that implementation, including 175 dedicated block, stream and hash implementations for variants that differ from their published counterparts or have no public specification at all. See <https://totalcmd.net/plugring/darkcrypttc.html>.
-- **4 Key Derivation Functions** including PBKDF2, HKDF, Argon2, and Scrypt
-- **4 Error Correction Codes** including Reed-Solomon, BCH, LDPC, and Hamming codes
-- **1 Post-Quantum** implementation (Kyber/Dilithium framework)
+- **Block Ciphers** including AES, DES, 3DES, Blowfish, Twofish, Serpent, Tnepres, ARIA, Camellia, CAST, IDEA, RC5, RC6, SEED, TEA, XTEA, Threefish, SM4, SIMECK, HIGHT, Shark, and many more
+- **Compression Algorithms** including Huffman, LZ77, LZ78, LZW, LZSS, LZO, LZMA, Brotli, Snappy, RLE, BWT, and arithmetic coding variants
+- **Stream Ciphers** including ChaCha20, Salsa20, RC4, SEAL, A5/1, A5/2, Grain, Trivium, SOSEMANUK, ZUC, MICKEY, Rabbit, HC-128, and others
+- **Hash Functions** including SHA-1, SHA-2 family, SHA-3/Keccak, BLAKE2/BLAKE3, MD5, MD4, MD2, RIPEMD variants, Whirlpool, Tiger, xxHash, CityHash, SipHash, and more
+- **Cipher Modes** including ECB, CBC, CTR, GCM, CCM, XTS, OCB, EAX, and other standard and authenticated modes
+- **Classical Ciphers** including Caesar, Vigenère, Playfair, Enigma, Hill, Rail Fence, and historical substitution/transposition ciphers
+- **Asymmetric Algorithms** including RSA, ECC, ElGamal, Diffie-Hellman, and post-quantum candidates
+- **Encoding Schemes** including Base64, Base32, Base58, Hex, PEM, URL encoding, and specialized encodings
+- **Checksum Functions** including CRC variants, Adler-32, Fletcher checksums, and parity checks
+- **Padding Schemes** including PKCS#7, PKCS#5, ISO standards, OAEP, PSS, and zero padding
+- **Special Purpose** algorithms including format-preserving encryption, key wrapping, and cryptographic constructions
+- **MAC Functions** including HMAC, CMAC, Poly1305, VMAC, GMAC, and OMAC
 
 All algorithms include:
 - Bit-perfect test vector validation from official sources
@@ -469,7 +464,7 @@ RegisterAlgorithm(new YourBlockCipher());
 
 ### 🧱 OpCodes Building Blocks
 
-The OpCodes library provides 90+ cryptographic operations organized by category:
+The OpCodes library provides 500+ cryptographic operations organized by category:
 
 **Bit Rotation Operations:**
 - `RotL8/RotR8(value, positions)` - 8-bit rotation
@@ -1014,4 +1009,6 @@ RegisterAlgorithm(new YourAlgorithm());
 
 ---
 
-**✉️ Contact:** [Hawkynt](https://github.com/Hawkynt) | **🌐 Website:** [hawkynt.github.io](https://hawkynt.github.io) | **📧 Issues:** [GitHub Issues](https://github.com/Hawkynt/hawkynt.github.io/issues)
+**✉️ Contact:** [Hawkynt](https://github.com/Hawkynt) | **🌐 Website:** [hawkynt.github.io](https://hawkynt.github.io) | **📧 Issues:** [GitHub Issues](https://github.com/Hawkynt/hawkynt.github.io/issues)
+
+**DarkCrypt cipher suite:** the library also covers the cipher set of the DarkCrypt Total Commander plugin (Alexander Myasnikov, "Zarya" project). 201 algorithms carry test vectors verified against that implementation, including 175 dedicated block, stream and hash implementations for variants that differ from their published counterparts or have no public specification at all. See <https://totalcmd.net/plugring/darkcrypttc.html>.
