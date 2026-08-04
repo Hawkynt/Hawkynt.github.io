@@ -1,5 +1,5 @@
 /*
- * ARJ Compression Algorithm Implementation
+ * ARJ-style LZ77+Huffman (documented subset) Compression Algorithm Implementation
  * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
  *
@@ -10,10 +10,13 @@
  * pointer/length unary encoding"; it gives no window size, match-length limit
  * or Huffman table layout. No further public bitstream specification exists.
  *
- * This is a documented-subset, from-scratch reimplementation of the "method
- * 1-3" family the TECHNOTE describes: an LZ77 parser feeding a single Huffman
- * tree over a 257+26-symbol alphabet (256 literals, one end-of-block symbol,
- * 26 match-length codes with a base/extra-bit growth pattern), an era-typical
+ * This file does NOT read or produce archives in the real ARJ format. It is
+ * one instance of the generic LZ77 + single-Huffman-tree engine this
+ * repository shares across ace-archiver.js, arj.js, rar.js and sqx.js,
+ * parameterized here to approximate the "method 1-3" family the TECHNOTE
+ * describes: an LZ77 parser feeding a single Huffman tree over a
+ * 257+26-symbol alphabet (256 literals, one end-of-block symbol, 26
+ * match-length codes with a base/extra-bit growth pattern), an era-typical
  * 8KB (13-bit) match window, and a minimum match length of 3 bytes (the usual
  * LZSS convention of that generation of archivers). Match distances are
  * transmitted as raw fixed-width fields rather than a second Huffman tree.
@@ -21,7 +24,8 @@
  * the decoder can rebuild an identical tree, rather than any tree-description
  * encoding ARJ itself may use. Window size, match-length limit and the exact
  * Huffman table layout are approximations - not a byte-exact clone of ARJ's
- * bitstream - because TECHNOTE.TXT does not specify them.
+ * bitstream - because TECHNOTE.TXT does not specify them. The real ARJ
+ * format is implemented in the sibling CompressionWorkbench (C#) project.
  *
  * References:
  * - ARJ TECHNOTE.TXT (distributed with UNARJ 2.65 sources)
@@ -327,8 +331,8 @@
     constructor() {
       super();
 
-      this.name = "ARJ";
-      this.description = "Robert Jung's ARJ archiver methods 1-3: LZ77 sliding window with static Huffman encoding, per ARJ's own TECHNOTE.TXT. Documented-subset reimplementation: era-typical 8KB window, minimum match length 3 bytes, raw (non-Huffman-coded) distance field - TECHNOTE.TXT specifies neither, so exact ARJ compatibility is not claimed.";
+      this.name = "ARJ-style LZ77+Huffman (documented subset)";
+      this.description = "Shared generic LZ77 + single-Huffman-tree compression engine (also used by the ACE-style, RAR-style and SQX-style entries in this repository), parameterized here with an era-typical 8KB window, minimum match length 3, and raw fixed-width distance fields to approximate ARJ's own TECHNOTE.TXT description of methods 1-3 (LZ77 sliding window with static Huffman encoding). It does NOT read or produce archives in the real ARJ format - TECHNOTE.TXT specifies neither window size nor Huffman table layout, so exact ARJ compatibility is not claimed. The real ARJ format is implemented in the sibling CompressionWorkbench (C#) project.";
       this.inventor = "Robert K. Jung";
       this.year = 1991;
       this.category = CategoryType.COMPRESSION;

@@ -1,5 +1,5 @@
 /*
- * SQX Compression Algorithm Implementation
+ * SQX-style LZ77+Huffman (documented subset) Compression Algorithm Implementation
  * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
  *
@@ -11,17 +11,22 @@
  * LZ77-family sliding-window matcher paired with entropy coding - offering
  * dictionary sizes up to 4MB, and up to 32MB in its "ultra" mode.
  *
- * This is a documented-subset, from-scratch reimplementation of that coarse
- * description: an LZ77 parser feeding a single Huffman tree over a
- * 257+26-symbol alphabet (256 literals, one end-of-block symbol, 26
- * match-length codes with a base/extra-bit growth pattern), a fixed 4MB
- * (22-bit) match window matching the documented "up to 4MB" dictionary size,
- * and a minimum match length of 2 bytes. Match distances are transmitted as
- * raw fixed-width fields rather than any additional entropy coding. The
- * Huffman table is transmitted as an explicit (symbol, frequency) list so
- * the decoder can rebuild an identical tree. Given the complete absence of a
- * public bitstream spec, no claim of wire compatibility with real SQX
- * archives is made; this only reproduces the documented algorithm family.
+ * This file does NOT read or produce archives in the real SQX format. It is
+ * one instance of the generic LZ77 + single-Huffman-tree engine this
+ * repository shares across ace-archiver.js, arj.js, rar.js and sqx.js,
+ * parameterized here to approximate that coarse description: an LZ77 parser
+ * feeding a single Huffman tree over a 257+26-symbol alphabet (256 literals,
+ * one end-of-block symbol, 26 match-length codes with a base/extra-bit
+ * growth pattern), a fixed 4MB (22-bit) match window matching the documented
+ * "up to 4MB" dictionary size, and a minimum match length of 2 bytes. Match
+ * distances are transmitted as raw fixed-width fields rather than any
+ * additional entropy coding. The Huffman table is transmitted as an explicit
+ * (symbol, frequency) list so the decoder can rebuild an identical tree.
+ * Given the complete absence of a public bitstream spec, no claim of wire
+ * compatibility with real SQX archives is made; this only reproduces the
+ * documented algorithm family. The real SQX format - including its
+ * audio/multimedia codecs - is implemented in the sibling
+ * CompressionWorkbench (C#) project.
  *
  * References:
  * - fileformat.com, "SQX File Format" (notes the format as proprietary/undocumented)
@@ -329,8 +334,8 @@
     constructor() {
       super();
 
-      this.name = "SQX";
-      this.description = "SQX archiver's LZ-family compression method. No public bitstream specification exists (proprietary/undocumented format); this is a documented-subset reimplementation of the 'LZH-like' description found in secondary sources: LZ77 matching with Huffman entropy coding and a fixed 4MB match window, the largest dictionary size publicly attributed to SQX outside its 'ultra' mode.";
+      this.name = "SQX-style LZ77+Huffman (documented subset)";
+      this.description = "Shared generic LZ77 + single-Huffman-tree compression engine (also used by the ACE-style, ARJ-style and RAR-style entries in this repository), parameterized here with a fixed 4MB match window and raw fixed-width distance fields to approximate the 'LZH-like' description found in secondary sources for SQX (no public bitstream specification exists for the proprietary/undocumented SQX format). It does NOT read or produce archives in the real SQX format. The real SQX format is implemented in the sibling CompressionWorkbench (C#) project.";
       this.inventor = "Rainer Nausedat";
       this.year = 2004;
       this.category = CategoryType.COMPRESSION;
