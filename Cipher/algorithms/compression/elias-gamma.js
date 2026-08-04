@@ -81,17 +81,19 @@
           new LinkItem("Introduction to Data Compression", "https://www.elsevier.com/books/introduction-to-data-compression/sayood/978-0-12-620862-7")
         ];
 
-        // Convert existing tests to new format
+        // Wire format (matches CompressionWorkbench's BB_EliasGamma building
+        // block): a 4-byte little-endian original length, followed by the
+        // Gamma-coded bitstream (MSB-first, zero-padded to a byte boundary).
         this.tests = [
           new TestCase(
             [0x01, 0x02, 0x03, 0x04, 0x05],
-            [0, 0, 0, 5, 0, 0, 0, 21, 76, 133, 48],
+            [5, 0, 0, 0, 76, 133, 48],
             "Small integer sequence",
             "https://en.wikipedia.org/wiki/Elias_gamma_coding"
           ),
           new TestCase(
             [0x7F, 0x80, 0x81, 0xFF],
-            [0, 0, 0, 4, 0, 0, 0, 62, 1, 0, 2, 4, 4, 16, 4, 0],
+            [4, 0, 0, 0, 1, 0, 2, 4, 4, 16, 4, 0],
             "Mixed small and large values",
             "Boundary value test"
           )
@@ -119,218 +121,66 @@
       }
 
       Result() {
-        if (this.inputBuffer.length === 0) return [];
-
-        // Process using existing compression logic
-        const result = this.isInverse ? 
-          this.decompress(this.inputBuffer) : 
-          this.compress(this.inputBuffer);
+        const result = this.isInverse ?
+          this._decompress(this.inputBuffer) :
+          this._compress(this.inputBuffer);
 
         this.inputBuffer = [];
         return result;
       }
 
-      compress(data) {
-        if (!data || data.length === 0) return [];
-
-        let bitStream = '';
-
-        // Encode each byte using Elias Gamma
-        for (const byte of data) {
-          // Elias Gamma cannot encode 0, so we use byte + 1
-          const value = byte + 1;
-          const gammaCode = this._encodeGamma(value);
-          bitStream += gammaCode;
-        }
-
-        // Store original length and convert to bytes
-        const compressed = this._packBitStream(bitStream, data.length);
-
-        return this._stringToBytes(compressed);
+      // Wire format (matches CompressionWorkbench's BB_EliasGamma building
+      // block): a 4-byte little-endian original length, followed by the
+      // Gamma-coded bitstream (MSB-first, zero-padded to a byte boundary).
+      // Elias Gamma cannot encode 0, so byte values are mapped to (value + 1).
+      _compress(data) {
+        const bitStream = OpCodes.CreateBitStream();
+        bitStream.writeUint32LE(data.length);
+        for (const byte of data) this._encodeGamma(bitStream, byte + 1);
+        return bitStream.toArray();
       }
 
-      decompress(data) {
-        if (!data || data.length === 0) return [];
+      _decompress(data) {
+        if (data.length < 4) return [];
 
-        const compressedString = this._bytesToString(data);
+        const bitStream = OpCodes.CreateBitStream(data);
+        const originalLength = OpCodes.Pack32LE(bitStream.readByte(), bitStream.readByte(), bitStream.readByte(), bitStream.readByte());
+        if (originalLength === 0) return [];
 
-        // Unpack bit stream and get original length
-        const { bitStream, originalLength } = this._unpackBitStream(compressedString);
+        const result = [];
+        for (let i = 0; i < originalLength; i++)
+          result.push(this._decodeGamma(bitStream) - 1);
 
-        const decodedBytes = [];
-        let pos = 0;
-
-        // Decode until we have the expected number of bytes
-        while (decodedBytes.length < originalLength && pos < bitStream.length) {
-          const { value, bitsConsumed } = this._decodeGamma(bitStream, pos);
-
-          if (value === null) {
-            throw new Error('Invalid Elias Gamma code in compressed data');
-          }
-
-          // Convert back to byte (subtract 1 since we added 1 during encoding)
-          const byte = value - 1;
-          if (byte < 0 || byte > 255) {
-            throw new Error('Invalid byte value in compressed data');
-          }
-
-          decodedBytes.push(byte);
-          pos += bitsConsumed;
-        }
-
-        if (decodedBytes.length !== originalLength) {
-          throw new Error('Decompressed length mismatch');
-        }
-
-        return decodedBytes;
+        return result;
       }
 
       /**
-       * Encode a positive integer using Elias Gamma coding
-       * Format: unary(floor(log2(n))) + binary(n - 2^floor(log2(n)))
+       * Encode a positive integer using Elias Gamma coding: floor(log2(n))
+       * zero-bits, then the (floor(log2(n))+1)-bit binary form of n, MSB first.
        * @private
        */
-      _encodeGamma(value) {
-        if (value <= 0) {
-          throw new Error('Elias Gamma can only encode positive integers');
-        }
+      _encodeGamma(bitStream, value) {
+        let n = 0, v = value;
+        while (v > 1) { n++; v = Math.floor(v / 2); }
 
-        // Special case for 1
-        if (value === 1) {
-          return '1';
-        }
-
-        // Calculate number of bits needed
-        const bitsNeeded = Math.floor(Math.log2(value));
-
-        // Create unary prefix (bitsNeeded zeros followed by 1)
-        const unaryPrefix = '0'.repeat(bitsNeeded) + '1';
-
-        // Create binary suffix (value without leading 1)
-        const binaryValue = value.toString(2);
-        const binarySuffix = binaryValue.substring(1); // Remove leading '1'
-
-        return unaryPrefix + binarySuffix;
+        for (let i = 0; i < n; i++) bitStream.writeBit(0);
+        for (let i = n; i >= 0; i--) bitStream.writeBit(OpCodes.And32(OpCodes.Shr32(value, i), 1));
       }
 
       /**
-       * Decode an Elias Gamma code from bit stream
+       * Decode an Elias Gamma code: count leading zero-bits n (the
+       * terminating 1-bit is consumed but not counted), then read n more
+       * bits with an implicit leading 1.
        * @private
        */
-      _decodeGamma(bitStream, startPos) {
-        if (startPos >= bitStream.length) {
-          return { value: null, bitsConsumed: 0 };
-        }
+      _decodeGamma(bitStream) {
+        let n = 0;
+        while (bitStream.readBit() === 0) n++;
 
-        // Count leading zeros (unary part)
-        let zeros = 0;
-        let pos = startPos;
+        let value = 1;
+        for (let i = 0; i < n; i++) value = OpCodes.Or32(OpCodes.Shl32(value, 1), bitStream.readBit());
 
-        while (pos < bitStream.length && bitStream[pos] === '0') {
-          zeros++;
-          pos++;
-        }
-
-        // Check for terminating '1'
-        if (pos >= bitStream.length || bitStream[pos] !== '1') {
-          return { value: null, bitsConsumed: 0 };
-        }
-
-        pos++; // Skip the '1'
-
-        // Read binary suffix
-        if (zeros === 0) {
-          // Special case: value is 1
-          return { value: 1, bitsConsumed: 1 };
-        }
-
-        if (pos + zeros > bitStream.length) {
-          return { value: null, bitsConsumed: 0 };
-        }
-
-        const binarySuffix = bitStream.substring(pos, pos + zeros);
-        const value = parseInt('1' + binarySuffix, 2);
-
-        return { value: value, bitsConsumed: zeros + 1 + zeros };
-      }
-
-      /**
-       * Pack bit stream into bytes with header
-       * @private
-       */
-      _packBitStream(bitStream, originalLength) {
-        const bytes = [];
-
-        // Store original length (4 bytes, big-endian)
-        bytes.push(OpCodes.ToByte(OpCodes.Shr32(originalLength, 24)));
-        bytes.push(OpCodes.ToByte(OpCodes.Shr32(originalLength, 16)));
-        bytes.push(OpCodes.ToByte(OpCodes.Shr32(originalLength, 8)));
-        bytes.push(OpCodes.ToByte(originalLength));
-
-        // Store bit stream length (4 bytes, big-endian)
-        const bitLength = bitStream.length;
-        bytes.push(OpCodes.ToByte(OpCodes.Shr32(bitLength, 24)));
-        bytes.push(OpCodes.ToByte(OpCodes.Shr32(bitLength, 16)));
-        bytes.push(OpCodes.ToByte(OpCodes.Shr32(bitLength, 8)));
-        bytes.push(OpCodes.ToByte(bitLength));
-
-        // Pad bit stream to byte boundary
-        const padding = (8 - (bitStream.length % 8)) % 8;
-        const paddedBits = bitStream + '0'.repeat(padding);
-
-        // Convert to bytes
-        for (let i = 0; i < paddedBits.length; i += 8) {
-          const byte = paddedBits.substr(i, 8);
-          bytes.push(parseInt(byte, 2));
-        }
-
-        return this._bytesToString(bytes);
-      }
-
-      /**
-       * Unpack bit stream from bytes
-       * @private
-       */
-      _unpackBitStream(compressedData) {
-        const bytes = this._stringToBytes(compressedData);
-
-        if (bytes.length < 8) {
-          throw new Error('Invalid compressed data: header too short');
-        }
-
-        // Read original length
-        const originalLength = (OpCodes.Shl32(bytes[0], 24))|(OpCodes.Shl32(bytes[1], 16))|(OpCodes.Shl32(bytes[2], 8))|bytes[3];
-
-        // Read bit stream length
-        const bitLength = (OpCodes.Shl32(bytes[4], 24))|(OpCodes.Shl32(bytes[5], 16))|(OpCodes.Shl32(bytes[6], 8))|bytes[7];
-
-        // Convert bytes back to bit stream
-        let bitStream = '';
-        for (let i = 8; i < bytes.length; i++) {
-          bitStream += bytes[i].toString(2).padStart(8, '0');
-        }
-
-        // Trim to actual bit length
-        bitStream = bitStream.substring(0, bitLength);
-
-        return { bitStream, originalLength };
-      }
-
-      // Utility functions
-      _stringToBytes(str) {
-        const bytes = [];
-        for (let i = 0; i < str.length; i++) {
-          bytes.push(OpCodes.ToByte(str.charCodeAt(i)));
-        }
-        return bytes;
-      }
-
-      _bytesToString(bytes) {
-        let str = "";
-        for (let i = 0; i < bytes.length; i++) {
-          str += String.fromCharCode(bytes[i]);
-        }
-        return str;
+        return value;
       }
     }
 
