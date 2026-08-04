@@ -2,10 +2,23 @@
  * LZW (Lempel-Ziv-Welch) Compression Algorithm Implementation
  * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
- * 
+ *
  * Dictionary-based compression algorithm developed by Terry Welch in 1984.
  * Used in GIF images, TIFF files, and early Unix compress utility.
  * Builds dictionary dynamically during compression/decompression.
+ *
+ * Wire format (matches CompressionWorkbench's BB_Lzw building block): a pure
+ * variable-width LZW bitstream, no length header or other framing. Codes are
+ * packed LSB-first (the first bit written for a code occupies bit 0 of the
+ * current output byte). Code width starts at 9 bits and grows up to 16 bits
+ * as the dictionary fills. Code 256 is a clear code (dictionary/width reset),
+ * code 257 is a stop code (end of stream); new dictionary entries start at
+ * 258. Encoding uses the classic greedy ("first match") strategy: the
+ * encoder's own lookup trie is populated eagerly on every miss, while the
+ * decoder-visible next-code counter (which drives the bit-width growth) only
+ * advances starting from the second emitted code after each reset - the
+ * usual LZW asymmetry where the very first code after a reset adds no new
+ * dictionary entry.
  */
 
 
@@ -35,7 +48,7 @@
   if (!AlgorithmFramework) {
     throw new Error('AlgorithmFramework dependency is required');
   }
-  
+
   if (!OpCodes) {
     throw new Error('OpCodes dependency is required');
   }
@@ -49,6 +62,66 @@
           IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM PARAMETERS (fixed to match CompressionWorkbench's BB_Lzw) =====
+
+  const MIN_BITS = 9;
+  const MAX_BITS = 16;
+  const CLEAR_CODE = OpCodes.Shl32(1, MIN_BITS - 1);  // 256
+  const STOP_CODE = CLEAR_CODE + 1;                    // 257
+  const FIRST_USABLE_CODE = CLEAR_CODE + 2;            // 258
+  const MAX_CODE = OpCodes.Shl32(1, MAX_BITS);         // 65536
+
+  // ===== BIT STREAM HELPERS (LSB-first) =====
+
+  class LzwBitWriter {
+    constructor() {
+      this.bytes = [];
+      this.buf = 0;
+      this.nBits = 0;
+    }
+
+    writeBits(value, width) {
+      this.buf = OpCodes.ToUint32(OpCodes.OrN(this.buf, OpCodes.Shl32(value, this.nBits)));
+      this.nBits += width;
+      while (this.nBits >= 8) {
+        this.bytes.push(OpCodes.AndN(this.buf, 0xFF));
+        this.buf = OpCodes.Shr32(this.buf, 8);
+        this.nBits -= 8;
+      }
+    }
+
+    flush() {
+      if (this.nBits > 0) {
+        this.bytes.push(OpCodes.AndN(this.buf, 0xFF));
+        this.buf = 0;
+        this.nBits = 0;
+      }
+      return this.bytes;
+    }
+  }
+
+  class LzwBitReader {
+    constructor(bytes) {
+      this.bytes = bytes;
+      this.pos = 0;
+      this.buf = 0;
+      this.nBits = 0;
+    }
+
+    readBits(width) {
+      while (this.nBits < width) {
+        if (this.pos >= this.bytes.length) throw new Error('LZW: unexpected end of stream');
+        this.buf = OpCodes.ToUint32(OpCodes.OrN(this.buf, OpCodes.Shl32(this.bytes[this.pos++], this.nBits)));
+        this.nBits += 8;
+      }
+      const mask = OpCodes.ToUint32(OpCodes.Shl32(1, width) - 1);
+      const value = OpCodes.AndN(this.buf, mask);
+      this.buf = OpCodes.Shr32(this.buf, width);
+      this.nBits -= width;
+      return value;
+    }
+  }
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -64,7 +137,7 @@
 
         // Required metadata
         this.name = "LZW (Lempel-Ziv-Welch)";
-        this.description = "Dictionary-based compression algorithm that builds a table of frequently occurring strings. Pre-initializes dictionary with all single bytes and adds new patterns dynamically during compression. Used in GIF/TIFF formats.";
+        this.description = "Dictionary-based compression algorithm that builds a table of frequently occurring strings, starting from a dictionary of all single bytes and adding new patterns dynamically. Emits a pure variable-width (9-16 bit) LZW bitstream, LSB-first packed, with clear and stop codes and no length header - matching CompressionWorkbench's BB_Lzw building block. Used in GIF/TIFF formats.";
         this.inventor = "Terry Welch";
         this.year = 1984;
         this.category = CategoryType.COMPRESSION;
@@ -86,44 +159,44 @@
           new LinkItem("Educational LZW Implementation", "https://rosettacode.org/wiki/LZW_compression")
         ];
 
-        // Test vectors with expected compressed output
-        // Format: 4-byte count (big-endian) + 16-bit codes (big-endian)
-        // Dictionary starts with bytes 0-255, new sequences start at code 256
+        // Test vectors - byte-exact against CompressionWorkbench's BB_Lzw building
+        // block (minBits=9, maxBits=16, clear+stop codes, LSB-first bit packing,
+        // no length header). Expected vectors are given as hex.
         this.tests = [
           new TestCase(
+            [],
+            OpCodes.Hex8ToBytes("000302"),
+            "Empty input - still emits clear code and stop code",
+            "https://en.wikipedia.org/wiki/Lempel%E2%80%93Ziv%E2%80%93Welch"
+          ),
+          new TestCase(
+            OpCodes.AsciiToBytes("A"),
+            OpCodes.Hex8ToBytes("00830404"),
+            "Single byte - no dictionary matches possible",
+            "https://en.wikipedia.org/wiki/Lempel%E2%80%93Ziv%E2%80%93Welch"
+          ),
+          new TestCase(
             OpCodes.AsciiToBytes("ABABABABAB"),
-            [0,0,0,6,0,65,0,66,1,2,1,4,1,3,0,66],
+            OpCodes.Hex8ToBytes("008308114870a09080"),
             "Repeated two-character pattern - Wikipedia example",
             "https://en.wikipedia.org/wiki/Lempel%E2%80%93Ziv%E2%80%93Welch"
           ),
           new TestCase(
             OpCodes.AsciiToBytes("TOBEORNOTTOBEORTOBEORNOT"),
-            [0,0,0,16,0,84,0,79,0,66,0,69,0,79,0,82,0,78,0,79,0,84,1,2,1,4,1,6,1,11,1,5,1,7,1,9],
+            OpCodes.Hex8ToBytes("00a93c1152e48914274fa80824687061c183090302"),
             "Classic Shakespeare-inspired LZW test string - Wikipedia",
             "https://en.wikipedia.org/wiki/Lempel%E2%80%93Ziv%E2%80%93Welch"
           ),
           new TestCase(
-            OpCodes.AsciiToBytes("BABAABAAA"),
-            [0,0,0,6,0,66,0,65,1,2,1,3,0,65,1,6],
-            "Educational example showing dictionary building - GeeksforGeeks",
-            "https://www.geeksforgeeks.org/lzw-lempel-ziv-welch-compression-technique/"
-          ),
-          new TestCase(
-            OpCodes.AsciiToBytes("WYS*WYGWYS*WYSWYSG"),
-            [0,0,0,11,0,87,0,89,0,83,0,42,1,2,0,71,1,2,1,4,1,8,1,8,0,71],
-            "Pattern with repeated substrings - GeeksforGeeks C++ example",
-            "https://www.geeksforgeeks.org/lzw-lempel-ziv-welch-compression-technique/"
-          ),
-          new TestCase(
             OpCodes.AsciiToBytes("AAAAAAAAAA"),
-            [0,0,0,4,0,65,1,2,1,3,1,4],
+            OpCodes.Hex8ToBytes("0083081c483020"),
             "Maximum redundancy test (all identical characters)",
             "Edge case - maximum compression ratio"
           ),
           new TestCase(
-            OpCodes.AsciiToBytes("ABCDEFGHIJ"),
-            [0,0,0,10,0,65,0,66,0,67,0,68,0,69,0,70,0,71,0,72,0,73,0,74],
-            "No repetition test (worst case for LZW)",
+            (function() { const b = new Array(256); for (let i = 0; i < 256; ++i) b[i] = i; return b; })(),
+            OpCodes.Hex8ToBytes("00010410308040010307102450b0804103070f204490308142050b173064d0b08143070f1f40841031824409132750a450b182450b172f60c4903183460d1b3770e4d0b183470f1f3f800411328448112347902451b2844913274fa0449132854a152b57b064d1b2854b172f5fc0841133864c193367d0a451b3864d1b376fe0c49133874e1d3b77f0e4d1b3874f1f3f7f000512348850214387102552b4885123478f204592348952254b973065d2b48953274f9f408512358a542953a750a552b58a552b57af60c592358b562d5bb770e5d2b58b572f5fbf800513368c583163c7902553b68c593367cfa04593368d5a356bd7b065d3b68d5b376fdfc08513378e5c3973e7d0a553b78e5d3b77efe0c593378f5e3d7bf7f0e5d3b78f5f3f7fff0404"),
+            "All 256 byte values 0..255 once each - no repetition",
             "Edge case - minimal compression benefit"
           )
         ];
@@ -147,155 +220,181 @@
       }
 
       Result() {
-        if (this.inputBuffer.length === 0) {
-          return [];
+        if (this.isInverse) {
+          if (this.inputBuffer.length === 0) return [];
+          return this._decompress();
         }
 
-        if (this.isInverse) {
-          return this._decompress();
-        } else {
-          return this._compress();
-        }
+        return this._compress();
       }
+
+      // ----- Compression: greedy ("first match") variable-width LZW -----
+      //
+      // Mirrors LzwEncoder.EncodeFirstMatch: a lookup trie is populated
+      // eagerly on every miss (trieNextCode), while a second counter
+      // (decoderNextCode) mirrors the decoder's own dictionary growth so the
+      // encoder emits codes at exactly the width the decoder expects. The
+      // decoder only grows its dictionary starting with the second emitted
+      // code after a reset (hasPrevious) - the classic LZW asymmetry where
+      // the very first code after a clear carries no new entry.
 
       _compress() {
         try {
           const input = this.inputBuffer.slice();
           this.inputBuffer = [];
 
-          if (input.length === 0) return [];
+          const writer = new LzwBitWriter();
+          let currentBits = MIN_BITS;
 
-          // Initialize dictionary with all single bytes (0-255)
-          const dictionary = new Map();
-          for (let i = 0; i < 256; i++) {
-            dictionary.set(String.fromCharCode(i), i);
+          writer.writeBits(CLEAR_CODE, currentBits);
+
+          if (input.length === 0) {
+            writer.writeBits(STOP_CODE, currentBits);
+            return writer.flush();
           }
 
-          let nextCode = 258; // 256=CLEAR, 257=EOF in some variants
-          const codes = [];
+          let trieNextCode = FIRST_USABLE_CODE;
+          let decoderNextCode = FIRST_USABLE_CODE;
+          let hasPrevious = false;
+          let trie = new Map();
 
-          let currentString = '';
+          let currentCode = input[0];
+          let i = 1;
 
-          for (let i = 0; i < input.length; i++) {
-            const char = String.fromCharCode(input[i]);
-            const testString = currentString + char;
+          while (i < input.length) {
+            const nextByte = input[i];
+            const key = currentCode + ':' + nextByte;
 
-            if (dictionary.has(testString)) {
-              currentString = testString;
-            } else {
-              // Output code for current string
-              codes.push(dictionary.get(currentString));
-
-              // Add new string to dictionary if there's room
-              if (nextCode < 4096) { // 12-bit max
-                dictionary.set(testString, nextCode);
-                nextCode++;
-              }
-
-              currentString = char;
+            if (trie.has(key)) {
+              currentCode = trie.get(key);
+              i++;
+              continue;
             }
+
+            writer.writeBits(currentCode, currentBits);
+
+            // Always add a trie entry for future lookups (if room).
+            if (trieNextCode < MAX_CODE) {
+              trie.set(key, trieNextCode);
+              trieNextCode++;
+            }
+
+            // Mirror the decoder's nextCode: it only grows starting with the
+            // second emitted code after a reset.
+            if (hasPrevious) {
+              if (decoderNextCode < MAX_CODE) {
+                decoderNextCode++;
+                if (decoderNextCode >= OpCodes.Shl32(1, currentBits) && currentBits < MAX_BITS)
+                  currentBits++;
+              } else {
+                // Dictionary is full: reset before processing the byte that
+                // triggered this miss.
+                writer.writeBits(CLEAR_CODE, currentBits);
+                trie = new Map();
+                currentBits = MIN_BITS;
+                trieNextCode = FIRST_USABLE_CODE;
+                decoderNextCode = FIRST_USABLE_CODE;
+                hasPrevious = false;
+                currentCode = nextByte;
+                i++;
+                continue;
+              }
+            }
+
+            hasPrevious = true;
+            currentCode = nextByte;
+            i++;
           }
 
-          // Output code for final string
-          if (currentString !== '') {
-            codes.push(dictionary.get(currentString));
+          writer.writeBits(currentCode, currentBits);
+
+          // The decoder adds one more entry after the final data code.
+          if (hasPrevious && decoderNextCode < MAX_CODE) {
+            decoderNextCode++;
+            if (decoderNextCode >= OpCodes.Shl32(1, currentBits) && currentBits < MAX_BITS)
+              currentBits++;
           }
 
-          return this._packCodes(codes);
+          writer.writeBits(STOP_CODE, currentBits);
+
+          return writer.flush();
         } catch (e) {
           this.inputBuffer = [];
           return [];
         }
       }
+
+      // ----- Decompression: mirrors LzwDecoder.Decode -----
 
       _decompress() {
         try {
           const input = this.inputBuffer.slice();
           this.inputBuffer = [];
 
-          if (input.length === 0) return [];
+          const reader = new LzwBitReader(input);
+          let currentBits = MIN_BITS;
+          let nextCode = FIRST_USABLE_CODE;
+          let dictionary = this._initDictionary();
+          let previousEntry = null;
+          const output = [];
 
-          const codes = this._unpackCodes(input);
-          if (codes.length === 0) return [];
+          for (;;) {
+            let code;
+            try {
+              code = reader.readBits(currentBits);
+            } catch (e) {
+              break;
+            }
 
-          // Initialize dictionary with all single bytes
-          const dictionary = new Map();
-          for (let i = 0; i < 256; i++) {
-            dictionary.set(i, String.fromCharCode(i));
-          }
+            if (code === CLEAR_CODE) {
+              dictionary = this._initDictionary();
+              currentBits = MIN_BITS;
+              nextCode = FIRST_USABLE_CODE;
+              previousEntry = null;
+              continue;
+            }
 
-          let nextCode = 258;
-          const result = [];
-          let prevString = '';
+            if (code === STOP_CODE) break;
 
-          for (let i = 0; i < codes.length; i++) {
-            const code = codes[i];
-            let currentString;
-
-            if (dictionary.has(code)) {
-              currentString = dictionary.get(code);
-            } else if (code === nextCode) {
-              // Special case: code not yet in dictionary
-              currentString = prevString + prevString.charAt(0);
+            let entry;
+            if (code < dictionary.length) {
+              entry = dictionary[code];
+            } else if (code === nextCode && previousEntry !== null) {
+              // KwKwK case: the new entry is previousEntry + previousEntry[0].
+              entry = previousEntry.concat([previousEntry[0]]);
             } else {
               throw new Error('Invalid LZW code sequence');
             }
 
-            result.push(currentString);
+            for (let j = 0; j < entry.length; j++) output.push(entry[j]);
 
-            if (prevString !== '' && nextCode < 4096) {
-              const newEntry = prevString + currentString.charAt(0);
-              dictionary.set(nextCode, newEntry);
+            // Add new dictionary entry: previousEntry + entry[0] (not on the
+            // first code after a reset, since previousEntry is null then).
+            if (previousEntry !== null && nextCode < MAX_CODE) {
+              const newEntry = previousEntry.concat([entry[0]]);
+              dictionary.push(newEntry);
               nextCode++;
+
+              if (nextCode >= OpCodes.Shl32(1, currentBits) && currentBits < MAX_BITS)
+                currentBits++;
             }
 
-            prevString = currentString;
+            previousEntry = entry;
           }
 
-          const output = result.join('');
-          return OpCodes.AsciiToBytes(output);
+          return output;
         } catch (e) {
           this.inputBuffer = [];
           return [];
         }
       }
 
-      _packCodes(codes) {
-        // Simple packing: store each code as 2 bytes (16-bit)
-        const bytes = [];
-
-        // Store number of codes first (4 bytes)
-        const count = codes.length;
-        const packed = OpCodes.Unpack32BE(count);
-        bytes.push(packed[0], packed[1], packed[2], packed[3]);
-
-        // Store codes as 16-bit values
-        for (const code of codes) {
-          const packed = OpCodes.Unpack16BE(code);
-          bytes.push(packed[0], packed[1]);
-        }
-
-        return bytes;
-      }
-
-      _unpackCodes(bytes) {
-        if (bytes.length < 4) return [];
-
-        // Read number of codes
-        const count = OpCodes.Pack32BE(bytes[0], bytes[1], bytes[2], bytes[3]);
-
-        if (bytes.length !== 4 + count * 2) return [];
-
-        const codes = [];
-        let pos = 4;
-
-        for (let i = 0; i < count; i++) {
-          const code = OpCodes.Pack16BE(bytes[pos], bytes[pos + 1]);
-          codes.push(code);
-          pos += 2;
-        }
-
-        return codes;
+      _initDictionary() {
+        const dictionary = [];
+        for (let i = 0; i < CLEAR_CODE; i++) dictionary.push([i]);
+        dictionary.push([]); // clear code placeholder (index 256)
+        dictionary.push([]); // stop code placeholder (index 257)
+        return dictionary;
       }
     }
 
