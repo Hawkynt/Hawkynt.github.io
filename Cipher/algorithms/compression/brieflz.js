@@ -313,6 +313,75 @@
     }
   }
 
+  // ===== HASH CHAIN MATCH FINDER =====
+
+  /**
+   * Hash-chain match finder: a 3-byte-hash head table plus a per-position
+   * "previous occurrence" chain, the standard structure for this LZ77
+   * family (see also crush.js in this repository). Replaces an O(window)
+   * per-position linear scan with an O(chain-depth) walk, and the walk is
+   * itself bounded by a max-depth limit so a degenerate chain (e.g. a
+   * long run of one repeated byte) cannot go quadratic. The walk also
+   * stops as soon as a match reaches the maximum encodable length, since
+   * no longer candidate can improve on that.
+   */
+
+  class HashChain {
+    constructor(windowSize) {
+      this.windowSize = windowSize;
+      this.hashSize = 65536; // 2^16 hash entries
+      this.head = new Int32Array(this.hashSize).fill(-1);
+      this.prev = new Int32Array(windowSize).fill(-1);
+    }
+
+    _hash(data, pos) {
+      const h = OpCodes.Shl32(data[pos], 8) +
+                OpCodes.Shl32(data[pos + 1], 4) +
+                OpCodes.Shr32(data[pos + 2], 4);
+      return h % this.hashSize;
+    }
+
+    insert(data, pos) {
+      if (pos + 2 >= data.length) return; // Not enough bytes to hash
+      const h = this._hash(data, pos);
+      const idx = pos % this.windowSize;
+      this.prev[idx] = this.head[h];
+      this.head[h] = pos;
+    }
+
+    find(data, pos, maxLen, maxChainDepth) {
+      if (maxLen < 1 || pos + 2 >= data.length) {
+        return { length: 0, distance: 0 };
+      }
+
+      const h = this._hash(data, pos);
+      const windowStart = Math.max(0, pos - this.windowSize);
+      let chainPos = this.head[h];
+      let chainDepth = 0;
+      let bestLength = 0;
+      let bestDistance = 0;
+
+      while (chainPos >= windowStart && chainPos < pos && chainDepth < maxChainDepth) {
+        let length = 0;
+        while (length < maxLen && data[chainPos + length] === data[pos + length]) {
+          length++;
+        }
+
+        if (length > bestLength) {
+          bestLength = length;
+          bestDistance = pos - chainPos;
+          if (length >= maxLen) break; // Cannot do better than the max encodable length
+        }
+
+        const idx = chainPos % this.windowSize;
+        chainPos = this.prev[idx];
+        chainDepth++;
+      }
+
+      return { length: bestLength, distance: bestDistance };
+    }
+  }
+
   // ===== ALGORITHM IMPLEMENTATION =====
 
   class BriefLZCompression extends CompressionAlgorithm {
@@ -334,6 +403,7 @@
       this.WINDOW_SIZE = 65536;      // 64KB sliding window
       this.MIN_MATCH_LENGTH = 4;     // Minimum match length (gamma2 minimum is 2, so len=gamma+2=4)
       this.MAX_MATCH_LENGTH = 255;   // Practical maximum
+      this.MAX_CHAIN_DEPTH = 1024;   // Bound on hash-chain walk depth per position
 
       // Documentation and references
       this.documentation = [
@@ -517,11 +587,12 @@
     _compress() {
       const originalLength = this.inputBuffer.length;
       const writer = new BitStreamWriter();
+      const chain = new HashChain(this.algorithm.WINDOW_SIZE);
       let pos = 0;
 
       while (pos < this.inputBuffer.length) {
-        // Find longest match in sliding window
-        const match = this._findMatch(pos);
+        // Find longest match via the hash chain (bounded walk, see HashChain above)
+        const match = this._findMatch(chain, pos);
 
         if (match.length >= this.algorithm.MIN_MATCH_LENGTH) {
           // Output match
@@ -533,11 +604,17 @@
           writer.putGamma(off + 2);
           writer.putByte(distMinus1 % 256); // Low byte
 
-          pos += match.length;
+          // Register every position the match covers so future matches can
+          // start mid-run (required for repeated-byte / repeated-pattern data).
+          const matchEnd = pos + match.length;
+          for (; pos < matchEnd; pos++) {
+            chain.insert(this.inputBuffer, pos);
+          }
         } else {
           // Output literal
           writer.putBit(0);
           writer.putByte(this.inputBuffer[pos]);
+          chain.insert(this.inputBuffer, pos);
           pos++;
         }
       }
@@ -546,33 +623,13 @@
       return OpCodes.Unpack32LE(originalLength).concat(writer.getOutput());
     }
 
-    _findMatch(pos) {
-      const windowStart = Math.max(0, pos - this.algorithm.WINDOW_SIZE);
-      let bestLength = 0;
-      let bestDistance = 0;
+    _findMatch(chain, pos) {
+      const maxLen = Math.min(
+        this.algorithm.MAX_MATCH_LENGTH,
+        this.inputBuffer.length - pos
+      );
 
-      // Search for matches in sliding window
-      for (let i = windowStart; i < pos; i++) {
-        let length = 0;
-        const maxLen = Math.min(
-          this.algorithm.MAX_MATCH_LENGTH,
-          this.inputBuffer.length - pos
-        );
-
-        // Count matching bytes
-        while (length < maxLen &&
-               this.inputBuffer[i + length] === this.inputBuffer[pos + length]) {
-          length++;
-        }
-
-        // Update best match
-        if (length > bestLength) {
-          bestLength = length;
-          bestDistance = pos - i;
-        }
-      }
-
-      return { length: bestLength, distance: bestDistance };
+      return chain.find(this.inputBuffer, pos, maxLen, this.algorithm.MAX_CHAIN_DEPTH);
     }
   }
 
