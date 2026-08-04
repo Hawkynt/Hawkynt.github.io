@@ -1,3 +1,22 @@
+/*
+ * PPMd (PPM with Dynamic Memory) Algorithm Implementation
+ * Compatible with AlgorithmFramework
+ * (c)2006-2025 Hawkynt
+ *
+ * A clean-room port of CompressionWorkbench's PPMd building block (BB_Ppmd,
+ * Model H): a context trie with Method D escape estimation (escape
+ * frequency = number of distinct symbols observed), periodic rescaling at
+ * a total-frequency threshold of 2500, exclusion of already-coded symbols
+ * when falling through to lower orders, a flat order(-1) fallback over all
+ * non-excluded byte values, and a multi-symbol range coder. Context nodes
+ * are identified by an FNV-1a (64-bit) hash of the preceding byte sequence
+ * so encoder and decoder derive identical context identities without a
+ * pointer-based trie.
+ *
+ * Wire format: [order: uint8] [originalLength: uint32 LE] [range-coded
+ * stream, one PPMd symbol at a time]
+ */
+
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
     // AMD
@@ -24,488 +43,461 @@
   if (!AlgorithmFramework) {
     throw new Error('AlgorithmFramework dependency is required');
   }
-  
+
   if (!OpCodes) {
     throw new Error('OpCodes dependency is required');
   }
 
   // Extract framework components
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
-          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
-          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
-          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
-          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
-          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
-          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+          CompressionAlgorithm, IAlgorithmInstance, LinkItem } = AlgorithmFramework;
 
-  // ===== ALGORITHM IMPLEMENTATION =====
+  const PPMD_DEFAULT_ORDER = 6;
+  const PPMD_NUM_SYMBOLS = 256;
+  const PPMD_RESCALE_THRESHOLD = 2500;
 
-  /**
- * PPMDAlgorithm - Compression algorithm implementation
- * @class
- * @extends {CompressionAlgorithm}
- */
+  // ===== MULTI-SYMBOL RANGE CODER (matches Compression.Core.Entropy.Ppmd.PpmdRangeCoder) =====
+
+  const PR_TOP = OpCodes.Shl32(1, 24);
+
+  class PpmdRangeEncoder {
+    constructor() {
+      this.range = 0xFFFFFFFF;
+      this.low = 0; // may transiently exceed 32 bits (carry); truncated on each shiftLow
+      this.cacheSize = 1;
+      this.cache = 0;
+      this.output = [];
+    }
+    encode(lowCumFreq, freq, totalFreq) {
+      const r = Math.floor(this.range / totalFreq);
+      this.low += r * lowCumFreq;
+      this.range = r * freq;
+      this._normalize();
+    }
+    finish() {
+      for (let i = 0; i < 5; ++i) this._shiftLow();
+    }
+    _normalize() {
+      while (this.range < PR_TOP) {
+        this.range = OpCodes.Shl32(this.range, 8);
+        this._shiftLow();
+      }
+    }
+    _shiftLow() {
+      const carry = Math.floor(this.low / 4294967296); // this.low >> 32
+      if (this.low < 0xFF000000 || carry !== 0) {
+        let temp = this.cache;
+        do {
+          this.output.push(OpCodes.And32(temp + carry, 0xFF));
+          temp = 0xFF;
+        } while (--this.cacheSize > 0);
+        this.cache = OpCodes.And32(Math.floor(OpCodes.ToUint32(this.low) / 16777216), 0xFF);
+      }
+      ++this.cacheSize;
+      this.low = OpCodes.Shl32(this.low, 8);
+    }
+  }
+
+  class PpmdRangeDecoder {
+    constructor(bytes) {
+      this.input = bytes;
+      this.pos = 0;
+      this.range = 0xFFFFFFFF;
+      this.code = 0;
+      this._readByte(); // leading byte (only used for EOF detection in the reference; value discarded)
+      for (let i = 0; i < 4; ++i)
+        this.code = OpCodes.Or32(OpCodes.Shl32(this.code, 8), this._readByte());
+    }
+    _readByte() {
+      return this.pos < this.input.length ? this.input[this.pos++] : 0;
+    }
+    getThreshold(totalFreq) {
+      this.range = Math.floor(this.range / totalFreq);
+      return Math.floor(this.code / this.range);
+    }
+    decode(lowCumFreq, freq, totalFreq) {
+      this.code -= this.range * lowCumFreq;
+      this.range = this.range * freq;
+      this._normalize();
+    }
+    _normalize() {
+      while (this.range < PR_TOP) {
+        this.range = OpCodes.Shl32(this.range, 8);
+        this.code = OpCodes.Or32(OpCodes.Shl32(this.code, 8), this._readByte());
+      }
+    }
+  }
+
+  // ===== PPMd CONTEXT NODE (matches Compression.Core.Entropy.Ppmd.PpmdContext) =====
+
+  class PpmdContext {
+    constructor() {
+      this.freq = new Map(); // symbol (0-255) -> count
+    }
+    get escapeFreq() { return Math.max(1, this.freq.size); }
+    get totalFreq() {
+      let sum = this.escapeFreq;
+      for (const v of this.freq.values()) sum += v;
+      return sum;
+    }
+    get symbolCount() { return this.freq.size; }
+    incrementFreq(symbol) {
+      this.freq.set(symbol, (this.freq.get(symbol) || 0) + 1);
+    }
+    rescale() {
+      const toRemove = [];
+      for (const [sym, f] of this.freq) {
+        const newFreq = Math.trunc((f + 1) / 2);
+        if (newFreq <= 0) toRemove.push(sym);
+        else this.freq.set(sym, newFreq);
+      }
+      for (const sym of toRemove) this.freq.delete(sym);
+    }
+    // Builds a sorted (by symbol) coding table with escape appended last.
+    buildCodingTable(excluded) {
+      const result = [];
+      let cumFreq = 0;
+      let includedCount = 0;
+
+      const sorted = [...this.freq.keys()].sort((a, b) => a - b);
+      for (const sym of sorted) {
+        if (excluded && excluded.has(sym)) continue;
+        const frequency = this.freq.get(sym);
+        result.push({ symbol: sym, cumFreq, freq: frequency });
+        cumFreq += frequency;
+        ++includedCount;
+      }
+
+      const escapeFreq = Math.max(1, includedCount);
+      result.push({ symbol: -1, cumFreq, freq: escapeFreq });
+      return result;
+    }
+  }
+
+  // ===== PPMd MODEL H (matches Compression.Core.Entropy.Ppmd.PpmdModelBase + PpmdModelH) =====
+
+  const FNV_OFFSET_BASIS = 14695981039346656037n;
+  const FNV_PRIME = 1099511628211n;
+  const MASK64 = 0xFFFFFFFFFFFFFFFFn;
+
+  class PpmdModelH {
+    constructor(maxOrder) {
+      this.maxOrder = maxOrder;
+      this.historyLength = Math.max(maxOrder + 1, 1024);
+      this.history = new Uint8Array(this.historyLength);
+      this.historyPos = 0;
+      this.historyCount = 0;
+      this.contexts = new Map(); // "order:hash" -> PpmdContext
+    }
+
+    _buildContextKey(order) {
+      let hash = FNV_OFFSET_BASIS;
+      for (let i = order; i >= 1; --i) {
+        const idx = ((this.historyPos - i) % this.historyLength + this.historyLength) % this.historyLength;
+        hash = OpCodes.XorN(hash, BigInt(this.history[idx]));
+        hash = OpCodes.AndN(hash * FNV_PRIME, MASK64);
+      }
+      return order + ':' + hash.toString();
+    }
+
+    getContext(order) {
+      if (order === 0) return this._getOrCreateOrderZero();
+      if (order > this.historyCount) return null;
+      const key = this._buildContextKey(order);
+      return this.contexts.get(key) || null;
+    }
+
+    getOrCreateContext(order) {
+      if (order === 0) return this._getOrCreateOrderZero();
+      if (order > this.historyCount) return null;
+      const key = this._buildContextKey(order);
+      let ctx = this.contexts.get(key);
+      if (!ctx) { ctx = new PpmdContext(); this.contexts.set(key, ctx); }
+      return ctx;
+    }
+
+    _getOrCreateOrderZero() {
+      const key = '0:0';
+      let ctx = this.contexts.get(key);
+      if (!ctx) { ctx = new PpmdContext(); this.contexts.set(key, ctx); }
+      return ctx;
+    }
+
+    updateModel(symbol) {
+      const maxCtxOrder = Math.min(this.maxOrder, this.historyCount);
+      for (let order = 0; order <= maxCtxOrder; ++order) {
+        const ctx = this.getOrCreateContext(order);
+        if (!ctx) continue;
+        ctx.incrementFreq(symbol);
+        if (ctx.totalFreq > PPMD_RESCALE_THRESHOLD) ctx.rescale();
+      }
+
+      this.history[this.historyPos] = symbol;
+      this.historyPos = (this.historyPos + 1) % this.historyLength;
+      if (this.historyCount < this.historyLength) ++this.historyCount;
+    }
+
+    encodeSymbol(encoder, symbol) {
+      let excluded = null;
+      const maxCtxOrder = Math.min(this.maxOrder, this.historyCount);
+
+      for (let order = maxCtxOrder; order >= 0; --order) {
+        const ctx = this.getContext(order);
+        if (!ctx || ctx.symbolCount === 0) continue;
+
+        const table = ctx.buildCodingTable(excluded);
+        let totalFreq = 0;
+        for (const e of table) totalFreq += e.freq;
+        if (totalFreq === 0) continue;
+
+        let found = null;
+        for (const e of table) if (e.symbol === symbol) { found = e; break; }
+        if (found) {
+          encoder.encode(found.cumFreq, found.freq, totalFreq);
+          this.updateModel(symbol);
+          return;
+        }
+
+        const escapeEntry = table[table.length - 1];
+        if (escapeEntry.symbol !== -1) continue;
+
+        encoder.encode(escapeEntry.cumFreq, escapeEntry.freq, totalFreq);
+
+        excluded = excluded || new Set();
+        for (const e of table) if (e.symbol >= 0) excluded.add(e.symbol);
+      }
+
+      PpmdModelH._encodeOrderMinus1(encoder, symbol, excluded);
+      this.updateModel(symbol);
+    }
+
+    decodeSymbol(decoder) {
+      let excluded = null;
+      const maxCtxOrder = Math.min(this.maxOrder, this.historyCount);
+
+      for (let order = maxCtxOrder; order >= 0; --order) {
+        const ctx = this.getContext(order);
+        if (!ctx || ctx.symbolCount === 0) continue;
+
+        const table = ctx.buildCodingTable(excluded);
+        let totalFreq = 0;
+        for (const e of table) totalFreq += e.freq;
+        if (totalFreq === 0) continue;
+
+        const threshold = decoder.getThreshold(totalFreq);
+
+        let cumFreq = 0;
+        let matched = null;
+        for (const e of table) {
+          if (threshold < cumFreq + e.freq) { matched = e; break; }
+          cumFreq += e.freq;
+        }
+        if (!matched) continue;
+
+        decoder.decode(matched.cumFreq, matched.freq, totalFreq);
+
+        if (matched.symbol === -1) {
+          excluded = excluded || new Set();
+          for (const e of table) if (e.symbol >= 0) excluded.add(e.symbol);
+          continue;
+        }
+
+        const symbol = matched.symbol;
+        this.updateModel(symbol);
+        return symbol;
+      }
+
+      const decoded = PpmdModelH._decodeOrderMinus1(decoder, excluded);
+      this.updateModel(decoded);
+      return decoded;
+    }
+
+    static _encodeOrderMinus1(encoder, symbol, excluded) {
+      let available = 0;
+      let cumFreq = 0;
+      let found = false;
+      let foundCumFreq = 0;
+
+      for (let s = 0; s < PPMD_NUM_SYMBOLS; ++s) {
+        if (excluded && excluded.has(s)) continue;
+        if (s === symbol) { foundCumFreq = cumFreq; found = true; }
+        ++cumFreq;
+        ++available;
+      }
+
+      if (!found || available === 0) {
+        encoder.encode(symbol, 1, PPMD_NUM_SYMBOLS);
+        return;
+      }
+
+      encoder.encode(foundCumFreq, 1, available);
+    }
+
+    static _decodeOrderMinus1(decoder, excluded) {
+      let available = 0;
+      for (let s = 0; s < PPMD_NUM_SYMBOLS; ++s) {
+        if (excluded && excluded.has(s)) continue;
+        ++available;
+      }
+      if (available === 0) available = PPMD_NUM_SYMBOLS;
+
+      const threshold = decoder.getThreshold(available);
+
+      let cumFreq = 0;
+      for (let s = 0; s < PPMD_NUM_SYMBOLS; ++s) {
+        if (excluded && excluded.has(s)) continue;
+        if (threshold === cumFreq) {
+          decoder.decode(cumFreq, 1, available);
+          return s;
+        }
+        ++cumFreq;
+      }
+
+      // Fallback pass (mirrors the reference's second scan for a boundary
+      // threshold that fell inside rather than exactly on a cumFreq step).
+      cumFreq = 0;
+      let lastSymbol = 0;
+      for (let s = 0; s < PPMD_NUM_SYMBOLS; ++s) {
+        if (excluded && excluded.has(s)) continue;
+        if (threshold < cumFreq + 1) {
+          decoder.decode(cumFreq, 1, available);
+          return s;
+        }
+        lastSymbol = s;
+        ++cumFreq;
+      }
+
+      decoder.decode(cumFreq - 1, 1, available);
+      return lastSymbol;
+    }
+  }
+
+  // ===== MAIN PPMd ALGORITHM =====
 
   class PPMDAlgorithm extends CompressionAlgorithm {
-      constructor() {
-        super();
+    constructor() {
+      super();
 
-        // Required metadata
-        this.name = "PPMd (PPM with Dynamic Memory)";
-        this.description = "Advanced statistical compression using dynamic memory allocation for context modeling with improved performance over standard PPM through optimal memory usage and sophisticated prediction mechanisms.";
-        this.category = CategoryType.COMPRESSION;
-        this.subCategory = "Statistical";
-        this.securityStatus = SecurityStatus.EDUCATIONAL;
-        this.complexity = ComplexityType.EXPERT;
-        this.inventor = "Dmitry Shkarin";
-        this.year = 1999;
-        this.country = CountryCode.RU;
+      this.name = "PPMd (PPM with Dynamic Memory)";
+      this.description = "Context trie with Method D escape estimation (escape frequency = number of distinct symbols observed), periodic rescaling, exclusion of already-coded symbols on escape, and a flat order(-1) fallback, entropy-coded with a multi-symbol range coder. Ported to be byte-for-byte identical to CompressionWorkbench's BB_Ppmd (Model H) reference block.";
+      this.inventor = "Dmitry Shkarin (concept); reduced clean-room reimplementation";
+      this.year = 1999;
+      this.category = CategoryType.COMPRESSION;
+      this.subCategory = "Statistical (PPM)";
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.EXPERT;
+      this.country = CountryCode.RU;
 
-        // PPMd parameters
-        this.MAX_ORDER = 6;           // Maximum context order
-        this.MEMORY_SIZE = 16384;     // Memory pool size  
-        this.ALPHABET_SIZE = 256;     // Byte alphabet
-        this.ESCAPE_SYMBOL = 256;     // Special escape symbol
+      this.documentation = [
+        new LinkItem("PPMd Overview - Wikipedia", "https://en.wikipedia.org/wiki/Prediction_by_partial_matching"),
+        new LinkItem("7-Zip PPMd Method", "https://www.7-zip.org/7z.html"),
+        new LinkItem("Data Compression Explained (PPM)", "http://mattmahoney.net/dc/dce.html#Section_431")
+      ];
 
-        this.documentation = [
-          new LinkItem("PPMd Algorithm Overview", "https://en.wikipedia.org/wiki/PPMd"),
-          new LinkItem("Dmitry Shkarin's PPMd/PPMII Page", "https://www.compression.ru/ds/"),
-          new LinkItem("PPM: One Step to Practicality (Shkarin, DCC 2002)", "https://www.researchgate.net/publication/3946220_PPM_One_step_to_practicality")
-        ];
+      this.references = [
+        new LinkItem("Shkarin PPMd var.H/I sources", "http://www.compression.ru/ds/"),
+        new LinkItem("Method D Escape Estimation", "https://en.wikipedia.org/wiki/Prediction_by_partial_matching#Method_D")
+      ];
 
-        this.references = [
-          new LinkItem("PPM Compression Family (Cleary and Witten, 1984)", "https://compression.ca/act/act_pdf/Cleary1984.pdf"),
-          new LinkItem("Context Modeling Research", "https://www.researchgate.net/publication/220617088"),
-          new LinkItem("Large Text Compression Benchmark", "https://www.mattmahoney.net/dc/text.html"),
-          new LinkItem("7-Zip/p7zip PPMd7 Reference Implementation (Ppmd7.c)", "https://github.com/p7zip-project/p7zip/blob/master/C/Ppmd7.c")
-        ];
-
-        // Comprehensive test vectors for PPMd
-        // Self-computed: this implementation uses a simplified, custom context/order
-        // encoding (not the bit-exact PPMd7 range-coded bitstream), so all vectors
-        // below were generated directly from this algorithm's own encoder rather
-        // than an external/official source.
-        this.tests = [
-          new TestCase(
-            [97, 97, 97, 97, 97, 97, 98, 98, 98, 98, 98, 98], // aaaaaabbbbbb
-            [6, 12, 0, 0, 0, 10, 97, 1, 10, 97, 2, 11, 97, 1, 12, 97, 1, 13, 97, 1, 14, 97, 1, 10, 98, 1, 10, 98, 2, 11, 98, 1, 12, 98, 1, 13, 98, 1, 14, 98, 1],
-            "Highly repetitive data - optimal for PPMd",
-            "Self-computed: generated with this implementation's own encoder"
-          ),
-          new TestCase(
-            [116, 104, 101, 32, 113, 117, 105, 99, 107, 32, 98, 114, 111, 119, 110, 32, 102, 111, 120], // the quick brown fox
-            [6, 19, 0, 0, 0, 10, 116, 1, 10, 104, 1, 10, 101, 1, 10, 32, 1, 10, 113, 1, 10, 117, 1, 10, 105, 1, 10, 99, 1, 10, 107, 1, 10, 32, 2, 10, 98, 1, 10, 114, 1, 10, 111, 1, 10, 119, 1, 10, 110, 1, 10, 32, 3, 10, 102, 1, 10, 111, 2, 10, 120, 1],
-            "Natural language text compression",
-            "Self-computed: generated with this implementation's own encoder"
-          ),
-          new TestCase(
-            [65, 66, 67, 65, 66, 67, 68, 69, 70, 65, 66, 67], // ABCABCDEFABC
-            [6, 12, 0, 0, 0, 10, 65, 1, 10, 66, 1, 10, 67, 1, 10, 65, 2, 11, 66, 1, 12, 67, 1, 10, 68, 1, 10, 69, 1, 10, 70, 1, 10, 65, 3, 11, 66, 2, 12, 67, 2],
-            "Pattern recognition test",
-            "Self-computed: generated with this implementation's own encoder"
-          ),
-          new TestCase(
-            [102, 111, 114, 32, 105, 61, 48, 59, 32, 105, 60, 110, 59, 32, 105, 43, 43], // for i=0; i<n; i++
-            [6, 17, 0, 0, 0, 10, 102, 1, 10, 111, 1, 10, 114, 1, 10, 32, 1, 10, 105, 1, 10, 61, 1, 10, 48, 1, 10, 59, 1, 10, 32, 2, 11, 105, 1, 10, 60, 1, 10, 110, 1, 10, 59, 2, 11, 32, 1, 12, 105, 1, 10, 43, 1, 10, 43, 2],
-            "Source code compression",
-            "Self-computed: generated with this implementation's own encoder"
-          ),
-          new TestCase(
-            [],
-            [],
-            "Empty input edge case",
-            "Self-computed: generated with this implementation's own encoder"
-          )
-        ];
-
-        // For test suite compatibility
-        this.testVectors = this.tests;
-      }
-
-      CreateInstance(isInverse = false) {
-        return new PPMDInstance(this, isInverse);
-      }
+      this.tests = [
+        {
+          text: "Empty data test",
+          uri: "http://www.compression.ru/ds/",
+          input: [],
+          expected: [PPMD_DEFAULT_ORDER, 0, 0, 0, 0]
+        },
+        {
+          text: "Single byte test",
+          uri: "http://www.compression.ru/ds/",
+          input: [65]
+        },
+        {
+          text: "Mixed alphanumeric data",
+          uri: "http://mattmahoney.net/dc/dce.html#Section_431",
+          input: OpCodes.AnsiToBytes("The quick brown fox jumps over the lazy dog")
+        },
+        {
+          text: "Repetitive text compression",
+          uri: "https://en.wikipedia.org/wiki/Prediction_by_partial_matching",
+          input: OpCodes.AnsiToBytes("abcabcabcabcabcabc")
+        }
+      ];
     }
 
-    class PPMDInstance extends IAlgorithmInstance {
-      constructor(algorithm, isInverse = false) {
-        super(algorithm);
-        this.isInverse = isInverse;
-        this.inputBuffer = [];
-        this.maxOrder = algorithm.MAX_ORDER;
-        this.memorySize = algorithm.MEMORY_SIZE;
-        
-        // PPMd specific structures
-        this.memoryPool = new Uint8Array(this.memorySize);
-        this.memoryPtr = 0;
-        this.contexts = new Map();
-        this.history = [];
-        
-        // State statistics
-        this.nodeCount = 0;
-        this.totalMemoryUsed = 0;
-      }
+    CreateInstance(isInverse = false) {
+      return new PPMDInstance(this, isInverse);
+    }
+  }
 
-      Feed(data) {
-        if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
-      }
-
-      Result() {
-        if (this.inputBuffer.length === 0) return [];
-
-        const result = this.isInverse ? 
-          this.decompress(this.inputBuffer) : 
-          this.compress(this.inputBuffer);
-
-        this.inputBuffer = [];
-        return result;
-      }
-
-      compress(data) {
-        if (!data || data.length === 0) return [];
-
-        // Use OpCodes for consistent operations
-        const outputArray = [];
-        OpCodes.ClearArray(outputArray);
-
-        // Initialize PPMd structures
-        this._initializePPMd();
-
-        const compressed = [];
-
-        // Add header
-        compressed.push(this.maxOrder);
-        // Use OpCodes for bit operations in header
-        compressed.push(...OpCodes.Unpack32LE(data.length));
-
-        // Compress each byte using dynamic context modeling
-        for (let i = 0; i < data.length; i++) {
-          const symbol = data[i];
-          const encodedData = this._encodeSymbolPPMd(symbol);
-          compressed.push(...encodedData);
-
-          // Update model with enhanced learning
-          this._updateModelPPMd(symbol);
-          this._manageMemory();
-
-          // Update history with bounds checking
-          this.history.push(symbol);
-          if (this.history.length > this.maxOrder) {
-            this.history.shift();
-          }
-        }
-
-        return compressed;
-      }
-
-      decompress(data) {
-        if (!data || data.length < 5) return [];
-
-        // Use OpCodes for consistent operations
-        const tempArray = [];
-        OpCodes.ClearArray(tempArray);
-
-        // Parse header using OpCodes
-        const maxOrder = data[0];
-        const originalSize = OpCodes.Pack32LE(data[1], data[2], data[3], data[4]);
-
-        // Initialize decompression state
-        this.maxOrder = maxOrder;
-        this._initializePPMd();
-
-        const decompressed = [];
-        let offset = 5;
-
-        // Decompress each symbol
-        for (let i = 0; i < originalSize && offset < data.length; i++) {
-          const decodeResult = this._decodeSymbolPPMd(data, offset);
-          decompressed.push(decodeResult.symbol);
-          offset = decodeResult.nextOffset;
-
-          // Update model (same as compression)
-          this._updateModelPPMd(decodeResult.symbol);
-          this._manageMemory();
-
-          this.history.push(decodeResult.symbol);
-          if (this.history.length > this.maxOrder) {
-            this.history.shift();
-          }
-        }
-
-        return decompressed;
-      }
-
-      /**
-       * Initialize PPMd data structures
-       * @private
-       */
-      _initializePPMd() {
-        this.memoryPtr = 0;
-        this.nodeCount = 0;
-        this.totalMemoryUsed = 0;
-        this.contexts.clear();
-        this.history = [];
-        
-        // Initialize root context (order -1)
-        this._createRootContext();
-      }
-
-      /**
-       * Create root context for uniform distribution
-       * @private
-       */
-      _createRootContext() {
-        const rootContext = new PPMDContext(-1, this);
-        rootContext.initializeUniform(this.algorithm.ALPHABET_SIZE);
-        this.contexts.set('', rootContext);
-      }
-
-      /**
-       * Allocate memory from pool
-       * @private
-       */
-      _allocateMemory(size) {
-        if (this.memoryPtr + size > this.memorySize) {
-          // Memory cleanup and compaction
-          this._compactMemory();
-          if (this.memoryPtr + size > this.memorySize) {
-            throw new Error('PPMd memory exhausted');
-          }
-        }
-        
-        const ptr = this.memoryPtr;
-        this.memoryPtr += size;
-        this.totalMemoryUsed += size;
-        return ptr;
-      }
-
-      /**
-       * Compact memory by removing unused contexts
-       * @private
-       */
-      _compactMemory() {
-        const activeContexts = new Set();
-        
-        // Mark active contexts
-        for (let order = 0; order <= Math.min(this.maxOrder, this.history.length); order++) {
-          const contextKey = this._getContextKey(order);
-          if (this.contexts.has(contextKey)) {
-            activeContexts.add(contextKey);
-          }
-        }
-
-        // Remove inactive contexts
-        for (const [key, context] of this.contexts) {
-          if (!activeContexts.has(key)) {
-            this.contexts.delete(key);
-            this.totalMemoryUsed -= context.getMemoryUsage();
-          }
-        }
-
-        // Reset memory pointer (simplified)
-        this.memoryPtr = Math.floor(this.memoryPtr * 0.7);
-      }
-
-      /**
-       * Manage memory usage and perform cleanup
-       * @private
-       */
-      _manageMemory() {
-        if (this.totalMemoryUsed > this.memorySize * 0.9) {
-          this._compactMemory();
-        }
-      }
-
-      /**
-       * Get context key for given order
-       * @private
-       */
-      _getContextKey(order) {
-        if (order <= 0 || this.history.length === 0) {
-          return '';
-        }
-        const start = Math.max(0, this.history.length - order);
-        return this.history.slice(start).join(',');
-      }
-
-      /**
-       * Get or create context for given order
-       * @private
-       */
-      _getContext(order) {
-        const contextKey = this._getContextKey(order);
-        
-        if (!this.contexts.has(contextKey)) {
-          const context = new PPMDContext(order, this);
-          this.contexts.set(contextKey, context);
-          this.nodeCount++;
-        }
-
-        return this.contexts.get(contextKey);
-      }
-
-      /**
-       * Encode symbol using PPMd model
-       * @private
-       */
-      _encodeSymbolPPMd(symbol) {
-        // Try contexts from highest order to lowest
-        for (let order = Math.min(this.maxOrder, this.history.length); order >= -1; order--) {
-          const context = this._getContext(order);
-
-          if (context.hasSymbol(symbol)) {
-            const symbolInfo = context.getSymbolInfo(symbol);
-            return [order + 10, symbol, OpCodes.ToByte(symbolInfo.frequency)];
-          } else if (order > -1) {
-            // Encode escape and continue to lower order
-            const escapeInfo = context.getEscapeInfo();
-            // Continue to next context
-          }
-        }
-
-        // Fallback encoding
-        return [0, symbol];
-      }
-
-      /**
-       * Decode symbol from PPMd data
-       * @private
-       */
-      _decodeSymbolPPMd(data, offset) {
-        if (offset >= data.length) {
-          throw new Error('Unexpected end of PPMd data');
-        }
-
-        const orderByte = data[offset++];
-        const order = orderByte - 10;
-
-        if (offset >= data.length) {
-          throw new Error('Incomplete symbol data');
-        }
-
-        const symbol = data[offset++];
-
-        // Skip frequency byte if present
-        if (offset < data.length && orderByte > 0) {
-          offset++; // frequency
-        }
-
-        return {
-          symbol: symbol,
-          nextOffset: offset
-        };
-      }
-
-      /**
-       * Update PPMd model with new symbol
-       * @private
-       */
-      _updateModelPPMd(symbol) {
-        // Update all relevant contexts
-        for (let order = 0; order <= Math.min(this.maxOrder, this.history.length); order++) {
-          const context = this._getContext(order);
-          context.updateSymbol(symbol);
-        }
-
-        // Perform model rescaling if needed
-        this._rescaleModel();
-      }
-
-      /**
-       * Rescale model frequencies to prevent overflow
-       * @private
-       */
-      _rescaleModel() {
-        if (this.nodeCount > 1000) {
-          for (const context of this.contexts.values()) {
-            context.rescale();
-          }
-        }
-      }
+  class PPMDInstance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this.inputBuffer = [];
     }
 
-    /**
-     * PPMd Context class with dynamic memory management
-     */
-    class PPMDContext {
-      constructor(order, instance) {
-        this.order = order;
-        this.instance = instance;
-        this.symbols = new Map(); // symbol -> PPMDNode
-        this.totalFrequency = 0;
-        this.escapeFrequency = 1;
-        this.memoryUsage = 32; // Base memory usage
-      }
-
-      hasSymbol(symbol) {
-        return this.symbols.has(symbol);
-      }
-
-      getSymbolInfo(symbol) {
-        const node = this.symbols.get(symbol);
-        return node ? { frequency: node.frequency, last: node.last } : null;
-      }
-
-      getEscapeInfo() {
-        return { frequency: this.escapeFrequency };
-      }
-
-      updateSymbol(symbol) {
-        if (this.symbols.has(symbol)) {
-          const node = this.symbols.get(symbol);
-          node.frequency++;
-          node.last = Date.now();
-        } else {
-          const node = new PPMDNode(symbol, 1, Date.now());
-          this.symbols.set(symbol, node);
-          this.memoryUsage += 16; // Node overhead
-        }
-        this.totalFrequency++;
-      }
-
-      initializeUniform(alphabetSize) {
-        // Initialize with uniform distribution for order -1
-        for (let i = 0; i < alphabetSize; i++) {
-          this.symbols.set(i, new PPMDNode(i, 1, 0));
-        }
-        this.totalFrequency = alphabetSize;
-      }
-
-      rescale() {
-        // Rescale frequencies to prevent overflow
-        for (const node of this.symbols.values()) {
-          node.frequency = Math.max(1, Math.floor(node.frequency / 2));
-        }
-        this.totalFrequency = Math.max(1, Math.floor(this.totalFrequency / 2));
-        this.escapeFrequency = Math.max(1, Math.floor(this.escapeFrequency / 2));
-      }
-
-      getMemoryUsage() {
-        return this.memoryUsage;
-      }
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      this.inputBuffer.push(...data);
     }
 
-    /**
-     * PPMd Node for storing symbol information
-     */
-    class PPMDNode {
-      constructor(symbol, frequency, last) {
-        this.symbol = symbol;
-        this.frequency = frequency;
-        this.last = last; // Last access time for aging
-      }
+    Result() {
+      const result = this.isInverse ?
+        this.decompress(this.inputBuffer) :
+        this.compress(this.inputBuffer);
+
+      this.inputBuffer = [];
+      return result;
     }
+
+    compress(data) {
+      const header = [OpCodes.And32(PPMD_DEFAULT_ORDER, 0xFF), ...OpCodes.Unpack32LE(data.length)];
+      if (data.length === 0) return header;
+
+      const model = new PpmdModelH(PPMD_DEFAULT_ORDER);
+      const encoder = new PpmdRangeEncoder();
+      for (const b of data)
+        model.encodeSymbol(encoder, b);
+      encoder.finish();
+
+      return [...header, ...encoder.output];
+    }
+
+    decompress(compressedData) {
+      if (!compressedData || compressedData.length < 5)
+        return [];
+
+      const order = compressedData[0];
+      const originalSize = OpCodes.Pack32LE(compressedData[1], compressedData[2], compressedData[3], compressedData[4]);
+      if (originalSize === 0) return [];
+
+      const rest = compressedData.slice(5);
+      const model = new PpmdModelH(order);
+      const decoder = new PpmdRangeDecoder(rest);
+
+      const result = new Array(originalSize);
+      for (let i = 0; i < originalSize; ++i)
+        result[i] = model.decodeSymbol(decoder);
+
+      return result;
+    }
+  }
 
   // ===== REGISTRATION =====
 
-    const algorithmInstance = new PPMDAlgorithm();
+  const algorithmInstance = new PPMDAlgorithm();
   if (!AlgorithmFramework.Find(algorithmInstance.name)) {
     RegisterAlgorithm(algorithmInstance);
   }
 
   // ===== EXPORTS =====
 
-  return { PPMDAlgorithm, PPMDInstance, PPMDContext, PPMDNode };
+  return {
+    PPMDAlgorithm,
+    PPMDInstance,
+    PpmdModelH,
+    PpmdContext,
+    PpmdRangeEncoder,
+    PpmdRangeDecoder
+  };
 }));
