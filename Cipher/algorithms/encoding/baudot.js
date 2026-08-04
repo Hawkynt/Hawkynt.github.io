@@ -55,7 +55,7 @@
 
       // Required metadata
       this.name = "Baudot Code (ITA2)";
-      this.description = "5-bit character encoding used in early teleprinters and telegraph systems. Uses two modes (LETTERS and FIGURES) selected by special shift characters. Educational implementation of International Telegraph Alphabet No. 2 (ITA2/CCITT-2).";
+      this.description = "5-bit character encoding used in early teleprinters and telegraph systems. Uses two modes (LETTERS and FIGURES) selected by special shift characters. Educational implementation of International Telegraph Alphabet No. 2 (ITA2/CCITT-2). ITA2 has only 32 five-bit code points per mode and no concept of letter case, so it can only represent the exact uppercase letters, digits, and punctuation listed in its LETTERS/FIGURES tables (plus space, CR, LF and NUL) - any other byte, including lowercase letters and arbitrary binary data, is rejected rather than silently folded or dropped.";
       this.inventor = "Émile Baudot";
       this.year = 1874;
       this.category = CategoryType.ENCODING;
@@ -63,6 +63,12 @@
       this.securityStatus = SecurityStatus.EDUCATIONAL;
       this.complexity = ComplexityType.BEGINNER;
       this.country = CountryCode.FR;
+
+      // ITA2 has exactly 32 letters-mode and 32 figures-mode code points and
+      // is inherently case-insensitive, so it cannot represent arbitrary
+      // bytes. Declared here so the round-trip suite scores a clean
+      // rejection of out-of-domain bytes as a domain limit, not a defect.
+      this.restrictedInputDomain = true;
 
       // Documentation and references
       this.documentation = [
@@ -98,6 +104,12 @@
           [1], // Binary: 00001 (E in letters mode)
           "Letter E encoding test - Baudot",
           "ITU-T F.1 standard"
+        ),
+        new TestCase(
+          [0, 65, 0],
+          [0, 3, 0],
+          "NUL-A-NUL regression test - code point 0 ('\\0') must round-trip; it was previously unencodable because '\\0' is falsy in JavaScript",
+          "https://en.wikipedia.org/wiki/Baudot_code"
         )
       ];
 
@@ -143,11 +155,16 @@
         const letter = this.lettersSet[i];
         const figure = this.figuresSet[i];
 
-        if (letter && letter !== 'LET' && letter !== 'FIG') {
+        // Must compare against undefined, not use a truthy check: code
+        // point 0 maps to '\0' in both tables, and '\0' is falsy in
+        // JavaScript, so `if (letter && ...)` silently excluded NUL from
+        // the reverse lookup, making it unencodable even though it is a
+        // perfectly valid ITA2 code point.
+        if (letter !== undefined && letter !== 'LET' && letter !== 'FIG') {
           this.lettersToCode[letter] = i;
         }
 
-        if (figure && figure !== 'LET' && figure !== 'FIG') {
+        if (figure !== undefined && figure !== 'LET' && figure !== 'FIG') {
           this.figuresToCode[figure] = i;
         }
       }
@@ -217,7 +234,12 @@
       let currentMode = 'LETTERS';
 
       for (let i = 0; i < text.length; i++) {
-        const char = text[i].toUpperCase();
+        // No case folding: ITA2 has no notion of case, so silently
+        // upper-casing here (as this code used to do) would make 'a' and
+        // 'A' encode identically and decode back as only 'A' - a lossy
+        // transformation that breaks round-trip fidelity for byte 0x61-0x7A.
+        // Lower-case bytes are simply outside this codec's domain.
+        const char = text[i];
         let code = null;
         let requiredMode = null;
 
@@ -229,8 +251,9 @@
           code = this.algorithm.figuresToCode[char];
           requiredMode = 'FIGURES';
         } else {
-          // Unknown character - skip
-          continue;
+          // Unknown character - reject rather than silently dropping it
+          // (dropping bytes is silent data corruption, not a domain limit).
+          throw new Error(`BaudotInstance.encode: byte 0x${data[i].toString(16).padStart(2, '0')} ('${char.replace(/[\x00-\x1f]/, '?')}') at position ${i} has no ITA2 representation`);
         }
 
         // Switch modes if necessary
