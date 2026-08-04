@@ -49,6 +49,198 @@
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
+  // ===== WIRE FORMAT CONSTANTS =====
+
+  // Container: 4-byte little-endian original-length header followed by the LZSS body.
+  const DISTANCE_BITS = 12;              // 12-bit match distance field
+  const LENGTH_BITS = 4;                 // 4-bit match length field
+  const MIN_MATCH_LENGTH = 3;            // Minimum encodable match length
+  const MAX_DISTANCE = 4096;             // 1 shifted left by DISTANCE_BITS
+  const MAX_LENGTH = 18;                 // (1 shifted left by LENGTH_BITS) - 1 + MIN_MATCH_LENGTH
+  const HASH_BITS = 15;                  // Hash-chain table address width
+  const HASH_SIZE = 32768;               // 1 shifted left by HASH_BITS
+  const HASH_MASK = 32767;               // HASH_SIZE - 1
+  const MAX_CHAIN_DEPTH = MAX_LENGTH;    // Reference driver wires the chain depth to MaxLength (18), not a separate constant
+
+  // ===== HASH-CHAIN MATCH FINDER =====
+
+  /**
+   * 3-byte hash-chain match finder mirroring HashChainMatchFinder from the reference
+   * implementation: a 15-bit hash table over the 3-byte prefix, chains walked newest-first,
+   * strictly-greater-length acceptance (nearest/most-recent match wins ties).
+   */
+  class LzssHashChainMatchFinder {
+    constructor(windowSize, maxChainDepth) {
+      this.windowSize = windowSize;
+      this.maxChainDepth = maxChainDepth;
+      this.head = new Int32Array(HASH_SIZE).fill(-1);
+      this.prev = new Int32Array(windowSize); // zero-initialized, matching the reference's default array
+    }
+
+    static computeHash(data, pos) {
+      const term1 = OpCodes.Shl32(data[pos], 10);
+      const term2 = OpCodes.Shl32(data[pos + 1], 5);
+      const term3 = data[pos + 2];
+      return OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(term1, term2), term3), HASH_MASK);
+    }
+
+    static matchLength(data, pos1, pos2, limit) {
+      let matched = 0;
+      while (matched < limit && data[pos1 + matched] === data[pos2 + matched]) ++matched;
+      return matched;
+    }
+
+    insertPosition(data, position) {
+      if (position + 2 >= data.length) return;
+      const hash = LzssHashChainMatchFinder.computeHash(data, position);
+      const slot = position % this.windowSize;
+      this.prev[slot] = this.head[hash];
+      this.head[hash] = position;
+    }
+
+    findMatch(data, position, maxDistance, maxLength, minLength) {
+      if (position + 2 >= data.length) return { distance: 0, length: 0 };
+
+      let bestDistance = 0;
+      let bestLength = 0;
+
+      const hash = LzssHashChainMatchFinder.computeHash(data, position);
+      let candidate = this.head[hash];
+      let chainCount = 0;
+      const windowStart = Math.max(0, position - maxDistance);
+
+      while (candidate >= windowStart && chainCount < this.maxChainDepth) {
+        if (candidate === position) {
+          candidate = this.prev[candidate % this.windowSize];
+          ++chainCount;
+          continue;
+        }
+
+        const distance = position - candidate;
+        const limit = Math.min(maxLength, Math.min(data.length - position, data.length - candidate));
+
+        if (bestLength === 0 || (bestLength < limit && data[candidate + bestLength] === data[position + bestLength])) {
+          const length = LzssHashChainMatchFinder.matchLength(data, candidate, position, limit);
+
+          if (length >= minLength && length > bestLength) {
+            bestLength = length;
+            bestDistance = distance;
+
+            if (bestLength >= maxLength) break;
+          }
+        }
+
+        candidate = this.prev[candidate % this.windowSize];
+        if (candidate <= windowStart) break;
+        ++chainCount;
+      }
+
+      const slot = position % this.windowSize;
+      this.prev[slot] = this.head[hash];
+      this.head[hash] = position;
+
+      return bestLength >= minLength ? { distance: bestDistance, length: bestLength } : { distance: 0, length: 0 };
+    }
+  }
+
+  // ===== ENCODE / DECODE HELPERS =====
+
+  /**
+   * Encodes the LZSS body: groups of up to 8 tokens, each group preceded by a flag byte
+   * (bit i = 1 -> token i is a literal, bit i = 0 -> token i is a match), tokens written
+   * in order after the flag byte.
+   */
+  function lzssEncodeBody(data) {
+    const output = [];
+    const matchFinder = new LzssHashChainMatchFinder(MAX_DISTANCE, MAX_CHAIN_DEPTH);
+    let position = 0;
+
+    while (position < data.length) {
+      let flags = 0;
+      let flagBit = 0;
+      const tokens = [];
+
+      while (flagBit < 8 && position < data.length) {
+        const match = matchFinder.findMatch(data, position, MAX_DISTANCE, MAX_LENGTH, MIN_MATCH_LENGTH);
+
+        if (match.length >= MIN_MATCH_LENGTH) {
+          const encodedDistance = match.distance - 1;   // 0-based
+          const encodedLength = match.length - MIN_MATCH_LENGTH;
+
+          const highByte = OpCodes.And8(OpCodes.Shr32(encodedDistance, DISTANCE_BITS - 8), 0xFF);
+          const lowNibble = OpCodes.And8(encodedDistance, 0x0F);
+          const lengthNibble = OpCodes.And8(encodedLength, 0x0F);
+          const lowByte = OpCodes.Or8(OpCodes.Shl32(lowNibble, LENGTH_BITS), lengthNibble);
+
+          tokens.push(highByte, lowByte);
+
+          // Index every position the match covered (not just the final one)
+          for (let i = 1; i < match.length; ++i) matchFinder.insertPosition(data, position + i);
+
+          position += match.length;
+        } else {
+          flags = OpCodes.SetBit(flags, flagBit, true);
+          tokens.push(data[position]);
+          ++position;
+        }
+
+        ++flagBit;
+      }
+
+      output.push(flags);
+      for (let i = 0; i < tokens.length; ++i) output.push(tokens[i]);
+    }
+
+    return output;
+  }
+
+  /**
+   * Decodes an LZSS body into exactly expectedLength output bytes (or fewer, if the
+   * stream runs out early). Matches copy directly from the growing output buffer, which
+   * naturally reproduces overlapping self-referential copies (distance < length).
+   */
+  function lzssDecodeBody(body, expectedLength) {
+    const output = [];
+    let pos = 0;
+
+    while (output.length < expectedLength) {
+      if (pos >= body.length) break;
+      const flagByte = body[pos++];
+
+      for (let bit = 0; bit < 8; ++bit) {
+        if (output.length >= expectedLength) break;
+
+        if (OpCodes.GetBit(flagByte, bit)) {
+          // Literal
+          if (pos >= body.length) return output;
+          output.push(body[pos++]);
+        } else {
+          // Match
+          if (pos + 1 >= body.length) return output;
+          const b1 = body[pos];
+          const b2 = body[pos + 1];
+          pos += 2;
+
+          const encodedDistance = OpCodes.Or32(OpCodes.Shl32(b1, DISTANCE_BITS - 8), OpCodes.Shr32(b2, LENGTH_BITS));
+          const encodedLength = OpCodes.And8(b2, 0x0F);
+
+          const distance = encodedDistance + 1;
+          const length = encodedLength + MIN_MATCH_LENGTH;
+
+          if (distance > output.length) {
+            // Distance exceeds available data: emit zeros (defensive, matches reference)
+            for (let i = 0; i < length; ++i) output.push(0);
+          } else {
+            const srcStart = output.length - distance;
+            for (let i = 0; i < length; ++i) output.push(output[srcStart + i]);
+          }
+        }
+      }
+    }
+
+    return output;
+  }
+
   // ===== ALGORITHM IMPLEMENTATION =====
 
   /**
@@ -63,7 +255,7 @@
 
         // Required metadata
         this.name = "LZSS";
-        this.description = "Lempel-Ziv-Storer-Szymanski compression algorithm. An improved variant of LZ77 that omits short matches and uses bit flags to distinguish literals from references.";
+        this.description = "Lempel-Ziv-Storer-Szymanski compression algorithm. An improved variant of LZ77 that omits short matches and uses bit flags to distinguish literals from references. Wire format: a 4-byte little-endian original-length header, then groups of up to 8 tokens each preceded by a flag byte (bit=1 literal, bit=0 match); matches are 2 bytes encoding a 12-bit distance and 4-bit length (3-18) found via a 3-byte hash-chain match finder.";
         this.inventor = "James A. Storer and Thomas G. Szymanski";
         this.year = 1982;
         this.category = CategoryType.COMPRESSION;
@@ -83,47 +275,46 @@
           new LinkItem("LZSS Implementation Guide", "https://oku.edu.mie-u.ac.jp/~okumura/compression/lzss.c")
         ];
 
-        // Test vectors - based on LZSS compression specifications
+        // Test vectors - regenerated against the byte-identical port of
+        // CompressionWorkbench's BB_Lzss reference (4-byte LE length header,
+        // hash-chain match finder, flag+token body). Cross-verified against the
+        // C# reference driver's compress() output.
         this.tests = [
           {
             text: "AAAAAAAAAA repetition",
             uri: "https://en.wikipedia.org/wiki/LZ77_and_LZ78",
             input: [65, 65, 65, 65, 65, 65, 65, 65, 65, 65],
-            expected: [0, 65, 0, 65, 0, 65, 1, 0, 3, 3, 1, 0, 4, 4]
+            expected: [10, 0, 0, 0, 1, 65, 0, 6]
           },
           {
             text: "Random data - no matches",
             uri: "https://sites.google.com/view/datacompressionguide/dictionary-based-compression/lempel-ziv-lz77lzss-coding",
             input: [65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80],
-            expected: [0, 65, 0, 66, 0, 67, 0, 68, 0, 69, 0, 70, 0, 71, 0, 72, 0, 73, 0, 74, 0, 75, 0, 76, 0, 77, 0, 78, 0, 79, 0, 80]
+            expected: [16, 0, 0, 0, 255, 65, 66, 67, 68, 69, 70, 71, 72, 255, 73, 74, 75, 76, 77, 78, 79, 80]
           },
           {
             text: "Empty input",
             uri: "https://en.wikipedia.org/wiki/Boundary_condition",
             input: [],
-            expected: []
+            expected: [0, 0, 0, 0]
           },
           {
-            // Regression test for a decoder bug where the match copy loop recomputed the
-            // source window position from the advancing write cursor on every iteration
-            // instead of once per token, silently corrupting self-referential matches
-            // (offset < length) while leaving the output length unchanged.
             text: "Highly repetitive data - 300 bytes",
             uri: "https://en.wikipedia.org/wiki/LZSS",
             input: new Array(300).fill(0x58),
-            expected: [0, 88, 0, 88, 0, 88, 1, 0, 3, 3, 1, 0, 6, 6, 1, 0, 12, 12, 1, 0, 18, 18, 1, 0, 18, 18, 1, 0, 18, 18, 1, 0, 18, 18, 1, 0, 18, 18, 1, 0, 18, 18, 1, 0, 18, 18, 1, 0, 18, 18, 1, 0, 18, 18, 1, 0, 18, 18, 1, 0, 18, 18, 1, 0, 18, 18, 1, 0, 18, 18, 1, 0, 18, 18, 1, 0, 18, 18, 1, 0, 6, 6]
+            expected: [44, 1, 0, 0, 1, 88, 0, 15, 0, 15, 0, 15, 0, 15, 0, 15, 0, 15, 0, 15, 0, 0, 15, 0, 15, 0, 15, 0, 15, 0, 15, 0, 15, 0, 15, 0, 15, 0, 0, 15, 0, 8]
           },
           {
             text: "Alternating pattern - 300 bytes",
             uri: "https://en.wikipedia.org/wiki/LZSS",
             input: Array.from({ length: 300 }, (_, i) => (i % 2 ? 0x59 : 0x5A)),
-            expected: [0,90,0,89,0,90,0,89,1,0,4,4,1,0,8,8,1,0,16,16,1,0,18,18,1,0,18,18,1,0,18,18,1,0,18,18,1,0,18,18,1,0,18,18,1,0,18,18,1,0,18,18,1,0,18,18,1,0,18,18,1,0,18,18,1,0,18,18,1,0,18,18,1,0,18,18,1,0,16,16]
+            expected: [44, 1, 0, 0, 3, 90, 89, 0, 31, 0, 31, 0, 31, 0, 31, 0, 31, 0, 31, 0, 0, 31, 0, 31, 0, 31, 0, 31, 0, 31, 0, 31, 0, 31, 0, 31, 0, 0, 31, 0, 31, 0, 23]
           },
           {
             text: "English text sample - repeated sentence",
             uri: "https://en.wikipedia.org/wiki/LZSS",
             input: OpCodes.AnsiToBytes("The quick brown fox jumps over the lazy dog. ".repeat(10)),
-            expected: [0, 84, 0, 104, 0, 101, 0, 32, 0, 113, 0, 117, 0, 105, 0, 99, 0, 107, 0, 32, 0, 98, 0, 114, 0, 111, 0, 119, 0, 110, 0, 32, 0, 102, 0, 111, 0, 120, 0, 32, 0, 106, 0, 117, 0, 109, 0, 112, 0, 115, 0, 32, 0, 111, 0, 118, 0, 101, 0, 114, 0, 32, 0, 116, 1, 0, 31, 3, 0, 108, 0, 97, 0, 122, 0, 121, 0, 32, 0, 100, 0, 111, 0, 103, 0, 46, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 18, 1, 0, 45, 10]
+            expected: [194, 1, 0, 0, 255, 84, 104, 101, 32, 113, 117, 105, 99, 255, 107, 32, 98, 114, 111, 119, 110, 32, 255, 102, 111, 120, 32, 106, 117, 109, 112, 255, 115, 32, 111, 118, 101, 114, 32, 116, 254, 1, 224, 108, 97, 122, 121, 32, 100, 111, 15, 103, 46, 32, 84, 2, 207, 2, 207, 2, 207, 2, 207, 0, 2, 207, 2, 207, 2, 207, 2, 207, 2, 207, 2, 207, 2, 207, 2, 207, 0, 2, 207, 2, 207, 2, 207, 2, 207, 2, 207, 2, 207, 2, 207, 2, 207, 0, 2, 207, 2, 207, 2, 197]
           }
         ];
       }
@@ -139,12 +330,6 @@
         super(algorithm);
         this.isInverse = isInverse;
         this.inputBuffer = [];
-
-        // LZSS Parameters (typical values based on research)
-        this.WINDOW_SIZE = 4096;        // Look-back window size (2^12)
-        this.LOOKAHEAD_SIZE = 18;       // Look-ahead buffer size
-        this.MIN_MATCH_LENGTH = 3;      // Minimum match length to encode
-        this.MAX_MATCH_LENGTH = 18;     // Maximum match length
       }
 
       Feed(data) {
@@ -153,156 +338,37 @@
       }
 
       Result() {
-        if (this.inputBuffer.length === 0) {
-          return [];
-        }
-
         if (this.isInverse) {
+          if (this.inputBuffer.length === 0) {
+            return [];
+          }
+
           const result = this._decompress(new Uint8Array(this.inputBuffer));
           this.inputBuffer = [];
           return Array.from(result);
-        } else {
-          const result = this._compress(new Uint8Array(this.inputBuffer));
-          this.inputBuffer = [];
-          return Array.from(result);
         }
+
+        // Compress: even an empty input must still emit the 4-byte length header.
+        const result = this._compress(new Uint8Array(this.inputBuffer));
+        this.inputBuffer = [];
+        return Array.from(result);
       }
 
       _compress(inputBytes) {
-        if (!inputBytes || inputBytes.length === 0) {
-          return new Uint8Array(0);
-        }
-
-        const output = [];
-        let pos = 0;
-        const inputLen = inputBytes.length;
-        const window = new Array(this.WINDOW_SIZE);
-        let windowPos = 0;
-
-        // Initialize window with spaces (common practice)
-        for (let i = 0; i < this.WINDOW_SIZE; i++) {
-          window[i] = 0x20; // Space character
-        }
-
-        while (pos < inputLen) {
-          const match = this._findLongestMatch(inputBytes, pos, window, windowPos);
-
-          if (match.length >= this.MIN_MATCH_LENGTH) {
-            // Encode match as reference (flag=1, offset, length)
-            output.push(0x01); // Flag byte indicating match
-            const [high, low] = OpCodes.Unpack16BE(match.offset);
-            output.push(high); // High byte of offset
-            output.push(low);  // Low byte of offset
-            output.push(match.length); // Match length
-
-            // Add matched characters to window
-            for (let i = 0; i < match.length; i++) {
-              window[windowPos] = inputBytes[pos + i];
-              windowPos = (windowPos + 1) % this.WINDOW_SIZE;
-            }
-            pos += match.length;
-          } else {
-            // Encode literal character (flag=0, character)
-            output.push(0x00); // Flag byte indicating literal
-            output.push(inputBytes[pos]);
-
-            // Add literal to window
-            window[windowPos] = inputBytes[pos];
-            windowPos = (windowPos + 1) % this.WINDOW_SIZE;
-            pos++;
-          }
-        }
-
-        return new Uint8Array(output);
+        const header = OpCodes.Unpack32LE(inputBytes.length);
+        const body = lzssEncodeBody(inputBytes);
+        return new Uint8Array(header.concat(body));
       }
 
       _decompress(compressedBytes) {
-        if (!compressedBytes || compressedBytes.length === 0) {
+        if (!compressedBytes || compressedBytes.length < 4) {
           return new Uint8Array(0);
         }
 
-        const output = [];
-        let pos = 0;
-        const window = new Array(this.WINDOW_SIZE);
-        let windowPos = 0;
-
-        // Initialize window with spaces
-        for (let i = 0; i < this.WINDOW_SIZE; i++) {
-          window[i] = 0x20;
-        }
-
-        while (pos < compressedBytes.length) {
-          const flag = compressedBytes[pos++];
-
-          if (flag === 0x01) {
-            // Match reference
-            if (pos + 2 >= compressedBytes.length) break;
-
-            const offset = OpCodes.Pack16BE(compressedBytes[pos], compressedBytes[pos + 1]);
-            const length = compressedBytes[pos + 2];
-            pos += 3;
-
-            // Source position is fixed relative to the window cursor at the START of this
-            // match and must NOT be recomputed as windowPos advances: matches with offset <
-            // length are self-referential (e.g. offset=4,length=8 for "abababab"), and re-deriving
-            // sourcePos from the moving windowPos each iteration would double its effective
-            // advance, reading already-overwritten slots instead of the freshly copied bytes
-            // the encoder's search matched against.
-            const sourcePos = (windowPos - offset + this.WINDOW_SIZE) % this.WINDOW_SIZE;
-
-            // Copy from window
-            for (let i = 0; i < length; i++) {
-              const char = window[(sourcePos + i) % this.WINDOW_SIZE];
-              output.push(char);
-              window[windowPos] = char;
-              windowPos = (windowPos + 1) % this.WINDOW_SIZE;
-            }
-          } else if (flag === 0x00) {
-            // Literal character
-            if (pos >= compressedBytes.length) break;
-
-            const char = compressedBytes[pos++];
-            output.push(char);
-            window[windowPos] = char;
-            windowPos = (windowPos + 1) % this.WINDOW_SIZE;
-          } else {
-            throw new Error(`Invalid flag byte: ${flag}`);
-          }
-        }
-
+        const originalLength = OpCodes.Pack32LE(compressedBytes[0], compressedBytes[1], compressedBytes[2], compressedBytes[3]);
+        const body = compressedBytes.subarray(4);
+        const output = lzssDecodeBody(body, originalLength);
         return new Uint8Array(output);
-      }
-
-      // Find longest match in sliding window
-      _findLongestMatch(input, pos, window, windowPos) {
-        let bestOffset = 0;
-        let bestLength = 0;
-        const maxSearch = Math.min(this.LOOKAHEAD_SIZE, input.length - pos);
-
-        if (maxSearch < this.MIN_MATCH_LENGTH) {
-          return { offset: 0, length: 0 };
-        }
-
-        // Search in sliding window
-        for (let i = 1; i <= this.WINDOW_SIZE; i++) {
-          const searchPos = (windowPos - i + this.WINDOW_SIZE) % this.WINDOW_SIZE;
-          let matchLen = 0;
-
-          // Count matching characters
-          while (matchLen < maxSearch && 
-                 matchLen < this.MAX_MATCH_LENGTH &&
-                 window[(searchPos + matchLen) % this.WINDOW_SIZE] === input[pos + matchLen]) {
-            matchLen++;
-          }
-
-          // Update best match if this is longer
-          if (matchLen >= this.MIN_MATCH_LENGTH && matchLen > bestLength) {
-            bestOffset = i;
-            bestLength = matchLen;
-          }
-        }
-
-        return { offset: bestOffset, length: bestLength };
       }
     }
 
