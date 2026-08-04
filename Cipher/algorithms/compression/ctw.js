@@ -62,9 +62,19 @@
         super();
 
         // Required metadata
-        this.name = "Context Tree Weighting (CTW)";
-        this.description = "Advanced context-based statistical compression using weighted context trees. Achieves excellent compression by modeling symbol probabilities based on variable-length contexts.";
-        this.inventor = "Frans Willems, Yuri Shtarkov, Tjalling Tjalkens";
+        // NOTE: despite the legacy name this predates, this is NOT the Context
+        // Tree Weighting method of Willems, Shtarkov & Tjalkens: it has no
+        // Krichevsky-Trofimov estimator, no binary context tree and no
+        // recursive weighting between a node's own estimate and its
+        // children. It is a simple most-frequent-symbol predictor over an
+        // order-2/1/0 byte context hierarchy. See "Context Tree Weighting
+        // (Willems)" in ctw-willems.js for a genuine implementation of the
+        // CTW method. This rename mirrors the equivalent correction made to
+        // CompressionWorkbench's BB_CTW block; the wire format and test
+        // vectors are unchanged.
+        this.name = "Context Predictor (order-2/1/0)";
+        this.description = "Most-frequent-symbol predictor over an order-2/1/0 byte context hierarchy with a hit/miss bitmap. Not the Context Tree Weighting (CTW) method despite the legacy name this block previously used.";
+        this.inventor = "Unknown (educational most-frequent-symbol predictor)";
         this.year = 1995;
         this.category = CategoryType.COMPRESSION;
         this.subCategory = "Statistical";
