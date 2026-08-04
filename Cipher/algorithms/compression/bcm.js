@@ -64,32 +64,74 @@
   // ===== BURROWS-WHEELER TRANSFORM =====
 
   class BurrowsWheelerTransform {
+    /**
+     * Build the sorted order of all n cyclic rotations of data in O(n log^2 n).
+     * Uses prefix-doubling suffix-array construction on the doubled string
+     * (data concatenated with itself) so no sentinel character is needed and
+     * ties between genuinely-identical (periodic) rotations resolve consistently.
+     * The previous implementation used a naive O(n) full-rotation comparator
+     * as a plain sort comparator (O(n^2 log n) overall) and is pathological
+     * for realistic input sizes; this is the same construction validated in
+     * bzip2.js's BurrowsWheelerTransform.
+     * @param {uint8[]} data
+     * @returns {uint32[]} rotation start indices (0..n-1), sorted ascending by rotation content
+     */
+    static _sortedRotationOrder(data) {
+      const n = data.length;
+      const m = 2 * n;
+
+      let sa = new Int32Array(m);
+      for (let i = 0; i < m; ++i) sa[i] = i;
+
+      let rank = new Int32Array(m);
+      for (let i = 0; i < m; ++i) rank[i] = data[i % n];
+
+      let tmp = new Int32Array(m);
+
+      for (let k = 1; ; k *= 2) {
+        sa.sort((a, b) => {
+          const ra = rank[a], rb = rank[b];
+          if (ra !== rb) return ra - rb;
+          const ra2 = a + k < m ? rank[a + k] : -1;
+          const rb2 = b + k < m ? rank[b + k] : -1;
+          return ra2 - rb2;
+        });
+
+        tmp[sa[0]] = 0;
+        let classes = 1;
+        for (let i = 1; i < m; ++i) {
+          const prev = sa[i - 1], cur = sa[i];
+          const prevRank2 = prev + k < m ? rank[prev + k] : -1;
+          const curRank2 = cur + k < m ? rank[cur + k] : -1;
+          if (rank[prev] !== rank[cur] || prevRank2 !== curRank2) ++classes;
+          tmp[cur] = classes - 1;
+        }
+
+        const swapRank = rank; rank = tmp; tmp = swapRank;
+
+        if (classes >= m || k >= m) break;
+      }
+
+      // Keep only the starting positions of the first copy (0..n-1), already in sorted order.
+      const order = new Uint32Array(n);
+      let oi = 0;
+      for (let i = 0; i < m && oi < n; ++i) {
+        if (sa[i] < n) order[oi++] = sa[i];
+      }
+      return order;
+    }
+
     static transform(data) {
       if (data.length === 0) return { transformed: [], primaryIndex: 0 };
       if (data.length === 1) return { transformed: [...data], primaryIndex: 0 };
 
       const n = data.length;
-      const suffixes = new Uint32Array(n);
-
-      // Initialize suffix array indices
-      for (let i = 0; i < n; ++i) {
-        suffixes[i] = i;
-      }
-
-      // Sort suffixes lexicographically
-      suffixes.sort((a, b) => {
-        for (let i = 0; i < n; ++i) {
-          const byteA = data[(a + i) % n];
-          const byteB = data[(b + i) % n];
-          if (byteA !== byteB) return byteA - byteB;
-        }
-        return 0;
-      });
+      const order = BurrowsWheelerTransform._sortedRotationOrder(data);
 
       // Find primary index (where original string is)
       let primaryIndex = 0;
       for (let i = 0; i < n; ++i) {
-        if (suffixes[i] === 0) {
+        if (order[i] === 0) {
           primaryIndex = i;
           break;
         }
@@ -98,8 +140,8 @@
       // Extract last column (L column)
       const transformed = new Uint8Array(n);
       for (let i = 0; i < n; ++i) {
-        const suffix = suffixes[i];
-        transformed[i] = data[(suffix + n - 1) % n];
+        const start = order[i];
+        transformed[i] = data[(start + n - 1) % n];
       }
 
       return { transformed: Array.from(transformed), primaryIndex };
