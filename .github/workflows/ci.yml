@@ -51,6 +51,25 @@ jobs:
         continue-on-error: true
         run: npx --yes html-validate "**/*.html" || true
 
+  # Round-trip testing over an adversarial corpus. The per-algorithm vector suite
+  # cannot see this class of defect: an algorithm can pass every committed vector
+  # and still fail to decode its own output on inputs nobody wrote down.
+  round-trip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # A round-trip failure fails the build. The interoperability results are
+      # printed alongside but do not gate it: several algorithms deliberately do
+      # not claim bitstream compatibility with the format they are named after,
+      # and say so in their description.
+      - name: Round-trip every reversible algorithm
+        working-directory: Cipher
+        run: node tests/RoundTripSuite.js --interop
+
   # The algorithm reference is derived entirely from the implementations, so it
   # is built on every run and published as an artifact rather than committed —
   # a generated tree in the history would only ever go stale between runs.
