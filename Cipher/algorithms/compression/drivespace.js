@@ -7,23 +7,20 @@
  * with MS-DOS 6.21/6.22, replacing DoubleSpace after Stac Electronics, Inc. v.
  * Microsoft Corp. (1994) found DoubleSpace's "SVDC" codec too close to Stac's
  * patented LZS algorithm. Microsoft redesigned the software fallback path
- * (its on-disk cluster tag is "JM") specifically to route around that ruling;
- * a first-hand account from a Microsoft engineer involved describes it as a
- * hurried 1993 replacement built around a lookup-table match search rather
- * than the original hashed approach. No official bitstream specification was
- * ever published - Microsoft's own TechNet material documents the driver's
- * behavior and MRCI hardware-acceleration API only, not the codec bit layout.
+ * (its on-disk cluster tag is "JM") specifically to route around that ruling.
+ * No official bitstream specification was ever published - Microsoft's own
+ * TechNet material documents the driver's behavior and MRCI hardware-
+ * acceleration API only, not the codec bit layout.
  *
- * This is a documented-subset, from-scratch reimplementation sharing the
- * general sliding-window LZ77 technique with DoubleSpace (see doublespace.js):
- * a per-token literal/match flag, a tiered fixed-width offset field covering
- * roughly 4KB of back-reference distance, and a static prefix code for match
- * lengths. The one concretely reported difference between the two drivers -
- * DriveSpace's minimum match length of 3 bytes versus DoubleSpace's 2 - is
- * what this file's parameters are built around. It is a self-consistent LZ77
- * coder, not a byte-exact clone of DRVSPACE.BIN's cluster format, and does not
- * implement any cluster/sector container framing (out of scope: building
- * blocks only).
+ * This is a documented-subset, from-scratch reimplementation sharing the same
+ * token grammar as DoubleSpace (see doublespace.js): a per-token literal/match
+ * flag, a 2-bit length class (with 6/8-bit extensions), and a 2-bit distance
+ * class selecting one of four fixed-width offset tiers, minimum match length
+ * 2 bytes. DriveSpace differs from DoubleSpace only in its sliding-window
+ * size - 8KB instead of 4KB, which lets the widest (13-bit) distance tier
+ * come into play. It is a self-consistent LZ77 coder, not a byte-exact clone
+ * of DRVSPACE.BIN's cluster format, and does not implement any cluster/sector
+ * container framing (out of scope: building blocks only).
  *
  * References:
  * - Microsoft TechNet Archive, "What is DoubleSpace and How Does It Work?"
@@ -124,101 +121,132 @@
   }
 
   // ===== SLIDING-WINDOW LZ CODEC (see doublespace.js for the DS sibling) =====
-  // MIN_MATCH differs per format: DoubleSpace ("DS") = 2, DriveSpace ("JM") = 3.
+  // Both variants share the same token grammar and MIN_MATCH=2; only the
+  // sliding-window search cap differs (DoubleSpace 4KB, DriveSpace 8KB).
 
-  const OFFSET_TIER1_BITS = 6;   // offsets 1..64
-  const OFFSET_TIER2_BITS = 8;   // offsets 65..320
-  const OFFSET_TIER3_BITS = 12;  // offsets 321..4416
-  const OFFSET_TIER1_MAX = OpCodes.Shl32(1, OFFSET_TIER1_BITS);         // 64
-  const OFFSET_TIER2_MAX = OFFSET_TIER1_MAX + OpCodes.Shl32(1, OFFSET_TIER2_BITS); // 320
-  const OFFSET_TIER3_MAX = OFFSET_TIER2_MAX + OpCodes.Shl32(1, OFFSET_TIER3_BITS); // 4416
-  const MAX_LENGTH_EXTRA = 276; // largest addend from the 8-bit length tier
+  const MIN_MATCH = 2;
+  const MAX_MATCH = 323;          // 68 base + 255 from the widest length extension
+  const HASH_BITS = 14;
+  const HASH_SIZE = OpCodes.Shl32(1, HASH_BITS);
+  const HASH_MASK = HASH_SIZE - 1;
+  const MAX_CHAIN_LENGTH = 128;
 
-  function writeOffset(writer, offset) {
-    if (offset <= OFFSET_TIER1_MAX) {
-      writer.writeBits(0, 2);
-      writer.writeBits(offset - 1, OFFSET_TIER1_BITS);
-    } else if (offset <= OFFSET_TIER2_MAX) {
-      writer.writeBits(1, 2);
-      writer.writeBits(offset - OFFSET_TIER1_MAX - 1, OFFSET_TIER2_BITS);
-    } else {
-      writer.writeBits(2, 2);
-      writer.writeBits(offset - OFFSET_TIER2_MAX - 1, OFFSET_TIER3_BITS);
+  // Distance class layout: {bits, base, max}. A distance is placed in the
+  // lowest class whose range covers it.
+  const DISTANCE_CLASSES = [
+    { bits: 6, base: 1, max: 64 },
+    { bits: 8, base: 65, max: 320 },
+    { bits: 12, base: 321, max: 4416 },
+    { bits: 13, base: 4417, max: 12608 }
+  ];
+
+  function writeLength(writer, length) {
+    // length in [MIN_MATCH, MAX_MATCH]
+    if (length === 2) { writer.writeBits(0, 2); return; }
+    if (length === 3) { writer.writeBits(1, 2); return; }
+    if (length === 4) { writer.writeBits(2, 2); return; }
+
+    writer.writeBits(3, 2);
+    const extended = length - 5;
+    if (extended < 63) {
+      writer.writeBits(extended, 6);
+      return;
     }
-  }
-
-  function readOffset(reader) {
-    const tier = reader.readBits(2);
-    if (tier === 0) return reader.readBits(OFFSET_TIER1_BITS) + 1;
-    if (tier === 1) return reader.readBits(OFFSET_TIER2_BITS) + OFFSET_TIER1_MAX + 1;
-    if (tier === 2) return reader.readBits(OFFSET_TIER3_BITS) + OFFSET_TIER2_MAX + 1;
-    throw new Error('DriveSpace: invalid offset tier');
-  }
-
-  function writeLength(writer, extra) {
-    // extra = matchLength - MIN_MATCH, always >= 0
-    // Prefix bits are written one at a time (in reading order) since the
-    // decoder inspects them individually to select the branch.
-    if (extra === 0) {
-      writer.writeBits(0, 1);
-    } else if (extra <= 4) {
-      writer.writeBits(1, 1);
-      writer.writeBits(0, 1);
-      writer.writeBits(extra - 1, 2);
-    } else if (extra <= 20) {
-      writer.writeBits(1, 1);
-      writer.writeBits(1, 1);
-      writer.writeBits(0, 1);
-      writer.writeBits(extra - 5, 4);
-    } else {
-      writer.writeBits(1, 1);
-      writer.writeBits(1, 1);
-      writer.writeBits(1, 1);
-      writer.writeBits(extra - 21, 8);
-    }
+    writer.writeBits(63, 6);
+    writer.writeBits(length - 68, 8);
   }
 
   function readLength(reader) {
-    if (reader.readBits(1) === 0) return 0;
-    if (reader.readBits(1) === 0) return reader.readBits(2) + 1;
-    if (reader.readBits(1) === 0) return reader.readBits(4) + 5;
-    return reader.readBits(8) + 21;
+    const code = reader.readBits(2);
+    if (code < 3) return code + 2;
+    const extended = reader.readBits(6);
+    if (extended < 63) return 5 + extended;
+    const tail = reader.readBits(8);
+    return 68 + tail;
   }
 
-  function jmCompress(input, minMatch) {
-    const maxMatch = minMatch + MAX_LENGTH_EXTRA;
+  function writeDistance(writer, distance) {
+    for (let cls = 0; cls < DISTANCE_CLASSES.length; ++cls) {
+      const { bits, base, max } = DISTANCE_CLASSES[cls];
+      if (distance <= max) {
+        writer.writeBits(cls, 2);
+        writer.writeBits(distance - base, bits);
+        return;
+      }
+    }
+    throw new Error('DriveSpace: distance exceeds maximum class range');
+  }
+
+  function readDistance(reader) {
+    const cls = reader.readBits(2);
+    const { bits, base } = DISTANCE_CLASSES[cls];
+    return base + reader.readBits(bits);
+  }
+
+  function hash2(input, pos) {
+    return OpCodes.AndN(OpCodes.XorN(OpCodes.Shl32(input[pos], 6), input[pos + 1]), HASH_MASK);
+  }
+
+  function findBestMatch(input, pos, n, maxDistance, hashHead, hashNext) {
+    if (pos + MIN_MATCH > n) return { length: 0, offset: 0 };
+
+    let bestLen = 0, bestOff = 0;
+    const minPos = Math.max(0, pos - maxDistance);
+    let idx = hashNext[pos];
+    let chainLen = 0;
+    const maxLen = Math.min(n - pos, MAX_MATCH);
+
+    while (idx >= minPos && idx < pos && chainLen < MAX_CHAIN_LENGTH) {
+      if (input[idx] === input[pos] && input[idx + 1] === input[pos + 1]) {
+        let l = 2;
+        while (l < maxLen && input[idx + l] === input[pos + l]) ++l;
+        if (l > bestLen) {
+          bestLen = l;
+          bestOff = pos - idx;
+          if (bestLen >= maxLen) break;
+        }
+      }
+      idx = hashNext[idx];
+      ++chainLen;
+    }
+    return { length: bestLen, offset: bestOff };
+  }
+
+  function jmCompress(input, maxDistance) {
+    const n = input.length;
     const out = [];
-    const len32 = OpCodes.ToUint32(input.length);
+    const len32 = OpCodes.ToUint32(n);
     out.push(OpCodes.AndN(len32, 0xFF));
     out.push(OpCodes.AndN(OpCodes.Shr32(len32, 8), 0xFF));
     out.push(OpCodes.AndN(OpCodes.Shr32(len32, 16), 0xFF));
     out.push(OpCodes.AndN(OpCodes.Shr32(len32, 24), 0xFF));
 
+    if (n === 0) return out;
+
     const writer = new JmBitWriter();
+    const hashHead = new Array(HASH_SIZE).fill(-1);
+    const hashNext = new Array(n).fill(-1);
+
     let pos = 0;
-    const n = input.length;
-
     while (pos < n) {
-      let bestLen = 0, bestOffset = 0;
-      const searchStart = Math.max(0, pos - OFFSET_TIER3_MAX);
-      const maxLen = Math.min(maxMatch, n - pos);
-
-      if (maxLen >= minMatch) {
-        for (let s = pos - 1; s >= searchStart; --s) {
-          let l = 0;
-          while (l < maxLen && input[s + l] === input[pos + l]) ++l;
-          if (l > bestLen) {
-            bestLen = l;
-            bestOffset = pos - s;
-            if (bestLen === maxLen) break;
-          }
-        }
+      if (pos + 1 < n) {
+        const h = hash2(input, pos);
+        hashNext[pos] = hashHead[h];
+        hashHead[h] = pos;
       }
 
-      if (bestLen >= minMatch) {
+      const { length: bestLen, offset: bestOff } = findBestMatch(input, pos, n, maxDistance, hashHead, hashNext);
+
+      if (bestLen >= MIN_MATCH) {
         writer.writeBits(1, 1);
-        writeOffset(writer, bestOffset);
-        writeLength(writer, bestLen - minMatch);
+        writeLength(writer, bestLen);
+        writeDistance(writer, bestOff);
+
+        for (let j = 1; j < bestLen && pos + j + 1 < n; ++j) {
+          const h = hash2(input, pos + j);
+          hashNext[pos + j] = hashHead[h];
+          hashHead[h] = pos + j;
+        }
         pos += bestLen;
       } else {
         writer.writeBits(0, 1);
@@ -232,7 +260,7 @@
     return out;
   }
 
-  function jmDecompress(input, minMatch) {
+  function jmDecompress(input) {
     if (input.length < 4) return [];
     const originalLength = OpCodes.OrN(
       OpCodes.OrN(OpCodes.OrN(input[0], OpCodes.Shl32(input[1], 8)), OpCodes.Shl32(input[2], 16)),
@@ -249,11 +277,10 @@
       if (flag === 0) {
         output.push(reader.readBits(8));
       } else {
-        const offset = readOffset(reader);
-        const extra = readLength(reader);
-        const length = minMatch + extra;
-        let src = output.length - offset;
-        if (src < 0) throw new Error('DriveSpace: invalid back-reference offset');
+        const length = readLength(reader);
+        const distance = readDistance(reader);
+        if (distance < 1 || distance > output.length) throw new Error('DriveSpace: invalid back-reference distance');
+        const src = output.length - distance;
         for (let i = 0; i < length; ++i) {
           output.push(output[src + i]);
         }
@@ -265,14 +292,14 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
-  const JM_MIN_MATCH = 3;
+  const JM_MAX_DISTANCE = 8192;
 
   class DriveSpaceCompression extends CompressionAlgorithm {
     constructor() {
       super();
 
       this.name = "DriveSpace";
-      this.description = "MS-DOS 6.21/6.22 real-time disk compression codec (DRVSPACE.BIN, JM cluster format). Sliding-window LZ77 with a tiered fixed-width offset field and a static prefix code for match lengths; minimum match length 3 bytes. Documented-subset reimplementation - no official bitstream spec exists.";
+      this.description = "MS-DOS 6.21/6.22 real-time disk compression codec (DRVSPACE.BIN, JM cluster format). Sliding-window LZ77 sharing DoubleSpace's token grammar with an 8KB window; minimum match length 2 bytes. Documented-subset reimplementation - no official bitstream spec exists.";
       this.inventor = "Microsoft Corporation";
       this.year = 1993;
       this.category = CategoryType.COMPRESSION;
@@ -299,16 +326,28 @@
           expected: [0, 0, 0, 0]
         },
         {
-          text: "Repeated byte run",
+          text: "Single byte",
           uri: "https://en.wikipedia.org/wiki/DriveSpace",
-          input: [97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97],
-          expected: [32,0,0,0,194,2,252,0]
+          input: [0x41],
+          expected: [1, 0, 0, 0, 130, 0]
         },
         {
-          text: "Mixed literal/match text",
+          text: "Text sample repeated 4x",
           uri: "https://en.wikipedia.org/wiki/DriveSpace",
-          input: [116,104,101,32,113,117,105,99,107,32,98,114,111,119,110,32,102,111,120,32,116,104,101,32,113,117,105,99,107,32,98,114,111,119,110,32,102,111,120],
-          expected: [39,0,0,0,232,160,41,3,34,78,157,52,99,214,128,16,35,231,205,29,55,32,204,188,193,3,146,105,11]
+          input: OpCodes.AsciiToBytes("the quick brown fox jumps over the lazy dog. ".repeat(4)),
+          expected: [180, 0, 0, 0, 232, 160, 41, 3, 34, 78, 157, 52, 99, 214, 128, 16, 35, 231, 205, 29, 55, 32, 204, 188, 193, 3, 66, 77, 157, 54, 112, 230, 128, 120, 99, 167, 140, 28, 144, 226, 97, 19, 70, 79, 30, 16, 100, 222, 156, 113, 57, 64, 243, 255, 7, 22]
+        },
+        {
+          text: "256 repeated bytes",
+          uri: "https://en.wikipedia.org/wiki/DriveSpace",
+          input: new Array(256).fill(0x61),
+          expected: [0, 1, 0, 0, 194, 254, 239, 2, 0]
+        },
+        {
+          text: "All 256 byte values",
+          uri: "https://en.wikipedia.org/wiki/DriveSpace",
+          input: Array.from({ length: 256 }, (_, i) => i),
+          expected: [0, 1, 0, 0, 0, 4, 16, 48, 128, 64, 1, 3, 7, 16, 36, 80, 176, 128, 65, 3, 7, 15, 32, 68, 144, 48, 129, 66, 5, 11, 23, 48, 100, 208, 176, 129, 67, 7, 15, 31, 64, 132, 16, 49, 130, 68, 9, 19, 39, 80, 164, 80, 177, 130, 69, 11, 23, 47, 96, 196, 144, 49, 131, 70, 13, 27, 55, 112, 228, 208, 177, 131, 71, 15, 31, 63, 128, 4, 17, 50, 132, 72, 17, 35, 71, 144, 36, 81, 178, 132, 73, 19, 39, 79, 160, 68, 145, 50, 133, 74, 21, 43, 87, 176, 100, 209, 178, 133, 75, 23, 47, 95, 192, 132, 17, 51, 134, 76, 25, 51, 103, 208, 164, 81, 179, 134, 77, 27, 55, 111, 224, 196, 145, 51, 135, 78, 29, 59, 119, 240, 228, 209, 179, 135, 79, 31, 63, 127, 0, 5, 18, 52, 136, 80, 33, 67, 135, 16, 37, 82, 180, 136, 81, 35, 71, 143, 32, 69, 146, 52, 137, 82, 37, 75, 151, 48, 101, 210, 180, 137, 83, 39, 79, 159, 64, 133, 18, 53, 138, 84, 41, 83, 167, 80, 165, 82, 181, 138, 85, 43, 87, 175, 96, 197, 146, 53, 139, 86, 45, 91, 183, 112, 229, 210, 181, 139, 87, 47, 95, 191, 128, 5, 19, 54, 140, 88, 49, 99, 199, 144, 37, 83, 182, 140, 89, 51, 103, 207, 160, 69, 147, 54, 141, 90, 53, 107, 215, 176, 101, 211, 182, 141, 91, 55, 111, 223, 192, 133, 19, 55, 142, 92, 57, 115, 231, 208, 165, 83, 183, 142, 93, 59, 119, 239, 224, 197, 147, 55, 143, 94, 61, 123, 247, 240, 229, 211, 183, 143, 95, 63, 127, 255]
         }
       ];
     }
@@ -333,8 +372,8 @@
     Result() {
       const data = this.inputBuffer;
       this.inputBuffer = [];
-      if (this.isInverse) return jmDecompress(data, JM_MIN_MATCH);
-      return jmCompress(data, JM_MIN_MATCH);
+      if (this.isInverse) return jmDecompress(data);
+      return jmCompress(data, JM_MAX_DISTANCE);
     }
   }
 
