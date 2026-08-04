@@ -83,12 +83,17 @@
           new LinkItem("Modern BPE in NLP", "https://github.com/rsennrich/subword-nmt")
         ];
 
-        // Test vectors with actual compressed outputs
+        // Test vectors with actual compressed outputs.
+        // Dictionary entries are [Code(2 bytes)][Elem1(2 bytes)][Elem2(2 bytes)]
+        // since a replacement pair element may itself be an earlier
+        // replacement code (> 255) once pairs nest inside pairs - see the
+        // "repeat16" regression vector below, which used to truncate those
+        // 16-bit elements to a single byte and corrupt the dictionary.
         this.tests = [
           {
             text: "Empty data test",
-            uri: "Edge case test", 
-            input: [], 
+            uri: "Edge case test",
+            input: [],
             expected: [] // Empty input produces empty output
           },
           {
@@ -101,7 +106,32 @@
             text: "Pattern with potential compression",
             uri: "BPE optimization test",
             input: [65, 66, 65, 66], // "ABAB"
-            expected: [0,1,1,0,65,66,0,0,0,2,1,0,1,0] // BPE finds AB pair and replaces it
+            expected: [0,1,1,0,0,65,0,66,0,0,0,2,1,0,1,0] // BPE finds AB pair and replaces it
+          },
+          {
+            text: "Nested pair regression - 16 repeated bytes",
+            uri: "Regression test for dictionary element truncation bug",
+            input: Array(16).fill(0x61),
+            // Three levels of pair nesting: (a,a)->256, (256,256)->257, (257,257)->258
+            expected: [0,3,1,0,0,97,0,97,1,1,1,0,1,0,1,2,1,1,1,1,0,0,0,2,1,2,1,2]
+          },
+          {
+            text: "All 256 byte values (no beneficial pairs)",
+            uri: "Regression test - full byte-value corpus",
+            input: Array.from({length: 256}, (_, i) => i),
+            expected: [0,0,0,0,1,0].concat(Array.from({length: 256}, (_, i) => [0, i]).flat())
+          },
+          {
+            text: "Alternating pattern, odd length (73 bytes)",
+            uri: "Regression test - odd length input",
+            input: Array.from({length: 73}, (_, i) => (i % 2 ? 0x62 : 0x61)),
+            expected: [0,5,1,0,0,97,0,98,1,1,1,0,1,0,1,2,1,1,1,1,1,3,1,2,1,2,1,4,1,3,1,3,0,0,0,4,1,4,1,4,1,2,0,97]
+          },
+          {
+            text: "Pseudo-random data, odd length (77 bytes)",
+            uri: "Regression test - non-repeating pseudo-random input",
+            input: [128,0,0,0,64,0,64,0,0,0,0,64,0,0,0,64,0,0,0,0,0,0,64,0,0,56,0,64,0,0,0,64,0,0,0,0,0,0,64,0,0,0,0,64,0,0,0,64,0,0,0,0,0,64,0,0,0,0,0,0,0,0,56,0,0,0,64,128,0,64,128,128,0,0,0,64,0],
+            expected: [0,9,1,0,0,0,0,0,1,1,0,0,0,64,1,2,1,0,1,0,1,3,1,0,1,1,1,4,1,3,1,2,1,5,0,128,1,3,1,6,1,1,1,2,1,7,0,64,1,4,1,8,1,0,0,64,0,0,0,20,1,5,1,6,1,7,1,8,1,0,0,56,1,1,1,4,1,8,1,2,1,7,1,6,1,2,0,56,1,3,0,128,1,1,0,128,1,5,0,0]
           }
         ];
       }
@@ -121,7 +151,7 @@
 
       Feed(data) {
         if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {
@@ -233,7 +263,7 @@
           for (const byte of workingData) {
             if (byte === code) {
               // Replace code with original pair
-              newData.push(...replacement);
+              for (let _i = 0; _i < replacement.length; _i++) newData.push(replacement[_i]);
             } else {
               newData.push(byte);
             }
@@ -275,13 +305,18 @@
         const dictSizeBytes = OpCodes.Unpack16BE(dictSize);
         bytes.push(dictSizeBytes[0], dictSizeBytes[1]);
 
-        // Dictionary entries: [Code(2 bytes)][Byte1][Byte2]
+        // Dictionary entries: [Code(2 bytes)][Elem1(2 bytes)][Elem2(2 bytes)]
+        // Replacement pair elements can themselves be earlier replacement
+        // codes (>255) once BPE nests pairs-of-pairs, so each element needs
+        // the full 16 bits, not a single truncated byte.
         for (const [code, replacement] of Object.entries(dictionary)) {
           const codeNum = parseInt(code);
           const codeBytes = OpCodes.Unpack16BE(codeNum);
           bytes.push(codeBytes[0], codeBytes[1]);
-          bytes.push(OpCodes.ToByte(replacement[0]));
-          bytes.push(OpCodes.ToByte(replacement[1]));
+          const elem1Bytes = OpCodes.Unpack16BE(replacement[0]);
+          bytes.push(elem1Bytes[0], elem1Bytes[1]);
+          const elem2Bytes = OpCodes.Unpack16BE(replacement[1]);
+          bytes.push(elem2Bytes[0], elem2Bytes[1]);
         }
 
         // Data length (4 bytes, big-endian)
@@ -316,16 +351,16 @@
         // Read dictionary
         const dictionary = {};
         for (let i = 0; i < dictSize; i++) {
-          if (pos + 4 > bytes.length) {
+          if (pos + 6 > bytes.length) {
             throw new Error('Invalid BPE compressed data: incomplete dictionary');
           }
 
           const code = OpCodes.Pack16BE(bytes[pos], bytes[pos + 1]);
-          const byte1 = bytes[pos + 2];
-          const byte2 = bytes[pos + 3];
+          const elem1 = OpCodes.Pack16BE(bytes[pos + 2], bytes[pos + 3]);
+          const elem2 = OpCodes.Pack16BE(bytes[pos + 4], bytes[pos + 5]);
 
-          dictionary[code] = [byte1, byte2];
-          pos += 4;
+          dictionary[code] = [elem1, elem2];
+          pos += 6;
         }
 
         // Read data length
