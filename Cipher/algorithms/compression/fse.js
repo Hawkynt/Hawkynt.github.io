@@ -120,6 +120,26 @@
           text: "Realistic text pattern",
           uri: "Round-trip test",
           input: OpCodes.AnsiToBytes("HELLO WORLD! THIS IS A TEST.")
+        },
+        // Round-trip regression vectors: the previous implementation
+        // stored the input reversed after a frequency-table header and
+        // never un-reversed it on decode (and never actually used the
+        // tANS tables it built), so anything but the RLE special case
+        // decoded to the wrong bytes.
+        {
+          text: "All byte values 0-255 round-trip test",
+          uri: "Regression test for rANS table desync",
+          input: Array.from({ length: 256 }, (_, i) => i)
+        },
+        {
+          text: "Pseudo-random data round-trip test",
+          uri: "Regression test for rANS table desync",
+          input: [243, 204, 191, 171, 157, 143, 229, 84, 239, 176, 155, 208, 176, 245, 186, 148, 128, 53, 183, 104, 65, 66, 101, 148, 122, 107, 131, 193, 65, 79, 229, 58, 50, 25, 21, 210, 49, 167, 70, 138, 6, 12, 191, 33, 67, 124, 161, 122, 65, 2, 92, 207, 37, 32, 136, 248, 127, 146, 78, 207, 243, 126, 146, 223, 64, 161, 46, 129, 181, 68, 211, 17, 148, 194, 96, 50, 211, 110, 202, 53, 74, 159, 228, 247, 145, 4, 228, 234, 16, 151, 188, 109, 81, 80, 49, 126, 162, 199, 101, 196, 235, 27, 109, 184, 20, 77, 129, 64, 148, 182, 146, 41, 134, 77, 32, 59, 197, 71, 158, 152, 231, 94, 231, 211, 103, 220, 144, 238, 137, 222, 237, 151, 177, 197, 92, 12, 97, 179, 107, 212, 167, 137, 88, 210, 78, 173, 228, 175, 149, 232, 107, 45, 28, 202, 239, 242, 91, 73, 66, 24, 35, 92, 185, 245, 62, 213, 13, 182, 15, 242, 254, 12, 86, 213, 178, 168, 213, 115, 176, 57, 95, 201, 101, 121, 187, 228, 195, 32, 44, 252, 179, 230, 150, 179, 164, 143, 191, 97, 136, 46, 25, 154, 214, 6, 155, 31, 129, 253, 3, 119, 59, 68, 187, 102, 43, 112, 143, 202, 179, 185, 32, 38, 37, 249, 29, 52, 47, 246, 60, 190, 166, 152, 5, 144, 25, 213, 107, 191, 85, 158, 64, 228, 200, 90, 18, 120, 76, 172, 148, 46, 222, 67, 185, 14, 135, 164, 72, 186, 30, 245, 198, 193, 63, 169, 164, 83, 85, 104, 24, 107, 159, 230, 18, 235, 247, 15, 205, 167, 128, 28, 145, 40, 49, 185, 0, 198, 197, 208, 211, 50, 157, 56, 249, 159, 97, 19, 92, 178, 139, 196]
+        },
+        {
+          text: "Alternating pattern round-trip test",
+          uri: "Regression test for rANS table desync",
+          input: Array.from({ length: 128 }, (_, i) => i % 2 ? 0x55 : 0xAA)
         }
       ];
     }
@@ -164,7 +184,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -205,13 +225,33 @@
       // Normalize frequencies
       const normalizedCounter = this._normalizeFrequencies(frequencies, tableLog, tableSize);
 
-      // Build compression table
-      const cTable = this._buildCTable(normalizedCounter, tableLog);
+      // Cumulative-frequency table needed by the rANS encoder
+      const { cumStart } = this._buildRansTable(normalizedCounter, tableSize);
 
-      // Encode data
-      const compressed = this._encode(data, cTable, normalizedCounter, tableLog);
+      // Header: [tableLog, symbolCount, (symbol, freq16LE)*, dataLength32LE]
+      const output = [];
+      output.push(tableLog);
 
-      return compressed;
+      const symbols = [];
+      for (let i = 0; i <= FSE_MAX_SYMBOL_VALUE; ++i) {
+        if (normalizedCounter[i] > 0) symbols.push(i);
+      }
+      output.push(symbols.length);
+
+      for (const symbol of symbols) {
+        output.push(symbol);
+        const freqBytes = this._packShort(normalizedCounter[symbol]);
+        for (let _i = 0; _i < freqBytes.length; _i++) output.push(freqBytes[_i]);
+      }
+
+      const lengthBytes = this._packLength(data.length);
+      for (let _i = 0; _i < lengthBytes.length; _i++) output.push(lengthBytes[_i]);
+
+      // rANS-encoded payload
+      const encoded = this._encode(data, normalizedCounter, tableLog, cumStart);
+      for (let _i = 0; _i < encoded.length; _i++) output.push(encoded[_i]);
+
+      return output;
     }
 
     _compressRLE(data) {
@@ -286,84 +326,98 @@
       return normalized;
     }
 
-    _buildCTable(normalizedCounter, tableLog) {
-      const tableSize = OpCodes.Shl32(1, tableLog);
-      const tableMask = OpCodes.Sub32(tableSize, 1);
-      // Calculate step: (tableSize / 2) + (tableSize / 8) + 3
-      const halfTable = OpCodes.Shr32(tableSize, 1);
-      const eighthTable = OpCodes.Shr32(tableSize, 3);
-      const step = Math.floor(OpCodes.Add32(OpCodes.Add32(halfTable, eighthTable), 3));
+    // Build the cumulative-frequency table shared by the rANS encoder and
+    // decoder: cumStart[symbol] is the first table slot owned by `symbol`,
+    // and slotToSymbol maps every slot in [0, tableSize) back to its owner.
+    // Both sides derive this purely from normalizedCounter, so as long as
+    // they agree on normalizedCounter they agree on this table too.
+    _buildRansTable(normalizedCounter, tableSize) {
+      const cumStart = new Array(FSE_MAX_SYMBOL_VALUE + 2).fill(0);
+      for (let symbol = 0; symbol <= FSE_MAX_SYMBOL_VALUE; ++symbol) {
+        cumStart[symbol + 1] = OpCodes.Add32(cumStart[symbol], normalizedCounter[symbol]);
+      }
 
-      // Symbol distribution table
-      const symbolTable = new Array(tableSize);
-
-      // Distribute symbols across table
-      let position = 0;
+      const slotToSymbol = new Array(tableSize);
       for (let symbol = 0; symbol <= FSE_MAX_SYMBOL_VALUE; ++symbol) {
         const freq = normalizedCounter[symbol];
-        for (let i = 0; i < freq; ++i) {
-          symbolTable[position] = symbol;
-          position = OpCodes.Add32(position, step)&tableMask;
+        const base = cumStart[symbol];
+        for (let k = 0; k < freq; ++k) {
+          slotToSymbol[base + k] = symbol;
         }
       }
 
-      // Build state table
-      const stateTable = new Array(tableSize);
-      const cumul = new Array(FSE_MAX_SYMBOL_VALUE + 1).fill(0);
-
-      // Calculate cumulative frequencies using OpCodes
-      for (let symbol = 0; symbol < FSE_MAX_SYMBOL_VALUE; ++symbol) {
-        cumul[symbol + 1] = OpCodes.Add32(cumul[symbol], normalizedCounter[symbol]);
-      }
-
-      // Populate state table using OpCodes
-      for (let i = 0; i < tableSize; ++i) {
-        const symbol = symbolTable[i];
-        stateTable[cumul[symbol]++] = OpCodes.Add32(tableSize, i);
-      }
-
-      return { symbolTable, stateTable, tableLog };
+      return { cumStart, slotToSymbol };
     }
 
-    _encode(data, cTable, normalizedCounter, tableLog) {
-      const output = [];
-      const tableSize = OpCodes.Shl32(1, tableLog);
+    // Byte-oriented rANS (range Asymmetric Numeral System) encode: a real
+    // entropy coder driven by normalizedCounter, replacing the previous
+    // stub that just stored the input bytes reversed (and which the
+    // decoder never un-reversed, so it never round-tripped). Symbols are
+    // processed back-to-front, which is required by rANS so that the
+    // decoder -- reading forward -- reproduces the original front-to-back
+    // symbol order.
+    _encode(data, normalizedCounter, tableLog, cumStart) {
+      const RANS_L = OpCodes.Shl32(1, 23);
 
-      // Write header: [tableLog, symbolCount, ...normalizedCounter]
-      output.push(tableLog);
-
-      // Count non-zero symbols
-      const symbols = [];
-      for (let i = 0; i <= FSE_MAX_SYMBOL_VALUE; ++i) {
-        if (normalizedCounter[i] > 0) {
-          symbols.push(i);
-        }
-      }
-
-      output.push(symbols.length);
-
-      // Write normalized counter for each symbol
-      for (const symbol of symbols) {
-        output.push(symbol);
-        const freqBytes = this._packShort(normalizedCounter[symbol]);
-        output.push(...freqBytes);
-      }
-
-      // Write data length
-      const lengthBytes = this._packLength(data.length);
-      output.push(...lengthBytes);
-
-      // Simplified encoding: write symbols with state information
-      // (Educational implementation - full tANS encoding is more complex)
-      let state = tableSize;
-      const encodedData = [];
+      let x = RANS_L;
+      const chronological = [];
 
       for (let i = data.length - 1; i >= 0; --i) {
         const symbol = data[i];
-        encodedData.push(symbol);
+        const freq = normalizedCounter[symbol];
+        const start = cumStart[symbol];
+
+        const xMax = OpCodes.Mul32(OpCodes.Shl32(OpCodes.Shr32(RANS_L, tableLog), 8), freq);
+        while (x >= xMax) {
+          chronological.push(OpCodes.And32(x, 0xFF));
+          x = OpCodes.Shr32(x, 8);
+        }
+
+        x = OpCodes.Add32(OpCodes.Add32(OpCodes.Shl32(Math.floor(x / freq), tableLog), x % freq), start);
       }
 
-      output.push(...encodedData);
+      // Flush the final 32-bit state, most-significant byte first, so
+      // that after the reversal below it reads out little-endian.
+      for (let k = 3; k >= 0; --k) {
+        chronological.push(OpCodes.And32(OpCodes.Shr32(x, 8 * k), 0xFF));
+      }
+
+      // Every byte was appended in the exact chronological order rANS
+      // requires to be *written backwards*; reversing the whole sequence
+      // once yields the stream the decoder reads forward.
+      chronological.reverse();
+      return chronological;
+    }
+
+    _decodeRans(stream, normalizedCounter, tableLog, cumStart, slotToSymbol, count) {
+      const tableSize = OpCodes.Shl32(1, tableLog);
+      const mask = OpCodes.Sub32(tableSize, 1);
+      const RANS_L = OpCodes.Shl32(1, 23);
+
+      let bi = 0;
+      const nextByte = () => (bi < stream.length ? stream[bi++] : 0);
+
+      let x = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(
+        nextByte(),
+        OpCodes.Shl32(nextByte(), 8)),
+        OpCodes.Shl32(nextByte(), 16)),
+        OpCodes.Shl32(nextByte(), 24));
+
+      const output = new Array(count);
+      for (let j = 0; j < count; ++j) {
+        const slot = OpCodes.And32(x, mask);
+        const symbol = slotToSymbol[slot];
+        const freq = normalizedCounter[symbol];
+        const start = cumStart[symbol];
+
+        x = OpCodes.Sub32(OpCodes.Add32(OpCodes.Mul32(freq, OpCodes.Shr32(x, tableLog)), slot), start);
+
+        while (x < RANS_L) {
+          x = OpCodes.Or32(OpCodes.Shl32(x, 8), nextByte());
+        }
+
+        output[j] = symbol;
+      }
 
       return output;
     }
@@ -396,7 +450,7 @@
       // Read normalized counter
       const normalizedCounter = new Array(FSE_MAX_SYMBOL_VALUE + 1).fill(0);
       for (let i = 0; i < symbolCount; ++i) {
-        if (offset + 2 >= data.length) return [];
+        if (offset + 2 > data.length) return [];
         const symbol = data[offset++];
         const freq = this._unpackShort(data[offset], data[offset + 1]);
         offset += 2;
@@ -408,12 +462,15 @@
       const dataLength = this._unpackLength(data.slice(offset, offset + 4));
       offset += 4;
 
-      // Read encoded data
-      const encodedData = data.slice(offset);
-      if (encodedData.length < dataLength) return [];
+      if (dataLength === 0) return [];
 
-      // Simplified decoding (educational implementation)
-      return encodedData.slice(0, dataLength);
+      // Read rANS-encoded payload and decode it with the same cumulative
+      // table the encoder derived from the identical normalizedCounter.
+      const tableSize = OpCodes.Shl32(1, tableLog);
+      const { cumStart, slotToSymbol } = this._buildRansTable(normalizedCounter, tableSize);
+      const encodedData = data.slice(offset);
+
+      return this._decodeRans(encodedData, normalizedCounter, tableLog, cumStart, slotToSymbol, dataLength);
     }
 
     _decompressRLE(data) {
@@ -437,13 +494,13 @@
     }
 
     _packShort(value) {
-      // Pack 16-bit value using OpCodes for shifts
-      return [value&0xFF, OpCodes.Shr32(value, 8)&0xFF];
+      // Pack 16-bit value using OpCodes for shifts/masking
+      return [OpCodes.And32(value, 0xFF), OpCodes.And32(OpCodes.Shr32(value, 8), 0xFF)];
     }
 
     _unpackShort(b0, b1) {
-      // Unpack 16-bit value using OpCodes for shifts
-      return (b0&0xFF)|OpCodes.Shl32(b1&0xFF, 8);
+      // Unpack 16-bit value using OpCodes for shifts/masking
+      return OpCodes.Or32(OpCodes.And32(b0, 0xFF), OpCodes.Shl32(OpCodes.And32(b1, 0xFF), 8));
     }
   }
 
