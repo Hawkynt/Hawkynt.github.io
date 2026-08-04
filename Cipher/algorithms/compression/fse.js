@@ -48,10 +48,8 @@
 
   // ===== FSE CONSTANTS =====
 
-  const FSE_MIN_TABLELOG = 5;
-  const FSE_MAX_TABLELOG = 12;  // Educational implementation uses smaller tables
-  const FSE_DEFAULT_TABLELOG = 11;
-  const FSE_MAX_SYMBOL_VALUE = 255;
+  const FSE_TABLE_LOG = 10;
+  const FSE_TABLE_SIZE = 1024; // 1 << FSE_TABLE_LOG
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -194,314 +192,278 @@
    */
 
     Result() {
-      if (this.inputBuffer.length === 0) return [];
+      if (this.isInverse) {
+        // A compressed stream always carries at least the 4-byte length
+        // header, so an empty buffer here is not a valid compressed
+        // empty message.
+        if (this.inputBuffer.length === 0) return [];
+        return this._decompress();
+      }
 
-      const result = this.isInverse ?
-        this._decompress(this.inputBuffer) :
-        this._compress(this.inputBuffer);
-
-      this.inputBuffer = [];
-      return result;
+      // Compressing empty input still emits the 4-byte length header
+      // (matches CompressionWorkbench, which never skips the container).
+      return this._compress();
     }
 
     // ===== COMPRESSION =====
 
-    _compress(data) {
-      if (data.length === 0) return [];
+    _compress() {
+      const data = this.inputBuffer;
+      this.inputBuffer = [];
 
-      // Special case: single repeated symbol
-      const uniqueSymbols = new Set(data);
-      if (uniqueSymbols.size === 1) {
-        return this._compressRLE(data);
-      }
+      // Header: 4-byte LE original length.
+      const output = OpCodes.Unpack32LE(OpCodes.ToUint32(data.length));
 
-      // Build frequency table
-      const frequencies = this._countFrequencies(data);
+      if (data.length === 0) return output;
 
-      // Determine optimal table log
-      const tableLog = this._optimalTableLog(data.length, Object.keys(frequencies).length);
-      const tableSize = OpCodes.Shl32(1, tableLog);
-
-      // Normalize frequencies
-      const normalizedCounter = this._normalizeFrequencies(frequencies, tableLog, tableSize);
-
-      // Cumulative-frequency table needed by the rANS encoder
-      const { cumStart } = this._buildRansTable(normalizedCounter, tableSize);
-
-      // Header: [tableLog, symbolCount, (symbol, freq16LE)*, dataLength32LE]
-      const output = [];
-      output.push(tableLog);
+      // Count raw byte frequencies and collect the used symbols in
+      // ascending byte-value order.
+      const rawFreq = new Array(256).fill(0);
+      for (let i = 0; i < data.length; i++) rawFreq[data[i]]++;
 
       const symbols = [];
-      for (let i = 0; i <= FSE_MAX_SYMBOL_VALUE; ++i) {
-        if (normalizedCounter[i] > 0) symbols.push(i);
-      }
-      output.push(symbols.length);
-
-      for (const symbol of symbols) {
-        output.push(symbol);
-        const freqBytes = this._packShort(normalizedCounter[symbol]);
-        for (let _i = 0; _i < freqBytes.length; _i++) output.push(freqBytes[_i]);
+      for (let i = 0; i < 256; i++) {
+        if (rawFreq[i] > 0) symbols.push(i);
       }
 
-      const lengthBytes = this._packLength(data.length);
-      for (let _i = 0; _i < lengthBytes.length; _i++) output.push(lengthBytes[_i]);
-
-      // rANS-encoded payload
-      const encoded = this._encode(data, normalizedCounter, tableLog, cumStart);
-      for (let _i = 0; _i < encoded.length; _i++) output.push(encoded[_i]);
-
-      return output;
-    }
-
-    _compressRLE(data) {
-      // RLE format: [0xFF, symbol, length_bytes...]
-      const symbol = data[0];
-      const lengthBytes = this._packLength(data.length);
-      return [0xFF, symbol, ...lengthBytes];
-    }
-
-    _countFrequencies(data) {
-      const freq = {};
-      for (const byte of data) {
-        freq[byte] = (freq[byte] || 0) + 1;
-      }
-      return freq;
-    }
-
-    _optimalTableLog(srcSize, maxSymbolValue) {
-      // Determine optimal table log based on source size and symbol count
-      let tableLog = FSE_DEFAULT_TABLELOG;
-
-      if (srcSize < 256) tableLog = Math.max(FSE_MIN_TABLELOG, 8);
-      else if (srcSize < 2048) tableLog = 10;
-      else tableLog = FSE_DEFAULT_TABLELOG;
-
-      // Adjust for symbol count
-      if (maxSymbolValue < 16) tableLog = Math.min(tableLog, 9);
-
-      return Math.min(tableLog, FSE_MAX_TABLELOG);
-    }
-
-    _normalizeFrequencies(frequencies, tableLog, tableSize) {
-      const symbols = Object.keys(frequencies).map(Number);
-      const normalized = new Array(FSE_MAX_SYMBOL_VALUE + 1).fill(0);
-
-      // Calculate total frequency
-      let total = 0;
-      for (const symbol of symbols) {
-        total += frequencies[symbol];
+      // Single-symbol special case: tableLog=0 sentinel, no table, no bitstream.
+      if (symbols.length === 1) {
+        output.push(0);
+        output.push(symbols[0]);
+        return output;
       }
 
-      // Normalize to table size
-      let distributed = 0;
-      let maxFreq = 0;
-      let maxSymbol = 0;
+      const tableSize = FSE_TABLE_SIZE;
+      const normFreq = normalizeFrequencies(rawFreq, symbols, tableSize, data.length);
+      const symbolTable = buildSpreadTable(normFreq, symbols, tableSize);
 
-      for (const symbol of symbols) {
-        const freq = frequencies[symbol];
-        // Use OpCodes for proper 32-bit operations
-        const scaled = OpCodes.Mul32(freq, tableSize);
-        const norm = Math.max(1, Math.floor(scaled / total));
-        normalized[symbol] = norm;
-        distributed = OpCodes.Add32(distributed, norm);
-
-        if (norm > maxFreq) {
-          maxFreq = norm;
-          maxSymbol = symbol;
-        }
+      // Build per-symbol occurrence mapping.
+      const symOccurrence = new Array(256).fill(0);
+      const positionToReduced = new Array(tableSize);
+      for (let s = 0; s < tableSize; s++) {
+        const sym = symbolTable[s];
+        const k = symOccurrence[sym]++;
+        positionToReduced[s] = normFreq[sym] + k;
       }
 
-      // Adjust to exactly match table size
-      if (distributed < tableSize) {
-        // Add remainder to most frequent symbol using OpCodes
-        const remainder = OpCodes.Sub32(tableSize, distributed);
-        normalized[maxSymbol] = OpCodes.Add32(normalized[maxSymbol], remainder);
-      } else if (distributed > tableSize) {
-        // Subtract excess from most frequent symbol using OpCodes
-        const excess = OpCodes.Sub32(distributed, tableSize);
-        normalized[maxSymbol] = OpCodes.Sub32(normalized[maxSymbol], excess);
+      // Build encoding table.
+      const encTable = new Array(256);
+      for (let i = 0; i < 256; i++) {
+        if (normFreq[i] > 0) encTable[i] = new Array(normFreq[i]);
+      }
+      for (let s = 0; s < tableSize; s++) {
+        const sym = symbolTable[s];
+        const r = positionToReduced[s];
+        encTable[sym][r - normFreq[sym]] = s;
       }
 
-      return normalized;
-    }
+      // Encode symbols in reverse (tANS/ANS is LIFO).
+      const bitStack = [];
+      let state = tableSize;
 
-    // Build the cumulative-frequency table shared by the rANS encoder and
-    // decoder: cumStart[symbol] is the first table slot owned by `symbol`,
-    // and slotToSymbol maps every slot in [0, tableSize) back to its owner.
-    // Both sides derive this purely from normalizedCounter, so as long as
-    // they agree on normalizedCounter they agree on this table too.
-    _buildRansTable(normalizedCounter, tableSize) {
-      const cumStart = new Array(FSE_MAX_SYMBOL_VALUE + 2).fill(0);
-      for (let symbol = 0; symbol <= FSE_MAX_SYMBOL_VALUE; ++symbol) {
-        cumStart[symbol + 1] = OpCodes.Add32(cumStart[symbol], normalizedCounter[symbol]);
-      }
+      for (let i = data.length - 1; i >= 0; i--) {
+        const sym = data[i];
+        const f = normFreq[sym];
 
-      const slotToSymbol = new Array(tableSize);
-      for (let symbol = 0; symbol <= FSE_MAX_SYMBOL_VALUE; ++symbol) {
-        const freq = normalizedCounter[symbol];
-        const base = cumStart[symbol];
-        for (let k = 0; k < freq; ++k) {
-          slotToSymbol[base + k] = symbol;
-        }
-      }
-
-      return { cumStart, slotToSymbol };
-    }
-
-    // Byte-oriented rANS (range Asymmetric Numeral System) encode: a real
-    // entropy coder driven by normalizedCounter, replacing the previous
-    // stub that just stored the input bytes reversed (and which the
-    // decoder never un-reversed, so it never round-tripped). Symbols are
-    // processed back-to-front, which is required by rANS so that the
-    // decoder -- reading forward -- reproduces the original front-to-back
-    // symbol order.
-    _encode(data, normalizedCounter, tableLog, cumStart) {
-      const RANS_L = OpCodes.Shl32(1, 23);
-
-      let x = RANS_L;
-      const chronological = [];
-
-      for (let i = data.length - 1; i >= 0; --i) {
-        const symbol = data[i];
-        const freq = normalizedCounter[symbol];
-        const start = cumStart[symbol];
-
-        const xMax = OpCodes.Mul32(OpCodes.Shl32(OpCodes.Shr32(RANS_L, tableLog), 8), freq);
-        while (x >= xMax) {
-          chronological.push(OpCodes.And32(x, 0xFF));
-          x = OpCodes.Shr32(x, 8);
+        // Reduce state to [f, 2*f-1] by emitting low bits.
+        while (state >= 2 * f) {
+          bitStack.push(OpCodes.AndN(state, 1));
+          state = Math.floor(state / 2);
         }
 
-        x = OpCodes.Add32(OpCodes.Add32(OpCodes.Shl32(Math.floor(x / freq), tableLog), x % freq), start);
+        const spreadPos = encTable[sym][state - f];
+        state = spreadPos + tableSize;
       }
 
-      // Flush the final 32-bit state, most-significant byte first, so
-      // that after the reversal below it reads out little-endian.
-      for (let k = 3; k >= 0; --k) {
-        chronological.push(OpCodes.And32(OpCodes.Shr32(x, 8 * k), 0xFF));
+      // Header: tableLog, symbolCount16LE, (symbol, freq16LE)*.
+      output.push(FSE_TABLE_LOG);
+
+      const countBytes = OpCodes.Unpack16LE(symbols.length);
+      output.push(countBytes[0], countBytes[1]);
+
+      for (const sym of symbols) {
+        output.push(sym);
+        const freqBytes = OpCodes.Unpack16LE(normFreq[sym]);
+        output.push(freqBytes[0], freqBytes[1]);
       }
 
-      // Every byte was appended in the exact chronological order rANS
-      // requires to be *written backwards*; reversing the whole sequence
-      // once yields the stream the decoder reads forward.
-      chronological.reverse();
-      return chronological;
-    }
+      // Final state, then bit count, then the packed bitstream.
+      const stateBytes = OpCodes.Unpack16LE(state);
+      output.push(stateBytes[0], stateBytes[1]);
 
-    _decodeRans(stream, normalizedCounter, tableLog, cumStart, slotToSymbol, count) {
-      const tableSize = OpCodes.Shl32(1, tableLog);
-      const mask = OpCodes.Sub32(tableSize, 1);
-      const RANS_L = OpCodes.Shl32(1, 23);
+      const bitCountBytes = OpCodes.Unpack32LE(OpCodes.ToUint32(bitStack.length));
+      output.push(bitCountBytes[0], bitCountBytes[1], bitCountBytes[2], bitCountBytes[3]);
 
-      let bi = 0;
-      const nextByte = () => (bi < stream.length ? stream[bi++] : 0);
-
-      let x = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(
-        nextByte(),
-        OpCodes.Shl32(nextByte(), 8)),
-        OpCodes.Shl32(nextByte(), 16)),
-        OpCodes.Shl32(nextByte(), 24));
-
-      const output = new Array(count);
-      for (let j = 0; j < count; ++j) {
-        const slot = OpCodes.And32(x, mask);
-        const symbol = slotToSymbol[slot];
-        const freq = normalizedCounter[symbol];
-        const start = cumStart[symbol];
-
-        x = OpCodes.Sub32(OpCodes.Add32(OpCodes.Mul32(freq, OpCodes.Shr32(x, tableLog)), slot), start);
-
-        while (x < RANS_L) {
-          x = OpCodes.Or32(OpCodes.Shl32(x, 8), nextByte());
+      const byteCount = Math.floor((bitStack.length + 7) / 8);
+      const packed = new Array(byteCount).fill(0);
+      for (let i = 0; i < bitStack.length; i++) {
+        if (bitStack[i] !== 0) {
+          const byteIndex = Math.floor(i / 8);
+          packed[byteIndex] = OpCodes.SetBit(packed[byteIndex], i % 8, true);
         }
-
-        output[j] = symbol;
       }
+      for (let i = 0; i < packed.length; i++) output.push(packed[i]);
 
       return output;
     }
 
     // ===== DECOMPRESSION =====
 
-    _decompress(data) {
-      if (data.length === 0) return [];
-
-      // Check for RLE format
-      if (data[0] === 0xFF && data.length >= 3) {
-        return this._decompressRLE(data);
-      }
-
-      if (data.length < 3) return [];
+    _decompress() {
+      const data = this.inputBuffer;
+      this.inputBuffer = [];
 
       let offset = 0;
-
-      // Read header
-      const tableLog = data[offset++];
-      if (tableLog < FSE_MIN_TABLELOG || tableLog > FSE_MAX_TABLELOG) {
-        return [];
-      }
-
-      const symbolCount = data[offset++];
-      if (symbolCount === 0 || offset + symbolCount * 3 > data.length) {
-        return [];
-      }
-
-      // Read normalized counter
-      const normalizedCounter = new Array(FSE_MAX_SYMBOL_VALUE + 1).fill(0);
-      for (let i = 0; i < symbolCount; ++i) {
-        if (offset + 2 > data.length) return [];
-        const symbol = data[offset++];
-        const freq = this._unpackShort(data[offset], data[offset + 1]);
-        offset += 2;
-        normalizedCounter[symbol] = freq;
-      }
-
-      // Read data length
-      if (offset + 4 > data.length) return [];
-      const dataLength = this._unpackLength(data.slice(offset, offset + 4));
+      const uncompressedSize = OpCodes.Pack32LE(data[0], data[1], data[2], data[3]);
       offset += 4;
 
-      if (dataLength === 0) return [];
+      if (uncompressedSize === 0) return [];
 
-      // Read rANS-encoded payload and decode it with the same cumulative
-      // table the encoder derived from the identical normalizedCounter.
-      const tableSize = OpCodes.Shl32(1, tableLog);
-      const { cumStart, slotToSymbol } = this._buildRansTable(normalizedCounter, tableSize);
-      const encodedData = data.slice(offset);
+      const tableLogByte = data[offset++];
 
-      return this._decodeRans(encodedData, normalizedCounter, tableLog, cumStart, slotToSymbol, dataLength);
+      // Single-symbol special case.
+      if (tableLogByte === 0) {
+        const sym = data[offset];
+        return new Array(uncompressedSize).fill(sym);
+      }
+
+      const tableSize = OpCodes.Shl32(1, tableLogByte);
+
+      const symbolCount = OpCodes.Pack16LE(data[offset], data[offset + 1]);
+      offset += 2;
+
+      const normFreq = new Array(256).fill(0);
+      const symbols = [];
+      for (let i = 0; i < symbolCount; i++) {
+        const sym = data[offset++];
+        symbols.push(sym);
+        normFreq[sym] = OpCodes.Pack16LE(data[offset], data[offset + 1]);
+        offset += 2;
+      }
+
+      // Final state.
+      let state = OpCodes.Pack16LE(data[offset], data[offset + 1]);
+      offset += 2;
+
+      const bitCount = OpCodes.Pack32LE(data[offset], data[offset + 1], data[offset + 2], data[offset + 3]);
+      offset += 4;
+
+      const byteCount = Math.floor((bitCount + 7) / 8);
+      const packed = data.slice(offset, offset + byteCount);
+
+      // Unpack bits.
+      const bitStack = new Array(bitCount);
+      for (let i = 0; i < bitCount; i++) {
+        bitStack[i] = OpCodes.GetBit(packed[Math.floor(i / 8)], i % 8) ? 1 : 0;
+      }
+
+      // Rebuild spread table and occurrence mapping.
+      const symbolTable = buildSpreadTable(normFreq, symbols, tableSize);
+
+      const symOccurrence = new Array(256).fill(0);
+      const positionToReduced = new Array(tableSize);
+      for (let s = 0; s < tableSize; s++) {
+        const sym = symbolTable[s];
+        const k = symOccurrence[sym]++;
+        positionToReduced[s] = normFreq[sym] + k;
+      }
+
+      // Decode.
+      const decoded = new Array(uncompressedSize);
+      let bitPos = bitStack.length - 1;
+
+      for (let i = 0; i < uncompressedSize; i++) {
+        const spreadPos = state - tableSize;
+        const sym = symbolTable[spreadPos];
+        decoded[i] = sym;
+
+        const reduced = positionToReduced[spreadPos];
+        state = reduced;
+
+        while (state < tableSize) {
+          state = state * 2 + bitStack[bitPos--];
+        }
+      }
+
+      return decoded;
+    }
+  }
+
+  // ===== FSE/tANS TABLE CONSTRUCTION =====
+
+  // Greedy largest-error/smallest-error rounding: scale every used symbol's
+  // raw frequency proportionally to tableSize (minimum 1), then repeatedly
+  // bump the symbol with the largest positive rounding error (if under
+  // tableSize) or shrink the symbol with the smallest error that still has
+  // more than 1 slot (if over), until the normalized frequencies sum to
+  // exactly tableSize. Ties resolve to the first symbol reached while
+  // iterating `symbols` in ascending byte-value order.
+  function normalizeFrequencies(rawFreq, symbols, tableSize, totalCount) {
+    const normFreq = new Array(256).fill(0);
+    let assigned = 0;
+
+    for (const sym of symbols) {
+      let nf = Math.floor(rawFreq[sym] * tableSize / totalCount);
+      if (nf < 1) nf = 1;
+      normFreq[sym] = nf;
+      assigned += nf;
     }
 
-    _decompressRLE(data) {
-      if (data.length < 6) return [];
-      const symbol = data[1];
-      const length = this._unpackLength(data.slice(2, 6));
-      return new Array(length).fill(symbol);
+    while (assigned !== tableSize) {
+      if (assigned < tableSize) {
+        let bestSym = symbols[0];
+        let bestError = -Infinity;
+        for (const sym of symbols) {
+          const ideal = rawFreq[sym] * tableSize / totalCount;
+          const error = ideal - normFreq[sym];
+          if (error > bestError) {
+            bestError = error;
+            bestSym = sym;
+          }
+        }
+        normFreq[bestSym]++;
+        assigned++;
+      } else {
+        let bestSym = symbols[0];
+        let bestError = Infinity;
+        for (const sym of symbols) {
+          if (normFreq[sym] <= 1) continue;
+          const ideal = rawFreq[sym] * tableSize / totalCount;
+          const error = ideal - normFreq[sym];
+          if (error < bestError) {
+            bestError = error;
+            bestSym = sym;
+          }
+        }
+        if (normFreq[bestSym] > 1) {
+          normFreq[bestSym]--;
+          assigned--;
+        } else {
+          break;
+        }
+      }
     }
 
-    // ===== UTILITY FUNCTIONS =====
+    return normFreq;
+  }
 
-    _packLength(length) {
-      // Pack 32-bit length using OpCodes
-      return OpCodes.Unpack32LE(length);
+  // Spreads each symbol across the tableSize-entry state table using the
+  // classic FSE/tANS pseudo-random walk: step = tableSize*5/8 + 3, applied
+  // modulo tableSize, visiting every slot exactly once overall.
+  function buildSpreadTable(normFreq, symbols, tableSize) {
+    const table = new Array(tableSize);
+    const step = OpCodes.Shr32(tableSize, 1) + OpCodes.Shr32(tableSize, 3) + 3;
+    const mask = tableSize - 1;
+    let pos = 0;
+
+    for (const sym of symbols) {
+      for (let i = 0; i < normFreq[sym]; i++) {
+        table[pos] = sym;
+        pos = OpCodes.AndN(pos + step, mask);
+      }
     }
 
-    _unpackLength(bytes) {
-      // Unpack 32-bit length using OpCodes
-      if (bytes.length < 4) return 0;
-      return OpCodes.Pack32LE(bytes[0], bytes[1], bytes[2], bytes[3]);
-    }
-
-    _packShort(value) {
-      // Pack 16-bit value using OpCodes for shifts/masking
-      return [OpCodes.And32(value, 0xFF), OpCodes.And32(OpCodes.Shr32(value, 8), 0xFF)];
-    }
-
-    _unpackShort(b0, b1) {
-      // Unpack 16-bit value using OpCodes for shifts/masking
-      return OpCodes.Or32(OpCodes.And32(b0, 0xFF), OpCodes.Shl32(OpCodes.And32(b1, 0xFF), 8));
-    }
+    return table;
   }
 
   // ===== REGISTRATION =====
