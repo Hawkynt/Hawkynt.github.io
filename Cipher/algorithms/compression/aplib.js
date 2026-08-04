@@ -5,38 +5,48 @@
  *
  * aPLib is Joergen Ibsen's LZSS-based compression library (Ibsen Software,
  * first released 1998), well known for extremely small and fast decompressors
- * and widely reused in executable packers and malware. Its bit stream is a
- * single MSB-first sequence of control bits interleaved with literal bytes
- * and back-references:
+ * and widely reused in executable packers and malware.
+ *
+ * Wire format: a 4-byte little-endian original length, followed (unless that
+ * length is zero) by the bare aPLib stream body. The bare stream is a single
+ * MSB-first tag-bit stream interleaved in place with raw literal/offset
+ * bytes: whenever a new group of up to eight tag bits starts, one byte is
+ * reserved at the current output position to hold those bits, and literal or
+ * offset bytes that follow are appended directly (byte-aligned), not folded
+ * into the bit accumulator. This differs from a classic LZSS flag-byte
+ * grouping, where the flag byte is buffered and only appended once eight
+ * tokens have been produced.
  *
  *   - The very first output byte is always a literal, written unconditionally
- *     before any control bit is read.
- *   - Every following symbol starts with a capped unary command selector
- *     (count the leading 1-bits, stopping either at a 0-bit or after the
- *     third 1-bit, whichever comes first):
- *       0        -> Literal:      one literal byte follows.
- *       10       -> Block:        LZ77 match; a variable-length number picks
- *                                  the offset (value 2 reuses the previous
- *                                  match's offset, but only if the previous
- *                                  command was a Literal or Single-byte
- *                                  command; otherwise offset = (n-3)*256 +
- *                                  next byte), followed by a variable-length
- *                                  number for the length, biased by +0/+1/+2
- *                                  depending on the offset's magnitude.
- *       110      -> Short block:  one byte; its top 7 bits are a 1..127
- *                                  offset (0 signals end of stream) and its
- *                                  low bit selects a length of 2 or 3.
- *       111      -> Single byte:  4 bits pick an offset 0..15; 0 emits a
- *                                  literal zero byte, otherwise one byte is
- *                                  copied from that offset.
- *   - The variable-length numbers use interlaced/universal-code style
- *     bits: value = 1; while (continue-bit) { value = value*2 + data-bit }.
+ *     before any tag bit is read.
+ *   - Every following symbol starts with a capped-depth tag-bit prefix:
+ *       0    -> Literal:      one literal byte follows.
+ *       10   -> Normal match: a gamma-coded value picks the offset's high
+ *                              part (value 2 while the previous symbol was a
+ *                              literal or single-byte copy reuses the
+ *                              previous match's offset with a fresh
+ *                              gamma-coded length; otherwise the value minus
+ *                              2 or 3 forms the offset's high part, combined
+ *                              with one raw low byte), followed by a
+ *                              gamma-coded length, bumped by +1/+1/+2
+ *                              depending on whether the offset is at least
+ *                              1280, at least 32000, or below 128
+ *                              respectively.
+ *       110  -> Short match:  one raw byte; its upper seven bits are a 1..127
+ *                              offset (zero signals end of stream) and its
+ *                              lowest bit selects a length of 2 or 3.
+ *       111  -> Single byte:  four raw bits pick an offset 0..15; offset 0
+ *                              emits a literal zero byte, otherwise one byte
+ *                              is copied from that offset back.
+ *   - Gamma coding reconstructs values of two or more: start with an
+ *     accumulator of one, then repeatedly double it and add a data bit, for
+ *     as long as the following continuation bit is set.
  *
- * This is a from-specification reconstruction (not a port of Ibsen's C
- * source): the compressor here only emits Literal and (non-reusing) Block
- * commands, plus a final Short-block end marker, while the decompressor
- * implements the full grammar above, including offset reuse, short blocks
- * and single-byte copies, for completeness.
+ * The compressor here is a spec-faithful greedy LZ (hash-chain match finder,
+ * 64-candidate chain depth, unbounded window) that emits only literals,
+ * normal matches, and the end marker; the decompressor implements the full
+ * grammar above, including offset reuse, short matches and single-byte
+ * copies, so that it also accepts streams produced by other encoders.
  *
  * References:
  * - Ibsen Software aPLib product page: https://ibsensoftware.com/products_aPLib.html
@@ -79,116 +89,270 @@
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           CompressionAlgorithm, IAlgorithmInstance, LinkItem } = AlgorithmFramework;
 
-  const CMD_LITERAL = 0;
-  const CMD_BLOCK = 1;
-  const CMD_SHORT_BLOCK = 2;
-  const CMD_SINGLE_BYTE = 3;
+  const MIN_NORMAL_MATCH = 2;
+  const MAX_CHAIN = 64;
+  const MAX_MATCH = 0x10000;
+  const HASH_SIZE = 0x10000;
 
-  const MAX_MATCH = 65536;
+  // ===== BIT/BYTE STREAM HELPERS (interleaved tag stream, MSB first) =====
 
-  // ===== BIT-LEVEL STREAM HELPERS (MSB first) =====
-
-  class BitWriter {
+  class AplibWriter {
     constructor() {
-      this.bytes = [];
-      this.cur = 0;
-      this.nBits = 0;
+      this.out = [];
+      this.tagPos = -1;
+      this.bitsInTag = 0;
     }
 
-    writeBit(bit) {
-      this.cur = OpCodes.Or32(OpCodes.Shl32(this.cur, 1), bit ? 1 : 0);
-      this.nBits++;
-      if (this.nBits === 8) {
-        this.bytes.push(OpCodes.And32(this.cur, 0xFF));
-        this.cur = 0;
-        this.nBits = 0;
+    putBit(bit) {
+      if (this.bitsInTag === 0) {
+        this.tagPos = this.out.length;
+        this.out.push(0);
+      }
+      if (bit) {
+        const mask = OpCodes.Shl8(1, 7 - this.bitsInTag);
+        this.out[this.tagPos] = OpCodes.Or8(this.out[this.tagPos], mask);
+      }
+      this.bitsInTag = (this.bitsInTag + 1) % 8;
+    }
+
+    putByte(value) {
+      this.out.push(OpCodes.And8(value, 0xFF));
+    }
+
+    putGamma(value) {
+      if (value < 2) throw new Error('aPLib gamma coding requires a value of at least 2.');
+
+      let msb = 0;
+      let v = value;
+      while (v > 1) { msb++; v = Math.floor(v / 2); }
+
+      for (let i = msb - 1; i >= 0; --i) {
+        this.putBit(OpCodes.And32(OpCodes.Shr32(value, i), 1));
+        this.putBit(i > 0 ? 1 : 0);
       }
     }
 
-    writeBits(value, count) {
-      for (let i = count - 1; i >= 0; --i)
-        this.writeBit(OpCodes.And32(OpCodes.Shr32(value, i), 1));
-    }
-
-    finish() {
-      if (this.nBits > 0) {
-        this.cur = OpCodes.Shl32(this.cur, 8 - this.nBits);
-        this.bytes.push(OpCodes.And32(this.cur, 0xFF));
-        this.cur = 0;
-        this.nBits = 0;
-      }
-      return this.bytes;
+    toArray() {
+      return this.out.slice();
     }
   }
 
-  class BitReader {
-    constructor(bytes) {
-      this.bytes = bytes;
+  class AplibReader {
+    constructor(data) {
+      this.data = data;
       this.pos = 0;
-      this.cur = 0;
-      this.nBits = 0;
+      this.tag = 0;
+      this.bitsLeft = 0;
+    }
+
+    readByte() {
+      if (this.pos >= this.data.length) throw new Error('aPLib: unexpected end of stream.');
+      return this.data[this.pos++];
     }
 
     readBit() {
-      if (this.nBits === 0) {
-        this.cur = this.pos < this.bytes.length ? this.bytes[this.pos++] : 0;
-        this.nBits = 8;
+      if (this.bitsLeft === 0) {
+        this.tag = this.readByte();
+        this.bitsLeft = 8;
       }
-      this.nBits--;
-      return OpCodes.And32(OpCodes.Shr32(this.cur, this.nBits), 1);
+      const bit = OpCodes.And32(OpCodes.Shr32(this.tag, 7), 1);
+      this.tag = OpCodes.And32(OpCodes.Shl32(this.tag, 1), 0xFF);
+      this.bitsLeft--;
+      return bit;
     }
 
-    readBits(count) {
-      let value = 0;
-      for (let i = 0; i < count; ++i)
-        value = OpCodes.Or32(OpCodes.Shl32(value, 1), this.readBit());
-      return value;
+    readGamma() {
+      let result = 1;
+      do {
+        result = result * 2 + this.readBit();
+      } while (this.readBit() === 1);
+      return result;
     }
   }
 
-  // ===== CAPPED UNARY COMMAND SELECTOR =====
+  // ===== HASH-CHAIN MATCH FINDER =====
 
-  function writeCommand(bw, type) {
-    for (let i = 0; i < type; ++i) bw.writeBit(1);
-    if (type < 3) bw.writeBit(0);
+  function hash3(data, pos) {
+    const h = OpCodes.Xor32(
+      OpCodes.Xor32(OpCodes.Shl32(data[pos], 8), OpCodes.Shl32(data[pos + 1], 4)),
+      data[pos + 2]
+    );
+    return OpCodes.And32(h, 0xFFFF);
   }
 
-  function readCommand(br) {
-    let count = 0;
-    while (count < 3) {
-      if (br.readBit() === 0) break;
-      count++;
+  function insertPos(data, pos, head, prev) {
+    if (pos + 2 >= data.length) return;
+    const h = hash3(data, pos);
+    prev[pos] = head[h];
+    head[h] = pos;
+  }
+
+  function findMatch(data, pos, head, prev) {
+    let bestOff = 0;
+    let bestLen = 0;
+    if (pos + 2 >= data.length) return { bestOff, bestLen };
+
+    let idx = head[hash3(data, pos)];
+    let chain = 0;
+    const maxLen = Math.min(data.length - pos, MAX_MATCH);
+
+    while (idx >= 0 && chain < MAX_CHAIN) {
+      const off = pos - idx;
+      if (data[idx] === data[pos] && data[idx + bestLen] === data[pos + bestLen]) {
+        let len = 0;
+        while (len < maxLen && data[idx + len] === data[pos + len]) ++len;
+        if (len > bestLen) {
+          bestLen = len;
+          bestOff = off;
+          if (len >= maxLen) break;
+        }
+      }
+      idx = prev[idx];
+      chain++;
     }
-    return count;
+
+    return { bestOff, bestLen };
   }
 
-  // ===== VARIABLE-LENGTH NUMBER (value >= 1) =====
+  // aPLib's normal-match length carries decode-time bumps depending on the
+  // offset magnitude; the encoded gamma length must be the actual length
+  // minus those bumps and stay at least 2 (the gamma minimum). Returns null
+  // when a match is too short to encode at the given offset.
+  function tryEncodableLength(offset, length) {
+    const adjust = (offset >= 32000 ? 1 : 0) + (offset >= 1280 ? 1 : 0) + (offset < 128 ? 2 : 0);
+    const encodedLen = length - adjust;
+    return encodedLen >= 2 ? encodedLen : -1;
+  }
 
-  function writeVarNum(bw, value) {
-    let bitLen = 0;
-    let v = value;
-    while (v > 1) { bitLen++; v = OpCodes.Shr32(v, 1); }
-
-    for (let i = bitLen - 1; i >= 0; --i) {
-      bw.writeBit(1); // continue
-      bw.writeBit(OpCodes.And32(OpCodes.Shr32(value, i), 1));
+  function copyMatch(output, op, offs, len) {
+    if (offs <= 0 || offs > op) throw new Error('aPLib: match offset points before start of output.');
+    const src = op - offs;
+    let o = op;
+    for (let i = 0; i < len && o < output.length; ++i) {
+      output[o] = output[src + i];
+      o++;
     }
-    bw.writeBit(0); // stop
+    return o;
   }
 
-  function readVarNum(br) {
-    let value = 1;
-    for (;;) {
-      if (br.readBit() === 0) break;
-      value = OpCodes.Or32(OpCodes.Shl32(value, 1), br.readBit());
+  // ===== BARE STREAM CODEC =====
+
+  function compressBare(data) {
+    const writer = new AplibWriter();
+    if (data.length === 0) return writer.toArray();
+
+    // First byte verbatim, matching the depacker's pre-loop copy.
+    writer.putByte(data[0]);
+
+    const head = new Array(HASH_SIZE).fill(-1);
+    const prev = new Array(data.length);
+    insertPos(data, 0, head, prev);
+
+    let lwm = 0;
+    let pos = 1;
+    while (pos < data.length) {
+      const { bestOff, bestLen } = findMatch(data, pos, head, prev);
+      const encodedLen = bestLen >= MIN_NORMAL_MATCH ? tryEncodableLength(bestOff, bestLen) : -1;
+
+      if (encodedLen >= 2) {
+        writer.putBit(1);
+        writer.putBit(0);
+        const gammaOff = OpCodes.Shr32(bestOff, 8) + (lwm === 0 ? 3 : 2);
+        writer.putGamma(gammaOff);
+        writer.putByte(OpCodes.And32(bestOff, 0xFF));
+        writer.putGamma(encodedLen);
+        lwm = 1;
+
+        const end = pos + bestLen;
+        for (let j = pos; j < end && j < data.length; ++j) insertPos(data, j, head, prev);
+        pos = end;
+      } else {
+        writer.putBit(0);
+        writer.putByte(data[pos]);
+        lwm = 0;
+        insertPos(data, pos, head, prev);
+        pos++;
+      }
     }
-    return value;
+
+    // End-of-stream: "110" short match with a zero offset byte.
+    writer.putBit(1);
+    writer.putBit(1);
+    writer.putBit(0);
+    writer.putByte(0);
+
+    return writer.toArray();
   }
 
-  function lengthDelta(distance) {
-    if (distance < 128 || distance >= 32000) return 2;
-    if (distance >= 1280 && distance <= 31999) return 1;
-    return 0;
+  function decompressRaw(compressed, maxOutputSize) {
+    if (maxOutputSize < 0) throw new Error('aPLib: negative decompressed size.');
+    if (compressed.length === 0 || maxOutputSize === 0) return [];
+
+    const output = new Array(maxOutputSize);
+    const reader = new AplibReader(compressed);
+
+    // aPLib copies the first byte verbatim before the token loop starts.
+    let op = 0;
+    output[op++] = reader.readByte();
+    let lwm = 0;
+    let r0 = 0;
+
+    while (op < output.length) {
+      if (reader.readBit() === 0) {
+        // Literal.
+        output[op++] = reader.readByte();
+        lwm = 0;
+        continue;
+      }
+
+      if (reader.readBit() === 0) {
+        // "10" - normal match.
+        let offs = reader.readGamma();
+        let len;
+        if (lwm === 0 && offs === 2) {
+          offs = r0;
+          len = reader.readGamma();
+        } else {
+          offs -= lwm === 0 ? 3 : 2;
+          offs = offs * 256 + reader.readByte();
+          len = reader.readGamma();
+          if (offs >= 32000) len++;
+          if (offs >= 1280) len++;
+          if (offs < 128) len += 2;
+          r0 = offs;
+        }
+        op = copyMatch(output, op, offs, len);
+        lwm = 1;
+        continue;
+      }
+
+      if (reader.readBit() === 0) {
+        // "110" - short match, or end-of-stream when offset is zero.
+        const b = reader.readByte();
+        if (b === 0) break;
+
+        const len = 2 + OpCodes.And32(b, 1);
+        const offs = OpCodes.Shr32(b, 1);
+        op = copyMatch(output, op, offs, len);
+        r0 = offs;
+        lwm = 1;
+        continue;
+      }
+
+      // "111" - 4-bit offset single byte, or literal zero.
+      let shortOffs = 0;
+      for (let i = 0; i < 4; ++i) shortOffs = shortOffs * 2 + reader.readBit();
+      if (shortOffs === 0) {
+        output[op++] = 0;
+      } else {
+        if (shortOffs > op) throw new Error('aPLib: single-byte back-reference before start of output.');
+        output[op] = output[op - shortOffs];
+        op++;
+      }
+      lwm = 0;
+    }
+
+    return op === output.length ? output : output.slice(0, op);
   }
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -198,7 +362,7 @@
       super();
 
       this.name = "aPLib";
-      this.description = "Joergen Ibsen's LZSS-based compression library, known for very small and fast decompressors. A single MSB-first bit stream mixes literals with three kinds of back-references (full block, short block, single byte) selected by a capped unary command code, with variable-length (gamma-style) numbers for offsets and lengths.";
+      this.description = "Joergen Ibsen's LZSS-based compression library, known for very small and fast decompressors. A 4-byte little-endian length header precedes a bare stream whose single MSB-first tag-bit sequence is interleaved in place (byte-aligned) with literal bytes and back-references (normal match, short match, single byte), selected by a tag-bit prefix, with gamma-coded numbers for offsets and lengths.";
       this.inventor = "Joergen Ibsen";
       this.year = 1998;
       this.category = CategoryType.COMPRESSION;
@@ -222,19 +386,31 @@
           text: "Empty input",
           uri: "https://ibsensoftware.com/products_aPLib.html",
           input: [],
-          expected: []
+          expected: [0, 0, 0, 0]
         },
         {
-          text: "Highly repetitive input (64 'A' bytes)",
+          text: "Single byte",
           uri: "https://ibsensoftware.com/products_aPLib.html",
-          input: new Array(64).fill(0x41),
-          expected: [65, 176, 15, 246, 192, 0]
+          input: [0x41],
+          expected: [1, 0, 0, 0, 65, 192, 0]
         },
         {
-          text: "Text sample",
+          text: "Repeated phrase (4x 'the quick brown fox jumps over the lazy dog. ')",
           uri: "https://ibsensoftware.com/products_aPLib.html",
-          input: OpCodes.AnsiToBytes("the quick brown fox jumps over the lazy dog. the quick brown fox."),
-          expected: [116, 52, 25, 68, 7, 19, 169, 164, 198, 107, 16, 24, 142, 70, 243, 185, 184, 64, 102, 55, 158, 4, 6, 163, 169, 180, 224, 115, 16, 27, 206, 198, 83, 144, 130, 195, 240, 216, 97, 61, 30, 68, 6, 67, 121, 156, 93, 96, 237, 98, 222, 194, 236, 0]
+          input: OpCodes.AnsiToBytes("the quick brown fox jumps over the lazy dog. ".repeat(4)),
+          expected: [180, 0, 0, 0, 116, 0, 104, 101, 32, 113, 117, 105, 99, 107, 0, 32, 98, 114, 111, 119, 110, 32, 102, 0, 111, 120, 32, 106, 117, 109, 112, 115, 2, 32, 111, 118, 101, 114, 32, 128, 31, 108, 97, 122, 121, 5, 32, 100, 111, 103, 46, 80, 14, 45, 170, 182, 0]
+        },
+        {
+          text: "256 repeated bytes of 0x61",
+          uri: "https://ibsensoftware.com/products_aPLib.html",
+          input: new Array(256).fill(0x61),
+          expected: [0, 1, 0, 0, 97, 175, 1, 253, 176, 0]
+        },
+        {
+          text: "All 256 byte values, in order",
+          uri: "https://ibsensoftware.com/products_aPLib.html",
+          input: (function() { const a = new Array(256); for (let i = 0; i < 256; ++i) a[i] = i; return a; })(),
+          expected: [0, 1, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 0, 9, 10, 11, 12, 13, 14, 15, 16, 0, 17, 18, 19, 20, 21, 22, 23, 24, 0, 25, 26, 27, 28, 29, 30, 31, 32, 0, 33, 34, 35, 36, 37, 38, 39, 40, 0, 41, 42, 43, 44, 45, 46, 47, 48, 0, 49, 50, 51, 52, 53, 54, 55, 56, 0, 57, 58, 59, 60, 61, 62, 63, 64, 0, 65, 66, 67, 68, 69, 70, 71, 72, 0, 73, 74, 75, 76, 77, 78, 79, 80, 0, 81, 82, 83, 84, 85, 86, 87, 88, 0, 89, 90, 91, 92, 93, 94, 95, 96, 0, 97, 98, 99, 100, 101, 102, 103, 104, 0, 105, 106, 107, 108, 109, 110, 111, 112, 0, 113, 114, 115, 116, 117, 118, 119, 120, 0, 121, 122, 123, 124, 125, 126, 127, 128, 0, 129, 130, 131, 132, 133, 134, 135, 136, 0, 137, 138, 139, 140, 141, 142, 143, 144, 0, 145, 146, 147, 148, 149, 150, 151, 152, 0, 153, 154, 155, 156, 157, 158, 159, 160, 0, 161, 162, 163, 164, 165, 166, 167, 168, 0, 169, 170, 171, 172, 173, 174, 175, 176, 0, 177, 178, 179, 180, 181, 182, 183, 184, 0, 185, 186, 187, 188, 189, 190, 191, 192, 0, 193, 194, 195, 196, 197, 198, 199, 200, 0, 201, 202, 203, 204, 205, 206, 207, 208, 0, 209, 210, 211, 212, 213, 214, 215, 216, 0, 217, 218, 219, 220, 221, 222, 223, 224, 0, 225, 226, 227, 228, 229, 230, 231, 232, 0, 233, 234, 235, 236, 237, 238, 239, 240, 0, 241, 242, 243, 244, 245, 246, 247, 248, 1, 249, 250, 251, 252, 253, 254, 255, 128, 0]
         }
       ];
     }
@@ -263,117 +439,17 @@
     }
 
     _compress(input) {
-      const n = input.length;
-      if (n === 0) return [];
-
-      const bw = new BitWriter();
-      bw.writeBits(input[0], 8); // first byte is always a raw literal
-
-      let pos = 1;
-
-      while (pos < n) {
-        const match = this._findMatch(input, pos);
-
-        if (match) {
-          writeCommand(bw, CMD_BLOCK);
-          const rawOff = OpCodes.Shr32(match.distance, 8) + 3;
-          writeVarNum(bw, rawOff);
-          bw.writeBits(OpCodes.And32(match.distance, 0xFF), 8);
-          writeVarNum(bw, match.length - lengthDelta(match.distance));
-          pos += match.length;
-        } else {
-          writeCommand(bw, CMD_LITERAL);
-          bw.writeBits(input[pos], 8);
-          pos += 1;
-        }
-      }
-
-      // End of stream: short block with a zero offset field
-      writeCommand(bw, CMD_SHORT_BLOCK);
-      bw.writeBits(0, 8);
-
-      return bw.finish();
+      const header = OpCodes.Unpack32LE(input.length);
+      if (input.length === 0) return header;
+      const body = compressBare(input);
+      return header.concat(body);
     }
 
     _decompress(input) {
-      if (input.length === 0) return [];
-
-      const br = new BitReader(input);
-      const output = [];
-
-      output.push(br.readBits(8));
-      let lastOffset = 0;
-      let prevCmd = CMD_LITERAL;
-
-      for (;;) {
-        const cmd = readCommand(br);
-
-        if (cmd === CMD_LITERAL) {
-          output.push(br.readBits(8));
-          prevCmd = CMD_LITERAL;
-        } else if (cmd === CMD_BLOCK) {
-          const offVal = readVarNum(br);
-          let distance;
-
-          if (offVal === 2 && (prevCmd === CMD_LITERAL || prevCmd === CMD_SINGLE_BYTE) && lastOffset !== 0) {
-            distance = lastOffset;
-          } else {
-            distance = OpCodes.Shl32(offVal - 3, 8) + br.readBits(8);
-            lastOffset = distance;
-          }
-
-          const length = readVarNum(br) + lengthDelta(distance);
-          const start = output.length - distance;
-          for (let k = 0; k < length; ++k) output.push(output[start + k]);
-          prevCmd = CMD_BLOCK;
-        } else if (cmd === CMD_SHORT_BLOCK) {
-          const byte = br.readBits(8);
-          const offset = OpCodes.Shr32(byte, 1);
-          if (offset === 0) break; // end of stream
-
-          const length = 2 + OpCodes.And32(byte, 1);
-          const start = output.length - offset;
-          for (let k = 0; k < length; ++k) output.push(output[start + k]);
-          lastOffset = offset;
-          prevCmd = CMD_SHORT_BLOCK;
-        } else { // CMD_SINGLE_BYTE
-          const offset = br.readBits(4);
-          if (offset === 0) {
-            output.push(0);
-          } else {
-            output.push(output[output.length - offset]);
-          }
-          prevCmd = CMD_SINGLE_BYTE;
-        }
-      }
-
-      return output;
-    }
-
-    _findMatch(input, pos) {
-      const n = input.length;
-      const maxLen = Math.min(MAX_MATCH, n - pos);
-      let bestLen = 0;
-      let bestDist = 0;
-
-      if (maxLen < 2) return null;
-
-      for (let cand = 0; cand < pos; ++cand) {
-        let len = 0;
-        while (len < maxLen && input[cand + len] === input[pos + len]) ++len;
-
-        if (len > bestLen) {
-          bestLen = len;
-          bestDist = pos - cand;
-        }
-      }
-
-      if (bestLen < 2) return null;
-
-      const delta = lengthDelta(bestDist);
-      if (bestLen - delta < 1) return null; // length code cannot represent it
-
-      return { length: bestLen, distance: bestDist };
+      if (input.length < 4) throw new Error('aPLib: input smaller than 4-byte header.');
+      const targetSize = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
+      if (targetSize === 0) return [];
+      return decompressRaw(input.slice(4), targetSize);
     }
   }
 
