@@ -1,20 +1,25 @@
 /*
- * Zstandard (Zstd) Compression Algorithm Implementation
+ * Zstandard-style (Zstd) Framing Demo — NOT RFC 8878 compatible
  * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
  *
- * Production-quality implementation of Zstandard decompression conforming to RFC 8878.
- * Zstandard is a fast lossless compression algorithm created by Yann Collet at Facebook.
- * Combines LZ77 dictionary matching with Finite State Entropy (FSE) and Huffman coding.
+ * Educational implementation that mimics the outer container of a Zstandard
+ * (RFC 8878) stream — real magic number, real frame header layout, real
+ * block header layout — but implements neither LZ77 matching nor the FSE /
+ * Huffman entropy coders that real Zstandard requires. It only ever emits
+ * RAW and RLE blocks, and its decoder cannot interpret genuine COMPRESSED
+ * blocks produced by real Zstd implementations.
  *
  * Implementation Features:
- * - Full RFC 8878 compliant frame parsing
- * - FSE (Finite State Entropy) decompression
- * - Huffman decompression with 11-bit code limit
- * - LZ77 sequence execution with repeat offsets
- * - Multiple block types (Raw, RLE, Compressed)
+ * - RFC 8878-shaped frame header parsing (magic, descriptor, content size)
+ * - RAW and RLE block encode/decode with correct block-header bit layout
+ * - Multi-block output for inputs larger than the 128 KiB block size limit
+ * - COMPRESSED block type is recognized but NOT entropy-decoded (no FSE/Huffman)
  *
- * Note: Compression is simplified for educational purposes; decompression is production-ready.
+ * Compatibility: streams produced here are NOT valid Zstandard (RFC 8878)
+ * streams and cannot be read by facebook/zstd, the zstd CLI, or Node's
+ * zlib.zstdDecompressSync. Likewise this decoder cannot read real Zstandard
+ * output. Round-trips only against itself.
  */
 
 (function (root, factory) {
@@ -95,8 +100,8 @@
       super();
 
       // Required metadata
-      this.name = "Zstandard";
-      this.description = "Fast lossless compression algorithm combining LZ77 dictionary matching with Finite State Entropy and Huffman coding. Provides excellent compression ratios with real-time performance. RFC 8878 compliant implementation.";
+      this.name = "Zstandard-style (custom framing, not RFC 8878 compatible)";
+      this.description = "Educational demo that reproduces the Zstandard (RFC 8878) magic number and frame/block header layout for RAW and RLE blocks only. It has no LZ77 matching and no FSE/Huffman entropy coding, so it is NOT RFC 8878 compliant and CANNOT interoperate with facebook/zstd, the zstd CLI, or Node's zlib.zstdCompressSync/zstdDecompressSync. It only round-trips against its own output.";
       this.inventor = "Yann Collet";
       this.year = 2016;
       this.category = CategoryType.COMPRESSION;
@@ -120,7 +125,10 @@
         new LinkItem("LZ4 (by same author)", "https://github.com/lz4/lz4")
       ];
 
-      // Authentic test vectors from RFC 8878 and official implementation
+      // Self-consistent test vectors, generated from this file's own encoder — NOT
+      // third-party/official Zstandard vectors (this format cannot produce those).
+      // The byte layout mirrors RFC 8878's frame/block header shape purely as an
+      // informational reference for readers; it does not imply wire compatibility.
       // Format: input = uncompressed data, expected = compressed output
       this.tests = [
         // Test 1: Simple uncompressed frame (Raw block)
@@ -130,9 +138,9 @@
           // Magic: 0xFD2FB528 (LE) = 28 B5 2F FD
           // Descriptor: 0x20 (Single_Segment=1, Content_Size_Flag=0)
           // Content Size: 5 (for "hello")
-          // Block Header: (5<<3)|(0<<1)|1 = 0x29 = 29 00 00 (LE, Last=1, Type=Raw, Size=5)
+          // Block Header: Size=5 shifted 3 bits, OR Type=Raw shifted 1 bit, OR Last=1 = 0x29 = 29 00 00 (LE)
           OpCodes.Hex8ToBytes("28B52FFD200529000068656C6C6F"),
-          "RFC 8878 - Raw block compression",
+          "Self-consistent - Raw block, short input",
           "https://tools.ietf.org/html/rfc8878"
         ),
         // Test 2: RLE block frame
@@ -140,9 +148,9 @@
           OpCodes.AnsiToBytes("AAAAAAAAAA"),
           // RLE block: Magic(4) + Descriptor(1) + ContentSize(1) + BlockHeader(3) + RepeatedByte(1)
           // Content Size: 10 (ten 'A's)
-          // Block Header: (10<<3)|(1<<1)|1 = 0x53 = 53 00 00 (LE, Last=1, Type=RLE, Size=10)
+          // Block Header: Size=10 shifted 3 bits, OR Type=RLE shifted 1 bit, OR Last=1 = 0x53 = 53 00 00 (LE)
           OpCodes.Hex8ToBytes("28B52FFD200A53000041"),
-          "RFC 8878 - RLE block compression",
+          "Self-consistent - RLE block, repeated byte",
           "https://tools.ietf.org/html/rfc8878"
         ),
         // Test 3: Empty frame
@@ -150,9 +158,41 @@
           [],
           // Empty frame: Magic(4) + Descriptor(1) + ContentSize(1) + BlockHeader(3)
           // Content Size: 0
-          // Block Header: (0<<3)|(0<<1)|1 = 0x01 = 01 00 00 (LE, Last=1, Type=Raw, Size=0)
+          // Block Header: Size=0 shifted 3 bits, OR Type=Raw shifted 1 bit, OR Last=1 = 0x01 = 01 00 00 (LE)
           OpCodes.Hex8ToBytes("28B52FFD2000010000"),
-          "RFC 8878 - Empty frame",
+          "Self-consistent - Empty frame",
+          "https://tools.ietf.org/html/rfc8878"
+        ),
+        // Test 4: >=256 bytes, exercises the 2-byte content-size-flag path and a
+        // non-repetitive payload (raw block).
+        new TestCase(
+          (() => {
+            let seed = 0x2468ACE0, a = [];
+            for (let i = 0; i < 300; ++i) { seed = OpCodes.AndN(seed * 1103515245 + 12345, 0x7fffffff); a.push(OpCodes.AndN(seed, 0xFF)); }
+            return a;
+          })(),
+          [], // Round-trip only - exact bytes aren't the point here
+          "Round-trip - 300 bytes pseudo-random (2-byte content size)",
+          "https://tools.ietf.org/html/rfc8878"
+        ),
+        // Test 5: >MAX_BLOCK_SIZE (128 KiB), non-repetitive - exercises multi-block
+        // splitting with the 4-byte content-size-flag path.
+        new TestCase(
+          (() => {
+            const a = new Array(200000);
+            for (let i = 0; i < 200000; ++i) a[i] = OpCodes.AndN(i * 37 + 11, 0xFF);
+            return a;
+          })(),
+          [], // Round-trip only - exact bytes aren't the point here
+          "Round-trip - 200000 bytes pseudo-random, spans multiple blocks",
+          "https://tools.ietf.org/html/rfc8878"
+        ),
+        // Test 6: >MAX_BLOCK_SIZE, fully repetitive - exercises multi-block RLE
+        // splitting, where only the final block sets Last_Block.
+        new TestCase(
+          new Array(150000).fill(0x61),
+          [], // Round-trip only - exact bytes aren't the point here
+          "Round-trip - 150000 repeated bytes, spans multiple RLE blocks",
           "https://tools.ietf.org/html/rfc8878"
         )
       ];
@@ -198,7 +238,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -232,7 +272,7 @@
         if (magic === ZSTD_MAGIC_NUMBER) {
           // Standard Zstd frame
           const frame = this._decodeFrame(reader);
-          result.push(...frame);
+          for (let _i = 0; _i < frame.length; _i++) result.push(frame[_i]);
         } else if (OpCodes.AndN(magic, ZSTD_MAGIC_SKIPPABLE_MASK) === ZSTD_MAGIC_SKIPPABLE_START) {
           // Skippable frame - read size and skip
           const frameSize = reader.readU32LE();
@@ -315,7 +355,7 @@
         }
 
         const blockData = this._decodeBlock(reader, blockType, blockSize);
-        decoded.push(...blockData);
+        for (let _i = 0; _i < blockData.length; _i++) decoded.push(blockData[_i]);
       }
 
       // Skip checksum if present
@@ -361,25 +401,39 @@
     _compress() {
       const data = [...this.inputBuffer];
       const result = [];
+      const len = data.length;
 
       // Magic number (little-endian)
       const [b0, b1, b2, b3] = OpCodes.Unpack32LE(ZSTD_MAGIC_NUMBER);
       result.push(b0, b1, b2, b3);
 
-      // Frame header descriptor
-      result.push(0x20); // Content_Size_Flag = 00, Single_Segment = 1
-
-      // Content size
-      if (data.length < 256) {
-        result.push(data.length);
+      // Frame header descriptor + content size (Single_Segment_Flag=1).
+      // The Content_Size_Flag (descriptor bits 7-6) MUST reflect how many size
+      // bytes are actually written, per RFC 8878 §3.1.1.1.1 - decided up front
+      // from the real data length, not patched in afterwards.
+      let sizeFlag, sizeBytes;
+      if (len < 256) {
+        sizeFlag = 0;
+        sizeBytes = [len];
+      } else if (len <= 256 + 0xFFFF) {
+        sizeFlag = 1;
+        const v = len - 256;
+        sizeBytes = [OpCodes.AndN(v, 0xFF), OpCodes.AndN(OpCodes.Shr32(v, 8), 0xFF)];
+      } else if (len <= 0xFFFFFFFF) {
+        sizeFlag = 2;
+        sizeBytes = OpCodes.Unpack32LE(len);
       } else {
-        result.push(0x40); // Update descriptor for 2-byte size
-        const size = data.length - 256;
-        result.push(OpCodes.AndN(size, 0xFF));
-        result.push(OpCodes.AndN(OpCodes.Shr32(size, 8), 0xFF));
+        sizeFlag = 3;
+        const high = Math.floor(len / 0x100000000);
+        const low = len - high * 0x100000000;
+        sizeBytes = OpCodes.Unpack32LE(low).concat(OpCodes.Unpack32LE(high));
       }
 
-      if (data.length === 0) {
+      const descriptor = OpCodes.OrN(OpCodes.Shl32(sizeFlag, 6), 0x20); // Single_Segment=1
+      result.push(descriptor);
+      for (let _i = 0; _i < sizeBytes.length; _i++) result.push(sizeBytes[_i]);
+
+      if (len === 0) {
         // Empty frame - just header + empty block
         const blockHeader = OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(0, 3), OpCodes.Shl32(BLOCK_TYPE_RAW, 1)), 1); // Last block, raw, size=0
         result.push(OpCodes.AndN(blockHeader, 0xFF));
@@ -390,23 +444,33 @@
         return result;
       }
 
-      // Determine block strategy: use RLE if highly repetitive, otherwise raw
-      const isRepetitive = this._isRepetitive(data);
+      // Split into blocks no larger than MAX_BLOCK_SIZE; only the final block
+      // sets Last_Block. Each block independently picks RLE (fully repetitive
+      // chunk) or raw.
+      let offset = 0;
+      while (offset < len) {
+        const chunkSize = Math.min(MAX_BLOCK_SIZE, len - offset);
+        const chunk = data.slice(offset, offset + chunkSize);
+        const isLast = (offset + chunkSize === len) ? 1 : 0;
+        const isRepetitive = this._isRepetitive(chunk);
 
-      if (isRepetitive && data.length > 1) {
-        // RLE block
-        const blockHeader = OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(data.length, 3), OpCodes.Shl32(BLOCK_TYPE_RLE, 1)), 1); // Last block
-        result.push(OpCodes.AndN(blockHeader, 0xFF));
-        result.push(OpCodes.AndN(OpCodes.Shr32(blockHeader, 8), 0xFF));
-        result.push(OpCodes.AndN(OpCodes.Shr32(blockHeader, 16), 0xFF));
-        result.push(data[0]); // The repeated byte
-      } else {
-        // Raw block
-        const blockHeader = OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(data.length, 3), OpCodes.Shl32(BLOCK_TYPE_RAW, 1)), 1); // Last block
-        result.push(OpCodes.AndN(blockHeader, 0xFF));
-        result.push(OpCodes.AndN(OpCodes.Shr32(blockHeader, 8), 0xFF));
-        result.push(OpCodes.AndN(OpCodes.Shr32(blockHeader, 16), 0xFF));
-        result.push(...data);
+        if (isRepetitive && chunk.length > 1) {
+          // RLE block
+          const blockHeader = OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(chunk.length, 3), OpCodes.Shl32(BLOCK_TYPE_RLE, 1)), isLast);
+          result.push(OpCodes.AndN(blockHeader, 0xFF));
+          result.push(OpCodes.AndN(OpCodes.Shr32(blockHeader, 8), 0xFF));
+          result.push(OpCodes.AndN(OpCodes.Shr32(blockHeader, 16), 0xFF));
+          result.push(chunk[0]); // The repeated byte
+        } else {
+          // Raw block
+          const blockHeader = OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(chunk.length, 3), OpCodes.Shl32(BLOCK_TYPE_RAW, 1)), isLast);
+          result.push(OpCodes.AndN(blockHeader, 0xFF));
+          result.push(OpCodes.AndN(OpCodes.Shr32(blockHeader, 8), 0xFF));
+          result.push(OpCodes.AndN(OpCodes.Shr32(blockHeader, 16), 0xFF));
+          for (let _i = 0; _i < chunk.length; _i++) result.push(chunk[_i]);
+        }
+
+        offset += chunkSize;
       }
 
       this.inputBuffer = [];
