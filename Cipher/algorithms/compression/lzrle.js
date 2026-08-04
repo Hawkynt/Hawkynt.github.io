@@ -66,11 +66,19 @@
       this.complexity = ComplexityType.INTERMEDIATE;
       this.country = CountryCode.AT; // Austria (LZO origin)
 
-      // LZO-RLE specific parameters
-      this.MIN_MATCH_LENGTH = 3;    // Minimum match length
-      this.MAX_MATCH_LENGTH = 264;  // Maximum match length
-      this.MAX_OFFSET = 0xBFFF;     // Maximum dictionary offset
-      this.MIN_ZERO_RUN = 4;        // Minimum zero run for RLE encoding
+      // LZRLE parameters, matching CompressionWorkbench's LzrleBuildingBlock (the
+      // authoritative reference): a clean-room literal/match/run token design, NOT
+      // a reproduction of LZO1X's opcode table (see LzrleConstants.cs remarks).
+      this.MIN_MATCH = 4;           // Minimum dictionary match length
+      this.MIN_RUN = 4;             // Minimum repeated-byte run length
+      this.TYPE_LITERAL = 0;
+      this.TYPE_MATCH = 1;
+      this.TYPE_RUN = 2;
+      this.LENGTH_FIELD_BITS = 6;
+      this.LENGTH_FIELD_MAX = OpCodes.Shl32(1, this.LENGTH_FIELD_BITS) - 1; // 63
+      this.HASH_BITS = 15;
+      this.HASH_SIZE = OpCodes.Shl32(1, this.HASH_BITS);
+      this.MAX_CHAIN_DEPTH = 128;
 
       // Documentation and references
       this.documentation = [
@@ -86,43 +94,31 @@
         new LinkItem("ZRAM Default to LZO-RLE", "https://lore.kernel.org/lkml/20181130114715.27523-9-dave.rodgman@arm.com/")
       ];
 
-      // Test vectors demonstrating RLE benefits for zero-heavy data
+      // Test vectors - cross-checked byte-for-byte against CompressionWorkbench's
+      // LzrleBuildingBlock (BB_Lzrle), the authoritative reference: a 4-byte
+      // little-endian original-length header, then a token stream where each
+      // token byte is [type:2][length field:6] - type 0 literal run, type 1
+      // dictionary match (4-byte LE distance follows), type 2 repeated-byte run
+      // (1 value byte follows). A length field of 63 means "read base-255
+      // continuation bytes".
       this.tests = [
         new TestCase(
-          [0x00, 0x00, 0x00, 0x00], // 4 zeros - minimum RLE length
-          [0x11, 0xFF, 0xBF, 0x00, 0x11, 0x00, 0x00], // Zero-run + end marker
+          [0x00, 0x00, 0x00, 0x00], // 4 zeros - minimum run length
+          [0x04, 0x00, 0x00, 0x00, 0x80, 0x00], // header(4) + run token(type2,field0=len-4) + value 0
           "Minimum zero run (4 bytes)",
-          "https://docs.kernel.org/staging/lzo.html"
+          "https://github.com/Hawkynt (CompressionWorkbench LzrleBuildingBlock)"
         ),
         new TestCase(
-          [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], // 12 zeros
-          [0x11, 0xFF, 0xBF, 0x01, 0x11, 0x00, 0x00], // Zero-run (12) + end marker
-          "Extended zero run (12 bytes)",
-          "https://docs.kernel.org/staging/lzo.html"
-        ),
-        new TestCase(
-          [0x41, 0x42, 0x43], // "ABC" - no zeros, no repetition
-          [0x03, 0x41, 0x42, 0x43, 0x11, 0x00, 0x00], // Literal count + data + end marker
+          [0x41, 0x42, 0x43], // "ABC" - no repetition, too short for a match
+          [0x03, 0x00, 0x00, 0x00, 0x03, 0x41, 0x42, 0x43], // header(3) + literal token(len=3) + data
           "Literals only - no compression",
-          "https://www.kernel.org/doc/Documentation/lzo.txt"
-        ),
-        new TestCase(
-          [0x41, 0x00, 0x00, 0x00, 0x00, 0x42], // 'A' + 4 zeros + 'B'
-          [0x01, 0x41, 0x11, 0xFF, 0xBF, 0x00, 0x01, 0x42, 0x11, 0x00, 0x00], // Literal A + zero-run(4) + literal B + end
-          "Mixed literals and zero run",
-          "https://docs.kernel.org/staging/lzo.html"
-        ),
-        new TestCase(
-          [0x41, 0x41, 0x41, 0x41], // "AAAA" - repeated non-zero
-          [0x01, 0x41, 0x10, 0x00, 0x01, 0x11, 0x00, 0x00], // Literal A + match(offset=1, len=3, opcode 0x10) + end
-          "Non-zero repetition - dictionary match",
-          "https://www.kernel.org/doc/Documentation/lzo.txt"
+          "https://github.com/Hawkynt (CompressionWorkbench LzrleBuildingBlock)"
         ),
         new TestCase(
           [], // Empty input
-          [0x11, 0x00, 0x00], // Just end marker
+          [0x00, 0x00, 0x00, 0x00], // Just the header (length 0), no payload
           "Empty input",
-          "https://docs.kernel.org/staging/lzo.html"
+          "https://github.com/Hawkynt (CompressionWorkbench LzrleBuildingBlock)"
         )
       ];
     }
@@ -155,10 +151,16 @@
       super(algorithm);
       this.isInverse = isInverse;
       this.inputBuffer = [];
-      this.minMatchLength = algorithm.MIN_MATCH_LENGTH;
-      this.maxMatchLength = algorithm.MAX_MATCH_LENGTH;
-      this.maxOffset = algorithm.MAX_OFFSET;
-      this.minZeroRun = algorithm.MIN_ZERO_RUN;
+      this.MIN_MATCH = algorithm.MIN_MATCH;
+      this.MIN_RUN = algorithm.MIN_RUN;
+      this.TYPE_LITERAL = algorithm.TYPE_LITERAL;
+      this.TYPE_MATCH = algorithm.TYPE_MATCH;
+      this.TYPE_RUN = algorithm.TYPE_RUN;
+      this.LENGTH_FIELD_BITS = algorithm.LENGTH_FIELD_BITS;
+      this.LENGTH_FIELD_MAX = algorithm.LENGTH_FIELD_MAX;
+      this.HASH_BITS = algorithm.HASH_BITS;
+      this.HASH_SIZE = algorithm.HASH_SIZE;
+      this.MAX_CHAIN_DEPTH = algorithm.MAX_CHAIN_DEPTH;
     }
 
     /**
@@ -179,249 +181,232 @@
    */
 
     Result() {
-      if (this.isInverse) {
-        const result = this._decompress();
-        this.inputBuffer = [];
-        return result;
-      } else {
-        const result = this._compress();
-        this.inputBuffer = [];
-        return result;
-      }
+      const result = this.isInverse ? this._decompress() : this._compress();
+      this.inputBuffer = [];
+      return result;
     }
 
-    _compress() {
-      // Empty input produces only end marker
-      if (this.inputBuffer.length === 0) {
-        return [0x11, 0x00, 0x00];
-      }
+    // ===== COMPRESSION =====
 
-      const output = [];
-      const input = this.inputBuffer;
+    _compress() {
+      const data = this.inputBuffer;
+      const output = OpCodes.Unpack32LE(data.length);
+
+      if (data.length === 0)
+        return output;
+
+      const finder = new LZRLEHashChainFinder(Math.max(data.length, 1), this.HASH_BITS, this.MAX_CHAIN_DEPTH);
+
       let pos = 0;
       let literalStart = 0;
 
-      while (pos < input.length) {
-        // Check for zero runs first (RLE optimization)
-        const zeroRun = this._findZeroRun(input, pos);
-        if (zeroRun >= this.minZeroRun) {
-          // Encode any pending literals before zero run
-          if (pos > literalStart) {
-            this._encodeLiterals(output, input, literalStart, pos - literalStart);
-          }
-          this._encodeZeroRun(output, zeroRun);
-          pos += zeroRun;
+      while (pos < data.length) {
+        // 1. Repeated-byte run detection (cheapest to encode when it applies)
+        const runValue = data[pos];
+        let runLen = 1;
+        while (pos + runLen < data.length && data[pos + runLen] === runValue)
+          ++runLen;
+
+        if (runLen >= this.MIN_RUN) {
+          this._flushLiterals(output, data, literalStart, pos - literalStart);
+          this._writeToken(output, this.TYPE_RUN, runLen, this.MIN_RUN);
+          output.push(OpCodes.ToByte(runValue));
+          for (let i = 1; i < runLen; ++i)
+            finder.insertPosition(data, pos + i);
+          pos += runLen;
           literalStart = pos;
           continue;
         }
 
-        // Check for dictionary matches (LZ77)
-        const match = this._findBestMatch(input, pos);
-        if (match.length >= this.minMatchLength && match.offset > 0 && match.offset <= this.maxOffset) {
-          // Encode any pending literals before the match
-          if (pos > literalStart) {
-            this._encodeLiterals(output, input, literalStart, pos - literalStart);
-          }
-          this._encodeMatch(output, match.offset, match.length);
-          pos += match.length;
-          literalStart = pos;
-        } else {
-          // No good match - accumulate as literal
-          pos++;
-        }
-      }
-
-      // Encode any remaining literals
-      if (pos > literalStart) {
-        this._encodeLiterals(output, input, literalStart, pos - literalStart);
-      }
-
-      // Add end marker (opcode 0x11, offset 0x0000)
-      output.push(0x11, 0x00, 0x00);
-
-      return output;
-    }
-
-    _decompress() {
-      // Empty input
-      if (this.inputBuffer.length === 0) {
-        return [];
-      }
-
-      const output = [];
-      const input = this.inputBuffer;
-      let pos = 0;
-
-      while (pos < input.length) {
-        const opcode = input[pos++];
-
-        // Check for end marker (0x11 0x00 0x00)
-        if (opcode === 0x11 && pos + 1 < input.length) {
-          const byte1 = input[pos];
-          const byte2 = input[pos + 1];
-
-          // Zero-run encoding: opcode 0x11, distance 0xBFFF
-          if (byte1 === 0xFF && byte2 === 0xBF) {
-            pos += 2;
-            if (pos >= input.length) break;
-
-            const X = input[pos++];
-            // Run length = ((OpCodes.Shl32(X, 3))|0) + 4 (opcode 0x11 has L=1, but we ignore it for zero-run)
-            const runLength = OpCodes.Shl8(X, 3) + 4;
-
-            // Emit zeros
-            for (let i = 0; i < runLength; ++i) {
-              output.push(0x00);
-            }
+        // 2. Dictionary match search
+        if (pos + this.MIN_MATCH <= data.length) {
+          const match = finder.findMatch(data, pos, data.length, data.length - pos, this.MIN_MATCH);
+          if (match.length >= this.MIN_MATCH) {
+            this._flushLiterals(output, data, literalStart, pos - literalStart);
+            this._writeToken(output, this.TYPE_MATCH, match.length, this.MIN_MATCH);
+            output.push(...OpCodes.Unpack32LE(match.distance));
+            for (let i = 1; i < match.length; ++i)
+              finder.insertPosition(data, pos + i);
+            pos += match.length;
+            literalStart = pos;
             continue;
           }
-
-          // End marker check (offset 0x0000)
-          if (byte1 === 0x00 && byte2 === 0x00) {
-            break; // End of compressed stream
-          }
-
-          // Regular match with 16-bit offset
-          pos += 2;
-          const offset = OpCodes.Pack16BE(byte1, byte2);
-          const length = OpCodes.And8(opcode, 0x0F) + 3;
-
-          // Copy from dictionary
-          for (let i = 0; i < length; ++i) {
-            const sourcePos = output.length - offset;
-            output.push(sourcePos >= 0 ? output[sourcePos] : 0x00);
-          }
-          continue;
         }
 
-        // Literal run (opcodes 0x00-0x0F)
-        if (OpCodes.And8(opcode, 0xF0) === 0x00) {
-          let literalCount = OpCodes.And8(opcode, 0x0F);
+        // 3. No run or match: accumulate as a literal
+        ++pos;
+      }
 
-          // Extended length encoding
-          if (literalCount === 0 && pos < input.length) {
-            literalCount = input[pos++];
-            if (literalCount === 0) break; // Another form of end
-            literalCount += 15;
-          }
+      this._flushLiterals(output, data, literalStart, pos - literalStart);
+      return output;
+    }
 
-          // Copy literals
-          for (let i = 0; i < literalCount && pos < input.length; ++i) {
-            output.push(input[pos++]);
-          }
-          continue;
+    _flushLiterals(output, data, start, count) {
+      if (count === 0)
+        return;
+
+      this._writeToken(output, this.TYPE_LITERAL, count, 0);
+      for (let i = 0; i < count; ++i)
+        output.push(OpCodes.ToByte(data[start + i]));
+    }
+
+    _writeToken(output, type, length, baseValue) {
+      const field = length - baseValue;
+      if (field < this.LENGTH_FIELD_MAX) {
+        output.push(OpCodes.ToByte(OpCodes.Or32(OpCodes.Shl32(type, this.LENGTH_FIELD_BITS), field)));
+        return;
+      }
+
+      output.push(OpCodes.ToByte(OpCodes.Or32(OpCodes.Shl32(type, this.LENGTH_FIELD_BITS), this.LENGTH_FIELD_MAX)));
+      let remainder = field - this.LENGTH_FIELD_MAX;
+      while (remainder >= 255) {
+        output.push(255);
+        remainder -= 255;
+      }
+      output.push(OpCodes.ToByte(remainder));
+    }
+
+    // ===== DECOMPRESSION =====
+
+    _decompress() {
+      const compressed = this.inputBuffer;
+      if (compressed.length < 4)
+        return [];
+
+      const originalLength = OpCodes.Pack32LE(
+        OpCodes.ToByte(compressed[0]), OpCodes.ToByte(compressed[1]),
+        OpCodes.ToByte(compressed[2]), OpCodes.ToByte(compressed[3])
+      );
+      const output = [];
+      if (originalLength === 0)
+        return output;
+
+      const data = compressed.slice(4);
+      let pos = 0;
+
+      while (output.length < originalLength) {
+        const token = OpCodes.ToByte(data[pos++]);
+        const type = OpCodes.Shr8(token, this.LENGTH_FIELD_BITS);
+        const field = OpCodes.And8(token, this.LENGTH_FIELD_MAX);
+
+        let raw;
+        if (field < this.LENGTH_FIELD_MAX)
+          raw = field;
+        else {
+          let sum = 0;
+          let b;
+          do {
+            b = OpCodes.ToByte(data[pos++]);
+            sum += b;
+          } while (b === 255);
+          raw = this.LENGTH_FIELD_MAX + sum;
         }
 
-        // Match with small offset (opcodes 0x10-0x1F)
-        if (OpCodes.And8(opcode, 0xF0) === 0x10) {
-          if (pos + 1 >= input.length) break;
-
-          const byte1 = input[pos++];
-          const byte2 = input[pos++];
-          const offset = OpCodes.Pack16BE(byte1, byte2);
-
-          if (offset === 0) break; // End marker alternative
-
-          const length = OpCodes.And8(opcode, 0x0F) + 3;
-
-          // Copy match
-          for (let i = 0; i < length; ++i) {
-            const sourcePos = output.length - offset;
-            output.push(sourcePos >= 0 ? output[sourcePos] : 0x00);
-          }
-          continue;
-        }
-
-        // Other opcode ranges - simplified handling
-        // In production implementation, would handle all LZO opcode ranges
-        break;
+        if (type === this.TYPE_LITERAL) {
+          const count = raw;
+          for (let i = 0; i < count; ++i)
+            output.push(OpCodes.ToByte(data[pos++]));
+        } else if (type === this.TYPE_MATCH) {
+          const length = raw + this.MIN_MATCH;
+          const distance = OpCodes.Pack32LE(
+            OpCodes.ToByte(data[pos]), OpCodes.ToByte(data[pos + 1]),
+            OpCodes.ToByte(data[pos + 2]), OpCodes.ToByte(data[pos + 3])
+          );
+          pos += 4;
+          if (distance === 0 || distance > output.length)
+            throw new Error(`LZRLE: match references invalid distance ${distance}.`);
+          const srcPos = output.length - distance;
+          for (let i = 0; i < length; ++i)
+            output.push(output[srcPos + i]);
+        } else if (type === this.TYPE_RUN) {
+          const length = raw + this.MIN_RUN;
+          const value = OpCodes.ToByte(data[pos++]);
+          for (let i = 0; i < length; ++i)
+            output.push(value);
+        } else
+          throw new Error(`LZRLE: stream contains reserved token type ${type}.`);
       }
 
       return output;
     }
+  }
 
-    _findZeroRun(input, startPos) {
-      let length = 0;
-      while (startPos + length < input.length && input[startPos + length] === 0x00) {
-        ++length;
-        // Max encodable: ((255 << 3)|7) + 4 = 2043
-        if (length >= OpCodes.Shl8(255, 3) + 11) break;
-      }
-      return length;
+  // Hash-chain match finder mirroring CompressionWorkbench's HashChainMatchFinder:
+  // a 3-byte multiplicative-free XOR hash with a 128-step chain walk, and a
+  // deliberately non-power-of-two-safe index mask (candidate & (prev.length-1))
+  // that must be reproduced bit-for-bit, not "fixed" to a true modulo.
+  class LZRLEHashChainFinder {
+    constructor(windowSize, hashBits, maxChainDepth) {
+      this.maxChainDepth = maxChainDepth;
+      this.hashMask = OpCodes.Shl32(1, hashBits) - 1;
+      this.head = new Int32Array(OpCodes.Shl32(1, hashBits)).fill(-1);
+      this.prev = new Int32Array(windowSize);
     }
 
-    _findBestMatch(input, currentPos) {
-      let bestOffset = 0;
+    _hash(data, pos) {
+      const v = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(data[pos], 10), OpCodes.Shl32(data[pos + 1], 5)), data[pos + 2]);
+      return OpCodes.And32(v, this.hashMask);
+    }
+
+    _prevIndex(pos) {
+      return OpCodes.And32(pos, this.prev.length - 1);
+    }
+
+    findMatch(data, position, maxDistance, maxLength, minLength) {
+      if (position + 2 >= data.length)
+        return { distance: 0, length: 0 };
+
+      let bestDistance = 0;
       let bestLength = 0;
-      let literalCount = 0;
 
-      // Can't match if too close to end
-      if (currentPos + this.minMatchLength > input.length) {
-        return { offset: 0, length: 0, literalCount: 0 };
-      }
+      const hash = this._hash(data, position);
+      let candidate = this.head[hash];
+      let chainCount = 0;
+      const windowStart = Math.max(0, position - maxDistance);
 
-      // Search backward for matches (simplified sliding window)
-      const searchStart = Math.max(0, currentPos - this.maxOffset);
-
-      for (let candidatePos = searchStart; candidatePos < currentPos; ++candidatePos) {
-        let matchLength = 0;
-        const maxPossible = Math.min(this.maxMatchLength, input.length - currentPos);
-
-        // Count matching bytes
-        while (matchLength < maxPossible &&
-               input[candidatePos + matchLength] === input[currentPos + matchLength]) {
-          ++matchLength;
+      while (candidate >= windowStart && chainCount < this.maxChainDepth) {
+        if (candidate === position) {
+          candidate = this.prev[this._prevIndex(candidate)];
+          ++chainCount;
+          continue;
         }
 
-        // Keep best match
-        if (matchLength >= this.minMatchLength && matchLength > bestLength) {
-          bestOffset = currentPos - candidatePos;
-          bestLength = matchLength;
+        const distance = position - candidate;
+        const limit = Math.min(maxLength, Math.min(data.length - position, data.length - candidate));
+
+        if (bestLength === 0 || (bestLength < limit && data[candidate + bestLength] === data[position + bestLength])) {
+          let length = 0;
+          while (length < limit && data[candidate + length] === data[position + length])
+            ++length;
+
+          if (length >= minLength && length > bestLength) {
+            bestLength = length;
+            bestDistance = distance;
+            if (bestLength >= maxLength)
+              break;
+          }
         }
+
+        candidate = this.prev[this._prevIndex(candidate)];
+        if (candidate <= windowStart)
+          break;
+        ++chainCount;
       }
 
-      return { offset: bestOffset, length: bestLength, literalCount: literalCount };
+      this.prev[this._prevIndex(position)] = this.head[hash];
+      this.head[hash] = position;
+
+      return bestLength >= minLength ? { distance: bestDistance, length: bestLength } : { distance: 0, length: 0 };
     }
 
-    _encodeZeroRun(output, runLength) {
-      // LZO-RLE format: opcode 0x11, distance 0xBFFF, then X byte
-      // Run length = ((OpCodes.Shl32(X, 3))|(0 0 0 0 0 L L L)) + 4
-      // Solving: runLength = (OpCodes.Shl32(X, 3)) + 4, so X = (runLength - 4) >> 3
+    insertPosition(data, position) {
+      if (position + 2 >= data.length)
+        return;
 
-      const X = OpCodes.Shr8(runLength - 4, 3);
-      output.push(0x11, 0xFF, 0xBF, OpCodes.And8(X, 0xFF));
+      const hash = this._hash(data, position);
+      this.prev[this._prevIndex(position)] = this.head[hash];
+      this.head[hash] = position;
     }
-
-    _encodeLiterals(output, input, startPos, count) {
-      if (count === 0) return;
-
-      // Opcode 0x00-0x0F for literal count
-      if (count <= 15) {
-        output.push(count);
-      } else {
-        output.push(0x00);
-        output.push(OpCodes.And8(count - 15, 0xFF));
-      }
-
-      // Copy literal bytes
-      for (let i = 0; i < count; ++i) {
-        output.push(input[startPos + i]);
-      }
-    }
-
-    _encodeMatch(output, offset, length) {
-      // Simplified match encoding using opcode 0x10-0x1F
-      // Opcode: 0x1L where L = (length - 3)&0x0F
-      // Followed by 16-bit big-endian offset
-
-      const lengthCode = Math.min(length - 3, 15);
-      output.push(OpCodes.Or8(0x10, lengthCode));
-
-      // Big-endian offset
-      const [high, low] = OpCodes.Unpack16BE(offset);
-      output.push(high, low);
-    }
-
   }
 
   // ===== REGISTRATION =====
