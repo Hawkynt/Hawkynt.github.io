@@ -83,69 +83,65 @@
           new LinkItem("Information Theory Foundations", "https://web.stanford.edu/class/ee376a/")
         ];
 
-        // Test vectors - from Golomb coding research and specifications.
-        // Wire format: [parameter(1)] [bitCount:uint32-BE(4)] [packed bits...].
-        // The bit count field is 4 bytes wide (not 1) because a single byte
-        // overflows for any input that encodes to more than 255 bits - which
-        // happens quickly since Golomb coding is only compact for values that
-        // follow a geometric distribution with the chosen parameter M. Applying
-        // it to arbitrary byte values (uniform 0-255) with a small M such as 2
-        // is a domain mismatch: the code correctly round-trips, it just expands
-        // heavily, since the unary quotient grows with the byte value.
+        // Test vectors - wire format (matches CompressionWorkbench's BB_Golomb
+        // building block): [parameter M (1 byte)] [originalLength (4 bytes,
+        // little-endian)] [packed bits...]. M is not fixed - it is
+        // auto-selected per input as M = max(1, round(mean(data) * ln 2)),
+        // clamped to 255, so it changes with the data's mean byte value.
         this.tests = [
           {
             text: "Empty input",
             uri: "https://en.wikipedia.org/wiki/Boundary_condition",
             input: [],
-            expected: []
+            expected: [1, 0, 0, 0, 0]
           },
           {
-            text: "Golomb parameter m=2, input=0",
+            text: "Golomb parameter auto-selects m=1 for input=0",
             uri: "https://en.wikipedia.org/wiki/Golomb_coding",
             input: [0],
-            expected: [2, 0, 0, 0, 2, 0]
+            expected: [1, 1, 0, 0, 0, 0]
           },
           {
-            text: "Golomb parameter m=2, input=3",
+            text: "Golomb parameter auto-selects m=2 for input=3",
             uri: "https://rosettacode.org/wiki/Rice_coding",
             input: [3],
-            expected: [2, 0, 0, 0, 3, 160]
+            expected: [2, 1, 0, 0, 0, 160]
           },
           {
             text: "Sequential integers 0-4",
             uri: "https://unix4lyfe.org/rice-coding/",
             input: [0, 1, 2, 3, 4],
-            expected: [2, 0, 0, 0, 14, 25, 112]
+            expected: [1, 5, 0, 0, 0, 91, 188]
           },
           {
             text: "Geometric distribution pattern",
             uri: "https://en.wikipedia.org/wiki/Golomb_coding",
             input: [0, 0, 1, 0, 2, 1, 0, 3],
-            expected: [2, 0, 0, 0, 18, 4, 137, 64]
+            expected: [1, 8, 0, 0, 0, 38, 156]
           },
           {
             text: "Powers of 2 sequence",
             uri: "https://en.wikipedia.org/wiki/Rice_coding",
             input: [1, 2, 4, 8],
-            expected: [2, 0, 0, 0, 15, 102, 120]
+            expected: [3, 4, 0, 0, 0, 78, 182]
           },
           {
-            text: "Repetitive run (10 bytes) - exceeds 255 encoded bits, catches truncated bit-count field",
+            text: "Repetitive run (10 bytes) - auto-selected M tracks the mean, keeping the code compact",
             uri: "https://en.wikipedia.org/wiki/Golomb_coding",
             input: [97, 97, 97, 97, 97, 97, 97, 97, 97, 97],
-            expected: [2, 0, 0, 1, 244, 255, 255, 255, 255, 255, 255, 127, 255, 255, 255, 255, 255, 223, 255, 255, 255, 255, 255, 247, 255, 255, 255, 255, 255, 253, 255, 255, 255, 255, 255, 255, 127, 255, 255, 255, 255, 255, 223, 255, 255, 255, 255, 255, 247, 255, 255, 255, 255, 255, 253, 255, 255, 255, 255, 255, 255, 127, 255, 255, 255, 255, 255, 208]
+            expected: [67, 10, 0, 0, 0, 158, 158, 158, 158, 158, 158, 158, 158, 158, 158]
           },
           {
-            text: "Alternating pattern (16 bytes) - long unary runs from two distinct byte values",
+            text: "Alternating pattern (16 bytes) - two distinct byte values",
             uri: "https://en.wikipedia.org/wiki/Golomb_coding",
             input: [97, 98, 97, 98, 97, 98, 97, 98, 97, 98, 97, 98, 97, 98, 97, 98],
-            expected: [2, 0, 0, 3, 40, 255, 255, 255, 255, 255, 255, 127, 255, 255, 255, 255, 255, 231, 255, 255, 255, 255, 255, 251, 255, 255, 255, 255, 255, 255, 63, 255, 255, 255, 255, 255, 223, 255, 255, 255, 255, 255, 249, 255, 255, 255, 255, 255, 254, 255, 255, 255, 255, 255, 255, 207, 255, 255, 255, 255, 255, 247, 255, 255, 255, 255, 255, 254, 127, 255, 255, 255, 255, 255, 191, 255, 255, 255, 255, 255, 243, 255, 255, 255, 255, 255, 253, 255, 255, 255, 255, 255, 255, 159, 255, 255, 255, 255, 255, 239, 255, 255, 255, 255, 255, 252]
+            expected: [68, 16, 0, 0, 0, 157, 158, 157, 158, 157, 158, 157, 158, 157, 158, 157, 158, 157, 158, 157, 158]
           },
           {
             text: "Binary/random sample (16 bytes) - non-geometric distribution stress test",
             uri: "https://en.wikipedia.org/wiki/Golomb_coding",
             input: [64, 128, 192, 0, 0, 0, 64, 128, 128, 0, 0, 0, 0, 0, 0, 0],
-            expected: [2, 0, 0, 1, 128, 255, 255, 255, 255, 63, 255, 255, 255, 255, 255, 255, 255, 207, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 240, 15, 255, 255, 255, 243, 255, 255, 255, 255, 255, 255, 255, 252, 255, 255, 255, 255, 255, 255, 255, 255, 0, 0]
+            expected: [30, 16, 0, 0, 0, 198, 242, 191, 56, 0, 6, 55, 149, 229, 0, 0, 0, 0, 0]
           }
         ];
       }
@@ -155,268 +151,130 @@
       }
     }
 
-    // Golomb coding instance - educational implementation
+    // Golomb coding instance - matches CompressionWorkbench's BB_Golomb
+    // building block: the parameter M is auto-selected from the input's
+    // mean (M = max(1, round(mean * ln 2)), clamped to 255), the header is
+    // [M:1 byte][originalLength:4 bytes little-endian], and each raw byte
+    // value (no offset shift) is coded as a unary quotient plus a truncated
+    // binary remainder, MSB-first, zero-padded to a byte boundary.
     class GolombInstance extends IAlgorithmInstance {
       constructor(algorithm, isInverse = false) {
         super(algorithm);
         this.isInverse = isInverse;
         this.inputBuffer = [];
-
-        // Golomb Parameters
-        this.parameter = 2;  // Default M parameter (can be adjusted)
-        this.isRice = false; // Whether to use Rice coding (M = power of 2)
-      }
-
-      SetParameter(m) {
-        this.parameter = m;
-        this.isRice = this._isPowerOfTwo(m);
+        this.parameter = 1; // M parameter, auto-selected on compress or read from the header on decompress
       }
 
       Feed(data) {
         if (!data || data.length === 0) return;
-
-        // First byte can be parameter setting
-        if (this.inputBuffer.length === 0 && data.length > 1 && !this.isInverse) {
-          // Allow parameter to be set via first data element
-          // In practice, this would be negotiated or fixed
-        }
-
         for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {
-        if (this.inputBuffer.length === 0) {
-          return [];
-        }
-
-        if (this.isInverse) {
-          const result = this._decode(this.inputBuffer);
-          this.inputBuffer = [];
-          return result;
-        } else {
-          const result = this._encode(this.inputBuffer);
-          this.inputBuffer = [];
-          return result;
-        }
+        const result = this.isInverse ? this._decode(this.inputBuffer) : this._encode(this.inputBuffer);
+        this.inputBuffer = [];
+        return result;
       }
 
       _encode(values) {
-        if (values.length === 0) {
-          return [];
+        let m = 1;
+        if (values.length > 0) {
+          let sum = 0;
+          for (const b of values) sum += b;
+          const mean = sum / values.length;
+          m = Math.max(1, this._roundHalfToEven(mean * Math.LN2));
+          if (m > 255) m = 255;
         }
+        this.parameter = m;
 
-        const output = [];
-        const bitBuffer = new BitBuffer();
-
-        // Store parameter as first byte
-        output.push(this.parameter);
+        const bitStream = OpCodes.CreateBitStream();
+        bitStream.writeByte(m);
+        bitStream.writeUint32LE(values.length);
 
         for (const value of values) {
-          if (value < 0) {
-            throw new Error("Golomb coding requires non-negative integers");
-          }
-
-          this._encodeValue(bitBuffer, value);
+          if (value < 0) throw new Error("Golomb coding requires non-negative integers");
+          this._encodeValue(bitStream, value, m);
         }
 
-        // Store bit count as a 4-byte big-endian field (a single byte overflows
-        // for any input producing more than 255 encoded bits), then the bits.
-        const bits = bitBuffer.getBytes();
-        const bitCountBytes = OpCodes.Unpack32BE(bitBuffer.getBitCount());
-        for (let _i = 0; _i < bitCountBytes.length; _i++) output.push(bitCountBytes[_i]);
-        for (let _i = 0; _i < bits.length; _i++) output.push(bits[_i]);
-
-        return output;
+        return bitStream.toArray();
       }
 
       _decode(data) {
-        if (data.length < 5) {
-          return [];
-        }
+        if (data.length < 5) return [];
 
-        // Read parameter and bit count
-        const parameter = data[0];
-        const bitCount = OpCodes.Pack32BE(data[1], data[2], data[3], data[4]);
-        this.SetParameter(parameter);
+        const bitStream = OpCodes.CreateBitStream(data);
+        const m = bitStream.readByte();
+        const length = OpCodes.Pack32LE(bitStream.readByte(), bitStream.readByte(), bitStream.readByte(), bitStream.readByte());
+        this.parameter = m;
 
-        if (bitCount === 0) {
-          return []; // No encoded data
-        }
+        if (length === 0) return [];
 
         const values = [];
-        const bitBuffer = new BitBuffer();
-
-        // Load encoded data into bit buffer
-        for (let i = 5; i < data.length; i++) {
-          bitBuffer.addByte(data[i]);
-        }
-
-        // Set the actual bit count to avoid reading padding
-        bitBuffer.setValidBitCount(bitCount);
-
-        // Decode values until buffer is empty
-        while (bitBuffer.hasMoreBits()) {
-          try {
-            const value = this._decodeValue(bitBuffer);
-            if (value !== null) {
-              values.push(value);
-            } else {
-              break;
-            }
-          } catch (e) {
-            break; // End of valid data
-          }
-        }
+        for (let i = 0; i < length; i++) values.push(this._decodeValue(bitStream, m));
 
         return values;
       }
 
-      _encodeValue(bitBuffer, value) {
-        const quotient = Math.floor(value / this.parameter);
-        const remainder = value % this.parameter;
+      _encodeValue(bitStream, value, m) {
+        const quotient = Math.floor(value / m);
+        const remainder = value % m;
 
-        // Encode quotient in unary (quotient 1s followed by 0)
-        for (let i = 0; i < quotient; i++) {
-          bitBuffer.addBit(1);
+        // Unary: quotient 1-bits followed by a zero-bit.
+        for (let i = 0; i < quotient; i++) bitStream.writeBit(1);
+        bitStream.writeBit(0);
+
+        // Truncated binary encoding of the remainder.
+        if (m === 1) return;
+
+        const k = this._floorLog2(m);
+        const c = OpCodes.Shl32(1, k + 1) - m;
+
+        if (remainder < c) {
+          for (let i = k - 1; i >= 0; i--) bitStream.writeBit(OpCodes.And32(OpCodes.Shr32(remainder, i), 1));
+        } else {
+          const adjusted = remainder + c;
+          for (let i = k; i >= 0; i--) bitStream.writeBit(OpCodes.And32(OpCodes.Shr32(adjusted, i), 1));
         }
-        bitBuffer.addBit(0);
-
-        // Encode remainder using truncated binary
-        this._encodeTruncatedBinary(bitBuffer, remainder, this.parameter);
       }
 
-      _decodeValue(bitBuffer) {
-        // Read quotient (count 1s until 0)
+      _decodeValue(bitStream, m) {
+        // Unary quotient: count 1-bits until a 0-bit.
         let quotient = 0;
-        while (bitBuffer.hasMoreBits()) {
-          const bit = bitBuffer.readBit();
-          if (bit === 1) {
-            quotient++;
-          } else {
-            break;
-          }
-        }
+        while (bitStream.readBit() === 1) quotient++;
 
-        // Read remainder using truncated binary
-        const remainder = this._decodeTruncatedBinary(bitBuffer, this.parameter);
-        if (remainder === null) return null;
-
-        return quotient * this.parameter + remainder;
-      }
-
-      _encodeTruncatedBinary(bitBuffer, value, m) {
+        // Truncated binary remainder.
+        let remainder;
         if (m === 1) {
-          return; // No remainder bits needed
-        }
-
-        const k = Math.floor(Math.log2(m));
-        const u = Math.pow(2, k + 1) - m;
-
-        if (value < u) {
-          // Use k bits
-          for (let i = k - 1; i >= 0; i--) {
-            bitBuffer.addBit(OpCodes.ToByte(OpCodes.Shr32(value, i)&1));
-          }
+          remainder = 0;
         } else {
-          // Use k+1 bits
-          const adjusted = value + u;
-          for (let i = k; i >= 0; i--) {
-            bitBuffer.addBit(OpCodes.ToByte(OpCodes.Shr32(adjusted, i)&1));
+          const k = this._floorLog2(m);
+          const c = OpCodes.Shl32(1, k + 1) - m;
+
+          remainder = 0;
+          for (let i = 0; i < k; i++) remainder = OpCodes.Or32(OpCodes.Shl32(remainder, 1), bitStream.readBit());
+          if (remainder >= c) {
+            remainder = OpCodes.Or32(OpCodes.Shl32(remainder, 1), bitStream.readBit());
+            remainder -= c;
           }
         }
+
+        return quotient * m + remainder;
       }
 
-      _decodeTruncatedBinary(bitBuffer, m) {
-        if (m === 1) {
-          return 0; // No remainder bits
-        }
-
-        const k = Math.floor(Math.log2(m));
-        const u = Math.pow(2, k + 1) - m;
-
-        // Read first k bits
-        let value = 0;
-        for (let i = 0; i < k; i++) {
-          if (!bitBuffer.hasMoreBits()) return null;
-          value = OpCodes.ToUint32(OpCodes.Shl32(value, 1)|bitBuffer.readBit());
-        }
-
-        if (value < u) {
-          return value;
-        } else {
-          // Read one more bit
-          if (!bitBuffer.hasMoreBits()) return null;
-          value = OpCodes.ToUint32(OpCodes.Shl32(value, 1)|bitBuffer.readBit());
-          return value - u;
-        }
+      _floorLog2(value) {
+        let result = 0, v = value;
+        while (v > 1) { result++; v = Math.floor(v / 2); }
+        return result;
       }
 
-      _isPowerOfTwo(n) {
-        return n > 0 && (n&(n - 1)) === 0;
-      }
-    }
-
-    // Helper class for bit-level operations
-    class BitBuffer {
-      constructor() {
-        this.bits = [];
-        this.readPos = 0;
-        this.validBitCount = -1; // -1 means use all bits
-      }
-
-      addBit(bit) {
-        this.bits.push(bit&1);
-      }
-
-      addByte(byte) {
-        for (let i = 7; i >= 0; i--) {
-          this.addBit(OpCodes.ToByte(OpCodes.Shr32(byte, i)&1));
-        }
-      }
-
-      readBit() {
-        const maxPos = this.validBitCount >= 0 ? this.validBitCount : this.bits.length;
-        if (this.readPos >= maxPos) {
-          throw new Error("No more bits to read");
-        }
-        return this.bits[this.readPos++];
-      }
-
-      hasMoreBits() {
-        const maxPos = this.validBitCount >= 0 ? this.validBitCount : this.bits.length;
-        return this.readPos < maxPos;
-      }
-
-      getBitCount() {
-        return this.bits.length;
-      }
-
-      setValidBitCount(count) {
-        this.validBitCount = count;
-      }
-
-      getBytes() {
-        if (this.bits.length === 0) {
-          return [];
-        }
-
-        const bytes = [];
-        const bitsCopy = [...this.bits];
-
-        // Pad to byte boundary
-        while (bitsCopy.length % 8 !== 0) {
-          bitsCopy.push(0);
-        }
-
-        for (let i = 0; i < bitsCopy.length; i += 8) {
-          let byte = 0;
-          for (let j = 0; j < 8; j++) {
-            byte |= OpCodes.Shl32(bitsCopy[i + j], 7 - j);
-          }
-          bytes.push(byte);
-        }
-
-        return bytes;
+      // Matches .NET's Math.Round default (MidpointRounding.ToEven / banker's
+      // rounding), which the reference implementation relies on for M selection.
+      _roundHalfToEven(x) {
+        const floor = Math.floor(x);
+        const diff = x - floor;
+        if (diff < 0.5) return floor;
+        if (diff > 0.5) return floor + 1;
+        return (floor % 2 === 0) ? floor : floor + 1;
       }
     }
 
