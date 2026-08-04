@@ -1,7 +1,10 @@
 /*
- * Delta Encoding Compression Algorithm Implementation
+ * Delta + RLE Compression Algorithm Implementation
  * Compatible with AlgorithmFramework
- * Educational implementation of difference-based encoding
+ * Educational implementation of difference-based encoding followed by
+ * run-length encoding of the delta stream. This is a compressing variant -
+ * for the pure, size-preserving delta transform (no RLE pass), see
+ * delta-filter.js / "Delta Filter".
  * (c)2006-2025 Hawkynt
  */
 
@@ -60,8 +63,8 @@
         super();
 
         // Required metadata
-        this.name = "Delta Encoding";
-        this.description = "Difference-based transform that stores differences between consecutive values. Effective for data with small variations like audio samples, image gradients, or time series.";
+        this.name = "Delta + RLE";
+        this.description = "Difference-based transform (stores differences between consecutive values) followed by run-length encoding of the delta stream, so unlike the pure delta filter this actually compresses. Effective for data with small variations like audio samples, image gradients, or time series, and for long runs of a constant or steadily-changing value. See 'Delta Filter' for the non-compressing, size-preserving variant.";
         this.inventor = "Various (general technique)";
         this.year = 1950;
         this.category = CategoryType.COMPRESSION;
