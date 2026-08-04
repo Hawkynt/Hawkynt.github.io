@@ -55,7 +55,7 @@
 
       // Required metadata
       this.name = "Morse Code (International)";
-      this.description = "Method of transmitting text information as a series of on-off tones, lights, or clicks using standardized sequences of short and long signals called dots and dashes. Educational implementation following ITU-R M.1677-1 standard.";
+      this.description = "Method of transmitting text information as a series of on-off tones, lights, or clicks using standardized sequences of short and long signals called dots and dashes. Educational implementation following ITU-R M.1677-1 standard. ITU-R M.1677-1 only defines patterns for uppercase letters, digits, a fixed set of punctuation, and space; it has no case distinction and no representation for control characters or arbitrary binary data, so any other byte is rejected rather than silently mapped to '?' or case-folded.";
       this.inventor = "Samuel Morse";
       this.year = 1836;
       this.category = CategoryType.ENCODING;
@@ -63,6 +63,12 @@
       this.securityStatus = SecurityStatus.EDUCATIONAL;
       this.complexity = ComplexityType.BEGINNER;
       this.country = CountryCode.US;
+
+      // Morse only has patterns for uppercase letters/digits/punctuation/
+      // space; it cannot represent case, control bytes, or arbitrary binary
+      // data. Declared here so the round-trip suite scores a clean
+      // rejection of out-of-domain bytes as a domain limit, not a defect.
+      this.restrictedInputDomain = true;
 
       // Documentation and references
       this.documentation = [
@@ -104,6 +110,12 @@
           OpCodes.AnsiToBytes(".... . .-.. .-.. ---"),
           "Basic word encoding test - Morse",
           "Educational standard"
+        ),
+        new TestCase(
+          OpCodes.AnsiToBytes("SOS  &=("),
+          OpCodes.AnsiToBytes("... --- ... / / .-... -...- -.--."),
+          "Exact-spacing and prosign-collision regression test - a doubled space must round-trip exactly (previous word-splitting collapsed runs of whitespace), and '&'/'='/'(' must decode back to themselves rather than to a same-pattern prosign",
+          "https://en.wikipedia.org/wiki/Morse_code"
         )
       ];
 
@@ -154,10 +166,16 @@
     }
 
     init() {
-      // Build reverse lookup table
+      // Build reverse lookup table. Only single-character entries
+      // participate: several prosigns share a pattern with an ordinary
+      // punctuation character (e.g. '<AS>' and '&' are both '.-...'), and
+      // encode() only ever looks up single characters, so letting a
+      // multi-character prosign key win that collision (as a naive
+      // iterate-and-overwrite build previously did, since the prosigns are
+      // listed last in morseTable) made '&', '=' and '(' undecodable.
       this.reverseTable = {};
       for (const [char, morse] of Object.entries(this.morseTable)) {
-        this.reverseTable[morse] = char;
+        if (char.length === 1) this.reverseTable[morse] = char;
       }
     }
   }
@@ -220,33 +238,27 @@
       }
 
       const text = String.fromCharCode(...data);
-      const upperData = text.toUpperCase();
-      const morseWords = [];
 
-      // Split into words
-      const words = upperData.split(/\s+/);
+      // One Morse token per input byte (including the '/' token for a
+      // literal space), joined by a single space, with no case-folding and
+      // no substitution of unmapped bytes with '?'. This is required for an
+      // exact round trip: the previous word-splitting approach collapsed
+      // runs of whitespace and any doubled/leading/trailing spaces, and
+      // silently replacing an unmappable character with '?' silently
+      // corrupted data instead of rejecting it.
+      const tokens = [];
+      for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        const morseChar = this.algorithm.morseTable[char];
 
-      for (const word of words) {
-        if (word.length === 0) continue;
-
-        const morseLetters = [];
-
-        for (let i = 0; i < word.length; i++) {
-          const char = word[i];
-          const morseChar = this.algorithm.morseTable[char];
-
-          if (morseChar) {
-            morseLetters.push(morseChar);
-          } else {
-            // Unknown character - represent as question mark
-            morseLetters.push(this.algorithm.morseTable['?']);
-          }
+        if (morseChar === undefined) {
+          throw new Error(`MorseInstance.encode: byte 0x${data[i].toString(16).padStart(2, '0')} ('${char.replace(/[\x00-\x1f]/, '?')}') at position ${i} has no Morse representation`);
         }
 
-        morseWords.push(morseLetters.join(' '));
+        tokens.push(morseChar);
       }
 
-      const result = morseWords.join('  /  ');
+      const result = tokens.join(' ');
 
       // Convert string to byte array
       const resultBytes = [];
@@ -268,39 +280,24 @@
         this.algorithm.init();
       }
 
-      // Clean up input - normalize spaces and separators
-      let cleanData = morse.trim()
-        .replace(/\s*\/\s*/g, ' / ')  // Normalize word separators
-        .replace(/\s+/g, ' ')          // Normalize multiple spaces
-        .replace(/[^.\-\s/]/g, '');     // Remove invalid characters
+      // Mirror encode(): split on the single-space token separator with no
+      // normalization, and reject (rather than substitute '?' for) any
+      // token that isn't a known Morse pattern.
+      const tokens = morse.split(' ');
+      const decodedChars = [];
 
-      // Split by word separators
-      const morseWords = cleanData.split(' / ');
-      const decodedWords = [];
+      for (let i = 0; i < tokens.length; i++) {
+        const token = tokens[i];
+        const decodedChar = this.algorithm.reverseTable[token];
 
-      for (const morseWord of morseWords) {
-        if (morseWord.trim().length === 0) continue;
-
-        // Split by letter separators (single space)
-        const morseLetters = morseWord.trim().split(' ');
-        const decodedLetters = [];
-
-        for (const morseLetter of morseLetters) {
-          if (morseLetter.length === 0) continue;
-
-          const decodedChar = this.algorithm.reverseTable[morseLetter];
-          if (decodedChar) {
-            decodedLetters.push(decodedChar);
-          } else {
-            // Unknown Morse pattern
-            decodedLetters.push('?');
-          }
+        if (decodedChar === undefined) {
+          throw new Error(`MorseInstance.decode: invalid Morse token '${token}' at position ${i}`);
         }
 
-        decodedWords.push(decodedLetters.join(''));
+        decodedChars.push(decodedChar);
       }
 
-      const result = decodedWords.join(' ');
+      const result = decodedChars.join('');
 
       // Convert string to byte array
       const resultBytes = [];
