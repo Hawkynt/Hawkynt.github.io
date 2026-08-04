@@ -63,7 +63,7 @@
 
         // Required metadata
         // NOTE: despite the legacy name this predates, this is NOT the Context
-        // Tree Weighting method of Willems, Shtarkov & Tjalkens: it has no
+        // Tree Weighting method of Willems, Shtarkov and Tjalkens: it has no
         // Krichevsky-Trofimov estimator, no binary context tree and no
         // recursive weighting between a node's own estimate and its
         // children. It is a simple most-frequent-symbol predictor over an
