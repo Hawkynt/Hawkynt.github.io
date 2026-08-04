@@ -4,9 +4,20 @@
  * (c)2006-2025 Hawkynt
  *
  * LZP combines PPM-style context modeling with LZ77-style string matching.
- * Uses hash-based prediction to find matches based on context, eliminating
- * the need to encode match positions explicitly. Efficient for text with
- * repeated patterns and predictable structure.
+ * A hash of the `order` bytes preceding each position predicts the next
+ * byte; if the prediction is right, only a flag bit is emitted, otherwise
+ * the actual byte follows inline. This mirrors the reference
+ * CompressionWorkbench encoder byte-for-byte:
+ *
+ *   <Stream> := <size:4 LE> <order:1> [<Group>]*
+ *   <Group>  := <flags:1> [<literal byte>]*   (up to 8 decisions per group;
+ *                                              flag bit i = 1 -> prediction
+ *                                              hit, no literal byte emitted)
+ *
+ * The context hash is a 20-bit FNV-1a hash (offset basis 2166136261, prime
+ * 16777619) of the `order` bytes immediately before the current position,
+ * mapping into a 2^20-entry table of predicted byte values. The first
+ * `order` positions of the stream have no context and are always literals.
  *
  * References:
  * - Charles Bloom, "LZP: a new data compression algorithm", DCC 1996
@@ -72,11 +83,9 @@
       this.complexity = ComplexityType.INTERMEDIATE;
       this.country = CountryCode.US;
 
-      // Configuration parameters
-      this.CONTEXT_SIZE = 4;           // Number of bytes for context hashing
-      this.HASH_TABLE_SIZE = 65536;    // 16-bit hash table (2^16)
-      this.MAX_MATCH_LENGTH = 255;     // Maximum match length (8-bit)
-      this.MIN_MATCH_LENGTH = 1;       // Minimum match to encode
+      // Configuration parameters (matches CompressionWorkbench's BB_Lzp defaults)
+      this.ORDER = 3;                  // Number of preceding bytes used as context
+      this.HASH_BITS = 20;             // 20-bit FNV-1a hash table (2^20 entries)
 
       // Documentation and references
       this.documentation = [
@@ -92,37 +101,39 @@
       ];
 
       // Test vectors demonstrating LZP compression behavior
-      // Format: Control bytes (8 bits per byte) + literals/matches
-      // Bit 1 = prediction match, Bit 0 = literal follows
+      // Format: 4-byte LE original size + 1-byte order, then per-group flag
+      // bytes (bit i = 1 -> prediction hit) followed by that group's literals.
+      // With order 3, the first 3 positions of every stream are always literal.
       this.tests = [
         new TestCase(
           [], // Empty input
-          [], // Empty output
+          [0, 0, 0, 0, 3], // Header only: size 0, order 3
           "Empty input test",
           "https://github.com/howerj/lzp"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("A"), // Single byte
-          [0, 65], // Control: 00000000, Literal: A
+          [1, 0, 0, 0, 3, 0, 65], // size=1, order=3, flags=0, literal A
           "Single byte - all literals (no context)",
           "https://github.com/lmcilroy/lzp"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("AAAA"), // Repetitive data - 4 A's
-          [0, 65, 65, 65, 65], // All literals (context size 4, no predictions)
+          [4, 0, 0, 0, 3, 0, 65, 65, 65, 65], // all literals (order 3, no predictions yet)
           "Repetitive pattern - AAAA",
           "https://github.com/howerj/lzp"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("ABCABC"), // Pattern repetition
-          [0, 65, 66, 67, 65, 66, 67], // All literals (short input)
+          [6, 0, 0, 0, 3, 0, 65, 66, 67, 65, 66, 67], // all literals (short input)
           "Pattern repetition - ABCABC",
           "https://github.com/lmcilroy/lzp"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("Hello world!"), // Real text
-          // Control byte: 0, then literals with one prediction (bit 1 set)
-          [0, 72, 101, 108, 108, 111, 32, 119, 111, 0, 114, 108, 100, 33],
+          // size=12, order=3, flags=0 (8 literals), flags=0 (4 more literals) - too
+          // short/varied a sample for any context hash to repeat a prediction
+          [12, 0, 0, 0, 3, 0, 72, 101, 108, 108, 111, 32, 119, 111, 0, 114, 108, 100, 33],
           "Real text - Hello world!",
           "https://hugi.scene.org/online/coding/hugi 12 - colzp.htm"
         )
@@ -157,10 +168,8 @@
       super(algorithm);
       this.isInverse = isInverse;
       this.inputBuffer = [];
-      this.contextSize = algorithm.CONTEXT_SIZE;
-      this.hashTableSize = algorithm.HASH_TABLE_SIZE;
-      this.maxMatchLength = algorithm.MAX_MATCH_LENGTH;
-      this.minMatchLength = algorithm.MIN_MATCH_LENGTH;
+      this.order = algorithm.ORDER;
+      this.hashSize = OpCodes.Shl32(1, algorithm.HASH_BITS);
     }
 
     /**
@@ -181,132 +190,125 @@
    */
 
     Result() {
-      if (this.inputBuffer.length === 0) {
-        return [];
-      }
-
-      if (this.isInverse) {
-        return this._decompress();
-      } else {
-        return this._compress();
-      }
+      const result = this.isInverse ? this._decompress() : this._compress();
+      this.inputBuffer = [];
+      return result;
     }
 
     /**
-     * Compute hash from context bytes using XOR-style hashing
-     * Standard bitwise operations (not cryptographic)
+     * 20-bit FNV-1a hash of the `order` bytes immediately before `pos`,
+     * matching the reference encoder's ComputeHash exactly (32-bit
+     * unsigned offset basis/prime, masked down to the hash table width).
      */
-    _computeHash(context) {
-      let hash = 0;
-      for (let i = 0; i < context.length; ++i) {
-        // hash = (left shift hash by 4) XOR byte
-        hash = OpCodes.Xor32((OpCodes.Shl32(hash, 4))&0xFFFF, context[i]);
+    _computeHash(data, pos, order) {
+      let h = 2166136261;
+      for (let i = pos - order; i < pos; ++i) {
+        h = OpCodes.Xor32(h, data[i]);
+        h = OpCodes.Mul32(h, 16777619);
       }
-      return hash&(this.hashTableSize - 1);
+      return OpCodes.And32(h, this.hashSize - 1);
     }
 
     /**
-     * Compress data using LZP algorithm
-     * Format: Control bytes (8 prediction flags) + literal bytes
-     * Each control byte manages 8 predictions: bit=1 means match, bit=0 means literal follows
+     * Compress data using LZP.
+     * Format: 4-byte LE original size + 1-byte order, then groups of up to
+     * 8 decisions: a flag byte (bit i = 1 -> prediction hit) followed by
+     * the literal bytes for any misses in that group, in order.
      */
     _compress() {
-      const result = [];
-      const model = new Array(this.hashTableSize).fill(0); // Prediction model
       const input = this.inputBuffer;
-      const contextSize = this.contextSize;
+      const n = input.length;
+      const header = OpCodes.Unpack32LE(n).concat([this.order]);
+      if (n === 0) return header;
 
+      const hashTable = new Uint8Array(this.hashSize);
+      const result = header;
       let pos = 0;
-      let controlByte = 0;
-      let bitPos = 0;
-      const pendingLiterals = [];
 
-      while (pos < input.length) {
-        const currentByte = input[pos];
+      while (pos < n) {
+        let flags = 0;
+        const literals = [];
+        const count = Math.min(8, n - pos);
 
-        // Compute hash from context
-        let hash = 0;
-        if (pos >= contextSize) {
-          const context = input.slice(pos - contextSize, pos);
-          hash = this._computeHash(context);
+        for (let bit = 0; bit < count; ++bit) {
+          const current = input[pos];
+
+          if (pos < this.order) {
+            literals.push(current);
+            ++pos;
+            continue;
+          }
+
+          const hash = this._computeHash(input, pos, this.order);
+          const predicted = hashTable[hash];
+
+          if (predicted === current)
+            flags = OpCodes.SetBit(flags, bit, true);
+          else
+            literals.push(current);
+
+          hashTable[hash] = current;
+          ++pos;
         }
 
-        // Check if model predicts correctly
-        const predicted = model[hash];
-        if (predicted === currentByte && pos >= contextSize) {
-          // Prediction match - set bit to 1
-          controlByte |= (OpCodes.Shl32(1, bitPos));
-        } else {
-          // Prediction failed or not enough context - output literal
-          pendingLiterals.push(currentByte);
-        }
-
-        // Update model
-        model[hash] = currentByte;
-
-        ++bitPos;
-        ++pos;
-
-        // Flush control byte after 8 predictions
-        if (bitPos === 8 || pos === input.length) {
-          result.push(controlByte);
-          for (let _i = 0; _i < pendingLiterals.length; _i++) result.push(pendingLiterals[_i]);
-          controlByte = 0;
-          bitPos = 0;
-          pendingLiterals.length = 0;
-        }
+        result.push(flags);
+        for (let i = 0; i < literals.length; ++i) result.push(literals[i]);
       }
 
-      this.inputBuffer = [];
       return result;
     }
 
     /**
-     * Decompress LZP compressed data
-     * Reads control bytes and literals/predictions
+     * Decompress LZP compressed data.
      */
     _decompress() {
-      const result = [];
-      const model = new Array(this.hashTableSize).fill(0);
       const input = this.inputBuffer;
-      const contextSize = this.contextSize;
+      if (input.length < 5)
+        throw new Error("LZP compressed data is too short (missing header).");
 
-      let pos = 0;
+      const originalSize = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
+      const order = input[4];
+      if (originalSize === 0) return [];
 
-      while (pos < input.length) {
-        // Read control byte
-        const controlByte = input[pos++];
-        if (pos > input.length) break;
+      const hashTable = new Uint8Array(this.hashSize);
+      const output = new Array(originalSize);
+      let srcPos = 5, dstPos = 0;
 
-        // Process up to 8 bits
-        for (let bitPos = 0; bitPos < 8; ++bitPos) {
-          // Compute hash from context
-          let hash = 0;
-          if (result.length >= contextSize) {
-            const context = result.slice(result.length - contextSize);
-            hash = this._computeHash(context);
-          }
+      while (dstPos < originalSize) {
+        if (srcPos >= input.length)
+          throw new Error("Unexpected end of LZP compressed data.");
 
-          // Check control bit
-          const isMatch = (controlByte&(OpCodes.Shl32(1, bitPos))) !== 0;
+        const flags = input[srcPos++];
+        const count = Math.min(8, originalSize - dstPos);
 
+        for (let bit = 0; bit < count; ++bit) {
           let byte;
-          if (isMatch && result.length >= contextSize) {
-            // Prediction match - use predicted byte
-            byte = model[hash];
+
+          if (dstPos < order) {
+            if (srcPos >= input.length)
+              throw new Error("Unexpected end of LZP compressed data.");
+            byte = input[srcPos++];
           } else {
-            // Literal - read from input
-            if (pos >= input.length) break;
-            byte = input[pos++];
+            const hash = this._computeHash(output, dstPos, order);
+            const isMatch = OpCodes.GetBit(flags, bit);
+
+            if (isMatch) {
+              byte = hashTable[hash];
+            } else {
+              if (srcPos >= input.length)
+                throw new Error("Unexpected end of LZP compressed data.");
+              byte = input[srcPos++];
+            }
+
+            hashTable[hash] = byte;
           }
 
-          result.push(byte);
-          model[hash] = byte; // Update prediction model
+          output[dstPos] = byte;
+          ++dstPos;
         }
       }
 
-      this.inputBuffer = [];
-      return result;
+      return output;
     }
   }
 
