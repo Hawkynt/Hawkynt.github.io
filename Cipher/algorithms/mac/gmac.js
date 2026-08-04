@@ -259,7 +259,7 @@
       if (!Array.isArray(data)) {
         throw new Error("Invalid input data - must be byte array");
       }
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     // Get the MAC result
@@ -506,7 +506,7 @@
       // Add 64-bit AAD length (big-endian) using OpCodes
       gmacInput.push(0, 0, 0, 0); // High 32 bits (always 0 for practical message sizes)
       const aadLengthBytes = OpCodes.Unpack32BE(aadBitLength);
-      gmacInput.push(...aadLengthBytes);
+      for (let _i = 0; _i < aadLengthBytes.length; _i++) gmacInput.push(aadLengthBytes[_i]);
 
       // Add 64-bit plaintext length (big-endian, zero for GMAC)
       gmacInput.push(0, 0, 0, 0, 0, 0, 0, 0);

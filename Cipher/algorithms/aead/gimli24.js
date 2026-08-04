@@ -405,7 +405,7 @@
         for (let i = 0; i < GIMLI24_BLOCK_SIZE; ++i) {
           ptBlock.push(OpCodes.Xor32(stateBytes[i], block[i]));
         }
-        plaintext.push(...ptBlock);
+        for (let _i = 0; _i < ptBlock.length; _i++) plaintext.push(ptBlock[_i]);
 
         // Update state with ciphertext (swap operation)
         this.state.xorBytes(block, 0);
@@ -425,7 +425,7 @@
         for (let i = 0; i < dataLen; ++i) {
           ptBlock.push(OpCodes.Xor32(stateBytes[i], block[i]));
         }
-        plaintext.push(...ptBlock);
+        for (let _i = 0; _i < ptBlock.length; _i++) plaintext.push(ptBlock[_i]);
 
         // Update state with ciphertext (swap operation)
         this.state.xorBytes(block, 0);
@@ -453,7 +453,7 @@
      */
     Feed(data) {
       if (!data || data.length === 0) return;
-      this.dataBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.dataBuffer.push(data[_i]);
     }
 
     /**

@@ -369,7 +369,7 @@
         // HMAC_hash(secret, A(i) + seed)
         const chunk = this._hmac(secret, [...a, ...seed], hashName, hmacAlgo);
 
-        output.push(...chunk);
+        for (let _i = 0; _i < chunk.length; _i++) output.push(chunk[_i]);
       }
 
       // Truncate to exact output length
@@ -615,7 +615,7 @@
       while (output.length < outputLength) {
         a = this._hmac(secret, a, hashName, hmacAlgo);
         const chunk = this._hmac(secret, [...a, ...seed], hashName, hmacAlgo);
-        output.push(...chunk);
+        for (let _i = 0; _i < chunk.length; _i++) output.push(chunk[_i]);
       }
 
       return output.slice(0, outputLength);

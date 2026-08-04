@@ -249,7 +249,7 @@
       if (!this.key) throw new Error("Key not set");
 
       // Add data to input buffer
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     // Get the result of the transformation
@@ -278,7 +278,7 @@
         const processedBlock = this.isInverse 
           ? this._decryptBlock(block) 
           : this._encryptBlock(block);
-        output.push(...processedBlock);
+        for (let _i = 0; _i < processedBlock.length; _i++) output.push(processedBlock[_i]);
       }
 
       // Clear input buffer for next operation
@@ -389,7 +389,7 @@
       const result = [];
       for (let i = 0; i < 4; i++) {
         const wordBytes = OpCodes.Unpack32LE(X[i]);
-        result.push(...wordBytes);
+        for (let _i = 0; _i < wordBytes.length; _i++) result.push(wordBytes[_i]);
       }
 
       return result;
@@ -444,7 +444,7 @@
       const result = [];
       for (let i = 0; i < 4; i++) {
         const wordBytes = OpCodes.Unpack32LE(X[i]);
-        result.push(...wordBytes);
+        for (let _i = 0; _i < wordBytes.length; _i++) result.push(wordBytes[_i]);
       }
 
       return result;

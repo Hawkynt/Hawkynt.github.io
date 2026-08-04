@@ -219,7 +219,7 @@
           }
 
           const processedBlock = this._processBlock(block);
-          output.push(...processedBlock);
+          for (let _i = 0; _i < processedBlock.length; _i++) output.push(processedBlock[_i]);
         }
 
         this.inputBuffer = [];
@@ -272,7 +272,7 @@
         const result = [];
         for (let i = 0; i < 3; i++) {
           const bytes = global.OpCodes.Unpack32LE(state[i]);
-          result.push(...bytes);
+          for (let _i = 0; _i < bytes.length; _i++) result.push(bytes[_i]);
         }
 
         return result;

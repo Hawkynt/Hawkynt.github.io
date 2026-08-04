@@ -232,7 +232,7 @@
         throw new Error(msg.map(b => String.fromCharCode(b)).join(''));
       }
 
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -315,7 +315,7 @@
 
       for (const wordIndex of keyWords) {
         const bytes = OpCodes.Unpack32LE(workingState[wordIndex]);
-        derivedKey.push(...bytes);
+        for (let _i = 0; _i < bytes.length; _i++) derivedKey.push(bytes[_i]);
       }
 
       return derivedKey;
@@ -393,7 +393,7 @@
       const keystream = [];
       for (let i = 0; i < 16; i++) {
         const bytes = OpCodes.Unpack32LE(workingState[i]);
-        keystream.push(...bytes);
+        for (let _i = 0; _i < bytes.length; _i++) keystream.push(bytes[_i]);
       }
 
       return keystream;

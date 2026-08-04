@@ -174,7 +174,7 @@
       if (!this.key) {
         throw new Error("Key must be set for EME mode.");
       }
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -214,7 +214,7 @@
           decryptCipher.key = this.key;
           decryptCipher.Feed(block);
           const decrypted = decryptCipher.Result();
-          layer1.push(...decrypted);
+          for (let _i = 0; _i < decrypted.length; _i++) layer1.push(decrypted[_i]);
         }
 
         // Step 2: Remove mask (simplified - real EME uses complex universal hash)
@@ -223,7 +223,7 @@
           const block = layer1.slice(i, i + blockSize);
           const mask = this._generateMask(i / blockSize, numBlocks);
           const unmaskedBlock = OpCodes.XorArrays(block, mask);
-          unmasked.push(...unmaskedBlock);
+          for (let _i = 0; _i < unmaskedBlock.length; _i++) unmasked.push(unmaskedBlock[_i]);
         }
 
         // Step 3: Second ECB decryption layer
@@ -233,7 +233,7 @@
           decryptCipher.key = this.key;
           decryptCipher.Feed(block);
           const plainBlock = decryptCipher.Result();
-          output.push(...plainBlock);
+          for (let _i = 0; _i < plainBlock.length; _i++) output.push(plainBlock[_i]);
         }
 
       } else {
@@ -247,7 +247,7 @@
           encryptCipher.key = this.key;
           encryptCipher.Feed(block);
           const encrypted = encryptCipher.Result();
-          layer1.push(...encrypted);
+          for (let _i = 0; _i < encrypted.length; _i++) layer1.push(encrypted[_i]);
         }
 
         // Step 2: Apply mask (simplified - real EME uses complex universal hash)
@@ -256,7 +256,7 @@
           const block = layer1.slice(i, i + blockSize);
           const mask = this._generateMask(i / blockSize, numBlocks);
           const maskedBlock = OpCodes.XorArrays(block, mask);
-          masked.push(...maskedBlock);
+          for (let _i = 0; _i < maskedBlock.length; _i++) masked.push(maskedBlock[_i]);
         }
 
         // Step 3: Second ECB encryption layer
@@ -266,7 +266,7 @@
           encryptCipher.key = this.key;
           encryptCipher.Feed(block);
           const cipherBlock = encryptCipher.Result();
-          output.push(...cipherBlock);
+          for (let _i = 0; _i < cipherBlock.length; _i++) output.push(cipherBlock[_i]);
         }
       }
 

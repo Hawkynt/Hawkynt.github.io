@@ -165,7 +165,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -251,7 +251,7 @@
       const result = [];
       for (let i = 0; i < 12; i++) {
         const bytes = OpCodes.Unpack32LE(s[i]);
-        result.push(...bytes);
+        for (let _i = 0; _i < bytes.length; _i++) result.push(bytes[_i]);
       }
 
       return result;

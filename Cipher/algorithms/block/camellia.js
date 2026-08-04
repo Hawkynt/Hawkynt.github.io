@@ -428,7 +428,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -454,7 +454,7 @@
         const processedBlock = this.isInverse 
           ? this._decryptBlock(block) 
           : this._encryptBlock(block);
-        output.push(...processedBlock);
+        for (let _i = 0; _i < processedBlock.length; _i++) output.push(processedBlock[_i]);
       }
 
       // Clear input buffer

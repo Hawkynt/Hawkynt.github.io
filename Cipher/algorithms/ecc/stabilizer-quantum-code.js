@@ -218,7 +218,7 @@
       if (!Array.isArray(data)) {
         throw new Error('StabilizerQuantumCodeInstance.Feed: Input must be byte array');
       }
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**

@@ -630,7 +630,7 @@
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -658,7 +658,7 @@
           result = this.encryptBlock(block);
         }
 
-        output.push(...result);
+        for (let _i = 0; _i < result.length; _i++) output.push(result[_i]);
       }
 
       this.inputBuffer = [];
@@ -765,7 +765,7 @@
       const output = [];
       for (let i = 0; i < 4; i++) {
         const bytes = OpCodes.Unpack32LE(S[i]);
-        output.push(...bytes);
+        for (let _i = 0; _i < bytes.length; _i++) output.push(bytes[_i]);
       }
       return output;
     }
@@ -907,7 +907,7 @@
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -935,7 +935,7 @@
           result = this.encryptBlock(block);
         }
 
-        output.push(...result);
+        for (let _i = 0; _i < result.length; _i++) output.push(result[_i]);
       }
 
       this.inputBuffer = [];
@@ -1043,7 +1043,7 @@
       const output = [];
       for (let i = 0; i < 4; i++) {
         const bytes = OpCodes.Unpack32LE(S[i]);
-        output.push(...bytes);
+        for (let _i = 0; _i < bytes.length; _i++) output.push(bytes[_i]);
       }
       return output;
     }

@@ -164,7 +164,7 @@
 
       Feed(data) {
         if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {
@@ -186,7 +186,7 @@
 
         // Write uncompressed length (4 bytes, big-endian)
         const lengthBytes = OpCodes.Unpack32BE(input.length);
-        output.push(...lengthBytes);
+        for (let _i = 0; _i < lengthBytes.length; _i++) output.push(lengthBytes[_i]);
 
         // Initialize match finder hash table
         const hashTable = new Map();

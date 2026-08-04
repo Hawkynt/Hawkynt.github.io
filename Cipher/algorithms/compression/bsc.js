@@ -712,7 +712,7 @@
           const crc32Bytes = OpCodes.Unpack32BE(block.crc32);
           for (let _i = 0; _i < crc32Bytes.length; _i++) result.push(crc32Bytes[_i]);
 
-          result.push(...block.compressedData);
+          { const _src = block.compressedData; for (let _i = 0; _i < _src.length; _i++) result.push(_src[_i]); }
         }
 
         return result;

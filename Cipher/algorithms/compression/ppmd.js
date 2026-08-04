@@ -149,7 +149,7 @@
 
       Feed(data) {
         if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {
@@ -178,13 +178,13 @@
         // Add header
         compressed.push(this.maxOrder);
         // Use OpCodes for bit operations in header
-        compressed.push(...OpCodes.Unpack32LE(data.length));
+        { const _src = OpCodes.Unpack32LE(data.length); for (let _i = 0; _i < _src.length; _i++) compressed.push(_src[_i]); }
 
         // Compress each byte using dynamic context modeling
         for (let i = 0; i < data.length; i++) {
           const symbol = data[i];
           const encodedData = this._encodeSymbolPPMd(symbol);
-          compressed.push(...encodedData);
+          for (let _i = 0; _i < encodedData.length; _i++) compressed.push(encodedData[_i]);
 
           // Update model with enhanced learning
           this._updateModelPPMd(symbol);

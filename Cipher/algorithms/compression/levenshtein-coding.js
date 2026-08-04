@@ -138,7 +138,7 @@
 
       Feed(data) {
         if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {
@@ -224,9 +224,9 @@
         }
 
         const output = [];
-        output.push(...OpCodes.Unpack32BE(data.length));
-        output.push(...OpCodes.Unpack32BE(bitLen));
-        output.push(...packed);
+        { const _src = OpCodes.Unpack32BE(data.length); for (let _i = 0; _i < _src.length; _i++) output.push(_src[_i]); }
+        { const _src = OpCodes.Unpack32BE(bitLen); for (let _i = 0; _i < _src.length; _i++) output.push(_src[_i]); }
+        for (let _i = 0; _i < packed.length; _i++) output.push(packed[_i]);
         return output;
       }
 

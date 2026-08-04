@@ -335,7 +335,7 @@
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -357,7 +357,7 @@
       for (let b = 0; b < numBlocks; ++b) {
         const block = this.inputBuffer.slice(b * 8, (b + 1) * 8);
         const processed = this.processBlock(block);
-        output.push(...processed);
+        for (let _i = 0; _i < processed.length; _i++) output.push(processed[_i]);
       }
 
       this.inputBuffer = [];

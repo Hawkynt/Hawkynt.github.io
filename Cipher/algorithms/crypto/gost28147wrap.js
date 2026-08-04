@@ -207,7 +207,7 @@
       if (!this._key) throw new Error("Key not set");
       if (!this._ukm) throw new Error("UKM not set");
 
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     // Get wrapped/unwrapped result

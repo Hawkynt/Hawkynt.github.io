@@ -243,7 +243,7 @@
       if (!Array.isArray(data)) {
         throw new Error('Feed expects byte array');
       }
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -261,7 +261,7 @@
       while (this.inputBuffer.length >= this.BlockSize) {
         const block = this.inputBuffer.splice(0, this.BlockSize);
         const processed = this.isInverse ? this._decryptBlock(block) : this._encryptBlock(block);
-        output.push(...processed);
+        for (let _i = 0; _i < processed.length; _i++) output.push(processed[_i]);
       }
       return output;
     }
@@ -509,7 +509,7 @@
       if (!Array.isArray(data)) {
         throw new Error('Feed expects byte array');
       }
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -527,7 +527,7 @@
       while (this.inputBuffer.length >= this.BlockSize) {
         const block = this.inputBuffer.splice(0, this.BlockSize);
         const processed = this.isInverse ? this._decryptBlock(block) : this._encryptBlock(block);
-        output.push(...processed);
+        for (let _i = 0; _i < processed.length; _i++) output.push(processed[_i]);
       }
       return output;
     }

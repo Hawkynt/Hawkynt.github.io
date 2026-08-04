@@ -232,7 +232,7 @@
       if (!this.nonce) {
         throw new Error("Nonce not set. Call setNonce() first.");
       }
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -353,7 +353,7 @@
         message.push(0);
       }
       message.push(tag);
-      message.push(...data);
+      for (let _i = 0; _i < data.length; _i++) message.push(data[_i]);
 
       // Compute CMAC subkeys (K1 and K2)
       const L = this._aesEncrypt(new Array(blockSize).fill(0));

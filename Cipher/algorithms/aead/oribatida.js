@@ -531,7 +531,7 @@
      */
     Feed(data) {
       if (!data || data.length === 0) return;
-      this._inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this._inputBuffer.push(data[_i]);
     }
 
     /**
@@ -651,7 +651,7 @@
       }
 
       const tag = simp.getBytes(0, ORIBATIDA_192_TAG_SIZE);
-      ciphertext.push(...tag);
+      for (let _i = 0; _i < tag.length; _i++) ciphertext.push(tag[_i]);
 
       return ciphertext;
     }
@@ -974,7 +974,7 @@
      */
     Feed(data) {
       if (!data || data.length === 0) return;
-      this._inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this._inputBuffer.push(data[_i]);
     }
 
     /**
@@ -1094,7 +1094,7 @@
       }
 
       const tag = simp.getBytes(0, ORIBATIDA_256_TAG_SIZE);
-      ciphertext.push(...tag);
+      for (let _i = 0; _i < tag.length; _i++) ciphertext.push(tag[_i]);
 
       return ciphertext;
     }

@@ -533,7 +533,7 @@
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error('Key not set');
       if (!this._nonce) throw new Error('Nonce not set');
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -646,7 +646,7 @@
             sum[i] = OpCodes.ToByte(OpCodes.XorN(sum[i], block[i]));
           }
           skinny_128_384_encrypt_tk_full(tweakey, result_block, block);
-          output.push(...result_block);
+          for (let _i = 0; _i < result_block.length; _i++) output.push(result_block[_i]);
         }
 
         offset += 16;
@@ -824,7 +824,7 @@
             sum[i] = OpCodes.ToByte(OpCodes.XorN(sum[i], block[i]));
           }
           skinny_128_256_encrypt_tk_full(tweakey, result_block, block);
-          output.push(...result_block);
+          for (let _i = 0; _i < result_block.length; _i++) output.push(result_block[_i]);
         }
 
         offset += 16;

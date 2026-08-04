@@ -344,7 +344,7 @@
       const bytes = [];
       for (let i = 0; i < 4; ++i) {
         const wordBytes = OpCodes.Unpack32LE(result[i]);
-        bytes.push(...wordBytes);
+        for (let _i = 0; _i < wordBytes.length; _i++) bytes.push(wordBytes[_i]);
       }
 
       // Increment counter for next block

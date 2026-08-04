@@ -236,7 +236,7 @@
       }
 
       // Add to buffer
-      this.buffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.buffer.push(data[_i]);
       this.messageLength += data.length;
 
       // Process complete 512-bit (64-byte) blocks
@@ -349,7 +349,7 @@
         ...OpCodes.Unpack32BE(lengthHigh),
         ...OpCodes.Unpack32BE(lengthLow)
       ];
-      finalBuffer.push(...lengthBytes);
+      for (let _i = 0; _i < lengthBytes.length; _i++) finalBuffer.push(lengthBytes[_i]);
 
       // Process final block(s)
       const stateCopy = [...this.state];
@@ -362,7 +362,7 @@
       const hash = [];
       for (let i = 0; i < 8; ++i) {
         const bytes = OpCodes.Unpack32BE(this.state[i]);
-        hash.push(...bytes);
+        for (let _i = 0; _i < bytes.length; _i++) hash.push(bytes[_i]);
       }
 
       // Restore state for potential reuse (though typically hash is one-shot)

@@ -296,7 +296,7 @@
         throw new Error(`Input too large: ${this.algorithm.name} accepts exactly ${this.algorithm.byteSize} bytes`);
       }
 
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**

@@ -119,7 +119,7 @@
       const result = [];
       for (let i = 0; i < 8; ++i) {
         const bytes = OpCodes.Unpack32BE(this.h[i]);
-        result.push(...bytes);
+        for (let _i = 0; _i < bytes.length; _i++) result.push(bytes[_i]);
       }
 
       return result;
@@ -612,7 +612,7 @@
       // Generate full blocks
       while (length >= AES_BLOCK_SIZE) {
         const block = this.aes.encrypt(this.IV);
-        output.push(...block);
+        for (let _i = 0; _i < block.length; _i++) output.push(block[_i]);
         this._updateIV();
         length -= AES_BLOCK_SIZE;
       }

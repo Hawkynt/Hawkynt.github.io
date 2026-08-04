@@ -326,7 +326,7 @@
       const result = [];
       [h0, h1, h2, h3, h4].forEach(word => {
         const bytes = OpCodes.Unpack32BE(word);
-        result.push(...bytes);
+        for (let _i = 0; _i < bytes.length; _i++) result.push(bytes[_i]);
       });
 
       return result;
@@ -385,7 +385,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**

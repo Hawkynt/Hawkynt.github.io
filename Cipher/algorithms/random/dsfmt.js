@@ -472,7 +472,7 @@
 
       for (let i = 0; i < fullDoubles; ++i) {
         const bytes = OpCodes.DoubleToBytes(doubles[i]);
-        output.push(...bytes);
+        for (let _i = 0; _i < bytes.length; _i++) output.push(bytes[_i]);
       }
 
       // Handle remaining bytes (if length not multiple of 8)

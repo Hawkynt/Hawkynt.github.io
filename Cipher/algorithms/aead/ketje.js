@@ -629,7 +629,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      this._inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this._inputBuffer.push(data[_i]);
     }
 
     /**
@@ -699,7 +699,7 @@
           for (let i = 0; i < blockSize; ++i) {
             ptBlock.push(OpCodes.XorN(ctBlock[i], keystream[i]));
           }
-          output.push(...ptBlock);
+          for (let _i = 0; _i < ptBlock.length; _i++) output.push(ptBlock[_i]);
 
           // XOR plaintext into state for authentication (same as encryption)
           const paddedPT = [...ptBlock];
@@ -747,7 +747,7 @@
           for (let i = 0; i < blockSize; ++i) {
             ctBlock.push(OpCodes.XorN(ptBlock[i], keystream[i]));
           }
-          output.push(...ctBlock);
+          for (let _i = 0; _i < ctBlock.length; _i++) output.push(ctBlock[_i]);
 
           // XOR plaintext into state
           const paddedPT = [...ptBlock];
@@ -767,7 +767,7 @@
 
         // Generate tag
         const tag = duplex.duplexStride(this.tagSize);
-        output.push(...tag);
+        for (let _i = 0; _i < tag.length; _i++) output.push(tag[_i]);
       }
 
       // Clear buffers

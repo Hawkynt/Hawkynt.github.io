@@ -321,7 +321,7 @@
         if (!this.inputBuffer) {
           this.inputBuffer = [];
         }
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {

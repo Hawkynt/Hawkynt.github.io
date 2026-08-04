@@ -207,7 +207,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -276,7 +276,7 @@
       if (input.length < 4) {
         // Store as literal run
         output.push(input.length - 1);
-        output.push(...input);
+        for (let _i = 0; _i < input.length; _i++) output.push(input[_i]);
         this.inputBuffer = [];
         return output;
       }

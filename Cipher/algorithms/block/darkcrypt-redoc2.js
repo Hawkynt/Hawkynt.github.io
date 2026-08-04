@@ -392,7 +392,7 @@
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     Result() {
@@ -407,7 +407,7 @@
         const block = Uint8Array.from(this.inputBuffer.slice(i, i + this.BlockSize));
         if (this.isInverse) decryptBlock(block, t.keystable, t.masktable, t.permtable, t.isub, t.encl);
         else encryptBlock(block, t.keystable, t.masktable, t.permtable, t.esub, t.encl);
-        output.push(...block);
+        for (let _i = 0; _i < block.length; _i++) output.push(block[_i]);
       }
       this.inputBuffer = [];
       return output;

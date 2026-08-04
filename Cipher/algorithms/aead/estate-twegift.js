@@ -644,7 +644,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      this._inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this._inputBuffer.push(data[_i]);
     }
 
     // Process and return result with authentication tag

@@ -218,7 +218,7 @@
 
       if (this.isInverse) {
         // Decoding mode: accumulate encoded symbols
-        this.encodedSymbols.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.encodedSymbols.push(data[_i]);
       } else {
         // Encoding mode: store source symbols
         this.sourceSymbols = [...data];
@@ -357,7 +357,7 @@
         this.encodedBatches.push(encodedBatch);
 
         // Add encoded symbols to result
-        result.push(...encodedBatch);
+        for (let _i = 0; _i < encodedBatch.length; _i++) result.push(encodedBatch[_i]);
       }
 
       this.profiler.endTimer('encoding');

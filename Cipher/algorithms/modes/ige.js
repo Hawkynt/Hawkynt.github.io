@@ -186,7 +186,7 @@
       if (!this.iv1 || !this.iv2) {
         throw new Error("IVs not set. Call setIVs() first.");
       }
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -245,7 +245,7 @@
         // XOR encrypted result with previous plaintext
         const ciphertextBlock = OpCodes.XorArrays(encryptedBlock, prevPlaintext);
 
-        output.push(...ciphertextBlock);
+        for (let _i = 0; _i < ciphertextBlock.length; _i++) output.push(ciphertextBlock[_i]);
 
         // Update chains for next iteration
         prevCiphertext = [...ciphertextBlock];
@@ -278,7 +278,7 @@
         // XOR decrypted result with previous ciphertext
         const plaintextBlock = OpCodes.XorArrays(decryptedBlock, prevCiphertext);
 
-        output.push(...plaintextBlock);
+        for (let _i = 0; _i < plaintextBlock.length; _i++) output.push(plaintextBlock[_i]);
 
         // Update chains for next iteration
         prevCiphertext = [...ciphertextBlock];

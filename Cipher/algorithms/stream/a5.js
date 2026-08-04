@@ -202,7 +202,7 @@
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -470,7 +470,7 @@
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -769,7 +769,7 @@
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -857,7 +857,7 @@
       input[4] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(OpCodes.AndN(this.bearer, 0x1F), 3), OpCodes.Shl32(OpCodes.AndN(this.direction, 1), 2)), 0xFF);
 
       const keystreamBlock = this._kasumiEncrypt(input);
-      this.keystreamBuffer.push(...keystreamBlock);
+      for (let _i = 0; _i < keystreamBlock.length; _i++) this.keystreamBuffer.push(keystreamBlock[_i]);
     }
 
     _getKeystreamByte() {

@@ -498,7 +498,7 @@
       if (!data || data.length === 0) return;
       if (!this.key) throw new Error("Key not set");
 
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -523,7 +523,7 @@
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
         const processedBlock = this._crypt(block, roundKey);
-        output.push(...processedBlock);
+        for (let _i = 0; _i < processedBlock.length; _i++) output.push(processedBlock[_i]);
       }
 
       // Clear input buffer

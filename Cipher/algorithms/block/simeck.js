@@ -280,7 +280,7 @@
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -300,7 +300,7 @@
       for (let i = 0; i + blockSize <= this.inputBuffer.length; i += blockSize) {
         const block = this.inputBuffer.slice(i, i + blockSize);
         const processedBlock = this._processBlock(block);
-        output.push(...processedBlock);
+        for (let _i = 0; _i < processedBlock.length; _i++) output.push(processedBlock[_i]);
       }
 
       this.inputBuffer = [];
@@ -575,7 +575,7 @@
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -595,7 +595,7 @@
       for (let i = 0; i + blockSize <= this.inputBuffer.length; i += blockSize) {
         const block = this.inputBuffer.slice(i, i + blockSize);
         const processedBlock = this._processBlock(block);
-        output.push(...processedBlock);
+        for (let _i = 0; _i < processedBlock.length; _i++) output.push(processedBlock[_i]);
       }
 
       this.inputBuffer = [];

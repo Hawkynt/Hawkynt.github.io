@@ -230,7 +230,7 @@
       if (!Array.isArray(data)) {
         throw new Error('BaconShorCodeInstance.Feed: Input must be byte array');
       }
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -269,9 +269,9 @@
         // OpCodes.OrN(Logical, 0)⟩ → [0,0,0,0,0,0,0,0,0]
         // OpCodes.OrN(Logical, 1)⟩ → [1,1,1,0,0,0,0,0,0] (logical X applied to top row)
         if (logicalBit === 0) {
-          result.push(...LOGICAL_ZERO_9);
+          for (let _i = 0; _i < LOGICAL_ZERO_9.length; _i++) result.push(LOGICAL_ZERO_9[_i]);
         } else {
-          result.push(...LOGICAL_ONE_9);
+          for (let _i = 0; _i < LOGICAL_ONE_9.length; _i++) result.push(LOGICAL_ONE_9[_i]);
         }
       }
 

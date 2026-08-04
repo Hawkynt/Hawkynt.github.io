@@ -137,7 +137,7 @@
 
       Feed(data) {
         if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {
@@ -205,17 +205,17 @@
 
       _pack(originalLength, rules, S) {
         const bytes = [];
-        bytes.push(...OpCodes.Unpack32BE(originalLength));
-        bytes.push(...OpCodes.Unpack16BE(rules.length));
-        bytes.push(...OpCodes.Unpack16BE(S.length));
+        { const _src = OpCodes.Unpack32BE(originalLength); for (let _i = 0; _i < _src.length; _i++) bytes.push(_src[_i]); }
+        { const _src = OpCodes.Unpack16BE(rules.length); for (let _i = 0; _i < _src.length; _i++) bytes.push(_src[_i]); }
+        { const _src = OpCodes.Unpack16BE(S.length); for (let _i = 0; _i < _src.length; _i++) bytes.push(_src[_i]); }
 
         for (const rule of rules) {
-          bytes.push(...OpCodes.Unpack16BE(rule[0]));
-          bytes.push(...OpCodes.Unpack16BE(rule[1]));
+          { const _src = OpCodes.Unpack16BE(rule[0]); for (let _i = 0; _i < _src.length; _i++) bytes.push(_src[_i]); }
+          { const _src = OpCodes.Unpack16BE(rule[1]); for (let _i = 0; _i < _src.length; _i++) bytes.push(_src[_i]); }
         }
 
         for (const sym of S) {
-          bytes.push(...OpCodes.Unpack16BE(sym));
+          { const _src = OpCodes.Unpack16BE(sym); for (let _i = 0; _i < _src.length; _i++) bytes.push(_src[_i]); }
         }
 
         return bytes;

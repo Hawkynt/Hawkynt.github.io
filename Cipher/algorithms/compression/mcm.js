@@ -217,7 +217,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -307,7 +307,7 @@
       // Header: version (1 byte) + original size (4 bytes, big-endian)
       result.push(1); // MCM version 1
       const sizeBytes = OpCodes.Unpack32BE(input.length);
-      result.push(...sizeBytes);
+      for (let _i = 0; _i < sizeBytes.length; _i++) result.push(sizeBytes[_i]);
 
       if (input.length === 0) {
         this.inputBuffer = [];
@@ -353,7 +353,7 @@
         // Flush control byte after 8 predictions or end of input
         if (bitPos === 8 || pos === input.length) {
           result.push(controlByte);
-          result.push(...pendingData);
+          for (let _i = 0; _i < pendingData.length; _i++) result.push(pendingData[_i]);
           controlByte = 0;
           bitPos = 0;
           pendingData.length = 0;

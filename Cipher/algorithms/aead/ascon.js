@@ -465,7 +465,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -581,11 +581,11 @@
 
       // Encrypt plaintext
       const ciphertext = this._processData(plaintext, true);
-      output.push(...ciphertext);
+      for (let _i = 0; _i < ciphertext.length; _i++) output.push(ciphertext[_i]);
 
       // Finalize and generate tag
       const tag = this._finalize();
-      output.push(...tag);
+      for (let _i = 0; _i < tag.length; _i++) output.push(tag[_i]);
 
       this.inputBuffer = [];
       return output;

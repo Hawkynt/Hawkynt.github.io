@@ -247,7 +247,7 @@
       if (!data || data.length === 0) return;
       if (!this.key) throw new Error("Key not set");
 
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     // Get the result of the transformation
@@ -311,7 +311,7 @@
       // Extract keystream
       for (let i = 0; i < 8; i++) {
         const bytes = OpCodes.Unpack32LE(state[i]);
-        keystream.push(...bytes);
+        for (let _i = 0; _i < bytes.length; _i++) keystream.push(bytes[_i]);
       }
 
       // Process data (stream cipher mode - no tag)

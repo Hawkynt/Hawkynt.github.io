@@ -429,9 +429,9 @@
       if (!data || data.length === 0) return;
 
       if (this.isInverse) {
-        this._ciphertext.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this._ciphertext.push(data[_i]);
       } else {
-        this._plaintext.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this._plaintext.push(data[_i]);
       }
     }
 

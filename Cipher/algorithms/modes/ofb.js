@@ -180,7 +180,7 @@
       if (!this.iv) {
         throw new Error("IV not set. Call setIV() first.");
       }
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -218,7 +218,7 @@
 
         // XOR input with keystream to get output
         const outputBlock = OpCodes.XorArrays(inputBlock.slice(0, remainingBytes), keystream.slice(0, remainingBytes));
-        output.push(...outputBlock);
+        for (let _i = 0; _i < outputBlock.length; _i++) output.push(outputBlock[_i]);
 
         // Update output register for next iteration
         // In OFB, feedback comes from cipher output, not from plaintext/ciphertext

@@ -334,7 +334,7 @@
         throw new Error("Invalid input data - must be byte array");
       }
 
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -730,7 +730,7 @@
       for (let i = 0; i < 4; i++) {
         const word = this._encryptWord(0, CA_ONE_WORD, CB_ONE_WORD);
         const bytes = this._wordToBytes(word);
-        tagBytes.push(...bytes);
+        for (let _i = 0; _i < bytes.length; _i++) tagBytes.push(bytes[_i]);
       }
 
       return tagBytes.slice(0, 16); // 128-bit tag

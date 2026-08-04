@@ -176,7 +176,7 @@
       if (!this.iv) {
         throw new Error("IV not set. Call setIV() first.");
       }
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -240,7 +240,7 @@
           cipher.Feed(xorBlock);
           const encryptedBlock = cipher.Result();
 
-          output.push(...encryptedBlock);
+          for (let _i = 0; _i < encryptedBlock.length; _i++) output.push(encryptedBlock[_i]);
           previousBlock = [...encryptedBlock];
         }
       } else {
@@ -262,7 +262,7 @@
           cipher.Feed(xorBlock);
           const encryptedBlock = cipher.Result();
 
-          output.push(...encryptedBlock);
+          for (let _i = 0; _i < encryptedBlock.length; _i++) output.push(encryptedBlock[_i]);
           previousBlock = [...encryptedBlock];
         }
 
@@ -299,7 +299,7 @@
         const encryptedFinal = cipher2.Result();
 
         // Step 4: Output final block first, then truncated penultimate
-        output.push(...encryptedFinal);
+        for (let _i = 0; _i < encryptedFinal.length; _i++) output.push(encryptedFinal[_i]);
         output.push(...encryptedPenultimate.slice(0, remainingBytes));
       }
 
@@ -334,7 +334,7 @@
             plainBlock[j] = OpCodes.XorN(decryptedBlock[j], previousBlock[j]);
           }
 
-          output.push(...plainBlock);
+          for (let _i = 0; _i < plainBlock.length; _i++) output.push(plainBlock[_i]);
           previousBlock = [...block];
         }
       } else {
@@ -356,7 +356,7 @@
             plainBlock[j] = OpCodes.XorN(decryptedBlock[j], previousBlock[j]);
           }
 
-          output.push(...plainBlock);
+          for (let _i = 0; _i < plainBlock.length; _i++) output.push(plainBlock[_i]);
           previousBlock = [...block];
         }
 
@@ -401,8 +401,8 @@
         }
 
         // Output in correct order (penultimate full block, then final partial block)
-        output.push(...plainPenultimate);
-        output.push(...plainFinalPartial);
+        for (let _i = 0; _i < plainPenultimate.length; _i++) output.push(plainPenultimate[_i]);
+        for (let _i = 0; _i < plainFinalPartial.length; _i++) output.push(plainFinalPartial[_i]);
       }
 
       return output;

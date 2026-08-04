@@ -170,7 +170,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -360,7 +360,7 @@
         const counterBytes = OpCodes.Unpack32BE(i);
         const input = [...seed, ...counterBytes];
         const hashOutput = this._simpleHash(input);
-        mask.push(...hashOutput);
+        for (let _i = 0; _i < hashOutput.length; _i++) mask.push(hashOutput[_i]);
       }
 
       return mask.slice(0, length);

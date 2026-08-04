@@ -218,7 +218,7 @@
         lenBlock[14] = ivLenBytes[2];
         lenBlock[15] = ivLenBytes[3];
 
-        ivBlocks.push(...lenBlock);
+        for (let _i = 0; _i < lenBlock.length; _i++) ivBlocks.push(lenBlock[_i]);
         return this._ghash(ivBlocks);
       }
     }
@@ -232,7 +232,7 @@
       const remainder = result.length % 16;
       if (remainder > 0) {
         const padding = new Array(16 - remainder).fill(0);
-        result.push(...padding);
+        for (let _i = 0; _i < padding.length; _i++) result.push(padding[_i]);
       }
       return result;
     }
@@ -274,7 +274,7 @@
       if (!this.iv) {
         throw new Error("IV not set. Call setIV() first.");
       }
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -319,7 +319,7 @@
           for (let j = 0; j < remainingBytes; j++) {
             plainBlock[j] = OpCodes.XorArrays([cipherBlock[j]], [keystream[j]])[0];
           }
-          output.push(...plainBlock);
+          for (let _i = 0; _i < plainBlock.length; _i++) output.push(plainBlock[_i]);
         }
 
         // Verify authentication tag
@@ -349,13 +349,13 @@
           for (let j = 0; j < remainingBytes; j++) {
             cipherBlock[j] = OpCodes.XorArrays([plainBlock[j]], [keystream[j]])[0];
           }
-          output.push(...cipherBlock);
+          for (let _i = 0; _i < cipherBlock.length; _i++) output.push(cipherBlock[_i]);
         }
 
         // Compute and append authentication tag
         const tag = this._computeTag(output, j0);
         const truncatedTag = tag.slice(0, this.tagSize);
-        output.push(...truncatedTag);
+        for (let _i = 0; _i < truncatedTag.length; _i++) output.push(truncatedTag[_i]);
       }
 
       // Clear sensitive data
@@ -398,7 +398,7 @@
       lenBlock[4] = aadLenBytes[0]; lenBlock[5] = aadLenBytes[1]; lenBlock[6] = aadLenBytes[2]; lenBlock[7] = aadLenBytes[3];
       lenBlock[8] = 0; lenBlock[9] = 0; lenBlock[10] = 0; lenBlock[11] = 0;
       lenBlock[12] = cLenBytes[0]; lenBlock[13] = cLenBytes[1]; lenBlock[14] = cLenBytes[2]; lenBlock[15] = cLenBytes[3];
-      ghashInput.push(...lenBlock);
+      for (let _i = 0; _i < lenBlock.length; _i++) ghashInput.push(lenBlock[_i]);
 
       // Compute GHASH
       const s = this._ghash(ghashInput);

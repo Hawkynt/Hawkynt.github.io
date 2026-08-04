@@ -192,7 +192,7 @@
       if (!this.key || !this.tweakKey) {
         throw new Error("Both block cipher key and tweak key must be set for LRW mode.");
       }
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -244,7 +244,7 @@
 
           // Step 3: XOR with offset again
           const plainBlock = OpCodes.XorArrays(decrypted, offset);
-          output.push(...plainBlock);
+          for (let _i = 0; _i < plainBlock.length; _i++) output.push(plainBlock[_i]);
         }
       } else {
         // LRW Encryption: C = E_K(P ⊕ T) ⊕ T
@@ -262,7 +262,7 @@
 
           // Step 3: XOR with offset again
           const cipherBlock = OpCodes.XorArrays(encrypted, offset);
-          output.push(...cipherBlock);
+          for (let _i = 0; _i < cipherBlock.length; _i++) output.push(cipherBlock[_i]);
         }
       }
 

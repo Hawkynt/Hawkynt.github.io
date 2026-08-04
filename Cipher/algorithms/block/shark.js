@@ -522,7 +522,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -562,7 +562,7 @@
 
         // Unpack result back to bytes
         const resultBytes = this._unpack64BE(result64);
-        output.push(...resultBytes);
+        for (let _i = 0; _i < resultBytes.length; _i++) output.push(resultBytes[_i]);
       }
 
       // Clear input buffer

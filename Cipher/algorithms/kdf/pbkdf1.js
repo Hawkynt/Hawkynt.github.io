@@ -455,7 +455,7 @@
       const result = [];
       for (let i = 0; i < 4; i++) {
         const bytes = OpCodes.Unpack32LE(h[i]);
-        result.push(...bytes);
+        for (let _i = 0; _i < bytes.length; _i++) result.push(bytes[_i]);
       }
 
       return result;
@@ -541,7 +541,7 @@
       const result = [];
       for (let i = 0; i < 5; i++) {
         const bytes = OpCodes.Unpack32BE(h[i]);
-        result.push(...bytes);
+        for (let _i = 0; _i < bytes.length; _i++) result.push(bytes[_i]);
       }
 
       return result;

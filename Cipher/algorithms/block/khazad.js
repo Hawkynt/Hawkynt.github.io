@@ -854,7 +854,7 @@ const rawRoundConstants = [
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
         const processed = this._crypt(block, roundKeyHi, roundKeyLo);
-        output.push(...processed);
+        for (let _i = 0; _i < processed.length; _i++) output.push(processed[_i]);
       }
 
       this.inputBuffer = [];

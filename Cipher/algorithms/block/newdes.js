@@ -251,7 +251,7 @@
           processedBlock = this._encryptBlock(block);
         }
 
-        result.push(...processedBlock);
+        for (let _i = 0; _i < processedBlock.length; _i++) result.push(processedBlock[_i]);
       }
 
       return result;

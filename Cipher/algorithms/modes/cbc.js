@@ -179,7 +179,7 @@
       if (!this.iv) {
         throw new Error("IV not set. Call setIV() first.");
       }
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -220,7 +220,7 @@
 
           // XOR with previous ciphertext block (or IV for first block)
           const plainBlock = OpCodes.XorArrays(decrypted, chainBlock);
-          output.push(...plainBlock);
+          for (let _i = 0; _i < plainBlock.length; _i++) output.push(plainBlock[_i]);
 
           // Update chain for next iteration (current ciphertext becomes previous)
           chainBlock = [...cipherBlock];
@@ -239,7 +239,7 @@
           encryptCipher.Feed(xorBlock);
           const cipherBlock = encryptCipher.Result();
 
-          output.push(...cipherBlock);
+          for (let _i = 0; _i < cipherBlock.length; _i++) output.push(cipherBlock[_i]);
 
           // Update chain for next iteration (current ciphertext becomes previous)
           chainBlock = [...cipherBlock];

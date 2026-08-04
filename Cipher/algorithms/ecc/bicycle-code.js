@@ -328,7 +328,7 @@
           throw new Error(`Invalid logical state: ${logicalState}`);
         }
 
-        encoded.push(...codeword);
+        for (let _i = 0; _i < codeword.length; _i++) encoded.push(codeword[_i]);
       }
 
       return encoded;

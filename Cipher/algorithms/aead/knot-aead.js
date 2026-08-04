@@ -776,7 +776,7 @@
         throw new Error("Nonce not set");
       }
 
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -822,7 +822,7 @@
           throw new Error("Authentication tag verification failed");
         }
 
-        result.push(...plaintext);
+        for (let _i = 0; _i < plaintext.length; _i++) result.push(plaintext[_i]);
       } else {
         // Encryption mode: input is plaintext
         const plaintext = this.inputBuffer;
@@ -1246,7 +1246,7 @@
         throw new Error("Nonce not set");
       }
 
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -1292,7 +1292,7 @@
           throw new Error("Authentication tag verification failed");
         }
 
-        result.push(...plaintext);
+        for (let _i = 0; _i < plaintext.length; _i++) result.push(plaintext[_i]);
       } else {
         // Encryption mode: input is plaintext
         const plaintext = this.inputBuffer;

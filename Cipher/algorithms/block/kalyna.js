@@ -1273,7 +1273,7 @@
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Kalyna: Key not set");
 
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -1296,7 +1296,7 @@
         const processedBlock = this.isInverse
           ? this.algorithm.decryptBlock(block, this._key)
           : this.algorithm.encryptBlock(block, this._key);
-        output.push(...processedBlock);
+        for (let _i = 0; _i < processedBlock.length; _i++) output.push(processedBlock[_i]);
       }
 
       this.inputBuffer = [];

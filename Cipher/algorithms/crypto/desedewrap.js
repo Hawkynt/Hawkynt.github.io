@@ -228,7 +228,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -365,7 +365,7 @@
         tripleDesInstance.Feed(xored);
         const encrypted = tripleDesInstance.Result();
 
-        result.push(...encrypted);
+        for (let _i = 0; _i < encrypted.length; _i++) result.push(encrypted[_i]);
         previousBlock = encrypted;
       }
 
@@ -393,7 +393,7 @@
         // XOR with previous ciphertext block (CBC mode)
         const xored = OpCodes.XorArrays(decrypted, previousBlock);
 
-        result.push(...xored);
+        for (let _i = 0; _i < xored.length; _i++) result.push(xored[_i]);
         previousBlock = block;
       }
 

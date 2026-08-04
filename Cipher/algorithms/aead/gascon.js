@@ -542,7 +542,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -618,14 +618,14 @@
 
       while (pos + 8 <= plaintext.length) {
         const block = this.perm.xorAndExtract(plaintext.slice(pos, pos + 8), 0, 8);
-        ciphertext.push(...block);
+        for (let _i = 0; _i < block.length; _i++) ciphertext.push(block[_i]);
         this.perm.permute(6);
         pos += 8;
       }
 
       if (pos < plaintext.length) {
         const block = this.perm.xorAndExtract(plaintext.slice(pos), 0, plaintext.length - pos);
-        ciphertext.push(...block);
+        for (let _i = 0; _i < block.length; _i++) ciphertext.push(block[_i]);
       }
 
       this.perm.B[plaintext.length % 8] = OpCodes.XorN(this.perm.B[plaintext.length % 8], 0x80);
@@ -660,14 +660,14 @@
 
       while (pos + 8 <= ciphertext.length) {
         const block = this.perm.xorAndReplace(ciphertext.slice(pos, pos + 8), 0, 8);
-        plaintext.push(...block);
+        for (let _i = 0; _i < block.length; _i++) plaintext.push(block[_i]);
         this.perm.permute(6);
         pos += 8;
       }
 
       if (pos < ciphertext.length) {
         const block = this.perm.xorAndReplace(ciphertext.slice(pos), 0, ciphertext.length - pos);
-        plaintext.push(...block);
+        for (let _i = 0; _i < block.length; _i++) plaintext.push(block[_i]);
       }
 
       this.perm.B[ciphertext.length % 8] ^= 0x80;
@@ -1036,7 +1036,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**

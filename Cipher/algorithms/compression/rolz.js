@@ -175,7 +175,7 @@
 
       Feed(data) {
         if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {
@@ -470,7 +470,7 @@
         result.push(encodedLengthBytes[3]);
 
         // Encoded data
-        result.push(...encoded);
+        for (let _i = 0; _i < encoded.length; _i++) result.push(encoded[_i]);
 
         return result;
       }

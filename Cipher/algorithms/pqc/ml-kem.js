@@ -216,7 +216,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -537,7 +537,7 @@
         }
 
         // Append seed rho
-        encoded.push(...rho);
+        for (let _i = 0; _i < rho.length; _i++) encoded.push(rho[_i]);
 
         return encoded;
     }
@@ -554,11 +554,11 @@
         }
 
         // Append public key
-        encoded.push(...publicKey);
+        for (let _i = 0; _i < publicKey.length; _i++) encoded.push(publicKey[_i]);
 
         // Append hash of public key
         const pkHash = this._simpleHash(publicKey);
-        encoded.push(...pkHash);
+        for (let _i = 0; _i < pkHash.length; _i++) encoded.push(pkHash[_i]);
 
         return encoded;
     }

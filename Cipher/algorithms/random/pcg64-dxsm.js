@@ -301,7 +301,7 @@
           bytes.unshift(Number(OpCodes.AndN(v, 0xFFn)));
           v = OpCodes.ShiftRn(v, BigInt(8));
         }
-        result.push(...bytes);
+        for (let _i = 0; _i < bytes.length; _i++) result.push(bytes[_i]);
       }
 
       return result.slice(0, outputSize);
