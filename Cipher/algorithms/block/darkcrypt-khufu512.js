@@ -291,7 +291,7 @@
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     Result() {
@@ -316,7 +316,7 @@
         }
         const out = new Uint8Array(8);
         writeLE(out, 0, L); writeLE(out, 4, R);
-        output.push(...out);
+        for (let _i = 0; _i < out.length; _i++) output.push(out[_i]);
       }
       this.inputBuffer = [];
       return output;

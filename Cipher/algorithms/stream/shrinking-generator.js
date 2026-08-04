@@ -238,9 +238,9 @@
 
     Feed(data) {
       if (Array.isArray(data)) {
-        this.inputData.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputData.push(data[_i]);
       } else {
-        this.inputData.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputData.push(data[_i]);
       }
     }
 

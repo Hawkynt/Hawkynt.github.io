@@ -658,7 +658,7 @@
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
 
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -684,7 +684,7 @@
 
         const processed = this.isInverse ? this._decryptBlock(block) : this._encryptBlock(block);
 
-        output.push(...processed);
+        for (let _i = 0; _i < processed.length; _i++) output.push(processed[_i]);
       }
 
       // Clear input buffer

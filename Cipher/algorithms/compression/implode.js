@@ -312,7 +312,7 @@
 
       Feed(data) {
         if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {
@@ -379,7 +379,7 @@
         const distCodes = assignCanonicalCodes(distLengths, DISTANCE_SYMBOLS);
 
         const header = [];
-        header.push(...OpCodes.Unpack32BE(data.length));
+        { const _src = OpCodes.Unpack32BE(data.length); for (let _i = 0; _i < _src.length; _i++) header.push(_src[_i]); }
         writeLengthTable(header, litLengths);
         writeLengthTable(header, lenLengths);
         writeLengthTable(header, distLengths);

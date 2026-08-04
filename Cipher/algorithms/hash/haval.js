@@ -269,7 +269,7 @@
     update(data) {
       if (!data || data.length === 0) return;
 
-      this.buffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.buffer.push(data[_i]);
       this.totalLength += data.length;
 
       // Process complete 128-byte blocks
@@ -552,7 +552,7 @@
 
       Feed(data) {
         if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {

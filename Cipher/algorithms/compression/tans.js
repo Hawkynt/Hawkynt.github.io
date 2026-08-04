@@ -147,7 +147,7 @@
 
       Feed(data) {
         if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {
@@ -180,7 +180,7 @@
         // Symbol count using OpCodes for proper packing
         const symbolCount = Object.keys(normalizedFreqs).length;
         const symbolCountBytes = OpCodes.Unpack32LE(symbolCount);
-        compressed.push(...symbolCountBytes);
+        for (let _i = 0; _i < symbolCountBytes.length; _i++) compressed.push(symbolCountBytes[_i]);
 
         // Store symbol table
         for (const [symbol, freq] of Object.entries(normalizedFreqs)) {
@@ -190,8 +190,8 @@
 
         // Store original data length and data (simplified approach)
         const dataLengthBytes = OpCodes.Unpack32LE(data.length);
-        compressed.push(...dataLengthBytes);
-        compressed.push(...data);
+        for (let _i = 0; _i < dataLengthBytes.length; _i++) compressed.push(dataLengthBytes[_i]);
+        for (let _i = 0; _i < data.length; _i++) compressed.push(data[_i]);
 
         return compressed;
       }

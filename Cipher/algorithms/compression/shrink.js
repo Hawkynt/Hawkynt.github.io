@@ -196,7 +196,7 @@
 
       Feed(data) {
         if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {
@@ -309,8 +309,8 @@
         writer.writeBits(w, state.codeWidth);
 
         const output = [];
-        output.push(...OpCodes.Unpack32BE(data.length));
-        output.push(...writer.finish());
+        { const _src = OpCodes.Unpack32BE(data.length); for (let _i = 0; _i < _src.length; _i++) output.push(_src[_i]); }
+        { const _src = writer.finish(); for (let _i = 0; _i < _src.length; _i++) output.push(_src[_i]); }
         return output;
       }
 
@@ -385,7 +385,7 @@
             break;
           }
 
-          out.push(...currentString);
+          for (let _i = 0; _i < currentString.length; _i++) out.push(currentString[_i]);
 
           if (pendingInsert) {
             commitPendingInsert(prevCode, currentString[0]);

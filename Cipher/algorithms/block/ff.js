@@ -974,7 +974,7 @@
       if (typeof data === 'string') {
         this.inputBuffer.push(...Array.from(data, char => char.charCodeAt(0)));
       } else {
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
     }
 

@@ -487,10 +487,10 @@
         const toHash = [];
 
         // Concatenate: current || v0 || i (as 4-byte big-endian)
-        toHash.push(...current);
-        toHash.push(...v0);
+        for (let _i = 0; _i < current.length; _i++) toHash.push(current[_i]);
+        for (let _i = 0; _i < v0.length; _i++) toHash.push(v0[_i]);
         const iBytes = OpCodes.Unpack32BE(i);
-        toHash.push(...iBytes);
+        for (let _i = 0; _i < iBytes.length; _i++) toHash.push(iBytes[_i]);
 
         OpCodes.ClearArray(current);
         current = sha256Hash(toHash);

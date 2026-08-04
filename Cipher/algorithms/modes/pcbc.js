@@ -178,7 +178,7 @@
       if (!this.iv) {
         throw new Error("IV not set. Call setIV() first.");
       }
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -233,7 +233,7 @@
         cipher.Feed(xorBlock);
         const ciphertextBlock = cipher.Result();
 
-        output.push(...ciphertextBlock);
+        for (let _i = 0; _i < ciphertextBlock.length; _i++) output.push(ciphertextBlock[_i]);
 
         // PCBC feedback: XOR plaintext and ciphertext for next iteration
         previousFeedback = OpCodes.XorArrays(plaintextBlock, ciphertextBlock);
@@ -261,7 +261,7 @@
         // XOR with previous feedback to get plaintext
         const plaintextBlock = OpCodes.XorArrays(decryptedBlock, previousFeedback);
 
-        output.push(...plaintextBlock);
+        for (let _i = 0; _i < plaintextBlock.length; _i++) output.push(plaintextBlock[_i]);
 
         // PCBC feedback: XOR plaintext and ciphertext for next iteration
         previousFeedback = OpCodes.XorArrays(plaintextBlock, ciphertextBlock);

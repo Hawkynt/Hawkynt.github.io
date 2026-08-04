@@ -264,7 +264,7 @@
     update(data) {
       if (!data || data.length === 0) return;
 
-      this.buffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.buffer.push(data[_i]);
       this.totalLength += data.length;
 
       // Process complete 64-byte blocks
@@ -303,7 +303,7 @@
       const hash = [];
       for (let i = 0; i < this.outputSize / 4; ++i) {
         const bytes = OpCodes.Unpack32LE(this.b[i]);
-        hash.push(...bytes);
+        for (let _i = 0; _i < bytes.length; _i++) hash.push(bytes[_i]);
       }
 
       return hash;

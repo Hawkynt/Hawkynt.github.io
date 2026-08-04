@@ -224,7 +224,7 @@
             for (let _i = 0; _i < decompressed.length; _i++) output.push(decompressed[_i]);
           } else {
             // Uncompressed chunk
-            output.push(...chunk.data);
+            { const _src = chunk.data; for (let _i = 0; _i < _src.length; _i++) output.push(_src[_i]); }
           }
         }
 
@@ -399,7 +399,7 @@
           result.push(compressedSizeBytes[3]);
 
           // Data
-          result.push(...chunk.data);
+          { const _src = chunk.data; for (let _i = 0; _i < _src.length; _i++) result.push(_src[_i]); }
         }
 
         return result;

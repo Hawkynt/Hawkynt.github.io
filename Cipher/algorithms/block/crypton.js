@@ -328,7 +328,7 @@
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this.key) throw new Error('Key not set');
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -350,7 +350,7 @@
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
         const processed = this._processBlock(block, useDecrypt);
-        output.push(...processed);
+        for (let _i = 0; _i < processed.length; _i++) output.push(processed[_i]);
       }
 
       this.inputBuffer = [];

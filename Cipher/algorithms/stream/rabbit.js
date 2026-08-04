@@ -134,7 +134,7 @@ class RabbitInstance extends IAlgorithmInstance {
   Feed(data) {
     if (!data || data.length === 0) return;
     if (!this._key) throw new Error("Key not set");
-    this.inputBuffer.push(...data);
+    for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
   }
 
   Result() {

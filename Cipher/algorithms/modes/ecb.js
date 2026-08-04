@@ -156,7 +156,7 @@
       if (!this.blockCipher) {
         throw new Error("Block cipher not set. Call setBlockCipher() first.");
       }
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -190,7 +190,7 @@
         this.blockCipher.Feed(block);
         const processedBlock = this.blockCipher.Result();
 
-        output.push(...processedBlock);
+        for (let _i = 0; _i < processedBlock.length; _i++) output.push(processedBlock[_i]);
       }
 
       // Clear input buffer for next operation

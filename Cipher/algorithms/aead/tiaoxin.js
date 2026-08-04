@@ -434,7 +434,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      this._data.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this._data.push(data[_i]);
     }
 
     /**
@@ -592,7 +592,7 @@
 
         // Finalize and generate tag
         const tag = this._finalize(this._ad.length, plaintext.length);
-        ciphertext.push(...tag);
+        for (let _i = 0; _i < tag.length; _i++) ciphertext.push(tag[_i]);
 
         this._data = [];
         return ciphertext;

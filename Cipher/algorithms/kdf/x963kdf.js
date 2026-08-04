@@ -321,11 +321,11 @@
 
         // Append counter as 32-bit big-endian using OpCodes
         const counterBytes = OpCodes.Unpack32BE(counter);
-        blockInput.push(...counterBytes);
+        for (let _i = 0; _i < counterBytes.length; _i++) blockInput.push(counterBytes[_i]);
 
         // Append sharedInfo if present
         if (sharedInfo && sharedInfo.length > 0) {
-          blockInput.push(...sharedInfo);
+          for (let _i = 0; _i < sharedInfo.length; _i++) blockInput.push(sharedInfo[_i]);
         }
 
         // Hash the block input

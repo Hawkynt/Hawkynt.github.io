@@ -189,7 +189,7 @@
       if (!this.nonce) {
         throw new Error("Nonce not set. Call setNonce() first.");
       }
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -246,7 +246,7 @@
 
         // XOR input with keystream to get output
         const outputBlock = OpCodes.XorArrays(inputBlock.slice(0, remainingBytes), keystream.slice(0, remainingBytes));
-        output.push(...outputBlock);
+        for (let _i = 0; _i < outputBlock.length; _i++) output.push(outputBlock[_i]);
 
         // Increment counter for next block
         counterBlock = this._incrementCounter(counterBlock, 1);

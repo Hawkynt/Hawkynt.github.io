@@ -540,7 +540,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -607,7 +607,7 @@
       // Generate authentication tag
       state.blank();
       const tag = state.squeeze(16);
-      output.push(...tag);
+      for (let _i = 0; _i < tag.length; _i++) output.push(tag[_i]);
 
       // Clear state
       this.inputBuffer = [];

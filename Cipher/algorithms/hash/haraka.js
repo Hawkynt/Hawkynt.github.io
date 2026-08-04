@@ -241,7 +241,7 @@
         throw new Error("Input too long: Haraka-256 accepts exactly 32 bytes");
       }
 
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -393,7 +393,7 @@
         throw new Error("Input too long: Haraka-512 accepts exactly 64 bytes");
       }
 
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**

@@ -294,7 +294,7 @@
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -314,7 +314,7 @@
       for (let i = 0; i < this.inputBuffer.length; i += 16) {
         const block = this.inputBuffer.slice(i, i + 16);
         const result = this.isInverse ? this._decrypt(block) : this._encrypt(block);
-        output.push(...result);
+        for (let _i = 0; _i < result.length; _i++) output.push(result[_i]);
       }
 
       this.inputBuffer = [];

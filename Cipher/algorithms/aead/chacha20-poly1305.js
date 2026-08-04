@@ -257,7 +257,7 @@
       if (!Array.isArray(data)) {
         throw new Error('Invalid input data - must be byte array');
       }
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -433,7 +433,7 @@
       const keystream = [];
       for (let i = 0; i < 16; i++) {
         const bytes = OpCodes.Unpack32LE(workingState[i]);
-        keystream.push(...bytes);
+        for (let _i = 0; _i < bytes.length; _i++) keystream.push(bytes[_i]);
       }
 
       return keystream;
@@ -467,7 +467,7 @@
       const macData = [];
 
       // Add AAD
-      macData.push(...aad);
+      for (let _i = 0; _i < aad.length; _i++) macData.push(aad[_i]);
 
       // Pad AAD to 16-byte boundary
       const aadPadding = (16 - (aad.length % 16)) % 16;
@@ -476,7 +476,7 @@
       }
 
       // Add ciphertext
-      macData.push(...ciphertext);
+      for (let _i = 0; _i < ciphertext.length; _i++) macData.push(ciphertext[_i]);
 
       // Pad ciphertext to 16-byte boundary
       const ctPadding = (16 - (ciphertext.length % 16)) % 16;

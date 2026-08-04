@@ -254,7 +254,7 @@
       if (!this.key1 || !this.key2) {
         throw new Error("Keys not set. Call setKey() first.");
       }
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -305,7 +305,7 @@
         for (let i = 0; i < processingBlocks; i++) {
           const block = this.inputBuffer.slice(i * blockSize, (i + 1) * blockSize);
           const processedBlock = this._processBlock(block, tweaks[i]);
-          output.push(...processedBlock);
+          for (let _i = 0; _i < processedBlock.length; _i++) output.push(processedBlock[_i]);
         }
 
         // Handle last full block and partial block with ciphertext stealing
@@ -323,7 +323,7 @@
           // Process the reconstructed last full block
           const processedLast = this._processBlock(paddedLastBlock, tweaks[processingBlocks]);
 
-          output.push(...processedLast);
+          for (let _i = 0; _i < processedLast.length; _i++) output.push(processedLast[_i]);
           output.push(...stolenCiphertext.slice(0, partialBytes));
 
         } else {
@@ -334,7 +334,7 @@
           const paddedPartial = [...partialBlock, ...processedLast.slice(partialBytes)];
           const processedPartial = this._processBlock(paddedPartial, tweaks[processingBlocks]);
 
-          output.push(...processedPartial);
+          for (let _i = 0; _i < processedPartial.length; _i++) output.push(processedPartial[_i]);
           output.push(...processedLast.slice(0, partialBytes));
         }
 
@@ -343,7 +343,7 @@
         for (let i = 0; i < fullBlocks; i++) {
           const block = this.inputBuffer.slice(i * blockSize, (i + 1) * blockSize);
           const processedBlock = this._processBlock(block, tweaks[i]);
-          output.push(...processedBlock);
+          for (let _i = 0; _i < processedBlock.length; _i++) output.push(processedBlock[_i]);
         }
       }
 

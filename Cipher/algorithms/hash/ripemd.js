@@ -177,7 +177,7 @@
       const wordCount = this.variant / 32; // Number of 32-bit words
       for (let i = 0; i < wordCount; i++) {
         const bytes = OpCodes.Unpack32LE(this.h[i]);
-        result.push(...bytes);
+        for (let _i = 0; _i < bytes.length; _i++) result.push(bytes[_i]);
       }
 
       // Restore original state (so Result() can be called multiple times)

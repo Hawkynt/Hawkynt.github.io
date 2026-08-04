@@ -189,7 +189,7 @@
       if (!this.key1 || !this.key2) {
         throw new Error("Both keys must be set for CMC mode.");
       }
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -240,7 +240,7 @@
           decrypt1Cipher.Feed(tweaked);
           const plainBlock = decrypt1Cipher.Result();
 
-          output.push(...plainBlock);
+          for (let _i = 0; _i < plainBlock.length; _i++) output.push(plainBlock[_i]);
         }
       } else {
         // CMC Encryption (simplified)
@@ -264,7 +264,7 @@
           encrypt2Cipher.Feed(tweaked);
           const cipherBlock = encrypt2Cipher.Result();
 
-          output.push(...cipherBlock);
+          for (let _i = 0; _i < cipherBlock.length; _i++) output.push(cipherBlock[_i]);
         }
       }
 

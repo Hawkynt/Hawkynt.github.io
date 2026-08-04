@@ -324,7 +324,7 @@
 
         // Add output length in bits [L]_L_r (L_r bits, big-endian)
         const outputLengthBytes = this._encodeCounter(outputBits, outputLengthFieldBytes);
-        constantInput.push(...outputLengthBytes);
+        for (let _i = 0; _i < outputLengthBytes.length; _i++) constantInput.push(outputLengthBytes[_i]);
 
         return constantInput;
       };
@@ -346,18 +346,18 @@
         const blockInput = [];
 
         // Add A(i)
-        blockInput.push(...aPrev);
+        for (let _i = 0; _i < aPrev.length; _i++) blockInput.push(aPrev[_i]);
 
         // Add counter [i]_r (r bits, encoded in big-endian)
         const counterBytes_i = this._encodeCounter(i, counterBytes);
-        blockInput.push(...counterBytes_i);
+        for (let _i = 0; _i < counterBytes_i.length; _i++) blockInput.push(counterBytes_i[_i]);
 
         // Add constant input (Label || 0x00 || Context || [L]_L_r)
-        blockInput.push(...constantInput);
+        for (let _i = 0; _i < constantInput.length; _i++) blockInput.push(constantInput[_i]);
 
         // Compute HMAC(K_I, block_input)
         const blockOutput = hmacFunc(this._keyInput, blockInput);
-        output.push(...blockOutput);
+        for (let _i = 0; _i < blockOutput.length; _i++) output.push(blockOutput[_i]);
       }
 
       // Truncate to requested output length
