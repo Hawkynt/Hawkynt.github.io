@@ -56,6 +56,10 @@
         this.description = "Lossless 2-bit-per-base packing for raw DNA sequences. Accepts ONLY the four canonical uppercase nucleotide bytes A, C, G, T; any other byte (including lowercase, 'N', whitespace, or FASTA/FASTQ headers) is rejected with an error rather than silently dropped, since 2-bit packing has no room to represent a fifth symbol losslessly.";
         this.category = CategoryType.COMPRESSION;
         this.subCategory = "Bioinformatics";
+        // Declares that this codec accepts only part of the byte space, so the
+        // round-trip suite scores a clean rejection as a domain limit rather
+        // than a defect. A wrong-bytes result still counts as a failure.
+        this.restrictedInputDomain = true;
         this.securityStatus = SecurityStatus.EDUCATIONAL;
         this.complexity = ComplexityType.INTERMEDIATE;
         this.inventor = "Bioinformatics Compression Research";
