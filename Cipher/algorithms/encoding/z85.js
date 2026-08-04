@@ -55,7 +55,7 @@
 
       // Required metadata
       this.name = "Z85 (ZeroMQ Base85)";
-      this.description = "Variant of Base85 encoding developed for ZeroMQ that provides more efficient binary-to-text encoding than Base64. Uses 85 printable ASCII characters and avoids problematic characters like quotes and backslashes. Educational implementation following ZeroMQ RFC 32.";
+      this.description = "Variant of Base85 encoding developed for ZeroMQ that provides more efficient binary-to-text encoding than Base64. Uses 85 printable ASCII characters and avoids problematic characters like quotes and backslashes. Educational implementation following ZeroMQ RFC 32. RFC 32 defines Z85 only for byte strings whose length is a multiple of 4 (its reference implementation rejects anything else); this implementation does the same rather than inventing a non-standard padding scheme, so any input whose length is not a multiple of 4 is rejected with a clear error instead of being silently padded.";
       this.inventor = "ZeroMQ Community";
       this.year = 2013;
       this.category = CategoryType.ENCODING;
@@ -63,6 +63,12 @@
       this.securityStatus = SecurityStatus.EDUCATIONAL;
       this.complexity = ComplexityType.INTERMEDIATE;
       this.country = CountryCode.INTL;
+
+      // Z85 (RFC 32) operates on whole 4-byte blocks only; there is no
+      // standard way to represent a non-multiple-of-4 length, so the round
+      // trip suite should treat a clean rejection of such input as a
+      // declared domain limit rather than a defect (see encode()/decode()).
+      this.restrictedInputDomain = true;
 
       // Documentation and references
       this.documentation = [
@@ -91,6 +97,18 @@
           [0x00, 0x00, 0x00, 0x01], // Simple 4-byte test
           OpCodes.AnsiToBytes("00001"), // Should encode to 00001
           "Basic 4-byte encoding test - Z85",
+          "ZeroMQ RFC 32"
+        ),
+        new TestCase(
+          [0xFF, 0x00, 0x00, 0x00],
+          OpCodes.AnsiToBytes("@@r30"),
+          "High-bit-set leading byte regression test - signed-32-bit packing overflow",
+          "ZeroMQ RFC 32"
+        ),
+        new TestCase(
+          Array.from({length: 256}, (_, i) => i),
+          OpCodes.AnsiToBytes("009c61o!#m2NH?C3>iWS5d]J*6CRx17-skh9337xar.{NbQB=+c[cR@eg&FcfFLssg=mfIi5%2YjuU>)kTv.7l}6Nnnj=ADoIFnTp/ga?r8($2sxO*itWpVyu$0IOwmYv=xLzi%y&a6dAb/]tBAI+JCZjQZE0{D[FpSr8GOteoH(41EJe-<UKDCY&L:dM3N3<zjOsMmzPRn9PQ[%@^ShV!$TGwUeU^7HuW6^uKXvGh.YUh4]Z})[9-kP:p:JqPF+*1CV^9Zp<!yAd4/Xb0k*$*&A&nJXQ<MkK!>&}x#)cTlf[Bu8v].4}L}1:^-@qDS{"),
+          "All 256 byte values regression test (64 4-byte blocks) - exercises every packed value including high bit set",
           "ZeroMQ RFC 32"
         )
       ];
@@ -177,21 +195,25 @@
         return [];
       }
 
-      // Z85 requires input length to be multiple of 4 bytes
+      // Z85 (ZeroMQ RFC 32) is only defined for byte strings whose length is
+      // a multiple of 4 - the spec has no padding/length-prefix convention,
+      // so silently zero-padding here (as this code used to do) is not a
+      // safe stand-in: the padding count is lost and decode() hands back
+      // more bytes than were fed in. Reject instead of mangling.
       if (data.length % 4 !== 0) {
-        // Pad with zeros for educational purposes
-        const padded = [...data];
-        while (padded.length % 4 !== 0) {
-          padded.push(0);
-        }
-        data = padded;
+        throw new Error(`Z85Instance.encode: input length ${data.length} is not a multiple of 4 (Z85/RFC 32 requires whole 4-byte blocks)`);
       }
 
       const result = [];
 
       for (let i = 0; i < data.length; i += 4) {
-        // Pack 4 bytes into 32-bit value (big-endian)
-        const value = OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(data[i], 24), OpCodes.Shl32(data[i + 1], 16)), OpCodes.Shl32(data[i + 2], 8)), data[i + 3]);
+        // Pack 4 bytes into 32-bit value (big-endian). Must use the
+        // unsigned Or32 (not OrN, which does signed 32-bit ToInt32
+        // semantics on plain Numbers): once byte 0 is >= 0x80 the packed
+        // value's top bit is set, and OrN would hand back a negative
+        // Number, sending "temp % 85" into negative-index territory and
+        // producing undefined alphabet lookups.
+        const value = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(data[i], 24), OpCodes.Shl32(data[i + 1], 16)), OpCodes.Shl32(data[i + 2], 8)), data[i + 3]);
 
         // Convert to 5 base-85 characters
         let temp = value;
