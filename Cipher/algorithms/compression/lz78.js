@@ -84,7 +84,10 @@
           new LinkItem("Introduction to Data Compression", "https://www.elsevier.com/books/introduction-to-data-compression/sayood/978-0-12-620862-7")
         ];
 
-        // Simplified test vectors for correct LZ78
+        // Test vectors - round-trip verified. Token format is
+        // [Index(2 bytes)][HasByteFlag(1 byte)][Byte(1 byte)]; the flag byte
+        // is required because byte value 0xFF is a legal input byte and can
+        // not double as a "no trailing byte" sentinel (see allbytes vector).
         this.tests = [
           new TestCase(
             [], // Empty input
@@ -94,20 +97,69 @@
           ),
           new TestCase(
             [65], // "A"
-            [0, 0, 0, 1, 0, 0, 65], // 1 token: (0,'A')
+            [0, 0, 0, 1, 0, 0, 1, 65], // 1 token: (0,'A')
             "Single character",
             "https://en.wikipedia.org/wiki/LZ78"
           ),
           new TestCase(
             [65, 66], // "AB"
-            [0, 0, 0, 2, 0, 0, 65, 0, 0, 66], // 2 tokens: (0,'A'), (0,'B')
+            [0, 0, 0, 2, 0, 0, 1, 65, 0, 0, 1, 66], // 2 tokens: (0,'A'), (0,'B')
             "Two unique characters",
             "https://en.wikipedia.org/wiki/LZ78"
           ),
           new TestCase(
             [65, 65], // "AA"
-            [0, 0, 0, 2, 0, 0, 65, 0, 1, 255], // 2 tokens: (0,'A'), (1,null)
+            [0, 0, 0, 2, 0, 0, 1, 65, 0, 1, 0, 0], // 2 tokens: (0,'A'), (1,null)
             "Repeated character",
+            "https://en.wikipedia.org/wiki/LZ78"
+          ),
+          new TestCase(
+            // All 256 distinct byte values - regression test for the byte-0xFF
+            // vs "no trailing byte" sentinel collision that used to drop data.
+            Array.from({length: 256}, (_, i) => i),
+            [
+              0,0,1,0, 0,0,1,0,0,0,1,1,0,0,1,2,0,0,1,3,0,0,1,4,0,0,1,5,0,0,1,6,0,0,1,7,0,0,1,8,0,0,1,9,
+              0,0,1,10,0,0,1,11,0,0,1,12,0,0,1,13,0,0,1,14,0,0,1,15,0,0,1,16,0,0,1,17,0,0,1,18,0,0,1,19,
+              0,0,1,20,0,0,1,21,0,0,1,22,0,0,1,23,0,0,1,24,0,0,1,25,0,0,1,26,0,0,1,27,0,0,1,28,0,0,1,29,
+              0,0,1,30,0,0,1,31,0,0,1,32,0,0,1,33,0,0,1,34,0,0,1,35,0,0,1,36,0,0,1,37,0,0,1,38,0,0,1,39,
+              0,0,1,40,0,0,1,41,0,0,1,42,0,0,1,43,0,0,1,44,0,0,1,45,0,0,1,46,0,0,1,47,0,0,1,48,0,0,1,49,
+              0,0,1,50,0,0,1,51,0,0,1,52,0,0,1,53,0,0,1,54,0,0,1,55,0,0,1,56,0,0,1,57,0,0,1,58,0,0,1,59,
+              0,0,1,60,0,0,1,61,0,0,1,62,0,0,1,63,0,0,1,64,0,0,1,65,0,0,1,66,0,0,1,67,0,0,1,68,0,0,1,69,
+              0,0,1,70,0,0,1,71,0,0,1,72,0,0,1,73,0,0,1,74,0,0,1,75,0,0,1,76,0,0,1,77,0,0,1,78,0,0,1,79,
+              0,0,1,80,0,0,1,81,0,0,1,82,0,0,1,83,0,0,1,84,0,0,1,85,0,0,1,86,0,0,1,87,0,0,1,88,0,0,1,89,
+              0,0,1,90,0,0,1,91,0,0,1,92,0,0,1,93,0,0,1,94,0,0,1,95,0,0,1,96,0,0,1,97,0,0,1,98,0,0,1,99,
+              0,0,1,100,0,0,1,101,0,0,1,102,0,0,1,103,0,0,1,104,0,0,1,105,0,0,1,106,0,0,1,107,0,0,1,108,0,0,1,109,
+              0,0,1,110,0,0,1,111,0,0,1,112,0,0,1,113,0,0,1,114,0,0,1,115,0,0,1,116,0,0,1,117,0,0,1,118,0,0,1,119,
+              0,0,1,120,0,0,1,121,0,0,1,122,0,0,1,123,0,0,1,124,0,0,1,125,0,0,1,126,0,0,1,127,0,0,1,128,0,0,1,129,
+              0,0,1,130,0,0,1,131,0,0,1,132,0,0,1,133,0,0,1,134,0,0,1,135,0,0,1,136,0,0,1,137,0,0,1,138,0,0,1,139,
+              0,0,1,140,0,0,1,141,0,0,1,142,0,0,1,143,0,0,1,144,0,0,1,145,0,0,1,146,0,0,1,147,0,0,1,148,0,0,1,149,
+              0,0,1,150,0,0,1,151,0,0,1,152,0,0,1,153,0,0,1,154,0,0,1,155,0,0,1,156,0,0,1,157,0,0,1,158,0,0,1,159,
+              0,0,1,160,0,0,1,161,0,0,1,162,0,0,1,163,0,0,1,164,0,0,1,165,0,0,1,166,0,0,1,167,0,0,1,168,0,0,1,169,
+              0,0,1,170,0,0,1,171,0,0,1,172,0,0,1,173,0,0,1,174,0,0,1,175,0,0,1,176,0,0,1,177,0,0,1,178,0,0,1,179,
+              0,0,1,180,0,0,1,181,0,0,1,182,0,0,1,183,0,0,1,184,0,0,1,185,0,0,1,186,0,0,1,187,0,0,1,188,0,0,1,189,
+              0,0,1,190,0,0,1,191,0,0,1,192,0,0,1,193,0,0,1,194,0,0,1,195,0,0,1,196,0,0,1,197,0,0,1,198,0,0,1,199,
+              0,0,1,200,0,0,1,201,0,0,1,202,0,0,1,203,0,0,1,204,0,0,1,205,0,0,1,206,0,0,1,207,0,0,1,208,0,0,1,209,
+              0,0,1,210,0,0,1,211,0,0,1,212,0,0,1,213,0,0,1,214,0,0,1,215,0,0,1,216,0,0,1,217,0,0,1,218,0,0,1,219,
+              0,0,1,220,0,0,1,221,0,0,1,222,0,0,1,223,0,0,1,224,0,0,1,225,0,0,1,226,0,0,1,227,0,0,1,228,0,0,1,229,
+              0,0,1,230,0,0,1,231,0,0,1,232,0,0,1,233,0,0,1,234,0,0,1,235,0,0,1,236,0,0,1,237,0,0,1,238,0,0,1,239,
+              0,0,1,240,0,0,1,241,0,0,1,242,0,0,1,243,0,0,1,244,0,0,1,245,0,0,1,246,0,0,1,247,0,0,1,248,0,0,1,249,
+              0,0,1,250,0,0,1,251,0,0,1,252,0,0,1,253,0,0,1,254,0,0,1,255
+            ],
+            "All 256 byte values (regression: byte 0xFF sentinel collision)",
+            "https://en.wikipedia.org/wiki/LZ78"
+          ),
+          new TestCase(
+            // Pseudo-random data, odd length (65 bytes, not a multiple of any token unit)
+            [128,0,0,0,0,0,0,0,64,0,0,0,0,0,64,0,0,64,0,64,128,0,64,0,0,0,0,0,64,0,0,0,64,128,192,0,0,0,0,0,0,0,0,0,0,0,0,0,0,64,0,0,0,0,64,0,64,128,192,0,0,0,0,0,64],
+            [0,0,0,21,0,0,1,128,0,0,1,0,0,2,1,0,0,3,1,0,0,2,1,64,0,4,1,0,0,5,1,0,0,7,1,64,0,1,1,0,0,0,1,64,0,6,1,0,0,10,1,0,0,3,1,64,0,1,1,192,0,11,1,0,0,15,1,0,0,7,1,0,0,13,1,0,0,10,1,128,0,0,1,192,0,11,1,64],
+            "Pseudo-random data, odd length",
+            "https://en.wikipedia.org/wiki/LZ78"
+          ),
+          new TestCase(
+            // Alternating pattern, odd length (67 bytes)
+            Array.from({length: 67}, (_, i) => (i % 2 ? 0x62 : 0x61)),
+            [0,0,0,16,0,0,1,97,0,0,1,98,0,1,1,98,0,3,1,97,0,2,1,97,0,5,1,98,0,4,1,98,0,7,1,97,0,6,1,97,0,9,1,98,0,8,1,98,0,11,1,97,0,10,1,97,0,13,1,98,0,12,1,98,0,4,0,0],
+            "Alternating pattern, odd length",
             "https://en.wikipedia.org/wiki/LZ78"
           )
         ];
@@ -132,7 +184,7 @@
       Feed(data) {
         this.hasBeenFed = true;
         if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {
@@ -255,7 +307,7 @@
           // Append byte if present
           if (token.byte !== null) {
             const newSequence = [...dictSequence, token.byte];
-            output.push(...newSequence);
+            for (let _i = 0; _i < newSequence.length; _i++) output.push(newSequence[_i]);
 
             // Add to dictionary if not full
             if (nextIndex < this.algorithm.MAX_DICTIONARY_SIZE) {
@@ -264,7 +316,7 @@
             }
           } else {
             // No byte indicates final sequence
-            output.push(...dictSequence);
+            for (let _i = 0; _i < dictSequence.length; _i++) output.push(dictSequence[_i]);
           }
         }
 
@@ -274,7 +326,12 @@
       /**
        * Serialize tokens to compressed format
        * Format: [TokenCount(4 bytes)][Token1][Token2]...[TokenN]
-       * Token format: [Index(2 bytes)][Byte(1 byte, 255 if null)]
+       * Token format: [Index(2 bytes)][HasByteFlag(1 byte)][Byte(1 byte, meaningful only if flag=1)]
+       *
+       * A dedicated flag byte (rather than reusing byte value 255 as a "no byte"
+       * sentinel) is required because 255 is itself a legal input byte value -
+       * the previous encoding could not tell the literal byte 0xFF apart from
+       * "no trailing byte", silently dropping any token whose byte was 0xFF.
        * @private
        */
       _serializeTokens(tokens) {
@@ -283,7 +340,7 @@
         // Write token count (4 bytes, big-endian) using OpCodes
         const count = tokens.length;
         const countBytes = OpCodes.Words32ToBytesBE([count]);
-        bytes.push(...countBytes);
+        for (let _i = 0; _i < countBytes.length; _i++) bytes.push(countBytes[_i]);
 
         // Write tokens
         for (const token of tokens) {
@@ -291,11 +348,11 @@
           const indexBytes = OpCodes.Words32ToBytesBE([token.index]);
           bytes.push(indexBytes[2], indexBytes[3]); // Take low 2 bytes
 
-          // Byte (1 byte, 255 if null)
+          // HasByteFlag + Byte value
           if (token.byte !== null) {
-            bytes.push(OpCodes.AndN(token.byte, 0xFF));
+            bytes.push(1, OpCodes.AndN(token.byte, 0xFF));
           } else {
-            bytes.push(255);
+            bytes.push(0, 0);
           }
         }
 
@@ -318,7 +375,7 @@
         const count = countArray[0];
         const tokens = [];
 
-        if (bytes.length !== 4 + count * 3) {
+        if (bytes.length !== 4 + count * 4) {
           throw new Error('Invalid compressed data: length mismatch');
         }
 
@@ -329,16 +386,16 @@
           const indexArray = OpCodes.BytesToWords32BE(indexBytes);
           const index = indexArray[0];
 
-          // Read byte (1 byte)
-          const byteValue = bytes[pos + 2];
-          const byte = byteValue !== 255 ? byteValue : null;
+          // Read HasByteFlag + byte value
+          const hasByte = bytes[pos + 2] !== 0;
+          const byte = hasByte ? bytes[pos + 3] : null;
 
           tokens.push({
             index: index,
             byte: byte
           });
 
-          pos += 3;
+          pos += 4;
         }
 
         return tokens;
