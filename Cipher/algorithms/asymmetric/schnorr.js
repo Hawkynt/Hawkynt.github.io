@@ -679,7 +679,7 @@
         this._message = [];
       }
 
-      this._message.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this._message.push(data[_i]);
     }
 
     /**

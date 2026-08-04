@@ -210,7 +210,7 @@
       if (!this.key) {
         throw new Error("Key must be set for FPE mode.");
       }
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**

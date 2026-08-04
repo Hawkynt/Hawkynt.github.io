@@ -299,7 +299,7 @@
         throw new Error("IV not set");
       }
 
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     // Get the cipher result

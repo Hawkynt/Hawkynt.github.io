@@ -202,7 +202,7 @@
       if (!data || data.length === 0) return;
       if (!this.key) throw new Error("Key not set");
 
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -248,7 +248,7 @@
       const result = [];
       for (let i = 0; i < encryptedWords.length; i++) {
         const bytes = OpCodes.Unpack32LE(encryptedWords[i]);
-        result.push(...bytes);
+        for (let _i = 0; _i < bytes.length; _i++) result.push(bytes[_i]);
       }
 
       return result;
@@ -272,7 +272,7 @@
       const result = [];
       for (let i = 0; i < decryptedWords.length; i++) {
         const bytes = OpCodes.Unpack32LE(decryptedWords[i]);
-        result.push(...bytes);
+        for (let _i = 0; _i < bytes.length; _i++) result.push(bytes[_i]);
       }
 
       return result;

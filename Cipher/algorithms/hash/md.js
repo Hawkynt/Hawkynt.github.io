@@ -93,7 +93,7 @@
     const bitLengthHigh = Math.floor(bitLength / 0x100000000);
 
     const lengthBytes = OpCodes.Unpack32LE(bitLengthLow).concat(OpCodes.Unpack32LE(bitLengthHigh));
-    padded.push(...lengthBytes);
+    for (let _i = 0; _i < lengthBytes.length; _i++) padded.push(lengthBytes[_i]);
 
     return padded;
   }
@@ -511,7 +511,7 @@
       const result = [];
       h.forEach(word => {
         const bytes = OpCodes.Unpack32LE(word);
-        result.push(...bytes);
+        for (let _i = 0; _i < bytes.length; _i++) result.push(bytes[_i]);
       });
 
       return result;
@@ -778,7 +778,7 @@
       const result = [];
       for (let i = 0; i < 4; i++) {
         const bytes = OpCodes.Unpack32LE(this.h[i]);
-        result.push(...bytes);
+        for (let _i = 0; _i < bytes.length; _i++) result.push(bytes[_i]);
       }
 
       // Restore original state (so Result() can be called multiple times)

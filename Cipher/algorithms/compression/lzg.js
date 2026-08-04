@@ -264,7 +264,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -297,10 +297,10 @@
 
       // Add header placeholder
       const header = this._createHeader(input.length, 0, LZG_METHOD_LZG1);
-      result.push(...header);
+      for (let _i = 0; _i < header.length; _i++) result.push(header[_i]);
 
       // Add marker symbols
-      result.push(...markers);
+      for (let _i = 0; _i < markers.length; _i++) result.push(markers[_i]);
 
       // Build marker lookup table
       const markerLookup = new Array(256).fill(-1);

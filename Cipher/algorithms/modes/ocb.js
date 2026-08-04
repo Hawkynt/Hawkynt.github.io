@@ -286,7 +286,7 @@
       if (!this.nonce) {
         throw new Error("Nonce must be set for OCB mode.");
       }
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -351,7 +351,7 @@
         const encrypted = cipher.Result();
 
         const cipherBlock = OpCodes.XorArrays(encrypted, combinedOffset);
-        ciphertext.push(...cipherBlock);
+        for (let _i = 0; _i < cipherBlock.length; _i++) ciphertext.push(cipherBlock[_i]);
 
         // Update checksum
         checksum = OpCodes.XorArrays(checksum, block);
@@ -367,7 +367,7 @@
         for (let i = 0; i < finalBlock.length; i++) {
           paddedBlock[i] = OpCodes.XorN(finalBlock[i], pad[i]);
         }
-        ciphertext.push(...paddedBlock);
+        for (let _i = 0; _i < paddedBlock.length; _i++) ciphertext.push(paddedBlock[_i]);
 
         // Update checksum with padded final block
         const finalChecksum = [...finalBlock];
@@ -432,7 +432,7 @@
         const decrypted = cipher.Result();
 
         const plainBlock = OpCodes.XorArrays(decrypted, combinedOffset);
-        plaintext.push(...plainBlock);
+        for (let _i = 0; _i < plainBlock.length; _i++) plaintext.push(plainBlock[_i]);
 
         // Update checksum
         checksum = OpCodes.XorArrays(checksum, plainBlock);
@@ -448,7 +448,7 @@
         for (let i = 0; i < finalBlock.length; i++) {
           plaintextBlock[i] = OpCodes.XorN(finalBlock[i], pad[i]);
         }
-        plaintext.push(...plaintextBlock);
+        for (let _i = 0; _i < plaintextBlock.length; _i++) plaintext.push(plaintextBlock[_i]);
 
         // Update checksum with padded final block
         const finalChecksum = [...plaintextBlock];
@@ -733,7 +733,7 @@
       if (!this.nonce) {
         throw new Error("Nonce must be set for OCB3 mode.");
       }
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -800,7 +800,7 @@
         const encrypted = cipher.Result();
         const cipherBlock = OpCodes.XorArrays(encrypted, currentOffset);
 
-        ciphertext.push(...cipherBlock);
+        for (let _i = 0; _i < cipherBlock.length; _i++) ciphertext.push(cipherBlock[_i]);
 
         // Update checksum: Checksum = Checksum ⊕ P_i
         checksum = OpCodes.XorArrays(checksum, block);
@@ -824,7 +824,7 @@
         for (let i = 0; i < finalBlock.length; i++) {
           finalCipher[i] = OpCodes.XorN(finalBlock[i], pad[i]);
         }
-        ciphertext.push(...finalCipher);
+        for (let _i = 0; _i < finalCipher.length; _i++) ciphertext.push(finalCipher[_i]);
 
         // Update checksum: Checksum = Checksum ⊕ (P_* || 1 || 0^{127-8*len(P_*)})
         const paddedFinal = [...finalBlock];
@@ -881,7 +881,7 @@
         const decrypted = cipher.Result();
         const plainBlock = OpCodes.XorArrays(decrypted, currentOffset);
 
-        output.push(...plainBlock);
+        for (let _i = 0; _i < plainBlock.length; _i++) output.push(plainBlock[_i]);
       }
 
       // Step 4: Process final partial block if present (simplified)
@@ -900,7 +900,7 @@
         for (let i = 0; i < finalBlock.length; i++) {
           finalPlain[i] = OpCodes.XorN(finalBlock[i], pad[i]);
         }
-        output.push(...finalPlain);
+        for (let _i = 0; _i < finalPlain.length; _i++) output.push(finalPlain[_i]);
       }
 
       // Clear sensitive data

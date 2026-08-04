@@ -419,7 +419,7 @@
       if (!this.key) throw new Error("Key not set");
 
       // Add data to input buffer
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     // Get the result of the transformation
@@ -448,7 +448,7 @@
         const processedBlock = this.isInverse 
           ? this._decryptBlock(block) 
           : this._encryptBlock(block);
-        output.push(...processedBlock);
+        for (let _i = 0; _i < processedBlock.length; _i++) output.push(processedBlock[_i]);
       }
 
       // Clear input buffer for next operation

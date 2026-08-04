@@ -188,7 +188,7 @@
         const leftOutput = result.slice(0, this.blockSize);
         const rightOutput = result.slice(this.blockSize);
 
-        ciphertext.push(...leftOutput);
+        for (let _i = 0; _i < leftOutput.length; _i++) ciphertext.push(leftOutput[_i]);
         for (let i = 0; i < this.blockSize; i++) {
           tag[i] ^= rightOutput[i];
         }
@@ -211,10 +211,10 @@
 
         // XOR left output with accumulated tag for ciphertext
         const ctBlock = xorBytes(leftOutput, tag, this.blockSize);
-        ciphertext.push(...ctBlock);
+        for (let _i = 0; _i < ctBlock.length; _i++) ciphertext.push(ctBlock[_i]);
 
         // Right output becomes final tag
-        ciphertext.push(...rightOutput);
+        for (let _i = 0; _i < rightOutput.length; _i++) ciphertext.push(rightOutput[_i]);
       } else {
         const padded = padBlock(plaintext.slice(ptPos), this.blockSize);
         this.setCounter(tweakey, counter, 7);
@@ -228,7 +228,7 @@
 
         // XOR left output with accumulated tag - this is the ciphertext block
         const ctBlock = xorBytes(leftOutput, tag, this.blockSize);
-        ciphertext.push(...ctBlock);
+        for (let _i = 0; _i < ctBlock.length; _i++) ciphertext.push(ctBlock[_i]);
 
         // Append truncated right output as truncated tag
         ciphertext.push(...rightOutput.slice(0, ptRem));
@@ -325,7 +325,7 @@
         const leftOutput = result.slice(0, this.blockSize);
         const rightOutput = result.slice(this.blockSize);
 
-        plaintext.push(...leftOutput);
+        for (let _i = 0; _i < leftOutput.length; _i++) plaintext.push(leftOutput[_i]);
         for (let i = 0; i < this.blockSize; i++) {
           tag[i] ^= rightOutput[i];
         }
@@ -351,7 +351,7 @@
         const leftOutput = result.slice(0, this.blockSize);
         const rightOutput = result.slice(this.blockSize);
 
-        plaintext.push(...leftOutput);
+        for (let _i = 0; _i < leftOutput.length; _i++) plaintext.push(leftOutput[_i]);
 
         // Verify tag
         const receivedTag = ciphertext.slice(ctPos + this.blockSize);
@@ -560,7 +560,7 @@
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
       if (!this._nonce) throw new Error("Nonce not set");
-      this._data.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this._data.push(data[_i]);
     }
 
     /**

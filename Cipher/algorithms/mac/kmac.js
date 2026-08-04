@@ -354,7 +354,7 @@ if (!global.OpCodes && typeof require !== 'undefined') {
     }
 
     absorb(data) {
-      this.buffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.buffer.push(data[_i]);
 
       while (this.buffer.length >= this.rate) {
         this.state.absorb(this.buffer.slice(0, this.rate), this.rate);

@@ -223,13 +223,13 @@
       if (!data || data.length === 0) return;
       if (!this.key) throw new Error("Key not set");
 
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
 
       // Process complete blocks
       while (this.inputBuffer.length >= this.BlockSize) {
         const block = this.inputBuffer.splice(0, this.BlockSize);
         const processed = this.isInverse ? this._decryptBlock(block) : this._encryptBlock(block);
-        this.outputBuffer.push(...processed);
+        for (let _i = 0; _i < processed.length; _i++) this.outputBuffer.push(processed[_i]);
       }
     }
 

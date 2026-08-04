@@ -171,7 +171,7 @@
 
       Feed(data) {
         if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {
@@ -243,7 +243,7 @@
           bitPos++;
           if (bitPos === 8 || i === data.length - 1) {
             compressed.push(controlByte);
-            compressed.push(...pendingLiterals);
+            for (let _i = 0; _i < pendingLiterals.length; _i++) compressed.push(pendingLiterals[_i]);
             controlByte = 0;
             bitPos = 0;
             pendingLiterals.length = 0;

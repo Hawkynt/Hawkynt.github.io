@@ -308,7 +308,7 @@
 
         // Add counter [i]_r (r bits, encoded in big-endian)
         const counterBytes_i = this._encodeCounter(i, counterBytes);
-        blockInput.push(...counterBytes_i);
+        for (let _i = 0; _i < counterBytes_i.length; _i++) blockInput.push(counterBytes_i[_i]);
 
         // Add label
         if (this._label && this._label.length > 0) {
@@ -333,7 +333,7 @@
 
         // Compute HMAC(K_I, block_input)
         const blockOutput = hmacFunc(this._keyInput, blockInput);
-        output.push(...blockOutput);
+        for (let _i = 0; _i < blockOutput.length; _i++) output.push(blockOutput[_i]);
       }
 
       // Truncate to requested output length

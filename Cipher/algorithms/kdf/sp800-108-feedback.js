@@ -321,12 +321,12 @@
 
         // Add K_{i-1} (previous output, or IV for first iteration)
         if (kPrev && kPrev.length > 0) {
-          blockInput.push(...kPrev);
+          for (let _i = 0; _i < kPrev.length; _i++) blockInput.push(kPrev[_i]);
         }
 
         // Add counter [i]_r (r bits, encoded in big-endian)
         const counterBytes_i = this._encodeCounter(i, counterBytes);
-        blockInput.push(...counterBytes_i);
+        for (let _i = 0; _i < counterBytes_i.length; _i++) blockInput.push(counterBytes_i[_i]);
 
         // Add label
         if (this._label && this._label.length > 0) {
@@ -338,17 +338,17 @@
 
         // Add context
         if (ctx && ctx.length > 0) {
-          blockInput.push(...ctx);
+          for (let _i = 0; _i < ctx.length; _i++) blockInput.push(ctx[_i]);
         }
 
         // Add output length in bits [L]_L_r (L_r bits, big-endian)
         const outputLengthBytes = this._encodeCounter(outputBits, outputLengthFieldBytes);
-        blockInput.push(...outputLengthBytes);
+        for (let _i = 0; _i < outputLengthBytes.length; _i++) blockInput.push(outputLengthBytes[_i]);
 
         // Compute HMAC(K_I, block_input)
         const blockOutput = hmacFunc(this._keyInput, blockInput);
         kPrev = blockOutput;  // Feedback for next iteration
-        output.push(...blockOutput);
+        for (let _i = 0; _i < blockOutput.length; _i++) output.push(blockOutput[_i]);
       }
 
       // Truncate to requested output length

@@ -384,7 +384,7 @@
       if (!data || data.length === 0) return;
 
       if (Array.isArray(data)) {
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       } else if (typeof data === 'string') {
         this.inputBuffer.push(...OpCodes.AnsiToBytes(data));
       } else {

@@ -142,7 +142,7 @@
 
       Feed(data) {
         if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {
@@ -252,9 +252,9 @@
         }
 
         const output = [];
-        output.push(...OpCodes.Unpack32BE(byteLen));
-        output.push(...OpCodes.Unpack32BE(ones));
-        output.push(...codes);
+        { const _src = OpCodes.Unpack32BE(byteLen); for (let _i = 0; _i < _src.length; _i++) output.push(_src[_i]); }
+        { const _src = OpCodes.Unpack32BE(ones); for (let _i = 0; _i < _src.length; _i++) output.push(_src[_i]); }
+        for (let _i = 0; _i < codes.length; _i++) output.push(codes[_i]);
         return output;
       }
 

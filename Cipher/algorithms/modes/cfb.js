@@ -180,7 +180,7 @@
       if (!this.iv) {
         throw new Error("IV not set. Call setIV() first.");
       }
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -219,7 +219,7 @@
 
           // XOR ciphertext with keystream to get plaintext
           const plainBlock = OpCodes.XorArrays(cipherBlock.slice(0, remainingBytes), keystream.slice(0, remainingBytes));
-          output.push(...plainBlock);
+          for (let _i = 0; _i < plainBlock.length; _i++) output.push(plainBlock[_i]);
 
           // Update feedback register for next iteration
           // Shift left by block size and insert current ciphertext
@@ -245,7 +245,7 @@
 
           // XOR plaintext with keystream to get ciphertext
           const cipherBlock = OpCodes.XorArrays(plainBlock.slice(0, remainingBytes), keystream.slice(0, remainingBytes));
-          output.push(...cipherBlock);
+          for (let _i = 0; _i < cipherBlock.length; _i++) output.push(cipherBlock[_i]);
 
           // Update feedback register for next iteration
           // Shift left by block size and insert current ciphertext

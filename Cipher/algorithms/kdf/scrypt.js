@@ -276,7 +276,7 @@
 
       for (let i = 1; i <= l; i++) {
         const T = this._f(password, salt, iterations, i);
-        dk.push(...T);
+        for (let _i = 0; _i < T.length; _i++) dk.push(T[_i]);
       }
 
       return dk.slice(0, dkLen);

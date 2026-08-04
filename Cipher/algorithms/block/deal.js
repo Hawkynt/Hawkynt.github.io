@@ -304,7 +304,7 @@
         Feed: function(data) {
           if (!data || data.length === 0) return;
           if (!this._keySet) throw new Error("Key not set");
-          this.inputBuffer.push(...data);
+          for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
         },
 
         // Result method expected by test framework
@@ -321,7 +321,7 @@
             const processedBlock = this.isInverse
               ? this.algorithm.DecryptBlock(i / 16, block)
               : this.algorithm.EncryptBlock(i / 16, block);
-            output.push(...processedBlock);
+            for (let _i = 0; _i < processedBlock.length; _i++) output.push(processedBlock[_i]);
           }
 
           this.inputBuffer = [];

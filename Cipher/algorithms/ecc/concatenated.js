@@ -197,7 +197,7 @@
         const symbol = outerEncoded.slice(i, i + 4);
         if (symbol.length === 4) {
           const innerEncoded = this.encodeInner(symbol);
-          finalEncoded.push(...innerEncoded);
+          for (let _i = 0; _i < innerEncoded.length; _i++) finalEncoded.push(innerEncoded[_i]);
         }
       }
 
@@ -214,7 +214,7 @@
         const innerCodeword = data.slice(i, i + symbolSize);
         if (innerCodeword.length === symbolSize) {
           const decoded = this.decodeInner(innerCodeword);
-          innerDecoded.push(...decoded);
+          for (let _i = 0; _i < decoded.length; _i++) innerDecoded.push(decoded[_i]);
         }
       }
 

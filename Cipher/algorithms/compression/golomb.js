@@ -181,7 +181,7 @@
           // In practice, this would be negotiated or fixed
         }
 
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {
@@ -223,8 +223,8 @@
         // for any input producing more than 255 encoded bits), then the bits.
         const bits = bitBuffer.getBytes();
         const bitCountBytes = OpCodes.Unpack32BE(bitBuffer.getBitCount());
-        output.push(...bitCountBytes);
-        output.push(...bits);
+        for (let _i = 0; _i < bitCountBytes.length; _i++) output.push(bitCountBytes[_i]);
+        for (let _i = 0; _i < bits.length; _i++) output.push(bits[_i]);
 
         return output;
       }

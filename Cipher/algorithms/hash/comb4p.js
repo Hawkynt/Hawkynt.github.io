@@ -148,7 +148,7 @@
 
       // Accumulate input data (will be fed all at once in Result())
       const input = Array.isArray(data) ? data : Array.from(data);
-      this.inputBuffer.push(...input);
+      for (let _i = 0; _i < input.length; _i++) this.inputBuffer.push(input[_i]);
     }
 
     /**

@@ -422,7 +422,7 @@
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -490,7 +490,7 @@
           this._ilt(block, temp); this._iround(temp, 2);
           this._ilt(temp, block); this._iround(block, 0);
 
-          output.push(...block);
+          for (let _i = 0; _i < block.length; _i++) output.push(block[_i]);
         } else {
           // Encrypt
           this._round(block, 0); this._lt(block, temp);
@@ -534,7 +534,7 @@
           block[14] = (block[14] + finalKey[14])&255;
           block[15] = OpCodes.Xor32(block[15], finalKey[15]);
 
-          output.push(...block);
+          for (let _i = 0; _i < block.length; _i++) output.push(block[_i]);
         }
       }
 

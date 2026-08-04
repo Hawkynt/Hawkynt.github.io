@@ -1140,7 +1140,7 @@
         throw new Error("Not initialized - set key and nonce first");
       }
 
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -1182,7 +1182,7 @@
             for (let i = 0; i < this.RATE_BYTES; ++i) {
               block.push(OpCodes.Xor32(this.inputBuffer[pos + i], stateBytes[i]));
             }
-            output.push(...block);
+            for (let _i = 0; _i < block.length; _i++) output.push(block[_i]);
 
             // Update state: rho then XOR plaintext
             this._rho();
@@ -1209,7 +1209,7 @@
             for (let i = 0; i < this.RATE_BYTES; ++i) {
               block.push(OpCodes.Xor32(this.inputBuffer[pos + i], stateBytes[i]));
             }
-            output.push(...block);
+            for (let _i = 0; _i < block.length; _i++) output.push(block[_i]);
 
             this.state[this.STATE_WORDS - 1] ^= this._M3;
             this._rho();
@@ -1331,7 +1331,7 @@
             }
 
             this.permute(this.state, this.STEPS_SLIM);
-            output.push(...block);
+            for (let _i = 0; _i < block.length; _i++) output.push(block[_i]);
             pos += this.RATE_BYTES;
             mlen -= this.RATE_BYTES;
           }
@@ -1362,7 +1362,7 @@
               );
             }
 
-            output.push(...block);
+            for (let _i = 0; _i < block.length; _i++) output.push(block[_i]);
           } else {
             // Partial final block
             this.state[this.STATE_WORDS - 1] ^= this._M2;

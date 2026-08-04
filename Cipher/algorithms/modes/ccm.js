@@ -256,7 +256,7 @@
       // Add associated data blocks if present
       if (associatedData && associatedData.length > 0) {
         const aadBlocks = this._encodeAssociatedData(associatedData);
-        blocks.push(...aadBlocks);
+        for (let _i = 0; _i < aadBlocks.length; _i++) blocks.push(aadBlocks[_i]);
       }
 
       return blocks;
@@ -361,7 +361,7 @@
       if (!this.nonce) {
         throw new Error("Nonce not set");
       }
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**

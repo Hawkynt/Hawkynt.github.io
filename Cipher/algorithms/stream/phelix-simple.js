@@ -151,7 +151,7 @@ class PhelixInstance extends IAlgorithmInstance {
   Feed(data) {
     if (!data || data.length === 0) return;
     if (!this._key) throw new Error("Key not set");
-    this.inputBuffer.push(...data);
+    for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
   }
 
   Result() {
@@ -208,7 +208,7 @@ class PhelixInstance extends IAlgorithmInstance {
     // Extract initial keystream
     for (let i = 0; i < 8; i++) {
       const bytes = OpCodes.Unpack32LE(state[i]);
-      keystreamBytes.push(...bytes);
+      for (let _i = 0; _i < bytes.length; _i++) keystreamBytes.push(bytes[_i]);
     }
 
     // Process data
@@ -229,7 +229,7 @@ class PhelixInstance extends IAlgorithmInstance {
         keystreamBytes.length = 0;
         for (let j = 0; j < 8; j++) {
           const bytes = OpCodes.Unpack32LE(state[j]);
-          keystreamBytes.push(...bytes);
+          for (let _i = 0; _i < bytes.length; _i++) keystreamBytes.push(bytes[_i]);
         }
       }
 

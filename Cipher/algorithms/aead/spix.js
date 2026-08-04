@@ -328,7 +328,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -472,7 +472,7 @@
 
       // Generate and append tag
       const tag = this._finalize(state);
-      output.push(...tag);
+      for (let _i = 0; _i < tag.length; _i++) output.push(tag[_i]);
 
       this.inputBuffer = [];
       return output;
