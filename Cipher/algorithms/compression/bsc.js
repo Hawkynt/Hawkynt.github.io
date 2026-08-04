@@ -160,7 +160,7 @@
 
       Feed(data) {
         if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {
@@ -227,7 +227,7 @@
             console.warn('BSC: CRC32 mismatch detected');
           }
 
-          output.push(...decompressed);
+          for (let _i = 0; _i < decompressed.length; _i++) output.push(decompressed[_i]);
         }
 
         return output.slice(0, originalLength);
@@ -516,38 +516,81 @@
         return this._bwtMtfDecompress(data);
       }
 
-      // Simplified BWT implementation (reuse from BZIP2 if needed)
-      _applyBWT(data) {
-        if (data.length === 0) return { transformed: [], primaryIndex: 0 };
+      // BWT implementation - O(n log^2 n) prefix-doubling suffix-array
+      // construction on the doubled string (data concatenated with itself),
+      // so no sentinel character is needed and ties between genuinely
+      // identical (periodic) rotations resolve consistently. This replaces
+      // a naive approach that both compared full O(n) rotations inside a
+      // sort comparator AND materialized every rotation as its own O(n)
+      // array (O(n^2) time and O(n^2) memory), which was pathological even
+      // for modest block sizes. Same construction validated in bzip2.js's
+      // BurrowsWheelerTransform.
+      _sortedRotationOrder(data) {
+        const n = data.length;
+        const m = 2 * n;
 
-        const rotations = [];
-        const dataArray = Array.from(data);
+        let sa = new Int32Array(m);
+        for (let i = 0; i < m; ++i) sa[i] = i;
 
-        for (let i = 0; i < dataArray.length; i++) {
-          rotations.push({
-            rotation: dataArray.slice(i).concat(dataArray.slice(0, i)),
-            index: i
+        let rank = new Int32Array(m);
+        for (let i = 0; i < m; ++i) rank[i] = data[i % n];
+
+        let tmp = new Int32Array(m);
+
+        for (let k = 1; ; k *= 2) {
+          sa.sort((a, b) => {
+            const ra = rank[a], rb = rank[b];
+            if (ra !== rb) return ra - rb;
+            const ra2 = a + k < m ? rank[a + k] : -1;
+            const rb2 = b + k < m ? rank[b + k] : -1;
+            return ra2 - rb2;
           });
+
+          tmp[sa[0]] = 0;
+          let classes = 1;
+          for (let i = 1; i < m; ++i) {
+            const prev = sa[i - 1], cur = sa[i];
+            const prevRank2 = prev + k < m ? rank[prev + k] : -1;
+            const curRank2 = cur + k < m ? rank[cur + k] : -1;
+            if (rank[prev] !== rank[cur] || prevRank2 !== curRank2) ++classes;
+            tmp[cur] = classes - 1;
+          }
+
+          const swapRank = rank; rank = tmp; tmp = swapRank;
+
+          if (classes >= m || k >= m) break;
         }
 
-        rotations.sort((a, b) => {
-          for (let i = 0; i < a.rotation.length; i++) {
-            if (a.rotation[i] !== b.rotation[i]) {
-              return a.rotation[i] - b.rotation[i];
-            }
-          }
-          return 0;
-        });
+        // Keep only the starting positions of the first copy (0..n-1), already in sorted order.
+        const order = new Uint32Array(n);
+        let oi = 0;
+        for (let i = 0; i < m && oi < n; ++i) {
+          if (sa[i] < n) order[oi++] = sa[i];
+        }
+        return order;
+      }
+
+      _applyBWT(data) {
+        const n = data.length;
+        if (n === 0) return { transformed: [], primaryIndex: 0 };
+        if (n === 1) return { transformed: Array.from(data), primaryIndex: 0 };
+
+        const dataArray = Array.from(data);
+        const order = this._sortedRotationOrder(dataArray);
 
         let primaryIndex = 0;
-        for (let i = 0; i < rotations.length; i++) {
-          if (rotations[i].index === 0) {
+        for (let i = 0; i < n; i++) {
+          if (order[i] === 0) {
             primaryIndex = i;
             break;
           }
         }
 
-        const transformed = rotations.map(rot => rot.rotation[rot.rotation.length - 1]);
+        const transformed = new Array(n);
+        for (let i = 0; i < n; i++) {
+          const start = order[i];
+          transformed[i] = dataArray[(start + n - 1) % n];
+        }
 
         return { transformed, primaryIndex };
       }
@@ -651,23 +694,23 @@
 
         // BSC Header: [OriginalLength(4)][BlockCount(4)][BlockData...]
         const originalLengthBytes = OpCodes.Unpack32BE(originalLength);
-        result.push(...originalLengthBytes);
+        for (let _i = 0; _i < originalLengthBytes.length; _i++) result.push(originalLengthBytes[_i]);
 
         const blockCountBytes = OpCodes.Unpack32BE(blocks.length);
-        result.push(...blockCountBytes);
+        for (let _i = 0; _i < blockCountBytes.length; _i++) result.push(blockCountBytes[_i]);
 
         // Pack each block: [OriginalSize(4)][CompressedSize(4)][Algorithm(1)][CRC32(4)][Data...]
         for (const block of blocks) {
           const originalSizeBytes = OpCodes.Unpack32BE(block.originalSize);
-          result.push(...originalSizeBytes);
+          for (let _i = 0; _i < originalSizeBytes.length; _i++) result.push(originalSizeBytes[_i]);
 
           const compressedSizeBytes = OpCodes.Unpack32BE(block.compressedData.length);
-          result.push(...compressedSizeBytes);
+          for (let _i = 0; _i < compressedSizeBytes.length; _i++) result.push(compressedSizeBytes[_i]);
 
           result.push(this._algorithmToByte(block.algorithm));
 
           const crc32Bytes = OpCodes.Unpack32BE(block.crc32);
-          result.push(...crc32Bytes);
+          for (let _i = 0; _i < crc32Bytes.length; _i++) result.push(crc32Bytes[_i]);
 
           result.push(...block.compressedData);
         }
