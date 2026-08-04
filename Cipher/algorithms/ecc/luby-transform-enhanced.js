@@ -225,7 +225,7 @@
 
       if (this.isInverse) {
         // Decoding mode: accumulate encoded symbols
-        this.encodedSymbols.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.encodedSymbols.push(data[_i]);
         // Initialize decoding structures if not already done
         if (!this.degreeDistribution) {
           this._initializeDecoding();
