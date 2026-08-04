@@ -10,7 +10,9 @@
  * code 256 followed by code 1 tells the decoder to widen subsequent codes by
  * one bit, and code 256 followed by code 2 tells the decoder to scan the
  * dictionary and free every entry that is not currently a prefix of another
- * (a "leaf"), reusing the lowest freed codes first.
+ * (a "leaf"), reusing the lowest freed codes first. Codes are packed
+ * LSB-first, and the stream is prefixed with a 4-byte little-endian original
+ * length (matching CompressionWorkbench's ShrinkBuildingBlock framing).
  *
  * Reference:
  *   PKWARE, Inc., ".ZIP File Format Specification" (APPNOTE.TXT), section
@@ -68,36 +70,32 @@
   const CTRL_PARTIAL_CLEAR = 2;
   const MIN_WIDTH = 9;
   const MAX_WIDTH = 13;
-  const MAX_CODE = 8191; // 2^13 - 1
+  const MAX_CODE = OpCodes.Shl32(1, MAX_WIDTH); // 8192
 
-  // ----- Bit-level stream helpers (MSB-first) -----
+  // ----- Bit-level stream helpers (LSB-first) -----
 
   class BitWriter {
     constructor() {
       this.bytes = [];
-      this.cur = 0;
-      this.nbits = 0;
+      this.buf = 0;
+      this.nBits = 0;
     }
 
     writeBits(value, width) {
-      for (let i = width - 1; i >= 0; i--) {
-        const bit = OpCodes.And32(OpCodes.Shr32(value, i), 1);
-        this.cur = OpCodes.Or32(OpCodes.Shl32(this.cur, 1), bit);
-        this.nbits++;
-        if (this.nbits === 8) {
-          this.bytes.push(OpCodes.ToByte(this.cur));
-          this.cur = 0;
-          this.nbits = 0;
-        }
+      this.buf = OpCodes.ToUint32(OpCodes.OrN(this.buf, OpCodes.Shl32(value, this.nBits)));
+      this.nBits += width;
+      while (this.nBits >= 8) {
+        this.bytes.push(OpCodes.AndN(this.buf, 0xFF));
+        this.buf = OpCodes.Shr32(this.buf, 8);
+        this.nBits -= 8;
       }
     }
 
     finish() {
-      if (this.nbits > 0) {
-        this.cur = OpCodes.Shl32(this.cur, 8 - this.nbits);
-        this.bytes.push(OpCodes.ToByte(this.cur));
-        this.cur = 0;
-        this.nbits = 0;
+      if (this.nBits > 0) {
+        this.bytes.push(OpCodes.AndN(this.buf, 0xFF));
+        this.buf = 0;
+        this.nBits = 0;
       }
       return this.bytes;
     }
@@ -106,19 +104,22 @@
   class BitReader {
     constructor(bytes) {
       this.bytes = bytes;
-      this.pos = 0; // bit position
+      this.pos = 0;
+      this.buf = 0;
+      this.nBits = 0;
+      this.exhausted = false;
     }
 
     readBits(width) {
-      let value = 0;
-      for (let i = 0; i < width; i++) {
-        const byteIndex = Math.floor(this.pos / 8);
-        const bitIndex = 7 - (this.pos % 8);
-        const byteVal = byteIndex < this.bytes.length ? this.bytes[byteIndex] : 0;
-        const bit = OpCodes.And32(OpCodes.Shr32(byteVal, bitIndex), 1);
-        value = OpCodes.Or32(OpCodes.Shl32(value, 1), bit);
-        this.pos++;
+      while (this.nBits < width) {
+        if (this.pos >= this.bytes.length) { this.exhausted = true; return -1; }
+        this.buf = OpCodes.ToUint32(OpCodes.OrN(this.buf, OpCodes.Shl32(this.bytes[this.pos++], this.nBits)));
+        this.nBits += 8;
       }
+      const mask = OpCodes.ToUint32(OpCodes.Shl32(1, width) - 1);
+      const value = OpCodes.AndN(this.buf, mask);
+      this.buf = OpCodes.Shr32(this.buf, width);
+      this.nBits -= width;
       return value;
     }
   }
@@ -156,28 +157,40 @@
           new LinkItem("Lempel-Ziv-Welch - Wikipedia", "https://en.wikipedia.org/wiki/Lempel%E2%80%93Ziv%E2%80%93Welch")
         ];
 
-        // Test vectors - self-computed round-trip verification vectors produced by
-        // this implementation (the exact code stream is implementation-defined;
-        // there is no publicly documented byte-exact PKZIP Shrink reference stream
-        // for arbitrary short inputs). Structure and control codes follow APPNOTE.TXT.
+        // Test vectors - the exact code stream is implementation-defined; there is
+        // no publicly documented byte-exact PKZIP Shrink reference stream for
+        // arbitrary short inputs, so these were cross-checked against
+        // CompressionWorkbench's ShrinkEncoder/ShrinkBuildingBlock.
         this.tests = [
           {
             text: "Empty input",
-            uri: "https://en.wikipedia.org/wiki/Boundary_condition",
-            input: [],
-            expected: []
-          },
-          {
-            text: "Repetitive input - 'AAAAAAAAAA'",
             uri: "https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT",
-            input: OpCodes.AsciiToBytes("AAAAAAAAAA"),
-            expected: [0,0,0,10, 32,192,96,80,48]
+            input: [],
+            expected: [0, 0, 0, 0]
           },
           {
-            text: "Text sample - 'TOBEORNOTTOBEORTOBEORNOT'",
-            uri: "https://en.wikipedia.org/wiki/Lempel%E2%80%93Ziv%E2%80%93Welch",
-            input: OpCodes.AsciiToBytes("TOBEORNOTTOBEORTOBEORNOT"),
-            expected: [0,0,0,24, 42,19,200,68,82,121,72,156,79,42,64,96,112,88,84,18,13,8]
+            text: "Single byte",
+            uri: "https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT",
+            input: [0x41],
+            expected: [1, 0, 0, 0, 65, 0]
+          },
+          {
+            text: "256 repeated bytes",
+            uri: "https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT",
+            input: new Array(256).fill(0x61),
+            expected: [0, 1, 0, 0, 97, 2, 10, 28, 72, 176, 160, 193, 131, 8, 19, 42, 92, 200, 176, 161, 195, 135, 16, 35, 74, 156, 72, 177, 162, 64]
+          },
+          {
+            text: "Text sample repeated 4x",
+            uri: "https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT",
+            input: OpCodes.AsciiToBytes("the quick brown fox jumps over the lazy dog. ".repeat(4)),
+            expected: [180, 0, 0, 0, 116, 208, 148, 1, 17, 167, 78, 154, 49, 107, 64, 136, 145, 243, 230, 142, 27, 16, 102, 222, 224, 1, 161, 166, 78, 27, 56, 115, 64, 188, 177, 83, 70, 14, 136, 128, 3, 217, 132, 209, 147, 7, 4, 153, 55, 103, 92, 124, 20, 72, 208, 32, 66, 133, 12, 29, 66, 148, 72, 209, 34, 70, 141, 28, 61, 130, 4, 33, 146, 164, 73, 148, 42, 119, 22, 60, 152, 112, 97, 195, 135, 17, 39, 86, 188, 152, 113, 99, 199, 149, 33, 71, 150, 60, 153, 18, 106, 75, 162, 48, 143, 206, 84, 106, 179, 105, 78, 171, 61, 167, 2, 5, 1]
+          },
+          {
+            text: "All 256 byte values",
+            uri: "https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT",
+            input: Array.from({ length: 256 }, (_, i) => i),
+            expected: [0, 1, 0, 0, 0, 2, 8, 24, 64, 160, 128, 129, 3, 8, 18, 40, 88, 192, 160, 129, 131, 7, 16, 34, 72, 152, 64, 161, 130, 133, 11, 24, 50, 104, 216, 192, 161, 131, 135, 15, 32, 66, 136, 24, 65, 162, 132, 137, 19, 40, 82, 168, 88, 193, 162, 133, 139, 23, 48, 98, 200, 152, 65, 163, 134, 141, 27, 56, 114, 232, 216, 193, 163, 135, 143, 31, 64, 130, 8, 25, 66, 164, 136, 145, 35, 72, 146, 40, 89, 194, 164, 137, 147, 39, 80, 162, 72, 153, 66, 165, 138, 149, 43, 88, 178, 104, 217, 194, 165, 139, 151, 47, 96, 194, 136, 25, 67, 166, 140, 153, 51, 104, 210, 168, 89, 195, 166, 141, 155, 55, 112, 226, 200, 153, 67, 167, 142, 157, 59, 120, 242, 232, 217, 195, 167, 143, 159, 63, 128, 2, 9, 26, 68, 168, 144, 161, 67, 136, 18, 41, 90, 196, 168, 145, 163, 71, 144, 34, 73, 154, 68, 169, 146, 165, 75, 152, 50, 105, 218, 196, 169, 147, 167, 79, 160, 66, 137, 26, 69, 170, 148, 169, 83, 168, 82, 169, 90, 197, 170, 149, 171, 87, 176, 98, 201, 154, 69, 171, 150, 173, 91, 184, 114, 233, 218, 197, 171, 151, 175, 95, 192, 130, 9, 27, 70, 172, 152, 177, 99, 200, 146, 41, 91, 198, 172, 153, 179, 103, 208, 162, 73, 155, 70, 173, 154, 181, 107, 216, 178, 105, 219, 198, 173, 155, 183, 111, 224, 194, 137, 27, 71, 174, 156, 185, 115, 232, 210, 169, 91, 199, 174, 157, 187, 119, 240, 226, 201, 155, 71, 175, 158, 189, 123, 248, 242, 233, 219, 199, 175, 159, 191, 127]
           }
         ];
       }
@@ -200,203 +213,187 @@
       }
 
       Result() {
-        if (this.inputBuffer.length === 0) return [];
-
-        const result = this.isInverse ? this._decompress(this.inputBuffer) : this._compress(this.inputBuffer);
+        const data = this.inputBuffer;
         this.inputBuffer = [];
-        return result;
+        return this.isInverse ? this._decompress(data) : this._compress(data);
       }
 
-      // ----- Shared dictionary state management -----
+      // ----- Compression (mirrors CompressionWorkbench's ShrinkEncoder) -----
 
-      _initState() {
-        const state = {
-          codeWidth: MIN_WIDTH,
-          nextCode: 257,
-          freeList: [],
-          prefix: new Array(MAX_CODE + 1).fill(-1),
-          char: new Array(MAX_CODE + 1).fill(0),
-          childCount: new Array(MAX_CODE + 1).fill(0),
-          inUse: new Array(MAX_CODE + 1).fill(false),
-          keyOfCode: new Array(MAX_CODE + 1).fill(null), // encoder-only reverse lookup
-          dictMap: null // encoder-only forward lookup ("prefix,char" -> code)
-        };
-        for (let i = 0; i < 256; i++) {
-          state.char[i] = i;
-          state.inUse[i] = true;
-        }
-        return state;
-      }
-
-      _maxForWidth(width) {
-        return Math.pow(2, width) - 1;
-      }
-
-      _allocateCode(state) {
-        if (state.freeList.length > 0) return state.freeList.shift();
-        const code = state.nextCode;
-        state.nextCode++;
-        return code;
-      }
-
-      _hasRoom(state) {
-        return state.nextCode <= this._maxForWidth(state.codeWidth) || state.freeList.length > 0;
-      }
-
-      _partialClear(state) {
-        const freed = [];
-        for (let code = 257; code < state.nextCode; code++) {
-          if (state.inUse[code] && state.childCount[code] === 0) freed.push(code);
-        }
-        for (const code of freed) {
-          state.inUse[code] = false;
-          const parent = state.prefix[code];
-          if (parent >= 0) state.childCount[parent] = state.childCount[parent] - 1;
-          if (state.dictMap && state.keyOfCode[code] !== null) {
-            state.dictMap.delete(state.keyOfCode[code]);
-            state.keyOfCode[code] = null;
-          }
-          state.freeList.push(code);
-        }
-        state.freeList.sort((a, b) => a - b);
-        return freed.length > 0;
-      }
-
-      // ----- Compression -----
-
-      _compress(data) {
-        const state = this._initState();
-        state.dictMap = new Map();
-
+      _encode(data) {
         const writer = new BitWriter();
+        const trie = new Map(); // "parentCode,byte" -> code
+        const slotUsed = new Array(MAX_CODE).fill(false);
 
-        const addEntry = (prefixCode, charVal) => {
-          if (!this._hasRoom(state)) {
-            if (state.codeWidth < MAX_WIDTH) {
-              writer.writeBits(CODE_CONTROL, state.codeWidth);
-              writer.writeBits(CTRL_INCREASE_WIDTH, state.codeWidth);
-              state.codeWidth++;
-            } else {
-              writer.writeBits(CODE_CONTROL, state.codeWidth);
-              writer.writeBits(CTRL_PARTIAL_CLEAR, state.codeWidth);
-              this._partialClear(state);
-            }
-          }
-          if (!this._hasRoom(state)) return; // dictionary saturated, skip growth
+        let currentBits = MIN_WIDTH;
+        let nextCode = 257;
 
-          const code = this._allocateCode(state);
-          state.prefix[code] = prefixCode;
-          state.char[code] = charVal;
-          state.inUse[code] = true;
-          state.childCount[prefixCode] = state.childCount[prefixCode] + 1;
-          const key = prefixCode + ',' + charVal;
-          state.dictMap.set(key, code);
-          state.keyOfCode[code] = key;
+        if (data.length === 0) return writer.finish();
+
+        let currentCode = data[0];
+        let i = 1;
+
+        const advanceNextCode = () => {
+          while (nextCode < MAX_CODE && slotUsed[nextCode]) ++nextCode;
         };
 
-        let w = data[0];
-        for (let i = 1; i < data.length; i++) {
-          const c = data[i];
-          const key = w + ',' + c;
-          if (state.dictMap.has(key)) {
-            w = state.dictMap.get(key);
+        const partialClear = () => {
+          const referenced = new Set();
+          for (const key of trie.keys()) referenced.add(Number(key.split(',')[0]));
+          const toRemove = [];
+          for (const [key, code] of trie) {
+            if (code >= 257 && !referenced.has(code)) toRemove.push(key);
+          }
+          for (const key of toRemove) trie.delete(key);
+          slotUsed.fill(false);
+          for (const code of trie.values()) slotUsed[code] = true;
+        };
+
+        while (i < data.length) {
+          const nextByte = data[i];
+          const key = currentCode + ',' + nextByte;
+
+          if (trie.has(key)) {
+            currentCode = trie.get(key);
+            ++i;
             continue;
           }
-          writer.writeBits(w, state.codeWidth);
-          addEntry(w, c);
-          w = c;
-        }
-        writer.writeBits(w, state.codeWidth);
 
+          writer.writeBits(currentCode, currentBits);
+
+          if (nextCode < MAX_CODE) {
+            if (nextCode >= OpCodes.Shl32(1, currentBits) && currentBits < MAX_WIDTH) {
+              writer.writeBits(CODE_CONTROL, currentBits);
+              writer.writeBits(CTRL_INCREASE_WIDTH, currentBits);
+              ++currentBits;
+            }
+            trie.set(key, nextCode);
+            slotUsed[nextCode] = true;
+            advanceNextCode();
+          } else {
+            writer.writeBits(CODE_CONTROL, currentBits);
+            writer.writeBits(CTRL_PARTIAL_CLEAR, currentBits);
+            partialClear();
+            nextCode = 257;
+            advanceNextCode();
+          }
+
+          currentCode = nextByte;
+          ++i;
+        }
+
+        writer.writeBits(currentCode, currentBits);
+        return writer.finish();
+      }
+
+      _compress(data) {
+        const body = data.length === 0 ? [] : this._encode(data);
         const output = [];
-        { const _src = OpCodes.Unpack32BE(data.length); for (let _i = 0; _i < _src.length; _i++) output.push(_src[_i]); }
-        { const _src = writer.finish(); for (let _i = 0; _i < _src.length; _i++) output.push(_src[_i]); }
+        const len32 = OpCodes.ToUint32(data.length);
+        output.push(OpCodes.AndN(len32, 0xFF));
+        output.push(OpCodes.AndN(OpCodes.Shr32(len32, 8), 0xFF));
+        output.push(OpCodes.AndN(OpCodes.Shr32(len32, 16), 0xFF));
+        output.push(OpCodes.AndN(OpCodes.Shr32(len32, 24), 0xFF));
+        for (let _i = 0; _i < body.length; ++_i) output.push(body[_i]);
         return output;
       }
 
-      // ----- Decompression -----
+      // ----- Decompression (mirrors CompressionWorkbench's ShrinkDecoder) -----
 
-      _decompress(data) {
-        if (data.length < 4) return [];
+      _decode(compressed, originalSize) {
+        const reader = new BitReader(compressed);
+        const output = new Array(originalSize);
+        let outputPos = 0;
 
-        const originalLength = OpCodes.Pack32BE(data[0], data[1], data[2], data[3]);
-        if (originalLength === 0) return [];
+        const prefix = new Array(MAX_CODE).fill(-1);
+        const suffix = new Array(MAX_CODE).fill(0);
+        const isUsed = new Array(MAX_CODE).fill(false);
 
-        const state = this._initState();
+        for (let i = 0; i < 256; ++i) {
+          prefix[i] = -1;
+          suffix[i] = i;
+          isUsed[i] = true;
+        }
+        isUsed[CODE_CONTROL] = true;
 
-        const reader = new BitReader(data.slice(4));
-
-        const stringFor = (code) => {
-          const chain = [];
-          let c = code;
-          while (c !== -1) {
-            chain.push(state.char[c]);
-            c = state.prefix[c];
-          }
-          chain.reverse();
-          return chain;
-        };
-
-        // The encoder writes any pending control-code pair (width increase or
-        // partial clear) immediately after the code that made the dictionary
-        // full - i.e. strictly *before* the next normal code in the stream.
-        // The decoder must therefore resolve room for a pending insertion
-        // before reading the next normal code, and only perform the actual
-        // table insertion afterwards, once the new entry's character is known.
-        const ensureRoomForPendingInsert = () => {
-          if (this._hasRoom(state)) return;
-          const sentinel = reader.readBits(state.codeWidth);
-          const ctrl = reader.readBits(state.codeWidth);
-          if (sentinel === CODE_CONTROL && ctrl === CTRL_INCREASE_WIDTH && state.codeWidth < MAX_WIDTH) {
-            state.codeWidth++;
-          } else if (sentinel === CODE_CONTROL && ctrl === CTRL_PARTIAL_CLEAR) {
-            this._partialClear(state);
-          }
-        };
-
-        const commitPendingInsert = (prefixCode, charVal) => {
-          if (!this._hasRoom(state)) return; // saturated even after clearing; matches encoder skip
-          const code = this._allocateCode(state);
-          state.prefix[code] = prefixCode;
-          state.char[code] = charVal;
-          state.inUse[code] = true;
-          state.childCount[prefixCode] = state.childCount[prefixCode] + 1;
-        };
-
-        const out = [];
+        let currentBits = MIN_WIDTH;
+        let nextCode = 257;
         let prevCode = -1;
-        let prevString = null;
-        let pendingInsert = false;
+        const decodeStack = new Array(MAX_CODE);
 
-        while (out.length < originalLength) {
-          if (pendingInsert) ensureRoomForPendingInsert();
+        const getFirstByte = (code) => {
+          while (code >= 257) code = prefix[code];
+          return suffix[code];
+        };
 
-          const code = reader.readBits(state.codeWidth);
-          const predictedNextCode = state.freeList.length > 0 ? state.freeList[0] : state.nextCode;
+        const partialClear = () => {
+          const isReferenced = new Array(MAX_CODE).fill(false);
+          for (let c = 257; c < MAX_CODE; ++c) {
+            if (isUsed[c] && prefix[c] >= 257) isReferenced[prefix[c]] = true;
+          }
+          for (let c = 257; c < MAX_CODE; ++c) {
+            if (isUsed[c] && !isReferenced[c]) isUsed[c] = false;
+          }
+        };
 
-          let currentString;
-          if (state.inUse[code]) {
-            currentString = stringFor(code);
-          } else if (prevString !== null && code === predictedNextCode) {
-            // Classic LZW special case: code not yet in the table refers to
-            // (previous string + previous string's first symbol).
-            currentString = prevString.concat([prevString[0]]);
-          } else {
-            break;
+        while (outputPos < originalSize) {
+          let code = reader.readBits(currentBits);
+          if (reader.exhausted) break;
+
+          if (code === CODE_CONTROL) {
+            const subCmd = reader.readBits(currentBits);
+            if (reader.exhausted) break;
+            if (subCmd === CTRL_INCREASE_WIDTH) {
+              if (currentBits < MAX_WIDTH) ++currentBits;
+            } else if (subCmd === CTRL_PARTIAL_CLEAR) {
+              partialClear();
+              nextCode = 257;
+              prevCode = -1;
+            }
+            continue;
           }
 
-          for (let _i = 0; _i < currentString.length; _i++) out.push(currentString[_i]);
+          let stackPos = 0;
+          let c = code;
 
-          if (pendingInsert) {
-            commitPendingInsert(prevCode, currentString[0]);
+          if (c >= 257 && !isUsed[c]) {
+            if (prevCode < 0) throw new Error('Shrink: invalid KwKwK with no previous code');
+            decodeStack[stackPos++] = getFirstByte(prevCode);
+            c = prevCode;
+          }
+
+          while (c >= 257) {
+            decodeStack[stackPos++] = suffix[c];
+            c = prefix[c];
+          }
+          decodeStack[stackPos++] = suffix[c];
+
+          for (let i = stackPos - 1; i >= 0 && outputPos < originalSize; --i) output[outputPos++] = decodeStack[i];
+
+          if (prevCode >= 0 && nextCode < MAX_CODE) {
+            while (nextCode < MAX_CODE && isUsed[nextCode]) ++nextCode;
+            if (nextCode < MAX_CODE) {
+              prefix[nextCode] = prevCode;
+              suffix[nextCode] = decodeStack[stackPos - 1];
+              isUsed[nextCode] = true;
+              ++nextCode;
+            }
           }
 
           prevCode = code;
-          prevString = currentString;
-          pendingInsert = true;
         }
 
-        return out.slice(0, originalLength);
+        return output;
+      }
+
+      _decompress(data) {
+        if (data.length < 4) throw new Error('Shrink: input smaller than 4-byte header');
+        const size = OpCodes.OrN(
+          OpCodes.OrN(OpCodes.OrN(data[0], OpCodes.Shl32(data[1], 8)), OpCodes.Shl32(data[2], 16)),
+          OpCodes.Shl32(data[3], 24)
+        );
+        if (size === 0) return [];
+        return this._decode(data.slice(4), size);
       }
     }
 
