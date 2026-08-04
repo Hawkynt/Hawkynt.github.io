@@ -41,6 +41,139 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  // ----- Correct, O(n log n) suffix-array based Burrows-Wheeler core -----
+  //
+  // Shared with bwt.js: the transform is defined over T = block ++
+  // [sentinel], sentinel being strictly smaller than every real byte and
+  // occurring exactly once. Sorting the m = n+1 cyclic rotations of T
+  // (equivalently its suffixes, since the sentinel is unique and minimal)
+  // gives the BWT rotation matrix. The sentinel's row in the last column is
+  // always exactly the primary index, so it is omitted from the serialized
+  // last column and reinserted purely from the stored index on decode.
+  //
+  // The previous implementation built a suffix array of the block WITHOUT
+  // a sentinel (plain suffix-of-string order, where a shorter suffix that
+  // is a prefix of a longer one sorts first) and then applied the "L[i] =
+  // S[SA[i]-1 mod n]" rotation formula to it. That formula is only valid
+  // for a suffix array that represents cyclic ROTATION order; without a
+  // sentinel, plain suffix order and rotation order diverge whenever one
+  // suffix is a prefix of another (e.g. any repeated substring reaching
+  // the end of the block), corrupting the transform for exactly that kind
+  // of input while appearing to work on inputs with no such overlap.
+
+  function _countingSortByKey(arr, key, keyRange) {
+    const count = new Array(keyRange).fill(0);
+    for (let i = 0; i < arr.length; i++) count[key[arr[i]]]++;
+    for (let i = 1; i < keyRange; i++) count[i] += count[i - 1];
+    const output = new Array(arr.length);
+    for (let i = arr.length - 1; i >= 0; i--) {
+      const k = key[arr[i]];
+      count[k]--;
+      output[count[k]] = arr[i];
+    }
+    return output;
+  }
+
+  // Suffix array (equivalently: sorted cyclic rotations) of data++[sentinel],
+  // computed via prefix doubling with counting sort - O(n log n) overall.
+  function _buildRotationSuffixArray(data) {
+    const n = data.length;
+    const m = n + 1;
+    if (m === 1) return [0];
+
+    let rank = new Array(m);
+    for (let i = 0; i < n; i++) rank[i] = data[i] + 1; // real bytes: 1..256
+    rank[n] = 0; // sentinel: uniquely smallest
+
+    let sa = new Array(m);
+    for (let i = 0; i < m; i++) sa[i] = i;
+    sa = _countingSortByKey(sa, rank, 257);
+
+    let cls = new Array(m);
+    cls[sa[0]] = 0;
+    for (let i = 1; i < m; i++) cls[sa[i]] = cls[sa[i - 1]] + (rank[sa[i]] !== rank[sa[i - 1]] ? 1 : 0);
+    let classCount = cls[sa[m - 1]] + 1;
+
+    for (let k = 1; classCount < m; k *= 2) {
+      const key2 = new Array(m);
+      for (let i = 0; i < m; i++) key2[i] = cls[(i + k) % m];
+
+      sa = _countingSortByKey(sa, key2, classCount);
+      sa = _countingSortByKey(sa, cls, classCount);
+
+      const newCls = new Array(m);
+      newCls[sa[0]] = 0;
+      for (let i = 1; i < m; i++) {
+        const prev = sa[i - 1], cur = sa[i];
+        const same = cls[prev] === cls[cur] && key2[prev] === key2[cur];
+        newCls[cur] = newCls[prev] + (same ? 0 : 1);
+      }
+      cls = newCls;
+      classCount = cls[sa[m - 1]] + 1;
+      if (classCount === m) break;
+    }
+
+    return sa;
+  }
+
+  function bwtEncode(data) {
+    const n = data.length;
+    if (n === 0) return { primaryIndex: 0, lastColumn: [] };
+    const m = n + 1;
+    const sa = _buildRotationSuffixArray(data);
+
+    let primaryIndex = -1;
+    const lastColumn = [];
+    for (let i = 0; i < m; i++) {
+      const pos = sa[i];
+      if (pos === 0) { primaryIndex = i; continue; } // sentinel row, omitted
+      lastColumn.push(data[pos - 1]);
+    }
+    return { primaryIndex, lastColumn };
+  }
+
+  function bwtDecode(primaryIndex, lastColumn) {
+    const n = lastColumn.length;
+    if (n === 0) return [];
+    const m = n + 1;
+
+    // Reinsert the sentinel (symbol 0) at row=primaryIndex; real bytes use
+    // symbol domain 1..256 so the sentinel remains uniquely smallest.
+    const fullL = new Array(m);
+    for (let i = 0, j = 0; i < m; i++) {
+      fullL[i] = (i === primaryIndex) ? 0 : (lastColumn[j++] + 1);
+    }
+
+    const count = new Array(257).fill(0);
+    for (let i = 0; i < m; i++) count[fullL[i]]++;
+    const C = new Array(257).fill(0);
+    let sum = 0;
+    for (let s = 0; s < 257; s++) { C[s] = sum; sum += count[s]; }
+
+    const occRank = new Array(257).fill(0);
+    const T = new Array(m);
+    for (let i = 0; i < m; i++) {
+      const s = fullL[i];
+      T[i] = C[s] + occRank[s];
+      occRank[s]++;
+    }
+
+    const original = new Array(m);
+    let p = primaryIndex;
+    for (let i = m - 1; i >= 0; i--) {
+      original[i] = fullL[p];
+      p = T[p];
+    }
+
+    // Strip the sentinel (symbol 0) and shift real bytes back down by 1.
+    const result = new Array(n);
+    let k = 0;
+    for (let i = 0; i < m; i++) {
+      if (original[i] !== 0) result[k++] = original[i] - 1;
+    }
+    return result;
+  }
+
   /**
  * BWTAdvancedAlgorithm - Compression algorithm implementation
  * @class
@@ -91,14 +224,37 @@
           ),
           new TestCase(
             [97], // "a"
-            [0, 0, 0, 1, 0, 0, 0, 0, 97, 255, 255, 255, 255],
+            [0, 0, 0, 1, 0, 0, 0, 1, 97, 255, 255, 255, 255],
             "Single character",
             "https://en.wikipedia.org/wiki/Burrows%E2%80%93Wheeler_transform"
           ),
           new TestCase(
             [97, 98], // "ab"
-            [0, 0, 0, 2, 0, 0, 0, 0, 98, 98, 255, 255, 255, 255],
+            [0, 0, 0, 2, 0, 0, 0, 1, 98, 98, 255, 255, 255, 255],
             "Two characters",
+            "https://en.wikipedia.org/wiki/Burrows%E2%80%93Wheeler_transform"
+          ),
+          new TestCase(
+            // Regression: all 256 byte values - the previous non-sentinel
+            // suffix-array implementation diverged from rotation order
+            // exactly on inputs like this with long overlapping suffixes.
+            Array.from({length: 256}, (_, i) => i),
+            [0,0,1,0,0,0,0,1,255,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,255,255,255,255],
+            "Regression: all 256 byte values",
+            "https://en.wikipedia.org/wiki/Burrows%E2%80%93Wheeler_transform"
+          ),
+          new TestCase(
+            // Regression: pseudo-random data, length 91
+            [0,0,64,0,64,0,64,0,64,0,57,128,192,0,0,0,64,128,0,64,0,64,0,0,0,64,0,0,0,0,64,0,0,64,0,0,64,0,0,64,128,0,0,57,128,0,0,0,0,64,0,0,0,64,0,0,0,64,128,128,0,0,64,0,64,0,0,0,64,0,0,0,0,0,0,0,64,128,184,128,192,0,64,128,0,0,0,64,0,0,64],
+            [0,0,0,91,0,0,0,27,64,0,1,0,128,2,2,1,0,1,1,2,2,192,3,2,3,2,2,0,0,0,0,0,1,0,2,1,2,0,0,0,1,1,0,0,1,0,1,0,0,0,0,0,1,1,2,2,0,2,3,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,60,3,0,4,1,0,0,2,185,3,0,0,255,255,255,255],
+            "Regression: pseudo-random data, length 91",
+            "https://en.wikipedia.org/wiki/Burrows%E2%80%93Wheeler_transform"
+          ),
+          new TestCase(
+            // Regression: alternating pattern, length 83
+            Array.from({length: 83}, (_, i) => (i % 2 ? 0x62 : 0x61)),
+            [0,0,0,83,0,0,0,42,97,98,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,255,255,255,255],
+            "Regression: alternating pattern, length 83",
             "https://en.wikipedia.org/wiki/Burrows%E2%80%93Wheeler_transform"
           )
         ];
@@ -125,7 +281,6 @@
         this.suffixCacheSize = algorithm.SUFFIX_CACHE_SIZE;
 
         // Advanced processing modules
-        this.suffixArrayBuilder = new AdvancedSuffixArrayBuilder();
         this.postProcessor = new BWTPostProcessor();
         this.contextModeler = new BWTContextModeler(this.contextOrder);
         
@@ -139,7 +294,7 @@
 
       Feed(data) {
         if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {
@@ -166,7 +321,7 @@
           
           // Transform block using advanced BWT
           const transformedBlock = this._transformBlockAdvanced(block);
-          compressed.push(...transformedBlock);
+          for (let _i = 0; _i < transformedBlock.length; _i++) compressed.push(transformedBlock[_i]);
           
           offset = blockEnd;
           this.statistics.transformedBlocks++;
@@ -215,14 +370,15 @@
 
           // Inverse transform
           const originalBlock = this._inverseTransformAdvanced(transformedData, primaryIndex);
-          decompressed.push(...originalBlock);
+          for (let _i = 0; _i < originalBlock.length; _i++) decompressed.push(originalBlock[_i]);
         }
 
         return decompressed;
       }
 
       /**
-       * Transform block using advanced BWT with optimizations
+       * Transform block using the correct sentinel-based BWT core, followed
+       * by move-to-front post-processing for better downstream compression.
        * @private
        */
       _transformBlockAdvanced(block) {
@@ -231,86 +387,43 @@
         // Pre-process block for better transformation
         const preprocessed = this.postProcessor.preprocess(block);
 
-        // Build suffix array using advanced algorithm
-        const suffixArray = this.suffixArrayBuilder.buildSuffixArray(preprocessed);
-
-        // Find primary index (position of original string in sorted rotations)
-        let primaryIndex = 0;
-        for (let i = 0; i < suffixArray.length; i++) {
-          if (suffixArray[i] === 0) {
-            primaryIndex = i;
-            break;
-          }
-        }
-
-        // Create BWT output
-        const bwtOutput = [];
-        for (let i = 0; i < suffixArray.length; i++) {
-          const pos = suffixArray[i];
-          const bwtChar = pos === 0 ? preprocessed[preprocessed.length - 1] : preprocessed[pos - 1];
-          bwtOutput.push(bwtChar);
-        }
+        // Correct BWT: primaryIndex is both the row of the unrotated string
+        // AND the (omitted) sentinel row in the last column - see the core
+        // algorithm comment above.
+        const { primaryIndex, lastColumn } = bwtEncode(preprocessed);
 
         // Apply post-processing for better compression
-        const postProcessed = this.postProcessor.postprocess(bwtOutput);
+        const postProcessed = this.postProcessor.postprocess(lastColumn);
 
         // Create output block using OpCodes
         const result = [];
 
         // Block header: [length(4)][primary_index(4)][data...]
         const lengthBytes = OpCodes.Words32ToBytesBE([postProcessed.length]);
-        result.push(...lengthBytes);
+        for (let _i = 0; _i < lengthBytes.length; _i++) result.push(lengthBytes[_i]);
 
         const indexBytes = OpCodes.Words32ToBytesBE([primaryIndex]);
-        result.push(...indexBytes);
+        for (let _i = 0; _i < indexBytes.length; _i++) result.push(indexBytes[_i]);
 
-        result.push(...postProcessed);
+        for (let _i = 0; _i < postProcessed.length; _i++) result.push(postProcessed[_i]);
 
         return result;
       }
 
       /**
-       * Inverse transform using advanced algorithms
+       * Inverse transform: undo move-to-front, then the correct sentinel-
+       * based inverse BWT.
        * @private
        */
       _inverseTransformAdvanced(transformedData, primaryIndex) {
         if (transformedData.length === 0) return [];
 
-        // Reverse post-processing
+        // Reverse post-processing (inverse move-to-front)
         const bwtData = this.postProcessor.unpostprocess(transformedData);
 
-        // Build character count array
-        const counts = new Array(256).fill(0);
-        for (const byte of bwtData) {
-          counts[byte]++;
-        }
-
-        // Build cumulative counts (first occurrence positions)
-        let sum = 0;
-        for (let i = 0; i < 256; i++) {
-          const temp = counts[i];
-          counts[i] = sum;
-          sum += temp;
-        }
-
-        // Build next array (inverse BWT core algorithm)
-        const next = new Array(bwtData.length);
-        const tempCounts = [...counts];
-
-        for (let i = 0; i < bwtData.length; i++) {
-          const char = bwtData[i];
-          next[tempCounts[char]] = i;
-          tempCounts[char]++;
-        }
-
-        // Reconstruct original string
-        const original = [];
-        let index = primaryIndex;
-
-        for (let i = 0; i < bwtData.length; i++) {
-          index = next[index];
-          original.push(bwtData[index]);
-        }
+        // Correct inverse BWT (LF-mapping reconstruction with the sentinel
+        // reinserted at row=primaryIndex).
+        const original = bwtDecode(primaryIndex, bwtData);
 
         // Reverse pre-processing
         return this.postProcessor.unpreprocess(original);
@@ -321,158 +434,6 @@
        */
       getStatistics() {
         return { ...this.statistics };
-      }
-    }
-
-    /**
-     * Advanced Suffix Array Builder using optimized algorithms
-     */
-    class AdvancedSuffixArrayBuilder {
-      constructor() {
-        this.cache = new Map();
-        this.maxCacheSize = 1000;
-      }
-
-      /**
-       * Build suffix array using advanced algorithm (SA-IS inspired)
-       * @param {Array} data - Input data
-       * @returns {Array} Suffix array
-       */
-      buildSuffixArray(data) {
-        if (data.length === 0) return [];
-        if (data.length === 1) return [0];
-
-        // Check cache for small arrays
-        const key = data.length < 64 ? data.join(',') : null;
-        if (key && this.cache.has(key)) {
-          return [...this.cache.get(key)];
-        }
-
-        // Use optimized algorithm based on size
-        let suffixArray;
-        if (data.length < 1000) {
-          suffixArray = this._buildSuffixArraySimple(data);
-        } else {
-          suffixArray = this._buildSuffixArrayAdvanced(data);
-        }
-
-        // Cache small results
-        if (key && this.cache.size < this.maxCacheSize) {
-          this.cache.set(key, [...suffixArray]);
-        }
-
-        return suffixArray;
-      }
-
-      /**
-       * Simple suffix array construction for small inputs
-       * @private
-       */
-      _buildSuffixArraySimple(data) {
-        const suffixes = [];
-        
-        // Create all suffixes with their positions
-        for (let i = 0; i < data.length; i++) {
-          suffixes.push({
-            index: i,
-            suffix: data.slice(i)
-          });
-        }
-
-        // Sort suffixes lexicographically
-        suffixes.sort((a, b) => {
-          const minLen = Math.min(a.suffix.length, b.suffix.length);
-          for (let i = 0; i < minLen; i++) {
-            if (a.suffix[i] !== b.suffix[i]) {
-              return a.suffix[i] - b.suffix[i];
-            }
-          }
-          return a.suffix.length - b.suffix.length;
-        });
-
-        return suffixes.map(s => s.index);
-      }
-
-      /**
-       * Advanced suffix array construction for larger inputs
-       * @private
-       */
-      _buildSuffixArrayAdvanced(data) {
-        // Simplified version of advanced algorithm
-        // Real implementation would use SA-IS or DivSufSort
-        const n = data.length;
-        const sa = new Array(n);
-        const ranks = new Array(n);
-        const tempRanks = new Array(n);
-
-        // Initial ranking based on characters
-        for (let i = 0; i < n; i++) {
-          sa[i] = i;
-          ranks[i] = data[i];
-        }
-
-        // Radix sort with doubling technique
-        for (let k = 1; k < n; k *= 2) {
-          // Sort by second key first (stable sort required)
-          this._countingSort(sa, data, ranks, k, n);
-          
-          // Then sort by first key
-          this._countingSort(sa, data, ranks, 0, n);
-
-          // Update ranks
-          tempRanks[sa[0]] = 0;
-          let rank = 0;
-          
-          for (let i = 1; i < n; i++) {
-            if (ranks[sa[i]] !== ranks[sa[i-1]] || 
-                ranks[(sa[i] + k) % n] !== ranks[(sa[i-1] + k) % n]) {
-              rank++;
-            }
-            tempRanks[sa[i]] = rank;
-          }
-
-          // Copy back ranks
-          for (let i = 0; i < n; i++) {
-            ranks[i] = tempRanks[i];
-          }
-
-          if (rank === n - 1) break; // All suffixes have unique ranks
-        }
-
-        return sa;
-      }
-
-      /**
-       * Counting sort for suffix array construction
-       * @private
-       */
-      _countingSort(sa, data, ranks, offset, n) {
-        const maxVal = Math.max(...ranks) + 1;
-        const count = new Array(maxVal).fill(0);
-        const output = new Array(n);
-
-        // Count frequencies
-        for (let i = 0; i < n; i++) {
-          const key = ranks[(sa[i] + offset) % n];
-          count[key]++;
-        }
-
-        // Convert to cumulative counts
-        for (let i = 1; i < maxVal; i++) {
-          count[i] += count[i - 1];
-        }
-
-        // Build output array in reverse order for stability
-        for (let i = n - 1; i >= 0; i--) {
-          const key = ranks[(sa[i] + offset) % n];
-          output[count[key] - 1] = sa[i];
-          count[key]--;
-        }
-
-        // Copy back to original array
-        for (let i = 0; i < n; i++) {
-          sa[i] = output[i];
-        }
       }
     }
 
@@ -675,5 +636,5 @@
 
   // ===== EXPORTS =====
 
-  return { BWTAdvancedAlgorithm, BWTAdvancedInstance, AdvancedSuffixArrayBuilder, BWTPostProcessor, BWTContextModeler };
+  return { BWTAdvancedAlgorithm, BWTAdvancedInstance, BWTPostProcessor, BWTContextModeler };
 }));
