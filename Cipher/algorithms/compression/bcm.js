@@ -275,8 +275,13 @@
           ++runLength;
         }
 
-        if (runLength >= BCM_CONSTANTS.RLE_MIN_RUN) {
-          // Encode as run: marker + length + value
+        if (runLength >= BCM_CONSTANTS.RLE_MIN_RUN || currentByte === 255) {
+          // Encode as run: marker + length + value. The marker byte
+          // (255) must ALWAYS be escaped this way, even for a run of
+          // just one, otherwise a literal 255 byte in the data (which
+          // the context mixer's delta output produces regularly, since
+          // it spans the full 0..255 range) would be indistinguishable
+          // from a real run marker during decode.
           result.push(255); // RLE marker
           result.push(runLength);
           result.push(currentByte);
@@ -380,6 +385,26 @@
           text: "Repetitive text compression",
           uri: "https://encode.su/threads/1738-bcm-Big-brother-of-bzip2",
           input: OpCodes.AnsiToBytes("abcabcabcabcabcabc")
+        },
+        // Round-trip regression vectors: RunLengthEncoder only escaped its
+        // 255 marker byte for runs >= RLE_MIN_RUN, so a short/isolated
+        // literal 255 (which the context mixer's full-range delta output
+        // produces regularly) was indistinguishable from a real run
+        // marker on decode and corrupted the whole stream after it.
+        {
+          text: "All byte values 0-255 round-trip test",
+          uri: "Regression test for unescaped RLE marker byte",
+          input: Array.from({ length: 256 }, (_, i) => i)
+        },
+        {
+          text: "Pseudo-random data round-trip test",
+          uri: "Regression test for unescaped RLE marker byte",
+          input: [243, 204, 191, 171, 157, 143, 229, 84, 239, 176, 155, 208, 176, 245, 186, 148, 128, 53, 183, 104, 65, 66, 101, 148, 122, 107, 131, 193, 65, 79, 229, 58, 50, 25, 21, 210, 49, 167, 70, 138, 6, 12, 191, 33, 67, 124, 161, 122, 65, 2, 92, 207, 37, 32, 136, 248, 127, 146, 78, 207, 243, 126, 146, 223, 64, 161, 46, 129, 181, 68, 211, 17, 148, 194, 96, 50, 211, 110, 202, 53, 74, 159, 228, 247, 145, 4, 228, 234, 16, 151, 188, 109, 81, 80, 49, 126, 162, 199, 101, 196, 235, 27, 109, 184, 20, 77, 129, 64, 148, 182, 146, 41, 134, 77, 32, 59, 197, 71, 158, 152, 231, 94, 231, 211, 103, 220, 144, 238, 137, 222, 237, 151, 177, 197, 92, 12, 97, 179, 107, 212, 167, 137, 88, 210, 78, 173, 228, 175, 149, 232, 107, 45, 28, 202, 239, 242, 91, 73, 66, 24, 35, 92, 185, 245, 62, 213, 13, 182, 15, 242, 254, 12, 86, 213, 178, 168, 213, 115, 176, 57, 95, 201, 101, 121, 187, 228, 195, 32, 44, 252, 179, 230, 150, 179, 164, 143, 191, 97, 136, 46, 25, 154, 214, 6, 155, 31, 129, 253, 3, 119, 59, 68, 187, 102, 43, 112, 143, 202, 179, 185, 32, 38, 37, 249, 29, 52, 47, 246, 60, 190, 166, 152, 5, 144, 25, 213, 107, 191, 85, 158, 64, 228, 200, 90, 18, 120, 76, 172, 148, 46, 222, 67, 185, 14, 135, 164, 72, 186, 30, 245, 198, 193, 63, 169, 164, 83, 85, 104, 24, 107, 159, 230, 18, 235, 247, 15, 205, 167, 128, 28, 145, 40, 49, 185, 0, 198, 197, 208, 211, 50, 157, 56, 249, 159, 97, 19, 92, 178, 139, 196]
+        },
+        {
+          text: "Alternating pattern round-trip test",
+          uri: "Regression test for unescaped RLE marker byte",
+          input: Array.from({ length: 128 }, (_, i) => i % 2 ? 0x55 : 0xAA)
         }
       ];
     }
@@ -422,7 +447,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -472,14 +497,14 @@
 
       // Write primary index (big-endian)
       const primaryIndexBytes = OpCodes.Unpack32BE(bwtResult.primaryIndex);
-      output.push(...primaryIndexBytes);
+      for (let _i = 0; _i < primaryIndexBytes.length; _i++) output.push(primaryIndexBytes[_i]);
 
       // Write original data length (big-endian)
       const dataLengthBytes = OpCodes.Unpack32BE(data.length);
-      output.push(...dataLengthBytes);
+      for (let _i = 0; _i < dataLengthBytes.length; _i++) output.push(dataLengthBytes[_i]);
 
       // Write compressed data
-      output.push(...rleData);
+      for (let _i = 0; _i < rleData.length; _i++) output.push(rleData[_i]);
 
       return output;
     }
