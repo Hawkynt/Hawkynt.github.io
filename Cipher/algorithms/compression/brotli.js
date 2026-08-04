@@ -1,43 +1,36 @@
 /*
- * Brotli Compression Algorithm - Pure JavaScript Implementation
- * RFC 7932 Compliant Decompressor + Basic Compressor
+ * Brotli-Inspired Compression Algorithm - Pure JavaScript Implementation
  * (c)2006-2025 Hawkynt
  *
- * PRODUCTION-READY PURE JAVASCRIPT IMPLEMENTATION
- * ===============================================
- * This is a complete from-scratch implementation of Brotli compression based on:
+ * NOT RFC 7932 BITSTREAM-COMPATIBLE
+ * ==================================
+ * This is an educational LZ77 + Huffman/context-modeling entropy codec
+ * modeled after Brotli's structure and terminology (meta-blocks, insert-copy
+ * commands, context modeling, distance cache, ring buffer), based on:
  * - RFC 7932: Brotli Compressed Data Format (https://tools.ietf.org/html/rfc7932)
- * - Google Brotli C reference implementation
- * - No external dependencies, no Node.js zlib wrappers
+ * - Google Brotli C reference implementation (for terminology/structure only)
+ *
+ * It is NOT interoperable with real Brotli: this decoder cannot read streams
+ * produced by zlib's brotliCompressSync() or any other RFC 7932 encoder (no
+ * static dictionary, and this encoder always emits uncompressed meta-blocks
+ * rather than real Huffman/context-coded ones), and no standard Brotli
+ * decoder can read this encoder's output. Only round-trips with itself.
+ * Implementing genuine RFC 7932 Brotli (static dictionary, full context
+ * modeling, prefix-code descriptors matching the reference encoder) is out
+ * of scope for this educational implementation.
  *
  * IMPLEMENTATION STATUS (Current):
  * ==================================
- * - COMPRESSION: Production-ready uncompressed meta-block encoder
- *   * Creates valid RFC 7932 Brotli streams
- *   * Uses uncompressed blocks for maximum compatibility
- *   * Handles empty input, single bytes, and arbitrary-length data
- *   * Suitable for creating test vectors and basic compression
+ * - COMPRESSION: Always emits uncompressed meta-blocks (framed with real
+ *   RFC 7932 meta-block headers) - simple and always self-consistent, but
+ *   not a general-purpose Brotli-format encoder.
  *
- * - DECOMPRESSION: Complete RFC 7932 compliant implementation
- *   * Full Huffman decoding with simple and complex code support
- *   * Context modeling with all 4 modes (LSB6, MSB6, UTF8, Signed)
- *   * Complete context map reading with MTF decoding
- *   * Block type management for literals, insert-copy, and distances
- *   * Distance code decoding with postfix/direct parameters
- *   * Distance cache management
- *   * Ring buffer dictionary with proper wraparound
- *   * Insert-and-copy command processing per RFC 7932 Section 4
- *   * Multi-block stream support
+ * - DECOMPRESSION: Understands both uncompressed and Huffman/context-coded
+ *   meta-blocks per the RFC 7932 bitstream grammar (block types, context
+ *   maps, insert-copy commands, distance codes/cache, ring buffer), but has
+ *   only been validated against this file's own encoder output, not against
+ *   real Brotli streams.
  *
- * IMPLEMENTATION NOTES:
- * - Complete, RFC 7932 compliant decompressor (~1,300 lines)
- * - Encoder produces valid Brotli format that can be decoded by official implementations
- * - Decoder handles both uncompressed and compressed meta-blocks
- * - All RFC 7932 distance code variants supported
- * - Context modeling uses official lookup tables from specification
- *
- * COMPLEXITY: ~1,300 lines of complete RFC 7932 implementation
- * BASED ON: RFC 7932 specification and Google Brotli C implementation
  * REFERENCE: X:\Coding\Working Copies\Hawkynt.git\Hawkynt.github.io\Cipher\Reference Sources\javascript-source\node-modules\node\deps\brotli\
  */
 
@@ -976,11 +969,14 @@
     }
 
     writeBits(n, value) {
-      if (!this.bitBuffer) {
-        this.bitBuffer = 0;
-        this.bitCount = 0;
-      }
-
+      // NOTE: bitBuffer legitimately becomes 0 mid-stream whenever the
+      // currently-accumulated pending bits are all zero (extremely common,
+      // e.g. writing a zero nibble) while bitCount is still nonzero. A
+      // lazy-init guard keyed on "falsy bitBuffer" used to live here and
+      // reset bitCount to 0 in that case, silently discarding the pending
+      // bit position and corrupting every bit written afterwards - this is
+      // what broke single-byte round-trips. bitBuffer/bitCount are already
+      // properly initialized once in compress(), so no re-init is needed here.
       this.bitBuffer |= OpCodes.Shl32(value&OpCodes.BitMask(n), this.bitCount);
       this.bitCount += n;
 
@@ -1016,18 +1012,18 @@
       super();
 
       this.name = "Brotli";
-      this.description = "Advanced lossless compression algorithm developed by Google in 2013. Combines LZ77 dictionary coding, Huffman coding, and context modeling for 15-25% better compression than gzip. Complete RFC 7932 compliant pure JavaScript implementation with full encoder and decoder support.";
-      this.inventor = "Jyrki Alakuijala, Zoltan Szabadka (Google)";
+      this.description = "Educational, Brotli-INSPIRED LZ77 + Huffman/context-modeling entropy codec, structured after (but not compatible with) the algorithm Google published in 2013. NOT RFC 7932 bitstream-compatible: it cannot decode real Brotli streams (e.g. from zlib's brotliCompressSync), and no standard Brotli decoder can read this encoder's output. Only round-trips with itself.";
+      this.inventor = "Jyrki Alakuijala, Zoltan Szabadka (Google) - original Brotli design; this non-standard educational port by Hawkynt";
       this.year = 2013;
       this.category = CategoryType.COMPRESSION;
       this.subCategory = "Dictionary + Entropy Coding";
-      this.securityStatus = null;
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
       this.complexity = ComplexityType.EXPERT;
       this.country = CountryCode.US;
 
-      this.compressionRatio = "Variable (encoder uses uncompressed format, decoder handles all formats)";
+      this.compressionRatio = "Variable (encoder always emits uncompressed meta-blocks)";
       this.windowSize = "10-24 bits (1KB - 16MB)";
-      this.implementation = "Pure JavaScript - Complete RFC 7932 implementation (~1,300 lines)";
+      this.implementation = "Pure JavaScript - Brotli-inspired, NOT RFC 7932 bitstream-compatible";
 
       this.documentation = [
         new LinkItem("RFC 7932 - Brotli Compressed Data Format", "https://datatracker.ietf.org/doc/html/rfc7932"),
@@ -1043,36 +1039,37 @@
       ];
 
       this.notes = [
+        "NOT RFC 7932 COMPLIANT - not interoperable with real Brotli (zlib, google/brotli, or any other implementation)",
         "PURE JAVASCRIPT IMPLEMENTATION - No external dependencies, no Node.js zlib bindings",
-        "ENCODER: Production-ready RFC 7932 compliant encoder using uncompressed meta-blocks",
-        "  NOTE: Encoder has known issue with single-byte inputs - use for multi-byte data or empty inputs",
-        "  For production single-byte compression, consider using official Brotli library",
-        "DECODER: Complete RFC 7932 compliant implementation with all features:",
-        "  - Full Huffman decoding (simple and complex codes)",
-        "  - Context modeling (LSB6, MSB6, UTF8, Signed modes)",
-        "  - Block type management and context maps",
-        "  - Distance codes with postfix/direct parameters",
-        "  - Ring buffer dictionary with distance cache",
-        "  - Multi-block stream support",
-        "Based on RFC 7932 specification and Google Brotli C reference implementation",
-        "Handles both uncompressed and compressed Brotli streams",
-        "Works best with empty inputs or multi-byte data (2+ bytes)"
+        "ENCODER: Always emits uncompressed meta-blocks, framed with real RFC 7932 meta-block headers",
+        "DECODER: Understands both uncompressed and Huffman/context-coded meta-blocks per the RFC 7932",
+        "  bitstream grammar (block types, context maps, insert-copy commands, distance codes/cache,",
+        "  ring buffer), but has only been validated against this file's own encoder output",
+        "Uses RFC 7932 terminology and structure (meta-blocks, insert-copy commands, context modeling,",
+        "  distance cache, ring buffer) purely as an educational model, not for bitstream compatibility",
+        "Round-trips correctly with itself for any input length, including empty and single-byte input"
       ];
 
-      // Test vectors - Full round-trip compression/decompression
-      // Using uncompressed Brotli meta-blocks for compatibility
+      // Test vectors - Full round-trip compression/decompression against this
+      // file's own (non-standard) encoder/decoder pair, NOT against real
+      // Brotli/RFC 7932 reference vectors.
       this.tests = [
         {
-          text: "Brotli Round-trip - Empty input",
+          text: "Round-trip - Empty input",
           uri: "https://datatracker.ietf.org/doc/html/rfc7932#section-9.2",
           input: [],
           expected: []
         },
         {
-          text: "Brotli Round-trip - Single byte",
+          // Regression: writeBits() used to reset bitCount to 0 whenever the
+          // pending bit buffer value was exactly 0 (a falsy-value bug, not an
+          // empty-buffer check), silently dropping pending bit position and
+          // corrupting the header - this was the exact failure mode for
+          // single-byte input ("Unexpected end of uncompressed data").
+          text: "Regression - single byte (was: Unexpected end of uncompressed data)",
           uri: "https://github.com/google/brotli/tree/master/tests/testdata",
-          input: OpCodes.AnsiToBytes("X")
-          // No expected - round-trip only (encoder uses uncompressed format)
+          input: OpCodes.AnsiToBytes("X"),
+          expected: [27, 0, 0, 88]
         },
         {
           text: "Brotli Round-trip - Short text",
@@ -1144,7 +1141,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
