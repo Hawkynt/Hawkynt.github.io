@@ -7,6 +7,12 @@
  * Created by Joergen Ibsen, it achieves good compression ratios with minimal code footprint.
  *
  * Format:
+ * - 4-byte little-endian header holding the original (uncompressed) length.
+ *   The reference BriefLZ depack routine is only 61 LOC because it relies on
+ *   the caller supplying the depacked size out-of-band; this implementation
+ *   is self-contained (Feed/Result round trip with no side channel), so the
+ *   length is stored as an explicit header instead - matching the convention
+ *   used by nrv2d.js/nrv2e.js elsewhere in this repository.
  * - Bit stream with 16-bit tags (little-endian)
  * - Initial virtual state: tag=0x4000, bits_left=1 (first bit=0 for first literal)
  * - Gamma2-encoded match lengths (actual_length = gamma_value + 2)
@@ -194,9 +200,13 @@
           return value;
         }
 
-        // Shift consumed 8 bits from lookup but need more
+        // Shift consumed 8 bits from lookup but need more: the 8 consumed bits
+        // already encode the first 4 gamma value/continue pairs, so resume the
+        // bit-by-bit loop below from that partial value instead of restarting
+        // at 1 (restarting would silently drop the high bits of the result).
         this.tag = OpCodes.Shl16(this.tag, 8);
         this.bitsLeft -= 8;
+        result = value;
       }
 
       // Gamma2 decoding: read bits until terminating 0
@@ -339,55 +349,61 @@
       ];
 
       // Test vectors based on actual BriefLZ format
-      // Format: first literal is free (virtual bit=0), then tags start
-      // NOTE: BriefLZ requires known output size for decompression
+      // Format: 4-byte LE original-length header, then first literal is free
+      // (virtual bit=0), then tags start.
       this.tests = [
         {
           text: "Single literal byte",
           uri: "https://github.com/jibsen/brieflz",
           input: OpCodes.AnsiToBytes("A"),
-          expected: [0x41], // Just the byte (first bit is virtual 0)
-          outputSize: 1
+          expected: [0x01, 0x00, 0x00, 0x00, 0x41] // header(len=1), A (first bit is virtual 0)
         },
         {
           text: "Two literal bytes",
           uri: "https://github.com/jibsen/brieflz",
           input: OpCodes.AnsiToBytes("AB"),
-          expected: [0x41, 0x00, 0x00, 0x42], // A, tag 0x0000 (16 bits all 0=literals), B
-          outputSize: 2
+          expected: [0x02, 0x00, 0x00, 0x00, 0x41, 0x00, 0x00, 0x42] // header, A, tag 0x0000, B
         },
         {
           text: "Three literal bytes",
           uri: "https://github.com/jibsen/brieflz",
           input: OpCodes.AnsiToBytes("ABC"),
-          expected: [0x41, 0x00, 0x00, 0x42, 0x43], // A, tag (0,0 for B,C), B, C
-          outputSize: 3
+          expected: [0x03, 0x00, 0x00, 0x00, 0x41, 0x00, 0x00, 0x42, 0x43] // header, A, tag (0,0 for B,C), B, C
         },
         {
-          text: "Four A's - minimum match",
+          text: "Four A's - minimum match not viable",
           uri: "https://github.com/jibsen/brieflz",
           input: OpCodes.AnsiToBytes("AAAA"),
-          // A (literal), then match len=3: gamma(3-2)=gamma(1) - WAIT gamma min is 2!
-          // Actually: len=4, gamma=2, but we already output 1 A, so match copies remaining 3
-          // Let me recalculate: A literal, then at pos=1, match 3 bytes (rest of input)
-          // But match length in format is total match length, not remaining
-          // Match: start at output pos 0, copy 3 bytes -> gives us 3 more A's -> total AAAA
-          // Stored: len=3, gamma(3-2)=gamma(1) - invalid!
-          // So we can't compress AAAA efficiently. Need AAAAA (5 A's)
-          expected: [0x41, 0x00, 0x00, 0x41, 0x41, 0x41], // All literals (can't make min match of 4)
-          outputSize: 4
+          // Match length must be >= 4 (gamma minimum 2, offset by 2), which requires
+          // 1 literal + a match of 3 remaining bytes - not viable, so all literals.
+          expected: [0x04, 0x00, 0x00, 0x00, 0x41, 0x00, 0x00, 0x41, 0x41, 0x41]
         },
         {
           text: "Five A's - viable match",
           uri: "https://github.com/jibsen/brieflz",
           input: OpCodes.AnsiToBytes("AAAAA"),
           // A (literal at pos 0), then match at pos 1: length=4, distance=1
-          // Encoded: bit=1, gamma(4-2)=gamma(2)=00, gamma(off)
-          // off=(1-1)>>8=0, gamma(0+2)=gamma(2)=00, byte=(1-1)&0xFF=0
-          // Bits: 1,0,0,0,0 then padding -> 10000_00000000000 = 0x8000 (little-endian: 0x00, 0x80)
-          // Format: [A] [tag_low, tag_high] [offset_byte]
-          expected: [0x41, 0x00, 0x80, 0x00], // A, tag 0x8000 (LE), offset byte 0x00
-          outputSize: 5
+          expected: [0x05, 0x00, 0x00, 0x00, 0x41, 0x00, 0x80, 0x00] // header, A, tag 0x8000 (LE), offset byte 0x00
+        },
+        {
+          // Regression: previously this decompressed to ~10x the input length because
+          // decompression had no reliable way to know the original size (see file header).
+          text: "Regression - repeated byte round-trips to exact length (was 10x oversized)",
+          uri: "https://github.com/jibsen/brieflz",
+          input: Array(128).fill(0x61)
+        },
+        {
+          // Regression: gamma2 codes needing more than 8 bits (e.g. long match lengths)
+          // were decoded from a lookup-table fast path that discarded the partial
+          // accumulated value and restarted from 1, corrupting every subsequent symbol.
+          text: "Regression - long repeated run exercises multi-byte gamma2 codes",
+          uri: "https://github.com/jibsen/brieflz",
+          input: Array(1024).fill(0x61)
+        },
+        {
+          text: "Regression - all 256 byte values",
+          uri: "https://github.com/jibsen/brieflz",
+          input: (function() { const a = []; for (let i = 0; i < 256; ++i) a.push(i); return a; })()
         }
       ];
     }
@@ -420,16 +436,6 @@
       super(algorithm);
       this.isInverse = isInverse;
       this.inputBuffer = [];
-      this._outputSize = null; // Required for decompression
-    }
-
-    // Property setter for output size (used by test framework)
-    set outputSize(size) {
-      this._outputSize = size;
-    }
-
-    get outputSize() {
-      return this._outputSize;
     }
 
     /**
@@ -440,7 +446,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -462,11 +468,17 @@
     }
 
     _decompress() {
-      const bs = new BitStreamReader(this.inputBuffer);
-      const output = [];
+      if (this.inputBuffer.length < 4) {
+        this.inputBuffer = [];
+        return [];
+      }
 
-      // Use outputSize if provided, otherwise use safety limit
-      const targetSize = this._outputSize || (this.inputBuffer.length * 10);
+      // Read the 4-byte little-endian original-length header (see file header comment).
+      const targetSize = OpCodes.Pack32LE(
+        this.inputBuffer[0], this.inputBuffer[1], this.inputBuffer[2], this.inputBuffer[3]
+      );
+      const bs = new BitStreamReader(this.inputBuffer.slice(4));
+      const output = [];
 
       while (output.length < targetSize) {
         const bit = bs.getBit();
@@ -503,6 +515,7 @@
     }
 
     _compress() {
+      const originalLength = this.inputBuffer.length;
       const writer = new BitStreamWriter();
       let pos = 0;
 
@@ -530,7 +543,7 @@
       }
 
       this.inputBuffer = [];
-      return writer.getOutput();
+      return OpCodes.Unpack32LE(originalLength).concat(writer.getOutput());
     }
 
     _findMatch(pos) {
