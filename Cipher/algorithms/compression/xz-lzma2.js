@@ -4,11 +4,12 @@
  * (c)2006-2025 Hawkynt
  *
  * A genuine .xz container writer/reader: stream header, one block (LZMA2
- * filter), index and footer, with CRC32/CRC64 integrity checking, plus a
- * real LZMA2 chunk framer and a real LZMA1 range decoder. The encoder always
- * emits LZMA2 "uncompressed" chunks (still fully valid, real xz decodes
- * them); the decoder understands both uncompressed and LZMA-compressed
- * LZMA2 chunks, so it can read the compressed streams real `xz` produces.
+ * filter), index and footer, with CRC32/CRC64 integrity checking, wrapped
+ * around a real LZMA1 range encoder/decoder pair and a real LZMA2 chunk
+ * framer. The encoder runs an actual hash-chain LZ77 parse (with rep-match
+ * awareness) through the range coder to emit genuine LZMA-compressed LZMA2
+ * chunks, falling back to an LZMA2 "uncompressed" chunk per-chunk whenever
+ * that would be smaller (or the packed size would exceed the format limit).
  */
 
 (function (root, factory) {
@@ -166,6 +167,14 @@
     return { choice: createProbArray(1), choice2: createProbArray(1), low: low, mid: mid, high: createProbArray(256) };
   }
 
+  function cloneLenCoderProbs(l) {
+    return {
+      choice: l.choice.slice(), choice2: l.choice2.slice(),
+      low: l.low.map(a => a.slice()), mid: l.mid.map(a => a.slice()),
+      high: l.high.slice()
+    };
+  }
+
   // Holds LZMA1 probability model + match-state that persists across LZMA2
   // chunks whenever a chunk requests "no reset" (control byte reset mode 0).
   class Lzma1State {
@@ -195,6 +204,24 @@
       this.lenDecoder = makeLenDecoderProbs();
       this.repLenDecoder = makeLenDecoderProbs();
       this.literalProbs = createProbArray(0x300*OpCodes.Shl32(1, this.lc + this.lp));
+    }
+
+    // Deep copy, used by the encoder to try a "continue previous chunk's
+    // probabilities" attempt without corrupting the real running state if
+    // that attempt is later discarded in favor of an uncompressed chunk.
+    clone() {
+      const c = new Lzma1State();
+      c.lc = this.lc; c.lp = this.lp; c.pb = this.pb; c.dictResetPos = this.dictResetPos;
+      c.state = this.state; c.rep0 = this.rep0; c.rep1 = this.rep1; c.rep2 = this.rep2; c.rep3 = this.rep3;
+      c.isMatch = this.isMatch.slice(); c.isRep = this.isRep.slice();
+      c.isRepG0 = this.isRepG0.slice(); c.isRepG1 = this.isRepG1.slice(); c.isRepG2 = this.isRepG2.slice();
+      c.isRep0Long = this.isRep0Long.slice();
+      c.posSlotDecoder = this.posSlotDecoder.map(a => a.slice());
+      c.specPos = this.specPos.slice(); c.align = this.align.slice();
+      c.lenDecoder = cloneLenCoderProbs(this.lenDecoder);
+      c.repLenDecoder = cloneLenCoderProbs(this.repLenDecoder);
+      c.literalProbs = this.literalProbs.slice();
+      return c;
     }
 
     setProps(propByte) {
@@ -357,25 +384,445 @@
     }
   }
 
+  // ===== LZMA1 RANGE ENCODER =====
+  //
+  // Exact mirror of the range DECODER above: same 11-bit probability scale,
+  // same kNumMoveBits update rule, same kTopValue normalization threshold.
+  // `low` is allowed to grow one bit past 32 bits while a carry is pending
+  // (JS doubles hold that exactly); everything else is kept inside 32 bits
+  // via OpCodes.
+
+  class RangeEncoder {
+    constructor() {
+      this.low = 0;
+      this.range = 0xFFFFFFFF;
+      this.cacheSize = 1;
+      this.cache = 0;
+      this.output = [];
+    }
+
+    _shiftLow() {
+      const low = this.low;
+      const carry = low >= 0x100000000 ? 1 : 0;
+      if (carry === 1 || low < 0xFF000000) {
+        let temp = this.cache;
+        do {
+          this.output.push((temp + carry)&0xFF);
+          temp = 0xFF;
+        } while (--this.cacheSize !== 0);
+        this.cache = OpCodes.Shr32(OpCodes.ToUint32(low), 24);
+      }
+      this.cacheSize++;
+      this.low = OpCodes.ToUint32(OpCodes.ToUint32(low)*256);
+    }
+
+    _normalize() {
+      while (this.range < kTopValue) {
+        this.range = OpCodes.ToUint32(this.range*256);
+        this._shiftLow();
+      }
+    }
+
+    encodeBit(probs, index, bit) {
+      const bound = OpCodes.Shr32(this.range, kNumBitModelTotalBits)*probs[index];
+      if (bit === 0) {
+        this.range = bound;
+        probs[index] += OpCodes.Shr32(2048 - probs[index], kNumMoveBits);
+      } else {
+        this.low += bound;
+        this.range = OpCodes.ToUint32(this.range - bound);
+        probs[index] -= OpCodes.Shr32(probs[index], kNumMoveBits);
+      }
+      this._normalize();
+    }
+
+    encodeDirectBits(value, numBits) {
+      for (let i = numBits - 1; i >= 0; i--) {
+        this.range = OpCodes.Shr32(this.range, 1);
+        const bit = OpCodes.Shr32(value, i)&1;
+        if (bit === 1) this.low += this.range;
+        this._normalize();
+      }
+    }
+
+    // Five trailing shiftLow calls: one to push out the pending cache byte,
+    // four more so every byte of `low` that the decoder still needs to read
+    // has actually been written.
+    flush() {
+      for (let i = 0; i < 5; i++) this._shiftLow();
+    }
+  }
+
+  function bitTreeEncode(enc, probs, offset, numBits, value) {
+    let m = 1;
+    for (let i = numBits - 1; i >= 0; i--) {
+      const bit = OpCodes.Shr32(value, i)&1;
+      enc.encodeBit(probs, offset + m, bit);
+      m = m*2 + bit;
+    }
+  }
+
+  function bitTreeReverseEncode(enc, probs, offset, numBits, value) {
+    let m = 1;
+    for (let i = 0; i < numBits; i++) {
+      const bit = OpCodes.Shr32(value, i)&1;
+      enc.encodeBit(probs, offset + m, bit);
+      m = m*2 + bit;
+    }
+  }
+
+  function encodeLenValue(enc, lenCoder, posState, len) {
+    if (len < 10) {
+      enc.encodeBit(lenCoder.choice, 0, 0);
+      bitTreeEncode(enc, lenCoder.low[posState], 0, 3, len - 2);
+    } else if (len < 18) {
+      enc.encodeBit(lenCoder.choice, 0, 1);
+      enc.encodeBit(lenCoder.choice2, 0, 0);
+      bitTreeEncode(enc, lenCoder.mid[posState], 0, 3, len - 10);
+    } else {
+      enc.encodeBit(lenCoder.choice, 0, 1);
+      enc.encodeBit(lenCoder.choice2, 0, 1);
+      bitTreeEncode(enc, lenCoder.high, 0, 8, len - 18);
+    }
+  }
+
+  // Inverse of the decoder's posSlot -> dist reconstruction: the slot is
+  // 2*n + (second-highest bit of dist), where n is dist's highest set bit
+  // position. Math.clz32 gives an exact integer bit position (no float
+  // log2 rounding risk near powers of two).
+  function getPosSlot(dist) {
+    if (dist < 4) return dist;
+    const n = 31 - Math.clz32(dist);
+    const bit = OpCodes.Shr32(dist, n - 1)&1;
+    return n*2 + bit;
+  }
+
+  function encodeDistance(enc, state, lenState, dist) {
+    const posSlot = getPosSlot(dist);
+    bitTreeEncode(enc, state.posSlotDecoder[lenState], 0, 6, posSlot);
+    if (posSlot >= 4) {
+      const numDirectBits = OpCodes.Shr32(posSlot, 1) - 1;
+      const base = OpCodes.Shl32(2|(posSlot&1), numDirectBits);
+      const rem = dist - base;
+      if (posSlot < 14) {
+        bitTreeReverseEncode(enc, state.specPos, base - posSlot - 1, numDirectBits, rem);
+      } else {
+        const high = Math.floor(rem/16);
+        enc.encodeDirectBits(high, numDirectBits - 4);
+        bitTreeReverseEncode(enc, state.align, 0, 4, rem%16);
+      }
+    }
+  }
+
+  function encodeLiteral(enc, state, data, globalPos) {
+    const localPos = globalPos - state.dictResetPos;
+    const lpMask = OpCodes.Shl32(1, state.lp) - 1;
+    const lcShift = 8 - state.lc;
+    const prevByte = globalPos === 0 ? 0 : data[globalPos - 1];
+    const litState = ((localPos&lpMask)*OpCodes.Shl32(1, state.lc)) + OpCodes.Shr32(prevByte, lcShift);
+    const base = litState*0x300;
+    const byteVal = data[globalPos];
+
+    if (state.state < 7) {
+      bitTreeEncode(enc, state.literalProbs, base, 8, byteVal);
+    } else {
+      let matchByte = data[globalPos - state.rep0 - 1];
+      let symbol = 1, i = 7;
+      while (symbol < 0x100) {
+        const matchBit = OpCodes.Shr32(matchByte, 7);
+        matchByte = OpCodes.ToUint32(matchByte*2)&0xFF;
+        const bit = OpCodes.Shr32(byteVal, i)&1; i--;
+        enc.encodeBit(state.literalProbs, base + (1 + matchBit)*0x100 + symbol, bit);
+        symbol = symbol*2 + bit;
+        if (matchBit !== bit) {
+          while (symbol < 0x100) {
+            const bit2 = OpCodes.Shr32(byteVal, i)&1; i--;
+            enc.encodeBit(state.literalProbs, base + symbol, bit2);
+            symbol = symbol*2 + bit2;
+          }
+          break;
+        }
+      }
+    }
+    state.state = state.state < 4 ? 0 : (state.state < 10 ? state.state - 3 : state.state - 6);
+  }
+
+  // ===== LZ77 MATCH FINDER (hash chain, 3-byte hash) =====
+  //
+  // Same structure as the HashChain in brieflz.js: a hash-of-3-bytes head
+  // table plus a per-position "previous occurrence" chain, walk bounded by
+  // maxChainDepth so a degenerate chain (e.g. a long run of one repeated
+  // byte) cannot go quadratic; the walk also stops as soon as a match
+  // reaches the caller's length cap, since no longer candidate could beat it.
+
+  const MAX_MATCH_LEN = 273; // 18 + 255, the largest length the length coder can express
+
+  class HashChain {
+    constructor(windowSize, maxChainDepth) {
+      this.windowSize = Math.max(1, windowSize);
+      this.maxChainDepth = maxChainDepth;
+      this.hashSize = 65536;
+      this.head = new Int32Array(this.hashSize).fill(-1);
+      this.prev = new Int32Array(this.windowSize).fill(-1);
+    }
+
+    _hash(data, pos) {
+      const h = OpCodes.Shl32(data[pos], 8) + OpCodes.Shl32(data[pos + 1], 4) + OpCodes.Shr32(data[pos + 2], 4);
+      return h % this.hashSize;
+    }
+
+    insert(data, pos) {
+      if (pos + 2 >= data.length) return;
+      const h = this._hash(data, pos);
+      const idx = pos % this.windowSize;
+      this.prev[idx] = this.head[h];
+      this.head[h] = pos;
+    }
+
+    find(data, pos, maxLen) {
+      if (maxLen < 2 || pos + 2 >= data.length) return { length: 0, distance: 0 };
+      const h = this._hash(data, pos);
+      const windowStart = Math.max(0, pos - this.windowSize);
+      let chainPos = this.head[h];
+      let depth = 0;
+      let bestLength = 0, bestDistance = 0;
+      while (chainPos >= windowStart && chainPos < pos && depth < this.maxChainDepth) {
+        let length = 0;
+        while (length < maxLen && data[chainPos + length] === data[pos + length]) length++;
+        if (length > bestLength) {
+          bestLength = length;
+          bestDistance = pos - chainPos;
+          if (length >= maxLen) break;
+        }
+        const idx = chainPos % this.windowSize;
+        chainPos = this.prev[idx];
+        depth++;
+      }
+      return { length: bestLength, distance: bestDistance };
+    }
+  }
+
+  function repMatchLength(data, pos, remaining, dist) {
+    if (dist + 1 > pos) return 0; // not enough history for this distance yet
+    const maxLen = Math.min(MAX_MATCH_LEN, remaining);
+    let len = 0;
+    while (len < maxLen && data[pos - dist - 1 + len] === data[pos + len]) len++;
+    return len;
+  }
+
+  // Greedy LZ77 parser with rep-match awareness: rep0/1/2/3 candidates are
+  // checked directly (only 4 candidates, no chain walk needed) and preferred
+  // over an equally-good fresh-distance match since rep codes are far
+  // cheaper to encode. A short rep (single byte at the rep0 distance) is
+  // preferred over a plain literal whenever it applies.
+  function findBestToken(data, pos, remaining, rep0, rep1, rep2, rep3, matchFinder) {
+    if (remaining < 1) return { type: 'literal' };
+
+    const reps = [rep0, rep1, rep2, rep3];
+    let bestRep = -1, bestRepScore = 0, bestRepLen = 0;
+    for (let r = 0; r < 4; r++) {
+      const len = repMatchLength(data, pos, remaining, reps[r]);
+      if (r === 0) {
+        if (len >= 1) {
+          const score = len + 2;
+          if (score > bestRepScore) { bestRep = 0; bestRepScore = score; bestRepLen = len; }
+        }
+      } else if (len >= 2) {
+        const score = len + 1;
+        if (score > bestRepScore) { bestRep = r; bestRepScore = score; bestRepLen = len; }
+      }
+    }
+
+    let normal = { length: 0, distance: 0 };
+    if (remaining >= 2) {
+      const maxLen = Math.min(MAX_MATCH_LEN, remaining);
+      const m = matchFinder.find(data, pos, maxLen);
+      if (m.length >= 2) normal = m;
+    }
+    const normalScore = normal.length >= 3 || (normal.length === 2 && normal.distance <= 512) ? normal.length : 0;
+
+    if (bestRep >= 0 && bestRepScore >= normalScore) {
+      if (bestRep === 0 && bestRepLen === 1) return { type: 'shortrep' };
+      return { type: 'rep', repIndex: bestRep, length: bestRepLen };
+    }
+
+    if (normalScore > 0) return { type: 'match', length: normal.length, distCode: normal.distance - 1 };
+
+    return { type: 'literal' };
+  }
+
+  // Encodes exactly `length` bytes of `data` starting at `start` into `enc`,
+  // using (and mutating) this state's probability model, state machine and
+  // rep0..rep3 - the exact mirror of decodeChunk above, driven by the LZ77
+  // parser instead of a bitstream.
+  Lzma1State.prototype.encodeChunk = function(enc, data, start, length, matchFinder) {
+    const end = start + length;
+    let pos = start;
+    const pbMask = OpCodes.Shl32(1, this.pb) - 1;
+
+    while (pos < end) {
+      const localPos = pos - this.dictResetPos;
+      const posState = localPos&pbMask;
+      const remaining = end - pos;
+      const token = findBestToken(data, pos, remaining, this.rep0, this.rep1, this.rep2, this.rep3, matchFinder);
+
+      if (token.type === 'literal') {
+        enc.encodeBit(this.isMatch, this.state*16 + posState, 0);
+        encodeLiteral(enc, this, data, pos);
+        matchFinder.insert(data, pos);
+        pos++;
+        continue;
+      }
+
+      enc.encodeBit(this.isMatch, this.state*16 + posState, 1);
+
+      if (token.type === 'match') {
+        enc.encodeBit(this.isRep, this.state, 0);
+        this.rep3 = this.rep2; this.rep2 = this.rep1; this.rep1 = this.rep0;
+        this.rep0 = token.distCode;
+        const len = token.length;
+        encodeLenValue(enc, this.lenDecoder, posState, len);
+        const lenState = Math.min(len - 2, 3);
+        encodeDistance(enc, this, lenState, token.distCode);
+        this.state = this.state < 7 ? 7 : 10;
+        for (let k = 0; k < len; k++) matchFinder.insert(data, pos + k);
+        pos += len;
+        continue;
+      }
+
+      if (token.type === 'shortrep') {
+        enc.encodeBit(this.isRep, this.state, 1);
+        enc.encodeBit(this.isRepG0, this.state, 0);
+        enc.encodeBit(this.isRep0Long, this.state*16 + posState, 0);
+        this.state = this.state < 7 ? 9 : 11;
+        matchFinder.insert(data, pos);
+        pos++;
+        continue;
+      }
+
+      // rep match, token.repIndex in 0..3, token.length >= 2
+      enc.encodeBit(this.isRep, this.state, 1);
+      if (token.repIndex === 0) {
+        enc.encodeBit(this.isRepG0, this.state, 0);
+        enc.encodeBit(this.isRep0Long, this.state*16 + posState, 1);
+      } else if (token.repIndex === 1) {
+        enc.encodeBit(this.isRepG0, this.state, 1);
+        enc.encodeBit(this.isRepG1, this.state, 0);
+        const d = this.rep1; this.rep1 = this.rep0; this.rep0 = d;
+      } else if (token.repIndex === 2) {
+        enc.encodeBit(this.isRepG0, this.state, 1);
+        enc.encodeBit(this.isRepG1, this.state, 1);
+        enc.encodeBit(this.isRepG2, this.state, 0);
+        const d = this.rep2; this.rep2 = this.rep1; this.rep1 = this.rep0; this.rep0 = d;
+      } else {
+        enc.encodeBit(this.isRepG0, this.state, 1);
+        enc.encodeBit(this.isRepG1, this.state, 1);
+        enc.encodeBit(this.isRepG2, this.state, 1);
+        const d = this.rep3; this.rep3 = this.rep2; this.rep2 = this.rep1; this.rep1 = this.rep0; this.rep0 = d;
+      }
+      const len = token.length;
+      encodeLenValue(enc, this.repLenDecoder, posState, len);
+      this.state = this.state < 7 ? 8 : 11;
+      for (let k = 0; k < len; k++) matchFinder.insert(data, pos + k);
+      pos += len;
+    }
+  };
+
   // ===== LZMA2 CHUNK FRAMING =====
 
-  function encodeLZMA2Uncompressed(data) {
+  // LZMA2 format limits: unpacked size is a 21-bit field (5 high bits in the
+  // control byte + 16 low bits), packed size is a 16-bit field. The 32768
+  // cap keeps every chunk's compressed form comfortably under the 65536
+  // packed-size limit (LZMA essentially never expands data by more than a
+  // few percent; the fallback below is the hard safety net regardless).
+  const LZMA2_CHUNK_UNCOMPRESSED_CAP = 32768;
+  const LZMA2_MAX_PACKED = 65536;
+
+  function emitUncompressedChunkBytes(out, data, start, len, resetDict) {
+    out.push(resetDict ? 0x01 : 0x02);
+    const be = OpCodes.Unpack16BE(len - 1);
+    out.push(be[0], be[1]);
+    for (let i = 0; i < len; i++) out.push(data[start + i]);
+  }
+
+  function emitCompressedChunkBytes(out, payload, unpackedLen, resetMode, propByte) {
+    const usm1 = unpackedLen - 1;
+    const high5 = Math.floor(usm1/65536);
+    const low16 = usm1%65536;
+    const control = OpCodes.Or32(OpCodes.Shl32(4 + resetMode, 5), high5);
+    out.push(control);
+    const usBytes = OpCodes.Unpack16BE(low16);
+    out.push(usBytes[0], usBytes[1]);
+    const psBytes = OpCodes.Unpack16BE(payload.length - 1);
+    out.push(psBytes[0], psBytes[1]);
+    if (resetMode >= 2) out.push(propByte);
+    for (let i = 0; i < payload.length; i++) out.push(payload[i]);
+  }
+
+  // Standard LZMA2 dictionary-size property byte encoding (xz-file-format.txt
+  // 4.1.1 / 5.3.1): byte b<40 encodes (2|(b&1)) * 2^(floor(b/2)+11); b===40
+  // means 0xFFFFFFFF. Picks the smallest size that still covers the whole
+  // input, since our encoder never needs a match distance beyond that.
+  function dictSizeProp(minSize) {
+    const need = Math.max(4096, minSize);
+    for (let b = 0; b < 40; b++) {
+      const mantissa = 2 + (b%2);
+      const size = mantissa*Math.pow(2, Math.floor(b/2) + 11);
+      if (size >= need) return b;
+    }
+    return 40;
+  }
+
+  // Real LZMA-compressed LZMA2 stream: hash-chain LZ77 parse with rep-match
+  // awareness feeding the LZMA1 range encoder above, framed into LZMA2
+  // chunks (capped well under the format's packed-size limit). Every chunk
+  // independently falls back to an LZMA2 "uncompressed" chunk whenever that
+  // would be smaller (or the compressed form ever exceeded the packed-size
+  // limit) - always a valid, always-real LZMA2 stream either way.
+  function encodeLZMA2Compressed(data) {
     const out = [];
-    const MAX_CHUNK = 65536;
     if (data.length === 0) {
       out.push(0x00);
       return out;
     }
-    let offset = 0, first = true;
-    while (offset < data.length) {
-      const size = Math.min(MAX_CHUNK, data.length - offset);
-      out.push(first ? 0x01 : 0x02);
+
+    const propByte = (2*5 + 0)*9 + 3; // lc=3, lp=0, pb=2 - Lzma1State defaults
+    const matchFinder = new HashChain(data.length, 64);
+
+    // `persistent` holds the real, committed probability model + rep0-3 +
+    // 12-state machine. A chunk that continues it (reset mode 0) is tried
+    // against a throwaway clone first, since the LZ77-driven encode mutates
+    // that state as a side effect - if the attempt loses to the uncompressed
+    // fallback, the clone is simply discarded and `persistent` is untouched.
+    let persistent = new Lzma1State();
+    let pos = 0, first = true, needReset = true;
+
+    while (pos < data.length) {
+      const chunkLen = Math.min(LZMA2_CHUNK_UNCOMPRESSED_CAP, data.length - pos);
+
+      const resetMode = needReset ? (first ? 3 : 1) : 0;
+      const attempt = needReset ? new Lzma1State() : persistent.clone();
+      const enc = new RangeEncoder();
+      attempt.encodeChunk(enc, data, pos, chunkLen, matchFinder);
+      enc.flush();
+      const payload = enc.output;
+
+      const compressedCost = 5 + (resetMode >= 2 ? 1 : 0) + payload.length;
+      const uncompressedCost = 3 + chunkLen;
+
+      if (payload.length <= LZMA2_MAX_PACKED && compressedCost < uncompressedCost) {
+        emitCompressedChunkBytes(out, payload, chunkLen, resetMode, propByte);
+        persistent = attempt;
+        needReset = false;
+      } else {
+        emitUncompressedChunkBytes(out, data, pos, chunkLen, first);
+        needReset = true; // LZMA2 requires the next LZMA chunk to reset state after an uncompressed chunk
+      }
+
+      pos += chunkLen;
       first = false;
-      const be = OpCodes.Unpack16BE(size - 1);
-      out.push(be[0], be[1]);
-      for (let i = 0; i < size; i++) out.push(data[offset + i]);
-      offset += size;
     }
+
     out.push(0x00);
     return out;
   }
@@ -433,10 +880,10 @@
     const streamFlags = [0x00, checkId];
     const streamHeader = XZ_MAGIC.concat(streamFlags, crc32Bytes(streamFlags));
 
-    const lzma2 = encodeLZMA2Uncompressed(data);
+    const lzma2 = encodeLZMA2Compressed(data);
 
     // Block header
-    const propByte = 0x00; // minimal dictionary size (4 KiB) - unused since we never back-reference on encode
+    const propByte = dictSizeProp(data.length); // smallest standard dictionary size covering the whole input
     const filterFlags = [0x21, 0x01, propByte]; // filter ID VLI (LZMA2=33), props size VLI, props byte
     const compSizeVLI = encodeVLI(lzma2.length);
     const uncompSizeVLI = encodeVLI(data.length);
@@ -569,7 +1016,7 @@
 
         // Required metadata
         this.name = "XZ/LZMA2";
-        this.description = "Genuine .xz container (stream header/block/index/footer, CRC32/CRC64) wrapping a real LZMA2 chunk stream. The encoder emits valid LZMA2 uncompressed chunks that real XZ Utils decodes; the decoder implements a full LZMA1 range decoder so it can also read the LZMA-compressed chunks real `xz` produces. Verified genuinely interoperable with XZ Utils 5.8.2 in both directions.";
+        this.description = "Genuine .xz container (stream header/block/index/footer, CRC32/CRC64) wrapping a real LZMA1 range encoder/decoder pair through real LZMA2 chunk framing. The encoder runs a hash-chain LZ77 parse (with rep0-3 match awareness) through the range coder to emit genuine LZMA-compressed chunks, falling back to an uncompressed chunk per-chunk when that is smaller. Verified genuinely interoperable with XZ Utils 5.8.2 in both directions.";
         this.inventor = "Lasse Collin, Igor Pavlov";
         this.year = 2009;
         this.category = CategoryType.COMPRESSION;
