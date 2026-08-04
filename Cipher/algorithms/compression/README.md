@@ -10,7 +10,8 @@ This directory contains implementations of various data compression algorithms. 
 - [x] **Brotli** (`brotli.js`) - Modern web compression algorithm by Google
 - [x] **Burrows-Wheeler Transform** (`bwt.js`) - Data transformation for compression
 - [x] **DEFLATE (Simple)** (`deflate-simple.js`) - Combination of LZ77 and Huffman coding
-- [x] **Delta Encoding** (`delta.js`) - Stores differences between consecutive values
+- [x] **Delta + RLE** (`delta.js`) - Stores differences between consecutive values, then run-length encodes the result
+- [x] **Delta Filter** (`delta-filter.js`) - Pure, size-preserving delta transform with no entropy coding
 - [x] **Elias Delta Coding** (`elias-delta.js`) - Universal code for positive integers
 - [x] **Elias Gamma Coding** (`elias-gamma.js`) - Universal code for positive integers
 - [x] **Fibonacci Coding** (`fibonacci.js`) - Universal code based on Fibonacci sequence
