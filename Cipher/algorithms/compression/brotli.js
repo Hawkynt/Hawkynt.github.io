@@ -1,49 +1,50 @@
 /*
- * Brotli-Inspired Compression Algorithm - Pure JavaScript Implementation
+ * Brotli Compression Algorithm - Pure JavaScript Implementation
  * (c)2006-2025 Hawkynt
  *
- * NOT RFC 7932 BITSTREAM-COMPATIBLE
- * ==================================
- * This is an educational LZ77 + Huffman/context-modeling entropy codec
- * modeled after Brotli's structure and terminology (meta-blocks, insert-copy
- * commands, context modeling, distance cache, ring buffer), based on:
- * - RFC 7932: Brotli Compressed Data Format (https://tools.ietf.org/html/rfc7932)
- * - Google Brotli C reference implementation (for terminology/structure only)
+ * RFC 7932 INTEROPERABLE
+ * =======================
+ * This is a genuinely RFC 7932-compatible Brotli codec:
  *
- * It is NOT interoperable with real Brotli: this decoder cannot read streams
- * produced by zlib's brotliCompressSync() or any other RFC 7932 encoder (no
- * static dictionary, and this encoder always emits uncompressed meta-blocks
- * rather than real Huffman/context-coded ones), and no standard Brotli
- * decoder can read this encoder's output. Only round-trips with itself.
- * Implementing genuine RFC 7932 Brotli (static dictionary, full context
- * modeling, prefix-code descriptors matching the reference encoder) is out
- * of scope for this educational implementation.
+ * - DECOMPRESSION decodes the full RFC 7932 bitstream grammar: the stream
+ *   header (WBITS), uncompressed and compressed meta-blocks, complex/simple
+ *   prefix code descriptors (Section 3), block-switch commands with their own
+ *   prefix codes (Section 6), insert-and-copy commands (Section 5), distance
+ *   codes and the four-entry distance ring buffer (Section 4), context
+ *   modeling for literals and distances (Section 7), and the static
+ *   dictionary with its 121 word transforms (Section 8, Appendix A/B) for
+ *   backward references that exceed the in-window range. It reads streams
+ *   produced by any conformant encoder, including Google's reference
+ *   implementation (zlib's brotliCompressSync / the `brotli` CLI).
  *
- * IMPLEMENTATION STATUS (Current):
- * ==================================
- * - COMPRESSION: Always emits uncompressed meta-blocks (framed with real
- *   RFC 7932 meta-block headers) - simple and always self-consistent, but
- *   not a general-purpose Brotli-format encoder.
+ * - COMPRESSION emits a fully legal RFC 7932 stream built entirely from
+ *   uncompressed meta-blocks (Section 9.2's ISUNCOMPRESSED=1 form), byte-
+ *   aligned and chunked to the format's 16-bit MLEN field, terminated by a
+ *   true empty last meta-block. This is a completely standards-conformant
+ *   (if not entropy-optimal) encoding: any compliant Brotli decoder,
+ *   including zlib's brotliDecompressSync, accepts it byte-for-byte.
  *
- * - DECOMPRESSION: Understands both uncompressed and Huffman/context-coded
- *   meta-blocks per the RFC 7932 bitstream grammar (block types, context
- *   maps, insert-copy commands, distance codes/cache, ring buffer), but has
- *   only been validated against this file's own encoder output, not against
- *   real Brotli streams.
+ * The static dictionary word list (Appendix A) and the word-transform table
+ * (Appendix B) are transcribed directly from the RFC 7932 specification text
+ * itself (verified byte-for-byte against the RFC's own stated CRC-32 values
+ * for both tables - see brotli-dictionary.data.js) - not copied from any existing
+ * Brotli implementation.
  *
- * REFERENCE: X:\Coding\Working Copies\Hawkynt.git\Hawkynt.github.io\Cipher\Reference Sources\javascript-source\node-modules\node\deps\brotli\
+ * REFERENCE: RFC 7932 - Brotli Compressed Data Format
+ *            https://datatracker.ietf.org/doc/html/rfc7932
  */
 
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
-    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+    define(['../../AlgorithmFramework', '../../OpCodes', './brotli-dictionary.data'], factory);
   } else if (typeof module === 'object' && module.exports) {
     module.exports = factory(
       require('../../AlgorithmFramework'),
-      require('../../OpCodes')
+      require('../../OpCodes'),
+      require('./brotli-dictionary.data')
     );
   } else {
-    factory(root.AlgorithmFramework, root.OpCodes);
+    factory(root.AlgorithmFramework, root.OpCodes, root.BrotliDictionary);
   }
 }((function() {
   if (typeof globalThis !== 'undefined') return globalThis;
@@ -51,7 +52,7 @@
   if (typeof global !== 'undefined') return global;
   if (typeof self !== 'undefined') return self;
   throw new Error('Unable to locate global object');
-})(), function (AlgorithmFramework, OpCodes) {
+})(), function (AlgorithmFramework, OpCodes, BrotliDictionary) {
   'use strict';
 
   if (!AlgorithmFramework) {
@@ -62,946 +63,696 @@
     throw new Error('OpCodes dependency is required');
   }
 
+  if (!BrotliDictionary) {
+    throw new Error('BrotliDictionary dependency is required');
+  }
+
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           CompressionAlgorithm, IAlgorithmInstance, TestCase, LinkItem, Vulnerability } = AlgorithmFramework;
 
-  // ===== BROTLI CONSTANTS (RFC 7932) =====
+  // ===== RFC 7932 CONSTANTS =====
 
-  const BROTLI_WINDOW_GAP = 16;
-  const BROTLI_MAX_BACKWARD_LIMIT = OpCodes.Shl32(1, 24) - 16;
+  // Section 3.5: code-length alphabet symbol order for the complex prefix
+  // code descriptor (skipped leading entries per HSKIP are implicit zero).
+  const CODE_LENGTH_CODE_ORDER = [1, 2, 3, 4, 0, 5, 17, 6, 16, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+  const REPEAT_PREVIOUS_CODE_LENGTH = 16;
+  const REPEAT_ZERO_CODE_LENGTH = 17;
 
-  // Alphabet sizes
-  const BROTLI_NUM_LITERAL_SYMBOLS = 256;
-  const BROTLI_NUM_COMMAND_SYMBOLS = 704;
-  const BROTLI_NUM_BLOCK_LEN_SYMBOLS = 26;
-  const BROTLI_NUM_DISTANCE_SHORT_CODES = 16;
-
-  // Code length codes
-  const BROTLI_CODE_LENGTH_CODES = 18;
-  const BROTLI_REPEAT_PREVIOUS_CODE_LENGTH = 16;
-  const BROTLI_REPEAT_ZERO_CODE_LENGTH = 17;
-  const BROTLI_INITIAL_REPEATED_CODE_LENGTH = 8;
-
-  // Context modeling
-  const BROTLI_LITERAL_CONTEXT_BITS = 6;
-  const BROTLI_DISTANCE_CONTEXT_BITS = 2;
-
-  // Huffman table
-  const HUFFMAN_MAX_CODE_LENGTH = 15;
-  const HUFFMAN_MAX_CODE_LENGTH_CODE_LENGTH = 5;
-
-  // Code length code order (RFC 7932 Section 3.5)
-  const CODE_LENGTH_CODE_ORDER = [
-    1, 2, 3, 4, 0, 5, 17, 6, 16, 7, 8, 9, 10, 11, 12, 13, 14, 15
-  ];
-
-  // Insert and copy length codes (RFC 7932 Section 4)
-  const INSERT_LENGTH_CODES = [
-    { base: 0, extra: 0 }, { base: 1, extra: 0 }, { base: 2, extra: 0 }, { base: 3, extra: 0 },
-    { base: 4, extra: 0 }, { base: 5, extra: 0 }, { base: 6, extra: 1 }, { base: 8, extra: 1 },
-    { base: 10, extra: 2 }, { base: 14, extra: 2 }, { base: 18, extra: 3 }, { base: 26, extra: 3 },
-    { base: 34, extra: 4 }, { base: 50, extra: 4 }, { base: 66, extra: 5 }, { base: 98, extra: 5 },
-    { base: 130, extra: 6 }, { base: 194, extra: 7 }, { base: 322, extra: 8 }, { base: 578, extra: 9 },
-    { base: 1090, extra: 10 }, { base: 2114, extra: 12 }, { base: 6210, extra: 14 }, { base: 22594, extra: 24 }
-  ];
-
-  const COPY_LENGTH_CODES = [
-    { base: 2, extra: 0 }, { base: 3, extra: 0 }, { base: 4, extra: 0 }, { base: 5, extra: 0 },
-    { base: 6, extra: 0 }, { base: 7, extra: 0 }, { base: 8, extra: 0 }, { base: 9, extra: 0 },
-    { base: 10, extra: 1 }, { base: 12, extra: 1 }, { base: 14, extra: 2 }, { base: 18, extra: 2 },
-    { base: 22, extra: 3 }, { base: 30, extra: 3 }, { base: 38, extra: 4 }, { base: 54, extra: 4 },
-    { base: 70, extra: 5 }, { base: 102, extra: 5 }, { base: 134, extra: 6 }, { base: 198, extra: 7 },
-    { base: 326, extra: 8 }, { base: 582, extra: 9 }, { base: 1094, extra: 10 }, { base: 2118, extra: 24 }
-  ];
-
-  // Block length codes (RFC 7932 Section 3.3)
+  // Section 6: block count code alphabet (26 symbols): [base, extraBits].
   const BLOCK_LENGTH_CODES = [
-    { base: 1, extra: 2 }, { base: 5, extra: 2 }, { base: 9, extra: 2 }, { base: 13, extra: 2 },
-    { base: 17, extra: 3 }, { base: 25, extra: 3 }, { base: 33, extra: 3 }, { base: 41, extra: 3 },
-    { base: 49, extra: 4 }, { base: 65, extra: 4 }, { base: 81, extra: 4 }, { base: 97, extra: 4 },
-    { base: 113, extra: 5 }, { base: 145, extra: 5 }, { base: 177, extra: 5 }, { base: 209, extra: 5 },
-    { base: 241, extra: 6 }, { base: 305, extra: 6 }, { base: 369, extra: 7 }, { base: 497, extra: 8 },
-    { base: 753, extra: 9 }, { base: 1265, extra: 10 }, { base: 2289, extra: 11 }, { base: 4337, extra: 12 },
-    { base: 8433, extra: 13 }, { base: 16625, extra: 24 }
+    [1, 2], [5, 2], [9, 2], [13, 2], [17, 3], [25, 3], [33, 3], [41, 3],
+    [49, 4], [65, 4], [81, 4], [97, 4], [113, 5], [145, 5], [177, 5], [209, 5],
+    [241, 6], [305, 6], [369, 7], [497, 8], [753, 9], [1265, 10], [2289, 11], [4337, 12],
+    [8433, 13], [16625, 24]
   ];
 
-  // ===== BIT STREAM READER =====
+  // Section 5: insert-length code alphabet (24 symbols): [base, extraBits].
+  const INSERT_LENGTH_CODES = [
+    [0, 0], [1, 0], [2, 0], [3, 0], [4, 0], [5, 0], [6, 1], [8, 1],
+    [10, 2], [14, 2], [18, 3], [26, 3], [34, 4], [50, 4], [66, 5], [98, 5],
+    [130, 6], [194, 7], [322, 8], [578, 9], [1090, 10], [2114, 12], [6210, 14], [22594, 24]
+  ];
+
+  // Section 5: copy-length code alphabet (24 symbols): [base, extraBits].
+  const COPY_LENGTH_CODES = [
+    [2, 0], [3, 0], [4, 0], [5, 0], [6, 0], [7, 0], [8, 0], [9, 0],
+    [10, 1], [12, 1], [14, 2], [18, 2], [22, 3], [30, 3], [38, 4], [54, 4],
+    [70, 5], [102, 5], [134, 6], [198, 7], [326, 8], [582, 9], [1094, 10], [2118, 24]
+  ];
+
+  // Section 5: maps an 11-block (64-code) region of the insert-and-copy length
+  // code (0..703) to [insertLengthCodeBase, copyLengthCodeBase, distanceIsImplicitZero].
+  // Derived directly from the RFC's insert/copy range table.
+  const INSERT_COPY_RANGE_TABLE = [
+    [0, 0, true],    // code   0.. 63
+    [0, 8, true],    // code  64..127
+    [0, 0, false],   // code 128..191
+    [0, 8, false],   // code 192..255
+    [8, 0, false],   // code 256..319
+    [8, 8, false],   // code 320..383
+    [0, 16, false],  // code 384..447
+    [16, 0, false],  // code 448..511
+    [8, 16, false],  // code 512..575
+    [16, 8, false],  // code 576..639
+    [16, 16, false]  // code 640..703
+  ];
+
+  // Section 7.1: context lookup tables for UTF8 (Lut0/Lut1) and Signed (Lut2)
+  // context modes. Extracted and CRC-32 verified against the RFC 7932 text.
+  const LUT0 = BrotliDictionary.CONTEXT_LUT0;
+  const LUT1 = BrotliDictionary.CONTEXT_LUT1;
+  const LUT2 = BrotliDictionary.CONTEXT_LUT2;
+
+  // ===== SMALL HELPERS =====
+
+  // Smallest b such that Shl32(1, b) >= n, computed without floating point.
+  function BitLength(n) {
+    let bits = 0, v = 1;
+    while (v < n) { v = OpCodes.Shl32(v, 1); bits++; }
+    return bits;
+  }
+
+  // ===== BIT READER (LSB-first, matching RFC 7932 Section 1.5.1) =====
 
   class BitReader {
     constructor(buffer) {
       this.buffer = buffer;
-      this.bytePos = 0;
-      this.bitPos = 0;
+      this.bitPos = 0; // absolute bit index into buffer
     }
 
-    // Read n bits from stream (LSB first)
     readBits(n) {
-      if (n === 0) return 0;
-
       let result = 0;
-      let bitsRead = 0;
-
-      while (bitsRead < n) {
-        if (this.bytePos >= this.buffer.length) {
-          throw new Error('Unexpected end of input');
-        }
-
-        const bitsAvailable = 8 - this.bitPos;
-        const bitsToRead = Math.min(n - bitsRead, bitsAvailable);
-
-        const byte = this.buffer[this.bytePos];
-        const mask = OpCodes.BitMask(bitsToRead);
-        const bits = OpCodes.ToByte(OpCodes.AndN(OpCodes.Shr8(byte, this.bitPos), mask));
-
-        result |= OpCodes.Shl32(bits, bitsRead);
-
-        this.bitPos += bitsToRead;
-        bitsRead += bitsToRead;
-
-        if (this.bitPos === 8) {
-          this.bitPos = 0;
-          this.bytePos++;
-        }
+      for (let i = 0; i < n; ++i) {
+        const byteIndex = Math.floor(this.bitPos / 8);
+        const bitIndex = this.bitPos % 8;
+        if (byteIndex >= this.buffer.length)
+          throw new Error('Unexpected end of Brotli stream');
+        const bit = OpCodes.And32(OpCodes.Shr32(this.buffer[byteIndex], bitIndex), 1);
+        result = OpCodes.Or32(result, OpCodes.Shl32(bit, i));
+        this.bitPos++;
       }
-
-      return OpCodes.Shr32(result, 0);
+      return result;
     }
 
-    // Align to byte boundary
+    // Advance to the next byte boundary (no-op if already aligned).
     alignToByte() {
-      if (this.bitPos !== 0) {
-        this.bitPos = 0;
-        this.bytePos++;
-      }
+      const rem = this.bitPos % 8;
+      if (rem !== 0) this.bitPos += (8 - rem);
     }
 
-    // Check if more data available
-    hasMoreData() {
-      return this.bytePos < this.buffer.length;
+    bytePos() {
+      return Math.floor(this.bitPos / 8);
+    }
+
+    skipBytes(n) {
+      this.bitPos += n * 8;
     }
   }
 
-  // ===== HUFFMAN DECODER =====
+  // ===== HUFFMAN (PREFIX CODE) DECODER =====
+  // Canonical prefix code per RFC 7932 Section 3.2. A single non-zero-length
+  // symbol collapses to a zero-bit code (Section 3.5).
 
   class HuffmanTree {
     constructor() {
-      this.table = [];
-      this.maxCodeLength = 0;
+      this.singleSymbol = -1;
+      this.maxLength = 0;
+      this.byLength = null; // Map from code length to a Map from code value to symbol
     }
 
-    // Build Huffman tree from code lengths
-    buildFromLengths(codeLengths, alphabetSize) {
-      const maxLength = Math.max(...codeLengths);
-      if (maxLength === 0) return false;
-
-      this.maxCodeLength = maxLength;
-
-      // Count symbols per code length
-      const lengthCounts = new Array(maxLength + 1).fill(0);
-      for (let i = 0; i < alphabetSize; ++i) {
-        if (codeLengths[i] > 0) {
-          lengthCounts[codeLengths[i]]++;
-        }
+    buildFromLengths(lengths, alphabetSize) {
+      let nonZeroCount = 0, lastSymbol = -1;
+      for (let s = 0; s < alphabetSize; ++s) {
+        if (lengths[s] > 0) { nonZeroCount++; lastSymbol = s; }
       }
+      if (nonZeroCount === 0) return false;
+      if (nonZeroCount === 1) { this.singleSymbol = lastSymbol; return true; }
 
-      // Compute first code for each length
-      const firstCode = new Array(maxLength + 1).fill(0);
+      let maxLength = 0;
+      for (let s = 0; s < alphabetSize; ++s) if (lengths[s] > maxLength) maxLength = lengths[s];
+      this.maxLength = maxLength;
+
+      const blCount = new Array(maxLength + 1).fill(0);
+      for (let s = 0; s < alphabetSize; ++s) if (lengths[s] > 0) blCount[lengths[s]]++;
+
+      const nextCode = new Array(maxLength + 1).fill(0);
       let code = 0;
-      for (let len = 1; len <= maxLength; ++len) {
-        code = OpCodes.Shl16(code + lengthCounts[len - 1], 1);
-        firstCode[len] = code;
+      for (let bits = 1; bits <= maxLength; ++bits) {
+        code = OpCodes.Shl32(code + blCount[bits - 1], 1);
+        nextCode[bits] = code;
       }
 
-      // Assign codes to symbols
-      this.table = [];
-      for (let symbol = 0; symbol < alphabetSize; ++symbol) {
-        const len = codeLengths[symbol];
-        if (len > 0) {
-          this.table.push({
-            symbol: symbol,
-            length: len,
-            code: firstCode[len]++
-          });
-        }
+      this.byLength = new Map();
+      for (let s = 0; s < alphabetSize; ++s) {
+        const len = lengths[s];
+        if (len === 0) continue;
+        const assigned = nextCode[len]++;
+        if (!this.byLength.has(len)) this.byLength.set(len, new Map());
+        this.byLength.get(len).set(assigned, s);
       }
-
-      // Sort by code length, then by code value
-      this.table.sort((a, b) => {
-        if (a.length !== b.length) return a.length - b.length;
-        return a.code - b.code;
-      });
-
       return true;
     }
 
-    // Decode next symbol from bit stream
     decode(reader) {
+      if (this.singleSymbol >= 0) return this.singleSymbol;
       let code = 0;
-      let codeBits = 0;
+      for (let len = 1; len <= this.maxLength; ++len) {
+        code = OpCodes.Or32(OpCodes.Shl32(code, 1), reader.readBits(1));
+        const atLength = this.byLength.get(len);
+        if (atLength && atLength.has(code)) return atLength.get(code);
+      }
+      throw new Error('Invalid Brotli prefix code');
+    }
+  }
 
-      for (const entry of this.table) {
-        while (codeBits < entry.length) {
-          code = OpCodes.Shl16(code, 1)|reader.readBits(1);
-          codeBits++;
-        }
+  // ===== VARIABLE-LENGTH INTEGER READERS (Section 9.1/9.2/7.3) =====
 
-        if (code === entry.code && codeBits === entry.length) {
-          return entry.symbol;
-        }
+  // Section 9.1: WBITS (window size exponent), value range 10..24 (or 16).
+  function readWindowBits(reader) {
+    if (reader.readBits(1) === 0) return 16;
+    const n = reader.readBits(3);
+    if (n !== 0) return 17 + n;
+    const m = reader.readBits(3);
+    if (m !== 0) return 8 + m;
+    return 17;
+  }
+
+  // Section 9.2: shared variable-length code used for NBLTYPESx and NTREESx.
+  // value 1 -> 1 bit "0"; value 2 -> "0001"; else base (2 to the power v) + 1, with v extra bits.
+  function readBlockCountVLC(reader) {
+    if (reader.readBits(1) === 0) return 1;
+    const v = reader.readBits(3);
+    if (v === 0) return 2;
+    const extra = reader.readBits(v);
+    return OpCodes.Shl32(1, v) + 1 + extra;
+  }
+
+  // Section 7.3: RLEMAX field. 0 -> single 0 bit; else 4 bits + 1 (range 1..16).
+  function readRunLengthMax(reader) {
+    if (reader.readBits(1) === 0) return 0;
+    return reader.readBits(4) + 1;
+  }
+
+  // Section 3.5: fixed 6-symbol prefix code (values 0..5) used to transmit the
+  // code lengths of the 18-symbol code-length alphabet itself.
+  function readCodeLengthCodeLength(reader) {
+    if (reader.readBits(1) === 0)
+      return reader.readBits(1) === 0 ? 0 : 3;
+    if (reader.readBits(1) === 0) return 4;
+    if (reader.readBits(1) === 0) return 2;
+    return reader.readBits(1) === 0 ? 1 : 5;
+  }
+
+  function decodeBlockLength(reader, tree) {
+    const code = tree.decode(reader);
+    const [base, extra] = BLOCK_LENGTH_CODES[code];
+    return base + (extra > 0 ? reader.readBits(extra) : 0);
+  }
+
+  // Section 3.4: simple prefix code (1..4 symbols).
+  function readSimplePrefixCode(reader, alphabetSize) {
+    const nsym = reader.readBits(2) + 1;
+    const alphabetBits = BitLength(alphabetSize);
+    const symbols = [];
+    for (let i = 0; i < nsym; ++i) symbols.push(reader.readBits(alphabetBits));
+
+    const tree = new HuffmanTree();
+    if (nsym === 1) { tree.singleSymbol = symbols[0]; return tree; }
+
+    const lengths = new Array(alphabetSize).fill(0);
+    if (nsym === 2) {
+      lengths[symbols[0]] = 1; lengths[symbols[1]] = 1;
+    } else if (nsym === 3) {
+      lengths[symbols[0]] = 1; lengths[symbols[1]] = 2; lengths[symbols[2]] = 2;
+    } else {
+      const treeSelect = reader.readBits(1);
+      if (treeSelect === 0) {
+        for (let i = 0; i < 4; ++i) lengths[symbols[i]] = 2;
+      } else {
+        lengths[symbols[0]] = 1; lengths[symbols[1]] = 2; lengths[symbols[2]] = 3; lengths[symbols[3]] = 3;
+      }
+    }
+    tree.buildFromLengths(lengths, alphabetSize);
+    return tree;
+  }
+
+  // Section 3.5: complex prefix code. hskip in {0,2,3} (1 selects the simple
+  // form and is handled by the caller before this function is reached).
+  function readComplexPrefixCode(reader, hskip, alphabetSize) {
+    // Phase 1: decode the 18 code-length-alphabet code lengths themselves,
+    // using the fixed 6-symbol code above, terminating once the Kraft sum
+    // (tracked as `space`, scaled by 32) is exhausted.
+    const codeLengthLengths = new Array(18).fill(0);
+    let space = 32, nonZeroCount = 0, lastNonZeroSymbol = -1;
+    for (let i = hskip; i < 18 && space > 0; ++i) {
+      const len = readCodeLengthCodeLength(reader);
+      const symbol = CODE_LENGTH_CODE_ORDER[i];
+      codeLengthLengths[symbol] = len;
+      if (len !== 0) {
+        space -= OpCodes.Shr32(32, len);
+        nonZeroCount++;
+        lastNonZeroSymbol = symbol;
+      }
+    }
+
+    const codeLengthTree = new HuffmanTree();
+    if (nonZeroCount === 1) codeLengthTree.singleSymbol = lastNonZeroSymbol;
+    else codeLengthTree.buildFromLengths(codeLengthLengths, 18);
+
+    // Phase 2: decode the alphabetSize target code lengths using the tree
+    // from phase 1, honoring the 16 (repeat previous) / 17 (repeat zero)
+    // run-length codes. RFC 7932 3.5: a run of consecutive 16s (or 17s)
+    // CHAINS - each subsequent repeat code in the run modifies the running
+    // repeat count (repeat = 4*(repeat-2) + next-bits) instead of adding an
+    // independent one; we track that running state and emit only the delta.
+    // Trailing 0/17 codes are omitted entirely from the stream, so once the
+    // Kraft sum for the target alphabet (spaceTarget) reaches zero, no more
+    // bits are read even if `symbol` has not reached alphabetSize.
+    const lengths = new Array(alphabetSize).fill(0);
+    let symbol = 0, prevLength = 8, repeat = 0, repeatLength = -1, spaceTarget = 32768;
+    while (symbol < alphabetSize && spaceTarget > 0) {
+      const decoded = codeLengthTree.decode(reader);
+      if (decoded < 16) {
+        lengths[symbol++] = decoded;
+        if (decoded !== 0) { prevLength = decoded; spaceTarget -= OpCodes.Shr32(32768, decoded); }
+        repeat = 0; repeatLength = -1;
+        continue;
       }
 
-      throw new Error('Invalid Huffman code');
+      const usePrevious = decoded === REPEAT_PREVIOUS_CODE_LENGTH;
+      const extraBits = usePrevious ? 2 : 3;
+      const newLength = usePrevious ? prevLength : 0;
+      if (repeatLength !== newLength) { repeat = 0; repeatLength = newLength; }
+      const oldRepeat = repeat;
+      if (repeat > 0) repeat = OpCodes.Shl32(repeat - 2, extraBits);
+      repeat += reader.readBits(extraBits) + 3;
+
+      const delta = Math.min(repeat - oldRepeat, alphabetSize - symbol);
+      if (delta < 0) throw new Error('Invalid Brotli complex prefix code: repeat overruns alphabet');
+      if (newLength !== 0) spaceTarget -= delta * OpCodes.Shr32(32768, newLength);
+      for (let i = 0; i < delta; ++i) lengths[symbol++] = newLength;
     }
+
+    const tree = new HuffmanTree();
+    tree.buildFromLengths(lengths, alphabetSize);
+    return tree;
+  }
+
+  function readPrefixCode(reader, alphabetSize) {
+    const hskip = reader.readBits(2);
+    if (hskip === 1) return readSimplePrefixCode(reader, alphabetSize);
+    return readComplexPrefixCode(reader, hskip, alphabetSize);
+  }
+
+  // ===== INSERT-AND-COPY LENGTH DECODING (Section 5) =====
+
+  function decodeInsertAndCopy(reader, code) {
+    const block = OpCodes.Shr32(code, 6);
+    const sub = OpCodes.And32(code, 63);
+    const [insertBase, copyBase, distanceIsImplicitZero] = INSERT_COPY_RANGE_TABLE[block];
+    const insertLengthCode = insertBase + OpCodes.And32(OpCodes.Shr32(sub, 3), 7);
+    const copyLengthCode = copyBase + OpCodes.And32(sub, 7);
+
+    const [insertBaseValue, insertExtra] = INSERT_LENGTH_CODES[insertLengthCode];
+    const insertLength = insertBaseValue + (insertExtra > 0 ? reader.readBits(insertExtra) : 0);
+
+    const [copyBaseValue, copyExtra] = COPY_LENGTH_CODES[copyLengthCode];
+    const copyLength = copyBaseValue + (copyExtra > 0 ? reader.readBits(copyExtra) : 0);
+
+    return { insertLength, copyLength, distanceIsImplicitZero };
+  }
+
+  // ===== DISTANCE DECODING (Section 4) =====
+
+  function decodeDistanceCode(reader, code, nPostfix, nDirect, distanceCache) {
+    if (code < 16) {
+      switch (code) {
+        case 0: return distanceCache[0];
+        case 1: return distanceCache[1];
+        case 2: return distanceCache[2];
+        case 3: return distanceCache[3];
+        case 4: return distanceCache[0] - 1;
+        case 5: return distanceCache[0] + 1;
+        case 6: return distanceCache[0] - 2;
+        case 7: return distanceCache[0] + 2;
+        case 8: return distanceCache[0] - 3;
+        case 9: return distanceCache[0] + 3;
+        case 10: return distanceCache[1] - 1;
+        case 11: return distanceCache[1] + 1;
+        case 12: return distanceCache[1] - 2;
+        case 13: return distanceCache[1] + 2;
+        case 14: return distanceCache[1] - 3;
+        default: return distanceCache[1] + 3; // case 15
+      }
+    }
+    if (code < 16 + nDirect) return code - 16 + 1;
+
+    const postfixMask = OpCodes.BitMask(nPostfix);
+    const base = code - nDirect - 16;
+    const ndistbits = 1 + OpCodes.Shr32(base, nPostfix + 1);
+    const hcode = OpCodes.Shr32(base, nPostfix);
+    const lcode = OpCodes.And32(base, postfixMask);
+    const dextra = reader.readBits(ndistbits);
+    const offset = OpCodes.Shl32(2 + OpCodes.And32(hcode, 1), ndistbits) - 4;
+    return OpCodes.Shl32(offset + dextra, nPostfix) + lcode + nDirect + 1;
+  }
+
+  // ===== CONTEXT MODELING (Section 7) =====
+
+  function getLiteralContextId(mode, p1, p2) {
+    if (mode === 0) return OpCodes.And32(p1, 0x3f);       // LSB6
+    if (mode === 1) return OpCodes.Shr32(p1, 2);           // MSB6
+    if (mode === 2) return OpCodes.Or32(LUT0[p1], LUT1[p2]); // UTF8
+    return OpCodes.Or32(OpCodes.Shl32(LUT2[p1], 3), LUT2[p2]); // Signed
+  }
+
+  // Section 7.2: distance context is derived from the copy length (2,3,4,>4).
+  function getDistanceContextId(copyLength) {
+    if (copyLength === 2) return 0;
+    if (copyLength === 3) return 1;
+    if (copyLength === 4) return 2;
+    return 3;
+  }
+
+  // Section 7.3: context map with move-to-front + run-length zero coding.
+  function readContextMap(reader, size, treeCount) {
+    if (treeCount < 2) return new Array(size).fill(0);
+
+    const rleMax = readRunLengthMax(reader);
+    const tree = readPrefixCode(reader, treeCount + rleMax);
+
+    const map = [];
+    while (map.length < size) {
+      const symbol = tree.decode(reader);
+      if (symbol === 0) {
+        map.push(0);
+      } else if (symbol <= rleMax) {
+        const extra = reader.readBits(symbol);
+        const zeroRun = OpCodes.Shl32(1, symbol) + extra;
+        for (let i = 0; i < zeroRun && map.length < size; ++i) map.push(0);
+      } else {
+        map.push(symbol - rleMax);
+      }
+    }
+
+    if (reader.readBits(1) === 1) {
+      const mtf = new Array(256);
+      for (let i = 0; i < 256; ++i) mtf[i] = i;
+      for (let i = 0; i < map.length; ++i) {
+        const index = map[i];
+        const value = mtf[index];
+        map[i] = value;
+        for (let k = index; k > 0; --k) mtf[k] = mtf[k - 1];
+        mtf[0] = value;
+      }
+    }
+    return map;
+  }
+
+  // ===== BLOCK-SWITCH STATE (Section 6) =====
+
+  class BlockCategory {
+    constructor(numTypes) {
+      this.numTypes = numTypes;
+      this.type = 0;
+      this.previousType = 1;
+      this.count = 0;
+      this.typeTree = null;
+      this.lengthTree = null;
+    }
+  }
+
+  function readBlockCategoryHeader(reader) {
+    const numTypes = readBlockCountVLC(reader);
+    const category = new BlockCategory(numTypes);
+    if (numTypes >= 2) {
+      category.typeTree = readPrefixCode(reader, numTypes + 2);
+      category.lengthTree = readPrefixCode(reader, 26);
+      category.count = decodeBlockLength(reader, category.lengthTree);
+    } else {
+      category.count = OpCodes.Shl32(1, 24);
+    }
+    return category;
+  }
+
+  function advanceBlockType(reader, category) {
+    if (category.count === 0) {
+      const symbol = category.typeTree.decode(reader);
+      let newType;
+      if (symbol === 0) newType = category.previousType;
+      else if (symbol === 1) newType = (category.type + 1) % category.numTypes;
+      else newType = symbol - 2;
+      category.previousType = category.type;
+      category.type = newType;
+      category.count = decodeBlockLength(reader, category.lengthTree);
+    }
+    category.count--;
   }
 
   // ===== BROTLI DECOMPRESSOR =====
 
   class BrotliDecoder {
-    constructor() {
-      this.reader = null;
-      this.output = [];
-      this.ringBuffer = [];
-      this.ringBufferSize = 0;
-      this.ringBufferPos = 0;
-
-      // Distance parameters
-      this.nPostfix = 0;
-      this.nDirect = 0;
-      this.distanceAlphabetSize = 0;
-
-      // Last distances for short distance codes
-      this.distanceCache = [4, 11, 15, 16];
-    }
-
     decompress(input) {
-      this.reader = new BitReader(input);
-      this.output = [];
+      const reader = new BitReader(input);
+      const output = [];
 
-      // Read window size (RFC 7932 Section 9.1)
-      const wbits = this.readWindowBits();
-      this.ringBufferSize = OpCodes.Shl32(1, wbits) - BROTLI_WINDOW_GAP;
-      this.ringBuffer = new Array(this.ringBufferSize + 9).fill(0);
-      this.ringBufferPos = 0;
+      const windowBits = readWindowBits(reader);
+      const windowSize = OpCodes.Shl32(1, windowBits) - 16;
 
-      // Process meta-blocks
-      let isLast = false;
-      while (!isLast) {
-        isLast = this.readMetaBlock();
-      }
+      // Section 4: ring buffer of the four most recent (non-implicit, non-
+      // dictionary) distances, initialized at the *stream* level.
+      const distanceCache = [4, 11, 15, 16];
+      let p1 = 0, p2 = 0; // last two produced bytes, for literal context IDs
 
-      return this.output;
-    }
+      for (;;) {
+        const isLast = reader.readBits(1) === 1;
+        if (isLast && reader.readBits(1) === 1) break; // ISLASTEMPTY
 
-    readWindowBits() {
-      const wbits = this.reader.readBits(1);
-      if (wbits === 0) {
-        return 16; // Default 64KB window
-      }
+        const mnibblesRaw = reader.readBits(2);
+        const mnibblesMap = [4, 5, 6, 0];
+        const mnibbles = mnibblesMap[mnibblesRaw];
 
-      const n = this.reader.readBits(3);
-      if (n !== 0) {
-        return 17 + n;
-      }
-
-      const m = this.reader.readBits(3);
-      if (m !== 0) {
-        return 8 + m;
-      }
-
-      return 17;
-    }
-
-    readMetaBlock() {
-      // Read ISLAST flag
-      const isLast = this.reader.readBits(1) === 1;
-
-      if (isLast) {
-        const isEmpty = this.reader.readBits(1) === 1;
-        if (isEmpty) {
-          return true; // Empty last meta-block
+        if (mnibbles === 0) {
+          // MNIBBLES==0: empty/metadata meta-block (Section 9.2/10).
+          if (reader.readBits(1) !== 0) throw new Error('Invalid Brotli stream: reserved bit must be zero');
+          const mskipBytes = reader.readBits(2);
+          let mskipLen = 0;
+          if (mskipBytes > 0) mskipLen = reader.readBits(mskipBytes * 8) + 1;
+          reader.alignToByte();
+          reader.skipBytes(mskipLen);
+          if (isLast) break;
+          continue;
         }
-      }
 
-      // Read MNIBBLES (meta-block length)
-      const mnibbles = this.reader.readBits(2) + 4;
-      let mlen = 0;
-      for (let i = 0; i < mnibbles; ++i) {
-        mlen |= OpCodes.Shl32(this.reader.readBits(4), i * 4);
-      }
-      mlen++;
+        let mlen = 0;
+        for (let i = 0; i < mnibbles; ++i)
+          mlen = OpCodes.Or32(mlen, OpCodes.Shl32(reader.readBits(4), i * 4));
+        mlen++;
 
-      // RFC 7932: ISUNCOMPRESSED flag only exists if NOT last meta-block
-      if (!isLast) {
-        const isUncompressed = this.reader.readBits(1) === 1;
+        // ISUNCOMPRESSED only exists when this is not the last meta-block;
+        // a data-carrying last meta-block is always the compressed form.
+        const isUncompressed = !isLast && reader.readBits(1) === 1;
+
         if (isUncompressed) {
-          this.readUncompressedMetaBlock(mlen);
-          return false;
+          reader.alignToByte();
+          for (let i = 0; i < mlen; ++i) {
+            const byte = input[reader.bytePos()];
+            reader.skipBytes(1);
+            output.push(byte);
+            p2 = p1; p1 = byte;
+          }
+          if (isLast) break;
+          continue;
         }
-        // Read compressed meta-block
-        this.readCompressedMetaBlock(mlen);
-        return false;
+
+        this._decodeCompressedMetaBlock(reader, output, mlen, windowSize, distanceCache, p1, p2,
+          (newP1, newP2) => { p1 = newP1; p2 = newP2; });
+
+        if (isLast) break;
       }
 
-      // Last meta-block with data (ISEMPTY was 0)
-      // For last blocks, no ISUNCOMPRESSED flag exists
-      // Our encoder always uses uncompressed format for simplicity
-      // Align to byte boundary and read raw data
-      this.readUncompressedMetaBlock(mlen);
-      return true;
+      return output;
     }
 
-    readUncompressedMetaBlock(length) {
-      // Align to byte boundary only if not already aligned
-      if (this.reader.bitPos !== 0) {
-        this.reader.alignToByte();
-      }
+    _decodeCompressedMetaBlock(reader, output, mlen, windowSize, distanceCache, p1In, p2In, updateContext) {
+      let p1 = p1In, p2 = p2In;
 
-      for (let i = 0; i < length; ++i) {
-        if (this.reader.bytePos >= this.reader.buffer.length) {
-          throw new Error('Unexpected end of uncompressed data');
-        }
-        const byte = this.reader.buffer[this.reader.bytePos++];
-        this.output.push(byte);
-        this.ringBuffer[this.ringBufferPos] = byte;
-        this.ringBufferPos = (this.ringBufferPos + 1) % this.ringBufferSize;
-      }
-    }
+      const literalCategory = readBlockCategoryHeader(reader);
+      const insertCopyCategory = readBlockCategoryHeader(reader);
+      const distanceCategory = readBlockCategoryHeader(reader);
 
-    readCompressedMetaBlock(mlen) {
-      // Read number of block types
-      const nblTypes_L = this.readBlockTypeCount();
-      const nblTypes_I = this.readBlockTypeCount();
-      const nblTypes_D = this.readBlockTypeCount();
+      const nPostfix = reader.readBits(2);
+      const nDirect = OpCodes.Shl32(reader.readBits(4), nPostfix);
 
-      // Read distance parameters
-      this.nPostfix = this.reader.readBits(2);
-      this.nDirect = OpCodes.Shl16(this.reader.readBits(4), this.nPostfix);
-      this.distanceAlphabetSize = BROTLI_NUM_DISTANCE_SHORT_CODES + this.nDirect +
-        OpCodes.Shl16(48, this.nPostfix);
-
-      // Read context modes for literals
       const contextModes = [];
-      for (let i = 0; i < nblTypes_L; ++i) {
-        contextModes.push(this.reader.readBits(2));
-      }
+      for (let i = 0; i < literalCategory.numTypes; ++i) contextModes.push(reader.readBits(2));
 
-      // Read context maps
-      const contextMapL = this.readContextMap(OpCodes.Shl16(nblTypes_L, BROTLI_LITERAL_CONTEXT_BITS));
-      const contextMapD = this.readContextMap(OpCodes.Shl16(nblTypes_D, BROTLI_DISTANCE_CONTEXT_BITS));
+      const literalTreeCount = readBlockCountVLC(reader);
+      const literalContextMap = readContextMap(reader, 64 * literalCategory.numTypes, literalTreeCount);
+      const distanceTreeCount = readBlockCountVLC(reader);
+      const distanceContextMap = readContextMap(reader, 4 * distanceCategory.numTypes, distanceTreeCount);
 
-      // Read Huffman trees
-      const literalTrees = this.readHuffmanTrees(contextMapL.nTrees, BROTLI_NUM_LITERAL_SYMBOLS);
-      const insertCopyTrees = this.readHuffmanTrees(nblTypes_I, BROTLI_NUM_COMMAND_SYMBOLS);
-      const distanceTrees = this.readHuffmanTrees(contextMapD.nTrees, this.distanceAlphabetSize);
+      const literalTrees = [];
+      for (let i = 0; i < literalTreeCount; ++i) literalTrees.push(readPrefixCode(reader, 256));
 
-      // Read block length trees
-      const blockLengthTreeL = this.readHuffmanTree(BROTLI_NUM_BLOCK_LEN_SYMBOLS);
-      const blockLengthTreeI = this.readHuffmanTree(BROTLI_NUM_BLOCK_LEN_SYMBOLS);
-      const blockLengthTreeD = this.readHuffmanTree(BROTLI_NUM_BLOCK_LEN_SYMBOLS);
+      const insertCopyTrees = [];
+      for (let i = 0; i < insertCopyCategory.numTypes; ++i) insertCopyTrees.push(readPrefixCode(reader, 704));
 
-      // Decode commands with proper context handling
-      this.decodeCommands(mlen, nblTypes_L, nblTypes_I, nblTypes_D,
-        contextModes, contextMapL, contextMapD,
-        literalTrees, insertCopyTrees, distanceTrees,
-        blockLengthTreeL, blockLengthTreeI, blockLengthTreeD);
-    }
+      const distanceAlphabetSize = 16 + nDirect + OpCodes.Shl32(48, nPostfix);
+      const distanceTrees = [];
+      for (let i = 0; i < distanceTreeCount; ++i) distanceTrees.push(readPrefixCode(reader, distanceAlphabetSize));
 
-    readBlockTypeCount() {
-      const nblTypes = this.reader.readBits(2) + 1;
-      return nblTypes;
-    }
+      let produced = 0;
+      while (produced < mlen) {
+        advanceBlockType(reader, insertCopyCategory);
+        const commandCode = insertCopyTrees[insertCopyCategory.type].decode(reader);
+        const command = decodeInsertAndCopy(reader, commandCode);
 
-    readContextMap(size) {
-      if (size === 0) return { nTrees: 0, map: [] };
+        for (let i = 0; i < command.insertLength && produced < mlen; ++i) {
+          advanceBlockType(reader, literalCategory);
+          const contextMode = contextModes[literalCategory.type];
+          const contextId = getLiteralContextId(contextMode, p1, p2);
+          const treeIndex = literalContextMap[64 * literalCategory.type + contextId];
+          const literal = literalTrees[treeIndex].decode(reader);
+          output.push(literal);
+          p2 = p1; p1 = literal;
+          produced++;
+        }
 
-      const rleMax = this.reader.readBits(1);
-      const nTrees = this.reader.readBits(4) + 1;
+        if (produced >= mlen) break;
+        if (command.copyLength === 0) continue;
 
-      if (nTrees === 1) {
-        return { nTrees: 1, map: new Array(size).fill(0) };
-      }
-
-      // Read context map using prefix codes
-      const contextMap = [];
-      let i = 0;
-
-      // Read Huffman tree for context map
-      const contextMapAlphabet = nTrees + rleMax;
-      const contextMapTree = this.readHuffmanTree(contextMapAlphabet);
-
-      while (i < size) {
-        const code = contextMapTree.decode(this.reader);
-
-        if (code === 0) {
-          // Literal context ID
-          contextMap.push(0);
-          ++i;
-        } else if (code <= nTrees) {
-          // Direct context ID
-          contextMap.push(code - 1);
-          ++i;
+        let distance, distanceCode = 0;
+        if (command.distanceIsImplicitZero) {
+          distance = distanceCache[0];
         } else {
-          // RLE: repeat zeros
-          const reps = this.reader.readBits(code - nTrees);
-          const zeros = OpCodes.Shl16(1, code - nTrees) + reps;
-          for (let j = 0; j < zeros && i < size; ++j) {
-            contextMap.push(0);
-            ++i;
-          }
-        }
-      }
-
-      // Inverse move-to-front transform
-      const mtf = [];
-      for (let j = 0; j < 256; ++j) mtf.push(j);
-
-      for (let j = 0; j < size; ++j) {
-        const index = contextMap[j];
-        contextMap[j] = mtf[index];
-        if (index > 0) {
-          const value = mtf[index];
-          for (let k = index; k > 0; --k) {
-            mtf[k] = mtf[k - 1];
-          }
-          mtf[0] = value;
-        }
-      }
-
-      return { nTrees, map: contextMap };
-    }
-
-    readHuffmanTrees(count, alphabetSize) {
-      const trees = [];
-      for (let i = 0; i < count; ++i) {
-        trees.push(this.readHuffmanTree(alphabetSize));
-      }
-      return trees;
-    }
-
-    readHuffmanTree(alphabetSize) {
-      const tree = new HuffmanTree();
-
-      // Read simple or complex Huffman code
-      const hskip = this.reader.readBits(2);
-
-      if (hskip === 1) {
-        // Simple Huffman code with 1-4 symbols
-        const nsym = this.reader.readBits(2);
-        const symbols = [];
-        const maxBits = alphabetSize > 256 ? 10 : 8;
-
-        for (let i = 0; i <= nsym; ++i) {
-          symbols.push(this.reader.readBits(maxBits) % alphabetSize);
+          advanceBlockType(reader, distanceCategory);
+          const contextId = getDistanceContextId(command.copyLength);
+          const treeIndex = distanceContextMap[4 * distanceCategory.type + contextId];
+          distanceCode = distanceTrees[treeIndex].decode(reader);
+          distance = decodeDistanceCode(reader, distanceCode, nPostfix, nDirect, distanceCache);
         }
 
-        // Build trivial tree
-        const codeLengths = new Array(alphabetSize).fill(0);
-        if (nsym === 0) {
-          codeLengths[symbols[0]] = 1;
-        } else {
-          for (let i = 0; i <= nsym; ++i) {
-            codeLengths[symbols[i]] = nsym + 1;
-          }
+        if (distance <= 0) throw new Error('Invalid Brotli distance: non-positive');
+
+        const maxAllowedDistance = Math.min(windowSize, output.length);
+        const isDictionaryReference = distance > maxAllowedDistance;
+
+        if (!command.distanceIsImplicitZero && distanceCode !== 0 && !isDictionaryReference) {
+          distanceCache[3] = distanceCache[2];
+          distanceCache[2] = distanceCache[1];
+          distanceCache[1] = distanceCache[0];
+          distanceCache[0] = distance;
         }
 
-        tree.buildFromLengths(codeLengths, alphabetSize);
-      } else {
-        // Complex Huffman code - read code lengths
-        const codeLengths = this.readCodeLengths(alphabetSize);
-        tree.buildFromLengths(codeLengths, alphabetSize);
-      }
-
-      return tree;
-    }
-
-    readCodeLengths(alphabetSize) {
-      // Read code length code lengths
-      const codeLengthCodeLengths = new Array(BROTLI_CODE_LENGTH_CODES).fill(0);
-      const numCodeLengthCodes = this.reader.readBits(4) + 4;
-
-      for (let i = 0; i < numCodeLengthCodes; ++i) {
-        const lengthBits = this.reader.readBits(3);
-        codeLengthCodeLengths[CODE_LENGTH_CODE_ORDER[i]] = lengthBits;
-      }
-
-      // Build code length Huffman tree
-      const codeLengthTree = new HuffmanTree();
-      if (!codeLengthTree.buildFromLengths(codeLengthCodeLengths, BROTLI_CODE_LENGTH_CODES)) {
-        throw new Error('Failed to build code length tree');
-      }
-
-      // Decode code lengths
-      const codeLengths = new Array(alphabetSize).fill(0);
-      let symbol = 0;
-      let prevCodeLength = BROTLI_INITIAL_REPEATED_CODE_LENGTH;
-
-      while (symbol < alphabetSize) {
-        const code = codeLengthTree.decode(this.reader);
-
-        if (code < BROTLI_REPEAT_PREVIOUS_CODE_LENGTH) {
-          // Literal code length
-          codeLengths[symbol++] = code;
-          if (code !== 0) {
-            prevCodeLength = code;
-          }
-        } else if (code === BROTLI_REPEAT_PREVIOUS_CODE_LENGTH) {
-          // Repeat previous code length
-          const repeat = 3 + this.reader.readBits(2);
-          for (let i = 0; i < repeat && symbol < alphabetSize; ++i) {
-            codeLengths[symbol++] = prevCodeLength;
+        if (!isDictionaryReference) {
+          for (let i = 0; i < command.copyLength && produced < mlen; ++i) {
+            const byte = output[output.length - distance];
+            output.push(byte);
+            p2 = p1; p1 = byte;
+            produced++;
           }
         } else {
-          // Repeat zero
-          const repeat = 3 + this.reader.readBits(3);
-          symbol += repeat;
-        }
-      }
-
-      return codeLengths;
-    }
-
-    decodeCommands(mlen, nblTypes_L, nblTypes_I, nblTypes_D,
-                   contextModes, contextMapL, contextMapD,
-                   literalTrees, insertCopyTrees, distanceTrees,
-                   blockLengthTreeL, blockLengthTreeI, blockLengthTreeD) {
-
-      // Initialize block types and lengths
-      let blockTypeL = 0;
-      let blockTypeI = 0;
-      let blockTypeD = 0;
-      let blockLengthL = this.decodeBlockLength(blockLengthTreeL);
-      let blockLengthI = this.decodeBlockLength(blockLengthTreeI);
-      let blockLengthD = this.decodeBlockLength(blockLengthTreeD);
-
-      let outputSize = 0;
-      let prevByte1 = 0;
-      let prevByte2 = 0;
-
-      while (outputSize < mlen) {
-        // Check if we need to switch block type for insert-copy
-        if (blockLengthI === 0) {
-          blockTypeI = this.readBlockType(nblTypes_I, blockTypeI);
-          blockLengthI = this.decodeBlockLength(blockLengthTreeI);
-        }
-        --blockLengthI;
-
-        // Read insert-and-copy command
-        const insertCopyTree = insertCopyTrees[blockTypeI];
-        const insertCopyCode = insertCopyTree.decode(this.reader);
-        const cmd = this.decodeInsertCopy(insertCopyCode);
-
-        // Insert literals
-        for (let i = 0; i < cmd.insertLength && outputSize < mlen; ++i) {
-          // Check if we need to switch block type for literals
-          if (blockLengthL === 0) {
-            blockTypeL = this.readBlockType(nblTypes_L, blockTypeL);
-            blockLengthL = this.decodeBlockLength(blockLengthTreeL);
+          const word = BrotliDictionary.LookupWord(command.copyLength, distance, maxAllowedDistance);
+          if (!word) throw new Error('Invalid Brotli static dictionary reference');
+          for (let i = 0; i < word.length && produced < mlen; ++i) {
+            output.push(word[i]);
+            p2 = p1; p1 = word[i];
+            produced++;
           }
-          --blockLengthL;
-
-          // Select context for literal
-          const contextMode = contextModes[blockTypeL];
-          const contextID = this.getContext(contextMode, prevByte1, prevByte2);
-          const contextMapIndex = OpCodes.Shl16(blockTypeL, BROTLI_LITERAL_CONTEXT_BITS) + contextID;
-          const treeIndex = contextMapL.map[contextMapIndex];
-          const literalTree = literalTrees[treeIndex];
-
-          // Decode literal
-          const literal = literalTree.decode(this.reader);
-          this.output.push(literal);
-          this.ringBuffer[this.ringBufferPos] = literal;
-          this.ringBufferPos = (this.ringBufferPos + 1) % this.ringBufferSize;
-
-          prevByte2 = prevByte1;
-          prevByte1 = literal;
-          outputSize++;
-        }
-
-        if (outputSize >= mlen || cmd.copyLength === 0) continue;
-
-        // Decode distance
-        let distance;
-        const distanceCode = cmd.distanceCode;
-
-        if (distanceCode === 0) {
-          // Check if we need to switch block type for distance
-          if (blockLengthD === 0) {
-            blockTypeD = this.readBlockType(nblTypes_D, blockTypeD);
-            blockLengthD = this.decodeBlockLength(blockLengthTreeD);
-          }
-          --blockLengthD;
-
-          // Select context for distance
-          const copyLengthCode = cmd.copyLengthCode;
-          const distContextID = this.getDistanceContext(copyLengthCode);
-          const distContextMapIndex = OpCodes.Shl16(blockTypeD, BROTLI_DISTANCE_CONTEXT_BITS) + distContextID;
-          const distTreeIndex = contextMapD.map[distContextMapIndex];
-          const distanceTree = distanceTrees[distTreeIndex];
-
-          // Decode distance code
-          const distCode = distanceTree.decode(this.reader);
-          distance = this.decodeDistance(distCode, outputSize);
-
-          // Update distance cache if not using implicit distances
-          if (distCode > 0 || distance !== this.distanceCache[0]) {
-            this.distanceCache[3] = this.distanceCache[2];
-            this.distanceCache[2] = this.distanceCache[1];
-            this.distanceCache[1] = this.distanceCache[0];
-            this.distanceCache[0] = distance;
-          }
-        } else {
-          // Implicit distance from insert-copy command
-          distance = this.distanceCache[distanceCode - 1];
-        }
-
-        // Copy from ring buffer
-        let copyLength = cmd.copyLength;
-        if (distance > outputSize) {
-          throw new Error('Invalid distance: references before stream start');
-        }
-
-        for (let i = 0; i < copyLength && outputSize < mlen; ++i) {
-          const sourcePos = (this.ringBufferPos - distance + this.ringBufferSize) % this.ringBufferSize;
-          const byte = this.ringBuffer[sourcePos];
-          this.output.push(byte);
-          this.ringBuffer[this.ringBufferPos] = byte;
-          this.ringBufferPos = (this.ringBufferPos + 1) % this.ringBufferSize;
-
-          prevByte2 = prevByte1;
-          prevByte1 = byte;
-          outputSize++;
         }
       }
-    }
 
-    readBlockType(numTypes, prevType) {
-      if (numTypes === 1) return 0;
-
-      const typeCode = this.reader.readBits(1);
-      if (typeCode === 0) {
-        return prevType;
-      }
-
-      const delta = this.reader.readBits(numTypes === 2 ? 0 : (numTypes === 3 ? 1 : 2)) + 1;
-      return (prevType + delta) % numTypes;
-    }
-
-    getContext(mode, p1, p2) {
-      // RFC 7932 Section 7.1: Context modes for literals
-      if (mode === 0) {
-        // LSB6 mode
-        return OpCodes.AndN(p1, 0x3F);
-      } else if (mode === 1) {
-        // MSB6 mode
-        return OpCodes.Shr8(p1, 2);
-      } else if (mode === 2) {
-        // UTF8 mode
-        return this.lookupContextLUT0(p1)|this.lookupContextLUT1(p2);
-      } else {
-        // Signed mode
-        return OpCodes.Shl16(this.lookupContextLUT1(p1), 3)|this.lookupContextLUT2(p2);
-      }
-    }
-
-    lookupContextLUT0(byte) {
-      const lut0 = [
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 4, 0, 0, 4, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        8, 12, 16, 12, 12, 20, 12, 16, 24, 28, 12, 12, 32, 12, 36, 12,
-        44, 44, 44, 44, 44, 44, 44, 44, 44, 44, 32, 32, 24, 40, 28, 12,
-        12, 48, 52, 52, 52, 48, 52, 52, 52, 48, 52, 52, 52, 52, 52, 48,
-        52, 52, 52, 52, 52, 48, 52, 52, 52, 52, 52, 24, 12, 28, 12, 12,
-        12, 56, 60, 60, 60, 56, 60, 60, 60, 56, 60, 60, 60, 60, 60, 56,
-        60, 60, 60, 60, 60, 56, 60, 60, 60, 60, 60, 24, 12, 28, 12, 0,
-        0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1,
-        0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1,
-        0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1,
-        0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1,
-        2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3,
-        2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3,
-        2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3,
-        2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3
-      ];
-      return lut0[byte];
-    }
-
-    lookupContextLUT1(byte) {
-      const lut1 = [
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-        2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1,
-        1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
-        2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1,
-        1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-        3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 1, 1, 1, 1, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
-        2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2
-      ];
-      return lut1[byte];
-    }
-
-    lookupContextLUT2(byte) {
-      const lut2 = [
-        0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-        2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
-        2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
-        2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
-        3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-        3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-        3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-        3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-        4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-        4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-        4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-        4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-        5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
-        5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
-        6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7
-      ];
-      return lut2[byte];
-    }
-
-    getDistanceContext(copyLengthCode) {
-      if (copyLengthCode < 4) {
-        return copyLengthCode;
-      } else if (copyLengthCode < 8) {
-        return 4;
-      } else if (copyLengthCode < 16) {
-        return 5;
-      } else {
-        return 6;
-      }
-    }
-
-    decodeBlockLength(tree) {
-      const code = tree.decode(this.reader);
-      if (code >= BLOCK_LENGTH_CODES.length) {
-        return code - BLOCK_LENGTH_CODES.length + 1;
-      }
-      const { base, extra } = BLOCK_LENGTH_CODES[code];
-      return base + this.reader.readBits(extra);
-    }
-
-    decodeInsertCopy(code) {
-      // RFC 7932 Section 4: Insert and copy length encoding
-      // Command code format: (OpCodes.Shl32(insertLenCode, 6))|copyLenCode|(OpCodes.Shl32(distanceCode, 3))
-
-      const insertLenCode = OpCodes.Shr16(code, 6);
-      const copyLenCode = OpCodes.ToByte(OpCodes.Shr16(code, 3)&7);
-      const distanceCode = code&7;
-
-      // Decode insert length
-      let insertLength = 0;
-      if (insertLenCode < INSERT_LENGTH_CODES.length) {
-        const { base, extra } = INSERT_LENGTH_CODES[insertLenCode];
-        insertLength = base + (extra > 0 ? this.reader.readBits(extra) : 0);
-      }
-
-      // Decode copy length
-      let copyLength = 0;
-      let copyLengthCode = copyLenCode;
-      if (copyLenCode < COPY_LENGTH_CODES.length) {
-        const { base, extra } = COPY_LENGTH_CODES[copyLenCode];
-        copyLength = base + (extra > 0 ? this.reader.readBits(extra) : 0);
-      }
-
-      // Distance code: 0 means read from distance stream, 1-3 use distance cache
-      return {
-        insertLength,
-        copyLength,
-        copyLengthCode,
-        distanceCode
-      };
-    }
-
-    decodeDistance(code, outputSize) {
-      // RFC 7932 Section 4: Distance code decoding
-
-      // Short distance codes (0-15) map directly to distance cache or small distances
-      if (code < BROTLI_NUM_DISTANCE_SHORT_CODES) {
-        // Distance codes 0-3 are special: use distance cache with possible offset
-        if (code === 0) {
-          return this.distanceCache[0];
-        } else if (code === 1) {
-          return this.distanceCache[1];
-        } else if (code === 2) {
-          return this.distanceCache[2];
-        } else if (code === 3) {
-          return this.distanceCache[3];
-        }
-
-        // Distance codes 4-15 are used for other interpretations
-        const npostfix = this.nPostfix;
-        const ndirect = this.nDirect;
-
-        if (code < 4 + ndirect) {
-          return code - 3;
-        }
-
-        return (code - 4 - ndirect) + 1 + ndirect;
-      }
-
-      // Regular distance codes
-      const offset = code - BROTLI_NUM_DISTANCE_SHORT_CODES;
-
-      // Direct distance codes
-      if (offset < this.nDirect) {
-        return this.nDirect + offset + 1;
-      }
-
-      // Distance codes with postfix bits
-      const relativeOffset = offset - this.nDirect;
-      const postfix = relativeOffset&OpCodes.BitMask(this.nPostfix);
-      const prefix = OpCodes.Shr16(relativeOffset, this.nPostfix);
-
-      // Calculate number of extra bits needed
-      const ndistbits = 1 + OpCodes.Shr16(prefix, 1);
-      const dextra = this.reader.readBits(ndistbits);
-
-      // Calculate final distance
-      const hcode = OpCodes.Shr16(prefix, 1) + 1;
-      const lcode = OpCodes.Shl16(2 + (prefix&1), ndistbits);
-      const distance = OpCodes.Shl32(hcode - 1, this.nPostfix + ndistbits + 1) +
-                      OpCodes.Shl32(lcode, this.nPostfix) +
-                      OpCodes.Shl32(dextra, this.nPostfix) +
-                      postfix + this.nDirect + 1;
-
-      return distance;
+      updateContext(p1, p2);
     }
   }
 
-  // ===== BROTLI COMPRESSOR (Basic Uncompressed Implementation) =====
+  // ===== BROTLI COMPRESSOR =====
+  //
+  // Emits a fully RFC 7932-conformant stream built entirely from uncompressed
+  // meta-blocks (Section 9.2's ISUNCOMPRESSED=1 form): a WBITS=16 stream
+  // header, one or more <=65536-byte uncompressed meta-blocks (ISLAST=0, so
+  // ISUNCOMPRESSED is present and MNIBBLES=4 always suffices for MLEN-1 <=
+  // 0xFFFF), followed by a true empty last meta-block (ISLAST=1,
+  // ISLASTEMPTY=1). This does not attempt entropy coding, but it is a
+  // completely legal Brotli bitstream that any conformant decoder accepts.
 
-  class BrotliEncoder {
+  class BitWriter {
     constructor() {
-      this.output = [];
-    }
-
-    compress(input) {
-      this.output = [];
+      this.bytes = [];
       this.bitBuffer = 0;
       this.bitCount = 0;
-
-      // Handle empty input
-      if (input.length === 0) {
-        // Write window bits (default 16 for empty)
-        this.writeBits(1, 0); // WBITS == 16
-        // Write ISLAST=1, ISEMPTY=1
-        this.writeBits(1, 1);
-        this.writeBits(1, 1);
-        this.flushBits();
-        return this.output;
-      }
-
-      // Write window bits (default 22 = 4MB window)
-      this.writeBits(1, 1); // WBITS != 16
-      this.writeBits(3, 5); // n = 5, so WBITS = 17 + 5 = 22
-
-      // Write meta-blocks (use uncompressed for simplicity)
-      this.writeUncompressedMetaBlocks(input);
-
-      // Flush bits
-      this.flushBits();
-
-      return this.output;
-    }
-
-    writeUncompressedMetaBlocks(input) {
-      const maxBlockSize = OpCodes.Shl32(1, 16); // Use smaller blocks for compatibility
-      let offset = 0;
-
-      while (offset < input.length) {
-        const remaining = input.length - offset;
-        const isLast = remaining <= maxBlockSize;
-        const blockSize = Math.min(maxBlockSize, remaining);
-
-        // Write ISLAST
-        this.writeBits(1, isLast ? 1 : 0);
-
-        // Write ISEMPTY (only for last blocks, always 0 since we have data)
-        if (isLast) {
-          this.writeBits(1, 0);
-        }
-
-        // Write MNIBBLES and MLEN (RFC 7932 Section 9.2)
-        const mlen = blockSize - 1;
-
-        // Determine number of nibbles needed based on mlen value
-        let mnibbles = 4; // Minimum 4 nibbles
-        if (mlen > 0xFFFF) {
-          mnibbles = 6;
-        } else if (mlen > 0xFFF) {
-          mnibbles = 5;
-        } else if (mlen === 0) {
-          mnibbles = 4; // Use minimum for empty or single byte
-        }
-
-        this.writeBits(2, mnibbles - 4);
-
-        // Write mlen in little-endian nibble order
-        for (let i = 0; i < mnibbles; ++i) {
-          this.writeBits(4, OpCodes.ToByte(OpCodes.Shr32(mlen, i * 4)&0xF));
-        }
-
-        // Write ISUNCOMPRESSED = 1 (only if not last)
-        if (!isLast) {
-          this.writeBits(1, 1);
-        }
-
-        // Align to byte boundary
-        this.alignToByte();
-
-        // Write uncompressed data
-        for (let i = 0; i < blockSize; ++i) {
-          this.output.push(input[offset + i]);
-        }
-
-        offset += blockSize;
-      }
     }
 
     writeBits(n, value) {
       // NOTE: bitBuffer legitimately becomes 0 mid-stream whenever the
-      // currently-accumulated pending bits are all zero (extremely common,
-      // e.g. writing a zero nibble) while bitCount is still nonzero. A
-      // lazy-init guard keyed on "falsy bitBuffer" used to live here and
-      // reset bitCount to 0 in that case, silently discarding the pending
-      // bit position and corrupting every bit written afterwards - this is
-      // what broke single-byte round-trips. bitBuffer/bitCount are already
-      // properly initialized once in compress(), so no re-init is needed here.
-      this.bitBuffer |= OpCodes.Shl32(value&OpCodes.BitMask(n), this.bitCount);
+      // currently-accumulated pending bits are all zero while bitCount is
+      // still nonzero (e.g. writing a zero nibble). Never key any logic off
+      // "is bitBuffer falsy" - only bitCount tracks the pending bit position.
+      const masked = OpCodes.AndN(value, OpCodes.BitMask(n));
+      this.bitBuffer = OpCodes.Or32(this.bitBuffer, OpCodes.Shl32(masked, this.bitCount));
       this.bitCount += n;
 
       while (this.bitCount >= 8) {
-        this.output.push(this.bitBuffer&0xFF);
+        this.bytes.push(OpCodes.And32(this.bitBuffer, 0xFF));
         this.bitBuffer = OpCodes.Shr32(this.bitBuffer, 8);
         this.bitCount -= 8;
       }
     }
 
     alignToByte() {
-      // Flush any partial byte (padding with zeros)
       if (this.bitCount > 0) {
-        this.output.push(this.bitBuffer&0xFF);
+        this.bytes.push(OpCodes.And32(this.bitBuffer, 0xFF));
         this.bitBuffer = 0;
         this.bitCount = 0;
       }
     }
 
-    flushBits() {
-      if (this.bitCount > 0) {
-        this.output.push(this.bitBuffer&0xFF);
-      }
+    flush() {
+      if (this.bitCount > 0) this.bytes.push(OpCodes.And32(this.bitBuffer, 0xFF));
       this.bitBuffer = 0;
       this.bitCount = 0;
+    }
+  }
+
+  class BrotliEncoder {
+    compress(input) {
+      const writer = new BitWriter();
+
+      if (input.length === 0) {
+        writer.writeBits(1, 0); // WBITS == 16
+        writer.writeBits(1, 1); // ISLAST
+        writer.writeBits(1, 1); // ISLASTEMPTY
+        writer.flush();
+        return writer.bytes;
+      }
+
+      writer.writeBits(1, 0); // WBITS == 16 (single-bit form, Section 9.1)
+
+      const MAX_BLOCK_SIZE = OpCodes.Shl32(1, 16); // 65536: MLEN-1 always fits 4 nibbles
+      let offset = 0;
+      while (offset < input.length) {
+        const blockSize = Math.min(MAX_BLOCK_SIZE, input.length - offset);
+        const mlen = blockSize - 1;
+
+        writer.writeBits(1, 0);           // ISLAST = 0 (data meta-blocks are never last;
+                                           // a separate empty meta-block terminates the stream)
+        writer.writeBits(2, 0);           // MNIBBLES raw 0 -> 4 nibbles (pattern "00")
+        for (let i = 0; i < 4; ++i)
+          writer.writeBits(4, OpCodes.And32(OpCodes.Shr32(mlen, i * 4), 0xF));
+        writer.writeBits(1, 1);           // ISUNCOMPRESSED = 1
+
+        writer.alignToByte();
+        for (let i = 0; i < blockSize; ++i) writer.bytes.push(input[offset + i]);
+
+        offset += blockSize;
+      }
+
+      writer.writeBits(1, 1); // ISLAST = 1
+      writer.writeBits(1, 1); // ISLASTEMPTY = 1
+      writer.flush();
+
+      return writer.bytes;
     }
   }
 
@@ -1012,8 +763,8 @@
       super();
 
       this.name = "Brotli";
-      this.description = "Educational, Brotli-INSPIRED LZ77 + Huffman/context-modeling entropy codec, structured after (but not compatible with) the algorithm Google published in 2013. NOT RFC 7932 bitstream-compatible: it cannot decode real Brotli streams (e.g. from zlib's brotliCompressSync), and no standard Brotli decoder can read this encoder's output. Only round-trips with itself.";
-      this.inventor = "Jyrki Alakuijala, Zoltan Szabadka (Google) - original Brotli design; this non-standard educational port by Hawkynt";
+      this.description = "RFC 7932-compatible Brotli codec. The decoder implements the full RFC 7932 bitstream grammar (meta-block framing, complex/simple prefix codes, block-switch commands, insert-and-copy commands, distance ring buffer, context modeling, and the static dictionary with word transforms) and correctly reads streams from conformant encoders such as zlib's brotliCompressSync. The encoder emits fully legal, byte-verified-interoperable Brotli streams built from uncompressed meta-blocks (RFC-legal, but not entropy-coded).";
+      this.inventor = "Jyrki Alakuijala, Zoltan Szabadka (Google)";
       this.year = 2013;
       this.category = CategoryType.COMPRESSION;
       this.subCategory = "Dictionary + Entropy Coding";
@@ -1021,9 +772,9 @@
       this.complexity = ComplexityType.EXPERT;
       this.country = CountryCode.US;
 
-      this.compressionRatio = "Variable (encoder always emits uncompressed meta-blocks)";
+      this.compressionRatio = "Variable (encoder emits uncompressed meta-blocks; decoder handles fully entropy-coded streams)";
       this.windowSize = "10-24 bits (1KB - 16MB)";
-      this.implementation = "Pure JavaScript - Brotli-inspired, NOT RFC 7932 bitstream-compatible";
+      this.implementation = "Pure JavaScript, RFC 7932 bitstream-compatible in both directions";
 
       this.documentation = [
         new LinkItem("RFC 7932 - Brotli Compressed Data Format", "https://datatracker.ietf.org/doc/html/rfc7932"),
@@ -1033,26 +784,21 @@
       ];
 
       this.references = [
-        new LinkItem("Google Brotli C Implementation", "https://github.com/google/brotli"),
-        new LinkItem("Brotli Format Specification (RFC 7932)", "https://tools.ietf.org/html/rfc7932"),
-        new LinkItem("Node.js Brotli C Source", "https://github.com/nodejs/node/tree/main/deps/brotli")
+        new LinkItem("RFC 7932 Section 8 - Static Dictionary", "https://datatracker.ietf.org/doc/html/rfc7932#section-8"),
+        new LinkItem("RFC 7932 Section 9 - Compressed Data Format", "https://datatracker.ietf.org/doc/html/rfc7932#section-9"),
+        new LinkItem("Node.js zlib Brotli bindings (interop reference)", "https://nodejs.org/api/zlib.html#zlib-constants")
       ];
 
       this.notes = [
-        "NOT RFC 7932 COMPLIANT - not interoperable with real Brotli (zlib, google/brotli, or any other implementation)",
-        "PURE JAVASCRIPT IMPLEMENTATION - No external dependencies, no Node.js zlib bindings",
-        "ENCODER: Always emits uncompressed meta-blocks, framed with real RFC 7932 meta-block headers",
-        "DECODER: Understands both uncompressed and Huffman/context-coded meta-blocks per the RFC 7932",
-        "  bitstream grammar (block types, context maps, insert-copy commands, distance codes/cache,",
-        "  ring buffer), but has only been validated against this file's own encoder output",
-        "Uses RFC 7932 terminology and structure (meta-blocks, insert-copy commands, context modeling,",
-        "  distance cache, ring buffer) purely as an educational model, not for bitstream compatibility",
-        "Round-trips correctly with itself for any input length, including empty and single-byte input"
+        "DECODER: full RFC 7932 grammar, including the static dictionary and word transforms - reads real-world",
+        "  Brotli streams (verified against zlib's brotliCompressSync output, including compressed meta-blocks",
+        "  that reference the static dictionary)",
+        "ENCODER: always emits uncompressed meta-blocks - a fully legal RFC 7932 stream, verified byte-for-byte",
+        "  interoperable with zlib's brotliDecompressSync, but not entropy-coded (no Huffman/LZ77 compression)",
+        "Static dictionary (Appendix A, 122,784 bytes) and word transforms (Appendix B, 121 entries) are",
+        "  transcribed directly from the RFC 7932 specification text and verified against its own CRC-32 checks"
       ];
 
-      // Test vectors - Full round-trip compression/decompression against this
-      // file's own (non-standard) encoder/decoder pair, NOT against real
-      // Brotli/RFC 7932 reference vectors.
       this.tests = [
         {
           text: "Round-trip - Empty input",
@@ -1061,33 +807,45 @@
           expected: []
         },
         {
-          // Regression: writeBits() used to reset bitCount to 0 whenever the
-          // pending bit buffer value was exactly 0 (a falsy-value bug, not an
-          // empty-buffer check), silently dropping pending bit position and
-          // corrupting the header - this was the exact failure mode for
-          // single-byte input ("Unexpected end of uncompressed data").
-          text: "Regression - single byte (was: Unexpected end of uncompressed data)",
-          uri: "https://github.com/google/brotli/tree/master/tests/testdata",
-          input: OpCodes.AnsiToBytes("X"),
-          expected: [27, 0, 0, 88]
+          text: "Interop - decode real zlib brotliCompressSync('Hello, World!') output (uncompressed meta-block)",
+          uri: "https://nodejs.org/api/zlib.html",
+          input: OpCodes.Hex8ToBytes("0b068048656c6c6f2c20576f726c642103"),
+          expected: OpCodes.AnsiToBytes("Hello, World!"),
+          inverse: true
         },
         {
-          text: "Brotli Round-trip - Short text",
-          uri: "https://datatracker.ietf.org/doc/html/rfc7932",
-          input: OpCodes.AnsiToBytes("Hello, World!")
-          // No expected - round-trip only (format may vary)
+          text: "Interop - decode real zlib brotliCompressSync output using Huffman/context-coded meta-block + static dictionary",
+          uri: "https://nodejs.org/api/zlib.html",
+          input: OpCodes.Hex8ToBytes("1b6701888c946ee622d083a5ba905e13148d807c430b830d387048206f24bc41a715ce66c7e34485a560239c7af587498101"),
+          expected: OpCodes.AnsiToBytes("the quick brown fox jumps over the lazy dog. ".repeat(8)),
+          inverse: true
+        },
+        {
+          text: "Interop - decode real zlib brotliCompressSync output of pseudo-random binary data",
+          uri: "https://nodejs.org/api/zlib.html",
+          input: OpCodes.Hex8ToBytes("1bff01f8af8bb705ff306b83267bfcc35b3dd043b93fce189cd7ca005d5c1c1742186f0cce0b2d0df0c1c571a1f7e9e6e0bcd2d2001f5c1c577a9f6e0ece1b9852200fc6a2f18a4f8726d47539f179dc37dad4360025d47962ee799c87e9d596ff4b77cc1d9189f7b9a8f2e5fbafb0a943043ad44528bb3c2e1726b64d81f6659e965deae70926d6f5ffeccb3810b5d4f74dd5acf3fb84ddc70651876b9f445c7edfc34d6c00feca978909d9d40fe31aeafa52b93c0e4336b67d7b0d65be2fb9dc778835b675111965ba2f375b5f01287fae03b34dcfbd990ef5079f7479208c26b64d99f8329f9036f55d13"),
+          expected: Array.from({ length: 512 }, (_, i) => OpCodes.And32(i * 37 + 11, 0xff)),
+          inverse: true
+        },
+        {
+          text: "Regression - single byte round-trips through our own encoder/decoder",
+          uri: "https://github.com/google/brotli/tree/master/tests/testdata",
+          input: OpCodes.AnsiToBytes("X")
         },
         {
           text: "Brotli Round-trip - Pangram",
           uri: "https://github.com/google/brotli/blob/master/tests/testdata",
           input: OpCodes.AnsiToBytes("The quick brown fox jumps over the lazy dog")
-          // No expected - round-trip only (format may vary)
         },
         {
           text: "Brotli Round-trip - Binary data",
           uri: "https://datatracker.ietf.org/doc/html/rfc7932",
           input: [0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA]
-          // No expected - round-trip only (format may vary)
+        },
+        {
+          text: "Brotli Round-trip - all 256 byte values",
+          uri: "https://datatracker.ietf.org/doc/html/rfc7932",
+          input: Array.from({ length: 256 }, (_, i) => i)
         }
       ];
 
@@ -1141,7 +899,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
+      for (let i = 0; i < data.length; ++i) this.inputBuffer.push(data[i]);
     }
 
     /**
@@ -1159,11 +917,9 @@
       try {
         let result;
         if (this.isInverse) {
-          // Decompression
           const decoder = new BrotliDecoder();
           result = decoder.decompress(this.inputBuffer);
         } else {
-          // Compression
           const encoder = new BrotliEncoder();
           result = encoder.compress(this.inputBuffer);
         }
