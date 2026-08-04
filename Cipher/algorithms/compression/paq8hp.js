@@ -118,6 +118,28 @@
             [0, 0, 0, 4, 84, 101, 115, 116], // Length header + literals
             "Short text compression test",
             "http://mattmahoney.net/dc/dce.html"
+          ),
+          // Round-trip regression vectors: a literal data byte of 0xFF
+          // used to be indistinguishable from the "prediction hit"
+          // marker (also 0xFF), corrupting decode wherever data
+          // actually contained 0xFF.
+          new TestCase(
+            Array.from({ length: 256 }, (_, i) => i), // All 256 distinct byte values
+            [],
+            "All byte values 0-255 round-trip test",
+            "Regression test for 0xFF marker/literal collision"
+          ),
+          new TestCase(
+            [243, 204, 191, 171, 157, 143, 229, 84, 239, 176, 155, 208, 176, 245, 186, 148, 128, 53, 183, 104, 65, 66, 101, 148, 122, 107, 131, 193, 65, 79, 229, 58, 50, 25, 21, 210, 49, 167, 70, 138, 6, 12, 191, 33, 67, 124, 161, 122, 65, 2, 92, 207, 37, 32, 136, 248, 127, 146, 78, 207, 243, 126, 146, 223, 64, 161, 46, 129, 181, 68, 211, 17, 148, 194, 96, 50, 211, 110, 202, 53, 74, 159, 228, 247, 145, 4, 228, 234, 16, 151, 188, 109, 81, 80, 49, 126, 162, 199, 101, 196, 235, 27, 109, 184, 20, 77, 129, 64, 148, 182, 146, 41, 134, 77, 32, 59, 197, 71, 158, 152, 231, 94, 231, 211, 103, 220, 144, 238, 137, 222, 237, 151, 177, 197, 92, 12, 97, 179, 107, 212, 167, 137, 88, 210, 78, 173, 228, 175, 149, 232, 107, 45, 28, 202, 239, 242, 91, 73, 66, 24, 35, 92, 185, 245, 62, 213, 13, 182, 15, 242, 254, 12, 86, 213, 178, 168, 213, 115, 176, 57, 95, 201, 101, 121, 187, 228, 195, 32, 44, 252, 179, 230, 150, 179, 164, 143, 191, 97, 136, 46, 25, 154, 214, 6, 155, 31, 129, 253, 3, 119, 59, 68, 187, 102, 43, 112, 143, 202, 179, 185, 32, 38, 37, 249, 29, 52, 47, 246, 60, 190, 166, 152, 5, 144, 25, 213, 107, 191, 85, 158, 64, 228, 200, 90, 18, 120, 76, 172, 148, 46, 222, 67, 185, 14, 135, 164, 72, 186, 30, 245, 198, 193, 63, 169, 164, 83, 85, 104, 24, 107, 159, 230, 18, 235, 247, 15, 205, 167, 128, 28, 145, 40, 49, 185, 0, 198, 197, 208, 211, 50, 157, 56, 249, 159, 97, 19, 92, 178, 139, 196], // Pseudo-random (splitmix32) 300-byte sample
+            [],
+            "Pseudo-random data round-trip test",
+            "Regression test for 0xFF marker/literal collision"
+          ),
+          new TestCase(
+            Array.from({ length: 128 }, (_, i) => i % 2 ? 0x55 : 0xAA), // Alternating 0xAA/0x55
+            [],
+            "Alternating pattern round-trip test",
+            "Regression test for 0xFF marker/literal collision"
           )
         ];
 
@@ -156,7 +178,7 @@
 
       Feed(data) {
         if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {
@@ -194,7 +216,7 @@
           const byte = data[i];
 
           // Use previous bytes as context (simplified order-2)
-          const contextKey = context&0xFFFF;
+          const contextKey = OpCodes.And32(context, 0xFFFF);
 
           if (!contexts.has(contextKey)) {
             contexts.set(contextKey, { counts: new Array(256).fill(0), total: 0 });
@@ -212,10 +234,17 @@
             }
           }
 
-          // Encode based on prediction quality
+          // Encode based on prediction quality. 0xFF is only ever emitted
+          // as the first byte of a 2-byte sequence, so a "hit" marker can
+          // never be confused with a literal data byte -- including when
+          // the literal itself is 0xFF, which must also be escaped this
+          // way (previously a literal 255 was stored as a bare 0xFF byte,
+          // indistinguishable on decode from a genuine prediction hit).
           if (maxCount > 1 && bestSymbol === byte) {
             // Predicted correctly - use shorter code
-            compressed.push(0xFF); // Prediction hit marker
+            compressed.push(0xFF, 0x01); // Prediction hit marker
+          } else if (byte === 0xFF) {
+            compressed.push(0xFF, 0x00); // Escaped literal 0xFF
           } else {
             // Prediction miss or new symbol - store literal
             compressed.push(byte);
@@ -234,7 +263,7 @@
           }
 
           // Update context for next prediction using OpCodes
-          context = OpCodes.RotL32(OpCodes.Shl32(context, 8)|byte, 0)&0xFFFFFF;
+          context = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(context, 8), byte), 0xFFFFFF);
         }
 
         return compressed;
@@ -244,7 +273,8 @@
         if (!data || data.length < 4) return [];
 
         // Parse header to get original length
-        const originalLength = OpCodes.Shl32(data[0], 24)|OpCodes.Shl32(data[1], 16)|OpCodes.Shl32(data[2], 8)|data[3];
+        const originalLength = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(
+          OpCodes.Shl32(data[0], 24), OpCodes.Shl32(data[1], 16)), OpCodes.Shl32(data[2], 8)), data[3]);
         if (originalLength === 0) return [];
 
         // Use OpCodes for consistent operations
@@ -258,7 +288,7 @@
           const encoded = data[offset++];
 
           // Rebuild same context as compression
-          const contextKey = context&0xFFFF;
+          const contextKey = OpCodes.And32(context, 0xFFFF);
 
           if (!contexts.has(contextKey)) {
             contexts.set(contextKey, { counts: new Array(256).fill(0), total: 0 });
@@ -269,16 +299,24 @@
           let decodedByte;
 
           if (encoded === 0xFF) {
-            // Prediction hit - find most frequent symbol in this context
-            let bestSymbol = 0;
-            let maxCount = 0;
-            for (let s = 0; s < 256; s++) {
-              if (ctxData.counts[s] > maxCount) {
-                maxCount = ctxData.counts[s];
-                bestSymbol = s;
+            // Escaped sequence: next byte disambiguates hit vs. literal 0xFF
+            if (offset >= data.length) break;
+            const flag = data[offset++];
+            if (flag === 0x01) {
+              // Prediction hit - find most frequent symbol in this context
+              let bestSymbol = 0;
+              let maxCount = 0;
+              for (let s = 0; s < 256; s++) {
+                if (ctxData.counts[s] > maxCount) {
+                  maxCount = ctxData.counts[s];
+                  bestSymbol = s;
+                }
               }
+              decodedByte = bestSymbol;
+            } else {
+              // Escaped literal 0xFF
+              decodedByte = 0xFF;
             }
-            decodedByte = bestSymbol;
           } else {
             // Literal byte
             decodedByte = encoded;
@@ -299,7 +337,7 @@
           }
 
           // Update context using OpCodes
-          context = OpCodes.RotL32(OpCodes.Shl32(context, 8)|decodedByte, 0)&0xFFFFFF;
+          context = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(context, 8), decodedByte), 0xFFFFFF);
         }
 
         return decompressed.slice(0, originalLength);
