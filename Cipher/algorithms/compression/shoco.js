@@ -207,9 +207,12 @@
         new LinkItem("Character Frequency Analysis", "https://en.wikipedia.org/wiki/Letter_frequency")
       ];
 
-      // Test vectors validated with this educational implementation
-      // Note: This implementation uses a simplified 32-character model that differs
-      // from the reference Shoco implementation's full ASCII range (39-122)
+      // Test vectors generated from and validated against this educational
+      // implementation (which uses a simplified 32-character model that differs
+      // from the reference Shoco implementation's full ASCII range 39-122).
+      // Every vector below round-trips through this implementation's own
+      // encoder/decoder; each `expected` was captured from a run of the fixed
+      // code, then independently confirmed to decode back to `input`.
       this.tests = [
         {
           text: "Empty string compression",
@@ -218,22 +221,55 @@
           expected: []
         },
         {
-          text: "Single word 'test' - validates pack 1 (4 characters)",
+          text: "Single word 'test' - validates pack encoding plus 4-byte length header",
           uri: "https://github.com/Ed-von-Schleck/shoco",
           input: OpCodes.AnsiToBytes("test"),
-          expected: OpCodes.Hex8ToBytes("c899")
+          expected: OpCodes.Hex8ToBytes("0400000092a1")
         },
         {
           text: "Word 'compression' - validates multi-pack encoding",
           uri: "https://github.com/Ed-von-Schleck/shoco",
           input: OpCodes.AnsiToBytes("compression"),
-          expected: OpCodes.Hex8ToBytes("0063e1a288778d")
+          expected: OpCodes.Hex8ToBytes("0b000000acdb48d15c98")
         },
         {
           text: "Phrase 'test compression' - validates escape sequences and multiple packs",
           uri: "https://github.com/Ed-von-Schleck/shoco",
           input: OpCodes.AnsiToBytes("test compression"),
-          expected: OpCodes.Hex8ToBytes("c89900200063e1a288778d")
+          expected: OpCodes.Hex8ToBytes("1000000092a10020acdb48d15c98")
+        },
+        {
+          // Regression test for a decoder defect - a chain shorter than a pack's full
+          // successor capacity (e.g. 'a' followed by 'a', which has no successor
+          // mapping) was still accepted by the encoder as long as it fit within the
+          // pack's byte budget. The decoder always decodes every successor slot a
+          // pack format defines, so it invented extra characters from the
+          // unfilled (zero) bits, doubling the output length. The fix requires a
+          // pack's successor chain to either exactly fill every slot, or run out
+          // only at the very end of input (where the recorded length header can
+          // truncate any invented trailing filler).
+          text: "1024 repeated 'a' characters - regression for the pack-underfill bug",
+          uri: "https://github.com/Ed-von-Schleck/shoco",
+          input: new Array(1024).fill(0x61),
+          expected: null // validated via round-trip only; see fuzz harness
+        },
+        {
+          text: "Alternating 'ab' pattern - regression for successor-chain truncation",
+          uri: "https://github.com/Ed-von-Schleck/shoco",
+          input: Array.from({ length: 64 }, (_, i) => i % 2 ? 0x62 : 0x61),
+          expected: OpCodes.Hex8ToBytes("40000000006100620061006200610062006100620061006200610062006100620061006200610062006100620061006200610062006100620061006200610062006100620061006200610062006100620061006200610062006100620061006200610062006100620061006200610062006100620061006200610062e0d2d000")
+        },
+        {
+          text: "All 256 byte values - regression for the escape path and non-ASCII passthrough",
+          uri: "https://en.wikipedia.org/wiki/Byte",
+          input: Array.from({ length: 256 }, (_, i) => i),
+          expected: OpCodes.Hex8ToBytes("000100000000000100020003000400050006000700080009000a000b000c000d000e000f0010001100120013001400150016001700180019001a001b001c001d001e001f0020002100220023002400250026002700280029002a002b002c002d002e002f0030003100320033003400350036003700380039003a003b003c003d003e003f0040004100420043004400450046004700480049004a004b004c004d004e004f0050005100520053005400550056005700580059005a005b005c005d005e005f0060006100620063b80066006796006a006b006c006d006e006f00700071cf0f0076007700780079007a007b007c007d007e007f0080008100820083008400850086008700880089008a008b008c008d008e008f0090009100920093009400950096009700980099009a009b009c009d009e009f00a000a100a200a300a400a500a600a700a800a900aa00ab00ac00ad00ae00af00b000b100b200b300b400b500b600b700b800b900ba00bb00bc00bd00be00bf00c000c100c200c300c400c500c600c700c800c900ca00cb00cc00cd00ce00cf00d000d100d200d300d400d500d600d700d800d900da00db00dc00dd00de00df00e000e100e200e300e400e500e600e700e800e900ea00eb00ec00ed00ee00ef00f000f100f200f300f400f500f600f700f800f900fa00fb00fc00fd00fe00ff")
+        },
+        {
+          text: "Pseudo-random byte stream - regression for the pack-underfill bug on non-text data",
+          uri: "https://en.wikipedia.org/wiki/Pseudorandomness",
+          input: OpCodes.Hex8ToBytes("4080c000000040808000000000000000004000004000004000400000400000000000000040000040000000400000000040800040000000000000000000408080"),
+          expected: OpCodes.Hex8ToBytes("400000000040008000c00000000000000040008000800000000000000000000000000000000000400000000000400000000000400000004000000000004000000000000000000000000000000040000000000040000000000000004000000000000000000040008000000040000000000000000000000000000000000000004000800080")
         }
       ];
     }
@@ -276,7 +312,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -300,6 +336,15 @@
     _compress() {
       const input = this.inputBuffer;
       const output = [];
+
+      // Explicit length header: a pack's successor slots may legitimately be left
+      // unfilled when the chain runs out of input mid-pack (see the "tail" case
+      // below), which makes the decoder emit trailing filler characters it cannot
+      // otherwise distinguish from real ones. Recording the true output length lets
+      // the decoder truncate that filler away deterministically.
+      const lengthBytes = OpCodes.Unpack32LE(input.length);
+      output.push(lengthBytes[0], lengthBytes[1], lengthBytes[2], lengthBytes[3]);
+
       let inPos = 0;
 
       while (inPos < input.length) {
@@ -313,12 +358,13 @@
           continue;
         }
 
-        // Find longest successor chain
-        const indices = [chrId];
+        // Find the maximal successor chain reachable from this character (bounded
+        // by the largest pack's capacity of 8 characters).
+        const chain = [chrId];
         let nextPos = inPos + 1;
         let lastChrId = chrId;
 
-        while (nextPos < input.length && indices.length < 8) {
+        while (nextPos < input.length && chain.length < 8) {
           const nextChr = input[nextPos];
           const nextChrId = CHR_IDS_BY_CHR[nextChr];
 
@@ -327,27 +373,48 @@
           const successorId = SUCCESSOR_IDS_BY_CHR_ID_AND_CHR_ID[lastChrId][nextChrId];
           if (successorId < 0) break;
 
-          indices.push(successorId);
+          chain.push(successorId);
           lastChrId = nextChrId;
           ++nextPos;
         }
 
-        // Find suitable pack (search from smallest to largest for tightest fit)
-        // Use the smallest pack that can hold the indices
+        // The chain reached the end of the input exactly when it stopped growing
+        // because there was nothing left to consume (as opposed to a failed
+        // successor lookup, or hitting the 8-character cap).
+        const chainHitInputEnd = (inPos + chain.length === input.length);
+
+        // A pack may only be used when the decoder will reconstruct exactly the
+        // characters that were encoded: either every successor slot in the pack is
+        // filled (the decoder decodes bytes_unpacked characters and all are real),
+        // or the chain is the very last thing in the input (any unfilled slots
+        // decode to filler that the length header above will truncate away).
+        // Using a pack whose slots are only partially filled mid-stream would make
+        // the decoder invent characters that were never encoded.
         let packIndex = -1;
+        let useCount = 0;
         for (let p = 0; p < PACKS.length; ++p) {
-          if (indices.length <= PACKS[p].bytes_unpacked) {
-            let valid = true;
-            for (let i = 0; i < indices.length; ++i) {
-              if (indices[i] > PACKS[p].masks[i]) {
-                valid = false;
-                break;
-              }
+          const pack = PACKS[p];
+          const n = pack.bytes_unpacked;
+          let candidateLen;
+          if (chain.length >= n) {
+            candidateLen = n;
+          } else if (chainHitInputEnd) {
+            candidateLen = chain.length;
+          } else {
+            continue;
+          }
+
+          let valid = true;
+          for (let i = 0; i < candidateLen; ++i) {
+            if (chain[i] > pack.masks[i]) {
+              valid = false;
+              break;
             }
-            if (valid) {
-              packIndex = p;
-              break; // Use first valid pack (smallest that fits)
-            }
+          }
+          if (valid) {
+            packIndex = p;
+            useCount = candidateLen;
+            break;
           }
         }
 
@@ -363,8 +430,8 @@
         const pack = PACKS[packIndex];
         let word = pack.word;
 
-        for (let i = 0; i < indices.length; ++i) {
-          word = OpCodes.ToUint32(word|(OpCodes.Shl32(indices[i], pack.offsets[i])));
+        for (let i = 0; i < useCount; ++i) {
+          word = OpCodes.ToUint32(word|(OpCodes.Shl32(chain[i], pack.offsets[i])));
         }
 
         // Apply endianness swap (reference shoco.c applies swap before output)
@@ -378,7 +445,7 @@
           output.push(OpCodes.ToByte(OpCodes.Shr32(word, i * 8)));
         }
 
-        inPos = nextPos;
+        inPos += useCount;
       }
 
       this.inputBuffer = [];
@@ -388,9 +455,16 @@
     _decompress() {
       const input = this.inputBuffer;
       const output = [];
-      let inPos = 0;
 
-      while (inPos < input.length) {
+      if (input.length < 4) {
+        this.inputBuffer = [];
+        return [];
+      }
+
+      const targetLength = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
+      let inPos = 4;
+
+      while (inPos < input.length && output.length < targetLength) {
         const byte = input[inPos];
 
         // Escape sequence - literal byte follows
@@ -466,7 +540,10 @@
       }
 
       this.inputBuffer = [];
-      return output;
+      // A trailing pack whose successor chain ran out at end-of-input may still
+      // have decoded a few filler characters from its unused (zero) slots; the
+      // length header is the only reliable way to know where the real data ends.
+      return output.length > targetLength ? output.slice(0, targetLength) : output;
     }
   }
 
