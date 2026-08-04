@@ -86,22 +86,27 @@
 
         this.knownVulnerabilities = [];
 
+        // Wire format (matches CompressionWorkbench's BB_ShannonFano building
+        // block): a 4-byte little-endian original length, a fixed 256-entry
+        // frequency table (2-byte little-endian counts), then the coded
+        // bitstream. The fixed-size table makes even tiny inputs expand to
+        // 512+ header bytes; expected vectors are given as hex for this reason.
         this.tests = [
           new TestCase(
             OpCodes.AnsiToBytes("AAABBC"),
-            [0, 0, 0, 6, 0, 3, 65, 1, 0, 66, 2, 128, 67, 2, 192, 7, 21, 128],
+            OpCodes.Hex8ToBytes("0600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000030002000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001580"),
             "Basic frequency encoding",
             "https://en.wikipedia.org/wiki/Shannon%E2%80%93Fano_coding"
           ),
           new TestCase(
             OpCodes.AnsiToBytes("ABCDEF"),
-            [0, 0, 0, 6, 0, 6, 65, 2, 0, 66, 3, 64, 67, 3, 96, 68, 2, 128, 69, 3, 192, 70, 3, 224, 0, 19, 183],
+            OpCodes.Hex8ToBytes("06000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100010001000100010001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000013B7"),
             "Alphabet frequency test",
             "https://www2.cs.duke.edu/csed/poop/huff/info/"
           ),
           new TestCase(
             OpCodes.AnsiToBytes("ABABAB"),
-            [0, 0, 0, 6, 0, 2, 65, 1, 0, 66, 1, 128, 2, 84],
+            OpCodes.Hex8ToBytes("06000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000300030000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000054"),
             "Repeated pattern encoding",
             "https://www.cs.cmu.edu/~ckingsf/bioinfo-lectures/shannon.pdf"
           )
@@ -121,7 +126,6 @@
         super(algorithm);
         this.isInverse = isInverse; // true = decompress, false = compress
         this.inputBuffer = [];
-        this.codeTable = {};
       }
 
       Feed(data) {
@@ -130,271 +134,152 @@
       }
 
       Result() {
-        if (this.inputBuffer.length === 0) return [];
-
-        // Process using existing compression logic
-        const result = this.isInverse ? 
-          this.decompress(this.inputBuffer) : 
-          this.compress(this.inputBuffer);
-
+        const result = this.isInverse ? this._decompress(this.inputBuffer) : this._compress(this.inputBuffer);
         this.inputBuffer = [];
         return result;
       }
 
-      compress(data) {
-        if (!data || data.length === 0) return [];
+      // Wire format (matches CompressionWorkbench's BB_ShannonFano building
+      // block): a 4-byte little-endian original length, then a fixed
+      // 256-entry frequency table (2-byte little-endian counts, scaled to
+      // fit uint16 only if the true maximum exceeds it), followed by the
+      // Shannon-Fano-coded bitstream (MSB-first, zero-padded to a byte
+      // boundary). Codes are rebuilt independently on encode and decode
+      // from the same frequency table by recursively splitting the
+      // freq-sorted symbol list at the point that minimizes the imbalance
+      // between the two halves.
+      _compress(data) {
+        const bitStream = OpCodes.CreateBitStream();
+        bitStream.writeUint32LE(data.length);
 
-        const inputString = this._bytesToString(data);
+        const freq = new Array(256).fill(0);
+        for (const b of data) freq[b]++;
 
-        // Step 1: Build frequency table
-        const frequencies = this._buildFrequencyTable(inputString);
+        let maxFreq = 0;
+        for (const f of freq) if (f > maxFreq) maxFreq = f;
 
-        // Step 2: Sort symbols by frequency (descending)
-        const sortedSymbols = Object.keys(frequencies).sort((a, b) => frequencies[b] - frequencies[a]);
+        const scaledFreq = new Array(256).fill(0);
+        if (maxFreq > 0xFFFF) {
+          for (let i = 0; i < 256; i++)
+            if (freq[i] > 0) scaledFreq[i] = Math.max(1, Math.floor(freq[i] * 0xFFFF / maxFreq));
+        } else {
+          for (let i = 0; i < 256; i++) scaledFreq[i] = freq[i];
+        }
+        for (let i = 0; i < 256; i++) bitStream.writeUint16LE(scaledFreq[i]);
 
-        // Step 3: Build Shannon-Fano codes
-        this.codeTable = {};
-        this._buildShannonFanoCodes(sortedSymbols, frequencies, this.codeTable, '');
+        if (data.length === 0) return bitStream.toArray();
 
-        // Step 4: Encode the data
-        let encodedBits = '';
-        for (let i = 0; i < inputString.length; i++) {
-          const char = inputString.charAt(i);
-          if (this.codeTable[char]) {
-            encodedBits += this.codeTable[char];
-          } else {
-            throw new Error(`Character '${char}' not found in code table`);
-          }
+        // Codes are built from the original (unscaled) frequencies.
+        const codes = this._buildCodes(freq);
+        for (const b of data) {
+          const c = codes[b];
+          for (let i = c.length - 1; i >= 0; i--) bitStream.writeBit(OpCodes.And32(OpCodes.Shr32(c.code, i), 1));
         }
 
-        // Step 5: Create compressed format
-        const compressed = this._packCompressedData(this.codeTable, encodedBits, inputString.length);
-
-        return this._stringToBytes(compressed);
+        return bitStream.toArray();
       }
 
-      decompress(data) {
-        if (!data || data.length === 0) return [];
+      _decompress(data) {
+        if (data.length < 4) return [];
 
-        const compressedString = this._bytesToString(data);
+        const bitStream = OpCodes.CreateBitStream(data);
+        const originalSize = OpCodes.Pack32LE(bitStream.readByte(), bitStream.readByte(), bitStream.readByte(), bitStream.readByte());
+        if (originalSize === 0) return [];
 
-        // Unpack compressed data
-        const { codeTable, encodedBits, originalLength } = this._unpackCompressedData(compressedString);
+        const freq = new Array(256);
+        for (let i = 0; i < 256; i++) freq[i] = OpCodes.Pack16LE(bitStream.readByte(), bitStream.readByte());
 
-        // Create reverse mapping (code -> symbol)
-        const reverseTable = {};
-        for (const [symbol, code] of Object.entries(codeTable)) {
-          reverseTable[code] = symbol;
-        }
+        const root = this._buildTree(freq);
 
-        // Decode bit stream
-        let decoded = '';
-        let currentCode = '';
-
-        for (let i = 0; i < encodedBits.length; i++) {
-          currentCode += encodedBits[i];
-
-          if (reverseTable[currentCode]) {
-            decoded += reverseTable[currentCode];
-            currentCode = '';
-
-            // Stop if we've reached the expected length
-            if (decoded.length >= originalLength) {
-              break;
-            }
+        const result = [];
+        for (let i = 0; i < originalSize; i++) {
+          let node = root;
+          while (node.left || node.right) {
+            const bit = bitStream.readBit();
+            node = bit === 0 ? node.left : node.right;
+            if (!node) throw new Error('Invalid Shannon-Fano bitstream.');
           }
+          result.push(node.symbol);
         }
 
-        if (decoded.length !== originalLength) {
-          throw new Error('Decompressed length mismatch');
-        }
-
-        return this._stringToBytes(decoded);
+        return result;
       }
 
       /**
-       * Build frequency table for characters
+       * Build a { code, length } table for every symbol with freq > 0, by
+       * recursively splitting the freq-sorted symbol list at the index that
+       * minimizes |2*runningSum - total|.
        * @private
        */
-      _buildFrequencyTable(data) {
-        const frequencies = {};
-        for (let i = 0; i < data.length; i++) {
-          const char = data.charAt(i);
-          frequencies[char] = (frequencies[char] || 0) + 1;
-        }
-        return frequencies;
+      _buildCodes(freq) {
+        const codes = new Array(256).fill(null);
+
+        const symbols = [];
+        for (let i = 0; i < 256; i++) if (freq[i] > 0) symbols.push([i, freq[i]]);
+
+        if (symbols.length === 0) return codes;
+        if (symbols.length === 1) { codes[symbols[0][0]] = { code: 0, length: 1 }; return codes; }
+
+        symbols.sort((a, b) => a[1] !== b[1] ? b[1] - a[1] : a[0] - b[0]);
+        this._assignCodes(symbols, codes, 0, 0);
+        return codes;
+      }
+
+      _assignCodes(symbols, codes, currentCode, depth) {
+        if (symbols.length === 1) { codes[symbols[0][0]] = { code: currentCode, length: Math.max(1, depth) }; return; }
+        if (symbols.length === 0) return;
+
+        const splitIndex = this._splitIndex(symbols);
+        const left = symbols.slice(0, splitIndex);
+        const right = symbols.slice(splitIndex);
+
+        this._assignCodes(left, codes, OpCodes.Shl32(currentCode, 1), depth + 1);
+        this._assignCodes(right, codes, OpCodes.Or32(OpCodes.Shl32(currentCode, 1), 1), depth + 1);
       }
 
       /**
-       * Build Shannon-Fano codes recursively
+       * Build the decode tree for the given frequency table, matching the
+       * split structure used by _buildCodes/_assignCodes on the encode side.
        * @private
        */
-      _buildShannonFanoCodes(symbols, frequencies, codeTable, prefix) {
+      _buildTree(freq) {
+        const symbols = [];
+        for (let i = 0; i < 256; i++) if (freq[i] > 0) symbols.push([i, freq[i]]);
+
+        if (symbols.length === 0) return { symbol: 0, left: null, right: null };
         if (symbols.length === 1) {
-          // Single symbol - assign code (or '0' if it's the only symbol)
-          codeTable[symbols[0]] = prefix || '0';
-          return;
+          const leaf = { symbol: symbols[0][0], left: null, right: null };
+          return { symbol: 0, left: leaf, right: leaf };
         }
 
-        if (symbols.length === 0) {
-          return;
-        }
+        symbols.sort((a, b) => a[1] !== b[1] ? b[1] - a[1] : a[0] - b[0]);
+        return this._buildSubTree(symbols);
+      }
 
-        // Find split point that balances frequencies as much as possible
-        const totalFreq = symbols.reduce((sum, sym) => sum + frequencies[sym], 0);
-        let leftFreq = 0;
-        let splitIndex = 0;
-        let bestDiff = Infinity;
+      _buildSubTree(symbols) {
+        if (symbols.length === 1) return { symbol: symbols[0][0], left: null, right: null };
 
+        const splitIndex = this._splitIndex(symbols);
+        const left = symbols.slice(0, splitIndex);
+        const right = symbols.slice(splitIndex);
+
+        return { symbol: 0, left: this._buildSubTree(left), right: this._buildSubTree(right) };
+      }
+
+      // Shared split-point search: minimize |2*runningSum - total| over the
+      // first count-1 candidate cut points, breaking ties toward the first
+      // minimal index (matches the reference's linear scan with strict '<').
+      _splitIndex(symbols) {
+        let total = 0;
+        for (const s of symbols) total += s[1];
+
+        let runningSum = 0, splitIndex = 0, minDiff = Infinity;
         for (let i = 0; i < symbols.length - 1; i++) {
-          leftFreq += frequencies[symbols[i]];
-          const rightFreq = totalFreq - leftFreq;
-          const diff = Math.abs(leftFreq - rightFreq);
-
-          if (diff < bestDiff) {
-            bestDiff = diff;
-            splitIndex = i;
-          }
+          runningSum += symbols[i][1];
+          const diff = Math.abs(2 * runningSum - total);
+          if (diff < minDiff) { minDiff = diff; splitIndex = i + 1; }
         }
-
-        // Split symbols into two groups
-        const leftSymbols = symbols.slice(0, splitIndex + 1);
-        const rightSymbols = symbols.slice(splitIndex + 1);
-
-        // Recursively build codes for each group
-        this._buildShannonFanoCodes(leftSymbols, frequencies, codeTable, prefix + '0');
-        this._buildShannonFanoCodes(rightSymbols, frequencies, codeTable, prefix + '1');
-      }
-
-      /**
-       * Pack compressed data with header containing code table
-       * @private
-       */
-      _packCompressedData(codeTable, encodedBits, originalLength) {
-        const bytes = [];
-
-        // Header: [OriginalLength(4)][TableSize(2)][Table][PaddingBits(1)][EncodedData]
-        // Original length (4 bytes, big-endian)
-        const [b0, b1, b2, b3] = OpCodes.Unpack32BE(originalLength);
-        bytes.push(b0, b1, b2, b3);
-
-        // Serialize code table
-        const tableEntries = Object.entries(codeTable);
-        const tableSize = tableEntries.length;
-
-        // Table size (2 bytes, big-endian)
-        const [high, low] = OpCodes.Unpack16BE(tableSize);
-        bytes.push(high, low);
-
-        // Table entries: [CharCode(1)][CodeLength(1)][CodeBits(variable)]
-        for (const [char, code] of tableEntries) {
-          bytes.push(OpCodes.ToByte(char.charCodeAt(0))); // Character
-          bytes.push(OpCodes.ToByte(code.length)); // Code length
-
-          // Pack code bits into bytes
-          const paddedCode = code + '0'.repeat((8 - (code.length % 8)) % 8);
-          for (let i = 0; i < paddedCode.length; i += 8) {
-            const byte = paddedCode.substr(i, 8);
-            bytes.push(parseInt(byte, 2));
-          }
-        }
-
-        // Padding bits for encoded data
-        const paddingBits = (8 - (encodedBits.length % 8)) % 8;
-        bytes.push(paddingBits);
-
-        // Encoded data
-        const paddedBits = encodedBits + '0'.repeat(paddingBits);
-        for (let i = 0; i < paddedBits.length; i += 8) {
-          const byte = paddedBits.substr(i, 8);
-          bytes.push(parseInt(byte, 2));
-        }
-
-        return this._bytesToString(bytes);
-      }
-
-      /**
-       * Unpack compressed data
-       * @private
-       */
-      _unpackCompressedData(compressedData) {
-        const bytes = this._stringToBytes(compressedData);
-
-        if (bytes.length < 7) {
-          throw new Error('Invalid compressed data: too short');
-        }
-
-        let pos = 0;
-
-        // Read original length
-        const originalLength = OpCodes.Pack32BE(bytes[pos], bytes[pos+1], bytes[pos+2], bytes[pos+3]);
-        pos += 4;
-
-        // Read table size
-        const tableSize = OpCodes.Pack16BE(bytes[pos], bytes[pos+1]);
-        pos += 2;
-
-        // Read code table
-        const codeTable = {};
-        for (let i = 0; i < tableSize; i++) {
-          if (pos >= bytes.length) {
-            throw new Error('Invalid compressed data: incomplete table');
-          }
-
-          const charCode = bytes[pos++];
-          const codeLength = bytes[pos++];
-
-          // Read code bits
-          const codeBytesNeeded = Math.ceil(codeLength / 8);
-          if (pos + codeBytesNeeded > bytes.length) {
-            throw new Error('Invalid compressed data: incomplete code');
-          }
-
-          let codeBits = '';
-          for (let j = 0; j < codeBytesNeeded; j++) {
-            codeBits += bytes[pos++].toString(2).padStart(8, '0');
-          }
-
-          const code = codeBits.substr(0, codeLength);
-          const char = String.fromCharCode(charCode);
-          codeTable[char] = code;
-        }
-
-        // Read padding bits
-        if (pos >= bytes.length) {
-          throw new Error('Invalid compressed data: missing padding info');
-        }
-        const paddingBits = bytes[pos++];
-
-        // Read encoded data
-        let encodedBits = '';
-        for (let i = pos; i < bytes.length; i++) {
-          encodedBits += bytes[i].toString(2).padStart(8, '0');
-        }
-
-        // Remove padding
-        if (paddingBits > 0) {
-          encodedBits = encodedBits.substr(0, encodedBits.length - paddingBits);
-        }
-
-        return { codeTable, encodedBits, originalLength };
-      }
-
-      // Utility functions
-      _stringToBytes(str) {
-        const bytes = [];
-        for (let i = 0; i < str.length; i++) {
-          bytes.push(OpCodes.ToByte(str.charCodeAt(i)));
-        }
-        return bytes;
-      }
-
-      _bytesToString(bytes) {
-        let str = "";
-        for (let i = 0; i < bytes.length; i++) {
-          str += String.fromCharCode(bytes[i]);
-        }
-        return str;
+        return splitIndex;
       }
     }
 
