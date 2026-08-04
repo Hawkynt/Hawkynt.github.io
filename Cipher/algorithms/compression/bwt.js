@@ -2,7 +2,7 @@
  * BWT (Burrows-Wheeler Transform) Compression Algorithm Implementation
  * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
- * 
+ *
  * The Burrows-Wheeler Transform is a reversible data transformation that
  * rearranges string characters to improve the performance of other compression techniques.
  */
@@ -34,7 +34,7 @@
   if (!AlgorithmFramework) {
     throw new Error('AlgorithmFramework dependency is required');
   }
-  
+
   if (!OpCodes) {
     throw new Error('OpCodes dependency is required');
   }
@@ -51,139 +51,246 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
-  // ----- Correct, O(n log n) suffix-array based Burrows-Wheeler core -----
+  // ----- Sentinel-free, cyclic-rotation-sort BWT core -----
   //
-  // The transform is defined over T = data ++ [sentinel], where sentinel is
-  // a value strictly smaller than every real byte and occurs exactly once.
-  // Sorting the m = n+1 CYCLIC ROTATIONS of T (equivalently, since the
-  // sentinel is unique and minimal, sorting the SUFFIXES of T) gives the
-  // BWT rotation matrix. The row whose rotation starts at position 0 (the
-  // unrotated original T) is the "primary index"; earlier implementations
-  // in this file computed that index against one sort order while badly
-  // reconstructing the inverse permutation with a different, buggy
-  // hand-rolled "next array" - this replaces both with a single
-  // well-tested core shared by forward and inverse transforms.
+  // Wire format and algorithm match CompressionWorkbench's BB_Bwt block
+  // (Compression.Core.Transforms.BurrowsWheelerTransform) exactly, including
+  // its tie-breaking behavior - the authoritative reference this is
+  // byte-identical to. Unlike a sentinel-terminated BWT, this sorts the n
+  // CYCLIC ROTATIONS of the data directly (all rotations have equal length,
+  // so no sentinel is needed to make comparisons well-defined; ties are
+  // broken by continuing the cyclic comparison, i.e. wrapping around
+  // modulo n). The primary index is the row, in sorted rotation order,
+  // whose rotation starts at position 0.
   //
-  // A convenient structural fact is used to avoid ever materializing the
-  // sentinel as a byte: the sentinel appears in the last column L at
-  // EXACTLY the row equal to the primary index (because L[i] is the
-  // character preceding rotation start sa[i], and that is the sentinel
-  // precisely when sa[i] === 0). So the sentinel's row can be omitted from
-  // the serialized last column entirely and reinserted purely from the
-  // stored primary index on decode - keeping the wire format at exactly
-  // n+4 bytes (4-byte primary index + n real data bytes), with no marker
-  // byte collisions of the kind that broke this file's previous encoding.
+  // Sorting proceeds by prefix doubling: a first counting-sort pass ranks
+  // rotations by their first 2 bytes (cyclically), then each further pass
+  // doubles the compared prefix length using the previous pass's ranks.
+  // Crucially, for any pass beyond the first, ties within a rank class are
+  // broken by directly reproducing .NET's Array.Sort(int[], Comparison<int>)
+  // - an UNSTABLE introspective sort (insertion sort / quicksort with
+  // median-of-3 pivoting / heapsort fallback) - via a faithful port below.
+  // Because that sort is not stable, an equivalent but differently-shaped
+  // sort (e.g. a stable radix pass) would silently diverge from the
+  // reference on any input with repeated substrings, which is most real
+  // data; this is why the exact port is required, not just "a" correct sort.
 
-  function _countingSortByKey(arr, key, keyRange) {
-    const count = new Array(keyRange).fill(0);
-    for (let i = 0; i < arr.length; i++) count[key[arr[i]]]++;
-    for (let i = 1; i < keyRange; i++) count[i] += count[i - 1];
-    const output = new Array(arr.length);
-    for (let i = arr.length - 1; i >= 0; i--) {
-      const k = key[arr[i]];
-      count[k]--;
-      output[count[k]] = arr[i];
-    }
-    return output;
+  function _bwtSwap(arr, i, j) {
+    const t = arr[i]; arr[i] = arr[j]; arr[j] = t;
   }
 
-  // Suffix array (equivalently: sorted cyclic rotations) of data++[sentinel],
-  // computed via prefix doubling with counting sort - O(n log n) overall.
-  function _buildRotationSuffixArray(data) {
-    const n = data.length;
-    const m = n + 1;
-    if (m === 1) return [0];
+  function _bwtSwapIfGreater(arr, cmp, i, j) {
+    if (i !== j && cmp(arr[i], arr[j]) > 0) _bwtSwap(arr, i, j);
+  }
 
-    let rank = new Array(m);
-    for (let i = 0; i < n; i++) rank[i] = data[i] + 1; // real bytes: 1..256
-    rank[n] = 0; // sentinel: uniquely smallest
-
-    let sa = new Array(m);
-    for (let i = 0; i < m; i++) sa[i] = i;
-    sa = _countingSortByKey(sa, rank, 257);
-
-    let cls = new Array(m);
-    cls[sa[0]] = 0;
-    for (let i = 1; i < m; i++) cls[sa[i]] = cls[sa[i - 1]] + (rank[sa[i]] !== rank[sa[i - 1]] ? 1 : 0);
-    let classCount = cls[sa[m - 1]] + 1;
-
-    for (let k = 1; classCount < m; k *= 2) {
-      const key2 = new Array(m);
-      for (let i = 0; i < m; i++) key2[i] = cls[(i + k) % m];
-
-      sa = _countingSortByKey(sa, key2, classCount);
-      sa = _countingSortByKey(sa, cls, classCount);
-
-      const newCls = new Array(m);
-      newCls[sa[0]] = 0;
-      for (let i = 1; i < m; i++) {
-        const prev = sa[i - 1], cur = sa[i];
-        const same = cls[prev] === cls[cur] && key2[prev] === key2[cur];
-        newCls[cur] = newCls[prev] + (same ? 0 : 1);
+  function _bwtInsertionSort(arr, lo, hi, cmp) {
+    for (let i = lo; i < hi; i++) {
+      let j = i;
+      const t = arr[i + 1];
+      while (j >= lo && cmp(t, arr[j]) < 0) {
+        arr[j + 1] = arr[j];
+        j--;
       }
-      cls = newCls;
-      classCount = cls[sa[m - 1]] + 1;
-      if (classCount === m) break;
+      arr[j + 1] = t;
+    }
+  }
+
+  function _bwtDownHeap(arr, i, n, lo, cmp) {
+    const d = arr[lo + i - 1];
+    let child;
+    while (i <= Math.floor(n / 2)) {
+      child = 2 * i;
+      if (child < n && cmp(arr[lo + child - 1], arr[lo + child]) < 0) child++;
+      if (!(cmp(d, arr[lo + child - 1]) < 0)) break;
+      arr[lo + i - 1] = arr[lo + child - 1];
+      i = child;
+    }
+    arr[lo + i - 1] = d;
+  }
+
+  function _bwtHeapSort(arr, lo, hi, cmp) {
+    const n = hi - lo + 1;
+    for (let i = Math.floor(n / 2); i >= 1; i--) _bwtDownHeap(arr, i, n, lo, cmp);
+    for (let i = n; i > 1; i--) {
+      _bwtSwap(arr, lo, lo + i - 1);
+      _bwtDownHeap(arr, 1, i - 1, lo, cmp);
+    }
+  }
+
+  function _bwtPickPivotAndPartition(arr, lo, hi, cmp) {
+    const mid = lo + Math.floor((hi - lo) / 2);
+
+    _bwtSwapIfGreater(arr, cmp, lo, mid);
+    _bwtSwapIfGreater(arr, cmp, lo, hi);
+    _bwtSwapIfGreater(arr, cmp, mid, hi);
+
+    const pivot = arr[mid];
+    _bwtSwap(arr, mid, hi - 1);
+    let left = lo, right = hi - 1;
+
+    while (left < right) {
+      do { left++; } while (cmp(arr[left], pivot) < 0);
+      do { right--; } while (cmp(pivot, arr[right]) < 0);
+
+      if (left >= right) break;
+      _bwtSwap(arr, left, right);
+    }
+
+    _bwtSwap(arr, left, hi - 1);
+    return left;
+  }
+
+  function _bwtIntroSort(arr, lo, hi, depthLimit, cmp) {
+    while (hi > lo) {
+      const partitionSize = hi - lo + 1;
+      if (partitionSize <= 16) {
+        if (partitionSize === 1) return;
+        if (partitionSize === 2) { _bwtSwapIfGreater(arr, cmp, lo, hi); return; }
+        if (partitionSize === 3) {
+          _bwtSwapIfGreater(arr, cmp, lo, hi - 1);
+          _bwtSwapIfGreater(arr, cmp, lo, hi);
+          _bwtSwapIfGreater(arr, cmp, hi - 1, hi);
+          return;
+        }
+        _bwtInsertionSort(arr, lo, hi, cmp);
+        return;
+      }
+
+      if (depthLimit === 0) {
+        _bwtHeapSort(arr, lo, hi, cmp);
+        return;
+      }
+      depthLimit--;
+
+      const p = _bwtPickPivotAndPartition(arr, lo, hi, cmp);
+      _bwtIntroSort(arr, p + 1, hi, depthLimit, cmp);
+      hi = p - 1;
+    }
+  }
+
+  function _bwtFloorLog2(n) {
+    let r = 0, v = n;
+    while (v > 1) { v = Math.floor(v / 2); r++; }
+    return r;
+  }
+
+  // Faithful port of System.Array.Sort(T[], Comparison<T>) - .NET's
+  // introspective sort. Required (not just "a" correct sort) because it is
+  // unstable, and its specific tie-breaking behavior on repeated rotations
+  // is part of what CompressionWorkbench's BWT output byte-for-byte depends
+  // on for any input with repeated substrings.
+  function _bwtIntrospectiveSort(arr, cmp) {
+    const n = arr.length;
+    if (n > 1) _bwtIntroSort(arr, 0, n - 1, 2 * (_bwtFloorLog2(n) + 1), cmp);
+  }
+
+  // Sorts the n cyclic rotations of data via prefix-doubling, returning the
+  // rotation start positions in sorted order. Matches CompressionWorkbench's
+  // BurrowsWheelerTransform.BuildRotationSort exactly.
+  function _buildRotationSort(data, length) {
+    const sa = new Array(length);
+    const rank = new Array(length);
+    const tmp = new Array(length);
+
+    for (let i = 0; i < length; i++) { sa[i] = i; rank[i] = data[i]; }
+
+    // First pass (gap=1): forward-stable counting sort on the 16-bit key
+    // (data[i], data[(i+1) % length]), avoiding a comparison sort for the
+    // common case where most rotations already differ in their first 2 bytes.
+    {
+      const bucketCounts = new Array(65536).fill(0);
+      for (let i = 0; i < length; i++) {
+        const key = OpCodes.Or32(OpCodes.Shl32(data[i], 8), data[(i + 1) % length]);
+        bucketCounts[key]++;
+      }
+      let running = 0;
+      for (let i = 0; i < 65536; i++) { const c = bucketCounts[i]; bucketCounts[i] = running; running += c; }
+      for (let i = 0; i < length; i++) {
+        const key = OpCodes.Or32(OpCodes.Shl32(data[i], 8), data[(i + 1) % length]);
+        sa[bucketCounts[key]++] = i;
+      }
+
+      tmp[sa[0]] = 0;
+      for (let i = 1; i < length; i++) {
+        tmp[sa[i]] = tmp[sa[i - 1]];
+        const prevSecond = data[(sa[i - 1] + 1) % length];
+        const curSecond = data[(sa[i] + 1) % length];
+        if (data[sa[i]] !== data[sa[i - 1]] || curSecond !== prevSecond) tmp[sa[i]]++;
+      }
+      for (let i = 0; i < length; i++) rank[i] = tmp[i];
+
+      if (rank[sa[length - 1]] === length - 1) return sa;
+    }
+
+    // Subsequent passes: prefix-doubling with .NET's introspective sort as
+    // the comparator-based tie-breaker.
+    for (let gap = 2; gap < length; gap *= 2) {
+      const g = gap, len = length, r = rank;
+      _bwtIntrospectiveSort(sa, (a, b) => {
+        if (r[a] !== r[b]) return r[a] - r[b];
+        return r[(a + g) % len] - r[(b + g) % len];
+      });
+
+      tmp[sa[0]] = 0;
+      for (let i = 1; i < length; i++) {
+        tmp[sa[i]] = tmp[sa[i - 1]];
+        const prevSecond = rank[(sa[i - 1] + g) % length];
+        const curSecond = rank[(sa[i] + g) % length];
+        if (rank[sa[i]] !== rank[sa[i - 1]] || curSecond !== prevSecond) tmp[sa[i]]++;
+      }
+      for (let i = 0; i < length; i++) rank[i] = tmp[i];
+
+      if (rank[sa[length - 1]] === length - 1) break;
     }
 
     return sa;
   }
 
+  // Forward BWT: returns the transformed (last-column) bytes and the primary
+  // index (the row, in sorted rotation order, starting at position 0).
   function bwtEncode(data) {
     const n = data.length;
-    if (n === 0) return { primaryIndex: 0, lastColumn: [] };
-    const m = n + 1;
-    const sa = _buildRotationSuffixArray(data);
+    if (n === 0) return { primaryIndex: 0, transformed: [] };
 
-    let primaryIndex = -1;
-    const lastColumn = [];
-    for (let i = 0; i < m; i++) {
+    const sa = _buildRotationSort(data, n);
+    const transformed = new Array(n);
+    let primaryIndex = 0;
+
+    for (let i = 0; i < n; i++) {
       const pos = sa[i];
-      if (pos === 0) { primaryIndex = i; continue; } // sentinel row, omitted
-      lastColumn.push(data[pos - 1]);
+      if (pos === 0) { primaryIndex = i; transformed[i] = data[n - 1]; }
+      else transformed[i] = data[pos - 1];
     }
-    return { primaryIndex, lastColumn };
+
+    return { primaryIndex, transformed };
   }
 
-  function bwtDecode(primaryIndex, lastColumn) {
-    const n = lastColumn.length;
+  // Inverse BWT via LF-mapping reconstruction.
+  function bwtDecode(transformed, primaryIndex) {
+    const n = transformed.length;
     if (n === 0) return [];
-    const m = n + 1;
 
-    // Reinsert the sentinel (symbol 0) at row=primaryIndex; real bytes use
-    // symbol domain 1..256 so the sentinel remains uniquely smallest.
-    const fullL = new Array(m);
-    for (let i = 0, j = 0; i < m; i++) {
-      fullL[i] = (i === primaryIndex) ? 0 : (lastColumn[j++] + 1);
-    }
+    const count = new Array(256).fill(0);
+    for (let i = 0; i < n; i++) count[transformed[i]]++;
 
-    const count = new Array(257).fill(0);
-    for (let i = 0; i < m; i++) count[fullL[i]]++;
-    const C = new Array(257).fill(0);
+    const cumulative = new Array(256).fill(0);
     let sum = 0;
-    for (let s = 0; s < 257; s++) { C[s] = sum; sum += count[s]; }
+    for (let c = 0; c < 256; c++) { cumulative[c] = sum; sum += count[c]; }
 
-    const occRank = new Array(257).fill(0);
-    const T = new Array(m);
-    for (let i = 0; i < m; i++) {
-      const s = fullL[i];
-      T[i] = C[s] + occRank[s];
-      occRank[s]++;
+    const lfMap = new Array(n);
+    const tempCount = cumulative.slice();
+    for (let i = 0; i < n; i++) {
+      lfMap[i] = tempCount[transformed[i]];
+      tempCount[transformed[i]]++;
     }
 
-    const original = new Array(m);
-    let p = primaryIndex;
-    for (let i = m - 1; i >= 0; i--) {
-      original[i] = fullL[p];
-      p = T[p];
-    }
-
-    // Strip the sentinel (symbol 0) and shift real bytes back down by 1.
     const result = new Array(n);
-    let k = 0;
-    for (let i = 0; i < m; i++) {
-      if (original[i] !== 0) result[k++] = original[i] - 1;
+    let idx = primaryIndex;
+    for (let i = n - 1; i >= 0; i--) {
+      result[i] = transformed[idx];
+      idx = lfMap[idx];
     }
+
     return result;
   }
 
@@ -218,42 +325,44 @@
         this.references = [
           new LinkItem("bzip2 Implementation", "https://sourceware.org/bzip2/downloads.html"),
           new LinkItem("Educational BWT Tutorial", "https://web.stanford.edu/class/cs262/notes/lecture12.pdf"),
-          new LinkItem("Suffix Arrays for BWT", "https://web.stanford.edu/class/cs166/lectures/04/Small04.pdf")
+          new LinkItem("CompressionWorkbench BurrowsWheelerTransform (reference implementation)", "https://github.com/Hawkynt")
         ];
 
-        // Test vectors - round-trip tests. Format: [primary_index(4 bytes
-        // BE)][last_column(n bytes)]. The primary index also identifies the
-        // one omitted sentinel row (see the core algorithm comment above).
+        // Test vectors verified against CompressionWorkbench's BB_Bwt
+        // (BurrowsWheelerTransform.Forward/BwtBuildingBlock.Compress), the
+        // authoritative reference this wire format and tie-breaking behavior
+        // is byte-identical to. Format: [primary_index(4 bytes LE)][last
+        // column (n bytes)] - no sentinel byte is stored or reserved.
         this.tests = [
           {
-            text: "Empty data test",
+            text: "Empty data test - still emits the 4-byte primary-index header",
             uri: "Edge case test",
             input: [],
-            expected: [] // Empty input produces empty output
+            expected: [0, 0, 0, 0]
           },
           {
             text: "Single byte test",
             uri: "Minimal transformation test",
             input: [65], // "A"
-            expected: [0,0,0,1,65] // BWT output: [position, transformed_data]
+            expected: [0, 0, 0, 0, 65]
           },
           {
             text: "Regression: all 256 byte values",
-            uri: "Regression test for primary-index / sentinel-row reconstruction bug",
+            uri: "Regression test for sentinel-free cyclic rotation sort",
             input: Array.from({length: 256}, (_, i) => i),
-            expected: [0,0,0,1,255].concat(Array.from({length: 255}, (_, i) => i))
+            expected: [0, 0, 0, 0, 255].concat(Array.from({length: 255}, (_, i) => i))
           },
           {
-            text: "Regression: pseudo-random data, length 91",
+            text: "Regression: pseudo-random data, length 91 - exercises the gap-doubling tie-break passes",
             uri: "Regression test - non-repeating pseudo-random input",
             input: [0,0,64,0,64,0,64,0,64,0,57,128,192,0,0,0,64,128,0,64,0,64,0,0,0,64,0,0,0,0,64,0,0,64,0,0,64,0,0,64,128,0,0,57,128,0,0,0,0,64,0,0,0,64,0,0,0,64,128,128,0,0,64,0,64,0,0,0,64,0,0,0,0,0,0,0,64,128,184,128,192,0,64,128,0,0,0,64,0,0,64],
-            expected: [0,0,0,27,64,64,0,0,128,64,0,64,64,0,64,128,0,192,64,0,128,64,0,0,0,0,0,0,64,64,128,64,0,0,0,0,64,0,0,0,64,64,0,0,0,0,0,0,64,0,128,64,64,0,192,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,57,64,64,128,64,64,64,57,184,128,128,128]
+            expected: [26,0,0,0,64,0,0,128,64,0,64,64,0,64,0,128,192,64,0,128,0,0,0,0,0,0,64,64,64,128,64,64,0,0,0,0,64,0,0,64,64,0,0,0,0,0,0,0,64,0,128,64,64,0,192,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,57,64,64,128,64,64,64,57,184,128,128,128]
           },
           {
-            text: "Regression: alternating pattern, length 83",
+            text: "Regression: alternating pattern, length 83 - heavily tied rotations, exercises the unstable-sort tie-break",
             uri: "Regression test - repetitive alternating input",
             input: Array.from({length: 83}, (_, i) => (i % 2 ? 0x62 : 0x61)),
-            expected: [0,0,0,42,97,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97]
+            expected: [41,0,0,0,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97]
           }
         ];
       }
@@ -276,52 +385,38 @@
       }
 
       Result() {
-        if (this.inputBuffer.length === 0) {
-          return [];
-        }
-
-        if (this.isInverse) {
-          return this._decompress();
-        } else {
-          return this._compress();
-        }
+        const output = this.isInverse ? this._decompress() : this._compress();
+        this.inputBuffer = [];
+        return output;
       }
 
       _compress() {
-        if (this.inputBuffer.length === 0) {
-          return [];
-        }
-
         const data = this.inputBuffer.slice();
-        const { primaryIndex, lastColumn } = bwtEncode(data);
+        const { primaryIndex, transformed } = bwtEncode(data);
 
-        // Output: [primary_index(4 bytes BE)][last_column(n bytes)]
-        const result = OpCodes.Unpack32BE(primaryIndex);
-        for (let i = 0; i < lastColumn.length; i++) result.push(lastColumn[i]);
+        // Output: [primary_index(4 bytes LE)][transformed data(n bytes)] -
+        // emitted even for empty input, matching CompressionWorkbench.
+        const result = OpCodes.Unpack32LE(primaryIndex);
+        for (let i = 0; i < transformed.length; i++) result.push(transformed[i]);
 
-        this.inputBuffer = [];
         return result;
       }
 
       _decompress() {
         if (this.inputBuffer.length < 4) {
-          this.inputBuffer = [];
           return [];
         }
 
-        const originalPosition = OpCodes.Pack32BE(
+        const primaryIndex = OpCodes.Pack32LE(
           this.inputBuffer[0],
           this.inputBuffer[1],
           this.inputBuffer[2],
           this.inputBuffer[3]
         );
 
-        const lastColumn = this.inputBuffer.slice(4);
+        const transformed = this.inputBuffer.slice(4);
 
-        const result = bwtDecode(originalPosition, lastColumn);
-
-        this.inputBuffer = [];
-        return result;
+        return bwtDecode(transformed, primaryIndex);
       }
     }
 
