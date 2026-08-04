@@ -83,25 +83,23 @@
           new LinkItem("Data Compression Book", "https://www.data-compression.com/huffman.html")
         ];
 
-        // Test vectors with actual compressed outputs
+        // Test vectors with actual compressed outputs.
+        // Wire format (byte-identical to CompressionWorkbench's BB_Huffman):
+        //   4 bytes original length (little-endian)
+        //   256 bytes canonical code length per symbol (0 = unused)
+        //   MSB-first bit-packed canonical Huffman codes, zero-padded to a byte
         this.tests = [
           {
-            text: "Simple repetitive text",
-            uri: "https://en.wikipedia.org/wiki/Huffman_coding",
-            input: [65, 65, 65, 66, 66, 67], // "AAABBC"
-            expected: [2,3,65,3,0,66,2,0,67,1,0,9,0,0,0,31,0] // Compressed output
+            text: "Empty input",
+            uri: "https://csrc.nist.gov/",
+            input: [],
+            expected: [0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
           },
           {
-            text: "Single character repeated",
-            uri: "Educational test",
-            input: [65, 65, 65], // "AAA"
-            expected: [1,65,3,0] // Compressed output (special single-char format)
-          },
-          {
-            text: "All different characters",
-            uri: "Worst case test",
-            input: [65, 66, 67, 68], // "ABCD"
-            expected: [2,4,65,1,0,66,1,0,67,1,0,68,1,0,8,0,0,0,27] // Compressed output
+            text: "Single byte 0x41",
+            uri: "https://csrc.nist.gov/",
+            input: [0x41],
+            expected: [1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,128]
           }
         ];
       }
@@ -111,17 +109,91 @@
       }
     }
 
-    // Huffman tree node class
+    // Huffman tree node, mirroring CompressionWorkbench's HuffmanNode:
+    // symbol >= 0 for leaves, -1 for internal nodes, -2 for the dummy sibling
+    // used to complete a single-symbol tree. Ties in the min-heap are broken
+    // by symbol, matching CompareTo in the reference implementation.
     class HuffmanNode {
-      constructor(char, frequency, left = null, right = null) {
-        this.char = char;
-        this.frequency = frequency;
+      constructor(symbol, frequency, left = null, right = null) {
+        this.symbol = symbol;
         this.left = left;
         this.right = right;
+        this.frequency = left === null ? frequency : left.frequency + right.frequency;
       }
 
       isLeaf() {
         return this.left === null && this.right === null;
+      }
+
+      compareTo(other) {
+        const cmp = this.frequency - other.frequency;
+        return cmp !== 0 ? cmp : this.symbol - other.symbol;
+      }
+    }
+
+    // Binary min-heap, structurally identical to CompressionWorkbench's
+    // MinHeap<T> (array-backed, same sift-up/sift-down comparisons), so that
+    // tie-breaking among equal-frequency internal nodes matches exactly.
+    class MinHeap {
+      constructor() {
+        this._items = [];
+      }
+
+      get count() {
+        return this._items.length;
+      }
+
+      insert(item) {
+        this._items.push(item);
+        this._siftUp(this._items.length - 1);
+      }
+
+      extractMin() {
+        const items = this._items;
+        const min = items[0];
+        const last = items.length - 1;
+        items[0] = items[last];
+        items.pop();
+        if (items.length > 0)
+          this._siftDown(0);
+        return min;
+      }
+
+      _siftUp(index) {
+        const items = this._items;
+        while (index > 0) {
+          const parent = OpCodes.Shr32(index - 1, 1);
+          if (items[index].compareTo(items[parent]) < 0) {
+            const tmp = items[index];
+            items[index] = items[parent];
+            items[parent] = tmp;
+            index = parent;
+          } else
+            break;
+        }
+      }
+
+      _siftDown(index) {
+        const items = this._items;
+        const count = items.length;
+        for (;;) {
+          const left = 2 * index + 1;
+          const right = 2 * index + 2;
+          let smallest = index;
+
+          if (left < count && items[left].compareTo(items[smallest]) < 0)
+            smallest = left;
+          if (right < count && items[right].compareTo(items[smallest]) < 0)
+            smallest = right;
+
+          if (smallest === index)
+            break;
+
+          const tmp = items[index];
+          items[index] = items[smallest];
+          items[smallest] = tmp;
+          index = smallest;
+        }
       }
     }
 
@@ -138,197 +210,259 @@
       }
 
       Result() {
-        if (this.inputBuffer.length === 0) {
-          return [];
+        if (this.isInverse) {
+          if (this.inputBuffer.length === 0) return [];
+          return this._decompress();
         }
 
-        if (this.isInverse) {
-          return this._decompress();
-        } else {
-          return this._compress();
-        }
+        // Even empty input produces a fixed 260-byte header (matches the
+        // C# reference, which always writes the length + code-length table).
+        return this._compress();
       }
 
       _compress() {
-        if (this.inputBuffer.length === 0) {
-          return [0]; // Empty data marker
+        const data = this.inputBuffer;
+
+        // Build frequency table over all 256 symbols
+        const freqs = new Array(256).fill(0);
+        for (const byte of data)
+          ++freqs[byte];
+
+        // Ensure at least 2 symbols so a tree can be built
+        let nonZero = 0;
+        for (const f of freqs) if (f > 0) ++nonZero;
+        if (nonZero < 2) {
+          for (let i = 0; i < 256; ++i) {
+            if (freqs[i] === 0) {
+              freqs[i] = 1;
+              break;
+            }
+          }
         }
 
-        // Build frequency table
-        const frequencies = {};
-        for (const byte of this.inputBuffer) {
-          frequencies[byte] = (frequencies[byte] || 0) + 1;
+        const root = this._buildHuffmanTree(freqs);
+        const codeLengths = this._getCodeLengths(root, 256);
+        this._limitCodeLengths(codeLengths, 15);
+        const table = this._buildCanonicalTable(codeLengths);
+
+        const result = [];
+
+        // Header: 4-byte LE original size, then 256 bytes of code lengths
+        result.push(...OpCodes.Unpack32LE(data.length));
+        for (let i = 0; i < 256; ++i)
+          result.push(codeLengths[i]);
+
+        // Encode symbols, MSB-first, into a growing bit buffer
+        let bitBuffer = 0;
+        let bitsInBuffer = 0;
+        for (const byte of data) {
+          const code = table.code[byte];
+          const length = table.length[byte];
+          for (let i = length - 1; i >= 0; --i) {
+            const bit = OpCodes.AndN(OpCodes.Shr32(code, i), 1);
+            bitBuffer = OpCodes.OrN(bitBuffer, OpCodes.Shl32(bit, 7 - bitsInBuffer));
+            ++bitsInBuffer;
+            if (bitsInBuffer === 8) {
+              result.push(bitBuffer);
+              bitBuffer = 0;
+              bitsInBuffer = 0;
+            }
+          }
         }
-
-        // Handle special case: single unique character
-        const uniqueChars = Object.keys(frequencies);
-        if (uniqueChars.length === 1) {
-          const char = parseInt(uniqueChars[0]);
-          const count = frequencies[char];
-          this.inputBuffer = [];
-          return [1, char, OpCodes.AndN(count, 0xFF), OpCodes.AndN(OpCodes.Shr32(count, 8), 0xFF)]; // Special single-char format
-        }
-
-        // Build Huffman tree
-        const tree = this._buildHuffmanTree(frequencies);
-
-        // Generate codes
-        const codes = {};
-        this._generateCodes(tree, '', codes);
-
-        // Encode data
-        let bitString = '';
-        for (const byte of this.inputBuffer) {
-          bitString += codes[byte];
-        }
-
-        // Pack the compressed data
-        const result = this._packCompressedData(frequencies, bitString);
+        if (bitsInBuffer > 0)
+          result.push(bitBuffer);
 
         this.inputBuffer = [];
         return result;
       }
 
       _decompress() {
-        if (this.inputBuffer.length === 0 || this.inputBuffer[0] === 0) {
-          this.inputBuffer = [];
-          return []; // Empty data
+        const data = this.inputBuffer;
+
+        const originalSize = OpCodes.Pack32LE(data[0], data[1], data[2], data[3]);
+        const codeLengths = new Array(256);
+        for (let i = 0; i < 256; ++i)
+          codeLengths[i] = data[4 + i];
+
+        const table = this._buildCanonicalTable(codeLengths);
+        const maxCodeLength = table.maxCodeLength;
+
+        // Build a decode trie from the canonical codes (MSB-first)
+        const trieRoot = { symbol: -1, zero: null, one: null };
+        for (let symbol = 0; symbol < 256; ++symbol) {
+          const length = codeLengths[symbol];
+          if (length <= 0) continue;
+          let node = trieRoot;
+          const code = table.code[symbol];
+          for (let i = length - 1; i >= 0; --i) {
+            const bit = OpCodes.AndN(OpCodes.Shr32(code, i), 1);
+            if (bit === 0) {
+              if (node.zero === null) node.zero = { symbol: -1, zero: null, one: null };
+              node = node.zero;
+            } else {
+              if (node.one === null) node.one = { symbol: -1, zero: null, one: null };
+              node = node.one;
+            }
+          }
+          node.symbol = symbol;
         }
 
-        // Handle special single-char case
-        if (this.inputBuffer[0] === 1) {
-          const char = this.inputBuffer[1];
-          const count = OpCodes.OrN(this.inputBuffer[2], OpCodes.Shl32(this.inputBuffer[3], 8));
-          this.inputBuffer = [];
-          return new Array(count).fill(char);
-        }
+        let bytePos = 260;
+        let bitPos = 0; // next bit index (0 = MSB) within data[bytePos]
 
-        // Unpack compressed data
-        const { frequencies, bitString } = this._unpackCompressedData(this.inputBuffer);
-
-        // Rebuild tree
-        const tree = this._buildHuffmanTree(frequencies);
-
-        // Decode bit string
         const result = [];
-        let currentNode = tree;
-
-        for (const bit of bitString) {
-          if (bit === '0') {
-            currentNode = currentNode.left;
-          } else {
-            currentNode = currentNode.right;
+        for (let i = 0; i < originalSize; ++i) {
+          let node = trieRoot;
+          while (node.symbol < 0) {
+            const currentByte = data[bytePos];
+            const bit = OpCodes.AndN(OpCodes.Shr32(currentByte, 7 - bitPos), 1);
+            node = bit === 0 ? node.zero : node.one;
+            ++bitPos;
+            if (bitPos === 8) {
+              bitPos = 0;
+              ++bytePos;
+            }
           }
-
-          if (currentNode.isLeaf()) {
-            result.push(currentNode.char);
-            currentNode = tree;
-          }
+          result.push(node.symbol);
         }
 
         this.inputBuffer = [];
         return result;
       }
 
+      // Mirrors HuffmanTree.BuildFromFrequencies
       _buildHuffmanTree(frequencies) {
-        // Create priority queue (min-heap) of nodes
-        const heap = [];
+        const heap = new MinHeap();
+        for (let i = 0; i < frequencies.length; ++i)
+          if (frequencies[i] > 0)
+            heap.insert(new HuffmanNode(i, frequencies[i]));
 
-        for (const [char, freq] of Object.entries(frequencies)) {
-          heap.push(new HuffmanNode(parseInt(char), freq));
+        if (heap.count === 0)
+          throw new Error('At least one symbol must have a non-zero frequency.');
+
+        if (heap.count === 1) {
+          const single = heap.extractMin();
+          return new HuffmanNode(-1, 0, single, new HuffmanNode(-2, 0));
         }
 
-        // Sort by frequency (min-heap behavior)
-        heap.sort((a, b) => a.frequency - b.frequency);
+        while (heap.count > 1) {
+          const left = heap.extractMin();
+          const right = heap.extractMin();
+          heap.insert(new HuffmanNode(-1, 0, left, right));
+        }
 
-        // Build tree
-        while (heap.length > 1) {
-          const left = heap.shift();
-          const right = heap.shift();
+        return heap.extractMin();
+      }
 
-          const merged = new HuffmanNode(null, left.frequency + right.frequency, left, right);
-
-          // Insert back in sorted order
-          let insertIndex = heap.findIndex(node => node.frequency > merged.frequency);
-          if (insertIndex === -1) {
-            heap.push(merged);
-          } else {
-            heap.splice(insertIndex, 0, merged);
+      // Mirrors HuffmanTree.GetCodeLengths / AssignLengths
+      _getCodeLengths(root, maxSymbol) {
+        const lengths = new Array(maxSymbol).fill(0);
+        const assign = (node, depth) => {
+          if (node.isLeaf()) {
+            if (node.symbol >= 0 && node.symbol < lengths.length)
+              lengths[node.symbol] = depth;
+            return;
           }
-        }
-
-        return heap[0];
+          if (node.left !== null) assign(node.left, depth + 1);
+          if (node.right !== null) assign(node.right, depth + 1);
+        };
+        assign(root, 0);
+        return lengths;
       }
 
-      _generateCodes(node, code, codes) {
-        if (node.isLeaf()) {
-          codes[node.char] = code || '0'; // Handle single character case
-          return;
+      // Mirrors HuffmanTree.LimitCodeLengths (package-merge-style redistribution)
+      _limitCodeLengths(codeLengths, maxLength) {
+        let needsAdjustment = false;
+        for (const len of codeLengths)
+          if (len > maxLength) { needsAdjustment = true; break; }
+        if (!needsAdjustment) return;
+
+        const symbols = [];
+        for (let i = 0; i < codeLengths.length; ++i)
+          if (codeLengths[i] > 0)
+            symbols.push({ symbol: i, length: codeLengths[i] });
+
+        for (let i = 0; i < symbols.length; ++i)
+          if (symbols[i].length > maxLength)
+            symbols[i].length = maxLength;
+
+        const kraftMax = OpCodes.Shl32(1, maxLength);
+        for (;;) {
+          let kraftSum = 0;
+          for (const s of symbols)
+            kraftSum += OpCodes.Shl32(1, maxLength - s.length);
+          if (kraftSum <= kraftMax) break;
+
+          let shortestIdx = -1;
+          let shortestLen = Infinity;
+          for (let i = 0; i < symbols.length; ++i)
+            if (symbols[i].length < maxLength && symbols[i].length < shortestLen) {
+              shortestLen = symbols[i].length;
+              shortestIdx = i;
+            }
+          if (shortestIdx < 0) break;
+          ++symbols[shortestIdx].length;
         }
 
-        this._generateCodes(node.left, code + '0', codes);
-        this._generateCodes(node.right, code + '1', codes);
+        for (;;) {
+          let kraftSum = 0;
+          for (const s of symbols)
+            kraftSum += OpCodes.Shl32(1, maxLength - s.length);
+          const excess = kraftMax - kraftSum;
+          if (excess <= 0) break;
+
+          let longestIdx = -1;
+          let longestLen = 0;
+          for (let i = 0; i < symbols.length; ++i)
+            if (symbols[i].length > longestLen) {
+              longestLen = symbols[i].length;
+              longestIdx = i;
+            }
+          if (longestIdx < 0 || longestLen <= 1) break;
+
+          const added = OpCodes.Shl32(1, maxLength - longestLen);
+          if (added <= excess)
+            --symbols[longestIdx].length;
+          else
+            break;
+        }
+
+        codeLengths.fill(0);
+        for (const s of symbols)
+          codeLengths[s.symbol] = s.length;
       }
 
-      _packCompressedData(frequencies, bitString) {
-        const result = [];
+      // Mirrors CanonicalCodeAssigner.ComputeNextCodes + CanonicalHuffman's code assignment
+      _buildCanonicalTable(codeLengths) {
+        let maxCodeLength = 0;
+        for (const len of codeLengths)
+          if (len > maxCodeLength) maxCodeLength = len;
 
-        // Format: [header_marker, frequency_count, frequencies..., bit_count, bits...]
-        result.push(2); // Multi-char format marker
+        const code = new Array(256).fill(0);
+        const length = new Array(256).fill(0);
+        if (maxCodeLength === 0)
+          return { code, length, maxCodeLength };
 
-        // Store frequency table
-        const chars = Object.keys(frequencies);
-        result.push(chars.length);
+        const blCount = new Array(maxCodeLength + 1).fill(0);
+        for (const len of codeLengths)
+          if (len > 0) ++blCount[len];
 
-        for (const char of chars) {
-          result.push(parseInt(char));
-          const freq = frequencies[char];
-          result.push(OpCodes.AndN(freq, 0xFF));
-          result.push(OpCodes.AndN(OpCodes.Shr32(freq, 8), 0xFF));
+        const nextCode = new Array(maxCodeLength + 1).fill(0);
+        let c = 0;
+        for (let bits = 1; bits <= maxCodeLength; ++bits) {
+          c = OpCodes.Shl32(c + blCount[bits - 1], 1);
+          nextCode[bits] = c;
         }
 
-        // Store bit string length
-        const bitCount = bitString.length;
-        result.push(OpCodes.AndN(bitCount, 0xFF));
-        result.push(OpCodes.AndN(OpCodes.Shr32(bitCount, 8), 0xFF));
-        result.push(OpCodes.AndN(OpCodes.Shr32(bitCount, 16), 0xFF));
-        result.push(OpCodes.AndN(OpCodes.Shr32(bitCount, 24), 0xFF));
-
-        // Pack bits into bytes
-        for (let i = 0; i < bitString.length; i += 8) {
-          const byteStr = bitString.substr(i, 8).padEnd(8, '0');
-          result.push(parseInt(byteStr, 2));
+        for (let symbol = 0; symbol < 256; ++symbol) {
+          const len = codeLengths[symbol];
+          if (len <= 0) continue;
+          code[symbol] = nextCode[len];
+          length[symbol] = len;
+          ++nextCode[len];
         }
 
-        return result;
-      }
-
-      _unpackCompressedData(data) {
-        let pos = 1; // Skip marker
-
-        // Read frequency table
-        const charCount = data[pos++];
-        const frequencies = {};
-
-        for (let i = 0; i < charCount; i++) {
-          const char = data[pos++];
-          const freq = OpCodes.OrN(data[pos++], OpCodes.Shl32(data[pos++], 8));
-          frequencies[char] = freq;
-        }
-
-        // Read bit count
-        const bitCount = OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(data[pos++], OpCodes.Shl32(data[pos++], 8)), OpCodes.Shl32(data[pos++], 16)), OpCodes.Shl32(data[pos++], 24));
-
-        // Read and convert bytes to bit string
-        let bitString = '';
-        for (let i = pos; i < data.length; i++) {
-          bitString += data[i].toString(2).padStart(8, '0');
-        }
-
-        // Trim to actual bit count
-        bitString = bitString.substr(0, bitCount);
-
-        return { frequencies, bitString };
+        return { code, length, maxCodeLength };
       }
     }
 
