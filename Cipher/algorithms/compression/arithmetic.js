@@ -88,6 +88,24 @@
           [], // Empty output
           "Empty data round-trip test",
           "Educational test vector"
+        ),
+        new TestCase(
+          Array.from({ length: 256 }, (_, i) => i), // All 256 distinct byte values
+          [],
+          "All byte values 0-255 round-trip test",
+          "Regression test for decoder/model desync"
+        ),
+        new TestCase(
+          [243, 204, 191, 171, 157, 143, 229, 84, 239, 176, 155, 208, 176, 245, 186, 148, 128, 53, 183, 104, 65, 66, 101, 148, 122, 107, 131, 193, 65, 79, 229, 58, 50, 25, 21, 210, 49, 167, 70, 138, 6, 12, 191, 33, 67, 124, 161, 122, 65, 2, 92, 207, 37, 32, 136, 248, 127, 146, 78, 207, 243, 126, 146, 223, 64, 161, 46, 129, 181, 68, 211, 17, 148, 194, 96, 50, 211, 110, 202, 53, 74, 159, 228, 247, 145, 4, 228, 234, 16, 151, 188, 109, 81, 80, 49, 126, 162, 199, 101, 196, 235, 27, 109, 184, 20, 77, 129, 64, 148, 182, 146, 41, 134, 77, 32, 59, 197, 71, 158, 152, 231, 94, 231, 211, 103, 220, 144, 238, 137, 222, 237, 151, 177, 197, 92, 12, 97, 179, 107, 212, 167, 137, 88, 210, 78, 173, 228, 175, 149, 232, 107, 45, 28, 202, 239, 242, 91, 73, 66, 24, 35, 92, 185, 245, 62, 213, 13, 182, 15, 242, 254, 12, 86, 213, 178, 168, 213, 115, 176, 57, 95, 201, 101, 121, 187, 228, 195, 32, 44, 252, 179, 230, 150, 179, 164, 143, 191, 97, 136, 46, 25, 154, 214, 6, 155, 31, 129, 253, 3, 119, 59, 68, 187, 102, 43, 112, 143, 202, 179, 185, 32, 38, 37, 249, 29, 52, 47, 246, 60, 190, 166, 152, 5, 144, 25, 213, 107, 191, 85, 158, 64, 228, 200, 90, 18, 120, 76, 172, 148, 46, 222, 67, 185, 14, 135, 164, 72, 186, 30, 245, 198, 193, 63, 169, 164, 83, 85, 104, 24, 107, 159, 230, 18, 235, 247, 15, 205, 167, 128, 28, 145, 40, 49, 185, 0, 198, 197, 208, 211, 50, 157, 56, 249, 159, 97, 19, 92, 178, 139, 196], // Pseudo-random (splitmix32) 300-byte sample
+          [],
+          "Pseudo-random data round-trip test",
+          "Regression test for decoder/model desync"
+        ),
+        new TestCase(
+          Array.from({ length: 128 }, (_, i) => i % 2 ? 0x55 : 0xAA), // Alternating 0xAA/0x55
+          [],
+          "Alternating pattern round-trip test",
+          "Regression test for decoder/model desync"
         )
       ];
 
@@ -133,7 +151,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
 
     }
 
@@ -167,7 +185,7 @@
         let byte = 0;
         for (let j = 0; j < 8 && i + j < compressedBits.length; j++) {
           if (compressedBits[i + j]) {
-            byte = OpCodes.SetBit(byte, 7 - j);
+            byte = OpCodes.SetBit(byte, 7 - j, true);
           }
         }
         output.push(byte);
@@ -220,8 +238,10 @@
     encode(data) {
       if (data.length === 0) return [];
 
-      // Build frequency table
-      this._buildFrequencyTable(data);
+      // Adaptive order-0 model: both encoder and decoder start from the
+      // same uniform table and update it identically after every symbol,
+      // so no frequency header needs to be transmitted.
+      this._resetModel();
 
       // Reset encoder state
       this.low = 0;
@@ -229,13 +249,15 @@
       this.followBits = 0;
       this.bits = [];
 
-      // Encode each symbol
+      // Encode each symbol, updating the shared model after each one
       for (const byte of data) {
         this._encodeSymbol(byte);
+        this._updateModel(byte);
       }
 
       // Encode EOF symbol
       this._encodeSymbol(256);
+      this._updateModel(256);
 
       // Flush remaining bits
       this._flush();
@@ -243,15 +265,14 @@
       return this.bits;
     }
 
-    _buildFrequencyTable(data) {
+    _resetModel() {
       this.frequencies = new Array(257).fill(1); // 256 bytes + EOF
       this.totalFreq = 257;
+    }
 
-      // Count frequencies
-      for (const byte of data) {
-        this.frequencies[byte]++;
-        this.totalFreq++;
-      }
+    _updateModel(symbol) {
+      this.frequencies[symbol]++;
+      this.totalFreq++;
     }
 
     _encodeSymbol(symbol) {
@@ -318,79 +339,76 @@
       this.QUARTER = 0x40000000;
       this.HALF = 0x80000000;
       this.THREE_QUARTERS = 0xC0000000;
+      this.bits = null;
+      this.bitIndex = 0;
     }
 
     decode(bits) {
       if (bits.length === 0) return [];
 
-      // First pass: decode to get symbol sequence with frequencies
-      const symbols = this._decodeSymbols(bits);
+      // Same adaptive order-0 model as the encoder: identical uniform
+      // starting table, updated identically after every symbol so no
+      // frequency header needs to be transmitted.
+      this._resetModel();
 
-      if (symbols.length === 0) return [];
-
-      // Build frequency table from symbols (excluding EOF)
-      const data = symbols.slice(0, -1); // Remove EOF
-      this._buildFrequencyTable(data);
-
-      // Return the decoded data
-      return data;
-    }
-
-    _decodeSymbols(bits) {
-      // Initialize decoder
       this.low = 0;
       this.high = 0xFFFFFFFF;
       this.value = 0;
+      this.bits = bits;
+      this.bitIndex = 0;
 
-      // Read initial value
-      for (let i = 0; i < this.BITS && i < bits.length; i++) {
-        this.value = OpCodes.OrN(OpCodes.Shl32(this.value, 1), bits[i]);
+      // Read initial value (32 bits; missing trailing bits act as 0)
+      for (let i = 0; i < this.BITS; i++) {
+        const bit = this.bitIndex < bits.length ? bits[this.bitIndex] : 0;
+        this.value = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(this.value, 1), bit));
+        this.bitIndex++;
       }
 
-      let bitIndex = this.BITS;
       const symbols = [];
-
-      // First pass with uniform distribution
-      this.frequencies = new Array(257).fill(1);
-      this.totalFreq = 257;
-
       while (true) {
-        const symbol = this._decodeSymbol(bits, bitIndex);
+        const symbol = this._decodeSymbol();
+        this._updateModel(symbol);
         if (symbol === 256) break; // EOF
-
         symbols.push(symbol);
-        bitIndex = this._updateDecoder(bits, bitIndex);
-
-        if (bitIndex >= bits.length) break;
       }
 
-      return symbols.concat([256]); // Add EOF back
+      return symbols;
     }
 
-    _decodeSymbol(bits, bitIndex) {
+    _resetModel() {
+      this.frequencies = new Array(257).fill(1);
+      this.totalFreq = 257;
+    }
+
+    _updateModel(symbol) {
+      this.frequencies[symbol]++;
+      this.totalFreq++;
+    }
+
+    _decodeSymbol() {
       const range = this.high - this.low + 1;
       const scaled = Math.floor(((this.value - this.low + 1) * this.totalFreq - 1) / range);
 
-      // Find symbol with cumulative frequency <= scaled
+      // Find the symbol whose cumulative frequency range covers `scaled`
       let cumFreq = 0;
       let symbol = 0;
-
       for (symbol = 0; symbol < 257; symbol++) {
         if (cumFreq + this.frequencies[symbol] > scaled) break;
         cumFreq += this.frequencies[symbol];
       }
 
-      return symbol;
-    }
+      const symbolFreq = this.frequencies[symbol];
 
-    _updateDecoder(bits, bitIndex) {
-      // This is a simplified decoder that works with the encoder
-      // In a full implementation, we'd need to track the exact frequency model
-      let newBitIndex = bitIndex;
+      // Narrow [low, high] to this symbol's sub-interval -- this step was
+      // previously missing, which is why the decoder never tracked the
+      // encoder's interval and desynced after the very first symbol.
+      this.high = this.low + Math.floor((range * (cumFreq + symbolFreq)) / this.totalFreq) - 1;
+      this.low = this.low + Math.floor((range * cumFreq) / this.totalFreq);
 
+      // Renormalize low/high/value together, consuming bits as needed
       while (true) {
         if (this.high < this.HALF) {
-          // Do nothing
+          // E1: no-op branch, mirrors encoder's condition
         } else if (this.low >= this.HALF) {
           this.low -= this.HALF;
           this.high -= this.HALF;
@@ -407,23 +425,12 @@
         this.high = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(this.high, 1), 1));
         this.value = OpCodes.ToUint32(OpCodes.Shl32(this.value, 1));
 
-        if (newBitIndex < bits.length) {
-          this.value = OpCodes.OrN(this.value, bits[newBitIndex]);
-          newBitIndex++;
-        }
+        const bit = this.bitIndex < this.bits.length ? this.bits[this.bitIndex] : 0;
+        this.value = OpCodes.ToUint32(OpCodes.OrN(this.value, bit));
+        this.bitIndex++;
       }
 
-      return newBitIndex;
-    }
-
-    _buildFrequencyTable(data) {
-      this.frequencies = new Array(257).fill(1);
-      this.totalFreq = 257;
-
-      for (const byte of data) {
-        this.frequencies[byte]++;
-        this.totalFreq++;
-      }
+      return symbol;
     }
   }
 
