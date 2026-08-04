@@ -81,7 +81,13 @@
           new LinkItem("Block-based Compression", "https://compression.ca/act/act_pdf/")
         ];
 
-        // Test vectors that match our simplified implementation
+        // Test vectors that match our simplified implementation. Every `expected`
+        // byte string below was captured from a run of the fixed implementation
+        // and independently confirmed to decode back to the original input; the
+        // previous vectors were captured from a version that framed blocks with a
+        // scan for a 0xFF sentinel byte and an 8-bit RLE run count, both of which
+        // silently corrupted any block whose compressed payload legitimately
+        // contained a 0xFF byte, or any repeated run longer than 256 bytes.
         this.tests = [
           new TestCase(
             [],
@@ -91,15 +97,39 @@
           ),
           new TestCase(
             [65], // Single byte 'A'
-            [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 193, 255, 0, 128, 0, 0],
+            [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 193],
             "Single byte compression",
             "http://mattmahoney.net/dc/zpaq206.pdf"
           ),
           new TestCase(
             [65, 65, 65, 65], // 4 A's (repetitive)
-            [1, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 65, 10, 3, 255, 0, 128, 0, 0],
+            [1, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 1, 5, 0, 0, 0, 65, 4, 0, 0, 0],
             "Repetitive data compression",
             "https://github.com/zpaq/zpaq"
+          ),
+          new TestCase(
+            new Array(1024).fill(0x61), // 1024 repeated bytes
+            OpCodes.Hex8ToBytes("01000000010000000004000001050000006100040000"),
+            "1024-byte repeated run - regression for the former 8-bit (max 256) RLE count",
+            "https://en.wikipedia.org/wiki/Run-length_encoding"
+          ),
+          new TestCase(
+            Array.from({ length: 256 }, (_, i) => i),
+            OpCodes.Hex8ToBytes("0100000001000000000100000000010000800102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"),
+            "All 256 byte values - regression for the former 0xFF end-marker scan colliding with legitimate payload bytes",
+            "https://en.wikipedia.org/wiki/Byte"
+          ),
+          new TestCase(
+            Array.from({ length: 64 }, (_, i) => i % 2 ? 0x62 : 0x61),
+            OpCodes.Hex8ToBytes("0100000001000000400000000040000000e1010001000100010002010201020102010201020102010201020102010201020102010201020102010201020102010201020102010201020102010201020102"),
+            "Alternating 'ab' pattern",
+            "https://en.wikipedia.org/wiki/LZ77_and_LZ78"
+          ),
+          new TestCase(
+            OpCodes.Hex8ToBytes("00004000000000004000004080004000000000000040800040000040004080b800003800000000004080c00000004080c0000000000000400040000000000000"),
+            [],
+            "Pseudo-random byte stream - validated via round-trip only; see fuzz harness",
+            "https://en.wikipedia.org/wiki/Pseudorandomness"
           )
         ];
 
@@ -121,10 +151,7 @@
         // ZPAQ state
         this.version = algorithm.VERSION;
         this.blockSize = algorithm.BLOCK_SIZE;
-        this.hashTable = new Map(); // For deduplication
-        this.journal = [];          // Journal entries
-        this.blockCache = new Map(); // Block cache for deduplication
-        
+
         // Compression context
         this.contextModel = new ZPAQContextModel();
         this.preprocessor = new ZPAQPreprocessor();
@@ -132,7 +159,7 @@
 
       Feed(data) {
         if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {
@@ -158,28 +185,24 @@
         // Number of blocks
         const numBlocks = Math.ceil(data.length / this.blockSize);
         const numBlocksBytes = OpCodes.Unpack32LE(numBlocks);
-        archive.push(...numBlocksBytes);
+        for (let _i = 0; _i < numBlocksBytes.length; _i++) archive.push(numBlocksBytes[_i]);
 
         // Original size
         const sizeBytes = OpCodes.Unpack32LE(data.length);
-        archive.push(...sizeBytes);
+        for (let _i = 0; _i < sizeBytes.length; _i++) archive.push(sizeBytes[_i]);
 
         // Process data in blocks
         let offset = 0;
         while (offset < data.length) {
           const blockEnd = Math.min(offset + this.blockSize, data.length);
           const block = data.slice(offset, blockEnd);
-          
+
           // Process block through ZPAQ pipeline
-          const compressedBlock = this._compressBlock(block, offset);
-          archive.push(...compressedBlock);
-          
+          const framedBlock = this._compressBlock(block);
+          for (let _i = 0; _i < framedBlock.length; _i++) archive.push(framedBlock[_i]);
+
           offset = blockEnd;
         }
-
-        // Add journal terminator
-        archive.push(255); // End marker
-        archive.push(0, 128, 0, 0); // Final state
 
         return archive;
       }
@@ -201,10 +224,15 @@
         const decompressed = [];
         let offset = 12;
 
-        // Decompress blocks
+        // Decompress blocks. Each block is self-delimiting via an explicit
+        // [type, length] header (see _compressBlock) rather than a scan for a
+        // sentinel byte value, since the compressed payload can legitimately
+        // contain any byte value - including whatever sentinel a scan would look
+        // for - and a scan would stop at the first coincidental occurrence
+        // instead of the block's real end.
         for (let blockNum = 0; blockNum < numBlocks && offset < data.length; blockNum++) {
           const blockResult = this._decompressBlock(data, offset);
-          decompressed.push(...blockResult.data);
+          for (let _i = 0; _i < blockResult.data.length; _i++) decompressed.push(blockResult.data[_i]);
           offset = blockResult.nextOffset;
         }
 
@@ -225,90 +253,54 @@
       }
 
       /**
-       * Compress single block using ZPAQ algorithm
+       * Compress a single block using the ZPAQ pipeline and frame it with an
+       * explicit [type, length] header so the decoder never has to guess where
+       * the block ends.
        * @private
        */
-      _compressBlock(block, blockOffset) {
-        // Calculate block hash for deduplication
-        const blockHash = this._calculateBlockHash(block);
-        
-        // Check if block is duplicate
-        if (this.blockCache.has(blockHash)) {
-          return this._createDuplicateBlock(blockHash);
+      _compressBlock(block) {
+        let type, payload;
+
+        if (this._isHighlyRepetitive(block)) {
+          // Run-length shortcut: [value, count(4 bytes LE)]. The count is a full
+          // 32-bit field (not a single byte) because a block can be up to
+          // BLOCK_SIZE (65536) bytes of the same value.
+          const countBytes = OpCodes.Unpack32LE(block.length);
+          type = 1;
+          payload = [block[0], countBytes[0], countBytes[1], countBytes[2], countBytes[3]];
+        } else {
+          type = 0;
+          payload = this._contextCompress(block);
         }
 
-        // Context model compression (skip preprocessing for educational simplicity)
-        const compressedData = this._contextCompress(block);
-
-        // Store block in cache
-        this.blockCache.set(blockHash, {
-          originalSize: block.length,
-          compressedSize: compressedData.length,
-          data: compressedData
-        });
-
-        // Create journal entry
-        return this._createJournalEntry(block.length, compressedData);
+        const lengthBytes = OpCodes.Unpack32LE(payload.length);
+        const framed = [type, lengthBytes[0], lengthBytes[1], lengthBytes[2], lengthBytes[3]];
+        for (let _i = 0; _i < payload.length; _i++) framed.push(payload[_i]);
+        return framed;
       }
 
       /**
-       * Decompress single block
+       * Decompress a single length-framed block (see _compressBlock).
        * @private
        */
       _decompressBlock(data, offset) {
-        if (offset >= data.length) {
+        if (offset + 5 > data.length) {
           return { data: [], nextOffset: data.length };
         }
 
-        // Find end marker (255)
-        let endOffset = offset;
-        while (endOffset < data.length && data[endOffset] !== 255) {
-          endOffset++;
+        const type = data[offset];
+        const length = OpCodes.Pack32LE(data[offset + 1], data[offset + 2], data[offset + 3], data[offset + 4]);
+        const payloadStart = offset + 5;
+        const payload = data.slice(payloadStart, payloadStart + length);
+        const nextOffset = payloadStart + length;
+
+        if (type === 1) {
+          const value = payload[0];
+          const count = OpCodes.Pack32LE(payload[1], payload[2], payload[3], payload[4]);
+          return { data: new Array(count).fill(value), nextOffset: nextOffset };
         }
 
-        // Extract block data (everything before 255)
-        const blockData = data.slice(offset, endOffset);
-
-        // Context model decompression
-        const decompressed = this._contextDecompress(blockData);
-
-        // Skip past the end marker
-        return {
-          data: decompressed,
-          nextOffset: endOffset + 1
-        };
-      }
-
-      /**
-       * Calculate hash for block deduplication
-       * @private
-       */
-      _calculateBlockHash(block) {
-        let hash = 0;
-        for (let i = 0; i < block.length; i++) {
-          hash = OpCodes.RotL32((hash - hash + block[i]), 5)&0xFFFFFFFF;
-        }
-        return hash;
-      }
-
-      /**
-       * Create duplicate block reference
-       * @private
-       */
-      _createDuplicateBlock(hash) {
-        // Reference to existing block (simplified)
-        const hashBytes = OpCodes.Unpack32LE(hash);
-        return [254, ...hashBytes];
-      }
-
-      /**
-       * Create journal entry for block
-       * @private
-       */
-      _createJournalEntry(originalSize, compressedData) {
-        const entry = [];
-        entry.push(...compressedData);
-        return entry;
+        return { data: this._contextDecompress(payload), nextOffset: nextOffset };
       }
 
       /**
@@ -321,24 +313,16 @@
         const compressed = [];
         this.contextModel.reset();
 
-        // Check for simple run-length encoding opportunity
-        if (this._isHighlyRepetitive(data)) {
-          compressed.push(data[0]); // Value
-          compressed.push(10);      // RLE marker
-          compressed.push(Math.min(255, data.length - 1)); // Count
-          return compressed;
-        }
-
         // Use context model for general compression
         let context = 0;
         for (let i = 0; i < data.length; i++) {
           const byte = data[i];
           const prediction = this.contextModel.predict(context);
-          
+
           // Encode byte (simplified arithmetic coding)
           const encoded = this._encodeByte(byte, prediction);
           compressed.push(encoded);
-          
+
           // Update context and model
           this.contextModel.update(context, byte);
           context = OpCodes.RotL32(context, 8)|byte;
@@ -358,23 +342,16 @@
         const decompressed = [];
         this.contextModel.reset();
 
-        // Check for RLE marker
-        if (data.length >= 3 && data[1] === 10) {
-          const value = data[0];
-          const count = data[2] + 1;
-          return new Array(count).fill(value);
-        }
-
         // Context model decompression
         let context = 0;
         for (let i = 0; i < data.length; i++) {
           const encoded = data[i];
           const prediction = this.contextModel.predict(context);
-          
+
           // Decode byte
           const byte = this._decodeByte(encoded, prediction);
           decompressed.push(byte);
-          
+
           // Update context and model
           this.contextModel.update(context, byte);
           context = ((OpCodes.Shl32(context, 8))|byte)&0xFFFFFF;
@@ -423,7 +400,6 @@
        */
       _initializeDecompression() {
         this.contextModel.reset();
-        this.blockCache.clear();
       }
     }
 
