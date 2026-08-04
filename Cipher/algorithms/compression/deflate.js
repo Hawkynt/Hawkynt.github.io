@@ -121,7 +121,306 @@
     return lengths;
   })();
 
-  const FIXED_DISTANCE_LENGTHS = new Array(32).fill(5);
+  const FIXED_DISTANCE_LENGTHS = new Array(30).fill(5);
+
+  // Alphabet sizes / limits (RFC 1951)
+  const LIT_LEN_ALPHABET_SIZE = 286;
+  const DIST_ALPHABET_SIZE = 30;
+  const CL_ALPHABET_SIZE = 19;
+  const MAX_CODE_BITS = 15;
+  const MAX_CL_CODE_BITS = 7;
+  const END_OF_BLOCK = 256;
+  const MAX_UNCOMPRESSED_BLOCK_SIZE = 65535;
+  const DEFAULT_BLOCK_SIZE = 32768;
+  const CODE_LENGTH_ORDER = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
+
+  // ===== HUFFMAN TREE FROM FREQUENCIES (matches CompressionWorkbench's binary
+  // min-heap construction, including its exact tie-breaking behaviour) =====
+
+  // Comparator matching C# HuffmanNode.CompareTo: order by frequency, then by
+  // symbol (internal nodes carry symbol -1, so they sort before any leaf on a tie).
+  function compareFrequencyNodes(a, b) {
+    if (a.frequency !== b.frequency) return a.frequency < b.frequency ? -1 : 1;
+    return a.symbol - b.symbol;
+  }
+
+  class FrequencyMinHeap {
+    constructor() {
+      this.items = [];
+    }
+
+    get count() {
+      return this.items.length;
+    }
+
+    insert(item) {
+      this.items.push(item);
+      this._siftUp(this.items.length - 1);
+    }
+
+    extractMin() {
+      const min = this.items[0];
+      const last = this.items.length - 1;
+      this.items[0] = this.items[last];
+      this.items.pop();
+      if (this.items.length > 0) this._siftDown(0);
+      return min;
+    }
+
+    _siftUp(index) {
+      while (index > 0) {
+        const parent = OpCodes.Shr32(index - 1, 1);
+        if (compareFrequencyNodes(this.items[index], this.items[parent]) < 0) {
+          const tmp = this.items[index];
+          this.items[index] = this.items[parent];
+          this.items[parent] = tmp;
+          index = parent;
+        } else break;
+      }
+    }
+
+    _siftDown(index) {
+      const count = this.items.length;
+      for (;;) {
+        const left = 2 * index + 1;
+        const right = 2 * index + 2;
+        let smallest = index;
+        if (left < count && compareFrequencyNodes(this.items[left], this.items[smallest]) < 0) smallest = left;
+        if (right < count && compareFrequencyNodes(this.items[right], this.items[smallest]) < 0) smallest = right;
+        if (smallest !== index) {
+          const tmp = this.items[index];
+          this.items[index] = this.items[smallest];
+          this.items[smallest] = tmp;
+          index = smallest;
+        } else break;
+      }
+    }
+  }
+
+  // Builds a Huffman tree (as {symbol, frequency, left, right}) from symbol frequencies.
+  function buildHuffmanTreeFromFrequencies(frequencies) {
+    const heap = new FrequencyMinHeap();
+    for (let i = 0; i < frequencies.length; ++i)
+      if (frequencies[i] > 0) heap.insert({symbol: i, frequency: frequencies[i], left: null, right: null});
+
+    if (heap.count === 0) throw new Error('At least one symbol must have a non-zero frequency.');
+
+    if (heap.count === 1) {
+      const single = heap.extractMin();
+      return {symbol: -1, left: single, right: {symbol: -2, frequency: 0, left: null, right: null}, frequency: single.frequency};
+    }
+
+    while (heap.count > 1) {
+      const left = heap.extractMin();
+      const right = heap.extractMin();
+      heap.insert({symbol: -1, left: left, right: right, frequency: left.frequency + right.frequency});
+    }
+
+    return heap.extractMin();
+  }
+
+  function assignHuffmanLengths(node, depth, lengths) {
+    if (node.left === null && node.right === null) {
+      if (node.symbol >= 0 && node.symbol < lengths.length) lengths[node.symbol] = depth;
+      return;
+    }
+
+    if (node.left) assignHuffmanLengths(node.left, depth + 1, lengths);
+    if (node.right) assignHuffmanLengths(node.right, depth + 1, lengths);
+  }
+
+  function getHuffmanCodeLengths(root, maxSymbol) {
+    const lengths = new Array(maxSymbol).fill(0);
+    assignHuffmanLengths(root, 0, lengths);
+    return lengths;
+  }
+
+  // Redistributes code lengths so none exceed maxLength while keeping the Kraft
+  // inequality satisfied. Ported 1:1 from CompressionWorkbench's HuffmanTree.LimitCodeLengths.
+  function limitHuffmanCodeLengths(codeLengths, maxLength) {
+    const needsAdjustment = codeLengths.some(len => len > maxLength);
+    if (!needsAdjustment) return;
+
+    const symbols = [];
+    for (let i = 0; i < codeLengths.length; ++i)
+      if (codeLengths[i] > 0) symbols.push({symbol: i, length: codeLengths[i]});
+
+    for (let i = 0; i < symbols.length; ++i)
+      if (symbols[i].length > maxLength) symbols[i].length = maxLength;
+
+    const kraftMax = OpCodes.Shl32(1, maxLength);
+
+    for (;;) {
+      let kraftSum = 0;
+      for (let i = 0; i < symbols.length; ++i) kraftSum += OpCodes.Shl32(1, maxLength - symbols[i].length);
+      if (kraftSum <= kraftMax) break;
+
+      let shortestIdx = -1;
+      let shortestLen = Infinity;
+      for (let i = 0; i < symbols.length; ++i)
+        if (symbols[i].length < maxLength && symbols[i].length < shortestLen) {
+          shortestLen = symbols[i].length;
+          shortestIdx = i;
+        }
+
+      if (shortestIdx < 0) break;
+      ++symbols[shortestIdx].length;
+    }
+
+    for (;;) {
+      let kraftSum = 0;
+      for (let i = 0; i < symbols.length; ++i) kraftSum += OpCodes.Shl32(1, maxLength - symbols[i].length);
+      const excess = kraftMax - kraftSum;
+      if (excess <= 0) break;
+
+      let longestIdx = -1;
+      let longestLen = 0;
+      for (let i = 0; i < symbols.length; ++i)
+        if (symbols[i].length > longestLen) {
+          longestLen = symbols[i].length;
+          longestIdx = i;
+        }
+
+      if (longestIdx < 0 || longestLen <= 1) break;
+
+      const added = OpCodes.Shl32(1, maxLength - longestLen);
+      if (added <= excess) symbols[longestIdx].length = longestLen - 1;
+      else break;
+    }
+
+    codeLengths.fill(0);
+    for (let i = 0; i < symbols.length; ++i) codeLengths[symbols[i].symbol] = symbols[i].length;
+  }
+
+  // Builds RFC-1951-limited code lengths from frequencies in one call.
+  function buildHuffmanCodeLengths(frequencies, alphabetSize, maxBits) {
+    const root = buildHuffmanTreeFromFrequencies(frequencies);
+    const lengths = getHuffmanCodeLengths(root, alphabetSize);
+    limitHuffmanCodeLengths(lengths, maxBits);
+    return lengths;
+  }
+
+  // Run-length encodes combined code-length arrays for the dynamic-Huffman header
+  // (RFC 1951 section 3.2.7 symbols 16/17/18). Ported from DeflateCompressor.RunLengthEncode.
+  function runLengthEncodeCodeLengths(lengths) {
+    const result = [];
+    let i = 0;
+
+    while (i < lengths.length) {
+      const value = lengths[i];
+
+      if (value === 0) {
+        let zeroCount = 1;
+        while (i + zeroCount < lengths.length && lengths[i + zeroCount] === 0) ++zeroCount;
+
+        let count = zeroCount;
+        while (count > 0) {
+          if (count >= 11) {
+            const run = Math.min(count, 138);
+            result.push([18, 7, run - 11]);
+            count -= run;
+          } else if (count >= 3) {
+            result.push([17, 3, count - 3]);
+            count = 0;
+          } else {
+            result.push([0, 0, 0]);
+            --count;
+          }
+        }
+
+        i += zeroCount;
+      } else {
+        result.push([value, 0, 0]);
+        ++i;
+
+        let repeatCount = 0;
+        while (i + repeatCount < lengths.length && lengths[i + repeatCount] === value) ++repeatCount;
+
+        let count = repeatCount;
+        while (count >= 3) {
+          const run = Math.min(count, 6);
+          result.push([16, 2, run - 3]);
+          count -= run;
+        }
+        while (count > 0) {
+          result.push([value, 0, 0]);
+          --count;
+        }
+
+        i += repeatCount;
+      }
+    }
+
+    return result;
+  }
+
+  // ===== HASH-CHAIN MATCH FINDER (matches CompressionWorkbench's HashChainMatchFinder) =====
+
+  class HashChainMatchFinder {
+    constructor(windowSize, maxChainDepth) {
+      this.maxChainDepth = maxChainDepth === undefined ? 128 : maxChainDepth;
+      this.hashBits = 15;
+      this.hashSize = OpCodes.Shl32(1, this.hashBits);
+      this.hashMask = this.hashSize - 1;
+      this.head = new Int32Array(this.hashSize).fill(-1);
+      this.prev = new Int32Array(windowSize);
+      this.prevMask = windowSize - 1;
+    }
+
+    _hash(data, pos) {
+      const h = OpCodes.XorN(OpCodes.XorN(OpCodes.Shl32(data[pos], 10), OpCodes.Shl32(data[pos + 1], 5)), data[pos + 2]);
+      return OpCodes.AndN(h, this.hashMask);
+    }
+
+    findMatch(data, position, maxDistance, maxLength, minLength) {
+      minLength = minLength === undefined ? 3 : minLength;
+      if (position + 2 >= data.length) return {distance: 0, length: 0};
+
+      let bestDistance = 0;
+      let bestLength = 0;
+
+      const hash = this._hash(data, position);
+      let candidate = this.head[hash];
+      let chainCount = 0;
+      const windowStart = Math.max(0, position - maxDistance);
+
+      while (candidate >= windowStart && chainCount < this.maxChainDepth) {
+        if (candidate === position) {
+          candidate = this.prev[OpCodes.AndN(candidate, this.prevMask)];
+          ++chainCount;
+          continue;
+        }
+
+        const distance = position - candidate;
+        const limit = Math.min(maxLength, Math.min(data.length - position, data.length - candidate));
+
+        let length = 0;
+        while (length < limit && data[candidate + length] === data[position + length]) ++length;
+
+        if (length >= minLength && length > bestLength) {
+          bestLength = length;
+          bestDistance = distance;
+          if (bestLength >= maxLength) break;
+        }
+
+        candidate = this.prev[OpCodes.AndN(candidate, this.prevMask)];
+        if (candidate <= windowStart) break;
+        ++chainCount;
+      }
+
+      this.prev[OpCodes.AndN(position, this.prevMask)] = this.head[hash];
+      this.head[hash] = position;
+
+      return bestLength >= minLength ? {distance: bestDistance, length: bestLength} : {distance: 0, length: 0};
+    }
+
+    insertPosition(data, position) {
+      if (position + 2 >= data.length) return;
+      const hash = this._hash(data, position);
+      this.prev[OpCodes.AndN(position, this.prevMask)] = this.head[hash];
+      this.head[hash] = position;
+    }
+  }
 
   // ===== BIT STREAM HELPER =====
 
@@ -394,7 +693,11 @@
    */
 
     Result() {
-      if (this.inputBuffer.length === 0) return [];
+      // Unlike ciphers, an empty DEFLATE input is not a no-op: RFC 1951 still
+      // requires a minimal final block (BFINAL + an empty Huffman block), so
+      // compression must run even when nothing was fed. Decompression of a
+      // genuinely empty buffer has nothing to read and legitimately yields [].
+      if (this.isInverse && this.inputBuffer.length === 0) return [];
 
       const result = this.isInverse ?
         this._decompress(this.inputBuffer) :
@@ -406,127 +709,254 @@
 
     // ===== COMPRESSION =====
 
+    // Mirrors CompressionWorkbench's DeflateCompressor at Default level: buffer the
+    // whole input, split into DEFAULT_BLOCK_SIZE chunks when large, and for each
+    // chunk pick whichever of {uncompressed, static Huffman, dynamic Huffman}
+    // produces the fewest bits (Fast/Best-only behaviours - shallow chain depth,
+    // lazy matching - are not exercised at Default level, so they are omitted).
     _compress(data) {
-      if (data.length === 0) return [];
-
       const stream = new BitStream();
 
-      // Write final block with fixed Huffman codes
-      stream.writeBits(1, 1); // BFINAL = 1 (last block)
-      stream.writeBits(1, 2); // BTYPE = 01 (fixed Huffman)
-
-      // Build fixed Huffman trees
-      const literalTree = HuffmanTree.buildFromLengths(FIXED_LITERAL_LENGTHS);
-      const distanceTree = HuffmanTree.buildFromLengths(FIXED_DISTANCE_LENGTHS);
-
-      // LZ77 compression with hash table
-      const matches = this._findMatches(data);
-
-      // Encode matches
-      for (const match of matches) {
-        if (match.type === 'literal') {
-          // Encode literal byte
-          const {code, length} = literalTree.encode(match.value);
-          stream.writeHuffmanCode(code, length);
-        } else {
-          // Encode length
-          const lengthCode = this._getLengthCode(match.length);
-          const lengthInfo = LENGTH_CODES[lengthCode - 257];
-          const {code: lenCode, length: lenCodeLen} = literalTree.encode(lengthCode);
-          stream.writeHuffmanCode(lenCode, lenCodeLen);
-
-          if (lengthInfo.extra > 0) {
-            const extraBits = match.length - lengthInfo.base;
-            stream.writeBits(extraBits, lengthInfo.extra);
-          }
-
-          // Encode distance
-          const distCode = this._getDistanceCode(match.distance);
-          const distInfo = DISTANCE_CODES[distCode];
-          const {code: dstCode, length: dstCodeLen} = distanceTree.encode(distCode);
-          stream.writeHuffmanCode(dstCode, dstCodeLen);
-
-          if (distInfo.extra > 0) {
-            const extraBits = match.distance - distInfo.base;
-            stream.writeBits(extraBits, distInfo.extra);
-          }
-        }
+      if (data.length === 0) {
+        this._emitCompressedBlock(stream, [], true);
+        return stream.flush();
       }
 
-      // Write end-of-block symbol (256)
-      const {code, length} = literalTree.encode(256);
-      stream.writeHuffmanCode(code, length);
+      let offset = 0;
+      while (data.length - offset > DEFAULT_BLOCK_SIZE) {
+        this._emitCompressedBlock(stream, data.slice(offset, offset + DEFAULT_BLOCK_SIZE), false);
+        offset += DEFAULT_BLOCK_SIZE;
+      }
+      this._emitCompressedBlock(stream, data.slice(offset), true);
 
       return stream.flush();
     }
 
-    _findMatches(data) {
-      const matches = [];
-      const hashTable = new Map();
+    _emitCompressedBlock(stream, blockData, isFinal) {
+      const tokens = this._findMatches(blockData, 128);
+
+      const litLenFreqs = new Array(LIT_LEN_ALPHABET_SIZE).fill(0);
+      const distFreqs = new Array(DIST_ALPHABET_SIZE).fill(0);
+      for (const token of tokens) {
+        if (token.isLiteral) ++litLenFreqs[token.literal];
+        else {
+          ++litLenFreqs[this._getLengthCode(token.length)];
+          ++distFreqs[this._getDistanceCode(token.distance)];
+        }
+      }
+      litLenFreqs[END_OF_BLOCK] = 1;
+
+      const numSubBlocks = Math.max(1, Math.ceil(blockData.length / MAX_UNCOMPRESSED_BLOCK_SIZE));
+      const uncompressedBits = 3 + numSubBlocks * 5 * 8 + blockData.length * 8;
+
+      const staticSize = this._estimateStaticSize(tokens);
+      const dynamicSize = this._estimateDynamicSize(litLenFreqs.slice(), distFreqs.slice(), tokens);
+      const bestCompressed = Math.min(staticSize, dynamicSize);
+
+      if (uncompressedBits < bestCompressed) this._emitUncompressedBlock(stream, blockData, isFinal);
+      else if (staticSize <= dynamicSize) this._emitStaticHuffmanBlock(stream, tokens, isFinal);
+      else this._emitDynamicHuffmanBlock(stream, litLenFreqs, distFreqs, tokens, isFinal);
+    }
+
+    _findMatches(data, chainDepth) {
+      const result = [];
+      if (data.length === 0) return result;
+
+      const matcher = new HashChainMatchFinder(this.algorithm.WINDOW_SIZE, chainDepth);
       let pos = 0;
 
       while (pos < data.length) {
-        let bestMatch = null;
+        const match = matcher.findMatch(data, pos, this.algorithm.WINDOW_SIZE, this.algorithm.MAX_MATCH, this.algorithm.MIN_MATCH);
 
-        // Try to find match
-        if (pos + this.algorithm.MIN_MATCH <= data.length) {
-          const hash = this._hash3(data, pos);
-          const positions = hashTable.get(hash);
-
-          if (positions) {
-            for (let i = positions.length - 1; i >= 0; --i) {
-              const matchPos = positions[i];
-              if (pos - matchPos > this.algorithm.WINDOW_SIZE) break;
-
-              const len = this._matchLength(data, matchPos, pos);
-              if (len >= this.algorithm.MIN_MATCH) {
-                if (!bestMatch || len > bestMatch.length) {
-                  bestMatch = {
-                    type: 'match',
-                    distance: pos - matchPos,
-                    length: len
-                  };
-                  if (len >= this.algorithm.MAX_MATCH) break;
-                }
-              }
-            }
-          }
-
-          // Update hash table
-          if (!hashTable.has(hash)) hashTable.set(hash, []);
-          hashTable.get(hash).push(pos);
-        }
-
-        if (bestMatch) {
-          matches.push(bestMatch);
-          pos += bestMatch.length;
+        if (match.length >= this.algorithm.MIN_MATCH) {
+          result.push({isLiteral: false, distance: match.distance, length: match.length});
+          for (let i = 1; i < match.length; ++i)
+            if (pos + i < data.length) matcher.insertPosition(data, pos + i);
+          pos += match.length;
         } else {
-          matches.push({type: 'literal', value: data[pos]});
+          result.push({isLiteral: true, literal: data[pos]});
           ++pos;
         }
       }
 
-      return matches;
+      return result;
     }
 
-    _hash3(data, pos) {
-      if (pos + 3 > data.length) return 0;
-      const hash1 = OpCodes.Shl16(data[pos], 10);
-      const hash2 = OpCodes.Shl16(data[pos + 1], 5);
-      const hash3 = data[pos + 2];
-      const combined = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(hash1, hash2), hash3), 0xFFFF);
-      return OpCodes.AndN(combined, this.algorithm.HASH_MASK);
+    _estimateStaticSize(tokens) {
+      let bits = 3;
+      for (const token of tokens) {
+        if (token.isLiteral) bits += FIXED_LITERAL_LENGTHS[token.literal];
+        else {
+          const lengthCode = this._getLengthCode(token.length);
+          bits += FIXED_LITERAL_LENGTHS[lengthCode];
+          bits += LENGTH_CODES[lengthCode - 257].extra;
+          const distCode = this._getDistanceCode(token.distance);
+          bits += FIXED_DISTANCE_LENGTHS[distCode];
+          bits += DISTANCE_CODES[distCode].extra;
+        }
+      }
+      bits += FIXED_LITERAL_LENGTHS[END_OF_BLOCK];
+      return bits;
     }
 
-    _matchLength(data, pos1, pos2) {
-      let len = 0;
-      const maxLen = Math.min(this.algorithm.MAX_MATCH, data.length - pos2);
+    _estimateDynamicSize(litLenFreqs, distFreqs, tokens) {
+      const litLenLengths = buildHuffmanCodeLengths(litLenFreqs, LIT_LEN_ALPHABET_SIZE, MAX_CODE_BITS);
 
-      while (len < maxLen && data[pos1 + len] === data[pos2 + len]) {
-        ++len;
+      const hasDistCodes = distFreqs.some(f => f > 0);
+      if (!hasDistCodes) distFreqs[0] = 1;
+      const distLengths = buildHuffmanCodeLengths(distFreqs, DIST_ALPHABET_SIZE, MAX_CODE_BITS);
+
+      let bits = 3 + 5 + 5 + 4;
+
+      let hlit = litLenLengths.length;
+      while (hlit > 257 && litLenLengths[hlit - 1] === 0) --hlit;
+      let hdist = distLengths.length;
+      while (hdist > 1 && distLengths[hdist - 1] === 0) --hdist;
+
+      const combined = new Array(hlit + hdist);
+      for (let i = 0; i < hlit; ++i) combined[i] = litLenLengths[i];
+      for (let i = 0; i < hdist; ++i) combined[hlit + i] = distLengths[i];
+      const rle = runLengthEncodeCodeLengths(combined);
+
+      const clFreqs = new Array(CL_ALPHABET_SIZE).fill(0);
+      for (const [symbol] of rle) ++clFreqs[symbol];
+      const hasClCodes = clFreqs.some(f => f > 0);
+      if (!hasClCodes) clFreqs[0] = 1;
+      const clLengths = buildHuffmanCodeLengths(clFreqs, CL_ALPHABET_SIZE, MAX_CL_CODE_BITS);
+
+      let hclen = CL_ALPHABET_SIZE;
+      while (hclen > 4 && clLengths[CODE_LENGTH_ORDER[hclen - 1]] === 0) --hclen;
+      bits += hclen * 3;
+
+      for (const [symbol, extraBits] of rle) bits += clLengths[symbol] + extraBits;
+
+      for (const token of tokens) {
+        if (token.isLiteral) bits += litLenLengths[token.literal];
+        else {
+          const lengthCode = this._getLengthCode(token.length);
+          bits += litLenLengths[lengthCode];
+          bits += LENGTH_CODES[lengthCode - 257].extra;
+          const distCode = this._getDistanceCode(token.distance);
+          bits += distLengths[distCode];
+          bits += DISTANCE_CODES[distCode].extra;
+        }
+      }
+      bits += litLenLengths[END_OF_BLOCK];
+      return bits;
+    }
+
+    _writeTokens(stream, tokens, literalTree, distanceTree) {
+      for (const token of tokens) {
+        if (token.isLiteral) {
+          const {code, length} = literalTree.encode(token.literal);
+          stream.writeHuffmanCode(code, length);
+        } else {
+          const lengthCode = this._getLengthCode(token.length);
+          const lengthInfo = LENGTH_CODES[lengthCode - 257];
+          const {code: lenCode, length: lenCodeLen} = literalTree.encode(lengthCode);
+          stream.writeHuffmanCode(lenCode, lenCodeLen);
+          if (lengthInfo.extra > 0) stream.writeBits(token.length - lengthInfo.base, lengthInfo.extra);
+
+          const distCode = this._getDistanceCode(token.distance);
+          const distInfo = DISTANCE_CODES[distCode];
+          const {code: distC, length: distCodeLen} = distanceTree.encode(distCode);
+          stream.writeHuffmanCode(distC, distCodeLen);
+          if (distInfo.extra > 0) stream.writeBits(token.distance - distInfo.base, distInfo.extra);
+        }
+      }
+    }
+
+    _emitStaticHuffmanBlock(stream, tokens, isFinal) {
+      const literalTree = HuffmanTree.buildFromLengths(FIXED_LITERAL_LENGTHS);
+      const distanceTree = HuffmanTree.buildFromLengths(FIXED_DISTANCE_LENGTHS);
+
+      stream.writeBits(isFinal ? 1 : 0, 1);
+      stream.writeBits(1, 2); // BTYPE = 01 (static Huffman)
+
+      this._writeTokens(stream, tokens, literalTree, distanceTree);
+
+      const {code, length} = literalTree.encode(END_OF_BLOCK);
+      stream.writeHuffmanCode(code, length);
+    }
+
+    _emitDynamicHuffmanBlock(stream, litLenFreqs, distFreqs, tokens, isFinal) {
+      const hasDistCodes = distFreqs.some(f => f > 0);
+      if (!hasDistCodes) distFreqs[0] = 1;
+
+      const litLenLengths = buildHuffmanCodeLengths(litLenFreqs, LIT_LEN_ALPHABET_SIZE, MAX_CODE_BITS);
+      const distLengths = buildHuffmanCodeLengths(distFreqs, DIST_ALPHABET_SIZE, MAX_CODE_BITS);
+
+      let hlit = litLenLengths.length;
+      while (hlit > 257 && litLenLengths[hlit - 1] === 0) --hlit;
+      let hdist = distLengths.length;
+      while (hdist > 1 && distLengths[hdist - 1] === 0) --hdist;
+
+      const combined = new Array(hlit + hdist);
+      for (let i = 0; i < hlit; ++i) combined[i] = litLenLengths[i];
+      for (let i = 0; i < hdist; ++i) combined[hlit + i] = distLengths[i];
+      const rleSymbols = runLengthEncodeCodeLengths(combined);
+
+      const clFreqs = new Array(CL_ALPHABET_SIZE).fill(0);
+      for (const [symbol] of rleSymbols) ++clFreqs[symbol];
+      const hasClCodes = clFreqs.some(f => f > 0);
+      if (!hasClCodes) clFreqs[0] = 1;
+      const clLengths = buildHuffmanCodeLengths(clFreqs, CL_ALPHABET_SIZE, MAX_CL_CODE_BITS);
+
+      let hclen = CL_ALPHABET_SIZE;
+      while (hclen > 4 && clLengths[CODE_LENGTH_ORDER[hclen - 1]] === 0) --hclen;
+
+      const clTree = HuffmanTree.buildFromLengths(clLengths);
+
+      stream.writeBits(isFinal ? 1 : 0, 1);
+      stream.writeBits(2, 2); // BTYPE = 10 (dynamic Huffman)
+      stream.writeBits(hlit - 257, 5);
+      stream.writeBits(hdist - 1, 5);
+      stream.writeBits(hclen - 4, 4);
+
+      for (let i = 0; i < hclen; ++i) stream.writeBits(clLengths[CODE_LENGTH_ORDER[i]], 3);
+
+      for (const [symbol, extraBits, extraValue] of rleSymbols) {
+        const {code, length} = clTree.encode(symbol);
+        stream.writeHuffmanCode(code, length);
+        if (extraBits > 0) stream.writeBits(extraValue, extraBits);
       }
 
-      return len;
+      const literalTree = HuffmanTree.buildFromLengths(litLenLengths.slice(0, hlit));
+      const distanceTree = HuffmanTree.buildFromLengths(distLengths.slice(0, hdist));
+
+      this._writeTokens(stream, tokens, literalTree, distanceTree);
+
+      const {code, length} = literalTree.encode(END_OF_BLOCK);
+      stream.writeHuffmanCode(code, length);
+    }
+
+    _emitUncompressedBlock(stream, data, isFinal) {
+      let offset = 0;
+      while (offset < data.length) {
+        const chunkSize = Math.min(data.length - offset, MAX_UNCOMPRESSED_BLOCK_SIZE);
+        const isLastChunk = (offset + chunkSize >= data.length) && isFinal;
+
+        stream.writeBits(isLastChunk ? 1 : 0, 1);
+        stream.writeBits(0, 2); // BTYPE = 00 (uncompressed)
+        stream.flush();
+
+        const len = OpCodes.AndN(chunkSize, 0xFFFF);
+        const nlen = OpCodes.AndN(OpCodes.XorN(len, 0xFFFF), 0xFFFF);
+        stream.writeBits(len, 16);
+        stream.writeBits(nlen, 16);
+
+        for (let i = 0; i < chunkSize; ++i) stream.writeBits(data[offset + i], 8);
+
+        offset += chunkSize;
+      }
+
+      if (data.length !== 0 || !isFinal) return;
+
+      stream.writeBits(1, 1);
+      stream.writeBits(0, 2);
+      stream.flush();
+      stream.writeBits(0, 16);
+      stream.writeBits(0xFFFF, 16);
     }
 
     _getLengthCode(length) {
