@@ -61,7 +61,8 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
-  const DICTIONARY_SIZE = 256; // number of leaves = number of 1-byte codewords
+  const CODE_BITS = 12; // fixed codeword width -> up to 4096 dictionary entries
+  const MAX_ENTRIES = OpCodes.Shl32(1, CODE_BITS);
 
   /**
  * TunstallCompression - Variable-to-fixed length coding algorithm
@@ -75,7 +76,7 @@
 
         // Required metadata
         this.name = "Tunstall Coding";
-        this.description = "Variable-to-fixed length source code. Builds a complete binary tree over the input bit-stream by repeatedly splitting the highest-probability leaf, producing a dictionary of variable-length bit-strings that are each mapped to one fixed-width (one byte) codeword.";
+        this.description = "Variable-to-fixed length source code. Builds a byte-alphabet dictionary by repeatedly splitting the highest-probability phrase into its 256 one-byte extensions, producing a set of variable-length input phrases that are each mapped to one fixed-width codeword.";
         this.inventor = "Brian Parker Tunstall";
         this.year = 1967;
         this.category = CategoryType.COMPRESSION;
@@ -96,34 +97,36 @@
           new LinkItem("Self-synchronizing Huffman codes (Ferguson and Rabinowitz, 1984)", "https://doi.org/10.1109/TIT.1984.1056980")
         ];
 
-        // Test vectors - self-computed round-trip verification vectors produced by
-        // this implementation. The dictionary is rebuilt deterministically from the
-        // transmitted bit-probability header (data length and one-bit count), so the
-        // exact codeword stream is implementation-defined but fully reproducible.
+        // Test vectors - matches CompressionWorkbench's BB_Tunstall building
+        // block. The dictionary is rebuilt deterministically from the
+        // transmitted 256-entry byte-frequency table, so the exact codeword
+        // stream is fully reproducible. Expected vectors are given as hex
+        // due to the fixed 1024-byte frequency table dominating the output
+        // for small inputs.
         this.tests = [
           {
             text: "Empty input",
             uri: "https://en.wikipedia.org/wiki/Boundary_condition",
             input: [],
-            expected: []
+            expected: [0, 0, 0, 0]
           },
           {
             text: "Repetitive input - all zero bytes",
             uri: "https://en.wikipedia.org/wiki/Tunstall_coding",
             input: [0, 0, 0, 0, 0, 0, 0, 0],
-            expected: [0,0,0,8, 0,0,0,0, 254]
+            expected: OpCodes.Hex8ToBytes("0800000008000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")
           },
           {
             text: "Text sample - 'ABAAAB'",
             uri: "https://en.wikipedia.org/wiki/Tunstall_coding",
             input: OpCodes.AsciiToBytes("ABAAAB"),
-            expected: [0,0,0,6, 0,0,0,12, 161,154,178,197,172]
+            expected: OpCodes.Hex8ToBytes("0600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000400000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000E34042")
           },
           {
             text: "Text sample - pangram sentence",
             uri: "https://en.wikipedia.org/wiki/Tunstall_coding",
             input: OpCodes.AsciiToBytes("the quick brown fox jumps over the lazy dog"),
-            expected: [0,0,0,43, 0,0,0,162, 184,90,79,2,117,185,91,111,157,2,110,178,213,229,212,2,144,213,190,2,156,185,169,116,179,2,213,228,79,178,2,184,90,79,2,168,47,234,191,2,78,213,145]
+            expected: OpCodes.Hex8ToBytes("2B00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000100000001000000010000000300000001000000010000000200000001000000010000000100000001000000010000000100000004000000010000000100000002000000010000000200000002000000010000000100000001000000010000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000D6761F071E6846A161C6E07706E165B77169E6C07007316E07667117396416B279079163B660")
           }
         ];
       }
@@ -146,149 +149,145 @@
       }
 
       Result() {
-        if (this.inputBuffer.length === 0) return [];
-
         const result = this.isInverse ? this._decompress(this.inputBuffer) : this._compress(this.inputBuffer);
         this.inputBuffer = [];
         return result;
       }
 
-      // ----- Shared: build a Tunstall dictionary of DICTIONARY_SIZE leaves for a
-      //       binary memoryless source with P(bit=1) = p1 -----
+      // Wire format (matches CompressionWorkbench's BB_Tunstall building
+      // block): a 4-byte little-endian original length, then (unless the
+      // input is empty) a fixed 256-entry byte-frequency table (4-byte
+      // little-endian counts), followed by a stream of fixed CODE_BITS-wide
+      // codewords (MSB-first, zero-padded to a byte boundary). Each
+      // codeword indexes a byte-alphabet dictionary of variable-length
+      // input phrases, rebuilt independently and deterministically on both
+      // sides from the transmitted frequency table.
 
-      _buildTree(p1) {
-        let p0 = 1 - p1;
-        // Guard against degenerate all-zero/all-one probabilities so the tree
-        // construction always terminates with well-defined (nonzero) splitting.
-        if (p1 <= 0) { p1 = 1e-9; p0 = 1 - p1; }
-        if (p0 <= 0) { p0 = 1e-9; p1 = 1 - p0; }
+      // ----- Shared: build a byte-alphabet Tunstall dictionary -----
 
-        // Leaves: { bits: [0/1,...], prob: number }
-        let leaves = [
-          { bits: [0], prob: p0 },
-          { bits: [1], prob: p1 }
-        ];
+      _buildDictionary(prob) {
+        // Start with 256 single-byte phrases (one per symbol).
+        let entries = [];
+        for (let i = 0; i < 256; i++) entries.push({ phrase: [i], prob: prob[i] });
 
-        while (leaves.length < DICTIONARY_SIZE) {
+        // Extend the highest-probability leaf until we reach MAX_ENTRIES.
+        while (entries.length + 255 <= MAX_ENTRIES) {
           let bestIdx = 0;
-          for (let i = 1; i < leaves.length; i++) {
-            if (leaves[i].prob > leaves[bestIdx].prob) bestIdx = i;
+          let bestProb = entries[0].prob;
+          for (let i = 1; i < entries.length; i++) {
+            if (entries[i].prob > bestProb) { bestProb = entries[i].prob; bestIdx = i; }
           }
-          const parent = leaves[bestIdx];
-          leaves.splice(bestIdx, 1);
-          leaves.push({ bits: parent.bits.concat([0]), prob: parent.prob * p0 });
-          leaves.push({ bits: parent.bits.concat([1]), prob: parent.prob * p1 });
+
+          if (bestProb <= 0) break;
+
+          // Replace the leaf with 256 children (leaf + each possible next byte).
+          const parent = entries[bestIdx];
+          entries.splice(bestIdx, 1);
+
+          for (let c = 0; c < 256; c++)
+            entries.push({ phrase: parent.phrase.concat([c]), prob: parent.prob * prob[c] });
         }
 
-        return leaves; // exactly DICTIONARY_SIZE leaves, index == codeword value
-      }
+        // Ensure all 256 single-byte entries exist (splitting may have removed some).
+        const hasSingleByte = new Array(256).fill(false);
+        for (const e of entries) if (e.phrase.length === 1) hasSingleByte[e.phrase[0]] = true;
+        for (let i = 0; i < 256; i++)
+          if (!hasSingleByte[i]) entries.push({ phrase: [i], prob: prob[i] });
 
-      _buildEncodeTrie(leaves) {
-        // Trie node: { code: -1 or leaf index, child0: node|null, child1: node|null }
-        const root = { code: -1, child0: null, child1: null };
-        for (let code = 0; code < leaves.length; code++) {
-          let node = root;
-          const bits = leaves[code].bits;
-          for (let i = 0; i < bits.length; i++) {
-            if (bits[i] === 0) {
-              if (!node.child0) node.child0 = { code: -1, child0: null, child1: null };
-              node = node.child0;
-            } else {
-              if (!node.child1) node.child1 = { code: -1, child0: null, child1: null };
-              node = node.child1;
-            }
+        // Sort by phrase for deterministic ordering: lexicographic on (length, content).
+        entries.sort((a, b) => {
+          const lenCmp = a.phrase.length - b.phrase.length;
+          if (lenCmp !== 0) return lenCmp;
+          for (let i = 0; i < a.phrase.length; i++) {
+            const cmp = a.phrase[i] - b.phrase[i];
+            if (cmp !== 0) return cmp;
           }
-          node.code = code;
-        }
-        return root;
+          return 0;
+        });
+
+        return entries.map(e => e.phrase);
       }
 
       // ----- Compression -----
 
       _compress(data) {
-        const byteLen = data.length;
+        const bitStream = OpCodes.CreateBitStream();
+        bitStream.writeUint32LE(data.length);
 
-        // Count bits to build the empirical probability model.
-        let ones = 0, total = byteLen * 8;
-        for (let i = 0; i < byteLen; i++) {
-          let b = data[i];
-          for (let j = 0; j < 8; j++) {
-            ones += OpCodes.And32(b, 1);
-            b = OpCodes.Shr32(b, 1);
-          }
-        }
+        if (data.length === 0) return bitStream.toArray();
 
-        const p1 = total > 0 ? ones / total : 0.5;
-        const leaves = this._buildTree(p1);
-        const trie = this._buildEncodeTrie(leaves);
+        const freq = new Array(256).fill(0);
+        for (const b of data) freq[b]++;
 
-        // Expand input to a bit array (MSB first), padded so the trie can always
-        // find a matching leaf even near the end of the stream.
-        const bits = [];
-        for (let i = 0; i < byteLen; i++) {
-          let b = data[i];
-          const byteBits = [0, 0, 0, 0, 0, 0, 0, 0];
-          for (let j = 7; j >= 0; j--) {
-            byteBits[j] = OpCodes.And32(b, 1);
-            b = OpCodes.Shr32(b, 1);
-          }
-          for (let j = 0; j < 8; j++) bits.push(byteBits[j]);
-        }
-        // Maximum possible leaf depth is DICTIONARY_SIZE - 1 (fully skewed tree).
-        for (let i = 0; i < DICTIONARY_SIZE; i++) bits.push(0);
+        const prob = new Array(256);
+        for (let i = 0; i < 256; i++) prob[i] = freq[i] / data.length;
 
-        const codes = [];
+        for (let i = 0; i < 256; i++) bitStream.writeUint32LE(freq[i]);
+
+        const dictionary = this._buildDictionary(prob);
+
+        // Encode: greedily match the longest dictionary phrase at each position.
         let pos = 0;
-        while (pos < total) {
-          let node = trie;
-          let consumed = 0;
-          while (node.code === -1) {
-            const bit = bits[pos + consumed];
-            node = bit === 0 ? node.child0 : node.child1;
-            consumed++;
+        while (pos < data.length) {
+          let bestCode = -1, bestLen = 0;
+
+          for (let d = 0; d < dictionary.length; d++) {
+            const phrase = dictionary[d];
+            if (phrase.length <= bestLen || pos + phrase.length > data.length) continue;
+
+            let match = true;
+            for (let j = 0; j < phrase.length; j++) {
+              if (data[pos + j] !== phrase[j]) { match = false; break; }
+            }
+
+            if (match) { bestCode = d; bestLen = phrase.length; }
           }
-          codes.push(node.code);
-          pos += consumed;
+
+          if (bestCode < 0) {
+            // Fallback: single-byte entry must always exist.
+            bestCode = data[pos];
+            bestLen = 1;
+          }
+
+          bitStream.writeBits(bestCode, CODE_BITS);
+          pos += bestLen;
         }
 
-        const output = [];
-        { const _src = OpCodes.Unpack32BE(byteLen); for (let _i = 0; _i < _src.length; _i++) output.push(_src[_i]); }
-        { const _src = OpCodes.Unpack32BE(ones); for (let _i = 0; _i < _src.length; _i++) output.push(_src[_i]); }
-        for (let _i = 0; _i < codes.length; _i++) output.push(codes[_i]);
-        return output;
+        return bitStream.toArray();
       }
 
       // ----- Decompression -----
 
       _decompress(data) {
-        if (data.length < 8) return [];
+        if (data.length < 4) return [];
 
-        const byteLen = OpCodes.Pack32BE(data[0], data[1], data[2], data[3]);
-        const ones = OpCodes.Pack32BE(data[4], data[5], data[6], data[7]);
+        const bitStream = OpCodes.CreateBitStream(data);
+        const originalSize = OpCodes.Pack32LE(bitStream.readByte(), bitStream.readByte(), bitStream.readByte(), bitStream.readByte());
+        if (originalSize === 0) return [];
 
-        if (byteLen === 0) return [];
+        const freq = new Array(256);
+        for (let i = 0; i < 256; i++)
+          freq[i] = OpCodes.Pack32LE(bitStream.readByte(), bitStream.readByte(), bitStream.readByte(), bitStream.readByte());
 
-        const total = byteLen * 8;
-        const p1 = ones / total;
-        const leaves = this._buildTree(p1);
+        let total = 0;
+        for (let i = 0; i < 256; i++) total += freq[i];
 
-        const bits = [];
-        let pos = 8;
-        while (bits.length < total && pos < data.length) {
-          const code = data[pos++];
-          const leafBits = leaves[code].bits;
-          for (let i = 0; i < leafBits.length; i++) bits.push(leafBits[i]);
+        const prob = new Array(256).fill(0);
+        if (total > 0) for (let i = 0; i < 256; i++) prob[i] = freq[i] / total;
+
+        const dictionary = this._buildDictionary(prob);
+
+        const result = [];
+        while (result.length < originalSize) {
+          const code = bitStream.readBits(CODE_BITS);
+          if (code >= dictionary.length)
+            throw new Error(`Tunstall codeword ${code} exceeds dictionary size ${dictionary.length}.`);
+
+          const phrase = dictionary[code];
+          for (let j = 0; j < phrase.length && result.length < originalSize; j++) result.push(phrase[j]);
         }
 
-        const out = [];
-        for (let i = 0; i < byteLen; i++) {
-          let byteVal = 0;
-          for (let j = 0; j < 8; j++) {
-            byteVal = OpCodes.Or32(OpCodes.Shl32(byteVal, 1), bits[i * 8 + j]);
-          }
-          out.push(OpCodes.ToByte(byteVal));
-        }
-        return out;
+        return result;
       }
     }
 
