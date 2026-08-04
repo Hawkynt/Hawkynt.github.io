@@ -53,20 +53,14 @@
 
         // Required metadata
         this.name = "DNA Sequence Compression";
-        this.description = "Specialized lossless compression for genomic DNA sequences exploiting biological patterns, k-mer frequencies, repeat structures, and evolutionary relationships. Optimized for FASTA/FASTQ formats with superior compression ratios for bioinformatics applications.";
+        this.description = "Lossless 2-bit-per-base packing for raw DNA sequences. Accepts ONLY the four canonical uppercase nucleotide bytes A, C, G, T; any other byte (including lowercase, 'N', whitespace, or FASTA/FASTQ headers) is rejected with an error rather than silently dropped, since 2-bit packing has no room to represent a fifth symbol losslessly.";
         this.category = CategoryType.COMPRESSION;
         this.subCategory = "Bioinformatics";
         this.securityStatus = SecurityStatus.EDUCATIONAL;
-        this.complexity = ComplexityType.EXPERT;
+        this.complexity = ComplexityType.INTERMEDIATE;
         this.inventor = "Bioinformatics Compression Research";
         this.year = 2010;
         this.country = CountryCode.INTL;
-
-        // DNA compression parameters
-        this.K_MER_SIZE = 8;              // K-mer length for pattern analysis
-        this.MAX_REPEAT_LENGTH = 1000;    // Maximum repeat sequence length
-        this.CONTEXT_SIZE = 16;           // Context modeling size
-        this.MIN_REPEAT_COUNT = 3;        // Minimum repeat occurrences
 
         this.documentation = [
           new LinkItem("DNA Compression Survey", "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3834842/"),
@@ -77,11 +71,11 @@
         this.references = [
           new LinkItem("BioPython DNA Tools", "https://biopython.org/"),
           new LinkItem("K-mer Analysis", "https://en.wikipedia.org/wiki/K-mer"),
-          new LinkItem("Genomic Repeats", "https://doi.org/10.1186/gb-2005-6-12-r108"),
-          new LinkItem("FASTQ Quality Scores", "https://en.wikipedia.org/wiki/FASTQ_format")
+          new LinkItem("2-bit DNA encoding (UCSC .2bit format)", "https://genome.ucsc.edu/FAQ/FAQformat.html#format7")
         ];
 
-        // DNA compression test vectors
+        // DNA compression test vectors. Format: [Length(4 bytes BE)][2-bit
+        // packed nucleotides, 4 per byte, MSB-first; A=0,T=1,G=2,C=3].
         this.tests = [
           new TestCase(
             [], // Empty sequence
@@ -90,34 +84,35 @@
             "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3834842/"
           ),
           new TestCase(
-            [65, 84, 71, 67], // "ATGC" - basic nucleotides
-            [8, 4, 0, 0, 0, 0, 1, 2, 3, 255],
+            [65, 84, 71, 67], // "ATGC" - basic nucleotides, exactly 1 packed byte
+            [0, 0, 0, 4, 0x1B], // A(00) T(01) G(10) C(11) -> 00_01_10_11
             "Basic nucleotides - 2-bit encoding",
             "https://doi.org/10.1093/bioinformatics/btu513"
           ),
           new TestCase(
-            [65, 84, 71, 67, 71, 67], // "ATGCGC" - simple sequence
-            [8, 6, 0, 0, 0, 0, 1, 2, 3, 2, 3, 255],
-            "Simple nucleotide sequence",
+            [65, 84, 71, 67, 71, 67], // "ATGCGC" - not a multiple of 4 bases
+            [0, 0, 0, 6, 0x1B, 0xB0], // ATGC -> 0x1B; GC + pad(0,0) -> 10_11_00_00
+            "Length not a multiple of the 4-base packing unit",
             "https://en.wikipedia.org/wiki/FASTA_format"
           ),
           new TestCase(
             [65, 84, 71, 67, 65, 84, 71, 67, 65, 84, 71, 67], // "ATGCATGCATGC"
-            [8, 12, 0, 0, 0, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 255],
-            "Repeating k-mers - pattern compression",
+            [0, 0, 0, 12, 0x1B, 0x1B, 0x1B],
+            "Repeating pattern",
             "https://biopython.org/"
           ),
           new TestCase(
-            [71, 65, 84, 67], // "GATC" - alternative nucleotide sequence
-            [8, 4, 0, 0, 0, 2, 0, 1, 3, 255],
+            [71, 65, 84, 67], // "GATC"
+            [0, 0, 0, 4, 0x87], // G(10) A(00) T(01) C(11) -> 10_00_01_11
             "Alternative nucleotide sequence",
             "https://en.wikipedia.org/wiki/K-mer"
           ),
           new TestCase(
-            [84, 84, 71, 71, 67, 67], // "TTGGCC" - paired nucleotides
-            [8, 6, 0, 0, 0, 1, 1, 2, 2, 3, 3, 255],
-            "Paired nucleotides sequence",
-            "https://doi.org/10.1186/gb-2005-6-12-r108"
+            // All 4 nucleotides in every rotation, 37 bases (not a multiple of 4)
+            OpCodes.AnsiToBytes("ACGTACGTACGTACGTACGTACGTACGTACGTACGTA"),
+            [0, 0, 0, 37, 57, 57, 57, 57, 57, 57, 57, 57, 57, 0],
+            "Long non-aligned sequence, length not a multiple of 4",
+            "https://en.wikipedia.org/wiki/FASTA_format"
           )
         ];
 
@@ -130,478 +125,108 @@
       }
     }
 
+    // Canonical nucleotide <-> 2-bit code mapping. Only these four uppercase
+    // ASCII bytes are accepted; there is no fifth code point available in a
+    // 2-bit field, so anything else (lowercase, 'N', whitespace, FASTA/FASTQ
+    // headers, ...) must be rejected rather than silently dropped.
+    const NUCLEOTIDE_TO_CODE = new Map([
+      [65, 0], // A
+      [84, 1], // T
+      [71, 2], // G
+      [67, 3]  // C
+    ]);
+    const CODE_TO_NUCLEOTIDE = [65, 84, 71, 67]; // A, T, G, C
+
     class DNACompressionInstance extends IAlgorithmInstance {
       constructor(algorithm, isInverse = false) {
         super(algorithm);
         this.isInverse = isInverse;
         this.inputBuffer = [];
-
-        // DNA compression parameters
-        this.kmerSize = algorithm.K_MER_SIZE;
-        this.maxRepeatLength = algorithm.MAX_REPEAT_LENGTH;
-        this.contextSize = algorithm.CONTEXT_SIZE;
-        this.minRepeatCount = algorithm.MIN_REPEAT_COUNT;
-
-        // DNA specific data structures
-        this.nucleotideMap = new Map([
-          ['A'.charCodeAt(0), 0], ['T'.charCodeAt(0), 1],
-          ['G'.charCodeAt(0), 2], ['C'.charCodeAt(0), 3],
-          ['N'.charCodeAt(0), 4] // Unknown nucleotide
-        ]);
-        
-        this.reverseNucleotideMap = new Map([
-          [0, 65], [1, 84], [2, 71], [3, 67], [4, 78] // A, T, G, C, N
-        ]);
-
-        this.kmerTable = new Map();
-        this.repeatTable = new Map();
-        this.qualityTable = new Map(); // For FASTQ quality scores
-
-        // Statistics
-        this.statistics = {
-          totalNucleotides: 0,
-          kmersFound: 0,
-          repeatsFound: 0,
-          headerBytes: 0,
-          compressionRatio: 1.0
-        };
       }
 
       Feed(data) {
         if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {
         if (this.inputBuffer.length === 0) return [];
 
-        const result = this.isInverse ? 
-          this.decompress(this.inputBuffer) : 
+        const result = this.isInverse ?
+          this.decompress(this.inputBuffer) :
           this.compress(this.inputBuffer);
 
         this.inputBuffer = [];
         return result;
       }
 
+      /**
+       * Compress a raw ACGT nucleotide sequence into a 2-bit-per-base
+       * packed representation: [Length(4 bytes BE)][packed bytes, 4 bases
+       * per byte, MSB-first].
+       *
+       * Throws if any byte is not one of A/C/G/T - this codec is honest
+       * about only supporting the four canonical nucleotides rather than
+       * silently discarding unrecognized bytes (as the previous FASTA/
+       * repeat-table implementation did, corrupting anything that wasn't
+       * pure uppercase ACGT).
+       */
       compress(data) {
-        if (!data || data.length === 0) {
-          return [this.kmerSize, 0, 0, 0, 0, 255];
+        if (!data || data.length === 0) return [];
+
+        const codes = new Array(data.length);
+        for (let i = 0; i < data.length; i++) {
+          const code = NUCLEOTIDE_TO_CODE.get(data[i]);
+          if (code === undefined) {
+            throw new Error(
+              `DNA Sequence Compression only supports uppercase A/C/G/T nucleotides; ` +
+              `invalid byte 0x${data[i].toString(16).padStart(2, '0')} at position ${i}`
+            );
+          }
+          codes[i] = code;
         }
 
-        // Use OpCodes for consistent operations
-        const tempArray = [];
-        OpCodes.ClearArray(tempArray);
+        const compressed = OpCodes.Words32ToBytesBE([data.length]);
 
-        // Analyze data format (FASTA vs raw DNA)
-        const format = this._detectFormat(data);
-
-        // Build compression models
-        this._buildKmerTable(data);
-        this._buildRepeatTable(data);
-
-        const compressed = [];
-
-        // Header: k-mer size + data length using OpCodes
-        compressed.push(this.kmerSize);
-        compressed.push(OpCodes.RotR8(OpCodes.AndN(data.length, 0xFF), 0));
-        compressed.push(OpCodes.RotR8(OpCodes.AndN(OpCodes.Shr32(data.length, 8), 0xFF), 0));
-        compressed.push(OpCodes.RotR8(OpCodes.AndN(OpCodes.Shr32(data.length, 16), 0xFF), 0));
-        compressed.push(OpCodes.RotR8(OpCodes.AndN(OpCodes.Shr32(data.length, 24), 0xFF), 0));
-
-        // Compress based on detected format
-        if (format === 'FASTA') {
-          this._compressFASTA(data, compressed);
-        } else if (format === 'FASTQ') {
-          this._compressFASTQ(data, compressed);
-        } else {
-          this._compressRawDNA(data, compressed);
+        for (let i = 0; i < codes.length; i += 4) {
+          let packedByte = 0;
+          for (let j = 0; j < 4; j++) {
+            const code = (i + j < codes.length) ? codes[i + j] : 0;
+            packedByte = OpCodes.Or32(packedByte, OpCodes.Shl32(code, (3 - j) * 2));
+          }
+          compressed.push(OpCodes.ToByte(packedByte));
         }
 
-        // End marker
-        compressed.push(255);
-
-        this.statistics.compressionRatio = data.length / compressed.length;
         return compressed;
       }
 
+      /**
+       * Reverse compress(): unpack the 2-bit codes back into ACGT bytes.
+       */
       decompress(data) {
-        if (!data || data.length < 6) return [];
-
-        // Use OpCodes for consistent operations
-        const outputArray = [];
-        OpCodes.ClearArray(outputArray);
-
-        let offset = 0;
-
-        // Parse header using OpCodes
-        const kmerSize = data[offset++];
-        const originalLength = OpCodes.OrN(
-          OpCodes.OrN(
-            OpCodes.OrN(
-              OpCodes.RotL8(data[offset++], 0),
-              OpCodes.Shl32(OpCodes.RotL8(data[offset++], 0), 8)
-            ),
-            OpCodes.Shl32(OpCodes.RotL8(data[offset++], 0), 16)
-          ),
-          OpCodes.Shl32(OpCodes.RotL8(data[offset++], 0), 24)
-        );
-
-        if (originalLength === 0) return [];
-
-        this.kmerSize = kmerSize;
-        const decompressed = [];
-
-        // Decompress until end marker
-        while (offset < data.length && decompressed.length < originalLength) {
-          const byte = data[offset++];
-          
-          if (byte === 255) {
-            break; // End marker
-          }
-
-          // Decode based on compression type
-          const decoded = this._decodeByte(byte, data, offset, decompressed);
-          if (decoded.bytes) {
-            decompressed.push(...decoded.bytes);
-          }
-          offset = decoded.nextOffset;
+        if (!data || data.length === 0) return [];
+        if (data.length < 4) {
+          throw new Error('Invalid DNA compressed data: missing length header');
         }
 
-        return decompressed.slice(0, originalLength);
-      }
+        const length = OpCodes.BytesToWords32BE(data.slice(0, 4))[0];
+        if (length === 0) return [];
 
-      /**
-       * Detect DNA sequence format
-       * @private
-       */
-      _detectFormat(data) {
-        // Check for FASTA header (>)
-        if (data.length > 0 && data[0] === 62) { // '>'
-          return 'FASTA';
-        }
-        
-        // Check for FASTQ header (@)
-        if (data.length > 0 && data[0] === 64) { // '@'
-          return 'FASTQ';
+        const packedLength = Math.ceil(length / 4);
+        if (data.length < 4 + packedLength) {
+          throw new Error('Invalid DNA compressed data: truncated packed payload');
         }
 
-        // Check if data contains only valid nucleotides
-        const validNucleotides = new Set([65, 84, 71, 67, 78]); // A, T, G, C, N
-        let nucleotideCount = 0;
-        
-        for (const byte of data) {
-          if (validNucleotides.has(byte)) {
-            nucleotideCount++;
-          }
+        const result = new Array(length);
+        for (let i = 0; i < length; i++) {
+          const byteIndex = 4 + Math.floor(i / 4);
+          const posInByte = i % 4;
+          const shiftAmount = (3 - posInByte) * 2;
+          const code = OpCodes.And32(OpCodes.Shr32(data[byteIndex], shiftAmount), 3);
+          result[i] = CODE_TO_NUCLEOTIDE[code];
         }
 
-        if (nucleotideCount > data.length * 0.8) {
-          return 'RAW_DNA';
-        }
-
-        return 'MIXED'; // Contains DNA but also other data
-      }
-
-      /**
-       * Build k-mer frequency table
-       * @private
-       */
-      _buildKmerTable(data) {
-        this.kmerTable.clear();
-        
-        // Extract nucleotides only
-        const nucleotides = this._extractNucleotides(data);
-        
-        // Build k-mer table
-        for (let i = 0; i <= nucleotides.length - this.kmerSize; i++) {
-          const kmer = nucleotides.slice(i, i + this.kmerSize);
-          const kmerKey = kmer.join(',');
-          
-          if (!this.kmerTable.has(kmerKey)) {
-            this.kmerTable.set(kmerKey, {
-              sequence: kmer,
-              count: 0,
-              positions: []
-            });
-          }
-          
-          const kmerInfo = this.kmerTable.get(kmerKey);
-          kmerInfo.count++;
-          kmerInfo.positions.push(i);
-        }
-
-        // Remove rare k-mers to save space
-        for (const [key, info] of this.kmerTable) {
-          if (info.count < 2) {
-            this.kmerTable.delete(key);
-          }
-        }
-      }
-
-      /**
-       * Build repeat sequence table
-       * @private
-       */
-      _buildRepeatTable(data) {
-        this.repeatTable.clear();
-        
-        const nucleotides = this._extractNucleotides(data);
-        
-        // Find repeating sequences
-        for (let len = this.kmerSize; len <= Math.min(this.maxRepeatLength, nucleotides.length / 2); len++) {
-          for (let i = 0; i <= nucleotides.length - len * 2; i++) {
-            const pattern = nucleotides.slice(i, i + len);
-            const patternKey = pattern.join(',');
-            
-            // Look for repetitions
-            let repeatCount = 1;
-            let pos = i + len;
-            
-            while (pos + len <= nucleotides.length) {
-              const candidate = nucleotides.slice(pos, pos + len);
-              if (this._arraysEqual(pattern, candidate)) {
-                repeatCount++;
-                pos += len;
-              } else {
-                break;
-              }
-            }
-
-            if (repeatCount >= this.minRepeatCount) {
-              this.repeatTable.set(patternKey, {
-                pattern: pattern,
-                length: len,
-                count: repeatCount,
-                position: i
-              });
-              
-              i = pos - 1; // Skip processed region
-            }
-          }
-        }
-      }
-
-      /**
-       * Extract only nucleotide characters from data
-       * @private
-       */
-      _extractNucleotides(data) {
-        const nucleotides = [];
-        const validNucleotides = new Set([65, 84, 71, 67, 78]); // A, T, G, C, N
-        
-        for (const byte of data) {
-          if (validNucleotides.has(byte)) {
-            nucleotides.push(this.nucleotideMap.get(byte));
-          }
-        }
-        
-        return nucleotides;
-      }
-
-      /**
-       * Compress FASTA format data
-       * @private
-       */
-      _compressFASTA(data, compressed) {
-        let i = 0;
-        let inSequence = false;
-        let sequenceBuffer = [];
-
-        while (i < data.length) {
-          const byte = data[i];
-          
-          if (byte === 62) { // '>' - Header start
-            // Process previous sequence if exists
-            if (sequenceBuffer.length > 0) {
-              this._compressSequence(sequenceBuffer, compressed);
-              sequenceBuffer = [];
-            }
-            
-            // Copy header as-is until newline
-            compressed.push(byte);
-            i++;
-            while (i < data.length && data[i] !== 10) { // Until '\n'
-              compressed.push(data[i]);
-              i++;
-            }
-            if (i < data.length) {
-              compressed.push(data[i]); // Include newline
-              i++;
-            }
-            inSequence = true;
-          } else if (inSequence && this.nucleotideMap.has(byte)) {
-            sequenceBuffer.push(this.nucleotideMap.get(byte));
-            i++;
-          } else {
-            // Non-nucleotide character in sequence (whitespace, etc.)
-            compressed.push(byte);
-            i++;
-          }
-        }
-
-        // Process final sequence
-        if (sequenceBuffer.length > 0) {
-          this._compressSequence(sequenceBuffer, compressed);
-        }
-      }
-
-      /**
-       * Compress FASTQ format data
-       * @private
-       */
-      _compressFASTQ(data, compressed) {
-        // FASTQ has 4 lines per record: @header, sequence, +, quality
-        // Simplified compression - treat similar to FASTA for educational version
-        this._compressFASTA(data, compressed);
-      }
-
-      /**
-       * Compress raw DNA sequence
-       * @private
-       */
-      _compressRawDNA(data, compressed) {
-        const nucleotides = this._extractNucleotides(data);
-        this._compressSequence(nucleotides, compressed);
-      }
-
-      /**
-       * Compress nucleotide sequence using specialized algorithms
-       * @private
-       */
-      _compressSequence(nucleotides, compressed) {
-        let i = 0;
-        
-        while (i < nucleotides.length) {
-          // Try to find repeats first
-          const repeat = this._findRepeatAt(nucleotides, i);
-          
-          if (repeat) {
-            // Encode repeat: [pattern_length][repeat_count][pattern...]
-            compressed.push(repeat.length);
-            compressed.push(repeat.count);
-            compressed.push(...repeat.pattern);
-            i += repeat.length * repeat.count;
-            this.statistics.repeatsFound++;
-            continue;
-          }
-
-          // Try to find homopolymer runs (AAAA, TTTT, etc.)
-          const run = this._findHomopolymerRun(nucleotides, i);
-          
-          if (run && run.length >= 4) {
-            // Encode run: [nucleotide][run_length]
-            compressed.push(run.nucleotide);
-            compressed.push(run.length);
-            i += run.length;
-            continue;
-          }
-
-          // Regular nucleotide - use 2-bit encoding
-          compressed.push(nucleotides[i]);
-          i++;
-          this.statistics.totalNucleotides++;
-        }
-      }
-
-      /**
-       * Find repeat pattern at position
-       * @private
-       */
-      _findRepeatAt(nucleotides, position) {
-        for (const [key, repeatInfo] of this.repeatTable) {
-          if (repeatInfo.position === position) {
-            return repeatInfo;
-          }
-        }
-        return null;
-      }
-
-      /**
-       * Find homopolymer run at position
-       * @private
-       */
-      _findHomopolymerRun(nucleotides, position) {
-        if (position >= nucleotides.length) return null;
-        
-        const nucleotide = nucleotides[position];
-        let length = 1;
-        
-        while (position + length < nucleotides.length && 
-               nucleotides[position + length] === nucleotide) {
-          length++;
-        }
-
-        return length >= 3 ? { nucleotide, length } : null;
-      }
-
-      /**
-       * Decode byte from compressed data
-       * @private
-       */
-      _decodeByte(byte, data, offset, decompressed) {
-        // Check if it's a nucleotide (0-4)
-        if (byte <= 4) {
-          return {
-            bytes: [this.reverseNucleotideMap.get(byte)],
-            nextOffset: offset
-          };
-        }
-
-        // Check if it's a repeat or run length marker
-        if (offset < data.length) {
-          const nextByte = data[offset];
-          
-          if (byte < 20 && nextByte < 20) {
-            // Possible repeat: [length][count]
-            const patternLength = byte;
-            const repeatCount = nextByte;
-            const pattern = [];
-            
-            let currentOffset = offset + 1;
-            for (let i = 0; i < patternLength && currentOffset < data.length; i++) {
-              pattern.push(this.reverseNucleotideMap.get(data[currentOffset++]));
-            }
-            
-            const result = [];
-            for (let i = 0; i < repeatCount; i++) {
-              result.push(...pattern);
-            }
-            
-            return {
-              bytes: result,
-              nextOffset: currentOffset
-            };
-          }
-        }
-
-        // Regular byte - pass through
-        return {
-          bytes: [byte],
-          nextOffset: offset
-        };
-      }
-
-      /**
-       * Check if two arrays are equal
-       * @private
-       */
-      _arraysEqual(a, b) {
-        if (a.length !== b.length) return false;
-        for (let i = 0; i < a.length; i++) {
-          if (a[i] !== b[i]) return false;
-        }
-        return true;
-      }
-
-      /**
-       * Get DNA compression statistics
-       */
-      getStatistics() {
-        return {
-          ...this.statistics,
-          kmerTableSize: this.kmerTable.size,
-          repeatTableSize: this.repeatTable.size
-        };
+        return result;
       }
     }
 
