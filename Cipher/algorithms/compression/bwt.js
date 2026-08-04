@@ -51,6 +51,142 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  // ----- Correct, O(n log n) suffix-array based Burrows-Wheeler core -----
+  //
+  // The transform is defined over T = data ++ [sentinel], where sentinel is
+  // a value strictly smaller than every real byte and occurs exactly once.
+  // Sorting the m = n+1 CYCLIC ROTATIONS of T (equivalently, since the
+  // sentinel is unique and minimal, sorting the SUFFIXES of T) gives the
+  // BWT rotation matrix. The row whose rotation starts at position 0 (the
+  // unrotated original T) is the "primary index"; earlier implementations
+  // in this file computed that index against one sort order while badly
+  // reconstructing the inverse permutation with a different, buggy
+  // hand-rolled "next array" - this replaces both with a single
+  // well-tested core shared by forward and inverse transforms.
+  //
+  // A convenient structural fact is used to avoid ever materializing the
+  // sentinel as a byte: the sentinel appears in the last column L at
+  // EXACTLY the row equal to the primary index (because L[i] is the
+  // character preceding rotation start sa[i], and that is the sentinel
+  // precisely when sa[i] === 0). So the sentinel's row can be omitted from
+  // the serialized last column entirely and reinserted purely from the
+  // stored primary index on decode - keeping the wire format at exactly
+  // n+4 bytes (4-byte primary index + n real data bytes), with no marker
+  // byte collisions of the kind that broke this file's previous encoding.
+
+  function _countingSortByKey(arr, key, keyRange) {
+    const count = new Array(keyRange).fill(0);
+    for (let i = 0; i < arr.length; i++) count[key[arr[i]]]++;
+    for (let i = 1; i < keyRange; i++) count[i] += count[i - 1];
+    const output = new Array(arr.length);
+    for (let i = arr.length - 1; i >= 0; i--) {
+      const k = key[arr[i]];
+      count[k]--;
+      output[count[k]] = arr[i];
+    }
+    return output;
+  }
+
+  // Suffix array (equivalently: sorted cyclic rotations) of data++[sentinel],
+  // computed via prefix doubling with counting sort - O(n log n) overall.
+  function _buildRotationSuffixArray(data) {
+    const n = data.length;
+    const m = n + 1;
+    if (m === 1) return [0];
+
+    let rank = new Array(m);
+    for (let i = 0; i < n; i++) rank[i] = data[i] + 1; // real bytes: 1..256
+    rank[n] = 0; // sentinel: uniquely smallest
+
+    let sa = new Array(m);
+    for (let i = 0; i < m; i++) sa[i] = i;
+    sa = _countingSortByKey(sa, rank, 257);
+
+    let cls = new Array(m);
+    cls[sa[0]] = 0;
+    for (let i = 1; i < m; i++) cls[sa[i]] = cls[sa[i - 1]] + (rank[sa[i]] !== rank[sa[i - 1]] ? 1 : 0);
+    let classCount = cls[sa[m - 1]] + 1;
+
+    for (let k = 1; classCount < m; k *= 2) {
+      const key2 = new Array(m);
+      for (let i = 0; i < m; i++) key2[i] = cls[(i + k) % m];
+
+      sa = _countingSortByKey(sa, key2, classCount);
+      sa = _countingSortByKey(sa, cls, classCount);
+
+      const newCls = new Array(m);
+      newCls[sa[0]] = 0;
+      for (let i = 1; i < m; i++) {
+        const prev = sa[i - 1], cur = sa[i];
+        const same = cls[prev] === cls[cur] && key2[prev] === key2[cur];
+        newCls[cur] = newCls[prev] + (same ? 0 : 1);
+      }
+      cls = newCls;
+      classCount = cls[sa[m - 1]] + 1;
+      if (classCount === m) break;
+    }
+
+    return sa;
+  }
+
+  function bwtEncode(data) {
+    const n = data.length;
+    if (n === 0) return { primaryIndex: 0, lastColumn: [] };
+    const m = n + 1;
+    const sa = _buildRotationSuffixArray(data);
+
+    let primaryIndex = -1;
+    const lastColumn = [];
+    for (let i = 0; i < m; i++) {
+      const pos = sa[i];
+      if (pos === 0) { primaryIndex = i; continue; } // sentinel row, omitted
+      lastColumn.push(data[pos - 1]);
+    }
+    return { primaryIndex, lastColumn };
+  }
+
+  function bwtDecode(primaryIndex, lastColumn) {
+    const n = lastColumn.length;
+    if (n === 0) return [];
+    const m = n + 1;
+
+    // Reinsert the sentinel (symbol 0) at row=primaryIndex; real bytes use
+    // symbol domain 1..256 so the sentinel remains uniquely smallest.
+    const fullL = new Array(m);
+    for (let i = 0, j = 0; i < m; i++) {
+      fullL[i] = (i === primaryIndex) ? 0 : (lastColumn[j++] + 1);
+    }
+
+    const count = new Array(257).fill(0);
+    for (let i = 0; i < m; i++) count[fullL[i]]++;
+    const C = new Array(257).fill(0);
+    let sum = 0;
+    for (let s = 0; s < 257; s++) { C[s] = sum; sum += count[s]; }
+
+    const occRank = new Array(257).fill(0);
+    const T = new Array(m);
+    for (let i = 0; i < m; i++) {
+      const s = fullL[i];
+      T[i] = C[s] + occRank[s];
+      occRank[s]++;
+    }
+
+    const original = new Array(m);
+    let p = primaryIndex;
+    for (let i = m - 1; i >= 0; i--) {
+      original[i] = fullL[p];
+      p = T[p];
+    }
+
+    // Strip the sentinel (symbol 0) and shift real bytes back down by 1.
+    const result = new Array(n);
+    let k = 0;
+    for (let i = 0; i < m; i++) {
+      if (original[i] !== 0) result[k++] = original[i] - 1;
+    }
+    return result;
+  }
+
   /**
  * BWTCompression - Compression algorithm implementation
  * @class
@@ -85,12 +221,14 @@
           new LinkItem("Suffix Arrays for BWT", "https://web.stanford.edu/class/cs166/lectures/04/Small04.pdf")
         ];
 
-        // Test vectors - round-trip tests
+        // Test vectors - round-trip tests. Format: [primary_index(4 bytes
+        // BE)][last_column(n bytes)]. The primary index also identifies the
+        // one omitted sentinel row (see the core algorithm comment above).
         this.tests = [
           {
             text: "Empty data test",
             uri: "Edge case test",
-            input: [], 
+            input: [],
             expected: [] // Empty input produces empty output
           },
           {
@@ -98,6 +236,24 @@
             uri: "Minimal transformation test",
             input: [65], // "A"
             expected: [0,0,0,1,65] // BWT output: [position, transformed_data]
+          },
+          {
+            text: "Regression: all 256 byte values",
+            uri: "Regression test for primary-index / sentinel-row reconstruction bug",
+            input: Array.from({length: 256}, (_, i) => i),
+            expected: [0,0,0,1,255].concat(Array.from({length: 255}, (_, i) => i))
+          },
+          {
+            text: "Regression: pseudo-random data, length 91",
+            uri: "Regression test - non-repeating pseudo-random input",
+            input: [0,0,64,0,64,0,64,0,64,0,57,128,192,0,0,0,64,128,0,64,0,64,0,0,0,64,0,0,0,0,64,0,0,64,0,0,64,0,0,64,128,0,0,57,128,0,0,0,0,64,0,0,0,64,0,0,0,64,128,128,0,0,64,0,64,0,0,0,64,0,0,0,0,0,0,0,64,128,184,128,192,0,64,128,0,0,0,64,0,0,64],
+            expected: [0,0,0,27,64,64,0,0,128,64,0,64,64,0,64,128,0,192,64,0,128,64,0,0,0,0,0,0,64,64,128,64,0,0,0,0,64,0,0,0,64,64,0,0,0,0,0,0,64,0,128,64,64,0,192,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,57,64,64,128,64,64,64,57,184,128,128,128]
+          },
+          {
+            text: "Regression: alternating pattern, length 83",
+            uri: "Regression test - repetitive alternating input",
+            input: Array.from({length: 83}, (_, i) => (i % 2 ? 0x62 : 0x61)),
+            expected: [0,0,0,42,97,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97]
           }
         ];
       }
@@ -116,7 +272,7 @@
 
       Feed(data) {
         if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {
@@ -136,58 +292,23 @@
           return [];
         }
 
-        // Simple BWT implementation
         const data = this.inputBuffer.slice();
-        const n = data.length;
+        const { primaryIndex, lastColumn } = bwtEncode(data);
 
-        // Add end-of-string marker (simplified)
-        data.push(0);
-
-        // Generate all rotations
-        const rotations = [];
-        for (let i = 0; i <= n; i++) {
-          rotations.push({
-            rotation: data.slice(i).concat(data.slice(0, i)),
-            originalIndex: i
-          });
-        }
-
-        // Sort rotations lexicographically
-        rotations.sort((a, b) => {
-          for (let i = 0; i <= n; i++) {
-            if (a.rotation[i] !== b.rotation[i]) {
-              return a.rotation[i] - b.rotation[i];
-            }
-          }
-          return 0;
-        });
-
-        // Extract last column and find original string position
-        const lastColumn = [];
-        let originalPosition = 0;
-
-        for (let i = 0; i < rotations.length; i++) {
-          lastColumn.push(rotations[i].rotation[n]);
-          if (rotations[i].originalIndex === 0) {
-            originalPosition = i;
-          }
-        }
-
-        // Create output: [original_position(4 bytes), last_column]
-        const result = [...OpCodes.Unpack32BE(originalPosition)];
-        result.push(...lastColumn.slice(0, n)); // Remove the added marker
+        // Output: [primary_index(4 bytes BE)][last_column(n bytes)]
+        const result = OpCodes.Unpack32BE(primaryIndex);
+        for (let i = 0; i < lastColumn.length; i++) result.push(lastColumn[i]);
 
         this.inputBuffer = [];
         return result;
       }
 
       _decompress() {
-        if (this.inputBuffer.length < 5) {
+        if (this.inputBuffer.length < 4) {
           this.inputBuffer = [];
           return [];
         }
 
-        // Read original position
         const originalPosition = OpCodes.Pack32BE(
           this.inputBuffer[0],
           this.inputBuffer[1],
@@ -196,59 +317,8 @@
         );
 
         const lastColumn = this.inputBuffer.slice(4);
-        const n = lastColumn.length;
 
-        if (n === 0) {
-          this.inputBuffer = [];
-          return [];
-        }
-
-        // Add end marker back
-        lastColumn.push(0);
-
-        // Create first column by sorting last column
-        const firstColumn = lastColumn.slice().sort((a, b) => a - b);
-
-        // Build next array for reconstruction
-        const next = new Array(n + 1);
-        const count = new Array(256).fill(0);
-
-        // Count occurrences in first column
-        for (const char of firstColumn) {
-          count[char]++;
-        }
-
-        // Build cumulative counts
-        for (let i = 1; i < 256; i++) {
-          count[i] += count[i - 1];
-        }
-
-        // Build next array
-        const tempCount = new Array(256).fill(0);
-        for (let i = 0; i <= n; i++) {
-          const char = lastColumn[i];
-          next[tempCount[char]] = i;
-          tempCount[char]++;
-
-          // Adjust for cumulative positioning
-          for (let j = 0; j < char; j++) {
-            if (tempCount[j] < count[j]) {
-              next[count[j] - tempCount[j] - 1 + tempCount[j]] = i;
-              break;
-            }
-          }
-        }
-
-        // Reconstruct original string
-        const result = [];
-        let pos = originalPosition;
-
-        for (let i = 0; i < n; i++) {
-          if (firstColumn[pos] !== 0) { // Skip end marker
-            result.push(firstColumn[pos]);
-          }
-          pos = next[pos];
-        }
+        const result = bwtDecode(originalPosition, lastColumn);
 
         this.inputBuffer = [];
         return result;
