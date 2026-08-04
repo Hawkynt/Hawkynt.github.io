@@ -78,15 +78,16 @@
     }
 
     initTable() {
-      // CRC32 table for bzip2 (byte-reversed polynomial)
+      // CRC-32/BZIP2 table: poly 0x04C11DB7, MSB-first, NOT reflected
+      // (this differs from the zlib/PKZIP CRC-32 which is bit-reflected)
       this.table = new Uint32Array(256);
       for (let i = 0; i < 256; ++i) {
-        let crc = i;
+        let crc = OpCodes.Shl32(i, 24);
         for (let j = 0; j < 8; ++j) {
-          if (crc&1) {
-            crc = (OpCodes.Shr32(crc, 1))^0xEDB88320;
+          if (OpCodes.Shr32(crc, 31) === 1) {
+            crc = OpCodes.Xor32(OpCodes.Shl32(crc, 1), 0x04C11DB7);
           } else {
-            crc = OpCodes.Shr32(crc, 1);
+            crc = OpCodes.Shl32(crc, 1);
           }
         }
         this.table[i] = OpCodes.ToUint32(crc);
@@ -98,7 +99,8 @@
     }
 
     update(byte) {
-      this.value = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shr32(this.value, 8), this.table[OpCodes.Xor32(this.value, byte)&0xFF]));
+      const index = OpCodes.Xor32(OpCodes.Shr32(this.value, 24), byte)&0xFF;
+      this.value = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shl32(this.value, 8), this.table[index]));
     }
 
     updateRun(byte, length) {
@@ -108,9 +110,8 @@
     }
 
     getValue() {
-      // Reverse bytes and complement
-      const v = ~OpCodes.ToUint32(this.value);
-      return OpCodes.ToUint32(OpCodes.Shr32(v, 24)|(OpCodes.Shr32(v, 8)&0xFF00)|(OpCodes.Shl32(v, 8)&0xFF0000)|OpCodes.Shl32(v, 24));
+      // Final complement only - no byte/bit reversal (RefOut=false for this CRC variant)
+      return OpCodes.ToUint32(OpCodes.Xor32(this.value, 0xFFFFFFFF));
     }
   }
 
@@ -191,7 +192,10 @@
     }
 
     readInt32() {
-      return OpCodes.Shl32(this.readBits(16), 16)|this.readBits(16);
+      // ToUint32 matters here: plain `|` forces a SIGNED int32 result in JS even though
+      // Shl32 itself returns unsigned, so values with bit 31 set (common for CRCs) would
+      // otherwise come back negative and fail strict comparison against unsigned CRCs.
+      return OpCodes.ToUint32(OpCodes.Shl32(this.readBits(16), 16)|this.readBits(16));
     }
 
     readLong48() {
@@ -202,33 +206,73 @@
   // ===== BURROWS-WHEELER TRANSFORM =====
 
   class BurrowsWheelerTransform {
+    /**
+     * Build the sorted order of all n cyclic rotations of data in O(n log^2 n).
+     * Uses prefix-doubling suffix-array construction on the doubled string
+     * (data concatenated with itself) so no sentinel character is needed and
+     * ties between genuinely-identical (periodic) rotations resolve consistently.
+     * A naive O(n) full-rotation comparator (as a plain sort comparator) is
+     * pathological for repeat-heavy input (e.g. long runs of the same byte,
+     * which is exactly the common case for compressible data) - this avoids that.
+     * @param {uint8[]} data
+     * @returns {uint32[]} rotation start indices (0..n-1), sorted ascending by rotation content
+     */
+    static _sortedRotationOrder(data) {
+      const n = data.length;
+      const m = 2 * n;
+
+      let sa = new Int32Array(m);
+      for (let i = 0; i < m; ++i) sa[i] = i;
+
+      let rank = new Int32Array(m);
+      for (let i = 0; i < m; ++i) rank[i] = data[i % n];
+
+      let tmp = new Int32Array(m);
+
+      for (let k = 1; ; k *= 2) {
+        sa.sort((a, b) => {
+          const ra = rank[a], rb = rank[b];
+          if (ra !== rb) return ra - rb;
+          const ra2 = a + k < m ? rank[a + k] : -1;
+          const rb2 = b + k < m ? rank[b + k] : -1;
+          return ra2 - rb2;
+        });
+
+        tmp[sa[0]] = 0;
+        let classes = 1;
+        for (let i = 1; i < m; ++i) {
+          const prev = sa[i - 1], cur = sa[i];
+          const prevRank2 = prev + k < m ? rank[prev + k] : -1;
+          const curRank2 = cur + k < m ? rank[cur + k] : -1;
+          if (rank[prev] !== rank[cur] || prevRank2 !== curRank2) ++classes;
+          tmp[cur] = classes - 1;
+        }
+
+        const swapRank = rank; rank = tmp; tmp = swapRank;
+
+        if (classes >= m || k >= m) break;
+      }
+
+      // Keep only the starting positions of the first copy (0..n-1), already in sorted order.
+      const order = new Uint32Array(n);
+      let oi = 0;
+      for (let i = 0; i < m && oi < n; ++i) {
+        if (sa[i] < n) order[oi++] = sa[i];
+      }
+      return order;
+    }
+
     static transform(data) {
       if (data.length === 0) return { transformed: [], primaryIndex: 0 };
       if (data.length === 1) return { transformed: [...data], primaryIndex: 0 };
 
       const n = data.length;
-      const suffixes = new Uint32Array(n);
-
-      // Initialize suffix array indices
-      for (let i = 0; i < n; ++i) {
-        suffixes[i] = i;
-      }
-
-      // Sort suffixes using a comparison function
-      // This is a simplified block-sorting algorithm
-      suffixes.sort((a, b) => {
-        for (let i = 0; i < n; ++i) {
-          const byteA = data[(a + i) % n];
-          const byteB = data[(b + i) % n];
-          if (byteA !== byteB) return byteA - byteB;
-        }
-        return 0;
-      });
+      const order = BurrowsWheelerTransform._sortedRotationOrder(data);
 
       // Find primary index (where original string is)
       let primaryIndex = 0;
       for (let i = 0; i < n; ++i) {
-        if (suffixes[i] === 0) {
+        if (order[i] === 0) {
           primaryIndex = i;
           break;
         }
@@ -237,8 +281,8 @@
       // Extract last column (L column)
       const transformed = new Uint8Array(n);
       for (let i = 0; i < n; ++i) {
-        const suffix = suffixes[i];
-        transformed[i] = data[(suffix + n - 1) % n];
+        const start = order[i];
+        transformed[i] = data[(start + n - 1) % n];
       }
 
       return { transformed: Array.from(transformed), primaryIndex };
@@ -345,15 +389,20 @@
         let nHeap = 0;
 
         heap.length = 0;
-        heap.push(0);
+        heap[0] = 0;
         weight[0] = 0;
         parent[0] = -2;
 
         // Build initial heap
+        // NOTE: this is a 1-indexed binary heap stored in a plain array; positions must be
+        // written by INDEX (heap[nHeap] = x), never with .push() - the heap shrinks and
+        // regrows as nodes are extracted/combined below, so .push() (which always appends
+        // at the current array length) desyncs from the logical heap position nHeap as soon
+        // as the array has been left "long" by an earlier extraction.
         for (let i = 1; i <= alphaSize; ++i) {
           parent[i] = -1;
-          heap.push(i);
           ++nHeap;
+          heap[nHeap] = i;
 
           // Sift up
           let zz = nHeap;
@@ -412,8 +461,8 @@
 
           weight[nNodes] = (w1 + w2)|(1 + (d1 > d2 ? d1 : d2));
           parent[nNodes] = -1;
-          heap.push(nNodes);
           ++nHeap;
+          heap[nHeap] = nNodes;
 
           // Sift up
           zz = nHeap;
@@ -476,12 +525,12 @@
 
       // Required metadata
       this.name = "BZIP2";
-      this.description = "Block-sorting compression using Burrows-Wheeler Transform, Move-to-Front coding, Run-Length Encoding, and Huffman coding. Decompression fully functional - passes all 3 official Go stdlib test vectors including multi-block streams.";
+      this.description = "Block-sorting compression using Burrows-Wheeler Transform, Move-to-Front coding, Run-Length Encoding, and Huffman coding. Both compression and decompression are implemented and interoperate with the real bzip2 CLI in both directions (verified against bzip2 1.0.8: it decodes our compressed output, and our decoder reads real bzip2 -9 output, including block and stream CRC verification). The encoder always uses the minimum legal number of Huffman tables (2, both identical) rather than bzip2's multi-table selector optimization, so output is larger than the reference encoder's but fully standard-compliant.";
       this.inventor = "Julian Seward";
       this.year = 1996;
       this.category = CategoryType.COMPRESSION;
       this.subCategory = "Block Sorting";
-      this.securityStatus = SecurityStatus.EDUCATIONAL; // Decompression only, CRC verification pending
+      this.securityStatus = SecurityStatus.EDUCATIONAL; // Not a security primitive; ratio is not optimized vs. the reference encoder
       this.complexity = ComplexityType.ADVANCED;
       this.country = CountryCode.GB;
 
@@ -505,21 +554,42 @@
           uri: "https://github.com/golang/go/blob/master/src/compress/bzip2/bzip2_test.go",
           input: OpCodes.Hex8ToBytes("425a68393141592653594eece83600000251800010400006449080200031064c4101a7a9a580bb9431f8bb9229c28482776741b0"),
           expected: OpCodes.AnsiToBytes("hello world\n"),
-          isInverse: true  // This is a decompression test
+          inverse: true  // This is a decompression test
         },
         {
           text: "32 Zero Bytes - Go stdlib test vector",
           uri: "https://github.com/golang/go/blob/master/src/compress/bzip2/bzip2_test.go",
           input: OpCodes.Hex8ToBytes("425a6839314159265359b5aa5098000000600040000004200021008283177245385090b5aa5098"),
           expected: new Array(32).fill(0),
-          isInverse: true
+          inverse: true
         },
         {
           text: "1MiB Zeros - Go stdlib test vector",
           uri: "https://github.com/golang/go/blob/master/src/compress/bzip2/bzip2_test.go",
           input: OpCodes.Hex8ToBytes("425a683931415926535938571ce50008084000c0040008200030cc0529a60806c4201e2ee48a70a12070ae39ca"),
           expected: new Array(1048576).fill(0),
-          isInverse: true
+          inverse: true
+        },
+        {
+          text: "Round-trip - short text (compression + decompression)",
+          uri: "https://sourceware.org/bzip2/",
+          input: OpCodes.AnsiToBytes("hello world"),
+          expected: [],
+          inverse: false
+        },
+        {
+          text: "Round-trip - repeated pattern (compression + decompression)",
+          uri: "https://sourceware.org/bzip2/",
+          input: OpCodes.AnsiToBytes("the quick brown fox jumps over the lazy dog. ".repeat(20)),
+          expected: [],
+          inverse: false
+        },
+        {
+          text: "Round-trip - all 256 byte values (compression + decompression)",
+          uri: "https://sourceware.org/bzip2/",
+          input: Array.from({ length: 256 }, (_, i) => i),
+          expected: [],
+          inverse: false
         }
       ];
 
@@ -577,7 +647,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -596,20 +666,193 @@
     }
 
     compress(data) {
-      // BZIP2 compression is extremely complex and requires thousands of lines
-      // For a production implementation, we would need to implement:
-      // 1. RLE stage 1 (run-length encoding)
-      // 2. Burrows-Wheeler Transform with block sorting
-      // 3. Move-to-front encoding
-      // 4. RLE stage 2 with RUNA/RUNB symbols
-      // 5. Multiple Huffman tables with selector optimization
-      // 6. Bit-level stream encoding
-      // 7. CRC32 checksums
-      //
-      // This is a simplified placeholder that demonstrates the structure.
-      // A full implementation would require the complete algorithm chain.
+      const bw = new BitWriter();
 
-      throw new Error('BZIP2 compression not yet fully implemented (decompression only)');
+      // File header: 'B' 'Z' 'h' <level digit>
+      bw.writeBits(8, 0x42);
+      bw.writeBits(8, 0x5A);
+      bw.writeBits(8, 0x68);
+      bw.writeBits(8, 0x30 + this.blockSize100k);
+
+      const maxBlockBytes = BZ_CONSTANTS.BASE_BLOCK_SIZE * this.blockSize100k;
+      const n = data.length;
+      let computedStreamCRC = 0;
+      let pos = 0;
+
+      while (pos < n) {
+        const blockStart = pos;
+        const rle1 = [];
+
+        // Greedily consume runs (RLE1) until the encoded block would exceed the limit.
+        while (pos < n) {
+          const byte = data[pos];
+          const capRun = Math.min(n - pos, 259); // 4 literal + up to 255 in the length byte
+          let runLen = 1;
+          while (runLen < capRun && data[pos + runLen] === byte) ++runLen;
+
+          const addBytes = runLen < 4 ? runLen : 5;
+          if (rle1.length > 0 && rle1.length + addBytes > maxBlockBytes) break;
+
+          if (runLen < 4) {
+            for (let j = 0; j < runLen; ++j) rle1.push(byte);
+          } else {
+            rle1.push(byte, byte, byte, byte, runLen - 4);
+          }
+          pos += runLen;
+        }
+
+        const blockCRC = this.encodeBlock(bw, rle1, data, blockStart, pos);
+        computedStreamCRC = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shl32(computedStreamCRC, 1)|OpCodes.Shr32(computedStreamCRC, 31), blockCRC));
+      }
+
+      bw.writeLong48(BZ_CONSTANTS.STREAM_END_MAGIC);
+      bw.writeInt32(computedStreamCRC);
+      bw.flush();
+
+      return bw.getBytes();
+    }
+
+    /**
+     * Encode a single block: BWT -> MTF -> RLE2 -> Huffman, with block/stream headers.
+     * @param {BitWriter} bw - output bit writer
+     * @param {uint8[]} rle1Data - RLE1-encoded payload for this block
+     * @param {uint8[]} originalData - full source buffer (for block CRC over the pre-RLE1 bytes)
+     * @param {number} blockStart - start offset (inclusive) of this block within originalData
+     * @param {number} blockEnd - end offset (exclusive) of this block within originalData
+     * @returns {number} the block CRC (also used to update the running stream CRC)
+     */
+    encodeBlock(bw, rle1Data, originalData, blockStart, blockEnd) {
+      // Block CRC is computed over the original (pre-RLE1) bytes belonging to this block
+      const crc = new BZip2CRC();
+      crc.reset();
+      for (let i = blockStart; i < blockEnd; ++i) crc.update(originalData[i]);
+      const blockCRC = crc.getValue();
+
+      const { transformed, primaryIndex } = BurrowsWheelerTransform.transform(rle1Data);
+
+      const inUse = new Array(256).fill(false);
+      for (let i = 0; i < transformed.length; ++i) inUse[transformed[i]] = true;
+      const seqToUnseq = [];
+      for (let i = 0; i < 256; ++i) if (inUse[i]) seqToUnseq.push(i);
+
+      const mtfPositions = MoveToFront.encode(transformed, inUse);
+
+      const alphaSize = seqToUnseq.length + 2; // + RUNA/RUNB..EOB
+      const eobSymbol = alphaSize - 1;
+      const mtfSymbols = this.encodeRLE2(mtfPositions, eobSymbol);
+
+      const freq = new Array(alphaSize).fill(0);
+      for (let i = 0; i < mtfSymbols.length; ++i) ++freq[mtfSymbols[i]];
+
+      const lengths = HuffmanCoding.makeCodeLengths(freq, BZ_CONSTANTS.MAX_CODE_LEN);
+      let minLen = BZ_CONSTANTS.MAX_CODE_LEN, maxLen = 1;
+      for (let i = 0; i < lengths.length; ++i) {
+        if (lengths[i] < minLen) minLen = lengths[i];
+        if (lengths[i] > maxLen) maxLen = lengths[i];
+      }
+      const codes = HuffmanCoding.assignCodes(lengths, minLen, maxLen);
+
+      // Minimum legal number of tables is 2; use two identical tables and always
+      // select table 0 (a legal, if not compression-optimal, encoding).
+      const nGroups = 2;
+      const nSelectors = Math.max(1, Math.ceil(mtfSymbols.length / BZ_CONSTANTS.G_SIZE));
+
+      // ===== Block header =====
+      bw.writeLong48(BZ_CONSTANTS.BLOCK_HEADER_MAGIC);
+      bw.writeInt32(blockCRC);
+      bw.writeBit(0); // not randomized
+      bw.writeBits(24, primaryIndex);
+
+      // Used-symbol bitmap (16 group bits + up to 16x16 detail bits)
+      const inUse16 = new Array(16).fill(false);
+      for (let i = 0; i < 256; ++i) if (inUse[i]) inUse16[Math.floor(i / 16)] = true;
+      for (let g = 0; g < 16; ++g) bw.writeBit(inUse16[g] ? 1 : 0);
+      for (let g = 0; g < 16; ++g) {
+        if (!inUse16[g]) continue;
+        for (let j = 0; j < 16; ++j) bw.writeBit(inUse[g * 16 + j] ? 1 : 0);
+      }
+
+      bw.writeBits(3, nGroups);
+      bw.writeBits(15, nSelectors);
+
+      // Selector list: all point at table 0, encoded as MTF value 0 (a single '0' bit each)
+      for (let i = 0; i < nSelectors; ++i) bw.writeBit(0);
+
+      // Huffman code-length tables (two identical copies)
+      for (let t = 0; t < nGroups; ++t) this.encodeHuffmanLengths(bw, lengths);
+
+      // Symbol stream
+      for (let i = 0; i < mtfSymbols.length; ++i) {
+        const sym = mtfSymbols[i];
+        bw.writeBits(lengths[sym], codes[sym]);
+      }
+
+      return blockCRC;
+    }
+
+    /**
+     * RLE2 / zero-run coding: runs of MTF value 0 are coded via a bijective base-2
+     * representation using RUNA(=1x)/RUNB(=2x) symbols; non-zero MTF position p becomes
+     * symbol p+1 (0 and 1 are reserved for RUNA/RUNB). Terminated by the EOB symbol.
+     * @param {number[]} mtfPositions - MTF-encoded positions
+     * @param {number} eobSymbol - end-of-block symbol value (alphaSize - 1)
+     * @returns {number[]} Huffman-alphabet symbol stream
+     */
+    encodeRLE2(mtfPositions, eobSymbol) {
+      const result = [];
+      let i = 0;
+      const n = mtfPositions.length;
+
+      while (i < n) {
+        if (mtfPositions[i] === 0) {
+          let runLen = 0;
+          while (i < n && mtfPositions[i] === 0) { ++runLen; ++i; }
+
+          let remaining = runLen;
+          while (remaining > 0) {
+            if (remaining % 2 === 1) {
+              result.push(BZ_CONSTANTS.RUNA);
+              remaining = Math.floor((remaining - 1) / 2);
+            } else {
+              result.push(BZ_CONSTANTS.RUNB);
+              remaining = Math.floor((remaining - 2) / 2);
+            }
+          }
+        } else {
+          result.push(mtfPositions[i] + 1);
+          ++i;
+        }
+      }
+
+      result.push(eobSymbol);
+      return result;
+    }
+
+    /**
+     * Write one Huffman code-length table using bzip2's delta encoding: a 5-bit seed
+     * length followed by, per symbol, a unary sequence of +1/-1 adjustments terminated
+     * by a 0 marker bit. Mirrors decodeBlock's length-reading loop exactly.
+     * @param {BitWriter} bw
+     * @param {number[]} lengths - code length per symbol (0..alphaSize-1)
+     */
+    encodeHuffmanLengths(bw, lengths) {
+      let curr = lengths[0];
+      bw.writeBits(5, curr);
+
+      for (let i = 0; i < lengths.length; ++i) {
+        const target = lengths[i];
+        if (curr === target) {
+          bw.writeBit(0);
+          continue;
+        }
+        bw.writeBit(1);
+        while (true) {
+          if (curr < target) { bw.writeBit(0); ++curr; }
+          else { bw.writeBit(1); --curr; }
+          if (curr === target) { bw.writeBit(0); break; }
+          bw.writeBit(1);
+        }
+      }
     }
 
     decompress(compressedData) {
@@ -645,9 +888,8 @@
         const blockMagic = reader.readLong48();
 
         if (blockMagic === BZ_CONSTANTS.STREAM_END_MAGIC) {
-          // End of stream - CRC verification disabled (see block CRC comment above)
           const expectedStreamCRC = reader.readInt32();
-          if (false && expectedStreamCRC !== computedStreamCRC) {
+          if (expectedStreamCRC !== computedStreamCRC) {
             throw new Error(`Stream CRC mismatch: expected ${expectedStreamCRC.toString(16)}, got ${computedStreamCRC.toString(16)}`);
           }
           break;
@@ -677,10 +919,7 @@
         }
         const computedCRC = crc.getValue();
 
-        // CRC calculation needs investigation - byte order or algorithm variation
-        // Expected: 0x4eece836 for "hello world\n", Got: 0x2d3b08af
-        // Decompression is verified correct via test vectors, CRC formula TBD
-        if (false && computedCRC !== blockCRC) {
+        if (computedCRC !== blockCRC) {
           throw new Error(`Block CRC mismatch: expected ${blockCRC.toString(16)}, got ${computedCRC.toString(16)}`);
         }
 
