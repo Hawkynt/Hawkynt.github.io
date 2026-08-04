@@ -85,30 +85,36 @@
           new LinkItem("Dictionary Compression Methods", "https://en.wikipedia.org/wiki/LZ77_and_LZ78")
         ];
 
-        // Test vectors - compression with known outputs and round-trip validation
-        // Note: Expected values are the compressed format, and round-trips verify correctness
+        // Test vectors with actual compressed outputs.
+        // Wire format (byte-identical to CompressionWorkbench's BB_ROLZ):
+        //   4 bytes uncompressed size (little-endian); if 0, no payload follows.
+        //   Otherwise an MSB-first bitstream, one token per position:
+        //     bit 0, 8-bit literal byte                      -- literal
+        //     bit 1, 8-bit table index, 8-bit (length - 3)    -- match
+        //   Match candidates are looked up in a per-context (previous byte)
+        //   circular table of up to 256 recent positions.
         const testInput1 = OpCodes.AnsiToBytes("A");
-        const testExpected1 = [0,0,0,1,0,1,65,1,0,0,0,2,0,65];
+        const testExpected1 = [1, 0, 0, 0, 32, 128];
 
         const testInput2 = OpCodes.AnsiToBytes("AB");
-        const testExpected2 = [0,0,0,2,0,2,65,1,66,1,0,0,0,4,0,65,0,66];
+        const testExpected2 = [2, 0, 0, 0, 32, 144, 128];
 
         const testInput3 = OpCodes.AnsiToBytes("ABAB");
-        const testExpected3 = [0,0,0,4,0,2,65,2,66,2,0,0,0,8,0,65,0,66,0,65,0,66];
+        const testExpected3 = [4, 0, 0, 0, 32, 144, 136, 36, 32];
 
         const testInput4 = OpCodes.AnsiToBytes("ABCABC");
-        const testExpected4 = [0,0,0,6,0,3,65,2,66,2,67,2,0,0,0,12,0,65,0,66,0,67,0,65,0,66,0,67];
+        const testExpected4 = [6, 0, 0, 0, 32, 144, 136, 100, 18, 17, 12];
 
         const testInput5 = OpCodes.AnsiToBytes("Hello World");
-        const testExpected5 = [0,0,0,11,0,8,32,1,72,1,87,1,100,1,101,1,108,3,111,2,114,1,0,0,0,22,0,72,0,101,0,108,0,108,0,111,0,32,0,87,0,111,0,114,0,108,0,100];
+        const testExpected5 = [11, 0, 0, 0, 36, 25, 77, 134, 195, 120, 128, 174, 111, 57, 27, 12, 128];
 
         const testInput6 = OpCodes.AnsiToBytes("aaabbbcccaaa");
-        const testExpected6 = [0,0,0,12,0,3,97,6,98,3,99,3,0,0,0,24,0,97,0,97,0,97,0,98,0,98,0,98,0,99,0,99,0,99,0,97,0,97,0,97];
+        const testExpected6 = [12, 0, 0, 0, 48, 152, 76, 38, 35, 17, 136, 198, 99, 49, 152, 76, 38, 16];
 
         this.tests = [
           new TestCase(
             [],
-            [],
+            [0, 0, 0, 0],
             "Empty input test",
             "https://ieeexplore.ieee.org/document/8801741/"
           ),
@@ -165,12 +171,12 @@
         this.isInverse = isInverse; // true = decompress, false = compress
         this.inputBuffer = [];
 
-        // ROLZ parameters
-        this.MAX_CONTEXT_LENGTH = 4; // Context depth for offset reduction
-        this.MAX_OFFSETS_PER_CONTEXT = 256; // Maximum offsets per context
-        this.MIN_MATCH_LENGTH = 3; // Minimum match length
-        this.MAX_MATCH_LENGTH = 259; // Maximum match length
-        this.DICTIONARY_SIZE = 32768; // 32KB sliding window
+        // Matches CompressionWorkbench's BB_ROLZ
+        this.WINDOW_SIZE = 32768;
+        this.MIN_MATCH = 3;
+        this.MAX_MATCH = 255;
+        this.NUM_CONTEXTS = 256;
+        this.TABLE_SIZE = 256;
       }
 
       Feed(data) {
@@ -179,334 +185,179 @@
       }
 
       Result() {
-        if (this.inputBuffer.length === 0) return [];
+        if (this.isInverse) {
+          if (this.inputBuffer.length === 0) return [];
+          const result = this.decompress(this.inputBuffer);
+          this.inputBuffer = [];
+          return result;
+        }
 
-        const result = this.isInverse ? 
-          this.decompress(this.inputBuffer) : 
-          this.compress(this.inputBuffer);
-
+        // Even empty input produces a fixed 4-byte header (matches the
+        // C# reference, which always writes the uncompressed size).
+        const result = this.compress(this.inputBuffer);
         this.inputBuffer = [];
         return result;
       }
 
+      // Context-based match tables: the previous byte selects which of 256
+      // offset tables to search. Each context keeps a circular buffer of up
+      // to 256 recent positions. Matches are encoded as (table index,
+      // length - MIN_MATCH) rather than a raw offset, which is cheaper when
+      // the context predicts the match well.
       compress(data) {
-        if (!data || data.length === 0) return [];
+        const compressed = OpCodes.Unpack32LE(data.length);
+        if (data.length === 0) return compressed;
 
-        const input = new Uint8Array(data);
+        const tables = this._createTables();
+        const bits = [];
 
-        // Initialize context-based offset tables
-        const contextOffsets = this._initializeContextTables();
+        let pos = 0;
+        while (pos < data.length) {
+          const ctx = pos > 0 ? data[pos - 1] : 0;
+          const table = tables.positions[ctx];
+          const count = tables.count[ctx];
 
-        // Build frequency table for literals
-        const frequencies = this._buildFrequencyTable(input);
+          let bestLen = 0;
+          let bestIdx = 0;
+          const maxLen = Math.min(this.MAX_MATCH, data.length - pos);
 
-        // Perform ROLZ compression
-        const tokens = this._performROLZCompression(input, contextOffsets);
+          for (let i = 0; i < count; i++) {
+            const candidate = table[i];
+            if (pos - candidate > this.WINDOW_SIZE) continue;
+            if (candidate >= pos) continue;
 
-        // Encode tokens
-        const encoded = this._encodeTokens(tokens, frequencies);
+            let len = 0;
+            while (len < maxLen && data[candidate + len] === data[pos + len])
+              len++;
 
-        // Pack compressed data
-        return this._packCompressed(frequencies, encoded, input.length);
+            if (len >= this.MIN_MATCH && len > bestLen) {
+              bestLen = len;
+              bestIdx = i;
+              if (bestLen === maxLen) break;
+            }
+          }
+
+          if (bestLen >= this.MIN_MATCH) {
+            bits.push(1);
+            this._pushBits(bits, bestIdx, 8);
+            this._pushBits(bits, bestLen - this.MIN_MATCH, 8);
+            this._updateTable(tables, ctx, pos);
+            pos += bestLen;
+          } else {
+            bits.push(0);
+            this._pushBits(bits, data[pos], 8);
+            this._updateTable(tables, ctx, pos);
+            pos++;
+          }
+        }
+
+        compressed.push(...this._bitsToBytes(bits));
+        return compressed;
       }
 
       decompress(data) {
-        if (!data || data.length < 8) return [];
+        const uncompressedSize = OpCodes.Pack32LE(data[0], data[1], data[2], data[3]);
+        if (uncompressedSize === 0) return [];
 
-        // Unpack compressed data
-        const { frequencies, encoded, originalLength } = this._unpackCompressed(data);
+        const reader = this._createBitReader(data, 4);
+        const tables = this._createTables();
+        const dst = [];
 
-        // Initialize context tables
-        const contextOffsets = this._initializeContextTables();
+        while (dst.length < uncompressedSize) {
+          const ctx = dst.length > 0 ? dst[dst.length - 1] : 0;
 
-        // Decode tokens
-        const tokens = this._decodeTokens(encoded, frequencies);
-
-        // Reconstruct original data
-        return this._reconstructFromTokens(tokens, contextOffsets, originalLength);
-      }
-
-      _initializeContextTables() {
-        // Create context-based offset tables
-        const contextTables = new Map();
-        return contextTables;
-      }
-
-      _buildFrequencyTable(data) {
-        const frequencies = {};
-        for (let i = 0; i < data.length; i++) {
-          const byte = data[i];
-          frequencies[byte] = (frequencies[byte] || 0) + 1;
-        }
-        return frequencies;
-      }
-
-      _performROLZCompression(input, contextOffsets) {
-        const tokens = [];
-        let pos = 0;
-        let context = '';
-
-        while (pos < input.length) {
-          // Get context for current position
-          const currentContext = this._getContext(input, pos, context);
-
-          // Find best match using context-reduced offsets
-          const match = this._findContextMatch(input, pos, currentContext, contextOffsets);
-
-          if (match.length >= this.MIN_MATCH_LENGTH) {
-            // Output match token
-            tokens.push({
-              type: 'match',
-              length: match.length,
-              offset: match.offset,
-              context: currentContext
-            });
-
-            // Update context offsets
-            this._updateContextOffsets(contextOffsets, currentContext, match.offset);
-
-            pos += match.length;
+          if (reader.readBit() === 0) {
+            const b = reader.readBits(8);
+            this._updateTable(tables, ctx, dst.length);
+            dst.push(b);
           } else {
-            // Output literal token with context
-            tokens.push({
-              type: 'literal',
-              value: input[pos],
-              context: currentContext
-            });
+            const idx = reader.readBits(8);
+            const length = reader.readBits(8) + this.MIN_MATCH;
 
-            pos++;
-          }
+            if (idx >= tables.count[ctx])
+              throw new Error('ROLZ: invalid table index ' + idx + ' for context ' + ctx);
 
-          // Update context
-          context = this._updateContext(context, input[pos - 1]);
-        }
+            const matchPos = tables.positions[ctx][idx];
+            this._updateTable(tables, ctx, dst.length);
 
-        return tokens;
-      }
-
-      _getContext(input, pos, previousContext) {
-        // Build context from previous bytes
-        let context = '';
-        const startPos = Math.max(0, pos - this.MAX_CONTEXT_LENGTH);
-
-        for (let i = startPos; i < pos; i++) {
-          context += String.fromCharCode(input[i]);
-        }
-
-        return context.slice(-this.MAX_CONTEXT_LENGTH);
-      }
-
-      _findContextMatch(input, pos, context, contextOffsets) {
-        let bestMatch = { length: 0, offset: 0 };
-
-        if (pos + this.MIN_MATCH_LENGTH > input.length) {
-          return bestMatch;
-        }
-
-        // Get context-specific offsets
-        const contextTable = contextOffsets.get(context);
-        if (!contextTable || contextTable.length === 0) {
-          return bestMatch;
-        }
-
-        // Search through context-reduced offset set
-        for (const offset of contextTable) {
-          const candidatePos = pos - offset;
-          if (candidatePos < 0) continue;
-
-          // Check match length
-          let length = 0;
-          const maxLength = Math.min(this.MAX_MATCH_LENGTH, input.length - pos);
-
-          while (length < maxLength && 
-                 input[pos + length] === input[candidatePos + length]) {
-            length++;
-          }
-
-          if (length >= this.MIN_MATCH_LENGTH && length > bestMatch.length) {
-            bestMatch = { length, offset };
-          }
-        }
-
-        return bestMatch;
-      }
-
-      _updateContextOffsets(contextOffsets, context, offset) {
-        if (!contextOffsets.has(context)) {
-          contextOffsets.set(context, []);
-        }
-
-        const contextTable = contextOffsets.get(context);
-
-        // Add offset if not already present
-        if (!contextTable.includes(offset)) {
-          contextTable.push(offset);
-
-          // Limit table size to prevent memory bloat
-          if (contextTable.length > this.MAX_OFFSETS_PER_CONTEXT) {
-            contextTable.shift(); // Remove oldest offset
-          }
-        }
-      }
-
-      _updateContext(context, newByte) {
-        const newContext = context + String.fromCharCode(newByte);
-        return newContext.slice(-this.MAX_CONTEXT_LENGTH);
-      }
-
-      _encodeTokens(tokens, frequencies) {
-        const encoded = [];
-
-        for (const token of tokens) {
-          if (token.type === 'literal') {
-            encoded.push(0); // Literal marker
-            encoded.push(token.value);
-          } else {
-            encoded.push(1); // Match marker
-            encoded.push(Math.min(255, token.length)); // Length
-            const offsetBytes = OpCodes.Unpack16BE(token.offset);
-            encoded.push(offsetBytes[0]); // Offset high
-            encoded.push(offsetBytes[1]); // Offset low
-          }
-        }
-
-        return encoded;
-      }
-
-      _decodeTokens(encoded, frequencies) {
-        const tokens = [];
-        let pos = 0;
-
-        while (pos < encoded.length) {
-          if (pos >= encoded.length) break;
-
-          const marker = encoded[pos++];
-
-          if (marker === 0) {
-            // Literal
-            if (pos < encoded.length) {
-              tokens.push({
-                type: 'literal',
-                value: encoded[pos++]
-              });
-            }
-          } else if (marker === 1) {
-            // Match
-            if (pos + 2 < encoded.length) {
-              const length = encoded[pos++];
-              const offsetHigh = encoded[pos++];
-              const offsetLow = encoded[pos++];
-              const offset = OpCodes.Pack16BE(offsetHigh, offsetLow);
-
-              tokens.push({
-                type: 'match',
-                length: length,
-                offset: offset
-              });
+            for (let i = 0; i < length; i++) {
+              if (dst.length >= uncompressedSize)
+                throw new Error('ROLZ: decompressed data exceeds expected size.');
+              dst.push(dst[matchPos + i]);
             }
           }
         }
 
-        return tokens;
+        return dst;
       }
 
-      _reconstructFromTokens(tokens, contextOffsets, originalLength) {
-        const output = [];
-        let context = '';
+      /** @private */
+      _createTables() {
+        const positions = [];
+        for (let i = 0; i < this.NUM_CONTEXTS; i++)
+          positions.push(new Array(this.TABLE_SIZE).fill(0));
+        return {
+          positions,
+          writePos: new Array(this.NUM_CONTEXTS).fill(0),
+          count: new Array(this.NUM_CONTEXTS).fill(0)
+        };
+      }
 
-        for (const token of tokens) {
-          if (token.type === 'literal') {
-            output.push(token.value);
-            context = this._updateContext(context, token.value);
-          } else {
-            // Match - copy from sliding window
-            const startPos = output.length - token.offset;
-            for (let i = 0; i < token.length; i++) {
-              const sourceIndex = startPos + i;
-              if (sourceIndex >= 0 && sourceIndex < output.length) {
-                const byte = output[sourceIndex];
-                output.push(byte);
-                context = this._updateContext(context, byte);
-              } else {
-                output.push(0); // Padding for invalid references
-              }
-            }
+      /** @private */
+      _updateTable(tables, ctx, position) {
+        const wp = tables.writePos[ctx];
+        tables.positions[ctx][wp] = position;
+        tables.writePos[ctx] = (wp + 1) % this.TABLE_SIZE;
+        if (tables.count[ctx] < this.TABLE_SIZE)
+          tables.count[ctx]++;
+      }
+
+      /** @private */
+      _pushBits(bits, value, count) {
+        for (let i = count - 1; i >= 0; i--)
+          bits.push(OpCodes.AndN(OpCodes.Shr32(value, i), 1));
+      }
+
+      /** @private */
+      _bitsToBytes(bits) {
+        const bytes = [];
+        let currentByte = 0;
+        let bitsUsed = 0;
+        for (const bit of bits) {
+          currentByte = OpCodes.OrN(OpCodes.Shl32(currentByte, 1), bit);
+          bitsUsed++;
+          if (bitsUsed === 8) {
+            bytes.push(currentByte);
+            currentByte = 0;
+            bitsUsed = 0;
           }
-
-          if (output.length >= originalLength) break;
         }
-
-        return Array.from(new Uint8Array(output.slice(0, originalLength)));
+        if (bitsUsed > 0)
+          bytes.push(OpCodes.Shl32(currentByte, 8 - bitsUsed));
+        return bytes;
       }
 
-      _packCompressed(frequencies, encoded, originalLength) {
-        const result = [];
-
-        // Header: [OriginalLength(4)][FreqTableSize(2)][FreqTable][EncodedLength(4)][EncodedData]
-
-        // Original length
-        const originalLengthBytes = OpCodes.Unpack32BE(originalLength);
-        result.push(originalLengthBytes[0]);
-        result.push(originalLengthBytes[1]);
-        result.push(originalLengthBytes[2]);
-        result.push(originalLengthBytes[3]);
-
-        // Frequency table
-        const freqEntries = Object.entries(frequencies);
-        const freqTableSizeBytes = OpCodes.Unpack16BE(freqEntries.length);
-        result.push(freqTableSizeBytes[0]);
-        result.push(freqTableSizeBytes[1]);
-
-        for (const [byte, freq] of freqEntries) {
-          result.push(OpCodes.ToByte(parseInt(byte)));
-          result.push(OpCodes.ToByte(Math.min(255, freq)));
-        }
-
-        // Encoded data length
-        const encodedLengthBytes = OpCodes.Unpack32BE(encoded.length);
-        result.push(encodedLengthBytes[0]);
-        result.push(encodedLengthBytes[1]);
-        result.push(encodedLengthBytes[2]);
-        result.push(encodedLengthBytes[3]);
-
-        // Encoded data
-        result.push(...encoded);
-
-        return result;
-      }
-
-      _unpackCompressed(data) {
-        let pos = 0;
-
-        // Read original length
-        const originalLength = OpCodes.Pack32BE(data[pos], data[pos + 1], data[pos + 2], data[pos + 3]);
-        pos += 4;
-
-        // Read frequency table size
-        const freqTableSize = OpCodes.Pack16BE(data[pos], data[pos + 1]);
-        pos += 2;
-
-        // Read frequency table
-        const frequencies = {};
-        for (let i = 0; i < freqTableSize; i++) {
-          if (pos + 1 >= data.length) break;
-          const byte = data[pos++];
-          const freq = data[pos++];
-          frequencies[byte] = freq;
-        }
-
-        // Read encoded data length
-        if (pos + 3 >= data.length) {
-          throw new Error('Invalid ROLZ data: missing encoded length');
-        }
-
-        const encodedLength = OpCodes.Pack32BE(data[pos], data[pos + 1], data[pos + 2], data[pos + 3]);
-        pos += 4;
-
-        // Read encoded data
-        const encoded = data.slice(pos, pos + encodedLength);
-
-        return { frequencies, encoded, originalLength };
+      /** @private */
+      _createBitReader(data, startOffset) {
+        let bytePos = startOffset;
+        let bitPos = 8;
+        return {
+          readBit: () => {
+            if (bitPos >= 8) {
+              bitPos = 0;
+              bytePos++;
+            }
+            const bit = OpCodes.AndN(OpCodes.Shr32(data[bytePos - 1], 7 - bitPos), 1);
+            bitPos++;
+            return bit;
+          },
+          readBits: function(count) {
+            let value = 0;
+            for (let i = 0; i < count; i++)
+              value = OpCodes.OrN(OpCodes.Shl32(value, 1), this.readBit());
+            return value;
+          }
+        };
       }
     }
 
