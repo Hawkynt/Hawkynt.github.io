@@ -1,29 +1,41 @@
 /*
- * LZWL (Syllable-Based LZW) Compression Algorithm Implementation
+ * LZWL (Digram-Seeded LZW) Compression Algorithm Implementation
  * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
  *
- * LZWL is a 2006-era modification of LZW (attributed to Platos, Dvorsky and
- * Snasel) that builds its dictionary out of syllables instead of individual
- * bytes: the input is first decomposed into syllables, and the classic LZW
- * "longest matching dictionary phrase, then extend by one more symbol" loop
- * is run over that syllable sequence instead of over raw bytes. When no
- * dictionary phrase matches, the next syllable K is emitted literally and
- * registered as a new phrase before compression continues (mirroring the
- * base algorithm's own literal-then-extend behaviour, just with a syllable
- * as the "character").
+ * LZWL is classic LZW whose initial dictionary is extended with the most
+ * frequent byte digrams (overlapping consecutive byte pairs) found in the
+ * input by an up-front frequency analysis. Seeding the dictionary this way
+ * lets the encoder start emitting multi-byte codes immediately instead of
+ * having to learn every digram from scratch, which speeds convergence on
+ * digram-rich data (e.g. natural-language text) versus plain LZW.
  *
- * This implementation uses a simple, deterministic, language-agnostic
- * syllable splitter (a run of leading consonants, then a run of vowels, then
- * trailing consonants up to -- but not including -- a consonant that starts
- * the next vowel-bearing syllable; any non-letter byte is its own syllable)
- * so that arbitrary byte streams still round-trip, with syllable
- * preprocessing paying off specifically on natural-language text.
+ * Encoding uses a (parentCode, childByte) trie exactly like classic LZW,
+ * with a decoder-mirrored dictionary-size/code-width counter (the encoder
+ * advances its own copy of "what the decoder's next free code and code
+ * width will be" one step behind its own trie, since the decoder cannot
+ * learn a new phrase until it has actually seen and emitted the code that
+ * completes it) and a dedicated stop code for clean end-of-stream framing.
+ * Bits are packed MSB-first.
  *
- * Wire format: a sequence of tokens, each starting with a marker byte:
- *   0x00 <len> <len bytes>   - a new syllable, output literally and
- *                              registered as dictionary entry (next code)
- *   0x01 <code:16 big-endian> - reference to an existing dictionary phrase
+ * Wire format:
+ *   bytes 0..3   - original (uncompressed) data length, 32-bit little-endian
+ *                  (if 0, this is the entire output; nothing else follows)
+ *   bytes 4..5   - digram table entry count N, 16-bit little-endian
+ *   N * 2 bytes  - the digram table itself, one (a,b) byte pair per entry,
+ *                  in descending-frequency order (ties broken by the
+ *                  ascending digram value, i.e. scan order, as produced by
+ *                  a stable selection followed by a frequency sort); these
+ *                  N digrams are pre-registered as codes 256..256+N-1, code
+ *                  256+N is the stop code
+ *   remainder    - the MSB-first-packed LZW code stream: codes 0..255 are
+ *                  literal bytes, 256..256+N-1 are the seeded digrams,
+ *                  256+N is the stop code, and any higher code is a phrase
+ *                  the decoder itself has learned by the time it is used;
+ *                  starts at 9-bit codes and widens by 1 bit whenever the
+ *                  decoder's dictionary would otherwise overflow the
+ *                  current width, up to a maximum of 16 bits (65536-entry
+ *                  dictionary)
  *
  * References:
  * - LZWL (Wikipedia): https://en.wikipedia.org/wiki/LZWL
@@ -64,61 +76,196 @@
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           CompressionAlgorithm, IAlgorithmInstance, LinkItem } = AlgorithmFramework;
 
-  const TOK_LIT = 0x00;
-  const TOK_REF = 0x01;
+  const MAX_BITS = 16;
+  const MAX_DICT_SIZE = 65536; // 2 raised to the power of MAX_BITS
+  const MAX_DIGRAMS = 128;
+  const INTROSORT_SIZE_THRESHOLD = 16;
 
-  // ===== SYLLABLE SEGMENTATION =====
+  // ===== .NET-COMPATIBLE INTROSORT (List<T>.Sort(Comparison<T>) equivalent) =====
+  //
+  // The reference implementation sorts its candidate digram list with
+  // List<int>.Sort(Comparison<int>), which is .NET's unstable introspective
+  // sort (insertion sort below a size threshold, otherwise median-of-three
+  // quicksort falling back to heapsort past a recursion-depth limit). Since
+  // many digrams tie on frequency, an ordinary stable sort produces a
+  // different (still "correct" by frequency, but byte-different) table
+  // order, so the exact .NET algorithm is replicated here.
 
-  function isLetter(b) {
-    return (b >= 0x41 && b <= 0x5A) || (b >= 0x61 && b <= 0x7A);
+  function log2Floor(n) {
+    let value = n;
+    let result = 0;
+    while (value > 1) {
+      value = Math.floor(value / 2);
+      ++result;
+    }
+    return result;
   }
 
-  function isVowel(b) {
-    const lower = (b >= 0x41 && b <= 0x5A) ? b + 0x20 : b;
-    return lower === 0x61 || lower === 0x65 || lower === 0x69 || lower === 0x6F || lower === 0x75; // a e i o u
+  function swapIfGreater(keys, comparer, i, j) {
+    if (comparer(keys[i], keys[j]) > 0) {
+      const t = keys[i];
+      keys[i] = keys[j];
+      keys[j] = t;
+    }
   }
 
-  function segment(bytes) {
-    const syllables = [];
-    const n = bytes.length;
-    let pos = 0;
+  function swapEntries(keys, i, j) {
+    const t = keys[i];
+    keys[i] = keys[j];
+    keys[j] = t;
+  }
 
-    while (pos < n) {
-      const start = pos;
-
-      if (!isLetter(bytes[pos])) {
-        pos++;
-      } else {
-        let sawVowel = false;
-        while (pos < n && isLetter(bytes[pos])) {
-          if (isVowel(bytes[pos])) {
-            sawVowel = true;
-            pos++;
-          } else if (sawVowel && pos + 1 < n && isLetter(bytes[pos + 1]) && isVowel(bytes[pos + 1])) {
-            break; // leave this consonant to start the next syllable's onset
-          } else {
-            pos++;
-          }
-        }
+  function insertionSortRange(keys, lo, length, comparer) {
+    for (let i = 0; i < length - 1; ++i) {
+      const t = keys[lo + i + 1];
+      let j = i;
+      while (j >= 0 && comparer(t, keys[lo + j]) < 0) {
+        keys[lo + j + 1] = keys[lo + j];
+        --j;
       }
+      keys[lo + j + 1] = t;
+    }
+  }
 
-      syllables.push(bytes.slice(start, pos));
+  function downHeap(keys, lo, i, n, comparer) {
+    const d = keys[lo + i - 1];
+    while (i <= Math.floor(n / 2)) {
+      let child = 2 * i;
+      if (child < n && comparer(keys[lo + child - 1], keys[lo + child]) < 0)
+        ++child;
+      if (!(comparer(d, keys[lo + child - 1]) < 0))
+        break;
+      keys[lo + i - 1] = keys[lo + child - 1];
+      i = child;
+    }
+    keys[lo + i - 1] = d;
+  }
+
+  function heapSortRange(keys, lo, length, comparer) {
+    const n = length;
+    for (let i = Math.floor(n / 2); i >= 1; --i)
+      downHeap(keys, lo, i, n, comparer);
+    for (let i = n; i > 1; --i) {
+      swapEntries(keys, lo, lo + i - 1);
+      downHeap(keys, lo, 1, i - 1, comparer);
+    }
+  }
+
+  function pickPivotAndPartition(keys, lo, length, comparer) {
+    const hi = lo + length - 1;
+    const middle = lo + Math.floor((length - 1) / 2);
+
+    swapIfGreater(keys, comparer, lo, middle);
+    swapIfGreater(keys, comparer, lo, hi);
+    swapIfGreater(keys, comparer, middle, hi);
+
+    const pivot = keys[middle];
+    swapEntries(keys, middle, hi - 1);
+    let left = lo, right = hi - 1;
+
+    while (left < right) {
+      do { ++left; } while (comparer(keys[left], pivot) < 0);
+      do { --right; } while (comparer(pivot, keys[right]) < 0);
+      if (left >= right) break;
+      swapEntries(keys, left, right);
     }
 
-    return syllables;
+    if (left !== hi - 1)
+      swapEntries(keys, left, hi - 1);
+
+    return left - lo;
   }
 
-  // ===== DICTIONARY HELPERS =====
+  function introSortRange(keys, lo, lengthInit, depthLimitInit, comparer) {
+    let length = lengthInit;
+    let depthLimit = depthLimitInit;
 
-  function keyOf(bytes) {
-    return bytes.join(',');
+    while (length > 1) {
+      if (length <= INTROSORT_SIZE_THRESHOLD) {
+        if (length === 2) {
+          swapIfGreater(keys, comparer, lo, lo + 1);
+          return;
+        }
+        if (length === 3) {
+          swapIfGreater(keys, comparer, lo, lo + 1);
+          swapIfGreater(keys, comparer, lo, lo + 2);
+          swapIfGreater(keys, comparer, lo + 1, lo + 2);
+          return;
+        }
+        insertionSortRange(keys, lo, length, comparer);
+        return;
+      }
+
+      if (depthLimit === 0) {
+        heapSortRange(keys, lo, length, comparer);
+        return;
+      }
+      --depthLimit;
+
+      const p = pickPivotAndPartition(keys, lo, length, comparer);
+      introSortRange(keys, lo + p + 1, length - (p + 1), depthLimit, comparer);
+      length = p;
+    }
   }
 
-  function concatBytes(a, b) {
-    const out = new Array(a.length + b.length);
-    for (let i = 0; i < a.length; ++i) out[i] = a[i];
-    for (let i = 0; i < b.length; ++i) out[a.length + i] = b[i];
-    return out;
+  function dotNetListSort(keys, comparer) {
+    if (keys.length > 1)
+      introSortRange(keys, 0, keys.length, 2 * (log2Floor(keys.length) + 1), comparer);
+  }
+
+  // ===== BIT-LEVEL I/O (MSB-first) =====
+
+  class BitWriter {
+    constructor() {
+      this.bytes = [];
+      this.buffer = 0;
+      this.bitCount = 0;
+    }
+
+    writeBit(bit) {
+      this.buffer = this.buffer * 2 + bit;
+      ++this.bitCount;
+      if (this.bitCount === 8) {
+        this.bytes.push(this.buffer);
+        this.buffer = 0;
+        this.bitCount = 0;
+      }
+    }
+
+    writeBits(value, count) {
+      for (let i = count - 1; i >= 0; --i)
+        this.writeBit(OpCodes.GetBit(value, i) ? 1 : 0);
+    }
+
+    flush() {
+      if (this.bitCount > 0) {
+        this.buffer = OpCodes.Shl8(this.buffer, 8 - this.bitCount);
+        this.bytes.push(this.buffer);
+        this.buffer = 0;
+        this.bitCount = 0;
+      }
+    }
+  }
+
+  class BitReader {
+    constructor(bytes) {
+      this.bytes = bytes;
+      this.bitIndex = 0;
+    }
+
+    readBits(count) {
+      let value = 0;
+      for (let i = 0; i < count; ++i) {
+        const byteIndex = Math.floor(this.bitIndex / 8);
+        if (byteIndex >= this.bytes.length)
+          throw new Error('Unexpected end of LZWL bitstream.');
+        const bitInByte = this.bitIndex - byteIndex * 8;
+        const bit = OpCodes.GetBit(this.bytes[byteIndex], 7 - bitInByte) ? 1 : 0;
+        ++this.bitIndex;
+        value = value * 2 + bit;
+      }
+      return value;
+    }
   }
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -128,7 +275,7 @@
       super();
 
       this.name = "LZWL";
-      this.description = "Syllable-based LZW variant that runs the classic LZW dictionary-phrase-extension loop over a stream of syllables instead of individual bytes, so common sub-word units become single dictionary codes.";
+      this.description = "LZW whose initial dictionary is seeded with the input's most frequent byte digrams (found via an up-front frequency analysis), so common byte pairs get single codes from the start. Otherwise a standard trie-based LZW with a decoder-mirrored code-width counter and an explicit stop code.";
       this.inventor = "Jan Platos, Jiri Dvorsky, Vaclav Snasel";
       this.year = 2006;
       this.category = CategoryType.COMPRESSION;
@@ -151,42 +298,36 @@
           text: "Empty input",
           uri: "https://en.wikipedia.org/wiki/LZWL",
           input: [],
-          expected: []
+          expected: [0, 0, 0, 0]
         },
         {
-          text: "Highly repetitive input (64 'A' bytes)",
+          text: "Single byte",
           uri: "https://en.wikipedia.org/wiki/LZWL",
-          input: new Array(64).fill(0x41),
-          expected: [0, 64, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65]
+          input: [0x41],
+          expected: [1, 0, 0, 0, 0, 0, 32, 192, 0]
         },
         {
-          text: "Text sample",
+          text: "Highly repetitive input (256 'a' bytes)",
           uri: "https://en.wikipedia.org/wiki/LZWL",
-          input: OpCodes.AnsiToBytes("the quick brown fox jumps over the lazy dog. the quick brown fox."),
-          expected: [0, 3, 116, 104, 101, 0, 1, 32, 0, 5, 113, 117, 105, 99, 107, 1, 0, 1, 0, 5, 98, 114, 111, 119, 110, 1, 0, 1, 0, 3, 102, 111, 120, 1, 0, 1, 0, 5, 106, 117, 109, 112, 115, 1, 0, 1, 0, 1, 111, 0, 3, 118, 101, 114, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 4, 108, 97, 122, 121, 1, 0, 1, 0, 3, 100, 111, 103, 0, 1, 46, 1, 0, 12, 1, 0, 1, 1, 0, 2, 1, 0, 3, 1, 0, 5, 1, 0, 18]
+          input: new Array(256).fill(0x61),
+          expected: [0, 1, 0, 0, 1, 0, 97, 97, 128, 64, 160, 112, 72, 44, 26, 15, 8, 132, 194, 161, 112, 200, 108, 58, 31, 16, 136, 196, 162, 113, 72, 172, 14, 2]
         },
         {
-          // Regression test: a strictly alternating "ab" pattern forces the
-          // syllable splitter to emit single-vowel/consonant-onset syllables
-          // ("a", then "ba" repeated) whose dictionary phrases immediately
-          // re-occur, which used to hit the classic LZW "KwKwK" case (a code
-          // referencing the dictionary entry that is still pending
-          // registration) and crash the decompressor with "Cannot read
-          // properties of undefined (reading 'bytes')".
-          text: "Alternating 'ab' pattern (64 bytes, exercises the KwKwK dictionary case)",
+          text: "All 256 byte values once each, in order",
           uri: "https://en.wikipedia.org/wiki/LZWL",
-          input: (function() { const a = []; for (let i = 0; i < 64; ++i) a.push(i % 2 === 0 ? 0x61 : 0x62); return a; })(),
-          expected: [0, 1, 97, 0, 2, 98, 97, 1, 0, 1, 1, 0, 2, 1, 0, 3, 1, 0, 4, 1, 0, 5, 1, 0, 6, 1, 0, 7, 1, 0, 1, 0, 3, 98, 97, 98]
+          input: (function() { const a = new Array(256); for (let i = 0; i < 256; ++i) a[i] = i; return a; })(),
+          expected: [0, 1, 0, 0, 0, 0, 0, 0, 64, 64, 48, 32, 20, 12, 7, 4, 2, 65, 64, 176, 96, 52, 28, 15, 8, 4, 66, 65, 48, 160, 84, 44, 23, 12, 6, 67, 65, 176, 224, 116, 60, 31, 16, 8, 68, 66, 49, 32, 148, 76, 39, 20, 10, 69, 66, 177, 96, 180, 92, 47, 24, 12, 70, 67, 49, 160, 212, 108, 55, 28, 14, 71, 67, 177, 224, 244, 124, 63, 32, 16, 72, 68, 50, 33, 20, 140, 71, 36, 18, 73, 68, 178, 97, 52, 156, 79, 40, 20, 74, 69, 50, 161, 84, 172, 87, 44, 22, 75, 69, 178, 225, 116, 188, 95, 48, 24, 76, 70, 51, 33, 148, 204, 103, 52, 26, 77, 70, 179, 97, 180, 220, 111, 56, 28, 78, 71, 51, 161, 212, 236, 119, 60, 30, 79, 71, 179, 225, 244, 252, 127, 64, 32, 80, 72, 52, 34, 21, 12, 135, 68, 34, 81, 72, 180, 98, 53, 28, 143, 72, 36, 82, 73, 52, 162, 85, 44, 151, 76, 38, 83, 73, 180, 226, 117, 60, 159, 80, 40, 84, 74, 53, 34, 149, 76, 167, 84, 42, 85, 74, 181, 98, 181, 92, 175, 88, 44, 86, 75, 53, 162, 213, 108, 183, 92, 46, 87, 75, 181, 226, 245, 124, 191, 96, 48, 88, 76, 54, 35, 21, 140, 199, 100, 50, 89, 76, 182, 99, 53, 156, 207, 104, 52, 90, 77, 54, 163, 85, 172, 215, 108, 54, 91, 77, 182, 227, 117, 188, 223, 112, 56, 92, 78, 55, 35, 149, 204, 231, 116, 58, 93, 78, 183, 99, 181, 220, 239, 120, 60, 94, 79, 55, 163, 213, 236, 247, 124, 62, 95, 79, 183, 227, 245, 252, 255, 64, 0]
         },
         {
-          // Regression test: pseudo-random bytes have no consonant/vowel
-          // structure, so most of them fall through the splitter's
-          // single-byte-token path. This exercises the same dictionary
-          // machinery on non-text input.
-          text: "Pseudo-random binary sample (128 bytes, no syllable structure)",
+          // Regression/stress test for the digram-frequency-table tie-break:
+          // this sample has many digrams tied on frequency, which is exactly
+          // the case where the wire format depends on faithfully replicating
+          // .NET's (unstable) List<T>.Sort(Comparison<T>) introsort rather
+          // than a plain stable frequency sort.
+          text: "'the quick brown fox...' repeated 4 times (digram-sort tie-break stress test)",
           uri: "https://en.wikipedia.org/wiki/LZWL",
-          input: [193, 103, 129, 152, 240, 33, 24, 215, 128, 45, 22, 142, 12, 157, 3, 192, 4, 51, 59, 3, 157, 43, 27, 244, 6, 113, 140, 143, 233, 231, 28, 28, 138, 247, 226, 238, 240, 38, 226, 227, 35, 53, 231, 89, 133, 124, 9, 151, 67, 229, 246, 122, 203, 86, 115, 112, 158, 1, 192, 126, 215, 249, 75, 141, 55, 69, 218, 77, 45, 155, 60, 15, 93, 97, 215, 105, 214, 178, 244, 37, 147, 242, 172, 235, 241, 219, 18, 77, 24, 42, 90, 134, 42, 43, 14, 218, 36, 84, 17, 201, 185, 43, 70, 35, 243, 110, 206, 235, 242, 82, 59, 210, 97, 23, 124, 170, 139, 21, 235, 101, 204, 143, 136, 227, 248, 94, 70, 64],
-          expected: [0, 1, 193, 0, 1, 103, 0, 1, 129, 0, 1, 152, 0, 1, 240, 0, 1, 33, 0, 1, 24, 0, 1, 215, 0, 1, 128, 0, 1, 45, 0, 1, 22, 0, 1, 142, 0, 1, 12, 0, 1, 157, 0, 1, 3, 0, 1, 192, 0, 1, 4, 0, 1, 51, 0, 1, 59, 1, 0, 14, 1, 0, 13, 0, 1, 43, 0, 1, 27, 0, 1, 244, 0, 1, 6, 0, 1, 113, 0, 1, 140, 0, 1, 143, 0, 1, 233, 0, 1, 231, 0, 1, 28, 1, 0, 30, 0, 1, 138, 0, 1, 247, 0, 1, 226, 0, 1, 238, 1, 0, 4, 0, 1, 38, 1, 0, 34, 0, 1, 227, 0, 1, 35, 0, 1, 53, 1, 0, 29, 0, 1, 89, 0, 1, 133, 0, 1, 124, 0, 1, 9, 0, 1, 151, 0, 1, 67, 0, 1, 229, 0, 1, 246, 0, 1, 122, 0, 1, 203, 0, 3, 86, 115, 112, 0, 1, 158, 0, 1, 1, 1, 0, 15, 0, 1, 126, 1, 0, 7, 0, 1, 249, 0, 1, 75, 0, 1, 141, 0, 1, 55, 0, 1, 69, 0, 1, 218, 0, 1, 77, 1, 0, 9, 0, 1, 155, 0, 1, 60, 0, 1, 15, 0, 1, 93, 0, 1, 97, 1, 0, 7, 0, 1, 105, 0, 1, 214, 0, 1, 178, 1, 0, 23, 0, 1, 37, 0, 1, 147, 0, 1, 242, 0, 1, 172, 0, 1, 235, 0, 1, 241, 0, 1, 219, 0, 1, 18, 1, 0, 65, 1, 0, 6, 0, 1, 42, 0, 1, 90, 0, 1, 134, 1, 0, 87, 1, 0, 21, 0, 1, 14, 1, 0, 64, 0, 1, 36, 0, 1, 84, 0, 1, 17, 0, 1, 201, 0, 1, 185, 1, 0, 21, 0, 1, 70, 1, 0, 40, 0, 1, 243, 0, 1, 110, 0, 1, 206, 1, 0, 81, 1, 0, 79, 0, 1, 82, 1, 0, 18, 0, 1, 210, 1, 0, 71, 0, 1, 23, 1, 0, 45, 0, 1, 170, 0, 1, 139, 0, 1, 21, 1, 0, 81, 0, 1, 101, 0, 1, 204, 1, 0, 27, 0, 1, 136, 1, 0, 39, 0, 1, 248, 0, 1, 94, 1, 0, 100, 0, 1, 64]
+          input: OpCodes.AnsiToBytes("the quick brown fox jumps over the lazy dog. ".repeat(4)),
+          expected: [180, 0, 0, 0, 41, 0, 104, 101, 116, 104, 101, 32, 32, 116, 32, 98, 111, 103, 111, 118, 111, 119, 111, 120, 112, 115, 113, 117, 114, 32, 114, 111, 115, 32, 117, 105, 117, 109, 118, 101, 119, 110, 120, 32, 110, 32, 109, 112, 107, 32, 121, 32, 32, 100, 32, 102, 32, 106, 32, 108, 32, 111, 32, 113, 46, 32, 108, 97, 97, 122, 99, 107, 100, 111, 101, 114, 102, 111, 103, 46, 105, 99, 106, 117, 98, 114, 122, 121, 128, 192, 161, 82, 88, 172, 158, 15, 19, 145, 196, 164, 209, 72, 108, 26, 69, 3, 128, 70, 163, 241, 105, 12, 146, 115, 43, 135, 72, 32, 144, 200, 140, 98, 17, 25, 135, 194, 99, 113, 8, 92, 170, 119, 40, 139, 193, 99, 180, 249, 101, 14, 95, 70, 153, 82, 102, 180, 201, 197, 62, 61, 81, 159, 85, 39, 85, 105, 117, 22, 99, 72, 154, 82, 230, 244, 233, 213, 130, 123, 83, 16, 74, 64]
         }
       ];
     }
@@ -214,110 +355,185 @@
       return result;
     }
 
-    _compress(input) {
-      if (input.length === 0) return [];
+    _compress(data) {
+      const output = OpCodes.Unpack32LE(data.length);
 
-      const syllables = segment(input);
-      const dict = new Map(); // key -> { bytes, firstSyllable, code }
-      let nextCode = 0;
-      const output = [];
+      if (data.length === 0)
+        return output;
 
-      let S = null;
-      let i = 0;
+      // Analyze digram (overlapping consecutive byte pair) frequencies.
+      const digramFreq = new Array(65536).fill(0);
+      for (let i = 0; i < data.length - 1; ++i) {
+        const d = OpCodes.Pack16BE(data[i], data[i + 1]);
+        ++digramFreq[d];
+      }
 
-      while (i < syllables.length) {
-        const K = syllables[i];
-        const candidateBytes = S ? concatBytes(S.bytes, K) : K;
-        const key = keyOf(candidateBytes);
-        const existing = dict.get(key);
+      // Select every digram occurring at least twice, in ascending digram
+      // value order, then sort descending by frequency (.NET-compatible
+      // unstable introsort, so ties keep this ascending-value order only
+      // where the introsort happens to preserve it -- see dotNetListSort).
+      let topDigrams = [];
+      for (let d = 0; d < 65536; ++d) {
+        if (digramFreq[d] >= 2)
+          topDigrams.push(d);
+      }
+      dotNetListSort(topDigrams, (a, b) => digramFreq[b] - digramFreq[a]);
+      if (topDigrams.length > MAX_DIGRAMS)
+        topDigrams = topDigrams.slice(0, MAX_DIGRAMS);
 
-        if (existing) {
-          S = existing;
-          i++;
+      // Write digram table.
+      for (let i = 0; i < 2; ++i) output.push(0); // placeholder, filled below
+      const countBytes = OpCodes.Unpack16LE(topDigrams.length);
+      output[output.length - 2] = countBytes[0];
+      output[output.length - 1] = countBytes[1];
+      for (const d of topDigrams) {
+        const pair = OpCodes.Unpack16BE(d);
+        output.push(pair[0], pair[1]);
+      }
+
+      // Build initial dictionary as a trie: (parentCode, childByte) -> code.
+      // Codes 0-255 = single bytes. Codes 256..256+N-1 = digrams. Code
+      // 256+N = stop code.
+      const trie = new Map();
+      let trieNextCode = 256;
+
+      for (const d of topDigrams) {
+        const pair = OpCodes.Unpack16BE(d);
+        const key = pair[0] * 256 + pair[1];
+        if (!trie.has(key))
+          trie.set(key, trieNextCode);
+        ++trieNextCode;
+      }
+
+      const stopCode = trieNextCode;
+      ++trieNextCode;
+      let decoderNextCode = trieNextCode;
+      let hasPrevious = false;
+
+      let codeWidth = 9;
+      while (OpCodes.Shl32(1, codeWidth) < trieNextCode)
+        ++codeWidth;
+
+      // LZW encode using the trie.
+      const writer = new BitWriter();
+      let currentCode = data[0];
+      let i = 1;
+
+      while (i < data.length) {
+        const nextByte = data[i];
+        const key = currentCode * 256 + nextByte;
+        const existingCode = trie.get(key);
+
+        if (existingCode !== undefined) {
+          currentCode = existingCode;
+          ++i;
           continue;
         }
 
-        if (S !== null) {
-          output.push(TOK_REF, ...OpCodes.Unpack16BE(S.code));
-          dict.set(key, { bytes: candidateBytes, firstSyllable: S.firstSyllable, code: nextCode });
-          nextCode++;
-          S = null;
-          // do not advance i; K is reprocessed from an empty phrase
-        } else {
-          output.push(TOK_LIT, K.length, ...K);
-          dict.set(keyOf(K), { bytes: K, firstSyllable: K, code: nextCode });
-          nextCode++;
-          // K has been fully emitted and registered; S stays empty so the
-          // next syllable starts matching fresh (mirrors classic LZW, where
-          // a flush is always followed by an empty current phrase).
-          i++;
+        writer.writeBits(currentCode, codeWidth);
+
+        if (trieNextCode < MAX_DICT_SIZE) {
+          trie.set(key, trieNextCode);
+          ++trieNextCode;
         }
+
+        if (hasPrevious) {
+          if (decoderNextCode < MAX_DICT_SIZE) {
+            ++decoderNextCode;
+            if (decoderNextCode >= OpCodes.Shl32(1, codeWidth) && codeWidth < MAX_BITS)
+              ++codeWidth;
+          }
+        }
+        hasPrevious = true;
+
+        currentCode = nextByte;
+        ++i;
       }
 
-      if (S !== null) output.push(TOK_REF, ...OpCodes.Unpack16BE(S.code));
+      writer.writeBits(currentCode, codeWidth);
+
+      if (hasPrevious && decoderNextCode < MAX_DICT_SIZE) {
+        ++decoderNextCode;
+        if (decoderNextCode >= OpCodes.Shl32(1, codeWidth) && codeWidth < MAX_BITS)
+          ++codeWidth;
+      }
+
+      writer.writeBits(stopCode, codeWidth);
+      writer.flush();
+
+      for (let k = 0; k < writer.bytes.length; ++k) output.push(writer.bytes[k]);
 
       return output;
     }
 
     _decompress(input) {
-      if (input.length === 0) return [];
+      const originalSize = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
+      if (originalSize === 0)
+        return [];
 
-      const dict = []; // code -> { bytes, firstSyllable }
+      let offset = 4;
+      const digramCount = OpCodes.Pack16LE(input[offset], input[offset + 1]);
+      offset += 2;
+
+      const dict = [];
       let nextCode = 0;
-      const output = [];
-      let pendingParent = null;
-      let pos = 0;
+      for (let i = 0; i < 256; ++i)
+        dict[nextCode++] = [i];
 
-      while (pos < input.length) {
-        const marker = input[pos++];
-        let curBytes, curFirstSyl, refEntry;
-
-        if (marker === TOK_LIT) {
-          const len = input[pos++];
-          curBytes = input.slice(pos, pos + len);
-          pos += len;
-          curFirstSyl = curBytes;
-        } else {
-          const code = OpCodes.Pack16BE(input[pos], input[pos + 1]);
-          pos += 2;
-          refEntry = dict[code];
-
-          if (refEntry === undefined) {
-            // Classic LZW "KwKwK" case: the referenced code is exactly the
-            // one about to be created from the still-pending registration
-            // (phrase P immediately followed by another occurrence of P's
-            // own first syllable). Synthesize it from the pending parent
-            // instead of the not-yet-registered dictionary slot.
-            refEntry = {
-              bytes: concatBytes(pendingParent.bytes, pendingParent.firstSyllable),
-              firstSyllable: pendingParent.firstSyllable
-            };
-          }
-
-          curBytes = refEntry.bytes;
-          curFirstSyl = refEntry.firstSyllable;
-        }
-
-        if (pendingParent !== null) {
-          dict[nextCode] = {
-            bytes: concatBytes(pendingParent.bytes, curFirstSyl),
-            firstSyllable: pendingParent.firstSyllable
-          };
-          nextCode++;
-          pendingParent = null;
-        }
-
-        for (let k = 0; k < curBytes.length; ++k) output.push(curBytes[k]);
-
-        if (marker === TOK_LIT) {
-          dict[nextCode] = { bytes: curBytes, firstSyllable: curFirstSyl };
-          nextCode++;
-        } else {
-          pendingParent = refEntry;
-        }
+      for (let i = 0; i < digramCount; ++i) {
+        const a = input[offset++];
+        const b = input[offset++];
+        dict[nextCode++] = [a, b];
       }
 
-      return output;
+      const stopCode = nextCode++;
+
+      let codeWidth = 9;
+      while (OpCodes.Shl32(1, codeWidth) < nextCode)
+        ++codeWidth;
+
+      const reader = new BitReader(input.slice(offset));
+      const result = [];
+
+      const firstCode = reader.readBits(codeWidth);
+      if (firstCode === stopCode || dict[firstCode] === undefined)
+        return result;
+
+      let prevEntry = dict[firstCode];
+      for (let k = 0; k < prevEntry.length; ++k) result.push(prevEntry[k]);
+
+      while (result.length < originalSize) {
+        const code = reader.readBits(codeWidth);
+        if (code === stopCode)
+          break;
+
+        let entry;
+        if (dict[code] !== undefined) {
+          entry = dict[code];
+        } else if (code === nextCode) {
+          // Classic LZW "KwKwK" case: the code refers to the entry that is
+          // about to be created from the still-pending phrase.
+          entry = prevEntry.concat([prevEntry[0]]);
+        } else {
+          throw new Error(`LZWL: unknown code ${code} at position ${result.length}.`);
+        }
+
+        for (let k = 0; k < entry.length; ++k) result.push(entry[k]);
+
+        if (nextCode < MAX_DICT_SIZE) {
+          dict[nextCode] = prevEntry.concat([entry[0]]);
+          ++nextCode;
+          if (nextCode >= OpCodes.Shl32(1, codeWidth) && codeWidth < MAX_BITS)
+            ++codeWidth;
+        }
+
+        prevEntry = entry;
+      }
+
+      if (result.length > originalSize)
+        result.length = originalSize;
+
+      return result;
     }
   }
 
