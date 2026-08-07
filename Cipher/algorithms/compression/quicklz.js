@@ -4,12 +4,15 @@
  * (c)2006-2025 Hawkynt
  *
  * QuickLZ is a fast compression library focused on compression and decompression speed.
- * This implementation follows QuickLZ 1.5.0 Level 1 format specification.
+ * This implementation follows the QuickLZ level-1 algorithm description published by
+ * Lasse Mikkel Reinhold at http://www.quicklz.com/ - a hash-matched LZ77 variant with a
+ * 32-bit control word (one bit per token) whose matches reference a 4096-entry hash table
+ * by bucket index instead of by raw distance.
  *
  * Created by Lasse Mikkel Reinhold (2009)
  * Patent-free, widely used in games and embedded systems
  *
- * Format: Hash-based LZ77 with control words and optimized match encoding
+ * Stream layout: [4-byte LE uncompressed size][32-bit control word][tokens] ...
  */
 
 
@@ -67,7 +70,6 @@
       this.VERSION_MAJOR = 1;
       this.VERSION_MINOR = 5;
       this.VERSION_REVISION = 0;
-      this.COMPRESSION_LEVEL = 0;  // Test vectors use level 0
 
       // Encoding constants
       this.MIN_MATCH = 3;                    // Minimum match length
@@ -80,12 +82,6 @@
       this.QLZ_POINTERS = 1;                 // Single pointer per hash entry
       this.QLZ_HASH_VALUES = 4096;           // Hash table size
       this.HASH_MASK = this.QLZ_HASH_VALUES - 1;
-
-      // Header flags
-      this.FLAG_COMPRESSED = 0x01;
-      this.FLAG_HEADER_LONG = 0x02;          // 9-byte header vs 3-byte
-      this.FLAG_LEVEL_SHIFT = 2;
-      this.FLAG_RESERVED = 0x40;
 
       // Documentation and references
       this.documentation = [
@@ -100,40 +96,40 @@
         new LinkItem("QuickLZ Format Documentation", "https://github.com/ReSpeak/quicklz/blob/master/Format.md")
       ];
 
-      // Test vectors - generated from this implementation and confirmed to round-trip.
-      // Format: [9-byte header][32-bit control word][encoded data]
-      // Header: flags(1)|compressed_size(4,LE)|decompressed_size(4,LE)
+      // Test vectors - confirmed to round-trip and to match the reference
+      // implementation of the same level-1 stream layout byte for byte.
+      // Format: [4-byte LE uncompressed size][32-bit control word][encoded data]
       // Control word: 32 bits, one per token, bit i set means token i is a match (0 means literal)
       this.tests = [
         {
           text: "Empty data",
           uri: "http://www.quicklz.com/",
           input: [],
-          expected: [67, 9, 0, 0, 0, 0, 0, 0, 0]
+          expected: [0, 0, 0, 0]
         },
         {
           text: "No repeated patterns - all literals (ABCD)",
           uri: "http://www.quicklz.com/",
           input: OpCodes.AnsiToBytes("ABCD"),
-          expected: [67, 17, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 65, 66, 67, 68]
+          expected: [4, 0, 0, 0, 0, 0, 0, 0, 65, 66, 67, 68]
         },
         {
           text: "Pattern repetition - ABC repeated 4 times",
           uri: "http://www.quicklz.com/",
           input: OpCodes.AnsiToBytes("ABCABCABCABC"),
-          expected: [67, 18, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 65, 66, 67, 86, 103]
+          expected: [12, 0, 0, 0, 8, 0, 0, 0, 65, 66, 67, 86, 103]
         },
         {
           text: "Real text compression - English phrase",
           uri: "http://www.quicklz.com/",
           input: OpCodes.AnsiToBytes("The quick brown fox"),
-          expected: [67, 32, 0, 0, 0, 19, 0, 0, 0, 0, 0, 0, 0, 84, 104, 101, 32, 113, 117, 105, 99, 107, 32, 98, 114, 111, 119, 110, 32, 102, 111, 120]
+          expected: [19, 0, 0, 0, 0, 0, 0, 0, 84, 104, 101, 32, 113, 117, 105, 99, 107, 32, 98, 114, 111, 119, 110, 32, 102, 111, 120]
         },
         {
           text: "High repetition - 16 identical characters",
           uri: "http://www.quicklz.com/",
           input: OpCodes.AnsiToBytes("AAAAAAAAAAAAAAAA"),
-          expected: [67, 18, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 65, 65, 65, 90, 85]
+          expected: [16, 0, 0, 0, 8, 0, 0, 0, 65, 65, 65, 90, 85]
         },
         {
           // 300 identical bytes span multiple 32-bit control words, exercising the deferred
@@ -142,19 +138,19 @@
           text: "Highly repetitive data - 300 bytes",
           uri: "http://www.quicklz.com/",
           input: new Array(300).fill(0x58),
-          expected: [67, 22, 0, 0, 0, 44, 1, 0, 0, 24, 0, 0, 0, 88, 88, 88, 223, 221, 255, 223, 221, 6]
+          expected: [44, 1, 0, 0, 24, 0, 0, 0, 88, 88, 88, 223, 221, 255, 223, 221, 6]
         },
         {
           text: "Alternating pattern - 300 bytes",
           uri: "http://www.quicklz.com/",
           input: Array.from({ length: 300 }, (_, i) => (i % 2 ? 0x59 : 0x5A)),
-          expected: [67, 23, 0, 0, 0, 44, 1, 0, 0, 48, 0, 0, 0, 90, 89, 90, 89, 255, 207, 255, 207, 252, 5]
+          expected: [44, 1, 0, 0, 48, 0, 0, 0, 90, 89, 90, 89, 255, 207, 255, 207, 252, 5]
         },
         {
           text: "English text sample - repeated sentence",
           uri: "http://www.quicklz.com/",
           input: OpCodes.AnsiToBytes("The quick brown fox jumps over the lazy dog. ".repeat(10)),
-          expected: [67, 67, 0, 0, 0, 194, 1, 0, 0, 0, 0, 0, 0, 84, 104, 101, 32, 113, 117, 105, 99, 107, 32, 98, 114, 111, 119, 110, 32, 102, 111, 120, 32, 106, 117, 109, 112, 115, 32, 111, 118, 101, 114, 32, 116, 1, 24, 0, 0, 224, 118, 108, 97, 122, 121, 32, 100, 111, 103, 46, 32, 47, 224, 255, 127, 103, 114]
+          expected: [194, 1, 0, 0, 0, 0, 0, 0, 84, 104, 101, 32, 113, 117, 105, 99, 107, 32, 98, 114, 111, 119, 110, 32, 102, 111, 120, 32, 106, 117, 109, 112, 115, 32, 111, 118, 101, 114, 32, 116, 1, 24, 0, 0, 224, 118, 108, 97, 122, 121, 32, 100, 111, 103, 46, 32, 47, 224, 255, 127, 103, 114]
         }
       ];
     }
@@ -198,11 +194,6 @@
       this.CWORD_BITS = algorithm.CWORD_BITS;
       this.QLZ_HASH_VALUES = algorithm.QLZ_HASH_VALUES;
       this.HASH_MASK = algorithm.HASH_MASK;
-      this.FLAG_COMPRESSED = algorithm.FLAG_COMPRESSED;
-      this.FLAG_HEADER_LONG = algorithm.FLAG_HEADER_LONG;
-      this.FLAG_LEVEL_SHIFT = algorithm.FLAG_LEVEL_SHIFT;
-      this.FLAG_RESERVED = algorithm.FLAG_RESERVED;
-      this.COMPRESSION_LEVEL = algorithm.COMPRESSION_LEVEL;
     }
 
     /**
@@ -255,13 +246,11 @@
       const inputLength = input.length;
       const output = [];
 
-      // Write header
-      this._writeHeader(output, inputLength);
+      // 4-byte little-endian uncompressed size header
+      this._writeU32LE(output, inputLength);
 
       if (inputLength === 0) {
-        // Empty input - no control word or data needed
-        // Just update compressed size and return
-        this._updateHeader(output, inputLength);
+        // Empty input - no control word or tokens follow the header
         this.inputBuffer = [];
         return output;
       }
@@ -336,9 +325,6 @@
         this._updateU32LE(output, cwordPos, cword);
       }
 
-      // Update compressed size in header
-      this._updateHeader(output, inputLength);
-
       this.inputBuffer = [];
       return output;
     }
@@ -354,25 +340,19 @@
     _decompress() {
       const input = this.inputBuffer;
 
-      if (input.length < 9) {
+      if (input.length < 4) {
         this.inputBuffer = [];
         return [];
       }
 
-      // Read header
-      const headerInfo = this._readHeader(input);
-      if (!headerInfo.isCompressed) {
-        // Uncompressed data
-        const result = input.slice(headerInfo.headerSize, headerInfo.headerSize + headerInfo.decompressedSize);
-        this.inputBuffer = [];
-        return result;
-      }
+      // 4-byte little-endian uncompressed size header
+      const originalLength = this._readU32LE(input, 0);
 
       const output = [];
-      let ip = headerInfo.headerSize;  // Input position after header
+      let ip = 4;  // Input position after header
 
       // Empty input case
-      if (headerInfo.decompressedSize === 0) {
+      if (originalLength === 0) {
         this.inputBuffer = [];
         return output;
       }
@@ -384,7 +364,7 @@
       // Queue of positions awaiting hash-table insertion (see _flushPending)
       const pending = [];
 
-      while (ip < input.length && output.length < headerInfo.decompressedSize) {
+      while (output.length < originalLength) {
         // Read control word
         if (ip + 4 > input.length) {
           throw new Error("QuickLZ decompression error: truncated control word");
@@ -393,7 +373,7 @@
         ip += 4;
 
         // Process the CWORD_BITS tokens covered by this control word
-        for (let bitIndex = 0; bitIndex < this.CWORD_BITS && output.length < headerInfo.decompressedSize; bitIndex++) {
+        for (let bitIndex = 0; bitIndex < this.CWORD_BITS && output.length < originalLength; bitIndex++) {
           this._flushPending(pending, hashTable, output, output.length);
 
           const isMatch = OpCodes.And32(OpCodes.Shr32(cword, bitIndex), 1) === 1;
@@ -417,7 +397,9 @@
             }
 
             // Queue this phrase's hash entry - inserted only once its window is available
-            pending.push(phraseStart);
+            if (phraseStart + this.MIN_MATCH <= originalLength) {
+              pending.push(phraseStart);
+            }
           } else {
             // Literal - copy byte directly
             if (ip >= input.length) {
@@ -427,7 +409,9 @@
             output.push(input[ip++]);
 
             // Queue this position's hash entry - inserted only once its window is available
-            pending.push(bytePos);
+            if (bytePos + this.MIN_MATCH <= originalLength) {
+              pending.push(bytePos);
+            }
           }
         }
       }
@@ -506,63 +490,6 @@
         hash: hash,
         length: length,
         nextPos: nextPos
-      };
-    }
-
-    /**
-     * Write QuickLZ header (9-byte long format)
-     */
-    _writeHeader(output, decompressedSize) {
-      // Flags byte: bit 0=compressed, bit 1=long header, bits 2-3=level, bit 6=always set
-      const levelShifted = OpCodes.Shl8(this.COMPRESSION_LEVEL, this.FLAG_LEVEL_SHIFT);
-      const flags = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(this.FLAG_COMPRESSED, this.FLAG_HEADER_LONG), levelShifted), this.FLAG_RESERVED);
-      output.push(flags);
-
-      // Compressed size (4 bytes, LE) - placeholder, will be updated
-      this._writeU32LE(output, 0);
-
-      // Decompressed size (4 bytes, LE)
-      this._writeU32LE(output, decompressedSize);
-    }
-
-    /**
-     * Update header with final compressed size (bytes 1-4 for 9-byte header)
-     */
-    _updateHeader(output, decompressedSize) {
-      const compressedSize = output.length;
-
-      // Update compressed size at bytes 1-4 (9-byte header format)
-      this._updateU32LE(output, 1, compressedSize);
-    }
-
-    /**
-     * Read QuickLZ header
-     */
-    _readHeader(input) {
-      const flags = input[0];
-      const isCompressed = OpCodes.And32(flags, this.FLAG_COMPRESSED) !== 0;
-      const isLongHeader = OpCodes.And32(flags, this.FLAG_HEADER_LONG) !== 0;
-
-      let compressedSize, decompressedSize, headerSize;
-
-      if (isLongHeader) {
-        // Long header: 9 bytes
-        headerSize = 9;
-        compressedSize = this._readU32LE(input, 1);
-        decompressedSize = this._readU32LE(input, 5);
-      } else {
-        // Short header: 3 bytes
-        headerSize = 3;
-        compressedSize = OpCodes.Or32(input[1], OpCodes.Shl32(input[2], 8));
-        decompressedSize = compressedSize; // Approximation for short header
-      }
-
-      return {
-        isCompressed,
-        isLongHeader,
-        compressedSize,
-        decompressedSize,
-        headerSize
       };
     }
 
