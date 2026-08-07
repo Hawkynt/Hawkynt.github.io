@@ -12,7 +12,7 @@ This directory contains implementations of various data compression algorithms. 
 - [x] **DEFLATE (Simple)** (`deflate-simple.js`) - Combination of LZ77 and Huffman coding
 - [x] **Delta + RLE** (`delta.js`) - Stores differences between consecutive values, then run-length encodes the result
 - [x] **Delta Filter** (`delta-filter.js`) - Pure, size-preserving delta transform with no entropy coding
-- [x] **DS LZ77** (`ds-lz77-doublespace.js`) - Microsoft DoubleSpace/DriveSpace LZ77 grammar as a standalone building block
+- [x] **DoubleSpace/DriveSpace LZ77** (`ds-lz77-doublespace.js`) - Microsoft DoubleSpace/DriveSpace LZ77 grammar as a standalone building block (distinct from the Nintendo `DS-LZ77`)
 - [x] **Elias Delta Coding** (`elias-delta.js`) - Universal code for positive integers
 - [x] **Elias Gamma Coding** (`elias-gamma.js`) - Universal code for positive integers
 - [x] **Fibonacci Coding** (`fibonacci.js`) - Universal code based on Fibonacci sequence
