@@ -128,7 +128,7 @@
 
       Feed(data) {
         if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {
@@ -164,7 +164,7 @@
         const flushLiteralRun = () => {
           if (literalRun.length === 0) return;
           compressed.push(0, literalRun.length);
-          compressed.push(...literalRun);
+          for (let _i = 0; _i < literalRun.length; _i++) compressed.push(literalRun[_i]);
           literalRun = [];
         };
 
@@ -174,7 +174,7 @@
           if (match.length >= this.minMatchLength) {
             flushLiteralRun();
             compressed.push(match.length);
-            compressed.push(...OpCodes.Unpack32LE(i - match.position));
+            { const _src = OpCodes.Unpack32LE(i - match.position); for (let _i = 0; _i < _src.length; _i++) compressed.push(_src[_i]); }
             i += match.length;
           } else {
             literalRun.push(data[i]);

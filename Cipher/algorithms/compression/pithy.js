@@ -147,7 +147,7 @@
             const result = [0x41]; // varint: 65
             result.push(0xF0); // literal tag: (60 << 2)|0 = 240
             result.push(0x40); // extra length byte: length-1 = 64
-            result.push(...Array.from({length: 65}, (_, i) => i&0xFF));
+            { const _src = Array.from({length: 65}, (_, i) => i&0xFF); for (let _i = 0; _i < _src.length; _i++) result.push(_src[_i]); }
             return result;
           })()
         }
@@ -207,7 +207,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**

@@ -126,7 +126,7 @@
 
       Feed(data) {
         if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {
@@ -232,18 +232,18 @@
       _packCompressedData(dictionary, data) {
         const bytes = [];
 
-        bytes.push(...OpCodes.Unpack16LE(dictionary.length));
+        { const _src = OpCodes.Unpack16LE(dictionary.length); for (let _i = 0; _i < _src.length; _i++) bytes.push(_src[_i]); }
 
         for (const entry of dictionary) {
-          bytes.push(...OpCodes.Unpack16LE(entry.code));
-          bytes.push(...OpCodes.Unpack16LE(entry.val1));
-          bytes.push(...OpCodes.Unpack16LE(entry.val2));
+          { const _src = OpCodes.Unpack16LE(entry.code); for (let _i = 0; _i < _src.length; _i++) bytes.push(_src[_i]); }
+          { const _src = OpCodes.Unpack16LE(entry.val1); for (let _i = 0; _i < _src.length; _i++) bytes.push(_src[_i]); }
+          { const _src = OpCodes.Unpack16LE(entry.val2); for (let _i = 0; _i < _src.length; _i++) bytes.push(_src[_i]); }
         }
 
-        bytes.push(...OpCodes.Unpack32LE(data.length));
+        { const _src = OpCodes.Unpack32LE(data.length); for (let _i = 0; _i < _src.length; _i++) bytes.push(_src[_i]); }
 
         for (const value of data)
-          bytes.push(...OpCodes.Unpack16LE(value));
+          { const _src = OpCodes.Unpack16LE(value); for (let _i = 0; _i < _src.length; _i++) bytes.push(_src[_i]); }
 
         return bytes;
       }

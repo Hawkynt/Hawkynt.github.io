@@ -171,7 +171,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     /**
@@ -224,7 +224,7 @@
           if (match.length >= this.MIN_MATCH) {
             this._flushLiterals(output, data, literalStart, pos - literalStart);
             this._writeToken(output, this.TYPE_MATCH, match.length, this.MIN_MATCH);
-            output.push(...OpCodes.Unpack32LE(match.distance));
+            { const _src = OpCodes.Unpack32LE(match.distance); for (let _i = 0; _i < _src.length; _i++) output.push(_src[_i]); }
             for (let i = 1; i < match.length; ++i)
               finder.insertPosition(data, pos + i);
             pos += match.length;

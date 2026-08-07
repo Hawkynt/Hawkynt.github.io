@@ -336,7 +336,7 @@
 
   function ctwCompress(data) {
     const output = [];
-    output.push(...OpCodes.Unpack32LE(data.length));
+    { const _src = OpCodes.Unpack32LE(data.length); for (let _i = 0; _i < _src.length; _i++) output.push(_src[_i]); }
 
     if (data.length === 0) return output;
 
@@ -481,7 +481,7 @@
 
       Feed(data) {
         if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {

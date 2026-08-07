@@ -552,7 +552,7 @@
   // Ported from Compression.Core.Dictionary.Lzfse.LzfseValueStream.
 
   function lzfseWriteInt(output, value) {
-    output.push(...OpCodes.Unpack32LE(value));
+    { const _src = OpCodes.Unpack32LE(value); for (let _i = 0; _i < _src.length; _i++) output.push(_src[_i]); }
   }
 
   function lzfseReadInt(data, posRef) {
@@ -564,7 +564,7 @@
 
   function lzfseWriteBlock(output, data) {
     lzfseWriteInt(output, data.length);
-    output.push(...data);
+    for (let _i = 0; _i < data.length; _i++) output.push(data[_i]);
   }
 
   function lzfseReadBlock(data, posRef) {
@@ -800,7 +800,7 @@
 
       Feed(data) {
         if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {

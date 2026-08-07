@@ -206,7 +206,7 @@
 
       Feed(data) {
         if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {
@@ -248,7 +248,7 @@
         const result = [];
 
         // Header: 4-byte LE original size, then 256 bytes of code lengths
-        result.push(...OpCodes.Unpack32LE(data.length));
+        { const _src = OpCodes.Unpack32LE(data.length); for (let _i = 0; _i < _src.length; _i++) result.push(_src[_i]); }
         for (let i = 0; i < 256; ++i)
           result.push(codeLengths[i]);
 
