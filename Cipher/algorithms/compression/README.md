@@ -12,15 +12,19 @@ This directory contains implementations of various data compression algorithms. 
 - [x] **DEFLATE (Simple)** (`deflate-simple.js`) - Combination of LZ77 and Huffman coding
 - [x] **Delta + RLE** (`delta.js`) - Stores differences between consecutive values, then run-length encodes the result
 - [x] **Delta Filter** (`delta-filter.js`) - Pure, size-preserving delta transform with no entropy coding
+- [x] **DS LZ77** (`ds-lz77-doublespace.js`) - Microsoft DoubleSpace/DriveSpace LZ77 grammar as a standalone building block
 - [x] **Elias Delta Coding** (`elias-delta.js`) - Universal code for positive integers
 - [x] **Elias Gamma Coding** (`elias-gamma.js`) - Universal code for positive integers
 - [x] **Fibonacci Coding** (`fibonacci.js`) - Universal code based on Fibonacci sequence
 - [x] **Huffman Coding** (`huffman.js`) - Optimal prefix-free coding
 - [x] **LZ4** (`lz4.js`) - Fast lossless compression algorithm
+- [x] **LZ4 Frame** (`lz4-frame.js`) - LZ4 frame container with content size, block framing and xxHash32 checksums
 - [x] **LZ77** (`lz77.js`) - Dictionary-based compression algorithm
+- [x] **LZ77-Optimal** (`lz77-optimal.js`) - LZ77 with cost-based optimal (shortest-path) parsing
 - [x] **LZ78** (`lz78.js`) - Dictionary-based compression algorithm
 - [x] **Lempel-Ziv-Welch (LZW)** (`lzw.js`) - Adaptive dictionary compression
 - [x] **Prediction by Partial Matching (PPM)** (`ppm.js`) - Context modeling compression
+- [x] **RAR5** (`rar5.js`) - RAR 5.0 block stage: LZ77 with four Huffman tables and a pre-code
 - [x] **Run-Length Encoding (RLE)** (`rle.js`) - Simple compression for repetitive data
 - [x] **Shannon-Fano Coding** (`shannon-fano.js`) - Prefix-free coding algorithm
 - [x] **Unary Coding** (`unary.js`) - Simple universal code
