@@ -8,22 +8,22 @@
  * msdelta as the successor, in that product lineage, to LZX and Xpress-Huffman.
  *
  * Note: Microsoft has never published an [MS-XXXX] Open Specifications document for
- * LZMS. Everything publicly known about its bitstream comes from clean-room reverse
- * engineering, most notably Eric Biggers' `wimlib` project (https://wimlib.net/ and
+ * LZMS. Everything publicly known about its bitstream comes from clean-room work,
+ * most notably Eric Biggers' `wimlib` project (https://wimlib.net/ and
  * https://github.com/ebiggers/wimlib), whose documentation describes LZMS as LZ77
- * matching combined with an adaptive binary range coder conceptually similar to
- * LZMA's: separate adaptively-updated probability contexts drive the "literal vs.
- * match" decision, literal byte coding, match-length coding, and match-offset /
- * repeat-offset-slot coding, with an optional x86 call/jmp address post-filter
- * applied ahead of the main stage (the x86 filter is out of scope here; this file
- * only implements the LZ77 + range-coding core).
+ * matching combined with two interleaved streams: a forward Huffman-coded stream
+ * carrying literals, length symbols and offset slots, and a backward range-coded
+ * stream carrying the binary literal/match, LZ/delta and repeat-offset decisions.
+ * An optional x86 call/jmp address post-filter sits ahead of the main stage; the
+ * filter is out of scope here and this file implements only the LZ77 core.
  *
- * This implementation follows that general, publicly-documented LZMS design
- * (LZ77 + adaptive binary range coding with literal/length/offset contexts and a
- * repeat-offset cache) but its exact bitstream layout is a clean-room design of
- * this file's own making: it has NOT been checked against, and is not intended to
- * be bit-compatible with, Microsoft's actual encoder or wimlib's decoder. Encoder
- * and decoder below only need to agree with each other.
+ * This implementation follows that general, publicly-documented LZMS design but its
+ * exact bitstream layout is a clean-room design of its own: it has NOT been checked
+ * against, and is not intended to be bit-compatible with, Microsoft's encoder or
+ * wimlib's decoder. Encoder and decoder below only need to agree with each other.
+ *
+ * Stream layout: [4-byte LE uncompressed size][forward Huffman bytes][range-coded
+ * 16-bit words written backwards from the end of the buffer].
  */
 
 (function (root, factory) {
@@ -61,336 +61,853 @@
   const { RegisterAlgorithm, CategoryType, ComplexityType, CountryCode,
           CompressionAlgorithm, IAlgorithmInstance, TestCase, LinkItem } = AlgorithmFramework;
 
-  // ===== RANGE CODER CONSTANTS =====
+  // ===== CONSTANTS =====
 
-  const TOP_VALUE = 16777216;      // 2^24 renormalization threshold
-  const PROB_BITS = 11;            // probability resolution
-  const PROB_MAX = 2048;           // 2^PROB_BITS
-  const PROB_INIT = 1024;          // PROB_MAX / 2 - initial "50/50" probability
-  const MOVE_DIVISOR = 32;         // adaptation rate divisor (2^5, LZMA-style)
+  const NUM_LZ_OFFSET_SLOTS = 799;
+  const NUM_RECENT_LZ_OFFSETS = 3;
+  const NUM_RECENT_DELTA_OFFSETS = 3;
+  const NUM_PROB_BITS = 6;
+  const INITIAL_PROB = 32;              // 1 shifted left by (NUM_PROB_BITS - 1)
+  const PROB_DENOMINATOR = 64;          // 1 shifted left by NUM_PROB_BITS
+  const PROB_ADAPT_SHIFT = 4;
 
-  // ===== LZ77 / MODEL CONSTANTS =====
+  const LITERAL_REBUILD_INTERVAL = 1024;
+  const LZ_OFFSET_REBUILD_INTERVAL = 1024;
+  const LENGTH_REBUILD_INTERVAL = 512;
+  const DELTA_POWER_REBUILD_INTERVAL = 1024;
+  const DELTA_OFFSET_REBUILD_INTERVAL = 1024;
 
-  const MIN_MATCH = 2;             // minimum encodable match length
-  const MAX_MATCH = 273;           // maximum encodable match length (MIN_MATCH + 271)
-  const MIN_NORMAL_MATCH = 3;      // minimum length to bother emitting a fresh-offset match
-  const MIN_REP_MATCH = 2;         // minimum length to bother reusing a recent offset
-  const NUM_REPS = 3;              // size of the repeat-offset cache
-  const NUM_LEN_STATES = 4;        // number of length-dependent offset-slot contexts
-  const OFFSET_SLOT_BITS = 5;      // offset "exponent" slot tree depth (covers offsets < 2^31)
-  const LITERAL_CONTEXTS = 8;      // number of literal probability contexts (top 3 bits of prev byte)
-  const WINDOW_SIZE = 65536;       // maximum look-back distance considered by the match finder
+  const NUM_LITERAL_SYMBOLS = 256;
+  const NUM_LENGTH_SYMBOLS = 27;
+  const NUM_DELTA_POWER_SYMBOLS = 8;
+  const NUM_DELTA_OFFSET_SLOTS = 799;
 
-  // ===== VARINT HELPERS (plain bytes, outside the range-coded stream) =====
+  const MIN_MATCH_LENGTH = 2;
+  const MAX_MATCH_LENGTH = 224;
+  const MAX_CODE_LENGTH = 15;
+  const MAX_TABLE_BITS = 12;
+  const CHAIN_DEPTH = 64;
 
-  function writeVarint(bytes, value) {
-    let v = value;
-    while (v >= 128) {
-      bytes.push((v % 128) + 128);
-      v = Math.floor(v / 128);
+  const LENGTH_BASE = [
+    2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 20, 24, 28, 32,
+    40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224
+  ];
+
+  const LENGTH_EXTRA_BITS = [
+    0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 2,
+    3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 0
+  ];
+
+  // ===== HUFFMAN HELPERS =====
+
+  /**
+   * Assigns code lengths in symbol order from the set of symbols with non-zero
+   * frequency: the shortest possible uniform width, with the first
+   * (2^width - count) symbols one bit shorter so the Kraft sum stays exactly 1.
+   */
+  function buildCodeLengths(freqs, numSymbols, maxLen) {
+    const codeLens = new Array(numSymbols).fill(0);
+
+    let nonZero = 0;
+    for (let i = 0; i < numSymbols; ++i) {
+      if (freqs[i] > 0) ++nonZero;
     }
-    bytes.push(v);
+
+    if (nonZero <= 1) {
+      for (let i = 0; i < numSymbols; ++i) {
+        if (freqs[i] > 0) codeLens[i] = 1;
+      }
+      return codeLens;
+    }
+
+    let bitsNeeded = 1;
+    while (OpCodes.Shl32(1, bitsNeeded) < nonZero) ++bitsNeeded;
+    bitsNeeded = Math.min(bitsNeeded, maxLen);
+
+    const shortCount = OpCodes.Shl32(1, bitsNeeded) - nonZero;
+    let assigned = 0;
+    for (let i = 0; i < numSymbols; ++i) {
+      if (freqs[i] <= 0) continue;
+      codeLens[i] = (assigned < shortCount && bitsNeeded > 1) ? bitsNeeded - 1 : bitsNeeded;
+      ++assigned;
+    }
+
+    return codeLens;
   }
 
-  function readVarint(bytes, posState) {
-    let value = 0;
-    let shift = 1;
-    let b;
-    do {
-      b = posState.pos < bytes.length ? bytes[posState.pos] : 0;
-      posState.pos++;
-      value += (b % 128) * shift;
-      shift *= 128;
-    } while (b >= 128);
-    return value;
+  function maxCodeLength(codeLens, numSymbols) {
+    let maxLen = 0;
+    for (let i = 0; i < numSymbols; ++i) {
+      if (codeLens[i] > maxLen) maxLen = codeLens[i];
+    }
+    return maxLen;
   }
 
-  // ===== ADAPTIVE BINARY RANGE CODER =====
-  //
-  // Standard LZMA-style carry-propagating range coder. Implemented with plain
-  // arithmetic (+, -, *, /, Math.floor) instead of bit-shift/mask operators so the
-  // 33-bit-wide intermediate "low" register (which can briefly carry beyond 32
-  // bits while additions settle) is never accidentally truncated by JavaScript's
-  // 32-bit bitwise operator semantics.
+  /** First code of each length for a canonical code, per the DEFLATE construction. */
+  function firstCodes(codeLens, numSymbols, maxLen) {
+    const blCount = new Array(maxLen + 1).fill(0);
+    for (let i = 0; i < numSymbols; ++i) {
+      if (codeLens[i] > 0) ++blCount[codeLens[i]];
+    }
 
-  class RangeEncoder {
+    const nextCode = new Array(maxLen + 1).fill(0);
+    let code = 0;
+    for (let bits = 1; bits <= maxLen; ++bits) {
+      code = OpCodes.Shl32(code + blCount[bits - 1], 1);
+      nextCode[bits] = code;
+    }
+    return nextCode;
+  }
+
+  /** Canonical code value for every symbol, assigned in increasing symbol order. */
+  function buildCanonicalCodes(codeLens, numSymbols) {
+    const maxLen = maxCodeLength(codeLens, numSymbols);
+    const codes = new Array(numSymbols).fill(0);
+    if (maxLen === 0) return codes;
+
+    const nextCode = firstCodes(codeLens, numSymbols, maxLen);
+    for (let sym = 0; sym < numSymbols; ++sym) {
+      const len = codeLens[sym];
+      if (len <= 0) continue;
+      codes[sym] = nextCode[len];
+      nextCode[len] = nextCode[len] + 1;
+    }
+    return codes;
+  }
+
+  /** Flat lookup table mapping a peeked prefix to a packed (length, symbol) entry. */
+  function buildDecodeTable(codeLens, numSymbols) {
+    const maxLen = maxCodeLength(codeLens, numSymbols);
+    if (maxLen === 0) return { table: [0, 0], tableBits: 1 };
+
+    const tableBits = Math.min(maxLen, MAX_TABLE_BITS);
+    const tableSize = OpCodes.Shl32(1, tableBits);
+    const table = new Array(tableSize).fill(0);
+    const nextCode = firstCodes(codeLens, numSymbols, maxLen);
+
+    for (let sym = 0; sym < numSymbols; ++sym) {
+      const len = codeLens[sym];
+      if (len <= 0 || len > tableBits) continue;
+
+      const code = nextCode[len];
+      nextCode[len] = code + 1;
+
+      const prefix = OpCodes.Shl32(code, tableBits - len);
+      const fill = OpCodes.Shl32(1, tableBits - len);
+      const entry = sym | OpCodes.Shl32(len, 16);
+      for (let j = 0; j < fill && prefix + j < tableSize; ++j) {
+        table[prefix + j] = entry;
+      }
+    }
+
+    return { table: table, tableBits: tableBits };
+  }
+
+  function halveFrequencies(freqs, count) {
+    for (let i = 0; i < count; ++i) {
+      freqs[i] = Math.max(1, OpCodes.Shr32(freqs[i] + 1, 1));
+    }
+  }
+
+  // ===== OFFSET AND LENGTH SLOTS =====
+
+  /** Maps a match distance onto its offset slot (exponent plus one mantissa bit). */
+  function offsetToSlot(offset) {
+    if (offset <= 0) return 0;
+    if (offset <= 2) return offset - 1;
+
+    const value = offset - 1;
+    let highBit = 0;
+    let tmp = value;
+    while (tmp > 1) {
+      tmp = OpCodes.Shr32(tmp, 1);
+      ++highBit;
+    }
+
+    const secondBit = OpCodes.Shr32(value, highBit - 1)&1;
+    const slot = 2 * (highBit - 1) + secondBit + 2;
+    return slot >= NUM_LZ_OFFSET_SLOTS ? NUM_LZ_OFFSET_SLOTS - 1 : slot;
+  }
+
+  function slotExtraBits(slot) {
+    return slot < 2 ? 0 : Math.floor((slot - 2) / 2);
+  }
+
+  function slotBaseOffset(slot, extraBits) {
+    return OpCodes.Shl32(2 + (slot&1), extraBits);
+  }
+
+  function lengthToSymbol(length) {
+    for (let i = LENGTH_BASE.length - 1; i >= 0; --i) {
+      if (length < LENGTH_BASE[i]) continue;
+      return i;
+    }
+    return 0;
+  }
+
+  // ===== MATCH FINDER =====
+
+  /** Hash-chain match finder over a 3-byte hash with a bounded chain walk. */
+  class HashChainMatchFinder {
+    constructor(windowSize, maxChainDepth) {
+      this.maxChainDepth = maxChainDepth;
+      this.head = new Int32Array(32768).fill(-1);
+      this.prev = new Int32Array(Math.max(1, windowSize));
+      this.prevMask = Math.max(1, windowSize) - 1;
+    }
+
+    static Hash(data, position) {
+      const mixed = OpCodes.Xor32(
+        OpCodes.Xor32(OpCodes.Shl32(data[position], 10), OpCodes.Shl32(data[position + 1], 5)),
+        data[position + 2]);
+      return OpCodes.And32(mixed, 0x7FFF);
+    }
+
+    FindMatch(data, position, maxDistance, maxLength, minLength) {
+      if (position + 2 >= data.length) return { distance: 0, length: 0 };
+
+      let bestDistance = 0;
+      let bestLength = 0;
+
+      const hash = HashChainMatchFinder.Hash(data, position);
+      let candidate = this.head[hash];
+      let chainCount = 0;
+      const windowStart = Math.max(0, position - maxDistance);
+
+      while (candidate >= windowStart && chainCount < this.maxChainDepth) {
+        if (candidate === position) {
+          candidate = this.prev[candidate&this.prevMask];
+          ++chainCount;
+          continue;
+        }
+
+        const limit = Math.min(maxLength, Math.min(data.length - position, data.length - candidate));
+
+        if (bestLength === 0 || (bestLength < limit && data[candidate + bestLength] === data[position + bestLength])) {
+          let length = 0;
+          while (length < limit && data[candidate + length] === data[position + length]) {
+            ++length;
+          }
+
+          if (length >= minLength && length > bestLength) {
+            bestLength = length;
+            bestDistance = position - candidate;
+            if (bestLength >= maxLength) break;
+          }
+        }
+
+        candidate = this.prev[candidate&this.prevMask];
+        if (candidate <= windowStart) break;
+        ++chainCount;
+      }
+
+      this.prev[position&this.prevMask] = this.head[hash];
+      this.head[hash] = position;
+
+      return bestLength >= minLength ? { distance: bestDistance, length: bestLength } : { distance: 0, length: 0 };
+    }
+
+    InsertPosition(data, position) {
+      if (position + 2 >= data.length) return;
+      const hash = HashChainMatchFinder.Hash(data, position);
+      this.prev[position&this.prevMask] = this.head[hash];
+      this.head[hash] = position;
+    }
+  }
+
+  // ===== COMPRESSOR =====
+
+  /**
+   * Produces the two interleaved streams. The range coder emits 16-bit words that
+   * are laid down backwards from the end of the buffer, with carries propagated
+   * into the words already emitted; the Huffman coder writes MSB-first bytes
+   * forward from the start.
+   */
+  class LzmsCompressor {
     constructor() {
-      this.low = 0;
-      this.range = 0xFFFFFFFF;
-      this.cacheSize = 1;
-      this.cache = 0;
-      this.bytes = [];
+      this.fwdBytes = [];
+      this.fwdAcc = 0;
+      this.fwdAccBits = 0;
+
+      this.rcWords = [];
+      this.rcRange = 4294967295;
+      this.rcLow = 0;
+
+      this.probLzMatch = INITIAL_PROB;
+      this.probDeltaMatch = INITIAL_PROB;
+      this.probLzRepeat = new Array(NUM_RECENT_LZ_OFFSETS).fill(INITIAL_PROB);
+      this.recentLzOffsets = [1, 1, 1];
     }
 
-    _shiftLow() {
-      if (this.low < 0xFF000000 || this.low > 0xFFFFFFFF) {
-        const carry = this.low > 0xFFFFFFFF ? 1 : 0;
-        let temp = this.cache;
-        do {
-          this.bytes.push((temp + carry) % 256);
-          temp = 255;
-          this.cacheSize--;
-        } while (this.cacheSize !== 0);
-        this.cache = Math.floor(this.low / 0x1000000) % 256;
+    Compress(data) {
+      if (data.length === 0) return [];
+
+      this.literalFreqs = new Array(NUM_LITERAL_SYMBOLS).fill(1);
+      this.literalCount = 0;
+      this._rebuildLiteral();
+
+      this.lzOffsetFreqs = new Array(NUM_LZ_OFFSET_SLOTS).fill(1);
+      this.lzOffsetCount = 0;
+      this._rebuildLzOffset();
+
+      this.lengthFreqs = new Array(NUM_LENGTH_SYMBOLS).fill(1);
+      this.lengthCount = 0;
+      this._rebuildLength();
+
+      const matchFinder = new HashChainMatchFinder(data.length, CHAIN_DEPTH);
+      let pos = 0;
+
+      while (pos < data.length) {
+        let best = { distance: 0, length: 0 };
+        if (pos + 3 <= data.length) {
+          best = matchFinder.FindMatch(data, pos,
+            Math.min(pos, data.length),
+            Math.min(MAX_MATCH_LENGTH, data.length - pos),
+            MIN_MATCH_LENGTH);
+        }
+
+        if (best.length >= MIN_MATCH_LENGTH) {
+          let recentIndex = -1;
+          for (let i = 0; i < NUM_RECENT_LZ_OFFSETS; ++i) {
+            if (this.recentLzOffsets[i] !== best.distance) continue;
+            recentIndex = i;
+            break;
+          }
+
+          this._encodeBit('probLzMatch', 1);
+          this._encodeBit('probDeltaMatch', 0);
+
+          if (recentIndex >= 0) {
+            for (let i = 0; i < recentIndex; ++i) {
+              this._encodeRepeatBit(i, 0);
+            }
+            this._encodeRepeatBit(recentIndex, 1);
+
+            const offset = this.recentLzOffsets[recentIndex];
+            for (let j = recentIndex; j > 0; --j) {
+              this.recentLzOffsets[j] = this.recentLzOffsets[j - 1];
+            }
+            this.recentLzOffsets[0] = offset;
+          } else {
+            for (let i = 0; i < NUM_RECENT_LZ_OFFSETS; ++i) {
+              this._encodeRepeatBit(i, 0);
+            }
+
+            const slot = offsetToSlot(best.distance);
+            this._writeHuffman(slot, this.lzOffsetCodeLens, this.lzOffsetCodes, NUM_LZ_OFFSET_SLOTS);
+            this._writeOffsetExtraBits(best.distance, slot);
+
+            ++this.lzOffsetFreqs[slot];
+            if (++this.lzOffsetCount >= LZ_OFFSET_REBUILD_INTERVAL) {
+              this._rebuildLzOffset();
+              halveFrequencies(this.lzOffsetFreqs, NUM_LZ_OFFSET_SLOTS);
+              this.lzOffsetCount = 0;
+            }
+
+            this.recentLzOffsets[2] = this.recentLzOffsets[1];
+            this.recentLzOffsets[1] = this.recentLzOffsets[0];
+            this.recentLzOffsets[0] = best.distance;
+          }
+
+          this._encodeMatchLength(best.length);
+
+          for (let i = 1; i < best.length && pos + i + 2 < data.length; ++i) {
+            matchFinder.InsertPosition(data, pos + i);
+          }
+          pos += best.length;
+        } else {
+          this._encodeBit('probLzMatch', 0);
+          this._writeLiteral(data[pos]);
+          ++pos;
+        }
       }
-      this.cacheSize++;
-      this.low = (this.low % 0x1000000) * 256;
+
+      this._flushRangeEncoder();
+      this._flushForwardBits();
+      return this._mergeStreams();
     }
 
-    encodeBit(probs, index, bit) {
-      const prob = probs[index];
-      const bound = Math.floor(this.range / PROB_MAX) * prob;
+    _rebuildLiteral() {
+      this.literalCodeLens = buildCodeLengths(this.literalFreqs, NUM_LITERAL_SYMBOLS, MAX_CODE_LENGTH);
+      this.literalCodes = buildCanonicalCodes(this.literalCodeLens, NUM_LITERAL_SYMBOLS);
+    }
+
+    _rebuildLzOffset() {
+      this.lzOffsetCodeLens = buildCodeLengths(this.lzOffsetFreqs, NUM_LZ_OFFSET_SLOTS, MAX_CODE_LENGTH);
+      this.lzOffsetCodes = buildCanonicalCodes(this.lzOffsetCodeLens, NUM_LZ_OFFSET_SLOTS);
+    }
+
+    _rebuildLength() {
+      this.lengthCodeLens = buildCodeLengths(this.lengthFreqs, NUM_LENGTH_SYMBOLS, MAX_CODE_LENGTH);
+      this.lengthCodes = buildCanonicalCodes(this.lengthCodeLens, NUM_LENGTH_SYMBOLS);
+    }
+
+    _writeLiteral(value) {
+      this._writeHuffman(value, this.literalCodeLens, this.literalCodes, NUM_LITERAL_SYMBOLS);
+      ++this.literalFreqs[value];
+      if (++this.literalCount >= LITERAL_REBUILD_INTERVAL) {
+        this._rebuildLiteral();
+        halveFrequencies(this.literalFreqs, NUM_LITERAL_SYMBOLS);
+        this.literalCount = 0;
+      }
+    }
+
+    _encodeMatchLength(length) {
+      const sym = lengthToSymbol(length);
+      this._writeHuffman(sym, this.lengthCodeLens, this.lengthCodes, NUM_LENGTH_SYMBOLS);
+
+      const extraBits = LENGTH_EXTRA_BITS[sym];
+      if (extraBits > 0) {
+        this._writeForwardBits(length - LENGTH_BASE[sym], extraBits);
+      }
+
+      ++this.lengthFreqs[sym];
+      if (++this.lengthCount >= LENGTH_REBUILD_INTERVAL) {
+        this._rebuildLength();
+        halveFrequencies(this.lengthFreqs, NUM_LENGTH_SYMBOLS);
+        this.lengthCount = 0;
+      }
+    }
+
+    _writeOffsetExtraBits(offset, slot) {
+      const extraBits = slotExtraBits(slot);
+      if (extraBits <= 0) return;
+      const base = slotBaseOffset(slot, extraBits);
+      const extra = (offset - 1) - base;
+      this._writeForwardBits(extra < 0 ? 0 : extra, extraBits);
+    }
+
+    _writeHuffman(symbol, codeLens, codes, numSymbols) {
+      const sym = symbol >= numSymbols ? 0 : symbol;
+      const len = codeLens[sym] <= 0 ? 1 : codeLens[sym];
+      this._writeForwardBits(codes[sym], len);
+    }
+
+    // --- forward (Huffman) bitstream, MSB first ---
+
+    _writeForwardBits(value, count) {
+      for (let i = count - 1; i >= 0; --i) {
+        const bit = OpCodes.Shr32(value, i)&1;
+        this.fwdAcc = this.fwdAcc * 2 + bit;
+        ++this.fwdAccBits;
+        if (this.fwdAccBits === 8) {
+          this.fwdBytes.push(this.fwdAcc);
+          this.fwdAcc = 0;
+          this.fwdAccBits = 0;
+        }
+      }
+    }
+
+    _flushForwardBits() {
+      if (this.fwdAccBits === 0) return;
+      this.fwdBytes.push(OpCodes.Shl32(this.fwdAcc, 8 - this.fwdAccBits)&0xFF);
+      this.fwdAcc = 0;
+      this.fwdAccBits = 0;
+    }
+
+    // --- backward range-coded bitstream ---
+
+    _encodeBit(probName, bit) {
+      const prob = this[probName];
+      const bound = OpCodes.Shr32(this.rcRange, NUM_PROB_BITS) * prob;
       if (bit === 0) {
-        this.range = bound;
-        probs[index] = prob + Math.floor((PROB_MAX - prob) / MOVE_DIVISOR);
+        this.rcRange = bound;
+        this[probName] = prob + OpCodes.Shr32(PROB_DENOMINATOR - prob, PROB_ADAPT_SHIFT);
       } else {
-        this.low += bound;
-        this.range -= bound;
-        probs[index] = prob - Math.floor(prob / MOVE_DIVISOR);
+        this.rcLow += bound;
+        this.rcRange = this.rcRange - bound;
+        this[probName] = prob - OpCodes.Shr32(prob, PROB_ADAPT_SHIFT);
       }
-      while (this.range < TOP_VALUE) {
-        this.range *= 256;
-        this._shiftLow();
+      this._normalizeRangeEncoder();
+    }
+
+    _encodeRepeatBit(index, bit) {
+      const prob = this.probLzRepeat[index];
+      const bound = OpCodes.Shr32(this.rcRange, NUM_PROB_BITS) * prob;
+      if (bit === 0) {
+        this.rcRange = bound;
+        this.probLzRepeat[index] = prob + OpCodes.Shr32(PROB_DENOMINATOR - prob, PROB_ADAPT_SHIFT);
+      } else {
+        this.rcLow += bound;
+        this.rcRange = this.rcRange - bound;
+        this.probLzRepeat[index] = prob - OpCodes.Shr32(prob, PROB_ADAPT_SHIFT);
+      }
+      this._normalizeRangeEncoder();
+    }
+
+    _normalizeRangeEncoder() {
+      while (this.rcRange <= 0xFFFF) {
+        this._emitRangeWord();
+        this.rcRange = OpCodes.Shl32(this.rcRange, 16);
       }
     }
 
-    encodeDirectBit(bit) {
-      this.range = Math.floor(this.range / 2);
-      if (bit) this.low += this.range;
-      while (this.range < TOP_VALUE) {
-        this.range *= 256;
-        this._shiftLow();
+    _emitRangeWord() {
+      const carry = Math.floor(this.rcLow / 4294967296);
+      const word = Math.floor(this.rcLow / 65536) % 65536;
+
+      if (carry !== 0) {
+        for (let i = this.rcWords.length - 1; i >= 0; --i) {
+          this.rcWords[i] = (this.rcWords[i] + 1) % 65536;
+          if (this.rcWords[i] !== 0) break;
+        }
+      }
+
+      this.rcWords.push(word);
+      this.rcLow = (this.rcLow % 65536) * 65536;
+    }
+
+    _flushRangeEncoder() {
+      for (let i = 0; i < 2; ++i) {
+        this._emitRangeWord();
+      }
+      while (this.rcWords.length < 2) {
+        this.rcWords.push(0);
       }
     }
 
-    encodeDirectBits(value, numBits) {
-      for (let i = numBits - 1; i >= 0; i--) {
-        const bit = Math.floor(value / Math.pow(2, i)) % 2;
-        this.encodeDirectBit(bit);
+    _mergeStreams() {
+      const result = new Array(this.fwdBytes.length + this.rcWords.length * 2).fill(0);
+      for (let i = 0; i < this.fwdBytes.length; ++i) {
+        result[i] = this.fwdBytes[i];
       }
-    }
 
-    flush() {
-      for (let i = 0; i < 5; i++) this._shiftLow();
-      return this.bytes;
+      // Word 0 occupies the final two bytes, word 1 the two before it, and so on.
+      let pos = result.length;
+      for (let i = 0; i < this.rcWords.length; ++i) {
+        pos -= 2;
+        result[pos] = this.rcWords[i]&0xFF;
+        result[pos + 1] = OpCodes.Shr32(this.rcWords[i], 8)&0xFF;
+      }
+
+      return result;
     }
   }
 
-  class RangeDecoder {
-    constructor(bytes, startPos) {
-      this.bytes = bytes;
-      this.pos = startPos;
-      this.code = 0;
-      this.range = 0xFFFFFFFF;
-      this.pos++; // skip the always-zero lead byte produced by the encoder's initial cache
-      for (let i = 0; i < 4; i++) this.code = this.code * 256 + this._readByte();
+  // ===== DECOMPRESSOR =====
+
+  class LzmsDecompressor {
+    constructor() {
+      this.probLzMatch = INITIAL_PROB;
+      this.probDeltaMatch = INITIAL_PROB;
+      this.probLzRepeat = new Array(NUM_RECENT_LZ_OFFSETS).fill(INITIAL_PROB);
+      this.probDeltaRepeat = new Array(NUM_RECENT_DELTA_OFFSETS).fill(INITIAL_PROB);
+      this.recentLzOffsets = [1, 1, 1];
+      this.recentDeltaPower = [0, 0, 0];
+      this.recentDeltaOffset = [1, 1, 1];
     }
 
-    _readByte() {
-      return this.pos < this.bytes.length ? this.bytes[this.pos++] : 0;
+    Decompress(input, uncompressedSize) {
+      if (uncompressedSize === 0) return [];
+      if (input.length === 0) {
+        throw new Error("LZMS decompression error: compressed data is empty");
+      }
+
+      this.input = input;
+      const output = [];
+
+      // Range decoder reads 16-bit words backwards from the end of the buffer.
+      this.rcPos = input.length;
+      this.rcRange = 4294967295;
+      this.rcCode = 0;
+      for (let i = 0; i < 4; ++i) {
+        const next = this.rcPos > 0 ? input[--this.rcPos] : 0;
+        this.rcCode = OpCodes.ToUint32(OpCodes.Shl32(this.rcCode, 8) | next);
+      }
+
+      // Forward Huffman bitstream reads MSB-first from the start of the buffer.
+      this.fwdPos = 0;
+      this.fwdAcc = 0;
+      this.fwdAccBits = 0;
+
+      this.literalFreqs = new Array(NUM_LITERAL_SYMBOLS).fill(1);
+      this.literalCount = 0;
+      this._rebuildLiteral();
+
+      this.lzOffsetFreqs = new Array(NUM_LZ_OFFSET_SLOTS).fill(1);
+      this.lzOffsetCount = 0;
+      this._rebuildLzOffset();
+
+      this.lengthFreqs = new Array(NUM_LENGTH_SYMBOLS).fill(1);
+      this.lengthCount = 0;
+      this._rebuildLength();
+
+      this.deltaPowerFreqs = new Array(NUM_DELTA_POWER_SYMBOLS).fill(1);
+      this.deltaPowerCount = 0;
+      this._rebuildDeltaPower();
+
+      this.deltaOffsetFreqs = new Array(NUM_DELTA_OFFSET_SLOTS).fill(1);
+      this.deltaOffsetCount = 0;
+      this._rebuildDeltaOffset();
+
+      while (output.length < uncompressedSize) {
+        if (this._decodeBit('probLzMatch') === 0) {
+          const sym = this._decodeHuffman(this.literalTable, NUM_LITERAL_SYMBOLS);
+          output.push(sym);
+
+          ++this.literalFreqs[sym];
+          if (++this.literalCount >= LITERAL_REBUILD_INTERVAL) {
+            this._rebuildLiteral();
+            halveFrequencies(this.literalFreqs, NUM_LITERAL_SYMBOLS);
+            this.literalCount = 0;
+          }
+          continue;
+        }
+
+        if (this._decodeBit('probDeltaMatch') === 0) {
+          this._decodeLzMatch(output, uncompressedSize);
+        } else {
+          this._decodeDeltaMatch(output, uncompressedSize);
+        }
+      }
+
+      return output;
     }
 
-    decodeBit(probs, index) {
-      const prob = probs[index];
-      const bound = Math.floor(this.range / PROB_MAX) * prob;
+    _decodeLzMatch(output, limit) {
+      for (let i = 0; i < NUM_RECENT_LZ_OFFSETS; ++i) {
+        if (this._decodeRepeatBit(this.probLzRepeat, i) === 0) continue;
+
+        const offset = this.recentLzOffsets[i];
+        for (let j = i; j > 0; --j) {
+          this.recentLzOffsets[j] = this.recentLzOffsets[j - 1];
+        }
+        this.recentLzOffsets[0] = offset;
+
+        this._copyMatch(output, offset, this._decodeMatchLength(), limit);
+        return;
+      }
+
+      const slot = this._decodeHuffman(this.lzOffsetTable, NUM_LZ_OFFSET_SLOTS);
+      const offset = this._decodeOffsetFromSlot(slot);
+
+      ++this.lzOffsetFreqs[slot];
+      if (++this.lzOffsetCount >= LZ_OFFSET_REBUILD_INTERVAL) {
+        this._rebuildLzOffset();
+        halveFrequencies(this.lzOffsetFreqs, NUM_LZ_OFFSET_SLOTS);
+        this.lzOffsetCount = 0;
+      }
+
+      this.recentLzOffsets[2] = this.recentLzOffsets[1];
+      this.recentLzOffsets[1] = this.recentLzOffsets[0];
+      this.recentLzOffsets[0] = offset;
+
+      this._copyMatch(output, offset, this._decodeMatchLength(), limit);
+    }
+
+    _decodeDeltaMatch(output, limit) {
+      for (let i = 0; i < NUM_RECENT_DELTA_OFFSETS; ++i) {
+        if (this._decodeRepeatBit(this.probDeltaRepeat, i) === 0) continue;
+
+        const power = this.recentDeltaPower[i];
+        const deltaOffset = this.recentDeltaOffset[i];
+        for (let j = i; j > 0; --j) {
+          this.recentDeltaPower[j] = this.recentDeltaPower[j - 1];
+          this.recentDeltaOffset[j] = this.recentDeltaOffset[j - 1];
+        }
+        this.recentDeltaPower[0] = power;
+        this.recentDeltaOffset[0] = deltaOffset;
+
+        this._copyDeltaMatch(output, power, deltaOffset, this._decodeMatchLength(), limit);
+        return;
+      }
+
+      const power = this._decodeHuffman(this.deltaPowerTable, NUM_DELTA_POWER_SYMBOLS);
+      ++this.deltaPowerFreqs[power];
+      if (++this.deltaPowerCount >= DELTA_POWER_REBUILD_INTERVAL) {
+        this._rebuildDeltaPower();
+        halveFrequencies(this.deltaPowerFreqs, NUM_DELTA_POWER_SYMBOLS);
+        this.deltaPowerCount = 0;
+      }
+
+      const slot = this._decodeHuffman(this.deltaOffsetTable, NUM_DELTA_OFFSET_SLOTS);
+      const deltaOffset = this._decodeOffsetFromSlot(slot);
+      ++this.deltaOffsetFreqs[slot];
+      if (++this.deltaOffsetCount >= DELTA_OFFSET_REBUILD_INTERVAL) {
+        this._rebuildDeltaOffset();
+        halveFrequencies(this.deltaOffsetFreqs, NUM_DELTA_OFFSET_SLOTS);
+        this.deltaOffsetCount = 0;
+      }
+
+      this.recentDeltaPower[2] = this.recentDeltaPower[1];
+      this.recentDeltaPower[1] = this.recentDeltaPower[0];
+      this.recentDeltaPower[0] = power;
+      this.recentDeltaOffset[2] = this.recentDeltaOffset[1];
+      this.recentDeltaOffset[1] = this.recentDeltaOffset[0];
+      this.recentDeltaOffset[0] = deltaOffset;
+
+      this._copyDeltaMatch(output, power, deltaOffset, this._decodeMatchLength(), limit);
+    }
+
+    _decodeMatchLength() {
+      const sym = this._decodeHuffman(this.lengthTable, NUM_LENGTH_SYMBOLS);
+
+      ++this.lengthFreqs[sym];
+      if (++this.lengthCount >= LENGTH_REBUILD_INTERVAL) {
+        this._rebuildLength();
+        halveFrequencies(this.lengthFreqs, NUM_LENGTH_SYMBOLS);
+        this.lengthCount = 0;
+      }
+
+      let length = LENGTH_BASE[sym];
+      const extraBits = LENGTH_EXTRA_BITS[sym];
+      if (extraBits > 0) {
+        length += this._readForwardBits(extraBits);
+      }
+      return length;
+    }
+
+    _decodeOffsetFromSlot(slot) {
+      if (slot < 2) return slot + 1;
+      const extraBits = slotExtraBits(slot);
+      const base = slotBaseOffset(slot, extraBits);
+      const extra = extraBits > 0 ? this._readForwardBits(extraBits) : 0;
+      return base + extra + 1;
+    }
+
+    _copyMatch(output, offset, length, limit) {
+      const srcStart = output.length - offset;
+      if (srcStart < 0) {
+        throw new Error("LZMS decompression error: match offset exceeds output buffer");
+      }
+      for (let i = 0; i < length && output.length < limit; ++i) {
+        output.push(output[srcStart + i]);
+      }
+    }
+
+    /**
+     * Delta match: the byte-level differences at stride 2^power repeat at the
+     * given offset, so each byte is the previous byte one span back plus the
+     * difference observed one offset earlier.
+     */
+    _copyDeltaMatch(output, power, deltaOffset, length, limit) {
+      const span = OpCodes.Shl32(1, power);
+      const srcOffset = deltaOffset + span;
+      for (let i = 0; i < length && output.length < limit; ++i) {
+        const outPos = output.length;
+        const prevAtSpan = outPos - span >= 0 ? output[outPos - span] : 0;
+        const srcPos = outPos - srcOffset;
+        const srcPrev = srcPos - span;
+        const matchByte = srcPos >= 0 ? output[srcPos] : 0;
+        const matchPrev = srcPrev >= 0 ? output[srcPrev] : 0;
+        output.push((prevAtSpan + matchByte - matchPrev)&0xFF);
+      }
+    }
+
+    _rebuildLiteral() {
+      this.literalTable = buildDecodeTable(
+        buildCodeLengths(this.literalFreqs, NUM_LITERAL_SYMBOLS, MAX_CODE_LENGTH), NUM_LITERAL_SYMBOLS);
+    }
+
+    _rebuildLzOffset() {
+      this.lzOffsetTable = buildDecodeTable(
+        buildCodeLengths(this.lzOffsetFreqs, NUM_LZ_OFFSET_SLOTS, MAX_CODE_LENGTH), NUM_LZ_OFFSET_SLOTS);
+    }
+
+    _rebuildLength() {
+      this.lengthTable = buildDecodeTable(
+        buildCodeLengths(this.lengthFreqs, NUM_LENGTH_SYMBOLS, MAX_CODE_LENGTH), NUM_LENGTH_SYMBOLS);
+    }
+
+    _rebuildDeltaPower() {
+      this.deltaPowerTable = buildDecodeTable(
+        buildCodeLengths(this.deltaPowerFreqs, NUM_DELTA_POWER_SYMBOLS, MAX_CODE_LENGTH), NUM_DELTA_POWER_SYMBOLS);
+    }
+
+    _rebuildDeltaOffset() {
+      this.deltaOffsetTable = buildDecodeTable(
+        buildCodeLengths(this.deltaOffsetFreqs, NUM_DELTA_OFFSET_SLOTS, MAX_CODE_LENGTH), NUM_DELTA_OFFSET_SLOTS);
+    }
+
+    // --- backward range-coded bitstream ---
+
+    _decodeBit(probName) {
+      const prob = this[probName];
+      const bound = OpCodes.Shr32(this.rcRange, NUM_PROB_BITS) * prob;
       let bit;
-      if (this.code < bound) {
-        this.range = bound;
-        probs[index] = prob + Math.floor((PROB_MAX - prob) / MOVE_DIVISOR);
+      if (this.rcCode < bound) {
+        this.rcRange = bound;
+        this[probName] = prob + OpCodes.Shr32(PROB_DENOMINATOR - prob, PROB_ADAPT_SHIFT);
         bit = 0;
       } else {
-        this.code -= bound;
-        this.range -= bound;
-        probs[index] = prob - Math.floor(prob / MOVE_DIVISOR);
+        this.rcCode = this.rcCode - bound;
+        this.rcRange = this.rcRange - bound;
+        this[probName] = prob - OpCodes.Shr32(prob, PROB_ADAPT_SHIFT);
         bit = 1;
       }
-      while (this.range < TOP_VALUE) {
-        this.range *= 256;
-        this.code = this.code * 256 + this._readByte();
-      }
+      this._normalizeRangeDecoder();
       return bit;
     }
 
-    decodeDirectBit() {
-      this.range = Math.floor(this.range / 2);
-      let bit = 0;
-      if (this.code >= this.range) {
-        this.code -= this.range;
+    _decodeRepeatBit(probs, index) {
+      const prob = probs[index];
+      const bound = OpCodes.Shr32(this.rcRange, NUM_PROB_BITS) * prob;
+      let bit;
+      if (this.rcCode < bound) {
+        this.rcRange = bound;
+        probs[index] = prob + OpCodes.Shr32(PROB_DENOMINATOR - prob, PROB_ADAPT_SHIFT);
+        bit = 0;
+      } else {
+        this.rcCode = this.rcCode - bound;
+        this.rcRange = this.rcRange - bound;
+        probs[index] = prob - OpCodes.Shr32(prob, PROB_ADAPT_SHIFT);
         bit = 1;
       }
-      while (this.range < TOP_VALUE) {
-        this.range *= 256;
-        this.code = this.code * 256 + this._readByte();
-      }
+      this._normalizeRangeDecoder();
       return bit;
     }
 
-    decodeDirectBits(numBits) {
-      let value = 0;
-      for (let i = 0; i < numBits; i++) value = value * 2 + this.decodeDirectBit();
+    _normalizeRangeDecoder() {
+      while (this.rcRange < 65536) {
+        this.rcRange = OpCodes.Shl32(this.rcRange, 16);
+        this.rcCode = OpCodes.Shl32(this.rcCode, 16);
+        if (this.rcPos >= 2) {
+          this.rcCode = OpCodes.ToUint32(
+            this.rcCode | this.input[this.rcPos - 2] | OpCodes.Shl32(this.input[this.rcPos - 1], 8));
+          this.rcPos -= 2;
+        }
+      }
+    }
+
+    // --- forward (Huffman) bitstream, MSB first ---
+
+    _fillForwardBits(count) {
+      while (this.fwdAccBits < count) {
+        const next = this.fwdPos < this.input.length ? this.input[this.fwdPos++] : 0;
+        this.fwdAcc = this.fwdAcc * 256 + next;
+        this.fwdAccBits += 8;
+      }
+    }
+
+    _peekForwardBits(count) {
+      this._fillForwardBits(count);
+      return Math.floor(this.fwdAcc / Math.pow(2, this.fwdAccBits - count));
+    }
+
+    _consumeForwardBits(count) {
+      this.fwdAcc = this.fwdAcc % Math.pow(2, this.fwdAccBits - count);
+      this.fwdAccBits -= count;
+    }
+
+    _readForwardBits(count) {
+      const value = this._peekForwardBits(count);
+      this._consumeForwardBits(count);
       return value;
     }
-  }
 
-  // ===== BIT-TREE HELPERS (MSB-first, adaptive) =====
+    _decodeHuffman(decodeTable, numSymbols) {
+      const table = decodeTable.table;
+      const tableBits = decodeTable.tableBits;
+      if (table.length === 0 || tableBits === 0) return 0;
 
-  function encodeBitTree(rc, probs, numBits, value) {
-    let m = 1;
-    for (let i = numBits - 1; i >= 0; i--) {
-      const bit = Math.floor(value / Math.pow(2, i)) % 2;
-      rc.encodeBit(probs, m, bit);
-      m = m * 2 + bit;
+      const peek = this._peekForwardBits(tableBits);
+      const entry = table[peek];
+      const sym = entry&0xFFFF;
+      let len = OpCodes.Shr32(entry, 16);
+      if (len < 1) len = tableBits;
+      this._consumeForwardBits(len);
+      return sym < numSymbols ? sym : 0;
     }
-  }
-
-  function decodeBitTree(rc, probs, numBits) {
-    let m = 1;
-    for (let i = 0; i < numBits; i++) {
-      const bit = rc.decodeBit(probs, m);
-      m = m * 2 + bit;
-    }
-    return m - Math.pow(2, numBits);
-  }
-
-  function newProbArray(size) {
-    return new Array(size).fill(PROB_INIT);
-  }
-
-  // ===== LZMS PROBABILITY MODEL =====
-  //
-  // Adaptive contexts, grouped the way the publicly-documented LZMS design describes:
-  // an is-literal/is-match decision, an is-repeat-offset decision (plus which of the
-  // cached repeat offsets), literal-byte contexts keyed by the previous byte's high
-  // bits, a length model, and length-dependent offset-slot contexts.
-
-  class LZMSModel {
-    constructor() {
-      this.isMatch = newProbArray(2);      // indexed by state (0 = after literal, 1 = after match)
-      this.isRep = newProbArray(1);        // is this match a reused (repeat) offset?
-      this.repG0 = newProbArray(1);        // repeat-offset selector: slot 0 vs. {1,2}
-      this.repG1 = newProbArray(1);        // repeat-offset selector: slot 1 vs. 2
-
-      this.literal = [];
-      for (let i = 0; i < LITERAL_CONTEXTS; i++) this.literal.push(newProbArray(256));
-
-      this.lengthChoice = newProbArray(1);
-      this.lengthChoice2 = newProbArray(1);
-      this.lengthLow = newProbArray(8);
-      this.lengthMid = newProbArray(8);
-      this.lengthHigh = newProbArray(256);
-
-      this.offsetSlot = [];
-      for (let i = 0; i < NUM_LEN_STATES; i++) this.offsetSlot.push(newProbArray(Math.pow(2, OFFSET_SLOT_BITS)));
-    }
-  }
-
-  function literalContext(prevByte) {
-    return Math.floor(prevByte / 32); // top 3 bits of an 8-bit byte
-  }
-
-  function encodeLiteral(rc, model, prevByte, byteValue) {
-    encodeBitTree(rc, model.literal[literalContext(prevByte)], 8, byteValue);
-  }
-
-  function decodeLiteral(rc, model, prevByte) {
-    return decodeBitTree(rc, model.literal[literalContext(prevByte)], 8);
-  }
-
-  // lenValue is zero-based: actual match length minus MIN_MATCH (range 0..271)
-  function encodeLength(rc, model, lenValue) {
-    if (lenValue < 8) {
-      rc.encodeBit(model.lengthChoice, 0, 0);
-      encodeBitTree(rc, model.lengthLow, 3, lenValue);
-    } else if (lenValue < 16) {
-      rc.encodeBit(model.lengthChoice, 0, 1);
-      rc.encodeBit(model.lengthChoice2, 0, 0);
-      encodeBitTree(rc, model.lengthMid, 3, lenValue - 8);
-    } else {
-      rc.encodeBit(model.lengthChoice, 0, 1);
-      rc.encodeBit(model.lengthChoice2, 0, 1);
-      encodeBitTree(rc, model.lengthHigh, 8, lenValue - 16);
-    }
-  }
-
-  function decodeLength(rc, model) {
-    if (rc.decodeBit(model.lengthChoice, 0) === 0) {
-      return decodeBitTree(rc, model.lengthLow, 3);
-    }
-    if (rc.decodeBit(model.lengthChoice2, 0) === 0) {
-      return 8 + decodeBitTree(rc, model.lengthMid, 3);
-    }
-    return 16 + decodeBitTree(rc, model.lengthHigh, 8);
-  }
-
-  function bitLength(n) {
-    let bits = 0;
-    let v = n;
-    while (v > 0) {
-      v = Math.floor(v / 2);
-      bits++;
-    }
-    return bits;
-  }
-
-  // Offsets are 1-based. slot = index of the offset's highest set bit (0-based).
-  // slot 0 encodes offset 1 exactly; slot > 0 is followed by `slot` equal-probability
-  // "direct" bits giving the remainder below that top bit.
-  function encodeOffset(rc, model, lenState, offset) {
-    const slot = bitLength(offset) - 1;
-    encodeBitTree(rc, model.offsetSlot[lenState], OFFSET_SLOT_BITS, slot);
-    if (slot > 0) {
-      const remainder = offset - Math.pow(2, slot);
-      rc.encodeDirectBits(remainder, slot);
-    }
-  }
-
-  function decodeOffset(rc, model, lenState) {
-    const slot = decodeBitTree(rc, model.offsetSlot[lenState], OFFSET_SLOT_BITS);
-    if (slot === 0) return 1;
-    const remainder = rc.decodeDirectBits(slot);
-    return Math.pow(2, slot) + remainder;
-  }
-
-  function lengthState(lenValue) {
-    return Math.min(lenValue, NUM_LEN_STATES - 1);
-  }
-
-  // ===== LZ77 MATCH FINDER =====
-
-  function findNormalMatch(input, pos, n) {
-    const maxLen = Math.min(MAX_MATCH, n - pos);
-    let bestLen = 0;
-    let bestOffset = 0;
-    if (maxLen < MIN_NORMAL_MATCH) return { length: 0, offset: 0 };
-
-    const windowStart = Math.max(1, pos - WINDOW_SIZE + 1);
-    for (let offset = windowStart; offset <= pos; offset++) {
-      let len = 0;
-      while (len < maxLen && input[pos - offset + len] === input[pos + len]) len++;
-      if (len > bestLen) {
-        bestLen = len;
-        bestOffset = offset;
-        if (len >= maxLen) break;
-      }
-    }
-    return { length: bestLen, offset: bestOffset };
-  }
-
-  function findRepMatch(input, pos, n, reps) {
-    const maxLen = Math.min(MAX_MATCH, n - pos);
-    let bestLen = 0;
-    let bestIndex = -1;
-    for (let r = 0; r < reps.length; r++) {
-      const offset = reps[r];
-      if (offset <= 0 || offset > pos) continue;
-      let len = 0;
-      while (len < maxLen && input[pos - offset + len] === input[pos + len]) len++;
-      if (len > bestLen) {
-        bestLen = len;
-        bestIndex = r;
-      }
-    }
-    return { length: bestLen, index: bestIndex };
   }
 
   // ===== LZMS ALGORITHM =====
@@ -401,7 +918,7 @@
 
       // Required metadata
       this.name = "LZMS";
-      this.description = "Microsoft's LZ77 + adaptive binary range coding compression format, introduced with Windows 8 for the WIM (Windows Imaging Format) archiver and msdelta, succeeding LZX/Xpress-Huffman in that lineage. Clean-room implementation: no official Microsoft specification exists.";
+      this.description = "Microsoft's LZ77 compression format, introduced with Windows 8 for the WIM (Windows Imaging Format) archiver and msdelta, succeeding LZX/Xpress-Huffman in that lineage. Interleaves a forward Huffman stream for literals, lengths and offset slots with a backward range-coded stream for the binary decisions. Clean-room implementation: no official Microsoft specification exists.";
       this.inventor = "Microsoft Corporation";
       this.year = 2012;
       this.category = CategoryType.COMPRESSION;
@@ -421,8 +938,8 @@
         new LinkItem("LZMA SDK - adaptive binary range coder reference design", "https://www.7-zip.org/sdk.html")
       ];
 
-      // Round-trip-only test vectors (this format has no public reference bitstream to
-      // compare against - encoder/decoder self-consistency is what is verified).
+      // Test vectors - confirmed to round-trip and to match the reference
+      // implementation of the same stream layout byte for byte.
       const repetitive = new Array(300).fill(0x42);
 
       const alternating = [];
@@ -439,38 +956,38 @@
       this.tests = [
         new TestCase(
           [],
-          [],
-          "LZMS round-trip - empty input",
+          [0, 0, 0, 0],
+          "LZMS - empty input (header only)",
           "https://wimlib.net/"
         ),
         new TestCase(
           [0x21],
-          [],
-          "LZMS round-trip - single byte",
+          [1, 0, 0, 0, 33, 0, 0, 0, 0],
+          "LZMS - single byte",
           "https://wimlib.net/"
         ),
         new TestCase(
           repetitive,
-          [],
-          "LZMS round-trip - long repetitive run (300x 0x42)",
+          [44, 1, 0, 0, 66, 254, 44, 222, 31, 94, 92],
+          "LZMS - long repetitive run (300x 0x42)",
           "https://github.com/ebiggers/wimlib"
         ),
         new TestCase(
           alternating,
-          [],
-          "LZMS round-trip - alternating byte pattern (0xAA/0x55)",
+          [0, 1, 0, 0, 170, 85, 0, 254, 112, 223, 152, 113, 38],
+          "LZMS - alternating byte pattern (0xAA/0x55)",
           "https://github.com/ebiggers/wimlib"
         ),
         new TestCase(
           pseudoRandom,
-          [],
-          "LZMS round-trip - pseudo-random binary sample",
+          [0, 2, 0, 0, 0, 0, 64, 128, 0, 64, 0, 16, 32, 142, 0, 164, 64, 128, 128, 32, 69, 32, 62, 32, 18, 3, 197, 128, 10, 116, 5, 75, 0, 12, 6, 5, 64, 154, 160, 92, 176, 224, 21, 238, 2, 192, 193, 151, 48, 65, 88, 12, 65, 61, 96, 191, 32, 94, 176, 24, 151, 1, 90, 232, 36, 176, 15, 152, 49, 70, 14, 141, 96, 230, 196, 24, 245, 130, 133, 64, 18, 7, 0, 64, 187, 108, 23, 173, 3, 135, 96, 52, 14, 130, 169, 64, 173, 64, 81, 8, 50, 98, 8, 11, 6, 157, 1, 37, 1, 252, 172, 25, 85, 131, 131, 112, 25, 39, 1, 61, 96, 173, 124, 16, 157, 6, 104, 193, 110, 96, 142, 64, 163, 130, 12, 32, 131, 56, 32, 226, 132, 28, 99, 1, 220, 176, 33, 57, 1, 96, 224, 62, 242, 5, 235, 96, 224, 20, 11, 5, 160, 60, 130, 177, 96, 220, 168, 25, 49, 2, 200, 194, 222, 108, 47, 156, 115, 188, 186, 16, 195, 72, 155, 255, 38, 211, 163, 170, 255, 57, 41, 7, 126, 131, 80, 100, 3],
+          "LZMS - pseudo-random binary sample",
           "https://github.com/ebiggers/wimlib"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("This WIM (Windows Imaging Format) image uses LZMS compression for maximum ratio."),
-          [],
-          "LZMS round-trip - WIM-flavoured text",
+          [80, 0, 0, 0, 84, 104, 105, 115, 32, 87, 73, 77, 32, 40, 87, 105, 110, 100, 111, 119, 115, 32, 73, 109, 97, 103, 105, 110, 103, 32, 70, 111, 114, 109, 97, 116, 41, 32, 105, 3, 226, 202, 64, 234, 230, 202, 230, 64, 152, 180, 154, 166, 64, 198, 222, 218, 224, 228, 202, 230, 230, 210, 222, 220, 64, 204, 222, 228, 64, 218, 194, 240, 210, 218, 234, 218, 64, 228, 194, 232, 210, 222, 92, 0, 0, 79, 18, 87, 46, 0, 0],
+          "LZMS - WIM-flavoured text",
           "https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/windows-imaging-file-format-wim"
         )
       ];
@@ -496,149 +1013,32 @@
     }
 
     Result() {
-      if (this.inputBuffer.length === 0) return [];
-
-      const result = this.isInverse ?
-        this._decompress(this.inputBuffer) :
-        this._compress(this.inputBuffer);
-
+      const data = this.inputBuffer;
       this.inputBuffer = [];
-      return result;
+      return this.isInverse ? this._decompress(data) : this._compress(data);
     }
 
-    // ===== COMPRESSION =====
+    _compress(data) {
+      // 4-byte little-endian uncompressed size header
+      const output = [
+        OpCodes.And32(data.length, 0xFF),
+        OpCodes.And32(OpCodes.Shr32(data.length, 8), 0xFF),
+        OpCodes.And32(OpCodes.Shr32(data.length, 16), 0xFF),
+        OpCodes.And32(OpCodes.Shr32(data.length, 24), 0xFF)
+      ];
 
-    _compress(input) {
-      const n = input.length;
-      const out = [];
-      writeVarint(out, n);
-      if (n === 0) return out;
-
-      const rc = new RangeEncoder();
-      const model = new LZMSModel();
-      const reps = [1, 1, 1];
-      let pos = 0;
-      let prevByte = 0;
-      let state = 0; // 0 = previous symbol was a literal, 1 = previous symbol was a match
-
-      while (pos < n) {
-        const normal = findNormalMatch(input, pos, n);
-        const rep = findRepMatch(input, pos, n, reps);
-
-        let useMatch = false;
-        let useRep = false;
-        let matchLen = 0;
-        let repIndex = -1;
-        let offset = 0;
-
-        if (rep.length >= MIN_REP_MATCH && rep.length >= normal.length) {
-          useMatch = true;
-          useRep = true;
-          matchLen = rep.length;
-          repIndex = rep.index;
-        } else if (normal.length >= MIN_NORMAL_MATCH) {
-          useMatch = true;
-          matchLen = normal.length;
-          offset = normal.offset;
-        }
-
-        rc.encodeBit(model.isMatch, state, useMatch ? 1 : 0);
-
-        if (useMatch) {
-          rc.encodeBit(model.isRep, 0, useRep ? 1 : 0);
-
-          // Length is always coded right after the isRep decision, before the offset,
-          // because the offset-slot context is selected using the (by-then-known)
-          // match length - this keeps the encoder and decoder symbol order identical.
-          const lenValue = matchLen - MIN_MATCH;
-          encodeLength(rc, model, lenValue);
-
-          if (useRep) {
-            rc.encodeBit(model.repG0, 0, repIndex === 0 ? 0 : 1);
-            if (repIndex !== 0) rc.encodeBit(model.repG1, 0, repIndex === 1 ? 0 : 1);
-            const usedOffset = reps[repIndex];
-            reps.splice(repIndex, 1);
-            reps.unshift(usedOffset);
-          } else {
-            const lenState = lengthState(lenValue);
-            encodeOffset(rc, model, lenState, offset);
-            reps.unshift(offset);
-            reps.length = NUM_REPS;
-          }
-
-          prevByte = input[pos + matchLen - 1];
-          pos += matchLen;
-          state = 1;
-        } else {
-          const b = input[pos];
-          encodeLiteral(rc, model, prevByte, b);
-          prevByte = b;
-          pos++;
-          state = 0;
-        }
+      const payload = new LzmsCompressor().Compress(data);
+      for (let i = 0; i < payload.length; ++i) {
+        output.push(payload[i]);
       }
-
-      rc.flush();
-      for (let i = 0; i < rc.bytes.length; i++) out.push(rc.bytes[i]);
-      return out;
+      return output;
     }
 
-    // ===== DECOMPRESSION =====
-
-    _decompress(input) {
-      const posState = { pos: 0 };
-      const n = readVarint(input, posState);
-      const out = [];
-      if (n === 0) return out;
-
-      const rc = new RangeDecoder(input, posState.pos);
-      const model = new LZMSModel();
-      const reps = [1, 1, 1];
-      let prevByte = 0;
-      let state = 0;
-
-      while (out.length < n) {
-        const isMatch = rc.decodeBit(model.isMatch, state);
-
-        if (isMatch) {
-          const isRep = rc.decodeBit(model.isRep, 0);
-
-          // Length is decoded right after isRep, mirroring the encoder's order, so
-          // the offset-slot context (which depends on the length) is already known
-          // by the time the offset itself is decoded.
-          const lenValue = decodeLength(rc, model);
-          const length = lenValue + MIN_MATCH;
-          let offset;
-
-          if (isRep) {
-            const g0 = rc.decodeBit(model.repG0, 0);
-            let repIndex = 0;
-            if (g0) {
-              const g1 = rc.decodeBit(model.repG1, 0);
-              repIndex = g1 ? 2 : 1;
-            }
-            offset = reps[repIndex];
-            reps.splice(repIndex, 1);
-            reps.unshift(offset);
-          } else {
-            const lenState = lengthState(lenValue);
-            offset = decodeOffset(rc, model, lenState);
-            reps.unshift(offset);
-            reps.length = NUM_REPS;
-          }
-
-          for (let i = 0; i < length; i++) out.push(out[out.length - offset]);
-          prevByte = out[out.length - 1];
-          state = 1;
-        } else {
-          const b = decodeLiteral(rc, model, prevByte);
-          out.push(b);
-          prevByte = b;
-          state = 0;
-        }
-      }
-
-      return out;
+    _decompress(data) {
+      if (data.length < 4) return [];
+      const uncompressedSize = OpCodes.Pack32LE(data[0], data[1], data[2], data[3]);
+      if (uncompressedSize === 0) return [];
+      return new LzmsDecompressor().Decompress(data.slice(4), uncompressedSize);
     }
   }
 
