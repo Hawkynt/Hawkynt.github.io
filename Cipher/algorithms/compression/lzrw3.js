@@ -8,6 +8,12 @@
  * This provides better compression (50% vs 55% of LZRW1) at slight speed cost.
  * Features: 4096-entry hash table, group-based hash updates, persistent phrases.
  * Match length: 3-18 bytes, hash index: 0-4095.
+ *
+ * Stream layout: [4-byte LE uncompressed size], then per group a 16-bit big-endian
+ * control word followed by up to 16 items (literal bytes, or 16-bit big-endian words
+ * packing the length in the top 4 bits and the hash bucket in the low 12).
+ *
+ * Reference: Ross N. Williams, "LZRW3", http://ross.net/compression/lzrw3.html
  */
 
 (function (root, factory) {
@@ -82,37 +88,39 @@
         new LinkItem("Linux Kernel ftape LZRW3", "http://courses.cs.tau.ac.il/os/orish/src/drivers/char/ftape/compressor/lzrw3.c")
       ];
 
-      // Test vectors - generated from this implementation and confirmed to round-trip;
-      // LZRW3 transmits hash table indices, making output deterministic for a given hash function
-      // Format: 16-bit control word (big-endian) + items (literal bytes or 16-bit hash+length words)
+      // Test vectors - confirmed to round-trip and to match the reference implementation
+      // of the same stream layout byte for byte; LZRW3 transmits hash table indices, so
+      // the output is fully determined by the hash function and the update schedule.
+      // Format: 4-byte LE uncompressed size, then per group a 16-bit control word
+      // (big-endian) followed by items (literal bytes or 16-bit length+hash words)
       this.tests = [
         new TestCase(
           OpCodes.AnsiToBytes("ABCD"),
-          [0, 0, 65, 66, 67, 68],
+          [4, 0, 0, 0, 0, 0, 65, 66, 67, 68],
           "No repetition - all literals",
           "Round-trip validated"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("ABCABCABCABC"), // 12 bytes: ABC repeated 4 times
-          [0, 8, 65, 66, 67, 101, 99],
+          [12, 0, 0, 0, 0, 8, 65, 66, 67, 101, 44],
           "Pattern repetition - ABC repeated 4 times",
           "Round-trip validated"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("The quick brown fox"),
-          [0, 0, 84, 104, 101, 32, 113, 117, 105, 99, 107, 32, 98, 114, 111, 119, 110, 32, 0, 0, 102, 111, 120],
+          [19, 0, 0, 0, 0, 0, 84, 104, 101, 32, 113, 117, 105, 99, 107, 32, 98, 114, 111, 119, 110, 32, 0, 0, 102, 111, 120],
           "Real text compression - English phrase",
           "Round-trip validated"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("AAAAAAAAAAAAAAAA"), // 16 A's
-          [0, 8, 65, 65, 65, 165, 81],
+          [16, 0, 0, 0, 0, 8, 65, 65, 65, 162, 126],
           "High repetition - 16 identical characters",
           "Round-trip validated"
         ),
         new TestCase(
           OpCodes.AnsiToBytes(""), // Empty input
-          [], // Empty output is deterministic
+          [0, 0, 0, 0], // Header only
           "Edge case - empty input",
           "Round-trip validated"
         ),
@@ -121,19 +129,19 @@
                                       // the deferred hash-table insertion queue across group boundaries
                                       // (regression test for the former group-batched update scheme,
                                       // which desynchronized the encoder/decoder hash tables)
-          [255, 248, 88, 88, 88, 253, 216, 253, 216, 253, 216, 253, 216, 253, 216, 253, 216, 253, 216, 253, 216, 253, 216, 253, 216, 253, 216, 253, 216, 253, 216, 0, 15, 253, 216, 253, 216, 253, 216, 109, 216],
+          [44, 1, 0, 0, 255, 248, 88, 88, 88, 244, 155, 244, 155, 244, 155, 244, 155, 244, 155, 244, 155, 244, 155, 244, 155, 244, 155, 244, 155, 244, 155, 244, 155, 244, 155, 0, 15, 244, 155, 244, 155, 244, 155, 100, 155],
           "Highly repetitive data - 300 bytes",
           "Round-trip validated"
         ),
         new TestCase(
           Array.from({ length: 300 }, (_, i) => (i % 2 ? 0x59 : 0x5A)), // Alternating ZY pattern
-          [255, 240, 90, 89, 90, 89, 255, 202, 255, 202, 255, 202, 255, 202, 255, 202, 255, 202, 255, 202, 255, 202, 255, 202, 255, 202, 255, 202, 255, 202, 0, 31, 255, 202, 255, 202, 255, 202, 255, 202, 95, 202],
+          [44, 1, 0, 0, 255, 240, 90, 89, 90, 89, 251, 16, 251, 16, 251, 16, 251, 16, 251, 16, 251, 16, 251, 16, 251, 16, 251, 16, 251, 16, 251, 16, 251, 16, 0, 31, 251, 16, 251, 16, 251, 16, 251, 16, 91, 16],
           "Alternating pattern - 300 bytes",
           "Round-trip validated"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("The quick brown fox jumps over the lazy dog. ".repeat(10)),
-          [0, 0, 84, 104, 101, 32, 113, 117, 105, 99, 107, 32, 98, 114, 111, 119, 110, 32, 0, 0, 102, 111, 120, 32, 106, 117, 109, 112, 115, 32, 111, 118, 101, 114, 32, 116, 240, 1, 14, 112, 108, 97, 122, 121, 32, 100, 111, 103, 46, 32, 84, 14, 112, 246, 57, 250, 115, 242, 151, 255, 253, 241, 192, 116, 14, 112, 250, 106, 249, 98, 248, 5, 245, 40, 248, 160, 250, 106, 249, 98, 248, 5, 245, 40, 248, 160, 250, 106, 249, 98, 248, 5, 0, 31, 245, 40, 248, 160, 250, 106, 249, 98, 248, 5, 32],
+          [194, 1, 0, 0, 0, 0, 84, 104, 101, 32, 113, 117, 105, 99, 107, 32, 98, 114, 111, 119, 110, 32, 0, 0, 102, 111, 120, 32, 106, 117, 109, 112, 115, 32, 111, 118, 101, 114, 32, 116, 248, 1, 5, 250, 108, 97, 122, 121, 32, 100, 111, 103, 46, 32, 247, 103, 247, 200, 254, 122, 243, 69, 240, 22, 255, 255, 247, 103, 247, 200, 254, 122, 243, 69, 240, 22, 247, 103, 247, 200, 254, 122, 243, 69, 240, 22, 247, 103, 247, 200, 254, 122, 243, 69, 240, 22, 247, 103, 0, 3, 247, 200, 110, 122],
           "English text sample - repeated sentence",
           "Round-trip validated"
         )
@@ -188,10 +196,6 @@
    */
 
     Result() {
-      if (this.inputBuffer.length === 0) {
-        return [];
-      }
-
       if (this.isInverse) {
         return this._decompress();
       } else {
@@ -200,12 +204,31 @@
     }
 
     /**
-     * Hash function for 3-byte sequences
-     * Same hash function as LZRW1 for compatibility
+     * Append a 32-bit little-endian value.
+     */
+    _writeU32LE(output, value) {
+      output.push(OpCodes.And32(value, 0xFF));
+      output.push(OpCodes.And32(OpCodes.Shr32(value, 8), 0xFF));
+      output.push(OpCodes.And32(OpCodes.Shr32(value, 16), 0xFF));
+      output.push(OpCodes.And32(OpCodes.Shr32(value, 24), 0xFF));
+    }
+
+    /**
+     * Read a 32-bit little-endian value.
+     */
+    _readU32LE(input, pos) {
+      return OpCodes.Pack32LE(input[pos], input[pos + 1], input[pos + 2], input[pos + 3]);
+    }
+
+    /**
+     * Hash function for 3-byte sequences.
+     * Packs the 3-byte window little-endian, multiplies by Knuth's 32-bit golden-ratio
+     * constant (2654435761) and keeps the top bits, masked to the 4096-entry table.
      */
     _hash(p0, p1, p2) {
-      const h = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.Shl16(p0, 8), OpCodes.Shl16(p1, 4)), p2), 0xFFF);
-      return h;
+      const value = OpCodes.Pack32LE(p0, p1, p2, 0);
+      const scrambled = OpCodes.Mul32(value, 2654435761);
+      return OpCodes.And32(OpCodes.Shr32(scrambled, 20), this.algorithm.HASH_TABLE_SIZE - 1);
     }
 
     /**
@@ -233,6 +256,14 @@
     _compress() {
       const input = this.inputBuffer;
       const result = [];
+
+      // 4-byte little-endian uncompressed size header
+      this._writeU32LE(result, input.length);
+
+      if (input.length === 0) {
+        this.inputBuffer = [];
+        return result;
+      }
 
       // Hash table stores positions of 3-byte sequences
       const hashTable = new Array(this.algorithm.HASH_TABLE_SIZE).fill(-1);
@@ -332,7 +363,20 @@
     _decompress() {
       const input = this.inputBuffer;
       const result = [];
-      let pos = 0;
+
+      if (input.length < 4) {
+        this.inputBuffer = [];
+        return result;
+      }
+
+      // 4-byte little-endian uncompressed size header
+      const originalLength = this._readU32LE(input, 0);
+      let pos = 4;
+
+      if (originalLength === 0) {
+        this.inputBuffer = [];
+        return result;
+      }
 
       // Hash table for decompression (must match compressor's table)
       const hashTable = new Array(this.algorithm.HASH_TABLE_SIZE).fill(-1);
@@ -340,14 +384,14 @@
       // Queue of positions awaiting hash-table insertion (see _flushPending)
       const pending = [];
 
-      while (pos < input.length) {
+      while (result.length < originalLength) {
         // Read 16-bit control word (big-endian)
         if (pos + 1 >= input.length) break;
         const controlWord = OpCodes.Pack16BE(input[pos], input[pos + 1]);
         pos += 2;
 
         // Process up to 16 items based on control word
-        for (let i = 0; i < this.algorithm.ITEMS_PER_GROUP && pos < input.length; i++) {
+        for (let i = 0; i < this.algorithm.ITEMS_PER_GROUP && result.length < originalLength; i++) {
           this._flushPending(pending, hashTable, result, result.length);
 
           const isCopyItem = OpCodes.AndN(controlWord, OpCodes.Shl16(1, i)) !== 0;
@@ -375,7 +419,9 @@
               }
 
               // Queue this phrase's hash entry - inserted only once its window is available
-              pending.push(phraseStart);
+              if (phraseStart + this.algorithm.MIN_MATCH_LENGTH <= originalLength) {
+                pending.push(phraseStart);
+              }
             } else {
               // Invalid hash index - should not happen with valid compressed data
               throw new Error(`LZRW3 decompression error: invalid hash index ${hashIndex}`);
@@ -387,7 +433,9 @@
             result.push(input[pos++]);
 
             // Queue this position's hash entry - inserted only once its window is available
-            pending.push(bytePos);
+            if (bytePos + this.algorithm.MIN_MATCH_LENGTH <= originalLength) {
+              pending.push(bytePos);
+            }
           }
         }
       }
