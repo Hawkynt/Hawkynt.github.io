@@ -141,7 +141,7 @@
 
       Feed(data) {
         if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {
@@ -157,8 +157,8 @@
         const input = new Uint8Array(data || []);
         const result = [];
         const lengthBytes = OpCodes.Unpack32BE(input.length);
-        result.push(...lengthBytes);
-        result.push(...input);
+        for (let _i = 0; _i < lengthBytes.length; _i++) result.push(lengthBytes[_i]);
+        for (let _i = 0; _i < input.length; _i++) result.push(input[_i]);
         return result;
       }
 
@@ -199,7 +199,7 @@
 
           // Encode symbol using prediction (simplified arithmetic coding)
           const encodedSymbol = this._encodeSymbol(symbolIndex, prediction);
-          encoded.push(...encodedSymbol);
+          for (let _i = 0; _i < encodedSymbol.length; _i++) encoded.push(encodedSymbol[_i]);
 
           // Update context tree
           this._updateContextTree(contextTree, context, symbolIndex);
@@ -374,7 +374,7 @@
 
         // Original length (4 bytes, big-endian)
         const lengthBytes = OpCodes.Unpack32BE(originalLength);
-        bytes.push(...lengthBytes);
+        for (let _i = 0; _i < lengthBytes.length; _i++) bytes.push(lengthBytes[_i]);
 
         // Alphabet size
         bytes.push(OpCodes.ToByte(alphabet.length));
@@ -387,10 +387,10 @@
 
         // Encoded data length
         const encodedLengthBytes = OpCodes.Unpack32BE(encoded.length);
-        bytes.push(...encodedLengthBytes);
+        for (let _i = 0; _i < encodedLengthBytes.length; _i++) bytes.push(encodedLengthBytes[_i]);
 
         // Encoded data
-        bytes.push(...encoded);
+        for (let _i = 0; _i < encoded.length; _i++) bytes.push(encoded[_i]);
 
         return this._bytesToString(bytes);
       }
