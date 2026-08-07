@@ -1,5 +1,5 @@
 /*
- * DS LZ77 - Microsoft DoubleSpace/DriveSpace LZ77 grammar as a standalone
+ * DoubleSpace/DriveSpace LZ77 - Microsoft's LZ77 grammar as a standalone
  * building block
  * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
@@ -9,7 +9,7 @@
  * GBA/NDS BIOS LZSS variant that is also abbreviated "DS-LZ77" (see
  * ds-lz77.js); the two formats are unrelated and share only the abbreviation.
  *
- * DS LZ77 is the effort-0 (greedy, 4 KiB window) parse of the DoubleSpace
+ * This is the effort-0 (greedy, 4 KiB window) parse of the DoubleSpace
  * token grammar, exposed on its own so it can be benchmarked and reused
  * independently of the DoubleSpace and DriveSpace container codecs. The token
  * stream is a 4-byte little-endian original-size header followed by LSB-first
@@ -299,8 +299,8 @@
     constructor() {
       super();
 
-      this.name = "DS LZ77";
-      this.description = "Microsoft DoubleSpace/DriveSpace LZ77 grammar as a standalone building block: variable-bit length and distance codes over a 4KB sliding window, minimum match length 2, greedy hash-chain parse, prefixed by a 4-byte little-endian original-size header. Unrelated to the Nintendo GBA/NDS BIOS LZSS variant that shares the DS-LZ77 abbreviation. Documented-subset reimplementation; Microsoft never published a bitstream specification.";
+      this.name = "DoubleSpace/DriveSpace LZ77";
+      this.description = "Microsoft DoubleSpace/DriveSpace LZ77 grammar as a standalone building block: variable-bit length and distance codes over a 4KB sliding window, minimum match length 2, greedy hash-chain parse, prefixed by a 4-byte little-endian original-size header. Corresponds to CompressionWorkbench's BB_DsLz77, which fixes the greedy effort level; at that setting the stream is identical to the DoubleSpace and DriveSpace entries, which expose the same grammar under their product names. Unrelated to the Nintendo GBA/NDS BIOS LZSS variant that shares the DS-LZ77 abbreviation. Documented-subset reimplementation; Microsoft never published a bitstream specification.";
       this.inventor = "Microsoft Corporation";
       this.year = 1993;
       this.category = CategoryType.COMPRESSION;
