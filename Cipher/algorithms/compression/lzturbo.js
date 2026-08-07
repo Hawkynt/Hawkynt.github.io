@@ -220,11 +220,11 @@
     }
 
     const output = [];
-    output.push(...MAGIC);
+    for (let _i = 0; _i < MAGIC.length; _i++) output.push(MAGIC[_i]);
     output.push(METHOD);
-    output.push(...OpCodes.Unpack32LE(data.length));
-    output.push(...OpCodes.Unpack32LE(body.length));
-    output.push(...body);
+    { const _src = OpCodes.Unpack32LE(data.length); for (let _i = 0; _i < _src.length; _i++) output.push(_src[_i]); }
+    { const _src = OpCodes.Unpack32LE(body.length); for (let _i = 0; _i < _src.length; _i++) output.push(_src[_i]); }
+    for (let _i = 0; _i < body.length; _i++) output.push(body[_i]);
 
     return output;
   }
@@ -396,7 +396,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      this.inputBuffer.push(...data);
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
     Result() {

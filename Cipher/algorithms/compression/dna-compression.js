@@ -128,7 +128,7 @@
 
       Feed(data) {
         if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
       Result() {
@@ -153,7 +153,8 @@
         const result = OpCodes.Unpack32LE(data.length);
 
         if (data.length === 0) {
-          result.push(...OpCodes.Unpack32LE(0)); // exception count
+          const emptyCount = OpCodes.Unpack32LE(0); // exception count
+          for (let _i = 0; _i < emptyCount.length; _i++) result.push(emptyCount[_i]);
           return result;
         }
 
@@ -161,7 +162,9 @@
           if (!this.codeByByte.has(byte))
             throw new Error('DNA Sequence Compression only accepts A, C, G, T bytes (got 0x' + byte.toString(16) + ')');
 
-        result.push(...OpCodes.Unpack32LE(0)); // exception count (always 0: no out-of-domain bytes)
+        // exception count (always 0: no out-of-domain bytes)
+        const exceptionCount = OpCodes.Unpack32LE(0);
+        for (let _i = 0; _i < exceptionCount.length; _i++) result.push(exceptionCount[_i]);
 
         let packed = 0;
         let bitsInByte = 0;
