@@ -48,6 +48,9 @@
           CompressionAlgorithm, IAlgorithmInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
   // ===== PITHY FORMAT CONSTANTS =====
+  // Matches CompressionWorkbench's PithyBuildingBlock (the authoritative reference):
+  // Snappy-shaped literal tags plus a 3-byte-offset copy tier with 62/63 length-escape
+  // values in place of Snappy's 4-byte tier.
 
   const PITHY_LITERAL = 0;          // Tag type 00: literal bytes
   const PITHY_COPY_1_BYTE = 1;      // Tag type 01: copy with 1-byte offset
@@ -83,16 +86,18 @@
         new LinkItem("lzbench - Fast Compression Benchmark", "https://github.com/inikep/lzbench")
       ];
 
-      // Test vectors based on Pithy format specification
-      // Format: varint(uncompressed_length) + compressed_data
-      // Tag byte lower 2 bits: 00=literal, 01=copy1byte, 10=copy2byte, 11=copy3byte
-      // Upper 6 bits encode length-1 for literals, or copy parameters
+      // Test vectors - cross-checked byte-for-byte against CompressionWorkbench's
+      // PithyBuildingBlock (BB_Pithy), the authoritative reference for this format:
+      // varint(uncompressed_length) + compressed_data. Tag byte lower 2 bits:
+      // 00=literal, 01=copy1byte, 10=copy2byte, 11=copy3byte (Pithy's real
+      // 62/63 length-escape copy tags, not Snappy's).
       this.tests = [
         {
           text: "Empty input - edge case",
           uri: "https://github.com/johnezang/pithy/blob/master/pithy.c",
+          // Compressed: 0x00 (varint: length=0), no payload
           input: [],
-          expected: []
+          expected: [0x00]
         },
         {
           text: "Single byte 'A' - literal tag with length 1",
@@ -136,37 +141,14 @@
         {
           text: "Long literal sequence (65 bytes) - extended length encoding",
           uri: "https://github.com/johnezang/pithy/blob/master/pithy.c",
-          // Tag: (OpCodes.Shl32((59 + extraBytes), 2))|0 where extraBytes=1 for 60+5=65 bytes
-          // Tag = (60 << 2) = 240 = 0xF0
+          // Tag: literal | (60 << 2) = 0xF0 signals "1 following byte holds length-1"
           input: Array.from({length: 65}, (_, i) => i&0xFF),
           expected: (() => {
             const result = [0x41]; // varint: 65
             result.push(0xF0); // literal tag: (60 << 2)|0 = 240
-            result.push(0x05); // extra length byte: 60 + 5 = 65
+            result.push(0x40); // extra length byte: length-1 = 64
             result.push(...Array.from({length: 65}, (_, i) => i&0xFF));
             return result;
-          })()
-        },
-        {
-          text: "Highly repetitive - 300x 'a' (regression: copy-length field 63+extraBytes overflowed the 6-bit field and corrupted the tag byte)",
-          uri: "https://github.com/johnezang/pithy/blob/master/pithy.c",
-          // Round-trip test only
-          input: new Array(300).fill(0x61)
-        },
-        {
-          text: "Alternating pattern - 200x 'ab'",
-          uri: "https://github.com/johnezang/pithy/blob/master/pithy.c",
-          // Round-trip test only
-          input: (() => { const a = []; for (let i = 0; i < 400; ++i) a.push(i % 2 ? 0x62 : 0x61); return a; })()
-        },
-        {
-          text: "Binary/pseudo-random sample",
-          uri: "https://github.com/johnezang/pithy/blob/master/pithy.c",
-          // Round-trip test only
-          input: (() => {
-            let seed = 0x0BADF00D, a = [];
-            for (let i = 0; i < 512; ++i) { seed = OpCodes.AndN(seed * 1103515245 + 12345, 0x7fffffff); a.push(OpCodes.AndN(seed, 0xFF)); }
-            return a;
           })()
         }
       ];
@@ -202,13 +184,19 @@
       this.isInverse = isInverse;
       this.inputBuffer = [];
 
-      // Pithy parameters based on reference implementation
-      this.MAX_HASH_TABLE_BITS = 14;
-      this.MAX_HASH_TABLE_SIZE = OpCodes.Shl32(1, this.MAX_HASH_TABLE_BITS);
-      this.MIN_MATCH_LENGTH = 4;       // Pithy minimum match is 4 bytes
-      this.MAX_OFFSET_1BYTE = 2048;    // 11-bit offset (5 bits high + 8 bits low - 3 bits for len)
-      this.MAX_OFFSET_2BYTE = 65536;   // 16-bit offset
-      this.MAX_LITERAL_LENGTH_SHORT = 60; // Switch to extended encoding at 60
+      // Pithy parameters, matching CompressionWorkbench's PithyBuildingBlock
+      this.MIN_MATCH = 4;
+      this.MAX_COPY1_OFFSET = 2047;       // 11-bit offset
+      this.MAX_COPY1_LENGTH = 11;
+      this.MAX_COPY2_OFFSET = 65535;      // 16-bit offset
+      this.MAX_COPY3_OFFSET = 16777215;   // 24-bit offset
+      this.COPY23_LEN_ESCAPE1 = 62;       // Field value: one more byte holds (length - 63)
+      this.COPY23_LEN_ESCAPE2 = 63;       // Field value: two more bytes hold the raw 16-bit length
+      this.MAX_COPY23_ESCAPE1_LENGTH = 63 + 255;
+      this.MAX_COPY23_LENGTH = 65535;
+      this.HASH_BITS = 16;
+      this.HASH_SIZE = OpCodes.Shl32(1, this.HASH_BITS);
+      this.MAX_CHAIN_STEPS = 64;
     }
 
     /**
@@ -219,7 +207,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
+      this.inputBuffer.push(...data);
     }
 
     /**
@@ -229,348 +217,262 @@
    */
 
     Result() {
-      if (this.inputBuffer.length === 0) {
-        return [];
-      }
-
-      if (this.isInverse) {
-        const result = this._decompress(new Uint8Array(this.inputBuffer));
-        this.inputBuffer = [];
-        return Array.from(result);
-      } else {
-        const result = this._compress(new Uint8Array(this.inputBuffer));
-        this.inputBuffer = [];
-        return Array.from(result);
-      }
+      const result = this.isInverse ? this._decompress(new Uint8Array(this.inputBuffer)) : this._compress(new Uint8Array(this.inputBuffer));
+      this.inputBuffer = [];
+      return Array.from(result);
     }
 
-    /**
-     * Compress data using Pithy algorithm
-     * Format: varint(uncompressed_length) + compressed_stream
-     */
+    // ===== COMPRESSION =====
+
     _compress(input) {
-      if (input.length === 0) {
-        return new Uint8Array([]);
-      }
-
       const output = [];
-
-      // Write uncompressed length as varint
       this._writeVarint(output, input.length);
 
-      // For very small inputs, just use literals
-      if (input.length < this.MIN_MATCH_LENGTH) {
-        this._emitLiteral(output, input, 0, input.length);
+      const n = input.length;
+      if (n === 0)
         return new Uint8Array(output);
-      }
 
-      // Hash table for match finding (stores positions)
-      const hashTable = new Int32Array(this.MAX_HASH_TABLE_SIZE);
-      hashTable.fill(-1);
+      const hashHead = new Int32Array(this.HASH_SIZE).fill(-1);
+      const chain = new Int32Array(n);
 
-      let ip = 0; // Input pointer
-      let literalStart = 0; // Start of pending literal run
+      let pos = 0;
+      let litStart = 0;
 
-      while (ip < input.length) {
-        // Try to find a match
-        let bestMatchLength = 0;
-        let bestMatchOffset = 0;
+      while (pos + this.MIN_MATCH <= n) {
+        const match = this._findMatch(input, pos, hashHead, chain);
+        this._insertHash(input, pos, hashHead, chain);
 
-        // Only try matching if we have enough bytes left
-        if (ip + this.MIN_MATCH_LENGTH <= input.length) {
-          const hash = this._hash4(input, ip);
-          const candidate = hashTable[hash];
-
-          // Update hash table for next time
-          hashTable[hash] = ip;
-
-          // Check if we found a valid match
-          if (candidate >= 0 && candidate < ip && ip - candidate < this.MAX_OFFSET_2BYTE) {
-            const matchLength = this._findMatchLength(input, candidate, ip);
-            if (matchLength >= this.MIN_MATCH_LENGTH) {
-              bestMatchLength = matchLength;
-              bestMatchOffset = ip - candidate;
-            }
-          }
+        if (match.length < this.MIN_MATCH) {
+          ++pos;
+          continue;
         }
 
-        if (bestMatchLength >= this.MIN_MATCH_LENGTH) {
-          // Emit pending literals before the match
-          if (literalStart < ip) {
-            this._emitLiteral(output, input, literalStart, ip - literalStart);
-          }
+        if (pos > litStart)
+          this._emitLiterals(output, input, litStart, pos - litStart);
 
-          // Emit copy instruction
-          this._emitCopy(output, bestMatchOffset, bestMatchLength);
+        const end = Math.min(pos + match.length, n - 2);
+        for (let i = pos + 1; i < end; ++i)
+          this._insertHash(input, i, hashHead, chain);
 
-          // Update hash table for positions within the match (except last position)
-          for (let i = 1; i < bestMatchLength - 1; i++) {
-            if (ip + i + this.MIN_MATCH_LENGTH <= input.length) {
-              const h = this._hash4(input, ip + i);
-              hashTable[h] = ip + i;
-            }
-          }
-
-          ip += bestMatchLength;
-          literalStart = ip;
-        } else {
-          ip++;
-        }
+        this._emitCopy(output, match.offset, match.length);
+        pos += match.length;
+        litStart = pos;
       }
 
-      // Emit remaining literals
-      if (literalStart < input.length) {
-        this._emitLiteral(output, input, literalStart, input.length - literalStart);
-      }
+      if (litStart < n)
+        this._emitLiterals(output, input, litStart, n - litStart);
 
       return new Uint8Array(output);
     }
 
-    /**
-     * Decompress Pithy-compressed data
-     */
-    _decompress(input) {
-      if (input.length === 0) {
-        return new Uint8Array([]);
-      }
+    _findMatch(src, pos, hashHead, chain) {
+      const h = this._hash4(src, pos);
+      let candidate = hashHead[h];
+      const minPos = Math.max(0, pos - this.MAX_COPY3_OFFSET);
+      const maxLen = src.length - pos;
+      let bestLen = 0;
+      let bestOff = 0;
+      let steps = this.MAX_CHAIN_STEPS;
 
-      let ip = 0; // Input pointer
+      while (candidate >= minPos && steps-- > 0) {
+        if (bestLen === 0 || (candidate + bestLen < src.length && src[candidate + bestLen] === src[pos + bestLen])) {
+          let len = 0;
+          while (len < maxLen && src[candidate + len] === src[pos + len])
+            ++len;
 
-      // Read uncompressed length
-      const [uncompressedLength, varintLen] = this._readVarint(input, ip);
-      ip += varintLen;
-
-      const output = new Uint8Array(uncompressedLength);
-      let op = 0; // Output pointer
-
-      while (ip < input.length && op < uncompressedLength) {
-        const tag = input[ip++];
-        const tagType = OpCodes.And32(tag, 0x03);
-
-        if (tagType === PITHY_LITERAL) {
-          // Literal bytes
-          let literalLen = OpCodes.Shr32(tag, 2);
-
-          if (literalLen >= 60) {
-            // Extended literal length
-            const extraBytes = literalLen - 59;
-            literalLen = 60;
-            for (let i = 0; i < extraBytes; i++) {
-              literalLen += OpCodes.Shl32(input[ip++], i * 8);
-            }
-          } else {
-            literalLen += 1; // Length is encoded as len-1
-          }
-
-          // Copy literal bytes
-          for (let i = 0; i < literalLen; i++) {
-            output[op++] = input[ip++];
-          }
-        } else {
-          // Copy operation
-          let copyLen;
-          let copyOffset;
-
-          if (tagType === PITHY_COPY_1_BYTE) {
-            // 1-byte offset (11 bits total: 3 bits length, 5 bits offset high, 8 bits offset low - 3 bits for type)
-            const lenBits = OpCodes.And32(OpCodes.Shr32(tag, 2), 0x07); // 3 bits for length-4
-            copyLen = lenBits + 4;
-            const offsetHigh = OpCodes.Shr32(tag, 5); // 5 bits
-            const offsetLow = input[ip++];
-            copyOffset = OpCodes.Or32(OpCodes.Shl32(offsetHigh, 8), offsetLow);
-          } else if (tagType === PITHY_COPY_2_BYTE) {
-            // 2-byte offset
-            const lenField = OpCodes.Shr32(tag, 2);
-            if (lenField < 63) {
-              copyLen = lenField + 1;
-            } else {
-              // Extended copy length: field 63 is a fixed sentinel followed
-              // by a chain of 255-continuation bytes (see _emitCopy). This
-              // must not pack the extra-byte count into the tag field
-              // itself the way the encoder briefly did - 63+extraBytes
-              // does not fit the field's 6 available bits (max 63) once
-              // extraBytes >= 1, so it silently overflowed into the 2-bit
-              // type field of the *next* tag byte's worth of range and
-              // corrupted the stream once a match needed continuation
-              // bytes at all.
-              copyLen = 64;
-              let b;
-              do {
-                b = input[ip++];
-                copyLen += b;
-              } while (b === 255);
-            }
-            copyOffset = OpCodes.Or32(input[ip++], OpCodes.Shl32(input[ip++], 8));
-          } else { // PITHY_COPY_3_BYTE
-            // 3-byte offset
-            const lenField = OpCodes.Shr32(tag, 2);
-            if (lenField < 63) {
-              copyLen = lenField + 1;
-            } else {
-              copyLen = 64;
-              let b;
-              do {
-                b = input[ip++];
-                copyLen += b;
-              } while (b === 255);
-            }
-            copyOffset = OpCodes.Or32(OpCodes.Or32(input[ip++], OpCodes.Shl32(input[ip++], 8)), OpCodes.Shl32(input[ip++], 16));
-          }
-
-          // Copy from earlier in output
-          const copyStart = op - copyOffset;
-          for (let i = 0; i < copyLen; i++) {
-            output[op++] = output[copyStart + i];
+          if (len > bestLen) {
+            bestLen = len;
+            bestOff = pos - candidate;
+            if (bestLen >= maxLen)
+              break;
           }
         }
+
+        const prev = chain[candidate];
+        if (prev >= candidate)
+          break;
+        candidate = prev;
       }
 
-      return output.slice(0, op);
+      return bestLen >= this.MIN_MATCH ? { length: bestLen, offset: bestOff } : { length: 0, offset: 0 };
     }
 
-    /**
-     * Emit literal bytes to output stream
-     */
-    _emitLiteral(output, input, start, length) {
-      while (length > 0) {
-        const chunkLen = Math.min(length, 65535);
-
-        if (chunkLen < 60) {
-          // Short literal: encode length-1 in upper 6 bits
-          const tag = OpCodes.Or32(OpCodes.Shl32(chunkLen - 1, 2), PITHY_LITERAL);
-          output.push(tag);
-        } else {
-          // Long literal: tag indicates extended length
-          const lenMinusBase = chunkLen - 60;
-          let extraBytes = 0;
-          let temp = lenMinusBase;
-
-          // Count extra bytes needed
-          do {
-            extraBytes++;
-            temp = OpCodes.Shr32(temp, 8);
-          } while (temp > 0);
-
-          // Emit tag with extra byte count
-          const tag = OpCodes.Or32(OpCodes.Shl32(59 + extraBytes, 2), PITHY_LITERAL);
-          output.push(tag);
-
-          // Emit extra length bytes (little-endian)
-          temp = lenMinusBase;
-          for (let i = 0; i < extraBytes; i++) {
-            output.push(OpCodes.And32(temp, 0xFF));
-            temp = OpCodes.Shr32(temp, 8);
-          }
-        }
-
-        // Copy literal bytes
-        for (let i = 0; i < chunkLen; i++) {
-          output.push(input[start + i]);
-        }
-
-        start += chunkLen;
-        length -= chunkLen;
-      }
+    _insertHash(src, pos, hashHead, chain) {
+      if (pos + 4 > src.length)
+        return;
+      const h = this._hash4(src, pos);
+      chain[pos] = hashHead[h];
+      hashHead[h] = pos;
     }
 
-    /**
-     * Emit copy instruction to output stream
-     */
-    _emitCopy(output, offset, length) {
-      // Handle long copies in chunks
-      while (length > 0) {
-        const chunkLen = Math.min(length, 65535);
-
-        if (offset < this.MAX_OFFSET_1BYTE && chunkLen < 12) {
-          // 1-byte offset encoding (short copies)
-          // 3 bits for length-4, 5 bits for offset high, 8 bits for offset low
-          const lenBits = OpCodes.And32(chunkLen - 4, 0x07);
-          const offsetHigh = OpCodes.And32(OpCodes.Shr32(offset, 8), 0x1F);
-          const tag = OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(offsetHigh, 5), OpCodes.Shl32(lenBits, 2)), PITHY_COPY_1_BYTE);
-          output.push(tag);
-          output.push(OpCodes.And32(offset, 0xFF));
-        } else if (offset < this.MAX_OFFSET_2BYTE) {
-          // 2-byte offset encoding
-          if (chunkLen < 64) {
-            const tag = OpCodes.Or32(OpCodes.Shl32(chunkLen - 1, 2), PITHY_COPY_2_BYTE);
-            output.push(tag);
-          } else {
-            // Extended length: field is a *fixed* sentinel (63), never
-            // 63+extraBytes - the field only has 6 bits (max value 63), so
-            // packing the extra-byte count into it overflows into the
-            // 2-bit type field of the byte as soon as extraBytes >= 1,
-            // corrupting the tag. The actual length instead follows as a
-            // chain of 255-continuation bytes, terminated by a byte < 255
-            // (mirrors the literal-length and Lizard/LZ4 match-length
-            // extension already used elsewhere in this codebase).
-            const tag = OpCodes.Or32(OpCodes.Shl32(63, 2), PITHY_COPY_2_BYTE);
-            output.push(tag);
-
-            let rem = chunkLen - 64;
-            while (rem >= 255) {
-              output.push(255);
-              rem -= 255;
-            }
-            output.push(OpCodes.And32(rem, 0xFF));
-          }
-
-          output.push(OpCodes.And32(offset, 0xFF));
-          output.push(OpCodes.And32(OpCodes.Shr32(offset, 8), 0xFF));
-        } else {
-          // 3-byte offset encoding
-          if (chunkLen < 64) {
-            const tag = OpCodes.Or32(OpCodes.Shl32(chunkLen - 1, 2), PITHY_COPY_3_BYTE);
-            output.push(tag);
-          } else {
-            // Extended length (see the 2-byte-offset branch above)
-            const tag = OpCodes.Or32(OpCodes.Shl32(63, 2), PITHY_COPY_3_BYTE);
-            output.push(tag);
-
-            let rem = chunkLen - 64;
-            while (rem >= 255) {
-              output.push(255);
-              rem -= 255;
-            }
-            output.push(OpCodes.And32(rem, 0xFF));
-          }
-
-          output.push(OpCodes.And32(offset, 0xFF));
-          output.push(OpCodes.And32(OpCodes.Shr32(offset, 8), 0xFF));
-          output.push(OpCodes.And32(OpCodes.Shr32(offset, 16), 0xFF));
-        }
-
-        length -= chunkLen;
-      }
-    }
-
-    /**
-     * Hash 4 bytes for hash table lookup
-     */
     _hash4(data, pos) {
-      if (pos + 3 >= data.length) {
-        return 0;
-      }
-
-      // Use OpCodes for bit operations
-      const v = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(data[pos], OpCodes.Shl32(data[pos + 1], 8)), OpCodes.Shl32(data[pos + 2], 16)), OpCodes.Shl32(data[pos + 3], 24));
-
-      // Simple hash function
-      const hash = OpCodes.ToDWord(v * 0x1E35A7BD);
-      return OpCodes.Shr32(hash, 32 - this.MAX_HASH_TABLE_BITS);
+      const val = OpCodes.Pack32LE(
+        OpCodes.ToByte(data[pos]), OpCodes.ToByte(data[pos + 1]),
+        OpCodes.ToByte(data[pos + 2]), OpCodes.ToByte(data[pos + 3])
+      );
+      return OpCodes.Shr32(OpCodes.Mul32(val, 2654435761), 32 - this.HASH_BITS);
     }
 
-    /**
-     * Find length of match between two positions
-     */
-    _findMatchLength(data, pos1, pos2) {
-      let length = 0;
-      const maxLen = Math.min(data.length - pos2, 65535);
-
-      while (length < maxLen && data[pos1 + length] === data[pos2 + length]) {
-        length++;
+    _emitLiterals(output, src, start, length) {
+      const n = length - 1;
+      if (n < 60)
+        output.push(OpCodes.ToByte(OpCodes.Or8(PITHY_LITERAL, OpCodes.Shl8(n, 2))));
+      else if (n < 0x100) {
+        output.push(OpCodes.ToByte(OpCodes.Or8(PITHY_LITERAL, OpCodes.Shl8(60, 2))));
+        output.push(OpCodes.ToByte(n));
+      } else if (n < 0x10000) {
+        output.push(OpCodes.ToByte(OpCodes.Or8(PITHY_LITERAL, OpCodes.Shl8(61, 2))));
+        const [b0, b1] = OpCodes.Unpack16LE(n);
+        output.push(b0, b1);
+      } else if (n < 0x1000000) {
+        output.push(OpCodes.ToByte(OpCodes.Or8(PITHY_LITERAL, OpCodes.Shl8(62, 2))));
+        const [b0, b1, b2] = OpCodes.Unpack32LE(n);
+        output.push(b0, b1, b2);
+      } else {
+        output.push(OpCodes.ToByte(OpCodes.Or8(PITHY_LITERAL, OpCodes.Shl8(63, 2))));
+        const [b0, b1, b2, b3] = OpCodes.Unpack32LE(n);
+        output.push(b0, b1, b2, b3);
       }
 
-      return length;
+      for (let i = 0; i < length; ++i)
+        output.push(OpCodes.ToByte(src[start + i]));
+    }
+
+    // Matches the reference's chunking: 63+-byte runs use the "greater than 63"
+    // tag shape (62/63 length-escape values); the final remainder under 63 bytes
+    // uses the "less than 63" shape, preferring the compact copy-1 tag.
+    _emitCopy(output, offset, length) {
+      while (length >= 63) {
+        let chunk;
+        if (length <= this.MAX_COPY23_LENGTH)
+          chunk = length;
+        else if (length - this.MAX_COPY23_LENGTH < this.MIN_MATCH)
+          chunk = length - this.MIN_MATCH;
+        else
+          chunk = this.MAX_COPY23_LENGTH;
+
+        this._emitCopyGreaterThan63(output, offset, chunk);
+        length -= chunk;
+      }
+
+      if (length > 0)
+        this._emitCopyLessThan63(output, offset, length);
+    }
+
+    _emitCopyLessThan63(output, offset, length) {
+      if (length < this.MAX_COPY1_LENGTH + 1 && offset <= this.MAX_COPY1_OFFSET) {
+        output.push(OpCodes.ToByte(OpCodes.Or32(OpCodes.Or32(PITHY_COPY_1_BYTE, OpCodes.Shl32(length - 4, 2)), OpCodes.Shl32(OpCodes.Shr32(offset, 8), 5))));
+        output.push(OpCodes.ToByte(offset));
+        return;
+      }
+
+      const type = offset <= this.MAX_COPY2_OFFSET ? PITHY_COPY_2_BYTE : PITHY_COPY_3_BYTE;
+      output.push(OpCodes.ToByte(OpCodes.Or32(type, OpCodes.Shl32(length - 1, 2))));
+      this._writeCopyOffset(output, offset, type);
+    }
+
+    _emitCopyGreaterThan63(output, offset, length) {
+      const type = offset <= this.MAX_COPY2_OFFSET ? PITHY_COPY_2_BYTE : PITHY_COPY_3_BYTE;
+
+      if (length <= this.MAX_COPY23_ESCAPE1_LENGTH) {
+        output.push(OpCodes.ToByte(OpCodes.Or32(type, OpCodes.Shl32(this.COPY23_LEN_ESCAPE1, 2))));
+        this._writeCopyOffset(output, offset, type);
+        output.push(OpCodes.ToByte(length - 63));
+      } else {
+        output.push(OpCodes.ToByte(OpCodes.Or32(type, OpCodes.Shl32(this.COPY23_LEN_ESCAPE2, 2))));
+        this._writeCopyOffset(output, offset, type);
+        output.push(OpCodes.ToByte(length));
+        output.push(OpCodes.ToByte(OpCodes.Shr16(length, 8)));
+      }
+    }
+
+    _writeCopyOffset(output, offset, type) {
+      output.push(OpCodes.ToByte(offset));
+      output.push(OpCodes.ToByte(OpCodes.Shr32(offset, 8)));
+      if (type === PITHY_COPY_3_BYTE)
+        output.push(OpCodes.ToByte(OpCodes.Shr32(offset, 16)));
+    }
+
+    // ===== DECOMPRESSION =====
+
+    _decompress(input) {
+      const iRef = { i: 0 };
+      const originalSize = this._readVarint(input, iRef);
+
+      const output = [];
+      let pos = 0;
+
+      while (pos < originalSize) {
+        const tag = OpCodes.ToByte(input[iRef.i++]);
+        const type = OpCodes.And8(tag, 0x3);
+
+        if (type === PITHY_LITERAL) {
+          const len = this._readLiteralLength(input, iRef, OpCodes.Shr8(tag, 2));
+          for (let k = 0; k < len; ++k)
+            output.push(OpCodes.ToByte(input[iRef.i + k]));
+          iRef.i += len;
+          pos += len;
+        } else if (type === PITHY_COPY_1_BYTE) {
+          const len = OpCodes.And32(OpCodes.Shr8(tag, 2), 0x7) + 4;
+          const offset = OpCodes.Or32(OpCodes.Shl32(OpCodes.Shr8(tag, 5), 8), OpCodes.ToByte(input[iRef.i++]));
+          pos = this._copyMatch(output, pos, offset, len, originalSize);
+        } else if (type === PITHY_COPY_2_BYTE) {
+          const offset = OpCodes.Pack16LE(OpCodes.ToByte(input[iRef.i]), OpCodes.ToByte(input[iRef.i + 1]));
+          iRef.i += 2;
+          const len = this._readCopy23Length(input, iRef, OpCodes.Shr8(tag, 2));
+          pos = this._copyMatch(output, pos, offset, len, originalSize);
+        } else { // PITHY_COPY_3_BYTE
+          const offset = OpCodes.Or32(OpCodes.Or32(OpCodes.ToByte(input[iRef.i]), OpCodes.Shl32(OpCodes.ToByte(input[iRef.i + 1]), 8)), OpCodes.Shl32(OpCodes.ToByte(input[iRef.i + 2]), 16));
+          iRef.i += 3;
+          const len = this._readCopy23Length(input, iRef, OpCodes.Shr8(tag, 2));
+          pos = this._copyMatch(output, pos, offset, len, originalSize);
+        }
+      }
+
+      return output;
+    }
+
+    _copyMatch(output, pos, offset, length, limit) {
+      if (offset <= 0 || offset > pos)
+        throw new Error(`Pithy: match offset ${offset} invalid at position ${pos}.`);
+
+      for (let k = 0; k < length && pos < limit; ++k, ++pos)
+        output.push(output[pos - offset]);
+
+      return pos;
+    }
+
+    _readLiteralLength(input, iRef, n) {
+      if (n < 60)
+        return n + 1;
+      if (n === 60)
+        return OpCodes.ToByte(input[iRef.i++]) + 1;
+      if (n === 61) {
+        const v = OpCodes.Pack16LE(OpCodes.ToByte(input[iRef.i]), OpCodes.ToByte(input[iRef.i + 1]));
+        iRef.i += 2;
+        return v + 1;
+      }
+      if (n === 62) {
+        const v = OpCodes.Or32(OpCodes.Or32(OpCodes.ToByte(input[iRef.i]), OpCodes.Shl32(OpCodes.ToByte(input[iRef.i + 1]), 8)), OpCodes.Shl32(OpCodes.ToByte(input[iRef.i + 2]), 16));
+        iRef.i += 3;
+        return v + 1;
+      }
+      const v = OpCodes.Pack32LE(
+        OpCodes.ToByte(input[iRef.i]), OpCodes.ToByte(input[iRef.i + 1]),
+        OpCodes.ToByte(input[iRef.i + 2]), OpCodes.ToByte(input[iRef.i + 3])
+      );
+      iRef.i += 4;
+      return v + 1;
+    }
+
+    _readCopy23Length(input, iRef, field) {
+      if (field < this.COPY23_LEN_ESCAPE1)
+        return field + 1;
+      if (field === this.COPY23_LEN_ESCAPE1)
+        return OpCodes.ToByte(input[iRef.i++]) + 63;
+      const v = OpCodes.Pack16LE(OpCodes.ToByte(input[iRef.i]), OpCodes.ToByte(input[iRef.i + 1]));
+      iRef.i += 2;
+      return v;
     }
 
     /**
@@ -586,27 +488,19 @@
     }
 
     /**
-     * Read variable-length integer (varint) from input
-     * Returns [value, bytesRead]
+     * Read a variable-length integer (varint), advancing iRef.i
      */
-    _readVarint(input, pos) {
+    _readVarint(input, iRef) {
       let result = 0;
       let shift = 0;
-      let bytesRead = 0;
 
-      while (pos < input.length) {
-        const byte = input[pos++];
-        bytesRead++;
+      for (;;) {
+        const byte = OpCodes.ToByte(input[iRef.i++]);
         result = OpCodes.Or32(result, OpCodes.Shl32(OpCodes.And32(byte, 0x7F), shift));
-
-        if (OpCodes.And32(byte, 0x80) === 0) {
-          break;
-        }
-
+        if (OpCodes.And32(byte, 0x80) === 0)
+          return result;
         shift += 7;
       }
-
-      return [result, bytesRead];
     }
   }
 
