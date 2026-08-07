@@ -91,64 +91,56 @@
         new LinkItem("illumos-gate Repository", "https://github.com/illumos/illumos-gate")
       ];
 
-      // Test vectors based on LZJB algorithm behavior
-      // Format: copymap byte (8 flags) + data (literals or match codes)
+      // Test vectors cross-checked byte-for-byte against CompressionWorkbench's
+      // BB_Lzjb building block (Compression.Core.Dictionary.Lzjb), which is the
+      // authoritative wire format: a 4-byte little-endian original-length
+      // header, then the copymap-byte-prefixed stream (8 flags per copymap).
       this.tests = [
         {
           text: "All literals - no compression (ABCD)",
           uri: "https://github.com/nemequ/lzjb/blob/master/lzjb.c",
           input: OpCodes.AnsiToBytes("ABCD"),
-          // Copymap: 0x00 = all 8 operations are literals
-          // Followed by 4 literal bytes: A B C D
-          expected: [0x00, 0x41, 0x42, 0x43, 0x44]
+          // header(4) + copymap 0x00 (all 8 operations are literals) + A B C D
+          expected: [4, 0, 0, 0, 0x00, 0x41, 0x42, 0x43, 0x44]
         },
         {
           text: "Simple repetition - AAAA (4 A's)",
           uri: "https://github.com/nemequ/lzjb/blob/master/lzjb.c",
           input: OpCodes.AnsiToBytes("AAAA"),
-          // Copymap: 0x02 = bit 1 set (op 0=literal 'A', op 1=match)
-          // Literal: A (0x41)
-          // Match code: offset=1, length=3-3=0
-          // 16-bit little-endian: offset=1 << 6|length=0 = 0x0040
-          expected: [0x02, 0x41, 0x40, 0x00]
+          // header(4) + copymap 0x02 (op0=literal 'A', op1=match) +
+          // literal A (0x41) + match code offset=1,length=3-3=0 -> 0x0040 (LE: 0x40,0x00)
+          expected: [4, 0, 0, 0, 0x02, 0x41, 0x40, 0x00]
         },
         {
           text: "Pattern ABCABC (6 bytes with match)",
           uri: "https://github.com/nemequ/lzjb/blob/master/lzjb.c",
           input: OpCodes.AnsiToBytes("ABCABC"),
-          // Copymap: 0x08 = bit 3 set (ops 0-2=literals ABC, op 3=match)
-          // Literals: A B C (0x41 0x42 0x43)
-          // Match code: offset=3, length=3-3=0
-          // 16-bit: offset=3 << 6|length=0 = 0x00C0
-          expected: [0x08, 0x41, 0x42, 0x43, 0xC0, 0x00]
+          // header(6) + copymap 0x08 (ops0-2=literals ABC, op3=match) +
+          // literals A B C + match code offset=3,length=3-3=0 -> 0x00C0 (LE: 0xC0,0x00)
+          expected: [6, 0, 0, 0, 0x08, 0x41, 0x42, 0x43, 0xC0, 0x00]
         },
         {
           text: "Long repetition - AAAAAAAA (8 A's)",
           uri: "https://github.com/nemequ/lzjb/blob/master/lzjb.c",
           input: OpCodes.AnsiToBytes("AAAAAAAA"),
-          // Copymap: 0x02 = bit 1 set (op 0=literal 'A', op 1=match of 7 more)
-          // Literal: A (0x41)
-          // Match code: offset=1, length=7-3=4
-          // 16-bit: offset=1 << 6|length=4 = 0x0044
-          expected: [0x02, 0x41, 0x44, 0x00]
+          // header(8) + copymap 0x02 (op0=literal 'A', op1=match of 7 more) +
+          // literal A + match code offset=1,length=7-3=4 -> 0x0044 (LE: 0x44,0x00)
+          expected: [8, 0, 0, 0, 0x02, 0x41, 0x44, 0x00]
         },
         {
           text: "Mixed pattern - Hello",
           uri: "https://github.com/nemequ/lzjb/blob/master/lzjb.c",
           input: OpCodes.AnsiToBytes("Hello"),
-          // No 3-byte matches exist in "Hello", all literals
-          // Copymap: 0x00 = all literals
-          expected: [0x00, 0x48, 0x65, 0x6C, 0x6C, 0x6F]
+          // header(5) + copymap 0x00 (no 3-byte matches exist in "Hello", all literals)
+          expected: [5, 0, 0, 0, 0x00, 0x48, 0x65, 0x6C, 0x6C, 0x6F]
         },
         {
           text: "Repetitive data showing compression (ABABABABAB)",
           uri: "https://github.com/nemequ/lzjb/blob/master/lzjb.c",
           input: OpCodes.AnsiToBytes("ABABABABAB"),
-          // Copymap: 0x04 = bit 2 set (ops 0-1=literals AB, op 2=match of 8 bytes)
-          // Literals: A B (0x41 0x42)
-          // Match: offset=2, length=8-3=5
-          // 16-bit: offset=2 << 6|length=5 = 0x0085
-          expected: [0x04, 0x41, 0x42, 0x85, 0x00]
+          // header(10) + copymap 0x04 (ops0-1=literals AB, op2=match of 8 bytes) +
+          // literals A B + match code offset=2,length=8-3=5 -> 0x0085 (LE: 0x85,0x00)
+          expected: [10, 0, 0, 0, 0x04, 0x41, 0x42, 0x85, 0x00]
         }
       ];
     }
@@ -210,10 +202,17 @@
    */
 
     Result() {
-      if (this.inputBuffer.length === 0)
-        return [];
+      if (this.isInverse) {
+        if (this.inputBuffer.length === 0)
+          return [];
+        const result = this._decompress();
+        this.inputBuffer = [];
+        return result;
+      }
 
-      const result = this.isInverse ? this._decompress() : this._compress();
+      // Compression always emits the 4-byte length header, even for empty
+      // input (matching the CompressionWorkbench reference building block).
+      const result = this._compress();
       this.inputBuffer = [];
       return result;
     }
@@ -223,9 +222,10 @@
     _compress() {
       const src = this.inputBuffer;
       const slen = src.length;
+      const header = OpCodes.Unpack32LE(slen);
 
       if (slen === 0)
-        return [];
+        return header;
 
       const dst = [];
       let src_pos = 0;
@@ -301,7 +301,7 @@
       // Write final copymap
       dst[copymap_pos] = OpCodes.ToByte(copymap);
 
-      return dst;
+      return header.concat(dst);
     }
 
     _hash(data, pos) {
@@ -329,13 +329,20 @@
 
     _decompress() {
       const src = this.inputBuffer;
+      if (src.length < 4)
+        return [];
+
+      const originalLength = OpCodes.Pack32LE(src[0], src[1], src[2], src[3]);
+      if (originalLength === 0)
+        return [];
+
       const slen = src.length;
       const dst = [];
-      let src_pos = 0;
+      let src_pos = 4;
       let copymap = 0;
       let copymask = OpCodes.Shl8(1, 8); // Start with overflow value to trigger read
 
-      while (src_pos < slen) {
+      while (dst.length < originalLength) {
         // Read new copymap every 8 operations
         if (copymask === OpCodes.Shl8(1, 8)) {
           if (src_pos >= slen)
