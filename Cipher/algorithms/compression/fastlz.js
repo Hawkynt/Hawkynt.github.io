@@ -84,8 +84,9 @@
 
       // Match constraints
       this.MAX_COPY = 32;  // Maximum literal run
-      this.MAX_LEN = 264;  // Maximum match length (256 + 8)
+      this.MAX_LEN = 264;  // Maximum match length (9 + 255)
       this.MIN_MATCH_LENGTH = 3;
+      this.MAX_SHORT_MATCH = 8; // Matches up to this length use the 2-byte token
 
       // Documentation and references
       this.documentation = [
@@ -100,43 +101,45 @@
         new LinkItem("LZ77 Algorithm - Wikipedia", "https://en.wikipedia.org/wiki/LZ77_and_LZ78")
       ];
 
-      // Official test vectors from FastLZ specification
-      // https://ariya.github.io/FastLZ/#block-format
+      // Test vectors cross-checked byte-for-byte against CompressionWorkbench's
+      // BB_FastLz building block (Compression.Core.Dictionary.FastLz), which is
+      // the authoritative wire format: a 4-byte little-endian original-length
+      // header followed by the FastLZ level-1 block stream.
       // Format: TestCase(uncompressed_input, expected_compressed_output, description, uri)
       this.tests = [
         new TestCase(
           [0x41, 0x42, 0x43], // Uncompressed: "ABC"
-          [0x02, 0x41, 0x42, 0x43], // Compressed: literal run of 3 bytes
+          [0x03, 0x00, 0x00, 0x00, 0x02, 0x41, 0x42, 0x43], // header(3) + literal run of 3 bytes
           "Literal run - 3 bytes (FastLZ spec example)",
           "https://ariya.github.io/FastLZ/#block-format"
         ),
         new TestCase(
           [0x44, 0x45], // Uncompressed: "DE"
-          [0x01, 0x44, 0x45], // Compressed: literal run of 2 bytes
+          [0x02, 0x00, 0x00, 0x00, 0x01, 0x44, 0x45], // header(2) + literal run of 2 bytes
           "Literal run - 2 bytes (no match possible)",
           "https://ariya.github.io/FastLZ/#block-format"
         ),
         new TestCase(
           [0x44, 0x45, 0x44, 0x45, 0x44, 0x45, 0x44, 0x45, 0x44, 0x45, 0x44, 0x45], // 12 bytes: DEDEDEDE...
-          [0x01, 0x44, 0x45, 0xE0, 0x02, 0x03], // literal DE + long match (len=10, dist=2)
+          [0x0C, 0x00, 0x00, 0x00, 0x01, 0x44, 0x45, 0xE0, 0x01, 0x01], // header(12) + literal DE + long match (len=10, dist=2)
           "Long match with repeating pattern (DEDEDEDE...)",
           "https://ariya.github.io/FastLZ/#block-format"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("AAAA"), // "AAAA" - simple repetition
-          [0x00, 0x41, 0x20, 0x01], // literal A + short match (len=3, dist=1)
+          [0x04, 0x00, 0x00, 0x00, 0x00, 0x41, 0x20, 0x00], // header(4) + literal A + short match (len=3, dist=1)
           "Simple repetition - AAAA",
           "https://github.com/ariya/FastLZ"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("ABCABC"), // "ABCABC" - pattern repetition
-          [0x02, 0x41, 0x42, 0x43, 0x20, 0x03], // literal ABC + short match (len=3, dist=3)
+          [0x06, 0x00, 0x00, 0x00, 0x02, 0x41, 0x42, 0x43, 0x20, 0x02], // header(6) + literal ABC + short match (len=3, dist=3)
           "Pattern repetition - ABCABC",
           "https://github.com/ariya/FastLZ"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("ABCD"), // "ABCD" - no repetition
-          [0x03, 0x41, 0x42, 0x43, 0x44], // All literals
+          [0x04, 0x00, 0x00, 0x00, 0x03, 0x41, 0x42, 0x43, 0x44], // header(4) + all literals
           "No repetition - worst case",
           "https://github.com/ariya/FastLZ"
         )
@@ -185,6 +188,7 @@
       this.MAX_COPY = algorithm.MAX_COPY;
       this.MAX_LEN = algorithm.MAX_LEN;
       this.MIN_MATCH_LENGTH = algorithm.MIN_MATCH_LENGTH;
+      this.MAX_SHORT_MATCH = algorithm.MAX_SHORT_MATCH;
     }
 
     // Compression level property (1 or 2)
@@ -217,15 +221,16 @@
    */
 
     Result() {
-      if (this.inputBuffer.length === 0) {
-        return [];
+      if (this.isInverse) {
+        if (this.inputBuffer.length === 0) {
+          return [];
+        }
+        return this._decompress();
       }
 
-      if (this.isInverse) {
-        return this._decompress();
-      } else {
-        return this._compress();
-      }
+      // Compression always emits the 4-byte length header, even for empty
+      // input (matching the CompressionWorkbench reference building block).
+      return this._compress();
     }
 
     /**
@@ -247,12 +252,11 @@
     }
 
     /**
-     * Compare sequences for match finding
+     * Count matching bytes at two positions, up to maxLength
      */
-    _compare(data, pos1, pos2, maxLen) {
+    _matchLength(data, a, b, maxLength) {
       let len = 0;
-      while (len < maxLen && pos1 + len < data.length && pos2 + len < data.length &&
-             data[pos1 + len] === data[pos2 + len]) {
+      while (len < maxLength && data[a + len] === data[b + len]) {
         len++;
       }
       return len;
@@ -260,123 +264,74 @@
 
     /**
      * FastLZ Level 1 compression - ultra-fast, 8KB window
+     * Ported from CompressionWorkbench's FastLzCompressor (BB_FastLz) so the
+     * wire format is byte-identical: single-candidate hash table (no chaining),
+     * greedy matching, hash table refreshed across the whole matched span.
      */
     _compressLevel1() {
       const input = this.inputBuffer;
+      const n = input.length;
       const output = [];
-      const htab = new Int32Array(this.HASH_SIZE);
+      if (n === 0) return output;
 
-      // Initialize hash table with -1 (no match)
-      htab.fill(-1);
+      const hashTable = new Int32Array(this.HASH_SIZE).fill(-1);
 
       let ip = 0; // Input position
       let anchor = 0; // Start of current literal run
 
-      // Must have at least 4 bytes for hash-based compression
-      if (input.length < 4) {
-        // Store as literal run
-        output.push(input.length - 1);
-        for (let _i = 0; _i < input.length; _i++) output.push(input[_i]);
-        this.inputBuffer = [];
-        return output;
-      }
+      while (ip + this.MIN_MATCH_LENGTH <= n) {
+        const hash = this._hash(this._read24(input, ip));
+        const candidate = hashTable[hash];
+        hashTable[hash] = ip;
 
-      const ipLimit = input.length - 2; // Process until near end
-
-      // Main compression loop
-      while (ip < ipLimit) {
-        let ref = -1;
-        let distance = 0;
-
-        // Can we hash at this position?
-        if (ip + 2 < input.length) {
-          // Hash current 3-byte sequence
-          const seq = this._read24(input, ip);
-          const hval = this._hash(seq);
-
-          // Check hash table for previous occurrence
-          ref = htab[hval];
-
-          // Update hash table with current position
-          htab[hval] = ip;
-
-          // Calculate distance
-          if (ref >= 0) {
-            distance = ip - ref;
-          }
+        let matchLength = 0;
+        if (candidate >= 0 &&
+            input[candidate] === input[ip] &&
+            input[candidate + 1] === input[ip + 1] &&
+            input[candidate + 2] === input[ip + 2] &&
+            ip - candidate <= this.MAX_L1_DISTANCE) {
+          matchLength = this._matchLength(input, candidate, ip, Math.min(this.MAX_LEN, n - ip));
         }
 
-        // Check if we have a valid match within distance limit
-        if (ref >= 0 && distance > 0 && distance < this.MAX_L1_DISTANCE) {
-          // Verify match
-          if (input[ref] === input[ip] &&
-              input[ref + 1] === input[ip + 1] &&
-              input[ref + 2] === input[ip + 2]) {
+        if (matchLength >= this.MIN_MATCH_LENGTH) {
+          this._outputLiterals(output, input, anchor, ip - anchor);
+          this._outputMatch(output, matchLength, ip - candidate);
 
-            // Find match length
-            const maxLen = Math.min(this.MAX_LEN, input.length - ip);
-            let len = 3 + this._compare(input, ref + 3, ip + 3, maxLen - 3);
-
-            // Only encode if match is beneficial
-            if (len >= this.MIN_MATCH_LENGTH) {
-              // Output pending literals
-              const litLen = ip - anchor;
-              if (litLen > 0) {
-                this._outputLiterals(output, input, anchor, litLen);
-              }
-
-              // Output match token
-              this._outputMatch(output, len, distance);
-
-              // Update positions
-              ip += len;
-              anchor = ip;
-
-              // Update hash table for positions we skipped
-              while (ip < ipLimit && ip + 2 < input.length) {
-                const seq = this._read24(input, ip);
-                htab[this._hash(seq)] = ip;
-                ip++;
-                if (ip >= anchor + len - 1) break;
-              }
-
-              continue;
-            }
+          const matchEnd = ip + matchLength;
+          ip++;
+          while (ip < matchEnd) {
+            if (ip + this.MIN_MATCH_LENGTH <= n) hashTable[this._hash(this._read24(input, ip))] = ip;
+            ip++;
           }
+
+          anchor = ip;
+        } else {
+          ip++;
         }
-
-        ip++;
       }
 
-      // Output remaining literals
-      const remaining = input.length - anchor;
-      if (remaining > 0) {
-        this._outputLiterals(output, input, anchor, remaining);
-      }
-
-      this.inputBuffer = [];
+      this._outputLiterals(output, input, anchor, n - anchor);
       return output;
     }
 
     /**
-     * FastLZ Level 2 compression - better compression, 64KB+ window
-     * (Simplified implementation - full Level 2 requires far-distance encoding)
+     * FastLZ Level 2 compression - CompressionWorkbench's reference building
+     * block only exposes the level-1 block format, so level 2 mirrors it.
      */
     _compressLevel2() {
-      // For this implementation, Level 2 uses same algorithm as Level 1
-      // but with extended distance checking (up to 64KB)
-      // Full Level 2 implementation would add far-distance markers
       return this._compressLevel1();
     }
 
     /**
-     * Main compression dispatcher
+     * Main compression dispatcher. Always prepends the 4-byte little-endian
+     * original-length header used by the CompressionWorkbench building block.
      */
     _compress() {
-      if (this._level === 2) {
-        return this._compressLevel2();
-      }
-      return this._compressLevel1();
+      const originalLength = this.inputBuffer.length;
+      const header = OpCodes.Unpack32LE(originalLength);
+      const body = this._level === 2 ? this._compressLevel2() : this._compressLevel1();
+      this.inputBuffer = [];
+      return header.concat(body);
     }
 
     /**
@@ -404,103 +359,72 @@
      * Output match token in FastLZ Level 1 format
      *
      * Short match (length 3-8):
-     *   [len-2 left-shift 5 OR right-shift(dist, 8)] [dist&0xFF]
+     *   [(len-2 left-shift 5) OR right-shift(dist-1, 8)] [(dist-1) & 0xFF]
      *
      * Long match (length 9-264):
-     *   [7 left-shift 5 OR right-shift(dist, 8)] [len - 9] [dist&0xFF]
+     *   [(7 left-shift 5) OR right-shift(dist-1, 8)] [(dist-1) & 0xFF] [len - 9]
      */
     _outputMatch(output, length, distance) {
-      if (length < 7) {
+      const encodedDistance = distance - 1;
+      if (length <= this.MAX_SHORT_MATCH) {
         // Short match: 3-8 bytes
-        // opcode = OpCodes.Shl32((length - 2), 5)|OpCodes.Shr32(distance, 8)
-        const opcode = OpCodes.Shl32((length - 2), 5)|OpCodes.Shr32(distance, 8);
-        output.push(opcode);
-        output.push(OpCodes.ToByte(distance));
+        const type = length - 2;
+        output.push(OpCodes.Shl32(type, 5)|OpCodes.Shr32(encodedDistance, 8));
+        output.push(OpCodes.ToByte(encodedDistance));
       } else {
-        // Long match: 7+ bytes
-        // opcode = OpCodes.Shl32(7, 5)|OpCodes.Shr32(distance, 8)
-        // Format: [opcode] [dist_low] [length-7]
-        const opcode = OpCodes.Shl32(7, 5)|OpCodes.Shr32(distance, 8);
-        output.push(opcode);
-        output.push(OpCodes.ToByte(distance));
-        output.push(length - 7); // Length byte: 0 = 7 bytes, 2 = 9 bytes, 9 = 16 bytes
+        // Long match: 9-264 bytes
+        output.push(OpCodes.Shl32(7, 5)|OpCodes.Shr32(encodedDistance, 8));
+        output.push(OpCodes.ToByte(encodedDistance));
+        output.push(length - 9); // Length byte: 0 = 9 bytes, 255 = 264 bytes
       }
     }
 
     /**
-     * FastLZ decompression
-     * Handles both Level 1 and Level 2 compressed data
+     * FastLZ decompression. Reads the 4-byte little-endian original-length
+     * header written by _compress(), then decodes the level-1 block stream.
      */
     _decompress() {
       const input = this.inputBuffer;
+      if (input.length < 4) {
+        this.inputBuffer = [];
+        return [];
+      }
+
+      const originalLength = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
+      if (originalLength === 0) {
+        this.inputBuffer = [];
+        return [];
+      }
+
       const output = [];
-      let ip = 0;
+      let ip = 4;
 
-      while (ip < input.length) {
+      while (output.length < originalLength) {
         const opcode = input[ip++];
-
-        // Check opcode type by examining top 3 bits
         const type = OpCodes.Shr32(opcode, 5);
 
         if (type === 0) {
           // Literal run: copy (opcode + 1) bytes
           const litLen = (opcode&0x1F) + 1;
-          for (let i = 0; i < litLen && ip < input.length; i++) {
-            output.push(input[ip++]);
-          }
-        } else if (type < 7) {
-          // Short match: length 3-8, 2-byte encoding
-          if (ip >= input.length) break;
-
-          const len = type + 2; // 3-8 bytes
-          const distHigh = opcode&0x1F;
-          const distLow = input[ip++];
-          const distance = (OpCodes.Shl32(distHigh, 8))|distLow;
-
-          // Copy from history
-          let ref = output.length - distance;
-          for (let i = 0; i < len; i++) {
-            if (ref + i >= 0 && ref + i < output.length) {
-              output.push(output[ref + i]);
-            } else {
-              output.push(0); // Safety fallback
-            }
-          }
-        } else {
-          // Long match: length 7+, 3-byte encoding
-          // Format: [opcode] [dist_low] [length-7]
-          if (ip + 1 >= input.length) break;
-
-          const distHigh = opcode&0x1F;
-          const distLow = input[ip++];
-          const distance = (OpCodes.Shl32(distHigh, 8))|distLow;
-          const lenByte = input[ip++];
-          const len = lenByte + 7; // 7+ bytes
-
-          // Handle far-distance marker for Level 2
-          if (distance === OpCodes.Shl32(31, 8) && ip + 1 < input.length) {
-            // Far distance: read 16-bit offset
-            const farDist = OpCodes.Shl32(input[ip++], 8)|input[ip++];
-            let ref = output.length - farDist;
-            for (let i = 0; i < len; i++) {
-              if (ref + i >= 0 && ref + i < output.length) {
-                output.push(output[ref + i]);
-              } else {
-                output.push(0);
-              }
-            }
-          } else {
-            // Normal long match
-            let ref = output.length - distance;
-            for (let i = 0; i < len; i++) {
-              if (ref + i >= 0 && ref + i < output.length) {
-                output.push(output[ref + i]);
-              } else {
-                output.push(0);
-              }
-            }
-          }
+          for (let i = 0; i < litLen; i++) output.push(input[ip++]);
+          continue;
         }
+
+        const distHigh = opcode&0x1F;
+        const distLow = input[ip++];
+        const encodedDistance = OpCodes.Shl32(distHigh, 8)|distLow;
+
+        let length;
+        if (type === 7) {
+          const extra = input[ip++];
+          length = extra + 9; // Long match: 9-264 bytes
+        } else {
+          length = type + 2; // Short match: 3-8 bytes
+        }
+
+        const distance = encodedDistance + 1;
+        const refPos = output.length - distance;
+        for (let i = 0; i < length; i++) output.push(output[refPos + i]);
       }
 
       this.inputBuffer = [];

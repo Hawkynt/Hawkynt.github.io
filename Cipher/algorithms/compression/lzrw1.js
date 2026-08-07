@@ -81,32 +81,35 @@
         new LinkItem("lzbench LZRW Collection", "https://github.com/inikep/lzbench")
       ];
 
-      // Test vectors - validated through round-trip compression/decompression
-      // Format: 16-bit control word (big-endian) + items (literal bytes or 16-bit copy words)
+      // Test vectors cross-checked byte-for-byte against CompressionWorkbench's
+      // BB_Lzrw1 building block (Compression.Core.Dictionary.Lzrw1), which is
+      // the authoritative wire format: a 4-byte little-endian original-length
+      // header, then 16-bit control words (big-endian) + items (literal bytes
+      // or 16-bit copy words).
       this.tests = [
         new TestCase(
           OpCodes.AnsiToBytes("ABCD"),
-          [0, 0, 65, 66, 67, 68], // Control word 0x0000 (all literals) + 4 literal bytes
+          [4, 0, 0, 0, 0, 0, 65, 66, 67, 68], // header(4) + control word 0x0000 (all literals) + 4 literal bytes
           "No repetition - all literals",
-          "Round-trip validated"
+          "https://github.com/Hawkynt/Cipher"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("AAAAAAAAAAAAAAAA"), // 16 A's
-          [0, 2, 65, 192, 0], // Control 0x0002 (bit 1 set): literal A, then copy 15 bytes from offset 1
+          [16, 0, 0, 0, 0, 2, 65, 192, 0], // header(16) + control 0x0002 (bit 1 set): literal A, then copy 15 bytes from offset 1
           "High repetition - 16 identical characters",
-          "Round-trip validated"
+          "https://github.com/Hawkynt/Cipher"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("ABCABCABCABC"), // 12 bytes: ABC repeated 4 times
-          [0, 8, 65, 66, 67, 96, 2], // Control 0x0008 (bit 3 set): ABC literals, then copy 9 bytes
+          [12, 0, 0, 0, 0, 8, 65, 66, 67, 96, 2], // header(12) + control 0x0008 (bit 3 set): ABC literals, then copy 9 bytes
           "Pattern repetition - ABC repeated 4 times",
-          "Round-trip validated"
+          "https://github.com/Hawkynt/Cipher"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("The quick brown fox"),
-          [0, 0, 84, 104, 101, 32, 113, 117, 105, 99, 107, 32, 98, 114, 111, 119, 110, 32, 0, 0, 102, 111, 120],
+          [19, 0, 0, 0, 0, 0, 84, 104, 101, 32, 113, 117, 105, 99, 107, 32, 98, 114, 111, 119, 110, 32, 0, 0, 102, 111, 120],
           "Real text compression - English phrase",
-          "Round-trip validated"
+          "https://github.com/Hawkynt/Cipher"
         )
       ];
     }
@@ -159,24 +162,27 @@
    */
 
     Result() {
-      if (this.inputBuffer.length === 0) {
-        return [];
+      if (this.isInverse) {
+        if (this.inputBuffer.length === 0) {
+          return [];
+        }
+        return this._decompress();
       }
 
-      if (this.isInverse) {
-        return this._decompress();
-      } else {
-        return this._compress();
-      }
+      // Compression always emits the 4-byte length header, even for empty
+      // input (matching the CompressionWorkbench reference building block).
+      return this._compress();
     }
 
     /**
-     * Hash function for 3-byte sequences
-     * Uses simple XOR-shift hash for speed
+     * Hash function for 3-byte sequences. Matches CompressionWorkbench's
+     * Lzrw1Compressor.Hash: value * 2654435761 (Knuth's multiplicative hash
+     * constant), keeping bits 20-31 of the 32-bit product.
      */
     _hash(p0, p1, p2) {
-      const h = (OpCodes.Shl16(p0, 8)^OpCodes.Shl16(p1, 4)^p2)&0xFFF;
-      return h;
+      const value = p0|OpCodes.Shl32(p1, 8)|OpCodes.Shl32(p2, 16);
+      const h = Math.imul(value, 2654435761);
+      return OpCodes.Shr32(h, 20)&0xFFF;
     }
 
     /**
@@ -184,7 +190,13 @@
      */
     _compress() {
       const input = this.inputBuffer;
+      const header = OpCodes.Unpack32LE(input.length);
       const result = [];
+
+      if (input.length === 0) {
+        this.inputBuffer = [];
+        return header;
+      }
 
       // Hash table stores positions of 3-byte sequences
       const hashTable = new Array(this.algorithm.HASH_TABLE_SIZE).fill(-1);
@@ -269,7 +281,7 @@
       }
 
       this.inputBuffer = [];
-      return result;
+      return header.concat(result);
     }
 
     /**
@@ -277,17 +289,28 @@
      */
     _decompress() {
       const input = this.inputBuffer;
-      const result = [];
-      let pos = 0;
+      if (input.length < 4) {
+        this.inputBuffer = [];
+        return [];
+      }
 
-      while (pos < input.length) {
+      const originalLength = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
+      if (originalLength === 0) {
+        this.inputBuffer = [];
+        return [];
+      }
+
+      const result = [];
+      let pos = 4;
+
+      while (result.length < originalLength) {
         // Read 16-bit control word (big-endian)
         if (pos + 1 >= input.length) break;
         const controlWord = OpCodes.Pack16BE(input[pos], input[pos + 1]);
         pos += 2;
 
         // Process up to 16 items based on control word
-        for (let i = 0; i < this.algorithm.ITEMS_PER_GROUP && pos < input.length; i++) {
+        for (let i = 0; i < this.algorithm.ITEMS_PER_GROUP && result.length < originalLength; i++) {
           const isCopyItem = (controlWord&OpCodes.Shl16(1, i)) !== 0;
 
           if (isCopyItem) {
