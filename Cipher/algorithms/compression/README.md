@@ -43,7 +43,7 @@ This directory contains implementations of various data compression algorithms. 
 - [ ] **ROLZ (Reduced Offset Lempel Ziv)** - Variant of LZ compression
 - [ ] **Move to Front** - Data transformation technique
 - [ ] **PAQ** - Series of archiving programs
-- [ ] **Sequitur** - Grammar-based compression algorithm
+- [x] **Sequitur** (`sequitur.js`) - Grammar-based compression algorithm
 - [ ] **Re-Pair** - Grammar-based compression
 - [ ] **Grammar-based codes** - Various grammar compression methods
 - [x] **Golomb Codes** (`exp-golomb.js`) - Exponential-Golomb coding
