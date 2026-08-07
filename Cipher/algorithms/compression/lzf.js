@@ -84,54 +84,56 @@
         new LinkItem("ning/compress Java Implementation", "https://github.com/ning/compress")
       ];
 
-      // Test vectors - verified with round-trip compression/decompression
-      // LZF format: Literals < 32, Backrefs >= 32
+      // Test vectors cross-checked byte-for-byte against CompressionWorkbench's
+      // BB_Lzf building block (Compression.Core.Dictionary.Lzf), which is the
+      // authoritative wire format: a 4-byte little-endian original-length
+      // header followed by the LZF token stream (literals < 32, backrefs >= 32).
       this.tests = [
         new TestCase(
           OpCodes.AnsiToBytes("ABCD"),
-          [3, 65, 66, 67, 68], // All literals: len=4, data=ABCD
+          [4, 0, 0, 0, 3, 65, 66, 67, 68], // header(4) + all literals: len=4, data=ABCD
           "All literals - no compression",
           "https://github.com/nemequ/liblzf"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("AAAA"),
-          [0, 65, 64, 0], // Literal 'A' + backref(len=3, off=1)
+          [4, 0, 0, 0, 0, 65, 64, 0], // header(4) + literal 'A' + backref(len=3, off=1)
           "Simple repetition - AAAA",
           "https://github.com/nemequ/liblzf"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("AAAAAAAAAA"), // 10 A's
-          [0, 65, 224, 1, 0], // A + long backref (len=9, off=1)
+          [10, 0, 0, 0, 0, 65, 224, 1, 0], // header(10) + A + long backref (len=9, off=1)
           "Long repetition - 10 A's",
           "https://github.com/nemequ/liblzf"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("ABCABCABC"), // 9 bytes
-          [2, 65, 66, 67, 160, 2], // ABC literal + backref (len=6, off=3)
+          [9, 0, 0, 0, 2, 65, 66, 67, 160, 2], // header(9) + ABC literal + backref (len=6, off=3)
           "Pattern repetition - ABCABCABC",
           "https://github.com/nemequ/liblzf"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("Hello World! Hello World!"),
-          [12, 72, 101, 108, 108, 111, 32, 87, 111, 114, 108, 100, 33, 32, 224, 4, 12],
+          [25, 0, 0, 0, 12, 72, 101, 108, 108, 111, 32, 87, 111, 114, 108, 100, 33, 32, 224, 4, 12],
           "Text compression with pattern",
           "https://github.com/nemequ/liblzf"
         ),
         new TestCase(
           new Array(100).fill(0x42), // 100 B's
-          [0, 66, 224, 91, 0], // B + long backref (len=99, off=1)
+          [100, 0, 0, 0, 0, 66, 224, 91, 0], // header(100) + B + long backref (len=99, off=1)
           "Highly repetitive data",
           "https://github.com/nemequ/liblzf"
         ),
         new TestCase(
           [0,1,2,3,4,153,64,64,64,9,9,9,9,9,9,9,9,9,9], // Hash collision test from ning/compress
-          [9, 0, 1, 2, 3, 4, 153, 64, 64, 64, 9, 224, 1, 0], // Literal + backref compression
+          [19, 0, 0, 0, 9, 0, 1, 2, 3, 4, 153, 64, 64, 64, 9, 224, 1, 0], // header(19) + literal + backref
           "Hash collision test data",
           "https://github.com/ning/compress/blob/master/src/test/java/com/ning/compress/lzf/TestLZFRoundTrip.java"
         ),
         new TestCase(
           [1,153,0,0,0,0,153,64,64,64,0,0,0,0,0,0,0,0,0,0,0,0,0,0], // Hash collision test 2
-          [2, 1, 153, 0, 64, 0, 4, 153, 64, 64, 64, 0, 224, 5, 0], // Literal + backrefs
+          [24, 0, 0, 0, 2, 1, 153, 0, 64, 0, 4, 153, 64, 64, 64, 0, 224, 5, 0], // header(24) + literal + backrefs
           "Hash collision test data 2",
           "https://github.com/ning/compress/blob/master/src/test/java/com/ning/compress/lzf/TestLZFRoundTrip.java"
         ),
@@ -139,19 +141,19 @@
           new Array(300).fill(0x58), // 300 identical bytes - exercises the long-form match length
                                       // boundary (regression test for the MAX_REF off-by-one that
                                       // wrapped the extended length byte and desynchronized offsets)
-          [0, 88, 224, 255, 0, 225, 28, 6],
+          [44, 1, 0, 0, 0, 88, 224, 255, 0, 225, 28, 6], // header(300) + ...
           "Highly repetitive data - 300 bytes",
           "https://github.com/nemequ/liblzf"
         ),
         new TestCase(
           Array.from({ length: 300 }, (_, i) => (i % 2 ? 0x59 : 0x5A)), // Alternating ZY pattern
-          [1, 90, 89, 224, 255, 1, 225, 27, 7],
+          [44, 1, 0, 0, 1, 90, 89, 224, 255, 1, 225, 27, 7], // header(300) + ...
           "Alternating pattern - 300 bytes",
           "https://github.com/nemequ/liblzf"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("The quick brown fox jumps over the lazy dog. ".repeat(10)),
-          [31, 84, 104, 101, 32, 113, 117, 105, 99, 107, 32, 98, 114, 111, 119, 110, 32, 102, 111, 120, 32, 106, 117, 109, 112, 115, 32, 111, 118, 101, 114, 32, 116, 64, 30, 9, 108, 97, 122, 121, 32, 100, 111, 103, 46, 32, 224, 255, 44, 225, 134, 13],
+          [194, 1, 0, 0, 31, 84, 104, 101, 32, 113, 117, 105, 99, 107, 32, 98, 114, 111, 119, 110, 32, 102, 111, 120, 32, 106, 117, 109, 112, 115, 32, 111, 118, 101, 114, 32, 116, 64, 30, 9, 108, 97, 122, 121, 32, 100, 111, 103, 46, 32, 224, 255, 44, 225, 134, 13],
           "English text sample - repeated sentence",
           "https://github.com/nemequ/liblzf"
         )
@@ -211,19 +213,21 @@
    */
 
     Result() {
-      if (this.inputBuffer.length === 0) {
-        return [];
+      if (this.isInverse) {
+        if (this.inputBuffer.length === 0) {
+          return [];
+        }
+        return this._decompress();
       }
 
-      if (this.isInverse) {
-        return this._decompress();
-      } else {
-        return this._compress();
-      }
+      // Compression always emits the 4-byte length header, even for empty
+      // input (matching the CompressionWorkbench reference building block).
+      return this._compress();
     }
 
     _compress() {
       const input = this.inputBuffer;
+      const header = OpCodes.Unpack32LE(input.length);
       const output = [];
       const htab = new Array(this.hsize); // Hash table storing positions
 
@@ -233,10 +237,9 @@
 
       if (iend < 3) {
         // Too small to compress - output as literals
-        if (iend === 0) return [];
         this._flushLiterals(output, input, 0, iend);
         this.inputBuffer = [];
-        return output;
+        return header.concat(output);
       }
 
       // Initialize hash value with first two bytes
@@ -325,7 +328,7 @@
       }
 
       this.inputBuffer = [];
-      return output;
+      return header.concat(output);
     }
 
     _flushLiterals(output, input, start, end) {
@@ -349,11 +352,22 @@
 
     _decompress() {
       const input = this.inputBuffer;
+      if (input.length < 4) {
+        this.inputBuffer = [];
+        return [];
+      }
+
+      const originalLength = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
+      if (originalLength === 0) {
+        this.inputBuffer = [];
+        return [];
+      }
+
       const output = [];
-      let ip = 0;
+      let ip = 4;
       const iend = input.length;
 
-      while (ip < iend) {
+      while (output.length < originalLength) {
         const ctrl = input[ip++];
 
         if (ctrl < 32) {

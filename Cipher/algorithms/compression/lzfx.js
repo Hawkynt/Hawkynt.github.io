@@ -81,41 +81,44 @@
         new LinkItem("LZFX Format Specification", "https://code.google.com/archive/p/lzfx/wikis/CompressedFormat.wiki")
       ];
 
-      // Test vectors - verified with implementation round-trips
+      // Test vectors cross-checked byte-for-byte against CompressionWorkbench's
+      // BB_Lzfx building block (Compression.Core.Dictionary.Lzfx), which is the
+      // authoritative wire format: a 4-byte little-endian original-length
+      // header followed by the LZFX token stream (literals < 32, backrefs >= 32).
       this.tests = [
         new TestCase(
           OpCodes.AnsiToBytes("ABCD"),
-          [0x03, 0x41, 0x42, 0x43, 0x44], // Literal: 000|00011 (3 = 4-1) + 4 bytes
+          [4, 0, 0, 0, 0x03, 0x41, 0x42, 0x43, 0x44], // header(4) + literal: 000|00011 (3 = 4-1) + 4 bytes
           "All literals - no compression",
           "https://github.com/berkedel/lzfx"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("AAAA"),
-          [0x00, 0x41, 0x20, 0x00], // Literal A + backref (len=1+2=3, off=0)
+          [4, 0, 0, 0, 0x00, 0x41, 0x20, 0x00], // header(4) + literal A + backref (len=1+2=3, off=0)
           "Repetition - AAAA",
           "https://github.com/berkedel/lzfx"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("AAAAAAAAAA"), // 10 A's
-          [0x00, 0x41, 0xE0, 0x00, 0x00], // A + long backref (len=7+2=9, off=0)
+          [10, 0, 0, 0, 0x00, 0x41, 0xE0, 0x00, 0x00], // header(10) + A + long backref (len=7+2=9, off=0)
           "Long repetition - 10 A's",
           "https://github.com/berkedel/lzfx"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("ABCABCABC"), // 9 bytes
-          [0x02, 0x41, 0x42, 0x43, 0x80, 0x02], // ABC literal + backref (len=4+2=6, off=2)
+          [9, 0, 0, 0, 0x02, 0x41, 0x42, 0x43, 0x80, 0x02], // header(9) + ABC literal + backref (len=4+2=6, off=2)
           "Pattern repetition - ABCABCABC",
           "https://github.com/berkedel/lzfx"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("Hello World! Hello World!"),
-          [12,72,101,108,108,111,32,87,111,114,108,100,33,32,224,3,12], // "Hello World! " + backref
+          [25, 0, 0, 0, 12,72,101,108,108,111,32,87,111,114,108,100,33,32,224,3,12], // header(25) + "Hello World! " + backref
           "Long text compression",
           "https://github.com/berkedel/lzfx"
         ),
         new TestCase(
           new Array(100).fill(0x42), // 100 B's
-          [0,66,224,90,0], // B + long backref (len=97)
+          [100, 0, 0, 0, 0,66,224,90,0], // header(100) + B + long backref (len=97)
           "Highly repetitive data",
           "https://github.com/berkedel/lzfx"
         )
@@ -175,19 +178,21 @@
    */
 
     Result() {
-      if (this.inputBuffer.length === 0) {
-        return [];
+      if (this.isInverse) {
+        if (this.inputBuffer.length === 0) {
+          return [];
+        }
+        return this._decompress();
       }
 
-      if (this.isInverse) {
-        return this._decompress();
-      } else {
-        return this._compress();
-      }
+      // Compression always emits the 4-byte length header, even for empty
+      // input (matching the CompressionWorkbench reference building block).
+      return this._compress();
     }
 
     _compress() {
       const input = this.inputBuffer;
+      const header = OpCodes.Unpack32LE(input.length);
       const output = [];
       const htab = new Array(this.hsize); // Hash table
 
@@ -197,10 +202,9 @@
 
       if (iend < 3) {
         // Too small to compress - output as literals
-        if (iend === 0) return [];
         this._flushLiterals(output, input, 0, iend);
         this.inputBuffer = [];
-        return output;
+        return header.concat(output);
       }
 
       // Initialize hash value with first two bytes
@@ -283,7 +287,7 @@
       }
 
       this.inputBuffer = [];
-      return output;
+      return header.concat(output);
     }
 
     _flushLiterals(output, input, start, end) {
@@ -307,11 +311,22 @@
 
     _decompress() {
       const input = this.inputBuffer;
+      if (input.length < 4) {
+        this.inputBuffer = [];
+        return [];
+      }
+
+      const originalLength = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
+      if (originalLength === 0) {
+        this.inputBuffer = [];
+        return [];
+      }
+
       const output = [];
-      let ip = 0;
+      let ip = 4;
       const iend = input.length;
 
-      while (ip < iend) {
+      while (output.length < originalLength) {
         const ctrl = input[ip++];
 
         if (ctrl < 32) {
