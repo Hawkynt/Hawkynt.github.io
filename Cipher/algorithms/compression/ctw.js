@@ -1,10 +1,15 @@
 /*
- * Context Tree Weighting (CTW) Algorithm Implementation (Educational Version)
+ * Context Predictor (order-2/1/0) Implementation
  * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
- * 
- * CTW - Context Tree Weighting compression using context modeling
- * Developed by Frans Willems, Yuri Shtarkov, and Tjalling Tjalkens
+ *
+ * A most-frequent-symbol predictor over an order-2/1/0 byte context hierarchy.
+ * Each input byte is predicted from the most frequently observed symbol in the
+ * deepest context that has been seen before; a hit/miss bitmap plus the literal
+ * bytes of the misses form the payload.
+ *
+ * Despite the historical "CTW" block name this is NOT the Context Tree Weighting
+ * method of Willems, Shtarkov and Tjalkens - see ctw-willems.js for that.
  */
 
 
@@ -34,7 +39,7 @@
   if (!AlgorithmFramework) {
     throw new Error('AlgorithmFramework dependency is required');
   }
-  
+
   if (!OpCodes) {
     throw new Error('OpCodes dependency is required');
   }
@@ -49,13 +54,23 @@
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
+  // ===== FORMAT CONSTANTS =====
+
+  const MAX_DEPTH = 2;
+
+  // Context identifier spaces: order-0 occupies id 0, order-1 occupies
+  // 0x100..0x1FF and order-2 occupies 0x10100..0x200FF, so the three orders
+  // never collide inside the single context dictionary.
+  const CTX_ORDER1_BASE = 0x100;
+  const CTX_ORDER2_BASE = 0x10100;
+
   // ===== ALGORITHM IMPLEMENTATION =====
 
   /**
- * CTWAlgorithm - Compression algorithm implementation
- * @class
- * @extends {CompressionAlgorithm}
- */
+   * CTWAlgorithm - Compression algorithm implementation
+   * @class
+   * @extends {CompressionAlgorithm}
+   */
 
   class CTWAlgorithm extends CompressionAlgorithm {
       constructor() {
@@ -69,9 +84,7 @@
         // children. It is a simple most-frequent-symbol predictor over an
         // order-2/1/0 byte context hierarchy. See "Context Tree Weighting
         // (Willems)" in ctw-willems.js for a genuine implementation of the
-        // CTW method. This rename mirrors the equivalent correction made to
-        // CompressionWorkbench's BB_CTW block; the wire format and test
-        // vectors are unchanged.
+        // CTW method.
         this.name = "Context Predictor (order-2/1/0)";
         this.description = "Most-frequent-symbol predictor over an order-2/1/0 byte context hierarchy with a hit/miss bitmap. Not the Context Tree Weighting (CTW) method despite the legacy name this block previously used.";
         this.inventor = "Unknown (educational most-frequent-symbol predictor)";
@@ -84,40 +97,70 @@
 
         // Documentation and references
         this.documentation = [
-          new LinkItem("Context Tree Weighting - Wikipedia", "https://en.wikipedia.org/wiki/Context_tree_weighting"),
-          new LinkItem("CTW Original Paper", "https://ieeexplore.ieee.org/document/392378")
+          new LinkItem("Context modeling - Wikipedia", "https://en.wikipedia.org/wiki/Context_mixing"),
+          new LinkItem("Prediction by Partial Matching", "https://en.wikipedia.org/wiki/Prediction_by_partial_matching")
         ];
 
         this.references = [
-          new LinkItem("The Context-Tree Weighting Method", "https://pure.tue.nl/ws/portalfiles/portal/1134430/200411859.pdf"),
           new LinkItem("Statistical Compression Survey", "https://homepages.cwi.nl/~paulv/papers/statsmodcourse.pdf"),
           new LinkItem("Data Compression Course", "https://web.stanford.edu/class/ee398a/")
         ];
 
-        // Test vectors - Round-trip compression tests
-        this.tests = [];
-
-        this.addRoundTripTest = function(input, description) {
-          const compressed = this._computeExpectedCompression(input);
-          this.tests.push({
-            input: input,
-            expected: compressed,
-            text: description,
-            uri: "https://en.wikipedia.org/wiki/Context_tree_weighting"
-          });
-        };
-
-        this._computeExpectedCompression = function(input) {
-          const lengthBytes = OpCodes.Unpack32BE(input.length);
-          return [...lengthBytes, ...input];
-        };
-
-        this.addRoundTripTest([], "Empty input");
-        this.addRoundTripTest(OpCodes.AnsiToBytes("0"), "Single character");
-        this.addRoundTripTest(OpCodes.AnsiToBytes("01"), "Two symbols");
-        this.addRoundTripTest(OpCodes.AnsiToBytes("0101"), "Alternating pattern");
-        this.addRoundTripTest(OpCodes.AnsiToBytes("00110011"), "Structured pattern");
-        this.addRoundTripTest(OpCodes.AnsiToBytes("abcabc"), "Repeating sequence");
+        // Wire format (byte-identical to CompressionWorkbench's BB_CTW):
+        //   4 bytes uncompressed size (little-endian)
+        //   1 byte  maximum context order (always 2)
+        //   ceil(n/8) flag bytes, MSB-first, bit set = the prediction was correct
+        //   the literal bytes of every mispredicted position, in order
+        this.tests = [
+          {
+            input: [],
+            expected: [0, 0, 0, 0, 2],
+            text: "Empty input",
+            uri: "https://en.wikipedia.org/wiki/Context_mixing"
+          },
+          {
+            input: OpCodes.AnsiToBytes("A"),
+            expected: [1, 0, 0, 0, 2, 0, 65],
+            text: "Single byte - the empty model predicts zero, so it misses",
+            uri: "https://en.wikipedia.org/wiki/Context_mixing"
+          },
+          {
+            input: OpCodes.AnsiToBytes("0"),
+            expected: [1, 0, 0, 0, 2, 0, 48],
+            text: "Single character",
+            uri: "https://en.wikipedia.org/wiki/Context_mixing"
+          },
+          {
+            input: OpCodes.AnsiToBytes("01"),
+            expected: [2, 0, 0, 0, 2, 0, 48, 49],
+            text: "Two symbols",
+            uri: "https://en.wikipedia.org/wiki/Context_mixing"
+          },
+          {
+            input: OpCodes.AnsiToBytes("0101"),
+            expected: [4, 0, 0, 0, 2, 48, 48, 49],
+            text: "Alternating pattern - the order-1 context predicts the tail",
+            uri: "https://en.wikipedia.org/wiki/Context_mixing"
+          },
+          {
+            input: OpCodes.AnsiToBytes("00110011"),
+            expected: [8, 0, 0, 0, 2, 71, 48, 49, 49, 48],
+            text: "Structured pattern",
+            uri: "https://en.wikipedia.org/wiki/Context_mixing"
+          },
+          {
+            input: OpCodes.AnsiToBytes("abcabc"),
+            expected: [6, 0, 0, 0, 2, 28, 97, 98, 99],
+            text: "Repeating sequence",
+            uri: "https://en.wikipedia.org/wiki/Context_mixing"
+          },
+          {
+            input: OpCodes.AnsiToBytes("aaaaaaaaaaaaaaaa"),
+            expected: [16, 0, 0, 0, 2, 127, 255, 97],
+            text: "Run of one byte - every position after the first is predicted",
+            uri: "https://en.wikipedia.org/wiki/Context_mixing"
+          }
+        ];
 
         // For test suite compatibility
         this.testVectors = this.tests;
@@ -128,15 +171,49 @@
       }
     }
 
+    /**
+     * Frequency table for one context, preserving first-seen order so that ties
+     * between equally frequent symbols always resolve to the earliest observed
+     * one (JavaScript Map iterates in insertion order).
+     */
+    class ContextModel {
+      constructor() {
+        this.contexts = new Map();
+      }
+
+      /** Returns the most frequent symbol of a context, or -1 when unseen. */
+      mostFrequent(contextId) {
+        const freqs = this.contexts.get(contextId);
+        if (freqs === undefined || freqs.size === 0)
+          return -1;
+
+        let bestSymbol = -1;
+        let bestCount = 0;
+        for (const entry of freqs)
+          if (entry[1] > bestCount) {
+            bestCount = entry[1];
+            bestSymbol = entry[0];
+          }
+
+        return bestSymbol;
+      }
+
+      update(contextId, symbol) {
+        let freqs = this.contexts.get(contextId);
+        if (freqs === undefined) {
+          freqs = new Map();
+          this.contexts.set(contextId, freqs);
+        }
+        const current = freqs.get(symbol);
+        freqs.set(symbol, (current === undefined ? 0 : current) + 1);
+      }
+    }
+
     class CTWInstance extends IAlgorithmInstance {
       constructor(algorithm, isInverse = false) {
         super(algorithm);
         this.isInverse = isInverse; // true = decompress, false = compress
         this.inputBuffer = [];
-
-        // CTW parameters (educational version)
-        this.MAX_DEPTH = 8; // Maximum context depth
-        this.ALPHA = 0.5; // Mixing weight (typically 0.5)
       }
 
       Feed(data) {
@@ -145,332 +222,127 @@
       }
 
       Result() {
-        const result = this.isInverse ? 
-          this.decompress(this.inputBuffer) : 
-          this.compress(this.inputBuffer);
+        const result = this.isInverse
+          ? this.decompress(this.inputBuffer)
+          : this.compress(this.inputBuffer);
 
         this.inputBuffer = [];
         return result;
       }
 
       compress(data) {
-        const input = new Uint8Array(data || []);
-        const result = [];
-        const lengthBytes = OpCodes.Unpack32BE(input.length);
-        for (let _i = 0; _i < lengthBytes.length; _i++) result.push(lengthBytes[_i]);
-        for (let _i = 0; _i < input.length; _i++) result.push(input[_i]);
-        return result;
+        const src = data || [];
+        const n = src.length;
+        const output = [];
+
+        // Header: 4-byte little-endian original size, 1-byte maximum order.
+        output.push(n&0xFF);
+        output.push(OpCodes.Shr32(n, 8)&0xFF);
+        output.push(OpCodes.Shr32(n, 16)&0xFF);
+        output.push(OpCodes.Shr32(n, 24)&0xFF);
+        output.push(MAX_DEPTH);
+
+        if (n === 0)
+          return output;
+
+        const model = new ContextModel();
+        const hits = new Uint8Array(n);
+        const missSymbols = [];
+
+        for (let i = 0; i < n; ++i) {
+          const symbol = src[i];
+          const predicted = this._predict(model, src, i);
+
+          if (predicted === symbol)
+            hits[i] = 1;
+          else
+            missSymbols.push(symbol);
+
+          model.update(0, symbol);
+          if (i >= 1) model.update(CTX_ORDER1_BASE + src[i - 1], symbol);
+          if (i >= 2) model.update(CTX_ORDER2_BASE + src[i - 2] * 256 + src[i - 1], symbol);
+        }
+
+        // Pack the hit/miss flags, MSB first within each byte.
+        const flagByteCount = Math.floor((n + 7) / 8);
+        for (let byteIdx = 0; byteIdx < flagByteCount; ++byteIdx) {
+          let flagByte = 0;
+          for (let bit = 0; bit < 8; ++bit) {
+            const srcIdx = byteIdx * 8 + bit;
+            if (srcIdx < n && hits[srcIdx] === 1)
+              flagByte = OpCodes.Or32(flagByte, OpCodes.Shr32(0x80, bit))&0xFF;
+          }
+          output.push(flagByte);
+        }
+
+        for (let _i = 0; _i < missSymbols.length; _i++) output.push(missSymbols[_i]);
+
+        return output;
       }
 
       decompress(data) {
-        const bytes = new Uint8Array(data || []);
-        if (bytes.length >= 4) {
-          const originalLength = OpCodes.Pack32BE(bytes[0], bytes[1], bytes[2], bytes[3]);
-          if (bytes.length === originalLength + 4) {
-            return Array.from(bytes.slice(4));
-          }
-        }
-        if (bytes.length === 0) return [];
-        throw new Error('Invalid compressed data format');
-      }
+        const bytes = data || [];
+        if (bytes.length < 5)
+          return [];
 
-      _buildAlphabet(data) {
-        const symbolSet = new Set();
-        for (let i = 0; i < data.length; i++) {
-          symbolSet.add(data.charAt(i));
-        }
-        return Array.from(symbolSet).sort();
-      }
+        const originalSize = OpCodes.Pack32LE(bytes[0], bytes[1], bytes[2], bytes[3]);
+        // bytes[4] carries the maximum context order (currently always 2).
+        if (originalSize === 0)
+          return [];
 
-      _initializeContextTree(alphabet) {
-        return new ContextTreeNode(alphabet.length);
-      }
+        const base = 5;
+        const flagByteCount = Math.floor((originalSize + 7) / 8);
+        if (bytes.length - base < flagByteCount)
+          throw new Error('Unexpected end of context-predictor flag data');
 
-      _encodeWithContextTree(data, contextTree, alphabet) {
-        const encoded = [];
-        let context = '';
+        const model = new ContextModel();
+        const dst = [];
+        let missPos = base + flagByteCount;
 
-        for (let i = 0; i < data.length; i++) {
-          const symbol = data.charAt(i);
-          const symbolIndex = alphabet.indexOf(symbol);
+        for (let i = 0; i < originalSize; ++i) {
+          const byteIdx = base + Math.floor(i / 8);
+          const bitIdx = i % 8;
+          const isHit = OpCodes.And32(bytes[byteIdx], OpCodes.Shr32(0x80, bitIdx)) !== 0;
 
-          // Get prediction from context tree
-          const prediction = this._getContextPrediction(contextTree, context, alphabet);
-
-          // Encode symbol using prediction (simplified arithmetic coding)
-          const encodedSymbol = this._encodeSymbol(symbolIndex, prediction);
-          for (let _i = 0; _i < encodedSymbol.length; _i++) encoded.push(encodedSymbol[_i]);
-
-          // Update context tree
-          this._updateContextTree(contextTree, context, symbolIndex);
-
-          // Update context (limited depth)
-          context = (context + symbol).slice(-this.MAX_DEPTH);
-        }
-
-        return encoded;
-      }
-
-      _decodeWithContextTree(encoded, contextTree, alphabet, length) {
-        let decoded = '';
-        let context = '';
-        let pos = 0;
-
-        for (let i = 0; i < length; i++) {
-          // Get prediction from context tree
-          const prediction = this._getContextPrediction(contextTree, context, alphabet);
-
-          // Decode symbol using prediction
-          const { symbolIndex, bytesUsed } = this._decodeSymbol(encoded.slice(pos), prediction);
-          pos += bytesUsed;
-
-          if (symbolIndex >= 0 && symbolIndex < alphabet.length) {
-            const symbol = alphabet[symbolIndex];
-            decoded += symbol;
-
-            // Update context tree
-            this._updateContextTree(contextTree, context, symbolIndex);
-
-            // Update context
-            context = (context + symbol).slice(-this.MAX_DEPTH);
-          }
-        }
-
-        return decoded;
-      }
-
-      _getContextPrediction(tree, context, alphabet) {
-        // Get weighted probability distribution for given context
-        const predictions = [];
-
-        for (let depth = 0; depth <= Math.min(context.length, this.MAX_DEPTH); depth++) {
-          const subContext = context.slice(-depth);
-          const node = this._findContextNode(tree, subContext, alphabet);
-          const localPrediction = this._getNodePrediction(node, alphabet.length);
-
-          predictions.push({
-            depth: depth,
-            weight: Math.pow(this.ALPHA, depth),
-            prediction: localPrediction
-          });
-        }
-
-        // Combine predictions using CTW weighting
-        return this._combineContextPredictions(predictions, alphabet.length);
-      }
-
-      _findContextNode(tree, context, alphabet) {
-        let node = tree;
-
-        for (let i = context.length - 1; i >= 0; i--) {
-          const symbol = context.charAt(i);
-          const symbolIndex = alphabet.indexOf(symbol);
-
-          if (symbolIndex >= 0 && node.children[symbolIndex]) {
-            node = node.children[symbolIndex];
+          let symbol;
+          if (isHit) {
+            symbol = this._predict(model, dst, dst.length);
           } else {
-            break;
-          }
-        }
-
-        return node;
-      }
-
-      _getNodePrediction(node, alphabetSize) {
-        const prediction = [];
-        const totalCount = node.counts.reduce((a, b) => a + b, 0) + alphabetSize;
-
-        for (let i = 0; i < alphabetSize; i++) {
-          // Laplace smoothing
-          prediction.push((node.counts[i] + 1) / totalCount);
-        }
-
-        return prediction;
-      }
-
-      _combineContextPredictions(predictions, alphabetSize) {
-        const combined = new Array(alphabetSize).fill(0);
-        let totalWeight = 0;
-
-        for (const pred of predictions) {
-          totalWeight += pred.weight;
-          for (let i = 0; i < alphabetSize; i++) {
-            combined[i] += pred.weight * pred.prediction[i];
-          }
-        }
-
-        // Normalize
-        if (totalWeight > 0) {
-          for (let i = 0; i < alphabetSize; i++) {
-            combined[i] /= totalWeight;
-          }
-        }
-
-        return combined;
-      }
-
-      _updateContextTree(tree, context, symbolIndex) {
-        // Update counts for all context lengths
-        for (let depth = 0; depth <= Math.min(context.length, this.MAX_DEPTH); depth++) {
-          const subContext = context.slice(-depth);
-          let node = this._ensureContextPath(tree, subContext);
-          node.counts[symbolIndex]++;
-        }
-      }
-
-      _ensureContextPath(tree, context) {
-        let node = tree;
-
-        for (let i = context.length - 1; i >= 0; i--) {
-          const symbolIndex = context.charCodeAt(i) - 48; // Simplified for demo
-
-          if (!node.children[symbolIndex]) {
-            node.children[symbolIndex] = new ContextTreeNode(node.alphabetSize);
+            if (missPos >= bytes.length)
+              throw new Error('Unexpected end of context-predictor miss data');
+            symbol = bytes[missPos++];
           }
 
-          node = node.children[symbolIndex];
+          dst.push(symbol);
+
+          const idx = dst.length - 1;
+          model.update(0, symbol);
+          if (idx >= 1) model.update(CTX_ORDER1_BASE + dst[idx - 1], symbol);
+          if (idx >= 2) model.update(CTX_ORDER2_BASE + dst[idx - 2] * 256 + dst[idx - 1], symbol);
         }
 
-        return node;
+        return dst;
       }
 
-      _encodeSymbol(symbolIndex, prediction) {
-        // Simplified arithmetic-style encoding
-        // In a real implementation, this would use proper arithmetic coding
-
-        // Find cumulative probability up to this symbol
-        let cumulativeProb = 0;
-        for (let i = 0; i < symbolIndex; i++) {
-          cumulativeProb += prediction[i];
+      /**
+       * Predicts the byte at position pos from the deepest context that has
+       * already been observed: order-2, then order-1, then order-0, then zero.
+       */
+      _predict(model, data, pos) {
+        if (pos >= 2) {
+          const pred = model.mostFrequent(CTX_ORDER2_BASE + data[pos - 2] * 256 + data[pos - 1]);
+          if (pred >= 0) return pred;
         }
-
-        // Encode as scaled integer (simplified)
-        const scaledProb = Math.floor(cumulativeProb * 255);
-        return [scaledProb];
-      }
-
-      _decodeSymbol(encodedData, prediction) {
-        if (encodedData.length === 0) {
-          return { symbolIndex: 0, bytesUsed: 0 };
+        if (pos >= 1) {
+          const pred = model.mostFrequent(CTX_ORDER1_BASE + data[pos - 1]);
+          if (pred >= 0) return pred;
         }
+        const pred = model.mostFrequent(0);
+        if (pred >= 0) return pred;
 
-        const scaledValue = encodedData[0] / 255;
-        let cumulativeProb = 0;
-
-        for (let i = 0; i < prediction.length; i++) {
-          cumulativeProb += prediction[i];
-          if (scaledValue < cumulativeProb) {
-            return { symbolIndex: i, bytesUsed: 1 };
-          }
-        }
-
-        return { symbolIndex: prediction.length - 1, bytesUsed: 1 };
-      }
-
-      _packCompressedData(alphabet, encoded, originalLength) {
-        const bytes = [];
-
-        // Header: [OriginalLength(4)][AlphabetSize(1)][Alphabet][EncodedLength(4)][EncodedData]
-
-        // Original length (4 bytes, big-endian)
-        const lengthBytes = OpCodes.Unpack32BE(originalLength);
-        for (let _i = 0; _i < lengthBytes.length; _i++) bytes.push(lengthBytes[_i]);
-
-        // Alphabet size
-        bytes.push(OpCodes.ToByte(alphabet.length));
-
-        // Alphabet symbols
-        bytes.push(OpCodes.ToByte(alphabet.length)); // Context depth info
-        for (const symbol of alphabet) {
-          bytes.push(OpCodes.ToByte(symbol.charCodeAt(0)));
-        }
-
-        // Encoded data length
-        const encodedLengthBytes = OpCodes.Unpack32BE(encoded.length);
-        for (let _i = 0; _i < encodedLengthBytes.length; _i++) bytes.push(encodedLengthBytes[_i]);
-
-        // Encoded data
-        for (let _i = 0; _i < encoded.length; _i++) bytes.push(encoded[_i]);
-
-        return this._bytesToString(bytes);
-      }
-
-      _unpackCompressedData(compressedData) {
-        const bytes = this._stringToBytes(compressedData);
-
-        if (bytes.length < 6) {
-          throw new Error('Invalid compressed data: too short');
-        }
-
-        let pos = 0;
-
-        // Read original length
-        const originalLength = OpCodes.Pack32BE(bytes[pos], bytes[pos + 1], bytes[pos + 2], bytes[pos + 3]);
-        pos += 4;
-
-        // Read alphabet size
-        const alphabetSize = bytes[pos++];
-
-        // Read context depth
-        const contextDepth = bytes[pos++];
-
-        // Read alphabet
-        const alphabet = [];
-        for (let i = 0; i < alphabetSize; i++) {
-          alphabet.push(String.fromCharCode(bytes[pos++]));
-        }
-
-        // Read encoded data length
-        const encodedLength = OpCodes.Pack32BE(bytes[pos], bytes[pos + 1], bytes[pos + 2], bytes[pos + 3]);
-        pos += 4;
-
-        // Read encoded data
-        const encoded = bytes.slice(pos, pos + encodedLength);
-
-        return { alphabet, encoded, originalLength };
-      }
-
-      // Utility functions
-      _stringToBytes(str) {
-        const bytes = [];
-        for (let i = 0; i < str.length; i++) {
-          bytes.push(OpCodes.ToByte(str.charCodeAt(i)));
-        }
-        return bytes;
-      }
-
-      _bytesToString(bytes) {
-        let str = "";
-        for (let i = 0; i < bytes.length; i++) {
-          str += String.fromCharCode(bytes[i]);
-        }
-        return str;
+        return 0;
       }
     }
-
-    // Context tree node for CTW algorithm
-    class ContextTreeNode {
-      constructor(alphabetSize) {
-        this.alphabetSize = alphabetSize;
-        this.counts = new Array(alphabetSize).fill(0);
-        this.children = new Array(alphabetSize).fill(null);
-        this.weighted = 0; // CTW weighted probability
-      }
-
-      updateWeightedProbability(alpha) {
-        // CTW weighting formula (simplified)
-        const totalCount = this.counts.reduce((a, b) => a + b, 0);
-
-        if (totalCount === 0) {
-          this.weighted = 1.0 / this.alphabetSize;
-        } else {
-          // Simplified weighting calculation
-          this.weighted = alpha * (totalCount / (totalCount + this.alphabetSize));
-        }
-      }
-    }
-
-    // Register the algorithm
 
   // ===== REGISTRATION =====
 
