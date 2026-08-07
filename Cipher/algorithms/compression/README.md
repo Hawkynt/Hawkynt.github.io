@@ -46,7 +46,7 @@ This directory contains implementations of various data compression algorithms. 
 - [ ] **Sequitur** - Grammar-based compression algorithm
 - [ ] **Re-Pair** - Grammar-based compression
 - [ ] **Grammar-based codes** - Various grammar compression methods
-- [ ] **Golomb Codes** - Exponential-Golomb coding
+- [x] **Golomb Codes** (`exp-golomb.js`) - Exponential-Golomb coding
 - [ ] **Universal Codes** - Elias Codes, Fibonacci Codes variants
 - [x] **Context Tree Weighting (Willems)** (`ctw-willems.js`) - Genuine CTW: binary context tree with Krichevsky-Trofimov estimators and recursive weighting
 
