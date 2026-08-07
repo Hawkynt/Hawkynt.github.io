@@ -53,7 +53,7 @@
 
         // Required metadata
         this.name = "DNA Sequence Compression";
-        this.description = "2-bit packing for the four canonical DNA nucleotide symbols (A, C, G, T), four symbols per byte. Only pure ACGT input is accepted; any other byte is rejected rather than silently corrupted, since 2-bit codes have no code point for a fifth symbol.";
+        this.description = "2-bit packing for the four canonical DNA nucleotide symbols (A, C, G, T), four symbols per byte, giving 4:1 on pure nucleotide data. Bytes outside that alphabet are recorded in an exception list (position plus original value) and packed as a placeholder code, so arbitrary byte streams still round-trip exactly. Byte-for-byte identical to CompressionWorkbench's BB_Dna reference block.";
         this.category = CategoryType.COMPRESSION;
         this.subCategory = "Bioinformatics";
         this.securityStatus = SecurityStatus.EDUCATIONAL;
@@ -61,10 +61,6 @@
         this.inventor = "W. James Kent (UCSC 2bit format)";
         this.year = 2002;
         this.country = CountryCode.US;
-
-        // This codec only accepts A/C/G/T input; it rejects everything else
-        // loudly instead of silently corrupting it. See tests/RoundTripSuite.js.
-        this.restrictedInputDomain = true;
 
         this.documentation = [
           new LinkItem("UCSC 2bit Sequence Format", "https://genome.ucsc.edu/FAQ/FAQformat.html#format7"),
@@ -79,10 +75,11 @@
         // Test vectors with actual compressed outputs.
         // Wire format (byte-identical to CompressionWorkbench's BB_Dna):
         //   4 bytes original length (little-endian)
-        //   4 bytes exception count (little-endian) -- always 0 here, since
-        //     Cipher rejects non-ACGT input up front rather than escaping it
+        //   4 bytes exception count (little-endian)
+        //   exceptionCount x 5 bytes: 4-byte little-endian position + original byte
         //   MSB-first 2-bit-per-symbol packed data (A=0, C=1, G=2, T=3),
-        //   zero-padded to a byte boundary
+        //   zero-padded to a byte boundary; exception positions carry the
+        //   placeholder code 0 and are overwritten from the list on decode
         this.tests = [
           new TestCase(
             [],
@@ -101,6 +98,12 @@
             [6, 0, 0, 0, 0, 0, 0, 0, 27, 144],
             "Simple nucleotide sequence",
             "https://en.wikipedia.org/wiki/FASTA_format"
+          ),
+          new TestCase(
+            [65, 67, 71, 84, 78, 65, 67, 71, 84, 78], // "ACGTNACGTN" - N is not a 2-bit code point
+            [10, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 78, 9, 0, 0, 0, 78, 27, 6, 192],
+            "Ambiguity code N escaped through the exception list",
+            "https://genome.ucsc.edu/FAQ/FAQformat.html#format7"
           )
         ];
 
@@ -119,7 +122,7 @@
         this.isInverse = isInverse;
         this.inputBuffer = [];
 
-        // A=0, C=1, G=2, T=3; anything else is out of domain on encode.
+        // A=0, C=1, G=2, T=3; anything else becomes an exception escape.
         this.codeByByte = new Map([
           [65, 0], [67, 1], [71, 2], [84, 3] // A, C, G, T
         ]);
@@ -146,9 +149,10 @@
         return result;
       }
 
-      // Matches CompressionWorkbench's DnaBuildingBlock.Compress, restricted
-      // to pure ACGT input: any byte outside {A,C,G,T} is rejected explicitly
-      // rather than packed as a silently-corrupting exception escape.
+      // Matches CompressionWorkbench's DnaBuildingBlock.Compress: every byte
+      // outside {A,C,G,T} is recorded as an exception (position + original
+      // value) and packed as the placeholder code 0, so arbitrary input
+      // round-trips exactly while pure nucleotide data still packs 4:1.
       _compress(data) {
         const result = OpCodes.Unpack32LE(data.length);
 
@@ -158,28 +162,36 @@
           return result;
         }
 
-        for (const byte of data)
-          if (!this.codeByByte.has(byte))
-            throw new Error('DNA Sequence Compression only accepts A, C, G, T bytes (got 0x' + byte.toString(16) + ')');
+        const exceptionPositions = [];
+        for (let i = 0; i < data.length; i++)
+          if (!this.codeByByte.has(data[i]))
+            exceptionPositions.push(i);
 
-        // exception count (always 0: no out-of-domain bytes)
-        const exceptionCount = OpCodes.Unpack32LE(0);
+        const exceptionCount = OpCodes.Unpack32LE(exceptionPositions.length);
         for (let _i = 0; _i < exceptionCount.length; _i++) result.push(exceptionCount[_i]);
+
+        for (let e = 0; e < exceptionPositions.length; e++) {
+          const position = exceptionPositions[e];
+          const positionBytes = OpCodes.Unpack32LE(position);
+          for (let _i = 0; _i < positionBytes.length; _i++) result.push(positionBytes[_i]);
+          result.push(data[position]);
+        }
 
         let packed = 0;
         let bitsInByte = 0;
-        for (const byte of data) {
-          const code = this.codeByByte.get(byte);
+        for (let i = 0; i < data.length; i++) {
+          // Exception positions pack code 0; the decoder overwrites them.
+          const code = this.codeByByte.has(data[i]) ? this.codeByByte.get(data[i]) : 0;
           packed = OpCodes.OrN(OpCodes.Shl32(packed, 2), code);
           bitsInByte += 2;
           if (bitsInByte === 8) {
-            result.push(packed);
+            result.push(OpCodes.And32(packed, 0xFF));
             packed = 0;
             bitsInByte = 0;
           }
         }
         if (bitsInByte > 0)
-          result.push(OpCodes.Shl32(packed, 8 - bitsInByte));
+          result.push(OpCodes.And32(OpCodes.Shl32(packed, 8 - bitsInByte), 0xFF));
 
         return result;
       }
