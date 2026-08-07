@@ -1,24 +1,27 @@
 /*
- * Crush - Fast LZ77-based Compression Algorithm
+ * Crush Compression Algorithm Implementation
  * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
  *
- * Crush is a fast LZ77-based compression algorithm by Ilya Muravyov.
- * It uses a simple encoding format with hash-based match finding,
- * optimized for speed and small memory footprint.
+ * Crush (Ilya Muravyov) is a fast LZ77 coder whose tokens are prefixed by a
+ * single MSB-first tag bit: 0 introduces a literal byte, 1 introduces a
+ * back-reference carrying an Elias-gamma coded length followed by a fixed
+ * 16-bit offset.
  *
- * Format specification:
- * - Bit-based token encoding
- * - 0 bit = literal byte follows
- * - 1 bit = match follows (offset + length encoded)
- * - Offset encoding: 2-byte value (distance from current position)
- * - Length encoding: variable-length gamma-style encoding
- * - Minimum match length: 3 bytes
- * - Window size: 64KB
+ * Because the offset field costs a fixed number of bits, the cost of a match
+ * depends only on its length, and that cost is a step function of the
+ * Elias-gamma brackets [1,1], [2,3], [4,7], [8,15], ... - every length inside a
+ * bracket costs the same. The parser therefore runs a backward dynamic program
+ * that considers, at each position, a literal or the longest length reachable in
+ * each bracket, and keeps whichever minimizes the total bit cost to the end.
+ *
+ * Written from the published format description, not derived from a reference
+ * implementation; the uncompressed length travels in a 4-byte little-endian
+ * header.
  *
  * References:
- * - bcrush implementation: https://github.com/jibsen/bcrush
- * - Original CRUSH by Ilya Muravyov (Encode's Forum)
+ *   bcrush (CRUSH format notes) - https://github.com/jibsen/bcrush
+ *   Elias gamma coding          - https://en.wikipedia.org/wiki/Elias_gamma_coding
  */
 
 (function (root, factory) {
@@ -56,211 +59,118 @@
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           CompressionAlgorithm, IAlgorithmInstance, TestCase, LinkItem } = AlgorithmFramework;
 
+  // ===== FORMAT CONSTANTS =====
+
+  const MIN_MATCH = 3;
+  const MAX_WINDOW = 65536;
+  const OFFSET_BITS = 16;
+  const HASH_BITS = 16;
+  const HASH_SIZE = OpCodes.Shl32(1, HASH_BITS);
+  const MAX_CHAIN_STEPS = 128;
+  const KNUTH_MULTIPLIER = 2654435761;
+
   // ===== BIT STREAM UTILITIES =====
 
+  /** MSB-first bit writer; a partial final byte is zero padded on flush. */
   class BitWriter {
-    constructor() {
-      this.output = [];
-      this.bitBuffer = 0;
-      this.bitCount = 0;
+    constructor(output) {
+      this.output = output;
+      this.buffer = 0;
+      this.bitsInBuffer = 0;
     }
 
     writeBit(bit) {
-      // Add bit to buffer (MSB first)
-      this.bitBuffer = OpCodes.Shl32(this.bitBuffer, 1) + (bit ? 1 : 0);
-      this.bitCount++;
+      this.buffer = OpCodes.Or32(this.buffer, OpCodes.Shl32(OpCodes.And32(bit, 1), 7 - this.bitsInBuffer));
+      ++this.bitsInBuffer;
 
-      // Flush byte when buffer is full
-      if (this.bitCount === 8) {
-        this.output.push(this.bitBuffer);
-        this.bitBuffer = 0;
-        this.bitCount = 0;
-      }
+      if (this.bitsInBuffer !== 8)
+        return;
+
+      this.output.push(this.buffer&0xFF);
+      this.buffer = 0;
+      this.bitsInBuffer = 0;
     }
 
     writeBits(value, count) {
-      // Write multiple bits (MSB first)
-      for (let i = count - 1; i >= 0; i--) {
-        const bit = OpCodes.Shr32(value, i) - OpCodes.Shl32(OpCodes.Shr32(value, i + 1), 1);
-        this.writeBit(bit);
-      }
+      for (let i = 0; i < count; ++i)
+        this.writeBit(OpCodes.And32(OpCodes.Shr32(value, count - 1 - i), 1));
     }
 
-    writeByte(byte) {
-      // Flush bit buffer first if it has content
-      if (this.bitCount > 0) {
-        const padding = 8 - this.bitCount;
-        this.bitBuffer = OpCodes.Shl32(this.bitBuffer, padding);
-        this.output.push(this.bitBuffer);
-        this.bitBuffer = 0;
-        this.bitCount = 0;
-      }
-      this.output.push(byte&0xFF);
-    }
+    flushBits() {
+      if (this.bitsInBuffer <= 0)
+        return;
 
-    writeGamma(value) {
-      // Elias gamma encoding: unary length prefix + binary value
-      if (value < 1) return;
-
-      // Find bit length
-      let bitLen = 0;
-      let v = value;
-      while (v > 0) {
-        bitLen++;
-        v = OpCodes.Shr32(v, 1);
-      }
-
-      // Write unary prefix (bitLen-1 ones, then a zero)
-      for (let i = 0; i < bitLen - 1; i++) {
-        this.writeBit(1);
-      }
-      this.writeBit(0);
-
-      // Write binary value (excluding leading 1)
-      for (let i = bitLen - 2; i >= 0; i--) {
-        const bit = OpCodes.Shr32(value, i) - OpCodes.Shl32(OpCodes.Shr32(value, i + 1), 1);
-        this.writeBit(bit);
-      }
-    }
-
-    flush() {
-      if (this.bitCount > 0) {
-        const padding = 8 - this.bitCount;
-        this.bitBuffer = OpCodes.Shl32(this.bitBuffer, padding);
-        this.output.push(this.bitBuffer);
-        this.bitBuffer = 0;
-        this.bitCount = 0;
-      }
-      return this.output;
+      this.output.push(this.buffer&0xFF);
+      this.buffer = 0;
+      this.bitsInBuffer = 0;
     }
   }
 
+  /** MSB-first bit reader. */
   class BitReader {
-    constructor(data) {
+    constructor(data, offset) {
       this.data = data;
-      this.pos = 0;
-      this.bitBuffer = 0;
-      this.bitCount = 0;
+      this.pos = offset;
+      this.buffer = 0;
+      this.bitsInBuffer = 0;
     }
 
     readBit() {
-      if (this.bitCount === 0) {
-        if (this.pos >= this.data.length) {
-          return 0;
-        }
-        this.bitBuffer = this.data[this.pos++];
-        this.bitCount = 8;
+      if (this.bitsInBuffer === 0) {
+        if (this.pos >= this.data.length)
+          throw new Error('Crush: unexpected end of stream while reading bits');
+        this.buffer = this.data[this.pos++];
+        this.bitsInBuffer = 8;
       }
 
-      this.bitCount--;
-      const bit = OpCodes.Shr32(this.bitBuffer, 7);
-      this.bitBuffer = OpCodes.Shl32(this.bitBuffer, 1)&0xFF;
+      const bit = OpCodes.And32(OpCodes.Shr32(this.buffer, 7), 1);
+      this.buffer = OpCodes.And32(OpCodes.Shl32(this.buffer, 1), 0xFF);
+      --this.bitsInBuffer;
       return bit;
     }
 
     readBits(count) {
       let result = 0;
-      for (let i = 0; i < count; i++) {
-        result = OpCodes.Shl32(result, 1) + this.readBit();
-      }
+      for (let i = 0; i < count; ++i)
+        result = OpCodes.Or32(OpCodes.Shl32(result, 1), this.readBit());
       return result;
-    }
-
-    readByte() {
-      if (this.bitCount > 0) {
-        // Discard remaining bits in buffer
-        this.bitCount = 0;
-        this.bitBuffer = 0;
-      }
-      if (this.pos >= this.data.length) {
-        return 0;
-      }
-      return this.data[this.pos++];
-    }
-
-    readGamma() {
-      // Decode Elias gamma code
-      let length = 1;
-
-      // Count leading ones
-      while (this.readBit() === 1) {
-        length++;
-      }
-
-      // Read remaining bits
-      let value = 1;
-      for (let i = 0; i < length - 1; i++) {
-        value = OpCodes.Shl32(value, 1) + this.readBit();
-      }
-
-      return value;
     }
   }
 
-  // ===== HASH TABLE FOR MATCH FINDING =====
-
-  class HashTable {
-    constructor(windowSize) {
-      this.windowSize = windowSize;
-      this.hashSize = 65536; // 2^16 hash entries
-      this.hashTable = new Array(this.hashSize).fill(-1);
-      this.prev = new Array(windowSize).fill(-1);
+  /** Index of the most significant set bit of a positive integer. */
+  function highestBitIndex(value) {
+    let index = 0;
+    let v = OpCodes.Shr32(value, 1);
+    while (v !== 0) {
+      ++index;
+      v = OpCodes.Shr32(v, 1);
     }
+    return index;
+  }
 
-    hash3(data, pos) {
-      // Hash 3 bytes
-      if (pos + 2 >= data.length) {
-        return 0;
-      }
-      const h = OpCodes.Shl32(data[pos], 8) +
-                OpCodes.Shl32(data[pos + 1], 4) +
-                OpCodes.Shr32(data[pos + 2], 4);
-      return h % this.hashSize;
-    }
+  /** Number of bits an Elias-gamma code for value occupies: 2*floor(log2(v)) + 1. */
+  function gammaBits(value) {
+    return 2 * highestBitIndex(value) + 1;
+  }
 
-    insert(data, pos) {
-      const h = this.hash3(data, pos);
-      const idx = pos % this.windowSize;
-      this.prev[idx] = this.hashTable[h];
-      this.hashTable[h] = pos;
-    }
+  function writeGamma(writer, value) {
+    const bits = highestBitIndex(value);
+    for (let i = 0; i < bits; ++i)
+      writer.writeBit(0);
+    for (let i = bits; i >= 0; --i)
+      writer.writeBit(OpCodes.And32(OpCodes.Shr32(value, i), 1));
+  }
 
-    find(data, pos, maxLen) {
-      const h = this.hash3(data, pos);
-      let bestLen = 0;
-      let bestDist = 0;
+  function readGamma(reader) {
+    let zeros = 0;
+    while (reader.readBit() === 0)
+      ++zeros;
 
-      const windowStart = Math.max(0, pos - this.windowSize);
-      let chainPos = this.hashTable[h];
-      let chainDepth = 0;
-      const maxChainDepth = 128; // Limit search depth for speed
+    let value = 1;
+    for (let i = 0; i < zeros; ++i)
+      value = OpCodes.Or32(OpCodes.Shl32(value, 1), reader.readBit());
 
-      while (chainPos >= windowStart && chainDepth < maxChainDepth) {
-        if (chainPos < pos) {
-          // Calculate match length
-          let len = 0;
-          while (len < maxLen &&
-                 pos + len < data.length &&
-                 data[chainPos + len] === data[pos + len]) {
-            len++;
-          }
-
-          // Update best match
-          if (len > bestLen) {
-            bestLen = len;
-            bestDist = pos - chainPos;
-            if (len >= maxLen) break; // Found maximum possible match
-          }
-        }
-
-        // Follow chain
-        const idx = chainPos % this.windowSize;
-        chainPos = this.prev[idx];
-        chainDepth++;
-      }
-
-      return { length: bestLen, distance: bestDist };
-    }
+    return value;
   }
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -271,7 +181,7 @@
 
       // Required metadata
       this.name = "Crush";
-      this.description = "Fast LZ77-based compression algorithm by Ilya Muravyov. Simple and efficient design suitable for embedded systems and real-time applications. Uses hash-based match finding with gamma encoding for compact representation.";
+      this.description = "Fast LZ77 coder by Ilya Muravyov. Every token carries a single tag bit; matches add an Elias-gamma coded length and a fixed 16-bit offset. The parse is a backward dynamic program over the gamma cost brackets rather than a greedy longest-match choice.";
       this.inventor = "Ilya Muravyov";
       this.year = 2010;
       this.category = CategoryType.COMPRESSION;
@@ -279,11 +189,6 @@
       this.securityStatus = null;
       this.complexity = ComplexityType.INTERMEDIATE;
       this.country = CountryCode.RU;
-
-      // Algorithm parameters
-      this.WINDOW_SIZE = 65536;       // 64KB sliding window
-      this.MIN_MATCH_LENGTH = 3;      // Minimum match length
-      this.MAX_MATCH_LENGTH = 258;    // Maximum match length
 
       // Documentation and references
       this.documentation = [
@@ -298,230 +203,262 @@
         new LinkItem("Compression Benchmark", "http://mattmahoney.net/dc/text.html")
       ];
 
-      // Test vectors - round-trip compression tests
-      // Note: Expected values match actual Crush compression output
+      // Wire format (byte-identical to CompressionWorkbench's BB_Crush):
+      //   4 bytes uncompressed size (little-endian); if 0, no payload follows.
+      //   Otherwise an MSB-first bitstream of tokens:
+      //     bit 0, 8-bit literal byte                             -- literal
+      //     bit 1, Elias-gamma (length - 2), 16-bit (offset - 1)   -- match
+      //   The trailing partial byte is zero padded.
       this.tests = [
         {
-          text: "Empty input - edge case",
-          uri: "https://github.com/jibsen/bcrush",
           input: [],
-          expected: []
+          expected: [0, 0, 0, 0],
+          text: "Empty input - header only",
+          uri: "https://github.com/jibsen/bcrush"
         },
         {
-          text: "Single byte - literal encoding",
-          uri: "https://github.com/jibsen/bcrush",
           input: OpCodes.AnsiToBytes("A"),
-          // Bit 0 (literal), byte 'A', flush padding
-          expected: [0x00, 0x41]
+          expected: [1, 0, 0, 0, 32, 128],
+          text: "Single byte literal",
+          uri: "https://github.com/jibsen/bcrush"
         },
         {
-          text: "Two different bytes - two literals",
-          uri: "https://github.com/jibsen/bcrush",
-          input: OpCodes.AnsiToBytes("AB"),
-          // Bit 0 (literal A), bit 0 (literal B)
-          expected: [0x00, 0x41, 0x00, 0x42]
-        },
-        {
-          text: "Three A's - below minimum match",
-          uri: "https://github.com/jibsen/bcrush",
-          input: OpCodes.AnsiToBytes("AAA"),
-          // All literals (match len=2 < MIN_MATCH_LENGTH=3)
-          expected: [0x00, 0x41, 0x00, 0x41, 0x00, 0x41]
-        },
-        {
-          text: "Four A's - minimum viable match",
-          uri: "https://github.com/jibsen/bcrush",
-          input: OpCodes.AnsiToBytes("AAAA"),
-          // First A literal, then match len=3, dist=1
-          // Bit 0, byte 65, bit 1, gamma(3)=110 0, offset bytes 0x00,0x00
-          expected: [0x00, 0x41, 0xD0, 0x00, 0x00]
-        },
-        {
-          text: "Repeated pattern ABCABC - pattern match",
-          uri: "https://github.com/jibsen/bcrush",
-          input: OpCodes.AnsiToBytes("ABCABC"),
-          // ABC as literals, then match len=3 dist=3
-          expected: [0x00, 0x41, 0x00, 0x42, 0x00, 0x43, 0xD0, 0x02, 0x00]
-        },
-        {
-          text: "Long repetition - efficient compression",
-          uri: "https://github.com/jibsen/bcrush",
           input: OpCodes.AnsiToBytes("AAAAAAAAAA"),
-          // First A literal, then long match
-          expected: [] // Round-trip test only
+          expected: [10, 0, 0, 0, 32, 206, 0, 0],
+          text: "Run of one byte - literal then an overlapping match",
+          uri: "https://github.com/jibsen/bcrush"
         },
         {
-          text: "Mixed content - realistic data",
-          uri: "https://github.com/jibsen/bcrush",
-          input: OpCodes.AnsiToBytes("The quick brown fox jumps"),
-          expected: [] // Round-trip test only
+          input: OpCodes.AnsiToBytes("ABAB"),
+          expected: [4, 0, 0, 0, 32, 144, 136, 36, 32],
+          text: "Alternating pattern",
+          uri: "https://github.com/jibsen/bcrush"
+        },
+        {
+          input: OpCodes.AnsiToBytes("ABCABCABCABC"),
+          expected: [12, 0, 0, 0, 32, 144, 136, 115, 128, 1, 0],
+          text: "Repeating sequence",
+          uri: "https://github.com/jibsen/bcrush"
+        },
+        {
+          input: OpCodes.AnsiToBytes("Hello World"),
+          expected: [11, 0, 0, 0, 36, 25, 77, 134, 195, 120, 128, 174, 111, 57, 27, 12, 128],
+          text: "Natural text without repeats",
+          uri: "https://github.com/jibsen/bcrush"
         }
       ];
-    }
 
-    /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
-   */
+      // For test suite compatibility
+      this.testVectors = this.tests;
+    }
 
     CreateInstance(isInverse = false) {
       return new CrushInstance(this, isInverse);
     }
   }
 
-  /**
- * Crush cipher instance implementing Feed/Result pattern
- * @class
- * @extends {IBlockCipherInstance}
- */
-
   class CrushInstance extends IAlgorithmInstance {
-    /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
-   * @param {boolean} [isInverse=false] - Decryption mode flag
-   */
-
     constructor(algorithm, isInverse = false) {
       super(algorithm);
-      this.isInverse = isInverse;
+      this.isInverse = isInverse; // true = decompress, false = compress
       this.inputBuffer = [];
     }
-
-    /**
-   * Feed data to cipher for processing
-   * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
-   */
 
     Feed(data) {
       if (!data || data.length === 0) return;
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
-    /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
-   */
-
     Result() {
-      if (this.inputBuffer.length === 0) {
-        return [];
-      }
-
       if (this.isInverse) {
-        return this._decompress();
-      } else {
-        return this._compress();
-      }
-    }
-
-    _compress() {
-      const writer = new BitWriter();
-      const hashTable = new HashTable(this.algorithm.WINDOW_SIZE);
-      let pos = 0;
-
-      while (pos < this.inputBuffer.length) {
-        // Find best match
-        const maxLen = Math.min(
-          this.algorithm.MAX_MATCH_LENGTH,
-          this.inputBuffer.length - pos
-        );
-        const match = hashTable.find(this.inputBuffer, pos, maxLen);
-
-        // Decide whether to encode as match or literal
-        if (match.length >= this.algorithm.MIN_MATCH_LENGTH) {
-          // Encode match: bit 1, gamma(length), offset bytes
-          writer.writeBit(1);
-          writer.writeGamma(match.length);
-
-          // Write offset as 2 bytes (little-endian)
-          const offset = match.distance - 1;
-          writer.writeByte(offset&0xFF);
-          writer.writeByte(OpCodes.Shr32(offset, 8)&0xFF);
-
-          // Insert positions into hash table
-          for (let i = 0; i < match.length; i++) {
-            if (pos + i + 2 < this.inputBuffer.length) {
-              hashTable.insert(this.inputBuffer, pos + i);
-            }
-          }
-
-          pos += match.length;
-        } else {
-          // Encode literal: bit 0, byte value
-          writer.writeBit(0);
-          writer.writeByte(this.inputBuffer[pos]);
-
-          // Insert into hash table
-          if (pos + 2 < this.inputBuffer.length) {
-            hashTable.insert(this.inputBuffer, pos);
-          }
-
-          pos++;
-        }
+        if (this.inputBuffer.length === 0) return [];
+        const result = this.decompress(this.inputBuffer);
+        this.inputBuffer = [];
+        return result;
       }
 
+      // Even empty input yields the fixed 4-byte size header.
+      const result = this.compress(this.inputBuffer);
       this.inputBuffer = [];
-      return writer.flush();
+      return result;
     }
 
-    _decompress() {
-      const reader = new BitReader(this.inputBuffer);
+    compress(data) {
+      const src = data || [];
+      const n = src.length;
       const output = [];
 
-      while (reader.pos < this.inputBuffer.length || reader.bitCount > 0) {
-        const bit = reader.readBit();
+      output.push(n&0xFF);
+      output.push(OpCodes.Shr32(n, 8)&0xFF);
+      output.push(OpCodes.Shr32(n, 16)&0xFF);
+      output.push(OpCodes.Shr32(n, 24)&0xFF);
 
-        if (bit === 1) {
-          // Match token
-          const length = reader.readGamma();
-          const offsetLow = reader.readByte();
-          const offsetHigh = reader.readByte();
-          const offset = offsetLow + OpCodes.Shl32(offsetHigh, 8) + 1;
+      if (n === 0)
+        return output;
 
-          // Copy from history
-          const startPos = output.length - offset;
-          if (startPos < 0 || startPos >= output.length) {
-            // Invalid offset - stop decompression
-            break;
-          }
+      const matches = this._findAllMatches(src);
+      const choiceLen = this._optimalParse(matches.length, n);
 
-          for (let i = 0; i < length; i++) {
-            const copyPos = startPos + i;
-            if (copyPos >= 0 && copyPos < output.length) {
-              output.push(output[copyPos]);
-            } else {
-              break;
-            }
-          }
+      const writer = new BitWriter(output);
+      let i = 0;
+      while (i < n) {
+        const len = choiceLen[i];
+        if (len >= MIN_MATCH) {
+          writer.writeBit(1);
+          writeGamma(writer, len - MIN_MATCH + 1);
+          writer.writeBits(matches.offset[i] - 1, OFFSET_BITS);
+          i += len;
         } else {
-          // Literal token
-          const byte = reader.readByte();
-          if (reader.pos > this.inputBuffer.length && reader.bitCount === 0) {
-            break; // End of data
-          }
-          output.push(byte);
-        }
-
-        // Safety check to prevent infinite loops
-        if (output.length > this.inputBuffer.length * 1000) {
-          break;
+          writer.writeBit(0);
+          writer.writeBits(src[i], 8);
+          ++i;
         }
       }
 
-      this.inputBuffer = [];
+      writer.flushBits();
       return output;
+    }
+
+    decompress(data) {
+      const bytes = data || [];
+      if (bytes.length < 4)
+        return [];
+
+      const originalSize = OpCodes.Pack32LE(bytes[0], bytes[1], bytes[2], bytes[3]);
+      if (originalSize === 0)
+        return [];
+
+      const reader = new BitReader(bytes, 4);
+      const dst = new Array(originalSize);
+      let pos = 0;
+
+      while (pos < originalSize) {
+        const tag = reader.readBit();
+        if (tag === 0) {
+          dst[pos++] = reader.readBits(8)&0xFF;
+        } else {
+          const len = readGamma(reader) + MIN_MATCH - 1;
+          const off = reader.readBits(OFFSET_BITS) + 1;
+
+          if (off > pos)
+            throw new Error('Crush: match offset ' + off + ' invalid at position ' + pos);
+
+          for (let k = 0; k < len && pos < originalSize; ++k, ++pos)
+            dst[pos] = dst[pos - off];
+        }
+      }
+
+      return dst;
+    }
+
+    /** Longest match reachable within the window for every position. */
+    _findAllMatches(src) {
+      const n = src.length;
+      const length = new Int32Array(n);
+      const offset = new Int32Array(n);
+
+      const hashHead = new Int32Array(HASH_SIZE);
+      hashHead.fill(-1);
+      const chain = new Int32Array(n);
+
+      for (let i = 0; i < n; ++i) {
+        if (i + MIN_MATCH <= n) {
+          const h = this._hash3(src, i);
+          let candidate = hashHead[h];
+          const minPos = Math.max(0, i - MAX_WINDOW);
+          const maxLen = n - i;
+          let bestLen = 0;
+          let bestOff = 0;
+          let steps = MAX_CHAIN_STEPS;
+
+          while (candidate >= minPos && steps-- > 0) {
+            if (bestLen === 0 || src[candidate + bestLen] === src[i + bestLen]) {
+              let len = 0;
+              while (len < maxLen && src[candidate + len] === src[i + len])
+                ++len;
+
+              if (len > bestLen) {
+                bestLen = len;
+                bestOff = i - candidate;
+                if (bestLen >= maxLen)
+                  break;
+              }
+            }
+
+            const prev = chain[candidate];
+            if (prev >= candidate)
+              break;
+            candidate = prev;
+          }
+
+          if (bestLen >= MIN_MATCH) {
+            length[i] = bestLen;
+            offset[i] = bestOff;
+          }
+
+          chain[i] = hashHead[h];
+          hashHead[h] = i;
+        }
+      }
+
+      return { length: length, offset: offset };
+    }
+
+    /**
+     * Backward dynamic program over literal-versus-match choices. The candidate
+     * lengths at each position are the longest length reachable in each
+     * Elias-gamma cost bracket, since all lengths inside a bracket cost the
+     * same number of bits.
+     */
+    _optimalParse(matchLen, n) {
+      const literalCost = 1 + 8;
+      const cost = new Int32Array(n + 1);
+      const choiceLen = new Int32Array(n);
+
+      for (let i = n - 1; i >= 0; --i) {
+        let best = literalCost + cost[i + 1];
+        let bestLen = 0;
+
+        const maxLen = matchLen[i];
+        if (maxLen >= MIN_MATCH) {
+          const maxV = maxLen - MIN_MATCH + 1;
+          let upper = 1;
+          for (;;) {
+            const v = Math.min(maxV, upper);
+            const len = v + MIN_MATCH - 1;
+            const candidateCost = 1 + gammaBits(v) + OFFSET_BITS + cost[i + len];
+            if (candidateCost < best) {
+              best = candidateCost;
+              bestLen = len;
+            }
+            if (v === maxV)
+              break;
+            upper = upper * 2 + 1;
+          }
+        }
+
+        cost[i] = best;
+        choiceLen[i] = bestLen;
+      }
+
+      return choiceLen;
+    }
+
+    /** Knuth multiplicative hash over the three bytes at pos, folded to 16 bits. */
+    _hash3(data, pos) {
+      const key = data[pos] * 65536 + data[pos + 1] * 256 + data[pos + 2];
+      return OpCodes.Shr32(OpCodes.Mul32(key, KNUTH_MULTIPLIER), 32 - HASH_BITS);
     }
   }
 
-  // Register algorithm
+  // ===== REGISTRATION =====
+
   const algorithmInstance = new CrushCompression();
   if (!AlgorithmFramework.Find(algorithmInstance.name)) {
     RegisterAlgorithm(algorithmInstance);
   }
+
+  // ===== EXPORTS =====
 
   return { CrushCompression, CrushInstance };
 }));
