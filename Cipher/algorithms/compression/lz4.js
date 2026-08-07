@@ -69,8 +69,10 @@
       this.RUN_BITS = 4;            // Literal run bits in token
       this.RUN_MASK = OpCodes.BitMask(this.RUN_BITS);
       this.MAX_DISTANCE = 65535;    // Maximum backward distance
-      this.HASH_SIZE_U32 = 4096;    // Hash table size (4KB)
-      this.HASH_LOG = 12;
+      this.HASH_SIZE_U32 = 65536;   // Hash table size (64K entries)
+      this.HASH_LOG = 16;
+      this.LAST_LITERALS = 5;       // Bytes always kept as literals at end of input
+      this.MF_LIMIT = 12;           // Distance from end within which no match may start
 
       // Documentation and references
       this.documentation = [
@@ -85,55 +87,46 @@
         new LinkItem("Real World Compression Benchmark", "https://github.com/inikep/lzbench")
       ];
 
-      // Test vectors - manually verified against LZ4 block format specification
-      // Format: token (1 byte) + optional literal length + literals + offset (2 bytes LE) + optional match length
+      // Test vectors - cross-checked byte-for-byte against CompressionWorkbench's
+      // Lz4BlockCompressor (BB_Lz4), which is the authoritative reference for this
+      // container: 4-byte little-endian original length, then the LZ4 block payload.
+      // No match may start within MF_LIMIT (12) bytes of the input end, so short
+      // inputs always encode as a single all-literals sequence.
       this.tests = [
         {
-          text: "All literals - no matches (ABCD)",
+          text: "Empty input",
           uri: "https://github.com/lz4/lz4/blob/dev/doc/lz4_Block_format.md",
-          input: OpCodes.AnsiToBytes("ABCD"),
-          // Token: 0x40 = 0100 0000 = 4 literals, 0 match length (end sequence)
-          // Followed by 4 literal bytes: A B C D
-          expected: [0x40, 0x41, 0x42, 0x43, 0x44]
+          input: [],
+          expected: [0x00, 0x00, 0x00, 0x00]
         },
         {
-          text: "Simple repetition - AAAAA (5 A's, min for match)",
+          text: "Single byte 0x41",
+          uri: "https://github.com/lz4/lz4/blob/dev/doc/lz4_Block_format.md",
+          input: [0x41],
+          expected: [0x01, 0x00, 0x00, 0x00, 0x10, 0x41]
+        },
+        {
+          text: "All literals, too short for a match - AAAAA",
           uri: "https://github.com/lz4/lz4/blob/dev/doc/lz4_Block_format.md",
           input: OpCodes.AnsiToBytes("AAAAA"),
-          // Token: 0x10 = 0001 0000 = 1 literal, 0 match (0 in match field means MIN_MATCH=4)
-          // Literal: A (0x41)
-          // Offset: 0x0001 (1 byte back, little-endian)
-          // Match of 4 more A's (total 5, match length = 5-1 = 4, encoded as 4-MIN_MATCH = 0)
-          expected: [0x10, 0x41, 0x01, 0x00]
+          expected: [0x05, 0x00, 0x00, 0x00, 0x50, 0x41, 0x41, 0x41, 0x41, 0x41]
         },
         {
-          text: "Pattern ABCDABCD (8 bytes with 4-byte match)",
+          text: "All literals, too short for a match - ABCDABCD",
           uri: "https://github.com/lz4/lz4/blob/dev/doc/lz4_Block_format.md",
           input: OpCodes.AnsiToBytes("ABCDABCD"),
-          // Token: 0x40 = 0100 0000 = 4 literals, 0 match
-          // Literals: A B C D (0x41 0x42 0x43 0x44)
-          // Offset: 0x0004 (4 bytes back, little-endian)
-          // Match length: 4 (encoded as 0)
-          expected: [0x40, 0x41, 0x42, 0x43, 0x44, 0x04, 0x00]
+          expected: [0x08, 0x00, 0x00, 0x00, 0x80, 0x41, 0x42, 0x43, 0x44, 0x41, 0x42, 0x43, 0x44]
         },
         {
-          text: "Long repetition - AAAAAAAA (8 A's)",
+          text: "Text sample with a real match - 'the quick brown fox...' x4",
           uri: "https://github.com/lz4/lz4/blob/dev/doc/lz4_Block_format.md",
-          input: OpCodes.AnsiToBytes("AAAAAAAA"),
-          // Token: 0x13 = 0001 0011 = 1 literal, 3 match length
-          // Literal: A (0x41)
-          // Offset: 0x0001 (1 byte back, little-endian)
-          // Match length: 7 bytes (encoded as 7-MIN_MATCH = 7-4 = 3 in token)
-          // Total: 1 literal A + 7 matched A's = 8 A's
-          expected: [0x13, 0x41, 0x01, 0x00]
-        },
-        {
-          text: "Mixed pattern - Hello",
-          uri: "https://github.com/lz4/lz4/blob/dev/doc/lz4_Block_format.md",
-          input: OpCodes.AnsiToBytes("Hello"),
-          // Token: 0x50 = 0101 0000 = 5 literals, 0 match (end sequence, all literals)
-          // Literals: H e l l o
-          expected: [0x50, 0x48, 0x65, 0x6C, 0x6C, 0x6F]
+          input: OpCodes.AnsiToBytes("the quick brown fox jumps over the lazy dog. ".repeat(4)),
+          expected: [
+            0xb4, 0x00, 0x00, 0x00, 0xf0, 0x10, 0x74, 0x68, 0x65, 0x20, 0x71, 0x75, 0x69, 0x63, 0x6b, 0x20,
+            0x62, 0x72, 0x6f, 0x77, 0x6e, 0x20, 0x66, 0x6f, 0x78, 0x20, 0x6a, 0x75, 0x6d, 0x70, 0x73, 0x20,
+            0x6f, 0x76, 0x65, 0x72, 0x20, 0x1f, 0x00, 0x91, 0x6c, 0x61, 0x7a, 0x79, 0x20, 0x64, 0x6f, 0x67,
+            0x2e, 0x0e, 0x00, 0x0f, 0x2d, 0x00, 0x6b, 0x50, 0x64, 0x6f, 0x67, 0x2e, 0x20
+          ]
         }
       ];
     }
@@ -178,6 +171,8 @@
       this.MAX_DISTANCE = algorithm.MAX_DISTANCE;
       this.HASH_SIZE_U32 = algorithm.HASH_SIZE_U32;
       this.HASH_LOG = algorithm.HASH_LOG;
+      this.LAST_LITERALS = algorithm.LAST_LITERALS;
+      this.MF_LIMIT = algorithm.MF_LIMIT;
     }
 
     /**
@@ -188,7 +183,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
+      this.inputBuffer.push(...data);
     }
 
     /**
@@ -198,9 +193,6 @@
    */
 
     Result() {
-      if (this.inputBuffer.length === 0)
-        return [];
-
       const result = this.isInverse ? this._decompress() : this._compress();
       this.inputBuffer = [];
       return result;
@@ -212,93 +204,82 @@
       const input = this.inputBuffer;
       const inputLength = input.length;
 
-      if (inputLength === 0)
-        return [];
+      // Container: 4-byte little-endian original length, then the LZ4 block payload
+      const header = OpCodes.Unpack32LE(inputLength);
+      const payload = inputLength === 0 ? [] : this._compressBlock(input);
+      return header.concat(payload);
+    }
 
+    _compressBlock(input) {
+      const inputLength = input.length;
       const output = [];
-      let ip = 0;  // Input position
+      let pos = 0;
       let anchor = 0;  // Start of current literal run
       const hashTable = new Int32Array(this.HASH_SIZE_U32);
       hashTable.fill(-1);
 
-      while (ip < inputLength) {
-        // Find match using hash table
-        let matchPos = -1;
+      // No match may start within MF_LIMIT bytes of the end; matches may not
+      // extend into the final LAST_LITERALS bytes, which must stay literals.
+      const searchLimit = inputLength - this.MF_LIMIT;
+      const matchLimit = inputLength - this.LAST_LITERALS;
+
+      while (pos < searchLimit) {
+        let matchOffset = 0;
         let matchLength = 0;
 
-        // Try to find a match (need at least MIN_MATCH bytes remaining)
-        if (ip + this.MIN_MATCH <= inputLength) {
-          const h = this._hash(input, ip);
-          matchPos = hashTable[h];
+        const h = this._hash(input, pos);
+        const candidate = hashTable[h];
+        hashTable[h] = pos;
 
-          // Validate match
-          if (matchPos >= 0 && (ip - matchPos) <= this.MAX_DISTANCE)
-            matchLength = this._countMatch(input, matchPos, ip, inputLength);
-
-          // Update hash table after checking for match
-          hashTable[h] = ip;
+        if (candidate >= 0 && (pos - candidate) <= this.MAX_DISTANCE &&
+            input[candidate] === input[pos] &&
+            input[candidate + 1] === input[pos + 1] &&
+            input[candidate + 2] === input[pos + 2] &&
+            input[candidate + 3] === input[pos + 3]) {
+          matchOffset = pos - candidate;
+          matchLength = this.MIN_MATCH;
+          while (pos + matchLength < matchLimit &&
+                 input[candidate + matchLength] === input[pos + matchLength])
+            ++matchLength;
         }
 
-        // If match found and long enough
-        if (matchLength >= this.MIN_MATCH) {
-          // Calculate literal count
-          const literalCount = ip - anchor;
-
-          // Write token + literals + offset + match length
-          this._writeSequence(output, input, anchor, literalCount,
-                              ip - matchPos, matchLength - this.MIN_MATCH);
-
-          // Skip matched bytes
-          ip += matchLength;
-          anchor = ip;
-
-          // Update hash table for skipped positions
-          for (let i = 1; i < matchLength && (ip - matchLength + i) + this.MIN_MATCH <= inputLength; ++i) {
-            const pos = ip - matchLength + i;
-            const h = this._hash(input, pos);
-            hashTable[h] = pos;
-          }
-        } else {
-          // No match, move forward
-          if (ip + this.MIN_MATCH <= inputLength) {
-            const h = this._hash(input, ip);
-            hashTable[h] = ip;
-          }
-          ++ip;
+        if (matchLength < this.MIN_MATCH) {
+          ++pos;
+          continue;
         }
+
+        // Emit sequence: literal length + match
+        const literalCount = pos - anchor;
+        this._writeSequence(output, input, anchor, literalCount,
+                            matchOffset, matchLength - this.MIN_MATCH);
+
+        // Advance past the match, inserting hash entries for skipped positions
+        const end = pos + matchLength;
+        ++pos;
+        while (pos < end && pos + 3 < inputLength) {
+          hashTable[this._hash(input, pos)] = pos;
+          ++pos;
+        }
+        pos = end;
+        anchor = pos;
       }
 
       // Final literal sequence
       const finalLiterals = inputLength - anchor;
-      if (finalLiterals > 0)
-        this._writeFinalLiterals(output, input, anchor, finalLiterals);
+      this._writeFinalLiterals(output, input, anchor, finalLiterals);
 
       return output;
     }
 
     _hash(data, pos) {
-      if (pos + 4 > data.length)
-        return 0;
-
-      // Simple hash of 4 bytes using OpCodes
+      // Hash of 4 bytes (little-endian) using the LZ4 multiplicative constant
       const val = OpCodes.Pack32LE(
         OpCodes.ToByte(data[pos]),
         OpCodes.ToByte(data[pos+1]),
         OpCodes.ToByte(data[pos+2]),
         OpCodes.ToByte(data[pos+3])
       );
-      return OpCodes.ToByte(OpCodes.Shr32(OpCodes.ToDWord(val * 2654435761), 32 - this.HASH_LOG));
-    }
-
-    _countMatch(data, matchPos, currentPos, maxPos) {
-      let len = 0;
-      // LZ4 allows overlapping matches for RLE patterns
-      // We compare byte-by-byte and can match beyond currentPos
-      while (currentPos + len < maxPos &&
-             data[matchPos + len] === data[currentPos + len]) {
-        ++len;
-      }
-      return len;
+      return OpCodes.Shr32(OpCodes.Mul32(val, 2654435761), 32 - this.HASH_LOG);
     }
 
     _writeSequence(output, input, literalStart, literalCount, offset, matchLength) {
@@ -380,6 +361,19 @@
 
     _decompress() {
       const input = this.inputBuffer;
+      if (input.length < 4)
+        return [];
+
+      // Container: 4-byte little-endian original length, then the LZ4 block payload
+      const originalLength = OpCodes.Pack32LE(
+        OpCodes.ToByte(input[0]), OpCodes.ToByte(input[1]),
+        OpCodes.ToByte(input[2]), OpCodes.ToByte(input[3])
+      );
+      const output = this._decompressBlock(input.slice(4));
+      return output.length === originalLength ? output : output.slice(0, originalLength);
+    }
+
+    _decompressBlock(input) {
       const inputLength = input.length;
       const output = [];
       let ip = 0;  // Input position
@@ -412,11 +406,11 @@
         // Read offset (little-endian)
         if (ip + 1 >= inputLength)
           break;
-        const offset = OpCodes.ToByte(input[ip])|OpCodes.Shl16(OpCodes.ToByte(input[ip+1]), 8);
+        const offset = OpCodes.Pack16LE(OpCodes.ToByte(input[ip]), OpCodes.ToByte(input[ip+1]));
         ip += 2;
 
         // Decode match length
-        const matchLenField = token&0x0F;
+        const matchLenField = OpCodes.And8(token, 0x0F);
         let matchLength = matchLenField + this.MIN_MATCH;
         if (matchLenField === 15) {
           let len;

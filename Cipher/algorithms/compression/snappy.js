@@ -81,8 +81,9 @@
         {
           text: "Empty input - edge case",
           uri: "https://github.com/google/snappy/blob/main/format_description.txt",
+          // Compressed: 0x00 (varint: length=0), no payload
           input: [],
-          expected: []
+          expected: [0x00]
         },
         {
           text: "Single byte 'A' - literal tag 0x00, length 1",
@@ -137,6 +138,17 @@
           // Tag 0x15 = 21 = 0b00010101: bits[2-4]=5 (len-4), bits[5-7]=0 (offset_high), bits[0-1]=01 (copy1)
           input: OpCodes.AnsiToBytes("blah blah blah"),
           expected: [0x0E, 0x10, 0x62, 0x6C, 0x61, 0x68, 0x20, 0x15, 0x05]
+        },
+        {
+          text: "Text sample with real copy matches - 'the quick brown fox...' x4",
+          uri: "https://github.com/google/snappy/blob/main/format_description.txt",
+          input: OpCodes.AnsiToBytes("the quick brown fox jumps over the lazy dog. ".repeat(4)),
+          expected: [
+            0xb4, 0x01, 0x78, 0x74, 0x68, 0x65, 0x20, 0x71, 0x75, 0x69, 0x63, 0x6b, 0x20, 0x62, 0x72, 0x6f,
+            0x77, 0x6e, 0x20, 0x66, 0x6f, 0x78, 0x20, 0x6a, 0x75, 0x6d, 0x70, 0x73, 0x20, 0x6f, 0x76, 0x65,
+            0x72, 0x20, 0x01, 0x1f, 0x20, 0x6c, 0x61, 0x7a, 0x79, 0x20, 0x64, 0x6f, 0x67, 0x2e, 0x05, 0x0e,
+            0xfe, 0x2d, 0x00, 0xfe, 0x2d, 0x00, 0x08, 0x67, 0x2e, 0x20
+          ]
         }
       ];
     }
@@ -172,12 +184,14 @@
       this.inputBuffer = [];
 
       // Snappy parameters per format specification
-      this.MAX_HASH_TABLE_BITS = 14;
-      this.MAX_HASH_TABLE_SIZE = OpCodes.Shl32(1, this.MAX_HASH_TABLE_BITS);
+      this.HASH_TABLE_BITS = 14;
+      this.HASH_TABLE_SIZE = OpCodes.Shl32(1, this.HASH_TABLE_BITS);
       this.MIN_MATCH_LENGTH = 4;
-      this.MAX_OFFSET_1BYTE = 2048;
-      this.MAX_OFFSET_2BYTE = 65536;
+      this.MAX_MATCH_LENGTH = 64;
+      this.MAX_COPY1_OFFSET = 2047;
+      this.MAX_COPY2_OFFSET = 65535;
       this.MAX_LITERAL_LENGTH_SHORT = 60;
+      this.HASH_MULTIPLIER = 0x1E35A7BD;
     }
 
     /**
@@ -188,7 +202,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
+      this.inputBuffer.push(...data);
     }
 
     /**
@@ -198,19 +212,9 @@
    */
 
     Result() {
-      if (this.inputBuffer.length === 0) {
-        return [];
-      }
-
-      if (this.isInverse) {
-        const result = this._decompress(new Uint8Array(this.inputBuffer));
-        this.inputBuffer = [];
-        return Array.from(result);
-      } else {
-        const result = this._compress(new Uint8Array(this.inputBuffer));
-        this.inputBuffer = [];
-        return Array.from(result);
-      }
+      const result = this.isInverse ? this._decompress(new Uint8Array(this.inputBuffer)) : this._compress(new Uint8Array(this.inputBuffer));
+      this.inputBuffer = [];
+      return Array.from(result);
     }
 
     /**
@@ -218,64 +222,62 @@
      * Format: varint(uncompressed_length) + compressed_stream
      */
     _compress(input) {
-      if (input.length === 0) {
-        return new Uint8Array([]);
-      }
+      if (input.length === 0)
+        return new Uint8Array([0]); // varint 0
 
       const output = [];
 
       // Write uncompressed length as varint (per spec)
       this._writeVarint(output, input.length);
 
-      // For very small inputs, just use literals
-      if (input.length<this.MIN_MATCH_LENGTH) {
-        this._emitLiteral(output, input, 0, input.length);
-        return new Uint8Array(output);
-      }
-
       // Hash table for finding matches (LZ77)
-      const hashTable = new Int32Array(this.MAX_HASH_TABLE_SIZE);
+      const hashTable = new Int32Array(this.HASH_TABLE_SIZE);
       hashTable.fill(-1);
 
-      let inputPos = 0;
-      let lastLiteralStart = 0;
+      let pos = 0;
+      let litStart = 0;
+      const srcLen = input.length;
 
-      while (inputPos<input.length) {
-        // Try to find a match at current position
-        const match = this._findBestMatch(input, inputPos, hashTable);
+      while (pos + 3 < srcLen) {
+        const h = this._hash4(input, pos);
+        const candidate = hashTable[h];
+        hashTable[h] = pos;
 
-        if (match.length>=this.MIN_MATCH_LENGTH && match.offset>0) {
-          // Emit pending literals before the match
-          if (inputPos>lastLiteralStart) {
-            this._emitLiteral(output, input, lastLiteralStart, inputPos-lastLiteralStart);
+        if (candidate >= 0 && (pos - candidate) <= this.MAX_COPY2_OFFSET &&
+            input[candidate] === input[pos] &&
+            input[candidate + 1] === input[pos + 1] &&
+            input[candidate + 2] === input[pos + 2] &&
+            input[candidate + 3] === input[pos + 3]) {
+          // Found a match, emit pending literals first
+          if (pos > litStart)
+            this._emitLiteral(output, input, litStart, pos - litStart);
+
+          // Extend match
+          let matchLength = this.MIN_MATCH_LENGTH;
+          while (pos + matchLength < srcLen &&
+                 input[candidate + matchLength] === input[pos + matchLength] &&
+                 matchLength < this.MAX_MATCH_LENGTH)
+            ++matchLength;
+
+          const offset = pos - candidate;
+          this._emitCopy(output, offset, matchLength);
+
+          // Insert hash entries for positions inside the match
+          const end = pos + matchLength;
+          ++pos;
+          while (pos < end && pos + 3 < srcLen) {
+            hashTable[this._hash4(input, pos)] = pos;
+            ++pos;
           }
-
-          // Emit copy instruction
-          this._emitCopy(output, match.offset, match.length);
-
-          // Update hash table for all matched positions
-          const endPos = Math.min(inputPos+match.length, input.length);
-          for (let i = inputPos; i<endPos-3; ++i) {
-            const hash = this._hash4(input, i);
-            hashTable[hash] = i;
-          }
-
-          inputPos += match.length;
-          lastLiteralStart = inputPos;
-        } else {
-          // No good match, update hash and advance
-          if (inputPos+3<input.length) {
-            const hash = this._hash4(input, inputPos);
-            hashTable[hash] = inputPos;
-          }
-          ++inputPos;
-        }
+          pos = end;
+          litStart = pos;
+        } else
+          ++pos;
       }
 
       // Emit remaining literals
-      if (lastLiteralStart<input.length) {
-        this._emitLiteral(output, input, lastLiteralStart, input.length-lastLiteralStart);
-      }
+      if (litStart < srcLen)
+        this._emitLiteral(output, input, litStart, srcLen - litStart);
 
       return new Uint8Array(output);
     }
@@ -308,8 +310,8 @@
           let literalLength = OpCodes.Shr8(tag, 2)+1;
 
           // Extended length encoding for literals>60 bytes
-          if (literalLength>this.MAX_LITERAL_LENGTH_SHORT+1) {
-            const extraBytes = literalLength-this.MAX_LITERAL_LENGTH_SHORT-1;
+          if (literalLength>this.MAX_LITERAL_LENGTH_SHORT) {
+            const extraBytes = literalLength-this.MAX_LITERAL_LENGTH_SHORT;
             literalLength = 0;
             for (let i = 0; i<extraBytes && inputPos<input.length; ++i) {
               literalLength |= OpCodes.Shl32(input[inputPos++], i*8);
@@ -368,51 +370,11 @@
     }
 
     /**
-     * Find best match at current position using hash table
-     */
-    _findBestMatch(input, pos, hashTable) {
-      if (pos+this.MIN_MATCH_LENGTH>input.length) {
-        return { offset: 0, length: 0 };
-      }
-
-      const hash = this._hash4(input, pos);
-      const candidate = hashTable[hash];
-
-      if (candidate<0 || candidate>=pos) {
-        return { offset: 0, length: 0 };
-      }
-
-      const offset = pos-candidate;
-
-      // Check if offset is in valid range
-      if (offset === 0 || offset>this.MAX_OFFSET_2BYTE) {
-        return { offset: 0, length: 0 };
-      }
-
-      // Match length - compare bytes
-      let length = 0;
-      const maxLength = Math.min(64, input.length-pos); // Max copy length is 64
-
-      while (length<maxLength && input[candidate+length] === input[pos+length]) {
-        ++length;
-      }
-
-      return { offset: offset, length: length };
-    }
-
-    /**
-     * Hash function for 4-byte sequence (LZ77 hash)
+     * Hash function for a 4-byte little-endian sequence (Snappy multiplicative hash)
      */
     _hash4(input, pos) {
-      if (pos+3>=input.length) return 0;
-
-      // Simple hash combining 4 bytes
-      const hash = OpCodes.XorN(OpCodes.Shl32(input[pos], 8),
-                   OpCodes.XorN(OpCodes.Shl32(input[pos+1], 4),
-                   OpCodes.XorN(OpCodes.Shl32(input[pos+2], 2),
-                   input[pos+3])));
-
-      return OpCodes.AndN(hash, OpCodes.ToDWord(this.MAX_HASH_TABLE_SIZE-1));
+      const val = OpCodes.Pack32LE(input[pos], input[pos + 1], input[pos + 2], input[pos + 3]);
+      return OpCodes.Shr32(OpCodes.Mul32(val, this.HASH_MULTIPLIER), 32 - this.HASH_TABLE_BITS);
     }
 
     /**
@@ -454,25 +416,29 @@
 
     /**
      * Emit literal bytes with Snappy tag encoding
-     * Tag byte format: [length-1][00] for lengths 1-60
+     * Tag byte format: [length-1][00] for lengths 1-60, or an escape tag
+     * (60/61/62/63) followed by 1/2/3/4 little-endian bytes holding length-1.
      */
     _emitLiteral(output, input, start, length) {
-      if (length === 0) return;
+      const n = length - 1; // tag encodes length-1
 
-      if (length<=this.MAX_LITERAL_LENGTH_SHORT) {
-        // Short literal: tag = (OpCodes.Shl32((length-1), 2))|0x00
-        output.push(OpCodes.OrN(OpCodes.Shl8(length-1, 2), 0x00));
+      if (n < 60)
+        output.push(OpCodes.OrN(OpCodes.Shl8(n, 2), 0x00));
+      else if (n < 0x100) {
+        output.push(OpCodes.OrN(OpCodes.Shl8(60, 2), 0x00));
+        output.push(OpCodes.AndN(n, 0xFF));
+      } else if (n < 0x10000) {
+        output.push(OpCodes.OrN(OpCodes.Shl8(61, 2), 0x00));
+        const [b0, b1] = OpCodes.Unpack16LE(n);
+        output.push(b0, b1);
+      } else if (n < 0x1000000) {
+        output.push(OpCodes.OrN(OpCodes.Shl8(62, 2), 0x00));
+        const [b0, b1, b2] = OpCodes.Unpack32LE(n);
+        output.push(b0, b1, b2);
       } else {
-        // Extended literal length encoding
-        const extraBytes = this._varintSize(length-1);
-        output.push(OpCodes.OrN(OpCodes.Shl8(this.MAX_LITERAL_LENGTH_SHORT+extraBytes, 2), 0x00));
-
-        // Write length-1 as little-endian bytes
-        let remaining = length-1;
-        for (let i = 0; i<extraBytes; ++i) {
-          output.push(OpCodes.AndN(remaining, 0xFF));
-          remaining = OpCodes.Shr32(remaining, 8);
-        }
+        output.push(OpCodes.OrN(OpCodes.Shl8(63, 2), 0x00));
+        const [b0, b1, b2, b3] = OpCodes.Unpack32LE(n);
+        output.push(b0, b1, b2, b3);
       }
 
       // Copy literal bytes
@@ -482,30 +448,35 @@
     }
 
     /**
-     * Emit copy instruction with optimal tag type
+     * Emit copy instruction(s) with optimal tag type, chunking to MAX_MATCH_LENGTH
      */
     _emitCopy(output, offset, length) {
-      // Choose tag type based on offset size and length constraints
-      if (offset<this.MAX_OFFSET_1BYTE && length>=4 && length<=11) {
-        // 1-byte offset copy (tag type 01)
-        // Length encoded as len-4 in bits 2-4
-        // Offset upper 3 bits in bits 5-7, lower 8 bits in next byte
-        const [offsetLow, offsetHigh] = OpCodes.Unpack16LE(offset);
-        const tag = OpCodes.OrN(OpCodes.Shl8(length-4, 2), OpCodes.OrN(OpCodes.Shl8(offsetHigh, 5), 0x01));
-        output.push(tag, offsetLow);
+      while (length > 0) {
+        let chunk = Math.min(length, this.MAX_MATCH_LENGTH);
 
-      } else if (offset<this.MAX_OFFSET_2BYTE) {
-        // 2-byte offset copy (tag type 10)
-        // Length encoded as len-1 in upper 6 bits
-        const [offsetLow, offsetHigh] = OpCodes.Unpack16LE(offset);
-        const tag = OpCodes.OrN(OpCodes.Shl8(length-1, 2), 0x02);
-        output.push(tag, offsetLow, offsetHigh);
+        if (offset <= this.MAX_COPY1_OFFSET && chunk >= 4 && chunk <= 11) {
+          // 1-byte offset copy (tag type 01)
+          // Tag: OOOLLL01 where OOO = offset bits 10:8, LLL = length - 4
+          const [offsetLow, offsetHigh] = OpCodes.Unpack16LE(offset);
+          const tag = OpCodes.OrN(OpCodes.Shl8(chunk-4, 2), OpCodes.OrN(OpCodes.Shl8(offsetHigh, 5), 0x01));
+          output.push(tag, offsetLow);
+        } else if (offset <= this.MAX_COPY2_OFFSET) {
+          // 2-byte offset copy (tag type 10)
+          const l = Math.min(chunk, this.MAX_MATCH_LENGTH);
+          const [offsetLow, offsetHigh] = OpCodes.Unpack16LE(offset);
+          const tag = OpCodes.OrN(OpCodes.Shl8(l-1, 2), 0x02);
+          output.push(tag, offsetLow, offsetHigh);
+          chunk = l;
+        } else {
+          // 4-byte offset copy (tag type 11)
+          const l = Math.min(chunk, this.MAX_MATCH_LENGTH);
+          const [b0, b1, b2, b3] = OpCodes.Unpack32LE(offset);
+          const tag = OpCodes.OrN(OpCodes.Shl8(l-1, 2), 0x03);
+          output.push(tag, b0, b1, b2, b3);
+          chunk = l;
+        }
 
-      } else {
-        // 4-byte offset copy (tag type 11)
-        const [b0, b1, b2, b3] = OpCodes.Unpack32LE(offset);
-        const tag = OpCodes.OrN(OpCodes.Shl8(length-1, 2), 0x03);
-        output.push(tag, b0, b1, b2, b3);
+        length -= chunk;
       }
     }
 
@@ -532,16 +503,6 @@
           output.push(0);
         }
       }
-    }
-
-    /**
-     * Calculate minimum bytes needed for varint encoding
-     */
-    _varintSize(value) {
-      if (value<OpCodes.Shl32(1, 8)) return 1;
-      if (value<OpCodes.Shl32(1, 16)) return 2;
-      if (value<OpCodes.Shl32(1, 24)) return 3;
-      return 4;
     }
   }
 

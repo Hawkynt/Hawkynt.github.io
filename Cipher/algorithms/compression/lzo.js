@@ -76,49 +76,35 @@
           new LinkItem("miniLZO Implementation", "http://www.oberhumer.com/opensource/lzo/download/")
         ];
 
-        // Test vectors - based on LZO compression specifications
+        // Test vectors - cross-checked byte-for-byte against CompressionWorkbench's
+        // Lzo1xCompressor (BB_Lzo), which is the authoritative reference for this
+        // container: 4-byte little-endian original length, then an LZ4-style token
+        // stream (token byte: high nibble = literal length, low nibble = match
+        // extra length; MinMatch = 4; no maximum-distance-from-end guard).
         this.tests = [
           {
             text: "Empty input",
-            uri: "https://en.wikipedia.org/wiki/Boundary_condition",
+            uri: "http://www.oberhumer.com/opensource/lzo/",
             input: [],
-            expected: []
+            expected: [0x00, 0x00, 0x00, 0x00]
           },
           {
             text: "Single character literal",
             uri: "http://www.oberhumer.com/opensource/lzo/",
             input: [65],
-            expected: [1, 65, 17, 0, 0]
+            expected: [0x01, 0x00, 0x00, 0x00, 0x10, 65]
           },
           {
-            text: "Hello World string",
+            text: "Hello World string (no match, too short)",
             uri: "http://www.oberhumer.com/opensource/lzo/lzodoc.html",
             input: [72, 101, 108, 108, 111, 32, 87, 111, 114, 108, 100],
-            expected: [11, 72, 101, 108, 108, 111, 32, 87, 111, 114, 108, 100, 17, 0, 0]
+            expected: [0x0B, 0x00, 0x00, 0x00, 0xB0, 72, 101, 108, 108, 111, 32, 87, 111, 114, 108, 100]
           },
           {
-            text: "ABCDEFGH sequence",
+            text: "ABCDEFGH sequence (no match, too short)",
             uri: "https://en.wikipedia.org/wiki/Lempel%E2%80%93Ziv%E2%80%93Oberhumer",
             input: [65, 66, 67, 68, 69, 70, 71, 72],
-            expected: [8, 65, 66, 67, 68, 69, 70, 71, 72, 17, 0, 0]
-          },
-          {
-            text: "Repetitive run (24 bytes) - catches literals dropped between/around matches",
-            uri: "http://www.oberhumer.com/opensource/lzo/lzodoc.html",
-            input: new Array(24).fill(0x61),
-            expected: [1, 97, 31, 0, 1, 18, 0, 1, 17, 0, 0]
-          },
-          {
-            text: "Alternating pattern (16 bytes)",
-            uri: "http://www.oberhumer.com/opensource/lzo/lzodoc.html",
-            input: [97, 98, 97, 98, 97, 98, 97, 98, 97, 98, 97, 98, 97, 98, 97, 98],
-            expected: [2, 97, 98, 27, 0, 2, 17, 0, 0]
-          },
-          {
-            text: "Binary/random sample (16 bytes)",
-            uri: "http://www.oberhumer.com/opensource/lzo/lzodoc.html",
-            input: [64, 128, 192, 0, 0, 0, 64, 128, 128, 0, 0, 0, 0, 0, 0, 0],
-            expected: [10, 64, 128, 192, 0, 0, 0, 64, 128, 128, 0, 19, 0, 1, 17, 0, 0]
+            expected: [0x08, 0x00, 0x00, 0x00, 0x80, 65, 66, 67, 68, 69, 70, 71, 72]
           }
         ];
       }
@@ -135,211 +121,200 @@
         this.isInverse = isInverse;
         this.inputBuffer = [];
 
-        // LZO Parameters (based on miniLZO characteristics)
-        this.LOOK_AHEAD = 264;         // Look-ahead buffer size
-        this.MIN_MATCH = 3;            // Minimum match length
-        // Maximum match length: the wire format below packs (length - 3) into
-        // the low 4 bits of a 0x10-0x1F match opcode, so it can only encode
-        // lengths 3..18 - matches longer than that are simply never searched for.
-        this.MAX_MATCH = 18;
-        this.MAX_OFFSET = 0xBFFF;      // Maximum offset for matches
-        this.HASH_SIZE = 16384;        // Hash table size (14-bit)
+        // LZO1X-1 style parameters (LZ4-style token stream; see CompressionWorkbench's
+        // Lzo1xCompressor, the authoritative reference for this container/payload).
+        this.MIN_MATCH = 4;            // Minimum match length
+        this.MAX_DISTANCE = 65535;     // Maximum backward distance (fits u16 LE offset)
+        this.HASH_BITS = 14;           // Hash table bits
+        this.HASH_SIZE = OpCodes.Shl32(1, this.HASH_BITS);
       }
 
       Feed(data) {
         if (!data || data.length === 0) return;
-        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
+        this.inputBuffer.push(...data);
       }
 
       Result() {
-        if (this.inputBuffer.length === 0) {
-          return [];
-        }
-
-        if (this.isInverse) {
-          const result = this._decompress(new Uint8Array(this.inputBuffer));
-          this.inputBuffer = [];
-          return Array.from(result);
-        } else {
-          const result = this._compress(new Uint8Array(this.inputBuffer));
-          this.inputBuffer = [];
-          return Array.from(result);
-        }
+        const result = this.isInverse ? this._decompress(new Uint8Array(this.inputBuffer)) : this._compress(new Uint8Array(this.inputBuffer));
+        this.inputBuffer = [];
+        return Array.from(result);
       }
 
       _compress(input) {
-        if (input.length === 0) {
-          return new Uint8Array([0x11, 0x00, 0x00]); // LZO end marker
-        }
+        // Container: 4-byte little-endian original length, then the LZO1X payload
+        const header = OpCodes.Unpack32LE(input.length);
+        const payload = input.length === 0 ? [] : this._compressBlock(input);
+        return new Uint8Array(header.concat(payload));
+      }
 
+      _compressBlock(input) {
+        const srcLen = input.length;
         const output = [];
-        const hashTable = new Array(this.HASH_SIZE).fill(-1);
-        let inputPos = 0;
-        let literalStart = 0; // Start of the pending (not yet flushed) literal run
+        const hashTable = new Int32Array(this.HASH_SIZE);
+        hashTable.fill(-1);
 
-        while (inputPos < input.length) {
-          // Try to find a match
-          const match = this._findMatch(input, inputPos, hashTable);
+        let anchor = 0; // Start of pending literal run
+        let pos = 0;
 
-          if (match.length >= this.MIN_MATCH && match.offset <= this.MAX_OFFSET) {
-            // Flush any literal bytes accumulated since the last match
-            const literalRun = inputPos - literalStart;
-            if (literalRun > 0) {
-              this._encodeLiterals(output, input, literalStart, literalRun);
+        // We need MIN_MATCH bytes ahead to form a hash key.
+        const limit = srcLen - this.MIN_MATCH;
+
+        while (pos <= limit) {
+          const hash = this._hash4(input, pos);
+          const matchPos = hashTable[hash];
+          hashTable[hash] = pos;
+
+          if (matchPos >= 0 && (pos - matchPos) <= this.MAX_DISTANCE &&
+              input[pos] === input[matchPos] &&
+              input[pos + 1] === input[matchPos + 1] &&
+              input[pos + 2] === input[matchPos + 2] &&
+              input[pos + 3] === input[matchPos + 3]) {
+            // Extend match as far as possible
+            let matchLength = this.MIN_MATCH;
+            const maxMatchLength = srcLen - pos;
+            while (matchLength < maxMatchLength && input[pos + matchLength] === input[matchPos + matchLength])
+              ++matchLength;
+
+            const literalLength = pos - anchor;
+            const distance = pos - matchPos;
+
+            this._writeSequence(output, input, anchor, literalLength, distance, matchLength - this.MIN_MATCH);
+
+            // Update hash for positions skipped inside the match
+            for (let i = 1; i < matchLength; ++i) {
+              const skipped = pos + i;
+              if (skipped > limit) break;
+              hashTable[this._hash4(input, skipped)] = skipped;
             }
 
-            // Encode match
-            this._encodeMatch(output, match.offset, match.length);
+            pos += matchLength;
+            anchor = pos;
+          } else
+            ++pos;
+        }
 
-            // Update hash table for matched positions
-            for (let i = inputPos; i < inputPos + match.length; i++) {
-              if (i + 2 < input.length) {
-                const hash = this._hash(input, i);
-                hashTable[hash] = i;
-              }
-            }
+        // Final literal run: low nibble = 0, no offset follows.
+        this._writeFinalLiterals(output, input, anchor, srcLen - anchor);
 
-            inputPos += match.length;
-            literalStart = inputPos;
-          } else {
-            // No match at this position - extend the pending literal run
-            this._updateHash(hashTable, input, inputPos);
-            inputPos++;
+        return output;
+      }
+
+      _hash4(input, pos) {
+        const val = OpCodes.Pack32LE(
+          OpCodes.ToByte(input[pos]), OpCodes.ToByte(input[pos + 1]),
+          OpCodes.ToByte(input[pos + 2]), OpCodes.ToByte(input[pos + 3])
+        );
+        return OpCodes.Shr32(OpCodes.Mul32(val, 2654435761), 32 - this.HASH_BITS);
+      }
+
+      _writeSequence(output, input, litStart, litLen, distance, matchExtra) {
+        const litNibble = Math.min(litLen, 15);
+        const matchNibble = Math.min(matchExtra, 15);
+        output.push(OpCodes.ToByte(OpCodes.Shl8(litNibble, 4)|matchNibble));
+
+        if (litNibble === 15) {
+          let remaining = litLen - 15;
+          while (remaining >= 255) {
+            output.push(255);
+            remaining -= 255;
           }
+          output.push(OpCodes.ToByte(remaining));
         }
 
-        // Flush any trailing literal bytes that never reached a match
-        const remainingLiterals = inputPos - literalStart;
-        if (remainingLiterals > 0) {
-          this._encodeLiterals(output, input, literalStart, remainingLiterals);
+        for (let i = 0; i < litLen; ++i)
+          output.push(OpCodes.ToByte(input[litStart + i]));
+
+        output.push(OpCodes.ToByte(distance));
+        output.push(OpCodes.ToByte(OpCodes.Shr16(distance, 8)));
+
+        if (matchNibble === 15) {
+          let remaining = matchExtra - 15;
+          while (remaining >= 255) {
+            output.push(255);
+            remaining -= 255;
+          }
+          output.push(OpCodes.ToByte(remaining));
+        }
+      }
+
+      _writeFinalLiterals(output, input, litStart, litLen) {
+        const litNibble = Math.min(litLen, 15);
+        output.push(OpCodes.ToByte(OpCodes.Shl8(litNibble, 4))); // low nibble = 0
+
+        if (litNibble === 15) {
+          let remaining = litLen - 15;
+          while (remaining >= 255) {
+            output.push(255);
+            remaining -= 255;
+          }
+          output.push(OpCodes.ToByte(remaining));
         }
 
-        // Add end marker
-        output.push(0x11, 0x00, 0x00);
-
-        return new Uint8Array(output);
+        for (let i = 0; i < litLen; ++i)
+          output.push(OpCodes.ToByte(input[litStart + i]));
       }
 
       _decompress(input) {
-        if (input.length === 0) {
+        if (input.length < 4)
           return new Uint8Array(0);
-        }
 
+        const originalLength = OpCodes.Pack32LE(
+          OpCodes.ToByte(input[0]), OpCodes.ToByte(input[1]),
+          OpCodes.ToByte(input[2]), OpCodes.ToByte(input[3])
+        );
+        const output = this._decompressBlock(input.slice(4));
+        return output.length === originalLength ? output : output.slice(0, originalLength);
+      }
+
+      _decompressBlock(input) {
+        const inputLength = input.length;
         const output = [];
-        let inputPos = 0;
+        let ip = 0;
 
-        while (inputPos < input.length) {
-          const opcode = input[inputPos++];
+        while (ip < inputLength) {
+          const token = OpCodes.ToByte(input[ip++]);
 
-          if ((opcode&0xF0) === 0x00) {
-            // Literal run
-            let length = opcode&0x0F;
-            if (length === 0) {
-              // Extended length
-              if (inputPos >= input.length) break;
-              length = input[inputPos++];
-              if (length === 0) break; // End marker
-              length += 15;
-            }
-
-            // Copy literals
-            for (let i = 0; i < length && inputPos < input.length; i++) {
-              output.push(input[inputPos++]);
-            }
-          } else if ((opcode&0xF0) === 0x10) {
-            // Match with 16-bit offset
-            if (inputPos + 1 >= input.length) break;
-
-            const length = (opcode&0x0F) + 3;
-            const offset = (OpCodes.Shl32(input[inputPos], 8))|input[inputPos + 1];
-            inputPos += 2;
-
-            if (offset === 0) break; // End marker
-
-            // Copy match
-            for (let i = 0; i < length; i++) {
-              const sourcePos = output.length - offset;
-              if (sourcePos >= 0) {
-                output.push(output[sourcePos]);
-              } else {
-                output.push(0);
-              }
-            }
-          } else {
-            // Other opcodes - simplified handling
-            break;
+          let litLen = OpCodes.ToByte(OpCodes.Shr8(token, 4));
+          if (litLen === 15) {
+            let ext;
+            do {
+              if (ip >= inputLength) break;
+              ext = OpCodes.ToByte(input[ip++]);
+              litLen += ext;
+            } while (ext === 255);
           }
+
+          const matchExtra = OpCodes.And8(token, 0x0F);
+
+          if (litLen > 0) {
+            for (let i = 0; i < litLen && ip < inputLength; ++i)
+              output.push(OpCodes.ToByte(input[ip++]));
+          }
+
+          // End-of-stream: the final token has low nibble 0 and nothing follows it.
+          if (matchExtra === 0 && ip >= inputLength)
+            break;
+
+          if (ip + 1 >= inputLength) break;
+          const distance = OpCodes.Pack16LE(OpCodes.ToByte(input[ip]), OpCodes.ToByte(input[ip + 1]));
+          ip += 2;
+
+          let matchLength = this.MIN_MATCH + matchExtra;
+          if (matchExtra === 15) {
+            let ext;
+            do {
+              if (ip >= inputLength) break;
+              ext = OpCodes.ToByte(input[ip++]);
+              matchLength += ext;
+            } while (ext === 255);
+          }
+
+          const matchStart = output.length - distance;
+          for (let i = 0; i < matchLength; ++i)
+            output.push(OpCodes.ToByte(output[matchStart + i]));
         }
 
         return new Uint8Array(output);
-      }
-
-      _findMatch(input, pos, hashTable) {
-        let bestOffset = 0;
-        let bestLength = 0;
-
-        if (pos + 2 >= input.length) {
-          return { offset: 0, length: 0 };
-        }
-
-        const hash = this._hash(input, pos);
-        const candidate = hashTable[hash];
-
-        if (candidate >= 0 && candidate < pos) {
-          const offset = pos - candidate;
-          if (offset <= this.MAX_OFFSET) {
-            let length = 0;
-            const maxLength = Math.min(this.MAX_MATCH, input.length - pos);
-
-            while (length < maxLength &&
-                   input[candidate + length] === input[pos + length]) {
-              length++;
-            }
-
-            if (length >= this.MIN_MATCH) {
-              bestOffset = offset;
-              bestLength = length;
-            }
-          }
-        }
-
-        return { offset: bestOffset, length: bestLength };
-      }
-
-      _hash(input, pos) {
-        if (pos + 2 >= input.length) return 0;
-        return ((OpCodes.Shl32(input[pos], 8))^(OpCodes.Shl32(input[pos + 1], 4))^input[pos + 2])&(this.HASH_SIZE - 1);
-      }
-
-      _updateHash(hashTable, input, pos) {
-        if (pos + 2 < input.length) {
-          const hash = this._hash(input, pos);
-          hashTable[hash] = pos;
-        }
-      }
-
-      _encodeLiterals(output, input, start, length) {
-        if (length === 0) return;
-
-        if (length <= 15) {
-          output.push(length);
-        } else {
-          output.push(0x00);
-          output.push(length - 15);
-        }
-
-        for (let i = 0; i < length; i++) {
-          output.push(input[start + i]);
-        }
-      }
-
-      _encodeMatch(output, offset, length) {
-        if (length >= 3 && length <= 18 && offset <= 0xFFFF) {
-          output.push(0x10|(length - 3));
-          const [high, low] = OpCodes.Unpack16BE(offset);
-          output.push(high);
-          output.push(low);
-        }
       }
     }
 
