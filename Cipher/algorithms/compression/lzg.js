@@ -3,9 +3,30 @@
  * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
  *
- * LZG is a minimal implementation of an LZ77-class compression algorithm.
- * Designed by Marcus Geelnard for embedded systems with simple, fast decoder.
- * Uses marker symbols to distinguish literals from back-references.
+ * LZG is a minimal LZ77-class codec designed by Marcus Geelnard for embedded
+ * systems: the decoder is deliberately tiny and needs no tables.
+ *
+ * Wire format implemented here (the LZG1 escape-token method):
+ *   - 4-byte little-endian uncompressed length header
+ *   - payload of bytes, each of which is either a literal or the escape byte
+ *     0xFF introducing a token:
+ *       0xFF 0x00                -> an escaped literal 0xFF
+ *       0xFF len offHi offLo     -> back-reference; len is (length - 2) so
+ *                                   lengths 3..257 are expressible (len is
+ *                                   never 0, which would collide with the
+ *                                   escaped-literal form), and offHi:offLo is
+ *                                   a big-endian 16-bit distance
+ *
+ * Matches come from a hash-chain over 3-byte hashes inside a 2 KiB window,
+ * minimum match length 3, maximum 257 (what one len byte can express).
+ *
+ * The liblzg container (16-byte magic header with an Adler-32 checksum and a
+ * raw-copy fallback method) is a separate layer and is not produced here; the
+ * uncompressed length travels in the 4-byte little-endian header instead.
+ *
+ * Reference documentation:
+ * - https://github.com/mbitsnbites/liblzg
+ * - https://liblzg.bitsnbites.eu/
  */
 
 (function (root, factory) {
@@ -45,24 +66,15 @@
 
   // ===== CONSTANTS =====
 
-  // LZG Methods
-  const LZG_METHOD_COPY = 0;  // Uncompressed copy
-  const LZG_METHOD_LZG1 = 1;  // LZG1 compression
-
-  // Header size
-  const LZG_HEADER_SIZE = 16;
-
-  // Length decode table (maps encoded values to actual lengths)
-  const LENGTH_DECODE_LUT = [
-    2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
-    18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 35, 48, 72, 128
-  ];
-
-  // Marker types
-  const MARKER_M1 = 0; // Distant copy (offset 2056+)
-  const MARKER_M2 = 1; // Medium copy (offset 8-2055)
-  const MARKER_M3 = 2; // Short copy (offset 8-71)
-  const MARKER_M4 = 3; // Near copy/RLE (offset 1-8)
+  const ESCAPE = 0xFF;
+  const WINDOW_SIZE = 2048;
+  const MIN_MATCH = 3;
+  const MAX_MATCH = 257;
+  const HASH_BITS = 12;
+  const HASH_SIZE = 4096;   // 2^HASH_BITS
+  const HASH_MASK = 4095;   // HASH_SIZE - 1
+  const MAX_CHAIN_STEPS = 32;
+  const MAX_DISTANCE = 65535;
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -72,7 +84,7 @@
 
       // Required metadata
       this.name = "LZG";
-      this.description = "Minimal LZ77-based compression with simple decoder. Uses marker symbols to distinguish literals from back-references. Designed for embedded systems requiring fast decompression with minimal memory.";
+      this.description = "Minimal LZ77-based compression with a deliberately tiny decoder. Literals pass through untouched; the escape byte 0xFF introduces either an escaped literal or a back-reference over a 2 KiB window. Designed for embedded systems that need fast decompression with minimal memory.";
       this.inventor = "Marcus Geelnard";
       this.year = 2004;
       this.category = CategoryType.COMPRESSION;
@@ -84,147 +96,101 @@
       // Documentation and references
       this.documentation = [
         new LinkItem("liblzg GitHub Repository", "https://github.com/mbitsnbites/liblzg"),
-        new LinkItem("liblzg Project Site", "https://liblzg.bitsnbites.eu/"),
-        new LinkItem("Wikipedia - liblzg", "https://en.wikipedia.org/wiki/Liblzg")
+        new LinkItem("liblzg Project Site", "https://liblzg.bitsnbites.eu/")
       ];
 
       this.references = [
         new LinkItem("GitLab Mirror", "https://gitlab.com/mbitsnbites/liblzg"),
-        new LinkItem("Node.js Port", "https://github.com/dlvoy/lzg"),
         new LinkItem("LZ77 and LZ78", "https://en.wikipedia.org/wiki/LZ77_and_LZ78")
       ];
 
-      // Test vectors - Format: LZG header (16 bytes) + 4 marker bytes + compressed data
-      // NOTE: Markers are selected as 4 least frequent bytes in the input
-      // For short strings, markers will be unused bytes (0-3 for "ABCD")
+      // Test vectors cross-checked byte-for-byte against CompressionWorkbench's
+      // BB_Lzg building block (Compression.Core.Dictionary.Lzg), which is the
+      // authoritative wire format.
       this.tests = [
-        // Test 1: Simple literal-only data "ABCD" (worst case)
-        // Input bytes: A=65, B=66, C=67, D=68
-        // Markers chosen: 0, 1, 2, 3 (least frequent - not in input)
-        // Data: A, B, C, D (all literals, no escaping needed)
-        new TestCase(
-          OpCodes.AnsiToBytes("ABCD"),
-          [
-            // Header: "LZG" + sizes + checksum + method
-            0x4C, 0x5A, 0x47,           // Magic "LZG"
-            0x00, 0x00, 0x00, 0x04,     // Decoded size: 4
-            0x00, 0x00, 0x00, 0x08,     // Encoded size: 8 (4 markers + 4 data)
-            0x02, 0xBE, 0x01, 0x11,     // Checksum (Adler-32 variant: 0x02BE0111)
-            0x01,                        // Method: LZG1
-            // Markers (selected by algorithm)
-            0x00, 0x01, 0x02, 0x03,
-            // Data (all literals)
-            0x41, 0x42, 0x43, 0x44      // "ABCD"
-          ],
-          "Literal-only compression - no matches",
-          "https://github.com/mbitsnbites/liblzg"
-        ),
-
-        // Test 2: Simple repetition "AAAA" (RLE case)
-        // Markers: 0, 1, 2, 3 (least frequent - not in input)
-        // Data: A (literal) + M4 match (offset=1, length=3)
-        new TestCase(
-          OpCodes.AnsiToBytes("AAAA"),
-          [
-            // Header
-            0x4C, 0x5A, 0x47,           // Magic "LZG"
-            0x00, 0x00, 0x00, 0x04,     // Decoded size: 4
-            0x00, 0x00, 0x00, 0x07,     // Encoded size: 7
-            0x00, 0xED, 0x00, 0x4C,     // Checksum
-            0x01,                        // Method: LZG1
-            // Markers
-            0x00, 0x01, 0x02, 0x03,
-            // Data: A + M4(offset=1,len=3)
-            0x41,                        // 'A' literal
-            0x03, 0x01                   // M4: length_code=1(len=3), offset=0(offset=1)
-          ],
-          "Repetition pattern - near copy",
-          "https://github.com/mbitsnbites/liblzg"
-        ),
-
-        // Test 3: Pattern "ABCABC"
-        // Markers: 0, 1, 2, 3 (least frequent - not in input)
-        // Data: ABC (literals) + M4 match (offset=3, length=3)
-        new TestCase(
-          OpCodes.AnsiToBytes("ABCABC"),
-          [
-            // Header
-            0x4C, 0x5A, 0x47,           // Magic "LZG"
-            0x00, 0x00, 0x00, 0x06,     // Decoded size: 6
-            0x00, 0x00, 0x00, 0x09,     // Encoded size: 9
-            0x03, 0x8E, 0x01, 0x11,     // Checksum
-            0x01,                        // Method: LZG1
-            // Markers
-            0x00, 0x01, 0x02, 0x03,
-            // Data: ABC + M4(offset=3,len=3)
-            0x41, 0x42, 0x43,            // "ABC" literals
-            0x03, 0x41                   // M4: length_code=1(len=3), offset=2(offset=3)
-          ],
-          "Pattern repetition - medium copy",
-          "https://github.com/mbitsnbites/liblzg"
-        ),
-
-        // Test 4: Empty input - returns empty array
-        new TestCase(
-          [],
-          [],
-          "Empty data",
-          "https://github.com/mbitsnbites/liblzg"
-        ),
-
-        // Test 5: Single byte "A"
-        new TestCase(
-          OpCodes.AnsiToBytes("A"),
-          [
-            // Header
-            0x4C, 0x5A, 0x47,           // Magic "LZG"
-            0x00, 0x00, 0x00, 0x01,     // Decoded size: 1
-            0x00, 0x00, 0x00, 0x05,     // Encoded size: 5
-            0x00, 0x56, 0x00, 0x48,     // Checksum
-            0x01,                        // Method: LZG1
-            // Markers
-            0x00, 0x01, 0x02, 0x03,
-            // Data
-            0x41                         // 'A'
-          ],
-          "Single byte",
-          "https://github.com/mbitsnbites/liblzg"
-        ),
-
-        // Round-trip only - long matches fall between LENGTH_DECODE_LUT
-        // entries and require floor-rounding the length code (regression
-        // test for over-long decompressed output).
-        new TestCase(
-          new Array(300).fill(0x61),
-          undefined,
-          "Highly repetitive - 300x 'a' (exercises long match length quantization)",
-          "https://github.com/mbitsnbites/liblzg"
-        ),
-        new TestCase(
-          (() => { const a = []; for (let i = 0; i < 400; ++i) a.push(i % 2 ? 0x62 : 0x61); return a; })(),
-          undefined,
-          "Alternating pattern - 200x 'ab'",
-          "https://github.com/mbitsnbites/liblzg"
-        ),
-        new TestCase(
-          (() => {
-            let seed = 0x13572468, a = [];
-            for (let i = 0; i < 256; ++i) { seed = OpCodes.AndN(seed * 1103515245 + 12345, 0x7fffffff); a.push(OpCodes.AndN(seed, 0xFF)); }
-            return a;
-          })(),
-          undefined,
-          "Binary/pseudo-random sample",
-          "https://github.com/mbitsnbites/liblzg"
-        ),
-        new TestCase(
-          [...OpCodes.AnsiToBytes("ABCDEFGH"), ...OpCodes.AnsiToBytes("ABC"), ...OpCodes.AnsiToBytes("ZZZZZZZZZZZZZZZZZZZZ")],
-          undefined,
-          "M3 offset=8/length=3 collision (regression: that exact pair encodes a 0x00 data byte, which used to be indistinguishable from the escaped-marker-literal sentinel)",
-          "https://github.com/mbitsnbites/liblzg"
-        )
+        {
+          text: "Empty input - header only",
+          uri: "https://liblzg.bitsnbites.eu/",
+          input: [],
+          expected: [0x00, 0x00, 0x00, 0x00]
+        },
+        {
+          text: "Single byte 'A' - one literal",
+          uri: "https://liblzg.bitsnbites.eu/",
+          input: [0x41],
+          expected: [0x01, 0x00, 0x00, 0x00, 0x41]
+        },
+        {
+          text: "All literals - no match of length 3 exists (ABCD)",
+          uri: "https://liblzg.bitsnbites.eu/",
+          input: OpCodes.AnsiToBytes("ABCD"),
+          expected: [0x04, 0x00, 0x00, 0x00, 0x41, 0x42, 0x43, 0x44]
+        },
+        {
+          text: "Simple repetition - AAAA (literal plus 3-byte back-reference at distance 1)",
+          uri: "https://liblzg.bitsnbites.eu/",
+          input: OpCodes.AnsiToBytes("AAAA"),
+          expected: [0x04, 0x00, 0x00, 0x00, 0x41, 0xFF, 0x01, 0x00, 0x01]
+        },
+        {
+          text: "Pattern ABCABC - 3 literals plus a back-reference at distance 3",
+          uri: "https://liblzg.bitsnbites.eu/",
+          input: OpCodes.AnsiToBytes("ABCABC"),
+          expected: [0x06, 0x00, 0x00, 0x00, 0x41, 0x42, 0x43, 0xFF, 0x01, 0x00, 0x03]
+        },
+        {
+          text: "Escaped literal - the escape byte 0xFF appearing in the data",
+          uri: "https://liblzg.bitsnbites.eu/",
+          input: [0xFF, 0x41, 0xFF],
+          expected: [0x03, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x41, 0xFF, 0x00]
+        },
+        {
+          text: "Long run - 256 bytes of 'a' (match length capped at 257, then 255)",
+          uri: "https://liblzg.bitsnbites.eu/",
+          input: new Array(256).fill(0x61),
+          expected: [0x00, 0x01, 0x00, 0x00, 0x61, 0xFF, 0xFD, 0x00, 0x01]
+        },
+        {
+          text: "Alternating pattern - 200x 'ab'",
+          uri: "https://liblzg.bitsnbites.eu/",
+          input: (() => { const a = []; for (let i = 0; i < 400; ++i) a.push(i % 2 ? 0x62 : 0x61); return a; })(),
+          expected: [
+            0x90, 0x01, 0x00, 0x00, 0x61, 0x62, 0xFF, 0xFF, 0x00, 0x02, 0xFF, 0x8B,
+            0x00, 0x02
+          ]
+        },
+        {
+          text: "Binary sample - all 256 byte values in order (no repeats)",
+          uri: "https://liblzg.bitsnbites.eu/",
+          input: (() => { const a = []; for (let i = 0; i < 256; ++i) a.push(i); return a; })(),
+          expected: [
+            0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+            0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13,
+            0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F,
+            0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B,
+            0x2C, 0x2D, 0x2E, 0x2F, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37,
+            0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F, 0x40, 0x41, 0x42, 0x43,
+            0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F,
+            0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5A, 0x5B,
+            0x5C, 0x5D, 0x5E, 0x5F, 0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67,
+            0x68, 0x69, 0x6A, 0x6B, 0x6C, 0x6D, 0x6E, 0x6F, 0x70, 0x71, 0x72, 0x73,
+            0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7A, 0x7B, 0x7C, 0x7D, 0x7E, 0x7F,
+            0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8A, 0x8B,
+            0x8C, 0x8D, 0x8E, 0x8F, 0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97,
+            0x98, 0x99, 0x9A, 0x9B, 0x9C, 0x9D, 0x9E, 0x9F, 0xA0, 0xA1, 0xA2, 0xA3,
+            0xA4, 0xA5, 0xA6, 0xA7, 0xA8, 0xA9, 0xAA, 0xAB, 0xAC, 0xAD, 0xAE, 0xAF,
+            0xB0, 0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xB8, 0xB9, 0xBA, 0xBB,
+            0xBC, 0xBD, 0xBE, 0xBF, 0xC0, 0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7,
+            0xC8, 0xC9, 0xCA, 0xCB, 0xCC, 0xCD, 0xCE, 0xCF, 0xD0, 0xD1, 0xD2, 0xD3,
+            0xD4, 0xD5, 0xD6, 0xD7, 0xD8, 0xD9, 0xDA, 0xDB, 0xDC, 0xDD, 0xDE, 0xDF,
+            0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5, 0xE6, 0xE7, 0xE8, 0xE9, 0xEA, 0xEB,
+            0xEC, 0xED, 0xEE, 0xEF, 0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7,
+            0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF, 0x00
+          ]
+        }
       ];
-    }
 
+    }
 
     /**
    * Create new cipher instance
@@ -238,16 +204,16 @@
   }
 
   /**
- * LZG cipher instance implementing Feed/Result pattern
+ * LZG instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class LZGInstance extends IAlgorithmInstance {
     /**
-   * Initialize Algorithm cipher instance
+   * Initialize LZG instance
    * @param {Object} algorithm - Parent algorithm instance
-   * @param {boolean} [isInverse=false] - Decryption mode flag
+   * @param {boolean} [isInverse=false] - Decompression mode flag
    */
 
     constructor(algorithm, isInverse = false) {
@@ -257,9 +223,8 @@
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed data for processing
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
@@ -268,388 +233,170 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
+   * Get the processed result
    * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
    */
 
     Result() {
-      if (this.inputBuffer.length === 0) {
-        return [];
+      if (this.isInverse) {
+        if (this.inputBuffer.length === 0)
+          return [];
+        const decoded = this._decompress();
+        this.inputBuffer = [];
+        return decoded;
       }
 
-      if (this.isInverse) {
-        return this._decompress();
-      } else {
-        return this._compress();
-      }
+      // Compression always emits the 4-byte length header, even for empty
+      // input (matching the reference building block).
+      const encoded = this._compress();
+      this.inputBuffer = [];
+      return encoded;
     }
 
     _compress() {
-      const input = this.inputBuffer;
-      this.inputBuffer = [];
+      const src = this.inputBuffer;
+      const length = src.length;
+      const out = OpCodes.Unpack32LE(length);
 
-      // Calculate marker symbols (4 least frequent bytes)
-      const markers = this._selectMarkers(input);
+      if (length === 0)
+        return out;
 
-      // Build result with header
-      const result = [];
+      const hashHead = new Int32Array(HASH_SIZE).fill(-1);
+      const chain = new Int32Array(length);
 
-      // Add header placeholder
-      const header = this._createHeader(input.length, 0, LZG_METHOD_LZG1);
-      for (let _i = 0; _i < header.length; _i++) result.push(header[_i]);
-
-      // Add marker symbols
-      for (let _i = 0; _i < markers.length; _i++) result.push(markers[_i]);
-
-      // Build marker lookup table
-      const markerLookup = new Array(256).fill(-1);
-      for (let i = 0; i < markers.length; ++i) {
-        markerLookup[markers[i]] = i;
-      }
-
-      // Compress data
       let pos = 0;
-      while (pos < input.length) {
-        // Find longest match
-        const match = this._findMatch(input, pos, 2048);
+      while (pos < length) {
+        let bestLen = 0;
+        let bestOff = 0;
+        if (pos + MIN_MATCH <= length) {
+          const found = this._findMatch(src, pos, hashHead, chain);
+          bestLen = found.length;
+          bestOff = found.offset;
+        }
 
-        if (match.length >= 3 && match.offset > 0) {
-          // Encode as back-reference. The length actually consumed is
-          // whatever _encodeMatch could represent (LENGTH_DECODE_LUT only
-          // has specific values), which may be less than the raw match
-          // length found - pos must advance by that encoded amount, not
-          // the raw one, or compressor/decompressor desync.
-          const encodedLength = this._encodeMatch(result, match, markers);
-          pos += encodedLength;
+        if (pos + 2 < length)
+          this._insertHash(src, pos, hashHead, chain);
+
+        if (bestLen >= MIN_MATCH) {
+          out.push(ESCAPE);
+          out.push(bestLen - 2);
+          out.push(OpCodes.And32(OpCodes.Shr32(bestOff, 8), 0xFF));
+          out.push(OpCodes.And32(bestOff, 0xFF));
+
+          for (let i = 1; i < bestLen && pos + i + 2 < length; ++i)
+            this._insertHash(src, pos + i, hashHead, chain);
+
+          pos += bestLen;
         } else {
-          // Encode as literal
-          const byte = input[pos];
-          if (markerLookup[byte] >= 0) {
-            // Escape marker symbol
-            result.push(byte, 0);
+          if (src[pos] === ESCAPE) {
+            out.push(ESCAPE);
+            out.push(0x00);
           } else {
-            // Regular literal
-            result.push(byte);
+            out.push(src[pos]);
           }
           ++pos;
         }
       }
 
-      // Update header with final sizes
-      const encodedSize = result.length - LZG_HEADER_SIZE;
-      const sizeBytes = OpCodes.Unpack32BE(encodedSize);
-      result[7] = sizeBytes[0];
-      result[8] = sizeBytes[1];
-      result[9] = sizeBytes[2];
-      result[10] = sizeBytes[3];
-
-      // Calculate and update checksum
-      const checksum = this._calculateChecksum(result.slice(LZG_HEADER_SIZE));
-      const checksumBytes = OpCodes.Unpack32BE(checksum);
-      result[11] = checksumBytes[0];
-      result[12] = checksumBytes[1];
-      result[13] = checksumBytes[2];
-      result[14] = checksumBytes[3];
-
-      return result;
+      return out;
     }
 
     _decompress() {
-      const input = this.inputBuffer;
-      this.inputBuffer = [];
+      const data = this.inputBuffer;
+      if (data.length < 4)
+        throw new Error('LZG: input too small for header');
 
-      // Validate minimum size
-      if (input.length < LZG_HEADER_SIZE + 4) {
+      const originalSize = OpCodes.Pack32LE(data[0], data[1], data[2], data[3]);
+      if (originalSize === 0)
         return [];
-      }
 
-      // Parse header
-      const header = this._parseHeader(input);
-      if (!header.valid) {
-        return [];
-      }
+      const dst = new Array(originalSize);
+      let pos = 0;
+      let i = 4;
 
-      // Handle copy method
-      if (header.method === LZG_METHOD_COPY) {
-        return input.slice(LZG_HEADER_SIZE);
-      }
+      while (pos < originalSize) {
+        if (i >= data.length)
+          throw new Error('LZG: unexpected end of stream');
 
-      // Handle LZG1 method
-      if (header.method !== LZG_METHOD_LZG1) {
-        return [];
-      }
+        if (data[i] === ESCAPE) {
+          ++i;
+          if (i >= data.length)
+            throw new Error('LZG: truncated escape sequence');
 
-      // Read marker symbols
-      const markers = input.slice(LZG_HEADER_SIZE, LZG_HEADER_SIZE + 4);
-
-      // Build marker lookup
-      const markerType = new Array(256).fill(-1);
-      for (let i = 0; i < 4; ++i) {
-        markerType[markers[i]] = i;
-      }
-
-      // Decompress
-      const result = [];
-      let pos = LZG_HEADER_SIZE + 4;
-
-      while (pos < input.length && result.length < header.decodedSize) {
-        const symbol = input[pos++];
-        const mType = markerType[symbol];
-
-        if (mType < 0) {
-          // Literal byte
-          result.push(symbol);
-        } else {
-          // Marker symbol - decode match
-          if (pos >= input.length) break;
-
-          const byte1 = input[pos++];
-
-          // Check for escaped marker
-          if (byte1 === 0) {
-            result.push(symbol);
-            continue;
-          }
-
-          // Decode match based on marker type
-          let offset, length;
-
-          if (mType === MARKER_M1) {
-            // M1: Distant copy (3 bytes: length, offset_high, offset_low)
-            if (pos >= input.length) break;
-            const byte2 = input[pos++];
-            const byte3 = pos < input.length ? input[pos++] : 0;
-            length = LENGTH_DECODE_LUT[OpCodes.AndN(byte1, 0x1F)];
-            const offsetHigh = OpCodes.Shl32(OpCodes.AndN(byte1, 0xE0), 11);
-            const offsetMid = OpCodes.Shl32(byte2, 8);
-            offset = 2056 + OpCodes.OrN(OpCodes.OrN(offsetHigh, offsetMid), byte3);
-          } else if (mType === MARKER_M2) {
-            // M2: Medium copy (2 bytes: length, offset)
-            const byte2 = pos < input.length ? input[pos++] : 0;
-            length = LENGTH_DECODE_LUT[OpCodes.AndN(byte1, 0x1F)];
-            const offsetHigh = OpCodes.Shl32(OpCodes.AndN(byte1, 0xE0), 3);
-            offset = 8 + OpCodes.OrN(offsetHigh, byte2);
-          } else if (mType === MARKER_M3) {
-            // M3: Short copy (1 byte: length in bits 0-1, offset in bits 2-7)
-            length = 3 + OpCodes.AndN(byte1, 0x03);
-            offset = 8 + OpCodes.AndN(OpCodes.Shr8(byte1, 2), 0x3F);
+          if (data[i] === 0x00) {
+            dst[pos++] = ESCAPE;
+            ++i;
           } else {
-            // M4: Near copy (1 byte: length in bits 0-4, offset in bits 5-7)
-            length = LENGTH_DECODE_LUT[OpCodes.AndN(byte1, 0x1F)];
-            offset = 1 + OpCodes.AndN(OpCodes.Shr8(byte1, 5), 0x07);
-          }
+            if (i + 2 >= data.length)
+              throw new Error('LZG: truncated match token');
 
-          // Copy from history
-          const copyStart = result.length - offset;
-          if (copyStart >= 0) {
-            for (let i = 0; i < length; ++i) {
-              result.push(result[copyStart + i]);
+            const matchLength = data[i] + 2;
+            const offset = OpCodes.Or32(OpCodes.Shl32(data[i + 1], 8), data[i + 2]);
+            i += 3;
+
+            if (offset <= 0 || offset > pos)
+              throw new Error('LZG: invalid offset ' + offset + ' at position ' + pos);
+
+            for (let k = 0; k < matchLength && pos < originalSize; ++k, ++pos)
+              dst[pos] = dst[pos - offset];
+          }
+        } else {
+          dst[pos++] = data[i++];
+        }
+      }
+
+      return dst;
+    }
+
+    _hash3(data, pos) {
+      return OpCodes.And32(
+        OpCodes.Xor32(
+          OpCodes.Xor32(OpCodes.Shl32(data[pos], 10), OpCodes.Shl32(data[pos + 1], 5)),
+          data[pos + 2]
+        ),
+        HASH_MASK
+      );
+    }
+
+    _insertHash(data, pos, hashHead, chain) {
+      const h = this._hash3(data, pos);
+      chain[pos] = hashHead[h];
+      hashHead[h] = pos;
+    }
+
+    _findMatch(data, pos, hashHead, chain) {
+      const h = this._hash3(data, pos);
+      let candidate = hashHead[h];
+      const minPos = Math.max(0, pos - WINDOW_SIZE);
+      const maxLen = Math.min(MAX_MATCH, data.length - pos);
+      let bestLen = 0;
+      let bestOff = 0;
+      let steps = MAX_CHAIN_STEPS;
+
+      while (candidate >= minPos && steps-- > 0) {
+        if (candidate < pos) {
+          let len = 0;
+          while (len < maxLen && data[candidate + len] === data[pos + len])
+            ++len;
+
+          if (len >= MIN_MATCH && len > bestLen) {
+            const dist = pos - candidate;
+            if (dist <= MAX_DISTANCE) {
+              bestLen = len;
+              bestOff = dist;
+              if (bestLen === maxLen)
+                break;
             }
           }
         }
+
+        const prev = chain[candidate];
+        if (prev >= candidate)
+          break;
+        candidate = prev;
       }
 
-      return result;
-    }
-
-    _parseHeader(data) {
-      if (data.length < LZG_HEADER_SIZE) {
-        return { valid: false };
-      }
-
-      // Check magic
-      if (data[0] !== 0x4C || data[1] !== 0x5A || data[2] !== 0x47) {
-        return { valid: false };
-      }
-
-      // Read sizes using OpCodes
-      const decodedSize = OpCodes.Pack32BE(data[3], data[4], data[5], data[6]);
-      const encodedSize = OpCodes.Pack32BE(data[7], data[8], data[9], data[10]);
-      const checksum = OpCodes.Pack32BE(data[11], data[12], data[13], data[14]);
-      const method = data[15];
-
-      return {
-        valid: true,
-        decodedSize,
-        encodedSize,
-        checksum,
-        method
-      };
-    }
-
-    _selectMarkers(data) {
-      // Build frequency table
-      const freq = new Array(256).fill(0);
-      for (const byte of data) {
-        ++freq[byte];
-      }
-
-      // Find 4 least frequent bytes
-      const sorted = freq.map((count, byte) => ({ byte, count }))
-        .sort((a, b) => a.count - b.count);
-
-      return [
-        sorted[0].byte,
-        sorted[1].byte,
-        sorted[2].byte,
-        sorted[3].byte
-      ];
-    }
-
-    _findMatch(data, pos, maxOffset) {
-      let bestLength = 0;
-      let bestOffset = 0;
-
-      const searchStart = Math.max(0, pos - maxOffset);
-      const maxLength = Math.min(128, data.length - pos);
-
-      for (let searchPos = searchStart; searchPos < pos; ++searchPos) {
-        let length = 0;
-        while (length < maxLength && data[searchPos + length] === data[pos + length]) {
-          ++length;
-        }
-
-        if (length > bestLength) {
-          bestLength = length;
-          bestOffset = pos - searchPos;
-        }
-      }
-
-      return { length: bestLength, offset: bestOffset };
-    }
-
-    // Find the largest LENGTH_DECODE_LUT entry that does not exceed the
-    // requested length (floor, not ceiling). LENGTH_DECODE_LUT has gaps
-    // above 29 (30..34 -> 35, 36..47 -> 48, etc.), so a match whose raw
-    // length falls in a gap can only be represented by a *shorter*
-    // encodable length; rounding up instead would make the decoder copy
-    // more bytes than the compressor actually verified matched, producing
-    // over-long, corrupted output.
-    _floorLengthCode(length) {
-      let code = 0;
-      for (let i = 0; i < LENGTH_DECODE_LUT.length; ++i) {
-        if (LENGTH_DECODE_LUT[i] <= length) code = i;
-        else break;
-      }
-      return code;
-    }
-
-    _encodeMatch(result, match, markers) {
-      // Select marker and encoding based on offset and length.
-      // Returns the number of source bytes actually represented by the
-      // emitted token (<= match.length, since length codes are quantized).
-      const offset = match.offset;
-      const rawLength = match.length;
-
-      if (offset >= 2056) {
-        // M1: Distant copy
-        const lengthCode = this._floorLengthCode(rawLength);
-        const encodedLength = LENGTH_DECODE_LUT[lengthCode];
-        const adjustedOffset = offset - 2056;
-        result.push(markers[MARKER_M1]);
-        const byte1 = OpCodes.OrN(
-          OpCodes.AndN(lengthCode, 0x1F),
-          OpCodes.AndN(OpCodes.Shr32(adjustedOffset, 11), 0xE0)
-        );
-        const byte2 = OpCodes.AndN(OpCodes.Shr32(adjustedOffset, 8), 0xFF);
-        const byte3 = OpCodes.AndN(adjustedOffset, 0xFF);
-        result.push(byte1, byte2, byte3);
-        return encodedLength;
-      } else if (offset >= 8 && rawLength >= 3) {
-        // M3's data byte combines Shl8(offset-8, 2) with (length-3) via OR,
-        // which comes out to 0x00 exactly when offset===8 and length===3.
-        // The decoder treats any
-        // data byte of 0x00 immediately after a marker as "this marker
-        // byte was actually an escaped literal" (see the byte1===0 check
-        // in _decompress) - so that one specific (offset, length) pair is
-        // indistinguishable from an escaped literal and must not use M3.
-        // M2 can represent it unambiguously instead.
-        const isM3EscapeCollision = offset === 8 && rawLength === 3;
-        if (rawLength <= 6 && offset < 72 && !isM3EscapeCollision) {
-          // M3: Short copy - length is stored directly (2 bits, exact, no LUT)
-          const encodedLength = Math.min(rawLength, 6);
-          result.push(markers[MARKER_M3]);
-          const byte = OpCodes.OrN(
-            OpCodes.Shl8(offset - 8, 2),
-            encodedLength - 3
-          );
-          result.push(byte);
-          return encodedLength;
-        } else {
-          // M2: Medium copy
-          const lengthCode = this._floorLengthCode(rawLength);
-          const encodedLength = LENGTH_DECODE_LUT[lengthCode];
-          const adjustedOffset = offset - 8;
-          result.push(markers[MARKER_M2]);
-          const byte1 = OpCodes.OrN(
-            OpCodes.AndN(lengthCode, 0x1F),
-            OpCodes.AndN(OpCodes.Shr32(adjustedOffset, 3), 0xE0)
-          );
-          const byte2 = OpCodes.AndN(adjustedOffset, 0xFF);
-          result.push(byte1, byte2);
-          return encodedLength;
-        }
-      } else if (offset >= 1 && offset <= 8) {
-        // M4: Near copy
-        const lengthCode = this._floorLengthCode(rawLength);
-        const encodedLength = LENGTH_DECODE_LUT[lengthCode];
-        result.push(markers[MARKER_M4]);
-        const byte = OpCodes.OrN(
-          OpCodes.AndN(lengthCode, 0x1F),
-          OpCodes.Shl8(OpCodes.AndN(offset - 1, 0x07), 5)
-        );
-        result.push(byte);
-        return encodedLength;
-      }
-
-      return 0;
-    }
-
-    _createHeader(decodedSize, encodedSize, method) {
-      const header = new Array(LZG_HEADER_SIZE);
-
-      // Magic bytes "LZG"
-      header[0] = 0x4C; // 'L'
-      header[1] = 0x5A; // 'Z'
-      header[2] = 0x47; // 'G'
-
-      // Decoded size (32-bit big-endian)
-      const decodedBytes = OpCodes.Unpack32BE(decodedSize);
-      header[3] = decodedBytes[0];
-      header[4] = decodedBytes[1];
-      header[5] = decodedBytes[2];
-      header[6] = decodedBytes[3];
-
-      // Encoded size (32-bit big-endian)
-      const encodedBytes = OpCodes.Unpack32BE(encodedSize);
-      header[7] = encodedBytes[0];
-      header[8] = encodedBytes[1];
-      header[9] = encodedBytes[2];
-      header[10] = encodedBytes[3];
-
-      // Checksum placeholder
-      header[11] = 0;
-      header[12] = 0;
-      header[13] = 0;
-      header[14] = 0;
-
-      // Method
-      header[15] = method;
-
-      return header;
-    }
-
-    _calculateChecksum(data) {
-      let a = 1;
-      let b = 0;
-
-      for (const byte of data) {
-        a = (a + byte) % 65521;
-        b = (b + a) % 65521;
-      }
-
-      return OpCodes.OrN(OpCodes.Shl32(b, 16), a);
+      return { length: bestLen, offset: bestOff };
     }
   }
 
