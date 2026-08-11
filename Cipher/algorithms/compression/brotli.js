@@ -39,8 +39,8 @@
  *       each word, and the transforms of Appendix B are applied so that a
  *       reference beyond the sliding window can code a word, a case-flipped
  *       word, or a word with a prefix, a suffix or a truncated tail;
- *     * a hash-chain match finder with cost-aware ranking and one step of lazy
- *       matching, and canonical length-limited (package-merge) prefix codes.
+ *     * a hash-chain match finder with cost-aware ranking and two steps of
+ *       lazy matching, and canonical length-limited (package-merge) prefix codes.
  *   NOT implemented on the encoding side: the OmitFirst1..9 dictionary word
  *   transforms (8 of the 121 in Appendix B), several block types per category
  *   with block-switch commands (Section 6), non-zero NPOSTFIX/NDIRECT distance
@@ -733,6 +733,7 @@
   const ESTIMATED_DISTANCE_BITS = 12;
   const MATCH_RANK_LITERAL_BITS = 5;
   const LAZY_MATCH_MARGIN = 8;
+  const LAZY_LOOKAHEAD = 2;
   const LITERAL_TREE_CANDIDATES = [1, 2, 4, 8, 16];
   const INITIAL_DISTANCE_RING = [4, 11, 15, 16];
   const DISTANCE_ALPHABET_SIZE = 64;   // 16 + NDIRECT(0) + 48 for NPOSTFIX(0)
@@ -1694,7 +1695,7 @@
   }
 
   // Splits the input into insert-and-copy commands using a hash chain match
-  // finder with one step of lazy matching driven by the approximate bit cost.
+  // finder with two steps of lazy matching driven by the approximate bit cost.
   function findCommands(data, maxDistance) {
     const head = new Int32Array(HASH_SIZE).fill(-1);
     const chain = new Int32Array(Math.max(1, data.length)).fill(-1);
@@ -1734,12 +1735,17 @@
       }
 
       insert(position);
-      if (position + 1 < data.length) {
-        const later = findBestReference(data, position + 1, maxDistance, head, chain, parseRing);
-        if (later.outputLength >= MIN_MATCH && later.score > best.score + LAZY_MATCH_MARGIN) {
-          ++position;
-          continue;
-        }
+      let deferred = false;
+      for (let ahead = 1; ahead <= LAZY_LOOKAHEAD && position + ahead < data.length; ++ahead) {
+        const later = findBestReference(data, position + ahead, maxDistance, head, chain, parseRing);
+        if (later.outputLength < MIN_MATCH) continue;
+        if (later.score <= best.score + LAZY_MATCH_MARGIN * ahead) continue;
+        deferred = true;
+        break;
+      }
+      if (deferred) {
+        ++position;
+        continue;
       }
 
       commands.push({
@@ -2296,7 +2302,7 @@
         "DECODER: full RFC 7932 grammar, including the static dictionary and word transforms - reads real-world",
         "  Brotli streams (verified against zlib's brotliCompressSync output, including compressed meta-blocks",
         "  that reference the static dictionary)",
-        "ENCODER: hash-chain LZ77 (minimum match 4, cost-aware ranking, one-step lazy matching) plus",
+        "ENCODER: hash-chain LZ77 (minimum match 4, cost-aware ranking, two-step lazy matching) plus",
         "  canonical, length-limited (package-merge, RFC-capped at 15 bits for data alphabets / 5 bits for",
         "  the code-length alphabet) prefix coding. Implements literal context modeling (Section 7.1, all",
         "  four modes, 64 contexts clustered into up to 16 trees and sent as a context map per Section 7.3),",
@@ -2308,7 +2314,7 @@
         "ENCODER LIMITATIONS: the OmitFirst1-9 word transforms are not searched (8 of the 121 in",
         "  Appendix B; they carry no prefix or suffix), one block type per category (no block-switch",
         "  commands, Section 6), NPOSTFIX=0 and NDIRECT=0 (Section 4), no distance context modeling",
-        "  (Section 7.2), and a cost-ranked greedy parse with one lazy step rather than an optimal one.",
+        "  (Section 7.2), and a cost-ranked greedy parse with two lazy steps rather than an optimal one.",
         "  Verified byte-for-byte interoperable with zlib's brotliDecompressSync and the",
         "  reference `brotli` CLI in both directions, and byte-identical to the CompressionWorkbench",
         "  C# encoder for the same input",
