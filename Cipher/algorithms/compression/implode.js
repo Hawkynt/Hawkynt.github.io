@@ -30,16 +30,17 @@
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
     // AMD
-    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+    define(['../../AlgorithmFramework', '../../OpCodes', './huffman-code-lengths.data'], factory);
   } else if (typeof module === 'object' && module.exports) {
     // Node.js/CommonJS
     module.exports = factory(
       require('../../AlgorithmFramework'),
-      require('../../OpCodes')
+      require('../../OpCodes'),
+      require('./huffman-code-lengths.data')
     );
   } else {
     // Browser/Worker global
-    factory(root.AlgorithmFramework, root.OpCodes);
+    factory(root.AlgorithmFramework, root.OpCodes, root.HuffmanCodeLengths);
   }
 }((function() {
   if (typeof globalThis !== 'undefined') return globalThis;
@@ -47,7 +48,7 @@
   if (typeof global !== 'undefined') return global;
   if (typeof self !== 'undefined') return self;
   throw new Error('Unable to locate global object');
-})(), function (AlgorithmFramework, OpCodes) {
+})(), function (AlgorithmFramework, OpCodes, HuffmanCodeLengths) {
   'use strict';
 
   if (!AlgorithmFramework) {
@@ -56,6 +57,10 @@
 
   if (!OpCodes) {
     throw new Error('OpCodes dependency is required');
+  }
+
+  if (!HuffmanCodeLengths) {
+    throw new Error('HuffmanCodeLengths dependency is required');
   }
 
   // Extract framework components
@@ -129,99 +134,16 @@
     }
   }
 
-  // ----- 4-ary min-heap priority queue, mirroring .NET's PriorityQueue<,> -----
-  // (arity 4, array-backed, sift-up/sift-down) so ties between equal-priority
-  // nodes resolve identically to CompressionWorkbench's Huffman merge order.
-
-  class MinHeap4 {
-    constructor() { this.nodes = []; }
-    get count() { return this.nodes.length; }
-
-    enqueue(element, priority) {
-      const nodeIndex = this.nodes.length;
-      this.nodes.push(null);
-      this._moveUp({ element: element, priority: priority }, nodeIndex);
-    }
-
-    dequeue() {
-      const root = this.nodes[0];
-      const lastIndex = this.nodes.length - 1;
-      if (lastIndex > 0) {
-        const lastNode = this.nodes[lastIndex];
-        this.nodes.pop();
-        this._moveDown(lastNode, 0);
-      } else {
-        this.nodes.pop();
-      }
-      return root;
-    }
-
-    _parentIndex(i) { return OpCodes.Shr32(i - 1, 2); }
-    _firstChildIndex(i) { return OpCodes.Shl32(i, 2) + 1; }
-
-    _moveUp(node, nodeIndex) {
-      while (nodeIndex > 0) {
-        const parentIndex = this._parentIndex(nodeIndex);
-        const parent = this.nodes[parentIndex];
-        if (node.priority < parent.priority) {
-          this.nodes[nodeIndex] = parent;
-          nodeIndex = parentIndex;
-        } else break;
-      }
-      this.nodes[nodeIndex] = node;
-    }
-
-    _moveDown(node, nodeIndex) {
-      const size = this.nodes.length;
-      let i;
-      while ((i = this._firstChildIndex(nodeIndex)) < size) {
-        let minChild = this.nodes[i];
-        let minChildIndex = i;
-        const upperBound = Math.min(i + 4, size);
-        for (let c = i + 1; c < upperBound; ++c) {
-          const next = this.nodes[c];
-          if (next.priority < minChild.priority) { minChild = next; minChildIndex = c; }
-        }
-        if (node.priority <= minChild.priority) break;
-        this.nodes[nodeIndex] = minChild;
-        nodeIndex = minChildIndex;
-      }
-      this.nodes[nodeIndex] = node;
-    }
-  }
-
   // ----- Canonical Huffman code-length / code construction -----
 
   function buildCodeLengths(freq, numSymbols) {
-    if (numSymbols === 1) return [1];
+    // Every symbol must be codeable in this format, so unused ones are floored to
+    // weight 1 and take part in the tree. Ties between equally weighted symbols are
+    // broken by the total order documented in huffman-code-lengths.data.js.
+    const weights = new Array(numSymbols);
+    for (let i = 0; i < numSymbols; ++i) weights[i] = Math.max(freq[i], 1);
 
-    const nodes = [];
-    const pq = new MinHeap4();
-    for (let i = 0; i < numSymbols; ++i) {
-      const f = Math.max(freq[i], 1);
-      nodes.push({ freq: f, sym: i, left: -1, right: -1 });
-      pq.enqueue(i, f);
-    }
-
-    while (pq.count > 1) {
-      const a = pq.dequeue();
-      const b = pq.dequeue();
-      const combined = a.priority + b.priority;
-      const newIdx = nodes.length;
-      nodes.push({ freq: combined, sym: -1, left: a.element, right: b.element });
-      pq.enqueue(newIdx, combined);
-    }
-
-    const root = pq.dequeue().element;
-    const lengths = new Array(numSymbols).fill(0);
-
-    const walk = (idx, depth) => {
-      const node = nodes[idx];
-      if (node.sym >= 0) { lengths[node.sym] = Math.max(depth, 1); return; }
-      walk(node.left, depth + 1);
-      walk(node.right, depth + 1);
-    };
-    walk(root, 0);
+    const lengths = HuffmanCodeLengths.buildCodeLengths(weights, numSymbols);
 
     let maxLen = 0;
     for (let i = 0; i < numSymbols; ++i) if (lengths[i] > maxLen) maxLen = lengths[i];
@@ -386,7 +308,7 @@
             text: "Text sample repeated 4x",
             uri: "https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT",
             input: OpCodes.AsciiToBytes("the quick brown fox jumps over the lazy dog. ".repeat(4)),
-            expected: [180,0,0,0,3,43,55,8,167,24,215,5,24,247,39,24,119,8,183,24,39,24,247,7,6,135,5,23,6,23,6,247,87,8,7,8,247,247,103,8,23,8,39,8,55,8,247,247,247,199,3,245,245,245,245,6,4,245,5,22,245,245,181,157,90,132,4,58,132,181,108,210,58,208,56,52,216,165,93,160,89,176,107,160,85,88,219,246,29,3,193,206,33,161,1,30,0,182,105,212,189,91,160,105,176,121,54,13,0,97,129,63,8]
+            expected: [180,0,0,0,3,18,120,247,119,5,247,247,247,247,215,6,247,247,247,247,247,247,247,247,247,3,245,245,245,245,5,4,22,245,245,245,197,29,154,54,10,180,237,216,172,65,139,64,253,118,65,157,91,7,26,7,117,9,52,239,216,170,77,251,64,80,167,70,237,2,60,0,108,89,175,91,215,64,195,160,38,169,53,0,132,5,254,32]
           },
           {
             text: "All 256 byte values",
