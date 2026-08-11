@@ -169,8 +169,14 @@
 
         if (data.length === 0) return bitStream.toArray();
 
-        // Codes are built from the original (unscaled) frequencies.
-        const codes = this._buildCodes(freq);
+        // Codes are built from the table that was actually written, never from
+        // the raw counts. Once the largest count exceeds 0xFFFF the table is
+        // rescaled, and the rescaled values are all the decoder will ever see;
+        // deriving the encoder's codes from the raw counts gives the two sides
+        // different split points, so the stream decodes to garbage of exactly
+        // the right length without anything throwing. Below the scaling point
+        // the two tables are equal, so short outputs are unchanged.
+        const codes = this._buildCodes(scaledFreq);
         for (const b of data) {
           const c = codes[b];
           for (let i = c.length - 1; i >= 0; i--) bitStream.writeBit(OpCodes.And32(OpCodes.Shr32(c.code, i), 1));
