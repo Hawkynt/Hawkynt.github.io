@@ -223,7 +223,7 @@
           temp = Math.floor(temp / 85);
         }
 
-        result.push(...chars.map(c => c.charCodeAt(0)));
+        { const _src = chars.map(c => c.charCodeAt(0)); for (let _i = 0; _i < _src.length; _i++) result.push(_src[_i]); }
       }
 
       return result;
