@@ -518,12 +518,11 @@
         this.distanceCost[code] = distCost[code] + DISTANCE_CODES[code].extra * BIT_SCALE;
     }
 
+    // The two halves of a back-reference are read separately because the parser walks
+    // every length that shares one distance in a row, so the distance's cost is paid for
+    // once per run rather than once per edge.
     literalCost(literal) {
       return this.litLenCost[literal];
-    }
-
-    matchCost(length, distance) {
-      return this.lengthCost[length] + this.distanceCost[DISTANCE_CODE_TABLE[distance]];
     }
   }
 
