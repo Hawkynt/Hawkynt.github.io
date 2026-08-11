@@ -36,6 +36,12 @@
     throw new Error('AlgorithmFramework dependency is required');
   }
 
+  // How far back along a hash chain the match finder walks. Repetitive input
+  // puts every position in one bucket, so the walk has to be bounded; 64 is
+  // enough to reach a maximal match on the redundant data that matters while
+  // keeping the search linear in practice.
+  const CHAIN_DEPTH = 64;
+
   if (!OpCodes) {
     throw new Error('OpCodes dependency is required');
   }
@@ -185,12 +191,20 @@
         const result = [];
         let pos = 0;
 
-        // Build match table for efficient lookups
-        const matchTable = this._buildMatchTable();
+        // Hash chains are extended as the encoder advances, so every candidate
+        // is a position the cursor has already passed. The table this replaces
+        // was pre-built over the whole input and capped at 16 entries per
+        // bucket: on repetitive data every position hashes alike, so the cap
+        // left only the last 16 positions of the file, all of them ahead of the
+        // cursor and therefore discarded. Nothing ever matched and the encoder
+        // emitted two bytes per input byte.
+        const length = this.inputBuffer.length;
+        const chainHead = new Map();
+        const chainPrev = new Int32Array(length > 0 ? length : 1).fill(-1);
 
         while (pos < this.inputBuffer.length) {
-          // Find the longest match using match table
-          const match = this._findLongestMatch(pos, matchTable);
+          // Find the longest match using the chains built so far
+          const match = this._findLongestMatch(pos, chainHead, chainPrev);
 
           if (match.length >= this.minMatchLength) {
             // Encode as match: [FLAG=1][DISTANCE_HIGH][DISTANCE_LOW][LENGTH]
@@ -202,11 +216,15 @@
             // than MAX_MATCH_LENGTH (255), so this always survives byte
             // serialisation intact.
             result.push(match.length);
+            // Every position the match covers still has to enter the chains, or
+            // later positions cannot reference anything inside it.
+            for (let k = 0; k < match.length; k++) this._insertPosition(pos + k, chainHead, chainPrev);
             pos += match.length;
           } else {
             // Encode as literal: [FLAG=0][LITERAL]
             result.push(0); // Literal flag
             result.push(OpCodes.ToByte(this.inputBuffer[pos]));
+            this._insertPosition(pos, chainHead, chainPrev);
             pos++;
           }
         }
@@ -255,28 +273,12 @@
        * Build match table for efficient pattern finding
        * Uses hash-based indexing of 3-byte sequences
        */
-      _buildMatchTable() {
-        const table = new Map();
+      _insertPosition(pos, chainHead, chainPrev) {
+        if (pos + 2 >= this.inputBuffer.length) return;
 
-        // Build table entries for all positions
-        for (let i = 0; i < this.inputBuffer.length - 2; i++) {
-          const hash = this._hashBytes(i);
-
-          if (!table.has(hash)) {
-            table.set(hash, []);
-          }
-
-          // Store position in match table
-          const positions = table.get(hash);
-          positions.push(i);
-
-          // Limit entries per hash to maintain performance
-          if (positions.length > 16) {
-            positions.shift(); // Remove oldest entry
-          }
-        }
-
-        return table;
+        const hash = this._hashBytes(pos);
+        chainPrev[pos] = chainHead.has(hash) ? chainHead.get(hash) : -1;
+        chainHead.set(hash, pos);
       }
 
       /**
@@ -299,7 +301,7 @@
       /**
        * Find longest match at current position using match table
        */
-      _findLongestMatch(pos, matchTable) {
+      _findLongestMatch(pos, chainHead, chainPrev) {
         let bestDistance = 0;
         let bestLength = 0;
 
@@ -308,32 +310,34 @@
         }
 
         const hash = this._hashBytes(pos);
-        const candidates = matchTable.get(hash) || [];
+        const maxLen = Math.min(
+          this.maxMatchLength,
+          this.inputBuffer.length - pos
+        );
 
-        // Search candidates from match table
-        for (const candidatePos of candidates) {
-          // Skip if outside window or same position
-          if (candidatePos >= pos || pos - candidatePos > this.maxDistance) {
-            continue;
-          }
+        // The chain runs newest first, so the first candidate outside the window
+        // ends the walk: everything behind it is older still.
+        let candidatePos = chainHead.has(hash) ? chainHead.get(hash) : -1;
+        for (let depth = 0; candidatePos >= 0 && depth < CHAIN_DEPTH; depth++) {
+          if (pos - candidatePos > this.maxDistance) break;
 
           // Count matching bytes
           let matchLength = 0;
-          const maxLen = Math.min(
-            this.maxMatchLength,
-            this.inputBuffer.length - pos
-          );
-
           while (matchLength < maxLen &&
                  this.inputBuffer[candidatePos + matchLength] === this.inputBuffer[pos + matchLength]) {
             matchLength++;
           }
 
-          // Update best match if this is longer
+          // Longer always wins; on a tie the older candidate is kept, which is
+          // what the previous oldest-first scan did, so existing vectors stand.
           if (matchLength > bestLength) {
             bestLength = matchLength;
             bestDistance = pos - candidatePos;
+          } else if (matchLength === bestLength && bestLength >= this.minMatchLength) {
+            bestDistance = pos - candidatePos;
           }
+
+          candidatePos = chainPrev[candidatePos];
         }
 
         return {
