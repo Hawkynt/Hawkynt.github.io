@@ -235,7 +235,7 @@
         return [];
       }
 
-      const input = String.fromCharCode(...data);
+      const input = OpCodes.BytesToChars(data);
 
       // Count leading '1's (they represent leading zero bytes)
       let leadingOnes = 0;
@@ -272,13 +272,13 @@
     encodeString(str) {
       const bytes = OpCodes.AnsiToBytes(str);
       const encoded = this.encode(bytes);
-      return String.fromCharCode(...encoded);
+      return OpCodes.BytesToChars(encoded);
     }
 
     decodeString(str) {
       const bytes = OpCodes.AnsiToBytes(str);
       const decoded = this.decode(bytes);
-      return String.fromCharCode(...decoded);
+      return OpCodes.BytesToChars(decoded);
     }
   }
 

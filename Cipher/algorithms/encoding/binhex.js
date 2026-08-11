@@ -199,7 +199,7 @@
     }
 
     decode(data) {
-      const binhexText = String.fromCharCode(...data);
+      const binhexText = OpCodes.BytesToChars(data);
 
       // Extract content between colons
       const lines = binhexText.split('\n');
