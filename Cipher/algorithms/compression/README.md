@@ -121,7 +121,7 @@ Generated from the registry by `tools/refresh-readmes.js`.
 - **Shrink** (`shrink.js`) - PKZIP method 1 (Shrinking): dynamic LZW coding with encoder-controlled variable code width (9-13 bits) and partial dictionary clearing, which frees only leaf (unreferenced) entries instead of resetting the whole table
 - **Simplified Deflate (Fixed Huffman)** (`deflate-simple.js`) - Raw RFC 1951 DEFLATE restricted to fixed-Huffman blocks
 - **Snappy** (`snappy.js`) - Fast LZ77-based compression algorithm developed by Google in 2011
-- **SQX-style LZ77+Huffman (documented subset)** (`sqx.js`) - Shared generic LZ77 + single-Huffman-tree compression engine (also used by the ACE-style, ARJ-style and RAR-style entries in this repository), parameterized here with a fixed 4MB match window and raw fixed-width distance fields to approximate the 'LZH-like' description found in secondary sources for SQX (no public bitstream specification exists for the proprietary/undocumented SQX format)
+- **SQX** (`sqx.js`) - The SQX archiver's LZH method: an LZ77 matcher over a 32 KiB dictionary feeding a 310-symbol main tree that folds literals, four repeated-distance slots, length-2 and length-3 matches with inline distances, and 25 length-4-or-more slots into one alphabet, alongside a 48-slot distance tree
 - **Suffix Tree Compression** (`suffix-tree.js`) - Advanced lossless compression using suffix tree construction and longest common substring analysis
 - **tANS (Table-based Asymmetric Numeral Systems)** (`tans.js`) - Table-driven ANS entropy coder over a 2048-state table
 - **Tunstall Coding** (`tunstall.js`) - Variable-to-fixed length source code
