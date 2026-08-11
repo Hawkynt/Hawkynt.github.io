@@ -20,6 +20,11 @@
  *   End of stream        : a new-offset match whose Elias-coded MSB value is
  *                           the sentinel 256 (overflowing the 1..255 range)
  *
+ * Because end-of-stream is signalled by an offset-MSB Elias value of 256, the
+ * encoder may only pick offsets up to MAX_OFFSET = 32640 (0x7F80), the same
+ * bound the reference encoder uses: offset 32641 would encode MSB value 256 and
+ * be read back as end-of-stream.
+ *
  * The LSB byte is (127-((offset-1)&127))<<1 with bit 0 reserved: after the
  * byte is written, the encoder "backtracks" and patches that bit with the
  * very first bit of the length Elias-gamma that follows, so the decoder can
@@ -73,7 +78,9 @@
   // ZX0 v2 forward, non-inverted. Salvador uses INVERT_MODE = true.
   const INVERT_MODE = false;
   const INITIAL_OFFSET = 1;
-  const MAX_OFFSET = 0xFFFFFF;
+  // Largest offset whose Elias-coded MSB stays below the 256 end-of-stream
+  // sentinel: (32640-1)/128+1 === 255. This is the reference MAX_OFFSET.
+  const MAX_OFFSET = 0x7F80;
   const MIN_MATCH_LENGTH = 2;
   const HASH_BITS = 16;
   const HASH_SIZE = OpCodes.Shl32(1, HASH_BITS);
@@ -268,8 +275,15 @@
         if (pos > literalStart) {
           enc.emitLiterals(data, literalStart, pos - literalStart);
           literalStart = pos;
+          enc.emitRepMatch(repLen);
+        } else {
+          // A rep-match is only decodable directly after a literal block: at the
+          // start of a command the leading 0 bit already means "literal run", so
+          // a rep-match emitted there would be mis-read as a literal count. With
+          // no pending literals the same distance is re-encoded as a new-offset
+          // match, which is legal in every state.
+          enc.emitNewOffsetMatch(lastOffset, repLen);
         }
-        enc.emitRepMatch(repLen);
         for (let j = 1; j < repLen && pos + j + MIN_MATCH_LENGTH <= n; j++) {
           const h = hash(data, pos + j);
           prev[pos + j] = head[h];
@@ -357,6 +371,14 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  // Builds `length` bytes of a repeating pangram, for the large round-trip vector.
+  function repeatText(length) {
+    const unit = OpCodes.AnsiToBytes("the quick brown fox jumps over the lazy dog. ");
+    const out = new Array(length);
+    for (let i = 0; i < length; i++) out[i] = unit[i % unit.length];
+    return out;
+  }
+
   class ZX0Compression extends CompressionAlgorithm {
     constructor() {
       super();
@@ -398,6 +420,15 @@
           text: "Text sample",
           uri: "https://github.com/einar-saukas/ZX0",
           input: OpCodes.AnsiToBytes("the quick brown fox jumps over the lazy dog. the quick brown fox."),
+          roundTripOnly: true
+        },
+        {
+          // Past ~64 KB a second match follows the first with no literal block
+          // between them, which is exactly where a rep-match becomes
+          // undecodable.
+          text: "Repetitive text beyond a single maximum-length match (90 KB)",
+          uri: "https://github.com/einar-saukas/ZX0",
+          input: repeatText(90000),
           roundTripOnly: true
         }
       ];
