@@ -278,7 +278,7 @@
         return [];
       }
 
-      const input = String.fromCharCode(...data);
+      const input = OpCodes.BytesToChars(data);
       const result = [];
 
       for (let i = 0; i < input.length; i++) {
@@ -333,13 +333,13 @@
     encodeString(str) {
       const bytes = OpCodes.AnsiToBytes(str);
       const encoded = this.encode(bytes);
-      return String.fromCharCode(...encoded);
+      return OpCodes.BytesToChars(encoded);
     }
 
     decodeString(str) {
       const bytes = OpCodes.AnsiToBytes(str);
       const decoded = this.decode(bytes);
-      return String.fromCharCode(...decoded);
+      return OpCodes.BytesToChars(decoded);
     }
   }
 

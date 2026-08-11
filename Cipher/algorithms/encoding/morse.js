@@ -237,7 +237,7 @@
         return [];
       }
 
-      const text = String.fromCharCode(...data);
+      const text = OpCodes.BytesToChars(data);
 
       // One Morse token per input byte (including the '/' token for a
       // literal space), joined by a single space, with no case-folding and
@@ -273,7 +273,7 @@
         return [];
       }
 
-      const morse = String.fromCharCode(...data);
+      const morse = OpCodes.BytesToChars(data);
 
       // Ensure reverse table is built
       if (!this.algorithm.reverseTable) {

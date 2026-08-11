@@ -245,7 +245,7 @@
     encodeString(str) {
       const bytes = OpCodes.AnsiToBytes(str);
       const encoded = this.rot13(bytes);
-      return String.fromCharCode(...encoded);
+      return OpCodes.BytesToChars(encoded);
     }
 
     decodeString(str) {
@@ -257,7 +257,7 @@
     rot47EncodeString(str) {
       const bytes = OpCodes.AnsiToBytes(str);
       const encoded = this.rot47(bytes);
-      return String.fromCharCode(...encoded);
+      return OpCodes.BytesToChars(encoded);
     }
   }
 

@@ -2305,6 +2305,31 @@
     },
 
     /**
+     * Convert a byte array to a string whose char codes are the byte values.
+     * Each byte maps to exactly one character, so the result round-trips through
+     * AsciiToBytes.
+     *
+     * Spreading a byte array into String.fromCharCode passes one argument per byte,
+     * and an engine's argument-count limit is reached at roughly 125,000 entries.
+     * Beyond that the spread raises "Maximum call stack size exceeded", so a
+     * data-sized array must be converted in fixed-size chunks instead.
+     * @param {uint8[]} bytes - Input byte array
+     * @returns {string} String of the same length as the input
+     */
+    BytesToChars: function(bytes) {
+      const CHUNK = 4096;
+      const length = bytes.length;
+      if (length <= CHUNK)
+        return String.fromCharCode.apply(null, bytes);
+
+      const parts = [];
+      for (let offset = 0; offset < length; offset += CHUNK)
+        parts.push(String.fromCharCode.apply(null, bytes.slice(offset, Math.min(offset + CHUNK, length))));
+
+      return parts.join('');
+    },
+
+    /**
      * Convert double precision floating point to bytes (IEEE 754 little-endian)
      * Uses BitConverter pattern for C# compatibility
      * @param {float64} value - Double precision floating point value

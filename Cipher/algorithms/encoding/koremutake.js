@@ -240,7 +240,9 @@
           valueDigits.unshift(Number(value % 128n));
           value = value / 128n;
         }
-        digits.push(...valueDigits);
+        // Appended one at a time: spreading a data-sized array into push passes one
+        // argument per element and overruns the engine's argument limit.
+        for (let i = 0; i < valueDigits.length; i++) digits.push(valueDigits[i]);
       }
 
       let result = "";
@@ -268,7 +270,7 @@
         return [];
       }
 
-      const encoded = String.fromCharCode(...data);
+      const encoded = OpCodes.BytesToChars(data);
       const digits = [];
       let i = 0;
 
@@ -314,7 +316,9 @@
           valueBytes.unshift(Number(value % 256n));
           value = value / 256n;
         }
-        result.push(...valueBytes);
+        // Appended one at a time: spreading a data-sized array into push passes one
+        // argument per element and overruns the engine's argument limit.
+        for (let j = 0; j < valueBytes.length; j++) result.push(valueBytes[j]);
       }
 
       return result;
