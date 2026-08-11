@@ -268,7 +268,7 @@
         return [];
       }
 
-      const encoded = String.fromCharCode(...data);
+      const encoded = OpCodes.BytesToLatin1(data);
       const digits = [];
       let i = 0;
 

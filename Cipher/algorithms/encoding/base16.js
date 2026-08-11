@@ -155,7 +155,7 @@
       this.isInverse = isInverse;
       // Use OpCodes for alphabet definition
       this.alphabetBytes = OpCodes.AnsiToBytes("0123456789ABCDEF");
-      this.alphabet = String.fromCharCode(...this.alphabetBytes);
+      this.alphabet = OpCodes.BytesToLatin1(this.alphabetBytes);
       this.processedData = null;
 
       // Create decode lookup table
@@ -221,7 +221,7 @@
         return [];
       }
 
-      const input = String.fromCharCode(...data);
+      const input = OpCodes.BytesToLatin1(data);
       let cleanInput = '';
       for (let i = 0; i < input.length; ++i) {
         const code = input.charCodeAt(i);
@@ -254,13 +254,13 @@
     encodeString(str) {
       const bytes = OpCodes.AnsiToBytes(str);
       const encoded = this.encode(bytes);
-      return String.fromCharCode(...encoded);
+      return OpCodes.BytesToLatin1(encoded);
     }
 
     decodeString(str) {
       const bytes = OpCodes.AnsiToBytes(str);
       const decoded = this.decode(bytes);
-      return String.fromCharCode(...decoded);
+      return OpCodes.BytesToLatin1(decoded);
     }
   }
 

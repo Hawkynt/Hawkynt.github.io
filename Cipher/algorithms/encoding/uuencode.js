@@ -291,13 +291,13 @@
     encodeString(str) {
       const bytes = OpCodes.AnsiToBytes(str);
       const encoded = this.encode(bytes);
-      return String.fromCharCode(...encoded);
+      return OpCodes.BytesToLatin1(encoded);
     }
 
     decodeString(str) {
       const bytes = OpCodes.AnsiToBytes(str);
       const decoded = this.decode(bytes);
-      return String.fromCharCode(...decoded);
+      return OpCodes.BytesToLatin1(decoded);
     }
   }
 

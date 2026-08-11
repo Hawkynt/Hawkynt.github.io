@@ -256,7 +256,7 @@
         return [];
       }
 
-      const encoded = String.fromCharCode(...data);
+      const encoded = OpCodes.BytesToLatin1(data);
       const V = this.algorithm.vowels;
       const C = this.algorithm.consonants;
 
