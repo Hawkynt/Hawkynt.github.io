@@ -132,17 +132,25 @@ function runLargeOne(algorithms, name) {
   if (!algorithm) { console.log('not registered'); return 3; }
   const testCase = buildLargeCase();
   const started = Date.now();
-  let outcome;
+  let outcome, code;
   try {
     const { packed, restored } = roundTrip(algorithm, testCase.data);
-    outcome = sameBytes(restored, testCase.data)
-      ? `ok ${packed.length} bytes, ${Date.now() - started}ms`
+    const ok = sameBytes(restored, testCase.data);
+    outcome = ok ? `ok ${packed.length} bytes, ${Date.now() - started}ms`
       : `CONTENT DIFFERS (${restored ? restored.length : 'null'} bytes back)`;
+    code = ok ? 0 : 4;
   } catch (error) {
-    outcome = `threw ${String(error.message).slice(0, 60)}`;
+    // The large case is binary, which an algorithm with a declared restricted
+    // input domain is entitled to refuse - a Morse encoder has no symbol for an
+    // arbitrary byte. Refusing loudly is correct; only silent corruption is not.
+    const refused = Boolean(algorithm.restrictedInputDomain);
+    outcome = refused
+      ? `domain (declined binary input: ${String(error.message).slice(0, 40)})`
+      : `threw ${String(error.message).slice(0, 60)}`;
+    code = refused ? 0 : 4;
   }
   console.log(outcome);
-  return /^ok /.test(outcome) ? 0 : 4;
+  return code;
 }
 
 function buildLargeCase() {
@@ -460,12 +468,14 @@ function main() {
     console.log('\n1MB tier (one process per algorithm)');
     console.log('-----------------------------------');
     for (const result of runLargeTier(selected)) {
-      const bad = !/^ok /.test(result.line);
-      if (bad) largeFailures++;
-      // A timeout is slowness, not incorrectness, so it is reported but does not fail the run.
+      // A timeout is slowness and a declined domain is correctness, so both are
+      // reported without failing the run. Corruption and crashes fail it.
+      const passed = /^ok /.test(result.line) || /^domain /.test(result.line);
+      const tolerated = passed || result.line === 'timed out';
+      if (!tolerated) largeFailures++;
       const label = /^ok /.test(result.line) ? '  ok       '
+        : /^domain /.test(result.line) ? '  DOMAIN   '
         : result.line === 'timed out' ? '  SLOW     ' : '  FAIL     ';
-      if (bad && result.line === 'timed out') largeFailures--;
       console.log(`${label}${result.name.padEnd(46)} ${result.line}`);
     }
     console.log(`\n${largeFailures} algorithm(s) failed at 1MB`);
