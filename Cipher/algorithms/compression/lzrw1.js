@@ -326,12 +326,14 @@
             // Copy bytes from history
             const copyStart = result.length - offset;
             for (let j = 0; j < length; j++) {
-              if (copyStart + j >= 0 && copyStart + j < result.length) {
-                result.push(result[copyStart + j]);
-              } else {
-                // Invalid offset - use zero byte
-                result.push(0);
-              }
+              // An offset outside the output produced so far means the stream is
+              // not one this decoder wrote. Substituting a zero used to hide
+              // that: the caller received plausible bytes of the right length
+              // and no indication anything was wrong.
+              if (copyStart + j < 0 || copyStart + j >= result.length)
+                throw new Error('LZRW1: match at offset ' + offset
+                  + ' points outside the ' + result.length + ' bytes decoded so far');
+              result.push(result[copyStart + j]);
             }
           } else {
             // Literal byte
