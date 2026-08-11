@@ -367,24 +367,39 @@ class TestSuite {
     const passedTests = engineResults.passed;
     const percentage = engineResults.percentage;
 
-    console.log(`${passedTests}/${totalTests} tests passed (${percentage}%)`);
+    // The percentage was rounded, so 5575 of 5580 printed as "100%" and drew the
+    // congratulatory line - five failures reported as a clean run. It is floored
+    // now, and only a genuinely empty failure list counts as complete.
+    const failedTests = totalTests - passedTests;
+    const displayed = totalTests > 0 ? Math.floor((passedTests / totalTests) * 100) : 100;
 
-    if (percentage === 100) {
+    console.log(`${passedTests}/${totalTests} tests passed (${displayed}%)`);
+
+    if (failedTests === 0) {
       console.log('🎉 Excellent! Your cipher collection is in great shape!');
-    } else if (percentage >= 90) {
-      console.log('👍 Good job! Some areas need attention.');
-    } else if (percentage >= 70) {
-      console.log('⚠️ Several issues need to be addressed.');
+    } else if (displayed >= 90) {
+      console.log(`👍 Good job! ${failedTests} test(s) need attention.`);
+    } else if (displayed >= 70) {
+      console.log(`⚠️ ${failedTests} test(s) need to be addressed.`);
     } else {
-      console.log('❌ Major issues found. Significant work needed.');
+      console.log(`❌ Major issues found: ${failedTests} test(s) failing.`);
     }
+
+    // Anything above zero has to fail the process, or the suite cannot gate
+    // anything: it exited 0 whatever happened, so a broken algorithm - or a file
+    // that throws while loading - passed CI unnoticed.
+    this.failedTestCount = failedTests;
   }
 }
 
 // CLI execution
 if (require.main === module) {
   const testSuite = new TestSuite();
-  testSuite.runAllTests().catch(error => {
+  testSuite.runAllTests().then(() => {
+    // Without this the suite exited 0 no matter how many tests failed, so it
+    // could report problems but never stop anything acting on them.
+    if (testSuite.failedTestCount > 0) process.exitCode = 1;
+  }).catch(error => {
     console.error('Failed to run tests:', error.message);
     process.exit(1);
   });
