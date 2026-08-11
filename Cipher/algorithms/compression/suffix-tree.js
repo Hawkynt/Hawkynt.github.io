@@ -145,20 +145,185 @@
         return result;
       }
 
-      // LZ factorization driven by an incremental suffix trie: at every
-      // position, descend the trie built from previously-seen data to find
-      // the longest previously-seen prefix (a "longest previous factor"
-      // query), then extend the trie with the remainder of this suffix.
+      // LZ factorization over the suffix structure of the input: at every
+      // visited position the longest previously-started factor is emitted as a
+      // (length, offset) back-reference, and unmatched bytes are batched into
+      // literal runs.
+      //
+      // The dictionary is the set of positions already visited by this loop.
+      // Written as an explicit suffix trie, every visited position j inserts the
+      // whole path data[j .. j+min(255, n-j)) and stamps every node on it with j,
+      // so the query at position i resolves to
+      //
+      //   length_i   = min(255, n - i, max over visited j < i of LCP(j, i))
+      //   position_i = the largest visited j < i with LCP(j, i) >= length_i
+      //
+      // Both are read straight off a suffix array here: LCP(j, i) is the minimum
+      // of the LCP array between the two ranks, the maximum over a set of
+      // positions is attained at the nearest visited rank on either side, and the
+      // positions sharing at least length_i characters occupy one contiguous rank
+      // interval whose most recent member answers the second line. That is the
+      // same factorization the trie produces, in O(n log n) time and O(n) memory
+      // instead of one heap object per distinct substring.
+      //
       // Wire format:
       //   4 bytes original length (LE); if 0, no payload follows.
       //   0x00, count, <count raw bytes>   -- literal run (count <= 255)
       //   length (1-255), 4-byte LE offset -- back-reference match
       compress(data) {
-        const compressed = OpCodes.Unpack32LE(data.length);
-        if (data.length === 0) return compressed;
+        const n = data.length;
+        const compressed = OpCodes.Unpack32LE(n);
+        if (n === 0) return compressed;
 
-        const root = { position: -1, children: null };
-        let i = 0;
+        const bytes = new Uint8Array(n);
+        for (let k = 0; k < n; k++) bytes[k] = data[k];
+
+        const suffixArray = this._buildSuffixArray(bytes, n);
+        const rankOf = new Int32Array(n);
+        for (let k = 0; k < n; k++) rankOf[suffixArray[k]] = k;
+
+        // lcp[k] = LCP(suffix at rank k-1, suffix at rank k) for 1 <= k <= n-1.
+        // Index 0 and index n are sentinels below every possible match length, so
+        // the interval searches below always terminate without a bounds test.
+        const lcp = this._buildLcpArray(bytes, n, suffixArray, rankOf);
+
+        const INFINITE = 0x7fffffff;
+
+        let lcpSize = 1;
+        while (lcpSize < n + 1) lcpSize *= 2;
+        const lcpTree = new Int32Array(lcpSize * 2).fill(INFINITE);
+        for (let k = 0; k <= n; k++) lcpTree[lcpSize + k] = lcp[k];
+        for (let k = lcpSize - 1; k >= 1; k--)
+          lcpTree[k] = Math.min(lcpTree[k * 2], lcpTree[k * 2 + 1]);
+
+        // Visited positions keyed by rank; -1 marks a rank not yet reached.
+        // Aggregated by maximum, so a range query yields the most recent visit.
+        let visitedSize = 1;
+        while (visitedSize < n) visitedSize *= 2;
+        const visitedTree = new Int32Array(visitedSize * 2).fill(-1);
+
+        // Canonical cover of a query range, reused so queries never allocate.
+        const leftNodes = new Int32Array(64);
+        const rightNodes = new Int32Array(64);
+        let leftCount = 0;
+        let rightCount = 0;
+
+        const cover = (size, lo, hi) => {
+          let left = size + lo;
+          let right = size + hi + 1;
+          leftCount = 0;
+          rightCount = 0;
+          while (left < right) {
+            if (left % 2 === 1) { leftNodes[leftCount++] = left; left++; }
+            if (right % 2 === 1) { right--; rightNodes[rightCount++] = right; }
+            left = Math.floor(left / 2);
+            right = Math.floor(right / 2);
+          }
+        };
+
+        const lcpMin = (lo, hi) => {
+          if (lo > hi) return INFINITE;
+          cover(lcpSize, lo, hi);
+          let best = INFINITE;
+          for (let t = 0; t < leftCount; t++) if (lcpTree[leftNodes[t]] < best) best = lcpTree[leftNodes[t]];
+          for (let t = 0; t < rightCount; t++) if (lcpTree[rightNodes[t]] < best) best = lcpTree[rightNodes[t]];
+          return best;
+        };
+
+        // Rightmost index in [0, hi] whose LCP entry is below limit.
+        const lastLcpBelow = (hi, limit) => {
+          cover(lcpSize, 0, hi);
+          for (let t = 0; t < rightCount; t++) {
+            let node = rightNodes[t];
+            if (lcpTree[node] >= limit) continue;
+            while (node < lcpSize) node = lcpTree[node * 2 + 1] < limit ? node * 2 + 1 : node * 2;
+            return node - lcpSize;
+          }
+          for (let t = leftCount - 1; t >= 0; t--) {
+            let node = leftNodes[t];
+            if (lcpTree[node] >= limit) continue;
+            while (node < lcpSize) node = lcpTree[node * 2 + 1] < limit ? node * 2 + 1 : node * 2;
+            return node - lcpSize;
+          }
+          return 0;
+        };
+
+        // Leftmost index in [lo, n] whose LCP entry is below limit.
+        const firstLcpBelow = (lo, limit) => {
+          cover(lcpSize, lo, n);
+          for (let t = 0; t < leftCount; t++) {
+            let node = leftNodes[t];
+            if (lcpTree[node] >= limit) continue;
+            while (node < lcpSize) node = lcpTree[node * 2] < limit ? node * 2 : node * 2 + 1;
+            return node - lcpSize;
+          }
+          for (let t = rightCount - 1; t >= 0; t--) {
+            let node = rightNodes[t];
+            if (lcpTree[node] >= limit) continue;
+            while (node < lcpSize) node = lcpTree[node * 2] < limit ? node * 2 : node * 2 + 1;
+            return node - lcpSize;
+          }
+          return n;
+        };
+
+        const markVisited = (rankIndex, position) => {
+          let node = visitedSize + rankIndex;
+          visitedTree[node] = position;
+          node = Math.floor(node / 2);
+          while (node >= 1) {
+            const a = visitedTree[node * 2];
+            const b = visitedTree[node * 2 + 1];
+            visitedTree[node] = a > b ? a : b;
+            node = Math.floor(node / 2);
+          }
+        };
+
+        // Nearest visited rank strictly below hi+1, or -1 when there is none.
+        const lastVisited = (hi) => {
+          if (hi < 0) return -1;
+          cover(visitedSize, 0, hi);
+          for (let t = 0; t < rightCount; t++) {
+            let node = rightNodes[t];
+            if (visitedTree[node] < 0) continue;
+            while (node < visitedSize) node = visitedTree[node * 2 + 1] >= 0 ? node * 2 + 1 : node * 2;
+            return node - visitedSize;
+          }
+          for (let t = leftCount - 1; t >= 0; t--) {
+            let node = leftNodes[t];
+            if (visitedTree[node] < 0) continue;
+            while (node < visitedSize) node = visitedTree[node * 2 + 1] >= 0 ? node * 2 + 1 : node * 2;
+            return node - visitedSize;
+          }
+          return -1;
+        };
+
+        // Nearest visited rank at or above lo, or -1 when there is none.
+        const firstVisited = (lo) => {
+          if (lo > n - 1) return -1;
+          cover(visitedSize, lo, n - 1);
+          for (let t = 0; t < leftCount; t++) {
+            let node = leftNodes[t];
+            if (visitedTree[node] < 0) continue;
+            while (node < visitedSize) node = visitedTree[node * 2] >= 0 ? node * 2 : node * 2 + 1;
+            return node - visitedSize;
+          }
+          for (let t = rightCount - 1; t >= 0; t--) {
+            let node = rightNodes[t];
+            if (visitedTree[node] < 0) continue;
+            while (node < visitedSize) node = visitedTree[node * 2] >= 0 ? node * 2 : node * 2 + 1;
+            return node - visitedSize;
+          }
+          return -1;
+        };
+
+        const mostRecentVisited = (lo, hi) => {
+          cover(visitedSize, lo, hi);
+          let best = -1;
+          for (let t = 0; t < leftCount; t++) if (visitedTree[leftNodes[t]] > best) best = visitedTree[leftNodes[t]];
+          for (let t = 0; t < rightCount; t++) if (visitedTree[rightNodes[t]] > best) best = visitedTree[rightNodes[t]];
+          return best;
+        };
+
         let literalRun = [];
 
         const flushLiteralRun = () => {
@@ -168,16 +333,37 @@
           literalRun = [];
         };
 
-        while (i < data.length) {
-          const match = this._findAndInsert(root, data, i);
+        let i = 0;
+        while (i < n) {
+          const rank = rankOf[i];
+          const cap = Math.min(this.maxMatchLength, n - i);
 
-          if (match.length >= this.minMatchLength) {
+          let matchLength = 0;
+          const before = lastVisited(rank - 1);
+          if (before >= 0) {
+            const shared = lcpMin(before + 1, rank);
+            if (shared > matchLength) matchLength = shared;
+          }
+          const after = firstVisited(rank + 1);
+          if (after >= 0) {
+            const shared = lcpMin(rank + 1, after);
+            if (shared > matchLength) matchLength = shared;
+          }
+          if (matchLength > cap) matchLength = cap;
+
+          if (matchLength >= this.minMatchLength) {
+            const lowRank = lastLcpBelow(rank, matchLength);
+            const highRank = firstLcpBelow(rank + 1, matchLength) - 1;
+            const matchPosition = mostRecentVisited(lowRank, highRank);
+
             flushLiteralRun();
-            compressed.push(match.length);
-            { const _src = OpCodes.Unpack32LE(i - match.position); for (let _i = 0; _i < _src.length; _i++) compressed.push(_src[_i]); }
-            i += match.length;
+            compressed.push(matchLength);
+            { const _src = OpCodes.Unpack32LE(i - matchPosition); for (let _i = 0; _i < _src.length; _i++) compressed.push(_src[_i]); }
+            markVisited(rank, i);
+            i += matchLength;
           } else {
             literalRun.push(data[i]);
+            markVisited(rank, i);
             i++;
             if (literalRun.length === 255) flushLiteralRun();
           }
@@ -219,50 +405,98 @@
       }
 
       /**
-       * Descends the suffix trie from the root along data[i..], returning the
-       * longest previously-recorded match found along the way (length + start
-       * position), then extends the trie with the remainder of this suffix
-       * (bounded by maxMatchLength) so later lookups can match deeper than any
-       * single previous insertion reached. Every prefix node walked during the
-       * match phase has its "most recent occurrence" position refreshed to i.
+       * Builds the suffix array of the input by prefix doubling with a counting
+       * sort on each rank pair, which needs a handful of Int32Arrays and no
+       * per-substring allocation at all. A sentinel below every byte value is
+       * appended so the cyclic sort coincides with the suffix order; its own
+       * entry is dropped from the result.
+       * @param {Uint8Array} bytes Input bytes.
+       * @param {number} n Number of input bytes.
+       * @returns {Int32Array} Start positions of the suffixes in lexical order.
        * @private
        */
-      _findAndInsert(root, data, i) {
-        let node = root;
-        let depth = 0;
-        let bestLength = 0;
-        let bestPosition = -1;
-        const maxDepth = Math.min(this.maxMatchLength, data.length - i);
+      _buildSuffixArray(bytes, n) {
+        const size = n + 1;
+        const symbols = new Int32Array(size);
+        for (let k = 0; k < n; k++) symbols[k] = bytes[k] + 1;
 
-        // Phase 1: follow existing trie structure, recording the deepest match found.
-        while (depth < maxDepth) {
-          const b = data[i + depth];
-          if (!node.children) node.children = new Map();
+        const order = new Int32Array(size);
+        const rank = new Int32Array(size);
+        const nextRank = new Int32Array(size);
+        const shifted = new Int32Array(size);
+        const alphabet = 257;
+        const counts = new Int32Array(Math.max(alphabet, size) + 1);
 
-          const child = node.children.get(b);
-          if (!child) break;
+        for (let k = 0; k < size; k++) counts[symbols[k]]++;
+        for (let c = 1; c < alphabet; c++) counts[c] += counts[c - 1];
+        for (let k = size - 1; k >= 0; k--) order[--counts[symbols[k]]] = k;
 
-          if (child.position >= 0) {
-            bestLength = depth + 1;
-            bestPosition = child.position;
+        let classes = 1;
+        rank[order[0]] = 0;
+        for (let k = 1; k < size; k++) {
+          if (symbols[order[k]] !== symbols[order[k - 1]]) classes++;
+          rank[order[k]] = classes - 1;
+        }
+
+        for (let step = 1; classes < size; step *= 2) {
+          for (let k = 0; k < size; k++) {
+            let start = order[k] - step;
+            if (start < 0) start += size;
+            shifted[k] = start;
           }
-          child.position = i;
-          node = child;
-          depth++;
+
+          counts.fill(0, 0, classes);
+          for (let k = 0; k < size; k++) counts[rank[k]]++;
+          for (let c = 1; c < classes; c++) counts[c] += counts[c - 1];
+          for (let k = size - 1; k >= 0; k--) order[--counts[rank[shifted[k]]]] = shifted[k];
+
+          let grown = 1;
+          nextRank[order[0]] = 0;
+          for (let k = 1; k < size; k++) {
+            const currentHead = rank[order[k]];
+            const currentTail = rank[(order[k] + step) % size];
+            const previousHead = rank[order[k - 1]];
+            const previousTail = rank[(order[k - 1] + step) % size];
+            if (currentHead !== previousHead || currentTail !== previousTail) grown++;
+            nextRank[order[k]] = grown - 1;
+          }
+          rank.set(nextRank);
+          classes = grown;
         }
 
-        // Phase 2: extend the trie with brand-new nodes for the rest of this
-        // suffix, so a future occurrence of this longer prefix can be matched
-        // in one lookup instead of needing to be rebuilt one level at a time.
-        while (depth < maxDepth) {
-          const newNode = { position: i, children: null };
-          if (!node.children) node.children = new Map();
-          node.children.set(data[i + depth], newNode);
-          node = newNode;
-          depth++;
+        const suffixArray = new Int32Array(n);
+        for (let k = 1; k < size; k++) suffixArray[k - 1] = order[k];
+        return suffixArray;
+      }
+
+      /**
+       * Builds the LCP array with Kasai's linear-time scan. Entry k holds the
+       * longest common prefix of the suffixes at ranks k-1 and k; entries 0 and n
+       * are sentinels set below any achievable match length.
+       * @param {Uint8Array} bytes Input bytes.
+       * @param {number} n Number of input bytes.
+       * @param {Int32Array} suffixArray Suffix start positions in lexical order.
+       * @param {Int32Array} rankOf Inverse of the suffix array.
+       * @returns {Int32Array} LCP values indexed by rank, length n+1.
+       * @private
+       */
+      _buildLcpArray(bytes, n, suffixArray, rankOf) {
+        const lcp = new Int32Array(n + 1);
+        lcp[0] = -1;
+        lcp[n] = -1;
+
+        let shared = 0;
+        for (let position = 0; position < n; position++) {
+          const rank = rankOf[position];
+          if (rank === 0) { shared = 0; continue; }
+          const previous = suffixArray[rank - 1];
+          while (position + shared < n && previous + shared < n && bytes[position + shared] === bytes[previous + shared])
+            shared++;
+          lcp[rank] = shared;
+          if (shared > 0) shared--;
         }
 
-        return { length: bestLength, position: bestPosition };
+        return lcp;
       }
     }
 
