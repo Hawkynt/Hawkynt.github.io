@@ -344,21 +344,12 @@
         for (let i = 0; i < 256; ++i) {
           const entries = [];
           for (let j = 0; j < 256; ++j) if (pairCount[i][j] > 0) entries.push({ count: pairCount[i][j], value: j });
-          // Stable sort: ties keep ascending byte-value order. This matches
-          // CompressionWorkbench's ReduceEncoder.BuildFollowerSets for every
-          // case this port was checked against (all required samples, plus
-          // low-entropy stress inputs), because .NET's Array.Sort falls back
-          // to an insertion sort - stable in practice - for the small
-          // per-context candidate counts those inputs produce. For inputs
-          // with many same-frequency followers in a single context (e.g.
-          // large high-entropy/random payloads), .NET's introspective sort
-          // is not guaranteed stable and its exact tie order is an
-          // implementation detail of the CoreCLR array-sort routine, not a
-          // documented part of the Reducing algorithm; such inputs can
-          // legitimately diverge in follower-set ordering (and therefore in
-          // compressed bytes, though never in decoded content) from
-          // CompressionWorkbench's output.
-          entries.sort((a, b) => b.count - a.count);
+          // Most frequent follower first. Followers of equal count are ordered
+          // by ascending byte value, so which 32 followers survive the cut and
+          // the index each one gets are a function of the data alone. The
+          // comparison never returns 0 for two different followers, so the
+          // result does not depend on whether the host sort is stable.
+          entries.sort((a, b) => a.count !== b.count ? b.count - a.count : a.value - b.value);
           const setSize = Math.min(entries.length, MAX_FOLLOWER_SET);
           const set = new Array(setSize);
           for (let k = 0; k < setSize; ++k) set[k] = entries[k].value;
