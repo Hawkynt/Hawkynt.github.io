@@ -150,6 +150,103 @@ function roundTrip(algorithm, data) {
 // Categories whose algorithms are reversible in the compress/decompress sense.
 const REVERSIBLE_CATEGORIES = new Set(['Compression Algorithms', 'Encoding Schemes']);
 
+//#region ===== does it actually compress? =====
+
+// Round-tripping proves an algorithm can decode its own output. It says nothing
+// about whether it compresses - storing the input verbatim round-trips perfectly,
+// and a long run of algorithms in this collection did exactly that while passing
+// every test in it. A compressor has one property a store cannot fake: on
+// redundant input it must produce markedly less output.
+//
+// Two samples are needed, because one alone can be gamed from either side. A run
+// of a single byte is the only redundancy a run-length coder can exploit, so it
+// cannot be the sole test; but an entropy coder carrying a run-length shortcut
+// crushes that run while coding nothing at all, which is precisely how a broken
+// context-mixing coder passed unnoticed. A repeated multi-byte pattern closes
+// that hole, and is required of anything claiming to be general purpose.
+const COMPRESSION_LIMIT = 0.95;
+const COMPRESSION_SAMPLE_SIZE = 20000;
+
+// Exempt from the run sample: these do not compress, or do not compress runs.
+const RUN_EXEMPT = new Map([
+  ['BCJ ARM', 'branch-conversion filter, size-preserving by design'],
+  ['BCJ ARM-Thumb', 'branch-conversion filter, size-preserving by design'],
+  ['BCJ ARM64', 'branch-conversion filter, size-preserving by design'],
+  ['BCJ IA-64', 'branch-conversion filter, size-preserving by design'],
+  ['BCJ PowerPC', 'branch-conversion filter, size-preserving by design'],
+  ['BCJ RISC-V', 'branch-conversion filter, size-preserving by design'],
+  ['BCJ SPARC', 'branch-conversion filter, size-preserving by design'],
+  ['BCJ x86', 'branch-conversion filter, size-preserving by design'],
+  ['BWT (Burrows-Wheeler Transform)', 'reordering transform, size-preserving by design'],
+  ['BWT-Advanced (Enhanced Burrows-Wheeler Transform)', 'reordering transform, size-preserving by design'],
+  ['Delta Filter', 'difference transform, size-preserving by design'],
+  ['DPCM', 'difference transform, size-preserving by design'],
+  ['Move-to-Front (MTF)', 'ranking transform, size-preserving by design'],
+  ['Elias Delta Coding', 'universal code for small integers; arbitrary bytes cost more than 8 bits'],
+  ['Elias Gamma Coding', 'universal code for small integers; arbitrary bytes cost more than 8 bits'],
+  ['Exp-Golomb', 'universal code for small integers; arbitrary bytes cost more than 8 bits'],
+  ['Fibonacci Coding', 'universal code for small integers; arbitrary bytes cost more than 8 bits'],
+  ['Golomb', 'parameterised code for small integers; arbitrary bytes cost more than 8 bits'],
+  ['Golomb-BitStream', 'parameterised code with M fixed at 2; arbitrary bytes cost far more than 8 bits'],
+  ['Levenshtein Coding', 'universal code for small integers; arbitrary bytes cost more than 8 bits'],
+  ['Omega Coding', 'universal code for small integers; arbitrary bytes cost more than 8 bits'],
+  ['Unary Coding', 'universal code for small integers; arbitrary bytes cost far more than 8 bits'],
+  ['DNA Sequence Compression', 'packs 2 bits per symbol for A/C/G/T only; other bytes become exceptions'],
+  ['Shoco', 'entropy model trained on English text, not on repeated single bytes'],
+]);
+
+// Exempt from the pattern sample: real compressors whose model only captures
+// runs, so a repeated multi-byte phrase offers them nothing to exploit.
+const PATTERN_EXEMPT = new Map([
+  ...RUN_EXEMPT,
+  ['RLE', 'run-length coder; a repeating phrase contains no runs'],
+  ['PackBits RLE', 'run-length coder; a repeating phrase contains no runs'],
+  ['Delta + RLE', 'run-length coder over differences; a repeating phrase contains no runs'],
+  ['IBM 842', 'fixed template coder with a short window; a 45-byte phrase exceeds its reach'],
+  ['Tunstall Coding', 'variable-to-fixed code with one-byte codewords; gains little on this phrase'],
+]);
+PATTERN_EXEMPT.delete('Shoco');   // Shoco does compress the phrase, just not the run
+
+function compressionSamples() {
+  const run = new Array(COMPRESSION_SAMPLE_SIZE).fill(0x61);
+  const phrase = 'the quick brown fox jumps over the lazy dog. ';
+  const pattern = [];
+  while (pattern.length < COMPRESSION_SAMPLE_SIZE)
+    for (let i = 0; i < phrase.length; i++) pattern.push(phrase.charCodeAt(i));
+  pattern.length = COMPRESSION_SAMPLE_SIZE;
+  return [
+    { name: 'run of one byte', data: run, exempt: RUN_EXEMPT },
+    { name: 'repeated phrase', data: pattern, exempt: PATTERN_EXEMPT },
+  ];
+}
+
+/**
+ * Check that an algorithm claiming to compress actually does.
+ * @param {object} algorithm
+ * @param {object[]} samples
+ * @returns {string[]} one message per sample it failed to compress
+ */
+function checkCompression(algorithm, samples) {
+  const problems = [];
+  for (const sample of samples) {
+    if (sample.exempt.has(algorithm.name)) continue;
+    let packed;
+    try {
+      packed = roundTrip(algorithm, sample.data).packed;
+    } catch (error) {
+      problems.push(`${sample.name}: threw ${String(error.message).slice(0, 50)}`);
+      continue;
+    }
+    const ratio = packed.length / sample.data.length;
+    if (ratio >= COMPRESSION_LIMIT)
+      problems.push(`${sample.name}: ${sample.data.length} -> ${packed.length} bytes `
+        + `(${(ratio * 100).toFixed(0)}%), which is not compression`);
+  }
+  return problems;
+}
+
+//#endregion
+
 function selectAlgorithms(algorithms, options) {
   return algorithms
     .filter(a => a.category && REVERSIBLE_CATEGORIES.has(a.category.name))
@@ -250,9 +347,11 @@ function main() {
   const corpus = buildCorpus();
   if (options.large) corpus.push(buildLargeCase());
 
+  const samples = compressionSamples();
   const failed = [];
   const slow = [];
   const restricted = [];
+  const notCompressing = [];
   let passed = 0;
 
   for (const algorithm of selected) {
@@ -288,12 +387,24 @@ function main() {
       slow.push(algorithm.name);
       console.log(`SLOW  ${algorithm.name} (exceeded ${options.budget}ms, partially checked)`);
     } else {
-      passed++;
-      if (options.verbose) console.log(`ok    ${algorithm.name}`);
+      // Only compressors carry this obligation; an encoding scheme is a
+      // representation change and is expected to grow its input.
+      const ratioProblems = algorithm.category.name === 'Compression Algorithms'
+        ? checkCompression(algorithm, samples)
+        : [];
+      if (ratioProblems.length) {
+        notCompressing.push({ name: algorithm.name, problems: ratioProblems });
+        console.log(`RATIO ${algorithm.name}`);
+        ratioProblems.forEach(p => console.log(`        ${p}`));
+      } else {
+        passed++;
+        if (options.verbose) console.log(`ok    ${algorithm.name}`);
+      }
     }
   }
 
-  console.log(`\n${passed} passed, ${failed.length} failed, ${slow.length} too slow to finish`);
+  console.log(`\n${passed} passed, ${failed.length} failed, `
+    + `${notCompressing.length} not compressing, ${slow.length} too slow to finish`);
 
   let interopFailures = 0;
   if (options.interop) {
@@ -314,7 +425,13 @@ function main() {
     console.log('\nRound-trip failures are data-loss defects: an algorithm that cannot decode');
     console.log('its own output will silently corrupt real input.');
   }
-  process.exitCode = failed.length ? 1 : 0;
+  if (notCompressing.length) {
+    console.log('\nAn algorithm that round-trips but never shrinks redundant input is not');
+    console.log('implementing its algorithm - it is storing the input and passing the test.');
+    console.log('If it genuinely is a transform or a code for a narrow domain, declare that');
+    console.log('by adding it to RUN_EXEMPT or PATTERN_EXEMPT above, with the reason.');
+  }
+  process.exitCode = (failed.length || notCompressing.length) ? 1 : 0;
 }
 
 main();
