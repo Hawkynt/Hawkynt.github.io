@@ -8,11 +8,11 @@ This directory contains implementations of various data compression algorithms. 
 
 Generated from the registry by `tools/refresh-readmes.js`.
 
-- **ACE-style LZ77+Huffman (documented subset)** (`ace-archiver.js`) - Shared generic LZ77 + single-Huffman-tree compression engine (also used by the ARJ-style, RAR-style and SQX-style entries in this repository), parameterized here with a fixed 64KB window, minimum match length 2, and raw fixed-width distance fields to approximate eSKASoft ACE archiver's publicly documented characteristics
+- **ACE (WinAce)** (`ace-archiver.js`) - WinAce's ACE 1.0 method: an LZ77 matcher over a 32 KiB dictionary feeding two per-block Huffman trees, a 284-symbol main tree of literals, an end-of-block marker and 27 match-length slots whose code lengths travel through a 19-symbol pre-tree, plus a 2-bit distance mode selecting either an explicit 15-bit distance or one of three recent distances
 - **Adaptive Huffman (FGK)** (`adaptive-huffman.js`) - Faller-Gallager-Knuth dynamic Huffman coding
 - **aPLib** (`aplib.js`) - Joergen Ibsen's LZSS-based compression library, known for very small and fast decompressors
 - **Arithmetic Coding** (`arithmetic.js`) - Arithmetic coding represents the entire message as a single fraction in the range [0,1) using probability models
-- **ARJ-style LZ77+Huffman (documented subset)** (`arj.js`) - Shared generic LZ77 + single-Huffman-tree compression engine (also used by the ACE-style, RAR-style and SQX-style entries in this repository), parameterized here with an era-typical 8KB window, minimum match length 3, and raw fixed-width distance fields to approximate ARJ's own TECHNOTE.TXT description of methods 1-3 (LZ77 sliding window with static Huffman encoding)
+- **ARJ** (`arj.js`) - ARJ method 1: LZSS matching over a 26624-byte window with match lengths 3 to 256, feeding a 510-symbol literal/length Huffman tree and a 17-slot position tree rebuilt for every block of at most 16384 tokens
 - **BALZ** (`balz.js`) - ROLZ (reduced-offset Lempel-Ziv) compressor by Ilya Muravyov: matches are drawn from a 64-entry table selected by the previous byte, so only a slot index is transmitted, and every bit is coded by a 12-bit adaptive binary arithmetic coder
 - **BCJ ARM** (`bcj-arm.js`) - Branch/Call/Jump filter for 32-bit ARM (A32) machine code
 - **BCJ ARM-Thumb** (`bcj-arm-thumb.js`) - Branch/Call/Jump filter for 16-bit ARM Thumb (T32) machine code
@@ -107,7 +107,7 @@ Generated from the registry by `tools/refresh-readmes.js`.
 - **QuickLZ** (`quicklz.js`) - Fast compression algorithm optimized for speed (150-300 MB/s)
 - **Range Coding** (`range-coding.js`) - Entropy coding method that assigns codewords to symbols based on their probability distributions
 - **rANS (Range Asymmetric Numeral Systems)** (`rans.js`) - Advanced entropy coding using range-based asymmetric numeral systems for optimal compression efficiency
-- **RAR-style LZ77+Huffman (documented subset)** (`rar.js`) - Shared generic LZ77 + single-Huffman-tree compression engine (also used by the ACE-style, ARJ-style and SQX-style entries in this repository), parameterized here with a fixed 1MB window and raw fixed-width distance fields to approximate the coarse, publicly documented facts about the classic (pre-RAR5) RAR block coder (LZSS-style matching with Huffman entropy coding; excludes RAR3's optional PPMII mode)
+- **RAR3 (classic)** (`rar.js`) - The classic RAR method of RAR 3.x and 4.x: LZ77 matching over a 4 MiB dictionary with four repeat-offset slots, coded through four Huffman tables - a 299-symbol main table of literals, repeat markers and match-length slots, a 60-slot distance table, a 17-symbol low-distance table carrying the bottom four bits of long distances, and a 28-symbol repeat-length table
 - **RAR5** (`rar5.js`) - Block compression stage of the RAR 5.0 archive format: LZ77 over a 128KB dictionary whose literals, match-length slots, distance slots and low-distance nibbles are entropy coded with four Huffman tables, themselves serialised through a 20-symbol pre-code with run-length escapes
 - **Reduce** (`reduce.js`) - PKZIP methods 2-5 (Reducing): a DLE-escaped LZ77 pre-pass (factor-controlled length/distance bit split) followed by a static, frequency-ranked probabilistic substitution stage using per-byte follower sets of up to 32 candidate successor bytes
 - **RePair** (`repair.js`) - Recursive pairing grammar compression
@@ -121,7 +121,7 @@ Generated from the registry by `tools/refresh-readmes.js`.
 - **Shrink** (`shrink.js`) - PKZIP method 1 (Shrinking): dynamic LZW coding with encoder-controlled variable code width (9-13 bits) and partial dictionary clearing, which frees only leaf (unreferenced) entries instead of resetting the whole table
 - **Simplified Deflate (Fixed Huffman)** (`deflate-simple.js`) - Raw RFC 1951 DEFLATE restricted to fixed-Huffman blocks
 - **Snappy** (`snappy.js`) - Fast LZ77-based compression algorithm developed by Google in 2011
-- **SQX-style LZ77+Huffman (documented subset)** (`sqx.js`) - Shared generic LZ77 + single-Huffman-tree compression engine (also used by the ACE-style, ARJ-style and RAR-style entries in this repository), parameterized here with a fixed 4MB match window and raw fixed-width distance fields to approximate the 'LZH-like' description found in secondary sources for SQX (no public bitstream specification exists for the proprietary/undocumented SQX format)
+- **SQX** (`sqx.js`) - The SQX archiver's LZH method: an LZ77 matcher over a 32 KiB dictionary feeding a 310-symbol main tree that folds literals, four repeated-distance slots, length-2 and length-3 matches with inline distances, and 25 length-4-or-more slots into one alphabet, alongside a 48-slot distance tree
 - **Suffix Tree Compression** (`suffix-tree.js`) - Advanced lossless compression using suffix tree construction and longest common substring analysis
 - **tANS (Table-based Asymmetric Numeral Systems)** (`tans.js`) - Table-driven ANS entropy coder over a 2048-state table
 - **Tunstall Coding** (`tunstall.js`) - Variable-to-fixed length source code
