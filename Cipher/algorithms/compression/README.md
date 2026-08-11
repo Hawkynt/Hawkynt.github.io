@@ -43,7 +43,7 @@ This directory contains implementations of various data compression algorithms. 
 - [ ] **LZS** - Lempel-Ziv-Stac compression
 - [ ] **LZT** - Lempel-Ziv-Tischer compression
 - [ ] **Snappy** - Fast compression library by Google
-- [ ] **Zopfli** - Compression algorithm by Google
+- [x] **Zopfli** (`zopfli.js`) - Iterative-optimal DEFLATE encoder: shortest-path parse priced by the entropy of the previous parse, repeated until the exact block size stops falling, over block boundaries chosen by search. Emits standard RFC 1951 and reads back with any DEFLATE decoder
 - [ ] **ROLZ (Reduced Offset Lempel Ziv)** - Variant of LZ compression
 - [ ] **Move to Front** - Data transformation technique
 - [ ] **PAQ** - Series of archiving programs
