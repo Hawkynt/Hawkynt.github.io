@@ -162,7 +162,7 @@
 
       // Create decode lookup table
       this.decodeTable = {};
-      const alphabetStr = String.fromCharCode(...this.alphabet);
+      const alphabetStr = OpCodes.BytesToLatin1(this.alphabet);
       for (let i = 0; i < alphabetStr.length; i++) {
         this.decodeTable[alphabetStr[i]] = i;
       }
@@ -216,7 +216,7 @@
       }
 
       // Convert to base62
-      const alphabetStr = String.fromCharCode(...this.alphabet);
+      const alphabetStr = OpCodes.BytesToLatin1(this.alphabet);
       const result = [];
       const base = BigInt(this.base);
 
@@ -242,7 +242,7 @@
         return [];
       }
 
-      const input = String.fromCharCode(...data);
+      const input = OpCodes.BytesToLatin1(data);
 
       // Validate input contains only Base62 characters
       for (let i = 0; i < input.length; i++) {
@@ -253,7 +253,7 @@
 
       // Count leading 'A' characters (representing zero bytes)
       let leadingZeros = 0;
-      const alphabetStr = String.fromCharCode(...this.alphabet);
+      const alphabetStr = OpCodes.BytesToLatin1(this.alphabet);
       for (let i = 0; i < input.length && input[i] === alphabetStr[0]; i++) {
         leadingZeros++;
       }
@@ -287,7 +287,7 @@
         return String.fromCharCode(this.alphabet[0]);
       }
 
-      const alphabetStr = String.fromCharCode(...this.alphabet);
+      const alphabetStr = OpCodes.BytesToLatin1(this.alphabet);
       let result = "";
       let n = num;
 

@@ -247,7 +247,7 @@
         return [];
       }
 
-      const input = String.fromCharCode(...data);
+      const input = OpCodes.BytesToLatin1(data);
       let cleanInput = input.replace(/[^A-Za-z0-9+\/=]/g, "");
 
       // Count padding characters

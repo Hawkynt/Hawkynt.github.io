@@ -2290,6 +2290,29 @@
 
       return str;
     },
+
+    /**
+     * Convert a byte array to a string, one character per byte, preserving the
+     * full 0..255 range.
+     *
+     * The obvious spelling, String.fromCharCode(...bytes), passes every byte as
+     * a separate argument and overflows the call stack once the array reaches
+     * roughly a hundred thousand elements, so it cannot be used on data-sized
+     * input. Converting in fixed-size chunks keeps the argument count bounded
+     * however long the input is. BytesToAnsi is not a substitute: it masks each
+     * byte to 0x7F and so cannot round-trip binary data.
+     *
+     * @param {uint8[]} bytes - Input byte array
+     * @returns {string} String whose char codes are the input bytes
+     */
+    BytesToLatin1: function(bytes) {
+      const CHUNK = 4096;
+      let str = '';
+      for (let i = 0; i < bytes.length; i += CHUNK)
+        str += String.fromCharCode.apply(null, Array.prototype.slice.call(bytes, i, i + CHUNK));
+
+      return str;
+    },
      
     /**
      * Convert string to byte array

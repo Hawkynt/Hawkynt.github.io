@@ -234,7 +234,7 @@
         return [];
       }
 
-      const encoded = String.fromCharCode(...data);
+      const encoded = OpCodes.BytesToLatin1(data);
 
       // Z85 requires input length to be multiple of 5 characters
       if (encoded.length % 5 !== 0) {
