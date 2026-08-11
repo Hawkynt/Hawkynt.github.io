@@ -229,7 +229,7 @@
         return [];
       }
 
-      const text = OpCodes.BytesToLatin1(data);
+      const text = OpCodes.BytesToChars(data);
       const codes = [];
       let currentMode = 'LETTERS';
 

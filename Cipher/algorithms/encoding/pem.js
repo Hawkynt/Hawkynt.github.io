@@ -187,7 +187,7 @@
     }
 
     decode(data) {
-      const pemText = OpCodes.BytesToLatin1(data);
+      const pemText = OpCodes.BytesToChars(data);
 
       // Extract content between BEGIN and END markers
       const beginMarker = "-----BEGIN CERTIFICATE-----";
