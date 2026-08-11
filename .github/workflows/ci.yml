@@ -66,6 +66,12 @@ jobs:
       # printed alongside but do not gate it: several algorithms deliberately do
       # not claim bitstream compatibility with the format they are named after,
       # and say so in their description.
+      # The per-vector suite gates on its own exit code now. It used to exit 0
+      # whatever failed, so nothing could act on what it reported.
+      - name: Validate every algorithm against its committed vectors
+        working-directory: Cipher
+        run: node tests/TestSuite.js
+
       - name: Round-trip every reversible algorithm
         working-directory: Cipher
         run: node tests/RoundTripSuite.js --interop
