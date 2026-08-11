@@ -18,7 +18,9 @@
  * seen, not just a recent window) and, because every algorithm file in this project must
  * be a self-contained standalone module with no external tooling or other files to import,
  * adds its own lightweight order-0 canonical Huffman entropy stage for the literal bytes
- * in place of the external bzip2 stage upstream rzip relies on.
+ * in place of the external bzip2 stage upstream rzip relies on. The stream therefore
+ * carries the "RZIP" signature and version of the upstream container but is NOT
+ * interchangeable with files written by the upstream tool.
  */
 
 (function (root, factory) {
@@ -70,6 +72,14 @@
     }
     return bytes;
   }
+
+  // ===== CONTAINER =====
+  // "RZIP" + major + minor + original size (4 bytes, big-endian).
+
+  const MAGIC = [0x52, 0x5A, 0x49, 0x50];
+  const VERSION_MAJOR = 2;
+  const VERSION_MINOR = 1;
+  const HEADER_SIZE = 10;
 
   // ===== VARIABLE-LENGTH INTEGER ENCODING (LEB128-style, arithmetic only) =====
 
@@ -300,7 +310,6 @@
       this.ROLLING_HASH_BASE = 257;    // Polynomial rolling hash multiplier
 
       // Literal entropy stage configuration
-      this.LITERAL_HUFFMAN_THRESHOLD = 32; // Minimum literal count before bothering with a Huffman table
       this.MAX_CODE_LENGTH = 24;           // Safety cap; falls back to raw storage if exceeded
 
       // Documentation
@@ -395,8 +404,6 @@
     }
 
     Result() {
-      if (this.inputBuffer.length === 0) return [];
-
       const result = this.isInverse ?
         this._decompress(this.inputBuffer) :
         this._compress(this.inputBuffer);
@@ -408,12 +415,19 @@
     // ===== COMPRESSION =====
 
     _compress(data) {
-      if (data.length === 0) return [];
-
       const { tokens, literalBytes } = this._findTokens(data);
       const out = [];
 
-      VarInt.write(out, data.length);
+      // Header: "RZIP", major, minor, then the original size big-endian. An .rz stream
+      // is a file format, so it names itself rather than relying on the file extension.
+      for (const byte of MAGIC) out.push(byte);
+      out.push(VERSION_MAJOR);
+      out.push(VERSION_MINOR);
+      out.push(OpCodes.AndN(OpCodes.Shr32(data.length, 24), 0xFF));
+      out.push(OpCodes.AndN(OpCodes.Shr32(data.length, 16), 0xFF));
+      out.push(OpCodes.AndN(OpCodes.Shr32(data.length, 8), 0xFF));
+      out.push(OpCodes.AndN(data.length, 0xFF));
+
       VarInt.write(out, tokens.length);
 
       for (const t of tokens) {
@@ -551,10 +565,17 @@
 
       const lengths = buildHuffmanLengths(freqs);
       let maxLen = 0;
-      for (const len of lengths) if (len > maxLen) maxLen = len;
+      let codedBits = 0;
+      for (let s = 0; s < 256; ++s) {
+        if (lengths[s] > maxLen) maxLen = lengths[s];
+        codedBits += freqs[s] * lengths[s];
+      }
 
-      const useHuffman = count >= algorithm.LITERAL_HUFFMAN_THRESHOLD &&
-        maxLen > 0 && maxLen <= algorithm.MAX_CODE_LENGTH;
+      // The length table costs a fixed 256 bytes, so coding only pays once the codes
+      // save more than that. Without this check a short literal run inflates: 256
+      // literals of distinct bytes cost 8 bits each and gain nothing for the table.
+      const codedCost = 256 + Math.ceil(codedBits / 8);
+      const useHuffman = maxLen > 0 && maxLen <= algorithm.MAX_CODE_LENGTH && codedCost < count;
 
       if (!useHuffman) {
         out.push(0);
@@ -577,10 +598,19 @@
     // ===== DECOMPRESSION =====
 
     _decompress(data) {
-      if (data.length === 0) return [];
+      if (data.length < HEADER_SIZE) {
+        throw new Error('Truncated RZIP header');
+      }
 
-      const pos = { p: 0 };
-      VarInt.read(data, pos); // total original length (informational, reconstructed length is authoritative)
+      for (let i = 0; i < MAGIC.length; ++i) {
+        if (data[i] !== MAGIC[i]) throw new Error('Invalid RZIP magic bytes');
+      }
+
+      if (data[4] !== VERSION_MAJOR) {
+        throw new Error(`Unsupported RZIP version: ${data[4]}.${data[5]}`);
+      }
+
+      const pos = { p: HEADER_SIZE };
       const tokenCount = VarInt.read(data, pos);
 
       const tokens = [];
