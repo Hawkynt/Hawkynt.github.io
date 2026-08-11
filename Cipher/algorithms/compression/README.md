@@ -6,7 +6,7 @@ This directory contains implementations of various data compression algorithms. 
 
 <!-- BEGIN GENERATED ALGORITHM LIST -->
 
-127 implemented, generated from the registry by `tools/refresh-readmes.js`.
+Generated from the registry by `tools/refresh-readmes.js`.
 
 - **ACE-style LZ77+Huffman (documented subset)** (`ace-archiver.js`) - Shared generic LZ77 + single-Huffman-tree compression engine (also used by the ARJ-style, RAR-style and SQX-style entries in this repository), parameterized here with a fixed 64KB window, minimum match length 2, and raw fixed-width distance fields to approximate eSKASoft ACE archiver's publicly documented characteristics
 - **Adaptive Huffman (FGK)** (`adaptive-huffman.js`) - Faller-Gallager-Knuth dynamic Huffman coding
