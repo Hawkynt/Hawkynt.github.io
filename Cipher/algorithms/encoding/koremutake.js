@@ -240,7 +240,7 @@
           valueDigits.unshift(Number(value % 128n));
           value = value / 128n;
         }
-        digits.push(...valueDigits);
+        for (let _i = 0; _i < valueDigits.length; _i++) digits.push(valueDigits[_i]);
       }
 
       let result = "";
@@ -314,7 +314,7 @@
           valueBytes.unshift(Number(value % 256n));
           value = value / 256n;
         }
-        result.push(...valueBytes);
+        for (let _i = 0; _i < valueBytes.length; _i++) result.push(valueBytes[_i]);
       }
 
       return result;
