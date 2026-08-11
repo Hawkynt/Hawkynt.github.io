@@ -47,6 +47,66 @@
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
+  // ===== BASE 128 REGROUPING =====
+
+  // Re-expressing the input in base 128 looks like a big-integer conversion, and
+  // it used to be implemented as one: build a BigInt from the bytes, then divide
+  // it by 128 once per syllable. Both halves of that are quadratic - the build
+  // multiplies a growing accumulator by 256 per byte, and each division walks the
+  // whole remaining number - so a megabyte would have taken tens of minutes.
+  //
+  // None of it is necessary. 128 is 2^7, so base 256 to base 128 is not a
+  // division problem at all: it is a regrouping of the same bit string from
+  // 8-bit groups into 7-bit groups. Walking the bytes from the least significant
+  // end through a small accumulator emits exactly the digits the big-integer
+  // conversion produced, in one linear pass over the input, and the reverse
+  // regroups 7-bit digits back into bytes the same way.
+
+  // Indexed both by a bit offset within the accumulator and by a digit width,
+  // so it has to reach at least eight.
+  const POWERS_OF_TWO = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192];
+
+  /**
+   * Regroup a big-endian bit string from digits of one power-of-two radix into
+   * digits of another. Both sides are most significant first; the caller must
+   * have stripped leading zero digits, and the result likewise carries none, so
+   * it is the minimal representation of the same integer.
+   * @param {uint8[]|number[]} source - Source digits, most significant first
+   * @param {number} from - First index to read
+   * @param {number} sourceBits - Bits per source digit
+   * @param {number} targetBits - Bits per target digit
+   * @returns {number[]} Target digits, most significant first
+   */
+  function Regroup(source, from, sourceBits, targetBits) {
+    const targetRadix = POWERS_OF_TWO[targetBits];
+    const reversed = [];
+
+    let accumulator = 0;
+    let bits = 0;
+    for (let i = source.length - 1; i >= from; i--) {
+      accumulator += source[i] * POWERS_OF_TWO[bits];
+      bits += sourceBits;
+
+      while (bits >= targetBits) {
+        const digit = accumulator % targetRadix;
+        reversed.push(digit);
+        accumulator = (accumulator - digit) / targetRadix;
+        bits -= targetBits;
+      }
+    }
+
+    // Whatever is left is the most significant digit; if it is zero the digit
+    // string is already minimal and nothing more belongs at the front.
+    if (accumulator > 0)
+      reversed.push(accumulator);
+
+    const result = new Array(reversed.length);
+    for (let i = 0; i < reversed.length; i++)
+      result[i] = reversed[reversed.length - 1 - i];
+
+    return result;
+  }
+
   // ===== ALGORITHM IMPLEMENTATION =====
 
   class KoremutakeAlgorithm extends EncodingAlgorithm {
@@ -151,10 +211,26 @@
     }
 
     init() {
+      if (this.decodeTable !== null) {
+        return;
+      }
+
       // Build decode lookup table
       this.decodeTable = {};
       for (let i = 0; i < this.syllables.length; i++) {
         this.decodeTable[this.syllables[i]] = i;
+      }
+
+      // Character codes per syllable, so the encoder can write its output bytes
+      // straight out instead of building a multi-megabyte intermediate string
+      this.syllableCodes = new Array(this.syllables.length);
+      for (let i = 0; i < this.syllables.length; i++) {
+        const syllable = this.syllables[i];
+        const codes = new Array(syllable.length);
+        for (let j = 0; j < syllable.length; j++) {
+          codes[j] = syllable.charCodeAt(j);
+        }
+        this.syllableCodes[i] = codes;
       }
     }
   }
@@ -216,9 +292,11 @@
    * remember how many there were (each becomes its own leading syllable
    * 0, "ba"), then treat the remaining bytes as one big-endian unsigned
    * integer and re-express it in base 128 - one syllable per digit, most
-   * significant digit first. Big-integer arithmetic (not byte-by-byte
-   * modulo) is required: the previous "byte % 128" scheme discarded the
-   * 8th bit of every byte >= 128, which is not reversible.
+   * significant digit first. Per-byte arithmetic on the bytes themselves is
+   * not enough: the previous "byte % 128" scheme discarded the 8th bit of
+   * every byte >= 128, which is not reversible. Because 128 is a power of
+   * two, though, the conversion is a regrouping of the input bits from
+   * 8-bit into 7-bit groups and needs no big-integer arithmetic at all.
    */
 
     encode(data) {
@@ -232,27 +310,22 @@
       const digits = new Array(zeroByteCount).fill(0);
 
       if (zeroByteCount < data.length) {
-        let value = 0n;
-        for (let i = zeroByteCount; i < data.length; i++) value = value * 256n + BigInt(data[i]);
-
-        const valueDigits = [];
-        while (value > 0n) {
-          valueDigits.unshift(Number(value % 128n));
-          value = value / 128n;
-        }
-        // Appended one at a time: spreading a data-sized array into push passes one
-        // argument per element and overruns the engine's argument limit.
+        const valueDigits = Regroup(data, zeroByteCount, 8, 7);
         for (let i = 0; i < valueDigits.length; i++) digits.push(valueDigits[i]);
       }
 
-      let result = "";
-      for (let i = 0; i < digits.length; i++) result += this.algorithm.syllables[digits[i]];
+      const syllableCodes = this.algorithm.syllableCodes;
 
-      // Convert string to byte array
-      const resultBytes = [];
-      for (let i = 0; i < result.length; i++) {
-        resultBytes.push(result.charCodeAt(i));
+      let length = 0;
+      for (let i = 0; i < digits.length; i++) length += syllableCodes[digits[i]].length;
+
+      const resultBytes = new Array(length);
+      let at = 0;
+      for (let i = 0; i < digits.length; i++) {
+        const codes = syllableCodes[digits[i]];
+        for (let j = 0; j < codes.length; j++) resultBytes[at++] = codes[j];
       }
+
       return resultBytes;
     }
 
@@ -308,17 +381,8 @@
       const result = new Array(zeroByteCount).fill(0);
 
       if (zeroByteCount < digits.length) {
-        let value = 0n;
-        for (let j = zeroByteCount; j < digits.length; j++) value = value * 128n + BigInt(digits[j]);
-
-        const valueBytes = [];
-        while (value > 0n) {
-          valueBytes.unshift(Number(value % 256n));
-          value = value / 256n;
-        }
-        // Appended one at a time: spreading a data-sized array into push passes one
-        // argument per element and overruns the engine's argument limit.
-        for (let j = 0; j < valueBytes.length; j++) result.push(valueBytes[j]);
+        const valueBytes = Regroup(digits, zeroByteCount, 7, 8);
+        for (let i = 0; i < valueBytes.length; i++) result.push(valueBytes[i]);
       }
 
       return result;
