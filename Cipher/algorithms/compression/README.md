@@ -8,7 +8,7 @@ This directory contains implementations of various data compression algorithms. 
 
 Generated from the registry by `tools/refresh-readmes.js`.
 
-- **ACE-style LZ77+Huffman (documented subset)** (`ace-archiver.js`) - Shared generic LZ77 + single-Huffman-tree compression engine (also used by the ARJ-style, RAR-style and SQX-style entries in this repository), parameterized here with a fixed 64KB window, minimum match length 2, and raw fixed-width distance fields to approximate eSKASoft ACE archiver's publicly documented characteristics
+- **ACE (WinAce)** (`ace-archiver.js`) - WinAce's ACE 1.0 method: an LZ77 matcher over a 32 KiB dictionary feeding two per-block Huffman trees, a 284-symbol main tree of literals, an end-of-block marker and 27 match-length slots whose code lengths travel through a 19-symbol pre-tree, plus a 2-bit distance mode selecting either an explicit 15-bit distance or one of three recent distances
 - **Adaptive Huffman (FGK)** (`adaptive-huffman.js`) - Faller-Gallager-Knuth dynamic Huffman coding
 - **aPLib** (`aplib.js`) - Joergen Ibsen's LZSS-based compression library, known for very small and fast decompressors
 - **Arithmetic Coding** (`arithmetic.js`) - Arithmetic coding represents the entire message as a single fraction in the range [0,1) using probability models
