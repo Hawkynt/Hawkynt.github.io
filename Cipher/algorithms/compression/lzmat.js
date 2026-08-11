@@ -52,6 +52,14 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  // Builds `length` bytes of a repeating pangram, for the large round-trip vector.
+  function repeatText(length) {
+    const unit = OpCodes.AnsiToBytes("the quick brown fox jumps over the lazy dog. ");
+    const out = new Array(length);
+    for (let i = 0; i < length; i++) out[i] = unit[i % unit.length];
+    return out;
+  }
+
   /**
  * LZMATCompression - Compression algorithm implementation
  * @class
@@ -77,7 +85,7 @@
         this.MATCH_TABLE_SIZE = 4096;    // Match table size
         this.WINDOW_SIZE = 8192;         // Sliding window size
         this.MIN_MATCH_LENGTH = 3;       // Minimum match length
-        this.MAX_MATCH_LENGTH = 273;     // Maximum match length (3 + 270)
+        this.MAX_MATCH_LENGTH = 255;     // Maximum match length (the match record stores it in one byte)
         this.MAX_DISTANCE = 8191;        // Maximum backward distance
 
         // Documentation and references
@@ -126,6 +134,14 @@
             text: "English sentence compression",
             uri: "https://github.com/nemequ/lzmat",
             input: OpCodes.AnsiToBytes("The quick brown fox jumps over the lazy dog")
+            // No expected - round-trip test only
+          },
+          {
+            // Long enough to offer matches beyond 255 bytes, which is the most
+            // the single-byte length field of a match record can carry.
+            text: "Repetitive text long enough to exercise the maximum match length",
+            uri: "https://github.com/nemequ/lzmat",
+            input: repeatText(1000)
             // No expected - round-trip test only
           }
         ];
@@ -182,6 +198,9 @@
             const distanceBytes = OpCodes.Unpack16BE(match.distance);
             result.push(distanceBytes[0]); // High byte
             result.push(distanceBytes[1]); // Low byte
+            // Single-byte length field: the match finder never returns more
+            // than MAX_MATCH_LENGTH (255), so this always survives byte
+            // serialisation intact.
             result.push(match.length);
             pos += match.length;
           } else {
