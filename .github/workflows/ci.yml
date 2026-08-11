@@ -81,6 +81,15 @@ jobs:
         with:
           node-version: '22'
 
+      # The category READMEs list which algorithms exist. Maintained by hand they
+      # drifted badly - the compression list named 24 implemented against 127
+      # registered, and 28 entries across two files were listed as missing after
+      # being implemented. The generated sections and the hand-written
+      # not-yet-implemented lists are both checked here so that cannot recur.
+      - name: Check the category READMEs against the registry
+        working-directory: Cipher
+        run: node tools/refresh-readmes.js --check
+
       - name: Build the algorithm reference
         working-directory: Cipher
         run: node tools/generate-algorithm-docs.js
