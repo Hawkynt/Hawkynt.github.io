@@ -101,6 +101,50 @@ function buildCorpus() {
   return cases;
 }
 
+// The 1MB tier cannot run inline. Driving 147 algorithms through a megabyte each
+// in one process exhausts V8's heap partway through and aborts the whole run,
+// leaving only a native stack trace and no indication of which algorithm was at
+// fault. Measured in isolation no algorithm needs more than about 155MB, so the
+// tier runs one child process per algorithm: memory is reclaimed between them,
+// and a crash or a hang names the algorithm that caused it instead of taking the
+// sweep down with it.
+const LARGE_CHILD_TIMEOUT_MS = 300000;
+
+function runLargeTier(algorithms) {
+  const results = [];
+  for (const algorithm of algorithms) {
+    let line;
+    try {
+      line = execFileSync(process.execPath, [__filename, '--large-one', algorithm.name],
+        { encoding: 'utf8', timeout: LARGE_CHILD_TIMEOUT_MS, stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+    } catch (error) {
+      line = error.status === null ? 'timed out'
+        : /heap limit|out of memory/i.test(String(error.stderr)) ? 'out of memory'
+        : `exited ${error.status}`;
+    }
+    results.push({ name: algorithm.name, line });
+  }
+  return results;
+}
+
+function runLargeOne(algorithms, name) {
+  const algorithm = algorithms.find(a => a.name === name);
+  if (!algorithm) { console.log('not registered'); return 3; }
+  const testCase = buildLargeCase();
+  const started = Date.now();
+  let outcome;
+  try {
+    const { packed, restored } = roundTrip(algorithm, testCase.data);
+    outcome = sameBytes(restored, testCase.data)
+      ? `ok ${packed.length} bytes, ${Date.now() - started}ms`
+      : `CONTENT DIFFERS (${restored ? restored.length : 'null'} bytes back)`;
+  } catch (error) {
+    outcome = `threw ${String(error.message).slice(0, 60)}`;
+  }
+  console.log(outcome);
+  return /^ok /.test(outcome) ? 0 : 4;
+}
+
 function buildLargeCase() {
   const random = makeRandom(0x2545f491);
   const size = 1024 * 1024;
@@ -335,6 +379,12 @@ function runInterop(algorithms, options) {
 //#endregion
 
 function main() {
+  // Child mode for the 1MB tier: one algorithm, one process, then exit.
+  if (process.argv[2] === '--large-one') {
+    process.exitCode = runLargeOne(loadAlgorithms(), process.argv[3]);
+    return;
+  }
+
   const options = parseArgs(process.argv.slice(2));
   const algorithms = loadAlgorithms();
   const selected = selectAlgorithms(algorithms, options);
@@ -345,7 +395,6 @@ function main() {
     + `${options.large ? '; +1MB tier' : ''}${options.interop ? '; +interoperability tier' : ''}\n`);
 
   const corpus = buildCorpus();
-  if (options.large) corpus.push(buildLargeCase());
 
   const samples = compressionSamples();
   const failed = [];
@@ -406,6 +455,22 @@ function main() {
   console.log(`\n${passed} passed, ${failed.length} failed, `
     + `${notCompressing.length} not compressing, ${slow.length} too slow to finish`);
 
+  let largeFailures = 0;
+  if (options.large) {
+    console.log('\n1MB tier (one process per algorithm)');
+    console.log('-----------------------------------');
+    for (const result of runLargeTier(selected)) {
+      const bad = !/^ok /.test(result.line);
+      if (bad) largeFailures++;
+      // A timeout is slowness, not incorrectness, so it is reported but does not fail the run.
+      const label = /^ok /.test(result.line) ? '  ok       '
+        : result.line === 'timed out' ? '  SLOW     ' : '  FAIL     ';
+      if (bad && result.line === 'timed out') largeFailures--;
+      console.log(`${label}${result.name.padEnd(46)} ${result.line}`);
+    }
+    console.log(`\n${largeFailures} algorithm(s) failed at 1MB`);
+  }
+
   let interopFailures = 0;
   if (options.interop) {
     console.log('\nInteroperability with reference implementations');
@@ -431,7 +496,7 @@ function main() {
     console.log('If it genuinely is a transform or a code for a narrow domain, declare that');
     console.log('by adding it to RUN_EXEMPT or PATTERN_EXEMPT above, with the reason.');
   }
-  process.exitCode = (failed.length || notCompressing.length) ? 1 : 0;
+  process.exitCode = (failed.length || notCompressing.length || largeFailures) ? 1 : 0;
 }
 
 main();
