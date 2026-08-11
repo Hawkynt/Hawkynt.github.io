@@ -36,11 +36,33 @@ const CIPHER_ROOT = path.resolve(__dirname, '..');
 
 //#region ===== options =====
 
+const DEFAULT_LARGE_SIZE = 1024 * 1024;
+
+// Every algorithm buffers its input in a plain JavaScript array and appends one
+// element per byte. V8 refuses to grow such an array past about 112.8 million
+// elements, so no tier can be asked for more than roughly 107 MB whatever the
+// machine's memory. Sizes are accepted as a plain byte count or with a K/M suffix.
+const LARGE_SIZE_CEILING = 112000000;
+
+function parseSize(text) {
+  const match = /^(\d+)([kKmM]?)$/.exec(String(text || '').trim());
+  if (!match) throw new Error(`--large-size expects a byte count, optionally suffixed K or M; got "${text}"`);
+  const scale = match[2].toLowerCase() === 'm' ? 1024 * 1024 : match[2].toLowerCase() === 'k' ? 1024 : 1;
+  const size = Number(match[1]) * scale;
+  if (size < 1) throw new Error('--large-size must be at least 1 byte');
+  if (size > LARGE_SIZE_CEILING)
+    throw new Error(`--large-size ${size} exceeds the ${LARGE_SIZE_CEILING}-element plain-array ceiling; `
+      + 'the harness itself would fail to build the corpus before any algorithm ran');
+  return size;
+}
+
 function parseArgs(argv) {
-  const options = { category: null, algorithm: null, large: false, interop: false, budget: 5000, verbose: false };
+  const options = { category: null, algorithm: null, large: false, largeSize: DEFAULT_LARGE_SIZE, interop: false, budget: 5000, verbose: false };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--large') options.large = true;
+    else if (arg === '--large-size') { options.large = true; options.largeSize = parseSize(argv[++i]); }
+    else if (arg.startsWith('--large-size=')) { options.large = true; options.largeSize = parseSize(arg.slice(13)); }
     else if (arg === '--interop') options.interop = true;
     else if (arg === '--verbose') options.verbose = true;
     else if (arg === '--category') options.category = argv[++i];
@@ -101,25 +123,40 @@ function buildCorpus() {
   return cases;
 }
 
-// The 1MB tier cannot run inline. Driving 147 algorithms through a megabyte each
+// The large tier cannot run inline. Driving 147 algorithms through a megabyte each
 // in one process exhausts V8's heap partway through and aborts the whole run,
 // leaving only a native stack trace and no indication of which algorithm was at
-// fault. Measured in isolation no algorithm needs more than about 155MB, so the
-// tier runs one child process per algorithm: memory is reclaimed between them,
-// and a crash or a hang names the algorithm that caused it instead of taking the
-// sweep down with it.
+// fault. Measured in isolation no algorithm needs more than about 155MB at 1MB of
+// input, so the tier runs one child process per algorithm: memory is reclaimed
+// between them, and a crash or a hang names the algorithm that caused it instead
+// of taking the sweep down with it.
 const LARGE_CHILD_TIMEOUT_MS = 300000;
 
-function runLargeTier(algorithms) {
+// Peak memory and run time both scale with the input, and several algorithms are
+// super-linear, so a larger tier needs a proportionally larger budget in the child.
+// The multipliers below are measured against the 1MB tier: about 155x the input in
+// peak heap, and enough headroom that a merely slow algorithm is not reported as a
+// failure.
+function largeChildTimeoutMs(size) {
+  return Math.max(LARGE_CHILD_TIMEOUT_MS, Math.ceil(size / DEFAULT_LARGE_SIZE) * LARGE_CHILD_TIMEOUT_MS);
+}
+
+function largeChildHeapMb(size) {
+  return Math.max(2048, Math.ceil(size * 200 / (1024 * 1024)));
+}
+
+function runLargeTier(algorithms, size) {
   const results = [];
+  const timeout = largeChildTimeoutMs(size);
+  const heapArg = `--max-old-space-size=${largeChildHeapMb(size)}`;
   for (const algorithm of algorithms) {
     let line;
     try {
-      line = execFileSync(process.execPath, [__filename, '--large-one', algorithm.name],
-        { encoding: 'utf8', timeout: LARGE_CHILD_TIMEOUT_MS, stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+      line = execFileSync(process.execPath, [heapArg, __filename, '--large-one', algorithm.name, String(size)],
+        { encoding: 'utf8', timeout, stdio: ['pipe', 'pipe', 'pipe'] }).trim();
     } catch (error) {
       line = error.status === null ? 'timed out'
-        : /heap limit|out of memory/i.test(String(error.stderr)) ? 'out of memory'
+        : /heap limit|out of memory|Invalid array length/i.test(String(error.stderr)) ? 'out of memory'
         : `exited ${error.status}`;
     }
     results.push({ name: algorithm.name, line });
@@ -127,10 +164,10 @@ function runLargeTier(algorithms) {
   return results;
 }
 
-function runLargeOne(algorithms, name) {
+function runLargeOne(algorithms, name, size) {
   const algorithm = algorithms.find(a => a.name === name);
   if (!algorithm) { console.log('not registered'); return 3; }
-  const testCase = buildLargeCase();
+  const testCase = buildLargeCase(size);
   const started = Date.now();
   let outcome, code;
   try {
@@ -153,13 +190,19 @@ function runLargeOne(algorithms, name) {
   return code;
 }
 
-function buildLargeCase() {
+function buildLargeCase(size) {
+  const bytes = size || DEFAULT_LARGE_SIZE;
   const random = makeRandom(0x2545f491);
-  const size = 1024 * 1024;
-  const data = new Array(size);
+  const data = new Array(bytes);
   // Compressible enough to exercise matches, varied enough to exercise literals.
-  for (let i = 0; i < size; i++) data[i] = i % 11 < 7 ? 0x41 + (i % 5) : random(256);
-  return { name: 'large-1MB', data };
+  for (let i = 0; i < bytes; i++) data[i] = i % 11 < 7 ? 0x41 + (i % 5) : random(256);
+  return { name: `large-${describeSize(bytes)}`, data };
+}
+
+function describeSize(bytes) {
+  if (bytes % (1024 * 1024) === 0) return `${bytes / (1024 * 1024)}MB`;
+  if (bytes % 1024 === 0) return `${bytes / 1024}KB`;
+  return `${bytes}B`;
 }
 
 //#endregion
@@ -387,9 +430,10 @@ function runInterop(algorithms, options) {
 //#endregion
 
 function main() {
-  // Child mode for the 1MB tier: one algorithm, one process, then exit.
+  // Child mode for the large tier: one algorithm, one process, then exit. The size
+  // is passed rather than shared, because the child rebuilds the corpus itself.
   if (process.argv[2] === '--large-one') {
-    process.exitCode = runLargeOne(loadAlgorithms(), process.argv[3]);
+    process.exitCode = runLargeOne(loadAlgorithms(), process.argv[3], Number(process.argv[4]) || DEFAULT_LARGE_SIZE);
     return;
   }
 
@@ -400,7 +444,8 @@ function main() {
   console.log('Round-trip suite');
   console.log('================\n');
   console.log(`${selected.length} reversible algorithm(s); budget ${options.budget}ms each`
-    + `${options.large ? '; +1MB tier' : ''}${options.interop ? '; +interoperability tier' : ''}\n`);
+    + `${options.large ? `; +${describeSize(options.largeSize)} tier` : ''}`
+    + `${options.interop ? '; +interoperability tier' : ''}\n`);
 
   const corpus = buildCorpus();
 
@@ -465,20 +510,20 @@ function main() {
 
   let largeFailures = 0;
   if (options.large) {
-    console.log('\n1MB tier (one process per algorithm)');
-    console.log('-----------------------------------');
-    for (const result of runLargeTier(selected)) {
+    const label = describeSize(options.largeSize);
+    console.log(`\n${label} tier (one process per algorithm)`);
+    console.log('-'.repeat(label.length + 32));
+    for (const result of runLargeTier(selected, options.largeSize)) {
       // A timeout is slowness and a declined domain is correctness, so both are
       // reported without failing the run. Corruption and crashes fail it.
       const passed = /^ok /.test(result.line) || /^domain /.test(result.line);
-      const tolerated = passed || result.line === 'timed out';
-      if (!tolerated) largeFailures++;
+      if (!(passed || result.line === 'timed out')) largeFailures++;
       const label = /^ok /.test(result.line) ? '  ok       '
         : /^domain /.test(result.line) ? '  DOMAIN   '
         : result.line === 'timed out' ? '  SLOW     ' : '  FAIL     ';
       console.log(`${label}${result.name.padEnd(46)} ${result.line}`);
     }
-    console.log(`\n${largeFailures} algorithm(s) failed at 1MB`);
+    console.log(`\n${largeFailures} algorithm(s) failed at ${describeSize(options.largeSize)}`);
   }
 
   let interopFailures = 0;

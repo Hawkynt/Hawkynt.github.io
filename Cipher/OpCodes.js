@@ -2291,28 +2291,7 @@
       return str;
     },
 
-    /**
-     * Convert a byte array to a string, one character per byte, preserving the
-     * full 0..255 range.
-     *
-     * The obvious spelling, String.fromCharCode(...bytes), passes every byte as
-     * a separate argument and overflows the call stack once the array reaches
-     * roughly a hundred thousand elements, so it cannot be used on data-sized
-     * input. Converting in fixed-size chunks keeps the argument count bounded
-     * however long the input is. BytesToAnsi is not a substitute: it masks each
-     * byte to 0x7F and so cannot round-trip binary data.
-     *
-     * @param {uint8[]} bytes - Input byte array
-     * @returns {string} String whose char codes are the input bytes
-     */
-    BytesToLatin1: function(bytes) {
-      const CHUNK = 4096;
-      let str = '';
-      for (let i = 0; i < bytes.length; i += CHUNK)
-        str += String.fromCharCode.apply(null, Array.prototype.slice.call(bytes, i, i + CHUNK));
 
-      return str;
-    },
      
     /**
      * Convert string to byte array
@@ -2325,6 +2304,31 @@
         bytes.push(str.charCodeAt(i) & 0xFF);
 
       return bytes;
+    },
+
+    /**
+     * Convert a byte array to a string whose char codes are the byte values.
+     * Each byte maps to exactly one character, so the result round-trips through
+     * AsciiToBytes.
+     *
+     * Spreading a byte array into String.fromCharCode passes one argument per byte,
+     * and an engine's argument-count limit is reached at roughly 125,000 entries.
+     * Beyond that the spread raises "Maximum call stack size exceeded", so a
+     * data-sized array must be converted in fixed-size chunks instead.
+     * @param {uint8[]} bytes - Input byte array
+     * @returns {string} String of the same length as the input
+     */
+    BytesToChars: function(bytes) {
+      const CHUNK = 4096;
+      const length = bytes.length;
+      if (length <= CHUNK)
+        return String.fromCharCode.apply(null, bytes);
+
+      const parts = [];
+      for (let offset = 0; offset < length; offset += CHUNK)
+        parts.push(String.fromCharCode.apply(null, bytes.slice(offset, Math.min(offset + CHUNK, length))));
+
+      return parts.join('');
     },
 
     /**

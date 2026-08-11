@@ -179,7 +179,7 @@
 
       // Create decode lookup table
       this.decodeTable = {};
-      const alphabetStr = OpCodes.BytesToLatin1(this.alphabet);
+      const alphabetStr = String.fromCharCode(...this.alphabet);
       for (let i = 0; i < alphabetStr.length; i++) {
         this.decodeTable[alphabetStr[i]] = i;
       }
@@ -222,7 +222,7 @@
       }
 
       const result = [];
-      const alphabetStr = OpCodes.BytesToLatin1(this.alphabet);
+      const alphabetStr = String.fromCharCode(...this.alphabet);
 
       // Process in groups of 4 bytes
       for (let i = 0; i < data.length; i += 4) {
@@ -269,7 +269,7 @@
         return [];
       }
 
-      const input = OpCodes.BytesToLatin1(data);
+      const input = OpCodes.BytesToChars(data);
       const result = [];
 
       let i = 0;
@@ -316,13 +316,13 @@
     encodeString(str) {
       const bytes = OpCodes.AnsiToBytes(str);
       const encoded = this.encode(bytes);
-      return OpCodes.BytesToLatin1(encoded);
+      return OpCodes.BytesToChars(encoded);
     }
 
     decodeString(str) {
       const bytes = OpCodes.AnsiToBytes(str);
       const decoded = this.decode(bytes);
-      return OpCodes.BytesToLatin1(decoded);
+      return OpCodes.BytesToChars(decoded);
     }
   }
 
