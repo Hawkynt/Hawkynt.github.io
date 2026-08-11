@@ -34,14 +34,20 @@
  *     * cost-driven meta-block splitting - the command stream is cut where the
  *       literal distributions diverge, and each meta-block independently falls
  *       back to the uncompressed form (Section 9.2) when that is smaller;
- *     * a hash-chain match finder with cost-aware ranking and one step of lazy
- *       matching, and canonical length-limited (package-merge) prefix codes.
- *   NOT implemented on the encoding side: static dictionary references
- *   (Section 8), several block types per category with block-switch commands
- *   (Section 6), non-zero NPOSTFIX/NDIRECT distance parameters (Section 4),
- *   and distance context modelling (Section 7.2). Any compliant Brotli
- *   decoder, including zlib's brotliDecompressSync and the reference `brotli`
- *   CLI, accepts the output byte-for-byte.
+ *     * static dictionary references (Section 8) - the 13,504 words of
+ *       Appendix A are searched with a hash index over the first four bytes of
+ *       each word, and the transforms of Appendix B are applied so that a
+ *       reference beyond the sliding window can code a word, a case-flipped
+ *       word, or a word with a prefix, a suffix or a truncated tail;
+ *     * a hash-chain match finder with cost-aware ranking and two steps of
+ *       lazy matching, and canonical length-limited (package-merge) prefix codes.
+ *   NOT implemented on the encoding side: the OmitFirst1..9 dictionary word
+ *   transforms (8 of the 121 in Appendix B), several block types per category
+ *   with block-switch commands (Section 6), non-zero NPOSTFIX/NDIRECT distance
+ *   parameters (Section 4), distance context modelling (Section 7.2), and an
+ *   optimal parse. Any compliant Brotli decoder, including zlib's
+ *   brotliDecompressSync and the reference `brotli` CLI, accepts the output
+ *   byte-for-byte.
  *
  * Every encoder decision is taken with integer arithmetic only (including a
  * fixed-point base-2 logarithm for entropy estimates), so this encoder and the
@@ -697,15 +703,17 @@
   // context values clustered into several literal prefix codes that are
   // transmitted as a context map per Section 7.3), the distance ring buffer
   // including the implicit-distance insert-and-copy ranges (Sections 4 and 5),
-  // run-length coded complex prefix code descriptors (Section 3.5), and
+  // run-length coded complex prefix code descriptors (Section 3.5),
   // cost-driven meta-block splitting where every meta-block independently falls
-  // back to the uncompressed form of Section 9.2.
+  // back to the uncompressed form of Section 9.2, and static dictionary
+  // references with their word transforms (Section 8).
   //
-  // Deliberately NOT implemented: static dictionary references (Section 8),
-  // several block types per category with block-switch commands (Section 6),
-  // non-zero NPOSTFIX/NDIRECT distance parameters (Section 4), and distance
-  // context modelling (Section 7.2). All of those are optional encoder-side
-  // features; the emitted streams stay fully conformant without them.
+  // Deliberately NOT implemented: the OmitFirst1..9 word transforms, several
+  // block types per category with block-switch commands (Section 6), non-zero
+  // NPOSTFIX/NDIRECT distance parameters (Section 4), distance context
+  // modelling (Section 7.2), and an optimal parse. All of those are optional
+  // encoder-side features; the emitted streams stay fully conformant without
+  // them.
   //
   // Every encoding decision is taken with integer arithmetic only, so this
   // encoder and CompressionWorkbench's C# encoder emit identical bytes.
@@ -725,6 +733,7 @@
   const ESTIMATED_DISTANCE_BITS = 12;
   const MATCH_RANK_LITERAL_BITS = 5;
   const LAZY_MATCH_MARGIN = 8;
+  const LAZY_LOOKAHEAD = 2;
   const LITERAL_TREE_CANDIDATES = [1, 2, 4, 8, 16];
   const INITIAL_DISTANCE_RING = [4, 11, 15, 16];
   const DISTANCE_ALPHABET_SIZE = 64;   // 16 + NDIRECT(0) + 48 for NPOSTFIX(0)
@@ -1263,6 +1272,311 @@
     return 24;
   }
 
+  // ===== ENCODER: STATIC DICTIONARY MATCH FINDER (RFC 7932 Section 8) =====
+  //
+  // A copy command whose distance exceeds the maximum in-window backward
+  // distance addresses the 122,784-byte static word list of Appendix A instead
+  // of the sliding window. RFC 7932 Section 8 decodes such a reference as
+  //
+  //   word_id      = distance - max_allowed_distance - 1
+  //   index        = word_id mod NWORDS[copy_length]
+  //   transform_id = word_id div NWORDS[copy_length]
+  //   output       = prefix(transform_id) + T(base_word) + suffix(transform_id)
+  //
+  // where max_allowed_distance is min(window size, bytes produced so far) and
+  // the *copy length* selects the length class of the base word - the number of
+  // bytes the reference actually produces is the length of the transformed word,
+  // which the transform may shorten or lengthen.
+  //
+  // The encoder therefore has to find, at a given input position, a (length,
+  // index, transform_id) triple whose transformed word is a prefix of the
+  // remaining input. Transforms are grouped by their prefix and by their
+  // elementary word operation, so one hash probe per prefix locates every
+  // candidate base word:
+  //
+  //   * Identity and OmitLast1..9 all leave the *head* of the base word intact,
+  //     so a single index entry keyed on the first four bytes of the base word
+  //     serves all ten - the longest common prefix decides which of them fit.
+  //   * FermentFirst and FermentAll change bytes in place without changing the
+  //     length, so each gets its own index entry keyed on the first four bytes
+  //     of the already-fermented word.
+  //   * OmitFirst1..9 shift the word head out of view and would need a separate
+  //     index per omission count; those eight transforms are not searched. They
+  //     all carry an empty prefix and suffix, so nothing else is lost with them.
+
+  const DICT_MIN_WORD_LENGTH = 4;
+  const DICT_MAX_WORD_LENGTH = 24;
+  const DICT_HASH_BITS = 16;
+  const DICT_HASH_SIZE = OpCodes.Shl32(1, DICT_HASH_BITS);
+  const DICT_OP_HEAD = 0, DICT_OP_FERMENT_FIRST = 1, DICT_OP_FERMENT_ALL = 2;
+
+  // RFC 7932 Appendix B elementary transform ids.
+  const TID_IDENTITY = 0, TID_FERMENT_FIRST = 1, TID_FERMENT_ALL = 2;
+  const TID_OMIT_FIRST_LOW = 3, TID_OMIT_FIRST_HIGH = 11;
+  const TID_OMIT_LAST_BASE = 11; // OmitLast_k has elementary id TID_OMIT_LAST_BASE + k
+  const TID_COUNT = 21;
+
+  // Transform ids of the two pure case-flip transforms (empty prefix and suffix),
+  // used to precompute the fermented copies of the whole word list.
+  const TRANSFORM_FERMENT_FIRST_ONLY = 9;
+  const TRANSFORM_FERMENT_ALL_ONLY = 44;
+
+  // Shortest transformed word worth a copy command of its own.
+  const DICT_MIN_OUTPUT = 4;
+
+  // Assumed cost of one literal when deciding whether a dictionary reference
+  // repays the command that carries it.
+  const DICTIONARY_LITERAL_BITS = 8;
+
+  const NWORDS = BrotliDictionary.NWORDS;
+  const DOFFSET = BrotliDictionary.DOFFSET;
+
+  function stringBytes(text) {
+    const bytes = new Uint8Array(text.length);
+    for (let i = 0; i < text.length; ++i) bytes[i] = text.charCodeAt(i);
+    return bytes;
+  }
+
+  function sameByteArrays(a, b) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; ++i) if (a[i] !== b[i]) return false;
+    return true;
+  }
+
+  // Groups the searchable transforms by prefix, then by elementary operation,
+  // then by the first byte of the suffix, so a match only has to test the
+  // handful of transforms whose suffix can possibly follow.
+  function buildDictionaryGroups() {
+    const transforms = BrotliDictionary.TRANSFORMS;
+    const groups = [];
+
+    for (let id = 0; id < transforms.length; ++id) {
+      const definition = transforms[id];
+      const tid = definition[1];
+      if (tid >= TID_OMIT_FIRST_LOW && tid <= TID_OMIT_FIRST_HIGH) continue;
+
+      const prefix = stringBytes(definition[0]);
+      const suffix = stringBytes(definition[2]);
+
+      let groupIndex = -1;
+      for (let i = 0; i < groups.length; ++i)
+        if (sameByteArrays(groups[i].prefix, prefix)) { groupIndex = i; break; }
+      if (groupIndex < 0) {
+        groups.push({ prefix: prefix, byTid: new Array(TID_COUNT).fill(null) });
+        groupIndex = groups.length - 1;
+      }
+
+      const group = groups[groupIndex];
+      if (group.byTid[tid] === null)
+        group.byTid[tid] = { empty: [], byByte: new Array(256).fill(null) };
+
+      const slot = group.byTid[tid];
+      const entry = { id: id, suffix: suffix };
+      if (suffix.length === 0) {
+        slot.empty.push(entry);
+        continue;
+      }
+      if (slot.byByte[suffix[0]] === null) slot.byByte[suffix[0]] = [];
+      slot.byByte[suffix[0]].push(entry);
+    }
+
+    return groups;
+  }
+
+  const DICTIONARY_GROUPS = buildDictionaryGroups();
+
+  // Hash of four bytes, the same multiply-shift the window match finder uses.
+  function hashFourBytes(b0, b1, b2, b3) {
+    const word = OpCodes.Or32(
+      OpCodes.Or32(OpCodes.Shl32(b0, 24), OpCodes.Shl32(b1, 16)),
+      OpCodes.Or32(OpCodes.Shl32(b2, 8), b3)
+    );
+    return OpCodes.Shr32(OpCodes.Mul32(word, 2654435761), 32 - DICT_HASH_BITS);
+  }
+
+  // The word list in three forms: untouched, every word with its first character
+  // case-flipped, and every word with all characters case-flipped (RFC 7932
+  // Section 8's FermentFirst and FermentAll). Neither ferment changes a word's
+  // length, so all three share the DOFFSET layout of the original.
+  function buildDictionaryForms() {
+    const base = Uint8Array.from(BrotliDictionary.DICT);
+    const fermentFirst = new Uint8Array(base.length);
+    const fermentAll = new Uint8Array(base.length);
+
+    for (let length = DICT_MIN_WORD_LENGTH; length <= DICT_MAX_WORD_LENGTH; ++length) {
+      const count = NWORDS[length];
+      for (let index = 0; index < count; ++index) {
+        const offset = DOFFSET[length] + index * length;
+        const word = new Array(length);
+        for (let i = 0; i < length; ++i) word[i] = base[offset + i];
+        const first = BrotliDictionary.ApplyTransform(word, TRANSFORM_FERMENT_FIRST_ONLY);
+        const all = BrotliDictionary.ApplyTransform(word, TRANSFORM_FERMENT_ALL_ONLY);
+        for (let i = 0; i < length; ++i) {
+          fermentFirst[offset + i] = first[i];
+          fermentAll[offset + i] = all[i];
+        }
+      }
+    }
+
+    return [base, fermentFirst, fermentAll];
+  }
+
+  let DICTIONARY_INDEX = null;
+
+  function dictionaryIndex() {
+    if (DICTIONARY_INDEX !== null) return DICTIONARY_INDEX;
+
+    const forms = buildDictionaryForms();
+    let total = 0;
+    for (let length = DICT_MIN_WORD_LENGTH; length <= DICT_MAX_WORD_LENGTH; ++length)
+      total += NWORDS[length];
+    total = total * forms.length;
+
+    const head = new Int32Array(DICT_HASH_SIZE).fill(-1);
+    const next = new Int32Array(total).fill(-1);
+    const entryLength = new Uint8Array(total);
+    const entryIndex = new Uint16Array(total);
+    const entryOp = new Uint8Array(total);
+
+    let count = 0;
+    for (let op = 0; op < forms.length; ++op) {
+      const source = forms[op];
+      for (let length = DICT_MIN_WORD_LENGTH; length <= DICT_MAX_WORD_LENGTH; ++length) {
+        const words = NWORDS[length];
+        for (let index = 0; index < words; ++index) {
+          const offset = DOFFSET[length] + index * length;
+          const bucket = hashFourBytes(source[offset], source[offset + 1],
+            source[offset + 2], source[offset + 3]);
+          entryLength[count] = length;
+          entryIndex[count] = index;
+          entryOp[count] = op;
+          next[count] = head[bucket];
+          head[bucket] = count;
+          ++count;
+        }
+      }
+    }
+
+    DICTIONARY_INDEX = {
+      forms: forms, head: head, next: next,
+      entryLength: entryLength, entryIndex: entryIndex, entryOp: entryOp
+    };
+    return DICTIONARY_INDEX;
+  }
+
+  // Approximate bit cost of a dictionary reference. The copy length code covers
+  // the *base word* length; the distance is always explicit because the ring
+  // buffer never holds a dictionary distance (RFC 7932 Section 4).
+  function dictionaryMatchCost(copyLength, distance) {
+    const copyCode = findLengthCode(COPY_LENGTH_CODES, copyLength);
+    return ESTIMATED_COMMAND_BITS + COPY_LENGTH_CODES[copyCode][1] +
+      ESTIMATED_DISTANCE_BITS + distanceExtraBits(distance);
+  }
+
+  // Tests one list of transforms that share a prefix and an elementary word
+  // operation, keeping the best reference found so far. Ties are broken towards
+  // the smaller distance so the result never depends on traversal order.
+  function considerDictionaryList(data, maxAllowedDistance, list,
+    wordLength, wordIndex, headLength, suffixStart, best) {
+    for (let i = 0; i < list.length; ++i) {
+      const candidate = list[i];
+      const suffix = candidate.suffix;
+      if (suffixStart + suffix.length > data.length) continue;
+
+      let matches = true;
+      for (let k = 0; k < suffix.length; ++k)
+        if (data[suffixStart + k] !== suffix[k]) { matches = false; break; }
+      if (!matches) continue;
+
+      const outputLength = headLength + suffix.length;
+      if (outputLength < DICT_MIN_OUTPUT) continue;
+
+      const distance = maxAllowedDistance + 1 + candidate.id * NWORDS[wordLength] + wordIndex;
+      const cost = dictionaryMatchCost(wordLength, distance);
+      if (outputLength * DICTIONARY_LITERAL_BITS <= cost) continue;
+
+      const score = outputLength * MATCH_RANK_LITERAL_BITS - cost;
+      if (best !== null && (score < best.score || (score === best.score && distance >= best.distance)))
+        continue;
+
+      best = { copyLength: wordLength, outputLength: outputLength, distance: distance, score: score };
+    }
+    return best;
+  }
+
+  function considerDictionaryTransforms(data, maxAllowedDistance, group, tid,
+    wordLength, wordIndex, headLength, suffixStart, best) {
+    const slot = group.byTid[tid];
+    if (slot === null) return best;
+
+    best = considerDictionaryList(data, maxAllowedDistance, slot.empty,
+      wordLength, wordIndex, headLength, suffixStart, best);
+
+    if (suffixStart >= data.length) return best;
+    const list = slot.byByte[data[suffixStart]];
+    if (list === null) return best;
+
+    return considerDictionaryList(data, maxAllowedDistance, list,
+      wordLength, wordIndex, headLength, suffixStart, best);
+  }
+
+  // Best static dictionary reference at `position`, or null when none pays off.
+  // `maxAllowedDistance` must be the value the decoder will compute, that is
+  // min(window size, bytes produced so far).
+  function findDictionaryMatch(data, position, maxAllowedDistance) {
+    const index = dictionaryIndex();
+    let best = null;
+
+    for (let g = 0; g < DICTIONARY_GROUPS.length; ++g) {
+      const group = DICTIONARY_GROUPS[g];
+      const prefix = group.prefix;
+      const wordStart = position + prefix.length;
+      if (wordStart + DICT_MIN_WORD_LENGTH > data.length) continue;
+
+      let prefixMatches = true;
+      for (let i = 0; i < prefix.length; ++i)
+        if (data[position + i] !== prefix[i]) { prefixMatches = false; break; }
+      if (!prefixMatches) continue;
+
+      const bucket = hashFourBytes(data[wordStart], data[wordStart + 1],
+        data[wordStart + 2], data[wordStart + 3]);
+
+      for (let e = index.head[bucket]; e >= 0; e = index.next[e]) {
+        const wordLength = index.entryLength[e];
+        const wordIndex = index.entryIndex[e];
+        const op = index.entryOp[e];
+        const source = index.forms[op];
+        const offset = DOFFSET[wordLength] + wordIndex * wordLength;
+
+        const limit = Math.min(wordLength, data.length - wordStart);
+        let common = 0;
+        while (common < limit && source[offset + common] === data[wordStart + common]) ++common;
+        if (common < DICT_MIN_WORD_LENGTH) continue;
+
+        if (op !== DICT_OP_HEAD) {
+          if (common !== wordLength) continue;
+          const tid = op === DICT_OP_FERMENT_FIRST ? TID_FERMENT_FIRST : TID_FERMENT_ALL;
+          best = considerDictionaryTransforms(data, maxAllowedDistance, group, tid,
+            wordLength, wordIndex, prefix.length + wordLength, wordStart + wordLength, best);
+          continue;
+        }
+
+        // Identity keeps the whole word, OmitLast_k drops its last k bytes; both
+        // only need the head of the word to match.
+        for (let omit = 0; omit <= 9; ++omit) {
+          const middle = wordLength - omit;
+          if (middle < 1) break;
+          if (middle > common) continue;
+          const tid = omit === 0 ? TID_IDENTITY : TID_OMIT_LAST_BASE + omit;
+          best = considerDictionaryTransforms(data, maxAllowedDistance, group, tid,
+            wordLength, wordIndex, prefix.length + middle, wordStart + middle, best);
+        }
+      }
+    }
+
+    return best;
+  }
+
   // ===== ENCODER: LZ77 MATCH FINDER (hash chain, min match 4) =====
 
   function hashAt(data, position) {
@@ -1347,8 +1661,41 @@
     return { length: bestLength, distance: bestDistance, score: bestScore };
   }
 
+  // Best reference of either kind at one position: an in-window backward match
+  // or a static dictionary word. `copyLength` is what the copy length code has
+  // to carry, `outputLength` is how many input bytes the reference covers; the
+  // two differ only for dictionary references whose transform changes the word
+  // length.
+  const NO_REFERENCE = {
+    copyLength: 0, outputLength: 0, distance: 0, score: -2147483648, isDictionary: false
+  };
+
+  function findBestReference(data, position, maxDistance, head, chain, parseRing) {
+    const window = findBestMatch(data, position, maxDistance, head, chain, parseRing);
+    const dictionary = findDictionaryMatch(data, position, Math.min(maxDistance, position));
+
+    if (dictionary !== null && (window.length < MIN_MATCH || dictionary.score > window.score))
+      return {
+        copyLength: dictionary.copyLength,
+        outputLength: dictionary.outputLength,
+        distance: dictionary.distance,
+        score: dictionary.score,
+        isDictionary: true
+      };
+
+    if (window.length < MIN_MATCH) return NO_REFERENCE;
+
+    return {
+      copyLength: window.length,
+      outputLength: window.length,
+      distance: window.distance,
+      score: window.score,
+      isDictionary: false
+    };
+  }
+
   // Splits the input into insert-and-copy commands using a hash chain match
-  // finder with one step of lazy matching driven by the approximate bit cost.
+  // finder with two steps of lazy matching driven by the approximate bit cost.
   function findCommands(data, maxDistance) {
     const head = new Int32Array(HASH_SIZE).fill(-1);
     const chain = new Int32Array(Math.max(1, data.length)).fill(-1);
@@ -1373,48 +1720,62 @@
       // meta-block, and splitMetaBlocks closes a meta-block right after one, so
       // capping the run here bounds MLEN without making the stream illegal.
       if (position - literalStart >= MAX_LITERAL_RUN) {
-        commands.push({ insertStart: literalStart, insertLength: position - literalStart, copyLength: 0, distance: 0 });
+        commands.push({
+          insertStart: literalStart, insertLength: position - literalStart,
+          copyLength: 0, outputLength: 0, distance: 0, isDictionary: false
+        });
         literalStart = position;
       }
 
-      const best = findBestMatch(data, position, maxDistance, head, chain, parseRing);
-      if (best.length < MIN_MATCH) {
+      const best = findBestReference(data, position, maxDistance, head, chain, parseRing);
+      if (best.outputLength < MIN_MATCH) {
         insert(position);
         ++position;
         continue;
       }
 
       insert(position);
-      if (position + 1 < data.length) {
-        const later = findBestMatch(data, position + 1, maxDistance, head, chain, parseRing);
-        if (later.length >= MIN_MATCH && later.score > best.score + LAZY_MATCH_MARGIN) {
-          ++position;
-          continue;
-        }
+      let deferred = false;
+      for (let ahead = 1; ahead <= LAZY_LOOKAHEAD && position + ahead < data.length; ++ahead) {
+        const later = findBestReference(data, position + ahead, maxDistance, head, chain, parseRing);
+        if (later.outputLength < MIN_MATCH) continue;
+        if (later.score <= best.score + LAZY_MATCH_MARGIN * ahead) continue;
+        deferred = true;
+        break;
+      }
+      if (deferred) {
+        ++position;
+        continue;
       }
 
       commands.push({
         insertStart: literalStart,
         insertLength: position - literalStart,
-        copyLength: best.length,
-        distance: best.distance
+        copyLength: best.copyLength,
+        outputLength: best.outputLength,
+        distance: best.distance,
+        isDictionary: best.isDictionary
       });
 
-      if (best.distance !== parseRing[0]) {
+      // A dictionary distance never enters the ring buffer (RFC 7932 Section 4).
+      if (!best.isDictionary && best.distance !== parseRing[0]) {
         parseRing[3] = parseRing[2];
         parseRing[2] = parseRing[1];
         parseRing[1] = parseRing[0];
         parseRing[0] = best.distance;
       }
 
-      const matchEnd = position + best.length;
+      const matchEnd = position + best.outputLength;
       for (let i = position + 1; i < matchEnd; ++i) insert(i);
       position = matchEnd;
       literalStart = position;
     }
 
     if (literalStart < data.length)
-      commands.push({ insertStart: literalStart, insertLength: data.length - literalStart, copyLength: 0, distance: 0 });
+      commands.push({
+        insertStart: literalStart, insertLength: data.length - literalStart,
+        copyLength: 0, outputLength: 0, distance: 0, isDictionary: false
+      });
 
     return commands;
   }
@@ -1422,14 +1783,14 @@
   // ===== ENCODER: META-BLOCK LAYOUT =====
 
   function commandEnd(command) {
-    return command.insertStart + command.insertLength + command.copyLength;
+    return command.insertStart + command.insertLength + command.outputLength;
   }
 
   function segmentByteCount(commands, segmentStarts, segment) {
     const from = segmentStarts[segment];
     const to = segment + 1 < segmentStarts.length ? segmentStarts[segment + 1] : commands.length;
     let bytes = 0;
-    for (let i = from; i < to; ++i) bytes += commands[i].insertLength + commands[i].copyLength;
+    for (let i = from; i < to; ++i) bytes += commands[i].insertLength + commands[i].outputLength;
     return bytes;
   }
 
@@ -1457,7 +1818,7 @@
     const forcedEnd = [false];
     let carried = 0;
     for (let i = 0; i < commands.length; ++i) {
-      carried += commands[i].insertLength + commands[i].copyLength;
+      carried += commands[i].insertLength + commands[i].outputLength;
       const literalOnly = commands[i].copyLength === 0;
       if ((carried < SEGMENT_BYTES && !literalOnly) || i + 1 >= commands.length) continue;
       segmentStarts.push(i + 1);
@@ -1664,12 +2025,18 @@
       }
 
       const copyCode = findLengthCode(COPY_LENGTH_CODES, command.copyLength);
-      const canUseImplicit = insertCode <= 7 && copyCode <= 15 && command.distance === ring[0];
+      const canUseImplicit = !command.isDictionary &&
+        insertCode <= 7 && copyCode <= 15 && command.distance === ring[0];
 
       let iacCode, distanceCode;
       if (canUseImplicit) {
         iacCode = encodeInsertAndCopyCode(insertCode, copyCode, true);
         distanceCode = -1;
+      } else if (command.isDictionary) {
+        // A dictionary reference always spells its distance out and never
+        // enters the ring buffer (RFC 7932 Sections 4 and 8).
+        iacCode = encodeInsertAndCopyCode(insertCode, copyCode, false);
+        distanceCode = encodeDistance(command.distance).code;
       } else {
         iacCode = encodeInsertAndCopyCode(insertCode, copyCode, false);
         distanceCode = findRingDistanceCode(command.distance, ring);
@@ -1905,7 +2272,7 @@
       super();
 
       this.name = "Brotli";
-      this.description = "RFC 7932-compatible Brotli codec. The decoder implements the full RFC 7932 bitstream grammar (meta-block framing, complex/simple prefix codes, block-switch commands, insert-and-copy commands, distance ring buffer, context modeling, and the static dictionary with word transforms) and correctly reads streams from conformant encoders such as zlib's brotliCompressSync. The encoder exploits the format rather than emitting bare LZ77 plus Huffman: literal context modeling (all four context modes, with the 64 contexts clustered into up to 16 literal prefix codes and sent as a context map), the distance ring buffer including the implicit-distance insert-and-copy ranges, run-length coded prefix code descriptors, and cost-driven meta-block splitting with a per-meta-block uncompressed fallback. It does not emit static dictionary references, multiple block types with block-switch commands, non-zero NPOSTFIX/NDIRECT, or distance context modeling.";
+      this.description = "RFC 7932-compatible Brotli codec. The decoder implements the full RFC 7932 bitstream grammar (meta-block framing, complex/simple prefix codes, block-switch commands, insert-and-copy commands, distance ring buffer, context modeling, and the static dictionary with word transforms) and correctly reads streams from conformant encoders such as zlib's brotliCompressSync. The encoder exploits the format rather than emitting bare LZ77 plus Huffman: literal context modeling (all four context modes, with the 64 contexts clustered into up to 16 literal prefix codes and sent as a context map), the distance ring buffer including the implicit-distance insert-and-copy ranges, run-length coded prefix code descriptors, cost-driven meta-block splitting with a per-meta-block uncompressed fallback, and static dictionary references searched with a hash index over the Appendix A word list and coded with the Appendix B transforms. It does not use the OmitFirst word transforms, multiple block types with block-switch commands, non-zero NPOSTFIX/NDIRECT, distance context modeling, or an optimal parse.";
       this.inventor = "Jyrki Alakuijala, Zoltan Szabadka (Google)";
       this.year = 2013;
       this.category = CategoryType.COMPRESSION;
@@ -1935,17 +2302,20 @@
         "DECODER: full RFC 7932 grammar, including the static dictionary and word transforms - reads real-world",
         "  Brotli streams (verified against zlib's brotliCompressSync output, including compressed meta-blocks",
         "  that reference the static dictionary)",
-        "ENCODER: hash-chain LZ77 (minimum match 4, cost-aware ranking, one-step lazy matching) plus",
+        "ENCODER: hash-chain LZ77 (minimum match 4, cost-aware ranking, two-step lazy matching) plus",
         "  canonical, length-limited (package-merge, RFC-capped at 15 bits for data alphabets / 5 bits for",
         "  the code-length alphabet) prefix coding. Implements literal context modeling (Section 7.1, all",
         "  four modes, 64 contexts clustered into up to 16 trees and sent as a context map per Section 7.3),",
         "  the distance ring buffer with codes 0-15 and the implicit-distance insert-and-copy ranges",
-        "  (Sections 4 and 5), run-length coded complex prefix code descriptors (Section 3.5), and",
-        "  cost-driven meta-block splitting with a per-meta-block uncompressed fallback (Section 9.2)",
-        "ENCODER LIMITATIONS: no static dictionary references (Section 8), one block type per category (no",
-        "  block-switch commands, Section 6), NPOSTFIX=0 and NDIRECT=0 (Section 4), and no distance context",
-        "  modeling (Section 7.2). Typical output sits between the reference encoder's quality 7 and 9",
-        "  settings. Verified byte-for-byte interoperable with zlib's brotliDecompressSync and the",
+        "  (Sections 4 and 5), run-length coded complex prefix code descriptors (Section 3.5),",
+        "  cost-driven meta-block splitting with a per-meta-block uncompressed fallback (Section 9.2),",
+        "  and static dictionary references (Section 8) found through a hash index over the first four",
+        "  bytes of every word form and coded with the Appendix B word transforms",
+        "ENCODER LIMITATIONS: the OmitFirst1-9 word transforms are not searched (8 of the 121 in",
+        "  Appendix B; they carry no prefix or suffix), one block type per category (no block-switch",
+        "  commands, Section 6), NPOSTFIX=0 and NDIRECT=0 (Section 4), no distance context modeling",
+        "  (Section 7.2), and a cost-ranked greedy parse with two lazy steps rather than an optimal one.",
+        "  Verified byte-for-byte interoperable with zlib's brotliDecompressSync and the",
         "  reference `brotli` CLI in both directions, and byte-identical to the CompressionWorkbench",
         "  C# encoder for the same input",
         "Static dictionary (Appendix A, 122,784 bytes) and word transforms (Appendix B, 121 entries) are",
