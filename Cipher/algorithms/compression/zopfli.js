@@ -3,26 +3,40 @@
  * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
  *
- * Zopfli is an iterative-optimal DEFLATE encoder: it repeatedly re-parses the
- * input with a shortest-path search driven by the previous iteration's Huffman
- * code lengths, then splits the result into cost-minimizing blocks. The output
- * is standard RFC 1951 DEFLATE - smaller than greedy/lazy DEFLATE on typical
- * inputs, but decodable by any conforming DEFLATE reader (including zlib).
+ * Zopfli exists to spend a great deal of time producing an ordinary RFC 1951 stream
+ * that happens to be smaller. Its one idea is that the parse and the Huffman trees are
+ * circular: what a match costs depends on the trees, and the trees depend on which
+ * matches the parse chose. Neither can be settled first, so it guesses, solves the
+ * other exactly, and repeats - parse greedily for realistic symbol counts, price every
+ * symbol by the entropy of those counts, find the cheapest parse under that pricing by
+ * shortest path, take the counts of that parse, and go round again. Every round is
+ * measured exactly and the smallest is what gets emitted.
+ *
+ * The output is standard DEFLATE, readable by any conforming decoder including zlib.
+ *
+ * Every decision here is made with integer arithmetic, so the CompressionWorkbench
+ * implementation of the same design (Compression.Core/Deflate) produces the same bytes.
+ *
+ * References:
+ *   RFC 1951, "DEFLATE Compressed Data Format Specification version 1.3"
+ *   L. Vandevenne and J. Alakuijala, "Compress data more densely with Zopfli",
+ *     Google Open Source Blog, 2013
  */
 
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
     // AMD
-    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+    define(['../../AlgorithmFramework', '../../OpCodes', './huffman-code-lengths.data'], factory);
   } else if (typeof module === 'object' && module.exports) {
     // Node.js/CommonJS
     module.exports = factory(
       require('../../AlgorithmFramework'),
-      require('../../OpCodes')
+      require('../../OpCodes'),
+      require('./huffman-code-lengths.data')
     );
   } else {
     // Browser/Worker global
-    factory(root.AlgorithmFramework, root.OpCodes);
+    factory(root.AlgorithmFramework, root.OpCodes, root.HuffmanCodeLengths);
   }
 }((function() {
   if (typeof globalThis !== 'undefined') return globalThis;
@@ -30,7 +44,7 @@
   if (typeof global !== 'undefined') return global;
   if (typeof self !== 'undefined') return self;
   throw new Error('Unable to locate global object');
-})(), function (AlgorithmFramework, OpCodes) {
+})(), function (AlgorithmFramework, OpCodes, HuffmanCodeLengths) {
   'use strict';
 
   if (!AlgorithmFramework) {
@@ -39,6 +53,10 @@
 
   if (!OpCodes) {
     throw new Error('OpCodes dependency is required');
+  }
+
+  if (!HuffmanCodeLengths) {
+    throw new Error('HuffmanCodeLengths dependency is required');
   }
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
@@ -88,9 +106,15 @@
   const WINDOW_SIZE = 32768;
   const MAX_MATCH = 258;
   const MIN_MATCH = 3;
-  const MAX_ITERATIONS = 15;
-  const MAX_SPLIT_BLOCKS = 15;
   const CODE_LENGTH_ORDER = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
+
+  const BLOCK_TYPE_STORED = 0;
+  const BLOCK_TYPE_STATIC = 1;
+  const BLOCK_TYPE_DYNAMIC = 2;
+
+  // Costs are carried in units of 1/BIT_SCALE bit, so the shortest-path search never
+  // touches a floating-point number and its answer depends on the input alone.
+  const BIT_SCALE = 65536;
 
   // ===== BIT STREAM HELPERS (LSB-first, matches RFC 1951) =====
 
@@ -122,12 +146,16 @@
       this.writeBits(reversed, length);
     }
 
-    flush() {
+    alignToByte() {
       if (this.bitCount > 0) {
         this.bytes.push(OpCodes.AndN(this.bitBuffer, 0xFF));
         this.bitBuffer = 0;
         this.bitCount = 0;
       }
+    }
+
+    flush() {
+      this.alignToByte();
       return this.bytes;
     }
   }
@@ -246,103 +274,11 @@
     }
   }
 
-  // ===== HUFFMAN TREE FROM FREQUENCIES (binary min-heap construction, matching
-  // CompressionWorkbench's HuffmanTree.BuildFromFrequencies tie-break exactly) =====
-
-  function compareFrequencyNodes(a, b) {
-    if (a.frequency !== b.frequency) return a.frequency < b.frequency ? -1 : 1;
-    return a.symbol - b.symbol;
-  }
-
-  class FrequencyMinHeap {
-    constructor() {
-      this.items = [];
-    }
-
-    get count() {
-      return this.items.length;
-    }
-
-    insert(item) {
-      this.items.push(item);
-      this._siftUp(this.items.length - 1);
-    }
-
-    extractMin() {
-      const min = this.items[0];
-      const last = this.items.length - 1;
-      this.items[0] = this.items[last];
-      this.items.pop();
-      if (this.items.length > 0) this._siftDown(0);
-      return min;
-    }
-
-    _siftUp(index) {
-      while (index > 0) {
-        const parent = OpCodes.Shr32(index - 1, 1);
-        if (compareFrequencyNodes(this.items[index], this.items[parent]) < 0) {
-          const tmp = this.items[index];
-          this.items[index] = this.items[parent];
-          this.items[parent] = tmp;
-          index = parent;
-        } else break;
-      }
-    }
-
-    _siftDown(index) {
-      const count = this.items.length;
-      for (;;) {
-        const left = 2 * index + 1;
-        const right = 2 * index + 2;
-        let smallest = index;
-        if (left < count && compareFrequencyNodes(this.items[left], this.items[smallest]) < 0) smallest = left;
-        if (right < count && compareFrequencyNodes(this.items[right], this.items[smallest]) < 0) smallest = right;
-        if (smallest !== index) {
-          const tmp = this.items[index];
-          this.items[index] = this.items[smallest];
-          this.items[smallest] = tmp;
-          index = smallest;
-        } else break;
-      }
-    }
-  }
-
-  function buildHuffmanTreeFromFrequencies(frequencies) {
-    const heap = new FrequencyMinHeap();
-    for (let i = 0; i < frequencies.length; ++i)
-      if (frequencies[i] > 0) heap.insert({symbol: i, frequency: frequencies[i], left: null, right: null});
-
-    if (heap.count === 0) throw new Error('At least one symbol must have a non-zero frequency.');
-
-    if (heap.count === 1) {
-      const single = heap.extractMin();
-      return {symbol: -1, left: single, right: {symbol: -2, frequency: 0, left: null, right: null}, frequency: single.frequency};
-    }
-
-    while (heap.count > 1) {
-      const left = heap.extractMin();
-      const right = heap.extractMin();
-      heap.insert({symbol: -1, left: left, right: right, frequency: left.frequency + right.frequency});
-    }
-
-    return heap.extractMin();
-  }
-
-  function assignHuffmanLengths(node, depth, lengths) {
-    if (node.left === null && node.right === null) {
-      if (node.symbol >= 0 && node.symbol < lengths.length) lengths[node.symbol] = depth;
-      return;
-    }
-
-    if (node.left) assignHuffmanLengths(node.left, depth + 1, lengths);
-    if (node.right) assignHuffmanLengths(node.right, depth + 1, lengths);
-  }
-
-  function getHuffmanCodeLengths(root, maxSymbol) {
-    const lengths = new Array(maxSymbol).fill(0);
-    assignHuffmanLengths(root, 0, lengths);
-    return lengths;
-  }
+  // ===== HUFFMAN CODE LENGTHS =====
+  //
+  // Code lengths come from the shared deterministic builder, whose tie-break among
+  // equally likely symbols is written down rather than inherited from a container's
+  // internals; the depth limit RFC 1951 imposes is then repaired here.
 
   function limitHuffmanCodeLengths(codeLengths, maxLength) {
     const needsAdjustment = codeLengths.some(len => len > maxLength);
@@ -399,14 +335,15 @@
     for (let i = 0; i < symbols.length; ++i) codeLengths[symbols[i].symbol] = symbols[i].length;
   }
 
-  function buildHuffmanCodeLengths(frequencies, alphabetSize, maxBits) {
-    const root = buildHuffmanTreeFromFrequencies(frequencies);
-    const lengths = getHuffmanCodeLengths(root, alphabetSize);
+  function buildHuffmanCodeLengths(counts, maxBits) {
+    const lengths = HuffmanCodeLengths.buildCodeLengths(counts);
     limitHuffmanCodeLengths(lengths, maxBits);
     return lengths;
   }
 
-  function runLengthEncodeCodeLengths(lengths) {
+  // Encodes the concatenated literal/length and distance code lengths with the
+  // run-length alphabet of RFC 1951 section 3.2.7.
+  function encodeCodeLengthRuns(lengths) {
     const result = [];
     let i = 0;
 
@@ -414,71 +351,202 @@
       const value = lengths[i];
 
       if (value === 0) {
-        let zeroCount = 1;
-        while (i + zeroCount < lengths.length && lengths[i + zeroCount] === 0) ++zeroCount;
+        let zeros = 1;
+        while (i + zeros < lengths.length && lengths[i + zeros] === 0) ++zeros;
 
-        let count = zeroCount;
-        while (count > 0) {
-          if (count >= 11) {
-            const run = Math.min(count, 138);
+        let remaining = zeros;
+        while (remaining > 0) {
+          if (remaining >= 11) {
+            // Symbol 18 repeats a zero 11 to 138 times.
+            const run = Math.min(remaining, 138);
             result.push([18, 7, run - 11]);
-            count -= run;
-          } else if (count >= 3) {
-            result.push([17, 3, count - 3]);
-            count = 0;
+            remaining -= run;
+          } else if (remaining >= 3) {
+            // Symbol 17 repeats a zero 3 to 10 times.
+            result.push([17, 3, remaining - 3]);
+            remaining = 0;
           } else {
             result.push([0, 0, 0]);
-            --count;
+            --remaining;
           }
         }
 
-        i += zeroCount;
-      } else {
-        result.push([value, 0, 0]);
-        ++i;
-
-        let repeatCount = 0;
-        while (i + repeatCount < lengths.length && lengths[i + repeatCount] === value) ++repeatCount;
-
-        let count = repeatCount;
-        while (count >= 3) {
-          const run = Math.min(count, 6);
-          result.push([16, 2, run - 3]);
-          count -= run;
-        }
-        while (count > 0) {
-          result.push([value, 0, 0]);
-          --count;
-        }
-
-        i += repeatCount;
+        i += zeros;
+        continue;
       }
+
+      // Symbol 16 repeats the previous length 3 to 6 times, so the length itself is
+      // written once first.
+      result.push([value, 0, 0]);
+      ++i;
+
+      let repeats = 0;
+      while (i + repeats < lengths.length && lengths[i + repeats] === value) ++repeats;
+
+      let left = repeats;
+      while (left >= 3) {
+        const run = Math.min(left, 6);
+        result.push([16, 2, run - 3]);
+        left -= run;
+      }
+      while (left > 0) {
+        result.push([value, 0, 0]);
+        --left;
+      }
+
+      i += repeats;
     }
 
     return result;
   }
 
-  function getLengthCode(length) {
-    for (let i = 0; i < LENGTH_CODES.length; ++i) {
-      const info = LENGTH_CODES[i];
-      const maxLen = i < LENGTH_CODES.length - 1 ? LENGTH_CODES[i + 1].base - 1 : info.base;
-      if (length <= maxLen) return 257 + i;
+  // Both mappings are asked for millions of times per parse, so RFC 1951 table 3.2.5 is
+  // walked once at load and answered from a lookup afterwards.
+
+  const LENGTH_CODE_TABLE = (() => {
+    const table = new Uint16Array(MAX_MATCH + 1);
+    for (let length = MIN_MATCH; length <= MAX_MATCH; ++length) {
+      let code = 285;
+      for (let i = 0; i < LENGTH_CODES.length; ++i) {
+        const info = LENGTH_CODES[i];
+        const maxLen = i < LENGTH_CODES.length - 1 ? LENGTH_CODES[i + 1].base - 1 : info.base;
+        if (length <= maxLen) { code = 257 + i; break; }
+      }
+      table[length] = code;
     }
-    return 285;
+    return table;
+  })();
+
+  const DISTANCE_CODE_TABLE = (() => {
+    const table = new Uint8Array(WINDOW_SIZE + 1);
+    for (let distance = 1; distance <= WINDOW_SIZE; ++distance) {
+      let code = 29;
+      for (let i = 0; i < DISTANCE_CODES.length; ++i) {
+        const info = DISTANCE_CODES[i];
+        const maxDist = i < DISTANCE_CODES.length - 1 ?
+          DISTANCE_CODES[i + 1].base - 1 : OpCodes.ToUint32(info.base + OpCodes.Shl32(1, info.extra) - 1);
+        if (distance <= maxDist) { code = i; break; }
+      }
+      table[distance] = code;
+    }
+    return table;
+  })();
+
+  function getLengthCode(length) {
+    return LENGTH_CODE_TABLE[length];
   }
 
   function getDistanceCode(distance) {
-    for (let i = 0; i < DISTANCE_CODES.length; ++i) {
-      const info = DISTANCE_CODES[i];
-      const maxDist = i < DISTANCE_CODES.length - 1 ?
-        DISTANCE_CODES[i + 1].base - 1 : OpCodes.ToUint32(info.base + OpCodes.Shl32(1, info.extra) - 1);
-      if (distance <= maxDist) return i;
-    }
-    return 29;
+    return DISTANCE_CODE_TABLE[distance];
   }
 
-  // ===== ZOPFLI HASH CHAIN (returns every achievable match length at each
-  // position, matching CompressionWorkbench's ZopfliHashChain.FindAllMatches) =====
+  // ===== COST MODEL =====
+  //
+  // The published Zopfli method drives its shortest-path search with the entropy of the
+  // symbol counts produced by the previous parse, not with the integer Huffman code
+  // lengths those counts would yield. Entropy is the better guide because Huffman lengths
+  // are rounded to whole bits: a symbol carrying 1.2 bits of information and one carrying
+  // 1.9 both get a one-bit code, so a parse steered by code lengths cannot tell them apart
+  // and systematically over-values the commonest symbols. A symbol with a count of zero is
+  // priced as if it occurred once - it is not forbidden, it merely did not appear last
+  // time, and a fixed large penalty would wrongly rule it out for good.
+
+  // Base-2 logarithm of a positive integer, in units of 1/BIT_SCALE.
+  //
+  // The value is first halved until it lies in [1,2), each halving contributing one whole
+  // bit. Squaring a number in [1,2) either leaves it there or moves it into [2,4); which
+  // of the two happens is exactly the next fractional bit of the logarithm, so sixteen
+  // squarings yield sixteen fractional bits. Only integer multiplication and division are
+  // involved and the largest intermediate stays below 2^34, so every machine agrees.
+  function log2Fixed(value) {
+    if (value <= 1) return 0;
+
+    let scaled = value * BIT_SCALE;
+    let result = 0;
+    while (scaled >= 2 * BIT_SCALE) {
+      scaled = Math.floor(scaled / 2);
+      result += BIT_SCALE;
+    }
+
+    let bit = BIT_SCALE / 2;
+    for (let i = 0; i < 16; ++i) {
+      scaled = Math.floor(scaled * scaled / BIT_SCALE);
+      if (scaled >= 2 * BIT_SCALE) {
+        scaled = Math.floor(scaled / 2);
+        result += bit;
+      }
+      bit = Math.floor(bit / 2);
+    }
+
+    return result;
+  }
+
+  function entropyCosts(counts) {
+    const result = new Array(counts.length);
+
+    let total = 0;
+    for (let i = 0; i < counts.length; ++i) total += counts[i];
+
+    // An empty alphabet has no observations to learn from; pricing every symbol at
+    // log2(alphabet size) is the uniform distribution, which is the honest prior.
+    const log2Total = log2Fixed(total === 0 ? counts.length : total);
+
+    for (let i = 0; i < counts.length; ++i) {
+      const cost = counts[i] === 0 ? log2Total : log2Total - log2Fixed(counts[i]);
+      result[i] = cost < 0 ? 0 : cost;
+    }
+
+    return result;
+  }
+
+  class ZopfliCostModel {
+    constructor(litLenCounts, distCounts) {
+      const litLenCost = entropyCosts(litLenCounts);
+      const distCost = entropyCosts(distCounts);
+      this.litLenCost = litLenCost;
+
+      // The shortest-path search asks for these millions of times, and both are functions
+      // of the model alone, so they are worked out once here rather than per edge.
+      this.lengthCost = new Float64Array(MAX_MATCH + 1);
+      for (let length = MIN_MATCH; length <= MAX_MATCH; ++length) {
+        const code = LENGTH_CODE_TABLE[length];
+        this.lengthCost[length] = litLenCost[code] + LENGTH_CODES[code - 257].extra * BIT_SCALE;
+      }
+
+      this.distanceCost = new Float64Array(DIST_ALPHABET_SIZE);
+      for (let code = 0; code < DIST_ALPHABET_SIZE; ++code)
+        this.distanceCost[code] = distCost[code] + DISTANCE_CODES[code].extra * BIT_SCALE;
+    }
+
+    literalCost(literal) {
+      return this.litLenCost[literal];
+    }
+
+    matchCost(length, distance) {
+      return this.lengthCost[length] + this.distanceCost[DISTANCE_CODE_TABLE[distance]];
+    }
+  }
+
+  // ===== MATCH FINDING =====
+  //
+  // A shortest-path parse needs more than the single longest match at a position: a
+  // shorter match may leave the remaining input in a cheaper state, so every reachable
+  // length is a candidate edge, and RFC 1951 allows up to 256 distinct ones.
+  //
+  // The chain is walked newest-first, so candidate distances only ever grow as the walk
+  // proceeds. The first candidate to reach a given length therefore reaches it at the
+  // shortest distance available, and no later candidate can improve on it. That turns the
+  // answer into a short list of runs: lengths 3 up to the first candidate's length share
+  // its distance, the next lengths up to the second candidate's length share the second
+  // candidate's distance, and so on. Shorter distances also cost fewer bits, so preferring
+  // them is never wrong.
+
+  // How many chain links a single position may examine. The walk also stops as soon as a
+  // maximal match is in hand, which is what keeps runs of one repeated byte cheap, so the
+  // cap only bites on input whose three-byte prefixes collide often without the matches
+  // themselves getting long. Four thousand links is where the ratio stops improving
+  // measurably on such input; it is also the depth zlib's own strongest setting uses.
+  const MAX_CHAIN_HITS = 4096;
 
   class ZopfliHashChain {
     constructor(windowSize) {
@@ -487,7 +555,7 @@
       this.hashSize = OpCodes.Shl32(1, this.hashBits);
       this.hashMask = this.hashSize - 1;
       this.head = new Int32Array(this.hashSize).fill(-1);
-      this.prev = new Int32Array(windowSize);
+      this.prev = new Int32Array(windowSize).fill(-1);
     }
 
     _hash(data, pos) {
@@ -495,443 +563,754 @@
       return OpCodes.AndN(h, this.hashMask);
     }
 
-    findAllMatches(data, position, maxDistance, maxLength) {
-      const result = [];
-      if (position + 2 >= data.length) return result;
+    // Appends the match runs available at the position and inserts it into the chain.
+    // Run k covers the lengths from runMaxLength[k-1]+1 (or 3 for the first run) through
+    // runMaxLength[k], all at distance runDistance[k].
+    findMatchRuns(data, position, maxDistance, maxLength, runMaxLength, runDistance) {
+      // The hash covers three bytes, so the last two positions can neither be searched
+      // for nor entered into the chain.
+      if (position + 2 >= data.length) return;
 
       const hash = this._hash(data, position);
       let candidate = this.head[hash];
       const windowStart = Math.max(0, position - maxDistance);
-      const chainDepth = this._computeChainDepth(data, position);
-      let chainCount = 0;
+      const effectiveMaxLength = Math.min(maxLength, data.length - position);
 
-      const effectiveMaxLen = Math.min(maxLength, data.length - position);
-      const bestDistByLen = new Array(effectiveMaxLen + 1).fill(-1);
       const mask = this.windowSize - 1;
+      let hits = 0;
+      let bestLength = 2; // one below the shortest match RFC 1951 can express
 
-      while (candidate >= windowStart && chainCount < chainDepth) {
+      while (candidate >= windowStart && hits < MAX_CHAIN_HITS) {
         const distance = position - candidate;
-        const limit = Math.min(effectiveMaxLen, data.length - candidate);
 
         let length = 0;
-        while (length < limit && data[candidate + length] === data[position + length]) ++length;
+        while (length < effectiveMaxLength && data[candidate + length] === data[position + length]) ++length;
 
-        if (length >= MIN_MATCH)
-          for (let l = MIN_MATCH; l <= length; ++l)
-            if (bestDistByLen[l] < 0 || distance < bestDistByLen[l]) bestDistByLen[l] = distance;
+        if (length > bestLength) {
+          runMaxLength.push(length);
+          runDistance.push(distance);
+          bestLength = length;
 
-        candidate = this.prev[OpCodes.AndN(candidate, mask)];
-        if (candidate <= windowStart) break;
-        ++chainCount;
+          // Nothing further back can beat a maximal match, and no shorter length is left
+          // uncovered, so the walk is done.
+          if (bestLength >= effectiveMaxLength) break;
+        }
+
+        const next = this.prev[OpCodes.AndN(candidate, mask)];
+
+        // The chain runs strictly backwards; anything else is an entry from a previous
+        // trip round the window and must not be followed.
+        if (next < 0 || next >= candidate) break;
+
+        candidate = next;
+        ++hits;
       }
 
       this.prev[OpCodes.AndN(position, mask)] = this.head[hash];
       this.head[hash] = position;
-
-      for (let l = MIN_MATCH; l <= effectiveMaxLen; ++l)
-        if (bestDistByLen[l] >= 0) result.push({distance: bestDistByLen[l], length: l});
-
-      return result;
-    }
-
-    _computeChainDepth(data, position) {
-      const windowLen = Math.min(64, data.length - position);
-      if (windowLen <= 0) return 512;
-
-      const seen = new Array(256).fill(false);
-      let unique = 0;
-      for (let i = 0; i < windowLen; ++i) {
-        const dataByte = data[position + i];
-        if (seen[dataByte]) continue;
-        seen[dataByte] = true;
-        ++unique;
-      }
-
-      const diversity = unique / windowLen;
-      if (diversity < 0.1) return 2048;
-      if (diversity > 0.6) return 128;
-      return 512;
     }
   }
 
-  // ===== OPTIMAL PARSER (forward-DP shortest path over the current Huffman cost model) =====
+  // Holds the match runs of every position, searched once and read many times. Zopfli
+  // parses the same input over and over, each pass differing only in how it prices
+  // symbols; the matches themselves never change, since they depend on the bytes and the
+  // window rather than on the cost model. Searching them once is what makes a dozen
+  // passes affordable and lets the splitter and every block's parse share one search.
+  class ZopfliMatchCache {
+    constructor(data) {
+      const chain = new ZopfliHashChain(WINDOW_SIZE);
+      const runStart = new Int32Array(data.length + 1);
+      const maxLengths = [];
+      const distances = [];
 
-  function getLitLenCost(symbol, litLenLengths, unseenPenalty) {
-    return (symbol < litLenLengths.length && litLenLengths[symbol] > 0) ? litLenLengths[symbol] : unseenPenalty;
-  }
-
-  function getMatchCost(length, distance, litLenLengths, distLengths, unseenPenalty) {
-    const lengthCode = getLengthCode(length);
-    const lengthIdx = lengthCode - 257;
-
-    let cost = 0;
-    cost += (lengthCode < litLenLengths.length && litLenLengths[lengthCode] > 0) ? litLenLengths[lengthCode] : unseenPenalty;
-    cost += LENGTH_CODES[lengthIdx].extra;
-
-    const distCode = getDistanceCode(distance);
-    cost += (distCode < distLengths.length && distLengths[distCode] > 0) ? distLengths[distCode] : unseenPenalty;
-    cost += DISTANCE_CODES[distCode].extra;
-
-    return cost;
-  }
-
-  function optimalParse(data, hashChain, litLenLengths, distLengths) {
-    if (data.length === 0) return [];
-
-    const length = data.length;
-    const dpCost = new Float64Array(length + 1).fill(Number.MAX_VALUE);
-    const dpLength = new Uint16Array(length + 1);
-    const dpDistance = new Uint16Array(length + 1);
-    dpCost[0] = 0;
-
-    const UNSEEN_PENALTY = 15.0;
-
-    for (let i = 0; i < length; ++i) {
-      if (dpCost[i] >= Number.MAX_VALUE) continue;
-
-      const litCost = getLitLenCost(data[i], litLenLengths, UNSEEN_PENALTY);
-      const newLitCost = dpCost[i] + litCost;
-      if (newLitCost < dpCost[i + 1]) {
-        dpCost[i + 1] = newLitCost;
-        dpLength[i + 1] = 1;
-        dpDistance[i + 1] = 0;
+      for (let position = 0; position < data.length; ++position) {
+        runStart[position] = maxLengths.length;
+        chain.findMatchRuns(data, position, WINDOW_SIZE, MAX_MATCH, maxLengths, distances);
       }
 
-      const matches = hashChain.findAllMatches(data, i, WINDOW_SIZE, MAX_MATCH);
-      for (const match of matches) {
-        const dest = i + match.length;
-        if (dest > length) continue;
+      runStart[data.length] = maxLengths.length;
 
-        const matchCost = getMatchCost(match.length, match.distance, litLenLengths, distLengths, UNSEEN_PENALTY);
-        const newCost = dpCost[i] + matchCost;
-        if (!(newCost < dpCost[dest])) continue;
+      this.runStart = runStart;
+      this.runMaxLength = Uint16Array.from(maxLengths);
+      this.runDistance = Uint16Array.from(distances);
+    }
 
-        dpCost[dest] = newCost;
-        dpLength[dest] = match.length;
-        dpDistance[dest] = match.distance;
+    longestMatch(position) {
+      const end = this.runStart[position + 1];
+      if (end === this.runStart[position]) return {length: 0, distance: 0};
+      return {length: this.runMaxLength[end - 1], distance: this.runDistance[end - 1]};
+    }
+  }
+
+  // ===== OPTIMAL PARSER =====
+  //
+  // Every position is a node; a literal is an edge one byte long and a match of length l
+  // is an edge l bytes long, each weighted by what the current cost model says the
+  // corresponding symbols cost. Because every edge moves strictly forward, one sweep in
+  // increasing position order relaxes the graph in topological order and the result is
+  // the true minimum, not the greedy or lazy approximation an ordinary encoder settles for.
+
+  const UNREACHABLE = Number.MAX_VALUE;
+
+  function optimalParse(data, start, end, cache, model) {
+    const span = end - start;
+    if (span <= 0) return [];
+
+    const cost = new Float64Array(span + 1).fill(UNREACHABLE);
+    const length = new Uint16Array(span + 1);
+    const distance = new Uint16Array(span + 1);
+    cost[0] = 0;
+
+    for (let i = 0; i < span; ++i) {
+      const here = cost[i];
+      if (here === UNREACHABLE) continue;
+
+      const position = start + i;
+
+      const literalCost = here + model.literalCost(data[position]);
+      if (literalCost < cost[i + 1]) {
+        cost[i + 1] = literalCost;
+        length[i + 1] = 1;
+        distance[i + 1] = 0;
+      }
+
+      const runEnd = cache.runStart[position + 1];
+      const lengthCost = model.lengthCost;
+      let matchLength = MIN_MATCH;
+      for (let run = cache.runStart[position]; run < runEnd; ++run) {
+        const runDistance = cache.runDistance[run];
+        const runMax = cache.runMaxLength[run];
+        const distanceCost = here + model.distanceCost[DISTANCE_CODE_TABLE[runDistance]];
+
+        // A match may not reach past the end of the range being parsed: the next block
+        // starts there and would decode the overlap twice.
+        while (matchLength <= runMax && i + matchLength <= span) {
+          const candidate = distanceCost + lengthCost[matchLength];
+          if (candidate < cost[i + matchLength]) {
+            cost[i + matchLength] = candidate;
+            length[i + matchLength] = matchLength;
+            distance[i + matchLength] = runDistance;
+          }
+          ++matchLength;
+        }
+
+        if (i + matchLength > span) break;
       }
     }
 
     const symbols = [];
-    let pos = length;
+    let pos = span;
     while (pos > 0) {
-      const len = dpLength[pos];
-      const dist = dpDistance[pos];
-      if (dist === 0) {
-        symbols.push({isLiteral: true, literal: data[pos - 1]});
-        pos -= 1;
-      } else {
-        symbols.push({isLiteral: false, length: len, distance: dist});
-        pos -= len;
+      if (distance[pos] === 0) {
+        symbols.push({isLiteral: true, literal: data[start + pos - 1]});
+        --pos;
+        continue;
       }
+
+      symbols.push({isLiteral: false, length: length[pos], distance: distance[pos]});
+      pos -= length[pos];
     }
 
     symbols.reverse();
     return symbols;
   }
 
-  // ===== BLOCK SPLITTER (DP over candidate cut points minimizing estimated bit cost) =====
+  // The ordinary lazy-matching parse of a plain DEFLATE encoder. Zopfli runs it once
+  // before the first shortest-path pass, purely to have realistic symbol counts to seed
+  // the cost model with: starting from the RFC 1951 fixed tables instead would spend the
+  // first pass, and often several after it, discovering what the input looks like.
+  function greedyParse(data, start, end, cache) {
+    const symbols = [];
+    let position = start;
 
-  function estimateBlockBits(symbols) {
-    if (symbols.length === 0) return 0;
+    while (position < end) {
+      const match = cache.longestMatch(position);
+      let length = match.length;
+      if (length > end - position) length = end - position;
 
-    const litLenFreqs = new Array(LIT_LEN_ALPHABET_SIZE).fill(0);
-    const distFreqs = new Array(DIST_ALPHABET_SIZE).fill(0);
-    for (const sym of symbols) {
-      if (sym.isLiteral) ++litLenFreqs[sym.literal];
-      else {
-        ++litLenFreqs[getLengthCode(sym.length)];
-        ++distFreqs[getDistanceCode(sym.distance)];
+      if (length >= MIN_MATCH && position + 1 < end) {
+        let nextLength = cache.longestMatch(position + 1).length;
+        if (nextLength > end - position - 1) nextLength = end - position - 1;
+
+        // A longer match one byte later is worth the literal it costs to wait for.
+        if (nextLength > length) {
+          symbols.push({isLiteral: true, literal: data[position]});
+          ++position;
+          continue;
+        }
       }
+
+      if (length < MIN_MATCH) {
+        symbols.push({isLiteral: true, literal: data[position]});
+        ++position;
+        continue;
+      }
+
+      symbols.push({isLiteral: false, length: length, distance: match.distance});
+      position += length;
     }
-    litLenFreqs[END_OF_BLOCK] = 1;
-    if (!distFreqs.some(f => f > 0)) distFreqs[0] = 1;
 
-    const litLenLengths = buildHuffmanCodeLengths(litLenFreqs, LIT_LEN_ALPHABET_SIZE, MAX_CODE_BITS);
-    const distLengths = buildHuffmanCodeLengths(distFreqs, DIST_ALPHABET_SIZE, MAX_CODE_BITS);
+    return symbols;
+  }
 
-    let bits = 3 + 5 + 5 + 4;
+  // ===== BLOCK COST =====
+  //
+  // What a block of symbols actually costs in each of the three block types RFC 1951
+  // offers, so that the splitter and the emitter decide from the same numbers. The cost is
+  // derived from symbol histograms rather than from the symbols themselves, so the cost of
+  // any range is available in time proportional to the alphabet instead of to the range -
+  // which is what makes an exhaustive search over split points affordable. For a dynamic
+  // block the figure is exact, code-length table and all; approximating that table (for
+  // instance at three bits per symbol) inflates it several-fold and biases the splitter
+  // towards blocks that are far too large.
 
+  function ensureDistanceCode(distCounts) {
+    for (let i = 0; i < distCounts.length; ++i)
+      if (distCounts[i] > 0) return;
+
+    distCounts[0] = 1;
+  }
+
+  function trimTrees(litLenLengths, distLengths) {
     let hlit = litLenLengths.length;
     while (hlit > 257 && litLenLengths[hlit - 1] === 0) --hlit;
+
     let hdist = distLengths.length;
     while (hdist > 1 && distLengths[hdist - 1] === 0) --hdist;
 
-    bits += (hlit + hdist) * 3.0;
+    return {hlit, hdist};
+  }
 
-    for (const sym of symbols) {
-      if (sym.isLiteral) bits += litLenLengths[sym.literal];
-      else {
-        const lengthCode = getLengthCode(sym.length);
-        bits += litLenLengths[lengthCode];
-        bits += LENGTH_CODES[lengthCode - 257].extra;
-        const distCode = getDistanceCode(sym.distance);
-        bits += distLengths[distCode];
-        bits += DISTANCE_CODES[distCode].extra;
-      }
+  function tokenBits(litLenCounts, distCounts, litLenLengths, distLengths) {
+    let bits = 0;
+
+    for (let symbol = 0; symbol < litLenCounts.length; ++symbol) {
+      const count = litLenCounts[symbol];
+      if (count === 0) continue;
+
+      bits += count * litLenLengths[symbol];
+      if (symbol > END_OF_BLOCK) bits += count * LENGTH_CODES[symbol - 257].extra;
     }
 
-    bits += litLenLengths[END_OF_BLOCK];
+    for (let symbol = 0; symbol < distCounts.length; ++symbol) {
+      const count = distCounts[symbol];
+      if (count === 0) continue;
+
+      bits += count * (distLengths[symbol] + DISTANCE_CODES[symbol].extra);
+    }
+
     return bits;
   }
 
-  function splitBlocks(symbols, maxBlocks) {
-    if (symbols.length < 1024 || maxBlocks <= 1) return [{start: 0, end: symbols.length}];
-
-    const interval = Math.max(Math.floor(symbols.length / (maxBlocks * 3)), 128);
-    const candidates = [0];
-    for (let i = interval; i < symbols.length; i += interval) candidates.push(i);
-    candidates.push(symbols.length);
-
-    const n = candidates.length;
-    const cost = [];
-    for (let i = 0; i < n; ++i) {
-      cost.push(new Array(n).fill(0));
-      for (let j = i + 1; j < n; ++j) cost[i][j] = estimateBlockBits(symbols.slice(candidates[i], candidates[j]));
-    }
-
-    const dp = new Array(n).fill(Number.MAX_VALUE);
-    const prev = new Array(n).fill(0);
-    dp[0] = 0;
-
-    for (let j = 1; j < n; ++j)
-      for (let i = 0; i < j; ++i) {
-        if (dp[i] >= Number.MAX_VALUE) continue;
-        const total = dp[i] + cost[i][j];
-        if (!(total < dp[j])) continue;
-        dp[j] = total;
-        prev[j] = i;
-      }
-
-    const splitPoints = [];
-    let idx = n - 1;
-    while (idx > 0) {
-      splitPoints.push(idx);
-      idx = prev[idx];
-    }
-    splitPoints.push(0);
-    splitPoints.reverse();
-
-    while (splitPoints.length - 1 > maxBlocks) {
-      let bestMergeCost = Number.MAX_VALUE;
-      let bestMergeIdx = 1;
-
-      for (let i = 1; i < splitPoints.length - 1; ++i) {
-        const a = splitPoints[i - 1];
-        const b = splitPoints[i];
-        const c = splitPoints[i + 1];
-        const delta = cost[a][c] - (cost[a][b] + cost[b][c]);
-        if (!(delta < bestMergeCost)) continue;
-        bestMergeCost = delta;
-        bestMergeIdx = i;
-      }
-
-      splitPoints.splice(bestMergeIdx, 1);
-    }
-
-    const result = [];
-    for (let i = 0; i < splitPoints.length - 1; ++i)
-      result.push({start: candidates[splitPoints[i]], end: candidates[splitPoints[i + 1]]});
-
-    return result;
-  }
-
-  // ===== ITERATIVE OPTIMAL PARSE + BLOCK SPLIT ORCHESTRATOR (ZopfliDeflate.CompressOptimal) =====
-
-  function computeSymbolHash(symbols) {
-    let hash = 0n;
-    for (const sym of symbols) {
-      const litLen = sym.isLiteral ? sym.literal : sym.length;
-      const distance = sym.isLiteral ? 0 : sym.distance;
-      hash = BigInt.asIntN(64, hash * 31n + BigInt(litLen));
-      hash = BigInt.asIntN(64, hash * 31n + BigInt(distance));
-    }
-    return hash;
-  }
-
-  function compressOptimal(data) {
-    if (data.length === 0)
-      return [{symbols: [], litLenLengths: FIXED_LITERAL_LENGTHS, distLengths: FIXED_DISTANCE_LENGTHS}];
-
-    let litLenLengths = FIXED_LITERAL_LENGTHS;
-    let distLengths = FIXED_DISTANCE_LENGTHS;
-    let bestSymbols = [];
-    let prevHash = 0n;
-
-    for (let iteration = 0; iteration < MAX_ITERATIONS; ++iteration) {
-      const hashChain = new ZopfliHashChain(WINDOW_SIZE);
-      const symbols = optimalParse(data, hashChain, litLenLengths, distLengths);
-      bestSymbols = symbols;
-
-      const litLenFreqs = new Array(LIT_LEN_ALPHABET_SIZE).fill(0);
-      const distFreqs = new Array(DIST_ALPHABET_SIZE).fill(0);
-      for (const sym of symbols) {
-        if (sym.isLiteral) ++litLenFreqs[sym.literal];
-        else {
-          ++litLenFreqs[getLengthCode(sym.length)];
-          ++distFreqs[getDistanceCode(sym.distance)];
-        }
-      }
-      litLenFreqs[END_OF_BLOCK] = 1;
-      if (!distFreqs.some(f => f > 0)) distFreqs[0] = 1;
-
-      litLenLengths = buildHuffmanCodeLengths(litLenFreqs, LIT_LEN_ALPHABET_SIZE, MAX_CODE_BITS);
-      if (litLenLengths.length < 288) {
-        const padded = new Array(288).fill(0);
-        for (let i = 0; i < litLenLengths.length; ++i) padded[i] = litLenLengths[i];
-        litLenLengths = padded;
-      }
-      distLengths = buildHuffmanCodeLengths(distFreqs, DIST_ALPHABET_SIZE, MAX_CODE_BITS);
-
-      const currentHash = computeSymbolHash(symbols);
-      if (currentHash === prevHash && iteration > 0) break;
-      prevHash = currentHash;
-    }
-
-    const blocks = splitBlocks(bestSymbols, MAX_SPLIT_BLOCKS);
-    const result = [];
-
-    for (const {start, end} of blocks) {
-      const blockSymbols = bestSymbols.slice(start, end);
-
-      const blockLitLenFreqs = new Array(LIT_LEN_ALPHABET_SIZE).fill(0);
-      const blockDistFreqs = new Array(DIST_ALPHABET_SIZE).fill(0);
-      for (const sym of blockSymbols) {
-        if (sym.isLiteral) ++blockLitLenFreqs[sym.literal];
-        else {
-          ++blockLitLenFreqs[getLengthCode(sym.length)];
-          ++blockDistFreqs[getDistanceCode(sym.distance)];
-        }
-      }
-      blockLitLenFreqs[END_OF_BLOCK] = 1;
-      if (!blockDistFreqs.some(f => f > 0)) blockDistFreqs[0] = 1;
-
-      const blockLitLenLengths = buildHuffmanCodeLengths(blockLitLenFreqs, LIT_LEN_ALPHABET_SIZE, MAX_CODE_BITS);
-      const blockDistLengths = buildHuffmanCodeLengths(blockDistFreqs, DIST_ALPHABET_SIZE, MAX_CODE_BITS);
-
-      result.push({symbols: blockSymbols, litLenLengths: blockLitLenLengths, distLengths: blockDistLengths});
-    }
-
-    return result;
-  }
-
-  // ===== BLOCK EMISSION (uncompressed/static/dynamic selection by exact bit cost,
-  // matching DeflateCompressor.EmitOptimalBlocks) =====
-
-  function estimateStaticSize(tokens) {
-    let bits = 3;
-    for (const token of tokens) {
-      if (token.isLiteral) bits += FIXED_LITERAL_LENGTHS[token.literal];
-      else {
-        const lengthCode = getLengthCode(token.length);
-        bits += FIXED_LITERAL_LENGTHS[lengthCode];
-        bits += LENGTH_CODES[lengthCode - 257].extra;
-        const distCode = getDistanceCode(token.distance);
-        bits += FIXED_DISTANCE_LENGTHS[distCode];
-        bits += DISTANCE_CODES[distCode].extra;
-      }
-    }
-    bits += FIXED_LITERAL_LENGTHS[END_OF_BLOCK];
-    return bits;
-  }
-
-  function estimateDynamicSize(litLenFreqs, distFreqs, tokens) {
-    const litLenLengths = buildHuffmanCodeLengths(litLenFreqs, LIT_LEN_ALPHABET_SIZE, MAX_CODE_BITS);
-    if (!distFreqs.some(f => f > 0)) distFreqs[0] = 1;
-    const distLengths = buildHuffmanCodeLengths(distFreqs, DIST_ALPHABET_SIZE, MAX_CODE_BITS);
-
-    let bits = 3 + 5 + 5 + 4;
-
-    let hlit = litLenLengths.length;
-    while (hlit > 257 && litLenLengths[hlit - 1] === 0) --hlit;
-    let hdist = distLengths.length;
-    while (hdist > 1 && distLengths[hdist - 1] === 0) --hdist;
+  // Size in bits of a dynamic block's header, including the run-length-coded description
+  // of both trees.
+  function headerBits(litLenLengths, distLengths) {
+    const {hlit, hdist} = trimTrees(litLenLengths, distLengths);
 
     const combined = new Array(hlit + hdist);
     for (let i = 0; i < hlit; ++i) combined[i] = litLenLengths[i];
     for (let i = 0; i < hdist; ++i) combined[hlit + i] = distLengths[i];
-    const rle = runLengthEncodeCodeLengths(combined);
 
-    const clFreqs = new Array(CL_ALPHABET_SIZE).fill(0);
-    for (const [symbol] of rle) ++clFreqs[symbol];
-    if (!clFreqs.some(f => f > 0)) clFreqs[0] = 1;
-    const clLengths = buildHuffmanCodeLengths(clFreqs, CL_ALPHABET_SIZE, MAX_CL_CODE_BITS);
+    const runs = encodeCodeLengthRuns(combined);
+    const clCounts = new Array(CL_ALPHABET_SIZE).fill(0);
+    for (const run of runs) ++clCounts[run[0]];
+
+    const clLengths = buildHuffmanCodeLengths(clCounts, MAX_CL_CODE_BITS);
 
     let hclen = CL_ALPHABET_SIZE;
     while (hclen > 4 && clLengths[CODE_LENGTH_ORDER[hclen - 1]] === 0) --hclen;
-    bits += hclen * 3;
 
-    for (const [symbol, extraBits] of rle) bits += clLengths[symbol] + extraBits;
+    let bits = 3 + 5 + 5 + 4 + hclen * 3;
+    for (const run of runs) bits += clLengths[run[0]] + run[1];
 
-    for (const token of tokens) {
-      if (token.isLiteral) bits += litLenLengths[token.literal];
-      else {
-        const lengthCode = getLengthCode(token.length);
-        bits += litLenLengths[lengthCode];
-        bits += LENGTH_CODES[lengthCode - 257].extra;
-        const distCode = getDistanceCode(token.distance);
-        bits += distLengths[distCode];
-        bits += DISTANCE_CODES[distCode].extra;
-      }
-    }
-    bits += litLenLengths[END_OF_BLOCK];
     return bits;
   }
 
-  function writeTokens(stream, tokens, literalTree, distanceTree) {
-    for (const token of tokens) {
+  // Flattens stretches of nearly equal counts so that the code lengths they produce come
+  // out exactly equal.
+  //
+  // A dynamic block spends real bits describing its trees, and RFC 1951 describes them
+  // with a run-length alphabet whose symbol 16 repeats the previous code length. Two
+  // symbols whose counts differ by one may land on different code lengths and break a run
+  // that would otherwise have been free; giving them the same count costs a fraction of a
+  // bit in the data and can save several in the header. The published Zopfli method does
+  // the same and keeps whichever of the two tables comes out smaller, which is why this
+  // only ever produces a candidate, never a decision.
+  //
+  // A stretch is flattened only when it is at least four symbols long, every count in it
+  // is non-zero, and the largest and smallest differ by at most three. Excluding zeros
+  // matters: a long run of unused symbols is already described in a handful of bits by
+  // symbols 17 and 18, and raising those counts to one would be a large loss.
+  function smoothCountsForRuns(counts) {
+    const result = counts.slice();
+
+    let end = counts.length;
+    while (end > 0 && counts[end - 1] === 0) --end;
+
+    let i = 0;
+    while (i < end) {
+      if (counts[i] === 0) {
+        ++i;
+        continue;
+      }
+
+      let low = counts[i];
+      let high = counts[i];
+      let j = i + 1;
+      while (j < end && counts[j] !== 0) {
+        const nextLow = Math.min(low, counts[j]);
+        const nextHigh = Math.max(high, counts[j]);
+        if (nextHigh - nextLow > 3) break;
+
+        low = nextLow;
+        high = nextHigh;
+        ++j;
+      }
+
+      const run = j - i;
+      if (run >= 4 && high !== low) {
+        let sum = 0;
+        for (let k = i; k < j; ++k) sum += counts[k];
+
+        let mean = Math.floor((sum + Math.floor(run / 2)) / run);
+        if (mean < 1) mean = 1;
+
+        for (let k = i; k < j; ++k) result[k] = mean;
+      }
+
+      i = j;
+    }
+
+    return result;
+  }
+
+  // Chooses the trees a dynamic block should use and reports what the block costs with
+  // them. Two candidate tree pairs are costed and the cheaper wins: the one the counts
+  // imply directly, and the one implied by the smoothed histogram. Both are measured
+  // against the real symbol counts, since smoothing changes only how the trees are shaped
+  // and described, never what the block actually contains.
+  function buildDynamicBlock(litLenCounts, distCounts) {
+    // The header must describe a distance tree even for a block that holds no
+    // back-reference, so one is invented for the tree; it is not counted as an emitted
+    // symbol, because it is not one.
+    const distForTree = distCounts.slice();
+    ensureDistanceCode(distForTree);
+
+    const plainLitLen = buildHuffmanCodeLengths(litLenCounts, MAX_CODE_BITS);
+    const plainDist = buildHuffmanCodeLengths(distForTree, MAX_CODE_BITS);
+    const plainBits = headerBits(plainLitLen, plainDist)
+      + tokenBits(litLenCounts, distCounts, plainLitLen, plainDist);
+
+    const smoothLitLen = buildHuffmanCodeLengths(smoothCountsForRuns(litLenCounts), MAX_CODE_BITS);
+    const smoothDist = buildHuffmanCodeLengths(smoothCountsForRuns(distForTree), MAX_CODE_BITS);
+    const smoothBits = headerBits(smoothLitLen, smoothDist)
+      + tokenBits(litLenCounts, distCounts, smoothLitLen, smoothDist);
+
+    return smoothBits < plainBits
+      ? {litLenLengths: smoothLitLen, distLengths: smoothDist, bits: smoothBits}
+      : {litLenLengths: plainLitLen, distLengths: plainDist, bits: plainBits};
+  }
+
+  function dynamicBlockBits(litLenCounts, distCounts) {
+    return buildDynamicBlock(litLenCounts, distCounts).bits;
+  }
+
+  function staticBlockBits(litLenCounts, distCounts) {
+    return 3 + tokenBits(litLenCounts, distCounts, FIXED_LITERAL_LENGTHS, FIXED_DISTANCE_LENGTHS);
+  }
+
+  // A stored block is byte-aligned, so its true cost depends on where in the byte the
+  // preceding block ended. The worst case of seven padding bits is charged here rather
+  // than tracking the writer's position, because the choice this figure feeds into is
+  // never that close and a cost that does not depend on emission order is far easier to
+  // keep identical across implementations. Each stored block carries a 16-bit length and
+  // its complement, and RFC 1951 caps one at 65535 bytes, so a long run of raw data needs
+  // several.
+  function storedBlockBits(byteCount) {
+    const chunks = Math.max(1, Math.floor((byteCount + 65534) / 65535));
+    return chunks * (3 + 7 + 32) + byteCount * 8;
+  }
+
+  function cheapestBlock(litLenCounts, distCounts, byteCount) {
+    const stored = storedBlockBits(byteCount);
+    const fixedHuffman = staticBlockBits(litLenCounts, distCounts);
+    const dynamicHuffman = dynamicBlockBits(litLenCounts, distCounts);
+
+    // Ties go to the simpler type, which keeps the choice stable and the output smaller
+    // to describe.
+    if (stored <= fixedHuffman && stored <= dynamicHuffman)
+      return {blockType: BLOCK_TYPE_STORED, bits: stored};
+
+    return fixedHuffman <= dynamicHuffman
+      ? {blockType: BLOCK_TYPE_STATIC, bits: fixedHuffman}
+      : {blockType: BLOCK_TYPE_DYNAMIC, bits: dynamicHuffman};
+  }
+
+  // ===== BLOCK SPLITTING =====
+  //
+  // A block carries its own Huffman trees, so a boundary buys the encoder a fresh
+  // description of the data on either side and costs it a second header. Where the input
+  // changes character that trade is strongly worth making, and where it does not, it is
+  // not. Zopfli therefore searches for the split points instead of imposing a fixed block
+  // size. The published method places one split at a time, greedily; this does a proper
+  // dynamic program over a grid of candidate boundaries instead, finding the cheapest
+  // partition into at most MAX_BLOCKS blocks outright, which can never do worse. It is
+  // affordable because the histogram of any range is the difference of two prefix
+  // histograms, so evaluating a candidate takes time proportional to the alphabet rather
+  // than to the block.
+
+  const MAX_BLOCKS = 15;
+  const MIN_SYMBOLS_TO_SPLIT = 512;
+  const MAX_CANDIDATES = 128;
+
+  function splitBlocks(symbols, maxBlocks) {
+    if (symbols.length < MIN_SYMBOLS_TO_SPLIT || maxBlocks <= 1)
+      return [{start: 0, end: symbols.length}];
+
+    // Candidate boundaries on a regular grid. Finer than this buys almost nothing: a
+    // boundary a few symbols out of place costs a handful of bits, while the header it
+    // saves or spends is hundreds.
+    const interval = Math.max(1, Math.floor(symbols.length / MAX_CANDIDATES));
+    const candidates = [0];
+    for (let i = interval; i < symbols.length; i += interval) candidates.push(i);
+    if (candidates[candidates.length - 1] !== symbols.length) candidates.push(symbols.length);
+
+    const count = candidates.length;
+
+    // Prefix histograms at the candidate boundaries, plus the input bytes consumed, so
+    // that any candidate block's statistics are one subtraction away.
+    const litLenPrefix = new Array(count);
+    const distPrefix = new Array(count);
+    const bytePrefix = new Array(count).fill(0);
+    litLenPrefix[0] = new Array(LIT_LEN_ALPHABET_SIZE).fill(0);
+    distPrefix[0] = new Array(DIST_ALPHABET_SIZE).fill(0);
+
+    for (let c = 1; c < count; ++c) {
+      const litLen = litLenPrefix[c - 1].slice();
+      const dist = distPrefix[c - 1].slice();
+      let bytes = bytePrefix[c - 1];
+
+      for (let s = candidates[c - 1]; s < candidates[c]; ++s) {
+        const symbol = symbols[s];
+        if (symbol.isLiteral) {
+          ++litLen[symbol.literal];
+          ++bytes;
+          continue;
+        }
+
+        ++litLen[getLengthCode(symbol.length)];
+        ++dist[getDistanceCode(symbol.distance)];
+        bytes += symbol.length;
+      }
+
+      litLenPrefix[c] = litLen;
+      distPrefix[c] = dist;
+      bytePrefix[c] = bytes;
+    }
+
+    const rangeCost = (from, to) => {
+      const litLen = new Array(LIT_LEN_ALPHABET_SIZE);
+      for (let s = 0; s < LIT_LEN_ALPHABET_SIZE; ++s) litLen[s] = litLenPrefix[to][s] - litLenPrefix[from][s];
+
+      const dist = new Array(DIST_ALPHABET_SIZE);
+      for (let s = 0; s < DIST_ALPHABET_SIZE; ++s) dist[s] = distPrefix[to][s] - distPrefix[from][s];
+
+      litLen[END_OF_BLOCK] = 1;
+
+      return cheapestBlock(litLen, dist, bytePrefix[to] - bytePrefix[from]).bits;
+    };
+
+    const cost = new Array(count);
+    for (let i = 0; i < count; ++i) {
+      cost[i] = new Float64Array(count);
+      for (let j = i + 1; j < count; ++j) cost[i][j] = rangeCost(i, j);
+    }
+
+    // best[b][j] is the cheapest way to cover the first j candidate intervals with
+    // exactly b blocks; from[b][j] remembers where that partition's last block began.
+    const best = new Array(maxBlocks + 1);
+    const from = new Array(maxBlocks + 1);
+    for (let b = 0; b <= maxBlocks; ++b) {
+      best[b] = new Float64Array(count).fill(UNREACHABLE);
+      from[b] = new Int32Array(count);
+    }
+
+    for (let j = 1; j < count; ++j) {
+      best[1][j] = cost[0][j];
+      from[1][j] = 0;
+    }
+
+    for (let b = 2; b <= maxBlocks; ++b)
+      for (let j = b; j < count; ++j)
+        for (let i = b - 1; i < j; ++i) {
+          if (best[b - 1][i] === UNREACHABLE) continue;
+
+          const total = best[b - 1][i] + cost[i][j];
+          if (total >= best[b][j]) continue;
+
+          best[b][j] = total;
+          from[b][j] = i;
+        }
+
+    let bestBlocks = 1;
+    for (let b = 2; b <= maxBlocks; ++b)
+      if (best[b][count - 1] < best[bestBlocks][count - 1]) bestBlocks = b;
+
+    const boundaries = [];
+    let node = count - 1;
+    for (let b = bestBlocks; b >= 1; --b) {
+      boundaries.push(node);
+      node = from[b][node];
+    }
+
+    boundaries.push(0);
+    boundaries.reverse();
+
+    const result = [];
+    for (let i = 0; i + 1 < boundaries.length; ++i)
+      result.push({start: candidates[boundaries[i]], end: candidates[boundaries[i + 1]]});
+
+    return result;
+  }
+
+  // ===== ITERATIVE SEARCH =====
+
+  // How many rounds of re-parsing a block gets. Each round costs about as much as one
+  // pass of the shortest-path search over the block, so the budget shrinks as the input
+  // grows; the returns diminish sharply after the first few rounds in any case.
+  function iterationsFor(totalLength) {
+    if (totalLength <= 16384) return 60;
+    if (totalLength <= 131072) return 40;
+    if (totalLength <= 524288) return 30;
+    return 25;
+  }
+
+  // Counts the symbols of a parse, with the end-of-block symbol included.
+  function countSymbols(symbols) {
+    const litLen = new Array(LIT_LEN_ALPHABET_SIZE).fill(0);
+    const dist = new Array(DIST_ALPHABET_SIZE).fill(0);
+
+    for (const symbol of symbols) {
+      if (symbol.isLiteral) {
+        ++litLen[symbol.literal];
+        continue;
+      }
+
+      ++litLen[getLengthCode(symbol.length)];
+      ++dist[getDistanceCode(symbol.distance)];
+    }
+
+    litLen[END_OF_BLOCK] = 1;
+    return {litLen, dist};
+  }
+
+  function blockBits(litLenCounts, distCounts, byteCount) {
+    return cheapestBlock(litLenCounts, distCounts, byteCount).bits;
+  }
+
+  // Replaces about a third of the counts with another count drawn from the same table.
+  // The point is to move the cost model somewhere the loop has not been, cheaply, without
+  // losing the shape of the distribution: every value written is a value the table already
+  // held. The generator is the linear congruential one of Knuth's The Art of Computer
+  // Programming volume 2, taken modulo 2^32; only its high bits are consulted, since the
+  // low bits of such a generator cycle far too quickly to be useful.
+  function perturbCounts(counts, state) {
+    for (let i = 0; i < counts.length; ++i) {
+      state = OpCodes.ToUint32(OpCodes.Mul32(state, 1664525) + 1013904223);
+      if (Math.floor(state / 256) % 3 !== 0) continue;
+
+      state = OpCodes.ToUint32(OpCodes.Mul32(state, 1664525) + 1013904223);
+      counts[i] = counts[state % counts.length];
+    }
+
+    return state;
+  }
+
+  // Weights the current counts at one and the previous round's at one half. Halving the
+  // older term keeps the blend bounded no matter how many rounds run, which integer counts
+  // need and floating-point ones can ignore.
+  function blendCounts(current, previous) {
+    const result = new Array(current.length);
+    for (let i = 0; i < current.length; ++i) result[i] = current[i] + Math.floor(previous[i] / 2);
+    return result;
+  }
+
+  // The loop is not a contraction and need not improve every round, which is why the size
+  // of each round's parse is measured exactly and the smallest is what gets emitted. When
+  // two consecutive rounds land on the same size the search has settled, and it is nudged
+  // off that fixed point by perturbing the counts, so that the remaining rounds explore
+  // instead of recomputing an answer already in hand.
+  function optimizeBlock(data, start, end, cache, iterations) {
+    const byteCount = end - start;
+
+    const seed = greedyParse(data, start, end, cache);
+    const seedCounts = countSymbols(seed);
+
+    let best = seed;
+    let bestBits = blockBits(seedCounts.litLen, seedCounts.dist, byteCount);
+    let bestLitLen = seedCounts.litLen;
+    let bestDist = seedCounts.dist;
+
+    let modelLitLen = seedCounts.litLen;
+    let modelDist = seedCounts.dist;
+
+    let lastLitLen = null;
+    let lastDist = null;
+    let lastBits = -1;
+    let perturbed = false;
+    let random = 0x5A17E1F1;
+
+    for (let iteration = 0; iteration < iterations; ++iteration) {
+      const model = new ZopfliCostModel(modelLitLen, modelDist);
+      const parsed = optimalParse(data, start, end, cache, model);
+      const parsedCounts = countSymbols(parsed);
+      const bits = blockBits(parsedCounts.litLen, parsedCounts.dist, byteCount);
+
+      if (bits < bestBits) {
+        best = parsed;
+        bestBits = bits;
+        bestLitLen = parsedCounts.litLen;
+        bestDist = parsedCounts.dist;
+      }
+
+      let nextLitLen = parsedCounts.litLen;
+      let nextDist = parsedCounts.dist;
+
+      // Two rounds of the same size means the loop has reached a fixed point. Restarting
+      // from the best counts seen, perturbed, is what turns the remaining rounds into a
+      // wider search rather than a repetition.
+      if (iteration >= 5 && bits === lastBits) {
+        nextLitLen = bestLitLen.slice();
+        nextDist = bestDist.slice();
+        random = perturbCounts(nextLitLen, random);
+        random = perturbCounts(nextDist, random);
+        perturbed = true;
+      }
+
+      // Once the search is exploring, blending in the previous round's counts damps the
+      // swing between rounds; converging slowly on a better answer beats oscillating.
+      if (perturbed && lastLitLen !== null && lastDist !== null) {
+        nextLitLen = blendCounts(nextLitLen, lastLitLen);
+        nextDist = blendCounts(nextDist, lastDist);
+      }
+
+      lastLitLen = modelLitLen;
+      lastDist = modelDist;
+      lastBits = bits;
+      modelLitLen = nextLitLen;
+      modelDist = nextDist;
+    }
+
+    return best;
+  }
+
+  // Plans how to encode the input: where the blocks go and what symbols each holds.
+  function compressOptimal(data) {
+    if (data.length === 0) return [{start: 0, end: 0, symbols: []}];
+
+    const cache = new ZopfliMatchCache(data);
+    const seed = greedyParse(data, 0, data.length, cache);
+
+    // Split on the seed parse. The split points are input positions, so each block can
+    // then be parsed on its own terms, with its own cost model - which is the whole point
+    // of splitting. Matches inside a block may still reach back into earlier blocks.
+    const ranges = splitBlocks(seed, MAX_BLOCKS);
+    const byteStart = new Array(ranges.length + 1);
+    let consumed = 0;
+    let symbolIndex = 0;
+    for (let r = 0; r < ranges.length; ++r) {
+      byteStart[r] = consumed;
+      for (; symbolIndex < ranges[r].end; ++symbolIndex)
+        consumed += seed[symbolIndex].isLiteral ? 1 : seed[symbolIndex].length;
+    }
+
+    byteStart[ranges.length] = data.length;
+
+    const iterations = iterationsFor(data.length);
+    const result = [];
+    for (let r = 0; r < ranges.length; ++r) {
+      const start = byteStart[r];
+      const end = byteStart[r + 1];
+      result.push({start, end, symbols: optimizeBlock(data, start, end, cache, iterations)});
+    }
+
+    return result;
+  }
+
+  // ===== BLOCK EMISSION =====
+
+  function writeTokens(stream, symbols, literalTree, distanceTree) {
+    for (const token of symbols) {
       if (token.isLiteral) {
         const {code, length} = literalTree.encode(token.literal);
         stream.writeHuffmanCode(code, length);
-      } else {
-        const lengthCode = getLengthCode(token.length);
-        const lengthInfo = LENGTH_CODES[lengthCode - 257];
-        const {code: lenCode, length: lenCodeLen} = literalTree.encode(lengthCode);
-        stream.writeHuffmanCode(lenCode, lenCodeLen);
-        if (lengthInfo.extra > 0) stream.writeBits(token.length - lengthInfo.base, lengthInfo.extra);
-
-        const distCode = getDistanceCode(token.distance);
-        const distInfo = DISTANCE_CODES[distCode];
-        const {code: distC, length: distCodeLen} = distanceTree.encode(distCode);
-        stream.writeHuffmanCode(distC, distCodeLen);
-        if (distInfo.extra > 0) stream.writeBits(token.distance - distInfo.base, distInfo.extra);
+        continue;
       }
+
+      const lengthCode = getLengthCode(token.length);
+      const lengthInfo = LENGTH_CODES[lengthCode - 257];
+      const lenEntry = literalTree.encode(lengthCode);
+      stream.writeHuffmanCode(lenEntry.code, lenEntry.length);
+      if (lengthInfo.extra > 0) stream.writeBits(token.length - lengthInfo.base, lengthInfo.extra);
+
+      const distCode = getDistanceCode(token.distance);
+      const distInfo = DISTANCE_CODES[distCode];
+      const distEntry = distanceTree.encode(distCode);
+      stream.writeHuffmanCode(distEntry.code, distEntry.length);
+      if (distInfo.extra > 0) stream.writeBits(token.distance - distInfo.base, distInfo.extra);
     }
   }
 
-  function emitStaticHuffmanBlock(stream, tokens, isFinal) {
+  function emitStoredBlock(stream, data, start, end, isFinal) {
+    let offset = start;
+    while (offset < end) {
+      const chunkSize = Math.min(end - offset, 65535);
+      const isLastChunk = (offset + chunkSize >= end) && isFinal;
+
+      stream.writeBits(isLastChunk ? 1 : 0, 1);
+      stream.writeBits(BLOCK_TYPE_STORED, 2);
+      stream.alignToByte();
+
+      stream.writeBits(chunkSize, 16);
+      stream.writeBits(OpCodes.AndN(OpCodes.ToUint32(-chunkSize - 1), 0xFFFF), 16);
+
+      for (let i = 0; i < chunkSize; ++i) stream.writeBits(data[offset + i], 8);
+
+      offset += chunkSize;
+    }
+  }
+
+  function emitStaticHuffmanBlock(stream, symbols, isFinal) {
     const literalTree = HuffmanTree.buildFromLengths(FIXED_LITERAL_LENGTHS);
     const distanceTree = HuffmanTree.buildFromLengths(FIXED_DISTANCE_LENGTHS);
 
     stream.writeBits(isFinal ? 1 : 0, 1);
-    stream.writeBits(1, 2); // BTYPE = 01 (static Huffman)
+    stream.writeBits(BLOCK_TYPE_STATIC, 2);
 
-    writeTokens(stream, tokens, literalTree, distanceTree);
+    writeTokens(stream, symbols, literalTree, distanceTree);
 
     const {code, length} = literalTree.encode(END_OF_BLOCK);
     stream.writeHuffmanCode(code, length);
   }
 
-  function emitDynamicHuffmanBlock(stream, litLenFreqs, distFreqs, tokens, isFinal) {
-    if (!distFreqs.some(f => f > 0)) distFreqs[0] = 1;
-
-    const litLenLengths = buildHuffmanCodeLengths(litLenFreqs, LIT_LEN_ALPHABET_SIZE, MAX_CODE_BITS);
-    const distLengths = buildHuffmanCodeLengths(distFreqs, DIST_ALPHABET_SIZE, MAX_CODE_BITS);
-
-    let hlit = litLenLengths.length;
-    while (hlit > 257 && litLenLengths[hlit - 1] === 0) --hlit;
-    let hdist = distLengths.length;
-    while (hdist > 1 && distLengths[hdist - 1] === 0) --hdist;
+  function emitDynamicHuffmanBlock(stream, litLenCounts, distCounts, symbols, isFinal) {
+    // The trees are the ones the block's measured cost was based on, which may be the
+    // run-friendly variant, and which already invents the distance code a block without
+    // back-references needs.
+    const chosen = buildDynamicBlock(litLenCounts, distCounts);
+    const litLenLengths = chosen.litLenLengths;
+    const distLengths = chosen.distLengths;
+    const {hlit, hdist} = trimTrees(litLenLengths, distLengths);
 
     const combined = new Array(hlit + hdist);
     for (let i = 0; i < hlit; ++i) combined[i] = litLenLengths[i];
     for (let i = 0; i < hdist; ++i) combined[hlit + i] = distLengths[i];
-    const rleSymbols = runLengthEncodeCodeLengths(combined);
+    const runs = encodeCodeLengthRuns(combined);
 
-    const clFreqs = new Array(CL_ALPHABET_SIZE).fill(0);
-    for (const [symbol] of rleSymbols) ++clFreqs[symbol];
-    if (!clFreqs.some(f => f > 0)) clFreqs[0] = 1;
-    const clLengths = buildHuffmanCodeLengths(clFreqs, CL_ALPHABET_SIZE, MAX_CL_CODE_BITS);
+    const clCounts = new Array(CL_ALPHABET_SIZE).fill(0);
+    for (const run of runs) ++clCounts[run[0]];
+    if (!clCounts.some(f => f > 0)) clCounts[0] = 1;
+    const clLengths = buildHuffmanCodeLengths(clCounts, MAX_CL_CODE_BITS);
 
     let hclen = CL_ALPHABET_SIZE;
     while (hclen > 4 && clLengths[CODE_LENGTH_ORDER[hclen - 1]] === 0) --hclen;
@@ -939,23 +1318,23 @@
     const clTree = HuffmanTree.buildFromLengths(clLengths);
 
     stream.writeBits(isFinal ? 1 : 0, 1);
-    stream.writeBits(2, 2); // BTYPE = 10 (dynamic Huffman)
+    stream.writeBits(BLOCK_TYPE_DYNAMIC, 2);
     stream.writeBits(hlit - 257, 5);
     stream.writeBits(hdist - 1, 5);
     stream.writeBits(hclen - 4, 4);
 
     for (let i = 0; i < hclen; ++i) stream.writeBits(clLengths[CODE_LENGTH_ORDER[i]], 3);
 
-    for (const [symbol, extraBits, extraValue] of rleSymbols) {
-      const {code, length} = clTree.encode(symbol);
+    for (const run of runs) {
+      const {code, length} = clTree.encode(run[0]);
       stream.writeHuffmanCode(code, length);
-      if (extraBits > 0) stream.writeBits(extraValue, extraBits);
+      if (run[1] > 0) stream.writeBits(run[2], run[1]);
     }
 
     const literalTree = HuffmanTree.buildFromLengths(litLenLengths.slice(0, hlit));
     const distanceTree = HuffmanTree.buildFromLengths(distLengths.slice(0, hdist));
 
-    writeTokens(stream, tokens, literalTree, distanceTree);
+    writeTokens(stream, symbols, literalTree, distanceTree);
 
     const {code, length} = literalTree.encode(END_OF_BLOCK);
     stream.writeHuffmanCode(code, length);
@@ -969,7 +1348,7 @@
 
       // Required metadata
       this.name = "Zopfli";
-      this.description = "Iterative-optimal DEFLATE encoder from Google (2013). Repeatedly re-parses the input using a shortest-path search over the previous iteration's Huffman code lengths, then splits the result into cost-minimizing blocks. Output is standard RFC 1951 DEFLATE, decodable by any conforming reader.";
+      this.description = "Iterative-optimal DEFLATE encoder from Google (2013). Parses the input by shortest path over the entropy of the previous parse's symbol counts, repeats until the size stops falling, and searches for the block boundaries that minimise the total. Output is standard RFC 1951 DEFLATE, decodable by any conforming reader.";
       this.inventor = "Lode Vandevenne, Jyrki Alakuijala (Google)";
       this.year = 2013;
       this.category = CategoryType.COMPRESSION;
@@ -1056,29 +1435,18 @@
       const blocks = compressOptimal(data);
 
       for (let i = 0; i < blocks.length; ++i) {
-        const {symbols} = blocks[i];
+        const {start, end, symbols} = blocks[i];
         const isLastBlock = i === blocks.length - 1;
 
-        const tokens = symbols.map(sym => sym.isLiteral ?
-          {isLiteral: true, literal: sym.literal} :
-          {isLiteral: false, distance: sym.distance, length: sym.length});
+        const counts = countSymbols(symbols);
 
-        const litLenFreqs = new Array(LIT_LEN_ALPHABET_SIZE).fill(0);
-        const distFreqs = new Array(DIST_ALPHABET_SIZE).fill(0);
-        for (const sym of symbols) {
-          if (sym.isLiteral) ++litLenFreqs[sym.literal];
-          else {
-            ++litLenFreqs[getLengthCode(sym.length)];
-            ++distFreqs[getDistanceCode(sym.distance)];
-          }
-        }
-        litLenFreqs[END_OF_BLOCK] = 1;
-
-        const staticSize = estimateStaticSize(tokens);
-        const dynamicSize = estimateDynamicSize(litLenFreqs.slice(), distFreqs.slice(), tokens);
-
-        if (staticSize <= dynamicSize) emitStaticHuffmanBlock(stream, tokens, isLastBlock);
-        else emitDynamicHuffmanBlock(stream, litLenFreqs, distFreqs, tokens, isLastBlock);
+        // Data that will not compress must still be handed on unharmed: without the
+        // stored block type an incompressible block grows by roughly a byte per hundred
+        // instead of by five bytes per 64 KB.
+        const choice = cheapestBlock(counts.litLen, counts.dist, end - start);
+        if (choice.blockType === BLOCK_TYPE_STORED) emitStoredBlock(stream, data, start, end, isLastBlock);
+        else if (choice.blockType === BLOCK_TYPE_STATIC) emitStaticHuffmanBlock(stream, symbols, isLastBlock);
+        else emitDynamicHuffmanBlock(stream, counts.litLen, counts.dist, symbols, isLastBlock);
       }
 
       return stream.flush();
