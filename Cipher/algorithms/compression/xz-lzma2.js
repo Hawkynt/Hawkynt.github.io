@@ -880,6 +880,22 @@
     const streamFlags = [0x00, checkId];
     const streamHeader = XZ_MAGIC.concat(streamFlags, crc32Bytes(streamFlags));
 
+    // An empty input is a stream carrying no blocks at all, with an index that records
+    // none. It is not a stream carrying one empty block, and it is certainly not an
+    // empty file - xz rejects that with "File format not recognized".
+    if (data.length === 0) {
+      const emptyIndexContent = [0x00].concat(encodeVLI(0));
+      const emptyIndexPadded = Math.ceil(emptyIndexContent.length/4)*4;
+      const emptyIndexNoCrc = emptyIndexContent.concat(
+        new Array(emptyIndexPadded - emptyIndexContent.length).fill(0));
+      const emptyIndex = emptyIndexNoCrc.concat(crc32Bytes(emptyIndexNoCrc));
+      const emptyBackwardSizeBytes = leU32Bytes((emptyIndex.length/4) - 1);
+      const emptyFooterFlags = [0x00, checkId];
+      const emptyFooter = crc32Bytes(emptyBackwardSizeBytes.concat(emptyFooterFlags))
+        .concat(emptyBackwardSizeBytes, emptyFooterFlags, XZ_FOOTER_MAGIC);
+      return streamHeader.concat(emptyIndex, emptyFooter);
+    }
+
     const lzma2 = encodeLZMA2Compressed(data);
 
     // Block header
@@ -1109,7 +1125,9 @@
       }
 
       Result() {
-        if (this.inputBuffer.length === 0) return [];
+        // Empty input still has to produce a well-formed .xz stream, so it is not
+        // short-circuited here; only an empty stream to decode yields nothing.
+        if (this.isInverse && this.inputBuffer.length === 0) return [];
 
         const result = this.isInverse ?
           decodeXZContainer(this.inputBuffer) :
