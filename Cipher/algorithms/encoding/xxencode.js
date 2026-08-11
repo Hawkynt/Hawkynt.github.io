@@ -214,7 +214,7 @@
         return [];
       }
 
-      const encoded = OpCodes.BytesToLatin1(data);
+      const encoded = OpCodes.BytesToChars(data);
 
       // XXencode requires input length to be multiple of 4 characters
       if (encoded.length % 4 !== 0) {

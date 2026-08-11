@@ -649,6 +649,23 @@ node tests/TestSuite.js --verbose
 node tests/TestSuite.js --filter "NIST"
 ```
 
+Round-trip coverage for the reversible categories lives in `tests/RoundTripSuite.js`,
+which also carries the large-input tier:
+
+```bash
+# Round-trip every reversible algorithm over the standard corpus
+node tests/RoundTripSuite.js
+
+# Add the large tier: one child process per algorithm, 1MB each
+node tests/RoundTripSuite.js --large
+
+# Any size up to the ~107MB plain-array ceiling
+node tests/RoundTripSuite.js --large-size=8M --category "Compression Algorithms"
+```
+
+The measured size ceilings, what fails first beyond each of them, and why, are in
+[`tests/LARGE-INPUTS.md`](tests/LARGE-INPUTS.md).
+
 **Test Phases:**
 1. **Syntax Validation** - Ensures JavaScript compiles without errors
 2. **Metadata Validation** - Verifies AlgorithmFramework compliance
