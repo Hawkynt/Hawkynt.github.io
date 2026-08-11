@@ -32,7 +32,7 @@ size, and a typed array costs 1x:
 
 | Limit | Fires at | Affects |
 |---|---|---|
-| One array element per **bit** | **~12.5 MB** | Arithmetic Coding |
+| One array element per **bit** | **~12.5 MB** | was Arithmetic Coding — **fixed**, see below |
 | Spreading a data-sized array into a call | **~125 KB** | was 17 of 20 encoding schemes — **fixed**, see below |
 | One array element per **byte** | **~107.6 MB** | everything |
 | `Int32Array` cost accumulator | ~227 MB | Crush — unreachable behind the 107 MB ceiling |
@@ -64,22 +64,32 @@ divides it down by 128 repeatedly. That is an algorithmic property of base conve
 over an arbitrary-precision integer, not a bug, and it is flagged rather than
 rewritten.
 
-### Arithmetic Coding — one array element per bit
+### Arithmetic Coding — one array element per bit — fixed
 
-`algorithms/compression/arithmetic.js` accumulates its output as one array element per
-*output bit*, both when encoding (`this.bits = []`) and when decoding (the input is
-expanded to `const bits = []` at eight elements per compressed byte). That divides the
-107.6 MB ceiling by eight. Measured:
+`algorithms/compression/arithmetic.js` used to accumulate its output as one array
+element per *output bit*, both when encoding (`this.bits = []`) and when decoding (the
+input was expanded to `const bits = []` at eight elements per compressed byte). That
+divided the 107.6 MB ceiling by eight, giving **a ceiling of about 12.5 MB** — the
+lowest of any compression algorithm in the collection. Measured:
 
 ```
 8 MB   ok 6857146 bytes, 4956ms
-16 MB  threw Invalid array length
+16 MB  RangeError: Invalid array length, at this.bits.push(bit) in _outputBit
 ```
 
-**Arithmetic Coding's ceiling is therefore about 12.5 MB**, the lowest of any
-compression algorithm in the collection. Fixing it means packing the bits into bytes
-in both directions; the emitted bytes would be identical, so it would not disturb the
-cross-check against CompressionWorkbench. Flagged, not fixed.
+The coder now writes through `MsbBitWriter`, which packs eight bits into each output
+byte as they are produced, and reads through `MsbBitReader`, which takes bits straight
+out of the compressed bytes. Both are byte-oriented, the way `deflate.js` and
+`zopfli.js` already worked. Nothing about the format changed — the bit order and the
+zero padding of the final byte are what the old packing loop produced — so the
+compressed bytes are identical at every size and the cross-check against
+CompressionWorkbench still reports the pair as byte-identical.
+
+| | before | after |
+|---|---|---|
+| ceiling | ~12.5 MB | the collection-wide ~107.6 MB |
+| 16 MB round-trip | `RangeError` | ok, 14910021 bytes, 5.7 s |
+| 32 MB round-trip | `RangeError` | ok, 1387 MB peak RSS |
 
 ### Precision, not overflow
 

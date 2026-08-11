@@ -197,19 +197,13 @@
 
       const { cumFreq, totalFreq } = buildCumulativeFrequencies(freqTable);
 
-      const encoder = new ArithmeticEncoder(cumFreq, totalFreq);
-      const compressedBits = encoder.encode(data);
-
-      // Convert bits to bytes for output (MSB first)
-      for (let i = 0; i < compressedBits.length; i += 8) {
-        let byte = 0;
-        for (let j = 0; j < 8 && i + j < compressedBits.length; j++) {
-          if (compressedBits[i + j]) {
-            byte = OpCodes.SetBit(byte, 7 - j, true);
-          }
-        }
-        output.push(byte);
-      }
+      // The coded bits go straight into the output bytes, eight to a byte, MSB
+      // first. Collecting them one array element per bit first cost eight times
+      // the memory and ran the array out of space at roughly 12.5 MB of input.
+      const writer = new MsbBitWriter(output);
+      const encoder = new ArithmeticEncoder(cumFreq, totalFreq, writer);
+      encoder.encode(data);
+      writer.flush();
 
       return output;
 
@@ -234,17 +228,11 @@
 
       const { cumFreq, totalFreq } = buildCumulativeFrequencies(freqTable);
 
-      // Convert the remaining bytes to bits.
-      const bits = [];
-      for (let i = offset; i < data.length; i++) {
-        for (let j = 7; j >= 0; j--) {
-          bits.push(OpCodes.GetBit(data[i], j));
-        }
-      }
-
-      // Create fresh decoder for this decompression
+      // Create fresh decoder for this decompression. The coded bits are read
+      // straight out of the compressed bytes rather than expanded into one
+      // array element per bit first.
       const decoder = new ArithmeticDecoder(cumFreq, totalFreq);
-      return decoder.decode(bits, originalSize);
+      return decoder.decode(new MsbBitReader(data, offset), originalSize);
 
     }
   }
@@ -253,6 +241,67 @@
 
   const EOF_SYMBOL = 256;
   const NUM_SYMBOLS = 257; // 256 byte values + 1 EOF
+
+  /**
+   * Appends single bits to a byte array, most significant bit of each byte
+   * first. The final partial byte is padded with zero bits by flush().
+   */
+  class MsbBitWriter {
+    constructor(bytes) {
+      this.bytes = bytes;
+      this.current = 0;
+      this.position = 7; // bit position inside the byte being filled
+    }
+
+    writeBit(bit) {
+      if (bit) this.current = OpCodes.SetBit(this.current, this.position, true);
+
+      if (this.position === 0) {
+        this.bytes.push(this.current);
+        this.current = 0;
+        this.position = 7;
+        return;
+      }
+
+      this.position--;
+    }
+
+    flush() {
+      if (this.position === 7) return;
+
+      this.bytes.push(this.current);
+      this.current = 0;
+      this.position = 7;
+    }
+  }
+
+  /**
+   * Reads single bits out of a byte array, most significant bit of each byte
+   * first. Reads past the end yield 0, matching the encoder's implicit zero
+   * padding.
+   */
+  class MsbBitReader {
+    constructor(bytes, start) {
+      this.bytes = bytes;
+      this.index = start;
+      this.position = 7; // bit position inside the byte being read
+    }
+
+    readBit() {
+      if (this.index >= this.bytes.length) return 0;
+
+      const bit = OpCodes.GetBit(this.bytes[this.index], this.position) ? 1 : 0;
+
+      if (this.position === 0) {
+        this.index++;
+        this.position = 7;
+      } else {
+        this.position--;
+      }
+
+      return bit;
+    }
+  }
 
   // Builds the cumulative-frequency boundary table (length NUM_SYMBOLS + 1)
   // from a static 256-entry frequency table. The EOF symbol is always given
@@ -265,11 +314,11 @@
   }
 
   class ArithmeticEncoder {
-    constructor(cumFreq, totalFreq) {
+    constructor(cumFreq, totalFreq, writer) {
       this.low = 0;
       this.high = 0xFFFFFFFF;
       this.followBits = 0;
-      this.bits = [];
+      this.writer = writer;
       this.cumFreq = cumFreq;
       this.totalFreq = totalFreq;
       this.BITS = 32;
@@ -284,7 +333,6 @@
       this.low = 0;
       this.high = 0xFFFFFFFF;
       this.followBits = 0;
-      this.bits = [];
 
       for (const byte of data) this._encodeSymbol(byte);
 
@@ -293,8 +341,6 @@
 
       // Flush remaining bits
       this._flush();
-
-      return this.bits;
     }
 
     _encodeSymbol(symbol) {
@@ -328,9 +374,9 @@
     }
 
     _outputBit(bit) {
-      this.bits.push(bit);
+      this.writer.writeBit(bit);
       while (this.followBits > 0) {
-        this.bits.push(1 - bit);
+        this.writer.writeBit(1 - bit);
         this.followBits--;
       }
     }
@@ -356,24 +402,20 @@
       this.QUARTER = 0x40000000;
       this.HALF = 0x80000000;
       this.THREE_QUARTERS = 0xC0000000;
-      this.bits = null;
-      this.bitIndex = 0;
+      this.reader = null;
     }
 
-    decode(bits, originalSize) {
+    decode(reader, originalSize) {
       // Static order-0 model: the frequency table was already built once,
       // from the header, by the caller -- nothing is updated here.
       this.low = 0;
       this.high = 0xFFFFFFFF;
       this.value = 0;
-      this.bits = bits;
-      this.bitIndex = 0;
+      this.reader = reader;
 
       // Read initial value (32 bits; missing trailing bits act as 0)
       for (let i = 0; i < this.BITS; i++) {
-        const bit = this.bitIndex < bits.length ? bits[this.bitIndex] : 0;
-        this.value = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(this.value, 1), bit));
-        this.bitIndex++;
+        this.value = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(this.value, 1), reader.readBit()));
       }
 
       const symbols = [];
@@ -420,10 +462,7 @@
         this.low = OpCodes.ToUint32(OpCodes.Shl32(this.low, 1));
         this.high = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(this.high, 1), 1));
         this.value = OpCodes.ToUint32(OpCodes.Shl32(this.value, 1));
-
-        const bit = this.bitIndex < this.bits.length ? this.bits[this.bitIndex] : 0;
-        this.value = OpCodes.ToUint32(OpCodes.OrN(this.value, bit));
-        this.bitIndex++;
+        this.value = OpCodes.ToUint32(OpCodes.OrN(this.value, this.reader.readBit()));
       }
 
       return symbol;
