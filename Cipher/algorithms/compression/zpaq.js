@@ -5,29 +5,45 @@
  *
  * The compression core of ZPAQ: data is coded one bit at a time, each bit
  * against a prediction produced by several context models, and the coded bits
- * go through a binary arithmetic coder so that a confident prediction actually
- * costs a fraction of a bit.
+ * go through a binary range coder so that a confident prediction actually costs
+ * a fraction of a bit.
  *
- * Model - four direct context models over hashed orders 1..4. Each holds a
- * 16-bit probability that the next bit is 1, indexed by the order's context
- * hash combined with the bits of the current byte decoded so far. Each is
- * updated with a count-scaled step, so a fresh slot moves fast and a
- * well-visited one settles at roughly 1/32 per observation. The four
- * predictions are averaged, matching the simple mixing this model uses.
+ * Model - four direct context models (ZPAQ CM components) over hashed orders
+ * 1..4. Each holds 65536 counters of 16 bits, all starting at one half. After
+ * every whole byte the four order hashes are rebuilt with ZPAQ's HASH step,
+ * h = (h + b + 512) * 773 taken modulo 2^32, folded from the most recent byte
+ * outwards, so order n hashes the last n bytes and bytes before the start of
+ * the message read as zero. Before each bit the hash is offset by the partly
+ * coded byte times 0x9E3779B1, and the low 16 bits of that select the counter.
+ * The four counters are averaged with truncation, and each is then moved
+ * towards the observed bit by one sixteenth of the remaining error, rounded
+ * towards minus infinity.
  *
- * Coder - a carry-propagating binary range coder holding a 32-bit range that
- * is renormalized whenever it drops below 2^24. It keeps ZPAQ's subrange
- * convention: the subrange below the split codes a 1 bit, so the more
- * confident the model is that a 1 follows, the cheaper coding that 1 becomes.
- * Getting that backwards round-trips perfectly and inflates instead of
- * compressing, which is exactly the failure this file used to have. The
- * carry-propagating form is used rather than ZPAQ's carryless low/high pair
- * because the latter can shrink its interval to zero width, whereas keeping
- * the range at or above 2^24 makes both subranges provably non-empty.
+ * Coder - a carry-propagating binary range coder. It splits the range by
+ * bound = floor(range / 2^16) * p and gives the lower subrange to a 1 bit, ZPAQ's
+ * convention, so the more confident the model is that a 1 follows the cheaper
+ * coding that 1 becomes. Getting that backwards round-trips perfectly and
+ * inflates instead of compressing, which is exactly the failure this file used
+ * to have.
  *
- * Not implemented: the journaling archive container, the ZPAQL virtual machine
- * and its configurable COMP/HCOMP sections, deduplication and versioning. This
- * file is the context-mixing compressor alone, over a single stream.
+ * Coder safety - on entry to every bit the range lies in [2^24, 2^32) and the
+ * probability in [1, 65535]. The 1 subrange is then at least
+ * floor(2^24 / 2^16) * 1 = 256 wide, and the 0 subrange is
+ * range - bound, which is at least floor(range / 2^16), so also at least 256
+ * wide. Neither can ever be empty. Renormalisation multiplies a range below
+ * 2^24 by 256 until it is not, which takes at most two steps and cannot reach
+ * 2^32, so the invariant is restored exactly rather than merely approached.
+ * An interval collapse, where one subrange has zero width and the coder can no
+ * longer distinguish the two bits, is therefore impossible.
+ *
+ * Wire format - a 4-byte little-endian uncompressed length followed by the
+ * coded bytes. An empty message is the header alone. The decoder learns the
+ * byte count from the header, so the coded stream carries no end marker.
+ *
+ * Not implemented: the journaling archive container, the general ZPAQL virtual
+ * machine with its configurable COMP/HCOMP sections, deduplication and
+ * versioning. This file is the context-mixing compressor alone, over a single
+ * stream, with the one fixed model above rather than a programmable one.
  */
 
 (function (root, factory) {
@@ -65,85 +81,72 @@
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           CompressionAlgorithm, IAlgorithmInstance, TestCase, LinkItem } = AlgorithmFramework;
 
-  // ===== CONSTANTS =====
+  // ===== CODER CONSTANTS =====
 
   const TOP = 4294967296;          // 2^32
-  const RANGE_MAX = 4294967295;    // 2^32 - 1
+  const RANGE_MAX = 4294967295;    // 2^32 - 1, the initial range
   const RANGE_MIN = 16777216;      // 2^24, the renormalization threshold
-  const BYTE_SHIFT = 16777216;     // 2^24, used to lift out the top byte
-  const CARRY_EDGE = 4278190080;   // 0xFF000000
-  const PROB_ONE = 65536;
+  const TOP_BYTE = 16777216;       // 2^24, the place value of the top byte
+  const CARRY_EDGE = 4278190080;   // 0xFF000000, above which a carry still ripples
+  const BYTE_BASE = 256;
+  const PROB_SCALE = 65536;        // probabilities are fractions of 2^16
   const PROB_HALF = 32768;
   const PROB_MIN = 1;
   const PROB_MAX = 65535;
+  const FLUSH_BYTES = 5;
+
+  // ===== MODEL CONSTANTS =====
 
   const ORDERS = 4;                // context models over orders 1..4
-  const COUNT_LIMIT = 30;          // steady-state adaptation of about 1/32
-  const HASH_MULTIPLIER = 2654435761;
-  const ORDER_SALT = 2246822519;
-  const PARTIAL_MULTIPLIER = 1103515245;
-
-  const MIN_TABLE_BITS = 16;
-  const MAX_TABLE_BITS = 20;
-
-  // Table size is derived from the message length, which both sides know from
-  // the header, so encoder and decoder always allocate identical models.
-  function tableBitsFor(length) {
-    let bits = 0;
-    let remaining = length;
-    while (remaining > 1) { remaining = Math.floor(remaining / 2); bits++; }
-    bits += 2;
-    if (bits < MIN_TABLE_BITS) bits = MIN_TABLE_BITS;
-    if (bits > MAX_TABLE_BITS) bits = MAX_TABLE_BITS;
-    return bits;
-  }
+  const TABLE_SIZE = 65536;        // counters per model
+  const ADAPT_DIVISOR = 16;        // one sixteenth of the remaining error per observation
+  const HASH_ADDEND = 512;         // the addend of ZPAQ's HASH step
+  const HASH_MULTIPLIER = 773;     // the multiplier of ZPAQ's HASH step
+  const PARTIAL_MULTIPLIER = 2654435761; // 0x9E3779B1, spreads the partly coded byte
+  const HISTORY_SIZE = 65536;      // ring of recent bytes the order hashes read
+  const HEADER_BYTES = 4;
 
   // ===== CONTEXT MODEL =====
 
+  /**
+   * Four direct context models over hashed orders 1..4, averaged.
+   * @class
+   */
   class ContextMixingModel {
-    constructor(tableBits) {
-      this.size = OpCodes.Shl32(1, tableBits);
-      this.mask = this.size - 1;
-      this.probabilities = [];
-      this.counts = [];
+    constructor() {
+      this.tables = [];
       for (let i = 0; i < ORDERS; i++) {
-        const table = new Uint16Array(this.size);
-        for (let j = 0; j < this.size; j++) table[j] = PROB_HALF;
-        this.probabilities.push(table);
-        this.counts.push(new Uint8Array(this.size));
+        const table = new Uint16Array(TABLE_SIZE);
+        table.fill(PROB_HALF);
+        this.tables.push(table);
       }
-      this.contexts = new Int32Array(ORDERS);
+      // Before the first byte no order hash has been computed, so every context
+      // is zero and all four models address the same counter value, one half.
+      this.contexts = new Uint32Array(ORDERS);
       this.slots = new Int32Array(ORDERS);
-      this.history = 0;
-      this.refreshContexts();
+      this.history = new Uint8Array(HISTORY_SIZE);
+      this.cursor = 0;
     }
 
-    // Hash of the last `order` bytes, salted so the orders never share a slot
-    // by accident.
-    refreshContexts() {
-      for (let order = 1; order <= ORDERS; order++) {
-        // Orders 1..3 keep the low 8/16/24 bits of the history; order 4 is the
-        // whole 32-bit history, for which there is no divisor to take.
-        const window = order === ORDERS
-          ? this.history
-          : this.history % OpCodes.Shl32(1, order * 8);
-        this.contexts[order - 1] = OpCodes.ToUint32(
-          OpCodes.Mul32(OpCodes.ToUint32(window + order), HASH_MULTIPLIER) + OpCodes.Mul32(order, ORDER_SALT)
-        );
-      }
-    }
-
-    // Probability that the next bit is 1, given the bits of the current byte
-    // seen so far (`partial` starts at 1 and grows one bit at a time).
+    /**
+     * Probability that the next bit is 1, given the bits of the current byte
+     * seen so far. `partial` starts at 1 and takes on one more bit each time,
+     * so it identifies both the bit position and the prefix.
+     * @param {number} partial - leading 1 followed by the bits coded so far
+     * @returns {number} probability of a 1 bit, in 1..65535
+     */
     predict(partial) {
+      // A single odd multiple of the prefix offsets all four hashes. It is odd,
+      // so distinct prefixes never land on the same counter within one model.
+      const spread = OpCodes.Mul32(partial, PARTIAL_MULTIPLIER);
+
       let total = 0;
       for (let i = 0; i < ORDERS; i++) {
-        const slot = OpCodes.And32(
-          OpCodes.ToUint32(this.contexts[i] + OpCodes.Mul32(partial, PARTIAL_MULTIPLIER)),
-          this.mask
-        );
+        // The low 16 bits of the offset hash. They survive the wrap at 32 bits
+        // untouched, so no separate reduction is needed before taking them.
+        const slot = (this.contexts[i] + spread) % TABLE_SIZE;
         this.slots[i] = slot;
-        total += this.probabilities[i][slot];
+        total += this.tables[i][slot];
       }
 
       let combined = Math.floor(total / ORDERS);
@@ -152,29 +155,67 @@
       return combined;
     }
 
-    // Count-scaled update of every component that contributed to the last
-    // prediction. Early observations move a slot a long way; once the count
-    // saturates the step settles at about 1/32 of the remaining error.
+    /**
+     * Moves every counter that contributed to the last prediction towards the
+     * observed bit by one sixteenth of the remaining error. The division rounds
+     * towards minus infinity, which is what lets a counter reach 0 exactly
+     * while it only ever approaches 65535.
+     * @param {number} bit - the observed bit, 0 or 1
+     */
     update(bit) {
       const target = bit === 1 ? PROB_MAX : 0;
       for (let i = 0; i < ORDERS; i++) {
         const slot = this.slots[i];
-        const observed = this.counts[i][slot];
-        const current = this.probabilities[i][slot];
-        this.probabilities[i][slot] = current + Math.floor((target - current) / (observed + 2));
-        if (observed < COUNT_LIMIT) this.counts[i][slot] = observed + 1;
+        const current = this.tables[i][slot];
+        this.tables[i][slot] = current + Math.floor((target - current) / ADAPT_DIVISOR);
       }
     }
 
-    // Fold a finished byte into the history and recompute the order hashes.
+    /**
+     * Appends a finished byte to the history ring and rebuilds the four order
+     * hashes from it with ZPAQ's HASH step.
+     * @param {number} value - the byte just coded
+     */
     pushByte(value) {
-      this.history = OpCodes.ToUint32(this.history * 256 + value);
-      this.refreshContexts();
+      this.history[this.cursor] = value;
+      this.cursor = (this.cursor + 1) % HISTORY_SIZE;
+
+      // Fold in the most recent byte first, then one byte further back for each
+      // further order, so order n is the hash of the last n bytes. The ring is
+      // far longer than the deepest order and starts as zeros, so positions
+      // before the start of the message read as zero and never alias.
+      let hash = 0;
+      for (let order = 1; order <= ORDERS; order++) {
+        const back = (this.cursor + HISTORY_SIZE - order) % HISTORY_SIZE;
+        hash = OpCodes.Mul32(
+          OpCodes.ToUint32(hash + this.history[back] + HASH_ADDEND),
+          HASH_MULTIPLIER
+        );
+        this.contexts[order - 1] = hash;
+      }
     }
   }
 
   // ===== BINARY RANGE CODER =====
 
+  /**
+   * Splits the range between the two bit values. See the file header for the
+   * invariant that keeps both subranges at least 256 wide.
+   * @param {number} range - the current range, at least 2^24
+   * @param {number} probabilityOfOne - probability of a 1 bit
+   * @returns {number} the width of the 1 subrange
+   */
+  function splitRange(range, probabilityOfOne) {
+    let p = probabilityOfOne;
+    if (p < PROB_MIN) p = PROB_MIN;
+    if (p > PROB_MAX) p = PROB_MAX;
+    return Math.floor(range / PROB_SCALE) * p;
+  }
+
+  /**
+   * Carry-propagating binary range encoder.
+   * @class
+   */
   class RangeEncoder {
     constructor() {
       this.low = 0;
@@ -185,7 +226,7 @@
     }
 
     encodeBit(bit, probabilityOfOne) {
-      const bound = Math.floor(this.range / PROB_ONE) * probabilityOfOne;
+      const bound = splitRange(this.range, probabilityOfOne);
       if (bit === 1) {
         this.range = bound;
       } else {
@@ -194,10 +235,14 @@
       }
       while (this.range < RANGE_MIN) {
         this.shiftLow();
-        this.range *= 256;
+        this.range *= BYTE_BASE;
       }
     }
 
+    // Emits the top byte of `low`, holding it back while a later carry could
+    // still increment it. A run of 0xFF bytes is only counted; when a byte
+    // arrives that either cannot carry or has just carried, the whole run is
+    // resolved at once.
     shiftLow() {
       const carry = this.low >= TOP ? 1 : 0;
       const value = this.low - carry * TOP;
@@ -205,39 +250,48 @@
       if (value < CARRY_EDGE || carry === 1) {
         let held = this.cache;
         do {
-          this.bytes.push((held + carry) % 256);
+          this.bytes.push((held + carry) % BYTE_BASE);
           held = 255;
           this.pending--;
         } while (this.pending !== 0);
-        this.cache = Math.floor(value / BYTE_SHIFT);
+        this.cache = Math.floor(value / TOP_BYTE);
       }
 
       this.pending++;
-      this.low = (value % BYTE_SHIFT) * 256;
+      this.low = (value % TOP_BYTE) * BYTE_BASE;
     }
 
     finish() {
-      for (let i = 0; i < 5; i++) this.shiftLow();
+      for (let i = 0; i < FLUSH_BYTES; i++) this.shiftLow();
       return this.bytes;
     }
   }
 
+  /**
+   * Carry-propagating binary range decoder, the exact mirror of RangeEncoder.
+   * @class
+   */
   class RangeDecoder {
     constructor(data, offset) {
       this.data = data;
       this.position = offset;
       this.range = RANGE_MAX;
       this.code = 0;
-      for (let i = 0; i < 5; i++) this.code = OpCodes.ToUint32(this.code * 256) + this.nextByte();
+      // The encoder's first flushed byte is always its initially empty cache,
+      // so the code word is the five leading bytes read big-endian into 32 bits.
+      for (let i = 0; i < FLUSH_BYTES; i++)
+        this.code = OpCodes.ToUint32(this.code * BYTE_BASE) + this.nextByte();
     }
 
+    // Past the end of the stream the flush has already pinned every remaining
+    // bit, so the padding value only has to agree with the encoder's.
     nextByte() {
       if (this.position >= this.data.length) return 0;
       return this.data[this.position++];
     }
 
     decodeBit(probabilityOfOne) {
-      const bound = Math.floor(this.range / PROB_ONE) * probabilityOfOne;
+      const bound = splitRange(this.range, probabilityOfOne);
       let bit;
       if (this.code < bound) {
         bit = 1;
@@ -248,8 +302,8 @@
         this.range -= bound;
       }
       while (this.range < RANGE_MIN) {
-        this.range *= 256;
-        this.code = OpCodes.ToUint32(this.code * 256) + this.nextByte();
+        this.range *= BYTE_BASE;
+        this.code = OpCodes.ToUint32(this.code * BYTE_BASE) + this.nextByte();
       }
       return bit;
     }
@@ -268,7 +322,7 @@
 
       // Required metadata
       this.name = "ZPAQ (Context Mixing)";
-      this.description = "The context-mixing compressor at the heart of ZPAQ: four direct context models over hashed orders 1 to 4 predict each bit of the message, their predictions are averaged, and a binary range coder turns confident predictions into fractions of a bit. Covers the modelling and coding stages only - the journaling archive container, the ZPAQL virtual machine with its configurable COMP/HCOMP sections, deduplication and versioning are not implemented.";
+      this.description = "The context-mixing compressor at the heart of ZPAQ: four direct context models over hashed orders 1 to 4 predict each bit of the message, their predictions are averaged, and a carry-propagating binary range coder turns confident predictions into fractions of a bit. The order hashes are rebuilt after every byte with ZPAQ's HASH step, h = (h + b + 512) * 773 modulo 2 to the 32. Covers the modelling and coding stages only - the journaling archive container, the general ZPAQL virtual machine with its configurable COMP/HCOMP sections, deduplication and versioning are not implemented.";
       this.category = CategoryType.COMPRESSION;
       this.subCategory = "Context Mixing";
       this.securityStatus = SecurityStatus.EDUCATIONAL;
@@ -292,11 +346,10 @@
       // Wire format: [uint32 LE original length][range-coded payload].
       //
       // The vectors below were derived by hand. Before any byte has been seen,
-      // every model slot still holds the initial probability 32768, and each
-      // bit of the first byte lands on a slot nobody has touched yet, so all
-      // eight bits are coded at exactly one half. That makes the coder's bound
-      // arithmetic (bound = floor(range/65536) * 32768) and its flush sequence
-      // reproducible with pencil and paper.
+      // every counter still holds the initial probability 32768, and each bit of
+      // the first byte lands on a counter nobody has touched yet, so all eight
+      // bits are coded at exactly one half. That makes the coder's bound
+      // arithmetic and its flush sequence reproducible with pencil and paper.
       this.tests = [
         new TestCase(
           [],
@@ -362,7 +415,7 @@
       const output = OpCodes.Unpack32LE(OpCodes.ToUint32(data.length));
       if (data.length === 0) return output;
 
-      const model = new ContextMixingModel(tableBitsFor(data.length));
+      const model = new ContextMixingModel();
       const encoder = new RangeEncoder();
 
       for (let i = 0; i < data.length; i++) {
@@ -386,12 +439,12 @@
       const data = this.inputBuffer;
       this.inputBuffer = [];
 
-      if (data.length < 4) return [];
+      if (data.length < HEADER_BYTES) return [];
       const originalLength = OpCodes.Pack32LE(data[0], data[1], data[2], data[3]);
       if (originalLength === 0) return [];
 
-      const model = new ContextMixingModel(tableBitsFor(originalLength));
-      const decoder = new RangeDecoder(data, 4);
+      const model = new ContextMixingModel();
+      const decoder = new RangeDecoder(data, HEADER_BYTES);
       const output = new Array(originalLength);
 
       for (let i = 0; i < originalLength; i++) {
@@ -401,6 +454,7 @@
           model.update(bit);
           partial = partial * 2 + bit;
         }
+        // The leading 1 that started `partial` has been carried to bit 8.
         const value = partial - 256;
         output[i] = value;
         model.pushByte(value);
