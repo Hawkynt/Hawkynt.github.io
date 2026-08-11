@@ -424,9 +424,13 @@
         leadingZeros++;
       }
 
-      // Handle zero case: an all-zero input is the value zero
+      // An all-zero input carries no magnitude, only length, so it is spelled as
+      // one zero digit per byte. Emitting a single digit regardless of length
+      // made every all-zero input encode alike, and decode returned one byte
+      // whatever went in - the only inputs this changes are ones that could not
+      // survive a round trip before.
       if (leadingZeros === data.length) {
-        return [this.alphabet[0]];
+        return new Array(data.length).fill(this.alphabet[0]);
       }
 
       // Convert the remaining bytes, read as one big-endian unsigned integer,
