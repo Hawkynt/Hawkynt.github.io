@@ -151,17 +151,23 @@
         let nextCode = FIRST_CODE;
 
         for (let iter = 0; iter < this.maxIterations && dataLen >= 2; ++iter) {
-          // Count consecutive pairs, preserving first-occurrence order
-          // (matches .NET Dictionary's insertion-order iteration).
+          // Count consecutive pairs.
           const pairCounts = new Map();
           for (let i = 0; i < dataLen - 1; ++i) {
             const key = dataArr[i] + ',' + dataArr[i + 1];
             pairCounts.set(key, (pairCounts.get(key) || 0) + 1);
           }
 
+          // Pick the most frequent pair, ties going to the one that occurs
+          // earliest. Scanning the data rather than the count table is what
+          // makes that rule explicit: the winner is decided by positions in
+          // the input, not by the order in which a hash table hands its
+          // entries back.
           let bestKey = null;
           let bestCount = 0;
-          for (const [key, count] of pairCounts) {
+          for (let i = 0; i < dataLen - 1; ++i) {
+            const key = dataArr[i] + ',' + dataArr[i + 1];
+            const count = pairCounts.get(key);
             if (count > bestCount) {
               bestCount = count;
               bestKey = key;
