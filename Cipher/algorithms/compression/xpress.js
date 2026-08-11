@@ -46,16 +46,17 @@
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
     // AMD
-    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+    define(['../../AlgorithmFramework', '../../OpCodes', './huffman-code-lengths.data'], factory);
   } else if (typeof module === 'object' && module.exports) {
     // Node.js/CommonJS
     module.exports = factory(
       require('../../AlgorithmFramework'),
-      require('../../OpCodes')
+      require('../../OpCodes'),
+      require('./huffman-code-lengths.data')
     );
   } else {
     // Browser/Worker global
-    factory(root.AlgorithmFramework, root.OpCodes);
+    factory(root.AlgorithmFramework, root.OpCodes, root.HuffmanCodeLengths);
   }
 }((function() {
   if (typeof globalThis !== 'undefined') return globalThis;
@@ -63,8 +64,12 @@
   if (typeof global !== 'undefined') return global;
   if (typeof self !== 'undefined') return self;
   throw new Error('Unable to locate global object');
-})(), function (AlgorithmFramework, OpCodes) {
+})(), function (AlgorithmFramework, OpCodes, HuffmanCodeLengths) {
   'use strict';
+
+  if (!HuffmanCodeLengths) {
+    throw new Error('HuffmanCodeLengths dependency is required');
+  }
 
   if (!AlgorithmFramework) {
     throw new Error('AlgorithmFramework dependency is required');
@@ -164,107 +169,12 @@
 
   // ===== HUFFMAN TREE CONSTRUCTION =====
 
-  const HNode = {
-    leaf(symbol, frequency) {
-      return { symbol, frequency, left: null, right: null };
-    },
-    internal(left, right) {
-      return { symbol: -1, frequency: left.frequency + right.frequency, left, right };
-    },
-    isLeaf(node) { return node.left === null && node.right === null; },
-    // Matches HuffmanNode.CompareTo: frequency ascending, then symbol ascending
-    // (internal nodes carry symbol -1, so on a frequency tie they are extracted
-    // before any real leaf symbol, not after, despite what the reference's own
-    // comment claims -- we replicate the actual comparator, not the comment).
-    compare(a, b) {
-      if (a.frequency !== b.frequency) return a.frequency < b.frequency ? -1 : 1;
-      if (a.symbol !== b.symbol) return a.symbol < b.symbol ? -1 : 1;
-      return 0;
-    }
-  };
-
-  // Array-based binary min-heap, matching the reference's sift-up/sift-down
-  // algorithm exactly (needed because HNode.compare can return 0 for distinct
-  // internal nodes, so the *specific* heap algorithm -- not just "a valid
-  // heap" -- determines extraction order for ties).
-  class MinHeap {
-    constructor() { this.items = []; }
-    get count() { return this.items.length; }
-
-    insert(item) {
-      this.items.push(item);
-      this._siftUp(this.items.length - 1);
-    }
-
-    extractMin() {
-      if (this.items.length === 0) throw new Error("Heap is empty.");
-      const min = this.items[0];
-      const last = this.items.length - 1;
-      this.items[0] = this.items[last];
-      this.items.pop();
-      if (this.items.length > 0) this._siftDown(0);
-      return min;
-    }
-
-    _siftUp(index) {
-      let i = index;
-      while (i > 0) {
-        const parent = Math.floor((i - 1) / 2);
-        if (HNode.compare(this.items[i], this.items[parent]) < 0) {
-          const t = this.items[i]; this.items[i] = this.items[parent]; this.items[parent] = t;
-          i = parent;
-        } else break;
-      }
-    }
-
-    _siftDown(index) {
-      const count = this.items.length;
-      let i = index;
-      for (;;) {
-        const left = 2 * i + 1, right = 2 * i + 2;
-        let smallest = i;
-        if (left < count && HNode.compare(this.items[left], this.items[smallest]) < 0) smallest = left;
-        if (right < count && HNode.compare(this.items[right], this.items[smallest]) < 0) smallest = right;
-        if (smallest !== i) {
-          const t = this.items[i]; this.items[i] = this.items[smallest]; this.items[smallest] = t;
-          i = smallest;
-        } else break;
-      }
-    }
-  }
-
-  function buildFromFrequencies(freq) {
-    const heap = new MinHeap();
-    for (let i = 0; i < freq.length; i++) if (freq[i] > 0) heap.insert(HNode.leaf(i, freq[i]));
-
-    if (heap.count === 0) throw new Error("At least one symbol must have a non-zero frequency.");
-    if (heap.count === 1) {
-      const single = heap.extractMin();
-      return HNode.internal(single, HNode.leaf(-2, 0));
-    }
-
-    while (heap.count > 1) {
-      const left = heap.extractMin();
-      const right = heap.extractMin();
-      heap.insert(HNode.internal(left, right));
-    }
-    return heap.extractMin();
-  }
-
-  function assignLengths(node, depth, lengths) {
-    if (HNode.isLeaf(node)) {
-      if (node.symbol >= 0 && node.symbol < lengths.length) lengths[node.symbol] = depth;
-      return;
-    }
-    if (node.left) assignLengths(node.left, depth + 1, lengths);
-    if (node.right) assignLengths(node.right, depth + 1, lengths);
-  }
-
-  function getCodeLengths(root, maxSymbol) {
-    const lengths = new Array(maxSymbol).fill(0);
-    assignLengths(root, 0, lengths);
-    return lengths;
-  }
+  // Code lengths come from the shared deterministic builder in
+  // huffman-code-lengths.data.js. Its tie-break among equally likely symbols is a
+  // written rule - lighter first, then leaves before internal nodes, leaves by
+  // ascending symbol, internal nodes oldest first - and CompressionWorkbench's
+  // DeterministicHuffman follows the same rule, so the two produce the same tree
+  // because the algorithm says so and not because either copies the other's heap.
 
   function limitCodeLengths(codeLengths, maxLength) {
     const needsAdjustment = codeLengths.some(t => t > maxLength);
@@ -323,8 +233,7 @@
       for (let i = 0; i < freq.length; i++)
         if (freq[i] === 0) { freq[i] = 1; break; }
 
-    const root = buildFromFrequencies(freq);
-    const lengths = getCodeLengths(root, HUFF_SYMBOL_COUNT);
+    const lengths = HuffmanCodeLengths.buildCodeLengths(freq, HUFF_SYMBOL_COUNT);
     limitCodeLengths(lengths, HUFF_MAX_CODE_LENGTH);
     return lengths;
   }

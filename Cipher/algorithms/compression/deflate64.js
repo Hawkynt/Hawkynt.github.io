@@ -17,16 +17,17 @@
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
     // AMD
-    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+    define(['../../AlgorithmFramework', '../../OpCodes', './huffman-code-lengths.data'], factory);
   } else if (typeof module === 'object' && module.exports) {
     // Node.js/CommonJS
     module.exports = factory(
       require('../../AlgorithmFramework'),
-      require('../../OpCodes')
+      require('../../OpCodes'),
+      require('./huffman-code-lengths.data')
     );
   } else {
     // Browser/Worker global
-    factory(root.AlgorithmFramework, root.OpCodes);
+    factory(root.AlgorithmFramework, root.OpCodes, root.HuffmanCodeLengths);
   }
 }((function() {
   if (typeof globalThis !== 'undefined') return globalThis;
@@ -34,7 +35,7 @@
   if (typeof global !== 'undefined') return global;
   if (typeof self !== 'undefined') return self;
   throw new Error('Unable to locate global object');
-})(), function (AlgorithmFramework, OpCodes) {
+})(), function (AlgorithmFramework, OpCodes, HuffmanCodeLengths) {
   'use strict';
 
   if (!AlgorithmFramework) {
@@ -43,6 +44,10 @@
 
   if (!OpCodes) {
     throw new Error('OpCodes dependency is required');
+  }
+
+  if (!HuffmanCodeLengths) {
+    throw new Error('HuffmanCodeLengths dependency is required');
   }
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
@@ -265,103 +270,14 @@
     }
   }
 
-  // ===== HUFFMAN TREE FROM FREQUENCIES (binary min-heap construction, matching
-  // CompressionWorkbench's HuffmanTree.BuildFromFrequencies tie-break exactly) =====
+  // ===== HUFFMAN CODE LENGTHS =====
 
-  function compareFrequencyNodes(a, b) {
-    if (a.frequency !== b.frequency) return a.frequency < b.frequency ? -1 : 1;
-    return a.symbol - b.symbol;
-  }
-
-  class FrequencyMinHeap {
-    constructor() {
-      this.items = [];
-    }
-
-    get count() {
-      return this.items.length;
-    }
-
-    insert(item) {
-      this.items.push(item);
-      this._siftUp(this.items.length - 1);
-    }
-
-    extractMin() {
-      const min = this.items[0];
-      const last = this.items.length - 1;
-      this.items[0] = this.items[last];
-      this.items.pop();
-      if (this.items.length > 0) this._siftDown(0);
-      return min;
-    }
-
-    _siftUp(index) {
-      while (index > 0) {
-        const parent = OpCodes.Shr32(index - 1, 1);
-        if (compareFrequencyNodes(this.items[index], this.items[parent]) < 0) {
-          const tmp = this.items[index];
-          this.items[index] = this.items[parent];
-          this.items[parent] = tmp;
-          index = parent;
-        } else break;
-      }
-    }
-
-    _siftDown(index) {
-      const count = this.items.length;
-      for (;;) {
-        const left = 2 * index + 1;
-        const right = 2 * index + 2;
-        let smallest = index;
-        if (left < count && compareFrequencyNodes(this.items[left], this.items[smallest]) < 0) smallest = left;
-        if (right < count && compareFrequencyNodes(this.items[right], this.items[smallest]) < 0) smallest = right;
-        if (smallest !== index) {
-          const tmp = this.items[index];
-          this.items[index] = this.items[smallest];
-          this.items[smallest] = tmp;
-          index = smallest;
-        } else break;
-      }
-    }
-  }
-
-  function buildHuffmanTreeFromFrequencies(frequencies) {
-    const heap = new FrequencyMinHeap();
-    for (let i = 0; i < frequencies.length; ++i)
-      if (frequencies[i] > 0) heap.insert({symbol: i, frequency: frequencies[i], left: null, right: null});
-
-    if (heap.count === 0) throw new Error('At least one symbol must have a non-zero frequency.');
-
-    if (heap.count === 1) {
-      const single = heap.extractMin();
-      return {symbol: -1, left: single, right: {symbol: -2, frequency: 0, left: null, right: null}, frequency: single.frequency};
-    }
-
-    while (heap.count > 1) {
-      const left = heap.extractMin();
-      const right = heap.extractMin();
-      heap.insert({symbol: -1, left: left, right: right, frequency: left.frequency + right.frequency});
-    }
-
-    return heap.extractMin();
-  }
-
-  function assignHuffmanLengths(node, depth, lengths) {
-    if (node.left === null && node.right === null) {
-      if (node.symbol >= 0 && node.symbol < lengths.length) lengths[node.symbol] = depth;
-      return;
-    }
-
-    if (node.left) assignHuffmanLengths(node.left, depth + 1, lengths);
-    if (node.right) assignHuffmanLengths(node.right, depth + 1, lengths);
-  }
-
-  function getHuffmanCodeLengths(root, maxSymbol) {
-    const lengths = new Array(maxSymbol).fill(0);
-    assignHuffmanLengths(root, 0, lengths);
-    return lengths;
-  }
+  // Code lengths come from the shared deterministic builder in
+  // huffman-code-lengths.data.js. Its tie-break among equally likely symbols is a
+  // written rule - lighter first, then leaves before internal nodes, leaves by
+  // ascending symbol, internal nodes oldest first - and CompressionWorkbench's
+  // DeterministicHuffman follows the same rule, so the two produce the same tree
+  // because the algorithm says so and not because either copies the other's heap.
 
   function limitHuffmanCodeLengths(codeLengths, maxLength) {
     const needsAdjustment = codeLengths.some(len => len > maxLength);
@@ -419,8 +335,7 @@
   }
 
   function buildHuffmanCodeLengths(frequencies, alphabetSize, maxBits) {
-    const root = buildHuffmanTreeFromFrequencies(frequencies);
-    const lengths = getHuffmanCodeLengths(root, alphabetSize);
+    const lengths = HuffmanCodeLengths.buildCodeLengths(frequencies, alphabetSize);
     limitHuffmanCodeLengths(lengths, maxBits);
     return lengths;
   }

@@ -3,7 +3,9 @@
  * (c)2006-2025 Hawkynt
  *
  * This is a utility library, NOT an algorithm implementation.
- * Used by: Implode (ZIP method 6), RAR5.
+ * Used by: ACE, DEFLATE, Deflate64, Huffman, Implode (ZIP method 6), RAR, RAR5,
+ * SQX, Xpress, Zling and Zopfli - every place in this project that turns symbol
+ * frequencies into code lengths.
  *
  * Textbook Huffman construction says "repeatedly merge the two lightest nodes" but
  * says nothing about which node to pick when several are equally light. Handing the
