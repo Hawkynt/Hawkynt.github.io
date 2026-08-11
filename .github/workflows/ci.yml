@@ -90,6 +90,13 @@ jobs:
         working-directory: Cipher
         run: node tools/refresh-readmes.js --check
 
+      # index.html loads each algorithm with its own script tag. The Node suites
+      # walk the directories instead, so a file added without a tag passes every
+      # test and is simply missing in the browser - that had reached 250 of 933.
+      - name: Check the browser script tags against the algorithm directories
+        working-directory: Cipher
+        run: node tools/refresh-index-scripts.js --check
+
       - name: Build the algorithm reference
         working-directory: Cipher
         run: node tools/generate-algorithm-docs.js
