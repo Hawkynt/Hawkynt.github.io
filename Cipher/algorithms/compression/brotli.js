@@ -17,18 +17,35 @@
  *   produced by any conformant encoder, including Google's reference
  *   implementation (zlib's brotliCompressSync / the `brotli` CLI).
  *
- * - COMPRESSION performs genuine LZ77 (hash-chain match finder, one-step
- *   lazy matching) plus canonical, length-limited (package-merge) Huffman
- *   coding, emitted as RFC 7932 complex prefix code descriptors (Section
- *   3.5) or - for degenerate single-symbol alphabets - the simple prefix
- *   code's NSYM=1 form (Section 3.4). Uses the simplest legal meta-block
- *   configuration: NBLTYPES=1 for literals/commands/distances (no block-
- *   switch commands), NPOSTFIX=0, NDIRECT=0, a single context mode, and no
- *   static-dictionary references. Each chunk falls back to an uncompressed
- *   meta-block (Section 9.2's ISUNCOMPRESSED=1 form) whenever that would be
- *   smaller. Any compliant Brotli decoder, including zlib's
- *   brotliDecompressSync and the reference `brotli` CLI, accepts the output
- *   byte-for-byte.
+ * - COMPRESSION uses the format's own modelling machinery rather than a bare
+ *   LZ77 plus Huffman pass:
+ *     * literal context modelling (Section 7.1) - all four context modes are
+ *       measured and the cheapest is picked, then the 64 context values are
+ *       clustered into up to 16 literal prefix codes whose count is chosen by
+ *       measured bit cost and transmitted as a context map (Section 7.3);
+ *     * the four-entry distance ring buffer (Section 4) - distance codes 0-15
+ *       reuse recent distances without any extra bits, and the
+ *       implicit-distance insert-and-copy ranges (Section 5, codes 0-127)
+ *       drop the distance symbol entirely;
+ *     * complex prefix code descriptors (Section 3.5) with the run-length
+ *       codes 16 and 17, choosing per descriptor between the run-length and
+ *       the spelled-out form by measured size, plus the simple form of
+ *       Section 3.4 for alphabets with at most four coded symbols;
+ *     * cost-driven meta-block splitting - the command stream is cut where the
+ *       literal distributions diverge, and each meta-block independently falls
+ *       back to the uncompressed form (Section 9.2) when that is smaller;
+ *     * a hash-chain match finder with cost-aware ranking and one step of lazy
+ *       matching, and canonical length-limited (package-merge) prefix codes.
+ *   NOT implemented on the encoding side: static dictionary references
+ *   (Section 8), several block types per category with block-switch commands
+ *   (Section 6), non-zero NPOSTFIX/NDIRECT distance parameters (Section 4),
+ *   and distance context modelling (Section 7.2). Any compliant Brotli
+ *   decoder, including zlib's brotliDecompressSync and the reference `brotli`
+ *   CLI, accepts the output byte-for-byte.
+ *
+ * Every encoder decision is taken with integer arithmetic only (including a
+ * fixed-point base-2 logarithm for entropy estimates), so this encoder and the
+ * C# encoder in the CompressionWorkbench project emit identical bytes.
  *
  * The static dictionary word list (Appendix A) and the word-transform table
  * (Appendix B) are transcribed directly from the RFC 7932 specification text
@@ -675,13 +692,53 @@
 
   // ===== BROTLI COMPRESSOR =====
   //
-  // Emits a fully RFC 7932-conformant stream built entirely from uncompressed
-  // meta-blocks (Section 9.2's ISUNCOMPRESSED=1 form): a WBITS=16 stream
-  // header, one or more <=65536-byte uncompressed meta-blocks (ISLAST=0, so
-  // ISUNCOMPRESSED is present and MNIBBLES=4 always suffices for MLEN-1 <=
-  // 0xFFFF), followed by a true empty last meta-block (ISLAST=1,
-  // ISLASTEMPTY=1). This does not attempt entropy coding, but it is a
-  // completely legal Brotli bitstream that any conformant decoder accepts.
+  // Emits RFC 7932 streams that use the format's own modelling machinery:
+  // literal context modelling (Section 7.1, all four context modes, with the 64
+  // context values clustered into several literal prefix codes that are
+  // transmitted as a context map per Section 7.3), the distance ring buffer
+  // including the implicit-distance insert-and-copy ranges (Sections 4 and 5),
+  // run-length coded complex prefix code descriptors (Section 3.5), and
+  // cost-driven meta-block splitting where every meta-block independently falls
+  // back to the uncompressed form of Section 9.2.
+  //
+  // Deliberately NOT implemented: static dictionary references (Section 8),
+  // several block types per category with block-switch commands (Section 6),
+  // non-zero NPOSTFIX/NDIRECT distance parameters (Section 4), and distance
+  // context modelling (Section 7.2). All of those are optional encoder-side
+  // features; the emitted streams stay fully conformant without them.
+  //
+  // Every encoding decision is taken with integer arithmetic only, so this
+  // encoder and CompressionWorkbench's C# encoder emit identical bytes.
+
+  // Tunables. Any change here must be mirrored in CompressionWorkbench's
+  // BrotliCompressor.cs, otherwise the two stop producing identical bytes.
+  const MIN_MATCH = 4;
+  const HASH_BITS = 17;
+  const HASH_SIZE = OpCodes.Shl32(1, HASH_BITS);
+  const MAX_CHAIN = 256;
+  const MAX_COPY_LENGTH = 8388608;
+  const MAX_LITERAL_RUN = 4194304;
+  const SEGMENT_BYTES = 32768;
+  const MAX_METABLOCK_BYTES = 16777216;
+  const SPLIT_THRESHOLD_UNITS = 262144;
+  const ESTIMATED_COMMAND_BITS = 12;
+  const ESTIMATED_DISTANCE_BITS = 12;
+  const MATCH_RANK_LITERAL_BITS = 5;
+  const LAZY_MATCH_MARGIN = 8;
+  const LITERAL_TREE_CANDIDATES = [1, 2, 4, 8, 16];
+  const INITIAL_DISTANCE_RING = [4, 11, 15, 16];
+  const DISTANCE_ALPHABET_SIZE = 64;   // 16 + NDIRECT(0) + 48 for NPOSTFIX(0)
+  const LITERAL_ALPHABET_SIZE = 256;
+  const IAC_ALPHABET_SIZE = 704;
+  const NUM_CODE_LENGTH_CODES = 18;
+  const MAX_CODE_LENGTH = 15;
+
+  const POW2 = (function () {
+    const table = new Array(32);
+    let value = 1;
+    for (let i = 0; i < 32; ++i) { table[i] = value; value = value * 2; }
+    return table;
+  })();
 
   class BitWriter {
     constructor() {
@@ -695,6 +752,7 @@
       // currently-accumulated pending bits are all zero while bitCount is
       // still nonzero (e.g. writing a zero nibble). Never key any logic off
       // "is bitBuffer falsy" - only bitCount tracks the pending bit position.
+      if (n <= 0) return;
       const masked = OpCodes.AndN(value, OpCodes.BitMask(n));
       this.bitBuffer = OpCodes.Or32(this.bitBuffer, OpCodes.Shl32(masked, this.bitCount));
       this.bitCount += n;
@@ -739,322 +797,1038 @@
     }
   }
 
-  // ===== ENCODER: LENGTH-LIMITED CANONICAL HUFFMAN (package-merge) =====
-  // Builds prefix-code lengths bounded by maxLen bits via the boundary
-  // package-merge algorithm (Larmore and Hirschberg, 1990): the standard
-  // technique for optimal length-limited Huffman coding. Needed because RFC
-  // 7932 caps code lengths at 15 bits for the data alphabets (Section 3.2)
-  // and at 5 bits for the code-length alphabet nested inside a complex
-  // prefix code descriptor (Section 3.5) - an unrestricted Huffman build can
-  // exceed either limit for skewed frequency distributions.
+  // ===== ENCODER: DETERMINISTIC INTEGER COST MODEL =====
+  //
+  // Every size comparison the encoder makes has to be reproduced bit-for-bit by
+  // the C# implementation. Floating point logarithms are not safe for that (the
+  // last unit in the last place may differ between runtimes), so all costs come
+  // from an exact fixed-point base-2 logarithm and are carried in units of
+  // 1/256 bit.
 
-  function packageMergeLengths(weights, maxLen) {
-    const alphabetSize = weights.length;
+  // floor(log2(x) * 65536) for x >= 1, integer arithmetic only.
+  function computeLog2Fixed(x) {
+    let exponent = 0, v = x;
+    while (v >= 2) { v = Math.floor(v / 2); ++exponent; }
+
+    // Mantissa in [1, 2) held as a fixed point number with 20 fractional bits.
+    let mantissa = Math.floor(x * 1048576 / POW2[exponent]);
+    let result = exponent * 65536;
+    let bit = 32768;
+    for (let i = 0; i < 16; ++i) {
+      mantissa = Math.floor(mantissa * mantissa / 1048576);
+      if (mantissa >= 2097152) { result += bit; mantissa = Math.floor(mantissa / 2); }
+      bit = Math.floor(bit / 2);
+    }
+    return result;
+  }
+
+  let LOG2_TABLE = null;
+  function log2Fixed(x) {
+    if (LOG2_TABLE === null) {
+      LOG2_TABLE = new Int32Array(65536);
+      for (let i = 1; i < 65536; ++i) LOG2_TABLE[i] = computeLog2Fixed(i);
+    }
+    return x < 65536 ? LOG2_TABLE[x] : computeLog2Fixed(x);
+  }
+
+  // Ideal cost, in 1/256-bit units, of coding `count` occurrences of one symbol
+  // inside an alphabet seen `total` times.
+  function bitCostUnits(count, total) {
+    if (count <= 0) return 0;
+
+    // Clamped so the division below can never see a negative numerator: integer
+    // division truncates towards zero in the C# implementation but towards minus
+    // infinity here, and the two must not be able to disagree.
+    const delta = log2Fixed(total) - log2Fixed(count);
+    return delta <= 0 ? 0 : Math.floor(count * delta / 256);
+  }
+
+  function histogramCostUnits(histogram) {
+    let total = 0;
+    for (let i = 0; i < histogram.length; ++i) total += histogram[i];
+    if (total === 0) return 0;
+    let cost = 0;
+    for (let i = 0; i < histogram.length; ++i) cost += bitCostUnits(histogram[i], total);
+    return cost;
+  }
+
+  // Extra cost, in 1/256-bit units, of coding two histograms with one shared
+  // distribution instead of two separate ones. Never negative.
+  function mergeCostUnits(a, b) {
+    let totalA = 0, totalB = 0;
+    for (let i = 0; i < a.length; ++i) { totalA += a[i]; totalB += b[i]; }
+    const totalMerged = totalA + totalB;
+    if (totalMerged === 0) return 0;
+
+    let cost = 0;
+    for (let i = 0; i < a.length; ++i) {
+      const fa = a[i], fb = b[i];
+      cost += bitCostUnits(fa + fb, totalMerged) - bitCostUnits(fa, totalA) - bitCostUnits(fb, totalB);
+    }
+    return cost;
+  }
+
+  // ===== ENCODER: PREFIX CODES (RFC 7932 Section 3) =====
+  //
+  // Optimal length-limited code lengths via the boundary package-merge algorithm
+  // (Larmore and Hirschberg, 1990). RFC 7932 Section 3.2 caps code lengths at 15
+  // bits for the data alphabets and Section 3.5 at 5 bits for the code-length
+  // alphabet nested inside a complex prefix code descriptor - an unrestricted
+  // Huffman build can exceed either limit for skewed frequency distributions.
+
+  // Merges two weight-ascending lists into one, preferring the first list on
+  // ties so the result does not depend on any sort implementation.
+  function mergeAscending(first, second) {
+    const merged = [];
+    let i = 0, j = 0;
+    while (i < first.length && j < second.length) {
+      if (first[i].weight <= second[j].weight) merged.push(first[i++]);
+      else merged.push(second[j++]);
+    }
+    while (i < first.length) merged.push(first[i++]);
+    while (j < second.length) merged.push(second[j++]);
+    return merged;
+  }
+
+  function buildCodeLengths(frequencies, alphabetSize, maxLength) {
     const lengths = new Array(alphabetSize).fill(0);
 
     const used = [];
-    for (let s = 0; s < alphabetSize; ++s) if (weights[s] > 0) used.push(s);
+    for (let symbol = 0; symbol < alphabetSize; ++symbol)
+      if (frequencies[symbol] > 0) used.push(symbol);
+
     if (used.length === 0) return lengths;
     if (used.length === 1) { lengths[used[0]] = 1; return lengths; }
 
-    const baseItems = used.map(s => ({ weight: weights[s], symbols: [s] }));
-    baseItems.sort((a, b) => a.weight - b.weight);
+    const basis = used.map(symbol => ({ weight: frequencies[symbol], symbols: [symbol] }));
+    basis.sort((x, y) => x.weight !== y.weight ? x.weight - y.weight : x.symbols[0] - y.symbols[0]);
 
-    let list = baseItems;
-    for (let level = 2; level <= maxLen; ++level) {
+    let list = basis;
+    for (let level = 2; level <= maxLength; ++level) {
       const packaged = [];
       for (let i = 0; i + 1 < list.length; i += 2) {
-        packaged.push({
-          weight: list[i].weight + list[i + 1].weight,
-          symbols: list[i].symbols.concat(list[i + 1].symbols)
-        });
+        const combined = [];
+        const left = list[i].symbols, right = list[i + 1].symbols;
+        for (let k = 0; k < left.length; ++k) combined.push(left[k]);
+        for (let k = 0; k < right.length; ++k) combined.push(right[k]);
+        packaged.push({ weight: list[i].weight + list[i + 1].weight, symbols: combined });
       }
-      list = packaged.concat(baseItems);
-      list.sort((a, b) => a.weight - b.weight);
+      list = mergeAscending(packaged, basis);
     }
 
-    const takeCount = Math.min(2 * used.length - 2, list.length);
-    for (let i = 0; i < takeCount; ++i) {
+    const take = Math.min(2 * used.length - 2, list.length);
+    for (let i = 0; i < take; ++i) {
       const symbols = list[i].symbols;
       for (let k = 0; k < symbols.length; ++k) lengths[symbols[k]]++;
     }
     return lengths;
   }
 
-  // Canonical code assignment - the exact encode-side mirror of
-  // HuffmanTree.buildFromLengths's blCount/nextCode algorithm, but recording
-  // a {code, length} pair per symbol instead of a decode map.
-  function assignCanonicalCodes(lengths, alphabetSize) {
-    let nonZeroCount = 0, lastSymbol = -1, maxLength = 0;
-    for (let s = 0; s < alphabetSize; ++s) {
-      if (lengths[s] > 0) {
-        nonZeroCount++;
-        lastSymbol = s;
-        if (lengths[s] > maxLength) maxLength = lengths[s];
-      }
-    }
-    if (nonZeroCount === 0) return { singleSymbol: -1, codes: null };
-    if (nonZeroCount === 1) return { singleSymbol: lastSymbol, codes: null };
+  // Rewrites code lengths that will be transmitted as a simple prefix code
+  // (RFC 7932 Section 3.4). The implied lengths are positional and the symbols
+  // are always written in ascending order, so the shortest code goes to the
+  // smallest symbol - exactly what a canonical code does for equal lengths.
+  function normalizeSimpleCode(lengths, alphabetSize) {
+    const used = [];
+    for (let symbol = 0; symbol < alphabetSize; ++symbol)
+      if (lengths[symbol] > 0) used.push(symbol);
 
-    const blCount = new Array(maxLength + 1).fill(0);
-    for (let s = 0; s < alphabetSize; ++s) if (lengths[s] > 0) blCount[lengths[s]]++;
+    if (used.length === 2) {
+      lengths[used[0]] = 1; lengths[used[1]] = 1;
+    } else if (used.length === 3) {
+      lengths[used[0]] = 1; lengths[used[1]] = 2; lengths[used[2]] = 2;
+    } else if (used.length === 4) {
+      for (let i = 0; i < 4; ++i) lengths[used[i]] = 2;
+    }
+  }
+
+  // Canonical code assignment - the exact encode-side mirror of
+  // HuffmanTree.buildFromLengths's blCount/nextCode algorithm, recording a
+  // {code, length} pair per symbol instead of a decode map. A code with a single
+  // symbol decodes with zero bits (Section 3.5), so nothing is written for it.
+  function makePrefixCode(lengths, alphabetSize) {
+    let usedCount = 0, lastSymbol = 0, maxLength = 0;
+    for (let symbol = 0; symbol < alphabetSize; ++symbol) {
+      if (lengths[symbol] <= 0) continue;
+      ++usedCount;
+      lastSymbol = symbol;
+      if (lengths[symbol] > maxLength) maxLength = lengths[symbol];
+    }
+
+    if (usedCount <= 1) return { lengths: lengths, codes: null, singleSymbol: lastSymbol };
+
+    const lengthCounts = new Array(maxLength + 1).fill(0);
+    for (let symbol = 0; symbol < alphabetSize; ++symbol)
+      if (lengths[symbol] > 0) lengthCounts[lengths[symbol]]++;
 
     const nextCode = new Array(maxLength + 1).fill(0);
-    let code = 0;
+    let value = 0;
     for (let bits = 1; bits <= maxLength; ++bits) {
-      code = OpCodes.Shl32(code + blCount[bits - 1], 1);
-      nextCode[bits] = code;
+      value = OpCodes.Shl32(value + lengthCounts[bits - 1], 1);
+      nextCode[bits] = value;
     }
 
-    const codes = new Array(alphabetSize).fill(null);
-    for (let s = 0; s < alphabetSize; ++s) {
-      const len = lengths[s];
-      if (len === 0) continue;
-      codes[s] = { code: nextCode[len]++, length: len };
+    const codes = new Array(alphabetSize).fill(0);
+    for (let symbol = 0; symbol < alphabetSize; ++symbol) {
+      const length = lengths[symbol];
+      if (length > 0) codes[symbol] = nextCode[length]++;
     }
-    return { singleSymbol: -1, codes };
+    return { lengths: lengths, codes: codes, singleSymbol: -1 };
   }
 
-  // Writes one symbol's canonical code, MSB-of-the-code first (matching
-  // HuffmanTree.decode's bit-by-bit "shift the accumulator left one position,
-  // OR in the next read bit" reconstruction).
-  function writeCanonicalSymbol(writer, huffCode, symbol) {
-    if (huffCode.singleSymbol >= 0) return; // zero-bit code (Section 3.5)
-    const entry = huffCode.codes[symbol];
-    for (let i = entry.length - 1; i >= 0; --i)
-      writer.writeBits(1, OpCodes.And32(OpCodes.Shr32(entry.code, i), 1));
+  function buildPrefixCode(frequencies, alphabetSize, maxLength) {
+    const lengths = buildCodeLengths(frequencies, alphabetSize, maxLength);
+
+    let usedCount = 0;
+    for (let symbol = 0; symbol < alphabetSize; ++symbol)
+      if (lengths[symbol] > 0) ++usedCount;
+
+    // An alphabet nothing was coded from still needs a descriptor; the NSYM=1
+    // simple form costs the fewest bits and decodes to a zero-bit code.
+    if (usedCount === 0) lengths[0] = 1;
+    else if (usedCount <= 4) normalizeSimpleCode(lengths, alphabetSize);
+
+    return makePrefixCode(lengths, alphabetSize);
   }
 
-  // ===== ENCODER: COMPLEX PREFIX CODE DESCRIPTOR WRITER (Section 3.5) =====
+  // Writes one symbol, most significant bit of the canonical code first, which
+  // is how HuffmanTree.decode reconstructs the tree path bit by bit.
+  function writeSymbol(writer, code, symbol) {
+    if (code.singleSymbol >= 0) return; // zero-bit code
+    const length = code.lengths[symbol];
+    const value = code.codes[symbol];
+    for (let i = length - 1; i >= 0; --i)
+      writer.writeBits(1, OpCodes.And32(OpCodes.Shr32(value, i), 1));
+  }
 
-  // The fixed 6-symbol code used to transmit each code-length-alphabet
-  // symbol's own code length (0..5) - the exact bit-for-bit inverse of
+  function symbolBits(code, symbol) {
+    return code.singleSymbol >= 0 ? 0 : code.lengths[symbol];
+  }
+
+  // The fixed 6-symbol code used to transmit each code-length-alphabet symbol's
+  // own code length (0..5) - the exact bit-for-bit inverse of
   // readCodeLengthCodeLength above.
   function writeCodeLengthCodeLength(writer, value) {
     switch (value) {
-      case 0: writer.writeBits(1, 0); writer.writeBits(1, 0); return;
-      case 3: writer.writeBits(1, 0); writer.writeBits(1, 1); return;
-      case 4: writer.writeBits(1, 1); writer.writeBits(1, 0); return;
-      case 2: writer.writeBits(1, 1); writer.writeBits(1, 1); writer.writeBits(1, 0); return;
-      case 1: writer.writeBits(1, 1); writer.writeBits(1, 1); writer.writeBits(1, 1); writer.writeBits(1, 0); return;
-      case 5: writer.writeBits(1, 1); writer.writeBits(1, 1); writer.writeBits(1, 1); writer.writeBits(1, 1); return;
+      case 0: writer.writeBits(2, 0); return;  // 00
+      case 3: writer.writeBits(2, 2); return;  // 10
+      case 4: writer.writeBits(2, 1); return;  // 01
+      case 2: writer.writeBits(3, 3); return;  // 011
+      case 1: writer.writeBits(4, 7); return;  // 0111
+      case 5: writer.writeBits(4, 15); return; // 1111
       default: throw new Error('Invalid code-length-code-length (must be 0..5): ' + value);
     }
   }
 
-  // Writes a complex prefix code descriptor for `targetLengths` (already
-  // length-limited to 15 bits) over an alphabet of `alphabetSize` symbols.
-  // Always uses HSKIP=0 and never emits the run-length codes (16/17): every
-  // target code length, including zeros, is sent as an explicit code-length-
-  // alphabet symbol. RLE is an optional descriptor-size optimization, not a
-  // decoder requirement - omitting it keeps this a direct, easily-verified
-  // mirror of readComplexPrefixCode's control flow.
-  function writeComplexPrefixCode(writer, targetLengths, alphabetSize) {
+  // Emits a planned complex prefix code descriptor (RFC 7932 Section 3.5).
+  function emitComplexPrefixCodeDescriptor(writer, emissions) {
+    const frequencies = new Array(NUM_CODE_LENGTH_CODES).fill(0);
+    for (let i = 0; i < emissions.length; ++i) frequencies[emissions[i].symbol]++;
+
+    const clLengths = buildCodeLengths(frequencies, NUM_CODE_LENGTH_CODES, 5);
+    const clCode = makePrefixCode(clLengths, NUM_CODE_LENGTH_CODES);
+
     writer.writeBits(2, 0); // HSKIP = 0
 
-    const codeLengthWeights = new Array(18).fill(0);
-    for (let s = 0; s < alphabetSize; ++s) codeLengthWeights[targetLengths[s]]++;
-
-    const codeLengthLengths = packageMergeLengths(codeLengthWeights, 5);
-    const codeLengthHuff = assignCanonicalCodes(codeLengthLengths, 18);
-
-    // Mirrors the decoder's `space` (Kraft sum, scaled by 32) tracker: once
-    // it reaches zero the decoder stops reading code-length-code-lengths, so
-    // the writer must stop emitting them at exactly the same point.
+    // Mirrors the decoder's `space` (Kraft sum, scaled by 32) tracker: once it
+    // reaches zero the decoder stops reading code-length-code-lengths, so the
+    // writer must stop emitting them at exactly the same point.
     let space = 32;
-    for (let i = 0; i < 18 && space > 0; ++i) {
-      const symbol = CODE_LENGTH_CODE_ORDER[i];
-      const len = codeLengthLengths[symbol];
-      writeCodeLengthCodeLength(writer, len);
-      if (len !== 0) space -= OpCodes.Shr32(32, len);
+    for (let i = 0; i < NUM_CODE_LENGTH_CODES && space > 0; ++i) {
+      const index = CODE_LENGTH_CODE_ORDER[i];
+      const length = clLengths[index];
+      writeCodeLengthCodeLength(writer, length);
+      if (length !== 0) space -= OpCodes.Shr32(32, length);
     }
 
-    // Phase 2 mirrors the decoder's `spaceTarget` (Kraft sum, scaled by
-    // 32768) tracker symbol-by-symbol: the decoder only stops early once
-    // that sum reaches zero, which requires the target code to be COMPLETE
-    // (Kraft sum exactly 32768). A target alphabet with only one used symbol
-    // (common for small/simple command or distance sets) gets length 1 for
-    // that symbol - an INCOMPLETE code, since half of 32768 is only half of
-    // the full sum - so the decoder does NOT stop after it and keeps reading
-    // (zero-length) entries all the way to alphabetSize. Any shortcut that
-    // assumes completeness (e.g. "stop after the last nonzero symbol")
-    // desyncs the stream whenever the code turns out to be incomplete.
-    let spaceTarget = 32768;
-    for (let s = 0; s < alphabetSize && spaceTarget > 0; ++s) {
-      const len = targetLengths[s];
-      writeCanonicalSymbol(writer, codeLengthHuff, len);
-      if (len !== 0) spaceTarget -= OpCodes.Shr32(32768, len);
+    for (let i = 0; i < emissions.length; ++i) {
+      const emission = emissions[i];
+      writeSymbol(writer, clCode, emission.symbol);
+      if (emission.extraBits > 0) writer.writeBits(emission.extraBits, emission.extraValue);
     }
   }
 
-  // Section 3.4: simple prefix code, NSYM=1 form - the exact inverse of
-  // readSimplePrefixCode's early-return branch (a single symbol, sent as a
-  // raw alphabet-index with no Huffman code at all). This is the format's
-  // real mechanism for a zero- or one-symbol alphabet; the complex
-  // descriptor's own nonZeroCount===1 shortcut (Section 3.5) is decoder-side
-  // leniency for reading unusual streams, not a form a conformant decoder is
-  // guaranteed to accept from an encoder, so it must not be relied on here.
-  function writeSimplePrefixCode(writer, symbolValue, alphabetSize) {
+  // Spells out every code length individually.
+  function planPlainEmissions(lengths, lastNonZero) {
+    const emissions = [];
+    for (let symbol = 0; symbol <= lastNonZero; ++symbol)
+      emissions.push({ symbol: lengths[symbol], extraBits: 0, extraValue: 0 });
+    return emissions;
+  }
+
+  // Plans a run of at least three zeros with code 17. Consecutive 17s chain in
+  // the decoder as run = ((run - 2) * 8) + delta + 3, so N emissions with deltas
+  // d(1)..d(N) produce sum(8^(N-i) * d(i)) + (8^N + 13) / 7 zeros.
+  function planZeroRun(emissions, count) {
+    let n = 1;
+    while (Math.floor((POW2[3 * (n + 1)] + 6) / 7) < count) ++n;
+
+    let remaining = count - Math.floor((POW2[3 * n] + 13) / 7);
+    for (let i = 0; i < n; ++i) {
+      const weight = POW2[3 * (n - 1 - i)];
+      const delta = Math.min(Math.floor(remaining / weight), 7);
+      emissions.push({ symbol: REPEAT_ZERO_CODE_LENGTH, extraBits: 3, extraValue: delta });
+      remaining -= delta * weight;
+    }
+  }
+
+  // Plans a repeat of the previous non-zero length with code 16. Consecutive 16s
+  // chain as run = ((run - 2) * 4) + delta + 3, so N emissions with deltas
+  // d(1)..d(N) produce sum(4^(N-i) * d(i)) + (4^N + 5) / 3 repeats.
+  function planRepeatRun(emissions, count) {
+    let n = 1;
+    while (Math.floor((POW2[2 * (n + 1)] + 2) / 3) < count) ++n;
+
+    let remaining = count - Math.floor((POW2[2 * n] + 5) / 3);
+    for (let i = 0; i < n; ++i) {
+      const weight = POW2[2 * (n - 1 - i)];
+      const delta = Math.min(Math.floor(remaining / weight), 3);
+      emissions.push({ symbol: REPEAT_PREVIOUS_CODE_LENGTH, extraBits: 2, extraValue: delta });
+      remaining -= delta * weight;
+    }
+  }
+
+  // Folds runs into the repeat codes 16 and 17.
+  function planRunLengthEmissions(lengths, lastNonZero) {
+    const emissions = [];
+    let i = 0;
+    while (i <= lastNonZero) {
+      const length = lengths[i];
+      let runEnd = i;
+      while (runEnd + 1 <= lastNonZero && lengths[runEnd + 1] === length) ++runEnd;
+      const runLength = runEnd - i + 1;
+
+      if (length === 0 && runLength >= 3) planZeroRun(emissions, runLength);
+      else if (length > 0 && runLength >= 4) {
+        emissions.push({ symbol: length, extraBits: 0, extraValue: 0 });
+        planRepeatRun(emissions, runLength - 1);
+      } else
+        for (let j = 0; j < runLength; ++j)
+          emissions.push({ symbol: length, extraBits: 0, extraValue: 0 });
+
+      i = runEnd + 1;
+    }
+    return emissions;
+  }
+
+  // Bits a planned emission stream occupies, or -1 when the plan is unusable
+  // because its code-length alphabet would hold a single symbol (an incomplete
+  // code that decoders are not required to accept in this position).
+  function measureEmissions(emissions) {
+    const seen = new Array(NUM_CODE_LENGTH_CODES).fill(false);
+    let distinct = 0;
+    for (let i = 0; i < emissions.length; ++i) {
+      const symbol = emissions[i].symbol;
+      if (seen[symbol]) continue;
+      seen[symbol] = true;
+      ++distinct;
+    }
+    if (distinct < 2) return -1;
+
+    const scratch = new BitWriter();
+    emitComplexPrefixCodeDescriptor(scratch, emissions);
+    return scratch.bitLength();
+  }
+
+  // Two symbol streams are planned - one that spells out every code length and
+  // one that folds runs into the repeat codes - and the cheaper one wins.
+  function writeComplexPrefixCodeDescriptor(writer, lengths, alphabetSize) {
+    let lastNonZero = 0;
+    for (let symbol = alphabetSize - 1; symbol >= 0; --symbol)
+      if (lengths[symbol] > 0) { lastNonZero = symbol; break; }
+
+    const plain = planPlainEmissions(lengths, lastNonZero);
+    const runLength = planRunLengthEmissions(lengths, lastNonZero);
+    const plainBits = measureEmissions(plain);
+    const runLengthBits = measureEmissions(runLength);
+    const chosen = plainBits >= 0 && (runLengthBits < 0 || plainBits <= runLengthBits) ? plain : runLength;
+
+    emitComplexPrefixCodeDescriptor(writer, chosen);
+  }
+
+  // Alphabets with at most four coded symbols use the simple form of RFC 7932
+  // Section 3.4; everything else uses the complex form of Section 3.5.
+  function writePrefixCodeDescriptor(writer, code, alphabetSize) {
+    const used = [];
+    for (let symbol = 0; symbol < alphabetSize; ++symbol)
+      if (code.lengths[symbol] > 0) used.push(symbol);
+
+    if (used.length > 4) {
+      writeComplexPrefixCodeDescriptor(writer, code.lengths, alphabetSize);
+      return;
+    }
+
     writer.writeBits(2, 1); // HSKIP = 1 selects the simple prefix code form
-    writer.writeBits(2, 0); // NSYM raw 0 -> NSYM = 1
-    const alphabetBits = BitLength(alphabetSize);
-    writer.writeBits(alphabetBits, symbolValue);
+    writer.writeBits(2, used.length - 1); // NSYM - 1
+
+    const symbolBitCount = alphabetBits(alphabetSize);
+    for (let i = 0; i < used.length; ++i) writer.writeBits(symbolBitCount, used[i]);
+
+    // tree-select 0 gives all four symbols length 2; the 1/2/3/3 shape is never
+    // used because its lengths would then follow symbol order, not frequency.
+    if (used.length === 4) writer.writeBits(1, 0);
   }
 
-  // Dispatches to the simple (NSYM=1) or complex descriptor depending on how
-  // many distinct symbols `targetLengths` actually uses.
-  function writePrefixCode(writer, targetLengths, alphabetSize) {
-    let nonZeroCount = 0, lastSymbol = 0;
-    for (let s = 0; s < alphabetSize; ++s) if (targetLengths[s] > 0) { nonZeroCount++; lastSymbol = s; }
-    if (nonZeroCount <= 1) { writeSimplePrefixCode(writer, lastSymbol, alphabetSize); return; }
-    writeComplexPrefixCode(writer, targetLengths, alphabetSize);
+  // Number of bits an alphabet index occupies in a simple prefix code.
+  function alphabetBits(alphabetSize) {
+    let bits = 1;
+    while (POW2[bits] < alphabetSize) ++bits;
+    return bits;
   }
 
-  // ===== ENCODER: LZ77 MATCH FINDER (hash chain, min match 4) =====
-
-  const LZ_MIN_MATCH = 4;
-  const LZ_HASH_BITS = 17;
-  const LZ_HASH_SIZE = OpCodes.Shl32(1, LZ_HASH_BITS);
-  const LZ_MAX_CHAIN = 128;
-
-  function lzHash4(data, pos) {
-    const word = OpCodes.Or32(
-      OpCodes.Or32(OpCodes.Shl32(data[pos], 24), OpCodes.Shl32(data[pos + 1], 16)),
-      OpCodes.Or32(OpCodes.Shl32(data[pos + 2], 8), data[pos + 3])
-    );
-    const hashed = OpCodes.Mul32(word, 2654435761);
-    return OpCodes.Shr32(hashed, 32 - LZ_HASH_BITS);
+  function measureDescriptorBits(code, alphabetSize) {
+    const scratch = new BitWriter();
+    writePrefixCodeDescriptor(scratch, code, alphabetSize);
+    return scratch.bitLength();
   }
 
-  class LZMatchFinder {
-    constructor(data) {
-      this.data = data;
-      this.head = new Int32Array(LZ_HASH_SIZE).fill(-1);
-      this.prev = new Int32Array(data.length > 0 ? data.length : 1).fill(-1);
-    }
+  // Writes a block-type or tree count using the variable-length code of RFC 7932
+  // Section 9.2: 1 is a single zero bit, 2 is "1" plus three zero bits, and any
+  // larger N is "1", three bits of nbits, then nbits of N - 1 - 2 to the nbits.
+  function writeCount(writer, count) {
+    if (count === 1) { writer.writeBits(1, 0); return; }
+    writer.writeBits(1, 1);
 
-    insert(pos) {
-      if (pos + LZ_MIN_MATCH > this.data.length) return;
-      const h = lzHash4(this.data, pos);
-      this.prev[pos] = this.head[h];
-      this.head[h] = pos;
-    }
+    const value = count - 1;
+    if (value === 1) { writer.writeBits(3, 0); return; }
 
-    findBest(pos, maxLen) {
-      if (maxLen < LZ_MIN_MATCH) return null;
-      const data = this.data;
-      const h = lzHash4(data, pos);
-      let chain = this.head[h];
-      let depth = 0;
-      let bestLen = 0, bestDist = 0;
-
-      while (chain >= 0 && depth < LZ_MAX_CHAIN) {
-        if (chain < pos) {
-          let len = 0;
-          while (len < maxLen && data[chain + len] === data[pos + len]) len++;
-          if (len > bestLen) {
-            bestLen = len;
-            bestDist = pos - chain;
-            if (len >= maxLen) break;
-          }
-        }
-        chain = this.prev[chain];
-        depth++;
-      }
-
-      return bestLen >= LZ_MIN_MATCH ? { length: bestLen, distance: bestDist } : null;
-    }
-  }
-
-  // Splits `data[start..end)` into a sequence of insert-and-copy commands.
-  // Uses 1-step lazy matching (defer a match if starting one byte later
-  // yields a strictly longer one) and keeps the hash chain populated across
-  // matched regions so later positions can still find them as match sources.
-  function findLZCommands(data, start, end) {
-    const matcher = new LZMatchFinder(data);
-    const commands = [];
-    let literalRunStart = start;
-    let pos = start;
-
-    while (pos < end) {
-      const maxLen = end - pos;
-      let match = matcher.findBest(pos, maxLen);
-
-      if (match) {
-        if (pos + 1 < end) {
-          matcher.insert(pos);
-          const nextMatch = matcher.findBest(pos + 1, end - pos - 1);
-          if (nextMatch && nextMatch.length > match.length) {
-            pos++;
-            continue;
-          }
-        } else {
-          matcher.insert(pos);
-        }
-
-        commands.push({
-          insertStart: literalRunStart,
-          insertLength: pos - literalRunStart,
-          copyLength: match.length,
-          distance: match.distance
-        });
-
-        const matchEnd = pos + match.length;
-        for (let i = pos + 1; i < matchEnd; ++i) matcher.insert(i);
-        pos = matchEnd;
-        literalRunStart = pos;
-      } else {
-        matcher.insert(pos);
-        pos++;
-      }
-    }
-
-    if (end - literalRunStart > 0) {
-      commands.push({ insertStart: literalRunStart, insertLength: end - literalRunStart, copyLength: 0, distance: 0 });
-    }
-
-    return commands;
+    let bits = 0, v = value;
+    while (v > 1) { v = Math.floor(v / 2); ++bits; }
+    writer.writeBits(3, bits);
+    writer.writeBits(bits, value - POW2[bits]);
   }
 
   // ===== ENCODER: INSERT/COPY AND DISTANCE CODE INVERSION =====
 
-  // Finds the bucket index i such that table[i][0] <= value, scanning from
-  // the top since bucket bases are monotonically increasing and contiguous.
+  // Finds the bucket index i such that table[i][0] <= value, scanning from the
+  // top since bucket bases are monotonically increasing and contiguous.
   function findLengthCode(table, value) {
     for (let i = table.length - 1; i >= 0; --i) if (value >= table[i][0]) return i;
     return 0;
   }
 
-  // Finds the (non-implicit-zero) insert-and-copy range-table block whose
-  // [insertBase, copyBase] matches the given 8-wide code groups.
-  function insertCopyBlockIndex(insertGroup, copyGroup) {
+  // Combines an insert length code and a copy length code (RFC 7932 Table 8).
+  function encodeInsertAndCopyCode(insertCode, copyCode, implicitDistance) {
     for (let b = 0; b < INSERT_COPY_RANGE_TABLE.length; ++b) {
       const entry = INSERT_COPY_RANGE_TABLE[b];
-      if (entry[0] === insertGroup && entry[1] === copyGroup && entry[2] === false) return b;
+      if (entry[2] !== implicitDistance) continue;
+      const insertOffset = insertCode - entry[0];
+      const copyOffset = copyCode - entry[1];
+      if (insertOffset >= 0 && insertOffset <= 7 && copyOffset >= 0 && copyOffset <= 7)
+        return b * 64 + insertOffset * 8 + copyOffset;
     }
-    throw new Error('Unreachable insert/copy group combination');
+    return -1;
   }
 
-  // Inverts decodeDistanceCode's NPOSTFIX=0/NDIRECT=0 formula: finds the
-  // ring-buffer-external distance code `16+b` and extra-bits value whose
-  // decoded distance equals `distance`.
-  function computeDistanceCode(distance) {
-    for (let b = 0; b <= 200; ++b) {
-      const ndistbits = 1 + Math.floor(b / 2);
-      const offset = OpCodes.Shl32(2 + (b % 2), ndistbits) - 4;
-      const rangeStart = offset + 1;
-      const rangeEnd = offset + OpCodes.Shl32(1, ndistbits);
-      if (distance >= rangeStart && distance <= rangeEnd)
-        return { code: b + 16, extraBits: ndistbits, extraValue: distance - rangeStart };
+  // Returns the ring buffer distance code 0-15 that reproduces `distance`, or -1
+  // when none does (RFC 7932 Section 4).
+  function findRingDistanceCode(distance, ring) {
+    for (let i = 0; i < 4; ++i) if (distance === ring[i]) return i;
+    if (distance === ring[0] - 1) return 4;
+    if (distance === ring[0] + 1) return 5;
+    if (distance === ring[0] - 2) return 6;
+    if (distance === ring[0] + 2) return 7;
+    if (distance === ring[0] - 3) return 8;
+    if (distance === ring[0] + 3) return 9;
+    if (distance === ring[1] - 1) return 10;
+    if (distance === ring[1] + 1) return 11;
+    if (distance === ring[1] - 2) return 12;
+    if (distance === ring[1] + 2) return 13;
+    if (distance === ring[1] - 3) return 14;
+    if (distance === ring[1] + 3) return 15;
+    return -1;
+  }
+
+  // Inverts the NPOSTFIX=0, NDIRECT=0 distance formula of RFC 7932 Section 4:
+  // for code 16 + b the decoder reads nbits = 1 + b / 2 extra bits and forms
+  // ((2 + (b mod 2)) * 2 to the nbits) - 4 + extra + 1.
+  function encodeDistance(distance) {
+    for (let b = 0; b < 48; ++b) {
+      const extraBits = 1 + Math.floor(b / 2);
+      const offset = OpCodes.Shl32(2 + (b % 2), extraBits) - 4;
+      const first = offset + 1;
+      const last = offset + POW2[extraBits];
+      if (distance >= first && distance <= last)
+        return { code: 16 + b, extraBits: extraBits, extraValue: distance - first };
     }
     throw new Error('Distance out of representable range: ' + distance);
   }
 
-  // ===== ENCODER: STREAM-LEVEL WINDOW SIZE AND META-BLOCK FRAMING =====
+  function distanceExtraBits(distance) {
+    for (let b = 0; b < 48; ++b) {
+      const extraBits = 1 + Math.floor(b / 2);
+      const offset = OpCodes.Shl32(2 + (b % 2), extraBits) - 4;
+      if (distance >= offset + 1 && distance <= offset + POW2[extraBits]) return extraBits;
+    }
+    return 24;
+  }
 
-  function computeWindowBits(maxDistanceNeeded) {
-    for (let wbits = 10; wbits <= 24; ++wbits)
-      if (OpCodes.Shl32(1, wbits) - 16 >= maxDistanceNeeded) return wbits;
+  // ===== ENCODER: LZ77 MATCH FINDER (hash chain, min match 4) =====
+
+  function hashAt(data, position) {
+    const word = OpCodes.Or32(
+      OpCodes.Or32(OpCodes.Shl32(data[position], 24), OpCodes.Shl32(data[position + 1], 16)),
+      OpCodes.Or32(OpCodes.Shl32(data[position + 2], 8), data[position + 3])
+    );
+    return OpCodes.Shr32(OpCodes.Mul32(word, 2654435761), 32 - HASH_BITS);
+  }
+
+  function matchLength(data, a, b, maxLength) {
+    let length = 0;
+    while (length < maxLength && data[a + length] === data[b + length]) ++length;
+    return length;
+  }
+
+  // Approximate cost in bits of a backward reference, used only to steer the
+  // parse. A ring buffer distance is assumed to cost three bits, an explicit one
+  // twelve plus its extra bits.
+  function matchCost(length, distance, inRing) {
+    const copyCode = findLengthCode(COPY_LENGTH_CODES, length);
+    let cost = ESTIMATED_COMMAND_BITS + COPY_LENGTH_CODES[copyCode][1];
+    cost += inRing ? 3 : ESTIMATED_DISTANCE_BITS + distanceExtraBits(distance);
+    return cost;
+  }
+
+  // Ranks two candidate references against each other. Extra matched bytes are
+  // only worth what the command that would otherwise cover them costs, not a
+  // full literal each, so long far references do not automatically beat short
+  // near ones.
+  function matchScore(length, distance, inRing) {
+    return length * MATCH_RANK_LITERAL_BITS - matchCost(length, distance, inRing);
+  }
+
+  // Whether coding a reference beats coding the same bytes as literals.
+  function matchPaysOff(length, distance, inRing) {
+    return length * 8 > matchCost(length, distance, inRing);
+  }
+
+  const NO_MATCH = { length: 0, distance: 0, score: -2147483648 };
+
+  function findBestMatch(data, position, maxDistance, head, chain, parseRing) {
+    const maxLength = Math.min(MAX_COPY_LENGTH, data.length - position);
+    if (maxLength < MIN_MATCH || position + MIN_MATCH > data.length) return NO_MATCH;
+
+    let bestLength = 0, bestDistance = 0, bestScore = -2147483648;
+
+    // Distances already in the ring buffer code for almost nothing, so they are
+    // worth trying even when the hash chain offers a longer match elsewhere.
+    for (let i = 0; i < 4; ++i) {
+      const distance = parseRing[i];
+      if (distance > position || distance > maxDistance) continue;
+      const length = matchLength(data, position, position - distance, maxLength);
+      if (length < MIN_MATCH || !matchPaysOff(length, distance, true)) continue;
+      const score = matchScore(length, distance, true);
+      if (score <= bestScore) continue;
+      bestScore = score;
+      bestLength = length;
+      bestDistance = distance;
+    }
+
+    let candidate = head[hashAt(data, position)];
+    let depth = 0;
+    while (candidate >= 0 && depth < MAX_CHAIN) {
+      const distance = position - candidate;
+      if (distance > maxDistance) break;
+      if (distance > 0) {
+        const length = matchLength(data, position, candidate, maxLength);
+        if (length >= MIN_MATCH && matchPaysOff(length, distance, false)) {
+          const score = matchScore(length, distance, false);
+          if (score > bestScore) {
+            bestScore = score;
+            bestLength = length;
+            bestDistance = distance;
+          }
+        }
+      }
+      candidate = chain[candidate];
+      ++depth;
+    }
+
+    return { length: bestLength, distance: bestDistance, score: bestScore };
+  }
+
+  // Splits the input into insert-and-copy commands using a hash chain match
+  // finder with one step of lazy matching driven by the approximate bit cost.
+  function findCommands(data, maxDistance) {
+    const head = new Int32Array(HASH_SIZE).fill(-1);
+    const chain = new Int32Array(Math.max(1, data.length)).fill(-1);
+
+    // Mirrors the real distance ring buffer closely enough to steer the parse;
+    // the codes actually emitted are resolved later against the true ring.
+    const parseRing = INITIAL_DISTANCE_RING.slice();
+
+    const commands = [];
+    let literalStart = 0;
+    let position = 0;
+
+    const insert = function (at) {
+      if (at + MIN_MATCH > data.length) return;
+      const h = hashAt(data, at);
+      chain[at] = head[h];
+      head[h] = at;
+    };
+
+    while (position < data.length) {
+      // A literal-only command is only legal as the last command of a
+      // meta-block, and splitMetaBlocks closes a meta-block right after one, so
+      // capping the run here bounds MLEN without making the stream illegal.
+      if (position - literalStart >= MAX_LITERAL_RUN) {
+        commands.push({ insertStart: literalStart, insertLength: position - literalStart, copyLength: 0, distance: 0 });
+        literalStart = position;
+      }
+
+      const best = findBestMatch(data, position, maxDistance, head, chain, parseRing);
+      if (best.length < MIN_MATCH) {
+        insert(position);
+        ++position;
+        continue;
+      }
+
+      insert(position);
+      if (position + 1 < data.length) {
+        const later = findBestMatch(data, position + 1, maxDistance, head, chain, parseRing);
+        if (later.length >= MIN_MATCH && later.score > best.score + LAZY_MATCH_MARGIN) {
+          ++position;
+          continue;
+        }
+      }
+
+      commands.push({
+        insertStart: literalStart,
+        insertLength: position - literalStart,
+        copyLength: best.length,
+        distance: best.distance
+      });
+
+      if (best.distance !== parseRing[0]) {
+        parseRing[3] = parseRing[2];
+        parseRing[2] = parseRing[1];
+        parseRing[1] = parseRing[0];
+        parseRing[0] = best.distance;
+      }
+
+      const matchEnd = position + best.length;
+      for (let i = position + 1; i < matchEnd; ++i) insert(i);
+      position = matchEnd;
+      literalStart = position;
+    }
+
+    if (literalStart < data.length)
+      commands.push({ insertStart: literalStart, insertLength: data.length - literalStart, copyLength: 0, distance: 0 });
+
+    return commands;
+  }
+
+  // ===== ENCODER: META-BLOCK LAYOUT =====
+
+  function commandEnd(command) {
+    return command.insertStart + command.insertLength + command.copyLength;
+  }
+
+  function segmentByteCount(commands, segmentStarts, segment) {
+    const from = segmentStarts[segment];
+    const to = segment + 1 < segmentStarts.length ? segmentStarts[segment + 1] : commands.length;
+    let bytes = 0;
+    for (let i = from; i < to; ++i) bytes += commands[i].insertLength + commands[i].copyLength;
+    return bytes;
+  }
+
+  function makeRange(commands, segmentStarts, from, to) {
+    const commandStart = segmentStarts[from];
+    const commandEndIndex = to < segmentStarts.length ? segmentStarts[to] : commands.length;
+    return {
+      commandStart: commandStart,
+      commandEnd: commandEndIndex,
+      byteStart: commands[commandStart].insertStart,
+      byteEnd: commandEnd(commands[commandEndIndex - 1])
+    };
+  }
+
+  // Groups commands into meta-blocks. Adjacent segments are merged while their
+  // literal distributions are similar enough that one shared set of prefix codes
+  // stays cheaper than a second meta-block header.
+  function splitMetaBlocks(data, commands) {
+    const blocks = [];
+    if (commands.length === 0) return blocks;
+
+    // Cut the command stream into fixed-size segments first; split points may
+    // only fall on those boundaries.
+    const segmentStarts = [0];
+    const forcedEnd = [false];
+    let carried = 0;
+    for (let i = 0; i < commands.length; ++i) {
+      carried += commands[i].insertLength + commands[i].copyLength;
+      const literalOnly = commands[i].copyLength === 0;
+      if ((carried < SEGMENT_BYTES && !literalOnly) || i + 1 >= commands.length) continue;
+      segmentStarts.push(i + 1);
+      forcedEnd.push(literalOnly);
+      carried = 0;
+    }
+
+    const segmentCount = segmentStarts.length;
+    const histograms = new Array(segmentCount);
+    for (let s = 0; s < segmentCount; ++s) {
+      const histogram = new Int32Array(256);
+      const from = segmentStarts[s];
+      const to = s + 1 < segmentCount ? segmentStarts[s + 1] : commands.length;
+      for (let i = from; i < to; ++i) {
+        const command = commands[i];
+        for (let k = 0; k < command.insertLength; ++k) histogram[data[command.insertStart + k]]++;
+      }
+      histograms[s] = histogram;
+    }
+
+    let openStart = 0;
+    let openHistogram = Int32Array.from(histograms[0]);
+    let openBytes = segmentByteCount(commands, segmentStarts, 0);
+
+    for (let s = 1; s < segmentCount; ++s) {
+      const segmentBytes = segmentByteCount(commands, segmentStarts, s);
+      const startNewBlock = forcedEnd[s] ||
+        openBytes + segmentBytes > MAX_METABLOCK_BYTES ||
+        mergeCostUnits(openHistogram, histograms[s]) > SPLIT_THRESHOLD_UNITS;
+
+      if (startNewBlock) {
+        blocks.push(makeRange(commands, segmentStarts, openStart, s));
+        openStart = s;
+        openHistogram = Int32Array.from(histograms[s]);
+        openBytes = segmentBytes;
+        continue;
+      }
+
+      for (let b = 0; b < 256; ++b) openHistogram[b] += histograms[s][b];
+      openBytes += segmentBytes;
+    }
+
+    blocks.push(makeRange(commands, segmentStarts, openStart, segmentCount));
+    return blocks;
+  }
+
+  // ===== ENCODER: LITERAL CONTEXT MODELLING (RFC 7932 Section 7.1) =====
+
+  function literalContext(p1, p2, contextMode) {
+    return getLiteralContextId(contextMode, p1, p2);
+  }
+
+  // Picks the literal context mode whose per-context distributions are cheapest
+  // to code before any clustering is applied.
+  function chooseContextMode(perMode) {
+    let best = 0, bestCost = Number.MAX_SAFE_INTEGER;
+    for (let mode = 0; mode < perMode.length; ++mode) {
+      let cost = 0;
+      for (let c = 0; c < 64; ++c) cost += histogramCostUnits(perMode[mode][c]);
+      if (cost >= bestCost) continue;
+      bestCost = cost;
+      best = mode;
+    }
+    return best;
+  }
+
+  // Measures one clustering: descriptor bits for every literal code, the context
+  // map, the NTREESL field and the literal payload itself.
+  function evaluateClustering(members, clusters) {
+    const map = new Array(64).fill(0);
+    for (let t = 0; t < members.length; ++t)
+      for (let k = 0; k < members[t].length; ++k) map[members[t][k]] = t;
+
+    const codes = new Array(clusters.length);
+    let cost = 0;
+    for (let t = 0; t < clusters.length; ++t) {
+      codes[t] = buildPrefixCode(clusters[t], LITERAL_ALPHABET_SIZE, MAX_CODE_LENGTH);
+      cost += measureDescriptorBits(codes[t], LITERAL_ALPHABET_SIZE) * 256;
+      for (let b = 0; b < 256; ++b) cost += clusters[t][b] * symbolBits(codes[t], b) * 256;
+    }
+
+    const scratch = new BitWriter();
+    writeCount(scratch, clusters.length);
+    if (clusters.length > 1) writeContextMap(scratch, map, clusters.length);
+    cost += scratch.bitLength() * 256;
+
+    return { map: map, codes: codes, cost: cost };
+  }
+
+  // Clusters the 64 literal contexts into prefix codes. Contexts are merged
+  // greedily by the extra cost of sharing one distribution, and the tree count
+  // that minimises the measured total of descriptors, context map and literal
+  // data wins.
+  function chooseLiteralTrees(contextFrequencies) {
+    const members = [];
+    const clusters = [];
+    for (let c = 0; c < 64; ++c) {
+      let total = 0;
+      for (let b = 0; b < 256; ++b) total += contextFrequencies[c][b];
+      if (total === 0) continue;
+      members.push([c]);
+      clusters.push(Int32Array.from(contextFrequencies[c]));
+    }
+
+    // Nothing was coded from this alphabet at all.
+    if (clusters.length === 0)
+      return {
+        map: new Array(64).fill(0),
+        codes: [buildPrefixCode(new Int32Array(256), LITERAL_ALPHABET_SIZE, MAX_CODE_LENGTH)]
+      };
+
+    // Pairwise merge costs are cached; a merge only invalidates one row.
+    const pairCost = [];
+    for (let i = 0; i < clusters.length; ++i) {
+      const row = new Array(clusters.length).fill(0);
+      for (let j = i + 1; j < clusters.length; ++j) row[j] = mergeCostUnits(clusters[i], clusters[j]);
+      pairCost.push(row);
+    }
+
+    let bestCost = Number.MAX_SAFE_INTEGER, bestMap = null, bestCodes = null;
+
+    for (;;) {
+      if (LITERAL_TREE_CANDIDATES.indexOf(clusters.length) >= 0) {
+        const evaluated = evaluateClustering(members, clusters);
+        if (evaluated.cost < bestCost) {
+          bestCost = evaluated.cost;
+          bestMap = evaluated.map;
+          bestCodes = evaluated.codes;
+        }
+      }
+
+      if (clusters.length <= 1) break;
+
+      let mergeI = 0, mergeJ = 1, mergeCost = Number.MAX_SAFE_INTEGER;
+      for (let i = 0; i < clusters.length; ++i)
+        for (let j = i + 1; j < clusters.length; ++j) {
+          if (pairCost[i][j] >= mergeCost) continue;
+          mergeCost = pairCost[i][j];
+          mergeI = i;
+          mergeJ = j;
+        }
+
+      for (let b = 0; b < 256; ++b) clusters[mergeI][b] += clusters[mergeJ][b];
+      for (let k = 0; k < members[mergeJ].length; ++k) members[mergeI].push(members[mergeJ][k]);
+      clusters.splice(mergeJ, 1);
+      members.splice(mergeJ, 1);
+
+      pairCost.splice(mergeJ, 1);
+      for (let i = 0; i < pairCost.length; ++i) pairCost[i].splice(mergeJ, 1);
+
+      for (let k = 0; k < clusters.length; ++k) {
+        if (k === mergeI) continue;
+        const cost = mergeCostUnits(clusters[mergeI], clusters[k]);
+        if (k > mergeI) pairCost[mergeI][k] = cost;
+        else pairCost[k][mergeI] = cost;
+      }
+    }
+
+    return { map: bestMap, codes: bestCodes };
+  }
+
+  // Writes a literal context map (RFC 7932 Section 7.3) with RLEMAX = 0 and no
+  // move-to-front transform: only 64 entries are involved, so neither pays off.
+  function writeContextMap(writer, contextMap, treeCount) {
+    writer.writeBits(1, 0); // RLEMAX = 0
+
+    const frequencies = new Array(treeCount).fill(0);
+    for (let i = 0; i < contextMap.length; ++i) frequencies[contextMap[i]]++;
+
+    const code = buildPrefixCode(frequencies, treeCount, MAX_CODE_LENGTH);
+    writePrefixCodeDescriptor(writer, code, treeCount);
+    for (let i = 0; i < contextMap.length; ++i) writeSymbol(writer, code, contextMap[i]);
+
+    writer.writeBits(1, 0); // IMTF = 0
+  }
+
+  // ===== ENCODER: META-BLOCK EMISSION =====
+
+  // Resolves the distance encoding of every command in a meta-block, advancing
+  // the distance ring buffer exactly as the decoder will. A distance code of -1
+  // means the command uses an implicit-distance insert-and-copy range and no
+  // distance symbol is written; the ring is left untouched for code 0 and for
+  // implicit distances, per RFC 7932 Section 4.
+  function resolveCommands(commands, range, ring) {
+    const resolved = new Array(range.commandEnd - range.commandStart);
+    for (let i = range.commandStart; i < range.commandEnd; ++i) {
+      const command = commands[i];
+      const insertCode = findLengthCode(INSERT_LENGTH_CODES, command.insertLength);
+
+      if (command.copyLength === 0) {
+        // A trailing literal-only command: the decoder finishes the meta-block
+        // before it would read a distance, so the copy code only has to exist.
+        resolved[i - range.commandStart] = {
+          insertStart: command.insertStart,
+          insertLength: command.insertLength,
+          copyLength: 0,
+          distance: 0,
+          iacCode: encodeInsertAndCopyCode(insertCode, 0, insertCode <= 7),
+          insertCode: insertCode,
+          copyCode: 0,
+          distanceCode: -1
+        };
+        continue;
+      }
+
+      const copyCode = findLengthCode(COPY_LENGTH_CODES, command.copyLength);
+      const canUseImplicit = insertCode <= 7 && copyCode <= 15 && command.distance === ring[0];
+
+      let iacCode, distanceCode;
+      if (canUseImplicit) {
+        iacCode = encodeInsertAndCopyCode(insertCode, copyCode, true);
+        distanceCode = -1;
+      } else {
+        iacCode = encodeInsertAndCopyCode(insertCode, copyCode, false);
+        distanceCode = findRingDistanceCode(command.distance, ring);
+        if (distanceCode < 0) distanceCode = encodeDistance(command.distance).code;
+
+        if (distanceCode !== 0) {
+          ring[3] = ring[2];
+          ring[2] = ring[1];
+          ring[1] = ring[0];
+          ring[0] = command.distance;
+        }
+      }
+
+      resolved[i - range.commandStart] = {
+        insertStart: command.insertStart,
+        insertLength: command.insertLength,
+        copyLength: command.copyLength,
+        distance: command.distance,
+        iacCode: iacCode,
+        insertCode: insertCode,
+        copyCode: copyCode,
+        distanceCode: distanceCode
+      };
+    }
+    return resolved;
+  }
+
+  // MNIBBLES must be the smallest nibble count whose most significant nibble is
+  // non-zero, because a conformant decoder (zlib's brotliDecompressSync among
+  // them) rejects a stream whose last nibble is all zeros (Section 9.2).
+  function writeMetaBlockLength(writer, byteLength) {
+    const mlen = byteLength - 1;
+    const nibbles = mlen <= 0xFFFF ? 4 : (mlen <= 0xFFFFF ? 5 : 6);
+    writer.writeBits(2, nibbles - 4);
+    for (let i = 0; i < nibbles; ++i)
+      writer.writeBits(4, OpCodes.And32(OpCodes.Shr32(mlen, i * 4), 0xF));
+  }
+
+  // Builds one entropy-coded meta-block into its own writer so its size can be
+  // compared against the uncompressed alternative before it is spliced in.
+  function buildCompressedMetaBlock(data, commands, range, isLast, ring) {
+    const resolved = resolveCommands(commands, range, ring);
+
+    // Literal frequencies per context, for every context mode, so the cheapest
+    // mode can be picked before the contexts are clustered.
+    const perMode = new Array(4);
+    for (let mode = 0; mode < 4; ++mode) {
+      const byContext = new Array(64);
+      for (let c = 0; c < 64; ++c) byContext[c] = new Int32Array(256);
+      perMode[mode] = byContext;
+    }
+
+    const iacFrequencies = new Int32Array(IAC_ALPHABET_SIZE);
+    const distanceFrequencies = new Int32Array(DISTANCE_ALPHABET_SIZE);
+
+    for (let ci = 0; ci < resolved.length; ++ci) {
+      const command = resolved[ci];
+      iacFrequencies[command.iacCode]++;
+      if (command.distanceCode >= 0) distanceFrequencies[command.distanceCode]++;
+
+      for (let k = 0; k < command.insertLength; ++k) {
+        const position = command.insertStart + k;
+        const p1 = position > 0 ? data[position - 1] : 0;
+        const p2 = position > 1 ? data[position - 2] : 0;
+        const literal = data[position];
+        for (let mode = 0; mode < 4; ++mode) perMode[mode][literalContext(p1, p2, mode)][literal]++;
+      }
+    }
+
+    const contextMode = chooseContextMode(perMode);
+    const literalTrees = chooseLiteralTrees(perMode[contextMode]);
+    const contextMap = literalTrees.map;
+    const literalCodes = literalTrees.codes;
+
+    const iacCode = buildPrefixCode(iacFrequencies, IAC_ALPHABET_SIZE, MAX_CODE_LENGTH);
+    const distanceCode = buildPrefixCode(distanceFrequencies, DISTANCE_ALPHABET_SIZE, MAX_CODE_LENGTH);
+
+    const writer = new BitWriter();
+
+    writer.writeBits(1, isLast ? 1 : 0);
+    if (isLast) writer.writeBits(1, 0); // ISLASTEMPTY = 0
+
+    writeMetaBlockLength(writer, range.byteEnd - range.byteStart);
+
+    if (!isLast) writer.writeBits(1, 0); // ISUNCOMPRESSED = 0
+
+    writeCount(writer, 1); // NBLTYPESL
+    writeCount(writer, 1); // NBLTYPESI
+    writeCount(writer, 1); // NBLTYPESD
+
+    writer.writeBits(2, 0); // NPOSTFIX = 0
+    writer.writeBits(4, 0); // NDIRECT (raw value, shifted left by NPOSTFIX) = 0
+
+    writer.writeBits(2, contextMode);
+
+    writeCount(writer, literalCodes.length); // NTREESL
+    if (literalCodes.length > 1) writeContextMap(writer, contextMap, literalCodes.length);
+
+    writeCount(writer, 1); // NTREESD
+
+    for (let t = 0; t < literalCodes.length; ++t)
+      writePrefixCodeDescriptor(writer, literalCodes[t], LITERAL_ALPHABET_SIZE);
+
+    writePrefixCodeDescriptor(writer, iacCode, IAC_ALPHABET_SIZE);
+    writePrefixCodeDescriptor(writer, distanceCode, DISTANCE_ALPHABET_SIZE);
+
+    for (let ci = 0; ci < resolved.length; ++ci) {
+      const command = resolved[ci];
+      writeSymbol(writer, iacCode, command.iacCode);
+
+      const insertExtra = INSERT_LENGTH_CODES[command.insertCode][1];
+      if (insertExtra > 0)
+        writer.writeBits(insertExtra, command.insertLength - INSERT_LENGTH_CODES[command.insertCode][0]);
+
+      const copyExtra = COPY_LENGTH_CODES[command.copyCode][1];
+      if (copyExtra > 0)
+        writer.writeBits(copyExtra, command.copyLength - COPY_LENGTH_CODES[command.copyCode][0]);
+
+      for (let k = 0; k < command.insertLength; ++k) {
+        const position = command.insertStart + k;
+        const p1 = position > 0 ? data[position - 1] : 0;
+        const p2 = position > 1 ? data[position - 2] : 0;
+        writeSymbol(writer, literalCodes[contextMap[literalContext(p1, p2, contextMode)]], data[position]);
+      }
+
+      if (command.distanceCode < 0) continue;
+
+      writeSymbol(writer, distanceCode, command.distanceCode);
+      if (command.distanceCode < 16) continue;
+
+      const distanceInfo = encodeDistance(command.distance);
+      if (distanceInfo.extraBits > 0) writer.writeBits(distanceInfo.extraBits, distanceInfo.extraValue);
+    }
+
+    return writer;
+  }
+
+  // Builds one uncompressed meta-block into its own writer. The payload is
+  // byte-aligned against the whole stream, so the number of padding bits depends
+  // on how many bits already precede this meta-block.
+  function buildUncompressedMetaBlock(data, range, startBitOffset) {
+    const writer = new BitWriter();
+    writer.writeBits(1, 0); // ISLAST = 0
+    writeMetaBlockLength(writer, range.byteEnd - range.byteStart);
+    writer.writeBits(1, 1); // ISUNCOMPRESSED = 1
+
+    const padding = (8 - (startBitOffset + writer.bitLength()) % 8) % 8;
+    if (padding > 0) writer.writeBits(padding, 0);
+
+    for (let i = range.byteStart; i < range.byteEnd; ++i) writer.writeBits(8, data[i]);
+    return writer;
+  }
+
+  // ===== ENCODER: STREAM-LEVEL FRAMING =====
+
+  // Picks the smallest window that can express every backward distance.
+  function computeWindowBits(dataLength) {
+    for (let bits = 10; bits < 24; ++bits)
+      if (OpCodes.Shl32(1, bits) - 16 >= dataLength) return bits;
     return 24;
   }
 
@@ -1063,177 +1837,63 @@
     writer.writeBits(1, 1);
     if (wbits >= 18 && wbits <= 24) { writer.writeBits(3, wbits - 17); return; }
     if (wbits === 17) { writer.writeBits(3, 0); writer.writeBits(3, 0); return; }
-    if (wbits >= 9 && wbits <= 15) { writer.writeBits(3, 0); writer.writeBits(3, wbits - 8); return; }
+    if (wbits >= 10 && wbits <= 15) { writer.writeBits(3, 0); writer.writeBits(3, wbits - 8); return; }
     throw new Error('Unsupported window size (bits): ' + wbits);
   }
 
-  // MNIBBLES is 4 nibbles (up to 65536-byte meta-blocks) unless the chunk
-  // needs more, in which case 6 nibbles (up to 16777216 bytes) are used.
-  // Section 9.2: "if MNIBBLES is greater than 4, and the last nibble is all
-  // zeros, then the stream should be rejected as invalid." A conformant
-  // decoder (zlib's brotliDecompressSync among them) enforces this, so
-  // MNIBBLES must be the SMALLEST nibble count whose top nibble is nonzero -
-  // not just "big enough to fit MLEN-1": 5 nibbles for MLEN-1 in
-  // (0xFFFF, 0xFFFFF], 6 nibbles only once even that overflows.
-  function writeMnibblesAndMlen(writer, byteLength) {
-    const mlen = byteLength - 1;
-    const nibbleCount = mlen <= 0xFFFF ? 4 : (mlen <= 0xFFFFF ? 5 : 6);
-    const raw = nibbleCount === 4 ? 0 : (nibbleCount === 5 ? 1 : 2);
-    writer.writeBits(2, raw);
-    for (let i = 0; i < nibbleCount; ++i)
-      writer.writeBits(4, OpCodes.And32(OpCodes.Shr32(mlen, i * 4), 0xF));
-  }
-
-  // Builds one ISLAST=0 uncompressed meta-block for `chunk` in an isolated
-  // (unflushed) BitWriter. `startBitOffset` (0..7) is this meta-block's
-  // position, modulo 8, within the REAL stream: the decoder's alignToByte()
-  // for an uncompressed payload aligns to the whole stream's absolute bit
-  // position, not to a position local to this isolated writer, so the
-  // padding here must account for whatever bits precede it in the real
-  // stream. The payload bytes are written through writeBits (not pushed
-  // directly to `.bytes`) so the emitted bit sequence is correct regardless
-  // of this writer's own local byte boundary.
-  function buildUncompressedMetaBlockWriter(chunk, startBitOffset) {
-    const writer = new BitWriter();
-    writer.writeBits(1, 0); // ISLAST = 0
-    writeMnibblesAndMlen(writer, chunk.length);
-    writer.writeBits(1, 1); // ISUNCOMPRESSED = 1
-
-    const absoluteBits = startBitOffset + writer.bitLength();
-    const padBits = (8 - OpCodes.And32(absoluteBits, 7)) % 8;
-    // (padBits is at most 7; safe to write directly even when 0.)
-    if (padBits > 0) writer.writeBits(padBits, 0);
-
-    for (let i = 0; i < chunk.length; ++i) writer.writeBits(8, chunk[i]);
-    return writer;
-  }
-
-  // Builds one ISLAST=0 compressed meta-block for `chunk` in an isolated
-  // (unflushed) BitWriter: NBLTYPES=1 for all three block categories (no
-  // block-switch commands), NPOSTFIX=0, NDIRECT=0, a single (unused, since
-  // there is only one literal tree) context mode, and one complex prefix
-  // code per alphabet (literals, insert-and-copy commands, distances).
-  function buildCompressedMetaBlockWriter(chunk) {
-    const commands = findLZCommands(chunk, 0, chunk.length);
-
-    const literalHist = new Array(256).fill(0);
-    const cmdHist = new Array(704).fill(0);
-    const distHist = new Array(64).fill(0); // 16 + NDIRECT(0) + (48 shifted left by NPOSTFIX(0))
-
-    const annotated = new Array(commands.length);
-    for (let ci = 0; ci < commands.length; ++ci) {
-      const cmd = commands[ci];
-      const hasRealCopy = cmd.copyLength > 0;
-      const copyLengthUsed = hasRealCopy ? cmd.copyLength : 2; // placeholder: never decoded (see below)
-
-      const insertCodeIndex = findLengthCode(INSERT_LENGTH_CODES, cmd.insertLength);
-      const copyCodeIndex = findLengthCode(COPY_LENGTH_CODES, copyLengthUsed);
-      const insertGroup = Math.floor(insertCodeIndex / 8) * 8;
-      const copyGroup = Math.floor(copyCodeIndex / 8) * 8;
-      const block = insertCopyBlockIndex(insertGroup, copyGroup);
-      const sub = (insertCodeIndex - insertGroup) * 8 + (copyCodeIndex - copyGroup);
-      const commandCode = block * 64 + sub;
-
-      const distInfo = hasRealCopy ? computeDistanceCode(cmd.distance) : null;
-
-      cmdHist[commandCode]++;
-      for (let i = 0; i < cmd.insertLength; ++i) literalHist[chunk[cmd.insertStart + i]]++;
-      if (distInfo) distHist[distInfo.code]++;
-
-      annotated[ci] = { cmd, commandCode, insertCodeIndex, copyCodeIndex, copyLengthUsed, distInfo };
-    }
-
-    const literalLengths = packageMergeLengths(literalHist, 15);
-    const cmdLengths = packageMergeLengths(cmdHist, 15);
-    const distLengths = packageMergeLengths(distHist, 15);
-
-    const literalHuff = assignCanonicalCodes(literalLengths, 256);
-    const cmdHuff = assignCanonicalCodes(cmdLengths, 704);
-    const distHuff = assignCanonicalCodes(distLengths, 64);
-
-    const writer = new BitWriter();
-    writer.writeBits(1, 0); // ISLAST = 0
-    writeMnibblesAndMlen(writer, chunk.length);
-    writer.writeBits(1, 0); // ISUNCOMPRESSED = 0
-
-    writer.writeBits(1, 0); // literal category NBLTYPES = 1
-    writer.writeBits(1, 0); // insert-and-copy category NBLTYPES = 1
-    writer.writeBits(1, 0); // distance category NBLTYPES = 1
-
-    writer.writeBits(2, 0); // NPOSTFIX = 0
-    writer.writeBits(4, 0); // NDIRECT (raw value, shifted left by NPOSTFIX) = 0
-
-    writer.writeBits(2, 0); // context mode for the sole literal block type (irrelevant: 1 literal tree)
-
-    writer.writeBits(1, 0); // literal tree count (NTREESL) = 1 -> context map implicit, no bits
-    writer.writeBits(1, 0); // distance tree count (NTREESD) = 1 -> context map implicit, no bits
-
-    writePrefixCode(writer, literalLengths, 256);
-    writePrefixCode(writer, cmdLengths, 704);
-    writePrefixCode(writer, distLengths, 64);
-
-    for (let ci = 0; ci < annotated.length; ++ci) {
-      const a = annotated[ci];
-      writeCanonicalSymbol(writer, cmdHuff, a.commandCode);
-
-      const insertExtra = INSERT_LENGTH_CODES[a.insertCodeIndex][1];
-      if (insertExtra > 0) writer.writeBits(insertExtra, a.cmd.insertLength - INSERT_LENGTH_CODES[a.insertCodeIndex][0]);
-
-      const copyExtra = COPY_LENGTH_CODES[a.copyCodeIndex][1];
-      if (copyExtra > 0) writer.writeBits(copyExtra, a.copyLengthUsed - COPY_LENGTH_CODES[a.copyCodeIndex][0]);
-
-      for (let i = 0; i < a.cmd.insertLength; ++i)
-        writeCanonicalSymbol(writer, literalHuff, chunk[a.cmd.insertStart + i]);
-
-      if (a.distInfo) {
-        writeCanonicalSymbol(writer, distHuff, a.distInfo.code);
-        if (a.distInfo.extraBits > 0) writer.writeBits(a.distInfo.extraBits, a.distInfo.extraValue);
-      }
-    }
-
-    return writer;
+  function byteLengthOfBits(bits) {
+    return Math.floor((bits + 7) / 8);
   }
 
   class BrotliEncoder {
     compress(input) {
+      // Empty in, empty out - matching the framework contract this codec is
+      // registered under. Every non-empty input becomes a real Brotli stream.
+      if (input.length === 0) return [];
+
+      const data = Uint8Array.from(input);
+      const windowBits = computeWindowBits(data.length);
+      const maxDistance = OpCodes.Shl32(1, windowBits) - 16;
+
+      const commands = findCommands(data, maxDistance);
+      const blocks = splitMetaBlocks(data, commands);
+
       const writer = new BitWriter();
-
-      if (input.length === 0) {
-        writer.writeBits(1, 0); // WBITS == 16
-        writer.writeBits(1, 1); // ISLAST
-        writer.writeBits(1, 1); // ISLASTEMPTY
-        writer.flush();
-        return writer.bytes;
-      }
-
-      // CHUNK_CAP: largest chunk representable with MNIBBLES=6 (24-bit MLEN-1).
-      // LZ77 matching is scoped to a single chunk, so a window covering the
-      // largest possible chunk covers every distance the encoder can emit.
-      const CHUNK_CAP = OpCodes.Shl32(1, 24) - 1; // 16777215
-      const windowBits = computeWindowBits(Math.min(input.length, CHUNK_CAP));
       writeWindowBits(writer, windowBits);
 
-      let offset = 0;
-      while (offset < input.length) {
-        const chunkSize = Math.min(CHUNK_CAP, input.length - offset);
-        const chunk = input.slice(offset, offset + chunkSize);
+      let ring = INITIAL_DISTANCE_RING.slice();
+      for (let bi = 0; bi < blocks.length; ++bi) {
+        const block = blocks[bi];
+        const isLastBlock = bi === blocks.length - 1;
 
-        const compressedWriter = buildCompressedMetaBlockWriter(chunk);
-        const uncompressedWriter = buildUncompressedMetaBlockWriter(chunk, writer.bitCount);
+        const candidateRing = ring.slice();
+        const compressed = buildCompressedMetaBlock(data, commands, block, isLastBlock, candidateRing);
+        const stored = buildUncompressedMetaBlock(data, block, writer.bitLength());
 
-        // Fall back to the uncompressed form whenever the compressed form
-        // would not actually be smaller (tiny chunks, incompressible data).
-        const chosen = compressedWriter.bitLength() < uncompressedWriter.bitLength()
-          ? compressedWriter : uncompressedWriter;
-        writer.appendBits(chosen);
+        let useCompressed;
+        if (isLastBlock) {
+          // The stream ends here: the compressed form can carry ISLAST=1
+          // directly, while the uncompressed form needs a trailing empty last
+          // meta-block.
+          const withCompressed = byteLengthOfBits(writer.bitLength() + compressed.bitLength());
+          const withStored = byteLengthOfBits(writer.bitLength() + stored.bitLength() + 2);
+          useCompressed = withCompressed <= withStored;
+        } else
+          useCompressed = compressed.bitLength() < stored.bitLength();
 
-        offset += chunkSize;
+        if (useCompressed) {
+          writer.appendBits(compressed);
+          ring = candidateRing;
+        } else
+          writer.appendBits(stored);
+
+        if (!isLastBlock || useCompressed) continue;
+
+        writer.writeBits(1, 1); // ISLAST = 1
+        writer.writeBits(1, 1); // ISLASTEMPTY = 1
       }
 
-      writer.writeBits(1, 1); // ISLAST = 1
-      writer.writeBits(1, 1); // ISLASTEMPTY = 1
       writer.flush();
-
       return writer.bytes;
     }
   }
@@ -1245,7 +1905,7 @@
       super();
 
       this.name = "Brotli";
-      this.description = "RFC 7932-compatible Brotli codec. The decoder implements the full RFC 7932 bitstream grammar (meta-block framing, complex/simple prefix codes, block-switch commands, insert-and-copy commands, distance ring buffer, context modeling, and the static dictionary with word transforms) and correctly reads streams from conformant encoders such as zlib's brotliCompressSync. The encoder performs genuine LZ77 (hash-chain match finder) plus canonical Huffman entropy coding: it emits compressed meta-blocks with NBLTYPES=1 for all three block categories, NPOSTFIX=0, NDIRECT=0, and one length-limited (package-merge) prefix code per alphabet (literals, insert-and-copy commands, distances), falling back to an uncompressed meta-block whenever that would be smaller (small or incompressible inputs).";
+      this.description = "RFC 7932-compatible Brotli codec. The decoder implements the full RFC 7932 bitstream grammar (meta-block framing, complex/simple prefix codes, block-switch commands, insert-and-copy commands, distance ring buffer, context modeling, and the static dictionary with word transforms) and correctly reads streams from conformant encoders such as zlib's brotliCompressSync. The encoder exploits the format rather than emitting bare LZ77 plus Huffman: literal context modeling (all four context modes, with the 64 contexts clustered into up to 16 literal prefix codes and sent as a context map), the distance ring buffer including the implicit-distance insert-and-copy ranges, run-length coded prefix code descriptors, and cost-driven meta-block splitting with a per-meta-block uncompressed fallback. It does not emit static dictionary references, multiple block types with block-switch commands, non-zero NPOSTFIX/NDIRECT, or distance context modeling.";
       this.inventor = "Jyrki Alakuijala, Zoltan Szabadka (Google)";
       this.year = 2013;
       this.category = CategoryType.COMPRESSION;
@@ -1275,13 +1935,19 @@
         "DECODER: full RFC 7932 grammar, including the static dictionary and word transforms - reads real-world",
         "  Brotli streams (verified against zlib's brotliCompressSync output, including compressed meta-blocks",
         "  that reference the static dictionary)",
-        "ENCODER: hash-chain LZ77 (minimum match 4, one-step lazy matching) plus canonical, length-limited",
-        "  (package-merge, RFC-capped at 15 bits for data alphabets / 5 bits for the code-length alphabet)",
-        "  Huffman coding, emitted as RFC 7932 complex prefix code descriptors. Uses the simplest legal",
-        "  configuration: NBLTYPES=1 for literals/commands/distances (no block switching), NPOSTFIX=0,",
-        "  NDIRECT=0, a single context mode, and does not reference the static dictionary. Falls back to an",
-        "  uncompressed meta-block per chunk whenever that would be smaller. Verified byte-for-byte",
-        "  interoperable with zlib's brotliDecompressSync and the reference `brotli` CLI in both directions",
+        "ENCODER: hash-chain LZ77 (minimum match 4, cost-aware ranking, one-step lazy matching) plus",
+        "  canonical, length-limited (package-merge, RFC-capped at 15 bits for data alphabets / 5 bits for",
+        "  the code-length alphabet) prefix coding. Implements literal context modeling (Section 7.1, all",
+        "  four modes, 64 contexts clustered into up to 16 trees and sent as a context map per Section 7.3),",
+        "  the distance ring buffer with codes 0-15 and the implicit-distance insert-and-copy ranges",
+        "  (Sections 4 and 5), run-length coded complex prefix code descriptors (Section 3.5), and",
+        "  cost-driven meta-block splitting with a per-meta-block uncompressed fallback (Section 9.2)",
+        "ENCODER LIMITATIONS: no static dictionary references (Section 8), one block type per category (no",
+        "  block-switch commands, Section 6), NPOSTFIX=0 and NDIRECT=0 (Section 4), and no distance context",
+        "  modeling (Section 7.2). Typical output sits between the reference encoder's quality 7 and 9",
+        "  settings. Verified byte-for-byte interoperable with zlib's brotliDecompressSync and the",
+        "  reference `brotli` CLI in both directions, and byte-identical to the CompressionWorkbench",
+        "  C# encoder for the same input",
         "Static dictionary (Appendix A, 122,784 bytes) and word transforms (Appendix B, 121 entries) are",
         "  transcribed directly from the RFC 7932 specification text and verified against its own CRC-32 checks"
       ];
