@@ -231,7 +231,7 @@ Cipher Tools is a **professional-grade cryptographic implementation library** fe
 
 **📚 Algorithm reference** — one markdown page per algorithm covering its parameters, security status, known vulnerabilities, references and test vectors. The pages are derived from the implementations, so they cannot drift: build them locally with `node tools/generate-algorithm-docs.js` (written to `docs/algorithms/`, starting at `docs/algorithms/README.md`), or download the `algorithm-reference` artifact that CI builds on every run. The generated tree is deliberately not checked in.
 
-The library includes **1077 fully-implemented cryptographic algorithms** across 19 categories. For the complete breakdown by category, see the [Algorithm Categories & Color Coding](#-algorithm-categories--color-coding) section above and the [Directory Structure](#directory-structure-updated-2025) section below.
+The library includes **1088 fully-implemented cryptographic algorithms** across 17 categories. For the complete breakdown by category, see the [Algorithm Categories & Color Coding](#-algorithm-categories--color-coding) section above and the [Directory Structure](#directory-structure-updated-2025) section below.
 
 **Key Highlights:**
 - **Block Ciphers** including AES, DES, 3DES, Blowfish, Twofish, Serpent, Tnepres, ARIA, Camellia, CAST, IDEA, RC5, RC6, SEED, TEA, XTEA, Threefish, SM4, SIMECK, HIGHT, Shark, and many more
@@ -1026,6 +1026,6 @@ RegisterAlgorithm(new YourAlgorithm());
 
 ---
 
-**✉️ Contact:** [Hawkynt](https://github.com/Hawkynt) | **🌐 Website:** [hawkynt.github.io](https://hawkynt.github.io) | **📧 Issues:** [GitHub Issues](https://github.com/Hawkynt/hawkynt.github.io/issues)
+**✉️ Contact:** [Hawkynt](https://github.com/Hawkynt) | **🌐 Website:** [hawkynt.github.io](https://hawkynt.github.io) | **📧 Issues:** [GitHub Issues](https://github.com/Hawkynt/hawkynt.github.io/issues)
 
 **DarkCrypt cipher suite:** the library also covers the cipher set of the DarkCrypt Total Commander plugin (Alexander Myasnikov, "Zarya" project). 201 algorithms carry test vectors verified against that implementation, including 175 dedicated block, stream and hash implementations for variants that differ from their published counterparts or have no public specification at all. See <https://totalcmd.net/plugring/darkcrypttc.html>.
