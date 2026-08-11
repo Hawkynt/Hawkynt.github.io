@@ -242,7 +242,7 @@
         return [];
       }
 
-      const input = String.fromCharCode(...data);
+      const input = OpCodes.BytesToChars(data);
 
       // Validate input contains only Base62 characters
       for (let i = 0; i < input.length; i++) {

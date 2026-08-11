@@ -237,7 +237,7 @@
         return [];
       }
 
-      const input = String.fromCharCode(...data).toUpperCase();
+      const input = OpCodes.BytesToChars(data).toUpperCase();
       let cleanInput = input.replace(/[^A-Z2-7]/g, "");
 
       // Remove padding
@@ -269,13 +269,13 @@
     encodeString(str) {
       const bytes = OpCodes.AnsiToBytes(str);
       const encoded = this.encode(bytes);
-      return String.fromCharCode(...encoded);
+      return OpCodes.BytesToChars(encoded);
     }
 
     decodeString(str) {
       const bytes = OpCodes.AnsiToBytes(str);
       const decoded = this.decode(bytes);
-      return String.fromCharCode(...decoded);
+      return OpCodes.BytesToChars(decoded);
     }
   }
 
