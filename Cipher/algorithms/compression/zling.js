@@ -20,16 +20,17 @@
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
     // AMD
-    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+    define(['../../AlgorithmFramework', '../../OpCodes', './huffman-code-lengths.data'], factory);
   } else if (typeof module === 'object' && module.exports) {
     // Node.js/CommonJS
     module.exports = factory(
       require('../../AlgorithmFramework'),
-      require('../../OpCodes')
+      require('../../OpCodes'),
+      require('./huffman-code-lengths.data')
     );
   } else {
     // Browser/Worker global
-    factory(root.AlgorithmFramework, root.OpCodes);
+    factory(root.AlgorithmFramework, root.OpCodes, root.HuffmanCodeLengths);
   }
 }((function() {
   if (typeof globalThis !== 'undefined') return globalThis;
@@ -37,7 +38,7 @@
   if (typeof global !== 'undefined') return global;
   if (typeof self !== 'undefined') return self;
   throw new Error('Unable to locate global object');
-})(), function (AlgorithmFramework, OpCodes) {
+})(), function (AlgorithmFramework, OpCodes, HuffmanCodeLengths) {
   'use strict';
 
   if (!AlgorithmFramework) {
@@ -46,6 +47,10 @@
 
   if (!OpCodes) {
     throw new Error('OpCodes dependency is required');
+  }
+
+  if (!HuffmanCodeLengths) {
+    throw new Error('HuffmanCodeLengths dependency is required');
   }
 
   // Extract framework components
@@ -203,139 +208,13 @@
 
   // ===== HUFFMAN ENTROPY STAGE =====
 
-  /** Leaf or internal node of a Huffman tree. */
-  class HuffmanNode {
-    constructor(symbol, frequency, left, right) {
-      this.symbol = symbol;
-      this.frequency = frequency;
-      this.left = left === undefined ? null : left;
-      this.right = right === undefined ? null : right;
-    }
-
-    static leaf(symbol, frequency) {
-      return new HuffmanNode(symbol, frequency, null, null);
-    }
-
-    static internal(left, right) {
-      return new HuffmanNode(-1, left.frequency + right.frequency, left, right);
-    }
-
-    get isLeaf() {
-      return this.left === null && this.right === null;
-    }
-
-    /** Orders by frequency, breaking ties by symbol so the shape is stable. */
-    compareTo(other) {
-      if (this.frequency !== other.frequency)
-        return this.frequency < other.frequency ? -1 : 1;
-      if (this.symbol !== other.symbol)
-        return this.symbol < other.symbol ? -1 : 1;
-      return 0;
-    }
-  }
-
-  /** Binary min-heap reproducing the reference tree-construction order exactly. */
-  class MinHeap {
-    constructor() {
-      this.items = [];
-    }
-
-    get count() {
-      return this.items.length;
-    }
-
-    insert(item) {
-      this.items.push(item);
-      this._siftUp(this.items.length - 1);
-    }
-
-    extractMin() {
-      const min = this.items[0];
-      const last = this.items.length - 1;
-      this.items[0] = this.items[last];
-      this.items.pop();
-
-      if (this.items.length > 0)
-        this._siftDown(0);
-
-      return min;
-    }
-
-    _siftUp(index) {
-      while (index > 0) {
-        const parent = Math.floor((index - 1) / 2);
-        if (this.items[index].compareTo(this.items[parent]) < 0) {
-          const tmp = this.items[index];
-          this.items[index] = this.items[parent];
-          this.items[parent] = tmp;
-          index = parent;
-        } else
-          break;
-      }
-    }
-
-    _siftDown(index) {
-      const count = this.items.length;
-      for (;;) {
-        const left = 2 * index + 1;
-        const right = 2 * index + 2;
-        let smallest = index;
-
-        if (left < count && this.items[left].compareTo(this.items[smallest]) < 0)
-          smallest = left;
-        if (right < count && this.items[right].compareTo(this.items[smallest]) < 0)
-          smallest = right;
-
-        if (smallest !== index) {
-          const tmp = this.items[index];
-          this.items[index] = this.items[smallest];
-          this.items[smallest] = tmp;
-          index = smallest;
-        } else
-          break;
-      }
-    }
-  }
-
+  // Code lengths come from the shared deterministic builder in
+  // huffman-code-lengths.data.js. Its tie-break among equally likely symbols is a
+  // written rule - lighter first, then leaves before internal nodes, leaves by
+  // ascending symbol, internal nodes oldest first - and CompressionWorkbench's
+  // DeterministicHuffman follows the same rule, so the two produce the same tree
+  // because the algorithm says so and not because either copies the other's heap.
   const HuffmanTree = {
-    buildFromFrequencies(frequencies) {
-      const heap = new MinHeap();
-
-      for (let i = 0; i < frequencies.length; ++i)
-        if (frequencies[i] > 0)
-          heap.insert(HuffmanNode.leaf(i, frequencies[i]));
-
-      if (heap.count === 0)
-        throw new Error('Zling: at least one symbol must have a non-zero frequency');
-
-      // Single-symbol tree: pair the only leaf with a dummy partner.
-      if (heap.count === 1)
-        return HuffmanNode.internal(heap.extractMin(), HuffmanNode.leaf(-2, 0));
-
-      while (heap.count > 1) {
-        const left = heap.extractMin();
-        const right = heap.extractMin();
-        heap.insert(HuffmanNode.internal(left, right));
-      }
-
-      return heap.extractMin();
-    },
-
-    getCodeLengths(root, maxSymbol) {
-      const lengths = new Int32Array(maxSymbol);
-      const assign = (node, depth) => {
-        if (node.isLeaf) {
-          if (node.symbol >= 0 && node.symbol < maxSymbol)
-            lengths[node.symbol] = depth;
-          return;
-        }
-        if (node.left !== null) assign(node.left, depth + 1);
-        if (node.right !== null) assign(node.right, depth + 1);
-      };
-      assign(root, 0);
-      return lengths;
-    },
-
     /**
      * Clamps code lengths to maxLength and repairs the Kraft sum: lengthening
      * the shortest code halves its contribution until the sum fits the budget,
@@ -537,7 +416,7 @@
           text: "Simple repetition AAAA",
           uri: "https://github.com/richox/libzling",
           input: [65, 65, 65, 65],
-          expected: OpCodes.Hex8ToBytes("040000000500000001030300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000f300")
+          expected: OpCodes.Hex8ToBytes("040000000500000002020200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000b100")
         },
         {
           text: "Pattern ABAB",
@@ -549,7 +428,7 @@
           text: "Hello string",
           uri: "https://github.com/richox/libzling",
           input: OpCodes.AnsiToBytes("Hello"),
-          expected: OpCodes.Hex8ToBytes("050000000600000003000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003000000000000000000000000000000000000000000000000000000000300000000000001000003000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000971c")
+          expected: OpCodes.Hex8ToBytes("050000000600000003000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003000000000000000000000000000000000000000000000000000000000200000000000002000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000dc58")
         }
       ];
 
@@ -616,8 +495,7 @@
             break;
           }
 
-      const root = HuffmanTree.buildFromFrequencies(freqs);
-      const codeLengths = HuffmanTree.getCodeLengths(root, SYMBOL_COUNT);
+      const codeLengths = HuffmanCodeLengths.buildCodeLengths(freqs, SYMBOL_COUNT);
       HuffmanTree.limitCodeLengths(codeLengths, MAX_CODE_LENGTH);
       const table = buildCanonicalCodes(codeLengths);
 
