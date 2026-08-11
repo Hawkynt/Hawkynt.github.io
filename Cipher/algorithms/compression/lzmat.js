@@ -250,12 +250,14 @@
             // Copy from history buffer
             for (let j = 0; j < length; j++) {
               const copyPos = result.length - distance;
-              if (copyPos >= 0 && copyPos < result.length) {
-                result.push(result[copyPos]);
-              } else {
-                // Invalid reference - use zero as fallback
-                result.push(0);
-              }
+              // A back-reference outside the output produced so far means the
+              // stream is not one this decoder wrote. Substituting a zero used
+              // to hide that: the caller received plausible bytes of the right
+              // length and no indication anything was wrong.
+              if (copyPos < 0 || copyPos >= result.length)
+                throw new Error('LZMAT: back-reference at distance ' + distance
+                  + ' points outside the ' + result.length + ' bytes decoded so far');
+              result.push(result[copyPos]);
             }
           } else if (flag === 0 && i < this.inputBuffer.length) {
             // Literal byte
