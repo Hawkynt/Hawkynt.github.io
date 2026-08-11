@@ -2,9 +2,6 @@
 
 *Production-ready cryptographic algorithms with bit-perfect test vector validation*
 
-[![Algorithms](https://img.shields.io/badge/Algorithms-1039-blue.svg)](https://hawkynt.github.io/Cipher/)
-[![Working](https://img.shields.io/badge/Working-1039%20(100%25)-brightgreen.svg)](https://hawkynt.github.io/Cipher/)
-[![Categories](https://img.shields.io/badge/Categories-19-green.svg)](https://hawkynt.github.io/Cipher/)
 ![License](https://img.shields.io/github/license/Hawkynt/Hawkynt.github.io/Cipher/)
 
 ---
@@ -36,7 +33,7 @@ Cipher Tools is a **professional-grade cryptographic implementation library** fe
 
 ### 🌟 What Makes This Special
 
-- **1039 Production Implementations** - Professional-grade cryptographic library with 100% test vector validation
+- **Verified implementations** - every algorithm is checked against its committed test vectors on each run; see the inventory below for what is present
 - **Bit-Perfect Test Vector Validation** - Every algorithm verified against official NIST, RFC, and academic test vectors
 - **Professional Code Quality** - Production-ready implementations suitable for real-world encryption libraries
 - **Algorithm Chaining System** - Upload → Compress → Cipher → Cipher → Download workflows
@@ -87,23 +84,23 @@ Cipher Tools is a **professional-grade cryptographic implementation library** fe
 
 ### 📊 Algorithm Categories & Color Coding
 
-| Category | Color | Implemented | Examples |
-|----------|-------|-------------|----------|
-| 🔵 **Block Ciphers** | Blue | 68 | AES, DES, Blowfish, Serpent, GIFT, Kalyna, SIMECK, HIGHT, Shark, Tnepres |
-| 🗜️ **Compression** | Green | 49 | Brotli, LZ4, LZMA2, Huffman, RLE, Snappy |
-| 🌊 **Stream Ciphers** | Light Blue | 48 | ChaCha20, RC4, Salsa20, SOSEMANUK, ACORN, SEAL |
-| #️⃣ **Hash Functions** | Yellow | 35 | SHA-256, BLAKE3, xxHash3, HighwayHash, MD5 |
-| 📜 **Classical Ciphers** | Orange | 26 | Caesar, Vigenère, Jefferson Wheel, Enigma |
-| 🔐 **Cipher Modes** | Dark Blue | 26 | ECB, CBC, CTR, GCM, CCM, XTS, OFB |
-| 🔴 **Asymmetric** | Red | 20 | RSA, NTRU, ECC, Post-Quantum (Kyber) |
-| 📝 **Encoding** | Violet | 20 | Base64, PEM, Base58, Z85, Morse, Hex |
-| ✔️ **Checksums** | Teal | 13 | CRC32, CRC64, Adler32, Fletcher, Parity |
-| 📋 **Padding** | Gray | 12 | PKCS#7, ISO/IEC 7816-4, ANSI X9.23, Zero |
-| 🎯 **Special Purpose** | Black | 12 | Format-Preserving, Key Wrapping, Homomorphic |
-| ✅ **MAC** | Pink | 6 | HMAC, CMAC, Poly1305, VMAC, GMAC |
-| 🔑 **Key Derivation** | Dark Gray | 4 | PBKDF2, HKDF, Argon2, Scrypt |
-| 🔧 **Error Correction** | Info Blue | 4 | Reed-Solomon, BCH, LDPC, Hamming |
-| 🛡️ **Post-Quantum** | Purple | 1 | Kyber, Dilithium (NIST PQC candidates) |
+| Category | Color | Examples |
+|----------|-------|----------|
+| 🔵 **Block Ciphers** | Blue | AES, DES, Blowfish, Serpent, GIFT, Kalyna, SIMECK, HIGHT, Shark, Tnepres |
+| 🗜️ **Compression** | Green | Brotli, LZ4, LZMA2, Huffman, RLE, Snappy |
+| 🌊 **Stream Ciphers** | Light Blue | ChaCha20, RC4, Salsa20, SOSEMANUK, ACORN, SEAL |
+| #️⃣ **Hash Functions** | Yellow | SHA-256, BLAKE3, xxHash3, HighwayHash, MD5 |
+| 📜 **Classical Ciphers** | Orange | Caesar, Vigenère, Jefferson Wheel, Enigma |
+| 🔐 **Cipher Modes** | Dark Blue | ECB, CBC, CTR, GCM, CCM, XTS, OFB |
+| 🔴 **Asymmetric** | Red | RSA, NTRU, ECC, Post-Quantum (Kyber) |
+| 📝 **Encoding** | Violet | Base64, PEM, Base58, Z85, Morse, Hex |
+| ✔️ **Checksums** | Teal | CRC32, CRC64, Adler32, Fletcher, Parity |
+| 📋 **Padding** | Gray | PKCS#7, ISO/IEC 7816-4, ANSI X9.23, Zero |
+| 🎯 **Special Purpose** | Black | Format-Preserving, Key Wrapping, Homomorphic |
+| ✅ **MAC** | Pink | HMAC, CMAC, Poly1305, VMAC, GMAC |
+| 🔑 **Key Derivation** | Dark Gray | PBKDF2, HKDF, Argon2, Scrypt |
+| 🔧 **Error Correction** | Info Blue | Reed-Solomon, BCH, LDPC, Hamming |
+| 🛡️ **Post-Quantum** | Purple | Kyber, Dilithium (NIST PQC candidates) |
 
 ### 🔧 Cipher Mode Support
 
@@ -231,7 +228,35 @@ Cipher Tools is a **professional-grade cryptographic implementation library** fe
 
 **📚 Algorithm reference** — one markdown page per algorithm covering its parameters, security status, known vulnerabilities, references and test vectors. The pages are derived from the implementations, so they cannot drift: build them locally with `node tools/generate-algorithm-docs.js` (written to `docs/algorithms/`, starting at `docs/algorithms/README.md`), or download the `algorithm-reference` artifact that CI builds on every run. The generated tree is deliberately not checked in.
 
-The library includes **1088 fully-implemented cryptographic algorithms** across 17 categories. For the complete breakdown by category, see the [Algorithm Categories & Color Coding](#-algorithm-categories--color-coding) section above and the [Directory Structure](#directory-structure-updated-2025) section below.
+What is implemented, by directory. Each directory's own README lists its algorithms individually.
+
+<!-- BEGIN GENERATED CATEGORY TABLE -->
+
+Generated by `tools/refresh-readmes.js`.
+
+| Directory | Algorithms |
+| --- | ---: |
+| [`algorithms/aead/`](algorithms/aead/) | 69 |
+| [`algorithms/asymmetric/`](algorithms/asymmetric/) | 33 |
+| [`algorithms/block/`](algorithms/block/) | 232 |
+| [`algorithms/checksum/`](algorithms/checksum/) | 74 |
+| [`algorithms/classical/`](algorithms/classical/) | 26 |
+| [`algorithms/compression/`](algorithms/compression/) | 127 |
+| [`algorithms/crypto/`](algorithms/crypto/) | 13 |
+| [`algorithms/ecc/`](algorithms/ecc/) | 80 |
+| [`algorithms/encoding/`](algorithms/encoding/) | 20 |
+| [`algorithms/hash/`](algorithms/hash/) | 115 |
+| [`algorithms/kdf/`](algorithms/kdf/) | 27 |
+| [`algorithms/mac/`](algorithms/mac/) | 27 |
+| [`algorithms/modes/`](algorithms/modes/) | 27 |
+| [`algorithms/padding/`](algorithms/padding/) | 13 |
+| [`algorithms/permutation/`](algorithms/permutation/) | 3 |
+| [`algorithms/pqc/`](algorithms/pqc/) | 1 |
+| [`algorithms/random/`](algorithms/random/) | 94 |
+| [`algorithms/special/`](algorithms/special/) | 11 |
+| [`algorithms/stream/`](algorithms/stream/) | 96 |
+
+<!-- END GENERATED CATEGORY TABLE -->
 
 **Key Highlights:**
 - **Block Ciphers** including AES, DES, 3DES, Blowfish, Twofish, Serpent, Tnepres, ARIA, Camellia, CAST, IDEA, RC5, RC6, SEED, TEA, XTEA, Threefish, SM4, SIMECK, HIGHT, Shark, and many more
@@ -272,7 +297,7 @@ Each algorithm is evaluated for metadata completeness across five key areas:
 
 ### 📊 Current Compliance Status
 
-The project maintains comprehensive metadata for all 1039 algorithms. Each algorithm includes:
+The project maintains comprehensive metadata for every registered algorithm. Each algorithm includes:
 
 **Core Metadata** (100% coverage):
 - Algorithm name and description
@@ -684,7 +709,7 @@ The measured size ceilings, what fails first beyond each of them, and why, are i
   ✓ Round-trip test - PASSED
   ✓ OpCodes compliance - PASSED
 
-Summary: 882 algorithm files tested (1039 registered algorithms)
+Summary: <n> algorithm files tested (<m> registered algorithms)
 ```
 
 **Exit Codes:**

@@ -6,7 +6,7 @@ This directory contains implementations of various cryptographic and non-cryptog
 
 <!-- BEGIN GENERATED ALGORITHM LIST -->
 
-115 implemented, generated from the registry by `tools/refresh-readmes.js`.
+Generated from the registry by `tools/refresh-readmes.js`.
 
 - **ASCON-HASH** (`ascon-hash.js`) - Lightweight hash function based on Ascon permutation, finalist in CAESAR competition and standardized by NIST
 - **Ascon-Hash256** (`ascon-hash.js`) - Lightweight hash function based on Ascon permutation, standardized in NIST SP 800-232
