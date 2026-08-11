@@ -49,6 +49,10 @@
  *      at the width the rule count needs; a grammar with no rules drops the tag
  *      and stores plain bytes;
  *      zero bits padding to a byte boundary]
+ * Rules are numbered by first appearance in a breadth-first walk of the
+ * grammar - the start sequence left to right, then the body of rule 0, then
+ * rule 1, and so on - so the numbering can be recomputed from the serialised
+ * form itself and does not depend on the order in which the rules were built.
  * An empty input produces only the 4-byte header. The grammar is serialised
  * as-is with no follow-on entropy coding, so input with no exploitable
  * repetition ends up somewhat larger than it started: Sequitur still builds
@@ -160,17 +164,52 @@
       this._check(sym.prev);
     }
 
-    // Assigns dense indices to the surviving rules in creation order and
-    // renders the grammar as (rule bodies, start sequence) using the codebook
-    // terminal = 0..255, non-terminal = 256 + rule index.
+    // Numbers the surviving rules by first appearance in a breadth-first walk
+    // of the finished grammar and renders it as (rule bodies, start sequence)
+    // using the codebook terminal = 0..255, non-terminal = 256 + rule index.
+    //
+    // The walk reads the start sequence left to right, giving the next free
+    // index to each rule reference it has not seen before, then does the same
+    // over the body of rule 0, then rule 1, and so on until no rule is left
+    // unnumbered. The numbering is therefore a property of the grammar that is
+    // being written out - it can be recomputed from the serialised form alone
+    // - and owes nothing to the order in which the rules happened to be
+    // created, how many died on the way, or how any collection enumerates.
     render() {
       const live = [];
       const index = new Map();
-      for (let i = 0; i < this.rules.length; ++i) {
-        const rule = this.rules[i];
-        if (rule.dead || rule === this.start) continue;
+      let walked = 0;
+
+      const number = function(rule) {
+        if (index.has(rule)) return;
         index.set(rule, live.length);
         live.push(rule);
+      };
+
+      const numberBody = function(first) {
+        for (let s = first; s !== null; s = s.next)
+          if (!s.isTerminal) number(s.target);
+      };
+
+      // Numbers every rule referenced by a body that has itself just been
+      // numbered, until the frontier is empty.
+      const drain = function() {
+        for (; walked < live.length; ++walked) numberBody(live[walked].first);
+      };
+
+      numberBody(this.start.first);
+      drain();
+
+      // Every live rule of a well-formed Sequitur grammar is reachable from the
+      // start sequence, so this tail never runs. It is here so that an
+      // unreachable rule would still get a defined index - creation order,
+      // after everything reachable - instead of being dropped and leaving the
+      // bodies that mention it dangling.
+      for (let i = 0; i < this.rules.length; ++i) {
+        const rule = this.rules[i];
+        if (rule.dead || rule === this.start || index.has(rule)) continue;
+        number(rule);
+        drain();
       }
 
       const code = function(sym) {
@@ -576,19 +615,19 @@
         ),
         new TestCase(
           (function() { const b = new Array(256); for (let i = 0; i < 256; ++i) b[i] = 0x61; return b; })(),
-          OpCodes.Hex8ToBytes("0001000007fe8c2618899aabbccddee0"),
+          OpCodes.Hex8ToBytes("0001000007fea66aaef3377b8c261880"),
           "Long repetitive run - 256 copies of 0x61 collapse into a doubling hierarchy of 7 rules",
           "https://en.wikipedia.org/wiki/Sequitur_algorithm"
         ),
         new TestCase(
           (function() { const b = new Array(64); for (let i = 0; i < 64; ++i) b[i] = (i % 2) === 0 ? 0x61 : 0x62; return b; })(),
-          OpCodes.Hex8ToBytes("4000000005fa3098a2266aaef300"),
+          OpCodes.Hex8ToBytes("4000000005fa99aabbcc3098a200"),
           "Alternating two-byte pattern - 32 repetitions of 'ab' collapse into 5 rules",
           "https://en.wikipedia.org/wiki/Sequitur_algorithm"
         ),
         new TestCase(
           OpCodes.AsciiToBytes("the quick brown fox jumps over the lazy dog. the quick brown fox jumps over the lazy dog. the quick brown fox jumps over the lazy dog. the quick brown fox jumps over the lazy dog. "),
-          OpCodes.Hex8ToBytes("b400000004782331d0d065100827a713a9a4c66b10188e46f3b9b84066379e0406a3a9b4e073101bcec6539536184f47910190de67174db71000"),
+          OpCodes.Hex8ToBytes("b400000004704731d0d065106e713a9a4c66b10188e46f3b9b84066379e0406a3a9b4e073101bcec6539736184f47910190de67170824b6e1000"),
           "ASCII text - 'the quick brown fox jumps over the lazy dog. ' repeated four times folds into 4 rules",
           "https://www.jair.org/index.php/jair/article/view/10151"
         ),
