@@ -180,7 +180,14 @@
         this.inputBuffer = [];
 
         const FIRST_NON_TERMINAL = 256;
-        const MAX_RULES = 65536;
+        // Symbols are written to the stream as 16-bit values, and rule r is
+        // referred to as FIRST_NON_TERMINAL + r, so the last rule that can be
+        // named is 65535 - 256. The former limit of 65536 let rule numbers run
+        // past what the wire format can express: they wrapped on serialisation
+        // and the stream decoded to the wrong bytes with nothing raised. Stopping
+        // here costs a little ratio on inputs that would exceed it and changes
+        // no output that was previously decodable.
+        const MAX_RULES = 65536 - FIRST_NON_TERMINAL;
         // Packs (left, right) into one Number key. Both symbols are always
         // < 2^17, so this is exact (no precision loss) and preserves distinctness
         // the same way the reference's 64-bit key does.
