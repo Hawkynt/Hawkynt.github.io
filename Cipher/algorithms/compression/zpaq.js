@@ -1,3 +1,35 @@
+/*
+ * ZPAQ context-mixing compressor
+ * Compatible with AlgorithmFramework
+ * (c)2006-2025 Hawkynt
+ *
+ * The compression core of ZPAQ: data is coded one bit at a time, each bit
+ * against a prediction produced by several context models, and the coded bits
+ * go through a binary arithmetic coder so that a confident prediction actually
+ * costs a fraction of a bit.
+ *
+ * Model - four direct context models over hashed orders 1..4. Each holds a
+ * 16-bit probability that the next bit is 1, indexed by the order's context
+ * hash combined with the bits of the current byte decoded so far. Each is
+ * updated with a count-scaled step, so a fresh slot moves fast and a
+ * well-visited one settles at roughly 1/32 per observation. The four
+ * predictions are averaged, matching the simple mixing this model uses.
+ *
+ * Coder - a carry-propagating binary range coder holding a 32-bit range that
+ * is renormalized whenever it drops below 2^24. It keeps ZPAQ's subrange
+ * convention: the subrange below the split codes a 1 bit, so the more
+ * confident the model is that a 1 follows, the cheaper coding that 1 becomes.
+ * Getting that backwards round-trips perfectly and inflates instead of
+ * compressing, which is exactly the failure this file used to have. The
+ * carry-propagating form is used rather than ZPAQ's carryless low/high pair
+ * because the latter can shrink its interval to zero width, whereas keeping
+ * the range at or above 2^24 makes both subranges provably non-empty.
+ *
+ * Not implemented: the journaling archive container, the ZPAQL virtual machine
+ * and its configurable COMP/HCOMP sections, deduplication and versioning. This
+ * file is the context-mixing compressor alone, over a single stream.
+ */
+
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
     // AMD
@@ -24,528 +56,368 @@
   if (!AlgorithmFramework) {
     throw new Error('AlgorithmFramework dependency is required');
   }
-  
+
   if (!OpCodes) {
     throw new Error('OpCodes dependency is required');
   }
 
   // Extract framework components
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
-          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
-          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
-          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
-          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
-          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
-          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+          CompressionAlgorithm, IAlgorithmInstance, TestCase, LinkItem } = AlgorithmFramework;
+
+  // ===== CONSTANTS =====
+
+  const TOP = 4294967296;          // 2^32
+  const RANGE_MAX = 4294967295;    // 2^32 - 1
+  const RANGE_MIN = 16777216;      // 2^24, the renormalization threshold
+  const BYTE_SHIFT = 16777216;     // 2^24, used to lift out the top byte
+  const CARRY_EDGE = 4278190080;   // 0xFF000000
+  const PROB_ONE = 65536;
+  const PROB_HALF = 32768;
+  const PROB_MIN = 1;
+  const PROB_MAX = 65535;
+
+  const ORDERS = 4;                // context models over orders 1..4
+  const COUNT_LIMIT = 30;          // steady-state adaptation of about 1/32
+  const HASH_MULTIPLIER = 2654435761;
+  const ORDER_SALT = 2246822519;
+  const PARTIAL_MULTIPLIER = 1103515245;
+
+  const MIN_TABLE_BITS = 16;
+  const MAX_TABLE_BITS = 20;
+
+  // Table size is derived from the message length, which both sides know from
+  // the header, so encoder and decoder always allocate identical models.
+  function tableBitsFor(length) {
+    let bits = 0;
+    let remaining = length;
+    while (remaining > 1) { remaining = Math.floor(remaining / 2); bits++; }
+    bits += 2;
+    if (bits < MIN_TABLE_BITS) bits = MIN_TABLE_BITS;
+    if (bits > MAX_TABLE_BITS) bits = MAX_TABLE_BITS;
+    return bits;
+  }
+
+  // ===== CONTEXT MODEL =====
+
+  class ContextMixingModel {
+    constructor(tableBits) {
+      this.size = OpCodes.Shl32(1, tableBits);
+      this.mask = this.size - 1;
+      this.probabilities = [];
+      this.counts = [];
+      for (let i = 0; i < ORDERS; i++) {
+        const table = new Uint16Array(this.size);
+        for (let j = 0; j < this.size; j++) table[j] = PROB_HALF;
+        this.probabilities.push(table);
+        this.counts.push(new Uint8Array(this.size));
+      }
+      this.contexts = new Int32Array(ORDERS);
+      this.slots = new Int32Array(ORDERS);
+      this.history = 0;
+      this.refreshContexts();
+    }
+
+    // Hash of the last `order` bytes, salted so the orders never share a slot
+    // by accident.
+    refreshContexts() {
+      for (let order = 1; order <= ORDERS; order++) {
+        // Orders 1..3 keep the low 8/16/24 bits of the history; order 4 is the
+        // whole 32-bit history, for which there is no divisor to take.
+        const window = order === ORDERS
+          ? this.history
+          : this.history % OpCodes.Shl32(1, order * 8);
+        this.contexts[order - 1] = OpCodes.ToUint32(
+          OpCodes.Mul32(OpCodes.ToUint32(window + order), HASH_MULTIPLIER) + OpCodes.Mul32(order, ORDER_SALT)
+        );
+      }
+    }
+
+    // Probability that the next bit is 1, given the bits of the current byte
+    // seen so far (`partial` starts at 1 and grows one bit at a time).
+    predict(partial) {
+      let total = 0;
+      for (let i = 0; i < ORDERS; i++) {
+        const slot = OpCodes.And32(
+          OpCodes.ToUint32(this.contexts[i] + OpCodes.Mul32(partial, PARTIAL_MULTIPLIER)),
+          this.mask
+        );
+        this.slots[i] = slot;
+        total += this.probabilities[i][slot];
+      }
+
+      let combined = Math.floor(total / ORDERS);
+      if (combined < PROB_MIN) combined = PROB_MIN;
+      if (combined > PROB_MAX) combined = PROB_MAX;
+      return combined;
+    }
+
+    // Count-scaled update of every component that contributed to the last
+    // prediction. Early observations move a slot a long way; once the count
+    // saturates the step settles at about 1/32 of the remaining error.
+    update(bit) {
+      const target = bit === 1 ? PROB_MAX : 0;
+      for (let i = 0; i < ORDERS; i++) {
+        const slot = this.slots[i];
+        const observed = this.counts[i][slot];
+        const current = this.probabilities[i][slot];
+        this.probabilities[i][slot] = current + Math.floor((target - current) / (observed + 2));
+        if (observed < COUNT_LIMIT) this.counts[i][slot] = observed + 1;
+      }
+    }
+
+    // Fold a finished byte into the history and recompute the order hashes.
+    pushByte(value) {
+      this.history = OpCodes.ToUint32(this.history * 256 + value);
+      this.refreshContexts();
+    }
+  }
+
+  // ===== BINARY RANGE CODER =====
+
+  class RangeEncoder {
+    constructor() {
+      this.low = 0;
+      this.range = RANGE_MAX;
+      this.cache = 0;
+      this.pending = 1;
+      this.bytes = [];
+    }
+
+    encodeBit(bit, probabilityOfOne) {
+      const bound = Math.floor(this.range / PROB_ONE) * probabilityOfOne;
+      if (bit === 1) {
+        this.range = bound;
+      } else {
+        this.low += bound;
+        this.range -= bound;
+      }
+      while (this.range < RANGE_MIN) {
+        this.shiftLow();
+        this.range *= 256;
+      }
+    }
+
+    shiftLow() {
+      const carry = this.low >= TOP ? 1 : 0;
+      const value = this.low - carry * TOP;
+
+      if (value < CARRY_EDGE || carry === 1) {
+        let held = this.cache;
+        do {
+          this.bytes.push((held + carry) % 256);
+          held = 255;
+          this.pending--;
+        } while (this.pending !== 0);
+        this.cache = Math.floor(value / BYTE_SHIFT);
+      }
+
+      this.pending++;
+      this.low = (value % BYTE_SHIFT) * 256;
+    }
+
+    finish() {
+      for (let i = 0; i < 5; i++) this.shiftLow();
+      return this.bytes;
+    }
+  }
+
+  class RangeDecoder {
+    constructor(data, offset) {
+      this.data = data;
+      this.position = offset;
+      this.range = RANGE_MAX;
+      this.code = 0;
+      for (let i = 0; i < 5; i++) this.code = OpCodes.ToUint32(this.code * 256) + this.nextByte();
+    }
+
+    nextByte() {
+      if (this.position >= this.data.length) return 0;
+      return this.data[this.position++];
+    }
+
+    decodeBit(probabilityOfOne) {
+      const bound = Math.floor(this.range / PROB_ONE) * probabilityOfOne;
+      let bit;
+      if (this.code < bound) {
+        bit = 1;
+        this.range = bound;
+      } else {
+        bit = 0;
+        this.code -= bound;
+        this.range -= bound;
+      }
+      while (this.range < RANGE_MIN) {
+        this.range *= 256;
+        this.code = OpCodes.ToUint32(this.code * 256) + this.nextByte();
+      }
+      return bit;
+    }
+  }
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
   /**
- * ZPAQAlgorithm - Compression algorithm implementation
- * @class
- * @extends {CompressionAlgorithm}
- */
-
+   * ZPAQAlgorithm - ZPAQ's context-mixing compressor
+   * @class
+   * @extends {CompressionAlgorithm}
+   */
   class ZPAQAlgorithm extends CompressionAlgorithm {
-      constructor() {
-        super();
+    constructor() {
+      super();
 
-        // Required metadata
-        this.name = "ZPAQ (Journaling Archiver)";
-        this.description = "Advanced journaling archiver with incremental backup capabilities and maximum compression ratios. Uses context mixing, preprocessing, and block-based compression with versioning and deduplication support.";
-        this.category = CategoryType.COMPRESSION;
-        this.subCategory = "Journaling Archive";
-        this.securityStatus = SecurityStatus.EDUCATIONAL;
-        this.complexity = ComplexityType.EXPERT;
-        this.inventor = "Matt Mahoney";
-        this.year = 2009;
-        this.country = CountryCode.US;
+      // Required metadata
+      this.name = "ZPAQ (Context Mixing)";
+      this.description = "The context-mixing compressor at the heart of ZPAQ: four direct context models over hashed orders 1 to 4 predict each bit of the message, their predictions are averaged, and a binary range coder turns confident predictions into fractions of a bit. Covers the modelling and coding stages only - the journaling archive container, the ZPAQL virtual machine with its configurable COMP/HCOMP sections, deduplication and versioning are not implemented.";
+      this.category = CategoryType.COMPRESSION;
+      this.subCategory = "Context Mixing";
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.EXPERT;
+      this.inventor = "Matt Mahoney";
+      this.year = 2009;
+      this.country = CountryCode.US;
 
-        // ZPAQ parameters
-        this.BLOCK_SIZE = 65536;        // 64KB blocks
-        this.MAX_MEMORY = 512 * 1024;   // 512KB memory (educational)
-        this.HASH_SIZE = 65536;         // Hash table size
-        this.VERSION = 1;               // Archive version
+      this.documentation = [
+        new LinkItem("ZPAQ specification and tools", "http://mattmahoney.net/dc/zpaq.html"),
+        new LinkItem("The ZPAQ Open Standard Format", "http://mattmahoney.net/dc/zpaq206.pdf"),
+        new LinkItem("Data Compression Explained - context mixing", "http://mattmahoney.net/dc/dce.html")
+      ];
 
-        this.documentation = [
-          new LinkItem("ZPAQ Specification", "http://mattmahoney.net/dc/zpaq.html"),
-          new LinkItem("ZPAQ Documentation", "http://mattmahoney.net/dc/zpaq206.pdf"),
-          new LinkItem("ZPAQ GitHub", "https://github.com/zpaq/zpaq")
-        ];
+      this.references = [
+        new LinkItem("libzpaq reference implementation", "https://github.com/zpaq/zpaq"),
+        new LinkItem("PAQ family of compressors", "https://en.wikipedia.org/wiki/PAQ"),
+        new LinkItem("Context mixing", "https://en.wikipedia.org/wiki/Context_mixing")
+      ];
 
-        this.references = [
-          new LinkItem("Journaling Archive Theory", "http://mattmahoney.net/dc/dce.html#Section_81"),
-          new LinkItem("Incremental Backup Systems", "https://en.wikipedia.org/wiki/Incremental_backup"),
-          new LinkItem("Data Deduplication", "https://en.wikipedia.org/wiki/Data_deduplication"),
-          new LinkItem("Block-based Compression", "https://compression.ca/act/act_pdf/")
-        ];
+      // Wire format: [uint32 LE original length][range-coded payload].
+      //
+      // The vectors below were derived by hand. Before any byte has been seen,
+      // every model slot still holds the initial probability 32768, and each
+      // bit of the first byte lands on a slot nobody has touched yet, so all
+      // eight bits are coded at exactly one half. That makes the coder's bound
+      // arithmetic (bound = floor(range/65536) * 32768) and its flush sequence
+      // reproducible with pencil and paper.
+      this.tests = [
+        new TestCase(
+          [],
+          [0, 0, 0, 0],
+          "Empty input - length header only",
+          "http://mattmahoney.net/dc/zpaq.html"
+        ),
+        new TestCase(
+          [0],
+          [1, 0, 0, 0, 0, 254, 255, 128, 0],
+          "Single zero byte - eight bits coded at one half",
+          "http://mattmahoney.net/dc/zpaq206.pdf"
+        ),
+        new TestCase(
+          [65],
+          [1, 0, 0, 0, 0, 189, 255, 128, 0],
+          "Single byte 0x41 - pins the subrange convention",
+          "http://mattmahoney.net/dc/dce.html"
+        ),
+        // Round-trip only from here on: once the models start adapting, the
+        // byte stream is no longer something a human can reproduce by hand.
+        new TestCase(OpCodes.AnsiToBytes("the quick brown fox jumps over the lazy dog. "), [], "Natural text round-trip", "Regression test for model desync"),
+        new TestCase(Array.from({ length: 256 }, (_, i) => i), [], "All 256 byte values round-trip", "Regression test for model desync"),
+        new TestCase(new Array(1024).fill(0x61), [], "Long run round-trip", "Regression test for high-confidence predictions"),
+        new TestCase(Array.from({ length: 128 }, (_, i) => i % 2 ? 0x62 : 0x61), [], "Alternating pattern round-trip", "Regression test for renormalization")
+      ];
 
-        // Test vectors that match our simplified implementation. Every `expected`
-        // byte string below was captured from a run of the fixed implementation
-        // and independently confirmed to decode back to the original input; the
-        // previous vectors were captured from a version that framed blocks with a
-        // scan for a 0xFF sentinel byte and an 8-bit RLE run count, both of which
-        // silently corrupted any block whose compressed payload legitimately
-        // contained a 0xFF byte, or any repeated run longer than 256 bytes.
-        this.tests = [
-          new TestCase(
-            [],
-            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], // Version header + empty archive
-            "Empty archive - header only",
-            "http://mattmahoney.net/dc/zpaq.html"
-          ),
-          new TestCase(
-            [65], // Single byte 'A'
-            [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 193],
-            "Single byte compression",
-            "http://mattmahoney.net/dc/zpaq206.pdf"
-          ),
-          new TestCase(
-            [65, 65, 65, 65], // 4 A's (repetitive)
-            [1, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 1, 5, 0, 0, 0, 65, 4, 0, 0, 0],
-            "Repetitive data compression",
-            "https://github.com/zpaq/zpaq"
-          ),
-          new TestCase(
-            new Array(1024).fill(0x61), // 1024 repeated bytes
-            OpCodes.Hex8ToBytes("01000000010000000004000001050000006100040000"),
-            "1024-byte repeated run - regression for the former 8-bit (max 256) RLE count",
-            "https://en.wikipedia.org/wiki/Run-length_encoding"
-          ),
-          new TestCase(
-            Array.from({ length: 256 }, (_, i) => i),
-            OpCodes.Hex8ToBytes("0100000001000000000100000000010000800102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"),
-            "All 256 byte values - regression for the former 0xFF end-marker scan colliding with legitimate payload bytes",
-            "https://en.wikipedia.org/wiki/Byte"
-          ),
-          new TestCase(
-            Array.from({ length: 64 }, (_, i) => i % 2 ? 0x62 : 0x61),
-            OpCodes.Hex8ToBytes("0100000001000000400000000040000000e1010001000100010002010201020102010201020102010201020102010201020102010201020102010201020102010201020102010201020102010201020102"),
-            "Alternating 'ab' pattern",
-            "https://en.wikipedia.org/wiki/LZ77_and_LZ78"
-          ),
-          new TestCase(
-            OpCodes.Hex8ToBytes("00004000000000004000004080004000000000000040800040000040004080b800003800000000004080c00000004080c0000000000000400040000000000000"),
-            [],
-            "Pseudo-random byte stream - validated via round-trip only; see fuzz harness",
-            "https://en.wikipedia.org/wiki/Pseudorandomness"
-          )
-        ];
-
-        // For test suite compatibility
-        this.testVectors = this.tests;
-      }
-
-      CreateInstance(isInverse = false) {
-        return new ZPAQInstance(this, isInverse);
-      }
+      // For test suite compatibility
+      this.testVectors = this.tests;
     }
 
-    class ZPAQInstance extends IAlgorithmInstance {
-      constructor(algorithm, isInverse = false) {
-        super(algorithm);
-        this.isInverse = isInverse;
-        this.inputBuffer = [];
+    CreateInstance(isInverse = false) {
+      return new ZPAQInstance(this, isInverse);
+    }
+  }
 
-        // ZPAQ state
-        this.version = algorithm.VERSION;
-        this.blockSize = algorithm.BLOCK_SIZE;
-
-        // Compression context
-        this.contextModel = new ZPAQContextModel();
-        this.preprocessor = new ZPAQPreprocessor();
-      }
-
-      Feed(data) {
-        if (!data || data.length === 0) return;
-        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
-      }
-
-      Result() {
-        const result = this.isInverse ?
-          this.decompress(this.inputBuffer) :
-          this.compress(this.inputBuffer);
-
-        this.inputBuffer = [];
-        return result;
-      }
-
-      compress(data) {
-        if (!data || data.length === 0) {
-          return this._createEmptyArchive();
-        }
-
-        const archive = [];
-
-        // ZPAQ Header
-        archive.push(this.version);       // Version
-        archive.push(0, 0, 0);           // Flags (reserved)
-
-        // Number of blocks
-        const numBlocks = Math.ceil(data.length / this.blockSize);
-        const numBlocksBytes = OpCodes.Unpack32LE(numBlocks);
-        for (let _i = 0; _i < numBlocksBytes.length; _i++) archive.push(numBlocksBytes[_i]);
-
-        // Original size
-        const sizeBytes = OpCodes.Unpack32LE(data.length);
-        for (let _i = 0; _i < sizeBytes.length; _i++) archive.push(sizeBytes[_i]);
-
-        // Process data in blocks
-        let offset = 0;
-        while (offset < data.length) {
-          const blockEnd = Math.min(offset + this.blockSize, data.length);
-          const block = data.slice(offset, blockEnd);
-
-          // Process block through ZPAQ pipeline
-          const framedBlock = this._compressBlock(block);
-          for (let _i = 0; _i < framedBlock.length; _i++) archive.push(framedBlock[_i]);
-
-          offset = blockEnd;
-        }
-
-        return archive;
-      }
-
-      decompress(data) {
-        if (!data || data.length < 12) return [];
-
-        // Parse ZPAQ header
-        const version = data[0];
-        const flags = OpCodes.Pack32LE(data[1], data[2], data[3], 0);
-        const numBlocks = OpCodes.Pack32LE(data[4], data[5], data[6], data[7]);
-        const originalSize = OpCodes.Pack32LE(data[8], data[9], data[10], data[11]);
-
-        if (originalSize === 0) return [];
-
-        // Initialize decompression state
-        this._initializeDecompression();
-
-        const decompressed = [];
-        let offset = 12;
-
-        // Decompress blocks. Each block is self-delimiting via an explicit
-        // [type, length] header (see _compressBlock) rather than a scan for a
-        // sentinel byte value, since the compressed payload can legitimately
-        // contain any byte value - including whatever sentinel a scan would look
-        // for - and a scan would stop at the first coincidental occurrence
-        // instead of the block's real end.
-        for (let blockNum = 0; blockNum < numBlocks && offset < data.length; blockNum++) {
-          const blockResult = this._decompressBlock(data, offset);
-          for (let _i = 0; _i < blockResult.data.length; _i++) decompressed.push(blockResult.data[_i]);
-          offset = blockResult.nextOffset;
-        }
-
-        return decompressed.slice(0, originalSize);
-      }
-
-      /**
-       * Create empty ZPAQ archive
-       * @private
-       */
-      _createEmptyArchive() {
-        return [
-          this.version,     // Version
-          0, 0, 0,         // Flags
-          0, 0, 0, 0,      // Number of blocks (0)
-          0, 0, 0, 0       // Original size (0)
-        ];
-      }
-
-      /**
-       * Compress a single block using the ZPAQ pipeline and frame it with an
-       * explicit [type, length] header so the decoder never has to guess where
-       * the block ends.
-       * @private
-       */
-      _compressBlock(block) {
-        let type, payload;
-
-        if (this._isHighlyRepetitive(block)) {
-          // Run-length shortcut: [value, count(4 bytes LE)]. The count is a full
-          // 32-bit field (not a single byte) because a block can be up to
-          // BLOCK_SIZE (65536) bytes of the same value.
-          const countBytes = OpCodes.Unpack32LE(block.length);
-          type = 1;
-          payload = [block[0], countBytes[0], countBytes[1], countBytes[2], countBytes[3]];
-        } else {
-          type = 0;
-          payload = this._contextCompress(block);
-        }
-
-        const lengthBytes = OpCodes.Unpack32LE(payload.length);
-        const framed = [type, lengthBytes[0], lengthBytes[1], lengthBytes[2], lengthBytes[3]];
-        for (let _i = 0; _i < payload.length; _i++) framed.push(payload[_i]);
-        return framed;
-      }
-
-      /**
-       * Decompress a single length-framed block (see _compressBlock).
-       * @private
-       */
-      _decompressBlock(data, offset) {
-        if (offset + 5 > data.length) {
-          return { data: [], nextOffset: data.length };
-        }
-
-        const type = data[offset];
-        const length = OpCodes.Pack32LE(data[offset + 1], data[offset + 2], data[offset + 3], data[offset + 4]);
-        const payloadStart = offset + 5;
-        const payload = data.slice(payloadStart, payloadStart + length);
-        const nextOffset = payloadStart + length;
-
-        if (type === 1) {
-          const value = payload[0];
-          const count = OpCodes.Pack32LE(payload[1], payload[2], payload[3], payload[4]);
-          return { data: new Array(count).fill(value), nextOffset: nextOffset };
-        }
-
-        return { data: this._contextDecompress(payload), nextOffset: nextOffset };
-      }
-
-      /**
-       * Context model compression
-       * @private
-       */
-      _contextCompress(data) {
-        if (data.length === 0) return [];
-
-        const compressed = [];
-        this.contextModel.reset();
-
-        // Use context model for general compression
-        let context = 0;
-        for (let i = 0; i < data.length; i++) {
-          const byte = data[i];
-          const prediction = this.contextModel.predict(context);
-
-          // Encode byte (simplified arithmetic coding)
-          const encoded = this._encodeByte(byte, prediction);
-          compressed.push(encoded);
-
-          // Update context and model
-          this.contextModel.update(context, byte);
-          context = OpCodes.RotL32(context, 8)|byte;
-          context &= 0xFFFFFF; // 24-bit context
-        }
-
-        return compressed;
-      }
-
-      /**
-       * Context model decompression
-       * @private
-       */
-      _contextDecompress(data) {
-        if (data.length === 0) return [];
-
-        const decompressed = [];
-        this.contextModel.reset();
-
-        // Context model decompression
-        let context = 0;
-        for (let i = 0; i < data.length; i++) {
-          const encoded = data[i];
-          const prediction = this.contextModel.predict(context);
-
-          // Decode byte
-          const byte = this._decodeByte(encoded, prediction);
-          decompressed.push(byte);
-
-          // Update context and model
-          this.contextModel.update(context, byte);
-          context = ((OpCodes.Shl32(context, 8))|byte)&0xFFFFFF;
-        }
-
-        return decompressed;
-      }
-
-      /**
-       * Check if data is highly repetitive
-       * @private
-       */
-      _isHighlyRepetitive(data) {
-        if (data.length < 4) return false;
-        
-        const first = data[0];
-        for (let i = 1; i < data.length; i++) {
-          if (data[i] !== first) return false;
-        }
-        return true;
-      }
-
-      /**
-       * Encode byte using prediction
-       * @private
-       */
-      _encodeByte(byte, prediction) {
-        // Simplified encoding - store signed error
-        const error = byte - prediction;
-        return error&0xFF;
-      }
-
-      /**
-       * Decode byte using prediction
-       * @private
-       */
-      _decodeByte(encoded, prediction) {
-        // Simplified decoding - restore from signed error
-        const signedError = encoded > 127 ? encoded - 256 : encoded;
-        return (prediction + signedError)&0xFF;
-      }
-
-      /**
-       * Initialize decompression state
-       * @private
-       */
-      _initializeDecompression() {
-        this.contextModel.reset();
-      }
+  class ZPAQInstance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this.inputBuffer = [];
     }
 
-    /**
-     * ZPAQ Context Model for compression
-     */
-    class ZPAQContextModel {
-      constructor() {
-        this.contexts = new Map();
-        this.order = 4; // Context order
-      }
-
-      reset() {
-        this.contexts.clear();
-      }
-
-      predict(context) {
-        const mask = OpCodes.RotL32(1, this.order * 8) - 1;
-        const contextKey = context&mask;
-        const contextData = this.contexts.get(contextKey);
-        
-        if (contextData) {
-          return contextData.prediction;
-        } else {
-          return 128; // Default prediction
-        }
-      }
-
-      update(context, actualByte) {
-        const mask = OpCodes.RotL32(1, this.order * 8) - 1;
-        const contextKey = context&mask;
-        
-        if (!this.contexts.has(contextKey)) {
-          this.contexts.set(contextKey, {
-            prediction: 128,
-            count: 0
-          });
-        }
-
-        const contextData = this.contexts.get(contextKey);
-        
-        // Update prediction using exponential moving average
-        const alpha = 1.0 / (contextData.count + 1);
-        contextData.prediction = Math.floor(contextData.prediction * (1 - alpha) + actualByte * alpha);
-        contextData.count++;
-      }
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
-    /**
-     * ZPAQ Preprocessor for data transformation
-     */
-    class ZPAQPreprocessor {
-      constructor() {
-        this.transformers = [
-          this._deltaTransform,
-          this._moveToFrontTransform
-        ];
+    Result() {
+      if (this.isInverse) {
+        // A compressed stream always carries at least the 4-byte length
+        // header, so an empty buffer is not a valid compressed message.
+        if (this.inputBuffer.length === 0) return [];
+        return this._decompress();
       }
-
-      preprocess(data) {
-        // Apply best transformation
-        let bestData = data;
-        let bestRatio = 1.0;
-
-        for (const transform of this.transformers) {
-          try {
-            const transformed = transform.call(this, data);
-            const ratio = this._estimateCompressibility(transformed) / data.length;
-            
-            if (ratio < bestRatio) {
-              bestRatio = ratio;
-              bestData = transformed;
-            }
-          } catch (e) {
-            // Skip failed transformations
-          }
-        }
-
-        return bestData;
-      }
-
-      /**
-       * Delta transformation
-       * @private
-       */
-      _deltaTransform(data) {
-        if (data.length === 0) return data;
-
-        const transformed = [data[0]];
-        for (let i = 1; i < data.length; i++) {
-          transformed.push((data[i] - data[i-1])&0xFF);
-        }
-        return transformed;
-      }
-
-      /**
-       * Move-to-front transformation
-       * @private
-       */
-      _moveToFrontTransform(data) {
-        const alphabet = [];
-        for (let i = 0; i < 256; i++) alphabet.push(i);
-        
-        const transformed = [];
-        for (const byte of data) {
-          const pos = alphabet.indexOf(byte);
-          transformed.push(pos);
-          
-          // Move to front
-          alphabet.splice(pos, 1);
-          alphabet.unshift(byte);
-        }
-        
-        return transformed;
-      }
-
-      /**
-       * Estimate compressibility of data
-       * @private
-       */
-      _estimateCompressibility(data) {
-        const freq = new Array(256).fill(0);
-        for (const byte of data) {
-          freq[byte]++;
-        }
-
-        let entropy = 0;
-        for (const f of freq) {
-          if (f > 0) {
-            const p = f / data.length;
-            entropy -= p * Math.log2(p);
-          }
-        }
-
-        return entropy * data.length / 8; // Estimated compressed size in bytes
-      }
+      return this._compress();
     }
+
+    _compress() {
+      const data = this.inputBuffer;
+      this.inputBuffer = [];
+
+      const output = OpCodes.Unpack32LE(OpCodes.ToUint32(data.length));
+      if (data.length === 0) return output;
+
+      const model = new ContextMixingModel(tableBitsFor(data.length));
+      const encoder = new RangeEncoder();
+
+      for (let i = 0; i < data.length; i++) {
+        const value = data[i];
+        let partial = 1;
+        for (let b = 7; b >= 0; b--) {
+          const bit = OpCodes.GetBit(value, b) ? 1 : 0;
+          encoder.encodeBit(bit, model.predict(partial));
+          model.update(bit);
+          partial = partial * 2 + bit;
+        }
+        model.pushByte(value);
+      }
+
+      const payload = encoder.finish();
+      for (let i = 0; i < payload.length; i++) output.push(payload[i]);
+      return output;
+    }
+
+    _decompress() {
+      const data = this.inputBuffer;
+      this.inputBuffer = [];
+
+      if (data.length < 4) return [];
+      const originalLength = OpCodes.Pack32LE(data[0], data[1], data[2], data[3]);
+      if (originalLength === 0) return [];
+
+      const model = new ContextMixingModel(tableBitsFor(originalLength));
+      const decoder = new RangeDecoder(data, 4);
+      const output = new Array(originalLength);
+
+      for (let i = 0; i < originalLength; i++) {
+        let partial = 1;
+        for (let b = 0; b < 8; b++) {
+          const bit = decoder.decodeBit(model.predict(partial));
+          model.update(bit);
+          partial = partial * 2 + bit;
+        }
+        const value = partial - 256;
+        output[i] = value;
+        model.pushByte(value);
+      }
+
+      return output;
+    }
+  }
 
   // ===== REGISTRATION =====
 
-    const algorithmInstance = new ZPAQAlgorithm();
+  const algorithmInstance = new ZPAQAlgorithm();
   if (!AlgorithmFramework.Find(algorithmInstance.name)) {
     RegisterAlgorithm(algorithmInstance);
   }
 
   // ===== EXPORTS =====
 
-  return { ZPAQAlgorithm, ZPAQInstance, ZPAQContextModel, ZPAQPreprocessor };
+  return { ZPAQAlgorithm, ZPAQInstance, ContextMixingModel, RangeEncoder, RangeDecoder };
 }));
