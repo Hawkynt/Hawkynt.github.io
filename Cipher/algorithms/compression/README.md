@@ -12,7 +12,7 @@ Generated from the registry by `tools/refresh-readmes.js`.
 - **Adaptive Huffman (FGK)** (`adaptive-huffman.js`) - Faller-Gallager-Knuth dynamic Huffman coding
 - **aPLib** (`aplib.js`) - Joergen Ibsen's LZSS-based compression library, known for very small and fast decompressors
 - **Arithmetic Coding** (`arithmetic.js`) - Arithmetic coding represents the entire message as a single fraction in the range [0,1) using probability models
-- **ARJ-style LZ77+Huffman (documented subset)** (`arj.js`) - Shared generic LZ77 + single-Huffman-tree compression engine (also used by the ACE-style, RAR-style and SQX-style entries in this repository), parameterized here with an era-typical 8KB window, minimum match length 3, and raw fixed-width distance fields to approximate ARJ's own TECHNOTE.TXT description of methods 1-3 (LZ77 sliding window with static Huffman encoding)
+- **ARJ** (`arj.js`) - ARJ method 1: LZSS matching over a 26624-byte window with match lengths 3 to 256, feeding a 510-symbol literal/length Huffman tree and a 17-slot position tree rebuilt for every block of at most 16384 tokens
 - **BALZ** (`balz.js`) - ROLZ (reduced-offset Lempel-Ziv) compressor by Ilya Muravyov: matches are drawn from a 64-entry table selected by the previous byte, so only a slot index is transmitted, and every bit is coded by a 12-bit adaptive binary arithmetic coder
 - **BCJ ARM** (`bcj-arm.js`) - Branch/Call/Jump filter for 32-bit ARM (A32) machine code
 - **BCJ ARM-Thumb** (`bcj-arm-thumb.js`) - Branch/Call/Jump filter for 16-bit ARM Thumb (T32) machine code
