@@ -23,11 +23,10 @@
  *                  (if 0, this is the entire output; nothing else follows)
  *   bytes 4..5   - digram table entry count N, 16-bit little-endian
  *   N * 2 bytes  - the digram table itself, one (a,b) byte pair per entry,
- *                  in descending-frequency order (ties broken by the
- *                  ascending digram value, i.e. scan order, as produced by
- *                  a stable selection followed by a frequency sort); these
- *                  N digrams are pre-registered as codes 256..256+N-1, code
- *                  256+N is the stop code
+ *                  in descending-frequency order, digrams of equal frequency
+ *                  in ascending digram value order (first byte high, second
+ *                  byte low); these N digrams are pre-registered as codes
+ *                  256..256+N-1, code 256+N is the stop code
  *   remainder    - the MSB-first-packed LZW code stream: codes 0..255 are
  *                  literal bytes, 256..256+N-1 are the seeded digrams,
  *                  256+N is the stop code, and any higher code is a phrase
@@ -79,139 +78,6 @@
   const MAX_BITS = 16;
   const MAX_DICT_SIZE = 65536; // 2 raised to the power of MAX_BITS
   const MAX_DIGRAMS = 128;
-  const INTROSORT_SIZE_THRESHOLD = 16;
-
-  // ===== .NET-COMPATIBLE INTROSORT (List<T>.Sort(Comparison<T>) equivalent) =====
-  //
-  // The reference implementation sorts its candidate digram list with
-  // List<int>.Sort(Comparison<int>), which is .NET's unstable introspective
-  // sort (insertion sort below a size threshold, otherwise median-of-three
-  // quicksort falling back to heapsort past a recursion-depth limit). Since
-  // many digrams tie on frequency, an ordinary stable sort produces a
-  // different (still "correct" by frequency, but byte-different) table
-  // order, so the exact .NET algorithm is replicated here.
-
-  function log2Floor(n) {
-    let value = n;
-    let result = 0;
-    while (value > 1) {
-      value = Math.floor(value / 2);
-      ++result;
-    }
-    return result;
-  }
-
-  function swapIfGreater(keys, comparer, i, j) {
-    if (comparer(keys[i], keys[j]) > 0) {
-      const t = keys[i];
-      keys[i] = keys[j];
-      keys[j] = t;
-    }
-  }
-
-  function swapEntries(keys, i, j) {
-    const t = keys[i];
-    keys[i] = keys[j];
-    keys[j] = t;
-  }
-
-  function insertionSortRange(keys, lo, length, comparer) {
-    for (let i = 0; i < length - 1; ++i) {
-      const t = keys[lo + i + 1];
-      let j = i;
-      while (j >= 0 && comparer(t, keys[lo + j]) < 0) {
-        keys[lo + j + 1] = keys[lo + j];
-        --j;
-      }
-      keys[lo + j + 1] = t;
-    }
-  }
-
-  function downHeap(keys, lo, i, n, comparer) {
-    const d = keys[lo + i - 1];
-    while (i <= Math.floor(n / 2)) {
-      let child = 2 * i;
-      if (child < n && comparer(keys[lo + child - 1], keys[lo + child]) < 0)
-        ++child;
-      if (!(comparer(d, keys[lo + child - 1]) < 0))
-        break;
-      keys[lo + i - 1] = keys[lo + child - 1];
-      i = child;
-    }
-    keys[lo + i - 1] = d;
-  }
-
-  function heapSortRange(keys, lo, length, comparer) {
-    const n = length;
-    for (let i = Math.floor(n / 2); i >= 1; --i)
-      downHeap(keys, lo, i, n, comparer);
-    for (let i = n; i > 1; --i) {
-      swapEntries(keys, lo, lo + i - 1);
-      downHeap(keys, lo, 1, i - 1, comparer);
-    }
-  }
-
-  function pickPivotAndPartition(keys, lo, length, comparer) {
-    const hi = lo + length - 1;
-    const middle = lo + Math.floor((length - 1) / 2);
-
-    swapIfGreater(keys, comparer, lo, middle);
-    swapIfGreater(keys, comparer, lo, hi);
-    swapIfGreater(keys, comparer, middle, hi);
-
-    const pivot = keys[middle];
-    swapEntries(keys, middle, hi - 1);
-    let left = lo, right = hi - 1;
-
-    while (left < right) {
-      do { ++left; } while (comparer(keys[left], pivot) < 0);
-      do { --right; } while (comparer(pivot, keys[right]) < 0);
-      if (left >= right) break;
-      swapEntries(keys, left, right);
-    }
-
-    if (left !== hi - 1)
-      swapEntries(keys, left, hi - 1);
-
-    return left - lo;
-  }
-
-  function introSortRange(keys, lo, lengthInit, depthLimitInit, comparer) {
-    let length = lengthInit;
-    let depthLimit = depthLimitInit;
-
-    while (length > 1) {
-      if (length <= INTROSORT_SIZE_THRESHOLD) {
-        if (length === 2) {
-          swapIfGreater(keys, comparer, lo, lo + 1);
-          return;
-        }
-        if (length === 3) {
-          swapIfGreater(keys, comparer, lo, lo + 1);
-          swapIfGreater(keys, comparer, lo, lo + 2);
-          swapIfGreater(keys, comparer, lo + 1, lo + 2);
-          return;
-        }
-        insertionSortRange(keys, lo, length, comparer);
-        return;
-      }
-
-      if (depthLimit === 0) {
-        heapSortRange(keys, lo, length, comparer);
-        return;
-      }
-      --depthLimit;
-
-      const p = pickPivotAndPartition(keys, lo, length, comparer);
-      introSortRange(keys, lo + p + 1, length - (p + 1), depthLimit, comparer);
-      length = p;
-    }
-  }
-
-  function dotNetListSort(keys, comparer) {
-    if (keys.length > 1)
-      introSortRange(keys, 0, keys.length, 2 * (log2Floor(keys.length) + 1), comparer);
-  }
 
   // ===== BIT-LEVEL I/O (MSB-first) =====
 
@@ -320,14 +186,24 @@
         },
         {
           // Regression/stress test for the digram-frequency-table tie-break:
-          // this sample has many digrams tied on frequency, which is exactly
-          // the case where the wire format depends on faithfully replicating
-          // .NET's (unstable) List<T>.Sort(Comparison<T>) introsort rather
-          // than a plain stable frequency sort.
+          // this sample has many digrams tied on frequency, so it pins the
+          // rule that equal frequencies are ordered by ascending digram value.
+          text: "Every digram over 0x70..0x73 exactly twice - the frequency sort ties throughout, so the table pins the ascending-digram-value rule",
+          uri: "https://en.wikipedia.org/wiki/LZWL",
+          input: (function() {
+            const a = [];
+            for (let r = 0; r < 2; ++r)
+              for (let i = 0; i < 4; ++i)
+                for (let j = 0; j < 4; ++j) a.push(0x70 + i, 0x70 + j);
+            return a;
+          })(),
+          expected: [64, 0, 0, 0, 16, 0, 112, 112, 112, 113, 112, 114, 112, 115, 113, 112, 113, 113, 113, 114, 113, 115, 114, 112, 114, 113, 114, 114, 114, 115, 115, 113, 115, 114, 115, 115, 115, 112, 128, 64, 96, 80, 56, 36, 22, 13, 7, 132, 66, 97, 80, 184, 124, 50, 27, 14, 136, 193, 33, 16, 200, 12, 22, 19, 13, 129, 65, 161, 82, 8, 244, 114, 32]
+        },
+        {
           text: "'the quick brown fox...' repeated 4 times (digram-sort tie-break stress test)",
           uri: "https://en.wikipedia.org/wiki/LZWL",
           input: OpCodes.AnsiToBytes("the quick brown fox jumps over the lazy dog. ".repeat(4)),
-          expected: [180, 0, 0, 0, 41, 0, 104, 101, 116, 104, 101, 32, 32, 116, 32, 98, 111, 103, 111, 118, 111, 119, 111, 120, 112, 115, 113, 117, 114, 32, 114, 111, 115, 32, 117, 105, 117, 109, 118, 101, 119, 110, 120, 32, 110, 32, 109, 112, 107, 32, 121, 32, 32, 100, 32, 102, 32, 106, 32, 108, 32, 111, 32, 113, 46, 32, 108, 97, 97, 122, 99, 107, 100, 111, 101, 114, 102, 111, 103, 46, 105, 99, 106, 117, 98, 114, 122, 121, 128, 192, 161, 82, 88, 172, 158, 15, 19, 145, 196, 164, 209, 72, 108, 26, 69, 3, 128, 70, 163, 241, 105, 12, 146, 115, 43, 135, 72, 32, 144, 200, 140, 98, 17, 25, 135, 194, 99, 113, 8, 92, 170, 119, 40, 139, 193, 99, 180, 249, 101, 14, 95, 70, 153, 82, 102, 180, 201, 197, 62, 61, 81, 159, 85, 39, 85, 105, 117, 22, 99, 72, 154, 82, 230, 244, 233, 213, 130, 123, 83, 16, 74, 64]
+          expected: [180, 0, 0, 0, 41, 0, 101, 32, 104, 101, 116, 104, 32, 116, 32, 98, 32, 100, 32, 102, 32, 106, 32, 108, 32, 111, 32, 113, 46, 32, 97, 122, 98, 114, 99, 107, 100, 111, 101, 114, 102, 111, 103, 46, 105, 99, 106, 117, 107, 32, 108, 97, 109, 112, 110, 32, 111, 103, 111, 118, 111, 119, 111, 120, 112, 115, 113, 117, 114, 32, 114, 111, 115, 32, 117, 105, 117, 109, 118, 101, 119, 110, 120, 32, 121, 32, 122, 121, 129, 64, 35, 209, 56, 172, 54, 55, 24, 136, 201, 162, 145, 121, 12, 106, 33, 3, 128, 194, 33, 146, 120, 124, 74, 115, 43, 145, 67, 160, 146, 9, 44, 26, 57, 7, 145, 199, 97, 50, 72, 252, 170, 119, 40, 130, 198, 97, 116, 249, 101, 14, 95, 70, 153, 82, 102, 180, 201, 197, 62, 45, 81, 159, 85, 39, 85, 105, 117, 22, 99, 72, 154, 82, 230, 244, 233, 213, 130, 123, 83, 16, 74, 64]
         }
       ];
     }
@@ -368,16 +244,18 @@
         ++digramFreq[d];
       }
 
-      // Select every digram occurring at least twice, in ascending digram
-      // value order, then sort descending by frequency (.NET-compatible
-      // unstable introsort, so ties keep this ascending-value order only
-      // where the introsort happens to preserve it -- see dotNetListSort).
+      // Select every digram occurring at least twice, then order them most
+      // frequent first, digrams of equal frequency by ascending 16-bit digram
+      // value (first byte high, second byte low). Which 128 digrams survive
+      // the cut and the code each one gets are therefore a function of the
+      // data alone; the comparison never returns 0 for two different digrams,
+      // so the result does not depend on whether the host sort is stable.
       let topDigrams = [];
       for (let d = 0; d < 65536; ++d) {
         if (digramFreq[d] >= 2)
           topDigrams.push(d);
       }
-      dotNetListSort(topDigrams, (a, b) => digramFreq[b] - digramFreq[a]);
+      topDigrams.sort((a, b) => digramFreq[a] !== digramFreq[b] ? digramFreq[b] - digramFreq[a] : a - b);
       if (topDigrams.length > MAX_DIGRAMS)
         topDigrams = topDigrams.slice(0, MAX_DIGRAMS);
 

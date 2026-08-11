@@ -129,64 +129,52 @@
     }
   }
 
-  // ----- 4-ary min-heap priority queue, mirroring .NET's PriorityQueue<,> -----
-  // (arity 4, array-backed, sift-up/sift-down) so ties between equal-priority
-  // nodes resolve identically to CompressionWorkbench's Huffman merge order.
+  // ----- Priority queue for Huffman merging -----
+  // A binary min-heap ordered by ascending frequency and, for equal
+  // frequencies, by ascending node number. Node numbers are unique, so no two
+  // entries ever compare equal: the merge order - and with it the shape of the
+  // tree and the code lengths - follows from the frequencies alone, whatever
+  // internal shape the heap happens to take.
 
-  class MinHeap4 {
+  class HuffmanQueue {
     constructor() { this.nodes = []; }
     get count() { return this.nodes.length; }
 
-    enqueue(element, priority) {
-      const nodeIndex = this.nodes.length;
-      this.nodes.push(null);
-      this._moveUp({ element: element, priority: priority }, nodeIndex);
+    static _before(a, b) { return a.freq !== b.freq ? a.freq < b.freq : a.node < b.node; }
+
+    enqueue(node, freq) {
+      const items = this.nodes;
+      const entry = { node: node, freq: freq };
+      let i = items.length;
+      items.push(entry);
+      while (i > 0) {
+        const parent = Math.floor((i - 1) / 2);
+        if (!HuffmanQueue._before(entry, items[parent])) break;
+        items[i] = items[parent];
+        i = parent;
+      }
+      items[i] = entry;
     }
 
     dequeue() {
-      const root = this.nodes[0];
-      const lastIndex = this.nodes.length - 1;
-      if (lastIndex > 0) {
-        const lastNode = this.nodes[lastIndex];
-        this.nodes.pop();
-        this._moveDown(lastNode, 0);
-      } else {
-        this.nodes.pop();
+      const items = this.nodes;
+      const root = items[0];
+      const last = items.pop();
+      const size = items.length;
+      if (size > 0) {
+        let i = 0;
+        for (;;) {
+          const left = 2 * i + 1;
+          if (left >= size) break;
+          const right = left + 1;
+          const child = right < size && HuffmanQueue._before(items[right], items[left]) ? right : left;
+          if (!HuffmanQueue._before(items[child], last)) break;
+          items[i] = items[child];
+          i = child;
+        }
+        items[i] = last;
       }
       return root;
-    }
-
-    _parentIndex(i) { return OpCodes.Shr32(i - 1, 2); }
-    _firstChildIndex(i) { return OpCodes.Shl32(i, 2) + 1; }
-
-    _moveUp(node, nodeIndex) {
-      while (nodeIndex > 0) {
-        const parentIndex = this._parentIndex(nodeIndex);
-        const parent = this.nodes[parentIndex];
-        if (node.priority < parent.priority) {
-          this.nodes[nodeIndex] = parent;
-          nodeIndex = parentIndex;
-        } else break;
-      }
-      this.nodes[nodeIndex] = node;
-    }
-
-    _moveDown(node, nodeIndex) {
-      const size = this.nodes.length;
-      let i;
-      while ((i = this._firstChildIndex(nodeIndex)) < size) {
-        let minChild = this.nodes[i];
-        let minChildIndex = i;
-        const upperBound = Math.min(i + 4, size);
-        for (let c = i + 1; c < upperBound; ++c) {
-          const next = this.nodes[c];
-          if (next.priority < minChild.priority) { minChild = next; minChildIndex = c; }
-        }
-        if (node.priority <= minChild.priority) break;
-        this.nodes[nodeIndex] = minChild;
-        nodeIndex = minChildIndex;
-      }
-      this.nodes[nodeIndex] = node;
     }
   }
 
@@ -196,7 +184,7 @@
     if (numSymbols === 1) return [1];
 
     const nodes = [];
-    const pq = new MinHeap4();
+    const pq = new HuffmanQueue();
     for (let i = 0; i < numSymbols; ++i) {
       const f = Math.max(freq[i], 1);
       nodes.push({ freq: f, sym: i, left: -1, right: -1 });
@@ -206,13 +194,13 @@
     while (pq.count > 1) {
       const a = pq.dequeue();
       const b = pq.dequeue();
-      const combined = a.priority + b.priority;
+      const combined = a.freq + b.freq;
       const newIdx = nodes.length;
-      nodes.push({ freq: combined, sym: -1, left: a.element, right: b.element });
+      nodes.push({ freq: combined, sym: -1, left: a.node, right: b.node });
       pq.enqueue(newIdx, combined);
     }
 
-    const root = pq.dequeue().element;
+    const root = pq.dequeue().node;
     const lengths = new Array(numSymbols).fill(0);
 
     const walk = (idx, depth) => {
@@ -386,7 +374,7 @@
             text: "Text sample repeated 4x",
             uri: "https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT",
             input: OpCodes.AsciiToBytes("the quick brown fox jumps over the lazy dog. ".repeat(4)),
-            expected: [180,0,0,0,3,43,55,8,167,24,215,5,24,247,39,24,119,8,183,24,39,24,247,7,6,135,5,23,6,23,6,247,87,8,7,8,247,247,103,8,23,8,39,8,55,8,247,247,247,199,3,245,245,245,245,6,4,245,5,22,245,245,181,157,90,132,4,58,132,181,108,210,58,208,56,52,216,165,93,160,89,176,107,160,85,88,219,246,29,3,193,206,33,161,1,30,0,182,105,212,189,91,160,105,176,121,54,13,0,97,129,63,8]
+            expected: [180,0,0,0,3,18,120,247,119,5,247,247,247,247,215,6,247,247,247,247,247,247,247,247,247,3,245,245,245,245,5,4,22,245,245,245,197,29,154,54,10,180,237,216,172,65,139,64,253,118,65,157,91,7,26,7,117,9,52,239,216,170,77,251,64,80,167,70,237,2,60,0,108,89,175,91,215,64,195,160,38,169,53,0,132,5,254,32]
           },
           {
             text: "All 256 byte values",

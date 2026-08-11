@@ -66,127 +66,14 @@
   // Sorting proceeds by prefix doubling: a first counting-sort pass ranks
   // rotations by their first 2 bytes (cyclically), then each further pass
   // doubles the compared prefix length using the previous pass's ranks.
-  // Crucially, for any pass beyond the first, ties within a rank class are
-  // broken by directly reproducing .NET's Array.Sort(int[], Comparison<int>)
-  // - an UNSTABLE introspective sort (insertion sort / quicksort with
-  // median-of-3 pivoting / heapsort fallback) - via a faithful port below.
-  // Because that sort is not stable, an equivalent but differently-shaped
-  // sort (e.g. a stable radix pass) would silently diverge from the
-  // reference on any input with repeated substrings, which is most real
-  // data; this is why the exact port is required, not just "a" correct sort.
-
-  function _bwtSwap(arr, i, j) {
-    const t = arr[i]; arr[i] = arr[j]; arr[j] = t;
-  }
-
-  function _bwtSwapIfGreater(arr, cmp, i, j) {
-    if (i !== j && cmp(arr[i], arr[j]) > 0) _bwtSwap(arr, i, j);
-  }
-
-  function _bwtInsertionSort(arr, lo, hi, cmp) {
-    for (let i = lo; i < hi; i++) {
-      let j = i;
-      const t = arr[i + 1];
-      while (j >= lo && cmp(t, arr[j]) < 0) {
-        arr[j + 1] = arr[j];
-        j--;
-      }
-      arr[j + 1] = t;
-    }
-  }
-
-  function _bwtDownHeap(arr, i, n, lo, cmp) {
-    const d = arr[lo + i - 1];
-    let child;
-    while (i <= Math.floor(n / 2)) {
-      child = 2 * i;
-      if (child < n && cmp(arr[lo + child - 1], arr[lo + child]) < 0) child++;
-      if (!(cmp(d, arr[lo + child - 1]) < 0)) break;
-      arr[lo + i - 1] = arr[lo + child - 1];
-      i = child;
-    }
-    arr[lo + i - 1] = d;
-  }
-
-  function _bwtHeapSort(arr, lo, hi, cmp) {
-    const n = hi - lo + 1;
-    for (let i = Math.floor(n / 2); i >= 1; i--) _bwtDownHeap(arr, i, n, lo, cmp);
-    for (let i = n; i > 1; i--) {
-      _bwtSwap(arr, lo, lo + i - 1);
-      _bwtDownHeap(arr, 1, i - 1, lo, cmp);
-    }
-  }
-
-  function _bwtPickPivotAndPartition(arr, lo, hi, cmp) {
-    const mid = lo + Math.floor((hi - lo) / 2);
-
-    _bwtSwapIfGreater(arr, cmp, lo, mid);
-    _bwtSwapIfGreater(arr, cmp, lo, hi);
-    _bwtSwapIfGreater(arr, cmp, mid, hi);
-
-    const pivot = arr[mid];
-    _bwtSwap(arr, mid, hi - 1);
-    let left = lo, right = hi - 1;
-
-    while (left < right) {
-      do { left++; } while (cmp(arr[left], pivot) < 0);
-      do { right--; } while (cmp(pivot, arr[right]) < 0);
-
-      if (left >= right) break;
-      _bwtSwap(arr, left, right);
-    }
-
-    _bwtSwap(arr, left, hi - 1);
-    return left;
-  }
-
-  function _bwtIntroSort(arr, lo, hi, depthLimit, cmp) {
-    while (hi > lo) {
-      const partitionSize = hi - lo + 1;
-      if (partitionSize <= 16) {
-        if (partitionSize === 1) return;
-        if (partitionSize === 2) { _bwtSwapIfGreater(arr, cmp, lo, hi); return; }
-        if (partitionSize === 3) {
-          _bwtSwapIfGreater(arr, cmp, lo, hi - 1);
-          _bwtSwapIfGreater(arr, cmp, lo, hi);
-          _bwtSwapIfGreater(arr, cmp, hi - 1, hi);
-          return;
-        }
-        _bwtInsertionSort(arr, lo, hi, cmp);
-        return;
-      }
-
-      if (depthLimit === 0) {
-        _bwtHeapSort(arr, lo, hi, cmp);
-        return;
-      }
-      depthLimit--;
-
-      const p = _bwtPickPivotAndPartition(arr, lo, hi, cmp);
-      _bwtIntroSort(arr, p + 1, hi, depthLimit, cmp);
-      hi = p - 1;
-    }
-  }
-
-  function _bwtFloorLog2(n) {
-    let r = 0, v = n;
-    while (v > 1) { v = Math.floor(v / 2); r++; }
-    return r;
-  }
-
-  // Faithful port of System.Array.Sort(T[], Comparison<T>) - .NET's
-  // introspective sort. Required (not just "a" correct sort) because it is
-  // unstable, and its specific tie-breaking behavior on repeated rotations
-  // is part of what CompressionWorkbench's BWT output byte-for-byte depends
-  // on for any input with repeated substrings.
-  function _bwtIntrospectiveSort(arr, cmp) {
-    const n = arr.length;
-    if (n > 1) _bwtIntroSort(arr, 0, n - 1, 2 * (_bwtFloorLog2(n) + 1), cmp);
-  }
+  // Two rotations that are still equal after the doubling has run its course
+  // are the same string - which only happens when the input is periodic - and
+  // those are ordered by ascending start position. That tie-break is what
+  // makes both the transformed bytes and the primary index a function of the
+  // input alone, and it is the only ordering rule a reader needs to know.
 
   // Sorts the n cyclic rotations of data via prefix-doubling, returning the
-  // rotation start positions in sorted order. Matches CompressionWorkbench's
-  // BurrowsWheelerTransform.BuildRotationSort exactly.
+  // rotation start positions in sorted order.
   function _buildRotationSort(data, length) {
     const sa = new Array(length);
     const rank = new Array(length);
@@ -222,13 +109,17 @@
       if (rank[sa[length - 1]] === length - 1) return sa;
     }
 
-    // Subsequent passes: prefix-doubling with .NET's introspective sort as
-    // the comparator-based tie-breaker.
+    // Subsequent passes: prefix doubling. Order by the rank pair (this
+    // rotation, the rotation g further on) and, when those are equal, by
+    // ascending start position - so the comparison never returns 0 for two
+    // different rotations and the result does not depend on whether the host
+    // sort is stable.
     for (let gap = 2; gap < length; gap *= 2) {
       const g = gap, len = length, r = rank;
-      _bwtIntrospectiveSort(sa, (a, b) => {
+      sa.sort((a, b) => {
         if (r[a] !== r[b]) return r[a] - r[b];
-        return r[(a + g) % len] - r[(b + g) % len];
+        const ra = r[(a + g) % len], rb = r[(b + g) % len];
+        return ra !== rb ? ra - rb : a - b;
       });
 
       tmp[sa[0]] = 0;
@@ -359,10 +250,24 @@
             expected: [26,0,0,0,64,0,0,128,64,0,64,64,0,64,0,128,192,64,0,128,0,0,0,0,0,0,64,64,64,128,64,64,0,0,0,0,64,0,0,64,64,0,0,0,0,0,0,0,64,0,128,64,64,0,192,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,57,64,64,128,64,64,64,57,184,128,128,128]
           },
           {
-            text: "Regression: alternating pattern, length 83 - heavily tied rotations, exercises the unstable-sort tie-break",
+            text: "Regression: alternating pattern, length 83 - heavily tied rotations, exercises the ascending-position tie-break",
             uri: "Regression test - repetitive alternating input",
             input: Array.from({length: 83}, (_, i) => (i % 2 ? 0x62 : 0x61)),
             expected: [41,0,0,0,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97]
+          },
+          {
+            // Period-4 input: the 64 rotations fall into 4 classes of 16
+            // identical strings each, so every comparison inside a class ties
+            // for good. The primary index of 0 is what pins the rule that a
+            // tie is settled by ascending rotation start position.
+            text: "Regression: period-4 input, length 64 - four classes of 16 identical rotations",
+            uri: "Regression test - fully tied rotation classes",
+            input: Array.from({length: 64}, (_, i) => 0x61 + (i % 4)),
+            expected: [0,0,0,0].concat(
+              Array.from({length: 16}, () => 0x64),
+              Array.from({length: 16}, () => 0x61),
+              Array.from({length: 16}, () => 0x62),
+              Array.from({length: 16}, () => 0x63))
           }
         ];
       }
