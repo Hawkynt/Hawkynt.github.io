@@ -18,12 +18,13 @@
  * Elias-gamma's DATA bits (not its continuation bits) are XOR'd with 1. See
  * zx0.js for the full block grammar and bit-packing description.
  *
- * IMPORTANT: the reference building block reuses ZX0's own constants
- * (MinMatchLength=2, MaxOffset=0xFFFFFF) rather than Salvador's own
- * documented format.h values (MIN_MATCH_SIZE=1, MAX_OFFSET=0x7F80) --
+ * IMPORTANT: the reference building block reuses ZX0's own MinMatchLength=2
+ * rather than Salvador's documented format.h MIN_MATCH_SIZE=1 --
  * CompressionWorkbench is authoritative, so this port does the same. Do not
- * "fix" these to Salvador's real-world constants; that would break the
- * byte-for-byte match with the reference.
+ * "fix" it to Salvador's real-world constant; that would break the
+ * byte-for-byte match with the reference. MaxOffset, on the other hand, is
+ * 0x7F80 on both sides: any larger offset would encode an offset-MSB Elias
+ * value of 256, which the decoder reads as end-of-stream.
  *
  * References:
  * - Salvador repository: https://github.com/emmanuel-marty/salvador
@@ -71,7 +72,9 @@
   // shared verbatim with zx0.js's reference building block.
   const INVERT_MODE = true;
   const INITIAL_OFFSET = 1;
-  const MAX_OFFSET = 0xFFFFFF;
+  // Largest offset whose Elias-coded MSB stays below the 256 end-of-stream
+  // sentinel: (32640-1)/128+1 === 255. This is the reference MAX_OFFSET.
+  const MAX_OFFSET = 0x7F80;
   const MIN_MATCH_LENGTH = 2;
   const HASH_BITS = 16;
   const HASH_SIZE = OpCodes.Shl32(1, HASH_BITS);
@@ -263,8 +266,15 @@
         if (pos > literalStart) {
           enc.emitLiterals(data, literalStart, pos - literalStart);
           literalStart = pos;
+          enc.emitRepMatch(repLen);
+        } else {
+          // A rep-match is only decodable directly after a literal block: at the
+          // start of a command the leading 0 bit already means "literal run", so
+          // a rep-match emitted there would be mis-read as a literal count. With
+          // no pending literals the same distance is re-encoded as a new-offset
+          // match, which is legal in every state.
+          enc.emitNewOffsetMatch(lastOffset, repLen);
         }
-        enc.emitRepMatch(repLen);
         for (let j = 1; j < repLen && pos + j + MIN_MATCH_LENGTH <= n; j++) {
           const h = hash(data, pos + j);
           prev[pos + j] = head[h];
@@ -352,6 +362,14 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  // Builds `length` bytes of a repeating pangram, for the large round-trip vector.
+  function repeatText(length) {
+    const unit = OpCodes.AnsiToBytes("the quick brown fox jumps over the lazy dog. ");
+    const out = new Array(length);
+    for (let i = 0; i < length; i++) out[i] = unit[i % unit.length];
+    return out;
+  }
+
   class SalvadorCompression extends CompressionAlgorithm {
     constructor() {
       super();
@@ -393,6 +411,15 @@
           text: "Text sample",
           uri: "https://github.com/emmanuel-marty/salvador",
           input: OpCodes.AnsiToBytes("the quick brown fox jumps over the lazy dog. the quick brown fox."),
+          roundTripOnly: true
+        },
+        {
+          // Past ~64 KB a second match follows the first with no literal block
+          // between them, which is exactly where a rep-match becomes
+          // undecodable.
+          text: "Repetitive text beyond a single maximum-length match (90 KB)",
+          uri: "https://github.com/emmanuel-marty/salvador",
+          input: repeatText(90000),
           roundTripOnly: true
         }
       ];
