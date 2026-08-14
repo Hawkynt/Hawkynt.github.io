@@ -198,24 +198,32 @@
     }
 
     // ---- crypt primitive: XOR keystream into buf[0..len-1], feeding plaintext back into the accumulator ----
-
-    _cryptBuffer(buf, len) {
+    //
+    // The accumulator feedback is what makes this cipher self-synchronizing, and
+    // it folds in the PLAINTEXT byte. Encryption reads that byte straight out of
+    // the buffer; decryption is handed ciphertext, so it must fold in the byte it
+    // has just recovered. Folding in the ciphertext instead desynchronizes the
+    // generator from the second byte pair onwards, which is why decryption
+    // returned the first byte correctly and nothing else.
+    _cryptBuffer(buf, len, decrypting) {
       let i = 0;
       while (i < len) {
         const r = this._advance();
         const ks = OpCodes.AndN(OpCodes.Shr32(r, 16), 0xFFFF);
 
         const b0 = OpCodes.AndN(ks, 0xFF);
-        const p0 = buf[i];
+        const out0 = OpCodes.XorN(buf[i], b0);
+        const p0 = decrypting ? out0 : buf[i];
         this._acc = OpCodes.ToUint32(this._acc + p0);
-        buf[i] = OpCodes.XorN(p0, b0);
+        buf[i] = out0;
         i++;
         if (i >= len) break;
 
         const b1 = OpCodes.AndN(OpCodes.Shr32(ks, 8), 0xFF);
-        const p1 = buf[i];
+        const out1 = OpCodes.XorN(buf[i], b1);
+        const p1 = decrypting ? out1 : buf[i];
         this._acc = OpCodes.ToUint32(this._acc + OpCodes.Shl32(p1, 8));
-        buf[i] = OpCodes.XorN(p1, b1);
+        buf[i] = out1;
         i++;
       }
     }
@@ -231,8 +239,9 @@
         for (let i = 0; i < chunk; i++)
           work[i] = OpCodes.XorN(work[i], this._key[keyOff + i]);
 
-        this._cryptBuffer(work, 128);
-        this._cryptBuffer(work, 128);
+        // Key setup always self-encrypts, whichever direction the instance serves.
+        this._cryptBuffer(work, 128, false);
+        this._cryptBuffer(work, 128, false);
 
         remaining -= chunk;
         keyOff += chunk;
@@ -242,7 +251,7 @@
 
     _process(data) {
       const buf = [...data];
-      this._cryptBuffer(buf, buf.length);
+      this._cryptBuffer(buf, buf.length, this.isInverse);
       return buf;
     }
   }
