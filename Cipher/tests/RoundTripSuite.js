@@ -450,7 +450,6 @@ const ROUND_TRIP_EXEMPT = new Map([
   ['ForkSkinny-128-384', 'open defect: decryption does not invert encryption (TestSuite reports 0/2)'],
   ['Hierocrypt-3', 'open defect: decryption does not invert encryption (TestSuite reports 0/1)'],
   ['SKINNY-128', 'open defect: decryption does not invert encryption (TestSuite reports 0/2)'],
-  ['SPEED', 'open defect: decryption does not invert encryption (TestSuite reports 0/1)'],
   ['LOTUS-AEAD', 'open defect: decryption does not invert encryption (TestSuite reports 0/3)'],
   ['SATURNIN-Short', 'open defect: decryption does not invert encryption (TestSuite reports 0/1)'],
   // Found by this sweep rather than by the vectors, and left recorded rather

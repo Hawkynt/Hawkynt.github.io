@@ -110,9 +110,9 @@
 
   // Nibble permutations used by the Tiny cipher's 4-, 5- and 6-bit paths. Each
   // constant packs a permutation of 0..15 as sixteen nibbles, so the image of v
-  // is nibble v: (PERMn >> (v * 4)) & 15. PERM1I/PERM2I are the exact inverses,
-  // which is what fixes the indexing convention: the shift amount is (v & 15)
-  // scaled by four, NOT v masked with (15 << 2). The latter reaches only shift
+  // is nibble v: SHR(PERMn, v * 4) AND 15. PERM1I/PERM2I are the exact
+  // inverses, which is what fixes the indexing convention: the shift amount is
+  // (v AND 15) scaled by four, NOT v masked with SHL(15, 2), which reaches only
   // amounts 0, 4, 8 and 12, i.e. four of the sixteen nibbles, collapsing the
   // "permutation" into a four-to-one map and destroying the block's contents.
   const PERM1 = 0x324f6a850d19e7cbn;
