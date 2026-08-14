@@ -227,12 +227,19 @@
       // "uppercase and strip everything but A-Z" normalisation silently
       // shortened the message - five binary bytes came back as none.
       //
-      // The running key is the keyword followed by the plaintext letters in
-      // uppercase, and it is grown one letter at a time in both directions:
-      // encryption knows the plaintext outright, decryption recovers it as it
-      // goes. Since the keyword is never empty the key always holds at least
-      // one more letter than has been consumed.
-      let runningKey = initialKey;
+      // The running key is the keyword followed by the plaintext letters, held
+      // as alphabet positions and grown one letter at a time in both
+      // directions: encryption knows the plaintext outright, decryption
+      // recovers it as it goes. Since the keyword is never empty the key
+      // always holds at least one more letter than has been consumed.
+      //
+      // Positions rather than a string, because appending to a string and then
+      // indexing it forces V8 to flatten the rope on every letter, which is
+      // quadratic: a megabyte of text took two and a half minutes that way.
+      const runningKey = new Array(initialKey.length);
+      for (let k = 0; k < initialKey.length; k++)
+        runningKey[k] = this.ALPHABET.indexOf(initialKey[k]);
+
       let letterIndex = 0;
 
       for (let i = 0; i < this.inputBuffer.length; i++) {
@@ -245,7 +252,7 @@
         }
 
         const textIndex = byte - caseBase;
-        const keyIndex = this.ALPHABET.indexOf(runningKey[letterIndex]);
+        const keyIndex = runningKey[letterIndex];
         ++letterIndex;
 
         // Encrypt: (text + key) mod 26; decrypt: (cipher - key + 26) mod 26
@@ -255,7 +262,7 @@
 
         // The key is always extended with the PLAINTEXT letter, which is the
         // input when encrypting and the result when decrypting.
-        runningKey += this.ALPHABET[this.isInverse ? resultIndex : textIndex];
+        runningKey.push(this.isInverse ? resultIndex : textIndex);
 
         output[i] = caseBase + resultIndex;
       }
