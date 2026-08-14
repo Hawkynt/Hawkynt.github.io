@@ -878,28 +878,42 @@ class SaturninShortInstance extends IAeadInstance {
     const decrypted = new Array(32);
     this.cipher.decryptBlock(decrypted, this.inputBuffer, SATURNIN_DOMAIN_10_6);
 
-    // Verify nonce (constant-time)
-    let check1 = 0;
+    // Saturnin-Short authenticates implicitly rather than with a separate tag:
+    // the specification (Saturnin submission, "Saturnin-Short") encrypts the
+    // single block N || M || 10* and decryption is one inverse block call
+    // followed by two checks - the recovered nonce must equal the one supplied,
+    // and the second half must be a message followed by 0x80 and then zeroes.
+    // Anything else is a forgery and must be refused.
+    //
+    // Both scans run to completion whatever they find, so the work done does
+    // not reveal where a difference lies. `failed` accumulates every reason to
+    // reject and is non-zero exactly when the block is not well formed.
+    let failed = 0;
+
+    // The first half must reproduce the nonce.
     for (let i = 0; i < 16; i++) {
-      check1 |= OpCodes.XorN(this._nonce[i], decrypted[i]);
+      failed = OpCodes.OrN(failed, OpCodes.XorN(this._nonce[i], decrypted[i]));
     }
 
-    // Find padding position and validate (constant-time)
-    let check2 = 0xFF;
+    // The second half must be M || 0x80 || 0*. Scanning downwards locates the
+    // last 0x80, which is the padding marker: `searching` stays 0xFF until the
+    // marker is met, and while it does every byte seen has to be zero.
+    let searching = 0xFF;
     let len = 0;
     for (let index = 15; index >= 0; index--) {
-      const temp = decrypted[16 + index];
-      const temp2 = OpCodes.AndN(check2, (-(1 - (OpCodes.Shr32(OpCodes.XorN(temp, 0x80) + 0xFF, 8)))));
-      len |= OpCodes.AndN(temp2, index);
-      check2 = OpCodes.ToUint32(OpCodes.AndN(check2, OpCodes.XorN(temp2, 0xFFFFFFFF)));
-      check1 |= OpCodes.AndN(check2, OpCodes.Shr32(temp + 0xFF, 8));
+      const octet = decrypted[16 + index];
+      // notMarker is 1 for any byte other than 0x80 and 0 for 0x80 itself, so
+      // notMarker - 1 is an all-ones mask exactly at the marker.
+      const notMarker = OpCodes.Shr32(OpCodes.XorN(octet, 0x80) + 0xFF, 8);
+      const isMarker = OpCodes.AndN(searching, notMarker - 1);
+      len = OpCodes.OrN(len, OpCodes.AndN(isMarker, index));
+      searching = OpCodes.AndN(searching, OpCodes.XorN(isMarker, 0xFF));
+      failed = OpCodes.OrN(failed, OpCodes.AndN(searching, OpCodes.Shr32(octet + 0xFF, 8)));
     }
-    check1 |= check2;
+    // Still searching once the scan is done means there was no 0x80 at all.
+    failed = OpCodes.OrN(failed, searching);
 
-    // check1 is 0 if valid, non-zero if invalid
-    const result = OpCodes.Shr32(check1 - 1, 8); // -1 if valid, 0 if invalid
-
-    if (OpCodes.ToUint32(OpCodes.XorN(result, 0xFFFFFFFF)) !== 0) {
+    if (failed !== 0) {
       throw new Error("Authentication failed: invalid nonce or padding");
     }
 
