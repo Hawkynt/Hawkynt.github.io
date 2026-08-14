@@ -24,7 +24,7 @@
  *   I(a,b,c,d, k0..k3) = (a^k0, b^k1, c^k2, d^k3)
  *   R(a,b,c,d, mask)   = (a^s, b^t, c, d) where (s,t) = F(c,d,mask)
  *   F(a,b,mask)        = L(M(S(a)), M(S(b)), mask)
- *   L(a,b,mask)        = ((a AND mask) ^ b, (b AND NOT mask) ^ a)
+ *   L(a,b,mask)        = (XOR(a AND mask, b), XOR(b AND NOT mask, a))
  *   S splits a word MSB-first into 6/5/5/5/5/6-bit fields and runs the outer
  *     fields through S6 and the inner four through S5.
  *   M is a 32x32 GF(2) matrix multiply: bit i of the input (bit 0 being the
