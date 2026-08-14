@@ -528,6 +528,28 @@
       ];
 
       // Test vectors from reference implementation
+      //
+      // The left output was previously recorded as 32411c5ca70baf92..., taken
+      // from the "Left" case of the cited reference test file. That file also
+      // carries a "Both Left" case holding 1078c53597fc5e4c9d91a8eae8f5a876 for
+      // the same key and message, and the two disagree. Only one can be right:
+      // C0 is a function of the tweakey and the message alone, so it cannot
+      // depend on whether the caller also asked for C1.
+      //
+      // The combined value is the correct one. The reference encrypt routine
+      // advances the tweakey schedule only as a side effect of computing the
+      // right branch, so when it is called without a right output it applies the
+      // branching constant and runs rounds r_init+r_1 .. r_init+r_1+r_0-1 with
+      // the tweakey still parked at r_init, leaving round constants and tweakey
+      // out of step. Its own "Invert Left" decryption cases round-trip the
+      // combined value, not the left-only one.
+      //
+      // Independently pinned by NIST LWC vector #34 for PAEF-ForkSkinny-128-256
+      // (1-byte plaintext, empty AAD), whose ciphertext block is exactly the C0
+      // of the padded message block and matches the combined value; and by the
+      // official ForkAE KATs, where the advanced-tweakey reading passes all 40
+      // while the non-advanced reading fails precisely the vectors that exercise
+      // the left branch.
       const OC = typeof OpCodes !== 'undefined' ? OpCodes : global.OpCodes;
       this.tests = [
         {
@@ -535,7 +557,7 @@
           uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/unit/test-forkskinny.c",
           input: OC.Hex8ToBytes("00112233445566778899aabbccddeeff"),
           key: OC.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
-          expected: OC.Hex8ToBytes("32411c5ca70baf9249514b3893254228"),
+          expected: OC.Hex8ToBytes("1078c53597fc5e4c9d91a8eae8f5a876"),
           forkOutput: "left"
         },
         {
@@ -703,6 +725,15 @@
           state.S[1] = F_S[1];
           state.S[2] = F_S[2];
           state.S[3] = F_S[3];
+        } else {
+          // Left output requested on its own. C0 is a function of the tweakey and
+          // the message alone, so it must not depend on whether the caller also
+          // asked for C1: the ForkAE specification numbers the left branch rounds
+          // r_init+r_1 .. r_init+r_1+r_0-1, i.e. after the right branch. Skipping
+          // the right branch therefore still has to advance the tweakey schedule
+          // across it, otherwise this path yields a different C0 than the
+          // combined path does.
+          forkskinny_128_256_forward_tk(state, FORKSKINNY_128_256_ROUNDS_AFTER);
         }
 
         // Generate left output with branching constant
@@ -743,22 +774,49 @@
       state.S[2] = OpCodes.Pack32LE(input[8], input[9], input[10], input[11]);
       state.S[3] = OpCodes.Pack32LE(input[12], input[13], input[14], input[15]);
 
-      // Fast-forward tweakey to end of schedule
-      const totalRounds = FORKSKINNY_128_256_ROUNDS_BEFORE + FORKSKINNY_128_256_ROUNDS_AFTER * 2;
-      forkskinny_128_256_forward_tk(state, totalRounds);
+      const before = FORKSKINNY_128_256_ROUNDS_BEFORE;
+      const after = FORKSKINNY_128_256_ROUNDS_AFTER;
 
-      // Decrypt left branch in reverse
-      forkskinny_128_256_inv_rounds(state, totalRounds,
-                                    FORKSKINNY_128_256_ROUNDS_BEFORE + FORKSKINNY_128_256_ROUNDS_AFTER);
+      // The two fork outputs are reached by different round ranges, so inversion
+      // has to start from the branch that actually produced this block.
+      if (this._forkOutput === "right") {
+        // C1 is rounds 0 .. before+after applied straight through, with no
+        // branching constant, so one contiguous reverse run recovers M.
+        forkskinny_128_256_forward_tk(state, before + after);
+        forkskinny_128_256_inv_rounds(state, before + after, 0);
+        return this.unpackState(state.S);
+      }
+
+      // C0 path: undo the left branch, strip the branching constant, then roll
+      // the tweakey schedule back across the right branch. Without that rollback
+      // the tweakey sits at round before+after while the initial rounds need it
+      // at round before, and the common rounds are unwound with the wrong keys.
+      const totalRounds = before + after * 2;
+      forkskinny_128_256_forward_tk(state, totalRounds);
+      forkskinny_128_256_inv_rounds(state, totalRounds, before + after);
       state.S[0] ^= BRANCH_CONSTANT[0];
       state.S[1] ^= BRANCH_CONSTANT[1];
       state.S[2] ^= BRANCH_CONSTANT[2];
       state.S[3] ^= BRANCH_CONSTANT[3];
+      forkskinny_128_256_reverse_tk(state, after);
+
+      // "both" reproduces the sibling output C1 from the recovered fork point,
+      // which is what the ForkAE modes need in order to check the tag.
+      let outputRight = null;
+      if (this._forkOutput === "both") {
+        const fstate = new ForkSkinny128_256_State();
+        fstate.S.set(state.S);
+        fstate.TK1.set(state.TK1);
+        fstate.TK2.set(state.TK2);
+        forkskinny_128_256_rounds(fstate, before, before + after);
+        outputRight = this.unpackState(fstate.S);
+      }
 
       // Decrypt common rounds
-      forkskinny_128_256_inv_rounds(state, FORKSKINNY_128_256_ROUNDS_BEFORE, 0);
+      forkskinny_128_256_inv_rounds(state, before, 0);
 
-      return this.unpackState(state.S);
+      const outputLeft = this.unpackState(state.S);
+      return outputRight ? outputLeft.concat(outputRight) : outputLeft;
     }
 
     unpackState(S) {
@@ -812,7 +870,11 @@
           uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/unit/test-forkskinny.c",
           input: OC.Hex8ToBytes("00112233445566778899aabbccddeeff"),
           key: OC.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f"),
-          expected: OC.Hex8ToBytes("29260866a85fa181f7c1392fd709296c"),
+          // Corrected alongside the 128-256 left output above, for the same
+          // reason and from the same source: the reference test file's "Both
+          // Left" case, rather than its "Left" case, which was produced without
+          // advancing the tweakey across the skipped right branch.
+          expected: OC.Hex8ToBytes("a842dcd53062730d8e293cd923ef9aa9"),
           forkOutput: "left"
         },
         {
@@ -983,6 +1045,11 @@
           state.S[1] = F_S[1];
           state.S[2] = F_S[2];
           state.S[3] = F_S[3];
+        } else {
+          // See ForkSkinny-128-256 above: the left branch is numbered after the
+          // right branch, so a left-only request still has to advance the
+          // tweakey schedule across the skipped right branch.
+          forkskinny_128_384_forward_tk(state, FORKSKINNY_128_384_ROUNDS_AFTER);
         }
 
         state.S[0] ^= BRANCH_CONSTANT[0];
@@ -1024,19 +1091,41 @@
       state.S[2] = OpCodes.Pack32LE(input[8], input[9], input[10], input[11]);
       state.S[3] = OpCodes.Pack32LE(input[12], input[13], input[14], input[15]);
 
-      const totalRounds = FORKSKINNY_128_384_ROUNDS_BEFORE + FORKSKINNY_128_384_ROUNDS_AFTER * 2;
-      forkskinny_128_384_forward_tk(state, totalRounds);
+      const before = FORKSKINNY_128_384_ROUNDS_BEFORE;
+      const after = FORKSKINNY_128_384_ROUNDS_AFTER;
 
-      forkskinny_128_384_inv_rounds(state, totalRounds,
-                                    FORKSKINNY_128_384_ROUNDS_BEFORE + FORKSKINNY_128_384_ROUNDS_AFTER);
+      // See ForkSkinny-128-256 above for the reasoning behind both the branch
+      // selection and the tweakey rollback.
+      if (this._forkOutput === "right") {
+        forkskinny_128_384_forward_tk(state, before + after);
+        forkskinny_128_384_inv_rounds(state, before + after, 0);
+        return this.unpackState(state.S);
+      }
+
+      const totalRounds = before + after * 2;
+      forkskinny_128_384_forward_tk(state, totalRounds);
+      forkskinny_128_384_inv_rounds(state, totalRounds, before + after);
       state.S[0] ^= BRANCH_CONSTANT[0];
       state.S[1] ^= BRANCH_CONSTANT[1];
       state.S[2] ^= BRANCH_CONSTANT[2];
       state.S[3] ^= BRANCH_CONSTANT[3];
+      forkskinny_128_384_reverse_tk(state, after);
 
-      forkskinny_128_384_inv_rounds(state, FORKSKINNY_128_384_ROUNDS_BEFORE, 0);
+      let outputRight = null;
+      if (this._forkOutput === "both") {
+        const fstate = new ForkSkinny128_384_State();
+        fstate.S.set(state.S);
+        fstate.TK1.set(state.TK1);
+        fstate.TK2.set(state.TK2);
+        fstate.TK3.set(state.TK3);
+        forkskinny_128_384_rounds(fstate, before, before + after);
+        outputRight = this.unpackState(fstate.S);
+      }
 
-      return this.unpackState(state.S);
+      forkskinny_128_384_inv_rounds(state, before, 0);
+
+      const outputLeft = this.unpackState(state.S);
+      return outputRight ? outputLeft.concat(outputRight) : outputLeft;
     }
 
     unpackState(S) {
