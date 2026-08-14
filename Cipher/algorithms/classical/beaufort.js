@@ -46,6 +46,19 @@
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
+  const UPPER_A = 65, UPPER_Z = 90, LOWER_A = 97, LOWER_Z = 122;
+
+  /**
+   * Alphabet origin of a byte: 65 for A-Z, 97 for a-z, -1 for anything else.
+   * @param {number} byte - Input byte
+   * @returns {number} Character code of the letter's own 'A', or -1
+   */
+  function LetterCaseBase(byte) {
+    if (byte >= UPPER_A && byte <= UPPER_Z) return UPPER_A;
+    if (byte >= LOWER_A && byte <= LOWER_Z) return LOWER_A;
+    return -1;
+  }
+
   // ===== ALGORITHM IMPLEMENTATION =====
 
   class BeaufortCipher extends CryptoAlgorithm {
@@ -54,7 +67,7 @@
 
       // Required metadata
       this.name = "Beaufort Cipher";
-      this.description = "Reciprocal polyalphabetic substitution cipher invented by Sir Francis Beaufort. Uses formula C = (K - P) mod 26 where encryption and decryption are identical operations. Variant of Vigenère cipher with reciprocal property.";
+      this.description = "Reciprocal polyalphabetic substitution cipher invented by Sir Francis Beaufort. Uses formula C = (K - P) mod 26 where encryption and decryption are identical operations. Variant of Vigenère cipher with reciprocal property. Input domain: every byte is accepted. A-Z and a-z are enciphered in place with their case preserved and advance the keyword; every other byte - digit, punctuation, whitespace, control or high-bit - is carried through unchanged and leaves the keyword position alone, which is the usual pen-and-paper convention and makes the round trip exact for arbitrary input. Nothing is ever discarded.";
       this.inventor = "Sir Francis Beaufort";
       this.year = 1857;
       this.category = CategoryType.CLASSICAL;
@@ -204,27 +217,30 @@
         return [];
       }
 
-      const output = [];
+      const output = new Array(this.inputBuffer.length);
       const processedKey = this.key;
-      const inputStr = String.fromCharCode.apply(null, this.inputBuffer);
 
-      // Normalize input to uppercase letters only
-      const normalizedInput = inputStr.toUpperCase().replace(/[^A-Z]/g, '');
+      // Every byte is accounted for. A letter is enciphered in its own case
+      // and consumes one keyword position; anything else is copied through
+      // untouched and does not move the keyword on. The earlier "uppercase
+      // and strip everything but A-Z" normalisation silently shortened the
+      // message - five binary bytes came back as none.
+      let keyPosition = 0;
+      for (let i = 0; i < this.inputBuffer.length; i++) {
+        const byte = this.inputBuffer[i];
+        const caseBase = LetterCaseBase(byte);
 
-      // Process each character (Beaufort is reciprocal, so encryption=decryption)
-      for (let i = 0; i < normalizedInput.length; i++) {
-        const textChar = normalizedInput[i];
-        const keyChar = processedKey[i % processedKey.length];
-
-        const textIndex = this.ALPHABET.indexOf(textChar);
-        const keyIndex = this.ALPHABET.indexOf(keyChar);
-
-        if (textIndex !== -1 && keyIndex !== -1) {
-          // Beaufort formula: C = (K - P + 26) mod 26
-          const resultIndex = (keyIndex - textIndex + 26) % 26;
-          const resultChar = this.ALPHABET[resultIndex];
-          output.push(resultChar.charCodeAt(0));
+        if (caseBase < 0) {
+          output[i] = byte;
+          continue;
         }
+
+        const textIndex = byte - caseBase;
+        const keyIndex = this.ALPHABET.indexOf(processedKey[keyPosition % processedKey.length]);
+        ++keyPosition;
+
+        // Beaufort formula: C = (K - P + 26) mod 26, and it is its own inverse
+        output[i] = caseBase + ((keyIndex - textIndex + 26) % 26);
       }
 
       // Clear input buffer for next operation
