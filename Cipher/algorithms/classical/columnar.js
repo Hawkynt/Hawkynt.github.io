@@ -243,6 +243,9 @@
        * @returns {uint8[]} Transposed bytes
        */
       EncryptBlock(blockIndex, plaintext) {
+        // With no keyword there are no columns to read, so the message stands
+        if (!this._cleanKey || this._cleanKey.length === 0) return plaintext;
+
         const columns = this._cleanKey.length;
         const rows = Math.ceil(plaintext.length / columns);
         const result = new Array(rows * columns);
@@ -269,6 +272,9 @@
        * @returns {uint8[]} Original bytes, less any trailing X
        */
       DecryptBlock(blockIndex, ciphertext) {
+        // With no keyword there are no columns to refill, so the message stands
+        if (!this._cleanKey || this._cleanKey.length === 0) return ciphertext;
+
         const columns = this._cleanKey.length;
         const rows = Math.ceil(ciphertext.length / columns);
         const baseHeight = Math.floor(ciphertext.length / columns);
@@ -320,9 +326,6 @@
         // message encrypted to nothing and decrypted back to nothing with no
         // error raised.
         RequireLetters(message);
-
-        // With no keyword there are no columns to read, so the message stands
-        if (!this._cleanKey || this._cleanKey.length === 0) return message;
 
         return this.isInverse
           ? this.DecryptBlock(0, message)
