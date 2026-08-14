@@ -47,6 +47,17 @@
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
+  const UPPER_A = 65, UPPER_Z = 90;
+
+  /**
+   * Printable stand-in for a byte, for use in an error message.
+   * @param {number} byte - Offending byte
+   * @returns {string} The character itself when it is printable ASCII, else '?'
+   */
+  function DescribeByte(byte) {
+    return byte >= 0x20 && byte <= 0x7e ? String.fromCharCode(byte) : '?';
+  }
+
   // ===== ALGORITHM IMPLEMENTATION =====
 
   class SolitaireCipher extends CryptoAlgorithm {
@@ -55,7 +66,7 @@
 
       // Required metadata
       this.name = "Solitaire Cipher";
-      this.description = "Bruce Schneier's card-based stream cipher designed for manual use without computer assistance from Neal Stephenson's Cryptonomicon.";
+      this.description = "Bruce Schneier's card-based stream cipher designed for manual use without computer assistance from Neal Stephenson's Cryptonomicon. Input domain: uppercase A-Z only. The deck yields a keystream value of 1 to 26 which is added to a letter of the alphabet modulo 26; the pencil-and-paper procedure has the operator strip punctuation and case from the message before starting, and there is no card value that could carry a digit, a space or a high-bit byte. Anything outside A-Z is therefore refused by name and position rather than dropped, and A-Z round-trips exactly.";
       this.category = CategoryType.CLASSICAL;
       this.subCategory = "Stream Cipher";
       this.securityStatus = SecurityStatus.EDUCATIONAL;
@@ -63,6 +74,12 @@
       this.inventor = "Bruce Schneier";
       this.year = 1999;
       this.country = CountryCode.US;
+
+      // The keystream is a card value of 1 to 26 added to a letter modulo 26.
+      // Nothing outside A-Z has a place in that arithmetic, so it is rejected
+      // instead. Declared here so the round-trip suite scores that rejection
+      // as a domain limit, not a defect.
+      this.restrictedInputDomain = true;
 
       // Documentation
       this.documentation = [
@@ -165,15 +182,9 @@
     Feed(data) {
       if (!data || data.length === 0) return;
 
-      // Convert bytes to string for classical cipher
-      let text = '';
-      if (typeof data === 'string') {
-        text = data;
-      } else {
-        text = String.fromCharCode(...data);
-      }
-
-      this.inputBuffer.push(text);
+      // Buffered as bytes: converting to a string here was what let the A-Z
+      // filter downstream throw most of the message away.
+      for (let i = 0; i < data.length; i++) this.inputBuffer.push(data[i]);
     }
 
     /**
@@ -185,15 +196,34 @@
     Result() {
       if (this.inputBuffer.length === 0) return [];
 
-      const text = this.inputBuffer.join('');
+      const message = this.inputBuffer;
       this.inputBuffer = [];
 
-      const result = this.isInverse ? 
-        this.decryptText(text) : 
-        this.encryptText(text);
+      const output = new Array(message.length);
 
-      // Convert string result to bytes
-      return Array.from(result).map(c => c.charCodeAt(0));
+      // One card value per letter. Anything the deck cannot carry is refused
+      // by name and position; the previous filter dropped it instead, so a
+      // five-byte binary message encrypted to nothing and decrypted back to
+      // nothing with no error raised.
+      for (let i = 0; i < message.length; i++) {
+        const byte = message[i];
+
+        if (byte < UPPER_A || byte > UPPER_Z)
+          throw new Error(`SolitaireInstance.Result: byte 0x${byte.toString(16).padStart(2, '0')}`
+            + ` ('${DescribeByte(byte)}') at position ${i} is outside the A-Z alphabet the deck encodes`);
+
+        const keyValue = this.stepDeck();
+        const letter = byte - UPPER_A;
+
+        // Encryption adds the card value, decryption takes it away again
+        const result = this.isInverse
+          ? (letter - keyValue + 1 + 26) % 26
+          : (letter + keyValue - 1) % 26;
+
+        output[i] = UPPER_A + result;
+      }
+
+      return output;
     }
 
     initializeDeck() {
@@ -230,34 +260,6 @@
 
       // Simplified for demonstration
       return this.deck[0] % 26 + 1;
-    }
-
-    encryptText(plaintext) {
-      const text = plaintext.toUpperCase().replace(/[^A-Z]/g, '');
-      let result = '';
-
-      for (let i = 0; i < text.length; i++) {
-        const keyValue = this.stepDeck();
-        const plainChar = text.charCodeAt(i) - 65; // A=0, B=1, etc.
-        const cipherChar = (plainChar + keyValue - 1) % 26;
-        result += String.fromCharCode(cipherChar + 65);
-      }
-
-      return result;
-    }
-
-    decryptText(ciphertext) {
-      const text = ciphertext.toUpperCase().replace(/[^A-Z]/g, '');
-      let result = '';
-
-      for (let i = 0; i < text.length; i++) {
-        const keyValue = this.stepDeck();
-        const cipherChar = text.charCodeAt(i) - 65; // A=0, B=1, etc.
-        const plainChar = (cipherChar - keyValue + 1 + 26) % 26;
-        result += String.fromCharCode(plainChar + 65);
-      }
-
-      return result;
     }
   }
 
