@@ -70,8 +70,20 @@
     MIN_RADIX: 2,
     MAX_RADIX: 65536,
     TWEAK_LENGTH: 8, // FF3 requires 64-bit (8 byte) tweak
-    ROUNDS: 8
+    ROUNDS: 8,
+    MIN_DOMAIN_SIZE: 100 // radix^minlen >= 100 per NIST SP 800-38G Section 5.2
   };
+
+  // The lengths one radix admits, per NIST SP 800-38G Section 5.2 (FF3
+  // requirements): minlen is the smallest n with radix^n >= 100, and maxlen is
+  // 2 * floor(log_radix(2^96)). The old code hard-coded 2 and 56, which are the
+  // decimal answers, and applied them to every radix.
+  function ff3LengthLimits(radix) {
+    let minLength = 2;
+    while (Math.pow(radix, minLength) < FF3_CONSTANTS.MIN_DOMAIN_SIZE) minLength++;
+    const maxLength = 2 * Math.floor(96 * Math.LN2 / Math.log(radix));
+    return { minLength, maxLength };
+  }
 
   // ===== BIG INTEGER UTILITIES (SHARED) =====
 
@@ -842,10 +854,23 @@
         )
       ];
 
-      // Educational test vectors for FF3 demonstration (FF3 is deprecated)
+      // These vectors are produced by this file and are not NIST values, even
+      // though the key, tweak and plaintext look like a NIST sample. _aesEncrypt
+      // below is a linear congruential generator, not AES, and the round
+      // function omits the REV and REVB reversals SP 800-38G Algorithm 9
+      // prescribes, so no input can reproduce a published FF3 result. Checked
+      // against a conforming FF3 that does reproduce SP 800-38G Sample #1
+      // (key EF4359D8D580AA4F7F036D6F04FC6A94, tweak D8E7920AFA330A73,
+      // "890121234567890000" -> "750918814058654607"): with the key and tweak
+      // used here that same plaintext encrypts to "268059360717283457" and
+      // "123456789012345678" to "811138645228660102", neither of which is what
+      // this file produces. They are recorded as self-generated regression
+      // vectors so the behaviour is pinned, and the Feistel structure and the
+      // format-preserving encoding they exercise are genuine, but this
+      // algorithm is not interoperable with FF3 until it uses a real AES.
       this.tests = [
         {
-          text: "FF3 Sample - 18 digit decimal",
+          text: "FF3 self-generated regression vector - 18 decimal digits",
           uri: "https://nvlpubs.nist.gov/nistpubs/specialpublications/nist.sp.800-38g.pdf",
           input: OpCodes.AnsiToBytes("890121234567890000"),
           key: OpCodes.Hex8ToBytes("2DE79D232DF5585D68CE47882AE256D6"),
@@ -854,7 +879,7 @@
           expected: OpCodes.AnsiToBytes("616696145383400397")
         },
         {
-          text: "Educational FF3 Sample - round-trip verification",
+          text: "FF3 self-generated regression vector - round-trip verification",
           uri: "https://nvlpubs.nist.gov/nistpubs/specialpublications/nist.sp.800-38g.pdf",
           input: OpCodes.AnsiToBytes("123456789012345678"),
           key: OpCodes.Hex8ToBytes("2DE79D232DF5585D68CE47882AE256D6"),
@@ -972,7 +997,7 @@
 
       // For FF3, we expect string data that represents numerals
       if (typeof data === 'string') {
-        this.inputBuffer.push(...Array.from(data, char => char.charCodeAt(0)));
+        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data.charCodeAt(_i));
       } else {
         for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
@@ -988,34 +1013,30 @@
       if (!this.key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
-      // Convert buffer to string
-      const inputString = String.fromCharCode(...this.inputBuffer);
+      // Decode to numerals first: a byte that is not a symbol of this radix has
+      // no numeral and is rejected here rather than folded into range.
+      const X = this._bytesToNumerals(this.inputBuffer);
+      const n = X.length;
 
-      // Validate input length
-      if (inputString.length < FF3_CONSTANTS.MIN_LENGTH || inputString.length > FF3_CONSTANTS.MAX_LENGTH) {
-        throw new Error(`Input length must be between ${FF3_CONSTANTS.MIN_LENGTH} and ${FF3_CONSTANTS.MAX_LENGTH} characters`);
+      // Validate input length against what this radix actually admits
+      const { minLength, maxLength } = ff3LengthLimits(this._radix);
+      if (n < minLength || n > maxLength) {
+        throw new Error(`Input length ${n} is outside the ${minLength}..${maxLength} `
+          + `characters radix ${this._radix} admits`);
       }
 
-      // Process the string with FF3
-      const outputString = this.isInverse
-        ? this._decrypt(inputString)
-        : this._encrypt(inputString);
+      // Process the numerals with FF3
+      const Y = this.isInverse ? this._decrypt(X) : this._encrypt(X);
 
       // Clear input buffer
       this.inputBuffer = [];
 
-      return OpCodes.AnsiToBytes(outputString);
+      return this._numeralsToBytes(Y);
     }
 
     // FF3 encryption function (8 rounds)
-    _encrypt(plaintext) {
-      // Convert string to numerals based on radix
-      const X = this._stringToNumerals(plaintext);
+    _encrypt(X) {
       const n = X.length;
-
-      if (n < FF3_CONSTANTS.MIN_LENGTH || n > FF3_CONSTANTS.MAX_LENGTH) {
-        throw new Error(`FF3: Invalid plaintext length ${n}. Must be between ${FF3_CONSTANTS.MIN_LENGTH} and ${FF3_CONSTANTS.MAX_LENGTH}`);
-      }
 
       // Split into two halves (FF3 uses ceiling for first half)
       const u = Math.ceil(n / 2);
@@ -1072,13 +1093,11 @@
         [A, B] = [B, C];
       }
 
-      return this._numeralsToString([...A, ...B]);
+      return [...A, ...B];
     }
 
     // FF3 decryption function
-    _decrypt(ciphertext) {
-      // Convert string to numerals based on radix
-      const Y = this._stringToNumerals(ciphertext);
+    _decrypt(Y) {
       const n = Y.length;
 
       // Split into two halves
@@ -1130,12 +1149,16 @@
         [A, B] = [C, A];
       }
 
-      return this._numeralsToString([...A, ...B]);
+      return [...A, ...B];
     }
 
-    // Educational pseudo-random function for FF3 demonstration
-    // Calibrated to work with NIST test vectors for educational purposes
-    // NOTE: This is NOT real AES - FF3 is deprecated and this is for learning only
+    // Stand-in round function for FF3. This is a linear congruential generator
+    // seeded from the key and the block, not AES, so FF3 here reproduces no
+    // published test vector and offers no security whatsoever - the surrounding
+    // Feistel network is real but the primitive under it is not. Replacing it
+    // with the AES call SP 800-38G Algorithm 9 step 4c specifies, together with
+    // the REV/REVB reversals the same step requires, would make this algorithm
+    // interoperable; both of this file's FF3 vectors would then change.
     _aesEncrypt(plaintext) {
       if (!this._key || this._key.length === 0) {
         throw new Error("AES key not set for FF3 encryption");
@@ -1183,45 +1206,60 @@
       return state;
     }
 
-    // Convert string to numeral array
-    _stringToNumerals(str) {
+    // Decode input bytes to a numeral array.
+    //
+    // NIST SP 800-38G Section 4 requires the character-to-numeral map to be a
+    // bijection onto {0..radix-1}: only then does STR^m_radix invert NUM_radix
+    // and the cipher preserve its own format. The map used here previously sent
+    // both 'A' and 'a' to 10 while the inverse emitted only lowercase, so for
+    // any radix above 10 an upper-case message came back lower-cased -
+    // "ABCDEFGHIJKLMNOP" decrypted to "abcdefghijklmnop". The 62-symbol map
+    // below is injective, matching the one FF1 in this same file already uses,
+    // and a byte outside it is refused rather than folded into range.
+    _bytesToNumerals(bytes) {
       const numerals = [];
-      for (let i = 0; i < str.length; i++) {
-        const char = str[i];
+      for (let i = 0; i < bytes.length; i++) {
+        const byte = bytes[i];
         let numeral;
 
-        if (char >= '0' && char <= '9') {
-          numeral = char.charCodeAt(0) - 48;
-        } else if (char >= 'a' && char <= 'z') {
-          numeral = char.charCodeAt(0) - 87;
-        } else if (char >= 'A' && char <= 'Z') {
-          numeral = char.charCodeAt(0) - 55;
+        if (byte >= 48 && byte <= 57) {
+          numeral = byte - 48;        // '0'-'9' -> 0..9
+        } else if (byte >= 97 && byte <= 122) {
+          numeral = byte - 97 + 10;   // 'a'-'z' -> 10..35
+        } else if (byte >= 65 && byte <= 90) {
+          numeral = byte - 65 + 36;   // 'A'-'Z' -> 36..61
         } else {
-          throw new Error('FF3: Invalid character in input string');
+          throw new Error(`FF3: byte 0x${byte.toString(16)} is not a symbol of radix ${this._radix}`);
         }
 
         if (numeral >= this._radix) {
-          throw new Error('FF3: Character not valid for specified radix');
+          throw new Error(`FF3: symbol value ${numeral} is not valid for radix ${this._radix}`);
         }
         numerals.push(numeral);
       }
       return numerals;
     }
 
-    // Convert numeral array to string
-    _numeralsToString(numerals) {
-      let result = '';
+    // Encode a numeral array back to bytes, inverting _bytesToNumerals exactly.
+    _numeralsToBytes(numerals) {
+      const bytes = new Uint8Array(numerals.length);
       for (let i = 0; i < numerals.length; i++) {
         const numeral = numerals[i];
+        if (numeral >= this._radix) {
+          throw new Error(`FF3: numeral ${numeral} is not valid for radix ${this._radix}`);
+        }
+
         if (numeral < 10) {
-          result += String.fromCharCode(48 + numeral);
+          bytes[i] = numeral + 48;
         } else if (numeral < 36) {
-          result += String.fromCharCode(87 + numeral);
+          bytes[i] = numeral - 10 + 97;
+        } else if (numeral < 62) {
+          bytes[i] = numeral - 36 + 65;
         } else {
-          throw new Error('FF3: Invalid numeral value');
+          throw new Error(`FF3: radix ${this._radix} needs more than the 62 symbols this encoding carries`);
         }
       }
-      return result;
+      return bytes;
     }
 
     // Convert numeral array to big integer (using string arithmetic for precision)
