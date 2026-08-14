@@ -46,6 +46,19 @@
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
+  const UPPER_A = 65, UPPER_Z = 90, LOWER_A = 97, LOWER_Z = 122;
+
+  /**
+   * Alphabet origin of a byte: 65 for A-Z, 97 for a-z, -1 for anything else.
+   * @param {number} byte - Input byte
+   * @returns {number} Character code of the letter's own 'A', or -1
+   */
+  function LetterCaseBase(byte) {
+    if (byte >= UPPER_A && byte <= UPPER_Z) return UPPER_A;
+    if (byte >= LOWER_A && byte <= LOWER_Z) return LOWER_A;
+    return -1;
+  }
+
   // ===== ALGORITHM IMPLEMENTATION =====
 
   class AffineCipher extends CryptoAlgorithm {
@@ -54,7 +67,7 @@
 
       // Required metadata
       this.name = "Affine Cipher";
-      this.description = "Classical mathematical cipher using linear transformation f(x) = (ax + b) mod 26. Requires coefficient 'a' to be coprime with 26 for reversibility. One of the oldest mathematical ciphers based on modular arithmetic.";
+      this.description = "Classical mathematical cipher using linear transformation f(x) = (ax + b) mod 26. Requires coefficient 'a' to be coprime with 26 for reversibility. One of the oldest mathematical ciphers based on modular arithmetic. Input domain: every byte is accepted. A-Z and a-z are enciphered in place with their case preserved; every other byte - digit, punctuation, whitespace, control or high-bit - is carried through unchanged, which is the usual pen-and-paper convention and makes the round trip exact for arbitrary input. Nothing is ever discarded.";
       this.inventor = "Unknown (Ancient)";
       this.year = 1929;
       this.category = CategoryType.CLASSICAL;
@@ -231,28 +244,28 @@
         return [];
       }
 
-      const output = [];
-      const inputStr = String.fromCharCode.apply(null, this.inputBuffer);
+      const output = new Array(this.inputBuffer.length);
+      const aInverse = this.isInverse ? this.modInverse(this.keyA, 26) : 0;
 
-      // Normalize input to uppercase letters only
-      const normalizedInput = inputStr.toUpperCase().replace(/[^A-Z]/g, '');
+      // Every byte is accounted for. A letter is enciphered in its own case;
+      // anything else is copied through untouched. The earlier "uppercase and
+      // strip everything but A-Z" normalisation silently shortened the
+      // message - five binary bytes came back as none.
+      for (let i = 0; i < this.inputBuffer.length; i++) {
+        const byte = this.inputBuffer[i];
+        const caseBase = LetterCaseBase(byte);
 
-      // Process each character
-      for (const char of normalizedInput) {
-        const x = char.charCodeAt(0) - 65; // Convert A-Z to 0-25
-        let y;
-
-        if (this.isInverse) {
-          // Decryption: x = a^-1 * (y - b) mod 26
-          const aInv = this.modInverse(this.keyA, 26);
-          y = (aInv * (x - this.keyB + 26)) % 26;
-        } else {
-          // Encryption: y = (ax + b) mod 26
-          y = (this.keyA * x + this.keyB) % 26;
+        if (caseBase < 0) {
+          output[i] = byte;
+          continue;
         }
 
-        const resultChar = String.fromCharCode(y + 65); // Convert 0-25 back to A-Z
-        output.push(resultChar.charCodeAt(0));
+        const x = byte - caseBase; // Convert the letter to 0-25 within its own case
+        const y = this.isInverse
+          ? (aInverse * (x - this.keyB + 26)) % 26   // Decryption: x = a^-1 * (y - b) mod 26
+          : (this.keyA * x + this.keyB) % 26;        // Encryption: y = (ax + b) mod 26
+
+        output[i] = caseBase + y;
       }
 
       // Clear input buffer for next operation
