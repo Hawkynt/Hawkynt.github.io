@@ -55,7 +55,7 @@
 
       // Required metadata
       this.name = "Scytale Cipher";
-      this.description = "Ancient Spartan transposition cipher using a staff for military communications in classical antiquity.";
+      this.description = "Ancient Spartan transposition cipher using a staff for military communications in classical antiquity. A scytale reorders the marks on a strip of parchment and never looks at what they are, so this implementation accepts every byte: the message is written across a grid of 'circumference' columns and read off column by column, and the inverse puts it back. No byte is dropped, altered, case-folded or padded, and the round trip is exact for arbitrary input of any length.";
       this.category = CategoryType.CLASSICAL;
       this.subCategory = "Transposition Cipher";
       this.securityStatus = SecurityStatus.EDUCATIONAL;
@@ -159,15 +159,10 @@
     Feed(data) {
       if (!data || data.length === 0) return;
 
-      // Convert bytes to string for classical cipher
-      let text = '';
-      if (typeof data === 'string') {
-        text = data;
-      } else {
-        text = String.fromCharCode(...data);
-      }
-
-      this.inputBuffer.push(text);
+      // The strip is wound round the staff as it is, so the bytes are buffered
+      // as bytes. Converting the message to a string here was what let the
+      // A-Z filter downstream throw most of it away.
+      for (let i = 0; i < data.length; i++) this.inputBuffer.push(data[i]);
     }
 
     /**
@@ -179,89 +174,53 @@
     Result() {
       if (this.inputBuffer.length === 0) return [];
 
-      const text = this.inputBuffer.join('');
+      const message = this.inputBuffer;
       this.inputBuffer = [];
 
-      const result = this.isInverse ? 
-        this.decryptText(text) : 
-        this.encryptText(text);
-
-      // Convert string result to bytes
-      return Array.from(result).map(c => c.charCodeAt(0));
+      return this.isInverse ? this.unwind(message) : this.wind(message);
     }
 
-    encryptText(plaintext) {
-      const text = plaintext.toUpperCase().replace(/[^A-Z]/g, '');
-      if (text.length === 0) return '';
+    /**
+     * Wind the message round the staff: write it across the rows of a grid
+     * 'circumference' columns wide, then read it off column by column. The
+     * last row may be short and is simply left short - no padding is added,
+     * so the ciphertext is exactly as long as the plaintext.
+     * @param {uint8[]} plaintext - Message bytes
+     * @returns {uint8[]} Transposed bytes
+     */
+    wind(plaintext) {
+      const columns = this.circumference;
+      const rows = Math.ceil(plaintext.length / columns);
+      const result = new Array(plaintext.length);
 
-      // Calculate rows needed
-      const rows = Math.ceil(text.length / this.circumference);
-      const grid = [];
-
-      // Fill grid row by row
-      for (let r = 0; r < rows; r++) {
-        grid[r] = [];
-        for (let c = 0; c < this.circumference; c++) {
-          const index = r * this.circumference + c;
-          grid[r][c] = index < text.length ? text[index] : '';
-        }
-      }
-
-      // Read column by column
-      let result = '';
-      for (let c = 0; c < this.circumference; c++) {
+      let position = 0;
+      for (let c = 0; c < columns; c++) {
         for (let r = 0; r < rows; r++) {
-          if (grid[r][c]) {
-            result += grid[r][c];
-          }
+          const index = r * columns + c;
+          if (index < plaintext.length) result[position++] = plaintext[index];
         }
       }
 
       return result;
     }
 
-    decryptText(ciphertext) {
-      const text = ciphertext.toUpperCase().replace(/[^A-Z]/g, '');
-      if (text.length === 0) return '';
+    /**
+     * Unwind the message from the staff. Column c holds one byte per full row
+     * plus one more when c is among the first (length mod circumference)
+     * columns, which is exactly the shape wind() produced.
+     * @param {uint8[]} ciphertext - Transposed bytes
+     * @returns {uint8[]} Original bytes
+     */
+    unwind(ciphertext) {
+      const columns = this.circumference;
+      const fullRows = Math.floor(ciphertext.length / columns);
+      const remainder = ciphertext.length % columns;
+      const result = new Array(ciphertext.length);
 
-      const rows = Math.ceil(text.length / this.circumference);
-      const grid = [];
-
-      // Initialize grid
-      for (let r = 0; r < rows; r++) {
-        grid[r] = new Array(this.circumference).fill('');
-      }
-
-      // Calculate how many characters each column should have
-      // When text.length is not divisible by circumference, 
-      // some columns will have one less character
-      const charsPerColumn = [];
-      const fullRows = Math.floor(text.length / this.circumference);
-      const remainder = text.length % this.circumference;
-
-      for (let c = 0; c < this.circumference; c++) {
-        // First 'remainder' columns get an extra character
-        charsPerColumn[c] = fullRows + (c < remainder ? 1 : 0);
-      }
-
-      // Fill the grid column by column with the correct number of characters
-      let cipherIndex = 0;
-      for (let c = 0; c < this.circumference; c++) {
-        for (let r = 0; r < charsPerColumn[c]; r++) {
-          if (cipherIndex < text.length) {
-            grid[r][c] = text[cipherIndex++];
-          }
-        }
-      }
-
-      // Read row by row to get original plaintext
-      let result = '';
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < this.circumference; c++) {
-          if (grid[r][c] && grid[r][c] !== '') {
-            result += grid[r][c];
-          }
-        }
+      let position = 0;
+      for (let c = 0; c < columns; c++) {
+        const height = fullRows + (c < remainder ? 1 : 0);
+        for (let r = 0; r < height; r++) result[r * columns + c] = ciphertext[position++];
       }
 
       return result;
