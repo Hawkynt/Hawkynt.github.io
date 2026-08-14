@@ -397,13 +397,16 @@ function buildCipherCorpus(algorithm, vector) {
   // how FFX turned 16 bytes into 46. Without this case either could lose its
   // domain check and no in-alphabet corpus would ever notice.
   //
-  // Applied to modes and padding only. The classical ciphers do not survive it:
-  // Affine, Autokey, Beaufort, Columnar Transposition, Enigma Machine, Scytale,
-  // Solitaire and Vigenere all discard bytes outside A-Z instead of rejecting
-  // them, so a five-byte message comes back empty. That is the same defect this
-  // case exists to catch and it is recorded here rather than papered over, but
-  // repairing eight classical ciphers is separate work from the modes and
-  // padding schemes this tier was added for.
+  // Applied to modes and padding only, which is the tier it was added for. The
+  // eight classical ciphers that used to fail it - Affine, Autokey, Beaufort,
+  // Columnar Transposition, Enigma Machine, Scytale, Solitaire and Vigenere all
+  // discarded bytes outside A-Z, so a five-byte message came back empty - have
+  // since been repaired and each now states its domain: the four polyalphabetic
+  // substitutions and Scytale carry any byte through exactly, and Enigma,
+  // Solitaire and Columnar Transposition refuse one by name and position. The
+  // remaining classical ciphers have not all been through that work yet, so
+  // extending this case to the whole category would report their defects here
+  // rather than where they belong.
   if (alphabet.size < 256 && DOMAIN_CHECKED_CATEGORIES.has(algorithm.category.name))
     cases.push({ name: 'outside alphabet', data: alphabetData(unit, { base: 0, size: 256 }, 0x0f1e2d3c) });
   return cases;
@@ -440,6 +443,11 @@ const ROUND_TRIP_EXEMPT = new Map([
   // Verified: "ABCX" comes back as "ABC" and "ZRDSSTNX" as "ZRDSSTN".
   ['Hill Cipher', 'pads the message to a whole block with X and strips trailing X again, so a '
     + 'message that genuinely ends in X comes back short - the same ambiguity as zero padding'],
+  // Refuses anything outside A-Z by name and position, so only this one
+  // normalisation is left. Verified: "HELLX" comes back as "HELL".
+  ['Columnar Transposition', 'complete columnar transposition fills the last row of the grid with X '
+    + 'and strips trailing X again, so a message that genuinely ends in X comes back short - the '
+    + 'same ambiguity as zero padding'],
   ['Jefferson Wheel', 'wheel alphabets normalise the plaintext to the 26 letters they carry'],
 
   // --- already failing their own committed vectors ---
