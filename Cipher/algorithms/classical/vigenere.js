@@ -46,6 +46,19 @@
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
+  const UPPER_A = 65, UPPER_Z = 90, LOWER_A = 97, LOWER_Z = 122;
+
+  /**
+   * Alphabet origin of a byte: 65 for A-Z, 97 for a-z, -1 for anything else.
+   * @param {number} byte - Input byte
+   * @returns {number} Character code of the letter's own 'A', or -1
+   */
+  function LetterCaseBase(byte) {
+    if (byte >= UPPER_A && byte <= UPPER_Z) return UPPER_A;
+    if (byte >= LOWER_A && byte <= LOWER_Z) return LOWER_A;
+    return -1;
+  }
+
   // ===== ALGORITHM IMPLEMENTATION =====
 
   class VigenereCipher extends CryptoAlgorithm {
@@ -54,7 +67,7 @@
 
       // Required metadata
       this.name = "Vigenère Cipher";
-      this.description = "Classical polyalphabetic substitution cipher using repeating keyword to shift letters. Developed by Blaise de Vigenère in 16th century, considered unbreakable for centuries until Kasiski examination was developed. Uses Caesar cipher with different shift for each position.";
+      this.description = "Classical polyalphabetic substitution cipher using repeating keyword to shift letters. Developed by Blaise de Vigenère in 16th century, considered unbreakable for centuries until Kasiski examination was developed. Uses Caesar cipher with different shift for each position. Input domain: every byte is accepted. A-Z and a-z are enciphered in place with their case preserved and advance the keyword; every other byte - digit, punctuation, whitespace, control or high-bit - is carried through unchanged and leaves the keyword position alone, which is the usual pen-and-paper convention and makes the round trip exact for arbitrary input. Nothing is ever discarded.";
       this.inventor = "Blaise de Vigenère";
       this.year = 1553;
       this.category = CategoryType.CLASSICAL;
@@ -219,34 +232,35 @@
         return [];
       }
 
-      const output = [];
+      const output = new Array(this.inputBuffer.length);
       const processedKey = this.key;
-      const inputStr = String.fromCharCode.apply(null, this.inputBuffer);
 
-      // Normalize input to uppercase letters only
-      const normalizedInput = inputStr.toUpperCase().replace(/[^A-Z]/g, '');
+      // Every byte is accounted for. A letter is enciphered in its own case
+      // and consumes one keyword position; anything else is copied through
+      // untouched and does not move the keyword on, which is how the cipher
+      // has always been worked by hand over a text that carries punctuation.
+      // The earlier "uppercase and strip everything but A-Z" normalisation
+      // silently shortened the message - five binary bytes came back as none.
+      let keyPosition = 0;
+      for (let i = 0; i < this.inputBuffer.length; i++) {
+        const byte = this.inputBuffer[i];
+        const caseBase = LetterCaseBase(byte);
 
-      // Process each character
-      for (let i = 0; i < normalizedInput.length; i++) {
-        const textChar = normalizedInput[i];
-        const keyChar = processedKey[i % processedKey.length];
-
-        const textIndex = this.ALPHABET.indexOf(textChar);
-        const keyIndex = this.ALPHABET.indexOf(keyChar);
-
-        if (textIndex !== -1 && keyIndex !== -1) {
-          let resultIndex;
-          if (this.isInverse) {
-            // Vigenère decryption: (cipher - key + 26) mod 26
-            resultIndex = (textIndex - keyIndex + 26) % 26;
-          } else {
-            // Vigenère encryption: (text + key) mod 26
-            resultIndex = (textIndex + keyIndex) % 26;
-          }
-
-          const resultChar = this.ALPHABET[resultIndex];
-          output.push(resultChar.charCodeAt(0));
+        if (caseBase < 0) {
+          output[i] = byte;
+          continue;
         }
+
+        const textIndex = byte - caseBase;
+        const keyIndex = this.ALPHABET.indexOf(processedKey[keyPosition % processedKey.length]);
+        ++keyPosition;
+
+        // Vigenère: encryption (text + key) mod 26, decryption (cipher - key) mod 26
+        const resultIndex = this.isInverse
+          ? (textIndex - keyIndex + 26) % 26
+          : (textIndex + keyIndex) % 26;
+
+        output[i] = caseBase + resultIndex;
       }
 
       // Clear input buffer for next operation
