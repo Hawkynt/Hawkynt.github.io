@@ -313,18 +313,24 @@
         const partialBlock = this.inputBuffer.slice(fullBlocks * blockSize);
 
         if (this.isInverse) {
-          // Decrypt: Process penultimate block first, then steal from it
+          // Decrypt: Process penultimate block first, then steal from it.
+          // Encryption built the padded partial block as
+          //   partial-plaintext || tail of the processed last full block
+          // so decryption must reassemble the stolen block in that same order:
+          //   stolen ciphertext bytes || tail recovered from the penultimate block.
+          // The two halves were previously concatenated the other way round,
+          // which rotated the block and lost the whole ragged tail.
           const processedPenult = this._processBlock(lastFullBlock, tweaks[processingBlocks]);
 
-          // Steal ciphertext from processed penultimate block
-          const stolenCiphertext = [...processedPenult.slice(0, partialBytes), ...partialBlock];
-          const paddedLastBlock = [...processedPenult.slice(partialBytes), ...partialBlock];
+          // The leading partialBytes of the recovered block are the partial plaintext
+          const partialPlaintext = processedPenult.slice(0, partialBytes);
+          const paddedLastBlock = [...partialBlock, ...processedPenult.slice(partialBytes)];
 
           // Process the reconstructed last full block
           const processedLast = this._processBlock(paddedLastBlock, tweaks[processingBlocks]);
 
           for (let _i = 0; _i < processedLast.length; _i++) output.push(processedLast[_i]);
-          output.push(...stolenCiphertext.slice(0, partialBytes));
+          for (let _i = 0; _i < partialPlaintext.length; _i++) output.push(partialPlaintext[_i]);
 
         } else {
           // Encrypt: Process last full block, then steal for partial
