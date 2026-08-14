@@ -447,7 +447,10 @@ const ROUND_TRIP_EXEMPT = new Map([
   // listed so this sweep stays gating on everything else rather than being
   // switched off. Each needs its decryption path repaired on its own merits.
   ['FROG', 'open defect: decryption does not invert encryption (TestSuite reports 0/1)'],
-  ['Hierocrypt-3', 'open defect: decryption does not invert encryption (TestSuite reports 0/1)'],
+  ['Hierocrypt-3', 'not invertible by construction: its S-box maps all 256 byte values onto only '
+    + '32, so encryption discards three bits per byte per round. 00112233445566778899AABBCCDDEEFF '
+    + 'and 33112233445566778899AABBCCDDEEFF encrypt to the same block under the committed key, so '
+    + 'no decryption function exists. Needs a real Hierocrypt-3 round function, not a repaired inverse'],
   ['SC2000', 'open defect: decryption does not invert encryption (TestSuite reports 0/1)'],
   ['SPEED', 'open defect: decryption does not invert encryption (TestSuite reports 0/1)'],
   ['LOTUS-AEAD', 'open defect: decryption does not invert encryption (TestSuite reports 0/3)'],
