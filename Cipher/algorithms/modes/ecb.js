@@ -181,14 +181,18 @@
       const output = [];
 
       // Process each block independently
-      // ECB applies the block cipher to each block separately
+      // ECB applies the block cipher to each block separately.
+      // The instance handed to setBlockCipher is an encryption instance; a mode
+      // asked to decrypt has to derive a decryption instance from the same
+      // algorithm and key, as CBC and the other chaining modes do. Reusing the
+      // instance as handed made ECB encrypt twice when asked to decrypt.
       for (let i = 0; i < this.inputBuffer.length; i += blockSize) {
         const block = this.inputBuffer.slice(i, i + blockSize);
 
-        // Use the provided block cipher directly
-        // The cipher should already be configured for encryption or decryption
-        this.blockCipher.Feed(block);
-        const processedBlock = this.blockCipher.Result();
+        const cipher = this.blockCipher.algorithm.CreateInstance(this.isInverse);
+        cipher.key = this.blockCipher.key;
+        cipher.Feed(block);
+        const processedBlock = cipher.Result();
 
         for (let _i = 0; _i < processedBlock.length; _i++) output.push(processedBlock[_i]);
       }
