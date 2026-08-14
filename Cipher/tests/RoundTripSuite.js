@@ -440,6 +440,11 @@ const ROUND_TRIP_EXEMPT = new Map([
   // Verified: "ABCX" comes back as "ABC" and "ZRDSSTNX" as "ZRDSSTN".
   ['Hill Cipher', 'pads the message to a whole block with X and strips trailing X again, so a '
     + 'message that genuinely ends in X comes back short - the same ambiguity as zero padding'],
+  // Refuses anything outside A-Z by name and position, so only this one
+  // normalisation is left. Verified: "HELLX" comes back as "HELL".
+  ['Columnar Transposition', 'complete columnar transposition fills the last row of the grid with X '
+    + 'and strips trailing X again, so a message that genuinely ends in X comes back short - the '
+    + 'same ambiguity as zero padding'],
   ['Jefferson Wheel', 'wheel alphabets normalise the plaintext to the 26 letters they carry'],
 
   // --- already failing their own committed vectors ---
