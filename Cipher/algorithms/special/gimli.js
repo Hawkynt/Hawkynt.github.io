@@ -182,8 +182,11 @@
         throw new Error(`Gimli requires exactly ${this.STATE_SIZE} bytes (384 bits) input`);
       }
 
-      // Apply Gimli permutation
-      const output = this._gimliPermutation([...this.inputBuffer]);
+      // Gimli is a permutation, so the inverse direction is the inverse permutation
+      // rather than a second application of the forward one.
+      const output = this.isInverse
+        ? this._gimliInversePermutation([...this.inputBuffer])
+        : this._gimliPermutation([...this.inputBuffer]);
 
       // Clear input buffer for next operation
       this.inputBuffer = [];
@@ -257,6 +260,76 @@
       return result;
     }
 
+    _gimliInversePermutation(state) {
+      // Same word layout as the forward direction.
+      const s = new Array(12);
+      for (let i = 0; i < 12; i++) {
+        s[i] = OpCodes.Pack32LE(
+          state[i * 4],
+          state[i * 4 + 1],
+          state[i * 4 + 2],
+          state[i * 4 + 3]
+        );
+      }
+
+      // The forward loop runs round = 24, 20, ..., 4 and each iteration performs
+      //   SP, small-swap(round), SP, SP, big-swap, SP
+      // so the inverse runs round = 4, 8, ..., 24 and performs the exact reverse:
+      //   SP^-1, big-swap, SP^-1, SP^-1, small-swap^-1(round), SP^-1
+      for (let round = 4; round <= 24; round += 4) {
+        // Undo round 3 (SP-box only)
+        this._gimliInverseSPBox(s, 0, 4, 8);
+        this._gimliInverseSPBox(s, 1, 5, 9);
+        this._gimliInverseSPBox(s, 2, 6, 10);
+        this._gimliInverseSPBox(s, 3, 7, 11);
+
+        // Undo the big swap. It exchanges (s0,s1) with (s2,s3), so it is its own
+        // inverse.
+        let x = s[0];
+        let y = s[1];
+        s[0] = s[2];
+        s[1] = s[3];
+        s[2] = x;
+        s[3] = y;
+
+        // Undo round 2 (SP-box only)
+        this._gimliInverseSPBox(s, 0, 4, 8);
+        this._gimliInverseSPBox(s, 1, 5, 9);
+        this._gimliInverseSPBox(s, 2, 6, 10);
+        this._gimliInverseSPBox(s, 3, 7, 11);
+
+        // Undo round 1 (SP-box only)
+        this._gimliInverseSPBox(s, 0, 4, 8);
+        this._gimliInverseSPBox(s, 1, 5, 9);
+        this._gimliInverseSPBox(s, 2, 6, 10);
+        this._gimliInverseSPBox(s, 3, 7, 11);
+
+        // Undo the small swap. Forward it computes
+        //   s0' = s1 ^ 0x9e377900 ^ round, s1' = s0, s2' = s3, s3' = s2
+        // so the pre-swap words are recovered as below.
+        x = s[0];
+        y = s[2];
+        s[0] = s[1];
+        s[1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(x, 0x9e377900), round));
+        s[2] = s[3];
+        s[3] = y;
+
+        // Undo round 0 (SP-box)
+        this._gimliInverseSPBox(s, 0, 4, 8);
+        this._gimliInverseSPBox(s, 1, 5, 9);
+        this._gimliInverseSPBox(s, 2, 6, 10);
+        this._gimliInverseSPBox(s, 3, 7, 11);
+      }
+
+      const result = [];
+      for (let i = 0; i < 12; i++) {
+        const bytes = OpCodes.Unpack32LE(s[i]);
+        for (let _i = 0; _i < bytes.length; _i++) result.push(bytes[_i]);
+      }
+
+      return result;
+    }
+
     // Gimli SP-box for a column
     // Reference: https://gimli.cr.yp.to/ Section 2.2
     _gimliSPBox(s, i0, i1, i2) {
@@ -268,6 +341,56 @@
       s[i1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(y, x), OpCodes.Shl32(OpCodes.OrN(x, z), 1)));
       s[i0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(z, y), OpCodes.Shl32(OpCodes.AndN(x, y), 3)));
       s[i2] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(x, OpCodes.Shl32(z, 1)), OpCodes.Shl32(OpCodes.AndN(y, z), 2)));
+    }
+
+    // Inverse of the Gimli SP-box.
+    // Reference: Gimli specification (https://gimli.cr.yp.to/, NIST LWC round 2
+    // spec-doc, Section 2.2), which defines the forward SP-box on a column as
+    //   x = s0 <<< 24,  y = s1 <<< 9,  z = s2        (all three read before any write)
+    //   s1' = y ^ x ^ ((x | z) << 1)
+    //   s0' = z ^ y ^ ((x & y) << 3)
+    //   s2' = x ^ (z << 1) ^ ((y & z) << 2)
+    // Every shift is a plain left shift, so bit i of each output depends only on
+    // bit i and on strictly lower-indexed bits of the inputs. The system is
+    // therefore triangular and inverts bit by bit from the least significant end,
+    // with out-of-range bit indices reading as zero:
+    //   x_i = s2'_i ^ z_(i-1) ^ (y_(i-2) & z_(i-2))
+    //   y_i = s1'_i ^ x_i ^ (x_(i-1) | z_(i-1))
+    //   z_i = s0'_i ^ y_i ^ (x_(i-3) & y_(i-3))
+    // Recovering x, y, z then undoes the two input rotations.
+    _gimliInverseSPBox(s, i0, i1, i2) {
+      const a = s[i0];
+      const b = s[i1];
+      const c = s[i2];
+
+      const xBits = new Array(32);
+      const yBits = new Array(32);
+      const zBits = new Array(32);
+
+      const bitOf = (value, index) => OpCodes.AndN(OpCodes.Shr32(value, index), 1);
+      const lower = (bits, index) => (index < 0 ? 0 : bits[index]);
+
+      for (let i = 0; i < 32; i++) {
+        xBits[i] = OpCodes.XorN(
+          OpCodes.XorN(bitOf(c, i), lower(zBits, i - 1)),
+          OpCodes.AndN(lower(yBits, i - 2), lower(zBits, i - 2)));
+        yBits[i] = OpCodes.XorN(
+          OpCodes.XorN(bitOf(b, i), xBits[i]),
+          OpCodes.OrN(lower(xBits, i - 1), lower(zBits, i - 1)));
+        zBits[i] = OpCodes.XorN(
+          OpCodes.XorN(bitOf(a, i), yBits[i]),
+          OpCodes.AndN(lower(xBits, i - 3), lower(yBits, i - 3)));
+      }
+
+      const assemble = bits => {
+        let value = 0;
+        for (let i = 0; i < 32; i++) value = OpCodes.OrN(value, OpCodes.Shl32(bits[i], i));
+        return OpCodes.ToUint32(value);
+      };
+
+      s[i0] = OpCodes.RotR32(assemble(xBits), 24);
+      s[i1] = OpCodes.RotR32(assemble(yBits), 9);
+      s[i2] = assemble(zBits);
     }
   }
 
