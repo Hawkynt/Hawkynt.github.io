@@ -108,6 +108,13 @@
     0x158D9554F7B46BCEn - 9n,   0xA784D9045190CFEFn - 3n
   ];
 
+  // Nibble permutations used by the Tiny cipher's 4-, 5- and 6-bit paths. Each
+  // constant packs a permutation of 0..15 as sixteen nibbles, so the image of v
+  // is nibble v: (PERMn >> (v * 4)) & 15. PERM1I/PERM2I are the exact inverses,
+  // which is what fixes the indexing convention: the shift amount is (v & 15)
+  // scaled by four, NOT v masked with (15 << 2). The latter reaches only shift
+  // amounts 0, 4, 8 and 12, i.e. four of the sixteen nibbles, collapsing the
+  // "permutation" into a four-to-one map and destroying the block's contents.
   const PERM1 = 0x324f6a850d19e7cbn;
   const PERM2 = 0x2b7e1568adf09c43n;
   const PERM1I = 0xc3610a492b8dfe57n;
@@ -186,8 +193,11 @@
       }
     }
 
-    // Handle partial last word for non-512-bit blocks
-    if (bitSize < 512 && byteIdx < byteLimit) {
+    // Handle the trailing word. The loop above deliberately stops on a whole-word
+    // boundary below byteLimit, so the final word always lands here - including
+    // the 512-bit case, where the eighth word is the trailing one and was
+    // previously skipped outright, silently zeroing the top 64 bits of the block.
+    if (byteIdx < byteLimit) {
       const lastWordIdx = Math.min(wordCount - 1, Math.floor((bitSize + 63) / 64) - 1);
       for (let b = 0; b < 8 && byteIdx < byteLimit; ++b, ++byteIdx) {
         state[lastWordIdx] |= OpCodes.ShiftLn(BigInt(bytes[byteIdx] || 0), BigInt(b * 8));
@@ -211,7 +221,11 @@
     const byteLimit = bitSize <= 512 ? Math.ceil(bitSize / 8) : 64;
     const bytes = new Array(byteLimit).fill(0);
     const wordLimit = OpCodes.AndN((byteLimit - 1), ~7);
-    const lastWord64 = bitSize <= 64 ? 1 : (bitSize <= 128 ? 2 : HPC_ROUND_COUNT);
+    // Index (plus one) of the word holding the trailing bytes. This must be the
+    // block's own last word, not word 7: packBytesToState writes the trailing
+    // bytes to ceil(bitSize/64)-1, so hardcoding 7 for every block wider than
+    // 128 bits read the tail back out of a word the block never occupied.
+    const lastWord64 = Math.min(HPC_ROUND_COUNT, Math.ceil(bitSize / 64));
 
     let byteIdx = 0;
     for (let w = 0; w < HPC_ROUND_COUNT && byteIdx < wordLimit; ++w) {
@@ -362,9 +376,9 @@
           for (let bi = 0; bi < 64; bi += 8) {
             s0 = mask64(OpCodes.XorN(s0, t));
             t = OpCodes.ShiftRn(t, 4n);
-            s0 = (OpCodes.AndN((OpCodes.ShiftRn(PERM1, (s0&OpCodes.ShiftLn(15n, 2n)))), 15n));
+            s0 = (OpCodes.AndN((OpCodes.ShiftRn(PERM1, OpCodes.ShiftLn(OpCodes.AndN(s0, 15n), 2n))), 15n));
             s0 = mask64(s0 + t);
-            s0 = (OpCodes.AndN((OpCodes.ShiftRn(PERM2, (s0&OpCodes.ShiftLn(15n, 2n)))), 15n));
+            s0 = (OpCodes.AndN((OpCodes.ShiftRn(PERM2, OpCodes.ShiftLn(OpCodes.AndN(s0, 15n), 2n))), 15n));
             t = OpCodes.ShiftRn(t, 4n);
           }
         }
@@ -395,11 +409,11 @@
         let t = tmp[ri];
         for (let bi = 0; bi < (7 - (blockSize - 5)); ++bi) {
           s0 = mask64(OpCodes.XorN(s0, t));
-          s0 = (OpCodes.AndN(s0, pmask))|((OpCodes.AndN((OpCodes.ShiftRn(PERM1, (s0&OpCodes.ShiftLn(15n, 2n)))), 15n)));
+          s0 = (OpCodes.AndN(s0, pmask))|((OpCodes.AndN((OpCodes.ShiftRn(PERM1, OpCodes.ShiftLn(OpCodes.AndN(s0, 15n), 2n))), 15n)));
           s0 = mask64(OpCodes.XorN(s0, ((OpCodes.ShiftRn(s0, 3n)))));
           t = OpCodes.ShiftRn(t, BigInt(blockSize));
           s0 = mask64(s0 + t);
-          s0 = (OpCodes.AndN(s0, pmask))|((OpCodes.AndN((OpCodes.ShiftRn(PERM2, (s0&OpCodes.ShiftLn(15n, 2n)))), 15n)));
+          s0 = (OpCodes.AndN(s0, pmask))|((OpCodes.AndN((OpCodes.ShiftRn(PERM2, OpCodes.ShiftLn(OpCodes.AndN(s0, 15n), 2n))), 15n)));
           t = OpCodes.ShiftRn(t, BigInt(blockSize - 1));
         }
       }
@@ -495,9 +509,9 @@
           const t = tmp[ri];
           for (let bi = 64; bi > 0; bi -= 8) {
             const v = OpCodes.AndN((OpCodes.ShiftRn(t, BigInt(bi - 8))), 0xFFn);
-            s0 = (OpCodes.AndN((OpCodes.ShiftRn(PERM2I, (s0&OpCodes.ShiftLn(15n, 2n)))), 15n));
+            s0 = (OpCodes.AndN((OpCodes.ShiftRn(PERM2I, OpCodes.ShiftLn(OpCodes.AndN(s0, 15n), 2n))), 15n));
             s0 = mask64(s0 - ((OpCodes.ShiftRn(v, 4n))));
-            s0 = (OpCodes.AndN((OpCodes.ShiftRn(PERM1I, (s0&OpCodes.ShiftLn(15n, 2n)))), 15n));
+            s0 = (OpCodes.AndN((OpCodes.ShiftRn(PERM1I, OpCodes.ShiftLn(OpCodes.AndN(s0, 15n), 2n))), 15n));
             s0 = mask64(OpCodes.XorN(s0, v));
           }
         }
@@ -526,11 +540,17 @@
       for (let ri = (OpCodes.Shr32(tmpBs, 6)); ri-- > 0; ) {
         const t = tmp[ri];
         for (let bi = (7 - (blockSize - 5)); bi-- > 0; ) {
-          const v = OpCodes.AndN((OpCodes.ShiftRn(t, BigInt(bi * ((OpCodes.Shl32(blockSize, 1)) - 1)))), ((OpCodes.ShiftLn(1n, BigInt((OpCodes.Shl32(blockSize, 1)) - 1))) - 1n));
-          s0 = (OpCodes.AndN(s0, pmask))|((OpCodes.AndN((OpCodes.ShiftRn(PERM2I, (s0&OpCodes.ShiftLn(15n, 2n)))), 15n)));
+          // Each forward iteration advances t by blockSize + (blockSize - 1)
+          // bits but READS 2*blockSize of them: blockSize for the XOR and the
+          // next blockSize for the addition, so successive iterations overlap by
+          // one bit. Recovering only (2*blockSize - 1) bits here - the stride
+          // rather than the span - dropped the top bit of the addend, which is
+          // inside the block mask and therefore changes the result.
+          const v = OpCodes.AndN((OpCodes.ShiftRn(t, BigInt(bi * ((OpCodes.Shl32(blockSize, 1)) - 1)))), ((OpCodes.ShiftLn(1n, BigInt(OpCodes.Shl32(blockSize, 1)))) - 1n));
+          s0 = (OpCodes.AndN(s0, pmask))|((OpCodes.AndN((OpCodes.ShiftRn(PERM2I, OpCodes.ShiftLn(OpCodes.AndN(s0, 15n), 2n))), 15n)));
           s0 = mask64(s0 - (OpCodes.ShiftRn(v, BigInt(blockSize))));
           s0 = mask64(OpCodes.XorN(s0, (OpCodes.ShiftRn((OpCodes.AndN(s0, mask)), 3n))));
-          s0 = (OpCodes.AndN(s0, pmask))|((OpCodes.AndN((OpCodes.ShiftRn(PERM1I, (s0&OpCodes.ShiftLn(15n, 2n)))), 15n)));
+          s0 = (OpCodes.AndN(s0, pmask))|((OpCodes.AndN((OpCodes.ShiftRn(PERM1I, OpCodes.ShiftLn(OpCodes.AndN(s0, 15n), 2n))), 15n)));
           s0 = mask64(OpCodes.XorN(s0, v));
         }
       }
@@ -808,8 +828,17 @@
   // ========================[ LONG CIPHER (129-512 bits) ]========================
 
   function longEncrypt(state, spice, KX, blockSize, mask, backup) {
+    // The Long cipher (HPC spec, "Long Cipher", 129-512 bit blocks) keeps the
+    // block's FIRST two words in s0/s1, its LAST word in s7, and the words in
+    // between in s2..s6 - which is why s7 is the one masked with lmask and why
+    // the cascade below brings s2..s6 into play as the block crosses 192, 256,
+    // 320, 384 and 448 bits (one extra intermediate word per step). Binding s7
+    // to state[7] instead of to the block's own last word left the last word
+    // untouched and carried a word of state that the output never recorded, so
+    // every block narrower than 449 bits was undecryptable.
+    const lastWord = Math.ceil(blockSize / 64) - 1;
     let s0 = state[0], s1 = state[1], s2 = state[2], s3 = state[3];
-    let s4 = state[4], s5 = state[5], s6 = state[6], s7 = state[7];
+    let s4 = state[4], s5 = state[5], s6 = state[6], s7 = state[lastWord];
 
     for (let ri = 0; ri < HPC_ROUND_COUNT; ++ri) {
       let t = OpCodes.AndN(s0, 0xFFn);
@@ -887,12 +916,14 @@
     }
 
     state[0] = s0; state[1] = s1; state[2] = s2; state[3] = s3;
-    state[4] = s4; state[5] = s5; state[6] = s6; state[7] = s7;
+    state[4] = s4; state[5] = s5; state[6] = s6;
+    state[lastWord] = s7; // written last: for narrow blocks it overlaps an s2..s6 slot
   }
 
   function longDecrypt(state, spice, KX, blockSize, mask, backup) {
+    const lastWord = Math.ceil(blockSize / 64) - 1;
     let s0 = state[0], s1 = state[1], s2 = state[2], s3 = state[3];
-    let s4 = state[4], s5 = state[5], s6 = state[6], s7 = state[7];
+    let s4 = state[4], s5 = state[5], s6 = state[6], s7 = state[lastWord];
 
     for (let ri = HPC_ROUND_COUNT; ri-- > 0; ) {
       let t, k, kk;
@@ -977,7 +1008,8 @@
     }
 
     state[0] = s0; state[1] = s1; state[2] = s2; state[3] = s3;
-    state[4] = s4; state[5] = s5; state[6] = s6; state[7] = s7;
+    state[4] = s4; state[5] = s5; state[6] = s6;
+    state[lastWord] = s7;
   }
 
   // ========================[ EXTENDED STIR (for Extended cipher) ]========================
@@ -1529,11 +1561,26 @@
         throw new Error("No data fed");
       }
 
-      // Determine block size in bits
+      // Determine block size in bits. HPC encrypts exactly one block per call,
+      // so when a block size has been declared the input has to BE that block:
+      // it is neither padded nor split. Silently keeping the first ceil(bits/8)
+      // bytes and dropping the rest - and dropping the bits above the block
+      // width in the trailing byte - turned a caller's mistake into quiet data
+      // loss, so both are refused instead.
       let blockSizeBits = this._blockSizeBits;
       if (!blockSizeBits) {
         // Default to input size in bits
         blockSizeBits = this.inputBuffer.length * 8;
+      } else {
+        const blockBytes = Math.ceil(blockSizeBits / 8);
+        if (this.inputBuffer.length !== blockBytes)
+          throw new Error("Input must be exactly one " + blockSizeBits + "-bit block ("
+            + blockBytes + " bytes); got " + this.inputBuffer.length);
+        const usedBitsInLastByte = blockSizeBits - (blockBytes - 1) * 8;
+        if (OpCodes.Shr32(this.inputBuffer[blockBytes - 1], usedBitsInLastByte) !== 0)
+          throw new Error("Input carries bits above the declared " + blockSizeBits
+            + "-bit block width; byte " + (blockBytes - 1) + " must fit in "
+            + usedBitsInLastByte + " bit(s)");
       }
 
       const cipherId = getCipherId(blockSizeBits);
@@ -1563,6 +1610,11 @@
       // Calculate mask for last word
       const mask = (OpCodes.ShiftLn(((OpCodes.ShiftLn(1n, BigInt((blockSizeBits - 1) % 64))) - 1n), 1n))|1n;
       const backup = 0;
+
+      // Streamed body of an Extended block (words 8 and up). The block's first
+      // eight words never leave the state registers, so this buffer is only
+      // complete once they are written back over its first 64 bytes below.
+      let extendedBuffer = null;
 
       // Encryption and decryption have different KX addition/subtraction order
       if (!this.isInverse) {
@@ -1596,11 +1648,13 @@
               longEncrypt(state, spice, this._KX[cipherId - 1], blockSizeBits, mask, backup);
               break;
             case CIPHER_ID_EXTENDED:
-              const plaintext = this.inputBuffer;
-              const ciphertext = new Array(this.inputBuffer.length).fill(0);
-              extendedEncrypt(state, spice, this._KX[cipherId - 1], plaintext, ciphertext, blockSizeBits, mask, backup);
-              this.inputBuffer = [];
-              return ciphertext;
+              // Falls through to the post-KX step like every other sub-cipher.
+              // Returning here skipped it entirely, so an Extended block was
+              // encrypted with the pre-KX whitening only and decrypted with the
+              // post-KX whitening only - two different transforms.
+              extendedBuffer = new Array(this.inputBuffer.length).fill(0);
+              extendedEncrypt(state, spice, this._KX[cipherId - 1], this.inputBuffer, extendedBuffer, blockSizeBits, mask, backup);
+              break;
           }
 
           // Add post-KX
@@ -1645,11 +1699,9 @@
               longDecrypt(state, spice, this._KX[cipherId - 1], blockSizeBits, mask, backup);
               break;
             case CIPHER_ID_EXTENDED:
-              const ciphertext = this.inputBuffer;
-              const plaintext = new Array(this.inputBuffer.length).fill(0);
-              extendedDecrypt(state, spice, this._KX[cipherId - 1], ciphertext, plaintext, blockSizeBits, mask, backup);
-              this.inputBuffer = [];
-              return plaintext;
+              extendedBuffer = new Array(this.inputBuffer.length).fill(0);
+              extendedDecrypt(state, spice, this._KX[cipherId - 1], this.inputBuffer, extendedBuffer, blockSizeBits, mask, backup);
+              break;
           }
 
           // Subtract pre-KX (which was added BEFORE encryption)
@@ -1670,6 +1722,18 @@
 
       // Unpack state to output
       const output = unpackStateToBytes(state, blockSizeBits);
+
+      // The Extended cipher holds the block's first eight words in the state
+      // registers for the whole transform and streams only words 8 and up
+      // through the buffer, so the head has to be written back over the
+      // buffer's leading 64 bytes. Without it those bytes stayed as the zeros
+      // the buffer was allocated with, which is why an Extended block came back
+      // from decryption as a run of nulls.
+      if (extendedBuffer) {
+        for (let i = 0; i < output.length && i < extendedBuffer.length; ++i) extendedBuffer[i] = output[i];
+        this.inputBuffer = [];
+        return extendedBuffer;
+      }
 
       this.inputBuffer = [];
       return output;
