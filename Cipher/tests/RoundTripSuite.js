@@ -448,7 +448,6 @@ const ROUND_TRIP_EXEMPT = new Map([
   // switched off. Each needs its decryption path repaired on its own merits.
   ['ForkSkinny-128-256', 'open defect: decryption does not invert encryption (TestSuite reports 0/2)'],
   ['ForkSkinny-128-384', 'open defect: decryption does not invert encryption (TestSuite reports 0/2)'],
-  ['FROG', 'open defect: decryption does not invert encryption (TestSuite reports 0/1)'],
   ['Hierocrypt-3', 'open defect: decryption does not invert encryption (TestSuite reports 0/1)'],
   ['SC2000', 'open defect: decryption does not invert encryption (TestSuite reports 0/1)'],
   ['SKINNY-128', 'open defect: decryption does not invert encryption (TestSuite reports 0/2)'],
