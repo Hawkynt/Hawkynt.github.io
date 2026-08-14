@@ -54,7 +54,7 @@
       super();
 
       this.name = "FFX";
-      this.description = "FFX (Format-Preserving Encryption) is a Feistel-based construction that preserves the format of input data during encryption. It can handle arbitrary alphabets and string lengths, making it suitable for encrypting credit card numbers, SSNs, and other structured data while maintaining their original format.";
+      this.description = "FFX (Format-Preserving Encryption) is a Feistel-based construction that preserves the format of input data during encryption. It can handle arbitrary alphabets and string lengths, making it suitable for encrypting credit card numbers, SSNs, and other structured data while maintaining their original format. Input is restricted to the configured alphabet: for radix 2-36 the canonical base-N digits '0'-'9' then lowercase 'a'-'z', for radix 37-255 byte values below the radix, and for radix 256 any byte. At least two symbols are required. Anything else is rejected rather than reduced into range, because folding a byte modulo the radix is not reversible.";
       this.inventor = "Mihir Bellare, Phillip Rogaway, Thomas Spies";
       this.year = 2010;
       this.category = CategoryType.MODE;
@@ -65,6 +65,10 @@
 
       this.RequiresIV = false; // Uses tweak instead of IV
       this.SupportedIVSizes = []; // Not applicable for FFX
+
+      // Format-preserving encryption is defined only over its own alphabet, so a
+      // sweep with arbitrary bytes must expect a refusal rather than a result.
+      this.restrictedInputDomain = "strings over the configured radix alphabet, at least two symbols long";
 
       this.documentation = [
         new LinkItem("NIST SP 800-38G", "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-38G.pdf"),
@@ -230,14 +234,24 @@
         throw new Error("Input must contain at least 2 symbols for FFX");
       }
 
-      // FFX Feistel network (simplified educational implementation)
-      let left = symbols.slice(0, Math.floor(n / 2));
-      let right = symbols.slice(Math.floor(n / 2));
+      // FFX Feistel network (simplified educational implementation).
+      // The split follows NIST SP 800-38G FF1: u = floor(n/2), v = n - u, so for
+      // an odd-length message the two halves differ in length and swap roles each
+      // round. The round function output must therefore be sized to the half it
+      // is combined with, not to the half it was derived from. Sizing it to its
+      // own input made _modAdd truncate to the shorter array, silently dropping a
+      // symbol per round on every odd-length message.
+      const u = Math.floor(n / 2);
+      let left = symbols.slice(0, u);
+      let right = symbols.slice(u);
 
       if (this.isInverse) {
-        // FFX Decryption: reverse Feistel rounds
+        // FFX Decryption: reverse Feistel rounds.
+        // Forward round i maps (A,B) to (B, A + F(B,i)), so given the pair after
+        // the round the previous B is the current A and the previous A is the
+        // current B minus F(A,i).
         for (let round = this.rounds - 1; round >= 0; round--) {
-          const f = this._feistelFunction(left, round);
+          const f = this._feistelFunction(left, round, right.length);
           const newRight = this._modSubtract(right, f, this.radix);
           right = left;
           left = newRight;
@@ -245,7 +259,7 @@
       } else {
         // FFX Encryption: forward Feistel rounds
         for (let round = 0; round < this.rounds; round++) {
-          const f = this._feistelFunction(right, round);
+          const f = this._feistelFunction(right, round, left.length);
           const newRight = this._modAdd(left, f, this.radix);
           left = right;
           right = newRight;
@@ -269,23 +283,47 @@
      * @returns {Array} Symbol array
      */
     _bytesToSymbols(bytes) {
-      if (this.radix === 256) {
-        return [...bytes];
-      } else if (this.radix === 10) {
-        // Decimal conversion
-        return OpCodes.BytesToAnsi(bytes).split('').map(c => parseInt(c) % 10);
-      } else if (this.radix === 26) {
-        // Alphabetic conversion (A-Z)
-        return OpCodes.BytesToAnsi(bytes).split('').map(c => {
-          const code = c.charCodeAt(0);
-          if (code >= 65 && code <= 90) return code - 65; // A-Z -> 0-25
-          if (code >= 97 && code <= 122) return code - 97; // a-z -> 0-25
-          return 0; // Default fallback
+      // Format-preserving encryption is only defined on strings over its own
+      // alphabet, so anything outside it is refused rather than folded into range.
+      // Reducing a byte modulo the radix is not injective: two different inputs
+      // became the same symbol, the symbol was written back out as its own small
+      // value instead of the character it came from, and neither the length nor
+      // the content survived the return trip.
+      if (this.radix === 256) return [...bytes];
+
+      if (this.radix > 256)
+        throw new Error(`FFX radix ${this.radix} cannot be represented one symbol per byte; use radix 2-256`);
+
+      if (this.radix <= 36) {
+        // Canonical base-N digits, the same set Number.prototype.toString(radix)
+        // produces: '0'-'9' then 'a'-'z'. Uppercase is rejected rather than
+        // folded in, because the output is written in the canonical lowercase
+        // form and accepting both would make the mapping non-injective.
+        return bytes.map(b => {
+          const symbol = this._digitValue(b);
+          if (symbol < 0 || symbol >= this.radix)
+            throw new Error(`FFX input is outside its alphabet: byte 0x${OpCodes.AndN(b, 0xFF).toString(16)} is not a base-${this.radix} digit`);
+          return symbol;
         });
-      } else {
-        // General radix conversion (simplified)
-        return bytes.map(b => b % this.radix);
       }
+
+      // Radices above the digit alphabet address byte values directly.
+      return bytes.map(b => {
+        if (b >= this.radix)
+          throw new Error(`FFX input is outside its alphabet: byte value ${b} is not below radix ${this.radix}`);
+        return b;
+      });
+    }
+
+    /**
+     * Value of an ASCII digit character, or -1 when it is not one.
+     * @param {number} code - Character code
+     * @returns {number} Digit value or -1
+     */
+    _digitValue(code) {
+      if (code >= 0x30 && code <= 0x39) return code - 0x30;       // '0'-'9'
+      if (code >= 0x61 && code <= 0x7A) return code - 0x61 + 10;  // 'a'-'z'
+      return -1;
     }
 
     /**
@@ -294,20 +332,19 @@
      * @returns {Array} Byte array
      */
     _symbolsToBytes(symbols) {
-      if (this.radix === 256) {
-        return [...symbols];
-      } else if (this.radix === 10) {
-        // Decimal conversion
-        const str = symbols.map(s => s.toString()).join('');
-        return OpCodes.AnsiToBytes(str);
-      } else if (this.radix === 26) {
-        // Alphabetic conversion (0-25 -> A-Z)
-        const str = symbols.map(s => String.fromCharCode(65 + (s % 26))).join('');
-        return OpCodes.AnsiToBytes(str);
-      } else {
-        // General radix conversion (simplified)
-        return symbols.map(s => OpCodes.AndN(s, 0xFF));
-      }
+      // Exact inverse of _bytesToSymbols, so the format really is preserved.
+      if (this.radix === 256) return [...symbols];
+      if (this.radix <= 36) return symbols.map(s => this._digitCharacter(s));
+      return [...symbols];
+    }
+
+    /**
+     * ASCII character code for a base-N digit value.
+     * @param {number} symbol - Digit value
+     * @returns {number} Character code
+     */
+    _digitCharacter(symbol) {
+      return symbol < 10 ? 0x30 + symbol : 0x61 + (symbol - 10);
     }
 
     /**
@@ -316,12 +353,12 @@
      * @param {number} round - Current round number
      * @returns {Array} Function output
      */
-    _feistelFunction(input, round) {
+    _feistelFunction(input, round, outputLength) {
       // Construct PRF input: tweak || round || input
       const prfInput = [];
-      prfInput.push(...this.tweak);
+      for (let i = 0; i < this.tweak.length; i++) prfInput.push(this.tweak[i]);
       prfInput.push(OpCodes.AndN(round, 0xFF));
-      prfInput.push(...input.map(s => OpCodes.AndN(s, 0xFF)));
+      for (let i = 0; i < input.length; i++) prfInput.push(OpCodes.AndN(input[i], 0xFF));
 
       // Pad to block size
       const blockSize = this.blockCipher.BlockSize;
@@ -335,9 +372,11 @@
       cipher.Feed(prfInput);
       const prf = cipher.Result();
 
-      // Convert PRF output to same length as input
-      const output = new Array(input.length);
-      for (let i = 0; i < input.length; i++) {
+      // Size the output to the half it will be combined with, which is not
+      // necessarily the half it was derived from.
+      const length = outputLength === undefined ? input.length : outputLength;
+      const output = new Array(length);
+      for (let i = 0; i < length; i++) {
         output[i] = prf[i % prf.length] % this.radix;
       }
 
