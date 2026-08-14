@@ -169,9 +169,14 @@
         throw new Error("DEAL requires 16-byte (128-bit) blocks");
       }
 
-      // DEAL decryption: reverse the Feistel structure
-      // Input comes from encryption which ends with [...R, ...L] (swapped)
-      // So we need to interpret this correctly
+      // DEAL decryption: reverse the Feistel structure.
+      // Write one round as p_k(L,R) = (R, L xor F(R)) and the half swap as
+      // s(L,R) = (R,L). Encryption is s . p_k(n-1) . ... . p_k(0), and because
+      // s . p_k . s = p_k inverse, the inverse of that whole chain is
+      //   s . p_k(0) . ... . p_k(n-1)
+      // that is: the same forward rounds with the keys in reverse order, followed
+      // by a final swap. The rounds below were already in the right order but the
+      // closing swap was missing, so the two halves came back transposed.
       let L = data.slice(0, 8);  // This is actually R from encryption
       let R = data.slice(8, 16); // This is actually L from encryption
 
@@ -189,8 +194,8 @@
         }
       }
 
-      // Return in original order (no additional swap needed)
-      return [...L, ...R];
+      // Final swap, mirroring the one encryption ends with
+      return [...R, ...L];
     },
 
     // Internal F-function (enhanced DES-like operations)

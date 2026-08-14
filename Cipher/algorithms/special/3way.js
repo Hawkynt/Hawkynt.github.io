@@ -218,7 +218,7 @@
             block.push(0);
           }
 
-          const processedBlock = this._processBlock(block);
+          const processedBlock = this.isInverse ? this._processBlockInverse(block) : this._processBlock(block);
           for (let _i = 0; _i < processedBlock.length; _i++) output.push(processedBlock[_i]);
         }
 
@@ -278,6 +278,60 @@
         return result;
       }
 
+      // Inverse of _processBlock: every forward step is a bijection, so the block
+      // is recovered by replaying them in reverse with each one inverted.
+      _processBlockInverse(block) {
+        const state = [];
+        for (let i = 0; i < 3; i++) {
+          state[i] = global.OpCodes.Pack32LE(
+            block[i * 4] || 0,
+            block[i * 4 + 1] || 0,
+            block[i * 4 + 2] || 0,
+            block[i * 4 + 3] || 0
+          );
+        }
+
+        // Undo the final round key addition
+        state[0] ^= this.roundKeys[10][0];
+        state[1] ^= this.roundKeys[10][1];
+        state[2] ^= this.roundKeys[10][2];
+
+        for (let round = 10; round >= 0; round--) {
+          if (round < 10) {
+            // Undo gamma. Each forward step has the shape w = w ^ f(other two)
+            // and leaves the other two words untouched, so it is an involution in
+            // its own word. Replaying the same three assignments in the opposite
+            // order therefore inverts the group exactly.
+            state[2] = this._gamma(state[2], state[0], state[1]);
+            state[1] = this._gamma(state[1], state[2], state[0]);
+            state[0] = this._gamma(state[0], state[1], state[2]);
+
+            // Undo the pi bit permutation
+            state[0] = this._piInverse(state[0]);
+            state[1] = this._piInverse(state[1]);
+            state[2] = this._piInverse(state[2]);
+          }
+
+          // Undo theta
+          state[0] = this._thetaInverse(state[0]);
+          state[1] = this._thetaInverse(state[1]);
+          state[2] = this._thetaInverse(state[2]);
+
+          // Undo the round key addition
+          state[0] ^= this.roundKeys[round][0];
+          state[1] ^= this.roundKeys[round][1];
+          state[2] ^= this.roundKeys[round][2];
+        }
+
+        const result = [];
+        for (let i = 0; i < 3; i++) {
+          const bytes = global.OpCodes.Unpack32LE(state[i]);
+          for (let _i = 0; _i < bytes.length; _i++) result.push(bytes[_i]);
+        }
+
+        return result;
+      }
+
       // Theta linear transformation
       _theta(x) {
         const y = global.OpCodes.XorN(x, global.OpCodes.XorN(global.OpCodes.RotL32(x, 16), global.OpCodes.RotL32(x, 8)));
@@ -291,6 +345,37 @@
           const bit = global.OpCodes.AndN(global.OpCodes.Shr32(x, i), 1);
           const newPos = this._piTable[i];
           result = global.OpCodes.OrN(result, global.OpCodes.Shl32(bit, newPos));
+        }
+        return global.OpCodes.ToUint32(result);
+      }
+
+      // Inverse of theta.
+      // theta multiplies by the polynomial p(X) = 1 + X^8 + X^16 in the ring
+      // GF(2)[X]/(X^32 - 1), where multiplying by X^k is a rotation left by k.
+      // Write p = 1 + m with m(x) = (x <<< 8) ^ (x <<< 16). Over GF(2),
+      //   m   = X^8 (1 + X^8) = X^8 (1 + X)^8
+      //   m^2 = X^16 (1 + X^16)
+      //   m^4 = X^32 (1 + X^32) = 1 * (1 + 1) = 0
+      // so m is nilpotent of index 4 and the geometric series terminates:
+      //   p^-1 = (1 + m)^-1 = 1 + m + m^2 + m^3
+      // because (1 + m)(1 + m + m^2 + m^3) = 1 + m^4 = 1.
+      _thetaInverse(x) {
+        const m = v => global.OpCodes.XorN(global.OpCodes.RotL32(v, 8), global.OpCodes.RotL32(v, 16));
+        const m1 = m(x);
+        const m2 = m(m1);
+        const m3 = m(m2);
+        const y = global.OpCodes.XorN(global.OpCodes.XorN(x, m1), global.OpCodes.XorN(m2, m3));
+        return global.OpCodes.ToUint32(y);
+      }
+
+      // Inverse of the pi bit permutation: pi sends bit i to bit _piTable[i], so
+      // the inverse reads bit _piTable[i] back into bit i.
+      _piInverse(x) {
+        let result = 0;
+        const table = this._piTable;
+        for (let i = 0; i < 32; i++) {
+          const bit = global.OpCodes.AndN(global.OpCodes.Shr32(x, table[i]), 1);
+          result = global.OpCodes.OrN(result, global.OpCodes.Shl32(bit, i));
         }
         return global.OpCodes.ToUint32(result);
       }

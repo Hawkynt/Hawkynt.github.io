@@ -54,7 +54,7 @@
       super();
 
       this.name = "PSS";
-      this.description = "Probabilistic Signature Scheme (PSS) padding for RSA signatures as defined in PKCS#1 v2.1. Provides provable security and resistance to signature forgery attacks. Uses randomization and a mask generation function for enhanced security.";
+      this.description = "Probabilistic Signature Scheme (PSS) padding for RSA signatures as defined in PKCS#1 v2.1. Provides provable security and resistance to signature forgery attacks. Uses randomization and a mask generation function for enhanced security. PSS is a one-way encoding, not a reversible padding: the encoded message contains H = Hash(padding || messageHash || salt) and never the message hash itself, so PKCS#1 defines EMSA-PSS-VERIFY - which recomputes H from a message the caller already holds and reports consistent or inconsistent - and defines no decode operation. The inverse direction here therefore verifies the structure of the encoded message and returns the recovered H; it does not and cannot reproduce the input.";
       this.inventor = "Mihir Bellare, Phillip Rogaway";
       this.year = 1996;
       this.category = CategoryType.PADDING;
