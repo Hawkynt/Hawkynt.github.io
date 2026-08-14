@@ -240,12 +240,30 @@
 
       decompress(data) {
         data = data || [];
+        if (data.length === 0) return [];
+
+        // The header is a 4-byte original size, and for a non-empty stream one
+        // 4-byte frequency per symbol after it. Reading either without checking
+        // the length first took bytes that were not there: Pack32LE of undefined
+        // yielded a huge count, and the decode loop then ran that many times, so
+        // a three-byte input cost unbounded time instead of being rejected.
+        if (data.length < 4)
+          throw new Error('Range Coding: stream is ' + data.length
+            + ' bytes, shorter than the 4-byte size header');
+
         let offset = 0;
 
         const originalSize = OpCodes.Pack32LE(data[0], data[1], data[2], data[3]);
         offset += 4;
 
+        // Empty input is encoded as the size alone, with no frequency table.
         if (originalSize === 0) return [];
+
+        const HEADER_BYTES = 4 + NUM_SYMBOLS * 4;
+        if (data.length < HEADER_BYTES)
+          throw new Error('Range Coding: stream declares ' + originalSize
+            + ' bytes but is ' + data.length + ' long, shorter than the '
+            + HEADER_BYTES + '-byte header');
 
         const freq = new Array(NUM_SYMBOLS);
         for (let i = 0; i < NUM_SYMBOLS; i++) {
