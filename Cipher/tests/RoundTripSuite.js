@@ -451,7 +451,6 @@ const ROUND_TRIP_EXEMPT = new Map([
   ['FROG', 'open defect: decryption does not invert encryption (TestSuite reports 0/1)'],
   ['Hierocrypt-3', 'open defect: decryption does not invert encryption (TestSuite reports 0/1)'],
   ['SC2000', 'open defect: decryption does not invert encryption (TestSuite reports 0/1)'],
-  ['SKINNY-128', 'open defect: decryption does not invert encryption (TestSuite reports 0/2)'],
   ['SPEED', 'open defect: decryption does not invert encryption (TestSuite reports 0/1)'],
   ['LOTUS-AEAD', 'open defect: decryption does not invert encryption (TestSuite reports 0/3)'],
   ['SATURNIN-Short', 'open defect: decryption does not invert encryption (TestSuite reports 0/1)'],
