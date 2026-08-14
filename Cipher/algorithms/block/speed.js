@@ -114,8 +114,6 @@
     [0x9BF4, 0xF659, 0xD76C]  // l = 256
   ];
 
-  // Recommended round counts (paper, Table 1) keyed by block width in bits.
-  const DEFAULT_ROUNDS = { 64: 64, 128: 48, 256: 48 };
 
   // ===== WORD HELPERS =====
 
@@ -170,7 +168,13 @@
     return OpCodes.Xor32(r, t[2]);
   }
 
-  const PASS_FUNCTIONS = [f1, f2, f3, f4];
+  // Pass p of four uses Boolean function F(p+1).
+  function combineForPass(pass, t) {
+    if (pass === 0) return f1(t);
+    if (pass === 1) return f2(t);
+    if (pass === 2) return f3(t);
+    return f4(t);
+  }
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -248,8 +252,8 @@
       this.isInverse = isInverse;
       this.inputBuffer = [];
       this._key = null;
-      this._blockSize = 16;   // bytes; w = 128 bits
-      this._rounds = null;    // null means "use the recommended count for w"
+      this._widthBytes = 16;   // bytes; w = 128 bits
+      this._rounds = 0;       // 0 means "use the recommended count for w"
       this._roundKeys = null;
       this.BlockSize = 16;
       this.KeySize = 0;
@@ -279,25 +283,31 @@
 
     get key() { return this._key ? [...this._key] : null; }
 
-    set blockSize(bytes) {
-      if (bytes !== 8 && bytes !== 16 && bytes !== 32)
-        throw new Error(`Invalid block size: ${bytes} bytes. SPEED supports 8, 16 or 32`);
-      this._blockSize = bytes;
-      this.BlockSize = bytes;
+    set blockSize(width) {
+      if (width !== 8 && width !== 16 && width !== 32)
+        throw new Error(`Invalid block size: ${width} bytes. SPEED supports 8, 16 or 32`);
+      this._widthBytes = width;
+      this.BlockSize = width;
       this._roundKeys = null;
     }
 
-    get blockSize() { return this._blockSize; }
+    get blockSize() { return this._widthBytes; }
 
     set rounds(count) {
-      if (count === null || count === undefined) { this._rounds = null; this._roundKeys = null; return; }
+      if (!count) { this._rounds = 0; this._roundKeys = null; return; }
       if (count < 32 || count % 4 !== 0)
         throw new Error(`Invalid round count: ${count}. SPEED requires a multiple of 4, at least 32`);
       this._rounds = count;
       this._roundKeys = null;
     }
 
-    get rounds() { return this._rounds === null ? DEFAULT_ROUNDS[this._blockSize * 8] : this._rounds; }
+    get rounds() {
+      // Zero means "unset": fall back to the paper's Table 1 recommendation of
+      // 64 rounds for a 64-bit block and 48 for 128 and 256.
+      if (this._rounds !== 0) return this._rounds;
+      if (this._widthBytes === 8) return 64;
+      return 48;
+    }
 
     Feed(data) {
       if (!data || data.length === 0) return;
@@ -308,14 +318,14 @@
     Result() {
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
-      if (this.inputBuffer.length % this._blockSize !== 0)
-        throw new Error(`Input length must be a multiple of ${this._blockSize} bytes`);
+      if (this.inputBuffer.length % this._widthBytes !== 0)
+        throw new Error(`Input length must be a multiple of ${this._widthBytes} bytes`);
 
       if (!this._roundKeys) this._roundKeys = this._expandKey();
 
       const output = [];
-      for (let i = 0; i < this.inputBuffer.length; i += this._blockSize) {
-        const block = this.inputBuffer.slice(i, i + this._blockSize);
+      for (let i = 0; i < this.inputBuffer.length; i += this._widthBytes) {
+        const block = this.inputBuffer.slice(i, i + this._widthBytes);
         const processed = this.isInverse ? this._decryptBlock(block) : this._encryptBlock(block);
         for (let _i = 0; _i < processed.length; _i++) output.push(processed[_i]);
       }
@@ -326,7 +336,7 @@
 
     // Geometry of the current parameter set.
     _shape() {
-      const blockBits = this._blockSize * 8;
+      const blockBits = this._widthBytes * 8;
       const wordBits = blockBits / 8;            // 8, 16 or 32
       const wordBytes = wordBits / 8;            // 1, 2 or 4
       const fullMask = wordBits === 32 ? 0xFFFFFFFF : OpCodes.Shl32(1, wordBits) - 1;
@@ -334,7 +344,7 @@
       const halfMask = OpCodes.Shl32(1, halfBits) - 1;
       // vv must span the whole 0..wordBits-1 rotation range, so the half-word is
       // shifted down to leave exactly log2(wordBits) bits: 1, 4 and 11.
-      const vvShift = halfBits - Math.log2(wordBits);
+      const vvShift = wordBits === 8 ? 1 : (wordBits === 16 ? 4 : 11);
       return { blockBits, wordBits, wordBytes, fullMask, halfBits, halfMask, vvShift, fixedRotate: halfBits - 1 };
     }
 
@@ -400,7 +410,7 @@
 
     _storeBlock(t) {
       const { wordBytes } = this._shape();
-      const out = new Array(this._blockSize);
+      const out = new Array(this._widthBytes);
       for (let i = 0; i < 8; ++i) {
         const at = (7 - i) * wordBytes;
         for (let b = 0; b < wordBytes; ++b)
@@ -417,9 +427,8 @@
       let t = this._loadBlock(block);
 
       for (let n = 0; n < rounds; ++n) {
-        const combine = PASS_FUNCTIONS[Math.floor(n / perPass)];
         const tail = rotR(t[7], fixedRotate, wordBits, fullMask);
-        let tmp = OpCodes.And32(combine(t), fullMask);
+        let tmp = OpCodes.And32(combineForPass(Math.floor(n / perPass), t), fullMask);
         const vv = OpCodes.Shr32(OpCodes.And32(OpCodes.Add32(OpCodes.Shr32(tmp, halfBits), tmp), halfMask), vvShift);
         tmp = rotR(tmp, vv, wordBits, fullMask);
         const head = OpCodes.And32(OpCodes.Add32(OpCodes.Add32(tail, tmp), rk[n]), fullMask);
@@ -440,8 +449,7 @@
         // Everything except the tail word is simply the queue shifted back one
         // place; the tail is what the round consumed into the new head.
         const previous = [t[1], t[2], t[3], t[4], t[5], t[6], t[7], 0];
-        const combine = PASS_FUNCTIONS[Math.floor(n / perPass)];
-        let tmp = OpCodes.And32(combine(previous), fullMask);
+        let tmp = OpCodes.And32(combineForPass(Math.floor(n / perPass), previous), fullMask);
         const vv = OpCodes.Shr32(OpCodes.And32(OpCodes.Add32(OpCodes.Shr32(tmp, halfBits), tmp), halfMask), vvShift);
         tmp = rotR(tmp, vv, wordBits, fullMask);
         const tail = OpCodes.And32(OpCodes.Sub32(OpCodes.Sub32(t[0], tmp), rk[n]), fullMask);
