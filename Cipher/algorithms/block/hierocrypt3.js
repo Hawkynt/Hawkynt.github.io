@@ -35,6 +35,24 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  // Caution: this is a teaching mock-up of Hierocrypt-3, not the NESSIE cipher,
+  // and it is one-way. _sBox is an ad-hoc arithmetic expression rather than the
+  // Hierocrypt S-box, and it is not a bijection: its first step, b XOR ROTL8(b,1),
+  // is singular over GF(2) because 1+X divides X^8+1, and the remaining steps
+  // narrow it further, so all 256 inputs land on just 32 outputs. Encryption
+  // therefore throws away three bits of every byte in every round and cannot be
+  // inverted. Concretely, under the committed key the two blocks
+  // 00112233445566778899AABBCCDDEEFF and 33112233445566778899AABBCCDDEEFF
+  // encrypt to the identical ciphertext, so _invSBox - which brute-force scans
+  // for the first matching preimage - has no correct answer to return.
+  //
+  // Making this round-trip means implementing the real nested-SPN round function
+  // from the NESSIE specification (bijective S-box, MDS_L and MDS_H diffusion,
+  // and the proper key schedule), which would replace the algorithm rather than
+  // repair an inverse, and would retire the self-generated vector below.
+  // A genuine Hierocrypt-3 already exists in this repository as
+  // "Hierocrypt-3 (DarkCrypt)" in darkcrypt-hierocrypt3.js.
+
 class Hierocrypt3 extends BlockCipherAlgorithm {
   constructor() {
     super();
