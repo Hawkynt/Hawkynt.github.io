@@ -600,10 +600,18 @@
       }
 
       // Perform all decryption rounds (4 at a time, in reverse order)
-      // C reference uses pattern: (s0,s1,s2,s3), (s1,s2,s3,s0), (s2,s3,s0,s1), (s3,s0,s1,s2)
+      //
+      // Tweakey phase (SKINNY spec, eprint 2016/660 section 2.2, permutation PT):
+      // PT maps the bottom half of the tweakey onto the new top half, so encryption
+      // reads TK1[0..1] on even rounds and then permutes the half at index 2, and
+      // reads TK1[2..3] on odd rounds and then permutes the half at index 0.
+      // Round counts are all multiples of 4, so the last round executed is odd and
+      // its trailing permutation was applied to the half at index 0. Unwinding must
+      // therefore start by inverting index 0 and alternate 0, 2, 0, 2 - the mirror
+      // image of the encryption order.
       for (let round = rounds - 1; round >= 0; round -= 4) {
         // Round 4 inverse (C pattern: s0, s1, s2, s3 with offset 3)
-        skinny128_inv_permute_tk_half(TK1, 2);
+        skinny128_inv_permute_tk_half(TK1, 0);
 
         // Inverse MixColumns
         s0 = OpCodes.Xor32(s0, s3);
@@ -633,7 +641,7 @@
         s3 = skinny128_inv_sbox(s3);
 
         // Round 3 inverse (C pattern: s1, s2, s3, s0 with offset 2)
-        skinny128_inv_permute_tk_half(TK1, 0);
+        skinny128_inv_permute_tk_half(TK1, 2);
 
         s1 = OpCodes.Xor32(s1, s0);
         s0 = OpCodes.Xor32(s0, s2);
@@ -659,7 +667,7 @@
         s0 = skinny128_inv_sbox(s0);
 
         // Round 2 inverse (C pattern: s2, s3, s0, s1 with offset 1)
-        skinny128_inv_permute_tk_half(TK1, 2);
+        skinny128_inv_permute_tk_half(TK1, 0);
 
         s2 = OpCodes.Xor32(s2, s1);
         s1 = OpCodes.Xor32(s1, s3);
@@ -685,7 +693,7 @@
         s1 = skinny128_inv_sbox(s1);
 
         // Round 1 inverse (C pattern: s3, s0, s1, s2 with offset 0)
-        skinny128_inv_permute_tk_half(TK1, 0);
+        skinny128_inv_permute_tk_half(TK1, 2);
 
         s3 = OpCodes.Xor32(s3, s2);
         s2 = OpCodes.Xor32(s2, s0);
