@@ -149,7 +149,12 @@
       const c2 = state[4 * i + 2];
       const c3 = state[4 * i + 3];
 
-      function mul14(p) { return OpCodes.XorN(OpCodes.XorN(mulX(mulX(mulX(p))), mulX(p)), p); }
+      // FIPS 197 section 5.3.3 InvMixColumns: the coefficients are {0e},{0b},{0d},{09}.
+      // As polynomials over GF(2): 0e = x^3+x^2+x, 0b = x^3+x+1, 0d = x^3+x^2+1,
+      // 09 = x^3+1, where each application of mulX is one multiplication by x.
+      // mul14 previously repeated mul11's body (x^3+x+1), so InvMixColumns was not
+      // the inverse of MixColumns and Simpira-128 could not undo its own permutation.
+      function mul14(p) { return OpCodes.XorN(OpCodes.XorN(mulX(mulX(mulX(p))), mulX(mulX(p))), mulX(p)); }
       function mul13(p) { return OpCodes.XorN(OpCodes.XorN(mulX(mulX(mulX(p))), mulX(mulX(p))), p); }
       function mul11(p) { return OpCodes.XorN(OpCodes.XorN(mulX(mulX(mulX(p))), mulX(p)), p); }
       function mul9(p) { return OpCodes.XorN(mulX(mulX(mulX(p))), p); }
