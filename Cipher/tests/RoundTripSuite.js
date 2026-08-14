@@ -397,13 +397,16 @@ function buildCipherCorpus(algorithm, vector) {
   // how FFX turned 16 bytes into 46. Without this case either could lose its
   // domain check and no in-alphabet corpus would ever notice.
   //
-  // Applied to modes and padding only. The classical ciphers do not survive it:
-  // Affine, Autokey, Beaufort, Columnar Transposition, Enigma Machine, Scytale,
-  // Solitaire and Vigenere all discard bytes outside A-Z instead of rejecting
-  // them, so a five-byte message comes back empty. That is the same defect this
-  // case exists to catch and it is recorded here rather than papered over, but
-  // repairing eight classical ciphers is separate work from the modes and
-  // padding schemes this tier was added for.
+  // Applied to modes and padding only, which is the tier it was added for. The
+  // eight classical ciphers that used to fail it - Affine, Autokey, Beaufort,
+  // Columnar Transposition, Enigma Machine, Scytale, Solitaire and Vigenere all
+  // discarded bytes outside A-Z, so a five-byte message came back empty - have
+  // since been repaired and each now states its domain: the four polyalphabetic
+  // substitutions and Scytale carry any byte through exactly, and Enigma,
+  // Solitaire and Columnar Transposition refuse one by name and position. The
+  // remaining classical ciphers have not all been through that work yet, so
+  // extending this case to the whole category would report their defects here
+  // rather than where they belong.
   if (alphabet.size < 256 && DOMAIN_CHECKED_CATEGORIES.has(algorithm.category.name))
     cases.push({ name: 'outside alphabet', data: alphabetData(unit, { base: 0, size: 256 }, 0x0f1e2d3c) });
   return cases;
