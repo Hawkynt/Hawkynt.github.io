@@ -38,6 +38,14 @@
  * (it is explicitly designed to double as a block cipher); running it over
  * an all-zero buffer reproduces the keystream in the ordinary sense, which
  * is how the test vectors below were captured.
+ *
+ * That also fixes the domain: Section 1 of the published description states
+ * that "a plain message is a finite sequence of blocks, i.e. an element of
+ * B^L", and Definition 1.1 gives the encoding and decoding functions as
+ * bijections between whole blocks. A message length that is not a multiple of
+ * sixteen bytes is therefore outside the cipher and is refused rather than
+ * padded, because no padding of a short tail survives being cut back to the
+ * original length.
  */
 
 (function (root, factory) {
@@ -643,25 +651,42 @@
       if (this.jump === 0) this.jump = OpCodes.Shr32(TUPLE, 1);
     }
 
+    // Fubuki's domain is whole blocks and nothing else. Section 1 of the
+    // published description fixes it: "A plain message is a finite sequence of
+    // blocks, i.e. an element of B^L", with B = W^4, four 32-bit words, and
+    // Definition 1.1 gives the encoding and decoding functions as bijections
+    // E_i, D_i : B -> B. There is no partial-block rule anywhere in the design,
+    // and there cannot be a length-preserving one: each block is transformed as
+    // a unit, so the sixteen ciphertext bytes are all needed to invert it.
+    //
+    // Zero-padding a short tail and then cutting the ciphertext back to the
+    // input length threw away exactly the bytes the inverse needs, which is why
+    // any input that was not a block multiple encrypted happily and then came
+    // back as noise. A length outside the domain is refused here instead.
     _process(bytesIn, isInverse) {
       const blockBytes = 4 * TUPLE;
-      const repeat = Math.ceil(bytesIn.length / blockBytes);
+      if (bytesIn.length % blockBytes !== 0)
+        throw new Error(`Fubuki (DarkCrypt) encodes whole ${blockBytes}-byte blocks; `
+          + `${bytesIn.length} bytes is not a multiple of ${blockBytes}`);
+
+      const repeat = bytesIn.length / blockBytes;
       const out = [];
       let pos = 0;
       for (let r = 0; r < repeat; r++) {
         const block = new Uint32Array(TUPLE);
-        for (let i = 0; i < TUPLE; i++) {
-          const b0 = bytesIn[pos + i * 4] || 0;
-          const b1 = bytesIn[pos + i * 4 + 1] || 0;
-          const b2 = bytesIn[pos + i * 4 + 2] || 0;
-          const b3 = bytesIn[pos + i * 4 + 3] || 0;
-          block[i] = OpCodes.Pack32LE(b0, b1, b2, b3);
-        }
+        for (let i = 0; i < TUPLE; i++)
+          block[i] = OpCodes.Pack32LE(bytesIn[pos + i * 4], bytesIn[pos + i * 4 + 1],
+                                      bytesIn[pos + i * 4 + 2], bytesIn[pos + i * 4 + 3]);
+
         if (isInverse) this._decryptBlock(block); else this._encryptBlock(block);
-        for (let i = 0; i < TUPLE; i++) out.push(...OpCodes.Unpack32LE(block[i]));
+
+        for (let i = 0; i < TUPLE; i++) {
+          const bytes = OpCodes.Unpack32LE(block[i]);
+          out.push(bytes[0], bytes[1], bytes[2], bytes[3]);
+        }
         pos += blockBytes;
       }
-      return out.slice(0, bytesIn.length);
+      return out;
     }
   }
 
