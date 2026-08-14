@@ -1,6 +1,8 @@
 /*
- * LOTUS-AEAD - Lightweight OCB-like AEAD Construction
- * Professional implementation following NIST LWC submission specification
+ * LOTUS-AEAD - Lightweight OTR-style AEAD Construction
+ * Follows the structure of the NIST LWC submission; see the note on the test
+ * vectors below, which records that this file does not yet reproduce the
+ * submission's own KAT and is therefore not interoperable with it.
  * (c)2006-2025 Hawkynt
  *
  * LOTUS-AEAD is a lightweight authenticated encryption with associated data (AEAD)
@@ -434,6 +436,148 @@
     return tag;
   }
 
+  // LOTUS-AEAD decryption.
+  //
+  // LOTUS-AEAD is an OTR-style (Offset Two-Round) mode over the short-tweak
+  // block cipher TweGIFT-64, described in "LOTUS-AEAD and LOCUS-AEAD", NIST
+  // Lightweight Cryptography submission, Section 3 (Specification of
+  // LOTUS-AEAD). Each plaintext pair (P0, P1) is processed by a two-round
+  // Feistel network whose round function is E applied twice under a fixed
+  // tweak, so the same network run backwards recovers the pair:
+  //
+  //   encryption            X1 = P0 ^ delta
+  //                         Z  = E^2_t4(X1) ^ P1        C0 = Z ^ delta
+  //                         C1 = X1 ^ E^2_t5(Z)
+  //
+  //   decryption            Z  = C0 ^ delta
+  //                         X1 = C1 ^ E^2_t5(Z)         P0 = X1 ^ delta
+  //                         P1 = Z ^ E^2_t4(X1)
+  //
+  // The checksum W absorbs the two single-encryption intermediates E_t4(X1)
+  // and E_t5(Z); XOR is commutative, so producing them in the reverse order
+  // during decryption yields the identical W and therefore the identical tag.
+  // The tag is recomputed here and returned to the caller for comparison; it
+  // is never derived from the received tag.
+  function lotusDecrypt(plaintext, ciphertext, ctlen, ad, adlen, key, nonce) {
+    const ks = new Gift64KeySchedule(key);
+    const WV = new Uint8Array(16); // W and V concatenated
+    const deltaN = new Uint8Array(GIFT64_BLOCK_SIZE);
+    const X1 = new Uint8Array(GIFT64_BLOCK_SIZE);
+    const X2 = new Uint8Array(GIFT64_BLOCK_SIZE);
+    const Z = new Uint8Array(GIFT64_BLOCK_SIZE);
+    const temp = new Uint8Array(16);
+
+    // Initialize
+    lotusInit(ks, deltaN, key, nonce, temp);
+    WV.fill(0);
+
+    const V = new Uint8Array(WV.buffer, GIFT64_BLOCK_SIZE, GIFT64_BLOCK_SIZE);
+    const W = new Uint8Array(WV.buffer, 0, GIFT64_BLOCK_SIZE);
+
+    // Process associated data - identical to encryption, the tag covers it the
+    // same way in both directions.
+    if (adlen > 0) {
+      lotusProcessAD(ks, deltaN, V, ad, adlen);
+    }
+
+    let mlen = ctlen;
+    let mpos = 0;
+    let cpos = 0;
+
+    if (mlen > 0) {
+      // Two-block chunks: invert the OTR Feistel network.
+      while (mlen > GIFT64_BLOCK_SIZE * 2) {
+        ks.mul2();
+        // Z = ciphertext[0:8] XOR deltaN
+        for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
+          Z[i] = OpCodes.XorN(ciphertext[cpos + i], deltaN[i]);
+        }
+        // W absorbs E_t5(Z), then X1 = ciphertext[8:16] XOR E^2_t5(Z)
+        gift64tEncrypt(ks, X2, Z, GIFT64_TWEAKS[5]);
+        for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
+          W[i] = OpCodes.XorN(W[i], X2[i]);
+        }
+        gift64tEncrypt(ks, X2, X2, GIFT64_TWEAKS[5]);
+        for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
+          X1[i] = OpCodes.XorN(ciphertext[cpos + GIFT64_BLOCK_SIZE + i], X2[i]);
+          plaintext[mpos + i] = OpCodes.XorN(X1[i], deltaN[i]);
+        }
+        // W absorbs E_t4(X1), then plaintext[8:16] = Z XOR E^2_t4(X1)
+        gift64tEncrypt(ks, X2, X1, GIFT64_TWEAKS[4]);
+        for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
+          W[i] = OpCodes.XorN(W[i], X2[i]);
+        }
+        gift64tEncrypt(ks, X2, X2, GIFT64_TWEAKS[4]);
+        for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
+          plaintext[mpos + GIFT64_BLOCK_SIZE + i] = OpCodes.XorN(Z[i], X2[i]);
+        }
+        cpos += GIFT64_BLOCK_SIZE * 2;
+        mpos += GIFT64_BLOCK_SIZE * 2;
+        mlen -= GIFT64_BLOCK_SIZE * 2;
+      }
+
+      // Final chunk. Its mask is derived from deltaN and the remaining length
+      // only, so it is reproduced exactly as the encryption side builds it.
+      ks.mul2();
+      for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
+        X1[i] = deltaN[i];
+      }
+      X1[0] = OpCodes.XorN(X1[0], OpCodes.AndN(mlen, 0xFFFFFFFF));
+      gift64tEncrypt(ks, X2, X1, GIFT64_TWEAKS[12]);
+      for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
+        W[i] = OpCodes.XorN(W[i], X2[i]);
+      }
+      gift64tEncrypt(ks, X2, X2, GIFT64_TWEAKS[12]);
+
+      if (mlen <= GIFT64_BLOCK_SIZE) {
+        // Single (possibly partial) block
+        for (let i = 0; i < mlen; ++i) {
+          const p = OpCodes.XorN(OpCodes.XorN(ciphertext[cpos + i], deltaN[i]), X2[i]);
+          plaintext[mpos + i] = p;
+          W[i] = OpCodes.XorN(W[i], p);
+          X2[i] = OpCodes.XorN(X2[i], p);
+        }
+      } else {
+        // Full block followed by a partial one
+        for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
+          const masked = OpCodes.XorN(ciphertext[cpos + i], deltaN[i]);
+          plaintext[mpos + i] = OpCodes.XorN(masked, X2[i]);
+          X2[i] = masked;
+        }
+        cpos += GIFT64_BLOCK_SIZE;
+        mpos += GIFT64_BLOCK_SIZE;
+        mlen -= GIFT64_BLOCK_SIZE;
+
+        gift64tEncrypt(ks, X2, X2, GIFT64_TWEAKS[13]);
+        for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
+          W[i] = OpCodes.XorN(W[i], X2[i]);
+        }
+        gift64tEncrypt(ks, X2, X2, GIFT64_TWEAKS[13]);
+        for (let i = 0; i < mlen; ++i) {
+          X1[i] = OpCodes.XorN(X1[i], X2[i]);
+          const p = OpCodes.XorN(ciphertext[cpos + i], X1[i]);
+          plaintext[mpos + i] = p;
+          W[i] = OpCodes.XorN(W[i], p);
+        }
+      }
+    }
+
+    // Recompute the tag over the recovered plaintext
+    const tag = new Uint8Array(GIFT64_BLOCK_SIZE);
+    lotusGenTag(ks, tag, deltaN, W, V);
+    return tag;
+  }
+
+  // Compare two tags without leaking the position of the first difference.
+  function lotusTagsMatch(expected, received) {
+    if (expected.length !== received.length) return false;
+    let diff = 0;
+    for (let i = 0; i < expected.length; ++i) {
+      diff = OpCodes.OrN(diff, OpCodes.XorN(expected[i], received[i]));
+    }
+    return diff === 0;
+  }
+
   // LOTUS-AEAD Algorithm class
   class LotusAeadAlgorithm extends AeadAlgorithm {
     constructor() {
@@ -479,10 +623,20 @@
         )
       ];
 
-      // Official test vectors from NIST LWC KAT file
+      // These are this implementation's own outputs, not the official ones,
+      // despite what they used to be labelled. LWC_AEAD_KAT_128_128.txt in the
+      // twegift64lotusaeadv1 directory of the LOTUS/LOCUS submission package
+      // linked below gives, for this key and nonce, 9E8DA381B9995459 (Count 1,
+      // no AD), AE25614ADBD7BD31 (Count 2, AD 00) and E61998A2B36DA347
+      // (Count 3, AD 0001). This file produces none of those, and matches 0 of
+      // the KAT's first 40 vectors, so the TweGIFT-64 core or the way LOTUS
+      // drives it departs from the specification somewhere. Decryption below is
+      // a true inverse of the encryption above and rejects forged tags, so the
+      // construction round-trips and authenticates; it is not interoperable
+      // with the reference until the core is reconciled with the KAT.
       this.tests = [
         {
-          text: "LOTUS-AEAD: Empty message, empty AAD (Count 1)",
+          text: "LOTUS-AEAD self-generated regression vector: empty message, empty AAD",
           uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
@@ -491,7 +645,7 @@
           expected: OpCodes.Hex8ToBytes("37F3EBB83FF38DE8")
         },
         {
-          text: "LOTUS-AEAD: Empty message, 1-byte AAD (Count 2)",
+          text: "LOTUS-AEAD self-generated regression vector: empty message, 1-byte AAD",
           uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
@@ -500,7 +654,7 @@
           expected: OpCodes.Hex8ToBytes("0020CF359FA6EC6E")
         },
         {
-          text: "LOTUS-AEAD: Empty message, 2-byte AAD (Count 3)",
+          text: "LOTUS-AEAD self-generated regression vector: empty message, 2-byte AAD",
           uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
@@ -619,22 +773,15 @@
     Result() {
       if (!this._key) throw new Error("Key not set");
       if (!this._nonce) throw new Error("Nonce not set");
-      if (this.inputBuffer.length === 0) {
-        // Empty plaintext case - just generate tag
-        const aad = this._aad || new Uint8Array(0);
-        const tag = lotusEncrypt(
-          new Uint8Array(0),
-          new Uint8Array(0),
-          0,
-          aad,
-          aad.length,
-          this._key,
-          this._nonce
-        );
-        this.inputBuffer = [];
-        return Array.from(tag);
-      }
+      return this.isInverse ? this._decrypt() : this._encrypt();
+    }
 
+    /**
+   * Encrypt the buffered plaintext and append the 64-bit tag.
+   * @returns {uint8[]} ciphertext followed by the tag
+   */
+
+    _encrypt() {
       const plaintext = new Uint8Array(this.inputBuffer);
       const aad = this._aad || new Uint8Array(0);
       const ciphertext = new Uint8Array(plaintext.length);
@@ -656,6 +803,47 @@
 
       this.inputBuffer = [];
       return Array.from(result);
+    }
+
+    /**
+   * Split the tag off the buffered ciphertext, recover the plaintext and
+   * verify the tag. A mismatch is an authentication failure: it raises and
+   * yields no plaintext at all, rather than returning unverified bytes.
+   * @returns {uint8[]} recovered plaintext
+   * @throws {Error} if the input is shorter than a tag or the tag does not verify
+   */
+
+    _decrypt() {
+      const TAG_SIZE = GIFT64_BLOCK_SIZE;
+      if (this.inputBuffer.length < TAG_SIZE) {
+        this.inputBuffer = [];
+        throw new Error("Ciphertext too short: it must carry an 8-byte authentication tag");
+      }
+
+      const ctlen = this.inputBuffer.length - TAG_SIZE;
+      const ciphertext = new Uint8Array(this.inputBuffer.slice(0, ctlen));
+      const receivedTag = new Uint8Array(this.inputBuffer.slice(ctlen));
+      const aad = this._aad || new Uint8Array(0);
+      const plaintext = new Uint8Array(ctlen);
+
+      const expectedTag = lotusDecrypt(
+        plaintext,
+        ciphertext,
+        ctlen,
+        aad,
+        aad.length,
+        this._key,
+        this._nonce
+      );
+
+      this.inputBuffer = [];
+
+      if (!lotusTagsMatch(expectedTag, receivedTag)) {
+        plaintext.fill(0);
+        throw new Error("Authentication failed: LOTUS-AEAD tag mismatch");
+      }
+
+      return Array.from(plaintext);
     }
   }
 
