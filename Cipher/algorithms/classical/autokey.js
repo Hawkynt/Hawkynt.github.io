@@ -46,6 +46,19 @@
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
+  const UPPER_A = 65, UPPER_Z = 90, LOWER_A = 97, LOWER_Z = 122;
+
+  /**
+   * Alphabet origin of a byte: 65 for A-Z, 97 for a-z, -1 for anything else.
+   * @param {number} byte - Input byte
+   * @returns {number} Character code of the letter's own 'A', or -1
+   */
+  function LetterCaseBase(byte) {
+    if (byte >= UPPER_A && byte <= UPPER_Z) return UPPER_A;
+    if (byte >= LOWER_A && byte <= LOWER_Z) return LOWER_A;
+    return -1;
+  }
+
   // ===== ALGORITHM IMPLEMENTATION =====
 
   class AutokeyCipher extends CryptoAlgorithm {
@@ -54,7 +67,7 @@
 
       // Required metadata
       this.name = "Autokey Cipher";
-      this.description = "Enhanced Vigenère cipher that extends the key using plaintext itself, eliminating periodic key repetition. Uses initial keyword plus plaintext letters to create non-repeating key sequence. More secure than standard Vigenère.";
+      this.description = "Enhanced Vigenère cipher that extends the key using plaintext itself, eliminating periodic key repetition. Uses initial keyword plus plaintext letters to create non-repeating key sequence. More secure than standard Vigenère. Input domain: every byte is accepted. A-Z and a-z are enciphered in place with their case preserved and are the only bytes that extend the running key, which uses their uppercase form; every other byte - digit, punctuation, whitespace, control or high-bit - is carried through unchanged and takes no part in the key, which is the usual pen-and-paper convention and makes the round trip exact for arbitrary input. Nothing is ever discarded.";
       this.inventor = "Blaise de Vigenère";
       this.year = 1586;
       this.category = CategoryType.CLASSICAL;
@@ -205,52 +218,53 @@
         return [];
       }
 
-      const output = [];
+      const output = new Array(this.inputBuffer.length);
       const initialKey = this.key;
-      const inputStr = String.fromCharCode.apply(null, this.inputBuffer);
 
-      // Normalize input to uppercase letters only
-      const normalizedInput = inputStr.toUpperCase().replace(/[^A-Z]/g, '');
+      // Every byte is accounted for. A letter is enciphered in its own case
+      // and both consumes and extends the running key; anything else is copied
+      // through untouched and takes no part in the key at all. The earlier
+      // "uppercase and strip everything but A-Z" normalisation silently
+      // shortened the message - five binary bytes came back as none.
+      //
+      // The running key is the keyword followed by the plaintext letters, held
+      // as alphabet positions and grown one letter at a time in both
+      // directions: encryption knows the plaintext outright, decryption
+      // recovers it as it goes. Since the keyword is never empty the key
+      // always holds at least one more letter than has been consumed.
+      //
+      // Positions rather than a string, because appending to a string and then
+      // indexing it forces V8 to flatten the rope on every letter, which is
+      // quadratic: a megabyte of text took two and a half minutes that way.
+      const runningKey = new Array(initialKey.length);
+      for (let k = 0; k < initialKey.length; k++)
+        runningKey[k] = this.ALPHABET.indexOf(initialKey[k]);
 
-      if (this.isInverse) {
-        // Decryption: build key as we decrypt
-        let extendedKey = initialKey;
+      let letterIndex = 0;
 
-        for (let i = 0; i < normalizedInput.length; i++) {
-          const cipherChar = normalizedInput[i];
-          const keyChar = extendedKey[i % extendedKey.length];
+      for (let i = 0; i < this.inputBuffer.length; i++) {
+        const byte = this.inputBuffer[i];
+        const caseBase = LetterCaseBase(byte);
 
-          const cipherIndex = this.ALPHABET.indexOf(cipherChar);
-          const keyIndex = this.ALPHABET.indexOf(keyChar);
-
-          // Decrypt: (cipher - key + 26) mod 26
-          const plainIndex = (cipherIndex - keyIndex + 26) % 26;
-          const plainChar = this.ALPHABET[plainIndex];
-
-          // Extend key with decrypted plaintext character
-          if (extendedKey.length <= i + initialKey.length) {
-            extendedKey += plainChar;
-          }
-
-          output.push(plainChar.charCodeAt(0));
+        if (caseBase < 0) {
+          output[i] = byte;
+          continue;
         }
-      } else {
-        // Encryption: extend key with plaintext
-        let extendedKey = initialKey + normalizedInput;
 
-        for (let i = 0; i < normalizedInput.length; i++) {
-          const textChar = normalizedInput[i];
-          const keyChar = extendedKey[i];
+        const textIndex = byte - caseBase;
+        const keyIndex = runningKey[letterIndex];
+        ++letterIndex;
 
-          const textIndex = this.ALPHABET.indexOf(textChar);
-          const keyIndex = this.ALPHABET.indexOf(keyChar);
+        // Encrypt: (text + key) mod 26; decrypt: (cipher - key + 26) mod 26
+        const resultIndex = this.isInverse
+          ? (textIndex - keyIndex + 26) % 26
+          : (textIndex + keyIndex) % 26;
 
-          // Encrypt: (text + key) mod 26
-          const cipherIndex = (textIndex + keyIndex) % 26;
-          const cipherChar = this.ALPHABET[cipherIndex];
+        // The key is always extended with the PLAINTEXT letter, which is the
+        // input when encrypting and the result when decrypting.
+        runningKey.push(this.isInverse ? resultIndex : textIndex);
 
-          output.push(cipherChar.charCodeAt(0));
-        }
+        output[i] = caseBase + resultIndex;
       }
 
       // Clear input buffer for next operation

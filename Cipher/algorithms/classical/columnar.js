@@ -46,13 +46,42 @@
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
+  const UPPER_A = 65, UPPER_Z = 90;
+
+  // The letter the final row of the grid is filled out with, and the letter
+  // stripped from the end again on the way back.
+  const PAD_LETTER = 88; // 'X'
+
+  /**
+   * Printable stand-in for a byte, for use in an error message.
+   * @param {number} byte - Offending byte
+   * @returns {string} The character itself when it is printable ASCII, else '?'
+   */
+  function DescribeByte(byte) {
+    return byte >= 0x20 && byte <= 0x7e ? String.fromCharCode(byte) : '?';
+  }
+
+  /**
+   * Reject the first byte the cipher has no cell for, naming it and its place.
+   * @param {uint8[]} message - Bytes about to be transposed
+   * @throws {Error} On the first byte outside A-Z
+   */
+  function RequireLetters(message) {
+    for (let i = 0; i < message.length; i++) {
+      const byte = message[i];
+      if (byte < UPPER_A || byte > UPPER_Z)
+        throw new Error(`ColumnarInstance.Result: byte 0x${byte.toString(16).padStart(2, '0')}`
+          + ` ('${DescribeByte(byte)}') at position ${i} is outside the A-Z alphabet the grid holds`);
+    }
+  }
+
   // ===== ALGORITHM IMPLEMENTATION =====
 
   class ColumnarCipher extends CryptoAlgorithm {
       constructor() {
         super();
         this.name = 'Columnar Transposition';
-        this.description = 'Classical transposition cipher that arranges plaintext in a grid and reads columns in keyword-alphabetical order.';
+        this.description = 'Classical transposition cipher that arranges plaintext in a grid and reads columns in keyword-alphabetical order. Input domain: uppercase A-Z only. This is the complete form of the cipher, in which the final row of the grid is filled out with the letter X before the columns are read, so the alphabet has to be the one the padding letter belongs to and anything else is refused by name and position rather than dropped. Decryption removes trailing X again, which means a message that genuinely ends in X comes back short - the same ambiguity as zero padding, and the one thing here that is not an exact round trip.';
         this.category = CategoryType.CLASSICAL;
         this.securityStatus = SecurityStatus.EDUCATIONAL;
         this.complexity = ComplexityType.INTERMEDIATE;
@@ -62,6 +91,12 @@
 
         this.keySize = { min: 1, max: 50, step: 1 };
         this.blockSize = { variable: true };
+
+        // The grid is padded out with the letter X, so the message has to be
+        // drawn from the alphabet X belongs to. Declared here so the
+        // round-trip suite scores a rejection of anything else as a domain
+        // limit, not a defect.
+        this.restrictedInputDomain = true;
 
         this.documentation = [
           new LinkItem('Wikipedia: Transposition Cipher', 'https://en.wikipedia.org/wiki/Transposition_cipher'),
@@ -189,126 +224,80 @@
         return order;
       }
 
+      /**
+       * Find the grid column whose keyword letter sorts into a given place.
+       * @param {number} sortedPosition - Place in keyword-alphabetical order
+       * @returns {number} Index of that column in the grid
+       */
+      columnAt(sortedPosition) {
+        for (let col = 0; col < this._columnOrder.length; col++)
+          if (this._columnOrder[col] === sortedPosition) return col;
+        return -1;
+      }
+
+      /**
+       * Write the message across the grid and read the columns off in
+       * keyword-alphabetical order. The last row is filled out with X first,
+       * so the ciphertext is a whole number of rows.
+       * @param {uint8[]} plaintext - Message bytes, all A-Z
+       * @returns {uint8[]} Transposed bytes
+       */
       EncryptBlock(blockIndex, plaintext) {
-        if (!this._cleanKey || this._cleanKey.length === 0) {
-          return plaintext;
-        }
+        // With no keyword there are no columns to read, so the message stands
+        if (!this._cleanKey || this._cleanKey.length === 0) return plaintext;
 
-        const numCols = this._cleanKey.length;
+        const columns = this._cleanKey.length;
+        const rows = Math.ceil(plaintext.length / columns);
+        const result = new Array(rows * columns);
 
-        // Remove non-alphabetic chars, convert to uppercase
-        let cleanText = '';
-        for (let i = 0; i < plaintext.length; i++) {
-          const char = plaintext.charAt(i).toUpperCase();
-          if (char >= 'A' && char <= 'Z') {
-            cleanText += char;
-          }
-        }
-
-        if (cleanText.length === 0) {
-          return '';
-        }
-
-        // Pad text to fill complete rows
-        const numRows = Math.ceil(cleanText.length / numCols);
-        while (cleanText.length < numRows * numCols) {
-          cleanText += 'X'; // Padding character
-        }
-
-        // Create grid
-        const grid = [];
-        for (let row = 0; row < numRows; row++) {
-          grid[row] = [];
-          for (let col = 0; col < numCols; col++) {
-            const charIndex = row * numCols + col;
-            grid[row][col] = charIndex < cleanText.length ? cleanText.charAt(charIndex) : '';
-          }
-        }
-
-        // Read columns in sorted order
-        let result = '';
-        for (let sortedPos = 0; sortedPos < numCols; sortedPos++) {
-          // Find which original column position has this sorted position
-          let originalCol = -1;
-          for (let col = 0; col < numCols; col++) {
-            if (this._columnOrder[col] === sortedPos) {
-              originalCol = col;
-              break;
-            }
-          }
-
-          // Read this column
-          for (let row = 0; row < numRows; row++) {
-            if (grid[row][originalCol]) {
-              result += grid[row][originalCol];
-            }
+        let position = 0;
+        for (let sortedPosition = 0; sortedPosition < columns; sortedPosition++) {
+          const originalCol = this.columnAt(sortedPosition);
+          for (let row = 0; row < rows; row++) {
+            const index = row * columns + originalCol;
+            result[position++] = index < plaintext.length ? plaintext[index] : PAD_LETTER;
           }
         }
 
         return result;
       }
 
+      /**
+       * Refill the grid column by column and read it back row by row, then
+       * drop the trailing X the padding put there. A message that genuinely
+       * ended in X is indistinguishable from padding and comes back short -
+       * the same ambiguity as zero padding, and it is stated in the
+       * description rather than hidden.
+       * @param {uint8[]} ciphertext - Transposed bytes, all A-Z
+       * @returns {uint8[]} Original bytes, less any trailing X
+       */
       DecryptBlock(blockIndex, ciphertext) {
-        if (!this._cleanKey || this._cleanKey.length === 0) {
-          return ciphertext;
+        // With no keyword there are no columns to refill, so the message stands
+        if (!this._cleanKey || this._cleanKey.length === 0) return ciphertext;
+
+        const columns = this._cleanKey.length;
+        const rows = Math.ceil(ciphertext.length / columns);
+        const baseHeight = Math.floor(ciphertext.length / columns);
+        const remainder = ciphertext.length % columns;
+
+        // -1 marks a cell of a ragged final row, which only a ciphertext this
+        // cipher did not produce can have; those cells are skipped on the way
+        // out rather than emitted as a byte.
+        const grid = new Array(rows * columns).fill(-1);
+
+        let position = 0;
+        for (let sortedPosition = 0; sortedPosition < columns; sortedPosition++) {
+          const originalCol = this.columnAt(sortedPosition);
+          const height = baseHeight + (sortedPosition < remainder ? 1 : 0);
+          for (let row = 0; row < height && position < ciphertext.length; row++)
+            grid[row * columns + originalCol] = ciphertext[position++];
         }
 
-        const numCols = this._cleanKey.length;
-        const cleanText = ciphertext.toUpperCase();
-        const numRows = Math.ceil(cleanText.length / numCols);
+        const result = [];
+        for (let i = 0; i < grid.length; i++)
+          if (grid[i] >= 0) result.push(grid[i]);
 
-        if (cleanText.length === 0) {
-          return '';
-        }
-
-        // Create empty grid
-        const grid = [];
-        for (let row = 0; row < numRows; row++) {
-          grid[row] = new Array(numCols).fill('');
-        }
-
-        // Calculate how many characters each column should get
-        const baseColLength = Math.floor(cleanText.length / numCols);
-        const remainder = cleanText.length % numCols;
-        const colLengths = new Array(numCols).fill(baseColLength);
-
-        // First 'remainder' columns in alphabetical order get an extra character
-        for (let i = 0; i < remainder; i++) {
-          colLengths[i] = baseColLength + 1;
-        }
-
-        // Fill grid column by column in alphabetical order
-        let textPos = 0;
-        for (let alphabeticalOrder = 0; alphabeticalOrder < numCols; alphabeticalOrder++) {
-          // Find which original column position has this alphabetical order
-          let originalCol = -1;
-          for (let col = 0; col < numCols; col++) {
-            if (this._columnOrder[col] === alphabeticalOrder) {
-              originalCol = col;
-              break;
-            }
-          }
-
-          // Fill this column with the appropriate number of characters
-          for (let row = 0; row < colLengths[alphabeticalOrder]; row++) {
-            if (textPos < cleanText.length) {
-              grid[row][originalCol] = cleanText.charAt(textPos++);
-            }
-          }
-        }
-
-        // Read grid row by row to get the original text
-        let result = '';
-        for (let row = 0; row < numRows; row++) {
-          for (let col = 0; col < numCols; col++) {
-            if (grid[row][col]) {
-              result += grid[row][col];
-            }
-          }
-        }
-
-        // Remove padding (trailing X characters that were likely added during encryption)
-        result = result.replace(/X+$/, '');
+        while (result.length > 0 && result[result.length - 1] === PAD_LETTER) result.pop();
 
         return result;
       }
@@ -329,19 +318,18 @@
           return [];
         }
 
-        // Convert input buffer to string
-        const inputString = String.fromCharCode(...this.inputBuffer);
-
-        // Process using the block method
-        const resultString = this.isInverse ? 
-          this.DecryptBlock(0, inputString) : 
-          this.EncryptBlock(0, inputString);
-
-        // Clear input buffer for next operation
+        const message = this.inputBuffer;
         this.inputBuffer = [];
 
-        // Convert result string back to byte array
-        return OpCodes.AnsiToBytes(resultString);
+        // The grid is padded with X, so the message has to be letters. It used
+        // to be filtered down to A-Z instead, which meant a five-byte binary
+        // message encrypted to nothing and decrypted back to nothing with no
+        // error raised.
+        RequireLetters(message);
+
+        return this.isInverse
+          ? this.DecryptBlock(0, message)
+          : this.EncryptBlock(0, message);
       }
     }
 
