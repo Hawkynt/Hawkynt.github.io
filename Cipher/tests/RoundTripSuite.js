@@ -329,6 +329,10 @@ const REVERSIBLE_CATEGORIES = new Set([...PACKING_CATEGORIES, ...CIPHER_CATEGORI
 // symbol count was odd. Both are invisible on block multiples alone.
 const WHOLE_BLOCK_CATEGORIES = new Set(['Block Ciphers', 'Special Algorithms']);
 
+// Categories additionally driven with input outside their declared alphabet, to
+// prove they refuse it rather than silently folding it into range.
+const DOMAIN_CHECKED_CATEGORIES = new Set(['Cipher Modes', 'Padding Schemes']);
+
 function isCipherCategory(algorithm) {
   return Boolean(algorithm.category && CIPHER_CATEGORIES.has(algorithm.category.name));
 }
@@ -387,6 +391,21 @@ function buildCipherCorpus(algorithm, vector) {
     cases.push({ name: 'ragged', data: alphabetData(unit + 5, alphabet, 0x9abcdef0) });
     cases.push({ name: 'single symbol', data: [alphabet.base] });
   }
+  // An algorithm with a narrow alphabet must say so when handed something else.
+  // Refusing is fine and expected; quietly folding the byte into range is not,
+  // and is exactly how FPE turned a high-bit byte into a different character and
+  // how FFX turned 16 bytes into 46. Without this case either could lose its
+  // domain check and no in-alphabet corpus would ever notice.
+  //
+  // Applied to modes and padding only. The classical ciphers do not survive it:
+  // Affine, Autokey, Beaufort, Columnar Transposition, Enigma Machine, Scytale,
+  // Solitaire and Vigenere all discard bytes outside A-Z instead of rejecting
+  // them, so a five-byte message comes back empty. That is the same defect this
+  // case exists to catch and it is recorded here rather than papered over, but
+  // repairing eight classical ciphers is separate work from the modes and
+  // padding schemes this tier was added for.
+  if (alphabet.size < 256 && DOMAIN_CHECKED_CATEGORIES.has(algorithm.category.name))
+    cases.push({ name: 'outside alphabet', data: alphabetData(unit, { base: 0, size: 256 }, 0x0f1e2d3c) });
   return cases;
 }
 
