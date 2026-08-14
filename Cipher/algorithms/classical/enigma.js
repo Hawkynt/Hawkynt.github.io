@@ -58,6 +58,21 @@
     return byte >= 0x20 && byte <= 0x7e ? String.fromCharCode(byte) : '?';
   }
 
+  /**
+   * Reject the first byte the machine has no key for, naming it and its place.
+   * @param {uint8[]} message - Bytes about to be enciphered
+   * @throws {Error} On the first byte outside A-Z
+   */
+  function RequireLetters(message) {
+    for (let i = 0; i < message.length; i++) {
+      const byte = message[i];
+      if (byte < UPPER_A || byte > UPPER_Z)
+        throw new Error(`EnigmaMachineInstance.Result: byte 0x${byte.toString(16).padStart(2, '0')}`
+          + ` ('${DescribeByte(byte)}') at position ${i} is not one of the 26 letters A-Z`
+          + ' the machine has keys for');
+    }
+  }
+
   // ===== ALGORITHM IMPLEMENTATION =====
 
   class EnigmaMachine extends CryptoAlgorithm {
@@ -357,28 +372,23 @@
         return [];
       }
 
-      const output = new Array(this.inputBuffer.length);
+      const message = this.inputBuffer;
 
-      // Process each letter (Enigma is reciprocal, so encryption=decryption).
-      // Anything the keyboard has no key for is refused by name and position.
-      // Uppercasing the message instead, as this did, both silently discarded
-      // case and could change the message length outright: 0xdf uppercases to
-      // "SS", which turned 256 bytes of input into 257 bytes of output.
-      for (let i = 0; i < this.inputBuffer.length; i++) {
-        const byte = this.inputBuffer[i];
-
-        if (byte < UPPER_A || byte > UPPER_Z) {
-          this.inputBuffer = [];
-          throw new Error(`EnigmaMachineInstance.Result: byte 0x${byte.toString(16).padStart(2, '0')}`
-            + ` ('${DescribeByte(byte)}') at position ${i} is not one of the 26 letters A-Z`
-            + ' the machine has keys for');
-        }
-
-        output[i] = UPPER_A + this.encryptLetter(byte - UPPER_A);
-      }
+      // Anything the keyboard has no key for is refused by name and position,
+      // and the whole message is checked before a single key is pressed so a
+      // refusal does not leave the rotors part-way through it. Uppercasing the
+      // message instead, as this did, both silently discarded case and could
+      // change its length outright: 0xdf uppercases to "SS", which turned 256
+      // bytes of input into 257 bytes of output.
+      RequireLetters(message);
 
       // Clear input buffer for next operation
       this.inputBuffer = [];
+
+      // Process each letter (Enigma is reciprocal, so encryption=decryption)
+      const output = new Array(message.length);
+      for (let i = 0; i < message.length; i++)
+        output[i] = UPPER_A + this.encryptLetter(message[i] - UPPER_A);
 
       return output;
     }
