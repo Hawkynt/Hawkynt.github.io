@@ -58,6 +58,20 @@
     return byte >= 0x20 && byte <= 0x7e ? String.fromCharCode(byte) : '?';
   }
 
+  /**
+   * Reject the first byte the deck cannot encode, naming it and its place.
+   * @param {uint8[]} message - Bytes about to be enciphered
+   * @throws {Error} On the first byte outside A-Z
+   */
+  function RequireLetters(message) {
+    for (let i = 0; i < message.length; i++) {
+      const byte = message[i];
+      if (byte < UPPER_A || byte > UPPER_Z)
+        throw new Error(`SolitaireInstance.Result: byte 0x${byte.toString(16).padStart(2, '0')}`
+          + ` ('${DescribeByte(byte)}') at position ${i} is outside the A-Z alphabet the deck encodes`);
+    }
+  }
+
   // ===== ALGORITHM IMPLEMENTATION =====
 
   class SolitaireCipher extends CryptoAlgorithm {
@@ -197,21 +211,20 @@
       if (this.inputBuffer.length === 0) return [];
 
       const message = this.inputBuffer;
+
+      // Anything the deck cannot carry is refused by name and position, and
+      // the whole message is checked before the first cut so a refusal does
+      // not leave the deck part-way through it. The previous filter dropped
+      // such bytes instead, so a five-byte binary message encrypted to nothing
+      // and decrypted back to nothing with no error raised.
+      RequireLetters(message);
+
       this.inputBuffer = [];
 
+      // One card value per letter
       const output = new Array(message.length);
-
-      // One card value per letter. Anything the deck cannot carry is refused
-      // by name and position; the previous filter dropped it instead, so a
-      // five-byte binary message encrypted to nothing and decrypted back to
-      // nothing with no error raised.
       for (let i = 0; i < message.length; i++) {
         const byte = message[i];
-
-        if (byte < UPPER_A || byte > UPPER_Z)
-          throw new Error(`SolitaireInstance.Result: byte 0x${byte.toString(16).padStart(2, '0')}`
-            + ` ('${DescribeByte(byte)}') at position ${i} is outside the A-Z alphabet the deck encodes`);
-
         const keyValue = this.stepDeck();
         const letter = byte - UPPER_A;
 
