@@ -529,15 +529,27 @@
 
       // Test vectors from reference implementation
       //
-      // The left-output value was previously recorded as 32411c5ca70baf92...,
-      // which is what this file produced before the tweakey schedule was carried
-      // across the skipped right branch. That value cannot be right: C0 depends
-      // only on the tweakey and the message, yet it disagreed with the C0 the
-      // very same code computes when both outputs are requested. The combined
-      // path is pinned by NIST LWC vector #34 for PAEF-ForkSkinny-128-256
+      // The left output was previously recorded as 32411c5ca70baf92..., taken
+      // from the "Left" case of the cited reference test file. That file also
+      // carries a "Both Left" case holding 1078c53597fc5e4c9d91a8eae8f5a876 for
+      // the same key and message, and the two disagree. Only one can be right:
+      // C0 is a function of the tweakey and the message alone, so it cannot
+      // depend on whether the caller also asked for C1.
+      //
+      // The combined value is the correct one. The reference encrypt routine
+      // advances the tweakey schedule only as a side effect of computing the
+      // right branch, so when it is called without a right output it applies the
+      // branching constant and runs rounds r_init+r_1 .. r_init+r_1+r_0-1 with
+      // the tweakey still parked at r_init, leaving round constants and tweakey
+      // out of step. Its own "Invert Left" decryption cases round-trip the
+      // combined value, not the left-only one.
+      //
+      // Independently pinned by NIST LWC vector #34 for PAEF-ForkSkinny-128-256
       // (1-byte plaintext, empty AAD), whose ciphertext block is exactly the C0
-      // of the padded message block, so the combined path is the correct one and
-      // the left-only value below now matches it.
+      // of the padded message block and matches the combined value; and by the
+      // official ForkAE KATs, where the advanced-tweakey reading passes all 40
+      // while the non-advanced reading fails precisely the vectors that exercise
+      // the left branch.
       const OC = typeof OpCodes !== 'undefined' ? OpCodes : global.OpCodes;
       this.tests = [
         {
@@ -859,8 +871,9 @@
           input: OC.Hex8ToBytes("00112233445566778899aabbccddeeff"),
           key: OC.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f"),
           // Corrected alongside the 128-256 left output above, for the same
-          // reason: the left branch continues the tweakey schedule after the
-          // right branch, so left-only and combined must agree.
+          // reason and from the same source: the reference test file's "Both
+          // Left" case, rather than its "Left" case, which was produced without
+          // advancing the tweakey across the skipped right branch.
           expected: OC.Hex8ToBytes("a842dcd53062730d8e293cd923ef9aa9"),
           forkOutput: "left"
         },
