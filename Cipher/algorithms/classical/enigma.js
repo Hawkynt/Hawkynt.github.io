@@ -47,6 +47,32 @@
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
+  const UPPER_A = 65, UPPER_Z = 90;
+
+  /**
+   * Printable stand-in for a byte, for use in an error message.
+   * @param {number} byte - Offending byte
+   * @returns {string} The character itself when it is printable ASCII, else '?'
+   */
+  function DescribeByte(byte) {
+    return byte >= 0x20 && byte <= 0x7e ? String.fromCharCode(byte) : '?';
+  }
+
+  /**
+   * Reject the first byte the machine has no key for, naming it and its place.
+   * @param {uint8[]} message - Bytes about to be enciphered
+   * @throws {Error} On the first byte outside A-Z
+   */
+  function RequireLetters(message) {
+    for (let i = 0; i < message.length; i++) {
+      const byte = message[i];
+      if (byte < UPPER_A || byte > UPPER_Z)
+        throw new Error(`EnigmaMachineInstance.Result: byte 0x${byte.toString(16).padStart(2, '0')}`
+          + ` ('${DescribeByte(byte)}') at position ${i} is not one of the 26 letters A-Z`
+          + ' the machine has keys for');
+    }
+  }
+
   // ===== ALGORITHM IMPLEMENTATION =====
 
   class EnigmaMachine extends CryptoAlgorithm {
@@ -55,7 +81,7 @@
 
       // Required metadata
       this.name = "Enigma Machine";
-      this.description = "Simplified 3-rotor Enigma machine simulation for educational purposes. Historical WWII cipher machine with rotating mechanical rotors and electrical pathways. Uses reciprocal substitution through rotor wirings and reflector.";
+      this.description = "Simplified 3-rotor Enigma machine simulation for educational purposes. Historical WWII cipher machine with rotating mechanical rotors and electrical pathways. Uses reciprocal substitution through rotor wirings and reflector. Input domain: uppercase A-Z only. The machine is 26 keys, 26 lamps and 26 rotor contacts - it has no key for a digit, a space, a punctuation mark or a lowercase letter, and operators spelled such things out in the plaintext before enciphering. Anything outside A-Z is therefore refused by name and position rather than case-folded or passed through in clear, and A-Z round-trips exactly because the machine is reciprocal.";
       this.inventor = "Arthur Scherbius";
       this.year = 1918;
       this.category = CategoryType.CLASSICAL;
@@ -63,6 +89,12 @@
       this.securityStatus = SecurityStatus.EDUCATIONAL;
       this.complexity = ComplexityType.EXPERT;
       this.country = CountryCode.DE;
+
+      // The machine has 26 keys, 26 lamps and 26 contacts per rotor, and no
+      // notion of case. There is no wiring an out-of-range byte could travel
+      // along, so it is rejected instead. Declared here so the round-trip
+      // suite scores that rejection as a domain limit, not a defect.
+      this.restrictedInputDomain = true;
 
       // Documentation and references
       this.documentation = [
@@ -291,17 +323,12 @@
       return outputChar.charCodeAt(0) - 65;
     }
 
-    // Encrypt a single character
-    encryptChar(char) {
-      if (char < 'A' || char > 'Z') {
-        return char; // Non-alphabetic characters pass through
-      }
-
+    // Encrypt a single letter, given as its 0-25 position in the alphabet
+    encryptLetter(letter) {
       // Step rotors before encryption
       this.stepRotors();
 
-      // Convert to number
-      let current = char.charCodeAt(0) - 65;
+      let current = letter;
 
       // Forward through rotors (right to left)
       current = this.encodeRotorForward(current, 2); // Right rotor
@@ -316,8 +343,7 @@
       current = this.encodeRotorBackward(current, 1); // Middle rotor
       current = this.encodeRotorBackward(current, 2); // Right rotor
 
-      // Convert back to character
-      return String.fromCharCode(current + 65);
+      return current;
     }
 
     // Feed data to the cipher
@@ -346,21 +372,23 @@
         return [];
       }
 
-      const output = [];
-      const inputStr = String.fromCharCode.apply(null, this.inputBuffer);
+      const message = this.inputBuffer;
 
-      // Normalize input to uppercase letters only
-      const normalizedInput = inputStr.toUpperCase();
-
-      // Process each character (Enigma is reciprocal, so encryption=decryption)
-      for (let i = 0; i < normalizedInput.length; i++) {
-        const char = normalizedInput[i];
-        const encryptedChar = this.encryptChar(char);
-        output.push(encryptedChar.charCodeAt(0));
-      }
+      // Anything the keyboard has no key for is refused by name and position,
+      // and the whole message is checked before a single key is pressed so a
+      // refusal does not leave the rotors part-way through it. Uppercasing the
+      // message instead, as this did, both silently discarded case and could
+      // change its length outright: 0xdf uppercases to "SS", which turned 256
+      // bytes of input into 257 bytes of output.
+      RequireLetters(message);
 
       // Clear input buffer for next operation
       this.inputBuffer = [];
+
+      // Process each letter (Enigma is reciprocal, so encryption=decryption)
+      const output = new Array(message.length);
+      for (let i = 0; i < message.length; i++)
+        output[i] = UPPER_A + this.encryptLetter(message[i] - UPPER_A);
 
       return output;
     }
