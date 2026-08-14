@@ -331,7 +331,7 @@ const WHOLE_BLOCK_CATEGORIES = new Set(['Block Ciphers', 'Special Algorithms']);
 
 // Categories additionally driven with input outside their declared alphabet, to
 // prove they refuse it rather than silently folding it into range.
-const DOMAIN_CHECKED_CATEGORIES = new Set(['Cipher Modes', 'Padding Schemes']);
+const DOMAIN_CHECKED_CATEGORIES = new Set(['Cipher Modes', 'Padding Schemes', 'Classical Ciphers']);
 
 function isCipherCategory(algorithm) {
   return Boolean(algorithm.category && CIPHER_CATEGORIES.has(algorithm.category.name));
