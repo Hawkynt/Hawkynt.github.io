@@ -457,7 +457,6 @@ const ROUND_TRIP_EXEMPT = new Map([
   ['SATURNIN-Short', 'open defect: decryption does not invert encryption (TestSuite reports 0/1)'],
   // Found by this sweep rather than by the vectors, and left recorded rather
   // than silently dropped, because each needs work beyond a decryption fix.
-  ['HPC', 'open defect: variable-length block handling does not round-trip away from the vector'],
   ['Fubuki (DarkCrypt)', 'open defect: does not round-trip on input longer than one keystream block'],
   ['FF3', 'open defect: accepts none of the lengths its own radix admits'],
 ]);
