@@ -415,6 +415,41 @@
         return result;
     }
 
+    /**
+     * ConfigureInstance - Apply a test vector's configuration to an instance
+     *
+     * Exposed so that other suites can drive an algorithm with data of their own
+     * choosing while configuring it exactly the way TestVector does. Duplicating
+     * this setup is what makes a sweep report working algorithms as broken: a
+     * cipher mode with no block cipher, or XTS with no tweak, refuses everything.
+     *
+     * @param {object} algorithm - Registered algorithm
+     * @param {object} instance - Instance created from it
+     * @param {object} vector - Test vector supplying key/iv/nonce/tweak/etc.
+     * @returns {object} The same instance, configured
+     */
+    function ConfigureInstance(algorithm, instance, vector) {
+        if (isNode && !global.DummyBlockCipher) {
+            try {
+                global.DummyBlockCipher = require('./DummyBlockCipher.js').DummyBlockCipher;
+            } catch (e) { /* modes needing it will report the missing dependency */ }
+        }
+        if (_isBlockCipherMode(algorithm)) {
+            _setupBlockCipherMode(instance, vector, algorithm.name);
+        }
+        _applyVectorProperties(instance, vector);
+        return instance;
+    }
+
+    /**
+     * IsBlockCipherMode - Whether an algorithm is a mode needing a block cipher
+     * @param {object} algorithm - Registered algorithm
+     * @returns {boolean}
+     */
+    function IsBlockCipherMode(algorithm) {
+        return _isBlockCipherMode(algorithm);
+    }
+
     // ============================================================================
     // PRIVATE HELPER METHODS - Internal implementation details
     // ============================================================================
@@ -816,7 +851,9 @@
     const TestEngine = {
         TestFile,
         TestAlgorithm,
-        TestVector
+        TestVector,
+        ConfigureInstance,
+        IsBlockCipherMode
     };
 
     // Node.js export
