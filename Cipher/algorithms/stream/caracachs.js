@@ -393,40 +393,39 @@
       this.r = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(this.r, rotAmount), OpCodes.Shr32(this.r, (16 - rotAmount))));
     }
 
-    // Encode/decode a single byte (symmetric operation)
+    // Process a single byte in the direction this instance was created for.
     _processByte(byte) {
-      // Run stream for cle iterations
-      for (let index = 0; index < this.cle; ++index) {
-        this._stream(index);
-      }
-
-      // XOR byte with r
-      const d = byte;
-      byte = OpCodes.XorN(byte, OpCodes.AndN(this.r, 0xFF));
-
-      // Update state (r is 32-bit unsigned)
-      this.r = OpCodes.ToUint32(this.r + d);
-      this.b[this.cle - 1] = OpCodes.ToUint32(this.b[this.cle - 1] + d);
-
-      return byte;
+      return this._transform(byte, this.isInverse);
     }
 
-    // Helper function for initialization phase
-    _encode(byte) {
+    // Core byte step. CARACACHS is not a plain keystream XOR: after masking the
+    // byte it folds the PLAINTEXT byte back into both the accumulator r and the
+    // last buffer word, so the generator's next output depends on the data seen
+    // so far. Encryption is handed the plaintext and can feed its input directly;
+    // decryption is handed the ciphertext and must feed the byte it just
+    // recovered instead. Feeding the ciphertext leaves the two states diverged
+    // from the second byte onwards, which is why decryption returned the first
+    // byte correctly and garbage after it.
+    _transform(byte, decrypting) {
       // Run stream for cle iterations
       for (let index = 0; index < this.cle; ++index) {
         this._stream(index);
       }
 
       // XOR byte with r
-      const d = byte;
-      byte = OpCodes.XorN(byte, OpCodes.AndN(this.r, 0xFF));
+      const masked = OpCodes.XorN(byte, OpCodes.AndN(this.r, 0xFF));
+      const d = decrypting ? masked : byte;
 
       // Update state (r is 32-bit unsigned)
       this.r = OpCodes.ToUint32(this.r + d);
       this.b[this.cle - 1] = OpCodes.ToUint32(this.b[this.cle - 1] + d);
 
-      return byte;
+      return masked;
+    }
+
+    // Helper for the key setup phase, which always self-encrypts (forward).
+    _encode(byte) {
+      return this._transform(byte, false);
     }
   }
 

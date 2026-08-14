@@ -54,11 +54,15 @@
       super();
 
       this.name = "Zero Padding";
-      this.description = "Zero padding scheme fills remaining bytes with zero values to reach the block size. This is the simplest padding method but has ambiguity issues when the original data ends with zero bytes, making it impossible to distinguish padding from actual data during removal.";
+      this.description = "Zero padding scheme fills remaining bytes with zero values to reach the block size. This is the simplest padding method but has ambiguity issues when the original data ends with zero bytes, making it impossible to distinguish padding from actual data during removal. Such input is rejected rather than padded, because unpadding would silently return short data.";
       this.inventor = "N/A";
       this.year = 1970;
       this.category = CategoryType.PADDING;
       this.subCategory = "Simple Padding";
+
+      // Declared so a round-trip sweep expects a refusal on data ending in a zero
+      // byte rather than counting it as a defect.
+      this.restrictedInputDomain = "data whose last byte is not zero";
       this.securityStatus = SecurityStatus.EDUCATIONAL; // Ambiguous padding removal
       this.complexity = ComplexityType.TRIVIAL;
       this.country = CountryCode.INTERNATIONAL;
@@ -194,6 +198,17 @@
      */
     _addPadding() {
       const data = this.inputBuffer;
+
+      // Zero padding carries no length, so removal strips every trailing zero and
+      // cannot tell which of them were data. Padding a message that already ends
+      // in a zero therefore produces something that will not come back intact.
+      // Refusing is the only honest option: the alternative is returning short
+      // data with no indication that anything was lost.
+      if (data.length > 0 && data[data.length - 1] === 0) {
+        throw new Error("Zero padding cannot be removed unambiguously from data ending in a zero byte; "
+          + "use a self-describing scheme such as PKCS#7 or ISO/IEC 7816-4");
+      }
+
       const paddingLength = this.blockSize - (data.length % this.blockSize);
 
       // Only add padding if needed
