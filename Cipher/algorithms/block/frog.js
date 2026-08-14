@@ -1,3 +1,52 @@
+/*
+ * FROG Implementation
+ * Compatible with AlgorithmFramework
+ * (c)2006-2025 Hawkynt
+ *
+ * FROG, by Dianelos Georgoudis, Damian Leroux and Billy Simon Chaves (TecApro
+ * International), submitted to the AES competition in 1998. Its defining feature
+ * is that the user key is not used by the round function at all: it only derives
+ * a large key-dependent "internal key" of per-round substitution and permutation
+ * tables, and the encryption primitive is then a short fixed sequence of byte
+ * operations driven entirely by those tables.
+ *
+ * Construction (AES submission, "The FROG Encryption Algorithm", sections 3-5):
+ *  1. A 251-byte "random seed" table is built from the first 251 five-digit
+ *     groups of the RAND Corporation's "A Million Random Digits with 100,000
+ *     Normal Deviates" (1955), each group read as a decimal integer and reduced
+ *     mod 256. This is the same nothing-up-my-sleeve source Merkle used for
+ *     Khufu/Khafre/Snefru.
+ *  2. simpleKey[i] = seed[i mod 251] XOR key[i mod keyLength], over the full
+ *     internal key length (blockLength * 2 + 256) * rounds = 2304 bytes for a
+ *     128-bit block and the specified 8 rounds.
+ *  3. simpleKey is cut into one record per round, each holding xorBu[16],
+ *     substPermu[256] and bombPermu[16]. substPermu and bombPermu are each
+ *     turned into a genuine permutation by the key-driven shuffle
+ *     makePermutation; bombPermu is then forced into a single full-length cycle
+ *     (make1Cycle) and stripped of references that the round function's "next
+ *     byte" step would cancel out (removeReferences).
+ *  4. An IV seeded from the user key (iv[i] ^= key[i], iv[0] ^= keyLength) is
+ *     repeatedly FROG-encrypted under that intermediate internal key, OFB
+ *     fashion, to produce the FINAL internal key material, which is cut up and
+ *     permuted exactly the same way.
+ *
+ * Round function, for each byte i of the state in ascending order:
+ *     state[i] = substPermu[state[i] XOR xorBu[i]]
+ *     state[(i + 1) mod blockLength] ^= state[i]
+ *     state[bombPermu[i]] ^= state[i]
+ * Decryption runs the rounds in reverse, the bytes in descending order, and each
+ * byte's three steps in reverse, with substPermu replaced by its inverse:
+ *     state[bombPermu[i]] ^= state[i]
+ *     state[(i + 1) mod blockLength] ^= state[i]
+ *     state[i] = substPermuInverse[state[i]] XOR xorBu[i]
+ * make1Cycle and removeReferences are what make this reversible: they guarantee
+ * bombPermu[i] is neither i nor (i + 1) mod blockLength, so the two XOR steps
+ * touch distinct bytes and neither disturbs state[i] itself.
+ *
+ * 128-bit block, 128/192/256-bit keys, 8 rounds. Broken by Wagner, Ferguson and
+ * Schneier at the AES conference; educational only.
+ */
+
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
     // AMD
@@ -31,266 +80,384 @@
 
   // Extract framework components
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          BlockCipherAlgorithm, IBlockCipherInstance, LinkItem, KeySize } = AlgorithmFramework;
+          BlockCipherAlgorithm, IBlockCipherInstance, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
+
+  // ===== CONSTANTS =====
+
+  const ROUNDS = 8;
+  const BLOCK_LEN = 16;
+
+  // First 251 five-digit groups of "A Million Random Digits with 100,000 Normal
+  // Deviates" (RAND Corporation, 1955), each read as a decimal integer and
+  // reduced mod 256 - the seed table specified in the FROG AES submission.
+  const RAND_DIGITS =
+    "100973253376520135863467354876809590911739292749453754204805648947429624" +
+    "805240372063610402008229166508422689531964509303232090256015953347643508" +
+    "033606990190252909376707153831131165886767439704436276591280799970801573" +
+    "614764032366539895116877121717683366065747173407276850366973617065813398" +
+    "851119929170310601080545571824063530342614867990743923403097328526977602" +
+    "020516569268665748187305385247186238857963573321350532547048905535754828" +
+    "468287098349125624737964575303529647783580834282609352034435273884359852" +
+    "017767149056860722109405586097093433505007399811805054313980827732507256" +
+    "824829405242015277567851834529963406288980831374670078184754061068711778" +
+    "178868540200865075840136766679519036476493296091106299594673488751764969" +
+    "918260892893785613682347834113654811767417468509505804776974730395718640" +
+    "218165448012435635177270801545318223742111578253143855376374350998177740" +
+    "277214432360021045521642379628602655699162680366252291483693687203766211" +
+    "399094400564180989320505142256851446427567889629778822543821459891499145" +
+    "236847927686461628355494750899233708920048803369459826940368587029734135" +
+    "531403334042050823414410481949851574795432979265755760040881222220641312" +
+    "550737421110002040128607469796644894392870725815636064932916505344844021" +
+    "9525634365177082072073179061196";
+
+  function buildRandomSeed() {
+    const seed = new Array(251);
+    for (let i = 0; i < 251; ++i) {
+      seed[i] = parseInt(RAND_DIGITS.substr(i * 5, 5), 10) % 256;
+    }
+    return seed;
+  }
+
+  const RANDOM_SEED = buildRandomSeed();
+
+  // ===== INTERNAL KEY CONSTRUCTION =====
+  //
+  // The internal key is held as one flat byte array of
+  // (blockLength * 2 + 256) * rounds entries. Round r occupies the window
+  // starting at r * SUBKEY_LEN, laid out as xorBu[blockLength],
+  // substPermu[256], bombPermu[blockLength] - the same order as the tIterKey
+  // record of the reference implementation. The permutation helpers therefore
+  // take a base offset and a length rather than a sub-array.
+
+  const SUBKEY_LEN = BLOCK_LEN * 2 + 256;
+
+  // Turns an arbitrary byte range into a permutation of its own index range by a
+  // key-driven selection sweep: at each step the next unused value is chosen at
+  // an offset given by the incoming byte. FROG AES submission, "makePermutation".
+  function makePermutation(data, offset, length) {
+    const use = new Array(length);
+    for (let i = 0; i < length; ++i) use[i] = i;
+
+    let index = 0;
+    let last = length - 1;
+    for (let i = 0; i < length - 1; ++i) {
+      index = (index + data[offset + i]) % (last + 1);
+      data[offset + i] = use[index];
+      if (index < last) use.splice(index, 1);
+      --last;
+      if (index > last) index = 0;
+    }
+    data[offset + length - 1] = use[0];
+  }
+
+  function invertPermutation(data, offset, length) {
+    const inverse = new Array(length);
+    for (let i = 0; i < length; ++i) inverse[data[offset + i]] = i;
+    for (let i = 0; i < length; ++i) data[offset + i] = inverse[i];
+  }
+
+  // Merges any shorter cycles of bombPermu into one full-length cycle, so that
+  // every byte position is reachable from every other. FROG AES submission,
+  // "make1Cycle". A side effect is that bombPermu[i] is never i, which is what
+  // keeps the round function's third step from cancelling its own input.
+  function make1Cycle(data, offset, blockLength) {
+    const used = new Array(blockLength).fill(0);
+    let j = 0;
+    for (let i = 0; i < blockLength - 1; ++i) {
+      if (data[offset + j] === 0) {
+        let k = j;
+        do {
+          k = (k + 1) % blockLength;
+        } while (used[k] !== 0);
+        data[offset + j] = k;
+        let l = k;
+        while (data[offset + l] !== k) l = data[offset + l];
+        data[offset + l] = 0;
+      }
+      used[j] = 1;
+      j = data[offset + j];
+    }
+  }
+
+  // Stops bombPermu[i] pointing at the byte the round function's second step
+  // already XORs, which would otherwise undo it. FROG AES submission,
+  // "removeReferences".
+  function removeReferences(data, offset, blockLength) {
+    for (let i = 0; i < blockLength; ++i) {
+      const j = (i + 1) % blockLength;
+      if (data[offset + i] === j) data[offset + i] = (j + 1) % blockLength;
+    }
+  }
+
+  function makeInternalKey(bytes, blockLength, rounds) {
+    for (let r = 0; r < rounds; ++r) {
+      const substAt = r * SUBKEY_LEN + blockLength;
+      const bombAt = substAt + 256;
+      makePermutation(bytes, substAt, 256);
+      makePermutation(bytes, bombAt, blockLength);
+      make1Cycle(bytes, bombAt, blockLength);
+      removeReferences(bytes, bombAt, blockLength);
+    }
+    return bytes;
+  }
+
+  // Replaces every round's substPermu by its inverse, which is the only
+  // difference between the encryption and the decryption internal key.
+  function invertSubstitutions(internalKey, blockLength, rounds) {
+    for (let r = 0; r < rounds; ++r)
+      invertPermutation(internalKey, r * SUBKEY_LEN + blockLength, 256);
+  }
+
+  // ===== BLOCK TRANSFORM =====
+
+  function frogEncrypt(state, internalKey, blockLength, rounds) {
+    for (let r = 0; r < rounds; ++r) {
+      const xorAt = r * SUBKEY_LEN;
+      const substAt = xorAt + blockLength;
+      const bombAt = substAt + 256;
+      for (let i = 0; i < blockLength; ++i) {
+        state[i] = internalKey[substAt + OpCodes.XorN(state[i], internalKey[xorAt + i])];
+        state[(i + 1) % blockLength] ^= state[i];
+        state[internalKey[bombAt + i]] ^= state[i];
+      }
+    }
+  }
+
+  function frogDecrypt(state, internalKey, blockLength, rounds) {
+    for (let r = rounds - 1; r >= 0; --r) {
+      const xorAt = r * SUBKEY_LEN;
+      const substAt = xorAt + blockLength;
+      const bombAt = substAt + 256;
+      for (let i = blockLength - 1; i >= 0; --i) {
+        state[internalKey[bombAt + i]] ^= state[i];
+        state[(i + 1) % blockLength] ^= state[i];
+        state[i] = OpCodes.XorN(internalKey[substAt + state[i]], internalKey[xorAt + i]);
+      }
+    }
+  }
+
+  // ===== KEY SCHEDULE =====
+
+  function generateKeys(keyBytes, blockLength, rounds) {
+    const keyLength = keyBytes.length;
+    const internalKeyLength = SUBKEY_LEN * rounds;
+
+    const simpleKey = new Array(internalKeyLength);
+    for (let i = 0; i < internalKeyLength; ++i) {
+      simpleKey[i] = OpCodes.XorN(RANDOM_SEED[i % 251], keyBytes[i % keyLength]);
+    }
+
+    const intermediateKey = makeInternalKey(simpleKey, blockLength, rounds);
+
+    // Self-keying pass: an IV derived from the user key is encrypted over and
+    // over under the intermediate internal key, OFB fashion, and the output
+    // stream becomes the final internal key material.
+    const iv = new Array(blockLength).fill(0);
+    const ivLength = Math.min(keyLength, blockLength);
+    for (let i = 0; i < ivLength; ++i) iv[i] ^= keyBytes[i];
+    iv[0] ^= keyLength;
+
+    const material = new Array(internalKeyLength);
+    let filled = 0;
+    while (filled < internalKeyLength) {
+      frogEncrypt(iv, intermediateKey, blockLength, rounds);
+      const chunk = Math.min(blockLength, internalKeyLength - filled);
+      for (let j = 0; j < chunk; ++j) material[filled + j] = iv[j];
+      filled += chunk;
+    }
+
+    return makeInternalKey(material, blockLength, rounds);
+  }
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  class FROG extends BlockCipherAlgorithm {
+    constructor() {
+      super();
 
-class FROG extends BlockCipherAlgorithm {
-  constructor() {
-    super();
+      this.name = "FROG";
+      this.description = "AES candidate from TecApro built on a key-as-program design: the user key derives a large internal key of per-round substitution and permutation tables, and the round function is a short fixed byte sequence driven entirely by those tables. 128-bit block, 128/192/256-bit keys, 8 rounds.";
+      this.inventor = "Dianelos Georgoudis, Damian Leroux, Billy Simon Chaves";
+      this.year = 1998;
+      this.category = CategoryType.BLOCK;
+      this.subCategory = "Block Cipher";
+      this.securityStatus = SecurityStatus.INSECURE;
+      this.complexity = ComplexityType.ADVANCED;
+      this.country = CountryCode.CR;
 
-    this.name = "FROG";
-    this.description = "Educational implementation of the FROG block cipher, an AES candidate from TecApro that uses a unique key-as-program design with 8 rounds and complex key schedule.";
-    this.inventor = "Georgoudis, Leroux and Chaves";
-    this.year = 1998;
-    this.category = CategoryType.BLOCK;
-    this.subCategory = "Block Cipher";
-    this.securityStatus = SecurityStatus.INSECURE;
-    this.complexity = ComplexityType.INTERMEDIATE;
-    this.country = CountryCode.CR;
+      this.SupportedKeySizes = [new KeySize(16, 32, 8)];
+      this.SupportedBlockSizes = [new KeySize(16, 16, 1)];
 
-    this.SupportedKeySizes = [new KeySize(16, 32, 8)];
-    this.SupportedBlockSizes = [new KeySize(16, 16, 1)];
+      this.documentation = [
+        new LinkItem("The FROG Encryption Algorithm (TecApro AES submission)", "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/aes-development/frog.pdf"),
+        new LinkItem("FROG AES Submission (NESSIE mirror)", "https://www.cosic.esat.kuleuven.be/nessie/workshop/submissions/frog.pdf"),
+        new LinkItem("FROG (Wikipedia)", "https://en.wikipedia.org/wiki/FROG")
+      ];
 
-    this.documentation = [
-      new LinkItem("FROG AES Submission", "https://www.cosic.esat.kuleuven.be/nessie/workshop/submissions/frog.pdf")
-    ];
+      this.references = [
+        new LinkItem("A Million Random Digits with 100,000 Normal Deviates (RAND, 1955)", "https://www.rand.org/pubs/monograph_reports/MR1418.html"),
+        new LinkItem("Cryptanalysis of FROG (Wagner, Ferguson, Schneier)", "https://www.schneier.com/academic/archives/1999/01/cryptanalysis_of_fro.html")
+      ];
 
-    this.references = [
-      new LinkItem("Brian Gladman FROG C Reference (Applied Cryptography source code archive)", "https://www.schneier.com/books/applied-cryptography-source/"),
-      new LinkItem("embeddedsw.net libObfuscate FROG Implementation", "https://embeddedsw.net/Cipher_Reference_Home.html")
-    ];
+      this.knownVulnerabilities = [
+        new Vulnerability("Weak key classes and chosen-plaintext attacks", "Wagner, Ferguson and Schneier found large weak-key classes and both chosen-plaintext and chosen-ciphertext attacks; FROG was not selected as an AES finalist.", "Use AES or another vetted cipher.")
+      ];
 
-    this.tests = [
-      {
-        text: "FROG Test Vector 1",
-        uri: "Educational test vector for FROG cipher",
-        input: OpCodes.Hex8ToBytes('00112233445566778899AABBCCDDEEFF'),
-        key: OpCodes.Hex8ToBytes('0F0E0D0C0B0A09080706050403020100'),
-        expected: OpCodes.Hex8ToBytes('63EE65DF98CD8D545305692BB983A3BF')
-      }
-    ];
+      // Known Answer Test vectors from the AES submission's own ecb_vk.txt and
+      // ecb_vt.txt, produced by the submitted reference implementation.
+      //
+      // BYTE ORDER: FROG numbers a block from the least significant byte up, so
+      // index 0 is the LAST byte the AES KAT files print. Every key, plaintext
+      // and ciphertext below is therefore the byte-REVERSAL of the string in the
+      // KAT file: the file's "KEY=800000...00" is the 16-byte array
+      // 00...00,0x80, and so on. They are written here in array order because
+      // that is the order this interface consumes and emits.
+      //
+      // The last three are cross-checks against the FROG shipped in the DarkCrypt
+      // Total Commander plugin, an independent implementation of the same
+      // construction; they are order-agnostic in the sense that they are quoted
+      // exactly as that plugin produces them.
+      this.tests = [
+        {
+          text: "AES KAT ecb_vk.txt I=1 — 128-bit key, single key bit set",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/aes-development/frog.pdf",
+          input: OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
+          key: OpCodes.Hex8ToBytes('00000000000000000000000000000080'),
+          expected: OpCodes.Hex8ToBytes('1e1a2a532de59da7e230cc718ad2cb6c')
+        },
+        {
+          text: "AES KAT ecb_vk.txt I=128 — 128-bit key, lowest key bit set",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/aes-development/frog.pdf",
+          input: OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
+          key: OpCodes.Hex8ToBytes('01000000000000000000000000000000'),
+          expected: OpCodes.Hex8ToBytes('4f43f3edeb7c2a85d1d8577e0c7378c4')
+        },
+        {
+          text: "AES KAT ecb_vt.txt I=1 — 128-bit key, single plaintext bit set",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/aes-development/frog.pdf",
+          input: OpCodes.Hex8ToBytes('00000000000000000000000000000080'),
+          key: OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
+          expected: OpCodes.Hex8ToBytes('82700ab3533100fcd02de6bd6988af43')
+        },
+        {
+          text: "AES KAT ecb_vt.txt I=128 — 128-bit key, lowest plaintext bit set",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/aes-development/frog.pdf",
+          input: OpCodes.Hex8ToBytes('01000000000000000000000000000000'),
+          key: OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
+          expected: OpCodes.Hex8ToBytes('b46122f040782cb0cd24ce55e92554c7')
+        },
+        {
+          text: "AES KAT — all-zero 128-bit key and plaintext (order-independent)",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/aes-development/frog.pdf",
+          input: OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
+          key: OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
+          expected: OpCodes.Hex8ToBytes('ce0f0611ec5ea12607d4bb435b58f0bf')
+        },
+        {
+          text: "AES KAT ecb_vk.txt I=1 — 192-bit key",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/aes-development/frog.pdf",
+          input: OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
+          key: OpCodes.Hex8ToBytes('000000000000000000000000000000000000000000000080'),
+          expected: OpCodes.Hex8ToBytes('d97ec798d02b23e20070c69753f4770e')
+        },
+        {
+          text: "AES KAT ecb_vk.txt I=1 — 256-bit key",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/aes-development/frog.pdf",
+          input: OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
+          key: OpCodes.Hex8ToBytes('0000000000000000000000000000000000000000000000000000000000000080'),
+          expected: OpCodes.Hex8ToBytes('e100a4921e34bc89b9c6182b42c6b4b3')
+        },
+        {
+          text: "FROG-256 — zero key and plaintext, cross-checked against the DarkCrypt plugin",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
+          key: OpCodes.Hex8ToBytes('0000000000000000000000000000000000000000000000000000000000000000'),
+          expected: OpCodes.Hex8ToBytes('b57897cc533074f1a543bf69b65c7bbc')
+        },
+        {
+          text: "FROG-256 — incrementing key and plaintext, cross-checked against the DarkCrypt plugin",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes('000102030405060708090a0b0c0d0e0f'),
+          key: OpCodes.Hex8ToBytes('000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f'),
+          expected: OpCodes.Hex8ToBytes('2bbb1026a5608ad9bd14ea5064982eb9')
+        },
+        {
+          text: "FROG-256 — shifted incrementing key and plaintext, cross-checked against the DarkCrypt plugin",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes('101112131415161718191a1b1c1d1e1f'),
+          key: OpCodes.Hex8ToBytes('0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20'),
+          expected: OpCodes.Hex8ToBytes('26fba6a7bbb41616d89c83bd83d97a47')
+        }
+      ];
+    }
+
+    CreateInstance(isInverse = false) {
+      return new FROGInstance(this, isInverse);
+    }
   }
 
-  CreateInstance(isInverse = false) {
-    return new FROGInstance(this, isInverse);
-  }
-}
-
-class FROGInstance extends IBlockCipherInstance {
-  constructor(algorithm, isInverse = false) {
-    super(algorithm);
-    this.isInverse = isInverse;
-    this.inputBuffer = [];
-    this._key = null;
-    this._internalKey = null;
-    this._keySize = 0;
-  }
-
-  set key(keyBytes) {
-    if (!keyBytes) {
+  class FROGInstance extends IBlockCipherInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this.inputBuffer = [];
       this._key = null;
-      this._internalKey = null;
-      return;
+      this._roundKeys = null;
+      this.BlockSize = BLOCK_LEN;
+      this.KeySize = 0;
     }
 
-    const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-      keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-    );
-
-    if (!isValidSize) {
-      throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
-    }
-
-    this._key = [...keyBytes];
-    this._setupKey(keyBytes);
-  }
-
-  get key() { return this._key ? [...this._key] : null; }
-
-  Feed(data) {
-    if (!data || data.length === 0) return;
-    if (!this._key) throw new Error("Key not set");
-    for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
-  }
-
-  Result() {
-    if (!this._key) throw new Error("Key not set");
-    if (this.inputBuffer.length === 0) throw new Error("No data fed");
-
-    const output = [];
-    const blockSize = 16;
-
-    for (let i = 0; i < this.inputBuffer.length; i += blockSize) {
-      const block = this.inputBuffer.slice(i, i + blockSize);
-      if (block.length !== blockSize) {
-        throw new Error(`Incomplete block: ${block.length} bytes`);
+    set key(keyBytes) {
+      if (!keyBytes) {
+        this._key = null;
+        this._roundKeys = null;
+        this.KeySize = 0;
+        return;
       }
 
-      const processedBlock = this.isInverse ?
-        this._decryptBlock(block) :
-        this._encryptBlock(block);
+      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
+        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
+        && (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)
+      );
 
-      for (let _i = 0; _i < processedBlock.length; _i++) output.push(processedBlock[_i]);
-    }
-
-    this.inputBuffer = [];
-    return output;
-  }
-
-  _setupKey(key) {
-    this._keySize = key.length;
-    this._internalKey = new Uint8Array(2304);
-
-    const expandedKey = new Uint8Array(256);
-    for (let i = 0; i < 256; i++) {
-      expandedKey[i] = OpCodes.XorN(key[i % key.length], i);
-    }
-
-    let keyIndex = 0;
-    for (let i = 0; i < 2304; i++) {
-      this._internalKey[i] = expandedKey[keyIndex];
-      keyIndex = (keyIndex + 1) % 256;
-
-      if (i > 0) {
-        this._internalKey[i] = OpCodes.XorN(this._internalKey[i], this._internalKey[i - 1]);
+      if (!isValidSize) {
+        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
       }
 
-      this._internalKey[i] = OpCodes.RotL8(this._internalKey[i], (i % 8) + 1);
+      this._key = [...keyBytes];
+      this.KeySize = keyBytes.length;
+      // The internal key differs between the two directions: decryption needs
+      // each round's substPermu replaced by its inverse.
+      this._roundKeys = generateKeys(this._key, BLOCK_LEN, ROUNDS);
+      if (this.isInverse) invertSubstitutions(this._roundKeys, BLOCK_LEN, ROUNDS);
     }
-  }
 
-  _encryptBlock(data) {
-    if (!this._internalKey) {
-      throw new Error('Key not set up');
+    get key() { return this._key ? [...this._key] : null; }
+
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      if (!this._key) throw new Error("Key not set");
+      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
-    const block = new Uint8Array(data);
-    let keyOffset = 0;
+    Result() {
+      if (!this._key) throw new Error("Key not set");
+      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+      if (this.inputBuffer.length % BLOCK_LEN !== 0)
+        throw new Error(`Input length must be a multiple of ${BLOCK_LEN} bytes`);
 
-    for (let round = 0; round < 8; round++) {
-      // Save original block values for operation 2 dependencies
-      const originalBlock = new Uint8Array(block);
-
-      for (let i = 0; i < 16; i++) {
-        const instruction = this._internalKey[keyOffset + i];
-        const operation = OpCodes.AndN(instruction, 0x03);
-        const sourceIdx = OpCodes.AndN(OpCodes.Shr32(instruction, 2), 0x0F);
-
-        switch (operation) {
-          case 0:
-            block[i] = OpCodes.XorN(block[i], this._internalKey[keyOffset + 16 + sourceIdx]);
-            break;
-          case 1:
-            block[i] = OpCodes.RotL8(block[i], (OpCodes.AndN(sourceIdx, 0x07)) + 1);
-            break;
-          case 2:
-            block[i] = OpCodes.XorN(block[i], originalBlock[sourceIdx % 16]);
-            break;
-          case 3:
-            block[i] = this._substituteByte(block[i], keyOffset + sourceIdx);
-            break;
-        }
+      const output = [];
+      for (let i = 0; i < this.inputBuffer.length; i += BLOCK_LEN) {
+        const state = this.inputBuffer.slice(i, i + BLOCK_LEN);
+        if (this.isInverse) frogDecrypt(state, this._roundKeys, BLOCK_LEN, ROUNDS);
+        else frogEncrypt(state, this._roundKeys, BLOCK_LEN, ROUNDS);
+        for (let _i = 0; _i < state.length; _i++) output.push(state[_i]);
       }
 
-      this._mixColumns(block);
-      keyOffset += 288;
-    }
-
-    return block;
-  }
-
-  _decryptBlock(data) {
-    if (!this._internalKey) {
-      throw new Error('Key not set up');
-    }
-
-    const block = new Uint8Array(data);
-    let keyOffset = 288 * 7;
-
-    for (let round = 7; round >= 0; round--) {
-      this._invMixColumns(block);
-
-      // Save original block values for operation 2 dependencies
-      const originalBlock = new Uint8Array(block);
-
-      for (let i = 15; i >= 0; i--) {
-        const instruction = this._internalKey[keyOffset + i];
-        const operation = OpCodes.AndN(instruction, 0x03);
-        const sourceIdx = OpCodes.AndN(OpCodes.Shr32(instruction, 2), 0x0F);
-
-        switch (operation) {
-          case 0:
-            block[i] = OpCodes.XorN(block[i], this._internalKey[keyOffset + 16 + sourceIdx]);
-            break;
-          case 1:
-            block[i] = OpCodes.RotR8(block[i], (OpCodes.AndN(sourceIdx, 0x07)) + 1);
-            break;
-          case 2:
-            block[i] = OpCodes.XorN(block[i], originalBlock[sourceIdx % 16]);
-            break;
-          case 3:
-            block[i] = this._invSubstituteByte(block[i], keyOffset + sourceIdx);
-            break;
-        }
-      }
-
-      keyOffset -= 288;
-    }
-
-    return block;
-  }
-
-  _substituteByte(byte, keyOffset) {
-    const sboxKey = this._internalKey[keyOffset % 2304];
-    return OpCodes.AndN(OpCodes.XorN(byte + sboxKey, OpCodes.RotL8(byte, 3)), 0xFF);
-  }
-
-  _invSubstituteByte(byte, keyOffset) {
-    for (let i = 0; i < 256; i++) {
-      if (this._substituteByte(i, keyOffset) === byte) {
-        return i;
-      }
-    }
-    return byte;
-  }
-
-  _mixColumns(block) {
-    for (let col = 0; col < 4; col++) {
-      const offset = col * 4;
-      const temp = [
-        block[offset],
-        block[offset + 1],
-        block[offset + 2],
-        block[offset + 3]
-      ];
-
-      block[offset] = OpCodes.XorN(OpCodes.XorN(temp[1], temp[2]), temp[3]);
-      block[offset + 1] = OpCodes.XorN(OpCodes.XorN(temp[0], temp[2]), temp[3]);
-      block[offset + 2] = OpCodes.XorN(OpCodes.XorN(temp[0], temp[1]), temp[3]);
-      block[offset + 3] = OpCodes.XorN(OpCodes.XorN(temp[0], temp[1]), temp[2]);
+      this.inputBuffer = [];
+      return output;
     }
   }
-
-  _invMixColumns(block) {
-    for (let col = 0; col < 4; col++) {
-      const offset = col * 4;
-      const temp = [
-        block[offset],
-        block[offset + 1],
-        block[offset + 2],
-        block[offset + 3]
-      ];
-
-      block[offset] = OpCodes.XorN(OpCodes.XorN(temp[1], temp[2]), temp[3]);
-      block[offset + 1] = OpCodes.XorN(OpCodes.XorN(temp[0], temp[2]), temp[3]);
-      block[offset + 2] = OpCodes.XorN(OpCodes.XorN(temp[0], temp[1]), temp[3]);
-      block[offset + 3] = OpCodes.XorN(OpCodes.XorN(temp[0], temp[1]), temp[2]);
-    }
-  }
-}
-
 
   // ===== REGISTRATION =====
 
