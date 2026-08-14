@@ -54,7 +54,7 @@
       super();
 
       this.name = "FPE";
-      this.description = "FPE (Format-Preserving Encryption) is a general framework for encryption schemes that preserve the format and structure of input data. It enables encryption of structured data like credit card numbers, phone numbers, and database fields while maintaining their original format, length, and character sets.";
+      this.description = "FPE (Format-Preserving Encryption) is a general framework for encryption schemes that preserve the format and structure of input data. It enables encryption of structured data like credit card numbers, phone numbers, and database fields while maintaining their original format, length, and character sets. Input must be 7-bit text containing at least two characters of the configured alphabet; characters outside the alphabet are passed through unchanged when format preservation is on. Bytes with the high bit set are rejected, since the text conversion cannot represent them and both directions must agree on which characters are encrypted.";
       this.inventor = "Various (NIST standardization)";
       this.year = 2009;
       this.category = CategoryType.MODE;
@@ -65,6 +65,10 @@
 
       this.RequiresIV = false; // Uses tweak instead of IV
       this.SupportedIVSizes = []; // Not applicable for FPE
+
+      // Format-preserving encryption is defined on text over an alphabet, so a
+      // sweep with arbitrary bytes must expect a refusal rather than a result.
+      this.restrictedInputDomain = "7-bit text with at least two characters of the configured alphabet";
 
       this.documentation = [
         new LinkItem("NIST SP 800-38G", "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-38G.pdf"),
@@ -228,6 +232,18 @@
       }
       if (this.inputBuffer.length === 0) {
         throw new Error("No data fed");
+      }
+
+      // FPE works on text: it splits the input into alphabet characters and
+      // format characters, and both directions must agree on which is which.
+      // The ANSI conversion below is 7-bit, so a byte with the high bit set came
+      // back as a different character - sometimes one that IS in the alphabet,
+      // which changed the number of encrypted symbols and desynchronized the
+      // Feistel split. Refuse such input instead of corrupting it silently.
+      for (let i = 0; i < this.inputBuffer.length; i++) {
+        const byte = this.inputBuffer[i];
+        if (byte < 0 || byte > 0x7F)
+          throw new Error(`FPE operates on 7-bit text; byte ${byte} at offset ${i} is outside that range`);
       }
 
       // Convert input to string for processing
