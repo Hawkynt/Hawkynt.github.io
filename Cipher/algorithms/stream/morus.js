@@ -33,6 +33,9 @@
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           StreamCipherAlgorithm, IAlgorithmInstance, LinkItem, KeySize, Vulnerability } = AlgorithmFramework;
 
+  // MORUS emits a 128-bit authentication tag after the ciphertext.
+  const TAG_SIZE = 16;
+
   // MORUS-640 constants (32-bit words)
   const CONSTANTS_640 = Object.freeze([
     [0x02010100, 0x0d080503, 0x59372215, 0x6279e990],
@@ -156,25 +159,63 @@ class MORUSInstance extends IAlgorithmInstance {
 
   Result() {
     if (!this._key) throw new Error("Key not set");
+    // The nonce is optional at the interface; the setter substitutes the all-zero
+    // nonce, matching what it already does when handed a wrong-sized one.
+    if (!this._nonce) this.nonce = null;
 
-    // Handle empty input - return only tag
-    if (this.inputBuffer.length === 0) {
-      const tag = this._generateTag(0, 0);
-      this.inputBuffer = [];
-      return tag;
-    }
+    const data = this.inputBuffer;
+    this.inputBuffer = [];
 
-    // Generate keystream and encrypt
-    const keystream = this._generateKeystream(this.inputBuffer.length);
-    const ciphertext = OpCodes.XorArrays(this.inputBuffer, keystream);
+    // Both tag generation and keystream generation advance the state, so every
+    // call has to start again from the keyed-and-nonced state. Without this a
+    // second Result() on the same instance produced a different keystream.
+    this._reinitialize();
+
+    return this.isInverse ? this._decrypt(data) : this._encrypt(data);
+  }
+
+  _encrypt(plaintext) {
+    // Empty input still authenticates - the output is the bare tag.
+    if (plaintext.length === 0) return this._generateTag(0, 0);
+
+    const keystream = this._generateKeystream(plaintext.length);
+    const ciphertext = OpCodes.XorArrays(plaintext, keystream);
 
     // Generate tag (process plaintext for authentication)
     this._reinitialize();
-    this._processPlaintext(this.inputBuffer);
-    const tag = this._generateTag(0, this.inputBuffer.length);
+    this._processPlaintext(plaintext);
+    const tag = this._generateTag(0, plaintext.length);
 
-    this.inputBuffer = [];
     return ciphertext.concat(tag);
+  }
+
+  _decrypt(input) {
+    // MORUS is authenticated encryption: its output is ciphertext || tag, so its
+    // input on the way back must carry that tag. Previously the inverse direction
+    // was never implemented - Result() re-ran encryption and appended a second
+    // tag, growing the message by 16 bytes instead of recovering the plaintext.
+    if (input.length < TAG_SIZE)
+      throw new Error(`MORUS input too short: ${input.length} bytes cannot contain the ${TAG_SIZE}-byte authentication tag`);
+
+    const ciphertext = input.slice(0, input.length - TAG_SIZE);
+    const receivedTag = input.slice(input.length - TAG_SIZE);
+
+    const keystream = this._generateKeystream(ciphertext.length);
+    const plaintext = OpCodes.XorArrays(ciphertext, keystream);
+
+    this._reinitialize();
+    this._processPlaintext(plaintext);
+    const expectedTag = this._generateTag(0, plaintext.length);
+
+    // Compare the whole tag before reporting, so the comparison time does not
+    // depend on how many leading bytes matched.
+    let difference = 0;
+    for (let i = 0; i < TAG_SIZE; i++)
+      difference = OpCodes.OrN(difference, OpCodes.XorN(receivedTag[i], expectedTag[i]));
+    if (difference !== 0)
+      throw new Error("MORUS authentication failed: the tag does not match the ciphertext");
+
+    return plaintext;
   }
 
   _initialize() {
