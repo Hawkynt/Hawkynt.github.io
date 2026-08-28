@@ -675,7 +675,12 @@ node tests/TestSuite.js --filter "NIST"
 ```
 
 Round-trip coverage for the reversible categories lives in `tests/RoundTripSuite.js`,
-which also carries the large-input tier:
+which also carries the large-input tier. It spans compression, encoding, block and
+stream ciphers, AEAD, classical ciphers, cipher modes, padding schemes, the
+standalone permutations and the asymmetric ciphers. Anything it does not drive is
+named in that file's `ROUND_TRIP_EXEMPT` table with the reason - either the
+construction has no inverse (a signature scheme has nothing to decrypt, a key
+agreement has no plaintext) or the defect is open and stated:
 
 ```bash
 # Round-trip every reversible algorithm over the standard corpus

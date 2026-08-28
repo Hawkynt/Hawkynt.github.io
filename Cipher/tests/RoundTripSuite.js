@@ -16,10 +16,11 @@
  *   packing  - compression and encoding, which take arbitrary bytes and must
  *              also demonstrably shrink redundant input
  *   ciphers  - block and stream ciphers, AEAD schemes, classical ciphers,
- *              cipher modes, padding schemes and the standalone permutations,
- *              each configured from its own first test vector exactly the way
- *              TestEngine.TestVector configures it, and each driven with data
- *              drawn from the alphabet and block size that vector implies
+ *              cipher modes, padding schemes, the standalone permutations and
+ *              the asymmetric ciphers, each configured from its own first test
+ *              vector exactly the way TestEngine.TestVector configures it, and
+ *              each driven with data drawn from the alphabet and block size
+ *              that vector implies
  *
  * In the cipher family a refusal is not a failure. An algorithm is entitled to
  * reject input outside its domain and doing so loudly is the correct behaviour;
@@ -305,6 +306,13 @@ const PACKING_CATEGORIES = new Set(['Compression Algorithms', 'Encoding Schemes'
 // were added here, roughly 460 algorithms - every block cipher, stream cipher,
 // AEAD scheme, classical cipher, cipher mode and padding scheme in the
 // collection - were never driven with any data beyond their committed vectors.
+//
+// Asymmetric Ciphers is the newest entry and the least uniform: the category
+// holds public-key encryption, key encapsulation, signature schemes and key
+// agreement side by side, and only the first of those has a plaintext to
+// recover. The other three are listed individually in ROUND_TRIP_EXEMPT with the
+// kind of construction each is, so that being the wrong shape for this sweep has
+// to be claimed by name and a broken decryptor cannot inherit the excuse.
 const CIPHER_CATEGORIES = new Set([
   'Block Ciphers',
   'Stream Ciphers',
@@ -313,6 +321,7 @@ const CIPHER_CATEGORIES = new Set([
   'Cipher Modes',
   'Padding Schemes',
   'Special Algorithms',
+  'Asymmetric Ciphers',
 ]);
 
 const REVERSIBLE_CATEGORIES = new Set([...PACKING_CATEGORIES, ...CIPHER_CATEGORIES]);
@@ -459,6 +468,116 @@ const ROUND_TRIP_EXEMPT = new Map([
     + '32, so encryption discards three bits per byte per round. 00112233445566778899AABBCCDDEEFF '
     + 'and 33112233445566778899AABBCCDDEEFF encrypt to the same block under the committed key, so '
     + 'no decryption function exists. Needs a real Hierocrypt-3 round function, not a repaired inverse'],
+
+  // ===== Asymmetric Ciphers =====
+  //
+  // The category is one name over four unrelated kinds of construction, and only
+  // one of them is an encrypt-then-decrypt cipher. Grouping them all under
+  // "asymmetric" is what let the sweep skip the category for so long, so each
+  // entry below says which kind the algorithm is and therefore why the property
+  // this sweep asserts either does not exist for it or is not yet met.
+  //
+  // Not listed, because they are driven and pass: Rabin and FrodoKEM, both of
+  // which expose an encrypt/decrypt interface and recover their plaintext.
+
+  // --- signature schemes: sign and verify, never encrypt and decrypt ---
+  // There is no decryption direction and no plaintext to recover, so a message
+  // fed to one of these comes back as a signature or as a verification result.
+  // Every one of them is listed by name rather than by category so that a real
+  // encryption scheme cannot be quietly parked here.
+  ['DSA', 'signature scheme (FIPS 186-4): produces r and s over a digest and verifies them; '
+    + 'there is no decryption path and no plaintext to recover'],
+  ['ECDSA', 'signature scheme (FIPS 186-4, SEC 1): produces r and s over a digest and verifies '
+    + 'them; there is no decryption path and no plaintext to recover'],
+  ['Ed25519', 'signature scheme (RFC 8032): CreateInstance(true) returns null by design because '
+    + 'signing has no inverse; verification consumes a signature, not a ciphertext'],
+  ['Schnorr (BIP-340)', 'signature scheme (BIP-340): CreateInstance(true) returns null by design; '
+    + 'verification consumes a signature, not a ciphertext'],
+  ['Dilithium', 'signature scheme (CRYSTALS-Dilithium, NIST PQC round 3): signs and verifies, '
+    + 'so no plaintext is ever recovered from its output'],
+  ['ML-DSA', 'signature scheme (FIPS 204): signs and verifies, so no plaintext is ever recovered '
+    + 'from its output'],
+  ['FALCON', 'signature scheme (Falcon, NIST PQC round 3): signs and verifies, so no plaintext is '
+    + 'ever recovered from its output'],
+  ['SLH-DSA', 'signature scheme (FIPS 205): stateless hash-based signing and verification, with '
+    + 'no decryption direction at all'],
+  ['SPHINCS+', 'signature scheme (SPHINCS+, NIST PQC round 3): stateless hash-based signing and '
+    + 'verification, with no decryption direction at all'],
+  ['Rainbow', 'signature scheme (Rainbow, multivariate, NIST PQC round 3): signs and verifies; '
+    + 'its trapdoor inverts a signature, not a message'],
+  ['SQIsign', 'signature scheme (SQIsign, NIST additional signatures): signs and verifies, so no '
+    + 'plaintext is ever recovered from its output'],
+  ['MAYO', 'signature scheme (MAYO, NIST additional signatures): signs and verifies, so no '
+    + 'plaintext is ever recovered from its output'],
+  ['PERK', 'signature scheme (PERK, MPC-in-the-head, NIST additional signatures): signs and '
+    + 'verifies, so no plaintext is ever recovered from its output'],
+  ['CROSS', 'signature scheme (CROSS, restricted decoding, NIST additional signatures): signs and '
+    + 'verifies, so no plaintext is ever recovered from its output'],
+  ['HAWK', 'signature scheme (HAWK, NIST additional signatures): signs and verifies, so no '
+    + 'plaintext is ever recovered from its output'],
+  ['FAEST', 'signature scheme (FAEST, VOLE-in-the-head, NIST additional signatures): signs and '
+    + 'verifies, so no plaintext is ever recovered from its output'],
+  ['LWE-Signature', 'signature scheme (lattice-based, Lyubashevsky-style): signs and verifies, so '
+    + 'no plaintext is ever recovered from its output'],
+  ['ESIGN', 'signature scheme (ESIGN, Okamoto; NESSIE submission): signs and verifies, so no '
+    + 'plaintext is ever recovered from its output'],
+
+  // --- key agreement: no plaintext exists ---
+  // Both parties derive the same secret from public values. Nothing is sent that
+  // could be decrypted, and both of these say so by returning null for the
+  // inverse instance rather than inventing one.
+  ['Diffie-Hellman', 'key agreement (RFC 2631): each side derives a shared secret from the '
+    + "other's public value; no plaintext is transmitted, and CreateInstance(true) returns null"],
+  ['X25519', 'key agreement (RFC 7748): each side derives a shared secret from the other\'s '
+    + 'public value; no plaintext is transmitted, and CreateInstance(true) returns null'],
+
+  // --- key encapsulation: the property is shared-secret recovery, not plaintext ---
+  // A KEM encapsulates to a ciphertext plus a shared secret and decapsulates the
+  // ciphertext back to that secret, so the round trip is over the secret rather
+  // than over a message. None of the four below performs either operation. They
+  // are not decryption paths that need repairing: they are stubs standing where
+  // an implementation should be, and each entry records exactly what the code
+  // returns instead so the gap cannot be mistaken for a subtle bug. Repairing
+  // any of them means writing the scheme and replacing its committed vector,
+  // because the vector is the stub's own output.
+  ['NTRU', 'open defect (stub): not an implementation of NTRU. The forward path returns the '
+    + 'ASCII text NTRU_ENCRYPTED_<paramset>_<length>_BYTES_NTRU_<paramset>_EDUCATIONAL and the '
+    + 'inverse path returns the letter A repeated <length> times, so neither a message nor a '
+    + 'shared secret is ever recovered; the committed vector is that ASCII text. Needs a real '
+    + 'NTRU-HPS ring implementation and NIST vectors, not a repaired inverse'],
+  ['Classic McEliece', 'open defect (stub): not an implementation of Classic McEliece. Result() '
+    + 'returns the ASCII parameter-set name mceliece348864 for every input in both directions, '
+    + 'which is why a 12-byte message comes back as those 14 bytes. The _encapsulate/_decapsulate '
+    + 'pair is unreachable from Feed/Result and carries the shared secret through the ciphertext '
+    + 'in the clear, so wiring it up would buy a passing round trip over no cryptography at all. '
+    + 'Needs real binary Goppa key generation and Patterson decoding, and NIST vectors'],
+  ['BIKE', 'open defect (stub): not an implementation of BIKE. There is no key pair, no '
+    + 'encapsulation and no decapsulation; CreateInstance ignores its isInverse argument entirely, '
+    + 'so a single direction exists, and Result() folds any input into eight bytes with an ad-hoc '
+    + 'rotate-and-add mixer. Both committed vectors are outputs of that mixer. Needs real QC-MDPC '
+    + 'key generation and a bit-flipping decoder, and NIST vectors'],
+  ['HQC', 'open defect (stub): not an implementation of HQC. Result() returns the ASCII '
+    + 'parameter-set name hqc-128 for every input in both directions. The _encapsulate/_decapsulate '
+    + 'pair is unreachable from Feed/Result and carries the shared secret through the ciphertext in '
+    + 'the clear. Needs a real quasi-cyclic construction with the concatenated Reed-Muller and '
+    + 'Reed-Solomon decoder, and NIST vectors'],
+  ['SIKE', 'open defect (stub): not an implementation of SIKE, and the scheme itself is dead - '
+    + 'Castryck and Decru recover the key in minutes (eprint 2022/975), which is why it is already '
+    + 'marked BROKEN here. The code carries no isogeny arithmetic and no key pair; CreateInstance '
+    + 'ignores isInverse and Result() folds any input into eight bytes with a rotate-and-xor mixer'],
+
+  // --- public-key encryption: round-tripping is exactly the right property ---
+  // These four do encrypt and decrypt, so nothing about their shape excuses them.
+  // They are held here only because their decryption paths are being repaired in
+  // parallel and the entry is meant to be deleted as each repair lands.
+  ['RSA', 'public-key encryption: round-tripping is the correct property - '
+    + 'open defect, being repaired separately'],
+  ['ElGamal', 'public-key encryption: round-tripping is the correct property - '
+    + 'open defect, being repaired separately'],
+  ['LUC', 'public-key encryption (Lucas sequences): round-tripping is the correct property - '
+    + 'open defect, being repaired separately'],
+  ['Rabin-Williams', 'public-key encryption over a Blum integer: round-tripping is the correct '
+    + 'property - open defect, being repaired separately'],
 
 ]);
 
