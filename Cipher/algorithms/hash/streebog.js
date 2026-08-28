@@ -236,7 +236,12 @@
    */
 
     Feed(data) {
-      this.inputData = data;
+      // Feed is a streaming interface: successive calls extend the message
+      // rather than replace it, so Feed(a); Feed(b) hashes the same bytes as
+      // Feed(a || b).
+      if (!this.inputData) this.inputData = [];
+      if (!data) return;
+      for (let i = 0; i < data.length; i++) this.inputData.push(data[i]);
     }
 
     /**

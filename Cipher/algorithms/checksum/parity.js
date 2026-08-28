@@ -247,7 +247,11 @@
         }
       }
 
-      this.data = data.slice(); // Store a copy
+      // Feed is a streaming interface: successive calls extend the message
+      // rather than replace it. Longitudinal parity is computed column-wise over
+      // the whole message, so the bytes are collected for Result().
+      if (!this.data) this.data = [];
+      for (let i = 0; i < data.length; i++) this.data.push(data[i]);
     }
 
     /**
