@@ -122,6 +122,14 @@ function staleMissingEntries(markdown, registeredNames) {
 
 //#endregion
 
+// The generated sections are joined with LF, but with git's core.autocrlf the
+// working copy is checked out with CRLF, so a raw comparison reports drift on
+// every Windows checkout while CI, which checks out LF, sees none. A check that
+// cries wolf locally is one people learn to ignore.
+function sameIgnoringLineEndings(a, b) {
+  return a.replace(/\r\n/g, '\n') === b.replace(/\r\n/g, '\n');
+}
+
 function main() {
   const check = process.argv.includes('--check');
   const byDirectory = loadRegistry();
@@ -146,7 +154,7 @@ function main() {
       drifted++;
       console.log(`${directory}/: ${stale.length} entry(ies) listed as missing but registered: ${stale.join(', ')}`);
     }
-    if (after === before) continue;
+    if (sameIgnoringLineEndings(after, before)) continue;
     if (check) { drifted++; console.log(`${directory}/: generated list is out of date`); continue; }
     fs.writeFileSync(readme, after);
     written++;
@@ -160,7 +168,7 @@ function main() {
     const rendered = renderCategoryTable(byDirectory);
     const topAfter = topBefore.slice(0, topBefore.indexOf(TABLE_BEGIN)) + rendered
       + topBefore.slice(topBefore.indexOf(TABLE_END) + TABLE_END.length);
-    if (topAfter !== topBefore) {
+    if (!sameIgnoringLineEndings(topAfter, topBefore)) {
       if (check) { drifted++; console.log('README.md: category table is out of date'); }
       else { fs.writeFileSync(topLevel, topAfter); written++; console.log('README.md: category table written'); }
     }
