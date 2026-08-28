@@ -318,19 +318,31 @@
         throw new Error('AlamoutiCodeInstance.decode: Channel gains cannot both be zero');
       }
 
-      // Process received matrix in blocks of 4 (2 time slots, 2 antennas conceptually)
+      // Process the space-time matrix in blocks of 4 (2 time slots x 2 antennas)
       for (let i = 0; i < received.length; i += 4) {
-        // Received signals at two time slots
-        // For educational simplification, treating as combined received signal
-        const r1 = received[i];     // Time slot 1, composite signal
-        const r2 = received[i + 1]; // Time slot 1, composite signal
-        const r3 = received[i + 2]; // Time slot 2, composite signal
-        const r4 = received[i + 3]; // Time slot 2, composite signal
+        // The block holds the transmitted matrix in row-major order, so each
+        // row is one time slot and each column is one transmit antenna:
+        //   time slot 1: [x11, x12]
+        //   time slot 2: [x21, x22]
+        const x11 = received[i];     // Time slot 1, TX antenna 1
+        const x12 = received[i + 1]; // Time slot 1, TX antenna 2
+        const x21 = received[i + 2]; // Time slot 2, TX antenna 1
+        const x22 = received[i + 3]; // Time slot 2, TX antenna 2
 
-        // Maximum likelihood combining (simplified for real symbols)
-        // s1 combining: use orthogonality of Alamouti matrix
-        const s1_hat = (h1 * r1 + h2 * r3) / norm;
-        const s2_hat = (h2 * r2 - h1 * r4) / norm;
+        // The receiver sees one composite sample per time slot, both antennas
+        // summed through their channel gains. This step was missing: the
+        // combiner below was being fed raw matrix entries as though they were
+        // already received samples, and it paired them across the wrong slots,
+        // so it reconstructed (s1 - s2)/2 and (s2 - s1)/2 instead of s1 and s2.
+        const r1 = h1 * x11 + h2 * x12;
+        const r2 = h1 * x21 + h2 * x22;
+
+        // Maximum likelihood combining (simplified for real symbols).
+        // Substituting r1 = h1*s1 + h2*s2 and r2 = -h1*s2 + h2*s1 makes both
+        // numerators collapse to (h1^2 + h2^2) times the wanted symbol, so this
+        // is exact for any channel gains, not only the unit-gain default.
+        const s1_hat = (h1 * r1 + h2 * r2) / norm;
+        const s2_hat = (h2 * r1 - h1 * r2) / norm;
 
         // Hard decision (round to nearest symbol)
         decoded.push(Math.round(s1_hat), Math.round(s2_hat));
