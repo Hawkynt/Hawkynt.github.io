@@ -44,7 +44,8 @@
 
   // Extract framework components
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          HashFunctionAlgorithm, IHashFunctionInstance, TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
+          HashFunctionAlgorithm, IHashFunctionInstance, TestCase, LinkItem, Vulnerability, KeySize,
+          BlockAbsorber, MerkleDamgardBlocks } = AlgorithmFramework;
 
   // ===== SM3 PERMUTATION FUNCTIONS =====
 
@@ -200,10 +201,7 @@
       this.state = new Array(8);
 
       // Message buffer
-      this.buffer = [];
-
-      // Total message length in bytes
-      this.messageLength = 0;
+      this._absorber = new BlockAbsorber(64, block => this._processBlock(block));
 
       // Initialize state
       this._initializeState();
@@ -235,15 +233,7 @@
         throw new Error("Invalid input data - must be byte array");
       }
 
-      // Add to buffer
-      for (let _i = 0; _i < data.length; _i++) this.buffer.push(data[_i]);
-      this.messageLength += data.length;
-
-      // Process complete 512-bit (64-byte) blocks
-      while (this.buffer.length >= 64) {
-        const block = this.buffer.splice(0, 64);
-        this._processBlock(block);
-      }
+      this._absorber.Absorb(data);
     }
 
     // Process a single 512-bit block
@@ -327,36 +317,17 @@
    */
 
     Result() {
-      // Create a copy of the buffer for padding
-      const finalBuffer = [...this.buffer];
-      const bitLength = this.messageLength * 8;
-
-      // Append padding bit (0x80)
-      finalBuffer.push(0x80);
-
-      // Pad with zeros until length ≡ 448 (mod 512) bits = 56 (mod 64) bytes
-      while (finalBuffer.length % 64 !== 56) {
-        finalBuffer.push(0);
-      }
-
-      // Append 64-bit big-endian message length
-      // For messages < 2^32 bits, high 32 bits are 0
-      const lengthHigh = Math.floor(bitLength / 0x100000000);
-      // NOTE: >>> 0 is JavaScript idiom for unsigned 32-bit conversion, not a bit shift operation
-      const lengthLow = OpCodes.ToUint32(bitLength);
-
-      const lengthBytes = [
-        ...OpCodes.Unpack32BE(lengthHigh),
-        ...OpCodes.Unpack32BE(lengthLow)
-      ];
-      for (let _i = 0; _i < lengthBytes.length; _i++) finalBuffer.push(lengthBytes[_i]);
-
-      // Process final block(s)
+      // GB/T 32905-2016 section 5.2 pads exactly the way SHA-256 does: 0x80, a
+      // zero fill, and a 64-bit big-endian bit length at the end of the block.
+      //
+      // The state is snapshotted so that Result() stays repeatable, which it
+      // was before this change. Finish() hands out a copy of the held bytes and
+      // does not advance the absorber, so the snapshot is all that is needed.
       const stateCopy = [...this.state];
-      for (let i = 0; i < finalBuffer.length; i += 64) {
-        const block = finalBuffer.slice(i, i + 64);
-        this._processBlock(block);
-      }
+      this._absorber.Finish((held, pending, total) => {
+        for (const block of MerkleDamgardBlocks(held, pending, total, { blockSize: 64, lengthBytes: 8 }))
+          this._processBlock(block);
+      });
 
       // Convert state to bytes (big-endian)
       const hash = [];
