@@ -207,13 +207,13 @@
         throw new Error('Base91Instance.Feed: Input must be byte array');
       }
 
-      this.resetState();
-
-      if (this.isInverse) {
-        this.processedData = this.decode(data);
-      } else {
-        this.processedData = this.encode(data);
-      }
+      // Feed is a streaming interface: successive calls extend the message
+      // rather than replace it. A single chunk also cannot be converted on its
+      // own, because the coder groups whole units of input and emits padding and
+      // framing at the end of the message, so the bytes are collected here and
+      // converted once, in Result().
+      if (!this._feedBuffer) this._feedBuffer = [];
+      for (let i = 0; i < data.length; i++) this._feedBuffer.push(data[i]);
     }
 
     /**
@@ -223,9 +223,17 @@
    */
 
     Result() {
-      if (this.processedData === null) {
+      if (!this._feedBuffer) {
         throw new Error('Base91Instance.Result: No data processed. Call Feed() first.');
       }
+      // The bit queue belongs to one conversion, so it is cleared here rather
+      // than in Feed: the conversion now happens in Result, and leaving the queue
+      // where the previous one finished would make a second Result disagree with
+      // the first.
+      this.resetState();
+      this.processedData = this.isInverse
+        ? this.decode(this._feedBuffer)
+        : this.encode(this._feedBuffer);
       return this.processedData;
     }
 

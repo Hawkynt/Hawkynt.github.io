@@ -297,8 +297,10 @@
      * @param {Array} data - Input data as byte array
      */
     Feed(data) {
-      // Store data for final processing
-      this._inputData = data;
+      // Feed is a streaming interface: successive calls extend the message
+      // rather than replace it, so Feed(a); Feed(b) hashes the same bytes as
+      // Feed(a || b). Update carries the same obligation.
+      this.Update(data);
     }
 
     /**
@@ -310,7 +312,9 @@
     }
 
     Update(data) {
-      this._inputData = data;
+      if (!data || data.length === 0) return;
+      if (!this._inputData) this._inputData = [];
+      for (let i = 0; i < data.length; i++) this._inputData.push(data[i]);
     }
 
     Final() {
