@@ -44,7 +44,8 @@
           PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
           IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
-          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize,
+          BlockAbsorber, MerkleDamgardBlocks } = AlgorithmFramework;
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -280,9 +281,7 @@
 
       // SHA-512 family state variables
       this._h = null;
-      this._buffer = null;
-      this._length = 0;
-      this._bufferLength = 0;
+      this._absorber = null;
     }
 
     /**
@@ -293,9 +292,7 @@
       // Copy initial hash values (use slice to avoid modifying original)
       this._h = this.algorithm.INITIAL_HASH.slice();
 
-      this._buffer = new Array(128); // 1024-bit buffer
-      this._length = 0;
-      this._bufferLength = 0;
+      this._absorber = new BlockAbsorber(128, block => this._processBlock(block));
     }
 
     /**
@@ -312,56 +309,20 @@
         data = bytes;
       }
 
-      this._length += data.length;
-
-      // Process data
-      for (let i = 0; i < data.length; ++i) {
-        this._buffer[this._bufferLength++] = data[i];
-
-        if (this._bufferLength === 128) {
-          this._processBlock(this._buffer);
-          this._bufferLength = 0;
-        }
-      }
+      this._absorber.Absorb(data);
     }
 
     /**
      * Finalize hash computation and return digest
+     * NIST FIPS 180-4 Section 5.1.2: a 128-byte block and a 128-bit big-endian
+     * bit length, which is the same shape SHA-256 uses at half the width.
      * @returns {Array} Hash digest as byte array
      */
     Final() {
-      // Add padding (0x80 = 128 = 10000000 binary)
-      this._buffer[this._bufferLength++] = 0x80;
-
-      // Pad to 112 bytes (896 bits), leaving 16 bytes for length
-      if (this._bufferLength > 112) {
-        // Need another block
-        while (this._bufferLength < 128) {
-          this._buffer[this._bufferLength++] = 0;
-        }
-        this._processBlock(this._buffer);
-        this._bufferLength = 0;
-      }
-
-      // Pad to 112 bytes
-      while (this._bufferLength < 112) {
-        this._buffer[this._bufferLength++] = 0;
-      }
-
-      // Add length in bits as 128-bit big-endian
-      const lengthBits = BigInt(this._length * 8);
-
-      // High 64 bits (for practical message sizes, this is 0)
-      for (let i = 0; i < 8; ++i) {
-        this._buffer[this._bufferLength + i] = 0;
-      }
-
-      // Low 64 bits
-      for (let i = 0; i < 8; ++i) {
-        this._buffer[this._bufferLength + 8 + i] = Number(OpCodes.AndN(OpCodes.ShiftRn(lengthBits, (7 - i) * 8), 0xFFn));
-      }
-
-      this._processBlock(this._buffer);
+      this._absorber.Finish((held, pending, total) => {
+        for (const block of MerkleDamgardBlocks(held, pending, total, { blockSize: 128, lengthBytes: 16 }))
+          this._processBlock(block);
+      });
 
       // Convert hash to bytes (big-endian) and truncate based on outputSize
       const result = [];
@@ -468,9 +429,7 @@
           this._h[i] = 0n;
         }
       }
-      if (this._buffer) OpCodes.ClearArray(this._buffer);
-      this._length = 0;
-      this._bufferLength = 0;
+      if (this._absorber) this._absorber.Reset();
     }
 
     /**
