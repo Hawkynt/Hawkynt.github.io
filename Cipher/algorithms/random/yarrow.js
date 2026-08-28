@@ -261,6 +261,26 @@
         return;
       }
 
+      // Mixing is deferred to Result(). Yarrow reseeds the moment a pool crosses
+      // its threshold, so contributing each chunk as it arrives keys the
+      // generator from the first chunk of a seed delivered in pieces and
+      // Feed(a); Feed(b) stops matching Feed(a || b). The entropy is collected
+      // here and mixed in as a single contribution when output is requested.
+      if (!this._pendingEntropy) this._pendingEntropy = [];
+      for (let i = 0; i < data.length; i++) this._pendingEntropy.push(data[i]);
+    }
+
+    /**
+     * Mix the entropy collected by Feed() into the pools as one contribution
+     */
+    _mixPendingEntropy() {
+      if (!this._pendingEntropy || this._pendingEntropy.length === 0) {
+        return;
+      }
+
+      const data = this._pendingEntropy;
+      this._pendingEntropy = [];
+
       // Estimate entropy as 8 bits per byte (full entropy for seeding)
       const entropy = Math.min(data.length * 8, YARROW_MAX_ENTROPY);
       this.update(0, entropy, data);
@@ -276,6 +296,8 @@
      * @returns {Array} Random bytes
      */
     Result() {
+      this._mixPendingEntropy();
+
       if (!this.seeded) {
         throw new Error("PRNG not seeded - call Feed() with entropy first");
       }
