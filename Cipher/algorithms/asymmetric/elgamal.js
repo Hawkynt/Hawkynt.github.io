@@ -439,6 +439,13 @@
       // ciphertext pair is deliberately not a function of the plaintext alone
       // and no fixed ciphertext can be committed as an expected value. These
       // vectors state the invertibility requirement instead.
+      //
+      // The external check on the arithmetic is OpenSSL, reached through the
+      // Diffie-Hellman interface over the same RFC 3526 groups. For both
+      // groups it agrees that the published y is g^x mod p, and for a
+      // ciphertext produced here it computes the same c1^x mod p that
+      // decryption divides out, from which the message follows by a single
+      // modular division. Neither of those numbers comes from this file.
       this.tests = [
         {
           text: "ElGamal over RFC 3526 group 5 - round-trip",
