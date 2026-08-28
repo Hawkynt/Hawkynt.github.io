@@ -156,10 +156,6 @@
         this.MAX_LITERAL_LENGTH = 128; // Maximum literal sequence length
       }
 
-      Feed(data) {
-        if (!data || data.length === 0) return;
-        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
-      }
 
       Result() {
         if (this.inputBuffer.length === 0) return [];

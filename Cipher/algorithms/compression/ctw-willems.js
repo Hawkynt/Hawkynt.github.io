@@ -479,10 +479,6 @@
         this.inputBuffer = [];
       }
 
-      Feed(data) {
-        if (!data || data.length === 0) return;
-        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
-      }
 
       Result() {
         const result = this.isInverse ?
