@@ -134,11 +134,20 @@
       this.isInverse = isInverse;
       this.result = null;
 
-      // Simple (7,4) parity-check matrix for educational purposes
+      // Simple (7,4) parity-check matrix in systematic form H = [P | I].
+      //
+      // The encoder below derives each parity bit from the first k columns of
+      // this matrix and appends it, which produces the codeword c = [d | P*d].
+      // For H*c^T to vanish on those codewords the trailing n-k columns must be
+      // the identity, so that H*c^T = P*d + I*(P*d) = 0. They previously held a
+      // lower-triangular block instead, which put the encoder and the decoder on
+      // two different codes: 12 of the 16 codewords the encoder emitted had a
+      // non-zero syndrome, so the decoder declared errors in error-free words
+      // and "corrected" them into different messages.
       this.parityMatrix = [
         [1, 1, 1, 0, 1, 0, 0],
-        [1, 0, 0, 1, 1, 1, 0], 
-        [0, 1, 0, 1, 0, 1, 1]
+        [1, 0, 0, 1, 0, 1, 0],
+        [0, 1, 0, 1, 0, 0, 1]
       ];
       this.n = 7; // code length
       this.k = 4; // information length
@@ -223,21 +232,23 @@
         return received.slice(0, this.k); // Extract information bits
       }
 
-      console.warn('LDPC: Errors detected, attempting correction...');
+      // A single error in position j produces exactly column j of the
+      // parity-check matrix as its syndrome, so the syndrome identifies the
+      // flipped bit whenever that column is unique. The previous routine
+      // instead flipped the first bit participating in each violated check,
+      // which is not a decoder at all: it returned whatever bits that walk
+      // happened to produce and presented them as a corrected message.
+      const errorPosition = this._locateSingleError(syndrome);
 
-      // Simplified error correction (flip bits based on syndrome)
-      // In real LDPC, this would use iterative belief propagation
-      for (let i = 0; i < syndrome.length; i++) {
-        if (syndrome[i] === 1) {
-          // Find first bit involved in this parity check and flip it
-          for (let j = 0; j < this.n; j++) {
-            if (this.parityMatrix[i][j] === 1) {
-              received[j] = OpCodes.XorN(received[j], 1);
-              break;
-            }
-          }
-        }
+      if (errorPosition < 0) {
+        // The syndrome is not any single-column pattern, or it matches more
+        // than one column and so does not identify a unique error. Either way
+        // the damage is outside what this code can resolve. Report that rather
+        // than handing back bits that are known to be wrong.
+        throw new Error('LDPC decode: syndrome does not identify a correctable error pattern; the received word is uncorrectable');
       }
+
+      received[errorPosition] = OpCodes.XorN(received[errorPosition], 1);
 
       return received.slice(0, this.k); // Extract information bits
     }
@@ -260,12 +271,38 @@
       return vector.every(bit => bit === 0);
     }
 
-    // Simplified belief propagation (educational version)
-    beliefPropagation(received, maxIterations = 5) {
-      // This would implement the full sum-product algorithm
-      // For educational purposes, we return the input
-      console.log('LDPC: Belief propagation iterations:', maxIterations);
-      return received;
+    /**
+   * Match a syndrome against the columns of the parity-check matrix.
+   * @param {uint8[]} syndrome - Syndrome vector
+   * @returns {number} Index of the single flipped bit, or -1 when the syndrome
+   *   matches no column or matches several and is therefore ambiguous.
+   */
+
+    _locateSingleError(syndrome) {
+      let match = -1;
+
+      for (let j = 0; j < this.n; ++j) {
+        let identical = true;
+        for (let i = 0; i < this.parityMatrix.length; ++i) {
+          if (this.parityMatrix[i][j] !== syndrome[i]) {
+            identical = false;
+            break;
+          }
+        }
+
+        if (identical) {
+          if (match >= 0) {
+            // Two positions share this syndrome, so it cannot single one out.
+            // Columns 2 and 4 of this matrix coincide, which is why the code
+            // has minimum distance 2 and detects a single error without being
+            // able to correct every one of them.
+            return -1;
+          }
+          match = j;
+        }
+      }
+
+      return match;
     }
   }
 

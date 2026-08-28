@@ -227,26 +227,52 @@
 
       const decoded = new Array(k).fill(0);
 
-      // Majority logic decoding
-      // Decode constant term (sum all bits)
-      let sum = data.reduce((acc, bit) => acc + bit, 0);
-      decoded[0] = sum > (n / 2) ? 1 : 0;
+      // Maximum-likelihood decoding via the Fast Hadamard Transform ("Green machine").
+      //
+      // Every RM(1,m) codeword is the truth table of an affine function
+      //   c[i] = a0 XOR <i, j>
+      // where the mask j carries the m linear coefficients. Mapping bits to the
+      // signs s[i] = (-1)^c[i] and applying the Walsh-Hadamard transform yields
+      //   S[k] = (-1)^a0 * n  when k == j, and 0 otherwise,
+      // so the transform coefficient of largest magnitude identifies the closest
+      // codeword. Per-coordinate majority voting is NOT a valid decoder here: the
+      // constant term biases every coordinate vote, which makes the votes tie on
+      // perfectly clean codewords.
+      const transform = new Array(n);
+      for (let i = 0; i < n; ++i) {
+        transform[i] = 1 - 2 * data[i];
+      }
 
-      // Decode each variable using indicator functions
-      for (let var_idx = 0; var_idx < m; ++var_idx) {
-        let count0 = 0, count1 = 0;
-
-        for (let i = 0; i < n; ++i) {
-          if (OpCodes.AndN(OpCodes.Shr32(i, m - 1 - var_idx), 1)) {
-            count1 += data[i];
-          } else {
-            count0 += data[i];
+      // In-place Walsh-Hadamard butterfly (natural / Hadamard ordering)
+      for (let span = 1; span < n; span = span * 2) {
+        for (let base = 0; base < n; base += span * 2) {
+          for (let i = base; i < base + span; ++i) {
+            const lo = transform[i];
+            const hi = transform[i + span];
+            transform[i] = lo + hi;
+            transform[i + span] = lo - hi;
           }
         }
+      }
 
-        // Majority vote
-        const diff = count1 - count0;
-        decoded[1 + var_idx] = diff > 0 ? 1 : 0;
+      // Locate the coefficient of maximum magnitude: the most likely mask
+      let bestIndex = 0;
+      let bestMagnitude = -1;
+      for (let i = 0; i < n; ++i) {
+        const magnitude = transform[i] < 0 ? -transform[i] : transform[i];
+        if (magnitude > bestMagnitude) {
+          bestMagnitude = magnitude;
+          bestIndex = i;
+        }
+      }
+
+      // A negative peak means the constant term is set
+      decoded[0] = transform[bestIndex] < 0 ? 1 : 0;
+
+      // The mask bits are the linear coefficients, in the same bit order the
+      // encoder used when it built the indicator rows
+      for (let var_idx = 0; var_idx < m; ++var_idx) {
+        decoded[1 + var_idx] = OpCodes.AndN(OpCodes.Shr32(bestIndex, m - 1 - var_idx), 1);
       }
 
       return decoded;
