@@ -32,7 +32,8 @@
   if (!OpCodes) throw new Error('OpCodes dependency is required');
 
   const { RegisterAlgorithm, CategoryType, ComplexityType, CountryCode,
-          HashFunctionAlgorithm, IHashFunctionInstance, LinkItem, KeySize } = AlgorithmFramework;
+          HashFunctionAlgorithm, IHashFunctionInstance, LinkItem, KeySize,
+          BlockAbsorber, SpongePadBlocks } = AlgorithmFramework;
 
   // Keccak constants (shared across all variants)
   const ROUNDS = 24;
@@ -328,10 +329,9 @@
       super(algorithm);
       this.state = new Array(25);
       for (let i = 0; i < 25; i++) this.state[i] = [0, 0];
-      this.buffer = new Uint8Array(algorithm.rate);
-      this.bufferLength = 0;
       this.rate = algorithm.rate;
       this.outputSize = algorithm.outputSize;
+      this._absorber = new BlockAbsorber(this.rate, block => this._absorb(block));
     }
 
     /**
@@ -341,27 +341,14 @@
    */
 
     Feed(data) {
-      if (!data || data.length === 0) return;
-      let offset = 0;
-
-      while (offset < data.length && this.bufferLength < this.rate) {
-        this.buffer[this.bufferLength++] = data[offset++];
-      }
-
-      while (this.bufferLength === this.rate) {
-        this._absorb();
-        this.bufferLength = 0;
-        while (offset < data.length && this.bufferLength < this.rate) {
-          this.buffer[this.bufferLength++] = data[offset++];
-        }
-      }
+      this._absorber.Absorb(data);
     }
 
-    _absorb() {
+    _absorb(block) {
       for (let i = 0; i < this.rate; i += 8) {
         const idx = Math.floor(i / 8);
-        const low = OpCodes.Pack32LE(this.buffer[i] || 0, this.buffer[i+1] || 0, this.buffer[i+2] || 0, this.buffer[i+3] || 0);
-        const high = OpCodes.Pack32LE(this.buffer[i+4] || 0, this.buffer[i+5] || 0, this.buffer[i+6] || 0, this.buffer[i+7] || 0);
+        const low = OpCodes.Pack32LE(block[i] || 0, block[i+1] || 0, block[i+2] || 0, block[i+3] || 0);
+        const high = OpCodes.Pack32LE(block[i+4] || 0, block[i+5] || 0, block[i+6] || 0, block[i+7] || 0);
         this.state[idx][0] ^= low;
         this.state[idx][1] ^= high;
       }
@@ -375,18 +362,13 @@
    */
 
     Result() {
-      // Keccak padding (0x01 instead of SHA-3's 0x06), then pad10*1, whose final
-      // bit lands in the top bit of the last rate byte.
-      //
-      // When exactly one byte of the block is free the two coincide, and the
-      // 0x80 was overwriting the 0x01 rather than joining it, so every message
-      // of rate-1, 2*rate-1, ... bytes hashed to the wrong value. Merging them
-      // gives the required 0x81. This is the same defect, in the same shape, as
-      // the one in sha3.js.
-      this.buffer[this.bufferLength] = 0x01;
-      for (let i = this.bufferLength + 1; i < this.rate; i++) this.buffer[i] = 0;
-      this.buffer[this.rate - 1] = OpCodes.Or32(this.buffer[this.rate - 1], 0x80);
-      this._absorb();
+      // Keccak padding (0x01 instead of SHA-3's 0x06), then pad10*1. The two
+      // coincide when exactly one byte of the block is free and must merge to
+      // 0x81 rather than one overwriting the other; SpongePadBlocks is the one
+      // place that rule is now written down.
+      for (const block of this._absorber.Finish((held, pending) =>
+        SpongePadBlocks(held, pending, this.rate, 0x01)))
+        this._absorb(block);
 
       const output = new Uint8Array(this.outputSize);
       let outputOffset = 0;
