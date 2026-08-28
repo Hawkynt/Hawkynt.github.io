@@ -38,7 +38,8 @@
   if (!OpCodes) throw new Error('OpCodes dependency is required');
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          HashFunctionAlgorithm, IHashFunctionInstance, LinkItem, KeySize } = AlgorithmFramework;
+          HashFunctionAlgorithm, IHashFunctionInstance, LinkItem, KeySize,
+          BlockAbsorber, SpongePadBlocks } = AlgorithmFramework;
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -303,8 +304,7 @@
       for (let i = 0; i < 25; i++) {
         this.state[i] = [0, 0];
       }
-      this.buffer = new Uint8Array(this.rate);
-      this.bufferLength = 0;
+      this._absorber = new BlockAbsorber(this.rate, block => this._absorb(block));
       this._outputSize = null;  // Must be set before Result()
     }
 
@@ -324,48 +324,31 @@
      * @param {Array} data - Input data as byte array
      */
     Feed(data) {
-      if (!data || data.length === 0) return;
-
-      let offset = 0;
-
-      // Fill buffer first
-      while (offset < data.length && this.bufferLength < this.rate) {
-        this.buffer[this.bufferLength++] = data[offset++];
-      }
-
-      // Process complete blocks
-      while (this.bufferLength === this.rate) {
-        this._absorb();
-        this.bufferLength = 0;
-
-        // Fill buffer with more data
-        while (offset < data.length && this.bufferLength < this.rate) {
-          this.buffer[this.bufferLength++] = data[offset++];
-        }
-      }
+      this._absorber.Absorb(data);
     }
 
     /**
      * Absorb one complete block into state
+     * @param {byte[]} block - exactly rate bytes
      * @private
      */
-    _absorb() {
-      // XOR buffer into state (little-endian, 8 bytes per state element)
+    _absorb(block) {
+      // XOR block into state (little-endian, 8 bytes per state element)
       for (let i = 0; i < this.rate; i += 8) {
         const idx = Math.floor(i / 8);
 
         // Pack 8 bytes into two 32-bit words (little-endian)
         const low = OpCodes.Pack32LE(
-          this.buffer[i] || 0,
-          this.buffer[i + 1] || 0,
-          this.buffer[i + 2] || 0,
-          this.buffer[i + 3] || 0
+          block[i] || 0,
+          block[i + 1] || 0,
+          block[i + 2] || 0,
+          block[i + 3] || 0
         );
         const high = OpCodes.Pack32LE(
-          this.buffer[i + 4] || 0,
-          this.buffer[i + 5] || 0,
-          this.buffer[i + 6] || 0,
-          this.buffer[i + 7] || 0
+          block[i + 4] || 0,
+          block[i + 5] || 0,
+          block[i + 6] || 0,
+          block[i + 7] || 0
         );
 
         // XOR into state
@@ -385,19 +368,17 @@
         throw new Error("SHAKE requires outputSize to be set before Result()");
       }
 
-      // SHAKE padding: 0x1F (differs from SHA-3's 0x06 and Keccak's 0x01)
-      this.buffer[this.bufferLength] = SHAKE_PADDING;
-
-      // Fill rest with zeros except last byte
-      for (let i = this.bufferLength + 1; i < this.rate - 1; i++) {
-        this.buffer[i] = 0;
-      }
-
-      // Set last bit of last byte
-      this.buffer[this.rate - 1] = 0x80;
-
-      // Absorb final block
-      this._absorb();
+      // SHAKE padding: 0x1F (differs from SHA-3's 0x06 and Keccak's 0x01).
+      //
+      // The separator and pad10*1's terminating bit land on the same byte when
+      // exactly one byte of the block is free, and writing the terminating bit
+      // over the separator rather than into it dropped the separator entirely.
+      // Every message of length rate-1 (mod rate) hashed to the wrong value:
+      // 167, 335 ... for SHAKE128 and 135, 271 ... for SHAKE256, all of which
+      // now agree with the reference. SpongePadBlocks merges them.
+      for (const block of this._absorber.Finish((held, pending) =>
+        SpongePadBlocks(held, pending, this.rate, SHAKE_PADDING)))
+        this._absorb(block);
 
       // Squeeze phase: extract _outputSize bytes
       const output = new Uint8Array(this._outputSize);
