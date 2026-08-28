@@ -215,8 +215,36 @@
         [1, 0, 1, 1, 1, 0]
       ];
 
+      // The systematic encoder builds each parity bit from the information
+      // columns of the leading coupling rows, which pins the generator to
+      // G = [I | P] with P[i][p] the contribution of information bit i to
+      // parity bit p. Deriving the parity-check matrix H = [P^T | I] from that
+      // same P is what guarantees H * c = 0 for every codeword the encoder can
+      // produce; taking unrelated coupling rows as H instead leaves encoder and
+      // decoder describing different codes.
+      const parityCount = this.n - this.k;
+
+      this.parityGenerator = [];
+      for (let i = 0; i < this.k; i++) {
+        const row = new Array(parityCount).fill(0);
+        for (let p = 0; p < parityCount; p++) {
+          row[p] = this.couplingMatrix[p][i];
+        }
+        this.parityGenerator.push(row);
+      }
+
+      this.parityCheckMatrix = [];
+      for (let p = 0; p < parityCount; p++) {
+        const row = new Array(this.n).fill(0);
+        for (let i = 0; i < this.k; i++) {
+          row[i] = this.parityGenerator[i][p];
+        }
+        row[this.k + p] = 1;
+        this.parityCheckMatrix.push(row);
+      }
+
       // Store dimensions
-      this.numChecks = this.couplingMatrix.length;
+      this.numChecks = this.parityCheckMatrix.length;
       this.numVars = this.n;
     }
 
@@ -285,11 +313,10 @@
       for (let p = 0; p < (this.n - this.k); p++) {
         let parity = 0;
 
-        // Sum over information bits according to coupling matrix
-        // Using first w rows for initial position
+        // Sum over information bits according to the generator's parity part
         for (let j = 0; j < this.k; j++) {
-          if (this.couplingMatrix[p][j] === 1) {
-            parity ^= data[j];
+          if (this.parityGenerator[j][p] === 1) {
+            parity = OpCodes.XorN(parity, data[j]);
           }
         }
 
@@ -320,6 +347,15 @@
       // In production, this would use full belief propagation with sliding window
       const decoded = this.windowedBP(received, 10); // 10 iterations for better convergence
 
+      // Belief propagation is not guaranteed to converge, and this construction
+      // has minimum distance 2, so it can flag a corrupted word but has no
+      // correction capability at all. Accept the result only when it really is
+      // a codeword; otherwise report the failure instead of handing back a
+      // corrupt word as though it had been corrected.
+      if (!this.isZeroVector(this.calculateSyndrome(decoded))) {
+        throw new Error('SC-LDPC decode: Received word is not correctable, belief propagation did not converge to a codeword');
+      }
+
       return decoded.slice(0, this.k);
     }
 
@@ -330,14 +366,11 @@
     calculateSyndrome(codeword) {
       const syndrome = [];
 
-      // Use first k checks for syndrome calculation
-      const checksToUse = Math.min(this.k, this.numChecks);
-
-      for (let i = 0; i < checksToUse; i++) {
+      for (let i = 0; i < this.numChecks; i++) {
         let sum = 0;
         for (let j = 0; j < this.numVars; j++) {
-          if (this.couplingMatrix[i][j] === 1) {
-            sum ^= codeword[j];
+          if (this.parityCheckMatrix[i][j] === 1) {
+            sum = OpCodes.XorN(sum, codeword[j]);
           }
         }
         syndrome.push(sum);
@@ -367,15 +400,15 @@
         );
 
         // Check node update (simplified)
-        for (let c = 0; c < Math.min(this.k, this.numChecks); c++) {
+        for (let c = 0; c < this.numChecks; c++) {
           for (let v = 0; v < this.numVars; v++) {
-            if (this.couplingMatrix[c][v] === 1) {
+            if (this.parityCheckMatrix[c][v] === 1) {
               // Simplified message: product of signs, minimum magnitude
               let prod = 1.0;
               let minMag = 100.0;
 
               for (let vp = 0; vp < this.numVars; vp++) {
-                if (vp !== v && this.couplingMatrix[c][vp] === 1) {
+                if (vp !== v && this.parityCheckMatrix[c][vp] === 1) {
                   const msg = varToCheck[vp][c] || llr[vp];
                   prod *= (msg >= 0) ? 1 : -1;
                   minMag = Math.min(minMag, Math.abs(msg));
@@ -391,8 +424,8 @@
         for (let v = 0; v < this.numVars; v++) {
           let totalLLR = llr[v];
 
-          for (let c = 0; c < Math.min(this.k, this.numChecks); c++) {
-            if (this.couplingMatrix[c][v] === 1) {
+          for (let c = 0; c < this.numChecks; c++) {
+            if (this.parityCheckMatrix[c][v] === 1) {
               totalLLR += checkToVar[c][v];
             }
           }
@@ -401,8 +434,8 @@
           decoded[v] = (totalLLR >= 0) ? 0 : 1;
 
           // Update messages for next iteration
-          for (let c = 0; c < Math.min(this.k, this.numChecks); c++) {
-            if (this.couplingMatrix[c][v] === 1) {
+          for (let c = 0; c < this.numChecks; c++) {
+            if (this.parityCheckMatrix[c][v] === 1) {
               varToCheck[v][c] = totalLLR - checkToVar[c][v];
             }
           }

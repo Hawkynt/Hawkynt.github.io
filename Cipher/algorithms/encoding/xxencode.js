@@ -98,6 +98,30 @@
           [43, 69, 54, 49], // "+E61"
           "Simple pattern encoding test - XXencode",
           "Educational standard"
+        ),
+        new TestCase(
+          [77], // "M" - a lone 1-byte group
+          [72, 69], // "HE"
+          "XXencode 1-byte group - eight data bits need exactly two 6-bit symbols",
+          "https://en.wikipedia.org/wiki/Xxencoding"
+        ),
+        new TestCase(
+          [77, 97], // "Ma" - a lone 2-byte group
+          [72, 75, 50], // "HK2"
+          "XXencode 2-byte group - sixteen data bits need exactly three 6-bit symbols",
+          "https://en.wikipedia.org/wiki/Xxencoding"
+        ),
+        new TestCase(
+          [1, 2, 3, 0], // Full group plus a 1-byte tail that is itself a NUL
+          [43, 69, 54, 49, 43, 43], // "+E61++"
+          "XXencode trailing NUL regression test - the old decoder stripped trailing zero bytes as if they were padding, so any payload ending in NUL decoded short and could not be re-encoded",
+          "https://en.wikipedia.org/wiki/Xxencoding"
+        ),
+        new TestCase(
+          [0, 0, 0, 0, 0], // All-NUL payload with a 2-byte tail
+          [43, 43, 43, 43, 43, 43, 43], // "+++++++"
+          "XXencode all-NUL payload regression test - the old decoder returned an empty array for any all-zero payload",
+          "https://en.wikipedia.org/wiki/Xxencoding"
         )
       ];
 
@@ -187,6 +211,8 @@
 
       // Process in groups of 3 bytes
       for (let i = 0; i < data.length; i += 3) {
+        const groupSize = Math.min(3, data.length - i);
+
         const byte1 = data[i];
         const byte2 = i + 1 < data.length ? data[i + 1] : 0;
         const byte3 = i + 2 < data.length ? data[i + 2] : 0;
@@ -200,10 +226,19 @@
         const char2 = this.algorithm.alphabet[OpCodes.AndN(OpCodes.Shr32(packed, 12), 0x3F)];
         const char1 = this.algorithm.alphabet[OpCodes.AndN(OpCodes.Shr32(packed, 18), 0x3F)];
 
+        // A partial trailing group emits only the characters its data bits
+        // actually occupy: 1 byte needs two 6-bit symbols, 2 bytes need three,
+        // 3 bytes need four. Emitting a full quartet for a short tail would
+        // make the group length the only record of how many bytes were real,
+        // and that record is not recoverable on decode.
         result.push(char1.charCodeAt(0));
         result.push(char2.charCodeAt(0));
-        result.push(char3.charCodeAt(0));
-        result.push(char4.charCodeAt(0));
+        if (groupSize >= 2) {
+          result.push(char3.charCodeAt(0));
+        }
+        if (groupSize === 3) {
+          result.push(char4.charCodeAt(0));
+        }
       }
 
       return result;
@@ -216,37 +251,41 @@
 
       const encoded = OpCodes.BytesToChars(data);
 
-      // XXencode requires input length to be multiple of 4 characters
-      if (encoded.length % 4 !== 0) {
-        throw new Error('XXencode: Invalid encoded length (must be multiple of 4)');
-      }
-
       const result = [];
 
-      for (let i = 0; i < encoded.length; i += 4) {
-        // Convert 4 characters to values
-        const val1 = this.algorithm.decodeTable[encoded[i]];
-        const val2 = this.algorithm.decodeTable[encoded[i + 1]];
-        const val3 = this.algorithm.decodeTable[encoded[i + 2]];
-        const val4 = this.algorithm.decodeTable[encoded[i + 3]];
-
-        if (val1 === undefined || val2 === undefined || 
-            val3 === undefined || val4 === undefined) {
+      const lookup = (ch) => {
+        const value = this.algorithm.decodeTable[ch];
+        if (value === undefined) {
           throw new Error('XXencode: Invalid character in encoded data');
         }
+        return value;
+      };
 
-        // Reconstruct 24-bit value
-        const packed = OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(val1, 18), OpCodes.Shl32(val2, 12)), OpCodes.Shl32(val3, 6)), val4);
+      for (let i = 0; i < encoded.length; i += 4) {
+        const groupSize = Math.min(4, encoded.length - i);
 
-        // Unpack to 3 bytes
-        result.push(OpCodes.AndN(OpCodes.Shr32(packed, 16), 0xFF));
-        result.push(OpCodes.AndN(OpCodes.Shr32(packed, 8), 0xFF));
-        result.push(OpCodes.AndN(packed, 0xFF));
-      }
+        // A lone trailing character carries only six bits, which is not enough
+        // to have come from any whole byte, so it cannot be a valid encoding.
+        if (groupSize === 1) {
+          throw new Error('XXencode: Invalid encoded length (trailing single character)');
+        }
 
-      // Remove trailing zeros (simple padding removal for educational purposes)
-      while (result.length > 0 && result[result.length - 1] === 0) {
-        result.pop();
+        if (groupSize === 2) {
+          // Two characters carry one byte in their top eight bits
+          const packed = OpCodes.OrN(OpCodes.Shl32(lookup(encoded[i]), 6), lookup(encoded[i + 1]));
+          result.push(OpCodes.AndN(OpCodes.Shr32(packed, 4), 0xFF));
+        } else if (groupSize === 3) {
+          // Three characters carry two bytes in their top sixteen bits
+          const packed = OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(lookup(encoded[i]), 12), OpCodes.Shl32(lookup(encoded[i + 1]), 6)), lookup(encoded[i + 2]));
+          result.push(OpCodes.AndN(OpCodes.Shr32(packed, 10), 0xFF));
+          result.push(OpCodes.AndN(OpCodes.Shr32(packed, 2), 0xFF));
+        } else {
+          // Four characters carry a full three-byte group
+          const packed = OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(lookup(encoded[i]), 18), OpCodes.Shl32(lookup(encoded[i + 1]), 12)), OpCodes.Shl32(lookup(encoded[i + 2]), 6)), lookup(encoded[i + 3]));
+          result.push(OpCodes.AndN(OpCodes.Shr32(packed, 16), 0xFF));
+          result.push(OpCodes.AndN(OpCodes.Shr32(packed, 8), 0xFF));
+          result.push(OpCodes.AndN(packed, 0xFF));
+        }
       }
 
       return result;

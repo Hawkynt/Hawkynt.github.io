@@ -263,23 +263,46 @@
       const fReceived = data.slice(0, this.n);
       const hReceived = data.slice(this.n, this.n * 2);
 
-      // Check correlation: does h = f^2?
-      // In error-free case, hEval[i] should equal fEval[i]^2 for all i
-      const hasCorrelationError = this.checkCorrelation(fReceived, hReceived);
+      // Recover the message polynomial by interpolating through every k-subset
+      // of evaluation points. Any subset untouched by errors reconstructs the
+      // transmitted f exactly, so the candidate agreeing with the most received
+      // symbols across both blocks is the maximum-likelihood choice.
+      const subset = new Array(this.k);
+      let best = null;
+      let bestScore = -1;
 
-      if (!hasCorrelationError) {
-        // No errors detected - extract original data from f evaluations
-        // Use first k evaluations as approximation of polynomial coefficients
-        return fReceived.slice(0, this.k);
+      const search = (start, depth) => {
+        if (depth === this.k) {
+          const candidate = this.interpolatePolynomial(subset, fReceived);
+          const score = this.agreementScore(candidate, fReceived, hReceived);
+          if (score > bestScore) {
+            bestScore = score;
+            best = candidate;
+          }
+          return;
+        }
+
+        for (let i = start; i < this.n; ++i) {
+          subset[depth] = i;
+          search(i + 1, depth + 1);
+        }
+      };
+
+      search(0, 0);
+
+      // Distinct message polynomials of degree below k agree at no more than
+      // k-1 evaluation points, so each block has minimum distance n-k+1. As
+      // squaring is a bijection in GF(2^m) the h block separates candidates
+      // exactly where the f block does, giving the concatenation a minimum
+      // distance of 2*(n-k+1) and a unique-decoding radius of half of that.
+      const minimumDistance = 2 * (this.n - this.k + 1);
+      const correctable = Math.floor((minimumDistance - 1) / 2);
+
+      if (best === null || bestScore < this.n * 2 - correctable) {
+        throw new Error('Parvaresh-Vardy decode: Too many errors to correct reliably');
       }
 
-      console.warn('Parvaresh-Vardy: Correlation error detected');
-
-      // Simplified error correction: attempt basic recovery
-      // Full list decoding would use polynomial interpolation
-      const corrected = this.correctCorrelationError(fReceived, hReceived);
-
-      return corrected.slice(0, this.k);
+      return best;
     }
 
     initializeGaloisField() {
@@ -308,6 +331,15 @@
     gfAdd(a, b) {
       // Addition in GF(2^m) is XOR
       return OpCodes.XorN(a, b);
+    }
+
+    gfDivide(a, b) {
+      // Galois Field division using log tables
+      if (b === 0) {
+        throw new Error('Parvaresh-Vardy: Division by zero in GF');
+      }
+      if (a === 0) return 0;
+      return this.gfAntilog[(this.gfLog[a] - this.gfLog[b] + (this.field - 1)) % (this.field - 1)];
     }
 
     gfPower(base, exponent) {
@@ -354,6 +386,53 @@
       return result;
     }
 
+    interpolatePolynomial(indices, values) {
+      // Lagrange interpolation over GF(16). Recovers the unique polynomial of
+      // degree below indices.length passing through the selected evaluation
+      // points, returned as coefficients with coefficients[i] scaling x^i.
+      const coefficients = new Array(indices.length).fill(0);
+
+      for (let a = 0; a < indices.length; ++a) {
+        const xa = this.evalPoints[indices[a]];
+        const ya = values[indices[a]];
+
+        // Basis polynomial: product over b not equal to a of (x + xb),
+        // normalised by the product of (xa + xb) so it is 1 at xa and 0 elsewhere
+        let basis = [1];
+        let denominator = 1;
+
+        for (let b = 0; b < indices.length; ++b) {
+          if (b === a) continue;
+
+          const xb = this.evalPoints[indices[b]];
+          basis = this.multiplyPolynomial(basis, [xb, 1]);
+          denominator = this.gfMultiply(denominator, this.gfAdd(xa, xb));
+        }
+
+        const scale = this.gfDivide(ya, denominator);
+        for (let j = 0; j < basis.length; ++j) {
+          coefficients[j] = this.gfAdd(coefficients[j], this.gfMultiply(basis[j], scale));
+        }
+      }
+
+      return coefficients;
+    }
+
+    agreementScore(coefficients, fReceived, hReceived) {
+      // Count how many of the 2n received symbols a candidate message
+      // polynomial reproduces, across both the f block and the h block
+      const fEvals = this.evaluatePolynomial(coefficients);
+      const hEvals = this.evaluatePolynomial(this.multiplyPolynomial(coefficients, coefficients));
+
+      let score = 0;
+      for (let i = 0; i < this.n; ++i) {
+        if (fEvals[i] === fReceived[i]) ++score;
+        if (hEvals[i] === hReceived[i]) ++score;
+      }
+
+      return score;
+    }
+
     checkCorrelation(fEvals, hEvals) {
       // Check if h(αi) = f(αi)^2 for all evaluation points
       // Returns true if any correlation violation is detected (indicating error)
@@ -366,33 +445,6 @@
       }
 
       return false; // Correlation holds
-    }
-
-    correctCorrelationError(fEvals, hEvals) {
-      // Simplified error correction using correlation property
-      // Attempt to recover original polynomial by exploiting h = f^2 relationship
-
-      // Count correlation violations
-      const violations = [];
-      for (let i = 0; i < this.n; ++i) {
-        const expectedH = this.gfMultiply(fEvals[i], fEvals[i]);
-        if (expectedH !== hEvals[i]) {
-          violations.push(i);
-        }
-      }
-
-      console.log(`Parvaresh-Vardy: Found ${violations.length} correlation violations`);
-
-      // Simplified strategy: trust f values if violations are few
-      // Full list decoding would reconstruct polynomial from subset of evaluations
-      if (violations.length <= 2) {
-        // Likely recoverable - return f values
-        return [...fEvals];
-      }
-
-      // Too many violations - return best guess
-      console.warn('Parvaresh-Vardy: Too many correlation violations for reliable recovery');
-      return [...fEvals];
     }
 
     hasError(data) {
