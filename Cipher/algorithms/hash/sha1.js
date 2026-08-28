@@ -38,7 +38,8 @@
           PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
           IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
-          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize,
+          BlockAbsorber, MerkleDamgardBlocks } = AlgorithmFramework;
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -141,9 +142,7 @@
 
         // SHA-1 state variables
         this._h = null;
-        this._buffer = null;
-        this._length = 0;
-        this._bufferLength = 0;
+        this._absorber = null;
       }
 
       /**
@@ -153,9 +152,7 @@
       Init() {
         // Initial hash values (RFC 3174 Section 6.1)
         this._h = [0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0];
-        this._buffer = new Array(64);
-        this._length = 0;
-        this._bufferLength = 0;
+        this._absorber = new BlockAbsorber(64, block => this._processBlock(block));
       }
 
       _Reset() {
@@ -178,53 +175,19 @@
           data = bytes;
         }
 
-        for (let i = 0; i < data.length; i++) {
-          this._buffer[this._bufferLength++] = data[i];
-
-          if (this._bufferLength === 64) {
-            this._processBlock(this._buffer);
-            this._bufferLength = 0;
-          }
-        }
-
-        this._length += data.length;
+        this._absorber.Absorb(data);
       }
 
       /**
        * Finalize the hash calculation and return result as byte array
+       * RFC 3174 Section 4
        * @returns {Array} Hash digest as byte array
        */
       Final() {
-        // Add padding bit
-        this._buffer[this._bufferLength++] = 0x80;
-
-        // If not enough space for length, pad and process block
-        if (this._bufferLength > 56) {
-          while (this._bufferLength < 64) {
-            this._buffer[this._bufferLength++] = 0x00;
-          }
-          this._processBlock(this._buffer);
-          this._bufferLength = 0;
-        }
-
-        // Pad to 56 bytes
-        while (this._bufferLength < 56) {
-          this._buffer[this._bufferLength++] = 0x00;
-        }
-
-        // Append length in bits as 64-bit big-endian
-        const lengthBits = this._length * 8;
-        // High 32 bits (for messages under 2^32 bits, this is 0)
-        this._buffer[56] = 0; this._buffer[57] = 0; this._buffer[58] = 0; this._buffer[59] = 0;
-        // Low 32 bits - use OpCodes for byte extraction
-        const lengthBytes = OpCodes.Unpack32BE(lengthBits);
-        this._buffer[60] = lengthBytes[0];
-        this._buffer[61] = lengthBytes[1];
-        this._buffer[62] = lengthBytes[2];
-        this._buffer[63] = lengthBytes[3];
-
-        // Process final block
-        this._processBlock(this._buffer);
+        this._absorber.Finish((held, pending, total) => {
+          for (const block of MerkleDamgardBlocks(held, pending, total, { blockSize: 64, lengthBytes: 8 }))
+            this._processBlock(block);
+        });
 
         // Convert hash to byte array
         const result = [];
@@ -325,9 +288,7 @@
 
       ClearData() {
         if (this._h) OpCodes.ClearArray(this._h);
-        if (this._buffer) OpCodes.ClearArray(this._buffer);
-        this._length = 0;
-        this._bufferLength = 0;
+        if (this._absorber) this._absorber.Reset();
       }
 
       /**

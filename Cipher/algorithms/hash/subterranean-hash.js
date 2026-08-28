@@ -137,14 +137,6 @@
       this.inputBuffer = [];
     }
 
-    /**
-     * Feed data into the hash function
-     * @param {Array<number>} data - Byte array to hash
-     */
-    Feed(data) {
-      if (!data || data.length === 0) return;
-      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
-    }
 
     /**
      * Compute and return the final hash digest
