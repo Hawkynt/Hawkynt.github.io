@@ -76,6 +76,14 @@ jobs:
         working-directory: Cipher
         run: node tests/RoundTripSuite.js --interop
 
+      # Feed(whole) must equal Feed(part1); Feed(part2); ... Every committed
+      # vector delivers its message in a single call, so an algorithm that
+      # mishandled buffering across calls passed everything: 103 of them did,
+      # SHA-256 among them, each silently returning a different answer.
+      - name: Check that feeding in chunks matches feeding whole
+        working-directory: Cipher
+        run: node tests/ChunkedFeedSuite.js
+
   # The algorithm reference is derived entirely from the implementations, so it
   # is built on every run and published as an artifact rather than committed —
   # a generated tree in the history would only ever go stale between runs.
