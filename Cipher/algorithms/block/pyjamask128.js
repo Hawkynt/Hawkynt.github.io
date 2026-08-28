@@ -411,6 +411,8 @@
 
       const output = [];
       const blockSize = this.BlockSize;
+      if (this.inputBuffer.length % blockSize !== 0)
+        throw new Error(`Input length must be multiple of ${blockSize} bytes`);
 
       // Process complete blocks only
       while (this.inputBuffer.length >= blockSize) {
