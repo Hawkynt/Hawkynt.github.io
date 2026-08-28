@@ -27,6 +27,9 @@ class TestSuite {
     this.algorithmsPerCategory = {};
     this.verbose = false;
     this.algorithmDetails = [];
+    // Algorithm name -> what failed. Keyed by name so an algorithm registered
+    // under several names is counted once.
+    this.invertibilityFailures = new Map();
     this.engine = null; // Will be initialized in loadDependencies
     this.results = {
       compilation: { passed: 0, failed: 0, errors: [] },
@@ -241,6 +244,21 @@ class TestSuite {
       }
     }
 
+    // A failed inverse used to be printed and then thrown away. The status was
+    // read by the verbose display and nowhere else, so an algorithm that could
+    // not decrypt what it encrypted still counted as a pass: 36 of them reported
+    // a failed invertibility requirement inside a run that printed 100% and
+    // exited 0. Algorithms with no meaningful inverse are named on the shared
+    // exemption list and never reach this branch.
+    if (algorithmData.details.testResults) {
+      for (const r of algorithmData.details.testResults) {
+        if (r.status !== 'failed-roundtrips' && r.status !== 'failed-encoding-stability') continue;
+        const kind = r.status === 'failed-roundtrips' ? 'round-trip' : 'encoding stability';
+        this.invertibilityFailures.set(algorithmName,
+          `${kind} ${r.roundTripsPassed}/${r.roundTripsAttempted}`);
+      }
+    }
+
     const issuesCount = algorithmData.details.issues ? algorithmData.details.issues.totalCount : 0;
     const issuesStatus = algorithmData.tests.issues ? '0' : `${issuesCount}`;
     const timingInfo = timedOut ? ` (TIMEOUT after ${elapsedMs.toFixed(2)}ms)` : ` (${elapsedMs.toFixed(2)}ms)`;
@@ -385,10 +403,19 @@ class TestSuite {
       console.log(`❌ Major issues found: ${failedTests} test(s) failing.`);
     }
 
+    if (this.invertibilityFailures.size > 0) {
+      console.log('');
+      console.log(`=== INVERTIBILITY (${this.invertibilityFailures.size} algorithm(s) cannot recover their own output) ===`);
+      for (const [name, detail] of this.invertibilityFailures)
+        console.log(`  ✗ ${name} - ${detail}`);
+      console.log('An algorithm with no meaningful inverse belongs on the list in');
+      console.log('tests/round-trip-exemptions.js with its reason, not here.');
+    }
+
     // Anything above zero has to fail the process, or the suite cannot gate
     // anything: it exited 0 whatever happened, so a broken algorithm - or a file
     // that throws while loading - passed CI unnoticed.
-    this.failedTestCount = failedTests;
+    this.failedTestCount = failedTests + this.invertibilityFailures.size;
   }
 }
 

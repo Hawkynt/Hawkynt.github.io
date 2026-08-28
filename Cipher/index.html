@@ -1264,6 +1264,8 @@
 
     <!-- Test Framework (Browser-Compatible) -->
     <script src="./tests/DummyBlockCipher.js"></script>
+    <!-- Must precede TestEngine, which reads the exemption list from it. -->
+    <script src="./tests/round-trip-exemptions.js"></script>
     <script src="./tests/TestEngine.js"></script>
     
     <!-- Type-Aware Transpiler System -->
