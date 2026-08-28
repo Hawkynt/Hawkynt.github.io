@@ -249,61 +249,40 @@
 
   // ===== DEMONSTRATION KEY MATERIAL =====
 
-  // Fixed key pairs so that an encrypting instance and a decrypting instance
+  // A fixed key pair, so that an encrypting instance and a decrypting instance
   // configured with the same key selector share the same modulus. Generating a
   // fresh key inside each instance is what made decryption impossible: the two
   // instances never held the same n.
   //
-  // These key pairs are published here in full and are therefore demonstration
-  // material only, never a secret. Each was produced with a standard generator
-  // and checked to satisfy n = p * q, both factors prime, and d * e congruent
-  // to 1 modulo lcm(p - 1, q - 1).
+  // This is Example 1 of the RSA Laboratories PKCS #1 v1.5 encryption test
+  // vectors, the 1024-bit key printed in pkcs1v15crypt-vectors.txt and carried
+  // in the test corpus of pyca/cryptography. It is published material and
+  // confers no confidentiality whatever. Reproducing it here means the
+  // published ciphertexts of that file can be decrypted by this code and
+  // checked against the published plaintexts, which is the only external
+  // check available for a scheme whose encryption is randomised.
+  //
+  // Independently confirmed: n = p * q, both factors prime, and d * e is
+  // congruent to 1 modulo lcm(p - 1, q - 1).
   const RSA_KEYS = {
     1024: {
-      n: 'dfd1c3f19b2a97f84863d81f392927669c90301997ecb9a78e45643b17ebe078' +
-         'a7386ae9cb80387bb9fa84376acfe34b2efea22184fb0c61ef2002da8ed8ebc5' +
-         '4825d2857f84f691fa9ed3f90736c333f5c3b78c0ab8cd32fa10b188f18bfe34' +
-         '5be5614b72937b2b8fe971dc8e67d5b1a70fbbf48f8be5d7dc17918ec8465f17',
+      n: 'a8b3b284af8eb50b387034a860f146c4919f318763cd6c5598c8ae4811a1e0ab' +
+         'c4c7e0b082d693a5e7fced675cf4668512772c0cbc64a742c6c630f533c8cc72' +
+         'f62ae833c40bf25842e984bb78bdbf97c0107d55bdb662f5c4e0fab9845cb514' +
+         '8ef7392dd3aaff93ae1e6b667bb3d4247616d4f5ba10d4cfd226de88d39f16fb',
       e: '010001',
-      d: 'db54f5beab3f1743c0b4cf52f1b209a17da5b2ed31bb52c8071cab37599ed60f' +
-         '86573c36362d45acc1b8e49e65f6a917c14ad8d91e36e2908a440567e67a5eb7' +
-         'd4fd59c9793f0434f3dc2f5c3923437fd4eed00ba907e894a1c6b00d4c0bd09a' +
-         '4444cdb91f4d0badc786043f165b8a94291d0bb9da93621863df6166653d4169',
-      p: 'fa1d74d1005052c79827808eb3def51c4485e39de39646142347530136f0424c' +
-         'd359a72a589a212686fa25369bbc5afc21e0e9b755ab1f674b0472f2d315dc6d',
-      q: 'e515eb71a3420f2a20739b1da9a5f85b5de7c2845e80f0be05de883eb1ed1788' +
-         '67c58fc3e4e5f6994a1dd072d5ea5f5879437b5dc3752be1111c0706378b2f13'
-    },
-    2048: {
-      n: 'b869f83079da0cb0ff18902982906add23b46c0699bc7bd20b367768752a76d2' +
-         '887a0cd2049419c55a529a6b17da8bc2b914c0e1bdd4d119c9c9417d0f9f8d97' +
-         'f1e1e61f45eb0e2fa9d1b017429e3dea1216a743b9e8b9368d993cd3e3427d41' +
-         'f9c1983f0dc3a96bb01174fbdf75aae83264f2f324f44409db9821f56c689cbd' +
-         '8997886ee16825b285e8af1411fbc2ef5a6200be60c80654eebe59eac4dd61de' +
-         '380a8dfdd6caffcba159950eed46531e90e4d000fe7ae7c6aa6971e5f7ad5eaa' +
-         '7306538d5a645ef88f76c27c16ac9aea160c5272bea3d43a9bdfd87b122b47d9' +
-         '7160248fee5b331547afe45dbaf9d30780ed0ae8c6cef5e98f217e0aefbd6b71',
-      e: '010001',
-      d: '017f3ab88a04af1db0b46e5727ec2c31e75c4b943223498e06f1463eded49d6a' +
-         '50194d8956e82cdd614252669426fe0372a52c7ba8a2d59fb3f7a24475a001f2' +
-         '3dd06ba1cd5b7f1dfbeeebd304836c553e1858fb3fc317ddcd8074f1f36252c9' +
-         'fa510bff57094392d0371410075c592ad15de86af8ddd2bf91bcc669cb9b7dca' +
-         '3890a5f43dd28525d8e382553b33de08cdbb2f836374786cd79b3929d97e2461' +
-         '56eafac2c477b64ce37ffd97df1e52a4b6524a752f0ac6bd31423f49a54a3e61' +
-         '5550863ad66cba44891c0117a23d02bcce2b5c62387ce5886a2b270e5ebd1343' +
-         '46f8e02a6ec49383327a6a722782cc0ecdd3feb93fb3d82666157d7988040511',
-      p: 'd9530f4605ea9dc480a7ec8da971a2789aff1f301d110f2975f65c3c0209bb70' +
-         '74ea707b719fd623bc80ca2d0cddbec10442f98d68fd33c80c49464ead75c219' +
-         'cd8744e954b027ad5a611eb8aa7d9b8b58c343120e50fc7db494d3dc38936fd1' +
-         'db444742a692d5a0eaf928f427c37d75e22c28af02e21af3d73e02fe10d510cb',
-      q: 'd93b8fd445f370a7bf4e9bac2a6abc0cfee904e373e724bbd14a81fa79b01a2a' +
-         'bb45cdc05c46b3f4052542497956688f21528ba2fb86785728fb55fd06e6ed9c' +
-         '579c260ba5ac2efc96fd7b8439d40fd1caadd8b8cf8b9d5cce7a8c8ca9bd6085' +
-         '8c6945931636e82669694b7fbb2ceaef07456e236cc85ad7c56a6e0c274dd933'
+      d: '53339cfdb79fc8466a655c7316aca85c55fd8f6dd898fdaf119517ef4f52e8fd' +
+         '8e258df93fee180fa0e4ab29693cd83b152a553d4ac4d1812b8b9fa5af0e7f55' +
+         'fe7304df41570926f3311f15c4d65a732c483116ee3d3d2d0af3549ad9bf7cbf' +
+         'b78ad884f84d5beb04724dc7369b31def37d0cf539e9cfcdd3de653729ead5d1',
+      p: 'd32737e7267ffe1341b2d5c0d150a81b586fb3132bed2f8d5262864a9cb9f30a' +
+         'f38be448598d413a172efb802c21acf1c11c520c2f26a471dcad212eac7ca39d',
+      q: 'cc8853d1d54da630fac004f471f281c7b8982d8224a490edbeb33d3e3d5cc93c' +
+         '4765703d1dd791642f1f116a0dd852be2419b2af72bfe9a030e860b0288b5d77'
     }
   };
 
-  const SUPPORTED_KEY_SIZES = [1024, 2048];
+  const SUPPORTED_KEY_SIZES = [1024];
 
   /**
    * Read a key size selector from whatever the caller supplied. Both spellings
@@ -361,12 +340,13 @@
       this.complexity = ComplexityType.INTERMEDIATE;
       this.country = CountryCode.US;
 
-      // Algorithm-specific metadata: the sizes for which a demonstration key
-      // pair is published below. Larger moduli work the moment key material of
-      // that size is supplied through the publicKey/privateKey properties.
+      // The one size for which a key pair from a published test vector set is
+      // reproduced below. Larger moduli work the moment key material of that
+      // size is supplied through the publicKey/privateKey properties; none is
+      // hard-coded here, because no key that has not been checked against an
+      // outside source belongs in this file.
       this.SupportedKeySizes = [
-        new KeySize(1024, 1024, 0), // RSA-1024 (deprecated, demonstration only)
-        new KeySize(2048, 2048, 0)  // RSA-2048
+        new KeySize(1024, 1024, 0) // RSA-1024, PKCS #1 v1.5 test vector key
       ];
 
       // Documentation and references
@@ -398,24 +378,34 @@
       // Test vectors.
       //
       // RSAES-PKCS1-v1_5 draws a fresh padding string for every encryption
-      // (RFC 8017 Section 7.2.1 step 2), so a fixed ciphertext is not a
-      // property of the scheme and cannot be committed as an expected value.
-      // These vectors state the invertibility requirement instead, the same
-      // convention the other randomised public-key schemes here use: the
+      // (RFC 8017 Section 7.2.1 step 2), so no fixed ciphertext is a property
+      // of the scheme and none can be committed here as an expected value.
+      // These vectors state the invertibility requirement instead: the
       // expected value is the plaintext, and the round trip is what is graded.
+      //
+      // The external check that this really is RSA and not a stub is the
+      // published key above. Decrypting the ciphertext of PKCS #1 v1.5 example
+      // 1.1,
+      //   50b4c14136bd198c2f3c3ed243fce036 e168d56517984a263cd66492b80804f1
+      //   69d210f2b9bdfb48b12f9ea05009c77d a257cc600ccefe3a6283789d8ea0e607
+      //   ac58e2690ec4ebc10146e8cbaa5ed4d5 cce6fe7b0ff9efc1eabb564dbf498285
+      //   f449ee61dd7b42ee5b5892cb90601f30 cda07bf26489310bcd23b528ceab3c31
+      // with this key yields exactly the message that file records for it,
+      //   6628194e12073db03ba94cda9ef95323 97d50dba79b987004afefe34
+      // which no implementation that does not perform RSADP can produce.
       this.tests = [
         {
           text: "RSA-1024 RSAES-PKCS1-v1_5 round-trip (RFC 8017 Section 7.2)",
           uri: "https://www.rfc-editor.org/rfc/rfc8017#section-7.2",
           input: OpCodes.Hex8ToBytes("48656c6c6f20525341"), // "Hello RSA"
-          key: OpCodes.Hex8ToBytes("0400"), // 1024-bit demonstration key
+          key: OpCodes.Hex8ToBytes("0400"), // PKCS #1 v1.5 example 1 key
           expected: OpCodes.Hex8ToBytes("48656c6c6f20525341")
         },
         {
-          text: "RSA-2048 RSAES-PKCS1-v1_5 round-trip with leading zero octets",
+          text: "RSA-1024 RSAES-PKCS1-v1_5 round-trip with leading zero octets",
           uri: "https://www.rfc-editor.org/rfc/rfc8017#section-7.2",
           input: OpCodes.Hex8ToBytes("0000000102030405"),
-          key: OpCodes.Hex8ToBytes("0800"), // 2048-bit demonstration key
+          key: OpCodes.Hex8ToBytes("0400"), // PKCS #1 v1.5 example 1 key
           expected: OpCodes.Hex8ToBytes("0000000102030405")
         }
       ];
