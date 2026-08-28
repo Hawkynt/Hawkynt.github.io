@@ -613,7 +613,11 @@
    */
 
     Feed(data) {
-      this.Init();
+      // Init() replaces the hasher, so it belongs at the start of the message and
+      // not at the start of every call - the same guard the BLAKE2s and BLAKE2X
+      // instances below already use. Feed(a); Feed(b) must absorb the same block
+      // sequence as Feed(a || b).
+      if (!this._hasher) this.Init();
       this.Update(data);
     }
 

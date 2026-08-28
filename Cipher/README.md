@@ -696,6 +696,35 @@ node tests/RoundTripSuite.js --large-size=8M --category "Compression Algorithms"
 The measured size ceilings, what fails first beyond each of them, and why, are in
 [`tests/LARGE-INPUTS.md`](tests/LARGE-INPUTS.md).
 
+`tests/ChunkedFeedSuite.js` asserts the streaming half of the `Feed`/`Result`
+contract across every registered algorithm:
+
+```
+Feed(whole)  ==  Feed(part1); Feed(part2); ... Feed(partN)
+```
+
+Every committed test vector hands its message over in a single `Feed`, so an
+algorithm that mishandles buffering between calls passes its own vectors and is
+only wrong for a caller that streams a file through it. Each algorithm is
+configured from its own first vector through `TestEngine.ConfigureInstance` and
+driven with eleven splittings of the same message - one byte at a time, either
+side of the 8, 16 and 32-byte boundaries, two halves and a run of uneven pieces.
+Refusing a second `Feed` is a defensible design and is reported without failing
+the run; returning different bytes without complaining is what fails it. The
+constructions for which the property is genuinely false - the block codes, and
+TupleHash, whose whole purpose is that a tuple of strings hashes differently from
+their concatenation - are named in that file's `CHUNKED_FEED_EXEMPT` table with
+the reason:
+
+```bash
+# Sweep every algorithm for chunked-feed equivalence
+node tests/ChunkedFeedSuite.js
+
+# Narrow to one category or algorithm, and show the passing lines too
+node tests/ChunkedFeedSuite.js --category hash --verbose
+node tests/ChunkedFeedSuite.js --algorithm "SHA-256"
+```
+
 **Test Phases:**
 1. **Syntax Validation** - Ensures JavaScript compiles without errors
 2. **Metadata Validation** - Verifies AlgorithmFramework compliance

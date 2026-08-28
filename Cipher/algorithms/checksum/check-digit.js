@@ -289,7 +289,11 @@
         }
       }
 
-      this.digits = data.slice(); // Store a copy
+      // Feed is a streaming interface: successive calls extend the digit string
+      // rather than replace it. A check digit is positional, so a chunk cannot
+      // be validated on its own and the digits are collected for Result().
+      if (!this.digits) this.digits = [];
+      for (let i = 0; i < data.length; i++) this.digits.push(data[i]);
     }
 
     /**

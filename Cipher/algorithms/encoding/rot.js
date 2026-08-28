@@ -173,8 +173,11 @@
         throw new Error('ROTInstance.Feed: Input must be byte array');
       }
 
-      // ROT13 is self-inverting, so encode and decode are the same operation
-      this.processedData = this.rot13(data);
+      // Feed is a streaming interface: successive calls extend the message
+      // rather than replace it, so the bytes are collected here and transformed
+      // once, in Result().
+      if (!this._feedBuffer) this._feedBuffer = [];
+      for (let i = 0; i < data.length; i++) this._feedBuffer.push(data[i]);
     }
 
     /**
@@ -184,9 +187,11 @@
    */
 
     Result() {
-      if (this.processedData === null) {
+      if (!this._feedBuffer) {
         throw new Error('ROTInstance.Result: No data processed. Call Feed() first.');
       }
+      // ROT13 is self-inverting, so encode and decode are the same operation
+      this.processedData = this.rot13(this._feedBuffer);
       return this.processedData;
     }
 

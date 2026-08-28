@@ -275,10 +275,13 @@
         },
 
         Feed: function(data) {
+          // Feed is a streaming interface: successive calls extend the message
+          // rather than replace it, so Feed(a); Feed(b) encrypts the same bytes
+          // as Feed(a || b).
+          if (!this._inputData) this._inputData = [];
           if (Array.isArray(data)) {
-            this._inputData = data.slice();
+            for (let i = 0; i < data.length; i++) this._inputData.push(data[i]);
           } else if (typeof data === 'string') {
-            this._inputData = [];
             for (let i = 0; i < data.length; i++) {
               this._inputData.push(data.charCodeAt(i));
             }
