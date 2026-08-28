@@ -197,7 +197,11 @@
    */
 
     Feed(data) {
-      if (!this._password) this._password = data;
+      // Feed is a streaming interface: successive calls extend the password
+      // rather than being dropped, so Feed(a); Feed(b) derives from the same
+      // octet string as Feed(a || b).
+      if (!this._password) this._password = [];
+      for (let i = 0; i < data.length; i++) this._password.push(data[i]);
     }
 
     // Get the KDF result

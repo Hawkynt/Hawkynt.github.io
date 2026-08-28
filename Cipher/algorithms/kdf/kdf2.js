@@ -219,8 +219,11 @@
         throw new Error('KDF2Instance.Feed: KDF2 cannot be reversed (one-way function)');
       }
 
-      // Store secret for Result() method
-      this._secret = data;
+      // Feed is a streaming interface: successive calls extend the input rather
+      // than replace it, so Feed(a); Feed(b) derives from the same octet string
+      // as Feed(a || b).
+      if (!this._secret) this._secret = [];
+      for (let i = 0; i < data.length; i++) this._secret.push(data[i]);
     }
 
     /**

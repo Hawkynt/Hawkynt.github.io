@@ -621,7 +621,11 @@
       if (!Array.isArray(data)) {
         throw new Error('BcryptPBKDFInstance.Feed: Input must be byte array (password)');
       }
-      this._inputData = data;
+      // Feed is a streaming interface: successive calls extend the input rather
+      // than replace it, so Feed(a); Feed(b) derives from the same octet string
+      // as Feed(a || b).
+      if (!this._inputData) this._inputData = [];
+      for (let i = 0; i < data.length; i++) this._inputData.push(data[i]);
     }
 
     /**
