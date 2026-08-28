@@ -227,19 +227,13 @@
         throw new Error('AlamoutiCodeInstance.Feed: Input must be an array');
       }
 
-      if (this.isInverse) {
-        // Decoding mode
-        if (data.length % 4 !== 0) {
-          throw new Error('AlamoutiCodeInstance.Feed: Decode input must have length divisible by 4 (received symbol matrix)');
-        }
-        this.result = this.decode(data);
-      } else {
-        // Encoding mode
-        if (data.length % 2 !== 0) {
-          throw new Error('AlamoutiCodeInstance.Feed: Encode input must have even length (symbol pairs)');
-        }
-        this.result = this.encode(data);
-      }
+      // Feed is a streaming interface: successive calls extend the message
+      // rather than replace it. A chunk cannot be coded on its own either, since
+      // the symbol pairing runs from the start of the message, so the symbols
+      // are collected here and coded once, in Result(). The length rules below
+      // therefore apply to the whole message and are checked there.
+      if (!this._feedBuffer) this._feedBuffer = [];
+      for (let i = 0; i < data.length; i++) this._feedBuffer.push(data[i]);
     }
 
     /**
@@ -249,8 +243,20 @@
    */
 
     Result() {
-      if (this.result === null) {
+      if (!this._feedBuffer) {
         throw new Error('AlamoutiCodeInstance.Result: Call Feed() first to process data');
+      }
+
+      if (this.isInverse) {
+        if (this._feedBuffer.length % 4 !== 0) {
+          throw new Error('AlamoutiCodeInstance.Result: Decode input must have length divisible by 4 (received symbol matrix)');
+        }
+        this.result = this.decode(this._feedBuffer);
+      } else {
+        if (this._feedBuffer.length % 2 !== 0) {
+          throw new Error('AlamoutiCodeInstance.Result: Encode input must have even length (symbol pairs)');
+        }
+        this.result = this.encode(this._feedBuffer);
       }
       return this.result;
     }
