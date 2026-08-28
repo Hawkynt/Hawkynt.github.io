@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * Round-trip exemptions - the single list of algorithms not required to invert
+ * Round-trip exemptions - the one list saying what is not required to invert
  * (c)2006-2025 Hawkynt
  *
  * Two suites ask the same question and used to answer it separately.
@@ -13,13 +13,24 @@
  * and 36 algorithms reported a failed invertibility requirement inside a run
  * that printed 100% and exited 0.
  *
- * Keeping the list here lets both suites gate on it. A name on this list is
+ * Keeping the list here lets both suites gate on it. Anything named here is
  * declared to have no meaningful inverse, or an inverse that recovers a
- * normalised form of the input rather than the input; a name absent from it
- * that fails to invert is a defect and fails the run.
+ * normalised form of the input rather than the input itself; anything absent
+ * from it that fails to invert is a defect and fails the run.
  *
- * Every entry carries its reason, and the reason has to say which of those two
- * it is. Nothing belongs here because it is inconvenient.
+ * Two lists, because they are matched differently:
+ *
+ *   ROUND_TRIP_EXEMPT        by algorithm name, for constructions that have no
+ *                            inverse at all in any of their modes
+ *   ENCODING_STABILITY_EXEMPT  by algorithm name AND a property the vector
+ *                            itself declares, so that one measurement-mode
+ *                            vector can be exempt while every encoding vector
+ *                            of the same algorithm stays gated
+ *
+ * Every entry carries its reason and the reason has to say which kind it is.
+ * Nothing belongs here because it is inconvenient or because it is red: a
+ * decoder that returns corrupt data without signalling failure is a defect to
+ * repair, and repairing it is what the rest of this collection does.
  */
 
 // Exempt from the cipher tier, with the reason next to each. Two kinds appear
@@ -173,10 +184,50 @@ const ROUND_TRIP_EXEMPT = new Map([
 
 ]);
 
-// TestEngine runs in the browser as well as under Node, so the list is exported
-// both ways.
+// Each entry names the algorithm, the vector property that puts the instance
+// into a measurement mode, and why the round trip cannot apply. The property
+// must be present and truthy on the vector for the exemption to fire.
+const ENCODING_STABILITY_EXEMPT = [
+  {
+    algorithm: 'Topological Surface Code',
+    property: 'syndromeExtraction',
+    reason: 'syndrome extraction, not encoding: the vector projects 17 physical qubits onto an '
+      + '8-bit X-stabilizer syndrome. That result is a measurement outcome rather than a codeword, '
+      + 'and the projection discards 9 bits, so it has no inverse to test. The decoder rejecting an '
+      + '8-bit input as not being a 17-qubit codeword is the correct response, not a defect'
+  },
+  {
+    algorithm: 'GKP Quantum Code',
+    property: 'measureStabilizer',
+    reason: 'stabilizer measurement, not encoding: the vector projects a 25-site grid state onto a '
+      + 'single +1/-1 eigenvalue. That one bit is a measurement outcome rather than a codeword, and '
+      + 'cannot reconstruct the grid it came from, so the round trip is undefined. The remaining '
+      + 'vectors of this algorithm encode logical states and stay gated'
+  }
+];
+
+/**
+ * Report why a vector is exempt from the encoding-stability property.
+ * @param {object} algorithm - Algorithm instance under test
+ * @param {object} vector - The test vector being executed
+ * @returns {string|null} The reason, or null when the property does apply
+ */
+function encodingStabilityExemption(algorithm, vector) {
+  if (!algorithm || !vector) return null;
+
+  for (const entry of ENCODING_STABILITY_EXEMPT) {
+    if (algorithm.name !== entry.algorithm) continue;
+    if (!vector[entry.property]) continue;
+    return entry.reason;
+  }
+
+  return null;
+}
+
+// TestEngine runs in the browser as well as under Node, so the lists are
+// exported both ways.
 if (typeof module !== 'undefined' && module.exports)
-  module.exports = { ROUND_TRIP_EXEMPT };
+  module.exports = { ROUND_TRIP_EXEMPT, ENCODING_STABILITY_EXEMPT, encodingStabilityExemption };
 
 if (typeof window !== 'undefined')
-  window.ROUND_TRIP_EXEMPT = ROUND_TRIP_EXEMPT;
+  window.RoundTripExemptions = { ROUND_TRIP_EXEMPT, ENCODING_STABILITY_EXEMPT, encodingStabilityExemption };

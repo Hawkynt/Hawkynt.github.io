@@ -22,16 +22,19 @@
     // The list of algorithms with no meaningful inverse, shared with
     // RoundTripSuite so that both suites gate on one list rather than each
     // carrying its own idea of what is exempt.
-    const ROUND_TRIP_EXEMPT = (function() {
+    const Exemptions = (function() {
         if (isNode) {
             try {
-                return require('./round-trip-exemptions.js').ROUND_TRIP_EXEMPT;
+                return require('./round-trip-exemptions.js');
             } catch (e) {
-                return new Map();
+                return null;
             }
         }
-        return global.ROUND_TRIP_EXEMPT || new Map();
+        return global.RoundTripExemptions || null;
     })();
+    const ROUND_TRIP_EXEMPT = (Exemptions && Exemptions.ROUND_TRIP_EXEMPT) || new Map();
+    const encodingStabilityExemption = (Exemptions && Exemptions.encodingStabilityExemption)
+        || function() { return null; };
 
     // Load DebugConfig (works in both Node.js and browser)
     const DebugConfig = (function() {
@@ -847,6 +850,16 @@
 
     // Test encoding stability: encode(data) == encode(decode(encode(data)))
     async function _testEncodingStability(algorithm, vector, encodedOutput) {
+        // A few vectors drive their algorithm in a measurement mode, where the
+        // result is a syndrome or a single eigenvalue rather than a codeword.
+        // Those projections consume far more bits than they emit, so no decoder
+        // could invert them and the property is undefined rather than violated.
+        // Returning null - not false - leaves the vector uncounted instead of
+        // recording an attempt that failed. The exemption is matched on a
+        // property the vector itself declares, so the encoding vectors of the
+        // same algorithm stay gated.
+        if (encodingStabilityExemption(algorithm, vector)) return null;
+
         try {
             // Step 1: decode the encoded result: decode(encode(data))
             const decodeInstance = algorithm.CreateInstance(true); // true = decode mode

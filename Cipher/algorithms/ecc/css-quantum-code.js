@@ -289,13 +289,25 @@
     }
 
     /**
+     * Combine the three syndrome bits into a single integer, row 0 being the
+     * most significant bit. The bits are plain numbers, so the 32-bit shift
+     * helper is used rather than the BigInt one.
+     */
+    syndromeValue(syndrome) {
+      return OpCodes.OrN(OpCodes.OrN(syndrome[2], OpCodes.Shl32(syndrome[1], 1)), OpCodes.Shl32(syndrome[0], 2));
+    }
+
+    /**
      * Convert syndrome to error position using Hamming code lookup
      * Syndrome = 0 means no error
      * Syndrome = position in binary for single-bit error
      */
     syndromeToErrorPosition(syndrome) {
-      // Convert syndrome to integer
-      const syndromeValue = OpCodes.OrN(OpCodes.OrN(syndrome[0], OpCodes.ShiftLn(syndrome[1], 1)), OpCodes.ShiftLn(syndrome[2], 2));
+      // Convert syndrome to integer.
+      // Column j of H holds the binary representation of position j+1 with row 0
+      // as the most significant bit, so the syndrome must be assembled MSB-first
+      // for its value to name the erroneous qubit directly.
+      const syndromeValue = this.syndromeValue(syndrome);
 
       if (syndromeValue === 0) {
         return -1; // No error
@@ -330,9 +342,8 @@
       }
 
       const syndrome = this.measureSyndrome(data);
-      const syndromeValue = OpCodes.OrN(OpCodes.OrN(syndrome[0], OpCodes.ShiftLn(syndrome[1], 1)), OpCodes.ShiftLn(syndrome[2], 2));
 
-      return syndromeValue !== 0;
+      return this.syndromeValue(syndrome) !== 0;
     }
 
     /**

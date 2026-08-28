@@ -520,6 +520,15 @@
       const center = Math.floor(gridSize / 2);
       const corrected = new Array(grid.length).fill(0);
 
+      // The two logical basis states occupy distinct lattice sites: |0> leaves the
+      // grid unmarked (peak at the centre), while |1> carries its peak one grid
+      // unit along the position axis, at (centre, centre + 1), as produced by
+      // _encodeLogicalBit. Both are valid codewords, so neither may be treated as
+      // a displacement error - otherwise the |1> peak is erased and the state
+      // collapses to |0>.
+      const logicalOneRow = center;
+      const logicalOneCol = center + 1;
+
       // Find error position (non-zero entries that shouldn't be there)
       let hasError = false;
       let errorCol = -1;
@@ -528,8 +537,15 @@
         const row = Math.floor(i / gridSize);
         const col = i % gridSize;
 
+        if (grid[i] === 0) {
+          continue;
+        }
+
+        const isLogicalZeroPeak = row === center && col === center;
+        const isLogicalOnePeak = row === logicalOneRow && col === logicalOneCol;
+
         // Check if this is an unexpected peak (error)
-        if (grid[i] !== 0 && (row !== center || col !== center)) {
+        if (!isLogicalZeroPeak && !isLogicalOnePeak) {
           hasError = true;
           errorCol = col;
           break;
@@ -657,11 +673,22 @@
     }
 
     _applyPositionDisplacement(grid, displacement) {
-      // Displace grid in position direction
+      // Displace grid in position direction.
+      // Adjacent lattice sites are one sqrt(pi) apart, so a displacement only
+      // moves the peak to another site once it is at least half a lattice
+      // spacing. Displacements below sqrt(pi)/2 stay inside the current bin -
+      // that is precisely the regime GKP correction is able to undo - so they
+      // must leave the occupied site alone rather than shifting a full unit.
       const gridSize = this._gridSize;
-      const shiftAmount = 1; // Discrete displacement by 1 grid unit
-      const shifted = new Array(grid.length).fill(0);
+      const shiftAmount = Math.round(displacement / this._sqrtPi);
       const center = Math.floor(gridSize / 2);
+
+      if (shiftAmount === 0) {
+        // Sub-bin displacement: the state remains on its lattice site
+        return grid.slice();
+      }
+
+      const shifted = new Array(grid.length).fill(0);
 
       // Find non-zero positions and shift them
       for (let i = 0; i < grid.length; ++i) {
