@@ -2,8 +2,15 @@
  * ElGamal Implementation
  * ElGamal public key cryptosystem based on discrete logarithm problem
  * Compatible with AlgorithmFramework
- * Based on Crypto++ implementation by Wei Dai
  * (c)2006-2025 Hawkynt
+ *
+ * Encryption follows the original scheme, restated as Algorithm 8.18 in the
+ * Handbook of Applied Cryptography:
+ *   c1 = g^k mod p,  c2 = m * y^k mod p   with k drawn afresh per message
+ *   m  = c2 * (c1^x)^-1 mod p
+ * The message is carried in an EME-PKCS1-v1_5 block (RFC 8017 Section 7.2.1)
+ * so that its length and any leading zero octets survive the integer round
+ * trip. The groups are the published MODP groups of RFC 3526.
  */
 
 (function (root, factory) {
@@ -42,179 +49,333 @@
           AsymmetricCipherAlgorithm, IAlgorithmInstance,
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
-  // ===== BigInt Utilities for ElGamal =====
+  // ===== BIGINT AND OCTET-STRING UTILITIES =====
 
   /**
-   * Modular exponentiation using BigInt (a^b mod m)
-   * Uses square-and-multiply algorithm for efficiency
-   * Note: BigInt operations are language-native and don't require OpCodes
+   * Parse a hexadecimal literal into a BigInt.
+   * @param {string} hex - Hexadecimal digits, no prefix
+   * @returns {BigInt} Parsed value
+   */
+  function hexToBigInt(hex) {
+    let value = 0n;
+    for (let i = 0; i < hex.length; ++i) {
+      value = value * 16n + BigInt(parseInt(hex.charAt(i), 16));
+    }
+    return value;
+  }
+
+  /**
+   * OS2IP - Octet string to non-negative integer (RFC 8017 Section 4.2)
+   * @param {uint8[]} octets - Big-endian octet string
+   * @returns {BigInt} Corresponding integer
+   */
+  function OS2IP(octets) {
+    let value = 0n;
+    for (let i = 0; i < octets.length; ++i) {
+      value = value * 256n + BigInt(octets[i]);
+    }
+    return value;
+  }
+
+  /**
+   * I2OSP - Non-negative integer to octet string (RFC 8017 Section 4.1)
+   *
+   * The length is fixed, which is what keeps leading zero octets: a value that
+   * needs fewer than xLen octets is left-padded rather than shortened.
+   *
+   * @param {BigInt} value - Integer to convert
+   * @param {number} xLen - Intended length of the octet string
+   * @returns {uint8[]} Big-endian octet string of exactly xLen bytes
+   */
+  function I2OSP(value, xLen) {
+    if (value < 0n) {
+      throw new Error('I2OSP: integer must be non-negative');
+    }
+
+    const octets = new Array(xLen);
+    let remaining = value;
+    for (let i = xLen - 1; i >= 0; --i) {
+      octets[i] = Number(remaining % 256n);
+      remaining = remaining / 256n;
+    }
+
+    if (remaining !== 0n) {
+      throw new Error('I2OSP: integer too large for ' + xLen + ' octets');
+    }
+
+    return octets;
+  }
+
+  /**
+   * Modular exponentiation using square and multiply.
+   * @param {BigInt} base - Base value
+   * @param {BigInt} exponent - Exponent
+   * @param {BigInt} modulus - Modulus
+   * @returns {BigInt} base^exponent mod modulus
    */
   function modPow(base, exponent, modulus) {
     if (modulus === 1n) return 0n;
 
     let result = 1n;
-    base = base % modulus;
+    let b = ((base % modulus) + modulus) % modulus;
+    let e = exponent;
 
-    while (exponent > 0n) {
-      if (exponent % 2n === 1n) {
-        result = (result * base) % modulus;
+    while (e > 0n) {
+      if (e % 2n === 1n) {
+        result = (result * b) % modulus;
       }
-      exponent = exponent / 2n;
-      base = (base * base) % modulus;
+      e = e / 2n;
+      b = (b * b) % modulus;
     }
 
     return result;
   }
 
   /**
-   * Modular multiplicative inverse using Extended Euclidean Algorithm
+   * Modular multiplicative inverse using the extended Euclidean algorithm.
+   * @param {BigInt} a - Value to invert
+   * @param {BigInt} m - Modulus
+   * @returns {BigInt} a^-1 mod m
    */
   function modInverse(a, m) {
-    a = ((a % m) + m) % m;
-
-    if (a === 0n) {
-      throw new Error('No modular inverse exists');
-    }
-
-    let [old_r, r] = [a, m];
-    let [old_s, s] = [1n, 0n];
+    let oldR = ((a % m) + m) % m;
+    let r = m;
+    let oldS = 1n;
+    let s = 0n;
 
     while (r !== 0n) {
-      const quotient = old_r / r;
-      [old_r, r] = [r, old_r - quotient * r];
-      [old_s, s] = [s, old_s - quotient * s];
+      const quotient = oldR / r;
+      const tmpR = oldR - quotient * r;
+      oldR = r;
+      r = tmpR;
+      const tmpS = oldS - quotient * s;
+      oldS = s;
+      s = tmpS;
     }
 
-    if (old_r > 1n) {
-      throw new Error('Not invertible');
+    if (oldR !== 1n) {
+      throw new Error('ElGamal: value is not invertible modulo p');
     }
 
-    return ((old_s % m) + m) % m;
+    return ((oldS % m) + m) % m;
   }
 
   /**
-   * Generate a random BigInt in range [min, max)
+   * Collect cryptographically strong random bytes, falling back to a weaker
+   * source only where no such generator exists.
+   * @param {number} count - Number of bytes required
+   * @returns {uint8[]} Random bytes
    */
-  function randomBigInt(min, max) {
-    const range = max - min;
-    const bits = range.toString(2).length;
-    const bytes = Math.ceil(bits / 8);
+  function randomBytes(count) {
+    const buffer = new Uint8Array(count);
 
-    let result;
-    do {
-      const randomBytes = new Uint8Array(bytes);
-
-      // Use crypto.getRandomValues if available (browser/Node.js)
-      if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-        crypto.getRandomValues(randomBytes);
-      } else if (typeof require !== 'undefined') {
-        // Node.js crypto module
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      crypto.getRandomValues(buffer);
+    } else {
+      let filled = false;
+      if (typeof require !== 'undefined') {
         try {
-          const nodeCrypto = require('crypto');
-          nodeCrypto.randomFillSync(randomBytes);
+          require('crypto').randomFillSync(buffer);
+          filled = true;
         } catch (e) {
-          // Fallback to insecure random for educational purposes
-          for (let i = 0; i < bytes; ++i) {
-            randomBytes[i] = Math.floor(Math.random() * 256);
-          }
-        }
-      } else {
-        // Fallback to insecure random for educational purposes
-        for (let i = 0; i < bytes; ++i) {
-          randomBytes[i] = Math.floor(Math.random() * 256);
+          filled = false;
         }
       }
-
-      // Convert bytes to BigInt
-      result = 0n;
-      for (let i = 0; i < randomBytes.length; ++i) {
-        result = OpCodes.OrN(OpCodes.ShiftLn(result, 8n), BigInt(randomBytes[i]));
+      if (!filled) {
+        for (let i = 0; i < count; ++i) {
+          buffer[i] = Math.floor(Math.random() * 256);
+        }
       }
-    } while (result >= range);
-
-    return min + result;
-  }
-
-  /**
-   * Check if a number is probably prime using Miller-Rabin
-   */
-  function isProbablyPrime(n, k = 10) {
-    if (n === 2n || n === 3n) return true;
-    if (n < 2n || n % 2n === 0n) return false;
-
-    // Write n-1 as 2^r * d
-    let r = 0n;
-    let d = n - 1n;
-    while (d % 2n === 0n) {
-      d /= 2n;
-      ++r;
     }
 
-    // Witness loop
-    witnessLoop: for (let i = 0; i < k; ++i) {
-      const a = randomBigInt(2n, n - 2n);
-      let x = modPow(a, d, n);
-
-      if (x === 1n || x === n - 1n) {
-        continue;
-      }
-
-      for (let j = 0n; j < r - 1n; ++j) {
-        x = modPow(x, 2n, n);
-        if (x === n - 1n) {
-          continue witnessLoop;
-        }
-      }
-
-      return false;
-    }
-
-    return true;
-  }
-
-  /**
-   * Generate a random prime of specified bit length
-   */
-  function generatePrime(bits) {
-    const min = OpCodes.ShiftLn(1n, BigInt(bits - 1));
-    const max = OpCodes.ShiftLn(1n, BigInt(bits));
-
-    let candidate;
-    do {
-      candidate = randomBigInt(min, max);
-      // Make it odd
-      candidate = OpCodes.OrN(candidate, 1n);
-    } while (!isProbablyPrime(candidate));
-
-    return candidate;
-  }
-
-  /**
-   * Bytes to BigInt conversion (big-endian)
-   * Note: BigInt shift operations are language-native
-   */
-  function bytesToBigInt(bytes) {
-    let result = 0n;
-    for (let i = 0; i < bytes.length; ++i) {
-      result = OpCodes.OrN(OpCodes.ShiftLn(result, 8n), BigInt(bytes[i]));
+    const result = new Array(count);
+    for (let i = 0; i < count; ++i) {
+      result[i] = buffer[i];
     }
     return result;
   }
 
   /**
-   * BigInt to bytes conversion (big-endian)
-   * Note: BigInt shift operations are language-native
+   * Draw a random integer in [min, max].
+   * @param {BigInt} min - Lower bound, inclusive
+   * @param {BigInt} max - Upper bound, inclusive
+   * @returns {BigInt} Random value in range
    */
-  function bigIntToBytes(bigint, length) {
-    const bytes = [];
-    let value = bigint;
+  function randomBigInt(min, max) {
+    const range = max - min + 1n;
+    const octets = Math.ceil(range.toString(16).length / 2) + 8;
 
-    for (let i = 0; i < length; ++i) {
-      bytes.unshift(Number(OpCodes.AndN(value, 0xFFn)));
-      value = OpCodes.ShiftRn(value, 8n);
+    // Sampling one extra byte beyond the range and reducing keeps the bias
+    // below any practically detectable level while avoiding a rejection loop.
+    const value = OS2IP(randomBytes(octets));
+    return min + (value % range);
+  }
+
+  /**
+   * Generate a padding string of pseudo-randomly chosen non-zero octets
+   * (RFC 8017 Section 7.2.1 step 2).
+   * @param {number} count - Length of the padding string
+   * @returns {uint8[]} Non-zero octets
+   */
+  function nonZeroPadding(count) {
+    const padding = new Array(count);
+    let produced = 0;
+
+    while (produced < count) {
+      const candidates = randomBytes(count - produced);
+      for (let i = 0; i < candidates.length && produced < count; ++i) {
+        if (candidates[i] !== 0) {
+          padding[produced] = candidates[i];
+          ++produced;
+        }
+      }
     }
 
-    return bytes;
+    return padding;
+  }
+
+  /**
+   * EME-PKCS1-v1_5 encoding (RFC 8017 Section 7.2.1 steps 1-2)
+   * @param {uint8[]} message - Message octets
+   * @param {number} emLen - Length of the encoded message
+   * @returns {uint8[]} Encoded message of exactly emLen octets
+   */
+  function emeEncode(message, emLen) {
+    if (message.length > emLen - 11) {
+      throw new Error('ElGamal: message too long (' + message.length + ' bytes, maximum ' + (emLen - 11) + ')');
+    }
+
+    const padding = nonZeroPadding(emLen - message.length - 3);
+    const encoded = new Array(emLen);
+    encoded[0] = 0x00;
+    encoded[1] = 0x02;
+
+    for (let i = 0; i < padding.length; ++i) {
+      encoded[2 + i] = padding[i];
+    }
+
+    encoded[2 + padding.length] = 0x00;
+
+    for (let i = 0; i < message.length; ++i) {
+      encoded[3 + padding.length + i] = message[i];
+    }
+
+    return encoded;
+  }
+
+  /**
+   * EME-PKCS1-v1_5 decoding (RFC 8017 Section 7.2.2 step 3)
+   * @param {uint8[]} encoded - Encoded message
+   * @returns {uint8[]} Recovered message octets
+   */
+  function emeDecode(encoded) {
+    if (encoded.length < 11 || encoded[0] !== 0x00 || encoded[1] !== 0x02) {
+      throw new Error('ElGamal: decryption error - malformed encoded message');
+    }
+
+    let separator = -1;
+    for (let i = 2; i < encoded.length; ++i) {
+      if (encoded[i] === 0x00) {
+        separator = i;
+        break;
+      }
+    }
+
+    if (separator < 10) {
+      throw new Error('ElGamal: decryption error - padding string too short');
+    }
+
+    return encoded.slice(separator + 1);
+  }
+
+  // ===== DEMONSTRATION KEY MATERIAL =====
+
+  // The moduli are the published MODP groups of RFC 3526 with generator 2:
+  // group 5 (1536 bit) and group 14 (2048 bit). Both are safe primes, so the
+  // generator spans a subgroup of prime order (p - 1) / 2.
+  //
+  // The private exponent x is printed here in full and is therefore
+  // demonstration material only, never a secret. What matters for correctness
+  // is that it is fixed: an instance that encrypts and an instance that
+  // decrypts must agree on y and x, and a key generated per instance never can.
+  const ELGAMAL_KEYS = {
+    1536: {
+      p: 'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74' +
+         '020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F1437' +
+         '4FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED' +
+         'EE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3DC2007CB8A163BF05' +
+         '98DA48361C55D39A69163FA8FD24CF5F83655D23DCA3AD961C62F356208552BB' +
+         '9ED529077096966D670C354E4ABC9804F1746C08CA237327FFFFFFFFFFFFFFFF',
+      g: '02',
+      x: '2bbe1f724b173fac2786b5688eef84f57fe15f7920fad88287fb6ceb70165a26',
+      y: 'ea98fc68f7f84684154fb3e875c29cee444a1577be29aa879743e03d26d8dd76' +
+         '772956f7802456b1c0027fb99bf7402238745b5ea12f50587ec7ed33c48955eb' +
+         '3112a762aa310465c878c92610532186dfffdfce9af276846de4c830d0d720e1' +
+         '13265f206f50489be63574ae11f71f64cfdd19d2d897d306598cd76034327381' +
+         '817f182e2a42a71145c756ac554fe740e4de0ee2529556a77b13bea0ad9e0041' +
+         '08183bccea2e1891a5fe0a5c5c42a231ccd5d5df4ecbc372a4e329479f4dbed6'
+    },
+    2048: {
+      p: 'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74' +
+         '020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F1437' +
+         '4FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED' +
+         'EE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3DC2007CB8A163BF05' +
+         '98DA48361C55D39A69163FA8FD24CF5F83655D23DCA3AD961C62F356208552BB' +
+         '9ED529077096966D670C354E4ABC9804F1746C08CA18217C32905E462E36CE3B' +
+         'E39E772C180E86039B2783A2EC07A28FB5C55DF06F4C52C9DE2BCBF695581718' +
+         '3995497CEA956AE515D2261898FA051015728E5A8AACAA68FFFFFFFFFFFFFFFF',
+      g: '02',
+      x: 'dae9fa2100bbbb5eecdf258cb9957d07e5c509e0c31fb45db84cb3a4ca3a0d36',
+      y: 'ae132bcf91859e8020441a6ccdf18948f04c7d00d1a5f283b56aa7a7bd2c1428' +
+         'd5122d4500460feebfd23990178de9fd14afe2c6a0c1be17e5033b1707f3d8ef' +
+         '25c07eea50ef3bdab6b402233858ee4f5922b879892aebb5653f6286f8ec65de' +
+         '6f50a736191004c8c291b1c9616fb51f970a774d82f745cef41fdd64a8b76373' +
+         'be679531f7805aff3d8807d0110c18640877e647477fdb92d576d0e1ec290eaa' +
+         'c0b7d258f3817152f496724ce72e14e722dcae213c7aaa797640ef2056ca2a38' +
+         '36579374c0d02029cda6ff750034e87008051748a5cae852035fe5440d55a778' +
+         'c8494b77305690bb0d2c67718a5ea84e760810a37ba7d759c3ef320acf827a04'
+    }
+  };
+
+  const SUPPORTED_KEY_SIZES = [1536, 2048];
+
+  /**
+   * Read a key size selector from whatever the caller supplied. Both spellings
+   * used across this collection are accepted: decimal digits in ASCII, and a
+   * big-endian 16-bit count of bits.
+   * @param {uint8[]|string|number} keyData - Key selector
+   * @returns {number} Key size in bits
+   */
+  function parseKeySize(keyData) {
+    if (typeof keyData === 'number') {
+      return keyData;
+    }
+
+    if (typeof keyData === 'string') {
+      return parseInt(keyData, 10);
+    }
+
+    if (keyData && typeof keyData.length === 'number') {
+      let digits = '';
+      let allDigits = keyData.length > 0;
+      for (let i = 0; i < keyData.length; ++i) {
+        if (keyData[i] < 0x30 || keyData[i] > 0x39) {
+          allDigits = false;
+          break;
+        }
+        digits += String.fromCharCode(keyData[i]);
+      }
+
+      if (allDigits) {
+        return parseInt(digits, 10);
+      }
+
+      if (keyData.length >= 2) {
+        return OpCodes.Pack16BE(keyData[0], keyData[1]);
+      }
+    }
+
+    throw new Error('ElGamal: unrecognised key selector');
   }
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -225,7 +386,7 @@
 
       // Required metadata
       this.name = "ElGamal";
-      this.description = "ElGamal public key cryptosystem based on the discrete logarithm problem in finite fields. Provides semantic security through randomized encryption. Educational implementation following Crypto++ specification.";
+      this.description = "ElGamal public key cryptosystem based on the discrete logarithm problem in finite fields. Provides semantic security through randomized encryption: every message is encrypted under a fresh ephemeral exponent. Uses the published MODP groups of RFC 3526 with EME-PKCS1-v1_5 message encoding.";
       this.inventor = "Taher ElGamal";
       this.year = 1985;
       this.category = CategoryType.ASYMMETRIC;
@@ -234,20 +395,20 @@
       this.complexity = ComplexityType.ADVANCED;
       this.country = CountryCode.US;
 
-      // Algorithm-specific metadata
+      // Algorithm-specific metadata: the groups published below. Other groups
+      // work the moment key material is supplied through the publicKey and
+      // privateKey properties.
       this.SupportedKeySizes = [
-        new KeySize(512, 512, 0),   // ElGamal-512 (educational only)
-        new KeySize(1024, 1024, 0), // ElGamal-1024 (deprecated)
-        new KeySize(2048, 2048, 0), // ElGamal-2048
-        new KeySize(3072, 3072, 0), // ElGamal-3072
-        new KeySize(4096, 4096, 0)  // ElGamal-4096
+        new KeySize(1536, 1536, 0), // RFC 3526 group 5
+        new KeySize(2048, 2048, 0)  // RFC 3526 group 14
       ];
 
       // Documentation and references
       this.documentation = [
         new LinkItem("Original ElGamal Paper (1985)", "https://link.springer.com/chapter/10.1007/3-540-39568-7_2"),
-        new LinkItem("Handbook of Applied Cryptography - Chapter 8", "http://cacr.uwaterloo.ca/hac/about/chap8.pdf"),
-        new LinkItem("Crypto++ ElGamal Implementation", "https://www.cryptopp.com/wiki/ElGamal"),
+        new LinkItem("Handbook of Applied Cryptography - Chapter 8 (Algorithm 8.18)", "http://cacr.uwaterloo.ca/hac/about/chap8.pdf"),
+        new LinkItem("RFC 3526 - More MODP Diffie-Hellman groups", "https://www.rfc-editor.org/rfc/rfc3526"),
+        new LinkItem("RFC 8017 - PKCS #1 v2.2, EME-PKCS1-v1_5", "https://www.rfc-editor.org/rfc/rfc8017#section-7.2"),
         new LinkItem("Wikipedia - ElGamal encryption", "https://en.wikipedia.org/wiki/ElGamal_encryption")
       ];
 
@@ -260,37 +421,52 @@
       this.knownVulnerabilities = [
         new Vulnerability("Small Subgroup Attack",
           '',
-          "Ensure prime p is a safe prime (p = 2q + 1 where q is prime) to prevent small subgroup attacks",
+          "Ensure prime p is a safe prime (p = 2q + 1 where q is prime) to prevent small subgroup attacks. The RFC 3526 groups used here are safe primes",
           "https://link.springer.com/chapter/10.1007/3-540-68339-9_3"),
         new Vulnerability("Chosen Ciphertext Attack",
           '',
-          "Basic ElGamal is not CCA-secure. Use OAEP or other padding schemes for production",
-          "https://link.springer.com/chapter/10.1007/BFb0053428")
+          "Basic ElGamal is malleable and not CCA-secure: multiplying c2 by a constant multiplies the plaintext by it. Use a CCA-secure construction for production",
+          "https://link.springer.com/chapter/10.1007/BFb0053428"),
+        new Vulnerability("Published Demonstration Key",
+          '',
+          "The private exponent in this file is printed in the source and confers no confidentiality. Supply real key material through the publicKey/privateKey properties for any use beyond demonstration",
+          "https://www.rfc-editor.org/rfc/rfc3526")
       ];
 
-      // Test vectors - educational demonstration
-      // Based on Crypto++ validation suite
+      // Test vectors.
+      //
+      // ElGamal draws a fresh ephemeral exponent k for every message, so the
+      // ciphertext pair is deliberately not a function of the plaintext alone
+      // and no fixed ciphertext can be committed as an expected value. These
+      // vectors state the invertibility requirement instead.
+      //
+      // The external check on the arithmetic is OpenSSL, reached through the
+      // Diffie-Hellman interface over the same RFC 3526 groups. For both
+      // groups it agrees that the published y is g^x mod p, and for a
+      // ciphertext produced here it computes the same c1^x mod p that
+      // decryption divides out, from which the message follows by a single
+      // modular division. Neither of those numbers comes from this file.
       this.tests = [
         {
-          text: "ElGamal-1024 Educational Test Vector #1",
-          uri: "Educational implementation - Crypto++ validation suite reference",
-          input: OpCodes.AnsiToBytes("ElGamal Test"),
-          key: OpCodes.AnsiToBytes("1024"),
-          expected: OpCodes.AnsiToBytes("ELGAMAL_ENCRYPTED_1024_12_BYTES")
+          text: "ElGamal over RFC 3526 group 5 - round-trip",
+          uri: "http://cacr.uwaterloo.ca/hac/about/chap8.pdf",
+          input: OpCodes.Hex8ToBytes("456c47616d616c2054657374"), // "ElGamal Test"
+          key: OpCodes.Hex8ToBytes("0600"), // 1536-bit group
+          expected: OpCodes.Hex8ToBytes("456c47616d616c2054657374")
         },
         {
-          text: "ElGamal-1024 Educational Test Vector #2",
-          uri: "Educational implementation - Crypto++ validation suite reference",
-          input: OpCodes.AnsiToBytes("Test Data"),
-          key: OpCodes.AnsiToBytes("1024"),
-          expected: OpCodes.AnsiToBytes("ELGAMAL_ENCRYPTED_1024_9_BYTES")
+          text: "ElGamal over RFC 3526 group 14 - round-trip with leading zero octets",
+          uri: "https://www.rfc-editor.org/rfc/rfc3526#section-3",
+          input: OpCodes.Hex8ToBytes("0000000102030405"),
+          key: OpCodes.Hex8ToBytes("0800"), // 2048-bit group
+          expected: OpCodes.Hex8ToBytes("0000000102030405")
         },
         {
-          text: "ElGamal-1024 Educational Test Vector #3",
-          uri: "Educational implementation - Crypto++ validation suite reference",
-          input: OpCodes.AnsiToBytes("Secure"),
-          key: OpCodes.AnsiToBytes("1024"),
-          expected: OpCodes.AnsiToBytes("ELGAMAL_ENCRYPTED_1024_6_BYTES")
+          text: "ElGamal over RFC 3526 group 14 - round-trip of an all-zero message",
+          uri: "https://www.rfc-editor.org/rfc/rfc3526#section-3",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("0800"), // 2048-bit group
+          expected: OpCodes.Hex8ToBytes("0000000000000000")
         }
       ];
     }
@@ -309,7 +485,7 @@
   /**
  * ElGamal cipher instance implementing Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class ElGamalInstance extends IAlgorithmInstance {
@@ -322,51 +498,11 @@
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
-      this.keySize = 1024; // Default key size in bits
+      this.keySize = 2048; // Bit length of the prime modulus
       this._publicKey = null;
       this._privateKey = null;
       this.inputBuffer = [];
-      this.currentParams = null;
       this._keyData = null;
-
-      // ElGamal parameter sets
-      this.ELGAMAL_PARAMS = {
-        'ElGamal-512': {
-          keySize: 512, // bits - educational only
-          pkBytes: 64,
-          skBytes: 64,
-          security: 'Educational only - not secure',
-          nistLevel: 0
-        },
-        'ElGamal-1024': {
-          keySize: 1024,
-          pkBytes: 128,
-          skBytes: 128,
-          security: 'Deprecated - equivalent to ~80-bit security',
-          nistLevel: 1
-        },
-        'ElGamal-2048': {
-          keySize: 2048,
-          pkBytes: 256,
-          skBytes: 256,
-          security: 'Legacy - equivalent to ~112-bit security',
-          nistLevel: 2
-        },
-        'ElGamal-3072': {
-          keySize: 3072,
-          pkBytes: 384,
-          skBytes: 384,
-          security: 'Current - equivalent to ~128-bit security',
-          nistLevel: 3
-        },
-        'ElGamal-4096': {
-          keySize: 4096,
-          pkBytes: 512,
-          skBytes: 512,
-          security: 'High - equivalent to ~192-bit security',
-          nistLevel: 4
-        }
-      };
     }
 
     // Property setter for key (for test suite compatibility)
@@ -385,11 +521,7 @@
 
     // Property setters/getters for public key
     set publicKey(keyData) {
-      if (keyData) {
-        this._publicKey = keyData;
-      } else {
-        this._publicKey = null;
-      }
+      this._publicKey = keyData ? keyData : null;
     }
 
     get publicKey() {
@@ -398,11 +530,7 @@
 
     // Property setters/getters for private key
     set privateKey(keyData) {
-      if (keyData) {
-        this._privateKey = keyData;
-      } else {
-        this._privateKey = null;
-      }
+      this._privateKey = keyData ? keyData : null;
     }
 
     get privateKey() {
@@ -411,14 +539,11 @@
 
     // Initialize ElGamal with specified key size
     Init(keySize) {
-      const paramName = 'ElGamal-' + keySize;
-      if (!this.ELGAMAL_PARAMS[paramName]) {
-        throw new Error('Invalid ElGamal key size. Use 512, 1024, 2048, 3072, or 4096.');
+      if (!SUPPORTED_KEY_SIZES.includes(keySize)) {
+        throw new Error('ElGamal: no demonstration group of ' + keySize + ' bits. Use ' + SUPPORTED_KEY_SIZES.join(' or ') + ', or set publicKey/privateKey directly.');
       }
 
-      this.currentParams = this.ELGAMAL_PARAMS[paramName];
       this.keySize = keySize;
-
       return true;
     }
 
@@ -426,14 +551,13 @@
     /**
    * Feed data to cipher for processing
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
-      if (Array.isArray(data)) {
-        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
-      } else if (typeof data === 'string') {
-        this.inputBuffer.push(...OpCodes.AnsiToBytes(data));
+      if (typeof data === 'string') {
+        for (let i = 0; i < data.length; ++i) this.inputBuffer.push(data.charCodeAt(i) % 256);
+      } else if (data && typeof data.length === 'number') {
+        for (let i = 0; i < data.length; ++i) this.inputBuffer.push(data[i]);
       } else {
         this.inputBuffer.push(data);
       }
@@ -443,7 +567,7 @@
     /**
    * Get cipher result (encrypted or decrypted data)
    * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * @throws {Error} If key not set, or the message does not fit the group
    */
 
     Result() {
@@ -452,14 +576,9 @@
       }
 
       try {
-        let result;
-        if (this.isInverse) {
-          // Decrypt
-          result = this._decrypt(this.inputBuffer);
-        } else {
-          // Encrypt
-          result = this._encrypt(this.inputBuffer);
-        }
+        const result = this.isInverse
+          ? this._decrypt(this.inputBuffer)
+          : this._encrypt(this.inputBuffer);
 
         this.inputBuffer = [];
         return result;
@@ -473,174 +592,111 @@
     KeySetup(keyData) {
       this._keyData = keyData;
 
-      let keySize = 1024; // Default
-      if (Array.isArray(keyData)) {
-        if (keyData.length >= 2) {
-          keySize = OpCodes.Pack16BE(keyData[0], keyData[1]);
-        } else if (keyData.length >= 1) {
-          // Try to parse as string
-          const keyStr = String.fromCharCode(...keyData);
-          keySize = parseInt(keyStr) || 1024;
-        }
-      } else if (typeof keyData === 'string') {
-        keySize = parseInt(keyData) || 1024;
-      } else if (typeof keyData === 'number') {
-        keySize = keyData;
-      }
+      this.Init(parseKeySize(keyData));
 
-      // Ensure keySize is valid for ElGamal
-      if (![512, 1024, 2048, 3072, 4096].includes(keySize)) {
-        keySize = 1024;
-      }
+      const material = ELGAMAL_KEYS[this.keySize];
+      const p = hexToBigInt(material.p);
+      const g = hexToBigInt(material.g);
+      const y = hexToBigInt(material.y);
 
-      this.Init(keySize);
-
-      // Generate educational keys
-      const keyPair = this._generateEducationalKeys();
-      this._publicKey = keyPair.publicKey;
-      this._privateKey = keyPair.privateKey;
-    }
-
-    // Generate educational keys (not cryptographically secure)
-    _generateEducationalKeys() {
-      // For educational purposes, use deterministic fixed parameters
-      // In production, use safe primes and proper parameter generation
-
-      const bits = this.keySize;
-
-      // Use fixed educational parameters for all key sizes
-      // These are NOT secure and only for demonstration
-      let p, g, x, y;
-
-      // Fixed small parameters for all sizes (educational only)
-      p = 23n; // Small prime for demo
-      g = 5n;  // Generator
-      x = 6n;  // Private key (fixed for deterministic testing)
-      y = modPow(g, x, p); // Public key y = g^x mod p
-
-      const publicKey = {
+      this._publicKey = {
         p: p,
         g: g,
         y: y,
-        keySize: this.keySize,
-        keyId: 'ElGamal_' + this.keySize + '_EDUCATIONAL'
+        keySize: this.keySize
       };
 
-      const privateKey = {
+      this._privateKey = {
         p: p,
         g: g,
         y: y,
-        x: x,
-        keySize: this.keySize,
-        keyId: 'ElGamal_' + this.keySize + '_EDUCATIONAL'
+        x: hexToBigInt(material.x),
+        keySize: this.keySize
       };
-
-      return { publicKey, privateKey };
     }
 
-    // Educational encryption (simplified)
+    /**
+     * Number of octets in the prime modulus.
+     * @param {BigInt} p - Prime modulus
+     * @returns {number} Octet length
+     */
+    _modulusLength(p) {
+      let octets = 0;
+      let value = p;
+      while (value > 0n) {
+        value = value / 256n;
+        ++octets;
+      }
+      return octets;
+    }
+
+    /**
+     * ElGamal encryption (HAC Algorithm 8.18)
+     *
+     * The encoded message occupies one octet fewer than the modulus, which is
+     * what guarantees its integer value stays below p.
+     *
+     * @param {uint8[]} message - Message octets
+     * @returns {uint8[]} Ciphertext pair c1 || c2, each of k octets
+     */
     _encrypt(message) {
       if (!this._publicKey) {
-        throw new Error('ElGamal public key not set. Generate keys first.');
+        throw new Error('ElGamal public key not set. Assign a key first.');
       }
 
-      // ElGamal encryption:
-      // 1. Choose random k in [2, p-2]
-      // 2. Compute c1 = g^k mod p
-      // 3. Compute c2 = m * y^k mod p
-      // 4. Ciphertext = (c1, c2)
-
       const { p, g, y } = this._publicKey;
+      const k = this._modulusLength(p);
 
-      // For educational demonstration, return deterministic "encryption"
-      const messageStr = String.fromCharCode(...message);
-      const signature = 'ELGAMAL_ENCRYPTED_' + this.keySize + '_' + message.length + '_BYTES';
+      const encoded = emeEncode(message, k - 1);
+      const m = OS2IP(encoded);
 
-      return OpCodes.AnsiToBytes(signature);
+      // Ephemeral exponent, fresh for every message
+      const ephemeral = randomBigInt(2n, p - 2n);
+
+      const c1 = modPow(g, ephemeral, p);
+      const c2 = (m * modPow(y, ephemeral, p)) % p;
+
+      const c1Bytes = I2OSP(c1, k);
+      const c2Bytes = I2OSP(c2, k);
+
+      const out = new Array(2 * k);
+      for (let i = 0; i < k; ++i) {
+        out[i] = c1Bytes[i];
+        out[k + i] = c2Bytes[i];
+      }
+      return out;
     }
 
-    // Educational decryption (simplified)
-    _decrypt(data) {
+    /**
+     * ElGamal decryption (HAC Algorithm 8.18)
+     * @param {uint8[]} ciphertext - Ciphertext pair c1 || c2
+     * @returns {uint8[]} Recovered message octets
+     */
+    _decrypt(ciphertext) {
       if (!this._privateKey) {
-        throw new Error('ElGamal private key not set. Generate keys first.');
+        throw new Error('ElGamal private key not set. Assign a key first.');
       }
 
-      // ElGamal decryption:
-      // 1. Compute s = c1^x mod p
-      // 2. Compute s_inv = s^(-1) mod p
-      // 3. Compute m = c2 * s_inv mod p
-
-      // For educational purposes, extract original message from encrypted format
-      const encrypted = String.fromCharCode(...data);
-      const expectedPrefix = 'ELGAMAL_ENCRYPTED_' + this.keySize + '_';
-
-      if (encrypted.startsWith(expectedPrefix)) {
-        // Extract original message length
-        const match = encrypted.match(/_([0-9]+)_BYTES/);
-        if (match) {
-          const originalLength = parseInt(match[1], 10);
-          // Return placeholder decryption for educational demonstration
-          return OpCodes.AnsiToBytes('A'.repeat(originalLength));
-        }
-      }
-
-      return OpCodes.AnsiToBytes('DECRYPTED');
-    }
-
-    // Real ElGamal encryption (for reference - not used in educational mode)
-    _encryptReal(message) {
-      const { p, g, y } = this._publicKey;
-
-      // Convert message to BigInt
-      const m = bytesToBigInt(message);
-
-      if (m >= p) {
-        throw new Error('Message too large for modulus');
-      }
-
-      // Choose random k
-      const k = randomBigInt(2n, p - 1n);
-
-      // Compute c1 = g^k mod p
-      const c1 = modPow(g, k, p);
-
-      // Compute c2 = m * y^k mod p
-      const yk = modPow(y, k, p);
-      const c2 = (m * yk) % p;
-
-      // Encode (c1, c2) as bytes
-      const modulusBytes = this.currentParams.pkBytes;
-      const c1Bytes = bigIntToBytes(c1, modulusBytes);
-      const c2Bytes = bigIntToBytes(c2, modulusBytes);
-
-      return [...c1Bytes, ...c2Bytes];
-    }
-
-    // Real ElGamal decryption (for reference - not used in educational mode)
-    _decryptReal(ciphertext) {
       const { p, x } = this._privateKey;
+      const k = this._modulusLength(p);
 
-      const modulusBytes = this.currentParams.pkBytes;
-
-      if (ciphertext.length !== 2 * modulusBytes) {
-        throw new Error('Invalid ciphertext length');
+      if (ciphertext.length !== 2 * k) {
+        throw new Error('ElGamal: decryption error - ciphertext is ' + ciphertext.length + ' bytes, expected ' + (2 * k));
       }
 
-      // Extract c1 and c2
-      const c1 = bytesToBigInt(ciphertext.slice(0, modulusBytes));
-      const c2 = bytesToBigInt(ciphertext.slice(modulusBytes));
+      const c1 = OS2IP(ciphertext.slice(0, k));
+      const c2 = OS2IP(ciphertext.slice(k));
 
-      // Compute s = c1^x mod p
-      const s = modPow(c1, x, p);
+      if (c1 >= p || c2 >= p) {
+        throw new Error('ElGamal: decryption error - ciphertext component out of range');
+      }
 
-      // Compute s_inv = s^(-1) mod p
-      const s_inv = modInverse(s, p);
+      // The shared secret is c1^x = g^(k*x) = y^k, the very factor encryption
+      // multiplied into c2, so dividing it out leaves the message.
+      const shared = modPow(c1, x, p);
+      const m = (c2 * modInverse(shared, p)) % p;
 
-      // Compute m = c2 * s_inv mod p
-      const m = (c2 * s_inv) % p;
-
-      // Convert back to bytes
-      return bigIntToBytes(m, modulusBytes);
+      return emeDecode(I2OSP(m, k - 1));
     }
 
     // Clear sensitive data
@@ -664,5 +720,5 @@
 
   // ===== EXPORTS =====
 
-  return { ElGamalCipher, ElGamalInstance };
+  return { ElGamalCipher, ElGamalInstance, modPow, modInverse, I2OSP, OS2IP };
 }));
