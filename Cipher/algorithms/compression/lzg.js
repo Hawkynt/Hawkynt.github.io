@@ -222,15 +222,6 @@
       this.inputBuffer = [];
     }
 
-    /**
-   * Feed data for processing
-   * @param {uint8[]} data - Input data bytes
-   */
-
-    Feed(data) {
-      if (!data || data.length === 0) return;
-      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
-    }
 
     /**
    * Get the processed result
