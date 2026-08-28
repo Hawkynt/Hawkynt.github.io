@@ -410,12 +410,20 @@
       const rate = this.algorithm.rateInBytes;
       const outputSize = this.algorithm.outputSize;
 
-      // SHA-3 padding (domain separator 0x06)
+      // SHA-3 padding: the domain separator 0x06 followed by pad10*1, whose
+      // final bit lands in the top bit of the last rate byte (FIPS 202 sections
+      // 5.1 and B.2).
+      //
+      // When exactly one byte of the block is free the two coincide, and the
+      // 0x80 was overwriting the 0x06 rather than joining it, so the domain
+      // separator vanished. Every message of rate-1, 2*rate-1, ... bytes hashed
+      // to the wrong value: 71, 143, 215 ... for SHA-3-512 and 135, 271 ... for
+      // SHA-3-256. Merging them gives the required 0x86.
       this.buffer[this.bufferLength] = 0x06;
-      for (let i = this.bufferLength + 1; i < rate - 1; i++) {
+      for (let i = this.bufferLength + 1; i < rate; i++) {
         this.buffer[i] = 0;
       }
-      this.buffer[rate - 1] = 0x80;
+      this.buffer[rate - 1] = OpCodes.Or32(this.buffer[rate - 1], 0x80);
       this._absorb();
 
       // Squeeze phase: extract outputSize bytes from state

@@ -219,8 +219,14 @@
       this.bufferLength += toCopy;
       offset += toCopy;
 
-      // Process full blocks
-      if (this.bufferLength === BLAKE2B_BLOCKBYTES) {
+      // Process full blocks, but never the last one. RFC 7693 section 3.3
+      // compresses the final block with the finalization flag set, and for a
+      // message whose length is an exact multiple of the block size that final
+      // block is a full one. Compressing it here as soon as the buffer filled
+      // left finalize() to run on an empty block, so every message of exactly
+      // 128, 256, 384 ... bytes hashed to the wrong value. A full buffer is
+      // therefore held back until more data proves it is not the last.
+      if (this.bufferLength === BLAKE2B_BLOCKBYTES && offset < data.length) {
         this.counter += BigInt(BLAKE2B_BLOCKBYTES);
         const m = bytesToWords64(this.buffer);
 

@@ -375,10 +375,17 @@
    */
 
     Result() {
-      // Keccak padding (0x01 instead of SHA-3's 0x06)
+      // Keccak padding (0x01 instead of SHA-3's 0x06), then pad10*1, whose final
+      // bit lands in the top bit of the last rate byte.
+      //
+      // When exactly one byte of the block is free the two coincide, and the
+      // 0x80 was overwriting the 0x01 rather than joining it, so every message
+      // of rate-1, 2*rate-1, ... bytes hashed to the wrong value. Merging them
+      // gives the required 0x81. This is the same defect, in the same shape, as
+      // the one in sha3.js.
       this.buffer[this.bufferLength] = 0x01;
-      for (let i = this.bufferLength + 1; i < this.rate - 1; i++) this.buffer[i] = 0;
-      this.buffer[this.rate - 1] = 0x80;
+      for (let i = this.bufferLength + 1; i < this.rate; i++) this.buffer[i] = 0;
+      this.buffer[this.rate - 1] = OpCodes.Or32(this.buffer[this.rate - 1], 0x80);
       this._absorb();
 
       const output = new Uint8Array(this.outputSize);
