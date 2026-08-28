@@ -360,37 +360,6 @@
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
-    /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
-   */
-
-    Result() {
-      if (!this.key) throw new Error("Key not set");
-      if (this.inputBuffer.length === 0) throw new Error("No data fed");
-
-      // Validate input length
-      if (this.inputBuffer.length % this.BlockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
-      }
-
-      const output = [];
-
-      // Process each 16-byte block
-      for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
-        const block = this.inputBuffer.slice(i, i + this.BlockSize);
-        const processedBlock = this.isInverse 
-          ? this._decryptBlockInternal(block) 
-          : this._encryptBlockInternal(block);
-        for (let _i = 0; _i < processedBlock.length; _i++) output.push(processedBlock[_i]);
-      }
-
-      // Clear input buffer
-      this.inputBuffer = [];
-
-      return output;
-    }
 
     _setKey(key) {
       const k32e = new Array(Math.floor(MAX_KEY_BITS / 64));
@@ -457,7 +426,7 @@
       }
     }
 
-    _encryptBlockInternal(input) {
+    EncryptBlock(input) {
       let x0 = OpCodes.XorN(OpCodes.Pack32LE(input[0], input[1], input[2], input[3]), this.gSubKeys[INPUT_WHITEN]);
       let x1 = OpCodes.XorN(OpCodes.Pack32LE(input[4], input[5], input[6], input[7]), this.gSubKeys[INPUT_WHITEN + 1]);
       let x2 = OpCodes.XorN(OpCodes.Pack32LE(input[8], input[9], input[10], input[11]), this.gSubKeys[INPUT_WHITEN + 2]);
@@ -489,7 +458,7 @@
       return output;
     }
 
-    _decryptBlockInternal(input) {
+    DecryptBlock(input) {
       let x2 = OpCodes.XorN(OpCodes.Pack32LE(input[0], input[1], input[2], input[3]), this.gSubKeys[OUTPUT_WHITEN]);
       let x3 = OpCodes.XorN(OpCodes.Pack32LE(input[4], input[5], input[6], input[7]), this.gSubKeys[OUTPUT_WHITEN + 1]);
       let x0 = OpCodes.XorN(OpCodes.Pack32LE(input[8], input[9], input[10], input[11]), this.gSubKeys[OUTPUT_WHITEN + 2]);

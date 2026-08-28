@@ -250,37 +250,6 @@
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
-    /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
-   */
-
-    Result() {
-      if (!this.key) throw new Error("Key not set");
-      if (this.inputBuffer.length === 0) throw new Error("No data fed");
-
-      // Validate input length
-      if (this.inputBuffer.length % this.BlockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
-      }
-
-      const output = [];
-
-      // Process each 8-byte block
-      for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
-        const block = this.inputBuffer.slice(i, i + this.BlockSize);
-        const processedBlock = this.isInverse 
-          ? this._decryptBlock(block) 
-          : this._encryptBlock(block);
-        for (let _i = 0; _i < processedBlock.length; _i++) output.push(processedBlock[_i]);
-      }
-
-      // Clear input buffer
-      this.inputBuffer = [];
-
-      return output;
-    }
 
     _initConstants() {
       // Initial P-box constants (digits of pi in hexadecimal)
@@ -536,7 +505,7 @@
       }
     }
 
-    _encryptBlock(block) {
+    EncryptBlock(block) {
       const left = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
       const right = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
 
@@ -548,7 +517,7 @@
       return [...leftBytes, ...rightBytes];
     }
 
-    _decryptBlock(block) {
+    DecryptBlock(block) {
       const left = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
       const right = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
 

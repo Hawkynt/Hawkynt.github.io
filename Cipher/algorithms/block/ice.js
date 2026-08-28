@@ -301,36 +301,6 @@
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
-    /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
-   */
-
-    Result() {
-      if (!this.key) throw new Error("Key not set");
-      if (this.inputBuffer.length === 0) throw new Error("No data fed");
-
-      // Validate input length
-      if (this.inputBuffer.length % this.BlockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
-      }
-
-      const output = [];
-
-      // Process each 8-byte block
-      for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
-        const block = this.inputBuffer.slice(i, i + this.BlockSize);
-        const processedBlock = this.isInverse
-          ? this._decryptBlock(block)
-          : this._encryptBlock(block);
-        for (let _i = 0; _i < processedBlock.length; _i++) output.push(processedBlock[_i]);
-      }
-
-      // Clear input buffer
-      this.inputBuffer = [];
-      return output;
-    }
 
     // Build 8 rounds of key schedule
     _scheduleBuild(kb, n, krotIdx) {
@@ -358,7 +328,7 @@
       }
     }
 
-    _encryptBlock(plaintext) {
+    EncryptBlock(plaintext) {
       // Pack plaintext bytes into two 32-bit words (big-endian)
       let l = 0, r = 0;
 
@@ -388,7 +358,7 @@
       return ciphertext;
     }
 
-    _decryptBlock(ciphertext) {
+    DecryptBlock(ciphertext) {
       // Pack ciphertext bytes into two 32-bit words (big-endian)
       let l = 0, r = 0;
 
