@@ -293,7 +293,13 @@
    */
 
     Feed(data) {
-      this.Init();
+      // Init() discards the state, so it belongs at the start of the message and
+      // not at the start of every call: Feed(a); Feed(b) must absorb the same
+      // block sequence as Feed(a || b).
+      if (!this._streamStarted) {
+        this.Init();
+        this._streamStarted = true;
+      }
       this.Update(data);
     }
 
@@ -544,7 +550,13 @@
    */
 
     Feed(data) {
-      this.Init();
+      // Init() discards the state, so it belongs at the start of the message and
+      // not at the start of every call: Feed(a); Feed(b) must absorb the same
+      // block sequence as Feed(a || b).
+      if (!this._streamStarted) {
+        this.Init();
+        this._streamStarted = true;
+      }
       this.Update(data);
     }
 
