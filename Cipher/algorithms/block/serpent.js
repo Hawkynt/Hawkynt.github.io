@@ -225,36 +225,6 @@
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
-    /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
-   */
-    Result() {
-      if (!this.key) throw new Error("Key not set");
-      if (this.inputBuffer.length === 0) throw new Error("No data fed");
-
-      // Validate input length
-      if (this.inputBuffer.length % this.BlockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
-      }
-
-      const output = [];
-
-      // Process each 16-byte block
-      for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
-        const block = this.inputBuffer.slice(i, i + this.BlockSize);
-        const processedBlock = this.isInverse 
-          ? this._decryptBlock(block) 
-          : this._encryptBlock(block);
-        for (let _i = 0; _i < processedBlock.length; _i++) output.push(processedBlock[_i]);
-      }
-
-      // Clear input buffer
-      this.inputBuffer = [];
-
-      return output;
-    }
 
     // S-box implementations using bitwise operations (from Bouncy Castle reference)
     // S0 - { 3, 8,15, 1,10, 6, 5,11,14,13, 4, 2, 7, 0, 9,12 }
@@ -625,7 +595,7 @@
     }
 
     // Encrypt a block based on Bouncy Castle reference
-    _encryptBlock(block) {
+    EncryptBlock(block) {
       if (block.length !== 16) {
         throw new Error('Serpent block size must be exactly 16 bytes');
       }
@@ -673,7 +643,7 @@
     }
 
     // Decrypt a block based on Bouncy Castle reference
-    _decryptBlock(block) {
+    DecryptBlock(block) {
       if (block.length !== 16) {
         throw new Error('Serpent block size must be exactly 16 bytes');
       }
