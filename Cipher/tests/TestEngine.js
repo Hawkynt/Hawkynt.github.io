@@ -19,6 +19,23 @@
     const path = isNode ? require('path') : null;
     const { execSync } = isNode ? require('child_process') : { execSync: null };
 
+    // The list of algorithms with no meaningful inverse, shared with
+    // RoundTripSuite so that both suites gate on one list rather than each
+    // carrying its own idea of what is exempt.
+    const Exemptions = (function() {
+        if (isNode) {
+            try {
+                return require('./round-trip-exemptions.js');
+            } catch (e) {
+                return null;
+            }
+        }
+        return global.RoundTripExemptions || null;
+    })();
+    const ROUND_TRIP_EXEMPT = (Exemptions && Exemptions.ROUND_TRIP_EXEMPT) || new Map();
+    const encodingStabilityExemption = (Exemptions && Exemptions.encodingStabilityExemption)
+        || function() { return null; };
+
     // Load DebugConfig (works in both Node.js and browser)
     const DebugConfig = (function() {
         if (isNode && !global.DebugConfig) {
@@ -240,6 +257,13 @@
         const requiresRoundTrips = _requiresRoundTrips(algorithmInstance);
         const requiresEncodingStability = _requiresEncodingStability(algorithmInstance);
 
+        // Some algorithms in these categories have no inverse to check: a
+        // signature scheme verifies rather than decrypts, and a key agreement
+        // never carries a plaintext at all. Demanding a round trip of them
+        // measures the harness, so they are named on the shared exemption list
+        // with the reason. Everything not on it must invert.
+        result.roundTripExemptReason = ROUND_TRIP_EXEMPT.get(algorithmInstance.name) || null;
+
         for (let i = 0; i < vectors.length; i++) {
             if (progressCallback) {
                 progressCallback({
@@ -285,7 +309,14 @@
         // Determine final status
         if (result.passed === result.total && result.total > 0) {
             // All vectors passed - check round trip requirements
-            const invertibilityRequired = (requiresRoundTrips || requiresEncodingStability) && result.passed > 0;
+            // _isInvertible reports whether CreateInstance(true) yields anything,
+            // which is the implementation declaring whether it has an inverse at
+            // all. A checksum does not - CreateInstance(true) is null and no
+            // round trip is ever attempted - so requiring one of those would
+            // report 37 checksums as broken for behaving exactly as intended.
+            const invertibilityRequired = (requiresRoundTrips || requiresEncodingStability)
+                && result.passed > 0 && !result.roundTripExemptReason
+                && _isInvertible(algorithmInstance);
             const invertibilitySuccess = !invertibilityRequired || (result.roundTripsPassed === result.roundTripsAttempted && result.roundTripsAttempted > 0);
 
             if (invertibilitySuccess) {
@@ -819,6 +850,16 @@
 
     // Test encoding stability: encode(data) == encode(decode(encode(data)))
     async function _testEncodingStability(algorithm, vector, encodedOutput) {
+        // A few vectors drive their algorithm in a measurement mode, where the
+        // result is a syndrome or a single eigenvalue rather than a codeword.
+        // Those projections consume far more bits than they emit, so no decoder
+        // could invert them and the property is undefined rather than violated.
+        // Returning null - not false - leaves the vector uncounted instead of
+        // recording an attempt that failed. The exemption is matched on a
+        // property the vector itself declares, so the encoding vectors of the
+        // same algorithm stay gated.
+        if (encodingStabilityExemption(algorithm, vector)) return null;
+
         try {
             // Step 1: decode the encoded result: decode(encode(data))
             const decodeInstance = algorithm.CreateInstance(true); // true = decode mode

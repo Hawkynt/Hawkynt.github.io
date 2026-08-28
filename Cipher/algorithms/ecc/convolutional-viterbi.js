@@ -83,7 +83,12 @@
         )
       ];
 
-      // Test vectors for K=3, rate 1/2, generators (7,5) octal
+      // Test vectors for K=3, rate 1/2, generators (7,5) octal.
+      // The encoder emits, per input bit, the GF(2) inner products of the
+      // register [b(i), b(i-1), b(i-2)] with g1=111 and g2=101. Its impulse
+      // response is therefore 11 10 11, i.e. the columns of the two generator
+      // polynomials read left to right, which is the value the single-bit
+      // vector below records.
       this.tests = [
         new TestCase(
           [0, 0, 0, 0], // 4 zero bits input
@@ -92,20 +97,20 @@
           "https://web.mit.edu/6.02/www/f2011/handouts/8.pdf"
         ),
         new TestCase(
-          [1, 0, 0, 0], // Single 1 bit
-          [0, 0, 1, 0, 0, 0, 0, 0], // Encoded output
+          [1, 0, 0, 0], // Single 1 bit - yields the (7,5) impulse response
+          [1, 1, 1, 0, 1, 1, 0, 0], // 11 10 11 00
           "K=3 single bit test",
           "https://web.mit.edu/6.02/www/f2011/handouts/8.pdf"
         ),
         new TestCase(
           [1, 1, 1, 1], // All ones
-          [0, 0, 1, 0, 1, 0, 1, 0], // Encoded output
+          [1, 1, 0, 1, 1, 0, 1, 0], // 11 01 10 10
           "K=3 all ones test",
           "https://web.mit.edu/6.02/www/f2011/handouts/8.pdf"
         ),
         new TestCase(
           [1, 0, 1, 0], // Alternating pattern
-          [0, 0, 1, 0, 0, 0, 1, 0], // Encoded output
+          [1, 1, 1, 0, 0, 0, 1, 0], // 11 10 00 10
           "K=3 alternating pattern",
           "https://web.mit.edu/6.02/www/f2011/handouts/8.pdf"
         )
@@ -191,23 +196,27 @@
     }
 
     encode(data) {
-      // Convolutional encoding with K=3, rate 1/2
+      // Convolutional encoding with K=3, rate 1/2.
+      // The shift register holds the current input bit in its most significant
+      // position followed by the K-1 preceding input bits, so that a generator
+      // polynomial masks directly onto the register layout.
       const output = [];
-      let state = 0; // Shift register state (K-1 bits)
-      const stateMask = OpCodes.Shl32(1, this._constraintLength - 1) - 1;
+      const constraintLength = this._constraintLength;
+      const stateMask = OpCodes.Shl32(1, constraintLength - 1) - 1;
+      let state = 0; // The K-1 preceding input bits, most recent first
 
       for (let i = 0; i < data.length; ++i) {
         const inputBit = OpCodes.AndN(data[i], 1);
 
-        // Shift input bit into state
-        state = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(state, 1), inputBit), stateMask);
-
-        // Generate output bits using generator polynomials
-        const fullState = OpCodes.OrN(state, OpCodes.Shl32(inputBit, this._constraintLength - 1));
-        const out1 = this.convolve(fullState, this._generator1);
-        const out2 = this.convolve(fullState, this._generator2);
+        // Present the input bit alongside the history, then emit the parities
+        const fullRegister = OpCodes.OrN(OpCodes.Shl32(inputBit, constraintLength - 1), state);
+        const out1 = this.convolve(fullRegister, this._generator1);
+        const out2 = this.convolve(fullRegister, this._generator2);
 
         output.push(out1, out2);
+
+        // Advance the register; the oldest bit falls off the end
+        state = OpCodes.AndN(OpCodes.Shr32(fullRegister, 1), stateMask);
       }
 
       return output;
@@ -227,74 +236,84 @@
     }
 
     viterbiDecode(received) {
-      // Viterbi decoder using maximum likelihood path
+      // Maximum likelihood decoding over the trellis: an add-compare-select
+      // forward pass that records one survivor decision per state per stage,
+      // followed by a traceback from the most likely terminating state.
       if (received.length % this._rate !== 0) {
         throw new Error(`Viterbi decode: Input length must be multiple of ${this._rate}`);
       }
 
       const numBits = received.length / this._rate;
-      const numStates = OpCodes.Shl32(1, this._constraintLength - 1);
+      const constraintLength = this._constraintLength;
+      const numStates = OpCodes.Shl32(1, constraintLength - 1);
+      const stateMask = numStates - 1;
 
-      // Path metrics and survivor paths
-      const pathMetrics = new Array(numStates).fill(Infinity);
-      const newPathMetrics = new Array(numStates);
-      const survivorPaths = Array.from({ length: numStates }, () => []);
+      let pathMetrics = new Array(numStates).fill(Infinity);
+      pathMetrics[0] = 0; // The encoder starts in the all-zero state
 
-      pathMetrics[0] = 0; // Start in zero state
+      // Survivor decisions: for each stage, the input bit that entered a state
+      // and the predecessor state it came from
+      const decisionBit = [];
+      const decisionFrom = [];
 
-      // Process each received symbol
       for (let t = 0; t < numBits; ++t) {
-        const r1 = received[t * this._rate];
-        const r2 = received[t * this._rate + 1];
+        const r1 = OpCodes.AndN(received[t * this._rate], 1);
+        const r2 = OpCodes.AndN(received[t * this._rate + 1], 1);
 
-        newPathMetrics.fill(Infinity);
-        const newSurvivorPaths = Array.from({ length: numStates }, () => []);
+        const nextMetrics = new Array(numStates).fill(Infinity);
+        const enteredWith = new Array(numStates).fill(0);
+        const cameFrom = new Array(numStates).fill(0);
 
-        // For each current state
         for (let state = 0; state < numStates; ++state) {
           if (pathMetrics[state] === Infinity) continue;
 
           // Try both possible input bits (0 and 1)
           for (let inputBit = 0; inputBit <= 1; ++inputBit) {
-            // Calculate next state
-            const nextState = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(state, 1), inputBit), numStates - 1);
+            // Expected output for this branch, using the same register layout
+            // as the encoder, and the state the branch leads to
+            const fullRegister = OpCodes.OrN(OpCodes.Shl32(inputBit, constraintLength - 1), state);
+            const nextState = OpCodes.AndN(OpCodes.Shr32(fullRegister, 1), stateMask);
+            const e1 = this.convolve(fullRegister, this._generator1);
+            const e2 = this.convolve(fullRegister, this._generator2);
 
-            // Calculate expected output
-            const fullState = OpCodes.OrN(state, OpCodes.Shl32(inputBit, this._constraintLength - 1));
-            const e1 = this.convolve(fullState, this._generator1);
-            const e2 = this.convolve(fullState, this._generator2);
-
-            // Calculate Hamming distance (branch metric)
+            // Branch metric is the Hamming distance to the received symbol
             const branchMetric = OpCodes.XorN(r1, e1) + OpCodes.XorN(r2, e2);
-            const newMetric = pathMetrics[state] + branchMetric;
+            const candidate = pathMetrics[state] + branchMetric;
 
-            // Update if better path found
-            if (newMetric < newPathMetrics[nextState]) {
-              newPathMetrics[nextState] = newMetric;
-              newSurvivorPaths[nextState] = [...survivorPaths[state], inputBit];
+            // Keep the better of the two paths merging into nextState
+            if (candidate < nextMetrics[nextState]) {
+              nextMetrics[nextState] = candidate;
+              enteredWith[nextState] = inputBit;
+              cameFrom[nextState] = state;
             }
           }
         }
 
-        // Update for next iteration
-        for (let s = 0; s < numStates; ++s) {
-          pathMetrics[s] = newPathMetrics[s];
-          survivorPaths[s] = newSurvivorPaths[s];
-        }
+        decisionBit.push(enteredWith);
+        decisionFrom.push(cameFrom);
+        pathMetrics = nextMetrics;
       }
 
-      // Find best final path (minimum metric)
+      // The trellis is not zero-terminated, so terminate on the state with the
+      // smallest accumulated metric
+      let bestState = 0;
       let bestMetric = Infinity;
-      let bestPath = [];
-
       for (let state = 0; state < numStates; ++state) {
         if (pathMetrics[state] < bestMetric) {
           bestMetric = pathMetrics[state];
-          bestPath = survivorPaths[state];
+          bestState = state;
         }
       }
 
-      return bestPath;
+      // Trace the survivor path back to recover the information bits
+      const decoded = new Array(numBits).fill(0);
+      let state = bestState;
+      for (let t = numBits - 1; t >= 0; --t) {
+        decoded[t] = decisionBit[t][state];
+        state = decisionFrom[t][state];
+      }
+
+      return decoded;
     }
   }
 
