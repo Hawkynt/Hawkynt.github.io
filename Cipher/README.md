@@ -710,11 +710,12 @@ configured from its own first vector through `TestEngine.ConfigureInstance` and
 driven with eleven splittings of the same message - one byte at a time, either
 side of the 8, 16 and 32-byte boundaries, two halves and a run of uneven pieces.
 Refusing a second `Feed` is a defensible design and is reported without failing
-the run; returning different bytes without complaining is what fails it. The
-constructions for which the property is genuinely false - the block codes, and
-TupleHash, whose whole purpose is that a tuple of strings hashes differently from
-their concatenation - are named in that file's `CHUNKED_FEED_EXEMPT` table with
-the reason:
+the run; returning different bytes without complaining is what fails it. The one
+construction for which the property is genuinely false - TupleHash, whose whole
+purpose is that a tuple of strings hashes differently from their concatenation -
+is named in that file's `CHUNKED_FEED_EXEMPT` table with the reason. An entry is
+deleted as soon as the algorithm agrees, since an exemption that outlives its
+repair hides the next regression:
 
 ```bash
 # Sweep every algorithm for chunked-feed equivalence
