@@ -135,24 +135,38 @@
     Feed(data) {
       if (!data || data.length === 0) return;
 
-      // Process 16-bit words (big-endian)
-      for (let i = 0; i < data.length; i += 2) {
-        let word;
-        if (i + 1 < data.length) {
-          // Full 16-bit word (big-endian)
-          word = OpCodes.OrN(OpCodes.Shl32(data[i], 8), data[i + 1]);
-        } else {
-          // Odd byte: pad with zero
-          word = OpCodes.Shl32(data[i], 8);
-        }
+      // Process 16-bit words (big-endian). A word may straddle two calls, so an
+      // odd trailing byte is carried into the next Feed rather than padded here:
+      // only the end of the message pads, and that is Result()'s job. Padding it
+      // per call made Feed(a); Feed(b) sum a different word sequence than
+      // Feed(a || b) whenever a had odd length.
+      let i = 0;
+      if (this.hasPending) {
+        this._addWord(OpCodes.OrN(OpCodes.Shl32(this.pending, 8), data[0]));
+        this.hasPending = false;
+        i = 1;
+      }
 
-        // Add to sum
-        this.sum += word;
+      for (; i + 1 < data.length; i += 2) {
+        this._addWord(OpCodes.OrN(OpCodes.Shl32(data[i], 8), data[i + 1]));
+      }
 
-        // End-around carry: add carry bits back
-        if (this.sum > 0xFFFF) {
-          this.sum = OpCodes.AndN(this.sum, 0xFFFF) + OpCodes.Shr32(this.sum, 16);
-        }
+      if (i < data.length) {
+        this.pending = data[i];
+        this.hasPending = true;
+      }
+    }
+
+    /**
+     * Add one 16-bit word to the running one's complement sum
+     * @param {number} word - 16-bit word
+     */
+    _addWord(word) {
+      this.sum += word;
+
+      // End-around carry: add carry bits back
+      if (this.sum > 0xFFFF) {
+        this.sum = OpCodes.AndN(this.sum, 0xFFFF) + OpCodes.Shr32(this.sum, 16);
       }
     }
 
@@ -163,6 +177,12 @@
    */
 
     Result() {
+      // A trailing odd byte pads with zero, and only at the end of the message
+      if (this.hasPending) {
+        this._addWord(OpCodes.Shl32(this.pending, 8));
+        this.hasPending = false;
+      }
+
       // Final end-around carry
       while (this.sum > 0xFFFF) {
         this.sum = OpCodes.AndN(this.sum, 0xFFFF) + OpCodes.Shr32(this.sum, 16);
