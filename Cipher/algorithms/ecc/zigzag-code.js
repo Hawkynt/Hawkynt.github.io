@@ -223,11 +223,13 @@
         throw new Error('ZigzagCodeInstance.Feed: Input must be array');
       }
 
-      if (this.isInverse) {
-        this.result = this.dezigzag(data);
-      } else {
-        this.result = this.zigzag(data);
-      }
+      // Feed is a streaming interface: successive calls extend the message
+      // rather than replace it. A single chunk cannot be coded on its own
+      // either, because block boundaries and parity are counted from the start
+      // of the message, so the symbols are collected here and coded once, in
+      // Result().
+      if (!this._feedBuffer) this._feedBuffer = [];
+      for (let i = 0; i < data.length; i++) this._feedBuffer.push(data[i]);
     }
 
     /**
@@ -237,9 +239,12 @@
    */
 
     Result() {
-      if (this.result === null) {
+      if (!this._feedBuffer) {
         throw new Error('ZigzagCodeInstance.Result: Call Feed() first to process data');
       }
+      this.result = this.isInverse
+        ? this.dezigzag(this._feedBuffer)
+        : this.zigzag(this._feedBuffer);
       return this.result;
     }
 
@@ -267,11 +272,10 @@
         }
 
         // Read in diagonal zigzag pattern
-        if (this._direction === 'ascending') {
-          result.push(...this._readAscendingDiagonals(matrix));
-        } else {
-          result.push(...this._readDescendingDiagonals(matrix));
-        }
+        const diagonals = this._direction === 'ascending'
+          ? this._readAscendingDiagonals(matrix)
+          : this._readDescendingDiagonals(matrix);
+        for (let i = 0; i < diagonals.length; i++) result.push(diagonals[i]);
       }
 
       return result;
