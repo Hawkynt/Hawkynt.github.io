@@ -295,6 +295,8 @@
 
       const output = [];
       const blockSize = 4;
+      if (this.inputBuffer.length % blockSize !== 0)
+        throw new Error(`Input length must be multiple of ${blockSize} bytes`);
 
       // Process complete 4-byte blocks
       for (let i = 0; i + blockSize <= this.inputBuffer.length; i += blockSize) {
@@ -590,6 +592,8 @@
 
       const output = [];
       const blockSize = 8;
+      if (this.inputBuffer.length % blockSize !== 0)
+        throw new Error(`Input length must be multiple of ${blockSize} bytes`);
 
       // Process complete 8-byte blocks
       for (let i = 0; i + blockSize <= this.inputBuffer.length; i += blockSize) {

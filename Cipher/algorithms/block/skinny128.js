@@ -423,6 +423,9 @@
       if (this.inputBuffer.length === 0) throw new Error('No data fed');
 
       const blockSize = 16;
+      if (this.inputBuffer.length % blockSize !== 0)
+        throw new Error(`Input length must be multiple of ${blockSize} bytes`);
+
       const output = [];
 
       // Process complete blocks
