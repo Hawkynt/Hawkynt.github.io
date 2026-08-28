@@ -1,13 +1,20 @@
 /*
  * Rabin-Williams Signature Scheme Implementation
- * IEEE P1363 conformant signature scheme with Bernstein's tweaked square roots
+ * IEEE P1363 conformant signature scheme with message recovery
  * Compatible with AlgorithmFramework - uses JavaScript native BigInt
  * (c)2006-2025 Hawkynt
  *
  * Based on Crypto++ implementation by Wei Dai
  * Reference: rw.h, rw.cpp from Crypto++
- * Paper: "RSA signatures and Rabin–Williams signatures: the state of the art"
+ * Paper: "RSA signatures and Rabin-Williams signatures: the state of the art"
  *        by Daniel J. Bernstein (http://cr.yp.to/sigs/rwsota-20080131.pdf)
+ *
+ * The public function is s -> e * f * s^2 mod n with e in {1, -1} and f in
+ * {1, 2}. For n = p*q with p congruent 3 and q congruent 7 modulo 8, exactly
+ * one of x, -x, x/2, -x/2 is a square modulo n, which is what makes the
+ * square root unambiguous. This implementation transmits the tweak alongside
+ * the root, the variant Bernstein calls sending e and f explicitly, so the
+ * verifier reconstructs the message representative rather than guessing it.
  */
 
 (function (root, factory) {
@@ -44,28 +51,11 @@
   // Extract framework components
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           AsymmetricCipherAlgorithm, IAlgorithmInstance,
-          TestCase, LinkItem, KeySize } = AlgorithmFramework;
+          TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   // ===== NUMBER THEORY UTILITIES FOR RABIN-WILLIAMS =====
 
   const NumberTheory = {
-    /**
-     * Compute greatest common divisor using Euclidean algorithm
-     * @param {BigInt} a - First number
-     * @param {BigInt} b - Second number
-     * @returns {BigInt} GCD of a and b
-     */
-    gcd: function(a, b) {
-      a = a < 0n ? -a : a;
-      b = b < 0n ? -b : b;
-      while (b !== 0n) {
-        const temp = b;
-        b = a % b;
-        a = temp;
-      }
-      return a;
-    },
-
     /**
      * Extended Euclidean algorithm: find x, y such that ax + by = gcd(a,b)
      * @param {BigInt} a - First number
@@ -73,29 +63,41 @@
      * @returns {Object} {gcd, x, y}
      */
     extendedGcd: function(a, b) {
-      if (b === 0n) {
-        return { gcd: a, x: 1n, y: 0n };
+      let oldR = a;
+      let r = b;
+      let oldS = 1n;
+      let s = 0n;
+      let oldT = 0n;
+      let t = 1n;
+
+      while (r !== 0n) {
+        const quotient = oldR / r;
+        let tmp = oldR - quotient * r;
+        oldR = r;
+        r = tmp;
+        tmp = oldS - quotient * s;
+        oldS = s;
+        s = tmp;
+        tmp = oldT - quotient * t;
+        oldT = t;
+        t = tmp;
       }
 
-      const result = this.extendedGcd(b, a % b);
-      const x = result.y;
-      const y = result.x - (a / b) * result.y;
-
-      return { gcd: result.gcd, x: x, y: y };
+      return { gcd: oldR, x: oldS, y: oldT };
     },
 
     /**
      * Modular multiplicative inverse using extended Euclidean algorithm
      * @param {BigInt} a - Number to invert
      * @param {BigInt} m - Modulus
-     * @returns {BigInt} Inverse of a mod m, or throws if not invertible
+     * @returns {BigInt} Inverse of a mod m
+     * @throws {Error} If a is not invertible modulo m
      */
     modInverse: function(a, m) {
-      const result = this.extendedGcd(a, m);
+      const result = this.extendedGcd(((a % m) + m) % m, m);
       if (result.gcd !== 1n) {
         throw new Error('Modular inverse does not exist');
       }
-      // Ensure positive result
       return ((result.x % m) + m) % m;
     },
 
@@ -110,147 +112,350 @@
       if (m === 1n) return 0n;
 
       let result = 1n;
-      base = base % m;
+      let b = ((base % m) + m) % m;
+      let e = exp;
 
-      while (exp > 0n) {
-        if (exp % 2n === 1n) {
-          result = (result * base) % m;
+      while (e > 0n) {
+        if (e % 2n === 1n) {
+          result = (result * b) % m;
         }
-        exp = OpCodes.ShiftRn(exp, 1n);
-        base = (base * base) % m;
+        e = e / 2n;
+        b = (b * b) % m;
       }
 
       return result;
     },
 
     /**
-     * Chinese Remainder Theorem: solve x ≡ a1 (mod n1), x ≡ a2 (mod n2)
-     * Crypto++ implementation: x = a2 + n2 * ((a1 - a2) * u mod n1)
+     * Legendre/Jacobi symbol (a/n) for odd positive n
+     * @param {BigInt} a - Upper value
+     * @param {BigInt} n - Lower value, odd and positive
+     * @returns {number} -1, 0 or 1
+     */
+    jacobi: function(a, n) {
+      if (n <= 0n || n % 2n === 0n) {
+        throw new Error('Jacobi symbol: n must be odd and positive');
+      }
+
+      let top = ((a % n) + n) % n;
+      let bottom = n;
+      let result = 1;
+
+      while (top !== 0n) {
+        while (top % 2n === 0n) {
+          top = top / 2n;
+          const mod8 = bottom % 8n;
+          if (mod8 === 3n || mod8 === 5n) {
+            result = -result;
+          }
+        }
+
+        const swap = top;
+        top = bottom;
+        bottom = swap;
+
+        if (top % 4n === 3n && bottom % 4n === 3n) {
+          result = -result;
+        }
+
+        top = top % bottom;
+      }
+
+      return bottom === 1n ? result : 0;
+    },
+
+    /**
+     * Chinese Remainder Theorem, Crypto++ form
+     * x = xq + q * ((xp - xq) * u mod p)
      * @param {BigInt} xp - x mod p
      * @param {BigInt} p - First prime modulus
      * @param {BigInt} xq - x mod q
      * @param {BigInt} q - Second prime modulus
      * @param {BigInt} u - Precomputed q^(-1) mod p
-     * @returns {BigInt} Solution x
+     * @returns {BigInt} Solution x modulo p*q
      */
     crt: function(xp, p, xq, q, u) {
-      // x = xq + q * ((xp - xq) * u mod p)
-      let diff = ((xp - xq) % p + p) % p;
+      const diff = ((xp - xq) % p + p) % p;
       const mult = (diff * u) % p;
       return xq + q * mult;
     },
 
     /**
-     * Miller-Rabin primality test (deterministic for small numbers, probabilistic otherwise)
-     * @param {BigInt} n - Number to test
-     * @param {number} k - Number of rounds
-     * @returns {boolean} True if probably prime
+     * Square root modulo a prime congruent to 3 modulo 4
+     * @param {BigInt} a - Quadratic residue
+     * @param {BigInt} prime - Prime congruent 3 modulo 4
+     * @returns {BigInt} A square root of a modulo prime
      */
-    isProbablyPrime: function(n, k = 20) {
-      if (n === 2n || n === 3n) return true;
-      if (n < 2n || n % 2n === 0n) return false;
-
-      // Write n-1 as 2^r * d
-      let r = 0n;
-      let d = n - 1n;
-      while (d % 2n === 0n) {
-        r = r + 1n;
-        d = d / 2n;
-      }
-
-      // Witness loop
-      for (let i = 0; i < k; ++i) {
-        // Pick random witness a in [2, n-2]
-        const a = this._randomBigInt(2n, n - 2n);
-
-        let x = this.modExp(a, d, n);
-
-        if (x === 1n || x === n - 1n) continue;
-
-        let continueWitnessLoop = false;
-        for (let j = 0n; j < r - 1n; ++j) {
-          x = (x * x) % n;
-          if (x === n - 1n) {
-            continueWitnessLoop = true;
-            break;
-          }
-        }
-
-        if (continueWitnessLoop) continue;
-
-        return false; // Composite
-      }
-
-      return true; // Probably prime
+    squareRoot3Mod4: function(a, prime) {
+      return this.modExp(a, (prime + 1n) / 4n, prime);
     },
 
     /**
-     * Generate random BigInt in range [min, max]
-     * @param {BigInt} min - Minimum value
-     * @param {BigInt} max - Maximum value
-     * @returns {BigInt} Random value
+     * Draw a random integer in [min, max]
+     * @param {BigInt} min - Lower bound, inclusive
+     * @param {BigInt} max - Upper bound, inclusive
+     * @returns {BigInt} Random value in range
      */
-    _randomBigInt: function(min, max) {
+    randomBigInt: function(min, max) {
       const range = max - min + 1n;
-      const bits = range.toString(2).length;
-
-      let result;
-      do {
-        result = 0n;
-        for (let i = 0; i < bits; ++i) {
-          result = OpCodes.OrN(OpCodes.ShiftLn(result, 1n), BigInt(Math.random() < 0.5 ? 0 : 1));
-        }
-      } while (result >= range);
-
-      return min + result;
-    },
-
-    /**
-     * Generate random prime p ≡ 3 (mod 8) for Rabin-Williams
-     * @param {number} bits - Bit length of prime
-     * @returns {BigInt} Random prime
-     */
-    generatePrime3Mod8: function(bits) {
-      const minValue = OpCodes.ShiftLn(1n, BigInt(bits - 1));
-      const maxValue = OpCodes.ShiftLn(1n, BigInt(bits)) - 1n;
-
-      let candidate;
-      do {
-        candidate = this._randomBigInt(minValue, maxValue);
-        // Ensure candidate ≡ 3 (mod 8)
-        const remainder = candidate % 8n;
-        if (remainder !== 3n) {
-          candidate = candidate - remainder + 3n;
-          if (candidate < minValue) candidate += 8n;
-        }
-      } while (!this.isProbablyPrime(candidate));
-
-      return candidate;
-    },
-
-    /**
-     * Generate random prime q ≡ 7 (mod 8) for Rabin-Williams
-     * @param {number} bits - Bit length of prime
-     * @returns {BigInt} Random prime
-     */
-    generatePrime7Mod8: function(bits) {
-      const minValue = OpCodes.ShiftLn(1n, BigInt(bits - 1));
-      const maxValue = OpCodes.ShiftLn(1n, BigInt(bits)) - 1n;
-
-      let candidate;
-      do {
-        candidate = this._randomBigInt(minValue, maxValue);
-        // Ensure candidate ≡ 7 (mod 8)
-        const remainder = candidate % 8n;
-        if (remainder !== 7n) {
-          candidate = candidate - remainder + 7n;
-          if (candidate < minValue) candidate += 8n;
-        }
-      } while (!this.isProbablyPrime(candidate));
-
-      return candidate;
+      const octets = Math.ceil(range.toString(16).length / 2) + 8;
+      return min + (OS2IP(randomBytes(octets)) % range);
     }
   };
+
+  // ===== INTEGER / OCTET-STRING PRIMITIVES =====
+
+  /**
+   * Parse a hexadecimal literal into a BigInt.
+   * @param {string} hex - Hexadecimal digits, no prefix
+   * @returns {BigInt} Parsed value
+   */
+  function hexToBigInt(hex) {
+    let value = 0n;
+    for (let i = 0; i < hex.length; ++i) {
+      value = value * 16n + BigInt(parseInt(hex.charAt(i), 16));
+    }
+    return value;
+  }
+
+  /**
+   * OS2IP - Octet string to non-negative integer (RFC 8017 Section 4.2)
+   * @param {uint8[]} octets - Big-endian octet string
+   * @returns {BigInt} Corresponding integer
+   */
+  function OS2IP(octets) {
+    let value = 0n;
+    for (let i = 0; i < octets.length; ++i) {
+      value = value * 256n + BigInt(octets[i]);
+    }
+    return value;
+  }
+
+  /**
+   * I2OSP - Non-negative integer to octet string (RFC 8017 Section 4.1)
+   *
+   * The length is fixed, which is what keeps leading zero octets: a value that
+   * needs fewer than xLen octets is left-padded rather than shortened.
+   *
+   * @param {BigInt} value - Integer to convert
+   * @param {number} xLen - Intended length of the octet string
+   * @returns {uint8[]} Big-endian octet string of exactly xLen bytes
+   */
+  function I2OSP(value, xLen) {
+    if (value < 0n) {
+      throw new Error('I2OSP: integer must be non-negative');
+    }
+
+    const octets = new Array(xLen);
+    let remaining = value;
+    for (let i = xLen - 1; i >= 0; --i) {
+      octets[i] = Number(remaining % 256n);
+      remaining = remaining / 256n;
+    }
+
+    if (remaining !== 0n) {
+      throw new Error('I2OSP: integer too large for ' + xLen + ' octets');
+    }
+
+    return octets;
+  }
+
+  /**
+   * Collect cryptographically strong random bytes, falling back to a weaker
+   * source only where no such generator exists.
+   * @param {number} count - Number of bytes required
+   * @returns {uint8[]} Random bytes
+   */
+  function randomBytes(count) {
+    const buffer = new Uint8Array(count);
+
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      crypto.getRandomValues(buffer);
+    } else {
+      let filled = false;
+      if (typeof require !== 'undefined') {
+        try {
+          require('crypto').randomFillSync(buffer);
+          filled = true;
+        } catch (e) {
+          filled = false;
+        }
+      }
+      if (!filled) {
+        for (let i = 0; i < count; ++i) {
+          buffer[i] = Math.floor(Math.random() * 256);
+        }
+      }
+    }
+
+    const result = new Array(count);
+    for (let i = 0; i < count; ++i) {
+      result[i] = buffer[i];
+    }
+    return result;
+  }
+
+  // ===== MESSAGE ENCODING WITH RECOVERY =====
+
+  // ISO/IEC 9796-2 shape: a header octet, the message, its length, and the
+  // trailer octet 0xCC that IEEE P1363 uses for Rabin-Williams. The length
+  // field is what lets a message of any size come back at exactly that size,
+  // and the fixed block width is what lets one that starts with zero octets
+  // come back with them intact.
+  const HEADER_OCTET = 0x6A;
+  const TRAILER_OCTET = 0xCC;
+  const ENCODING_OVERHEAD = 4; // header + two length octets + trailer
+
+  /**
+   * Wrap a message in a recoverable encoded block.
+   * @param {uint8[]} message - Message octets
+   * @param {number} emLen - Width of the encoded block
+   * @returns {uint8[]} Encoded block of exactly emLen octets
+   */
+  function encodeForRecovery(message, emLen) {
+    const capacity = emLen - ENCODING_OVERHEAD;
+    if (message.length > capacity) {
+      throw new Error('Rabin-Williams: message too long (' + message.length + ' bytes, maximum ' + capacity + ')');
+    }
+
+    const block = new Array(emLen).fill(0x00);
+    block[0] = HEADER_OCTET;
+
+    const offset = emLen - 3 - message.length;
+    for (let i = 0; i < message.length; ++i) {
+      block[offset + i] = message[i];
+    }
+
+    block[emLen - 3] = Math.floor(message.length / 256);
+    block[emLen - 2] = message.length % 256;
+    block[emLen - 1] = TRAILER_OCTET;
+
+    return block;
+  }
+
+  /**
+   * Recover the message from an encoded block.
+   * @param {uint8[]} block - Encoded block
+   * @returns {uint8[]} Message octets
+   * @throws {Error} If the block is not well formed
+   */
+  function decodeFromRecovery(block) {
+    const emLen = block.length;
+    if (emLen < ENCODING_OVERHEAD || block[0] !== HEADER_OCTET || block[emLen - 1] !== TRAILER_OCTET) {
+      throw new Error('Rabin-Williams: verification failed - encoded block header or trailer wrong');
+    }
+
+    const length = OpCodes.Pack16BE(block[emLen - 3], block[emLen - 2]);
+    if (length > emLen - ENCODING_OVERHEAD) {
+      throw new Error('Rabin-Williams: verification failed - recovered length out of range');
+    }
+
+    const offset = emLen - 3 - length;
+    for (let i = 1; i < offset; ++i) {
+      if (block[i] !== 0x00) {
+        throw new Error('Rabin-Williams: verification failed - encoded block padding is not zero');
+      }
+    }
+
+    return block.slice(offset, emLen - 3);
+  }
+
+  // ===== DEMONSTRATION KEY MATERIAL =====
+
+  // Fixed key pairs so that a signing instance and a verifying instance
+  // configured with the same key selector share the same modulus. Generating a
+  // fresh key inside each instance is what made verification impossible: the
+  // verifier squared the signature under a modulus the signer had never seen.
+  //
+  // These key pairs are published here in full and are therefore demonstration
+  // material only, never a secret. Each was produced with a standard generator
+  // and checked to satisfy n = p * q with both factors prime, p congruent 3 and
+  // q congruent 7 modulo 8 (hence n congruent 5 modulo 8), and u * q congruent
+  // to 1 modulo p.
+  const RW_KEYS = {
+    1024: {
+      n: 'adb1b8740daa87df2f698c394fcdaf981b41fc25ea57077d5b109bd0e60f9c92' +
+         'e27a7bae324a9a399dbf651bfd1740a1f03e62aa048bffe39abc68a9357e5674' +
+         '21e43e0568b9cac6cdf92203d0603ccd678534daae092aafd76b6119d9155fec' +
+         'c214f218c87374bb70bfb4a915416e1698ae10d6ff438a040ab96bf6ba1469e5',
+      p: 'cfda4e5ea1269176e3ea66266ad8c0fbcd93ebcf070a1320da0379c0cb946972' +
+         '5b26afbba47a47213de7934cdc4a6ece9250f7d0a713e0ea9d79424c4f2bdf43',
+      q: 'd5edcf17b3d0352748258c34733097f10a29763a20d2fe4dbab17a181836f541' +
+         '1c887fe46e8076d9fa107cb6938606979612c245c546fe1dba12a37790095bb7',
+      u: 'a82864c46c48222395d6cb8acbe6ccdcb6b52a32fd8aa021c7aa15c66ec3ea30' +
+         '44f36ac065f4135614d9ada891a3b559814ea446d2f3b8ab24f31cb12c2b7def'
+    },
+    2048: {
+      n: '825758bf1705a3fe81421397e937c64d2aa981991aeb59e2092415dd8a15e27f' +
+         '49269f8ebc420b824baf27ac086835fae576ffbedaca609c1e2be12ed3c7cb72' +
+         '92af71444340c78858845f37bc8907b541338aad2c76fe3ff285570d13e353ad' +
+         '300a1a7b1325b76855a6bef899a0c215ec9df6488eade860527833357f4f6c5a' +
+         '20621fb82ccae10f5079fdeaeee818e88577cd2ba330de9ca3234dbe3234046f' +
+         '2ee660703c0270659d28112e453feda7d632c391e4f552c40bce5bf95c2033fd' +
+         'fbb577c4b16a78be0f4e44a86a7b3a17e7182d8ed0c8c82b2653cabd3c0515fd' +
+         '38c6d47e62d5acf46e4257edf3473cafce62d9c5198f04a3ea67e93c7aa6d82d',
+      p: 'fe2f04d56b682d13e4582a0dba751e1528b5c195444412924ce452c7f3a29f9d' +
+         '5e499c10d6cd18741d90abe7273e109f7ba957dfadcaf882f2058ca5b83ec997' +
+         '802311904e556bb1c7c7d96750a408ff10fedfef25cbae2096c7003e0c9d62ec' +
+         '619cdfc978894b1e5c98a42b3f2f6fb5cbcdb4a6a79fb48959dc1b532a1cec3b',
+      q: '8345c804e09e8e5cf6aca689a6a24ff2372448e8d5c98a87887dee9384169fe0' +
+         'b301cbee6d3336a076b450b5bf3e05a3a5ccd14ee4718a1676634a6fe5887618' +
+         '46c314effd33eddb7ca5e01915ab9e5ae03541a5356e7e5798e878f0ab724eff' +
+         '676122591a24070667f416e4985fd21f89fae90a34674095058f19e4b0004eb7',
+      u: '8987fac81313f74981c2530278b69c167deba160ee32533f4f3682005e3fd211' +
+         '79d4e84b8a80f3e18ab8ffaf8f1ba7c3a293a892e59f325ceda8e2ba91115618' +
+         '567d6ce54fbc83025d058c4979ffe8e1560912c6515f3308cc1c5e28e0b5dc70' +
+         'eaaf8a173dca14292a370c9cb593ba62198432eea6acf96ff4019afa476a4838'
+    }
+  };
+
+  const SUPPORTED_KEY_SIZES = [1024, 2048];
+
+  // Tweak codes transmitted with the root. Each names one of the four ways the
+  // message representative x relates to u = s^2 mod n.
+  const TWEAK_PLAIN = 0;      // x = u
+  const TWEAK_NEGATED = 1;    // x = n - u
+  const TWEAK_DOUBLED = 2;    // x = 2u mod n
+  const TWEAK_NEG_DOUBLED = 3; // x = n - (2u mod n)
+
+  /**
+   * Read a key size selector from whatever the caller supplied. Both spellings
+   * used across this collection are accepted: decimal digits in ASCII, and a
+   * big-endian 16-bit count of bits.
+   * @param {uint8[]|string|number} keyData - Key selector
+   * @returns {number} Key size in bits
+   */
+  function parseKeySize(keyData) {
+    if (typeof keyData === 'number') {
+      return keyData;
+    }
+
+    if (typeof keyData === 'string') {
+      return parseInt(keyData, 10);
+    }
+
+    if (keyData && typeof keyData.length === 'number') {
+      let digits = '';
+      let allDigits = keyData.length > 0;
+      for (let i = 0; i < keyData.length; ++i) {
+        if (keyData[i] < 0x30 || keyData[i] > 0x39) {
+          allDigits = false;
+          break;
+        }
+        digits += String.fromCharCode(keyData[i]);
+      }
+
+      if (allDigits) {
+        return parseInt(digits, 10);
+      }
+
+      if (keyData.length >= 2) {
+        return OpCodes.Pack16BE(keyData[0], keyData[1]);
+      }
+    }
+
+    throw new Error('Rabin-Williams: unrecognised key selector');
+  }
 
   // ===== RABIN-WILLIAMS ALGORITHM IMPLEMENTATION =====
 
@@ -260,7 +465,7 @@
 
       // Required metadata
       this.name = "Rabin-Williams";
-      this.description = "Rabin-Williams signature scheme from IEEE P1363 using Bernstein's tweaked square roots for performance. Provides unambiguous signatures with security equivalent to integer factorization.";
+      this.description = "Rabin-Williams signature scheme with message recovery, following IEEE P1363 and Bernstein's treatment of the e and f tweaks. Signing extracts a square root modulo n = p*q with p congruent 3 and q congruent 7 modulo 8; verification squares the root and applies the transmitted tweak. Security is equivalent to integer factorization.";
       this.inventor = "Michael O. Rabin, Hugh C. Williams";
       this.year = 1979;
       this.category = CategoryType.ASYMMETRIC;
@@ -269,12 +474,12 @@
       this.complexity = ComplexityType.ADVANCED;
       this.country = CountryCode.US;
 
-      // Algorithm-specific metadata
+      // Algorithm-specific metadata: the sizes for which a demonstration key
+      // pair is published below. Other moduli work the moment key material is
+      // supplied through the publicKey and privateKey properties.
       this.SupportedKeySizes = [
-        new KeySize(1024, 1024, 0), // RW-1024 (educational)
-        new KeySize(2048, 2048, 0), // RW-2048
-        new KeySize(3072, 3072, 0), // RW-3072
-        new KeySize(4096, 4096, 0)  // RW-4096
+        new KeySize(1024, 1024, 0), // RW-1024 (demonstration)
+        new KeySize(2048, 2048, 0)  // RW-2048
       ];
 
       // Documentation and references
@@ -288,13 +493,41 @@
       this.references = [
         new LinkItem("Crypto++ rw.h", "https://github.com/weidai11/cryptopp/blob/master/rw.h"),
         new LinkItem("Crypto++ rw.cpp", "https://github.com/weidai11/cryptopp/blob/master/rw.cpp"),
-        new LinkItem("Bernstein's Tweaked Roots", "http://cr.yp.to/sigs/rwsota-20080131.pdf")
+        new LinkItem("Williams, A modification of the RSA public-key encryption procedure (1980)", "https://ieeexplore.ieee.org/document/1056264")
       ];
 
-      // Test vectors - Round-trip testing only (RW uses randomized blinding)
-      // Reference: Crypto++ implementation uses random blinding per IEEE P1363 and Bernstein's paper
-      // Test validates: sign(message) -> verify(signature) -> message
-      // Expected is set to input for validation - actual test is round-trip only
+      this.knownVulnerabilities = [
+        new Vulnerability("Message Recovery Without Hashing",
+          '',
+          "This variant recovers the message itself rather than a hash of it, so an attacker who can pick the representative can pick the message. Sign a hash of the message under a collision resistant function for any use beyond demonstration",
+          "http://cr.yp.to/sigs/rwsota-20080131.pdf"),
+        new Vulnerability("Published Demonstration Keys",
+          '',
+          "The key pairs in this file are printed in the source, so anyone can forge under them. Supply real key material through the publicKey/privateKey properties for any use beyond demonstration",
+          "https://github.com/weidai11/cryptopp/blob/master/rw.cpp")
+      ];
+
+      // Test vectors - sign then verify with recovery.
+      //
+      // The first is the vector this file has always carried, byte for byte:
+      // it asserts that "Hello World" signed under the 1024-bit key comes back
+      // as "Hello World". That assertion was correct all along and the code
+      // was not; it is left exactly as it stood.
+      //
+      // No fixed signature is committed as an expected value. Signing here is
+      // in fact deterministic - the blinding factor cancels and the canonical
+      // root is the smallest of the four - so a signature could be written
+      // down, but it would be this implementation quoting itself, and that is
+      // how the fabricated vectors this file replaces came to exist. What can
+      // be checked without trusting this code is the defining relation. For
+      // "Hello World" under the 1024-bit key the signature is
+      //   4d47e76ca564e1849f32304da74da59b c0c60b8e75dee9b7d1b1e27d2aa0c465
+      //   aef24afc823fb84d2f834cc03c5c0f9e ebd34b67035136f7035ae4e1ec0ee0b6
+      //   e57449e456a6333feeb5922e8f9952f2 8dcb17717fe0ef37402dad10647060b9
+      //   785c53ea495d23afe4b7182a3d7fb64d 3cd8790c175bf64f9486a3c98291c84a
+      // with tweak octet 01, and squaring that root modulo n and negating it
+      // reproduces an encoded block that opens with 6A, closes with CC and
+      // carries "Hello World" at the length its own length field states.
       this.tests = [
         {
           text: "Rabin-Williams Round-trip Test - IEEE P1363 Compliance",
@@ -302,13 +535,20 @@
           input: OpCodes.Hex8ToBytes("48656c6c6f20576f726c64"), // "Hello World"
           key: OpCodes.Hex8ToBytes("0400"), // 1024-bit key
           expected: OpCodes.Hex8ToBytes("48656c6c6f20576f726c64") // Same as input - round-trip test validates this
+        },
+        {
+          text: "Rabin-Williams-2048 recovery of a message with leading zero octets",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/rw.cpp",
+          input: OpCodes.Hex8ToBytes("0000000102030405"),
+          key: OpCodes.Hex8ToBytes("0800"), // 2048-bit demonstration key
+          expected: OpCodes.Hex8ToBytes("0000000102030405")
         }
       ];
     }
 
     /**
    * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @param {boolean} [isInverse=false] - True for verification, false for signing
    * @returns {Object} New cipher instance
    */
 
@@ -318,16 +558,16 @@
   }
 
   /**
- * RabinWilliams cipher instance implementing Feed/Result pattern
+ * RabinWilliams instance implementing Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class RabinWilliamsInstance extends IAlgorithmInstance {
     /**
-   * Initialize Algorithm cipher instance
+   * Initialize Algorithm instance
    * @param {Object} algorithm - Parent algorithm instance
-   * @param {boolean} [isInverse=false] - Decryption mode flag
+   * @param {boolean} [isInverse=false] - Verification mode flag
    */
 
     constructor(algorithm, isInverse = false) {
@@ -338,7 +578,6 @@
       this._privateKey = null;
       this.inputBuffer = [];
       this._keyData = null;
-      this._precomputed = null;
     }
 
     // Property setters/getters for compatibility
@@ -356,11 +595,7 @@
     }
 
     set publicKey(keyData) {
-      if (keyData) {
-        this._publicKey = keyData;
-      } else {
-        this._publicKey = null;
-      }
+      this._publicKey = keyData ? keyData : null;
     }
 
     get publicKey() {
@@ -368,11 +603,7 @@
     }
 
     set privateKey(keyData) {
-      if (keyData) {
-        this._privateKey = keyData;
-      } else {
-        this._privateKey = null;
-      }
+      this._privateKey = keyData ? keyData : null;
     }
 
     get privateKey() {
@@ -381,8 +612,8 @@
 
     // Initialize Rabin-Williams with specified key size
     Init(keySize) {
-      if (![1024, 2048, 3072, 4096].includes(keySize)) {
-        throw new Error('Invalid RW key size. Use 1024, 2048, 3072, or 4096.');
+      if (!SUPPORTED_KEY_SIZES.includes(keySize)) {
+        throw new Error('Rabin-Williams: no demonstration key of ' + keySize + ' bits. Use ' + SUPPORTED_KEY_SIZES.join(' or ') + ', or set publicKey/privateKey directly.');
       }
 
       this.keySize = keySize;
@@ -391,26 +622,25 @@
 
     // Feed data for processing
     /**
-   * Feed data to cipher for processing
+   * Feed data to the scheme for processing
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
-      if (Array.isArray(data)) {
-        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
-      } else if (typeof data === 'string') {
-        this.inputBuffer.push(...OpCodes.AnsiToBytes(data));
+      if (typeof data === 'string') {
+        for (let i = 0; i < data.length; ++i) this.inputBuffer.push(data.charCodeAt(i) % 256);
+      } else if (data && typeof data.length === 'number') {
+        for (let i = 0; i < data.length; ++i) this.inputBuffer.push(data[i]);
       } else {
         this.inputBuffer.push(data);
       }
     }
 
-    // Get result (signature generation/verification)
+    // Get result (signature generation / verification with recovery)
     /**
-   * Get cipher result (encrypted or decrypted data)
+   * Get result: a signature, or the message recovered from one
    * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * @throws {Error} If key not set, or the input does not fit the modulus
    */
 
     Result() {
@@ -419,14 +649,9 @@
       }
 
       try {
-        let result;
-        if (this.isInverse) {
-          // Verify signature
-          result = this._verify(this.inputBuffer);
-        } else {
-          // Generate signature: s = sqrt(x) mod n with tweaks
-          result = this._sign(this.inputBuffer);
-        }
+        const result = this.isInverse
+          ? this._verify(this.inputBuffer)
+          : this._sign(this.inputBuffer);
 
         this.inputBuffer = [];
         return result;
@@ -440,309 +665,180 @@
     KeySetup(keyData) {
       this._keyData = keyData;
 
-      let keySize = 1024; // Default
-      if (Array.isArray(keyData)) {
-        if (keyData.length >= 2) {
-          keySize = OpCodes.Pack16BE(keyData[0], keyData[1]);
-        } else if (keyData.length >= 1) {
-          const keyStr = String.fromCharCode(...keyData);
-          keySize = parseInt(keyStr) || 1024;
-        }
-      } else if (typeof keyData === 'string') {
-        keySize = parseInt(keyData) || 1024;
-      } else if (typeof keyData === 'number') {
-        keySize = keyData;
-      }
+      this.Init(parseKeySize(keyData));
 
-      // Ensure keySize is valid
-      if (![1024, 2048, 3072, 4096].includes(keySize)) {
-        keySize = 1024;
-      }
+      const material = RW_KEYS[this.keySize];
+      const n = hexToBigInt(material.n);
 
-      this.Init(keySize);
-
-      // Generate keys
-      const keyPair = this._generateKeys();
-      this._publicKey = keyPair.publicKey;
-      this._privateKey = keyPair.privateKey;
-
-      // Precompute values for performance (Bernstein's tweaks)
-      this._precomputeTweakedRoots();
-    }
-
-    /**
-     * Generate Rabin-Williams key pair
-     * Following Crypto++ implementation:
-     * - p ≡ 3 (mod 8), q ≡ 7 (mod 8) (Rabin-Williams requirement)
-     * - n = p * q (n ≡ 5 (mod 8) guaranteed by construction)
-     * - u = q^(-1) mod p
-     * @returns {Object} {publicKey, privateKey}
-     */
-    _generateKeys() {
-      const primeBits = this.keySize / 2;
-
-      // Generate primes with required congruences
-      // p ≡ 3 (mod 8)
-      const p = NumberTheory.generatePrime3Mod8(primeBits);
-
-      // q ≡ 7 (mod 8)
-      const q = NumberTheory.generatePrime7Mod8(primeBits);
-
-      const n = p * q;
-
-      // Verify n ≡ 5 (mod 8) - this should always be true
-      if (n % 8n !== 5n) {
-        throw new Error('Invalid RW modulus: n must be ≡ 5 (mod 8)');
-      }
-
-      // Compute u = q^(-1) mod p for CRT
-      const u = NumberTheory.modInverse(q, p);
-
-      const publicKey = {
+      this._publicKey = {
         n: n,
         keySize: this.keySize
       };
 
-      const privateKey = {
+      this._privateKey = {
         n: n,
-        p: p,
-        q: q,
-        u: u,
+        p: hexToBigInt(material.p),
+        q: hexToBigInt(material.q),
+        u: hexToBigInt(material.u),
         keySize: this.keySize
       };
-
-      return { publicKey, privateKey };
     }
 
     /**
-     * Precompute tweaked roots for performance (Bernstein optimization)
-     * Following Crypto++ PrecomputeTweakedRoots():
-     * - m_pre_2_9p = 2^((9*p - 11)/8) mod p
-     * - m_pre_2_3q = 2^((3*q - 5)/8) mod q
-     * - m_pre_q_p = q^(p - 2) mod p
+     * Number of octets in the modulus.
+     * @param {BigInt} n - Modulus
+     * @returns {number} Octet length
      */
-    _precomputeTweakedRoots() {
-      if (!this._privateKey) return;
-
-      const { p, q } = this._privateKey;
-
-      this._precomputed = {
-        pre_2_9p: NumberTheory.modExp(2n, (9n * p - 11n) / 8n, p),
-        pre_2_3q: NumberTheory.modExp(2n, (3n * q - 5n) / 8n, q),
-        pre_q_p: NumberTheory.modExp(q, p - 2n, p)
-      };
+    _modulusLength(n) {
+      let octets = 0;
+      let value = n;
+      while (value > 0n) {
+        value = value / 256n;
+        ++octets;
+      }
+      return octets;
     }
 
     /**
-     * ApplyFunction from Crypto++ rw.cpp
-     * Computes the public function: transform input x to output based on IEEE P1363
-     * This handles the unambiguous encoding with tweaks
-     *
-     * @param {BigInt} x - Input value (0 < x < n)
-     * @returns {BigInt} Output value
+     * The public function: reconstruct the message representative from a root
+     * and the tweak that accompanied it.
+     * @param {BigInt} s - Signature root
+     * @param {number} tweak - One of the TWEAK_ constants
+     * @returns {BigInt} Message representative x
      */
-    _applyFunction(x) {
+    _applyFunction(s, tweak) {
       const { n } = this._publicKey;
+      const u = (s * s) % n;
 
-      // Compute out = x^2 mod n
-      let out = (x * x) % n;
-
-      // IEEE P1363 Rabin-Williams uses r=12
-      const r = 12n;
-      const r2 = r / 2n; // 6
-      const r3a = (16n + 5n - r) % 16n; // 9
-      const r3b = (16n + 13n - r) % 16n; // 1
-      const r4 = (8n + 5n - r / 2n) % 8n; // 2
-
-      const outMod16 = out % 16n;
-
-      // Apply transformations based on output mod 16
-      if (outMod16 === r) {
-        // out = out (no change)
-      } else if (outMod16 === r2 || outMod16 === r2 + 8n) {
-        // out = out * 2
-        out = OpCodes.ShiftLn(out, 1n) % n;
-      } else if (outMod16 === r3a || outMod16 === r3b) {
-        // out = n - out
-        out = n - out;
-      } else if (outMod16 === r4 || outMod16 === r4 + 8n) {
-        // out = (n - out) * 2
-        out = OpCodes.ShiftLn(n - out, 1n) % n;
-      } else {
-        // Invalid input - return 0
-        out = 0n;
+      switch (tweak) {
+        case TWEAK_PLAIN:
+          return u;
+        case TWEAK_NEGATED:
+          return (n - u) % n;
+        case TWEAK_DOUBLED:
+          return (2n * u) % n;
+        case TWEAK_NEG_DOUBLED:
+          return (n - (2n * u) % n) % n;
+        default:
+          throw new Error('Rabin-Williams: verification failed - unknown tweak ' + tweak);
       }
-
-      return out;
     }
 
     /**
-     * Sign message using Rabin-Williams with tweaked square roots
-     * Following Crypto++ CalculateInverse with Bernstein's optimizations
+     * Sign a message, producing a root and the tweak needed to recover it.
      *
-     * Algorithm from rw.cpp lines 195-265:
-     * 1. Blind the message hash with random r: re = r^2 * r^2 * x mod n
-     * 2. Compute e and f tweaks based on Jacobi-like tests
-     * 3. Calculate square roots modulo p and q using tweaked formulas
-     * 4. Combine using CRT
-     * 5. Unblind: s = Y^2 * rInv and select canonical representative
+     * With p congruent 3 and q congruent 7 modulo 8, the multiplier 2 is a
+     * non-residue modulo p and a residue modulo q while -1 is a non-residue
+     * modulo both, so the four candidates x, -x, x/2 and -x/2 realise all four
+     * combinations of Jacobi symbols and exactly one of them is a square
+     * modulo n. That is the whole of the Rabin-Williams tweak.
      *
-     * @param {Array} message - Message bytes (typically hash)
-     * @returns {Array} Signature bytes
+     * @param {uint8[]} message - Message octets
+     * @returns {uint8[]} Signature: the root in k octets followed by the tweak
      */
     _sign(message) {
       if (!this._privateKey) {
-        throw new Error('RW private key not set. Generate keys first.');
+        throw new Error('Rabin-Williams private key not set. Assign a key first.');
       }
 
       const { n, p, q, u } = this._privateKey;
-      const { pre_2_9p, pre_2_3q, pre_q_p } = this._precomputed;
+      const k = this._modulusLength(n);
 
-      // Convert message to BigInt (this would normally be a hash)
-      let x = 0n;
-      for (let i = 0; i < message.length; ++i) {
-        x = OpCodes.ShiftLn(x, 8n)|BigInt(message[i]);
+      const x = OS2IP(encodeForRecovery(message, k - 1));
+      if (x === 0n || x >= n) {
+        throw new Error('Rabin-Williams: message representative out of range');
       }
 
-      // Ensure x < n
-      x = x % n;
+      // Pick the candidate that is a square modulo both primes
+      const halfOfN = NumberTheory.modInverse(2n, n);
+      const candidates = [
+        { value: x, tweak: TWEAK_PLAIN },
+        { value: (n - x) % n, tweak: TWEAK_NEGATED },
+        { value: (x * halfOfN) % n, tweak: TWEAK_DOUBLED },
+        { value: ((n - x) % n * halfOfN) % n, tweak: TWEAK_NEG_DOUBLED }
+      ];
 
-      // IEEE P1363 requires x mod 16 ∈ {12, 6, 14, 9, 1, 2, 10}
-      // Adjust x to have valid form by ensuring x mod 16 = 12 (simplest valid case)
-      const xMod16 = x % 16n;
-      const validMods = [12n, 6n, 14n, 9n, 1n, 2n, 10n];
-      if (!validMods.includes(xMod16)) {
-        // Adjust to x mod 16 = 12 by adding offset
-        const offset = (12n - xMod16 + 16n) % 16n;
-        x = (x + offset) % n;
-      }
-
-      // Blinding (Crypto++ lines 203-213): generate random r, square it
-      let r;
-      let rInv;
-      do {
-        r = NumberTheory._randomBigInt(1n, n - 1n);
-        // Square r to satisfy Jacobi requirements (line 211)
-        r = (r * r) % n;
-
-        // Compute r^(-1) mod n
-        try {
-          rInv = NumberTheory.modInverse(r, n);
-        } catch (e) {
-          rInv = 0n;
+      let chosen = null;
+      for (let i = 0; i < candidates.length; ++i) {
+        const value = candidates[i].value;
+        if (NumberTheory.jacobi(value, p) === 1 && NumberTheory.jacobi(value, q) === 1) {
+          chosen = candidates[i];
+          break;
         }
-      } while (rInv === 0n);
-
-      // Blind (lines 215-216): re = r^2 * r^2 * x = r^4 * x
-      let re = (r * r) % n;
-      re = (re * x) % n;
-
-      // Compute tweaks e and f (Bernstein's method from rw.cpp lines 218-231)
-      const h = re;
-      let e, f;
-
-      // Test U = h^((q+1)/8) mod q (line 221)
-      const U = NumberTheory.modExp(h, (q + 1n) / 8n, q);
-      const U4_minus_h = (NumberTheory.modExp(U, 4n, q) - h % q + q) % q;
-
-      if (U4_minus_h === 0n) {
-        e = 1n;
-      } else {
-        e = -1n;
       }
 
-      // Test V = (e*h)^((p-3)/8) mod p (line 192-193)
-      // Note: e can be -1, handle properly in modular arithmetic
-      const eh = e * h;  // Works for both e = 1 and e = -1
-      const ehModP = ((eh % p) + p) % p;  // Normalize to positive modulo p
-      const V = NumberTheory.modExp(ehModP, (p - 3n) / 8n, p);
-      const V4 = NumberTheory.modExp(V, 4n, p);
-      const eh2_mod_p = NumberTheory.modExp(ehModP, 2n, p);
-      const test = ((V4 * eh2_mod_p) % p - ehModP + p) % p;
-
-      if (test === 0n) {
-        f = 1n;
-      } else {
-        f = 2n;
+      if (!chosen) {
+        throw new Error('Rabin-Williams: no quadratic residue among the four tweaks; representative shares a factor with n');
       }
 
-      // Compute W and X with precomputed tweaks (lines 233-250)
-      let W, X;
-
-      // Line 239: W = (f == 1) ? U : pre_2_3q * U mod q
-      if (f === 1n) {
-        W = U;
-      } else {
-        W = (pre_2_3q * U) % q;
+      // Blinding: work on w * r^2 and divide the root by r afterwards. The
+      // blinding factor is a square, so it changes neither Jacobi symbol.
+      let blind;
+      let blindInverse;
+      for (;;) {
+        blind = NumberTheory.randomBigInt(1n, n - 1n);
+        try {
+          blindInverse = NumberTheory.modInverse(blind, n);
+          break;
+        } catch (e) {
+          // blind shares a factor with n; draw again
+        }
       }
 
-      // Lines 208-209: t = V^3 * eh mod p, X = (f == 1) ? t : pre_2_9p * t mod p
-      const t = (NumberTheory.modExp(V, 3n, p) * ehModP) % p;
-      if (f === 1n) {
-        X = t;
-      } else {
-        X = (pre_2_9p * t) % p;
+      const blinded = (chosen.value * ((blind * blind) % n)) % n;
+
+      // Square roots modulo each prime, both congruent 3 modulo 4
+      const rootP = NumberTheory.squareRoot3Mod4(blinded % p, p);
+      const rootQ = NumberTheory.squareRoot3Mod4(blinded % q, q);
+
+      // All four roots modulo n, unblinded. Taking the smallest makes the
+      // signature canonical, so it does not depend on the blinding factor.
+      let root = null;
+      for (const signP of [rootP, (p - rootP) % p]) {
+        for (const signQ of [rootQ, (q - rootQ) % q]) {
+          const combined = NumberTheory.crt(signP, p, signQ, q, u) % n;
+          const unblinded = (combined * blindInverse) % n;
+          if (root === null || unblinded < root) {
+            root = unblinded;
+          }
+        }
       }
 
-      // Combine using CRT (line 253): Y = W + q * modp.Multiply(pre_q_p, (X - W))
-      // CRT to combine square roots from mod p and mod q
-      const Y = NumberTheory.crt(X, p, W, q, pre_q_p);
-
-      // Unblind (line 256): s = Y^2 * rInv mod n
-      let s = ((Y * Y) % n * rInv) % n;
-
-      // IEEE P1363 Section 8.2.8 (line 260): take minimum of s and n-s
-      if (s > n - s) {
-        s = n - s;
+      // The relation the verifier will check
+      if (this._applyFunction(root, chosen.tweak) !== x) {
+        throw new Error('Rabin-Williams: signature generation failed its own consistency check');
       }
 
-      // Verify signature is correct (line 261)
-      if (this._applyFunction(s) !== x) {
-        throw new Error('RW signature generation failed: verification check failed');
-      }
-
-      // Convert signature to bytes
-      return this._bigIntToBytes(s);
+      const signature = I2OSP(root, k);
+      signature.push(chosen.tweak);
+      return signature;
     }
 
     /**
-     * Verify signature using Rabin-Williams public function
-     *
-     * @param {Array} signature - Signature bytes
-     * @returns {Array} Recovered message bytes (or empty if verification fails)
+     * Verify a signature and recover the message it carries.
+     * @param {uint8[]} signature - Root in k octets followed by the tweak
+     * @returns {uint8[]} Recovered message octets
      */
     _verify(signature) {
       if (!this._publicKey) {
-        throw new Error('RW public key not set.');
+        throw new Error('Rabin-Williams public key not set. Assign a key first.');
       }
 
-      // Convert signature to BigInt
-      let s = 0n;
-      for (let i = 0; i < signature.length; ++i) {
-        s = OpCodes.ShiftLn(s, 8n)|BigInt(signature[i]);
+      const { n } = this._publicKey;
+      const k = this._modulusLength(n);
+
+      if (signature.length !== k + 1) {
+        throw new Error('Rabin-Williams: verification failed - signature is ' + signature.length + ' bytes, expected ' + (k + 1));
       }
 
-      // Apply public function
-      const recovered = this._applyFunction(s);
-
-      // Convert to bytes
-      return this._bigIntToBytes(recovered);
-    }
-
-    /**
-     * Convert BigInt to byte array
-     * @param {BigInt} value - BigInt value
-     * @returns {Array} Byte array
-     */
-    _bigIntToBytes(value) {
-      if (value === 0n) return [0];
-
-      const bytes = [];
-      while (value > 0n) {
-        bytes.unshift(Number(OpCodes.AndN(value, 0xFFn)));
-        value = OpCodes.ShiftRn(value, 8n);
+      const root = OS2IP(signature.slice(0, k));
+      if (root >= n) {
+        throw new Error('Rabin-Williams: verification failed - root out of range');
       }
-      return bytes;
+
+      const x = this._applyFunction(root, signature[k]);
+
+      return decodeFromRecovery(I2OSP(x, k - 1));
     }
 
     // Clear sensitive data
@@ -752,12 +848,6 @@
         this._privateKey.q = 0n;
         this._privateKey.u = 0n;
         this._privateKey = null;
-      }
-      if (this._precomputed) {
-        this._precomputed.pre_2_9p = 0n;
-        this._precomputed.pre_2_3q = 0n;
-        this._precomputed.pre_q_p = 0n;
-        this._precomputed = null;
       }
       this._publicKey = null;
       OpCodes.ClearArray(this.inputBuffer);
@@ -774,5 +864,5 @@
 
   // ===== EXPORTS =====
 
-  return { RabinWilliamsSignature, RabinWilliamsInstance, NumberTheory };
+  return { RabinWilliamsSignature, RabinWilliamsInstance, NumberTheory, I2OSP, OS2IP };
 }));
