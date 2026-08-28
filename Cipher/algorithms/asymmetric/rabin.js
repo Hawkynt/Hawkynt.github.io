@@ -237,7 +237,7 @@
      * @param {number} k - Number of rounds (higher = more accurate)
      * @returns {boolean} True if probably prime
      */
-    isProbablyPrime: function(n, k = 20) {
+    isProbablyPrime: function(n, k = 20, source) {
       if (n === 2n || n === 3n) return true;
       if (n < 2n || n % 2n === 0n) return false;
 
@@ -252,7 +252,7 @@
       // Witness loop
       for (let i = 0; i < k; ++i) {
         // Pick random witness a in [2, n-2]
-        const a = this._randomBigInt(2n, n - 2n);
+        const a = this._randomBigInt(2n, n - 2n, source);
 
         let x = this.modExp(a, d, n);
 
@@ -279,17 +279,19 @@
      * Generate random BigInt in range [min, max]
      * @param {BigInt} min - Minimum value
      * @param {BigInt} max - Maximum value
+     * @param {function} [source] - Optional deterministic bit source returning 0n or 1n
      * @returns {BigInt} Random value
      */
-    _randomBigInt: function(min, max) {
+    _randomBigInt: function(min, max, source) {
       const range = max - min + 1n;
       const bits = range.toString(2).length;
+      const nextBit = source || (() => BigInt(Math.random() < 0.5 ? 0 : 1));
 
       let result;
       do {
         result = 0n;
         for (let i = 0; i < bits; ++i) {
-          result = OpCodes.OrN(OpCodes.ShiftLn(result, 1n), BigInt(Math.random() < 0.5 ? 0 : 1));
+          result = OpCodes.OrN(OpCodes.ShiftLn(result, 1n), nextBit());
         }
       } while (result >= range);
 
@@ -297,17 +299,54 @@
     },
 
     /**
+     * Deterministic bit source for key generation.
+     *
+     * A key pair has to be a function of the key material and nothing else. The
+     * generator below is SplitMix64 (Steele, Lea and Flood, "Fast Splittable
+     * Pseudorandom Number Generators", OOPSLA 2014), seeded from the caller's
+     * key bytes, so the same key always yields the same p and q.
+     *
+     * @param {uint8[]} seedBytes - Key material to seed from
+     * @returns {function} Bit source returning 0n or 1n
+     */
+    deterministicBitSource: function(seedBytes) {
+      const MASK64 = 0xFFFFFFFFFFFFFFFFn;
+      let state = 0x243F6A8885A308D3n;   // pi, first 64 fractional bits
+      // FNV-1a over the key material, so every seed byte reaches the state
+      for (let i = 0; i < seedBytes.length; ++i)
+        state = OpCodes.AndN(OpCodes.XorN(state, BigInt(seedBytes[i] % 256)) * 0x100000001B3n, MASK64);
+
+      let reservoir = 0n;
+      let available = 0;
+      return function nextBit() {
+        if (available === 0) {
+          state = OpCodes.AndN(state + 0x9E3779B97F4A7C15n, MASK64);
+          let z = state;
+          z = OpCodes.AndN(OpCodes.XorN(z, OpCodes.ShiftRn(z, 30n)) * 0xBF58476D1CE4E5B9n, MASK64);
+          z = OpCodes.AndN(OpCodes.XorN(z, OpCodes.ShiftRn(z, 27n)) * 0x94D049BB133111EBn, MASK64);
+          reservoir = OpCodes.XorN(z, OpCodes.ShiftRn(z, 31n));
+          available = 64;
+        }
+        const bit = OpCodes.AndN(reservoir, 1n);
+        reservoir = OpCodes.ShiftRn(reservoir, 1n);
+        --available;
+        return bit;
+      };
+    },
+
+    /**
      * Generate random prime p ≡ 3 (mod 4) of specified bit length
      * @param {number} bits - Bit length of prime
+     * @param {function} [source] - Optional deterministic bit source
      * @returns {BigInt} Random prime
      */
-    generatePrime3Mod4: function(bits) {
+    generatePrime3Mod4: function(bits, source) {
       const minValue = OpCodes.ShiftLn(1n, BigInt(bits - 1));
       const maxValue = OpCodes.ShiftLn(1n, BigInt(bits)) - 1n;
 
       let candidate;
       do {
-        candidate = this._randomBigInt(minValue, maxValue);
+        candidate = this._randomBigInt(minValue, maxValue, source);
         // Ensure candidate ≡ 3 (mod 4)
         if (candidate % 4n !== 3n) {
           candidate = candidate - (candidate % 4n) + 3n;
@@ -315,11 +354,17 @@
         }
         // Make sure it's odd
         if (candidate % 2n === 0n) candidate += 4n;
-      } while (!this.isProbablyPrime(candidate));
+      } while (!this.isProbablyPrime(candidate, 20, source));
 
       return candidate;
     }
   };
+
+  // A key pair is a pure function of the key material, so it is derived once and
+  // reused. Without this every instance would pay for two probable-prime searches
+  // and the encrypting and decrypting instances of a single message would each
+  // spend that time separately.
+  const KEY_PAIR_CACHE = new Map();
 
   // ===== RABIN ALGORITHM IMPLEMENTATION =====
 
@@ -542,14 +587,45 @@
      * - n = p * q
      * - Find r, s such that Jacobi(r, p) = 1, Jacobi(r, q) = -1
      *                        Jacobi(s, p) = -1, Jacobi(s, q) = 1
+     *
+     * The pair is derived deterministically from the supplied key material. A
+     * key pair drawn from Math.random on every CreateInstance call cannot be
+     * used at all: the encrypting instance and the decrypting instance would
+     * hold different moduli, so no ciphertext could ever be decrypted and the
+     * scheme would be broken by construction rather than by its mathematics.
+     *
+     * Note what the key material is here: this interface takes a modulus size,
+     * not a private key, so the pair it derives is reproducible by anyone who
+     * knows that size and offers no confidentiality. That is what the
+     * EDUCATIONAL security status on this algorithm means. Real use has to
+     * supply p and q, which is what the publicKey and privateKey setters are
+     * for.
+     *
      * @returns {Object} {publicKey, privateKey}
      */
     _generateKeys() {
+      // The key size is always part of the seed, so two sizes cannot share a
+      // stream even when the caller passes the size in some other form.
+      const supplied = Array.isArray(this._keyData) ? this._keyData
+        : typeof this._keyData === 'string' ? this._keyData.split('').map(c => c.charCodeAt(0) % 256)
+        : [];
+      const seedMaterial = supplied.concat([this.keySize % 256, Math.floor(this.keySize / 256) % 256]);
+      const cacheKey = seedMaterial.join(',');
+      const cached = KEY_PAIR_CACHE.get(cacheKey);
+      // BigInt is immutable, so a shallow copy is enough to keep a caller's
+      // ClearData from zeroing the cached pair out from under the next instance.
+      if (cached)
+        return { publicKey: { ...cached.publicKey }, privateKey: { ...cached.privateKey } };
+
       const primeBits = this.keySize / 2;
 
-      // Generate two primes p, q ≡ 3 (mod 4)
-      const p = NumberTheory.generatePrime3Mod4(primeBits);
-      const q = NumberTheory.generatePrime3Mod4(primeBits);
+      // Generate two primes p, q ≡ 3 (mod 4). Two independent bit sources are
+      // used so that p and q are drawn from different streams and cannot
+      // coincide.
+      const p = NumberTheory.generatePrime3Mod4(primeBits,
+        NumberTheory.deterministicBitSource(seedMaterial.concat([0x70])));
+      const q = NumberTheory.generatePrime3Mod4(primeBits,
+        NumberTheory.deterministicBitSource(seedMaterial.concat([0x71])));
 
       const n = p * q;
 
@@ -595,6 +671,7 @@
         keySize: this.keySize
       };
 
+      KEY_PAIR_CACHE.set(cacheKey, { publicKey: { ...publicKey }, privateKey: { ...privateKey } });
       return { publicKey, privateKey };
     }
 
@@ -678,6 +755,16 @@
       const r_blind_sq = (r_blind * r_blind) % n;
       let c_blind = (c * r_blind_sq) % n;
 
+      // The blinding factor enters squared, so it changes neither Jacobi symbol
+      // of the ciphertext - but the roots extracted below are those of
+      // (m * r_blind)^2, not of m^2. Selecting the root by Jacobi(m, n) alone
+      // therefore picks the wrong one of the two conjugate pairs whenever the
+      // blinding factor is a quadratic non-residue, which is half the time; the
+      // parity correction at the end can only tell m from n-m, so the wrong pair
+      // survives to the output. The target symbol is
+      // Jacobi(m * r_blind, n) = Jacobi(m, n) * Jacobi(r_blind, n).
+      const jBlind = NumberTheory.jacobi(r_blind, n);
+
       // Compute cp = c_blind mod p, cq = c_blind mod q
       let cp = c_blind % p;
       let cq = c_blind % q;
@@ -707,8 +794,10 @@
       cp = NumberTheory.modularSquareRoot(cp, p);
       cq = NumberTheory.modularSquareRoot(cq, q);
 
-      // Adjust sign for jp = -1
-      if (jp === -1) {
+      // Select the conjugate pair. modularSquareRoot returns the root that is
+      // itself a residue mod p, so the combined root starts with Jacobi +1;
+      // negating it mod p flips the symbol because p ≡ 3 (mod 4).
+      if (jp * jBlind === -1) {
         cp = p - cp;
       }
 
