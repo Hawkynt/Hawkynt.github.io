@@ -192,18 +192,6 @@
     }
 
     // Feed data to the cipher
-    /**
-   * Feed data to cipher for processing
-   * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
-   */
-
-    Feed(data) {
-      if (!data || data.length === 0) return;
-
-      // Add data to input buffer
-      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
-    }
 
     // Get the result of the transformation
     /**

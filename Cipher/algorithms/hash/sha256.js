@@ -43,7 +43,8 @@
           PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
           IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
-          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize,
+          BlockAbsorber, MerkleDamgardBlocks } = AlgorithmFramework;
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -220,9 +221,7 @@
 
       // SHA-2-256 state variables
       this._h = null;
-      this._buffer = null;
-      this._length = 0;
-      this._bufferLength = 0;
+      this._absorber = null;
     }
 
     /**
@@ -233,9 +232,7 @@
       // Use initial hash values from algorithm (variant-specific)
       this._h = [...this.algorithm.INITIAL_HASH];
 
-      this._buffer = new Array(64);
-      this._length = 0;
-      this._bufferLength = 0;
+      this._absorber = new BlockAbsorber(64, block => this._processBlock(block));
     }
 
     /**
@@ -302,53 +299,24 @@
         data = bytes;
       }
 
-      for (let i = 0; i < data.length; i++) {
-        this._buffer[this._bufferLength++] = data[i];
-
-        if (this._bufferLength === 64) {
-          this._processBlock(this._buffer);
-          this._bufferLength = 0;
-        }
-      }
-
-      this._length += data.length;
+      this._absorber.Absorb(data);
     }
 
     /**
      * Finalize the hash calculation and return result as byte array
+     * NIST FIPS 180-4 Section 5.1.1
      * @returns {Array} Hash digest as byte array (truncated for SHA-224)
      */
     Final() {
-      // Add padding bit
-      this._buffer[this._bufferLength++] = 0x80;
-
-      // If not enough space for length, pad and process block
-      if (this._bufferLength > 56) {
-        while (this._bufferLength < 64) {
-          this._buffer[this._bufferLength++] = 0x00;
-        }
-        this._processBlock(this._buffer);
-        this._bufferLength = 0;
-      }
-
-      // Pad to 56 bytes
-      while (this._bufferLength < 56) {
-        this._buffer[this._bufferLength++] = 0x00;
-      }
-
-      // Append length in bits as 64-bit big-endian
-      const lengthBits = this._length * 8;
-      // High 32 bits (for messages under 2^32 bits, this is 0)
-      this._buffer[56] = 0; this._buffer[57] = 0; this._buffer[58] = 0; this._buffer[59] = 0;
-      // Low 32 bits - use OpCodes for byte extraction
-      const lengthBytes = OpCodes.Unpack32BE(lengthBits);
-      this._buffer[60] = lengthBytes[0];
-      this._buffer[61] = lengthBytes[1];
-      this._buffer[62] = lengthBytes[2];
-      this._buffer[63] = lengthBytes[3];
-
-      // Process final block
-      this._processBlock(this._buffer);
+      // The pad byte, the zero fill, the 64-bit big-endian bit length and the
+      // second block that is needed when the length no longer fits all come
+      // from MerkleDamgardBlocks, so the boundary test is written once rather
+      // than once per hash. The old inline copy also wrote the high half of the
+      // length field as a hard-coded zero, which is right only below 2^29 bytes.
+      this._absorber.Finish((held, pending, total) => {
+        for (const block of MerkleDamgardBlocks(held, pending, total, { blockSize: 64, lengthBytes: 8 }))
+          this._processBlock(block);
+      });
 
       // Convert hash to byte array, truncated based on variant
       // SHA-224: 7 words (28 bytes), SHA-256: 8 words (32 bytes)
@@ -395,9 +363,7 @@
 
     ClearData() {
       if (this._h) OpCodes.ClearArray(this._h);
-      if (this._buffer) OpCodes.ClearArray(this._buffer);
-      this._length = 0;
-      this._bufferLength = 0;
+      if (this._absorber) this._absorber.Reset();
     }
 
     /**

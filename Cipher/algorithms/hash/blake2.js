@@ -33,7 +33,8 @@
 
   // Extract framework components
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          HashFunctionAlgorithm, IHashFunctionInstance, LinkItem } = AlgorithmFramework;
+          HashFunctionAlgorithm, IHashFunctionInstance, LinkItem,
+          BlockAbsorber } = AlgorithmFramework;
 
   // ===== SHARED BLAKE2 CONSTANTS =====
 
@@ -174,9 +175,10 @@
     this.outputLength = outputLength || BLAKE2B_OUTBYTES;
     this.key = key || null;
     this.h = new Array(8);
-    this.buffer = new Uint8Array(BLAKE2B_BLOCKBYTES);
-    this.bufferLength = 0;
     this.counter = BigInt(0);
+    // Holds the last full block back, so finalize always sees the block the
+    // finalization flag belongs to. See BlockAbsorber.
+    this._absorber = new BlockAbsorber(BLAKE2B_BLOCKBYTES, block => this._compress(block));
 
     // Initialize hash state
     for (let i = 0; i < 8; i++) {
@@ -200,65 +202,47 @@
     }
   }
 
+  /**
+   * Compress one full block that is known not to be the last.
+   * @param {byte[]} block - exactly BLAKE2B_BLOCKBYTES bytes
+   */
+  Blake2bHasher.prototype._compress = function(block) {
+    this.counter += BigInt(BLAKE2B_BLOCKBYTES);
+    const m = bytesToWords64(block);
+    while (m.length < 16) m.push(BigInt(0));
+    BLAKE2b_compress(this.h, m, this.counter, false);
+  };
+
   Blake2bHasher.prototype.update = function(data) {
     if (typeof data === 'string') {
       data = OpCodes.AnsiToBytes(data);
     }
-
-    let offset = 0;
-
-    while (offset < data.length) {
-      const remaining = BLAKE2B_BLOCKBYTES - this.bufferLength;
-      const toCopy = Math.min(remaining, data.length - offset);
-
-      // Copy data to buffer
-      for (let i = 0; i < toCopy; i++) {
-        this.buffer[this.bufferLength + i] = data[offset + i];
-      }
-
-      this.bufferLength += toCopy;
-      offset += toCopy;
-
-      // Process full blocks, but never the last one. RFC 7693 section 3.3
-      // compresses the final block with the finalization flag set, and for a
-      // message whose length is an exact multiple of the block size that final
-      // block is a full one. Compressing it here as soon as the buffer filled
-      // left finalize() to run on an empty block, so every message of exactly
-      // 128, 256, 384 ... bytes hashed to the wrong value. A full buffer is
-      // therefore held back until more data proves it is not the last.
-      if (this.bufferLength === BLAKE2B_BLOCKBYTES && offset < data.length) {
-        this.counter += BigInt(BLAKE2B_BLOCKBYTES);
-        const m = bytesToWords64(this.buffer);
-
-        // Pad message block to 16 words
-        while (m.length < 16) {
-          m.push(BigInt(0));
-        }
-
-        BLAKE2b_compress(this.h, m, this.counter, false);
-        this.bufferLength = 0;
-      }
-    }
+    this._absorber.Absorb(data);
   };
 
+  /**
+   * RFC 7693 section 3.3 compresses the final block with the finalization flag
+   * set, and for a message whose length is an exact multiple of the block size
+   * that final block is a full one. The absorber holds it back, so the flag can
+   * never be missed the way it was for every message of exactly 128, 256, 384
+   * ... bytes.
+   *
+   * Nothing here writes to the hasher, so calling it twice gives the same
+   * digest twice.
+   */
   Blake2bHasher.prototype.finalize = function() {
-    // Process final block
-    this.counter += BigInt(this.bufferLength);
+    return this._absorber.Finish((held, pending) => {
+      const block = new Array(BLAKE2B_BLOCKBYTES).fill(0);
+      for (let i = 0; i < pending; i++) block[i] = held[i];
 
-    // Pad final block with zeros
-    for (let i = this.bufferLength; i < BLAKE2B_BLOCKBYTES; i++) {
-      this.buffer[i] = 0x00;
-    }
+      const m = bytesToWords64(block);
+      while (m.length < 16) m.push(BigInt(0));
 
-    const m = bytesToWords64(this.buffer);
-    while (m.length < 16) {
-      m.push(BigInt(0));
-    }
+      const h = this.h.slice();
+      BLAKE2b_compress(h, m, this.counter + BigInt(pending), true);
 
-    BLAKE2b_compress(this.h, m, this.counter, true);
-
-    // Convert hash state to bytes
-    return words64ToBytes(this.h, this.outputLength);
+      return words64ToBytes(h, this.outputLength);
+    });
   };
 
   // ===== BLAKE2S (32-BIT) IMPLEMENTATION =====
@@ -336,10 +320,12 @@
     this.outputLength = outputLength || BLAKE2S_OUTBYTES;
     this.key = key || null;
     this.h = new Uint32Array(8);
-    this.buffer = new Uint8Array(BLAKE2S_BLOCKBYTES);
-    this.bufferLength = 0;
     this.t0 = 0; // Low 32 bits of counter
     this.t1 = 0; // High 32 bits of counter
+    // The same absorber BLAKE2b uses. These two implementations of one rule
+    // used to disagree, which is how the BLAKE2b defect survived review in a
+    // file that also contained a correct copy.
+    this._absorber = new BlockAbsorber(BLAKE2S_BLOCKBYTES, block => this._compress(block));
 
     // Tree hashing / XOF parameters
     const fanout = (xofParams && xofParams.fanout !== undefined) ? xofParams.fanout : 1;
@@ -392,85 +378,61 @@
     }
   }
 
+  /**
+   * Turn a 64-byte block into 16 little-endian 32-bit words.
+   * @param {byte[]} block
+   * @returns {Uint32Array}
+   */
+  function blake2sWords(block) {
+    const m = new Uint32Array(16);
+    for (let i = 0; i < 16; i++)
+      m[i] = OpCodes.Pack32LE(block[i * 4], block[i * 4 + 1], block[i * 4 + 2], block[i * 4 + 3]);
+    return m;
+  }
+
+  /**
+   * Compress one full block that is known not to be the last.
+   * @param {byte[]} block - exactly BLAKE2S_BLOCKBYTES bytes
+   */
+  Blake2sHasher.prototype._compress = function(block) {
+    // Increment counter (64-bit addition)
+    this.t0 += BLAKE2S_BLOCKBYTES;
+    if (this.t0 < BLAKE2S_BLOCKBYTES) {
+      this.t1++; // Overflow
+    }
+    BLAKE2s_compress(this.h, blake2sWords(block), this.t0, this.t1, false);
+  };
+
   Blake2sHasher.prototype.update = function(data) {
     if (typeof data === 'string') {
       data = OpCodes.AnsiToBytes(data);
     }
-
-    let offset = 0;
-
-    while (offset < data.length) {
-      const remaining = BLAKE2S_BLOCKBYTES - this.bufferLength;
-      const toCopy = Math.min(remaining, data.length - offset);
-
-      // Copy data to buffer
-      for (let i = 0; i < toCopy; i++) {
-        this.buffer[this.bufferLength + i] = data[offset + i];
-      }
-
-      this.bufferLength += toCopy;
-      offset += toCopy;
-
-      // Process full blocks ONLY if there's more data to come
-      if (this.bufferLength === BLAKE2S_BLOCKBYTES && offset < data.length) {
-        // Increment counter (64-bit addition)
-        this.t0 += BLAKE2S_BLOCKBYTES;
-        if (this.t0 < BLAKE2S_BLOCKBYTES) {
-          this.t1++; // Overflow
-        }
-
-        // Convert buffer to 32-bit words (little-endian)
-        const m = new Uint32Array(16);
-        for (let i = 0; i < 16; i++) {
-          m[i] = OpCodes.Pack32LE(
-            this.buffer[i * 4],
-            this.buffer[i * 4 + 1],
-            this.buffer[i * 4 + 2],
-            this.buffer[i * 4 + 3]
-          );
-        }
-
-        BLAKE2s_compress(this.h, m, this.t0, this.t1, false);
-        this.bufferLength = 0;
-        // Clear buffer after processing
-        for (let i = 0; i < BLAKE2S_BLOCKBYTES; i++) {
-          this.buffer[i] = 0;
-        }
-      }
-    }
+    this._absorber.Absorb(data);
   };
 
   Blake2sHasher.prototype.finalize = function() {
-    // Increment counter for final block
-    this.t0 += this.bufferLength;
-    if (this.t0 < this.bufferLength) {
-      this.t1++; // Overflow
-    }
+    return this._absorber.Finish((held, pending) => this._finalize(held, pending));
+  };
 
-    // Pad final block with zeros
-    for (let i = this.bufferLength; i < BLAKE2S_BLOCKBYTES; i++) {
-      this.buffer[i] = 0;
-    }
+  Blake2sHasher.prototype._finalize = function(held, pending) {
+    // Counter and state are advanced on copies, so finalizing twice gives the
+    // same digest twice and Result() needs no clone of the hasher.
+    let t0 = this.t0 + pending;
+    let t1 = this.t1;
+    if (t0 < pending) t1++; // Overflow
 
-    // Convert buffer to 32-bit words (little-endian)
-    const m = new Uint32Array(16);
-    for (let i = 0; i < 16; i++) {
-      m[i] = OpCodes.Pack32LE(
-        this.buffer[i * 4],
-        this.buffer[i * 4 + 1],
-        this.buffer[i * 4 + 2],
-        this.buffer[i * 4 + 3]
-      );
-    }
+    const block = new Array(BLAKE2S_BLOCKBYTES).fill(0);
+    for (let i = 0; i < pending; i++) block[i] = held[i];
 
-    BLAKE2s_compress(this.h, m, this.t0, this.t1, true);
+    const h = new Uint32Array(this.h);
+    BLAKE2s_compress(h, blake2sWords(block), t0, t1, true);
 
     // Convert hash state to bytes (little-endian)
     const output = new Uint8Array(this.outputLength);
     for (let i = 0; i < this.outputLength; i++) {
       const wordIndex = Math.floor(i / 4);
       const byteIndex = i % 4;
-      const word = this.h[wordIndex];
+      const word = h[wordIndex];
       output[i] = OpCodes.GetByte(word, byteIndex);
     }
 
@@ -792,16 +754,9 @@
 
     Result() {
       if (!this._hasher) this.Init();
-      // Create a copy of the current state to avoid modifying the original
-      const hasherCopy = new Blake2sHasher(null, BLAKE2S_OUTBYTES);
-      hasherCopy.h = new Uint32Array(this._hasher.h);
-      hasherCopy.buffer = new Uint8Array(this._hasher.buffer);
-      hasherCopy.bufferLength = this._hasher.bufferLength;
-      hasherCopy.t0 = this._hasher.t0;
-      hasherCopy.t1 = this._hasher.t1;
-
-      const result = hasherCopy.finalize();
-      return Array.from(result);
+      // finalize() advances the counter and the state on copies, so it no
+      // longer needs a clone of the hasher to stay repeatable.
+      return Array.from(this._hasher.finalize());
     }
   }
 

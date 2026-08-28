@@ -32,7 +32,8 @@
   if (!OpCodes) throw new Error('OpCodes dependency is required');
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          HashFunctionAlgorithm, IHashFunctionInstance, LinkItem, KeySize } = AlgorithmFramework;
+          HashFunctionAlgorithm, IHashFunctionInstance, LinkItem, KeySize,
+          BlockAbsorber, SpongePadBlocks } = AlgorithmFramework;
 
   // Keccak constants shared by all variants
   const ROUNDS = 24;
@@ -320,8 +321,7 @@
       this.state = new Array(25);
       for (let i = 0; i < 25; i++) this.state[i] = [0, 0];
       this.rate = algorithm.rate;
-      this.buffer = new Uint8Array(this.rate);
-      this.bufferLength = 0;
+      this._absorber = new BlockAbsorber(this.rate, block => this._absorb(block));
       this._outputSize = algorithm.variant === '256' ? 64 : 32; // Default based on variant
       this._functionName = []; // N parameter (usually empty, reserved for NIST)
       this._customization = []; // S parameter (customization string)
@@ -381,27 +381,17 @@
       // encodeString(S)
       diff.push(...encodeString(this._customization));
 
-      // Absorb diff with bytepad to block boundary
-      let offset = 0;
-      while (offset < diff.length) {
-        const toCopy = Math.min(this.rate - this.bufferLength, diff.length - offset);
-        for (let i = 0; i < toCopy; i++) {
-          this.buffer[this.bufferLength++] = diff[offset++];
-        }
-
-        if (this.bufferLength === this.rate) {
-          this._absorb();
-          this.bufferLength = 0;
-        }
-      }
-
-      // Pad to block boundary (bytepad)
-      if (this.bufferLength > 0) {
-        while (this.bufferLength < this.rate) {
-          this.buffer[this.bufferLength++] = 0;
-        }
-        this._absorb();
-        this.bufferLength = 0;
+      // Absorb diff with bytepad to block boundary. This is bytepad (NIST SP
+      // 800-185 section 2.3.3), a zero fill to a rate boundary, and not the
+      // sponge's pad10*1 - it carries no domain separator and no terminating
+      // bit, so it is written out here rather than going through
+      // SpongePadBlocks. It always ends on a block boundary, which is why the
+      // message absorber that follows starts empty.
+      for (let offset = 0; offset < diff.length; offset += this.rate) {
+        const block = new Array(this.rate).fill(0);
+        const toCopy = Math.min(this.rate, diff.length - offset);
+        for (let i = 0; i < toCopy; i++) block[i] = diff[offset + i];
+        this._absorb(block);
       }
     }
 
@@ -417,25 +407,14 @@
       // Apply customization before first input
       this._applyCustomization();
 
-      let offset = 0;
-      while (offset < data.length && this.bufferLength < this.rate) {
-        this.buffer[this.bufferLength++] = data[offset++];
-      }
-
-      while (this.bufferLength === this.rate) {
-        this._absorb();
-        this.bufferLength = 0;
-        while (offset < data.length && this.bufferLength < this.rate) {
-          this.buffer[this.bufferLength++] = data[offset++];
-        }
-      }
+      this._absorber.Absorb(data);
     }
 
-    _absorb() {
+    _absorb(block) {
       for (let i = 0; i < this.rate; i += 8) {
         const idx = Math.floor(i / 8);
-        const low = OpCodes.Pack32LE(this.buffer[i] || 0, this.buffer[i+1] || 0, this.buffer[i+2] || 0, this.buffer[i+3] || 0);
-        const high = OpCodes.Pack32LE(this.buffer[i+4] || 0, this.buffer[i+5] || 0, this.buffer[i+6] || 0, this.buffer[i+7] || 0);
+        const low = OpCodes.Pack32LE(block[i] || 0, block[i+1] || 0, block[i+2] || 0, block[i+3] || 0);
+        const high = OpCodes.Pack32LE(block[i+4] || 0, block[i+5] || 0, block[i+6] || 0, block[i+7] || 0);
         this.state[idx][0] ^= low;
         this.state[idx][1] ^= high;
       }
@@ -457,11 +436,14 @@
                                (this._customization && this._customization.length > 0);
       const domainByte = hasCustomization ? 0x04 : 0x1F; // 0x04 for cSHAKE, 0x1F for SHAKE
 
-      // Padding: domain_byte || zeros || 0x80
-      this.buffer[this.bufferLength] = domainByte;
-      for (let i = this.bufferLength + 1; i < this.rate - 1; i++) this.buffer[i] = 0;
-      this.buffer[this.rate - 1] = 0x80;
-      this._absorb();
+      // Padding: domain_byte || pad10*1. The two land on the same byte when
+      // exactly one byte of the block is free, and writing the terminating bit
+      // over the domain byte rather than into it dropped the domain separation
+      // that cSHAKE exists to provide - the same defect, in the same shape, as
+      // the one repaired in sha3.js and shake.js.
+      for (const block of this._absorber.Finish((held, pending) =>
+        SpongePadBlocks(held, pending, this.rate, domainByte)))
+        this._absorb(block);
 
       // Squeeze output
       const output = new Uint8Array(this._outputSize);
