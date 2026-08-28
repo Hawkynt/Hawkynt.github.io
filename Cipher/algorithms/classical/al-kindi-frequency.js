@@ -315,13 +315,6 @@
       }
 
       // Feed data to the cipher
-      Feed(data) {
-        if (!data || data.length === 0) return;
-        // Feed is a streaming interface: successive calls extend the message
-        // rather than replace it, so Feed(a); Feed(b) processes the same bytes
-        // as Feed(a || b).
-        for (let i = 0; i < data.length; i++) this.inputBuffer.push(data[i]);
-      }
 
       // Get the result of the transformation  
       Result() {

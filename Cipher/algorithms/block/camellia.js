@@ -420,48 +420,7 @@
       return this._key ? [...this._key] : null;
     }
 
-    /**
-   * Feed data to cipher for processing
-   * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
-   */
 
-    Feed(data) {
-      if (!data || data.length === 0) return;
-      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
-    }
-
-    /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
-   */
-
-    Result() {
-      if (!this.key) throw new Error("Key not set");
-      if (this.inputBuffer.length === 0) throw new Error("No data fed");
-
-      // Validate input length
-      if (this.inputBuffer.length % this.BlockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
-      }
-
-      const output = [];
-
-      // Process each 16-byte block
-      for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
-        const block = this.inputBuffer.slice(i, i + this.BlockSize);
-        const processedBlock = this.isInverse 
-          ? this._decryptBlock(block) 
-          : this._encryptBlock(block);
-        for (let _i = 0; _i < processedBlock.length; _i++) output.push(processedBlock[_i]);
-      }
-
-      // Clear input buffer
-      this.inputBuffer = [];
-
-      return output;
-    }
 
     _setKey(forEncryption, key) {
       const k = new Array(8);
@@ -773,7 +732,7 @@
       return output;
     }
 
-    _encryptBlock(plaintext) {
+    EncryptBlock(plaintext) {
       if (!this.key) {
         throw new Error('Key not set');
       }
@@ -785,7 +744,7 @@
       }
     }
 
-    _decryptBlock(ciphertext) {
+    DecryptBlock(ciphertext) {
       // For decryption, we need to set up the key schedule for decryption
       // Store current key and re-setup for decryption
       const savedKey = [...this._key];

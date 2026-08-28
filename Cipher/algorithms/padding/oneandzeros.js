@@ -223,20 +223,6 @@
       return this._blockSize;
     }
 
-    /**
-     * Feeds input data into the padding instance for accumulation.
-     * Part of the Feed/Result pattern - data is accumulated until Result() is called.
-     *
-     * @param {Uint8Array} data - Input data bytes to accumulate. Empty or null data is ignored.
-     *
-     * @example
-     * instance.Feed([0xFF, 0xFF, 0xFF]);
-     * instance.Feed([0xAA, 0xBB]);  // Accumulates with previous data
-     */
-    Feed(data) {
-      if (!data || data.length === 0) return;
-      for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
-    }
 
     /**
      * Processes all accumulated data and returns the padded or unpadded result.

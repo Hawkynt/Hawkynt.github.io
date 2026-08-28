@@ -277,6 +277,309 @@
     }
     //#endregion
 
+    //#region ===== Shared Construction Primitives =====
+    //
+    // Every defect this region exists to prevent was found in code that each
+    // algorithm had written for itself. The pattern is always the same: a rule
+    // that is easy to state and easy to get subtly wrong, restated by hand in
+    // dozens of files, where the copies disagree and only some of them are
+    // right. The fix is not to document the rule but to put the only correct
+    // spelling of it somewhere a caller cannot route around.
+    //
+    // They live here rather than in OpCodes because none of them is a bit
+    // operation. OpCodes is a namespace of pure width-and-endianness helpers;
+    // these are the shapes the Feed/Result contract takes, which is exactly
+    // what this file already describes. Keeping them here also means a
+    // migrating algorithm deletes code and imports nothing: every file already
+    // has AlgorithmFramework in its dependency list, whereas a third module
+    // would need a new entry in 933 UMD headers and a new script tag ordered
+    // correctly in the browser.
+    //
+    // None of these needs OpCodes, so this file keeps its empty dependency list
+    // and its position in the browser's script order stays free.
+
+    /**
+     * Reduce any numeric value to a byte, without bit operators.
+     * @param {number} value
+     * @returns {int} 0..255
+     */
+    function _byte(value) {
+      const reduced = Math.trunc(value) % 256
+      return reduced < 0 ? reduced + 256 : reduced
+    }
+
+    /**
+     * Merge the set bits of two bytes.
+     *
+     * This is the whole of the SHA-3 and Keccak defect in one function. The
+     * padded block ends with pad10*1's terminating bit in the top bit of the
+     * last rate byte, and it begins with a domain separator at the first free
+     * byte. When exactly one byte is free those are the same byte, and writing
+     * the terminating bit *over* the separator instead of *into* it silently
+     * dropped the separator, so every message of length rate-1 (mod rate)
+     * hashed to the wrong value. Merging is the only correct operation, so it
+     * is the only one offered.
+     *
+     * @param {int} a
+     * @param {int} b
+     * @returns {int} 0..255 with every bit set in either input
+     */
+    function _mergeBits(a, b) {
+      const left = _byte(a)
+      const right = _byte(b)
+      let merged = 0
+      let weight = 1
+      for (let bit = 0; bit < 8; bit++) {
+        if (Math.floor(left / weight) % 2 === 1 || Math.floor(right / weight) % 2 === 1)
+          merged += weight
+        weight *= 2
+      }
+      return merged
+    }
+
+    /**
+     * Encode a length into a fixed-width big- or little-endian field.
+     * @param {number} value
+     * @param {int} byteCount
+     * @param {bool} littleEndian
+     * @returns {byte[]}
+     */
+    function _encodeLength(value, byteCount, littleEndian) {
+      const encoded = new Array(byteCount).fill(0)
+      let remaining = Math.max(0, Math.trunc(value))
+      for (let i = 0; i < byteCount; i++) {
+        encoded[littleEndian ? i : byteCount - 1 - i] = remaining % 256
+        remaining = Math.floor(remaining / 256)
+      }
+      return encoded
+    }
+
+    /**
+     * Block-buffered absorption that never hands over the final block.
+     *
+     * A hash that buffers bytes and compresses the moment the buffer fills has
+     * no way to know whether the block it just compressed was the last one.
+     * BLAKE2b was written that way and its finalization flag therefore missed
+     * every message whose length is an exact multiple of the block size - 128,
+     * 256, 384 and so on all hashed to the wrong value, while BLAKE2s in the
+     * same file held the block back and was right. The two copies of one rule
+     * disagreed because there were two copies.
+     *
+     * This class holds a full block back until more data proves it is not the
+     * last. The flush happens at the top of a loop iteration that is about to
+     * copy at least one more byte, so on return from Absorb the held block is
+     * final as far as anyone knows. There is no public flush: a caller cannot
+     * compress the final block early because it is never handed one.
+     *
+     * Finalization goes through Finish, which is the only way to see the held
+     * bytes. Absorbers that need the last block treated differently - a
+     * finalization flag, a domain constant, a padded length - get it there, and
+     * absorbers that do not simply pad and compress.
+     */
+    class BlockAbsorber {
+      /**
+       * @param {int} blockSize - bytes per block
+       * @param {function(byte[]):void} processBlock - receives a full block
+       *        that is known not to be the last
+       */
+      constructor(blockSize, processBlock) {
+        if (!(blockSize > 0)) throw new Error('BlockAbsorber: blockSize must be positive')
+        if (typeof processBlock !== 'function')
+          throw new Error('BlockAbsorber: processBlock must be a function')
+
+        /** @type {int} */
+        this._blockSize = blockSize
+        /** @type {function(byte[]):void} */
+        this._processBlock = processBlock
+        /** @type {byte[]} */
+        this._held = new Array(blockSize).fill(0)
+        /** @type {int} - bytes valid in _held */
+        this._pending = 0
+        /** @type {number} - bytes absorbed since construction */
+        this._length = 0
+      }
+
+      /** @returns {int} bytes per block */
+      get BlockSize() { return this._blockSize }
+
+      /** @returns {int} bytes held back, 0..BlockSize */
+      get Pending() { return this._pending }
+
+      /** @returns {number} total bytes absorbed */
+      get Length() { return this._length }
+
+      /**
+       * Absorb data. Complete blocks are processed except the last one held.
+       * @param {byte[]} data
+       * @returns {void}
+       */
+      Absorb(data) {
+        if (!data || data.length === 0) return
+        const blockSize = this._blockSize
+        const total = data.length
+        let offset = 0
+
+        while (offset < total) {
+          // Reaching here means at least one more byte follows, so the block
+          // sitting in the buffer is provably not the last one.
+          if (this._pending === blockSize) {
+            this._processBlock(this._held)
+            this._pending = 0
+          }
+
+          const take = Math.min(blockSize - this._pending, total - offset)
+          for (let i = 0; i < take; i++)
+            this._held[this._pending + i] = _byte(data[offset + i])
+
+          this._pending += take
+          offset += take
+          this._length += take
+        }
+      }
+
+      /**
+       * Hand the held bytes to a finalizer.
+       *
+       * The finalizer decides what the last block means: pad it, flag it, split
+       * it into two. It receives a copy, so calling Finish twice gives the same
+       * answer and neither call can corrupt the other.
+       *
+       * @param {function(byte[], int, number):*} finalize - (held, pending, totalLength)
+       * @returns {*} whatever the finalizer returned
+       */
+      Finish(finalize) {
+        if (typeof finalize !== 'function')
+          throw new Error('BlockAbsorber: finalize must be a function')
+        return finalize(this._held.slice(0, this._pending), this._pending, this._length)
+      }
+
+      /**
+       * Forget everything absorbed so far.
+       * @returns {void}
+       */
+      Reset() {
+        this._held.fill(0)
+        this._pending = 0
+        this._length = 0
+      }
+    }
+
+    /**
+     * The padded block or blocks that end a sponge absorption.
+     *
+     * Implements pad10*1 with a domain separator, FIPS 202 sections 5.1 and
+     * B.2. The separator goes at the first free byte and the terminating bit in
+     * the top bit of the last rate byte; when exactly one byte is free those
+     * coincide and must merge, which is the case every hand-written copy of
+     * this got wrong. Here the merge is unconditional and is the last write, so
+     * there is no branch for a caller to get wrong and no way to reach the
+     * overwrite.
+     *
+     * Returns whole rate blocks ready to absorb, so it serves an absorber that
+     * holds its last block back as well as one that does not: a full held block
+     * simply yields two blocks instead of one.
+     *
+     * @param {byte[]} held - trailing message bytes, may be empty
+     * @param {int} pending - how many of them are valid, 0..rate
+     * @param {int} rate - sponge rate in bytes
+     * @param {int} separator - domain separator, e.g. 0x06 SHA-3, 0x1F SHAKE,
+     *        0x04 cSHAKE, 0x01 original Keccak
+     * @returns {byte[][]} one or two blocks of exactly rate bytes
+     */
+    function SpongePadBlocks(held, pending, rate, separator) {
+      if (!(rate > 0)) throw new Error('SpongePadBlocks: rate must be positive')
+      if (pending < 0 || pending > rate)
+        throw new Error(`SpongePadBlocks: pending ${pending} outside 0..${rate}`)
+
+      const blocks = []
+      let block = new Array(rate).fill(0)
+      for (let i = 0; i < pending; i++) block[i] = _byte(held[i])
+
+      let used = pending
+      if (used === rate) {
+        blocks.push(block)
+        block = new Array(rate).fill(0)
+        used = 0
+      }
+
+      block[used] = _byte(separator)
+      // Unconditional, and last. When used === rate - 1 this merges the
+      // separator with the terminating bit rather than replacing it.
+      block[rate - 1] = _mergeBits(block[rate - 1], 0x80)
+
+      blocks.push(block)
+      return blocks
+    }
+
+    /**
+     * The padded block or blocks that end a Merkle-Damgard absorption.
+     *
+     * One pad byte, zero fill, then the message length in a fixed-width field
+     * at the end of the last block, with a second block when the length no
+     * longer fits. Thirty files spell this out by hand, each with its own
+     * spelling of the boundary test, and a boundary test that is off by one
+     * corrupts exactly one message length in every block.
+     *
+     * @param {byte[]} held - trailing message bytes
+     * @param {int} pending - how many are valid, 0..blockSize
+     * @param {number} totalLength - total message length in bytes
+     * @param {object} options
+     * @param {int} options.blockSize - bytes per block
+     * @param {int} [options.padByte=0x80] - 0x01 for Tiger
+     * @param {int} [options.lengthBytes=8] - 16 for SHA-512, 0 for no length field
+     * @param {bool} [options.lengthLittleEndian=false] - true for MD4, MD5, RIPEMD
+     * @param {bool} [options.lengthInBits=true] - false where the field counts bytes
+     * @returns {byte[][]} the blocks still to be compressed, in order
+     */
+    function MerkleDamgardBlocks(held, pending, totalLength, options) {
+      const settings = options || {}
+      const blockSize = settings.blockSize
+      if (!(blockSize > 0)) throw new Error('MerkleDamgardBlocks: blockSize must be positive')
+      if (pending < 0 || pending > blockSize)
+        throw new Error(`MerkleDamgardBlocks: pending ${pending} outside 0..${blockSize}`)
+
+      const padByte = settings.padByte === undefined ? 0x80 : settings.padByte
+      const lengthBytes = settings.lengthBytes === undefined ? 8 : settings.lengthBytes
+      const littleEndian = settings.lengthLittleEndian === true
+      const inBits = settings.lengthInBits !== false
+
+      if (lengthBytes < 0 || lengthBytes >= blockSize)
+        throw new Error(`MerkleDamgardBlocks: lengthBytes ${lengthBytes} does not fit a ${blockSize}-byte block`)
+
+      const blocks = []
+      let block = new Array(blockSize).fill(0)
+      for (let i = 0; i < pending; i++) block[i] = _byte(held[i])
+
+      let used = pending
+      // A held block that is already full leaves nowhere for the pad byte, so
+      // it goes out as it stands and the padding starts a fresh block. Getting
+      // this wrong writes the pad byte past the end of the block, where the
+      // compression function never reads it.
+      if (used === blockSize) {
+        blocks.push(block)
+        block = new Array(blockSize).fill(0)
+        used = 0
+      }
+
+      block[used] = _byte(padByte)
+      used++
+
+      if (used > blockSize - lengthBytes) {
+        blocks.push(block)
+        block = new Array(blockSize).fill(0)
+      }
+
+      if (lengthBytes > 0) {
+        const encoded = _encodeLength(inBits ? totalLength * 8 : totalLength, lengthBytes, littleEndian)
+        for (let i = 0; i < lengthBytes; i++) block[blockSize - lengthBytes + i] = encoded[i]
+      }
+
+      blocks.push(block)
+      return blocks
+    }
+
+    //#endregion
+
     //#region ===== Base Interfaces =====
 
     /**
@@ -297,11 +600,33 @@
       }
 
       /**
-       * Feed data into the algorithm for processing
+       * Feed data into the algorithm for processing.
+       *
+       * Accumulates. It does not reinitialise, it does not replace, and it does
+       * not consume: Feed(a); Feed(b) leaves exactly what Feed(a || b) leaves,
+       * which is the streaming contract every caller already assumes and which
+       * 103 algorithms broke by re-deriving it. The three ways they broke it -
+       * calling Init() per chunk, assigning instead of appending, and buffering
+       * a remainder nothing read back - are all unreachable from here, because
+       * there is only the append.
+       *
+       * Overriding this is still allowed, and an algorithm that genuinely needs
+       * its whole input at once should override it to throw on the second call.
+       * What is no longer necessary is re-deriving the common case: an instance
+       * that does not override Feed at all now gets the correct one rather than
+       * an error.
+       *
        * @param {byte[]} data - Input data bytes
        * @returns {void}
        */
-      Feed(data) { throw 'Feed() not implemented' }
+      Feed(data) {
+        if (!data || data.length === 0) return
+        if (!this.inputBuffer) this.inputBuffer = []
+        // Appended one at a time rather than spread: a spread of a data-sized
+        // array is an argument list, and a long enough message overflows the
+        // call stack instead of hashing.
+        for (let i = 0; i < data.length; i++) this.inputBuffer.push(data[i])
+      }
 
       /**
        * Get the processed result
@@ -573,6 +898,58 @@
        * @returns {byte[]} Decrypted block
        */
       DecryptBlock(block) { throw 'DecryptBlock() not implemented' }
+
+      /**
+       * Refuse a buffered input that is not a whole number of blocks.
+       *
+       * A raw block cipher has no padding scheme and therefore no answer for a
+       * trailing partial block. The only two things it can do are refuse and
+       * silently drop it, and dropping it destroys data without saying so.
+       * Refusal is the established behaviour and this is its one spelling.
+       *
+       * @param {int} [blockSize] - defaults to this.BlockSize
+       * @returns {int} number of whole blocks buffered
+       * @throws {Error} if the buffered length is not a multiple of blockSize
+       */
+      RequireBlockMultiple(blockSize) {
+        const size = blockSize || this.BlockSize
+        if (!(size > 0)) throw new Error('BlockSize not set')
+        const length = this.inputBuffer ? this.inputBuffer.length : 0
+        if (length % size !== 0)
+          throw new Error(`Input length must be multiple of ${size} bytes`)
+        return length / size
+      }
+
+      /**
+       * Encrypt or decrypt every buffered block.
+       *
+       * The guard, the loop and the drain in one place. A caller never writes
+       * the loop bound, so the truncating bound `i + blockSize <= length` -
+       * which drops a trailing partial block without a word - cannot be written
+       * here at all.
+       *
+       * @returns {byte[]} the processed bytes
+       * @throws {Error} if no key is set, nothing was fed, or the input is not
+       *         a whole number of blocks
+       */
+      Result() {
+        if (!this.key) throw new Error('Key not set')
+        if (!this.inputBuffer || this.inputBuffer.length === 0)
+          throw new Error('No data fed')
+
+        const blockSize = this.BlockSize
+        this.RequireBlockMultiple(blockSize)
+
+        const output = []
+        for (let offset = 0; offset < this.inputBuffer.length; offset += blockSize) {
+          const block = this.inputBuffer.slice(offset, offset + blockSize)
+          const processed = this.isInverse ? this.DecryptBlock(block) : this.EncryptBlock(block)
+          for (let i = 0; i < processed.length; i++) output.push(processed[i])
+        }
+
+        this.inputBuffer = []
+        return output
+      }
     }
 
     /**
@@ -757,6 +1134,11 @@
       Vulnerability,
       AuthResult,
       KeySize,
+
+      // shared construction primitives
+      BlockAbsorber,
+      SpongePadBlocks,
+      MerkleDamgardBlocks,
 
       // base + families
       Algorithm,

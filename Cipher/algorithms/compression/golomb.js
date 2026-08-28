@@ -165,10 +165,6 @@
         this.parameter = 1; // M parameter, auto-selected on compress or read from the header on decompress
       }
 
-      Feed(data) {
-        if (!data || data.length === 0) return;
-        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
-      }
 
       Result() {
         const result = this.isInverse ? this._decode(this.inputBuffer) : this._encode(this.inputBuffer);
