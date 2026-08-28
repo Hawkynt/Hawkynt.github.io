@@ -45,6 +45,11 @@ function collect() {
   return tags;
 }
 
+// Compare generated text against a working copy that may use either line ending.
+function sameIgnoringLineEndings(a, b) {
+  return a.replace(/\r\n/g, '\n') === b.replace(/\r\n/g, '\n');
+}
+
 function main() {
   const check = process.argv.includes('--check');
   const before = fs.readFileSync(INDEX, 'utf8');
@@ -54,10 +59,16 @@ function main() {
     return;
   }
 
-  const block = [BEGIN, ...collect(), END].join('\n');
+  // The generated block is joined with LF, but with git's core.autocrlf on the
+  // working copy is checked out with CRLF. Comparing the two raw then reports
+  // drift on every Windows checkout while CI, which checks out LF, sees none -
+  // a check that cries wolf locally is one people learn to ignore. The block is
+  // emitted in whatever the file already uses, and the comparison normalises.
+  const EOL = before.includes('\r\n') ? '\r\n' : '\n';
+  const block = [BEGIN, ...collect(), END].join(EOL);
   const after = before.slice(0, before.indexOf(BEGIN)) + block + before.slice(before.indexOf(END) + END.length);
 
-  if (after === before) { console.log('index.html script tags are up to date.'); return; }
+  if (sameIgnoringLineEndings(after, before)) { console.log('index.html script tags are up to date.'); return; }
   if (check) {
     console.log('index.html script tags are out of date - run node tools/refresh-index-scripts.js');
     process.exitCode = 1;
