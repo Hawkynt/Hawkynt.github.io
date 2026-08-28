@@ -168,24 +168,38 @@
       // 2. Compute the 1's complement sum of these 16-bit integers
       // 3. Take the 1's complement of the result
 
-      for (let i = 0; i < data.length; i += 2) {
-        let word;
-        if (i + 1 < data.length) {
-          // Normal case: pair of bytes (big-endian)
-          word = OpCodes.OrN(OpCodes.Shl32(data[i], 8), data[i + 1]);
-        } else {
-          // Odd number of bytes: pad with zero
-          word = OpCodes.Shl32(data[i], 8);
-        }
+      // A pair may straddle two calls, so an odd trailing byte is carried into
+      // the next Feed rather than padded here. Only the end of the message pads,
+      // and that is Result()'s job: padding per call made Feed(a); Feed(b) sum a
+      // different word sequence than Feed(a || b) whenever a had odd length.
+      let i = 0;
+      if (this.hasPending) {
+        this._addWord(OpCodes.OrN(OpCodes.Shl32(this.pending, 8), data[0]));
+        this.hasPending = false;
+        i = 1;
+      }
 
-        // Add to sum
-        this.sum += word;
+      for (; i + 1 < data.length; i += 2) {
+        this._addWord(OpCodes.OrN(OpCodes.Shl32(data[i], 8), data[i + 1]));
+      }
 
-        // Handle carry (convert to 1's complement arithmetic)
-        const maxValue = OpCodes.Pack16BE(...OpCodes.Hex8ToBytes("ffff"));
-        while (this.sum > maxValue) {
-          this.sum = OpCodes.AndN(this.sum, maxValue) + OpCodes.Shr32(this.sum, 16);
-        }
+      if (i < data.length) {
+        this.pending = data[i];
+        this.hasPending = true;
+      }
+    }
+
+    /**
+     * Add one 16-bit word to the running 1's complement sum
+     * @param {number} word - 16-bit word
+     */
+    _addWord(word) {
+      this.sum += word;
+
+      // Handle carry (convert to 1's complement arithmetic)
+      const maxValue = OpCodes.Pack16BE(...OpCodes.Hex8ToBytes("ffff"));
+      while (this.sum > maxValue) {
+        this.sum = OpCodes.AndN(this.sum, maxValue) + OpCodes.Shr32(this.sum, 16);
       }
     }
 
@@ -196,6 +210,12 @@
    */
 
     Result() {
+      // A trailing odd octet pads with zero, and only at the end of the message
+      if (this.hasPending) {
+        this._addWord(OpCodes.Shl32(this.pending, 8));
+        this.hasPending = false;
+      }
+
       // Take 1's complement of the final sum
       const maxValue = OpCodes.Pack16BE(...OpCodes.Hex8ToBytes("ffff"));
       const checksum = OpCodes.AndN((~this.sum), maxValue);

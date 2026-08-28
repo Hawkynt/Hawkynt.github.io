@@ -49,8 +49,11 @@
    */
 
     Feed(data) {
-      // Store input for deterministic processing
-      this.input = data;
+      // Feed is a streaming interface: successive calls extend the message
+      // rather than replace it, so Feed(a); Feed(b) processes the same bytes
+      // as Feed(a || b).
+      if (!this.input) this.input = [];
+      for (let i = 0; i < data.length; i++) this.input.push(data[i]);
       return this;
     }
     
