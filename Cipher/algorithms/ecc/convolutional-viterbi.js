@@ -175,11 +175,13 @@
         throw new Error('ConvolutionalViterbiInstance.Feed: Input must be bit array');
       }
 
-      if (this.isInverse) {
-        this.result = this.viterbiDecode(data);
-      } else {
-        this.result = this.encode(data);
-      }
+      // Feed is a streaming interface: successive calls extend the message
+      // rather than replace it. A single chunk cannot be coded on its own
+      // either, because block boundaries and parity are counted from the start
+      // of the message, so the symbols are collected here and coded once, in
+      // Result().
+      if (!this._feedBuffer) this._feedBuffer = [];
+      for (let i = 0; i < data.length; i++) this._feedBuffer.push(data[i]);
     }
 
     /**
@@ -189,9 +191,12 @@
    */
 
     Result() {
-      if (this.result === null) {
+      if (!this._feedBuffer) {
         throw new Error('ConvolutionalViterbiInstance.Result: Call Feed() first to process data');
       }
+      this.result = this.isInverse
+        ? this.viterbiDecode(this._feedBuffer)
+        : this.encode(this._feedBuffer);
       return this.result;
     }
 

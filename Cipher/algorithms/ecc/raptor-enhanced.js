@@ -405,12 +405,13 @@
         // Decoding mode: accumulate encoded symbols
         for (let _i = 0; _i < data.length; _i++) this.encodedSymbols.push(data[_i]);
       } else {
-        // Encoding mode: store source symbols
-        this.sourceSymbols = [...data];
-        if (this.k === 0) {
-          this.k = data.length;
-        }
-        this._initializeEncoding();
+        // Encoding mode: the source block is the whole message, so successive
+        // calls extend it rather than replace it. The symbol count and the
+        // pre-code matrix are derived from the complete block in Result(),
+        // since a partition computed from one call's share of the message
+        // describes a different code from the one the whole message asks for.
+        if (!this.sourceSymbols) this.sourceSymbols = [];
+        for (let i = 0; i < data.length; i++) this.sourceSymbols.push(data[i]);
       }
     }
 
@@ -423,9 +424,13 @@
     Result() {
       if (this.isInverse) {
         return this._decode();
-      } else {
-        return this._encode();
       }
+
+      // A k set through the property wins over the length of the fed block,
+      // exactly as it did when Feed derived it.
+      if (this.k === 0) this.k = this.sourceSymbols ? this.sourceSymbols.length : 0;
+      if (this.k > 0) this._initializeEncoding();
+      return this._encode();
     }
 
     DetectError(data) {
@@ -655,7 +660,7 @@
       const result = [];
 
       // Systematic part: Copy source symbols
-      result.push(...this.sourceSymbols);
+      for (let i = 0; i < this.sourceSymbols.length; i++) result.push(this.sourceSymbols[i]);
 
       // Repair symbols: Generate using LT encoding of intermediate symbols
       for (let esi = this.k; esi < totalSymbols; esi++) {

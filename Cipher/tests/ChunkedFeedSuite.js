@@ -332,71 +332,16 @@ function grownMessage(algorithm, vector, unitLength, build) {
 //#region ===== exemptions =====
 
 // Exempt from the sweep, with the reason next to each. Nothing is listed here
-// because it is inconvenient: an entry says either that the algorithm is being
-// repaired elsewhere and this suite must not gate on it meanwhile, or that
-// splitting its input is not a meaningful operation. A silent difference from
-// anything not on this list fails the run.
+// because it is inconvenient: an entry says that splitting the algorithm's input
+// is not a meaningful operation, because the construction is defined over a
+// sequence of separate strings rather than over one message. A silent difference
+// from anything not on this list fails the run.
+//
+// An exemption that outlives its repair is worse than no exemption, since it
+// hides the next regression, so an entry is deleted as soon as the algorithm
+// agrees. The block and fountain codes in algorithms/ecc were held here while
+// their Feed was repaired to accumulate; they now agree and are gone.
 const CHUNKED_FEED_EXEMPT = new Map([
-
-  // ===== Error Correction (algorithms/ecc) =====
-  //
-  // These are held, not excused. Every one of them has the same open defect: its
-  // Feed assigns rather than appends - `this.result = this.encode(data)` or
-  // `this.sourceSymbols = data` - so a message delivered in pieces is encoded
-  // from the last piece alone and everything before it is discarded. Measured:
-  // Repetition Code turns 4 bytes into 12 when handed them at once and into 3
-  // when handed them one byte at a time; Tornado Code turns 8 into 12 and into 4.
-  // Nothing about a block code makes that correct. A code that genuinely needs a
-  // whole code word must refuse a short one, which most of the category already
-  // does by name and length, and those pass this suite on that basis rather than
-  // appearing here.
-  //
-  // They are listed because algorithms/ecc is being repaired on its own terms and
-  // against the code definitions, and this suite must gate on everything else
-  // meanwhile instead of being switched off. Each entry is expected to be deleted
-  // as its repair lands; none of them may be repaired by making Feed refuse.
-  ['Alamouti Space-Time Block Code', 'open defect: Feed encodes each call separately, so a '
-    + 'split message is encoded from its last piece alone'],
-  ['BATS', 'open defect: Feed replaces the source block instead of extending it'],
-  ['BCH', 'open defect: Feed replaces the result instead of extending the message'],
-  ['Bicycle Code', 'open defect: Feed encodes each call separately, so a split message is '
-    + 'encoded from its last piece alone'],
-  ['Cat Code', 'open defect: Feed replaces the result instead of extending the message'],
-  ['Concatenated Code', 'open defect: Feed replaces the result instead of extending the message'],
-  ['Convolutional Code (Viterbi)', 'open defect: Feed replaces the result instead of extending '
-    + 'the message, so only the last piece is encoded and terminated'],
-  ['Even Weight Code', 'open defect: Feed replaces the result instead of extending the message'],
-  ['Fire Code', 'open defect: Feed replaces the result instead of extending the message'],
-  ['Hadamard Code', 'open defect: Feed replaces the result instead of extending the message'],
-  ['Interleaver', 'open defect: Feed replaces the result, so a split message is interleaved '
-    + 'from its last piece alone'],
-  ['LT', 'open defect: Feed replaces the source block instead of extending it'],
-  ['LT Enhanced', 'open defect: Feed replaces the source block instead of extending it'],
-  ['Levenshtein Code', 'open defect: Feed replaces the result instead of extending the message'],
-  ['Online Code', 'open defect: Feed replaces the source block instead of extending it'],
-  ['Raptor', 'open defect: Feed replaces the source block instead of extending it'],
-  ['Raptor (Enhanced)', 'open defect: Feed replaces the source block instead of extending it'],
-  ['RaptorQ', 'open defect: Feed replaces the source block instead of extending it'],
-  ['Repeat-Accumulate Code', 'open defect: Feed replaces the result instead of extending the '
-    + 'message; 2 bytes encode to 6 whole and to 3 when split'],
-  ['Repetition Code', 'open defect: Feed replaces the result instead of extending the message; '
-    + '4 bytes encode to 12 whole and to 3 when split one byte at a time'],
-  ['Single Parity Check', 'open defect: Feed replaces the result instead of extending the message'],
-  ['Space-Time Block Code', 'open defect: Feed encodes each call separately, so a split message '
-    + 'is encoded from its last piece alone'],
-  ['Tail-Biting Convolutional Code', 'open defect: Feed replaces the result instead of extending '
-    + 'the message, so the tail-biting state comes from the last piece alone'],
-  ['Topological Surface Code', 'open defect: Feed replaces the result instead of extending the '
-    + 'message'],
-  ['Tornado Code', 'open defect: Feed replaces the source block instead of extending it; '
-    + '8 bytes encode to 12 whole and to 4 when split'],
-  ['Trellis Coded Modulation', 'open defect: Feed encodes each call separately, so a split '
-    + 'message is encoded from its last piece alone'],
-  ['Triple Modular Redundancy', 'open defect: Feed replaces the result instead of extending the '
-    + 'message; 4 bytes encode to 12 whole and to 3 when split'],
-  ['Turbo Code', 'open defect: Feed replaces the result instead of extending the message, so '
-    + 'the interleaver runs over the last piece alone'],
-  ['Zigzag Code', 'open defect: Feed replaces the result instead of extending the message'],
 
   // ===== Hash Functions =====
   //
