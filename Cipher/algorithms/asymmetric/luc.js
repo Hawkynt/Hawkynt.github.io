@@ -55,6 +55,15 @@
    *
    * For LUC, we use q=1, so: V_n = p*V_(n-1) - V_(n-2)
    *
+   * Two checks against sources outside this file pin the ladder down. With
+   * P = 3 the sequence is the even-indexed Lucas numbers, V_n(3,1) = L_(2n),
+   * and this returns 2, 3, 7, 18, 47, 123, 322, 843 for n = 0..7, which are
+   * L_0, L_2, L_4, L_6, L_8, L_10, L_12, L_14 of the published Lucas sequence.
+   * Independently, where z^2 - Pz + 1 splits over F_p the value must equal
+   * a^n + b^n for its two roots, computed by ordinary modular exponentiation
+   * rather than by any Lucas recurrence; the two agree over random exponents
+   * and random primes.
+   *
    * @param {BigInt} e - The exponent
    * @param {BigInt} p - The Lucas parameter
    * @param {BigInt} n - The modulus
