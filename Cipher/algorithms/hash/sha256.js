@@ -405,7 +405,14 @@
      * @param {Array} data - Input data as byte array
      */
     Feed(data) {
-      this.Init();
+      // Init() discards the state, so it belongs at the start of the message and
+      // not at the start of every call. Feed is a streaming interface: a message
+      // delivered in pieces has to absorb exactly the block sequence the whole
+      // message would, which Update already does through its own buffer.
+      if (!this._streamStarted) {
+        this.Init();
+        this._streamStarted = true;
+      }
       this.Update(data);
     }
 
