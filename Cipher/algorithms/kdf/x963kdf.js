@@ -256,8 +256,11 @@
         throw new Error('X963KDFInstance.Feed: X9.63 KDF cannot be reversed (one-way function)');
       }
 
-      // Store input data for Result() method
-      this._inputData = data;
+      // Feed is a streaming interface: successive calls extend the input rather
+      // than replace it, so Feed(a); Feed(b) derives from the same octet string
+      // as Feed(a || b).
+      if (!this._inputData) this._inputData = [];
+      for (let i = 0; i < data.length; i++) this._inputData.push(data[i]);
     }
 
     /**

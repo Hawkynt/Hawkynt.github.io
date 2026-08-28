@@ -269,7 +269,11 @@
 
     Feed(data) {
       if (data && Array.isArray(data)) {
-        this._keyInput = [...data];
+        // Feed is a streaming interface: successive calls extend the input rather
+        // than replace it, so Feed(a); Feed(b) derives from the same octet string
+        // as Feed(a || b).
+        if (!this._keyInput) this._keyInput = [];
+        for (let i = 0; i < data.length; i++) this._keyInput.push(data[i]);
       }
     }
 
