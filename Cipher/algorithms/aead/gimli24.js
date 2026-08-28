@@ -356,6 +356,9 @@
           ciphertext.push(OpCodes.Xor32(stateBytes[i], block[i]));
         }
 
+        // Duplex rule: absorb the plaintext so the rate now holds the ciphertext
+        this.state.xorBytes(block, 0);
+
         this.state.permute();
         dataPos += GIMLI24_BLOCK_SIZE;
         dataLen -= GIMLI24_BLOCK_SIZE;
@@ -369,6 +372,9 @@
         for (let i = 0; i < dataLen; ++i) {
           ciphertext.push(OpCodes.Xor32(stateBytes[i], block[i]));
         }
+
+        // Duplex rule: absorb the plaintext so the rate now holds the ciphertext
+        this.state.xorBytes(block, 0);
       }
 
       // Padding after encryption
@@ -407,8 +413,8 @@
         }
         for (let _i = 0; _i < ptBlock.length; _i++) plaintext.push(ptBlock[_i]);
 
-        // Update state with ciphertext (swap operation)
-        this.state.xorBytes(block, 0);
+        // Duplex rule: the rate must end up holding the ciphertext.
+        // state XOR plaintext == ciphertext, because plaintext == state XOR ciphertext.
         this.state.xorBytes(ptBlock, 0);
 
         this.state.permute();
@@ -427,8 +433,8 @@
         }
         for (let _i = 0; _i < ptBlock.length; _i++) plaintext.push(ptBlock[_i]);
 
-        // Update state with ciphertext (swap operation)
-        this.state.xorBytes(block, 0);
+        // Duplex rule: the rate must end up holding the ciphertext.
+        // state XOR plaintext == ciphertext, because plaintext == state XOR ciphertext.
         this.state.xorBytes(ptBlock, 0);
       }
 
@@ -604,6 +610,87 @@
           nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
           aad: OpCodes.Hex8ToBytes('0001'),
           expected: OpCodes.Hex8ToBytes('776F829EB5DE73D400EF4DEDB2E2772D')
+        },
+        {
+          text: 'Count 34 - 1-byte plaintext, empty AD',
+          uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/GIMLI-24-CIPHER.txt',
+          input: OpCodes.Hex8ToBytes('00'),
+          key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F'),
+          nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
+          aad: [],
+          expected: OpCodes.Hex8ToBytes('7F80492C317B1CD58A1EDC3A0D3E9876FC')
+        },
+        {
+          text: 'Count 496 - 15-byte plaintext (below the 16-byte rate), empty AD',
+          uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/GIMLI-24-CIPHER.txt',
+          input: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E'),
+          key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F'),
+          nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
+          aad: [],
+          expected: OpCodes.Hex8ToBytes('7F8A2CF4F52AA4D6B2E74105C30A276DE1B05CB36F9546D5DEDDE3F5EA64D1')
+        },
+        {
+          text: 'Count 511 - 15-byte plaintext, 15-byte AD',
+          uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/GIMLI-24-CIPHER.txt',
+          input: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E'),
+          key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F'),
+          nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
+          aad: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E'),
+          expected: OpCodes.Hex8ToBytes('1A259C7E82BF80485E65D7EFCE7C35258C36AEFF25F990FB6B23CA3CACA30D')
+        },
+        {
+          text: 'Count 529 - 16-byte plaintext (exactly one rate block), empty AD',
+          uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/GIMLI-24-CIPHER.txt',
+          input: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
+          key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F'),
+          nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
+          aad: [],
+          expected: OpCodes.Hex8ToBytes('7F8A2CF4F52AA4D6B2E74105C30A2777B9B7502494528B5160F5EE0F65C3A7B4')
+        },
+        {
+          text: 'Count 545 - 16-byte plaintext, 16-byte AD',
+          uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/GIMLI-24-CIPHER.txt',
+          input: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
+          key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F'),
+          nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
+          aad: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
+          expected: OpCodes.Hex8ToBytes('9A93DEC680CA514C36E7DD94E6C7417A5AF0C6AF4582419A3317176F887B67B1')
+        },
+        {
+          text: 'Count 562 - 17-byte plaintext (spans two rate blocks), empty AD',
+          uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/GIMLI-24-CIPHER.txt',
+          input: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F10'),
+          key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F'),
+          nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
+          aad: [],
+          expected: OpCodes.Hex8ToBytes('7F8A2CF4F52AA4D6B2E74105C30A2777B960057B937A5E002F488DC19DB7B011CF')
+        },
+        {
+          text: 'Count 567 - 17-byte plaintext, 5-byte AD',
+          uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/GIMLI-24-CIPHER.txt',
+          input: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F10'),
+          key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F'),
+          nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
+          aad: OpCodes.Hex8ToBytes('0001020304'),
+          expected: OpCodes.Hex8ToBytes('1F6649AE35BCB8511B3F60020CEFEEE995F239F4EB51F8EB088431116464570BCB')
+        },
+        {
+          text: 'Count 1057 - 32-byte plaintext (two full rate blocks), empty AD',
+          uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/GIMLI-24-CIPHER.txt',
+          input: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F'),
+          key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F'),
+          nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
+          aad: [],
+          expected: OpCodes.Hex8ToBytes('7F8A2CF4F52AA4D6B2E74105C30A2777B9D0C8AEFDD555DE35861BD3011F652F7256456FA935AC34BBF55AE135F33257')
+        },
+        {
+          text: 'Count 1089 - 32-byte plaintext, 32-byte AD',
+          uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/GIMLI-24-CIPHER.txt',
+          input: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F'),
+          key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F'),
+          nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
+          aad: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F'),
+          expected: OpCodes.Hex8ToBytes('766B3B5E7788272D39EDAD2BCEBAF41606E62076A0FD1494B99527BF45DC138F1A9606DB255937B68E02FEC83E2C54B9')
         }
       ];
     }
