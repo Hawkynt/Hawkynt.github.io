@@ -165,11 +165,13 @@
         throw new Error('ConcatenatedCodeInstance.Feed: Input must be bit array');
       }
 
-      if (this.isInverse) {
-        this.result = this.decode(data);
-      } else {
-        this.result = this.encode(data);
-      }
+      // Feed is a streaming interface: successive calls extend the message
+      // rather than replace it. A single chunk cannot be coded on its own
+      // either, because block boundaries and parity are counted from the start
+      // of the message, so the symbols are collected here and coded once, in
+      // Result().
+      if (!this._feedBuffer) this._feedBuffer = [];
+      for (let i = 0; i < data.length; i++) this._feedBuffer.push(data[i]);
     }
 
     /**
@@ -179,9 +181,12 @@
    */
 
     Result() {
-      if (this.result === null) {
+      if (!this._feedBuffer) {
         throw new Error('ConcatenatedCodeInstance.Result: Call Feed() first to process data');
       }
+      this.result = this.isInverse
+        ? this.decode(this._feedBuffer)
+        : this.encode(this._feedBuffer);
       return this.result;
     }
 
@@ -229,7 +234,8 @@
       const repeated = [];
       for (let i = 0; i < data.length; i += 4) {
         const block = data.slice(i, i + 4);
-        repeated.push(...block, ...block, ...block);
+        for (let copy = 0; copy < 3; copy++)
+          for (let j = 0; j < block.length; j++) repeated.push(block[j]);
       }
       return repeated;
     }
