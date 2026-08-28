@@ -197,10 +197,13 @@
         // Decoding mode: accumulate encoded symbols
         for (let _i = 0; _i < data.length; _i++) this.encodedSymbols.push(data[_i]);
       } else {
-        // Encoding mode: store source symbols
-        this.sourceSymbols = [...data];
-        this.K = data.length;
-        this._initializeRFC6330Parameters();
+        // Encoding mode: the source block is the whole message, so successive
+        // calls extend it rather than replace it. K and the RFC 6330 systematic
+        // parameters derived from it are computed over the complete block in
+        // Result(), since a K taken from one call's share of the message
+        // describes a different code from the one the whole message asks for.
+        if (!this.sourceSymbols) this.sourceSymbols = [];
+        for (let i = 0; i < data.length; i++) this.sourceSymbols.push(data[i]);
       }
     }
 
@@ -213,9 +216,11 @@
     Result() {
       if (this.isInverse) {
         return this._decode();
-      } else {
-        return this._encode();
       }
+
+      this.K = this.sourceSymbols ? this.sourceSymbols.length : 0;
+      if (this.K > 0) this._initializeRFC6330Parameters();
+      return this._encode();
     }
 
     DetectError(data) {
