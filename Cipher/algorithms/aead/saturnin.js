@@ -603,10 +603,6 @@ class SaturninCTRCascadeInstance extends IAeadInstance {
 
   get aad() { return this._aad ? [...this._aad] : []; }
 
-  Feed(data) {
-    if (!data || data.length === 0) return;
-    for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
-  }
 
   Result() {
     if (!this._key) throw new Error("Key not set");
