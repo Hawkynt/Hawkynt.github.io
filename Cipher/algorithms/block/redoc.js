@@ -257,6 +257,13 @@
         throw new Error('Key not set');
       }
 
+      if (this.inputBuffer.length === 0) {
+        throw new Error('No data fed');
+      }
+      if (this.inputBuffer.length % this.BlockSize !== 0) {
+        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+      }
+
       const output = [];
       while (this.inputBuffer.length >= this.BlockSize) {
         const block = this.inputBuffer.splice(0, this.BlockSize);
@@ -521,6 +528,13 @@
     Result() {
       if (!this._key) {
         throw new Error('Key not set');
+      }
+
+      if (this.inputBuffer.length === 0) {
+        throw new Error('No data fed');
+      }
+      if (this.inputBuffer.length % this.BlockSize !== 0) {
+        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
       }
 
       const output = [];

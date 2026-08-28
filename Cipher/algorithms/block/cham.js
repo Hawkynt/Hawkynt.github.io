@@ -209,6 +209,15 @@
    * @throws {Error} If key not set, no data fed, or invalid input length
    */
     Result() {
+      if (!this.key) throw new Error("Key not set");
+      // Feed consumes whole blocks as they arrive, so whatever is still in the
+      // input buffer is a trailing partial block. A raw block cipher has nothing
+      // correct to do with one - completing it is a padding scheme's job - so it
+      // is refused rather than dropped.
+      if (this.inputBuffer.length !== 0)
+        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+      if (this.outputBuffer.length === 0) throw new Error("No data fed");
+
       const result = [...this.outputBuffer];
       this.outputBuffer = [];
       return result;
