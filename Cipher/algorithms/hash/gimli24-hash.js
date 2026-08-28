@@ -335,12 +335,20 @@
     /**
      * Absorb data into the state using sponge construction
      * Rate: 16 bytes (first 16 bytes of state)
+     *
+     * The sponge is fed one rate-sized block at a time, and the bytes that make
+     * up a block need not arrive in a single call. Anything left over is carried
+     * in this.buffer and completed by the following call, so that
+     * Feed(a); Feed(b) absorbs exactly the same block sequence as Feed(a || b).
+     * The buffer therefore never reaches the rate on exit, which is also what
+     * keeps the padding byte written by Result() inside the rate.
      */
     _absorb(data) {
       var offset = 0;
       var stateBytes = new Array(48);
-      var i, j, temp, word;
+      var i, j, word;
       var self = this;
+      var buffer = self.buffer;
 
       // Convert state to bytes (little-endian)
       function stateToBytes() {
@@ -362,21 +370,36 @@
         }
       }
 
-      // Process full blocks
-      while (offset + GIMLI24_BLOCK_SIZE <= data.length) {
+      // XOR one whole rate block from source[start..start+15] and permute
+      function absorbBlock(source, start) {
         stateToBytes();
-        // XOR block into first 16 bytes of state
         for (i = 0; i < GIMLI24_BLOCK_SIZE; i++) {
-          stateBytes[i] ^= data[offset + i];
+          stateBytes[i] ^= source[start + i];
         }
         bytesToState();
         gimli24_permute(self.state);
+      }
+
+      // Complete a block carried over from an earlier Feed before touching the
+      // rest, otherwise the carried bytes would be absorbed out of order.
+      if (buffer.length > 0) {
+        while (buffer.length < GIMLI24_BLOCK_SIZE && offset < data.length) {
+          buffer.push(data[offset++]);
+        }
+        if (buffer.length < GIMLI24_BLOCK_SIZE) return;
+        absorbBlock(buffer, 0);
+        buffer.length = 0;
+      }
+
+      // Process full blocks straight out of the caller's data
+      while (offset + GIMLI24_BLOCK_SIZE <= data.length) {
+        absorbBlock(data, offset);
         offset += GIMLI24_BLOCK_SIZE;
       }
 
-      // Buffer remaining bytes
+      // Carry the ragged tail into the next Feed, or into Result
       while (offset < data.length) {
-        self.buffer.push(data[offset++]);
+        buffer.push(data[offset++]);
       }
     }
 
