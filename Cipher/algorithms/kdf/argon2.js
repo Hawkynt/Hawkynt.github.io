@@ -1006,9 +1006,14 @@
    */
 
     Feed(data) {
-      if (!this._password) {
-        this._password = data instanceof Uint8Array ? data : new Uint8Array(data);
-      }
+      // Feed is a streaming interface: successive calls extend the password
+      // rather than being dropped, so Feed(a); Feed(b) derives from the same
+      // octet string as Feed(a || b). A password set through the property still
+      // takes precedence over the fed bytes, exactly as before.
+      if (this._password && !this._fedPassword) return;
+      if (!this._fedPassword) this._fedPassword = [];
+      for (let i = 0; i < data.length; i++) this._fedPassword.push(data[i]);
+      this._password = new Uint8Array(this._fedPassword);
     }
 
     /**
