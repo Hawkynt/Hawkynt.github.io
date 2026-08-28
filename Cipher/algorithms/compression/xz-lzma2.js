@@ -1119,10 +1119,6 @@
         this.inputBuffer = [];
       }
 
-      Feed(data) {
-        if (!data || data.length === 0) return;
-        for (let i = 0; i < data.length; i++) this.inputBuffer.push(data[i]);
-      }
 
       Result() {
         // Empty input still has to produce a well-formed .xz stream, so it is not

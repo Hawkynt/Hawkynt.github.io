@@ -187,19 +187,6 @@
       return this._key;
     }
 
-    /**
-   * Feed data to cipher for processing
-   * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
-   */
-
-    Feed(data) {
-      if (!data || data.length === 0) return;
-
-      // Buffered as bytes: converting to a string here was what let the A-Z
-      // filter downstream throw most of the message away.
-      for (let i = 0; i < data.length; i++) this.inputBuffer.push(data[i]);
-    }
 
     /**
    * Get cipher result (encrypted or decrypted data)
