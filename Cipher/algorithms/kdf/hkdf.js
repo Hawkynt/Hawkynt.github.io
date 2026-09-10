@@ -83,9 +83,9 @@
       this.DEFAULT_HASH = 'SHA256';
       this.DEFAULT_OUTPUT_LENGTH = 32;
       this.HASH_FUNCTIONS = {
-        'SHA1': { size: 20, name: 'SHA-1' },
-        'SHA256': { size: 32, name: 'SHA-256' },
-        'SHA512': { size: 64, name: 'SHA-512' }
+        'SHA1': { size: 20, blockSize: 64, name: 'SHA-1' },
+        'SHA256': { size: 32, blockSize: 64, name: 'SHA-256' },
+        'SHA512': { size: 64, blockSize: 128, name: 'SHA-512' }
       };
 
       // Documentation and references
@@ -313,7 +313,9 @@
         throw new Error('Unsupported hash function: ' + hashName);
       }
 
-      const blockSize = 64; // SHA-256 and SHA-512 both use 64-byte blocks
+      // RFC 2104 pads the key to the hash's own block size. SHA-512 compresses
+      // 128-byte blocks, not 64, so this has to come from the hash description.
+      const blockSize = hashInfo.blockSize;
       const hashLen = hashInfo.size;
 
       // Get hash algorithm from framework
