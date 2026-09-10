@@ -41,24 +41,61 @@
       }
     ],
     
+    // The reference vectors.h holds 64 entries: entry i is the digest of the
+    // first i bytes of 00 01 .. 3f under the key 00 01 .. 0f. It stores each
+    // result little-endian, which is the byte order an implementation emits;
+    // the paper prints the same numbers big-endian. The entries below are the
+    // boundary lengths - empty, one byte, one under a block, exactly a block,
+    // one over, and two whole blocks.
     tests: [
       {
-        text: "Empty string with zero key",
-        uri: "https://github.com/veorq/SipHash/blob/master/vectors.h", 
+        text: "vectors.h entry 0 - empty message",
+        uri: "https://github.com/veorq/SipHash/blob/master/vectors.h",
+        key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
         input: [],
-        expected: OpCodes.Hex8ToBytes("310e0eed78bdb8c2")
+        expected: OpCodes.Hex8ToBytes("310e0edd47db6f72")
       },
       {
-        text: "Single byte with zero key",
+        text: "vectors.h entry 1 - one byte",
         uri: "https://github.com/veorq/SipHash/blob/master/vectors.h",
-        input: [0x00],
-        expected: OpCodes.Hex8ToBytes("5756cc95182edb13")
+        key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        input: OpCodes.Hex8ToBytes("00"),
+        expected: OpCodes.Hex8ToBytes("fd67dc93c539f874")
       },
       {
-        text: "Two bytes with zero key", 
+        text: "vectors.h entry 7 - one byte under the 8-byte block",
         uri: "https://github.com/veorq/SipHash/blob/master/vectors.h",
-        input: [0x00, 0x01],
-        expected: OpCodes.Hex8ToBytes("dc001756192f7f3a")
+        key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        input: OpCodes.Hex8ToBytes("00010203040506"),
+        expected: OpCodes.Hex8ToBytes("37d1018bf50002ab")
+      },
+      {
+        text: "vectors.h entry 8 - exactly one block",
+        uri: "https://github.com/veorq/SipHash/blob/master/vectors.h",
+        key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        input: OpCodes.Hex8ToBytes("0001020304050607"),
+        expected: OpCodes.Hex8ToBytes("6224939a79f5f593")
+      },
+      {
+        text: "vectors.h entry 9 - one byte over a block",
+        uri: "https://github.com/veorq/SipHash/blob/master/vectors.h",
+        key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        input: OpCodes.Hex8ToBytes("000102030405060708"),
+        expected: OpCodes.Hex8ToBytes("b0e4a90bdf82009e")
+      },
+      {
+        text: "vectors.h entry 16 - two whole blocks",
+        uri: "https://github.com/veorq/SipHash/blob/master/vectors.h",
+        key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        expected: OpCodes.Hex8ToBytes("db9bc2577fcc2a3f")
+      },
+      {
+        text: "vectors.h entry 63 - 63 bytes",
+        uri: "https://github.com/veorq/SipHash/blob/master/vectors.h",
+        key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e"),
+        expected: OpCodes.Hex8ToBytes("724506eb4c328a95")
       }
     ],
     
@@ -169,79 +206,89 @@
     },
     
     // Main SipHash function
+    // Main SipHash function.
+    //
+    // The state is four 64-bit words. They are held as BigInt here because the
+    // split 32-bit form this file used before had its four initialisation
+    // constants transposed, and a single 64-bit value cannot be half wrong.
     siphash: function(message, key) {
       if (!key) key = this.key;
       if (key.length !== this.KEY_SIZE) {
         throw new Error("SipHash requires 128-bit (16-byte) key");
       }
-      
-      // Initialize state with key
-      const k0 = this.bytesToWord64LE(key, 0);
-      const k1 = this.bytesToWord64LE(key, 8);
-      
-      let v0 = this.xor64(k0, [0x736f6d65, 0x646f7261]); // "somepseudorandomstuff"
-      let v1 = this.xor64(k1, [0x6e646f6d, 0x7465646f]);
-      let v2 = this.xor64(k0, [0x6c796765, 0x6e657261]);
-      let v3 = this.xor64(k1, [0x74656462, 0x79746573]);
-      
-      // Process message in 8-byte blocks
-      const messageLen = message.length;
-      let offset = 0;
-      
-      while (offset + 8 <= messageLen) {
-        const m = this.bytesToWord64LE(message, offset);
-        v3 = this.xor64(v3, m);
-        
-        // c rounds of SipRound
-        for (let i = 0; i < this.C_ROUNDS; i++) {
-          [v0, v1, v2, v3] = this.sipRound(v0, v1, v2, v3);
+
+      const MASK64 = 0xFFFFFFFFFFFFFFFFn;
+      const le64 = (bytes, offset) => {
+        let value = 0n;
+        for (let i = 7; i >= 0; i--) {
+          value = OpCodes.ShiftLn(value, 8n) + BigInt(bytes[offset + i] || 0);
         }
-        
-        v0 = this.xor64(v0, m);
-        offset += 8;
-      }
-      
-      // Handle final partial block
+        return value;
+      };
+
+      const k0 = le64(key, 0);
+      const k1 = le64(key, 8);
+
+      // The initialisation constants spell "somepseudorandomlygeneratedbytes".
+      let v0 = OpCodes.XorN(k0, 0x736f6d6570736575n);
+      let v1 = OpCodes.XorN(k1, 0x646f72616e646f6dn);
+      let v2 = OpCodes.XorN(k0, 0x6c7967656e657261n);
+      let v3 = OpCodes.XorN(k1, 0x7465646279746573n);
+
+      const sipRound = () => {
+        v0 = OpCodes.AndN(v0 + v1, MASK64);
+        v1 = OpCodes.RotL64n(v1, 13);
+        v1 = OpCodes.XorN(v1, v0);
+        v0 = OpCodes.RotL64n(v0, 32);
+
+        v2 = OpCodes.AndN(v2 + v3, MASK64);
+        v3 = OpCodes.RotL64n(v3, 16);
+        v3 = OpCodes.XorN(v3, v2);
+
+        v0 = OpCodes.AndN(v0 + v3, MASK64);
+        v3 = OpCodes.RotL64n(v3, 21);
+        v3 = OpCodes.XorN(v3, v0);
+
+        v2 = OpCodes.AndN(v2 + v1, MASK64);
+        v1 = OpCodes.RotL64n(v1, 17);
+        v1 = OpCodes.XorN(v1, v2);
+        v2 = OpCodes.RotL64n(v2, 32);
+      };
+
+      const absorb = m => {
+        v3 = OpCodes.XorN(v3, m);
+        for (let i = 0; i < this.C_ROUNDS; i++) sipRound();
+        v0 = OpCodes.XorN(v0, m);
+      };
+
+      // Whole 8-byte blocks
+      const messageLen = message.length;
+      const whole = messageLen - (messageLen % 8);
+      for (let offset = 0; offset < whole; offset += 8) absorb(le64(message, offset));
+
+      // The final block always exists: the tail bytes, zero filled, with the
+      // low byte of the message length in the top byte. An empty message goes
+      // through this path like any other, which is why there is no special case.
       const finalBlock = new Array(8).fill(0);
-      const remaining = messageLen - offset;
-      
-      for (let i = 0; i < remaining; i++) {
-        finalBlock[i] = message[offset + i];
-      }
-      
-      // Pad with message length in last byte
+      for (let i = 0; i < messageLen - whole; i++) finalBlock[i] = message[whole + i];
       finalBlock[7] = OpCodes.AndN(messageLen, 0xFF);
-      
-      const m = this.bytesToWord64LE(finalBlock, 0);
-      v3 = this.xor64(v3, m);
-      
-      // c rounds of SipRound
-      for (let i = 0; i < this.C_ROUNDS; i++) {
-        [v0, v1, v2, v3] = this.sipRound(v0, v1, v2, v3);
-      }
-      
-      v0 = this.xor64(v0, m);
-      
+      absorb(le64(finalBlock, 0));
+
       // Finalization
-      v2 = this.xor64(v2, [0xff, 0]);
-      
-      // d rounds of SipRound
-      for (let i = 0; i < this.D_ROUNDS; i++) {
-        [v0, v1, v2, v3] = this.sipRound(v0, v1, v2, v3);
-      }
-      
-      // Return v0 ⊕ v1 ⊕ v2 ⊕ v3
-      const result = this.xor64(this.xor64(v0, v1), this.xor64(v2, v3));
-      return this.word64ToBytes(result);
+      v2 = OpCodes.XorN(v2, 0xffn);
+      for (let i = 0; i < this.D_ROUNDS; i++) sipRound();
+
+      const result = OpCodes.XorN(OpCodes.XorN(v0, v1), OpCodes.XorN(v2, v3));
+      const out = new Array(8);
+      for (let i = 0; i < 8; i++) out[i] = Number(OpCodes.AndN(OpCodes.ShiftRn(result, BigInt(8 * i)), 0xffn));
+      return out;
     },
     
     // Process input for universal interface
     ProcessInput: function(input) {
-      if (!input || input.length === 0) {
-        return OpCodes.Hex8ToBytes("310e0eed78bdb8c2");
-      }
-      
-      return this.siphash(input, this.key);
+      // The empty message is an ordinary case: it produces one padded final
+      // block whose last byte carries the length, exactly like any other tail.
+      return this.siphash(input || [], this.key);
     },
     
     // Universal cipher interface  
