@@ -297,10 +297,8 @@
       // If no ciphertext, verify tag only
       if (msgLen === 0) {
         const receivedTag = ciphertext.slice(0, this.blockSize);
-        for (let i = 0; i < this.blockSize; i++) {
-          if (tag[i] !== receivedTag[i]) {
-            throw new Error("Authentication tag verification failed");
-          }
+        if (!OpCodes.SecureCompare(tag.slice(0, this.blockSize), receivedTag)) {
+          throw new Error("Authentication tag verification failed");
         }
         return [];
       }
@@ -355,10 +353,8 @@
 
         // Verify tag
         const receivedTag = ciphertext.slice(ctPos + this.blockSize);
-        for (let i = 0; i < this.blockSize; i++) {
-          if (rightOutput[i] !== receivedTag[i]) {
-            throw new Error("Authentication tag verification failed");
-          }
+        if (!OpCodes.SecureCompare(rightOutput.slice(0, this.blockSize), receivedTag)) {
+          throw new Error("Authentication tag verification failed");
         }
       } else {
         this.setCounter(tweakey, counter, 7);
@@ -384,10 +380,8 @@
 
         // Verify tag
         const receivedTag = ciphertext.slice(ctPos + this.blockSize, ctPos + this.blockSize + ctRem);
-        for (let i = 0; i < ctRem; i++) {
-          if (rightOutput[i] !== receivedTag[i]) {
-            throw new Error("Authentication tag verification failed");
-          }
+        if (!OpCodes.SecureCompare(rightOutput.slice(0, ctRem), receivedTag)) {
+          throw new Error("Authentication tag verification failed");
         }
       }
 
