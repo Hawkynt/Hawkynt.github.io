@@ -15,8 +15,13 @@
  * - Tag: 128 bits
  * - Based on AES round function for security and efficiency
  *
- * Reference: http://competitions.cr.yp.to/round1/tiaoxinv1.pdf
- * SUPERCOP: https://github.com/floodyberry/supercop/tree/master/crypto_aead/tiaoxinv1
+ * This follows Tiaoxin v2, which differs from v1 only in the finalization
+ * length encoding: the v1 reference C shifts a 64-bit length by up to 120 bits,
+ * which is undefined behaviour and makes its tags compiler-dependent.
+ *
+ * Reference: https://competitions.cr.yp.to/round3/tiaoxinv21.pdf
+ * Round 2 specification: https://competitions.cr.yp.to/round2/tiaoxinv2.pdf
+ * SUPERCOP: https://github.com/floodyberry/supercop/tree/master/crypto_aead/tiaoxinv2
  */
 
 (function (root, factory) {
@@ -159,46 +164,111 @@
       this.SupportsDetached = false;
 
       this.documentation = [
-        new LinkItem("CAESAR Competition Submission", "http://competitions.cr.yp.to/round1/tiaoxinv1.pdf"),
+        new LinkItem("CAESAR Round 3 Submission (v2.1)", "https://competitions.cr.yp.to/round3/tiaoxinv21.pdf"),
+        new LinkItem("CAESAR Round 2 Submission (v2)", "https://competitions.cr.yp.to/round2/tiaoxinv2.pdf"),
         new LinkItem("CAESAR Competition", "https://competitions.cr.yp.to/caesar.html"),
-        new LinkItem("SUPERCOP Reference Implementation", "https://github.com/floodyberry/supercop/tree/master/crypto_aead/tiaoxinv1")
+        new LinkItem("SUPERCOP Reference Implementation", "https://github.com/floodyberry/supercop/tree/master/crypto_aead/tiaoxinv2")
       ];
 
       this.references = [
-        new LinkItem("Tiaoxin-346 Specification (PDF)", "http://competitions.cr.yp.to/round1/tiaoxinv1.pdf"),
+        new LinkItem("Tiaoxin-346 Specification (PDF)", "https://competitions.cr.yp.to/round3/tiaoxinv21.pdf"),
+        new LinkItem("GMU CAESAR Hardware API Implementation and KAT", "https://cryptography.gmu.edu/athena/index.php?id=CAESAR_source_codes"),
         new LinkItem("Weak Keys in Reduced AEGIS and Tiaoxin", "https://eprint.iacr.org/2021/187"),
         new LinkItem("Differential Fault Analysis on Tiaoxin", "https://link.springer.com/chapter/10.1007/978-981-10-2738-3_7")
       ];
 
-      // Test vectors - Generated using reference implementation behavior
-      // Note: SUPERCOP uses PRNG for test generation; these vectors validated via round-trip testing
+      // Published test vectors. The CAESAR submission PDFs carry no test
+      // vectors and SUPERCOP ships neither a KAT file nor a checksum for
+      // tiaoxin, so these come from George Mason University's CAESAR Hardware
+      // API implementation of Tiaoxin, whose KAT was produced by the reference
+      // software (aeadtvgen, lib_name = tiaoxinv2, --verify_lib).
+      //
+      // Note that the round-1 reference C is undefined behaviour in its length
+      // encoding - it shifts a 64-bit value by up to 120 bits - so its tags are
+      // compiler-dependent. Round 2 corrected exactly that and nothing else;
+      // these vectors follow the corrected version.
+      const KAT_URI = "https://cryptography.gmu.edu/athena/sources/2017_08_08/Tiaoxin_GMU_v1.1.zip";
       this.tests = [
         {
-          text: "Empty message (tag only)",
-          uri: "https://github.com/floodyberry/supercop/tree/master/crypto_aead/tiaoxinv1",
+          text: "GMU CAESAR-HW KAT Msg 1 (empty message, empty associated data)",
+          uri: KAT_URI,
           input: OpCodes.Hex8ToBytes(""),
-          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
-          nonce: OpCodes.Hex8ToBytes("101112131415161718191a1b1c1d1e1f"),
+          key: OpCodes.Hex8ToBytes("55565758595A5B5C5D5E5F6061626364"),
+          nonce: OpCodes.Hex8ToBytes("B0B1B2B3B4B5B6B7B8B9BABBBCBDBEBF"),
           associatedData: OpCodes.Hex8ToBytes(""),
-          expected: OpCodes.Hex8ToBytes("26a3ada143af7d2f077e19c944216bfd")
+          expected: OpCodes.Hex8ToBytes("545B6287D143ACBF33DAAA2D5CCB873E")
         },
         {
-          text: "32-byte message (one full block)",
-          uri: "https://github.com/floodyberry/supercop/tree/master/crypto_aead/tiaoxinv1",
-          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
-          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
-          nonce: OpCodes.Hex8ToBytes("101112131415161718191a1b1c1d1e1f"),
-          associatedData: OpCodes.Hex8ToBytes(""),
-          expected: OpCodes.Hex8ToBytes("bb45a19bb3fbf1e78c0223c89c02bb1a6aa7e5f5b74355a9b4b6c6af3339ac7cc4216bb7c8e4cb04c42457dbbabac9a0")
+          text: "GMU CAESAR-HW KAT Msg 3 (empty message, 1-byte associated data)",
+          uri: KAT_URI,
+          input: OpCodes.Hex8ToBytes(""),
+          key: OpCodes.Hex8ToBytes("55565758595A5B5C5D5E5F6061626364"),
+          nonce: OpCodes.Hex8ToBytes("B0B1B2B3B4B5B6B7B8B9BABBBCBDBEBF"),
+          associatedData: OpCodes.Hex8ToBytes("A0"),
+          expected: OpCodes.Hex8ToBytes("4BC1849C85E902F65224933CD6125FC1")
         },
         {
-          text: "16-byte message with 16-byte associated data",
-          uri: "https://github.com/floodyberry/supercop/tree/master/crypto_aead/tiaoxinv1",
-          input: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
-          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
-          nonce: OpCodes.Hex8ToBytes("101112131415161718191a1b1c1d1e1f"),
-          associatedData: OpCodes.Hex8ToBytes("202122232425262728292a2b2c2d2e2f"),
-          expected: OpCodes.Hex8ToBytes("2750e89640e176f077579b7f7cb023e1d873e1468c0033b4fa2da16cd90871ec")
+          text: "GMU CAESAR-HW KAT Msg 5 (1-byte message, empty associated data)",
+          uri: KAT_URI,
+          input: OpCodes.Hex8ToBytes("FF"),
+          key: OpCodes.Hex8ToBytes("55565758595A5B5C5D5E5F6061626364"),
+          nonce: OpCodes.Hex8ToBytes("B0B1B2B3B4B5B6B7B8B9BABBBCBDBEBF"),
+          associatedData: OpCodes.Hex8ToBytes(""),
+          expected: OpCodes.Hex8ToBytes("D7B9F3B2A47B6742C58C5F5F26EF7CD03F")
+        },
+        {
+          text: "GMU CAESAR-HW KAT Msg 7 (1-byte message, 1-byte associated data)",
+          uri: KAT_URI,
+          input: OpCodes.Hex8ToBytes("FF"),
+          key: OpCodes.Hex8ToBytes("55565758595A5B5C5D5E5F6061626364"),
+          nonce: OpCodes.Hex8ToBytes("B0B1B2B3B4B5B6B7B8B9BABBBCBDBEBF"),
+          associatedData: OpCodes.Hex8ToBytes("A0"),
+          expected: OpCodes.Hex8ToBytes("6D8A5DC084AAEDAAA02A9E1AC1B01358F0")
+        },
+        {
+          text: "GMU CAESAR-HW KAT Msg 9 (32-byte message and associated data, one full block each)",
+          uri: KAT_URI,
+          input: OpCodes.Hex8ToBytes("FF000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E"),
+          key: OpCodes.Hex8ToBytes("55565758595A5B5C5D5E5F6061626364"),
+          nonce: OpCodes.Hex8ToBytes("B0B1B2B3B4B5B6B7B8B9BABBBCBDBEBF"),
+          associatedData: OpCodes.Hex8ToBytes("A0A1A2A3A4A5A6A7A8A9AAABACADAEAFB0B1B2B3B4B5B6B7B8B9BABBBCBDBEBF"),
+          expected: OpCodes.Hex8ToBytes("0C5B778E763ACA8126FF3D98B7CCB94F7769171A48987FB3FB99B92078DBBEF6A210F4C82B0447EF3658AF76AB95CBE4")
+        },
+        {
+          text: "GMU CAESAR-HW KAT Msg 11 (31-byte message and associated data, short final block)",
+          uri: KAT_URI,
+          input: OpCodes.Hex8ToBytes("FF000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D"),
+          key: OpCodes.Hex8ToBytes("55565758595A5B5C5D5E5F6061626364"),
+          nonce: OpCodes.Hex8ToBytes("B0B1B2B3B4B5B6B7B8B9BABBBCBDBEBF"),
+          associatedData: OpCodes.Hex8ToBytes("A0A1A2A3A4A5A6A7A8A9AAABACADAEAFB0B1B2B3B4B5B6B7B8B9BABBBCBDBE"),
+          expected: OpCodes.Hex8ToBytes("386F2BE6763ACA8126FF3D98B7CCB94F7769171A48987FB3FB99B92078DBBEF167FC2F34EFF54580C613A9BC4C713A")
+        },
+        {
+          text: "GMU CAESAR-HW KAT Msg 13 (33-byte message and associated data, one byte into a second block)",
+          uri: KAT_URI,
+          input: OpCodes.Hex8ToBytes("FF000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+          key: OpCodes.Hex8ToBytes("55565758595A5B5C5D5E5F6061626364"),
+          nonce: OpCodes.Hex8ToBytes("B0B1B2B3B4B5B6B7B8B9BABBBCBDBEBF"),
+          associatedData: OpCodes.Hex8ToBytes("A0A1A2A3A4A5A6A7A8A9AAABACADAEAFB0B1B2B3B4B5B6B7B8B9BABBBCBDBEBFC0"),
+          expected: OpCodes.Hex8ToBytes("2F585296FF34D59A11D1198C26E7915550AB52448079C91D46CCCFE447CBEC7B7843737FBA1AE66D79A9E3FCC191FFB80B")
+        },
+        {
+          text: "GMU CAESAR-HW KAT Msg 21 (128-byte message, 52-byte associated data)",
+          uri: KAT_URI,
+          input: OpCodes.Hex8ToBytes("CE576F8A005CB3367D831209FFC6905E816BF94A589189FB7D0CEE78EFD815A2B03B0179D0D4BDC6881BDA1BC22FA580AD78C25A2404A381D43A1BA2A8D70BBC3F582404FE4082638DE999B8F665A538573EACD1856C1D1E598ADA322FBD9BDB590BAF23223E0ED17D08E62098F78FD9"),
+          key: OpCodes.Hex8ToBytes("51FCC64D3726F9F74AB70E62CD59C740"),
+          nonce: OpCodes.Hex8ToBytes("A2CD65E40ED8FB93DAFF1DC45A12A945"),
+          associatedData: OpCodes.Hex8ToBytes("11CF345B2643021B701CEAC02BCE1EA121325B8798DC017094387B764B82E67CD32A98554289F0BD30F6A6A87EDB7BA4B11DB2F5"),
+          expected: OpCodes.Hex8ToBytes("66FC0642A34E76E2A70F4A3D3EA4A52C9A3D97124579A577924F8CC12D1859EB01E035C018B5D8ACE80FDD7D061727CBB8ADDF9C98A10AD5F19398C5EB43393FD31A8BDCC912AB7916187BE381191DA5DA1677209AF50E878141B699AB618DF3A89B24FB9E9AB8BEB33368A88917F30C852A22DDB263859456968B1822CA4996")
+        },
+        {
+          text: "GMU CAESAR-HW KAT Msg 24 (1-byte message, 111-byte associated data)",
+          uri: KAT_URI,
+          input: OpCodes.Hex8ToBytes("9D"),
+          key: OpCodes.Hex8ToBytes("0A673F78117BA9397650ACCED8B5907B"),
+          nonce: OpCodes.Hex8ToBytes("CB7977680D4CC7236ECF52F29A987FF1"),
+          associatedData: OpCodes.Hex8ToBytes("814D6A9274D508DB708000A961A391FFEB25D9C65507084BC383CC4B81429D08532769C8C6BF2C84E7C7040679119D8F1DD1257C8604712C51B28B9FE6D3A426F4A938B3E474BC7817B56AF98E180432FA835E5F469112220910487262B575729744B11FA2D823FFA2FE0F17E08A95"),
+          expected: OpCodes.Hex8ToBytes("B57B2E6BD87B95AEC1D3D8277C9D69CB06")
         }
       ];
     }
@@ -240,7 +310,6 @@
       this._nonce = null;
       this._ad = [];
       this._data = [];
-      this._initialized = false;
     }
 
     /**
@@ -276,7 +345,6 @@
         throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes (must be 16)");
       }
       this._nonce = new Uint8Array(nonceBytes);
-      this._initialized = false; // Reset on nonce change
     }
 
     get nonce() { return this._nonce ? Array.from(this._nonce) : null; }
@@ -291,80 +359,77 @@
 
     get associatedData() { return [...this._ad]; }
 
-    // Tiaoxin Update transformation
+    // Tiaoxin round update R(T, M) for a register T of s words:
+    //
+    //   T'[0] = AES(T[s-1], T[0]) XOR M   one AES round on the oldest word,
+    //                                     keyed with the current newest word
+    //   T'[1] = AES(T[0], Z0)             one AES round on the newest word,
+    //                                     keyed with the constant Z0
+    //   T'[i] = T[i-1]  for i >= 2        the rest of the register shifts along
+    //
+    // where AES(X, SK) is MixColumns(ShiftRows(SubBytes(X))) XOR SK. Index 0
+    // holds the newest word and index s-1 the oldest. Every right-hand side
+    // reads the pre-update register, so the two new words are computed before
+    // anything is stored and the shift runs downwards from the far end.
+    //
+    // M is the only place the message enters the state, and it enters exactly
+    // one word per register - which is why all three of M0, M1 and M2 have to
+    // be carried through, and why dropping any of them would leave that part of
+    // the message out of the tag.
+    _round(T, M) {
+      const s = T.length;
+
+      const w0 = new Uint8Array(16);
+      copyWord(w0, T[s - 1]);
+      aesRound(w0);
+      xorWords(w0, T[0]);
+      xorWords(w0, M);
+
+      const w1 = new Uint8Array(16);
+      copyWord(w1, T[0]);
+      aesRound(w1);
+      xorWords(w1, Z0);
+
+      for (let i = s - 1; i >= 2; --i) {
+        copyWord(T[i], T[i - 1]);
+      }
+      copyWord(T[1], w1);
+      copyWord(T[0], w0);
+    }
+
+    // Tiaoxin Update transformation: the three registers advance in parallel,
+    // each absorbing its own message word.
     _update(M0, M1, M2) {
-      // Temporary storage
-      const tmp0 = new Uint8Array(16);
-      const tmp1 = new Uint8Array(16);
-      const tmp2 = new Uint8Array(16);
+      this._round(this.T3, M0);
+      this._round(this.T4, M1);
+      this._round(this.T6, M2);
+    }
 
-      // T3 update
-      copyWord(tmp0, this.T3[0]);
-      copyWord(tmp1, this.T3[1]);
-      copyWord(tmp2, this.T3[2]);
+    // The two 128-bit words the state exposes after an Update. On encryption
+    // these are the ciphertext words directly, because the plaintext has
+    // already been folded into T3[0], T4[0] and T6[0] by the Update. On
+    // decryption the same two expressions are recovered from a zero Update and
+    // XORed with the ciphertext to give the plaintext back.
+    _extract() {
+      const e0 = new Uint8Array(16);
+      copyWord(e0, this.T6[3]);
+      andWords(e0, this.T4[3]);
+      xorWords(e0, this.T3[0]);
+      xorWords(e0, this.T3[2]);
+      xorWords(e0, this.T4[1]);
 
-      aesRound(tmp0);
-      xorWords(tmp0, Z0);
-      xorWords(tmp0, M0);
+      const e1 = new Uint8Array(16);
+      copyWord(e1, this.T6[5]);
+      andWords(e1, this.T3[2]);
+      xorWords(e1, this.T6[0]);
+      xorWords(e1, this.T4[2]);
+      xorWords(e1, this.T3[1]);
 
-      aesRound(tmp1);
-      xorWords(tmp1, Z1);
-      xorWords(tmp1, M1);
-
-      aesRound(tmp2);
-      xorWords(tmp2, M2);
-
-      copyWord(this.T3[2], this.T3[1]);
-      copyWord(this.T3[1], this.T3[0]);
-      copyWord(this.T3[0], tmp0);
-
-      // T4 update
-      copyWord(tmp0, this.T4[0]);
-      copyWord(tmp1, this.T4[1]);
-      copyWord(tmp2, this.T4[2]);
-      const tmp3 = new Uint8Array(16);
-      copyWord(tmp3, this.T4[3]);
-
-      aesRound(tmp0);
-      xorWords(tmp0, Z1);
-      xorWords(tmp0, M0);
-
-      aesRound(tmp1);
-      xorWords(tmp1, M1);
-
-      aesRound(tmp2);
-      xorWords(tmp2, Z0);
-      xorWords(tmp2, M2);
-
-      aesRound(tmp3);
-
-      copyWord(this.T4[3], this.T4[2]);
-      copyWord(this.T4[2], this.T4[1]);
-      copyWord(this.T4[1], this.T4[0]);
-      copyWord(this.T4[0], tmp0);
-
-      // T6 update
-      const t6temp = Array.from({ length: 6 }, () => new Uint8Array(16));
-      for (let i = 0; i < 6; ++i) {
-        copyWord(t6temp[i], this.T6[i]);
-        aesRound(t6temp[i]);
-      }
-
-      xorWords(t6temp[0], M0);
-      xorWords(t6temp[1], Z0);
-      xorWords(t6temp[1], M1);
-      xorWords(t6temp[2], M2);
-      xorWords(t6temp[3], Z1);
-
-      for (let i = 5; i > 0; --i) {
-        copyWord(this.T6[i], this.T6[i - 1]);
-      }
-      copyWord(this.T6[0], t6temp[0]);
+      return [e0, e1];
     }
 
     // Initialize state with key and nonce
     _initialize() {
-      if (this._initialized) return;
       if (!this._key || !this._nonce) {
         throw new Error("Key and nonce must be set");
       }
@@ -389,40 +454,36 @@
       this.T6[5].fill(0);
 
       // Run 15 initialization rounds with constants
-      const zeroBlock = new Uint8Array(16);
       for (let i = 0; i < 15; ++i) {
-        this._update(Z0, Z1, zeroBlock);
+        this._update(Z0, Z1, Z0);
       }
-
-      this._initialized = true;
     }
 
-    // Process associated data
-    _processAD() {
-      if (this._ad.length === 0) return;
-
-      // Process 32-byte blocks
-      const blockSize = 32;
-      let pos = 0;
-
-      while (pos + blockSize <= this._ad.length) {
-        const M0 = new Uint8Array(this._ad.slice(pos, pos + 16));
-        const M1 = new Uint8Array(this._ad.slice(pos + 16, pos + 32));
-        const M2 = new Uint8Array(16); // Zero for AD processing
-        this._update(M0, M1, M2);
-        pos += blockSize;
+    // Split a byte array into the two 128-bit words of the block starting at
+    // pos, zero-padding anything past the end of the data.
+    _blockWords(data, pos) {
+      const w0 = new Uint8Array(16);
+      const w1 = new Uint8Array(16);
+      for (let i = 0; i < 16; ++i) {
+        const a = pos + i;
+        if (a < data.length) w0[i] = data[a];
+        const b = pos + 16 + i;
+        if (b < data.length) w1[i] = data[b];
       }
+      return [w0, w1];
+    }
 
-      // Process incomplete block with padding
-      if (pos < this._ad.length) {
-        const remaining = new Uint8Array(32);
-        for (let i = 0; i < this._ad.length - pos; ++i) {
-          remaining[i] = this._ad[pos + i];
-        }
-        const M0 = new Uint8Array(remaining.slice(0, 16));
-        const M1 = new Uint8Array(remaining.slice(16, 32));
-        const M2 = new Uint8Array(16);
-        this._update(M0, M1, M2);
+    // Process associated data: 32 bytes per Update, zero-padded, with the third
+    // message word the XOR of the other two. An empty associated data string is
+    // not processed at all.
+    _processAD() {
+      const ad = this._ad;
+      for (let pos = 0; pos < ad.length; pos += 32) {
+        const [A0, A1] = this._blockWords(ad, pos);
+        const A2 = new Uint8Array(16);
+        copyWord(A2, A0);
+        xorWords(A2, A1);
+        this._update(A0, A1, A2);
       }
     }
 
@@ -458,136 +519,79 @@
         const receivedTag = this._data.slice(ctLength);
 
         const plaintext = [];
-        const blockSize = 32;
-        let pos = 0;
+        const zeroWord = new Uint8Array(16);
 
-        // Decrypt message blocks
-        while (pos + blockSize <= ciphertext.length) {
-          const C0 = new Uint8Array(ciphertext.slice(pos, pos + 16));
-          const C1 = new Uint8Array(ciphertext.slice(pos + 16, pos + 32));
+        // Decrypt message blocks. The message enters the state only through the
+        // M word of each register update, and it enters linearly, so running the
+        // update with a zero message and then XORing the recovered plaintext
+        // into word 0 of each register lands on exactly the state the encryptor
+        // reached with Update(M0, M1, M0 XOR M1).
+        for (let pos = 0; pos < ciphertext.length; pos += 32) {
+          const [C0, C1] = this._blockWords(ciphertext, pos);
+          const remaining = ciphertext.length - pos;
 
-          // Generate keystream from state
-          const K0 = new Uint8Array(16);
-          const K1 = new Uint8Array(16);
-          copyWord(K0, this.T3[1]);
-          xorWords(K0, this.T4[1]);
-          xorWords(K0, this.T6[1]);
-          copyWord(K1, this.T3[2]);
-          xorWords(K1, this.T4[3]);
-          xorWords(K1, this.T6[4]);
+          this._update(zeroWord, zeroWord, zeroWord);
+          const [e0, e1] = this._extract();
 
-          // Decrypt
           const M0 = new Uint8Array(16);
-          const M1 = new Uint8Array(16);
           copyWord(M0, C0);
+          xorWords(M0, e0);
+
+          const M1 = new Uint8Array(16);
           copyWord(M1, C1);
-          xorWords(M0, K0);
-          xorWords(M1, K1);
+          xorWords(M1, e1);
+          xorWords(M1, M0);
 
-          plaintext.push(...M0, ...M1);
+          // A short final block was zero-padded before it was absorbed, so the
+          // bytes past the end of the real ciphertext have to be forced back to
+          // zero before absorbing; they decrypted to whatever the padding gave.
+          for (let i = remaining; i < 16; ++i) M0[i] = 0;
+          for (let i = remaining - 16; i < 16; ++i) if (i >= 0) M1[i] = 0;
 
-          // Update state with decrypted message
+          for (let i = 0; i < 16 && pos + i < ciphertext.length; ++i) plaintext.push(M0[i]);
+          for (let i = 0; i < 16 && pos + 16 + i < ciphertext.length; ++i) plaintext.push(M1[i]);
+
           const M2 = new Uint8Array(16);
-          copyWord(M2, this.T3[0]);
-          xorWords(M2, this.T4[2]);
-          andWords(M2, this.T6[5]);
-          this._update(M0, M1, M2);
-
-          pos += blockSize;
-        }
-
-        // Handle incomplete block
-        if (pos < ciphertext.length) {
-          const remaining = ciphertext.slice(pos);
-          const K0 = new Uint8Array(16);
-          const K1 = new Uint8Array(16);
-          copyWord(K0, this.T3[1]);
-          xorWords(K0, this.T4[1]);
-          xorWords(K0, this.T6[1]);
-          copyWord(K1, this.T3[2]);
-          xorWords(K1, this.T4[3]);
-          xorWords(K1, this.T6[4]);
-
-          for (let i = 0; i < remaining.length; ++i) {
-            const keyByte = i < 16 ? K0[i] : K1[i - 16];
-            plaintext.push(OpCodes.XorN(remaining[i], keyByte));
-          }
+          copyWord(M2, M0);
+          xorWords(M2, M1);
+          xorWords(this.T3[0], M0);
+          xorWords(this.T4[0], M1);
+          xorWords(this.T6[0], M2);
         }
 
         // Finalize and verify tag
         const tag = this._finalize(this._ad.length, ciphertext.length);
 
-        // Constant-time tag comparison
-        let tagMatch = 0;
-        for (let i = 0; i < 16; ++i) {
-          tagMatch |= OpCodes.XorN(tag[i], receivedTag[i]);
-        }
+        this._data = [];
 
-        if (tagMatch !== 0) {
+        if (!OpCodes.SecureCompare(tag, receivedTag)) {
           throw new Error("Authentication tag verification failed");
         }
 
-        this._data = [];
         return plaintext;
 
       } else {
         // Encryption
         const plaintext = this._data;
         const ciphertext = [];
-        const blockSize = 32;
-        let pos = 0;
 
-        // Encrypt message blocks
-        while (pos + blockSize <= plaintext.length) {
-          const M0 = new Uint8Array(plaintext.slice(pos, pos + 16));
-          const M1 = new Uint8Array(plaintext.slice(pos + 16, pos + 32));
-
-          // Generate keystream from state
-          const K0 = new Uint8Array(16);
-          const K1 = new Uint8Array(16);
-          copyWord(K0, this.T3[1]);
-          xorWords(K0, this.T4[1]);
-          xorWords(K0, this.T6[1]);
-          copyWord(K1, this.T3[2]);
-          xorWords(K1, this.T4[3]);
-          xorWords(K1, this.T6[4]);
-
-          // Encrypt
-          const C0 = new Uint8Array(16);
-          const C1 = new Uint8Array(16);
-          copyWord(C0, M0);
-          copyWord(C1, M1);
-          xorWords(C0, K0);
-          xorWords(C1, K1);
-
-          ciphertext.push(...C0, ...C1);
-
-          // Update state
+        // Encrypt message blocks. A short final block is zero-padded and still
+        // absorbed by a full Update - only the ciphertext written out is cut
+        // back to the real length. Leaving the tail block out of the state
+        // would leave the whole of a sub-block message unauthenticated.
+        for (let pos = 0; pos < plaintext.length; pos += 32) {
+          const [M0, M1] = this._blockWords(plaintext, pos);
           const M2 = new Uint8Array(16);
-          copyWord(M2, this.T3[0]);
-          xorWords(M2, this.T4[2]);
-          andWords(M2, this.T6[5]);
+          copyWord(M2, M0);
+          xorWords(M2, M1);
+
           this._update(M0, M1, M2);
 
-          pos += blockSize;
-        }
-
-        // Handle incomplete block
-        if (pos < plaintext.length) {
-          const remaining = plaintext.slice(pos);
-          const K0 = new Uint8Array(16);
-          const K1 = new Uint8Array(16);
-          copyWord(K0, this.T3[1]);
-          xorWords(K0, this.T4[1]);
-          xorWords(K0, this.T6[1]);
-          copyWord(K1, this.T3[2]);
-          xorWords(K1, this.T4[3]);
-          xorWords(K1, this.T6[4]);
-
-          for (let i = 0; i < remaining.length; ++i) {
-            const keyByte = i < 16 ? K0[i] : K1[i - 16];
-            ciphertext.push(OpCodes.XorN(remaining[i], keyByte));
-          }
+          // After the update the plaintext is already folded into the state, so
+          // the two extracted words are the ciphertext themselves.
+          const [C0, C1] = this._extract();
+          for (let i = 0; i < 16 && pos + i < plaintext.length; ++i) ciphertext.push(C0[i]);
+          for (let i = 0; i < 16 && pos + 16 + i < plaintext.length; ++i) ciphertext.push(C1[i]);
         }
 
         // Finalize and generate tag
@@ -599,32 +603,33 @@
       }
     }
 
+    // Encode a length as a Tiaoxin length word: eight zero bytes followed by the
+    // count of BYTES as a 64-bit big-endian integer. The paper writes |A| and
+    // |M| as bit counts, but the reference code and the published test vectors
+    // both use byte counts, and only the byte reading reproduces them.
+    _lengthWord(count) {
+      const word = new Uint8Array(16);
+      let value = count;
+      for (let i = 15; i >= 8; --i) {
+        word[i] = OpCodes.AndN(value, 0xff);
+        value = Math.floor(value / 256);
+      }
+      return word;
+    }
+
     // Finalization: Generate authentication tag
     _finalize(adLen, msgLen) {
-      // Encode lengths as 64-bit values in message blocks
-      const lenBlock0 = new Uint8Array(16);
-      const lenBlock1 = new Uint8Array(16);
+      // Absorb the two lengths, then run 20 rounds on the constants
+      const lenBlock0 = this._lengthWord(adLen);
+      const lenBlock1 = this._lengthWord(msgLen);
+      const lenBlock2 = new Uint8Array(16);
+      copyWord(lenBlock2, lenBlock0);
+      xorWords(lenBlock2, lenBlock1);
 
-      // AD length in bits (64-bit little-endian)
-      const adBits = adLen * 8;
-      for (let i = 0; i < 8; ++i) {
-        lenBlock0[i] = OpCodes.AndN(OpCodes.Shr32(adBits, i * 8), 0xff);
-      }
+      this._update(lenBlock0, lenBlock1, lenBlock2);
 
-      // Message length in bits (64-bit little-endian)
-      const msgBits = msgLen * 8;
-      for (let i = 0; i < 8; ++i) {
-        lenBlock1[i] = OpCodes.AndN(OpCodes.Shr32(msgBits, i * 8), 0xff);
-      }
-
-      // Run 20 finalization rounds
-      const zeroBlock = new Uint8Array(16);
       for (let i = 0; i < 20; ++i) {
-        if (i === 0) {
-          this._update(lenBlock0, lenBlock1, zeroBlock);
-        } else {
-          this._update(zeroBlock, zeroBlock, zeroBlock);
-        }
+        this._update(Z1, Z0, Z1);
       }
 
       // Generate 16-byte tag from all state words
