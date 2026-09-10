@@ -72,6 +72,27 @@
     return x;
   }
 
+  // The bit-sliced S-box above acts on each byte of the word independently, so
+  // it is the published SKINNY-128 8-bit S-box applied four times over. That
+  // makes its inverse a plain byte table, derived here from the forward
+  // function so the two can never drift apart.
+  const SKINNY128_SBOX_INV = (function buildInverse() {
+    const inverse = new Array(256);
+    for (let b = 0; b < 256; ++b) inverse[OpCodes.AndN(skinny128_sbox(b * 0x01010101), 0xFF)] = b;
+    return inverse;
+  })();
+
+  // Inverse of skinny128_sbox, byte by byte.
+  function skinny128_sbox_inv(x) {
+    const bytes = OpCodes.Unpack32LE(OpCodes.ToUint32(x));
+    return OpCodes.Pack32LE(
+      SKINNY128_SBOX_INV[bytes[0]],
+      SKINNY128_SBOX_INV[bytes[1]],
+      SKINNY128_SBOX_INV[bytes[2]],
+      SKINNY128_SBOX_INV[bytes[3]]
+    );
+  }
+
   // LFSR2 for TK2
   function skinny128_LFSR2(x) {
     x = OpCodes.ToUint32(x);
@@ -395,6 +416,152 @@
   }
 
   // ==========================================================================
+  // SKINNY-128 decryption
+  //
+  // SKINNY-AEAD encrypts each full message block with the tweakable block
+  // cipher itself, so recovering that block needs the cipher's inverse. Only
+  // the ragged final block is handled as keystream, which is why messages
+  // shorter than one block used to decrypt correctly and nothing longer did.
+  //
+  // Both encryption routines above run the same round four times per loop
+  // iteration with the register roles rotated, so a single description covers
+  // every round: substitute, add the round tweakey and constant to two of the
+  // four registers and 0x02 to a third, rotate three of them, then mix. The
+  // registers taking each role in round r are ROUND_ANCHOR[r % 4] and its three
+  // successors modulo 4. Round keys are collected in a forward pass because the
+  // tweakey schedule only runs forwards, then consumed in reverse.
+  // ==========================================================================
+
+  const ROUND_ANCHOR = [0, 3, 2, 1];
+
+  // One step of the 6-bit round-constant LFSR, identical to the encryptors'.
+  function skinny_next_rc(rc) {
+    return OpCodes.AndN(
+      OpCodes.XorN(
+        OpCodes.XorN(
+          OpCodes.XorN(OpCodes.Shl32(rc, 1), OpCodes.AndN(OpCodes.Shr32(rc, 5), 0x01)),
+          OpCodes.AndN(OpCodes.Shr32(rc, 4), 0x01)),
+        0x01),
+      0x3F);
+  }
+
+  /**
+   * Replay the tweakey schedule and record what each round consumes.
+   * @param {uint8[]} tweakey - 16 bytes per tweakey word (32 for TK1|TK2, 48 for TK1|TK2|TK3)
+   * @param {number} tweakeyCount - 2 for SKINNY-128-256, 3 for SKINNY-128-384
+   * @param {number} rounds - 48 or 56
+   * @returns {{keyA: number[], keyB: number[], constants: number[]}}
+   */
+  function skinny_round_keys(tweakey, tweakeyCount, rounds) {
+    const TK = [];
+    for (let j = 0; j < tweakeyCount; ++j) {
+      const base = j * 16;
+      TK.push([
+        OpCodes.Pack32LE(tweakey[base], tweakey[base + 1], tweakey[base + 2], tweakey[base + 3]),
+        OpCodes.Pack32LE(tweakey[base + 4], tweakey[base + 5], tweakey[base + 6], tweakey[base + 7]),
+        OpCodes.Pack32LE(tweakey[base + 8], tweakey[base + 9], tweakey[base + 10], tweakey[base + 11]),
+        OpCodes.Pack32LE(tweakey[base + 12], tweakey[base + 13], tweakey[base + 14], tweakey[base + 15])
+      ]);
+    }
+
+    const keyA = new Array(rounds);
+    const keyB = new Array(rounds);
+    const constants = new Array(rounds);
+    let rc = 0;
+
+    for (let r = 0; r < rounds; ++r) {
+      rc = skinny_next_rc(rc);
+      constants[r] = rc;
+
+      // Even rounds consume the first tweakey half, odd rounds the second.
+      const pair = (r % 2 === 0) ? 0 : 2;
+      let a = 0;
+      let b = 0;
+      for (let j = 0; j < tweakeyCount; ++j) {
+        a = OpCodes.XorN(a, TK[j][pair]);
+        b = OpCodes.XorN(b, TK[j][pair + 1]);
+      }
+      keyA[r] = OpCodes.ToUint32(a);
+      keyB[r] = OpCodes.ToUint32(b);
+
+      // ...and the half NOT consumed this round is the one advanced for the next.
+      const half = (r % 2 === 0) ? 2 : 0;
+      for (let j = 0; j < tweakeyCount; ++j) skinny128_permute_tk_half(TK[j], half);
+      if (tweakeyCount > 1) {
+        TK[1][half] = skinny128_LFSR2(TK[1][half]);
+        TK[1][half + 1] = skinny128_LFSR2(TK[1][half + 1]);
+      }
+      if (tweakeyCount > 2) {
+        TK[2][half] = skinny128_LFSR3(TK[2][half]);
+        TK[2][half + 1] = skinny128_LFSR3(TK[2][half + 1]);
+      }
+    }
+
+    return { keyA, keyB, constants };
+  }
+
+  /**
+   * SKINNY-128 decryption with full tweakey, the exact inverse of the
+   * corresponding skinny_128_*_encrypt_tk_full above.
+   * @param {uint8[]} tweakey - 32 or 48 bytes
+   * @param {uint8[]} output - 16-byte destination
+   * @param {uint8[]} input - 16-byte ciphertext block
+   * @param {number} tweakeyCount - 2 or 3
+   * @param {number} rounds - 48 or 56
+   */
+  function skinny_decrypt_tk_full(tweakey, output, input, tweakeyCount, rounds) {
+    const schedule = skinny_round_keys(tweakey, tweakeyCount, rounds);
+
+    const s = [
+      OpCodes.Pack32LE(input[0], input[1], input[2], input[3]),
+      OpCodes.Pack32LE(input[4], input[5], input[6], input[7]),
+      OpCodes.Pack32LE(input[8], input[9], input[10], input[11]),
+      OpCodes.Pack32LE(input[12], input[13], input[14], input[15])
+    ];
+
+    for (let r = rounds - 1; r >= 0; --r) {
+      const a = ROUND_ANCHOR[r % 4];
+      const b = (a + 1) % 4;
+      const c = (a + 2) % 4;
+      const d = (a + 3) % 4;
+
+      // Undo the mixing, innermost assignment first: the forward direction did
+      // b ^= c, then c ^= a, then d ^= the UPDATED c.
+      s[d] = OpCodes.ToUint32(OpCodes.XorN(s[d], s[c]));
+      s[c] = OpCodes.ToUint32(OpCodes.XorN(s[c], s[a]));
+      s[b] = OpCodes.ToUint32(OpCodes.XorN(s[b], s[c]));
+
+      // Undo the row rotations.
+      s[b] = OpCodes.RotL32(s[b], 24);
+      s[c] = OpCodes.RotL32(s[c], 16);
+      s[d] = OpCodes.RotL32(s[d], 8);
+
+      // Undo the round tweakey and constants.
+      s[a] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s[a], schedule.keyA[r]), OpCodes.AndN(schedule.constants[r], 0x0F)));
+      s[b] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s[b], schedule.keyB[r]), OpCodes.Shr32(schedule.constants[r], 4)));
+      s[c] = OpCodes.ToUint32(OpCodes.XorN(s[c], 0x02));
+
+      // Undo the substitution.
+      for (let i = 0; i < 4; ++i) s[i] = skinny128_sbox_inv(s[i]);
+    }
+
+    for (let w = 0; w < 4; ++w) {
+      const bytes = OpCodes.Unpack32LE(s[w]);
+      for (let i = 0; i < 4; ++i) output[w * 4 + i] = bytes[i];
+    }
+  }
+
+  // SKINNY-128-384 decryption with full tweakey
+  function skinny_128_384_decrypt_tk_full(tweakey, output, input) {
+    skinny_decrypt_tk_full(tweakey, output, input, 3, 56);
+  }
+
+  // SKINNY-128-256 decryption with full tweakey
+  function skinny_128_256_decrypt_tk_full(tweakey, output, input) {
+    skinny_decrypt_tk_full(tweakey, output, input, 2, 48);
+  }
+
+  // ==========================================================================
   // SKINNY-AEAD Implementation
   // ==========================================================================
 
@@ -634,8 +801,11 @@
         const result_block = new Array(16);
 
         if (isDecrypt) {
-          // Decrypt block
-          skinny_128_384_encrypt_tk_full(tweakey, result_block, block);
+          // Decrypt block. Calling the FORWARD direction here returned a second
+          // encryption instead of the plaintext, so nothing longer than one
+          // block ever authenticated - the checksum below was accumulated over
+          // that garbage rather than over the message.
+          skinny_128_384_decrypt_tk_full(tweakey, result_block, block);
           for (let i = 0; i < 16; i++) {
             sum[i] = OpCodes.ToByte(OpCodes.XorN(sum[i], result_block[i]));
             output.push(result_block[i]);
@@ -814,7 +984,9 @@
         const result_block = new Array(16);
 
         if (isDecrypt) {
-          skinny_128_256_encrypt_tk_full(tweakey, result_block, block);
+          // Same correction as the 384-bit tweakey path: the inverse cipher,
+          // not the forward one.
+          skinny_128_256_decrypt_tk_full(tweakey, result_block, block);
           for (let i = 0; i < 16; i++) {
             sum[i] = OpCodes.ToByte(OpCodes.XorN(sum[i], result_block[i]));
             output.push(result_block[i]);
