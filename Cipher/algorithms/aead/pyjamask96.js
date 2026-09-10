@@ -252,6 +252,56 @@
     return output;
   }
 
+  // Pyjamask-96 block cipher decryption
+  //
+  // OCB encrypts each full message block with the block cipher, so recovering
+  // one needs the cipher's inverse. Until this existed the decryptor called
+  // encryptBlock on the ciphertext, which is why every message of a full block
+  // or more failed to authenticate while shorter ones - handled as keystream
+  // against the padded final block, and therefore symmetric - came back intact.
+  function decryptBlock(keySchedule, input) {
+    let s0 = OpCodes.Pack32BE(input[0], input[1], input[2], input[3]);
+    let s1 = OpCodes.Pack32BE(input[4], input[5], input[6], input[7]);
+    let s2 = OpCodes.Pack32BE(input[8], input[9], input[10], input[11]);
+
+    // Undo the final round key addition first.
+    let rkIndex = 3 * PYJAMASK_ROUNDS;
+    s0 = OpCodes.ToUint32(OpCodes.XorN(s0, keySchedule[rkIndex]));
+    s1 = OpCodes.ToUint32(OpCodes.XorN(s1, keySchedule[rkIndex + 1]));
+    s2 = OpCodes.ToUint32(OpCodes.XorN(s2, keySchedule[rkIndex + 2]));
+
+    for (let round = PYJAMASK_ROUNDS - 1; round >= 0; --round) {
+      // Inverse MixRows: each row's circulant matrix inverted.
+      s0 = matrixMultiply_2037a121(s0);
+      s1 = matrixMultiply_108ff2a0(s1);
+      s2 = matrixMultiply_9054d8c0(s2);
+
+      // Inverse S-box: the forward sequence run backwards, step by step.
+      s0 = OpCodes.ToUint32(OpCodes.XorN(s0, s1));
+      s1 = OpCodes.ToUint32(OpCodes.XorN(s1, s0));
+      s2 = OpCodes.ToUint32(~s2);
+      s2 = OpCodes.ToUint32(OpCodes.XorN(s2, s0));
+      s1 = OpCodes.ToUint32(OpCodes.XorN(s1, OpCodes.AndN(s0, s2)));
+      s0 = OpCodes.ToUint32(OpCodes.XorN(s0, OpCodes.AndN(s1, s2)));
+      s2 = OpCodes.ToUint32(OpCodes.XorN(s2, OpCodes.AndN(s0, s1)));
+      s1 = OpCodes.ToUint32(OpCodes.XorN(s1, s2));
+      s0 = OpCodes.ToUint32(OpCodes.XorN(s0, s1));
+
+      // Remove this round's key.
+      rkIndex = 3 * round;
+      s0 = OpCodes.ToUint32(OpCodes.XorN(s0, keySchedule[rkIndex]));
+      s1 = OpCodes.ToUint32(OpCodes.XorN(s1, keySchedule[rkIndex + 1]));
+      s2 = OpCodes.ToUint32(OpCodes.XorN(s2, keySchedule[rkIndex + 2]));
+    }
+
+    const output = [];
+    const b0 = OpCodes.Unpack32BE(s0);
+    const b1 = OpCodes.Unpack32BE(s1);
+    const b2 = OpCodes.Unpack32BE(s2);
+    output.push(...b0, ...b1, ...b2);
+    return output;
+  }
+
   // Double a value in GF(96) for OCB mode
   function doubleL(out, input) {
     const mask = OpCodes.AndN(OpCodes.Shr32(input[0], 7), 1);
@@ -497,7 +547,7 @@
           block[i] = OpCodes.XorN(this.offset[i], ciphertext[ctIndex + i]);
         }
 
-        const decrypted = encryptBlock(this.keySchedule, block);
+        const decrypted = decryptBlock(this.keySchedule, block);
         for (let i = 0; i < BLOCK_SIZE; ++i) {
           const pt = OpCodes.XorN(decrypted[i], this.offset[i]);
           plaintext.push(pt);
