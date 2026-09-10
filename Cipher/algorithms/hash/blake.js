@@ -325,8 +325,15 @@ if (!global.OpCodes && typeof require !== 'undefined') {
         this.bufferLength = 0;
       }
 
-      // Add length flag
-      this.buffer[paddingLength] = this.lengthFlag;
+      // Add length flag. It occupies the byte just before the length field, and
+      // when the message ends exactly there the 0x80 end marker already sits in
+      // that byte, so the two merge instead of one replacing the other: the
+      // reference pads a 55-byte-remainder message with 0x81 for BLAKE-256 and
+      // 0x80 for BLAKE-224, not with the flag alone. Assigning erased the end
+      // marker at every length congruent to 55 mod 64, and to 111 mod 128 for
+      // the 64-bit variants. At every other length the byte is still zero, so
+      // merging leaves the result exactly as it was.
+      this.buffer[paddingLength] = OpCodes.OrN(this.buffer[paddingLength], this.lengthFlag);
 
       // Add total length in bits (big-endian)
       const totalBits = totalLength * 8;
@@ -630,6 +637,18 @@ if (!global.OpCodes && typeof require !== 'undefined') {
           uri: "https://github.com/paulmillr/noble-hashes/blob/main/test/blake.test.ts",
           input: OpCodes.AnsiToBytes("The quick brown fox jumps over the lazy dog"),
           expected: OpCodes.Hex8ToBytes("c8e92d7088ef87c1530aee2ad44dc720cc10589cc2ec58f95a15e51b")
+        },
+        {
+          // 55 message bytes leave the 0x80 end marker in the very byte the
+          // length flag occupies, where the two have to merge - to 0x80 here,
+          // since BLAKE-224 flags with 0x00. This is the length at which the
+          // flag used to overwrite the marker outright.
+          text: "NIST SHA-3 Round 3 KAT, Len = 440 (padding boundary, 55 mod 64)",
+          uri: "https://web.archive.org/web/20110605051750id_/http://csrc.nist.gov/groups/ST/hash/sha-3/Round3/documents/Blake_FinalRnd.zip",
+          input: OpCodes.Hex8ToBytes(
+            "DE286BA4206E8B005714F80FB1CDFAEBDE91D29F84603E4A3EBC04686F99A46C" +
+            "9E880B96C574825582E8812A26E5A857FFC6579F63742F"),
+          expected: OpCodes.Hex8ToBytes("fa083b9d06432539780b306f8869c12ebc8c893e9308a208b337182d")
         }
       ];
 
@@ -696,6 +715,17 @@ if (!global.OpCodes && typeof require !== 'undefined') {
           uri: "https://github.com/paulmillr/noble-hashes/blob/main/test/blake.test.ts",
           input: OpCodes.AnsiToBytes("The quick brown fox jumps over the lazy dog"),
           expected: OpCodes.Hex8ToBytes("7576698ee9cad30173080678e5965916adbb11cb5245d386bf1ffda1cb26c9d7")
+        },
+        {
+          // 55 message bytes leave the 0x80 end marker in the very byte the
+          // length flag occupies, where the two have to merge into 0x81. This
+          // is the length at which the flag used to overwrite the marker.
+          text: "NIST SHA-3 Round 3 KAT, Len = 440 (padding boundary, 55 mod 64)",
+          uri: "https://web.archive.org/web/20110605051750id_/http://csrc.nist.gov/groups/ST/hash/sha-3/Round3/documents/Blake_FinalRnd.zip",
+          input: OpCodes.Hex8ToBytes(
+            "DE286BA4206E8B005714F80FB1CDFAEBDE91D29F84603E4A3EBC04686F99A46C" +
+            "9E880B96C574825582E8812A26E5A857FFC6579F63742F"),
+          expected: OpCodes.Hex8ToBytes("ad373db6defaefbeeff69e78e220a4ca9ef510ad5f85f0c698a749e0e6dcaeb5")
         }
       ];
 
@@ -750,6 +780,20 @@ if (!global.OpCodes && typeof require !== 'undefined') {
           uri: "https://github.com/paulmillr/noble-hashes/blob/main/test/blake.test.ts",
           input: [],
           expected: OpCodes.Hex8ToBytes("c6cbd89c926ab525c242e6621f2f5fa73aa4afe3d9e24aed727faaadd6af38b620bdb623dd2b4788b1c8086984af8706")
+        },
+        {
+          // 111 message bytes leave the 0x80 end marker in the very byte the
+          // length flag occupies, where the two have to merge - to 0x80 here,
+          // since BLAKE-384 flags with 0x00. This is the length at which the
+          // flag used to overwrite the marker outright.
+          text: "NIST SHA-3 Round 3 KAT, Len = 888 (padding boundary, 111 mod 128)",
+          uri: "https://web.archive.org/web/20110605051750id_/http://csrc.nist.gov/groups/ST/hash/sha-3/Round3/documents/Blake_FinalRnd.zip",
+          input: OpCodes.Hex8ToBytes(
+            "F690A132AB46B28EDFA6479283D6444E371C6459108AFD9C35DBD235E0B6B6FF" +
+            "4C4EA58E7554BD002460433B2164CA51E868F7947D7D7A0D792E4ABF0BE5F450" +
+            "853CC40D85485B2B8857EA31B5EA6E4CCFA2F3A7EF3380066D7D8979FDAC618A" +
+            "AD3D7E886DEA4F005AE4AD05E5065F"),
+          expected: OpCodes.Hex8ToBytes("10b485a54f643131d18647ed8ddebd36f3d403ccf658d477dceab018b349814b90939ed19b5978f3e6a980e94b966b5d")
         }
       ];
 
@@ -804,6 +848,19 @@ if (!global.OpCodes && typeof require !== 'undefined') {
           uri: "https://github.com/paulmillr/noble-hashes/blob/main/test/blake.test.ts",
           input: [],
           expected: OpCodes.Hex8ToBytes("a8cfbbd73726062df0c6864dda65defe58ef0cc52a5625090fa17601e1eecd1b628e94f396ae402a00acc9eab77b4d4c2e852aaaa25a636d80af3fc7913ef5b8")
+        },
+        {
+          // 111 message bytes leave the 0x80 end marker in the very byte the
+          // length flag occupies, where the two have to merge into 0x81. This
+          // is the length at which the flag used to overwrite the marker.
+          text: "NIST SHA-3 Round 3 KAT, Len = 888 (padding boundary, 111 mod 128)",
+          uri: "https://web.archive.org/web/20110605051750id_/http://csrc.nist.gov/groups/ST/hash/sha-3/Round3/documents/Blake_FinalRnd.zip",
+          input: OpCodes.Hex8ToBytes(
+            "F690A132AB46B28EDFA6479283D6444E371C6459108AFD9C35DBD235E0B6B6FF" +
+            "4C4EA58E7554BD002460433B2164CA51E868F7947D7D7A0D792E4ABF0BE5F450" +
+            "853CC40D85485B2B8857EA31B5EA6E4CCFA2F3A7EF3380066D7D8979FDAC618A" +
+            "AD3D7E886DEA4F005AE4AD05E5065F"),
+          expected: OpCodes.Hex8ToBytes("0043e39f7d08a1eb38a80712d6e6ce244fb1834bbf19a3e60a7bf9067de49a18cb6bcefeb3885c099eaadc8e9c8f04dad0c2a0599c61194ded218354f255badd")
         }
       ];
 
