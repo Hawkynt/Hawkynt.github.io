@@ -47,7 +47,8 @@ if (!global.OpCodes && typeof require !== 'undefined') {
   }
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          MacAlgorithm, IMacInstance, TestCase, LinkItem } = AlgorithmFramework;
+          MacAlgorithm, IMacInstance, TestCase, LinkItem,
+          BlockAbsorber, SpongePadBlocks } = AlgorithmFramework;
 
   // ===== KMAC IMPLEMENTATION =====
 
@@ -289,8 +290,9 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       this.rate = rate;
       this.outputLength = outputLength;
       this.state = new KeccacState();
-      this.buffer = [];
+      this._absorber = new BlockAbsorber(rate, block => this._absorbBlock(block));
       this.finalized = false;
+      this.output = null;
       this._key = null;
       this._customization = []; // Customization string (S parameter in NIST SP 800-185)
     }
@@ -336,31 +338,46 @@ if (!global.OpCodes && typeof require !== 'undefined') {
 
       // Reset state
       this.state = new KeccacState();
-      this.buffer = [];
+      this._absorber = new BlockAbsorber(this.rate, block => this._absorbBlock(block));
       this.finalized = false;
+      this.output = null;
 
       // KMAC uses cSHAKE with N = "KMAC" and S = customization string
       // First absorb: bytepad(encode_string("KMAC") || encode_string(S), rate)
       const kmacName = encodeString("KMAC");
       const encodedCustomization = encodeString(this._customization);
       const prefix = [...kmacName, ...encodedCustomization];
-      const paddedPrefix = bytepad(prefix, this.rate);
-      this.absorb(paddedPrefix);
+      this.absorbWholeBlocks(bytepad(prefix, this.rate));
 
       // Second absorb: bytepad(encode_string(K), rate)
       const encodedKey = encodeString(this._key);
-      const paddedKey = bytepad(encodedKey, this.rate);
-      this.absorb(paddedKey);
+      this.absorbWholeBlocks(bytepad(encodedKey, this.rate));
     }
 
-    absorb(data) {
-      for (let _i = 0; _i < data.length; _i++) this.buffer.push(data[_i]);
-
-      while (this.buffer.length >= this.rate) {
-        this.state.absorb(this.buffer.slice(0, this.rate), this.rate);
-        this.state.permute();
-        this.buffer = this.buffer.slice(this.rate);
+    /**
+     * Absorb data that bytepad has already rounded up to whole rate blocks.
+     * bytepad (NIST SP 800-185 section 2.3.3) is a zero fill to a rate
+     * boundary, not the sponge's pad10*1 - it carries neither a domain
+     * separator nor a terminating bit - so it goes straight into the sponge
+     * and leaves the message absorber starting on a block boundary.
+     * @param {uint8[]} data - length is a multiple of the rate
+     */
+    absorbWholeBlocks(data) {
+      for (let offset = 0; offset < data.length; offset += this.rate) {
+        const block = new Array(this.rate).fill(0);
+        const toCopy = Math.min(this.rate, data.length - offset);
+        for (let i = 0; i < toCopy; i++) block[i] = data[offset + i];
+        this._absorbBlock(block);
       }
+    }
+
+    /**
+     * XOR one full rate block into the sponge and permute.
+     * @param {uint8[]} block - exactly rate bytes
+     */
+    _absorbBlock(block) {
+      this.state.absorb(block, this.rate);
+      this.state.permute();
     }
 
     /**
@@ -374,7 +391,7 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       if (!this._key) throw new Error("Key not set");
       if (this.finalized) throw new Error("Cannot feed data after finalization");
 
-      this.absorb(data);
+      this._absorber.Absorb(data);
     }
 
     /**
@@ -385,29 +402,21 @@ if (!global.OpCodes && typeof require !== 'undefined') {
 
     Result() {
       if (!this._key) throw new Error("Key not set");
-      if (this.finalized) return this.output;
+      if (this.finalized) return [...this.output];
 
-      // Add right_encode(output_length_in_bits) for KMAC
+      // right_encode(L) closes the KMAC message, NIST SP 800-185 section 4.3.
       const outputBits = this.outputLength * 8;
-      const finalPadding = rightEncode(outputBits);
-      this.absorb(finalPadding);
+      this._absorber.Absorb(rightEncode(outputBits));
 
-      // Apply cSHAKE padding (pad10*1)
-      // Domain separator 0x04 for cSHAKE/KMAC
-      this.buffer.push(0x04);
-
-      // Pad with zeros until one byte before rate boundary
-      while ((this.buffer.length % this.rate) !== (this.rate - 1)) {
-        this.buffer.push(0x00);
-      }
-
-      // Final byte: 0x80 (part of pad10*1)
-      this.buffer.push(0x80);
-
-      // Final absorption
-      this.state.absorb(this.buffer, this.rate);
-      this.state.permute();
-      this.buffer = [];
+      // pad10*1 with the cSHAKE domain separator 0x04. Separator and
+      // terminating bit land on the same byte when exactly one byte of the
+      // rate is free and have to merge into a single 0x84; spelling the pad
+      // out by hand here instead grew the buffer by a whole spurious rate
+      // block, of which only the first was ever absorbed. SpongePadBlocks
+      // merges unconditionally and hands back every block it produced.
+      for (const block of this._absorber.Finish((held, pending) =>
+        SpongePadBlocks(held, pending, this.rate, 0x04)))
+        this._absorbBlock(block);
 
       // Squeeze output
       this.output = this.state.squeeze(this.outputLength, this.rate);
@@ -458,6 +467,43 @@ if (!global.OpCodes && typeof require !== 'undefined') {
           key: OpCodes.Hex8ToBytes("404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f"),
           customization: OpCodes.AnsiToBytes("My Tagged Application"),
           expected: OpCodes.Hex8ToBytes("3b1fba963cd8b0b59e8c1a6d71888b7143651af8ba0a7070c0979e2811324aa5")
+        },
+        {
+          text: "KMAC128 Sample #3 from NIST SP 800-185 (200-byte message, with customization)",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/KMAC_samples.pdf",
+          input: OpCodes.Hex8ToBytes(
+            "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F" +
+            "202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C3D3E3F" +
+            "404142434445464748494A4B4C4D4E4F505152535455565758595A5B5C5D5E5F" +
+            "606162636465666768696A6B6C6D6E6F707172737475767778797A7B7C7D7E7F" +
+            "808182838485868788898A8B8C8D8E8F909192939495969798999A9B9C9D9E9F" +
+            "A0A1A2A3A4A5A6A7A8A9AAABACADAEAFB0B1B2B3B4B5B6B7B8B9BABBBCBDBEBF" +
+            "C0C1C2C3C4C5C6C7"),
+          key: OpCodes.Hex8ToBytes("404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f"),
+          customization: OpCodes.AnsiToBytes("My Tagged Application"),
+          expected: OpCodes.Hex8ToBytes("1f5b4e6cca02209e0dcb5ca635b89a15e271ecc760071dfd805faa38f9729230")
+        },
+        {
+          // 164 message bytes plus the three bytes of right_encode(256) fill the
+          // 168-byte rate to within a single byte, so the cSHAKE domain
+          // separator 0x04 and the pad10*1 terminating bit share that byte and
+          // must merge into 0x84. Every NIST sample message is shorter than the
+          // rate, which is why this case went unnoticed. The expected value is
+          // the SP 800-185 section 4.3 definition of KMAC evaluated over this
+          // repository's cSHAKE128, which reproduces all six published KMAC
+          // samples and is itself checked against the SHAKE128 XOF.
+          text: "KMAC128 rate boundary: 164-byte message merges pad10*1 into the domain separator",
+          uri: "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-185.pdf",
+          input: OpCodes.Hex8ToBytes(
+            "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F" +
+            "202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C3D3E3F" +
+            "404142434445464748494A4B4C4D4E4F505152535455565758595A5B5C5D5E5F" +
+            "606162636465666768696A6B6C6D6E6F707172737475767778797A7B7C7D7E7F" +
+            "808182838485868788898A8B8C8D8E8F909192939495969798999A9B9C9D9E9F" +
+            "A0A1A2A3"),
+          key: OpCodes.Hex8ToBytes("404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f"),
+          customization: [],
+          expected: OpCodes.Hex8ToBytes("5719373e3073956c9b1b54453b95ff62b9d8a787c734c9781e78c4164d10667d")
         }
       ];
     }
@@ -509,12 +555,45 @@ if (!global.OpCodes && typeof require !== 'undefined') {
           expected: OpCodes.Hex8ToBytes("20c570c31346f703c9ac36c61c03cb64c3970d0cfc787e9b79599d273a68d2f7f69d4cc3de9d104a351689f27cf6f5951f0103f33f4f24871024d9c27773a8dd")
         },
         {
-          text: "KMAC256 Sample #6 from NIST SP 800-185 (no customization)",
+          text: "KMAC256 Sample #5 from NIST SP 800-185 (no customization)",
           uri: "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/KMAC_samples.pdf",
           input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7"),
           key: OpCodes.Hex8ToBytes("404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f"),
           customization: [],
           expected: OpCodes.Hex8ToBytes("75358cf39e41494e949707927cee0af20a3ff553904c86b08f21cc414bcfd691589d27cf5e15369cbbff8b9a4c2eb17800855d0235ff635da82533ec6b759b69")
+        },
+        {
+          text: "KMAC256 Sample #6 from NIST SP 800-185 (200-byte message, with customization)",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/KMAC_samples.pdf",
+          input: OpCodes.Hex8ToBytes(
+            "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F" +
+            "202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C3D3E3F" +
+            "404142434445464748494A4B4C4D4E4F505152535455565758595A5B5C5D5E5F" +
+            "606162636465666768696A6B6C6D6E6F707172737475767778797A7B7C7D7E7F" +
+            "808182838485868788898A8B8C8D8E8F909192939495969798999A9B9C9D9E9F" +
+            "A0A1A2A3A4A5A6A7A8A9AAABACADAEAFB0B1B2B3B4B5B6B7B8B9BABBBCBDBEBF" +
+            "C0C1C2C3C4C5C6C7"),
+          key: OpCodes.Hex8ToBytes("404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f"),
+          customization: OpCodes.AnsiToBytes("My Tagged Application"),
+          expected: OpCodes.Hex8ToBytes("b58618f71f92e1d56c1b8c55ddd7cd188b97b4ca4d99831eb2699a837da2e4d970fbacfde50033aea585f1a2708510c32d07880801bd182898fe476876fc8965")
+        },
+        {
+          // 132 message bytes plus the three bytes of right_encode(512) fill the
+          // 136-byte rate to within a single byte, so the cSHAKE domain
+          // separator 0x04 and the pad10*1 terminating bit share that byte and
+          // must merge into 0x84. See the KMAC128 boundary case above for how
+          // the expected value was derived.
+          text: "KMAC256 rate boundary: 132-byte message merges pad10*1 into the domain separator",
+          uri: "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-185.pdf",
+          input: OpCodes.Hex8ToBytes(
+            "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F" +
+            "202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C3D3E3F" +
+            "404142434445464748494A4B4C4D4E4F505152535455565758595A5B5C5D5E5F" +
+            "606162636465666768696A6B6C6D6E6F707172737475767778797A7B7C7D7E7F" +
+            "80818283"),
+          key: OpCodes.Hex8ToBytes("404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f"),
+          customization: [],
+          expected: OpCodes.Hex8ToBytes("10b07e27533954705aee9771c4325a3028d97e9c5ff731d30ebc94c7249bad3f8203f4d5ff61e4a762a4a4ceadc65234f2a8cca7650977899f34e296b3cfa268")
         }
       ];
     }
