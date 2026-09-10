@@ -532,10 +532,8 @@
       const computedTag = state.subarray(0, 16);
       const receivedTag = this._ciphertext.slice(mlen, mlen + 16);
 
-      for (let i = 0; i < 16; ++i) {
-        if (computedTag[i] !== receivedTag[i]) {
-          throw new Error("Authentication tag verification failed");
-        }
+      if (!OpCodes.SecureCompare(Array.from(computedTag), receivedTag)) {
+        throw new Error("Authentication tag verification failed");
       }
 
       return Array.from(output);
