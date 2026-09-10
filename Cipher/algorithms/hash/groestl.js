@@ -38,7 +38,24 @@
           PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
           IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
-          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize,
+          BlockAbsorber, MerkleDamgardBlocks } = AlgorithmFramework;
+
+  // Grøstl specification section 3.2: the state is always 8 rows tall; only
+  // the number of columns changes between the 512-bit and 1024-bit states.
+  const ROWS = 8;
+
+  // MixBytes multiplies each column by the circulant matrix
+  // circ(02,02,03,04,05,03,05,07) over GF(2^8) with the AES polynomial.
+  // This is not the AES MixColumns matrix.
+  const MIX_COEFFICIENTS = Object.freeze([0x02, 0x02, 0x03, 0x04, 0x05, 0x03, 0x05, 0x07]);
+
+  // ShiftBytes rotates row i to the left by sigma[i]. P and Q differ, and so
+  // do the 512-bit and 1024-bit states.
+  const SHIFTS_P_512 = Object.freeze([0, 1, 2, 3, 4, 5, 6, 7]);
+  const SHIFTS_Q_512 = Object.freeze([1, 3, 5, 7, 0, 2, 4, 6]);
+  const SHIFTS_P_1024 = Object.freeze([0, 1, 2, 3, 4, 5, 6, 11]);
+  const SHIFTS_Q_1024 = Object.freeze([1, 3, 5, 11, 0, 2, 4, 6]);
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -77,22 +94,82 @@
         ];
 
         this.references = [
-          new LinkItem("Wide-Pipe Hash Functions", "https://eprint.iacr.org/2005/010.pdf")
+          new LinkItem("Wide-Pipe Hash Functions", "https://eprint.iacr.org/2005/010.pdf"),
+          new LinkItem("Grøstl NIST SHA-3 Round 3 submission package (reference code and KAT files)", "http://www.groestl.info/Groestl.zip"),
+          new LinkItem("Grøstl implementation guide", "http://www.groestl.info/groestl-implementation-guide.pdf")
         ];
 
-        // Test vectors from SHA-3 competition (using our current output for now)
+        // Known-answer tests from the Grøstl NIST SHA-3 Round 3 submission
+        // package (KAT_MCT/ShortMsgKAT_512.txt), the final tweaked Grøstl
+        // rather than Grøstl-0. Grøstl-512 has a 128-byte block with an 8-byte
+        // block counter at the end of the final padded block, so messages of
+        // 120..127 bytes mod 128 need a second padding block - the lengths at
+        // which the padding used to be discarded entirely. 119 and 128 bytes
+        // bracket that range with single-padding-block cases.
         this.tests = [
           {
-            text: "Empty string - Grøstl-512",
-            uri: "SHA-3 competition test vectors",
+            text: "NIST SHA-3 Round 3 KAT, Len = 0 (empty message)",
+            uri: "http://www.groestl.info/Groestl.zip",
             input: [],
-            expected: OpCodes.Hex8ToBytes("5a3b92fed7e60c2907cc2a2d99fb5ef011957355df0c172e9349771f8b996be2ff46751aaa0e730102ff392050643fe517a71530918ad3ec555354fa599e9233")
+            expected: OpCodes.Hex8ToBytes(
+              "6d3ad29d279110eef3adbd66de2a0345a77baede1557f5d099fce0c03d6dc2ba" +
+              "8e6d4a6633dfbd66053c20faa87d1a11f39a7fbe4a6c2f009801370308fc4ad8")
           },
           {
-            text: "Single byte 'a' - Grøstl-512",
-            uri: "SHA-3 competition test vectors",
-            input: OpCodes.AnsiToBytes("a"),
-            expected: OpCodes.Hex8ToBytes("a978956c47ebaf6c09093595b20ef7416e653a33c1aec830dd45e8d9af0a86081e7d176e62418fcfd506f6c50004e14f4a98457319d06db0b7b3a8f1cae9ef55")
+            text: "NIST SHA-3 Round 3 KAT, Len = 8 (single byte)",
+            uri: "http://www.groestl.info/Groestl.zip",
+            input: OpCodes.Hex8ToBytes("CC"),
+            expected: OpCodes.Hex8ToBytes(
+              "b23eeeb675c272c6e37a6ee9ab4dc505c9d6a10020f6bed3948205d04cdd1e90" +
+              "b06e494d186ef4f19266d7da200c89dc009e2b1a538cdea199e773fc076f802e")
+          },
+          {
+            text: "NIST SHA-3 Round 3 KAT, Len = 952 (119 bytes, one padding block)",
+            uri: "http://www.groestl.info/Groestl.zip",
+            input: OpCodes.Hex8ToBytes(
+              "3C9B46450C0F2CAE8E3823F8BDB4277F31B744CE2EB17054BDDC6DFF36AF7F49" +
+              "FB8A2320CC3BDF8E0A2EA29AD3A55DE1165D219ADEDDB5175253E2D1489E9B6F" +
+              "DD02E2C3D3A4B54D60E3A47334C37913C5695378A669E9B72DEC32AF5434F93F" +
+              "46176EBF044C4784467C700470D0C0B40C8A088C815816"),
+            expected: OpCodes.Hex8ToBytes(
+              "427af58871bec7fadc342e40805abb7b3e47ab2a4c7fe529ffa20207d7b7f3c1" +
+              "b53e050ff64498f0ad028fe1f9f4d075eb88f8a59fa4bc25922a1cd21547b09e")
+          },
+          {
+            text: "NIST SHA-3 Round 3 KAT, Len = 960 (120 bytes, two padding blocks)",
+            uri: "http://www.groestl.info/Groestl.zip",
+            input: OpCodes.Hex8ToBytes(
+              "D1E654B77CB155F5C77971A64DF9E5D34C26A3CAD6C7F6B300D39DEB19100946" +
+              "91ADAA095BE4BA5D86690A976428635D5526F3E946F7DC3BD4DBC78999E65344" +
+              "1187A81F9ADCD5A3C5F254BC8256B0158F54673DCC1232F6E918EBFC6C51CE67" +
+              "EAEB042D9F57EEC4BFE910E169AF78B3DE48D137DF4F2840"),
+            expected: OpCodes.Hex8ToBytes(
+              "5146d9b44b0bf31099b11835cc8bb4bc3b6370de7932cd77c6d4468b0a847de1" +
+              "3758de22f3f223522e7fe9d722ae044b13012ec5dd7c34a9fa0d3c61cb9398b9")
+          },
+          {
+            text: "NIST SHA-3 Round 3 KAT, Len = 1016 (127 bytes, two padding blocks)",
+            uri: "http://www.groestl.info/Groestl.zip",
+            input: OpCodes.Hex8ToBytes(
+              "A62FC595B4096E6336E53FCDFC8D1CC175D71DAC9D750A6133D23199EAAC2882" +
+              "07944CEA6B16D27631915B4619F743DA2E30A0C00BBDB1BBB35AB852EF3B9AEC" +
+              "6B0A8DCC6E9E1ABAA3AD62AC0A6C5DE765DE2C3711B769E3FDE44A74016FFF82" +
+              "AC46FA8F1797D3B2A726B696E3DEA5530439ACEE3A45C2A51BC32DD055650B"),
+            expected: OpCodes.Hex8ToBytes(
+              "f42aa4043d0774e05de406181f2936b7ba91fb1a68e209174e1d3974abb185c7" +
+              "9932c5ea4bca3798b68c303b77aa682df57fed6635201bf01d345782b1fa58c6")
+          },
+          {
+            text: "NIST SHA-3 Round 3 KAT, Len = 1024 (128 bytes, exactly one full block)",
+            uri: "http://www.groestl.info/Groestl.zip",
+            input: OpCodes.Hex8ToBytes(
+              "2B6DB7CED8665EBE9DEB080295218426BDAA7C6DA9ADD2088932CDFFBAA1C141" +
+              "29BCCDD70F369EFB149285858D2B1D155D14DE2FDB680A8B027284055182A0CA" +
+              "E275234CC9C92863C1B4AB66F304CF0621CD54565F5BFF461D3B461BD40DF281" +
+              "98E3732501B4860EADD503D26D6E69338F4E0456E9E9BAF3D827AE685FB1D817"),
+            expected: OpCodes.Hex8ToBytes(
+              "ff410b511135dbc0b8644c28efa3ec632326feb98e50edc6390c441610d7c514" +
+              "acdf0a61a0bf01aa9dc1f55d92e085248eba1c24ee23978b4986af41c13a6176")
           }
         ];
 
@@ -156,16 +233,20 @@
     class GroestlHasher {
       constructor(outputBits = 512) {
         this.outputBits = outputBits;
-        this.stateSize = outputBits === 256 ? 512 : 1024; // bits
+        // Grøstl-224 and Grøstl-256 use the 512-bit state, Grøstl-384 and
+        // Grøstl-512 the 1024-bit one.
+        this.stateSize = outputBits <= 256 ? 512 : 1024; // bits
         this.blockSize = this.stateSize; // bits
-        this.rows = 8;
+        this.rows = ROWS;
         this.cols = this.stateSize / 64; // 8 for 512-bit, 16 for 1024-bit
         this.rounds = this.stateSize === 512 ? 10 : 14;
+        this.shiftsP = this.cols === 8 ? SHIFTS_P_512 : SHIFTS_P_1024;
+        this.shiftsQ = this.cols === 8 ? SHIFTS_Q_512 : SHIFTS_Q_1024;
 
         // Initialize state (wide-pipe construction)
         this.state = new Array(this.stateSize / 8).fill(0);
-        this.counter = 0;
-        this.buffer = [];
+        this.blocksProcessed = 0;
+        this._absorber = new BlockAbsorber(this.stateSize / 8, block => this.processBlock(block));
 
         // Set initial value based on output size
         this.initializeState();
@@ -175,31 +256,15 @@
         // Initialize state to zero
         this.state.fill(0);
 
-        // Set the output size in the last 64 bits as specified in Grøstl
+        // Grøstl specification section 3.1: the initial value is the output
+        // length in bits as a 64-bit big-endian integer, occupying the LAST
+        // eight bytes of the state - the final column, not the first byte of
+        // it. Grøstl-256 therefore ends ...00 01 00, not ...00 01 00 00 00 00.
         const stateBytes = this.stateSize / 8;
-
-        if (this.stateSize === 512) {
-          // For Grøstl-256 (512-bit state): set output size (256 bits)
-          // Last 8 bytes encode the output size (little-endian 64-bit)
-          this.state[stateBytes - 8] = 0x00;
-          this.state[stateBytes - 7] = 0x01; // 256 = 0x0100
-          this.state[stateBytes - 6] = 0x00;
-          this.state[stateBytes - 5] = 0x00;
-          this.state[stateBytes - 4] = 0x00;
-          this.state[stateBytes - 3] = 0x00;
-          this.state[stateBytes - 2] = 0x00;
-          this.state[stateBytes - 1] = 0x00;
-        } else {
-          // For Grøstl-512 (1024-bit state): set output size (512 bits)
-          // Last 8 bytes encode the output size (little-endian 64-bit)
-          this.state[stateBytes - 8] = 0x00;
-          this.state[stateBytes - 7] = 0x02; // 512 = 0x0200
-          this.state[stateBytes - 6] = 0x00;
-          this.state[stateBytes - 5] = 0x00;
-          this.state[stateBytes - 4] = 0x00;
-          this.state[stateBytes - 3] = 0x00;
-          this.state[stateBytes - 2] = 0x00;
-          this.state[stateBytes - 1] = 0x00;
+        let bits = this.outputBits;
+        for (let i = 0; i < 8; i++) {
+          this.state[stateBytes - 1 - i] = OpCodes.ToByte(bits);
+          bits = Math.floor(bits / 256);
         }
       }
 
@@ -208,41 +273,37 @@
           data = Array.from(data);
         }
 
-        for (let _i = 0; _i < data.length; _i++) this.buffer.push(data[_i]);
-
-        // Process complete blocks
-        const blockBytes = this.blockSize / 8;
-        while (this.buffer.length >= blockBytes) {
-          const block = this.buffer.splice(0, blockBytes);
-          this.processBlock(block);
-          this.counter += blockBytes * 8; // count in bits
-        }
+        this._absorber.Absorb(data);
       }
 
       finalize() {
-        // Apply padding
-        const blockBytes = this.blockSize / 8;
-        const msgBitLength = this.counter + this.buffer.length * 8;
+        const blockBytes = this.stateSize / 8;
 
-        // Pad with 0x80 followed by zeros
-        this.buffer.push(0x80);
+        // Grøstl specification section 3.3: the padding is 0x80, a zero fill,
+        // then the number of blocks in the PADDED message as a 64-bit
+        // big-endian integer - a block count, not a message length. How many
+        // blocks the padding itself adds has to be known before the counter
+        // can be written, which is why it is computed here and handed to
+        // MerkleDamgardBlocks as the value to encode.
+        const blocks = this._absorber.Finish((held, pending) => {
+          const emitted = (pending === blockBytes || pending + 1 > blockBytes - 8) ? 2 : 1;
+          return MerkleDamgardBlocks(held, pending, this.blocksProcessed + emitted, {
+            blockSize: blockBytes,
+            padByte: 0x80,
+            lengthBytes: 8,
+            lengthLittleEndian: false,
+            lengthInBits: false
+          });
+        });
 
-        // Pad to block boundary minus 8 bytes for length
-        while ((this.buffer.length % blockBytes) !== (blockBytes - 8)) {
-          this.buffer.push(0x00);
+        // Every padding block gets compressed. Testing for a single block and
+        // silently discarding anything longer dropped both blocks whenever a
+        // second was needed, which is every message of 56..63 bytes mod 64.
+        for (const block of blocks) {
+          this.processBlock(block);
         }
 
-        // Append message length in bits (big-endian, 64-bit)
-        for (let i = 7; i >= 0; i--) {
-          this.buffer.push(OpCodes.ToByte(OpCodes.Shr32(msgBitLength, i * 8)));
-        }
-
-        // Process final block
-        if (this.buffer.length === blockBytes) {
-          this.processBlock(this.buffer);
-        }
-
-        // Output transformation
+        // Output transformation omega(h) = trunc_n(P(h) xor h)
         const finalState = this.permutationP(this.state.slice());
 
         // XOR with original state for feedforward
@@ -261,7 +322,7 @@
       processBlock(block) {
         // Compression function: f(h,m) = P(h ⊕ m) ⊕ Q(m) ⊕ h
         const h = this.state.slice();
-        const m = block.slice();
+        const m = Array.from(block);
 
         // h ⊕ m
         const hXorM = new Array(h.length);
@@ -277,6 +338,8 @@
         for (let i = 0; i < this.state.length; i++) {
           this.state[i] = OpCodes.XorN(OpCodes.XorN(pResult[i], qResult[i]), h[i]);
         }
+
+        this.blocksProcessed++;
       }
 
       // AES S-box (same as Rijndael)
@@ -301,76 +364,81 @@
         ];
       }
 
-      // MixBytes matrix for 8x8 circulant matrix
-      static get MIXBYTES_MATRIX() {
-        return [
-          [0x02, 0x03, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01],
-          [0x01, 0x02, 0x03, 0x01, 0x01, 0x01, 0x01, 0x01],
-          [0x01, 0x01, 0x02, 0x03, 0x01, 0x01, 0x01, 0x01],
-          [0x01, 0x01, 0x01, 0x02, 0x03, 0x01, 0x01, 0x01],
-          [0x01, 0x01, 0x01, 0x01, 0x02, 0x03, 0x01, 0x01],
-          [0x01, 0x01, 0x01, 0x01, 0x01, 0x02, 0x03, 0x01],
-          [0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x02, 0x03],
-          [0x03, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x02]
-        ];
+      /**
+       * Index of matrix element (row, col) in the flat state array.
+       *
+       * Grøstl specification section 3.2 fills the state column by column, so
+       * the byte at stream position i sits at row i mod 8 of column
+       * floor(i / 8). Holding the array in stream order and going through this
+       * helper is what makes ShiftBytes act on rows; indexing it as
+       * row * cols + col transposes the matrix and shuffles bytes that were
+       * never meant to meet.
+       *
+       * @param {int} row - 0..7
+       * @param {int} col - 0..cols-1
+       * @returns {int} flat index
+       */
+      index(row, col) {
+        return col * ROWS + row;
       }
 
       // P permutation
       permutationP(state) {
-        const newState = state.slice();
-
-        for (let round = 0; round < this.rounds; round++) {
-          // AddRoundConstant for P
-          this.addRoundConstantP(newState, round);
-
-          // SubBytes
-          this.subBytes(newState);
-
-          // ShiftBytes for P
-          this.shiftBytesP(newState);
-
-          // MixBytes
-          this.mixBytes(newState);
-        }
-
-        return newState;
+        return this.permute(state, false);
       }
 
       // Q permutation
       permutationQ(state) {
+        return this.permute(state, true);
+      }
+
+      /**
+       * One permutation, Grøstl specification section 3.2.
+       * @param {uint8[]} state - input state, not modified
+       * @param {boolean} isQ - false for P, true for Q
+       * @returns {uint8[]} permuted state
+       */
+      permute(state, isQ) {
         const newState = state.slice();
+        const shifts = isQ ? this.shiftsQ : this.shiftsP;
 
         for (let round = 0; round < this.rounds; round++) {
-          // AddRoundConstant for Q
-          this.addRoundConstantQ(newState, round);
-
-          // SubBytes
+          this.addRoundConstant(newState, round, isQ);
           this.subBytes(newState);
-
-          // ShiftBytes for Q
-          this.shiftBytesQ(newState);
-
-          // MixBytes
+          this.shiftBytes(newState, shifts);
           this.mixBytes(newState);
         }
 
         return newState;
       }
 
-      // AddRoundConstant for P permutation
-      addRoundConstantP(state, round) {
-        // P permutation: add round constant to position (0,0)
-        state[0] = OpCodes.XorN(state[0], round);
-      }
-
-      // AddRoundConstant for Q permutation
-      addRoundConstantQ(state, round) {
-        // Q permutation: add round constants to the last row
+      /**
+       * AddRoundConstant.
+       *
+       * P touches the top row of EVERY column with (col * 0x10) xor round, and
+       * Q complements all seven upper rows before adding
+       * (col * 0x10) xor 0xff xor round to the bottom row. Reducing either to a
+       * single byte leaves most of the state unmixed.
+       *
+       * @param {uint8[]} state - modified in place
+       * @param {int} round - round index
+       * @param {boolean} isQ - false for P, true for Q
+       */
+      addRoundConstant(state, round, isQ) {
         for (let col = 0; col < this.cols; col++) {
-          const shifted = OpCodes.Shl32(col, 4);
-          const xored = OpCodes.XorN(shifted, round);
-          const complement = OpCodes.XorN(0xFF, xored);
-          state[7 * this.cols + col] = OpCodes.XorN(state[7 * this.cols + col], complement);
+          const columnConstant = OpCodes.XorN(OpCodes.Shl32(col, 4), round);
+
+          if (isQ) {
+            for (let row = 0; row < ROWS - 1; row++) {
+              const i = this.index(row, col);
+              state[i] = OpCodes.XorN(state[i], 0xFF);
+            }
+            const last = this.index(ROWS - 1, col);
+            state[last] = OpCodes.XorN(state[last], OpCodes.XorN(columnConstant, 0xFF));
+          } else {
+            const first = this.index(0, col);
+            state[first] = OpCodes.XorN(state[first], columnConstant);
+          }
         }
       }
 
@@ -382,88 +450,47 @@
         }
       }
 
-      // ShiftBytes for P permutation
-      shiftBytesP(state) {
-        if (this.cols === 8) {
-          // 8x8 matrix (512-bit state)
-          const shifts = [0, 1, 2, 3, 4, 5, 6, 7];
-          this.shiftRows(state, shifts);
-        } else {
-          // 8x16 matrix (1024-bit state)
-          const shifts = [0, 1, 2, 3, 4, 5, 6, 11];
-          this.shiftRows(state, shifts);
+      /**
+       * ShiftBytes: rotate row i to the LEFT by shifts[i].
+       * @param {uint8[]} state - modified in place
+       * @param {int[]} shifts - per-row rotation amounts
+       */
+      shiftBytes(state, shifts) {
+        const cols = this.cols;
+        const rowData = new Array(cols);
+
+        for (let row = 0; row < ROWS; row++) {
+          const shift = shifts[row] % cols;
+          if (shift === 0) continue;
+
+          for (let col = 0; col < cols; col++) rowData[col] = state[this.index(row, col)];
+          // Rotating left means the byte landing in column col came from
+          // column col + shift, not the other way round.
+          for (let col = 0; col < cols; col++)
+            state[this.index(row, col)] = rowData[(col + shift) % cols];
         }
       }
 
-      // ShiftBytes for Q permutation
-      shiftBytesQ(state) {
-        if (this.cols === 8) {
-          // 8x8 matrix (512-bit state)
-          const shifts = [1, 3, 5, 7, 0, 2, 4, 6];
-          this.shiftRows(state, shifts);
-        } else {
-          // 8x16 matrix (1024-bit state)
-          const shifts = [1, 3, 5, 11, 0, 2, 4, 6];
-          this.shiftRows(state, shifts);
-        }
-      }
-
-      // Shift rows by specified amounts
-      shiftRows(state, shifts) {
-        for (let row = 0; row < this.rows; row++) {
-          const shift = shifts[row] % this.cols;
-          if (shift > 0) {
-            const rowData = [];
-            for (let col = 0; col < this.cols; col++) {
-              rowData[col] = state[row * this.cols + col];
-            }
-
-            for (let col = 0; col < this.cols; col++) {
-              const newCol = (col + shift) % this.cols;
-              state[row * this.cols + newCol] = rowData[col];
-            }
-          }
-        }
-      }
-
-      // MixBytes transformation using circulant matrix
+      /**
+       * MixBytes: multiply every column by circ(02,02,03,04,05,03,05,07) over
+       * GF(2^8) with the AES reduction polynomial.
+       * @param {uint8[]} state - modified in place
+       */
       mixBytes(state) {
-        const matrix = GroestlHasher.MIXBYTES_MATRIX;
+        const column = new Array(ROWS);
 
         for (let col = 0; col < this.cols; col++) {
-          const column = new Array(this.rows);
+          for (let row = 0; row < ROWS; row++) column[row] = state[this.index(row, col)];
 
-          // Extract column
-          for (let row = 0; row < this.rows; row++) {
-            column[row] = state[row * this.cols + col];
-          }
-
-          // Matrix multiplication in GF(2^8)
-          for (let row = 0; row < this.rows; row++) {
+          for (let row = 0; row < ROWS; row++) {
             let result = 0;
-            for (let i = 0; i < this.rows; i++) {
-              result = OpCodes.XorN(result, this.gfMult(matrix[row][i], column[i]));
+            for (let k = 0; k < ROWS; k++) {
+              result = OpCodes.XorN(result,
+                OpCodes.GF256Mul(MIX_COEFFICIENTS[k], column[(row + k) % ROWS]));
             }
-            state[row * this.cols + col] = result;
+            state[this.index(row, col)] = result;
           }
         }
-      }
-
-      // Galois Field multiplication in GF(2^8)
-      gfMult(a, b) {
-        let result = 0;
-        for (let i = 0; i < 8; i++) {
-          if (OpCodes.AndN(b, 1) !== 0) {
-            result = OpCodes.XorN(result, a);
-          }
-          const hiBitSet = OpCodes.AndN(a, 0x80) !== 0;
-          a = OpCodes.ToByte(OpCodes.Shl32(a, 1));
-          if (hiBitSet) {
-            a = OpCodes.XorN(a, 0x1B); // AES irreducible polynomial
-          }
-          b = OpCodes.Shr32(b, 1);
-        }
-        return OpCodes.ToByte(result);
       }
     }
 
