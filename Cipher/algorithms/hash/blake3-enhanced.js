@@ -44,7 +44,8 @@
           PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
           IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
-          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize,
+          BlockAbsorber } = AlgorithmFramework;
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -86,7 +87,7 @@
 
         // Required metadata
         this.name = "BLAKE3-Enhanced";
-        this.description = "Enhanced educational implementation of BLAKE3 cryptographic hash function. Features the same core algorithm as BLAKE3 with extended output capability and educational clarity.";
+        this.description = "Enhanced educational implementation of BLAKE3 cryptographic hash function. Covers a single BLAKE3 chunk: it reproduces the official test vectors for inputs up to 1024 bytes, but the chunk tree BLAKE3 uses beyond that is not implemented, so inputs longer than 1024 bytes do not yield BLAKE3 digests.";
         this.category = CategoryType.HASH;
         this.subCategory = "Cryptographic Hash";
         this.securityStatus = null; // Modern secure hash - no specific status needed
@@ -128,6 +129,45 @@
             uri: "https://github.com/BLAKE3-team/BLAKE3/blob/master/test_vectors/test_vectors.json",
             input: [0, 1, 2], // Official test pattern: repeating sequence
             expected: OpCodes.Hex8ToBytes('e1be4d7a8ab5560aa4199eea339849ba8e293d55ca0a81006726d184519e647f')
+          },
+          // 64 and 128 bytes are the block boundary: the final block is full,
+          // and it still has to carry CHUNK_END|ROOT. 63 and 65 bracket it so
+          // that a change which moves the boundary cases without moving their
+          // neighbours is distinguishable from one that moves everything.
+          {
+            text: "BLAKE3 Official Test Vector - 63 bytes",
+            uri: "https://github.com/BLAKE3-team/BLAKE3/blob/master/test_vectors/test_vectors.json",
+            input: OpCodes.Hex8ToBytes(
+              "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F" +
+              "202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C3D3E"),
+            expected: OpCodes.Hex8ToBytes("e9bc37a594daad83be9470df7f7b3798297c3d834ce80ba85d6e207627b7db7b")
+          },
+          {
+            text: "BLAKE3 Official Test Vector - 64 bytes (exact block boundary)",
+            uri: "https://github.com/BLAKE3-team/BLAKE3/blob/master/test_vectors/test_vectors.json",
+            input: OpCodes.Hex8ToBytes(
+              "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F" +
+              "202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C3D3E3F"),
+            expected: OpCodes.Hex8ToBytes("4eed7141ea4a5cd4b788606bd23f46e212af9cacebacdc7d1f4c6dc7f2511b98")
+          },
+          {
+            text: "BLAKE3 Official Test Vector - 65 bytes",
+            uri: "https://github.com/BLAKE3-team/BLAKE3/blob/master/test_vectors/test_vectors.json",
+            input: OpCodes.Hex8ToBytes(
+              "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F" +
+              "202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C3D3E3F" +
+              "40"),
+            expected: OpCodes.Hex8ToBytes("de1e5fa0be70df6d2be8fffd0e99ceaa8eb6e8c93a63f2d8d1c30ecb6b263dee")
+          },
+          {
+            text: "BLAKE3 Official Test Vector - 128 bytes (exact block boundary)",
+            uri: "https://github.com/BLAKE3-team/BLAKE3/blob/master/test_vectors/test_vectors.json",
+            input: OpCodes.Hex8ToBytes(
+              "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F" +
+              "202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C3D3E3F" +
+              "404142434445464748494A4B4C4D4E4F505152535455565758595A5B5C5D5E5F" +
+              "606162636465666768696A6B6C6D6E6F707172737475767778797A7B7C7D7E7F"),
+            expected: OpCodes.Hex8ToBytes("f17e570564b26578c33bb7f44643f539624b05df1a76c81f30acd548c44b45ef")
           }
         ];
       }
@@ -246,8 +286,7 @@
       this.OutputSize = 32; // 256 bits = 32 bytes
 
       this.chaining_value = null;
-      this.block = null;
-      this.block_len = 0;
+      this._absorber = null;
       this.blocks_compressed = 0;
       this.chunk_counter = 0;
       this.flags = 0;
@@ -258,13 +297,16 @@
      */
     Init() {
       this.chaining_value = new Uint32Array(IV);
-      this.block = new Uint8Array(BLAKE3_BLOCK_LEN);
-      this.block_len = 0;
+      // The absorber never releases a full block until more input proves it is
+      // not the last, which is the whole of the CHUNK_END|ROOT question below.
+      this._absorber = new BlockAbsorber(BLAKE3_BLOCK_LEN, block => this.compressBlock(block));
       this.blocks_compressed = 0;
       this.chunk_counter = 0;
       this.flags = 0;
-      this.total_length = 0;
     }
+
+    /** @returns {number} bytes absorbed so far */
+    get total_length() { return this._absorber ? this._absorber.Length : 0; }
 
     /**
      * Update hash with data
@@ -278,35 +320,20 @@
         data = OpCodes.AnsiToBytes(data);
       }
 
-      this.total_length += data.length;
-      let offset = 0;
-
-      // Process data in chunks
-      while (offset < data.length) {
-        // Fill current block
-        while (offset < data.length && this.block_len < BLAKE3_BLOCK_LEN) {
-          this.block[this.block_len] = data[offset];
-          this.block_len++;
-          offset++;
-        }
-
-        // If block is full, compress it
-        if (this.block_len === BLAKE3_BLOCK_LEN) {
-          this.compressBlock();
-        }
-      }
+      this._absorber.Absorb(data);
     }
 
     /**
-     * Compress current block
+     * Compress one block that is known not to be the last of the chunk.
+     * @param {byte[]} block - exactly BLAKE3_BLOCK_LEN bytes
      */
-    compressBlock() {
+    compressBlock(block) {
       let flags = this.flags;
       if (this.blocks_compressed === 0) {
         flags |= CHUNK_START;
       }
 
-      const output = compress(this.chaining_value, Array.from(this.block), this.chunk_counter, this.block_len, flags);
+      const output = compress(this.chaining_value, Array.from(block), this.chunk_counter, BLAKE3_BLOCK_LEN, flags);
 
       // Update chaining value with first 8 words of output
       for (let i = 0; i < 8; i++) {
@@ -314,10 +341,6 @@
       }
 
       this.blocks_compressed++;
-
-      // Reset block for next data
-      this.block = new Uint8Array(BLAKE3_BLOCK_LEN);
-      this.block_len = 0;
     }
 
     /**
@@ -328,16 +351,23 @@
     Final(outputLength) {
       outputLength = outputLength || BLAKE3_OUT_LEN;
 
-      // For simple single-chunk case (most common)
-      let flags = this.flags;
-      if (this.blocks_compressed === 0) {
-        flags |= CHUNK_START;
-      }
-      flags |= CHUNK_END|ROOT;
+      // The last block of a chunk carries CHUNK_END, and for a single-chunk
+      // message the root node carries ROOT as well. Compressing a block the
+      // moment it filled handed those flags to an empty trailing block instead
+      // whenever the message length was an exact multiple of 64; the absorber
+      // holds the block back so the finalizer is the one that sees it.
+      const output = this._absorber.Finish((held, pending) => {
+        let flags = this.flags;
+        if (this.blocks_compressed === 0) {
+          flags |= CHUNK_START;
+        }
+        flags |= CHUNK_END|ROOT;
 
-      // Compress the final block
-      const block_data = Array.from(this.block).concat(new Array(Math.max(0, 64 - this.block_len)).fill(0));
-      const output = compress(this.chaining_value, block_data, 0, this.block_len, flags);
+        const block_data = new Array(BLAKE3_BLOCK_LEN).fill(0);
+        for (let i = 0; i < pending; i++) block_data[i] = held[i];
+
+        return compress(this.chaining_value, block_data, 0, pending, flags);
+      });
 
       // Extract output bytes directly from compression result
       return this.extractOutputBytes(output, outputLength);
@@ -390,8 +420,8 @@
       if (this.chaining_value) {
         OpCodes.ClearArray(this.chaining_value);
       }
-      if (this.block) {
-        OpCodes.ClearArray(this.block);
+      if (this._absorber) {
+        this._absorber.Reset();
       }
     }
 
