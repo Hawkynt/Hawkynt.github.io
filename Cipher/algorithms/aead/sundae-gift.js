@@ -213,11 +213,15 @@
     let pos1 = 0, pos2 = 0;
     let len;
 
-    // Format the first block (assumes data1len <= 16, which is the nonce)
+    // Format the first block (assumes data1len <= 16, which is the nonce).
+    // The second buffer fills whatever room is left in this block after the
+    // first, so it must be XORed into V starting at offset data1len. Use
+    // subarray, which is a view onto V: slice would copy, and the copy would be
+    // thrown away, silently leaving those bytes of the message unauthenticated.
     xorBlock(V, data1.slice(pos1, pos1 + data1len), data1len);
     len = 16 - data1len;
     if (len > data2len) len = data2len;
-    xorBlock(V.slice(data1len), data2.slice(pos2, pos2 + len), len);
+    xorBlock(V.subarray(data1len), data2.slice(pos2, pos2 + len), len);
     pos2 += len;
     data2len -= len;
     len += data1len;
@@ -410,12 +414,19 @@
         new LinkItem("Reference Implementation", "https://github.com/rweather/lightweight-crypto")
       ];
 
-      // Official test vectors from NIST LWC KAT files
-      // Source: Reference Sources/c-cpp-source/academic/lightweight-crypto/test/kat/SUNDAE-GIFT-128.txt
+      // Official test vectors from the NIST LWC submission KAT file for
+      // SUNDAE-GIFT, SUNDAE-GIFT-128.txt. Counts refer to the numbering in that
+      // file; the implementation reproduces all 1089 vectors it contains.
+      //
+      // Vectors 1-35 below all use an all-zero plaintext, which cannot detect a
+      // fault that drops message bytes from the MAC: XORing zero into the state
+      // is indistinguishable from not XORing at all. Vectors 69 onwards carry a
+      // non-zero plaintext spanning one, two and three blocks and do detect it.
+      const KAT_URI = 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SUNDAE-GIFT-128.txt';
       this.tests = [
         {
           text: 'SUNDAE-GIFT-128 KAT Vector #1 (Empty plaintext, empty AD)',
-          uri: 'X:\\Coding\\Working Copies\\Hawkynt.git\\Hawkynt.github.io\\Cipher\\Reference Sources\\c-cpp-source\\academic\\lightweight-crypto\\test\\kat\\SUNDAE-GIFT-128.txt',
+          uri: KAT_URI,
           input: OpCodes.Hex8ToBytes(""),
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
@@ -424,7 +435,7 @@
         },
         {
           text: 'SUNDAE-GIFT-128 KAT Vector #2 (Empty plaintext, 1-byte AD)',
-          uri: 'X:\\Coding\\Working Copies\\Hawkynt.git\\Hawkynt.github.io\\Cipher\\Reference Sources\\c-cpp-source\\academic\\lightweight-crypto\\test\\kat\\SUNDAE-GIFT-128.txt',
+          uri: KAT_URI,
           input: OpCodes.Hex8ToBytes(""),
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
@@ -433,7 +444,7 @@
         },
         {
           text: 'SUNDAE-GIFT-128 KAT Vector #5 (Empty plaintext, 4-byte AD)',
-          uri: 'X:\\Coding\\Working Copies\\Hawkynt.git\\Hawkynt.github.io\\Cipher\\Reference Sources\\c-cpp-source\\academic\\lightweight-crypto\\test\\kat\\SUNDAE-GIFT-128.txt',
+          uri: KAT_URI,
           input: OpCodes.Hex8ToBytes(""),
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
@@ -442,7 +453,7 @@
         },
         {
           text: 'SUNDAE-GIFT-128 KAT Vector #34 (1-byte plaintext, empty AD)',
-          uri: 'X:\\Coding\\Working Copies\\Hawkynt.git\\Hawkynt.github.io\\Cipher\\Reference Sources\\c-cpp-source\\academic\\lightweight-crypto\\test\\kat\\SUNDAE-GIFT-128.txt',
+          uri: KAT_URI,
           input: OpCodes.Hex8ToBytes("00"),
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
@@ -451,12 +462,39 @@
         },
         {
           text: 'SUNDAE-GIFT-128 KAT Vector #35 (1-byte plaintext, 1-byte AD)',
-          uri: 'X:\\Coding\\Working Copies\\Hawkynt.git\\Hawkynt.github.io\\Cipher\\Reference Sources\\c-cpp-source\\academic\\lightweight-crypto\\test\\kat\\SUNDAE-GIFT-128.txt',
+          uri: KAT_URI,
           input: OpCodes.Hex8ToBytes("00"),
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           aad: OpCodes.Hex8ToBytes("00"),
           expected: OpCodes.Hex8ToBytes("23BDC419387C27EB8B17FF0EDA9843338A")
+        },
+        {
+          text: 'SUNDAE-GIFT-128 KAT Vector #69 (2-byte non-zero plaintext, 2-byte AD)',
+          uri: KAT_URI,
+          input: OpCodes.Hex8ToBytes("0001"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          aad: OpCodes.Hex8ToBytes("0001"),
+          expected: OpCodes.Hex8ToBytes("8ECE7A3CA88465E7C674AB4FD6BB15F3DBE7")
+        },
+        {
+          text: 'SUNDAE-GIFT-128 KAT Vector #562 (17-byte plaintext spanning two blocks, empty AD)',
+          uri: KAT_URI,
+          input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F10"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          aad: OpCodes.Hex8ToBytes(""),
+          expected: OpCodes.Hex8ToBytes("85E5E8B5C25EF2494426DCCFA0243439A2ABEC21438EB81E9880357B285526059F")
+        },
+        {
+          text: 'SUNDAE-GIFT-128 KAT Vector #1089 (32-byte plaintext, 32-byte AD)',
+          uri: KAT_URI,
+          input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          aad: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+          expected: OpCodes.Hex8ToBytes("E4C75961EA0A1F4E1509DA3AA6268F30624BBD8083ACF3FF0CACD4E5111A542B6A04B6E51EFFDF4C554C66E58C879CF8")
         }
       ];
     }
