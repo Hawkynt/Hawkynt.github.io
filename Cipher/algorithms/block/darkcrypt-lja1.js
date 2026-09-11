@@ -33,9 +33,17 @@
  * cipher the identity, which the DarkCrypt implementation does too: under the
  * all-zero key and under the all-0xFF key alike it returns its input untouched,
  * for non-zero plaintexts as well as for the zero one.
- * Away from that class the cipher mixes properly - 0 of 200 random keys, and 0
- * of 50 keys that are permutations of 0..255, leave a block unchanged, and one
- * flipped input bit moves about half the output bits.
+ * The class does not stop at exactly-constant keys either, because what matters
+ * is how small the image of S is. Keys drawn from only a handful of distinct
+ * byte values degrade smoothly into it: measured over 300 keys each, the
+ * all-zero block came back unencrypted for 169 of 300 keys built from 2 distinct
+ * byte values, 107 of 300 from 4, 51 of 300 from 8 and 8 of 300 from 16, and for
+ * 255 of the 256 keys that are all zero but for a single byte. A key derived
+ * from a short passphrase is squarely in this territory.
+ * Away from it the cipher mixes properly - 0 of 2000 purely random keys leave
+ * the all-zero block unencrypted, 0 of 200 random keys and 0 of 50 keys that are
+ * permutations of 0..255 leave any block unchanged, and one flipped input bit
+ * moves about half the output bits.
  * Educational only.
  */
 
@@ -92,7 +100,7 @@
       ];
 
       this.knownVulnerabilities = [
-        new Vulnerability("Constant-byte keys are the identity", "The 256-byte key is used verbatim as the substitution table, so any key whose bytes are all equal makes that table constant, the accumulator collapses and the counter contributions cancel across the 16 cycles. All 256 such keys leave every block completely unencrypted.", "Never use a key of repeated bytes; prefer a vetted cipher such as AES."),
+        new Vulnerability("Low-entropy keys degenerate toward the identity", "The 256-byte key is used verbatim as the substitution table, so what the cipher can do is bounded by how many distinct byte values the key contains. All 256 constant-byte keys make the cipher the exact identity, and keys built from only a few distinct values fall in with them: measured over 300 keys each, the all-zero block was returned unencrypted for 169 of 300 keys over 2 distinct byte values, 107 of 300 over 4, 51 of 300 over 8 and 8 of 300 over 16. A key derived from a short passphrase is in that range.", "Only ever supply 256 bytes of full-entropy key material; prefer a vetted cipher such as AES."),
         new Vulnerability("Non-standard hobbyist design", "Unanalyzed proprietary construction with a purely XOR-based per-byte update; not recommended for real use.", "Use AES or another vetted cipher.")
       ];
 
