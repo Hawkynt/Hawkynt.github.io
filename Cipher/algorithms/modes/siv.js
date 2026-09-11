@@ -83,27 +83,30 @@
         new Vulnerability("Performance", "Requires two passes over data (S2V then CTR), making it slower than single-pass AEAD modes.")
       ];
 
+      // RFC 5297 Appendix A. The expected value is the full output, i.e. the
+      // synthetic IV followed by the ciphertext.
       this.tests = [
         {
-          text: "SIV round-trip test #1 - 14-byte plaintext",
+          text: "RFC 5297 A.1 - deterministic authenticated encryption",
           uri: "https://www.rfc-editor.org/rfc/rfc5297.txt",
+          cipher: "AES",
           input: OpCodes.Hex8ToBytes("112233445566778899aabbccddee"),
-          key: OpCodes.Hex8ToBytes("fffefdfc fbfaf9f8 f7f6f5f4 f3f2f1f0 f0f1f2f3 f4f5f6f7 f8f9fafb fcfdfeff".replace(/\s/g, '')),
-          aad: [OpCodes.Hex8ToBytes("10111213 14151617 18191a1b 1c1d1e1f 20212223 24252627".replace(/\s/g, ''))]
+          key: OpCodes.Hex8ToBytes("fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"),
+          aad: [OpCodes.Hex8ToBytes("101112131415161718191a1b1c1d1e1f2021222324252627")],
+          expected: OpCodes.Hex8ToBytes("85632d07c6e8f37f950acd320a2ecc9340c02b9690c4dc04daef7f6afe5c")
         },
         {
-          text: "SIV round-trip test #2 - Empty AAD",
+          text: "RFC 5297 A.2 - nonce-based authenticated encryption",
           uri: "https://www.rfc-editor.org/rfc/rfc5297.txt",
-          input: OpCodes.Hex8ToBytes("112233445566778899aabbccddee"),
-          key: OpCodes.Hex8ToBytes("7f7e7d7c 7b7a7978 77767574 73727170 40414243 44454647 48494a4b 4c4d4e4f".replace(/\s/g, '')),
-          aad: []
-        },
-        {
-          text: "SIV round-trip test #3 - 1-byte plaintext with AAD",
-          uri: "https://www.rfc-editor.org/rfc/rfc5297.txt",
-          input: OpCodes.Hex8ToBytes("01"), // Use 1 byte instead of empty
-          key: OpCodes.Hex8ToBytes("7f7e7d7c 7b7a7978 77767574 73727170 40414243 44454647 48494a4b 4c4d4e4f".replace(/\s/g, '')),
-          aad: [OpCodes.Hex8ToBytes("00112233 44556677 8899aabb ccddeeff deaddada deaddada ffeeddcc bbaa9988 77665544 33221100".replace(/\s/g, '')), OpCodes.Hex8ToBytes("10203040 50607080 90a0".replace(/\s/g, ''))]
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("7468697320697320736f6d6520706c61696e7465787420746f20656e6372797074207573696e67205349562d414553"),
+          key: OpCodes.Hex8ToBytes("7f7e7d7c7b7a79787776757473727170404142434445464748494a4b4c4d4e4f"),
+          aad: [
+            OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeffdeaddadadeaddadaffeeddccbbaa99887766554433221100"),
+            OpCodes.Hex8ToBytes("102030405060708090a0"),
+            OpCodes.Hex8ToBytes("09f911029d74e35bd84156c5635688c0")
+          ],
+          expected: OpCodes.Hex8ToBytes("7bdb6e3b432667eb06f4d14bff2fbd0fcb900f2fddbe404326601965c889bf17dba77ceb094fa663b7a3f748ba8af829ea64ad544a272e9c485b62a3fd5c0d")
         }
       ];
     }
@@ -169,7 +172,16 @@
      * @param {Array} aadArray - Array of AAD byte arrays
      */
     setAAD(aadArray) {
-      this.aad = aadArray || [];
+      // RFC 5297 authenticates a vector of associated-data strings. Accept
+      // either that (an array of byte arrays) or a single flat byte array,
+      // which is how most callers and test vectors supply one header.
+      if (!aadArray || aadArray.length === 0) {
+        this.aad = [];
+      } else if (Array.isArray(aadArray[0])) {
+        this.aad = aadArray.map(a => [...a]);
+      } else {
+        this.aad = [[...aadArray]];
+      }
     }
 
     /**
@@ -259,102 +271,91 @@
      */
     _s2v(strings) {
       const blockSize = this.blockCipher.BlockSize;
-      let d = new Array(blockSize).fill(0);
 
       if (strings.length === 0) {
-        // RFC 5297: S2V([]) = CMAC(K1, <one>)
-        d[blockSize - 1] = 1; // <one> = 0...01
-        return this._cmac(d);
+        // RFC 5297: S2V(K, <empty vector>) = CMAC(K, <one>)
+        const one = new Array(blockSize).fill(0);
+        one[blockSize - 1] = 1;
+        return this._cmac(one);
       }
 
-      // Compute CMAC for all but the last string
-      for (let i = 0; i < strings.length - 1; i++) {
-        const cmacResult = this._cmac(strings[i]);
+      // D = CMAC(K, <zero>)
+      let d = this._cmac(new Array(blockSize).fill(0));
 
-        // XOR with 2 * d (doubling in GF(2^128))
-        d = this._gfDouble(d);
-        d = OpCodes.XorArrays(d, cmacResult);
+      // D = dbl(D) xor CMAC(K, S_i) for every string but the last
+      for (let i = 0; i < strings.length - 1; i++) {
+        d = OpCodes.XorArrays(this._gfDouble(d), this._cmac(strings[i]));
       }
 
       const lastString = strings[strings.length - 1];
 
       if (lastString.length >= blockSize) {
-        // T = dbl(d) XOR last string[0...n-1]
-        d = this._gfDouble(d);
-        const xorlen = Math.min(blockSize, lastString.length - blockSize + 1);
-        const xorpos = lastString.length - blockSize;
-
-        for (let j = 0; j < xorlen; j++) {
-          d[j] = OpCodes.XorN(d[j], lastString[xorpos + j]);
+        // T = S_n xorend D: the trailing block of S_n is XORed with D and the
+        // head of S_n is left untouched. Building the input the other way round
+        // rotates the message and produces a completely different tag.
+        const t = [...lastString];
+        const offset = t.length - blockSize;
+        for (let j = 0; j < blockSize; j++) {
+          t[offset + j] = OpCodes.XorN(t[offset + j], d[j]);
         }
-
-        // Append remaining part and compute CMAC
-        const finalInput = [...d];
-        if (lastString.length > blockSize) {
-          finalInput.push(...lastString.slice(0, lastString.length - blockSize));
-        }
-
-        return this._cmac(finalInput);
-      } else {
-        // T = dbl(d) XOR pad(last string)
-        d = this._gfDouble(d);
-
-        // Pad last string with 10* padding
-        const paddedLast = [...lastString, 0x80];
-        while (paddedLast.length < blockSize) {
-          paddedLast.push(0x00);
-        }
-
-        d = OpCodes.XorArrays(d, paddedLast);
-
-        return this._cmac(d);
+        return this._cmac(t);
       }
+
+      // T = dbl(D) xor pad(S_n)
+      const paddedLast = [...lastString, 0x80];
+      while (paddedLast.length < blockSize) {
+        paddedLast.push(0x00);
+      }
+
+      return this._cmac(OpCodes.XorArrays(this._gfDouble(d), paddedLast));
     }
 
     /**
-     * CMAC (Cipher-based Message Authentication Code)
+     * CMAC (RFC 4493) under the S2V key
      * @param {Array} data - Data to authenticate
      * @returns {Array} CMAC result
      */
     _cmac(data) {
       const blockSize = this.blockCipher.BlockSize;
-      let mac = new Array(blockSize).fill(0);
 
-      // Process complete blocks
-      for (let i = 0; i < Math.floor(data.length / blockSize) * blockSize; i += blockSize) {
-        const block = data.slice(i, i + blockSize);
+      // Subkey generation: L = E_K(0^n), K1 = dbl(L), K2 = dbl(K1). Without the
+      // subkeys this is a plain CBC-MAC and does not agree with any published
+      // AES-CMAC or AES-SIV value.
+      const l = this._encipher(new Array(blockSize).fill(0));
+      const subKey1 = this._gfDouble(l);
+      const subKey2 = this._gfDouble(subKey1);
 
-        // XOR with previous MAC
-        mac = OpCodes.XorArrays(mac, block);
+      const complete = data.length > 0 && data.length % blockSize === 0;
+      const blockCount = complete ? data.length / blockSize : Math.floor(data.length / blockSize) + 1;
 
-        // Encrypt using MAC key
-        const cipher = this.blockCipher.algorithm.CreateInstance(false);
-        cipher.key = this.key1;
-        cipher.Feed(mac);
-        mac = cipher.Result();
+      let lastBlock;
+      if (complete) {
+        lastBlock = OpCodes.XorArrays(data.slice((blockCount - 1) * blockSize), subKey1);
+      } else {
+        const tail = data.slice((blockCount - 1) * blockSize);
+        const padded = [...tail, 0x80];
+        while (padded.length < blockSize) padded.push(0x00);
+        lastBlock = OpCodes.XorArrays(padded, subKey2);
       }
 
-      // Handle final partial block if any
-      const remaining = data.length % blockSize;
-      if (remaining > 0) {
-        const finalBlock = data.slice(-remaining);
-
-        // Pad with 10* padding
-        const paddedBlock = [...finalBlock, 0x80];
-        while (paddedBlock.length < blockSize) {
-          paddedBlock.push(0x00);
-        }
-
-        // XOR and encrypt
-        mac = OpCodes.XorArrays(mac, paddedBlock);
-
-        const cipher = this.blockCipher.algorithm.CreateInstance(false);
-        cipher.key = this.key1;
-        cipher.Feed(mac);
-        mac = cipher.Result();
+      let x = new Array(blockSize).fill(0);
+      for (let i = 0; i < blockCount - 1; i++) {
+        const block = data.slice(i * blockSize, (i + 1) * blockSize);
+        x = this._encipher(OpCodes.XorArrays(x, block));
       }
 
-      return mac;
+      return this._encipher(OpCodes.XorArrays(x, lastBlock));
+    }
+
+    /**
+     * Apply the block cipher under the S2V key
+     * @private
+     */
+    _encipher(block) {
+      const cipher = this.blockCipher.algorithm.CreateInstance(false);
+      cipher.key = this.key1;
+      cipher.Feed(block);
+      return cipher.Result();
     }
 
     /**
@@ -367,9 +368,12 @@
       const blockSize = this.blockCipher.BlockSize;
       const output = [];
 
-      // Clear the most significant bit of IV for CTR mode
+      // RFC 5297: Q = V bitand (1^64 || 0 || 1^31 || 0 || 1^31). Only the two
+      // bits that would otherwise let the counter carry across the 32-bit word
+      // boundaries are cleared, not the top bit of the whole value.
       let counter = [...iv];
-      counter[0] = OpCodes.AndN(counter[0], 0x7F);
+      counter[8] = OpCodes.AndN(counter[8], 0x7F);
+      counter[12] = OpCodes.AndN(counter[12], 0x7F);
 
       for (let i = 0; i < data.length; i += blockSize) {
         const remainingBytes = Math.min(blockSize, data.length - i);

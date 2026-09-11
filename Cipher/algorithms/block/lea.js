@@ -94,17 +94,31 @@
         new LinkItem("LEA GitHub Repository", "https://github.com/hkscy/LEA")
       ];
 
-      // Test vectors from Korean standard
+      // Test vectors from Korean standard KS X 3246 / ISO/IEC 29192-2:2019
       this.tests = [
         new TestCase(
           OpCodes.Hex8ToBytes("101112131415161718191a1b1c1d1e1f"), // input
-          OpCodes.Hex8ToBytes("9fc84e3528c6c6185532c7a704648bfd"), // expected (CORRECTED)
+          OpCodes.Hex8ToBytes("9fc84e3528c6c6185532c7a704648bfd"), // expected
           "LEA-128 Test Vector - KS X 3246",
+          "https://seed.kisa.or.kr/kisa/algorithm/EgovLeaInfo.do"
+        ),
+        new TestCase(
+          OpCodes.Hex8ToBytes("202122232425262728292a2b2c2d2e2f"), // input
+          OpCodes.Hex8ToBytes("6fb95e325aad1b878cdcf5357674c6f2"), // expected
+          "LEA-192 Test Vector - KS X 3246",
+          "https://seed.kisa.or.kr/kisa/algorithm/EgovLeaInfo.do"
+        ),
+        new TestCase(
+          OpCodes.Hex8ToBytes("303132333435363738393a3b3c3d3e3f"), // input
+          OpCodes.Hex8ToBytes("d651aff647b189c13a8900ca27f9e197"), // expected
+          "LEA-256 Test Vector - KS X 3246",
           "https://seed.kisa.or.kr/kisa/algorithm/EgovLeaInfo.do"
         )
       ];
-      // Additional property for key in test vector
+      // Additional property for key in each test vector
       this.tests[0].key = OpCodes.Hex8ToBytes("0f1e2d3c4b5a69788796a5b4c3d2e1f0");
+      this.tests[1].key = OpCodes.Hex8ToBytes("0f1e2d3c4b5a69788796a5b4c3d2e1f0f0e1d2c3b4a59687");
+      this.tests[2].key = OpCodes.Hex8ToBytes("0f1e2d3c4b5a69788796a5b4c3d2e1f0f0e1d2c3b4a5968778695a4b3c2d1e0f");
 
       // LEA Constants - Key schedule constants δ[i]
       // These are the 8 base delta values from Crypto++ reference implementation
@@ -336,11 +350,35 @@
         }
 
       } else if (keyWords === 6) { // 192-bit key - LEA-192
-        // Simplified for now - needs full Crypto++ implementation
-        throw new Error("LEA-192 not fully implemented yet");
+        // KS X 3246 key schedule for a 192-bit key: six state words, each round
+        // updates all six and emits them directly as that round's subkey.
+        const delta = this.algorithm.DELTA;
+        const t = [key[0], key[1], key[2], key[3], key[4], key[5]];
+        const amounts = [1, 3, 6, 11, 13, 17];
+
+        for (let i = 0; i < 28; i++) {
+          const d = delta[i % 6];
+          for (let j = 0; j < 6; j++)
+            t[j] = OpCodes.RotL32(OpCodes.ToUint32(t[j] + d[(i + j) % 32]), amounts[j]);
+          for (let j = 0; j < 6; j++)
+            rkey[i * 6 + j] = t[j];
+        }
+
       } else if (keyWords === 8) { // 256-bit key - LEA-256
-        // Simplified for now - needs full Crypto++ implementation
-        throw new Error("LEA-256 not fully implemented yet");
+        // KS X 3246 key schedule for a 256-bit key: eight state words, of which
+        // a rotating window of six is updated and emitted each round.
+        const delta = this.algorithm.DELTA;
+        const t = [key[0], key[1], key[2], key[3], key[4], key[5], key[6], key[7]];
+        const amounts = [1, 3, 6, 11, 13, 17];
+
+        for (let i = 0; i < 32; i++) {
+          const d = delta[i % 8];
+          for (let j = 0; j < 6; j++) {
+            const idx = (i * 6 + j) % 8;
+            t[idx] = OpCodes.RotL32(OpCodes.ToUint32(t[idx] + d[(i + j) % 32]), amounts[j]);
+            rkey[i * 6 + j] = t[idx];
+          }
+        }
       }
 
       // Convert flat array to round key structure

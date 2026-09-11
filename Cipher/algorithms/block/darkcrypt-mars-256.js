@@ -86,6 +86,13 @@
       // Test vectors verified against the DarkCrypt implementation.
       this.tests = [
         {
+          text: "NIST AES round-1 MARS KAT ecb_vk.txt, KEYSIZE=256, I=1",
+          uri: "https://web.archive.org/web/20070109105456if_/http://csrc.nist.gov/CryptoToolkit/aes/round1/testvals/mars-vals.zip",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("8000000000000000000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("1ce37ef4c368af1401ef3b10eac653eb")
+        },
+        {
           text: "DarkCrypt Mars — zero key/plaintext",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),

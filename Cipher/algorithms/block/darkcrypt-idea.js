@@ -116,6 +116,13 @@
       // Test vectors verified against the DarkCrypt implementation.
       this.tests = [
         {
+          text: "Published IDEA known-answer test (Botan idea.vec, first vector)",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/block/idea.vec",
+          input: OpCodes.Hex8ToBytes("7409000000000000"),
+          key: OpCodes.Hex8ToBytes("ed1bcc9e9267925f3132ba3a8cf9b764"),
+          expected: OpCodes.Hex8ToBytes("e18315c171b83765")
+        },
+        {
           text: "DarkCrypt Idea — zero key/plaintext",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           input: OpCodes.Hex8ToBytes("0000000000000000"),

@@ -86,7 +86,7 @@
       this.tests = [
         {
           text: "AES-128 ECB test vector",
-          uri: "NIST SP 800-38A",
+          uri: "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38a.pdf",
           input: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"),
           key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
           cipher: "AES",
@@ -94,7 +94,7 @@
         },
         {
           text: "AES-128 ECB second block",
-          uri: "NIST SP 800-38A",
+          uri: "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38a.pdf",
           input: OpCodes.Hex8ToBytes("ae2d8a571e03ac9c9eb76fac45af8e51"),
           key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
           cipher: "AES",

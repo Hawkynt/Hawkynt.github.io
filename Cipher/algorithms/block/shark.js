@@ -173,6 +173,27 @@
           key: OpCodes.Hex8ToBytes("915F4619BE41B2516355A50110A9CE91"),
           input: OpCodes.Hex8ToBytes("21A5DBEE154B8F6D"),
           expected: OpCodes.Hex8ToBytes("6FF33B98F448E95A")
+        },
+        {
+          text: "Crypto++ Test Vector #5",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestData/sharkval.dat",
+          key: OpCodes.Hex8ToBytes("783348E75AEB0F2FD7B169BB8DC16787"),
+          input: OpCodes.Hex8ToBytes("F7C013AC5B2B8952"),
+          expected: OpCodes.Hex8ToBytes("E5E554ABE9CED2D2")
+        },
+        {
+          text: "Crypto++ Test Vector #6",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestData/sharkval.dat",
+          key: OpCodes.Hex8ToBytes("DC49DB1375A5584F6485B413B5F12BAF"),
+          input: OpCodes.Hex8ToBytes("2F42B3B70369FC92"),
+          expected: OpCodes.Hex8ToBytes("9AE068313F343A7A")
+        },
+        {
+          text: "Crypto++ Test Vector #7",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestData/sharkval.dat",
+          key: OpCodes.Hex8ToBytes("5269F149D41BA0152497574D7F153125"),
+          input: OpCodes.Hex8ToBytes("65C178B284D197CC"),
+          expected: OpCodes.Hex8ToBytes("D3F111A282F17F29")
         }
       ];
     }

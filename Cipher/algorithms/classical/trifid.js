@@ -77,9 +77,16 @@
       // Test vectors in plain format (recommended)
       this.tests = [
         {
+          text: "Delastelle's own example as reproduced on Wikipedia - key alphabet from FELIX MARIE DELASTELLE, group size 5",
+          uri: 'https://en.wikipedia.org/wiki/Trifid_cipher',
+          input: OpCodes.AnsiToBytes('AIDETOILECIELTAIDERA'),
+          key: OpCodes.AnsiToBytes('FELIXMARIEDELASTELLE,5'),
+          expected: OpCodes.AnsiToBytes('FMJFVOISSUFTFPUFEQQC')
+        },
+        {
           text: 'Basic Trifid example with period 5',
           uri: 'https://en.wikipedia.org/wiki/Trifid_cipher',
-          input: OpCodes.AnsiToBytes('HELLO'), 
+          input: OpCodes.AnsiToBytes('HELLO'),
           key: OpCodes.AnsiToBytes('5'),
           expected: OpCodes.AnsiToBytes('BOJN+')
         },
@@ -95,12 +102,19 @@
       // For test suite compatibility
       this.testVectors = this.tests;
 
-      // Standard 3x3x3 cube arrangement (27 letters + digits)
-      this.STANDARD_CUBE = this.createStandardCube();
+      // The cube holds 27 cells, which is the 26 letters plus one extra sign.
+      // Nothing is merged: unlike a 5x5 Polybius square the trifid cube has
+      // room for J in its own right.
+      this.STANDARD_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ+';
+      this.STANDARD_CUBE = this.createCube(this.STANDARD_ALPHABET);
     }
 
-    createStandardCube() {
-      const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ+';
+    /**
+     * Fold a 27-character alphabet into three 3x3 layers, reading across.
+     * @param {string} alphabet - Exactly 27 distinct cube characters
+     * @returns {string[][][]} layer/row/column cube
+     */
+    createCube(alphabet) {
       const cube = [];
       let index = 0;
 
@@ -114,6 +128,23 @@
         }
       }
       return cube;
+    }
+
+    /**
+     * Build a mixed cube alphabet from a keyword: the keyword's own letters in
+     * order and without repeats, then the letters it did not use, then the
+     * 27th sign.
+     * @param {string} keyword - Key phrase, letters only are taken
+     * @returns {string} 27-character alphabet
+     */
+    buildAlphabet(keyword) {
+      const letters = String(keyword).toUpperCase().replace(/[^A-Z]/g, '');
+      let mixed = '';
+      for (const char of letters)
+        if (!mixed.includes(char)) mixed += char;
+      for (const char of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ')
+        if (!mixed.includes(char)) mixed += char;
+      return mixed + '+';
     }
 
     /**
@@ -146,9 +177,14 @@
       this.inputBuffer = [];
       this._key = null;
       this.period = 5; // Default period
+      this.alphabet = this.algorithm.STANDARD_ALPHABET;
       this.cube = JSON.parse(JSON.stringify(this.algorithm.STANDARD_CUBE));
     }
 
+    /**
+     * Key format: "keyword,period", a bare period, or a bare keyword.
+     * @param {uint8[]|string} keyData - Key bytes or string
+     */
     set key(keyData) {
       let keyString = '';
       if (typeof keyData === 'string') {
@@ -157,8 +193,24 @@
         keyString = String.fromCharCode(...keyData);
       }
 
-      const period = parseInt(keyString) || 5;
+      const parts = keyString.split(',');
+      let keyword = '';
+      let period = 5;
+
+      if (parts.length >= 2) {
+        keyword = parts[0];
+        period = parseInt(parts[1], 10) || 5;
+      } else {
+        const asNumber = parseInt(parts[0], 10);
+        if (isNaN(asNumber)) keyword = parts[0] || '';
+        else period = asNumber;
+      }
+
       this.period = Math.max(1, Math.min(period, 25));
+      this.alphabet = keyword.replace(/[^A-Za-z]/g, '').length > 0
+        ? this.algorithm.buildAlphabet(keyword)
+        : this.algorithm.STANDARD_ALPHABET;
+      this.cube = this.algorithm.createCube(this.alphabet);
       this._key = keyString;
     }
 
@@ -224,8 +276,25 @@
       return null;
     }
 
+    /**
+     * Keep only the characters the cube actually holds. The cube has a cell for
+     * every letter including J and one for the 27th sign, so neither is folded
+     * away or discarded.
+     * @param {string} text - Raw input
+     * @returns {string} Input restricted to cube characters
+     */
+    restrictToCube(text) {
+      let result = '';
+      for (const char of text.toUpperCase())
+        if (this.alphabet.includes(char)) result += char;
+      return result;
+    }
+
     encryptText(plaintext) {
-      const text = plaintext.toUpperCase().replace(/[^A-Z]/g, '').replace(/J/g, 'I');
+      // The cube is 27 cells for 26 letters and one sign, so J keeps its own
+      // cell; folding J onto I here, as a 5x5 Polybius square must, left J
+      // unreachable and contradicted the cube this file builds.
+      const text = this.restrictToCube(plaintext);
       let result = '';
 
       // Process text in blocks of 'period' length
@@ -238,7 +307,10 @@
     }
 
     decryptText(ciphertext) {
-      const text = ciphertext.toUpperCase().replace(/[^A-Z]/g, '');
+      // The 27th sign is a perfectly ordinary ciphertext character. Stripping
+      // it here, as "[^A-Z]" did, shortened the block and broke the round trip:
+      // HELLO enciphered to BOJN+ and came back as DHNK.
+      const text = this.restrictToCube(ciphertext);
       let result = '';
 
       // Process text in blocks of 'period' length

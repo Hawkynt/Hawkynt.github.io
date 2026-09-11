@@ -102,18 +102,32 @@
       // Test vectors from NSA specification
       this.tests = [
         {
-          text: "Simon64/128 Test Vector #1",
-          uri: "https://eprint.iacr.org/2013/404.pdf",
-          input: OpCodes.Hex8ToBytes("656c69746e696874"),
-          key: OpCodes.Hex8ToBytes("1f1e1d1c1b1a19181716151413121110"),
-          expected: OpCodes.Hex8ToBytes("be921012427893c2")
+          text: "Simon64/128 - Simon and Speck paper Appendix B (byte-serialised)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/simon.txt",
+          input: OpCodes.Hex8ToBytes("756e64206c696b65"),
+          key: OpCodes.Hex8ToBytes("0001020308090a0b1011121318191a1b"),
+          expected: OpCodes.Hex8ToBytes("7aa0dfb920fcc844")
         },
         {
-          text: "Simon64/128 Test Vector #2 (zero key)",
-          uri: "https://eprint.iacr.org/2013/404.pdf",
-          input: OpCodes.Hex8ToBytes("0000000000000000"),
-          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-          expected: OpCodes.Hex8ToBytes("8ae8d3db04628ce4")
+          text: "Simon64/128 - Crypto++ TestVectors #2",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/simon.txt",
+          input: OpCodes.Hex8ToBytes("ef4a99d6e0d6992c"),
+          key: OpCodes.Hex8ToBytes("435ccae27799f6117c08652eb81e0ebe"),
+          expected: OpCodes.Hex8ToBytes("b172958be0f28647")
+        },
+        {
+          text: "Simon64/128 - Crypto++ TestVectors #3",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/simon.txt",
+          input: OpCodes.Hex8ToBytes("6e27377afc08ecf4"),
+          key: OpCodes.Hex8ToBytes("6cce23b05650d41237fc83805a76eddc"),
+          expected: OpCodes.Hex8ToBytes("c889752d52f046e5")
+        },
+        {
+          text: "Simon64/128 - Crypto++ TestVectors #4",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/simon.txt",
+          input: OpCodes.Hex8ToBytes("547ab26aa85da02d"),
+          key: OpCodes.Hex8ToBytes("c2358c444168bad0ab5067fd536885f1"),
+          expected: OpCodes.Hex8ToBytes("bd99b9583d4c5449")
         }
       ];
 
@@ -139,10 +153,11 @@
      */
     static getZ3Sequence() {
       // Z3 sequence for Simon64/128 configuration (62 bits)
-      // Source: NSA reference implementation 
-      return [1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0,
-              1, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0,
-              0, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 0, 1, 1];
+      // Source: NSA specification, Table 3.1
+      // 11011011101011000110010111100000010010001010011100110100001111
+      return [1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0,
+              1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0,
+              1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 1];
     }
 
     /**
@@ -276,9 +291,10 @@
         throw new Error('Simon: Input must be exactly 8 bytes');
       }
 
-      // Simon uses little-endian byte ordering for 32-bit words  
-      let x = OpCodes.Pack32LE(blockBytes[0], blockBytes[1], blockBytes[2], blockBytes[3]);
-      let y = OpCodes.Pack32LE(blockBytes[4], blockBytes[5], blockBytes[6], blockBytes[7]);
+      // Simon serialises the block little-endian with the lower word first, so
+      // the first four bytes carry y and the last four carry x.
+      let y = OpCodes.Pack32LE(blockBytes[0], blockBytes[1], blockBytes[2], blockBytes[3]);
+      let x = OpCodes.Pack32LE(blockBytes[4], blockBytes[5], blockBytes[6], blockBytes[7]);
 
       // Simon encryption: 44 rounds of Feistel-like operations
       // Round function: (x, y) -> (y XOR F(x) XOR k_i, x)
@@ -289,10 +305,10 @@
         x = temp;
       }
 
-      // Convert back to bytes (little-endian)
+      // Convert back to bytes (little-endian, lower word first)
       const xBytes = OpCodes.Unpack32LE(x);
       const yBytes = OpCodes.Unpack32LE(y);
-      return [...xBytes, ...yBytes];
+      return [...yBytes, ...xBytes];
     }
 
     /**
@@ -307,9 +323,9 @@
         throw new Error('Simon: Input must be exactly 8 bytes');
       }
 
-      // Simon uses little-endian byte ordering for 32-bit words
-      let x = OpCodes.Pack32LE(blockBytes[0], blockBytes[1], blockBytes[2], blockBytes[3]);
-      let y = OpCodes.Pack32LE(blockBytes[4], blockBytes[5], blockBytes[6], blockBytes[7]);
+      // Simon serialises the block little-endian with the lower word first
+      let y = OpCodes.Pack32LE(blockBytes[0], blockBytes[1], blockBytes[2], blockBytes[3]);
+      let x = OpCodes.Pack32LE(blockBytes[4], blockBytes[5], blockBytes[6], blockBytes[7]);
 
       // Simon decryption: reverse the encryption process
       // Inverse operations in reverse order:
@@ -320,10 +336,10 @@
         y = OpCodes.XorN(OpCodes.XorN(temp, SimonCipher.roundFunction(x)), this.roundKeys[i]);
       }
 
-      // Convert back to bytes (little-endian)
+      // Convert back to bytes (little-endian, lower word first)
       const xBytes = OpCodes.Unpack32LE(x);
       const yBytes = OpCodes.Unpack32LE(y);
-      return [...xBytes, ...yBytes];
+      return [...yBytes, ...xBytes];
     }
 
     /**

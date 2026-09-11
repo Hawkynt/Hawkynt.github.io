@@ -158,22 +158,21 @@
         new LinkItem("kmarquet/bloc LBlock Implementation (C)", "https://github.com/kmarquet/bloc/blob/master/LBlock/LBlock.c")
       ];
 
-      // Test vectors from kmarquet/bloc reference C implementation
-      // Note: Verified against https://github.com/kmarquet/bloc/blob/master/LBlock/LBlock.c
+      // Test vectors from the LBlock specification, Appendix I
       this.tests = [
         {
-          text: "LBlock-80 Test Vector #1 (all zeros, kmarquet/bloc verified)",
-          uri: "https://github.com/kmarquet/bloc/blob/master/LBlock/LBlock.c",
+          text: "LBlock-80 Test Vector #1 (all zeros) - specification Appendix I",
+          uri: "https://eprint.iacr.org/2011/345.pdf",
           input: OpCodes.Hex8ToBytes("0000000000000000"),
           key: OpCodes.Hex8ToBytes("00000000000000000000"),
-          expected: OpCodes.Hex8ToBytes("cd5be708531818c2")
+          expected: OpCodes.Hex8ToBytes("c218185308e75bcd")
         },
         {
-          text: "LBlock-80 Test Vector #2 (kmarquet/bloc verified)",
-          uri: "https://github.com/kmarquet/bloc/blob/master/LBlock/LBlock.c",
+          text: "LBlock-80 Test Vector #2 - specification Appendix I",
+          uri: "https://eprint.iacr.org/2011/345.pdf",
           input: OpCodes.Hex8ToBytes("0123456789abcdef"),
           key: OpCodes.Hex8ToBytes("0123456789abcdeffedc"),
-          expected: OpCodes.Hex8ToBytes("17e7c48e9678327e")
+          expected: OpCodes.Hex8ToBytes("4b7179d8ebee0c26")
         }
       ];
     }
@@ -228,7 +227,11 @@
       }
 
       this._key = [...keyBytes];
-      this._roundKeys = keySchedule(new Uint8Array(this._key));
+      // The round-key generator below indexes the 80-bit key register with byte 0
+      // holding the LEAST significant bits, while the published key K is written
+      // most significant byte first. Reverse on the way in so that the hex key of
+      // the specification maps onto the register the way the specification means.
+      this._roundKeys = keySchedule(new Uint8Array([...keyBytes].reverse()));
       // Note: round keys are used in reverse order during decryption,
       // but we don't reverse them here - the processBlock handles it
     }
@@ -281,8 +284,10 @@
     }
 
     processBlock(block) {
-      // Block layout: x[0..3] = LEFT half, x[4..7] = RIGHT half
-      const x = [...block];
+      // Block layout: x[0..3] = LEFT half, x[4..7] = RIGHT half, each stored
+      // least significant byte first. The published block is written most
+      // significant byte first, so reverse on entry and again on exit.
+      const x = [...block].reverse();
 
       if (this.isInverse) {
         // Decryption: apply rounds in reverse order
@@ -300,7 +305,7 @@
         this.oneRound(x, this._roundKeys[31]);
       }
 
-      return x;
+      return x.reverse();
     }
 
     oneRound(x, k) {

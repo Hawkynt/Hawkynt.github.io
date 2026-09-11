@@ -76,29 +76,42 @@
         new LinkItem("NIST LWC GIFT-COFB", "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/finalist-round/updated-spec-doc/gift-cofb-spec-final.pdf")
       ];
 
-      // Test vectors generated from reference implementation
-      // Source: X:\Coding\Working Copies\Hawkynt.git\Hawkynt.github.io\Cipher\Reference Sources\c-cpp-source\academic\lightweight-crypto
+      // This is GIFT-128b, the bit-sliced ordering used by GIFT-COFB.
       this.tests = [
         {
-          text: 'GIFT-128 Test Vector #1 (All Zeros)',
-          uri: 'Generated from reference implementation (Southern Storm Software)',
+          text: 'GIFT-128b Test Vector #1 - GIFT-COFB round-2 specification',
+          uri: 'https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/gift-cofb-spec-round2.pdf',
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          expected: OpCodes.Hex8ToBytes("a94af7f9ba181df9b2b00eb7dbfa93df")
+        },
+        {
+          text: 'GIFT-128b Test Vector #2 - GIFT-COFB round-2 specification',
+          uri: 'https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/gift-cofb-spec-round2.pdf',
+          input: OpCodes.Hex8ToBytes("e491c665522031cf033bf71b9989ecb3"),
+          key: OpCodes.Hex8ToBytes("e0841f8fb90783136aa8b7f192f5c474"),
+          expected: OpCodes.Hex8ToBytes("3331efc3a6604f9599ed42b7dbc02a38")
+        },
+        {
+          text: 'GIFT-128b Test Vector #3 (all zeros) - fixslicing reference code',
+          uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/unit/test-gift128.c',
           input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
           key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
           expected: OpCodes.Hex8ToBytes("5e8e3a2e1697a77dcc0b89dcd97a64ee")
         },
         {
-          text: 'GIFT-128 Test Vector #2 (Incrementing Pattern)',
-          uri: 'Generated from reference implementation (Southern Storm Software)',
-          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
-          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
-          expected: OpCodes.Hex8ToBytes("81326fbb780c5cf4f4d6c465bfa9ee2f")
+          text: 'GIFT-128b Test Vector #4 - fixslicing reference code',
+          uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/unit/test-gift128.c',
+          input: OpCodes.Hex8ToBytes("fedcba9876543210fedcba9876543210"),
+          key: OpCodes.Hex8ToBytes("fedcba9876543210fedcba9876543210"),
+          expected: OpCodes.Hex8ToBytes("22581437e5e961ef6d125046c5f20788")
         },
         {
-          text: 'GIFT-128 Test Vector #3 (Known Pattern)',
-          uri: 'Generated from reference implementation (Southern Storm Software)',
-          input: OpCodes.Hex8ToBytes("102030405060708090a0b0c0d0e0f000"),
-          key: OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f10"),
-          expected: OpCodes.Hex8ToBytes("41948f85e16a56872a812e1f0b8f9a9e")
+          text: 'GIFT-128b Test Vector #5 - fixslicing reference code',
+          uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/unit/test-gift128.c',
+          input: OpCodes.Hex8ToBytes("e39c141fa57dba43f08a85b6a91f86c1"),
+          key: OpCodes.Hex8ToBytes("d0f5c59a7700d3e799028fa9f90ad837"),
+          expected: OpCodes.Hex8ToBytes("da1dc8873823e325c4b4a77c1a73330e")
         }
       ];
     }
@@ -340,12 +353,12 @@
       let s2 = OpCodes.Pack32BE(input[8], input[9], input[10], input[11]);
       let s3 = OpCodes.Pack32BE(input[12], input[13], input[14], input[15]);
 
-      // Load key (big-endian, mirrored order 3,1,2,0 for fixslicing)
+      // Load key (big-endian, in ascending word order W0..W3)
       const keyWords = [
-        OpCodes.Pack32BE(this._key[12], this._key[13], this._key[14], this._key[15]),
+        OpCodes.Pack32BE(this._key[0], this._key[1], this._key[2], this._key[3]),
         OpCodes.Pack32BE(this._key[4], this._key[5], this._key[6], this._key[7]),
         OpCodes.Pack32BE(this._key[8], this._key[9], this._key[10], this._key[11]),
-        OpCodes.Pack32BE(this._key[0], this._key[1], this._key[2], this._key[3])
+        OpCodes.Pack32BE(this._key[12], this._key[13], this._key[14], this._key[15])
       ];
 
       let state = [s0, s1, s2, s3];
@@ -393,12 +406,12 @@
       let s2 = OpCodes.Pack32BE(input[8], input[9], input[10], input[11]);
       let s3 = OpCodes.Pack32BE(input[12], input[13], input[14], input[15]);
 
-      // Load key (big-endian, mirrored order 3,1,2,0)
+      // Load key (big-endian, in ascending word order W0..W3)
       const keyWords = [
-        OpCodes.Pack32BE(this._key[12], this._key[13], this._key[14], this._key[15]),
+        OpCodes.Pack32BE(this._key[0], this._key[1], this._key[2], this._key[3]),
         OpCodes.Pack32BE(this._key[4], this._key[5], this._key[6], this._key[7]),
         OpCodes.Pack32BE(this._key[8], this._key[9], this._key[10], this._key[11]),
-        OpCodes.Pack32BE(this._key[0], this._key[1], this._key[2], this._key[3])
+        OpCodes.Pack32BE(this._key[12], this._key[13], this._key[14], this._key[15])
       ];
 
       let state = [s0, s1, s2, s3];

@@ -76,29 +76,16 @@
         new LinkItem("Cryptanalysis Resources", "https://pyjamask-cipher.github.io/")
       ];
 
-      // Test vectors verified against reference C implementation
-      // from Southern Storm Software lightweight-crypto library
+      // Test vector for the Pyjamask-128 block cipher taken from the Pyjamask
+      // specification (NIST lightweight cryptography submission). The plaintext
+      // is the ASCII string "Pyjamask-128:):)".
       this.tests = [
         {
-          text: 'Reference Implementation Test Vector #1 - All Zeros',
-          uri: 'https://github.com/rweather/lightweight-crypto',
-          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
-          expected: OpCodes.Hex8ToBytes("dfe3692b4ca367d162890cb0f090311a")
-        },
-        {
-          text: 'Reference Implementation Test Vector #2 - Sequential Pattern',
-          uri: 'https://github.com/rweather/lightweight-crypto',
-          input: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
-          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
-          expected: OpCodes.Hex8ToBytes("efdeb7e095a2446a7400a3d75dce8f5a")
-        },
-        {
-          text: 'Reference Implementation Test Vector #3 - All Ones Key',
-          uri: 'https://github.com/rweather/lightweight-crypto',
-          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-          key: OpCodes.Hex8ToBytes("ffffffffffffffffffffffffffffffff"),
-          expected: OpCodes.Hex8ToBytes("40f2a03d22860aa6e372f8bcf822ee0d")
+          text: 'Pyjamask-128 block cipher test vector - Pyjamask specification',
+          uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/unit/test-pyjamask.c',
+          input: OpCodes.Hex8ToBytes("50796a616d61736b2d3132383a293a29"),
+          key: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
+          expected: OpCodes.Hex8ToBytes("48f139a109bdd9c0726e8261f8d68e7d")
         }
       ];
     }

@@ -85,21 +85,24 @@
         new Vulnerability("Key reuse", "2-key variant (K1-K2-K1) has lower effective security than 3-key")
       ];
 
-      // Test vectors based on NIST SP 800-67 (Triple-DES)
+      // NIST "Example Values" TDES_ECB known answers. Three-key TDEA is
+      // K1 || K2 || K3; two-key TDEA is the same arrangement with K3 = K1.
       this.tests = [
         {
-          text: "EDE round-trip test - 2-key mode with DES (8-byte block)",
-          uri: "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-67Rev2.pdf",
+          text: "NIST TDES_ECB - three-key TDEA (EDE3), two blocks",
+          uri: "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/example-values",
           cipher: "DES",
-          input: OpCodes.Hex8ToBytes("0123456789ABCDEF"), // 8-byte block
-          key: OpCodes.Hex8ToBytes("0123456789ABCDEF23456789ABCDEF01") // 2-key mode (16 bytes)
+          input: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172aae2d8a571e03ac9c9eb76fac45af8e51"),
+          key: OpCodes.Hex8ToBytes("0123456789ABCDEF23456789ABCDEF01456789ABCDEF0123"),
+          expected: OpCodes.Hex8ToBytes("714772f339841d34267fcc4bd2949cc3ee11c22a576a303876183f99c0b6de87")
         },
         {
-          text: "EDE round-trip test - 3-key mode with DES (16-byte input)",
-          uri: "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-67Rev2.pdf",
+          text: "NIST TDES_ECB - two-key TDEA (EDE2, K3 = K1), two blocks",
+          uri: "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/example-values",
           cipher: "DES",
-          input: OpCodes.Hex8ToBytes("6BC1BEE22E409F96E93D7E117393172A"), // 16-byte input (2 blocks)
-          key: OpCodes.Hex8ToBytes("0123456789ABCDEF23456789ABCDEF01456789ABCDEF0123") // 3-key mode (24 bytes)
+          input: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172aae2d8a571e03ac9c9eb76fac45af8e51"),
+          key: OpCodes.Hex8ToBytes("0123456789ABCDEF23456789ABCDEF010123456789ABCDEF"),
+          expected: OpCodes.Hex8ToBytes("06ede3d82884090aff322c19f0518486730576972a666e58b6c88cf107340d3d")
         }
       ];
     }

@@ -85,26 +85,49 @@
         new Vulnerability("Limited Testing", "Rarely used mode with limited cryptanalysis and real-world testing.")
       ];
 
+      // The first two entries are OpenSSL's own AES-IGE known answers from
+      // test/igetest.c. The second of them is stored there in the decrypt
+      // direction, so plaintext and ciphertext appear swapped in that file.
       this.tests = [
         {
-          text: "IGE test - single block (AES-128)",
-          uri: "https://github.com/openssl/openssl/blob/master/test/ige128test.c",
+          text: "OpenSSL igetest.c vector 0 - two zero blocks",
+          uri: "https://raw.githubusercontent.com/openssl/openssl/master/test/igetest.c",
           cipher: "AES",
-          input: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"), // Single block test
-          expected: OpCodes.Hex8ToBytes("7947a6a08a13bb4ec9ef8b9f11eb187d"), // IGE encrypted output
-          key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"), // Test key
-          iv1: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"), // First IV (ciphertext chain)
-          iv2: OpCodes.Hex8ToBytes("0f0e0d0c0b0a09080706050403020100") // Second IV (plaintext chain)
+          input: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("1a8519a6557be652e9da8e43da4ef4453cf456b4ca488aa383c79c98b34797cb"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          iv1: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          iv2: OpCodes.Hex8ToBytes("101112131415161718191a1b1c1d1e1f")
         },
         {
-          text: "IGE test - multiple blocks (AES-128)",
-          uri: "https://github.com/openssl/openssl/blob/master/test/ige128test.c",
+          text: "OpenSSL igetest.c vector 1 - ASCII key and IV",
+          uri: "https://raw.githubusercontent.com/openssl/openssl/master/test/igetest.c",
           cipher: "AES",
-          input: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172aae2d8a571e03ac9c9eb76fac45af8e51"), // Two blocks
-          expected: OpCodes.Hex8ToBytes("7947a6a08a13bb4ec9ef8b9f11eb187dd5e9638070bbd7bea612ecd68eee2388"), // IGE encrypted output
-          key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"), // Test key
-          iv1: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"), // First IV (ciphertext chain)
-          iv2: OpCodes.Hex8ToBytes("0f0e0d0c0b0a09080706050403020100") // Second IV (plaintext chain)
+          input: OpCodes.Hex8ToBytes("99706487a1cde613bc6de0b6f24b1c7aa448c8b9c3403e3467a8cad89340f53b"),
+          expected: OpCodes.Hex8ToBytes("4c2e204c6574277320686f70652042656e20676f74206974207269676874210a"),
+          key: OpCodes.Hex8ToBytes("5468697320697320616e20696d706c65"),
+          iv1: OpCodes.Hex8ToBytes("6d656e746174696f6e206f6620494745"),
+          iv2: OpCodes.Hex8ToBytes("206d6f646520666f72204f70656e5353")
+        },
+        {
+          text: "IGE with the SP 800-38A sample plaintext - single block",
+          uri: "https://raw.githubusercontent.com/openssl/openssl/master/crypto/modes/ige128.c",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"),
+          expected: OpCodes.Hex8ToBytes("7947a6a08a13bb4ec9ef8b9f11eb187d"),
+          key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
+          iv1: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          iv2: OpCodes.Hex8ToBytes("0f0e0d0c0b0a09080706050403020100")
+        },
+        {
+          text: "IGE with the SP 800-38A sample plaintext - two blocks",
+          uri: "https://raw.githubusercontent.com/openssl/openssl/master/crypto/modes/ige128.c",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172aae2d8a571e03ac9c9eb76fac45af8e51"),
+          expected: OpCodes.Hex8ToBytes("7947a6a08a13bb4ec9ef8b9f11eb187dd5e9638070bbd7bea612ecd68eee2388"),
+          key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
+          iv1: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          iv2: OpCodes.Hex8ToBytes("0f0e0d0c0b0a09080706050403020100")
         }
       ];
     }
