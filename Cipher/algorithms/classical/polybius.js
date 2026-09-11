@@ -95,7 +95,7 @@
       // Test vectors using byte arrays - bit-perfect results from implementation  
       this.tests = [
         {
-          text: "Basic Polybius transformation",
+          text: "Plain A-Z square, row then column, both 1-indexed. The Wikipedia article works a different message, so it carries no value for this input",
           uri: "https://en.wikipedia.org/wiki/Polybius_square",
           input: OpCodes.AnsiToBytes("HELLO"),
           key: OpCodes.AnsiToBytes(""),

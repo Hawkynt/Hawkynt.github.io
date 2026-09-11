@@ -43,6 +43,14 @@
  * bombPermu[i] is neither i nor (i + 1) mod blockLength, so the two XOR steps
  * touch distinct bytes and neither disturbs state[i] itself.
  *
+ * BYTE ORDER: FROG numbers a block and a key from the least significant byte up,
+ * so internal index 0 holds the LAST byte of the key/plaintext/ciphertext strings
+ * that the AES submission's known-answer tests print. This interface takes and
+ * returns those strings in the published order, so key, input and output are all
+ * traversed back-to-front on the way in and out of the primitive. Feeding the
+ * submission's iv128_e.txt key 80000...00 this way reproduces its published
+ * 2304-byte internal key exactly.
+ *
  * 128-bit block, 128/192/256-bit keys, 8 rounds. Broken by Wagner, Ferguson and
  * Schneier at the AES conference; educational only.
  */
@@ -303,90 +311,80 @@
         new Vulnerability("Weak key classes and chosen-plaintext attacks", "Wagner, Ferguson and Schneier found large weak-key classes and both chosen-plaintext and chosen-ciphertext attacks; FROG was not selected as an AES finalist.", "Use AES or another vetted cipher.")
       ];
 
-      // Known Answer Test vectors from the AES submission's own ecb_vk.txt and
-      // ecb_vt.txt, produced by the submitted reference implementation.
-      //
-      // BYTE ORDER: FROG numbers a block from the least significant byte up, so
-      // index 0 is the LAST byte the AES KAT files print. Every key, plaintext
-      // and ciphertext below is therefore the byte-REVERSAL of the string in the
-      // KAT file: the file's "KEY=800000...00" is the 16-byte array
-      // 00...00,0x80, and so on. They are written here in array order because
-      // that is the order this interface consumes and emits.
-      //
-      // The last three are cross-checks against the FROG shipped in the DarkCrypt
-      // Total Commander plugin, an independent implementation of the same
-      // construction; they are order-agnostic in the sense that they are quoted
-      // exactly as that plugin produces them.
+      // Known Answer Test vectors quoted verbatim from the AES submission's own
+      // ecb_vk.txt and ecb_vt.txt, produced by the submitted reference
+      // implementation and archived with the NIST round 1 test values.
+      const KAT = "https://web.archive.org/web/20070109105622if_/http://csrc.nist.gov/CryptoToolkit/aes/round1/testvals/frog-vals.zip";
       this.tests = [
         {
-          text: "AES KAT ecb_vk.txt I=1 — 128-bit key, single key bit set",
-          uri: "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/aes-development/frog.pdf",
+          text: "AES KAT ecb_vk.txt I=1 — 128-bit key, highest key bit set",
+          uri: KAT,
           input: OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
-          key: OpCodes.Hex8ToBytes('00000000000000000000000000000080'),
-          expected: OpCodes.Hex8ToBytes('1e1a2a532de59da7e230cc718ad2cb6c')
+          key: OpCodes.Hex8ToBytes('80000000000000000000000000000000'),
+          expected: OpCodes.Hex8ToBytes('6ccbd28a71cc30e2a79de52d532a1a1e')
         },
         {
           text: "AES KAT ecb_vk.txt I=128 — 128-bit key, lowest key bit set",
-          uri: "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/aes-development/frog.pdf",
+          uri: KAT,
           input: OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
-          key: OpCodes.Hex8ToBytes('01000000000000000000000000000000'),
-          expected: OpCodes.Hex8ToBytes('4f43f3edeb7c2a85d1d8577e0c7378c4')
+          key: OpCodes.Hex8ToBytes('00000000000000000000000000000001'),
+          expected: OpCodes.Hex8ToBytes('c478730c7e57d8d1852a7cebedf3434f')
         },
         {
-          text: "AES KAT ecb_vt.txt I=1 — 128-bit key, single plaintext bit set",
-          uri: "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/aes-development/frog.pdf",
-          input: OpCodes.Hex8ToBytes('00000000000000000000000000000080'),
+          text: "AES KAT ecb_vt.txt I=1 — 128-bit key, highest plaintext bit set",
+          uri: KAT,
+          input: OpCodes.Hex8ToBytes('80000000000000000000000000000000'),
           key: OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
-          expected: OpCodes.Hex8ToBytes('82700ab3533100fcd02de6bd6988af43')
+          expected: OpCodes.Hex8ToBytes('43af8869bde62dd0fc003153b30a7082')
         },
         {
           text: "AES KAT ecb_vt.txt I=128 — 128-bit key, lowest plaintext bit set",
-          uri: "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/aes-development/frog.pdf",
-          input: OpCodes.Hex8ToBytes('01000000000000000000000000000000'),
+          uri: KAT,
+          input: OpCodes.Hex8ToBytes('00000000000000000000000000000001'),
           key: OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
-          expected: OpCodes.Hex8ToBytes('b46122f040782cb0cd24ce55e92554c7')
-        },
-        {
-          text: "AES KAT — all-zero 128-bit key and plaintext (order-independent)",
-          uri: "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/aes-development/frog.pdf",
-          input: OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
-          key: OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
-          expected: OpCodes.Hex8ToBytes('ce0f0611ec5ea12607d4bb435b58f0bf')
+          expected: OpCodes.Hex8ToBytes('c75425e955ce24cdb02c7840f02261b4')
         },
         {
           text: "AES KAT ecb_vk.txt I=1 — 192-bit key",
-          uri: "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/aes-development/frog.pdf",
+          uri: KAT,
           input: OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
-          key: OpCodes.Hex8ToBytes('000000000000000000000000000000000000000000000080'),
-          expected: OpCodes.Hex8ToBytes('d97ec798d02b23e20070c69753f4770e')
+          key: OpCodes.Hex8ToBytes('800000000000000000000000000000000000000000000000'),
+          expected: OpCodes.Hex8ToBytes('0e77f45397c67000e2232bd098c77ed9')
+        },
+        {
+          text: "AES KAT ecb_vk.txt I=192 — 192-bit key, lowest key bit set",
+          uri: KAT,
+          input: OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
+          key: OpCodes.Hex8ToBytes('000000000000000000000000000000000000000000000001'),
+          expected: OpCodes.Hex8ToBytes('1c36d07eb28abdf95a54e99200b6e62a')
+        },
+        {
+          text: "AES KAT ecb_vt.txt I=1 — 192-bit key, highest plaintext bit set",
+          uri: KAT,
+          input: OpCodes.Hex8ToBytes('80000000000000000000000000000000'),
+          key: OpCodes.Hex8ToBytes('000000000000000000000000000000000000000000000000'),
+          expected: OpCodes.Hex8ToBytes('cecad44deb19b143fb6399c8a798253f')
         },
         {
           text: "AES KAT ecb_vk.txt I=1 — 256-bit key",
-          uri: "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/aes-development/frog.pdf",
+          uri: KAT,
           input: OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
-          key: OpCodes.Hex8ToBytes('0000000000000000000000000000000000000000000000000000000000000080'),
-          expected: OpCodes.Hex8ToBytes('e100a4921e34bc89b9c6182b42c6b4b3')
+          key: OpCodes.Hex8ToBytes('8000000000000000000000000000000000000000000000000000000000000000'),
+          expected: OpCodes.Hex8ToBytes('b3b4c6422b18c6b989bc341e92a400e1')
         },
         {
-          text: "FROG-256 — zero key and plaintext, cross-checked against the DarkCrypt plugin",
-          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          text: "AES KAT ecb_vk.txt I=256 — 256-bit key, lowest key bit set",
+          uri: KAT,
           input: OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
+          key: OpCodes.Hex8ToBytes('0000000000000000000000000000000000000000000000000000000000000001'),
+          expected: OpCodes.Hex8ToBytes('c0386da084bcd68241e4f6709c7bdc2e')
+        },
+        {
+          text: "AES KAT ecb_vt.txt I=1 — 256-bit key, highest plaintext bit set",
+          uri: KAT,
+          input: OpCodes.Hex8ToBytes('80000000000000000000000000000000'),
           key: OpCodes.Hex8ToBytes('0000000000000000000000000000000000000000000000000000000000000000'),
-          expected: OpCodes.Hex8ToBytes('b57897cc533074f1a543bf69b65c7bbc')
-        },
-        {
-          text: "FROG-256 — incrementing key and plaintext, cross-checked against the DarkCrypt plugin",
-          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
-          input: OpCodes.Hex8ToBytes('000102030405060708090a0b0c0d0e0f'),
-          key: OpCodes.Hex8ToBytes('000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f'),
-          expected: OpCodes.Hex8ToBytes('2bbb1026a5608ad9bd14ea5064982eb9')
-        },
-        {
-          text: "FROG-256 — shifted incrementing key and plaintext, cross-checked against the DarkCrypt plugin",
-          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
-          input: OpCodes.Hex8ToBytes('101112131415161718191a1b1c1d1e1f'),
-          key: OpCodes.Hex8ToBytes('0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20'),
-          expected: OpCodes.Hex8ToBytes('26fba6a7bbb41616d89c83bd83d97a47')
+          expected: OpCodes.Hex8ToBytes('8b26d3a473868cba4f2221bc88de1da5')
         }
       ];
     }
@@ -428,7 +426,9 @@
       this.KeySize = keyBytes.length;
       // The internal key differs between the two directions: decryption needs
       // each round's substPermu replaced by its inverse.
-      this._roundKeys = generateKeys(this._key, BLOCK_LEN, ROUNDS);
+      const ordered = [];
+      for (let i = keyBytes.length - 1; i >= 0; --i) ordered.push(keyBytes[i]);
+      this._roundKeys = generateKeys(ordered, BLOCK_LEN, ROUNDS);
       if (this.isInverse) invertSubstitutions(this._roundKeys, BLOCK_LEN, ROUNDS);
     }
 
@@ -448,10 +448,11 @@
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += BLOCK_LEN) {
-        const state = this.inputBuffer.slice(i, i + BLOCK_LEN);
+        const state = [];
+        for (let _i = BLOCK_LEN - 1; _i >= 0; --_i) state.push(this.inputBuffer[i + _i]);
         if (this.isInverse) frogDecrypt(state, this._roundKeys, BLOCK_LEN, ROUNDS);
         else frogEncrypt(state, this._roundKeys, BLOCK_LEN, ROUNDS);
-        for (let _i = 0; _i < state.length; _i++) output.push(state[_i]);
+        for (let _i = state.length - 1; _i >= 0; _i--) output.push(state[_i]);
       }
 
       this.inputBuffer = [];

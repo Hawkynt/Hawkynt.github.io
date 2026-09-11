@@ -12,8 +12,15 @@
  *   - the 64-bit key is split into two little-endian 32-bit words, with the
  *     FIRST four key bytes forming the LOW word (key bits 0-31) and the LAST
  *     four key bytes forming the HIGH word (key bits 32-63)
- * Test vectors verified against the DarkCrypt implementation, including
- * encrypt/decrypt round-trip.
+ * This byte order is the only difference: the core was reimplemented
+ * independently from the published KeeLoq specification and compared over 20
+ * random key/plaintext pairs, matching exactly once the little-endian packing
+ * above is applied, and the published KeeLoq vector reproduces here after the
+ * same byte reversal.
+ * NOTE: KeeLoq maps the all-zero block to itself under the all-zero key. That
+ * is intrinsic to the design - bit 0 of the non-linear function constant
+ * 0x3A5C742E is zero, so the feedback stays zero for all 528 rounds - and is
+ * not an artefact of this implementation.
  * 32-bit blocks, 64-bit keys. Educational only.
  */
 
@@ -76,11 +83,16 @@
       // Test vectors verified against the DarkCrypt implementation.
       this.tests = [
         {
-          text: "DarkCrypt Keeloq — zero key/plaintext",
-          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
-          input: OpCodes.Hex8ToBytes("00000000"),
-          key: OpCodes.Hex8ToBytes("0000000000000000"),
-          expected: OpCodes.Hex8ToBytes("00000000")
+          // The published KeeLoq vector key=0x5cec6701b79fd949,
+          // plaintext=0xf741e2db, ciphertext=0xe44f4cdf, restated in this
+          // implementation's little-endian byte order (key, block and result
+          // each byte-reversed). It is the same cipher operation as the
+          // published one, not a separately derived value.
+          text: "Published KeeLoq vector, in DarkCrypt little-endian byte order",
+          uri: "https://github.com/hadipourh/KeeLoq",
+          input: OpCodes.Hex8ToBytes("dbe241f7"),
+          key: OpCodes.Hex8ToBytes("49d99fb70167ec5c"),
+          expected: OpCodes.Hex8ToBytes("df4c4fe4")
         },
         {
           text: "DarkCrypt Keeloq — incrementing key/plaintext",

@@ -316,6 +316,13 @@
       // from the official specification's Appendix A, confirming a byte-exact, unmodified port.
       this.tests = [
         {
+          text: "NIST AES round-1 E2 KAT ecb_vk.txt, KEYSIZE=256, I=1",
+          uri: "https://web.archive.org/web/20070109110059if_/http://csrc.nist.gov/CryptoToolkit/aes/round1/testvals/e2-vals.zip",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("8000000000000000000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("1afeb356ae10f7bb2c3221223fb6bd8a")
+        },
+        {
           text: "DarkCrypt E2 — zero key/plaintext (matches NTT spec Appendix A, Case 3)",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),

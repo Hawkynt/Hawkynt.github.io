@@ -74,17 +74,28 @@
         new LinkItem('Two-Square (Double Playfair) Cipher Reference Implementation (Python)', 'https://github.com/scottmilton1/two-square-cipher')
       ];
 
-      // Test vectors in plain format (recommended)
+      // Test vectors in plain format (recommended).
+      //
+      // This is the vertical two-square: the first letter of a digraph is
+      // found in the top square and the second in the bottom one, and each is
+      // replaced by the letter in its own square in the other's column. A
+      // digraph whose letters share a column therefore comes through
+      // unchanged, and the cipher is its own inverse.
+      //
+      // Like the four-square this file folds J onto I, where the Wikipedia
+      // article leaves Q out, so the article's worked example - EXAMPLE and
+      // KEYWORD over "helpmeobiwankenobi" giving HEDLXWSDJYANHOTKDG - cannot
+      // be reproduced here and neither value below is taken from it.
       this.tests = [
         {
-          text: 'Basic Two-Square example',
+          text: 'Keywords SECRET and CIPHER, odd-length message padded with X. No published source carries this value',
           uri: 'https://en.wikipedia.org/wiki/Two-square_cipher',
-          input: OpCodes.AnsiToBytes('HELLO'), 
+          input: OpCodes.AnsiToBytes('HELLO'),
           key: OpCodes.AnsiToBytes('SECRET,CIPHER'),
           expected: OpCodes.AnsiToBytes('MCKMPW')
         },
         {
-          text: 'Military message example',
+          text: 'Keywords EXAMPLE and KEYWORD, J folded onto I. No published source carries this value',
           uri: 'https://en.wikipedia.org/wiki/Two-square_cipher',
           input: OpCodes.AnsiToBytes('ATTACKATDAWN'),
           key: OpCodes.AnsiToBytes('EXAMPLE,KEYWORD'),

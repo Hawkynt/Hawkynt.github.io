@@ -113,9 +113,9 @@
       this.tests = [
         new TestCase(
           OpCodes.Hex8ToBytes("0000000000000000"), // input
-          OpCodes.Hex8ToBytes("f0ad5c1138a73801"), // expected (corrected output)
-          "FEAL-8 test vector - all zeros plaintext",
-          "https://en.wikipedia.org/wiki/FEAL"
+          OpCodes.Hex8ToBytes("ceef2c86f2490752"), // expected
+          "Handbook of Applied Cryptography, Example 7.99 (FEAL-8)",
+          "https://cacr.uwaterloo.ca/hac/about/chap7.pdf"
         )
       ];
       // Additional property for key in test vector
@@ -256,52 +256,78 @@
     /**
      * FEAL F-function (Feistel round function)
      * @private
-     * @param {uint32} data - 32-bit input data
-     * @param {uint32} key - 32-bit round key
-     * @returns {uint32} Transformed 32-bit output
+     * @param {uint8[]} data - 4 data bytes
+     * @param {uint8[]} key - 2 subkey bytes
+     * @returns {uint8[]} 4 transformed bytes
      */
     _F(data, key) {
-      // Split 32-bit data into bytes
-      const d = OpCodes.Unpack32BE(data);
-      const k = OpCodes.Unpack32BE(key);
+      const a = data;
+      const b = key;
 
-      // Apply S-boxes
-      const t0 = OpCodes.XorN(d[1], d[0]);
-      const t1 = OpCodes.XorN(d[2], d[3]);
-      const f1 = this._S1(OpCodes.XorN(t0, k[0]), OpCodes.XorN(t1, k[1]));
-      const f2 = this._S0(OpCodes.XorN(f1, t0), OpCodes.XorN(t1, k[2]));
-      const f3 = this._S1(OpCodes.XorN(f2, t1), OpCodes.XorN(f1, k[3]));
-      const f4 = this._S0(OpCodes.XorN(f3, f1), f2);
+      const ret = [0, 0, 0, 0];
+      const T = OpCodes.XorN(OpCodes.XorN(a[3], a[2]), b[1]);
+      ret[1] = this._S1(OpCodes.XorN(OpCodes.XorN(a[0], a[1]), b[0]), T);
+      ret[0] = this._S0(a[0], ret[1]);
+      ret[2] = this._S0(T, ret[1]);
+      ret[3] = this._S1(ret[2], a[3]);
 
-      // Pack result
-      return OpCodes.Pack32BE(f4, f3, f2, f1);
+      return ret;
     }
 
     /**
-     * Generate round keys from master key
+     * FEAL Fk function used by the key schedule
+     * @private
+     * @param {uint8[]} a - 4 bytes
+     * @param {uint8[]} b - 4 bytes
+     * @returns {uint8[]} 4 bytes
+     */
+    _Fk(a, b) {
+      const ret = [0, 0, 0, 0];
+
+      ret[1] = this._S1(OpCodes.XorN(a[0], a[1]), OpCodes.XorN(OpCodes.XorN(b[0], a[2]), a[3]));
+      ret[0] = this._S0(a[0], OpCodes.XorN(b[2], ret[1]));
+      ret[2] = this._S0(OpCodes.XorN(a[2], a[3]), OpCodes.XorN(b[1], ret[1]));
+      ret[3] = this._S1(a[3], OpCodes.XorN(b[3], ret[2]));
+
+      return ret;
+    }
+
+    /**
+     * Generate the 16 16-bit subkeys K0..K15 from the 64-bit master key.
+     * FEAL-8 is FEAL-N with N=8, i.e. FEAL-NX with a zero right key half, so
+     * the Qi term of the FEAL-NX schedule vanishes.
      * @private
      * @param {uint8[]} keyBytes - 8-byte master key
-     * @returns {uint32[]} Array of 16 round keys
+     * @returns {uint8[]} 24 subkey bytes (K0..K11 for N=8: 2*(N+4))
      */
     _generateRoundKeys(keyBytes) {
-      const roundKeys = [];
+      const N = 8;
+      const subKeys = new Array(2 * (N + 4));
+      for (let i = 0; i < subKeys.length; i++) subKeys[i] = 0;
 
-      // Split key into two 32-bit halves
-      let KL = OpCodes.Pack32BE(keyBytes[0], keyBytes[1], keyBytes[2], keyBytes[3]);
-      let KR = OpCodes.Pack32BE(keyBytes[4], keyBytes[5], keyBytes[6], keyBytes[7]);
+      let ACurrent = keyBytes.slice(0, 4);
+      let BCurrent = keyBytes.slice(4, 8);
+      let XORTemp = [0, 0, 0, 0];
 
-      // Generate 16 round keys for FEAL-8
-      for (let i = 0; i < 16; i++) {
-        if (i % 2 === 0) {
-          roundKeys[i] = KL;
-          KL = OpCodes.RotL32(KL, 1);
-        } else {
-          roundKeys[i] = KR;
-          KR = OpCodes.RotL32(KR, 1);
-        }
+      const numIterations = Math.floor(N / 2) + 4;
+      for (let i = 0; i < numIterations; i++) {
+        let XORResult = BCurrent.slice(0, 4);
+        if (i > 0) XORResult = OpCodes.XorArrays(XORResult, XORTemp);
+
+        XORTemp = ACurrent.slice(0, 4);
+        ACurrent = this._Fk(ACurrent, XORResult);
+
+        subKeys[4 * i] = ACurrent[0];
+        subKeys[4 * i + 1] = ACurrent[1];
+        subKeys[4 * i + 2] = ACurrent[2];
+        subKeys[4 * i + 3] = ACurrent[3];
+
+        const temp = ACurrent;
+        ACurrent = BCurrent;
+        BCurrent = temp;
       }
 
-      return roundKeys;
+      return subKeys;
     }
 
     /**
@@ -311,27 +337,28 @@
      * @returns {uint8[]} 8-byte encrypted block
      */
     _encryptBlock(block) {
-      // Split block into two 32-bit halves (big-endian)
-      let left = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
-      let right = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
+      const N = 8;
+      const subkeys = this.roundKeys;
 
-      // 8 rounds of Feistel encryption
-      for (let round = 0; round < 8; round++) {
-        const temp = left;
-        left = right;
-        right = OpCodes.XorN(temp, this._F(right, this.roundKeys[round]));
+      // Pre-whitening with K8..K11
+      const firstXor = subkeys.slice(2 * N, 2 * N + 8);
+      const whitened = OpCodes.XorArrays(block, firstXor);
+
+      let LCurrent = whitened.slice(0, 4);
+      let RCurrent = whitened.slice(4, 8);
+      RCurrent = OpCodes.XorArrays(LCurrent, RCurrent);
+
+      for (let i = 0; i < N; i++) {
+        const subkey = subkeys.slice(2 * i, 2 * i + 2);
+        LCurrent = OpCodes.XorArrays(LCurrent, this._F(RCurrent, subkey));
+        const temp = LCurrent;
+        LCurrent = RCurrent;
+        RCurrent = temp;
       }
 
-      // Swap halves for final result
-      const temp = left;
-      left = right;
-      right = temp;
-
-      // Convert back to bytes (big-endian)
-      const leftBytes = OpCodes.Unpack32BE(left);
-      const rightBytes = OpCodes.Unpack32BE(right);
-
-      return leftBytes.concat(rightBytes);
+      LCurrent = OpCodes.XorArrays(LCurrent, RCurrent);
+      const lastXor = subkeys.slice(2 * N + 8, 2 * N + 16);
+      return OpCodes.XorArrays(lastXor, RCurrent.concat(LCurrent));
     }
 
     /**
@@ -341,27 +368,28 @@
      * @returns {uint8[]} 8-byte decrypted block
      */
     _decryptBlock(block) {
-      // Split block into two 32-bit halves (big-endian)
-      let left = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
-      let right = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
+      const N = 8;
+      const subkeys = this.roundKeys;
 
-      // 8 rounds of Feistel decryption (reverse order)
-      for (let round = 7; round >= 0; round--) {
-        const temp = left;
-        left = right;
-        right = OpCodes.XorN(temp, this._F(right, this.roundKeys[round]));
+      const firstXor = subkeys.slice(2 * N + 8, 2 * N + 16);
+      const unwhitened = OpCodes.XorArrays(block, firstXor);
+
+      let LCurrent = unwhitened.slice(4, 8);
+      let RCurrent = unwhitened.slice(0, 4);
+      LCurrent = OpCodes.XorArrays(LCurrent, RCurrent);
+
+      for (let i = N - 1; i >= 0; i--) {
+        const temp = LCurrent;
+        LCurrent = RCurrent;
+        RCurrent = temp;
+
+        const subkey = subkeys.slice(2 * i, 2 * i + 2);
+        LCurrent = OpCodes.XorArrays(LCurrent, this._F(RCurrent, subkey));
       }
 
-      // Swap halves for final result
-      const temp = left;
-      left = right;
-      right = temp;
-
-      // Convert back to bytes (big-endian)
-      const leftBytes = OpCodes.Unpack32BE(left);
-      const rightBytes = OpCodes.Unpack32BE(right);
-
-      return leftBytes.concat(rightBytes);
+      const lastXor = subkeys.slice(2 * N, 2 * N + 8);
+      RCurrent = OpCodes.XorArrays(LCurrent, RCurrent);
+      return OpCodes.XorArrays(LCurrent.concat(RCurrent), lastXor);
     }
   }
 

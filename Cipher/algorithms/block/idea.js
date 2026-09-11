@@ -117,6 +117,34 @@
           input: OpCodes.Hex8ToBytes("8000000000000000"),
           key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
           expected: OpCodes.Hex8ToBytes("8001000180008000")
+        },
+        {
+          text: "Botan idea.vec - classic ISO/IEC 18033-3 sample, counting plaintext",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/block/idea.vec",
+          input: OpCodes.Hex8ToBytes("0000000100020003"),
+          key: OpCodes.Hex8ToBytes("00010002000300040005000600070008"),
+          expected: OpCodes.Hex8ToBytes("11fbed2b01986de5")
+        },
+        {
+          text: "Botan idea.vec - classic sample, sequential plaintext",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/block/idea.vec",
+          input: OpCodes.Hex8ToBytes("0102030405060708"),
+          key: OpCodes.Hex8ToBytes("00010002000300040005000600070008"),
+          expected: OpCodes.Hex8ToBytes("540e5fea18c2f8b1")
+        },
+        {
+          text: "Botan idea.vec - random key/plaintext pair",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/block/idea.vec",
+          input: OpCodes.Hex8ToBytes("7409000000000000"),
+          key: OpCodes.Hex8ToBytes("ed1bcc9e9267925f3132ba3a8cf9b764"),
+          expected: OpCodes.Hex8ToBytes("e18315c171b83765")
+        },
+        {
+          text: "Botan idea.vec - multi-block ECB chain",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/block/idea.vec",
+          input: OpCodes.Hex8ToBytes("000000010002000301020304050607080019324b647d96aff5202d5b9c671b08"),
+          key: OpCodes.Hex8ToBytes("00010002000300040005000600070008"),
+          expected: OpCodes.Hex8ToBytes("11fbed2b01986de5540e5fea18c2f8b19f0a0ab6e10ced78cf18fd7355e2c5c5")
         }
       ];
     }
@@ -293,14 +321,19 @@
         key[i] = OpCodes.Pack16BE(uKey[i * 2], uKey[i * 2 + 1]);
       }
       
-      // Generate remaining subkeys using IDEA key schedule
+      // Generate remaining subkeys using the IDEA key schedule.
+      // After every group of eight subkeys the 128-bit key register is rotated
+      // left by 25 bits, which the reference formulation expresses as a case
+      // split on (i mod 8) taking the low seven bits of one earlier subkey and
+      // the high nine bits of another.
       for (let i = 8; i < 52; i++) {
-        if (OpCodes.ToByte(i) < 6) {
-          key[i] = OpCodes.ToUint16(OpCodes.Shl16(OpCodes.ToByte(key[i - 7]), 9) + OpCodes.Shr16(key[i - 6], 7));
-        } else if (OpCodes.ToByte(i) === 6) {
-          key[i] = OpCodes.ToUint16(OpCodes.Shl16(OpCodes.ToByte(key[i - 7]), 9) + OpCodes.Shr16(key[i - 14], 7));
+        const slot = i % 8;
+        if (slot < 6) {
+          key[i] = OpCodes.ToUint16(OpCodes.Shl16(OpCodes.And16(key[i - 7], 0x7F), 9) + OpCodes.Shr16(key[i - 6], 7));
+        } else if (slot === 6) {
+          key[i] = OpCodes.ToUint16(OpCodes.Shl16(OpCodes.And16(key[i - 7], 0x7F), 9) + OpCodes.Shr16(key[i - 14], 7));
         } else {
-          key[i] = OpCodes.ToUint16(OpCodes.Shl16(OpCodes.ToByte(key[i - 15]), 9) + OpCodes.Shr16(key[i - 14], 7));
+          key[i] = OpCodes.ToUint16(OpCodes.Shl16(OpCodes.And16(key[i - 15], 0x7F), 9) + OpCodes.Shr16(key[i - 14], 7));
         }
       }
       

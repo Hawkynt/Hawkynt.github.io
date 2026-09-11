@@ -294,6 +294,13 @@
       // Test vectors verified against the DarkCrypt implementation.
       this.tests = [
         {
+          text: "NESSIE submission test vectors for the ORIGINAL (pre-tweak) Anubis, 256-bit key, set 1 vector 0",
+          uri: "https://www.cosic.esat.kuleuven.be/nessie/workshop/submissions/anubis.zip",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("8000000000000000000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("e086ac456b3ce513edf5dfddd63b7193")
+        },
+        {
           text: "DarkCrypt Anubis-256 — zero key/plaintext",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),

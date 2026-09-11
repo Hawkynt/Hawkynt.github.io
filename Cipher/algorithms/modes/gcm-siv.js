@@ -83,33 +83,96 @@
         new Vulnerability("Performance Trade-off", "Slightly slower than GCM due to two-pass construction.")
       ];
 
+      // RFC 8452 Appendix C. The expected value is the full "Result", i.e. the
+      // ciphertext with the 16-byte tag appended.
       this.tests = [
         {
-          text: "GCM-SIV round-trip test #1 - 1 byte",
-          uri: "https://tools.ietf.org/rfc/rfc8452.html#appendix-C.1",
-          input: OpCodes.Hex8ToBytes("01"), // Use 1 byte instead of empty
-          key: OpCodes.Hex8ToBytes("01000000000000000000000000000000"),
-          nonce: OpCodes.Hex8ToBytes("030000000000000000000000"),
-          aad: OpCodes.Hex8ToBytes(""),
-          tagSize: 16
-        },
-        {
-          text: "GCM-SIV round-trip test #2 - 8-byte plaintext",
-          uri: "https://tools.ietf.org/rfc/rfc8452.html#appendix-C.1",
+          text: "RFC 8452 C.1 AEAD_AES_128_GCM_SIV - 8-byte plaintext, no AAD",
+          uri: "https://www.rfc-editor.org/rfc/rfc8452.txt",
+          cipher: "AES",
           input: OpCodes.Hex8ToBytes("0100000000000000"),
           key: OpCodes.Hex8ToBytes("01000000000000000000000000000000"),
           nonce: OpCodes.Hex8ToBytes("030000000000000000000000"),
-          aad: OpCodes.Hex8ToBytes(""),
-          tagSize: 16
+          aad: [],
+          tagSize: 16,
+          expected: OpCodes.Hex8ToBytes("b5d839330ac7b786578782fff6013b815b287c22493a364c")
         },
         {
-          text: "GCM-SIV round-trip test #3 - 16-byte plaintext with AAD",
-          uri: "https://tools.ietf.org/rfc/rfc8452.html#appendix-C.1",
+          text: "RFC 8452 C.1 AEAD_AES_128_GCM_SIV - one block, no AAD",
+          uri: "https://www.rfc-editor.org/rfc/rfc8452.txt",
+          cipher: "AES",
           input: OpCodes.Hex8ToBytes("01000000000000000000000000000000"),
           key: OpCodes.Hex8ToBytes("01000000000000000000000000000000"),
           nonce: OpCodes.Hex8ToBytes("030000000000000000000000"),
+          aad: [],
+          tagSize: 16,
+          expected: OpCodes.Hex8ToBytes("743f7c8077ab25f8624e2e948579cf77303aaf90f6fe21199c6068577437a0c4")
+        },
+        {
+          text: "RFC 8452 C.1 AEAD_AES_128_GCM_SIV - one block with 1-byte AAD",
+          uri: "https://www.rfc-editor.org/rfc/rfc8452.txt",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("02000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("01000000000000000000000000000000"),
+          nonce: OpCodes.Hex8ToBytes("030000000000000000000000"),
           aad: OpCodes.Hex8ToBytes("01"),
-          tagSize: 16
+          tagSize: 16,
+          expected: OpCodes.Hex8ToBytes("e2b0c5da79a901c1745f700525cb335b8f8936ec039e4e4bb97ebd8c4457441f")
+        },
+        {
+          text: "RFC 8452 C.1 AEAD_AES_128_GCM_SIV - ragged plaintext and AAD",
+          uri: "https://www.rfc-editor.org/rfc/rfc8452.txt",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("0300000000000000000000000000000004000000"),
+          key: OpCodes.Hex8ToBytes("01000000000000000000000000000000"),
+          nonce: OpCodes.Hex8ToBytes("030000000000000000000000"),
+          aad: OpCodes.Hex8ToBytes("010000000000000000000000000000000200"),
+          tagSize: 16,
+          expected: OpCodes.Hex8ToBytes("6bb0fecf5ded9b77f902c7d5da236a4391dd029724afc9805e976f451e6d87f6fe106514")
+        },
+        {
+          text: "RFC 8452 C.1 AEAD_AES_128_GCM_SIV - random key, 21-byte plaintext",
+          uri: "https://www.rfc-editor.org/rfc/rfc8452.txt",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("e42a3c02c25b64869e146d7b233987bddfc240871d"),
+          key: OpCodes.Hex8ToBytes("f901cfe8a69615a93fdf7a98cad48179"),
+          nonce: OpCodes.Hex8ToBytes("6245709fb18853f68d833640"),
+          aad: OpCodes.Hex8ToBytes("7576f7028ec6eb5ea7e298342a94d4b202b370ef9768ec6561c4fe6b7e7296fa859c21"),
+          tagSize: 16,
+          expected: OpCodes.Hex8ToBytes("391cc328d484a4f46406181bcd62efd9b3ee197d052d15506c84a9edd65e13e9d24a2a6e70")
+        },
+        {
+          text: "RFC 8452 C.2 AEAD_AES_256_GCM_SIV - one block, no AAD",
+          uri: "https://www.rfc-editor.org/rfc/rfc8452.txt",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("01000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("0100000000000000000000000000000000000000000000000000000000000000"),
+          nonce: OpCodes.Hex8ToBytes("030000000000000000000000"),
+          aad: [],
+          tagSize: 16,
+          expected: OpCodes.Hex8ToBytes("85a01b63025ba19b7fd3ddfc033b3e76c9eac6fa700942702e90862383c6c366")
+        },
+        {
+          text: "RFC 8452 C.2 AEAD_AES_256_GCM_SIV - random key, 21-byte plaintext",
+          uri: "https://www.rfc-editor.org/rfc/rfc8452.txt",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("ced532ce4159b035277d4dfbb7db62968b13cd4eec"),
+          key: OpCodes.Hex8ToBytes("3c535de192eaed3822a2fbbe2ca9dfc88255e14a661b8aa82cc54236093bbc23"),
+          nonce: OpCodes.Hex8ToBytes("688089e55540db1872504e1c"),
+          aad: OpCodes.Hex8ToBytes("734320ccc9d9bbbb19cb81b2af4ecbc3e72834321f7aa0f70b7282b4f33df23f167541"),
+          tagSize: 16,
+          expected: OpCodes.Hex8ToBytes("626660c26ea6612fb17ad91e8e767639edd6c9faee9d6c7029675b89eaf4ba1ded1a286594")
+        },
+        {
+          text: "RFC 8452 C.2 AEAD_AES_256_GCM_SIV - 32-bit counter wrap",
+          uri: "https://www.rfc-editor.org/rfc/rfc8452.txt",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("000000000000000000000000000000004db923dc793ee6497c76dcc03a98e108"),
+          key: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
+          nonce: OpCodes.Hex8ToBytes("000000000000000000000000"),
+          aad: [],
+          tagSize: 16,
+          expected: OpCodes.Hex8ToBytes("f3f80f2cf0cb2dd9c5984fcda908456cc537703b5ba70324a6793a7bf218d3eaffffffff000000000000000000000000")
         }
       ];
     }
@@ -269,25 +332,60 @@
      * @returns {Object} Object with authKey and encKey
      */
     _deriveKeys() {
-      const blockSize = 16;
-      const keys = [];
+      // RFC 8452 section 4: each derivation block is a 32-bit little-endian
+      // counter followed by the 12-byte nonce, and only the first eight bytes
+      // of every AES output contribute to the derived key.
+      const encKeyLength = this.key.length === 32 ? 32 : 16;
+      const blockCount = 2 + encKeyLength / 8;
+      const material = [];
 
-      // Derive keys using AES with consecutive counters
-      for (let i = 0; i < 6; i++) {
-        const counter = new Array(blockSize).fill(0);
-        counter[0] = i;
+      for (let i = 0; i < blockCount; i++) {
+        const block = new Array(16).fill(0);
+        const counterBytes = OpCodes.Unpack32LE(i);
+        block[0] = counterBytes[0];
+        block[1] = counterBytes[1];
+        block[2] = counterBytes[2];
+        block[3] = counterBytes[3];
+        for (let j = 0; j < 12; j++) block[4 + j] = this.nonce[j];
 
         const cipher = this.blockCipher.algorithm.CreateInstance(false);
         cipher.key = this.key;
-        cipher.Feed(counter);
-        keys.push(...cipher.Result());
+        cipher.Feed(block);
+        const out = cipher.Result();
+        for (let j = 0; j < 8; j++) material.push(out[j]);
       }
 
-      // Split derived keys
-      const authKey = keys.slice(0, 16);     // First 128 bits for POLYVAL
-      const encKey = keys.slice(16, 32);     // Next 128 bits for AES-CTR
+      return {
+        authKey: material.slice(0, 16),
+        encKey: material.slice(16, 16 + encKeyLength)
+      };
+    }
 
-      return { authKey, encKey };
+    /**
+     * Reverse the byte order of a 16-byte block
+     * @private
+     */
+    _byteReverse(block) {
+      const out = new Array(16);
+      for (let i = 0; i < 16; i++) out[i] = block[15 - i];
+      return out;
+    }
+
+    /**
+     * Multiply a GHASH field element by x
+     * @private
+     */
+    _mulXGhash(block) {
+      const out = new Array(16);
+      const carry = OpCodes.AndN(block[15], 1);
+      for (let i = 15; i > 0; i--) {
+        const low = OpCodes.Shr32(block[i], 1);
+        const high = OpCodes.AndN(OpCodes.Shl32(OpCodes.AndN(block[i - 1], 1), 7), 0xFF);
+        out[i] = OpCodes.OrN(low, high);
+      }
+      out[0] = OpCodes.Shr32(block[0], 1);
+      if (carry) out[0] = OpCodes.XorN(out[0], 0xE1);
+      return out;
     }
 
     /**
@@ -297,51 +395,47 @@
      * @returns {Array} Authentication tag
      */
     _computeTag(authKey, encKey) {
-      // Step 1: POLYVAL computation
-      let polyvalResult = this._polyval(authKey);
+      // S_s = POLYVAL(H, pad(AAD), pad(plaintext), length_block)
+      const blocks = [];
+      const paddedAAD = this._padToBlockSize([...this.aad]);
+      for (let i = 0; i < paddedAAD.length; i += 16) blocks.push(paddedAAD.slice(i, i + 16));
+      const paddedPlaintext = this._padToBlockSize([...this.inputBuffer]);
+      for (let i = 0; i < paddedPlaintext.length; i += 16) blocks.push(paddedPlaintext.slice(i, i + 16));
+      blocks.push(this._encodeLengths());
 
-      // Step 2: XOR with nonce and lengths
-      const lengthBlock = this._encodeLengths();
-      polyvalResult = this._xorArrays(polyvalResult, lengthBlock);
+      const s = this._polyval(authKey, blocks);
 
-      // Step 3: Clear most significant bit and encrypt
-      polyvalResult[15] = polyvalResult[15] % 128; // Clear MSB (equivalent to &= 0x7F)
+      // The nonce is XORed into the first twelve bytes and the top bit of the
+      // last byte is cleared, then the block is enciphered with the message
+      // encryption key.
+      for (let i = 0; i < 12; i++) s[i] = OpCodes.XorN(s[i], this.nonce[i]);
+      s[15] = OpCodes.AndN(s[15], 0x7F);
 
       const cipher = this.blockCipher.algorithm.CreateInstance(false);
       cipher.key = encKey;
-      cipher.Feed(polyvalResult);
+      cipher.Feed(s);
       return cipher.Result();
     }
 
     /**
-     * POLYVAL universal hash function
-     * @param {Array} key - POLYVAL key
+     * POLYVAL universal hash function (RFC 8452 Appendix A), expressed through
+     * GHASH: POLYVAL(H, X_i) = ByteReverse(GHASH(mulX_GHASH(ByteReverse(H)),
+     * ByteReverse(X_i)...)). POLYVAL and GHASH use reversed polynomials and
+     * reversed bit orders, so a GHASH multiplier cannot be used directly.
+     * @param {Array} key - POLYVAL key H
+     * @param {Array} blocks - Array of 16-byte blocks
      * @returns {Array} POLYVAL result
      */
-    _polyval(key) {
-      let result = new Array(16).fill(0);
+    _polyval(key, blocks) {
+      const ghashKey = this._mulXGhash(this._byteReverse(key));
+      let y = new Array(16).fill(0);
 
-      // Process AAD
-      if (this.aad.length > 0) {
-        const paddedAAD = this._padToBlockSize([...this.aad]);
-        for (let i = 0; i < paddedAAD.length; i += 16) {
-          const block = paddedAAD.slice(i, i + 16);
-          result = this._xorArrays(result, block);
-          result = this._gfMul(result, key);
-        }
+      for (const block of blocks) {
+        y = OpCodes.XorArrays(y, this._byteReverse(block));
+        y = OpCodes.GHashMul(y, ghashKey);
       }
 
-      // Process plaintext
-      if (this.inputBuffer.length > 0) {
-        const paddedPlaintext = this._padToBlockSize([...this.inputBuffer]);
-        for (let i = 0; i < paddedPlaintext.length; i += 16) {
-          const block = paddedPlaintext.slice(i, i + 16);
-          result = this._xorArrays(result, block);
-          result = this._gfMul(result, key);
-        }
-      }
-
-      return result;
+      return this._byteReverse(y);
     }
 
     /**
@@ -416,30 +510,26 @@
      * @returns {Array} Length encoding block
      */
     _encodeLengths() {
+      // length_block = LE64(bitlen(AAD)) || LE64(bitlen(plaintext)). This is a
+      // POLYVAL input block in its own right; it is not XORed with the nonce.
       const aadBits = this.aad.length * 8;
       const plaintextBits = this.inputBuffer.length * 8;
 
-      const result = new Array(16);
+      const result = new Array(16).fill(0);
 
-      // Encode AAD length (little-endian) using OpCodes
       const aadBytes = OpCodes.Unpack32LE(aadBits);
       result[0] = aadBytes[0];
       result[1] = aadBytes[1];
       result[2] = aadBytes[2];
       result[3] = aadBytes[3];
-      result[4] = result[5] = result[6] = result[7] = 0; // Upper 32 bits for 64-bit value
 
-      // Encode plaintext length (little-endian) using OpCodes
       const plaintextBytes = OpCodes.Unpack32LE(plaintextBits);
       result[8] = plaintextBytes[0];
       result[9] = plaintextBytes[1];
       result[10] = plaintextBytes[2];
       result[11] = plaintextBytes[3];
-      result[12] = result[13] = result[14] = result[15] = 0; // Upper 32 bits for 64-bit value
 
-      // XOR with nonce padded to 16 bytes
-      const paddedNonce = [...this.nonce, 0, 0, 0, 0]; // Pad 12-byte nonce to 16 bytes
-      return OpCodes.XorArrays(result, paddedNonce);
+      return result;
     }
 
     /**
@@ -456,59 +546,16 @@
     }
 
     /**
-     * GF(2^128) multiplication for POLYVAL
-     * @param {Array} a - First operand
-     * @param {Array} b - Second operand
-     * @returns {Array} Multiplication result
-     */
-    _gfMul(a, b) {
-      let result = new Array(16).fill(0);
-      let v = [...b];
-
-      for (let i = 0; i < 16; i++) {
-        for (let j = 0; j < 8; j++) {
-          // Check if bit j of a[i] is set
-          const bitSet = (Math.floor(a[i] / Math.pow(2, j)) % 2) === 1;
-          if (bitSet) {
-            result = OpCodes.XorArrays(result, v);
-          }
-
-          // Multiply v by x using OpCodes for bit rotation
-          const carry = v[15] % 2; // Check LSB for carry
-          for (let k = 15; k > 0; k--) {
-            const prevBit = (v[k-1] % 2) === 1 ? 128 : 0;
-            v[k] = OpCodes.RotR8(v[k], 1) + prevBit; // Rotate with carry from previous byte
-          }
-          v[0] = OpCodes.RotR8(v[0], 1);
-
-          if (carry) {
-            v[0] = OpCodes.XorArrays([v[0]], [0xE1])[0]; // XOR with POLYVAL reduction polynomial
-          }
-        }
-      }
-
-      return result;
-    }
-
-    /**
-     * XOR two byte arrays using OpCodes
-     * @param {Array} a - First array
-     * @param {Array} b - Second array
-     * @returns {Array} XOR result
-     */
-    _xorArrays(a, b) {
-      return OpCodes.XorArrays(a, b);
-    }
-
-    /**
      * Increment counter for CTR mode
      * @param {Array} counter - Counter to increment (modified in place)
      */
     _incrementCounter(counter) {
-      // Little-endian counter increment
-      for (let i = 0; i < counter.length; i++) {
-        counter[i] = (counter[i] + 1) % 256; // Increment and wrap to byte range
-        if (counter[i] !== 0) break; // Stop if no carry
+      // RFC 8452: only the first 32 bits form the counter, little-endian, and
+      // overflow past those four bytes is discarded rather than carried into
+      // the rest of the block.
+      for (let i = 0; i < 4; i++) {
+        counter[i] = (counter[i] + 1) % 256;
+        if (counter[i] !== 0) break;
       }
     }
   }

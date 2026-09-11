@@ -54,6 +54,49 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  // Lucifer components as specified by Sorkin, CRYPTOLOGIA 8(1), 1984.
+
+  // The two 4-bit substitution boxes
+  const SBOX0 = Object.freeze([12, 15, 7, 10, 14, 13, 11, 0, 2, 6, 3, 1, 9, 4, 5, 8]);
+  const SBOX1 = Object.freeze([7, 2, 14, 9, 3, 11, 0, 4, 12, 13, 1, 10, 6, 15, 8, 5]);
+
+  // Bit permutation applied after substitution and to the key bytes
+  const PBITS = Object.freeze([3, 5, 0, 4, 2, 1, 7, 6]);
+  const SMASK = Object.freeze([128, 64, 32, 16, 8, 4, 2, 1]);
+
+  // Diffusion pattern: the base row rotated right once per S-box position
+  const BASE_DIFFUSION = Object.freeze([4, 16, 32, 2, 1, 8, 64, 128]);
+  const DIFFUSION = Object.freeze((function () {
+    const rows = [];
+    for (let r = 0; r < 8; r++) {
+      const row = new Array(8);
+      for (let m = 0; m < 8; m++) row[m] = BASE_DIFFUSION[(m - r + 8) % 8];
+      rows.push(Object.freeze(row));
+    }
+    return rows;
+  })());
+
+  // Combined substitute-and-permute tables. The transfer control bit decides
+  // which of the two S-boxes sees which nibble, so TCB1 is TCB0 with the input
+  // nibbles exchanged.
+  const TCB0 = new Array(256);
+  const TCB1 = new Array(256);
+  (function () {
+    const permute = function (b) {
+      let out = 0;
+      for (let i = 0; i < 8; i++) if (b&SMASK[i]) out |= SMASK[PBITS[i]];
+      return out;
+    };
+    for (let x = 0; x < 256; x++) {
+      const hi = OpCodes.Shr32(x, 4)&0x0F;
+      const lo = x&0x0F;
+      TCB0[x] = permute(OpCodes.Shl32(SBOX0[hi]&0x0F, 4)|(SBOX1[lo]&0x0F));
+      TCB1[x] = permute(OpCodes.Shl32(SBOX0[lo]&0x0F, 4)|(SBOX1[hi]&0x0F));
+    }
+    Object.freeze(TCB0);
+    Object.freeze(TCB1);
+  })();
+
 // Define classes only if AlgorithmFramework is available
 let LuciferAlgorithm, LuciferInstance;
 
@@ -91,21 +134,49 @@ let LuciferAlgorithm, LuciferInstance;
       new KeySize(16, 16, 0) // Fixed 128-bit blocks
     ];
 
-    // Educational test vectors for Lucifer cipher
+    // Published known-answer tests (LUCIFER2/TESTS, Applied Cryptography source code)
     this.tests = [
       {
-        text: "Lucifer all-zeros test vector - educational",
-        uri: "Educational implementation based on Sorkin 1984 specification",
+        text: "Applied Cryptography LUCIFER2 TESTS vector 1",
+        uri: "https://www.schneier.com/wp-content/uploads/2015/03/LUCIFER2-2.zip",
         input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-        key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-        expected: OpCodes.Hex8ToBytes("04040404040404040707070707070707")
+        key: OpCodes.Hex8ToBytes("0123456789abcdeffedcba9876543210"),
+        expected: OpCodes.Hex8ToBytes("a201fc18d62c85ef5965a58295bbf609")
       },
       {
-        text: "Lucifer pattern test vector - educational",
-        uri: "Educational implementation based on Sorkin 1984 specification",
-        input: OpCodes.Hex8ToBytes("0123456789abcdef0123456789abcdef"),
-        key: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
-        expected: OpCodes.Hex8ToBytes("47e6fe08ce6a2896344b175acf9c0d06")
+        text: "Applied Cryptography LUCIFER2 TESTS vector 2",
+        uri: "https://www.schneier.com/wp-content/uploads/2015/03/LUCIFER2-2.zip",
+        input: OpCodes.Hex8ToBytes("0123456789abcdeffedcba9876543210"),
+        key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        expected: OpCodes.Hex8ToBytes("9d14fe4377aa87dd07cc8a14522c21ed")
+      },
+      {
+        text: "Applied Cryptography LUCIFER2 TESTS vector 3",
+        uri: "https://www.schneier.com/wp-content/uploads/2015/03/LUCIFER2-2.zip",
+        input: OpCodes.Hex8ToBytes("ffffffffffffffffffffffffffffffff"),
+        key: OpCodes.Hex8ToBytes("0123456789abcdeffedcba9876543210"),
+        expected: OpCodes.Hex8ToBytes("97f1c104b0f120d194c07024f14815ed")
+      },
+      {
+        text: "Applied Cryptography LUCIFER2 TESTS vector 4",
+        uri: "https://www.schneier.com/wp-content/uploads/2015/03/LUCIFER2-2.zip",
+        input: OpCodes.Hex8ToBytes("0123456789abcdeffedcba9876543210"),
+        key: OpCodes.Hex8ToBytes("ffffffffffffffffffffffffffffffff"),
+        expected: OpCodes.Hex8ToBytes("d442a34dd70e2b4156eb0f2a8aded1a7")
+      },
+      {
+        text: "Applied Cryptography LUCIFER2 TESTS vector 5",
+        uri: "https://www.schneier.com/wp-content/uploads/2015/03/LUCIFER2-2.zip",
+        input: OpCodes.Hex8ToBytes("0123456789abcdeffedcba9876543210"),
+        key: OpCodes.Hex8ToBytes("0123456789abcdeffedcba9876543210"),
+        expected: OpCodes.Hex8ToBytes("cf46622fa98546bb9a5bc00239eb0c92")
+      },
+      {
+        text: "Applied Cryptography LUCIFER2 TESTS vector 6",
+        uri: "https://www.schneier.com/wp-content/uploads/2015/03/LUCIFER2-2.zip",
+        input: OpCodes.Hex8ToBytes("0123456789abcdeffedcba9876543210"),
+        key: OpCodes.Hex8ToBytes("fedcba9876543210" + "0123456789abcdef"),
+        expected: OpCodes.Hex8ToBytes("7faf65bfc5458fd2dc9cc2266012ef44")
       }
     ];
   }
@@ -125,17 +196,6 @@ let LuciferAlgorithm, LuciferInstance;
     this.BlockSize = 16; // 128-bit blocks
     this.KeySize = 0;
     this.subKeys = null;
-    
-    // Lucifer S-boxes as specified by Sorkin (1984)
-    // S-box 0 for most significant nibbles
-    this.SBOX0 = [
-      12, 15, 7, 10, 14, 13, 11, 0, 2, 6, 3, 1, 9, 4, 5, 8
-    ];
-    
-    // S-box 1 for least significant nibbles  
-    this.SBOX1 = [
-      7, 2, 14, 9, 3, 11, 0, 4, 12, 13, 1, 10, 6, 15, 8, 5
-    ];
   }
 
   set key(keyBytes) {
@@ -160,62 +220,75 @@ let LuciferAlgorithm, LuciferInstance;
   }
 
   /**
-   * Generate 16 round subkeys from master key
-   * Key schedule: 128-bit shift register, left 64 bits = subkey, rotate 56 bits left each round
+   * Build the transfer control bytes and the permuted key bytes for all 16 rounds.
+   *
+   * The 128-bit key is used twice per round: the byte selected by the round
+   * counter supplies the eight transfer control bits, and eight consecutive
+   * bit-permuted key bytes are XORed into the S-box outputs. Encryption walks
+   * the key register forwards in steps of seven; decryption walks it backwards.
    */
   _generateSubKeys(masterKey) {
-    const subKeys = [];
-    
-    // Convert key to 128-bit representation using OpCodes
-    let keyRegister = [...masterKey];
-    
+    const controlBytes = new Array(16);
+    const keyBytes = new Array(16);
+    const permuted = masterKey.map(LuciferInstance._permuteByte);
+
+    let kc = this.isInverse ? 8 : 0;
     for (let round = 0; round < 16; round++) {
-      // Extract left 64 bits (8 bytes) as round subkey
-      const subKey = keyRegister.slice(0, 8);
-      subKeys.push(subKey);
-      
-      // Rotate key register 56 bits (7 bytes) to the left
-      // Manual rotation: move bytes 7-15 to positions 0-8, then bytes 0-6 to positions 9-15
-      const rotated = new Array(16);
-      for (let i = 0; i < 9; i++) {
-        rotated[i] = keyRegister[i + 7];
+      if (this.isInverse) kc = (kc + 1)&15;
+      controlBytes[round] = masterKey[kc];
+      const row = new Array(8);
+      for (let j = 0; j < 8; j++) {
+        row[j] = permuted[kc];
+        if (j < 7 || this.isInverse) kc = (kc + 1)&15;
       }
-      for (let i = 0; i < 7; i++) {
-        rotated[i + 9] = keyRegister[i];
-      }
-      keyRegister = rotated;
+      keyBytes[round] = row;
     }
-    
-    return subKeys;
+
+    return { controlBytes, keyBytes };
   }
 
   /**
-   * Lucifer F-function: applies S-boxes and permutation
+   * Bit permutation applied to key bytes and to the S-box output byte.
    */
-  _feistelFunction(rightHalf, subKey) {
-    const result = new Array(8);
-    
-    // XOR with subkey first
-    const xored = new Array(8);
-    for (let i = 0; i < 8; i++) {
-      xored[i] = OpCodes.XorN(rightHalf[i], subKey[i]);
-    }
-    
-    // Apply S-boxes to each byte
-    for (let i = 0; i < 8; i++) {
-      const byte = xored[i];
-      const highNibble = OpCodes.AndN(OpCodes.Shr32(byte, 4), 0x0F);
-      const lowNibble = OpCodes.AndN(byte, 0x0F);
+  static _permuteByte(b) {
+    let out = 0;
+    for (let i = 0; i < 8; i++) if (b&SMASK[i]) out |= SMASK[PBITS[i]];
+    return out;
+  }
 
-      // S-box 0 for high nibble, S-box 1 for low nibble
-      const newHigh = this.SBOX0[highNibble];
-      const newLow = this.SBOX1[lowNibble];
+  /**
+   * Sixteen rounds of Lucifer over a 16-byte block. Each round confuses the
+   * upper half through the two S-boxes and diffuses the result into the lower
+   * half, then the halves exchange roles.
+   */
+  _transform(block) {
+    const b = block.slice();
+    let lower = 0, upper = 8;
 
-      result[i] = OpCodes.OrN(OpCodes.Shl32(OpCodes.AndN(newHigh, 0x0F), 4), OpCodes.AndN(newLow, 0x0F));
+    for (let round = 0; round < 16; round++) {
+      const tcb = this.subKeys.controlBytes[round];
+      const keyRow = this.subKeys.keyBytes[round];
+
+      for (let j = 0; j < 8; j++) {
+        let val = (tcb&SMASK[j]) ? TCB1[b[upper + j]] : TCB0[b[upper + j]];
+        val ^= keyRow[j];
+        const pattern = DIFFUSION[j];
+        for (let m = 0; m < 8; m++) b[lower + m] ^= (val&pattern[m]);
+      }
+
+      const swap = lower;
+      lower = upper;
+      upper = swap;
     }
-    
-    // Simple permutation (identity for now - actual Lucifer uses shifts/rotations)
-    return result;
+
+    // Final exchange of the two halves
+    for (let m = 0; m < 8; m++) {
+      const t = b[m];
+      b[m] = b[m + 8];
+      b[m + 8] = t;
+    }
+
+    return b;
   }
 
   Feed(data) {
@@ -245,53 +318,17 @@ let LuciferAlgorithm, LuciferInstance;
   }
 
   /**
-   * Encrypt a 128-bit block using 16-round Feistel structure
+   * Encrypt a 128-bit block
    */
   _encryptBlock(block) {
-    // Split 128-bit block into two 64-bit halves
-    let leftHalf = block.slice(0, 8);
-    let rightHalf = block.slice(8, 16);
-
-    // 16 rounds of Feistel structure
-    for (let round = 0; round < 16; round++) {
-      // Apply F-function to right half with round subkey
-      const fOutput = this._feistelFunction(rightHalf, this.subKeys[round]);
-
-      // Standard Feistel: new_left = old_right, new_right = old_left XOR F(old_right)
-      const newLeft = [...rightHalf];
-      const newRight = OpCodes.XorArrays(leftHalf, fOutput);
-
-      leftHalf = newLeft;
-      rightHalf = newRight;
-    }
-
-    // Combine halves for final ciphertext
-    return leftHalf.concat(rightHalf);
+    return this._transform(block);
   }
 
   /**
-   * Decrypt a 128-bit block using reverse 16-round Feistel structure
+   * Decrypt a 128-bit block (same transform driven by the reversed key schedule)
    */
   _decryptBlock(block) {
-    // Split 128-bit block into two 64-bit halves
-    let leftHalf = block.slice(0, 8);
-    let rightHalf = block.slice(8, 16);
-
-    // 16 rounds of reverse Feistel structure (reverse subkey order)
-    for (let round = 15; round >= 0; round--) {
-      // Apply F-function to left half with round subkey
-      const fOutput = this._feistelFunction(leftHalf, this.subKeys[round]);
-
-      // Reverse Feistel: new_right = old_left, new_left = old_right XOR F(old_left)
-      const newRight = [...leftHalf];
-      const newLeft = OpCodes.XorArrays(rightHalf, fOutput);
-
-      leftHalf = newLeft;
-      rightHalf = newRight;
-    }
-
-    // Combine halves for final plaintext
-    return leftHalf.concat(rightHalf);
+    return this._transform(block);
   }
   };
 
