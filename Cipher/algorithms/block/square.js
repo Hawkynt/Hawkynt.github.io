@@ -414,25 +414,46 @@
         },
 
         {
-          text: "Square Known Answer Test #1",
-          uri: "https://github.com/weidai11/cryptopp/blob/master/TestData/squareva.dat",
-          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-          expected: OpCodes.Hex8ToBytes("3C00428F8ABBC0B84F057CC19C26F8CF")
-        },
-        {
-          text: "Square Known Answer Test #2",
+          text: "Crypto++ squareva.dat line 2",
           uri: "https://github.com/weidai11/cryptopp/blob/master/TestData/squareva.dat",
           input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           expected: OpCodes.Hex8ToBytes("FF596FA668BFC3014200AE01E2BBA0A0")
         },
         {
-          text: "Square Known Answer Test #3",
+          text: "Crypto++ squareva.dat line 4",
           uri: "https://github.com/weidai11/cryptopp/blob/master/TestData/squareva.dat",
-          input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          input: OpCodes.Hex8ToBytes("C76C696289898137077A4A59FAEEEA4D"),
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          expected: OpCodes.Hex8ToBytes("7C3491D94994E70F0EC2E7A5CCB5A14F")
+          expected: OpCodes.Hex8ToBytes("88C6FF4B92604C6E66656B02DDAF9F40")
+        },
+        {
+          text: "Crypto++ squareva.dat line 5",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestData/squareva.dat",
+          input: OpCodes.Hex8ToBytes("21A5DBEE154B8F6D6FF33B98F448E95A"),
+          key: OpCodes.Hex8ToBytes("915F4619BE41B2516355A50110A9CE91"),
+          expected: OpCodes.Hex8ToBytes("3388801F66E7FCC0BCE522A23A4F0C7F")
+        },
+        {
+          text: "Crypto++ squareva.dat line 6",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestData/squareva.dat",
+          input: OpCodes.Hex8ToBytes("F7C013AC5B2B8952E5E554ABE9CED2D2"),
+          key: OpCodes.Hex8ToBytes("783348E75AEB0F2FD7B169BB8DC16787"),
+          expected: OpCodes.Hex8ToBytes("A1C0E9215141343DEC2B556942C92BDE")
+        },
+        {
+          text: "Crypto++ squareva.dat line 7",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestData/squareva.dat",
+          input: OpCodes.Hex8ToBytes("2F42B3B70369FC929AE068313F343A7A"),
+          key: OpCodes.Hex8ToBytes("DC49DB1375A5584F6485B413B5F12BAF"),
+          expected: OpCodes.Hex8ToBytes("3FBE6811B998CDF3E50ABDE2F3C075E3")
+        },
+        {
+          text: "Crypto++ squareva.dat line 8",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestData/squareva.dat",
+          input: OpCodes.Hex8ToBytes("65C178B284D197CCD3F111A282F17F29"),
+          key: OpCodes.Hex8ToBytes("5269F149D41BA0152497574D7F153125"),
+          expected: OpCodes.Hex8ToBytes("D7B7209E0879744C782809B6D2E0B1B0")
         }
       ];
     }

@@ -49,6 +49,9 @@
 
   const UPPER_A = 65, UPPER_Z = 90;
 
+  // The two jokers, which carry no letter and count 53 apiece
+  const JOKER_A = 53, JOKER_B = 54;
+
   /**
    * Printable stand-in for a byte, for use in an error message.
    * @param {number} byte - Offending byte
@@ -107,25 +110,32 @@
         new LinkItem('kisom/solitaire - Pontifex Reference Implementation (C, GitHub)', 'https://github.com/kisom/solitaire/blob/master/src/pontifex.c')
       ];
 
-      // Convert test vectors to new format (strings to byte arrays)
-      // These vectors do NOT match Bruce Schneier's official worked examples (e.g. an
-      // unkeyed deck encrypting "AAAAAAAAAA" to "EXKYIZSGEH" per schneier.com/academic/solitaire/)
-      // because this file implements a simplified educational keystream (not the real
-      // 5-step card algorithm). They are self-computed against this implementation for
-      // self-consistency/round-trip verification only.
+      // Bruce Schneier's own published sample output, verbatim from the
+      // "Solitaire" page: an unkeyed deck, a deck keyed with FOO, and a deck
+      // keyed with CRYPTONOMICON. Schneier pads the message out to a multiple
+      // of five with X before enciphering, which is why the nine letters of
+      // SOLITAIRE are given here as ten.
       this.tests = [
-        new TestCase(
-          OpCodes.AnsiToBytes('HELLO'),
-          OpCodes.AnsiToBytes('IFMMP'),
-          'Self-computed vector using this simplified educational implementation (does not match Schneier\'s official Solitaire test vectors)',
-          'https://www.schneier.com/academic/solitaire/'
-        ),
-        new TestCase(
-          OpCodes.AnsiToBytes('WORLD'),
-          OpCodes.AnsiToBytes('XPSME'),
-          'Self-computed vector using this simplified educational implementation (does not match Schneier\'s official Solitaire test vectors)',
-          'https://www.schneier.com/academic/solitaire/'
-        )
+        {
+          text: "Schneier sample 1 - unkeyed deck in bridge order, ten A's",
+          uri: 'https://www.schneier.com/academic/solitaire/',
+          input: OpCodes.AnsiToBytes('AAAAAAAAAA'),
+          expected: OpCodes.AnsiToBytes('EXKYIZSGEH')
+        },
+        {
+          text: 'Schneier sample 2 - deck keyed with the passphrase FOO, fifteen A\'s',
+          uri: 'https://www.schneier.com/academic/solitaire/',
+          input: OpCodes.AnsiToBytes('AAAAAAAAAAAAAAA'),
+          key: OpCodes.AnsiToBytes('FOO'),
+          expected: OpCodes.AnsiToBytes('ITHZUJIWGRFARMW')
+        },
+        {
+          text: 'Schneier sample 3 - deck keyed with CRYPTONOMICON, message SOLITAIRE padded to SOLITAIREX',
+          uri: 'https://www.schneier.com/academic/solitaire/',
+          input: OpCodes.AnsiToBytes('SOLITAIREX'),
+          key: OpCodes.AnsiToBytes('CRYPTONOMICON'),
+          expected: OpCodes.AnsiToBytes('KIRAKSFJAN')
+        }
       ];
 
       // For test suite compatibility
@@ -208,17 +218,17 @@
 
       this.inputBuffer = [];
 
-      // One card value per letter
+      // One keystream letter per message letter
       const output = new Array(message.length);
       for (let i = 0; i < message.length; i++) {
         const byte = message[i];
-        const keyValue = this.stepDeck();
+        const keyValue = this.nextKeystreamValue();
         const letter = byte - UPPER_A;
 
         // Encryption adds the card value, decryption takes it away again
         const result = this.isInverse
-          ? (letter - keyValue + 1 + 26) % 26
-          : (letter + keyValue - 1) % 26;
+          ? (letter - keyValue + 26) % 26
+          : (letter + keyValue) % 26;
 
         output[i] = UPPER_A + result;
       }
@@ -235,31 +245,117 @@
       // 53 = Joker A, 54 = Joker B
     }
 
-    setupWithKey(key) {
-      // For educational implementation - simplified key setup
-      this.initializeDeck();
-
-      // In real Solitaire, key would be used to shuffle deck
-      // This is a simplified version for demonstration
-      const keySum = key.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
-      for (let i = 0; i < keySum % 10; i++) {
-        this.stepDeck();
+    /**
+     * Move a joker down the deck, treating it as circular over the 53 cards
+     * below the top: a joker at the very bottom comes back as the second card.
+     * @param {number} joker - JOKER_A (53) or JOKER_B (54)
+     * @param {number} places - How many places to move it down
+     */
+    moveJokerDown(joker, places) {
+      for (let step = 0; step < places; step++) {
+        const at = this.deck.indexOf(joker);
+        if (at === this.deck.length - 1) {
+          this.deck.splice(at, 1);
+          this.deck.splice(1, 0, joker);
+        } else {
+          this.deck[at] = this.deck[at + 1];
+          this.deck[at + 1] = joker;
+        }
       }
     }
 
-    stepDeck() {
-      // Simplified Solitaire step for educational purposes
-      // Real Solitaire has 5 steps with specific joker movements
+    /**
+     * Triple cut: swap everything above the topmost joker with everything
+     * below the bottommost joker, leaving the jokers and the cards between
+     * them where they are.
+     */
+    tripleCut() {
+      const first = Math.min(this.deck.indexOf(JOKER_A), this.deck.indexOf(JOKER_B));
+      const last = Math.max(this.deck.indexOf(JOKER_A), this.deck.indexOf(JOKER_B));
 
-      // Move first joker down one position
-      let aPos = this.deck.indexOf(53);
-      if (aPos === 53) aPos = 0;
-      else {
-        [this.deck[aPos], this.deck[aPos + 1]] = [this.deck[aPos + 1], this.deck[aPos]];
+      const rebuilt = [];
+      for (let i = last + 1; i < this.deck.length; i++) rebuilt.push(this.deck[i]);
+      for (let i = first; i <= last; i++) rebuilt.push(this.deck[i]);
+      for (let i = 0; i < first; i++) rebuilt.push(this.deck[i]);
+
+      this.deck = rebuilt;
+    }
+
+    /**
+     * Count cut: take the number of cards given by 'count' off the top and
+     * put them just above the bottom card, which never moves.
+     * @param {number} count - Cards to move, 0 to 53
+     */
+    countCut(count) {
+      if (count <= 0 || count >= this.deck.length) return;
+
+      const bottom = this.deck[this.deck.length - 1];
+      const rebuilt = [];
+      for (let i = count; i < this.deck.length - 1; i++) rebuilt.push(this.deck[i]);
+      for (let i = 0; i < count; i++) rebuilt.push(this.deck[i]);
+      rebuilt.push(bottom);
+
+      this.deck = rebuilt;
+    }
+
+    /**
+     * The value a card counts for: either joker counts 53, and any other card
+     * counts its own face number.
+     * @param {number} card - Card 1 to 54
+     * @returns {number} Counting value
+     */
+    cardValue(card) {
+      return card >= JOKER_A ? JOKER_A : card;
+    }
+
+    /**
+     * Steps 1 to 4 of the published algorithm: both joker moves, the triple
+     * cut and the count cut driven by the bottom card.
+     */
+    advanceDeck() {
+      this.moveJokerDown(JOKER_A, 1);
+      this.moveJokerDown(JOKER_B, 2);
+      this.tripleCut();
+      this.countCut(this.cardValue(this.deck[this.deck.length - 1]));
+    }
+
+    /**
+     * One keystream letter, as a 1-26 offset. Steps the deck and reads step 5:
+     * count down from the top by the top card's value and take the card found
+     * there. A joker there yields no letter, so the deck is stepped again -
+     * this is what keeps the keystream and the message the same length.
+     *
+     * The whole 5-step procedure was previously a single swap of one joker
+     * with its neighbour and a read of the top card, which produced a
+     * keystream unrelated to Solitaire: an unkeyed deck enciphered AAAAA to
+     * BBBBB rather than Schneier's published EXKYI.
+     * @returns {number} Keystream offset 1 to 26
+     */
+    nextKeystreamValue() {
+      for (;;) {
+        this.advanceDeck();
+        const output = this.deck[this.cardValue(this.deck[0])];
+
+        // Clubs 1-13, diamonds 14-26, hearts 27-39 and spades 40-52 fold onto
+        // the 26 letters in that order, so card 27 and card 1 both count A.
+        if (output < JOKER_A) return ((output - 1) % 26) + 1;
       }
+    }
 
-      // Simplified for demonstration
-      return this.deck[0] % 26 + 1;
+    /**
+     * Key the deck with a passphrase, which is Schneier's third keying method:
+     * run steps 1 to 4 once per key letter, then follow each with a further
+     * count cut by that letter's position in the alphabet.
+     * @param {string} key - Passphrase, letters only are used
+     */
+    setupWithKey(key) {
+      this.initializeDeck();
+
+      const letters = key.toUpperCase().replace(/[^A-Z]/g, '');
+      for (let i = 0; i < letters.length; i++) {
+        this.advanceDeck();
+        this.countCut(letters.charCodeAt(i) - UPPER_A + 1);
+      }
     }
   }
 

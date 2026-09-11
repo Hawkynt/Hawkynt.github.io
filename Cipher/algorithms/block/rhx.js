@@ -78,8 +78,13 @@
       this.country = CountryCode.CA;
 
       // Algorithm-specific configuration
+      // Only the three round counts below are defined, so 32, 64 and 128 byte
+      // keys are the whole set. A step of 32 over 32..128 would also advertise
+      // 96-byte (768-bit) keys, which have no round count and are rejected.
       this.SupportedKeySizes = [
-        new KeySize(32, 128, 32)  // 256-bit to 1024-bit keys in 256-bit increments
+        new KeySize(32, 32, 0),   // RHX-256
+        new KeySize(64, 64, 0),   // RHX-512
+        new KeySize(128, 128, 0)  // RHX-1024
       ];
       this.SupportedBlockSizes = [
         new KeySize(16, 16, 0)    // 128-bit blocks only

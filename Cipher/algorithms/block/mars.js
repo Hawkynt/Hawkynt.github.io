@@ -89,15 +89,77 @@ let MARSAlgorithm, MARSInstance;
       new LinkItem("AES Finalist Analysis", "https://www.schneier.com/academic/archives/2000/04/the_twofish_encrypti.html")
     ];
 
-    // Test vectors are provided in the universal object below
-    // Test vectors from IBM MARS specification with corrected implementation
+    // Published MARS known-answer tests (includes IBM's August 1999 key-setup tweak)
     this.tests = [
       {
-        text: "MARS All-Zeros Test Vector (Implementation Verified)",
-        uri: "https://en.wikipedia.org/wiki/MARS_(cipher)",
+        text: "Crypto++ MARS/ECB - 128-bit key, single high bit",
+        uri: "https://raw.githubusercontent.com/weidai11/cryptopp/master/TestVectors/mars.txt",
+        key: OpCodes.Hex8ToBytes("80000000000000000000000000000000"),
         input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        expected: OpCodes.Hex8ToBytes("b3e2ad5608ac1b6733a7cb4fdf8f9952")
+      },
+      {
+        text: "Crypto++ MARS/ECB - 128-bit zero key, zero plaintext",
+        uri: "https://raw.githubusercontent.com/weidai11/cryptopp/master/TestVectors/mars.txt",
         key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-        expected: OpCodes.Hex8ToBytes("830a3ec150cbf20fceb70c1e23e3c5d2")
+        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        expected: OpCodes.Hex8ToBytes("dcc07b8dfb0738d6e30a22dfcf27e886")
+      },
+      {
+        text: "Crypto++ MARS/ECB - 128-bit key, chained plaintext",
+        uri: "https://raw.githubusercontent.com/weidai11/cryptopp/master/TestVectors/mars.txt",
+        key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        input: OpCodes.Hex8ToBytes("dcc07b8dfb0738d6e30a22dfcf27e886"),
+        expected: OpCodes.Hex8ToBytes("33caffbddc7f1dda0f9c15fa2f30e2ff")
+      },
+      {
+        text: "Crypto++ MARS/ECB - 128-bit random key",
+        uri: "https://raw.githubusercontent.com/weidai11/cryptopp/master/TestVectors/mars.txt",
+        key: OpCodes.Hex8ToBytes("cb14a1776abbc1cdafe7243def2cea02"),
+        input: OpCodes.Hex8ToBytes("f94512a9b42d034ec4792204d708a69b"),
+        expected: OpCodes.Hex8ToBytes("225da2cb64b73f79069f21a5e3cb8522")
+      },
+      {
+        text: "Crypto++ MARS/ECB - 128-bit random key 2",
+        uri: "https://raw.githubusercontent.com/weidai11/cryptopp/master/TestVectors/mars.txt",
+        key: OpCodes.Hex8ToBytes("86edf4da31824cabef6a4637c40b0bab"),
+        input: OpCodes.Hex8ToBytes("4df955ad5b398d66408d620a2b27e1a9"),
+        expected: OpCodes.Hex8ToBytes("a4b737340ae6d2cafd930ba97d86129f")
+      },
+      {
+        text: "Crypto++ MARS/ECB - 192-bit zero key",
+        uri: "https://raw.githubusercontent.com/weidai11/cryptopp/master/TestVectors/mars.txt",
+        key: OpCodes.Hex8ToBytes("000000000000000000000000000000000000000000000000"),
+        input: OpCodes.Hex8ToBytes("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+        expected: OpCodes.Hex8ToBytes("97778747d60e425c2b4202599db856fb")
+      },
+      {
+        text: "Crypto++ MARS/ECB - 192-bit sparse key",
+        uri: "https://raw.githubusercontent.com/weidai11/cryptopp/master/TestVectors/mars.txt",
+        key: OpCodes.Hex8ToBytes("d158860838874d9500000000000000000000000000000000"),
+        input: OpCodes.Hex8ToBytes("93a953a82c10411dd158860838874d95"),
+        expected: OpCodes.Hex8ToBytes("4fa0e5f64893131712f01408d233e9f7")
+      },
+      {
+        text: "Crypto++ MARS/ECB - 192-bit random key",
+        uri: "https://raw.githubusercontent.com/weidai11/cryptopp/master/TestVectors/mars.txt",
+        key: OpCodes.Hex8ToBytes("791739a58b04581a93a953a82c10411dd158860838874d95"),
+        input: OpCodes.Hex8ToBytes("6761c42d3e6142d2a84fbfadb383158f"),
+        expected: OpCodes.Hex8ToBytes("f706bc0fd97e28b6f1af4e17d8755fff")
+      },
+      {
+        text: "Crypto++ MARS/ECB - 256-bit zero key",
+        uri: "https://raw.githubusercontent.com/weidai11/cryptopp/master/TestVectors/mars.txt",
+        key: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
+        input: OpCodes.Hex8ToBytes("62e45b4cf3477f1dd65063729d9aba8f"),
+        expected: OpCodes.Hex8ToBytes("0f4b897ea014d21fbc20f1054a42f719")
+      },
+      {
+        text: "Crypto++ MARS/ECB - 256-bit random key",
+        uri: "https://raw.githubusercontent.com/weidai11/cryptopp/master/TestVectors/mars.txt",
+        key: OpCodes.Hex8ToBytes("fba167983e7aef22317ce28c02aae1a3e8e5cc3cedbea82a99dbc39ad65e7227"),
+        input: OpCodes.Hex8ToBytes("1344aba4d3c44708a8a72116d4f49384"),
+        expected: OpCodes.Hex8ToBytes("458335d95ea42a9f4dccd41aecc2390d")
       }
     ];
   }
@@ -296,6 +358,7 @@ let MARSAlgorithm, MARSInstance;
 
     // Modify multiplication key-words (Crypto++ key tweak from August 1999)
     for (let i = 5; i < 37; i += 2) {
+      const sel = OpCodes.AndN(K[i], 3);
       let w = OpCodes.ToUint32(K[i]|3);
       let m = OpCodes.ToUint32(OpCodes.ToUint32(OpCodes.Xor32(OpCodes.ToUint32(~w), OpCodes.Shl32(w, 1)))&OpCodes.ToUint32(OpCodes.Xor32(OpCodes.ToUint32(~w), OpCodes.Shr32(w, 1)))&0x7ffffffe);
       m = OpCodes.ToUint32(m&OpCodes.Shr32(m, 1));
@@ -305,7 +368,7 @@ let MARSAlgorithm, MARSInstance;
       m = OpCodes.ToUint32(m|OpCodes.Shl32(m, 2));
       m = OpCodes.ToUint32(m|OpCodes.Shl32(m, 4));
       m = OpCodes.ToUint32(m&0x7ffffffc);
-      w = OpCodes.ToUint32(OpCodes.Xor32(w, OpCodes.ToUint32(OpCodes.RotL32(this.Sbox[265 + OpCodes.ToByte(K[i])], K[i - 1])&m)));
+      w = OpCodes.ToUint32(OpCodes.Xor32(w, OpCodes.ToUint32(OpCodes.RotL32(this.Sbox[265 + sel], K[i - 1])&m)));
       K[i] = w;
     }
 
@@ -340,7 +403,7 @@ let MARSAlgorithm, MARSInstance;
     // Cryptographic core (16 rounds with keys) - following Crypto++ exactly
     for (let i = 0; i < 16; i++) {
       const t = OpCodes.RotL32(a, 13);
-      const r = OpCodes.RotL32(OpCodes.ToUint32(t*this.expandedKey[2 * i + 5]), 10);
+      const r = OpCodes.RotL32(this._mul32(t, this.expandedKey[2 * i + 5]), 10);
       const m = OpCodes.ToUint32(a+this.expandedKey[2 * i + 4]);
       const l = OpCodes.RotL32(OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(this.S(m), OpCodes.RotR32(r, 5)), r)), OpCodes.ToByte(r));
       c = OpCodes.ToUint32(c+OpCodes.RotL32(m, OpCodes.ToByte(OpCodes.RotR32(r, 5))));
@@ -408,7 +471,7 @@ let MARSAlgorithm, MARSInstance;
     // Cryptographic core (16 rounds) - following Crypto++ lines 126-136
     for (let i = 0; i < 16; i++) {
       const t = OpCodes.RotR32(a, 13);
-      const r = OpCodes.RotL32(OpCodes.ToUint32(a*this.expandedKey[35 - 2 * i]), 10);
+      const r = OpCodes.RotL32(this._mul32(a, this.expandedKey[35 - 2 * i]), 10);
       const m = OpCodes.ToUint32(t+this.expandedKey[34 - 2 * i]);
       const l = OpCodes.RotL32(OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(this.S(m), OpCodes.RotR32(r, 5)), r)), OpCodes.ToByte(r));
       c = OpCodes.ToUint32(c-OpCodes.RotL32(m, OpCodes.ToByte(OpCodes.RotR32(r, 5))));

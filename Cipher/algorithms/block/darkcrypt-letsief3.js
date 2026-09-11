@@ -153,10 +153,16 @@
         new Vulnerability("Non-standard / unanalyzed variant", "Proprietary DarkCrypt cipher with no public cryptanalysis; the small round count and reliance on key-dependent multiplicative S-boxes are unvetted. Not recommended for real use.", "Use AES or another vetted cipher.")
       ];
 
-      // Test vectors verified against the DarkCrypt implementation.
+      // UNVERIFIED - taken from the DarkCrypt implementation itself; the cited
+      // page publishes no vectors and no specification for Letsief3 was found.
+      // Vector 1 is all-zero in, all-zero out and so constrains nothing. The
+      // zero-preservation noted in the header is broader than a single block:
+      // under the all-zero key AND under the all-0xFF key, 16 of the 256
+      // uniform-byte plaintexts are fixed points. Under other keys (uniform or
+      // not) none are. Treat as unverified.
       this.tests = [
         {
-          text: "DarkCrypt Letsief — zero key/plaintext",
+          text: "DarkCrypt Letsief — zero key/plaintext (non-discriminating: zero in, zero out)",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           input: OpCodes.Hex8ToBytes("0000000000000000"),
           key: OpCodes.Hex8ToBytes("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),

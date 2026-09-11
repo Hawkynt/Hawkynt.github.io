@@ -75,24 +75,32 @@
         new LinkItem('Delastelle Cipher Systems', 'https://en.wikipedia.org/wiki/F%C3%A9lix_Delastelle')
       ];
 
-      // Test vectors in plain format (recommended)
+      // Test vectors in plain format (recommended).
+      //
+      // The four-square has two long-standing ways of squeezing 26 letters
+      // into 25 cells: fold J onto I, or leave Q out. This file folds J onto I
+      // throughout, which is the commoner convention. The Wikipedia article
+      // leaves Q out instead, so its worked example - EXAMPLE and KEYWORD over
+      // "helpmeobiwankenobi" giving FYGMKYHOBXMFKKKIMD - cannot be reproduced
+      // here and none of the values below are taken from it. The first digraph
+      // agrees either way, HE giving FY; they part company at the second.
       this.tests = [
         {
-          text: 'Basic Four-Square example with EXAMPLE and KEYWORD',
+          text: 'Keywords EXAMPLE and KEYWORD over one digraph pair, J folded onto I. No published source carries this value',
           uri: 'https://en.wikipedia.org/wiki/Four-square_cipher',
-          input: OpCodes.AnsiToBytes('HELP'), 
+          input: OpCodes.AnsiToBytes('HELP'),
           key: OpCodes.AnsiToBytes('EXAMPLE,KEYWORD'),
           expected: OpCodes.AnsiToBytes('FYNF')
         },
         {
-          text: 'Military example with FORTIFICATION and BATTLE keywords',
+          text: 'Keywords with repeated letters - FORTIFICATION and BATTLE both dedupe. No published source carries this value',
           uri: 'https://en.wikipedia.org/wiki/Four-square_cipher',
           input: OpCodes.AnsiToBytes('ATTACKATDAWN'),
           key: OpCodes.AnsiToBytes('FORTIFICATION,BATTLE'),
           expected: OpCodes.AnsiToBytes('TPMLIFTPFLXK')
         },
         {
-          text: 'Beatles example with JOHN and PAUL keywords',
+          text: 'Odd-length message padded to an even number of digraphs with X. No published source carries this value',
           uri: 'https://en.wikipedia.org/wiki/Four-square_cipher',
           input: OpCodes.AnsiToBytes('BEATLES'),
           key: OpCodes.AnsiToBytes('JOHN,PAUL'),

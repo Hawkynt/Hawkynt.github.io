@@ -91,10 +91,18 @@
         new Vulnerability("Unanalyzed construction", "Non-standard, publicly unanalyzed cipher of unknown provenance; not recommended for real use.", "Use AES or another vetted cipher.")
       ];
 
-      // Test vectors generated from the DarkCrypt implementation (raw primitive: setup(key)+crypt(block)).
+      // UNVERIFIED - generated from the DarkCrypt implementation itself, so
+      // they show self-agreement only; the cited page publishes no vectors and
+      // no specification for Wicker-98 was found. Vector 1 is all-zero in,
+      // all-zero out and constrains nothing. Measured: E_k(0) = 0 holds ONLY
+      // for the all-zero key (0 of 30 random non-zero keys), which is the
+      // signature of a design carrying no round constants rather than of a
+      // broken port, but without a specification it cannot be confirmed either
+      // way. Diffusion is otherwise healthy (avalanche about half the output
+      // bits, no dead key or plaintext bytes).
       this.tests = [
         {
-          text: "DarkCrypt Wicker98 — zero key/plaintext",
+          text: "DarkCrypt Wicker98 — zero key/plaintext (non-discriminating: zero in, zero out)",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
           key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),

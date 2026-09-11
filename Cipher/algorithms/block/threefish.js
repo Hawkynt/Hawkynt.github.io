@@ -557,12 +557,15 @@
      * Generate extended key from key bytes
      * @private
      * @param {uint8[]} keyBytes - 64-byte key
+     * @param {uint8[]} [tweakBytes] - optional 16-byte tweak (defaults to all zero)
      * @returns {Array<{low: uint32, high: uint32}>} Extended key schedule
      */
-    generateExtendedKey(keyBytes) {
+    generateExtendedKey(keyBytes, tweakBytes) {
       // Convert key to 64-bit words
       const keyWords = this.bytesToWords64(keyBytes);
-      const tweak = [{ low: 0, high: 0 }, { low: 0, high: 0 }]; // Default zero tweak
+      const tweak = (tweakBytes && tweakBytes.length === 16)
+        ? this.bytesToWords64(tweakBytes)
+        : [{ low: 0, high: 0 }, { low: 0, high: 0 }];
 
       // Generate extended key: K0..K7, T0, T1, T2, K8
       // where T2 = T0 XOR T1 and K8 = C XOR K0..K7
@@ -609,11 +612,40 @@
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      this._tweak = null;
       this.key = null;
       this.extendedKey = null;
       this.inputBuffer = [];
       this.BlockSize = 64; // bytes (512 bits)
       this.KeySize = 0;    // will be set when key is assigned
+    }
+
+    /**
+     * Set the 128-bit tweak value. Threefish is a tweakable block cipher; the
+     * tweak participates in the key schedule alongside the key.
+     * @param {uint8[]|null} tweakBytes - 16-byte tweak, or null for the all-zero tweak
+     * @throws {Error} If the tweak is not exactly 16 bytes
+     */
+    set tweak(tweakBytes) {
+      if (!tweakBytes) {
+        this._tweak = null;
+      } else {
+        if (tweakBytes.length !== 16) {
+          throw new Error(`Invalid tweak size: ${tweakBytes.length} bytes (must be 16)`);
+        }
+        this._tweak = [...tweakBytes];
+      }
+      if (this._key) {
+        this.extendedKey = this.algorithm.generateExtendedKey(this._key, this._tweak);
+      }
+    }
+
+    /**
+     * Get copy of the current tweak
+     * @returns {uint8[]|null} Copy of tweak bytes or null
+     */
+    get tweak() {
+      return this._tweak ? [...this._tweak] : null;
     }
 
     /**
@@ -641,7 +673,7 @@
 
       this._key = [...keyBytes]; // Copy the key
       this.KeySize = keyBytes.length;
-      this.extendedKey = this.algorithm.generateExtendedKey(keyBytes);
+      this.extendedKey = this.algorithm.generateExtendedKey(keyBytes, this._tweak);
     }
 
     /**

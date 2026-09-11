@@ -91,6 +91,21 @@
           iv: OpCodes.Hex8ToBytes("0000000000000000"),
           input: (() => { const a = []; for (let i = 0; i < 64; i++) a.push(i); return a; })(),
           expected: OpCodes.Hex8ToBytes("a8f6e4986d45a18a1b63561e4618775db6f5314b4df61437f2717e2da725f14cbc0862764f2ccaf0d68b9a87af2adf46525491e5701d2a0ef1f4642513a6daef")
+        },
+        {
+          text: "eSTREAM Rabbit Set 6, vector#3 - stream[0..63], exercises IV setup",
+          uri: "https://raw.githubusercontent.com/cantora/avr-crypto-lib/master/testvectors/rabbit-verified.test-vectors",
+          key: OpCodes.Hex8ToBytes("0F62B5085BAE0154A7FA4DA0F34699EC"),
+          iv: OpCodes.Hex8ToBytes("288FF65DC42B92F9"),
+          input: new Array(64).fill(0),
+          expected: OpCodes.Hex8ToBytes("613CB0BA96AFF6CACF2A459A102A7F78CA985CF8FDD1474018758E36AE9923F519D13D718DAF8D7C0C109B79D5749439B7EFA4C4C9C8D29DC5B3888314A6816F")
+        },
+        {
+          text: "Crypto++ / eSTREAM reference rabbit.txt - all-zero key, no IV setup",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/rabbit.txt",
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          input: new Array(32).fill(0),
+          expected: OpCodes.Hex8ToBytes("02F74A1C26456BF5ECD6A536F05457B1A78AC689476C697B390C9CC515D8E888")
         }
       ];
     }
@@ -212,11 +227,11 @@
     }
 
     _ivSetup() {
-      const IV_0 = OpCodes.Pack32LE(this._iv[0], this._iv[1], this._iv[2], this._iv[3]);
-      const IV_1 = OpCodes.Pack32LE(this._iv[4], this._iv[5], this._iv[6], this._iv[7]);
-
-      const i0 = OpCodes.Or32(OpCodes.And32(OpCodes.RotL32(IV_0, 8), 0x00ff00ff), OpCodes.And32(OpCodes.RotL32(IV_0, 24), 0xff00ff00));
-      const i2 = OpCodes.Or32(OpCodes.And32(OpCodes.RotL32(IV_1, 8), 0x00ff00ff), OpCodes.And32(OpCodes.RotL32(IV_1, 24), 0xff00ff00));
+      // The reference rabbit.c reads the IV as two little-endian words straight
+      // out of the byte array (U8TO32_LITTLE(iv+0) and U8TO32_LITTLE(iv+4));
+      // no additional byte swap belongs here.
+      const i0 = OpCodes.Pack32LE(this._iv[0], this._iv[1], this._iv[2], this._iv[3]);
+      const i2 = OpCodes.Pack32LE(this._iv[4], this._iv[5], this._iv[6], this._iv[7]);
       const i1 = OpCodes.Or32(OpCodes.Shr32(i0, 16), OpCodes.And32(i2, 0xffff0000));
       const i3 = OpCodes.Or32(OpCodes.Shl32(i2, 16), OpCodes.And32(i0, 0x0000ffff));
 

@@ -78,24 +78,33 @@
         new LinkItem('Russian Revolutionary Ciphers', 'http://www.cryptomuseum.com/crypto/nihilist.htm')
       ];
 
-      // Test vectors in plain format (recommended)
+      // Test vectors in plain format (recommended).
+      // Key format is "squareKeyword,additiveKey", or a bare additive key to
+      // use the plain A-Z square.
       this.tests = [
         {
-          text: 'Historical example - ATTACKATDAWN with NIHILIST key',
+          text: 'Wikipedia worked example - square keyed ZEBRAS, additive key RUSSIAN, plaintext DYNAMITE WINTER PALACE',
           uri: 'https://en.wikipedia.org/wiki/Nihilist_cipher',
-          input: OpCodes.AnsiToBytes('ATTACKATDAWN'), 
+          input: OpCodes.AnsiToBytes('DYNAMITEWINTERPALACE'),
+          key: OpCodes.AnsiToBytes('ZEBRAS,RUSSIAN'),
+          expected: OpCodes.AnsiToBytes('37 106 62 36 67 47 86 26 104 53 62 77 27 55 57 66 55 36 54 27')
+        },
+        {
+          text: 'Plain A-Z square, key NIHILIST. No published source carries this value; it covers the unkeyed square',
+          uri: 'https://en.wikipedia.org/wiki/Nihilist_cipher',
+          input: OpCodes.AnsiToBytes('ATTACKATDAWN'),
           key: OpCodes.AnsiToBytes('NIHILIST'),
           expected: OpCodes.AnsiToBytes('44 68 67 35 44 49 54 88 47 35 75 57')
         },
         {
-          text: 'Revolutionary message with RUSSIAN key',
+          text: 'Plain A-Z square, key RUSSIAN. No published source carries this value; it covers a key shorter than the message',
           uri: 'https://en.wikipedia.org/wiki/Nihilist_cipher',
           input: OpCodes.AnsiToBytes('REVOLUTION'),
           key: OpCodes.AnsiToBytes('RUSSIAN'),
           expected: OpCodes.AnsiToBytes('84 60 94 77 55 56 77 66 79 76')
         },
         {
-          text: 'Simple example - SECRET with CZAR key',
+          text: 'Plain A-Z square, key CZAR. No published source carries this value; it covers a key longer than half the message',
           uri: 'https://en.wikipedia.org/wiki/Nihilist_cipher',
           input: OpCodes.AnsiToBytes('SECRET'),
           key: OpCodes.AnsiToBytes('CZAR'),
@@ -149,6 +158,13 @@
       this.setupSquare();
     }
 
+    /**
+     * Key format is "squareKeyword,additiveKey", or a bare additive key to
+     * keep the plain A-Z square. The square keyword is what mixes the Polybius
+     * square, which the published worked examples all rely on - without it the
+     * cipher could only ever reproduce a plain-square variant of them.
+     * @param {uint8[]|string} keyData - Key bytes or string
+     */
     set key(keyData) {
       let keyString = '';
       if (typeof keyData === 'string') {
@@ -157,7 +173,13 @@
         keyString = String.fromCharCode(...keyData);
       }
 
-      this.keyText = keyString.toUpperCase().replace(/[^A-Z]/g, ''); // Remove non-letters
+      const parts = keyString.split(',');
+      const squareKeyword = parts.length >= 2 ? parts[0] : '';
+      const additive = parts.length >= 2 ? parts.slice(1).join(',') : parts[0];
+
+      this.setupSquare(squareKeyword);
+
+      this.keyText = additive.toUpperCase().replace(/[^A-Z]/g, ''); // Remove non-letters
       if (this.keyText.length === 0) {
         throw new Error('Nihilist: Key must contain at least one letter');
       }
@@ -215,9 +237,28 @@
       return Array.from(result).map(c => c.charCodeAt(0));
     }
 
-    setupSquare() {
-      // Use standard Polybius square
-      this.square = this.algorithm.STANDARD_SQUARE.map(row => row.slice());
+    /**
+     * Build the Polybius square: the keyword's own letters in order and
+     * without repeats, then the letters it did not use. J shares I's cell.
+     * @param {string} [keyword] - Square keyword, empty for the plain A-Z square
+     */
+    setupSquare(keyword) {
+      const letters = String(keyword || '').toUpperCase().replace(/[^A-Z]/g, '').replace(/J/g, 'I');
+
+      if (letters.length === 0) {
+        // Use standard Polybius square
+        this.square = this.algorithm.STANDARD_SQUARE.map(row => row.slice());
+      } else {
+        let mixed = '';
+        for (const char of letters)
+          if (!mixed.includes(char)) mixed += char;
+        for (const char of 'ABCDEFGHIKLMNOPQRSTUVWXYZ')
+          if (!mixed.includes(char)) mixed += char;
+
+        this.square = [];
+        for (let row = 0; row < 5; row++)
+          this.square.push(mixed.slice(row * 5, row * 5 + 5).split(''));
+      }
 
       // Create coordinate lookup for letters
       this.letterToCoords = {};

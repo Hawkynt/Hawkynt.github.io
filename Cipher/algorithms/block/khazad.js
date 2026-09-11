@@ -711,6 +711,20 @@ const rawRoundConstants = [
           input: OpCodes.Hex8ToBytes("0000000000000001"),
           key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
           expected: OpCodes.Hex8ToBytes("a9df3d2c64d3ea28")
+        },
+        {
+          text: "NESSIE Khazad-Tweaked verified vectors - repeating 0x08",
+          uri: "https://www.cosic.esat.kuleuven.be/nessie/testvectors/bc/khazad/Khazad-Tweaked-128-64.verified.test-vectors",
+          input: OpCodes.Hex8ToBytes("0808080808080808"),
+          key: OpCodes.Hex8ToBytes("08080808080808080808080808080808"),
+          expected: OpCodes.Hex8ToBytes("a0e07b8baa41e898")
+        },
+        {
+          text: "NESSIE Khazad-Tweaked verified vectors - set 8",
+          uri: "https://www.cosic.esat.kuleuven.be/nessie/testvectors/bc/khazad/Khazad-Tweaked-128-64.verified.test-vectors",
+          input: OpCodes.Hex8ToBytes("39b746a9117f5e6c"),
+          key: OpCodes.Hex8ToBytes("2bd6459f82c5b300952c49104881ff48"),
+          expected: OpCodes.Hex8ToBytes("ea024714ad5c4d84")
         }
       ];
 

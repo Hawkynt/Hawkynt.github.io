@@ -87,22 +87,59 @@
         new Vulnerability("Authentication Forgery", "With nonce reuse, arbitrary messages can be forged after key recovery.")
       ];
 
+      // Test cases from McGrew and Viega, "The Galois/Counter Mode of Operation
+      // (GCM)", the submission that NIST standardised as SP 800-38D. The
+      // expected value is the ciphertext with the 16-byte tag appended.
       this.tests = [
         {
-          text: "GCM round-trip test #1 - 1 byte",
-          uri: "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38d.pdf",
-          input: OpCodes.Hex8ToBytes("00"), // Use 1 byte instead of empty
-          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-          iv: OpCodes.Hex8ToBytes("000000000000000000000000"),
-          aad: []
-        },
-        {
-          text: "GCM round-trip test #2 - single block",
-          uri: "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38d.pdf",
+          text: "GCM Test Case 2 - AES-128, one zero block, no AAD",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/Block-Cipher-Techniques/documents/BCM/proposed-modes/gcm/gcm-spec.pdf",
+          cipher: "AES",
           input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
           key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
           iv: OpCodes.Hex8ToBytes("000000000000000000000000"),
-          aad: []
+          aad: [],
+          expected: OpCodes.Hex8ToBytes("0388dace60b6a392f328c2b971b2fe78ab6e47d42cec13bdf53a67b21257bddf")
+        },
+        {
+          text: "GCM Test Case 3 - AES-128, 64-byte plaintext, no AAD",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/Block-Cipher-Techniques/documents/BCM/proposed-modes/gcm/gcm-spec.pdf",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a721c3c0c95956809532fcf0e2449a6b525b16aedf5aa0de657ba637b391aafd255"),
+          key: OpCodes.Hex8ToBytes("feffe9928665731c6d6a8f9467308308"),
+          iv: OpCodes.Hex8ToBytes("cafebabefacedbaddecaf888"),
+          aad: [],
+          expected: OpCodes.Hex8ToBytes("42831ec2217774244b7221b784d0d49ce3aa212f2c02a4e035c17e2329aca12e21d514b25466931c7d8f6a5aac84aa051ba30b396a0aac973d58e091473f59854d5c2af327cd64a62cf35abd2ba6fab4")
+        },
+        {
+          text: "GCM Test Case 4 - AES-128, 60-byte plaintext with AAD",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/Block-Cipher-Techniques/documents/BCM/proposed-modes/gcm/gcm-spec.pdf",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a721c3c0c95956809532fcf0e2449a6b525b16aedf5aa0de657ba637b39"),
+          key: OpCodes.Hex8ToBytes("feffe9928665731c6d6a8f9467308308"),
+          iv: OpCodes.Hex8ToBytes("cafebabefacedbaddecaf888"),
+          aad: OpCodes.Hex8ToBytes("feedfacedeadbeeffeedfacedeadbeefabaddad2"),
+          expected: OpCodes.Hex8ToBytes("42831ec2217774244b7221b784d0d49ce3aa212f2c02a4e035c17e2329aca12e21d514b25466931c7d8f6a5aac84aa051ba30b396a0aac973d58e0915bc94fbc3221a5db94fae95ae7121a47")
+        },
+        {
+          text: "GCM Test Case 14 - AES-192, 64-byte plaintext, no AAD",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/Block-Cipher-Techniques/documents/BCM/proposed-modes/gcm/gcm-spec.pdf",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a721c3c0c95956809532fcf0e2449a6b525b16aedf5aa0de657ba637b391aafd255"),
+          key: OpCodes.Hex8ToBytes("feffe9928665731c6d6a8f9467308308feffe9928665731c"),
+          iv: OpCodes.Hex8ToBytes("cafebabefacedbaddecaf888"),
+          aad: [],
+          expected: OpCodes.Hex8ToBytes("3980ca0b3c00e841eb06fac4872a2757859e1ceaa6efd984628593b40ca1e19c7d773d00c144c525ac619d18c84a3f4718e2448b2fe324d9ccda2710acade2569924a7c8587336bfb118024db8674a14")
+        },
+        {
+          text: "GCM Test Case 16 - AES-256, 60-byte plaintext with AAD",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/Block-Cipher-Techniques/documents/BCM/proposed-modes/gcm/gcm-spec.pdf",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a721c3c0c95956809532fcf0e2449a6b525b16aedf5aa0de657ba637b39"),
+          key: OpCodes.Hex8ToBytes("feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308"),
+          iv: OpCodes.Hex8ToBytes("cafebabefacedbaddecaf888"),
+          aad: OpCodes.Hex8ToBytes("feedfacedeadbeeffeedfacedeadbeefabaddad2"),
+          expected: OpCodes.Hex8ToBytes("522dc1f099567d07f47f37a32a84427d643a8cdcbfe5c0c97598a2bd2555d1aa8cb08e48590dbb3da7b08b1056828838c5f61e6393ba7a0abcc9f66276fc6ece0f4e1768cddf8853bb2d551b")
         }
       ];
     }
@@ -374,14 +411,18 @@
       // Prepare data for GHASH: AAD || pad || C || pad || len(AAD) || len(C)
       const ghashInput = [];
 
-      // Add AAD (Additional Authenticated Data)
+      // Add AAD (Additional Authenticated Data). Spreading a message-sized
+      // array into push() overflows the call stack once the message passes a
+      // hundred kilobytes or so, so the bytes are appended one at a time.
       if (this.aad && this.aad.length > 0) {
-        ghashInput.push(...this._padToBlocks(this.aad));
+        const paddedAad = this._padToBlocks(this.aad);
+        for (let _i = 0; _i < paddedAad.length; _i++) ghashInput.push(paddedAad[_i]);
       }
 
       // Add ciphertext
       if (ciphertext.length > 0) {
-        ghashInput.push(...this._padToBlocks(ciphertext));
+        const paddedCiphertext = this._padToBlocks(ciphertext);
+        for (let _i = 0; _i < paddedCiphertext.length; _i++) ghashInput.push(paddedCiphertext[_i]);
       }
 
       // Add length block: len(AAD) || len(C) in bits as 64-bit values
