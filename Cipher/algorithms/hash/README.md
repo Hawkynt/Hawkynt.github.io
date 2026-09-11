@@ -120,9 +120,9 @@ Generated from the registry by `tools/refresh-readmes.js`.
 - **TupleHash256** (`tuplehash.js`) - SHA-3 derived function for unambiguous tuple hashing with 256-bit security
 - **Whirlpool** (`whirlpool.js`) - Whirlpool is a cryptographic hash function designed by Vincent Rijmen and Paulo S
 - **Xoodyak Hash** (`xoodyak-hash.js`) - NIST Lightweight Cryptography finalist based on the Xoodoo permutation
-- **xxHash** (`xxhash.js`) - Extremely fast non-cryptographic hash function designed for high performance applications like databases and compression systems
 - **xxHash3** (`xxhash3.js`) - Ultra-fast non-cryptographic hash function optimized for speed and quality
 - **xxHash32** (`xxhash32.js`) - xxHash is an extremely fast non-cryptographic hash algorithm designed by Yann Collet
+- **xxHash64** (`xxhash.js`) - xxHash is an extremely fast non-cryptographic hash algorithm designed by Yann Collet
 
 <!-- END GENERATED ALGORITHM LIST -->
 
