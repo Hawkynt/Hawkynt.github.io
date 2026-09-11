@@ -53,7 +53,10 @@ Generated from the registry by `tools/refresh-readmes.js`.
 - **HAVAL** (`haval.js`) - HAVAL (HAsh of Variable Length) is a cryptographic hash function with variable output length (128, 160, 192, 224, 256 bits) and variable passes (3, 4, 5)
 - **HighwayHash** (`highway-hash.js`) - Educational implementation of HighwayHash-style keyed hash function
 - **ISAP Hash** (`isap-hash.js`) - Ascon-based hash function used in the ISAP authenticated encryption scheme
-- **JH** (`jh.js`) - JH is a cryptographic hash function with bitslice design submitted to the NIST SHA-3 competition
+- **JH-224** (`jh.js`) - JH is a SHA-3 finalist designed by Hongjun Wu
+- **JH-256** (`jh.js`) - JH is a SHA-3 finalist designed by Hongjun Wu
+- **JH-384** (`jh.js`) - JH is a SHA-3 finalist designed by Hongjun Wu
+- **JH-512** (`jh.js`) - JH is a SHA-3 finalist designed by Hongjun Wu
 - **KangarooTwelve** (`kangaroo.js`) - Fast hashing based on Keccak-p[1600,12] with tree structure for parallel processing
 - **Keccak (DarkCrypt)** (`darkcrypt-keccak.js`) - Keccak sponge hash variant used by the DarkCrypt Total Commander plugin
 - **Keccak-224** (`keccak.js`) - Original Keccak-224 hash function (pre-SHA3)
