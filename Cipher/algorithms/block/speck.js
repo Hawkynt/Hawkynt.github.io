@@ -102,18 +102,32 @@
       // Test vectors from NSA specification
       this.tests = [
         {
-          text: "Speck64/128 Test Vector #1",
-          uri: "https://eprint.iacr.org/2013/404.pdf",
-          input: OpCodes.Hex8ToBytes("656c69746e696874"),
-          key: OpCodes.Hex8ToBytes("1f1e1d1c1b1a19181716151413121110"),
-          expected: OpCodes.Hex8ToBytes("4af38b6198e31fa8")
+          text: "Speck64/128 - Simon and Speck paper Appendix C (byte-serialised)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/speck.txt",
+          input: OpCodes.Hex8ToBytes("2d4375747465723b"),
+          key: OpCodes.Hex8ToBytes("0001020308090a0b1011121318191a1b"),
+          expected: OpCodes.Hex8ToBytes("8b024e4548a56f8c")
         },
         {
-          text: "Speck64/128 Test Vector #2 (zero key)",
-          uri: "https://eprint.iacr.org/2013/404.pdf",
-          input: OpCodes.Hex8ToBytes("0000000000000000"),
-          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-          expected: OpCodes.Hex8ToBytes("d54804682c692f27")
+          text: "Speck64/128 - Crypto++ TestVectors #2",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/speck.txt",
+          input: OpCodes.Hex8ToBytes("1589a8bbff4c7a85"),
+          key: OpCodes.Hex8ToBytes("64b76fa61ce980ab2f71098d75d66e5f"),
+          expected: OpCodes.Hex8ToBytes("2f1d122370946bda")
+        },
+        {
+          text: "Speck64/128 - Crypto++ TestVectors #3",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/speck.txt",
+          input: OpCodes.Hex8ToBytes("f85fa0721a3c9ad6"),
+          key: OpCodes.Hex8ToBytes("5524abb77240eb5c4554fad4ab730ddf"),
+          expected: OpCodes.Hex8ToBytes("2a740170155b33ee")
+        },
+        {
+          text: "Speck64/128 - Crypto++ TestVectors #4",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/speck.txt",
+          input: OpCodes.Hex8ToBytes("35b7e6e160815a52"),
+          key: OpCodes.Hex8ToBytes("922bf30e46f8cd8cb624d0bcff7ae7a2"),
+          expected: OpCodes.Hex8ToBytes("f1761c9cbe6621e9")
         }
       ];
 
@@ -249,9 +263,10 @@
         throw new Error('Speck: Input must be exactly 8 bytes');
       }
 
-      // Convert input to 32-bit words using OpCodes (little-endian for Speck)
-      let x = OpCodes.Pack32LE(blockBytes[0], blockBytes[1], blockBytes[2], blockBytes[3]);
-      let y = OpCodes.Pack32LE(blockBytes[4], blockBytes[5], blockBytes[6], blockBytes[7]);
+      // Convert input to 32-bit words using OpCodes (little-endian for Speck).
+      // The lower word y is serialised first, the upper word x second.
+      let y = OpCodes.Pack32LE(blockBytes[0], blockBytes[1], blockBytes[2], blockBytes[3]);
+      let x = OpCodes.Pack32LE(blockBytes[4], blockBytes[5], blockBytes[6], blockBytes[7]);
 
       // Speck encryption: 27 rounds of ARX operations
       // Round function based on NSA specification:
@@ -268,9 +283,9 @@
         y = OpCodes.XorN(y, x);
       }
 
-      // Convert back to bytes using OpCodes (little-endian)
-      const result0 = OpCodes.Unpack32LE(x);
-      const result1 = OpCodes.Unpack32LE(y);
+      // Convert back to bytes using OpCodes (little-endian, lower word first)
+      const result0 = OpCodes.Unpack32LE(y);
+      const result1 = OpCodes.Unpack32LE(x);
       return [...result0, ...result1];
     }
 
@@ -286,9 +301,10 @@
         throw new Error('Speck: Input must be exactly 8 bytes');
       }
 
-      // Convert input to 32-bit words using OpCodes (little-endian for Speck)
-      let x = OpCodes.Pack32LE(blockBytes[0], blockBytes[1], blockBytes[2], blockBytes[3]);
-      let y = OpCodes.Pack32LE(blockBytes[4], blockBytes[5], blockBytes[6], blockBytes[7]);
+      // Convert input to 32-bit words using OpCodes (little-endian for Speck).
+      // The lower word y is serialised first, the upper word x second.
+      let y = OpCodes.Pack32LE(blockBytes[0], blockBytes[1], blockBytes[2], blockBytes[3]);
+      let x = OpCodes.Pack32LE(blockBytes[4], blockBytes[5], blockBytes[6], blockBytes[7]);
 
       // Speck decryption: reverse the encryption process
       // Inverse operations in reverse order:
@@ -305,9 +321,9 @@
         x = OpCodes.RotL32(x, this.algorithm.ALPHA);
       }
 
-      // Convert back to bytes using OpCodes (little-endian)
-      const result0 = OpCodes.Unpack32LE(x);
-      const result1 = OpCodes.Unpack32LE(y);
+      // Convert back to bytes using OpCodes (little-endian, lower word first)
+      const result0 = OpCodes.Unpack32LE(y);
+      const result1 = OpCodes.Unpack32LE(x);
       return [...result0, ...result1];
     }
 
@@ -318,13 +334,14 @@
      * @returns {uint32[]} Array of 27 round keys
      */
     _expandKey(keyBytes) {
-      // Convert 128-bit key to four 32-bit words using OpCodes (little-endian)
-      // NSA Speck uses specific ordering: k3, k2, k1, k0 (reverse order)
+      // Convert 128-bit key to four 32-bit words using OpCodes (little-endian).
+      // The serialised key is K = (k0, l0, l1, l2) in ascending byte order: the
+      // first word seeds round key 0 and the rest seed the l register.
       const k = [
-        OpCodes.Pack32LE(keyBytes[12], keyBytes[13], keyBytes[14], keyBytes[15]), // k3 -> k0
-        OpCodes.Pack32LE(keyBytes[8], keyBytes[9], keyBytes[10], keyBytes[11]),   // k2 -> k1  
-        OpCodes.Pack32LE(keyBytes[4], keyBytes[5], keyBytes[6], keyBytes[7]),     // k1 -> k2
-        OpCodes.Pack32LE(keyBytes[0], keyBytes[1], keyBytes[2], keyBytes[3])      // k0 -> k3
+        OpCodes.Pack32LE(keyBytes[0], keyBytes[1], keyBytes[2], keyBytes[3]),     // k0
+        OpCodes.Pack32LE(keyBytes[4], keyBytes[5], keyBytes[6], keyBytes[7]),     // l0
+        OpCodes.Pack32LE(keyBytes[8], keyBytes[9], keyBytes[10], keyBytes[11]),   // l1
+        OpCodes.Pack32LE(keyBytes[12], keyBytes[13], keyBytes[14], keyBytes[15])  // l2
       ];
 
       // Expand key to 27 round keys using Speck key schedule

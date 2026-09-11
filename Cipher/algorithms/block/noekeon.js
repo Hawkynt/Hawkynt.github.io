@@ -116,18 +116,25 @@
         },
 
         {
-          text: "NOEKEON Zero Test Vector",
-          uri: "https://gro.noekeon.org/",
+          text: "Official NoekeonTestVectors.txt - Direct-Key Mode, all-zero key and block",
+          uri: "https://gro.noekeon.org/Noekeon_ref.zip",
           input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
           key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
           expected: OpCodes.Hex8ToBytes("b1656851699e29fa24b70148503d2dfc")
         },
         {
-          text: "NOEKEON Pattern Test Vector",
-          uri: "https://gro.noekeon.org/",
+          text: "Official NoekeonTestVectors.txt - Direct-Key Mode, all-ones key and block",
+          uri: "https://gro.noekeon.org/Noekeon_ref.zip",
           input: OpCodes.Hex8ToBytes("ffffffffffffffffffffffffffffffff"),
           key: OpCodes.Hex8ToBytes("ffffffffffffffffffffffffffffffff"),
           expected: OpCodes.Hex8ToBytes("2a78421b87c7d0924f26113f1d1349b2")
+        },
+        {
+          text: "Official NoekeonTestVectors.txt - Direct-Key Mode, chained third vector",
+          uri: "https://gro.noekeon.org/Noekeon_ref.zip",
+          input: OpCodes.Hex8ToBytes("2a78421b87c7d0924f26113f1d1349b2"),
+          key: OpCodes.Hex8ToBytes("b1656851699e29fa24b70148503d2dfc"),
+          expected: OpCodes.Hex8ToBytes("e2f687e07b75660ffc372233bc47532c")
         }
       ];
 

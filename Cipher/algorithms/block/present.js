@@ -155,6 +155,20 @@
               input: OpCodes.Hex8ToBytes("0000000000000000"),
               key: OpCodes.Hex8ToBytes("ffffffffffffffffffff"),
               expected: OpCodes.Hex8ToBytes("e72c46c0f5945049")
+            },
+            {
+              text: "PRESENT-80 all-ones plaintext, zero key",
+              uri: "https://link.springer.com/chapter/10.1007/978-3-540-74735-2_31",
+              input: OpCodes.Hex8ToBytes("ffffffffffffffff"),
+              key: OpCodes.Hex8ToBytes("00000000000000000000"),
+              expected: OpCodes.Hex8ToBytes("a112ffc72f68417b")
+            },
+            {
+              text: "PRESENT-80 all-ones plaintext and key",
+              uri: "https://link.springer.com/chapter/10.1007/978-3-540-74735-2_31",
+              input: OpCodes.Hex8ToBytes("ffffffffffffffff"),
+              key: OpCodes.Hex8ToBytes("ffffffffffffffffffff"),
+              expected: OpCodes.Hex8ToBytes("3333dcd3213210d2")
             }
           ]
         },
@@ -182,6 +196,20 @@
               input: OpCodes.Hex8ToBytes("0000000000000000"),
               key: OpCodes.Hex8ToBytes("ffffffffffffffffffffffffffffffff"),
               expected: OpCodes.Hex8ToBytes("13238c710272a5d8")
+            },
+            {
+              text: "PRESENT-128 all-ones plaintext, zero key",
+              uri: "https://crypto.stackexchange.com/questions/70906/where-can-i-find-test-vectors-for-the-present-cipher-with-a-128-bit-key",
+              input: OpCodes.Hex8ToBytes("ffffffffffffffff"),
+              key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+              expected: OpCodes.Hex8ToBytes("3c6019e5e5edd563")
+            },
+            {
+              text: "PRESENT-128 all-ones plaintext and key",
+              uri: "https://crypto.stackexchange.com/questions/70906/where-can-i-find-test-vectors-for-the-present-cipher-with-a-128-bit-key",
+              input: OpCodes.Hex8ToBytes("ffffffffffffffff"),
+              key: OpCodes.Hex8ToBytes("ffffffffffffffffffffffffffffffff"),
+              expected: OpCodes.Hex8ToBytes("628d9fbd4218e5b4")
             }
           ]
         }

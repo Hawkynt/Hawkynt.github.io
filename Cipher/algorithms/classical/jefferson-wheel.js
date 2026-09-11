@@ -79,20 +79,23 @@
           "With enough plaintext-ciphertext pairs, wheel alphabets can be recovered"
         ];
 
+        // Key format is "wheelCount|offset": how many of the wheels are on the
+        // spindle, and how many rows below the plaintext row the ciphertext is
+        // read off.
         this.tests = [
           {
-            text: "Jefferson Wheel Basic Test",
-            uri: "Historical records and reconstructions", 
-            input: global.OpCodes.AnsiToBytes("HELLO"), 
-            key: global.OpCodes.AnsiToBytes("10|0"),
-            expected: global.OpCodes.AnsiToBytes("LZPQY")
+            text: "dCode worked example - JEFFERSON on the 25 standard wheels, read one row below",
+            uri: "https://www.dcode.fr/jefferson-wheel-cipher",
+            input: global.OpCodes.AnsiToBytes("JEFFERSON"),
+            key: global.OpCodes.AnsiToBytes("25|1"),
+            expected: global.OpCodes.AnsiToBytes("FHYGMNYBL")
           },
           {
-            text: "Educational Example",
-            uri: "Modern educational reconstruction",
-            input: global.OpCodes.AnsiToBytes("CIPHER"), 
-            key: global.OpCodes.AnsiToBytes("6|5"),
-            expected: global.OpCodes.AnsiToBytes("LEOWNR")
+            text: "Offset zero is the identity row - the plaintext row is the ciphertext row",
+            uri: "https://en.wikipedia.org/wiki/Jefferson_disk",
+            input: global.OpCodes.AnsiToBytes("ATTACKATDAWN"),
+            key: global.OpCodes.AnsiToBytes("25|0"),
+            expected: global.OpCodes.AnsiToBytes("ATTACKATDAWN")
           }
         ];
 
@@ -115,34 +118,42 @@
         this.inputBuffer = [];
       }
 
+      // The 25 documented wheel alphabets of the M-94, the US Army's
+      // production Jefferson disk. Every one is a permutation of A-Z, wheel 17
+      // famously beginning ARMYOFTHEUS.
+      //
+      // The set this replaces was not a documented wheel set and did not even
+      // hold together as one: wheel 3 carried P twice and no S, wheel 16
+      // carried R twice and no L, and wheel 21 was 25 letters long. A wheel
+      // that is not a permutation cannot be read backwards, so those three
+      // wheels silently corrupted anything they touched.
       get defaultWheels() {
         return [
-        "ZWAXJGDLUBVIQHKYPNTCRMSOEF", // Wheel 1
-        "HXUCZVAMDSLKPEFJRIGQWNOTBY", // Wheel 2
-        "JDRKQLFWVBTPZMUGXNHYOCPEIA", // Wheel 3
-        "OUGZNPKMEAHQWSLRJDXFYTBICV", // Wheel 4
-        "VPKMCWSLZNEXROYFBQTGUHJAID", // Wheel 5
-        "MNBVCXZLKJHGFDSAPOIUYTREWQ", // Wheel 6
-        "QWERTYUIOPASDFGHJKLZXCVBNM", // Wheel 7
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZ", // Wheel 8
-        "ZYXWVUTSRQPONMLKJIHGFEDCBA", // Wheel 9
-        "PLOKIJUHYGTFRDESWAQZXCVBNM", // Wheel 10
-        "LKJHGFDSAMNBVCXZPOIUYTREWQ", // Wheel 11
-        "POIUYTREWQLKJHGFDSAMNBVCXZ", // Wheel 12
-        "MNBVCXZASDFGHJKLPOIUYTREWQ", // Wheel 13
-        "WERTYUIOPASLKJHGFDZXCVBNMQ", // Wheel 14
-        "XCVBNMASDFGHJKLPOIUYTREWQZ", // Wheel 15
-        "REWQPOIUYTRMNBVCXZASDFGHJK", // Wheel 16
-        "DFGHJKLZXCVBNMQWERTYUIOPAS", // Wheel 17
-        "YUIOPASDFGHJKLZXCVBNMQWERT", // Wheel 18
-        "BNMQWERTYUIOPASDFGHJKLZXCV", // Wheel 19
-        "HJKLZXCVBNMQWERTYUIOPASDFG", // Wheel 20
-        "QWERTASDFGZXCVBNHJKLYUIOP", // Wheel 21
-        "ASDFGHJKLQWERTYUIOPZXCVBNM", // Wheel 22
-        "ZXCVBNMQWERTYUIOPASDFGHJKL", // Wheel 23
-        "TYUIOPASDFGHJKLZXCVBNMQWER", // Wheel 24
-        "GHJKLZXCVBNMQWERTYUIOPASDF", // Wheel 25
-          "UIOPASDFGHJKLZXCVBNMQWERTY"  // Wheel 26
+          "ABCEIGDJFVUYMHTQKZOLRXSPWN", // Wheel 1
+          "ACDEHFIJKTLMOUVYGZNPQXRWSB", // Wheel 2
+          "ADKOMJUBGEPHSCZINXFYQRTVWL", // Wheel 3
+          "AEDCBIFGJHLKMRUOQVPTNWYXZS", // Wheel 4
+          "AFNQUKDOPITJBRHCYSLWEMZVXG", // Wheel 5
+          "AGPOCIXLURNDYZHWBJSQFKVMET", // Wheel 6
+          "AHXJEZBNIKPVROGSYDULCFMQTW", // Wheel 7
+          "AIHPJOBWKCVFZLQERYNSUMGTDX", // Wheel 8
+          "AJDSKQOIVTZEFHGYUNLPMBXWCR", // Wheel 9
+          "AKELBDFJGHONMTPRQSVZUXYWIC", // Wheel 10
+          "ALTMSXVQPNOHUWDIZYCGKRFBEJ", // Wheel 11
+          "AMNFLHQGCUJTBYPZKXISRDVEWO", // Wheel 12
+          "ANCJILDHBMKGXUZTSWQYVORPFE", // Wheel 13
+          "AODWPKJVIUQHZCTXBLEGNYRSMF", // Wheel 14
+          "APBVHIYKSGUENTCXOWFQDRLJZM", // Wheel 15
+          "AQJNUBTGIMWZRVLXCSHDEOKFPY", // Wheel 16
+          "ARMYOFTHEUSZJXDPCWGQIBKLNV", // Wheel 17
+          "ASDMCNEQBOZPLGVJRKYTFUIWXH", // Wheel 18
+          "ATOJYLFXNGWHVCMIRBSEKUPDZQ", // Wheel 19
+          "AUTRZXQLYIOVBPESNHJWMDGFCK", // Wheel 20
+          "AVNKHRGOXEYBFSJMUDQCLZWTIP", // Wheel 21
+          "AWVSFDLIEBHKNRJQZGMXPUCOTY", // Wheel 22
+          "AXKWREVDTUFOYHMLSIQNJCPGBZ", // Wheel 23
+          "AYJPXMVKBQWUGLOSTECHNZFRID", // Wheel 24
+          "AZDNBUHYFWJLVGRCQMPSOEXTKI"  // Wheel 25
         ];
       }
 
@@ -221,50 +232,53 @@
         return pos >= 0 ? pos : 0;
       }
 
+      /**
+       * Turn the wheel until the plaintext letter is on the plaintext row,
+       * then read the letter 'alignment' rows further round the same wheel.
+       *
+       * The plaintext letter has to be LOOKED UP on the wheel; using its
+       * position in A-Z as a row number instead turned the device into a
+       * fixed substitution by the wheel alphabet and made an offset of zero
+       * encipher rather than stand still, which is not how a Jefferson disk
+       * works and disagreed with the published worked example.
+       * @param {string} char - One plaintext character
+       * @param {number} wheelIndex - Which letter of the message this is
+       * @returns {string} Enciphered character, case preserved
+       */
       encryptChar(char, wheelIndex) {
         const charCode = char.charCodeAt(0);
+        const isUpper = charCode >= 65 && charCode <= 90;
+        const isLower = charCode >= 97 && charCode <= 122;
 
-        // Only encrypt letters
-        if (charCode >= 65 && charCode <= 90) { // A-Z
-          const letterIndex = charCode - 65;
-          const wheel = wheelIndex % this.wheelCount;
-          const position = (letterIndex + this.wheelPositions[wheel]) % 26;
-          const alignedPosition = (position + this.alignment) % 26;
+        if (!isUpper && !isLower) return char; // Return non-letters unchanged
 
-          return this.getWheelChar(wheel, alignedPosition);
-        } else if (charCode >= 97 && charCode <= 122) { // a-z
-          const letterIndex = charCode - 97;
-          const wheel = wheelIndex % this.wheelCount;
-          const position = (letterIndex + this.wheelPositions[wheel]) % 26;
-          const alignedPosition = (position + this.alignment) % 26;
+        const wheel = wheelIndex % this.wheelCount;
+        const row = this.findCharOnWheel(wheel, char.toUpperCase());
+        const shifted = (row + this.alignment + this.wheelPositions[wheel]) % 26;
+        const result = this.getWheelChar(wheel, shifted);
 
-          return this.getWheelChar(wheel, alignedPosition).toLowerCase();
-        }
-
-        return char; // Return non-letters unchanged
+        return isUpper ? result : result.toLowerCase();
       }
 
+      /**
+       * Read back up the same wheel by the same number of rows.
+       * @param {string} char - One ciphertext character
+       * @param {number} wheelIndex - Which letter of the message this is
+       * @returns {string} Deciphered character, case preserved
+       */
       decryptChar(char, wheelIndex) {
         const charCode = char.charCodeAt(0);
+        const isUpper = charCode >= 65 && charCode <= 90;
+        const isLower = charCode >= 97 && charCode <= 122;
 
-        // Only decrypt letters
-        if (charCode >= 65 && charCode <= 90) { // A-Z
-          const wheel = wheelIndex % this.wheelCount;
-          let position = this.findCharOnWheel(wheel, char);
-          position = (position - this.alignment + 26) % 26;
-          position = (position - this.wheelPositions[wheel] + 26) % 26;
+        if (!isUpper && !isLower) return char; // Return non-letters unchanged
 
-          return String.fromCharCode(65 + position);
-        } else if (charCode >= 97 && charCode <= 122) { // a-z
-          const wheel = wheelIndex % this.wheelCount;
-          let position = this.findCharOnWheel(wheel, char.toUpperCase());
-          position = (position - this.alignment + 26) % 26;
-          position = (position - this.wheelPositions[wheel] + 26) % 26;
+        const wheel = wheelIndex % this.wheelCount;
+        const row = this.findCharOnWheel(wheel, char.toUpperCase());
+        const shifted = (row - this.alignment - this.wheelPositions[wheel] + 52) % 26;
+        const result = this.getWheelChar(wheel, shifted);
 
-          return String.fromCharCode(97 + position);
-        }
-
-        return char; // Return non-letters unchanged
+        return isUpper ? result : result.toLowerCase();
       }
 
       // Feed data to the cipher

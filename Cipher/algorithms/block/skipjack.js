@@ -127,18 +127,18 @@
         },
 
         {
-          text: "Skipjack test vector - all zeros key and plaintext",
-          uri: "Verified with BouncyCastle implementation",
-          input: OpCodes.Hex8ToBytes("0000000000000000"),
-          key: OpCodes.Hex8ToBytes("00000000000000000000"),
-          expected: OpCodes.Hex8ToBytes("aaae8ede6764143d")
+          text: "Bouncy Castle SkipjackTest reference vector",
+          uri: "https://github.com/bcgit/bc-java/blob/main/core/src/test/java/org/bouncycastle/crypto/test/SkipjackTest.java",
+          input: OpCodes.Hex8ToBytes("33221100ddccbbaa"),
+          key: OpCodes.Hex8ToBytes("00998877665544332211"),
+          expected: OpCodes.Hex8ToBytes("2587cae27a12d300")
         },
         {
-          text: "Skipjack test vector - pattern key and plaintext", 
-          uri: "Verified with BouncyCastle implementation",
-          input: OpCodes.Hex8ToBytes("3322110033ccbbaa"),
-          key: OpCodes.Hex8ToBytes("00776655443322110088"),
-          expected: OpCodes.Hex8ToBytes("8643bc24c71c4a60")
+          text: "LibTomCrypt skipjack.c reference vector (two identical blocks)",
+          uri: "https://github.com/libtom/libtomcrypt/blob/develop/src/ciphers/skipjack.c",
+          input: OpCodes.Hex8ToBytes("33221100ddccbbaa33221100ddccbbaa"),
+          key: OpCodes.Hex8ToBytes("00998877665544332211"),
+          expected: OpCodes.Hex8ToBytes("2587cae27a12d3002587cae27a12d300")
         }
       ];
     }

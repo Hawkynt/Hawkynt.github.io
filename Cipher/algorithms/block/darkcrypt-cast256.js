@@ -238,6 +238,13 @@
       // Test vectors verified against the DarkCrypt implementation.
       this.tests = [
         {
+          text: "RFC 2612 Appendix A CAST-256 test vector, KEYSIZE=256 (each 32-bit word byte-swapped into the little-endian order this build uses)",
+          uri: "https://www.rfc-editor.org/rfc/rfc2612.txt",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("9ebb42232c5438fa83acd0be98c20a94ce477c8d4608492613b5c11c04b6e67a"),
+          expected: OpCodes.Hex8ToBytes("38206a4fb9976828360187c9fa173355")
+        },
+        {
           text: "DarkCrypt Cast256 — zero key/plaintext",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),

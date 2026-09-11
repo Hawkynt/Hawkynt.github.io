@@ -62,13 +62,55 @@ class Rabbit extends StreamCipherAlgorithm {
       new LinkItem("Crypto++ Rabbit Implementation", "https://github.com/weidai11/cryptopp/blob/master/rabbit.cpp")
     ];
 
+    // RFC 4503 Appendix A. Keys, IVs and keystream blocks S[0]..S[2] are quoted
+    // exactly as the RFC prints them; the RFC states that the octet strings are
+    // turned into integers with OS2IP, so they are consumed most-significant
+    // octet first.
     this.tests = [
       {
-        text: "RFC 4503 Test Vector 1 (All-zero key)",
-        uri: "https://datatracker.ietf.org/doc/html/rfc4503",
+        text: "RFC 4503 Appendix A.1 - keystream without IV, key 1 (all zero), S[0]..S[2]",
+        uri: "https://datatracker.ietf.org/doc/html/rfc4503#appendix-A.1",
         key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-        input: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
-        expected: OpCodes.Hex8ToBytes("B15754F036A5D6ECF56B45261C4AF70288E8D815C59C0C397B696C4789C68AA7")
+        input: OpCodes.Hex8ToBytes("000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+        expected: OpCodes.Hex8ToBytes("B15754F036A5D6ECF56B45261C4AF70288E8D815C59C0C397B696C4789C68AA7F416A1C3700CD451DA68D1881673D696")
+      },
+      {
+        text: "RFC 4503 Appendix A.1 - keystream without IV, key 2, S[0]..S[2]",
+        uri: "https://datatracker.ietf.org/doc/html/rfc4503#appendix-A.1",
+        key: OpCodes.Hex8ToBytes("912813292E3D36FE3BFC62F1DC51C3AC"),
+        input: OpCodes.Hex8ToBytes("000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+        expected: OpCodes.Hex8ToBytes("3D2DF3C83EF627A1E97FC38487E2519CF576CD61F4405B8896BF53AA8554FC19E5547473FBDB43508AE53B20204D4C5E")
+      },
+      {
+        text: "RFC 4503 Appendix A.1 - keystream without IV, key 3, S[0]..S[2]",
+        uri: "https://datatracker.ietf.org/doc/html/rfc4503#appendix-A.1",
+        key: OpCodes.Hex8ToBytes("8395741587E0C733E9E9AB01C09B0043"),
+        input: OpCodes.Hex8ToBytes("000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+        expected: OpCodes.Hex8ToBytes("0CB10DCDA041CDAC32EB5CFD02D0609B95FC9FCA0F17015A7B7092114CFF3EAD9649E5DE8BFC7F3F924147AD3A947428")
+      },
+      {
+        text: "RFC 4503 Appendix A.2 - keystream with IV setup, IV 1 (all zero), S[0]..S[2]",
+        uri: "https://datatracker.ietf.org/doc/html/rfc4503#appendix-A.2",
+        key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        iv: OpCodes.Hex8ToBytes("0000000000000000"),
+        input: OpCodes.Hex8ToBytes("000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+        expected: OpCodes.Hex8ToBytes("C6A7275EF85495D87CCD5D376705B7ED5F29A6AC04F5EFD47B8F293270DC4A8D2ADE822B29DE6C1EE52BDB8A47BF8F66")
+      },
+      {
+        text: "RFC 4503 Appendix A.2 - keystream with IV setup, IV 2, S[0]..S[2]",
+        uri: "https://datatracker.ietf.org/doc/html/rfc4503#appendix-A.2",
+        key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        iv: OpCodes.Hex8ToBytes("C373F575C1267E59"),
+        input: OpCodes.Hex8ToBytes("000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+        expected: OpCodes.Hex8ToBytes("1FCD4EB9580012E2E0DCCC9222017D6DA75F4E10D12125017B2499FFED936F2EEBC112C393E738392356BDD012029BA7")
+      },
+      {
+        text: "RFC 4503 Appendix A.2 - keystream with IV setup, IV 3, S[0]..S[2]",
+        uri: "https://datatracker.ietf.org/doc/html/rfc4503#appendix-A.2",
+        key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        iv: OpCodes.Hex8ToBytes("A6EB561AD2F41727"),
+        input: OpCodes.Hex8ToBytes("000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+        expected: OpCodes.Hex8ToBytes("445AD8C805858DBF70B6AF23A151104D96C8F27947F42C5BAEAE67C6ACC35B039FCBFC895FA71C17313DF034F01551CB")
       }
     ];
   }
@@ -154,9 +196,12 @@ class RabbitInstance extends IAlgorithmInstance {
   _initialize() {
     if (!this._key) return;
 
+    // RFC 4503 hands the key over as an octet string that OS2IP turns into a
+    // single 128-bit integer, so the subkey K0 = K[15..0] is built from the LAST
+    // two octets and K7 = K[127..112] from the first two.
     const K = new Array(8);
     for (let i = 0; i < 8; i++) {
-      K[i] = OpCodes.Or32(this._key[i*2], OpCodes.Shl32(this._key[i*2+1], 8));
+      K[i] = OpCodes.Or32(OpCodes.Shl32(this._key[14 - i * 2], 8), this._key[15 - i * 2]);
     }
 
     for (let j = 0; j < 8; j++) {
@@ -190,11 +235,10 @@ class RabbitInstance extends IAlgorithmInstance {
   }
 
   _ivSetup() {
-    const IV_0 = OpCodes.Pack32LE(this._iv[0], this._iv[1], this._iv[2], this._iv[3]);
-    const IV_1 = OpCodes.Pack32LE(this._iv[4], this._iv[5], this._iv[6], this._iv[7]);
-
-    const i0 = OpCodes.Or32(OpCodes.And32(OpCodes.RotL32(IV_0, 8), 0x00ff00ff), OpCodes.And32(OpCodes.RotL32(IV_0, 24), 0xff00ff00));
-    const i2 = OpCodes.Or32(OpCodes.And32(OpCodes.RotL32(IV_1, 8), 0x00ff00ff), OpCodes.And32(OpCodes.RotL32(IV_1, 24), 0xff00ff00));
+    // The IV is likewise an OS2IP integer, so IV[31..0] is the LAST four octets
+    // and IV[63..32] the first four.
+    const i0 = OpCodes.Pack32BE(this._iv[4], this._iv[5], this._iv[6], this._iv[7]);
+    const i2 = OpCodes.Pack32BE(this._iv[0], this._iv[1], this._iv[2], this._iv[3]);
     const i1 = OpCodes.Or32(OpCodes.Shr32(i0, 16), OpCodes.And32(i2, 0xffff0000));
     const i3 = OpCodes.Or32(OpCodes.Shl32(i2, 16), OpCodes.And32(i0, 0x0000ffff));
 

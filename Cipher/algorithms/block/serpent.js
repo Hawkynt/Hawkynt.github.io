@@ -102,28 +102,50 @@
         new AlgorithmFramework.Vulnerability("Performance vs AES", "Slower than AES, which contributed to AES selection by NIST", "AES preferred for performance-critical applications, Serpent acceptable for high-security needs", "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/archived-crypto-projects/aes-development")
       ];
 
-      // Test vectors generated from our correct Serpent implementation
+      // Published known-answer tests: libgcrypt's serpent_test() self-test data
+      // plus Botan's serpent.vec variable-key vectors.
       this.tests = [
         {
-          text: "Serpent 128-bit key test vector",
+          text: "libgcrypt serpent_test - Serpent-128",
           uri: "https://github.com/gpg/libgcrypt/blob/master/cipher/serpent.c",
           input: OpCodes.Hex8ToBytes("d29d576fcea3a3a7ed9099f29273d78e"),
           key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-          expected: OpCodes.Hex8ToBytes("32373926a59dc9e336d967c8c5dca5f8")
+          expected: OpCodes.Hex8ToBytes("b2288b968ae8b08648d1ce9606fd992d")
         },
         {
-          text: "Serpent 192-bit key test vector", 
+          text: "libgcrypt serpent_test - Serpent-192",
           uri: "https://github.com/gpg/libgcrypt/blob/master/cipher/serpent.c",
-          input: OpCodes.Hex8ToBytes("d29d576fcaaba3a7ed9899f2927bd78e"),
+          input: OpCodes.Hex8ToBytes("d29d576fceaba3a7ed9899f2927bd78e"),
           key: OpCodes.Hex8ToBytes("000000000000000000000000000000000000000000000000"),
-          expected: OpCodes.Hex8ToBytes("1c60169960cf58fe4f5254fccd9c5dfc")
+          expected: OpCodes.Hex8ToBytes("130e353e1037c22405e8faefb2c3c3e9")
         },
         {
-          text: "Serpent 256-bit key test vector", 
+          text: "libgcrypt serpent_test - Serpent-256",
           uri: "https://github.com/gpg/libgcrypt/blob/master/cipher/serpent.c",
           input: OpCodes.Hex8ToBytes("d095576fcea3e3a7ed98d9f29073d78e"),
           key: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
-          expected: OpCodes.Hex8ToBytes("cf9251721437e3c73c33053c2217aaa9")
+          expected: OpCodes.Hex8ToBytes("b90ee5862de69168f2bdd5125b45472b")
+        },
+        {
+          text: "libgcrypt serpent_test - Serpent-256, counting plaintext",
+          uri: "https://github.com/gpg/libgcrypt/blob/master/cipher/serpent.c",
+          input: OpCodes.Hex8ToBytes("00000000010000000200000003000000"),
+          key: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("2061a42782bd52ec691ec383b03ba77c")
+        },
+        {
+          text: "Botan serpent.vec - variable key, single bit 0x80 in last byte",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/block/serpent.vec",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000080"),
+          expected: OpCodes.Hex8ToBytes("ddd26b98a5ffd82c05345a9dadbfaf49")
+        },
+        {
+          text: "Botan serpent.vec - variable key, single bit 0x01 in last byte",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/block/serpent.vec",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000001"),
+          expected: OpCodes.Hex8ToBytes("f668c7091f81b2827da77dd419b708e1")
         }
       ];
     }
@@ -535,8 +557,10 @@
       const roundKeys = [];
       
       for (let round = 0; round < 33; round++) {
-        const r = round;
-        
+        // Each round consumes four consecutive prekey words w[4*round .. 4*round+3];
+        // the eight-word window is addressed modulo 8.
+        const r = round * 4;
+
         // EXPAND_KEY4 macro implementation
         const wo = [0, 0, 0, 0];
         

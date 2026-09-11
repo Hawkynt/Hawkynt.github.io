@@ -87,31 +87,58 @@
         new Vulnerability("Side Channel Analysis", "Implementation must protect against timing attacks and other side-channel vulnerabilities during Feistel round computations.")
       ];
 
-      // Round-trip test vectors based on NIST SP 800-38G
+      // NIST FF1 sample values (FF1samples.pdf, published alongside SP 800-38G
+      // on the NIST "Example Values" page). Numeral strings are given as ASCII.
       this.tests = [
         {
-          text: "FFX round-trip test #1 - 10-digit number",
-          uri: "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-38G.pdf",
+          text: "NIST FF1 sample 1 - AES-128, radix 10, empty tweak",
+          uri: "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/example-values",
+          cipher: "AES",
           input: OpCodes.AnsiToBytes("0123456789"),
           key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
-          tweak: OpCodes.Hex8ToBytes(""),
-          radix: 10
+          tweak: [],
+          radix: 10,
+          expected: OpCodes.AnsiToBytes("2433477484")
         },
         {
-          text: "FFX round-trip test #2 - hex string",
-          uri: "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-38G.pdf",
-          input: OpCodes.AnsiToBytes("0123456789abcdef"),
+          text: "NIST FF1 sample 2 - AES-128, radix 10, 10-byte tweak",
+          uri: "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/example-values",
+          cipher: "AES",
+          input: OpCodes.AnsiToBytes("0123456789"),
           key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
           tweak: OpCodes.Hex8ToBytes("39383736353433323130"),
-          radix: 16
+          radix: 10,
+          expected: OpCodes.AnsiToBytes("6124200773")
         },
         {
-          text: "FFX round-trip test #3 - 19-digit number",
-          uri: "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-38G.pdf",
-          input: OpCodes.AnsiToBytes("0123456789123456789"),
+          text: "NIST FF1 sample 3 - AES-128, radix 36, 11-byte tweak",
+          uri: "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/example-values",
+          cipher: "AES",
+          input: OpCodes.AnsiToBytes("0123456789abcdefghi"),
           key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
           tweak: OpCodes.Hex8ToBytes("3737373770717273373737"),
-          radix: 10
+          radix: 36,
+          expected: OpCodes.AnsiToBytes("a9tv40mll9kdu509eum")
+        },
+        {
+          text: "NIST FF1 sample 5 - AES-192, radix 10, 10-byte tweak",
+          uri: "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/example-values",
+          cipher: "AES",
+          input: OpCodes.AnsiToBytes("0123456789"),
+          key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3cef4359d8d580aa4f"),
+          tweak: OpCodes.Hex8ToBytes("39383736353433323130"),
+          radix: 10,
+          expected: OpCodes.AnsiToBytes("2496655549")
+        },
+        {
+          text: "NIST FF1 sample 9 - AES-256, radix 36, 11-byte tweak",
+          uri: "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/example-values",
+          cipher: "AES",
+          input: OpCodes.AnsiToBytes("0123456789abcdefghi"),
+          key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3cef4359d8d580aa4f7f036d6f04fc6a94"),
+          tweak: OpCodes.Hex8ToBytes("3737373770717273373737"),
+          radix: 36,
+          expected: OpCodes.AnsiToBytes("xs8a0azh2avyalyzuwd")
         }
       ];
     }
@@ -234,40 +261,8 @@
         throw new Error("Input must contain at least 2 symbols for FFX");
       }
 
-      // FFX Feistel network (simplified educational implementation).
-      // The split follows NIST SP 800-38G FF1: u = floor(n/2), v = n - u, so for
-      // an odd-length message the two halves differ in length and swap roles each
-      // round. The round function output must therefore be sized to the half it
-      // is combined with, not to the half it was derived from. Sizing it to its
-      // own input made _modAdd truncate to the shorter array, silently dropping a
-      // symbol per round on every odd-length message.
-      const u = Math.floor(n / 2);
-      let left = symbols.slice(0, u);
-      let right = symbols.slice(u);
-
-      if (this.isInverse) {
-        // FFX Decryption: reverse Feistel rounds.
-        // Forward round i maps (A,B) to (B, A + F(B,i)), so given the pair after
-        // the round the previous B is the current A and the previous A is the
-        // current B minus F(A,i).
-        for (let round = this.rounds - 1; round >= 0; round--) {
-          const f = this._feistelFunction(left, round, right.length);
-          const newRight = this._modSubtract(right, f, this.radix);
-          right = left;
-          left = newRight;
-        }
-      } else {
-        // FFX Encryption: forward Feistel rounds
-        for (let round = 0; round < this.rounds; round++) {
-          const f = this._feistelFunction(right, round, left.length);
-          const newRight = this._modAdd(left, f, this.radix);
-          left = right;
-          right = newRight;
-        }
-      }
-
-      // Combine halves and convert back to bytes
-      const result = left.concat(right);
+      // FFX[radix] as standardised in NIST SP 800-38G under the name FF1.
+      const result = this._ff1(symbols);
       const output = this._symbolsToBytes(result);
 
       // Clear sensitive data
@@ -275,6 +270,159 @@
       this.inputBuffer = [];
 
       return output;
+    }
+
+    /**
+     * Numeral string to integer, most significant numeral first
+     * @private
+     */
+    _numRadix(numerals) {
+      const radix = BigInt(this.radix);
+      let value = 0n;
+      for (let i = 0; i < numerals.length; i++) value = value * radix + BigInt(numerals[i]);
+      return value;
+    }
+
+    /**
+     * Integer to a numeral string of the given length
+     * @private
+     */
+    _strRadix(value, length) {
+      const radix = BigInt(this.radix);
+      const numerals = new Array(length).fill(0);
+      let remaining = value;
+      for (let i = length - 1; i >= 0; i--) {
+        numerals[i] = Number(remaining % radix);
+        remaining = remaining / radix;
+      }
+      return numerals;
+    }
+
+    /**
+     * Big-endian byte string to integer
+     * @private
+     */
+    _bytesToInt(bytes) {
+      let value = 0n;
+      for (let i = 0; i < bytes.length; i++) value = value * 256n + BigInt(bytes[i]);
+      return value;
+    }
+
+    /**
+     * Integer to a big-endian byte string of the given length
+     * @private
+     */
+    _intToBytes(value, length) {
+      const bytes = new Array(length).fill(0);
+      let remaining = value;
+      for (let i = length - 1; i >= 0; i--) {
+        bytes[i] = Number(remaining % 256n);
+        remaining = remaining / 256n;
+      }
+      return bytes;
+    }
+
+    /**
+     * Apply the underlying block cipher to one block
+     * @private
+     */
+    _ciph(block) {
+      const cipher = this.blockCipher.algorithm.CreateInstance(false);
+      cipher.key = this.key;
+      cipher.Feed(block);
+      return cipher.Result();
+    }
+
+    /**
+     * PRF from SP 800-38G: CBC-MAC over a block-aligned string with a zero IV
+     * @private
+     */
+    _prf(data) {
+      let y = new Array(16).fill(0);
+      for (let i = 0; i < data.length; i += 16) {
+        y = this._ciph(OpCodes.XorArrays(y, data.slice(i, i + 16)));
+      }
+      return y;
+    }
+
+    /**
+     * FF1 encryption and decryption (NIST SP 800-38G algorithms 7 and 8)
+     * @private
+     */
+    _ff1(symbols) {
+      const n = symbols.length;
+      const t = this.tweak.length;
+      const u = Math.floor(n / 2);
+      const v = n - u;
+
+      // b = ceil(ceil(v * log2(radix)) / 8), d = 4*ceil(b/4) + 4
+      const b = Math.ceil(Math.ceil(v * Math.log2(this.radix)) / 8);
+      const d = 4 * Math.ceil(b / 4) + 4;
+
+      const nBytes = OpCodes.Unpack32BE(n);
+      const tBytes = OpCodes.Unpack32BE(t);
+      const p = [
+        1, 2, 1,
+        OpCodes.AndN(OpCodes.Shr32(this.radix, 16), 0xFF),
+        OpCodes.AndN(OpCodes.Shr32(this.radix, 8), 0xFF),
+        OpCodes.AndN(this.radix, 0xFF),
+        10,
+        u % 256,
+        nBytes[0], nBytes[1], nBytes[2], nBytes[3],
+        tBytes[0], tBytes[1], tBytes[2], tBytes[3]
+      ];
+
+      // Number of zero bytes that pad the tweak so that Q is block aligned
+      const padLength = ((-t - b - 1) % 16 + 16) % 16;
+
+      let a = symbols.slice(0, u);
+      let bHalf = symbols.slice(u);
+
+      const rounds = this.isInverse ? [9, 8, 7, 6, 5, 4, 3, 2, 1, 0] : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+      for (const round of rounds) {
+        // Q = T || 0^pad || [round] || NUM_radix(other half) as b bytes
+        const source = this.isInverse ? a : bHalf;
+        const q = [];
+        for (let i = 0; i < this.tweak.length; i++) q.push(this.tweak[i]);
+        for (let i = 0; i < padLength; i++) q.push(0);
+        q.push(round);
+        const sourceBytes = this._intToBytes(this._numRadix(source), b);
+        for (let i = 0; i < sourceBytes.length; i++) q.push(sourceBytes[i]);
+
+        const prfInput = [];
+        for (let i = 0; i < p.length; i++) prfInput.push(p[i]);
+        for (let i = 0; i < q.length; i++) prfInput.push(q[i]);
+        const r = this._prf(prfInput);
+
+        // S = R || CIPH_K(R xor [1]^16) || CIPH_K(R xor [2]^16) || ... truncated to d
+        const s = [];
+        for (let i = 0; i < r.length; i++) s.push(r[i]);
+        for (let j = 1; s.length < d; j++) {
+          const counter = this._intToBytes(BigInt(j), 16);
+          const block = this._ciph(OpCodes.XorArrays(r, counter));
+          for (let i = 0; i < block.length; i++) s.push(block[i]);
+        }
+        const y = this._bytesToInt(s.slice(0, d));
+
+        const m = (round % 2 === 0) ? u : v;
+        const modulus = BigInt(this.radix) ** BigInt(m);
+
+        if (this.isInverse) {
+          // c = (NUM_radix(B) - y) mod radix^m; then B <- A and A <- STR(c)
+          let c = (this._numRadix(bHalf) - y) % modulus;
+          if (c < 0n) c += modulus;
+          bHalf = a;
+          a = this._strRadix(c, m);
+        } else {
+          // c = (NUM_radix(A) + y) mod radix^m; then A <- B and B <- STR(c)
+          const c = (this._numRadix(a) + y) % modulus;
+          a = bHalf;
+          bHalf = this._strRadix(c, m);
+        }
+      }
+
+      return a.concat(bHalf);
     }
 
     /**
@@ -347,77 +495,6 @@
       return symbol < 10 ? 0x30 + symbol : 0x61 + (symbol - 10);
     }
 
-    /**
-     * FFX Feistel function (simplified educational version)
-     * @param {Array} input - Right half input
-     * @param {number} round - Current round number
-     * @returns {Array} Function output
-     */
-    _feistelFunction(input, round, outputLength) {
-      // Construct PRF input: tweak || round || input
-      const prfInput = [];
-      for (let i = 0; i < this.tweak.length; i++) prfInput.push(this.tweak[i]);
-      prfInput.push(OpCodes.AndN(round, 0xFF));
-      for (let i = 0; i < input.length; i++) prfInput.push(OpCodes.AndN(input[i], 0xFF));
-
-      // Pad to block size
-      const blockSize = this.blockCipher.BlockSize;
-      while (prfInput.length % blockSize !== 0) {
-        prfInput.push(0);
-      }
-
-      // Apply block cipher
-      const cipher = this.blockCipher.algorithm.CreateInstance(false);
-      cipher.key = this.key;
-      cipher.Feed(prfInput);
-      const prf = cipher.Result();
-
-      // Size the output to the half it will be combined with, which is not
-      // necessarily the half it was derived from.
-      const length = outputLength === undefined ? input.length : outputLength;
-      const output = new Array(length);
-      for (let i = 0; i < length; i++) {
-        output[i] = prf[i % prf.length] % this.radix;
-      }
-
-      return output;
-    }
-
-    /**
-     * Modular addition for symbol arrays
-     * @param {Array} a - First operand
-     * @param {Array} b - Second operand
-     * @param {number} radix - Modulus
-     * @returns {Array} Result array
-     */
-    _modAdd(a, b, radix) {
-      const minLength = Math.min(a.length, b.length);
-      const result = new Array(minLength);
-
-      for (let i = 0; i < minLength; i++) {
-        result[i] = (a[i] + b[i]) % radix;
-      }
-
-      return result;
-    }
-
-    /**
-     * Modular subtraction for symbol arrays
-     * @param {Array} a - First operand
-     * @param {Array} b - Second operand
-     * @param {number} radix - Modulus
-     * @returns {Array} Result array
-     */
-    _modSubtract(a, b, radix) {
-      const minLength = Math.min(a.length, b.length);
-      const result = new Array(minLength);
-
-      for (let i = 0; i < minLength; i++) {
-        result[i] = (a[i] - b[i] + radix) % radix;
-      }
-
-      return result;
-    }
   }
 
   // ===== REGISTRATION =====

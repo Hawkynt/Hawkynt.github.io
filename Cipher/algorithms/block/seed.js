@@ -331,10 +331,24 @@
         },
         {
           text: "RFC 4269 SEED Test Vector #3",
-          uri: "https://tools.ietf.org/rfc/rfc4269.txt",
+          uri: "https://www.rfc-editor.org/rfc/rfc4269.txt",
           input: OpCodes.Hex8ToBytes("83a2f8a288641fb9a4e9a5cc2f131c7d"),
           key: OpCodes.Hex8ToBytes("4706480851e61be85d74bfb3fd956185"),
           expected: OpCodes.Hex8ToBytes("ee54d13ebcae706d226bc3142cd40d4a")
+        },
+        {
+          text: "RFC 4269 SEED Test Vector #4",
+          uri: "https://www.rfc-editor.org/rfc/rfc4269.txt",
+          input: OpCodes.Hex8ToBytes("b41e6be2eba84a148e2eed84593c5ec7"),
+          key: OpCodes.Hex8ToBytes("28dbc3bc49ffd87dcfa509b11d422be7"),
+          expected: OpCodes.Hex8ToBytes("9b9b7bfcd1813cb95d0b3618f40f5122")
+        },
+        {
+          text: "RFC 4269 Test Vector #1 applied to two identical blocks",
+          uri: "https://www.rfc-editor.org/rfc/rfc4269.txt",
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("5ebac6e0054e166819aff1cc6d346cdb5ebac6e0054e166819aff1cc6d346cdb")
         }
       ];
     }

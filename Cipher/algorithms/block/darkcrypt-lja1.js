@@ -16,8 +16,22 @@
  * Because the per-byte update is a pure XOR, decryption uses the same primitive
  * run in reverse order (cycle 15..0, byte 15..0), recomputing A from the current
  * state — the accumulator never reads the byte it is about to change.
- * Test vectors verified against the DarkCrypt implementation, including
- * encrypt/decrypt round-trip. Educational only.
+ * UNVERIFIED, and degenerate for a large class of keys. Because S is the key
+ * verbatim, any key whose 256 bytes are all EQUAL makes S a constant map; the
+ * accumulator then collapses to that constant and the per-byte counter
+ * contributions XOR-cancel across the 16 cycles, so the block is returned
+ * unchanged. Measured: the cipher is the IDENTITY FUNCTION for all 256
+ * constant-byte keys, including the all-zero key that vector 1 uses. With a
+ * key that is a permutation of 0..255 it does encrypt normally.
+ * Whether the real Lja1 loads S verbatim (in which case those 256 keys are a
+ * genuine catastrophic weak-key class) or derives S through a key schedule that
+ * always yields a permutation (in which case this port is wrong) cannot be
+ * settled without the original specification, which was not found. The
+ * implementation is therefore left as-is and reported as unverified rather than
+ * rewritten on suspicion. What is certain is that vector 1 has no
+ * discriminating power: it passes for this cipher, for a correct one, and for
+ * the identity function alike.
+ * Educational only.
  */
 
 (function (root, factory) {
@@ -76,10 +90,14 @@
         new Vulnerability("Non-standard hobbyist design", "Unanalyzed proprietary construction with a purely XOR-based per-byte update; not recommended for real use.", "Use AES or another vetted cipher.")
       ];
 
-      // Test vectors verified against the DarkCrypt implementation.
+      // UNVERIFIED - taken from the DarkCrypt implementation itself, and the
+      // cited page is the plugin download page, which publishes no vectors.
+      // Vector 1 uses an all-zero key, which is one of the 256 constant-byte
+      // keys under which this cipher is the identity function (see the header),
+      // so it constrains nothing at all.
       this.tests = [
         {
-          text: "DarkCrypt Lja1 — zero key/plaintext",
+          text: "DarkCrypt Lja1 — zero key/plaintext (non-discriminating: identity under any constant-byte key)",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
           key: OpCodes.Hex8ToBytes("00".repeat(KEY_BYTES)),

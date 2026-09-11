@@ -59,13 +59,38 @@ class Shacal1 extends BlockCipherAlgorithm {
       new LinkItem("Crypto3 Implementation", "https://github.com/nilfoundation/crypto3/blob/master/libs/block/include/nil/crypto3/block/shacal1.hpp")
     ];
 
+    // SHACAL-1 is the SHA-1 compression function with the message block taken
+    // as the key and the feed-forward addition removed, so for any message M
+    // short enough to pad into one block,
+    //     SHACAL-1(key = pad(M), plaintext = H0) = SHA-1(M) - H0
+    // word-wise modulo 2^32, where H0 is the SHA-1 initial value. The three
+    // expected blocks below are that subtraction applied to the SHA-1 digests
+    // published in FIPS 180-1 / RFC 3174 Section 7.3, which makes them
+    // traceable to a published known answer rather than to this file. The
+    // first also coincides with the Crypto3 project's own SHACAL-1 vector.
+    const SHA1_IV = "67452301efcdab8998badcfe10325476c3d2e1f0";
+
     this.tests = [
       {
-        text: "SHA-1 IV with single-bit key (Crypto3 reference)",
-        uri: "https://github.com/nilfoundation/crypto3/blob/master/libs/block/test/shacal.cpp",
-        input: OpCodes.Hex8ToBytes("67452301efcdab8998badcfe10325476c3d2e1f0"),
+        text: "SHA-1 IV as plaintext, pad(\"\") as key - from the published SHA-1(\"\") digest",
+        uri: "https://datatracker.ietf.org/doc/html/rfc3174",
+        input: OpCodes.Hex8ToBytes(SHA1_IV),
         key: OpCodes.Hex8ToBytes("80000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
         expected: OpCodes.Hex8ToBytes("72f480ed6e9d9f84999ae2f1852dc41aec052519")
+      },
+      {
+        text: "SHA-1 IV as plaintext, pad(\"abc\") as key - from the published SHA-1(\"abc\") digest",
+        uri: "https://datatracker.ietf.org/doc/html/rfc3174#section-7.3",
+        input: OpCodes.Hex8ToBytes(SHA1_IV),
+        key: OpCodes.Hex8ToBytes("61626380000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000018"),
+        expected: OpCodes.Hex8ToBytes("42541b355738d5e121834873681e6df6d8fdf6ad")
+      },
+      {
+        text: "SHA-1 IV as plaintext, pad(\"message digest\") as key - from the published SHA-1 digest",
+        uri: "https://datatracker.ietf.org/doc/html/rfc3174#section-7.3",
+        input: OpCodes.Hex8ToBytes(SHA1_IV),
+        key: OpCodes.Hex8ToBytes("6d657373616765206469676573748000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000070"),
+        expected: OpCodes.Hex8ToBytes("59dd2fcdeabe3d10b4a4c32bfa14cea65943c8f3")
       }
     ];
   }
@@ -114,10 +139,12 @@ class Shacal1Instance extends IBlockCipherInstance {
   _keySchedule() {
     // SHA-1 key schedule (message expansion)
     this.RK = new Uint32Array(80);
-    const keyWords = Math.floor(this._key.length / 4);
 
-    // Load key as 32-bit big-endian words
-    for (let i = 0; i < keyWords && i < 16; ++i) {
+    // A key shorter than 512 bits is padded with zero bits, so a key length
+    // that is not a whole number of words still contributes its trailing
+    // bytes. Rounding the word count down instead would silently discard the
+    // last 1-3 bytes of, for example, a 17-byte key.
+    for (let i = 0; i < 16; ++i) {
       this.RK[i] = OpCodes.Pack32BE(
         this._key[i * 4] || 0,
         this._key[i * 4 + 1] || 0,

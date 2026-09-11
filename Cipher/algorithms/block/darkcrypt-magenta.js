@@ -140,6 +140,13 @@
       // Test vectors verified against the DarkCrypt implementation.
       this.tests = [
         {
+          text: "NIST AES round-1 MAGENTA KAT ecb_vk.txt, KEYSIZE=256, I=1",
+          uri: "https://web.archive.org/web/20070109105056if_/http://csrc.nist.gov/CryptoToolkit/aes/round1/testvals/magenta-vals.zip",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("8000000000000000000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("9a199e39c2df1f1c17cea243f8e5147e")
+        },
+        {
           text: "DarkCrypt Magenta — zero key/plaintext",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),

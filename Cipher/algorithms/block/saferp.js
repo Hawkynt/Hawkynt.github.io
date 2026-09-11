@@ -1,11 +1,10 @@
 /*
  * SAFER+ (SAFER Plus) Block Cipher
- * Professional implementation matching LibTomCrypt reference
  * (c)2006-2025 Hawkynt
  *
  * Enhanced SAFER with 128-bit blocks and PHT transform
  * 16-byte block, 16/24/32-byte keys, 8/12/16 rounds
- * Reference: LibTomCrypt saferp.c
+ * Byte order follows the Cylink AES submission known-answer tests.
  */
 
 (function (root, factory) {
@@ -141,52 +140,51 @@
       ];
 
       this.references = [
-        new LinkItem("LibTomCrypt SAFER+", "https://github.com/libtom/libtomcrypt/blob/develop/src/ciphers/safer/saferp.c")
+        new LinkItem("NIST AES round 1 SAFER+ known-answer tests (Cylink)", "https://web.archive.org/web/20070109105229if_/http://csrc.nist.gov/CryptoToolkit/aes/round1/testvals/saferpls-vals.zip")
       ];
 
       this.tests = [
         {
-          text: "DarkCrypt SAFER+ vector 1/zero",
-          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          text: "NIST AES round 1 SAFER+ ecb_int.txt - 128-bit key",
+          uri: "https://web.archive.org/web/20070109105229if_/http://csrc.nist.gov/CryptoToolkit/aes/round1/testvals/saferpls-vals.zip",
+          key: OpCodes.Hex8ToBytes("78ae8da840f61247136ec75a68a71cae"),
+          input: OpCodes.Hex8ToBytes("45d77c9a652c7eaaaf3b87bcfd794825"),
+          expected: OpCodes.Hex8ToBytes("388e5d6b3c64c75299b494cb9f933299")
+        },
+        {
+          text: "NIST AES round 1 SAFER+ ecb_int.txt - 192-bit key",
+          uri: "https://web.archive.org/web/20070109105229if_/http://csrc.nist.gov/CryptoToolkit/aes/round1/testvals/saferpls-vals.zip",
+          key: OpCodes.Hex8ToBytes("89786756453423bc78ae8da840f61247136ec75a68a71cae"),
+          input: OpCodes.Hex8ToBytes("45d77c9a652c7eaaaf3b87bcfd794825"),
+          expected: OpCodes.Hex8ToBytes("5344adcc26adaf7c1e90aa9d90eae140")
+        },
+        {
+          text: "NIST AES round 1 SAFER+ ecb_int.txt - 256-bit key",
+          uri: "https://web.archive.org/web/20070109105229if_/http://csrc.nist.gov/CryptoToolkit/aes/round1/testvals/saferpls-vals.zip",
+          key: OpCodes.Hex8ToBytes("2312efdecdbcab9089786756453423bc78ae8da840f61247136ec75a68a71cae"),
+          input: OpCodes.Hex8ToBytes("45d77c9a652c7eaaaf3b87bcfd794825"),
+          expected: OpCodes.Hex8ToBytes("9375a16f58a4c0a702f65b37e03aa46e")
+        },
+        {
+          text: "NIST AES round 1 SAFER+ ecb_vk.txt I=1 - 128-bit key",
+          uri: "https://web.archive.org/web/20070109105229if_/http://csrc.nist.gov/CryptoToolkit/aes/round1/testvals/saferpls-vals.zip",
+          key: OpCodes.Hex8ToBytes("80000000000000000000000000000000"),
           input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("aa9d022ed60e43a3f359265217775b5b")
+        },
+        {
+          text: "NIST AES round 1 SAFER+ ecb_vk.txt I=1 - 192-bit key",
+          uri: "https://web.archive.org/web/20070109105229if_/http://csrc.nist.gov/CryptoToolkit/aes/round1/testvals/saferpls-vals.zip",
+          key: OpCodes.Hex8ToBytes("800000000000000000000000000000000000000000000000"),
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("c5e13fff9751c82f5bbea00cb7e2929a")
+        },
+        {
+          text: "NIST AES round 1 SAFER+ ecb_vt.txt I=1 - 256-bit key",
+          uri: "https://web.archive.org/web/20070109105229if_/http://csrc.nist.gov/CryptoToolkit/aes/round1/testvals/saferpls-vals.zip",
           key: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
-          expected: OpCodes.Hex8ToBytes("c2260176260a0cde10dee1b5b4bbd475")
-        },
-        {
-          text: "DarkCrypt SAFER+ vector 2/incr",
-          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
-          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
-          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
-          expected: OpCodes.Hex8ToBytes("7fbc212996ece9ca2c4d5bd88fa0b3d9")
-        },
-        {
-          text: "DarkCrypt SAFER+ vector 3/incr2",
-          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
-          input: OpCodes.Hex8ToBytes("101112131415161718191a1b1c1d1e1f"),
-          key: OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"),
-          expected: OpCodes.Hex8ToBytes("14be170dc95dad900927e2a2208000cb")
-        },
-
-        {
-          text: "SAFER+: 128-bit key (LibTomCrypt)",
-          uri: "https://github.com/libtom/libtomcrypt/blob/develop/src/ciphers/safer/saferp.c",
-          key: OpCodes.Hex8ToBytes("2923be84e16cd6ae529049f1f1bbe9eb"),
-          input: OpCodes.Hex8ToBytes("b3a6db3c870c3e99245e0d1c06b747de"),
-          expected: OpCodes.Hex8ToBytes("e01fb60a0cff54467f0d59f90939a5dc")
-        },
-        {
-          text: "SAFER+: 192-bit key (LibTomCrypt)",
-          uri: "https://github.com/libtom/libtomcrypt/blob/develop/src/ciphers/safer/saferp.c",
-          key: OpCodes.Hex8ToBytes("48d38f75e6d91d2ae5c0f72b788187440e5f5000d4618dbe"),
-          input: OpCodes.Hex8ToBytes("7b0515073b33821f187092da6454ceb1"),
-          expected: OpCodes.Hex8ToBytes("5c88043f395f640096828210c16fdb85")
-        },
-        {
-          text: "SAFER+: 256-bit key (LibTomCrypt)",
-          uri: "https://github.com/libtom/libtomcrypt/blob/develop/src/ciphers/safer/saferp.c",
-          key: OpCodes.Hex8ToBytes("f3a88dfebef2eb71ffa0d03b75068c7e8778734dd0be82bedbc246412b8cfa30"),
-          input: OpCodes.Hex8ToBytes("7f70f0a754863295aa5b68130be6fcf5"),
-          expected: OpCodes.Hex8ToBytes("580b1924ace5cad5aa416999dc68998a")
+          input: OpCodes.Hex8ToBytes("80000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("c183c03087415dfcda4d425a06ee8523")
         }
       ];
     }
@@ -270,9 +268,11 @@
       const t = new Uint8Array(33);
       let y = 0;
 
-      // Copy key and compute XOR checksum
+      // The round/PHT/shuffle layout below indexes the state in the opposite
+      // direction to the SAFER+ specification, so key, plaintext and ciphertext
+      // are all traversed back-to-front to yield specification byte order.
       for (let x = 0; x < keylen; ++x) {
-        t[x] = this._key[x];
+        t[x] = this._key[keylen - 1 - x];
         y = OpCodes.Xor32(y, this._key[x]);
       }
       t[keylen] = y;
@@ -445,7 +445,7 @@
         const temp = new Uint8Array(16);
 
         for (let i = 0; i < 16; ++i) {
-          block[i] = this.inputBuffer[offset + i];
+          block[i] = this.inputBuffer[offset + 15 - i];
         }
 
         if (this.isInverse) {
@@ -490,7 +490,7 @@
           this._ilt(block, temp); this._iround(temp, 2);
           this._ilt(temp, block); this._iround(block, 0);
 
-          for (let _i = 0; _i < block.length; _i++) output.push(block[_i]);
+          for (let _i = block.length - 1; _i >= 0; _i--) output.push(block[_i]);
         } else {
           // Encrypt
           this._round(block, 0); this._lt(block, temp);
@@ -534,7 +534,7 @@
           block[14] = (block[14] + finalKey[14])&255;
           block[15] = OpCodes.Xor32(block[15], finalKey[15]);
 
-          for (let _i = 0; _i < block.length; _i++) output.push(block[_i]);
+          for (let _i = block.length - 1; _i >= 0; _i--) output.push(block[_i]);
         }
       }
 

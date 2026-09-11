@@ -1,5 +1,7 @@
 /*
- * xxHash32 Hash Function - Universal AlgorithmFramework Implementation
+ * xxHash32 (XXH32) - Universal AlgorithmFramework Implementation
+ * Implemented from the official specification:
+ *   https://github.com/Cyan4973/xxHash/blob/dev/doc/xxhash_spec.md
  * (c)2006-2025 Hawkynt
  */
 
@@ -30,7 +32,7 @@
   if (!AlgorithmFramework) {
     throw new Error('AlgorithmFramework dependency is required');
   }
-  
+
   if (!OpCodes) {
     throw new Error('OpCodes dependency is required');
   }
@@ -47,286 +49,375 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
-  /**
- * XXHash32Algorithm - Cryptographic hash function
- * @class
- * @extends {HashFunctionAlgorithm}
- */
+  // Specification section "XXH32 algorithm description", step 1.
+  const PRIME32_1 = 0x9E3779B1;
+  const PRIME32_2 = 0x85EBCA77;
+  const PRIME32_3 = 0xC2B2AE3D;
+  const PRIME32_4 = 0x27D4EB2F;
+  const PRIME32_5 = 0x165667B1;
 
+  // XXH32 consumes the input in 16-byte stripes.
+  const STRIPE = 16;
+  const DIGEST_BYTES = 4;
+
+  /**
+   * XXH32AlgorithmInstance and XXH32Algorithm - non-cryptographic 32-bit hash
+   * @class
+   * @extends {HashFunctionAlgorithm}
+   */
   class XXHash32Algorithm extends HashFunctionAlgorithm {
     constructor() {
       super();
 
       // Required metadata
       this.name = "xxHash32";
-      this.description = "xxHash is an extremely fast non-cryptographic hash algorithm designed by Yann Collet. xxHash32 produces 32-bit hashes and is optimized for speed on 32-bit platforms.";
+      this.description = "xxHash is an extremely fast non-cryptographic hash algorithm designed by Yann Collet. XXH32 produces a 32-bit hash and is optimized for speed on 32-bit platforms. It offers no collision or preimage resistance and must not be used where a cryptographic hash is required.";
       this.inventor = "Yann Collet";
       this.year = 2012;
       this.category = CategoryType.HASH;
       this.subCategory = "Fast Hash";
       this.securityStatus = SecurityStatus.EDUCATIONAL;
       this.complexity = ComplexityType.LOW;
-      this.country = CountryCode.MULTI;
+      this.country = CountryCode.FR;
 
       // Hash-specific metadata
-      this.SupportedOutputSizes = [4]; // 32 bits = 4 bytes
+      this.SupportedOutputSizes = [DIGEST_BYTES]; // 32 bits
 
       // Performance and technical specifications
-      this.blockSize = 16; // 128 bits = 16 bytes
-      this.outputSize = 4; // 32 bits = 4 bytes
+      this.blockSize = STRIPE; // 128 bits = 16 bytes
+      this.outputSize = DIGEST_BYTES;
 
       // Documentation and references
       this.documentation = [
-        new LinkItem("xxHash GitHub", "https://github.com/Cyan4973/xxHash"),
-        new LinkItem("xxHash Website", "https://cyan4973.github.io/xxHash/")
+        new LinkItem("xxHash Specification", "https://github.com/Cyan4973/xxHash/blob/dev/doc/xxhash_spec.md"),
+        new LinkItem("xxHash Website", "https://xxhash.com/")
       ];
 
       this.references = [
-        new LinkItem("SMHasher Results", "https://github.com/rurban/smhasher")
+        new LinkItem("xxHash Reference Implementation", "https://github.com/Cyan4973/xxHash"),
+        new LinkItem("Official Sanity Check Vectors", "https://github.com/Cyan4973/xxHash/blob/dev/cli/xsum_sanity_check.c"),
+        new LinkItem("SMHasher Quality Results", "https://github.com/rurban/smhasher")
       ];
 
-      // Test vectors (verified with official xxHash32 specification)
+      this.knownVulnerabilities = [
+        new Vulnerability(
+          "Not Cryptographically Secure",
+          "xxHash is a checksum, not a cryptographic hash: collisions are easy to construct and it is not preimage resistant.",
+          "Use only for hash tables, checksums and corruption detection. Use SHA-2, SHA-3 or BLAKE2 where security is required."
+        )
+      ];
+
+      // The result is presented most significant byte first, which the
+      // specification calls the canonical representation.
       this.tests = [
         {
-          text: "xxHash32 Empty String",
-          uri: "https://github.com/Cyan4973/xxHash",
+          text: "Official sanity check, length 0, seed 0",
+          uri: "https://github.com/Cyan4973/xxHash/blob/dev/cli/xsum_sanity_check.c",
           input: [],
-          expected: OpCodes.Hex8ToBytes("145B14DB")
+          expected: OpCodes.Hex8ToBytes("02CC5D05")
+        },
+        // The next three inputs are the official sanity-check buffer, produced
+        // by XSUM_fillTestBuffer in the same file: byteGen starts at PRIME32,
+        // each byte is the top byte of byteGen and byteGen is then multiplied
+        // by PRIME64.
+        {
+          text: "Official sanity check, length 1, seed 0",
+          uri: "https://github.com/Cyan4973/xxHash/blob/dev/cli/xsum_sanity_check.c",
+          input: OpCodes.Hex8ToBytes("00"),
+          expected: OpCodes.Hex8ToBytes("CF65B03E")
         },
         {
-          text: "xxHash32 Test Vector 'a'",
-          uri: "https://github.com/Cyan4973/xxHash",
-          input: [97], // "a"
-          expected: OpCodes.Hex8ToBytes("97B4571D")
+          text: "Official sanity check, length 14, seed 0",
+          uri: "https://github.com/Cyan4973/xxHash/blob/dev/cli/xsum_sanity_check.c",
+          input: OpCodes.Hex8ToBytes("0052929BB732A3242D00AF950EEC"),
+          expected: OpCodes.Hex8ToBytes("1208E7E2")
+        },
+        {
+          text: "Official sanity check, length 222, seed 0",
+          uri: "https://github.com/Cyan4973/xxHash/blob/dev/cli/xsum_sanity_check.c",
+          input: OpCodes.Hex8ToBytes(
+            "0052929BB732A3242D00AF950EECB893E3DFEF93AAD6CD2A538B5C3F545A6FD5" +
+            "59C0FFFC8F85B9331DAB74F7B6059327B07084B3677C9F76480072ED7B9817E8" +
+            "DD485E0C0CCBD0653FADB28F11B06CE88DB0F186086159566C8E4E781363BDAB" +
+            "9D327309EA712FD97A9D55F0CA8AD0E95E1A36B36B0FCA51EF8BA2C462ED0096" +
+            "F33449EB0FD13B92A1A963DBAAED3DCFF10942CDF9B321A2EBF2C8F4E42F48D1" +
+            "4B10F4C2EFECF84AB53874C3A4A6620EBFFD633741E386981AEB4CBA56036687" +
+            "ED004559C18544B6C368F941A9EAF987E09F12D0D51454485D444051E338"),
+          expected: OpCodes.Hex8ToBytes("5BD11DBD")
+        },
+        {
+          text: ".NET runtime XxHash32 test: 'abc'",
+          uri: "https://github.com/dotnet/runtime/blob/main/src/libraries/System.IO.Hashing/tests/XxHash32Tests.cs",
+          input: OpCodes.AnsiToBytes("abc"),
+          expected: OpCodes.Hex8ToBytes("32D153FF")
+        },
+        {
+          text: ".NET runtime XxHash32 test: '123456' (6 bytes)",
+          uri: "https://github.com/dotnet/runtime/blob/main/src/libraries/System.IO.Hashing/tests/XxHash32Tests.cs",
+          input: OpCodes.AnsiToBytes("123456"),
+          expected: OpCodes.Hex8ToBytes("B7014066")
+        },
+        {
+          text: "pierrec/xxHash test: 'abcdefghijklmnop' (exactly one 16-byte stripe)",
+          uri: "https://github.com/pierrec/xxHash/blob/master/xxHash32/xxHash32_test.go",
+          input: OpCodes.AnsiToBytes("abcdefghijklmnop"),
+          expected: OpCodes.Hex8ToBytes("9D2D8B62")
+        },
+        {
+          text: ".NET runtime XxHash32 test: 'Hashing!' repeated 3 times (24 bytes)",
+          uri: "https://github.com/dotnet/runtime/blob/main/src/libraries/System.IO.Hashing/tests/XxHash32Tests.cs",
+          input: OpCodes.AnsiToBytes("Hashing!Hashing!Hashing!"),
+          expected: OpCodes.Hex8ToBytes("5DF7D6C0")
+        },
+        {
+          text: ".NET runtime XxHash32 test: 20 bytes",
+          uri: "https://github.com/dotnet/runtime/blob/main/src/libraries/System.IO.Hashing/tests/XxHash32Tests.cs",
+          input: OpCodes.AnsiToBytes("12345678901234567890"),
+          expected: OpCodes.Hex8ToBytes("2D0C3D1B")
+        },
+        {
+          text: ".NET runtime XxHash32 test: 21 bytes, tail not a whole number of lanes",
+          uri: "https://github.com/dotnet/runtime/blob/main/src/libraries/System.IO.Hashing/tests/XxHash32Tests.cs",
+          input: OpCodes.AnsiToBytes("123456789012345678901"),
+          expected: OpCodes.Hex8ToBytes("8ED1B04E")
+        },
+        {
+          text: ".NET runtime XxHash32 test: '.NET Hashes This' repeated 3 times (48 bytes, exact multiple of the stripe)",
+          uri: "https://github.com/dotnet/runtime/blob/main/src/libraries/System.IO.Hashing/tests/XxHash32Tests.cs",
+          input: OpCodes.AnsiToBytes(".NET Hashes This.NET Hashes This.NET Hashes This"),
+          expected: OpCodes.Hex8ToBytes("29DA7472")
+        },
+        {
+          text: ".NET runtime XxHash32 test: '.NET Hashes This!' repeated 3 times (51 bytes)",
+          uri: "https://github.com/dotnet/runtime/blob/main/src/libraries/System.IO.Hashing/tests/XxHash32Tests.cs",
+          input: OpCodes.AnsiToBytes(".NET Hashes This!.NET Hashes This!.NET Hashes This!"),
+          expected: OpCodes.Hex8ToBytes("1FE08A04")
+        },
+        {
+          text: ".NET runtime XxHash32 test: '.NET now has non-crypto hashing' repeated 3 times (93 bytes)",
+          uri: "https://github.com/dotnet/runtime/blob/main/src/libraries/System.IO.Hashing/tests/XxHash32Tests.cs",
+          input: OpCodes.AnsiToBytes(".NET now has non-crypto hashing.NET now has non-crypto hashing.NET now has non-crypto hashing"),
+          expected: OpCodes.Hex8ToBytes("65242024")
+        },
+        {
+          text: ".NET runtime XxHash32 test: 'Nobody inspects the spammish repetition'",
+          uri: "https://github.com/dotnet/runtime/blob/main/src/libraries/System.IO.Hashing/tests/XxHash32Tests.cs",
+          input: OpCodes.AnsiToBytes("Nobody inspects the spammish repetition"),
+          expected: OpCodes.Hex8ToBytes("E2293B2F")
+        },
+        {
+          text: ".NET runtime XxHash32 test: 'The quick brown fox jumps over the lazy dog'",
+          uri: "https://github.com/dotnet/runtime/blob/main/src/libraries/System.IO.Hashing/tests/XxHash32Tests.cs",
+          input: OpCodes.AnsiToBytes("The quick brown fox jumps over the lazy dog"),
+          expected: OpCodes.Hex8ToBytes("E85EA4DE")
+        },
+        {
+          text: "pierrec/xxHash test: 'abcdefghijklmnopqrstuvwxyz0123456789' (36 bytes)",
+          uri: "https://github.com/pierrec/xxHash/blob/master/xxHash32/xxHash32_test.go",
+          input: OpCodes.AnsiToBytes("abcdefghijklmnopqrstuvwxyz0123456789"),
+          expected: OpCodes.Hex8ToBytes("42AE804D")
         }
       ];
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new hash instance
+   * @param {boolean} [isInverse=false] - Unused, a hash has no inverse
+   * @returns {Object} New hash instance
    */
 
     CreateInstance(isInverse = false) {
+      if (isInverse) return null;
       return new XXHash32AlgorithmInstance(this, isInverse);
     }
   }
 
   /**
- * XXHash32Algorithm cipher instance implementing Feed/Result pattern
+ * XXH32 instance implementing the Feed/Result streaming pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IHashFunctionInstance}
  */
 
   class XXHash32AlgorithmInstance extends IHashFunctionInstance {
     /**
-   * Initialize Algorithm cipher instance
    * @param {Object} algorithm - Parent algorithm instance
-   * @param {boolean} [isInverse=false] - Decryption mode flag
+   * @param {boolean} [isInverse=false] - Unused
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
-      this.OutputSize = 4; // 32 bits = 4 bytes
-
-      // xxHash32 constants (official values from reference implementation)
-      this.PRIME32_1 = 0x9E3779B1;
-      this.PRIME32_2 = 0x85EBCA77;
-      this.PRIME32_3 = 0xC2B2AE3D;
-      this.PRIME32_4 = 0x27D4EB2F;
-      this.PRIME32_5 = 0x165667B1;
-
-      this.seed = 0;
+      this.OutputSize = DIGEST_BYTES;
+      this._seed = 0;
+      this.Init();
     }
 
+    /**
+     * Reset the streaming state. XXH32 keeps four accumulators, a 16-byte
+     * holdback for the partial stripe and the total length, which is what
+     * decides between the long and short finalization paths.
+     */
     Init() {
-      this.seed = 0;
+      const seed = OpCodes.ToDWord(this._seed);
+      this._acc1 = OpCodes.ToDWord(seed + PRIME32_1 + PRIME32_2);
+      this._acc2 = OpCodes.ToDWord(seed + PRIME32_2);
+      this._acc3 = OpCodes.ToDWord(seed);
+      this._acc4 = OpCodes.ToDWord(seed - PRIME32_1);
+      this._held = new Array(STRIPE).fill(0);
+      this._pending = 0;
+      this._length = 0;
       return true;
     }
 
-    // 32-bit left rotation
-    rotl32(value, amount) {
-      return OpCodes.RotL32(value, amount);
+    /**
+     * Set the 32-bit seed. Changing the seed restarts the message.
+     * @param {number|uint8[]} key - Seed as a number or 4 little-endian bytes
+     */
+    KeySetup(key) {
+      if (typeof key === 'number') {
+        this._seed = OpCodes.ToDWord(key);
+      } else if (Array.isArray(key) && key.length >= 4) {
+        this._seed = OpCodes.Pack32LE(key[0], key[1], key[2], key[3]);
+      } else {
+        this._seed = 0;
+      }
+      this.Init();
+      return true;
     }
 
-    // Read 32-bit little endian
-    readLE32(data, offset) {
-      offset = offset || 0;
-      if (offset + 4 > data.length) return 0;
+    /**
+     * Round function, specification step 2.
+     * The multiplications must wrap at 32 bits; a double-precision product of
+     * two 32-bit values loses low bits, so they go through Mul32.
+     */
+    _round(acc, lane) {
+      acc = OpCodes.ToDWord(acc + OpCodes.Mul32(lane, PRIME32_2));
+      acc = OpCodes.RotL32(acc, 13);
+      return OpCodes.Mul32(acc, PRIME32_1);
+    }
+
+    /** Read one little-endian 32-bit lane out of a byte array */
+    _lane(data, offset) {
       return OpCodes.Pack32LE(data[offset], data[offset + 1], data[offset + 2], data[offset + 3]);
     }
 
-    // xxHash32 round function
-    xxh32Round(acc, input) {
-      acc = OpCodes.ToDWord(acc + (input * this.PRIME32_2));
-      acc = this.rotl32(acc, 13);
-      acc = OpCodes.ToDWord(acc * this.PRIME32_1);
-      return OpCodes.ToDWord(acc);
+    /** Consume one full 16-byte stripe into the four accumulators */
+    _stripe(data, offset) {
+      this._acc1 = this._round(this._acc1, this._lane(data, offset));
+      this._acc2 = this._round(this._acc2, this._lane(data, offset + 4));
+      this._acc3 = this._round(this._acc3, this._lane(data, offset + 8));
+      this._acc4 = this._round(this._acc4, this._lane(data, offset + 12));
     }
 
-    // xxHash32 avalanche function
-    xxh32Avalanche(h32) {
-      h32 = OpCodes.XorN(h32, OpCodes.Shr32(h32, 15));
-      h32 = OpCodes.ToDWord(h32 * this.PRIME32_2);
-      h32 = OpCodes.XorN(h32, OpCodes.Shr32(h32, 13));
-      h32 = OpCodes.ToDWord(h32 * this.PRIME32_3);
-      h32 = OpCodes.XorN(h32, OpCodes.Shr32(h32, 16));
-      return OpCodes.ToDWord(h32);
-    }
+    /**
+     * Feed data. Successive calls extend the message, so Feed(a); Feed(b)
+     * hashes the same bytes as Feed(a || b).
+     * @param {uint8[]} data - Input bytes
+     */
+    Feed(data) {
+      if (!data || data.length === 0) return;
 
-    // xxHash32 main algorithm (official specification)
-    xxhash32(input, seed) {
-      seed = seed || this.seed;
-      const len = input.length;
-      let h32;
+      const total = data.length;
+      this._length += total;
       let offset = 0;
 
-      // Handle empty input exactly as official specification
-      if (len === 0) {
-        return this.xxh32Avalanche(OpCodes.ToDWord(seed + this.PRIME32_5));
+      // Top up the holdback first. Unlike a Merkle-Damgard absorber nothing is
+      // held back deliberately here: XXH32 consumes every complete stripe and
+      // the remainder is whatever the message length leaves over, so a full
+      // holdback is processed as soon as it is full.
+      if (this._pending > 0) {
+        const take = Math.min(STRIPE - this._pending, total);
+        for (let i = 0; i < take; i++)
+          this._held[this._pending + i] = OpCodes.ToByte(data[i]);
+        this._pending += take;
+        offset = take;
+
+        if (this._pending < STRIPE) return;
+
+        this._stripe(this._held, 0);
+        this._pending = 0;
       }
 
-      if (len >= 16) {
-        // Initialize accumulators with proper seed values
-        let v1 = OpCodes.ToDWord(seed + this.PRIME32_1 + this.PRIME32_2);
-        let v2 = OpCodes.ToDWord(seed + this.PRIME32_2);
-        let v3 = OpCodes.ToDWord(seed + 0);
-        let v4 = OpCodes.ToDWord(seed - this.PRIME32_1);
+      while (offset + STRIPE <= total) {
+        this._stripe(data, offset);
+        offset += STRIPE;
+      }
 
-        // Process 16-byte blocks
-        while (offset + 16 <= len) {
-          v1 = this.xxh32Round(v1, this.readLE32(input, offset));
-          v2 = this.xxh32Round(v2, this.readLE32(input, offset + 4));
-          v3 = this.xxh32Round(v3, this.readLE32(input, offset + 8));
-          v4 = this.xxh32Round(v4, this.readLE32(input, offset + 12));
-          offset += 16;
-        }
+      while (offset < total)
+        this._held[this._pending++] = OpCodes.ToByte(data[offset++]);
+    }
 
-        // Converge accumulators (official formula)
-        h32 = OpCodes.ToDWord(this.rotl32(v1, 1) + this.rotl32(v2, 7) + this.rotl32(v3, 12) + this.rotl32(v4, 18));
+    /**
+     * Finalize, specification steps 3 to 7.
+     * @returns {uint8[]} 4-byte digest, most significant byte first
+     */
+    Result() {
+      let hash;
+
+      // The accumulators are only merged when the message reached at least one
+      // stripe. A shorter message never touched them and starts from the seed.
+      if (this._length >= STRIPE) {
+        hash = OpCodes.ToDWord(
+          OpCodes.RotL32(this._acc1, 1) +
+          OpCodes.RotL32(this._acc2, 7) +
+          OpCodes.RotL32(this._acc3, 12) +
+          OpCodes.RotL32(this._acc4, 18)
+        );
       } else {
-        // Small input initialization
-        h32 = OpCodes.ToDWord(seed + this.PRIME32_5);
+        hash = OpCodes.ToDWord(this._seed + PRIME32_5);
       }
 
-      // Add length
-      h32 = OpCodes.ToDWord(h32 + len);
+      hash = OpCodes.ToDWord(hash + this._length);
 
-      // Process remaining 4-byte chunks
-      while (offset + 4 <= len) {
-        h32 = OpCodes.ToDWord(h32 + (this.readLE32(input, offset) * this.PRIME32_3));
-        h32 = OpCodes.ToDWord(this.rotl32(h32, 17) * this.PRIME32_4);
+      // Remaining whole lanes, then remaining bytes.
+      let offset = 0;
+      while (offset + 4 <= this._pending) {
+        hash = OpCodes.ToDWord(hash + OpCodes.Mul32(this._lane(this._held, offset), PRIME32_3));
+        hash = OpCodes.Mul32(OpCodes.RotL32(hash, 17), PRIME32_4);
         offset += 4;
       }
 
-      // Process remaining bytes (less than 4)
-      while (offset < len) {
-        h32 = OpCodes.ToDWord(h32 + (input[offset] * this.PRIME32_5));
-        h32 = OpCodes.ToDWord(this.rotl32(h32, 11) * this.PRIME32_1);
+      while (offset < this._pending) {
+        hash = OpCodes.ToDWord(hash + OpCodes.Mul32(this._held[offset], PRIME32_5));
+        hash = OpCodes.Mul32(OpCodes.RotL32(hash, 11), PRIME32_1);
         offset++;
       }
 
-      return this.xxh32Avalanche(h32);
+      hash = this._avalanche(hash);
+
+      this.Init();
+      return OpCodes.Unpack32BE(hash);
     }
 
-    /**
-     * Hash a complete message in one operation
-     * @param {Array} message - Message to hash as byte array
-     * @returns {Array} Hash digest as byte array
-     */
-    Hash(message) {
-      // Convert string to byte array if needed
-      if (typeof message === 'string') {
-        const bytes = [];
-        for (let i = 0; i < message.length; i++) {
-          bytes.push(OpCodes.AndN(message.charCodeAt(i), 0xFF));
-        }
-        message = bytes;
-      }
-
-      const hash32 = this.xxhash32(message, this.seed);
-      // xxHash32 outputs in little endian format
-      return OpCodes.Unpack32LE(hash32);
-    }
-
-    /**
-     * Required interface methods for IAlgorithmInstance compatibility
-     */
-    KeySetup(key) {
-      // Use key as seed if provided
-      if (typeof key === 'number') {
-        this.seed = key;
-      } else if (Array.isArray(key) && key.length >= 4) {
-        this.seed = OpCodes.Pack32LE(key[0], key[1], key[2], key[3]);
-      } else if (typeof key === 'string') {
-        // Hash string to create seed
-        this.seed = this.simpleHash(key);
-      } else {
-        this.seed = 0;
-      }
-      return true;
-    }
-
-    // Simple hash for seed generation
-    simpleHash(str) {
-      let hash = 0;
-      for (let i = 0; i < str.length; i++) {
-        hash = OpCodes.AndN(OpCodes.Shl32(hash, 5) - hash + str.charCodeAt(i), 0xFFFFFFFF);
-      }
+    /** Final mix, specification step 6 */
+    _avalanche(hash) {
+      hash = OpCodes.Xor32(hash, OpCodes.Shr32(hash, 15));
+      hash = OpCodes.Mul32(hash, PRIME32_2);
+      hash = OpCodes.Xor32(hash, OpCodes.Shr32(hash, 13));
+      hash = OpCodes.Mul32(hash, PRIME32_3);
+      hash = OpCodes.Xor32(hash, OpCodes.Shr32(hash, 16));
       return OpCodes.ToDWord(hash);
     }
 
-    EncryptBlock(blockIndex, plaintext) {
-      // Return hash of the plaintext
-      return this.Hash(plaintext);
-    }
-
-    DecryptBlock(blockIndex, ciphertext) {
-      // Hash functions are one-way
-      throw new Error('xxHash32 is a one-way hash function - decryption not possible');
+    /**
+     * Hash a complete message in one call.
+     * @param {uint8[]} message - Message bytes
+     * @returns {uint8[]} Digest bytes
+     */
+    Hash(message) {
+      this.Init();
+      this.Feed(message);
+      return this.Result();
     }
 
     ClearData() {
-      this.seed = 0;
-    }
-
-    /**
-     * Feed method required by test suite - processes input data
-     * @param {Array} data - Input data as byte array
-     */
-    Feed(data) {
-      // Feed is a streaming interface: successive calls extend the message
-      // rather than replace it, so Feed(a); Feed(b) hashes the same bytes as
-      // Feed(a || b). Update carries the same obligation.
-      this.Update(data);
-    }
-
-    /**
-     * Result method required by test suite - returns final hash
-     * @returns {Array} Hash digest as byte array
-     */
-    Result() {
-      return this.Hash(this._inputData || []);
-    }
-
-    Update(data) {
-      if (!data || data.length === 0) return;
-      if (!this._inputData) this._inputData = [];
-      for (let i = 0; i < data.length; i++) this._inputData.push(data[i]);
-    }
-
-    Final() {
-      return this.Hash(this._inputData || []);
+      this.Init();
     }
   }
 
-  // Register the algorithm
-
   // ===== REGISTRATION =====
 
-    const algorithmInstance = new XXHash32Algorithm();
+  const algorithmInstance = new XXHash32Algorithm();
   if (!AlgorithmFramework.Find(algorithmInstance.name)) {
     RegisterAlgorithm(algorithmInstance);
   }

@@ -289,19 +289,46 @@
         new Vulnerability("Cryptanalysis of the Self-Synchronizing Stream Cipher Moustique (Käsper, Rijmen, Bjørstad, Rechberger, Robshaw, Sekar)", '', '', "https://www.iacr.org/archive/asiacrypt2008/53500204/53500204.pdf")
       ];
 
-      // Test vector generated from the original implementation of Moustique
-      // (setup with key and starting value, then bit-serial self-synchronizing
-      // encryption). Zero plaintext is a fixed point of the construction: an
-      // all-zero starting value and an all-zero key/plaintext stream drive the
-      // keystream to zero forever, which is what this vector exercises.
+      // The first four vectors are quoted from testvalues.txt in the authors'
+      // own eSTREAM submission package (moustique.tar.gz). Because Moustique is
+      // self-synchronizing, a constant ciphertext stream drives the register to
+      // a constant state, so the keystream settles on a single key-dependent
+      // bit: for the all-zero key that bit is 1, which is why all-zero
+      // plaintext encrypts to all-ones-derived output here rather than to
+      // zeroes. A vector whose input and output are both all zero would
+      // therefore distinguish nothing and is deliberately not used.
       this.tests = [
         {
-          text: "DarkCrypt Moustique - 96-bit key, zero starting value, 128 zero bytes",
-          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
-          key: OpCodes.Hex8ToBytes("000102030405060708090a0b"),
+          text: "eSTREAM Moustique testvalues.txt - zero key, zero starting value, zero plaintext",
+          uri: "https://web.archive.org/web/20070326181649if_/http://www.ecrypt.eu.org:80/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/mosquito/moustique.tar.gz?view=tar",
+          key: OpCodes.Hex8ToBytes("000000000000000000000000"),
           iv: OpCodes.Hex8ToBytes("00000000000000000000000000"),
-          input: new Array(128).fill(0),
-          expected: new Array(128).fill(0)
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("ffc02501a57e0bf7840e8b8fe2edef46")
+        },
+        {
+          text: "eSTREAM Moustique testvalues.txt - zero key, zero starting value, all-ones plaintext",
+          uri: "https://web.archive.org/web/20070326181649if_/http://www.ecrypt.eu.org:80/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/mosquito/moustique.tar.gz?view=tar",
+          key: OpCodes.Hex8ToBytes("000000000000000000000000"),
+          iv: OpCodes.Hex8ToBytes("00000000000000000000000000"),
+          input: OpCodes.Hex8ToBytes("ffffffffffffffffffffffffffffffff"),
+          expected: OpCodes.Hex8ToBytes("00000000000000000000000000000000")
+        },
+        {
+          text: "eSTREAM Moustique testvalues.txt - zero key, zero starting value, counting plaintext",
+          uri: "https://web.archive.org/web/20070326181649if_/http://www.ecrypt.eu.org:80/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/mosquito/moustique.tar.gz?view=tar",
+          key: OpCodes.Hex8ToBytes("000000000000000000000000"),
+          iv: OpCodes.Hex8ToBytes("00000000000000000000000000"),
+          input: OpCodes.Hex8ToBytes("0123456789abcdef0123456789abcdef"),
+          expected: OpCodes.Hex8ToBytes("fee35ee5484164a0fee95934fd771361")
+        },
+        {
+          text: "eSTREAM Moustique testvalues.txt - zero key, zero starting value, descending plaintext",
+          uri: "https://web.archive.org/web/20070326181649if_/http://www.ecrypt.eu.org:80/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/mosquito/moustique.tar.gz?view=tar",
+          key: OpCodes.Hex8ToBytes("000000000000000000000000"),
+          iv: OpCodes.Hex8ToBytes("00000000000000000000000000"),
+          input: OpCodes.Hex8ToBytes("fedcba9876543210fedcba9876543210"),
+          expected: OpCodes.Hex8ToBytes("0123172a369bce1d035f3447ccb75001")
         },
         {
           text: "DarkCrypt Moustique - 96-bit key, zero starting value, incrementing 64-byte input",

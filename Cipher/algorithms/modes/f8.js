@@ -90,12 +90,15 @@
         new Vulnerability("No Authentication", "F8 provides confidentiality only, not integrity or authentication. Combine with authentication mechanisms in practice.")
       ];
 
-      // Round-trip test vectors based on LibTomCrypt
+      // RFC 3711 (SRTP) Appendix B.1, "AES-f8 Test Vectors". LibTomCrypt's
+      // f8_test_mode.c carries the same values byte for byte.
       this.tests = [
         {
-          text: "F8 round-trip test (39 bytes)",
-          uri: "https://github.com/libtom/libtomcrypt/blob/develop/src/modes/f8/f8_test_mode.c",
-          input: OpCodes.Hex8ToBytes("70736575646f72616e646f6d6e65737320697320746865206e6578742062657374207468696e67")
+          text: "RFC 3711 B.1 AES-f8 (39 bytes, 'pseudorandomness is the next best thing')",
+          uri: "https://www.rfc-editor.org/rfc/rfc3711.txt",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("70736575646f72616e646f6d6e65737320697320746865206e6578742062657374207468696e67"),
+          expected: OpCodes.Hex8ToBytes("019ce7a26e7854014a6366aa95d4eefd1ad4172a14f9faf455b7f1d4b62bd08f562c0eef7c4802")
         }
       ];
 
@@ -269,8 +272,10 @@
       // Clear temporary key from memory
       OpCodes.ClearArray(tkey);
 
-      // Initialize state - currentIV starts as a copy of MIV (encrypted original IV)
-      this.currentIV = [...this.MIV];
+      // RFC 3711 defines S(j) = E(k_e, IV' XOR j XOR S(j-1)) with S(-1) = 0, so
+      // the feedback register starts empty. Seeding it with IV' instead cancels
+      // IV' out of the very first block and yields E(k_e, 0) as S(0).
+      this.currentIV = new Array(blockSize).fill(0);
       this.blockCounter = 0;
       this.padlen = blockSize; // Force generation of first keystream block
       this.keystreamBlock = new Array(blockSize);

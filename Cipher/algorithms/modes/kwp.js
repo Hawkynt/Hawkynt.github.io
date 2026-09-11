@@ -83,19 +83,23 @@
         new Vulnerability("Padding Oracle Potential", "Improper error handling during unwrapping could potentially leak information about padding validity.")
       ];
 
-      // Round-trip test vectors based on RFC 5649
+      // RFC 5649 section 6, "Padded Key Wrap Examples"
       this.tests = [
         {
-          text: "KWP round-trip test - 20-byte key",
-          uri: "https://tools.ietf.org/rfc/rfc5649.txt",
+          text: "RFC 5649 6 - wrap 20 octets of key data with a 192-bit KEK",
+          uri: "https://www.rfc-editor.org/rfc/rfc5649.txt",
+          cipher: "AES",
           input: OpCodes.Hex8ToBytes("c37b7e6492584340bed12207808941155068f738"),
-          kek: OpCodes.Hex8ToBytes("5840df6e29b02af1ab493b705bf16ea1ae8338f4dcc176a8")
+          kek: OpCodes.Hex8ToBytes("5840df6e29b02af1ab493b705bf16ea1ae8338f4dcc176a8"),
+          expected: OpCodes.Hex8ToBytes("138bdeaa9b8fa7fc61f97742e72248ee5ae6ae5360d1ae6a5f54f373fa543b6a")
         },
         {
-          text: "KWP round-trip test - 7-byte key",
-          uri: "https://tools.ietf.org/rfc/rfc5649.txt",
+          text: "RFC 5649 6 - wrap 7 octets of key data with a 192-bit KEK",
+          uri: "https://www.rfc-editor.org/rfc/rfc5649.txt",
+          cipher: "AES",
           input: OpCodes.Hex8ToBytes("466f7250617369"),
-          kek: OpCodes.Hex8ToBytes("5840df6e29b02af1ab493b705bf16ea1ae8338f4dcc176a8")
+          kek: OpCodes.Hex8ToBytes("5840df6e29b02af1ab493b705bf16ea1ae8338f4dcc176a8"),
+          expected: OpCodes.Hex8ToBytes("afbeb0f07dfbf5419200f2ccb50bb24f")
         }
       ];
     }
@@ -280,7 +284,7 @@
         // Construct wrapped key: A || R[1] || R[2] || ... || R[n]
         result = [...A];
         for (let i = 1; i <= n; i++) {
-          result.push(...R[i]);
+          for (let j = 0; j < R[i].length; j++) result.push(R[i][j]);
         }
 
         // Clear sensitive arrays
@@ -357,7 +361,7 @@
         // Construct decrypted data: A || R[1] || R[2] || ... || R[n]
         decrypted = [...A];
         for (let i = 1; i <= n; i++) {
-          decrypted.push(...R[i]);
+          for (let j = 0; j < R[i].length; j++) decrypted.push(R[i][j]);
         }
 
         // Clear sensitive arrays

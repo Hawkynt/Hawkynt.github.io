@@ -340,6 +340,13 @@
       // Test vectors verified against the DarkCrypt implementation.
       this.tests = [
         {
+          text: "Toshiba Hierocrypt-3 specification test data, 256-bit key",
+          uri: "https://www.cryptrec.go.jp/en/cryptrec_03_spec_cypherlist_files/PDF/08_02espec.pdf",
+          input: OpCodes.Hex8ToBytes("c16d7efca1cbafc7625cbe9c2593de2d"),
+          key: OpCodes.Hex8ToBytes("11a180269a78dda4994746213b5a6dd6e34ffe0cc465d583aff66e1329419c94"),
+          expected: OpCodes.Hex8ToBytes("c86cd3b4a3185232e3457d638c6515c9")
+        },
+        {
           text: "DarkCrypt Hierocrypt-3 — zero key/plaintext",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),

@@ -188,7 +188,11 @@
     }
 
     get shift() {
-      return this._shift || 3;
+      // A shift of zero is a legitimate key - the identity alphabet - and has
+      // to survive the getter. Falling back on `|| 3` turned it into a shift of
+      // three, so ROT0 silently enciphered and the setter's own normalisation
+      // of 0 was thrown away one line later.
+      return this._shift === undefined ? 3 : this._shift;
     }
 
     // Feed data to the cipher

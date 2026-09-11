@@ -101,22 +101,24 @@
       this.knownVulnerabilities = [];
 
       // Official eSTREAM and ISO test vectors
+      // eSTREAM test-vector file for Trivium (80-bit key, 80-bit IV section).
+      // The stream is produced by encrypting zero bytes, so expected == keystream.
       this.tests = [
         {
-          text: "eSTREAM Trivium Test Vector 1 - All zeros",
-          uri: "https://www.ecrypt.eu.org/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/trivium/",
-          input: OpCodes.Hex8ToBytes("0000000000000000"),
-          key: OpCodes.Hex8ToBytes("00000000000000000000"),
+          text: "eSTREAM Trivium Set 1, vector#0 - stream[0..63]",
+          uri: "https://raw.githubusercontent.com/cantora/avr-crypto-lib/master/testvectors/trivium-80.80.test-vectors",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("80000000000000000000"),
           iv: OpCodes.Hex8ToBytes("00000000000000000000"),
-          expected: OpCodes.Hex8ToBytes("fbe0bf265859051b")
+          expected: OpCodes.Hex8ToBytes("38EB86FF730D7A9CAF8DF13A4420540DBB7B651464C87501552041C249F29A64D2FBF515610921EBE06C8F92CECF7F8098FF20CCCC6A62B97BE8EF7454FC80F9")
         },
         {
-          text: "eSTREAM Trivium Test Vector 2 - Standard key",
-          uri: "https://www.ecrypt.eu.org/stream/trivium.html",
-          input: OpCodes.Hex8ToBytes("0000000000000000"),
-          key: OpCodes.Hex8ToBytes("0123456789ABCDEFFEDC"),
-          iv: OpCodes.Hex8ToBytes("112233445566778899AA"),
-          expected: OpCodes.Hex8ToBytes("45ba46148c9df036")
+          text: "eSTREAM Trivium Set 6, vector#0 - stream[0..63]",
+          uri: "https://raw.githubusercontent.com/cantora/avr-crypto-lib/master/testvectors/trivium-80.80.test-vectors",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("0053A6F94C9FF24598EB"),
+          iv: OpCodes.Hex8ToBytes("0D74DB42A91077DE45AC"),
+          expected: OpCodes.Hex8ToBytes("F4CD954A717F26A7D6930830C4E7CF0819F80E03F25F342C64ADC66ABA7F8A8E6EAA49F23632AE3CD41A7BD290A0132F81C6D4043B6E397D7388F3A03B5FE358")
         }
       ];
 
@@ -307,17 +309,16 @@
         this.state[i] = 0;
       }
 
-      // Load 80-bit key into positions 0-79 (register A)
+      // The eSTREAM reference loads the registers with the key and IV bit
+      // strings in DESCENDING order, (s1..s93) <- (K80,...,K1,0,...,0) and
+      // (s94..s177) <- (IV80,...,IV1,0,...,0), while numbering K1 as the least
+      // significant bit of the first key byte. Position i therefore takes bit
+      // (79-i) of the byte string, counted from the bottom.
       for (let i = 0; i < 80; i++) {
-        const byteIndex = Math.floor(i / 8);
-        const bitIndex = i % 8;
+        const bitNumber = 79 - i;
+        const byteIndex = Math.floor(bitNumber / 8);
+        const bitIndex = bitNumber % 8;
         this.state[i] = OpCodes.GetBit(this._key[byteIndex], bitIndex);
-      }
-
-      // Load 80-bit IV into positions 93-172 (register B)
-      for (let i = 0; i < 80; i++) {
-        const byteIndex = Math.floor(i / 8);
-        const bitIndex = i % 8;
         this.state[93 + i] = OpCodes.GetBit(this._iv[byteIndex], bitIndex);
       }
 
