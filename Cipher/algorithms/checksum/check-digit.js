@@ -148,22 +148,40 @@
           ],
           tests: [
             new TestCase(
-              [2, 3, 6, 4, 0, 7, 1], // Valid number with Verhoeff check digit
+              [2, 3, 6, 3], // 236 with its published check digit 3
               [1], // Valid
-              "Valid 7-digit number",
-              "Educational test vector"
+              "Rosetta Code: 2363 validates",
+              "https://rosettacode.org/wiki/Verhoeff_algorithm"
             ),
             new TestCase(
-              [2, 3, 6, 4, 0, 7, 2], // Invalid number
+              [2, 3, 6, 9], // 236 with check digit 9 instead of 3
               [0], // Invalid
-              "Invalid 7-digit number",
-              "Educational test vector"
+              "Rosetta Code: 2369 does not validate",
+              "https://rosettacode.org/wiki/Verhoeff_algorithm"
             ),
             new TestCase(
-              [7, 9, 9, 2, 7, 3, 9, 8, 7, 1, 3, 8, 5], // Valid longer number
+              [1, 2, 3, 4, 5, 1], // 12345 with its published check digit 1
               [1], // Valid
-              "Valid 13-digit number",
-              "Educational test vector"
+              "Rosetta Code: 123451 validates",
+              "https://rosettacode.org/wiki/Verhoeff_algorithm"
+            ),
+            new TestCase(
+              [1, 2, 3, 4, 5, 9], // 12345 with check digit 9 instead of 1
+              [0], // Invalid
+              "Rosetta Code: 123459 does not validate",
+              "https://rosettacode.org/wiki/Verhoeff_algorithm"
+            ),
+            new TestCase(
+              [1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 0], // 123456789012 with check digit 0
+              [1], // Valid
+              "Rosetta Code: 1234567890120 validates",
+              "https://rosettacode.org/wiki/Verhoeff_algorithm"
+            ),
+            new TestCase(
+              [1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 9], // same payload, check digit 9
+              [0], // Invalid
+              "Rosetta Code: 1234567890129 does not validate",
+              "https://rosettacode.org/wiki/Verhoeff_algorithm"
             )
           ]
         },
@@ -352,9 +370,14 @@
     _validateVerhoeff() {
       let checksum = 0;
 
-      for (let i = 0; i < this.digits.length; i++) {
-        const pos = this.digits.length - i - 1; // Position from right
-        const permutedDigit = this.permTable[pos % 8][this.digits[i]];
+      // The dihedral group D5 is not commutative, so the order the digits are
+      // folded in is part of the algorithm and not a detail: the rightmost
+      // digit must be applied first. Walking the digits left to right while
+      // merely indexing the permutation table from the right applies the same
+      // factors in the opposite order and silently rejects valid numbers.
+      for (let pos = 0; pos < this.digits.length; pos++) {
+        const digit = this.digits[this.digits.length - 1 - pos];
+        const permutedDigit = this.permTable[pos % 8][digit];
         checksum = this.multiTable[checksum][permutedDigit];
       }
 
