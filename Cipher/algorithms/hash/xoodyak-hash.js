@@ -216,61 +216,61 @@
       this.tests = [
         {
           text: "Xoodyak Hash: empty message (NIST LWC)",
-          uri: "https://csrc.nist.gov/Projects/lightweight-cryptography/finalists",
+          uri: "https://github.com/usnistgov/Lightweight-Cryptography-Benchmarking/blob/main/implementations/xoodyak/crypto_hash/xoodyakround3/LWC_HASH_KAT_256.txt",
           input: OpCodes.Hex8ToBytes(""),
           expected: OpCodes.Hex8ToBytes("EA152F2B47BCE24EFB66C479D4ADF17BD324D806E85FF75EE369EE50DC8F8BD1")
         },
         {
           text: "Xoodyak Hash: 0x00 (NIST LWC)",
-          uri: "https://csrc.nist.gov/Projects/lightweight-cryptography/finalists",
+          uri: "https://github.com/usnistgov/Lightweight-Cryptography-Benchmarking/blob/main/implementations/xoodyak/crypto_hash/xoodyakround3/LWC_HASH_KAT_256.txt",
           input: OpCodes.Hex8ToBytes("00"),
           expected: OpCodes.Hex8ToBytes("27921F8DDF392894460B70B3ED6C091E6421B7D2147DCD6031D7EFEBAD3030CC")
         },
         {
           text: "Xoodyak Hash: 0x0001 (NIST LWC)",
-          uri: "https://csrc.nist.gov/Projects/lightweight-cryptography/finalists",
+          uri: "https://github.com/usnistgov/Lightweight-Cryptography-Benchmarking/blob/main/implementations/xoodyak/crypto_hash/xoodyakround3/LWC_HASH_KAT_256.txt",
           input: OpCodes.Hex8ToBytes("0001"),
           expected: OpCodes.Hex8ToBytes("DD3F12E89DB41C61D3C05779705FA946A8C69C79EEFDC1B4A966A5F1AB35073D")
         },
         {
           text: "Xoodyak Hash: 0x000102 (NIST LWC)",
-          uri: "https://csrc.nist.gov/Projects/lightweight-cryptography/finalists",
+          uri: "https://github.com/usnistgov/Lightweight-Cryptography-Benchmarking/blob/main/implementations/xoodyak/crypto_hash/xoodyakround3/LWC_HASH_KAT_256.txt",
           input: OpCodes.Hex8ToBytes("000102"),
           expected: OpCodes.Hex8ToBytes("72ABD350DC287E8C4B95DD37BD796D79F90026C1BD4E0D99D2117BAAB26BC2CA")
         },
         {
           text: "Xoodyak Hash: 0x00010203 (NIST LWC)",
-          uri: "https://csrc.nist.gov/Projects/lightweight-cryptography/finalists",
+          uri: "https://github.com/usnistgov/Lightweight-Cryptography-Benchmarking/blob/main/implementations/xoodyak/crypto_hash/xoodyakround3/LWC_HASH_KAT_256.txt",
           input: OpCodes.Hex8ToBytes("00010203"),
           expected: OpCodes.Hex8ToBytes("A13AE46F62E433CE4CAD9E4F24C46F37B6B3815C8539A3659DAAECAAE1AB8FDB")
         },
         {
           text: "Xoodyak Hash: 0x0001020304 (NIST LWC)",
-          uri: "https://csrc.nist.gov/Projects/lightweight-cryptography/finalists",
+          uri: "https://github.com/usnistgov/Lightweight-Cryptography-Benchmarking/blob/main/implementations/xoodyak/crypto_hash/xoodyakround3/LWC_HASH_KAT_256.txt",
           input: OpCodes.Hex8ToBytes("0001020304"),
           expected: OpCodes.Hex8ToBytes("042383068C131A0D365B781DFCB20E855F4A68DE2072AA8D1E16181563D6F622")
         },
         {
           text: "Xoodyak Hash: 0x000102030405060708 (NIST LWC)",
-          uri: "https://csrc.nist.gov/Projects/lightweight-cryptography/finalists",
+          uri: "https://github.com/usnistgov/Lightweight-Cryptography-Benchmarking/blob/main/implementations/xoodyak/crypto_hash/xoodyakround3/LWC_HASH_KAT_256.txt",
           input: OpCodes.Hex8ToBytes("000102030405060708"),
           expected: OpCodes.Hex8ToBytes("D926F7E44B263CBA8F98E2A52B7BE175D406A2E81B462408BDBC408784C4284F")
         },
         {
           text: "Xoodyak Hash: 0x000102030405060708090A0B0C0D0E0F (NIST LWC)",
-          uri: "https://csrc.nist.gov/Projects/lightweight-cryptography/finalists",
+          uri: "https://github.com/usnistgov/Lightweight-Cryptography-Benchmarking/blob/main/implementations/xoodyak/crypto_hash/xoodyakround3/LWC_HASH_KAT_256.txt",
           input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           expected: OpCodes.Hex8ToBytes("9EA695347CDDDFF9BC63ECE30FE231441D581768FE223DD6BD7367094FD216B3")
         },
         {
           text: "Xoodyak Hash: 0x000102030405060708090A0B0C0D0E0F10111213 (NIST LWC)",
-          uri: "https://csrc.nist.gov/Projects/lightweight-cryptography/finalists",
+          uri: "https://github.com/usnistgov/Lightweight-Cryptography-Benchmarking/blob/main/implementations/xoodyak/crypto_hash/xoodyakround3/LWC_HASH_KAT_256.txt",
           input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F10111213"),
           expected: OpCodes.Hex8ToBytes("9BEBE7579EC1D075B6768AE981C54C7D60DB82931B074A618B0A68F84CBCCFE6")
         },
         {
           text: "Xoodyak Hash: 32-byte message (NIST LWC)",
-          uri: "https://csrc.nist.gov/Projects/lightweight-cryptography/finalists",
+          uri: "https://github.com/usnistgov/Lightweight-Cryptography-Benchmarking/blob/main/implementations/xoodyak/crypto_hash/xoodyakround3/LWC_HASH_KAT_256.txt",
           input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
           expected: OpCodes.Hex8ToBytes("CEBE4AFF9EAC2218017DDA5F8207BA830E989187256539BD7D31AE5E94FF0C6E")
         }

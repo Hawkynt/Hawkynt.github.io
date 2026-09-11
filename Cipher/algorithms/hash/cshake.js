@@ -242,6 +242,34 @@
               customization: OpCodes.AnsiToBytes("Email Signature"),
               outputSize: 32,
               expected: OpCodes.Hex8ToBytes("C5221D50E4F822D96A2E8881A961420F294B7B24FE3D2094BAED2C6524CC166B")
+            },
+            {
+              text: "cSHAKE128: NIST ACVP tc25 - N='KMAC', 5-byte message, 39-byte output",
+              uri: "https://raw.githubusercontent.com/usnistgov/ACVP-Server/master/gen-val/json-files/cSHAKE-128-1.0/internalProjection.json",
+              input: OpCodes.Hex8ToBytes("CA88F708FA"),
+              functionName: OpCodes.Hex8ToBytes("4B4D4143"),
+              customization: OpCodes.Hex8ToBytes(
+                "606B6945466026492929375D7971303F2A734B612071295B6A506034523D296C" +
+                "565F3974797654246B4162482429317D705D2E6262656F6D622E"
+              ),
+              outputSize: 39,
+              expected: OpCodes.Hex8ToBytes(
+                "BEBB534CCFCCD300F731D2911FB4351D5FCC95AC2509E9ABAE8F9DC51106E28D" +
+                "7F25AE11738334"
+              )
+            },
+            {
+              text: "cSHAKE128: NIST ACVP tc27 - N='KMAC', empty message, 34-byte output",
+              uri: "https://raw.githubusercontent.com/usnistgov/ACVP-Server/master/gen-val/json-files/cSHAKE-128-1.0/internalProjection.json",
+              input: OpCodes.Hex8ToBytes(""),
+              functionName: OpCodes.Hex8ToBytes("4B4D4143"),
+              customization: OpCodes.Hex8ToBytes(
+                "60503B757C2A606A4B40357E65243655787662453829426F2A7E2E4466732F7A" +
+                "64583E26406D2A4E626E733C487D35723C6B49447A6526572E4B6B7D7B3B2457" +
+                "313A3B2C6431362B6D3463483427462B693A297A496A207D5265767421"
+              ),
+              outputSize: 34,
+              expected: OpCodes.Hex8ToBytes("1E5CA2A14CC46DE9A6510003516CDDCF4FD6F3DC073F64633BFE5C43172E97C7D63A")
             }
           ]
         },
@@ -289,6 +317,41 @@
                 "4B85FB1DEFAF218912AC864302730917" +
                 "27F42B17ED1DF63E8EC118F04B23633C" +
                 "1DFB1574C8FB55CB45DA8E25AFB092BB"
+              )
+            },
+            {
+              text: "cSHAKE256: NIST ACVP tc50 - N='TupleHash', 65-byte message, 32-byte output",
+              uri: "https://raw.githubusercontent.com/usnistgov/ACVP-Server/master/gen-val/json-files/cSHAKE-256-1.0/internalProjection.json",
+              input: OpCodes.Hex8ToBytes(
+                "31A5B91183D04C3F2ADF8A92507E44515CE6CB5BB8129862DA36B773F692A011" +
+                "83576B88DA8A1F21741C6FBFAAAD821EDB05E3E3F5B29E9D2E949BA2F2C05B9A" +
+                "9E"
+              ),
+              functionName: OpCodes.Hex8ToBytes("5475706C6548617368"),
+              customization: OpCodes.Hex8ToBytes(
+                "5D4D725B69572D3E277B734925693A79566164457B7021575E593C563E523D67" +
+                "7378583A2E4555614530575D6374697D59426664603E216C4B3A7D2F3B542053" +
+                "5E2D542B317E6C312C23206C38447368703E7C7A6B582854776C6E7347474670" +
+                "2F257D56405F6D595554575E3E3553"
+              ),
+              outputSize: 32,
+              expected: OpCodes.Hex8ToBytes("FAE091032FC8C74B7D3912A783EB6C0598E65E576FE71E5DED3C057120BD6022")
+            },
+            {
+              text: "cSHAKE256: NIST ACVP tc58 - N='ParallelHash', 5-byte message, 39-byte output",
+              uri: "https://raw.githubusercontent.com/usnistgov/ACVP-Server/master/gen-val/json-files/cSHAKE-256-1.0/internalProjection.json",
+              input: OpCodes.Hex8ToBytes("D5D7E7517F"),
+              functionName: OpCodes.Hex8ToBytes("506172616C6C656C48617368"),
+              customization: OpCodes.Hex8ToBytes(
+                "76442D313E542C662E522A56255A413C4E7457302433555A445B245825515651" +
+                "452C4836453B787159514934636F5E462353663A435521646D516B625052625A" +
+                "7B563178332C76337B665450694276547D5B554F6B3C2F6F2A6447724E374028" +
+                "6E6D372C5E6434765D523E5B204F794A"
+              ),
+              outputSize: 39,
+              expected: OpCodes.Hex8ToBytes(
+                "442BE69B2AFD7C8282839920A8446AAF16A5049D3D018EAC87E04CF9225870EF" +
+                "CA6F88DB415829"
               )
             }
           ]
@@ -369,17 +432,20 @@
         return;
       }
 
-      // Build diff = leftEncode(rate) || encodeString(N) || encodeString(S)
+      // Build diff = leftEncode(rate) || encodeString(N) || encodeString(S).
+      // Appended one element at a time: push(...source) passes every byte of
+      // the customization string as a separate argument, which overflows the
+      // call stack once S reaches roughly 100 KB. SP 800-185 places no such
+      // limit on S, and TupleHash and ParallelHash hand their own customization
+      // straight through to here.
       const diff = [];
+      const append = source => {
+        for (let i = 0; i < source.length; i++) diff.push(source[i]);
+      };
 
-      // leftEncode(rate)
-      diff.push(...leftEncode(this.rate));
-
-      // encodeString(N)
-      diff.push(...encodeString(this._functionName));
-
-      // encodeString(S)
-      diff.push(...encodeString(this._customization));
+      append(leftEncode(this.rate));   // leftEncode(rate)
+      append(encodeString(this._functionName));   // encodeString(N)
+      append(encodeString(this._customization));  // encodeString(S)
 
       // Absorb diff with bytepad to block boundary. This is bytepad (NIST SP
       // 800-185 section 2.3.3), a zero fill to a rate boundary, and not the

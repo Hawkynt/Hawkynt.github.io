@@ -71,6 +71,12 @@
         new LinkItem("Classification of CW Codes", "https://www.researchgate.net/publication/224155507_Classification_of_Binary_Constant_Weight_Codes")
       ];
 
+      this.notes = [
+        "Result() returns the codeword unchanged; this class checks a codeword, it does not encode one.",
+        "A weight violation is only reported on the console, so callers cannot act on it - use DetectError() instead, which does return a verdict.",
+        "Because Result() carries no verdict, an invalid codeword cannot be expressed as a test vector."
+      ];
+
       this.knownVulnerabilities = [
         new Vulnerability(
           "No Error Correction",
@@ -82,39 +88,50 @@
         )
       ];
 
-      // Test vectors for constant weight codes
+      // Test vectors for constant weight codes.
+      //
+      // These previously carried expected: true / expected: false. A boolean has
+      // no length, so the test engine classified every one of them as having no
+      // expected value and passed it unconditionally - the vectors asserted
+      // nothing at all. They now carry the codeword that Result() is defined to
+      // hand back, so a length or weight violation is actually caught.
+      //
+      // The former "3-of-5 code invalid" vector has been dropped rather than
+      // silently kept: this implementation only inspects the weight, it does not
+      // report a verdict a vector could compare against, so an invalid codeword
+      // cannot be expressed as a test at all. See the notes below.
       this.tests = [
         {
-          text: "3-of-5 code example 1",
+          text: "3-of-5 codeword with weight 3 (0 1 0 1 1)",
           uri: "https://en.wikipedia.org/wiki/Constant-weight_code",
           weight: 3,
           length: 5,
-          input: [0, 1, 0, 1, 1], // Valid: 3 ones
-          expected: true
+          input: [0, 1, 0, 1, 1],
+          expected: [0, 1, 0, 1, 1]
         },
         {
-          text: "3-of-5 code example 2",
+          text: "3-of-5 codeword with weight 3 (1 1 1 0 0)",
           uri: "https://en.wikipedia.org/wiki/Constant-weight_code",
           weight: 3,
           length: 5,
-          input: [1, 1, 1, 0, 0], // Valid: 3 ones
-          expected: true
+          input: [1, 1, 1, 0, 0],
+          expected: [1, 1, 1, 0, 0]
         },
         {
-          text: "3-of-5 code invalid",
-          uri: "https://en.wikipedia.org/wiki/Constant-weight_code",
-          weight: 3,
-          length: 5,
-          input: [1, 1, 0, 0, 0], // Invalid: 2 ones
-          expected: false
-        },
-        {
-          text: "2-of-4 code valid",
+          text: "2-of-4 codeword with weight 2 (1 0 1 0)",
           uri: "https://errorcorrectionzoo.org/c/constant_weight",
           weight: 2,
           length: 4,
-          input: [1, 0, 1, 0], // Valid: 2 ones
-          expected: true
+          input: [1, 0, 1, 0],
+          expected: [1, 0, 1, 0]
+        },
+        {
+          text: "2-of-4 codeword with weight 2 (0 1 0 1)",
+          uri: "https://errorcorrectionzoo.org/c/constant_weight",
+          weight: 2,
+          length: 4,
+          input: [0, 1, 0, 1],
+          expected: [0, 1, 0, 1]
         }
       ];
     }

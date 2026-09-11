@@ -106,6 +106,36 @@
           key: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff01234567"),
           input: OpCodes.AnsiToBytes("message digest"),
           expected: OpCodes.Hex8ToBytes("8289f4f19ffe4f2af737de4bd71c829d93a972fa")
+        },
+        {
+          text: "TTMAC: alphabet, 26 bytes (NESSIE)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/ttmac.txt",
+          key: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff01234567"),
+          input: OpCodes.AnsiToBytes("abcdefghijklmnopqrstuvwxyz"),
+          expected: OpCodes.Hex8ToBytes("2186ca09c5533198b7371f245273504ca92bae60")
+        },
+        // 56 and 62 bytes leave fewer than eight free bytes in the 64 byte block,
+        // so the padding and the length field spill into a second block.
+        {
+          text: "TTMAC: 56 bytes, padding spills into a second block (NESSIE)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/ttmac.txt",
+          key: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff01234567"),
+          input: OpCodes.AnsiToBytes("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"),
+          expected: OpCodes.Hex8ToBytes("8a7bf77aef62a2578497a27c0d6518a429e7c14d")
+        },
+        {
+          text: "TTMAC: 62 bytes, padding spills into a second block (NESSIE)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/ttmac.txt",
+          key: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff01234567"),
+          input: OpCodes.AnsiToBytes("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"),
+          expected: OpCodes.Hex8ToBytes("54bac392a886806d169556fcbb6789b54fb364fb")
+        },
+        {
+          text: "TTMAC: 8 x '1234567890', 80 bytes over two blocks (NESSIE)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/ttmac.txt",
+          key: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff01234567"),
+          input: OpCodes.AnsiToBytes("1234567890".repeat(8)),
+          expected: OpCodes.Hex8ToBytes("0ced2c9f8f0d9d03981ab5c8184bac43dd54c484")
         }
       ];
     }
@@ -415,6 +445,14 @@
       const bitCountHi = OpCodes.ToUint32(Math.floor(this.bitCount / 0x100000000));
       this.buffer.push(OpCodes.ToByte(bitCountLo), OpCodes.ToByte(OpCodes.Shr32(bitCountLo, 8)), OpCodes.ToByte(OpCodes.Shr32(bitCountLo, 16)), OpCodes.ToByte(OpCodes.Shr32(bitCountLo, 24)));
       this.buffer.push(OpCodes.ToByte(bitCountHi), OpCodes.ToByte(OpCodes.Shr32(bitCountHi, 8)), OpCodes.ToByte(OpCodes.Shr32(bitCountHi, 16)), OpCodes.ToByte(OpCodes.Shr32(bitCountHi, 24)));
+
+      // When the message tail leaves fewer than eight free bytes in its block the
+      // padding spills into a second block. Only the block carrying the length is
+      // the final one; the spill block is an ordinary block.
+      while (this.buffer.length > BLOCK_SIZE) {
+        const block = this.buffer.splice(0, BLOCK_SIZE);
+        this._transform(block, false);
+      }
 
       // Process final block
       this._transform(this.buffer, true);

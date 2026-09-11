@@ -47,6 +47,7 @@
   // JavaScript Number has only 53-bit precision, but VMAC requires full 64-bit arithmetic
 
   const P64 = 0xfffffffffffffeffn; // 2^64 - 257 (prime for L3 hash)
+  const P127 = 0x7fffffffffffffffffffffffffffffffn; // 2^127 - 1 (prime for L2 hash)
   const M62 = 0x3fffffffffffffffn; // 62-bit mask
   const M63 = 0x7fffffffffffffffn; // 63-bit mask
   const M64 = 0xffffffffffffffffn; // 64-bit mask
@@ -251,6 +252,99 @@
           input: OpCodes.AnsiToBytes("abc".repeat(16)),
           outputSize: 16,
           expected: OpCodes.Hex8ToBytes("09F2C80C8E1007A0C12FAE19FE4504AE")
+        },
+        // L1-HASH segment boundary: the segment length is 128 bytes, so these
+        // sit exactly on it (128), one byte past it (129) and well beyond it
+        // (195, 300, 512), which is where multi-segment folding shows up.
+        {
+          text: "VMAC(AES)-64: 42 x 'abc' + 'ab' (128 bytes, exactly one L1 segment)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/vmac.txt",
+          key: OpCodes.AnsiToBytes("abcdefghijklmnop"),
+          nonce: OpCodes.AnsiToBytes("bcdefghi"),
+          input: OpCodes.AnsiToBytes("abc".repeat(42) + "ab"),
+          outputSize: 8,
+          expected: OpCodes.Hex8ToBytes("D638B73921F184DE")
+        },
+        {
+          text: "VMAC(AES)-128: 42 x 'abc' + 'ab' (128 bytes, exactly one L1 segment)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/vmac.txt",
+          key: OpCodes.AnsiToBytes("abcdefghijklmnop"),
+          nonce: OpCodes.AnsiToBytes("bcdefghi"),
+          input: OpCodes.AnsiToBytes("abc".repeat(42) + "ab"),
+          outputSize: 16,
+          expected: OpCodes.Hex8ToBytes("F7E95FE3DA8DB9E6BB973E65D0B4CEA5")
+        },
+        {
+          text: "VMAC(AES)-64: 129 x 'a' (one byte past the L1 segment)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/vmac.txt",
+          key: OpCodes.AnsiToBytes("abcdefghijklmnop"),
+          nonce: OpCodes.AnsiToBytes("bcdefghi"),
+          input: OpCodes.AnsiToBytes("a".repeat(129)),
+          outputSize: 8,
+          expected: OpCodes.Hex8ToBytes("86348387D13D8233")
+        },
+        {
+          text: "VMAC(AES)-128: 129 x 'a' (one byte past the L1 segment)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/vmac.txt",
+          key: OpCodes.AnsiToBytes("abcdefghijklmnop"),
+          nonce: OpCodes.AnsiToBytes("bcdefghi"),
+          input: OpCodes.AnsiToBytes("a".repeat(129)),
+          outputSize: 16,
+          expected: OpCodes.Hex8ToBytes("A7E52C3289D9B73B53576F059585EE79")
+        },
+        {
+          text: "VMAC(AES)-64: 65 x 'abc' (195 bytes, two L1 segments)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/vmac.txt",
+          key: OpCodes.AnsiToBytes("abcdefghijklmnop"),
+          nonce: OpCodes.AnsiToBytes("bcdefghi"),
+          input: OpCodes.AnsiToBytes("abc".repeat(65)),
+          outputSize: 8,
+          expected: OpCodes.Hex8ToBytes("E86A86EC77A8BF61")
+        },
+        {
+          text: "VMAC(AES)-128: 65 x 'abc' (195 bytes, two L1 segments)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/vmac.txt",
+          key: OpCodes.AnsiToBytes("abcdefghijklmnop"),
+          nonce: OpCodes.AnsiToBytes("bcdefghi"),
+          input: OpCodes.AnsiToBytes("abc".repeat(65)),
+          outputSize: 16,
+          expected: OpCodes.Hex8ToBytes("0A1B2F973044F469F405917E45010334")
+        },
+        {
+          text: "VMAC(AES)-64: 100 x 'abc' (300 bytes, three L1 segments)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/vmac.txt",
+          key: OpCodes.AnsiToBytes("abcdefghijklmnop"),
+          nonce: OpCodes.AnsiToBytes("bcdefghi"),
+          input: OpCodes.AnsiToBytes("abc".repeat(100)),
+          outputSize: 8,
+          expected: OpCodes.Hex8ToBytes("4492DF6C5CAC1BBE")
+        },
+        {
+          text: "VMAC(AES)-128: 100 x 'abc' (300 bytes, three L1 segments)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/vmac.txt",
+          key: OpCodes.AnsiToBytes("abcdefghijklmnop"),
+          nonce: OpCodes.AnsiToBytes("bcdefghi"),
+          input: OpCodes.AnsiToBytes("abc".repeat(100)),
+          outputSize: 16,
+          expected: OpCodes.Hex8ToBytes("66438817154850C61D8A412164803BCB")
+        },
+        {
+          text: "VMAC(AES)-64: 170 x 'abc' + 'ab' (512 bytes, exactly four L1 segments)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/vmac.txt",
+          key: OpCodes.AnsiToBytes("abcdefghijklmnop"),
+          nonce: OpCodes.AnsiToBytes("bcdefghi"),
+          input: OpCodes.AnsiToBytes("abc".repeat(170) + "ab"),
+          outputSize: 8,
+          expected: OpCodes.Hex8ToBytes("9DA310281E6FD0A0")
+        },
+        {
+          text: "VMAC(AES)-128: 170 x 'abc' + 'ab' (512 bytes, exactly four L1 segments)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/vmac.txt",
+          key: OpCodes.AnsiToBytes("abcdefghijklmnop"),
+          nonce: OpCodes.AnsiToBytes("bcdefghi"),
+          input: OpCodes.AnsiToBytes("abc".repeat(170) + "ab"),
+          outputSize: 16,
+          expected: OpCodes.Hex8ToBytes("BF53B8D2D70C05A85880C2E21CAF1299")
         }
       ];
     }
@@ -458,10 +552,14 @@
       counter[0] = 0xE0; // L3 key derivation tag
       counter[15] = 0;
 
+      // The key-derivation counter advances on every candidate block, including
+      // rejected ones - not only on accepted ones (draft-krovetz-vmac-01 5.4.1).
+      let l3Counter = 0;
       for (let i = 0; i < numPolyKeys; ++i) {
         let k0, k1;
         do {
-          counter[15] = this.l3Key.length / 2;
+          counter[15] = l3Counter;
+          ++l3Counter;
           aes.Feed(counter);
           const block = aes.Result();
 
@@ -579,51 +677,22 @@
       return { high: nhHigh, low: nhLow };
     }
 
-    // Polynomial evaluation step - multiply accumulator by key and add message
-    // PRECISION-CRITICAL: Implements Crypto++ poly_step algorithm using BigInt
-    // Reference: vmac.cpp lines 708-721 (word128 version)
+    // Polynomial evaluation step of L2-HASH: y = (y * k + m) mod (2^127 - 1)
+    // draft-krovetz-vmac-01 section 5.4.1. BigInt keeps the 127-bit arithmetic
+    // exact, so the reduction is written directly rather than as a lazy
+    // carry-propagating sequence.
     _polyStep(ah, al, kh, kl, mh, ml) {
-      // Build 127-bit accumulator from high/low parts
       const a = OpCodes.ShiftLn(BigInt(ah), 64n)|BigInt(al);
-      const k_high = BigInt(kh);
-      const k_low = BigInt(kl);
-      const a_high = BigInt(ah);
-      const a_low = BigInt(al);
+      const k = OpCodes.ShiftLn(BigInt(kh), 64n)|BigInt(kl);
 
-      // Crypto++ poly_step algorithm:
-      // t2 = (a>>64) * kl
-      // t3 = a * kh
-      // t1 = a * kl
-      // t4 = (a>>64) * (2*kh)
-      // t2 += t3
-      // t4 += t1
-      // t2 += (t4>>64)
-      // a = (OpCodes.Shl32((t2&m63), 64))|(t4&m64)
-      // a += m&m126
+      // Message word is the NH result masked to 126 bits
+      const m = OpCodes.ShiftLn(OpCodes.AndN(BigInt(mh), M62), 64n)|BigInt(ml);
 
-      const t1 = a * k_low;                    // a * kl
-      const t2_init = a_high * k_low;          // (a>>64) * kl
-      const t3 = a * k_high;                   // a * kh
-      const t4_init = a_high * OpCodes.ShiftLn(k_high, 1n); // (a>>64) * (2*kh)
-
-      let t2 = t2_init + t3;                   // ah*kl + a*kh
-      let t4 = t4_init + t1;                   // ah*2kh + a*kl
-      t2 += OpCodes.ShiftRn(t4, 64n);           // Add carry from t4
-
-      // Build result: high 63 bits from t2, low 64 bits from t4
-      const result_high = t2&M63;
-      const result_low = t4&M64;
-      let result = OpCodes.ShiftLn(result_high, 64n)|result_low;
-
-      // Add message (masked to 126 bits)
-      const m_high = BigInt(mh);
-      const m_low = BigInt(ml);
-      const m = OpCodes.ShiftLn(OpCodes.AndN(m_high, M62), 64n)|m_low;  // m126 mask
-      result += m;
+      const result = (a * k + m) % P127;
 
       // Return as high/low parts
       return {
-        high: OpCodes.AndN(OpCodes.ShiftRn(result, 64n), M63),
+        high: OpCodes.ShiftRn(result, 64n),
         low: result&M64
       };
     }
@@ -734,59 +803,58 @@
       const numParts = this.is128 ? 2 : 1;
       const tagParts = [];
 
+      // L1-HASH breaks the message into segments of L1KeyLength bytes and hashes
+      // each with NH under the SAME NH key; L2-HASH then folds the per-segment NH
+      // results together with a polynomial hash. Hashing the whole message as one
+      // NH call runs off the end of the key and skips the polynomial layer.
+      // draft-krovetz-vmac-01 section 5.3.
+      const segments = [];
+      for (let off = 0; off < paddedMsg.length; off += this.L1KeyLength) {
+        segments.push(paddedMsg.slice(off, Math.min(off + this.L1KeyLength, paddedMsg.length)));
+      }
+
+      // L2-HASH adds (bitlength(M) mod L1KEYLEN) * 2^64 to the polynomial value,
+      // so a message that is an exact multiple of the segment length contributes
+      // zero here - not its full bit length.
+      const lenTermBits = msgLenBits % (this.L1KeyLength * 8);
+
       // Process each tag part (1 for 64-bit, 2 for 128-bit)
       for (let tagIndex = 0; tagIndex < numParts; ++tagIndex) {
         const polyOffset = tagIndex * 4; // Each poly state is [ah, al, kh, kl]
+        const kh = this.polyState[polyOffset + 2];
+        const kl = this.polyState[polyOffset + 3];
 
         let polyHigh, polyLow;
 
-        if (msgLen === 0 && this.isFirstBlock) {
-          // Special case for empty message (Crypto++ vmac.cpp line 851-861)
-          // For empty string, polynomial state = polynomial keys
-          polyHigh = this.polyState[polyOffset + 2]; // ah = kh
-          polyLow = this.polyState[polyOffset + 3];  // al = kl
-
-          // Update state for consistency (though not used again for empty messages)
-          this.polyState[polyOffset] = polyHigh;
-          this.polyState[polyOffset + 1] = polyLow;
+        if (segments.length === 0) {
+          // Empty message: the polynomial value is the polynomial key itself.
+          polyHigh = kh;
+          polyLow = kl;
         } else {
-          // Process message with NH hash
-          const nhResult = this._nhHash(paddedMsg, 0, tagIndex);
+          for (let seg = 0; seg < segments.length; ++seg) {
+            const nhResult = this._nhHash(segments[seg], 0, tagIndex);
 
-          if (this.isFirstBlock) {
-            // First block: first_poly_step (Crypto++ vmac.cpp line 672)
-            // a = (NH_result&m126) + polynomial_key
-            // This is a simple 128-bit addition with 126-bit masking
-            const kh = this.polyState[polyOffset + 2];
-            const kl = this.polyState[polyOffset + 3];
-
-            // Mask NH result to 126 bits (high part to 62 bits)
-            const nhHigh = nhResult.high&M62;
-            const nhLow = nhResult.low;
-
-            // Add to polynomial key: simple 128-bit addition
-            const nhValue = OpCodes.ShiftLn(nhHigh, 64n)|nhLow;
-            const kValue = OpCodes.ShiftLn(kh, 64n)|kl;
-            const sum = nhValue + kValue;
-
-            // Extract high and low parts (no additional masking needed here)
-            polyHigh = OpCodes.ShiftRn(sum, 64n);
-            polyLow = sum&M64;
-          } else {
-            // Subsequent blocks: polynomial step
-            const ah = this.polyState[polyOffset];
-            const al = this.polyState[polyOffset + 1];
-            const kh = this.polyState[polyOffset + 2];
-            const kl = this.polyState[polyOffset + 3];
-            const result = this._polyStep(ah, al, kh, kl, nhResult.high, nhResult.low);
-            polyHigh = result.high;
-            polyLow = result.low;
+            if (seg === 0) {
+              // First segment: a = (NH_result masked to 126 bits) + polynomial key
+              const nhHigh = nhResult.high&M62;
+              const nhLow = nhResult.low;
+              const nhValue = OpCodes.ShiftLn(nhHigh, 64n)|nhLow;
+              const kValue = OpCodes.ShiftLn(kh, 64n)|kl;
+              const sum = nhValue + kValue;
+              polyHigh = OpCodes.ShiftRn(sum, 64n);
+              polyLow = sum&M64;
+            } else {
+              // Subsequent segments: polynomial step
+              const result = this._polyStep(polyHigh, polyLow, kh, kl, nhResult.high, nhResult.low);
+              polyHigh = result.high;
+              polyLow = result.low;
+            }
           }
-
-          // Update polynomial state for next call
-          this.polyState[polyOffset] = polyHigh;
-          this.polyState[polyOffset + 1] = polyLow;
         }
+
+        // Record the polynomial value reached for this message
+        this.polyState[polyOffset] = polyHigh;
+        this.polyState[polyOffset + 1] = polyLow;
 
         // L3 hash
         const l3Result = this._l3Hash(
@@ -794,7 +862,7 @@
           polyLow,
           this.l3Key[tagIndex * 2],
           this.l3Key[tagIndex * 2 + 1],
-          msgLenBits
+          lenTermBits
         );
 
         // Add pad (encrypted nonce)
