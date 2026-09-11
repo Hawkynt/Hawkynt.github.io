@@ -113,7 +113,8 @@ Generated from the registry by `tools/refresh-readmes.js`.
 - **SKINNY-tk3-HASH** (`skinny-hash.js`) - Lightweight hash function based on SKINNY-128-384 tweakable block cipher
 - **SM3** (`sm3.js`) - Chinese national cryptographic hash standard producing 256-bit digests
 - **SparkleHash** (`sparkle-hash.js`) - NIST Lightweight Cryptography finalist based on the Sparkle permutation
-- **Streebog (GOST R 34.11-2012)** (`streebog.js`) - Russian Federal standard hash function specified in GOST R 34.11-2012
+- **Streebog-256** (`streebog.js`) - Russian Federal standard hash function GOST R 34.11-2012, republished as RFC 6986
+- **Streebog-512** (`streebog.js`) - Russian Federal standard hash function GOST R 34.11-2012, republished as RFC 6986
 - **Subterranean-Hash** (`subterranean-hash.js`) - Lightweight cryptographic hash function designed by Joan Daemen based on a 257-bit permutation
 - **Tiger** (`tiger.js`) - Tiger is a 192-bit cryptographic hash function designed by Ross Anderson and Eli Biham in 1995 for efficiency on 64-bit platforms
 - **TupleHash128** (`tuplehash.js`) - SHA-3 derived function for unambiguous tuple hashing with 128-bit security
