@@ -53,7 +53,10 @@ Generated from the registry by `tools/refresh-readmes.js`.
 - **HAVAL** (`haval.js`) - HAVAL (HAsh of Variable Length) is a cryptographic hash function with variable output length (128, 160, 192, 224, 256 bits) and variable passes (3, 4, 5)
 - **HighwayHash** (`highway-hash.js`) - Educational implementation of HighwayHash-style keyed hash function
 - **ISAP Hash** (`isap-hash.js`) - Ascon-based hash function used in the ISAP authenticated encryption scheme
-- **JH** (`jh.js`) - JH is a cryptographic hash function with bitslice design submitted to the NIST SHA-3 competition
+- **JH-224** (`jh.js`) - JH is a SHA-3 finalist designed by Hongjun Wu
+- **JH-256** (`jh.js`) - JH is a SHA-3 finalist designed by Hongjun Wu
+- **JH-384** (`jh.js`) - JH is a SHA-3 finalist designed by Hongjun Wu
+- **JH-512** (`jh.js`) - JH is a SHA-3 finalist designed by Hongjun Wu
 - **KangarooTwelve** (`kangaroo.js`) - Fast hashing based on Keccak-p[1600,12] with tree structure for parallel processing
 - **Keccak (DarkCrypt)** (`darkcrypt-keccak.js`) - Keccak sponge hash variant used by the DarkCrypt Total Commander plugin
 - **Keccak-224** (`keccak.js`) - Original Keccak-224 hash function (pre-SHA3)
@@ -99,11 +102,11 @@ Generated from the registry by `tools/refresh-readmes.js`.
 - **SHA-512** (`sha512.js`) - SHA-512 (Secure Hash Algorithm 512-bit) is a cryptographic hash function from the SHA-2 family designed by NIST
 - **SHA-512/224** (`sha512.js`) - SHA-512/224 is a truncated variant of SHA-512 with a modified initialization vector, producing 224-bit hash values
 - **SHA-512/256** (`sha512.js`) - SHA-512/256 is a truncated variant of SHA-512 with a modified initialization vector, producing 256-bit hash values
-- **Shabal-192** (`shabal.js`) - Shabal-192 is a cryptographic hash function submitted to NIST SHA-3 competition
-- **Shabal-224** (`shabal.js`) - Shabal-224 is a cryptographic hash function submitted to NIST SHA-3 competition
-- **Shabal-256** (`shabal.js`) - Shabal-256 is a cryptographic hash function submitted to NIST SHA-3 competition
-- **Shabal-384** (`shabal.js`) - Shabal-384 is a cryptographic hash function submitted to NIST SHA-3 competition
-- **Shabal-512** (`shabal.js`) - Shabal-512 is a cryptographic hash function submitted to NIST SHA-3 competition
+- **Shabal-192** (`shabal.js`) - Shabal-192 is a cryptographic hash function submitted to the NIST SHA-3 competition by the Saphir project
+- **Shabal-224** (`shabal.js`) - Shabal-224 is a cryptographic hash function submitted to the NIST SHA-3 competition by the Saphir project
+- **Shabal-256** (`shabal.js`) - Shabal-256 is a cryptographic hash function submitted to the NIST SHA-3 competition by the Saphir project
+- **Shabal-384** (`shabal.js`) - Shabal-384 is a cryptographic hash function submitted to the NIST SHA-3 competition by the Saphir project
+- **Shabal-512** (`shabal.js`) - Shabal-512 is a cryptographic hash function submitted to the NIST SHA-3 competition by the Saphir project
 - **SHAKE128** (`shake.js`) - SHAKE128 is an extendable-output function (XOF) from NIST FIPS 202 with 128-bit security
 - **SHAKE256** (`shake.js`) - SHAKE256 is an extendable-output function (XOF) from NIST FIPS 202 with 256-bit security
 - **SipHash-2-4** (`siphash.js`) - Fast cryptographically secure pseudorandom function designed for hash tables and data structures requiring collision resistance
@@ -113,9 +116,10 @@ Generated from the registry by `tools/refresh-readmes.js`.
 - **SKINNY-tk3-HASH** (`skinny-hash.js`) - Lightweight hash function based on SKINNY-128-384 tweakable block cipher
 - **SM3** (`sm3.js`) - Chinese national cryptographic hash standard producing 256-bit digests
 - **SparkleHash** (`sparkle-hash.js`) - NIST Lightweight Cryptography finalist based on the Sparkle permutation
-- **Streebog (GOST R 34.11-2012)** (`streebog.js`) - Russian Federal standard hash function specified in GOST R 34.11-2012
+- **Streebog-256** (`streebog.js`) - Russian Federal standard hash function GOST R 34.11-2012, republished as RFC 6986
+- **Streebog-512** (`streebog.js`) - Russian Federal standard hash function GOST R 34.11-2012, republished as RFC 6986
 - **Subterranean-Hash** (`subterranean-hash.js`) - Lightweight cryptographic hash function designed by Joan Daemen based on a 257-bit permutation
-- **Tiger** (`tiger.js`) - Tiger is a cryptographic hash function designed by Ross Anderson and Eli Biham in 1995 for efficiency on 64-bit platforms
+- **Tiger** (`tiger.js`) - Tiger is a 192-bit cryptographic hash function designed by Ross Anderson and Eli Biham in 1995 for efficiency on 64-bit platforms
 - **TupleHash128** (`tuplehash.js`) - SHA-3 derived function for unambiguous tuple hashing with 128-bit security
 - **TupleHash256** (`tuplehash.js`) - SHA-3 derived function for unambiguous tuple hashing with 256-bit security
 - **Whirlpool** (`whirlpool.js`) - Whirlpool is a cryptographic hash function designed by Vincent Rijmen and Paulo S
